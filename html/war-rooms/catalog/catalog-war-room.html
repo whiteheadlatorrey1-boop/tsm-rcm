@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TSM Product Catalog War Room</title>
+<style>
+:root {
+  --bg:#0a0f0a;--bg2:#0d130d;--bg3:#111811;
+  --border:rgba(0,255,80,.12);
+  --green:#00ff50;--green-dim:rgba(0,255,80,.6);
+  --gold:#ffd700;--red:#ff3b3b;--amber:#ff9500;--cyan:#00e5ff;--purple:#c084fc;
+  --text:#c8d8c8;--text-dim:#5a7a5a;--card:#0d160d;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;font-size:12px;min-height:100vh}
+.nav{display:flex;align-items:center;gap:0;background:#080d08;border-bottom:1px solid var(--border);height:38px;padding:0 16px}
+.nav-brand{color:var(--green);font-weight:700;font-size:11px;letter-spacing:2px;margin-right:24px}
+.nav-right{margin-left:auto;display:flex;align-items:center;gap:16px;color:var(--text-dim);font-size:10px}
+.nav-clock{color:var(--green-dim)}
+.alert-bar{background:rgba(255,149,0,.06);border-bottom:1px solid rgba(255,149,0,.2);padding:6px 20px;display:flex;align-items:center;gap:8px;font-size:10px;letter-spacing:1.5px;color:var(--amber)}
+.alert-dot{width:6px;height:6px;border-radius:50%;background:var(--amber);box-shadow:0 0 6px var(--amber);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.layout{display:grid;grid-template-columns:290px 1fr;height:calc(100vh - 70px)}
+.sidebar{background:var(--bg2);border-right:1px solid var(--border);overflow-y:auto;display:flex;flex-direction:column}
+.sb-section{padding:14px 16px;border-bottom:1px solid var(--border)}
+.sb-label{font-size:9px;letter-spacing:2px;color:var(--text-dim);margin-bottom:8px}
+.btn{border:1px solid;font-family:inherit;font-size:9px;letter-spacing:1.5px;cursor:pointer;padding:7px 12px;transition:all .2s}
+.btn-green{background:var(--green);border-color:var(--green);color:#000;font-weight:700}
+.btn-green:hover{background:#00cc40}
+.btn-outline{background:transparent;border-color:var(--green);color:var(--green)}
+.btn-ghost{background:transparent;border-color:var(--border);color:var(--text-dim)}
+.btn-ghost:hover{border-color:var(--text-dim);color:var(--text)}
+.btn-gold{background:var(--gold);border-color:var(--gold);color:#000;font-weight:700}
+.btn-cyan{background:var(--cyan);border-color:var(--cyan);color:#000;font-weight:700}
+.btn-row{display:flex;gap:6px;flex-wrap:wrap}
+.btn-full{width:100%}
+.search-input{background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:inherit;font-size:10px;padding:7px 8px;width:100%}
+.search-input::placeholder{color:var(--text-dim)}
+.stage-list{display:flex;flex-direction:column;gap:3px}
+.stage-item{display:flex;align-items:center;gap:8px;padding:5px 8px;background:var(--bg3);border:1px solid var(--border);font-size:9px}
+.stage-num{color:var(--text-dim);width:14px}
+.stage-name{flex:1;color:var(--text)}
+.stage-count{color:var(--green);font-weight:700}
+.snap-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.snap-item{background:var(--bg3);border:1px solid var(--border);padding:6px 8px}
+.snap-label{font-size:8px;color:var(--text-dim);letter-spacing:1px;margin-bottom:3px}
+.snap-val{font-size:13px;color:var(--green);font-weight:700}
+.snap-val.warn{color:var(--amber)}
+.snap-val.bad{color:var(--red)}
+.main{overflow-y:auto;background:var(--bg);padding:18px 22px}
+.main-header{margin-bottom:16px}
+.main-title{font-size:13px;letter-spacing:1px;color:var(--text)}
+.main-title b{color:var(--green)}
+.main-sub{color:var(--text-dim);font-size:10px;margin-top:2px}
+.kpi-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:20px}
+.kpi-card{background:var(--card);border:1px solid var(--border);padding:12px 10px}
+.kpi-label{font-size:8px;letter-spacing:1px;color:var(--text-dim);margin-bottom:6px;text-transform:uppercase}
+.kpi-value{font-size:18px;font-weight:700;color:var(--green)}
+.kpi-value.warn{color:var(--amber)}
+.kpi-value.bad{color:var(--red)}
+.section{background:var(--card);border:1px solid var(--border);margin-bottom:18px}
+.section-head{padding:10px 14px;border-bottom:1px solid var(--border);font-size:10px;letter-spacing:1.5px;color:var(--text-dim);display:flex;justify-content:space-between;align-items:center}
+.section-body{padding:14px}
+.tracker{display:flex;gap:4px;overflow-x:auto;padding-bottom:6px}
+.tracker-stage{flex:1;min-width:84px;background:var(--bg3);border:1px solid var(--border);padding:8px 6px;text-align:center}
+.tracker-stage.hot{border-color:var(--red);background:rgba(255,59,59,.08)}
+.tracker-stage .ts-label{font-size:8px;color:var(--text-dim);letter-spacing:.5px;margin-bottom:4px;min-height:22px}
+.tracker-stage .ts-count{font-size:15px;font-weight:700;color:var(--green)}
+.tracker-stage.hot .ts-count{color:var(--red)}
+table{width:100%;border-collapse:collapse;font-size:10px}
+th{text-align:left;color:var(--text-dim);font-size:8px;letter-spacing:1px;padding:6px 8px;border-bottom:1px solid var(--border)}
+td{padding:7px 8px;border-bottom:1px solid var(--border);color:var(--text)}
+tr:hover td{background:rgba(0,255,80,.03)}
+.tag{display:inline-block;font-size:8px;letter-spacing:1px;padding:2px 6px;border:1px solid}
+.tag-high{color:var(--red);border-color:var(--red)}
+.tag-medium{color:var(--amber);border-color:var(--amber)}
+.tag-ok{color:var(--green);border-color:var(--green)}
+.empty-state{color:var(--text-dim);font-size:10px;padding:20px;text-align:center}
+.ai-output{background:var(--bg3);border:1px solid var(--border);padding:12px;font-size:10px;line-height:1.6;color:var(--text);white-space:pre-wrap;min-height:60px}
+.ai-output.loading{color:var(--text-dim)}
+.ai-output .err{color:var(--red)}
+.flag-row{display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--bg3);border:1px solid var(--border);font-size:10px;margin-bottom:4px}
+.flag-row:last-child{margin-bottom:0}
+.flag-sku{color:var(--text-dim);width:90px;flex-shrink:0}
+.flag-name{flex:1;color:var(--text)}
+.flag-detail{color:var(--text-dim);font-size:9px}
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <div class="nav-brand">TSM SHELL // CATALOG</div>
+  <div class="nav-right">
+    <span id="navStatus">ENGINE: IDLE</span>
+    <span class="nav-clock" id="navClock">--:--:--</span>
+  </div>
+</div>
+
+<div class="alert-bar" id="alertBar" style="display:none">
+  <span class="alert-dot"></span>
+  <span id="alertText">Attention flags detected in the product catalog.</span>
+</div>
+
+<div class="layout">
+
+  <div class="sidebar">
+    <div class="sb-section">
+      <div class="sb-label">DATA</div>
+      <div class="btn-row">
+        <button class="btn btn-ghost btn-full" id="btnLoadSample">LOAD SAMPLE DATA</button>
+      </div>
+      <div class="btn-row" style="margin-top:6px">
+        <button class="btn btn-ghost btn-full" id="btnResetData">RESET SAVED DATA</button>
+      </div>
+    </div>
+
+    <div class="sb-section">
+      <div class="sb-label">SEARCH</div>
+      <input type="text" class="search-input" id="searchInput" placeholder="SKU, name, category, family...">
+    </div>
+
+    <div class="sb-section">
+      <div class="sb-label">LIFECYCLE STAGES</div>
+      <div class="stage-list" id="stageList"></div>
+    </div>
+
+    <div class="sb-section">
+      <div class="sb-label">SNAPSHOT</div>
+      <div class="snap-grid" id="snapGrid"></div>
+    </div>
+
+    <div class="sb-section" style="margin-top:auto">
+      <div class="btn-row">
+        <button class="btn btn-green btn-full" id="btnRunAnalysis">RUN AI ANALYSIS</button>
+      </div>
+      <div class="btn-row" style="margin-top:6px">
+        <button class="btn btn-cyan btn-full" id="btnPublishCpq">PUBLISH TO CPQ &rarr;</button>
+      </div>
+      <div class="btn-row" style="margin-top:6px">
+        <button class="btn btn-gold btn-full" id="btnRelay">RELAY TO STRATEGIST &rarr;</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="main-header">
+      <div class="main-title">PRODUCT <b>CATALOG</b></div>
+      <div class="main-sub">Hierarchy, lifecycle, variants, BOM, compliance, inventory &mdash; source of truth for CPQ pricing and O2C availability.</div>
+    </div>
+
+    <div class="kpi-grid" id="kpiGrid"></div>
+
+    <div class="section">
+      <div class="section-head"><span>LIFECYCLE DISTRIBUTION</span><span id="trackerMeta"></span></div>
+      <div class="section-body"><div class="tracker" id="tracker"></div></div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><span>ATTENTION FLAGS</span><span id="flagMeta"></span></div>
+      <div class="section-body" id="flagBody">
+        <div class="empty-state">No products loaded yet.</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><span>PRODUCTS</span><span id="productMeta"></span></div>
+      <div class="section-body" id="productBody">
+        <div class="empty-state">No products loaded yet.</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><span>AI CATALOG ANALYSIS</span></div>
+      <div class="section-body">
+        <div class="ai-output" id="aiOutput">Run analysis to get AI-generated catalog risk and next-best-action recommendations across low-stock, compliance, and EOL flags.</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script src="/runtime/kernel/canonical-core.js"></script>
+<script src="/war-rooms/catalog/services/catalog-engine.js"></script>
+<script>
+(function () {
+  let MODEL = null;
+  let engine = null;
+  let searchTerm = '';
+
+  function setClock() { const el = document.getElementById('navClock'); if (el) el.textContent = new Date().toLocaleTimeString(); }
+  setInterval(setClock, 1000); setClock();
+
+  async function loadModel() {
+    const res = await fetch('/war-rooms/catalog/data/catalog-model.json');
+    MODEL = await res.json();
+    engine = new TSMCatalogEngine(MODEL);
+    const hydrated = engine.loadFromStorage();
+    renderStageList();
+    if (hydrated) renderAll();
+  }
+
+  function renderStageList() {
+    const def = (MODEL.entities || {}).product || { stages: [] };
+    const list = document.getElementById('stageList');
+    list.innerHTML = '';
+    (def.stages || []).forEach(s => {
+      const row = document.createElement('div');
+      row.className = 'stage-item';
+      row.innerHTML = `<span class="stage-num">${s.order}</span><span class="stage-name">${s.label}</span><span class="stage-count" id="sc-${s.id}">0</span>`;
+      list.appendChild(row);
+    });
+  }
+
+  function renderAll() {
+    if (!engine) return;
+    const kpis = engine.computeKpis();
+    renderKpis(kpis);
+    renderStageCounts();
+    renderTracker();
+    renderFlags();
+    renderProducts();
+    renderSnapshot(kpis);
+    toggleAlert(kpis);
+    document.getElementById('navStatus').textContent = `ENGINE: ${engine.products.length} PRODUCTS LOADED`;
+  }
+
+  function renderKpis(kpis) {
+    const grid = document.getElementById('kpiGrid');
+    grid.innerHTML = '';
+    (MODEL.kpis || []).forEach(d => {
+      const val = kpis[d.id];
+      let display = val;
+      let cls = '';
+      if (d.unit === 'pct') display = val + '%';
+      if (d.id === 'low_stock_count' && val > 0) cls = 'warn';
+      if (d.id === 'compliance_flag_count' && val > 0) cls = 'bad';
+      const card = document.createElement('div');
+      card.className = 'kpi-card';
+      card.innerHTML = `<div class="kpi-label">${d.label}</div><div class="kpi-value ${cls}">${display}</div>`;
+      grid.appendChild(card);
+    });
+  }
+
+  function renderStageCounts() {
+    const dist = engine.getStageDistribution();
+    Object.keys(dist).forEach(id => { const el = document.getElementById('sc-' + id); if (el) el.textContent = dist[id].count; });
+  }
+
+  function renderTracker() {
+    const def = (MODEL.entities || {}).product || { stages: [] };
+    const dist = engine.getStageDistribution();
+    const flagStages = new Set(engine.getAttentionFlags().map(f => {
+      const p = engine.products.find(pr => pr.sku === f.sku);
+      return p ? p.stage : null;
+    }));
+    const wrap = document.getElementById('tracker');
+    wrap.innerHTML = '';
+    (def.stages || []).forEach(s => {
+      const d = dist[s.id] || { count: 0 };
+      const el = document.createElement('div');
+      el.className = 'tracker-stage' + (flagStages.has(s.label) ? ' hot' : '');
+      el.innerHTML = `<div class="ts-label">${s.label}</div><div class="ts-count">${d.count}</div>`;
+      wrap.appendChild(el);
+    });
+    document.getElementById('trackerMeta').textContent = engine.products.length + ' SKUs';
+  }
+
+  function renderFlags() {
+    const body = document.getElementById('flagBody');
+    const flags = engine.getAttentionFlags();
+    document.getElementById('flagMeta').textContent = flags.length + ' flagged';
+    if (!flags.length) { body.innerHTML = engine.products.length ? '<div class="empty-state">No attention flags. Catalog is clean.</div>' : '<div class="empty-state">No products loaded yet.</div>'; return; }
+
+    const typeTag = { low_stock: 'tag-medium', compliance: 'tag-high', eol: 'tag-medium' };
+    const typeLabel = { low_stock: 'LOW STOCK', compliance: 'COMPLIANCE', eol: 'EOL' };
+    body.innerHTML = flags.map(f => `
+      <div class="flag-row">
+        <span class="flag-sku">${f.sku}</span>
+        <span class="flag-name">${f.name}</span>
+        <span class="tag ${typeTag[f.type] || 'tag-medium'}">${typeLabel[f.type] || f.type.toUpperCase()}</span>
+        <span class="flag-detail">${f.detail}</span>
+      </div>`).join('');
+  }
+
+  function renderProducts() {
+    const body = document.getElementById('productBody');
+    const rows = engine.search(searchTerm);
+    document.getElementById('productMeta').textContent = rows.length + (searchTerm ? ` matching "${searchTerm}"` : ' total');
+    if (!engine.products.length) { body.innerHTML = '<div class="empty-state">No products loaded yet.</div>'; return; }
+    if (!rows.length) { body.innerHTML = '<div class="empty-state">No products match your search.</div>'; return; }
+
+    const complianceTag = s => s === 'ok' ? '<span class="tag tag-ok">OK</span>' : `<span class="tag tag-high">${s.replace('_',' ').toUpperCase()}</span>`;
+    const stockTag = p => {
+      if (['End of Life', 'Discontinued'].includes(p.stage)) return '&mdash;';
+      const low = p.reorder_point > 0 && p.stock_qty <= p.reorder_point;
+      return `<span class="${low ? 'tag tag-medium' : ''}">${p.stock_qty}</span>`;
+    };
+
+    body.innerHTML = `<table>
+      <thead><tr><th>SKU</th><th>NAME</th><th>CATEGORY</th><th>STAGE</th><th>LIST PRICE</th><th>STOCK</th><th>COMPLIANCE</th></tr></thead>
+      <tbody>${rows.map(p => `<tr>
+        <td>${p.sku}</td>
+        <td>${p.name}</td>
+        <td>${p.category}</td>
+        <td>${p.stage}</td>
+        <td>$${Number(p.list_price || 0).toLocaleString()}</td>
+        <td>${stockTag(p)}</td>
+        <td>${complianceTag(p.compliance_status || 'ok')}</td>
+      </tr>`).join('')}</tbody>
+    </table>`;
+  }
+
+  function renderSnapshot(kpis) {
+    const grid = document.getElementById('snapGrid');
+    grid.innerHTML = `
+      <div class="snap-item"><div class="snap-label">TOTAL SKUS</div><div class="snap-val">${kpis.total_skus}</div></div>
+      <div class="snap-item"><div class="snap-label">ACTIVE</div><div class="snap-val">${kpis.active_skus}</div></div>
+      <div class="snap-item"><div class="snap-label">LOW STOCK</div><div class="snap-val ${kpis.low_stock_count ? 'warn' : ''}">${kpis.low_stock_count}</div></div>
+      <div class="snap-item"><div class="snap-label">COMPLIANCE</div><div class="snap-val ${kpis.compliance_flag_count ? 'bad' : ''}">${kpis.compliance_flag_count}</div></div>`;
+  }
+
+  function toggleAlert(kpis) {
+    const bar = document.getElementById('alertBar');
+    const total = kpis.low_stock_count + kpis.compliance_flag_count;
+    if (total > 0) { bar.style.display = 'flex'; document.getElementById('alertText').textContent = `${kpis.compliance_flag_count} compliance flag(s), ${kpis.low_stock_count} low-stock SKU(s).`; }
+    else bar.style.display = 'none';
+  }
+
+  async function runAnalysis() {
+    const out = document.getElementById('aiOutput');
+    out.className = 'ai-output loading';
+    out.textContent = 'Running AI analysis on current product catalog...';
+    document.getElementById('navStatus').textContent = 'ENGINE: ANALYZING';
+    try {
+      const data = await engine.runAnalysis();
+      out.className = 'ai-output';
+      out.textContent = (data && data.answer) || 'No analysis returned.';
+    } catch (e) {
+      out.className = 'ai-output';
+      out.innerHTML = `<span class="err">Analysis failed: ${e.message}. Confirm /api/catalog/query is wired server-side.</span>`;
+    } finally { renderAll(); }
+  }
+
+  function publishToCpq() {
+    const payload = engine.buildCpqPublishPayload();
+    try {
+      localStorage.setItem('TSM_CATALOG_TO_CPQ', JSON.stringify(payload));
+      sessionStorage.setItem('TSM_CATALOG_TO_CPQ', JSON.stringify(payload));
+    } catch (e) { console.warn('Publish storage failed', e); }
+    if (window.TSMEventBus && window.TSMEventBus.emit) {
+      window.TSMEventBus.emit('CATALOG_PUBLISHED', { vertical: 'catalog', payload, ts: Date.now() });
+    }
+    document.getElementById('navStatus').textContent = `ENGINE: PUBLISHED ${payload.products.length} SKUS TO CPQ`;
+  }
+
+  function relayToStrategist() {
+    const aiText = document.getElementById('aiOutput').textContent;
+    const payload = engine.buildRelayPayload(aiText);
+    try {
+      localStorage.setItem('TSM_CATALOG_RELAY', JSON.stringify(payload));
+      sessionStorage.setItem('TSM_CATALOG_RELAY', JSON.stringify(payload));
+    } catch (e) { console.warn('Relay storage failed', e); }
+    if (window.TSMEventBus && window.TSMEventBus.emit) {
+      window.TSMEventBus.emit('WAR_ROOM_READY', { vertical: 'catalog', payload, ts: Date.now() });
+    }
+    document.getElementById('navStatus').textContent = 'ENGINE: RELAYED TO STRATEGIST';
+  }
+
+  document.getElementById('btnLoadSample').addEventListener('click', () => {
+    engine.loadSampleData();
+    engine.saveToStorage();
+    renderAll();
+  });
+
+  document.getElementById('btnResetData').addEventListener('click', () => {
+    if (!confirm('Clear all saved Catalog data from this browser? This cannot be undone.')) return;
+    engine.clearStorage();
+    renderAll();
+  });
+
+  document.getElementById('searchInput').addEventListener('input', (e) => {
+    searchTerm = e.target.value.trim();
+    renderProducts();
+  });
+
+  document.getElementById('btnRunAnalysis').addEventListener('click', runAnalysis);
+  document.getElementById('btnPublishCpq').addEventListener('click', publishToCpq);
+  document.getElementById('btnRelay').addEventListener('click', relayToStrategist);
+
+  loadModel();
+})();
+</script>
+
+<script src="/js/core/tsm-event-bus.js"></script>
+<script src="/js/core/tsm-state.js"></script>
+<script src="/js/core/tsm-mission-engine.js"></script>
+<script src="/js/core/tsm-auto-pipeline.js"></script>
+</body>
+</html>
