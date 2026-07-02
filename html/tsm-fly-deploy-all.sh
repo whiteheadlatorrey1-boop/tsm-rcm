@@ -413,7 +413,7 @@ app.use((req, res, next) => {
 // Routes /v1/chat → Groq Llama 3.3-70B-Versatile
 // Set GROQ_API_KEY via: fly secrets set GROQ_API_KEY=gsk_xxx --app APP_NAME
 const GROQ_KEY   = process.env.GROQ_API_KEY || '';
-const GROQ_MODEL = 'llama-3.3-70b-versatile';
+const GROQ_MODEL = 'openai/gpt-oss-120b';
 const GROQ_URL   = 'https://api.groq.com/openai/v1/chat/completions';
 
 app.post('/v1/chat', async (req, res) => {

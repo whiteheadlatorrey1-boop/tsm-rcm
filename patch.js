@@ -36,7 +36,7 @@ app.post('/api/claude/proxy', express.json({limit:'4mb'}), async (req, res) => {
     const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: { 'Authorization':'Bearer '+GROQ_KEY, 'Content-Type':'application/json' },
-      body: JSON.stringify({ model: process.env.TSM_MODEL||'llama-3.3-70b-versatile',
+      body: JSON.stringify({ model: process.env.TSM_MODEL||'openai/gpt-oss-120b',
                              max_tokens, messages: msgs })
     });
     const data = await r.json();

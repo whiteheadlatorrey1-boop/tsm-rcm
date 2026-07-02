@@ -34,7 +34,7 @@ app.post('/api/groq', (req, res) => {
   if (!key) return res.status(500).json({ error: 'Missing GROQ_API_KEY' });
 
   const payload = JSON.stringify({
-    model: 'llama-3.3-70b-versatile',
+    model: 'openai/gpt-oss-120b',
     max_tokens: 1000,
     stream: false,
     messages: req.body.messages

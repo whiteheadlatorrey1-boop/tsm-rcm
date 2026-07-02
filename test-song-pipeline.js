@@ -13,7 +13,7 @@ const fs   = require('fs');
 const http = require('https');
 
 const FILE  = 'html/music-command/index.html';
-const MODEL = 'llama-3.3-70b-versatile';
+const MODEL = 'openai/gpt-oss-120b';
 
 const SEED_LYRICS = `Grindin' n Slavin' while Misbavin'!
 Feelin' so Fresh n So Clean even Missed on Shavin'!

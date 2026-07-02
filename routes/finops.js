@@ -501,7 +501,7 @@ Return:
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            model: process.env.TSM_FINOPS_MODEL || 'llama-3.3-70b-versatile',
+            model: process.env.TSM_FINOPS_MODEL || 'openai/gpt-oss-120b',
             messages: [
               { role: 'system', content: 'You are TSM Financial Operations Layer. Return JSON only. Never mention provider/model/API/key.' },
               { role: 'user', content: prompt }

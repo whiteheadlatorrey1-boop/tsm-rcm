@@ -15,7 +15,7 @@ app_targets = [
 # Forces 11/11 Nodes Active across all sectors
 universal_keys = {
     "enterprise_id": "TSM-GLOBAL-MESH",
-    "neural_core": "llama-3.3-70b-versatile",
+    "neural_core": "openai/gpt-oss-120b",
     "active_nodes": 11,
     "field_sync_hooks": {
         "GLOBAL-01": {"status": "Verified", "impact": "Operational"}

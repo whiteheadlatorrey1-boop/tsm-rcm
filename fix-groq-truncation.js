@@ -40,17 +40,17 @@ if (!src.includes('safeParseGroq')) {
 const replacements = [
   // agent/run — was 700, bump to 1200
   {
-    find: `model: process.env.TSM_MODEL || 'llama-3.3-70b-versatile', max_tokens:700, messages:[{role:'user',content:prompt}] }) }); const raw = await r.json(); const text = (raw.choices?.[0]?.message?.content || '').replace(/\\\`\\\`\\\`json|\\\`\\\`\\\`/g,'').trim(); return res.json(JSON.parse(text)); } catch(e) { return res.json({ ok:false, error: e.message }); }
+    find: `model: process.env.TSM_MODEL || 'openai/gpt-oss-120b', max_tokens:700, messages:[{role:'user',content:prompt}] }) }); const raw = await r.json(); const text = (raw.choices?.[0]?.message?.content || '').replace(/\\\`\\\`\\\`json|\\\`\\\`\\\`/g,'').trim(); return res.json(JSON.parse(text)); } catch(e) { return res.json({ ok:false, error: e.message }); }
 });
 app['post']('/api/music/agent/chain'`,
-    replace: `model: process.env.TSM_MODEL || 'llama-3.3-70b-versatile', max_tokens:1200, messages:[{role:'user',content:prompt}] }) }); const raw = await r.json(); const text = (raw.choices?.[0]?.message?.content || '').replace(/\\\`\\\`\\\`json|\\\`\\\`\\\`/g,'').trim(); return res.json(safeParseGroq(text, {ok:false})); } catch(e) { return res.json({ ok:false, error: e.message }); }
+    replace: `model: process.env.TSM_MODEL || 'openai/gpt-oss-120b', max_tokens:1200, messages:[{role:'user',content:prompt}] }) }); const raw = await r.json(); const text = (raw.choices?.[0]?.message?.content || '').replace(/\\\`\\\`\\\`json|\\\`\\\`\\\`/g,'').trim(); return res.json(safeParseGroq(text, {ok:false})); } catch(e) { return res.json({ ok:false, error: e.message }); }
 });
 app['post']('/api/music/agent/chain'`
   },
   // agent/chain — was 800, bump to 1400
   {
-    find: `model: process.env.TSM_MODEL || 'llama-3.3-70b-versatile', max_tokens:800, messages:[{role:'user',content:prompt}] }) }); const raw = await r.json(); const text = (raw.choices?.[0]?.message?.content || '').replace(/\\\`\\\`\\\`json|\\\`\\\`\\\`/g,'').trim(); return res.json(JSON.parse(text)); } catch(e) { return res.json({ ok:false, error: e.message }); }`,
-    replace: `model: process.env.TSM_MODEL || 'llama-3.3-70b-versatile', max_tokens:1400, messages:[{role:'user',content:prompt}] }) }); const raw = await r.json(); const text = (raw.choices?.[0]?.message?.content || '').replace(/\\\`\\\`\\\`json|\\\`\\\`\\\`/g,'').trim(); return res.json(safeParseGroq(text, {ok:false})); } catch(e) { return res.json({ ok:false, error: e.message }); }`
+    find: `model: process.env.TSM_MODEL || 'openai/gpt-oss-120b', max_tokens:800, messages:[{role:'user',content:prompt}] }) }); const raw = await r.json(); const text = (raw.choices?.[0]?.message?.content || '').replace(/\\\`\\\`\\\`json|\\\`\\\`\\\`/g,'').trim(); return res.json(JSON.parse(text)); } catch(e) { return res.json({ ok:false, error: e.message }); }`,
+    replace: `model: process.env.TSM_MODEL || 'openai/gpt-oss-120b', max_tokens:1400, messages:[{role:'user',content:prompt}] }) }); const raw = await r.json(); const text = (raw.choices?.[0]?.message?.content || '').replace(/\\\`\\\`\\\`json|\\\`\\\`\\\`/g,'').trim(); return res.json(safeParseGroq(text, {ok:false})); } catch(e) { return res.json({ ok:false, error: e.message }); }`
   }
 ];
 

@@ -102,7 +102,7 @@ Coaching:
         'Authorization': \`Bearer \${process.env.GROQ_API_KEY}\`
       },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
+        model: 'openai/gpt-oss-120b',
         max_tokens: 600,
         messages: [
           { role: 'system', content: 'You are TSM Music Coach — a sharp, encouraging A&R advisor who gives punchy, specific advice. No fluff. Use bullet points. Speak to the creator like a trusted collaborator who knows the music industry.' },
