@@ -22,7 +22,7 @@ if not KEY or len(KEY) < 10:
     print('✗ No GROQ_API_KEY found. Set it with: fly secrets set GROQ_API_KEY=gsk_...')
     exit(1)
 
-MODEL  = os.environ.get('TSM_MODEL', 'llama-3.3-70b-versatile')
+MODEL  = os.environ.get('TSM_MODEL', 'openai/gpt-oss-120b')
 URL    = 'https://api.groq.com/openai/v1/chat/completions'
 HEADERS = {'Authorization': f'Bearer {KEY}', 'Content-Type': 'application/json'}
 

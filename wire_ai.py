@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Wires all TSM Shell API endpoints to real Groq AI (llama-3.3-70b-versatile)
+# Wires all TSM Shell API endpoints to real Groq AI (openai/gpt-oss-120b)
 # Inserts AI helper + rewrites all stubbed endpoints in server.js
 
 SERVER = '/workspaces/tsm-shell/server.js'
@@ -15,7 +15,7 @@ const https = require('https');
 function groqChat(systemPrompt, userMessage, maxTokens = 1024) {
   return new Promise((resolve, reject) => {
     const body = JSON.stringify({
-      model: 'llama-3.3-70b-versatile',
+      model: 'openai/gpt-oss-120b',
       max_tokens: maxTokens,
       messages: [
         { role: 'system', content: systemPrompt },
@@ -387,7 +387,7 @@ if CATCH_ALL in c:
     c = c.replace(CATCH_ALL, ALL_REAL_ROUTES + '\n' + CATCH_ALL, 1)
     open(SERVER, 'w').write(c)
     print('✅ AI wiring complete')
-    print('   - Groq llama-3.3-70b-versatile connected')
+    print('   - Groq openai/gpt-oss-120b connected')
     print('   - Music: agent-pass, chain, strategy, dna/save, song/learn, activity, revision/generate')
     print('   - Generic: /api/ai/query (all apps)')
     print('   - Dedicated: /api/hc, /api/financial, /api/mortgage, /api/legal')

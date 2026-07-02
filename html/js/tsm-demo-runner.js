@@ -9,7 +9,7 @@
  *  4. Polls localStorage for relay completion key
  *  5. Auto-checks war-room-prep checklist boxes as each stage completes
  *
- * Drop into html/ and add one script tag to war-room-prep.html:
+ * Drop into html/war-rooms/ and add one script tag to war-room-prep.html:
  *   <script src="/tsm-demo-runner.js"></script>
  */
 

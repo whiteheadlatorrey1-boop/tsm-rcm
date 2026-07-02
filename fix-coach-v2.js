@@ -38,8 +38,8 @@ if (server.includes("data.content?.[0]?.text")) {
 
 // Fix model if still pointing at Claude
 if (server.includes("claude-opus-4-5") || server.includes("claude-sonnet")) {
-  server = server.replace(/claude-opus-4-5|claude-sonnet-[^\'"]+/g, 'llama-3.3-70b-versatile');
-  console.log('✓ Fixed model name to llama-3.3-70b-versatile');
+  server = server.replace(/claude-opus-4-5|claude-sonnet-[^\'"]+/g, 'openai/gpt-oss-120b');
+  console.log('✓ Fixed model name to openai/gpt-oss-120b');
   serverFixed = true;
 }
 

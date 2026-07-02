@@ -16,7 +16,7 @@ export async function runAI({ agent, input }) {
   const workflow = JSON.parse(fs.readFileSync(workflowPath, "utf8"));
 
   const body = {
-    model: workflow.model || "llama-3.3-70b-versatile",
+    model: workflow.model || "openai/gpt-oss-120b",
     max_tokens: workflow.max_tokens || 1000,
     temperature: workflow.temperature ?? 0.1,
     messages: [

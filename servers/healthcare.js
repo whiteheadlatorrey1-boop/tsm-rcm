@@ -26,7 +26,7 @@ const groq = async (systemPrompt, userQuery, maxTokens=900) => {
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      model: process.env.TSM_MODEL || 'llama-3.3-70b-versatile',
+      model: process.env.TSM_MODEL || 'openai/gpt-oss-120b',
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user',   content: userQuery }

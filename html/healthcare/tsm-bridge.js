@@ -20,7 +20,7 @@
       if (!r.ok) throw new Error('config ' + r.status);
       const d = await r.json();
       _key   = d.neural_key || d.groq_key || d.api_key;
-      _model = d.model || 'llama-3.3-70b-versatile';
+      _model = d.model || 'openai/gpt-oss-120b';
       if (!_key) throw new Error('no key');
       return _key;
     } catch (e) {
@@ -89,7 +89,7 @@ Never mention AI provider names, model names, or technical infrastructure in res
       return msg;
     }
 
-    const model = extra.model || _model || 'llama-3.3-70b-versatile';
+    const model = extra.model || _model || 'openai/gpt-oss-120b';
 
     try {
       const res = await fetch('/api/v1/bridge', {

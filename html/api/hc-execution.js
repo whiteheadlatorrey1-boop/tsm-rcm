@@ -13,7 +13,7 @@ module.exports = function(app){
         : 'No active tasks';
 
       const body = JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
+        model: 'openai/gpt-oss-120b',
         max_tokens: 300,
         messages: [
           { role: 'system', content: 'You are a healthcare revenue cycle AI. Be concise. 2-3 sentences max.' },
@@ -116,7 +116,7 @@ module.exports = function(app){
     return res.json({
       ok: true,
       tasks,
-      ai: ai ? { source: 'groq', model: 'llama-3.3-70b-versatile', insight: ai } : null
+      ai: ai ? { source: 'groq', model: 'openai/gpt-oss-120b', insight: ai } : null
     });
   });
 
@@ -130,7 +130,7 @@ module.exports = function(app){
     const payload = {
       ok: true, office, mode, updatedAt: new Date().toISOString(),
       summary: d.summary,
-      ai: ai ? { source: 'groq', model: 'llama-3.3-70b-versatile', narrative: ai } : null,
+      ai: ai ? { source: 'groq', model: 'openai/gpt-oss-120b', narrative: ai } : null,
       layer2: {
         revenueAtRisk: d.revenueAtRisk, recoverable72h: d.recoverable72h,
         cashAcceleration14d: d.cashAcceleration14d, highestYieldLane: d.highestYieldLane,

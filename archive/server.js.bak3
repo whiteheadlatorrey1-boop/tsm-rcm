@@ -2745,7 +2745,7 @@ function groqChat(system, user, maxTokens) {
   maxTokens = maxTokens || 1024;
   return new Promise(function(resolve, reject) {
     var body = JSON.stringify({
-      model: 'llama-3.3-70b-versatile',
+      model: 'openai/gpt-oss-120b',
       max_tokens: maxTokens,
       messages: [
         { role: 'system', content: system },
@@ -3318,7 +3318,7 @@ Return:
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            model: process.env.TSM_FINOPS_MODEL || 'llama-3.3-70b-versatile',
+            model: process.env.TSM_FINOPS_MODEL || 'openai/gpt-oss-120b',
             messages: [
               { role: 'system', content: 'You are TSM Financial Operations Layer. Return JSON only. Never mention provider/model/API/key.' },
               { role: 'user', content: prompt }

@@ -125,7 +125,7 @@
         }
 
         // Use model from window.TSM_MODEL or default
-        const model = window.TSM_MODEL || 'llama-3.3-70b-versatile';
+        const model = window.TSM_MODEL || 'openai/gpt-oss-120b';
         const prompt = window.STRAT_PROMPT || buildPrompt();
 
         try {

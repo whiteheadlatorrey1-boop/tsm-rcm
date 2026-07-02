@@ -489,7 +489,7 @@ async function streamEngine(eng, key) {
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
       body: JSON.stringify({
-        model:'llama-3.3-70b-versatile',
+        model:'openai/gpt-oss-120b',
         max_tokens:800,
         temperature:0.35,
         stream:true,
@@ -607,7 +607,7 @@ window.runWfAI = async function() {
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
       body:JSON.stringify({
-        model:'llama-3.3-70b-versatile', max_tokens:400, temperature:0.4,
+        model:'openai/gpt-oss-120b', max_tokens:400, temperature:0.4,
         messages:[
           {role:'system', content:'You are a construction project AI assistant. Summarize the day\'s workflow status in 3 bullet points. Be direct and specific.'},
           {role:'user', content:'Current workflow status:\n' + summary + '\n\nGive a 3-bullet EOD briefing: (1) what got done, (2) what\'s still open and risky, (3) top priority for tomorrow.'}

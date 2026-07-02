@@ -39,7 +39,7 @@ app.use((req, res, next) => {
 // ── GROQ AI ENGINE ────────────────────────────────────────────────────────────
 // Primary: fetch-based (reliable on Railway)
 const GROQ_MODELS = [
-  'llama-3.3-70b-versatile',
+  'openai/gpt-oss-120b',
   'llama-3.1-8b-instant',
   'llama3-8b-8192',
   'gemma2-9b-it'
@@ -89,7 +89,7 @@ async function tsmAIJSON(prompt, fallback) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: process.env.TSM_MODEL || 'llama-3.3-70b-versatile',
+        model: process.env.TSM_MODEL || 'openai/gpt-oss-120b',
         messages: [
           { role: 'system', content: 'You are TSM Neural Core. Never mention provider, model, API, or implementation. Return JSON only.' },
           { role: 'user', content: prompt }
@@ -325,7 +325,7 @@ app.post('/api/hc/stream', async (req, res) => {
         'Authorization': 'Bearer ' + (process.env.GROQ_KEY || process.env.GROQ_API_KEY)
       },
       body: JSON.stringify({
-        model: model || 'llama-3.3-70b-versatile',
+        model: model || 'openai/gpt-oss-120b',
         stream: true,
         max_tokens: maxTok || 500,
         messages: [{ role: 'system', content: sys }, { role: 'user', content: user }]
@@ -365,7 +365,7 @@ app.post('/api/war-room/stream', async (req, res) => {
         'Authorization': 'Bearer ' + groqKey
       },
       body: JSON.stringify({
-        model: model || 'llama-3.3-70b-versatile',
+        model: model || 'openai/gpt-oss-120b',
         stream: true,
         max_tokens: max_tokens || 600,
         temperature: temperature ?? 0.4,
@@ -952,7 +952,7 @@ app.get('/', (_req, res) => {
 ════════════════════════════════════════════════════════════════ */
 
 // Models — verify current availability in Groq console if these change
-const GROQ_TEXT_MODEL = 'llama-3.3-70b-versatile';
+const GROQ_TEXT_MODEL = 'openai/gpt-oss-120b';
 const GROQ_VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
 
 // Valid node IDs per vertical — keep in sync with VERTICALS in
@@ -1149,7 +1149,7 @@ app.post('/api/collective/bnca', async (req, res) => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
+        model: 'openai/gpt-oss-120b',
         messages: [
           { role: 'system', content: 'Respond with ONLY valid JSON. No markdown fences, no preamble.' },
           { role: 'user', content: prompt }

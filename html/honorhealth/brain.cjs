@@ -31,7 +31,7 @@ app.post('/api/v1/bridge',async(req,res)=>{
   const host=(req.headers['host']||'').toLowerCase().split(':')[0];
   const c=CLIENTS[host]||DEF;
   try{
-    const r=await axios.post('https://api.groq.com/openai/v1/chat/completions',{model:'llama-3.3-70b-versatile',messages:[{role:'system',content:typeof c.system==='function'?c.system(req.body.context||req.body.liveContext||'No live context provided.'):c.system},...(req.body.messages||[{role:'user',content:req.body.message||'Hello'}])],max_tokens:req.body.max_tokens||2400,temperature:0.3},{headers:{'Authorization':'Bearer '+KEY}});
+    const r=await axios.post('https://api.groq.com/openai/v1/chat/completions',{model:'openai/gpt-oss-120b',messages:[{role:'system',content:typeof c.system==='function'?c.system(req.body.context||req.body.liveContext||'No live context provided.'):c.system},...(req.body.messages||[{role:'user',content:req.body.message||'Hello'}])],max_tokens:req.body.max_tokens||2400,temperature:0.3},{headers:{'Authorization':'Bearer '+KEY}});
     const cnt=r.data.choices[0].message.content;
     res.json({success:true,response:cnt,answer:cnt,content:cnt,choices:r.data.choices});
   }catch(e){console.error('WL error:',e.message);res.status(500).json({success:false,error:e.message});}

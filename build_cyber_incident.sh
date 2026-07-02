@@ -277,7 +277,7 @@ Affected: 1 HMI, 1 engineering workstation, network segment B3"></textarea>
   <span class="sb-item">TSM · Cyber/OT Incident Command Center</span>
   <span class="sb-item crit">INCIDENT <span>ACTIVE</span></span>
   <span class="sb-item">ENGINES <span id="sbEngines">0 / 6</span></span>
-  <span class="sb-item">MODEL <span>llama-3.3-70b-versatile</span></span>
+  <span class="sb-item">MODEL <span>openai/gpt-oss-120b</span></span>
   <span class="sb-item" style="margin-left:auto">TSM OS v4.1 · Fly.io</span>
 </div>
 
@@ -420,7 +420,7 @@ async function callAPI(prompt) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: 'llama-3.3-70b-versatile',
+      model: 'openai/gpt-oss-120b',
       max_tokens: 800,
       messages: [
         { role: 'system', content: 'You are an OT/ICS cybersecurity intelligence engine for TSM Command. Expert in industrial control system security, attack analysis, operational/safety impact, and executive decision support. Be specific with dollar amounts and timelines.' },

@@ -94,7 +94,7 @@ app.post('/api/hc/ask', async (req,res)=>{
     }
 
     const payload = JSON.stringify({
-      model:'llama-3.3-70b-versatile',
+      model:'openai/gpt-oss-120b',
       messages:[
         {role:'system',content:'Healthcare strategist. Be specific.'},
         {role:'user',content:`${query}\n\n${context}`}
