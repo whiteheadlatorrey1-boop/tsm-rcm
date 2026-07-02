@@ -21,12 +21,14 @@ set -euo pipefail
 OLD_MODEL="llama-3.3-70b-versatile"
 TARGET="gpt-oss-120b"
 DRY_RUN=0
+INCLUDE_BACKUPS=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --old) OLD_MODEL="$2"; shift 2 ;;
     --target) TARGET="$2"; shift 2 ;;
     --dry-run) DRY_RUN=1; shift ;;
+    --include-backups) INCLUDE_BACKUPS=1; shift ;;
     *) echo "Unknown arg: $1" >&2; exit 1 ;;
   esac
 done
@@ -47,6 +49,13 @@ command -v node >/dev/null || { echo "ERROR: node not found on PATH" >&2; exit 1
 
 EXCLUDES=(--exclude-dir=.git --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=build
           --exclude=find-model-refs.sh --exclude=replace-model.sh --exclude=apply-intake-gateway.sh)
+if [ $INCLUDE_BACKUPS -eq 0 ]; then
+  EXCLUDES+=(--exclude-dir=.model-migration-backup-*
+             --exclude-dir=backup_*
+             --exclude-dir=*-backup-*
+             --exclude=*.bak)
+  echo "(Skipping backup dirs / .bak files — use --include-backups to sweep those too)"
+fi
 MATCHING_FILES=$(grep -rl "${EXCLUDES[@]}" -F "$OLD_MODEL" . 2>/dev/null || true)
 
 if [ -z "$MATCHING_FILES" ]; then
@@ -98,14 +107,20 @@ done <<< "$MATCHING_FILES"
 echo ""
 echo "== Validating changed .js files =="
 FAIL=0
+FAILED_FILES=()
 for f in "${CHANGED_JS[@]:-}"; do
   [ -z "$f" ] && continue
   if node --check "$f" 2>/tmp/nodecheck_err; then
     echo "  ✓ $f (syntax OK)"
   else
-    echo "  ✗ $f FAILED node --check:"
-    cat /tmp/nodecheck_err | sed 's/^/      /'
+    echo ""
+    echo "  ############################################"
+    echo "  ✗✗✗ FAILED node --check: $f"
+    echo "  ############################################"
+    sed 's/^/      /' /tmp/nodecheck_err
+    echo ""
     FAIL=1
+    FAILED_FILES+=("$f")
   fi
 done
 
@@ -120,9 +135,15 @@ fi
 
 echo ""
 if [ $FAIL -eq 1 ]; then
-  echo "!! One or more files failed node --check after replacement."
-  echo "!! Backups are in $BACKUP_DIR/ — restore with:"
-  echo "!!   cp $BACKUP_DIR/<path> <path>"
+  echo "!! ${#FAILED_FILES[@]} file(s) failed node --check after replacement:"
+  for f in "${FAILED_FILES[@]}"; do
+    echo "!!   $f"
+    echo "!!     restore with: cp $BACKUP_DIR/$f $f"
+  done
+  echo "!!"
+  echo "!! Note: a failure here usually means the file had a pre-existing syntax"
+  echo "!! issue BEFORE this script touched it (e.g. an old .bak-style snapshot)."
+  echo "!! Compare against the backup to confirm: diff $BACKUP_DIR/<path> <path>"
   exit 1
 fi
 
