@@ -458,13 +458,57 @@ function selectScenario(id) {
   if (window.TSMMemory) TSMMemory.timeline('Scenario ' + id + ' selected');
 }
 
+// ── ADAPT HONEYWELL INCIDENT-TOOL RELAY INTO THIS PAGE'S SHAPE ──
+// The plant / supplier / cyber incident command centers write TSM_HONEYWELL_RELAY
+// in a different shape than TSM_BPO_WAR_RELAY. This maps one to the other so
+// escalating from any of the three incident tools actually populates this page.
+function adaptHoneywellRelay(raw) {
+  const sectorMap = { plant: 'Plant Operations', supplier: 'Supply Chain', cyber: 'OT/ICS Security' };
+  const engines = {};
+  (raw.outputs || []).forEach((o, i) => { engines['engine' + (i + 1)] = o.text; });
+
+  const kpis = raw.kpis || {};
+  let revenueAtRisk = null;
+  if (kpis.exposure && (kpis.exposure.totalExposureLow || kpis.exposure.totalExposureHigh)) {
+    const val = kpis.exposure.totalExposureHigh || kpis.exposure.totalExposureLow;
+    revenueAtRisk = '$' + Number(val).toLocaleString();
+  }
+
+  // Engine 3 in all three Honeywell tools is the root-cause / attack-vector / alternate-sourcing analysis.
+  const rootCause = engines.engine3 ? engines.engine3.slice(0, 300) : null;
+
+  return {
+    selectedSector: sectorMap[raw.source] || 'Operations',
+    selectedDocType: raw.docType || '—',
+    docText: raw.docText || '',
+    engines,
+    extraction: {
+      rootCause,
+      revenueAtRisk,
+      severity: (kpis.risk && typeof kpis.risk.riskScore === 'number') ? (kpis.risk.riskScore + '/100') : null,
+      runway: (kpis.buffer && typeof kpis.buffer.bufferDays === 'number') ? (kpis.buffer.bufferDays + ' days') : null
+    },
+    timestamp: raw.timestamp,
+    honeywellSource: raw.source
+  };
+}
+
 // ── LOAD RELAY ──
 (function loadRelay(){
   try {
-    const raw = sessionStorage.getItem('TSM_BPO_WAR_RELAY') || localStorage.getItem('TSM_BPO_WAR_RELAY');
-    if (!raw) { loadDemoMode(); return; }
-    warData = JSON.parse(raw);
-    const { selectedSector, selectedDocType, extraction, timestamp } = warData;
+    const bpoRaw = sessionStorage.getItem('TSM_BPO_WAR_RELAY') || localStorage.getItem('TSM_BPO_WAR_RELAY');
+    const honeywellRaw = sessionStorage.getItem('TSM_HONEYWELL_RELAY') || localStorage.getItem('TSM_HONEYWELL_RELAY');
+
+    if (bpoRaw) {
+      warData = JSON.parse(bpoRaw);
+    } else if (honeywellRaw) {
+      warData = adaptHoneywellRelay(JSON.parse(honeywellRaw));
+    } else {
+      loadDemoMode();
+      return;
+    }
+
+    const { selectedSector, selectedDocType, extraction } = warData;
 
     document.getElementById('tbSector').textContent = selectedSector || 'BPO';
     document.getElementById('tbDocType').textContent = selectedDocType || '—';
@@ -601,6 +645,7 @@ SUCCESS METRICS
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({model:GROQ_MODEL,max_tokens:1600,stream:true,messages:[{role:'user',content:prompt}]})
     });
+    if (!resp.ok) throw new Error(`API returned ${resp.status} ${resp.statusText}`);
     const reader = resp.body.getReader();
     const dec = new TextDecoder();
     let raw = '';
@@ -617,6 +662,8 @@ SUCCESS METRICS
         try{ const d=JSON.parse(line.slice(6)).choices[0].delta.content||''; stratBrief+=d; streamEl.textContent=stratBrief; }catch{}
       }
     }
+
+    if (!stratBrief) throw new Error('Empty response from strategy engine');
 
     // Parse sections
     parseAndRenderStrategy(stratBrief);
@@ -897,7 +944,9 @@ function exportBrief(){
 
 function nav(url){ window.location.href=url; }
 </script>
-  <script src="./tsm-kernel-upgrade.js"></script>
+
+<script src="./tsm-kernel-upgrade.js"></script>
+
 <script>
 /* TSM AUTO-RUN STRATEGIST */
 async function runStrategist() {
@@ -906,40 +955,32 @@ async function runStrategist() {
 }
 (function(){
   try {
-    const raw = sessionStorage.getItem('TSM_BPO_WAR_RELAY') || localStorage.getItem('TSM_BPO_WAR_RELAY');
+    const raw = sessionStorage.getItem('TSM_BPO_WAR_RELAY') || localStorage.getItem('TSM_BPO_WAR_RELAY')
+             || sessionStorage.getItem('TSM_HONEYWELL_RELAY') || localStorage.getItem('TSM_HONEYWELL_RELAY');
     if (!raw) return;
     if (localStorage.getItem('tsm_auto_mode') === 'off') return;
     if (localStorage.getItem('TSM_AUTO_LAUNCH') === 'false') return;
     setTimeout(() => { if (typeof runStrategist === 'function') runStrategist(); }, 1500);
   } catch(e) { console.warn('[TSM AutoRun BPO Strat]', e); }
 })();
-</script>
-</body>
-</html>
 
-// ===== TSM_AUTONOMY_STANDARDIZED =====
 window.TSM_AUTONOMY_STANDARDIZED = true;
-</script>
 
-<!-- TSM ENFORCER BOOT -->
-<script src="../../core/tsm-enforcer.js"></script>
-
-
-// ===== TSM WAR ROOM SCOPED RELAY FIX =====
+// ── TSM WAR ROOM SCOPED RELAY FIX ──
 window.tsmMission = window.tsmMission || {
   id: "BPO-" + Date.now().toString(36),
-  vertical: "bpo",
-  
+  vertical: "bpo"
 };
 
 function tsmWriteRelay(payload){
-  TSM_KERNEL.setRelay("bpo", JSON.stringify(payload));
+  if (window.TSM_KERNEL && typeof TSM_KERNEL.setRelay === 'function') {
+    TSM_KERNEL.setRelay("bpo", JSON.stringify(payload));
+  } else {
+    console.warn('[TSM] tsmWriteRelay called before TSM_KERNEL was ready');
+  }
 }
-</script>
 
-
-// ===== TSM STRATEGIST BRIDGE LAYER =====
-
+// ── TSM STRATEGIST BRIDGE LAYER ──
 function tsmReadScopedRelay(vertical){
   const key = "tsm_war_relay_" + vertical;
   try {
@@ -958,7 +999,11 @@ function tsmWriteScopedStrat(vertical, missionId){
 }
 </script>
 
+<!-- TSM ENFORCER BOOT -->
+<script src="../../core/tsm-enforcer.js"></script>
 
 <!-- TSM KERNEL ENGINE -->
 <script src="../../core/tsm-kernel.js"></script>
 
+</body>
+</html>
