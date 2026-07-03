@@ -216,6 +216,10 @@ app.use('/bpo', express.static(path.join(__dirname, 'html/bpo')));
 app.use('/shared', express.static(path.join(__dirname, 'html/bpo/shared')));
 app.use('/insurance', express.static(path.join(__dirname, 'html/tsm-insurance')));
 app.use('/construction', express.static(path.join(__dirname, 'html/construction-suite')));
+// These two were previously unmounted — PhaseLoader (architecture/kernel/phases.json
+// + runtime/kernel/phase-loader.js) lives outside html/ and was 404ing in production.
+app.use('/runtime', express.static(path.join(__dirname, 'runtime'), { setHeaders: (res) => res.setHeader('Cache-Control', 'no-store') }));
+app.use('/architecture', express.static(path.join(__dirname, 'architecture'), { setHeaders: (res) => res.setHeader('Cache-Control', 'no-store') }));
 app.use(express.static(dirPath));
 
 // ── HC NODE ROUTES ────────────────────────────────────────────────────────────

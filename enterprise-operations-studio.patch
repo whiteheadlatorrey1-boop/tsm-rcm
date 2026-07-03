@@ -1,0 +1,375 @@
+From 60d12a005fc6729af977a702f47100f933b19a8d Mon Sep 17 00:00:00 2001
+From: Claude <assistant@tsmconsultz.local>
+Date: Fri, 3 Jul 2026 01:34:04 +0000
+Subject: [PATCH] feat: build Enterprise Operations Studio landing page
+ (Deliverable 1), fix missing /runtime and /architecture static mounts
+
+---
+ html/war-rooms/index.html | 325 ++++++++++++++++++++++++++++++++++++--
+ server.js                 |   4 +
+ 2 files changed, 314 insertions(+), 15 deletions(-)
+
+diff --git a/html/war-rooms/index.html b/html/war-rooms/index.html
+index 0eef28d8..bdd30144 100644
+--- a/html/war-rooms/index.html
++++ b/html/war-rooms/index.html
+@@ -1,31 +1,326 @@
+ <!DOCTYPE html>
+-<html>
++<html lang="en">
+ <head>
+-  <title>TSM Phase Command Center</title>
+-  <style>
+-    body { font-family: Arial; background:#0f172a; color:white; margin:0; }
+-    #nav { width:300px; padding:16px; }
+-    .header { padding:16px; background:#111827; }
+-  </style>
+-</head>
++<meta charset="UTF-8">
++<meta name="viewport" content="width=device-width, initial-scale=1.0">
++<title>TSM — Enterprise Operations Studio</title>
++<style>
++  :root {
++    --bg: #0a0c10;
++    --surface: #111318;
++    --surface2: #181b22;
++    --border: #1e2230;
++    --border2: #2a2f42;
++    --text: #e8eaf0;
++    --text2: #8890a8;
++    --text3: #4a5068;
++    --green: #00d4aa;
++    --green-dim: rgba(0,212,170,0.08);
++    --green-border: rgba(0,212,170,0.2);
++    --cyan: #00d4d4;
++    --cyan-dim: rgba(0,212,212,0.07);
++    --amber: #f59e0b;
++    --amber-dim: rgba(245,158,11,0.08);
++    --red: #ef4444;
++    --red-dim: rgba(239,68,68,0.08);
++    --purple: #a78bfa;
++    --blue: #3b82f6;
++    --mono: 'Courier New', monospace;
++  }
++  * { box-sizing: border-box; margin: 0; padding: 0; }
++  body { background: var(--bg); color: var(--text); font-family: var(--mono); min-height: 100vh; }
++
++  header {
++    border-bottom: 1px solid var(--border);
++    padding: 1.25rem 2rem;
++    display: flex;
++    align-items: center;
++    justify-content: space-between;
++    position: sticky;
++    top: 0;
++    background: var(--bg);
++    z-index: 100;
++    flex-wrap: wrap;
++    gap: 1rem;
++  }
++  .logo { font-size: 11px; letter-spacing: .15em; color: var(--text2); }
++  .logo span { color: var(--green); }
++  .title-block h1 { font-size: 18px; font-weight: 700; letter-spacing: .02em; margin-top: 2px; }
++  .title-block .sub { font-size: 10.5px; color: var(--text3); letter-spacing: .08em; margin-top: 3px; }
++  .header-right { display: flex; align-items: center; gap: 1.5rem; flex-wrap: wrap; }
++  .global-pct { font-size: 22px; font-weight: 700; color: var(--green); text-align: right; }
++  .global-lbl { font-size: 9px; letter-spacing: .1em; color: var(--text3); text-align: right; }
++  .global-bar { width: 120px; height: 2px; background: var(--border2); border-radius: 1px; margin-top: 4px; }
++  .global-fill { height: 2px; background: var(--green); border-radius: 1px; transition: width .4s; }
++  .nav-link { font-size: 9px; letter-spacing: .1em; color: var(--text3); text-decoration: none; border: 1px solid var(--border); padding: 6px 10px; border-radius: 3px; transition: .15s; }
++  .nav-link:hover { border-color: var(--cyan); color: var(--cyan); }
++
++  .tagline {
++    max-width: 1280px;
++    margin: 2rem auto 0;
++    padding: 0 2rem;
++    font-size: 12px;
++    color: var(--text2);
++    letter-spacing: .02em;
++  }
++  .tagline strong { color: var(--cyan); }
++
++  main { max-width: 1280px; margin: 0 auto; padding: 1.5rem 2rem 4rem; }
++
++  .category { margin-top: 2.25rem; }
++  .category-head { display: flex; align-items: center; gap: .75rem; margin-bottom: .9rem; }
++  .category-label { font-size: 10px; letter-spacing: .14em; color: var(--text3); text-transform: uppercase; white-space: nowrap; }
++  .category-line { flex: 1; height: 1px; background: var(--border); }
++
++  .card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; }
++
++  .card {
++    background: var(--surface);
++    border: 1px solid var(--border);
++    border-radius: 8px;
++    padding: 1.1rem 1.2rem;
++    display: flex;
++    flex-direction: column;
++    gap: .65rem;
++    transition: border-color .15s, transform .15s;
++  }
++  .card:hover { border-color: var(--border2); transform: translateY(-1px); }
++
++  .card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: .5rem; }
++  .card-name { font-size: 13.5px; font-weight: 700; color: var(--text); line-height: 1.3; }
++  .status-pill { font-size: 8.5px; letter-spacing: .08em; padding: 3px 7px; border-radius: 3px; white-space: nowrap; text-transform: uppercase; }
++  .status-pill.active { color: var(--green); background: var(--green-dim); border: 1px solid var(--green-border); }
++  .status-pill.planned { color: var(--text3); background: var(--surface2); border: 1px solid var(--border); }
+ 
++  .card-note { font-size: 10.5px; color: var(--text2); line-height: 1.5; flex: 1; }
++
++  .progress-row { display: flex; align-items: center; gap: .6rem; }
++  .progress-track { flex: 1; height: 4px; background: var(--border2); border-radius: 2px; overflow: hidden; }
++  .progress-fill { height: 100%; border-radius: 2px; background: var(--green); }
++  .progress-fill.mid { background: var(--amber); }
++  .progress-fill.low { background: var(--red); }
++  .progress-pct { font-size: 10px; color: var(--text3); min-width: 30px; text-align: right; }
++
++  .card-actions { display: flex; gap: .5rem; margin-top: .2rem; }
++  .launch-btn, .arch-btn {
++    flex: 1;
++    text-align: center;
++    font-size: 10.5px;
++    letter-spacing: .05em;
++    padding: 8px 10px;
++    border-radius: 4px;
++    text-decoration: none;
++    cursor: pointer;
++    transition: .15s;
++  }
++  .launch-btn { background: var(--green-dim); border: 1px solid var(--green-border); color: var(--green); }
++  .launch-btn:hover { background: rgba(0,212,170,.16); }
++  .arch-btn { background: transparent; border: 1px solid var(--border); color: var(--text2); }
++  .arch-btn:hover { border-color: var(--cyan-dim); color: var(--cyan); }
++
++  .empty-state { text-align: center; padding: 4rem 2rem; color: var(--text3); font-size: 12px; }
++
++  /* Architecture detail modal */
++  .modal-overlay {
++    display: none;
++    position: fixed; inset: 0; z-index: 200;
++    background: rgba(4,5,7,.75);
++    align-items: center; justify-content: center;
++    padding: 2rem;
++  }
++  .modal-overlay.open { display: flex; }
++  .modal {
++    background: var(--surface); border: 1px solid var(--border2); border-radius: 10px;
++    max-width: 520px; width: 100%; padding: 1.75rem; position: relative;
++  }
++  .modal-close { position: absolute; top: 14px; right: 16px; cursor: pointer; color: var(--text3); font-size: 14px; background: none; border: none; }
++  .modal-close:hover { color: var(--text); }
++  .modal h3 { font-size: 15px; margin-bottom: .35rem; }
++  .modal .modal-cat { font-size: 9.5px; color: var(--text3); letter-spacing: .1em; text-transform: uppercase; margin-bottom: 1rem; }
++  .modal-section { margin-bottom: 1rem; }
++  .modal-section-label { font-size: 9.5px; letter-spacing: .08em; color: var(--text3); text-transform: uppercase; margin-bottom: .4rem; }
++  .modal-section-body { font-size: 11.5px; color: var(--text2); line-height: 1.6; }
++  .module-list { list-style: none; }
++  .module-list li { font-size: 11px; color: var(--text2); padding: 3px 0; font-family: var(--mono); }
++  .module-list li::before { content: '› '; color: var(--cyan-dim); }
++</style>
++</head>
+ <body>
+ 
+-<div class="header">
+-  <h2>TSM Enterprise Phase Command Center</h2>
++<header>
++  <div>
++    <div class="logo">TSM // <span>CONSULTZ</span></div>
++    <div class="title-block">
++      <h1>Enterprise Operations Studio</h1>
++      <div class="sub">ENTERPRISE DECISION INTELLIGENCE LAYER · ABOVE ERP · CRM · AI · BI</div>
++    </div>
++  </div>
++  <div class="header-right">
++    <a class="nav-link" href="/html/tsm-doc-search-multi.html">← Doc Search Hub</a>
++    <a class="nav-link" href="/war-rooms/war-room-prep.html">Sector War Rooms →</a>
++    <div>
++      <div class="global-pct" id="globalPct">—</div>
++      <div class="global-lbl">PLATFORM READINESS</div>
++      <div class="global-bar"><div class="global-fill" id="globalFill" style="width:0%"></div></div>
++    </div>
++  </div>
++</header>
++
++<div class="tagline">
++  <strong>Mission Control for Enterprise Operations.</strong> Every capability below is a live, working system — not a mockup. Progress and status are pulled directly from <code>architecture/kernel/phases.json</code>, updated as each module is built and verified.
+ </div>
+ 
+-<div id="nav"></div>
++<main id="main">
++  <div class="empty-state" id="loadingState">Loading capability registry…</div>
++</main>
+ 
+-<script src="/runtime/kernel/phase-loader.js"></script>
++<div class="modal-overlay" id="modalOverlay">
++  <div class="modal">
++    <button class="modal-close" id="modalClose">✕ close</button>
++    <h3 id="modalName"></h3>
++    <div class="modal-cat" id="modalCat"></div>
++    <div class="modal-section">
++      <div class="modal-section-label">Status</div>
++      <div class="modal-section-body" id="modalStatus"></div>
++    </div>
++    <div class="modal-section">
++      <div class="modal-section-label">Modules</div>
++      <ul class="module-list" id="modalModules"></ul>
++    </div>
++    <div class="modal-section">
++      <div class="modal-section-label">Last Verified</div>
++      <div class="modal-section-body" id="modalVerified"></div>
++    </div>
++  </div>
++</div>
+ 
++<script src="/runtime/kernel/phase-loader.js"></script>
+ <script>
++const CATEGORY_LABELS = {
++  'revenue-lifecycle': 'Revenue Operations',
++  'product-data': 'Product Operations',
++  'data-foundation': 'Master Data',
++  'governance': 'Governance',
++  'connectivity': 'Connectivity',
++  'execution': 'Execution & WIP',
++  'executive-mission-control': 'Enterprise Intelligence',
++  'operations': 'Operations'
++};
++const CATEGORY_ORDER = [
++  'revenue-lifecycle', 'product-data', 'data-foundation', 'governance',
++  'connectivity', 'execution', 'executive-mission-control', 'operations'
++];
++
++function progressClass(p){
++  if(p >= 70) return '';
++  if(p >= 40) return 'mid';
++  return 'low';
++}
++
++function firstSentence(s){
++  if(!s) return '';
++  const cut = s.split(' -- ')[0].split(' — ')[0];
++  return cut.length > 160 ? cut.slice(0, 157) + '…' : cut;
++}
++
++function entryUrl(phase){
++  const url = phase.entryPoint || (phase.modules && phase.modules[0]) || '';
++  if(!url) return '#';
++  return url.startsWith('/') ? url : '/' + url;
++}
++
++function renderCard(phase){
++  const pct = phase.progress != null ? phase.progress : 0;
++  const statusClass = phase.status === 'active' ? 'active' : 'planned';
++  return `
++    <div class="card" data-phase="${phase.id}">
++      <div class="card-top">
++        <div class="card-name">${phase.name}</div>
++        <div class="status-pill ${statusClass}">${phase.status}</div>
++      </div>
++      <div class="card-note">${firstSentence(phase.verified) || 'No verification notes yet.'}</div>
++      <div class="progress-row">
++        <div class="progress-track"><div class="progress-fill ${progressClass(pct)}" style="width:${pct}%"></div></div>
++        <div class="progress-pct">${pct}%</div>
++      </div>
++      <div class="card-actions">
++        <a class="launch-btn" href="${entryUrl(phase)}" target="_blank">Launch →</a>
++        <button class="arch-btn" data-open="${phase.id}">Architecture</button>
++      </div>
++    </div>`;
++}
++
++function renderCategory(label, phases){
++  return `
++    <div class="category">
++      <div class="category-head">
++        <div class="category-label">${label}</div>
++        <div class="category-line"></div>
++      </div>
++      <div class="card-grid">
++        ${phases.map(renderCard).join('')}
++      </div>
++    </div>`;
++}
++
++function openModal(phase){
++  document.getElementById('modalName').textContent = phase.name;
++  document.getElementById('modalCat').textContent = CATEGORY_LABELS[phase.category] || phase.category;
++  document.getElementById('modalStatus').textContent =
++    `${phase.status.toUpperCase()} · ${phase.progress != null ? phase.progress + '% complete' : 'no progress data'}`;
++  document.getElementById('modalModules').innerHTML =
++    (phase.modules || []).map(m => `<li>${m}</li>`).join('') || '<li>No modules listed.</li>';
++  document.getElementById('modalVerified').textContent = phase.verified || 'Not yet verified.';
++  document.getElementById('modalOverlay').classList.add('open');
++}
++
++async function init(){
+   const loader = new PhaseLoader();
++  const phases = await loader.load();
++  const main = document.getElementById('main');
+ 
+-  loader.load().then(() => {
+-    loader.renderNav("nav");
++  if(!phases.length){
++    main.innerHTML = '<div class="empty-state">Could not load the capability registry — check /architecture/kernel/phases.json.</div>';
++    return;
++  }
++
++  const activePhases = phases.filter(p => p.status === 'active' && p.progress != null);
++  const overall = activePhases.length
++    ? Math.round(activePhases.reduce((sum, p) => sum + p.progress, 0) / activePhases.length)
++    : 0;
++  document.getElementById('globalPct').textContent = overall + '%';
++  document.getElementById('globalFill').style.width = overall + '%';
++
++  const byCategory = {};
++  phases.forEach(p => {
++    const cat = p.category || 'uncategorized';
++    (byCategory[cat] = byCategory[cat] || []).push(p);
++  });
++
++  const orderedCats = [...CATEGORY_ORDER, ...Object.keys(byCategory).filter(c => !CATEGORY_ORDER.includes(c))];
++
++  main.innerHTML = orderedCats
++    .filter(cat => byCategory[cat] && byCategory[cat].length)
++    .map(cat => renderCategory(CATEGORY_LABELS[cat] || cat, byCategory[cat]))
++    .join('');
++
++  document.querySelectorAll('[data-open]').forEach(btn => {
++    btn.addEventListener('click', () => {
++      const phase = phases.find(p => p.id === btn.dataset.open);
++      if(phase) openModal(phase);
++    });
+   });
++}
++
++document.getElementById('modalClose').addEventListener('click', () => {
++  document.getElementById('modalOverlay').classList.remove('open');
++});
++document.getElementById('modalOverlay').addEventListener('click', (e) => {
++  if(e.target.id === 'modalOverlay') document.getElementById('modalOverlay').classList.remove('open');
++});
++
++init();
+ </script>
+ 
+ </body>
+-</html>
+\ No newline at end of file
++</html>
+diff --git a/server.js b/server.js
+index fb8a9247..af94c705 100644
+--- a/server.js
++++ b/server.js
+@@ -216,6 +216,10 @@ app.use('/bpo', express.static(path.join(__dirname, 'html/bpo')));
+ app.use('/shared', express.static(path.join(__dirname, 'html/bpo/shared')));
+ app.use('/insurance', express.static(path.join(__dirname, 'html/tsm-insurance')));
+ app.use('/construction', express.static(path.join(__dirname, 'html/construction-suite')));
++// These two were previously unmounted — PhaseLoader (architecture/kernel/phases.json
++// + runtime/kernel/phase-loader.js) lives outside html/ and was 404ing in production.
++app.use('/runtime', express.static(path.join(__dirname, 'runtime'), { setHeaders: (res) => res.setHeader('Cache-Control', 'no-store') }));
++app.use('/architecture', express.static(path.join(__dirname, 'architecture'), { setHeaders: (res) => res.setHeader('Cache-Control', 'no-store') }));
+ app.use(express.static(dirPath));
+ 
+ // ── HC NODE ROUTES ────────────────────────────────────────────────────────────
+-- 
+2.43.0
