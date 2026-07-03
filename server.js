@@ -128,7 +128,8 @@ var SP = {
   strategist: 'You are the TSM Sovereign Strategist — the ultimate business consultant AI. Deep expertise across healthcare, financial, legal, real estate, construction, insurance, education, hospitality, enterprise strategy, M&A, GTM. Be bold and transformative.',
   mdm: 'You are a Master Data Management AI for TSM Command. Expert in data stewardship, golden-record strategy, duplicate resolution, validation rule design, and data quality governance. Given structured master-record data, duplicate-match clusters, and quality scores across customer/vendor/GL domains, identify the highest-risk data anomalies, recommend which record in each duplicate cluster should survive a merge and why, and flag stewardship or validation-rule gaps. Reference record IDs. Be precise and operational. No preamble.',
   integration: 'You are an Enterprise Integration AI for TSM Command. Expert in API monitoring, event-driven architecture, ETL pipelines, message queue health, and data lineage across CRM/ERP/HR/Finance/Supply Chain/Manufacturing/BI/AI systems. Given system health, integration flow throughput/latency, message queue depth, ETL job status, and recent error events, identify the highest-risk integration failures or bottlenecks, trace root cause across the affected flow, and recommend specific remediation. Reference system and flow IDs. Be precise and operational. No preamble.',
-  digitalTwin: 'You are the Enterprise Digital Twin AI for TSM Command. Expert in cross-domain business simulation across Sales, Finance, Operations, Manufacturing, Procurement, HR, Customer Service, Supply Chain, Logistics, and IT Ops. Given structured domain health scores, live signal feed, and 30-day forecast data, synthesize an executive brief: identify the domains driving the biggest swings in enterprise health, the highest-priority cross-domain risk, and the single most important executive action this week. Reference domain names and specific figures. Be precise and operational. No preamble.'
+  digitalTwin: 'You are the Enterprise Digital Twin AI for TSM Command. Expert in cross-domain business simulation across Sales, Finance, Operations, Manufacturing, Procurement, HR, Customer Service, Supply Chain, Logistics, and IT Ops. Given structured domain health scores, live signal feed, and 30-day forecast data, synthesize an executive brief: identify the domains driving the biggest swings in enterprise health, the highest-priority cross-domain risk, and the single most important executive action this week. Reference domain names and specific figures. Be precise and operational. No preamble.',
+  governance: 'You are a Governance & Compliance AI for TSM Command. Expert in SOX, HIPAA, GDPR, ISO 27001, and SOC2 control frameworks, risk register management, and audit trail analysis. Given structured control test results, a risk register with severity scores, and recent audit trail events, identify the highest-priority failing or at-risk controls, the risks most likely to escalate, and any suspicious or flagged audit events requiring follow-up. Reference control IDs and risk IDs. Recommend the specific next action for each. Be precise and operational. No preamble.'
 };
 
 // ── GLOBAL STATE ──────────────────────────────────────────────────────────────
@@ -1473,6 +1474,25 @@ app.post('/api/governance/risk/:id/resolve', requireApiKey, (req, res) => {
   risk.status = 'RESOLVED';
   risk.resolvedAt = Date.now();
   res.json({ ok: true, risk });
+});
+
+app.post('/api/governance/query', async (req, res) => {
+  const { controls, risks, audit, kpis, maxTokens } = req.body || {};
+  if (!Array.isArray(controls)) return res.status(400).json({ ok: false, error: 'controls array required' });
+  const summary = JSON.stringify({
+    kpis,
+    failing_or_review_controls: (controls || []).filter(c => c.status !== 'PASS'),
+    at_risk: (risks || []).filter(r => r.status === 'OPEN' || r.severity >= 70),
+    flagged_or_blocked_audit_events: (audit || []).filter(a => a.result !== 'OK')
+  }, null, 2);
+  const prompt = `Current governance & compliance snapshot:\n${summary}\n\nIdentify the highest-priority failing or at-risk controls, the risks most likely to escalate, and any suspicious or flagged audit events requiring follow-up. Reference control IDs and risk IDs. Recommend the specific next action for each. Be specific and operational.`;
+  try {
+    const answer = await groqChat(SP.governance, prompt, maxTokens || 1200);
+    return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
+  } catch (e) {
+    console.error('GOVERNANCE GROQ ERROR:', e.message);
+    return res.status(500).json({ ok: false, error: e.message });
+  }
 });
 
 
