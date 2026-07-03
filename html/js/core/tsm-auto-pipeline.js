@@ -65,6 +65,11 @@ window.TSMEventBus = window.TSMEventBus || {
     }
   }
 
+  function isWarRoomPage() {
+    const path = window.location.pathname.toLowerCase();
+    return path.includes('war-room');
+  }
+
   function detectVertical() {
     const path = window.location.pathname.toLowerCase();
     if (path.includes('healthcare') || path.includes('hc-'))   return 'healthcare';
@@ -134,6 +139,17 @@ window.TSMEventBus = window.TSMEventBus || {
 
     const config = RELAY_REGISTRY[vertical];
     State.currentVertical = vertical;
+
+    /* War-room pages are where a relay is CREATED (via the "RELAY TO STRATEGIST"
+       button), not where it's consumed. Their analysis functions live inside a
+       page-local IIFE and are never attached to window, so calling entryFn here
+       always fails with "not found on this page". Only strategist pages should
+       auto-launch entryFn on relay detection. */
+    if (isWarRoomPage()) {
+      log('War-room page for ' + vertical + ' — auto-launch skipped (relay source, not consumer)');
+      setPhase('IDLE');
+      return;
+    }
 
     const relay = readRelay(config.keys);
     if (!relay) {

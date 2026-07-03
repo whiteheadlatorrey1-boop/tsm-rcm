@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TSM CPQ War Room</title>
+<style>
+:root {
+  --bg:#0a0f0a;--bg2:#0d130d;--bg3:#111811;
+  --border:rgba(0,255,80,.12);
+  --green:#00ff50;--green-dim:rgba(0,255,80,.6);
+  --gold:#ffd700;--red:#ff3b3b;--amber:#ff9500;--cyan:#00e5ff;--purple:#c084fc;
+  --text:#c8d8c8;--text-dim:#5a7a5a;--card:#0d160d;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;font-size:12px;min-height:100vh}
+.nav{display:flex;align-items:center;gap:0;background:#080d08;border-bottom:1px solid var(--border);height:38px;padding:0 16px}
+.nav-brand{color:var(--green);font-weight:700;font-size:11px;letter-spacing:2px;margin-right:24px}
+.nav-right{margin-left:auto;display:flex;align-items:center;gap:16px;color:var(--text-dim);font-size:10px}
+.nav-clock{color:var(--green-dim)}
+.alert-bar{background:rgba(255,149,0,.06);border-bottom:1px solid rgba(255,149,0,.2);padding:6px 20px;display:flex;align-items:center;gap:8px;font-size:10px;letter-spacing:1.5px;color:var(--amber)}
+.alert-dot{width:6px;height:6px;border-radius:50%;background:var(--amber);box-shadow:0 0 6px var(--amber);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.layout{display:grid;grid-template-columns:290px 1fr;height:calc(100vh - 70px)}
+.sidebar{background:var(--bg2);border-right:1px solid var(--border);overflow-y:auto;display:flex;flex-direction:column}
+.sb-section{padding:14px 16px;border-bottom:1px solid var(--border)}
+.sb-label{font-size:9px;letter-spacing:2px;color:var(--text-dim);margin-bottom:8px}
+.btn{border:1px solid;font-family:inherit;font-size:9px;letter-spacing:1.5px;cursor:pointer;padding:7px 12px;transition:all .2s}
+.btn-green{background:var(--green);border-color:var(--green);color:#000;font-weight:700}
+.btn-green:hover{background:#00cc40}
+.btn-outline{background:transparent;border-color:var(--green);color:var(--green)}
+.btn-ghost{background:transparent;border-color:var(--border);color:var(--text-dim)}
+.btn-ghost:hover{border-color:var(--text-dim);color:var(--text)}
+.btn-gold{background:var(--gold);border-color:var(--gold);color:#000;font-weight:700}
+.btn-row{display:flex;gap:6px;flex-wrap:wrap}
+.btn-full{width:100%}
+.stage-list{display:flex;flex-direction:column;gap:3px}
+.stage-item{display:flex;align-items:center;gap:8px;padding:5px 8px;background:var(--bg3);border:1px solid var(--border);font-size:9px}
+.stage-num{color:var(--text-dim);width:14px}
+.stage-name{flex:1;color:var(--text)}
+.stage-count{color:var(--green);font-weight:700}
+.snap-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.snap-item{background:var(--bg3);border:1px solid var(--border);padding:6px 8px}
+.snap-label{font-size:8px;color:var(--text-dim);letter-spacing:1px;margin-bottom:3px}
+.snap-val{font-size:13px;color:var(--green);font-weight:700}
+.snap-val.warn{color:var(--amber)}
+.snap-val.bad{color:var(--red)}
+.main{overflow-y:auto;background:var(--bg);padding:18px 22px}
+.main-header{margin-bottom:16px}
+.main-title{font-size:13px;letter-spacing:1px;color:var(--text)}
+.main-title b{color:var(--green)}
+.main-sub{color:var(--text-dim);font-size:10px;margin-top:2px}
+.kpi-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:20px}
+.kpi-card{background:var(--card);border:1px solid var(--border);padding:12px 10px}
+.kpi-label{font-size:8px;letter-spacing:1px;color:var(--text-dim);margin-bottom:6px;text-transform:uppercase}
+.kpi-value{font-size:18px;font-weight:700;color:var(--green)}
+.kpi-value.warn{color:var(--amber)}
+.kpi-value.bad{color:var(--red)}
+.section{background:var(--card);border:1px solid var(--border);margin-bottom:18px}
+.section-head{padding:10px 14px;border-bottom:1px solid var(--border);font-size:10px;letter-spacing:1.5px;color:var(--text-dim);display:flex;justify-content:space-between;align-items:center}
+.section-body{padding:14px}
+.tracker{display:flex;gap:4px;overflow-x:auto;padding-bottom:6px}
+.tracker-stage{flex:1;min-width:84px;background:var(--bg3);border:1px solid var(--border);padding:8px 6px;text-align:center}
+.tracker-stage.hot{border-color:var(--red);background:rgba(255,59,59,.08)}
+.tracker-stage .ts-label{font-size:8px;color:var(--text-dim);letter-spacing:.5px;margin-bottom:4px;min-height:22px}
+.tracker-stage .ts-count{font-size:15px;font-weight:700;color:var(--green)}
+.tracker-stage.hot .ts-count{color:var(--red)}
+table{width:100%;border-collapse:collapse;font-size:10px}
+th{text-align:left;color:var(--text-dim);font-size:8px;letter-spacing:1px;padding:6px 8px;border-bottom:1px solid var(--border)}
+td{padding:7px 8px;border-bottom:1px solid var(--border);color:var(--text)}
+tr:hover td{background:rgba(0,255,80,.03)}
+.tag{display:inline-block;font-size:8px;letter-spacing:1px;padding:2px 6px;border:1px solid}
+.tag-high{color:var(--red);border-color:var(--red)}
+.tag-medium{color:var(--amber);border-color:var(--amber)}
+.tag-ok{color:var(--green);border-color:var(--green)}
+.empty-state{color:var(--text-dim);font-size:10px;padding:20px;text-align:center}
+.rules-form select, .rules-form input{background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:inherit;font-size:10px;padding:6px;width:100%;margin-bottom:6px}
+.rules-result{margin-top:10px;padding:10px;background:var(--bg3);border:1px solid var(--border);font-size:10px;line-height:1.6}
+.ai-output{background:var(--bg3);border:1px solid var(--border);padding:12px;font-size:10px;line-height:1.6;color:var(--text);white-space:pre-wrap;min-height:60px}
+.ai-output.loading{color:var(--text-dim)}
+.ai-output .err{color:var(--red)}
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <div class="nav-brand">TSM SHELL // CPQ</div>
+  <div class="nav-right">
+    <span id="navStatus">ENGINE: IDLE</span>
+    <span class="nav-clock" id="navClock">--:--:--</span>
+  </div>
+</div>
+
+<div class="alert-bar" id="alertBar" style="display:none">
+  <span class="alert-dot"></span>
+  <span id="alertText">SLA breaches detected in quote pipeline.</span>
+</div>
+
+<div class="layout">
+
+  <div class="sidebar">
+    <div class="sb-section">
+      <div class="sb-label">DATA</div>
+      <div class="btn-row">
+        <button class="btn btn-ghost btn-full" id="btnLoadSample">LOAD SAMPLE DATA</button>
+      </div>
+      <div class="btn-row" style="margin-top:6px">
+        <button class="btn btn-ghost btn-full" id="btnResetData">RESET SAVED DATA</button>
+      </div>
+    </div>
+
+    <div class="sb-section">
+      <div class="sb-label">QUOTE STAGES</div>
+      <div class="stage-list" id="stageList"></div>
+    </div>
+
+    <div class="sb-section">
+      <div class="sb-label">SNAPSHOT</div>
+      <div class="snap-grid" id="snapGrid"></div>
+    </div>
+
+    <div class="sb-section" style="margin-top:auto">
+      <div class="btn-row">
+        <button class="btn btn-green btn-full" id="btnRunAnalysis">RUN AI ANALYSIS</button>
+      </div>
+      <div class="btn-row" style="margin-top:6px">
+        <button class="btn btn-gold btn-full" id="btnRelay">RELAY TO STRATEGIST &rarr;</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="main-header">
+      <div class="main-title">CPQ <b>WAR ROOM</b></div>
+      <div class="main-sub">Configure &middot; Price &middot; Quote &mdash; compatibility and discount rules, live.</div>
+    </div>
+
+    <div class="kpi-grid" id="kpiGrid"></div>
+
+    <div class="section">
+      <div class="section-head"><span>QUOTE PIPELINE</span><span id="trackerMeta"></span></div>
+      <div class="section-body"><div class="tracker" id="tracker"></div></div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><span>QUOTES</span><span id="breachMeta"></span></div>
+      <div class="section-body" id="quoteBody">
+        <div class="empty-state">No quotes loaded yet.</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><span>RULES ENGINE &mdash; COMPATIBILITY / DISCOUNT CHECK</span></div>
+      <div class="section-body">
+        <div class="rules-form">
+          <select id="ruleSkuSelect" multiple size="4"></select>
+          <input type="number" id="ruleListValue" placeholder="List value ($)">
+          <input type="number" id="ruleNetValue" placeholder="Proposed net value ($)">
+          <input type="number" id="ruleCostBasis" placeholder="Cost basis (% of list, e.g. 60)">
+          <button class="btn btn-outline" id="btnCheckRules">CHECK COMPATIBILITY + DISCOUNT</button>
+        </div>
+        <div class="rules-result" id="rulesResult" style="display:none"></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><span>AI RISK ANALYSIS</span></div>
+      <div class="section-body">
+        <div class="ai-output" id="aiOutput">Run analysis to get AI-generated risk and next-best-action recommendations across the quote pipeline.</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script src="/runtime/kernel/canonical-core.js"></script>
+<script src="/war-rooms/cpq/services/cpq-engine.js"></script>
+<script>
+(function () {
+  let MODEL = null;
+  let engine = null;
+
+  function setClock() { const el = document.getElementById('navClock'); if (el) el.textContent = new Date().toLocaleTimeString(); }
+  setInterval(setClock, 1000); setClock();
+
+  async function loadModel() {
+    const res = await fetch('/war-rooms/cpq/data/cpq-model.json');
+    MODEL = await res.json();
+    engine = new TSMCPQEngine(MODEL);
+    const hydrated = engine.loadFromStorage();
+    renderStageList();
+    populateSkuSelect();
+    if (hydrated) renderAll();
+  }
+
+  function renderStageList() {
+    const def = (MODEL.entities || {}).quote || { stages: [] };
+    const list = document.getElementById('stageList');
+    list.innerHTML = '';
+    (def.stages || []).forEach(s => {
+      const row = document.createElement('div');
+      row.className = 'stage-item';
+      row.innerHTML = `<span class="stage-num">${s.order}</span><span class="stage-name">${s.label}</span><span class="stage-count" id="sc-${s.id}">0</span>`;
+      list.appendChild(row);
+    });
+  }
+
+  function populateSkuSelect() {
+    const sel = document.getElementById('ruleSkuSelect');
+    sel.innerHTML = '';
+    (engine.products.length ? engine.products : (MODEL.sample_data.products || [])).forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.sku; opt.textContent = `${p.sku} -- ${p.name}`;
+      sel.appendChild(opt);
+    });
+  }
+
+  function renderAll() {
+    if (!engine) return;
+    const kpis = engine.computeKpis();
+    renderKpis(kpis);
+    renderStageCounts();
+    renderTracker();
+    renderQuotes();
+    renderSnapshot(kpis);
+    toggleAlert(kpis);
+    document.getElementById('navStatus').textContent = `ENGINE: ${engine.quotes.length} QUOTES LOADED`;
+  }
+
+  function renderKpis(kpis) {
+    const grid = document.getElementById('kpiGrid');
+    grid.innerHTML = '';
+    (MODEL.kpis || []).forEach(d => {
+      const val = kpis[d.id];
+      let display = val;
+      let cls = '';
+      if (d.unit === 'usd') display = '$' + Number(val || 0).toLocaleString();
+      if (d.unit === 'pct') display = val + '%';
+      if (d.id === 'sla_breach_count' && val > 0) cls = 'bad';
+      if (d.id === 'approval_pending' && val > 0) cls = 'warn';
+      const card = document.createElement('div');
+      card.className = 'kpi-card';
+      card.innerHTML = `<div class="kpi-label">${d.label}</div><div class="kpi-value ${cls}">${display}</div>`;
+      grid.appendChild(card);
+    });
+  }
+
+  function renderStageCounts() {
+    const dist = engine.getStageDistribution();
+    Object.keys(dist).forEach(id => { const el = document.getElementById('sc-' + id); if (el) el.textContent = dist[id].count; });
+  }
+
+  function renderTracker() {
+    const def = (MODEL.entities || {}).quote || { stages: [] };
+    const dist = engine.getStageDistribution();
+    const breachStages = new Set(engine.getSlaBreaches().map(b => b.stage));
+    const wrap = document.getElementById('tracker');
+    wrap.innerHTML = '';
+    (def.stages || []).forEach(s => {
+      const d = dist[s.id] || { count: 0, value: 0 };
+      const el = document.createElement('div');
+      el.className = 'tracker-stage' + (breachStages.has(s.label) ? ' hot' : '');
+      el.innerHTML = `<div class="ts-label">${s.label}</div><div class="ts-count">${d.count}</div>`;
+      wrap.appendChild(el);
+    });
+    document.getElementById('trackerMeta').textContent = engine.quotes.length + ' quotes';
+  }
+
+  function renderQuotes() {
+    const body = document.getElementById('quoteBody');
+    const breaches = engine.getSlaBreaches();
+    const breachMap = {}; breaches.forEach(b => { breachMap[b.quote_id] = b; });
+    document.getElementById('breachMeta').textContent = breaches.length + ' over SLA';
+    if (!engine.quotes.length) { body.innerHTML = '<div class="empty-state">No quotes loaded yet.</div>'; return; }
+
+    let rows = engine.quotes.map(q => {
+      const breach = breachMap[q.quote_id];
+      const slaTag = breach ? `<span class="tag ${breach.hours_over > 48 ? 'tag-high' : 'tag-medium'}">+${breach.hours_over}H</span>` : '&mdash;';
+      const marginTag = q.margin_pct != null
+        ? `<span class="tag ${q.margin_pct < (MODEL.sample_data.discount_policy?.margin_floor_pct || 25) ? 'tag-high' : 'tag-ok'}">${q.margin_pct}%</span>`
+        : '&mdash;';
+      return `<tr>
+        <td>${q.quote_id}</td>
+        <td>${q.name}</td>
+        <td>${q.stage}</td>
+        <td>$${Number(q.net_value || 0).toLocaleString()}</td>
+        <td>${q.discount_pct || 0}%</td>
+        <td>${marginTag}</td>
+        <td>${slaTag}</td>
+      </tr>`;
+    }).join('');
+
+    body.innerHTML = `<table>
+      <thead><tr><th>QUOTE</th><th>NAME</th><th>STAGE</th><th>NET VALUE</th><th>DISC %</th><th>MARGIN</th><th>OVER SLA</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+  }
+
+  function renderSnapshot(kpis) {
+    const grid = document.getElementById('snapGrid');
+    grid.innerHTML = `
+      <div class="snap-item"><div class="snap-label">OPEN QUOTES</div><div class="snap-val">${kpis.open_quotes}</div></div>
+      <div class="snap-item"><div class="snap-label">PIPELINE</div><div class="snap-val">$${Number(kpis.quote_value).toLocaleString()}</div></div>
+      <div class="snap-item"><div class="snap-label">AVG DISCOUNT</div><div class="snap-val">${kpis.avg_discount_pct}%</div></div>
+      <div class="snap-item"><div class="snap-label">OVER SLA</div><div class="snap-val ${kpis.sla_breach_count ? 'bad' : ''}">${kpis.sla_breach_count}</div></div>`;
+  }
+
+  function toggleAlert(kpis) {
+    const bar = document.getElementById('alertBar');
+    if (kpis.sla_breach_count > 0) { bar.style.display = 'flex'; document.getElementById('alertText').textContent = `${kpis.sla_breach_count} quote(s) over SLA.`; }
+    else bar.style.display = 'none';
+  }
+
+  function checkRules() {
+    const sel = document.getElementById('ruleSkuSelect');
+    const skus = Array.from(sel.selectedOptions).map(o => o.value);
+    const listValue = parseFloat(document.getElementById('ruleListValue').value) || 0;
+    const netValue = parseFloat(document.getElementById('ruleNetValue').value) || 0;
+    const costBasisPct = document.getElementById('ruleCostBasis').value ? parseFloat(document.getElementById('ruleCostBasis').value) / 100 : null;
+
+    const out = document.getElementById('rulesResult');
+    out.style.display = 'block';
+
+    if (!skus.length) { out.innerHTML = 'Select at least one SKU.'; return; }
+
+    const compat = engine.checkCompatibility(skus);
+    const discount = engine.evaluateDiscount(listValue, netValue, costBasisPct);
+
+    let html = '';
+    html += compat.compatible
+      ? '<div><span class="tag tag-ok">COMPATIBLE</span> All selected SKUs are compatible.</div>'
+      : '<div><span class="tag tag-high">CONFLICT</span> ' + compat.conflicts.map(c => `${c.sku}: ${c.reason}`).join('; ') + '</div>';
+    html += `<div style="margin-top:8px">Discount: <b>${discount.discount_pct}%</b> ${discount.needs_approval ? '<span class="tag tag-medium">NEEDS APPROVAL</span>' : '<span class="tag tag-ok">AUTO-APPROVED</span>'}</div>`;
+    if (discount.margin_pct != null) {
+      html += `<div style="margin-top:4px">Margin: <b>${discount.margin_pct}%</b> ${discount.below_margin_floor ? '<span class="tag tag-high">BELOW FLOOR</span>' : '<span class="tag tag-ok">OK</span>'}</div>`;
+    }
+    out.innerHTML = html;
+  }
+
+  async function runAnalysis() {
+    const out = document.getElementById('aiOutput');
+    out.className = 'ai-output loading';
+    out.textContent = 'Running AI analysis on current quote pipeline...';
+    document.getElementById('navStatus').textContent = 'ENGINE: ANALYZING';
+    try {
+      const data = await engine.runAnalysis();
+      out.className = 'ai-output';
+      out.textContent = (data && data.answer) || 'No analysis returned.';
+    } catch (e) {
+      out.className = 'ai-output';
+      out.innerHTML = `<span class="err">Analysis failed: ${e.message}. Confirm /api/cpq/query is wired server-side.</span>`;
+    } finally { renderAll(); }
+  }
+
+  function relayToStrategist() {
+    const aiText = document.getElementById('aiOutput').textContent;
+    const payload = engine.buildRelayPayload(aiText);
+    try {
+      localStorage.setItem('TSM_CPQ_RELAY', JSON.stringify(payload));
+      sessionStorage.setItem('TSM_CPQ_RELAY', JSON.stringify(payload));
+    } catch (e) { console.warn('Relay storage failed', e); }
+    if (window.TSMEventBus && window.TSMEventBus.emit) {
+      window.TSMEventBus.emit('WAR_ROOM_READY', { vertical: 'cpq', payload, ts: Date.now() });
+    }
+    document.getElementById('navStatus').textContent = 'ENGINE: RELAYED TO STRATEGIST';
+  }
+
+  document.getElementById('btnLoadSample').addEventListener('click', () => {
+    engine.loadSampleData();
+    engine.saveToStorage();
+    populateSkuSelect();
+    renderAll();
+  });
+
+  document.getElementById('btnResetData').addEventListener('click', () => {
+    if (!confirm('Clear all saved CPQ data from this browser? This cannot be undone.')) return;
+    engine.clearStorage();
+    engine.quotes = [];
+    renderAll();
+  });
+
+  document.getElementById('btnCheckRules').addEventListener('click', checkRules);
+  document.getElementById('btnRunAnalysis').addEventListener('click', runAnalysis);
+  document.getElementById('btnRelay').addEventListener('click', relayToStrategist);
+
+  loadModel();
+})();
+</script>
+
+<script src="/js/core/tsm-event-bus.js"></script>
+<script src="/js/core/tsm-state.js"></script>
+<script src="/js/core/tsm-mission-engine.js"></script>
+<script src="/js/core/tsm-auto-pipeline.js"></script>
+</body>
+</html>
