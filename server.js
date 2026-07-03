@@ -689,7 +689,7 @@ app.post('/api/finops/bnca/report', (req, res) => res.json({ ok: true }));
 // routes/finops.js implements docs, run-doc, upload-doc (with field
 // extraction), report, multi-report, and actions endpoints. Mounted after
 // the inline handler above so that handler keeps precedence on any overlap.
-app.use('/api/finops', require('./routes/finops'));
+app.use(require('./routes/finops'));
 app.post('/api/chat', (req, res) => res.json({ ok: true }));
 
 // ── AI QUERY ROUTES ───────────────────────────────────────────────────────────
