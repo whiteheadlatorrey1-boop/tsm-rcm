@@ -1475,6 +1475,25 @@ app.post('/api/governance/risk/:id/resolve', requireApiKey, (req, res) => {
   res.json({ ok: true, risk });
 });
 
+app.post('/api/governance/query', async (req, res) => {
+  const { controls, risks, audit, kpis, maxTokens } = req.body || {};
+  if (!Array.isArray(controls)) return res.status(400).json({ ok: false, error: 'controls array required' });
+  const summary = JSON.stringify({
+    kpis,
+    failing_or_review_controls: (controls || []).filter(c => c.status !== 'PASS'),
+    at_risk: (risks || []).filter(r => r.status === 'OPEN' || r.severity >= 70),
+    flagged_or_blocked_audit_events: (audit || []).filter(a => a.result !== 'OK')
+  }, null, 2);
+  const prompt = `Current governance & compliance snapshot:\n${summary}\n\nIdentify the highest-priority failing or at-risk controls, the risks most likely to escalate, and any suspicious or flagged audit events requiring follow-up. Reference control IDs and risk IDs. Recommend the specific next action for each. Be specific and operational.`;
+  try {
+    const answer = await groqChat(SP.governance, prompt, maxTokens || 1200);
+    return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
+  } catch (e) {
+    console.error('GOVERNANCE GROQ ERROR:', e.message);
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 
 // ── PHASE 7: ENTERPRISE INTEGRATION HUB ────────────────────────────────────────
 const INTEGRATION_CATALOG = [
