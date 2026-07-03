@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TSM — Intelligence Runtime Platform</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #05090a;
+    --panel: #0c1416;
+    --panel-2: #0f1a1d;
+    --border: #1c2c30;
+    --border-bright: #2a4247;
+    --cyan: #2dd4ee;
+    --cyan-dim: #12545f;
+    --amber: #ffb020;
+    --green: #39d98a;
+    --red: #ff5252;
+    --text: #d7ecef;
+    --text-dim: #85a3a7;
+    --text-mute: #4c6266;
+    --mono-head: 'JetBrains Mono', monospace;
+    --mono-body: 'Share Tech Mono', monospace;
+  }
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  html{ scroll-behavior:smooth; }
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:var(--mono-body);
+    line-height:1.6;
+    position:relative;
+    overflow-x:hidden;
+  }
+  body::before{
+    content:"";
+    position:fixed; inset:0;
+    background:repeating-linear-gradient(
+      0deg, rgba(255,255,255,0.018) 0px, rgba(255,255,255,0.018) 1px,
+      transparent 1px, transparent 3px
+    );
+    pointer-events:none;
+    z-index:999;
+  }
+  body::after{
+    content:"";
+    position:fixed; inset:0;
+    background:radial-gradient(ellipse at 50% 0%, rgba(45,212,238,0.05), transparent 60%);
+    pointer-events:none;
+    z-index:0;
+  }
+  a{ color:inherit; }
+  :focus-visible{ outline:2px solid var(--cyan); outline-offset:3px; }
+
+  .wrap{ max-width:1180px; margin:0 auto; padding:0 28px; }
+
+  /* NAV */
+  nav{
+    position:sticky; top:0; z-index:100;
+    background:rgba(5,9,10,0.88);
+    backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--border);
+  }
+  nav .wrap{ display:flex; align-items:center; justify-content:space-between; height:64px; }
+  .logo{ font-family:var(--mono-head); font-weight:800; letter-spacing:0.06em; font-size:16px; color:var(--text); }
+  .logo span{ color:var(--cyan); }
+  .navlinks{ display:flex; gap:32px; font-size:13px; color:var(--text-dim); }
+  .navlinks a{ text-decoration:none; transition:color .15s; }
+  .navlinks a:hover{ color:var(--cyan); }
+  .nav-cta{
+    font-family:var(--mono-head); font-size:12px; font-weight:600;
+    color:var(--bg); background:var(--cyan);
+    padding:9px 16px; border-radius:2px; text-decoration:none;
+    letter-spacing:0.03em;
+  }
+  @media (max-width:780px){ .navlinks{ display:none; } }
+
+  /* HERO */
+  .hero{ padding:88px 0 64px; position:relative; z-index:1; }
+  .eyebrow{
+    font-family:var(--mono-head); font-size:12px; letter-spacing:0.16em;
+    color:var(--cyan); text-transform:uppercase; margin-bottom:22px;
+    display:flex; align-items:center; gap:10px;
+  }
+  .eyebrow::before{
+    content:""; width:7px; height:7px; background:var(--green);
+    border-radius:50%; box-shadow:0 0 8px var(--green);
+    animation:pulse 1.8s infinite;
+  }
+  @keyframes pulse{ 0%,100%{opacity:1;} 50%{opacity:.35;} }
+  h1{
+    font-family:var(--mono-head); font-weight:800;
+    font-size:clamp(32px,5vw,56px); line-height:1.08;
+    letter-spacing:-0.01em; max-width:820px; margin-bottom:22px;
+  }
+  h1 .accent{ color:var(--cyan); }
+  .hero-sub{
+    font-size:16px; color:var(--text-dim); max-width:560px; margin-bottom:36px;
+  }
+  .cta-row{ display:flex; gap:14px; flex-wrap:wrap; margin-bottom:64px; }
+  .btn-primary{
+    font-family:var(--mono-head); font-weight:600; font-size:13px;
+    background:var(--cyan); color:#02181c; padding:14px 22px;
+    border-radius:2px; text-decoration:none; letter-spacing:0.02em;
+    transition:transform .15s, box-shadow .15s;
+  }
+  .btn-primary:hover{ transform:translateY(-1px); box-shadow:0 4px 20px rgba(45,212,238,0.25); }
+  .btn-ghost{
+    font-family:var(--mono-head); font-weight:600; font-size:13px;
+    background:transparent; color:var(--text); padding:14px 22px;
+    border:1px solid var(--border-bright); border-radius:2px; text-decoration:none;
+    transition:border-color .15s, color .15s;
+  }
+  .btn-ghost:hover{ border-color:var(--cyan); color:var(--cyan); }
+
+  /* TERMINAL */
+  .terminal{
+    background:var(--panel); border:1px solid var(--border);
+    border-radius:6px; overflow:hidden;
+    box-shadow:0 0 0 1px rgba(45,212,238,0.03), 0 30px 60px -30px rgba(0,0,0,0.6);
+  }
+  .term-bar{
+    display:flex; align-items:center; gap:8px; padding:10px 14px;
+    background:var(--panel-2); border-bottom:1px solid var(--border);
+  }
+  .term-dot{ width:10px; height:10px; border-radius:50%; }
+  .term-bar span:nth-child(1){ background:#ff5f56; }
+  .term-bar span:nth-child(2){ background:#ffbd2e; }
+  .term-bar span:nth-child(3){ background:#27c93f; }
+  .term-title{
+    margin-left:8px; font-family:var(--mono-head); font-size:11px; color:var(--text-mute);
+    letter-spacing:0.05em;
+  }
+  .term-body{
+    padding:20px 18px; font-size:12.5px; min-height:260px;
+    max-height:260px; overflow:hidden;
+  }
+  .term-line{
+    display:flex; gap:14px; padding:5px 0; white-space:nowrap;
+    opacity:0; animation:appear .3s forwards;
+  }
+  .t-time{ color:var(--text-mute); flex-shrink:0; }
+  .t-event{ font-weight:700; flex-shrink:0; width:210px; }
+  .t-detail{ color:var(--text-dim); overflow:hidden; text-overflow:ellipsis; }
+  .ev-cyan{ color:var(--cyan); }
+  .ev-green{ color:var(--green); }
+  .ev-amber{ color:var(--amber); }
+  .ev-red{ color:var(--red); }
+  @keyframes appear{ to{ opacity:1; } }
+
+  /* SECTION shared */
+  section{ padding:80px 0; position:relative; z-index:1; }
+  .section-border{ border-top:1px solid var(--border); }
+  .sec-eyebrow{
+    font-family:var(--mono-head); font-size:11.5px; letter-spacing:0.14em;
+    color:var(--text-mute); text-transform:uppercase; margin-bottom:14px;
+  }
+  h2{
+    font-family:var(--mono-head); font-weight:700; font-size:clamp(24px,3.4vw,34px);
+    letter-spacing:-0.01em; margin-bottom:16px; max-width:680px;
+  }
+  .sec-lead{ color:var(--text-dim); max-width:560px; font-size:15px; margin-bottom:48px; }
+
+  /* COMPARISON */
+  .compare{
+    display:grid; grid-template-columns:1fr 1fr; gap:0;
+    border:1px solid var(--border); border-radius:6px; overflow:hidden;
+  }
+  .compare-col{ padding:0; }
+  .compare-col.right{ background:rgba(45,212,238,0.03); border-left:1px solid var(--border); }
+  .compare-head{
+    padding:18px 22px; font-family:var(--mono-head); font-weight:700; font-size:13px;
+    letter-spacing:0.04em; border-bottom:1px solid var(--border);
+  }
+  .compare-col.left .compare-head{ color:var(--text-mute); }
+  .compare-col.right .compare-head{ color:var(--cyan); }
+  .compare-row{
+    padding:16px 22px; font-size:13.5px; border-bottom:1px solid var(--border);
+    color:var(--text-dim);
+  }
+  .compare-col.right .compare-row{ color:var(--text); }
+  .compare-row:last-child{ border-bottom:none; }
+  @media (max-width:700px){
+    .compare{ grid-template-columns:1fr; }
+    .compare-col.right{ border-left:none; border-top:1px solid var(--border); }
+  }
+
+  /* PILLARS */
+  .pillars{ display:grid; grid-template-columns:repeat(3,1fr); gap:1px; background:var(--border); border:1px solid var(--border); border-radius:6px; overflow:hidden; }
+  .pillar{ background:var(--panel); padding:32px 26px; }
+  .pillar-num{ font-family:var(--mono-head); font-size:11px; color:var(--text-mute); letter-spacing:0.1em; margin-bottom:18px; }
+  .pillar h3{ font-family:var(--mono-head); font-size:17px; margin-bottom:10px; color:var(--cyan); }
+  .pillar p{ font-size:13.5px; color:var(--text-dim); }
+  @media (max-width:780px){ .pillars{ grid-template-columns:1fr; } }
+
+  /* WAR ROOM GRID */
+  .rooms{ display:grid; grid-template-columns:repeat(5,1fr); gap:1px; background:var(--border); border:1px solid var(--border); border-radius:6px; overflow:hidden; }
+  .room{ background:var(--panel); padding:22px 18px; transition:background .15s; }
+  .room:hover{ background:var(--panel-2); }
+  .room-id{ font-family:var(--mono-head); font-size:10px; color:var(--text-mute); margin-bottom:10px; letter-spacing:0.06em; }
+  .room-name{ font-family:var(--mono-head); font-size:13.5px; font-weight:600; margin-bottom:6px; }
+  .room-desc{ font-size:11.5px; color:var(--text-mute); line-height:1.5; }
+  @media (max-width:900px){ .rooms{ grid-template-columns:repeat(2,1fr); } }
+  @media (max-width:500px){ .rooms{ grid-template-columns:1fr; } }
+  .verticals-note{
+    margin-top:24px; font-size:13px; color:var(--text-mute); font-family:var(--mono-body);
+    border-left:2px solid var(--cyan-dim); padding-left:16px;
+  }
+  .verticals-note b{ color:var(--text-dim); font-weight:400; }
+
+  /* AUDIT TRAIL */
+  .audit-wrap{ display:grid; grid-template-columns:1fr 1fr; gap:60px; align-items:center; }
+  .audit-trail{ font-family:var(--mono-body); font-size:13px; }
+  .audit-item{ display:flex; gap:16px; padding:14px 0; border-left:2px solid var(--border-bright); padding-left:20px; position:relative; }
+  .audit-item::before{
+    content:""; position:absolute; left:-6px; top:19px; width:10px; height:10px;
+    border-radius:50%; background:var(--cyan); box-shadow:0 0 8px rgba(45,212,238,0.5);
+  }
+  .audit-time{ color:var(--text-mute); flex-shrink:0; width:56px; }
+  .audit-label{ color:var(--text); }
+  @media (max-width:780px){ .audit-wrap{ grid-template-columns:1fr; gap:32px; } }
+
+  /* PRICING */
+  .pricing{ display:grid; grid-template-columns:repeat(3,1fr); gap:20px; }
+  .price-card{
+    border:1px solid var(--border); border-radius:6px; padding:32px 26px;
+    background:var(--panel); display:flex; flex-direction:column; position:relative;
+  }
+  .price-card.featured{ border-color:var(--cyan-dim); background:rgba(45,212,238,0.035); }
+  .price-tag{
+    position:absolute; top:-11px; left:26px; background:var(--cyan); color:#02181c;
+    font-family:var(--mono-head); font-size:10.5px; font-weight:700; padding:4px 10px;
+    border-radius:2px; letter-spacing:0.05em;
+  }
+  .price-tier{ font-family:var(--mono-head); font-size:12px; color:var(--text-mute); letter-spacing:0.08em; text-transform:uppercase; margin-bottom:14px; }
+  .price-amt{ font-family:var(--mono-head); font-size:32px; font-weight:800; margin-bottom:4px; }
+  .price-amt span{ font-size:13px; color:var(--text-mute); font-weight:400; }
+  .price-desc{ font-size:12.5px; color:var(--text-dim); margin-bottom:24px; }
+  .price-list{ list-style:none; font-size:13px; color:var(--text-dim); flex:1; }
+  .price-list li{ padding:8px 0; border-top:1px solid var(--border); display:flex; gap:10px; }
+  .price-list li::before{ content:"›"; color:var(--cyan); flex-shrink:0; }
+  @media (max-width:900px){ .pricing{ grid-template-columns:1fr; } }
+
+  /* FOOTER CTA */
+  .final-cta{ text-align:center; padding:100px 0; }
+  .final-cta h2{ margin:0 auto 18px; }
+  .final-cta .sec-lead{ margin:0 auto 36px; }
+  .cta-row.center{ justify-content:center; }
+
+  footer{ border-top:1px solid var(--border); padding:40px 0; }
+  footer .wrap{ display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; }
+  .foot-mute{ font-size:12px; color:var(--text-mute); }
+
+  @media (prefers-reduced-motion: reduce){
+    *{ animation:none !important; transition:none !important; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <div class="logo">TSM<span>_</span>CONSULTZ</div>
+    <div class="navlinks">
+      <a href="#how">How it works</a>
+      <a href="#rooms">War rooms</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#contact">Contact</a>
+    </div>
+    <a class="nav-cta" href="#contact">Request a demo</a>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="eyebrow">Runtime status: live</div>
+    <h1>Every decision your business makes, <span class="accent">on the record.</span></h1>
+    <p class="hero-sub">TSM connects sales, procurement, approvals, and finance into a single event stream — so nothing moves without a trace, and nothing breaks without a reason.</p>
+    <div class="cta-row">
+      <a class="btn-primary" href="#contact">Request a walkthrough</a>
+      <a class="btn-ghost" href="#how">See how it works</a>
+    </div>
+
+    <div class="terminal">
+      <div class="term-bar">
+        <span class="term-dot"></span><span class="term-dot"></span><span class="term-dot"></span>
+        <span class="term-title">tsm-event-bus — live feed</span>
+      </div>
+      <div class="term-body" id="termBody"></div>
+    </div>
+  </div>
+</header>
+
+<section class="section-border">
+  <div class="wrap">
+    <div class="sec-eyebrow">Positioning</div>
+    <h2>We don't manage workflows. We instrument them.</h2>
+    <p class="sec-lead">Most operations software gives you a place to put information. TSM gives you a record of what actually happened, why, and who's accountable for what comes next.</p>
+    <div class="compare">
+      <div class="compare-col left">
+        <div class="compare-head">Traditional software</div>
+        <div class="compare-row">Stores data</div>
+        <div class="compare-row">Static workflows</div>
+        <div class="compare-row">UI-centric</div>
+        <div class="compare-row">Reporting after the fact</div>
+      </div>
+      <div class="compare-col right">
+        <div class="compare-head">TSM</div>
+        <div class="compare-row">Tracks events</div>
+        <div class="compare-row">Dynamic runtime</div>
+        <div class="compare-row">Event-centric</div>
+        <div class="compare-row">Causal reasoning in the moment</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section-border" id="how">
+  <div class="wrap">
+    <div class="sec-eyebrow">Foundation</div>
+    <h2>Three layers, shared across every part of your business</h2>
+    <p class="sec-lead">Instead of rebuilding the same logic for every department, TSM runs on a shared core that every war room draws from.</p>
+    <div class="pillars">
+      <div class="pillar">
+        <div class="pillar-num">LAYER 01</div>
+        <h3>Event bus</h3>
+        <p>Every action — a quote created, an order allocated, an invoice issued — becomes a timestamped event. Nothing is overwritten and nothing is lost, so any question about "what happened" has a real answer.</p>
+      </div>
+      <div class="pillar">
+        <div class="pillar-num">LAYER 02</div>
+        <h3>Governance layer</h3>
+        <p>Access, approvals, and segregation of duties are enforced the same way everywhere. A rule written once for procurement applies the same way in finance, without a separate build.</p>
+      </div>
+      <div class="pillar">
+        <div class="pillar-num">LAYER 03</div>
+        <h3>AI decision intelligence</h3>
+        <p>The same event stream that gives you an audit trail also feeds anomaly detection, root-cause analysis, and recommendations — so the system flags a duplicate invoice or a stalled approval before it becomes a problem.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section-border" id="rooms">
+  <div class="wrap">
+    <div class="sec-eyebrow">Product</div>
+    <h2>One runtime, ten operational war rooms</h2>
+    <p class="sec-lead">Each war room is a live view into a business process — not a static dashboard. Pick the ones your team needs; they all speak the same event language.</p>
+    <div class="rooms">
+      <div class="room"><div class="room-id">01</div><div class="room-name">Order-to-Cash</div><div class="room-desc">Quote through payment, with bottlenecks visible as they happen.</div></div>
+      <div class="room"><div class="room-id">02</div><div class="room-name">CRM Lifecycle</div><div class="room-desc">Lead through renewal, with health and churn signals attached.</div></div>
+      <div class="room"><div class="room-id">03</div><div class="room-name">CPQ</div><div class="room-desc">Configure, price, and quote, with every change explained.</div></div>
+      <div class="room"><div class="room-id">04</div><div class="room-name">Product Catalog</div><div class="room-desc">One source of truth for SKUs, bundles, and availability.</div></div>
+      <div class="room"><div class="room-id">05</div><div class="room-name">Approval Center</div><div class="room-desc">Every approval chain, from purchase orders to contracts, in one queue.</div></div>
+      <div class="room"><div class="room-id">06</div><div class="room-name">Master Data (MDM)</div><div class="room-desc">Duplicate detection and stewardship for your core records.</div></div>
+      <div class="room"><div class="room-id">07</div><div class="room-name">Integration Hub</div><div class="room-desc">A live map of how ERP, CRM, and BI actually talk to each other.</div></div>
+      <div class="room"><div class="room-id">08</div><div class="room-name">Governance</div><div class="room-desc">Audit trails and policy enforcement, always on.</div></div>
+      <div class="room"><div class="room-id">09</div><div class="room-name">WIP Command Center</div><div class="room-desc">Every open item, its owner, its risk, and its SLA clock.</div></div>
+      <div class="room"><div class="room-id">10</div><div class="room-name">Digital Twin</div><div class="room-desc">A live simulation of the business, for what-if planning.</div></div>
+    </div>
+    <p class="verticals-note"><b>Built across verticals:</b> Healthcare RCM, FinOps, Insurance, Construction, Legal, Real Estate, and BPO teams run the same runtime today.</p>
+  </div>
+</section>
+
+<section class="section-border">
+  <div class="wrap">
+    <div class="audit-wrap">
+      <div>
+        <div class="sec-eyebrow">Proof</div>
+        <h2>Nothing happens off the record</h2>
+        <p class="sec-lead" style="margin-bottom:0;">A quote doesn't just get approved — it leaves a trail an auditor, an executive, or a customer can follow, minute by minute.</p>
+      </div>
+      <div class="audit-trail">
+        <div class="audit-item"><div class="audit-time">09:12</div><div class="audit-label">Quote created</div></div>
+        <div class="audit-item"><div class="audit-time">09:18</div><div class="audit-label">Manager approved discount</div></div>
+        <div class="audit-item"><div class="audit-time">09:25</div><div class="audit-label">Price updated</div></div>
+        <div class="audit-item"><div class="audit-time">09:40</div><div class="audit-label">Customer accepted</div></div>
+        <div class="audit-item"><div class="audit-time">09:45</div><div class="audit-label">Order released to fulfillment</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section-border" id="pricing">
+  <div class="wrap">
+    <div class="sec-eyebrow">Pricing</div>
+    <h2>Start with one domain. Expand as it earns its keep.</h2>
+    <p class="sec-lead">Every tier runs on the same event core, so growing from one war room to ten never means switching systems.</p>
+    <div class="pricing">
+      <div class="price-card">
+        <div class="price-tier">Starter</div>
+        <div class="price-amt">$1,250<span>/mo</span></div>
+        <div class="price-desc">For a single team getting its first real-time view.</div>
+        <ul class="price-list">
+          <li>1–2 connected domains</li>
+          <li>Event tracking &amp; timeline</li>
+          <li>Standard dashboards</li>
+          <li>Baseline governance rules</li>
+        </ul>
+      </div>
+      <div class="price-card featured">
+        <div class="price-tag">Most common</div>
+        <div class="price-tier">Growth</div>
+        <div class="price-amt">$3,500<span>/mo</span></div>
+        <div class="price-desc">For teams connecting multiple functions together.</div>
+        <ul class="price-list">
+          <li>Multi-domain integration</li>
+          <li>Full event graph visibility</li>
+          <li>Workflow dependency mapping</li>
+          <li>Anomaly flagging</li>
+        </ul>
+      </div>
+      <div class="price-card">
+        <div class="price-tier">Enterprise</div>
+        <div class="price-amt">$7,500+<span>/mo</span></div>
+        <div class="price-desc">For organizations that need governance at scale.</div>
+        <ul class="price-list">
+          <li>Full event bus &amp; governance layer</li>
+          <li>Cross-domain orchestration</li>
+          <li>AI reasoning &amp; recommendations</li>
+          <li>Audit-grade compliance tracking</li>
+          <li>Workflow replay &amp; debugging</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section-border final-cta" id="contact">
+  <div class="wrap">
+    <div class="sec-eyebrow" style="justify-content:center; display:flex;">Get started</div>
+    <h2>Bring your operations into one runtime.</h2>
+    <p class="sec-lead">Show us one process that's hard to see clearly today. We'll show you what it looks like instrumented.</p>
+    <div class="cta-row center">
+      <a class="btn-primary" href="mailto:hello@tsmconsultz.com">Request a walkthrough</a>
+      <a class="btn-ghost" href="mailto:hello@tsmconsultz.com">Talk to an architect</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="foot-mute">TSM Consultz LLC — Intelligence Runtime Platform</div>
+    <div class="foot-mute">Event-driven. Auditable. Built to expand.</div>
+  </div>
+</footer>
+
+<script>
+  const events = [
+    { t:"14:02:11", e:"ORDER_CREATED", d:"ord_88213 · customer=Meridian Fabrication", c:"ev-cyan" },
+    { t:"14:02:14", e:"CREDIT_CHECK_PASSED", d:"ord_88213 · risk=low", c:"ev-green" },
+    { t:"14:02:19", e:"INVENTORY_ALLOCATED", d:"ord_88213 · warehouse=PHX-02", c:"ev-cyan" },
+    { t:"14:03:02", e:"DISCOUNT_APPROVED", d:"quote_4471 · approver=J.Ruiz", c:"ev-green" },
+    { t:"14:03:45", e:"AI_ANOMALY_DETECTED", d:"vendor_1187 · flag=duplicate_invoice", c:"ev-red" },
+    { t:"14:04:10", e:"SLA_BREACH_WARNING", d:"case_2290 · time_remaining=12m", c:"ev-amber" },
+    { t:"14:04:33", e:"INVOICE_ISSUED", d:"ord_88213 · amount=$41,200.00", c:"ev-cyan" },
+    { t:"14:05:02", e:"PAYMENT_RECONCILED", d:"inv_55031 · method=ACH", c:"ev-green" },
+  ];
+
+  const body = document.getElementById('termBody');
+  let i = 0;
+  function addLine(){
+    if(i >= events.length){ i = 0; body.innerHTML = ""; }
+    const ev = events[i];
+    const row = document.createElement('div');
+    row.className = 'term-line';
+    row.innerHTML = `<span class="t-time">${ev.t}</span><span class="t-event ${ev.c}">${ev.e}</span><span class="t-detail">${ev.d}</span>`;
+    body.appendChild(row);
+    if(body.children.length > 8){ body.removeChild(body.children[0]); }
+    i++;
+  }
+  addLine();
+  setInterval(addLine, 1400);
+</script>
+
+</body>
+</html>
