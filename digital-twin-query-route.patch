@@ -1,0 +1,35 @@
+diff --git a/server.js b/server.js
+index af94c70..31d5986 100644
+--- a/server.js
++++ b/server.js
+@@ -1410,6 +1410,30 @@ app.get('/api/digital-twin/snapshot', (req, res) => {
+   });
+ });
+ 
++app.post('/api/digital-twin/query', async (req, res) => {
++  try {
++    const { domains = [], signals = [], forecasts = [], health_score } = req.body || {};
++
++    const domainLines = domains
++      .map(d => `- ${d.label || d.name || 'Domain'}: score ${d.score}${d.delta ? ` (${d.delta > 0 ? '+' : ''}${d.delta} trend)` : ''}`)
++      .join('\n');
++    const signalLines = signals
++      .map(s => `- [${s.sector || s.source || 'signal'}] ${s.text || s.message || JSON.stringify(s)}`)
++      .join('\n');
++    const forecastLines = forecasts
++      .map(f => `- ${f.label}: ${f.value}${f.trend ? ` (${f.trend})` : ''}`)
++      .join('\n');
++
++    const sys = 'You are the TSM Enterprise Digital Twin AI — an executive intelligence layer that synthesizes cross-domain operational health into a board-ready brief. Be direct, dollar-quantified where possible, and prioritized by risk.';
++    const msg = `Aggregate enterprise health score: ${health_score ?? 'n/a'}\n\nDOMAIN SCORES:\n${domainLines || 'none'}\n\nLIVE SIGNALS:\n${signalLines || 'none'}\n\n30-DAY FORECAST:\n${forecastLines || 'none'}\n\nGenerate a concise executive brief: top 3 risks, top 3 opportunities, and one recommended board-level action.`;
++
++    const a = await groqChat(sys, msg, req.body.maxTokens || 1400);
++    return res.json({ ok: true, answer: a, output: a, reply: a });
++  } catch (e) {
++    return res.status(500).json({ ok: false, error: e.message });
++  }
++});
++
+ 
+ // ── PHASE 8: GOVERNANCE & COMPLIANCE ───────────────────────────────────────────
+ const GOVERNANCE_AUDIT_LOG = [];
