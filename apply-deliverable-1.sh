@@ -1,3 +1,9 @@
+#!/bin/bash
+set -e
+
+echo "== Writing html/war-rooms/index.html =="
+mkdir -p html/war-rooms
+cat > html/war-rooms/index.html << 'INDEXEOF'
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -324,3 +330,50 @@ init();
 
 </body>
 </html>
+
+INDEXEOF
+
+echo "== Patching server.js (idempotent) =="
+if grep -q "app.use('/runtime', express.static" server.js; then
+  echo "server.js already patched — skipping"
+else
+  python3 - << 'PYEOF'
+import re
+
+with open('server.js', 'r') as f:
+    content = f.read()
+
+anchor = "app.use(express.static(dirPath));"
+insert = (
+    "// These two were previously unmounted — PhaseLoader (architecture/kernel/phases.json\n"
+    "// + runtime/kernel/phase-loader.js) lives outside html/ and was 404ing in production.\n"
+    "app.use('/runtime', express.static(path.join(__dirname, 'runtime'), { setHeaders: (res) => res.setHeader('Cache-Control', 'no-store') }));\n"
+    "app.use('/architecture', express.static(path.join(__dirname, 'architecture'), { setHeaders: (res) => res.setHeader('Cache-Control', 'no-store') }));\n"
+    + anchor
+)
+
+if anchor not in content:
+    raise SystemExit("ERROR: anchor line not found in server.js — aborting, do not proceed blind")
+
+content = content.replace(anchor, insert, 1)
+
+with open('server.js', 'w') as f:
+    f.write(content)
+
+print("server.js patched successfully")
+PYEOF
+fi
+
+echo "== Validating server.js syntax =="
+node --check server.js && echo "server.js OK"
+
+echo "== Validating index.html line count =="
+wc -l html/war-rooms/index.html
+
+echo "== git status =="
+git add html/war-rooms/index.html server.js
+git status --short
+
+echo ""
+echo "Done. Review with: git diff --cached"
+echo "Then commit: git commit -m 'feat: Enterprise Operations Studio landing page + fix missing /runtime and /architecture static mounts'"
