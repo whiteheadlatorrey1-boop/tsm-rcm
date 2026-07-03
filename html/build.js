@@ -153,3 +153,31 @@ function main() {
 }
 
 main();
+
+/**
+ * TSM SAFE SCRIPT GUARD (auto-injected)
+ * Prevents obfuscated / malformed inline scripts from crashing build
+ */
+function safeProcessScriptBlock(scriptContent, filePath) {
+  try {
+    // skip known obfuscated or broken patterns
+    if (
+      scriptContent.includes("_0x") ||
+      scriptContent.includes("(((.+)+") ||
+      scriptContent.length > 50000
+    ) {
+      console.warn("⚠️ Skipped obfuscated script in " + filePath);
+      return null;
+    }
+
+    return safeProcessScriptBlock(scriptContent);
+  } catch (err) {
+    console.warn(
+      "⚠️ Skipped invalid script block in " +
+      filePath +
+      ": " +
+      err.message
+    );
+    return null;
+  }
+}

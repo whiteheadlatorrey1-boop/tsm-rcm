@@ -13,11 +13,32 @@
     ".emit(\"SIGNAL\" ) {",   // malformed method injection pattern
   ];
 
-  function scanObject(obj, path = "root") {
-    if (!obj || typeof obj !== "object") return;
+  const MAX_DEPTH = 12; // safety cap in addition to cycle detection
 
-    Object.keys(obj).forEach(key => {
-      const value = obj[key];
+  function scanObject(obj, path = "root", visited = new WeakSet(), depth = 0) {
+    if (!obj || typeof obj !== "object") return;
+    if (depth > MAX_DEPTH) return;
+
+    // Cycle guard: window, DOM nodes, and many host objects reference
+    // themselves or their ancestors (window.window, node.parentNode, etc).
+    // Without this, recursion never terminates.
+    if (visited.has(obj)) return;
+    visited.add(obj);
+
+    let keys;
+    try {
+      keys = Object.keys(obj);
+    } catch (e) {
+      return; // some host objects throw on property access
+    }
+
+    keys.forEach(key => {
+      let value;
+      try {
+        value = obj[key];
+      } catch (e) {
+        return; // some getters throw (e.g. cross-origin frame access)
+      }
 
       if (typeof value === "function") {
         const fnStr = value.toString();
@@ -33,8 +54,8 @@
         });
       }
 
-      if (typeof value === "object") {
-        scanObject(value, path + "." + key);
+      if (value && typeof value === "object") {
+        scanObject(value, path + "." + key, visited, depth + 1);
       }
     });
   }
