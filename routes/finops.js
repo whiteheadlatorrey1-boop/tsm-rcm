@@ -5,6 +5,8 @@ const router  = express.Router();
 const fs   = require('fs');
 const path = require('path');
 const { extractInvoiceFields } = require('../tsm-decision-service/extract-fields');
+const { appendEvent } = require('../tsm-decision-service/events-store');
+const { processEvent } = require('../tsm-decision-service/decision-service');
 
 // FINOPS DOCUMENT RUNNER + MAIN STRATEGIST PUSH
 // =====================================================
@@ -176,8 +178,32 @@ router.post('/api/finops/upload-doc', upload.single('file'), async (req,res)=>{
     // return null (harmless) or, worse, coincidentally match nothing
     // meaningful. Gating here keeps that guarantee explicit.
     let extractedFields = null;
+    let decisions = [];
     if (hasRealTextContent(file.originalname)) {
       extractedFields = extractInvoiceFields(text);
+
+      // Only fire the decision pipeline when extraction actually found a
+      // usable vendor_id + amount. No signal in, no fabricated decision out.
+      if (extractedFields && extractedFields.vendor_id && typeof extractedFields.amount === 'number') {
+        try {
+          const invoiceEvent = appendEvent({
+            type: 'INVOICE_RECEIVED',
+            domain: 'finops',
+            entity_id: extractedFields.vendor_id,
+            payload: {
+              vendor_id: extractedFields.vendor_id,
+              vendor_name: extractedFields.vendor_name,
+              amount: extractedFields.amount
+            },
+            source: 'finops-live-uploader'
+          });
+          decisions = await processEvent(invoiceEvent, {});
+        } catch (decisionErr) {
+          // Decision pipeline failing must never break the upload response.
+          console.error('[finops decision pipeline]', decisionErr);
+          decisions = [];
+        }
+      }
     }
 
     const report = {
@@ -191,6 +217,7 @@ router.post('/api/finops/upload-doc', upload.single('file'), async (req,res)=>{
       risk_posture:'WATCH',
       status:'READY',
       extracted_fields: extractedFields,
+      decisions: decisions,
       summary:`LIVE UPLOADED DOCUMENT ANALYSIS · ${docType}
 
 FILE:
