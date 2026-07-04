@@ -332,7 +332,7 @@ async function fireAllEngines() {
     setEngineStatus(i, 'running');
     try {
       const text = await callAPI(prompts[i]);
-      document.getElementById(`eo${i}`).textContent = text;
+      document.getElementById(`eo${i}`).innerHTML = renderEngineOutput(text);
       document.getElementById(`eo${i}`).classList.add('active');
       setEngineStatus(i, 'done');
       enginesComplete++;
@@ -390,6 +390,47 @@ function setEngineStatus(i, status) {
   card.textContent = lbl;
 }
 
+function escapeHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function renderEngineOutput(text) {
+  const clean = text.replace(/\n?KPI_JSON:\s*\{[^}]*\}\s*$/i, '').trim();
+  let html = escapeHtml(clean);
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/^▸\s*(.+)$/gm, '<div style="margin:4px 0">▸ $1</div>');
+  html = html.replace(/^(\d+)\.\s+(.+)$/gm, '<div style="margin:4px 0 4px 8px"><strong>$1.</strong> $2</div>');
+  html = html.replace(/\n{2,}/g, '<br><br>').replace(/\n/g, '<br>');
+  return html;
+}
+
+function parseDecisionActions(text) {
+  const startIdx = text.search(/DECISIONS REQUIRED/i);
+  if (startIdx === -1) return null;
+  let block = text.slice(startIdx);
+  const nextSection = block.slice(20).search(/\n\s*▸/);
+  if (nextSection !== -1) block = block.slice(0, nextSection + 20);
+
+  const lineRe = /(\d+)\.\s*([^\n·]+?)\s*·\s*Owner:\s*([^·\n]+?)(?:\s*·\s*Deadline:\s*([^·\n]+?))?(?:\s*·\s*(?:Cost|Budget):\s*\$?([^\n]+))?\s*(?=\n|$)/gi;
+  const defaultLabels = ['AUTHORIZE','ESCALATE','REVIEW','AUTHORIZE'];
+  const results = [];
+  let m;
+  while ((m = lineRe.exec(block)) !== null) {
+    let decisionText = m[2].trim();
+    const labelMatch = decisionText.match(/^(AUTHORIZE|ESCALATE|REVIEW)\b[:\-]?\s*/i);
+    const label = labelMatch ? labelMatch[1].toUpperCase() : (defaultLabels[results.length] || 'REVIEW');
+    if (labelMatch) decisionText = decisionText.slice(labelMatch[0].length).trim();
+    results.push({
+      rank: Number(m[1]),
+      label,
+      text: decisionText,
+      owner: (m[3] || 'Unassigned').trim(),
+      deadline: (m[4] || 'TBD').trim(),
+    });
+  }
+  return results.length ? results : null;
+}
+
 function parseKpiJson(text) {
   const m = text.match(/KPI_JSON:\s*(\{.*\})\s*$/);
   if (!m) return null;
@@ -407,6 +448,7 @@ function extractFinancialKPI(text) {
   }
   const m = text.match(/\$[\d,]+(?:\s*[-–]\s*\$[\d,]+)?/);
   document.getElementById('kpiExposure').textContent = m ? m[0].slice(0,16) : 'N/A';
+  sessionData.kpis.exposure = { raw: m ? m[0] : null, source: 'regex-fallback' };
 }
 
 function extractDowntimeKPI(text) {
@@ -418,6 +460,7 @@ function extractDowntimeKPI(text) {
   }
   const m = text.match(/(\d+[-–]\d+\s*hours?|\d+\s*hours?|\d+\s*days?)/i);
   document.getElementById('kpiDowntime').textContent = m ? m[0] : 'N/A';
+  sessionData.kpis.containment = { raw: m ? m[0] : null, source: 'regex-fallback' };
 }
 
 function buildRiskKPI(text) {
@@ -429,6 +472,7 @@ function buildRiskKPI(text) {
   }
   const m = text.match(/(\d{2,3})\/100|RISK[:\s]+(\d{2,3})/i);
   document.getElementById('kpiRisk').textContent = m ? (m[1]||m[2]) + '/100' : 'N/A';
+  sessionData.kpis.risk = { raw: m ? (m[1]||m[2]) : null, source: 'regex-fallback' };
 }
 
 function buildActionPanel(text) {
@@ -436,12 +480,15 @@ function buildActionPanel(text) {
   const list  = document.getElementById('actionList');
   panel.style.display = 'block';
 
-  const actions = [
+  const fallback = [
     { rank: 1, label: 'AUTHORIZE', text: 'Emergency network isolation — segment affected OT assets and engage incident response team immediately', owner: 'CISO / OT Security Lead', deadline: '0–2 hrs' },
     { rank: 2, label: 'ESCALATE', text: 'Engage external forensics/IR firm — preserve evidence and determine scope of compromise', owner: 'CISO', deadline: '2–6 hrs' },
     { rank: 3, label: 'REVIEW', text: 'Assess regulatory/customer notification obligations — legal and compliance review of breach disclosure requirements', owner: 'Legal / Compliance', deadline: '4–12 hrs' },
     { rank: 4, label: 'AUTHORIZE', text: 'Rotate credentials and patch exploited vulnerability across similar assets', owner: 'IT/OT Security', deadline: '2–8 hrs' },
   ];
+
+  const actions = parseDecisionActions(text) || fallback;
+  sessionData.kpis.actions = { parsed: parseDecisionActions(text) !== null };
 
   list.innerHTML = actions.map(a => `
     <div class="action-item">
@@ -464,7 +511,7 @@ async function callAPI(prompt) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model: 'openai/gpt-oss-120b',
-      max_tokens: 800,
+      max_tokens: 400,
       messages: [
         { role: 'system', content: 'You are an OT/ICS cybersecurity intelligence engine for TSM Command. Expert in industrial control system security, attack analysis, operational/safety impact, and executive decision support. Be specific with dollar amounts and timelines.' },
         { role: 'user', content: prompt }

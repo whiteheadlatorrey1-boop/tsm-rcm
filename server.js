@@ -348,9 +348,47 @@ app.post('/api/hc/stream', async (req, res) => {
     const { Readable } = require('stream');
     Readable.fromWeb(groqRes.body).pipe(res);
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(e.status || 500).json({ error: e.message });
   }
 });
+
+function debugLog(msg) {
+  try {
+    fs.appendFileSync('/app/data/debug.log', `[${new Date().toISOString()}] ${msg}\n`);
+  } catch (e) { /* ignore logging failures */ }
+}
+
+async function fetchGroqWithRetry(groqKey, body, maxRetries = 3) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + groqKey
+      },
+      body: JSON.stringify(body)
+    });
+    if (groqRes.ok) return groqRes;
+    const err = await groqRes.json().catch(() => ({}));
+    console.error('Groq error response:', JSON.stringify(err)); debugLog('Groq error: ' + JSON.stringify(err));
+    const isRateLimit = err.error?.code === 'rate_limit_exceeded';
+    if (isRateLimit && attempt < maxRetries) {
+      const match = /try again in ([\d.]+)(ms|s)/.exec(err.error.message || '');
+      let waitMs = 1500;
+      if (match) {
+        const val = parseFloat(match[1]);
+        waitMs = match[2] === 's' ? val * 1000 : val;
+      }
+      waitMs = Math.min(waitMs + 250, 10000);
+      console.error(`Rate limited, retrying in ${waitMs}ms (attempt ${attempt + 1}/${maxRetries})`); debugLog(`Retrying in ${waitMs}ms attempt ${attempt + 1}/${maxRetries}`);
+      await new Promise(r => setTimeout(r, waitMs));
+      continue;
+    }
+    const failErr = new Error(err.error?.message || 'Groq error');
+    failErr.status = 502;
+    throw failErr;
+  }
+}
 
 app.post('/api/war-room/stream', async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');

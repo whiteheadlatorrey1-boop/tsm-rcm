@@ -245,7 +245,7 @@ async function fireAllEngines(){
     setEng(i,'running');
     try{
       const text=await callAPI(prompts[i]);
-      document.getElementById(`eo${i}`).textContent=text;
+      document.getElementById(`eo${i}`).innerHTML=renderEngineOutput(text);
       document.getElementById(`eo${i}`).classList.add('active');
       setEng(i,'done');
       enginesComplete++;
@@ -255,7 +255,7 @@ async function fireAllEngines(){
       if(i===2)extractExposureKPI(text);
       if(i===1)extractBufferKPI(text);
       if(i===0)extractOrdersKPI(text);
-      if(i===5)buildActions();
+      if(i===5)buildActions(text);
     }catch(e){
       hadError=true;
       document.getElementById(`eo${i}`).textContent=`Engine ${i+1} error: ${e.message}`;
@@ -294,6 +294,47 @@ function setEng(i,s){
   c.className=`eng-card-status status-${s==='done'?'done':s==='running'?'run':'idle'}`;c.textContent=b.textContent;
 }
 
+function escapeHtml(s){
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function renderEngineOutput(text){
+  const clean=text.replace(/\n?KPI_JSON:\s*\{[^}]*\}\s*$/i,'').trim();
+  let html=escapeHtml(clean);
+  html=html.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
+  html=html.replace(/^▸\s*(.+)$/gm,'<div style="margin:4px 0">▸ $1</div>');
+  html=html.replace(/^(\d+)\.\s+(.+)$/gm,'<div style="margin:4px 0 4px 8px"><strong>$1.</strong> $2</div>');
+  html=html.replace(/\n{2,}/g,'<br><br>').replace(/\n/g,'<br>');
+  return html;
+}
+
+function parseDecisionActions(text){
+  const startIdx=text.search(/DECISIONS REQUIRED/i);
+  if(startIdx===-1)return null;
+  let block=text.slice(startIdx);
+  const nextSection=block.slice(20).search(/\n\s*▸/);
+  if(nextSection!==-1)block=block.slice(0,nextSection+20);
+
+  const lineRe=/(\d+)\.\s*([^\n·]+?)\s*·\s*Owner:\s*([^·\n]+?)(?:\s*·\s*Deadline:\s*([^·\n]+?))?(?:\s*·\s*(?:Cost|Budget):\s*\$?([^\n]+))?\s*(?=\n|$)/gi;
+  const defaultLabels=['authorize','escalate','review','authorize'];
+  const results=[];
+  let m;
+  while((m=lineRe.exec(block))!==null){
+    let decisionText=m[2].trim();
+    const labelMatch=decisionText.match(/^(authorize|escalate|review)\b[:\-]?\s*/i);
+    const label=labelMatch?labelMatch[1].toLowerCase():(defaultLabels[results.length]||'review');
+    if(labelMatch)decisionText=decisionText.slice(labelMatch[0].length).trim();
+    results.push({
+      rank:Number(m[1]),
+      label,
+      text:decisionText,
+      owner:(m[3]||'Unassigned').trim(),
+      deadline:(m[4]||'TBD').trim(),
+    });
+  }
+  return results.length?results:null;
+}
+
 function parseKpiJson(text){
   const m=text.match(/KPI_JSON:\s*(\{.*\})\s*$/);
   if(!m)return null;
@@ -311,6 +352,7 @@ function extractExposureKPI(text){
   }
   const m=text.match(/\$[\d,.]+(?:\s*[-–]\s*\$[\d,.]+)?/);
   document.getElementById('kpiExposure').textContent=m?m[0].slice(0,14):'N/A';
+  sessionData.kpis.exposure={raw:m?m[0]:null,source:'regex-fallback'};
 }
 
 function extractBufferKPI(text){
@@ -322,6 +364,7 @@ function extractBufferKPI(text){
   }
   const m=text.match(/(\d+)\s*days?/i);
   document.getElementById('kpiBuffer').textContent=m?m[0]:'N/A';
+  sessionData.kpis.buffer={raw:m?m[0]:null,source:'regex-fallback'};
 }
 
 function extractOrdersKPI(text){
@@ -333,16 +376,19 @@ function extractOrdersKPI(text){
   }
   const m=text.match(/(\d+)\s*orders?/i);
   document.getElementById('kpiOrders').textContent=m?m[1]+' orders':'N/A';
+  sessionData.kpis.orders={raw:m?m[1]:null,source:'regex-fallback'};
 }
  
-function buildActions(){
+function buildActions(text){
   document.getElementById('actionPanel').style.display='block';
-  const actions=[
+  const fallback=[
     {rank:1,label:'authorize',text:'Engage alternate supplier immediately — issue emergency PO to cover critical parts gap',owner:'Procurement Director',deadline:'0–24 hrs'},
     {rank:2,label:'escalate',text:'Pause non-critical production orders — conserve inventory for priority customer commitments',owner:'Operations VP',deadline:'24–48 hrs'},
     {rank:3,label:'review',text:'Notify at-risk customers of potential delay — assess penalty exposure and negotiate timeline',owner:'Supply Chain',deadline:'24–48 hrs'},
     {rank:4,label:'authorize',text:'Expedite freight for critical in-transit inventory — activate premium logistics if needed',owner:'Logistics',deadline:'48–72 hrs'},
   ];
+  const actions=(text?parseDecisionActions(text):null)||fallback;
+  sessionData.kpis.actions={parsed: !!(text&&parseDecisionActions(text))};
   document.getElementById('actionList').innerHTML=actions.map(a=>`
     <div class="action-item">
       <div class="action-rank">${a.rank}</div>
@@ -353,7 +399,7 @@ function buildActions(){
 }
  
 async function callAPI(prompt){
-  const res=await fetch('/api/war-room/stream',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'openai/gpt-oss-120b',max_tokens:800,messages:[{role:'system',content:'You are a supply chain disruption intelligence engine for TSM Command. Expert in supplier risk, inventory management, alternate sourcing, and executive decision support. Be specific with dollar amounts and timelines.'},{role:'user',content:prompt}]})});
+  const res=await fetch('/api/war-room/stream',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'openai/gpt-oss-120b',max_tokens:400,messages:[{role:'system',content:'You are a supply chain disruption intelligence engine for TSM Command. Expert in supplier risk, inventory management, alternate sourcing, and executive decision support. Be specific with dollar amounts and timelines.'},{role:'user',content:prompt}]})});
   if(!res.ok){throw new Error(`API returned ${res.status} ${res.statusText}`);}
   if(res.headers.get('content-type')?.includes('text/event-stream')){
     const reader=res.body.getReader();const dec=new TextDecoder();let out='';
