@@ -1,0 +1,90 @@
+From 0e9db1fbd5d4f17f0f4a3058aad83b991a027d91 Mon Sep 17 00:00:00 2001
+From: "Claude (via Latorrey Whitehead)" <claude@anthropic.local>
+Date: Sat, 4 Jul 2026 15:03:13 +0000
+Subject: [PATCH] Add Strategist quick-link to landing page cards; drop dead
+ relay script includes
+
+- renderCard() now emits a Strategist -> button when phases.json lists a
+  *-strategist.html module for that phase, so the now-real strategist/exec
+  dashboards are one click away instead of buried behind the war room's own
+  internal nav
+- verified all 10 touched phases resolve to real files via phases.json
+- removed the unused relay.core.js / tsm-relay-core.js script includes from
+  index.html -- this page is a static landing page, it never calls
+  TSM.relay.* or writeRelay(), those tags were dead weight
+- confirmed html/war-rooms/index.html is the file actually served (both /
+  and /html static mounts point at the html/ dir per server.js); the
+  duplicate at repo-root war-rooms/index.html is not mounted anywhere and
+  appears to be dead/orphaned -- left untouched, flagging for cleanup
+---
+ html/war-rooms/index.html | 17 ++++++++++++-----
+ 1 file changed, 12 insertions(+), 5 deletions(-)
+
+diff --git a/html/war-rooms/index.html b/html/war-rooms/index.html
+index 4dddfbfe..de23af2f 100644
+--- a/html/war-rooms/index.html
++++ b/html/war-rooms/index.html
+@@ -1,7 +1,6 @@
+ <!DOCTYPE html>
+ <html lang="en">
+ <head>
+-    <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>TSM — Enterprise Operations Studio</title>
+@@ -103,7 +102,7 @@
+   .progress-pct { font-size: 10px; color: var(--text3); min-width: 30px; text-align: right; }
+ 
+   .card-actions { display: flex; gap: .5rem; margin-top: .2rem; }
+-  .launch-btn, .arch-btn {
++  .launch-btn, .arch-btn, .strategist-btn {
+     flex: 1;
+     text-align: center;
+     font-size: 10.5px;
+@@ -118,6 +117,8 @@
+   .launch-btn:hover { background: rgba(0,212,170,.16); }
+   .arch-btn { background: transparent; border: 1px solid var(--border); color: var(--text2); }
+   .arch-btn:hover { border-color: var(--cyan-dim); color: var(--cyan); }
++  .strategist-btn { background: rgba(0,212,212,.08); border: 1px solid var(--cyan-dim); color: var(--cyan); }
++  .strategist-btn:hover { background: rgba(0,212,212,.16); }
+ 
+   .empty-state { text-align: center; padding: 4rem 2rem; color: var(--text3); font-size: 12px; }
+ 
+@@ -144,9 +145,7 @@
+   .module-list { list-style: none; }
+   .module-list li { font-size: 11px; color: var(--text2); padding: 3px 0; font-family: var(--mono); }
+   .module-list li::before { content: '› '; color: var(--cyan-dim); }
+-</style>
+-<script src="/html/core/tsm-relay-core.js"></script>
+-</head>
++</style></head>
+ <body>
+ 
+ <header>
+@@ -231,9 +230,16 @@ function entryUrl(phase){
+   return url.startsWith('/') ? url : '/' + url;
+ }
+ 
++function strategistUrl(phase){
++  const m = (phase.modules || []).find(m => m.endsWith('-strategist.html'));
++  if(!m) return null;
++  return m.startsWith('/') ? m : '/' + m;
++}
++
+ function renderCard(phase){
+   const pct = phase.progress != null ? phase.progress : 0;
+   const statusClass = phase.status === 'active' ? 'active' : 'planned';
++  const stratUrl = strategistUrl(phase);
+   return `
+     <div class="card" data-phase="${phase.id}">
+       <div class="card-top">
+@@ -247,6 +253,7 @@ function renderCard(phase){
+       </div>
+       <div class="card-actions">
+         <a class="launch-btn" href="${entryUrl(phase)}" target="_blank">Launch →</a>
++        ${stratUrl ? `<a class="strategist-btn" href="${stratUrl}" target="_blank">Strategist →</a>` : ''}
+         <button class="arch-btn" data-open="${phase.id}">Architecture</button>
+       </div>
+     </div>`;
+-- 
+2.43.0
