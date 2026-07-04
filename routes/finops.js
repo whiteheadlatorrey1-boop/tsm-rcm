@@ -108,34 +108,44 @@ This is staff-accountant workload converted into a visible operating system befo
 // Processes docs in-session and pushes to FinOps Main
 // =====================================================
 const multer = require('multer');
+const { PDFParse } = require('pdf-parse');
+const mammoth = require('mammoth');
+const XLSX = require('xlsx');
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 8 * 1024 * 1024 }
 });
 
-function safeTextFromBuffer(file){
+async function safeTextFromBuffer(file){
   const name = (file.originalname || 'uploaded-document').toLowerCase();
   const raw = file.buffer || Buffer.from('');
   let text = '';
 
-  if(name.endsWith('.txt') || name.endsWith('.csv') || name.endsWith('.md') || name.endsWith('.json')){
-    text = raw.toString('utf8');
-  }else{
-    // Demo-safe fallback for PDFs/images/xlsx/docx without parser dependencies.
-    text = `Uploaded file: ${file.originalname}
-Mime type: ${file.mimetype}
-Size: ${file.size} bytes
-
-Document structure normalized for demo analysis.
-Recommended document categories:
-- Bank reconciliation
-- AP aging
-- AR ledger
-- Financial statement package
-- Budget variance
-- GL detail
-- 1099 / W-9 tracker
-- Audit findings`;
+  try {
+    if (name.endsWith('.txt') || name.endsWith('.csv') || name.endsWith('.md') || name.endsWith('.json')) {
+      text = raw.toString('utf8');
+    } else if (name.endsWith('.pdf')) {
+      const parser = new PDFParse({ data: raw });
+      try {
+        const result = await parser.getText();
+        text = result.text || '';
+      } finally {
+        await parser.destroy();
+      }
+    } else if (name.endsWith('.docx')) {
+      const result = await mammoth.extractRawText({ buffer: raw });
+      text = result.value || '';
+    } else if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
+      const workbook = XLSX.read(raw, { type: 'buffer' });
+      text = workbook.SheetNames.map(sheetName =>
+        XLSX.utils.sheet_to_csv(workbook.Sheets[sheetName])
+      ).join('\n\n');
+    } else {
+      text = '';
+    }
+  } catch (err) {
+    console.error(`safeTextFromBuffer failed for ${file.originalname}:`, err.message);
+    text = '';
   }
 
   return String(text || '').slice(0, 6000);
@@ -156,7 +166,7 @@ function classifyFinopsDoc(text){
 
 // File types where safeTextFromBuffer() returns REAL file content, not
 // placeholder boilerplate. Extraction must only ever run against these.
-const REAL_TEXT_EXTENSIONS = ['.txt', '.csv', '.md', '.json'];
+const REAL_TEXT_EXTENSIONS = ['.txt', '.csv', '.md', '.json', '.pdf', '.docx', '.xlsx', '.xls'];
 function hasRealTextContent(filename){
   const name = (filename || '').toLowerCase();
   return REAL_TEXT_EXTENSIONS.some(ext => name.endsWith(ext));
@@ -169,7 +179,7 @@ router.post('/api/finops/upload-doc', upload.single('file'), async (req,res)=>{
       return res.status(400).json({ok:false,error:'No file uploaded'});
     }
 
-    const text = safeTextFromBuffer(file);
+    const text = await safeTextFromBuffer(file);
     const docType = classifyFinopsDoc(text);
 
     // Only attempt structured extraction on file types where `text` is
