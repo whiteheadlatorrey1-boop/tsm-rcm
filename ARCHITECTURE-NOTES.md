@@ -26,11 +26,14 @@ a `../../` relative path resolves to — silently swapping audit-only behavior f
 active write-blocking behavior. No error at move time; the error (if any) surfaces
 later, live, when a relay write happens to hit a blocked key pattern.
 
-**Decision needed (post-Monday):** pick ONE canonical enforcer. Given the relay
-firewall is what the "Relay compliance passed" git hook is presumably built around,
-the firewall version (`html/core/tsm-enforcer.js`) is likely the intended canonical
-one — but confirm before deleting the audit version, in case anything depends on
-its console health-score output for monitoring.
+**RESOLVED (2026-07-04):** Canonical is `html/core/tsm-enforcer.js` (the firewall).
+Evidence: `TSM_ENFORCER.*` from the repo-root audit version has zero external
+callers anywhere in the repo — nothing calls `.audit()` or `.autoHeal()` except
+the file itself on load. Self-contained, orphaned, dead code. The firewall
+behavior (`BLOCKED RELAY WRITE`) is referenced by two toolchain scripts —
+`tsm_full_kernel_lock.sh` and `tsm_quantum_lock_apply_FIXED.sh` — meaning
+something was actually built expecting that enforcement to exist. Repo-root
+audit version is safe to retire post-Monday.
 
 ---
 
@@ -45,6 +48,41 @@ its console health-score output for monitoring.
 (e.g. reading `.payload`) silently gets `undefined` if the other kernel loaded
 instead. This is a data-shape mismatch, not just a naming one, so it won't throw —
 it'll just quietly not work.
+
+**RESOLVED (2026-07-04) — see section 2b below for the full usage-audit
+writeup.** Canonical is `/core/tsm-kernel.js` (repo root) — the opposite
+directory from the enforcer decision above. Don't assume the two pair up.
+
+---
+
+## 2b. Kernel decision — usage audit detail (2026-07-04)
+
+Canonical: `/core/tsm-kernel.js` (repo root). Evidence: all 219 real callers of
+`TSM_KERNEL.*` that load an actual kernel script load this file — 132 via
+absolute path (`/core/tsm-kernel.js`), 67 via relative (`../../core/tsm-kernel.js`).
+Zero callers load `/html/core/tsm-kernel.js`. Shape in use everywhere:
+`{ timestamp, vertical, payload }`, read via `.payload`, plus `listRelays()`.
+
+Note this is the OPPOSITE directory from the enforcer canonical (`html/core/`) —
+the two decisions don't pair up by folder. Don't assume symmetry when migrating
+to absolute paths.
+
+Also found during the audit, not previously tracked:
+- `public/js/tsm-kernel-v2.js` — third kernel variant, own shim shape
+  (`setDoc`/`getDoc`, internal `p.kpis`/`p.relay`). Zero HTML files reference it.
+  Fully orphaned, safe to delete same pass as the root-level `tsm-enforcer.js`.
+- `tsmWriteRelay(payload){ TSM_KERNEL.setRelay(...) }` is pasted verbatim into
+  6 executive-portal pages (bpo, construction, finops, legal-pro, tsm-insurance,
+  healthcare) plus `construction-hub.html` and `construction-war-room.html`.
+  None of these 8 pages load `/core/tsm-kernel.js` — only `tsm-kernel-upgrade.js`,
+  which patches `TSMEventBus` and never defines `window.TSM_KERNEL`. Confirmed
+  `tsmWriteRelay()` is never called in any of the 8 files, so this is dead code,
+  not a live runtime error — but it reads as functional to anyone grepping the
+  repo. Delete or rewire during consolidation.
+- `tsm-kernel-upgrade.js` is a naming trap: despite the name, it is NOT a kernel
+  variant at all. It only patches `TSMEventBus.emit`. Pages that load it also
+  separately load the real `/core/tsm-kernel.js` — confirmed on bpo, legal-pro,
+  and finops-suite war rooms.
 
 ---
 
@@ -72,17 +110,28 @@ one source — worth a straight audit pass post-Monday.
 
 ---
 
+## Demo-safety check (2026-07-04)
+
+Confirmed none of the three demo-critical incident pages (`html/cyber-incident.html`,
+`html/plant-incident.html`, `html/supplier-shutdown.html`) reference `TSM_KERNEL.`
+or `TSM_ENFORCER.` at all. Sections 1 and 2 above do not affect Monday's demo.
+
+---
+
 ## Recommended order for the post-Monday consolidation pass
 
-1. Decide canonical enforcer + kernel (likely the `html/core/` versions, matching
-   the compliance-hook direction), migrate legacy verticals to load them
-   explicitly by absolute path (`/html/core/tsm-enforcer.js`), not by relative
-   `../../` — removes path-depth fragility entirely regardless of file location.
-2. Once absolute paths are in place everywhere, physically consolidating
+1. Canonical files are now decided: enforcer = `html/core/tsm-enforcer.js`,
+   kernel = `/core/tsm-kernel.js` (note: different directories from each other).
+   Migrate legacy verticals to load both explicitly by absolute path, not by
+   relative `../../` — removes path-depth fragility entirely regardless of
+   file location.
+2. Delete confirmed dead code: repo-root `tsm-enforcer.js`, `tsm-kernel-v2.js`,
+   and the orphaned `tsmWriteRelay()` blocks in the 8 executive-portal/hub pages.
+3. Once absolute paths are in place everywhere, physically consolidating
    directories becomes low-risk, because no path depends on folder depth anymore.
-3. Then resolve the `bpo` duplication and reconcile `war-room-prep.html` links
+4. Then resolve the `bpo` duplication and reconcile `war-room-prep.html` links
    to point at the canonical `html/war-rooms/` locations.
-4. Then, and only then, is a physical folder move actually safe.
+5. Then, and only then, is a physical folder move actually safe.
 
 This order matters: fixing the path-fragility first is what makes the folder
 move safe later, rather than the other way around.
