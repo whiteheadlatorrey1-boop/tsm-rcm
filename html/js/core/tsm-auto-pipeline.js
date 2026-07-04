@@ -22,13 +22,13 @@ window.TSMEventBus = window.TSMEventBus || {
   'use strict';
 
   const RELAY_REGISTRY = {
-    healthcare:   { keys: ['TSM_HC_WAR_RELAY','tsm_hc_war_relay'],                      entryFn: 'runPipeline',    strategistPath: '/healthcare/hc-main-strategist/' },
+    healthcare:   { keys: ['TSM_HC_WAR_RELAY','tsm_hc_war_relay','tsm_war_relay_healthcare'], entryFn: 'runPipeline',    strategistPath: '/healthcare/hc-main-strategist/' },
     finops:       { keys: ['tsm_war_relay_finops-suite','TSM_FINOPS_WAR_RELAY'],         entryFn: 'generateReport', strategistPath: '/finops-suite/finops-main-strategist.html' },
     insurance:    { keys: ['TSM_INS_WAR_RELAY','tsm_ins_war_relay'],                     entryFn: 'runStrategist',  strategistPath: '/tsm-insurance/insurance-strategist.html' },
     construction: { keys: ['TSM_CONSTRUCTION_WAR_RELAY','tsm_construction_war_relay'],   entryFn: 'runBNCA',        strategistPath: '/construction-suite/construction-strategist.html' },
     legal:        { keys: ['TSM_LEGAL_WAR_RELAY','tsm_legal_war_relay'],                 entryFn: 'runSynthesis',   strategistPath: '/legal-pro/legal-main-strategist.html' },
     realestate:   { keys: ['TSM_RE_WAR_RELAY','tsm_re_war_relay'],                       entryFn: 'runStrategist',  strategistPath: '/reo-pro/re-strategist.html' },
-    bpo:          { keys: ['TSM_BPO_WAR_RELAY','tsm_bpo_war_relay'],                     entryFn: 'runStrategist',  strategistPath: '/bpo/bpo-strategist-v2.html' },
+    bpo:          { keys: ['TSM_BPO_WAR_RELAY','tsm_bpo_war_relay','tsm_war_relay_bpo'], entryFn: 'runStrategist',  strategistPath: '/bpo/bpo-strategist-v2.html' },
 
     /* Added: verticals that exist in server.js (SP.cpq / SP.o2c / SP.crm / SP.approval /
        SP.mdm / SP.integration / SP.governance / SP.digital_twin) but were never wired
@@ -63,7 +63,19 @@ window.TSMEventBus = window.TSMEventBus || {
   function readRelay(keys) {
     for (const k of keys) {
       const v = sessionStorage.getItem(k) || localStorage.getItem(k);
-      if (v) { try { return JSON.parse(v); } catch { return null; } }
+      if (v) {
+        try {
+          const parsed = JSON.parse(v);
+          /* TSM_KERNEL.setRelay(vertical, payload) stores { ts, v, p } where
+             p is itself a JSON string (the caller already stringified the
+             payload before handing it to the kernel). Unwrap that one level
+             so callers always get the real relay object, not the envelope. */
+          if (parsed && typeof parsed === 'object' && 'p' in parsed && typeof parsed.p === 'string') {
+            try { return JSON.parse(parsed.p); } catch { return parsed; }
+          }
+          return parsed;
+        } catch { return null; }
+      }
     }
     return null;
   }
