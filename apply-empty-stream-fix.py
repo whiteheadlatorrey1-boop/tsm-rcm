@@ -1,48 +1,45 @@
 path = "server.js"
 with open(path, "r", encoding="utf-8") as f:
-    content = f.read()
-changed = False
-old = """app.post('/api/war-room/stream', async (req, res) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    lines = f.readlines()
 
-  const { model, messages, max_tokens, temperature } = req.body;
-  if (!Array.isArray(messages) || !messages.length) return res.status(400).json({ error: 'Missing messages' });
+start_marker = "app.post('/api/war-room/stream'"
+start_idx = None
+for i, line in enumerate(lines):
+    if start_marker in line:
+        if start_idx is not None:
+            print(f"FAIL: multiple occurrences of {start_marker} found (lines {start_idx+1} and {i+1}). Aborting.")
+            raise SystemExit(1)
+        start_idx = i
 
-  const groqKey = process.env.GROQ_KEY || process.env.GROQ_API_KEY;
-  if (!groqKey) return res.status(500).json({ error: 'GROQ_KEY not configured on server.' });
+if start_idx is None:
+    print(f"FAIL: could not find route start marker: {start_marker}")
+    raise SystemExit(1)
 
-  try {
-    const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + groqKey
-      },
-      body: JSON.stringify({
-        model: model || 'openai/gpt-oss-120b',
-        stream: true,
-        max_tokens: max_tokens || 600,
-        temperature: temperature ?? 0.4,
-        messages
-      })
-    });
+end_idx = None
+for j in range(start_idx + 1, len(lines)):
+    if lines[j].rstrip('\n') == "});":
+        end_idx = j
+        break
 
-    if (!groqRes.ok) {
-      const err = await groqRes.json().catch(() => ({}));
-      return res.status(502).json({ error: err.error?.message || 'Groq error' });
-    }
+if end_idx is None:
+    print("FAIL: could not find matching top-level closing '});' for the route. Aborting.")
+    raise SystemExit(1)
 
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    const { Readable } = require('stream');
-    Readable.fromWeb(groqRes.body).pipe(res);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});"""
-new = """app.post('/api/war-room/stream', async (req, res) => {
+old_block = "".join(lines[start_idx:end_idx + 1])
+
+required_markers = ["groqKey", "fetch('https://api.groq.com", "Readable.fromWeb", "stream: true"]
+missing = [m for m in required_markers if m not in old_block]
+if missing:
+    print(f"FAIL: extracted block missing expected markers {missing}. Not safe to replace. Aborting.")
+    print("----- extracted block for manual review -----")
+    print(old_block)
+    raise SystemExit(1)
+
+if "maxEmptyRetries" in old_block:
+    print("SKIP: empty-stream fix already applied")
+    raise SystemExit(0)
+
+new_block = """app.post('/api/war-room/stream', async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
@@ -69,6 +66,7 @@ new = """app.post('/api/war-room/stream', async (req, res) => {
     });
     if (!groqRes.ok) {
       const err = await groqRes.json().catch(() => ({}));
+      console.error('Groq error response:', JSON.stringify(err));
       const e = new Error(err.error?.message || 'Groq error');
       e.status = 502;
       throw e;
@@ -122,18 +120,12 @@ new = """app.post('/api/war-room/stream', async (req, res) => {
   } catch (e) {
     res.status(e.status || 500).json({ error: e.message });
   }
-});"""
-if new in content:
-    print("SKIP: empty-stream fix already applied")
-elif old in content:
-    content = content.replace(old, new, 1)
-    changed = True
-    print("OK: applied empty-stream detection and retry")
-else:
-    print("FAIL: exact block not found")
-if changed:
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(content)
-    print("File written.")
-else:
-    print("No changes written.")
+});
+"""
+
+new_lines = lines[:start_idx] + [new_block] + lines[end_idx + 1:]
+with open(path, "w", encoding="utf-8") as f:
+    f.writelines(new_lines)
+
+print(f"OK: replaced route spanning original lines {start_idx+1}-{end_idx+1}")
+print("File written.")
