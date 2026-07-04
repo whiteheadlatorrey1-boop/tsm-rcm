@@ -1,0 +1,117 @@
+From fd470d6f4deee5cfd3ddc1a9f9307371192de5cf Mon Sep 17 00:00:00 2001
+From: DevShon1976 <devshon1976@users.noreply.github.com>
+Date: Sat, 4 Jul 2026 20:42:06 +0000
+Subject: [PATCH] fix: correct stale entryPoint/strategistPath refs for cpq,
+ catalog, approval, digital-twin
+
+- architecture/kernel/phases.json: entryPoint for phase-3-cpq, phase-4-catalog,
+  phase-5-approvals pointed at stale flat html/*.html copies instead of the
+  canonical war-rooms/<vertical>/ files. This drove the hub's 'Launch ->'
+  button mismatch on /war-rooms/index.html. Now consistent with every other
+  phase.
+
+- html/js/core/tsm-auto-pipeline.js RELAY_REGISTRY: strategistPath for cpq and
+  approval had the same stale flat-path issue. digitaltwin's strategistPath
+  pointed at 'digital-twin-war-room.html', a filename that never existed
+  (actual file is digital-twin.html) - would have broken auto-pipeline
+  navigation for that vertical.
+
+- html/tsm-career-training-platform.html: HC Denial War Room card linked to
+  /html/healthcare/hc-war-room.html (404) instead of hc-denial-war-room.html.
+
+- Archived the unreachable, stale duplicate war-rooms/index.html at repo root
+  to _archive/dead-root-duplicates/. server.js only ever serves html/war-rooms/
+  at that route, so the root copy was dead code and a shadow-duplication trap.
+
+Reviewed, no changes needed:
+- html/war-rooms/war-room-prep.html: all 26 internal links resolve
+- html/music-command/index.html: all 12 nav-card links resolve
+---
+ .../war-rooms-index-STALE-UNREACHABLE.html           |  0
+ architecture/kernel/phases.json                      | 12 ++++++------
+ html/js/core/tsm-auto-pipeline.js                    |  6 +++---
+ html/tsm-career-training-platform.html               |  2 +-
+ 4 files changed, 10 insertions(+), 10 deletions(-)
+ rename war-rooms/index.html => _archive/dead-root-duplicates/war-rooms-index-STALE-UNREACHABLE.html (100%)
+
+diff --git a/war-rooms/index.html b/_archive/dead-root-duplicates/war-rooms-index-STALE-UNREACHABLE.html
+similarity index 100%
+rename from war-rooms/index.html
+rename to _archive/dead-root-duplicates/war-rooms-index-STALE-UNREACHABLE.html
+diff --git a/architecture/kernel/phases.json b/architecture/kernel/phases.json
+index 2b4a339a..10d90926 100644
+--- a/architecture/kernel/phases.json
++++ b/architecture/kernel/phases.json
+@@ -36,9 +36,9 @@
+       "category": "revenue-lifecycle",
+       "status": "active",
+       "progress": 70,
+-      "entryPoint": "html/cpq-war-room.html",
++      "entryPoint": "war-rooms/cpq/cpq-war-room.html",
+       "modules": [
+-        "html/cpq-war-room.html",
++        "war-rooms/cpq/cpq-war-room.html",
+         "html/war-rooms/cpq/services/cpq-engine.js",
+         "html/war-rooms/cpq/data/cpq-model.json"
+       ],
+@@ -50,9 +50,9 @@
+       "category": "product-data",
+       "status": "active",
+       "progress": 70,
+-      "entryPoint": "html/catalog-war-room.html",
++      "entryPoint": "war-rooms/catalog/catalog-war-room.html",
+       "modules": [
+-        "html/catalog-war-room.html",
++        "war-rooms/catalog/catalog-war-room.html",
+         "html/war-rooms/catalog/services/catalog-engine.js"
+       ],
+       "verified": "2026-07-01: live, 10 SKUs loaded, AI catalog analysis functional"
+@@ -63,9 +63,9 @@
+       "category": "governance",
+       "status": "active",
+       "progress": 70,
+-      "entryPoint": "html/approval-war-room.html",
++      "entryPoint": "war-rooms/approval/approval-war-room.html",
+       "modules": [
+-        "html/approval-war-room.html",
++        "war-rooms/approval/approval-war-room.html",
+         "html/services/approval-engine.js"
+       ],
+       "verified": "2026-07-01: live, 12 requests loaded, delegation/escalation + AI recommendations functional"
+diff --git a/html/js/core/tsm-auto-pipeline.js b/html/js/core/tsm-auto-pipeline.js
+index acbe9d36..e90dc802 100644
+--- a/html/js/core/tsm-auto-pipeline.js
++++ b/html/js/core/tsm-auto-pipeline.js
+@@ -33,14 +33,14 @@ window.TSMEventBus = window.TSMEventBus || {
+     /* Added: verticals that exist in server.js (SP.cpq / SP.o2c / SP.crm / SP.approval /
+        SP.mdm / SP.integration / SP.governance / SP.digital_twin) but were never wired
+        into the pipeline engine because it was never actually loading. */
+-    cpq:          { keys: ['TSM_CPQ_WAR_RELAY','tsm_cpq_war_relay'],                     entryFn: 'runStrategist',  strategistPath: '/cpq-war-room.html' },
++    cpq:          { keys: ['TSM_CPQ_WAR_RELAY','tsm_cpq_war_relay'],                     entryFn: 'runStrategist',  strategistPath: '/war-rooms/cpq/cpq-war-room.html' },
+     o2c:          { keys: ['TSM_O2C_WAR_RELAY','tsm_o2c_war_relay'],                     entryFn: 'runStrategist',  strategistPath: '/war-rooms/o2c/o2c-war-room.html' },
+     crm:          { keys: ['TSM_CRM_WAR_RELAY','tsm_crm_war_relay'],                     entryFn: 'runStrategist',  strategistPath: '/war-rooms/crm/crm-war-room.html' },
+-    approval:     { keys: ['TSM_APPROVAL_WAR_RELAY','tsm_approval_war_relay'],           entryFn: 'runStrategist',  strategistPath: '/approval-war-room.html' },
++    approval:     { keys: ['TSM_APPROVAL_WAR_RELAY','tsm_approval_war_relay'],           entryFn: 'runStrategist',  strategistPath: '/war-rooms/approval/approval-war-room.html' },
+     mdm:          { keys: ['TSM_MDM_WAR_RELAY','tsm_mdm_war_relay'],                     entryFn: 'runStrategist',  strategistPath: '/war-rooms/mdm/mdm-war-room.html' },
+     integration:  { keys: ['TSM_INTEGRATION_WAR_RELAY','tsm_integration_war_relay'],     entryFn: 'runStrategist',  strategistPath: '/war-rooms/integration-hub/integration-hub.html' },
+     governance:   { keys: ['TSM_GOVERNANCE_WAR_RELAY','tsm_governance_war_relay'],       entryFn: 'runStrategist',  strategistPath: '/war-rooms/governance/governance-war-room.html' },
+-    digitaltwin:  { keys: ['TSM_DIGITALTWIN_WAR_RELAY','tsm_digitaltwin_war_relay'],     entryFn: 'runStrategist',  strategistPath: '/war-rooms/digital-twin/digital-twin-war-room.html' },
++    digitaltwin:  { keys: ['TSM_DIGITALTWIN_WAR_RELAY','tsm_digitaltwin_war_relay'],     entryFn: 'runStrategist',  strategistPath: '/war-rooms/digital-twin/digital-twin.html' },
+   };
+ 
+   const State = {
+diff --git a/html/tsm-career-training-platform.html b/html/tsm-career-training-platform.html
+index d7fb5135..e9cf37dc 100644
+--- a/html/tsm-career-training-platform.html
++++ b/html/tsm-career-training-platform.html
+@@ -1376,7 +1376,7 @@ nav {
+       <div class="app-desc">Real-world RCM scenarios: CO-50 denials, prior auth disputes, ERA/835 reconciliation, timely filing exceptions. Each scenario maps to a CRCR exam domain.</div>
+       <div class="app-metrics"><span class="app-metric">Format: <span>Scenario-based</span></span><span class="app-metric">Domains: <span>All 6 CRCR domains</span></span></div>
+     </a>
+-    <a class="app-card" href="/html/healthcare/hc-war-room.html" target="_blank">
++    <a class="app-card" href="/html/healthcare/hc-denial-war-room.html" target="_blank">
+       <div class="app-card-top"><div class="app-name">HC Denial War Room</div><span class="app-tag tag-ot">ON-THE-JOB</span></div>
+       <div class="app-desc">Live denial triage, remediation path generation, and HC node routing. Trained candidates use this on actual claims from Day 1 — not a training simulation.</div>
+       <div class="app-metrics"><span class="app-metric">Format: <span>Live operational tool</span></span><span class="app-metric">Integration: <span>All 11 HC nodes</span></span></div>
+-- 
+2.43.0
