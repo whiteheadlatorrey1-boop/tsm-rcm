@@ -108,7 +108,7 @@ This is staff-accountant workload converted into a visible operating system befo
 // Processes docs in-session and pushes to FinOps Main
 // =====================================================
 const multer = require('multer');
-const pdfParse = require('pdf-parse');
+const { PDFParse } = require('pdf-parse');
 const mammoth = require('mammoth');
 const XLSX = require('xlsx');
 const upload = multer({
@@ -125,8 +125,13 @@ async function safeTextFromBuffer(file){
     if (name.endsWith('.txt') || name.endsWith('.csv') || name.endsWith('.md') || name.endsWith('.json')) {
       text = raw.toString('utf8');
     } else if (name.endsWith('.pdf')) {
-      const data = await pdfParse(raw);
-      text = data.text || '';
+      const parser = new PDFParse({ data: raw });
+      try {
+        const result = await parser.getText();
+        text = result.text || '';
+      } finally {
+        await parser.destroy();
+      }
     } else if (name.endsWith('.docx')) {
       const result = await mammoth.extractRawText({ buffer: raw });
       text = result.value || '';
