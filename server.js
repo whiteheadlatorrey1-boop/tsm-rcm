@@ -400,7 +400,7 @@ app.post('/api/war-room/stream', async (req, res) => {
   const groqKey = process.env.GROQ_KEY || process.env.GROQ_API_KEY;
   if (!groqKey) return res.status(500).json({ error: 'GROQ_KEY not configured on server.' });
 
-  async function fetchGroqStream() {
+  async function fetchGroqStream(retriesLeft = 3) {
     const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -418,8 +418,21 @@ app.post('/api/war-room/stream', async (req, res) => {
     if (!groqRes.ok) {
       const err = await groqRes.json().catch(() => ({}));
       console.error('Groq error response:', JSON.stringify(err));
+
+      // Groq's TPM rate limit is transient and self-clears within seconds.
+      // Retry automatically (honoring the wait time Groq reports) instead of
+      // failing the whole engine run on a momentary cap — this is what was
+      // surfacing as opaque "502" errors on engines fired in quick succession.
+      if (groqRes.status === 429 && retriesLeft > 0) {
+        const waitMatch = /try again in ([\d.]+)s/i.exec(err.error?.message || '');
+        const waitMs = waitMatch ? Math.ceil(parseFloat(waitMatch[1]) * 1000) + 250 : 3000;
+        console.warn(`[war-room/stream] Rate limited, retrying in ${waitMs}ms (${retriesLeft} retries left)`);
+        await new Promise(r => setTimeout(r, waitMs));
+        return fetchGroqStream(retriesLeft - 1);
+      }
+
       const e = new Error(err.error?.message || 'Groq error');
-      e.status = 502;
+      e.status = groqRes.status === 429 ? 429 : 502;
       throw e;
     }
     return groqRes;
