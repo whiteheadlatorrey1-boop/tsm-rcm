@@ -44,3 +44,4 @@ if changed:
     print("Fixed:", ", ".join(changed))
 else:
     print("Nothing to fix -- entryPoints already correct (double-check before committing).")
+    
