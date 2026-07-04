@@ -380,6 +380,7 @@ app.post('/api/war-room/stream', async (req, res) => {
 
     if (!groqRes.ok) {
       const err = await groqRes.json().catch(() => ({}));
+      console.error('Groq error response:', JSON.stringify(err));
       return res.status(502).json({ error: err.error?.message || 'Groq error' });
     }
 
@@ -686,6 +687,10 @@ app.use(require('./routes/music'));
 
 // ── FINOPS ────────────────────────────────────────────────────────────────────
 app.post('/api/finops/bnca/report', (req, res) => res.json({ ok: true }));
+// routes/finops.js implements docs, run-doc, upload-doc (with field
+// extraction), report, multi-report, and actions endpoints. Mounted after
+// the inline handler above so that handler keeps precedence on any overlap.
+app.use(require('./routes/finops'));
 app.post('/api/chat', (req, res) => res.json({ ok: true }));
 
 // ── AI QUERY ROUTES ───────────────────────────────────────────────────────────

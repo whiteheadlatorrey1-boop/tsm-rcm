@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TSM · Honeywell Operations Strategist</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#050a0f;--bg2:#0a1020;--bg3:#0d1528;
+  --cyan:#00d4d4;--amber:#f5a623;--green:#22c55e;
+  --red:#ef4444;--purple:#a855f7;--blue:#3b82f6;
+  --orange:#f97316;--text:#e2e8f0;--muted:#64748b;--border:#1e293b;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;min-height:100vh;padding-bottom:60px;}
+
+.topbar{height:42px;background:#020810;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 20px;}
+.tb-brand{font-family:'Orbitron',sans-serif;font-size:.7rem;color:var(--cyan);letter-spacing:.15em;}
+.tb-time{font-family:'Orbitron',sans-serif;font-size:.75rem;color:var(--cyan);}
+
+.hdr{padding:18px 24px;border-bottom:1px solid var(--border);background:var(--bg2);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;}
+.hdr-title{font-family:'Orbitron',sans-serif;font-size:1rem;letter-spacing:.08em;color:var(--text);}
+.hdr-sub{font-family:'JetBrains Mono',monospace;font-size:.65rem;color:var(--muted);margin-top:4px;}
+.src-badge{font-family:'Orbitron',sans-serif;font-size:.6rem;letter-spacing:.1em;padding:5px 12px;border-radius:3px;border:1px solid var(--border);}
+.src-badge.plant{color:var(--orange);border-color:var(--orange);background:rgba(249,115,22,.08);}
+.src-badge.supplier{color:var(--amber);border-color:var(--amber);background:rgba(245,166,35,.08);}
+.src-badge.cyber{color:var(--cyan);border-color:var(--cyan);background:rgba(0,212,212,.08);}
+.hdr-btns{display:flex;gap:8px;flex-wrap:wrap;}
+.hbtn{background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:.62rem;padding:8px 14px;border-radius:4px;cursor:pointer;text-decoration:none;display:inline-block;}
+.hbtn:hover{border-color:var(--cyan);color:var(--cyan);}
+
+.wrap{max-width:1200px;margin:0 auto;padding:20px 24px;}
+
+.empty{text-align:center;padding:80px 20px;}
+.empty h2{font-family:'Orbitron',sans-serif;font-size:.9rem;color:var(--muted);letter-spacing:.08em;margin-bottom:14px;}
+.empty p{font-family:'JetBrains Mono',monospace;font-size:.7rem;color:var(--muted);margin-bottom:24px;}
+.empty-links{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;}
+
+.kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px;}
+.kpi{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:16px;text-align:center;}
+.kpi-val{font-family:'Orbitron',sans-serif;font-size:1.4rem;font-weight:700;color:var(--orange);}
+.kpi-val.red{color:var(--red);}.kpi-val.green{color:var(--green);}.kpi-val.cyan{color:var(--cyan);}.kpi-val.amber{color:var(--amber);}
+.kpi-lbl{font-size:.6rem;color:var(--muted);margin-top:6px;font-family:'JetBrains Mono',monospace;letter-spacing:.08em;}
+
+.sec{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:18px;margin-bottom:16px;}
+.sec-hdr{font-family:'Orbitron',sans-serif;font-size:.68rem;color:var(--cyan);letter-spacing:.12em;margin-bottom:14px;display:flex;align-items:center;gap:8px;}
+.sec-hdr::before{content:'◆';font-size:.55rem;}
+
+.bnca-box{background:rgba(0,212,212,.06);border:1px solid var(--cyan);border-radius:6px;padding:16px;margin-bottom:16px;}
+.bnca-lbl{font-family:'Orbitron',sans-serif;font-size:.6rem;color:var(--cyan);letter-spacing:.12em;margin-bottom:8px;}
+.bnca-text{font-size:.95rem;line-height:1.5;}
+
+.decision-row{display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid #0f1a2e;font-size:.85rem;}
+.decision-row:last-child{border-bottom:none;}
+.dbadge{font-family:'JetBrains Mono',monospace;font-size:.55rem;font-weight:700;padding:2px 8px;border-radius:10px;min-width:70px;text-align:center;flex-shrink:0;margin-top:2px;}
+.dbadge.authorize{background:rgba(34,197,94,.12);color:var(--green);border:1px solid var(--green);}
+.dbadge.escalate{background:rgba(239,68,68,.12);color:var(--red);border:1px solid var(--red);}
+.dbadge.review{background:rgba(245,166,35,.12);color:var(--amber);border:1px solid var(--amber);}
+
+.engines{display:flex;flex-direction:column;gap:8px;}
+.eng{background:var(--bg3);border:1px solid var(--border);border-radius:5px;overflow:hidden;}
+.eng-hdr{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;cursor:pointer;font-family:'JetBrains Mono',monospace;font-size:.68rem;}
+.eng-hdr:hover{background:rgba(0,212,212,.04);}
+.eng-num{color:var(--cyan);margin-right:8px;}
+.eng-toggle{color:var(--muted);font-size:.6rem;transition:transform .2s;}
+.eng-toggle.open{transform:rotate(90deg);}
+.eng-body{display:none;padding:0 14px 14px;white-space:pre-wrap;font-family:'JetBrains Mono',monospace;font-size:.72rem;line-height:1.6;color:#c8d4e0;border-top:1px solid var(--border);padding-top:12px;}
+.eng-body.open{display:block;}
+
+.doc-preview{font-family:'JetBrains Mono',monospace;font-size:.7rem;color:var(--muted);background:var(--bg3);border:1px solid var(--border);border-radius:5px;padding:12px;max-height:140px;overflow-y:auto;white-space:pre-wrap;line-height:1.5;}
+
+.meta-row{display:flex;gap:18px;flex-wrap:wrap;font-family:'JetBrains Mono',monospace;font-size:.6rem;color:var(--muted);}
+.meta-row span{color:var(--text);}
+
+.toast{position:fixed;bottom:20px;right:20px;background:var(--bg2);border:1px solid var(--cyan);color:var(--cyan);padding:10px 18px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:.65rem;opacity:0;pointer-events:none;transition:.3s;z-index:50;}
+.toast.show{opacity:1;transform:translateY(-4px);}
+</style>
+<script src="/html/core/tsm-relay-core.js"></script>
+
+</head>
+<body>
+
+<div class="topbar">
+  <span class="tb-brand">TSM · HONEYWELL OPERATIONS STRATEGIST</span>
+  <span class="tb-time" id="clock"></span>
+</div>
+
+<div class="hdr">
+  <div>
+    <div class="hdr-title" id="hdrTitle">OPERATIONS STRATEGIST</div>
+    <div class="hdr-sub" id="hdrSub">Awaiting relay from a Honeywell command center…</div>
+  </div>
+  <div class="hdr-btns">
+    <span class="src-badge" id="srcBadge" style="display:none;"></span>
+    <a class="hbtn" href="plant-incident.html">⚙ Plant Incident</a>
+    <a class="hbtn" href="supplier-shutdown.html">📦 Supplier Shutdown</a>
+    <a class="hbtn" href="cyber-incident.html">🛡 Cyber Incident</a>
+    <button class="hbtn" id="printBtn" onclick="window.print()">↓ Export</button>
+  </div>
+</div>
+
+<div class="wrap" id="wrap">
+  <!-- populated by JS -->
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+function tick(){document.getElementById('clock').textContent=new Date().toLocaleTimeString();}
+setInterval(tick,1000);tick();
+
+const RELAY_KEY = 'TSM_HONEYWELL_RELAY';
+
+const SOURCE_META = {
+  plant:    { label:'PLANT INCIDENT',    cls:'plant',    icon:'⚙', engines:['Incident Intel','Production Impact','Root Cause','Financial Exposure','Action Plan','Exec Dispatch'] },
+  supplier: { label:'SUPPLIER SHUTDOWN', cls:'supplier', icon:'📦', engines:['Incident Intel','Supply Impact','Root Cause','Financial Exposure','Action Plan','Exec Dispatch'] },
+  cyber:    { label:'CYBER INCIDENT',    cls:'cyber',    icon:'🛡', engines:['Incident Intel','Operational Impact','Attack Vector','Financial Exposure','Containment Plan','Exec Dispatch'] }
+};
+
+function showToast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(showToast._h);
+  showToast._h=setTimeout(()=>t.classList.remove('show'),2500);
+}
+
+function loadRelay(){
+  let raw = sessionStorage.getItem(RELAY_KEY) || localStorage.getItem(RELAY_KEY);
+  if(!raw) return null;
+  try { return JSON.parse(raw); } catch(e){ return null; }
+}
+
+function fmtMoney(n){ return '$'+Number(n).toLocaleString(); }
+
+function renderEmpty(){
+  document.getElementById('wrap').innerHTML = `
+    <div class="empty">
+      <h2>NO INCIDENT DATA RECEIVED</h2>
+      <p>Run an analysis in one of the Honeywell command centers, then relay it here.</p>
+      <div class="empty-links">
+        <a class="hbtn" href="plant-incident.html">⚙ Plant Incident Command</a>
+        <a class="hbtn" href="supplier-shutdown.html">📦 Supplier Shutdown Command</a>
+        <a class="hbtn" href="cyber-incident.html">🛡 Cyber Incident Command</a>
+      </div>
+    </div>`;
+}
+
+function extractBnca(execText){
+  if(!execText) return null;
+  const m = execText.match(/BNCA[^\n]*[—\-:]\s*([^\n]+)/i);
+  return m ? m[1].trim() : null;
+}
+
+function extractDecisions(execText){
+  if(!execText) return [];
+  const lines = execText.split('\n');
+  const out = [];
+  const labelRe = /(AUTHORIZE|ESCALATE|REVIEW)/i;
+  for(const line of lines){
+    const lm = line.match(labelRe);
+    if(lm && /^\s*\d+[\).]/.test(line.trim()) || (lm && line.includes('·'))){
+      out.push({ label: lm[1].toUpperCase(), text: line.replace(/^\s*\d+[\).]\s*/,'').trim() });
+    }
+  }
+  return out.slice(0,6);
+}
+
+function kpiTilesFor(source, kpis){
+  const tiles = [];
+  if(kpis.exposure){
+    const j = kpis.exposure;
+    const lo=j.totalExposureLow, hi=j.totalExposureHigh;
+    const val = (lo && hi && lo!==hi) ? `${fmtMoney(lo)}–${fmtMoney(hi)}` : fmtMoney(hi||lo||0);
+    tiles.push({ val, lbl:'$ EXPOSURE', cls:'red' });
+  }
+  if(kpis.risk && typeof kpis.risk.riskScore==='number'){
+    tiles.push({ val: kpis.risk.riskScore+'/100', lbl:'RISK SCORE', cls:'red' });
+  }
+  if(source==='plant' && kpis.downtime){
+    tiles.push({ val: kpis.downtime, lbl:'DOWNTIME EST', cls:'amber' });
+  }
+  if(source==='supplier' && kpis.buffer && typeof kpis.buffer.bufferDays==='number'){
+    tiles.push({ val: kpis.buffer.bufferDays+' days', lbl:'INVENTORY DAYS', cls:'amber' });
+  }
+  if(source==='supplier' && kpis.orders && typeof kpis.orders.ordersAtRisk==='number'){
+    tiles.push({ val: kpis.orders.ordersAtRisk, lbl:'ORDERS AT RISK', cls:'red' });
+  }
+  if(source==='cyber' && kpis.containment && kpis.containment.containmentEta){
+    tiles.push({ val: kpis.containment.containmentEta, lbl:'CONTAINMENT ETA', cls:'amber' });
+  }
+  return tiles;
+}
+
+function toggleEngine(i){
+  const body = document.getElementById(`ebody${i}`);
+  const tog = document.getElementById(`etog${i}`);
+  body.classList.toggle('open');
+  tog.classList.toggle('open');
+}
+window.toggleEngine = toggleEngine;
+
+function render(){
+  const data = loadRelay();
+  if(!data || !data.source || !data.outputs || !data.outputs.length){
+    renderEmpty();
+    return;
+  }
+  const meta = SOURCE_META[data.source] || { label:data.source.toUpperCase(), cls:'plant', icon:'●', engines:[] };
+
+  document.getElementById('hdrTitle').textContent = `${meta.icon} ${meta.label} STRATEGIST`;
+  document.getElementById('hdrSub').textContent = `Doc type: ${data.docType||'—'} · Relayed ${data.timestamp ? new Date(data.timestamp).toLocaleString() : '—'}`;
+  const badge = document.getElementById('srcBadge');
+  badge.style.display = 'inline-block';
+  badge.className = `src-badge ${meta.cls}`;
+  badge.textContent = meta.label;
+
+  const kpis = data.kpis || {};
+  const tiles = kpiTilesFor(data.source, kpis);
+  const execOut = data.outputs.find(o => /exec/i.test(o.title));
+  const bnca = extractBnca(execOut ? execOut.text : '');
+  const decisions = extractDecisions(execOut ? execOut.text : '');
+
+  let html = '';
+
+  if(tiles.length){
+    html += `<div class="kpi-row">` + tiles.map(t=>`
+      <div class="kpi"><div class="kpi-val ${t.cls}">${t.val}</div><div class="kpi-lbl">${t.lbl}</div></div>
+    `).join('') + `</div>`;
+  }
+
+  if(bnca){
+    html += `<div class="bnca-box"><div class="bnca-lbl">◆ BEST NEXT COURSE OF ACTION</div><div class="bnca-text">${escapeHtml(bnca)}</div></div>`;
+  }
+
+  if(decisions.length){
+    html += `<div class="sec"><div class="sec-hdr">DECISIONS REQUIRED</div>` +
+      decisions.map(d => `
+        <div class="decision-row">
+          <span class="dbadge ${d.label.toLowerCase()}">${d.label}</span>
+          <span>${escapeHtml(d.text)}</span>
+        </div>`).join('') +
+      `</div>`;
+  }
+
+  html += `<div class="sec">
+    <div class="sec-hdr">SOURCE DOCUMENT</div>
+    <div class="doc-preview">${escapeHtml(data.docText || '—')}</div>
+  </div>`;
+
+  html += `<div class="sec">
+    <div class="sec-hdr">SIX-ENGINE ANALYSIS</div>
+    <div class="engines">
+      ${data.outputs.map((o,i) => `
+        <div class="eng">
+          <div class="eng-hdr" onclick="toggleEngine(${i})">
+            <span><span class="eng-num">E${o.engine||i+1}</span>${escapeHtml(o.title||('Engine '+(i+1)))}</span>
+            <span class="eng-toggle" id="etog${i}">▶</span>
+          </div>
+          <div class="eng-body" id="ebody${i}">${escapeHtml(o.text||'')}</div>
+        </div>
+      `).join('')}
+    </div>
+  </div>`;
+
+  document.getElementById('wrap').innerHTML = html;
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+render();
+// Re-render if another Honeywell tool relays new data while this tab stays open
+window.addEventListener('storage', e => { if(e.key === RELAY_KEY) render(); });
+</script>
+</body>
+</html>

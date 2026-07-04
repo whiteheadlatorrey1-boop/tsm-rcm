@@ -286,7 +286,7 @@ setInterval(tick, 1000); tick();
 // ── CONFIG ────────────────────────────────────────────────────────────────────
 const INCIDENT_TYPE = 'plant';                 // identifies this tool's payload to downstream consumers
 const RELAY_KEY = 'TSM_HONEYWELL_RELAY';
-const STRATEGIST_URL = '/html/strategist.html'; // TODO: confirm actual strategist page path/filename
+const STRATEGIST_URL = '/html/war-rooms/honeywell-strategist.html';
 
 let docType = 'equipment_failure';
 let enginesComplete = 0;
@@ -320,7 +320,7 @@ function getPrompts(doc) {
 
     base + `ENGINE 05 — RANKED ACTION PLAN\nGenerate ranked response with owners and deadlines:\n1. IMMEDIATE (0-2 hours) — safety, containment, assessment\n2. SHORT-TERM (2-24 hours) — repair authorization, parts procurement, temporary workaround\n3. MEDIUM-TERM (1-7 days) — full restoration, root cause remediation\n4. PREVENTIVE — actions to prevent recurrence\n\nFor each action include: OWNER · DEADLINE · ESTIMATED COST · EXPECTED OUTCOME\nRank by urgency and impact.`,
 
-    base + `ENGINE 06 — EXECUTIVE DISPATCH\nGenerate executive decision package:\n▸ INCIDENT SUMMARY — 2 sentences for C-suite\n▸ FINANCIAL IMPACT — total exposure in dollars\n▸ DECISIONS REQUIRED — ranked list with AUTHORIZE/ESCALATE/REVIEW labels\n  1. [Decision] · Owner: [role] · Deadline: [timeframe] · Cost: $[amount]\n  2. [Decision] · Owner: [role] · Deadline: [timeframe]\n  3. [Decision] · Owner: [role] · Deadline: [timeframe]\n▸ BNCA — Best Next Course of Action in one clear sentence\n▸ ESCALATION TRIGGER — what would require CEO/Board notification\nThis goes directly to the executive team. Be decisive.\n\nIMPORTANT: On its own final line, output a machine-readable summary in this exact format so downstream tools can parse it reliably:\nKPI_JSON: {"riskScore": <0-100 integer>, "downtimeEstimate": "<short string>"}`
+    base + `ENGINE 06 — EXECUTIVE DISPATCH\nRespond in exactly two parts, in this order:\n\nPART 1 — On its own line, output exactly:\nKPI_JSON: {"riskScore": <0-100 integer>, "downtimeEstimate": "<short string>"}\n\nPART 2 — Executive decision package:\n▸ INCIDENT SUMMARY — 2 sentences for C-suite\n▸ FINANCIAL IMPACT — total exposure in dollars\n▸ DECISIONS REQUIRED — ranked list with AUTHORIZE/ESCALATE/REVIEW labels\n  1. [Decision] · Owner: [role] · Deadline: [timeframe] · Cost: $[amount]\n  2. [Decision] · Owner: [role] · Deadline: [timeframe]\n  3. [Decision] · Owner: [role] · Deadline: [timeframe]\n▸ BNCA — Best Next Course of Action in one clear sentence\n▸ ESCALATION TRIGGER — what would require CEO/Board notification\nThis goes directly to the executive team. Be decisive.`
   ];
 }
 
@@ -361,6 +361,7 @@ async function fireAllEngines() {
       // Extract KPIs from engine outputs (structured JSON first, regex fallback)
       if (i === 3) extractFinancialKPI(text);
       if (i === 1) extractDowntimeKPI(text);
+      if (i === 5) buildRiskKPI(text);
       if (i === 5) { buildActionPanel(text); buildRiskKPI(text); }
     } catch(e) {
       hadError = true;
@@ -412,7 +413,7 @@ function setEngineStatus(i, status) {
 
 // Try structured KPI_JSON line first; fall back to regex scraping of free text.
 function parseKpiJson(text) {
-  const m = text.match(/KPI_JSON:\s*(\{.*\})\s*$/);
+  const m = text.match(/KPI_JSON:\s*(\{[^\n]*\})/);
   if (!m) return null;
   try { return JSON.parse(m[1]); } catch (e) { return null; }
 }
@@ -443,7 +444,18 @@ function buildRiskKPI(text) {
     return;
   }
   const m = text.match(/(\d{2,3})\/100|RISK[:\s]+(\d{2,3})/i);
-  document.getElementById('kpiRisk').textContent = m ? (m[1]||m[2]) + '/100' : 'N/A';
+  if (m) {
+    const val = (m[1] || m[2]) + '/100';
+    document.getElementById('kpiRisk').textContent = val;
+    sessionData.kpis.risk = { scraped: val };
+    return;
+  }
+  const band = /critical|severe/i.test(text) ? 'CRITICAL'
+    : /high|elevated|significant/i.test(text) ? 'ELEVATED'
+    : /moderate|medium/i.test(text) ? 'MODERATE'
+    : /low|minimal/i.test(text) ? 'LOW' : 'N/A';
+  document.getElementById('kpiRisk').textContent = band;
+  sessionData.kpis.risk = { scraped: band, source: 'qualitative-fallback' };
 }
 
 function buildActionPanel(text) {
