@@ -412,6 +412,7 @@ app.post('/api/war-room/stream', async (req, res) => {
         stream: true,
         max_tokens: max_tokens || 600,
         temperature: temperature ?? 0.4,
+        reasoning_effort: 'low',
         messages
       })
     });
