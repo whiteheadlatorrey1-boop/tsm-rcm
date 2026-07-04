@@ -79,9 +79,18 @@ tr:hover td{background:rgba(0,255,80,.03)}
 .empty-state{color:var(--text-dim);font-size:10px;padding:20px;text-align:center}
 .rules-form select, .rules-form input{background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:inherit;font-size:10px;padding:6px;width:100%;margin-bottom:6px}
 .rules-result{margin-top:10px;padding:10px;background:var(--bg3);border:1px solid var(--border);font-size:10px;line-height:1.6}
-.ai-output{background:var(--bg3);border:1px solid var(--border);padding:12px;font-size:10px;line-height:1.6;color:var(--text);white-space:pre-wrap;min-height:60px}
-.ai-output.loading{color:var(--text-dim)}
+.ai-output{background:var(--bg3);border:1px solid var(--border);padding:12px;font-size:10px;line-height:1.6;color:var(--text);min-height:60px}
+.ai-output.loading{color:var(--text-dim);white-space:pre-wrap}
 .ai-output .err{color:var(--red)}
+.ai-output p{margin:0 0 8px}
+.ai-output h1,.ai-output h2,.ai-output h3,.ai-output h4{margin:12px 0 6px;color:var(--accent,#0f0);font-size:11px;letter-spacing:.03em;text-transform:uppercase}
+.ai-output hr{border:none;border-top:1px solid var(--border);margin:10px 0}
+.ai-output ul{margin:0 0 8px 18px;padding:0}
+.ai-output li{margin:2px 0}
+.ai-output code{background:var(--bg2,#111);padding:1px 4px;border-radius:2px}
+.ai-output table.md-table{border-collapse:collapse;width:100%;margin:8px 0 12px;font-size:10px}
+.ai-output table.md-table th,.ai-output table.md-table td{border:1px solid var(--border);padding:4px 6px;text-align:left;vertical-align:top}
+.ai-output table.md-table th{color:var(--text-dim);text-transform:uppercase;font-size:9px}
 .flag-row{display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--bg3);border:1px solid var(--border);font-size:10px;margin-bottom:4px}
 .flag-row:last-child{margin-bottom:0}
 .flag-id{color:var(--text-dim);width:90px;flex-shrink:0}
@@ -370,6 +379,75 @@ tr:hover td{background:rgba(0,255,80,.03)}
     out.innerHTML = html;
   }
 
+  function escapeHtml(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function inlineMd(s) {
+    return escapeHtml(s)
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/(?<!\*)\*(?!\*)(.+?)\*(?!\*)/g, '<em>$1</em>')
+      .replace(/`(.+?)`/g, '<code>$1</code>');
+  }
+
+  function isTableSeparator(line) {
+    return /^\s*\|?[\s:|-]+\|?\s*$/.test(line) && line.includes('-');
+  }
+
+  function renderMarkdown(md) {
+    if (!md) return '';
+    const lines = md.replace(/\r\n/g, '\n').split('\n');
+    let html = '';
+    let i = 0;
+    let inList = false;
+
+    const closeList = () => { if (inList) { html += '</ul>'; inList = false; } };
+
+    while (i < lines.length) {
+      const line = lines[i];
+
+      if (/^\s*$/.test(line)) { closeList(); i++; continue; }
+
+      if (/^\s*---+\s*$/.test(line)) { closeList(); html += '<hr>'; i++; continue; }
+
+      const headerMatch = line.match(/^(#{1,6})\s+(.*)$/);
+      if (headerMatch) {
+        closeList();
+        const level = headerMatch[1].length;
+        html += `<h${level}>${inlineMd(headerMatch[2])}</h${level}>`;
+        i++; continue;
+      }
+
+      if (/^\s*\|.*\|\s*$/.test(line) && lines[i + 1] && isTableSeparator(lines[i + 1])) {
+        closeList();
+        const headerCells = line.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+        html += '<table class="md-table"><thead><tr>' +
+          headerCells.map(c => `<th>${inlineMd(c)}</th>`).join('') + '</tr></thead><tbody>';
+        i += 2;
+        while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) {
+          const cells = lines[i].trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+          html += '<tr>' + cells.map(c => `<td>${inlineMd(c)}</td>`).join('') + '</tr>';
+          i++;
+        }
+        html += '</tbody></table>';
+        continue;
+      }
+
+      const listMatch = line.match(/^\s*[-*]\s+(.*)$/);
+      if (listMatch) {
+        if (!inList) { html += '<ul>'; inList = true; }
+        html += `<li>${inlineMd(listMatch[1])}</li>`;
+        i++; continue;
+      }
+
+      closeList();
+      html += `<p>${inlineMd(line)}</p>`;
+      i++;
+    }
+    closeList();
+    return html;
+  }
+
   async function runAnalysis() {
     const out = document.getElementById('aiOutput');
     out.className = 'ai-output loading';
@@ -378,7 +456,7 @@ tr:hover td{background:rgba(0,255,80,.03)}
     try {
       const data = await engine.runAnalysis();
       out.className = 'ai-output';
-      out.textContent = (data && data.answer) || 'No analysis returned.';
+      out.innerHTML = renderMarkdown((data && data.answer) || 'No analysis returned.');
     } catch (e) {
       out.className = 'ai-output';
       out.innerHTML = `<span class="err">Analysis failed: ${e.message}. Confirm /api/approval/query is wired server-side.</span>`;
