@@ -4,12 +4,12 @@ apply_finops_fixes.py
 Safely patches routes/finops.js:
   1. Adds pdf-parse/mammoth/xlsx requires
   2. Replaces safeTextFromBuffer() with real async PDF/DOCX/XLSX extraction
+     (located by start/end anchors, not exact whitespace, so internal
+     blank-line differences can't cause a false mismatch)
   3. Extends REAL_TEXT_EXTENSIONS allowlist
   4. Adds `await` at the safeTextFromBuffer(file) call site
 
-Uses exact string matching (not brace-parsing) against known verbatim
-source, and aborts with zero changes if any expected block isn't found
-exactly once.
+Aborts with zero changes if any anchor/string isn't found exactly once.
 
 Usage:
     python3 apply_finops_fixes.py routes/finops.js
@@ -18,7 +18,42 @@ import sys
 import shutil
 from pathlib import Path
 
-EDITS = [
+NEW_FUNCTION = """async function safeTextFromBuffer(file){
+  const name = (file.originalname || 'uploaded-document').toLowerCase();
+  const raw = file.buffer || Buffer.from('');
+  let text = '';
+
+  try {
+    if (name.endsWith('.txt') || name.endsWith('.csv') || name.endsWith('.md') || name.endsWith('.json')) {
+      text = raw.toString('utf8');
+    } else if (name.endsWith('.pdf')) {
+      const data = await pdfParse(raw);
+      text = data.text || '';
+    } else if (name.endsWith('.docx')) {
+      const result = await mammoth.extractRawText({ buffer: raw });
+      text = result.value || '';
+    } else if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
+      const workbook = XLSX.read(raw, { type: 'buffer' });
+      text = workbook.SheetNames.map(sheetName =>
+        XLSX.utils.sheet_to_csv(workbook.Sheets[sheetName])
+      ).join('\\n\\n');
+    } else {
+      text = '';
+    }
+  } catch (err) {
+    console.error(`safeTextFromBuffer failed for ${file.originalname}:`, err.message);
+    text = '';
+  }
+
+  return String(text || '').slice(0, 6000);
+}
+
+"""
+
+FUNC_START = "function safeTextFromBuffer(file){"
+FUNC_END_ANCHOR = "function classifyFinopsDoc(text){"
+
+SIMPLE_EDITS = [
     {
         "name": "Add requires",
         "old": "const multer = require('multer');\n",
@@ -27,66 +62,6 @@ EDITS = [
             "const pdfParse = require('pdf-parse');\n"
             "const mammoth = require('mammoth');\n"
             "const XLSX = require('xlsx');\n"
-        ),
-    },
-    {
-        "name": "Replace safeTextFromBuffer()",
-        "old": (
-            "function safeTextFromBuffer(file){\n"
-            "  const name = (file.originalname || 'uploaded-document').toLowerCase();\n"
-            "  const raw = file.buffer || Buffer.from('');\n"
-            "  let text = '';\n"
-            "  if(name.endsWith('.txt') || name.endsWith('.csv') || name.endsWith('.md') || name.endsWith('.json')){\n"
-            "    text = raw.toString('utf8');\n"
-            "  }else{\n"
-            "    // Demo-safe fallback for PDFs/images/xlsx/docx without parser dependencies.\n"
-            "    text = `Uploaded file: ${file.originalname}\n"
-            "Mime type: ${file.mimetype}\n"
-            "Size: ${file.size} bytes\n"
-            "Document structure normalized for demo analysis.\n"
-            "Recommended document categories:\n"
-            "- Bank reconciliation\n"
-            "- AP aging\n"
-            "- AR ledger\n"
-            "- Financial statement package\n"
-            "- Budget variance\n"
-            "- GL detail\n"
-            "- 1099 / W-9 tracker\n"
-            "- Audit findings`;\n"
-            "  }\n"
-            "  return String(text || '').slice(0, 6000);\n"
-            "}\n"
-        ),
-        "new": (
-            "async function safeTextFromBuffer(file){\n"
-            "  const name = (file.originalname || 'uploaded-document').toLowerCase();\n"
-            "  const raw = file.buffer || Buffer.from('');\n"
-            "  let text = '';\n"
-            "\n"
-            "  try {\n"
-            "    if (name.endsWith('.txt') || name.endsWith('.csv') || name.endsWith('.md') || name.endsWith('.json')) {\n"
-            "      text = raw.toString('utf8');\n"
-            "    } else if (name.endsWith('.pdf')) {\n"
-            "      const data = await pdfParse(raw);\n"
-            "      text = data.text || '';\n"
-            "    } else if (name.endsWith('.docx')) {\n"
-            "      const result = await mammoth.extractRawText({ buffer: raw });\n"
-            "      text = result.value || '';\n"
-            "    } else if (name.endsWith('.xlsx') || name.endsWith('.xls')) {\n"
-            "      const workbook = XLSX.read(raw, { type: 'buffer' });\n"
-            "      text = workbook.SheetNames.map(sheetName =>\n"
-            "        XLSX.utils.sheet_to_csv(workbook.Sheets[sheetName])\n"
-            "      ).join('\\n\\n');\n"
-            "    } else {\n"
-            "      text = '';\n"
-            "    }\n"
-            "  } catch (err) {\n"
-            "    console.error(`safeTextFromBuffer failed for ${file.originalname}:`, err.message);\n"
-            "    text = '';\n"
-            "  }\n"
-            "\n"
-            "  return String(text || '').slice(0, 6000);\n"
-            "}\n"
         ),
     },
     {
@@ -114,18 +89,30 @@ def main():
 
     text = filepath.read_text(encoding='utf-8')
 
-    # --- Verify every edit's target exists exactly once BEFORE changing anything ---
+    # --- Verify everything BEFORE changing anything ---
     problems = []
-    for edit in EDITS:
+
+    start_count = text.count(FUNC_START)
+    end_count = text.count(FUNC_END_ANCHOR)
+    if start_count != 1:
+        problems.append(f'  - safeTextFromBuffer start anchor: expected 1 match, found {start_count}')
+    if end_count != 1:
+        problems.append(f'  - classifyFinopsDoc start anchor: expected 1 match, found {end_count}')
+    if start_count == 1 and end_count == 1:
+        start_idx = text.index(FUNC_START)
+        end_idx = text.index(FUNC_END_ANCHOR)
+        if end_idx <= start_idx:
+            problems.append('  - classifyFinopsDoc anchor appears BEFORE safeTextFromBuffer — unexpected file order')
+
+    for edit in SIMPLE_EDITS:
         count = text.count(edit["old"])
         if count != 1:
             problems.append(f'  - "{edit["name"]}": expected 1 match, found {count}')
 
     if problems:
-        print("ABORTING — no changes made. The following blocks didn't match exactly once:")
+        print("ABORTING — no changes made. The following didn't match as expected:")
         print("\n".join(problems))
-        print("\nThis means the file differs from what this script expects.")
-        print("Paste the current file contents so the patch can be adjusted.")
+        print("\nPaste the current file contents so the patch can be adjusted.")
         sys.exit(1)
 
     # --- All checks passed, back up then apply ---
@@ -133,7 +120,14 @@ def main():
     shutil.copy2(filepath, backup_path)
     print(f"Backup written to {backup_path}")
 
-    for edit in EDITS:
+    # Replace the function block via anchors (start of safeTextFromBuffer -> start of classifyFinopsDoc)
+    start_idx = text.index(FUNC_START)
+    end_idx = text.index(FUNC_END_ANCHOR)
+    text = text[:start_idx] + NEW_FUNCTION + text[end_idx:]
+    print("Replaced safeTextFromBuffer() implementation (anchor-based).")
+
+    # Apply the simple string edits
+    for edit in SIMPLE_EDITS:
         text = text.replace(edit["old"], edit["new"], 1)
         print(f"Applied: {edit['name']}")
 
