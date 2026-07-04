@@ -372,7 +372,7 @@ app.post('/api/war-room/stream', async (req, res) => {
       body: JSON.stringify({
         model: model || 'openai/gpt-oss-120b',
         stream: true,
-        max_tokens: max_tokens || 600,
+        max_tokens: max_tokens || 400,
         temperature: temperature ?? 0.4,
         messages
       })
