@@ -79,6 +79,9 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 .status-done{background:rgba(34,197,94,.15);color:var(--green);}
 .eng-card-body{padding:14px;font-family:'JetBrains Mono',monospace;font-size:.65rem;color:var(--muted);line-height:1.7;min-height:100px;white-space:pre-wrap;}
 .eng-card-body.active{color:var(--text);}
+.eng-card-body table.md-table{border-collapse:collapse;width:100%;margin:8px 0;white-space:normal;}
+.eng-card-body table.md-table th,.eng-card-body table.md-table td{border:1px solid var(--border);padding:4px 6px;text-align:left;vertical-align:top;}
+.eng-card-body table.md-table th{color:var(--muted);text-transform:uppercase;font-size:.6rem;}
 
 .action-panel{background:var(--bg2);border:1px solid rgba(168,85,247,.3);border-radius:6px;padding:16px 20px;}
 .action-title{font-family:'Orbitron',sans-serif;font-size:.7rem;color:var(--accent);margin-bottom:12px;letter-spacing:.08em;}
@@ -396,11 +399,40 @@ function escapeHtml(s) {
 
 function renderEngineOutput(text) {
   const clean = text.replace(/\n?KPI_JSON:\s*\{[^}]*\}\s*$/i, '').trim();
-  let html = escapeHtml(clean);
+
+  const lines = clean.split('\n');
+  const isTableSep = l => /^\s*\|?[\s:|-]+\|?\s*$/.test(l) && l.includes('-');
+  const inlineFmt = s => escapeHtml(s).replace(/&lt;br\s*\/?&gt;/gi, '<br>').replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  const tables = [];
+  const outLines = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (/^\s*\|.*\|\s*$/.test(line) && lines[i + 1] !== undefined && isTableSep(lines[i + 1])) {
+      const headers = line.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+      let t = '<table class="md-table"><thead><tr>' + headers.map(c => `<th>${inlineFmt(c)}</th>`).join('') + '</tr></thead><tbody>';
+      i += 2;
+      while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) {
+        const cells = lines[i].trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+        t += '<tr>' + cells.map(c => `<td>${inlineFmt(c)}</td>`).join('') + '</tr>';
+        i++;
+      }
+      t += '</tbody></table>';
+      outLines.push(`@@TABLE${tables.length}@@`);
+      tables.push(t);
+      continue;
+    }
+    outLines.push(line);
+    i++;
+  }
+
+  let html = escapeHtml(outLines.join('\n'));
+  html = html.replace(/&lt;br\s*\/?&gt;/gi, '<br>');
   html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
   html = html.replace(/^▸\s*(.+)$/gm, '<div style="margin:4px 0">▸ $1</div>');
   html = html.replace(/^(\d+)\.\s+(.+)$/gm, '<div style="margin:4px 0 4px 8px"><strong>$1.</strong> $2</div>');
   html = html.replace(/\n{2,}/g, '<br><br>').replace(/\n/g, '<br>');
+  tables.forEach((t, idx) => { html = html.replace(`@@TABLE${idx}@@`, t); });
   return html;
 }
 
