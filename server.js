@@ -380,6 +380,7 @@ app.post('/api/war-room/stream', async (req, res) => {
 
     if (!groqRes.ok) {
       const err = await groqRes.json().catch(() => ({}));
+      console.error('Groq error response:', JSON.stringify(err));
       return res.status(502).json({ error: err.error?.message || 'Groq error' });
     }
 
