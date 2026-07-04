@@ -416,7 +416,11 @@ function escapeHtml(s) {
 }
 
 function renderEngineOutput(text) {
-  const clean = text.replace(/\n?KPI_JSON:\s*\{[^}]*\}\s*$/i, '').trim();
+  // FIX (2026-07-04): Engine 4 now emits KPI_JSON as PART 1 (leading), not
+  // trailing. This end-anchored strip left the raw "KPI_JSON: {...}" tag
+  // visible in the rendered card. Strip it wherever it appears, plus any
+  // blank line it leaves behind.
+  const clean = text.replace(/KPI_JSON:\s*\{[^}]*\}\n*/i, '').trim();
   let html = escapeHtml(clean);
   html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
   html = html.replace(/^▸\s*(.+)$/gm, '<div style="margin:4px 0">▸ $1</div>');
@@ -453,7 +457,12 @@ function parseDecisionActions(text) {
 }
 
 function parseKpiJson(text) {
-  const m = text.match(/KPI_JSON:\s*(\{.*\})\s*$/);
+  // FIX (2026-07-04): Engine 4's prompt now outputs KPI_JSON as PART 1,
+  // before the free-text analysis (PART 2), so it can render early during
+  // streaming. The old end-anchored regex only matched KPI_JSON as the very
+  // last thing in the text, which silently failed on the new front-loaded
+  // format and fell back to scraping any dollar figure from free text.
+  const m = text.match(/KPI_JSON:\s*(\{[^}]*\})/);
   if (!m) return null;
   try { return JSON.parse(m[1]); } catch (e) { return null; }
 }
