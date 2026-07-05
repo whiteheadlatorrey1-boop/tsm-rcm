@@ -195,6 +195,7 @@ Alternative sources: IronWorks ($2.79M, +2 wk lead)"></textarea>
   <span class="sb-item" style="margin-left:auto">TSM OS v4.1 · Fly.io</span>
 </div>
  
+<script src="js/war-room-stream.js"></script>
 <script>
 function tick(){document.getElementById('clock').textContent=new Date().toLocaleTimeString();}
 setInterval(tick,1000);tick();
@@ -215,8 +216,13 @@ function showToast(msg, isErr) {
   showToast._h = setTimeout(() => { t.className = 'toast'; }, 3000);
 }
  
-function getPrompts(doc){
-  const base=`You are a supply chain disruption intelligence engine for TSM Command. Analyze this supplier disruption report with precision. Focus on revenue exposure, inventory risk, alternate sourcing, and ranked executive actions. Be specific with dollar amounts and timelines.\n\nDISRUPTION REPORT:\n${doc}\n\n`;
+function getPrompts(doc, brief){
+  // Engine 01 needs the raw report; engines 02-06 run after it, so they use
+  // the condensed brief it extracted instead of re-sending the full doc.
+  const full=`You are a supply chain disruption intelligence engine for TSM Command. Analyze this supplier disruption report with precision. Focus on revenue exposure, inventory risk, alternate sourcing, and ranked executive actions. Be specific with dollar amounts and timelines.\n\nDISRUPTION REPORT:\n${doc}\n\n`;
+  const base=brief
+    ? `You are a supply chain disruption intelligence engine for TSM Command. Continue analyzing this disruption using the extracted intelligence below — do not ask for the original report, this is the complete factual basis.\n\nEXTRACTED DISRUPTION INTELLIGENCE:\n${brief}\n\n`
+    : full;
   return[
     base+`ENGINE 01 — DISRUPTION INTELLIGENCE\nExtract:\n▸ SUPPLIER — name, location, relationship tier\n▸ DISRUPTION TYPE — shutdown, delay, force majeure, quality hold\n▸ EFFECTIVE DATE — when disruption started or will start\n▸ AFFECTED PRODUCTS/PARTS — specific SKUs or categories\n▸ OPEN PURCHASE ORDERS — count and total value\n▸ INITIAL SEVERITY — critical, high, medium\n\nIMPORTANT: On its own final line, output: KPI_JSON: {"ordersAtRisk": <integer>}`,
     base+`ENGINE 02 — INVENTORY ANALYSIS\nCalculate:\n▸ CURRENT INVENTORY — days of supply on hand per critical part\n▸ CRITICAL PARTS — items with <30 days buffer\n▸ PRODUCTION WINDOW — how long before lines are affected\n▸ SAFETY STOCK ADEQUACY — is safety stock sufficient\n▸ REORDER LEAD TIMES — standard vs expedited\n▸ INVENTORY RISK SCORE — 1-10\n\nIMPORTANT: On its own final line, output: KPI_JSON: {"bufferDays": <integer>}`,
@@ -241,11 +247,15 @@ async function fireAllEngines(){
   document.getElementById('kpiExposure').textContent='—';
   document.getElementById('kpiBuffer').textContent='—';
   document.getElementById('kpiOrders').textContent='—';
-  const prompts=getPrompts(doc);
+  let prompts=getPrompts(doc, null);
   const titles=['Disruption Intel','Inventory Analysis','Revenue Exposure','Alternate Sourcing','Action Plan','Exec Dispatch'];
   let hadError=false;
   for(let i=0;i<prompts.length;i++){
     if(i>0) await new Promise(r=>setTimeout(r,600));
+    if(i===1){
+      const brief=sessionData.outputs[0]?.text;
+      if(brief) prompts=getPrompts(doc, brief);
+    }
     setEng(i,'running');
     try{
       const text=await callAPI(prompts[i]);
@@ -432,31 +442,8 @@ function buildActions(text){
 }
  
 async function callAPI(prompt){
-  try{
-    return await callAPIOnce(prompt);
-  }catch(e){
-    if(e.message==='Empty response from stream'||e.message==='Empty response from API'){
-      return await callAPIOnce(prompt);
-    }
-    throw e;
-  }
+  return callWarRoomAPI(prompt, 'You are a supply chain disruption intelligence engine for TSM Command. Expert in supplier risk, inventory management, alternate sourcing, and executive decision support. Be specific with dollar amounts and timelines.', { maxTokens: 400 });
 }
-
-async function callAPIOnce(prompt){
-  const res=await fetch('/api/war-room/stream',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'openai/gpt-oss-120b',max_tokens:400,messages:[{role:'system',content:'You are a supply chain disruption intelligence engine for TSM Command. Expert in supplier risk, inventory management, alternate sourcing, and executive decision support. Be specific with dollar amounts and timelines.'},{role:'user',content:prompt}]})});
-  if(!res.ok){throw new Error(`API returned ${res.status} ${res.statusText}`);}
-  if(res.headers.get('content-type')?.includes('text/event-stream')){
-    const reader=res.body.getReader();const dec=new TextDecoder();let out='';
-    while(true){const{done,value}=await reader.read();if(done)break;for(const line of dec.decode(value).split('\n')){if(line.startsWith('data: ')){const d=line.slice(6);if(d==='[DONE]')continue;try{out+=JSON.parse(d).choices?.[0]?.delta?.content||'';}catch(e){}}}}
-    if(!out) throw new Error('Empty response from stream');
-    return out;
-  }
-  const data=await res.json();
-  const text=data.output||data.answer||data.choices?.[0]?.message?.content||'';
-  if(!text) throw new Error('Empty response from API');
-  return text;
-}
-
 function goToStrategist(){
   window.location.href = STRATEGIST_URL;
 }

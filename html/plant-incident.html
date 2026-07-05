@@ -281,6 +281,7 @@ Downstream: 3 customer orders at risk"></textarea>
   <span class="sb-item" style="margin-left:auto">TSM OS v4.1 · Fly.io</span>
 </div>
 
+<script src="js/war-room-stream.js"></script>
 <script>
 // ── CLOCK ─────────────────────────────────────────────────────────────────────
 function tick() { document.getElementById('clock').textContent = new Date().toLocaleTimeString(); }
@@ -310,8 +311,15 @@ function showToast(msg, isErr) {
 }
 
 // ── ENGINE PROMPTS ────────────────────────────────────────────────────────────
-function getPrompts(doc) {
-  const base = `You are a plant operations intelligence engine for TSM Command. Analyze this industrial incident report with precision. Focus on operational impact, financial exposure, and ranked executive actions. Be specific with numbers and timelines.\n\nINCIDENT REPORT:\n${doc}\n\n`;
+function getPrompts(doc, brief) {
+  // Engine 01 needs the raw report. Engines 02-06 run after engine 01 has
+  // already extracted the structured facts, so they work off that condensed
+  // brief instead of re-sending the full document — cuts input tokens on
+  // 5 of 6 calls and reduces how fast a run burns through the TPM cap.
+  const full = `You are a plant operations intelligence engine for TSM Command. Analyze this industrial incident report with precision. Focus on operational impact, financial exposure, and ranked executive actions. Be specific with numbers and timelines.\n\nINCIDENT REPORT:\n${doc}\n\n`;
+  const base = brief
+    ? `You are a plant operations intelligence engine for TSM Command. Continue analyzing this incident using the extracted intelligence below — do not ask for the original report, this is the complete factual basis.\n\nEXTRACTED INCIDENT INTELLIGENCE:\n${brief}\n\n`
+    : full;
   return [
     base + `ENGINE 01 — INCIDENT INTELLIGENCE\nExtract and structure:\n▸ INCIDENT TYPE — equipment failure, process upset, safety event, etc.\n▸ AFFECTED SYSTEMS — specific equipment, lines, processes impacted\n▸ DETECTION TIME — when was it caught, how\n▸ CURRENT STATUS — offline, degraded, contained\n▸ KEY PARTIES — maintenance, operations, safety, management involved\nBe specific. Extract all facts from the document.`,
 
@@ -346,11 +354,17 @@ async function fireAllEngines() {
   document.getElementById('kpiExposure').textContent = '—';
   document.getElementById('kpiDowntime').textContent = '—';
 
-  const prompts = getPrompts(doc);
+  let prompts = getPrompts(doc, null);
   let hadError = false;
 
   for (let i = 0; i < prompts.length; i++) {
     if (i > 0) await new Promise(r => setTimeout(r, 600));
+    // Once engine 01 has extracted the structured facts, rebuild the
+    // remaining prompts to use that brief instead of the full doc.
+    if (i === 1) {
+      const brief = sessionData.outputs[0]?.text;
+      if (brief) prompts = getPrompts(doc, brief);
+    }
     setEngineStatus(i, 'running');
     try {
       const text = await callAPI(prompts[i]);
@@ -566,54 +580,7 @@ function buildActionPanel(text) {
 
 // ── API CALL ──────────────────────────────────────────────────────────────────
 async function callAPI(prompt) {
-  try {
-    return await callAPIOnce(prompt);
-  } catch (e) {
-    if (e.message === 'Empty response from stream' || e.message === 'Empty response from API') {
-      return await callAPIOnce(prompt);
-    }
-    throw e;
-  }
-}
-
-async function callAPIOnce(prompt) {
-  const res = await fetch('/api/war-room/stream', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'openai/gpt-oss-120b',
-      max_tokens: 400,
-      messages: [
-        { role: 'system', content: 'You are a plant operations and industrial intelligence engine for TSM Command. Expert in manufacturing operations, equipment failure analysis, production impact, and executive decision support. Be specific with dollar amounts and timelines.' },
-        { role: 'user', content: prompt }
-      ]
-    })
-  });
-  if (!res.ok) {
-    throw new Error(`API returned ${res.status} ${res.statusText}`);
-  }
-  if (res.headers.get('content-type')?.includes('text/event-stream')) {
-    const reader = res.body.getReader();
-    const dec = new TextDecoder();
-    let out = '';
-    while(true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      for (const line of dec.decode(value).split('\n')) {
-        if (line.startsWith('data: ')) {
-          const d = line.slice(6);
-          if (d === '[DONE]') continue;
-          try { out += JSON.parse(d).choices?.[0]?.delta?.content || ''; } catch(e) {}
-        }
-      }
-    }
-    if (!out) throw new Error('Empty response from stream');
-    return out;
-  }
-  const data = await res.json();
-  const text = data.output || data.answer || data.choices?.[0]?.message?.content || '';
-  if (!text) throw new Error('Empty response from API');
-  return text;
+  return callWarRoomAPI(prompt, 'You are a plant operations and industrial intelligence engine for TSM Command. Expert in manufacturing operations, equipment failure analysis, production impact, and executive decision support. Be specific with dollar amounts and timelines.', { maxTokens: 400 });
 }
 
 function goToStrategist() {

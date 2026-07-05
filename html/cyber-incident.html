@@ -268,6 +268,7 @@ Affected: 1 HMI, 1 engineering workstation, network segment B3"></textarea>
   <span class="sb-item" style="margin-left:auto">TSM OS v4.1 · Fly.io</span>
 </div>
 
+<script src="js/war-room-stream.js"></script>
 <script>
 function tick() { document.getElementById('clock').textContent = new Date().toLocaleTimeString(); }
 setInterval(tick, 1000); tick();
@@ -294,8 +295,13 @@ function showToast(msg, isErr) {
   showToast._h = setTimeout(() => { t.className = 'toast'; }, 3000);
 }
 
-function getPrompts(doc) {
-  const base = `You are an OT/ICS cybersecurity intelligence engine for TSM Command. Analyze this industrial control system security incident with precision. Focus on operational/safety impact, attack vector, financial exposure, and ranked executive actions. Be specific with numbers and timelines.\n\nINCIDENT REPORT:\n${doc}\n\n`;
+function getPrompts(doc, brief) {
+  // Engine 01 needs the raw report; engines 02-06 run after it, so they use
+  // the condensed brief it extracted instead of re-sending the full doc.
+  const full = `You are an OT/ICS cybersecurity intelligence engine for TSM Command. Analyze this industrial control system security incident with precision. Focus on operational/safety impact, attack vector, financial exposure, and ranked executive actions. Be specific with numbers and timelines.\n\nINCIDENT REPORT:\n${doc}\n\n`;
+  const base = brief
+    ? `You are an OT/ICS cybersecurity intelligence engine for TSM Command. Continue analyzing this incident using the extracted intelligence below — do not ask for the original report, this is the complete factual basis.\n\nEXTRACTED INCIDENT INTELLIGENCE:\n${brief}\n\n`
+    : full;
   return [
     base + `ENGINE 01 — INCIDENT INTELLIGENCE\nExtract and structure:\n▸ INCIDENT TYPE — intrusion, malware, unauthorized access, anomalous traffic, etc.\n▸ AFFECTED SYSTEMS — specific OT/ICS assets, network segments, IT/OT boundary points impacted\n▸ DETECTION TIME — when was it caught, how (SIEM, IDS, manual)\n▸ CURRENT STATUS — isolated, contained, active, unknown scope\n▸ KEY PARTIES — SOC, OT engineering, IT security, plant operations involved\nBe specific. Extract all facts from the document.`,
 
@@ -328,10 +334,14 @@ async function fireAllEngines() {
   document.getElementById('kpiExposure').textContent = '—';
   document.getElementById('kpiDowntime').textContent = '—';
 
-  const prompts = getPrompts(doc);
+  let prompts = getPrompts(doc, null);
   let hadError = false;
 
   for (let i = 0; i < prompts.length; i++) {
+    if (i === 1) {
+      const brief = sessionData.outputs[0]?.text;
+      if (brief) prompts = getPrompts(doc, brief);
+    }
     if (i > 0) await new Promise(r => setTimeout(r, 600));
     setEngineStatus(i, 'running');
     try {
@@ -539,54 +549,7 @@ function buildActionPanel(text) {
 }
 
 async function callAPI(prompt) {
-  try {
-    return await callAPIOnce(prompt);
-  } catch (e) {
-    if (e.message === 'Empty response from stream' || e.message === 'Empty response from API') {
-      return await callAPIOnce(prompt);
-    }
-    throw e;
-  }
-}
-
-async function callAPIOnce(prompt) {
-  const res = await fetch('/api/war-room/stream', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'openai/gpt-oss-120b',
-      max_tokens: 400,
-      messages: [
-        { role: 'system', content: 'You are an OT/ICS cybersecurity intelligence engine for TSM Command. Expert in industrial control system security, attack analysis, operational/safety impact, and executive decision support. Be specific with dollar amounts and timelines.' },
-        { role: 'user', content: prompt }
-      ]
-    })
-  });
-  if (!res.ok) {
-    throw new Error(`API returned ${res.status} ${res.statusText}`);
-  }
-  if (res.headers.get('content-type')?.includes('text/event-stream')) {
-    const reader = res.body.getReader();
-    const dec = new TextDecoder();
-    let out = '';
-    while(true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      for (const line of dec.decode(value).split('\n')) {
-        if (line.startsWith('data: ')) {
-          const d = line.slice(6);
-          if (d === '[DONE]') continue;
-          try { out += JSON.parse(d).choices?.[0]?.delta?.content || ''; } catch(e) {}
-        }
-      }
-    }
-    if (!out) throw new Error('Empty response from stream');
-    return out;
-  }
-  const data = await res.json();
-  const text = data.output || data.answer || data.choices?.[0]?.message?.content || '';
-  if (!text) throw new Error('Empty response from API');
-  return text;
+  return callWarRoomAPI(prompt, 'You are an OT/ICS cybersecurity intelligence engine for TSM Command. Expert in industrial control system security, attack analysis, operational/safety impact, and executive decision support. Be specific with dollar amounts and timelines.', { maxTokens: 400 });
 }
 
 function goToStrategist() {
