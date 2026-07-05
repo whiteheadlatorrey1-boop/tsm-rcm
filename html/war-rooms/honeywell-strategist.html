@@ -384,6 +384,34 @@ function exportReport(){
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);
   a.download=`TSM-Supplier-Disruption-${new Date().toISOString().slice(0,10)}.txt`;a.click();
 }
+
+// ── INCOMING RELAY ─────────────────────────────────────────────────────────
+// War rooms write their analysis to localStorage[RELAY_KEY] via saveRelay()
+// before navigating here, but nothing was ever reading it back — the relay
+// just sat unused and this page always opened empty. This loads it, folds
+// the source doc + prior engine outputs into the intake box, and fires the
+// strategist analysis automatically.
+(function loadIncomingRelay(){
+  let relay;
+  try { relay = JSON.parse(localStorage.getItem(RELAY_KEY) || 'null'); } catch(e) { relay = null; }
+  if (!relay || !relay.docText) return;
+
+  const priorAnalysis = (relay.outputs || [])
+    .map(o => `--- ${o.title} (Engine ${o.engine}) ---\n${o.text}`)
+    .join('\n\n');
+
+  const combined = `SOURCE WAR ROOM: ${relay.source || 'unknown'}\nRECEIVED: ${relay.timestamp || new Date().toISOString()}\n\nORIGINAL REPORT:\n${relay.docText}${priorAnalysis ? `\n\nPRIOR ANALYSIS FROM SOURCE WAR ROOM:\n${priorAnalysis}` : ''}`;
+
+  const input = document.getElementById('docInput');
+  if (input) input.value = combined;
+
+  // Consume the relay so refreshing this page doesn't re-trigger it forever.
+  localStorage.removeItem(RELAY_KEY);
+
+  showToast(`Incoming relay loaded from ${relay.source || 'war room'} — ${(relay.outputs || []).length} prior engine output(s) included.`);
+  fireAllEngines();
+})();
+
 </script>
 </body>
 </html>
