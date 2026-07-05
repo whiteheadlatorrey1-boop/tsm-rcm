@@ -716,7 +716,7 @@ app.post('/api/music/agent-pass', async (req, res) => {
   var draft = body.draft || body.lyrics || '';
   var request = body.request || 'Refine this draft';
   try {
-    var output = await groqChat(SP.music, 'Agent: ' + agent + '\nRequest: ' + request + '\n\nDraft:\n' + draft + '\n\nProvide your refined version:', 512);
+    var output = await groqChat(SP.music, 'Agent: ' + agent + '\nRequest: ' + request + '\n\nDraft:\n' + draft + '\n\nProvide your refined version:', 700);
     return res.json({ ok: true, agent: agent, output: output, createdAt: new Date().toISOString() });
   } catch (e) { return res.status(500).json({ ok: false, error: e.message }); }
 });
@@ -726,9 +726,15 @@ app.post('/api/music/chain', async (req, res) => {
   var draft = body.draft || '';
   var request = body.request || 'Sharpen this draft';
   try {
-    var zay = await groqChat(SP.music, 'Agent ZAY cadence/flow focus.\nRequest: ' + request + '\nDraft: ' + draft + '\nRefine:', 400);
-    var riya = await groqChat(SP.music, 'Agent RIYA emotion/imagery focus.\nRequest: ' + request + '\nDraft: ' + zay + '\nRefine:', 400);
-    var dj = await groqChat(SP.music, 'Agent DJ hook/structure focus.\nRequest: ' + request + '\nDraft: ' + riya + '\nFinal version:', 400);
+    // maxTokens bumped 400->900: each stage refines the previous stage's
+    // (already generated) text, so a 400-token cap on ZAY truncated before
+    // the hook/bridge ever appeared, RIYA then refined that truncated draft,
+    // and DJ refined RIYA's truncated output -- compounding the cutoff
+    // across all three hops so the final song never included a complete
+    // hook, bridge, or outro.
+    var zay = await groqChat(SP.music, 'Agent ZAY cadence/flow focus.\nRequest: ' + request + '\nDraft: ' + draft + '\nRefine:', 900);
+    var riya = await groqChat(SP.music, 'Agent RIYA emotion/imagery focus.\nRequest: ' + request + '\nDraft: ' + zay + '\nRefine:', 900);
+    var dj = await groqChat(SP.music, 'Agent DJ hook/structure focus.\nRequest: ' + request + '\nDraft: ' + riya + '\nFinal version:', 900);
     return res.json({ ok: true, mode: 'chain', input: draft, zay, riya, output: dj, score: { overall: 0.87 }, createdAt: new Date().toISOString() });
   } catch (e) { return res.status(500).json({ ok: false, error: e.message }); }
 });
@@ -739,9 +745,9 @@ app.post('/api/music/revision/generate', async (req, res) => {
     var draft = body.draft || '';
     var request = body.request || 'Give me 3 revision options';
     var results = await Promise.all([
-      groqChat(SP.music, 'Flow-first revision.\nRequest: ' + request + '\nDraft: ' + draft + '\nOption A:', 400),
-      groqChat(SP.music, 'Emotion-first revision.\nRequest: ' + request + '\nDraft: ' + draft + '\nOption B:', 400),
-      groqChat(SP.music, 'Hook-first revision.\nRequest: ' + request + '\nDraft: ' + draft + '\nOption C:', 400)
+      groqChat(SP.music, 'Flow-first revision.\nRequest: ' + request + '\nDraft: ' + draft + '\nOption A:', 700),
+      groqChat(SP.music, 'Emotion-first revision.\nRequest: ' + request + '\nDraft: ' + draft + '\nOption B:', 700),
+      groqChat(SP.music, 'Hook-first revision.\nRequest: ' + request + '\nDraft: ' + draft + '\nOption C:', 700)
     ]);
     var scoreA = musicHeuristicScore(results[0]);
     var scoreB = musicHeuristicScore(results[1]);
