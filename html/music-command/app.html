@@ -3339,7 +3339,15 @@ Intro → Verse 1 → Pre-Hook → Hook → Verse 2 → Bridge → Final Hook �
     out.textContent = response;
   };
 
-  window.runMusicAI = async function(prompt){
+  // Fixed: this unconditionally overwrote window.runMusicAI, clobbering
+  // tsm-music-compat-layer's version (which renders into #structureDisplay,
+  // a floating div with no corresponding markup/CSS anywhere in this file --
+  // effectively dead) with this one (which renders into the HOOK/BRIDGE/
+  // AD-LIBS/STRUCTURE panels that generateHook/generateBridge/placeAdlibs/
+  // runStructureBuilder's button labels actually match). Guarded so load
+  // order can't flip which one silently wins, matching the musicSafeFetch
+  // pattern already used in this same block.
+  window.runMusicAI = window.runMusicAI || async function(prompt){
     const data = await musicSafeFetch("/api/music/agent-pass",{
       method:"POST",
       headers:{"Content-Type":"application/json"},
