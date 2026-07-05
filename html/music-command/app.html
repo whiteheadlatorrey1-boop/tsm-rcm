@@ -3339,15 +3339,19 @@ Intro → Verse 1 → Pre-Hook → Hook → Verse 2 → Bridge → Final Hook �
     out.textContent = response;
   };
 
-  // Fixed: this unconditionally overwrote window.runMusicAI, clobbering
-  // tsm-music-compat-layer's version (which renders into #structureDisplay,
-  // a floating div with no corresponding markup/CSS anywhere in this file --
-  // effectively dead) with this one (which renders into the HOOK/BRIDGE/
-  // AD-LIBS/STRUCTURE panels that generateHook/generateBridge/placeAdlibs/
-  // runStructureBuilder's button labels actually match). Guarded so load
-  // order can't flip which one silently wins, matching the musicSafeFetch
-  // pattern already used in this same block.
-  window.runMusicAI = window.runMusicAI || async function(prompt){
+  // Correction to the earlier guard here: guarding this the same way as
+  // musicSafeFetch was wrong for this specific pair. tsm-music-compat-layer
+  // (above, in document order) ALSO guards its own window.runMusicAI, so it
+  // fires first and wins once both sides use "||" -- meaning the version
+  // that rendered into #structureDisplay (a floating div with no matching
+  // markup/CSS anywhere in this file -- dead target) was winning instead of
+  // this one, which renders into the real HOOK/BRIDGE/AD-LIBS/STRUCTURE
+  // panels that generateHook/generateBridge/placeAdlibs/runStructureBuilder's
+  // button labels actually match. This block is intentionally the later,
+  // authoritative layer (owns the actual action-bar button wiring below),
+  // so it must overwrite compat_layer's version unconditionally, not defer
+  // to it. Left unguarded on purpose -- do not "fix" this back to "||".
+  window.runMusicAI = async function(prompt){
     const data = await musicSafeFetch("/api/music/agent-pass",{
       method:"POST",
       headers:{"Content-Type":"application/json"},
@@ -3372,7 +3376,12 @@ Intro → Verse 1 → Pre-Hook → Hook → Verse 2 → Bridge → Final Hook �
     return runMusicAI("Place signature ad-libs naturally throughout these lyrics:\n\n" + input);
   };
 
-  window.runStructureBuilder = window.runStructureBuilder || function(){
+  // Same clobber-direction issue as runMusicAI above: compat_layer's
+  // runStructureBuilder also guards itself and loads first, so guarding
+  // this one let compat_layer's version win by default. Unguarded on
+  // purpose so this (the version wired to the real action bar) always
+  // overwrites compat_layer's.
+  window.runStructureBuilder = function(){
     const input = $("draft-input")?.value || "Build a complete song structure.";
     return runMusicAI("Build complete song structure with intro, verse, pre-hook, hook, verse 2, bridge, outro:\n\n" + input);
   };
@@ -3413,10 +3422,20 @@ document.addEventListener('click', function(e){
   const action = el.getAttribute('data-tsm-action');
   const args = el.getAttribute('data-tsm-args');
 
+  // Fix: TSM.launcher is defined in runtime/tsm-runtime-engine.js, which
+  // is never loaded on this page -- window.TSM itself is never set here
+  // (the three shared scripts above set window.TSMRelayBus and
+  // window.TSMSectorIntelligence instead). Every action-bar click was
+  // silently hitting the else branch and doing nothing. Falls back to
+  // calling the handler directly by name; all four handlers
+  // (generateHook/generateBridge/placeAdlibs/runStructureBuilder) take no
+  // arguments, so args is intentionally not passed through.
   if(window.TSM && TSM.launcher && TSM.launcher.run){
     TSM.launcher.run(action, args);
+  } else if (typeof window[action] === 'function') {
+    window[action]();
   } else {
-    console.warn('[TSM] launcher missing:', action, args);
+    console.warn('[TSM] launcher missing and no direct handler:', action, args);
   }
 
 });
