@@ -167,6 +167,7 @@ Downstream: 3 customer orders at risk"></textarea>
         <div class="doc-tag" onclick="setDocType(this,'production_impact')">Production Impact</div>
       </div>
       <button class="fire-btn" id="fireBtn" onclick="fireAllEngines()">⚡ FIRE ALL 6 ENGINES</button>
+      <button class="fire-btn" id="sampleBtn" onclick="loadSampleDoc()" style="background:transparent;border:1px solid var(--border);color:var(--muted);margin-top:8px;">⤓ Load Sample Incident</button>
     </div>
 
     <div>
@@ -300,6 +301,23 @@ function setDocType(el, type) {
   document.querySelectorAll('.doc-tag').forEach(t => t.classList.remove('active'));
   el.classList.add('active');
   docType = type;
+}
+
+const SAMPLE_DOC = `Plant: Honeywell Process Solutions — Baytown Chemical Facility, Unit 4
+Equipment: Feedwater pump P-4102A (primary), P-4102B (standby)
+Failure: Cavitation detected on P-4102A at 02:44 AM — suction pressure dropped below NPSH margin after upstream strainer fouled with process debris. Standby pump P-4102B auto-started per interlock logic but is running above rated duty point (110% of BEP), triggering high-vibration alarm at 03:10 AM.
+Impact: Unit 4 reactor feed reduced to 62% of nameplate rate to protect P-4102B from prolonged off-BEP operation. Downstream distillation train running at partial reflux to match reduced feed.
+Maintenance status: Strainer isolated for cleaning, ETA 3 hours. P-4102A pulled for inspection — preliminary teardown suggests impeller cavitation damage requiring replacement (4-6 week lead time on OEM part, expedite quote pending).
+Estimated downtime: 6-10 hours at reduced rate before full restoration; P-4102A itself out of service 4-6 weeks pending replacement impeller, running single-pump risk during that window.
+Affected output: Unit 4 normally produces 1,850 MT/day; currently tracking ~1,150 MT/day.
+Downstream: Two customer contracts have delivery windows this week (contractual penalty clauses apply after 48hr delay); Unit 5 feedstock supply depends on Unit 4 output and is drawing down buffer tankage.
+Safety note: No injuries, no release. Standby pump vibration trend being monitored per site procedure; will trip on high-high alarm if it continues climbing.`;
+
+function loadSampleDoc() {
+  document.getElementById('docInput').value = SAMPLE_DOC;
+  const tag = Array.from(document.querySelectorAll('.doc-tag')).find(t => t.textContent.trim() === 'Equipment Failure');
+  if (tag) setDocType(tag, 'equipment_failure');
+  showToast('Sample plant incident loaded — hit FIRE ALL 6 ENGINES.');
 }
 
 function showToast(msg, isErr) {
