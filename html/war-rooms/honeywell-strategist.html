@@ -52,6 +52,9 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 .eng-card-num{font-family:'Orbitron',sans-serif;font-size:.6rem;color:var(--amber);}
 .eng-card-title{font-family:'Orbitron',sans-serif;font-size:.62rem;color:var(--text);letter-spacing:.05em;}
 .eng-card-body{padding:14px;font-family:'JetBrains Mono',monospace;font-size:.65rem;color:var(--text);line-height:1.7;white-space:pre-wrap;max-height:260px;overflow:auto;}
+.eng-card-body table.md-table{border-collapse:collapse;width:100%;margin:8px 0;white-space:normal;}
+.eng-card-body table.md-table th,.eng-card-body table.md-table td{border:1px solid var(--border);padding:4px 6px;text-align:left;vertical-align:top;}
+.eng-card-body table.md-table th{color:var(--muted);text-transform:uppercase;font-size:.6rem;}
 .no-items{font-family:'JetBrains Mono',monospace;font-size:.7rem;color:var(--muted);}
 .toast{position:fixed;bottom:20px;right:20px;background:var(--bg2);border:1px solid var(--amber);color:var(--amber);padding:10px 18px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:.65rem;opacity:0;pointer-events:none;transition:.3s;z-index:50;}
 .toast.show{opacity:1;transform:translateY(-4px);}
@@ -77,7 +80,7 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
   <div class="nav-tab" onclick="window.location='/html/supplier-shutdown.html'">📦 SUPPLIER</div>
   <div class="nav-tab" onclick="window.location='/html/cyber-incident.html'">🛡 CYBER</div>
   <div class="nav-tab active">→ STRATEGIST</div>
-  <div class="nav-tab" onclick="window.location='/html/executive.html'">↑ EXECUTIVE</div>
+  <div class="nav-tab" onclick="window.location='/html/war-rooms/honeywell-executive-portal.html'">↑ EXECUTIVE</div>
 </div>
 <div class="hdr">
   <div>
@@ -129,6 +132,48 @@ function manualRefresh(){
 
 function escapeHtml(s){
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// Ported from plant-incident.html / supplier-shutdown.html / cyber-incident.html
+// so relayed engine output renders the same way here as it did in the war room —
+// previously this page only escapeHtml()'d the raw text, leaving **bold** markers
+// and pipe-table syntax visible as literal characters instead of rendering.
+function renderEngineOutput(text) {
+  if(!text) return '';
+  const clean = text.replace(/KPI_JSON:\s*\{[^}]*\}\n*/i, '').trim();
+  const lines = clean.split('\n');
+  const isTableSep = l => /^\s*\|?[\s:|-]+\|?\s*$/.test(l) && l.includes('-');
+  const inlineFmt = s => escapeHtml(s).replace(/&lt;br\s*\/?&gt;/gi, '<br>').replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  const tables = [];
+  const outLines = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (/^\s*\|.*\|\s*$/.test(line) && lines[i + 1] !== undefined && isTableSep(lines[i + 1])) {
+      const headers = line.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+      let t = '<table class="md-table"><thead><tr>' + headers.map(c => `<th>${inlineFmt(c)}</th>`).join('') + '</tr></thead><tbody>';
+      i += 2;
+      while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) {
+        const cells = lines[i].trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+        t += '<tr>' + cells.map(c => `<td>${inlineFmt(c)}</td>`).join('') + '</tr>';
+        i++;
+      }
+      t += '</tbody></table>';
+      outLines.push(`@@TABLE${tables.length}@@`);
+      tables.push(t);
+      continue;
+    }
+    outLines.push(line);
+    i++;
+  }
+  let html = escapeHtml(outLines.join('\n'));
+  html = html.replace(/&lt;br\s*\/?&gt;/gi, '<br>');
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/^▸\s*(.+)$/gm, '<div style="margin:4px 0">▸ $1</div>');
+  html = html.replace(/^(\d+)\.\s+(.+)$/gm, '<div style="margin:4px 0 4px 8px"><strong>$1.</strong> $2</div>');
+  html = html.replace(/\n{2,}/g, '<br><br>').replace(/\n/g, '<br>');
+  tables.forEach((t, idx) => { html = html.replace(`@@TABLE${idx}@@`, t); });
+  return html;
 }
 
 // The three producer war rooms (plant/cyber/supplier) store slightly
@@ -220,7 +265,7 @@ function render(){
           <span class="eng-card-num">ENGINE 0${o.engine}</span>
           <span class="eng-card-title">${escapeHtml(o.title||'')}</span>
         </div>
-        <div class="eng-card-body">${escapeHtml(o.text||'')}</div>
+        <div class="eng-card-body">${renderEngineOutput(o.text||'')}</div>
       </div>`).join('');
     html += `</div></div>`;
   } else {
@@ -247,7 +292,7 @@ function escalateExec(){
     sessionStorage.setItem('TSM_HONEYWELL_EXEC_RELAY', payload);
   }catch(e){}
   showToast('Escalated to Executive — opening…');
-  setTimeout(()=>{ window.location.href = '/html/executive.html'; }, 600);
+  setTimeout(()=>{ window.location.href = '/html/war-rooms/honeywell-executive-portal.html'; }, 600);
 }
 
 render();

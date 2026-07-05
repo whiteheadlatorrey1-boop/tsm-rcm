@@ -38,6 +38,9 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 .sec-hdr{font-family:'Orbitron',sans-serif;font-size:.68rem;color:var(--cyan);letter-spacing:.12em;margin-bottom:14px;display:flex;align-items:center;gap:8px;}
 .sec-hdr::before{content:'\25C6';font-size:.55rem;}
 .ai-box{background:rgba(0,212,212,.06);border:1px solid var(--cyan);border-radius:6px;padding:16px;margin-bottom:16px;white-space:pre-wrap;font-size:.88rem;line-height:1.55;}
+.ai-box table.md-table{border-collapse:collapse;width:100%;margin:8px 0;white-space:normal;}
+.ai-box table.md-table th,.ai-box table.md-table td{border:1px solid var(--border);padding:4px 6px;text-align:left;vertical-align:top;}
+.ai-box table.md-table th{color:var(--muted);text-transform:uppercase;font-size:.6rem;}
 .ai-box.hero{padding:22px;font-size:.95rem;}
 .list-row{display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-bottom:1px solid #0f1a2e;font-size:.82rem;}
 .list-row:last-child{border-bottom:none;}
@@ -191,7 +194,7 @@ function render(){
     if(v){ aiText = v; break; }
   }
   if(aiText){
-    html += `<div class="ai-box ${CFG.isExec?'hero':''}"><strong style="color:var(--cyan);font-family:'Orbitron',sans-serif;font-size:.65rem;letter-spacing:.1em;display:block;margin-bottom:8px;">${CFG.isExec?'EXECUTIVE RECOMMENDATION':'AI ANALYSIS'}</strong>${escapeHtml(aiText)}</div>`;
+    html += `<div class="ai-box ${CFG.isExec?'hero':''}"><strong style="color:var(--cyan);font-family:'Orbitron',sans-serif;font-size:.65rem;letter-spacing:.1em;display:block;margin-bottom:8px;">${CFG.isExec?'EXECUTIVE RECOMMENDATION':'AI ANALYSIS'}</strong>${renderEngineOutput(aiText)}</div>`;
   }
 
   for(const l of CFG.lists){
@@ -213,6 +216,47 @@ function render(){
 
 function escapeHtml(s){
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// Ported from plant-incident.html / supplier-shutdown.html / cyber-incident.html
+// so AI analysis output renders bold/table/bullet markdown instead of showing
+// the raw ** and | characters (previously this box only escapeHtml()'d the text).
+function renderEngineOutput(text) {
+  if(!text) return '';
+  const clean = text.replace(/KPI_JSON:\s*\{[^}]*\}\n*/i, '').trim();
+  const lines = clean.split('\n');
+  const isTableSep = l => /^\s*\|?[\s:|-]+\|?\s*$/.test(l) && l.includes('-');
+  const inlineFmt = s => escapeHtml(s).replace(/&lt;br\s*\/?&gt;/gi, '<br>').replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  const tables = [];
+  const outLines = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (/^\s*\|.*\|\s*$/.test(line) && lines[i + 1] !== undefined && isTableSep(lines[i + 1])) {
+      const headers = line.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+      let t = '<table class="md-table"><thead><tr>' + headers.map(c => `<th>${inlineFmt(c)}</th>`).join('') + '</tr></thead><tbody>';
+      i += 2;
+      while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) {
+        const cells = lines[i].trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+        t += '<tr>' + cells.map(c => `<td>${inlineFmt(c)}</td>`).join('') + '</tr>';
+        i++;
+      }
+      t += '</tbody></table>';
+      outLines.push(`@@TABLE${tables.length}@@`);
+      tables.push(t);
+      continue;
+    }
+    outLines.push(line);
+    i++;
+  }
+  let html = escapeHtml(outLines.join('\n'));
+  html = html.replace(/&lt;br\s*\/?&gt;/gi, '<br>');
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/^▸\s*(.+)$/gm, '<div style="margin:4px 0">▸ $1</div>');
+  html = html.replace(/^(\d+)\.\s+(.+)$/gm, '<div style="margin:4px 0 4px 8px"><strong>$1.</strong> $2</div>');
+  html = html.replace(/\n{2,}/g, '<br><br>').replace(/\n/g, '<br>');
+  tables.forEach((t, idx) => { html = html.replace(`@@TABLE${idx}@@`, t); });
+  return html;
 }
 
 render();

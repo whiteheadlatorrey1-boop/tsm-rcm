@@ -135,7 +135,7 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
   <div class="nav-tab" onclick="window.location='/html/supplier-shutdown.html'">📦 SUPPLIER</div>
   <div class="nav-tab active">🛡 CYBER</div>
   <div class="nav-tab" onclick="goToStrategist()">→ STRATEGIST</div>
-  <div class="nav-tab" onclick="window.location='/html/executive.html'">↑ EXECUTIVE</div>
+  <div class="nav-tab" onclick="window.location='/html/war-rooms/honeywell-executive-portal.html'">↑ EXECUTIVE</div>
 </div>
 
 <div class="main">
@@ -159,6 +159,7 @@ Affected: 1 HMI, 1 engineering workstation, network segment B3"></textarea>
         <div class="doc-tag" onclick="setDocType(this,'soc_report')">SOC Report</div>
       </div>
       <button class="fire-btn" id="fireBtn" onclick="fireAllEngines()">🛡 FIRE ALL 6 ENGINES</button>
+      <button class="fire-btn" id="sampleBtn" onclick="loadSampleDoc()" style="background:transparent;border:1px solid var(--border);color:var(--muted);">⤓ Load Sample Incident</button>
     </div>
 
     <div>
@@ -285,6 +286,21 @@ function setDocType(el, type) {
   document.querySelectorAll('.doc-tag').forEach(t => t.classList.remove('active'));
   el.classList.add('active');
   docType = type;
+}
+
+const SAMPLE_DOC = `Source: SOC SIEM correlation alert, escalated to Tier 2 at 04:52 UTC
+Detection: EDR flagged anomalous encryption activity on 14 endpoints across the corporate IT network (Building 3, Finance & Engineering VLANs) beginning 04:11 UTC — file rename patterns and entropy signatures consistent with ransomware staging, not yet full encryption execution.
+Lateral movement: SIEM shows the initial foothold originated from a phished credential (Finance analyst) at 03:20 UTC, followed by use of legitimate admin tools (PsExec, WMI) to move from the finance VLAN toward the historian server segment. One connection attempt was logged from the compromised finance workstation to HIST-DB-02 (plant historian, bridges IT/OT via a data diode) at 04:38 UTC — attempt was blocked by the diode's one-way policy, no confirmed OT-side compromise yet.
+Affected: 14 IT endpoints (Finance, Engineering), 1 domain controller showing suspicious Kerberos ticket activity (possible Golden Ticket attempt), and 1 blocked probe against the IT/OT boundary.
+Current containment: Affected VLANs isolated from the core network at 05:05 UTC. Domain controller password reset in progress for all privileged accounts. EDR has quarantined 9 of the 14 endpoints; 5 remain under investigation (false-positive review).
+Business context: Finance is mid-quarter-close; Engineering has CAD files for an active customer RFQ due this week on the affected endpoints (last verified backup: 36 hours ago).
+Open question: No confirmed ransom note or C2 beacon yet — SOC assesses this as pre-encryption staging, giving a narrow window to contain before file-level impact.`;
+
+function loadSampleDoc() {
+  document.getElementById('docInput').value = SAMPLE_DOC;
+  const tag = Array.from(document.querySelectorAll('.doc-tag')).find(t => t.textContent.trim() === 'SIEM Alert');
+  if (tag) setDocType(tag, 'siem_alert');
+  showToast('Sample cyber incident loaded — hit FIRE ALL 6 ENGINES.');
 }
 
 function showToast(msg, isErr) {
