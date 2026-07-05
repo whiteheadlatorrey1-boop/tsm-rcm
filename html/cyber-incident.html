@@ -79,6 +79,9 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 .status-done{background:rgba(34,197,94,.15);color:var(--green);}
 .eng-card-body{padding:14px;font-family:'JetBrains Mono',monospace;font-size:.65rem;color:var(--muted);line-height:1.7;min-height:100px;white-space:pre-wrap;}
 .eng-card-body.active{color:var(--text);}
+.eng-card-body table.md-table{border-collapse:collapse;width:100%;margin:8px 0;white-space:normal;}
+.eng-card-body table.md-table th,.eng-card-body table.md-table td{border:1px solid var(--border);padding:4px 6px;text-align:left;vertical-align:top;}
+.eng-card-body table.md-table th{color:var(--muted);text-transform:uppercase;font-size:.6rem;}
 
 .action-panel{background:var(--bg2);border:1px solid rgba(168,85,247,.3);border-radius:6px;padding:16px 20px;}
 .action-title{font-family:'Orbitron',sans-serif;font-size:.7rem;color:var(--accent);margin-bottom:12px;letter-spacing:.08em;}
@@ -132,7 +135,7 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
   <div class="nav-tab" onclick="window.location='/html/supplier-shutdown.html'">📦 SUPPLIER</div>
   <div class="nav-tab active">🛡 CYBER</div>
   <div class="nav-tab" onclick="goToStrategist()">→ STRATEGIST</div>
-  <div class="nav-tab" onclick="window.location='/html/executive.html'">↑ EXECUTIVE</div>
+  <div class="nav-tab" onclick="window.location='/html/war-rooms/honeywell-executive-portal.html'">↑ EXECUTIVE</div>
 </div>
 
 <div class="main">
@@ -156,6 +159,7 @@ Affected: 1 HMI, 1 engineering workstation, network segment B3"></textarea>
         <div class="doc-tag" onclick="setDocType(this,'soc_report')">SOC Report</div>
       </div>
       <button class="fire-btn" id="fireBtn" onclick="fireAllEngines()">🛡 FIRE ALL 6 ENGINES</button>
+      <button class="fire-btn" id="sampleBtn" onclick="loadSampleDoc()" style="background:transparent;border:1px solid var(--border);color:var(--muted);">⤓ Load Sample Incident</button>
     </div>
 
     <div>
@@ -265,6 +269,7 @@ Affected: 1 HMI, 1 engineering workstation, network segment B3"></textarea>
   <span class="sb-item" style="margin-left:auto">TSM OS v4.1 · Fly.io</span>
 </div>
 
+<script src="js/war-room-stream.js"></script>
 <script>
 function tick() { document.getElementById('clock').textContent = new Date().toLocaleTimeString(); }
 setInterval(tick, 1000); tick();
@@ -283,6 +288,21 @@ function setDocType(el, type) {
   docType = type;
 }
 
+const SAMPLE_DOC = `Source: SOC SIEM correlation alert, escalated to Tier 2 at 04:52 UTC
+Detection: EDR flagged anomalous encryption activity on 14 endpoints across the corporate IT network (Building 3, Finance & Engineering VLANs) beginning 04:11 UTC — file rename patterns and entropy signatures consistent with ransomware staging, not yet full encryption execution.
+Lateral movement: SIEM shows the initial foothold originated from a phished credential (Finance analyst) at 03:20 UTC, followed by use of legitimate admin tools (PsExec, WMI) to move from the finance VLAN toward the historian server segment. One connection attempt was logged from the compromised finance workstation to HIST-DB-02 (plant historian, bridges IT/OT via a data diode) at 04:38 UTC — attempt was blocked by the diode's one-way policy, no confirmed OT-side compromise yet.
+Affected: 14 IT endpoints (Finance, Engineering), 1 domain controller showing suspicious Kerberos ticket activity (possible Golden Ticket attempt), and 1 blocked probe against the IT/OT boundary.
+Current containment: Affected VLANs isolated from the core network at 05:05 UTC. Domain controller password reset in progress for all privileged accounts. EDR has quarantined 9 of the 14 endpoints; 5 remain under investigation (false-positive review).
+Business context: Finance is mid-quarter-close; Engineering has CAD files for an active customer RFQ due this week on the affected endpoints (last verified backup: 36 hours ago).
+Open question: No confirmed ransom note or C2 beacon yet — SOC assesses this as pre-encryption staging, giving a narrow window to contain before file-level impact.`;
+
+function loadSampleDoc() {
+  document.getElementById('docInput').value = SAMPLE_DOC;
+  const tag = Array.from(document.querySelectorAll('.doc-tag')).find(t => t.textContent.trim() === 'SIEM Alert');
+  if (tag) setDocType(tag, 'siem_alert');
+  showToast('Sample cyber incident loaded — hit FIRE ALL 6 ENGINES.');
+}
+
 function showToast(msg, isErr) {
   const t = document.getElementById('toast');
   t.textContent = msg;
@@ -291,8 +311,13 @@ function showToast(msg, isErr) {
   showToast._h = setTimeout(() => { t.className = 'toast'; }, 3000);
 }
 
-function getPrompts(doc) {
-  const base = `You are an OT/ICS cybersecurity intelligence engine for TSM Command. Analyze this industrial control system security incident with precision. Focus on operational/safety impact, attack vector, financial exposure, and ranked executive actions. Be specific with numbers and timelines.\n\nINCIDENT REPORT:\n${doc}\n\n`;
+function getPrompts(doc, brief) {
+  // Engine 01 needs the raw report; engines 02-06 run after it, so they use
+  // the condensed brief it extracted instead of re-sending the full doc.
+  const full = `You are an OT/ICS cybersecurity intelligence engine for TSM Command. Analyze this industrial control system security incident with precision. Focus on operational/safety impact, attack vector, financial exposure, and ranked executive actions. Be specific with numbers and timelines.\n\nINCIDENT REPORT:\n${doc}\n\n`;
+  const base = brief
+    ? `You are an OT/ICS cybersecurity intelligence engine for TSM Command. Continue analyzing this incident using the extracted intelligence below — do not ask for the original report, this is the complete factual basis.\n\nEXTRACTED INCIDENT INTELLIGENCE:\n${brief}\n\n`
+    : full;
   return [
     base + `ENGINE 01 — INCIDENT INTELLIGENCE\nExtract and structure:\n▸ INCIDENT TYPE — intrusion, malware, unauthorized access, anomalous traffic, etc.\n▸ AFFECTED SYSTEMS — specific OT/ICS assets, network segments, IT/OT boundary points impacted\n▸ DETECTION TIME — when was it caught, how (SIEM, IDS, manual)\n▸ CURRENT STATUS — isolated, contained, active, unknown scope\n▸ KEY PARTIES — SOC, OT engineering, IT security, plant operations involved\nBe specific. Extract all facts from the document.`,
 
@@ -325,10 +350,15 @@ async function fireAllEngines() {
   document.getElementById('kpiExposure').textContent = '—';
   document.getElementById('kpiDowntime').textContent = '—';
 
-  const prompts = getPrompts(doc);
+  let prompts = getPrompts(doc, null);
   let hadError = false;
 
   for (let i = 0; i < prompts.length; i++) {
+    if (i === 1) {
+      const brief = sessionData.outputs[0]?.text;
+      if (brief) prompts = getPrompts(doc, brief);
+    }
+    if (i > 0) await new Promise(r => setTimeout(r, 600));
     setEngineStatus(i, 'running');
     try {
       const text = await callAPI(prompts[i]);
@@ -396,11 +426,40 @@ function escapeHtml(s) {
 
 function renderEngineOutput(text) {
   const clean = text.replace(/\n?KPI_JSON:\s*\{[^}]*\}\s*$/i, '').trim();
-  let html = escapeHtml(clean);
+
+  const lines = clean.split('\n');
+  const isTableSep = l => /^\s*\|?[\s:|-]+\|?\s*$/.test(l) && l.includes('-');
+  const inlineFmt = s => escapeHtml(s).replace(/&lt;br\s*\/?&gt;/gi, '<br>').replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  const tables = [];
+  const outLines = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (/^\s*\|.*\|\s*$/.test(line) && lines[i + 1] !== undefined && isTableSep(lines[i + 1])) {
+      const headers = line.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+      let t = '<table class="md-table"><thead><tr>' + headers.map(c => `<th>${inlineFmt(c)}</th>`).join('') + '</tr></thead><tbody>';
+      i += 2;
+      while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) {
+        const cells = lines[i].trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+        t += '<tr>' + cells.map(c => `<td>${inlineFmt(c)}</td>`).join('') + '</tr>';
+        i++;
+      }
+      t += '</tbody></table>';
+      outLines.push(`@@TABLE${tables.length}@@`);
+      tables.push(t);
+      continue;
+    }
+    outLines.push(line);
+    i++;
+  }
+
+  let html = escapeHtml(outLines.join('\n'));
+  html = html.replace(/&lt;br\s*\/?&gt;/gi, '<br>');
   html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
   html = html.replace(/^▸\s*(.+)$/gm, '<div style="margin:4px 0">▸ $1</div>');
   html = html.replace(/^(\d+)\.\s+(.+)$/gm, '<div style="margin:4px 0 4px 8px"><strong>$1.</strong> $2</div>');
   html = html.replace(/\n{2,}/g, '<br><br>').replace(/\n/g, '<br>');
+  tables.forEach((t, idx) => { html = html.replace(`@@TABLE${idx}@@`, t); });
   return html;
 }
 
@@ -411,12 +470,18 @@ function parseDecisionActions(text) {
   const nextSection = block.slice(20).search(/\n\s*▸/);
   if (nextSection !== -1) block = block.slice(0, nextSection + 20);
 
+  // Strip markdown emphasis (**bold**, *italic*, _underscore_) that the LLM
+  // wraps decision/owner/deadline text in — otherwise raw asterisks render
+  // in the UI and the AUTHORIZE/ESCALATE/REVIEW label regex (which expects
+  // the label at the very start of the string) never matches.
+  const stripMd = s => s.replace(/\*\*/g, '').replace(/^[\*_]+|[\*_]+$/g, '').trim();
+
   const lineRe = /(\d+)\.\s*([^\n·]+?)\s*·\s*Owner:\s*([^·\n]+?)(?:\s*·\s*Deadline:\s*([^·\n]+?))?(?:\s*·\s*(?:Cost|Budget):\s*\$?([^\n]+))?\s*(?=\n|$)/gi;
   const defaultLabels = ['AUTHORIZE','ESCALATE','REVIEW','AUTHORIZE'];
   const results = [];
   let m;
   while ((m = lineRe.exec(block)) !== null) {
-    let decisionText = m[2].trim();
+    let decisionText = stripMd(m[2]);
     const labelMatch = decisionText.match(/^(AUTHORIZE|ESCALATE|REVIEW)\b[:\-]?\s*/i);
     const label = labelMatch ? labelMatch[1].toUpperCase() : (defaultLabels[results.length] || 'REVIEW');
     if (labelMatch) decisionText = decisionText.slice(labelMatch[0].length).trim();
@@ -424,8 +489,8 @@ function parseDecisionActions(text) {
       rank: Number(m[1]),
       label,
       text: decisionText,
-      owner: (m[3] || 'Unassigned').trim(),
-      deadline: (m[4] || 'TBD').trim(),
+      owner: stripMd(m[3] || 'Unassigned'),
+      deadline: stripMd(m[4] || 'TBD'),
     });
   }
   return results.length ? results : null;
@@ -506,43 +571,7 @@ function buildActionPanel(text) {
 }
 
 async function callAPI(prompt) {
-  const res = await fetch('/api/war-room/stream', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'openai/gpt-oss-120b',
-      max_tokens: 400,
-      messages: [
-        { role: 'system', content: 'You are an OT/ICS cybersecurity intelligence engine for TSM Command. Expert in industrial control system security, attack analysis, operational/safety impact, and executive decision support. Be specific with dollar amounts and timelines.' },
-        { role: 'user', content: prompt }
-      ]
-    })
-  });
-  if (!res.ok) {
-    throw new Error(`API returned ${res.status} ${res.statusText}`);
-  }
-  if (res.headers.get('content-type')?.includes('text/event-stream')) {
-    const reader = res.body.getReader();
-    const dec = new TextDecoder();
-    let out = '';
-    while(true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      for (const line of dec.decode(value).split('\n')) {
-        if (line.startsWith('data: ')) {
-          const d = line.slice(6);
-          if (d === '[DONE]') continue;
-          try { out += JSON.parse(d).choices?.[0]?.delta?.content || ''; } catch(e) {}
-        }
-      }
-    }
-    if (!out) throw new Error('Empty response from stream');
-    return out;
-  }
-  const data = await res.json();
-  const text = data.output || data.answer || data.choices?.[0]?.message?.content || '';
-  if (!text) throw new Error('Empty response from API');
-  return text;
+  return callWarRoomAPI(prompt, 'You are an OT/ICS cybersecurity intelligence engine for TSM Command. Expert in industrial control system security, attack analysis, operational/safety impact, and executive decision support. Be specific with dollar amounts and timelines.', { maxTokens: 700 });
 }
 
 function goToStrategist() {

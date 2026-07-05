@@ -109,6 +109,7 @@ tr:hover td{background:rgba(0,255,80,.03)}
       <div class="btn-row" style="margin-top:6px">
         <button class="btn btn-ghost btn-full" id="btnResetData">RESET SAVED DATA</button>
       </div>
+      <div id="catalogHandoffStatus" style="margin-top:8px;font-size:9px;color:var(--text-dim);line-height:1.5">CATALOG SOURCE: checking&hellip;</div>
     </div>
 
     <div class="sb-section">
@@ -185,14 +186,44 @@ tr:hover td{background:rgba(0,255,80,.03)}
   function setClock() { const el = document.getElementById('navClock'); if (el) el.textContent = new Date().toLocaleTimeString(); }
   setInterval(setClock, 1000); setClock();
 
+  // Fix: CPQ never consumed Catalog's "PUBLISH TO CPQ" handoff -- the write
+  // side (TSM.relay.write("CATALOG",...) / TSM_CATALOG_TO_CPQ) has existed
+  // since catalog-war-room.html was built, but nothing on this page ever
+  // read it, so publishing from Catalog was a silent no-op here. Reads the
+  // canonical relay first, falls back to the raw handoff key Catalog also
+  // writes, and only overlays products if CPQ has none of its own yet from
+  // loadFromStorage (never overwrites an in-progress CPQ session).
+  function hydrateFromCatalogHandoff() {
+    const statusEl = document.getElementById('catalogHandoffStatus');
+    try {
+      let raw = null;
+      if (window.TSM && window.TSM.relay && window.TSM.relay.read) {
+        raw = window.TSM.relay.read('CATALOG');
+      }
+      if (!raw) raw = localStorage.getItem('TSM_CATALOG_TO_CPQ') || sessionStorage.getItem('TSM_CATALOG_TO_CPQ');
+      if (!raw) { if (statusEl) statusEl.textContent = 'CATALOG SOURCE: no handoff received yet'; return false; }
+      const payload = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      const products = payload.products || [];
+      if (!products.length) { if (statusEl) statusEl.textContent = 'CATALOG SOURCE: handoff received, 0 SKUs'; return false; }
+      if (!engine.products.length) engine.products = products;
+      const when = payload.published_at ? new Date(payload.published_at).toLocaleTimeString() : 'unknown time';
+      if (statusEl) statusEl.textContent = `CATALOG SOURCE: ${products.length} SKUs received @ ${when}`;
+      return true;
+    } catch (e) {
+      if (statusEl) statusEl.textContent = 'CATALOG SOURCE: handoff read failed';
+      return false;
+    }
+  }
+
   async function loadModel() {
     const res = await fetch('/war-rooms/cpq/data/cpq-model.json');
     MODEL = await res.json();
     engine = new TSMCPQEngine(MODEL);
     const hydrated = engine.loadFromStorage();
+    const fromCatalog = hydrateFromCatalogHandoff();
     renderStageList();
     populateSkuSelect();
-    if (hydrated) renderAll();
+    if (hydrated || fromCatalog) renderAll();
   }
 
   function renderStageList() {

@@ -67,6 +67,9 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 .status-done{background:rgba(34,197,94,.15);color:var(--green);}
 .eng-card-body{padding:14px;font-family:'JetBrains Mono',monospace;font-size:.65rem;color:var(--muted);line-height:1.7;min-height:100px;white-space:pre-wrap;}
 .eng-card-body.active{color:var(--text);}
+.eng-card-body table.md-table{border-collapse:collapse;width:100%;margin:8px 0;white-space:normal;}
+.eng-card-body table.md-table th,.eng-card-body table.md-table td{border:1px solid var(--border);padding:4px 6px;text-align:left;vertical-align:top;}
+.eng-card-body table.md-table th{color:var(--muted);text-transform:uppercase;font-size:.6rem;}
 .action-panel{background:var(--bg2);border:1px solid rgba(245,166,35,.3);border-radius:6px;padding:16px 20px;}
 .action-title{font-family:'Orbitron',sans-serif;font-size:.7rem;color:var(--amber);margin-bottom:12px;letter-spacing:.08em;}
 .action-list{display:flex;flex-direction:column;gap:8px;}
@@ -111,7 +114,7 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
   <div class="nav-tab active">📦 SUPPLIER SHUTDOWN</div>
   <div class="nav-tab" onclick="window.location='/html/cyber-incident.html'">🛡 CYBER</div>
   <div class="nav-tab" onclick="goToStrategist()">→ STRATEGIST</div>
-  <div class="nav-tab" onclick="window.location='/html/executive.html'">↑ EXECUTIVE</div>
+  <div class="nav-tab" onclick="window.location='/html/war-rooms/honeywell-executive-portal.html'">↑ EXECUTIVE</div>
 </div>
 <div class="main">
   <div class="sidebar">
@@ -135,6 +138,7 @@ Alternative sources: IronWorks ($2.79M, +2 wk lead)"></textarea>
         <div class="doc-tag" onclick="setDocType(this,'disruption_alert')">Disruption Alert</div>
       </div>
       <button class="fire-btn" id="fireBtn" onclick="fireAllEngines()">⚡ FIRE ALL 6 ENGINES</button>
+      <button class="fire-btn" id="sampleBtn" onclick="loadSampleDoc()" style="background:transparent;border:1px solid var(--border);color:var(--muted);margin-top:8px;">⤓ Load Sample Incident</button>
     </div>
     <div>
       <div class="sb-section">LIVE KPIs</div>
@@ -192,6 +196,7 @@ Alternative sources: IronWorks ($2.79M, +2 wk lead)"></textarea>
   <span class="sb-item" style="margin-left:auto">TSM OS v4.1 · Fly.io</span>
 </div>
  
+<script src="js/war-room-stream.js"></script>
 <script>
 function tick(){document.getElementById('clock').textContent=new Date().toLocaleTimeString();}
 setInterval(tick,1000);tick();
@@ -204,6 +209,22 @@ let docType='supplier_notice', enginesComplete=0;
 let sessionData={source:INCIDENT_TYPE,outputs:[],docText:'',timestamp:null,docType:''};
 function setDocType(el,type){document.querySelectorAll('.doc-tag').forEach(t=>t.classList.remove('active'));el.classList.add('active');docType=type;}
 
+const SAMPLE_DOC = `Supplier: Meridian Alloys Group — sole-source supplier of Grade 316L stainless steel tubing for Honeywell's Building Management valve assemblies
+Notice received: 7/2/2026, via supplier portal escalation
+Disruption: Meridian's primary rolling mill (Gary, IN) suffered an electrical substation fire on 6/30/2026. Facility is offline indefinitely — supplier estimates 8-12 weeks to restore full production, pending utility company transformer replacement (no committed date from utility yet).
+Open POs affected: PO-88231 (42,000 units, due 7/18/2026), PO-88304 (18,500 units, due 8/02/2026). Meridian has confirmed zero fulfillment capability on either PO from current inventory.
+Current inventory buffer: 6,100 units on hand at Honeywell's Fort Wayne DC — approximately 9 days of downstream assembly-line consumption at current build rate.
+Contractual exposure: Two OEM customers (HVAC integrator contracts) carry late-delivery penalty clauses of 1.5%/week of PO value after a 5-day grace period.
+Alternative sources identified by procurement: IronWorks Steel Supply ($2.79M quote, +2 week lead time, no prior qualification on this alloy spec — would need expedited PPAP); Cascade Metal Works (pre-qualified vendor, $3.15M quote, +5 week lead time, can partial-ship in 2 weeks).
+Downstream: Assembly line 2 at Fort Wayne is 316L-dependent for 70% of current valve orders; line would need to shift to a lower-spec alloy substitution (pending engineering sign-off) or idle if buffer runs out before alternate supply arrives.`;
+
+function loadSampleDoc() {
+  document.getElementById('docInput').value = SAMPLE_DOC;
+  const tag = Array.from(document.querySelectorAll('.doc-tag')).find(t => t.textContent.trim() === 'Disruption Alert');
+  if (tag) setDocType(tag, 'disruption_alert');
+  showToast('Sample supplier disruption loaded — hit FIRE ALL 6 ENGINES.');
+}
+
 function showToast(msg, isErr) {
   const t = document.getElementById('toast');
   t.textContent = msg;
@@ -212,8 +233,13 @@ function showToast(msg, isErr) {
   showToast._h = setTimeout(() => { t.className = 'toast'; }, 3000);
 }
  
-function getPrompts(doc){
-  const base=`You are a supply chain disruption intelligence engine for TSM Command. Analyze this supplier disruption report with precision. Focus on revenue exposure, inventory risk, alternate sourcing, and ranked executive actions. Be specific with dollar amounts and timelines.\n\nDISRUPTION REPORT:\n${doc}\n\n`;
+function getPrompts(doc, brief){
+  // Engine 01 needs the raw report; engines 02-06 run after it, so they use
+  // the condensed brief it extracted instead of re-sending the full doc.
+  const full=`You are a supply chain disruption intelligence engine for TSM Command. Analyze this supplier disruption report with precision. Focus on revenue exposure, inventory risk, alternate sourcing, and ranked executive actions. Be specific with dollar amounts and timelines.\n\nDISRUPTION REPORT:\n${doc}\n\n`;
+  const base=brief
+    ? `You are a supply chain disruption intelligence engine for TSM Command. Continue analyzing this disruption using the extracted intelligence below — do not ask for the original report, this is the complete factual basis.\n\nEXTRACTED DISRUPTION INTELLIGENCE:\n${brief}\n\n`
+    : full;
   return[
     base+`ENGINE 01 — DISRUPTION INTELLIGENCE\nExtract:\n▸ SUPPLIER — name, location, relationship tier\n▸ DISRUPTION TYPE — shutdown, delay, force majeure, quality hold\n▸ EFFECTIVE DATE — when disruption started or will start\n▸ AFFECTED PRODUCTS/PARTS — specific SKUs or categories\n▸ OPEN PURCHASE ORDERS — count and total value\n▸ INITIAL SEVERITY — critical, high, medium\n\nIMPORTANT: On its own final line, output: KPI_JSON: {"ordersAtRisk": <integer>}`,
     base+`ENGINE 02 — INVENTORY ANALYSIS\nCalculate:\n▸ CURRENT INVENTORY — days of supply on hand per critical part\n▸ CRITICAL PARTS — items with <30 days buffer\n▸ PRODUCTION WINDOW — how long before lines are affected\n▸ SAFETY STOCK ADEQUACY — is safety stock sufficient\n▸ REORDER LEAD TIMES — standard vs expedited\n▸ INVENTORY RISK SCORE — 1-10\n\nIMPORTANT: On its own final line, output: KPI_JSON: {"bufferDays": <integer>}`,
@@ -238,10 +264,15 @@ async function fireAllEngines(){
   document.getElementById('kpiExposure').textContent='—';
   document.getElementById('kpiBuffer').textContent='—';
   document.getElementById('kpiOrders').textContent='—';
-  const prompts=getPrompts(doc);
+  let prompts=getPrompts(doc, null);
   const titles=['Disruption Intel','Inventory Analysis','Revenue Exposure','Alternate Sourcing','Action Plan','Exec Dispatch'];
   let hadError=false;
   for(let i=0;i<prompts.length;i++){
+    if(i>0) await new Promise(r=>setTimeout(r,600));
+    if(i===1){
+      const brief=sessionData.outputs[0]?.text;
+      if(brief) prompts=getPrompts(doc, brief);
+    }
     setEng(i,'running');
     try{
       const text=await callAPI(prompts[i]);
@@ -300,11 +331,40 @@ function escapeHtml(s){
 
 function renderEngineOutput(text){
   const clean=text.replace(/\n?KPI_JSON:\s*\{[^}]*\}\s*$/i,'').trim();
-  let html=escapeHtml(clean);
+
+  const lines=clean.split('\n');
+  const isTableSep=l=>/^\s*\|?[\s:|-]+\|?\s*$/.test(l)&&l.includes('-');
+  const inlineFmt=s=>escapeHtml(s).replace(/&lt;br\s*\/?&gt;/gi,'<br>').replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
+  const tables=[];
+  const outLines=[];
+  let i=0;
+  while(i<lines.length){
+    const line=lines[i];
+    if(/^\s*\|.*\|\s*$/.test(line)&&lines[i+1]!==undefined&&isTableSep(lines[i+1])){
+      const headers=line.trim().replace(/^\||\|$/g,'').split('|').map(c=>c.trim());
+      let t='<table class="md-table"><thead><tr>'+headers.map(c=>`<th>${inlineFmt(c)}</th>`).join('')+'</tr></thead><tbody>';
+      i+=2;
+      while(i<lines.length&&/^\s*\|.*\|\s*$/.test(lines[i])){
+        const cells=lines[i].trim().replace(/^\||\|$/g,'').split('|').map(c=>c.trim());
+        t+='<tr>'+cells.map(c=>`<td>${inlineFmt(c)}</td>`).join('')+'</tr>';
+        i++;
+      }
+      t+='</tbody></table>';
+      outLines.push(`@@TABLE${tables.length}@@`);
+      tables.push(t);
+      continue;
+    }
+    outLines.push(line);
+    i++;
+  }
+
+  let html=escapeHtml(outLines.join('\n'));
+  html=html.replace(/&lt;br\s*\/?&gt;/gi,'<br>');
   html=html.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
   html=html.replace(/^▸\s*(.+)$/gm,'<div style="margin:4px 0">▸ $1</div>');
   html=html.replace(/^(\d+)\.\s+(.+)$/gm,'<div style="margin:4px 0 4px 8px"><strong>$1.</strong> $2</div>');
   html=html.replace(/\n{2,}/g,'<br><br>').replace(/\n/g,'<br>');
+  tables.forEach((t,idx)=>{html=html.replace(`@@TABLE${idx}@@`,t);});
   return html;
 }
 
@@ -399,20 +459,8 @@ function buildActions(text){
 }
  
 async function callAPI(prompt){
-  const res=await fetch('/api/war-room/stream',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'openai/gpt-oss-120b',max_tokens:400,messages:[{role:'system',content:'You are a supply chain disruption intelligence engine for TSM Command. Expert in supplier risk, inventory management, alternate sourcing, and executive decision support. Be specific with dollar amounts and timelines.'},{role:'user',content:prompt}]})});
-  if(!res.ok){throw new Error(`API returned ${res.status} ${res.statusText}`);}
-  if(res.headers.get('content-type')?.includes('text/event-stream')){
-    const reader=res.body.getReader();const dec=new TextDecoder();let out='';
-    while(true){const{done,value}=await reader.read();if(done)break;for(const line of dec.decode(value).split('\n')){if(line.startsWith('data: ')){const d=line.slice(6);if(d==='[DONE]')continue;try{out+=JSON.parse(d).choices?.[0]?.delta?.content||'';}catch(e){}}}}
-    if(!out) throw new Error('Empty response from stream');
-    return out;
-  }
-  const data=await res.json();
-  const text=data.output||data.answer||data.choices?.[0]?.message?.content||'';
-  if(!text) throw new Error('Empty response from API');
-  return text;
+  return callWarRoomAPI(prompt, 'You are a supply chain disruption intelligence engine for TSM Command. Expert in supplier risk, inventory management, alternate sourcing, and executive decision support. Be specific with dollar amounts and timelines.', { maxTokens: 400 });
 }
-
 function goToStrategist(){
   window.location.href = STRATEGIST_URL;
 }

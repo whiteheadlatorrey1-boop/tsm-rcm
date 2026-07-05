@@ -80,6 +80,9 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 .status-done{background:rgba(34,197,94,.15);color:var(--green);}
 .eng-card-body{padding:14px;font-family:'JetBrains Mono',monospace;font-size:.65rem;color:var(--muted);line-height:1.7;min-height:100px;white-space:pre-wrap;}
 .eng-card-body.active{color:var(--text);}
+.eng-card-body table.md-table{border-collapse:collapse;width:100%;margin:8px 0;white-space:normal;}
+.eng-card-body table.md-table th,.eng-card-body table.md-table td{border:1px solid var(--border);padding:4px 6px;text-align:left;vertical-align:top;}
+.eng-card-body table.md-table th{color:var(--muted);text-transform:uppercase;font-size:.6rem;}
 
 .action-panel{background:var(--bg2);border:1px solid rgba(249,115,22,.3);border-radius:6px;padding:16px 20px;}
 .action-title{font-family:'Orbitron',sans-serif;font-size:.7rem;color:var(--orange);margin-bottom:12px;letter-spacing:.08em;}
@@ -137,7 +140,7 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
   <div class="nav-tab" onclick="window.location='/html/supplier-shutdown.html'">📦 SUPPLIER</div>
   <div class="nav-tab" onclick="window.location='/html/cyber-incident.html'">🛡 CYBER</div>
   <div class="nav-tab" onclick="goToStrategist()">→ STRATEGIST</div>
-  <div class="nav-tab" onclick="window.location='/html/executive.html'">↑ EXECUTIVE</div>
+  <div class="nav-tab" onclick="window.location='/html/war-rooms/honeywell-executive-portal.html'">↑ EXECUTIVE</div>
 </div>
 
 <!-- MAIN -->
@@ -164,6 +167,7 @@ Downstream: 3 customer orders at risk"></textarea>
         <div class="doc-tag" onclick="setDocType(this,'production_impact')">Production Impact</div>
       </div>
       <button class="fire-btn" id="fireBtn" onclick="fireAllEngines()">⚡ FIRE ALL 6 ENGINES</button>
+      <button class="fire-btn" id="sampleBtn" onclick="loadSampleDoc()" style="background:transparent;border:1px solid var(--border);color:var(--muted);margin-top:8px;">⤓ Load Sample Incident</button>
     </div>
 
     <div>
@@ -278,6 +282,7 @@ Downstream: 3 customer orders at risk"></textarea>
   <span class="sb-item" style="margin-left:auto">TSM OS v4.1 · Fly.io</span>
 </div>
 
+<script src="js/war-room-stream.js"></script>
 <script>
 // ── CLOCK ─────────────────────────────────────────────────────────────────────
 function tick() { document.getElementById('clock').textContent = new Date().toLocaleTimeString(); }
@@ -298,6 +303,23 @@ function setDocType(el, type) {
   docType = type;
 }
 
+const SAMPLE_DOC = `Plant: Honeywell Process Solutions — Baytown Chemical Facility, Unit 4
+Equipment: Feedwater pump P-4102A (primary), P-4102B (standby)
+Failure: Cavitation detected on P-4102A at 02:44 AM — suction pressure dropped below NPSH margin after upstream strainer fouled with process debris. Standby pump P-4102B auto-started per interlock logic but is running above rated duty point (110% of BEP), triggering high-vibration alarm at 03:10 AM.
+Impact: Unit 4 reactor feed reduced to 62% of nameplate rate to protect P-4102B from prolonged off-BEP operation. Downstream distillation train running at partial reflux to match reduced feed.
+Maintenance status: Strainer isolated for cleaning, ETA 3 hours. P-4102A pulled for inspection — preliminary teardown suggests impeller cavitation damage requiring replacement (4-6 week lead time on OEM part, expedite quote pending).
+Estimated downtime: 6-10 hours at reduced rate before full restoration; P-4102A itself out of service 4-6 weeks pending replacement impeller, running single-pump risk during that window.
+Affected output: Unit 4 normally produces 1,850 MT/day; currently tracking ~1,150 MT/day.
+Downstream: Two customer contracts have delivery windows this week (contractual penalty clauses apply after 48hr delay); Unit 5 feedstock supply depends on Unit 4 output and is drawing down buffer tankage.
+Safety note: No injuries, no release. Standby pump vibration trend being monitored per site procedure; will trip on high-high alarm if it continues climbing.`;
+
+function loadSampleDoc() {
+  document.getElementById('docInput').value = SAMPLE_DOC;
+  const tag = Array.from(document.querySelectorAll('.doc-tag')).find(t => t.textContent.trim() === 'Equipment Failure');
+  if (tag) setDocType(tag, 'equipment_failure');
+  showToast('Sample plant incident loaded — hit FIRE ALL 6 ENGINES.');
+}
+
 function showToast(msg, isErr) {
   const t = document.getElementById('toast');
   t.textContent = msg;
@@ -307,8 +329,15 @@ function showToast(msg, isErr) {
 }
 
 // ── ENGINE PROMPTS ────────────────────────────────────────────────────────────
-function getPrompts(doc) {
-  const base = `You are a plant operations intelligence engine for TSM Command. Analyze this industrial incident report with precision. Focus on operational impact, financial exposure, and ranked executive actions. Be specific with numbers and timelines.\n\nINCIDENT REPORT:\n${doc}\n\n`;
+function getPrompts(doc, brief) {
+  // Engine 01 needs the raw report. Engines 02-06 run after engine 01 has
+  // already extracted the structured facts, so they work off that condensed
+  // brief instead of re-sending the full document — cuts input tokens on
+  // 5 of 6 calls and reduces how fast a run burns through the TPM cap.
+  const full = `You are a plant operations intelligence engine for TSM Command. Analyze this industrial incident report with precision. Focus on operational impact, financial exposure, and ranked executive actions. Be specific with numbers and timelines.\n\nINCIDENT REPORT:\n${doc}\n\n`;
+  const base = brief
+    ? `You are a plant operations intelligence engine for TSM Command. Continue analyzing this incident using the extracted intelligence below — do not ask for the original report, this is the complete factual basis.\n\nEXTRACTED INCIDENT INTELLIGENCE:\n${brief}\n\n`
+    : full;
   return [
     base + `ENGINE 01 — INCIDENT INTELLIGENCE\nExtract and structure:\n▸ INCIDENT TYPE — equipment failure, process upset, safety event, etc.\n▸ AFFECTED SYSTEMS — specific equipment, lines, processes impacted\n▸ DETECTION TIME — when was it caught, how\n▸ CURRENT STATUS — offline, degraded, contained\n▸ KEY PARTIES — maintenance, operations, safety, management involved\nBe specific. Extract all facts from the document.`,
 
@@ -343,10 +372,17 @@ async function fireAllEngines() {
   document.getElementById('kpiExposure').textContent = '—';
   document.getElementById('kpiDowntime').textContent = '—';
 
-  const prompts = getPrompts(doc);
+  let prompts = getPrompts(doc, null);
   let hadError = false;
 
   for (let i = 0; i < prompts.length; i++) {
+    if (i > 0) await new Promise(r => setTimeout(r, 600));
+    // Once engine 01 has extracted the structured facts, rebuild the
+    // remaining prompts to use that brief instead of the full doc.
+    if (i === 1) {
+      const brief = sessionData.outputs[0]?.text;
+      if (brief) prompts = getPrompts(doc, brief);
+    }
     setEngineStatus(i, 'running');
     try {
       const text = await callAPI(prompts[i]);
@@ -421,11 +457,42 @@ function renderEngineOutput(text) {
   // visible in the rendered card. Strip it wherever it appears, plus any
   // blank line it leaves behind.
   const clean = text.replace(/KPI_JSON:\s*\{[^}]*\}\n*/i, '').trim();
-  let html = escapeHtml(clean);
+
+  // Extract markdown pipe-tables first so they don't get mangled by the
+  // line-oriented bullet/numbered-list/newline rules below.
+  const lines = clean.split('\n');
+  const isTableSep = l => /^\s*\|?[\s:|-]+\|?\s*$/.test(l) && l.includes('-');
+  const inlineFmt = s => escapeHtml(s).replace(/&lt;br\s*\/?&gt;/gi, '<br>').replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  const tables = [];
+  const outLines = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (/^\s*\|.*\|\s*$/.test(line) && lines[i + 1] !== undefined && isTableSep(lines[i + 1])) {
+      const headers = line.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+      let t = '<table class="md-table"><thead><tr>' + headers.map(c => `<th>${inlineFmt(c)}</th>`).join('') + '</tr></thead><tbody>';
+      i += 2;
+      while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) {
+        const cells = lines[i].trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+        t += '<tr>' + cells.map(c => `<td>${inlineFmt(c)}</td>`).join('') + '</tr>';
+        i++;
+      }
+      t += '</tbody></table>';
+      outLines.push(`@@TABLE${tables.length}@@`);
+      tables.push(t);
+      continue;
+    }
+    outLines.push(line);
+    i++;
+  }
+
+  let html = escapeHtml(outLines.join('\n'));
+  html = html.replace(/&lt;br\s*\/?&gt;/gi, '<br>');
   html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
   html = html.replace(/^▸\s*(.+)$/gm, '<div style="margin:4px 0">▸ $1</div>');
   html = html.replace(/^(\d+)\.\s+(.+)$/gm, '<div style="margin:4px 0 4px 8px"><strong>$1.</strong> $2</div>');
   html = html.replace(/\n{2,}/g, '<br><br>').replace(/\n/g, '<br>');
+  tables.forEach((t, idx) => { html = html.replace(`@@TABLE${idx}@@`, t); });
   return html;
 }
 
@@ -436,12 +503,18 @@ function parseDecisionActions(text) {
   const nextSection = block.slice(20).search(/\n\s*▸/);
   if (nextSection !== -1) block = block.slice(0, nextSection + 20);
 
+  // Strip markdown emphasis (**bold**, *italic*, _underscore_) that the LLM
+  // wraps decision/owner/deadline text in — otherwise raw asterisks render
+  // in the UI and the AUTHORIZE/ESCALATE/REVIEW label regex (which expects
+  // the label at the very start of the string) never matches.
+  const stripMd = s => s.replace(/\*\*/g, '').replace(/^[\*_]+|[\*_]+$/g, '').trim();
+
   const lineRe = /(\d+)\.\s*([^\n·]+?)\s*·\s*Owner:\s*([^·\n]+?)(?:\s*·\s*Deadline:\s*([^·\n]+?))?(?:\s*·\s*(?:Cost|Budget):\s*\$?([^\n]+))?\s*(?=\n|$)/gi;
   const defaultLabels = ['AUTHORIZE','ESCALATE','REVIEW','AUTHORIZE'];
   const results = [];
   let m;
   while ((m = lineRe.exec(block)) !== null) {
-    let decisionText = m[2].trim();
+    let decisionText = stripMd(m[2]);
     const labelMatch = decisionText.match(/^(AUTHORIZE|ESCALATE|REVIEW)\b[:\-]?\s*/i);
     const label = labelMatch ? labelMatch[1].toUpperCase() : (defaultLabels[results.length] || 'REVIEW');
     if (labelMatch) decisionText = decisionText.slice(labelMatch[0].length).trim();
@@ -449,8 +522,8 @@ function parseDecisionActions(text) {
       rank: Number(m[1]),
       label,
       text: decisionText,
-      owner: (m[3] || 'Unassigned').trim(),
-      deadline: (m[4] || 'TBD').trim(),
+      owner: stripMd(m[3] || 'Unassigned'),
+      deadline: stripMd(m[4] || 'TBD'),
     });
   }
   return results.length ? results : null;
@@ -531,43 +604,7 @@ function buildActionPanel(text) {
 
 // ── API CALL ──────────────────────────────────────────────────────────────────
 async function callAPI(prompt) {
-  const res = await fetch('/api/war-room/stream', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'openai/gpt-oss-120b',
-      max_tokens: 400,
-      messages: [
-        { role: 'system', content: 'You are a plant operations and industrial intelligence engine for TSM Command. Expert in manufacturing operations, equipment failure analysis, production impact, and executive decision support. Be specific with dollar amounts and timelines.' },
-        { role: 'user', content: prompt }
-      ]
-    })
-  });
-  if (!res.ok) {
-    throw new Error(`API returned ${res.status} ${res.statusText}`);
-  }
-  if (res.headers.get('content-type')?.includes('text/event-stream')) {
-    const reader = res.body.getReader();
-    const dec = new TextDecoder();
-    let out = '';
-    while(true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      for (const line of dec.decode(value).split('\n')) {
-        if (line.startsWith('data: ')) {
-          const d = line.slice(6);
-          if (d === '[DONE]') continue;
-          try { out += JSON.parse(d).choices?.[0]?.delta?.content || ''; } catch(e) {}
-        }
-      }
-    }
-    if (!out) throw new Error('Empty response from stream');
-    return out;
-  }
-  const data = await res.json();
-  const text = data.output || data.answer || data.choices?.[0]?.message?.content || '';
-  if (!text) throw new Error('Empty response from API');
-  return text;
+  return callWarRoomAPI(prompt, 'You are a plant operations and industrial intelligence engine for TSM Command. Expert in manufacturing operations, equipment failure analysis, production impact, and executive decision support. Be specific with dollar amounts and timelines.', { maxTokens: 700 });
 }
 
 function goToStrategist() {

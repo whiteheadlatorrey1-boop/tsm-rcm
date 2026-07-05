@@ -1060,62 +1060,11 @@ window.switchTab = window.switchTab || function(tab) {
   }
 </style>
 
-window.TSM_UI = {
-    runAudit: async (sector, factor) => {
-        const feed = document.querySelector('.intelligence-feed-output') || document.getElementById('intelligence-feed-output');
-        if (feed) feed.innerHTML = '<span style="color: #00ffff;">[STRATEGIST] Internal Link: Processing...</span>';
-        try {
-            const res = await fetch('/api/audit', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ query: `auditops "${sector}" --factor "${factor}" --logic strategist` })
-            });
-            const data = await res.json();
-            if (feed) feed.innerText = `[STRATEGIST] ${data.output || "Analysis Complete."}`;
-        } catch (e) {
-            if (feed) feed.innerText = "[STRATEGIST] Local API Bridge Failed.";
-        }
-    }
-};
-// Wire the sector cards to the auto-fill search prompt logic
-document.addEventListener('click', (e) => {
-    const card = e.target.closest('.module-card');
-    if (card) {
-        const sector = card.dataset.sector || "Construction";
-        const factor = card.querySelector('h3')?.innerText || "General Audit";
-        TSM_UI.runAudit(sector, factor);
-    }
-});
-console.log("TSM_UI: Direct Neural Link Established.");
-</script>
-window.TSM_UI = {
-    runAudit: async (sector, factor) => {
-        const feed = document.querySelector('.intelligence-feed-output') || document.getElementById('intelligence-feed-output');
-        if (feed) feed.innerHTML = '<span style="color: #00ffff;">[STRATEGIST] Internal Link: Processing...</span>';
-        try {
-            const res = await fetch('/api/audit', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ query: `auditops "${sector}" --factor "${factor}" --logic strategist` })
-            });
-            const data = await res.json();
-            if (feed) feed.innerText = `[STRATEGIST] ${data.output || "Analysis Complete."}`;
-        } catch (e) {
-            if (feed) feed.innerText = "[STRATEGIST] Local API Bridge Failed.";
-        }
-    }
-};
-// Wire the sector cards to the auto-fill search prompt logic
-document.addEventListener('click', (e) => {
-    const card = e.target.closest('.module-card');
-    if (card) {
-        const sector = card.dataset.sector || "Construction";
-        const factor = card.querySelector('h3')?.innerText || "General Audit";
-        TSM_UI.runAudit(sector, factor);
-    }
-});
-console.log("TSM_UI: Direct Neural Link Established.");
-</script>
+<!-- Removed: two copies of window.TSM_UI (runAudit) plus this click-wiring
+     block sat here as raw JS outside any <script> tag -- never executed,
+     ever. Also referenced a non-existent /api/audit endpoint and a
+     .module-card DOM class that doesn't exist anywhere in this file.
+     Fully dead/broken markup. -->
 </head>
 <body>
 
@@ -1729,14 +1678,28 @@ function buildDNAContext() {
 }
 
 // API CALL
+// Fixed: was hitting the wrong domain (tsm-shell.fly.dev, an old separate repo)
+// instead of this platform's own server, referenced an undeclared `input`
+// variable (guaranteed ReferenceError -> immediate catch -> "Error running
+// agent pass" on literally every call), and parsed an Anthropic-style
+// data.content[].text response shape that this server never returns.
+// Everything here runs through Groq server-side via /api/music/agent-pass,
+// same as the rest of the platform. That endpoint only forwards a single
+// `request` string to the LLM (it has its own fixed system prompt), so we
+// fold the caller's systemPrompt + userPrompt together into that field.
 async function callClaude(systemPrompt, userPrompt, loadingId, callback) {
   const loading = document.getElementById(loadingId);
   if (loading) { loading.classList.add('show'); loading.innerHTML = `<div><div style="text-align:center;margin-bottom:8px;color:var(--text2);font-family:var(--font-mono);font-size:12px;">Agent pass running...</div><div class="loading-bar"><div class="loading-bar-fill"></div></div></div>`; }
 
   try {
-    const resp = await fetch('https://tsm-shell.fly.dev/api/music/agent-pass',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt: input || document.getElementById('draft-input')?.value || ''})});
+    const resp = await fetch('/api/music/agent-pass', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ request: systemPrompt + '\n\n' + userPrompt })
+    });
     const data = await resp.json();
-    const text = data.content?.map(b => b.text || '').join('') || '';
+    if (!data.ok) throw new Error(data.error || 'Agent pass failed');
+    const text = data.output || '';
     if (loading) loading.classList.remove('show');
     callback(text);
     updateSessionTime();
@@ -2125,33 +2088,15 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 </script>
 
-window.MusicSuite = {
-  async state(){
-    return musicSafeFetch;
-  },
-  async agentPass(payload){
-    return fetch('https://tsm-shell.fly.dev/api/music/agent-pass',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify(payload||{})
-    }).then(r=>r.json());
-  },
-  async strategy(prompt){
-    return fetch('https://tsm-shell.fly.dev/api/music/strategy',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({prompt})
-    }).then(r=>r.json());
-  },
-  async saveSong(payload){
-    return fetch('https://tsm-shell.fly.dev/api/music/song',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify(payload||{})
-    }).then(r=>r.json());
-  }
-};
-
+// Removed: window.MusicSuite (dead code, never called anywhere in this app,
+// hit the wrong domain -- tsm-shell.fly.dev, an old separate repo -- for
+// agentPass/strategy/saveSong instead of this platform's own server).
+</script>
+<script id="tsm-music-suite-boot">
+// Fixed: this block sat as raw JS outside any <script> tag (orphaned during
+// the window.MusicSuite removal above) -- never executed, so the working
+// /api/music/state check never ran on page load. Restored into its own
+// tagged block.
 async function musicSuiteBoot(){
   const data = await musicSafeFetch('/api/music/state');
 
@@ -2242,7 +2187,7 @@ window.addEventListener('load', musicSuiteBoot);
     return window.musicSafeFetch('/api/music/strategy', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({ prompt: prompt || 'Build music strategy' })
+      body:JSON.stringify({ query: prompt || 'Build music strategy' })
     });
   };
 
@@ -3019,7 +2964,7 @@ window.addEventListener('load', musicSuiteBoot);
     const data = await musicSafeFetch("/api/music/agent-pass",{
       method:"POST",
       headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({prompt})
+      body:JSON.stringify({request: prompt})
     });
     renderSongStructure(data.response || data);
     return data;
@@ -3177,6 +3122,11 @@ window.addEventListener('load', musicSuiteBoot);
   }
 
   // ── Fetch coaching ─────────────────────────────────────────────────────────
+  // Fixed: was hitting tsm-shell.fly.dev (old separate repo) instead of this
+  // platform's own server, and sent {tab, lyrics, dna, request} -- none of
+  // which /api/music/coach reads (it only reads body.query/body.message) --
+  // so the coach always silently fell back to its generic default question
+  // regardless of the actual tab, draft lyrics, or artist DNA context.
   async function fetchCoaching(request='') {
     if (coach.loading) return;
     coach.loading = true;
@@ -3184,11 +3134,15 @@ window.addEventListener('load', musicSuiteBoot);
     renderLoading();
 
     const { lyrics, dna, tab } = getContext();
+    const query = `Tab: ${tab || 'unknown'}\n`
+      + (lyrics ? `Current lyrics/draft:\n${lyrics}\n\n` : '')
+      + (dna && Object.keys(dna).length ? `Artist DNA: ${JSON.stringify(dna)}\n\n` : '')
+      + (request || 'Give me quick, actionable coaching on where this stands right now.');
     try {
-      const res = await fetch('https://tsm-shell.fly.dev/api/music/coach', {
+      const res = await fetch('/api/music/coach', {
         method: 'POST',
         headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ tab, lyrics, dna, request })
+        body: JSON.stringify({ query })
       });
       const data = await res.json();
       if (data.ok) {
@@ -3315,7 +3269,13 @@ window.addEventListener('load', musicSuiteBoot);
 
   function $(id){ return document.getElementById(id); }
 
-  window.musicSafeFetch = async function(url, opts){
+  // NOTE: previously this unconditionally overwrote window.musicSafeFetch,
+  // clobbering the real implementation from tsm-music-stable-client (retry
+  // logic + correct data.ok error handling) with this stripped-down version
+  // (no retries, doesn't check data.ok, and masks real failures behind
+  // hardcoded canned lyrics). Guarded like tsm-music-compat-layer so the
+  // original robust version wins and this only applies if nothing set it yet.
+  window.musicSafeFetch = window.musicSafeFetch || async function(url, opts){
     try{
       const res = await fetch(url, opts || {});
       if(!res.ok) throw new Error("Music API unavailable");
@@ -3379,11 +3339,23 @@ Intro → Verse 1 → Pre-Hook → Hook → Verse 2 → Bridge → Final Hook �
     out.textContent = response;
   };
 
+  // Correction to the earlier guard here: guarding this the same way as
+  // musicSafeFetch was wrong for this specific pair. tsm-music-compat-layer
+  // (above, in document order) ALSO guards its own window.runMusicAI, so it
+  // fires first and wins once both sides use "||" -- meaning the version
+  // that rendered into #structureDisplay (a floating div with no matching
+  // markup/CSS anywhere in this file -- dead target) was winning instead of
+  // this one, which renders into the real HOOK/BRIDGE/AD-LIBS/STRUCTURE
+  // panels that generateHook/generateBridge/placeAdlibs/runStructureBuilder's
+  // button labels actually match. This block is intentionally the later,
+  // authoritative layer (owns the actual action-bar button wiring below),
+  // so it must overwrite compat_layer's version unconditionally, not defer
+  // to it. Left unguarded on purpose -- do not "fix" this back to "||".
   window.runMusicAI = async function(prompt){
     const data = await musicSafeFetch("/api/music/agent-pass",{
       method:"POST",
       headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({prompt})
+      body:JSON.stringify({request: prompt})
     });
     renderMusicOutput(data.response || data);
     return data;
@@ -3404,7 +3376,12 @@ Intro → Verse 1 → Pre-Hook → Hook → Verse 2 → Bridge → Final Hook �
     return runMusicAI("Place signature ad-libs naturally throughout these lyrics:\n\n" + input);
   };
 
-  window.runStructureBuilder = window.runStructureBuilder || function(){
+  // Same clobber-direction issue as runMusicAI above: compat_layer's
+  // runStructureBuilder also guards itself and loads first, so guarding
+  // this one let compat_layer's version win by default. Unguarded on
+  // purpose so this (the version wired to the real action bar) always
+  // overwrites compat_layer's.
+  window.runStructureBuilder = function(){
     const input = $("draft-input")?.value || "Build a complete song structure.";
     return runMusicAI("Build complete song structure with intro, verse, pre-hook, hook, verse 2, bridge, outro:\n\n" + input);
   };
@@ -3445,10 +3422,20 @@ document.addEventListener('click', function(e){
   const action = el.getAttribute('data-tsm-action');
   const args = el.getAttribute('data-tsm-args');
 
+  // Fix: TSM.launcher is defined in runtime/tsm-runtime-engine.js, which
+  // is never loaded on this page -- window.TSM itself is never set here
+  // (the three shared scripts above set window.TSMRelayBus and
+  // window.TSMSectorIntelligence instead). Every action-bar click was
+  // silently hitting the else branch and doing nothing. Falls back to
+  // calling the handler directly by name; all four handlers
+  // (generateHook/generateBridge/placeAdlibs/runStructureBuilder) take no
+  // arguments, so args is intentionally not passed through.
   if(window.TSM && TSM.launcher && TSM.launcher.run){
     TSM.launcher.run(action, args);
+  } else if (typeof window[action] === 'function') {
+    window[action]();
   } else {
-    console.warn('[TSM] launcher missing:', action, args);
+    console.warn('[TSM] launcher missing and no direct handler:', action, args);
   }
 
 });

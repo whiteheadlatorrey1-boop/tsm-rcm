@@ -125,6 +125,7 @@ var SP = {
   approval: 'You are an Enterprise Approval Center AI for TSM Command. Expert in multi-level approval workflows, delegation rules, escalation management, SLA compliance, and audit governance. Given structured approval request data, KPIs, SLA breaches, and attention flags, identify bottlenecks, escalation risks, and the specific next action per at-risk request. Reference request IDs. Be precise and operational. No preamble.',
   cpq: 'You are a CPQ (Configure-Price-Quote) operations AI for TSM Command. Expert in product configuration, compatibility rules, discount policy, margin management, quote lifecycle, and approval workflows. Given structured quote pipeline, KPI, and SLA-breach data, identify configuration conflicts, margin risks, stalled quotes, and the specific next action per at-risk quote. Reference quote IDs. Be precise and operational. No preamble.',
   catalog: 'You are a Product Catalog Management AI for TSM Command. Expert in product hierarchy, lifecycle management, SKU/variant management, bill of materials, compliance tracking, inventory linkage, and pricing synchronization. Given structured product catalog data, KPIs, and attention flags (low-stock, compliance, end-of-life), identify catalog data-quality risks, lifecycle bottlenecks, and the specific next action per flagged product. Reference SKUs/product IDs. Be precise and operational. No preamble.',
+  governance: 'You are a Governance & Compliance AI for TSM Command. Expert in internal controls, risk management, regulatory compliance frameworks, and audit oversight. Given structured control status, open risks, and flagged audit events, identify the highest-priority failing or at-risk controls, the risks most likely to escalate, and any suspicious or flagged audit events requiring follow-up. Reference control IDs and risk IDs. Be precise and operational. No preamble.',
   strategist: 'You are the TSM Sovereign Strategist — the ultimate business consultant AI. Deep expertise across healthcare, financial, legal, real estate, construction, insurance, education, hospitality, enterprise strategy, M&A, GTM. Be bold and transformative.',
   mdm: 'You are a Master Data Management AI for TSM Command. Expert in data stewardship, golden-record strategy, duplicate resolution, validation rule design, and data quality governance. Given structured master-record data, duplicate-match clusters, and quality scores across customer/vendor/GL domains, identify the highest-risk data anomalies, recommend which record in each duplicate cluster should survive a merge and why, and flag stewardship or validation-rule gaps. Reference record IDs. Be precise and operational. No preamble.',
   integration: 'You are an Enterprise Integration AI for TSM Command. Expert in API monitoring, event-driven architecture, ETL pipelines, message queue health, and data lineage across CRM/ERP/HR/Finance/Supply Chain/Manufacturing/BI/AI systems. Given system health, integration flow throughput/latency, message queue depth, ETL job status, and recent error events, identify the highest-risk integration failures or bottlenecks, trace root cause across the affected flow, and recommend specific remediation. Reference system and flow IDs. Be precise and operational. No preamble.',
@@ -400,7 +401,7 @@ app.post('/api/war-room/stream', async (req, res) => {
   const groqKey = process.env.GROQ_KEY || process.env.GROQ_API_KEY;
   if (!groqKey) return res.status(500).json({ error: 'GROQ_KEY not configured on server.' });
 
-  async function fetchGroqStream() {
+  async function fetchGroqStream(retriesLeft = 3) {
     const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -412,14 +413,28 @@ app.post('/api/war-room/stream', async (req, res) => {
         stream: true,
         max_tokens: max_tokens || 600,
         temperature: temperature ?? 0.4,
+        reasoning_effort: 'low',
         messages
       })
     });
     if (!groqRes.ok) {
       const err = await groqRes.json().catch(() => ({}));
       console.error('Groq error response:', JSON.stringify(err));
+
+      // Groq's TPM rate limit is transient and self-clears within seconds.
+      // Retry automatically (honoring the wait time Groq reports) instead of
+      // failing the whole engine run on a momentary cap — this is what was
+      // surfacing as opaque "502" errors on engines fired in quick succession.
+      if (groqRes.status === 429 && retriesLeft > 0) {
+        const waitMatch = /try again in ([\d.]+)s/i.exec(err.error?.message || '');
+        const waitMs = waitMatch ? Math.ceil(parseFloat(waitMatch[1]) * 1000) + 250 : 3000;
+        console.warn(`[war-room/stream] Rate limited, retrying in ${waitMs}ms (${retriesLeft} retries left)`);
+        await new Promise(r => setTimeout(r, waitMs));
+        return fetchGroqStream(retriesLeft - 1);
+      }
+
       const e = new Error(err.error?.message || 'Groq error');
-      e.status = 502;
+      e.status = groqRes.status === 429 ? 429 : 502;
       throw e;
     }
     return groqRes;
@@ -701,7 +716,7 @@ app.post('/api/music/agent-pass', async (req, res) => {
   var draft = body.draft || body.lyrics || '';
   var request = body.request || 'Refine this draft';
   try {
-    var output = await groqChat(SP.music, 'Agent: ' + agent + '\nRequest: ' + request + '\n\nDraft:\n' + draft + '\n\nProvide your refined version:', 512);
+    var output = await groqChat(SP.music, 'Agent: ' + agent + '\nRequest: ' + request + '\n\nDraft:\n' + draft + '\n\nProvide your refined version:', 700);
     return res.json({ ok: true, agent: agent, output: output, createdAt: new Date().toISOString() });
   } catch (e) { return res.status(500).json({ ok: false, error: e.message }); }
 });
@@ -711,9 +726,15 @@ app.post('/api/music/chain', async (req, res) => {
   var draft = body.draft || '';
   var request = body.request || 'Sharpen this draft';
   try {
-    var zay = await groqChat(SP.music, 'Agent ZAY cadence/flow focus.\nRequest: ' + request + '\nDraft: ' + draft + '\nRefine:', 400);
-    var riya = await groqChat(SP.music, 'Agent RIYA emotion/imagery focus.\nRequest: ' + request + '\nDraft: ' + zay + '\nRefine:', 400);
-    var dj = await groqChat(SP.music, 'Agent DJ hook/structure focus.\nRequest: ' + request + '\nDraft: ' + riya + '\nFinal version:', 400);
+    // maxTokens bumped 400->900: each stage refines the previous stage's
+    // (already generated) text, so a 400-token cap on ZAY truncated before
+    // the hook/bridge ever appeared, RIYA then refined that truncated draft,
+    // and DJ refined RIYA's truncated output -- compounding the cutoff
+    // across all three hops so the final song never included a complete
+    // hook, bridge, or outro.
+    var zay = await groqChat(SP.music, 'Agent ZAY cadence/flow focus.\nRequest: ' + request + '\nDraft: ' + draft + '\nRefine:', 900);
+    var riya = await groqChat(SP.music, 'Agent RIYA emotion/imagery focus.\nRequest: ' + request + '\nDraft: ' + zay + '\nRefine:', 900);
+    var dj = await groqChat(SP.music, 'Agent DJ hook/structure focus.\nRequest: ' + request + '\nDraft: ' + riya + '\nFinal version:', 900);
     return res.json({ ok: true, mode: 'chain', input: draft, zay, riya, output: dj, score: { overall: 0.87 }, createdAt: new Date().toISOString() });
   } catch (e) { return res.status(500).json({ ok: false, error: e.message }); }
 });
@@ -724,9 +745,9 @@ app.post('/api/music/revision/generate', async (req, res) => {
     var draft = body.draft || '';
     var request = body.request || 'Give me 3 revision options';
     var results = await Promise.all([
-      groqChat(SP.music, 'Flow-first revision.\nRequest: ' + request + '\nDraft: ' + draft + '\nOption A:', 400),
-      groqChat(SP.music, 'Emotion-first revision.\nRequest: ' + request + '\nDraft: ' + draft + '\nOption B:', 400),
-      groqChat(SP.music, 'Hook-first revision.\nRequest: ' + request + '\nDraft: ' + draft + '\nOption C:', 400)
+      groqChat(SP.music, 'Flow-first revision.\nRequest: ' + request + '\nDraft: ' + draft + '\nOption A:', 700),
+      groqChat(SP.music, 'Emotion-first revision.\nRequest: ' + request + '\nDraft: ' + draft + '\nOption B:', 700),
+      groqChat(SP.music, 'Hook-first revision.\nRequest: ' + request + '\nDraft: ' + draft + '\nOption C:', 700)
     ]);
     var scoreA = musicHeuristicScore(results[0]);
     var scoreB = musicHeuristicScore(results[1]);

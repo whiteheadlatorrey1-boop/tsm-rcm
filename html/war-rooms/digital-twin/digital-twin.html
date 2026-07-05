@@ -53,6 +53,7 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
 .btn{border:1px solid;font-family:inherit;font-size:9px;letter-spacing:1.5px;cursor:pointer;padding:8px 18px;transition:.2s;margin-right:8px}
 .btn-teal{background:var(--teal);border-color:var(--teal);color:#000;font-weight:700}
 .btn-gold{background:var(--gold);border-color:var(--gold);color:#000;font-weight:700}
+</style>
 </head><body>
 <div class="nav">
   <div class="nav-brand">⬡ TSM ENTERPRISE DIGITAL TWIN</div>
@@ -125,30 +126,35 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
     {id:'it',name:'IT OPS',score:94,delta:+2,color:'#00dcb4'}
   ];
 
-  // ── LIVE BPO SIGNAL: reads real relay data written by bpo-situation-room.html
-  // and bpo-strategist-v2.html, instead of a hardcoded line. First real
-  // (non-static) signal source in Digital Twin -- see phases.json Phase 10 note.
+  // ── LIVE BPO SIGNAL: reads real relay data written by bpo-war-room.html
+  // via TSM.relay.write("BPO", ...) -> canonical key TSM_BPO_RELAY, instead
+  // of a hardcoded line. First real (non-static) signal source in Digital
+  // Twin -- see phases.json Phase 10 note.
   function getBpoLiveSignal(){
     try {
-      const stratRaw = localStorage.getItem('TSM_BPO_STRAT_RELAY');
-      const warRaw = localStorage.getItem('TSM_BPO_WAR_RELAY');
-      if (stratRaw) {
-        const s = JSON.parse(stratRaw);
-        const conf = s.recommendation?.confidence || '—';
-        const sector = s.sector || 'BPO';
-        const t = new Date(s.timestamp);
-        const time = isNaN(t) ? '—' : t.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
-        return {type:'ok', text:`BPO: ${sector} strategist brief generated — ${conf}% confidence`, src:'BPO', time, live:true};
+      let raw = null;
+      if (window.TSM && window.TSM.relay && window.TSM.relay.read) {
+        raw = window.TSM.relay.read('BPO');
+      } else {
+        const r = localStorage.getItem('TSM_BPO_RELAY') || sessionStorage.getItem('TSM_BPO_RELAY');
+        raw = r ? JSON.parse(r) : null;
       }
-      if (warRaw) {
-        const w = JSON.parse(warRaw);
-        const sector = w.selectedSector || 'BPO';
-        const t = new Date(w.timestamp);
+      if (raw) {
+        const b = raw;
+        const t = new Date(b.relayed_at || b.timestamp);
         const time = isNaN(t) ? '—' : t.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
-        return {type:'warn', text:`BPO: ${sector} case extracted, awaiting strategist review`, src:'BPO', time, live:true};
+        const slaCount = (b.sla_breaches || []).length;
+        const riskCount = (b.risk_flags || []).length;
+        if (riskCount > 0) {
+          return {type:'bad', text:`BPO: ${riskCount} risk signal${riskCount===1?'':'s'} flagged across engagements`, src:'BPO', time, live:true};
+        }
+        if (slaCount > 0) {
+          return {type:'warn', text:`BPO: ${slaCount} SLA breach${slaCount===1?'':'es'} in pipeline`, src:'BPO', time, live:true};
+        }
+        return {type:'ok', text:'BPO: pipeline operational — no risk signals', src:'BPO', time, live:true};
       }
     } catch(e) {}
-    return {type:'warn', text:'BPO: no active case data — open bpo-situation-room.html to generate live signal', src:'BPO', time:'—', live:false};
+    return {type:'warn', text:'BPO: no active case data — open bpo-war-room.html to generate live signal', src:'BPO', time:'—', live:false};
   }
 
   const SIGNALS=[
@@ -248,5 +254,6 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
 
   renderHealth(); renderDomains(); renderSignals(); renderForecasts();
 })();
+</script>
   <script src="/html/core/tsm-runtime.js"></script>
-</script></body></html>
+</body></html>
