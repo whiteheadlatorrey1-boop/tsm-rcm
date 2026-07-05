@@ -470,12 +470,18 @@ function parseDecisionActions(text) {
   const nextSection = block.slice(20).search(/\n\s*▸/);
   if (nextSection !== -1) block = block.slice(0, nextSection + 20);
 
+  // Strip markdown emphasis (**bold**, *italic*, _underscore_) that the LLM
+  // wraps decision/owner/deadline text in — otherwise raw asterisks render
+  // in the UI and the AUTHORIZE/ESCALATE/REVIEW label regex (which expects
+  // the label at the very start of the string) never matches.
+  const stripMd = s => s.replace(/\*\*/g, '').replace(/^[\*_]+|[\*_]+$/g, '').trim();
+
   const lineRe = /(\d+)\.\s*([^\n·]+?)\s*·\s*Owner:\s*([^·\n]+?)(?:\s*·\s*Deadline:\s*([^·\n]+?))?(?:\s*·\s*(?:Cost|Budget):\s*\$?([^\n]+))?\s*(?=\n|$)/gi;
   const defaultLabels = ['AUTHORIZE','ESCALATE','REVIEW','AUTHORIZE'];
   const results = [];
   let m;
   while ((m = lineRe.exec(block)) !== null) {
-    let decisionText = m[2].trim();
+    let decisionText = stripMd(m[2]);
     const labelMatch = decisionText.match(/^(AUTHORIZE|ESCALATE|REVIEW)\b[:\-]?\s*/i);
     const label = labelMatch ? labelMatch[1].toUpperCase() : (defaultLabels[results.length] || 'REVIEW');
     if (labelMatch) decisionText = decisionText.slice(labelMatch[0].length).trim();
@@ -483,8 +489,8 @@ function parseDecisionActions(text) {
       rank: Number(m[1]),
       label,
       text: decisionText,
-      owner: (m[3] || 'Unassigned').trim(),
-      deadline: (m[4] || 'TBD').trim(),
+      owner: stripMd(m[3] || 'Unassigned'),
+      deadline: stripMd(m[4] || 'TBD'),
     });
   }
   return results.length ? results : null;
@@ -565,7 +571,7 @@ function buildActionPanel(text) {
 }
 
 async function callAPI(prompt) {
-  return callWarRoomAPI(prompt, 'You are an OT/ICS cybersecurity intelligence engine for TSM Command. Expert in industrial control system security, attack analysis, operational/safety impact, and executive decision support. Be specific with dollar amounts and timelines.', { maxTokens: 400 });
+  return callWarRoomAPI(prompt, 'You are an OT/ICS cybersecurity intelligence engine for TSM Command. Expert in industrial control system security, attack analysis, operational/safety impact, and executive decision support. Be specific with dollar amounts and timelines.', { maxTokens: 700 });
 }
 
 function goToStrategist() {
