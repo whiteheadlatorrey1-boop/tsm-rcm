@@ -96,6 +96,9 @@ Also found during the audit, not previously tracked:
 relay registry (`tsm-auto-pipeline.js`) points at `html/war-rooms/bpo/...`.
 Not yet reconciled — flagged for the same post-Monday pass as #1 and #2.
 
+Note (2026-07-04): `war-room-prep.html` is not the war-rooms hub — see item #5
+below for the actual hub and its own, separate entryPoint issues.
+
 ---
 
 ## 4. Pre-existing relative-path inconsistency (found during move-risk check)
@@ -107,6 +110,50 @@ to be the same intended target. Not yet confirmed whether this causes an actual
 load failure today (browsers usually tolerate `//`), but the inconsistency itself
 suggests these paths were hand-edited independently rather than generated from
 one source — worth a straight audit pass post-Monday.
+
+---
+
+## 5. `phases.json` entryPoint split-brain: CPQ, Catalog, Approval (found 2026-07-04)
+
+While reviewing `war-room-prep.html` for demo readiness, found it isn't the
+war-rooms hub at all — it's a separate, older "War Room Pre-Presentation
+Checklist" page for the legacy 7 industry verticals (healthcare, finops-suite,
+tsm-insurance, construction-suite, legal-pro, reo-pro, bpo-legacy). It has zero
+links to any of the 10 new `/war-rooms/` verticals — not stale, just unrelated.
+
+The real hub is `/war-rooms/index.html` ("Enterprise Operations Studio"),
+rendered live from `architecture/kernel/phases.json`. That hub works correctly
+for 8 of 11 phase cards. For 3 — **CPQ, Catalog, Approval** — `entryPoint` in
+`phases.json` points at flat legacy files (`html/cpq-war-room.html`,
+`html/catalog-war-room.html`, `html/approval-war-room.html`), while each
+phase's `modules` array (used to build the "Strategist →" button) correctly
+points at the `war-rooms/<vertical>/` subfolder version. Net effect: on those
+3 cards, "Launch →" and "Strategist →" open two different files.
+
+Diffed the flat vs war-rooms versions for all three — they're pre-`relay.core.js`
+snapshots. The flat versions write relay data via direct
+`localStorage.setItem('TSM_CPQ_RELAY', ...)` / `sessionStorage.setItem(...)`
+calls instead of `TSM.relay.write("CPQ", payload)`, and don't load
+`relay.core.js` at all. Checked `RELAY_REGISTRY` in
+`html/war-rooms/_relay_control_plane/relay.core.js` — it maps `CPQ` →
+`TSM_CPQ_RELAY`, `CATALOG` → `TSM_CATALOG_RELAY`, `APPROVAL` →
+`TSM_APPROVAL_RELAY` — the exact same key names the flat versions write
+directly. **So the flat/war-rooms mismatch does not break the demo path** —
+the Strategist page still picks up the relay write either way. What's lost
+from the flat versions: no entry written to `TSM_EVENT_LOG`, and no
+`TSM_RELAY_EVENT` custom event fires (nothing currently listens for it, but
+worth knowing before something is built that does).
+
+**Demo-day guidance:** use the direct `/war-rooms/<vertical>/...` URLs for
+CPQ, Catalog, and Approval rather than the hub's "Launch →" button. All other
+8 cards launch correctly to the matching `war-rooms/` files.
+
+**Fix for post-Monday:** update `entryPoint` for `phase-3-cpq`,
+`phase-4-catalog`, `phase-5-approvals` in `architecture/kernel/phases.json` to
+point at the `war-rooms/<vertical>/<vertical>-war-room.html` paths, matching
+every other phase entry. Low-risk, single-file JSON edit, no code changes
+needed since the flat legacy files can simply be deleted afterward — nothing
+else references them (only this stale `entryPoint` field pointed at them).
 
 ---
 
@@ -126,11 +173,15 @@ or `TSM_ENFORCER.` at all. Sections 1 and 2 above do not affect Monday's demo.
    relative `../../` — removes path-depth fragility entirely regardless of
    file location.
 2. Delete confirmed dead code: repo-root `tsm-enforcer.js`, `tsm-kernel-v2.js`,
-   and the orphaned `tsmWriteRelay()` blocks in the 8 executive-portal/hub pages.
+   the orphaned `tsmWriteRelay()` blocks in the 8 executive-portal/hub pages,
+   and the flat legacy `html/cpq-war-room.html`, `html/catalog-war-room.html`,
+   `html/approval-war-room.html` (after fixing `phases.json` entryPoint per #5).
 3. Once absolute paths are in place everywhere, physically consolidating
    directories becomes low-risk, because no path depends on folder depth anymore.
 4. Then resolve the `bpo` duplication and reconcile `war-room-prep.html` links
-   to point at the canonical `html/war-rooms/` locations.
+   to point at the canonical `html/war-rooms/` locations — or retire
+   `war-room-prep.html` entirely if the legacy verticals it covers are being
+   phased out in favor of the `war-rooms/` system.
 5. Then, and only then, is a physical folder move actually safe.
 
 This order matters: fixing the path-fragility first is what makes the folder
