@@ -3315,7 +3315,13 @@ window.addEventListener('load', musicSuiteBoot);
 
   function $(id){ return document.getElementById(id); }
 
-  window.musicSafeFetch = async function(url, opts){
+  // NOTE: previously this unconditionally overwrote window.musicSafeFetch,
+  // clobbering the real implementation from tsm-music-stable-client (retry
+  // logic + correct data.ok error handling) with this stripped-down version
+  // (no retries, doesn't check data.ok, and masks real failures behind
+  // hardcoded canned lyrics). Guarded like tsm-music-compat-layer so the
+  // original robust version wins and this only applies if nothing set it yet.
+  window.musicSafeFetch = window.musicSafeFetch || async function(url, opts){
     try{
       const res = await fetch(url, opts || {});
       if(!res.ok) throw new Error("Music API unavailable");
