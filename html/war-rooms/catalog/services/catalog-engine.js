@@ -42,20 +42,31 @@ class TSMCatalogEngine {
   computeKpis() {
     const total = this.products.length;
     const active = this.products.filter(p => p.stage === 'Active').length;
-    const lowStock = this.getLowStockProducts().length;
-    const complianceFlags = this.getComplianceFlags().length;
-    const eol = this.products.filter(p => ['EOL Announced', 'End of Life', 'Discontinued'].includes(p.stage)).length;
+    const lowStockProducts = this.getLowStockProducts();
+    const complianceFlagProducts = this.getComplianceFlags();
+    const lowStock = lowStockProducts.length;
+    const complianceFlags = complianceFlagProducts.length;
+    const eolProducts = this.products.filter(p => ['EOL Announced', 'End of Life', 'Discontinued'].includes(p.stage));
+    const eol = eolProducts.length;
     const withMargin = this.products.filter(p => p.list_price && p.cost_basis_pct != null);
     const avgMargin = withMargin.length
       ? Math.round(withMargin.reduce((s, p) => s + (1 - p.cost_basis_pct) * 100, 0) / withMargin.length * 10) / 10
       : 0;
+    // Revenue at risk: on-hand inventory value (list_price * stock_qty) for SKUs
+    // that are low-stock, EOL/discontinued, or compliance-flagged. Uses only
+    // fields already on the product record — no new data assumptions.
+    const atRiskSkus = new Map();
+    [...lowStockProducts, ...eolProducts, ...complianceFlagProducts].forEach(p => atRiskSkus.set(p.sku, p));
+    const revenueAtRisk = Array.from(atRiskSkus.values())
+      .reduce((s, p) => s + ((Number(p.list_price) || 0) * (Number(p.stock_qty) || 0)), 0);
     return {
       total_skus: total,
       active_skus: active,
       low_stock_count: lowStock,
       compliance_flag_count: complianceFlags,
       eol_count: eol,
-      avg_margin_pct: avgMargin
+      avg_margin_pct: avgMargin,
+      revenue_at_risk: revenueAtRisk
     };
   }
 

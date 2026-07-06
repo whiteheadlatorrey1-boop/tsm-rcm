@@ -55,13 +55,21 @@ class TSMApprovalEngine {
           s + (new Date(r.decided_at).getTime() - new Date(r.submitted_at).getTime()) / 3_600_000, 0)
           / withCycle.length * 10) / 10
       : 0;
+    const valuePending = this.requests
+      .filter(r => !['Approved', 'Rejected'].includes(r.stage))
+      .reduce((s, r) => s + (Number(r.amount) || 0), 0);
+    const valueApproved = this.requests
+      .filter(r => r.stage === 'Approved')
+      .reduce((s, r) => s + (Number(r.amount) || 0), 0);
     return {
       total_requests: total,
       pending_requests: pending,
       escalated_count: escalated,
       sla_breach_count: slaBreachCount,
       approval_rate_pct: approvalRate,
-      avg_cycle_hours: avgCycleHours
+      avg_cycle_hours: avgCycleHours,
+      value_pending: valuePending,
+      value_approved: valueApproved
     };
   }
 
