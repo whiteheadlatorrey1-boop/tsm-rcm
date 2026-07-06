@@ -129,7 +129,19 @@ var SP = {
   strategist: 'You are the TSM Sovereign Strategist — the ultimate business consultant AI. Deep expertise across healthcare, financial, legal, real estate, construction, insurance, education, hospitality, enterprise strategy, M&A, GTM. Be bold and transformative.',
   mdm: 'You are a Master Data Management AI for TSM Command. Expert in data stewardship, golden-record strategy, duplicate resolution, validation rule design, and data quality governance. Given structured master-record data, duplicate-match clusters, and quality scores across customer/vendor/GL domains, identify the highest-risk data anomalies, recommend which record in each duplicate cluster should survive a merge and why, and flag stewardship or validation-rule gaps. Reference record IDs. Be precise and operational. No preamble.',
   integration: 'You are an Enterprise Integration AI for TSM Command. Expert in API monitoring, event-driven architecture, ETL pipelines, message queue health, and data lineage across CRM/ERP/HR/Finance/Supply Chain/Manufacturing/BI/AI systems. Given system health, integration flow throughput/latency, message queue depth, ETL job status, and recent error events, identify the highest-risk integration failures or bottlenecks, trace root cause across the affected flow, and recommend specific remediation. Reference system and flow IDs. Be precise and operational. No preamble.',
-  digitalTwin: 'You are the Enterprise Digital Twin AI for TSM Command. Expert in cross-domain business simulation across Sales, Finance, Operations, Manufacturing, Procurement, HR, Customer Service, Supply Chain, Logistics, and IT Ops. Given structured domain health scores, live signal feed, and 30-day forecast data, synthesize an executive brief: identify the domains driving the biggest swings in enterprise health, the highest-priority cross-domain risk, and the single most important executive action this week. Reference domain names and specific figures. Be precise and operational. No preamble.'
+  digitalTwin: 'You are the Enterprise Digital Twin AI for TSM Command. Expert in cross-domain business simulation across Sales, Finance, Operations, Manufacturing, Procurement, HR, Customer Service, Supply Chain, Logistics, and IT Ops. Given structured domain health scores, live signal feed, and 30-day forecast data, synthesize an executive brief: identify the domains driving the biggest swings in enterprise health, the highest-priority cross-domain risk, and the single most important executive action this week. Reference domain names and specific figures. Be precise and operational. No preamble.',
+  l1Assistant: 'You are the L1 Ticket Copilot Assistant for TSM Command IT support. ' +
+    'A tier-1 technician will describe a live scenario in their own words — a ticket ' +
+    'they are stuck on, an error message, a user complaint, or a "what should I do here" ' +
+    'question. Give fast, practical, best-practice guidance a working L1 tech can act on ' +
+    'immediately. Structure every answer as: (1) likely root cause in one line, ' +
+    '(2) the 2-4 concrete next steps in order, (3) when to escalate and to whom ' +
+    '(L2, vendor, or manager) if the steps do not resolve it. If the scenario mentions ' +
+    'Dell hardware, factor in ProSupport vs Basic warranty guidance and what info ' +
+    '(service tag / express service code) to have ready before contacting Dell. ' +
+    'Be concise, no filler, no preamble, plain operational language a technician can ' +
+    'read in a few seconds mid-ticket.',
+  l1support: 'You are a Senior Network and Systems Engineer acting as the decision-making core of TSM L1 Ticket Copilot, a desktop/network support triage tool. You have 15+ years of enterprise IT experience across Windows/macOS endpoint management, Active Directory/Entra ID, DNS/DHCP, VLAN and routing, firewall/ACL policy, VPN and SD-WAN, virtualization, Microsoft 365/Azure, and OEM hardware (Dell, HP, Lenovo, Cisco, Meraki, Fortinet). Triage every ticket in OSI-layer order — physical/hardware first, then link/network (VLAN, switchport, DHCP, DNS), then transport/session (VPN, firewall, auth/SSO/MFA), then application — and do not skip layers. Distinguish clearly between an L1-actionable fix, a fix that needs elevated/L2 access, and a fix that needs vendor hardware service, and say which one applies and why. When recommending escalation, name the correct team (Desktop, Network, Server, Azure, O365, Security, Application, or Vendor) based on where in the stack the root cause actually sits, not just ticket category. Be precise, operational, and quantify confidence and risk where you can. No filler, no preamble, no restating the question back.',
 };
 
 // ── GLOBAL STATE ──────────────────────────────────────────────────────────────
@@ -1053,6 +1065,95 @@ app.post('/api/insurance/ahip-quiz', async (req, res) => {
     const raw = await groqChat('You are an AHIP Medicare certification exam question writer. Respond ONLY with valid JSON.', prompt, 2800);
     res.json({ ok: true, questions: JSON.parse(raw.replace(/```json|```/g, '').trim()) });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+app.post('/api/l1-copilot/assistant', async (req, res) => {
+  try {
+    var scenario = (req.body.scenario || req.body.question || req.body.query || '').trim();
+    if (!scenario) return res.status(400).json({ ok: false, error: 'scenario is required' });
+    var a = await groqChat(SP.l1Assistant, scenario, req.body.maxTokens || 700);
+    return res.json({ ok: true, answer: a, createdAt: new Date().toISOString() });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/api/l1-copilot/analyze', async (req, res) => {
+  const { ticket, maxTokens } = req.body || {};
+  if (!ticket || !ticket.description) return res.status(400).json({ ok: false, error: 'ticket.description required' });
+  const summary = JSON.stringify({
+    incident: ticket.incident, priority: ticket.priority, requester: ticket.requester,
+    department: ticket.department, asset: ticket.asset, manufacturer: ticket.manufacturer,
+    model: ticket.model, warranty: ticket.warranty
+  }, null, 2);
+  const prompt = `Ticket metadata:\n${summary}\n\nTicket description:\n${ticket.description}\n\n` +
+    `Analyze this ticket and return ONLY valid JSON, no markdown, no backticks, in exactly this shape:\n` +
+    `{"issue_summary":"one sentence","likely_causes":["cause 1","cause 2"],"confidence":0-100,` +
+    `"affected_system":"short label","business_impact":"short label","severity":"Low|Medium|High|Critical",` +
+    `"recommended_path":"the single next diagnostic or remediation step, and why"}`;
+  try {
+    const raw = await groqChat(SP.l1support, prompt, maxTokens || 900);
+    const analysis = JSON.parse(raw.replace(/```json|```/g, '').trim());
+    return res.json({ ok: true, analysis, createdAt: new Date().toISOString() });
+  } catch (e) {
+    console.error('L1 COPILOT ANALYZE ERROR:', e.message);
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/api/l1-copilot/vendor', async (req, res) => {
+  const { manufacturer, serviceTag, warranty, issueSummary, maxTokens } = req.body || {};
+  if (!manufacturer) return res.status(400).json({ ok: false, error: 'manufacturer required' });
+  const prompt = `Manufacturer: ${manufacturer}\nService tag / express service code: ${serviceTag || 'not provided'}\n` +
+    `Warranty status: ${warranty || 'unknown'}\nIssue summary: ${issueSummary || 'not provided'}\n\n` +
+    `Recommend which ${manufacturer} support tier to engage (e.g. ProSupport vs ProSupport Plus vs Basic/standard warranty), ` +
+    `exactly what information the technician should have ready before contacting them (service tag, diagnostic codes, ` +
+    `error logs, etc.), and whether this looks like a case for phone support, chat, or an on-site dispatch. Be concise and operational.`;
+  try {
+    const answer = await groqChat(SP.l1support, prompt, maxTokens || 700);
+    return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
+  } catch (e) {
+    console.error('L1 COPILOT VENDOR ERROR:', e.message);
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/api/l1-copilot/resolution', async (req, res) => {
+  const { ticket, analysis, notes, maxTokens } = req.body || {};
+  if (!ticket) return res.status(400).json({ ok: false, error: 'ticket required' });
+  const prompt = `Ticket description:\n${ticket}\n\n` +
+    (analysis ? `AI analysis on file:\n${JSON.stringify(analysis, null, 2)}\n\n` : '') +
+    (notes ? `Technician notes / troubleshooting steps performed:\n${notes}\n\n` : '') +
+    `Write a resolution record ready to paste into ServiceNow, with these exact section headers on their own lines: ` +
+    `Problem / Cause / Actions Taken / Resolution / Validation / Next Steps. Be factual — only state actions that are ` +
+    `reflected in the notes above; do not invent steps that weren't performed.`;
+  try {
+    const answer = await groqChat(SP.l1support, prompt, maxTokens || 900);
+    return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
+  } catch (e) {
+    console.error('L1 COPILOT RESOLUTION ERROR:', e.message);
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/api/l1-copilot/escalation', async (req, res) => {
+  const { ticket, analysis, reason, evidence, recommendedTeam, maxTokens } = req.body || {};
+  if (!ticket) return res.status(400).json({ ok: false, error: 'ticket required' });
+  const prompt = `Ticket description:\n${ticket}\n\n` +
+    (analysis ? `AI analysis on file:\n${JSON.stringify(analysis, null, 2)}\n\n` : '') +
+    `Escalation reason given by technician: ${reason || 'not specified'}\n` +
+    `Evidence attached: ${evidence || 'none noted'}\n` +
+    `Technician-selected team: ${recommendedTeam || 'not selected'}\n\n` +
+    `Write a short escalation package for the receiving L2/vendor team: confirm or correct the recommended team based ` +
+    `on where the root cause actually sits, summarize what's been ruled out at L1, state the business impact, and list ` +
+    `exactly what the receiving team needs to pick this up without re-doing L1 steps.`;
+  try {
+    const answer = await groqChat(SP.l1support, prompt, maxTokens || 800);
+    return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
+  } catch (e) {
+    console.error('L1 COPILOT ESCALATION ERROR:', e.message);
+    return res.status(500).json({ ok: false, error: e.message });
+  }
 });
 
 app.post('/api/schools/query', async (req, res) => {
