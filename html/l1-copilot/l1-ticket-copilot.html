@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script defer src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TSM L1 Ticket Copilot</title>
+<style>
+:root {
+  --bg:#0a0e12;--bg2:#0d1216;--bg3:#11161b;
+  --border:rgba(0,229,255,.14);
+  --cyan:#00e5ff;--cyan-dim:rgba(0,229,255,.6);
+  --green:#00ff50;--gold:#ffd700;--red:#ff3b3b;--amber:#ff9500;--purple:#c084fc;
+  --text:#c9d6dc;--text-dim:#5a7684;--card:#0d1418;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;font-size:12px;min-height:100vh}
+.nav{display:flex;align-items:center;gap:0;background:#080b0e;border-bottom:1px solid var(--border);height:38px;padding:0 16px}
+.nav-brand{color:var(--cyan);font-weight:700;font-size:11px;letter-spacing:2px;margin-right:24px}
+.nav-right{margin-left:auto;display:flex;align-items:center;gap:16px;color:var(--text-dim);font-size:10px}
+.nav-clock{color:var(--cyan-dim)}
+
+.exec-strip{display:flex;gap:0;background:var(--bg2);border-bottom:1px solid var(--border);overflow-x:auto}
+.exec-item{padding:8px 16px;border-right:1px solid var(--border);white-space:nowrap;min-width:110px}
+.exec-label{font-size:8px;letter-spacing:1px;color:var(--text-dim);text-transform:uppercase}
+.exec-val{font-size:14px;font-weight:700;color:var(--cyan);margin-top:2px}
+
+.alert-bar{background:rgba(255,149,0,.06);border-bottom:1px solid rgba(255,149,0,.2);padding:6px 20px;display:none;align-items:center;gap:8px;font-size:10px;letter-spacing:1.5px;color:var(--amber)}
+.alert-bar.show{display:flex}
+.alert-dot{width:6px;height:6px;border-radius:50%;background:var(--amber);box-shadow:0 0 6px var(--amber);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+.layout{display:grid;grid-template-columns:200px 1fr;min-height:calc(100vh - 70px)}
+.sidebar{background:var(--bg2);border-right:1px solid var(--border);padding:10px 0}
+.sb-item{display:flex;align-items:center;gap:10px;padding:10px 18px;font-size:10px;letter-spacing:1.5px;color:var(--text-dim);cursor:pointer;border-left:2px solid transparent}
+.sb-item:hover{color:var(--text);background:rgba(0,229,255,.03)}
+.sb-item.active{color:var(--cyan);border-left-color:var(--cyan);background:rgba(0,229,255,.06)}
+.sb-dot{width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.5}
+.sb-item.active .sb-dot{opacity:1;box-shadow:0 0 6px var(--cyan)}
+
+.main{overflow-y:auto;background:var(--bg);padding:18px 22px}
+.section{display:none}
+.section.active{display:block}
+
+.ticket-head-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:16px}
+.field{background:var(--card);border:1px solid var(--border);padding:8px 10px}
+.field-label{font-size:8px;letter-spacing:1px;color:var(--text-dim);text-transform:uppercase;margin-bottom:4px}
+.field input,.field select{background:transparent;border:none;color:var(--text);font-family:inherit;font-size:11px;width:100%;outline:none}
+
+.card{background:var(--card);border:1px solid var(--border);margin-bottom:16px}
+.card-head{padding:10px 14px;border-bottom:1px solid var(--border);font-size:10px;letter-spacing:1.5px;color:var(--text-dim);display:flex;justify-content:space-between;align-items:center}
+.card-body{padding:14px}
+
+textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:inherit;font-size:11px;padding:10px;width:100%;resize:vertical;outline:none}
+.btn{border:1px solid;font-family:inherit;font-size:9px;letter-spacing:1.5px;cursor:pointer;padding:8px 14px;transition:all .2s;background:transparent}
+.btn-cyan{background:var(--cyan);border-color:var(--cyan);color:#000;font-weight:700}
+.btn-cyan:hover{background:#00c4d6}
+.btn-outline{border-color:var(--cyan);color:var(--cyan)}
+.btn-ghost{border-color:var(--border);color:var(--text-dim)}
+.btn-ghost:hover{border-color:var(--text-dim);color:var(--text)}
+.btn-gold{background:var(--gold);border-color:var(--gold);color:#000;font-weight:700}
+.btn-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+
+.ai-output{background:var(--bg3);border:1px solid var(--border);padding:12px;font-size:11px;line-height:1.7;color:var(--text);white-space:pre-wrap;min-height:60px}
+.ai-output.loading{color:var(--text-dim)}
+.ai-output .err{color:var(--red)}
+
+.analysis-grid{display:grid;grid-template-columns:2fr 1fr;gap:12px}
+.analysis-kpis{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.kpi-card{background:var(--bg3);border:1px solid var(--border);padding:10px}
+.kpi-label{font-size:8px;letter-spacing:1px;color:var(--text-dim);margin-bottom:5px;text-transform:uppercase}
+.kpi-value{font-size:15px;font-weight:700;color:var(--cyan)}
+.kpi-value.warn{color:var(--amber)}
+.kpi-value.bad{color:var(--red)}
+.kpi-value.good{color:var(--green)}
+
+.checklist-step{background:var(--bg3);border:1px solid var(--border);margin-bottom:8px}
+.checklist-step-head{padding:8px 12px;font-size:10px;letter-spacing:1px;color:var(--cyan);border-bottom:1px solid var(--border);display:flex;justify-content:space-between}
+.checklist-items{padding:8px 12px}
+.check-row{display:flex;align-items:center;gap:8px;padding:5px 0;font-size:11px}
+.check-row input{accent-color:var(--cyan)}
+.check-row.done label{color:var(--text-dim);text-decoration:line-through}
+
+.vendor-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.vendor-fields .field{margin-bottom:8px}
+.vendor-links{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.tag{display:inline-block;font-size:8px;letter-spacing:1px;padding:3px 7px;border:1px solid}
+.tag-high{color:var(--red);border-color:var(--red)}
+.tag-medium{color:var(--amber);border-color:var(--amber)}
+.tag-ok{color:var(--green);border-color:var(--green)}
+.tag-info{color:var(--cyan);border-color:var(--cyan)}
+
+.sla-hero{display:flex;gap:20px;align-items:center;padding:20px;background:var(--bg3);border:1px solid var(--border)}
+.sla-timer{font-size:36px;font-weight:700;color:var(--green);font-family:'Courier New',monospace}
+.sla-timer.warn{color:var(--amber)}
+.sla-timer.bad{color:var(--red)}
+.sla-meta{display:flex;flex-direction:column;gap:6px;font-size:10px;color:var(--text-dim)}
+.sla-meta b{color:var(--text)}
+
+.escalation-team-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px}
+.team-chip{padding:8px;text-align:center;font-size:9px;letter-spacing:1px;border:1px solid var(--border);color:var(--text-dim);cursor:pointer}
+.team-chip.selected{border-color:var(--cyan);color:var(--cyan);background:rgba(0,229,255,.06)}
+
+.history-row{display:flex;justify-content:space-between;padding:8px 10px;border-bottom:1px solid var(--border);font-size:10px}
+.history-row:hover{background:rgba(0,229,255,.03)}
+.empty-state{color:var(--text-dim);font-size:10px;padding:20px;text-align:center}
+
+/* Mount point for the external L1 Assistant chat widget.
+   apply-l1-assistant.js targets this page and injects its floating
+   assistant UI + script include here. Do not remove this container. */
+#l1AssistantWidgetMount{position:fixed;bottom:0;right:0;z-index:9999}
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <div class="nav-brand">TSM SHELL // L1 TICKET COPILOT</div>
+  <div class="nav-right">
+    <span id="navStatus">ENGINE: IDLE</span>
+    <span class="nav-clock" id="navClock">--:--:--</span>
+  </div>
+</div>
+
+<div class="exec-strip">
+  <div class="exec-item"><div class="exec-label">Today's Tickets</div><div class="exec-val" id="execToday">0</div></div>
+  <div class="exec-item"><div class="exec-label">Resolved</div><div class="exec-val" id="execResolved">0</div></div>
+  <div class="exec-item"><div class="exec-label">Open</div><div class="exec-val" id="execOpen">0</div></div>
+  <div class="exec-item"><div class="exec-label">Avg Resolution</div><div class="exec-val" id="execAvgRes">--</div></div>
+  <div class="exec-item"><div class="exec-label">SLA %</div><div class="exec-val" id="execSlaPct">--</div></div>
+  <div class="exec-item"><div class="exec-label">Vendor Cases</div><div class="exec-val" id="execVendorCases">0</div></div>
+  <div class="exec-item"><div class="exec-label">Repeat Issues</div><div class="exec-val" id="execRepeat">0</div></div>
+</div>
+
+<div class="alert-bar" id="alertBar">
+  <span class="alert-dot"></span>
+  <span id="alertText">SLA breach imminent on current ticket.</span>
+</div>
+
+<div class="layout">
+  <div class="sidebar" id="sideNav">
+    <div class="sb-item active" data-section="ticket"><span class="sb-dot"></span>Ticket</div>
+    <div class="sb-item" data-section="ai"><span class="sb-dot"></span>AI Analysis</div>
+    <div class="sb-item" data-section="troubleshoot"><span class="sb-dot"></span>Troubleshooting</div>
+    <div class="sb-item" data-section="vendor"><span class="sb-dot"></span>Vendor Support</div>
+    <div class="sb-item" data-section="sla"><span class="sb-dot"></span>SLA</div>
+    <div class="sb-item" data-section="resolution"><span class="sb-dot"></span>Resolution</div>
+    <div class="sb-item" data-section="notes"><span class="sb-dot"></span>Notes</div>
+    <div class="sb-item" data-section="escalation"><span class="sb-dot"></span>Escalation</div>
+    <div class="sb-item" data-section="history"><span class="sb-dot"></span>History</div>
+    <div class="sb-item" data-section="howto"><span class="sb-dot"></span>How To</div>
+  </div>
+
+  <div class="main">
+
+    <!-- TICKET -->
+    <section class="section active" id="sec-ticket">
+      <div class="ticket-head-grid">
+        <div class="field"><div class="field-label">Incident #</div><input id="tkIncident" placeholder="INC0012345"></div>
+        <div class="field"><div class="field-label">Priority</div>
+          <select id="tkPriority"><option>P1</option><option selected>P2</option><option>P3</option><option>P4</option></select>
+        </div>
+        <div class="field"><div class="field-label">Status</div>
+          <select id="tkStatus"><option selected>In Progress</option><option>New</option><option>Pending</option><option>Resolved</option></select>
+        </div>
+        <div class="field"><div class="field-label">Requester</div><input id="tkRequester" placeholder="Jane Doe"></div>
+        <div class="field"><div class="field-label">Department</div><input id="tkDept" placeholder="Finance"></div>
+        <div class="field"><div class="field-label">Assignment Group</div><input id="tkGroup" placeholder="Desktop Support L1"></div>
+        <div class="field"><div class="field-label">Asset</div><input id="tkAsset" placeholder="Hostname / Tag"></div>
+        <div class="field"><div class="field-label">Manufacturer</div><input id="tkMfr" placeholder="Dell"></div>
+        <div class="field"><div class="field-label">Model</div><input id="tkModel" placeholder="Latitude 7440"></div>
+        <div class="field"><div class="field-label">Warranty</div><input id="tkWarranty" placeholder="ProSupport Plus"></div>
+        <div class="field"><div class="field-label">SLA Remaining</div><input id="tkSlaRemaining" placeholder="00:38" readonly></div>
+        <div class="field"><div class="field-label">Time Open</div><input id="tkTimeOpen" placeholder="3h 12m" readonly></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">TICKET DESCRIPTION</div>
+        <div class="card-body">
+          <textarea id="tkDescription" rows="10" placeholder="Paste the full ticket text here — symptoms, error messages, what the user has already tried..."></textarea>
+          <div class="btn-row">
+            <button class="btn btn-cyan" id="btnAnalyze">RUN AI ANALYSIS</button>
+            <button class="btn btn-ghost" id="btnLoadSample">LOAD SAMPLE TICKET</button>
+            <button class="btn btn-ghost" id="btnClearTicket">CLEAR</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- AI ANALYSIS -->
+    <section class="section" id="sec-ai">
+      <div class="card">
+        <div class="card-head">AI TICKET UNDERSTANDING<span id="aiConfBadge"></span></div>
+        <div class="card-body">
+          <div class="analysis-grid">
+            <div class="ai-output" id="aiOutput">Run AI analysis from the Ticket tab to populate this panel.</div>
+            <div class="analysis-kpis" id="aiKpis">
+              <div class="kpi-card"><div class="kpi-label">Confidence</div><div class="kpi-value" id="kpiConfidence">--</div></div>
+              <div class="kpi-card"><div class="kpi-label">Severity</div><div class="kpi-value" id="kpiSeverity">--</div></div>
+              <div class="kpi-card"><div class="kpi-label">Affected System</div><div class="kpi-value" id="kpiSystem" style="font-size:11px">--</div></div>
+              <div class="kpi-card"><div class="kpi-label">Business Impact</div><div class="kpi-value" id="kpiImpact" style="font-size:11px">--</div></div>
+            </div>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-outline" id="btnReanalyze">RE-RUN ANALYSIS</button>
+            <button class="btn btn-ghost" id="btnSendToTroubleshoot">SEND TO GUIDED TROUBLESHOOTING →</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TROUBLESHOOTING -->
+    <section class="section" id="sec-troubleshoot">
+      <div class="card">
+        <div class="card-head">GUIDED TROUBLESHOOTING</div>
+        <div class="card-body" id="checklistBody"></div>
+      </div>
+    </section>
+
+    <!-- VENDOR SUPPORT -->
+    <section class="section" id="sec-vendor">
+      <div class="card">
+        <div class="card-head">VENDOR LOOKUP &amp; ESCALATION</div>
+        <div class="card-body">
+          <div class="vendor-grid">
+            <div class="vendor-fields">
+              <div class="field"><div class="field-label">Manufacturer</div>
+                <select id="vManufacturer"><option>Dell</option><option>HP</option><option>Lenovo</option><option>Apple</option><option>Microsoft</option><option>Cisco</option><option>Meraki</option><option>Fortinet</option><option>VMware</option></select>
+              </div>
+              <div class="field"><div class="field-label">Service Tag / Express Service Code</div><input id="vServiceTag" placeholder="5G7XXXXX"></div>
+              <div class="field"><div class="field-label">Warranty Status</div><input id="vWarranty" placeholder="Valid — ProSupport Plus"></div>
+              <div class="btn-row">
+                <button class="btn btn-cyan" id="btnVendorGuidance">GET ESCALATION GUIDANCE</button>
+              </div>
+            </div>
+            <div>
+              <div class="ai-output" id="vendorOutput">Escalation guidance (support tier to engage, info to have ready) will appear here.</div>
+              <div class="vendor-links">
+                <span class="tag tag-info">Drivers</span><span class="tag tag-info">BIOS</span><span class="tag tag-info">Firmware</span>
+                <span class="tag tag-info">Diagnostics</span><span class="tag tag-info">Known Issues</span><span class="tag tag-info">Recalls</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLA -->
+    <section class="section" id="sec-sla">
+      <div class="card">
+        <div class="card-head">SLA DASHBOARD</div>
+        <div class="card-body">
+          <div class="sla-hero">
+            <div class="sla-timer" id="slaTimer">00:38</div>
+            <div class="sla-meta">
+              <div>Priority: <b id="slaPriority">P2</b></div>
+              <div>Escalation in: <b id="slaEscalationIn">20 minutes</b></div>
+              <div>Time Open: <b id="slaTimeOpen">3h 12m</b></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- RESOLUTION -->
+    <section class="section" id="sec-resolution">
+      <div class="card">
+        <div class="card-head">RESOLUTION BUILDER</div>
+        <div class="card-body">
+          <div class="btn-row" style="margin-top:0;margin-bottom:10px">
+            <button class="btn btn-cyan" id="btnBuildResolution">GENERATE RESOLUTION</button>
+            <button class="btn btn-gold" id="btnCopyResolution">COPY TO CLIPBOARD</button>
+          </div>
+          <div class="ai-output" id="resolutionOutput">Problem / Cause / Actions Taken / Resolution / Validation / Next Steps will be generated here from the ticket, checklist, and AI analysis.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- NOTES -->
+    <section class="section" id="sec-notes">
+      <div class="card">
+        <div class="card-head">TICKET NOTES</div>
+        <div class="card-body">
+          <textarea id="notesArea" rows="14" placeholder="Notes auto-populate as you check off troubleshooting steps. Editable."></textarea>
+          <div class="btn-row"><button class="btn btn-ghost" id="btnClearNotes">CLEAR NOTES</button></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ESCALATION -->
+    <section class="section" id="sec-escalation">
+      <div class="card">
+        <div class="card-head">ESCALATE</div>
+        <div class="card-body">
+          <div class="field" style="margin-bottom:8px"><div class="field-label">Reason</div><input id="escReason" placeholder="Root cause requires L2/vendor-level access"></div>
+          <div class="field" style="margin-bottom:8px"><div class="field-label">Evidence Attached</div><input id="escEvidence" placeholder="Logs, screenshots, diagnostics referenced"></div>
+          <div class="field-label" style="margin:10px 0 4px">Recommended Team</div>
+          <div class="escalation-team-grid" id="escTeamGrid">
+            <div class="team-chip" data-team="L2 Desktop">L2 Desktop</div>
+            <div class="team-chip" data-team="Network">Network</div>
+            <div class="team-chip" data-team="Server">Server</div>
+            <div class="team-chip" data-team="Azure">Azure</div>
+            <div class="team-chip" data-team="O365">O365</div>
+            <div class="team-chip" data-team="Security">Security</div>
+            <div class="team-chip" data-team="Application">Application</div>
+            <div class="team-chip" data-team="Vendor">Vendor</div>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-cyan" id="btnBuildEscalation">GENERATE ESCALATION PACKAGE</button>
+          </div>
+          <div class="ai-output" id="escalationOutput" style="margin-top:10px">Escalation package will appear here.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- HISTORY -->
+    <section class="section" id="sec-history">
+      <div class="card">
+        <div class="card-head">TICKET HISTORY<span><button class="btn btn-ghost" id="btnClearHistory" style="padding:4px 8px">CLEAR</button></span></div>
+        <div class="card-body" id="historyBody">
+          <div class="empty-state">No resolved tickets recorded yet this session.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- HOW TO -->
+    <section class="section" id="sec-howto">
+      <div class="card">
+        <div class="card-head">WORKING THE QUEUE — RECOMMENDED ORDER</div>
+        <div class="card-body">
+          <div class="ai-output" style="white-space:normal;line-height:1.8">
+            <b style="color:var(--cyan)">1. Ticket →</b> paste the full ticket text as soon as it lands, before you touch the hardware or remote in. The AI reads best on raw, unfiltered user language.<br>
+            <b style="color:var(--cyan)">2. AI Analysis →</b> run it immediately after intake. Treat <b>Confidence</b> as a triage signal, not a verdict — below ~70%, expect to spend more time in Troubleshooting before you trust the recommended path.<br>
+            <b style="color:var(--cyan)">3. Troubleshooting →</b> work the checklist in order (Verify User → Power → Hardware → OS). Skipping ahead because you "know" the fix is the single biggest cause of re-opened tickets — the checklist exists so nothing gets assumed.<br>
+            <b style="color:var(--cyan)">4. Vendor Support →</b> pull this up the moment hardware is implicated, even if you think it's software. Knowing the warranty tier before you need it saves the hold-time later.<br>
+            <b style="color:var(--cyan)">5. SLA →</b> check this every time you switch tabs, not just when the alert bar fires. Color changes are your cue to act, not a background indicator.<br>
+            <b style="color:var(--cyan)">6. Resolution →</b> generate this before you close the ticket, not after — it forces you to confirm the actions taken actually match what's in Notes.<br>
+            <b style="color:var(--cyan)">7. Escalation →</b> if you reach this tab, you should already know why — it should confirm your reasoning, not create it from scratch.
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">STAYING AHEAD OF SLA</div>
+        <div class="card-body">
+          <div class="ai-output" style="white-space:normal;line-height:1.8">
+            <span class="tag tag-ok">GREEN</span> Plenty of runway — work the checklist fully, don't shortcut steps to save time you don't need to save.<br><br>
+            <span class="tag tag-medium">AMBER</span> You're inside the window where escalation should already be in motion if L1 hasn't resolved it — open the Escalation tab now, not when it flips red.<br><br>
+            <span class="tag tag-high">RED</span> Breach is imminent or has happened. Stop troubleshooting, escalate immediately, and note the breach reason in Resolution so the pattern can be tracked — a late escalation is still better than a silent one.<br><br>
+            A P1 with 20 minutes remaining and a P3 with 20 minutes remaining are not the same urgency — always read the <b>Priority</b> field next to the timer, not the timer alone.
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">ANOMALY SIGNALS TO WATCH FOR</div>
+        <div class="card-body">
+          <div class="ai-output" style="white-space:normal;line-height:1.8">
+            <b style="color:var(--amber)">Repeat asset/user in History →</b> the same hostname or requester showing up more than once usually means the last fix treated a symptom, not the root cause. Say so explicitly in the new ticket's notes and consider escalating on the second occurrence rather than the third.<br><br>
+            <b style="color:var(--amber)">Low confidence + high severity together →</b> this is the highest-risk combination in the queue — the AI isn't sure, but the stakes are high. Don't rely on the recommended path alone; work the full checklist and lean toward earlier escalation.<br><br>
+            <b style="color:var(--amber)">Vendor case opened but warranty status unclear →</b> resolve this before dispatch gets involved — an expired warranty discovered mid-repair costs more time than checking it up front.<br><br>
+            <b style="color:var(--amber)">Escalations clustering on one team →</b> if Network or Server escalations spike in a short window, that's an infrastructure signal, not a coincidence of unrelated tickets — flag it up rather than closing each ticket independently.
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<!-- L1 Assistant widget mounts here (see apply-l1-assistant.js) -->
+<div id="l1AssistantWidgetMount"></div>
+
+<script>
+(function(){
+  // ── State ────────────────────────────────────────────────────────────────
+  const STORAGE_KEY = 'TSM_L1_TICKET_HISTORY';
+  let currentAnalysis = null;
+  let checklistState = {};
+  let selectedTeam = null;
+
+  const CHECKLIST = [
+    { title: 'Step 1 — Verify User', items: ['Confirm callback number', 'Verify hostname', 'Verify asset tag'] },
+    { title: 'Step 2 — Power', items: ['AC Adapter', 'Dock', 'Battery', 'External Monitor'] },
+    { title: 'Step 3 — Hardware', items: ['ePSA / hardware diagnostics', 'BIOS reset / reseat', 'SSD / NVMe detection'] },
+    { title: 'Step 4 — Operating System', items: ['Safe Mode boot', 'Startup Repair', 'Event Viewer review'] }
+  ];
+
+  // ── Clock ────────────────────────────────────────────────────────────────
+  function tickClock(){
+    document.getElementById('navClock').textContent = new Date().toLocaleTimeString('en-US', { hour12:false });
+  }
+  setInterval(tickClock, 1000); tickClock();
+
+  // ── Nav switching ────────────────────────────────────────────────────────
+  document.querySelectorAll('.sb-item').forEach(item => {
+    item.addEventListener('click', () => {
+      document.querySelectorAll('.sb-item').forEach(i => i.classList.remove('active'));
+      document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+      item.classList.add('active');
+      document.getElementById('sec-' + item.dataset.section).classList.add('active');
+    });
+  });
+
+  function goToSection(name){
+    document.querySelector(`.sb-item[data-section="${name}"]`).click();
+  }
+
+  // ── Ticket sample / clear ───────────────────────────────────────────────
+  document.getElementById('btnLoadSample').addEventListener('click', () => {
+    document.getElementById('tkIncident').value = 'INC0012345';
+    document.getElementById('tkRequester').value = 'Jane Doe';
+    document.getElementById('tkDept').value = 'Finance';
+    document.getElementById('tkGroup').value = 'Desktop Support L1';
+    document.getElementById('tkAsset').value = 'FIN-LT-0042';
+    document.getElementById('tkMfr').value = 'Dell';
+    document.getElementById('tkModel').value = 'Latitude 7440';
+    document.getElementById('tkWarranty').value = 'ProSupport Plus';
+    document.getElementById('tkDescription').value =
+      'User reports laptop will not boot. Powered on this morning, saw Dell logo then black screen. ' +
+      'No POST beeps. Tried holding power button 30s, no change. AC adapter light is on. User has not tried anything else.';
+    document.getElementById('vManufacturer').value = 'Dell';
+    document.getElementById('vServiceTag').value = '5G7XXXXX';
+    document.getElementById('vWarranty').value = 'Valid — ProSupport Plus';
+  });
+
+  document.getElementById('btnClearTicket').addEventListener('click', () => {
+    document.querySelectorAll('#sec-ticket input').forEach(i => { if (!i.readOnly) i.value=''; });
+    document.getElementById('tkDescription').value = '';
+  });
+
+  // ── AI Analysis ──────────────────────────────────────────────────────────
+  async function runAnalysis(){
+    const description = document.getElementById('tkDescription').value.trim();
+    if (!description) { alert('Paste a ticket description first.'); return; }
+    document.getElementById('navStatus').textContent = 'ENGINE: ANALYZING';
+    const out = document.getElementById('aiOutput');
+    out.className = 'ai-output loading';
+    out.textContent = 'Running AI analysis on ticket...';
+    goToSection('ai');
+    try {
+      const res = await fetch('/api/l1-copilot/analyze', {
+        method: 'POST', headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({
+          ticket: {
+            incident: document.getElementById('tkIncident').value,
+            priority: document.getElementById('tkPriority').value,
+            requester: document.getElementById('tkRequester').value,
+            department: document.getElementById('tkDept').value,
+            asset: document.getElementById('tkAsset').value,
+            manufacturer: document.getElementById('tkMfr').value,
+            model: document.getElementById('tkModel').value,
+            warranty: document.getElementById('tkWarranty').value,
+            description
+          }
+        })
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'analysis failed');
+      currentAnalysis = data.analysis || {};
+      renderAnalysis(currentAnalysis);
+      try { TSM.relay.write('L1COPILOT', { ticket: document.getElementById('tkIncident').value, analysis: currentAnalysis, ts: Date.now() }); } catch(e){ console.warn('Relay write failed', e); }
+    } catch (e) {
+      out.className = 'ai-output';
+      out.innerHTML = `<span class="err">Analysis failed: ${e.message}. Confirm /api/l1-copilot/analyze is wired server-side.</span>`;
+    } finally {
+      document.getElementById('navStatus').textContent = 'ENGINE: IDLE';
+    }
+  }
+
+  function renderAnalysis(a){
+    const out = document.getElementById('aiOutput');
+    out.className = 'ai-output';
+    const causes = Array.isArray(a.likely_causes) ? a.likely_causes.join(', ') : (a.likely_causes || '--');
+    out.textContent =
+      `ISSUE SUMMARY\n${a.issue_summary || '--'}\n\n` +
+      `LIKELY ROOT CAUSE\n${causes}\n\n` +
+      `RECOMMENDED PATH\n${a.recommended_path || '--'}`;
+    document.getElementById('kpiConfidence').textContent = a.confidence != null ? a.confidence + '%' : '--';
+    const sevEl = document.getElementById('kpiSeverity');
+    sevEl.textContent = a.severity || '--';
+    sevEl.className = 'kpi-value ' + (a.severity === 'Critical' || a.severity === 'High' ? 'bad' : a.severity === 'Medium' ? 'warn' : 'good');
+    document.getElementById('kpiSystem').textContent = a.affected_system || '--';
+    document.getElementById('kpiImpact').textContent = a.business_impact || '--';
+  }
+
+  document.getElementById('btnAnalyze').addEventListener('click', runAnalysis);
+  document.getElementById('btnReanalyze').addEventListener('click', runAnalysis);
+  document.getElementById('btnSendToTroubleshoot').addEventListener('click', () => goToSection('troubleshoot'));
+
+  // ── Guided Troubleshooting checklist ────────────────────────────────────
+  function renderChecklist(){
+    const body = document.getElementById('checklistBody');
+    body.innerHTML = '';
+    CHECKLIST.forEach((step, si) => {
+      const wrap = document.createElement('div');
+      wrap.className = 'checklist-step';
+      const done = step.items.filter((_, ii) => checklistState[`${si}-${ii}`]).length;
+      wrap.innerHTML = `<div class="checklist-step-head"><span>${step.title}</span><span>${done}/${step.items.length}</span></div>
+        <div class="checklist-items">${step.items.map((it, ii) => `
+          <div class="check-row ${checklistState[`${si}-${ii}`] ? 'done' : ''}">
+            <input type="checkbox" data-key="${si}-${ii}" ${checklistState[`${si}-${ii}`] ? 'checked' : ''}>
+            <label>${it}</label>
+          </div>`).join('')}</div>`;
+      body.appendChild(wrap);
+    });
+    body.querySelectorAll('input[type=checkbox]').forEach(cb => {
+      cb.addEventListener('change', () => {
+        checklistState[cb.dataset.key] = cb.checked;
+        renderChecklist();
+        syncNotesFromChecklist();
+      });
+    });
+  }
+
+  function syncNotesFromChecklist(){
+    const notes = document.getElementById('notesArea');
+    const lines = [];
+    CHECKLIST.forEach((step, si) => {
+      step.items.forEach((it, ii) => {
+        if (checklistState[`${si}-${ii}`]) lines.push(`[x] ${step.title}: ${it}`);
+      });
+    });
+    const auto = lines.join('\n');
+    const manual = notes.dataset.manual || '';
+    notes.value = (auto ? auto + '\n\n' : '') + manual;
+  }
+
+  document.getElementById('notesArea').addEventListener('input', function(){
+    // preserve anything typed below the auto-generated checklist lines
+    this.dataset.manual = this.value;
+  });
+
+  document.getElementById('btnClearNotes').addEventListener('click', () => {
+    document.getElementById('notesArea').value = '';
+    document.getElementById('notesArea').dataset.manual = '';
+  });
+
+  // ── Vendor lookup / escalation guidance ─────────────────────────────────
+  async function getVendorGuidance(){
+    const out = document.getElementById('vendorOutput');
+    out.className = 'ai-output loading';
+    out.textContent = 'Getting escalation guidance...';
+    try {
+      const res = await fetch('/api/l1-copilot/vendor', {
+        method: 'POST', headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({
+          manufacturer: document.getElementById('vManufacturer').value,
+          serviceTag: document.getElementById('vServiceTag').value,
+          warranty: document.getElementById('vWarranty').value,
+          issueSummary: (currentAnalysis && currentAnalysis.issue_summary) || document.getElementById('tkDescription').value
+        })
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'vendor lookup failed');
+      out.className = 'ai-output';
+      out.textContent = data.answer || 'No guidance returned.';
+    } catch (e) {
+      out.className = 'ai-output';
+      out.innerHTML = `<span class="err">Lookup failed: ${e.message}. Confirm /api/l1-copilot/vendor is wired server-side.</span>`;
+    }
+  }
+  document.getElementById('btnVendorGuidance').addEventListener('click', getVendorGuidance);
+
+  // ── SLA ──────────────────────────────────────────────────────────────────
+  function refreshSlaDisplay(){
+    const priority = document.getElementById('tkPriority').value;
+    document.getElementById('slaPriority').textContent = priority;
+    document.getElementById('tkSlaRemaining').value = document.getElementById('slaTimer').textContent;
+  }
+  document.getElementById('tkPriority').addEventListener('change', refreshSlaDisplay);
+  refreshSlaDisplay();
+
+  // ── Resolution builder ──────────────────────────────────────────────────
+  async function buildResolution(){
+    const out = document.getElementById('resolutionOutput');
+    out.className = 'ai-output loading';
+    out.textContent = 'Generating resolution write-up...';
+    goToSection('resolution');
+    try {
+      const res = await fetch('/api/l1-copilot/resolution', {
+        method: 'POST', headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({
+          ticket: document.getElementById('tkDescription').value,
+          analysis: currentAnalysis,
+          notes: document.getElementById('notesArea').value
+        })
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'resolution build failed');
+      out.className = 'ai-output';
+      out.textContent = data.answer || 'No resolution returned.';
+      recordHistoryEntry();
+    } catch (e) {
+      out.className = 'ai-output';
+      out.innerHTML = `<span class="err">Build failed: ${e.message}. Confirm /api/l1-copilot/resolution is wired server-side.</span>`;
+    }
+  }
+  document.getElementById('btnBuildResolution').addEventListener('click', buildResolution);
+  document.getElementById('btnCopyResolution').addEventListener('click', () => {
+    const text = document.getElementById('resolutionOutput').textContent;
+    navigator.clipboard.writeText(text).then(() => {
+      document.getElementById('navStatus').textContent = 'ENGINE: COPIED TO CLIPBOARD';
+      setTimeout(() => document.getElementById('navStatus').textContent = 'ENGINE: IDLE', 1500);
+    });
+  });
+
+  // ── Escalation ───────────────────────────────────────────────────────────
+  document.getElementById('escTeamGrid').addEventListener('click', (e) => {
+    const chip = e.target.closest('.team-chip');
+    if (!chip) return;
+    document.querySelectorAll('.team-chip').forEach(c => c.classList.remove('selected'));
+    chip.classList.add('selected');
+    selectedTeam = chip.dataset.team;
+  });
+
+  async function buildEscalation(){
+    const out = document.getElementById('escalationOutput');
+    out.className = 'ai-output loading';
+    out.textContent = 'Building escalation package...';
+    try {
+      const res = await fetch('/api/l1-copilot/escalation', {
+        method: 'POST', headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({
+          ticket: document.getElementById('tkDescription').value,
+          analysis: currentAnalysis,
+          reason: document.getElementById('escReason').value,
+          evidence: document.getElementById('escEvidence').value,
+          recommendedTeam: selectedTeam
+        })
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'escalation build failed');
+      out.className = 'ai-output';
+      out.textContent = data.answer || 'No escalation package returned.';
+    } catch (e) {
+      out.className = 'ai-output';
+      out.innerHTML = `<span class="err">Build failed: ${e.message}. Confirm /api/l1-copilot/escalation is wired server-side.</span>`;
+    }
+  }
+  document.getElementById('btnBuildEscalation').addEventListener('click', buildEscalation);
+
+  // ── History (local, per-browser) ────────────────────────────────────────
+  function loadHistory(){
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); }
+    catch(e){ return []; }
+  }
+  function saveHistory(list){
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(list.slice(-100))); }
+    catch(e){ console.warn('History save failed', e); }
+  }
+  function recordHistoryEntry(){
+    const list = loadHistory();
+    list.push({
+      incident: document.getElementById('tkIncident').value || '(no incident #)',
+      manufacturer: document.getElementById('tkMfr').value,
+      priority: document.getElementById('tkPriority').value,
+      severity: currentAnalysis && currentAnalysis.severity,
+      ts: Date.now()
+    });
+    saveHistory(list);
+    renderHistory();
+    renderExecStrip();
+  }
+  function renderHistory(){
+    const body = document.getElementById('historyBody');
+    const list = loadHistory();
+    if (!list.length) { body.innerHTML = '<div class="empty-state">No resolved tickets recorded yet this session.</div>'; return; }
+    body.innerHTML = list.slice().reverse().map(h =>
+      `<div class="history-row"><span>${h.incident} — ${h.manufacturer || '--'}</span><span>${h.priority || '--'} · ${new Date(h.ts).toLocaleString()}</span></div>`
+    ).join('');
+  }
+  function renderExecStrip(){
+    const list = loadHistory();
+    const today = list.filter(h => new Date(h.ts).toDateString() === new Date().toDateString());
+    document.getElementById('execToday').textContent = today.length;
+    document.getElementById('execResolved').textContent = list.length;
+    document.getElementById('execOpen').textContent = 0;
+    document.getElementById('execVendorCases').textContent = list.filter(h => h.manufacturer).length;
+    const mfrCounts = {};
+    list.forEach(h => { if (h.manufacturer) mfrCounts[h.manufacturer] = (mfrCounts[h.manufacturer]||0)+1; });
+    document.getElementById('execRepeat').textContent = Object.values(mfrCounts).filter(c => c > 1).length;
+  }
+  document.getElementById('btnClearHistory').addEventListener('click', () => {
+    if (!confirm('Clear local ticket history from this browser? This cannot be undone.')) return;
+    saveHistory([]);
+    renderHistory();
+    renderExecStrip();
+  });
+
+  // ── Init ─────────────────────────────────────────────────────────────────
+  renderChecklist();
+  renderHistory();
+  renderExecStrip();
+})();
+</script>
+
+<script src="/js/core/tsm-event-bus.js"></script>
+<script src="/js/core/tsm-state.js"></script>
+<script src="/js/core/tsm-mission-engine.js"></script>
+<script src="/js/core/tsm-auto-pipeline.js"></script>
+<script src="/html/core/tsm-runtime.js"></script>
+</body>
+</html>
