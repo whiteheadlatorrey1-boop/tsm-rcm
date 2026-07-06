@@ -119,14 +119,19 @@
     return { ok: missing.length === 0, missing, pieces };
   }
 
-  global.TSM = {
+  // IMPORTANT: do not overwrite window.TSM — other scripts that load
+  // earlier (e.g. relay.core.js) attach things like TSM.relay onto it.
+  // Since this runtime is deliberately loaded LAST on every page, a
+  // plain assignment here would silently clobber that. Merge instead.
+  global.TSM = global.TSM || {};
+  Object.assign(global.TSM, {
     __tsmRuntimeVersion: '1.0.0-phase1',
     registerDomain,
     boot,
     getStatus,
     health,
     getBus,
-  };
+  });
 
   function announce() {
     const status = getStatus();
