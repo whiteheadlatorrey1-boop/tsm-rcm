@@ -1,0 +1,99 @@
+From 8ff29df44c4b2ff05a259f1fcae07f7103064309 Mon Sep 17 00:00:00 2001
+From: tsm-consultz <brightmindsfinancial@gmail.com>
+Date: Mon, 6 Jul 2026 16:19:14 +0000
+Subject: [PATCH] fix: stop tsm-runtime.js clobbering TSM.relay; fix
+ canonical-core.js shadow-duplication routing
+
+- html/core/tsm-runtime.js: merge onto window.TSM instead of overwriting
+  it. Since this script is loaded LAST on every page (by design), a plain
+  assignment was wiping out TSM.relay (and anything else) that
+  relay.core.js had already attached earlier in the page load.
+
+- server.js: move the '/runtime' and '/architecture' static mounts to
+  before the '/' catch-all (html/) static mount. Express matches static
+  mounts in registration order, so the catch-all was intercepting
+  /runtime/kernel/canonical-core.js and silently serving the stale
+  7-line stub at html/runtime/kernel/canonical-core.js instead of ever
+  reaching the real 92-line CanonicalCore class at repo-root
+  runtime/kernel/canonical-core.js.
+
+- Archived the stale stub to _archive/shadow-duplicates/ (same pattern
+  used for the earlier war-rooms/index.html shadow-duplicate) so it
+  can't shadow the real file again if mount order ever changes.
+
+Verified locally: booted server.js, confirmed
+GET /runtime/kernel/canonical-core.js now returns the real 92-line
+class, and confirmed TSM.relay survives tsm-runtime.js loading after
+relay.core.js in page load order.
+---
+ .../canonical-core.js.stub-archived-2026-07-06    |  0
+ html/core/tsm-runtime.js                          |  9 +++++++--
+ server.js                                         | 15 +++++++++++----
+ 3 files changed, 18 insertions(+), 6 deletions(-)
+ rename html/runtime/kernel/canonical-core.js => _archive/shadow-duplicates/html-runtime-kernel/canonical-core.js.stub-archived-2026-07-06 (100%)
+
+diff --git a/html/runtime/kernel/canonical-core.js b/_archive/shadow-duplicates/html-runtime-kernel/canonical-core.js.stub-archived-2026-07-06
+similarity index 100%
+rename from html/runtime/kernel/canonical-core.js
+rename to _archive/shadow-duplicates/html-runtime-kernel/canonical-core.js.stub-archived-2026-07-06
+diff --git a/html/core/tsm-runtime.js b/html/core/tsm-runtime.js
+index b6c5ae10..ad10a7b7 100644
+--- a/html/core/tsm-runtime.js
++++ b/html/core/tsm-runtime.js
+@@ -119,14 +119,19 @@
+     return { ok: missing.length === 0, missing, pieces };
+   }
+ 
+-  global.TSM = {
++  // IMPORTANT: do not overwrite window.TSM — other scripts that load
++  // earlier (e.g. relay.core.js) attach things like TSM.relay onto it.
++  // Since this runtime is deliberately loaded LAST on every page, a
++  // plain assignment here would silently clobber that. Merge instead.
++  global.TSM = global.TSM || {};
++  Object.assign(global.TSM, {
+     __tsmRuntimeVersion: '1.0.0-phase1',
+     registerDomain,
+     boot,
+     getStatus,
+     health,
+     getBus,
+-  };
++  });
+ 
+   function announce() {
+     const status = getStatus();
+diff --git a/server.js b/server.js
+index 2d51ad47..855ba129 100644
+--- a/server.js
++++ b/server.js
+@@ -150,6 +150,14 @@ const TSM_MESH = {
+ };
+ 
+ app.use('/html/runtime', express.static(path.join(__dirname, 'html', 'runtime')));
++// FIX (shadow-duplication routing bug): these two MUST be registered before
++// the '/' catch-all below. html/runtime/kernel/canonical-core.js is a stale
++// 7-line stub; the real CanonicalCore class lives at repo-root
++// runtime/kernel/canonical-core.js. Express matches static mounts in
++// registration order, so if the catch-all comes first, it silently serves
++// the stub for every /runtime/* request and this mount never runs.
++app.use('/runtime', express.static(path.join(__dirname, 'runtime'), { setHeaders: (res) => res.setHeader('Cache-Control', 'no-store') }));
++app.use('/architecture', express.static(path.join(__dirname, 'architecture'), { setHeaders: (res) => res.setHeader('Cache-Control', 'no-store') }));
+ app.use('/', express.static(path.join(__dirname, 'html')));
+ const suites = [
+   { route: '/construction', dir: 'html/construction-suite', index: 'construction-hub.html' },
+@@ -218,10 +226,9 @@ app.use('/bpo', express.static(path.join(__dirname, 'html/bpo')));
+ app.use('/shared', express.static(path.join(__dirname, 'html/bpo/shared')));
+ app.use('/insurance', express.static(path.join(__dirname, 'html/tsm-insurance')));
+ app.use('/construction', express.static(path.join(__dirname, 'html/construction-suite')));
+-// These two were previously unmounted — PhaseLoader (architecture/kernel/phases.json
+-// + runtime/kernel/phase-loader.js) lives outside html/ and was 404ing in production.
+-app.use('/runtime', express.static(path.join(__dirname, 'runtime'), { setHeaders: (res) => res.setHeader('Cache-Control', 'no-store') }));
+-app.use('/architecture', express.static(path.join(__dirname, 'architecture'), { setHeaders: (res) => res.setHeader('Cache-Control', 'no-store') }));
++// NOTE: /runtime and /architecture mounts now live earlier in this file
++// (right after the '/html/runtime' mount, before the '/' catch-all) so they
++// can't be shadowed by stale files inside html/. See fix note there.
+ app.use(express.static(dirPath));
+ 
+ // ── HC NODE ROUTES ────────────────────────────────────────────────────────────
+-- 
+2.43.0
