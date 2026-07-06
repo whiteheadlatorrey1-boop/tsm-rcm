@@ -150,6 +150,14 @@ const TSM_MESH = {
 };
 
 app.use('/html/runtime', express.static(path.join(__dirname, 'html', 'runtime')));
+// FIX (shadow-duplication routing bug): these two MUST be registered before
+// the '/' catch-all below. html/runtime/kernel/canonical-core.js is a stale
+// 7-line stub; the real CanonicalCore class lives at repo-root
+// runtime/kernel/canonical-core.js. Express matches static mounts in
+// registration order, so if the catch-all comes first, it silently serves
+// the stub for every /runtime/* request and this mount never runs.
+app.use('/runtime', express.static(path.join(__dirname, 'runtime'), { setHeaders: (res) => res.setHeader('Cache-Control', 'no-store') }));
+app.use('/architecture', express.static(path.join(__dirname, 'architecture'), { setHeaders: (res) => res.setHeader('Cache-Control', 'no-store') }));
 app.use('/', express.static(path.join(__dirname, 'html')));
 const suites = [
   { route: '/construction', dir: 'html/construction-suite', index: 'construction-hub.html' },
@@ -218,10 +226,9 @@ app.use('/bpo', express.static(path.join(__dirname, 'html/bpo')));
 app.use('/shared', express.static(path.join(__dirname, 'html/bpo/shared')));
 app.use('/insurance', express.static(path.join(__dirname, 'html/tsm-insurance')));
 app.use('/construction', express.static(path.join(__dirname, 'html/construction-suite')));
-// These two were previously unmounted — PhaseLoader (architecture/kernel/phases.json
-// + runtime/kernel/phase-loader.js) lives outside html/ and was 404ing in production.
-app.use('/runtime', express.static(path.join(__dirname, 'runtime'), { setHeaders: (res) => res.setHeader('Cache-Control', 'no-store') }));
-app.use('/architecture', express.static(path.join(__dirname, 'architecture'), { setHeaders: (res) => res.setHeader('Cache-Control', 'no-store') }));
+// NOTE: /runtime and /architecture mounts now live earlier in this file
+// (right after the '/html/runtime' mount, before the '/' catch-all) so they
+// can't be shadowed by stale files inside html/. See fix note there.
 app.use(express.static(dirPath));
 
 // ── HC NODE ROUTES ────────────────────────────────────────────────────────────
