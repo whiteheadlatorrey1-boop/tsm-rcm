@@ -224,6 +224,89 @@
       };
     }
 
+    /* ---------- WIP (work-in-progress) by stage ---------- */
+
+    getStageWip(entityKey) {
+      const def = this._entityDef(entityKey);
+      const idField = this._idField(entityKey);
+      const records = this.data[entityKey] || [];
+
+      return (def.stages || []).map(stage => {
+        const inStage = records.filter(r => r.stage === stage.id);
+        const withAge = inStage.filter(r => r.entered_stage_at_hours_ago !== undefined);
+        const avgHours = withAge.length
+          ? Math.round((withAge.reduce((s, r) => s + r.entered_stage_at_hours_ago, 0) / withAge.length) * 10) / 10
+          : null;
+        const stalled = stage.sla_hours != null
+          ? inStage.filter(r => (r.entered_stage_at_hours_ago || 0) > stage.sla_hours)
+          : [];
+        return {
+          stage: stage.id,
+          label: stage.label,
+          order: stage.order,
+          sla_hours: stage.sla_hours,
+          count: inStage.length,
+          avg_hours_in_stage: avgHours,
+          stalled_count: stalled.length,
+          stalled_ids: stalled.map(r => r[idField])
+        };
+      });
+    }
+
+    /* ---------- Financial exposure (CFO / RCM view) ---------- */
+
+    getFinancialModel() {
+      return this.model.financial_model || null;
+    }
+
+    getSlaExposure() {
+      const fm = this.getFinancialModel();
+      const breaches = this.getSlaBreaches('incidents');
+      if (!fm || !fm.sla_penalty_per_hour_by_severity) {
+        return { total: 0, currency: fm ? fm.currency : 'USD', items: [] };
+      }
+      const rates = fm.sla_penalty_per_hour_by_severity;
+      const items = breaches.map(b => {
+        const severity = (b.record && b.record.severity) || 'SEV3';
+        const rate = rates[severity] != null ? rates[severity] : 0;
+        const exposure = Math.round(b.hours_over * rate);
+        return { id: b.id, title: b.record && b.record.title, severity, stage: b.stage, hours_over: b.hours_over, rate_per_hour: rate, exposure };
+      }).sort((a, b) => b.exposure - a.exposure);
+      return {
+        total: items.reduce((s, it) => s + it.exposure, 0),
+        currency: fm.currency || 'USD',
+        items
+      };
+    }
+
+    getRevenueAtRisk() {
+      const fm = this.getFinancialModel();
+      if (!fm || fm.revenue_at_risk_per_uptime_point_per_hour == null) {
+        return { per_hour: 0, currency: fm ? fm.currency : 'USD', uptime_gap_pts: 0 };
+      }
+      const kpis = this.computeKpis();
+      const gap = Math.max(0, 100 - kpis.uptime_pct);
+      return {
+        per_hour: Math.round(gap * fm.revenue_at_risk_per_uptime_point_per_hour),
+        currency: fm.currency || 'USD',
+        uptime_gap_pts: Math.round(gap * 10) / 10
+      };
+    }
+
+    getFinancialSummary() {
+      const sla = this.getSlaExposure();
+      const revenue = this.getRevenueAtRisk();
+      return {
+        currency: sla.currency || revenue.currency || 'USD',
+        sla_penalty_exposure_total: sla.total,
+        sla_penalty_exposure_items: sla.items,
+        revenue_at_risk_per_hour: revenue.per_hour,
+        uptime_gap_pts: revenue.uptime_gap_pts,
+        total_hourly_exposure: sla.total > 0 ? sla.total + revenue.per_hour : revenue.per_hour,
+        note: this.model.financial_model ? this.model.financial_model.note : null
+      };
+    }
+
     /* ---------- Canonical core wiring ---------- */
 
     async _canonical() {
