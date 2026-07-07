@@ -122,6 +122,7 @@ var SP = {
   enterprise: 'You are a senior business strategist AI for TSM Command. Expert in enterprise strategy, GTM, operations optimization, ROI analysis. Be executive-level and direct.',
   o2c: 'You are an Order-to-Cash operations AI for TSM Command. Expert in quote-to-order, credit management, ATP/inventory allocation, shipping, invoicing, AR, and cash application. Given structured order, KPI, and SLA-breach data, identify root causes of bottlenecks, flag financial/operational risk, and recommend the specific next action for each at-risk order. Be precise and operational. No preamble.',
   crm: 'You are a CRM customer-lifecycle AI for TSM Command. Expert in lead qualification, account/opportunity management, pipeline health, case escalation, and churn risk. Given structured lead/contact/account/opportunity/case data, KPIs, and SLA-breach data, identify the highest-risk records, the root cause of stalled deals or breached cases, and the specific next action per record. Reference record IDs. Be precise and operational. No preamble.',
+  noc: 'You are a Network Operations Center AI for TSM Command. Expert in incident management, alert correlation, device/fleet health, and SLA-driven escalation. Given structured incident/alert/device data, KPIs, and SLA-breach data, identify the highest-severity or highest-risk incidents, correlate related alerts to their root incident, flag devices contributing to fleet-uptime risk, and recommend the specific next action per at-risk incident or device. Reference incident/alert/device IDs. Be precise and operational. No preamble.',
   approval: 'You are an Enterprise Approval Center AI for TSM Command. Expert in multi-level approval workflows, delegation rules, escalation management, SLA compliance, and audit governance. Given structured approval request data, KPIs, SLA breaches, and attention flags, identify bottlenecks, escalation risks, and the specific next action per at-risk request. Reference request IDs. Be precise and operational. No preamble.',
   cpq: 'You are a CPQ (Configure-Price-Quote) operations AI for TSM Command. Expert in product configuration, compatibility rules, discount policy, margin management, quote lifecycle, and approval workflows. Given structured quote pipeline, KPI, and SLA-breach data, identify configuration conflicts, margin risks, stalled quotes, and the specific next action per at-risk quote. Reference quote IDs. Be precise and operational. No preamble.',
   catalog: 'You are a Product Catalog Management AI for TSM Command. Expert in product hierarchy, lifecycle management, SKU/variant management, bill of materials, compliance tracking, inventory linkage, and pricing synchronization. Given structured product catalog data, KPIs, and attention flags (low-stock, compliance, end-of-life), identify catalog data-quality risks, lifecycle bottlenecks, and the specific next action per flagged product. Reference SKUs/product IDs. Be precise and operational. No preamble.',
@@ -937,6 +938,31 @@ app.post('/api/crm/query', async (req, res) => {
     return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
   } catch (e) {
     console.error('CRM GROQ ERROR:', e.message);
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+
+app.post('/api/noc/query', async (req, res) => {
+  const { kpis, incident_breaches, alerts, devices_down, context, maxTokens } = req.body || {};
+  const summary = JSON.stringify({
+    kpis,
+    incident_breaches,
+    alerts,
+    devices_down,
+    counts: {
+      alerts: Array.isArray(alerts) ? alerts.length : undefined,
+      devices_down: Array.isArray(devices_down) ? devices_down.length : undefined
+    }
+  }, null, 2);
+  const prompt = `Current NOC snapshot:\n${summary}\n\n` +
+    (context ? `Additional context: ${context}\n\n` : '') +
+    `Identify the highest-severity incidents, correlate any related alerts to their root incident, flag devices contributing to fleet-uptime risk, and the single most important next action for each at-risk incident or device. Reference incident/alert/device IDs.`;
+  try {
+    const answer = await groqChat(SP.noc, prompt, maxTokens || 1200);
+    return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
+  } catch (e) {
+    console.error('NOC GROQ ERROR:', e.message);
     return res.status(500).json({ ok: false, error: e.message });
   }
 });
