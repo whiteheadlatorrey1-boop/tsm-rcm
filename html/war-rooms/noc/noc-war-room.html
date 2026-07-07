@@ -132,6 +132,26 @@ tr:hover td{background:rgba(45,212,191,.03)}
     </div>
 
     <div class="sb-section">
+      <div class="sb-label">IMPORT REAL DATA (PASTE)</div>
+      <select id="importSource" style="width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:inherit;font-size:9px;padding:6px;margin-bottom:6px">
+        <option value="servicenow">ServiceNow</option>
+        <option value="jira">Jira Service Management</option>
+        <option value="pagerduty">PagerDuty</option>
+      </select>
+      <textarea id="importPaste" placeholder="Select the incident/ticket table in ServiceNow, Jira, or PagerDuty, copy it (including the header row), and paste here." style="width:100%;min-height:90px;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:inherit;font-size:9px;padding:6px;resize:vertical"></textarea>
+      <label style="display:flex;align-items:center;gap:6px;font-size:9px;color:var(--text-dim);margin:6px 0">
+        <input type="checkbox" id="importReplace" checked> Replace existing incidents
+      </label>
+      <div class="btn-row">
+        <button class="btn btn-outline btn-full" id="btnImportPreview">PARSE PREVIEW</button>
+      </div>
+      <div class="btn-row" style="margin-top:6px">
+        <button class="btn btn-teal btn-full" id="btnImportCommit" disabled>IMPORT TO WAR ROOM</button>
+      </div>
+      <div id="importStatus" style="font-size:9px;color:var(--text-dim);margin-top:6px;white-space:pre-wrap"></div>
+    </div>
+
+    <div class="sb-section">
       <div class="sb-label">STAGES // <span id="stageEntityLabel">INCIDENT</span></div>
       <div class="stage-list" id="stageList"></div>
     </div>
@@ -386,6 +406,167 @@ tr:hover td{background:rgba(45,212,191,.03)}
     document.getElementById('navStatus').textContent = 'ENGINE: RELAYED TO STRATEGIST';
     setTimeout(() => { window.location.href = '/html/war-rooms/noc/noc-strategist.html'; }, 500);
   }
+
+  /* ---------- Real-data import (paste from ServiceNow / Jira / PagerDuty) ----------
+     No API/webhook integration exists yet -- this parses whatever the user copies
+     directly out of the source system's UI (tab-delimited when pasted from an
+     HTML table, with a fallback to runs of 2+ spaces) and maps it onto the same
+     incident shape sample_data already uses, so the rest of the engine (SLA
+     breaches, WIP, financial exposure) needs no changes to consume it. */
+
+  let _pendingImport = null;
+
+  function splitRow(line) {
+    if (line.indexOf('\t') !== -1) return line.split('\t').map(c => c.trim());
+    return line.split(/ {2,}/).map(c => c.trim()).filter(c => c.length);
+  }
+
+  function parsePastedTable(raw) {
+    const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(l => l.length);
+    if (lines.length < 2) return { headers: [], rows: [] };
+    const headers = splitRow(lines[0]).map(h => h.toLowerCase());
+    const rows = lines.slice(1).map(line => {
+      const cells = splitRow(line);
+      const row = {};
+      headers.forEach((h, i) => { row[h] = cells[i] !== undefined ? cells[i] : ''; });
+      return row;
+    });
+    return { headers, rows };
+  }
+
+  function findField(row, candidates) {
+    const keys = Object.keys(row);
+    for (const key of keys) {
+      for (const c of candidates) { if (key === c) return row[key]; }
+    }
+    // Tokenized word-boundary match -- avoids false positives like the
+    // 2-letter "ci" (Configuration Item) candidate matching inside the
+    // word "incident" via a loose substring check.
+    const tokenize = s => s.split(/[^a-z0-9]+/).filter(Boolean);
+    for (const key of keys) {
+      const keyTokens = tokenize(key);
+      for (const c of candidates) {
+        const cTokens = tokenize(c);
+        if (cTokens.length && cTokens.every(t => keyTokens.includes(t))) return row[key];
+      }
+    }
+    return '';
+  }
+
+  function normalizeSeverity(raw) {
+    const s = (raw || '').toLowerCase();
+    if (/\bp1\b|sev ?1|^1 ?-|critical|highest|urgent/.test(s)) return 'SEV1';
+    if (/\bp2\b|sev ?2|^2 ?-|high\b/.test(s)) return 'SEV2';
+    return 'SEV3';
+  }
+
+  function normalizeStage(raw) {
+    const s = (raw || '').toLowerCase();
+    if (s.includes('closed')) return 'closed';
+    if (s.includes('resolved') || s.includes('done')) return 'resolved';
+    if (s.includes('escalat')) return 'escalated';
+    if (s.includes('progress') || s.includes('active') || s.includes('acknowledg')) return 'in_progress';
+    if (s.includes('triag') || s.includes('assigned')) return 'triaged';
+    return 'new';
+  }
+
+  function hoursAgo(raw) {
+    if (!raw) return null;
+    const parsed = Date.parse(raw);
+    if (isNaN(parsed)) return null;
+    const hrs = (Date.now() - parsed) / 3600000;
+    return hrs > 0 ? Math.round(hrs * 10) / 10 : 0;
+  }
+
+  const IMPORT_FIELD_MAP = {
+    servicenow: {
+      id: ['number'],
+      title: ['short description', 'short_description', 'description'],
+      severity: ['priority'],
+      stage: ['state'],
+      owner: ['assigned to', 'assignment group'],
+      opened: ['opened', 'created']
+    },
+    jira: {
+      id: ['key'],
+      title: ['summary'],
+      severity: ['priority'],
+      stage: ['status'],
+      owner: ['assignee'],
+      opened: ['created']
+    },
+    pagerduty: {
+      id: ['incident number', 'incident #', 'id'],
+      title: ['title', 'description', 'summary'],
+      severity: ['urgency', 'priority'],
+      stage: ['status'],
+      owner: ['assigned to', 'escalation policy'],
+      opened: ['created at', 'triggered at', 'created']
+    }
+  };
+
+  function mapRowsToIncidents(rows, source) {
+    const map = IMPORT_FIELD_MAP[source] || IMPORT_FIELD_MAP.servicenow;
+    const seen = new Set();
+    const incidents = [];
+    const skipped = [];
+    rows.forEach((row, i) => {
+      const rawId = findField(row, map.id) || `IMPORT-${i + 1}`;
+      const title = findField(row, map.title);
+      if (!title) { skipped.push(rawId || `row ${i + 1}`); return; }
+      let incidentId = rawId;
+      let n = 2;
+      while (seen.has(incidentId)) { incidentId = `${rawId}-${n++}`; }
+      seen.add(incidentId);
+      incidents.push({
+        incident_id: incidentId,
+        title,
+        affected_system: findField(row, ['ci', 'service', 'component', 'affected system']) || 'Unspecified',
+        severity: normalizeSeverity(findField(row, map.severity)),
+        stage: normalizeStage(findField(row, map.stage)),
+        entered_stage_at_hours_ago: hoursAgo(findField(row, map.opened)) ?? 0,
+        owner: findField(row, map.owner) || 'Unassigned',
+        notes: `Imported from ${source} paste.`
+      });
+    });
+    return { incidents, skipped };
+  }
+
+  document.getElementById('btnImportPreview').addEventListener('click', () => {
+    const raw = document.getElementById('importPaste').value;
+    const source = document.getElementById('importSource').value;
+    const status = document.getElementById('importStatus');
+    const commitBtn = document.getElementById('btnImportCommit');
+
+    const { headers, rows } = parsePastedTable(raw);
+    if (!rows.length) {
+      status.textContent = 'No rows detected. Paste table rows (including the header row) from the source system.';
+      commitBtn.disabled = true;
+      _pendingImport = null;
+      return;
+    }
+    const { incidents, skipped } = mapRowsToIncidents(rows, source);
+    _pendingImport = incidents;
+    status.textContent =
+      `Detected ${headers.length} column(s), ${rows.length} row(s).\n` +
+      `Parsed ${incidents.length} incident(s) as ${source}.` +
+      (skipped.length ? `\n${skipped.length} row(s) skipped (no title/summary found): ${skipped.join(', ')}` : '') +
+      (incidents.length ? `\nPreview: ${incidents.slice(0, 3).map(inc => `${inc.incident_id} [${inc.severity}/${inc.stage}]`).join(', ')}${incidents.length > 3 ? '...' : ''}` : '');
+    commitBtn.disabled = incidents.length === 0;
+  });
+
+  document.getElementById('btnImportCommit').addEventListener('click', () => {
+    if (!_pendingImport || !_pendingImport.length) return;
+    const replace = document.getElementById('importReplace').checked;
+    if (replace) engine.data.incidents = [];
+    engine.loadRecords('incidents', _pendingImport);
+    engine.saveToStorage();
+    document.getElementById('importStatus').textContent =
+      `Imported ${_pendingImport.length} incident(s) into the war room.`;
+    document.getElementById('btnImportCommit').disabled = true;
+    _pendingImport = null;
+    renderAll();
+  });
 
   document.getElementById('btnLoadSample').addEventListener('click', () => {
     engine.loadSampleData();
