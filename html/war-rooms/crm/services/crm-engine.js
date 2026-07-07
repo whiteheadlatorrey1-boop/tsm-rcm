@@ -178,6 +178,77 @@
       };
     }
 
+    /* ---------- Explainability (TSM Exec Kit contract) ----------
+       Every claim traces to a real lead/case/opportunity/account record
+       plus the stage's declared sla_hours -- no LLM call involved.
+       Shape: { id, claim, confidence, severity, impact, rationale, sources, dataPoints } */
+
+    getExplainItems() {
+      const items = [];
+
+      this.getSlaBreaches('cases').forEach(b => {
+        const r = b.record || {};
+        const severity = b.stage === 'Escalated' ? 'high' : (b.hours_over > 24 ? 'high' : 'med');
+        items.push({
+          id: 'case-' + b.id,
+          claim: `${b.id} (${r.subject || 'case'}) is ${Math.round(b.hours_over)}h past its "${b.stage}" SLA`,
+          confidence: 95,
+          severity,
+          impact: r.owner === 'Unassigned' ? 'Unassigned \u2014 no one currently on point' : '',
+          rationale: `"${r.subject || 'This case'}" entered the "${b.stage}" stage ${r.entered_stage_at_hours_ago != null ? r.entered_stage_at_hours_ago + 'h ago' : ''} ` +
+            `against a defined SLA window for that stage, and has now run ${Math.round(b.hours_over)}h past it. Owner on record: ${r.owner || 'Unassigned'}.`,
+          sources: ['CRM case record ' + b.id],
+          dataPoints: [
+            { label: 'Owner', value: r.owner || 'Unassigned' },
+            { label: 'Stage', value: b.stage },
+            { label: 'Hours over SLA', value: Math.round(b.hours_over) + 'h' }
+          ]
+        });
+      });
+
+      this.getSlaBreaches('opportunities').forEach(b => {
+        const r = b.record || {};
+        const value = r.value || 0;
+        const severity = value >= 100000 ? 'high' : (value >= 25000 ? 'med' : 'low');
+        items.push({
+          id: 'opp-' + b.id,
+          claim: `${b.id} (${r.name || 'opportunity'}) worth $${value.toLocaleString()} is stalled ${Math.round(b.hours_over)}h past its "${b.stage}" SLA`,
+          confidence: 90,
+          severity,
+          impact: value ? ('$' + value.toLocaleString() + ' pipeline at risk of slipping') : '',
+          rationale: `"${r.name || 'This opportunity'}" has been in the "${b.stage}" stage ${r.entered_stage_at_hours_ago != null ? r.entered_stage_at_hours_ago + 'h' : ''}, ` +
+            `past that stage's SLA window. Deals stalled this long in ${b.stage} typically signal a stuck approval, pricing objection, or ` +
+            `disengaged buyer that needs owner (${r.owner || 'Unassigned'}) follow-up.`,
+          sources: ['CRM opportunity record ' + b.id],
+          dataPoints: [
+            { label: 'Owner', value: r.owner || 'Unassigned' },
+            { label: 'Deal value', value: '$' + value.toLocaleString() },
+            { label: 'Hours over SLA', value: Math.round(b.hours_over) + 'h' }
+          ]
+        });
+      });
+
+      this.data.accounts.filter(a => a.stage === 'at_risk').forEach(a => {
+        const value = a.annual_value || 0;
+        items.push({
+          id: 'acct-' + a.account_id,
+          claim: `${a.name || a.account_id} is flagged at-risk` + (value ? ` with $${value.toLocaleString()}/yr on the line` : ''),
+          confidence: 75,
+          severity: value >= 100000 ? 'high' : 'med',
+          impact: value ? ('$' + value.toLocaleString() + '/yr churn exposure') : 'Relationship health risk',
+          rationale: `${a.name || 'This account'} is marked "at_risk" in the account record` + (a.notes ? ` \u2014 ${a.notes}` : '') + '.',
+          sources: ['CRM account record ' + a.account_id],
+          dataPoints: [
+            { label: 'Industry', value: a.industry || '\u2014' },
+            { label: 'Annual value', value: '$' + value.toLocaleString() }
+          ]
+        });
+      });
+
+      const rank = { high: 0, med: 1, low: 2 };
+      return items.sort((a, b) => (rank[a.severity] ?? 3) - (rank[b.severity] ?? 3));
+    }
+
     /* ---------- Canonical core wiring ----------
        Same contract O2C uses (architecture/canonical/entities.json),
        but dispatched across five entity kinds instead of one.
@@ -264,6 +335,7 @@
         kpis: this.computeKpis(),
         case_breaches: this.getSlaBreaches('cases'),
         opp_breaches: this.getSlaBreaches('opportunities'),
+        explain: this.getExplainItems(),
         ai_summary: aiText || null,
         ts: Date.now()
       };
