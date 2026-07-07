@@ -1156,6 +1156,59 @@ app.post('/api/l1-copilot/escalation', async (req, res) => {
   }
 });
 
+app.post('/api/l1-copilot/imaging', async (req, res) => {
+  const { taskSequence, bootMethod, status, asset, model, maxTokens } = req.body || {};
+  if (!status) return res.status(400).json({ ok: false, error: 'status required' });
+  const prompt = `Task sequence / target image: ${taskSequence || 'not specified'}\nBoot method: ${bootMethod || 'not specified'}\n` +
+    `Current stage: ${status}\nAsset: ${asset || 'not provided'}\nModel: ${model || 'not provided'}\n\n` +
+    `The technician is imaging/re-imaging a Windows 11 endpoint. Given the current stage, identify the most likely cause if the ` +
+    `deployment is stuck or has failed at this stage (e.g. PXE/DHCP scope options 66/67, WDS/MDT boundary issues, driver pack ` +
+    `mismatch, disk/partition prep, domain join failures), the single next diagnostic step, and whether this needs a driver ` +
+    `pack update, a network/DHCP fix, or is progressing normally. Be concise and operational.`;
+  try {
+    const answer = await groqChat(SP.l1support, prompt, maxTokens || 700);
+    return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
+  } catch (e) {
+    console.error('L1 COPILOT IMAGING ERROR:', e.message);
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/api/l1-copilot/ad-intune', async (req, res) => {
+  const { deviceName, joinType, compliance, bitlocker, issueSummary, maxTokens } = req.body || {};
+  if (!joinType) return res.status(400).json({ ok: false, error: 'joinType required' });
+  const prompt = `Device: ${deviceName || 'not provided'}\nJoin type: ${joinType}\nCompliance state: ${compliance || 'unknown'}\n` +
+    `BitLocker/escrow status: ${bitlocker || 'unknown'}\nIssue summary: ${issueSummary || 'not provided'}\n\n` +
+    `Diagnose the most likely cause of any compliance drift or BitLocker/escrow gap given this state (e.g. sync delay, ` +
+    `stale Autopilot record, conditional access policy, missing compliance policy assignment, TPM/escrow failure), the exact ` +
+    `path to look up or force a BitLocker recovery key (Entra ID device blade vs on-prem AD DSA), and whether Autopilot ` +
+    `re-enrollment or a compliance policy re-push is needed. Be concise and operational.`;
+  try {
+    const answer = await groqChat(SP.l1support, prompt, maxTokens || 700);
+    return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
+  } catch (e) {
+    console.error('L1 COPILOT AD/INTUNE ERROR:', e.message);
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/api/l1-copilot/sccm', async (req, res) => {
+  const { collection, packageName, status, maxTokens } = req.body || {};
+  if (!packageName) return res.status(400).json({ ok: false, error: 'packageName required' });
+  const prompt = `Collection: ${collection || 'not provided'}\nPackage/Application: ${packageName}\nLast deployment status: ${status || 'unknown'}\n\n` +
+    `Diagnose the likely cause of this SCCM/Software Center deployment state (e.g. content not found on distribution point, ` +
+    `client cache exhaustion, boundary/collection membership evaluation delay, execution timeout, pending restart chaining), ` +
+    `the single next action (retry deployment, re-distribute content, clear ccmcache, manual install via Software Center, or ` +
+    `escalate to the SCCM admin team), and whether this is an L1-actionable fix or needs elevated console access. Be concise and operational.`;
+  try {
+    const answer = await groqChat(SP.l1support, prompt, maxTokens || 700);
+    return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
+  } catch (e) {
+    console.error('L1 COPILOT SCCM ERROR:', e.message);
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 app.post('/api/schools/query', async (req, res) => {
   try { var a = await groqChat(SP.education, req.body.question || req.body.query || '', req.body.maxTokens || 1024); return res.json({ ok: true, answer: a, createdAt: new Date().toISOString() }); }
   catch (e) { return res.status(500).json({ ok: false, error: e.message }); }
