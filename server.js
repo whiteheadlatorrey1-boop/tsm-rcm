@@ -2289,3 +2289,83 @@ const server = app.listen(PORT, '0.0.0.0', () => {
 server.on('error', (err) => {
   console.error('💥 SERVER ERROR:', err.message, err.stack);
 });
+
+// ===== TSM MDM PHASE 4 AUTONOMOUS GOVERNANCE =====
+
+const mdmStewardship =
+require("./server/mdm/mdm-stewardship");
+
+const mdmDecision =
+require("./server/mdm/mdm-decision-engine");
+
+const mdmMemory =
+require("./server/mdm/mdm-memory");
+
+
+app.get('/api/mdm/stewardship',
+(req,res)=>{
+
+res.json({
+
+ok:true,
+
+queue:
+mdmStewardship.getStewardQueue()
+
+});
+
+});
+
+
+app.post('/api/mdm/decision',
+(req,res)=>{
+
+const result =
+mdmDecision.analyze(
+req.body.recordA || {},
+req.body.recordB || {}
+);
+
+
+mdmMemory.saveDecision({
+
+timestamp:new Date(),
+result
+
+});
+
+
+res.json({
+
+ok:true,
+result
+
+});
+
+});
+
+
+app.get('/api/mdm/memory',
+(req,res)=>{
+
+res.json({
+
+ok:true,
+
+enabled:true,
+
+layers:[
+
+"previous-decisions",
+"steward-actions",
+"merge-patterns"
+
+]
+
+});
+
+});
+
+
+// ===== END PHASE 4 =====
+

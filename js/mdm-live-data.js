@@ -120,3 +120,26 @@ window.TSM_MDM_LIVE = {
 
 window.TSM_MDM_PHASE3=true;
 
+
+
+// Phase 4 Autonomous Governance
+
+window.TSM_MDM_LIVE.fetchGovernance =
+async function(){
+
+return {
+
+stewardship:
+await this.fetchJSON(
+"/api/mdm/stewardship"
+),
+
+memory:
+await this.fetchJSON(
+"/api/mdm/memory"
+)
+
+};
+
+};
+
