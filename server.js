@@ -1567,6 +1567,33 @@ function computeReadinessOverall(r) {
   return Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
 }
 
+// Map WIP verticals to live-data-store domains, where one exists.
+// Only the 4 SAP-phase verticals that share the live-data-store pipeline
+// have a real signal here — the other 6 (healthcare, finops, legal,
+// real-estate, insurance, construction) have no server-side data source
+// and stay manual-entry. This does not fabricate a value for them.
+const WIP_LIVE_DATA_DOMAIN = { bpo: 'bpo', o2c: 'o2c', crm: 'crm', cpq: 'cpq' };
+
+function getWipLiveSignal(vertical) {
+  const domain = WIP_LIVE_DATA_DOMAIN[vertical];
+  if (!domain) return { available: false };
+  try {
+    const stored = liveDataModule.readStore(domain);
+    if (!stored || !Array.isArray(stored.records) || !stored.records.length) {
+      return { available: false, domain };
+    }
+    return {
+      available: true,
+      domain,
+      filename: stored.filename || null,
+      uploadedAt: stored.uploaded_at || null,
+      recordCount: stored.records.length
+    };
+  } catch (e) {
+    return { available: false, domain };
+  }
+}
+
 function wipId(prefix) {
   return prefix + '_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
 }
@@ -1575,13 +1602,22 @@ function wipId(prefix) {
 app.get('/api/wip/board', (req, res) => {
   const v = req.query.vertical;
   if (!ensureWipVertical(v)) return res.status(400).json({ ok: false, error: `vertical must be one of: ${COLLECTIVE_VERTICALS.join(', ')}` });
-  const readiness = WIP_READINESS[v] || null;
+  const liveSignal = getWipLiveSignal(v);
+  let readiness = WIP_READINESS[v] || null;
+  // Where a real live-data upload exists for this vertical, data completeness
+  // is a known fact (data was actually supplied), not a guess -- override the
+  // display value. Manual entries for the other 4 subjective fields are left
+  // untouched; those aren't derivable from uploaded records.
+  if (liveSignal.available) {
+    readiness = Object.assign({}, readiness, { dataCompleteness: 100, dataCompletenessAuto: true });
+  }
   res.json({
     ok: true,
     vertical: v,
     tasks: WIP_TASKS[v],
     readiness,
     readinessOverall: computeReadinessOverall(readiness),
+    liveSignal,
     dataQuality: WIP_DATA_QUALITY[v],
     decisions: WIP_DECISIONS[v],
     trends: WIP_TRENDS[v]
@@ -1625,9 +1661,17 @@ app.delete('/api/wip/task/:id', (req, res) => {
 app.post('/api/wip/readiness', (req, res) => {
   const { vertical, dataCompleteness, stakeholderCoverage, mitigationPlans, resourceAvailability, openRisks } = req.body || {};
   if (!ensureWipVertical(vertical)) return res.status(400).json({ ok: false, error: 'valid vertical required' });
-  WIP_READINESS[vertical] = { dataCompleteness, stakeholderCoverage, mitigationPlans, resourceAvailability, openRisks, updatedAt: Date.now() };
+  const liveSignal = getWipLiveSignal(vertical);
+  // If live data exists for this vertical, dataCompleteness is a known fact, not
+  // a manual estimate -- always store 100 rather than whatever (or nothing) the
+  // now-disabled slider on the client sent.
+  const effectiveDataCompleteness = liveSignal.available ? 100 : dataCompleteness;
+  WIP_READINESS[vertical] = { dataCompleteness: effectiveDataCompleteness, stakeholderCoverage, mitigationPlans, resourceAvailability, openRisks, updatedAt: Date.now() };
   saveWipState();
-  res.json({ ok: true, readiness: WIP_READINESS[vertical], overall: computeReadinessOverall(WIP_READINESS[vertical]) });
+  const readiness = liveSignal.available
+    ? Object.assign({}, WIP_READINESS[vertical], { dataCompletenessAuto: true })
+    : WIP_READINESS[vertical];
+  res.json({ ok: true, readiness, overall: computeReadinessOverall(readiness), liveSignal });
 });
 
 // ── DATA QUALITY ───────────────────────────────────────────────────────────────

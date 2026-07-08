@@ -185,6 +185,11 @@
     align-self:flex-start;
   }
   .readiness-save:hover{border-color:var(--cyan);}
+  .live-badge{
+    display:inline-block; font-size:8px; font-weight:800; letter-spacing:0.08em;
+    color:#00171a; background:var(--cyan); border-radius:3px; padding:1px 5px; margin-left:6px; vertical-align:middle;
+  }
+  .rbar-input:disabled{opacity:0.55;}
 
   /* ── PANELS / SHARED ── */
   .panel{
@@ -541,10 +546,22 @@ function renderTabs(){
   document.getElementById('warRoomLink').href = v.warRoom;
 }
 
-function renderReadinessBars(readiness){
+function renderReadinessBars(readiness, liveSignal){
   const wrap = document.getElementById('readinessBars');
+  const autoField = (readiness && readiness.dataCompletenessAuto) ? 'dataCompleteness' : null;
   wrap.innerHTML = READINESS_FIELDS.map(f => {
     const val = readiness && readiness[f.key] != null ? readiness[f.key] : 50;
+    if(f.key === autoField){
+      const meta = liveSignal && liveSignal.available
+        ? `${liveSignal.recordCount} record${liveSignal.recordCount===1?'':'s'} synced${liveSignal.filename ? ' from ' + esc(liveSignal.filename) : ''}`
+        : 'live data synced';
+      return `
+        <div class="rbar-row">
+          <label>${f.label} <span class="live-badge" title="Auto-derived from an actual uploaded data file, not a manual estimate">LIVE</span></label>
+          <input type="range" min="0" max="100" step="1" value="${val}" data-field="${f.key}" class="rbar-input" disabled>
+          <span class="rval" data-out="${f.key}">${val}% · ${meta}</span>
+        </div>`;
+    }
     return `
       <div class="rbar-row">
         <label>${f.label}</label>
@@ -552,7 +569,7 @@ function renderReadinessBars(readiness){
         <span class="rval" data-out="${f.key}">${val}%</span>
       </div>`;
   }).join('');
-  wrap.querySelectorAll('.rbar-input').forEach(inp => {
+  wrap.querySelectorAll('.rbar-input:not([disabled])').forEach(inp => {
     inp.addEventListener('input', () => {
       wrap.querySelector(`[data-out="${inp.dataset.field}"]`).textContent = inp.value + '%';
     });
@@ -657,7 +674,7 @@ function renderTrends(list){
 
 function renderBoard(board){
   currentBoard = board;
-  renderReadinessBars(board.readiness);
+  renderReadinessBars(board.readiness, board.liveSignal);
   renderReadinessScore(board.readinessOverall);
   renderDataQuality(board.dataQuality);
   renderTasks(board.tasks);
@@ -690,7 +707,7 @@ async function postJson(url, method, body){
 
 document.getElementById('readinessSave').addEventListener('click', async () => {
   const body = { vertical: currentVertical };
-  document.querySelectorAll('.rbar-input').forEach(inp => body[inp.dataset.field] = Number(inp.value));
+  document.querySelectorAll('.rbar-input:not([disabled])').forEach(inp => body[inp.dataset.field] = Number(inp.value));
   try{
     const data = await postJson('/api/wip/readiness', 'POST', body);
     if(!data.ok) throw new Error(data.error || 'save failed');
