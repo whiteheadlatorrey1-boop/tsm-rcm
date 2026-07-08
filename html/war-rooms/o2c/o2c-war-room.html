@@ -137,6 +137,8 @@ tr:hover td{background:rgba(0,255,80,.03)}
       </div>
     </div>
 
+    <div class="sb-section" id="liveDataSection"></div>
+
     <div class="sb-section">
       <div class="sb-label">PIPELINE STAGES</div>
       <div class="stage-list" id="stageList"></div>
@@ -210,6 +212,7 @@ tr:hover td{background:rgba(0,255,80,.03)}
 <script src="/js/foundation/tsm-governance.js"></script>
 <script src="/js/foundation/tsm-integration-layer.js"></script>
 
+<script src="/war-rooms/shared/tsm-live-data.js"></script>
 <script src="/war-rooms/o2c/services/o2c-engine.js"></script>
 <script>
 // Inline fallback copy of o2c-model.json. Used only if the live fetch below
@@ -271,8 +274,31 @@ const O2C_MODEL_FALLBACK = {
       // Falls back to the inline copy -- full functionality either way.
       MODEL = O2C_MODEL_FALLBACK;
     }
+
+    let liveInfo = { source: 'sample', record_count: 0 };
+    if (window.TSMLiveData) {
+      liveInfo = await window.TSMLiveData.hydrateModel('o2c', MODEL, 'sample_orders');
+    }
+    updateSampleButtonLabel(liveInfo);
+
     engine = new TSMO2CEngine(MODEL);
     renderStageList();
+
+    if (window.TSMLiveData) {
+      window.TSMLiveData.mountWidget(document.getElementById('liveDataSection'), {
+        domain: 'o2c',
+        label: 'LIVE DATA (ORDERS)',
+        onChange: async () => { await loadModel(); renderAll(); }
+      });
+    }
+  }
+
+  function updateSampleButtonLabel(liveInfo) {
+    const btn = document.getElementById('btnLoadSample');
+    if (!btn) return;
+    btn.textContent = liveInfo && liveInfo.source === 'live'
+      ? 'LOAD LIVE ORDERS'
+      : 'LOAD SAMPLES';
   }
 
   function renderStageList() {

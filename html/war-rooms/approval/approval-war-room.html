@@ -457,15 +457,19 @@ tr:hover td{background:rgba(0,255,80,.03)}
     try {
       const data = await engine.runAnalysis();
       out.className = 'ai-output';
-      out.innerHTML = renderMarkdown((data && data.answer) || 'No analysis returned.');
+      const rawAnswer = (data && data.answer) || 'No analysis returned.';
+      out.dataset.raw = rawAnswer;
+      out.innerHTML = renderMarkdown(rawAnswer);
     } catch (e) {
       out.className = 'ai-output';
+      out.dataset.raw = '';
       out.innerHTML = `<span class="err">Analysis failed: ${e.message}. Confirm /api/approval/query is wired server-side.</span>`;
     } finally { renderAll(); }
   }
 
   function relayToStrategist() {
-    const aiText = document.getElementById('aiOutput').textContent;
+    const outEl = document.getElementById('aiOutput');
+    const aiText = outEl.dataset.raw || outEl.textContent;
     const payload = engine.buildRelayPayload(aiText);
     try {
       TSM.relay.write("APPROVAL", payload);

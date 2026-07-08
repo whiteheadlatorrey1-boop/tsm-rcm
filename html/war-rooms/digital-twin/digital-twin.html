@@ -85,6 +85,11 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
 
   <div class="domain-grid" id="domainGrid"></div>
 
+  <div class="section" id="liveDataSection" style="margin-bottom:20px">
+    <div class="section-head"><span>LIVE DATA</span></div>
+    <div class="section-body" id="liveDataBody"></div>
+  </div>
+
   <div class="twin-grid">
     <div class="section">
       <div class="section-head"><span>LIVE SIGNAL FEED</span><span id="signalMeta"></span></div>
@@ -108,12 +113,13 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
   </div>
 </div>
 <script src="/runtime/kernel/canonical-core.js"></script>
+<script src="/war-rooms/shared/tsm-live-data.js"></script>
 <script>
 (function(){
   function tick(){ document.getElementById('navClock').textContent=new Date().toLocaleTimeString(); }
   setInterval(tick,1000); tick();
 
-  const DOMAINS=[
+  let DOMAINS=[
     {id:'sales',name:'SALES',score:84,delta:+3,color:'#00dcb4'},
     {id:'finance',name:'FINANCE',score:91,delta:+1,color:'#22c55e'},
     {id:'ops',name:'OPERATIONS',score:72,delta:-5,color:'#ff9500'},
@@ -225,8 +231,14 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
     }).join('');
   }
 
-  // Simulate live domain score drift
+  let usingLiveData = false;
+
+  // Simulate live domain score drift — only when we're on sample data.
+  // Randomly perturbing someone's actual uploaded numbers to make the
+  // dashboard "look live" would misrepresent real data as noisier than
+  // it is, so this stops the moment real data is loaded.
   setInterval(()=>{
+    if (usingLiveData) return;
     DOMAINS.forEach(d=>{
       const drift=Math.round((Math.random()-0.5)*4);
       d.score=Math.max(30,Math.min(99,d.score+drift));
@@ -253,7 +265,33 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
     setTimeout(() => { window.location.href = '/html/war-rooms/digital-twin/digital-twin-executive-portal.html'; }, 500);
   });
 
-  renderHealth(); renderDomains(); renderSignals(); renderForecasts();
+  async function hydrateAndRender(){
+    if (window.TSMLiveData) {
+      const model = { domains: DOMAINS };
+      const liveInfo = await window.TSMLiveData.hydrateModel('digital-twin', model, 'domains');
+      if (liveInfo.source === 'live') {
+        DOMAINS = (model.domains || []).map(d => ({
+          id: d.id || (d.name || 'domain').toLowerCase().replace(/\s+/g, '-'),
+          name: d.name || d.id || 'DOMAIN',
+          score: typeof d.score === 'number' ? d.score : 0,
+          delta: typeof d.delta === 'number' ? d.delta : 0,
+          color: d.color || (d.score >= 85 ? '#00dcb4' : d.score >= 70 ? '#ff9500' : '#ff3b3b')
+        }));
+        usingLiveData = true;
+      } else {
+        usingLiveData = false;
+      }
+
+      window.TSMLiveData.mountWidget(document.getElementById('liveDataBody'), {
+        domain: 'digital-twin',
+        label: 'LIVE DATA (DOMAIN SCORES) — SIGNAL FEED & FORECAST REMAIN SAMPLE DATA',
+        onChange: async () => { await hydrateAndRender(); }
+      });
+    }
+    renderHealth(); renderDomains(); renderSignals(); renderForecasts();
+  }
+
+  hydrateAndRender();
 })();
 </script>
   <script src="/html/core/tsm-runtime.js"></script>

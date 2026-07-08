@@ -825,7 +825,9 @@ app.post('/api/finops/bnca/report', (req, res) => res.json({ ok: true }));
 // routes/finops.js implements docs, run-doc, upload-doc (with field
 // extraction), report, multi-report, and actions endpoints. Mounted after
 // the inline handler above so that handler keeps precedence on any overlap.
+const liveDataModule = require('./routes/live-data');
 app.use(require('./routes/finops'));
+app.use(liveDataModule);
 app.post('/api/chat', (req, res) => res.json({ ok: true }));
 
 // ── AI QUERY ROUTES ───────────────────────────────────────────────────────────
@@ -1803,7 +1805,7 @@ app.post('/api/governance/query', async (req, res) => {
 
 
 // ── PHASE 7: ENTERPRISE INTEGRATION HUB ────────────────────────────────────────
-const INTEGRATION_CATALOG = [
+let INTEGRATION_CATALOG = [
   {
     "id": "int-01",
     "system": "CRM",
@@ -1862,31 +1864,70 @@ const INTEGRATION_CATALOG = [
   }
 ];
 
+// Returns whichever catalog is currently "active": the live-uploaded one if
+// a file has been uploaded via /api/live-data/integration-hub/upload, else
+// the hardcoded sample INTEGRATION_CATALOG above.
+function getActiveIntegrationCatalog() {
+  try {
+    const stored = liveDataModule.readStore('integration-hub');
+    if (stored && Array.isArray(stored.records) && stored.records.length) {
+      const normalized = stored.records.map((r, i) => ({
+        id: r.id || `int-live-${i + 1}`,
+        system: r.system || r.name || `System ${i + 1}`,
+        status: r.status || 'healthy',
+        lastSync: r.lastSync || null,
+        errorCount: typeof r.errorCount === 'number' ? r.errorCount : 0
+      }));
+      return { records: normalized, live: true };
+    }
+  } catch (e) { /* fall through to sample */ }
+  return { records: INTEGRATION_CATALOG, live: false };
+}
+
+// Persists a mutation (sync/error) back to wherever the record actually
+// lives, so live-uploaded data doesn't silently revert to the file on the
+// next request.
+function persistIntegrationCatalog(records, live) {
+  if (live) {
+    const stored = liveDataModule.readStore('integration-hub') || {};
+    stored.records = records;
+    liveDataModule.writeStore('integration-hub', stored);
+  } else {
+    INTEGRATION_CATALOG = records;
+  }
+}
+
 app.get('/api/integration/catalog', (req, res) => {
-  res.json({ ok: true, integrations: INTEGRATION_CATALOG });
+  const { records } = getActiveIntegrationCatalog();
+  res.json({ ok: true, integrations: records });
 });
 
 app.post('/api/integration/:id/sync', requireApiKey, (req, res) => {
-  const item = INTEGRATION_CATALOG.find(i => i.id === req.params.id);
+  const { records, live } = getActiveIntegrationCatalog();
+  const item = records.find(i => i.id === req.params.id);
   if (!item) return res.status(404).json({ ok: false, error: "Integration not found" });
   item.lastSync = Date.now();
   item.status = 'healthy';
+  persistIntegrationCatalog(records, live);
   res.json({ ok: true, integration: item });
 });
 
 app.post('/api/integration/:id/error', (req, res) => {
-  const item = INTEGRATION_CATALOG.find(i => i.id === req.params.id);
+  const { records, live } = getActiveIntegrationCatalog();
+  const item = records.find(i => i.id === req.params.id);
   if (!item) return res.status(404).json({ ok: false, error: "Integration not found" });
-  item.errorCount += 1;
+  item.errorCount = (item.errorCount || 0) + 1;
   item.status = item.errorCount >= 3 ? 'degraded' : 'warning';
   const message = (req.body && req.body.message) || `Sync error on ${item.system}`;
   INTEGRATION_ERROR_LOG.push({ id: `err-${Date.now()}`, ts: new Date().toISOString(), system: item.system, flowId: null, message });
+  persistIntegrationCatalog(records, live);
   res.json({ ok: true, integration: item });
 });
 
 app.get('/api/integration/health', (req, res) => {
-  const healthy = INTEGRATION_CATALOG.filter(i => i.status === 'healthy').length;
-  res.json({ ok: true, total: INTEGRATION_CATALOG.length, healthy, degraded: INTEGRATION_CATALOG.length - healthy });
+  const { records } = getActiveIntegrationCatalog();
+  const healthy = records.filter(i => i.status === 'healthy').length;
+  res.json({ ok: true, total: records.length, healthy, degraded: records.length - healthy });
 });
 
 // Point-to-point integration flows between systems — this IS the "integration catalog"
@@ -1940,9 +1981,11 @@ const INTEGRATION_ERROR_LOG = [
 ];
 
 app.get('/api/integration/detail', (req, res) => {
+  const { records, live } = getActiveIntegrationCatalog();
   res.json({
     ok: true,
-    systems: INTEGRATION_CATALOG,
+    systems: records,
+    systems_source: live ? 'live' : 'sample',
     flows: INTEGRATION_FLOWS,
     queues: MESSAGE_QUEUES,
     etlJobs: ETL_JOBS,

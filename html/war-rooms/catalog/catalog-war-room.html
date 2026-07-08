@@ -117,6 +117,8 @@ tr:hover td{background:rgba(0,255,80,.03)}
       </div>
     </div>
 
+    <div class="sb-section" id="liveDataSection"></div>
+
     <div class="sb-section">
       <div class="sb-label">SEARCH</div>
       <input type="text" class="search-input" id="searchInput" placeholder="SKU, name, category, family...">
@@ -183,6 +185,7 @@ tr:hover td{background:rgba(0,255,80,.03)}
 </div>
 
 <script src="/runtime/kernel/canonical-core.js"></script>
+<script src="/war-rooms/shared/tsm-live-data.js"></script>
 <script src="/war-rooms/catalog/services/catalog-engine.js"></script>
 <script>
 (function () {
@@ -196,10 +199,33 @@ tr:hover td{background:rgba(0,255,80,.03)}
   async function loadModel() {
     const res = await fetch('/war-rooms/catalog/data/catalog-model.json');
     MODEL = await res.json();
+
+    let liveInfo = { source: 'sample', record_count: 0 };
+    if (window.TSMLiveData) {
+      liveInfo = await window.TSMLiveData.hydrateModel('catalog', MODEL, 'sample_data.products');
+    }
+    updateSampleButtonLabel(liveInfo);
+
     engine = new TSMCatalogEngine(MODEL);
     const hydrated = engine.loadFromStorage();
     renderStageList();
     if (hydrated) renderAll();
+
+    if (window.TSMLiveData) {
+      window.TSMLiveData.mountWidget(document.getElementById('liveDataSection'), {
+        domain: 'catalog',
+        label: 'LIVE DATA (PRODUCTS)',
+        onChange: async () => { await loadModel(); renderAll(); }
+      });
+    }
+  }
+
+  function updateSampleButtonLabel(liveInfo) {
+    const btn = document.getElementById('btnLoadSample');
+    if (!btn) return;
+    btn.textContent = liveInfo && liveInfo.source === 'live'
+      ? 'RELOAD SAMPLE DATA (LIVE DATA UPLOADED)'
+      : 'LOAD SAMPLE DATA';
   }
 
   function renderStageList() {
