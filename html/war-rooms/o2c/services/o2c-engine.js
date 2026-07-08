@@ -160,9 +160,57 @@
         kpis: this.computeKpis(),
         sla_breaches: this.getSlaBreaches(),
         risk_flags: this.getRiskFlags(),
+        explain: this.getExplainItems(),
         analysis: analysis || null,
         relayed_at: Date.now()
       };
+    }
+
+    /** Maps a breached stage onto the model's declared risk_signals vocabulary,
+     *  so the explain claim names the same signal type the risk register uses
+     *  elsewhere (credit_hold_aging, shipping_delay, payment_overdue, etc.)
+     *  instead of a generic "sla_breach" label. */
+    _signalForBreach(b) {
+      const stageId = (Object.keys(this.stageIndex).find(id => this.stageIndex[id].label === b.stage)) || '';
+      if (stageId === 'credit') return 'credit_hold_aging';
+      if (stageId === 'shipping') return 'shipping_delay';
+      if (stageId === 'atp') return 'atp_shortfall';
+      if (stageId === 'ar' || stageId === 'reconcile') return 'payment_overdue';
+      if (stageId === 'invoice') return 'invoice_dispute';
+      return 'sla_breach';
+    }
+
+    /** Explainability feed for the risk register: every real SLA breach,
+     *  grounded in the same getSlaBreaches() fields already surfaced on the
+     *  KPI cards (order_id, customer, stage, hours_over, sla_hours, value). */
+    getExplainItems() {
+      const items = [];
+
+      this.getSlaBreaches().forEach(b => {
+        const signal = this._signalForBreach(b);
+        const severity = b.hours_over > 48 || b.value >= 150000 ? 'high'
+          : (b.value >= 50000 ? 'med' : 'low');
+
+        items.push({
+          id: 'order-' + b.order_id,
+          claim: `${b.order_id} (${b.customer}) is $${Number(b.value || 0).toLocaleString()} stalled ${b.hours_over}h past its "${b.stage}" SLA`,
+          confidence: 92,
+          severity,
+          impact: b.value ? ('$' + Number(b.value).toLocaleString() + ' order value delayed in cash cycle') : '',
+          rationale: `Order ${b.order_id} for ${b.customer} entered the "${b.stage}" stage ${b.hours_in_stage}h ago, ` +
+            `against a defined ${b.sla_hours}h SLA for that stage, and is now ${b.hours_over}h over. ` +
+            `Signal: ${signal}.` + (b.notes ? ` Note on record: ${b.notes}` : ''),
+          sources: ['O2C order record ' + b.order_id],
+          dataPoints: [
+            { label: 'Stage', value: b.stage },
+            { label: 'Hours over SLA', value: b.hours_over + 'h' },
+            { label: 'Order value', value: '$' + Number(b.value || 0).toLocaleString() }
+          ]
+        });
+      });
+
+      const rank = { high: 0, med: 1, low: 2 };
+      return items.sort((a, b) => (rank[a.severity] ?? 3) - (rank[b.severity] ?? 3));
     }
 
     /* ── Canonical core wiring ──────────────────────────────────
