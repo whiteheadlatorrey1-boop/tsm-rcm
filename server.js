@@ -156,8 +156,6 @@ global.MUSIC_SUITE_STATE = global.MUSIC_SUITE_STATE || {
 const TSM_MEMORY = global.__TSM_MEMORY__ = global.__TSM_MEMORY__ || {
   healthcare: { nodes: {}, hcStrategist: null, mainStrategist: null, executive: null }
 };
-const mdmRouter = require("./server/mdm/mdm-router");
-
 const TSM_MESH = {
   HEALTHCARE: { owner: 'HC Strategist', controller: 'Healthcare Command', risks: ['Revenue leakage', 'Denial escalation', 'Patient throughput degradation', 'Compliance exposure'] },
   CONSTRUCTION: { owner: 'Construction Strategist', controller: 'Construction Command', risks: ['Permit delays', 'Schedule variance', 'Cost overrun', 'Supply chain disruption'] },
@@ -174,13 +172,6 @@ app.use('/html/runtime', express.static(path.join(__dirname, 'html', 'runtime'))
 app.use('/runtime', express.static(path.join(__dirname, 'runtime'), { setHeaders: (res) => res.setHeader('Cache-Control', 'no-store') }));
 app.use('/architecture', express.static(path.join(__dirname, 'architecture'), { setHeaders: (res) => res.setHeader('Cache-Control', 'no-store') }));
 app.use('/', express.static(path.join(__dirname, 'html')));
-
-app.use(
-  "/api/mdm",
-  mdmRouter
-);
-
-
 const suites = [
   { route: '/construction', dir: 'html/construction-suite', index: 'construction-hub.html' },
   { route: '/finops', dir: 'html/finops-suite', index: 'finops-presentation/index.html' },
@@ -1576,6 +1567,33 @@ function computeReadinessOverall(r) {
   return Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
 }
 
+// Map WIP verticals to live-data-store domains, where one exists.
+// Only the 4 SAP-phase verticals that share the live-data-store pipeline
+// have a real signal here — the other 6 (healthcare, finops, legal,
+// real-estate, insurance, construction) have no server-side data source
+// and stay manual-entry. This does not fabricate a value for them.
+const WIP_LIVE_DATA_DOMAIN = { bpo: 'bpo', o2c: 'o2c', crm: 'crm', cpq: 'cpq' };
+
+function getWipLiveSignal(vertical) {
+  const domain = WIP_LIVE_DATA_DOMAIN[vertical];
+  if (!domain) return { available: false };
+  try {
+    const stored = liveDataModule.readStore(domain);
+    if (!stored || !Array.isArray(stored.records) || !stored.records.length) {
+      return { available: false, domain };
+    }
+    return {
+      available: true,
+      domain,
+      filename: stored.filename || null,
+      uploadedAt: stored.uploaded_at || null,
+      recordCount: stored.records.length
+    };
+  } catch (e) {
+    return { available: false, domain };
+  }
+}
+
 function wipId(prefix) {
   return prefix + '_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
 }
@@ -1584,13 +1602,22 @@ function wipId(prefix) {
 app.get('/api/wip/board', (req, res) => {
   const v = req.query.vertical;
   if (!ensureWipVertical(v)) return res.status(400).json({ ok: false, error: `vertical must be one of: ${COLLECTIVE_VERTICALS.join(', ')}` });
-  const readiness = WIP_READINESS[v] || null;
+  const liveSignal = getWipLiveSignal(v);
+  let readiness = WIP_READINESS[v] || null;
+  // Where a real live-data upload exists for this vertical, data completeness
+  // is a known fact (data was actually supplied), not a guess -- override the
+  // display value. Manual entries for the other 4 subjective fields are left
+  // untouched; those aren't derivable from uploaded records.
+  if (liveSignal.available) {
+    readiness = Object.assign({}, readiness, { dataCompleteness: 100, dataCompletenessAuto: true });
+  }
   res.json({
     ok: true,
     vertical: v,
     tasks: WIP_TASKS[v],
     readiness,
     readinessOverall: computeReadinessOverall(readiness),
+    liveSignal,
     dataQuality: WIP_DATA_QUALITY[v],
     decisions: WIP_DECISIONS[v],
     trends: WIP_TRENDS[v]
@@ -1634,9 +1661,17 @@ app.delete('/api/wip/task/:id', (req, res) => {
 app.post('/api/wip/readiness', (req, res) => {
   const { vertical, dataCompleteness, stakeholderCoverage, mitigationPlans, resourceAvailability, openRisks } = req.body || {};
   if (!ensureWipVertical(vertical)) return res.status(400).json({ ok: false, error: 'valid vertical required' });
-  WIP_READINESS[vertical] = { dataCompleteness, stakeholderCoverage, mitigationPlans, resourceAvailability, openRisks, updatedAt: Date.now() };
+  const liveSignal = getWipLiveSignal(vertical);
+  // If live data exists for this vertical, dataCompleteness is a known fact, not
+  // a manual estimate -- always store 100 rather than whatever (or nothing) the
+  // now-disabled slider on the client sent.
+  const effectiveDataCompleteness = liveSignal.available ? 100 : dataCompleteness;
+  WIP_READINESS[vertical] = { dataCompleteness: effectiveDataCompleteness, stakeholderCoverage, mitigationPlans, resourceAvailability, openRisks, updatedAt: Date.now() };
   saveWipState();
-  res.json({ ok: true, readiness: WIP_READINESS[vertical], overall: computeReadinessOverall(WIP_READINESS[vertical]) });
+  const readiness = liveSignal.available
+    ? Object.assign({}, WIP_READINESS[vertical], { dataCompletenessAuto: true })
+    : WIP_READINESS[vertical];
+  res.json({ ok: true, readiness, overall: computeReadinessOverall(readiness), liveSignal });
 });
 
 // ── DATA QUALITY ───────────────────────────────────────────────────────────────
@@ -2056,92 +2091,6 @@ app.get('/api/mdm/summary', (req, res) => {
 
 // Full detail across all domains: records + per-record quality/issues + duplicate clusters.
 // This is the real single-source-of-truth feed the war room UI renders from.
-
-
-// ===== TSM_MDM_PHASE3_API =====
-
-const mdmPhase3 = require("./server/mdm/mdm-phase3");
-
-
-app.get('/api/mdm/health', (req,res)=>{
-
-    const summary =
-        MDM_SUMMARY_CACHE ||
-        {
-            overallScore:83
-        };
-
-    res.json(
-        mdmPhase3.buildHealth(summary)
-    );
-
-});
-
-
-app.get('/api/mdm/catalog',(req,res)=>{
-
-    const summary =
-        MDM_SUMMARY_CACHE ||
-        {
-            domains:[]
-        };
-
-    res.json({
-        ok:true,
-        domains:summary.domains || []
-    });
-
-});
-
-
-app.get('/api/mdm/anomalies',(req,res)=>{
-
-    const detail =
-        MDM_DETAIL_CACHE ||
-        {
-            records:[]
-        };
-
-    res.json({
-
-        ok:true,
-
-        anomalies:
-            mdmPhase3.buildAnomalies(detail)
-
-    });
-
-});
-
-
-app.get('/api/mdm/missions',(req,res)=>{
-
-    const detail =
-        MDM_DETAIL_CACHE ||
-        {
-            records:[]
-        };
-
-
-    const anomalies =
-        mdmPhase3.buildAnomalies(detail);
-
-
-    res.json({
-
-        ok:true,
-
-        missions:
-            mdmPhase3.buildMissions(anomalies)
-
-    });
-
-});
-
-
-// ===== END TSM_MDM_PHASE3_API =====
-
-
 app.get('/api/mdm/detail', (req, res) => {
   const domains = Object.keys(MDM_SEED_DATA);
   const records = [];
@@ -2237,6 +2186,128 @@ app.get('/api/mdm/merge-history', (req, res) => {
   res.json({ ok: true, log: MDM_MERGE_LOG.slice(-200).reverse() });
 });
 
+// ── PHASE 5: MDM DECISION ENGINE (recommendations + approve/reject) ───────────
+const { generateRecommendations } = require('./html/mdm-suite/mdm-decision-engine.js');
+// Tracks recommendation ids explicitly acted on. Merge recs don't strictly need
+// this (retiring a record naturally removes the pair from regeneration), but
+// quality-review recs flag a record without mutating it, so without this set
+// a reviewed-and-dismissed item would just reappear on the next fetch.
+const MDM_RESOLVED_RECS = new Set();
+const MDM_RECOMMENDATION_DECISIONS = [];
+
+app.get('/api/mdm/recommendations', (req, res) => {
+  const recs = generateRecommendations(MDM_SEED_DATA, MDM_RESOLVED_RECS);
+  res.json({ ok: true, count: recs.length, recommendations: recs });
+});
+
+app.post('/api/mdm/recommendations/:id/approve', requireApiKey, (req, res) => {
+  const { actor } = req.body || {};
+  const recs = generateRecommendations(MDM_SEED_DATA, MDM_RESOLVED_RECS);
+  const rec = recs.find(r => r.id === req.params.id);
+  if (!rec) return res.status(404).json({ ok: false, error: 'Recommendation not found or already resolved' });
+
+  if (rec.type === 'merge') {
+    const raw = MDM_SEED_DATA[rec.domain];
+    const survivor = raw.find(r => r.id === rec.survivorId);
+    const merged = raw.find(r => r.id === rec.mergedId);
+    if (!survivor || !merged) return res.status(404).json({ ok: false, error: 'Underlying record no longer exists' });
+    const entry = {
+      id: `MRG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      domain: rec.domain, survivorId: rec.survivorId, mergedId: rec.mergedId,
+      survivorName: survivor.name, mergedName: merged.name,
+      decision: 'APPROVED', actor: actor || 'Unassigned', ts: new Date().toISOString(),
+      recommendationId: rec.id
+    };
+    MDM_MERGE_LOG.push(entry);
+    MDM_SEED_DATA[rec.domain] = raw.filter(r => r.id !== rec.mergedId);
+  }
+
+  MDM_RESOLVED_RECS.add(rec.id);
+  MDM_RECOMMENDATION_DECISIONS.push({
+    id: `DEC-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    recommendationId: rec.id, domain: rec.domain, type: rec.type,
+    decision: 'APPROVED', actor: actor || 'Unassigned', ts: new Date().toISOString()
+  });
+  res.json({ ok: true, resolved: rec });
+});
+
+app.post('/api/mdm/recommendations/:id/reject', requireApiKey, (req, res) => {
+  const { actor } = req.body || {};
+  const recs = generateRecommendations(MDM_SEED_DATA, MDM_RESOLVED_RECS);
+  const rec = recs.find(r => r.id === req.params.id);
+  if (!rec) return res.status(404).json({ ok: false, error: 'Recommendation not found or already resolved' });
+
+  if (rec.type === 'merge') {
+    MDM_MERGE_LOG.push({
+      id: `MRG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      domain: rec.domain, survivorId: rec.survivorId, mergedId: rec.mergedId,
+      survivorName: rec.survivorName, mergedName: rec.mergedName,
+      decision: 'REJECTED', actor: actor || 'Unassigned', ts: new Date().toISOString(),
+      recommendationId: rec.id
+    });
+  }
+
+  MDM_RESOLVED_RECS.add(rec.id);
+  MDM_RECOMMENDATION_DECISIONS.push({
+    id: `DEC-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    recommendationId: rec.id, domain: rec.domain, type: rec.type,
+    decision: 'REJECTED', actor: actor || 'Unassigned', ts: new Date().toISOString()
+  });
+  res.json({ ok: true, resolved: rec });
+});
+
+app.get('/api/mdm/recommendation-decisions', (req, res) => {
+  res.json({ ok: true, log: MDM_RECOMMENDATION_DECISIONS.slice(-200).reverse() });
+});
+
+// ── PHASE 6: MDM EXECUTIVE PORTAL ──────────────────────────────────────────
+// Real governance KPI rollup, computed fresh from live MDM_SEED_DATA + the
+// Phase 5 decision engine + the merge/decision logs -- no relay dependency,
+// no AI dependency. This is the single-source-of-truth feed the executive
+// portal renders from; the war-room-to-portal sessionStorage relay is kept
+// as a fallback only (e.g. if this endpoint is ever unreachable client-side).
+app.get('/api/mdm/executive-summary', (req, res) => {
+  const domains = Object.keys(MDM_SEED_DATA);
+  const domainSummaries = domains.map(d => {
+    const q = mdmScoreDataset(MDM_SEED_DATA[d], d);
+    const dupes = mdmFindDuplicates(MDM_SEED_DATA[d], d);
+    return {
+      domain: d,
+      avgQualityScore: q.avgScore,
+      recordCount: q.recordCount,
+      duplicateCount: dupes.length,
+      steward: MDM_STEWARDS[d] || 'Unassigned'
+    };
+  });
+
+  const totalRecords = domainSummaries.reduce((s, d) => s + d.recordCount, 0);
+  const totalDuplicates = domainSummaries.reduce((s, d) => s + d.duplicateCount, 0);
+  const overallQuality = Math.round(
+    domainSummaries.reduce((s, d) => s + d.avgQualityScore, 0) / (domainSummaries.length || 1)
+  );
+
+  const recs = generateRecommendations(MDM_SEED_DATA, MDM_RESOLVED_RECS);
+  const riskBreakdown = { HIGH: 0, MEDIUM: 0, LOW: 0 };
+  recs.forEach(r => { riskBreakdown[r.risk] = (riskBreakdown[r.risk] || 0) + 1; });
+
+  res.json({
+    ok: true,
+    generatedAt: new Date().toISOString(),
+    kpis: {
+      total_records: totalRecords,
+      duplicate_count: totalDuplicates,
+      quality_score: overallQuality,
+      pending_approvals: recs.length,
+      anomalies: riskBreakdown.HIGH,
+      stewards_active: new Set(Object.values(MDM_STEWARDS)).size
+    },
+    riskBreakdown,
+    domains: domainSummaries.sort((a, b) => a.avgQualityScore - b.avgQualityScore),
+    openRecommendations: recs.slice(0, 15),
+    recentDecisions: MDM_RECOMMENDATION_DECISIONS.slice(-10).reverse()
+  });
+});
+
 // Real reset: restores every domain to its original seeded state (undoes any
 // approved merges) and clears the decision log. Previously "RESET DATA" just
 // re-fetched current state with no way to actually undo anything.
@@ -2245,6 +2316,8 @@ app.post('/api/mdm/reset', requireApiKey, (req, res) => {
     MDM_SEED_DATA[domain] = JSON.parse(JSON.stringify(MDM_SEED_DATA_ORIGINAL[domain]));
   });
   MDM_MERGE_LOG.length = 0;
+  MDM_RESOLVED_RECS.clear();
+  MDM_RECOMMENDATION_DECISIONS.length = 0;
   res.json({ ok: true, reset: true });
 });
 
@@ -2289,83 +2362,3 @@ const server = app.listen(PORT, '0.0.0.0', () => {
 server.on('error', (err) => {
   console.error('💥 SERVER ERROR:', err.message, err.stack);
 });
-
-// ===== TSM MDM PHASE 4 AUTONOMOUS GOVERNANCE =====
-
-const mdmStewardship =
-require("./server/mdm/mdm-stewardship");
-
-const mdmDecision =
-require("./server/mdm/mdm-decision-engine");
-
-const mdmMemory =
-require("./server/mdm/mdm-memory");
-
-
-app.get('/api/mdm/stewardship',
-(req,res)=>{
-
-res.json({
-
-ok:true,
-
-queue:
-mdmStewardship.getStewardQueue()
-
-});
-
-});
-
-
-app.post('/api/mdm/decision',
-(req,res)=>{
-
-const result =
-mdmDecision.analyze(
-req.body.recordA || {},
-req.body.recordB || {}
-);
-
-
-mdmMemory.saveDecision({
-
-timestamp:new Date(),
-result
-
-});
-
-
-res.json({
-
-ok:true,
-result
-
-});
-
-});
-
-
-app.get('/api/mdm/memory',
-(req,res)=>{
-
-res.json({
-
-ok:true,
-
-enabled:true,
-
-layers:[
-
-"previous-decisions",
-"steward-actions",
-"merge-patterns"
-
-]
-
-});
-
-});
-
-
-// ===== END PHASE 4 =====
-

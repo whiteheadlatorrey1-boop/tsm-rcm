@@ -156,4 +156,79 @@ function scoreDataset(records, domain) {
   return { domain, avgScore, recordCount: records.length, scores };
 }
 
-module.exports = { findDuplicates, scoreDataset, scoreRecord, recordSimilarity, similarity };
+// ---------------------------------------------------------------------------
+// Phase 5 — Recommendation engine. Deterministic, no LLM call: every
+// recommendation traces to a real duplicate match plus the quality score of
+// both candidate records, and (when a mergeLog is supplied) to real past
+// decisions for the same domain/matchReason pair. This is the "explain why"
+// data the strategist UI and /api/mdm/recommendations route consume.
+// ---------------------------------------------------------------------------
+
+function recIdFor(domain, match) {
+  return `REC-${domain}-${match.recordA.id}-${match.recordB.id}`;
+}
+
+// Counts prior APPROVED/REJECTED decisions in the same domain that used the
+// same matchReason (identifier_exact vs fuzzy_name) — this is the real
+// "resolved N times before" signal, computed from the actual decision log
+// rather than invented.
+function historicalPatternFor(domain, matchReason, mergeLog) {
+  const log = Array.isArray(mergeLog) ? mergeLog : [];
+  const priorApproved = log.filter(h =>
+    h.domain === domain &&
+    h.decision === 'APPROVED' &&
+    (h.matchReason ? h.matchReason === matchReason : true)
+  );
+  const priorRejected = log.filter(h =>
+    h.domain === domain &&
+    h.decision === 'REJECTED' &&
+    (h.matchReason ? h.matchReason === matchReason : true)
+  );
+  return {
+    approvedCount: priorApproved.length,
+    rejectedCount: priorRejected.length,
+    lastDecisionAt: priorApproved.length ? priorApproved[priorApproved.length - 1].ts : null
+  };
+}
+
+// Risk = how much is exposed if this duplicate is left unresolved. Combines
+// how bad the worse-scoring record's quality is with how confident the match
+// itself is. 0-100, higher = more urgent.
+function riskFor(match, records) {
+  const a = records.find(r => r.id === match.recordA.id) || {};
+  const b = records.find(r => r.id === match.recordB.id) || {};
+  const worstQuality = Math.min(
+    a.quality != null ? a.quality : 100,
+    b.quality != null ? b.quality : 100
+  );
+  const qualityRisk = 100 - worstQuality;
+  const matchRisk = match.matchScore;
+  return Math.round(qualityRisk * 0.4 + matchRisk * 0.6);
+}
+
+function buildRecommendations(records, duplicateMatches, domain, mergeLog) {
+  return duplicateMatches.map(m => {
+    const pattern = historicalPatternFor(domain, m.matchReason, mergeLog);
+    const risk = riskFor(m, records);
+    const requiresApproval = !(m.matchReason === 'identifier_exact' && m.matchScore >= 95);
+    return {
+      id: recIdFor(domain, m),
+      domain,
+      issue: `Duplicate ${domain} identities: ${m.recordA.id} \u2194 ${m.recordB.id}`,
+      risk,
+      action: 'MERGE_RECORDS',
+      confidence: m.matchScore,
+      requiresApproval,
+      survivorId: m.recordA.id,
+      mergedId: m.recordB.id,
+      matchReason: m.matchReason,
+      matchField: m.matchField || null,
+      historicalPattern: pattern
+    };
+  }).sort((x, y) => y.risk - x.risk);
+}
+
+module.exports = {
+  findDuplicates, scoreDataset, scoreRecord, recordSimilarity, similarity,
+  buildRecommendations, recIdFor, historicalPatternFor, riskFor
+};
