@@ -2093,11 +2093,27 @@ const MDM_LAST_VALIDATED = {};
   });
 })();
 
-// In-memory version history / change-approval log. Every merge decision (approved or
-// rejected) is appended here — this IS the audit trail for Phase 6's "version history"
-// and "change approvals" requirements. Survives process lifetime, not restarts (matches
-// the rest of the platform's in-memory-state pattern; swap for the Fly volume if needed).
-const MDM_MERGE_LOG = [];
+// Phase 8: SQLite-backed persistence for the merge/decision audit trail. Falls back
+// to pure in-memory (previous behavior) if better-sqlite3 or the Fly volume isn't
+// available — see html/mdm-suite/mdm-db.js for the fallback logic.
+const mdmDb = require('./html/mdm-suite/mdm-db.js');
+mdmDb.initSchema();
+
+// Version history / change-approval log. Every merge decision (approved or rejected)
+// is appended here — this IS the audit trail for the "version history" and "change
+// approvals" requirements. Hydrated from SQLite on boot when persistence is available,
+// so it now survives restarts instead of resetting to empty on every deploy.
+const MDM_MERGE_LOG = mdmDb.loadMergeLog();
+
+// Re-apply any previously-approved merges so retired records stay retired across a
+// restart, even though MDM_SEED_DATA reloads fresh from the seed JSON on every boot.
+(function reapplyPersistedMerges() {
+  const mergedByDomain = mdmDb.loadMergedIds();
+  for (const [domain, ids] of Object.entries(mergedByDomain)) {
+    if (!MDM_SEED_DATA[domain]) continue;
+    MDM_SEED_DATA[domain] = MDM_SEED_DATA[domain].filter(r => !ids.has(r.id));
+  }
+})();
 
 // ── AUTH: shared-secret gate for mutating endpoints ────────────────────────
 function requireApiKey(req, res, next) {
@@ -2128,6 +2144,7 @@ app.post('/api/mdm/merge', requireApiKey, (req, res) => {
     ts: new Date().toISOString()
   };
   MDM_MERGE_LOG.push(entry);
+  mdmDb.logMerge(entry); // persists the audit row + the merged-record marker (Phase 8)
 
   // Approved merge actually retires the losing record from the working dataset —
   // this is what makes it a real golden-record operation, not just a log entry.
@@ -2135,7 +2152,7 @@ app.post('/api/mdm/merge', requireApiKey, (req, res) => {
     MDM_SEED_DATA[domain] = raw.filter(r => r.id !== mergedId);
   }
 
-  res.json({ ok: true, entry });
+  res.json({ ok: true, entry, persisted: mdmDb.available() });
 });
 
 app.get('/api/mdm/merge-history', (req, res) => {
@@ -2150,6 +2167,7 @@ app.post('/api/mdm/reset', requireApiKey, (req, res) => {
     MDM_SEED_DATA[domain] = JSON.parse(JSON.stringify(MDM_SEED_DATA_ORIGINAL[domain]));
   });
   MDM_MERGE_LOG.length = 0;
+  mdmDb.clearAll();
   res.json({ ok: true, reset: true });
 });
 
