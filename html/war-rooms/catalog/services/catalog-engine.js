@@ -150,8 +150,79 @@ class TSMCatalogEngine {
       products: this.products,
       kpis: this.computeKpis(),
       attention_flags: this.getAttentionFlags(),
+      explain: this.getExplainItems(),
       ai_analysis: aiText,
       timestamp: new Date().toISOString()
     };
+  }
+
+  /* ── Explainability feed for the risk register ──────────────────────────
+     Mirrors the three real signal types getAttentionFlags() already
+     detects (low stock, compliance, upcoming EOL), grounded in the same
+     product fields used on the KPI cards. */
+  getExplainItems() {
+    const items = [];
+
+    this.getLowStockProducts().forEach(p => {
+      const qty = Number(p.stock_qty || 0);
+      const reorder = Number(p.reorder_point || 0);
+      const severity = qty <= 0 ? 'high' : (qty <= reorder * 0.5 ? 'high' : 'med');
+      items.push({
+        id: 'stock-' + p.sku,
+        claim: `${p.sku} (${p.name}) has ${qty} on hand against a reorder point of ${reorder}`,
+        confidence: 90,
+        severity,
+        impact: p.list_price ? ('Stockout risk on a $' + Number(p.list_price).toLocaleString() + ' list-price SKU') : 'Stockout risk',
+        rationale: `${p.name} (${p.sku}) is at ${qty} units on hand, at or below its reorder point of ${reorder} ` +
+          `(within the ${Math.round((this.model.thresholds?.low_stock_ratio || 0.2) * 100)}% low-stock buffer). Stage: ${p.stage}.`,
+        sources: ['Catalog product record ' + p.sku],
+        dataPoints: [
+          { label: 'Stock on hand', value: String(qty) },
+          { label: 'Reorder point', value: String(reorder) },
+          { label: 'Stage', value: p.stage }
+        ]
+      });
+    });
+
+    this.getComplianceFlags().forEach(p => {
+      const severity = p.compliance_status === 'flagged' ? 'high' : 'med';
+      items.push({
+        id: 'compliance-' + p.sku,
+        claim: `${p.sku} (${p.name}) compliance status is "${p.compliance_status}"`,
+        confidence: 88,
+        severity,
+        impact: 'Regulatory / sellability risk until resolved',
+        rationale: `${p.name} (${p.sku}) is currently flagged with compliance status "${p.compliance_status}" ` +
+          `rather than "ok", and needs review before it can ship without exception.`,
+        sources: ['Catalog product record ' + p.sku],
+        dataPoints: [
+          { label: 'Compliance status', value: p.compliance_status },
+          { label: 'Stage', value: p.stage }
+        ]
+      });
+    });
+
+    this.getUpcomingEol().forEach(p => {
+      const days = Math.round((new Date(p.lifecycle_date).getTime() - Date.now()) / 86_400_000);
+      const severity = days <= 30 ? 'high' : 'med';
+      items.push({
+        id: 'eol-' + p.sku,
+        claim: `${p.sku} (${p.name}) reaches its lifecycle date in ${days} day${days === 1 ? '' : 's'} (${p.lifecycle_date})`,
+        confidence: 85,
+        severity,
+        impact: p.list_price ? ('$' + Number(p.list_price).toLocaleString() + ' list-price SKU transitioning off active sale') : 'SKU transitioning off active sale',
+        rationale: `${p.name} (${p.sku}) is currently "${p.stage}" with a lifecycle date of ${p.lifecycle_date}, ` +
+          `${days} day${days === 1 ? '' : 's'} away, within the ${this.model.thresholds?.eol_warning_days || 90}-day EOL warning window.`,
+        sources: ['Catalog product record ' + p.sku],
+        dataPoints: [
+          { label: 'Lifecycle date', value: p.lifecycle_date },
+          { label: 'Days remaining', value: String(days) },
+          { label: 'Stage', value: p.stage }
+        ]
+      });
+    });
+
+    const rank = { high: 0, med: 1, low: 2 };
+    return items.sort((a, b) => (rank[a.severity] ?? 3) - (rank[b.severity] ?? 3));
   }
 }
