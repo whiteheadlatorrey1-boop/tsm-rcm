@@ -2056,6 +2056,92 @@ app.get('/api/mdm/summary', (req, res) => {
 
 // Full detail across all domains: records + per-record quality/issues + duplicate clusters.
 // This is the real single-source-of-truth feed the war room UI renders from.
+
+
+// ===== TSM_MDM_PHASE3_API =====
+
+const mdmPhase3 = require("./server/mdm/mdm-phase3");
+
+
+app.get('/api/mdm/health', (req,res)=>{
+
+    const summary =
+        MDM_SUMMARY_CACHE ||
+        {
+            overallScore:83
+        };
+
+    res.json(
+        mdmPhase3.buildHealth(summary)
+    );
+
+});
+
+
+app.get('/api/mdm/catalog',(req,res)=>{
+
+    const summary =
+        MDM_SUMMARY_CACHE ||
+        {
+            domains:[]
+        };
+
+    res.json({
+        ok:true,
+        domains:summary.domains || []
+    });
+
+});
+
+
+app.get('/api/mdm/anomalies',(req,res)=>{
+
+    const detail =
+        MDM_DETAIL_CACHE ||
+        {
+            records:[]
+        };
+
+    res.json({
+
+        ok:true,
+
+        anomalies:
+            mdmPhase3.buildAnomalies(detail)
+
+    });
+
+});
+
+
+app.get('/api/mdm/missions',(req,res)=>{
+
+    const detail =
+        MDM_DETAIL_CACHE ||
+        {
+            records:[]
+        };
+
+
+    const anomalies =
+        mdmPhase3.buildAnomalies(detail);
+
+
+    res.json({
+
+        ok:true,
+
+        missions:
+            mdmPhase3.buildMissions(anomalies)
+
+    });
+
+});
+
+
+// ===== END TSM_MDM_PHASE3_API =====
+
+
 app.get('/api/mdm/detail', (req, res) => {
   const domains = Object.keys(MDM_SEED_DATA);
   const records = [];
