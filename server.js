@@ -2124,16 +2124,15 @@ function requireApiKey(req, res, next) {
   next();
 }
 
-app.post('/api/mdm/merge', requireApiKey, (req, res) => {
-  const { domain, survivorId, mergedId, actor, decision } = req.body || {};
-  if (!domain || !survivorId || !mergedId) {
-    return res.status(400).json({ ok: false, error: 'domain, survivorId, mergedId required' });
-  }
+// Shared merge executor — both the raw /api/mdm/merge endpoint and the Phase 5
+// /api/mdm/recommend/:id/approve endpoint funnel through this, so a recommendation's
+// approval produces byte-identical audit/persistence behavior to a manual merge.
+function executeMerge(domain, survivorId, mergedId, actor, decision) {
   const raw = MDM_SEED_DATA[domain];
-  if (!raw) return res.status(404).json({ ok: false, error: 'Unknown domain' });
+  if (!raw) return { error: 'Unknown domain', status: 404 };
   const survivor = raw.find(r => r.id === survivorId);
   const merged = raw.find(r => r.id === mergedId);
-  if (!survivor || !merged) return res.status(404).json({ ok: false, error: 'Record not found in domain' });
+  if (!survivor || !merged) return { error: 'Record not found in domain', status: 404 };
 
   const entry = {
     id: `MRG-${Date.now()}-${Math.floor(Math.random()*1000)}`,
@@ -2146,13 +2145,52 @@ app.post('/api/mdm/merge', requireApiKey, (req, res) => {
   MDM_MERGE_LOG.push(entry);
   mdmDb.logMerge(entry); // persists the audit row + the merged-record marker (Phase 8)
 
-  // Approved merge actually retires the losing record from the working dataset —
-  // this is what makes it a real golden-record operation, not just a log entry.
   if (entry.decision === 'APPROVED') {
     MDM_SEED_DATA[domain] = raw.filter(r => r.id !== mergedId);
   }
+  return { entry };
+}
 
-  res.json({ ok: true, entry, persisted: mdmDb.available() });
+app.post('/api/mdm/merge', requireApiKey, (req, res) => {
+  const { domain, survivorId, mergedId, actor, decision } = req.body || {};
+  if (!domain || !survivorId || !mergedId) {
+    return res.status(400).json({ ok: false, error: 'domain, survivorId, mergedId required' });
+  }
+  const result = executeMerge(domain, survivorId, mergedId, actor, decision);
+  if (result.error) return res.status(result.status).json({ ok: false, error: result.error });
+  res.json({ ok: true, entry: result.entry, persisted: mdmDb.available() });
+});
+
+// ── PHASE 5: MDM DECISION ENGINE ────────────────────────────────────────────
+const mdmDecisionEngine = require('./html/mdm-suite/mdm-decision-engine.js');
+
+app.get('/api/mdm/recommendations', (req, res) => {
+  const recommendations = mdmDecisionEngine.generateRecommendations(MDM_SEED_DATA);
+  res.json({ ok: true, recommendations });
+});
+
+app.post('/api/mdm/recommend/:id/approve', requireApiKey, (req, res) => {
+  const rec = mdmDecisionEngine.findRecommendation(MDM_SEED_DATA, req.params.id);
+  if (!rec) return res.status(404).json({ ok: false, error: 'Recommendation not found (it may already be resolved, or underlying data changed)' });
+  if (rec.type !== 'MERGE_RECORDS') {
+    return res.status(400).json({ ok: false, error: 'Only MERGE_RECORDS recommendations go through the approval workflow; QUALITY_REVIEW items are informational only' });
+  }
+  const actor = (req.body && req.body.actor) || 'Unassigned';
+  const result = executeMerge(rec.domain, rec.survivorId, rec.mergedId, actor, 'APPROVED');
+  if (result.error) return res.status(result.status).json({ ok: false, error: result.error });
+  res.json({ ok: true, recommendation: rec, entry: result.entry, persisted: mdmDb.available() });
+});
+
+app.post('/api/mdm/recommend/:id/reject', requireApiKey, (req, res) => {
+  const rec = mdmDecisionEngine.findRecommendation(MDM_SEED_DATA, req.params.id);
+  if (!rec) return res.status(404).json({ ok: false, error: 'Recommendation not found (it may already be resolved, or underlying data changed)' });
+  if (rec.type !== 'MERGE_RECORDS') {
+    return res.status(400).json({ ok: false, error: 'Only MERGE_RECORDS recommendations go through the approval workflow; QUALITY_REVIEW items are informational only' });
+  }
+  const actor = (req.body && req.body.actor) || 'Unassigned';
+  const result = executeMerge(rec.domain, rec.survivorId, rec.mergedId, actor, 'REJECTED');
+  if (result.error) return res.status(result.status).json({ ok: false, error: result.error });
+  res.json({ ok: true, recommendation: rec, entry: result.entry, persisted: mdmDb.available() });
 });
 
 app.get('/api/mdm/merge-history', (req, res) => {
