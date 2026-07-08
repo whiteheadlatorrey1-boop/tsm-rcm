@@ -2165,7 +2165,8 @@ app.post('/api/mdm/merge', requireApiKey, (req, res) => {
 const mdmDecisionEngine = require('./html/mdm-suite/mdm-decision-engine.js');
 
 app.get('/api/mdm/recommendations', (req, res) => {
-  const recommendations = mdmDecisionEngine.generateRecommendations(MDM_SEED_DATA);
+  const recommendations = mdmDecisionEngine.generateRecommendations(MDM_SEED_DATA)
+    .map(r => ({ ...r, owner: MDM_STEWARDS[r.domain] || 'Unassigned' }));
   res.json({ ok: true, recommendations });
 });
 

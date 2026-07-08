@@ -1,0 +1,226 @@
+<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TSM MDM Mission Queue</title>
+<script src="/config/tsm-client-key.js"></script>
+<style>
+:root{--bg:#0a0f0a;--bg2:#0d140d;--bg3:#101810;--border:rgba(0,255,120,.1);
+--green:#00ff78;--green-dim:rgba(0,255,120,.5);--gold:#ffd700;--red:#ff3b3b;
+--amber:#ff9500;--text:#c8e8d0;--text-dim:#4a6a50;--card:#0d160d;}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;font-size:12px;min-height:100vh}
+.nav{display:flex;align-items:center;background:#060d06;border-bottom:1px solid var(--border);height:38px;padding:0 16px}
+.nav-brand{color:var(--green);font-weight:700;font-size:11px;letter-spacing:2px;margin-right:24px}
+.nav-back{color:var(--text-dim);font-size:9px;text-decoration:none;letter-spacing:1px}
+.nav-back:hover{color:var(--text)}
+.nav-right{margin-left:auto;display:flex;gap:16px;color:var(--text-dim);font-size:10px;align-items:center}
+
+.chain-bar{display:flex;align-items:center;gap:0;padding:10px 22px;border-bottom:1px solid var(--border);background:var(--bg2)}
+.chain-step{display:flex;align-items:center;gap:8px;padding:5px 12px;font-size:8px;letter-spacing:1.5px;color:var(--text-dim);border:1px solid var(--border)}
+.chain-step.done{color:var(--green);border-color:rgba(0,255,120,.3);background:rgba(0,255,120,.04)}
+.chain-step.active{color:var(--gold);border-color:rgba(255,215,0,.4);background:rgba(255,215,0,.05)}
+.chain-arrow{color:var(--text-dim);padding:0 6px;font-size:10px}
+
+.main{padding:18px 22px;max-width:1180px;margin:0 auto}
+.hero{margin-bottom:16px}
+.hero-title{font-size:13px;letter-spacing:1px}
+.hero-sub{color:var(--text-dim);font-size:10px;margin-top:2px}
+
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px}
+.kpi-card{background:var(--card);border:1px solid var(--border);padding:12px 10px}
+.kpi-label{font-size:8px;letter-spacing:1px;color:var(--text-dim);margin-bottom:6px;text-transform:uppercase}
+.kpi-value{font-size:18px;font-weight:700;color:var(--green)}
+.kpi-value.warn{color:var(--amber)} .kpi-value.gold{color:var(--gold)}
+
+.section{background:var(--card);border:1px solid var(--border);margin-bottom:16px}
+.section-head{padding:10px 14px;border-bottom:1px solid var(--border);font-size:10px;letter-spacing:1.5px;color:var(--text-dim);display:flex;justify-content:space-between;align-items:center}
+.section-body{padding:14px}
+.empty-note{color:var(--text-dim);padding:16px;text-align:center}
+
+.mission{background:var(--bg3);border:1px solid var(--border);margin-bottom:10px;padding:12px}
+.mission-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.mission-id{color:var(--gold);font-weight:700;font-size:11px;letter-spacing:.5px}
+.mission-risk{font-size:8px;padding:2px 7px;border:1px solid}
+.risk-high{color:var(--red);border-color:var(--red)}
+.risk-med{color:var(--amber);border-color:var(--amber)}
+.risk-low{color:var(--green);border-color:var(--green)}
+.mission-row{display:flex;gap:6px;font-size:10px;margin-bottom:4px}
+.mission-row .k{color:var(--text-dim);min-width:110px;flex-shrink:0}
+.steps{display:flex;flex-direction:column;gap:3px;margin:10px 0}
+.step{display:flex;gap:8px;align-items:center;font-size:9px;color:var(--text-dim)}
+.step.done{color:var(--green)}
+.step .box{width:11px;height:11px;border:1px solid var(--text-dim);display:inline-flex;align-items:center;justify-content:center;font-size:8px;flex-shrink:0}
+.step.done .box{border-color:var(--green);background:rgba(0,255,120,.1)}
+.progress-track{width:100%;height:5px;background:var(--bg2);border-radius:3px;margin:8px 0;overflow:hidden}
+.progress-fill{height:100%;background:var(--green)}
+.completion-lbl{font-size:8px;color:var(--text-dim);letter-spacing:1px}
+.btn{border:1px solid;font-family:inherit;font-size:9px;letter-spacing:1.5px;cursor:pointer;padding:7px 12px;transition:.2s}
+.btn-green{background:var(--green);border-color:var(--green);color:#000;font-weight:700}
+.btn-ghost{background:transparent;border-color:var(--border);color:var(--text-dim)}
+.btn-ghost:hover{color:var(--text);border-color:var(--text-dim)}
+.btn-row{display:flex;gap:6px;margin-top:8px}
+
+.done-row{display:flex;gap:10px;padding:6px 10px;border-bottom:1px solid var(--border);font-size:9px;color:var(--text-dim);flex-wrap:wrap}
+.done-row .decision-approved{color:var(--green)} .done-row .decision-rejected{color:var(--red)}
+</style></head><body>
+<div class="nav">
+  <div class="nav-brand">TSM SHELL // MDM MISSION QUEUE</div>
+  <a class="nav-back" href="/html/war-rooms/mdm/mdm-war-room.html">&larr; WAR ROOM</a>
+  <div class="nav-right">
+    <a class="nav-back" href="/html/war-rooms/mdm/mdm-strategist.html">STRATEGIST</a>
+    <a class="nav-back" href="/html/war-rooms/mdm/mdm-executive-portal.html" style="color:var(--gold)">EXECUTIVE &rarr;</a>
+    <span id="navStatus">LOADING&hellip;</span>
+  </div>
+</div>
+<div class="chain-bar">
+  <div class="chain-step done">1 &middot; INTAKE</div><span class="chain-arrow">&rarr;</span>
+  <div class="chain-step done">2 &middot; UNDERSTAND</div><span class="chain-arrow">&rarr;</span>
+  <div class="chain-step done">3 &middot; DECIDE</div><span class="chain-arrow">&rarr;</span>
+  <div class="chain-step active">4 &middot; EXECUTE (MISSION QUEUE)</div><span class="chain-arrow">&rarr;</span>
+  <div class="chain-step">5 &middot; EXPLAIN</div><span class="chain-arrow">&rarr;</span>
+  <div class="chain-step">6 &middot; AUDIT</div>
+</div>
+<div class="main">
+  <div class="hero">
+    <div class="hero-title">MDM <b style="color:var(--green)">MISSION QUEUE</b></div>
+    <div class="hero-sub">Every open recommendation, tracked as a mission from detection through executed remediation.</div>
+  </div>
+  <div class="kpi-grid" id="kpiGrid"></div>
+  <div class="section">
+    <div class="section-head"><span>OPEN MISSIONS</span><span id="openMeta"></span></div>
+    <div class="section-body" id="openBody"><div class="empty-note">Loading&hellip;</div></div>
+  </div>
+  <div class="section">
+    <div class="section-head"><span>COMPLETED MISSIONS &middot; RECENT</span><span id="doneMeta"></span></div>
+    <div class="section-body" id="doneBody"><div class="empty-note">Loading&hellip;</div></div>
+  </div>
+</div>
+
+<script>
+(function(){
+  function authHeaders(){
+    const key = window.TSM_CLIENT_KEY;
+    return { 'Content-Type':'application/json', 'x-api-key': key || '' };
+  }
+
+  // The 5-step DecisionChain execute stage, as a fixed checklist per mission. Every
+  // recommendation the engine produces has already cleared steps 1-2 by construction
+  // (it wouldn't exist as a recommendation otherwise) — steward approval is the gate
+  // this queue exists to manage.
+  const STEPS = ['Detect duplicates', 'Score confidence', 'Steward approval', 'Execute merge', 'Update memory'];
+
+  function stepsHtml(doneCount){
+    return `<div class="steps">${STEPS.map((s,i)=>`
+      <div class="step ${i<doneCount?'done':''}"><span class="box">${i<doneCount?'&#10003;':''}</span>${s}</div>
+    `).join('')}</div>`;
+  }
+
+  function riskCls(risk){ return risk>=80?'risk-high':risk>=50?'risk-med':'risk-low'; }
+
+  function missionCard(rec){
+    const doneCount = 2; // detect + score always satisfied to reach this list
+    const pct = Math.round((doneCount/STEPS.length)*100);
+    return `<div class="mission" data-id="${rec.id}">
+      <div class="mission-hdr">
+        <span class="mission-id">MDM-${rec.domain.toUpperCase()}-${rec.survivorId}</span>
+        <span class="mission-risk ${riskCls(rec.risk)}">RISK ${rec.risk}</span>
+      </div>
+      <div class="mission-row"><span class="k">Finding</span><span>${escapeHtml(rec.issue)}</span></div>
+      <div class="mission-row"><span class="k">AI Recommendation</span><span>Merge ${escapeHtml(rec.mergedId)} into ${escapeHtml(rec.survivorId)} &mdash; ${escapeHtml(rec.reason)}</span></div>
+      <div class="mission-row"><span class="k">Owner</span><span>${escapeHtml(rec.owner || 'Unassigned')}</span></div>
+      <div class="mission-row"><span class="k">Confidence</span><span>${rec.confidence}% &middot; ${rec.matchReason==='identifier_exact'?('shared '+rec.matchField):'fuzzy match'}</span></div>
+      ${stepsHtml(doneCount)}
+      <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
+      <div class="completion-lbl">COMPLETION: ${pct}%</div>
+      <div class="btn-row">
+        <button class="btn btn-green" data-action="approve" data-id="${rec.id}">APPROVE &middot; EXECUTE MERGE</button>
+        <button class="btn btn-ghost" data-action="reject" data-id="${rec.id}">REJECT</button>
+      </div>
+    </div>`;
+  }
+
+  function doneRow(d){
+    const cls = d.decision === 'APPROVED' ? 'decision-approved' : 'decision-rejected';
+    return `<div class="done-row">
+      <span>${new Date(d.ts).toLocaleTimeString()}</span>
+      <span class="${cls}">${d.decision}</span>
+      <span>MDM-${d.domain.toUpperCase()}-${d.survivorId} &mdash; kept ${escapeHtml(d.survivorId)} over ${escapeHtml(d.mergedId)}</span>
+      <span>&mdash; ${escapeHtml(d.actor)}</span>
+    </div>`;
+  }
+
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  let openMissions = [];
+
+  async function load(){
+    try{
+      const [recRes, histRes] = await Promise.all([
+        fetch('/api/mdm/recommendations'),
+        fetch('/api/mdm/merge-history')
+      ]);
+      const recData = await recRes.json();
+      const histData = await histRes.json();
+      if(!recData.ok || !histData.ok) throw new Error('API returned not-ok');
+
+      openMissions = (recData.recommendations || []).filter(r => r.type === 'MERGE_RECORDS');
+      const done = (histData.log || []).slice(0, 15);
+
+      document.getElementById('navStatus').textContent = `${openMissions.length} OPEN · ${done.length} RECENT DECISIONS`;
+
+      const kpis = [
+        { val: String(openMissions.length), lbl: 'OPEN MISSIONS', cls: '' },
+        { val: String(openMissions.filter(r=>r.risk>=80).length), lbl: 'HIGH RISK', cls: 'warn' },
+        { val: String(done.filter(d=>d.decision==='APPROVED').length), lbl: 'EXECUTED (LOG)', cls: 'gold' },
+        { val: String(done.filter(d=>d.decision==='REJECTED').length), lbl: 'REJECTED (LOG)', cls: '' }
+      ];
+      document.getElementById('kpiGrid').innerHTML = kpis.map(k=>`
+        <div class="kpi-card"><div class="kpi-value ${k.cls}">${k.val}</div><div class="kpi-label">${k.lbl}</div></div>
+      `).join('');
+
+      document.getElementById('openMeta').textContent = `${openMissions.length} PENDING`;
+      document.getElementById('openBody').innerHTML = openMissions.length
+        ? openMissions.map(missionCard).join('')
+        : '<div class="empty-note">No open missions &mdash; every recommendation has been reviewed.</div>';
+
+      document.getElementById('doneMeta').textContent = `${done.length} SHOWN`;
+      document.getElementById('doneBody').innerHTML = done.length
+        ? done.map(doneRow).join('')
+        : '<div class="empty-note">No decisions logged yet.</div>';
+
+      document.getElementById('openBody').removeEventListener('click', handleAction);
+      document.getElementById('openBody').addEventListener('click', handleAction);
+    } catch(err){
+      document.getElementById('navStatus').textContent = 'LOAD FAILED';
+      document.getElementById('openBody').innerHTML = `<div class="empty-note">Could not load missions: ${escapeHtml(err.message)}</div>`;
+    }
+  }
+
+  async function handleAction(e){
+    const btn = e.target.closest('button[data-action]');
+    if(!btn) return;
+    const { action, id } = btn.dataset;
+    const card = btn.closest('.mission');
+    card.style.opacity = '0.5';
+    btn.disabled = true;
+    try{
+      const res = await fetch(`/api/mdm/recommend/${encodeURIComponent(id)}/${action}`, {
+        method: 'POST', headers: authHeaders(), body: JSON.stringify({ actor: 'Mission Queue' })
+      });
+      const d = await res.json();
+      if(!d.ok) throw new Error(d.error || 'Action failed');
+      await load();
+    } catch(err){
+      alert(`Action failed: ${err.message}`);
+      card.style.opacity = '1';
+      btn.disabled = false;
+    }
+  }
+
+  load();
+  setInterval(load, 20000);
+})();
+</script>
+  <script src="/html/core/tsm-runtime.js"></script>
+</body></html>
