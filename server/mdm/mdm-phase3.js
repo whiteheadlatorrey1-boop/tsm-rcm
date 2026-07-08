@@ -86,3 +86,18 @@ buildAnomalies,
 buildMissions
 };
 
+
+
+// Phase 3B Explainability
+
+const mdmExplainability =
+require("./mdm-explainability");
+
+
+module.exports.explainAnomaly =
+function(anomaly){
+
+return mdmExplainability.explain(anomaly);
+
+};
+

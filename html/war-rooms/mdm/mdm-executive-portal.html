@@ -1,11 +1,12 @@
-
 <!DOCTYPE html>
 
 <html>
 
 <head>
 
-<title>MDM Executive Portal</title>
+<title>
+TSM MDM Executive Intelligence
+</title>
 
 <link rel="stylesheet" href="/shared/tsm-mdm.css">
 
@@ -18,48 +19,150 @@
 
 
 <h1>
-MDM Executive Portal
+MDM Executive Intelligence
 </h1>
+
+
+<div class="mdm-grid">
+
+
+<div class="mdm-card">
+
+<div class="mdm-label">
+MASTER DATA TRUST
+</div>
+
+<div id="trust"
+class="mdm-score">
+--
+</div>
+
+</div>
+
 
 
 <div class="mdm-card">
 
 <h2>
-Enterprise Data Trust Index
+Top Risk
 </h2>
 
+<div id="risk">
+Loading...
+</div>
 
-<div id="score"
-class="mdm-score">
---
+</div>
+
+
+
+<div class="mdm-card">
+
+<h2>
+AI Explanation
+</h2>
+
+<div id="explain">
+Loading...
+</div>
+
+</div>
+
+
+
+<div class="mdm-card">
+
+<h2>
+Mission Status
+</h2>
+
+<div id="mission">
+Loading...
+</div>
+
 </div>
 
 
 </div>
 
-
 </div>
 
-
-<script src="/js/mdm-live-data.js"></script>
 
 
 <script>
 
-TSM_MDM_LIVE.start();
+async function loadMDM(){
+
+const health =
+await fetch("/api/mdm/health")
+.then(r=>r.json());
 
 
-window.addEventListener(
-"TSM_MDM_UPDATED",
-(e)=>{
+document.getElementById("trust")
+.innerHTML =
+health.healthScore ||
+health.score ||
+"--";
 
-document.getElementById(
-"score"
-).innerText =
-e.detail.catalog.healthScore
-+"%";
 
-});
+
+const anomalies =
+await fetch("/api/mdm/anomalies")
+.then(r=>r.json());
+
+
+const a =
+anomalies[0] ||
+anomalies.anomalies?.[0];
+
+
+if(a){
+
+document.getElementById("risk")
+.innerHTML =
+`
+${a.finding || ""}
+<br>
+Risk Score:
+${a.riskScore || a.score}
+<br>
+Exposure:
+${a.exposure || ""}
+`;
+
+
+}
+
+
+
+const missions =
+await fetch("/api/mdm/missions")
+.then(r=>r.json());
+
+
+const m =
+missions[0] ||
+missions.missions?.[0];
+
+
+if(m){
+
+document.getElementById("mission")
+.innerHTML =
+`
+${m.id}
+<br>
+${m.status}
+<br>
+${m.completion_pct}%
+`;
+
+}
+
+
+}
+
+
+loadMDM();
 
 
 </script>
@@ -68,4 +171,3 @@ e.detail.catalog.healthScore
 </body>
 
 </html>
-
