@@ -2142,6 +2142,80 @@ app.get('/api/mdm/merge-history', (req, res) => {
   res.json({ ok: true, log: MDM_MERGE_LOG.slice(-200).reverse() });
 });
 
+// ── PHASE 5: MDM DECISION ENGINE (recommendations + approve/reject) ───────────
+const { generateRecommendations } = require('./html/mdm-suite/mdm-decision-engine.js');
+// Tracks recommendation ids explicitly acted on. Merge recs don't strictly need
+// this (retiring a record naturally removes the pair from regeneration), but
+// quality-review recs flag a record without mutating it, so without this set
+// a reviewed-and-dismissed item would just reappear on the next fetch.
+const MDM_RESOLVED_RECS = new Set();
+const MDM_RECOMMENDATION_DECISIONS = [];
+
+app.get('/api/mdm/recommendations', (req, res) => {
+  const recs = generateRecommendations(MDM_SEED_DATA, MDM_RESOLVED_RECS);
+  res.json({ ok: true, count: recs.length, recommendations: recs });
+});
+
+app.post('/api/mdm/recommendations/:id/approve', requireApiKey, (req, res) => {
+  const { actor } = req.body || {};
+  const recs = generateRecommendations(MDM_SEED_DATA, MDM_RESOLVED_RECS);
+  const rec = recs.find(r => r.id === req.params.id);
+  if (!rec) return res.status(404).json({ ok: false, error: 'Recommendation not found or already resolved' });
+
+  if (rec.type === 'merge') {
+    const raw = MDM_SEED_DATA[rec.domain];
+    const survivor = raw.find(r => r.id === rec.survivorId);
+    const merged = raw.find(r => r.id === rec.mergedId);
+    if (!survivor || !merged) return res.status(404).json({ ok: false, error: 'Underlying record no longer exists' });
+    const entry = {
+      id: `MRG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      domain: rec.domain, survivorId: rec.survivorId, mergedId: rec.mergedId,
+      survivorName: survivor.name, mergedName: merged.name,
+      decision: 'APPROVED', actor: actor || 'Unassigned', ts: new Date().toISOString(),
+      recommendationId: rec.id
+    };
+    MDM_MERGE_LOG.push(entry);
+    MDM_SEED_DATA[rec.domain] = raw.filter(r => r.id !== rec.mergedId);
+  }
+
+  MDM_RESOLVED_RECS.add(rec.id);
+  MDM_RECOMMENDATION_DECISIONS.push({
+    id: `DEC-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    recommendationId: rec.id, domain: rec.domain, type: rec.type,
+    decision: 'APPROVED', actor: actor || 'Unassigned', ts: new Date().toISOString()
+  });
+  res.json({ ok: true, resolved: rec });
+});
+
+app.post('/api/mdm/recommendations/:id/reject', requireApiKey, (req, res) => {
+  const { actor } = req.body || {};
+  const recs = generateRecommendations(MDM_SEED_DATA, MDM_RESOLVED_RECS);
+  const rec = recs.find(r => r.id === req.params.id);
+  if (!rec) return res.status(404).json({ ok: false, error: 'Recommendation not found or already resolved' });
+
+  if (rec.type === 'merge') {
+    MDM_MERGE_LOG.push({
+      id: `MRG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      domain: rec.domain, survivorId: rec.survivorId, mergedId: rec.mergedId,
+      survivorName: rec.survivorName, mergedName: rec.mergedName,
+      decision: 'REJECTED', actor: actor || 'Unassigned', ts: new Date().toISOString(),
+      recommendationId: rec.id
+    });
+  }
+
+  MDM_RESOLVED_RECS.add(rec.id);
+  MDM_RECOMMENDATION_DECISIONS.push({
+    id: `DEC-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    recommendationId: rec.id, domain: rec.domain, type: rec.type,
+    decision: 'REJECTED', actor: actor || 'Unassigned', ts: new Date().toISOString()
+  });
+  res.json({ ok: true, resolved: rec });
+});
+
+app.get('/api/mdm/recommendation-decisions', (req, res) => {
+  res.json({ ok: true, log: MDM_RECOMMENDATION_DECISIONS.slice(-200).reverse() });
+});
+
 // Real reset: restores every domain to its original seeded state (undoes any
 // approved merges) and clears the decision log. Previously "RESET DATA" just
 // re-fetched current state with no way to actually undo anything.
@@ -2150,6 +2224,8 @@ app.post('/api/mdm/reset', requireApiKey, (req, res) => {
     MDM_SEED_DATA[domain] = JSON.parse(JSON.stringify(MDM_SEED_DATA_ORIGINAL[domain]));
   });
   MDM_MERGE_LOG.length = 0;
+  MDM_RESOLVED_RECS.clear();
+  MDM_RECOMMENDATION_DECISIONS.length = 0;
   res.json({ ok: true, reset: true });
 });
 
