@@ -265,26 +265,84 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
     setTimeout(() => { window.location.href = '/html/war-rooms/digital-twin/digital-twin-executive-portal.html'; }, 500);
   });
 
+  function normalizeDomain(d){
+    const score = typeof d.score === 'number' ? d.score : Number(d.score) || 0;
+    return {
+      id: d.id || (d.name || 'domain').toString().toLowerCase().replace(/\s+/g, '-'),
+      name: d.name || d.id || 'DOMAIN',
+      score,
+      delta: typeof d.delta === 'number' ? d.delta : Number(d.delta) || 0,
+      color: d.color || (score >= 85 ? '#00dcb4' : score >= 70 ? '#ff9500' : '#ff3b3b')
+    };
+  }
+  function normalizeSignal(s){
+    return {
+      type: ['ok','warn','bad'].includes(s.type) ? s.type : 'ok',
+      text: s.text || s.message || '—',
+      src: s.src || s.source || 'UPLOAD',
+      time: s.time || '—'
+    };
+  }
+  function normalizeForecast(f){
+    return {
+      label: f.label || f.name || '—',
+      value: f.value != null ? f.value : '—',
+      trend: f.trend || '',
+      up: typeof f.up === 'boolean' ? f.up : null
+    };
+  }
+
   async function hydrateAndRender(){
     if (window.TSMLiveData) {
-      const model = { domains: DOMAINS };
-      const liveInfo = await window.TSMLiveData.hydrateModel('digital-twin', model, 'domains');
-      if (liveInfo.source === 'live') {
-        DOMAINS = (model.domains || []).map(d => ({
-          id: d.id || (d.name || 'domain').toLowerCase().replace(/\s+/g, '-'),
-          name: d.name || d.id || 'DOMAIN',
-          score: typeof d.score === 'number' ? d.score : 0,
-          delta: typeof d.delta === 'number' ? d.delta : 0,
-          color: d.color || (d.score >= 85 ? '#00dcb4' : d.score >= 70 ? '#ff9500' : '#ff3b3b')
-        }));
-        usingLiveData = true;
+      let usingLiveSignals = false, usingLiveForecasts = false;
+      try {
+        const st = await window.TSMLiveData.status('digital-twin');
+        if (st.ok && st.source === 'live' && st.record_count) {
+          const d = await window.TSMLiveData.getData('digital-twin');
+          const records = (d && d.records) || [];
+          // Two supported upload shapes for the 'digital-twin' domain:
+          //  1) flat array of domain rows (existing behavior) -- CSV/simple JSON
+          //  2) a single JSON object {domains, signals, forecasts} -- lets one
+          //     upload drive all three panels instead of just domain scores.
+          const combined = (records.length === 1 && records[0] && typeof records[0] === 'object'
+            && (Array.isArray(records[0].domains) || Array.isArray(records[0].signals) || Array.isArray(records[0].forecasts)))
+            ? records[0] : null;
+
+          if (combined && Array.isArray(combined.domains) && combined.domains.length) {
+            DOMAINS = combined.domains.map(normalizeDomain);
+          } else if (!combined && records.length) {
+            DOMAINS = records.map(normalizeDomain);
+          }
+
+          if (combined && Array.isArray(combined.signals) && combined.signals.length) {
+            SIGNALS.length = 0;
+            SIGNALS.push(...combined.signals.map(normalizeSignal));
+            usingLiveSignals = true;
+          }
+          if (combined && Array.isArray(combined.forecasts) && combined.forecasts.length) {
+            FORECASTS.length = 0;
+            FORECASTS.push(...combined.forecasts.map(normalizeForecast));
+            usingLiveForecasts = true;
+          }
+
+          usingLiveData = true;
+        } else {
+          usingLiveData = false;
+        }
+      } catch (e) { usingLiveData = false; }
+
+      let label;
+      if (!usingLiveData) {
+        label = 'LIVE DATA (DOMAIN SCORES) — SIGNAL FEED & FORECAST REMAIN SAMPLE DATA UNLESS INCLUDED IN UPLOAD';
+      } else if (usingLiveSignals && usingLiveForecasts) {
+        label = 'LIVE DATA — DOMAINS, SIGNALS & FORECASTS ALL FROM UPLOAD';
       } else {
-        usingLiveData = false;
+        label = 'LIVE DATA (DOMAIN SCORES ONLY) — UPLOAD A {domains,signals,forecasts} JSON FILE TO DRIVE SIGNALS/FORECASTS TOO';
       }
 
       window.TSMLiveData.mountWidget(document.getElementById('liveDataBody'), {
         domain: 'digital-twin',
-        label: 'LIVE DATA (DOMAIN SCORES) — SIGNAL FEED & FORECAST REMAIN SAMPLE DATA',
+        label,
         onChange: async () => { await hydrateAndRender(); }
       });
     }
