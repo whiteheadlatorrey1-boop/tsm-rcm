@@ -103,6 +103,58 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
 
   let relay = null;
 
+  // Phase 6: separate from the war-room relay above (raw records/duplicates) — this
+  // pulls the governed view (server-computed recommendations + audit trail) and
+  // writes a curated summary to TSM_MDM_EXEC_RELAY, same pattern as the Honeywell
+  // vertical's strategist -> exec-relay handoff. Runs independently of whether the
+  // war-room relay loaded, since it hits the API directly rather than reading relay.
+  async function refreshExecRelay(){
+    try {
+      const [recRes, histRes] = await Promise.all([
+        fetch('/api/mdm/recommendations'),
+        fetch('/api/mdm/merge-history')
+      ]);
+      const recData = await recRes.json();
+      const histData = await histRes.json();
+      if(!recData.ok || !histData.ok) return;
+
+      const recs = recData.recommendations || [];
+      const log = histData.log || [];
+      const mergeRecs = recs.filter(r => r.type === 'MERGE_RECORDS');
+      const openRisks = mergeRecs.filter(r => r.risk >= 80).length;
+      const automationsExecuted = log.filter(e => e.decision === 'APPROVED').length;
+
+      // Trust score: 100 minus the average risk of currently-open recommendations,
+      // weighted toward domains with more open items. Falls back to 100 (clean state)
+      // when there's nothing outstanding.
+      const trustScore = mergeRecs.length
+        ? Math.round(100 - (mergeRecs.reduce((s,r)=>s+r.risk,0) / mergeRecs.length))
+        : 100;
+
+      // Illustrative exposure-protected estimate — not a real financial figure, just a
+      // stand-in until this vertical has real $-per-record-class data plumbed in.
+      // Multiplier is deliberately conservative and documented here so it reads as an
+      // estimate rather than a reported number.
+      const ILLUSTRATIVE_DOLLARS_PER_AUTOMATION = 2400;
+      const governanceSavings = automationsExecuted * ILLUSTRATIVE_DOLLARS_PER_AUTOMATION;
+
+      const payload = JSON.stringify({
+        vertical: 'mdm',
+        timestamp: new Date().toISOString(),
+        trustScore,
+        openRisks,
+        recommendationsCount: mergeRecs.length,
+        automationsExecuted,
+        governanceSavings,
+        governanceSavingsNote: `Illustrative estimate: ${automationsExecuted} automated merge${automationsExecuted===1?'':'s'} x $${ILLUSTRATIVE_DOLLARS_PER_AUTOMATION.toLocaleString()} avg. exposure/automation`,
+        topRecommendations: mergeRecs.slice(0, 6),
+        recentDecisions: log.slice(-8).reverse()
+      });
+      localStorage.setItem('TSM_MDM_EXEC_RELAY', payload);
+      sessionStorage.setItem('TSM_MDM_EXEC_RELAY', payload);
+    } catch(e) { console.warn('[MDM Strategist] exec relay refresh failed:', e.message); }
+  }
+
   function loadRelay(){
     relay = (window.TSMAutoPipeline && window.TSMAutoPipeline.readRelay)
       ? window.TSMAutoPipeline.readRelay('mdm')
@@ -236,6 +288,7 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
       sessionLog.push(d.entry);
       renderSessionLog();
       btn.closest('.case, .hc-row').remove();
+      refreshExecRelay();
     } catch(err){
       alert(`Decision failed: ${err.message}`);
       btn.closest('.case, .hc-row').style.opacity = '1';
@@ -244,6 +297,7 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
 
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', loadRelay);
   else loadRelay();
+  refreshExecRelay();
   window.addEventListener('storage', e=>{
     if(e.key === 'TSM_MDM_RELAY') loadRelay();
   });
