@@ -156,6 +156,8 @@ global.MUSIC_SUITE_STATE = global.MUSIC_SUITE_STATE || {
 const TSM_MEMORY = global.__TSM_MEMORY__ = global.__TSM_MEMORY__ || {
   healthcare: { nodes: {}, hcStrategist: null, mainStrategist: null, executive: null }
 };
+const mdmRouter = require("./server/mdm/mdm-router");
+
 const TSM_MESH = {
   HEALTHCARE: { owner: 'HC Strategist', controller: 'Healthcare Command', risks: ['Revenue leakage', 'Denial escalation', 'Patient throughput degradation', 'Compliance exposure'] },
   CONSTRUCTION: { owner: 'Construction Strategist', controller: 'Construction Command', risks: ['Permit delays', 'Schedule variance', 'Cost overrun', 'Supply chain disruption'] },
@@ -172,6 +174,13 @@ app.use('/html/runtime', express.static(path.join(__dirname, 'html', 'runtime'))
 app.use('/runtime', express.static(path.join(__dirname, 'runtime'), { setHeaders: (res) => res.setHeader('Cache-Control', 'no-store') }));
 app.use('/architecture', express.static(path.join(__dirname, 'architecture'), { setHeaders: (res) => res.setHeader('Cache-Control', 'no-store') }));
 app.use('/', express.static(path.join(__dirname, 'html')));
+
+app.use(
+  "/api/mdm",
+  mdmRouter
+);
+
+
 const suites = [
   { route: '/construction', dir: 'html/construction-suite', index: 'construction-hub.html' },
   { route: '/finops', dir: 'html/finops-suite', index: 'finops-presentation/index.html' },

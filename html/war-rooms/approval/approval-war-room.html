@@ -228,7 +228,19 @@ tr:hover td{background:rgba(0,255,80,.03)}
     updateSampleButtonLabel(liveInfo);
 
     engine = new TSMApprovalEngine(MODEL);
-    const hydrated = engine.loadFromStorage();
+
+    let hydrated;
+    if (liveInfo.source === 'live') {
+      // Live data was just uploaded/is active — load it into the engine's
+      // active state immediately. Don't let an older cached localStorage
+      // snapshot (from a prior "load sample data" click) mask it.
+      engine.loadSampleData();
+      engine.saveToStorage();
+      hydrated = true;
+    } else {
+      hydrated = engine.loadFromStorage();
+    }
+
     renderStageList();
     if (hydrated) renderAll();
 
