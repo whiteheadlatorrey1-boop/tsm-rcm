@@ -2223,6 +2223,7 @@ app.post('/api/mdm/recommendations/:id/approve', requireApiKey, (req, res) => {
   }
 
   MDM_RESOLVED_RECS.add(rec.id);
+  MDM_MISSION_CLAIMS.delete(rec.id);
   MDM_RECOMMENDATION_DECISIONS.push({
     id: `DEC-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
     recommendationId: rec.id, domain: rec.domain, type: rec.type,
@@ -2248,6 +2249,7 @@ app.post('/api/mdm/recommendations/:id/reject', requireApiKey, (req, res) => {
   }
 
   MDM_RESOLVED_RECS.add(rec.id);
+  MDM_MISSION_CLAIMS.delete(rec.id);
   MDM_RECOMMENDATION_DECISIONS.push({
     id: `DEC-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
     recommendationId: rec.id, domain: rec.domain, type: rec.type,
@@ -2308,6 +2310,38 @@ app.get('/api/mdm/executive-summary', (req, res) => {
   });
 });
 
+// ── PHASE 7: MDM MISSION QUEUE ──────────────────────────────────────────────
+// A "mission" is an open Phase 5 recommendation plus claim/assignment state.
+// No separate resolve step -- approving/rejecting the underlying recommendation
+// (existing Phase 5 routes) is what retires a mission, so the queue can never
+// drift out of sync with what recommendations actually exist.
+const { buildQueue: mdmBuildQueue, summarize: mdmSummarizeQueue } = require('./html/mdm-suite/mdm-mission-queue.js');
+const MDM_MISSION_CLAIMS = new Map(); // recommendationId -> { actor, claimedAt }
+
+app.get('/api/mdm/mission-queue', (req, res) => {
+  const queue = mdmBuildQueue(MDM_SEED_DATA, MDM_RESOLVED_RECS, MDM_MISSION_CLAIMS);
+  res.json({ ok: true, summary: mdmSummarizeQueue(queue), queue });
+});
+
+app.post('/api/mdm/mission-queue/:id/claim', requireApiKey, (req, res) => {
+  const { actor } = req.body || {};
+  if (!actor) return res.status(400).json({ ok: false, error: 'actor required' });
+  const queue = mdmBuildQueue(MDM_SEED_DATA, MDM_RESOLVED_RECS, MDM_MISSION_CLAIMS);
+  const mission = queue.find(m => m.id === req.params.id);
+  if (!mission) return res.status(404).json({ ok: false, error: 'Mission not found or already resolved' });
+  if (mission.claimedBy && mission.claimedBy !== actor) {
+    return res.status(409).json({ ok: false, error: `Already claimed by ${mission.claimedBy}` });
+  }
+  MDM_MISSION_CLAIMS.set(mission.id, { actor, claimedAt: new Date().toISOString() });
+  res.json({ ok: true, mission: { ...mission, missionStatus: 'CLAIMED', claimedBy: actor } });
+});
+
+app.post('/api/mdm/mission-queue/:id/release', requireApiKey, (req, res) => {
+  const existed = MDM_MISSION_CLAIMS.delete(req.params.id);
+  if (!existed) return res.status(404).json({ ok: false, error: 'Mission was not claimed' });
+  res.json({ ok: true, released: req.params.id });
+});
+
 // Real reset: restores every domain to its original seeded state (undoes any
 // approved merges) and clears the decision log. Previously "RESET DATA" just
 // re-fetched current state with no way to actually undo anything.
@@ -2318,6 +2352,7 @@ app.post('/api/mdm/reset', requireApiKey, (req, res) => {
   MDM_MERGE_LOG.length = 0;
   MDM_RESOLVED_RECS.clear();
   MDM_RECOMMENDATION_DECISIONS.length = 0;
+  MDM_MISSION_CLAIMS.clear();
   res.json({ ok: true, reset: true });
 });
 
