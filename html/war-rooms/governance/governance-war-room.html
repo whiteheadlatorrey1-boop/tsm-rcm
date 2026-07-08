@@ -47,6 +47,10 @@ td{padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text)}
     <div style="color:var(--text-dim);font-size:10px;margin-top:2px">Role-based security · Audit trail · Risk register · AI compliance advisor</div>
   </div>
   <div class="kpi-grid" id="kpiGrid"></div>
+  <div class="section" id="liveDataSection">
+    <div class="section-head"><span>LIVE DATA</span></div>
+    <div class="section-body" id="liveDataBody"></div>
+  </div>
   <div class="gov-grid">
     <div class="section">
       <div class="section-head"><span>COMPLIANCE DASHBOARD</span></div>
@@ -73,12 +77,13 @@ td{padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text)}
   </div>
 </div>
 <script src="/runtime/kernel/canonical-core.js"></script>
+<script src="/war-rooms/shared/tsm-live-data.js"></script>
 <script>
 (function(){
   function tick(){ document.getElementById('navClock').textContent=new Date().toLocaleTimeString(); }
   setInterval(tick,1000); tick();
 
-  const CONTROLS=[
+  let CONTROLS=[
     {id:'SOX-001',name:'Segregation of Duties',framework:'SOX',status:'PASS',last_tested:'2026-06-28'},
     {id:'SOX-002',name:'Financial Close Controls',framework:'SOX',status:'PASS',last_tested:'2026-06-30'},
     {id:'HIPAA-001',name:'PHI Access Controls',framework:'HIPAA',status:'REVIEW',last_tested:'2026-06-15'},
@@ -166,7 +171,22 @@ td{padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text)}
     setTimeout(() => { window.location.href = '/html/war-rooms/governance/governance-executive-portal.html'; }, 500);
   });
 
-  renderKpis(); renderCompliance(); renderRisks(); renderAudit();
+  async function hydrateAndRender(){
+    if (window.TSMLiveData) {
+      const model = { controls: CONTROLS };
+      const liveInfo = await window.TSMLiveData.hydrateModel('governance', model, 'controls');
+      if (liveInfo.source === 'live') CONTROLS = model.controls;
+
+      window.TSMLiveData.mountWidget(document.getElementById('liveDataBody'), {
+        domain: 'governance',
+        label: 'LIVE DATA (CONTROLS) — RISKS & AUDIT TRAIL REMAIN SAMPLE DATA',
+        onChange: async () => { await hydrateAndRender(); }
+      });
+    }
+    renderKpis(); renderCompliance(); renderRisks(); renderAudit();
+  }
+
+  hydrateAndRender();
 })();
 </script>
   <script src="/html/core/tsm-runtime.js"></script>

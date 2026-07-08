@@ -133,6 +133,8 @@ tr:hover td{background:rgba(0,255,80,.03)}
       </div>
     </div>
 
+    <div class="sb-section" id="liveDataSection"></div>
+
     <div class="sb-section">
       <div class="sb-label">STAGES // <span id="stageEntityLabel">LEAD</span></div>
       <div class="stage-list" id="stageList"></div>
@@ -190,6 +192,7 @@ tr:hover td{background:rgba(0,255,80,.03)}
 </div>
 
 <script src="/runtime/kernel/canonical-core.js"></script>
+<script src="/war-rooms/shared/tsm-live-data.js"></script>
 <script src="/war-rooms/crm/services/crm-engine.js"></script>
 <script>
 (function () {
@@ -209,11 +212,37 @@ tr:hover td{background:rgba(0,255,80,.03)}
   async function loadModel() {
     const res = await fetch('/war-rooms/crm/data/crm-model.json');
     MODEL = await res.json();
+
+    let liveInfo = { source: 'sample', record_count: 0 };
+    if (window.TSMLiveData) {
+      // CRM has 5 entity tables; a single uploaded file maps to leads,
+      // the entry point of the CRM lifecycle. Contacts/accounts/
+      // opportunities/cases keep using sample data.
+      liveInfo = await window.TSMLiveData.hydrateModel('crm', MODEL, 'sample_data.leads');
+    }
+    updateSampleButtonLabel(liveInfo);
+
     engine = new TSMCRMEngine(MODEL);
     const hydrated = engine.loadFromStorage();
     renderTabs();
     renderStageList();
     if (hydrated) renderAll();
+
+    if (window.TSMLiveData) {
+      window.TSMLiveData.mountWidget(document.getElementById('liveDataSection'), {
+        domain: 'crm',
+        label: 'LIVE DATA (LEADS)',
+        onChange: async () => { await loadModel(); renderAll(); }
+      });
+    }
+  }
+
+  function updateSampleButtonLabel(liveInfo) {
+    const btn = document.getElementById('btnLoadSample');
+    if (!btn) return;
+    btn.textContent = liveInfo && liveInfo.source === 'live'
+      ? 'RELOAD SAMPLE DATA (LIVE LEADS UPLOADED)'
+      : 'LOAD SAMPLE DATA';
   }
 
   function renderTabs() {

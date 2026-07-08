@@ -85,6 +85,7 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
         <button class="btn btn-ghost btn-full" id="btnLoadPaste">LOAD PASTED DATA</button>
       </div>
     </div>
+    <div class="sb-section" id="liveDataSection"></div>
     <div class="sb-section">
       <div class="sb-label">BPO STAGES</div>
       <div class="stage-list" id="stageList"></div>
@@ -137,6 +138,7 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
 <script src="/js/foundation/tsm-enterprise-search.js"></script>
 <script src="/js/foundation/tsm-governance.js"></script>
 <script src="/js/foundation/tsm-integration-layer.js"></script>
+<script src="/war-rooms/shared/tsm-live-data.js"></script>
 <script src="/war-rooms/bpo/services/bpo-engine.js"></script>
 <script>
 (function(){
@@ -160,9 +162,32 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
     if (!MODEL) {
       MODEL = BPO_MODEL_FALLBACK;
     }
+
+    let liveInfo = { source: 'sample', record_count: 0 };
+    if (window.TSMLiveData) {
+      liveInfo = await window.TSMLiveData.hydrateModel('bpo', MODEL, 'sample_engagements');
+    }
+    updateSampleButtonLabel(liveInfo);
+
     engine = new TSMBPOEngine(MODEL);
     renderStageList();
     loadSample();
+
+    if (window.TSMLiveData) {
+      window.TSMLiveData.mountWidget(document.getElementById('liveDataSection'), {
+        domain: 'bpo',
+        label: 'LIVE DATA (ENGAGEMENTS)',
+        onChange: async () => { await loadModel(); }
+      });
+    }
+  }
+
+  function updateSampleButtonLabel(liveInfo){
+    const btn = document.getElementById('btnLoadSample');
+    if (!btn) return;
+    btn.textContent = liveInfo && liveInfo.source === 'live'
+      ? 'RELOAD SAMPLE DATA (LIVE DATA UPLOADED)'
+      : 'LOAD SAMPLE DATA';
   }
 
   function renderStageList(){

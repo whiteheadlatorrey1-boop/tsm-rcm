@@ -112,6 +112,8 @@ tr:hover td{background:rgba(0,255,80,.03)}
       <div id="catalogHandoffStatus" style="margin-top:8px;font-size:9px;color:var(--text-dim);line-height:1.5">CATALOG SOURCE: checking&hellip;</div>
     </div>
 
+    <div class="sb-section" id="liveDataSection"></div>
+
     <div class="sb-section">
       <div class="sb-label">QUOTE STAGES</div>
       <div class="stage-list" id="stageList"></div>
@@ -177,6 +179,7 @@ tr:hover td{background:rgba(0,255,80,.03)}
 </div>
 
 <script src="/runtime/kernel/canonical-core.js"></script>
+<script src="/war-rooms/shared/tsm-live-data.js"></script>
 <script src="/war-rooms/cpq/services/cpq-engine.js"></script>
 <script>
 (function () {
@@ -218,12 +221,35 @@ tr:hover td{background:rgba(0,255,80,.03)}
   async function loadModel() {
     const res = await fetch('/war-rooms/cpq/data/cpq-model.json');
     MODEL = await res.json();
+
+    let liveInfo = { source: 'sample', record_count: 0 };
+    if (window.TSMLiveData) {
+      liveInfo = await window.TSMLiveData.hydrateModel('cpq', MODEL, 'sample_data.products');
+    }
+    updateSampleButtonLabel(liveInfo);
+
     engine = new TSMCPQEngine(MODEL);
     const hydrated = engine.loadFromStorage();
     const fromCatalog = hydrateFromCatalogHandoff();
     renderStageList();
     populateSkuSelect();
     if (hydrated || fromCatalog) renderAll();
+
+    if (window.TSMLiveData) {
+      window.TSMLiveData.mountWidget(document.getElementById('liveDataSection'), {
+        domain: 'cpq',
+        label: 'LIVE DATA (PRODUCTS)',
+        onChange: async () => { await loadModel(); renderAll(); }
+      });
+    }
+  }
+
+  function updateSampleButtonLabel(liveInfo) {
+    const btn = document.getElementById('btnLoadSample');
+    if (!btn) return;
+    btn.textContent = liveInfo && liveInfo.source === 'live'
+      ? 'RELOAD SAMPLE DATA (LIVE DATA UPLOADED)'
+      : 'LOAD SAMPLE DATA';
   }
 
   function renderStageList() {
