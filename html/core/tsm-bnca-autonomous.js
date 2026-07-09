@@ -6,7 +6,7 @@
     observers: []
   };
 
-  function window.TSMEventBus.emit("SIGNAL", payload) {
+  function createBncaSignal(payload) {
     return {
       id: "BNCA-" + Date.now(),
       created_at: new Date().toISOString(),
@@ -48,13 +48,23 @@
       priority = "MEDIUM";
     }
 
-    const mission = window.TSMEventBus.emit("SIGNAL", {
+    const mission = createBncaSignal({
       exposure,
       risk,
       action,
       priority,
       context: { sourceText: text.slice(0, 500) }
     });
+
+    // Emit the documented platform event so other consumers (audit trail,
+    // executive-briefing widgets, etc.) can react — this was previously
+    // never fired anywhere despite being in tsm-event-bus.js's contract.
+    if (window.TSMEventBus) {
+      window.TSMEventBus.emit("BNCA_SIGNAL_RECEIVED", {
+        vertical: "construction",
+        signal: mission
+      });
+    }
 
     const exists = window.TSM_BNCA.missions.find(m =>
       m.exposure === exposure && m.risk === risk
