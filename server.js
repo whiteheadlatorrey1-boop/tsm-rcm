@@ -2308,6 +2308,43 @@ app.post('/api/mdm/query', async (req, res) => {
 });
 
 
+// ── DIGITAL TWIN: CROSS-VERTICAL RECOMMENDATIONS FEED ───────────────────────
+// Digital Twin doesn't get its own decision engine -- it's a pure rollup of other
+// verticals' signals, and there's no "duplicate" or "degraded sync" concept native to
+// it. Instead this aggregates the real, already-governed recommendation feeds from
+// MDM, Integration Hub, and WIP into one executive view, sorted by risk across the
+// whole platform. All three data sources live in this same process, so this reads
+// their in-memory state directly rather than making self-referential HTTP calls.
+app.get('/api/digital-twin/recommendations-feed', (req, res) => {
+  const mdmRecs = mdmDecisionEngine.generateRecommendations(MDM_SEED_DATA)
+    .filter(r => r.type === 'MERGE_RECORDS')
+    .map(r => ({ source: 'MDM', id: r.id, issue: r.issue, risk: r.risk, confidence: r.confidence }));
+
+  const { records: integrationRecords } = getActiveIntegrationCatalog();
+  const intRecs = integrationDecisionEngine.generateRecommendations(integrationRecords, INTEGRATION_ERROR_LOG)
+    .map(r => ({ source: 'Integration Hub', id: r.id, issue: r.issue, risk: r.risk, confidence: r.confidence }));
+
+  const wipRecs = [];
+  for (const v of COLLECTIVE_VERTICALS) {
+    for (const d of (WIP_DECISIONS[v] || [])) {
+      if (d.status !== 'PENDING') continue;
+      wipRecs.push({
+        source: `WIP · ${v}`, id: d.id, issue: d.title,
+        risk: Math.max(0, 100 - d.confidence), confidence: d.confidence
+      });
+    }
+  }
+
+  const recommendations = [...mdmRecs, ...intRecs, ...wipRecs].sort((a, b) => b.risk - a.risk);
+  res.json({
+    ok: true,
+    count: recommendations.length,
+    bySource: { mdm: mdmRecs.length, integrationHub: intRecs.length, wip: wipRecs.length },
+    recommendations
+  });
+});
+
+
 // ── HEALTH & STUB ROUTES ──────────────────────────────────────────────────────
 app.use((err, req, res, next) => {
   console.error('[TSM GLOBAL ERROR]', err.message, err.stack);

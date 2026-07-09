@@ -102,6 +102,11 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
   </div>
 
   <div class="section" style="margin-bottom:18px">
+    <div class="section-head"><span>PLATFORM GOVERNANCE FEED</span><span id="govMeta"></span></div>
+    <div class="section-body"><div class="signal-list" id="govList"></div></div>
+  </div>
+
+  <div class="section" style="margin-bottom:18px">
     <div class="section-head"><span>AI EXECUTIVE RECOMMENDATIONS</span></div>
     <div class="section-body">
       <div style="margin-bottom:12px">
@@ -220,6 +225,41 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
       </div>`).join('');
   }
 
+  // Cross-vertical governance feed — pulls the live, already-governed recommendation
+  // queues from MDM, Integration Hub, and WIP (server-side aggregation, see
+  // /api/digital-twin/recommendations-feed) rather than duplicating any detection
+  // logic here. Digital Twin's job is rollup, not re-deriving what other verticals
+  // already computed.
+  async function loadGovernanceFeed(){
+    const el = document.getElementById('govList');
+    try {
+      const res = await fetch('/api/digital-twin/recommendations-feed');
+      const d = await res.json();
+      if(!d.ok) throw new Error('feed returned not-ok');
+      document.getElementById('govMeta').textContent =
+        `${d.count} open · MDM ${d.bySource.mdm} · Integration ${d.bySource.integrationHub} · WIP ${d.bySource.wip}`;
+      if(!d.recommendations.length){
+        el.innerHTML = `<div class="signal-item"><div class="signal-dot sig-ok"></div><span class="signal-text">No open recommendations across MDM, Integration Hub, or WIP.</span></div>`;
+        return;
+      }
+      el.innerHTML = d.recommendations.slice(0, 10).map(r=>{
+        const cls = r.risk>=80?'sig-bad':r.risk>=50?'sig-warn':'sig-ok';
+        return `<div class="signal-item">
+          <div class="signal-dot ${cls}"></div>
+          <span class="signal-text">${escapeHtml(r.issue)}</span>
+          <span class="signal-src">${escapeHtml(r.source)}</span>
+          <span class="signal-time">RISK ${r.risk}</span>
+        </div>`;
+      }).join('');
+    } catch(e){
+      el.innerHTML = `<div class="signal-item"><span class="signal-text">Governance feed unavailable: ${escapeHtml(e.message)}</span></div>`;
+    }
+  }
+
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
   function renderForecasts(){
     document.getElementById('forecastGrid').innerHTML=FORECASTS.map(f=>{
       const tc=f.up===true?'delta-up':f.up===false?'delta-down':'';
@@ -289,9 +329,11 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
       });
     }
     renderHealth(); renderDomains(); renderSignals(); renderForecasts();
+    loadGovernanceFeed();
   }
 
   hydrateAndRender();
+  setInterval(loadGovernanceFeed, 20000);
 })();
 </script>
   <script src="/html/core/tsm-runtime.js"></script>
