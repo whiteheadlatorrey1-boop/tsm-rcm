@@ -1930,6 +1930,53 @@ app.get('/api/integration/health', (req, res) => {
   res.json({ ok: true, total: records.length, healthy, degraded: records.length - healthy });
 });
 
+// ── INTEGRATION HUB DECISION ENGINE ─────────────────────────────────────────
+// Same governance pattern as MDM Phase 5-8: real signals (catalog status, error log)
+// -> ranked recommendations -> approve/reject -> persisted audit trail. Reuses
+// WIP_DATA_DIR (already an existing Fly-volume-aware persistence dir) rather than
+// standing up a second SQLite database for one more small audit log.
+const integrationDecisionEngine = require('./routes/integration-decision-engine.js');
+const INTEGRATION_DECISION_LOG_FILE = path.join(WIP_DATA_DIR, 'integration-decisions.json');
+let INTEGRATION_DECISION_LOG = [];
+try {
+  if (fs.existsSync(INTEGRATION_DECISION_LOG_FILE)) {
+    INTEGRATION_DECISION_LOG = JSON.parse(fs.readFileSync(INTEGRATION_DECISION_LOG_FILE, 'utf8'));
+  }
+} catch (e) { console.warn('[integration-decisions] failed to load persisted log, starting empty:', e.message); }
+
+function saveIntegrationDecisionLog() {
+  try { fs.writeFileSync(INTEGRATION_DECISION_LOG_FILE, JSON.stringify(INTEGRATION_DECISION_LOG, null, 2)); }
+  catch (e) { console.warn('[integration-decisions] failed to persist log:', e.message); }
+}
+
+app.get('/api/integration/recommendations', (req, res) => {
+  const { records } = getActiveIntegrationCatalog();
+  const recommendations = integrationDecisionEngine.generateRecommendations(records, INTEGRATION_ERROR_LOG);
+  res.json({ ok: true, recommendations });
+});
+
+app.get('/api/integration/decision-history', (req, res) => {
+  res.json({ ok: true, log: INTEGRATION_DECISION_LOG.slice(-200).reverse() });
+});
+
+function handleIntegrationRecommendationAction(req, res, decision) {
+  const { records, live } = getActiveIntegrationCatalog();
+  const rec = integrationDecisionEngine.findRecommendation(records, INTEGRATION_ERROR_LOG, req.params.id);
+  if (!rec) return res.status(404).json({ ok: false, error: 'Recommendation not found (it may already be resolved, or underlying data changed)' });
+
+  const actor = (req.body && req.body.actor) || 'Unassigned';
+  const result = integrationDecisionEngine.executeAction(records, rec.integrationId, rec.action, actor, decision);
+  if (result.error) return res.status(result.status).json({ ok: false, error: result.error });
+
+  persistIntegrationCatalog(records, live);
+  INTEGRATION_DECISION_LOG.push(result.entry);
+  saveIntegrationDecisionLog();
+  res.json({ ok: true, recommendation: rec, entry: result.entry });
+}
+
+app.post('/api/integration/recommend/:id/approve', requireApiKey, (req, res) => handleIntegrationRecommendationAction(req, res, 'APPROVED'));
+app.post('/api/integration/recommend/:id/reject', requireApiKey, (req, res) => handleIntegrationRecommendationAction(req, res, 'REJECTED'));
+
 // Point-to-point integration flows between systems — this IS the "integration catalog"
 // and event bus visualization the doc calls for. INTEGRATION_CATALOG above is really a
 // systems list; this is the actual connections between them, which the war room UI
