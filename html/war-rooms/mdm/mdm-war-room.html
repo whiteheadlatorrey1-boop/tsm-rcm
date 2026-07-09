@@ -126,6 +126,58 @@ td{padding:7px 8px;border-bottom:1px solid var(--border);color:var(--text)}
     const anomalies=records.filter(r=>r.status==='INCOMPLETE').length;
     return { total_records:records.length, duplicate_count:dups, quality_score:avgQ, pending_approvals:duplicates.length, anomalies, stewards_active:new Set(records.map(r=>r.steward)).size };
   }
+
+  /** Explainability feed for the risk register. Two real signal types:
+   *  duplicate-cluster match confidence (using the exact high-confidence
+   *  rule the Strategist's side-by-side review already applies: identifier_exact
+   *  match >=95%; everything else is an ambiguous judgment call) and
+   *  record-level data quality issues (status, quality score, issues[]). */
+  function getExplainItems(){
+    const items=[];
+
+    duplicates.forEach((m,idx)=>{
+      const isHighConfidence = m.matchReason==='identifier_exact' && m.matchScore>=95;
+      const severity = isHighConfidence ? 'low' : (m.matchScore>=80 ? 'med' : 'high');
+      const basis = m.matchReason==='identifier_exact' ? ('shared '+m.matchField) : 'fuzzy name match only';
+      items.push({
+        id: 'dup-'+m.domain+'-'+m.recordA.id+'-'+m.recordB.id,
+        claim: `${m.recordA.id} ("${m.recordA.name}") and ${m.recordB.id} ("${m.recordB.name}") in ${m.domain} matched at ${m.matchScore}% — ${isHighConfidence?'high-confidence':'needs human review'}`,
+        confidence: isHighConfidence ? 95 : Math.max(50, m.matchScore - 10),
+        severity,
+        impact: isHighConfidence ? 'Safe to auto-merge' : 'Wrong merge risk if approved without review',
+        rationale: `Match basis: ${basis}. ${isHighConfidence ? 'Meets the >=95% exact-identifier bar the Strategist treats as safe to auto-merge.' : ('Falls short of the exact-identifier bar, so this sits in the Strategist\'s ambiguous queue for a steward judgment call. ' + (100-m.matchScore) + '% of the weighted score is uncertainty.')}`,
+        sources: [`MDM duplicate cluster ${m.domain}:${m.recordA.id}/${m.recordB.id}`],
+        dataPoints: [
+          { label: 'Match score', value: m.matchScore+'%' },
+          { label: 'Match basis', value: basis },
+          { label: 'Domain', value: m.domain }
+        ]
+      });
+    });
+
+    records.filter(r => r.status==='INCOMPLETE' || r.status==='STALE' || (r.quality||0)<70 || (r.issues&&r.issues.length)).forEach(r=>{
+      const q = r.quality||0;
+      const severity = q<50 ? 'high' : (q<70 ? 'med' : 'low');
+      items.push({
+        id: 'quality-'+r.id,
+        claim: `${r.id} ("${r.name}", ${r.domain}) is ${q}% data quality — status ${r.status}`,
+        confidence: 88,
+        severity,
+        impact: 'Downstream reporting and merge decisions inherit this record\'s quality gaps',
+        rationale: `${r.name} (${r.id}) is currently flagged ${r.status.toLowerCase()} at ${q}% quality, last validated ${r.last_validated}, owned by ${r.steward}.` +
+          (r.issues && r.issues.length ? ` Specific issues on record: ${r.issues.join(', ')}.` : ''),
+        sources: ['MDM master record '+r.id],
+        dataPoints: [
+          { label: 'Quality score', value: q+'%' },
+          { label: 'Status', value: r.status },
+          { label: 'Steward', value: r.steward }
+        ]
+      });
+    });
+
+    const rank={high:0,med:1,low:2};
+    return items.sort((a,b)=>(rank[a.severity]??3)-(rank[b.severity]??3));
+  }
   function renderAll(){
     const k=computeKpis(); renderKpis(k); renderDomains(); renderRecords(); renderMerges(); renderHistory(); renderStatus(k);
   }
@@ -221,7 +273,7 @@ td{padding:7px 8px;border-bottom:1px solid var(--border);color:var(--text)}
   });
   document.getElementById('btnAnalyze').addEventListener('click',runAnalysis);
   document.getElementById('btnRelay').addEventListener('click',()=>{
-    try{ TSM.relay.write("MDM",{vertical:'mdm',records,duplicates,kpis:computeKpis(),ai_analysis:document.getElementById('aiOutput').textContent,timestamp:new Date().toISOString()}); } catch(e){}
+    try{ TSM.relay.write("MDM",{vertical:'mdm',records,duplicates,kpis:computeKpis(),explain:getExplainItems(),ai_analysis:document.getElementById('aiOutput').textContent,timestamp:new Date().toISOString()}); } catch(e){}
     document.getElementById('navStatus').textContent='ENGINE: RELAYED — opening Strategist…';
     setTimeout(()=>{ window.location.href = '/html/war-rooms/mdm/mdm-strategist.html'; }, 500);
   });
