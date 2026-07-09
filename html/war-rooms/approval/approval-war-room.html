@@ -126,6 +126,8 @@ tr:hover td{background:rgba(0,255,80,.03)}
       </div>
     </div>
 
+    <div class="sb-section" id="liveDataSection"></div>
+
     <div class="sb-section">
       <div class="sb-label">SEARCH</div>
       <input type="text" class="search-input" id="searchInput" placeholder="Request ID, type, requestor, approver...">
@@ -204,6 +206,7 @@ tr:hover td{background:rgba(0,255,80,.03)}
 <script src="/js/core/tsm-state.js"></script>
 <script src="/js/core/tsm-mission-engine.js"></script>
 <script src="/js/core/tsm-auto-pipeline.js"></script>
+<script src="/war-rooms/shared/tsm-live-data.js"></script>
 <script src="/services/approval-engine.js"></script>
 <script>
 (function () {
@@ -217,10 +220,45 @@ tr:hover td{background:rgba(0,255,80,.03)}
   async function loadModel() {
     const res = await fetch('/war-rooms/approval/data/approval-model.json');
     MODEL = await res.json();
+
+    let liveInfo = { source: 'sample', record_count: 0 };
+    if (window.TSMLiveData) {
+      liveInfo = await window.TSMLiveData.hydrateModel('approval', MODEL, 'sample_data.requests');
+    }
+    updateSampleButtonLabel(liveInfo);
+
     engine = new TSMApprovalEngine(MODEL);
-    const hydrated = engine.loadFromStorage();
+
+    let hydrated;
+    if (liveInfo.source === 'live') {
+      // Live data was just uploaded/is active — load it into the engine's
+      // active state immediately. Don't let an older cached localStorage
+      // snapshot (from a prior "load sample data" click) mask it.
+      engine.loadSampleData();
+      engine.saveToStorage();
+      hydrated = true;
+    } else {
+      hydrated = engine.loadFromStorage();
+    }
+
     renderStageList();
     if (hydrated) renderAll();
+
+    if (window.TSMLiveData) {
+      window.TSMLiveData.mountWidget(document.getElementById('liveDataSection'), {
+        domain: 'approval',
+        label: 'LIVE DATA (REQUESTS)',
+        onChange: async () => { await loadModel(); renderAll(); }
+      });
+    }
+  }
+
+  function updateSampleButtonLabel(liveInfo) {
+    const btn = document.getElementById('btnLoadSample');
+    if (!btn) return;
+    btn.textContent = liveInfo && liveInfo.source === 'live'
+      ? 'RELOAD SAMPLE DATA (LIVE DATA UPLOADED)'
+      : 'LOAD SAMPLE DATA';
   }
 
   function renderStageList() {
