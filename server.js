@@ -808,6 +808,7 @@ app.post('/api/music/song/learn', async (req, res) => {
 // inline handlers keep precedence for any overlapping paths.
 app.use(require('./routes/music'));
 
+
 // ── FINOPS ────────────────────────────────────────────────────────────────────
 app.post('/api/finops/bnca/report', (req, res) => res.json({ ok: true }));
 // routes/finops.js implements docs, run-doc, upload-doc (with field
@@ -816,6 +817,16 @@ app.post('/api/finops/bnca/report', (req, res) => res.json({ ok: true }));
 const liveDataModule = require('./routes/live-data');
 app.use(require('./routes/finops'));
 app.use(liveDataModule);
+
+// ── ENTERPRISE INTELLIGENCE ───────────────────────────────────────────────────
+const enterpriseRouter =
+    require('./server/enterprise/api/enterprise-router');
+
+app.use(
+    '/api/enterprise',
+    enterpriseRouter
+);
+
 app.post('/api/chat', (req, res) => res.json({ ok: true }));
 
 // ── AI QUERY ROUTES ───────────────────────────────────────────────────────────
