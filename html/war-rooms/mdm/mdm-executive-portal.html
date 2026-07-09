@@ -6,6 +6,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>TSM &middot; Master Data Management Executive Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/html/shared/tsm-exec-framework.css">
 <style>
 :root{
   --bg:#050a0f;--bg2:#0a1020;--bg3:#0d1528;
@@ -52,23 +53,6 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 .abtn.escalate{border-color:var(--red);color:var(--red);}
 .abtn:hover{opacity:.85;}
 .no-items{font-family:'JetBrains Mono',monospace;font-size:.7rem;color:var(--muted);}
-.rbadge{font-family:'JetBrains Mono',monospace;font-size:.55rem;font-weight:700;padding:2px 8px;border-radius:10px;flex-shrink:0;white-space:nowrap;}
-.rbadge.HIGH{background:rgba(239,68,68,.12);color:var(--red);border:1px solid var(--red);}
-.rbadge.MEDIUM{background:rgba(245,166,35,.12);color:var(--amber);border:1px solid var(--amber);}
-.rbadge.LOW{background:rgba(100,116,139,.12);color:var(--muted);border:1px solid var(--border);}
-.rec-row{display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid #0f1a2e;font-size:.8rem;}
-.rec-row:last-child{border-bottom:none;}
-.rec-body{flex:1;min-width:0;}
-.rec-reason{color:var(--muted);font-size:.72rem;margin-top:3px;}
-.rec-btns{display:flex;gap:6px;flex-shrink:0;}
-.rbtn{font-family:'JetBrains Mono',monospace;font-size:.6rem;padding:5px 10px;border-radius:4px;cursor:pointer;border:1px solid var(--border);background:var(--bg3);color:var(--text);}
-.rbtn.ok{border-color:var(--green);color:var(--green);}
-.rbtn.no{border-color:var(--red);color:var(--red);}
-.rbtn:disabled{opacity:.4;cursor:default;}
-.dom-table{width:100%;border-collapse:collapse;font-size:.78rem;}
-.dom-table th{text-align:left;font-family:'JetBrains Mono',monospace;font-size:.6rem;color:var(--muted);letter-spacing:.06em;padding:6px 8px;border-bottom:1px solid var(--border);}
-.dom-table td{padding:7px 8px;border-bottom:1px solid #0f1a2e;}
-.dom-table tr:last-child td{border-bottom:none;}
 </style>
 </head>
 <body>
@@ -79,24 +63,23 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 <div class="hdr">
   <div>
     <div class="hdr-title" id="hdrTitle">&#128202; MASTER DATA MANAGEMENT EXECUTIVE PORTAL</div>
-    <div class="hdr-sub" id="hdrSub">Loading live governance summary&hellip;</div>
+    <div class="hdr-sub" id="hdrSub">Awaiting relay from the Master Data Management war room&hellip;</div>
   </div>
   <div class="hdr-btns">
     <a class="hbtn" href="mdm-war-room.html">&larr; War Room</a>
     <a class="hbtn primary" href="mdm-strategist.html">Strategist View &rarr;</a>
-    <button class="hbtn" id="refreshBtn" onclick="loadSummary()">&#8635; Refresh</button>
     <button class="hbtn" id="printBtn" onclick="window.print()">&darr; Export</button>
   </div>
 </div>
 <div class="wrap" id="wrap"><!-- populated by JS --></div>
 <div class="toast" id="toast"></div>
+<script src="/html/shared/tsm-exec-framework.js"></script>
 <script>
 function tick(){document.getElementById('clock').textContent=new Date().toLocaleTimeString();}
 setInterval(tick,1000);tick();
 
-const CFG = {"domain": "MDM", "kpiPath": "kpis", "kpis": [{"key": "total_records", "label": "TOTAL RECORDS", "fmt": "num", "cls": "cyan"}, {"key": "duplicate_count", "label": "DUPLICATES", "fmt": "num", "cls": "red"}, {"key": "quality_score", "label": "QUALITY SCORE", "fmt": "pct", "cls": "green"}, {"key": "pending_approvals", "label": "PENDING MERGES", "fmt": "num", "cls": "amber"}, {"key": "anomalies", "label": "ANOMALIES", "fmt": "num", "cls": "red"}, {"key": "stewards_active", "label": "ACTIVE STEWARDS", "fmt": "num", "cls": "cyan"}], "lists": [{"path": "duplicates", "label": "DUPLICATE CLUSTERS"}], "aiPaths": ["ai_analysis"], "title": "Master Data Management", "isExec": true};
+const CFG = {"domain": "MDM", "kpiPath": "kpis", "kpis": [{"key": "total_records", "label": "TOTAL RECORDS", "fmt": "num", "cls": "cyan"}, {"key": "duplicate_count", "label": "DUPLICATES", "fmt": "num", "cls": "red"}, {"key": "quality_score", "label": "QUALITY SCORE", "fmt": "pct", "cls": "green"}, {"key": "pending_approvals", "label": "PENDING MERGES", "fmt": "num", "cls": "amber"}, {"key": "anomalies", "label": "ANOMALIES", "fmt": "num", "cls": "red"}, {"key": "stewards_active", "label": "ACTIVE STEWARDS", "fmt": "num", "cls": "cyan"}], "lists": [{"path": "duplicates", "label": "DUPLICATE CLUSTERS"}], "aiPaths": ["ai_analysis"], "explainPath": "explain", "title": "Master Data Management", "isExec": true};
 const RELAY_KEY_FALLBACK = 'TSM_' + CFG.domain + '_RELAY';
-let LAST_SUMMARY = null;
 
 function showToast(msg){
   const t=document.getElementById('toast');
@@ -186,125 +169,62 @@ function renderList(items, label, opts){
   return `<div class="sec"><div class="sec-hdr">${label}</div>${rows || '<div class="no-items">All clear &mdash; no flagged items.</div>'}</div>`;
 }
 
-function escapeHtml(s){
-  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-}
+function render(){
+  const data = loadRelay();
+  if(!data){ renderEmpty(); return; }
 
-function recTitle(r){
-  if(r.type === 'merge') return `Merge: keep ${r.survivorName} &larr; retire ${r.mergedName}`;
-  return `Quality review: ${r.recordName} (score ${r.qualityScore}/100)`;
-}
+  document.getElementById('hdrSub').textContent = `Relayed ${data.timestamp ? new Date(data.timestamp).toLocaleString() : '&mdash;'}`;
 
-function renderRecommendations(recs){
-  if(!recs || !recs.length){
-    return `<div class="sec"><div class="sec-hdr">OPEN GOVERNANCE RECOMMENDATIONS</div><div class="no-items">No open recommendations &mdash; all clear.</div></div>`;
-  }
-  const rows = recs.map(r => `
-    <div class="rec-row" data-rec-id="${escapeHtml(r.id)}">
-      <span class="rbadge ${r.risk}">${r.risk}</span>
-      <div class="rec-body">
-        <div>${escapeHtml(recTitle(r))} <span style="color:var(--muted);">(${escapeHtml(r.domain)})</span></div>
-        <div class="rec-reason">${escapeHtml(r.reasoning)}</div>
-      </div>
-      <div class="rec-btns">
-        <button class="rbtn ok" onclick="decideRec('${escapeHtml(r.id)}','approve')">&#10003; Approve</button>
-        <button class="rbtn no" onclick="decideRec('${escapeHtml(r.id)}','reject')">&#10007; Reject</button>
-      </div>
-    </div>`).join('');
-  return `<div class="sec"><div class="sec-hdr">OPEN GOVERNANCE RECOMMENDATIONS (${recs.length})</div>${rows}</div>`;
-}
-
-function renderDomainTable(domains){
-  if(!domains || !domains.length) return '';
-  const rows = domains.map(d => `
-    <tr>
-      <td>${escapeHtml(d.domain)}</td>
-      <td>${d.recordCount}</td>
-      <td>${d.duplicateCount}</td>
-      <td class="${d.avgQualityScore>=80?'kpi-val green':d.avgQualityScore>=50?'kpi-val amber':'kpi-val red'}" style="font-size:.8rem;">${d.avgQualityScore}%</td>
-      <td>${escapeHtml(d.steward)}</td>
-    </tr>`).join('');
-  return `<div class="sec"><div class="sec-hdr">DOMAIN QUALITY BREAKDOWN</div>
-    <table class="dom-table"><thead><tr><th>Domain</th><th>Records</th><th>Dupes</th><th>Quality</th><th>Steward</th></tr></thead>
-    <tbody>${rows}</tbody></table></div>`;
-}
-
-function renderDecisions(log){
-  if(!log || !log.length) return '';
-  const items = log.map(d => `${d.decision} &mdash; ${d.type} (${d.domain}) by ${d.actor}, ${new Date(d.ts).toLocaleString()}`);
-  return renderList(items, 'RECENT DECISIONS', {});
-}
-
-function renderSummary(data){
-  document.getElementById('hdrSub').textContent = `Live &mdash; generated ${new Date(data.generatedAt).toLocaleString()}`;
+  const kpiBase = getPath(data, CFG.kpiPath) || {};
+  let html = '';
 
   const tiles = CFG.kpis.map(k=>{
-    const raw = data.kpis[k.key];
+    const raw = kpiBase[k.key];
     const cls = k.cls === 'dynamic' ? dynamicCls(raw) : k.cls;
     return { val: fmtVal(raw, k.fmt), lbl: k.label, cls };
   });
-  let html = `<div class="kpi-row">` + tiles.map(t=>`
+  html += `<div class="kpi-row">` + tiles.map(t=>`
     <div class="kpi"><div class="kpi-val ${t.cls}">${t.val}</div><div class="kpi-lbl">${t.lbl}</div></div>
   `).join('') + `</div>`;
 
-  html += renderRecommendations(data.openRecommendations);
-  html += renderDomainTable(data.domains);
-  html += renderDecisions(data.recentDecisions);
+  let aiText = null;
+  for(const p of CFG.aiPaths){
+    const v = getPath(data, p);
+    if(v){ aiText = v; break; }
+  }
+  if(aiText){
+    html += `<div class="ai-box ${CFG.isExec?'hero':''}"><strong style="color:var(--cyan);font-family:'Orbitron',sans-serif;font-size:.65rem;letter-spacing:.1em;display:block;margin-bottom:8px;">${CFG.isExec?'EXECUTIVE RECOMMENDATION':'AI ANALYSIS'}</strong>${escapeHtml(aiText)}</div>`;
+  }
+
+  for(const l of CFG.lists){
+    const items = getPath(data, l.path);
+    html += renderList(items, l.label, l);
+  }
+
+  if(CFG.explainPath && window.TSMExecFramework){
+    const explainItems = getPath(data, CFG.explainPath);
+    html += TSMExecFramework.renderRiskRegister(explainItems, { isExec: CFG.isExec });
+  }
+
+  if(CFG.isExec){
+    html += `<div class="sec"><div class="sec-hdr">ACTIONS</div>
+      <div class="action-bar">
+        <button class="abtn approve" onclick="showToast('Marked reviewed &mdash; no downstream write in this demo build.')">&#10003; ACKNOWLEDGE</button>
+        <button class="abtn escalate" onclick="showToast('Escalation flagged &mdash; notify ops lead.')">&#8593; ESCALATE</button>
+      </div>
+    </div>`;
+  }
 
   document.getElementById('wrap').innerHTML = html;
 }
 
-async function decideRec(id, action){
-  const row = document.querySelector(`.rec-row[data-rec-id="${CSS.escape(id)}"]`);
-  if(row) row.querySelectorAll('button').forEach(b => b.disabled = true);
-  try{
-    const res = await fetch(`/api/mdm/recommendations/${encodeURIComponent(id)}/${action}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': window.TSM_CLIENT_KEY || '' },
-      body: JSON.stringify({ actor: 'Executive Portal' })
-    });
-    const d = await res.json();
-    if(!d.ok){ showToast(d.error || 'Action failed'); if(row) row.querySelectorAll('button').forEach(b => b.disabled = false); return; }
-    showToast(action === 'approve' ? 'Recommendation approved' : 'Recommendation rejected');
-    loadSummary();
-  } catch(e){
-    showToast('Network error');
-    if(row) row.querySelectorAll('button').forEach(b => b.disabled = false);
-  }
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
-// Live data is the primary source. The war-room-to-portal relay (sessionStorage/
-// localStorage) is only consulted if the live endpoint is unreachable, so this
-// page still degrades gracefully rather than going blank.
-async function loadSummary(){
-  try{
-    const res = await fetch('/api/mdm/executive-summary');
-    const data = await res.json();
-    if(data && data.ok){ LAST_SUMMARY = data; renderSummary(data); return; }
-    throw new Error('bad response');
-  } catch(e){
-    const relayed = loadRelay();
-    if(relayed){
-      document.getElementById('hdrSub').textContent = `Relayed ${relayed.timestamp ? new Date(relayed.timestamp).toLocaleString() : '&mdash;'} (live feed unreachable)`;
-      const kpiBase = getPath(relayed, CFG.kpiPath) || {};
-      const tiles = CFG.kpis.map(k=>{
-        const raw = kpiBase[k.key];
-        const cls = k.cls === 'dynamic' ? dynamicCls(raw) : k.cls;
-        return { val: fmtVal(raw, k.fmt), lbl: k.label, cls };
-      });
-      document.getElementById('wrap').innerHTML = `<div class="kpi-row">` + tiles.map(t=>`
-        <div class="kpi"><div class="kpi-val ${t.cls}">${t.val}</div><div class="kpi-lbl">${t.lbl}</div></div>
-      `).join('') + `</div>`;
-    } else {
-      renderEmpty();
-    }
-  }
-}
-
-loadSummary();
-setInterval(loadSummary, 30000);
-window.addEventListener('storage', e => { if(e.key === RELAY_KEY_FALLBACK || e.key === 'TSM_EVENT_LOG') loadSummary(); });
-window.addEventListener('TSM_RELAY_EVENT', e => { if(e.detail && e.detail.domain === CFG.domain) loadSummary(); });
+render();
+window.addEventListener('storage', e => { if(e.key === RELAY_KEY_FALLBACK || e.key === 'TSM_EVENT_LOG') render(); });
+window.addEventListener('TSM_RELAY_EVENT', e => { if(e.detail && e.detail.domain === CFG.domain) render(); });
 </script>
   <script src="/html/core/tsm-runtime.js"></script>
 </body>

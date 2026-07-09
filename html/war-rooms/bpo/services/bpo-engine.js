@@ -184,9 +184,75 @@
         stage_distribution: this.getStageDistribution(),
         sla_breaches: this.getSlaBreaches(),
         risk_flags: this.getRiskFlags(),
+        explain: this.getExplainItems(),
         analysis: analysis || null,
         relayed_at: new Date().toISOString()
       };
+    }
+
+    /** Explainability feed for the risk register. Mirrors the three real
+     *  signal types getRiskFlags() already detects (SLA breach, CSAT drop,
+     *  margin pressure), grounded in the same engagement fields. */
+    getExplainItems() {
+      const items = [];
+
+      this.getSlaBreaches().forEach(b => {
+        const severity = b.hours_over > 48 || b.value >= 150000 ? 'high'
+          : (b.value >= 75000 ? 'med' : 'low');
+        items.push({
+          id: 'sla-' + b.engagement_id,
+          claim: `${b.engagement_id} (${b.customer}) is $${Number(b.value || 0).toLocaleString()} stalled ${b.hours_over}h past its "${b.stage}" SLA`,
+          confidence: 92,
+          severity,
+          impact: b.value ? ('$' + Number(b.value).toLocaleString() + ' engagement value at risk of slipping') : '',
+          rationale: `${b.engagement_id} for ${b.customer} entered the "${b.stage}" stage ${b.hours_in_stage}h ago, ` +
+            `against a defined ${b.sla_hours}h SLA for that stage, and is now ${b.hours_over}h over.` +
+            (b.notes ? ` Note on record: ${b.notes}` : ''),
+          sources: ['BPO engagement record ' + b.engagement_id],
+          dataPoints: [
+            { label: 'Stage', value: b.stage },
+            { label: 'Hours over SLA', value: b.hours_over + 'h' },
+            { label: 'Engagement value', value: '$' + Number(b.value || 0).toLocaleString() }
+          ]
+        });
+      });
+
+      this.engagements.filter(item => item.csat != null && item.csat < 80).forEach(item => {
+        items.push({
+          id: 'csat-' + item.engagement_id,
+          claim: `${item.engagement_id} (${item.customer}) CSAT is ${item.csat}% — below the healthy 80% threshold`,
+          confidence: 85,
+          severity: item.csat < 70 ? 'high' : 'med',
+          impact: 'Relationship health risk; renewal exposure',
+          rationale: `${item.engagement_id} for ${item.customer} is currently sitting at ${item.csat}% CSAT, ` +
+            `below the 80% threshold this platform treats as healthy.` + (item.notes ? ` Note on record: ${item.notes}` : ''),
+          sources: ['BPO engagement record ' + item.engagement_id],
+          dataPoints: [
+            { label: 'CSAT', value: item.csat + '%' },
+            { label: 'Stage', value: (this.stageIndex[item.stage] || {}).label || item.stage }
+          ]
+        });
+      });
+
+      this.engagements.filter(item => item.margin_pct != null && item.margin_pct < 30).forEach(item => {
+        items.push({
+          id: 'margin-' + item.engagement_id,
+          claim: `${item.engagement_id} (${item.customer}) margin is ${item.margin_pct}% — below the 30% target`,
+          confidence: 85,
+          severity: item.margin_pct < 25 ? 'high' : 'med',
+          impact: item.value ? ('$' + Number(item.value).toLocaleString() + ' engagement running thin') : 'Profitability risk',
+          rationale: `${item.engagement_id} for ${item.customer} is running at ${item.margin_pct}% margin, ` +
+            `below the 30% target. Review pricing and approval terms.` + (item.notes ? ` Note on record: ${item.notes}` : ''),
+          sources: ['BPO engagement record ' + item.engagement_id],
+          dataPoints: [
+            { label: 'Margin', value: item.margin_pct + '%' },
+            { label: 'Engagement value', value: '$' + Number(item.value || 0).toLocaleString() }
+          ]
+        });
+      });
+
+      const rank = { high: 0, med: 1, low: 2 };
+      return items.sort((a, b) => (rank[a.severity] ?? 3) - (rank[b.severity] ?? 3));
     }
 
     async _canonical() {
