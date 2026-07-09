@@ -11,6 +11,15 @@
 // current MDM_SEED_DATA, at the cost of a recommendation's id changing if the
 // underlying records themselves change out from under it (acceptable: that's exactly
 // the case where re-evaluating is correct anyway).
+//
+// `resolvedIds` (a Set, optional) filters out QUALITY_REVIEW recommendations that have
+// already been explicitly dismissed. MERGE_RECORDS recs don't need this — retiring a
+// record naturally removes the pair on the next call — but a quality flag doesn't
+// mutate anything, so without tracking dismissal it would just reappear on every fetch.
+// This mirrors the MDM_RESOLVED_RECS pattern from the independently-built PR #119,
+// reconciled here to keep this engine's schema (numeric risk, MERGE_RECORDS/
+// QUALITY_REVIEW naming, domain weighting) that Phases 6-8 and the mission queue
+// already depend on.
 
 const { findDuplicates, scoreDataset } = require('./mdm-core.js');
 
@@ -76,14 +85,16 @@ function mergeRecommendationsForDomain(records, domain) {
 // Standalone data-quality flags for records that aren't part of a duplicate pair but
 // fall below the quality floor — these are informational (requiresApproval: false),
 // there's nothing to execute, just something for a steward to go fix by hand.
-function qualityRecommendationsForDomain(records, domain, dupedIds, floor = 70) {
+function qualityRecommendationsForDomain(records, domain, dupedIds, resolvedIds, floor = 70) {
   const quality = scoreDataset(records, domain);
   const out = [];
   for (const s of quality.scores) {
     if (dupedIds.has(s.recordId) || s.overall >= floor) continue;
+    const id = `REC-${domain}-${s.recordId}-review`;
+    if (resolvedIds.has(id)) continue; // already dismissed — don't keep resurfacing it
     const record = records.find(r => r.id === s.recordId);
     out.push({
-      id: `REC-${domain}-${s.recordId}-review`,
+      id,
       domain,
       type: 'QUALITY_REVIEW',
       action: 'FLAG_FOR_REVIEW',
@@ -101,14 +112,17 @@ function qualityRecommendationsForDomain(records, domain, dupedIds, floor = 70) 
 }
 
 // seedData: the full { domain: records[] } object (MDM_SEED_DATA from server.js).
-function generateRecommendations(seedData) {
+// resolvedIds: optional Set of recommendation ids already dismissed/decided — pass
+// server.js's MDM_RESOLVED_RECS here so dismissed quality reviews stay dismissed.
+function generateRecommendations(seedData, resolvedIds) {
+  resolvedIds = resolvedIds || new Set();
   const recs = [];
   for (const domain of Object.keys(seedData)) {
     const records = seedData[domain];
     const mergeRecs = mergeRecommendationsForDomain(records, domain);
     const dupedIds = new Set(mergeRecs.flatMap(r => [r.survivorId, r.mergedId]));
     recs.push(...mergeRecs);
-    recs.push(...qualityRecommendationsForDomain(records, domain, dupedIds));
+    recs.push(...qualityRecommendationsForDomain(records, domain, dupedIds, resolvedIds));
   }
   return recs.sort((a, b) => b.risk - a.risk);
 }
@@ -116,8 +130,8 @@ function generateRecommendations(seedData) {
 // Looks a single recommendation back up by id against freshly generated state — this
 // is what /api/mdm/recommend/:id/approve and /reject call before acting, so they never
 // trust a stale id from a client that hasn't re-fetched the list.
-function findRecommendation(seedData, id) {
-  return generateRecommendations(seedData).find(r => r.id === id) || null;
+function findRecommendation(seedData, id, resolvedIds) {
+  return generateRecommendations(seedData, resolvedIds).find(r => r.id === id) || null;
 }
 
 module.exports = { generateRecommendations, findRecommendation };

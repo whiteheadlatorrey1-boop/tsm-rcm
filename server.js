@@ -1567,6 +1567,33 @@ function computeReadinessOverall(r) {
   return Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
 }
 
+// Map WIP verticals to live-data-store domains, where one exists.
+// Only the 4 SAP-phase verticals that share the live-data-store pipeline
+// have a real signal here — the other 6 (healthcare, finops, legal,
+// real-estate, insurance, construction) have no server-side data source
+// and stay manual-entry. This does not fabricate a value for them.
+const WIP_LIVE_DATA_DOMAIN = { bpo: 'bpo', o2c: 'o2c', crm: 'crm', cpq: 'cpq' };
+
+function getWipLiveSignal(vertical) {
+  const domain = WIP_LIVE_DATA_DOMAIN[vertical];
+  if (!domain) return { available: false };
+  try {
+    const stored = liveDataModule.readStore(domain);
+    if (!stored || !Array.isArray(stored.records) || !stored.records.length) {
+      return { available: false, domain };
+    }
+    return {
+      available: true,
+      domain,
+      filename: stored.filename || null,
+      uploadedAt: stored.uploaded_at || null,
+      recordCount: stored.records.length
+    };
+  } catch (e) {
+    return { available: false, domain };
+  }
+}
+
 function wipId(prefix) {
   return prefix + '_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
 }
@@ -1575,13 +1602,22 @@ function wipId(prefix) {
 app.get('/api/wip/board', (req, res) => {
   const v = req.query.vertical;
   if (!ensureWipVertical(v)) return res.status(400).json({ ok: false, error: `vertical must be one of: ${COLLECTIVE_VERTICALS.join(', ')}` });
-  const readiness = WIP_READINESS[v] || null;
+  const liveSignal = getWipLiveSignal(v);
+  let readiness = WIP_READINESS[v] || null;
+  // Where a real live-data upload exists for this vertical, data completeness
+  // is a known fact (data was actually supplied), not a guess -- override the
+  // display value. Manual entries for the other 4 subjective fields are left
+  // untouched; those aren't derivable from uploaded records.
+  if (liveSignal.available) {
+    readiness = Object.assign({}, readiness, { dataCompleteness: 100, dataCompletenessAuto: true });
+  }
   res.json({
     ok: true,
     vertical: v,
     tasks: WIP_TASKS[v],
     readiness,
     readinessOverall: computeReadinessOverall(readiness),
+    liveSignal,
     dataQuality: WIP_DATA_QUALITY[v],
     decisions: WIP_DECISIONS[v],
     trends: WIP_TRENDS[v]
@@ -1625,9 +1661,17 @@ app.delete('/api/wip/task/:id', (req, res) => {
 app.post('/api/wip/readiness', (req, res) => {
   const { vertical, dataCompleteness, stakeholderCoverage, mitigationPlans, resourceAvailability, openRisks } = req.body || {};
   if (!ensureWipVertical(vertical)) return res.status(400).json({ ok: false, error: 'valid vertical required' });
-  WIP_READINESS[vertical] = { dataCompleteness, stakeholderCoverage, mitigationPlans, resourceAvailability, openRisks, updatedAt: Date.now() };
+  const liveSignal = getWipLiveSignal(vertical);
+  // If live data exists for this vertical, dataCompleteness is a known fact, not
+  // a manual estimate -- always store 100 rather than whatever (or nothing) the
+  // now-disabled slider on the client sent.
+  const effectiveDataCompleteness = liveSignal.available ? 100 : dataCompleteness;
+  WIP_READINESS[vertical] = { dataCompleteness: effectiveDataCompleteness, stakeholderCoverage, mitigationPlans, resourceAvailability, openRisks, updatedAt: Date.now() };
   saveWipState();
-  res.json({ ok: true, readiness: WIP_READINESS[vertical], overall: computeReadinessOverall(WIP_READINESS[vertical]) });
+  const readiness = liveSignal.available
+    ? Object.assign({}, WIP_READINESS[vertical], { dataCompletenessAuto: true })
+    : WIP_READINESS[vertical];
+  res.json({ ok: true, readiness, overall: computeReadinessOverall(readiness), liveSignal });
 });
 
 // ── DATA QUALITY ───────────────────────────────────────────────────────────────
@@ -2236,34 +2280,51 @@ app.post('/api/mdm/merge', requireApiKey, (req, res) => {
 // ── PHASE 5: MDM DECISION ENGINE ────────────────────────────────────────────
 const mdmDecisionEngine = require('./html/mdm-suite/mdm-decision-engine.js');
 
+// Tracks recommendation ids explicitly acted on (approved or rejected). MERGE_RECORDS
+// recs don't strictly need this -- retiring a record naturally removes the pair on the
+// next regeneration -- but QUALITY_REVIEW recs flag a record without mutating anything,
+// so without this a reviewed-and-dismissed flag would just reappear on the next fetch.
+// (Adopted from the independently-built PR #119, reconciled here onto this branch's
+// route paths/schema since Phases 6-8 and the mission queue already depend on them.)
+const MDM_RESOLVED_RECS = new Set();
+const MDM_RECOMMENDATION_DECISIONS = [];
+
 app.get('/api/mdm/recommendations', (req, res) => {
-  const recommendations = mdmDecisionEngine.generateRecommendations(MDM_SEED_DATA)
+  const recommendations = mdmDecisionEngine.generateRecommendations(MDM_SEED_DATA, MDM_RESOLVED_RECS)
     .map(r => ({ ...r, owner: MDM_STEWARDS[r.domain] || 'Unassigned' }));
-  res.json({ ok: true, recommendations });
+  res.json({ ok: true, count: recommendations.length, recommendations });
 });
 
-app.post('/api/mdm/recommend/:id/approve', requireApiKey, (req, res) => {
-  const rec = mdmDecisionEngine.findRecommendation(MDM_SEED_DATA, req.params.id);
+function handleMdmRecommendationDecision(req, res, decision) {
+  const rec = mdmDecisionEngine.findRecommendation(MDM_SEED_DATA, req.params.id, MDM_RESOLVED_RECS);
   if (!rec) return res.status(404).json({ ok: false, error: 'Recommendation not found (it may already be resolved, or underlying data changed)' });
-  if (rec.type !== 'MERGE_RECORDS') {
-    return res.status(400).json({ ok: false, error: 'Only MERGE_RECORDS recommendations go through the approval workflow; QUALITY_REVIEW items are informational only' });
-  }
-  const actor = (req.body && req.body.actor) || 'Unassigned';
-  const result = executeMerge(rec.domain, rec.survivorId, rec.mergedId, actor, 'APPROVED');
-  if (result.error) return res.status(result.status).json({ ok: false, error: result.error });
-  res.json({ ok: true, recommendation: rec, entry: result.entry, persisted: mdmDb.available() });
-});
 
-app.post('/api/mdm/recommend/:id/reject', requireApiKey, (req, res) => {
-  const rec = mdmDecisionEngine.findRecommendation(MDM_SEED_DATA, req.params.id);
-  if (!rec) return res.status(404).json({ ok: false, error: 'Recommendation not found (it may already be resolved, or underlying data changed)' });
-  if (rec.type !== 'MERGE_RECORDS') {
-    return res.status(400).json({ ok: false, error: 'Only MERGE_RECORDS recommendations go through the approval workflow; QUALITY_REVIEW items are informational only' });
-  }
   const actor = (req.body && req.body.actor) || 'Unassigned';
-  const result = executeMerge(rec.domain, rec.survivorId, rec.mergedId, actor, 'REJECTED');
-  if (result.error) return res.status(result.status).json({ ok: false, error: result.error });
-  res.json({ ok: true, recommendation: rec, entry: result.entry, persisted: mdmDb.available() });
+  let mergeEntry = null;
+
+  if (rec.type === 'MERGE_RECORDS') {
+    const result = executeMerge(rec.domain, rec.survivorId, rec.mergedId, actor, decision);
+    if (result.error) return res.status(result.status).json({ ok: false, error: result.error });
+    mergeEntry = result.entry;
+  }
+  // QUALITY_REVIEW: nothing to execute either way -- approve/reject both just mean
+  // "a steward looked at this," so both paths fall through to marking it resolved.
+
+  MDM_RESOLVED_RECS.add(rec.id);
+  MDM_RECOMMENDATION_DECISIONS.push({
+    id: `DEC-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    recommendationId: rec.id, domain: rec.domain, type: rec.type,
+    decision, actor, ts: new Date().toISOString()
+  });
+
+  res.json({ ok: true, recommendation: rec, entry: mergeEntry, persisted: mdmDb.available() });
+}
+
+app.post('/api/mdm/recommend/:id/approve', requireApiKey, (req, res) => handleMdmRecommendationDecision(req, res, 'APPROVED'));
+app.post('/api/mdm/recommend/:id/reject', requireApiKey, (req, res) => handleMdmRecommendationDecision(req, res, 'REJECTED'));
+
+app.get('/api/mdm/recommendation-decisions', (req, res) => {
+  res.json({ ok: true, log: MDM_RECOMMENDATION_DECISIONS.slice(-200).reverse() });
 });
 
 app.get('/api/mdm/merge-history', (req, res) => {
@@ -2279,6 +2340,8 @@ app.post('/api/mdm/reset', requireApiKey, (req, res) => {
   });
   MDM_MERGE_LOG.length = 0;
   mdmDb.clearAll();
+  MDM_RESOLVED_RECS.clear();
+  MDM_RECOMMENDATION_DECISIONS.length = 0;
   res.json({ ok: true, reset: true });
 });
 
@@ -2316,7 +2379,7 @@ app.post('/api/mdm/query', async (req, res) => {
 // whole platform. All three data sources live in this same process, so this reads
 // their in-memory state directly rather than making self-referential HTTP calls.
 app.get('/api/digital-twin/recommendations-feed', (req, res) => {
-  const mdmRecs = mdmDecisionEngine.generateRecommendations(MDM_SEED_DATA)
+  const mdmRecs = mdmDecisionEngine.generateRecommendations(MDM_SEED_DATA, MDM_RESOLVED_RECS)
     .filter(r => r.type === 'MERGE_RECORDS')
     .map(r => ({ source: 'MDM', id: r.id, issue: r.issue, risk: r.risk, confidence: r.confidence }));
 
