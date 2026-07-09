@@ -122,7 +122,7 @@ const honeywellExecutive = '/html/war-rooms/honeywell-executive-portal.html';
 
 async function loadPage(page, url, label) {
   const pageErrors = [];
-  const handler = (err) => pageErrors.push(String(err));
+  const handler = (err) => pageErrors.push(err.stack || String(err));
   page.on('pageerror', handler);
 
   let response;
