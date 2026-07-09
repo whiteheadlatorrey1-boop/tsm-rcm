@@ -16,6 +16,7 @@
  *   DOCUMENT_IMPORTED        → { vertical, relay }
  *   WAR_ROOM_READY           → { vertical, relay }
  *   AI_ANALYSIS_COMPLETE     → { vertical, relay }
+ *   WARROOM_COMPLETE         → { sector, missionId, docText, docType?, engineOutputs }
  *   WARROOM_FINDINGS_READY   → { id, analysis, mission }
  *   STRATEGIST_READY         → { id, mission }
  *   EXECUTIVE_APPROVED       → { id, vertical, decision }

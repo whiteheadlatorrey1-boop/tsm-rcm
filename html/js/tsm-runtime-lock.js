@@ -13,11 +13,25 @@
     ".emit(\"SIGNAL\" ) {",   // malformed method injection pattern
   ];
 
-  function scanObject(obj, path = "root") {
+  function scanObject(obj, path = "root", seen = new WeakSet()) {
     if (!obj || typeof obj !== "object") return;
 
+    // Cycle guard — window and DOM nodes are self-referential
+    // (window.window, window.self, node.ownerDocument, etc.) — without
+    // this, scanning window recurses forever and blows the call stack.
+    if (seen.has(obj)) return;
+    seen.add(obj);
+
+    // Skip DOM nodes entirely — huge, cyclic, and not what this lock polices.
+    if (typeof Node !== "undefined" && obj instanceof Node) return;
+
     Object.keys(obj).forEach(key => {
-      const value = obj[key];
+      let value;
+      try {
+        value = obj[key];
+      } catch (e) {
+        return; // some getters throw (e.g. cross-origin frames)
+      }
 
       if (typeof value === "function") {
         const fnStr = value.toString();
@@ -33,8 +47,8 @@
         });
       }
 
-      if (typeof value === "object") {
-        scanObject(value, path + "." + key);
+      if (value && typeof value === "object") {
+        scanObject(value, path + "." + key, seen);
       }
     });
   }
@@ -56,7 +70,7 @@
 
   function enforce() {
     freezeGlobals();
-    scanObject(window);
+    scanObject(window, "root", new WeakSet());
   }
 
   // Run on load + interval safety sweep

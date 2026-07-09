@@ -277,7 +277,19 @@
         try {
           const data = JSON.parse(value);
           if (!data.missionId && data.engineOutputs && global.TSMMission) {
-            packageMission(data.docText || '', data.engineOutputs);
+            const mission = packageMission(data.docText || '', data.engineOutputs);
+
+            // Signal completion on the bus (mirrors BPO_ANALYSIS_COMPLETE pattern).
+            // missionId is included so this file's own listener below skips
+            // re-processing this same payload (prevents an emit/on loop).
+            if (global.TSMBus && mission) {
+              global.TSMBus.emit('WARROOM_COMPLETE', {
+                sector:        SECTOR,
+                missionId:     mission.id,
+                docText:       data.docText || '',
+                engineOutputs: data.engineOutputs,
+              });
+            }
           }
         } catch (err) {
           console.warn('[TSM HC] Intercept parse error:', err);
@@ -292,9 +304,10 @@
       SECTOR,
     };
 
-    // Bus listener
+    // Bus listener (plain string event name — no TSMBus.EVENTS map exists
+    // anywhere in this platform, so this matches the codebase convention)
     if (global.TSMBus) {
-      global.TSMBus.on(global.TSMBus.EVENTS.WARROOM_COMPLETE, (payload) => {
+      global.TSMBus.on('WARROOM_COMPLETE', (payload) => {
         if (payload.sector === SECTOR && !payload.missionId) {
           packageMission(payload.docText || '', payload.engineOutputs || []);
         }
