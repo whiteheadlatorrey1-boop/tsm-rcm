@@ -182,18 +182,6 @@ const suites = [
 
 // ── HEALTH & STUB ROUTES ──────────────────────────────────────────────────────
 app.post('/api/re/query', async (req, res) => {
-  try { const a = await groqChat(SP.mortgage, req.body.message||req.body.question||req.body.query||'', req.body.maxTokens||1024); return res.json({ ok:true, answer:a, output:a }); }
-  catch(e){ return res.status(500).json({ ok:false, error:e.message }); }
-});
-app.post('/api/education/query', async (req, res) => {
-  try { const a = await groqChat(SP.education, req.body.message||req.body.question||req.body.query||'', req.body.maxTokens||1024); return res.json({ ok:true, answer:a, output:a }); }
-  catch(e){ return res.status(500).json({ ok:false, error:e.message }); }
-});
-app.post('/api/enterprise/query', async (req, res) => {
-  try { const a = await groqChat(SP.enterprise, req.body.message||req.body.question||req.body.query||'', req.body.maxTokens||1024); return res.json({ ok:true, answer:a, output:a }); }
-  catch(e){ return res.status(500).json({ ok:false, error:e.message }); }
-});
-app.post('/api/re/query', async (req, res) => {
   try { const a = await groqChat(SP.mortgage, req.body.message||req.body.question||req.body.query||'', req.body.maxTokens||1024); return res.json({ ok:true, answer:a, output:a, reply:a }); }
   catch(e){ return res.status(500).json({ ok:false, error:e.message }); }
 });
@@ -1405,7 +1393,7 @@ app.post('/api/doc-router/classify', async (req, res) => {
 // ── COLLECTIVE BNCA ───────────────────────────────────────────────────────────
 // ══════════════════════════════════════════════════════════════════════════════
 
-const COLLECTIVE_VERTICALS = ['healthcare', 'finops', 'bpo', 'legal', 'real-estate', 'insurance', 'construction', 'o2c', 'crm', 'cpq'];
+const COLLECTIVE_VERTICALS = ['healthcare', 'finops', 'bpo', 'legal', 'real-estate', 'insurance', 'construction', 'o2c', 'crm', 'cpq', 'approval'];
 
 const COLLECTIVE_SIGNALS = []; // { vertical, signal, severity, riskLevel, confidence, topIssue, ownerLanes, hitlRequired, actions, impactDelta, kpi, warRoom, bnca, timestamp, source }
 const COLLECTIVE_BNCA = [];   // synthesis results
@@ -1755,12 +1743,29 @@ app.get('/api/digital-twin/snapshot', (req, res) => {
     .filter(r => r.status === 'OPEN').length;
   const mdmDomains = typeof MDM_SEED_DATA !== 'undefined' ? Object.keys(MDM_SEED_DATA) : [];
 
+  // AI Decision Intelligence Layer rollup: MDM (Phase 5) only. CRM/CPQ/O2C/
+  // Approval/Catalog are analyze(context) services consumed by the Industry
+  // War Rooms, not standalone capabilities with their own decision engines —
+  // no rollup entry for them here by design.
+  let mdmOpenRecs = 0;
+  try {
+    mdmOpenRecs = generateRecommendations(MDM_SEED_DATA, MDM_RESOLVED_RECS).length;
+  } catch (e) { /* MDM engine not loaded yet at snapshot time — leave at 0 */ }
+  const capabilityEngines = { mdm: mdmOpenRecs };
+  const capabilityOpenTotal = mdmOpenRecs;
+
   res.json({
     ok: true,
     generatedAt: Date.now(),
     wip: { verticalsTracked: wipVerticals.length, verticals: wipVerticals },
     governance: { openRisks },
     mdm: { domainsTracked: mdmDomains.length, domains: mdmDomains },
+    decisionIntelligence: {
+      enginesLive: Object.keys(capabilityEngines).length,
+      totalCapabilityRows: 10,
+      openRecommendations: capabilityOpenTotal,
+      byCapability: capabilityEngines
+    },
   });
 });
 
