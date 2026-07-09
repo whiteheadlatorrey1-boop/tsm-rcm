@@ -1744,6 +1744,88 @@ app.post('/api/wip/trend', (req, res) => {
 // ── END WIP / EXECUTION COMMAND CENTER ────────────────────────────────────────
 // ══════════════════════════════════════════════════════════════════════════════
 
+// ── PHASE 9: CAPABILITY DECISION ENGINES (CRM, CPQ, O2C, Approval, Catalog) ───
+// Same recommendation pattern as MDM's decision engine (Phase 5), extended to
+// the remaining capability rows in the Enterprise Capability Services Layer
+// so every one of them can feed the Digital Twin's decision-intelligence
+// rollup below. CRM/CPQ/O2C/Approval share a generic stage/SLA breach shape
+// (server/capability-engines/stage-breach-engine.js); Catalog is a distinct
+// stock/compliance/lifecycle shape and gets its own small engine. Governance
+// stays a rollup-only capability, same as Digital Twin itself.
+const CRM_MODEL = require('./html/war-rooms/crm/data/crm-model.json');
+const CPQ_MODEL = require('./html/war-rooms/cpq/data/cpq-model.json');
+const O2C_MODEL = require('./html/war-rooms/o2c/data/o2c-model.json');
+const APPROVAL_MODEL = require('./html/war-rooms/approval/data/approval-model.json');
+const CATALOG_MODEL = require('./html/war-rooms/catalog/data/catalog-model.json');
+
+const CrmEngine = require('./server/capability-engines/crm-engine');
+const CpqEngine = require('./server/capability-engines/cpq-engine');
+const O2cEngine = require('./server/capability-engines/o2c-engine');
+const ApprovalEngine = require('./server/capability-engines/approval-engine');
+const CatalogEngine = require('./server/capability-engines/catalog-engine');
+
+// One resolved-id set + decision log per vertical, mirroring MDM_RESOLVED_RECS
+// / MDM_RECOMMENDATION_DECISIONS so an approved/dismissed item doesn't keep
+// reappearing on the next fetch (engines are stateless/regenerated each call).
+const CAPABILITY_RESOLVED = { crm: new Set(), cpq: new Set(), o2c: new Set(), approval: new Set(), catalog: new Set() };
+const CAPABILITY_DECISIONS = { crm: [], cpq: [], o2c: [], approval: [], catalog: [] };
+
+const CAPABILITY_ENGINES = {
+  crm:      { model: CRM_MODEL,      generate: CrmEngine.generateRecommendations },
+  cpq:      { model: CPQ_MODEL,      generate: CpqEngine.generateRecommendations },
+  o2c:      { model: O2C_MODEL,      generate: O2cEngine.generateRecommendations },
+  approval: { model: APPROVAL_MODEL, generate: ApprovalEngine.generateRecommendations },
+  catalog:  { model: CATALOG_MODEL,  generate: CatalogEngine.generateRecommendations },
+};
+
+function registerCapabilityDecisionRoutes(targetApp) {
+  for (const [vertical, cfg] of Object.entries(CAPABILITY_ENGINES)) {
+    targetApp.get(`/api/${vertical}/recommendations`, (req, res) => {
+      const resolved = CAPABILITY_RESOLVED[vertical];
+      const recs = cfg.generate(cfg.model).filter(r => !resolved.has(r.id));
+      res.json({ ok: true, vertical, count: recs.length, recommendations: recs });
+    });
+
+    targetApp.post(`/api/${vertical}/recommendations/:id/approve`, requireApiKey, (req, res) => {
+      const { actor } = req.body || {};
+      const rec = cfg.generate(cfg.model).find(r => r.id === req.params.id);
+      if (!rec) return res.status(404).json({ ok: false, error: 'Recommendation not found or already resolved' });
+      CAPABILITY_RESOLVED[vertical].add(rec.id);
+      CAPABILITY_DECISIONS[vertical].push({
+        id: `DEC-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        recommendationId: rec.id, type: rec.type, decision: 'APPROVED',
+        actor: actor || 'Unassigned', ts: new Date().toISOString()
+      });
+      res.json({ ok: true, resolved: rec });
+    });
+
+    targetApp.post(`/api/${vertical}/recommendations/:id/dismiss`, requireApiKey, (req, res) => {
+      const { actor } = req.body || {};
+      const rec = cfg.generate(cfg.model).find(r => r.id === req.params.id);
+      if (!rec) return res.status(404).json({ ok: false, error: 'Recommendation not found or already resolved' });
+      CAPABILITY_RESOLVED[vertical].add(rec.id);
+      CAPABILITY_DECISIONS[vertical].push({
+        id: `DEC-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+        recommendationId: rec.id, type: rec.type, decision: 'DISMISSED',
+        actor: actor || 'Unassigned', ts: new Date().toISOString()
+      });
+      res.json({ ok: true, resolved: rec });
+    });
+  }
+}
+registerCapabilityDecisionRoutes(app);
+
+app.get('/api/capability-engines/summary', (req, res) => {
+  const summary = {};
+  for (const [vertical, cfg] of Object.entries(CAPABILITY_ENGINES)) {
+    const resolved = CAPABILITY_RESOLVED[vertical];
+    const open = cfg.generate(cfg.model).filter(r => !resolved.has(r.id));
+    const bySeverity = open.reduce((acc, r) => { acc[r.severity] = (acc[r.severity] || 0) + 1; return acc; }, {});
+    summary[vertical] = { openRecommendations: open.length, bySeverity, decisionsLogged: CAPABILITY_DECISIONS[vertical].length };
+  }
+  res.json({ ok: true, generatedAt: Date.now(), engines: summary });
+});
+
 // ── PHASE 10: ENTERPRISE DIGITAL TWIN ──────────────────────────────────────────
 // Rolls up existing WIP + Governance + MDM state into one executive snapshot.
 // Deliberately does NOT invent a parallel simulation dataset -- it reflects
@@ -1755,12 +1837,36 @@ app.get('/api/digital-twin/snapshot', (req, res) => {
     .filter(r => r.status === 'OPEN').length;
   const mdmDomains = typeof MDM_SEED_DATA !== 'undefined' ? Object.keys(MDM_SEED_DATA) : [];
 
+  // AI Decision Intelligence Layer rollup: MDM (Phase 5) plus the five
+  // capability engines above (Phase 9) — this is what makes that layer real
+  // across all 10 Enterprise Capability Services Layer rows rather than just
+  // MDM/Integration Hub/WIP.
+  let mdmOpenRecs = 0;
+  try {
+    mdmOpenRecs = generateRecommendations(MDM_SEED_DATA, MDM_RESOLVED_RECS).length;
+  } catch (e) { /* MDM engine not loaded yet at snapshot time — leave at 0 */ }
+
+  const capabilityEngines = { mdm: mdmOpenRecs };
+  let capabilityOpenTotal = mdmOpenRecs;
+  for (const [vertical, cfg] of Object.entries(CAPABILITY_ENGINES)) {
+    const resolved = CAPABILITY_RESOLVED[vertical];
+    const openCount = cfg.generate(cfg.model).filter(r => !resolved.has(r.id)).length;
+    capabilityEngines[vertical] = openCount;
+    capabilityOpenTotal += openCount;
+  }
+
   res.json({
     ok: true,
     generatedAt: Date.now(),
     wip: { verticalsTracked: wipVerticals.length, verticals: wipVerticals },
     governance: { openRisks },
     mdm: { domainsTracked: mdmDomains.length, domains: mdmDomains },
+    decisionIntelligence: {
+      enginesLive: Object.keys(capabilityEngines).length,
+      totalCapabilityRows: 10,
+      openRecommendations: capabilityOpenTotal,
+      byCapability: capabilityEngines
+    },
   });
 });
 
