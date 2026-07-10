@@ -92,6 +92,7 @@ const SMOS = (() => {
     toDAWAcademy()      { this.go('academy/daw-academy.html'); },
     toReleaseCenter()   { this.go('release/release-center.html'); },
     toMarketing()       { this.go('release/marketing.html'); },
+    toAnalytics()       { this.go('analytics.html'); },
     toDashboard()       { this.go('index.html'); }
   };
 
