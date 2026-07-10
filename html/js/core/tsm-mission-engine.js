@@ -14,6 +14,16 @@
 (function (global) {
   'use strict';
 
+  // Most important place for this guard: _missions below is in-memory ONLY
+  // (never persisted), so a duplicate <script> load — which happens 2-3x on
+  // 9 different executive/war-room pages — previously wiped out every
+  // mission created so far except whatever had last been mirrored into
+  // TSMState. Skip cleanly on repeat load instead.
+  if (global.TSMMission && global.TSMMission.__tsmMissionReady) {
+    console.info('[TSMMission] Already initialized — skipping duplicate load.');
+    return;
+  }
+
   // ── Constants ─────────────────────────────────────────────────────────────
   const SECTORS    = Object.freeze(['construction','healthcare','insurance','legal','finops','mortgage','bpo','realestate']);
   const PRIORITY   = Object.freeze(['critical','high','medium','low']);
@@ -305,6 +315,7 @@
     publishAnalysis,
     debug,
     SECTORS, PRIORITY, STATUS,
+    __tsmMissionReady: true,
   };
 
   console.info('[TSMMission] Mission Engine v1.1 initialized.');
