@@ -1801,8 +1801,13 @@ app.post('/api/digital-twin/query', async (req, res) => {
 
 
 // ── PHASE 8: GOVERNANCE & COMPLIANCE ───────────────────────────────────────────
+const { createGate: createHitlGate } = require('./html/shared/tsm-hitl-gate.js');
 const GOVERNANCE_AUDIT_LOG = [];
 const GOVERNANCE_RISK_REGISTER = [];
+// Standardized HITL approval gate (BPO Enterprise Roadmap #4). Replaces the
+// prior one-step resolve with an explicit approve/reject decision + actor,
+// using the same pattern already proven in MDM's recommendation approvals.
+const GOVERNANCE_HITL_GATE = createHitlGate('GOV');
 
 function governanceId(prefix) {
   return prefix + '-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7);
@@ -1836,12 +1841,44 @@ app.get('/api/governance/risk', (req, res) => {
   res.json({ ok: true, risks: GOVERNANCE_RISK_REGISTER });
 });
 
-app.post('/api/governance/risk/:id/resolve', requireApiKey, (req, res) => {
+// Two-step HITL gate: approve or reject a risk, with an explicit actor and
+// an audit-trail entry recorded before the underlying status changes. This
+// replaces the old single /resolve route (no frontend called it, so this is
+// a safe swap, not a breaking change) with the same pattern MDM already uses
+// for recommendation approvals.
+app.post('/api/governance/risk/:id/approve', requireApiKey, (req, res) => {
+  const { actor } = req.body || {};
   const risk = GOVERNANCE_RISK_REGISTER.find(r => r.id === req.params.id);
   if (!risk) return res.status(404).json({ ok: false, error: "Risk not found" });
+  if (risk.status !== 'OPEN') return res.status(409).json({ ok: false, error: `Risk already ${risk.status}` });
+
   risk.status = 'RESOLVED';
   risk.resolvedAt = Date.now();
-  res.json({ ok: true, risk });
+  const decision = GOVERNANCE_HITL_GATE.recordDecision({
+    entityId: risk.id, entityType: 'risk', decision: 'APPROVED',
+    actor, meta: { title: risk.title, severity: risk.severity, vertical: risk.vertical }
+  });
+  res.json({ ok: true, risk, decision });
+});
+
+app.post('/api/governance/risk/:id/reject', requireApiKey, (req, res) => {
+  const { actor } = req.body || {};
+  const risk = GOVERNANCE_RISK_REGISTER.find(r => r.id === req.params.id);
+  if (!risk) return res.status(404).json({ ok: false, error: "Risk not found" });
+  if (risk.status !== 'OPEN') return res.status(409).json({ ok: false, error: `Risk already ${risk.status}` });
+
+  risk.status = 'DISMISSED';
+  risk.resolvedAt = Date.now();
+  const decision = GOVERNANCE_HITL_GATE.recordDecision({
+    entityId: risk.id, entityType: 'risk', decision: 'REJECTED',
+    actor, meta: { title: risk.title, severity: risk.severity, vertical: risk.vertical }
+  });
+  res.json({ ok: true, risk, decision });
+});
+
+app.get('/api/governance/risk/decisions', (req, res) => {
+  const { limit } = req.query;
+  res.json({ ok: true, log: GOVERNANCE_HITL_GATE.getLog(parseInt(limit, 10) || 100) });
 });
 
 app.post('/api/governance/query', async (req, res) => {
@@ -1865,6 +1902,12 @@ app.post('/api/governance/query', async (req, res) => {
 
 
 // ── PHASE 7: ENTERPRISE INTEGRATION HUB ────────────────────────────────────────
+// Standardized HITL approval gate (BPO Enterprise Roadmap #4), same shared
+// module Governance uses. A degraded integration needs a human decision
+// before it's either remediated (approved) or escalated (rejected) --
+// previously /sync just silently reset status to 'healthy' with no record
+// of who decided that, or whether the underlying issue was actually fixed.
+const INTEGRATION_HITL_GATE = createHitlGate('IHUB');
 let INTEGRATION_CATALOG = [
   {
     "id": "int-01",
@@ -1988,6 +2031,51 @@ app.get('/api/integration/health', (req, res) => {
   const { records } = getActiveIntegrationCatalog();
   const healthy = records.filter(i => i.status === 'healthy').length;
   res.json({ ok: true, total: records.length, healthy, degraded: records.length - healthy });
+});
+
+// Two-step HITL gate for degraded integrations: approve = remediate (reset
+// to healthy, clear error count, log the actor who signed off), reject =
+// escalate (leave broken, but on record as a human decision rather than a
+// silent auto-heal). Only applies to integrations currently 'degraded';
+// 'healthy' or 'warning' items aren't gated since they don't need a
+// go/no-go decision yet.
+app.post('/api/integration/:id/remediate/approve', requireApiKey, (req, res) => {
+  const { actor } = req.body || {};
+  const { records, live } = getActiveIntegrationCatalog();
+  const item = records.find(i => i.id === req.params.id);
+  if (!item) return res.status(404).json({ ok: false, error: "Integration not found" });
+  if (item.status !== 'degraded') return res.status(409).json({ ok: false, error: `Integration is not degraded (current status: ${item.status})` });
+
+  item.status = 'healthy';
+  item.errorCount = 0;
+  item.lastSync = Date.now();
+  persistIntegrationCatalog(records, live);
+  const decision = INTEGRATION_HITL_GATE.recordDecision({
+    entityId: item.id, entityType: 'integration', decision: 'APPROVED',
+    actor, meta: { system: item.system }
+  });
+  res.json({ ok: true, integration: item, decision });
+});
+
+app.post('/api/integration/:id/remediate/reject', requireApiKey, (req, res) => {
+  const { actor } = req.body || {};
+  const { records, live } = getActiveIntegrationCatalog();
+  const item = records.find(i => i.id === req.params.id);
+  if (!item) return res.status(404).json({ ok: false, error: "Integration not found" });
+  if (item.status !== 'degraded') return res.status(409).json({ ok: false, error: `Integration is not degraded (current status: ${item.status})` });
+
+  item.status = 'escalated';
+  persistIntegrationCatalog(records, live);
+  const decision = INTEGRATION_HITL_GATE.recordDecision({
+    entityId: item.id, entityType: 'integration', decision: 'REJECTED',
+    actor, meta: { system: item.system }
+  });
+  res.json({ ok: true, integration: item, decision });
+});
+
+app.get('/api/integration/decisions', (req, res) => {
+  const { limit } = req.query;
+  res.json({ ok: true, log: INTEGRATION_HITL_GATE.getLog(parseInt(limit, 10) || 100) });
 });
 
 // Point-to-point integration flows between systems — this IS the "integration catalog"
