@@ -1902,6 +1902,12 @@ app.post('/api/governance/query', async (req, res) => {
 
 
 // ── PHASE 7: ENTERPRISE INTEGRATION HUB ────────────────────────────────────────
+// Standardized HITL approval gate (BPO Enterprise Roadmap #4), same shared
+// module Governance uses. A degraded integration needs a human decision
+// before it's either remediated (approved) or escalated (rejected) --
+// previously /sync just silently reset status to 'healthy' with no record
+// of who decided that, or whether the underlying issue was actually fixed.
+const INTEGRATION_HITL_GATE = createHitlGate('IHUB');
 let INTEGRATION_CATALOG = [
   {
     "id": "int-01",
@@ -2025,6 +2031,51 @@ app.get('/api/integration/health', (req, res) => {
   const { records } = getActiveIntegrationCatalog();
   const healthy = records.filter(i => i.status === 'healthy').length;
   res.json({ ok: true, total: records.length, healthy, degraded: records.length - healthy });
+});
+
+// Two-step HITL gate for degraded integrations: approve = remediate (reset
+// to healthy, clear error count, log the actor who signed off), reject =
+// escalate (leave broken, but on record as a human decision rather than a
+// silent auto-heal). Only applies to integrations currently 'degraded';
+// 'healthy' or 'warning' items aren't gated since they don't need a
+// go/no-go decision yet.
+app.post('/api/integration/:id/remediate/approve', requireApiKey, (req, res) => {
+  const { actor } = req.body || {};
+  const { records, live } = getActiveIntegrationCatalog();
+  const item = records.find(i => i.id === req.params.id);
+  if (!item) return res.status(404).json({ ok: false, error: "Integration not found" });
+  if (item.status !== 'degraded') return res.status(409).json({ ok: false, error: `Integration is not degraded (current status: ${item.status})` });
+
+  item.status = 'healthy';
+  item.errorCount = 0;
+  item.lastSync = Date.now();
+  persistIntegrationCatalog(records, live);
+  const decision = INTEGRATION_HITL_GATE.recordDecision({
+    entityId: item.id, entityType: 'integration', decision: 'APPROVED',
+    actor, meta: { system: item.system }
+  });
+  res.json({ ok: true, integration: item, decision });
+});
+
+app.post('/api/integration/:id/remediate/reject', requireApiKey, (req, res) => {
+  const { actor } = req.body || {};
+  const { records, live } = getActiveIntegrationCatalog();
+  const item = records.find(i => i.id === req.params.id);
+  if (!item) return res.status(404).json({ ok: false, error: "Integration not found" });
+  if (item.status !== 'degraded') return res.status(409).json({ ok: false, error: `Integration is not degraded (current status: ${item.status})` });
+
+  item.status = 'escalated';
+  persistIntegrationCatalog(records, live);
+  const decision = INTEGRATION_HITL_GATE.recordDecision({
+    entityId: item.id, entityType: 'integration', decision: 'REJECTED',
+    actor, meta: { system: item.system }
+  });
+  res.json({ ok: true, integration: item, decision });
+});
+
+app.get('/api/integration/decisions', (req, res) => {
+  const { limit } = req.query;
+  res.json({ ok: true, log: INTEGRATION_HITL_GATE.getLog(parseInt(limit, 10) || 100) });
 });
 
 // Point-to-point integration flows between systems — this IS the "integration catalog"
