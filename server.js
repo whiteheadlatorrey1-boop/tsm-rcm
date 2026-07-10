@@ -2436,6 +2436,81 @@ app.get('/api/mdm/executive-summary', (req, res) => {
   });
 });
 
+// ── Client Trust Package ────────────────────────────────────────────────────
+// Bundles the reports a real BPO client expects as ONE deliverable, instead
+// of the client having to piece it together from 6 separate API calls
+// themselves. Every section below reuses data that already exists elsewhere
+// in this file (quality scoring, duplicate detection, the Governance risks
+// created by /api/mdm/cross-domain-scan, and the HITL decision log) --
+// this is an assembly/packaging endpoint, not new business logic.
+//
+// "Processed Documents" is deliberately named "recordsProcessed" here rather
+// than fabricating document metadata that doesn't exist -- MDM's real input
+// is structured master-data records, not scanned documents, and inventing
+// fake document counts would be the same kind of dishonest scaffolding this
+// session has been finding and removing all night.
+app.get('/api/mdm/trust-package', (req, res) => {
+  const domains = Object.keys(MDM_SEED_DATA);
+
+  // Quality Report -- reuses the same engine as /api/mdm/quality-score
+  const qualityByDomain = domains.map(d => {
+    const scored = mdmScoreDataset(MDM_SEED_DATA[d], d);
+    return Object.assign({ domain: d }, TSMQualityScoreEngine.fromMdmScore(scored));
+  });
+  const qualityOverall = TSMQualityScoreEngine.rollup(qualityByDomain);
+
+  // Exception Report -- every high-confidence duplicate across all domains,
+  // same detection used by /api/mdm/cross-domain-scan, shown here even for
+  // pairs that scored below the auto-escalation threshold so the client can
+  // see everything that was reviewed, not just what got escalated.
+  const exceptions = [];
+  domains.forEach(d => {
+    mdmFindDuplicates(MDM_SEED_DATA[d], d).forEach(m => {
+      exceptions.push({
+        domain: d,
+        recordA: m.recordA.name, recordB: m.recordB.name,
+        matchScore: m.matchScore, matchReason: m.matchReason, matchField: m.matchField,
+        escalatedToGovernance: m.matchScore >= 90,
+      });
+    });
+  });
+
+  // Risk Report -- only risks this package's own pipeline (MDM -> Governance)
+  // actually created, not the whole Governance register (which may hold
+  // risks from other verticals entirely unrelated to this deliverable).
+  const risks = GOVERNANCE_RISK_REGISTER.filter(r => r.source && r.source.system === 'mdm');
+
+  // Audit Trail -- HITL decisions on those specific risks, plus MDM's own
+  // merge/recommendation decision logs.
+  const riskIds = new Set(risks.map(r => r.id));
+  const riskDecisions = GOVERNANCE_HITL_GATE.getLog(200).filter(d => riskIds.has(d.entityId));
+
+  // Recommended Actions + Executive Summary -- reuse the same recommendation
+  // engine as /api/mdm/executive-summary.
+  const recs = generateRecommendations(MDM_SEED_DATA, MDM_RESOLVED_RECS);
+
+  res.json({
+    ok: true,
+    generatedAt: new Date().toISOString(),
+    package: 'TSM Client Trust Package v1.0',
+    recordsProcessed: {
+      totalRecords: domains.reduce((s, d) => s + MDM_SEED_DATA[d].length, 0),
+      byDomain: domains.map(d => ({ domain: d, count: MDM_SEED_DATA[d].length })),
+    },
+    qualityReport: { overall: qualityOverall, byDomain: qualityByDomain },
+    exceptionReport: { total: exceptions.length, escalatedCount: exceptions.filter(e => e.escalatedToGovernance).length, exceptions },
+    riskReport: { total: risks.length, open: risks.filter(r => r.status === 'OPEN').length, risks },
+    auditTrail: { riskDecisions, mdmMergeLog: MDM_MERGE_LOG.slice(-50).reverse(), mdmRecommendationDecisions: MDM_RECOMMENDATION_DECISIONS.slice(-50).reverse() },
+    recommendedActions: recs,
+    executiveSummary: {
+      overallQualityScore: qualityOverall.overall,
+      totalExceptions: exceptions.length,
+      openRisks: risks.filter(r => r.status === 'OPEN').length,
+      pendingRecommendations: recs.length,
+    },
+  });
+});
+
 // ── PHASE 7: MDM MISSION QUEUE ──────────────────────────────────────────────
 // A "mission" is an open Phase 5 recommendation plus claim/assignment state.
 // No separate resolve step -- approving/rejecting the underlying recommendation
