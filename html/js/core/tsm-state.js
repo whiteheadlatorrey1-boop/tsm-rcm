@@ -21,6 +21,15 @@
 (function (global) {
   'use strict';
 
+  // Same duplicate-<script>-tag problem as tsm-event-bus.js: several pages
+  // load this 2-3 times. Re-running would rebuild _store from localStorage
+  // (mostly harmless) but is still wasted work and re-registers nothing
+  // useful, so skip cleanly on repeat load.
+  if (global.TSMState && global.TSMState.__tsmStateReady) {
+    console.info('[TSMState] Already initialized — skipping duplicate load.');
+    return;
+  }
+
   const STORAGE_KEY = 'tsm_state_v1';
 
   function _bus() {
@@ -133,7 +142,7 @@
   }
 
   // ── Expose ────────────────────────────────────────────────────────────────
-  global.TSMState = { set, update, push, get, getAll, has, remove, reset, debug };
+  global.TSMState = { set, update, push, get, getAll, has, remove, reset, debug, __tsmStateReady: true };
 
   console.info('[TSMState] State v1.0 initialized.', Object.keys(_store).length ? `(restored ${Object.keys(_store).length} slice(s))` : '(fresh)');
 
