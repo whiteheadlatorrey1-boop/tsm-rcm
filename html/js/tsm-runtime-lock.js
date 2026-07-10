@@ -13,8 +13,14 @@
     ".emit(\"SIGNAL\" ) {",   // malformed method injection pattern
   ];
 
-  function scanObject(obj, path = "root", seen = new WeakSet()) {
+  const MAX_SCAN_DEPTH = 12; // defensive cap — this sweep walks all of window every 5s;
+                              // as more TSM namespaces attach to window, an unbounded walk
+                              // gets strictly more expensive. 12 is generously deep for any
+                              // legitimate config/state object this lock is meant to police.
+
+  function scanObject(obj, path = "root", seen = new WeakSet(), depth = 0) {
     if (!obj || typeof obj !== "object") return;
+    if (depth > MAX_SCAN_DEPTH) return;
 
     // Cycle guard — window and DOM nodes are self-referential
     // (window.window, window.self, node.ownerDocument, etc.) — without
@@ -48,7 +54,7 @@
       }
 
       if (value && typeof value === "object") {
-        scanObject(value, path + "." + key, seen);
+        scanObject(value, path + "." + key, seen, depth + 1);
       }
     });
   }
