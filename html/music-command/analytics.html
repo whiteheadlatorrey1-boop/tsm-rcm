@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Analytics · Sweet Music™ OS</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=IBM+Plex+Mono:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+  :root{--bg:#0a0a0c;--surface:#111118;--border:#1e1e2e;--green:#00ff88;--cyan:#00e5ff;--amber:#ffb300;--red:#ff3b6b;--purple:#b388ff;--text:#e0e0e0;--muted:#666680;--card:#13131f;}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'IBM Plex Mono',monospace;min-height:100vh;}
+  body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.03) 2px,rgba(0,0,0,0.03) 4px);pointer-events:none;z-index:999;}
+  header{border-bottom:1px solid var(--border);padding:14px 28px;display:flex;align-items:center;justify-content:space-between;}
+  .logo{font-family:'Orbitron',sans-serif;font-size:0.85rem;font-weight:900;color:var(--cyan);letter-spacing:0.15em;}
+  .logo small{display:block;font-size:0.55rem;color:var(--muted);margin-top:2px;}
+  .back{font-size:0.65rem;color:var(--muted);text-decoration:none;}
+  .back:hover{color:var(--cyan);}
+  .main{max-width:920px;margin:0 auto;padding:40px 28px 80px;}
+  h1{font-family:'Orbitron',sans-serif;font-size:1.3rem;font-weight:900;color:var(--cyan);margin-bottom:8px;}
+  .sub{font-size:0.72rem;color:var(--muted);margin-bottom:32px;line-height:1.6;max-width:640px;}
+  .section-header{font-size:0.62rem;letter-spacing:0.25em;color:var(--muted);text-transform:uppercase;margin-bottom:18px;padding-bottom:10px;border-bottom:1px solid var(--border);}
+
+  /* Pipeline strip */
+  .pipe{display:flex;flex-wrap:wrap;gap:2px;margin-bottom:36px;font-size:0.6rem;}
+  .pipe-stage{color:var(--muted);padding:3px 0;}
+  .pipe-active{color:var(--cyan);font-weight:600;}
+  .pipe-sep{color:var(--border);margin:0 4px;}
+
+  /* Empty state */
+  .empty{background:var(--card);border:1px dashed var(--border);border-radius:10px;padding:48px 32px;text-align:center;}
+  .empty .icon{font-size:1.8rem;margin-bottom:14px;}
+  .empty h2{font-family:'Orbitron',sans-serif;font-size:0.85rem;color:var(--text);margin-bottom:10px;}
+  .empty p{font-size:0.72rem;color:var(--muted);line-height:1.7;max-width:420px;margin:0 auto 22px;}
+
+  /* Hero: hit potential */
+  .hero{display:grid;grid-template-columns:auto 1fr;gap:32px;align-items:center;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:28px;margin-bottom:32px;}
+  .ring-wrap{position:relative;width:132px;height:132px;flex-shrink:0;}
+  .ring-wrap svg{transform:rotate(-90deg);}
+  .ring-bg{fill:none;stroke:var(--surface);stroke-width:10;}
+  .ring-fg{fill:none;stroke:var(--cyan);stroke-width:10;stroke-linecap:round;transition:stroke-dashoffset 0.6s ease, stroke 0.3s ease;}
+  .ring-label{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+  .ring-pct{font-family:'Orbitron',sans-serif;font-size:1.6rem;font-weight:900;color:var(--text);}
+  .ring-pct small{font-size:0.55rem;color:var(--muted);display:block;font-family:'IBM Plex Mono',monospace;font-weight:400;letter-spacing:0.1em;}
+  .hero-right .status-label{font-size:0.6rem;letter-spacing:0.15em;color:var(--muted);text-transform:uppercase;margin-bottom:6px;}
+  .hero-right .status-value{font-family:'Orbitron',sans-serif;font-size:1rem;font-weight:700;margin-bottom:14px;}
+  .decision{display:inline-block;font-size:0.6rem;font-weight:700;letter-spacing:0.1em;padding:6px 14px;border-radius:20px;text-transform:uppercase;}
+  .decision.release{background:rgba(0,255,136,0.12);color:var(--green);border:1px solid rgba(0,255,136,0.3);}
+  .decision.iterate{background:rgba(255,179,0,0.12);color:var(--amber);border:1px solid rgba(255,179,0,0.3);}
+  .decision.scrap{background:rgba(255,59,107,0.12);color:var(--red);border:1px solid rgba(255,59,107,0.3);}
+  .delta{font-size:0.68rem;margin-top:12px;color:var(--muted);}
+  .delta .up{color:var(--green);}
+  .delta .down{color:var(--red);}
+
+  /* Score breakdown */
+  .scores{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:36px;}
+  .score-card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:16px 18px;}
+  .score-card .k{font-size:0.58rem;color:var(--muted);letter-spacing:0.12em;text-transform:uppercase;margin-bottom:8px;display:flex;justify-content:space-between;}
+  .score-card .k .d{font-size:0.58rem;}
+  .score-bar-track{height:6px;background:var(--surface);border-radius:3px;overflow:hidden;margin-bottom:8px;}
+  .score-bar-fill{height:100%;border-radius:3px;background:var(--cyan);transition:width 0.6s ease;}
+  .score-card .v{font-family:'Orbitron',sans-serif;font-size:0.85rem;color:var(--text);}
+
+  /* Evolution timeline */
+  .timeline-wrap{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:24px 24px 16px;margin-bottom:36px;}
+  .timeline-chart{display:flex;align-items:flex-end;gap:8px;height:120px;margin-bottom:10px;}
+  .tbar-col{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;position:relative;}
+  .tbar{width:100%;max-width:28px;border-radius:3px 3px 0 0;background:var(--border);transition:height 0.4s ease;position:relative;}
+  .tbar.latest{background:var(--cyan);}
+  .tbar-col:hover .tbar-tip{display:block;}
+  .tbar-tip{display:none;position:absolute;bottom:100%;left:50%;transform:translateX(-50%);margin-bottom:6px;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-size:0.58rem;white-space:nowrap;color:var(--text);z-index:5;}
+  .tlabels{display:flex;gap:8px;}
+  .tlabel{flex:1;text-align:center;font-size:0.5rem;color:var(--muted);max-width:28px;margin:0 auto;}
+
+  /* ZAY narrative */
+  .zay-card{background:linear-gradient(135deg,rgba(179,136,255,0.06),rgba(0,229,255,0.04));border:1px solid rgba(179,136,255,0.25);border-radius:10px;padding:22px 24px;margin-bottom:36px;}
+  .zay-card .zay-label{font-family:'Orbitron',sans-serif;font-size:0.62rem;color:var(--purple);letter-spacing:0.15em;margin-bottom:10px;text-transform:uppercase;display:flex;align-items:center;gap:8px;}
+  .zay-card .zay-label .dot{width:6px;height:6px;border-radius:50%;background:var(--purple);}
+  .zay-text{font-size:0.75rem;line-height:1.8;color:var(--text);}
+  .zay-text.loading{color:var(--muted);}
+  .zay-refresh{margin-top:14px;font-size:0.6rem;color:var(--muted);background:transparent;border:1px solid var(--border);border-radius:6px;padding:7px 14px;cursor:pointer;font-family:'IBM Plex Mono',monospace;}
+  .zay-refresh:hover{border-color:var(--purple);color:var(--purple);}
+
+  /* Usage */
+  .usage-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:36px;}
+  .usage-card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px 16px;}
+  .usage-card .k{font-size:0.55rem;color:var(--muted);letter-spacing:0.1em;text-transform:uppercase;margin-bottom:6px;}
+  .usage-card .v{font-family:'Orbitron',sans-serif;font-size:0.95rem;color:var(--cyan);}
+  .usage-card .v small{font-size:0.55rem;color:var(--muted);font-family:'IBM Plex Mono',monospace;}
+  .usage-bar-track{height:4px;background:var(--bg);border-radius:2px;overflow:hidden;margin-top:8px;}
+  .usage-bar-fill{height:100%;background:var(--amber);}
+
+  .cta-row{display:flex;gap:12px;flex-wrap:wrap;}
+  .btn{background:var(--cyan);color:#000;border:none;border-radius:6px;padding:11px 22px;font-family:'Orbitron',sans-serif;font-size:0.65rem;font-weight:700;cursor:pointer;text-decoration:none;display:inline-block;}
+  .btn:hover{opacity:0.85;}
+  .btn-outline{background:transparent;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:9px 16px;font-family:'Orbitron',sans-serif;font-size:0.6rem;font-weight:700;cursor:pointer;text-decoration:none;display:inline-block;}
+  .btn-outline:hover{border-color:var(--cyan);color:var(--cyan);}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">TSM SWEET MUSIC<small>Analytics</small></div>
+  <a class="back" href="index.html">← Dashboard</a>
+</header>
+
+<div class="main">
+  <h1>Song Analytics</h1>
+  <p class="sub">Every AI pass through Song Builder, Cadence Studio, and Producer AI gets scored on four dimensions and logged to your evolution timeline. This is where TSM tells you — with a number, not a vibe — whether the song is actually getting better, and what to do next.</p>
+
+  <div id="pipe" class="pipe"></div>
+
+  <div id="content">
+    <div style="text-align:center;padding:60px;color:var(--muted);font-size:0.72rem;">Loading evolution data…</div>
+  </div>
+</div>
+
+<script src="js/sweet-music-engine.js"></script>
+<script src="js/producer-ai-widget.js"></script>
+<script>
+const content = document.getElementById('content');
+
+function fmtPct(n){ return Math.round((n||0) * 100); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+function decisionClass(decision){
+  if(decision === 'Release') return 'release';
+  if(decision === 'Scrap / Rework Hook') return 'scrap';
+  return 'iterate';
+}
+
+function ringDashoffset(pct){
+  const r = 56, c = 2 * Math.PI * r;
+  return c - (c * (pct/100));
+}
+function ringColor(pct){
+  if(pct >= 86) return 'var(--green)';
+  if(pct >= 74) return 'var(--cyan)';
+  return 'var(--amber)';
+}
+
+async function loadZayNarrative(evo){
+  const el = document.getElementById('zay-text');
+  if(!el) return;
+  el.classList.add('loading');
+  el.textContent = 'ZAY is reviewing your evolution timeline…';
+  try {
+    const prompt = `Here is a song's evolution data from TSM Sweet Music OS:
+Latest scores — cadence: ${evo.latest.score.cadence}, emotion: ${evo.latest.score.emotion}, structure: ${evo.latest.score.structure}, imagery: ${evo.latest.score.imagery}, overall: ${evo.latest.overall}.
+Hit potential: ${evo.hit.percent}% (${evo.hit.label}).
+Change since previous pass: ${evo.delta >= 0 ? '+' : ''}${evo.delta}.
+System decision: ${evo.decision}.
+Total passes logged: ${evo.timeline.length}.
+
+In 3-4 sentences, explain to the artist in plain language what's actually driving this score, which single dimension to focus on next, and whether they should keep iterating or move toward release. Be direct and specific, not generic encouragement.`;
+    const text = await SMOS.ask(prompt, 'You are ZAY, an AI producer inside TSM Sweet Music OS analyzing a real evolution timeline. Be concrete and reference the actual numbers given.', 350);
+    el.classList.remove('loading');
+    el.textContent = text.trim();
+  } catch(e) {
+    el.classList.remove('loading');
+    el.textContent = 'ZAY couldn\'t reach the Neural Core just now — the numbers above are still accurate, try refreshing in a moment.';
+  }
+}
+
+function renderEmpty(){
+  content.innerHTML = `
+    <div class="empty">
+      <div class="icon">📊</div>
+      <h2>No evolution data yet</h2>
+      <p>Analytics unlocks after your first AI pass. Run a draft through Song Builder, Cadence Studio, or Producer AI, and TSM will start scoring cadence, emotion, structure, and imagery every time you iterate — so you can watch the song actually improve instead of guessing.</p>
+      <div class="cta-row" style="justify-content:center;">
+        <a class="btn" href="creation/song-builder.html">Start in Song Builder</a>
+        <a class="btn-outline" href="producer/producer-ai.html">Or open Producer AI</a>
+      </div>
+    </div>
+  `;
+}
+
+function renderData(evo, billing){
+  const latest = evo.latest;
+  const pct = evo.hit.percent;
+  const dOff = ringDashoffset(pct);
+  const rColor = ringColor(pct);
+  const dCls = decisionClass(evo.decision);
+  const deltaSign = evo.delta > 0 ? '+' : '';
+  const deltaClass = evo.delta > 0 ? 'up' : (evo.delta < 0 ? 'down' : '');
+
+  const dims = [
+    { label: 'Cadence', key: 'cadence', color: 'var(--cyan)' },
+    { label: 'Emotion', key: 'emotion', color: 'var(--purple)' },
+    { label: 'Structure', key: 'structure', color: 'var(--amber)' },
+    { label: 'Imagery', key: 'imagery', color: 'var(--green)' },
+  ];
+  const prevScore = (evo.previous && evo.previous.score) || null;
+
+  const scoreCards = dims.map(d => {
+    const val = latest.score[d.key] || 0;
+    const prevVal = prevScore ? (prevScore[d.key] || 0) : null;
+    const dd = prevVal !== null ? Number((val - prevVal).toFixed(2)) : null;
+    const ddStr = dd === null ? '' : (dd > 0 ? `<span class="up" style="color:var(--green)">+${fmtPct(dd)}</span>` : dd < 0 ? `<span class="down" style="color:var(--red)">${fmtPct(dd)}</span>` : '<span style="color:var(--muted)">—</span>');
+    return `
+      <div class="score-card">
+        <div class="k"><span>${d.label}</span><span class="d">${ddStr}</span></div>
+        <div class="score-bar-track"><div class="score-bar-fill" style="width:${fmtPct(val)}%;background:${d.color}"></div></div>
+        <div class="v">${fmtPct(val)}%</div>
+      </div>`;
+  }).join('');
+
+  const maxOverall = Math.max(...evo.timeline.map(t => t.overall), 0.01);
+  const tbars = evo.timeline.map((t, i) => {
+    const h = Math.max(6, Math.round((t.overall / maxOverall) * 100));
+    const isLatest = i === evo.timeline.length - 1;
+    return `
+      <div class="tbar-col">
+        <div class="tbar-tip">${esc(t.label)} · ${fmtPct(t.overall)}%</div>
+        <div class="tbar ${isLatest ? 'latest' : ''}" style="height:${h}%"></div>
+      </div>`;
+  }).join('');
+  const tlabels = evo.timeline.map((t, i) => `<div class="tlabel">${i+1}</div>`).join('');
+
+  const usage = billing && billing.billing ? billing.billing.usage : null;
+  const tier = billing ? billing.current : null;
+  const remaining = billing ? billing.remaining : null;
+
+  let usageHtml = '';
+  if (usage && tier && remaining) {
+    const items = [
+      { label: 'Tier', value: tier.name, bar: null },
+      { label: 'AI Runs', value: `${usage.aiRuns} / ${tier.aiRuns}`, bar: tier.aiRuns ? Math.min(100, (usage.aiRuns / tier.aiRuns) * 100) : 0 },
+      { label: 'Sessions', value: `${usage.sessions} / ${tier.sessions}`, bar: tier.sessions ? Math.min(100, (usage.sessions / tier.sessions) * 100) : 0 },
+      { label: 'Exports', value: tier.exports ? 'Enabled' : 'Locked', bar: null },
+    ];
+    usageHtml = `
+      <div class="section-header">Session Usage</div>
+      <div class="usage-grid">
+        ${items.map(it => `
+          <div class="usage-card">
+            <div class="k">${it.label}</div>
+            <div class="v">${esc(it.value)}</div>
+            ${it.bar !== null ? `<div class="usage-bar-track"><div class="usage-bar-fill" style="width:${it.bar}%"></div></div>` : ''}
+          </div>`).join('')}
+      </div>`;
+  }
+
+  const ctaHtml = evo.decision === 'Release'
+    ? `<a class="btn" href="release/release-center.html">Go to Release Center →</a><a class="btn-outline" href="producer/mastering-coach.html">Check Master Coach first</a>`
+    : evo.decision === 'Scrap / Rework Hook'
+      ? `<a class="btn" href="creation/song-builder.html">Rework the Hook</a><a class="btn-outline" href="producer/producer-ai.html">Get Producer AI notes</a>`
+      : `<a class="btn" href="producer/producer-ai.html">Iterate with Producer AI</a><a class="btn-outline" href="cadence-builder.html">Refine Cadence</a>`;
+
+  content.innerHTML = `
+    <div class="hero">
+      <div class="ring-wrap">
+        <svg width="132" height="132" viewBox="0 0 132 132">
+          <circle class="ring-bg" cx="66" cy="66" r="56"></circle>
+          <circle class="ring-fg" cx="66" cy="66" r="56"
+            stroke="${rColor}"
+            stroke-dasharray="${2*Math.PI*56}"
+            stroke-dashoffset="${dOff}"></circle>
+        </svg>
+        <div class="ring-label">
+          <div class="ring-pct">${pct}%<small>HIT POTENTIAL</small></div>
+        </div>
+      </div>
+      <div class="hero-right">
+        <div class="status-label">Current Read</div>
+        <div class="status-value">${esc(evo.hit.label)}</div>
+        <div class="decision ${dCls}">${esc(evo.decision)}</div>
+        <div class="delta">Since last pass: <span class="${deltaClass}">${deltaSign}${fmtPct(evo.delta)} pts</span> · ${evo.timeline.length} pass${evo.timeline.length === 1 ? '' : 'es'} logged</div>
+      </div>
+    </div>
+
+    <div class="section-header">Score Breakdown — Latest Pass</div>
+    <div class="scores">${scoreCards}</div>
+
+    <div class="section-header">Evolution Timeline</div>
+    <div class="timeline-wrap">
+      <div class="timeline-chart">${tbars}</div>
+      <div class="tlabels">${tlabels}</div>
+    </div>
+
+    <div class="section-header">ZAY's Read</div>
+    <div class="zay-card">
+      <div class="zay-label"><span class="dot"></span>ZAY · Producer AI</div>
+      <div class="zay-text loading" id="zay-text">Loading…</div>
+      <button class="zay-refresh" id="zay-refresh-btn">↻ Refresh analysis</button>
+    </div>
+
+    ${usageHtml}
+
+    <div class="section-header">Next Step</div>
+    <div class="cta-row">${ctaHtml}</div>
+  `;
+
+  document.getElementById('zay-refresh-btn').addEventListener('click', () => loadZayNarrative(evo));
+  loadZayNarrative(evo);
+}
+
+async function init(){
+  if (window.SMOS && SMOS.renderPipeline) {
+    SMOS.renderPipeline('pipe', 'Analytics');
+  }
+  try {
+    const [evoRes, billRes] = await Promise.all([
+      fetch('/api/music/evolution').then(r => r.json()),
+      fetch('/api/music/billing/state').then(r => r.json()).catch(() => null),
+    ]);
+    if (!evoRes.ok || !evoRes.latest) {
+      renderEmpty();
+      return;
+    }
+    renderData(evoRes, billRes);
+  } catch (e) {
+    content.innerHTML = `<div class="empty"><div class="icon">⚠</div><h2>Couldn't load analytics</h2><p>${esc(e.message)}</p></div>`;
+  }
+}
+
+init();
+</script>
+</body>
+</html>
