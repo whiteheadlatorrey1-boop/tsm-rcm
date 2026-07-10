@@ -2077,6 +2077,7 @@ app.post('/api/integration/query', async (req, res) => {
 
 // ── PHASE 6: MASTER DATA MANAGEMENT (MDM) ──────────────────────────────────────
 const { findDuplicates: mdmFindDuplicates, scoreDataset: mdmScoreDataset } = require('./html/mdm-suite/mdm-core.js');
+const TSMQualityScoreEngine = require('./html/shared/tsm-quality-score-engine.js');
 const MDM_SEED_DATA = require('./html/mdm-suite/mdm-seed-data.json');
 // Deep-cloned at load time, before any merge can mutate MDM_SEED_DATA, so a real
 // reset is possible (restores retired records and clears the decision log).
@@ -2103,6 +2104,22 @@ app.get('/api/mdm/summary', (req, res) => {
   });
   const overallScore = Math.round(summary.reduce((s, d) => s + d.avgQualityScore, 0) / (summary.length || 1));
   res.json({ ok: true, overallScore, domains: summary });
+});
+
+// TSM Quality Score Engine wired into live MDM data (BPO Enterprise Roadmap #2:
+// Quality Assurance Command Center). Runs the existing mdmScoreDataset() output
+// through TSMQualityScoreEngine.fromMdmScore() to get the unified
+// accuracy/completeness/compliance/confidence/overall/band shape per domain,
+// then rolls those up into a single platform-level score.
+app.get('/api/mdm/quality-score', (req, res) => {
+  const domains = Object.keys(MDM_SEED_DATA);
+  const perDomain = domains.map(d => {
+    const scored = mdmScoreDataset(MDM_SEED_DATA[d], d);
+    const engineScore = TSMQualityScoreEngine.fromMdmScore(scored);
+    return Object.assign({ domain: d }, engineScore);
+  });
+  const overall = TSMQualityScoreEngine.rollup(perDomain);
+  res.json({ ok: true, overall, domains: perDomain });
 });
 
 // Full detail across all domains: records + per-record quality/issues + duplicate clusters.
