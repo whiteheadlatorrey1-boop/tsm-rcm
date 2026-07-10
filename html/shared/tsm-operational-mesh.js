@@ -5,6 +5,9 @@
   const path = location.pathname.toLowerCase();
 
   function detectSector(){
+    if(path.includes("integration-hub") || path.includes("integrationhub")) return "IntegrationHub";
+    if(path.includes("governance")) return "Governance";
+    if(path.includes("/mdm/") || path.includes("mdm-war-room") || path.includes("mdm-suite")) return "MDM";
     if(path.includes("healthcare") || path.includes("hc-")) return "Healthcare";
     if(path.includes("insurance") || path.includes("az-ins")) return "Insurance";
     if(path.includes("construction")) return "Construction";
@@ -90,6 +93,33 @@
       relay:"TSM Strategist",
       doc:"Document → action",
       action:"Assign owner and generate BNCA"
+    },
+    MDM: {
+      exposure:"Loading…",
+      queue:"Master data quality queue",
+      owner:"Data Steward",
+      relay:"MDM Strategist",
+      doc:"Recommendation queue → merge/reject decision",
+      action:"Review quality score and clear open recommendations",
+      liveEndpoint:"/api/mdm/quality-score"
+    },
+    Governance: {
+      exposure:"Loading…",
+      queue:"Open risk register",
+      owner:"Compliance Lead",
+      relay:"Governance Strategist",
+      doc:"Risk register → approve/reject decision",
+      action:"Review open risks and clear via HITL approval",
+      liveEndpoint:"/api/governance/risk"
+    },
+    IntegrationHub: {
+      exposure:"Loading…",
+      queue:"Degraded integration queue",
+      owner:"NOC Engineer",
+      relay:"Integration Hub Strategist",
+      doc:"Integration catalog → remediate/escalate decision",
+      action:"Review degraded systems and remediate via HITL approval",
+      liveEndpoint:"/api/integration/health"
     }
   };
 
@@ -157,6 +187,43 @@ EXECUTIVE TALK TRACK
 TSM Operational Mesh is connecting the sector workflow into one command layer: queue pressure, document evidence, owner lane, SLA posture, escalation, and executive action.`;
   }
 
+  // Pulls real numbers from the live endpoints wired up for MDM/Governance/
+  // Integration Hub (see server.js: /api/mdm/quality-score, #136;
+  // /api/governance/risk + HITL gate, #137; /api/integration/health +
+  // HITL gate, #138) instead of the hardcoded per-sector CONFIG placeholders
+  // used by the industry-vertical tracker pages. Read-only by design -- this
+  // widget is loaded on ~80 pages, so it displays state rather than
+  // triggering approve/reject itself; those mutating actions live in each
+  // war room's own UI, which has the actor context this shared widget lacks.
+  function fetchLive(){
+    if(!cfg.liveEndpoint) return;
+    fetch(cfg.liveEndpoint).then(function(r){ return r.json(); }).then(function(data){
+      if(!data || data.ok === false) return;
+
+      if(sector === "MDM" && data.overall && Array.isArray(data.domains)){
+        var atRisk = data.domains.filter(function(d){ return d.band === "AT RISK" || d.band === "CRITICAL"; }).length;
+        cfg.exposure = data.overall.band + " (" + data.overall.overall + "/100)";
+        cfg.queue = atRisk + " of " + data.domains.length + " domain(s) at risk";
+      }
+
+      if(sector === "Governance" && Array.isArray(data.risks)){
+        var open = data.risks.filter(function(r){ return r.status === "OPEN"; });
+        var worst = open.slice().sort(function(a,b){ return (b.severity||0) - (a.severity||0); })[0];
+        cfg.exposure = open.length + " open risk(s)";
+        cfg.queue = worst ? ("Highest severity: " + worst.title + " (" + worst.severity + ")") : "No open risks";
+      }
+
+      if(sector === "IntegrationHub" && typeof data.degraded === "number"){
+        cfg.exposure = data.degraded + " of " + data.total + " degraded";
+        cfg.queue = data.degraded > 0 ? "Integration(s) awaiting remediation decision" : "All integrations healthy";
+      }
+
+      var exposureEl = document.getElementById("meshExposure");
+      if(exposureEl) exposureEl.textContent = cfg.exposure;
+      write("Live Baseline");
+    }).catch(function(){ /* leave the static placeholder in place if the fetch fails */ });
+  }
+
   function build(){
     if(document.getElementById("tsm-operational-mesh")) return;
     css();
@@ -218,6 +285,7 @@ TSM Operational Mesh is connecting the sector workflow into one command layer: q
     });
 
     setTimeout(()=>write("Live Baseline"),300);
+    if(cfg.liveEndpoint) fetchLive();
   }
 
   if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", build);
