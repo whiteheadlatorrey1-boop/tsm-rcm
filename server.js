@@ -143,6 +143,8 @@ var SP = {
     'Be concise, no filler, no preamble, plain operational language a technician can ' +
     'read in a few seconds mid-ticket.',
   l1support: 'You are a Senior Network and Systems Engineer acting as the decision-making core of TSM L1 Ticket Copilot, a desktop/network support triage tool. You have 15+ years of enterprise IT experience across Windows/macOS endpoint management, Active Directory/Entra ID, DNS/DHCP, VLAN and routing, firewall/ACL policy, VPN and SD-WAN, virtualization, Microsoft 365/Azure, and OEM hardware (Dell, HP, Lenovo, Cisco, Meraki, Fortinet). Triage every ticket in OSI-layer order — physical/hardware first, then link/network (VLAN, switchport, DHCP, DNS), then transport/session (VPN, firewall, auth/SSO/MFA), then application — and do not skip layers. Distinguish clearly between an L1-actionable fix, a fix that needs elevated/L2 access, and a fix that needs vendor hardware service, and say which one applies and why. When recommending escalation, name the correct team (Desktop, Network, Server, Azure, O365, Security, Application, or Vendor) based on where in the stack the root cause actually sits, not just ticket category. Be precise, operational, and quantify confidence and risk where you can. No filler, no preamble, no restating the question back.',
+  vmware: 'You are a VMware Virtualization & Cloud Operations SME acting as the decision-making core of the TSM VMware Infrastructure Copilot. You have deep, current operational expertise across vCenter, vRealize Automation (vRA)/Aria Automation, vRealize Orchestrator (vRO), VMware Cloud Director (VCD), NSX, vSAN, and the surrounding IaC tooling (PowerCLI, Terraform vSphere/VCD providers, vRO scriptable tasks, REST APIs). Given pasted logs, config, Blueprint/vORG YAML, NSX errors, or a plain-English description of a failure, you: (1) identify what the artifact/error actually is, (2) state the most probable root cause ranked by likelihood, (3) give the safest remediation path with exact commands (PowerCLI cmdlets, REST calls, or CLI) where applicable, (4) flag operational risk (production impact, snapshot/rollback needs, downtime), and (5) state whether this is L1/L2-actionable or needs escalation to the VMware admin/platform team and why. When asked to generate a script (PowerCLI, Terraform, vRO scriptable task, REST call), produce complete, runnable code with brief inline comments — assume the operator understands VMware but wants to move fast, not a tutorial. No filler, no preamble, no restating the question back.',
+  cloudops: 'You are a Multi-Cloud Operations SME (Azure, AWS, and Azure VMware Solution / VMware Cloud on AWS / Google Cloud VMware Engine) acting as the decision-making core of the TSM Cloud Operations Copilot. You have deep operational expertise across Azure (VMs, VNets, NSGs, Azure AD/Entra, ARM/Bicep, Azure NetApp Files), AWS (EC2, VPC, IAM, S3, FSx ONTAP), and hybrid VMware-on-cloud fabric (AVS, VMC on AWS, GCVE). Given pasted logs, error output, resource config, or a plain-English description, you: (1) identify the artifact/error, (2) rank probable root causes, (3) give the safest remediation with exact CLI/portal steps, (4) flag blast radius and rollback considerations, (5) state whether this is self-service-actionable or needs escalation and to which team (Cloud Platform, Networking, Security/IAM, or the vendor). When asked to generate infrastructure-as-code (Terraform, ARM, Bicep, Azure CLI, AWS CLI), produce complete, runnable code with brief inline comments. No filler, no preamble, no restating the question back.',
 };
 
 // ── GLOBAL STATE ──────────────────────────────────────────────────────────────
@@ -1232,6 +1234,55 @@ app.post('/api/l1-copilot/sccm', async (req, res) => {
     return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
   } catch (e) {
     console.error('L1 COPILOT SCCM ERROR:', e.message);
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/api/l1-copilot/vmware', async (req, res) => {
+  const { component, category, environment, input, issueSummary, maxTokens } = req.body || {};
+  if (!input) return res.status(400).json({ ok: false, error: 'input required' });
+  const prompt = `Component: ${component || 'not specified'}\nIssue category: ${category || 'not specified'}\n` +
+    `Environment: ${environment || 'not specified'}\nRelated ticket summary: ${issueSummary || 'none'}\n\n` +
+    `Pasted artifact / question:\n${input}\n\n` +
+    `Identify what this is, the most probable root cause, the safest remediation (with exact PowerCLI/REST/CLI commands where ` +
+    `applicable), operational risk, and whether this is L1/L2-actionable or needs escalation to the VMware admin team.`;
+  try {
+    const answer = await groqChat(SP.vmware, prompt, maxTokens || 900);
+    return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
+  } catch (e) {
+    console.error('L1 COPILOT VMWARE ERROR:', e.message);
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/api/l1-copilot/vmware-script', async (req, res) => {
+  const { scriptType, request, maxTokens } = req.body || {};
+  if (!request) return res.status(400).json({ ok: false, error: 'request required' });
+  const prompt = `Generate a ${scriptType || 'PowerCLI'} script for the following requirement:\n\n${request}\n\n` +
+    `Return complete, runnable code with brief inline comments explaining each step. Include any prerequisite ` +
+    `connection/auth commands (e.g. Connect-VIServer) needed for the script to actually run standalone.`;
+  try {
+    const answer = await groqChat(SP.vmware, prompt, maxTokens || 1100);
+    return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
+  } catch (e) {
+    console.error('L1 COPILOT VMWARE SCRIPT ERROR:', e.message);
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/api/l1-copilot/cloud-ops', async (req, res) => {
+  const { provider, service, environment, input, issueSummary, maxTokens } = req.body || {};
+  if (!input) return res.status(400).json({ ok: false, error: 'input required' });
+  const prompt = `Cloud provider: ${provider || 'not specified'}\nService/resource: ${service || 'not specified'}\n` +
+    `Environment: ${environment || 'not specified'}\nRelated ticket summary: ${issueSummary || 'none'}\n\n` +
+    `Pasted artifact / question:\n${input}\n\n` +
+    `Identify what this is, the most probable root cause, the safest remediation (with exact CLI/portal steps where ` +
+    `applicable), blast radius, and whether this is self-service-actionable or needs escalation and to which team.`;
+  try {
+    const answer = await groqChat(SP.cloudops, prompt, maxTokens || 900);
+    return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
+  } catch (e) {
+    console.error('L1 COPILOT CLOUD OPS ERROR:', e.message);
     return res.status(500).json({ ok: false, error: e.message });
   }
 });
