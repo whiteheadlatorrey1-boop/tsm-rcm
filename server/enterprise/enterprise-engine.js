@@ -211,22 +211,6 @@ class EnterpriseEngine {
 
 
 
-        const decision =
-            results.length
-                ? buildDecision(results)
-                : {
-                    action:"EXECUTIVE_REVIEW",
-                    priority:"HIGH",
-                    confidence:0,
-                    driver:null,
-                    summary:"Enterprise capabilities require review."
-                };
-
-        const explainability =
-            results.length
-                ? buildExplainability(results)
-                : null;
-
         return {
 
 
@@ -264,15 +248,7 @@ class EnterpriseEngine {
                     Date.now() - started
 
 
-            },
-
-
-            decision:
-                decision,
-
-
-            explainability:
-                explainability
+            }
 
 
         };
@@ -285,78 +261,6 @@ class EnterpriseEngine {
 
 
 
-
-
-function buildDecision(capabilities){
-
-    const ranked =
-        [...capabilities]
-        .sort((a,b)=>b.score-a.score);
-
-    const top = ranked[0];
-
-    const reviewCount =
-        capabilities.filter(c=>c.score < 90).length;
-
-    return {
-
-        action:
-            reviewCount > 0
-            ? "EXECUTIVE_REVIEW"
-            : "NO_ACTION",
-
-        priority:
-            top.score < 85
-            ? "HIGH"
-            : "MEDIUM",
-
-        confidence:87,
-
-        driver:
-            top.id,
-
-        summary:
-            `${reviewCount} enterprise capabilities require review.`
-
-    };
-}
-
-
-
-function buildExplainability(capabilities){
-
-    return {
-
-        decision:"EXECUTIVE_REVIEW",
-
-        why:
-            `${capabilities.filter(c=>c.score < 90).length} enterprise capabilities require review.`,
-
-        confidence:87,
-
-        evidence:
-            capabilities.map(c=>({
-
-                capability:c.id,
-
-                score:c.score,
-
-                confidence:c.confidence,
-
-                findings:c.findings
-
-            })),
-
-        reasoning:
-            capabilities
-            .slice(0,5)
-            .map(c=>
-                `${c.title} contributed score ${c.score}`
-            )
-
-    };
-
-}
 
 
 module.exports =

@@ -75,10 +75,6 @@ module.exports =
 
 // ── Enterprise Dashboard APIs ───────────────────────────────
 
-const engine =
-require("../enterprise-engine");
-
-
 function payload(req){
 
 return Object.assign({
@@ -104,7 +100,7 @@ audit:{
 router.post("/dashboard", async(req,res)=>{
 
 const result =
-await engine.enrich(payload(req));
+await orchestrator.execute(payload(req));
 
 
 res.json({
@@ -113,15 +109,15 @@ ok:true,
 
 dashboard:{
 
-entity:result.entity,
+entity:result.enrichment.entity,
 
-vertical:result.vertical,
+vertical:result.enrichment.vertical,
 
 healthScore:
-result.summary.highestScore,
+result.enrichment.summary.highestScore,
 
 capabilities:
-result.capabilities
+result.enrichment.capabilities
 
 }
 
@@ -134,7 +130,7 @@ result.capabilities
 router.post("/decision", async(req,res)=>{
 
 const result =
-await engine.enrich(payload(req));
+await orchestrator.execute(payload(req));
 
 
 res.json({
@@ -142,26 +138,10 @@ res.json({
 ok:true,
 
 decision:
-result.decision || {
-
-    action:"EXECUTIVE_REVIEW",
-
-    priority:"HIGH",
-
-    confidence:
-        result.explainability?.confidence || 0,
-
-    driver:
-        result.explainability?.evidence?.[0]?.capability || null,
-
-    summary:
-        result.explainability?.why ||
-        "Enterprise capabilities require review."
-
-},
+result.decision,
 
 explainability:
-result.explainability || null
+result.explainability
 
 });
 
@@ -172,7 +152,7 @@ result.explainability || null
 router.post("/missions", async(req,res)=>{
 
 const result =
-await engine.enrich(payload(req));
+await orchestrator.execute(payload(req));
 
 
 res.json({
@@ -180,10 +160,10 @@ res.json({
 ok:true,
 
 count:
-result.capabilities.filter(c=>c.score < 90).length,
+result.enrichment.capabilities.filter(c=>c.score < 90).length,
 
 missions:
-result.capabilities
+result.enrichment.capabilities
 .filter(c=>c.score < 90)
 .map(c=>({
 
