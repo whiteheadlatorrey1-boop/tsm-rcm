@@ -61,6 +61,7 @@ td{padding:7px 8px;border-bottom:1px solid var(--border);color:var(--text)}
     <div><div class="sb-label">DATA</div>
       <button class="btn btn-ghost" id="btnLoad">REFRESH</button>
       <button class="btn btn-ghost" id="btnReset">RESET DATA</button>
+      <button class="btn btn-ghost" id="btnCrossDomainScan" title="Escalate high-confidence duplicates (shared tax ID / SKU / employee ID, etc.) to Governance as risks">SCAN FOR CROSS-DOMAIN RISKS</button>
     </div>
     <div><div class="sb-label">DOMAINS</div>
       <div class="domain-list" id="domainList"></div>
@@ -270,6 +271,27 @@ td{padding:7px 8px;border-bottom:1px solid var(--border);color:var(--text)}
       if(!d.ok) throw new Error(d.error||'Reset failed');
       await loadFromEngine();
     } catch(e){ alert(`Reset failed: ${e.message}`); }
+  });
+  document.getElementById('btnCrossDomainScan').addEventListener('click', async () => {
+    const btn = document.getElementById('btnCrossDomainScan');
+    btn.disabled = true; btn.textContent = 'SCANNING…';
+    try {
+      const r = await fetch('/api/mdm/cross-domain-scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': window.TSM_CLIENT_KEY || '' },
+        body: JSON.stringify({})
+      });
+      const d = await r.json();
+      if (!d.ok) throw new Error(d.error || 'Scan failed');
+      const msg = d.created.length
+        ? `${d.created.length} new risk(s) sent to Governance (${d.skippedAlreadyFlagged} already on record).`
+        : `No new cross-domain risks found (${d.skippedAlreadyFlagged} already on record, ${d.skippedLowConfidence} below confidence threshold).`;
+      alert(msg);
+    } catch (e) {
+      alert(`Cross-domain scan failed: ${e.message}`);
+    } finally {
+      btn.disabled = false; btn.textContent = 'SCAN FOR CROSS-DOMAIN RISKS';
+    }
   });
   document.getElementById('btnAnalyze').addEventListener('click',runAnalysis);
   document.getElementById('btnRelay').addEventListener('click',()=>{

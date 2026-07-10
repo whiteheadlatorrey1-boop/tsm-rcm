@@ -2315,6 +2315,11 @@ const { generateRecommendations } = require('./html/mdm-suite/mdm-decision-engin
 // a reviewed-and-dismissed item would just reappear on the next fetch.
 const MDM_RESOLVED_RECS = new Set();
 const MDM_RECOMMENDATION_DECISIONS = [];
+// Tracks which duplicate-record pairs have already been escalated to Governance
+// via /api/mdm/cross-domain-scan, so re-running the scan doesn't create a
+// second risk for the same pair every time (mirrors the resolve-once pattern
+// MDM already uses for recommendation decisions above).
+const MDM_CROSS_DOMAIN_FLAGGED = new Set();
 
 app.get('/api/mdm/recommendations', (req, res) => {
   const recs = generateRecommendations(MDM_SEED_DATA, MDM_RESOLVED_RECS);
@@ -2474,7 +2479,56 @@ app.post('/api/mdm/reset', requireApiKey, (req, res) => {
   MDM_RESOLVED_RECS.clear();
   MDM_RECOMMENDATION_DECISIONS.length = 0;
   MDM_MISSION_CLAIMS.clear();
+  MDM_CROSS_DOMAIN_FLAGGED.clear();
   res.json({ ok: true, reset: true });
+});
+
+// ── Cross-War-Room Intelligence: MDM duplicate detection → Governance risk ──
+// Real example this implements: MDM finds a duplicate vendor master record
+// (e.g. shared tax ID) → that's a live financial risk (potential duplicate
+// payment) → Governance should have it on record as a risk needing a human
+// decision, without someone manually re-typing it in from the MDM screen.
+//
+// Only high-confidence matches (score >= 90, i.e. a shared identifier like
+// tax ID, not just a fuzzy name match) create a risk — a fuzzy name-only
+// match is too weak to escalate automatically and would just add noise to
+// Governance's queue.
+app.post('/api/mdm/cross-domain-scan', requireApiKey, (req, res) => {
+  const requestedDomain = req.body && req.body.domain;
+  const domains = requestedDomain ? [requestedDomain] : Object.keys(MDM_SEED_DATA);
+
+  const created = [];
+  let skippedAlreadyFlagged = 0;
+  let skippedLowConfidence = 0;
+
+  domains.forEach(domain => {
+    const records = MDM_SEED_DATA[domain];
+    if (!records) return;
+
+    mdmFindDuplicates(records, domain).forEach(match => {
+      if (match.matchScore < 90) { skippedLowConfidence++; return; }
+
+      const pairKey = domain + ':' + [match.recordA.id, match.recordB.id].sort().join(':');
+      if (MDM_CROSS_DOMAIN_FLAGGED.has(pairKey)) { skippedAlreadyFlagged++; return; }
+      MDM_CROSS_DOMAIN_FLAGGED.add(pairKey);
+
+      const risk = {
+        id:        governanceId('risk'),
+        title:     `Duplicate ${domain} master record: "${match.recordA.name}" / "${match.recordB.name}" ` +
+                   `(shared ${match.matchField || 'multiple fields'}) — duplicate payment/processing risk`,
+        severity:  match.matchScore >= 95 ? 'critical' : 'high',
+        owner:     MDM_STEWARDS[domain] || 'Unassigned',
+        vertical:  domain,
+        status:    'OPEN',
+        createdAt: Date.now(),
+        source:    { system: 'mdm', matchScore: match.matchScore, matchReason: match.matchReason, recordIds: [match.recordA.id, match.recordB.id] },
+      };
+      GOVERNANCE_RISK_REGISTER.push(risk);
+      created.push(risk);
+    });
+  });
+
+  res.json({ ok: true, created, skippedAlreadyFlagged, skippedLowConfidence });
 });
 
 app.post('/api/mdm/query', async (req, res) => {
