@@ -164,6 +164,7 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
     <div class="sb-item" data-section="adintune"><span class="sb-dot"></span>AD / Intune</div>
     <div class="sb-item" data-section="sccm"><span class="sb-dot"></span>SCCM</div>
     <div class="sb-item" data-section="vmware"><span class="sb-dot"></span>VMware SME</div>
+    <div class="sb-item" data-section="cloudops"><span class="sb-dot"></span>Cloud Ops</div>
     <div class="sb-item" data-section="vendor"><span class="sb-dot"></span>Vendor Support</div>
     <div class="sb-item" data-section="sla"><span class="sb-dot"></span>SLA</div>
     <div class="sb-item" data-section="resolution"><span class="sb-dot"></span>Resolution</div>
@@ -392,6 +393,70 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
           </div>
 
           <div class="ai-output" id="vmwOutput" style="margin-top:12px">Root cause, recommended fix, PowerCLI/REST examples, and escalation guidance will appear here.</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">SCRIPT GENERATOR<span style="font-weight:400">PowerCLI · Terraform · vRO Scriptable Task · REST</span></div>
+        <div class="card-body">
+          <div class="field" style="max-width:260px;margin-bottom:10px"><div class="field-label">Script Type</div>
+            <select id="vmwScriptType">
+              <option>PowerCLI</option>
+              <option>Terraform</option>
+              <option>vRO Scriptable Task</option>
+              <option>REST API Call</option>
+            </select>
+          </div>
+          <textarea id="vmwScriptRequest" rows="3" placeholder="e.g. Deploy ten Windows Server VMs into Cluster 4 from template WIN2022-BASE, 4vCPU/16GB each..."></textarea>
+          <div class="btn-row">
+            <button class="btn btn-cyan" id="btnVmwScript">GENERATE SCRIPT</button>
+            <button class="btn btn-ghost" id="btnVmwScriptClear">CLEAR</button>
+          </div>
+          <div class="ai-output" id="vmwScriptOutput" style="margin-top:12px">Generated script will appear here.</div>
+        </div>
+      </div>
+
+      <div class="btn-row" style="justify-content:flex-end">
+        <button class="btn btn-outline" id="btnOpenVmwModule">OPEN FULL VMWARE OPERATIONS MODULE →</button>
+      </div>
+    </section>
+
+    <!-- CLOUD OPS -->
+    <section class="section" id="sec-cloudops">
+      <div class="card">
+        <div class="card-head">CLOUD OPERATIONS SME<span style="font-weight:400">Azure · AWS · AVS / VMC on AWS · GCVE</span></div>
+        <div class="card-body">
+          <div class="ticket-head-grid" style="grid-template-columns:repeat(3,1fr)">
+            <div class="field"><div class="field-label">Provider</div>
+              <select id="cloudProvider">
+                <option>Azure</option>
+                <option>AWS</option>
+                <option>Azure VMware Solution</option>
+                <option>VMware Cloud on AWS</option>
+                <option>Google Cloud VMware Engine</option>
+              </select>
+            </div>
+            <div class="field"><div class="field-label">Service / Resource</div>
+              <input type="text" id="cloudService" placeholder="e.g. VM, VNet, NSG, IAM, S3, NetApp Files">
+            </div>
+            <div class="field"><div class="field-label">Environment</div>
+              <select id="cloudEnv">
+                <option>Production</option>
+                <option>Non-Production / Test</option>
+                <option>DR</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="card-head" style="border:none;padding:0 0 6px">PASTE LOGS / CONFIG / ERROR</div>
+          <textarea id="cloudInput" rows="8" placeholder="Paste Azure/AWS error output, resource config, IAM policy, or describe the issue..."></textarea>
+
+          <div class="btn-row">
+            <button class="btn btn-cyan" id="btnCloudGuidance">GET SME GUIDANCE</button>
+            <button class="btn btn-ghost" id="btnCloudClear">CLEAR</button>
+          </div>
+
+          <div class="ai-output" id="cloudOutput" style="margin-top:12px">Root cause, recommended fix, CLI/portal steps, and escalation guidance will appear here.</div>
         </div>
       </div>
     </section>
@@ -1052,6 +1117,85 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
     const prompt = chip.dataset.prompt;
     box.value = box.value ? box.value + '\n\n' + prompt : prompt;
     box.focus();
+  });
+
+  // ── VMware Script Generator ────────────────────────────────────────────────
+  async function generateVmwareScript(){
+    const request = document.getElementById('vmwScriptRequest').value.trim();
+    const scriptType = document.getElementById('vmwScriptType').value;
+    if (!request) { alert('Describe what the script needs to do first.'); return; }
+    const out = document.getElementById('vmwScriptOutput');
+    out.className = 'ai-output loading';
+    out.textContent = 'Generating ' + scriptType + ' script...';
+    try {
+      const res = await fetch('/api/l1-copilot/vmware-script', {
+        method: 'POST', headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({ scriptType, request })
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'Script generation failed');
+      out.className = 'ai-output';
+      out.textContent = data.answer || 'No script returned.';
+    } catch (e) {
+      out.className = 'ai-output';
+      out.innerHTML = `<span class="err">Generation failed: ${e.message}. Confirm /api/l1-copilot/vmware-script is wired server-side.</span>`;
+    }
+  }
+  document.getElementById('btnVmwScript').addEventListener('click', generateVmwareScript);
+  document.getElementById('btnVmwScriptClear').addEventListener('click', () => {
+    document.getElementById('vmwScriptRequest').value = '';
+    document.getElementById('vmwScriptOutput').className = 'ai-output';
+    document.getElementById('vmwScriptOutput').textContent = 'Generated script will appear here.';
+  });
+
+  // ── Launch full VMware Operations module, carrying ticket context via relay ─
+  document.getElementById('btnOpenVmwModule').addEventListener('click', () => {
+    try {
+      if (window.TSM && window.TSM.relay) {
+        window.TSM.relay.write('VMWARE_COPILOT', {
+          ticketId: document.getElementById('tkIncident') ? document.getElementById('tkIncident').value : '',
+          issueSummary: (currentAnalysis && currentAnalysis.issue_summary) || '',
+          component: document.getElementById('vmwComponent').value,
+          category: document.getElementById('vmwCategory').value,
+          environment: document.getElementById('vmwEnv').value
+        });
+      }
+    } catch (e) { /* relay is best-effort, don't block navigation */ }
+    window.open('/html/l1-copilot/vmware-copilot.html', '_blank');
+  });
+
+  // ── Cloud Ops ───────────────────────────────────────────────────────────────
+  async function getCloudGuidance(){
+    const input = document.getElementById('cloudInput').value.trim();
+    if (!input) { alert('Paste logs, config, or a question first.'); return; }
+    const out = document.getElementById('cloudOutput');
+    out.className = 'ai-output loading';
+    out.textContent = 'Getting Cloud Ops SME guidance...';
+    try {
+      const res = await fetch('/api/l1-copilot/cloud-ops', {
+        method: 'POST', headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({
+          provider: document.getElementById('cloudProvider').value,
+          service: document.getElementById('cloudService').value,
+          environment: document.getElementById('cloudEnv').value,
+          input,
+          issueSummary: (currentAnalysis && currentAnalysis.issue_summary) || ''
+        })
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'Cloud Ops guidance failed');
+      out.className = 'ai-output';
+      out.textContent = data.answer || 'No guidance returned.';
+    } catch (e) {
+      out.className = 'ai-output';
+      out.innerHTML = `<span class="err">Lookup failed: ${e.message}. Confirm /api/l1-copilot/cloud-ops is wired server-side.</span>`;
+    }
+  }
+  document.getElementById('btnCloudGuidance').addEventListener('click', getCloudGuidance);
+  document.getElementById('btnCloudClear').addEventListener('click', () => {
+    document.getElementById('cloudInput').value = '';
+    document.getElementById('cloudOutput').className = 'ai-output';
+    document.getElementById('cloudOutput').textContent = 'Root cause, recommended fix, CLI/portal steps, and escalation guidance will appear here.';
   });
 
   // ── SLA ──────────────────────────────────────────────────────────────────
