@@ -1115,13 +1115,22 @@ app.post('/api/l1-copilot/analyze', async (req, res) => {
     department: ticket.department, asset: ticket.asset, manufacturer: ticket.manufacturer,
     model: ticket.model, warranty: ticket.warranty
   }, null, 2);
-  const prompt = `Ticket metadata:\n${summary}\n\nTicket description:\n${ticket.description}\n\n` +
-    `Analyze this ticket and return ONLY valid JSON, no markdown, no backticks, in exactly this shape:\n` +
+  const prompt = `Ticket metadata (may be incomplete — fields left blank were not provided):\n${summary}\n\n` +
+    `Ticket description (raw, as pasted by the agent):\n${ticket.description}\n\n` +
+    `Do two things and return ONLY valid JSON, no markdown, no backticks, in exactly this shape:\n\n` +
+    `1) Analyze the ticket:\n` +
     `{"issue_summary":"one sentence","likely_causes":["cause 1","cause 2"],"confidence":0-100,` +
     `"affected_system":"short label","business_impact":"short label","severity":"Low|Medium|High|Critical",` +
-    `"recommended_path":"the single next diagnostic or remediation step, and why"}`;
+    `"recommended_path":"the single next diagnostic or remediation step, and why",` +
+    `\n\n2) Extract structured fields mentioned ANYWHERE in the ticket description or metadata above ` +
+    `(incident number, priority, requester name, department, assignment group, asset/hostname/tag, ` +
+    `manufacturer, model, warranty/support tier). Only include a value if it is actually stated or clearly ` +
+    `implied in the text — use null for anything not present. Do not invent values.\n` +
+    `"extracted_fields":{"incident":null,"priority":null,"requester":null,"department":null,` +
+    `"assignmentGroup":null,"asset":null,"manufacturer":null,"model":null,"warranty":null}}\n\n` +
+    `Return one JSON object with both the analysis keys and the "extracted_fields" key at the same top level.`;
   try {
-    const raw = await groqChat(SP.l1support, prompt, maxTokens || 900);
+    const raw = await groqChat(SP.l1support, prompt, maxTokens || 1000);
     const analysis = JSON.parse(raw.replace(/```json|```/g, '').trim());
     return res.json({ ok: true, analysis, createdAt: new Date().toISOString() });
   } catch (e) {
