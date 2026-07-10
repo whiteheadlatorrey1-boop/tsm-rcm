@@ -61,6 +61,8 @@ td{padding:7px 8px;border-bottom:1px solid var(--border);color:var(--text)}
     <div><div class="sb-label">DATA</div>
       <button class="btn btn-ghost" id="btnLoad">REFRESH</button>
       <button class="btn btn-ghost" id="btnReset">RESET DATA</button>
+      <button class="btn btn-ghost" id="btnCrossDomainScan" title="Escalate high-confidence duplicates (shared tax ID / SKU / employee ID, etc.) to Governance as risks">SCAN FOR CROSS-DOMAIN RISKS</button>
+      <button class="btn btn-ghost" id="btnTrustPackage" title="Download the full Client Trust Package: quality report, exception report, risk report, audit trail, and recommended actions">GENERATE CLIENT TRUST PACKAGE</button>
     </div>
     <div><div class="sb-label">DOMAINS</div>
       <div class="domain-list" id="domainList"></div>
@@ -270,6 +272,49 @@ td{padding:7px 8px;border-bottom:1px solid var(--border);color:var(--text)}
       if(!d.ok) throw new Error(d.error||'Reset failed');
       await loadFromEngine();
     } catch(e){ alert(`Reset failed: ${e.message}`); }
+  });
+  document.getElementById('btnCrossDomainScan').addEventListener('click', async () => {
+    const btn = document.getElementById('btnCrossDomainScan');
+    btn.disabled = true; btn.textContent = 'SCANNING…';
+    try {
+      const r = await fetch('/api/mdm/cross-domain-scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': window.TSM_CLIENT_KEY || '' },
+        body: JSON.stringify({})
+      });
+      const d = await r.json();
+      if (!d.ok) throw new Error(d.error || 'Scan failed');
+      const msg = d.created.length
+        ? `${d.created.length} new risk(s) sent to Governance (${d.skippedAlreadyFlagged} already on record).`
+        : `No new cross-domain risks found (${d.skippedAlreadyFlagged} already on record, ${d.skippedLowConfidence} below confidence threshold).`;
+      alert(msg);
+    } catch (e) {
+      alert(`Cross-domain scan failed: ${e.message}`);
+    } finally {
+      btn.disabled = false; btn.textContent = 'SCAN FOR CROSS-DOMAIN RISKS';
+    }
+  });
+  document.getElementById('btnTrustPackage').addEventListener('click', async () => {
+    const btn = document.getElementById('btnTrustPackage');
+    btn.disabled = true; btn.textContent = 'GENERATING…';
+    try {
+      const r = await fetch('/api/mdm/trust-package');
+      const d = await r.json();
+      if (!d.ok) throw new Error(d.error || 'Package generation failed');
+      const blob = new Blob([JSON.stringify(d, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `tsm-client-trust-package-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert(`Trust package generation failed: ${e.message}`);
+    } finally {
+      btn.disabled = false; btn.textContent = 'GENERATE CLIENT TRUST PACKAGE';
+    }
   });
   document.getElementById('btnAnalyze').addEventListener('click',runAnalysis);
   document.getElementById('btnRelay').addEventListener('click',()=>{
