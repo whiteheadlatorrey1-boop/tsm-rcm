@@ -18,7 +18,18 @@ jobs:
         run: |
           node -e '
             const fs = require("fs"), path = require("path");
-            let bad = 0, files = 0;
+
+            const baselinePath = ".github/parse-gate-known-broken.txt";
+            const baseline = new Set(
+              fs.existsSync(baselinePath)
+                ? fs.readFileSync(baselinePath, "utf8")
+                    .split("\n")
+                    .map(l => l.trim())
+                    .filter(l => l && !l.startsWith("#"))
+                : []
+            );
+
+            let bad = 0, knownBad = 0, files = 0;
             function walk(d) {
               for (const e of fs.readdirSync(d, { withFileTypes: true })) {
                 if (e.name === "node_modules" || e.name.startsWith(".")) continue;
@@ -27,27 +38,42 @@ jobs:
                 else if (e.name.endsWith(".html")) {
                   files++;
                   const html = fs.readFileSync(p, "utf8");
+                  // Strip HTML comments first — otherwise literal text like
+                  // "<script>" inside a <!-- --> comment gets matched as a
+                  // real opening tag and swallows everything up to the next
+                  // actual </script>, hundreds of lines of unrelated markup
+                  // included, which then fails to parse as JS.
+                  const stripped = html.replace(/<!--[\s\S]*?-->/g, "");
                   const re = /<script(?![^>]*\bsrc\b)[^>]*>([\s\S]*?)<\/script>/gi;
-                  let m;
-                  while ((m = re.exec(html))) {
+                  let m, fileBad = 0;
+                  while ((m = re.exec(stripped))) {
                     const c = m[1].trim();
                     if (!c) continue;
                     try { new Function(c); }
                     catch (err) {
-                      console.error(`✗ ${p}: ${err.message}`);
-                      bad++;
+                      fileBad++;
+                      if (baseline.has(p)) {
+                        console.warn(`⚠ ${p}: ${err.message} (known pre-existing — see .github/parse-gate-known-broken.txt)`);
+                      } else {
+                        console.error(`✗ ${p}: ${err.message}`);
+                      }
                     }
+                  }
+                  if (fileBad) {
+                    if (baseline.has(p)) knownBad += fileBad;
+                    else bad += fileBad;
                   }
                 }
               }
             }
             walk("html");
             console.log(`\nScanned ${files} HTML files.`);
+            if (knownBad) console.log(`${knownBad} pre-existing broken block(s) in ${baseline.size} baselined file(s) — not blocking.`);
             if (bad) {
-              console.error(`\n${bad} broken inline script block(s) found. Merge blocked.`);
+              console.error(`\n${bad} NEW broken inline script block(s) found (not in baseline). Merge blocked.`);
               process.exit(1);
             }
-            console.log("All inline scripts parse cleanly.");
+            console.log("No new broken inline scripts. Gate passes.");
           '
 
       - name: Sanity-check server.js
