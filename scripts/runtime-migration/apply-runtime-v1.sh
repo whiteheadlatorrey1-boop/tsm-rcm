@@ -46,6 +46,7 @@ SCRIPTS=(
 "32-runtime-customer-provisioning-layer.js"
 "33-runtime-commercial-intelligence-layer.js"
 "34-runtime-ecosystem-layer.js"
+"35-runtime-knowledge-intelligence-layer.js"
 "18-runtime-integration-fabric.js"
 )
 
