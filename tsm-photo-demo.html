@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TSM-Consultz — Enterprise Intelligence, Live</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Inter:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --void:#060a0d;
+    --panel:#0d1417;
+    --signal:#00e6ff;
+    --pulse:#33ff8a;
+    --ember:#ff5a36;
+    --ink:#d7e4ea;
+    --ink-dim:#5f7a89;
+    --display: 'Space Grotesk', sans-serif;
+    --body: 'Inter', sans-serif;
+    --mono: 'IBM Plex Mono', monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    background:var(--void);
+    color:var(--ink);
+    font-family:var(--body);
+    overflow-x:hidden;
+    scroll-snap-type:y mandatory;
+    height:100vh;
+    overflow-y:auto;
+  }
+  @media (prefers-reduced-motion: reduce){
+    html{scroll-behavior:auto}
+    *{animation-duration:0.01ms !important;transition-duration:0.01ms !important}
+  }
+  a{color:var(--signal)}
+  :focus-visible{outline:2px solid var(--signal);outline-offset:3px}
+
+  /* ambient background texture — thin moving trace lines, low opacity */
+  .noise{position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.5}
+  .noise svg{width:100%;height:100%}
+
+  .slide{
+    scroll-snap-align:start;
+    min-height:100vh;
+    width:100%;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    align-items:center;
+    padding:60px 8vw;
+    position:relative;
+    z-index:1;
+  }
+
+  /* ── HERO ────────────────────────────────────────────── */
+  .hero-eyebrow{
+    font-family:var(--mono);font-size:12px;letter-spacing:4px;color:var(--signal);
+    text-transform:uppercase;margin-bottom:22px;
+  }
+  .hero-title{
+    font-family:var(--display);font-weight:700;
+    font-size:clamp(36px,6vw,76px);line-height:1.05;
+    text-align:center;max-width:920px;
+    background:linear-gradient(180deg,var(--ink) 0%, var(--ink) 55%, var(--signal) 130%);
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+  }
+  .hero-sub{
+    font-family:var(--body);font-size:clamp(15px,1.6vw,19px);color:var(--ink-dim);
+    max-width:620px;text-align:center;margin-top:26px;line-height:1.6;
+  }
+  .hero-cta{
+    margin-top:52px;font-family:var(--mono);font-size:11px;letter-spacing:2px;
+    color:var(--ink-dim);display:flex;flex-direction:column;align-items:center;gap:10px;
+    animation:bob 2.2s ease-in-out infinite;
+  }
+  @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(8px)}}
+  .hero-cta svg{width:16px;height:16px;stroke:var(--signal)}
+
+  /* ── PROGRESS RAIL ───────────────────────────────────── */
+  .rail{
+    position:fixed;right:26px;top:50%;transform:translateY(-50%);
+    display:flex;flex-direction:column;gap:14px;z-index:10;
+  }
+  .rail button{
+    width:9px;height:9px;border-radius:50%;border:1px solid var(--ink-dim);
+    background:transparent;cursor:pointer;padding:0;transition:all .25s;
+  }
+  .rail button.active{background:var(--signal);border-color:var(--signal);box-shadow:0 0 8px var(--signal)}
+  .rail button:hover{border-color:var(--signal)}
+
+  /* ── VERTICAL SLIDE ──────────────────────────────────── */
+  .v-eyebrow{
+    font-family:var(--mono);font-size:11px;letter-spacing:3px;color:var(--ink-dim);
+    text-transform:uppercase;margin-bottom:14px;
+  }
+  .v-title{
+    font-family:var(--display);font-weight:700;font-size:clamp(28px,4vw,46px);
+    color:var(--ink);margin-bottom:46px;text-align:center;
+  }
+
+  .chain{
+    width:100%;max-width:1180px;position:relative;
+    display:flex;justify-content:center;gap:0;
+  }
+  .chain-trace{position:absolute;top:96px;left:0;width:100%;height:2px;z-index:0}
+  .chain-trace path{
+    fill:none;stroke:var(--signal);stroke-width:2;
+    stroke-dasharray:8 6;opacity:.45;
+  }
+  .stage{
+    flex:1;max-width:360px;display:flex;flex-direction:column;align-items:center;
+    position:relative;z-index:1;padding:0 14px;
+  }
+  .stage-node{
+    width:10px;height:10px;border-radius:50%;background:var(--void);
+    border:2px solid var(--signal);margin-bottom:18px;
+  }
+  .stage-label{
+    font-family:var(--mono);font-size:11px;letter-spacing:2px;color:var(--signal);
+    text-transform:uppercase;margin-bottom:10px;
+  }
+  .stage-frame{
+    width:100%;aspect-ratio:16/10;border:1px solid rgba(0,230,255,.18);
+    background:var(--panel);overflow:hidden;cursor:zoom-in;
+    transition:border-color .25s, transform .25s;
+  }
+  .stage-frame:hover{border-color:var(--signal);transform:translateY(-3px)}
+  .stage-frame img{width:100%;height:100%;object-fit:cover;object-position:top;display:block}
+  .stage-frame.missing{
+    display:flex;align-items:center;justify-content:center;cursor:default;
+    color:var(--ink-dim);font-family:var(--mono);font-size:11px;text-align:center;padding:16px;
+  }
+  .stage-frame.missing:hover{border-color:rgba(0,230,255,.18);transform:none}
+  .stage-caption{
+    font-family:var(--body);font-size:13px;color:var(--ink-dim);
+    text-align:center;margin-top:14px;line-height:1.5;max-width:300px;
+  }
+
+  /* ── LIGHTBOX ────────────────────────────────────────── */
+  .lightbox{
+    position:fixed;inset:0;background:rgba(5,8,10,.94);z-index:100;
+    display:none;align-items:center;justify-content:center;padding:5vw;
+  }
+  .lightbox.open{display:flex}
+  .lightbox img{max-width:92vw;max-height:88vh;border:1px solid rgba(0,230,255,.3)}
+  .lightbox-close{
+    position:absolute;top:26px;right:32px;background:none;border:none;
+    color:var(--ink);font-family:var(--mono);font-size:13px;letter-spacing:2px;
+    cursor:pointer;padding:8px 14px;border:1px solid var(--ink-dim);
+  }
+  .lightbox-close:hover{border-color:var(--signal);color:var(--signal)}
+
+  /* ── CLOSING SLIDE ───────────────────────────────────── */
+  .closing-title{
+    font-family:var(--display);font-weight:700;font-size:clamp(30px,5vw,58px);
+    text-align:center;max-width:760px;line-height:1.15;
+  }
+  .closing-sub{
+    font-family:var(--body);color:var(--ink-dim);text-align:center;
+    max-width:560px;margin-top:20px;line-height:1.6;font-size:16px;
+  }
+  .closing-contact{
+    margin-top:44px;font-family:var(--mono);font-size:13px;color:var(--signal);
+    letter-spacing:1px;text-align:center;
+  }
+  .closing-note{
+    margin-top:60px;font-family:var(--mono);font-size:10px;color:var(--ink-dim);
+    letter-spacing:1px;opacity:.6;
+  }
+
+  /* ── ERROR STATE ─────────────────────────────────────── */
+  .load-error{
+    font-family:var(--mono);color:var(--ember);text-align:center;
+    max-width:600px;line-height:1.7;font-size:13px;
+  }
+
+  @media (max-width:760px){
+    .chain{flex-direction:column;gap:36px}
+    .chain-trace{display:none}
+    .stage{max-width:100%}
+    .rail{right:14px}
+  }
+</style>
+</head>
+<body>
+
+<div class="noise" aria-hidden="true">
+  <svg viewBox="0 0 1200 800" preserveAspectRatio="none">
+    <path d="M0,700 Q300,650 600,700 T1200,680" stroke="rgba(0,230,255,0.08)" stroke-width="1" fill="none"/>
+    <path d="M0,120 Q300,180 600,110 T1200,150" stroke="rgba(0,230,255,0.06)" stroke-width="1" fill="none"/>
+  </svg>
+</div>
+
+<nav class="rail" id="rail" aria-label="Slide navigation"></nav>
+
+<div id="slides"></div>
+
+<div class="lightbox" id="lightbox">
+  <button class="lightbox-close" id="lightboxClose">CLOSE ✕</button>
+  <img id="lightboxImg" src="" alt="">
+</div>
+
+<script>
+(async function(){
+  const slidesEl = document.getElementById('slides');
+  const railEl = document.getElementById('rail');
+
+  function heroSlideHtml(){
+    return `
+      <section class="slide" id="slide-hero">
+        <div class="hero-eyebrow">TSM-Consultz // Enterprise Intelligence Platform</div>
+        <h1 class="hero-title">Watch a signal become a decision.</h1>
+        <p class="hero-sub">Every workflow below moves through the same three stages, live: an operational signal comes in, the platform's AI synthesizes it, and an executive-ready decision comes out. Scroll to walk through it, vertical by vertical.</p>
+        <div class="hero-cta">
+          SCROLL TO BEGIN
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2"><path d="M12 4v16M6 14l6 6 6-6"/></svg>
+        </div>
+      </section>`;
+  }
+
+  function stageFrameHtml(stage){
+    if (!stage) {
+      return `<div class="stage-frame missing">Not yet captured for this vertical</div>`;
+    }
+    return `<div class="stage-frame" data-img="${stage.file}" role="button" tabindex="0" aria-label="Enlarge ${stage.label} screenshot">
+      <img src="${stage.file}" alt="${stage.label} view" loading="lazy">
+    </div>`;
+  }
+
+  function verticalSlideHtml(v, index){
+    const stageOrder = ['war-room','strategist','executive-portal'];
+    const byStage = {};
+    v.stages.forEach(s => byStage[s.stage] = s);
+
+    const stagesHtml = stageOrder.map(key => {
+      const s = byStage[key];
+      const label = s ? s.label : (key === 'war-room' ? 'Live Signal' : key === 'strategist' ? 'AI Synthesis' : 'Executive Decision');
+      const caption = s ? s.caption : '';
+      return `
+        <div class="stage">
+          <div class="stage-node"></div>
+          <div class="stage-label">${label}</div>
+          ${stageFrameHtml(s)}
+          ${caption ? `<div class="stage-caption">${caption}</div>` : ''}
+        </div>`;
+    }).join('');
+
+    return `
+      <section class="slide" id="slide-${v.id}">
+        <div class="v-eyebrow">Vertical 0${index}</div>
+        <h2 class="v-title">${v.label}</h2>
+        <div class="chain">
+          <svg class="chain-trace" preserveAspectRatio="none" viewBox="0 0 1180 2">
+            <path d="M60,1 L1120,1"/>
+          </svg>
+          ${stagesHtml}
+        </div>
+      </section>`;
+  }
+
+  function closingSlideHtml(){
+    return `
+      <section class="slide" id="slide-closing">
+        <h2 class="closing-title">This is running in production today.</h2>
+        <p class="closing-sub">Every screenshot above is a live view from the platform, not a mockup. If it's useful to walk through your own scenario, let's set up time.</p>
+        <div class="closing-contact">[ your contact details here ]</div>
+        <div class="closing-note">TSM-Consultz — Enterprise Intelligence Platform</div>
+      </section>`;
+  }
+
+  function errorSlideHtml(message){
+    return `
+      <section class="slide" id="slide-error">
+        <div class="hero-eyebrow">TSM-Consultz</div>
+        <p class="load-error">Could not load the presentation manifest (${message}).<br><br>
+        This page needs to be served over http(s) — opening the file directly (file://) won't work because
+        the browser blocks the manifest.json fetch. Host html/demo/ (already static-served by server.js) and
+        open it from that URL instead.</p>
+      </section>`;
+  }
+
+  function buildRail(ids){
+    railEl.innerHTML = ids.map((id, i) =>
+      `<button data-target="slide-${id}" aria-label="Go to ${id}"></button>`
+    ).join('');
+    railEl.querySelectorAll('button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.getElementById(btn.dataset.target).scrollIntoView({ behavior: 'smooth' });
+      });
+    });
+  }
+
+  function wireScrollSpy(ids){
+    const sections = ids.map(id => document.getElementById('slide-' + id));
+    const buttons = [...railEl.querySelectorAll('button')];
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const idx = sections.indexOf(entry.target);
+          buttons.forEach(b => b.classList.remove('active'));
+          if (buttons[idx]) buttons[idx].classList.add('active');
+        }
+      });
+    }, { threshold: 0.5 });
+    sections.forEach(s => s && observer.observe(s));
+  }
+
+  function wireLightbox(){
+    const lightbox = document.getElementById('lightbox');
+    const lightboxImg = document.getElementById('lightboxImg');
+    document.body.addEventListener('click', (e) => {
+      const frame = e.target.closest('.stage-frame:not(.missing)');
+      if (!frame) return;
+      lightboxImg.src = frame.dataset.img;
+      lightboxImg.alt = frame.querySelector('img')?.alt || '';
+      lightbox.classList.add('open');
+    });
+    document.body.addEventListener('keydown', (e) => {
+      const frame = e.target.closest('.stage-frame:not(.missing)');
+      if (frame && (e.key === 'Enter' || e.key === ' ')) {
+        e.preventDefault();
+        frame.click();
+      }
+    });
+    document.getElementById('lightboxClose').addEventListener('click', () => lightbox.classList.remove('open'));
+    lightbox.addEventListener('click', (e) => { if (e.target === lightbox) lightbox.classList.remove('open'); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') lightbox.classList.remove('open'); });
+  }
+
+  function wireArrowNav(ids){
+    const allIds = ['hero', ...ids, 'closing'];
+    document.addEventListener('keydown', (e) => {
+      if (document.getElementById('lightbox').classList.contains('open')) return;
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+      const current = allIds.map(id => document.getElementById('slide-' + id))
+        .find(el => el && Math.abs(el.getBoundingClientRect().top) < window.innerHeight / 2);
+      if (!current) return;
+      const idx = allIds.indexOf(current.id.replace('slide-', ''));
+      const nextIdx = e.key === 'ArrowDown' ? idx + 1 : idx - 1;
+      const next = document.getElementById('slide-' + allIds[nextIdx]);
+      if (next) next.scrollIntoView({ behavior: 'smooth' });
+    });
+  }
+
+  try {
+    const res = await fetch('./manifest.json');
+    if (!res.ok) throw new Error(res.status + ' ' + res.statusText);
+    const manifest = await res.json();
+    const verticals = manifest.verticals || [];
+
+    if (!verticals.length) {
+      slidesEl.innerHTML = heroSlideHtml() + errorSlideHtml('manifest has zero verticals — run the generator script again');
+      return;
+    }
+
+    slidesEl.innerHTML = heroSlideHtml()
+      + verticals.map((v, i) => verticalSlideHtml(v, i + 1)).join('')
+      + closingSlideHtml();
+
+    buildRail(verticals.map(v => v.id));
+    wireScrollSpy(verticals.map(v => v.id));
+    wireLightbox();
+    wireArrowNav(verticals.map(v => v.id));
+  } catch (e) {
+    slidesEl.innerHTML = heroSlideHtml() + errorSlideHtml(e.message);
+  }
+})();
+</script>
+</body>
+</html>
