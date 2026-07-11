@@ -1,17 +1,13 @@
-window.TSMConnectorRegistry = {
+window.TSMConnectorRegistry={
 
-connectors:{},
+ connectors:{},
 
-register(name,connector){
+ register(name,adapter){
+   this.connectors[name]=adapter;
+ },
 
-this.connectors[name]=connector;
-
-},
-
-get(name){
-
-return this.connectors[name];
-
-}
+ list(){
+   return Object.keys(this.connectors);
+ }
 
 };

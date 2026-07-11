@@ -1,15 +1,15 @@
-window.TSMIntegrationHealth = {
+window.TSMIntegrationHealth={
 
-check(){
+ check(){
 
-return {
+  return {
+   status:"READY",
+   integrations:
+    window.TSMConnectorRegistry
+      ? window.TSMConnectorRegistry.list()
+      : []
+  };
 
-status:"READY",
-
-timestamp:new Date().toISOString()
-
-};
-
-}
+ }
 
 };

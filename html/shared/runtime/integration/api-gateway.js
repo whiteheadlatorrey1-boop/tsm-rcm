@@ -1,22 +1,11 @@
-window.TSMApiGateway = {
+window.TSMApiGateway={
 
-requests:[],
+ routes:{},
 
-send(request){
+ register(route,handler){
 
-this.requests.push({
+  this.routes[route]=handler;
 
-timestamp:new Date().toISOString(),
-
-request
-
-});
-
-return {
-status:"QUEUED",
-request
-};
-
-}
+ }
 
 };
