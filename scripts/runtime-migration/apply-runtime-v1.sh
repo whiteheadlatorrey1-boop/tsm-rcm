@@ -18,6 +18,7 @@ SCRIPTS=(
 "04-migrate-events.js"
 "05-register-rules.js"
 "06-validate-runtime.js"
+"07-runtime-bootstrap-upgrade.js"
 )
 
 for script in "${SCRIPTS[@]}"; do

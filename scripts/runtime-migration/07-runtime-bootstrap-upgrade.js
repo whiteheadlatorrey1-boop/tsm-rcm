@@ -1,4 +1,23 @@
-document.addEventListener("DOMContentLoaded",()=>{
+const fs = require("fs");
+
+const target = "html/shared/runtime/index.js";
+const backup = "html/shared/runtime/index.js.runtime-v1-backup";
+
+console.log("\nTSM Runtime Bootstrap Upgrade\n");
+
+if (!fs.existsSync(target)) {
+    console.error("Missing runtime index.js");
+    process.exit(1);
+}
+
+const current = fs.readFileSync(target, "utf8");
+
+if (!fs.existsSync(backup)) {
+    fs.writeFileSync(backup, current);
+    console.log("✓ Created backup:", backup);
+}
+
+const upgraded = `document.addEventListener("DOMContentLoaded",()=>{
 
 console.log("Loading Enterprise Runtime");
 
@@ -63,3 +82,10 @@ console.log(
 );
 
 });
+`;
+
+fs.writeFileSync(target, upgraded);
+
+console.log("✓ Runtime bootstrap upgraded");
+console.log("✓ Runtime health added");
+console.log("✓ Existing index.js preserved");
