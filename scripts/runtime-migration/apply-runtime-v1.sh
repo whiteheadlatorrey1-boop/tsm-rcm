@@ -37,6 +37,7 @@ SCRIPTS=(
 "23-runtime-ai-agent-layer.js"
 "24-runtime-autonomous-operations-layer.js"
 "25-runtime-control-plane-layer.js"
+"26-runtime-observability-layer.js"
 "18-runtime-integration-fabric.js"
 )
 
