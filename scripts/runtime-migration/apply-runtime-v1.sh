@@ -23,6 +23,7 @@ SCRIPTS=(
 "09-register-vertical-adapters.js"
 "10-complete-enterprise-adapters.js"
 "11-add-bpo-adapter.js"
+"12-runtime-intelligence-layer.js"
 )
 
 for script in "${SCRIPTS[@]}"; do
