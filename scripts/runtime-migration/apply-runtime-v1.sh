@@ -41,6 +41,7 @@ SCRIPTS=(
 "27-runtime-optimization-layer.js"
 "28-runtime-ecosystem-connectivity-layer.js"
 "29-runtime-extension-marketplace-layer.js"
+"30-runtime-enterprise-security-layer.js"
 "18-runtime-integration-fabric.js"
 )
 
