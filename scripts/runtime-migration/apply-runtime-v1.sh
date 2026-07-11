@@ -30,6 +30,7 @@ SCRIPTS=(
 "16-runtime-digital-twin-layer.js"
 "17-runtime-command-center-layer.js"
 "18-runtime-integration-hub-layer.js"
+"19-runtime-neural-memory-layer.js"
 "18-runtime-integration-fabric.js"
 )
 
