@@ -1,4 +1,17 @@
 <!DOCTYPE html>
+<!--
+  TSM BPO EXECUTIVE PORTAL — CANONICAL SOURCE OF TRUTH
+  This file, as uploaded by the user, supersedes any other copy of
+  bpo-executive-portal.html referenced in prior sessions, zips, or archives.
+  Do not merge in or defer to any other version found elsewhere in the repo.
+
+  Wiring status as of this edit:
+  - TSM QUALITY SCORE panel: LIVE. Wired to TSMQualityScoreEngine.fromExplainItems()
+    inside mount(), driven by the same relay `explain` items the Explainability
+    panel already renders. No separate data source.
+  - Explainability / WIP panels: LIVE (pre-existing, unchanged).
+  - Decision Center / Execution Tracker: unchanged from upload.
+-->
 <html lang="en">
 <head>
 <style id="tsm-exec-kit-css">
@@ -547,6 +560,7 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
 </style>
 <script src="/shared/tsm-sector-intelligence.js?v=phase3"></script>
 <script src="/shared/tsm-memory-engine.js?v=phase3"></script>
+<script src="/shared/tsm-quality-score-engine.js?v=phase3"></script>
 <script src="./html/js/tsm-runtime-lock.js"></script>
 <script src="./html/js/tsm-event-contract.js"></script>
 <script src="./html/js/tsm-autonomy-layer.js"></script>
@@ -1369,6 +1383,49 @@ function buildExplainability(data) {
         ? new Date(relay.timestamp).toLocaleTimeString() : 'loaded')) : '' });
 
     TSMExecKit.renderExplainability(EXP_ID, items, { openFirst: true });
+
+    renderQualityScore(items);
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* TSM QUALITY SCORE — wires the panel markup already in the page   */
+  /* to TSMQualityScoreEngine.fromExplainItems() using the same       */
+  /* explain items the Explainability panel above already renders.    */
+  /* No new data source: same relay, same items array.                 */
+  /* ---------------------------------------------------------------- */
+  function renderQualityScore(items) {
+    var accEl  = document.getElementById('qsAccuracy');
+    var comEl  = document.getElementById('qsCompleteness');
+    var cplEl  = document.getElementById('qsCompliance');
+    var confEl = document.getElementById('qsConfidence');
+    var bandEl = document.getElementById('qualityScoreBand');
+    var subEl  = document.getElementById('qualityScoreOverall');
+    if (!accEl || !window.TSMQualityScoreEngine) return;
+
+    if (!items || !items.length) {
+      subEl.textContent = 'Awaiting escalation data.';
+      return;
+    }
+
+    var score = TSMQualityScoreEngine.fromExplainItems(items, { recordCount: items.length });
+
+    accEl.textContent  = score.accuracy + '%';
+    comEl.textContent  = score.completeness + '%';
+    cplEl.textContent  = score.compliance + '%';
+    confEl.textContent = score.confidence + '%';
+    bandEl.textContent = score.band + ' \u00b7 ' + score.overall + '%';
+
+    [accEl, comEl, cplEl, confEl].forEach(function (el) {
+      var val = parseInt(el.textContent, 10);
+      var cls = val >= 85 ? 'ok' : (val >= 60 ? 'med' : 'high');
+      el.className = 'impact-val ' + cls;
+      el.parentElement.className = 'impact-tile ' + cls;
+    });
+
+    var topReasons = score.reasons.slice(0, 2).map(function (r) { return r.claim; }).join(' \u2022 ');
+    subEl.textContent = score.openFindings + ' open finding' + (score.openFindings === 1 ? '' : 's') +
+      ' factored in\u2014Overall ' + score.overall + '% (' + score.band + ')' +
+      (topReasons ? '. Top: ' + topReasons : '');
   }
 
   if (document.readyState === 'loading') {
