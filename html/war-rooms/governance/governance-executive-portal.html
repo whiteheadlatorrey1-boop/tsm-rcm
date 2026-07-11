@@ -6,6 +6,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>TSM &middot; Governance & Risk Executive Portal</title>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/html/shared/tsm-exec-framework.css">
 <style>
 :root{
   --bg:#050a0f;--bg2:#0a1020;--bg3:#0d1528;
@@ -92,6 +93,7 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
   </div>
 </div>
 <div class="wrap" id="wrap"><!-- populated by JS --></div>
+<script src="/html/shared/tsm-exec-framework.js"></script>
 <div class="wrap" id="liveRiskWrap" style="padding-top:0;"></div>
 <div class="toast" id="toast"></div>
 <script src="/config/tsm-client-key.js"></script>
@@ -99,7 +101,7 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 function tick(){document.getElementById('clock').textContent=new Date().toLocaleTimeString();}
 setInterval(tick,1000);tick();
 
-const CFG = {"domain": "GOVERNANCE", "kpiPath": "kpis", "kpis": [{"key": "controls_pass", "label": "CONTROLS PASSING", "fmt": "text", "cls": "green"}, {"key": "controls_fail", "label": "CONTROLS FAILING", "fmt": "num", "cls": "red"}, {"key": "open_risks", "label": "OPEN RISKS", "fmt": "num", "cls": "amber"}, {"key": "avg_risk_score", "label": "AVG RISK SCORE", "fmt": "num", "cls": "red"}, {"key": "audit_events", "label": "AUDIT EVENTS", "fmt": "num", "cls": "cyan"}], "lists": [{"path": "risks", "label": "RISK REGISTER"}], "aiPaths": ["ai_analysis"], "title": "Governance & Risk", "isExec": true};
+const CFG = {"domain": "GOVERNANCE", "kpiPath": "kpis", "kpis": [{"key": "controls_pass", "label": "CONTROLS PASSING", "fmt": "text", "cls": "green"}, {"key": "controls_fail", "label": "CONTROLS FAILING", "fmt": "num", "cls": "red"}, {"key": "open_risks", "label": "OPEN RISKS", "fmt": "num", "cls": "amber"}, {"key": "avg_risk_score", "label": "AVG RISK SCORE", "fmt": "num", "cls": "red"}, {"key": "audit_events", "label": "AUDIT EVENTS", "fmt": "num", "cls": "cyan"}], "lists": [{"path": "risks", "label": "RISK REGISTER"}], "aiPaths": ["ai_analysis"], "explainPath": "explain", "title": "Governance & Risk", "isExec": true};
 const RELAY_KEY_FALLBACK = 'TSM_' + CFG.domain + '_RELAY';
 
 function showToast(msg){
@@ -220,6 +222,11 @@ function render(){
   for(const l of CFG.lists){
     const items = getPath(data, l.path);
     html += renderList(items, l.label, l);
+  }
+
+  if(CFG.explainPath && window.TSMExecFramework){
+    const explainItems = getPath(data, CFG.explainPath);
+    html += TSMExecFramework.renderRiskRegister(explainItems, { isExec: CFG.isExec });
   }
 
   if(CFG.isExec){

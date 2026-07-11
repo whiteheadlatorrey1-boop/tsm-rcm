@@ -258,9 +258,37 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
     } catch(e){ out.className='ai-output'; out.textContent=`Analysis failed: ${e.message}`; }
   }
 
+  /** Explainability feed for the risk register. Single real signal type:
+   *  domains scoring below the "healthy" band or trending down, using the
+   *  same score/delta values the domain tiles already render. */
+  function getExplainItems(){
+    const items=[];
+
+    DOMAINS.filter(d=>d.score<75||d.delta<0).forEach(d=>{
+      const severity = d.score<70 ? 'high' : (d.score<80 ? 'med' : 'low');
+      const trend = d.delta>0 ? `up ${d.delta}` : (d.delta<0 ? `down ${Math.abs(d.delta)}` : 'flat');
+      items.push({
+        id: 'domain-'+d.id,
+        claim: `${d.name} health score ${d.score}/100, trending ${trend}`,
+        confidence: 82,
+        severity,
+        impact: d.score<70 ? 'Domain health below acceptable range — investigate root cause' : 'Domain trending down — watch for continued decline',
+        rationale: `${d.name} is currently scored ${d.score}/100 with a period-over-period change of ${d.delta>=0?'+':''}${d.delta}. ${d.score<75?'This is below the healthy-band threshold of 75.':'Score is in range but the negative trend is worth tracking.'}`,
+        sources: [`Digital Twin domain signal ${d.id}`],
+        dataPoints: [
+          { label: 'Score', value: d.score+'/100' },
+          { label: 'Delta', value: (d.delta>=0?'+':'')+d.delta }
+        ]
+      });
+    });
+
+    const rank={high:0,med:1,low:2};
+    return items.sort((a,b)=>(rank[a.severity]??3)-(rank[b.severity]??3));
+  }
+
   document.getElementById('btnAnalyze').addEventListener('click',runAnalysis);
   document.getElementById('btnRelay').addEventListener('click',()=>{
-    try{ TSM.relay.write("DIGITAL_TWIN",{vertical:'digital-twin',domains:DOMAINS,health_score:computeHealth(),ai_analysis:document.getElementById('aiOutput').textContent,timestamp:new Date().toISOString()}); } catch(e){}
+    try{ TSM.relay.write("DIGITAL_TWIN",{vertical:'digital-twin',domains:DOMAINS,health_score:computeHealth(),explain:getExplainItems(),ai_analysis:document.getElementById('aiOutput').textContent,timestamp:new Date().toISOString()}); } catch(e){}
     document.getElementById('navStatus').textContent='TWIN: RELAYED TO BOARD';
     setTimeout(() => { window.location.href = '/html/war-rooms/digital-twin/digital-twin-executive-portal.html'; }, 500);
   });
