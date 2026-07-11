@@ -183,6 +183,7 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
 .slide-in{animation:slideIn .35s ease-out;}
 </style>
 <script src="/shared/tsm-memory-engine.js?v=phase3"></script>
+  <script src="/shared/tsm-quality-score-engine.js"></script>
   <script src="/js/core/tsm-event-bus.js"></script>
   <script src="/js/core/tsm-state.js"></script>
   <script src="/js/core/tsm-mission-engine.js"></script>
@@ -361,6 +362,13 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
         <div class="explain-label">REASONING CHAIN</div>
         <div class="reasoning-box" id="reasoningBox">
           <div style="color:var(--muted)">Reasoning trace will appear after strategy generation completes. This shows exactly how the AI arrived at its recommendation.</div>
+        </div>
+      </div>
+
+      <div class="explain-section">
+        <div class="explain-label">QUALITY SCORE</div>
+        <div id="qualityScoreMount">
+          <div style="color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:.65rem">Recomputes with full evidence once the strategy brief generates.</div>
         </div>
       </div>
     </div>
@@ -777,6 +785,20 @@ function renderExplainability(obj) {
   `).join('') || '<div style="color:var(--muted)">Reasoning chain not extracted</div>';
 
   appendCrossUploadSource();
+
+  // Quality Score — full composite using extraction + strategy recommendation.
+  if (window.TSMQualityScore) {
+    let crossHit = false;
+    if (window.TSMMemory && warData?.extraction?.anomalyCode) {
+      const insight = TSMMemory.getCrossUploadInsight({
+        anomalyCode: warData.extraction.anomalyCode, entityType: 'bpo-incident', entityId: warData.extraction.anomalyEntity
+      });
+      crossHit = Math.max(0, (insight.priorOccurrences || 0) - 1) > 0;
+    }
+    const qs = TSMQualityScore.compute({ extraction: warData?.extraction, recommendation: obj, crossUploadHit: crossHit });
+    TSMQualityScore.renderCard('qualityScoreMount', qs);
+    window._tsmQualityScore = qs;
+  }
 }
 
 // ── MEMORY: SURFACE WHAT WE ALREADY KNOW FROM PRIOR UPLOADS ──
@@ -861,7 +883,13 @@ function storeStratRelay(){
     timestamp: new Date().toISOString(),
     chainStep: 'strategist',
     recommendation: generatedRec,
-    selectedScenario
+    selectedScenario,
+    extraction: warData?.extraction,
+    qualityScore: window._tsmQualityScore || null,
+    anomalyCode: warData?.extraction?.anomalyCode,
+    anomalyEntity: warData?.extraction?.anomalyEntity,
+    revenueAtRisk: warData?.extraction?.revenueAtRisk,
+    runway: warData?.extraction?.runway
   };
   try {
     sessionStorage.setItem('TSM_BPO_STRAT_RELAY', JSON.stringify(payload));
