@@ -19,7 +19,9 @@ SCRIPTS=(
 "05-register-rules.js"
 "06-validate-runtime.js"
 "07-runtime-bootstrap-upgrade.js"
- "08-runtime-dependency-check.js"
+"08-runtime-dependency-check.js"
+"09-register-vertical-adapters.js"
+"10-complete-enterprise-adapters.js"
 )
 
 for script in "${SCRIPTS[@]}"; do
