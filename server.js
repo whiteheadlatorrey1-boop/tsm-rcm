@@ -226,7 +226,7 @@ app.use('/html', express.static(path.join(__dirname, 'html'), { setHeaders: (res
 app.use('/js', express.static(path.join(__dirname, 'html/tsm-insurance/public/js')));
 app.use('/js', express.static(path.join(__dirname, 'html/js')));
 app.use('/bpo', express.static(path.join(__dirname, 'html/bpo')));
-app.use('/shared', express.static(path.join(__dirname, 'html/bpo/shared')));
+app.use('/shared', express.static(path.join(__dirname, 'html/shared')));
 app.use('/insurance', express.static(path.join(__dirname, 'html/tsm-insurance')));
 app.use('/construction', express.static(path.join(__dirname, 'html/construction-suite')));
 // NOTE: /runtime and /architecture mounts now live earlier in this file
