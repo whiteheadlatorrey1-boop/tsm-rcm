@@ -33,6 +33,7 @@ SCRIPTS=(
 "19-runtime-neural-memory-layer.js"
 "20-runtime-predictive-intelligence-layer.js"
 "21-runtime-data-fabric-layer.js"
+"22-runtime-graph-intelligence-layer.js"
 "18-runtime-integration-fabric.js"
 )
 
