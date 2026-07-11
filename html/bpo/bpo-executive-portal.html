@@ -547,7 +547,6 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
 </style>
 <script src="/shared/tsm-sector-intelligence.js?v=phase3"></script>
 <script src="/shared/tsm-memory-engine.js?v=phase3"></script>
-<script src="/shared/tsm-quality-score-engine.js"></script>
 <script src="./html/js/tsm-runtime-lock.js"></script>
 <script src="./html/js/tsm-event-contract.js"></script>
 <script src="./html/js/tsm-autonomy-layer.js"></script>
@@ -645,6 +644,18 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
   </div>
 </div>
 
+<!-- ── TSM QUALITY SCORE ── -->
+<div class="panel" style="margin-top:1px;">
+  <div class="panel-title"><div class="dot" style="background:var(--purple)"></div>TSM QUALITY SCORE<span class="panel-sub" id="qualityScoreBand"></span></div>
+  <div id="qualityScoreGrid" class="impact-grid" style="background:var(--border);">
+    <div class="impact-tile ok"><div class="impact-label">ACCURACY</div><div class="impact-val ok" id="qsAccuracy">—</div></div>
+    <div class="impact-tile ok"><div class="impact-label">COMPLETENESS</div><div class="impact-val ok" id="qsCompleteness">—</div></div>
+    <div class="impact-tile ok"><div class="impact-label">COMPLIANCE</div><div class="impact-val ok" id="qsCompliance">—</div></div>
+    <div class="impact-tile ok"><div class="impact-label">CONFIDENCE</div><div class="impact-val ok" id="qsConfidence">—</div></div>
+  </div>
+  <div class="impact-sub" id="qualityScoreOverall" style="padding:10px 18px 0;font-size:.7rem;">Awaiting escalation data.</div>
+</div>
+
 
 <!-- ── 3-BLOCK ROW: DECISION CENTER + TRACKER + EXPLAINABILITY ── -->
 <div class="three-block-row">
@@ -703,13 +714,6 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
         <div style="color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:.68rem">No anomaly record found.</div>
       </div>
       <div class="insight-line empty" id="crossUploadLine">Cross-upload insight will appear once an anomaly resolution is loaded.</div>
-    </div>
-
-    <div class="panel">
-      <div class="panel-title"><div class="dot" style="background:var(--purple)"></div>QUALITY SCORE · CLIENT DELIVERABLE</div>
-      <div id="qualityScoreMount">
-        <div style="color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:.68rem">No strategy escalated yet.</div>
-      </div>
     </div>
 
     <div class="panel">
@@ -829,13 +833,6 @@ function loadDemoMode() {
     anomalyEntity:'Supplier Bankruptcy · Critical',
     revenueAtRisk:'$8.2M',
     runway:'6 Days',
-    extraction: {
-      rootCause: 'Primary supplier filed Chapter 11, halting shipments with no advance notice.',
-      revenueAtRisk: '$8.2M', runway: '6 Days', severity: 'CRITICAL',
-      situationSummary: 'Supplier bankruptcy filed. $8.2M revenue at risk across 3 production lines and 17 customers.',
-      risks: [{ text:'Production halt within 6 days', level:'CRITICAL', icon:'⚡' }, { text:'Customer SLA breach risk', level:'HIGH', icon:'⚠' }],
-      bnca: ['Activate Supplier B immediately', 'Divert production to available lines', 'Notify Tier-1 customers proactively']
-    },
     timestamp: new Date().toISOString()
   };
   document.getElementById('actStatus').innerHTML = 'Status: <span>DEMO MODE ACTIVE</span>';
@@ -877,14 +874,6 @@ function hydratePage(d) {
   buildResolutionAudit(d);
   buildExecQueue(d);
   buildRecommendedApps(d);
-
-  // Quality Score — final client-facing composite. Reuses the strategist's
-  // computation if it was passed through the relay; recomputes as a fallback
-  // (e.g. demo mode, or older relay payloads without a qualityScore field).
-  if (window.TSMQualityScore) {
-    const qs = d.qualityScore || TSMQualityScore.compute({ extraction: d.extraction, recommendation: rec });
-    TSMQualityScore.renderCard('qualityScoreMount', qs);
-  }
 
   if (window.TSMMemory) TSMMemory.timeline('Executive Portal opened — reviewing escalation for ' + (d.anomalyEntity || d.sector || 'incident'));
 }
@@ -990,46 +979,24 @@ function buildResolutionAudit(d) {
 }
 
 // ── EXECUTIVE RELAY QUEUE ──
-// Roadmap item #3 (Autonomous Exception Management): rank by financial
-// impact instead of a flat FIFO queue, so the highest-exposure item surfaces first.
-function priorityFor(exposureStr) {
-  const val = parseDollar(exposureStr) || 0;
-  if (val >= 100000) return { tier: 'P1', color: 'var(--red)', label: 'P1 · HIGH EXPOSURE' };
-  if (val >= 20000) return { tier: 'P2', color: 'var(--amber)', label: 'P2 · MED EXPOSURE' };
-  return { tier: 'P3', color: 'var(--cyan)', label: 'P3 · LOW EXPOSURE' };
-}
-
 function buildExecQueue(d) {
   const el = document.getElementById('execQueueList');
   if (!window.TSMMemory) { el.innerHTML = '<div class="eq-empty">Memory engine unavailable.</div>'; return; }
 
-  let queue = (TSMMemory.get().executiveQueue || []).slice();
-  // Rank by financial impact (P1 first), preserving recency as the tiebreaker within a tier.
-  queue = queue
-    .map(item => ({ item, exposure: parseDollar(item.exposure) || 0 }))
-    .sort((a, b) => b.exposure - a.exposure)
-    .map(x => x.item)
-    .slice(0, 6);
-
+  const queue = (TSMMemory.get().executiveQueue || []).slice(0, 6);
   if (!queue.length) { el.innerHTML = '<div class="eq-empty">Queue is empty.</div>'; return; }
 
-  el.innerHTML = queue.map((item, i) => {
-    const p = priorityFor(item.exposure);
-    return `
+  el.innerHTML = queue.map((item, i) => `
     <div class="eq-item">
       <div class="eq-top">
-        <div style="display:flex;align-items:center;gap:8px;">
-          <span style="font-family:'Orbitron',sans-serif;font-size:.55rem;letter-spacing:.06em;color:${p.color};border:1px solid ${p.color};padding:2px 6px;border-radius:3px;">${p.tier}</span>
-          <div class="eq-title">${item.title}</div>
-        </div>
+        <div class="eq-title">${item.title}</div>
         <div class="eq-status ${item.status === 'approved' ? 'approved' : 'queued'}" id="eqStatus${i}">${item.status.toUpperCase()}</div>
       </div>
       <div class="eq-summary">${(item.summary || '').slice(0, 140)}</div>
-      <div class="eq-meta">Exposure: <span style="color:${p.color}">${item.exposure || '—'}</span> &nbsp;·&nbsp; Owner: <span>${item.owner || '—'}</span> &nbsp;·&nbsp; <span style="color:var(--muted)">${p.label}</span></div>
+      <div class="eq-meta">Exposure: <span>${item.exposure || '—'}</span> &nbsp;·&nbsp; Owner: <span>${item.owner || '—'}</span></div>
       <button class="eq-btn" id="eqBtn${i}" onclick="approveQueueItem(${i}, '${(item.title||'').replace(/'/g,"\\'")}')" ${item.status === 'approved' ? 'disabled' : ''}>${item.status === 'approved' ? '✓ APPROVED' : 'APPROVE & EXECUTE'}</button>
     </div>
-  `;
-  }).join('');
+  `).join('');
 }
 
 function approveQueueItem(i, title) {
@@ -1206,8 +1173,6 @@ function buildExplainability(data) {
 })();
 </script>
 <div id="tsm-chain-bar" style="position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#040c12;border-top:1px solid #0d2233;display:flex;align-items:center;height:32px;padding:0 16px;font-family:'IBM Plex Mono',monospace;font-size:10px;"><span style="color:#3a5a70;margin-right:12px;font-size:9px;">TSM CHAIN</span><a href="/html/bpo/bpo-situation-room.html" style="color:#94a3b8;border:1px solid #1a3a50;padding:3px 10px;border-radius:3px;text-decoration:none;margin-right:6px;font-size:9px;">&#9675; WAR ROOM</a><span style="color:#1a3a50;margin-right:6px;">--&gt;</span><a href="/html/bpo/bpo-strategist-v2.html" style="color:#94a3b8;border:1px solid #1a3a50;padding:3px 10px;border-radius:3px;text-decoration:none;margin-right:6px;font-size:9px;">&#9675; STRATEGIST</a><span style="color:#1a3a50;margin-right:6px;">--&gt;</span><a href="#" style="color:var(--cyan, #00e5ff);background:rgba(255,255,255,.05);border:1px solid var(--cyan, #00e5ff)55;padding:3px 10px;border-radius:3px;text-decoration:none;margin-right:6px;font-size:9px;">&#9679; EXEC PORTAL</a><span style="color:#1a3a50;margin-left:auto;font-size:9px;">BPO</span></div>
-
-<script src="/js/core/tsm-event-bus.js"></script>
 
 <script id="tsm-exec-kit-js">
 
@@ -1419,44 +1384,33 @@ function buildExplainability(data) {
 })();
 </script>
   <script src="/html/core/tsm-runtime.js"></script>
-</body>
-</html>
+  <script src="/html/core/tsm-kernel.js"></script>
+  <script>
+    // ===== TSM_AUTONOMY_STANDARDIZED =====
+    window.TSM_AUTONOMY_STANDARDIZED = true;
 
-// ===== TSM_AUTONOMY_STANDARDIZED =====
-window.TSM_AUTONOMY_STANDARDIZED = true;
-</script>
+    // ===== TSM WAR ROOM SCOPED RELAY FIX =====
+    window.tsmMission = window.tsmMission || {
+      id: "BPO-" + Date.now().toString(36),
+      vertical: "bpo"
+    };
 
-<!-- TSM ENFORCER BOOT -->
-<script src="../../core/tsm-enforcer.js"></script>
+    function tsmWriteRelay(payload){
+      TSM_KERNEL.setRelay("bpo", JSON.stringify(payload));
+    }
 
-
-// ===== TSM WAR ROOM SCOPED RELAY FIX =====
-window.tsmMission = window.tsmMission || {
-  id: "BPO-" + Date.now().toString(36),
-  vertical: "bpo",
-  
-};
-
-function tsmWriteRelay(payload){
-  TSM_KERNEL.setRelay("bpo", JSON.stringify(payload));
-}
-</script>
-
-
-// ===== TSM EXEC BRIDGE LAYER =====
-
-function tsmWriteScopedExec(vertical, missionId){
-  localStorage.setItem("TSM_EXEC_CONFIRMED_bpo_" + vertical, JSON.stringify({
-    vertical,
-    missionId,
-    timestamp: Date.now()
-  }));
-}
-</script>
-<!-- TSM CONTROL PLANE -->
-<script src="/html/js/core/tsm-event-bus.js"></script>
-<script src="/html/js/core/tsm-state.js"></script>
-<script src="/html/js/core/tsm-mission-engine.js"></script>
-<script src="/shared/tsm-exec-portal-upgrade.js"></script>
+    // ===== TSM EXEC BRIDGE LAYER =====
+    function tsmWriteScopedExec(vertical, missionId){
+      localStorage.setItem("TSM_EXEC_CONFIRMED_bpo_" + vertical, JSON.stringify({
+        vertical,
+        missionId,
+        timestamp: Date.now()
+      }));
+    }
+  </script>
+  <!-- TSM ENFORCER BOOT -->
+  <script src="../../core/tsm-enforcer.js"></script>
+  <!-- TSM CONTROL PLANE -->
+  <script src="/shared/tsm-exec-portal-upgrade.js"></script>
 </body>
 </html>
