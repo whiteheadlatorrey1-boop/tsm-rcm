@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ServiceNow CSA Exam Simulator · TSM Career Training</title>
+<style>
+:root {
+  --bg: #0a0c10; --surface: #111318; --surface2: #181b22;
+  --border: #1e2230; --border2: #2a2f42;
+  --text: #e8eaf0; --text2: #8890a8; --text3: #4a5068;
+  --green: #00d4aa; --green-dim: rgba(0,212,170,0.08); --green-border: rgba(0,212,170,0.2);
+  --cyan: #00d4d4; --cyan-dim: rgba(0,212,212,0.07); --cyan-border: rgba(0,212,212,0.2);
+  --amber: #f59e0b; --amber-dim: rgba(245,158,11,0.08); --amber-border: rgba(245,158,11,0.2);
+  --red: #ef4444; --red-dim: rgba(239,68,68,0.08); --red-border: rgba(239,68,68,0.2);
+  --purple: #a78bfa; --purple-dim: rgba(167,139,250,0.08); --purple-border: rgba(167,139,250,0.2);
+  --mono: 'Courier New', monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: var(--mono); min-height: 100vh; }
+header {
+  border-bottom: 1px solid var(--border); padding: 0 2rem; display: flex; align-items: center;
+  justify-content: space-between; height: 56px; position: sticky; top: 0; background: var(--bg); z-index: 200;
+}
+.logo { font-size: 11px; letter-spacing: .18em; color: var(--text2); }
+.logo span { color: var(--purple); }
+.timer-pill {
+  font-size: 13px; font-weight: 700; letter-spacing: .06em; padding: 6px 14px;
+  background: var(--surface); border: 1px solid var(--border2); color: var(--cyan);
+}
+.timer-pill.warn { color: var(--amber); border-color: var(--amber-border); }
+.timer-pill.danger { color: var(--red); border-color: var(--red-border); animation: pulse 1s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+.back-link { font-size: 10px; letter-spacing: .08em; color: var(--cyan); text-decoration: none; border: 1px solid var(--cyan-border); padding: 6px 12px; }
+.back-link:hover { background: var(--cyan-dim); }
+.wrap { max-width: 860px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+.eyebrow { font-size: 10px; letter-spacing: .14em; color: var(--purple); margin-bottom: 8px; }
+.title { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+.sub { font-size: 12.5px; color: var(--text2); max-width: 680px; margin-bottom: 20px; line-height: 1.6; }
+
+.intake-card { background: var(--surface); border: 1px solid var(--border); padding: 2rem; text-align: center; }
+.intake-card h2 { font-size: 16px; margin-bottom: 12px; color: var(--text); }
+.intake-card p { font-size: 12.5px; color: var(--text2); line-height: 1.7; max-width: 560px; margin: 0 auto 20px; }
+.intake-meta { display: flex; justify-content: center; gap: 24px; margin-bottom: 24px; }
+.intake-meta-cell { font-size: 11px; color: var(--text3); }
+.intake-meta-cell b { display: block; font-size: 16px; color: var(--cyan); margin-bottom: 2px; }
+.start-btn {
+  font-size: 11px; letter-spacing: .08em; padding: 12px 28px; background: var(--purple-dim);
+  border: 1px solid var(--purple-border); color: var(--purple); cursor: pointer;
+}
+.start-btn:hover { background: rgba(167,139,250,0.16); }
+
+.progress-row { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+.progress-bar { flex: 1; height: 4px; background: var(--border2); border-radius: 2px; overflow: hidden; }
+.progress-fill { height: 100%; background: var(--purple); width: 0%; transition: width .2s; }
+.progress-label { font-size: 10px; color: var(--text3); white-space: nowrap; }
+
+.q-card { background: var(--surface); border: 1px solid var(--border); padding: 1.8rem; margin-bottom: 16px; }
+.q-tag { display: inline-block; font-size: 9px; letter-spacing: .08em; padding: 3px 8px; background: var(--purple-dim); border: 1px solid var(--purple-border); color: var(--purple); margin-bottom: 12px; }
+.q-text { font-size: 14px; line-height: 1.7; color: var(--text); margin-bottom: 20px; }
+.q-options { display: flex; flex-direction: column; gap: 8px; }
+.q-option {
+  text-align: left; background: var(--surface2); border: 1px solid var(--border2); color: var(--text2);
+  padding: 12px 16px; font-size: 12.5px; font-family: var(--mono); cursor: pointer; line-height: 1.5;
+}
+.q-option:hover { border-color: var(--cyan-border); color: var(--text); }
+.q-option.selected { background: var(--cyan-dim); border-color: var(--cyan-border); color: var(--cyan); }
+
+.nav-row { display: flex; justify-content: space-between; align-items: center; }
+.nav-btn {
+  font-size: 10px; letter-spacing: .06em; padding: 10px 18px; background: var(--surface2);
+  border: 1px solid var(--border2); color: var(--text2); cursor: pointer;
+}
+.nav-btn:hover:not(:disabled) { border-color: var(--cyan-border); color: var(--cyan); }
+.nav-btn:disabled { opacity: .35; cursor: not-allowed; }
+.nav-btn.submit { background: var(--green-dim); border-color: var(--green-border); color: var(--green); }
+
+.jump-grid { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 20px; }
+.jump-cell {
+  width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
+  font-size: 9px; background: var(--surface2); border: 1px solid var(--border2); color: var(--text3); cursor: pointer;
+}
+.jump-cell.answered { border-color: var(--green-border); color: var(--green); }
+.jump-cell.current { border-color: var(--cyan); color: var(--cyan); }
+
+/* ── RESULTS ── */
+.result-banner { text-align: center; padding: 2.2rem 1rem; background: var(--surface); border: 1px solid var(--border); margin-bottom: 20px; }
+.result-banner.pass { border-color: var(--green-border); background: var(--green-dim); }
+.result-banner.fail { border-color: var(--red-border); background: var(--red-dim); }
+.result-status { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+.result-status.pass { color: var(--green); }
+.result-status.fail { color: var(--red); }
+.result-score { font-size: 13px; color: var(--text2); }
+
+.domain-breakdown { background: var(--surface); border: 1px solid var(--border); padding: 1.4rem 1.6rem; margin-bottom: 20px; }
+.db-title { font-size: 10px; letter-spacing: .1em; color: var(--text3); margin-bottom: 14px; }
+.db-row { margin-bottom: 12px; }
+.db-row-top { display: flex; justify-content: space-between; font-size: 11.5px; margin-bottom: 5px; }
+.db-row-name { color: var(--text); }
+.db-row-pct { color: var(--text2); }
+.db-bar-track { height: 6px; background: var(--border2); border-radius: 3px; overflow: hidden; }
+.db-bar-fill { height: 100%; border-radius: 3px; }
+.db-bar-fill.good { background: var(--green); }
+.db-bar-fill.mid { background: var(--amber); }
+.db-bar-fill.low { background: var(--red); }
+
+.review-toggle { text-align: center; margin-bottom: 16px; }
+.review-toggle button {
+  font-size: 10px; letter-spacing: .06em; padding: 10px 20px; background: var(--surface2);
+  border: 1px solid var(--border2); color: var(--text2); cursor: pointer;
+}
+.review-toggle button:hover { color: var(--cyan); border-color: var(--cyan-border); }
+.review-item { background: var(--surface); border: 1px solid var(--border); padding: 1.2rem 1.4rem; margin-bottom: 10px; }
+.review-q { font-size: 12px; color: var(--text); margin-bottom: 8px; line-height: 1.6; }
+.review-opt { font-size: 11px; padding: 6px 10px; margin-bottom: 4px; border-left: 2px solid transparent; color: var(--text3); }
+.review-opt.your-correct { border-color: var(--green); color: var(--green); }
+.review-opt.your-wrong { border-color: var(--red); color: var(--red); }
+.review-opt.right-answer { border-color: var(--green); color: var(--green); }
+
+.retry-row { text-align: center; margin-top: 20px; }
+.retry-btn {
+  font-size: 11px; letter-spacing: .08em; padding: 11px 26px; background: var(--purple-dim);
+  border: 1px solid var(--purple-border); color: var(--purple); cursor: pointer;
+}
+
+.footer-links { display: flex; gap: 10px; margin-top: 32px; padding-top: 20px; border-top: 1px solid var(--border); }
+.footer-links a {
+  font-size: 10px; letter-spacing: .06em; color: var(--text2); text-decoration: none;
+  border: 1px solid var(--border2); padding: 8px 14px;
+}
+.footer-links a:hover { color: var(--cyan); border-color: var(--cyan-border); }
+.hidden { display: none; }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">TSM <span>SHELL</span> · SERVICENOW CSA EXAM SIMULATOR</div>
+  <div style="display:flex;align-items:center;gap:12px;">
+    <div class="timer-pill hidden" id="timer-pill">30:00</div>
+    <a class="back-link" href="/html/tsm-career-training-platform.html">← BACK TO PLATFORM</a>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="eyebrow">IT · SERVICE DESK · TIMED CERTIFICATION EXAM</div>
+  <div class="title">ServiceNow CSA Exam Simulator</div>
+  <div class="sub">24 questions across all 6 ServiceNow ITSM domains, CSA-style. 30-minute countdown, one attempt per session, full domain-by-domain score breakdown and answer review at the end.</div>
+
+  <!-- INTAKE -->
+  <div id="intake-screen">
+    <div class="intake-card">
+      <h2>Ready when you are</h2>
+      <p>This mirrors the real exam experience: timed, single attempt, no going back to change an answer once you submit. You can move between questions freely before submitting. Domain breakdown and full answer review are shown immediately after.</p>
+      <div class="intake-meta">
+        <div class="intake-meta-cell"><b>24</b>QUESTIONS</div>
+        <div class="intake-meta-cell"><b>30:00</b>TIME LIMIT</div>
+        <div class="intake-meta-cell"><b>6</b>DOMAINS</div>
+        <div class="intake-meta-cell"><b>70%</b>PASS SCORE</div>
+      </div>
+      <button class="start-btn" onclick="startExam()">START EXAM →</button>
+    </div>
+  </div>
+
+  <!-- EXAM -->
+  <div id="exam-screen" class="hidden">
+    <div class="progress-row">
+      <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+      <div class="progress-label" id="progress-label">Q1 / 24</div>
+    </div>
+    <div class="jump-grid" id="jump-grid"></div>
+    <div id="q-container"></div>
+    <div class="nav-row">
+      <button class="nav-btn" id="prev-btn" onclick="navQ(-1)">← PREVIOUS</button>
+      <button class="nav-btn" id="next-btn" onclick="navQ(1)">NEXT →</button>
+      <button class="nav-btn submit hidden" id="submit-btn" onclick="submitExam()">SUBMIT EXAM</button>
+    </div>
+  </div>
+
+  <!-- RESULTS -->
+  <div id="results-screen" class="hidden"></div>
+
+  <div class="footer-links">
+    <a href="/html/l1-copilot/servicenow-fundamentals.html">← FUNDAMENTALS</a>
+    <a href="/html/l1-copilot/servicenow-scenarios.html">← SCENARIO ENGINE</a>
+    <a href="/html/l1-copilot/l1-ticket-copilot.html">L1 TICKET COPILOT →</a>
+  </div>
+</div>
+
+<script>
+const DOMAINS = {
+  nav: 'Platform Navigation',
+  access: 'Users, Groups & Access',
+  incident: 'Incident & Problem',
+  change: 'Change Enablement',
+  cmdb: 'CMDB & Assets',
+  scripting: 'Notifications & Basics'
+};
+
+const questions = [
+  // ── PLATFORM NAVIGATION ──
+  { domain:'nav', text:'A new agent wants to reuse a complex filter they built on the Incident list every day without rebuilding it each time. What should they do?', options:['Rebuild the filter manually every morning','Save the filtered list as a Favorite','Ask an admin to hardcode it as the default view for everyone','Bookmark the URL in their browser'], correct:1 },
+  { domain:'nav', text:'What is the main difference between a list view and a form view in ServiceNow?', options:['List views are read-only, form views allow edits','List views show many records as a sortable/filterable table; form views show one record\'s full detail','Form views are only visible to admins','There is no functional difference'], correct:1 },
+  { domain:'nav', text:'Which tool lets an agent search across every module they have access to at once, rather than one list at a time?', options:['Global search in the Application Navigator','The CMDB relationship map','Flow Designer','A Business Rule'], correct:0 },
+  { domain:'nav', text:'What is the "Now Experience UI" in the context of ServiceNow?', options:['A legacy interface being phased out','The modern workspace layout most agents use for day-to-day work','A mobile-only view','An admin-only configuration screen'], correct:1 },
+
+  // ── ACCESS ──
+  { domain:'access', text:'What actually enforces who can read, write, create, or delete records on a given table in ServiceNow?', options:['The user\'s job title','Access Control Lists (ACLs)','The record\'s priority field','The Change Advisory Board'], correct:1 },
+  { domain:'access', text:'A ticket needs to route to the correct team automatically based on category. What controls that routing?', options:['Assignment groups','Approval groups','The CMDB','A Client Script'], correct:0 },
+  { domain:'access', text:'What is the core relationship between a role and a group in ServiceNow?', options:['They are the same thing with different names','A role grants specific access; a group is a collection of users a role or task can be assigned to','Groups override roles','Roles only apply to admins'], correct:1 },
+  { domain:'access', text:'A new hire needs to view and update Incident and Problem records but should not approve Changes. What is the correct approach?', options:['Grant full admin rights temporarily','Assign the itil role and the right assignment group, without a change-approver role','Give them the same access as their manager','Leave access unassigned until they ask for something specific'], correct:1 },
+
+  // ── INCIDENT & PROBLEM ──
+  { domain:'incident', text:'What is the standard state model an Incident moves through?', options:['Draft → Review → Published','New → In Progress → On Hold → Resolved → Closed','Open → Escalated → Archived','Logged → Assigned → Complete'], correct:1 },
+  { domain:'incident', text:'How is Incident priority typically calculated?', options:['Whoever reports it first gets highest priority','Impact × Urgency','Ticket age alone','Random assignment by the system'], correct:1 },
+  { domain:'incident', text:'Six incidents over two weeks share the same root cause and the same manual workaround each time. What is the correct next step?', options:['Keep resolving each one individually as it comes in','Open a Problem record, document a Known Error, and link the incidents to it','Close all six as duplicates','Escalate each one as a Major Incident'], correct:1 },
+  { domain:'incident', text:'What is a "Known Error" in ServiceNow terms?', options:['An incident that was never resolved','A documented root cause with a workaround, linked to a Problem record','A ticket that breached SLA','Any incident older than 30 days'], correct:1 },
+
+  // ── CHANGE ENABLEMENT ──
+  { domain:'change', text:'A pre-approved, low-risk firewall rule update has been performed the same way 40 times with no incidents. What change type fits?', options:['Emergency change','Normal change requiring full CAB review','Standard change using a pre-approved template','No change record is needed since it\'s routine'], correct:2 },
+  { domain:'change', text:'What does the Change Advisory Board (CAB) primarily review?', options:['Every single change regardless of risk','Higher-risk Normal changes before they\'re scheduled','Only Emergency changes after the fact','Incident tickets'], correct:1 },
+  { domain:'change', text:'Why is a backout/rollback plan expected on Normal or Emergency changes?', options:['It\'s just a formality with no real use','So there\'s a defined way to undo the change if something breaks','Only Standard changes need one','It replaces the need for testing'], correct:1 },
+  { domain:'change', text:'What does Change scheduling check against to avoid conflicts?', options:['The CMDB relationship map only','A Change Freeze calendar','The requester\'s personal calendar','Nothing — conflicts are resolved after the fact'], correct:1 },
+
+  // ── CMDB & ASSETS ──
+  { domain:'cmdb', text:'What is a Configuration Item (CI)?', options:['Any ticket in the system','A tracked component of your service topology — a server, application, or network device','A type of user role','A financial line item'], correct:1 },
+  { domain:'cmdb', text:'Before approving a change to a database server, how should you check what else might break?', options:['Ask the requester what they think might be affected','Trace the CI\'s relationships in the CMDB for downstream dependencies','Approve it and handle issues as they come up','Check the requester\'s job title'], correct:1 },
+  { domain:'cmdb', text:'What is the key difference between the CMDB and Asset Management?', options:['They are the same module under two names','CMDB tracks how a CI fits into the service topology; Asset Management tracks a purchased item\'s lifecycle','Asset Management is only for software licenses','CMDB is only used during Incident triage'], correct:1 },
+  { domain:'cmdb', text:'What is the #1 reason change risk assessments go wrong, according to standard ITSM practice?', options:['Too many approvers','Poor CMDB data quality','Changes are scheduled too far in advance','Incidents are closed too quickly'], correct:1 },
+
+  // ── NOTIFICATIONS & BASICS ──
+  { domain:'scripting', text:'What is the key distinction between a UI Policy and a Business Rule?', options:['They are functionally identical','UI Policies are client-facing (show/hide/require fields); Business Rules run server-side regardless of who\'s looking','Business Rules only run on mobile','UI Policies require scripting, Business Rules do not'], correct:1 },
+  { domain:'scripting', text:'What triggers a Notification in ServiceNow?', options:['Manual admin action only','Automatically off record changes, e.g. emailing the assignee when priority is raised','Only scheduled jobs can trigger notifications','Notifications cannot be automated'], correct:1 },
+  { domain:'scripting', text:'What is Flow Designer used for?', options:['Writing raw server-side scripts only','No-code automation — approvals, routing, notifications — without scripting','Designing the visual theme of the instance','Managing user passwords'], correct:1 },
+  { domain:'scripting', text:'When is a Client Script the appropriate tool versus server-side logic?', options:['Client Scripts should always be used instead of server-side logic','For immediate, browser-side form behavior; server-side logic (Business Rules) runs regardless of the client','Client Scripts and Business Rules are interchangeable','Neither should be used if Flow Designer exists'], correct:1 }
+];
+
+const TOTAL_TIME = 30 * 60;
+let timeLeft = TOTAL_TIME;
+let timerInterval = null;
+let current = 0;
+let answers = new Array(questions.length).fill(null);
+let submitted = false;
+
+function startExam() {
+  document.getElementById('intake-screen').classList.add('hidden');
+  document.getElementById('exam-screen').classList.remove('hidden');
+  document.getElementById('timer-pill').classList.remove('hidden');
+  buildJumpGrid();
+  renderQuestion();
+  timerInterval = setInterval(tick, 1000);
+}
+
+function tick() {
+  timeLeft--;
+  const m = Math.floor(timeLeft / 60), s = timeLeft % 60;
+  const pill = document.getElementById('timer-pill');
+  pill.textContent = m + ':' + String(s).padStart(2,'0');
+  pill.classList.remove('warn','danger');
+  if (timeLeft <= 120) pill.classList.add('danger');
+  else if (timeLeft <= 300) pill.classList.add('warn');
+  if (timeLeft <= 0) { clearInterval(timerInterval); submitExam(); }
+}
+
+function buildJumpGrid() {
+  const grid = document.getElementById('jump-grid');
+  grid.innerHTML = questions.map((q,i) => `<div class="jump-cell" id="jump-${i}" onclick="goTo(${i})">${i+1}</div>`).join('');
+}
+
+function updateJumpGrid() {
+  questions.forEach((q,i) => {
+    const cell = document.getElementById('jump-'+i);
+    cell.classList.toggle('answered', answers[i] !== null);
+    cell.classList.toggle('current', i === current);
+  });
+}
+
+function goTo(i) { current = i; renderQuestion(); }
+
+function renderQuestion() {
+  const q = questions[current];
+  document.getElementById('progress-label').textContent = 'Q' + (current+1) + ' / ' + questions.length;
+  document.getElementById('progress-fill').style.width = Math.round(((current+1)/questions.length)*100) + '%';
+  updateJumpGrid();
+
+  document.getElementById('q-container').innerHTML = `
+    <div class="q-card">
+      <div class="q-tag">${DOMAINS[q.domain]}</div>
+      <div class="q-text">${(current+1)}. ${q.text}</div>
+      <div class="q-options">
+        ${q.options.map((opt,i) => `<button class="q-option ${answers[current]===i?'selected':''}" onclick="selectAnswer(${i})">${String.fromCharCode(65+i)}. ${opt}</button>`).join('')}
+      </div>
+    </div>`;
+
+  document.getElementById('prev-btn').disabled = current === 0;
+  document.getElementById('next-btn').classList.toggle('hidden', current === questions.length - 1);
+  document.getElementById('submit-btn').classList.toggle('hidden', current !== questions.length - 1);
+}
+
+function selectAnswer(i) {
+  answers[current] = i;
+  renderQuestion();
+}
+
+function navQ(dir) {
+  const next = current + dir;
+  if (next < 0 || next >= questions.length) return;
+  current = next;
+  renderQuestion();
+}
+
+function submitExam() {
+  if (submitted) return;
+  submitted = true;
+  clearInterval(timerInterval);
+  document.getElementById('exam-screen').classList.add('hidden');
+  document.getElementById('timer-pill').classList.add('hidden');
+
+  const domainStats = {};
+  Object.keys(DOMAINS).forEach(d => domainStats[d] = { correct: 0, total: 0 });
+
+  let correctCount = 0;
+  questions.forEach((q,i) => {
+    domainStats[q.domain].total++;
+    if (answers[i] === q.correct) { correctCount++; domainStats[q.domain].correct++; }
+  });
+
+  const pct = Math.round((correctCount / questions.length) * 100);
+  const passed = pct >= 70;
+
+  let domainRows = '';
+  Object.keys(DOMAINS).forEach(d => {
+    const s = domainStats[d];
+    const dpct = Math.round((s.correct / s.total) * 100);
+    const cls = dpct >= 80 ? 'good' : dpct >= 60 ? 'mid' : 'low';
+    domainRows += `<div class="db-row">
+      <div class="db-row-top"><span class="db-row-name">${DOMAINS[d]}</span><span class="db-row-pct">${s.correct}/${s.total} · ${dpct}%</span></div>
+      <div class="db-bar-track"><div class="db-bar-fill ${cls}" style="width:${dpct}%"></div></div>
+    </div>`;
+  });
+
+  let reviewHtml = '';
+  questions.forEach((q,i) => {
+    const yourAns = answers[i];
+    reviewHtml += `<div class="review-item">
+      <div class="review-q">${i+1}. [${DOMAINS[q.domain]}] ${q.text}</div>
+      ${q.options.map((opt,oi) => {
+        let cls = '';
+        if (oi === q.correct) cls = 'right-answer';
+        if (oi === yourAns && yourAns !== q.correct) cls = 'your-wrong';
+        if (oi === yourAns && yourAns === q.correct) cls = 'your-correct';
+        return `<div class="review-opt ${cls}">${String.fromCharCode(65+oi)}. ${opt}${oi===q.correct?' ✓':''}${oi===yourAns && yourAns!==q.correct?' (your answer)':''}</div>`;
+      }).join('')}
+    </div>`;
+  });
+
+  document.getElementById('results-screen').innerHTML = `
+    <div class="result-banner ${passed ? 'pass' : 'fail'}">
+      <div class="result-status ${passed ? 'pass' : 'fail'}">${passed ? '✓ PASS' : '✗ NOT YET — RETAKE RECOMMENDED'}</div>
+      <div class="result-score">${correctCount} / ${questions.length} correct — ${pct}% (70% required to pass)</div>
+    </div>
+    <div class="domain-breakdown">
+      <div class="db-title">DOMAIN BREAKDOWN</div>
+      ${domainRows}
+    </div>
+    <div class="review-toggle"><button onclick="toggleReview()">SHOW FULL ANSWER REVIEW ▾</button></div>
+    <div id="review-container" class="hidden">${reviewHtml}</div>
+    <div class="retry-row"><button class="retry-btn" onclick="location.reload()">RETAKE EXAM</button></div>
+  `;
+  document.getElementById('results-screen').classList.remove('hidden');
+  window.scrollTo(0,0);
+}
+
+function toggleReview() {
+  document.getElementById('review-container').classList.toggle('hidden');
+}
+</script>
+</body>
+</html>
