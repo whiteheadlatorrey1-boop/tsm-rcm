@@ -1,0 +1,62 @@
+diff --git a/html/bpo/bpo-strategist-v2.html b/html/bpo/bpo-strategist-v2.html
+index a37a1a07..1d331b41 100644
+--- a/html/bpo/bpo-strategist-v2.html
++++ b/html/bpo/bpo-strategist-v2.html
+@@ -184,6 +184,8 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
+ </style>
+ <script src="/shared/tsm-memory-engine.js?v=phase3"></script>
+   <script src="/shared/tsm-quality-score-engine.js"></script>
++  <script src="/shared/runtime/trust-evidence/evidence-ledger.js"></script>
++  <script src="/shared/runtime/trust-evidence/decision-provenance.js"></script>
+   <script src="/js/core/tsm-event-bus.js"></script>
+   <script src="/js/core/tsm-state.js"></script>
+   <script src="/js/core/tsm-mission-engine.js"></script>
+@@ -723,6 +725,7 @@ function parseAndRenderStrategy(raw) {
+       generatedRec = obj;
+       renderRecommendation(obj);
+       renderExplainability(obj);
++      recordDecisionEvidence(obj);
+ 
+       // Update impact model
+       if (obj.noActionRevLoss) document.getElementById('noActRev').textContent = obj.noActionRevLoss;
+@@ -828,6 +831,40 @@ function appendCrossUploadSource() {
+   `);
+ }
+ 
++// ── TRUST & EVIDENCE: RECORD THIS DECISION ──
++// Fires once per generated recommendation, right after it's rendered.
++// Does not affect the demo flow if the evidence-ledger script failed to
++// load or errors for any reason — this is observational, not load-bearing.
++let lastEvidenceRecordId = null;
++function recordDecisionEvidence(obj) {
++  try {
++    if (!window.TSM || !window.TSM.evidenceLedger) return;
++
++    const decisionId = warData?.extraction?.anomalyCode
++      || warData?.extraction?.anomalyEntity
++      || ('bpo_' + Date.now());
++
++    const summaryText = (obj.recommendedActions && obj.recommendedActions[0] && obj.recommendedActions[0].text)
++      || 'BPO strategy recommendation generated';
++
++    const dataRefs = (obj.dataSources || []).map(s => s.name).filter(Boolean);
++
++    const record = window.TSM.evidenceLedger.record({
++      domain: 'BPO',
++      decisionId: decisionId,
++      summary: summaryText,
++      ruleIds: [], // no policy-intelligence engine is wired into this chain yet
++      dataRefs: dataRefs,
++      confidence: typeof obj.confidence === 'number' ? obj.confidence / 100 : null,
++      actor: 'BPO_STRATEGIST_V2',
++    });
++
++    lastEvidenceRecordId = record.id;
++  } catch (e) {
++    console.warn('[Trust Evidence] record failed', e);
++  }
++}
++
+ function renderFallbackRec() {
+   document.getElementById('confScore').textContent = '91%';
+   document.getElementById('confFill').style.width = '91%';
