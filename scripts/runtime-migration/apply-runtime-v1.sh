@@ -43,6 +43,7 @@ SCRIPTS=(
 "29-runtime-extension-marketplace-layer.js"
 "30-runtime-enterprise-security-layer.js"
 "31-runtime-production-operations-layer.js"
+"32-runtime-customer-provisioning-layer.js"
 "18-runtime-integration-fabric.js"
 )
 
