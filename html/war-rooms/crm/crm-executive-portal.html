@@ -1,4 +1,17 @@
 <!DOCTYPE html>
+<!--
+  TSM CRM EXECUTIVE PORTAL — based on repo snapshot (zip), NOT a
+  user-uploaded file. Verify against your actual current repo copy before
+  committing — the BPO exec portal diverged from this same zip earlier in
+  this project, so treat this as a draft patch, not a confirmed-canonical file.
+
+  Wiring status as of this edit:
+  - TSM QUALITY SCORE section: LIVE. Added via renderQualityScore(), called
+    from render() right before TSMExecFramework.renderRiskRegister(), using
+    the same explainItems the risk register already consumes. No new data
+    source. Pattern replicated identically from the BPO exec portal wiring.
+  - Everything else: unchanged from the snapshot.
+-->
 <html lang="en">
 <head>
 <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
@@ -77,6 +90,7 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 <div class="wrap" id="wrap"><!-- populated by JS --></div>
 <div class="toast" id="toast"></div>
 <script src="/html/shared/tsm-exec-framework.js"></script>
+<script src="/html/shared/tsm-quality-score-engine.js"></script>
 <script>
 function tick(){document.getElementById('clock').textContent=new Date().toLocaleTimeString();}
 setInterval(tick,1000);tick();
@@ -177,6 +191,24 @@ function renderList(items, label, opts){
   return `<div class="sec"><div class="sec-hdr">${label}</div>${rows || '<div class="no-items">All clear &mdash; no flagged items.</div>'}</div>`;
 }
 
+function renderQualityScore(explainItems){
+  if(!window.TSMQualityScoreEngine) return '';
+  const items = explainItems || [];
+  const score = TSMQualityScoreEngine.fromExplainItems(items, { recordCount: items.length });
+  const tile = (lbl, val) => {
+    const cls = val>=85?'green':(val>=60?'amber':'red');
+    return `<div class="kpi"><div class="kpi-val ${cls}">${val}%</div><div class="kpi-lbl">${lbl}</div></div>`;
+  };
+  return `<div class="sec"><div class="sec-hdr">TSM QUALITY SCORE &middot; ${score.band} (${score.overall}%)</div>
+    <div class="kpi-row">
+      ${tile('ACCURACY', score.accuracy)}
+      ${tile('COMPLETENESS', score.completeness)}
+      ${tile('COMPLIANCE', score.compliance)}
+      ${tile('CONFIDENCE', score.confidence)}
+    </div>
+  </div>`;
+}
+
 function render(){
   const data = loadRelay();
   if(!data){ renderEmpty(); return; }
@@ -211,6 +243,7 @@ function render(){
 
   if(CFG.explainPath && window.TSMExecFramework){
     const explainItems = getPath(data, CFG.explainPath);
+    html += renderQualityScore(explainItems);
     html += TSMExecFramework.renderRiskRegister(explainItems, { isExec: CFG.isExec });
   }
 
