@@ -26,6 +26,7 @@ SCRIPTS=(
 "12-runtime-intelligence-layer.js"
 "13-consolidate-intelligence-engines.js"
 "14-runtime-execution-layer.js"
+"15-runtime-governance-layer.js"
 )
 
 for script in "${SCRIPTS[@]}"; do
