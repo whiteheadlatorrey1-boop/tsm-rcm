@@ -158,6 +158,7 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
 <div class="layout">
   <div class="sidebar" id="sideNav">
     <div class="sb-item active" data-section="ticket"><span class="sb-dot"></span>Ticket</div>
+    <div class="sb-item" data-section="onboarding"><span class="sb-dot"></span>Onboarding</div>
     <div class="sb-item" data-section="ai"><span class="sb-dot"></span>AI Analysis</div>
     <div class="sb-item" data-section="troubleshoot"><span class="sb-dot"></span>Troubleshooting</div>
     <div class="sb-item" data-section="imaging"><span class="sb-dot"></span>Imaging</div>
@@ -207,6 +208,78 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
             <button class="btn btn-ghost" id="btnClearTicket">CLEAR</button>
           </div>
         </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">SECURITY CONTEXT<span style="font-size:9px;color:var(--text-dim);margin-left:8px">— account &amp; device status from your IdP / zero-trust platform</span></div>
+        <div class="card-body">
+          <div class="btn-row">
+            <button class="btn btn-outline" id="btnCheckSecurityContext">CHECK USER &amp; DEVICE STATUS</button>
+          </div>
+          <div class="analysis-grid" style="margin-top:10px">
+            <div class="ai-output" id="securityContextOutput">Checks the requester's account/MFA status and the asset's compliance status against your identity provider and endpoint management platform — pulls from the same adapter your security team's admin console uses.</div>
+            <div class="analysis-kpis">
+              <div class="kpi-card"><div class="kpi-label">Account Status</div><div class="kpi-value" id="kpiAccountStatus">--</div></div>
+              <div class="kpi-card"><div class="kpi-label">MFA</div><div class="kpi-value" id="kpiMfaStatus">--</div></div>
+              <div class="kpi-card"><div class="kpi-label">Device Compliance</div><div class="kpi-value" id="kpiDeviceCompliance" style="font-size:11px">--</div></div>
+              <div class="kpi-card"><div class="kpi-label">Risk Level</div><div class="kpi-value" id="kpiRiskLevel" style="font-size:11px">--</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ONBOARDING -->
+    <section class="section" id="sec-onboarding">
+      <div class="ticket-head-grid">
+        <div class="field"><div class="field-label">New Hire Name</div><input id="obName" placeholder="Alex Rivera"></div>
+        <div class="field"><div class="field-label">Department</div><input id="obDept" placeholder="Finance"></div>
+        <div class="field"><div class="field-label">Start Date</div><input id="obStartDate" type="date"></div>
+        <div class="field"><div class="field-label">Role</div>
+          <select id="obRole"><option>Standard User</option><option>Power User</option><option>Security Admin</option><option>Auditor</option><option>System Admin</option><option>Guest</option></select>
+        </div>
+        <div class="field"><div class="field-label">Assigned Asset Tag</div><input id="obAsset" placeholder="From CMDB — e.g. FIN-LT-0091"></div>
+        <div class="field"><div class="field-label">Work Email</div><input id="obEmail" placeholder="alex.rivera@company.com"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">DEVICE IMAGING<span class="kpi-value" id="obImagingStatusBadge" style="margin-left:8px;font-size:11px">NOT STARTED</span></div>
+        <div class="card-body">
+          <div class="env-grid">
+            <div>
+              <div class="field" style="margin-bottom:8px"><div class="field-label">Imaging Profile</div>
+                <select id="obImagingProfile"><option>Win11 Standard Build</option><option>Win11 Finance Build</option><option>Win11 Engineering Build</option><option>Win11 Kiosk Build</option></select>
+              </div>
+              <div class="field-label" style="margin:10px 0 4px">Imaging Progress</div>
+              <div class="progress-track"><div class="progress-fill" id="obImagingFill" style="width:0%"></div></div>
+              <div class="btn-row">
+                <button class="btn btn-cyan" id="btnStartImaging">START IMAGING</button>
+              </div>
+            </div>
+            <div>
+              <div class="ai-output" id="obImagingOutput">Imaging profile is selected here, but the task sequence itself still lives in your imaging platform (MDT / SCCM / Intune / JAMF) — this triggers and tracks it, not replaces it.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">ACCOUNT PROVISIONING<span class="kpi-value" id="obAccountStatusBadge" style="margin-left:8px;font-size:11px">NOT PROVISIONED</span></div>
+        <div class="card-body">
+          <div class="btn-row">
+            <button class="btn btn-cyan" id="btnProvisionAccount">PROVISION ACCOUNT</button>
+          </div>
+          <div class="ai-output" id="obProvisionOutput" style="margin-top:10px">Creates the account and assigns the selected role via your identity provider (Entra ID / Okta / Workspace) — not simulated locally.</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">DAY-1 CHECKLIST</div>
+        <div class="card-body" id="obChecklistBody"></div>
+      </div>
+
+      <div class="btn-row" style="margin-bottom:20px">
+        <button class="btn btn-ghost" id="btnClearOnboarding">NEW ONBOARDING RECORD</button>
       </div>
     </section>
 
@@ -820,6 +893,19 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
     { title: 'Step 4 — Operating System', items: ['Safe Mode boot', 'Startup Repair', 'Event Viewer review'] }
   ];
 
+  // ── Onboarding state (separate record from the ticket) ─────────────────
+  const ONBOARDING_KEY = 'TSM_L1_CURRENT_ONBOARDING';
+  const ONBOARDING_FIELD_IDS = ['obName','obDept','obStartDate','obRole','obAsset','obEmail'];
+  let obChecklistState = {};
+  let obImagingStatus = 'Not Started';
+  let obAccountStatus = 'Not Provisioned';
+  const ONBOARDING_CHECKLIST = [
+    { title: 'Pre-Start', items: ['Asset pulled from stock / CMDB', 'Desk & badge access requested', 'Welcome packet queued'] },
+    { title: 'Day 1 — Device', items: ['Imaging complete', 'Domain / MDM enrollment confirmed', 'Peripherals paired (dock, monitor, mouse)'] },
+    { title: 'Day 1 — Account', items: ['Account provisioned', 'MFA enrolled', 'Role/group membership confirmed'] },
+    { title: 'Day 1 — Sign-off', items: ['Manager walkthrough complete', 'New hire confirms access to core apps'] }
+  ];
+
   // ── Clock ────────────────────────────────────────────────────────────────
   function tickClock(){
     document.getElementById('navClock').textContent = new Date().toLocaleTimeString('en-US', { hour12:false });
@@ -1013,9 +1099,197 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
   document.addEventListener('input', (e) => { if (TICKET_FIELD_IDS.includes(e.target.id)) saveCurrentTicket(); });
   document.addEventListener('change', (e) => { if (TICKET_FIELD_IDS.includes(e.target.id)) saveCurrentTicket(); });
 
+  // ── Onboarding ───────────────────────────────────────────────────────────
+  function renderObChecklist(){
+    const body = document.getElementById('obChecklistBody');
+    body.innerHTML = '';
+    ONBOARDING_CHECKLIST.forEach((step, si) => {
+      const done = step.items.filter((_, ii) => obChecklistState[`${si}-${ii}`]).length;
+      const wrap = document.createElement('div');
+      wrap.innerHTML = `<div class="field-label" style="margin:10px 0 4px">${step.title} (${done}/${step.items.length})</div>` +
+        step.items.map((it, ii) => `
+          <div class="check-row ${obChecklistState[`${si}-${ii}`] ? 'done' : ''}">
+            <input type="checkbox" data-ob-key="${si}-${ii}" ${obChecklistState[`${si}-${ii}`] ? 'checked' : ''}>
+            <label>${it}</label>
+          </div>`).join('');
+      body.appendChild(wrap);
+    });
+    body.querySelectorAll('input[data-ob-key]').forEach(cb => {
+      cb.addEventListener('change', () => {
+        obChecklistState[cb.dataset.obKey] = cb.checked;
+        renderObChecklist();
+        saveCurrentOnboarding();
+      });
+    });
+  }
+
+  async function startImaging(){
+    const badge = document.getElementById('obImagingStatusBadge');
+    const out = document.getElementById('obImagingOutput');
+    const fill = document.getElementById('obImagingFill');
+    const assetTag = document.getElementById('obAsset').value.trim();
+    if (!assetTag) { alert('Enter/assign an asset tag first.'); return; }
+    obImagingStatus = 'Running';
+    badge.textContent = 'RUNNING'; badge.className = 'kpi-value warn';
+    fill.style.width = '10%';
+    try {
+      const res = await fetch('/api/l1-copilot/onboarding/image', {
+        method: 'POST', headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({ assetTag, profileId: document.getElementById('obImagingProfile').value })
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'imaging request failed');
+      obImagingStatus = data.status || 'Running';
+      fill.style.width = (data.percent || 10) + '%';
+      out.innerHTML = `Imaging job <b>${data.jobId || ''}</b> started against the imaging platform.`;
+    } catch (e) {
+      obImagingStatus = 'Not Started';
+      badge.textContent = 'NOT STARTED'; badge.className = 'kpi-value';
+      fill.style.width = '0%';
+      out.innerHTML = `<span class="err">Imaging trigger failed: ${e.message}. Confirm /api/l1-copilot/onboarding/image is wired to your imaging platform (MDT/SCCM/Intune/JAMF) server-side.</span>`;
+    }
+    saveCurrentOnboarding();
+  }
+
+  async function provisionAccount(){
+    const badge = document.getElementById('obAccountStatusBadge');
+    const out = document.getElementById('obProvisionOutput');
+    const name = document.getElementById('obName').value.trim();
+    const email = document.getElementById('obEmail').value.trim();
+    if (!name || !email) { alert('Enter the new hire\'s name and work email first.'); return; }
+    try {
+      const res = await fetch('/api/l1-copilot/onboarding/provision', {
+        method: 'POST', headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({
+          name, email,
+          department: document.getElementById('obDept').value,
+          role: document.getElementById('obRole').value
+        })
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'provisioning failed');
+      obAccountStatus = 'Provisioned';
+      badge.textContent = 'PROVISIONED'; badge.className = 'kpi-value good';
+      out.innerHTML = `Account <b>${data.userId || ''}</b> created.` + (data.mfaEnrollmentLink ? ` MFA enrollment link sent.` : '');
+    } catch (e) {
+      obAccountStatus = 'Not Provisioned';
+      badge.textContent = 'NOT PROVISIONED'; badge.className = 'kpi-value';
+      out.innerHTML = `<span class="err">Provisioning failed: ${e.message}. Confirm /api/l1-copilot/onboarding/provision is wired to your identity provider (Entra ID/Okta/Workspace) server-side.</span>`;
+    }
+    saveCurrentOnboarding();
+  }
+
+  function saveCurrentOnboarding(){
+    try {
+      const values = {};
+      ONBOARDING_FIELD_IDS.forEach(id => { const el = document.getElementById(id); if (el) values[id] = el.value; });
+      const state = {
+        values, obChecklistState, obImagingStatus, obAccountStatus,
+        imagingProfile: document.getElementById('obImagingProfile').value,
+        savedAt: Date.now()
+      };
+      localStorage.setItem(ONBOARDING_KEY, JSON.stringify(state));
+    } catch(e){ console.warn('Onboarding autosave failed', e); }
+  }
+
+  function loadCurrentOnboarding(){
+    try {
+      const raw = localStorage.getItem(ONBOARDING_KEY);
+      if (!raw) return;
+      const state = JSON.parse(raw);
+      if (!state || !state.values) return;
+      Object.keys(state.values).forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = state.values[id];
+      });
+      if (state.imagingProfile) document.getElementById('obImagingProfile').value = state.imagingProfile;
+      if (state.obChecklistState) { obChecklistState = state.obChecklistState; }
+      if (state.obImagingStatus) {
+        obImagingStatus = state.obImagingStatus;
+        const badge = document.getElementById('obImagingStatusBadge');
+        badge.textContent = obImagingStatus.toUpperCase();
+        badge.className = 'kpi-value ' + (obImagingStatus === 'Complete' ? 'good' : obImagingStatus === 'Failed' ? 'bad' : obImagingStatus === 'Running' ? 'warn' : '');
+      }
+      if (state.obAccountStatus) {
+        obAccountStatus = state.obAccountStatus;
+        const badge = document.getElementById('obAccountStatusBadge');
+        badge.textContent = obAccountStatus.toUpperCase();
+        badge.className = 'kpi-value ' + (obAccountStatus === 'Provisioned' ? 'good' : '');
+      }
+      renderObChecklist();
+    } catch(e){ console.warn('Onboarding restore failed', e); }
+  }
+
+  function clearCurrentOnboarding(){
+    ONBOARDING_FIELD_IDS.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    document.getElementById('obImagingProfile').selectedIndex = 0;
+    document.getElementById('obRole').selectedIndex = 0;
+    obChecklistState = {};
+    obImagingStatus = 'Not Started';
+    obAccountStatus = 'Not Provisioned';
+    const imgBadge = document.getElementById('obImagingStatusBadge');
+    imgBadge.textContent = 'NOT STARTED'; imgBadge.className = 'kpi-value';
+    document.getElementById('obImagingFill').style.width = '0%';
+    document.getElementById('obImagingOutput').textContent = 'Imaging profile is selected here, but the task sequence itself still lives in your imaging platform (MDT / SCCM / Intune / JAMF) — this triggers and tracks it, not replaces it.';
+    const acctBadge = document.getElementById('obAccountStatusBadge');
+    acctBadge.textContent = 'NOT PROVISIONED'; acctBadge.className = 'kpi-value';
+    document.getElementById('obProvisionOutput').textContent = 'Creates the account and assigns the selected role via your identity provider (Entra ID / Okta / Workspace) — not simulated locally.';
+    renderObChecklist();
+    try { localStorage.removeItem(ONBOARDING_KEY); } catch(e){}
+  }
+
+  document.getElementById('btnStartImaging').addEventListener('click', startImaging);
+  document.getElementById('btnProvisionAccount').addEventListener('click', provisionAccount);
+  document.getElementById('btnClearOnboarding').addEventListener('click', clearCurrentOnboarding);
+  document.addEventListener('input', (e) => { if (ONBOARDING_FIELD_IDS.includes(e.target.id)) saveCurrentOnboarding(); });
+  document.addEventListener('change', (e) => { if (ONBOARDING_FIELD_IDS.includes(e.target.id) || e.target.id === 'obImagingProfile') saveCurrentOnboarding(); });
+
   document.getElementById('btnAnalyze').addEventListener('click', runAnalysis);
   document.getElementById('btnReanalyze').addEventListener('click', runAnalysis);
   document.getElementById('btnSendToTroubleshoot').addEventListener('click', () => goToSection('troubleshoot'));
+
+  // ── Security Context (zero-trust / IAM adapter lookup) ─────────────────
+  async function checkSecurityContext(){
+    const out = document.getElementById('securityContextOutput');
+    const requester = document.getElementById('tkRequester').value.trim();
+    const asset = document.getElementById('tkAsset').value.trim();
+    if (!requester && !asset) { alert('Enter a requester or asset tag first.'); return; }
+    ['kpiAccountStatus','kpiMfaStatus','kpiDeviceCompliance','kpiRiskLevel'].forEach(id => {
+      const el = document.getElementById(id); el.textContent = '...'; el.className = 'kpi-value';
+    });
+    out.textContent = 'Checking...';
+    try {
+      const [userRes, deviceRes] = await Promise.all([
+        requester ? fetch('/api/l1-copilot/security/user-status?query=' + encodeURIComponent(requester)) : Promise.resolve(null),
+        asset ? fetch('/api/l1-copilot/security/device-status?asset=' + encodeURIComponent(asset)) : Promise.resolve(null)
+      ]);
+      let userData = null, deviceData = null;
+      if (userRes) { userData = await userRes.json(); if (!userData.ok) throw new Error(userData.error || 'user lookup failed'); }
+      if (deviceRes) { deviceData = await deviceRes.json(); if (!deviceData.ok) throw new Error(deviceData.error || 'device lookup failed'); }
+
+      if (userData) {
+        const acctEl = document.getElementById('kpiAccountStatus');
+        acctEl.textContent = userData.accountStatus || '--';
+        acctEl.className = 'kpi-value ' + (userData.accountStatus === 'Suspended' ? 'bad' : userData.accountStatus === 'Active' ? 'good' : 'warn');
+        const mfaEl = document.getElementById('kpiMfaStatus');
+        mfaEl.textContent = userData.mfaEnabled ? 'Enrolled' : 'Not Enrolled';
+        mfaEl.className = 'kpi-value ' + (userData.mfaEnabled ? 'good' : 'bad');
+        const riskEl = document.getElementById('kpiRiskLevel');
+        riskEl.textContent = userData.riskLevel || '--';
+        riskEl.className = 'kpi-value ' + (userData.riskLevel === 'High' || userData.riskLevel === 'Critical' ? 'bad' : userData.riskLevel === 'Medium' ? 'warn' : 'good');
+      }
+      if (deviceData) {
+        const devEl = document.getElementById('kpiDeviceCompliance');
+        devEl.textContent = deviceData.complianceStatus || '--';
+        devEl.className = 'kpi-value ' + (deviceData.complianceStatus === 'Non-Compliant' ? 'bad' : deviceData.complianceStatus === 'Compliant' ? 'good' : 'warn');
+      }
+      out.textContent = 'Security context retrieved from your identity provider and endpoint management platform.';
+    } catch (e) {
+      ['kpiAccountStatus','kpiMfaStatus','kpiDeviceCompliance','kpiRiskLevel'].forEach(id => document.getElementById(id).textContent = '--');
+      out.innerHTML = `<span class="err">Security context lookup failed: ${e.message}. Confirm /api/l1-copilot/security/user-status and /api/l1-copilot/security/device-status are wired to your IdP and endpoint management platform server-side.</span>`;
+    }
+  }
+  document.getElementById('btnCheckSecurityContext').addEventListener('click', checkSecurityContext);
 
   // ── Guided Troubleshooting checklist ────────────────────────────────────
   function renderChecklist(){
@@ -1442,9 +1716,11 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
 
   // ── Init ─────────────────────────────────────────────────────────────────
   renderChecklist();
+  renderObChecklist();
   renderHistory();
   renderExecStrip();
   loadCurrentTicket();
+  loadCurrentOnboarding();
 })();
 </script>
 
