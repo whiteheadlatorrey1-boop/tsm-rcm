@@ -25,6 +25,7 @@ SCRIPTS=(
 "11-add-bpo-adapter.js"
 "12-runtime-intelligence-layer.js"
 "13-consolidate-intelligence-engines.js"
+"14-runtime-execution-layer.js"
 )
 
 for script in "${SCRIPTS[@]}"; do
