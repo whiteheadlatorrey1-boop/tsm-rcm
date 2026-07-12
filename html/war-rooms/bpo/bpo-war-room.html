@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
+    <script src="/war-rooms/bpo/services/bpo-engine.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>TSM · BPO Situation Room</title>
@@ -777,7 +778,7 @@ Return ONLY the JSON object. No markdown, no explanation.`;
       const result = JSON.parse(jsonMatch[0]);
       renderExtraction(result);
       registerIncidentInMemory(result);
-      storeWarRoomRelay(result);
+      await storeWarRoomRelay(result);
       addMemoryEntry('Extraction complete: ' + result.rootCause);
     } else {
       renderFallback(raw);
@@ -964,7 +965,7 @@ function renderFallback(raw) {
 }
 
 // ── STORE WAR ROOM RELAY FOR STRATEGIST ──
-function storeWarRoomRelay(extracted) {
+async function storeWarRoomRelay(extracted) {
   const payload = {
     selectedSector: relayData?.selectedSector || 'BPO',
     selectedDocType: relayData?.selectedDocType || '—',
@@ -978,6 +979,26 @@ function storeWarRoomRelay(extracted) {
       engine4: extracted.rootCause || '',
     }
   };
+
+  // BPO Quality Score / Explainability feed for the exec portal. There's
+  // no structured "engagement" data from a raw document extraction yet,
+  // so this seeds the engine with the model's sample engagements — same
+  // fallback pattern the other war rooms (CRM, etc.) use when there's no
+  // live/uploaded data. This is what was missing: BPOEngine existed and
+  // worked, it was just never instantiated anywhere on this page.
+  try {
+    if (window.TSMBPOEngine) {
+      const modelRes = await fetch('/war-rooms/bpo/data/bpo-model.json');
+      const model = await modelRes.json();
+      const engine = new window.TSMBPOEngine(model);
+      engine.loadSampleEngagements();
+      const relayPayload = engine.buildRelayPayload(extracted.situationSummary || null);
+      Object.assign(payload, relayPayload);
+    }
+  } catch (e) {
+    console.warn('[BPO] Explainability feed failed to build, exec portal Quality Score will be empty:', e);
+  }
+
   try {
     sessionStorage.setItem('TSM_BPO_WAR_RELAY', JSON.stringify(payload));
     localStorage.setItem('TSM_BPO_WAR_RELAY', JSON.stringify(payload));
@@ -1078,8 +1099,8 @@ function nav(url) { window.location.href = url; }
   } catch(e) { console.warn('[TSM AutoFire]', e); }
 })();
 </script>
-  <script src="/core/tsm-kernel.js"></script>
-  <script src="/core/tsm-enforcer.js"></script>
+  <script src="/html/core/tsm-kernel.js"></script>
+  <script src="/html/core/tsm-enforcer.js"></script>
 <script src="/js/tsm-autorun-engine.js"></script>
 <script>
 /* TSM AUTO-RUN WAR ROOM */
@@ -1153,3 +1174,4 @@ function tsmWriteRelay(payload){
   <script src="/html/core/tsm-runtime.js"></script>
 </body>
 </html>
+

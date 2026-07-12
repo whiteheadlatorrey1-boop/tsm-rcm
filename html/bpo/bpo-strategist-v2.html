@@ -1,38 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<script>
-/* ===== TEMPORARY DIAGNOSTIC BANNER — remove after debugging ===== */
-(function () {
-  var box = document.createElement('div');
-  box.id = '__tsm_error_banner';
-  box.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:999999;' +
-    'background:#7a0000;color:#fff;font-family:monospace;font-size:13px;' +
-    'padding:10px 14px;white-space:pre-wrap;display:none;max-height:40vh;overflow:auto;' +
-    'border-bottom:3px solid #ff4444;';
-  document.addEventListener('DOMContentLoaded', function () {
-    document.body.insertBefore(box, document.body.firstChild);
-  });
-
-  function show(msg) {
-    box.style.display = 'block';
-    box.textContent += (box.textContent ? '\n\n' : '') + msg;
-  }
-
-  window.addEventListener('error', function (e) {
-    if (e.target && (e.target.tagName === 'SCRIPT' || e.target.tagName === 'LINK')) {
-      show('FAILED TO LOAD: ' + (e.target.src || e.target.href));
-    } else {
-      show('JS ERROR: ' + e.message + '\n  at ' + e.filename + ':' + e.lineno + ':' + e.colno);
-    }
-  }, true);
-
-  window.addEventListener('unhandledrejection', function (e) {
-    show('UNHANDLED PROMISE REJECTION: ' + (e.reason && e.reason.stack || e.reason));
-  });
-})();
-</script>
-
+<script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>TSM · BPO Decision Intelligence</title>
@@ -890,6 +859,39 @@ function pullEscalations(){
   document.getElementById('briefBody').innerHTML = '<div class="brief-section-head">ACTIVE ESCALATION QUEUE</div><pre style="font-family:JetBrains Mono,monospace;font-size:.72rem;color:#bbb;line-height:1.7">ESC-001 [CRITICAL]  HonorHealth PR-96 denial spike\n                    Exposure: $47K · Deadline: 24hrs\n                    Owner: RCM Director\n\nESC-002 [HIGH]      Meridian Construction lien deadline\n                    Exposure: $340K · Deadline: 14 days\n                    Owner: Operations Director\n\nQueue total: 2 active · 0 overdue · 4 pending review</pre>';
 }
 
+// Turns the AI's own reasoning chain + confidence into the explain-item
+// shape the executive portal's TSM EXEC KIT expects ({id, claim, confidence,
+// severity, impact, rationale, sources}). Built from data the strategy
+// engine already generated for this specific document/scenario - not
+// injected sample data - so "why does the AI believe this" reflects what
+// actually happened in this run.
+function buildExplainFromRecommendation(obj) {
+  if (!obj) return [];
+  const sources = (obj.dataSources || []).map(s => s.name).filter(Boolean);
+  const reasoning = obj.reasoning || [];
+  const items = reasoning.map((r, i) => ({
+    id: 'reason-' + i,
+    claim: r.val || r.key || '',
+    confidence: obj.confidence || 90,
+    severity: /risk|critical|loss|breach|exposure/i.test((r.key || '') + (r.val || '')) ? 'high' : 'med',
+    impact: (i === 0 && obj.actionRevLoss) ? ('Exposure if unaddressed: ' + (obj.noActionRevLoss || '—') + ' → contained to ' + obj.actionRevLoss) : '',
+    rationale: (r.key ? r.key + ': ' : '') + (r.val || ''),
+    sources: sources
+  }));
+  return items.filter(it => it.claim);
+}
+
+// WIP stages for the auto-injected pipeline tracker, reflecting real
+// chain progress (this page is "active" until escalation, then done).
+function buildWipStages() {
+  return [
+    { id: 'intake', label: 'Document Intake', status: 'done' },
+    { id: 'understand', label: 'Situation Room Analysis', status: 'done' },
+    { id: 'decide', label: 'Strategist Recommendation', status: generatedRec ? 'done' : 'active', detail: generatedRec ? undefined : 'Generating strategy brief…' },
+    { id: 'execute', label: 'Executive Review', status: 'pending' }
+  ];
+}
+
 // ── STORE + RELAY ──
 function storeStratRelay(){
   const payload = {
@@ -901,7 +903,9 @@ function storeStratRelay(){
     timestamp: new Date().toISOString(),
     chainStep: 'strategist',
     recommendation: generatedRec,
-    selectedScenario
+    selectedScenario,
+    explain: buildExplainFromRecommendation(generatedRec),
+    wip: buildWipStages()
   };
   try {
     sessionStorage.setItem('TSM_BPO_STRAT_RELAY', JSON.stringify(payload));
@@ -909,6 +913,26 @@ function storeStratRelay(){
     document.getElementById('relayBar').style.display = 'flex';
     document.getElementById('relayInfo').textContent = (warData?.selectedSector||'BPO') + ' · Scenario ' + (selectedScenario||'A') + ' · Confidence ' + (generatedRec?.confidence||91) + '%';
   } catch(e){}
+
+  // Merge into the same TSM_BPO_RELAY channel the executive portal actually
+  // reads (via TSM.relay.read("BPO")). A plain write() would overwrite and
+  // lose the kpis/sla_breaches/risk_flags/explain the war-room step already
+  // populated there, so read-merge-write instead — the strategist's
+  // decision layers on top of the war room's explainability data rather
+  // than replacing it.
+  try {
+    if (window.TSM && TSM.relay && TSM.relay.write) {
+      const existing = (TSM.relay.read && TSM.relay.read("BPO")) || {};
+      TSM.relay.write("BPO", Object.assign({}, existing, {
+        chainStep: 'strategist',
+        recommendation: generatedRec,
+        selectedScenario,
+        stratBrief,
+        analysis: stratBrief || existing.analysis || null,
+        relayed_at: new Date().toISOString()
+      }));
+    }
+  } catch(e) { console.warn('[BPO] Strategist relay merge failed', e); }
 }
 
 function escalateToExec(){
@@ -1048,3 +1072,4 @@ function tsmWriteScopedStrat(vertical, missionId){
   <script src="/html/core/tsm-runtime.js"></script>
 </body>
 </html>
+
