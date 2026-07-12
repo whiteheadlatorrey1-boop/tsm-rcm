@@ -184,8 +184,8 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
 </style>
 <script src="/shared/tsm-memory-engine.js?v=phase3"></script>
   <script src="/shared/tsm-quality-score-engine.js"></script>
-  <script src="/shared/evidence-ledger.js"></script>
-  <script src="/shared/decision-provenance.js"></script>
+  <script src="/shared/runtime/trust-evidence/evidence-ledger.js"></script>
+  <script src="/shared/runtime/trust-evidence/decision-provenance.js"></script>
   <script src="/js/core/tsm-event-bus.js"></script>
   <script src="/js/core/tsm-state.js"></script>
   <script src="/js/tsm-mission-store.js"></script>
@@ -365,6 +365,13 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
         <div class="explain-label">REASONING CHAIN</div>
         <div class="reasoning-box" id="reasoningBox">
           <div style="color:var(--muted)">Reasoning trace will appear after strategy generation completes. This shows exactly how the AI arrived at its recommendation.</div>
+        </div>
+      </div>
+
+      <div class="explain-section">
+        <div class="explain-label">QUALITY SCORE</div>
+        <div id="qualityScoreMount">
+          <div style="color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:.65rem">Recomputes with full evidence once the strategy brief generates.</div>
         </div>
       </div>
     </div>
@@ -719,6 +726,7 @@ function parseAndRenderStrategy(raw) {
       generatedRec = obj;
       renderRecommendation(obj);
       renderExplainability(obj);
+      recordDecisionEvidence(obj);
 
       // Update impact model
       if (obj.noActionRevLoss) document.getElementById('noActRev').textContent = obj.noActionRevLoss;
@@ -785,6 +793,20 @@ function renderExplainability(obj) {
   `).join('') || '<div style="color:var(--muted)">Reasoning chain not extracted</div>';
 
   appendCrossUploadSource();
+
+  // Quality Score — full composite using extraction + strategy recommendation.
+  if (window.TSMQualityScore) {
+    let crossHit = false;
+    if (window.TSMMemory && warData?.extraction?.anomalyCode) {
+      const insight = TSMMemory.getCrossUploadInsight({
+        anomalyCode: warData.extraction.anomalyCode, entityType: 'bpo-incident', entityId: warData.extraction.anomalyEntity
+      });
+      crossHit = Math.max(0, (insight.priorOccurrences || 0) - 1) > 0;
+    }
+    const qs = TSMQualityScore.compute({ extraction: warData?.extraction, recommendation: obj, crossUploadHit: crossHit });
+    TSMQualityScore.renderCard('qualityScoreMount', qs);
+    window._tsmQualityScore = qs;
+  }
 }
 
 // ── MEMORY: SURFACE WHAT WE ALREADY KNOW FROM PRIOR UPLOADS ──
@@ -812,6 +834,40 @@ function appendCrossUploadSource() {
   document.getElementById('reasoningBox').insertAdjacentHTML('beforeend', `
     <div class="reasoning-line"><span class="rl-key">Cross-upload memory:</span> <span class="rl-val">This anomaly type has been seen ${priorCount} time(s) before${insight.lastResolvedBy ? ', last resolved by ' + insight.lastResolvedBy : ''}${fieldCount ? '. ' + fieldCount + ' field(s) were recovered from memory rather than re-extracted' : ''}.</span></div>
   `);
+}
+
+// ── TRUST & EVIDENCE: RECORD THIS DECISION ──
+// Fires once per generated recommendation, right after it's rendered.
+// Does not affect the demo flow if the evidence-ledger script failed to
+// load or errors for any reason — this is observational, not load-bearing.
+let lastEvidenceRecordId = null;
+function recordDecisionEvidence(obj) {
+  try {
+    if (!window.TSM || !window.TSM.evidenceLedger) return;
+
+    const decisionId = warData?.extraction?.anomalyCode
+      || warData?.extraction?.anomalyEntity
+      || ('bpo_' + Date.now());
+
+    const summaryText = (obj.recommendedActions && obj.recommendedActions[0] && obj.recommendedActions[0].text)
+      || 'BPO strategy recommendation generated';
+
+    const dataRefs = (obj.dataSources || []).map(s => s.name).filter(Boolean);
+
+    const record = window.TSM.evidenceLedger.record({
+      domain: 'BPO',
+      decisionId: decisionId,
+      summary: summaryText,
+      ruleIds: [], // no policy-intelligence engine is wired into this chain yet
+      dataRefs: dataRefs,
+      confidence: typeof obj.confidence === 'number' ? obj.confidence / 100 : null,
+      actor: 'BPO_STRATEGIST_V2',
+    });
+
+    lastEvidenceRecordId = record.id;
+  } catch (e) {
+    console.warn('[Trust Evidence] record failed', e);
+  }
 }
 
 function renderFallbackRec() {
@@ -869,7 +925,13 @@ function storeStratRelay(){
     timestamp: new Date().toISOString(),
     chainStep: 'strategist',
     recommendation: generatedRec,
-    selectedScenario
+    selectedScenario,
+    extraction: warData?.extraction,
+    qualityScore: window._tsmQualityScore || null,
+    anomalyCode: warData?.extraction?.anomalyCode,
+    anomalyEntity: warData?.extraction?.anomalyEntity,
+    revenueAtRisk: warData?.extraction?.revenueAtRisk,
+    runway: warData?.extraction?.runway
   };
   try {
     sessionStorage.setItem('TSM_BPO_STRAT_RELAY', JSON.stringify(payload));
