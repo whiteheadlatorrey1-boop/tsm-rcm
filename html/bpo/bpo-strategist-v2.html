@@ -218,6 +218,10 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
   <script src="/shared/tsm-quality-score-engine.js"></script>
   <script src="/shared/evidence-ledger.js"></script>
   <script src="/shared/decision-provenance.js"></script>
+  <script src="/shared/tsm-agent-registry.js"></script>
+  <script src="/shared/tsm-executive-outcome.js"></script>
+  <script src="/shared/tsm-delivery-package.js"></script>
+  <script src="/shared/tsm-exceptions.js"></script>
   <script src="/js/core/tsm-event-bus.js"></script>
   <script src="/js/core/tsm-state.js"></script>
   <script src="/js/tsm-mission-store.js"></script>
@@ -397,6 +401,13 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
         <div class="explain-label">REASONING CHAIN</div>
         <div class="reasoning-box" id="reasoningBox">
           <div style="color:var(--muted)">Reasoning trace will appear after strategy generation completes. This shows exactly how the AI arrived at its recommendation.</div>
+        </div>
+      </div>
+
+      <div class="explain-section">
+        <div class="explain-label">QUALITY SCORE</div>
+        <div class="reasoning-box" id="qualityScoreBox">
+          <div style="color:var(--muted)">Quality score will appear after strategy generation completes.</div>
         </div>
       </div>
     </div>
@@ -751,6 +762,7 @@ function parseAndRenderStrategy(raw) {
       generatedRec = obj;
       renderRecommendation(obj);
       renderExplainability(obj);
+      renderQualityScore(obj);
 
       // Update impact model
       if (obj.noActionRevLoss) document.getElementById('noActRev').textContent = obj.noActionRevLoss;
@@ -846,6 +858,47 @@ function appendCrossUploadSource() {
   `);
 }
 
+// ── QUALITY SCORE: adapt this page's local obj shape into the shared
+// engine's canonical explain-item contract. One item, representing the
+// whole recommendation -- that's the real granularity this page's data
+// has (no per-action confidence/severity exists to score separately).
+// severity is left unset so the engine's documented 'med' default
+// applies, same as any other caller without severity data.
+function toExplainItems(obj) {
+  if (!obj) return [];
+  const reasoning = obj.reasoning || [];
+  const rationale = reasoning.map(r => `${r.key}: ${r.val}`).join('; ');
+  return [{
+    id: 'bpo-recommendation',
+    claim: obj.summary || (obj.recommendedActions && obj.recommendedActions[0] && obj.recommendedActions[0].text) || 'AI Recommendation',
+    confidence: typeof obj.confidence === 'number' ? obj.confidence : undefined,
+    rationale: rationale || undefined,
+    sources: obj.dataSources || [],
+    dataPoints: reasoning
+  }];
+}
+
+function renderQualityScore(obj) {
+  const box = document.getElementById('qualityScoreBox');
+  if (!box) return;
+  if (!window.TSMQualityScoreEngine) {
+    box.innerHTML = '<div style="color:var(--muted)">Quality score engine not loaded.</div>';
+    return;
+  }
+  const items = toExplainItems(obj);
+  const q = TSMQualityScoreEngine.fromExplainItems(items, {});
+  const rows = [
+    { key: 'Overall', val: q.overall + '% (' + q.band + ')' },
+    { key: 'Accuracy', val: q.accuracy + '%' },
+    { key: 'Completeness', val: q.completeness + '%' },
+    { key: 'Compliance', val: q.compliance + '%' },
+    { key: 'Confidence', val: q.confidence + '%' }
+  ];
+  box.innerHTML = rows.map(r =>
+    `<div class="reasoning-line"><span class="rl-key">${r.key}:</span> <span class="rl-val">${r.val}</span></div>`
+  ).join('');
+}
+
 function renderFallbackRec() {
   document.getElementById('confScore').textContent = '91%';
   document.getElementById('confFill').style.width = '91%';
@@ -868,6 +921,7 @@ function renderFallbackRec() {
     <div class="reasoning-line"><span class="rl-key">Risk:</span> <span class="rl-val">Inaction probability of total loss: 94%</span></div>
   `;
   appendCrossUploadSource();
+  renderQualityScore(generatedRec || {});
 }
 
 // ── BRIEF TABS ──
