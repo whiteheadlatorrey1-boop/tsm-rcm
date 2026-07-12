@@ -1,17 +1,4 @@
 <!DOCTYPE html>
-<!--
-  TSM MDM EXECUTIVE PORTAL — based on repo snapshot (zip), NOT a
-  user-uploaded file. Verify against your actual current repo copy before
-  committing — the BPO exec portal diverged from this same zip earlier in
-  this project, so treat this as a draft patch, not a confirmed-canonical file.
-
-  Wiring status as of this edit:
-  - TSM QUALITY SCORE section: LIVE. Added via renderQualityScore(), called
-    from render() right before TSMExecFramework.renderRiskRegister(), using
-    the same explainItems the risk register already consumes. No new data
-    source. Pattern replicated identically from the BPO exec portal wiring.
-  - Everything else: unchanged from the snapshot.
--->
 <html lang="en">
 <head>
 <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
@@ -66,18 +53,6 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 .abtn.escalate{border-color:var(--red);color:var(--red);}
 .abtn:hover{opacity:.85;}
 .no-items{font-family:'JetBrains Mono',monospace;font-size:.7rem;color:var(--muted);}
-.rec-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid #0f1a2e;font-size:.82rem;}
-.rec-row:last-child{border-bottom:none;}
-.rec-type{font-family:'JetBrains Mono',monospace;font-size:.55rem;font-weight:700;padding:2px 8px;border-radius:10px;flex-shrink:0;text-transform:uppercase;white-space:nowrap;border:1px solid var(--purple);color:var(--purple);background:rgba(168,85,247,.12);}
-.rec-body{flex:1;min-width:0;}
-.rec-title{color:var(--text);}
-.rec-meta{font-family:'JetBrains Mono',monospace;font-size:.6rem;color:var(--muted);margin-top:2px;}
-.rec-actions{display:flex;gap:6px;flex-shrink:0;}
-.rbtn{font-family:'JetBrains Mono',monospace;font-size:.6rem;letter-spacing:.04em;padding:5px 10px;border-radius:4px;cursor:pointer;border:1px solid var(--border);background:var(--bg3);color:var(--text);text-transform:uppercase;}
-.rbtn.approve{border-color:var(--green);color:var(--green);}
-.rbtn.reject{border-color:var(--red);color:var(--red);}
-.rbtn:hover{opacity:.8;}
-.rbtn:disabled{opacity:.4;cursor:not-allowed;}
 </style>
 </head>
 <body>
@@ -97,10 +72,9 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
   </div>
 </div>
 <div class="wrap" id="wrap"><!-- populated by JS --></div>
-<div class="wrap" id="liveRecWrap" style="padding-top:0;"></div>
 <div class="toast" id="toast"></div>
-<script src="/config/tsm-client-key.js"></script>
 <script src="/html/shared/tsm-exec-framework.js"></script>
+<!-- canonical source: html/war-rooms/mdm/mdm-executive-portal.html -->
 <script src="/html/shared/tsm-quality-score-engine.js"></script>
 <script>
 function tick(){document.getElementById('clock').textContent=new Date().toLocaleTimeString();}
@@ -197,21 +171,28 @@ function renderList(items, label, opts){
   return `<div class="sec"><div class="sec-hdr">${label}</div>${rows || '<div class="no-items">All clear &mdash; no flagged items.</div>'}</div>`;
 }
 
-function renderQualityScore(explainItems){
+// Wires the shared Quality Score Engine to whatever explain items this
+// portal already fetches for the risk register (CFG.explainPath), so it's
+// one score per relay payload, not a second data path to keep in sync.
+function renderQualityScore(explainItems, recordCount){
   if(!window.TSMQualityScoreEngine) return '';
-  const items = explainItems || [];
-  const score = TSMQualityScoreEngine.fromExplainItems(items, { recordCount: items.length });
-  const tile = (lbl, val) => {
-    const cls = val>=85?'green':(val>=60?'amber':'red');
-    return `<div class="kpi"><div class="kpi-val ${cls}">${val}%</div><div class="kpi-lbl">${lbl}</div></div>`;
-  };
-  return `<div class="sec"><div class="sec-hdr">TSM QUALITY SCORE &middot; ${score.band} (${score.overall}%)</div>
-    <div class="kpi-row">
-      ${tile('ACCURACY', score.accuracy)}
-      ${tile('COMPLETENESS', score.completeness)}
-      ${tile('COMPLIANCE', score.compliance)}
-      ${tile('CONFIDENCE', score.confidence)}
-    </div>
+  const q = TSMQualityScoreEngine.fromExplainItems(explainItems || [], { recordCount: recordCount });
+  const bandCls = (q.band==='EXCELLENT'||q.band==='STRONG') ? 'green' : (q.band==='ACCEPTABLE') ? 'amber' : 'red';
+  const tiles = [
+    { val: q.overall, lbl: 'OVERALL' },
+    { val: q.accuracy, lbl: 'ACCURACY' },
+    { val: q.completeness, lbl: 'COMPLETENESS' },
+    { val: q.compliance, lbl: 'COMPLIANCE' },
+    { val: q.confidence, lbl: 'CONFIDENCE' }
+  ];
+  const tileHtml = tiles.map(t=>`<div class="kpi"><div class="kpi-val ${dynamicCls(t.val)}">${t.val}</div><div class="kpi-lbl">${t.lbl}</div></div>`).join('');
+  const reasonsHtml = (q.reasons && q.reasons.length)
+    ? q.reasons.map(r=>`<div class="list-row"><span class="lbadge">${escapeHtml(String(r.severity).toUpperCase())}</span><span>${escapeHtml(r.claim)}</span></div>`).join('')
+    : '<div class="no-items">No open findings driving the score down.</div>';
+  return `<div class="sec">
+    <div class="sec-hdr">TSM QUALITY SCORE<span class="lbadge" style="margin-left:auto;background:transparent;border-color:var(--${bandCls});color:var(--${bandCls});">${q.band}</span></div>
+    <div class="kpi-row">${tileHtml}</div>
+    ${reasonsHtml}
   </div>`;
 }
 
@@ -247,10 +228,12 @@ function render(){
     html += renderList(items, l.label, l);
   }
 
-  if(CFG.explainPath && window.TSMExecFramework){
+  if(CFG.explainPath){
     const explainItems = getPath(data, CFG.explainPath);
-    html += renderQualityScore(explainItems);
-    html += TSMExecFramework.renderRiskRegister(explainItems, { isExec: CFG.isExec });
+    html += renderQualityScore(explainItems, kpiBase.record_count);
+    if(window.TSMExecFramework){
+      html += TSMExecFramework.renderRiskRegister(explainItems, { isExec: CFG.isExec });
+    }
   }
 
   if(CFG.isExec){
@@ -269,95 +252,7 @@ function escapeHtml(s){
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
-// ── LIVE RECOMMENDATIONS (real backend, real approve/reject) ──────────────
-// Talks directly to /api/mdm/recommendations (GET) and the two-step
-// approve/reject endpoints, same requireApiKey pattern as Governance's live
-// risk register. Requires window.TSM_CLIENT_KEY from /config/tsm-client-key.js.
-// Prior claim that MDM already had working Approve/Reject buttons was false —
-// this file's buttons only ever called showToast(). This is the real thing.
-const REC_ACTOR = 'MDM Exec Portal';
-
-async function fetchLiveRecs(){
-  try {
-    const res = await fetch('/api/mdm/recommendations');
-    const data = await res.json();
-    return (data && data.ok && Array.isArray(data.recommendations)) ? data.recommendations : [];
-  } catch(e){
-    console.error('[LiveRecommendations] fetch failed', e);
-    return null;
-  }
-}
-
-function recTitle(rec){
-  if(rec.title) return rec.title;
-  if(rec.reason) return rec.reason;
-  if(rec.type === 'merge'){
-    const survivor = rec.survivorName || rec.survivorId || '?';
-    const merged = rec.mergedName || rec.mergedId || '?';
-    return `Merge "${merged}" into "${survivor}"`;
-  }
-  return rec.type || 'Recommendation';
-}
-
-async function decideRec(id, decision, btn){
-  if(!window.TSM_CLIENT_KEY){
-    showToast('Missing client key — cannot submit decision.');
-    return;
-  }
-  const row = btn.closest('.rec-row');
-  row.querySelectorAll('.rbtn').forEach(b => b.disabled = true);
-  try {
-    const res = await fetch(`/api/mdm/recommendations/${encodeURIComponent(id)}/${decision}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': window.TSM_CLIENT_KEY },
-      body: JSON.stringify({ actor: REC_ACTOR })
-    });
-    const data = await res.json();
-    if(!res.ok || !data.ok){
-      showToast(`${decision === 'approve' ? 'Approve' : 'Reject'} failed: ${data.error || res.status}`);
-      row.querySelectorAll('.rbtn').forEach(b => b.disabled = false);
-      return;
-    }
-    showToast(decision === 'approve'
-      ? (data.resolved && data.resolved.type === 'merge' ? 'Merge approved & applied.' : 'Recommendation approved.')
-      : 'Recommendation rejected.');
-    renderLiveRecommendations();
-  } catch(e){
-    console.error('[LiveRecommendations] decision failed', e);
-    showToast('Network error submitting decision.');
-    row.querySelectorAll('.rbtn').forEach(b => b.disabled = false);
-  }
-}
-
-function recRowHtml(rec){
-  return `
-    <div class="rec-row" data-rec-id="${escapeHtml(rec.id)}">
-      <span class="rec-type">${escapeHtml(rec.type || 'rec')}</span>
-      <div class="rec-body">
-        <div class="rec-title">${escapeHtml(recTitle(rec))}</div>
-        <div class="rec-meta">domain: <span>${escapeHtml(rec.domain || '—')}</span> &middot; id: <span>${escapeHtml(rec.id)}</span></div>
-      </div>
-      <div class="rec-actions">
-        <button class="rbtn approve" onclick="decideRec('${escapeHtml(rec.id)}','approve',this)">Approve</button>
-        <button class="rbtn reject" onclick="decideRec('${escapeHtml(rec.id)}','reject',this)">Reject</button>
-      </div>
-    </div>`;
-}
-
-async function renderLiveRecommendations(){
-  const el = document.getElementById('liveRecWrap');
-  if(!el) return;
-  const recs = await fetchLiveRecs();
-  if(recs === null){
-    el.innerHTML = `<div class="sec"><div class="sec-hdr">LIVE RECOMMENDATIONS</div><div class="no-items">Could not reach /api/mdm/recommendations — is the server running?</div></div>`;
-    return;
-  }
-  const rows = recs.length ? recs.map(recRowHtml).join('') : '<div class="no-items">No open recommendations.</div>';
-  el.innerHTML = `<div class="sec"><div class="sec-hdr">LIVE RECOMMENDATIONS &middot; ${recs.length} OPEN</div>${rows}</div>`;
-}
-
 render();
-renderLiveRecommendations();
 window.addEventListener('storage', e => { if(e.key === RELAY_KEY_FALLBACK || e.key === 'TSM_EVENT_LOG') render(); });
 window.addEventListener('TSM_RELAY_EVENT', e => { if(e.detail && e.detail.domain === CFG.domain) render(); });
 </script>

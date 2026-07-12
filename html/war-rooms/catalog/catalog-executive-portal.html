@@ -1,17 +1,4 @@
 <!DOCTYPE html>
-<!--
-  TSM CATALOG EXECUTIVE PORTAL — based on repo snapshot (zip), NOT a
-  user-uploaded file. Verify against your actual current repo copy before
-  committing — the BPO exec portal diverged from this same zip earlier in
-  this project, so treat this as a draft patch, not a confirmed-canonical file.
-
-  Wiring status as of this edit:
-  - TSM QUALITY SCORE section: LIVE. Added via renderQualityScore(), called
-    from render() right before TSMExecFramework.renderRiskRegister(), using
-    the same explainItems the risk register already consumes. No new data
-    source. Pattern replicated identically from the BPO exec portal wiring.
-  - Everything else: unchanged from the snapshot.
--->
 <html lang="en">
 <head>
 <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
@@ -90,6 +77,7 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 <div class="wrap" id="wrap"><!-- populated by JS --></div>
 <div class="toast" id="toast"></div>
 <script src="/html/shared/tsm-exec-framework.js"></script>
+<!-- canonical source: html/war-rooms/catalog/catalog-executive-portal.html -->
 <script src="/html/shared/tsm-quality-score-engine.js"></script>
 <script>
 function tick(){document.getElementById('clock').textContent=new Date().toLocaleTimeString();}
@@ -186,21 +174,28 @@ function renderList(items, label, opts){
   return `<div class="sec"><div class="sec-hdr">${label}</div>${rows || '<div class="no-items">All clear &mdash; no flagged items.</div>'}</div>`;
 }
 
-function renderQualityScore(explainItems){
+// Wires the shared Quality Score Engine to whatever explain items this
+// portal already fetches for the risk register (CFG.explainPath), so it's
+// one score per relay payload, not a second data path to keep in sync.
+function renderQualityScore(explainItems, recordCount){
   if(!window.TSMQualityScoreEngine) return '';
-  const items = explainItems || [];
-  const score = TSMQualityScoreEngine.fromExplainItems(items, { recordCount: items.length });
-  const tile = (lbl, val) => {
-    const cls = val>=85?'green':(val>=60?'amber':'red');
-    return `<div class="kpi"><div class="kpi-val ${cls}">${val}%</div><div class="kpi-lbl">${lbl}</div></div>`;
-  };
-  return `<div class="sec"><div class="sec-hdr">TSM QUALITY SCORE &middot; ${score.band} (${score.overall}%)</div>
-    <div class="kpi-row">
-      ${tile('ACCURACY', score.accuracy)}
-      ${tile('COMPLETENESS', score.completeness)}
-      ${tile('COMPLIANCE', score.compliance)}
-      ${tile('CONFIDENCE', score.confidence)}
-    </div>
+  const q = TSMQualityScoreEngine.fromExplainItems(explainItems || [], { recordCount: recordCount });
+  const bandCls = (q.band==='EXCELLENT'||q.band==='STRONG') ? 'green' : (q.band==='ACCEPTABLE') ? 'amber' : 'red';
+  const tiles = [
+    { val: q.overall, lbl: 'OVERALL' },
+    { val: q.accuracy, lbl: 'ACCURACY' },
+    { val: q.completeness, lbl: 'COMPLETENESS' },
+    { val: q.compliance, lbl: 'COMPLIANCE' },
+    { val: q.confidence, lbl: 'CONFIDENCE' }
+  ];
+  const tileHtml = tiles.map(t=>`<div class="kpi"><div class="kpi-val ${dynamicCls(t.val)}">${t.val}</div><div class="kpi-lbl">${t.lbl}</div></div>`).join('');
+  const reasonsHtml = (q.reasons && q.reasons.length)
+    ? q.reasons.map(r=>`<div class="list-row"><span class="lbadge">${escapeHtml(String(r.severity).toUpperCase())}</span><span>${escapeHtml(r.claim)}</span></div>`).join('')
+    : '<div class="no-items">No open findings driving the score down.</div>';
+  return `<div class="sec">
+    <div class="sec-hdr">TSM QUALITY SCORE<span class="lbadge" style="margin-left:auto;background:transparent;border-color:var(--${bandCls});color:var(--${bandCls});">${q.band}</span></div>
+    <div class="kpi-row">${tileHtml}</div>
+    ${reasonsHtml}
   </div>`;
 }
 
@@ -236,10 +231,12 @@ function render(){
     html += renderList(items, l.label, l);
   }
 
-  if(CFG.explainPath && window.TSMExecFramework){
+  if(CFG.explainPath){
     const explainItems = getPath(data, CFG.explainPath);
-    html += renderQualityScore(explainItems);
-    html += TSMExecFramework.renderRiskRegister(explainItems, { isExec: CFG.isExec });
+    html += renderQualityScore(explainItems, kpiBase.record_count);
+    if(window.TSMExecFramework){
+      html += TSMExecFramework.renderRiskRegister(explainItems, { isExec: CFG.isExec });
+    }
   }
 
   if(CFG.isExec){

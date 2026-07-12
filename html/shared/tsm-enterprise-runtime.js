@@ -16,15 +16,15 @@
  * RUNTIME_FINDING event so exec-portal UIs can react live.
  *
  * Depends on (must be loaded first):
- *   - tsm-relay.js       -> global TSMRelay      (read/write/merge/watch)
- *   - tsm-event-bus.js   -> global TSMEventBus   (on/off/emit)
+ *   - tsm-relay.js       -> global TSMRelay      (read/write/merge/watch/unwatch)
+ *   - tsm-event-bus.js   -> global TSMEventBus   (publish/subscribe/unsubscribe/once)
  *   - tsm-rule-registry.js -> global TSMRuleRegistry (evaluate)
  *
- * ASSUMPTION FLAGGED: this file assumes TSMEventBus.on/off/emit and
- * TSMRelay.watch(domain, callback) -> unwatch fn, TSMRelay.read(domain),
- * TSMRelay.merge(domain, partial). If your actual tsm-relay.js /
- * tsm-event-bus.js use different method names, the four call sites marked
- * "ADAPT:" below are the only places that need to change.
+ * CONFIRMED against the real html/shared/tsm-event-bus.js and
+ * html/shared/tsm-relay.js (not guessed): TSMEventBus has no on()/off()/emit(),
+ * only publish/subscribe/unsubscribe/once — this file's emit() wrapper calls
+ * TSMEventBus.publish() internally. TSMRelay's real methods are
+ * read/write/merge/watch(domain, cb)->unwatch fn, matching what's used below.
  */
 (function (global) {
   'use strict';
@@ -46,9 +46,10 @@
   }
 
   function emit(event, detail) {
-    // ADAPT: change to global.TSMEventBus.publish(event, detail) if that's the real API.
-    if (global.TSMEventBus && typeof global.TSMEventBus.emit === 'function') {
-      global.TSMEventBus.emit(event, detail);
+    // Confirmed against the real html/shared/tsm-event-bus.js: it exposes
+    // publish/subscribe/unsubscribe/once — there is no emit() or on()/off().
+    if (global.TSMEventBus && typeof global.TSMEventBus.publish === 'function') {
+      global.TSMEventBus.publish(event, detail);
     }
   }
 
@@ -94,7 +95,7 @@
       slice[bucket].push(f.payload || f);
     });
 
-    // ADAPT: change to global.TSMRelay.read/write if the real method names differ.
+    // Confirmed against real html/shared/tsm-relay.js: read/write are the actual method names.
     var current = global.TSMRelay.read(CROSS_MESH_DOMAIN) || {};
     current.bySource = current.bySource || {};
     current.bySource[sourceDomain] = slice; // REPLACE this source's slice — matches original's full-recompute-per-evaluate() behavior
@@ -240,7 +241,8 @@
       return active[domain].handle;
     }
 
-    // ADAPT: change to global.TSMRelay.subscribe(domain, cb) if that's the real API.
+    // Confirmed against real html/shared/tsm-relay.js: watch() is the actual method
+    // (there is no subscribe()); it returns an unwatch() closure, used in stop() below.
     var unwatch = global.TSMRelay.watch(domain, function (payload) {
       evaluateAndRoute(domain, payload);
     });
