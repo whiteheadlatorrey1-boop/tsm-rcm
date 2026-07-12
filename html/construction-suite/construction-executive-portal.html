@@ -588,6 +588,7 @@ body { background: var(--bg); color: var(--text); font-family: 'Courier New', mo
 <div style="padding:0 20px;">
   <div id="tsmk-wip-auto" style="margin:18px 0 10px;"></div>
   <div id="tsmk-exp-auto" style="margin:10px 0 24px;"></div>
+  <div id="tsmk-outcome-auto" style="margin:10px 0 24px;"></div>
 </div>
 <!-- ▲ TSM EXEC KIT ▲ -->
 
@@ -1347,14 +1348,63 @@ document.getElementById("execCompliance").textContent=compliance;
     };
   }
 
+  /* Roadmap #7 — renders TSMExecutiveOutcome.build()'s four-question view.
+     Pure render layer, same as renderExplainability above: no scoring or
+     classification logic here, just display of what the engine computed. */
+  function renderOutcome(target, outcome) {
+    var el = typeof target === 'string' ? document.getElementById(target) : target;
+    if (!el) return;
+    if (!outcome) {
+      el.innerHTML = '<div class="tsmk-explain"><div class="tsmk-exp-empty">No executive outcome data yet.</div></div>';
+      return;
+    }
+    var wh = outcome.whatHappened || {};
+    var wim = outcome.whyItMatters || {};
+    var wsd = outcome.whatShouldWeDo || [];
+    var who = outcome.whoOwnsIt || {};
+
+    var actionsHtml = wsd.length
+      ? wsd.map(function (a) {
+          return '<div class="tsmk-exp-card" data-severity="' + esc(a.severity || '') + '">' +
+                   '<div class="tsmk-exp-row"><div class="tsmk-exp-claim">' + esc(a.action) + '</div>' +
+                   (a.confidence != null ? '<span class="tsmk-conf-badge">' + Math.round(a.confidence) + '% conf</span>' : '') +
+                   '</div></div>';
+        }).join('')
+      : '<div class="tsmk-exp-empty">No open action items.</div>';
+
+    el.innerHTML =
+      '<div class="tsmk-explain">' +
+        '<div class="tsmk-exp-why-label">WHAT HAPPENED</div>' +
+        '<div class="tsmk-exp-rationale">' + esc(wh.domain || '') + ' &mdash; ' +
+          esc(wh.documentsProcessed != null ? wh.documentsProcessed : '\u2014') + ' record(s), accuracy ' +
+          esc(wh.accuracy || '\u2014') + ' (' + esc(wh.band || '\u2014') + '), ' +
+          esc(wh.openFindings) + ' open finding(s).</div>' +
+        '<div class="tsmk-exp-why-label" style="margin-top:14px;">WHY IT MATTERS</div>' +
+        '<div class="tsmk-exp-rationale">' + esc(wim.highSeverityFindings) + ' high-severity finding(s).' +
+          (wim.financialExposure != null
+            ? ' Est. exposure: $' + esc(wim.financialExposure.toLocaleString()) +
+              (wim.financialExposureIsPartial ? ' (partial \u2014 not all items estimated)' : '')
+            : ' Exposure not estimated.') +
+          '</div>' +
+        '<div class="tsmk-exp-why-label" style="margin-top:14px;">WHAT TO DO</div>' +
+        actionsHtml +
+        '<div class="tsmk-exp-why-label" style="margin-top:14px;">WHO OWNS IT</div>' +
+        '<div class="tsmk-exp-rationale">' + esc(who.owner) + ' \u00b7 ' +
+          esc(who.claimedCount) + ' claimed, ' + esc(who.queuedCount) + ' queued</div>' +
+      '</div>';
+  }
+
   global.TSMExecKit = {
     renderWIP: renderWIP,
     renderExplainability: renderExplainability,
+    renderOutcome: renderOutcome,
     fromRelay: fromRelay
   };
 
 })(window);
 </script>
+<script src="/html/shared/tsm-quality-score-engine.js"></script>
+<script src="/html/shared/tsm-executive-outcome.js"></script>
 
 <script>
 /* TSM EXEC KIT — AUTO-INJECTED 2026-06-29 23:19 UTC */
@@ -1363,6 +1413,7 @@ document.getElementById("execCompliance").textContent=compliance;
   var WIP_TITLE  = "Construction Pipeline Status";
   var WIP_ID     = 'tsmk-wip-auto';
   var EXP_ID     = 'tsmk-exp-auto';
+  var OUTCOME_ID = 'tsmk-outcome-auto';
 
   function readRelay() {
     for (var i = 0; i < RELAY_KEYS.length; i++) {
@@ -1392,6 +1443,18 @@ document.getElementById("execCompliance").textContent=compliance;
         ? new Date(relay.timestamp).toLocaleTimeString() : 'loaded')) : '' });
 
     TSMExecKit.renderExplainability(EXP_ID, items, { openFirst: true });
+
+    // Roadmap #7 — same items already flow through the explain widget above;
+    // reuse them rather than re-deriving anything.
+    if (window.TSMQualityScoreEngine && window.TSMExecutiveOutcome) {
+      var qualityScore = TSMQualityScoreEngine.fromExplainItems(items, { recordCount: items.length });
+      var outcome = TSMExecutiveOutcome.build({
+        domain: 'Construction',
+        explainItems: items,
+        qualityScore: qualityScore
+      });
+      TSMExecKit.renderOutcome(OUTCOME_ID, outcome);
+    }
   }
 
   if (document.readyState === 'loading') {
