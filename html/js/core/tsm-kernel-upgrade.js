@@ -26,20 +26,27 @@
 
   const originalEmit = bus.emit.bind(bus);
 
+  // Events emitted BY the replay engine itself must never be logged,
+  // or every replay re-appends one entry per event it just replayed,
+  // roughly doubling the stored log on every page load.
+  const REPLAY_INTERNAL_EVENTS = new Set(["REPLAY_APPLIED", "REPLAY_EVENT_APPLIED"]);
+
   bus.emit = function (event, payload) {
 
     // forward to original handlers
     const result = originalEmit(event, payload);
 
-    // log EVERYTHING (replay layer)
-    try {
-      window.TSMReplayEngine?.log({
-        type: event,
-        payload,
-        ts: Date.now()
-      });
-    } catch (e) {
-      console.warn("[TSM-REPLAY] log failed:", e);
+    // log EVERYTHING except the replay engine's own bookkeeping events
+    if (!REPLAY_INTERNAL_EVENTS.has(event)) {
+      try {
+        window.TSMReplayEngine?.log({
+          type: event,
+          payload,
+          ts: Date.now()
+        });
+      } catch (e) {
+        console.warn("[TSM-REPLAY] log failed:", e);
+      }
     }
 
     return result;
@@ -119,6 +126,14 @@
 
     log(event) {
       this._cache.push(event);
+      // Hard cap: keep only the most recent 500 events. Without this,
+      // a long-lived session (or the replay-loop bug this cap is
+      // paired with a fix for) can grow this array without bound
+      // until localStorage.setItem throws on every call.
+      const MAX_EVENTS = 500;
+      if (this._cache.length > MAX_EVENTS) {
+        this._cache = this._cache.slice(-MAX_EVENTS);
+      }
       this.save();
     }
 
