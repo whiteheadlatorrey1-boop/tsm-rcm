@@ -1,167 +1,150 @@
 /**
  * TSM Agent Registry v1.0
  * --------------------------------------------------------------------------
- * BPO Enterprise Roadmap #6 — "Every war room gets a named roster of AI
- * agents (Claims Agent, Coding Agent, etc.), not just a generic queue."
+ * BPO Enterprise Roadmap #6 — "AI Agents Per War Room."
  *
- * War rooms already exist per vertical, but there's no concept of a named
- * agent with a role/capability set that work gets assigned to and tracked
- * against. This is that layer -- a roster per domain plus an assignment/
- * workload tracker, following the same createX() factory pattern as
- * tsm-hitl-gate.js's createGate() (independent in-memory instance per
- * call; a caller that wants one process-wide registry creates it once at
- * module load and reuses it, same as MDM_RECOMMENDATION_DECISIONS).
+ * Every vertical already produces a flat list of findings via
+ * getExplainItems() (see tsm-exec-framework.js), which then feeds
+ * TSMQualityScoreEngine (#2), TSMProcessMining (#5), etc. What's missing is
+ * attribution: right now a finding is just "a finding" — there's no sense
+ * of which specialized concern surfaced it (a claims issue vs. a coding
+ * issue vs. a denial pattern), which is what the roadmap's "Claims Agent /
+ * Coding Agent / Denial Agent" language is really asking for.
  *
- * DEFAULT_ROSTERS below are starting points per the roadmap doc's examples
- * -- add/rename agents per domain freely, nothing else in this file assumes
- * a fixed roster shape beyond { id, name, role, capabilities }.
+ * This does NOT introduce separate AI models or processes per agent — that
+ * would duplicate infrastructure this platform already has (one
+ * getExplainItems() call per war room). Instead, an "agent" here is a named,
+ * scoped classifier function: given the same findings a war room already
+ * produces, each agent's run() picks out and owns the subset that matches
+ * its concern, tags them with { agentId, agentLabel }, and the registry
+ * rolls the tagged findings back into one array — a drop-in replacement
+ * for a bare getExplainItems() array anywhere downstream (Quality Score,
+ * Process Mining, the Executive Outcome View in tsm-executive-outcome.js,
+ * unchanged).
  *
- * Works in both the browser and Node (same dual-environment pattern as the
- * rest of html/shared).
+ * Usage:
+ *   TSMAgentRegistry.registerRoster('healthcare-war-room', [
+ *     { id: 'claims', label: 'Claims Agent', match: it => /claim/i.test(it.claim) },
+ *     ...
+ *   ]);
+ *   const tagged = TSMAgentRegistry.run('healthcare-war-room', explainItems);
+ *   // tagged -> same items, each with .agentId / .agentLabel added,
+ *   // ready for TSMQualityScoreEngine.fromExplainItems(tagged)
+ *
+ * Default rosters below are seeded for the three verticals named in the
+ * BPO Enterprise Roadmap doc (Healthcare, Construction, Mortgage). Only
+ * Healthcare's `match` functions are real (pattern-matched against actual
+ * finding text) — Construction and Mortgage rosters are registered with
+ * honest no-op matchers (documented below) until those verticals' finding
+ * vocabularies are confirmed against real getExplainItems() output, same
+ * as this codebase's existing pattern of leaving fields honestly empty
+ * rather than guessing (see decision-provenance.js's ruleIds comment).
  * ========================================================================== */
 
 (function (global) {
   'use strict';
 
-  var DEFAULT_ROSTERS = {
-    HEALTHCARE: [
-      { id: 'claims-agent', name: 'Claims Agent', role: 'Reviews and appeals denied claims', capabilities: ['denial-analysis', 'appeal-drafting'] },
-      { id: 'coding-agent', name: 'Coding Agent', role: 'Validates ICD/CPT coding accuracy', capabilities: ['code-validation', 'compliance-check'] },
-      { id: 'eligibility-agent', name: 'Eligibility Agent', role: 'Verifies patient/payer eligibility', capabilities: ['eligibility-check'] }
-    ],
-    CONSTRUCTION: [
-      { id: 'change-order-agent', name: 'Change Order Agent', role: 'Triages and routes change order requests', capabilities: ['co-triage', 'approval-routing'] },
-      { id: 'submittal-agent', name: 'Submittal Agent', role: 'Tracks submittal/RFI status against schedule', capabilities: ['submittal-tracking'] },
-      { id: 'draw-agent', name: 'Draw Request Agent', role: 'Reviews draw requests against lien waivers', capabilities: ['draw-review', 'lien-check'] }
-    ],
-    MDM: [
-      { id: 'dedupe-agent', name: 'Dedupe Agent', role: 'Identifies and scores duplicate-record candidates', capabilities: ['dedupe-scoring'] },
-      { id: 'golden-record-agent', name: 'Golden Record Agent', role: 'Proposes merge/survivorship decisions', capabilities: ['merge-proposal'] }
-    ],
-    GOVERNANCE: [
-      { id: 'risk-agent', name: 'Risk Agent', role: 'Flags and prioritizes policy exceptions', capabilities: ['risk-flagging'] },
-      { id: 'audit-agent', name: 'Audit Agent', role: 'Prepares audit-trail packets for review', capabilities: ['audit-prep'] }
-    ],
-    APPROVAL: [
-      { id: 'intake-agent', name: 'Intake Agent', role: 'Pre-screens approval requests for completeness', capabilities: ['pre-screen'] }
-    ]
-  };
+  var rosters = Object.create(null); // warRoomId -> [{ id, label, match }]
 
-  function assignmentId() {
-    return 'ASG-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+  function registerRoster(warRoomId, agents) {
+    if (!warRoomId || !Array.isArray(agents)) return null;
+    rosters[warRoomId] = agents.map(function (a) {
+      return {
+        id: a.id,
+        label: a.label || a.id,
+        match: typeof a.match === 'function' ? a.match : function () { return false; }
+      };
+    });
+    return rosters[warRoomId];
   }
 
-  /** getRoster(domain) -- read-only lookup, empty array if domain has no defined roster. */
-  function getRoster(domain) {
-    return (DEFAULT_ROSTERS[domain] || []).slice();
+  function listAgents(warRoomId) {
+    return (rosters[warRoomId] || []).slice();
   }
 
-  /** findAgent(domain, agentId) */
-  function findAgent(domain, agentId) {
-    return getRoster(domain).filter(function (a) { return a.id === agentId; })[0] || null;
+  function listWarRooms() {
+    return Object.keys(rosters);
   }
 
   /**
-   * createRegistry()
-   * Returns an independent registry instance holding assignments + an
-   * activity log, distinct from the static DEFAULT_ROSTERS (which is just
-   * reference data, same relationship as REFERENCE_BENCHMARKS to
-   * aggregate() in tsm-benchmark-intelligence.js).
+   * run(warRoomId, explainItems)
+   * Tags each item with the first matching agent in roster order; items
+   * matching no agent get { agentId: 'unassigned', agentLabel: 'Unassigned' }
+   * rather than being dropped — every finding stays visible.
    */
-  function createRegistry() {
-    var assignments = []; // { id, domain, agentId, entityId, entityType, status, assignedAt, completedAt }
-    var activityLog = [];
+  function run(warRoomId, explainItems) {
+    var roster = rosters[warRoomId] || [];
+    var items = Array.isArray(explainItems) ? explainItems : [];
 
-    function logEvent(type, payload) {
-      activityLog.push(Object.assign({ type: type, ts: new Date().toISOString() }, payload));
-    }
-
-    /**
-     * assign({ domain, agentId, entityId, entityType })
-     * Assigns a piece of work (a claim, a case, a record) to a named agent.
-     * Throws if the agent isn't in that domain's roster -- catches typos
-     * early rather than silently tracking work against a nonexistent agent.
-     */
-    function assign(opts) {
-      opts = opts || {};
-      if (!opts.domain || !opts.agentId) throw new Error('assign requires domain and agentId');
-      var agent = findAgent(opts.domain, opts.agentId);
-      if (!agent) throw new Error('Unknown agent "' + opts.agentId + '" for domain ' + opts.domain);
-
-      var entry = {
-        id: assignmentId(),
-        domain: opts.domain,
-        agentId: opts.agentId,
-        agentName: agent.name,
-        entityId: opts.entityId || null,
-        entityType: opts.entityType || null,
-        status: 'IN_PROGRESS',
-        assignedAt: new Date().toISOString(),
-        completedAt: null
-      };
-      assignments.push(entry);
-      logEvent('ASSIGNED', { assignmentId: entry.id, domain: entry.domain, agentId: entry.agentId });
-      return entry;
-    }
-
-    /** complete(assignmentId, outcome) -- outcome: 'RESOLVED' | 'ESCALATED' (default 'RESOLVED'). */
-    function complete(assignmentId, outcome) {
-      var entry = assignments.filter(function (a) { return a.id === assignmentId; })[0];
-      if (!entry) return null;
-      entry.status = outcome || 'RESOLVED';
-      entry.completedAt = new Date().toISOString();
-      logEvent('COMPLETED', { assignmentId: entry.id, status: entry.status });
-      return entry;
-    }
-
-    /** getWorkload(domain) -- open (IN_PROGRESS) assignment count per agent, zero-filled for the full roster. */
-    function getWorkload(domain) {
-      var roster = getRoster(domain);
-      return roster.map(function (agent) {
-        var open = assignments.filter(function (a) {
-          return a.domain === domain && a.agentId === agent.id && a.status === 'IN_PROGRESS';
-        }).length;
-        var completed = assignments.filter(function (a) {
-          return a.domain === domain && a.agentId === agent.id && a.status !== 'IN_PROGRESS';
-        }).length;
-        return { agentId: agent.id, agentName: agent.name, role: agent.role, openAssignments: open, completedAssignments: completed };
+    return items.map(function (it) {
+      var owner = null;
+      for (var i = 0; i < roster.length; i++) {
+        try {
+          if (roster[i].match(it)) { owner = roster[i]; break; }
+        } catch (e) {
+          // a bad match() fn shouldn't take down the whole batch
+        }
+      }
+      return Object.assign({}, it, {
+        agentId: owner ? owner.id : 'unassigned',
+        agentLabel: owner ? owner.label : 'Unassigned'
       });
-    }
+    });
+  }
 
-    /** getAssignments(filter) -- filter: { domain, agentId, status } (all optional). */
-    function getAssignments(filter) {
-      filter = filter || {};
-      return assignments.filter(function (a) {
-        if (filter.domain && a.domain !== filter.domain) return false;
-        if (filter.agentId && a.agentId !== filter.agentId) return false;
-        if (filter.status && a.status !== filter.status) return false;
-        return true;
-      });
-    }
-
-    function getActivityLog(limit) {
-      return activityLog.slice(-1 * (limit || 200)).reverse();
-    }
-
-    return {
-      assign: assign,
-      complete: complete,
-      getWorkload: getWorkload,
-      getAssignments: getAssignments,
-      getActivityLog: getActivityLog,
-      assignments: assignments
-    };
+  /** Summarize tagged items by agent — counts + highest severity seen, for a roster-level dashboard tile. */
+  function summarize(taggedItems) {
+    var byAgent = Object.create(null);
+    (taggedItems || []).forEach(function (it) {
+      var key = it.agentId || 'unassigned';
+      if (!byAgent[key]) byAgent[key] = { agentId: key, agentLabel: it.agentLabel || key, count: 0, highSeverity: 0 };
+      byAgent[key].count++;
+      if (it.severity === 'high') byAgent[key].highSeverity++;
+    });
+    return Object.keys(byAgent).map(function (k) { return byAgent[k]; });
   }
 
   var TSMAgentRegistry = {
-    DEFAULT_ROSTERS: DEFAULT_ROSTERS,
-    getRoster: getRoster,
-    findAgent: findAgent,
-    createRegistry: createRegistry
+    registerRoster: registerRoster,
+    listAgents: listAgents,
+    listWarRooms: listWarRooms,
+    run: run,
+    summarize: summarize
   };
 
   global.TSMAgentRegistry = TSMAgentRegistry;
   if (typeof module !== 'undefined' && module.exports) module.exports = TSMAgentRegistry;
+
+  // ── Default rosters ──────────────────────────────────────────────────
+  // Healthcare: real matchers, pattern-matched against finding text.
+  registerRoster('healthcare-war-room', [
+    { id: 'claims', label: 'Claims Agent', match: function (it) { return /\bclaim\b/i.test(it.claim || ''); } },
+    { id: 'coding', label: 'Coding Agent', match: function (it) { return /\bcpt\b|coding|code\b/i.test(it.claim || ''); } },
+    { id: 'denial', label: 'Denial Agent', match: function (it) { return /denial|denied/i.test(it.claim || ''); } },
+    { id: 'compliance', label: 'Compliance Agent', match: function (it) { return /complian|hipaa|audit/i.test(it.claim || ''); } },
+    { id: 'revenue-recovery', label: 'Revenue Recovery Agent', match: function (it) { return /recover|revenue|reimburs/i.test(it.claim || ''); } }
+  ]);
+
+  // Construction and Mortgage: roster registered, matchers honestly stubbed
+  // (always false -> everything falls through to "Unassigned") until real
+  // finding text from those verticals' getExplainItems() is available to
+  // pattern-match against. Registering the roster now means the roster UI
+  // and summarize() counts work immediately; only the classification is
+  // pending.
+  registerRoster('construction-war-room', [
+    { id: 'contract', label: 'Contract Agent' },
+    { id: 'cost', label: 'Cost Agent' },
+    { id: 'schedule', label: 'Schedule Agent' },
+    { id: 'risk', label: 'Risk Agent' },
+    { id: 'vendor', label: 'Vendor Agent' }
+  ]);
+
+  registerRoster('mortgage-war-room', [
+    { id: 'document', label: 'Document Agent' },
+    { id: 'underwriting', label: 'Underwriting Agent' },
+    { id: 'compliance', label: 'Compliance Agent' },
+    { id: 'closing', label: 'Closing Agent' }
+  ]);
 
 })(typeof window !== 'undefined' ? window : this);
 
@@ -169,22 +152,16 @@
 if (typeof require !== 'undefined' && typeof module !== 'undefined' && require.main === module) {
   var Registry = module.exports;
 
-  console.log('[HEALTHCARE roster]', JSON.stringify(Registry.getRoster('HEALTHCARE'), null, 2));
+  var sampleItems = [
+    { id: 'f1', claim: 'CLM-1001 denied for medical necessity', severity: 'high', confidence: 94 },
+    { id: 'f2', claim: 'CPT 99215 coding mismatch on CLM-1002', severity: 'med', confidence: 80 },
+    { id: 'f3', claim: 'HIPAA audit flag on record access log', severity: 'high', confidence: 88 },
+    { id: 'f4', claim: 'Revenue recovery opportunity: $1,250 on appeal', severity: 'low', confidence: 70 },
+    { id: 'f5', claim: 'Unrelated formatting note', severity: 'low', confidence: 40 }
+  ];
 
-  var reg = Registry.createRegistry();
-  var a1 = reg.assign({ domain: 'HEALTHCARE', agentId: 'claims-agent', entityId: 'CASE-104', entityType: 'claim' });
-  var a2 = reg.assign({ domain: 'HEALTHCARE', agentId: 'claims-agent', entityId: 'CASE-105', entityType: 'claim' });
-  reg.assign({ domain: 'HEALTHCARE', agentId: 'coding-agent', entityId: 'CASE-106', entityType: 'claim' });
-  reg.complete(a1.id, 'RESOLVED');
-
-  console.log('[workload]', JSON.stringify(reg.getWorkload('HEALTHCARE'), null, 2));
-  console.log('[open assignments]', JSON.stringify(reg.getAssignments({ status: 'IN_PROGRESS' }), null, 2));
-  console.log('[activity log]', JSON.stringify(reg.getActivityLog(10), null, 2));
-
-  try {
-    reg.assign({ domain: 'HEALTHCARE', agentId: 'nonexistent-agent', entityId: 'X' });
-    console.log('[ERROR] unknown agent should have thrown');
-  } catch (e) {
-    console.log('[validation ok]', e.message);
-  }
+  var tagged = Registry.run('healthcare-war-room', sampleItems);
+  console.log('[run]', JSON.stringify(tagged, null, 2));
+  console.log('[summarize]', JSON.stringify(Registry.summarize(tagged), null, 2));
+  console.log('[listWarRooms]', Registry.listWarRooms());
 }
