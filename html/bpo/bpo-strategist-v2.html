@@ -373,6 +373,13 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
           <div style="color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:.65rem">Recomputes with full evidence once the strategy brief generates.</div>
         </div>
       </div>
+
+      <div class="explain-section">
+        <div class="explain-label">TRUST &amp; EVIDENCE RECORD</div>
+        <div id="evidenceRecordBox">
+          <div style="color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:.65rem">Recorded automatically once the strategy brief generates.</div>
+        </div>
+      </div>
     </div>
 
   </div>
@@ -804,6 +811,25 @@ function renderExplainability(obj) {
     const qs = TSMQualityScore.compute({ extraction: warData?.extraction, recommendation: obj, crossUploadHit: crossHit });
     TSMQualityScore.renderCard('qualityScoreMount', qs);
     window._tsmQualityScore = qs;
+  }
+
+  // Trust & Evidence: read back what recordDecisionEvidence() just wrote
+  // (called earlier in renderRecommendation, before this function runs)
+  // and actually show it, instead of only writing it to the ledger.
+  try {
+    if (window.TSM && window.TSM.evidenceLedger && window.TSM.buildProvenance) {
+      const bpoRecords = window.TSM.evidenceLedger.forDomain('BPO');
+      const latest = bpoRecords[bpoRecords.length - 1];
+      const box = document.getElementById('evidenceRecordBox');
+      if (latest && box) {
+        const rows = window.TSM.buildProvenance(latest);
+        box.innerHTML = rows.map(r => `
+          <div class="reasoning-line"><span class="rl-key">${r.label}:</span> <span class="rl-val">${r.value}</span></div>
+        `).join('');
+      }
+    }
+  } catch (e) {
+    console.warn('[Trust Evidence] render failed', e);
   }
 }
 
