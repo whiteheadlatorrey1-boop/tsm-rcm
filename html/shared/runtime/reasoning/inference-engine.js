@@ -1,6 +1,6 @@
 // TSM Inference Engine
 
-module.exports = {
+const __tsmImpl = {
 
 infer(evidence = []) {
 
@@ -17,3 +17,5 @@ confidence:0.75
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMReasoningInferenceEngine = __tsmImpl; }

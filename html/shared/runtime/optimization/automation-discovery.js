@@ -1,4 +1,4 @@
-global.TSMAutomationDiscovery = {
+window.TSMAutomationDiscovery = {
 
  candidates:[],
 

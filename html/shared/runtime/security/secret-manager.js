@@ -4,7 +4,7 @@
 
 const secrets={};
 
-module.exports={
+const __tsmImpl = {
 
 store(name,value){
 
@@ -24,3 +24,5 @@ retrieve(name){
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMSecuritySecretManager = __tsmImpl; }

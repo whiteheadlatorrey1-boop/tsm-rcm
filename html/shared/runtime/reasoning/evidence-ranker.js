@@ -1,6 +1,6 @@
 // TSM Evidence Ranker
 
-module.exports = {
+const __tsmImpl = {
 
 rank(evidence = []) {
 
@@ -16,3 +16,5 @@ item.score || 0.5
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMReasoningEvidenceRanker = __tsmImpl; }

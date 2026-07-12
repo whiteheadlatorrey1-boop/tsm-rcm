@@ -1,6 +1,6 @@
 // TSM Causal Reasoning Engine
 
-module.exports = {
+const __tsmImpl = {
 
 trace(events = []) {
 
@@ -15,3 +15,5 @@ confidence:0.8
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMReasoningCausalEngine = __tsmImpl; }

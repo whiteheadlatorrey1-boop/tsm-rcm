@@ -1,6 +1,6 @@
 // TSM Hypothesis Generator
 
-module.exports = {
+const __tsmImpl = {
 
 generate(problem = {}) {
 
@@ -21,3 +21,5 @@ confidence:
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMReasoningHypothesisGenerator = __tsmImpl; }

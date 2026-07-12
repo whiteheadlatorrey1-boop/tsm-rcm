@@ -17,3 +17,4 @@ const contextEngine = {
 };
 
 module.exports = contextEngine;
+if (typeof window !== 'undefined') { window.TSMKnowledgeContextEngine = contextEngine; }

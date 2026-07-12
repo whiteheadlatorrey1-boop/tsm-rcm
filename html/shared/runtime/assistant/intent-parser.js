@@ -1,6 +1,6 @@
 // TSM Intent Parser
 
-module.exports = {
+const __tsmImpl = {
 
 parse(message = "") {
 
@@ -20,3 +20,5 @@ message
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMAssistantIntentParser = __tsmImpl; }

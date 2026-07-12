@@ -1,6 +1,6 @@
 // TSM Outcome Predictor
 
-module.exports = {
+const __tsmImpl = {
 
 predict(model = {}) {
 
@@ -17,3 +17,5 @@ model.confidence || 0.7
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMSimulationOutcomePredictor = __tsmImpl; }

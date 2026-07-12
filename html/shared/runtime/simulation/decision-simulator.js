@@ -1,6 +1,6 @@
 // TSM Decision Simulator
 
-module.exports = {
+const __tsmImpl = {
 
 simulate(action = {}) {
 
@@ -19,3 +19,5 @@ risk:
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMSimulationDecisionSimulator = __tsmImpl; }

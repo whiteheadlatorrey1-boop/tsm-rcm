@@ -2,7 +2,7 @@
  * Runtime Recovery Engine
  */
 
-module.exports={
+const __tsmImpl = {
 
 recover(component){
 
@@ -15,3 +15,5 @@ recover(component){
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMOperationsRecoveryEngine = __tsmImpl; }

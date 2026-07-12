@@ -12,3 +12,4 @@ const solutionPackager = {
 };
 
 module.exports = solutionPackager;
+if (typeof window !== 'undefined') { window.TSMCustomerSolutionPackager = solutionPackager; }

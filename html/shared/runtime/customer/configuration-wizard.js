@@ -11,3 +11,4 @@ const configurationWizard = {
 };
 
 module.exports = configurationWizard;
+if (typeof window !== 'undefined') { window.TSMCustomerConfigurationWizard = configurationWizard; }

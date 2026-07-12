@@ -2,7 +2,7 @@
 
 const history = [];
 
-module.exports = {
+const __tsmImpl = {
 
 store(reasoning){
 
@@ -23,3 +23,5 @@ return history;
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMReasoningReasoningHistory = __tsmImpl; }

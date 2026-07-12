@@ -2,7 +2,7 @@
  * Runtime Health Orchestrator
  */
 
-module.exports={
+const __tsmImpl = {
 
 check(){
 
@@ -17,3 +17,5 @@ check(){
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMOperationsHealthOrchestrator = __tsmImpl; }

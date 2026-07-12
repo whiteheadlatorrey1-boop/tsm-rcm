@@ -17,3 +17,4 @@ const customerHealth = {
 };
 
 module.exports = customerHealth;
+if (typeof window !== 'undefined') { window.TSMCustomerCustomerHealth = customerHealth; }

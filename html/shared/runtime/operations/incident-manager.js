@@ -4,7 +4,7 @@
 
 const incidents=[];
 
-module.exports={
+const __tsmImpl = {
 
 create(incident){
 
@@ -26,3 +26,5 @@ list(){
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMOperationsIncidentManager = __tsmImpl; }

@@ -16,3 +16,4 @@ const marketplaceIntelligence = {
 };
 
 module.exports = marketplaceIntelligence;
+if (typeof window !== 'undefined') { window.TSMEcosystemMarketplaceIntelligence = marketplaceIntelligence; }

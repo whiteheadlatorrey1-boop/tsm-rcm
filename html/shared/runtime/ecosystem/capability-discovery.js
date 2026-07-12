@@ -20,3 +20,4 @@ const capabilityDiscovery = {
 };
 
 module.exports = capabilityDiscovery;
+if (typeof window !== 'undefined') { window.TSMEcosystemCapabilityDiscovery = capabilityDiscovery; }

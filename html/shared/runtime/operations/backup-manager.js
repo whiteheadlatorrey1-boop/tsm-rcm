@@ -4,7 +4,7 @@
 
 const backups=[];
 
-module.exports={
+const __tsmImpl = {
 
 create(snapshot){
 
@@ -26,3 +26,5 @@ list(){
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMOperationsBackupManager = __tsmImpl; }

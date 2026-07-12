@@ -18,3 +18,4 @@ const onboardingEngine = {
 };
 
 module.exports = onboardingEngine;
+if (typeof window !== 'undefined') { window.TSMCustomerOnboardingEngine = onboardingEngine; }

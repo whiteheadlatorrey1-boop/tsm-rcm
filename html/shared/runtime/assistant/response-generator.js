@@ -1,6 +1,6 @@
 // TSM Response Generator
 
-module.exports = {
+const __tsmImpl = {
 
 generate(data = {}) {
 
@@ -15,3 +15,5 @@ recommendation:data.recommendation || null
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMAssistantResponseGenerator = __tsmImpl; }

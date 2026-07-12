@@ -17,3 +17,4 @@ const migrationManager = {
 };
 
 module.exports = migrationManager;
+if (typeof window !== 'undefined') { window.TSMCustomerMigrationManager = migrationManager; }

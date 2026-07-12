@@ -1,6 +1,6 @@
 // TSM Intelligence Stream
 
-module.exports = {
+const __tsmImpl = {
 
 publish(signal = {}) {
 
@@ -17,3 +17,5 @@ timestamp:new Date().toISOString()
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMEventMeshIntelligenceStream = __tsmImpl; }

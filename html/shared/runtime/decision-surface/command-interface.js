@@ -1,5 +1,5 @@
 // TSM Enterprise Command Interface
-module.exports = {
+const __tsmImpl = {
   execute(command) {
     return {
       command,
@@ -7,3 +7,5 @@ module.exports = {
     };
   }
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMDecisionSurfaceCommandInterface = __tsmImpl; }

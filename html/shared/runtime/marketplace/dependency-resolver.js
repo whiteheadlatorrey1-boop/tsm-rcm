@@ -2,7 +2,7 @@
  * Extension Dependency Resolver
  */
 
-module.exports={
+const __tsmImpl = {
 
 resolve(extension){
 
@@ -15,3 +15,5 @@ resolve(extension){
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMMarketplaceDependencyResolver = __tsmImpl; }

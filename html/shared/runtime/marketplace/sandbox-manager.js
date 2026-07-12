@@ -2,7 +2,7 @@
  * Extension Isolation Boundary
  */
 
-module.exports={
+const __tsmImpl = {
 
 validate(extension){
 
@@ -15,3 +15,5 @@ validate(extension){
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMMarketplaceSandboxManager = __tsmImpl; }

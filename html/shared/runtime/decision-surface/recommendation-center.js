@@ -1,5 +1,5 @@
 // TSM Recommendation Center
-module.exports = {
+const __tsmImpl = {
   queue(items = []) {
     return {
       recommendations: items,
@@ -7,3 +7,5 @@ module.exports = {
     };
   }
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMDecisionSurfaceRecommendationCenter = __tsmImpl; }

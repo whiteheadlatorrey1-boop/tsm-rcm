@@ -17,3 +17,4 @@ const billingIntelligence = {
 };
 
 module.exports = billingIntelligence;
+if (typeof window !== 'undefined') { window.TSMCommercialBillingIntelligence = billingIntelligence; }

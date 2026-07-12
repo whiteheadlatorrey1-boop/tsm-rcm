@@ -1,6 +1,6 @@
 // TSM Exception Policy Engine
 
-module.exports = {
+const __tsmImpl = {
 
 create(exception = {}) {
 
@@ -17,3 +17,5 @@ timestamp:new Date().toISOString()
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMPolicyIntelligenceExceptionPolicy = __tsmImpl; }

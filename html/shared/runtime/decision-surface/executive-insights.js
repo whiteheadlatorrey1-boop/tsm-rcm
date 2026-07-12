@@ -1,5 +1,5 @@
 // TSM Executive Insights Engine
-module.exports = {
+const __tsmImpl = {
   generate(signal = {}) {
     return {
       changed: signal.change || null,
@@ -8,3 +8,5 @@ module.exports = {
     };
   }
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMDecisionSurfaceExecutiveInsights = __tsmImpl; }

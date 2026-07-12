@@ -1,6 +1,6 @@
 // TSM Event Processor
 
-module.exports = {
+const __tsmImpl = {
 
 process(event = {}) {
 
@@ -21,3 +21,5 @@ timestamp:new Date().toISOString()
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMEventMeshEventProcessor = __tsmImpl; }

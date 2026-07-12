@@ -26,3 +26,4 @@ const knowledgeGraph = {
 };
 
 module.exports = knowledgeGraph;
+if (typeof window !== 'undefined') { window.TSMKnowledgeKnowledgeGraph = knowledgeGraph; }

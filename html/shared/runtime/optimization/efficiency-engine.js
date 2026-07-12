@@ -1,4 +1,4 @@
-global.TSMEfficiencyEngine = {
+window.TSMEfficiencyEngine = {
  analyze(process){
    return {
     process,

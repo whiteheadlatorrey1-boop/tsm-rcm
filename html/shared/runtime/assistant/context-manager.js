@@ -1,6 +1,6 @@
 // TSM Context Manager
 
-module.exports = {
+const __tsmImpl = {
 
 build(context = {}) {
 
@@ -18,3 +18,5 @@ Date.now()
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMAssistantContextManager = __tsmImpl; }

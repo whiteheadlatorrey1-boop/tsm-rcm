@@ -16,3 +16,4 @@ const ecosystemAnalytics = {
 };
 
 module.exports = ecosystemAnalytics;
+if (typeof window !== 'undefined') { window.TSMEcosystemEcosystemAnalytics = ecosystemAnalytics; }

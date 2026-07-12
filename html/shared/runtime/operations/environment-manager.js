@@ -4,7 +4,7 @@
 
 const environments=[];
 
-module.exports={
+const __tsmImpl = {
 
 register(environment){
 
@@ -21,3 +21,5 @@ list(){
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMOperationsEnvironmentManager = __tsmImpl; }

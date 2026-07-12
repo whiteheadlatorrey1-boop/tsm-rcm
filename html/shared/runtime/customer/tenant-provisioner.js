@@ -12,3 +12,4 @@ const tenantProvisioner = {
 };
 
 module.exports = tenantProvisioner;
+if (typeof window !== 'undefined') { window.TSMCustomerTenantProvisioner = tenantProvisioner; }

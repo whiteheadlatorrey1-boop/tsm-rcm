@@ -1,6 +1,6 @@
 // TSM Policy Evaluator
 
-module.exports = {
+const __tsmImpl = {
 
 check(action = {}) {
 
@@ -17,3 +17,5 @@ conditions:[]
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMPolicyIntelligencePolicyEvaluator = __tsmImpl; }

@@ -2,7 +2,7 @@
  * Runtime Plugin Loader
  */
 
-module.exports = {
+const __tsmImpl = {
 
 load(plugin){
 
@@ -15,3 +15,5 @@ load(plugin){
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMMarketplacePluginLoader = __tsmImpl; }

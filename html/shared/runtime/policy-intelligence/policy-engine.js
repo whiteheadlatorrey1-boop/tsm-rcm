@@ -1,6 +1,6 @@
 // TSM Policy Engine
 
-module.exports = {
+const __tsmImpl = {
 
 evaluate(policy = {}) {
 
@@ -17,3 +17,5 @@ timestamp:new Date().toISOString()
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMPolicyIntelligencePolicyEngine = __tsmImpl; }

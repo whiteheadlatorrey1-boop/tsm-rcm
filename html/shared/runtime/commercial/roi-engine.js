@@ -17,3 +17,4 @@ const roiEngine = {
 };
 
 module.exports = roiEngine;
+if (typeof window !== 'undefined') { window.TSMCommercialRoiEngine = roiEngine; }

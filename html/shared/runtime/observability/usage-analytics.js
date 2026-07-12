@@ -1,4 +1,4 @@
-global.TSMUsageAnalytics = {
+window.TSMUsageAnalytics = {
 
  activity:[],
 

@@ -18,3 +18,4 @@ const accountIntelligence = {
 };
 
 module.exports = accountIntelligence;
+if (typeof window !== 'undefined') { window.TSMCommercialAccountIntelligence = accountIntelligence; }

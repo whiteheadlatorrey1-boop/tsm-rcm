@@ -2,7 +2,7 @@
 
 const history = [];
 
-module.exports = {
+const __tsmImpl = {
 
 record(policy){
 
@@ -23,3 +23,5 @@ return history;
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMPolicyIntelligencePolicyHistory = __tsmImpl; }

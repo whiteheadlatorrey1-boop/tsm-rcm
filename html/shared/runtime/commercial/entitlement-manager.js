@@ -17,3 +17,4 @@ const entitlementManager = {
 };
 
 module.exports = entitlementManager;
+if (typeof window !== 'undefined') { window.TSMCommercialEntitlementManager = entitlementManager; }

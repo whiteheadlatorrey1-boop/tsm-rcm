@@ -18,3 +18,4 @@ const partnerRegistry = {
 };
 
 module.exports = partnerRegistry;
+if (typeof window !== 'undefined') { window.TSMEcosystemPartnerRegistry = partnerRegistry; }

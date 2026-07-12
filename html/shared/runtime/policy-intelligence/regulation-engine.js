@@ -1,6 +1,6 @@
 // TSM Regulation Engine
 
-module.exports = {
+const __tsmImpl = {
 
 evaluate(requirement = {}) {
 
@@ -15,3 +15,5 @@ compliant:true
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMPolicyIntelligenceRegulationEngine = __tsmImpl; }

@@ -4,7 +4,7 @@
 
 const tenants=[];
 
-module.exports={
+const __tsmImpl = {
 
 register(tenant){
 
@@ -21,3 +21,5 @@ list(){
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMSecurityTenantManager = __tsmImpl; }

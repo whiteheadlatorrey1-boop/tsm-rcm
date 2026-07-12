@@ -4,7 +4,7 @@
 
 const releases=[];
 
-module.exports={
+const __tsmImpl = {
 
 publish(version){
 
@@ -24,3 +24,5 @@ history(){
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMOperationsReleaseManager = __tsmImpl; }

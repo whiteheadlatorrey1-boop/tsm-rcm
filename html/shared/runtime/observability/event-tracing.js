@@ -1,4 +1,4 @@
-global.TSMTrace = {
+window.TSMTrace = {
 
  events:[],
 

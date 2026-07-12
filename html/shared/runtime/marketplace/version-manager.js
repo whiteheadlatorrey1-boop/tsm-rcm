@@ -2,7 +2,7 @@
  * Extension Version Control
  */
 
-module.exports={
+const __tsmImpl = {
 
 check(extension){
 
@@ -15,3 +15,5 @@ check(extension){
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMMarketplaceVersionManager = __tsmImpl; }

@@ -11,7 +11,7 @@ const roles = [
  "administrator"
 ];
 
-module.exports = {
+const __tsmImpl = {
 
 authorize(user,permission){
 
@@ -30,3 +30,5 @@ roles(){
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMSecurityAuthorizationEngine = __tsmImpl; }

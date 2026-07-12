@@ -1,5 +1,5 @@
 // TSM Risk Intelligence
-module.exports = {
+const __tsmImpl = {
   analyze(input = {}) {
     return {
       risks: input.risks || [],
@@ -7,3 +7,5 @@ module.exports = {
     };
   }
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMDecisionSurfaceRiskIntelligence = __tsmImpl; }

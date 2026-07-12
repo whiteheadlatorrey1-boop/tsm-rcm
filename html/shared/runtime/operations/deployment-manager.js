@@ -9,7 +9,7 @@ const environments = [
  "production"
 ];
 
-module.exports = {
+const __tsmImpl = {
 
 deploy(target){
 
@@ -28,3 +28,5 @@ environments(){
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMOperationsDeploymentManager = __tsmImpl; }

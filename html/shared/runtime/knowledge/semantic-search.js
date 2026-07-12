@@ -16,3 +16,4 @@ const semanticSearch = {
 };
 
 module.exports = semanticSearch;
+if (typeof window !== 'undefined') { window.TSMKnowledgeSemanticSearch = semanticSearch; }

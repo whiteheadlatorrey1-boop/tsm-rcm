@@ -1,6 +1,6 @@
 // TSM Event Correlation Engine
 
-module.exports = {
+const __tsmImpl = {
 
 correlate(events = []) {
 
@@ -17,3 +17,5 @@ correlated:true
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMEventMeshEventCorrelation = __tsmImpl; }

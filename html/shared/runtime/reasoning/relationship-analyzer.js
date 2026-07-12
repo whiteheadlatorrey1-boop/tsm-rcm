@@ -1,6 +1,6 @@
 // TSM Relationship Analyzer
 
-module.exports = {
+const __tsmImpl = {
 
 analyze(entities = []) {
 
@@ -17,3 +17,5 @@ mapped:true
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMReasoningRelationshipAnalyzer = __tsmImpl; }

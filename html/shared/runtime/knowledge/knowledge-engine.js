@@ -22,3 +22,4 @@ const knowledgeEngine = {
 };
 
 module.exports = knowledgeEngine;
+if (typeof window !== 'undefined') { window.TSMKnowledgeKnowledgeEngine = knowledgeEngine; }

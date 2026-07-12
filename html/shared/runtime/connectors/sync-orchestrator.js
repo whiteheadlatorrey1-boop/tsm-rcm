@@ -2,7 +2,7 @@
  * Enterprise Synchronization Engine
  */
 
-module.exports = {
+const __tsmImpl = {
 
 sync(source,target){
 
@@ -15,3 +15,5 @@ sync(source,target){
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMConnectorsSyncOrchestrator = __tsmImpl; }

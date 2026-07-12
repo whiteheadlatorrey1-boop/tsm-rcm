@@ -4,7 +4,7 @@
 
 const sessions=[];
 
-module.exports={
+const __tsmImpl = {
 
 create(user){
 
@@ -26,3 +26,5 @@ active(){
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMSecuritySessionManager = __tsmImpl; }

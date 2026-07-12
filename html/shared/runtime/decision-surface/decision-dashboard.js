@@ -1,5 +1,5 @@
 // TSM Decision Dashboard
-module.exports = {
+const __tsmImpl = {
   name: "decision-dashboard",
 
   summarize(state = {}) {
@@ -12,3 +12,5 @@ module.exports = {
     };
   }
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMDecisionSurfaceDecisionDashboard = __tsmImpl; }

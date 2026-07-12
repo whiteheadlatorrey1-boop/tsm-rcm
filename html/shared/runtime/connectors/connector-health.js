@@ -2,7 +2,7 @@
  * Connector Monitoring
  */
 
-module.exports={
+const __tsmImpl = {
 
 check(name){
 
@@ -15,3 +15,5 @@ check(name){
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMConnectorsConnectorHealth = __tsmImpl; }

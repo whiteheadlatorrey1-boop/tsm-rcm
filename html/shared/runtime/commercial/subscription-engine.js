@@ -21,3 +21,4 @@ const subscriptionEngine = {
 };
 
 module.exports = subscriptionEngine;
+if (typeof window !== 'undefined') { window.TSMCommercialSubscriptionEngine = subscriptionEngine; }

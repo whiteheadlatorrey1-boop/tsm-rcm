@@ -1,4 +1,4 @@
-global.TSMRuntimeGovernor={
+window.TSMRuntimeGovernor={
  evaluate(action){
   return {
    approved:true,

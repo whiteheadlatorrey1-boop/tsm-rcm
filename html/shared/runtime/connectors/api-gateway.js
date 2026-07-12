@@ -2,7 +2,7 @@
  * Enterprise API Gateway
  */
 
-module.exports = {
+const __tsmImpl = {
 
 request(endpoint,payload){
 
@@ -16,3 +16,5 @@ request(endpoint,payload){
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMConnectorsApiGateway = __tsmImpl; }

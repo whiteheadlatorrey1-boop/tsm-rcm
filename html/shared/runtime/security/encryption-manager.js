@@ -2,7 +2,7 @@
  * Enterprise Encryption Boundary
  */
 
-module.exports={
+const __tsmImpl = {
 
 encrypt(data){
 
@@ -23,3 +23,5 @@ decrypt(data){
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMSecurityEncryptionManager = __tsmImpl; }

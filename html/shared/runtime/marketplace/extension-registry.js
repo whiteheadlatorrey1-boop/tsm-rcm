@@ -5,7 +5,7 @@
 
 const extensions = [];
 
-module.exports = {
+const __tsmImpl = {
 
 register(extension){
   extensions.push(extension);
@@ -18,3 +18,5 @@ list(){
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMMarketplaceExtensionRegistry = __tsmImpl; }

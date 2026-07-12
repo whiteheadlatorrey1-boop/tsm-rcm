@@ -1,6 +1,6 @@
 // TSM Anomaly Detector
 
-module.exports = {
+const __tsmImpl = {
 
 analyze(signal = {}) {
 
@@ -19,3 +19,5 @@ confidence:0.8
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMEventMeshAnomalyDetector = __tsmImpl; }

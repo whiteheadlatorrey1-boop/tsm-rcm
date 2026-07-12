@@ -21,3 +21,4 @@ const partnerManager = {
 };
 
 module.exports = partnerManager;
+if (typeof window !== 'undefined') { window.TSMEcosystemPartnerManager = partnerManager; }

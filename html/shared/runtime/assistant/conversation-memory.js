@@ -2,7 +2,7 @@
 
 const memory = [];
 
-module.exports = {
+const __tsmImpl = {
 
 store(message){
 
@@ -20,3 +20,5 @@ return memory;
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMAssistantConversationMemory = __tsmImpl; }

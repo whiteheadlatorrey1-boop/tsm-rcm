@@ -2,7 +2,7 @@
 
 const scenarios = [];
 
-module.exports = {
+const __tsmImpl = {
 
 create(data = {}) {
 
@@ -24,3 +24,5 @@ return scenarios;
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMSimulationScenarioManager = __tsmImpl; }

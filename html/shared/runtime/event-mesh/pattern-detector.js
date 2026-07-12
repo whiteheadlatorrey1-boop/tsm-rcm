@@ -1,6 +1,6 @@
 // TSM Pattern Detector
 
-module.exports = {
+const __tsmImpl = {
 
 detect(history = []) {
 
@@ -15,3 +15,5 @@ confidence:0.75
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMEventMeshPatternDetector = __tsmImpl; }

@@ -17,3 +17,4 @@ const documentIntelligence = {
 };
 
 module.exports = documentIntelligence;
+if (typeof window !== 'undefined') { window.TSMKnowledgeDocumentIntelligence = documentIntelligence; }

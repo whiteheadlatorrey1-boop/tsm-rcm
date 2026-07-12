@@ -24,3 +24,4 @@ const usageMeter = {
 };
 
 module.exports = usageMeter;
+if (typeof window !== 'undefined') { window.TSMCommercialUsageMeter = usageMeter; }

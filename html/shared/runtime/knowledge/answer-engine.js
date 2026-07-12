@@ -17,3 +17,4 @@ const answerEngine = {
 };
 
 module.exports = answerEngine;
+if (typeof window !== 'undefined') { window.TSMKnowledgeAnswerEngine = answerEngine; }

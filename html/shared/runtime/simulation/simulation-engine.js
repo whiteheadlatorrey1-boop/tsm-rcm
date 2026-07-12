@@ -1,6 +1,6 @@
 // TSM Simulation Engine
 
-module.exports = {
+const __tsmImpl = {
 
 run(scenario = {}) {
 
@@ -13,3 +13,5 @@ timestamp: new Date().toISOString()
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMSimulationSimulationEngine = __tsmImpl; }

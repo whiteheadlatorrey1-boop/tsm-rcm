@@ -1,6 +1,6 @@
 // TSM Command Router
 
-module.exports = {
+const __tsmImpl = {
 
 route(command){
 
@@ -16,3 +16,5 @@ destination:
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMAssistantCommandRouter = __tsmImpl; }

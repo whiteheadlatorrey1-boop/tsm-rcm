@@ -1,6 +1,6 @@
 // TSM Signal Router
 
-module.exports = {
+const __tsmImpl = {
 
 route(signal = {}) {
 
@@ -16,3 +16,5 @@ signal
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMEventMeshSignalRouter = __tsmImpl; }

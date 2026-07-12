@@ -1,6 +1,6 @@
 // TSM Impact Calculator
 
-module.exports = {
+const __tsmImpl = {
 
 calculate(inputs = {}) {
 
@@ -17,3 +17,5 @@ inputs.operational || "unknown"
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMSimulationImpactCalculator = __tsmImpl; }

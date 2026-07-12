@@ -1,4 +1,4 @@
-global.TSMPerformance = {
+window.TSMPerformance = {
 
  samples:[],
 

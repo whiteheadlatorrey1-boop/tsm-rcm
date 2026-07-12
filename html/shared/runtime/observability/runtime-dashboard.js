@@ -1,4 +1,4 @@
-global.TSMRuntimeDashboard = {
+window.TSMRuntimeDashboard = {
 
  snapshot(){
 

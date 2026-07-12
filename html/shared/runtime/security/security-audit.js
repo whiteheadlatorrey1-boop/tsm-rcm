@@ -4,7 +4,7 @@
 
 const events=[];
 
-module.exports={
+const __tsmImpl = {
 
 record(event){
 
@@ -22,3 +22,5 @@ history(){
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMSecuritySecurityAudit = __tsmImpl; }

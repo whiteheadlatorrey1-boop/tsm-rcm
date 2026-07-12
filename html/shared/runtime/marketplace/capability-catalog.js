@@ -4,7 +4,7 @@
 
 const capabilities=[];
 
-module.exports={
+const __tsmImpl = {
 
 register(capability){
 
@@ -21,3 +21,5 @@ list(){
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMMarketplaceCapabilityCatalog = __tsmImpl; }

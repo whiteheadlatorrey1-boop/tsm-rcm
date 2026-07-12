@@ -1,6 +1,6 @@
 // TSM Reasoning Engine
 
-module.exports = {
+const __tsmImpl = {
 
 reason(input = {}) {
 
@@ -19,3 +19,5 @@ timestamp:new Date().toISOString()
 }
 
 };
+module.exports = __tsmImpl;
+if (typeof window !== 'undefined') { window.TSMReasoningReasoningEngine = __tsmImpl; }

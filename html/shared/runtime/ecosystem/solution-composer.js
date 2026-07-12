@@ -16,3 +16,4 @@ const solutionComposer = {
 };
 
 module.exports = solutionComposer;
+if (typeof window !== 'undefined') { window.TSMEcosystemSolutionComposer = solutionComposer; }
