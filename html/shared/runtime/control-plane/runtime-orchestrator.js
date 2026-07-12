@@ -1,4 +1,4 @@
-global.TSMRuntimeControl={
+window.TSMRuntimeControl={
  orchestrate(signal){
    return {
     status:"ORCHESTRATED",

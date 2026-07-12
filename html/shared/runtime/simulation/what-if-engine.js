@@ -1,6 +1,6 @@
 // TSM What-If Engine
 
-module.exports = {
+const __tsmExport = {
 
 evaluate(change = {}) {
 
@@ -19,3 +19,11 @@ confidence:
 }
 
 };
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = __tsmExport;
+}
+if (typeof window !== 'undefined') {
+  window.TSM = window.TSM || {};
+  window.TSM.whatIfEngine = __tsmExport;
+}

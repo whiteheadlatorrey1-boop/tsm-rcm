@@ -1,4 +1,4 @@
-global.TSMResourceOptimizer = {
+window.TSMResourceOptimizer = {
  analyze(resources){
    return {
     resources,

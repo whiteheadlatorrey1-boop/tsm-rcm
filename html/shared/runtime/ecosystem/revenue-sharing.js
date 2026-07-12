@@ -15,4 +15,12 @@ const revenueSharing = {
 
 };
 
-module.exports = revenueSharing;
+const __tsmExport = revenueSharing;
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = __tsmExport;
+}
+if (typeof window !== 'undefined') {
+  window.TSM = window.TSM || {};
+  window.TSM.revenueSharing = __tsmExport;
+}

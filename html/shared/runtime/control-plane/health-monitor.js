@@ -1,4 +1,4 @@
-global.TSMRuntimeHealthMonitor={
+window.TSMRuntimeHealthMonitor={
  check(){
   return {
    status:"HEALTHY",

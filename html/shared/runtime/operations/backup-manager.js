@@ -4,7 +4,7 @@
 
 const backups=[];
 
-module.exports={
+const __tsmExport = {
 
 create(snapshot){
 
@@ -26,3 +26,11 @@ list(){
 }
 
 };
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = __tsmExport;
+}
+if (typeof window !== 'undefined') {
+  window.TSM = window.TSM || {};
+  window.TSM.backupManager = __tsmExport;
+}

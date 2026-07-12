@@ -1,6 +1,6 @@
 // TSM Enterprise Assistant Engine
 
-module.exports = {
+const __tsmExport = {
 
 name: "enterprise-assistant",
 
@@ -15,3 +15,11 @@ status: "analyzing"
 }
 
 };
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = __tsmExport;
+}
+if (typeof window !== 'undefined') {
+  window.TSM = window.TSM || {};
+  window.TSM.assistantEngine = __tsmExport;
+}

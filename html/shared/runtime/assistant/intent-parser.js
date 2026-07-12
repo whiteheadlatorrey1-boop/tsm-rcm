@@ -1,6 +1,6 @@
 // TSM Intent Parser
 
-module.exports = {
+const __tsmExport = {
 
 parse(message = "") {
 
@@ -20,3 +20,11 @@ message
 }
 
 };
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = __tsmExport;
+}
+if (typeof window !== 'undefined') {
+  window.TSM = window.TSM || {};
+  window.TSM.intentParser = __tsmExport;
+}

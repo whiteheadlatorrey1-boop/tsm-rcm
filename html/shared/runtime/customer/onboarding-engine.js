@@ -17,4 +17,12 @@ const onboardingEngine = {
   }
 };
 
-module.exports = onboardingEngine;
+const __tsmExport = onboardingEngine;
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = __tsmExport;
+}
+if (typeof window !== 'undefined') {
+  window.TSM = window.TSM || {};
+  window.TSM.onboardingEngine = __tsmExport;
+}

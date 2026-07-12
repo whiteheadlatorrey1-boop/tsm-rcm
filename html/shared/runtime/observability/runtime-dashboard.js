@@ -1,20 +1,20 @@
-global.TSMRuntimeDashboard = {
+window.TSMRuntimeDashboard = {
 
  snapshot(){
 
    return {
 
     health:
-      global.TSMRuntimeHealth || {},
+      window.TSMRuntimeHealth || {},
 
     metrics:
-      global.TSMMetrics?.get() || {},
+      window.TSMMetrics?.get() || {},
 
     traces:
-      global.TSMTrace?.history() || [],
+      window.TSMTrace?.history() || [],
 
     performance:
-      global.TSMPerformance?.report() || []
+      window.TSMPerformance?.report() || []
 
    };
 

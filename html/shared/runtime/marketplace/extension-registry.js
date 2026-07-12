@@ -5,7 +5,7 @@
 
 const extensions = [];
 
-module.exports = {
+const __tsmExport = {
 
 register(extension){
   extensions.push(extension);
@@ -18,3 +18,11 @@ list(){
 }
 
 };
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = __tsmExport;
+}
+if (typeof window !== 'undefined') {
+  window.TSM = window.TSM || {};
+  window.TSM.extensionRegistry = __tsmExport;
+}

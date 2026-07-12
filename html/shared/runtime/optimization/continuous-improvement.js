@@ -1,4 +1,4 @@
-global.TSMContinuousImprovement = {
+window.TSMContinuousImprovement = {
 
  history:[],
 

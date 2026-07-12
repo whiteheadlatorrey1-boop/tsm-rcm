@@ -1,5 +1,5 @@
 // TSM Recommendation Center
-module.exports = {
+const __tsmExport = {
   queue(items = []) {
     return {
       recommendations: items,
@@ -7,3 +7,11 @@ module.exports = {
     };
   }
 };
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = __tsmExport;
+}
+if (typeof window !== 'undefined') {
+  window.TSM = window.TSM || {};
+  window.TSM.recommendationCenter = __tsmExport;
+}

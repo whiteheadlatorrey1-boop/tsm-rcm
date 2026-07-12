@@ -17,4 +17,12 @@ const accountIntelligence = {
 
 };
 
-module.exports = accountIntelligence;
+const __tsmExport = accountIntelligence;
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = __tsmExport;
+}
+if (typeof window !== 'undefined') {
+  window.TSM = window.TSM || {};
+  window.TSM.accountIntelligence = __tsmExport;
+}

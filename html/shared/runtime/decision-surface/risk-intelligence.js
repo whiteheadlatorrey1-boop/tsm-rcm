@@ -1,5 +1,5 @@
 // TSM Risk Intelligence
-module.exports = {
+const __tsmExport = {
   analyze(input = {}) {
     return {
       risks: input.risks || [],
@@ -7,3 +7,11 @@ module.exports = {
     };
   }
 };
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = __tsmExport;
+}
+if (typeof window !== 'undefined') {
+  window.TSM = window.TSM || {};
+  window.TSM.riskIntelligence = __tsmExport;
+}

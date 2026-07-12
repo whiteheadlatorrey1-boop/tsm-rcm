@@ -1,6 +1,6 @@
 // TSM Action Planner
 
-module.exports = {
+const __tsmExport = {
 
 plan(decision = {}) {
 
@@ -16,3 +16,11 @@ approvalRequired:true
 }
 
 };
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = __tsmExport;
+}
+if (typeof window !== 'undefined') {
+  window.TSM = window.TSM || {};
+  window.TSM.actionPlanner = __tsmExport;
+}

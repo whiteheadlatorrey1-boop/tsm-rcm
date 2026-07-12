@@ -2,7 +2,7 @@
  * Extension Dependency Resolver
  */
 
-module.exports={
+const __tsmExport = {
 
 resolve(extension){
 
@@ -15,3 +15,11 @@ resolve(extension){
 }
 
 };
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = __tsmExport;
+}
+if (typeof window !== 'undefined') {
+  window.TSM = window.TSM || {};
+  window.TSM.dependencyResolver = __tsmExport;
+}

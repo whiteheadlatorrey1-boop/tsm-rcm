@@ -1,5 +1,5 @@
 // TSM Enterprise Command Interface
-module.exports = {
+const __tsmExport = {
   execute(command) {
     return {
       command,
@@ -7,3 +7,11 @@ module.exports = {
     };
   }
 };
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = __tsmExport;
+}
+if (typeof window !== 'undefined') {
+  window.TSM = window.TSM || {};
+  window.TSM.commandInterface = __tsmExport;
+}

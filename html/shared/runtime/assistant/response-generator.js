@@ -1,6 +1,6 @@
 // TSM Response Generator
 
-module.exports = {
+const __tsmExport = {
 
 generate(data = {}) {
 
@@ -15,3 +15,11 @@ recommendation:data.recommendation || null
 }
 
 };
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = __tsmExport;
+}
+if (typeof window !== 'undefined') {
+  window.TSM = window.TSM || {};
+  window.TSM.responseGenerator = __tsmExport;
+}

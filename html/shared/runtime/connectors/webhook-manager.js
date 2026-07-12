@@ -2,7 +2,7 @@
  * Webhook Event Manager
  */
 
-module.exports = {
+const __tsmExport = {
 
 register(event,handler){
 
@@ -15,3 +15,11 @@ register(event,handler){
 }
 
 };
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = __tsmExport;
+}
+if (typeof window !== 'undefined') {
+  window.TSM = window.TSM || {};
+  window.TSM.webhookManager = __tsmExport;
+}

@@ -1,4 +1,4 @@
-global.TSMBenchmarkEngine = {
+window.TSMBenchmarkEngine = {
 
  benchmarks:{},
 

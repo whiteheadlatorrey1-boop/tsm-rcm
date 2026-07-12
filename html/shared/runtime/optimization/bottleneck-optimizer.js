@@ -1,4 +1,4 @@
-global.TSMBottleneckOptimizer = {
+window.TSMBottleneckOptimizer = {
  analyze(flow){
    return {
     flow,

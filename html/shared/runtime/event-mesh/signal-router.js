@@ -1,6 +1,6 @@
 // TSM Signal Router
 
-module.exports = {
+const __tsmExport = {
 
 route(signal = {}) {
 
@@ -16,3 +16,11 @@ signal
 }
 
 };
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = __tsmExport;
+}
+if (typeof window !== 'undefined') {
+  window.TSM = window.TSM || {};
+  window.TSM.signalRouter = __tsmExport;
+}

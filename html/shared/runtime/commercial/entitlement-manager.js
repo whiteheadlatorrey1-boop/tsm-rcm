@@ -16,4 +16,12 @@ const entitlementManager = {
 
 };
 
-module.exports = entitlementManager;
+const __tsmExport = entitlementManager;
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = __tsmExport;
+}
+if (typeof window !== 'undefined') {
+  window.TSM = window.TSM || {};
+  window.TSM.entitlementManager = __tsmExport;
+}

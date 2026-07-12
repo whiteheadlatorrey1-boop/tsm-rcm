@@ -17,4 +17,12 @@ const partnerRegistry = {
 
 };
 
-module.exports = partnerRegistry;
+const __tsmExport = partnerRegistry;
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = __tsmExport;
+}
+if (typeof window !== 'undefined') {
+  window.TSM = window.TSM || {};
+  window.TSM.partnerRegistry = __tsmExport;
+}

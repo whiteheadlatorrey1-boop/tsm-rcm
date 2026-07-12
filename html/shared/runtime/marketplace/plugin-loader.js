@@ -2,7 +2,7 @@
  * Runtime Plugin Loader
  */
 
-module.exports = {
+const __tsmExport = {
 
 load(plugin){
 
@@ -15,3 +15,11 @@ load(plugin){
 }
 
 };
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = __tsmExport;
+}
+if (typeof window !== 'undefined') {
+  window.TSM = window.TSM || {};
+  window.TSM.pluginLoader = __tsmExport;
+}

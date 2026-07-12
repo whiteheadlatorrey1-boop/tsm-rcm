@@ -3,7 +3,7 @@
  * Enterprise system connection lifecycle
  */
 
-module.exports = {
+const __tsmExport = {
  connect(system, config){
    return {
      system,
@@ -19,3 +19,11 @@ module.exports = {
    };
  }
 };
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = __tsmExport;
+}
+if (typeof window !== 'undefined') {
+  window.TSM = window.TSM || {};
+  window.TSM.connectorEngine = __tsmExport;
+}

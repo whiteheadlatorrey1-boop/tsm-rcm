@@ -2,7 +2,7 @@
 
 const history = [];
 
-module.exports = {
+const __tsmExport = {
 
 learn(result = {}) {
 
@@ -31,3 +31,11 @@ return history;
 }
 
 };
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = __tsmExport;
+}
+if (typeof window !== 'undefined') {
+  window.TSM = window.TSM || {};
+  window.TSM.policyLearning = __tsmExport;
+}

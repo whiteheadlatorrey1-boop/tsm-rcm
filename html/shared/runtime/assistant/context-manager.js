@@ -1,6 +1,6 @@
 // TSM Context Manager
 
-module.exports = {
+const __tsmExport = {
 
 build(context = {}) {
 
@@ -18,3 +18,11 @@ Date.now()
 }
 
 };
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = __tsmExport;
+}
+if (typeof window !== 'undefined') {
+  window.TSM = window.TSM || {};
+  window.TSM.contextManager = __tsmExport;
+}

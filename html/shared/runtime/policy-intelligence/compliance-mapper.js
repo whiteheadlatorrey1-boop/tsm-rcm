@@ -1,6 +1,6 @@
 // TSM Compliance Mapper
 
-module.exports = {
+const __tsmExport = {
 
 map(decision = {}) {
 
@@ -17,3 +17,11 @@ mapped:true
 }
 
 };
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = __tsmExport;
+}
+if (typeof window !== 'undefined') {
+  window.TSM = window.TSM || {};
+  window.TSM.complianceMapper = __tsmExport;
+}

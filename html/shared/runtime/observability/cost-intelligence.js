@@ -1,4 +1,4 @@
-global.TSMCostIntelligence = {
+window.TSMCostIntelligence = {
 
  costs:{},
 

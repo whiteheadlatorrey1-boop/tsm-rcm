@@ -2,7 +2,7 @@
 
 const scenarios = [];
 
-module.exports = {
+const __tsmExport = {
 
 create(data = {}) {
 
@@ -24,3 +24,11 @@ return scenarios;
 }
 
 };
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = __tsmExport;
+}
+if (typeof window !== 'undefined') {
+  window.TSM = window.TSM || {};
+  window.TSM.scenarioManager = __tsmExport;
+}

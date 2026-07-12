@@ -16,4 +16,12 @@ const billingIntelligence = {
 
 };
 
-module.exports = billingIntelligence;
+const __tsmExport = billingIntelligence;
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = __tsmExport;
+}
+if (typeof window !== 'undefined') {
+  window.TSM = window.TSM || {};
+  window.TSM.billingIntelligence = __tsmExport;
+}

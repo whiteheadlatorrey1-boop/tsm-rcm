@@ -4,7 +4,7 @@
 
 const integrations=[];
 
-module.exports={
+const __tsmExport = {
 
 register(adapter){
 
@@ -21,3 +21,11 @@ list(){
 }
 
 };
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = __tsmExport;
+}
+if (typeof window !== 'undefined') {
+  window.TSM = window.TSM || {};
+  window.TSM.integrationRegistry = __tsmExport;
+}

@@ -2,7 +2,7 @@
  * Credential Boundary Manager
  */
 
-module.exports = {
+const __tsmExport = {
 
 validate(){
 
@@ -13,3 +13,11 @@ validate(){
 }
 
 };
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = __tsmExport;
+}
+if (typeof window !== 'undefined') {
+  window.TSM = window.TSM || {};
+  window.TSM.credentialManager = __tsmExport;
+}

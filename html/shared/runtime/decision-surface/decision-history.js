@@ -1,5 +1,5 @@
 // TSM Decision History
-module.exports = {
+const __tsmExport = {
   record(decision) {
     return {
       timestamp: new Date().toISOString(),
@@ -7,3 +7,11 @@ module.exports = {
     };
   }
 };
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = __tsmExport;
+}
+if (typeof window !== 'undefined') {
+  window.TSM = window.TSM || {};
+  window.TSM.decisionHistory = __tsmExport;
+}

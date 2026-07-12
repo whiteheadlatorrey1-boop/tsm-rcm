@@ -1,5 +1,5 @@
 // TSM Decision Dashboard
-module.exports = {
+const __tsmExport = {
   name: "decision-dashboard",
 
   summarize(state = {}) {
@@ -12,3 +12,11 @@ module.exports = {
     };
   }
 };
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = __tsmExport;
+}
+if (typeof window !== 'undefined') {
+  window.TSM = window.TSM || {};
+  window.TSM.decisionDashboard = __tsmExport;
+}

@@ -2,7 +2,7 @@
 
 const memory = [];
 
-module.exports = {
+const __tsmExport = {
 
 store(message){
 
@@ -20,3 +20,11 @@ return memory;
 }
 
 };
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = __tsmExport;
+}
+if (typeof window !== 'undefined') {
+  window.TSM = window.TSM || {};
+  window.TSM.conversationMemory = __tsmExport;
+}

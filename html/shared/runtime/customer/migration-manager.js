@@ -16,4 +16,12 @@ const migrationManager = {
   }
 };
 
-module.exports = migrationManager;
+const __tsmExport = migrationManager;
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = __tsmExport;
+}
+if (typeof window !== 'undefined') {
+  window.TSM = window.TSM || {};
+  window.TSM.migrationManager = __tsmExport;
+}

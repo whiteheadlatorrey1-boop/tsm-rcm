@@ -2,7 +2,7 @@
  * TSM Authentication Engine
  */
 
-module.exports = {
+const __tsmExport = {
 
 authenticate(identity){
 
@@ -15,3 +15,11 @@ authenticate(identity){
 }
 
 };
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = __tsmExport;
+}
+if (typeof window !== 'undefined') {
+  window.TSM = window.TSM || {};
+  window.TSM.authenticationEngine = __tsmExport;
+}

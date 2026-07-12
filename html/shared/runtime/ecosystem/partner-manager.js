@@ -20,4 +20,12 @@ const partnerManager = {
 
 };
 
-module.exports = partnerManager;
+const __tsmExport = partnerManager;
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = __tsmExport;
+}
+if (typeof window !== 'undefined') {
+  window.TSM = window.TSM || {};
+  window.TSM.partnerManager = __tsmExport;
+}
