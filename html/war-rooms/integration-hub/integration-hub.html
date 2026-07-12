@@ -236,9 +236,71 @@ td{padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text)}
     } catch(e){ out.className='ai-output'; out.textContent=`Analysis failed: ${e.message}`; }
   }
 
+  /** Explainability feed for the risk register. Three real signal types:
+   *  degraded/warning systems (using the exact status + error count the
+   *  system grid already renders), backed-up queues (same depth/age
+   *  thresholds renderQueues uses), and failed ETL jobs. */
+  function getExplainItems(){
+    const items=[];
+
+    SYSTEMS.filter(s=>s.status==='degraded'||s.status==='warning').forEach(s=>{
+      const severity = s.status==='degraded' ? 'high' : 'med';
+      items.push({
+        id: 'sys-'+s.system,
+        claim: `${s.system} is ${s.status.toUpperCase()} with ${s.errorCount} error${s.errorCount===1?'':'s'}`,
+        confidence: 90,
+        severity,
+        impact: s.status==='degraded' ? 'System degraded — downstream flows at risk of failure' : 'System in warning state — monitor for escalation',
+        rationale: `${s.system} is currently reporting status ${s.status} with ${s.errorCount} logged error${s.errorCount===1?'':'s'}.`,
+        sources: [`Integration system status ${s.system}`],
+        dataPoints: [
+          { label: 'Status', value: s.status },
+          { label: 'Error count', value: String(s.errorCount) }
+        ]
+      });
+    });
+
+    QUEUES.filter(q=>q.depth>50||q.oldestMsgAgeSec>60).forEach(q=>{
+      const severity = (q.depth>200||q.oldestMsgAgeSec>500) ? 'high' : 'med';
+      items.push({
+        id: 'queue-'+q.name,
+        claim: `${q.name} queue has ${q.depth} messages queued, oldest ${q.oldestMsgAgeSec}s`,
+        confidence: 88,
+        severity,
+        impact: severity==='high' ? 'Queue critically backed up — consumer lag or outage likely' : 'Queue backing up — approaching threshold',
+        rationale: `${q.name} has ${q.consumers} consumer${q.consumers===1?'':'s'} and a depth of ${q.depth} with the oldest message aged ${q.oldestMsgAgeSec}s, exceeding the normal 50-depth/60s-age threshold.`,
+        sources: [`Integration queue ${q.name}`],
+        dataPoints: [
+          { label: 'Depth', value: String(q.depth) },
+          { label: 'Oldest message age', value: q.oldestMsgAgeSec+'s' },
+          { label: 'Consumers', value: String(q.consumers) }
+        ]
+      });
+    });
+
+    ETL_JOBS.filter(j=>j.status==='failed').forEach(j=>{
+      items.push({
+        id: 'etl-'+j.name,
+        claim: `${j.name} (${j.system}) ETL job failed${j.errorMsg?': '+j.errorMsg:''}`,
+        confidence: 95,
+        severity: 'high',
+        impact: 'Data load failure — downstream reporting/records may be stale or incomplete',
+        rationale: `ETL job ${j.name} against ${j.system} finished with status failed.${j.errorMsg?' Error: '+j.errorMsg+'.':''}`,
+        sources: [`Integration ETL job ${j.name}`],
+        dataPoints: [
+          { label: 'System', value: j.system },
+          { label: 'Status', value: j.status }
+        ]
+      });
+    });
+
+    const rank={high:0,med:1,low:2};
+    return items.sort((a,b)=>(rank[a.severity]??3)-(rank[b.severity]??3));
+  }
+
   document.getElementById('btnAnalyze').addEventListener('click',runAnalysis);
   document.getElementById('btnRelay').addEventListener('click',()=>{
-    try{ TSM.relay.write("INTEGRATION",{vertical:'integration',systems:SYSTEMS,flows:FLOWS,kpis:computeKpis(),ai_analysis:document.getElementById('aiOutput').textContent,timestamp:new Date().toISOString()}); } catch(e){}
+    try{ TSM.relay.write("INTEGRATION",{vertical:'integration',systems:SYSTEMS,flows:FLOWS,kpis:computeKpis(),explain:getExplainItems(),ai_analysis:document.getElementById('aiOutput').textContent,timestamp:new Date().toISOString()}); } catch(e){}
     document.getElementById('navStatus').textContent='MONITORING: RELAYED';
     setTimeout(() => { window.location.href = '/html/war-rooms/integration-hub/integration-hub-strategist.html'; }, 500);
   });

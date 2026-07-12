@@ -164,9 +164,56 @@ td{padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text)}
     } catch(e){ out.className='ai-output'; out.textContent=`Analysis failed: ${e.message}`; }
   }
 
+  /** Explainability feed for the risk register. Two real signal types:
+   *  control test failures/reviews (using each control's actual last-tested
+   *  status against its framework) and open/mitigating enterprise risks
+   *  (using the same severity score the risk table already renders). */
+  function getExplainItems(){
+    const items=[];
+
+    CONTROLS.filter(c=>c.status==='FAIL'||c.status==='REVIEW').forEach(c=>{
+      const severity = c.status==='FAIL' ? 'high' : 'med';
+      items.push({
+        id: 'ctrl-'+c.id,
+        claim: `${c.id} ("${c.name}", ${c.framework}) is ${c.status} as of ${c.last_tested}`,
+        confidence: 92,
+        severity,
+        impact: c.status==='FAIL' ? `${c.framework} control failure — audit and regulatory exposure` : `${c.framework} control pending re-test — status unconfirmed`,
+        rationale: `Control ${c.id} under the ${c.framework} framework last tested ${c.last_tested} with result ${c.status}. ${c.status==='FAIL' ? 'A failed control is a direct compliance gap until remediated and re-tested.' : 'A review-status control has not yet cleared its test cycle.'}`,
+        sources: [`Governance control register ${c.id}`],
+        dataPoints: [
+          { label: 'Framework', value: c.framework },
+          { label: 'Status', value: c.status },
+          { label: 'Last tested', value: c.last_tested }
+        ]
+      });
+    });
+
+    RISKS.filter(r=>r.status==='OPEN'||r.status==='MITIGATING').forEach(r=>{
+      const severity = r.severity>=75 ? 'high' : (r.severity>=50 ? 'med' : 'low');
+      items.push({
+        id: 'risk-'+r.id,
+        claim: `${r.id} ("${r.name}") scored ${r.severity}/100 — ${r.status}, owned by ${r.owner}`,
+        confidence: 85,
+        severity,
+        impact: r.severity>=75 ? 'High-severity risk — active exposure until mitigated' : 'Moderate exposure being tracked',
+        rationale: `${r.name} (${r.id}) carries a severity score of ${r.severity}/100 and is currently ${r.status.toLowerCase()}, owned by ${r.owner}.`,
+        sources: [`Governance risk register ${r.id}`],
+        dataPoints: [
+          { label: 'Severity', value: r.severity+'/100' },
+          { label: 'Status', value: r.status },
+          { label: 'Owner', value: r.owner }
+        ]
+      });
+    });
+
+    const rank={high:0,med:1,low:2};
+    return items.sort((a,b)=>(rank[a.severity]??3)-(rank[b.severity]??3));
+  }
+
   document.getElementById('btnAnalyze').addEventListener('click',runAnalysis);
   document.getElementById('btnRelay').addEventListener('click',()=>{
-    try{ TSM.relay.write("GOVERNANCE",{vertical:'governance',controls:CONTROLS,risks:RISKS,kpis:computeKpis(),ai_analysis:document.getElementById('aiOutput').textContent,timestamp:new Date().toISOString()}); } catch(e){}
+    try{ TSM.relay.write("GOVERNANCE",{vertical:'governance',controls:CONTROLS,risks:RISKS,kpis:computeKpis(),explain:getExplainItems(),ai_analysis:document.getElementById('aiOutput').textContent,timestamp:new Date().toISOString()}); } catch(e){}
     document.getElementById('navStatus').textContent='COMPLIANCE: RELAYED';
     setTimeout(() => { window.location.href = '/html/war-rooms/governance/governance-executive-portal.html'; }, 500);
   });
