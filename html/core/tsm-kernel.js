@@ -1,20 +1,33 @@
 window.TSM_KERNEL = (function () {
-  const PREFIX = "tsm_war_relay_";
+  const STORAGE_PREFIX = "tsm_war_relay_";
 
-  function setRelay(v, p) {
-    localStorage.setItem(PREFIX + v, JSON.stringify({
-      ts: Date.now(),
-      v, p
-    }));
+  function setRelay(vertical, payload) {
+    if (!vertical) throw new Error("Missing vertical relay key");
+
+    const key = STORAGE_PREFIX + vertical;
+
+    const normalizedPayload = {
+      timestamp: Date.now(),
+      vertical,
+      payload
+    };
+
+    localStorage.setItem(key, JSON.stringify(normalizedPayload));
+
+    return { status: "OK", key, written: true };
   }
 
-  function getRelay(v) {
-    try {
-      return JSON.parse(localStorage.getItem(PREFIX + v));
-    } catch {
-      return null;
-    }
+  function getRelay(vertical) {
+    const key = STORAGE_PREFIX + vertical;
+    const raw = localStorage.getItem(key) || sessionStorage.getItem(key);
+    try { return JSON.parse(raw); } catch { return null; }
   }
 
-  return { setRelay, getRelay };
+  function listRelays() {
+    return Object.keys(localStorage)
+      .filter(k => k.startsWith(STORAGE_PREFIX))
+      .map(k => ({ key: k, value: localStorage.getItem(k) }));
+  }
+
+  return { setRelay, getRelay, listRelays };
 })();

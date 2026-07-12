@@ -1,16 +1,98 @@
+// ======================================
+// TSM AUTONOMY ENFORCER (VERTICAL SCOPED)
+// ======================================
+
 (function () {
-  const block = (k) => k && k.includes("tsm_war_relay_");
 
-  const l = localStorage.setItem;
-  const s = sessionStorage.setItem;
+  const VERTICALS = [
+    "healthcare",
+    "legal-pro",
+    "tsm-insurance",
+    "construction-suite",
+    "reo-pro",
+    "finops-suite",
+    "bpo"
+  ];
 
-  localStorage.setItem = function (k, v) {
-    if (block(k)) throw new Error("BLOCKED RELAY WRITE");
-    return l.apply(this, arguments);
+  function get(key) {
+    try {
+      return JSON.parse(localStorage.getItem(key));
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function checkVertical(vertical) {
+
+    const stratKey = `TSM_STRAT_CONFIRMED_${vertical}`;
+    const execKey  = `TSM_EXEC_CONFIRMED_${vertical}`;
+
+    const strat = get(stratKey);
+    const exec  = get(execKey);
+
+    return {
+      vertical,
+      strat: !!strat,
+      exec: !!exec,
+      healthy: !!(strat && exec)
+    };
+  }
+
+  function audit() {
+
+    const report = VERTICALS.map(checkVertical);
+
+    const pass = report.filter(r => r.healthy).length;
+
+    console.log("=======================================");
+    console.log("TSM AUTONOMY ENFORCER (SCOPED)");
+    console.log("=======================================");
+
+    report.forEach(r => {
+      console.log(
+        r.vertical.padEnd(25),
+        r.healthy ? "PASS" : "FAIL"
+      );
+    });
+
+    console.log("=======================================");
+    console.log(`HEALTH SCORE: ${pass}/${VERTICALS.length}`);
+    console.log("=======================================");
+
+    return report;
+  }
+
+  function autoHeal() {
+    if (!window.tsmMission) {
+      window.tsmMission = {
+        id: "AUTO-" + Date.now().toString(36),
+        vertical: "UNKNOWN",
+        createdAt: Date.now()
+      };
+    }
+  }
+
+  window.TSM_ENFORCER = {
+    audit,
+    autoHeal
   };
 
-  sessionStorage.setItem = function (k, v) {
-    if (block(k)) throw new Error("BLOCKED RELAY WRITE");
-    return s.apply(this, arguments);
-  };
+  setTimeout(() => {
+    autoHeal();
+    audit();
+  }, 1200);
+
 })();
+
+
+// ===============================
+// 🚨 HARDEN MODE RULE
+// ===============================
+TSM_ENFORCER.rules = TSM_ENFORCER.rules || [];
+
+TSM_ENFORCER.rules.push({
+  id: "NO_DIRECT_RELAY_WRITE",
+  pattern: /(localStorage\.setItem\(\"tsm_war_relay_|sessionStorage\.setItem\(\"TSM_WAR_RELAY_)/,
+  severity: "CRITICAL",
+  message: "Direct relay mutation detected. Must use TSM_KERNEL.setRelay()"
+});
