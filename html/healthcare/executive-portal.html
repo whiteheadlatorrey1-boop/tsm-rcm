@@ -920,6 +920,7 @@ border-radius: 2px; flex-shrink: 0; white-space: nowrap;
     <div id="tsmk-wip-auto" style="margin:18px 0 10px;"></div>
     <div id="tsmk-exp-auto" style="margin:10px 0 24px;"></div>
     <div id="tsmk-outcome-auto" style="margin:10px 0 24px;"></div>
+    <div id="tsmk-benchmark-auto" style="margin:10px 0 24px;"></div>
   </div>
   <!-- ▲ TSM EXEC KIT ▲ -->
 
@@ -3145,10 +3146,32 @@ setInterval(buildStratBriefTab, 30000);
       '</div>';
   }
 
+  /* Roadmap #8 — renders TSMBenchmarkIntelligence.compare()'s single-domain
+     result. Pure render layer, same as renderOutcome above: no scoring or
+     aggregation logic here, just display of what the engine computed. */
+  function renderBenchmark(target, benchmark) {
+    var el = typeof target === 'string' ? document.getElementById(target) : target;
+    if (!el) return;
+    if (!benchmark) {
+      el.innerHTML = '<div class="tsmk-explain"><div class="tsmk-exp-empty">No benchmark data available.</div></div>';
+      return;
+    }
+    var sourceLabel = benchmark.source === 'live'
+      ? ('Live \u00b7 n=' + benchmark.sampleSize)
+      : 'Reference figure \u2014 not yet sourced from your live data';
+    el.innerHTML =
+      '<div class="tsmk-explain">' +
+        '<div class="tsmk-exp-why-label">BENCHMARK \u00b7 ' + esc((benchmark.metric || '').toUpperCase()) + '</div>' +
+        '<div class="tsmk-exp-rationale">Your average: ' + esc(benchmark.avgDays) + ' day(s) &middot; Top performer: ' + esc(benchmark.topPerformerDays) + ' day(s)</div>' +
+        '<div class="tsmk-exp-rationale" style="opacity:.7;font-size:.85em;">' + esc(sourceLabel) + '</div>' +
+      '</div>';
+  }
+
   global.TSMExecKit = {
     renderWIP: renderWIP,
     renderExplainability: renderExplainability,
     renderOutcome: renderOutcome,
+    renderBenchmark: renderBenchmark,
     fromRelay: fromRelay
   };
 
@@ -3157,6 +3180,7 @@ setInterval(buildStratBriefTab, 30000);
 
 <script src="/html/shared/tsm-quality-score-engine.js"></script>
 <script src="/html/shared/tsm-executive-outcome.js"></script>
+<script src="/html/shared/tsm-benchmark-intelligence.js"></script>
 
 <script>
 /* TSM EXEC KIT — AUTO-INJECTED 2026-06-29 23:19 UTC */
@@ -3166,6 +3190,7 @@ setInterval(buildStratBriefTab, 30000);
   var WIP_ID     = 'tsmk-wip-auto';
   var EXP_ID     = 'tsmk-exp-auto';
   var OUTCOME_ID = 'tsmk-outcome-auto';
+  var BENCHMARK_ID = 'tsmk-benchmark-auto';
 
   function readRelay() {
     for (var i = 0; i < RELAY_KEYS.length; i++) {
@@ -3206,6 +3231,16 @@ setInterval(buildStratBriefTab, 30000);
         qualityScore: qualityScore
       });
       TSMExecKit.renderOutcome(OUTCOME_ID, outcome);
+    }
+
+    // Roadmap #8 — no live TSMProcessMining data exists yet anywhere in
+    // this codebase, so this reads from TSMBenchmarkIntelligence's
+    // clearly-labeled reference table. Once a real Process Mining
+    // integration produces hopSummary data, pass it as { live: ... } here
+    // and this will prefer live figures automatically -- no other change needed.
+    if (window.TSMBenchmarkIntelligence) {
+      var benchmark = TSMBenchmarkIntelligence.compare('HEALTHCARE');
+      TSMExecKit.renderBenchmark(BENCHMARK_ID, benchmark);
     }
   }
 

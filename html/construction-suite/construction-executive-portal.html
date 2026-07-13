@@ -589,6 +589,7 @@ body { background: var(--bg); color: var(--text); font-family: 'Courier New', mo
   <div id="tsmk-wip-auto" style="margin:18px 0 10px;"></div>
   <div id="tsmk-exp-auto" style="margin:10px 0 24px;"></div>
   <div id="tsmk-outcome-auto" style="margin:10px 0 24px;"></div>
+  <div id="tsmk-benchmark-auto" style="margin:10px 0 24px;"></div>
 </div>
 <!-- ▲ TSM EXEC KIT ▲ -->
 
@@ -1394,10 +1395,37 @@ document.getElementById("execCompliance").textContent=compliance;
       '</div>';
   }
 
+  /* Roadmap #8 -- renders TSMBenchmarkIntelligence.compare()'s single-domain
+     row. Pure render layer, same convention as renderOutcome above: no
+     aggregation/comparison logic here, just display of what the engine
+     computed. Reference-table rows (source:'reference') are labeled as
+     such rather than presented as measured fact. */
+  function renderBenchmark(target, benchmark) {
+    var el = typeof target === 'string' ? document.getElementById(target) : target;
+    if (!el) return;
+    if (!benchmark) {
+      el.innerHTML = '<div class="tsmk-explain"><div class="tsmk-exp-empty">No benchmark data yet.</div></div>';
+      return;
+    }
+    var isLive = benchmark.source === 'live';
+    el.innerHTML =
+      '<div class="tsmk-explain">' +
+        '<div class="tsmk-exp-why-label">BENCHMARK &mdash; ' + esc(benchmark.metric || '') + '</div>' +
+        '<div class="tsmk-exp-rationale">Avg ' + esc(benchmark.avgDays) + ' day(s)' +
+          (benchmark.topPerformerDays != null ? ', top performers ' + esc(benchmark.topPerformerDays) + ' day(s)' : '') +
+          '.' +
+          (isLive
+            ? ' Based on ' + esc(benchmark.sampleSize) + ' live case(s).'
+            : ' Reference figure &mdash; not yet backed by live case volume.') +
+          '</div>' +
+      '</div>';
+  }
+
   global.TSMExecKit = {
     renderWIP: renderWIP,
     renderExplainability: renderExplainability,
     renderOutcome: renderOutcome,
+    renderBenchmark: renderBenchmark,
     fromRelay: fromRelay
   };
 
@@ -1405,6 +1433,7 @@ document.getElementById("execCompliance").textContent=compliance;
 </script>
 <script src="/html/shared/tsm-quality-score-engine.js"></script>
 <script src="/html/shared/tsm-executive-outcome.js"></script>
+<script src="/html/shared/tsm-benchmark-intelligence.js"></script>
 
 <script>
 /* TSM EXEC KIT — AUTO-INJECTED 2026-06-29 23:19 UTC */
@@ -1414,6 +1443,7 @@ document.getElementById("execCompliance").textContent=compliance;
   var WIP_ID     = 'tsmk-wip-auto';
   var EXP_ID     = 'tsmk-exp-auto';
   var OUTCOME_ID = 'tsmk-outcome-auto';
+  var BENCHMARK_ID = 'tsmk-benchmark-auto';
 
   function readRelay() {
     for (var i = 0; i < RELAY_KEYS.length; i++) {
@@ -1454,6 +1484,14 @@ document.getElementById("execCompliance").textContent=compliance;
         qualityScore: qualityScore
       });
       TSMExecKit.renderOutcome(OUTCOME_ID, outcome);
+    }
+
+    // Roadmap #8 -- reference-table only for now (Process Mining #5 isn't
+    // feeding live event data on this domain yet); compare() falls back to
+    // REFERENCE_BENCHMARKS.CONSTRUCTION automatically when no opts.live is passed.
+    if (window.TSMBenchmarkIntelligence) {
+      var benchmark = TSMBenchmarkIntelligence.compare('CONSTRUCTION');
+      TSMExecKit.renderBenchmark(BENCHMARK_ID, benchmark);
     }
   }
 
