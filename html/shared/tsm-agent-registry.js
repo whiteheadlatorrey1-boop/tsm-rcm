@@ -146,6 +146,21 @@
     { id: 'closing', label: 'Closing Agent' }
   ]);
 
+  // BPO (bpo-strategist-v2.html): roster registered, matchers honestly
+  // stubbed (always false -> everything falls through to "Unassigned")
+  // until real finding text from this page's getExplainItems()/
+  // toExplainItems() output is confirmed to pattern-match against.
+  // Labels sourced from this page's own existing tabs (SLA/Client
+  // Impact/Escalations) and sector list (Plant/Supply Chain/OT-ICS),
+  // not invented.
+  registerRoster('bpo-war-room', [
+    { id: 'supply-chain', label: 'Supply Chain Agent' },
+    { id: 'plant-ops', label: 'Plant Operations Agent' },
+    { id: 'security', label: 'OT/ICS Security Agent' },
+    { id: 'client-impact', label: 'Client Impact Agent' },
+    { id: 'escalation', label: 'Escalation Agent' }
+  ]);
+
 })(typeof window !== 'undefined' ? window : this);
 
 // ── Self-test (run directly with `node tsm-agent-registry.js`) ────────────
