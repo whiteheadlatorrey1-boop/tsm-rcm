@@ -410,6 +410,13 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
           <div style="color:var(--muted)">Quality score will appear after strategy generation completes.</div>
         </div>
       </div>
+
+      <div class="explain-section">
+        <div class="explain-label">AGENT ATTRIBUTION</div>
+        <div class="reasoning-box" id="agentRegistryBox">
+          <div style="color:var(--muted)">Agent attribution will appear after strategy generation completes.</div>
+        </div>
+      </div>
     </div>
 
   </div>
@@ -427,6 +434,7 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
   <span style="font-family:'Orbitron',sans-serif;font-size:.58rem;color:var(--muted)">DECISION INTELLIGENCE ·</span>
   <button class="act-btn secondary" onclick="nav('/html/bpo/bpo-situation-room.html')">← SITUATION ROOM</button>
   <button class="act-btn secondary" onclick="exportBrief()">⬇ EXPORT</button>
+  <button class="act-btn secondary" onclick="exportClientPackage()">⬇ EXPORT CLIENT PACKAGE</button>
   <div class="act-spacer"></div>
   <div class="act-status" id="actStatus">Status: <span>AWAITING SITUATION DATA</span></div>
   <button class="act-btn primary" id="escalateBtnBar" onclick="escalateToExec()" disabled>ESCALATE TO EXECUTIVE →</button>
@@ -878,6 +886,13 @@ function toExplainItems(obj) {
   }];
 }
 
+// Roadmap #6/#9 -- last tagged items + score, stashed here so
+// exportClientPackage() can reuse the exact same data renderQualityScore()
+// already computed rather than re-deriving it (this platform's established
+// convention -- see renderOutcome() callers elsewhere).
+let lastTaggedItems = [];
+let lastQualityScore = null;
+
 function renderQualityScore(obj) {
   const box = document.getElementById('qualityScoreBox');
   if (!box) return;
@@ -886,7 +901,17 @@ function renderQualityScore(obj) {
     return;
   }
   const items = toExplainItems(obj);
-  const q = TSMQualityScoreEngine.fromExplainItems(items, {});
+
+  // Roadmap #6 -- tag items with which specialized agent concern surfaced
+  // them, before scoring. 'bpo-war-room' roster is currently a labeled
+  // stub (see tsm-agent-registry.js) -- everything will show as
+  // "Unassigned" until that roster's matchers are confirmed against real
+  // finding text, same honest-empty convention as the rest of this file.
+  const tagged = window.TSMAgentRegistry ? TSMAgentRegistry.run('bpo-war-room', items) : items;
+  lastTaggedItems = tagged;
+
+  const q = TSMQualityScoreEngine.fromExplainItems(tagged, {});
+  lastQualityScore = q;
   const rows = [
     { key: 'Overall', val: q.overall + '% (' + q.band + ')' },
     { key: 'Accuracy', val: q.accuracy + '%' },
@@ -896,6 +921,28 @@ function renderQualityScore(obj) {
   ];
   box.innerHTML = rows.map(r =>
     `<div class="reasoning-line"><span class="rl-key">${r.key}:</span> <span class="rl-val">${r.val}</span></div>`
+  ).join('');
+
+  renderAgentSummary(tagged);
+}
+
+// Roadmap #6 -- pure render layer over TSMAgentRegistry.summarize(), same
+// convention as every other render*() function on this page: no
+// classification logic here, just display of what the registry computed.
+function renderAgentSummary(taggedItems) {
+  const box = document.getElementById('agentRegistryBox');
+  if (!box) return;
+  if (!window.TSMAgentRegistry) {
+    box.innerHTML = '<div style="color:var(--muted)">Agent registry not loaded.</div>';
+    return;
+  }
+  const summary = TSMAgentRegistry.summarize(taggedItems);
+  if (!summary.length) {
+    box.innerHTML = '<div style="color:var(--muted)">No findings to attribute yet.</div>';
+    return;
+  }
+  box.innerHTML = summary.map(s =>
+    `<div class="reasoning-line"><span class="rl-key">${s.agentLabel}:</span> <span class="rl-val">${s.count} finding(s)${s.highSeverity ? ', ' + s.highSeverity + ' high-severity' : ''}</span></div>`
   ).join('');
 }
 
@@ -1033,6 +1080,29 @@ function exportBrief(){
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = 'tsm-decision-brief-'+Date.now()+'.txt';
+  a.click();
+}
+
+// Roadmap #9 -- pure assembly layer, same convention as TSMDeliveryPackage
+// itself: nothing computed here, just reuses lastTaggedItems/lastQualityScore
+// already produced by renderQualityScore() and hands them to the engine.
+// documentCount is left undefined (honest null in the package) since this
+// page has no canonical "documents processed" counter, matching the
+// engine's own documented fallback.
+function exportClientPackage(){
+  if (!window.TSMDeliveryPackage) {
+    alert('Delivery package engine not loaded.');
+    return;
+  }
+  const pkg = TSMDeliveryPackage.build({
+    domain: warData?.selectedSector || 'BPO',
+    explainItems: lastTaggedItems,
+    qualityScore: lastQualityScore
+  });
+  const blob = new Blob([JSON.stringify(pkg, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'tsm-client-package-' + Date.now() + '.json';
   a.click();
 }
 
