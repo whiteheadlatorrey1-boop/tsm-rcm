@@ -1,7 +1,11 @@
 // tests/playwright/demo-warrooms.spec.js
 //
 // Loads every page in scripts/demo/demo-pages.conf against a running
-// instance of the app (BASE_URL env var, default http://localhost:4173),
+// instance of the app (BASE_URL env var, default http://localhost:4173).
+// NOTE: 4173 is not a stale/mismatched port. check-playwright.sh
+// deliberately starts `node server.js` on 4173 and exports BASE_URL
+// before running Playwright, so this suite never collides with a
+// server you may be running manually on 8080.
 // and for each page:
 //   1. asserts it returns 200 and doesn't throw a page error
 //   2. collects any console.error output
