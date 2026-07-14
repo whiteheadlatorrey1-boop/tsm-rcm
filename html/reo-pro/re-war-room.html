@@ -2790,6 +2790,39 @@ Dollar amounts and party names required.`;
       } catch(e) { console.warn('[Collective Signal RE]', e.message); }
     }
 
+    function fireCapabilitySweep_RE(payload) {
+      try {
+        const text = (payload.docText || '') + '\n' + (payload.feedText || '') + '\n' + (payload.synthesis || '');
+        const propertyM = text.match(/Property:\s*([^\n]+)/i);
+        const buyerM = text.match(/Buyer:\s*([^\n]+)/i);
+        const sellerM = text.match(/Seller:\s*([^\n]+)/i);
+        const escrowM = text.match(/Escrow #?([\w-]+)/i);
+        const lienM = text.match(/(?:mechanic lien|lien)\s*\$[\d,.]+/i);
+        const contractM = text.match(/Contract(?:\sPrice)?:\s*(\$[\d,.]+)/i);
+        const exposure = lienM ? lienM[0].replace(/^(?:mechanic lien|lien)\s*/i, '') : (contractM ? contractM[1] : null);
+        const property = propertyM ? propertyM[1].trim().slice(0, 80) : 'RE Transaction';
+
+        fetch('/api/enterprise/capability-sweep', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            vertical: 'real-estate',
+            title: (payload.reportTitle || 'RE War Room Report') + ' — ' + property,
+            summary: (payload.docText || payload.feedText || '').slice(0, 1500),
+            exposure,
+            entities: {
+              customer: buyerM ? buyerM[1].trim() : property,
+              relationshipType: 'Buyer',
+              contingency: 'Title cure / lien resolution',
+              sku: escrowM ? 'ESCROW-' + escrowM[1].trim() : 'RE-TRANSACTION',
+              productName: property,
+              seller: sellerM ? sellerM[1].trim() : undefined
+            }
+          })
+        }).catch(err => console.warn('[Capability Sweep RE]', err.message));
+      } catch (err) { console.warn('[Capability Sweep RE]', err.message); }
+    }
+
     function escalateToStrategist() {
       const payload = buildWarRoomPayload();
       if (!payload.savedOutputs && !payload.rescuePack && !payload.feedText) {
@@ -2805,6 +2838,7 @@ Dollar amounts and party names required.`;
         sessionStorage.setItem('TSM_RE_WAR_RELAY', JSON.stringify(payload));
         try { localStorage.setItem('TSM_CURE_RELAY', JSON.stringify({ vertical:'Real Estate', appName:'RE War Room', anomalies: payload.defectFlags||[], docText: payload.feedText||'', timestamp: Date.now() })); } catch(e) {}
         pushCollectiveSignal_RE(payload);
+        fireCapabilitySweep_RE(payload);
         window.location.href = 're-strategist.html';
       } catch (e) {
         alert('Session saved. Open re-strategist.html to continue.');
