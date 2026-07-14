@@ -159,17 +159,7 @@ test.describe('War Room Prep — entry point wiring', () => {
 
 test.describe('War Room Prep — sector chains (war room -> strategist -> executive)', () => {
   for (const chain of sectorChains) {
-    // KNOWN ISSUE (2026-07-13): bpo-strategist-v2.html deterministically crashes
-    // the Chromium renderer (page.goto: Page crashed) on every load in this
-    // environment. Confirmed: not GPU-related, not an OOM (no kernel log
-    // access to fully rule out), JS-triggered (loads fine with JS disabled),
-    // narrowed to an interaction between tsm-kernel-upgrade.js's replay/boot
-    // sequence and tsm-mission-store.js — blocking either individually
-    // prevents the crash, exact mechanism not yet found. Root-cause session
-    // needed post-presentation; do not remove this skip without re-verifying.
-    const skip = chain.name === 'BPO (demo chain)';
     test(`${chain.name}: full chain reachable`, async ({ page }) => {
-      test.skip(skip, 'Known renderer crash on bpo-strategist-v2.html — see comment above');
       await loadPage(page, chain.warRoom, `${chain.name} war room`);
       await loadPage(page, chain.strategist, `${chain.name} strategist`);
       await loadPage(page, chain.executive, `${chain.name} executive portal`);

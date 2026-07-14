@@ -1,7 +1,28 @@
 /**
- * TSM Kernel Upgrade v2.0
+ * TSM Kernel Upgrade v2.1
  * Installs BNCA + Replay OS + Event Logging Patch
  * Safe drop-in for existing TSM war rooms
+ *
+ * FIXES (2026-07-13):
+ *   - replay() no longer feeds its own logging back into the array it is
+ *     iterating over. Previously, bus.emit() was patched to log every
+ *     event (including the "REPLAY_APPLIED" event emitted at the end of
+ *     apply()) into TSMReplayEngine's cache. Since replay() iterated over
+ *     that same cache array by reference, every replayed event queued a
+ *     new event behind it — an unbounded, self-feeding loop that grew the
+ *     array indefinitely and crashed the renderer after ~15-20s of
+ *     runaway JSON.stringify/localStorage writes. Fixed with a
+ *     `replaying` guard that makes log() a no-op while a replay is in
+ *     progress, plus iterating over a frozen snapshot as a second line
+ *     of defense.
+ *   - apply()'s MISSION_UPDATED/MISSION_COMPLETE cases referenced
+ *     `store.window.TSMEventBus`, which does not exist on TSMMissionStore
+ *     (it has no `.window` property) — this would have thrown on any
+ *     real mission-update replay. Now uses `bus` directly, already in
+ *     scope.
+ *   - MISSION_UPDATE emit calls previously passed 3 arguments into
+ *     emit(event, payload), which only accepts 2 — the id was silently
+ *     dropped. Now passed as a single payload object.
  */
 
 (function () {
@@ -31,13 +52,17 @@
     // forward to original handlers
     const result = originalEmit(event, payload);
 
-    // log EVERYTHING (replay layer)
+    // log EVERYTHING (replay layer) — except while a replay is actively
+    // running, or this feeds back into TSMReplayEngine's own array (see
+    // header note above).
     try {
-      window.TSMReplayEngine?.log({
-        type: event,
-        payload,
-        ts: Date.now()
-      });
+      if (!window.TSMReplayEngine?.replaying) {
+        window.TSMReplayEngine?.log({
+          type: event,
+          payload,
+          ts: Date.now()
+        });
+      }
     } catch (e) {
       console.warn("[TSM-REPLAY] log failed:", e);
     }
@@ -103,6 +128,7 @@
     constructor() {
       this.key = "TSM_EVENT_LOG_V2";
       this._cache = this.load();
+      this.replaying = false;
     }
 
     load() {
@@ -118,6 +144,11 @@
     }
 
     log(event) {
+      // Never record new events while a replay is in progress — see
+      // header note. Without this guard, apply()'s own "REPLAY_APPLIED"
+      // emit re-enters this method and grows _cache unboundedly while
+      // replay() is still iterating over it.
+      if (this.replaying) return;
       this._cache.push(event);
       this.save();
     }
@@ -126,22 +157,31 @@
 
       console.log("[TSM-REPLAY] Rebuilding system from event log...");
 
-      const events = this._cache;
+      // Snapshot the current log as a plain array copy. Even with the
+      // `replaying` guard above preventing new writes, iterating over a
+      // copy rather than the live _cache reference is a second, cheap
+      // line of defense against this class of bug recurring.
+      const events = [...this._cache];
 
       if (!store || !bus) {
         console.warn("[TSM-REPLAY] Missing store or bus");
         return;
       }
 
-      // reset state
-      store.state.missions = [];
-      store.state.history = [];
+      this.replaying = true;
+      try {
+        // reset state
+        store.state.missions = [];
+        store.state.history = [];
 
-      for (const e of events) {
-        this.apply(e, store, bus);
+        for (const e of events) {
+          this.apply(e, store, bus);
+        }
+
+        store.save();
+      } finally {
+        this.replaying = false;
       }
-
-      store.save();
 
       console.log("[TSM-REPLAY] Replay complete:", events.length, "events");
     }
@@ -151,17 +191,15 @@
       switch (event.type) {
 
         case "MISSION_CREATED":
-          
+
           break;
 
         case "MISSION_UPDATED":
-          store.window.TSMEventBus.emit("MISSION_UPDATE", event.payload.id, event.payload);
+          bus.emit("MISSION_UPDATE", { id: event.payload.id, ...event.payload });
           break;
 
         case "MISSION_COMPLETE":
-          store.window.TSMEventBus.emit("MISSION_UPDATE", event.payload.id, {
-            status: "COMPLETE"
-          });
+          bus.emit("MISSION_UPDATE", { id: event.payload.id, status: "COMPLETE" });
           break;
       }
 
