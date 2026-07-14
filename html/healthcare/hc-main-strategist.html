@@ -1149,6 +1149,31 @@ function extractUrgentFromText(rawText, sections){
   return out;
 }
 
+function fireCapabilitySweep_HEALTHCARE(payload) {
+  try {
+    const claimId = payload.claimId || '';
+    const exposure = payload.kpi?.totalAtRisk || null;
+    const summary = (payload.warRoomBrief || payload.aiSummary || payload.bnca?.revenuePosition || '').slice(0, 1500);
+    fetch('/api/enterprise/capability-sweep', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        vertical: 'healthcare',
+        title: 'HC Strategist Relay' + (claimId ? ' — Claim ' + claimId : ''),
+        summary,
+        exposure,
+        entities: {
+          customer: claimId ? 'Claim ' + claimId : 'HonorHealth',
+          relationshipType: 'Payer',
+          contingency: 'Denial appeal / revenue recovery reserve',
+          sku: claimId ? 'CLAIM-' + claimId : 'HC-STRATEGIST',
+          productName: payload.denialCodes || 'HC Denial Management'
+        }
+      })
+    }).catch(err => console.warn('[Capability Sweep Healthcare]', err.message));
+  } catch (err) { console.warn('[Capability Sweep Healthcare]', err.message); }
+}
+
 async function escalateToExecPortal(){
   const btn = document.querySelector('.pack-btn[onclick="escalateToExecPortal()"]');
   if (btn) { btn.classList.add('running'); btn.dataset.origLabel = btn.innerHTML; btn.innerHTML = '<span class="pack-icon">◈</span> SYNCING...'; }
@@ -1321,6 +1346,7 @@ async function escalateToExecPortal(){
 
     sessionStorage.setItem('TSM_EXEC_RELAY', JSON.stringify(payload));
     localStorage.setItem('TSM_EXEC_RELAY', JSON.stringify(payload));
+    fireCapabilitySweep_HEALTHCARE(payload);
     if (window.TSMMemory) TSMMemory.push(TSMMemory.EVENT_TYPES.STRATEGIST_RELAY, 'Main Strategist relayed to Executive Portal', {}, 'success');
     window.location.href = '/html/healthcare/executive-portal.html';
   } catch(e) {
