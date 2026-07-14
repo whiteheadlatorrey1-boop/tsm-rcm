@@ -876,6 +876,7 @@ async function fireEngines(){
   addLog('Anomaly Advisor','Auto-analysis available — click ANOMALY ADVISOR or open node','p');
 
   storeRelay(e);
+  fireCapabilitySweep_INS(e);
 
   // ── TSM Mission Guide trigger ──────────────────────────────────────────
   if (window.TSMMissionGuide) {
@@ -1038,6 +1039,35 @@ function clearAll(){
   }
   sessionStorage.removeItem('TSM_INS_WAR_STATE');
   addLog('War Room cleared','Ready for new document','f');
+}
+
+function fireCapabilitySweep_INS(e) {
+  try {
+    const e1 = e?.[1] || '';
+    const e3 = e?.[3] || '';
+    const claimM = e1.match(/CLAIM\/POLICY ID:[\s]*([^\n]+)/i);
+    const partiesM = e1.match(/KEY PARTIES:[\s]*([^\n]+)/i);
+    const amountM = e1.match(/TOTAL AMOUNT:[\s]*([^\n]+)/i);
+    const expM = e3.match(/TOTAL EXPOSURE:[\s]*([^\n]+)/i);
+    const parties = partiesM ? partiesM[1].trim() : '';
+    fetch('/api/enterprise/capability-sweep', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        vertical: 'insurance',
+        title: (selectedDocType || 'Insurance Claim') + (claimM ? ' — ' + claimM[1].trim().slice(0, 60) : ''),
+        summary: docText.slice(0, 1500),
+        exposure: expM ? expM[1].trim().slice(0, 30) : (amountM ? amountM[1].trim().slice(0, 30) : null),
+        entities: {
+          customer: parties.split(/[,;]/)[0]?.trim() || claimM?.[1]?.trim() || 'Insurance Claim',
+          relationshipType: 'Claimant',
+          contingency: 'Appeal / claim resolution reserve',
+          sku: claimM ? 'CLAIM-' + claimM[1].trim().slice(0, 20) : (selectedDocType || 'INS-CLAIM'),
+          productName: selectedDocType
+        }
+      })
+    }).catch(err => console.warn('[Capability Sweep Insurance]', err.message));
+  } catch (err) { console.warn('[Capability Sweep Insurance]', err.message); }
 }
 
 function pushCollectiveSignal_INS() {
