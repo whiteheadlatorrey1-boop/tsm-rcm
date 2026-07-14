@@ -1340,6 +1340,7 @@ async function fireEngines() {
   document.getElementById('fireBtn').disabled=false;
   addLog('All 6 Engines Complete','App dispatch ready — escalate to Strategist','p');
   storeSession(e);
+  fireCapabilitySweep(e);
   // TSM AUTO-ESCALATE
   if (localStorage.getItem('tsm_auto_mode') === 'on') {
     addLog('Auto-escalating to Strategist','TSM Autonomy Engine active','p');
@@ -1362,6 +1363,34 @@ function storeSession(e){
     localStorage.setItem('tsm_construction_war_relay',JSON.stringify(payload));
     localStorage.setItem('TSM_CONSTRUCTION_WAR_RELAY',JSON.stringify(payload));
   }catch(err){console.warn('Store error:',err);}
+}
+
+function fireCapabilitySweep(e) {
+  try {
+    const e1 = e?.[1] || '';
+    const combined = (e?.[1] || '') + (e?.[3] || '') + (e?.[6] || '');
+    const partiesM = e1.match(/PARTIES:[\s]*([^\n]+)/i);
+    const projectM = e1.match(/PROJECT:[\s]*([^\n]+)/i);
+    const expM = combined.match(/EXPOSURE[:\s]+([^\n]+)/i);
+    const parties = partiesM ? partiesM[1].trim() : '';
+    fetch('/api/enterprise/capability-sweep', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        vertical: 'construction',
+        title: (selectedDocType || 'Construction Document') + (projectM ? ' — ' + projectM[1].trim().slice(0, 60) : ''),
+        summary: docText.slice(0, 1500),
+        exposure: expM ? expM[1].trim().slice(0, 30) : null,
+        entities: {
+          customer: parties.split(/[·,]/)[0]?.trim() || projectM?.[1]?.trim() || 'Construction Project',
+          relationshipType: 'Contractor',
+          contingency: 'Reserve allocation / change-order resolution',
+          sku: selectedDocType || 'CHANGE-ORDER',
+          productName: projectM ? projectM[1].trim().slice(0, 60) : selectedDocType
+        }
+      })
+    }).catch(err => console.warn('[Capability Sweep Construction]', err.message));
+  } catch (err) { console.warn('[Capability Sweep Construction]', err.message); }
 }
 
 function pushCollectiveSignal_CON() {
