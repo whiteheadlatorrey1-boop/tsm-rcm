@@ -810,6 +810,12 @@ app.post('/api/music/song/learn', async (req, res) => {
 // inline handlers keep precedence for any overlapping paths.
 app.use(require('./routes/music'));
 
+// ── ENTERPRISE CAPABILITY BRIDGE ───────────────────────────────────────────────
+// Session-persisted stores for O2C/CRM/CPQ/Catalog/Approval (previously
+// stateless /query-only) + the capability-sweep orchestrator. BPO reference
+// chain — see routes/enterprise-capability-bridge.js header for full design.
+app.use(require('./routes/enterprise-capability-bridge'));
+
 
 // ── FINOPS ────────────────────────────────────────────────────────────────────
 app.post('/api/finops/bnca/report', (req, res) => res.json({ ok: true }));
