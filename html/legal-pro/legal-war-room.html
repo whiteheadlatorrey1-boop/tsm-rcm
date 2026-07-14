@@ -1237,6 +1237,35 @@ function launchApp(href, appMeta) {
 // ═══════════════════════════════════════════════════
 // ESCALATION
 // ═══════════════════════════════════════════════════
+function fireCapabilitySweep_LEGAL(e) {
+  try {
+    const e1 = e?.[1] || '';
+    const e3 = e?.[3] || '';
+    const combined = e1 + e3;
+    const partiesM = e1.match(/PARTIES:[\s]*([^\n]+)/i);
+    const caseTypeM = e1.match(/CASE TYPE:[\s]*([^\n]+)/i);
+    const expM = combined.match(/DAMAGES EXPOSURE[:\s]+([^\n]+)/i) || combined.match(/KEY AMOUNTS[:\s]+([^\n]+)/i);
+    const parties = partiesM ? partiesM[1].trim() : '';
+    fetch('/api/enterprise/capability-sweep', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        vertical: 'legal',
+        title: (selectedDocType || 'Legal Matter') + (caseTypeM ? ' — ' + caseTypeM[1].trim().slice(0, 60) : ''),
+        summary: docText.slice(0, 1500),
+        exposure: expM ? expM[1].trim().slice(0, 30) : null,
+        entities: {
+          customer: parties.split(/\s+v\.?\s+|,|;/)[0]?.trim() || caseTypeM?.[1]?.trim() || 'Legal Matter',
+          relationshipType: 'Opposing Party',
+          contingency: 'Settlement authority / litigation reserve',
+          sku: selectedDocType || 'LEGAL-MATTER',
+          productName: caseTypeM ? caseTypeM[1].trim().slice(0, 60) : selectedDocType
+        }
+      })
+    }).catch(err => console.warn('[Capability Sweep Legal]', err.message));
+  } catch (err) { console.warn('[Capability Sweep Legal]', err.message); }
+}
+
 function storeSession() {
   try {
     const _legalRelay = JSON.stringify({
@@ -1444,6 +1473,7 @@ for (let i = 1; i <= 6; i++) {
   document.getElementById('fireBtn').disabled = false;
   addTL('All 6 Engines Complete — App Dispatch Ready', 'Select app or escalate to Chief Strategist', 'p');
   storeSession();
+  fireCapabilitySweep_LEGAL(e);
 setTimeout(() => {
   try {
     const docEl = document.getElementById('docText') || document.getElementById('doc-text') || document.querySelector('textarea');
