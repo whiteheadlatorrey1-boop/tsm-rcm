@@ -2,6 +2,12 @@
 <html lang="en">
 <head>
 <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
+<script src="/html/shared/tsm-event-bus.js"></script>
+<script src="/html/shared/tsm-relay.js"></script>
+<script src="/html/shared/tsm-rule-registry.js"></script>
+<script src="/html/shared/tsm-enterprise-runtime.js"></script>
+<script src="/html/shared/mdm-cross-mesh.rule.js"></script>
+<script src="/html/shared/tsm-cross-mesh.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>TSM &middot; Master Data Management Executive Portal</title>
@@ -76,6 +82,7 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 <script src="/html/shared/tsm-exec-framework.js"></script>
 <!-- canonical source: html/war-rooms/mdm/mdm-executive-portal.html -->
 <script src="/html/shared/tsm-quality-score-engine.js"></script>
+<script src="/html/shared/tsm-process-mining.js"></script>
 <script>
 function tick(){document.getElementById('clock').textContent=new Date().toLocaleTimeString();}
 setInterval(tick,1000);tick();
@@ -200,9 +207,57 @@ function renderQualityScore(explainItems, recordCount){
   </div>`;
 }
 
+// Roadmap #5 -- mines TSM.relay.eventLog() (already written by relay.core.js
+// on every war-room -> strategist -> exec-portal hop for this domain) for
+// stage-to-stage hops running over benchmark. No synthetic data: if this
+// domain hasn't had a case cross more than one relay stage yet, the section
+// honestly reports "no cases observed" rather than fabricating a finding.
+function renderProcessMining(){
+  if(!window.TSMProcessMining) return '';
+  const result = TSMProcessMining.analyzeFromRelay();
+  const hops = (result.hopSummary || []).filter(h => h.domain === CFG.domain);
+  const findings = (result.findings || []).filter(f => f.domain === CFG.domain);
+
+  if(!hops.length){
+    return `<div class="sec"><div class="sec-hdr">PROCESS MINING</div>
+      <div class="no-items">No multi-stage cases observed yet for ${CFG.domain} -- findings populate once a case has relayed across at least two stages.</div>
+    </div>`;
+  }
+
+  const hopHtml = hops.map(h => {
+    const overCls = h.overBenchmarkRate >= 50 ? 'red' : (h.overBenchmarkRate > 0 ? 'amber' : 'green');
+    return `<div class="list-row"><span class="lbadge" style="border-color:var(--${overCls});color:var(--${overCls});">${h.overBenchmarkRate}% OVER</span><span>${escapeHtml(h.from)} &rarr; ${escapeHtml(h.to)}: avg ${h.avgHours}h vs ${h.benchmarkHours}h benchmark (n=${h.sampleSize})</span></div>`;
+  }).join('');
+
+  const findingHtml = findings.length
+    ? findings.slice(0, 5).map(f => `<div class="list-row"><span class="lbadge" style="border-color:var(--red);color:var(--red);">CASE ${escapeHtml(String(f.caseId))}</span><span>${escapeHtml(f.from)} &rarr; ${escapeHtml(f.to)}: ${f.elapsedHours}h (+${f.overBenchmarkHours}h over) &mdash; ${escapeHtml(f.rootCauseHint)}</span></div>`).join('')
+    : '';
+
+  return `<div class="sec">
+    <div class="sec-hdr">PROCESS MINING</div>
+    ${hopHtml}
+    ${findingHtml}
+  </div>`;
+}
+
 function render(){
   const data = loadRelay();
   if(!data){ renderEmpty(); return; }
+
+  // Roadmap #10 -- evaluate the MDM cross-mesh rule against the real relay
+  // payload every time this page has fresh data, and route any resulting
+  // findings to the shared CROSS_MESH relay domain for Governance/
+  // Integration Hub exec portals to pick up. Called directly here rather
+  // than via TSMRuntime.start()'s watch() subscription: relay.core.js (the
+  // implementation actually writing MDM's relay data) and tsm-relay.js
+  // (which TSMRuntime depends on) are two separate, only storage-key-
+  // compatible implementations -- a same-tab relay.core.js write does not
+  // notify tsm-relay.js's watchers. Calling evaluateAndRoute() directly
+  // with the data this page already loaded sidesteps that gap entirely.
+  if(window.TSMRuntime){
+    try { TSMRuntime.evaluateAndRoute(CFG.domain, data); }
+    catch(e){ console.error('[MDM exec portal] cross-mesh evaluation failed:', e); }
+  }
 
   document.getElementById('hdrSub').textContent = `Relayed ${data.timestamp ? new Date(data.timestamp).toLocaleString() : '&mdash;'}`;
 
@@ -235,6 +290,7 @@ function render(){
   if(CFG.explainPath){
     const explainItems = getPath(data, CFG.explainPath);
     html += renderQualityScore(explainItems, kpiBase.record_count);
+    html += renderProcessMining();
     if(window.TSMExecFramework){
       html += TSMExecFramework.renderRiskRegister(explainItems, { isExec: CFG.isExec });
     }

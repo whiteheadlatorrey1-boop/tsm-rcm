@@ -12,9 +12,9 @@ url:"/html/war-rooms/war-room-prep.html"
 {
 name:"Healthcare",
 pages:[
-"/html/war-rooms/healthcare/hc-war-room.html",
-"/html/war-rooms/healthcare/hc-strategist.html",
-"/html/war-rooms/healthcare/hc-executive-portal.html"
+"/html/healthcare/hc-denial-war-room.html",
+"/html/healthcare/hc-main-strategist.html",
+"/html/healthcare/executive-portal.html"
 ]
 },
 
@@ -65,18 +65,16 @@ pages:[
 },
 
 {
-name:"Music Command",
-url:"/html/music/music-command-center.html"
-},
-
-{
-name:"Sweet OS",
-url:"/html/sweet-os/index.html"
+// This page's own <title> is "Sweet Music™ OS — TSM Music Command" --
+// "Music Command" and "Sweet OS" were previously two separate (both
+// wrong) entries testing what is actually the same single page.
+name:"Music Command (Sweet Music OS)",
+url:"/html/music-command/index.html"
 },
 
 {
 name:"Honeywell Demo",
-url:"/html/demo/honeywell-demo.html"
+url:"/html/TSM_Shell_Honeywell_TalkTrack_30min.html"
 }
 
 ];
