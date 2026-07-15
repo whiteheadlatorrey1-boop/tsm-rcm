@@ -1,0 +1,11 @@
+module.exports = {
+
+events:[
+"DOCUMENT_RECEIVED",
+"UNDERWRITING_STARTED",
+"CONDITION_CREATED",
+"CLEAR_TO_CLOSE",
+"FUNDED"
+]
+
+};
