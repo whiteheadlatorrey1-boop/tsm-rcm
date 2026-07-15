@@ -26,8 +26,9 @@ router.post('/api/career/ai-complete', async (req, res) => {
   if (!Array.isArray(messages) || messages.length === 0) {
     return res.status(400).json({ ok: false, error: 'messages array required' });
   }
-  if (!process.env.GROQ_API_KEY) {
-    return res.status(500).json({ ok: false, error: 'GROQ_API_KEY not set on server' });
+  const groqKey = process.env.GROQ_KEY || process.env.GROQ_API_KEY;
+  if (!groqKey) {
+    return res.status(500).json({ ok: false, error: 'GROQ_KEY / GROQ_API_KEY not set on server' });
   }
 
   try {
@@ -35,7 +36,7 @@ router.post('/api/career/ai-complete', async (req, res) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.GROQ_API_KEY}`
+        'Authorization': `Bearer ${groqKey}`
       },
       body: JSON.stringify({
         model: GROQ_MODEL,
