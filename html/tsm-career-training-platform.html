@@ -477,6 +477,9 @@ nav {
 .msai-vert-btns { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: .8rem; }
 .msai-vbtn { font-family: var(--mono); font-size: 9px; letter-spacing: .08em; padding: 3px 8px; border: 1px solid var(--border2); background: transparent; color: var(--text2); cursor: pointer; transition: all .15s; }
 .msai-vbtn:hover, .msai-vbtn.sel { border-color: var(--amber); color: var(--amber); background: var(--amber-dim); }
+.iq-qbtn, .iq-lbtn { font-family: var(--mono); font-size: 9px; letter-spacing: .06em; padding: 6px 10px; border: 1px solid var(--border2); background: var(--surface2); color: var(--text2); cursor: pointer; transition: all .15s; }
+.iq-qbtn:hover, .iq-qbtn.sel { border-color: var(--purple); color: var(--purple); background: var(--purple-dim); }
+.iq-lbtn:hover, .iq-lbtn.sel { border-color: var(--cyan); color: var(--cyan); background: var(--cyan-dim); }
 .msai-scen { background: var(--bg); border: 1px solid var(--border2); padding: .8rem; min-height: 70px; font-size: 11px; color: var(--text2); line-height: 1.6; margin-bottom: 8px; display: none; }
 .msai-answer { width: 100%; background: var(--bg); border: 1px solid var(--border2); color: var(--text); font-family: var(--mono); font-size: 11px; padding: 6px 8px; resize: vertical; min-height: 60px; outline: none; }
 .msai-answer:focus { border-color: var(--purple); }
@@ -3122,9 +3125,9 @@ async function msaiTutor(action, topic) {
   loading.classList.add('show');
   output.textContent = '';
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    const res = await fetch('/api/career/ai-complete', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1000,messages:[{role:'user',content:prompts[action]||`Explain ${topic} briefly for the AB-100 exam.`}]})
+      body:JSON.stringify({max_tokens:1000,messages:[{role:'user',content:prompts[action]||`Explain ${topic} briefly for the AB-100 exam.`}]})
     });
     const data = await res.json();
     output.textContent = data.content?.map(c=>c.text||'').join('') || 'No response.';
@@ -3156,9 +3159,9 @@ async function msaiGenScen() {
   scen.style.display='block'; grade.style.display='none';
   scen.textContent = '⟳ Generating...';
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    const res = await fetch('/api/career/ai-complete', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1000,messages:[{role:'user',content:`Generate a 2-sentence realistic enterprise AI scenario for a ${msaiVert} client. They have a specific operational problem agentic AI could solve. End with: "How would you architect a solution?" Don't provide the answer.`}]})
+      body:JSON.stringify({max_tokens:1000,messages:[{role:'user',content:`Generate a 2-sentence realistic enterprise AI scenario for a ${msaiVert} client. They have a specific operational problem agentic AI could solve. End with: "How would you architect a solution?" Don't provide the answer.`}]})
     });
     const data = await res.json();
     scen.textContent = data.content?.map(c=>c.text||'').join('') || 'Error.';
@@ -3172,13 +3175,94 @@ async function msaiGradeAnswer() {
   if(!ans){ grade.style.display='block'; grade.textContent='Write your answer first.'; return; }
   grade.style.display='block'; grade.textContent='⟳ Grading...';
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    const res = await fetch('/api/career/ai-complete', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1000,messages:[{role:'user',content:`Grade this AB-100 presales answer.\nScenario: ${scen}\nAnswer: ${ans}\nScore 1-10 on: (1) Technical accuracy (2) Microsoft vocabulary use (Copilot Studio, Azure AI, HITL, RAG, multi-agent) (3) Presales effectiveness. Give score + 2 sentences of coaching. Be direct.`}]})
+      body:JSON.stringify({max_tokens:1000,messages:[{role:'user',content:`Grade this AB-100 presales answer.\nScenario: ${scen}\nAnswer: ${ans}\nScore 1-10 on: (1) Technical accuracy (2) Microsoft vocabulary use (Copilot Studio, Azure AI, HITL, RAG, multi-agent) (3) Presales effectiveness. Give score + 2 sentences of coaching. Be direct.`}]})
     });
     const data = await res.json();
     grade.textContent = data.content?.map(c=>c.text||'').join('') || 'Error.';
   } catch(e){ grade.textContent='Error.'; }
+}
+
+// ── INTERVIEW PROOF MAP — LIVE SIMULATOR ──
+let iqQ = null;       // { id, text }
+let iqLensSel = null; // { name, desc }
+
+function iqSelect(btn, id, text) {
+  iqQ = { id, text };
+  document.querySelectorAll('.iq-qbtn').forEach(b => b.classList.remove('sel'));
+  btn.classList.add('sel');
+  const el = document.getElementById('iq-selected-q');
+  el.style.display = 'block';
+  el.textContent = 'Q: ' + text;
+}
+
+function iqLens(btn, name, desc) {
+  iqLensSel = { name, desc };
+  document.querySelectorAll('.iq-lbtn').forEach(b => b.classList.remove('sel'));
+  btn.classList.add('sel');
+  const el = document.getElementById('iq-selected-lens');
+  el.style.display = 'block';
+  el.textContent = 'LENS: ' + name;
+}
+
+async function iqGenerate() {
+  const loading = document.getElementById('iq-loading');
+  const output = document.getElementById('iq-output');
+  const meta = document.getElementById('iq-meta');
+  if (!iqQ) { alert('Select an interview question first.'); return; }
+  if (!iqLensSel) { alert('Select a TSM workflow as your proof lens first.'); return; }
+
+  loading.style.display = 'block';
+  output.style.display = 'none';
+  meta.style.display = 'none';
+  output.textContent = '';
+
+  const prompt = `You are coaching a candidate for an AI Solutions Architect / AI Solutions Engineer interview.
+Interview question: "${iqQ.text}"
+Answer this question using ONLY the following TSM Shell workflow as the proof point — ground every claim in this specific system, don't generalize:
+${iqLensSel.name}: ${iqLensSel.desc}
+Write a confident, specific, first-person interview answer (150-220 words). End with one sentence a hiring manager would remember.`;
+
+  try {
+    const res = await fetch('/api/career/ai-complete', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ max_tokens: 600, messages: [{ role: 'user', content: prompt }] })
+    });
+    const data = await res.json();
+    const text = data.content?.map(c => c.text || '').join('') || 'No response.';
+    output.textContent = text;
+    output.style.display = 'block';
+    meta.style.display = 'flex';
+    meta.innerHTML = `<span>QUESTION: ${iqQ.id}</span><span>LENS: ${iqLensSel.name}</span><span>${new Date().toLocaleTimeString()}</span>`;
+  } catch (e) {
+    output.textContent = 'Error connecting to AI. Check the /api/career/ai-complete route and GROQ_API_KEY.';
+    output.style.display = 'block';
+  }
+  loading.style.display = 'none';
+}
+
+function iqCopy() {
+  const output = document.getElementById('iq-output');
+  if (!output.textContent) return;
+  try {
+    navigator.clipboard.writeText(output.textContent);
+    const btn = document.getElementById('iq-copy-btn');
+    const orig = btn.textContent;
+    btn.textContent = '✓ COPIED';
+    setTimeout(() => btn.textContent = orig, 2000);
+  } catch (e) { alert(output.textContent); }
+}
+
+function iqClear() {
+  iqQ = null; iqLensSel = null;
+  document.querySelectorAll('.iq-qbtn, .iq-lbtn').forEach(b => b.classList.remove('sel'));
+  document.getElementById('iq-selected-q').style.display = 'none';
+  document.getElementById('iq-selected-lens').style.display = 'none';
+  document.getElementById('iq-output').style.display = 'none';
+  document.getElementById('iq-output').textContent = '';
+  document.getElementById('iq-meta').style.display = 'none';
+  document.getElementById('iq-loading').style.display = 'none';
 }
 
 function msaiUpdateCountdown() {
