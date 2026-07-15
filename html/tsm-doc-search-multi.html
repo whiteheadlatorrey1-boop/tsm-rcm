@@ -31,6 +31,7 @@
   --reo:  #fb7185;  /* Real Estate – rose */
   --leg:  #818cf8;  /* Legal – indigo */
   --hc:   #fb923c;  /* Healthcare – orange */
+  --mortgage: #eab308;  /* Mortgage – gold */
   --mtg:  #d4af37;  /* Mortgage – gold */
 
   /* Phase war-room accent colors */
@@ -186,6 +187,7 @@ body::before {
 .vtab.active[data-v="re"]  { background: rgba(251,113,133,0.08); color: var(--reo); border-bottom: 2px solid var(--reo); }
 .vtab.active[data-v="leg"] { background: rgba(129,140,248,0.08); color: var(--leg); border-bottom: 2px solid var(--leg); }
 .vtab.active[data-v="hc"]  { background: rgba(251,146,60,0.08);  color: var(--hc);  border-bottom: 2px solid var(--hc); }
+.vtab.active[data-v="mortgage"] { background: rgba(234,179,8,0.08); color: var(--mortgage); border-bottom: 2px solid var(--mortgage); }
 
 .vtab-dot {
   width: 6px; height: 6px;
@@ -199,6 +201,7 @@ body::before {
 .vtab[data-v="re"]  .vtab-dot { background: var(--reo); }
 .vtab[data-v="leg"] .vtab-dot { background: var(--leg); }
 .vtab[data-v="hc"]  .vtab-dot { background: var(--hc); }
+.vtab[data-v="mortgage"] .vtab-dot { background: var(--mortgage); }
 .vtab[data-v="o2c"]      .vtab-dot { background: var(--o2c); }
 .vtab[data-v="crm"]      .vtab-dot { background: var(--crm); }
 .vtab[data-v="approval"] .vtab-dot { background: var(--approval); }
@@ -262,6 +265,8 @@ body::before {
 .node-link.leg:hover { background: rgba(129,140,248,0.18); }
 .node-link.hc  { background: rgba(251,146,60,0.08);  color: var(--hc);  border: 1px solid rgba(251,146,60,0.2); }
 .node-link.hc:hover  { background: rgba(251,146,60,0.18); }
+.node-link.mortgage { background: rgba(234,179,8,0.08); color: var(--mortgage); border: 1px solid rgba(234,179,8,0.2); }
+.node-link.mortgage:hover { background: rgba(234,179,8,0.18); }
 .node-link.o2c { background: rgba(6,182,212,0.08);   color: var(--o2c);      border: 1px solid rgba(6,182,212,0.2); }
 .node-link.o2c:hover { background: rgba(6,182,212,0.18); }
 .node-link.crm { background: rgba(244,114,182,0.08); color: var(--crm);      border: 1px solid rgba(244,114,182,0.2); }
@@ -825,6 +830,7 @@ if (window.pdfjsLib) {
     <button class="vtab"        data-v="con" onclick="switchVertical('con')"><span class="vtab-dot"></span>Construction</button>
     <button class="vtab"        data-v="bpo" onclick="switchVertical('bpo')"><span class="vtab-dot"></span>BPO Internal</button>
     <button class="vtab"        data-v="re" onclick="switchVertical('re')"><span class="vtab-dot"></span>Real Estate</button>
+    <button class="vtab"        data-v="mortgage" onclick="switchVertical('mortgage')"><span class="vtab-dot"></span>Mortgage</button>
     <button class="vtab"        data-v="mtg" onclick="switchVertical('mtg')"><span class="vtab-dot"></span>Mortgage</button>
     <button class="vtab"        data-v="leg" onclick="switchVertical('leg')"><span class="vtab-dot"></span>Legal</button>
     <button class="vtab"        data-v="hc"  onclick="switchVertical('hc')"><span class="vtab-dot"></span>Healthcare</button>
@@ -1024,6 +1030,19 @@ const VERTICALS = {
       { fileName:"Inspection_Report_456Cedar.record",  documentType:"DOCUMENT REPORT",vendor:"AZ Home Inspections",  invoiceNo:"INS-3320", exclusionCode:"COND-9", amount:0,      sourceNode:"re-doc-command", routing:["re-doc-command","re-strategist","strategist"],      timestamp:Date.now()-2*86400000,_ext:{client:"456 Cedar Ave",    ref:"INS-3320", defectFlags:["Inspection Issues"]} },
     ]
   },
+  mortgage: {
+    label: "Mortgage",
+    color: "#eab308",
+    cls:   "mortgage",
+    storageKey: "tsm_doc_index_mortgage",
+    searchPlaceholder: "Search by borrower, loan #, lender, LTV, doc type...",
+    nodes: {
+      "mortgage-war-room": { label:"Mortgage Command", route:"/html/reo-pro/mortgage/index.html" },
+      "strategist":        { label:"Strategist",       route:"/html/reo-pro/re-strategist.html" },
+      "bnca-engine":       { label:"BNCA Escalated",   route:"/html/reo-pro/re-exec-portal.html" },
+    },
+    seed: []
+  },
   leg: {
     label: "Legal",
     color: "#818cf8",
@@ -1222,6 +1241,10 @@ const DOC_TYPE_COLORS = {
   "FILING":           { bg:"rgba(251,113,133,0.12)", text:"#fb7185" },
   "TITLE DOCUMENT":   { bg:"rgba(45,212,191,0.12)",  text:"#2dd4bf" },
   "DENIAL":           { bg:"rgba(251,146,60,0.12)",  text:"#fb923c" },
+  "LOAN APPLICATION":  { bg:"rgba(234,179,8,0.12)",  text:"#eab308" },
+  "LOAN ESTIMATE":     { bg:"rgba(250,204,21,0.12)", text:"#facc15" },
+  "CLOSING DISCLOSURE":{ bg:"rgba(202,138,4,0.12)",  text:"#ca8a04" },
+  "APPRAISAL REPORT":  { bg:"rgba(217,119,6,0.12)",  text:"#d97706" },
 };
 
 function dtColor(t) { return DOC_TYPE_COLORS[t] || { bg:"rgba(148,163,184,0.12)", text:"#94a3b8" }; }
@@ -1659,6 +1682,7 @@ const WAR_ROOM_ROUTES = {
   'bpoops-war-room': { label:'BPO Ops War Room',    url:'/html/war-rooms/bpo/bpo-war-room.html',              relay:'tsm_bpoops_docsearch_relay', autoKey:'TSM_BPOOPS_WAR_RELAY' },
   'bpo-ops':      { label:'BPO Ops War Room',       url:'/html/war-rooms/bpo/bpo-war-room.html',              relay:'tsm_bpoops_docsearch_relay', autoKey:'TSM_BPOOPS_WAR_RELAY' },
   're-war-room':  { label:'Real Estate War Room',   url:'/html/reo-pro/re-war-room.html',                     relay:'tsm_re_docsearch_relay',     autoKey:'TSM_RE_WAR_RELAY' },
+  'mortgage-war-room': { label:'Mortgage Command',  url:'/html/reo-pro/mortgage/index.html',                  relay:'tsm_mortgage_docsearch_relay',autoKey:'TSM_MORTGAGE_WAR_RELAY' },
   'leg-war-room': { label:'Legal War Room',         url:'/html/legal-pro/legal-war-room.html',                relay:'tsm_leg_docsearch_relay',    autoKey:'TSM_LEG_WAR_RELAY' },
   'hc-war-room':  { label:'HC Denial War Room',     url:'/html/healthcare/hc-denial-war-room.html',           relay:'tsm_hc_docsearch_relay',     autoKey:'TSM_HC_WAR_RELAY' },
   'cpq-war-room': { label:'CPQ War Room',           url:'/html/war-rooms/cpq/cpq-war-room.html',              relay:'tsm_cpq_docsearch_relay',    autoKey:'TSM_CPQ_WAR_RELAY' },
@@ -2035,12 +2059,21 @@ const DEMO_DOCS = [
   { id:'dd-bpo2-sla',  verticals:['bpo-ops'],   fileName:'Phase_SLA_Breach_Ticket_PSLA-190.pdf',  documentType:'ESCALATION',     vendor:'',                invoiceNo:'PSLA-190',    exclusionCode:'SLA-BRK', amount:0,     sourceNodes:{'bpo-ops':'bpoops-war-room'}, routing:{'bpo-ops':['bpoops-war-room','strategist','bnca-engine']}, _ext:{client:'Acme Corp', ref:'PSLA-190', defectFlags:[]}, tags:['sla breach','bpo ops','phase','ticket'] },
   { id:'dd-bpo2-hand', verticals:['bpo-ops'],   fileName:'Workflow_Handoff_Log_WHO-073.pdf',      documentType:'DOCUMENT REPORT',vendor:'',                invoiceNo:'WHO-073',     exclusionCode:'',        amount:0,     sourceNodes:{'bpo-ops':'bpoops-war-room'}, routing:{'bpo-ops':['bpoops-war-room','strategist']}, _ext:{client:'TechFirm Inc', ref:'WHO-073', defectFlags:[]}, tags:['handoff','workflow','bpo ops','phase'] },
   { id:'dd-bpo2-cap',  verticals:['bpo-ops'],   fileName:'Capacity_Exception_CAP-129.pdf',        documentType:'DOCUMENT REPORT',vendor:'',                invoiceNo:'CAP-129',     exclusionCode:'CAP-OVR', amount:0,     sourceNodes:{'bpo-ops':'bpoops-war-room'}, routing:{'bpo-ops':['bpoops-war-room','strategist']}, _ext:{client:'BPO Services', ref:'CAP-129', defectFlags:[]}, tags:['capacity','exception','bpo ops','phase'] },
+
+  { id:'dd-mtg-1003a', verticals:['mortgage'], fileName:'1003_Loan_Application_Reyes.pdf',      documentType:'LOAN APPLICATION',  vendor:'',                    invoiceNo:'1003-24-0091', exclusionCode:'',        amount:395000, sourceNodes:{mortgage:'mortgage-war-room'}, routing:{mortgage:['mortgage-war-room','strategist']},                 _ext:{client:'Carlos Reyes',      ref:'1003-24-0091', defectFlags:[]},                 tags:['1003','urla','loan application','borrower','mortgage','purchase'] },
+  { id:'dd-mtg-1003b', verticals:['mortgage'], fileName:'1003_Loan_Application_Nguyen_Refi.pdf', documentType:'LOAN APPLICATION',  vendor:'',                    invoiceNo:'1003-24-0114', exclusionCode:'',        amount:268000, sourceNodes:{mortgage:'mortgage-war-room'}, routing:{mortgage:['mortgage-war-room','strategist']},                 _ext:{client:'Tran Nguyen',       ref:'1003-24-0114', defectFlags:[]},                 tags:['1003','urla','loan application','borrower','mortgage','refinance'] },
+  { id:'dd-mtg-le-a',  verticals:['mortgage'], fileName:'Loan_Estimate_Reyes.pdf',               documentType:'LOAN ESTIMATE',     vendor:'Desert Ridge Lending', invoiceNo:'LE-24-0091',   exclusionCode:'',        amount:395000, sourceNodes:{mortgage:'mortgage-war-room'}, routing:{mortgage:['mortgage-war-room','strategist']},                 _ext:{client:'Carlos Reyes',      ref:'LE-24-0091',   defectFlags:[]},                 tags:['loan estimate','trid','rate lock','apr','mortgage','borrower'] },
+  { id:'dd-mtg-le-c',  verticals:['mortgage'], fileName:'Loan_Estimate_Whitfield.pdf',           documentType:'LOAN ESTIMATE',     vendor:'Desert Ridge Lending', invoiceNo:'LE-24-0132',   exclusionCode:'RATE-CHG',amount:452000, sourceNodes:{mortgage:'mortgage-war-room'}, routing:{mortgage:['mortgage-war-room','strategist','bnca-engine']},   _ext:{client:'Amanda Whitfield',  ref:'LE-24-0132',   defectFlags:['UW Conditions']}, tags:['loan estimate','trid','rate lock','apr','mortgage','borrower','change of circumstance'] },
+  { id:'dd-mtg-cd-a',  verticals:['mortgage'], fileName:'Closing_Disclosure_Reyes.pdf',          documentType:'CLOSING DISCLOSURE',vendor:'Premier Escrow Co',   invoiceNo:'CD-24-0091',   exclusionCode:'',        amount:395000, sourceNodes:{mortgage:'mortgage-war-room'}, routing:{mortgage:['mortgage-war-room','strategist']},                 _ext:{client:'Carlos Reyes',      ref:'CD-24-0091',   defectFlags:[]},                 tags:['closing disclosure','trid','escrow','mortgage','borrower','cash to close'] },
+  { id:'dd-mtg-cd-d',  verticals:['mortgage'], fileName:'Closing_Disclosure_Whitfield.pdf',      documentType:'CLOSING DISCLOSURE',vendor:'Premier Escrow Co',   invoiceNo:'CD-24-0132',   exclusionCode:'FEE-VAR', amount:452000, sourceNodes:{mortgage:'mortgage-war-room'}, routing:{mortgage:['mortgage-war-room','strategist','bnca-engine']},   _ext:{client:'Amanda Whitfield',  ref:'CD-24-0132',   defectFlags:['Closing Delay']},  tags:['closing disclosure','trid','escrow','mortgage','borrower','fee variance','tolerance cure'] },
+  { id:'dd-mtg-appr-a',verticals:['mortgage'], fileName:'Appraisal_Report_88_Saguaro_Way.pdf',   documentType:'APPRAISAL REPORT',  vendor:'AZ Valuation Group',  invoiceNo:'APR-24-0091',  exclusionCode:'',        amount:398000, sourceNodes:{mortgage:'mortgage-war-room'}, routing:{mortgage:['mortgage-war-room','strategist']},                 _ext:{client:'Carlos Reyes',      ref:'APR-24-0091',  defectFlags:[]},                 tags:['appraisal','uad','comps','mortgage','borrower','ltv'] },
+  { id:'dd-mtg-appr-e',verticals:['mortgage'], fileName:'Appraisal_Report_14_Cactus_Bloom_Ln.pdf',documentType:'APPRAISAL REPORT', vendor:'AZ Valuation Group',  invoiceNo:'APR-24-0132',  exclusionCode:'APPR-GAP',amount:452000, sourceNodes:{mortgage:'mortgage-war-room'}, routing:{mortgage:['mortgage-war-room','strategist','bnca-engine']},   _ext:{client:'Amanda Whitfield',  ref:'APR-24-0132',  defectFlags:['Appraisal Gap']},  tags:['appraisal','uad','comps','mortgage','borrower','ltv','value gap'] },
 ];
 
 function cleanRouting(doc, v) {
   const wr = {fo:'fo-war-room',ins:'ins-war-room',con:'con-war-room',bpo:'bpo-war-room',re:'re-war-room',leg:'leg-war-room',hc:'hc-war-room',
     o2c:'o2c-war-room',crm:'crm-war-room',approval:'approval-war-room',cpq:'cpq-war-room',catalog:'catalog-war-room',mdm:'mdm-war-room',
-    governance:'governance-war-room','integration-hub':'integration-war-room','digital-twin':'digitaltwin-war-room','bpo-ops':'bpoops-war-room'};
+    governance:'governance-war-room','integration-hub':'integration-war-room','digital-twin':'digitaltwin-war-room','bpo-ops':'bpoops-war-room',mortgage:'mortgage-war-room'};
   const originalRouting = doc.routing?.[v] || [];
   const nodes = originalRouting.length ? originalRouting : [wr[v], 'strategist'];
   const tags = doc.tags || [];
@@ -2750,7 +2783,7 @@ window.openHcNodeWithDoc = openHcNodeWithDoc;
         // Find first war room route for this sector
         const warRoomKeys = { hc:'hc-war-room', finops:'fo-war-room', con:'con-war-room', ins:'ins-war-room', legal:'leg-war-room', re:'re-war-room', bpo:'bpo-war-room',
           o2c:'o2c-war-room', crm:'crm-war-room', approval:'approval-war-room', cpq:'cpq-war-room', catalog:'catalog-war-room', mdm:'mdm-war-room',
-          governance:'governance-war-room', integrationhub:'integration-war-room', digitaltwin:'digitaltwin-war-room', bpoops:'bpoops-war-room' };
+          governance:'governance-war-room', integrationhub:'integration-war-room', digitaltwin:'digitaltwin-war-room', bpoops:'bpoops-war-room', mortgage:'mortgage-war-room' };
         const roomKey = warRoomKeys[sector];
         if (roomKey && typeof launchWarRoom === 'function') {
           launchWarRoom(docs[0].id, roomKey);
@@ -2766,7 +2799,7 @@ window.openHcNodeWithDoc = openHcNodeWithDoc;
           localStorage.setItem('tsm_auto_mode', 'on');
           const warRoomKeys = { hc:'hc-war-room', finops:'fo-war-room', con:'con-war-room', ins:'ins-war-room', legal:'leg-war-room', re:'re-war-room', bpo:'bpo-war-room',
             o2c:'o2c-war-room', crm:'crm-war-room', approval:'approval-war-room', cpq:'cpq-war-room', catalog:'catalog-war-room', mdm:'mdm-war-room',
-            governance:'governance-war-room', integrationhub:'integration-war-room', digitaltwin:'digitaltwin-war-room', bpoops:'bpoops-war-room' };
+            governance:'governance-war-room', integrationhub:'integration-war-room', digitaltwin:'digitaltwin-war-room', bpoops:'bpoops-war-room', mortgage:'mortgage-war-room' };
           const room = WAR_ROOM_ROUTES[warRoomKeys[sector]];
           if (room) window.location.href = room.url;
         }
