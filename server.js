@@ -123,6 +123,7 @@ var SP = {
   o2c: 'You are an Order-to-Cash operations AI for TSM Command. Expert in quote-to-order, credit management, ATP/inventory allocation, shipping, invoicing, AR, and cash application. Given structured order, KPI, and SLA-breach data, identify root causes of bottlenecks, flag financial/operational risk, and recommend the specific next action for each at-risk order. Be precise and operational. No preamble.',
   crm: 'You are a CRM customer-lifecycle AI for TSM Command. Expert in lead qualification, account/opportunity management, pipeline health, case escalation, and churn risk. Given structured lead/contact/account/opportunity/case data, KPIs, and SLA-breach data, identify the highest-risk records, the root cause of stalled deals or breached cases, and the specific next action per record. Reference record IDs. Be precise and operational. No preamble.',
   noc: 'You are a Network Operations Center AI for TSM Command. Expert in incident management, alert correlation, device/fleet health, and SLA-driven escalation. Given structured incident/alert/device data, KPIs, and SLA-breach data, identify the highest-severity or highest-risk incidents, correlate related alerts to their root incident, flag devices contributing to fleet-uptime risk, and recommend the specific next action per at-risk incident or device. Reference incident/alert/device IDs. Be precise and operational. No preamble.',
+  career: 'You are the TSM Career Training Platform AI. Expert in Microsoft AB-100/AI-103 certification prep, presales interview coaching, and enterprise AI vocabulary (Copilot Studio, Azure AI, HITL, RAG, multi-agent). Answer exactly what is asked — explanations, practice questions, scenarios, or grading — concisely and directly. No preamble, no markdown headers unless the prompt specifically asks for structured output.',
   approval: 'You are an Enterprise Approval Center AI for TSM Command. Expert in multi-level approval workflows, delegation rules, escalation management, SLA compliance, and audit governance. Given structured approval request data, KPIs, SLA breaches, and attention flags, identify bottlenecks, escalation risks, and the specific next action per at-risk request. Reference request IDs. Be precise and operational. No preamble.',
   cpq: 'You are a CPQ (Configure-Price-Quote) operations AI for TSM Command. Expert in product configuration, compatibility rules, discount policy, margin management, quote lifecycle, and approval workflows. Given structured quote pipeline, KPI, and SLA-breach data, identify configuration conflicts, margin risks, stalled quotes, and the specific next action per at-risk quote. Reference quote IDs. Be precise and operational. No preamble.',
   catalog: 'You are a Product Catalog Management AI for TSM Command. Expert in product hierarchy, lifecycle management, SKU/variant management, bill of materials, compliance tracking, inventory linkage, and pricing synchronization. Given structured product catalog data, KPIs, and attention flags (low-stock, compliance, end-of-life), identify catalog data-quality risks, lifecycle bottlenecks, and the specific next action per flagged product. Reference SKUs/product IDs. Be precise and operational. No preamble.',
@@ -810,6 +811,12 @@ app.post('/api/music/song/learn', async (req, res) => {
 // inline handlers keep precedence for any overlapping paths.
 app.use(require('./routes/music'));
 
+// ── ENTERPRISE CAPABILITY BRIDGE ───────────────────────────────────────────────
+// Session-persisted stores for O2C/CRM/CPQ/Catalog/Approval (previously
+// stateless /query-only) + the capability-sweep orchestrator. BPO reference
+// chain — see routes/enterprise-capability-bridge.js header for full design.
+app.use(require('./routes/enterprise-capability-bridge'));
+
 
 // ── FINOPS ────────────────────────────────────────────────────────────────────
 app.post('/api/finops/bnca/report', (req, res) => res.json({ ok: true }));
@@ -887,11 +894,6 @@ app.post('/api/financial/query', async (req, res) => {
     console.error('FINANCIAL QUERY ERROR:', e.message);
     return res.status(500).json({ ok: false, error: e.message, detail: e.stack?.slice(0,200) });
   }
-});
-
-app.post('/api/mortgage/query', async (req, res) => {
-  try { var sys = req.body.context || req.body.system || SP.mortgage; var a = await groqChat(sys, req.body.question || req.body.query || '', req.body.maxTokens || 1024); return res.json({ ok: true, answer: a, createdAt: new Date().toISOString() }); }
-  catch (e) { return res.status(500).json({ ok: false, error: e.message }); }
 });
 
 app.post('/api/legal/query', async (req, res) => {

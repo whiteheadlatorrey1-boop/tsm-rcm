@@ -2890,6 +2890,86 @@ function msaiPrev(){ msaiIdx=(msaiIdx-1+msaiCards.length)%msaiCards.length; msai
 function msaiGotIt(){ msaiDone.add(msaiCards[msaiIdx].q); msaiNext(); }
 function msaiShuffle(){ msaiCards.sort(()=>Math.random()-.5); msaiIdx=0; msaiRenderCard(); }
 
+// ── INTERVIEW PROOF MAP SIMULATOR ──
+let iqQuestionId = null, iqQuestionText = null;
+let iqLensLabel = null, iqLensDesc = null;
+
+function iqSelect(btn, id, questionText) {
+  iqQuestionId = id;
+  iqQuestionText = questionText;
+  document.querySelectorAll('.iq-qbtn').forEach(b => b.classList.remove('sel'));
+  btn.classList.add('sel');
+  const el = document.getElementById('iq-selected-q');
+  el.textContent = 'Q: ' + questionText;
+  el.style.display = 'block';
+}
+
+function iqLens(btn, label, desc) {
+  iqLensLabel = label;
+  iqLensDesc = desc;
+  document.querySelectorAll('.iq-lbtn').forEach(b => b.classList.remove('sel'));
+  btn.classList.add('sel');
+  const el = document.getElementById('iq-selected-lens');
+  el.textContent = 'Lens: ' + label;
+  el.style.display = 'block';
+}
+
+async function iqGenerate() {
+  if (!iqQuestionText || !iqLensLabel) {
+    alert('Select a question and a proof lens first.');
+    return;
+  }
+  const loading = document.getElementById('iq-loading');
+  const output = document.getElementById('iq-output');
+  const meta = document.getElementById('iq-meta');
+  loading.style.display = 'block';
+  output.style.display = 'none';
+  meta.style.display = 'none';
+  output.textContent = '';
+
+  const prompt = `Interview question: "${iqQuestionText}"\n\n` +
+    `Answer it using this specific TSM Shell workflow as the concrete proof point: ${iqLensLabel} — ${iqLensDesc}\n\n` +
+    `Write an 80-120 word presales-strength interview answer. Reference specific architecture details from the lens above. No preamble.`;
+
+  try {
+    const res = await fetch('/api/career/ai-complete', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ maxTokens: 500, messages: [{ role: 'user', content: prompt }] })
+    });
+    const data = await res.json();
+    const text = data.content?.map(c => c.text || '').join('') || 'No response.';
+    output.textContent = text;
+    meta.innerHTML = `<span>Question: ${iqQuestionText}</span><span>Lens: ${iqLensLabel}</span>`;
+    meta.style.display = 'flex';
+  } catch (e) {
+    output.textContent = 'Error connecting to AI.';
+  }
+  loading.style.display = 'none';
+  output.style.display = 'block';
+}
+
+function iqCopy() {
+  const output = document.getElementById('iq-output');
+  const btn = document.getElementById('iq-copy-btn');
+  if (!output.textContent) return;
+  navigator.clipboard?.writeText(output.textContent).catch(() => {});
+  const original = btn.textContent;
+  btn.textContent = '✓ COPIED';
+  setTimeout(() => { btn.textContent = original; }, 1500);
+}
+
+function iqClear() {
+  iqQuestionId = null; iqQuestionText = null;
+  iqLensLabel = null; iqLensDesc = null;
+  document.querySelectorAll('.iq-qbtn, .iq-lbtn').forEach(b => b.classList.remove('sel'));
+  document.getElementById('iq-selected-q').style.display = 'none';
+  document.getElementById('iq-selected-lens').style.display = 'none';
+  document.getElementById('iq-output').style.display = 'none';
+  document.getElementById('iq-output').textContent = '';
+  document.getElementById('iq-meta').style.display = 'none';
+  document.getElementById('iq-loading').style.display = 'none';
+}
+
 async function msaiTutor(action, topic) {
   const loading = document.getElementById('msai-loading');
   const output = document.getElementById('msai-output');
@@ -2901,9 +2981,9 @@ async function msaiTutor(action, topic) {
   loading.classList.add('show');
   output.textContent = '';
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    const res = await fetch('/api/career/ai-complete', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1000,messages:[{role:'user',content:prompts[action]||`Explain ${topic} briefly for the AB-100 exam.`}]})
+      body:JSON.stringify({maxTokens:1000,messages:[{role:'user',content:prompts[action]||`Explain ${topic} briefly for the AB-100 exam.`}]})
     });
     const data = await res.json();
     output.textContent = data.content?.map(c=>c.text||'').join('') || 'No response.';
@@ -2935,9 +3015,9 @@ async function msaiGenScen() {
   scen.style.display='block'; grade.style.display='none';
   scen.textContent = '⟳ Generating...';
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    const res = await fetch('/api/career/ai-complete', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1000,messages:[{role:'user',content:`Generate a 2-sentence realistic enterprise AI scenario for a ${msaiVert} client. They have a specific operational problem agentic AI could solve. End with: "How would you architect a solution?" Don't provide the answer.`}]})
+      body:JSON.stringify({maxTokens:1000,messages:[{role:'user',content:`Generate a 2-sentence realistic enterprise AI scenario for a ${msaiVert} client. They have a specific operational problem agentic AI could solve. End with: "How would you architect a solution?" Don't provide the answer.`}]})
     });
     const data = await res.json();
     scen.textContent = data.content?.map(c=>c.text||'').join('') || 'Error.';
@@ -2951,9 +3031,9 @@ async function msaiGradeAnswer() {
   if(!ans){ grade.style.display='block'; grade.textContent='Write your answer first.'; return; }
   grade.style.display='block'; grade.textContent='⟳ Grading...';
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    const res = await fetch('/api/career/ai-complete', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1000,messages:[{role:'user',content:`Grade this AB-100 presales answer.\nScenario: ${scen}\nAnswer: ${ans}\nScore 1-10 on: (1) Technical accuracy (2) Microsoft vocabulary use (Copilot Studio, Azure AI, HITL, RAG, multi-agent) (3) Presales effectiveness. Give score + 2 sentences of coaching. Be direct.`}]})
+      body:JSON.stringify({maxTokens:1000,messages:[{role:'user',content:`Grade this AB-100 presales answer.\nScenario: ${scen}\nAnswer: ${ans}\nScore 1-10 on: (1) Technical accuracy (2) Microsoft vocabulary use (Copilot Studio, Azure AI, HITL, RAG, multi-agent) (3) Presales effectiveness. Give score + 2 sentences of coaching. Be direct.`}]})
     });
     const data = await res.json();
     grade.textContent = data.content?.map(c=>c.text||'').join('') || 'Error.';
