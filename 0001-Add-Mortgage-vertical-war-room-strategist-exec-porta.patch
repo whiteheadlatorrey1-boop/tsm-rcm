@@ -1,0 +1,1607 @@
+From a1424b5ee821274d07949b142902b6451ec0b4eb Mon Sep 17 00:00:00 2001
+From: tsm-consultz <brightmindsfinancial@gmail.com>
+Date: Wed, 15 Jul 2026 20:32:33 +0000
+Subject: [PATCH] Add Mortgage vertical (war room, strategist, exec portal)
+
+- New three-page pattern under html/war-rooms/mortgage/ (war room,
+  strategist, executive portal), gold-accent theme distinct from
+  Real Estate.
+- mortgage-engine.js: KPIs, SLA breach detection, stage WIP,
+  closing-delay + compliance financial exposure model, relay
+  payload builder, canonical-core wiring.
+- mortgage-model.json: loan_file/condition/exception entities +
+  sample data seeded from existing REO-PRO character set.
+- server.js: new /api/mortgage/query endpoint using the existing
+  (previously unused) SP.mortgage system prompt.
+- relay.core.js: MORTGAGE domain added to allowlist.
+- tsm-doc-search-multi.html: new top-level Mortgage vtab (gold),
+  VERTICALS.mtg block, WAR_ROOM_ROUTES entries, and all 25 REO-PRO
+  Mortgage Rescue Pack docs tagged into the mtg vertical alongside
+  their existing re/leg/fo/ins/con tags.
+---
+ html/tsm-doc-search-multi.html                |  68 +--
+ .../_relay_control_plane/relay.core.js        |   1 +
+ .../mortgage/data/mortgage-model.json         |  84 ++++
+ .../mortgage/mortgage-executive-portal.html   | 297 +++++++++++++
+ .../mortgage/mortgage-strategist.html         | 294 +++++++++++++
+ .../war-rooms/mortgage/mortgage-war-room.html | 397 ++++++++++++++++++
+ .../mortgage/services/mortgage-engine.js      | 312 ++++++++++++++
+ server.js                                     |  25 ++
+ 8 files changed, 1453 insertions(+), 25 deletions(-)
+ create mode 100644 html/war-rooms/mortgage/data/mortgage-model.json
+ create mode 100644 html/war-rooms/mortgage/mortgage-executive-portal.html
+ create mode 100644 html/war-rooms/mortgage/mortgage-strategist.html
+ create mode 100644 html/war-rooms/mortgage/mortgage-war-room.html
+ create mode 100644 html/war-rooms/mortgage/services/mortgage-engine.js
+
+diff --git a/html/tsm-doc-search-multi.html b/html/tsm-doc-search-multi.html
+index c2d277e..588eb53 100644
+--- a/html/tsm-doc-search-multi.html
++++ b/html/tsm-doc-search-multi.html
+@@ -31,6 +31,7 @@
+   --reo:  #fb7185;  /* Real Estate – rose */
+   --leg:  #818cf8;  /* Legal – indigo */
+   --hc:   #fb923c;  /* Healthcare – orange */
++  --mtg:  #d4af37;  /* Mortgage – gold */
+ 
+   /* Phase war-room accent colors */
+   --o2c:      #06b6d4;  /* O2C – cyan */
+@@ -824,6 +825,7 @@ if (window.pdfjsLib) {
+     <button class="vtab"        data-v="con" onclick="switchVertical('con')"><span class="vtab-dot"></span>Construction</button>
+     <button class="vtab"        data-v="bpo" onclick="switchVertical('bpo')"><span class="vtab-dot"></span>BPO Internal</button>
+     <button class="vtab"        data-v="re" onclick="switchVertical('re')"><span class="vtab-dot"></span>Real Estate</button>
++    <button class="vtab"        data-v="mtg" onclick="switchVertical('mtg')"><span class="vtab-dot"></span>Mortgage</button>
+     <button class="vtab"        data-v="leg" onclick="switchVertical('leg')"><span class="vtab-dot"></span>Legal</button>
+     <button class="vtab"        data-v="hc"  onclick="switchVertical('hc')"><span class="vtab-dot"></span>Healthcare</button>
+     <button class="vtab"        data-v="o2c" onclick="switchVertical('o2c')"><span class="vtab-dot"></span>O2C</button>
+@@ -1022,6 +1024,19 @@ const VERTICALS = {
+       { fileName:"Inspection_Report_456Cedar.record",  documentType:"DOCUMENT REPORT",vendor:"AZ Home Inspections",  invoiceNo:"INS-3320", exclusionCode:"COND-9", amount:0,      sourceNode:"re-doc-command", routing:["re-doc-command","re-strategist","strategist"],      timestamp:Date.now()-2*86400000,_ext:{client:"456 Cedar Ave",    ref:"INS-3320", defectFlags:["Inspection Issues"]} },
+     ]
+   },
++  mtg: {
++    label: "Mortgage",
++    color: "#d4af37",
++    cls:   "mtg",
++    storageKey: "tsm_doc_index_mtg",
++    searchPlaceholder: "Search by loan ID, borrower, program, condition, exception...",
++    nodes: {
++      "mortgage-war-room": { label:"Mortgage War Room", route:"/html/war-rooms/mortgage/mortgage-war-room.html" },
++      "strategist":        { label:"Strategist",        route:"/html/war-rooms/mortgage/mortgage-strategist.html" },
++      "bnca-engine":       { label:"Executive Portal",  route:"/html/war-rooms/mortgage/mortgage-executive-portal.html" },
++    },
++    seed: []
++  },
+   leg: {
+     label: "Legal",
+     color: "#818cf8",
+@@ -1681,6 +1696,9 @@ const WAR_ROOM_ROUTES = {
+   'digital-twin':  { label:'Digital Twin War Room', url:'/html/war-rooms/digital-twin/digital-twin.html', relay:'tsm_digitaltwin_docsearch_relay',autoKey:'TSM_DIGITALTWIN_WAR_RELAY' },
+   'noc-war-room':  { label:'NOC Command Center',    url:'/html/war-rooms/noc/noc-war-room.html',              relay:'tsm_noc_docsearch_relay',    autoKey:'TSM_NOC_WAR_RELAY' },
+   'noc':           { label:'NOC Command Center',    url:'/html/war-rooms/noc/noc-war-room.html',              relay:'tsm_noc_docsearch_relay',    autoKey:'TSM_NOC_WAR_RELAY' },
++  'mortgage-war-room': { label:'Mortgage War Room',  url:'/html/war-rooms/mortgage/mortgage-war-room.html',    relay:'tsm_mtg_docsearch_relay',    autoKey:'TSM_MORTGAGE_RELAY' },
++  'mtg-war-room':      { label:'Mortgage War Room',  url:'/html/war-rooms/mortgage/mortgage-war-room.html',    relay:'tsm_mtg_docsearch_relay',    autoKey:'TSM_MORTGAGE_RELAY' },
++  'mtg':               { label:'Mortgage War Room',  url:'/html/war-rooms/mortgage/mortgage-war-room.html',    relay:'tsm_mtg_docsearch_relay',    autoKey:'TSM_MORTGAGE_RELAY' },
+   'hw-plant-war-room':    { label:'Honeywell Plant Incident War Room',      url:'/html/plant-incident.html',      relay:'tsm_hw_plant_docsearch_relay',    autoKey:'TSM_HW_PLANT_WAR_RELAY' },
+   'hw-plant':             { label:'Honeywell Plant Incident War Room',      url:'/html/plant-incident.html',      relay:'tsm_hw_plant_docsearch_relay',    autoKey:'TSM_HW_PLANT_WAR_RELAY' },
+   'hw-supplier-war-room': { label:'Honeywell Supplier Shutdown War Room',   url:'/html/supplier-shutdown.html',   relay:'tsm_hw_supplier_docsearch_relay', autoKey:'TSM_HW_SUPPLIER_WAR_RELAY' },
+@@ -1968,31 +1986,31 @@ const DEMO_DOCS = [
+   { id:'dd-con-invoiceq1',verticals:['con','fo'],  fileName:'invoice-q1.xlsx',                       documentType:'VENDOR INVOICE', vendor:'Internal',        invoiceNo:'CON-INV-Q1',   exclusionCode:'AP-7',    amount:0,      sourceNodes:{con:'con-war-room',fo:'fo-war-room'},   routing:{con:['con-war-room','strategist'],fo:['fo-war-room','strategist']},                           _ext:{client:'Construction Co',    ref:'CON-INV-Q1',   defectFlags:[]}, tags:['invoice','construction','accounts payable','vendor','subcontractor'] },
+ 
+   // ── REO-PRO MORTGAGE RESCUE PACK ────────────────
+-  { id:'dd-re-denial',   verticals:['re','leg'],      fileName:'denial-letter-johnson.txt',         documentType:'FILING',         vendor:'',                   invoiceNo:'DENY-SJ-001',  exclusionCode:'DTI-OVR', amount:0,      sourceNodes:{re:'re-doc-command',leg:'leg-index'},  routing:{re:['re-doc-command','re-strategist','strategist','bnca-engine'],leg:['leg-index','strategist']},                    _ext:{client:'Sarah Johnson',      ref:'DENY-SJ-001',  defectFlags:['UW Conditions']},  tags:['loan denial','dti','conventional','adverse action','borrower','income'] },
+-  { id:'dd-re-credit',   verticals:['re','ins'],      fileName:'credit-monitoring-alert.txt',        documentType:'DOCUMENT REPORT',vendor:'',                   invoiceNo:'CRED-MR-002',  exclusionCode:'DTI-UPD', amount:0,      sourceNodes:{re:'re-doc-command',ins:'ins-hub'},    routing:{re:['re-doc-command','re-strategist','strategist','bnca-engine'],ins:['ins-hub','strategist']},                     _ext:{client:'Marcus Reed',        ref:'CRED-MR-002',  defectFlags:['UW Conditions']},  tags:['credit score','dti','auto loan','conventional','borrower','inquiry'] },
+-  { id:'dd-re-employ',   verticals:['re'],            fileName:'voe-update-notice.txt',              documentType:'DOCUMENT REPORT',vendor:'',                   invoiceNo:'VOE-LT-003',   exclusionCode:'VOE-PEND',amount:0,      sourceNodes:{re:'re-doc-command'},                  routing:{re:['re-doc-command','re-strategist','strategist','bnca-engine']},                                                   _ext:{client:'Lisa Tran',          ref:'VOE-LT-003',   defectFlags:['UW Conditions']},  tags:['employment','voe','income','underwriting','probationary','borrower'] },
+-  { id:'dd-re-asset',    verticals:['re','fo'],       fileName:'bank-statement-review.txt',          documentType:'DOCUMENT REPORT',vendor:'',                   invoiceNo:'ASSET-DO-004', exclusionCode:'UNSRC-DEP',amount:0,     sourceNodes:{re:'re-doc-command',fo:'fo-financial'}, routing:{re:['re-doc-command','re-strategist','strategist','bnca-engine'],fo:['fo-financial','strategist']},                  _ext:{client:'David Okafor',       ref:'ASSET-DO-004', defectFlags:['UW Conditions']},  tags:['bank statement','asset sourcing','reserves','gift letter','deposit','borrower'] },
+-  { id:'dd-re-income',   verticals:['re','fo'],       fileName:'self-employed-income-analysis.txt',  documentType:'DOCUMENT REPORT',vendor:'',                   invoiceNo:'INC-AC-005',   exclusionCode:'INC-DEC', amount:0,      sourceNodes:{re:'re-doc-command',fo:'fo-financial'}, routing:{re:['re-doc-command','re-strategist','strategist','bnca-engine'],fo:['fo-financial','strategist']},                  _ext:{client:'Angela Cruz',        ref:'INC-AC-005',   defectFlags:['UW Conditions']},  tags:['self employed','schedule c','income','1099','fannie mae','borrower','p&l'] },
+-  { id:'dd-re-fraud',    verticals:['re','leg'],      fileName:'file-review-flags.txt',              documentType:'FILING',         vendor:'',                   invoiceNo:'FRAUD-RK-006', exclusionCode:'FRAUD-FLG',amount:0,     sourceNodes:{re:'re-doc-command',leg:'leg-ediscovery'}, routing:{re:['re-doc-command','re-strategist','strategist','bnca-engine'],leg:['leg-ediscovery','leg-strategist','strategist','bnca-engine']}, _ext:{client:'Robert Kim',        ref:'FRAUD-RK-006', defectFlags:['Title Defect','UW Conditions']}, tags:['fraud','identity','voe','pay stub','wire','escrow','borrower','underwriting'] },
+-  { id:'dd-re-fha',      verticals:['re','ins'],      fileName:'fha-aus-findings.txt',               documentType:'DOCUMENT REPORT',vendor:'',                   invoiceNo:'FHA-TW-007',   exclusionCode:'DTI-FHA', amount:0,      sourceNodes:{re:'re-doc-command',ins:'ins-hub'},    routing:{re:['re-doc-command','re-strategist','strategist','bnca-engine'],ins:['ins-hub','strategist']},                     _ext:{client:'Theresa Williams',   ref:'FHA-TW-007',   defectFlags:['UW Conditions']},  tags:['fha','aus','dti','credit score','manual underwrite','borrower','freddie mac'] },
+-  { id:'dd-re-va',       verticals:['re'],            fileName:'va-eligibility-file.txt',            documentType:'DOCUMENT REPORT',vendor:'',                   invoiceNo:'VA-MT-008',    exclusionCode:'COE-ERR', amount:0,      sourceNodes:{re:'re-doc-command'},                  routing:{re:['re-doc-command','re-strategist','strategist','bnca-engine']},                                                   _ext:{client:'SSG Michael Torres', ref:'VA-MT-008',    defectFlags:['UW Conditions']},  tags:['va','coe','entitlement','residual income','funding fee','borrower'] },
+-  { id:'dd-re-usda',     verticals:['re'],            fileName:'usda-eligibility-review.txt',        documentType:'DOCUMENT REPORT',vendor:'',                   invoiceNo:'USDA-009',     exclusionCode:'INC-LIM', amount:0,      sourceNodes:{re:'re-doc-command'},                  routing:{re:['re-doc-command','re-strategist','strategist']},                                                                _ext:{client:'USDA Household',     ref:'USDA-009',     defectFlags:[]},                 tags:['usda','rural','income limit','guarantee fee','eligible','borrower','appraisal'] },
+-  { id:'dd-re-jumbo',    verticals:['re','fo'],       fileName:'jumbo-file-summary.txt',             documentType:'DOCUMENT REPORT',vendor:'',                   invoiceNo:'JUMBO-010',    exclusionCode:'RES-SHORT',amount:1250000,sourceNodes:{re:'re-doc-command',fo:'fo-financial'}, routing:{re:['re-doc-command','re-strategist','strategist','bnca-engine'],fo:['fo-financial','strategist','bnca-engine']},   _ext:{client:'Jumbo Borrower',     ref:'JUMBO-010',    defectFlags:['Appraisal Gap','UW Conditions']}, tags:['jumbo','reserves','appraisal','capital gain','income','borrower','loan estimate'] },
+-  { id:'dd-re-dscr',     verticals:['re','fo'],       fileName:'dscr-loan-summary.txt',              documentType:'DOCUMENT REPORT',vendor:'',                   invoiceNo:'DSCR-011',     exclusionCode:'DSCR-LOW',amount:360000, sourceNodes:{re:'re-doc-command',fo:'fo-financial'}, routing:{re:['re-doc-command','re-strategist','strategist','bnca-engine'],fo:['fo-financial','strategist']},                  _ext:{client:'DSCR Investor',      ref:'DSCR-011',     defectFlags:['UW Conditions']},  tags:['dscr','rental','investor','llc','reserves','appraisal','lease','borrower'] },
+-  { id:'dd-re-condo',    verticals:['re','leg'],      fileName:'condo-project-review.txt',           documentType:'DOCUMENT REPORT',vendor:'',                   invoiceNo:'CONDO-012',    exclusionCode:'COND-WRN',amount:0,      sourceNodes:{re:'re-doc-command',leg:'leg-index'},  routing:{re:['re-doc-command','re-strategist','strategist','bnca-engine'],leg:['leg-index','strategist']},                   _ext:{client:'Cactus Ridge Villas',ref:'CONDO-012',    defectFlags:['Inspection Issues']}, tags:['condo','hoa','warrantable','fannie mae','freddie mac','litigation','reserves','appraisal'] },
+-  { id:'dd-re-newcon',   verticals:['re','con'],      fileName:'construction-loan-status.txt',       documentType:'DOCUMENT REPORT',vendor:'Desert Bloom Homes', invoiceNo:'NEWCON-013',   exclusionCode:'CO-PEND', amount:0,      sourceNodes:{re:'re-doc-command',con:'con-hub'},    routing:{re:['re-doc-command','re-strategist','strategist','bnca-engine'],con:['con-hub','strategist']},                     _ext:{client:'Desert Bloom Homes', ref:'NEWCON-013',   defectFlags:['Closing Delay']},  tags:['construction','builder','draw','certificate of occupancy','rate lock','subcontractor','rfi'] },
+-  { id:'dd-re-trid',     verticals:['re','leg'],      fileName:'trid-timeline-audit.txt',            documentType:'FILING',         vendor:'',                   invoiceNo:'TRID-014',     exclusionCode:'TRID-VIO',amount:0,      sourceNodes:{re:'re-doc-command',leg:'leg-index'},  routing:{re:['re-doc-command','re-strategist','strategist','bnca-engine'],leg:['leg-index','leg-strategist','strategist','bnca-engine']}, _ext:{client:'TRID File',         ref:'TRID-014',     defectFlags:['UW Conditions']},  tags:['trid','loan estimate','closing disclosure','tolerance','changed circumstance','compliance','borrower'] },
+-  { id:'dd-re-respa',    verticals:['re','leg'],      fileName:'respa-fee-review.txt',               documentType:'FILING',         vendor:'Desert Title & Escrow',invoiceNo:'RESPA-015',  exclusionCode:'AFBA-VIO',amount:0,      sourceNodes:{re:'re-doc-command',leg:'leg-index'},  routing:{re:['re-doc-command','re-strategist','strategist','bnca-engine'],leg:['leg-index','leg-strategist','strategist','bnca-engine']}, _ext:{client:'RESPA File',        ref:'RESPA-015',    defectFlags:['Title Defect']},   tags:['respa','afba','title','escrow','fee','kickback','loan officer','compliance'] },
+-  { id:'dd-re-hmda',     verticals:['re','leg'],      fileName:'lar-data-review.txt',                documentType:'FILING',         vendor:'',                   invoiceNo:'HMDA-016',     exclusionCode:'HMDA-ERR',amount:0,      sourceNodes:{re:'re-doc-command',leg:'leg-index'},  routing:{re:['re-doc-command','re-strategist','strategist','bnca-engine'],leg:['leg-index','leg-strategist','strategist','bnca-engine']}, _ext:{client:'HMDA File',         ref:'HMDA-016',     defectFlags:['UW Conditions']},  tags:['hmda','lar','rate spread','hpml','hoepa','compliance','refinance','borrower'] },
+-  { id:'dd-re-hoa',      verticals:['re','leg'],      fileName:'hoa-document-review.txt',            documentType:'DOCUMENT REPORT',vendor:'',                   invoiceNo:'HOA-017',      exclusionCode:'HOA-LIT', amount:4800,   sourceNodes:{re:'re-doc-command',leg:'leg-index'},  routing:{re:['re-doc-command','re-strategist','strategist','bnca-engine'],leg:['leg-index','strategist']},                   _ext:{client:'Willow Creek HOA',   ref:'HOA-017',      defectFlags:['Inspection Issues','UW Conditions']}, tags:['hoa','litigation','special assessment','reserves','insurance','delinquency','condo'] },
+-  { id:'dd-re-seller',   verticals:['re','leg'],      fileName:'seller-communication-log.txt',       documentType:'DOCUMENT REPORT',vendor:'',                   invoiceNo:'SELL-018',     exclusionCode:'TITLE-ISS',amount:0,     sourceNodes:{re:'re-doc-command',leg:'leg-index'},  routing:{re:['re-doc-command','re-strategist','strategist'],leg:['leg-index','leg-strategist','strategist']},                _ext:{client:'Seller File',        ref:'SELL-018',     defectFlags:['Title Defect','Closing Delay']}, tags:['seller','disclosure','tenant','llc','title','divorce','contract','closing disclosure'] },
+-  { id:'dd-re-contract', verticals:['re','leg'],      fileName:'purchase-contract-review.txt',       documentType:'CONTRACT',       vendor:'',                   invoiceNo:'CTR-019',      exclusionCode:'CTR-CONF',amount:415000, sourceNodes:{re:'re-doc-command',leg:'leg-index'},  routing:{re:['re-doc-command','re-strategist','strategist','bnca-engine'],leg:['leg-index','leg-strategist','strategist','bnca-engine']}, _ext:{client:'Contract File',     ref:'CTR-019',      defectFlags:['Appraisal Gap','Financing Failure']}, tags:['purchase contract','appraisal','contingency','earnest money','amendment','closing disclosure','borrower'] },
+-  { id:'dd-re-ctc',      verticals:['re'],            fileName:'ctc-conditions-list.txt',            documentType:'DOCUMENT REPORT',vendor:'',                   invoiceNo:'CTC-020',      exclusionCode:'CTC-PEND',amount:0,      sourceNodes:{re:'re-doc-command'},                  routing:{re:['re-doc-command','re-strategist','strategist','bnca-engine']},                                                   _ext:{client:'CTC File',           ref:'CTC-020',      defectFlags:['UW Conditions','Closing Delay']}, tags:['clear to close','conditions','underwriting','voe','insurance binder','wire','closing disclosure'] },
+-  { id:'dd-re-postclose',verticals:['re','leg'],      fileName:'post-close-qc-findings.txt',         documentType:'DOCUMENT REPORT',vendor:'',                   invoiceNo:'QC-021',       exclusionCode:'QC-FLAG', amount:0,      sourceNodes:{re:'re-exec',leg:'leg-index'},          routing:{re:['re-exec','re-strategist','strategist','bnca-engine'],leg:['leg-index','strategist']},                          _ext:{client:'QC File RE-20250877',ref:'QC-021',       defectFlags:['UW Conditions']},  tags:['post close','qc','audit','dti','appraisal','recording','closing disclosure','borrower'] },
+-  { id:'dd-re-dealkilr', verticals:['re','leg','fo'], fileName:'deal-killer-full-file.txt',          documentType:'ESCALATION',     vendor:'',                   invoiceNo:'DK-022',       exclusionCode:'MULTI-FLG',amount:445000,sourceNodes:{re:'re-doc-command',leg:'leg-index',fo:'fo-financial'}, routing:{re:['re-doc-command','re-strategist','strategist','bnca-engine'],leg:['leg-index','leg-strategist','strategist','bnca-engine'],fo:['fo-financial','strategist','bnca-engine']}, _ext:{client:'James & Patricia Lowell',ref:'DK-022', defectFlags:['Financing Failure','Appraisal Gap','Title Defect','UW Conditions','Closing Delay']}, tags:['deal killer','dti','credit score','appraisal','hoa','title','trid','conditions','borrower','conventional'] },
+-  { id:'dd-re-autopsy',  verticals:['re','leg'],      fileName:'transaction-autopsy.txt',            documentType:'ESCALATION',     vendor:'',                   invoiceNo:'AUTO-023',     exclusionCode:'MULTI-FLG',amount:445000,sourceNodes:{re:'re-exec',leg:'leg-ediscovery'},     routing:{re:['re-exec','re-strategist','strategist','bnca-engine'],leg:['leg-ediscovery','leg-strategist','strategist','bnca-engine']}, _ext:{client:'James & Patricia Lowell',ref:'AUTO-023', defectFlags:['Financing Failure','Appraisal Gap','Title Defect','UW Conditions','Closing Delay']}, tags:['transaction autopsy','appraisal','title','conditions','credit','income','reserves','compliance'] },
+-  { id:'dd-re-closprob', verticals:['re','fo'],       fileName:'closing-probability-snapshot.txt',   documentType:'DOCUMENT REPORT',vendor:'',                   invoiceNo:'CLSP-024',     exclusionCode:'',        amount:445000, sourceNodes:{re:'re-exec',fo:'fo-financial'},        routing:{re:['re-exec','re-strategist','strategist'],fo:['fo-financial','strategist']},                                       _ext:{client:'James & Patricia Lowell',ref:'CLSP-024',defectFlags:['Closing Delay']},   tags:['closing probability','pipeline','conditions','appraisal','credit','reserves','compliance','borrower'] },
+-  { id:'dd-re-opscore',  verticals:['re','fo'],       fileName:'mortgage-ops-scorecard.txt',         documentType:'DOCUMENT REPORT',vendor:'',                   invoiceNo:'OPS-025',      exclusionCode:'',        amount:0,      sourceNodes:{re:'re-exec',fo:'fo-financial'},        routing:{re:['re-exec','re-strategist','strategist'],fo:['fo-financial','strategist']},                                       _ext:{client:'Pipeline RE-20251301',ref:'OPS-025',   defectFlags:[]},                 tags:['pipeline','scorecard','income','credit','appraisal','title','trid','conditions','borrower'] },
++  { id:'dd-re-denial',   verticals:['re','leg','mtg'],      fileName:'denial-letter-johnson.txt',         documentType:'FILING',         vendor:'',                   invoiceNo:'DENY-SJ-001',  exclusionCode:'DTI-OVR', amount:0,      sourceNodes:{re:'re-doc-command',leg:'leg-index',mtg:'mortgage-war-room'},  routing:{re:['re-doc-command','re-strategist','strategist','bnca-engine'],leg:['leg-index','strategist'],mtg:['mortgage-war-room','strategist','bnca-engine']},                    _ext:{client:'Sarah Johnson',      ref:'DENY-SJ-001',  defectFlags:['UW Conditions']},  tags:['loan denial','dti','conventional','adverse action','borrower','income'] },
++  { id:'dd-re-credit',   verticals:['re','ins','mtg'],      fileName:'credit-monitoring-alert.txt',        documentType:'DOCUMENT REPORT',vendor:'',                   invoiceNo:'CRED-MR-002',  exclusionCode:'DTI-UPD', amount:0,      sourceNodes:{re:'re-doc-command',ins:'ins-hub',mtg:'mortgage-war-room'},    routing:{re:['re-doc-command','re-strategist','strategist','bnca-engine'],ins:['ins-hub','strategist'],mtg:['mortgage-war-room','strategist','bnca-engine']},                     _ext:{client:'Marcus Reed',        ref:'CRED-MR-002',  defectFlags:['UW Conditions']},  tags:['credit score','dti','auto loan','conventional','borrower','inquiry'] },
++  { id:'dd-re-employ',   verticals:['re','mtg'],            fileName:'voe-update-notice.txt',              documentType:'DOCUMENT REPORT',vendor:'',                   invoiceNo:'VOE-LT-003',   exclusionCode:'VOE-PEND',amount:0,      sourceNodes:{re:'re-doc-command',mtg:'mortgage-war-room'},                  routing:{re:['re-doc-command','re-strategist','strategist','bnca-engine'],mtg:['mortgage-war-room','strategist','bnca-engine']},                                                   _ext:{client:'Lisa Tran',          ref:'VOE-LT-003',   defectFlags:['UW Conditions']},  tags:['employment','voe','income','underwriting','probationary','borrower'] },
++  { id:'dd-re-asset',    verticals:['re','fo','mtg'],       fileName:'bank-statement-review.txt',          documentType:'DOCUMENT REPORT',vendor:'',                   invoiceNo:'ASSET-DO-004', exclusionCode:'UNSRC-DEP',amount:0,     sourceNodes:{re:'re-doc-command',fo:'fo-financial',mtg:'mortgage-war-room'}, routing:{re:['re-doc-command','re-strategist','strategist','bnca-engine'],fo:['fo-financial','strategist'],mtg:['mortgage-war-room','strategist','bnca-engine']},                  _ext:{client:'David Okafor',       ref:'ASSET-DO-004', defectFlags:['UW Conditions']},  tags:['bank statement','asset sourcing','reserves','gift letter','deposit','borrower'] },
++  { id:'dd-re-income',   verticals:['re','fo','mtg'],       fileName:'self-employed-income-analysis.txt',  documentType:'DOCUMENT REPORT',vendor:'',                   invoiceNo:'INC-AC-005',   exclusionCode:'INC-DEC', amount:0,      sourceNodes:{re:'re-doc-command',fo:'fo-financial',mtg:'mortgage-war-room'}, routing:{re:['re-doc-command','re-strategist','strategist','bnca-engine'],fo:['fo-financial','strategist'],mtg:['mortgage-war-room','strategist','bnca-engine']},                  _ext:{client:'Angela Cruz',        ref:'INC-AC-005',   defectFlags:['UW Conditions']},  tags:['self employed','schedule c','income','1099','fannie mae','borrower','p&l'] },
++  { id:'dd-re-fraud',    verticals:['re','leg','mtg'],      fileName:'file-review-flags.txt',              documentType:'FILING',         vendor:'',                   invoiceNo:'FRAUD-RK-006', exclusionCode:'FRAUD-FLG',amount:0,     sourceNodes:{re:'re-doc-command',leg:'leg-ediscovery',mtg:'mortgage-war-room'}, routing:{re:['re-doc-command','re-strategist','strategist','bnca-engine'],leg:['leg-ediscovery','leg-strategist','strategist','bnca-engine'],mtg:['mortgage-war-room','strategist','bnca-engine']}, _ext:{client:'Robert Kim',        ref:'FRAUD-RK-006', defectFlags:['Title Defect','UW Conditions']}, tags:['fraud','identity','voe','pay stub','wire','escrow','borrower','underwriting'] },
++  { id:'dd-re-fha',      verticals:['re','ins','mtg'],      fileName:'fha-aus-findings.txt',               documentType:'DOCUMENT REPORT',vendor:'',                   invoiceNo:'FHA-TW-007',   exclusionCode:'DTI-FHA', amount:0,      sourceNodes:{re:'re-doc-command',ins:'ins-hub',mtg:'mortgage-war-room'},    routing:{re:['re-doc-command','re-strategist','strategist','bnca-engine'],ins:['ins-hub','strategist'],mtg:['mortgage-war-room','strategist','bnca-engine']},                     _ext:{client:'Theresa Williams',   ref:'FHA-TW-007',   defectFlags:['UW Conditions']},  tags:['fha','aus','dti','credit score','manual underwrite','borrower','freddie mac'] },
++  { id:'dd-re-va',       verticals:['re','mtg'],            fileName:'va-eligibility-file.txt',            documentType:'DOCUMENT REPORT',vendor:'',                   invoiceNo:'VA-MT-008',    exclusionCode:'COE-ERR', amount:0,      sourceNodes:{re:'re-doc-command',mtg:'mortgage-war-room'},                  routing:{re:['re-doc-command','re-strategist','strategist','bnca-engine'],mtg:['mortgage-war-room','strategist','bnca-engine']},                                                   _ext:{client:'SSG Michael Torres', ref:'VA-MT-008',    defectFlags:['UW Conditions']},  tags:['va','coe','entitlement','residual income','funding fee','borrower'] },
++  { id:'dd-re-usda',     verticals:['re','mtg'],            fileName:'usda-eligibility-review.txt',        documentType:'DOCUMENT REPORT',vendor:'',                   invoiceNo:'USDA-009',     exclusionCode:'INC-LIM', amount:0,      sourceNodes:{re:'re-doc-command',mtg:'mortgage-war-room'},                  routing:{re:['re-doc-command','re-strategist','strategist'],mtg:['mortgage-war-room','strategist','bnca-engine']},                                                                _ext:{client:'USDA Household',     ref:'USDA-009',     defectFlags:[]},                 tags:['usda','rural','income limit','guarantee fee','eligible','borrower','appraisal'] },
++  { id:'dd-re-jumbo',    verticals:['re','fo','mtg'],       fileName:'jumbo-file-summary.txt',             documentType:'DOCUMENT REPORT',vendor:'',                   invoiceNo:'JUMBO-010',    exclusionCode:'RES-SHORT',amount:1250000,sourceNodes:{re:'re-doc-command',fo:'fo-financial',mtg:'mortgage-war-room'}, routing:{re:['re-doc-command','re-strategist','strategist','bnca-engine'],fo:['fo-financial','strategist','bnca-engine'],mtg:['mortgage-war-room','strategist','bnca-engine']},   _ext:{client:'Jumbo Borrower',     ref:'JUMBO-010',    defectFlags:['Appraisal Gap','UW Conditions']}, tags:['jumbo','reserves','appraisal','capital gain','income','borrower','loan estimate'] },
++  { id:'dd-re-dscr',     verticals:['re','fo','mtg'],       fileName:'dscr-loan-summary.txt',              documentType:'DOCUMENT REPORT',vendor:'',                   invoiceNo:'DSCR-011',     exclusionCode:'DSCR-LOW',amount:360000, sourceNodes:{re:'re-doc-command',fo:'fo-financial',mtg:'mortgage-war-room'}, routing:{re:['re-doc-command','re-strategist','strategist','bnca-engine'],fo:['fo-financial','strategist'],mtg:['mortgage-war-room','strategist','bnca-engine']},                  _ext:{client:'DSCR Investor',      ref:'DSCR-011',     defectFlags:['UW Conditions']},  tags:['dscr','rental','investor','llc','reserves','appraisal','lease','borrower'] },
++  { id:'dd-re-condo',    verticals:['re','leg','mtg'],      fileName:'condo-project-review.txt',           documentType:'DOCUMENT REPORT',vendor:'',                   invoiceNo:'CONDO-012',    exclusionCode:'COND-WRN',amount:0,      sourceNodes:{re:'re-doc-command',leg:'leg-index',mtg:'mortgage-war-room'},  routing:{re:['re-doc-command','re-strategist','strategist','bnca-engine'],leg:['leg-index','strategist'],mtg:['mortgage-war-room','strategist','bnca-engine']},                   _ext:{client:'Cactus Ridge Villas',ref:'CONDO-012',    defectFlags:['Inspection Issues']}, tags:['condo','hoa','warrantable','fannie mae','freddie mac','litigation','reserves','appraisal'] },
++  { id:'dd-re-newcon',   verticals:['re','con','mtg'],      fileName:'construction-loan-status.txt',       documentType:'DOCUMENT REPORT',vendor:'Desert Bloom Homes', invoiceNo:'NEWCON-013',   exclusionCode:'CO-PEND', amount:0,      sourceNodes:{re:'re-doc-command',con:'con-hub',mtg:'mortgage-war-room'},    routing:{re:['re-doc-command','re-strategist','strategist','bnca-engine'],con:['con-hub','strategist'],mtg:['mortgage-war-room','strategist','bnca-engine']},                     _ext:{client:'Desert Bloom Homes', ref:'NEWCON-013',   defectFlags:['Closing Delay']},  tags:['construction','builder','draw','certificate of occupancy','rate lock','subcontractor','rfi'] },
++  { id:'dd-re-trid',     verticals:['re','leg','mtg'],      fileName:'trid-timeline-audit.txt',            documentType:'FILING',         vendor:'',                   invoiceNo:'TRID-014',     exclusionCode:'TRID-VIO',amount:0,      sourceNodes:{re:'re-doc-command',leg:'leg-index',mtg:'mortgage-war-room'},  routing:{re:['re-doc-command','re-strategist','strategist','bnca-engine'],leg:['leg-index','leg-strategist','strategist','bnca-engine'],mtg:['mortgage-war-room','strategist','bnca-engine']}, _ext:{client:'TRID File',         ref:'TRID-014',     defectFlags:['UW Conditions']},  tags:['trid','loan estimate','closing disclosure','tolerance','changed circumstance','compliance','borrower'] },
++  { id:'dd-re-respa',    verticals:['re','leg','mtg'],      fileName:'respa-fee-review.txt',               documentType:'FILING',         vendor:'Desert Title & Escrow',invoiceNo:'RESPA-015',  exclusionCode:'AFBA-VIO',amount:0,      sourceNodes:{re:'re-doc-command',leg:'leg-index',mtg:'mortgage-war-room'},  routing:{re:['re-doc-command','re-strategist','strategist','bnca-engine'],leg:['leg-index','leg-strategist','strategist','bnca-engine'],mtg:['mortgage-war-room','strategist','bnca-engine']}, _ext:{client:'RESPA File',        ref:'RESPA-015',    defectFlags:['Title Defect']},   tags:['respa','afba','title','escrow','fee','kickback','loan officer','compliance'] },
++  { id:'dd-re-hmda',     verticals:['re','leg','mtg'],      fileName:'lar-data-review.txt',                documentType:'FILING',         vendor:'',                   invoiceNo:'HMDA-016',     exclusionCode:'HMDA-ERR',amount:0,      sourceNodes:{re:'re-doc-command',leg:'leg-index',mtg:'mortgage-war-room'},  routing:{re:['re-doc-command','re-strategist','strategist','bnca-engine'],leg:['leg-index','leg-strategist','strategist','bnca-engine'],mtg:['mortgage-war-room','strategist','bnca-engine']}, _ext:{client:'HMDA File',         ref:'HMDA-016',     defectFlags:['UW Conditions']},  tags:['hmda','lar','rate spread','hpml','hoepa','compliance','refinance','borrower'] },
++  { id:'dd-re-hoa',      verticals:['re','leg','mtg'],      fileName:'hoa-document-review.txt',            documentType:'DOCUMENT REPORT',vendor:'',                   invoiceNo:'HOA-017',      exclusionCode:'HOA-LIT', amount:4800,   sourceNodes:{re:'re-doc-command',leg:'leg-index',mtg:'mortgage-war-room'},  routing:{re:['re-doc-command','re-strategist','strategist','bnca-engine'],leg:['leg-index','strategist'],mtg:['mortgage-war-room','strategist','bnca-engine']},                   _ext:{client:'Willow Creek HOA',   ref:'HOA-017',      defectFlags:['Inspection Issues','UW Conditions']}, tags:['hoa','litigation','special assessment','reserves','insurance','delinquency','condo'] },
++  { id:'dd-re-seller',   verticals:['re','leg','mtg'],      fileName:'seller-communication-log.txt',       documentType:'DOCUMENT REPORT',vendor:'',                   invoiceNo:'SELL-018',     exclusionCode:'TITLE-ISS',amount:0,     sourceNodes:{re:'re-doc-command',leg:'leg-index',mtg:'mortgage-war-room'},  routing:{re:['re-doc-command','re-strategist','strategist'],leg:['leg-index','leg-strategist','strategist'],mtg:['mortgage-war-room','strategist','bnca-engine']},                _ext:{client:'Seller File',        ref:'SELL-018',     defectFlags:['Title Defect','Closing Delay']}, tags:['seller','disclosure','tenant','llc','title','divorce','contract','closing disclosure'] },
++  { id:'dd-re-contract', verticals:['re','leg','mtg'],      fileName:'purchase-contract-review.txt',       documentType:'CONTRACT',       vendor:'',                   invoiceNo:'CTR-019',      exclusionCode:'CTR-CONF',amount:415000, sourceNodes:{re:'re-doc-command',leg:'leg-index',mtg:'mortgage-war-room'},  routing:{re:['re-doc-command','re-strategist','strategist','bnca-engine'],leg:['leg-index','leg-strategist','strategist','bnca-engine'],mtg:['mortgage-war-room','strategist','bnca-engine']}, _ext:{client:'Contract File',     ref:'CTR-019',      defectFlags:['Appraisal Gap','Financing Failure']}, tags:['purchase contract','appraisal','contingency','earnest money','amendment','closing disclosure','borrower'] },
++  { id:'dd-re-ctc',      verticals:['re','mtg'],            fileName:'ctc-conditions-list.txt',            documentType:'DOCUMENT REPORT',vendor:'',                   invoiceNo:'CTC-020',      exclusionCode:'CTC-PEND',amount:0,      sourceNodes:{re:'re-doc-command',mtg:'mortgage-war-room'},                  routing:{re:['re-doc-command','re-strategist','strategist','bnca-engine'],mtg:['mortgage-war-room','strategist','bnca-engine']},                                                   _ext:{client:'CTC File',           ref:'CTC-020',      defectFlags:['UW Conditions','Closing Delay']}, tags:['clear to close','conditions','underwriting','voe','insurance binder','wire','closing disclosure'] },
++  { id:'dd-re-postclose',verticals:['re','leg','mtg'],      fileName:'post-close-qc-findings.txt',         documentType:'DOCUMENT REPORT',vendor:'',                   invoiceNo:'QC-021',       exclusionCode:'QC-FLAG', amount:0,      sourceNodes:{re:'re-exec',leg:'leg-index',mtg:'mortgage-war-room'},          routing:{re:['re-exec','re-strategist','strategist','bnca-engine'],leg:['leg-index','strategist'],mtg:['mortgage-war-room','strategist','bnca-engine']},                          _ext:{client:'QC File RE-20250877',ref:'QC-021',       defectFlags:['UW Conditions']},  tags:['post close','qc','audit','dti','appraisal','recording','closing disclosure','borrower'] },
++  { id:'dd-re-dealkilr', verticals:['re','leg','fo','mtg'], fileName:'deal-killer-full-file.txt',          documentType:'ESCALATION',     vendor:'',                   invoiceNo:'DK-022',       exclusionCode:'MULTI-FLG',amount:445000,sourceNodes:{re:'re-doc-command',leg:'leg-index',fo:'fo-financial',mtg:'mortgage-war-room'}, routing:{re:['re-doc-command','re-strategist','strategist','bnca-engine'],leg:['leg-index','leg-strategist','strategist','bnca-engine'],fo:['fo-financial','strategist','bnca-engine'],mtg:['mortgage-war-room','strategist','bnca-engine']}, _ext:{client:'James & Patricia Lowell',ref:'DK-022', defectFlags:['Financing Failure','Appraisal Gap','Title Defect','UW Conditions','Closing Delay']}, tags:['deal killer','dti','credit score','appraisal','hoa','title','trid','conditions','borrower','conventional'] },
++  { id:'dd-re-autopsy',  verticals:['re','leg','mtg'],      fileName:'transaction-autopsy.txt',            documentType:'ESCALATION',     vendor:'',                   invoiceNo:'AUTO-023',     exclusionCode:'MULTI-FLG',amount:445000,sourceNodes:{re:'re-exec',leg:'leg-ediscovery',mtg:'mortgage-war-room'},     routing:{re:['re-exec','re-strategist','strategist','bnca-engine'],leg:['leg-ediscovery','leg-strategist','strategist','bnca-engine'],mtg:['mortgage-war-room','strategist','bnca-engine']}, _ext:{client:'James & Patricia Lowell',ref:'AUTO-023', defectFlags:['Financing Failure','Appraisal Gap','Title Defect','UW Conditions','Closing Delay']}, tags:['transaction autopsy','appraisal','title','conditions','credit','income','reserves','compliance'] },
++  { id:'dd-re-closprob', verticals:['re','fo','mtg'],       fileName:'closing-probability-snapshot.txt',   documentType:'DOCUMENT REPORT',vendor:'',                   invoiceNo:'CLSP-024',     exclusionCode:'',        amount:445000, sourceNodes:{re:'re-exec',fo:'fo-financial',mtg:'mortgage-war-room'},        routing:{re:['re-exec','re-strategist','strategist'],fo:['fo-financial','strategist'],mtg:['mortgage-war-room','strategist','bnca-engine']},                                       _ext:{client:'James & Patricia Lowell',ref:'CLSP-024',defectFlags:['Closing Delay']},   tags:['closing probability','pipeline','conditions','appraisal','credit','reserves','compliance','borrower'] },
++  { id:'dd-re-opscore',  verticals:['re','fo','mtg'],       fileName:'mortgage-ops-scorecard.txt',         documentType:'DOCUMENT REPORT',vendor:'',                   invoiceNo:'OPS-025',      exclusionCode:'',        amount:0,      sourceNodes:{re:'re-exec',fo:'fo-financial',mtg:'mortgage-war-room'},        routing:{re:['re-exec','re-strategist','strategist'],fo:['fo-financial','strategist'],mtg:['mortgage-war-room','strategist','bnca-engine']},                                       _ext:{client:'Pipeline RE-20251301',ref:'OPS-025',   defectFlags:[]},                 tags:['pipeline','scorecard','income','credit','appraisal','title','trid','conditions','borrower'] },
+ 
+   { id:'dd-o2c-so',    verticals:['o2c'],       fileName:'Sales_Order_Confirmation_SO-4471.pdf',  documentType:'DOCUMENT REPORT',vendor:'',                invoiceNo:'SO-4471',     exclusionCode:'',        amount:64200, sourceNodes:{o2c:'o2c-war-room'}, routing:{o2c:['o2c-war-room','strategist']},               _ext:{client:'Vantage Industrial', ref:'SO-4471',   defectFlags:[]}, tags:['sales order','o2c','fulfillment','confirmation'] },
+   { id:'dd-o2c-inv',   verticals:['o2c','fo'],  fileName:'Invoice_Dunning_Notice_INV-8890.pdf',   documentType:'VENDOR INVOICE', vendor:'',                invoiceNo:'INV-8890',    exclusionCode:'AR-DUN',  amount:38500, sourceNodes:{o2c:'o2c-war-room',fo:'fo-financial'}, routing:{o2c:['o2c-war-room','strategist','bnca-engine'],fo:['fo-financial','strategist']}, _ext:{client:'Vantage Industrial', ref:'INV-8890',  defectFlags:[]}, tags:['invoice','dunning','o2c','accounts receivable','past due'] },
+diff --git a/html/war-rooms/_relay_control_plane/relay.core.js b/html/war-rooms/_relay_control_plane/relay.core.js
+index 9fa957b..9905d04 100644
+--- a/html/war-rooms/_relay_control_plane/relay.core.js
++++ b/html/war-rooms/_relay_control_plane/relay.core.js
+@@ -17,6 +17,7 @@
+     HONEYWELL: "TSM_HONEYWELL_RELAY",
+     INTEGRATION: "TSM_INTEGRATION_HUB_RELAY",
+     NOC: "TSM_NOC_RELAY",
++    MORTGAGE: "TSM_MORTGAGE_RELAY",
+     VMWARE_COPILOT: "TSM_VMWARE_COPILOT_RELAY",
+     CLOUD_COPILOT: "TSM_CLOUD_COPILOT_RELAY",
+     L1COPILOT: "TSM_L1_COPILOT_RELAY"
+diff --git a/html/war-rooms/mortgage/data/mortgage-model.json b/html/war-rooms/mortgage/data/mortgage-model.json
+new file mode 100644
+index 0000000..fe52388
+--- /dev/null
++++ b/html/war-rooms/mortgage/data/mortgage-model.json
+@@ -0,0 +1,84 @@
++{
++  "version": "v1",
++  "vertical": "mtg",
++  "entities": {
++    "loan_file": {
++      "type": "mtg_loan_file",
++      "stages": [
++        { "id": "application",    "label": "Application",     "order": 1, "sla_hours": 48  },
++        { "id": "processing",     "label": "Processing",      "order": 2, "sla_hours": 72  },
++        { "id": "underwriting",   "label": "Underwriting",    "order": 3, "sla_hours": 48  },
++        { "id": "conditions",     "label": "In Conditions",   "order": 4, "sla_hours": 96  },
++        { "id": "clear_to_close", "label": "Clear to Close",  "order": 5, "sla_hours": 24  },
++        { "id": "funded",         "label": "Funded",          "order": 6, "sla_hours": null },
++        { "id": "denied",         "label": "Denied",          "order": 7, "sla_hours": null }
++      ]
++    },
++    "condition": {
++      "type": "mtg_uw_condition",
++      "stages": [
++        { "id": "issued",         "label": "Issued",         "order": 1, "sla_hours": 24 },
++        { "id": "submitted",      "label": "Submitted",      "order": 2, "sla_hours": 48 },
++        { "id": "under_review",   "label": "Under Review",   "order": 3, "sla_hours": 24 },
++        { "id": "cleared",        "label": "Cleared",        "order": 4, "sla_hours": null }
++      ]
++    },
++    "exception": {
++      "type": "mtg_compliance_exception",
++      "stages": [
++        { "id": "flagged",        "label": "Flagged",        "order": 1, "sla_hours": 24 },
++        { "id": "under_review",   "label": "Under Review",   "order": 2, "sla_hours": 72 },
++        { "id": "remediated",     "label": "Remediated",     "order": 3, "sla_hours": null }
++      ]
++    }
++  },
++  "kpis": [
++    { "id": "open_loan_files",     "label": "Open Loan Files",      "unit": "count",   "entity": "loan_file" },
++    { "id": "loans_over_sla",      "label": "Loans Over SLA",       "unit": "count",   "entity": "loan_file" },
++    { "id": "ctc_ready",           "label": "CTC Ready",            "unit": "count",   "entity": "loan_file" },
++    { "id": "pipeline_value",      "label": "Pipeline Value",       "unit": "usd",     "entity": "loan_file" },
++    { "id": "open_conditions",     "label": "Open UW Conditions",   "unit": "count",   "entity": "condition" },
++    { "id": "open_exceptions",     "label": "Open Compliance Flags","unit": "count",   "entity": "exception" }
++  ],
++  "risk_signals": [
++    "loan_sla_breach",
++    "condition_stalled",
++    "compliance_exception_open",
++    "denial_risk_high",
++    "closing_at_risk"
++  ],
++  "financial_model": {
++    "currency": "USD",
++    "note": "Estimate model for planning/reporting only — configure these rates to match real investor overlays and regulatory exposure before using externally.",
++    "closing_delay_cost_per_day": 350,
++    "compliance_exposure_by_severity": { "HIGH": 15000, "MEDIUM": 5000, "LOW": 1000 }
++  },
++  "sample_data": {
++    "loan_files": [
++      { "loan_id": "DENY-SJ-001",  "borrower": "Sarah Johnson",        "loan_amount": 340000,  "program": "Conventional", "stage": "denied",         "severity": "HIGH",   "entered_stage_at_hours_ago": 30, "owner": "MLO Team A", "notes": "DTI over limit, alternative program review pending." },
++      { "loan_id": "CRED-MR-002",  "borrower": "Marcus Reed",          "loan_amount": 265000,  "program": "Conventional", "stage": "conditions",     "severity": "MEDIUM", "entered_stage_at_hours_ago": 60, "owner": "Processor B", "notes": "New auto loan tradeline pushed DTI, updated credit pulled." },
++      { "loan_id": "VOE-LT-003",   "borrower": "Lisa Tran",            "loan_amount": 298000,  "program": "Conventional", "stage": "underwriting",   "severity": "MEDIUM", "entered_stage_at_hours_ago": 20, "owner": "UW Desk 2",   "notes": "Employer change mid-file, updated VOE requested." },
++      { "loan_id": "FHA-TW-007",   "borrower": "Theresa Williams",     "loan_amount": 215000,  "program": "FHA",          "stage": "underwriting",   "severity": "MEDIUM", "entered_stage_at_hours_ago": 55, "owner": "UW Desk 1",   "notes": "AUS downgrade to manual UW, compensating factors under review." },
++      { "loan_id": "VA-MT-008",    "borrower": "SSG Michael Torres",   "loan_amount": 310000,  "program": "VA",           "stage": "conditions",     "severity": "LOW",    "entered_stage_at_hours_ago": 40, "owner": "Processor C", "notes": "COE correction submitted, awaiting VA confirmation." },
++      { "loan_id": "USDA-009",     "borrower": "USDA Household",       "loan_amount": 189000,  "program": "USDA",         "stage": "processing",     "severity": "LOW",    "entered_stage_at_hours_ago": 10, "owner": "Processor A", "notes": "Income within limit, appraisal ordered." },
++      { "loan_id": "JUMBO-010",    "borrower": "Jumbo Borrower",       "loan_amount": 1250000, "program": "Jumbo",        "stage": "underwriting",   "severity": "HIGH",   "entered_stage_at_hours_ago": 52, "owner": "UW Desk 2",   "notes": "Reserve shortfall vs. jumbo overlay, gift funds under review." },
++      { "loan_id": "DSCR-011",     "borrower": "DSCR Investor",        "loan_amount": 360000,  "program": "DSCR",         "stage": "conditions",     "severity": "MEDIUM", "entered_stage_at_hours_ago": 70, "owner": "Processor B", "notes": "DSCR below 1.0 on subject lease, revised lease requested." },
++      { "loan_id": "CTC-020",      "borrower": "CTC File",             "loan_amount": 402000,  "program": "Conventional", "stage": "clear_to_close", "severity": "LOW",    "entered_stage_at_hours_ago": 6,  "owner": "Closer A",    "notes": "Final conditions cleared, wire and CD out for review." },
++      { "loan_id": "DK-022",       "borrower": "James & Patricia Lowell","loan_amount": 445000, "program": "Conventional", "stage": "conditions",     "severity": "HIGH",   "entered_stage_at_hours_ago": 110, "owner": "Processor C", "notes": "Multi-flag file: appraisal gap, title lien, and UW conditions stacked." }
++    ],
++    "conditions": [
++      { "condition_id": "COND-SJ-01",  "loan_id": "DENY-SJ-001", "description": "Alternative program pre-qual",        "stage": "under_review", "entered_stage_at_hours_ago": 26, "notes": "Reviewing FHA re-submission." },
++      { "condition_id": "COND-MR-01",  "loan_id": "CRED-MR-002", "description": "Updated credit report post-inquiry",  "stage": "submitted",    "entered_stage_at_hours_ago": 30, "notes": "Awaiting UW re-run." },
++      { "condition_id": "COND-JM-01",  "loan_id": "JUMBO-010",   "description": "Gift fund sourcing letter",           "stage": "issued",       "entered_stage_at_hours_ago": 20, "notes": "Not yet received from borrower." },
++      { "condition_id": "COND-DS-01",  "loan_id": "DSCR-011",    "description": "Revised lease agreement",             "stage": "issued",       "entered_stage_at_hours_ago": 48, "notes": "Stalled — borrower unresponsive 2 days." },
++      { "condition_id": "COND-DK-01",  "loan_id": "DK-022",      "description": "Title lien payoff confirmation",      "stage": "under_review", "entered_stage_at_hours_ago": 30, "notes": "Title company confirming payoff amount." },
++      { "condition_id": "COND-DK-02",  "loan_id": "DK-022",      "description": "Reconsideration of appraised value",  "stage": "issued",       "entered_stage_at_hours_ago": 18, "notes": "ROV package being assembled." }
++    ],
++    "exceptions": [
++      { "exception_id": "TRID-014",  "loan_id": "DK-022",     "type": "TRID Tolerance",  "severity": "HIGH",   "stage": "under_review", "entered_stage_at_hours_ago": 40, "notes": "Fee tolerance cure required before CD can be redisclosed." },
++      { "exception_id": "RESPA-015", "loan_id": "DK-022",     "type": "RESPA/AfBA",     "severity": "MEDIUM", "stage": "flagged",      "entered_stage_at_hours_ago": 12, "notes": "Title/escrow affiliation disclosure under compliance review." },
++      { "exception_id": "HMDA-016",  "loan_id": "CRED-MR-002","type": "HMDA/LAR Data",  "severity": "LOW",    "stage": "flagged",      "entered_stage_at_hours_ago": 8,  "notes": "Rate spread field flagged for QC recheck." },
++      { "exception_id": "FRAUD-RK-006","loan_id":"DENY-SJ-001","type": "Fraud Review",  "severity": "HIGH",   "stage": "under_review", "entered_stage_at_hours_ago": 50, "notes": "File-review flags on VOE and pay stub under investigation." }
++    ]
++  }
++}
+diff --git a/html/war-rooms/mortgage/mortgage-executive-portal.html b/html/war-rooms/mortgage/mortgage-executive-portal.html
+new file mode 100644
+index 0000000..f2bc119
+--- /dev/null
++++ b/html/war-rooms/mortgage/mortgage-executive-portal.html
+@@ -0,0 +1,297 @@
++<!DOCTYPE html>
++<html lang="en">
++<head>
++<meta charset="UTF-8">
++<meta name="viewport" content="width=device-width,initial-scale=1">
++<title>TSM &middot; Mortgage Command Center Executive Portal</title>
++<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
++<style>
++:root{
++  --bg:#0d0a04;--bg2:#120e07;--bg3:#17130a;
++  --amber:#f5a623;--green:#22c55e;
++  --red:#ef4444;--purple:#a855f7;--blue:#3b82f6;
++  --orange:#f97316;--text:#f2e8d0;--muted:#7a6f52;--border:#2a2412;
++  --gold:#e8c15a;
++}
++*{margin:0;padding:0;box-sizing:border-box;}
++body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;min-height:100vh;padding-bottom:60px;}
++.topbar{height:42px;background:#0a0703;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 20px;}
++.tb-brand{font-family:'Orbitron',sans-serif;font-size:.7rem;color:var(--gold);letter-spacing:.15em;}
++.tb-time{font-family:'Orbitron',sans-serif;font-size:.75rem;color:var(--gold);}
++.hdr{padding:18px 24px;border-bottom:1px solid var(--border);background:var(--bg2);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;}
++.hdr-title{font-family:'Orbitron',sans-serif;font-size:1rem;letter-spacing:.08em;color:var(--text);}
++.hdr-sub{font-family:'JetBrains Mono',monospace;font-size:.65rem;color:var(--muted);margin-top:4px;}
++.hdr-btns{display:flex;gap:8px;flex-wrap:wrap;}
++.hbtn{background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:.62rem;padding:8px 14px;border-radius:4px;cursor:pointer;text-decoration:none;display:inline-block;}
++.hbtn:hover{border-color:var(--gold);color:var(--gold);}
++.hbtn.primary{border-color:var(--gold);color:var(--gold);}
++.wrap{max-width:1200px;margin:0 auto;padding:20px 24px;}
++.empty{text-align:center;padding:80px 20px;}
++.empty h2{font-family:'Orbitron',sans-serif;font-size:.9rem;color:var(--muted);letter-spacing:.08em;margin-bottom:14px;}
++.empty p{font-family:'JetBrains Mono',monospace;font-size:.7rem;color:var(--muted);margin-bottom:24px;}
++.sec{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:18px;margin-bottom:16px;}
++.sec-hdr{font-family:'Orbitron',sans-serif;font-size:.68rem;color:var(--gold);letter-spacing:.12em;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;}
++.sec-hdr .lbl::before{content:'\25C6';font-size:.55rem;margin-right:8px;}
++.sec-hdr-note{font-family:'JetBrains Mono',monospace;font-size:.58rem;color:var(--muted);text-transform:none;letter-spacing:0;}
++.no-items{font-family:'JetBrains Mono',monospace;font-size:.7rem;color:var(--muted);}
++.toast{position:fixed;bottom:20px;right:20px;background:var(--bg2);border:1px solid var(--gold);color:var(--gold);padding:10px 18px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:.65rem;opacity:0;pointer-events:none;transition:.3s;z-index:50;}
++.toast.show{opacity:1;transform:translateY(-4px);}
++
++.fin-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:16px;}
++.fin-card{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:18px;text-align:center;}
++.fin-card.hero{border-color:var(--gold);background:rgba(232,193,90,.06);}
++.fin-val{font-family:'Orbitron',sans-serif;font-size:1.6rem;font-weight:900;color:var(--gold);}
++.fin-val.red{color:var(--red);}.fin-val.green{color:var(--green);}.fin-val.blue{color:var(--blue);}
++.fin-lbl{font-size:.62rem;color:var(--muted);margin-top:8px;font-family:'JetBrains Mono',monospace;letter-spacing:.08em;}
++.fin-sub{font-size:.58rem;color:var(--muted);margin-top:4px;font-family:'JetBrains Mono',monospace;}
++.model-note{font-family:'JetBrains Mono',monospace;font-size:.6rem;color:var(--muted);border-top:1px solid var(--border);padding-top:10px;margin-top:6px;}
++
++.funnel{display:flex;flex-direction:column;gap:6px;}
++.funnel-row{display:grid;grid-template-columns:130px 1fr 90px 110px;gap:10px;align-items:center;font-size:.75rem;}
++.funnel-row .fr-lbl{font-family:'JetBrains Mono',monospace;font-size:.62rem;color:var(--text);}
++.funnel-bar-wrap{background:var(--bg3);border-radius:4px;height:22px;overflow:hidden;position:relative;}
++.funnel-bar{height:100%;background:linear-gradient(90deg,var(--gold),var(--orange));display:flex;align-items:center;padding-left:8px;font-family:'JetBrains Mono',monospace;font-size:.6rem;color:#1a1200;font-weight:700;white-space:nowrap;}
++.funnel-bar.empty-bar{background:var(--bg3);}
++.fr-hours{font-family:'JetBrains Mono',monospace;font-size:.62rem;color:var(--muted);text-align:right;}
++.fr-exposure{font-family:'JetBrains Mono',monospace;font-size:.65rem;text-align:right;color:var(--red);font-weight:700;}
++.funnel-hdr{display:grid;grid-template-columns:130px 1fr 90px 110px;gap:10px;font-family:'JetBrains Mono',monospace;font-size:.55rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;}
++.funnel-hdr .align-r{text-align:right;}
++
++.risk-item{display:flex;gap:14px;align-items:flex-start;padding:12px 0;border-bottom:1px solid #1a1608;}
++.risk-item:last-child{border-bottom:none;}
++.risk-rank{font-family:'Orbitron',sans-serif;font-size:1.1rem;font-weight:900;color:var(--gold);width:28px;flex-shrink:0;}
++.risk-body{flex:1;}
++.risk-title{font-size:.85rem;color:var(--text);margin-bottom:4px;}
++.risk-title b{color:var(--red);}
++.risk-action{font-family:'JetBrains Mono',monospace;font-size:.65rem;color:var(--muted);}
++.risk-amount{font-family:'Orbitron',sans-serif;font-size:1rem;font-weight:700;color:var(--red);white-space:nowrap;}
++
++.action-bar{display:flex;gap:10px;flex-wrap:wrap;margin-top:4px;}
++.abtn{font-family:'Orbitron',sans-serif;font-size:.65rem;letter-spacing:.08em;padding:10px 18px;border-radius:4px;cursor:pointer;border:1px solid var(--border);background:var(--bg3);color:var(--text);}
++.abtn.approve{border-color:var(--green);color:var(--green);}
++.abtn.escalate{border-color:var(--red);color:var(--red);}
++.abtn:hover{opacity:.85;}
++.ai-box{background:rgba(232,193,90,.06);border:1px solid var(--gold);border-radius:6px;padding:22px;margin-bottom:16px;white-space:pre-wrap;font-size:.95rem;line-height:1.55;}
++.ai-box table.md-table{border-collapse:collapse;width:100%;margin:8px 0;white-space:normal;}
++.ai-box table.md-table th,.ai-box table.md-table td{border:1px solid var(--border);padding:4px 6px;text-align:left;vertical-align:top;}
++.ai-box table.md-table th{color:var(--muted);text-transform:uppercase;font-size:.6rem;}
++</style>
++</head>
++<body>
++<div class="topbar">
++  <span class="tb-brand">TSM &middot; MORTGAGE COMMAND CENTER EXECUTIVE PORTAL</span>
++  <span class="tb-time" id="clock"></span>
++</div>
++<div class="hdr">
++  <div>
++    <div class="hdr-title" id="hdrTitle">&#128188; MORTGAGE COMMAND CENTER EXECUTIVE PORTAL</div>
++    <div class="hdr-sub" id="hdrSub">Awaiting relay from the Mortgage war room&hellip;</div>
++  </div>
++  <div class="hdr-btns">
++    <a class="hbtn" href="mortgage-war-room.html">&larr; War Room</a>
++    <a class="hbtn primary" href="mortgage-strategist.html">Strategist View &rarr;</a>
++    <button class="hbtn" id="printBtn" onclick="window.print()">&darr; Export</button>
++  </div>
++</div>
++<div class="wrap" id="wrap"><!-- populated by JS --></div>
++<div class="toast" id="toast"></div>
++<script>
++function tick(){document.getElementById('clock').textContent=new Date().toLocaleTimeString();}
++setInterval(tick,1000);tick();
++
++const DOMAIN = 'MORTGAGE';
++const RELAY_KEY_FALLBACK = 'TSM_' + DOMAIN + '_RELAY';
++
++function showToast(msg){
++  const t=document.getElementById('toast');
++  t.textContent=msg; t.classList.add('show');
++  clearTimeout(showToast._h);
++  showToast._h=setTimeout(()=>t.classList.remove('show'),2500);
++}
++
++function loadRelay(){
++  try {
++    if(window.TSM && window.TSM.relay && window.TSM.relay.read){
++      const d = window.TSM.relay.read(DOMAIN);
++      if(d) return d;
++    }
++  } catch(e){}
++  try {
++    const raw = sessionStorage.getItem(RELAY_KEY_FALLBACK) || localStorage.getItem(RELAY_KEY_FALLBACK) || localStorage.getItem('TSM_MORTGAGE_STRATEGIST_RELAY');
++    return raw ? JSON.parse(raw) : null;
++  } catch(e){ return null; }
++}
++
++function escapeHtml(s){
++  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
++}
++
++function money(n, currency){
++  const sym = (currency === 'USD' || !currency) ? '$' : (currency + ' ');
++  return sym + Math.round(n||0).toLocaleString();
++}
++
++function renderEmpty(){
++  document.getElementById('wrap').innerHTML = `
++    <div class="empty">
++      <h2>NO DATA RECEIVED</h2>
++      <p>Run an analysis in the Mortgage war room, then relay it here.</p>
++      <div class="hdr-btns" style="justify-content:center;">
++        <a class="hbtn primary" href="mortgage-war-room.html">&#127974; Go to War Room</a>
++      </div>
++    </div>`;
++}
++
++function renderEngineOutput(text) {
++  if(!text) return '';
++  const clean = text.replace(/KPI_JSON:\s*\{[^}]*\}\n*/i, '').trim();
++  const lines = clean.split('\n');
++  const isTableSep = l => /^\s*\|?[\s:|-]+\|?\s*$/.test(l) && l.includes('-');
++  const inlineFmt = s => escapeHtml(s).replace(/&lt;br\s*\/?&gt;/gi, '<br>').replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
++  const tables = [];
++  const outLines = [];
++  let i = 0;
++  while (i < lines.length) {
++    const line = lines[i];
++    if (/^\s*\|.*\|\s*$/.test(line) && lines[i + 1] !== undefined && isTableSep(lines[i + 1])) {
++      const headers = line.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
++      let t = '<table class="md-table"><thead><tr>' + headers.map(c => `<th>${inlineFmt(c)}</th>`).join('') + '</tr></thead><tbody>';
++      i += 2;
++      while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) {
++        const cells = lines[i].trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
++        t += '<tr>' + cells.map(c => `<td>${inlineFmt(c)}</td>`).join('') + '</tr>';
++        i++;
++      }
++      t += '</tbody></table>';
++      outLines.push(`@@TABLE${tables.length}@@`);
++      tables.push(t);
++      continue;
++    }
++    outLines.push(line);
++    i++;
++  }
++  let html = escapeHtml(outLines.join('\n'));
++  html = html.replace(/&lt;br\s*\/?&gt;/gi, '<br>');
++  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
++  html = html.replace(/^▸\s*(.+)$/gm, '<div style="margin:4px 0">▸ $1</div>');
++  html = html.replace(/^(\d+)\.\s+(.+)$/gm, '<div style="margin:4px 0 4px 8px"><strong>$1.</strong> $2</div>');
++  html = html.replace(/\n{2,}/g, '<br><br>').replace(/\n/g, '<br>');
++  tables.forEach((t, idx) => { html = html.replace(`@@TABLE${idx}@@`, t); });
++  return html;
++}
++
++/* ---------- CFO / RCM framing helpers ---------- */
++
++function execAction(sev){
++  if(sev === 'HIGH') return 'Escalate to closing manager now \u2014 delay and compliance exposure compounding daily.';
++  if(sev === 'MEDIUM') return 'Confirm remediation ETA with processing; escalate if unresolved this week.';
++  return 'Monitor \u2014 low board-level exposure at current pace.';
++}
++
++function renderFinancials(fin){
++  if(!fin) return '';
++  const total = fin.total_exposure || 0;
++  return `<div class="fin-row">
++    <div class="fin-card hero">
++      <div class="fin-val">${money(total, fin.currency)}</div>
++      <div class="fin-lbl">TOTAL EXPOSURE</div>
++      <div class="fin-sub">Closing delay + compliance exposure, current pipeline</div>
++    </div>
++    <div class="fin-card">
++      <div class="fin-val red">${money(fin.closing_delay_exposure_total, fin.currency)}</div>
++      <div class="fin-lbl">CLOSING DELAY EXPOSURE</div>
++      <div class="fin-sub">${(fin.closing_delay_exposure_items||[]).length} loan file(s) over SLA</div>
++    </div>
++    <div class="fin-card">
++      <div class="fin-val red">${money(fin.compliance_exposure_total, fin.currency)}</div>
++      <div class="fin-lbl">COMPLIANCE EXPOSURE</div>
++      <div class="fin-sub">${(fin.compliance_exposure_items||[]).length} open exception(s)</div>
++    </div>
++    <div class="fin-card">
++      <div class="fin-val blue">${money(fin.pipeline_value, fin.currency)}</div>
++      <div class="fin-lbl">PIPELINE VALUE</div>
++      <div class="fin-sub">Total open loan amount in pipeline</div>
++    </div>
++  </div>
++  ${fin.note ? `<div class="model-note">&#9432; ${escapeHtml(fin.note)}</div>` : ''}`;
++}
++
++function renderFunnel(wip, fin){
++  if(!wip || !wip.length) return '';
++  const expByStage = {};
++  (fin && fin.closing_delay_exposure_items || []).forEach(it => {
++    expByStage[it.stage] = (expByStage[it.stage] || 0) + it.exposure;
++  });
++  const maxCount = Math.max(1, ...wip.map(s => s.count));
++  const rows = wip.map(s => {
++    const pct = Math.round((s.count / maxCount) * 100);
++    const exposure = expByStage[s.label] || 0;
++    return `<div class="funnel-row">
++      <div class="fr-lbl">${escapeHtml(s.label)}</div>
++      <div class="funnel-bar-wrap"><div class="funnel-bar${s.count===0?' empty-bar':''}" style="width:${Math.max(pct,s.count?12:0)}%">${s.count} file${s.count===1?'':'s'}</div></div>
++      <div class="fr-hours">${s.avg_hours_in_stage!==null ? s.avg_hours_in_stage+'h avg' : '&mdash;'}</div>
++      <div class="fr-exposure">${exposure>0?money(exposure, fin&&fin.currency):'&mdash;'}</div>
++    </div>`;
++  }).join('');
++  return `<div class="sec">
++    <div class="sec-hdr"><span class="lbl">LOAN LIFECYCLE (PIPELINE VIEW)</span><span class="sec-hdr-note">Application &rarr; Processing &rarr; Underwriting &rarr; Conditions &rarr; Clear to Close &rarr; Funded/Denied</span></div>
++    <div class="funnel-hdr"><span>Stage</span><span>Volume</span><span class="align-r">Avg Time</span><span class="align-r">$ Exposure</span></div>
++    <div class="funnel">${rows}</div>
++  </div>`;
++}
++
++function renderRiskRegister(fin){
++  const items = (fin && fin.closing_delay_exposure_items) || [];
++  if(!items.length){
++    return `<div class="sec"><div class="sec-hdr"><span class="lbl">TOP RISK REGISTER</span></div><div class="no-items">No SLA-breaching exposure right now &mdash; nothing to escalate to the board.</div></div>`;
++  }
++  const top3 = items.slice(0,3);
++  const rows = top3.map((it, idx) => `
++    <div class="risk-item">
++      <div class="risk-rank">${idx+1}</div>
++      <div class="risk-body">
++        <div class="risk-title"><b>${escapeHtml(it.stage)}</b> &middot; ${escapeHtml(it.id)} &mdash; ${escapeHtml(it.borrower||'')} (${it.days_over}d over SLA)</div>
++        <div class="risk-action">${escapeHtml(execAction(it.days_over > 3 ? 'HIGH' : 'MEDIUM'))}</div>
++      </div>
++      <div class="risk-amount">${money(it.exposure, fin.currency)}</div>
++    </div>`).join('');
++  return `<div class="sec">
++    <div class="sec-hdr"><span class="lbl">TOP RISK REGISTER</span><span class="sec-hdr-note">ranked by $ exposure</span></div>
++    ${rows}
++  </div>`;
++}
++
++function render(){
++  const data = loadRelay();
++  if(!data){ renderEmpty(); return; }
++
++  document.getElementById('hdrSub').textContent = `Relayed ${data.timestamp ? new Date(data.timestamp).toLocaleString() : '&mdash;'}`;
++
++  let html = '';
++  html += renderFinancials(data.financials);
++
++  if(data.ai_summary){
++    html += `<div class="ai-box"><strong style="color:var(--gold);font-family:'Orbitron',sans-serif;font-size:.65rem;letter-spacing:.1em;display:block;margin-bottom:8px;">EXECUTIVE RECOMMENDATION</strong>${renderEngineOutput(data.ai_summary)}</div>`;
++  }
++
++  html += renderRiskRegister(data.financials);
++  html += renderFunnel(data.loan_wip, data.financials);
++
++  html += `<div class="sec"><div class="sec-hdr"><span class="lbl">EXECUTIVE ACTIONS</span></div>
++    <div class="action-bar">
++      <button class="abtn approve" onclick="showToast('Marked reviewed \u2014 no downstream write in this demo build.')">&#10003; ACKNOWLEDGE</button>
++      <button class="abtn escalate" onclick="showToast('Escalation flagged \u2014 notify closing manager.')">&#8593; ESCALATE</button>
++    </div>
++  </div>`;
++
++  document.getElementById('wrap').innerHTML = html;
++}
++
++render();
++window.addEventListener('storage', e => { if(e.key === RELAY_KEY_FALLBACK || e.key === 'TSM_EVENT_LOG') render(); });
++window.addEventListener('TSM_RELAY_EVENT', e => { if(e.detail && e.detail.domain === DOMAIN) render(); });
++</script>
++  <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
++  <script src="/html/core/tsm-runtime.js"></script>
++</body>
++</html>
+diff --git a/html/war-rooms/mortgage/mortgage-strategist.html b/html/war-rooms/mortgage/mortgage-strategist.html
+new file mode 100644
+index 0000000..21afc1e
+--- /dev/null
++++ b/html/war-rooms/mortgage/mortgage-strategist.html
+@@ -0,0 +1,294 @@
++<!DOCTYPE html>
++<html lang="en">
++<head>
++<meta charset="UTF-8">
++<meta name="viewport" content="width=device-width,initial-scale=1">
++<title>TSM &middot; Mortgage Command Center Strategist</title>
++<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
++<style>
++:root{
++  --bg:#0d0a04;--bg2:#120e07;--bg3:#17130a;
++  --gold:#d4af37;--amber:#f5a623;--green:#22c55e;
++  --red:#ef4444;--purple:#a855f7;--blue:#3b82f6;
++  --orange:#f97316;--text:#f2e8d0;--muted:#7a6f52;--border:#2a2412;
++}
++*{margin:0;padding:0;box-sizing:border-box;}
++body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;min-height:100vh;padding-bottom:60px;}
++.topbar{height:42px;background:#0a0703;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 20px;}
++.tb-brand{font-family:'Orbitron',sans-serif;font-size:.7rem;color:var(--gold);letter-spacing:.15em;}
++.tb-time{font-family:'Orbitron',sans-serif;font-size:.75rem;color:var(--gold);}
++.hdr{padding:18px 24px;border-bottom:1px solid var(--border);background:var(--bg2);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;}
++.hdr-title{font-family:'Orbitron',sans-serif;font-size:1rem;letter-spacing:.08em;color:var(--text);}
++.hdr-sub{font-family:'JetBrains Mono',monospace;font-size:.65rem;color:var(--muted);margin-top:4px;}
++.hdr-btns{display:flex;gap:8px;flex-wrap:wrap;}
++.hbtn{background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:.62rem;padding:8px 14px;border-radius:4px;cursor:pointer;text-decoration:none;display:inline-block;}
++.hbtn:hover{border-color:var(--gold);color:var(--gold);}
++.hbtn.primary{border-color:var(--gold);color:var(--gold);}
++.wrap{max-width:1200px;margin:0 auto;padding:20px 24px;}
++.empty{text-align:center;padding:80px 20px;}
++.empty h2{font-family:'Orbitron',sans-serif;font-size:.9rem;color:var(--muted);letter-spacing:.08em;margin-bottom:14px;}
++.empty p{font-family:'JetBrains Mono',monospace;font-size:.7rem;color:var(--muted);margin-bottom:24px;}
++.kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px;}
++.kpi{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:16px;text-align:center;}
++.kpi-val{font-family:'Orbitron',sans-serif;font-size:1.3rem;font-weight:700;color:var(--orange);}
++.kpi-val.red{color:var(--red);}.kpi-val.green{color:var(--green);}.kpi-val.gold{color:var(--gold);}.kpi-val.amber{color:var(--amber);}
++.kpi-lbl{font-size:.6rem;color:var(--muted);margin-top:6px;font-family:'JetBrains Mono',monospace;letter-spacing:.08em;}
++.sec{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:18px;margin-bottom:16px;}
++.sec-hdr{font-family:'Orbitron',sans-serif;font-size:.68rem;color:var(--gold);letter-spacing:.12em;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:8px;}
++.sec-hdr .lbl::before{content:'\25C6';font-size:.55rem;margin-right:8px;}
++.sec-hdr-note{font-family:'JetBrains Mono',monospace;font-size:.58rem;color:var(--muted);text-transform:none;letter-spacing:0;}
++.ai-box{background:rgba(212,175,55,.06);border:1px solid var(--gold);border-radius:6px;padding:16px;margin-bottom:16px;white-space:pre-wrap;font-size:.88rem;line-height:1.55;}
++.ai-box table.md-table{border-collapse:collapse;width:100%;margin:8px 0;white-space:normal;}
++.ai-box table.md-table th,.ai-box table.md-table td{border:1px solid var(--border);padding:4px 6px;text-align:left;vertical-align:top;}
++.ai-box table.md-table th{color:var(--muted);text-transform:uppercase;font-size:.6rem;}
++.no-items{font-family:'JetBrains Mono',monospace;font-size:.7rem;color:var(--muted);}
++.toast{position:fixed;bottom:20px;right:20px;background:var(--bg2);border:1px solid var(--gold);color:var(--gold);padding:10px 18px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:.65rem;opacity:0;pointer-events:none;transition:.3s;z-index:50;}
++.toast.show{opacity:1;transform:translateY(-4px);}
++
++.wip-board{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;}
++.wip-stage{background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:12px;text-align:center;position:relative;}
++.wip-stage.stalled{border-color:var(--red);background:rgba(239,68,68,.06);}
++.wip-stage .ws-lbl{font-family:'JetBrains Mono',monospace;font-size:.58rem;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px;min-height:26px;}
++.wip-stage .ws-count{font-family:'Orbitron',sans-serif;font-size:1.4rem;font-weight:700;color:var(--gold);}
++.wip-stage.stalled .ws-count{color:var(--red);}
++.wip-stage .ws-meta{font-family:'JetBrains Mono',monospace;font-size:.58rem;color:var(--muted);margin-top:6px;}
++.wip-stage .ws-flag{position:absolute;top:6px;right:8px;font-size:.55rem;color:var(--red);}
++.wip-arrow{display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:.9rem;}
++
++.aq-table{width:100%;border-collapse:collapse;font-size:.78rem;}
++.aq-table th{text-align:left;font-family:'JetBrains Mono',monospace;font-size:.58rem;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;padding:6px 8px;border-bottom:1px solid var(--border);}
++.aq-table td{padding:9px 8px;border-bottom:1px solid #1a1608;vertical-align:top;}
++.aq-table tr:last-child td{border-bottom:none;}
++.impact{font-family:'JetBrains Mono',monospace;font-size:.55rem;font-weight:700;padding:2px 8px;border-radius:10px;white-space:nowrap;}
++.impact.high{background:rgba(239,68,68,.12);color:var(--red);border:1px solid var(--red);}
++.impact.medium{background:rgba(245,166,35,.12);color:var(--amber);border:1px solid var(--amber);}
++.impact.low{background:rgba(122,111,82,.12);color:var(--muted);border:1px solid var(--muted);}
++.time-hot{color:var(--red);font-weight:700;}
++.action-hint{color:var(--text);}
++</style>
++</head>
++<body>
++<div class="topbar">
++  <span class="tb-brand">TSM &middot; MORTGAGE COMMAND CENTER STRATEGIST</span>
++  <span class="tb-time" id="clock"></span>
++</div>
++<div class="hdr">
++  <div>
++    <div class="hdr-title" id="hdrTitle">&#127974; MORTGAGE COMMAND CENTER STRATEGIST</div>
++    <div class="hdr-sub" id="hdrSub">Awaiting relay from the Mortgage war room&hellip;</div>
++  </div>
++  <div class="hdr-btns">
++    <a class="hbtn" href="mortgage-war-room.html">&larr; War Room</a>
++    <a class="hbtn primary" href="mortgage-executive-portal.html">Executive View &rarr;</a>
++    <button class="hbtn" id="printBtn" onclick="window.print()">&darr; Export</button>
++  </div>
++</div>
++<div class="wrap" id="wrap"><!-- populated by JS --></div>
++<div class="toast" id="toast"></div>
++<script>
++function tick(){document.getElementById('clock').textContent=new Date().toLocaleTimeString();}
++setInterval(tick,1000);tick();
++
++const DOMAIN = 'MORTGAGE';
++const RELAY_KEY_FALLBACK = 'TSM_' + DOMAIN + '_RELAY';
++
++function showToast(msg){
++  const t=document.getElementById('toast');
++  t.textContent=msg; t.classList.add('show');
++  clearTimeout(showToast._h);
++  showToast._h=setTimeout(()=>t.classList.remove('show'),2500);
++}
++
++function loadRelay(){
++  try {
++    if(window.TSM && window.TSM.relay && window.TSM.relay.read){
++      const d = window.TSM.relay.read(DOMAIN);
++      if(d) return d;
++    }
++  } catch(e){}
++  try {
++    const raw = sessionStorage.getItem(RELAY_KEY_FALLBACK) || localStorage.getItem(RELAY_KEY_FALLBACK) || localStorage.getItem('TSM_MORTGAGE_STRATEGIST_RELAY');
++    return raw ? JSON.parse(raw) : null;
++  } catch(e){ return null; }
++}
++
++function escapeHtml(s){
++  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
++}
++
++function fmtVal(v, fmt){
++  if(v===undefined || v===null || v==='') return '&mdash;';
++  if(fmt==='money') return '$' + Number(v).toLocaleString();
++  if(fmt==='pct') return v + '%';
++  return String(v);
++}
++
++function renderEmpty(){
++  document.getElementById('wrap').innerHTML = `
++    <div class="empty">
++      <h2>NO DATA RECEIVED</h2>
++      <p>Run an analysis in the Mortgage war room, then relay it here.</p>
++      <div class="hdr-btns" style="justify-content:center;">
++        <a class="hbtn primary" href="mortgage-war-room.html">&#127974; Go to War Room</a>
++      </div>
++    </div>`;
++}
++
++function renderEngineOutput(text) {
++  if(!text) return '';
++  const clean = text.replace(/KPI_JSON:\s*\{[^}]*\}\n*/i, '').trim();
++  const lines = clean.split('\n');
++  const isTableSep = l => /^\s*\|?[\s:|-]+\|?\s*$/.test(l) && l.includes('-');
++  const inlineFmt = s => escapeHtml(s).replace(/&lt;br\s*\/?&gt;/gi, '<br>').replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
++  const tables = [];
++  const outLines = [];
++  let i = 0;
++  while (i < lines.length) {
++    const line = lines[i];
++    if (/^\s*\|.*\|\s*$/.test(line) && lines[i + 1] !== undefined && isTableSep(lines[i + 1])) {
++      const headers = line.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
++      let t = '<table class="md-table"><thead><tr>' + headers.map(c => `<th>${inlineFmt(c)}</th>`).join('') + '</tr></thead><tbody>';
++      i += 2;
++      while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) {
++        const cells = lines[i].trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
++        t += '<tr>' + cells.map(c => `<td>${inlineFmt(c)}</td>`).join('') + '</tr>';
++        i++;
++      }
++      t += '</tbody></table>';
++      outLines.push(`@@TABLE${tables.length}@@`);
++      tables.push(t);
++      continue;
++    }
++    outLines.push(line);
++    i++;
++  }
++  let html = escapeHtml(outLines.join('\n'));
++  html = html.replace(/&lt;br\s*\/?&gt;/gi, '<br>');
++  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
++  html = html.replace(/^▸\s*(.+)$/gm, '<div style="margin:4px 0">▸ $1</div>');
++  html = html.replace(/^(\d+)\.\s+(.+)$/gm, '<div style="margin:4px 0 4px 8px"><strong>$1.</strong> $2</div>');
++  html = html.replace(/\n{2,}/g, '<br><br>').replace(/\n/g, '<br>');
++  tables.forEach((t, idx) => { html = html.replace(`@@TABLE${idx}@@`, t); });
++  return html;
++}
++
++/* ---------- Business-value framing helpers ---------- */
++
++// Deterministic, rule-based next action -- derived from stage + breach
++// status + ownership, never invented.
++function nextAction(rec, isBreached){
++  const owner = rec.owner || 'Unassigned';
++  if(rec.stage === 'application' && owner === 'Unassigned') return 'Assign a processor and begin file setup now.';
++  if(rec.stage === 'application') return 'Continue intake against SLA clock.';
++  if(rec.stage === 'processing' && isBreached) return 'Processing stalled past SLA \u2014 escalate to processing lead.';
++  if(rec.stage === 'processing') return 'Continue document collection; monitor against SLA clock.';
++  if(rec.stage === 'underwriting' && isBreached) return 'Underwriting past SLA \u2014 escalate to UW manager.';
++  if(rec.stage === 'underwriting') return 'Awaiting UW decision; confirm queue position.';
++  if(rec.stage === 'conditions' && isBreached) return 'Conditions stalled past SLA \u2014 follow up with borrower/processor today.';
++  if(rec.stage === 'conditions') return 'Track condition clearance against SLA clock.';
++  if(rec.stage === 'clear_to_close') return 'Confirm CD accuracy and schedule closing.';
++  if(rec.stage === 'denied') return 'Review for alternative program or reconsideration of value.';
++  return 'Confirm status and close out.';
++}
++
++function impactFromSeverity(sev){
++  if(sev === 'HIGH') return { cls: 'high', label: 'HIGH IMPACT' };
++  if(sev === 'MEDIUM') return { cls: 'medium', label: 'MED IMPACT' };
++  return { cls: 'low', label: 'LOW IMPACT' };
++}
++
++function renderWipBoard(wip){
++  if(!wip || !wip.length) return '';
++  const stages = wip.map(s => {
++    const stalled = s.stalled_count > 0;
++    const meta = s.avg_hours_in_stage !== null
++      ? `avg ${s.avg_hours_in_stage}h in stage${s.sla_hours!=null ? ' / SLA '+s.sla_hours+'h' : ''}`
++      : (s.sla_hours!=null ? `SLA ${s.sla_hours}h` : 'no SLA clock');
++    return `<div class="wip-stage${stalled?' stalled':''}">
++      ${stalled?'<span class="ws-flag">&#9888;</span>':''}
++      <div class="ws-lbl">${escapeHtml(s.label)}</div>
++      <div class="ws-count">${s.count}</div>
++      <div class="ws-meta">${escapeHtml(meta)}</div>
++      ${stalled?`<div class="ws-meta" style="color:var(--red)">${s.stalled_count} stalled past SLA</div>`:''}
++    </div>`;
++  }).join('<div class="wip-arrow">&rarr;</div>');
++  return `<div class="sec">
++    <div class="sec-hdr"><span class="lbl">LOAN FILE PIPELINE BY STAGE</span><span class="sec-hdr-note">time-in-stage vs. SLA clock, live from war room data</span></div>
++    <div class="wip-board">${stages}</div>
++  </div>`;
++}
++
++function renderActionQueue(records, breachIds){
++  const loans = (records && records.loan_files) || [];
++  const open = loans.filter(r => !['funded','denied'].includes(r.stage));
++  if(!open.length){
++    return `<div class="sec"><div class="sec-hdr"><span class="lbl">ACTION QUEUE</span></div><div class="no-items">No open loan files &mdash; queue is clear.</div></div>`;
++  }
++  const rows = open
++    .slice()
++    .sort((a,b) => (b.entered_stage_at_hours_ago||0) - (a.entered_stage_at_hours_ago||0))
++    .map(r => {
++      const isBreached = breachIds.has(r.loan_id);
++      const impact = impactFromSeverity(r.severity);
++      const hours = r.entered_stage_at_hours_ago;
++      return `<tr>
++        <td><strong>${escapeHtml(r.loan_id)}</strong><br><span style="color:var(--muted);font-size:.7rem;">${escapeHtml(r.borrower||'')} &middot; ${escapeHtml(r.program||'')}</span></td>
++        <td><span class="impact ${impact.cls}">${impact.label}</span></td>
++        <td>${escapeHtml(r.stage)}</td>
++        <td class="${isBreached?'time-hot':''}">${hours!==undefined?hours+'h':'&mdash;'}</td>
++        <td>${escapeHtml(r.owner||'Unassigned')}</td>
++        <td class="action-hint">${escapeHtml(nextAction(r, isBreached))}</td>
++      </tr>`;
++    }).join('');
++  return `<div class="sec">
++    <div class="sec-hdr"><span class="lbl">ACTION QUEUE</span><span class="sec-hdr-note">ranked by time in current stage</span></div>
++    <table class="aq-table">
++      <thead><tr><th>Loan File</th><th>Impact</th><th>Stage</th><th>Time in Stage</th><th>Owner</th><th>Recommended Next Step</th></tr></thead>
++      <tbody>${rows}</tbody>
++    </table>
++  </div>`;
++}
++
++function render(){
++  const data = loadRelay();
++  if(!data){ renderEmpty(); return; }
++
++  document.getElementById('hdrSub').textContent = `Relayed ${data.timestamp ? new Date(data.timestamp).toLocaleString() : '&mdash;'}`;
++
++  const kpis = data.kpis || {};
++  const breaches = data.loan_breaches || [];
++  const breachIds = new Set(breaches.map(b => b.id));
++  const openLoans = kpis.open_loan_files || 0;
++  const compliancePct = openLoans > 0
++    ? Math.round(((openLoans - breaches.length) / openLoans) * 1000) / 10
++    : 100;
++
++  let html = '';
++
++  html += `<div class="kpi-row">
++    <div class="kpi"><div class="kpi-val amber">${fmtVal(kpis.open_loan_files)}</div><div class="kpi-lbl">OPEN LOAN FILES</div></div>
++    <div class="kpi"><div class="kpi-val red">${fmtVal(kpis.loans_over_sla)}</div><div class="kpi-lbl">LOANS OVER SLA</div></div>
++    <div class="kpi"><div class="kpi-val ${compliancePct>=90?'green':compliancePct>=70?'amber':'red'}">${compliancePct}%</div><div class="kpi-lbl">SLA COMPLIANCE</div></div>
++    <div class="kpi"><div class="kpi-val gold">${fmtVal(kpis.ctc_ready)}</div><div class="kpi-lbl">CTC READY</div></div>
++    <div class="kpi"><div class="kpi-val amber">${fmtVal(kpis.open_conditions)}</div><div class="kpi-lbl">OPEN UW CONDITIONS</div></div>
++    <div class="kpi"><div class="kpi-val red">${fmtVal(kpis.open_exceptions)}</div><div class="kpi-lbl">OPEN COMPLIANCE FLAGS</div></div>
++  </div>`;
++
++  if(data.ai_summary){
++    html += `<div class="ai-box"><strong style="color:var(--gold);font-family:'Orbitron',sans-serif;font-size:.65rem;letter-spacing:.1em;display:block;margin-bottom:8px;">AI PIPELINE ANALYSIS</strong>${renderEngineOutput(data.ai_summary)}</div>`;
++  }
++
++  html += renderWipBoard(data.loan_wip);
++  html += renderActionQueue(data.records, breachIds);
++
++  document.getElementById('wrap').innerHTML = html;
++}
++
++render();
++window.addEventListener('storage', e => { if(e.key === RELAY_KEY_FALLBACK || e.key === 'TSM_EVENT_LOG') render(); });
++window.addEventListener('TSM_RELAY_EVENT', e => { if(e.detail && e.detail.domain === DOMAIN) render(); });
++</script>
++  <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
++  <script src="/html/core/tsm-runtime.js"></script>
++</body>
++</html>
+diff --git a/html/war-rooms/mortgage/mortgage-war-room.html b/html/war-rooms/mortgage/mortgage-war-room.html
+new file mode 100644
+index 0000000..bb8b2d1
+--- /dev/null
++++ b/html/war-rooms/mortgage/mortgage-war-room.html
+@@ -0,0 +1,397 @@
++<!DOCTYPE html>
++<html lang="en">
++<head>
++<meta charset="UTF-8">
++<meta name="viewport" content="width=device-width, initial-scale=1.0">
++<title>TSM Mortgage Command Center</title>
++<style>
++:root {
++  --bg:#0d0a04;--bg2:#120e07;--bg3:#17130a;
++  --border:rgba(212,175,55,.14);
++  --gold:#d4af37;--gold-dim:rgba(212,175,55,.6);
++  --amber:#ff9500;--red:#ff3b3b;--cyan:#00e5ff;--purple:#c084fc;
++  --text:#f2e8d0;--text-dim:#7a6f52;--card:#141007;
++}
++*{box-sizing:border-box;margin:0;padding:0}
++body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;font-size:12px;min-height:100vh}
++
++.nav{display:flex;align-items:center;gap:0;background:#0f0c06;border-bottom:1px solid var(--border);height:38px;padding:0 16px}
++.nav-brand{color:var(--gold);font-weight:700;font-size:11px;letter-spacing:2px;margin-right:24px}
++.nav-right{margin-left:auto;display:flex;align-items:center;gap:16px;color:var(--text-dim);font-size:10px}
++.nav-clock{color:var(--gold-dim)}
++
++.alert-bar{background:rgba(255,149,0,.06);border-bottom:1px solid rgba(255,149,0,.2);padding:6px 20px;display:flex;align-items:center;gap:8px;font-size:10px;letter-spacing:1.5px;color:var(--amber)}
++.alert-dot{width:6px;height:6px;border-radius:50%;background:var(--amber);box-shadow:0 0 6px var(--amber);animation:pulse 2s infinite}
++@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
++
++.layout{display:grid;grid-template-columns:290px 1fr;height:calc(100vh - 70px)}
++
++.sidebar{background:var(--bg2);border-right:1px solid var(--border);overflow-y:auto;display:flex;flex-direction:column}
++.sb-section{padding:14px 16px;border-bottom:1px solid var(--border)}
++.sb-label{font-size:9px;letter-spacing:2px;color:var(--text-dim);margin-bottom:8px}
++
++.btn{border:1px solid;font-family:inherit;font-size:9px;letter-spacing:1.5px;cursor:pointer;padding:7px 12px;transition:all .2s}
++.btn-gold{background:var(--gold);border-color:var(--gold);color:#000;font-weight:700}
++.btn-gold:hover{background:#e6c34a}
++.btn-outline{background:transparent;border-color:var(--gold);color:var(--gold)}
++.btn-outline:hover{background:rgba(212,175,55,.08)}
++.btn-ghost{background:transparent;border-color:var(--border);color:var(--text-dim)}
++.btn-ghost:hover{border-color:var(--text-dim);color:var(--text)}
++.btn:disabled{opacity:.4;cursor:not-allowed}
++.btn-row{display:flex;gap:6px;flex-wrap:wrap}
++.btn-full{width:100%}
++
++.stage-list{display:flex;flex-direction:column;gap:3px}
++.stage-item{display:flex;align-items:center;gap:8px;padding:5px 8px;background:var(--bg3);border:1px solid var(--border);font-size:9px}
++.stage-num{color:var(--text-dim);width:14px}
++.stage-name{flex:1;color:var(--text)}
++.stage-count{color:var(--gold);font-weight:700}
++
++.snap-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
++.snap-item{background:var(--bg3);border:1px solid var(--border);padding:6px 8px}
++.snap-label{font-size:8px;color:var(--text-dim);letter-spacing:1px;margin-bottom:3px}
++.snap-val{font-size:13px;color:var(--gold);font-weight:700}
++.snap-val.warn{color:var(--amber)}
++.snap-val.bad{color:var(--red)}
++
++.main{overflow-y:auto;background:var(--bg);padding:18px 22px}
++.main-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
++.main-title{font-size:13px;letter-spacing:1px;color:var(--text)}
++.main-title b{color:var(--gold)}
++.main-sub{color:var(--text-dim);font-size:10px;margin-top:2px}
++
++.entity-tabs{display:flex;gap:4px;margin-bottom:16px;border-bottom:1px solid var(--border)}
++.entity-tab{padding:8px 14px;font-size:9px;letter-spacing:1.5px;color:var(--text-dim);cursor:pointer;border-bottom:2px solid transparent}
++.entity-tab:hover{color:var(--text)}
++.entity-tab.active{color:var(--gold);border-bottom-color:var(--gold)}
++
++.kpi-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:20px}
++.kpi-card{background:var(--card);border:1px solid var(--border);padding:12px 10px}
++.kpi-label{font-size:8px;letter-spacing:1px;color:var(--text-dim);margin-bottom:6px;text-transform:uppercase}
++.kpi-value{font-size:18px;font-weight:700;color:var(--gold)}
++.kpi-value.warn{color:var(--amber)}
++.kpi-value.bad{color:var(--red)}
++
++.section{background:var(--card);border:1px solid var(--border);margin-bottom:18px}
++.section-head{padding:10px 14px;border-bottom:1px solid var(--border);font-size:10px;letter-spacing:1.5px;color:var(--text-dim);display:flex;justify-content:space-between;align-items:center}
++.section-body{padding:14px}
++
++.tracker{display:flex;gap:4px;overflow-x:auto;padding-bottom:6px}
++.tracker-stage{flex:1;min-width:84px;background:var(--bg3);border:1px solid var(--border);padding:8px 6px;text-align:center;position:relative}
++.tracker-stage.hot{border-color:var(--red);background:rgba(255,59,59,.08)}
++.tracker-stage .ts-label{font-size:8px;color:var(--text-dim);letter-spacing:.5px;margin-bottom:4px;min-height:22px}
++.tracker-stage .ts-count{font-size:15px;font-weight:700;color:var(--gold)}
++.tracker-stage.hot .ts-count{color:var(--red)}
++
++table{width:100%;border-collapse:collapse;font-size:10px}
++th{text-align:left;color:var(--text-dim);font-size:8px;letter-spacing:1px;padding:6px 8px;border-bottom:1px solid var(--border)}
++td{padding:7px 8px;border-bottom:1px solid var(--border);color:var(--text)}
++tr:hover td{background:rgba(212,175,55,.03)}
++.tag{display:inline-block;font-size:8px;letter-spacing:1px;padding:2px 6px;border:1px solid}
++.tag-high{color:var(--red);border-color:var(--red)}
++.tag-medium{color:var(--amber);border-color:var(--amber)}
++.tag-ok{color:var(--gold);border-color:var(--gold)}
++.empty-state{color:var(--text-dim);font-size:10px;padding:20px;text-align:center}
++
++.ai-output{background:var(--bg3);border:1px solid var(--border);padding:12px;font-size:10px;line-height:1.6;color:var(--text);white-space:pre-wrap;min-height:60px}
++.ai-output.loading{color:var(--text-dim)}
++.ai-output .err{color:var(--red)}
++</style>
++</head>
++<body>
++
++<div class="nav">
++  <div class="nav-brand">TSM SHELL // MORTGAGE COMMAND CENTER</div>
++  <div class="nav-right">
++    <span id="navStatus">ENGINE: IDLE</span>
++    <span class="nav-clock" id="navClock">--:--:--</span>
++  </div>
++</div>
++
++<div class="alert-bar" id="alertBar" style="display:none">
++  <span class="alert-dot"></span>
++  <span id="alertText">SLA breaches detected.</span>
++</div>
++
++<div class="layout">
++
++  <div class="sidebar">
++    <div class="sb-section">
++      <div class="sb-label">DATA</div>
++      <div class="btn-row">
++        <button class="btn btn-ghost btn-full" id="btnLoadSample">LOAD SAMPLE DATA</button>
++      </div>
++      <div class="btn-row" style="margin-top:6px">
++        <button class="btn btn-ghost btn-full" id="btnResetData">RESET SAVED DATA</button>
++      </div>
++    </div>
++
++    <div class="sb-section">
++      <div class="sb-label">STAGES // <span id="stageEntityLabel">LOAN FILE</span></div>
++      <div class="stage-list" id="stageList"></div>
++    </div>
++
++    <div class="sb-section">
++      <div class="sb-label">SNAPSHOT</div>
++      <div class="snap-grid" id="snapGrid"></div>
++    </div>
++
++    <div class="sb-section" style="margin-top:auto">
++      <div class="btn-row">
++        <button class="btn btn-gold btn-full" id="btnRunAnalysis">RUN AI ANALYSIS</button>
++      </div>
++      <div class="btn-row" style="margin-top:6px">
++        <button class="btn btn-outline btn-full" id="btnRelay">RELAY TO STRATEGIST &rarr;</button>
++      </div>
++    </div>
++  </div>
++
++  <div class="main">
++    <div class="main-header">
++      <div>
++        <div class="main-title">MORTGAGE <b>COMMAND CENTER</b></div>
++        <div class="main-sub">Loan files &rarr; UW conditions &rarr; compliance exceptions, correlated in real time.</div>
++      </div>
++    </div>
++
++    <div class="entity-tabs" id="entityTabs"></div>
++
++    <div class="kpi-grid" id="kpiGrid"></div>
++
++    <div class="section">
++      <div class="section-head"><span>STAGE DISTRIBUTION</span><span id="trackerMeta"></span></div>
++      <div class="section-body">
++        <div class="tracker" id="tracker"></div>
++      </div>
++    </div>
++
++    <div class="section">
++      <div class="section-head"><span>RECORDS &mdash; <span id="tableEntityLabel">LOAN FILES</span></span><span id="breachMeta"></span></div>
++      <div class="section-body" id="breachBody">
++        <div class="empty-state">No data loaded yet.</div>
++      </div>
++    </div>
++
++    <div class="section">
++      <div class="section-head"><span>AI PIPELINE &amp; RISK ANALYSIS</span></div>
++      <div class="section-body">
++        <div class="ai-output" id="aiOutput">Run analysis to get AI-generated pipeline risk, SLA-breach root cause, and closing-readiness guidance across the loan file portfolio.</div>
++      </div>
++    </div>
++  </div>
++
++</div>
++
++<script src="/runtime/kernel/canonical-core.js"></script>
++<script src="/html/war-rooms/mortgage/services/mortgage-engine.js"></script>
++<script>
++(function () {
++  let MODEL = null;
++  let engine = null;
++  let activeEntity = 'loan_files'; // loan_files | conditions | exceptions
++
++  const ENTITY_LABELS = { loan_files: 'LOAN FILES', conditions: 'UW CONDITIONS', exceptions: 'COMPLIANCE EXCEPTIONS' };
++  const ID_FIELDS = { loan_files: 'loan_id', conditions: 'condition_id', exceptions: 'exception_id' };
++
++  function setClock() {
++    const el = document.getElementById('navClock');
++    if (el) el.textContent = new Date().toLocaleTimeString();
++  }
++  setInterval(setClock, 1000); setClock();
++
++  async function loadModel() {
++    const res = await fetch('/html/war-rooms/mortgage/data/mortgage-model.json');
++    MODEL = await res.json();
++    engine = new TSMMortgageEngine(MODEL);
++    const hydrated = engine.loadFromStorage();
++    renderTabs();
++    renderStageList();
++    if (hydrated) renderAll();
++  }
++
++  function renderTabs() {
++    const wrap = document.getElementById('entityTabs');
++    wrap.innerHTML = '';
++    Object.keys(ENTITY_LABELS).forEach(key => {
++      const tab = document.createElement('div');
++      tab.className = 'entity-tab' + (key === activeEntity ? ' active' : '');
++      tab.textContent = ENTITY_LABELS[key];
++      tab.onclick = () => { activeEntity = key; renderTabs(); renderStageList(); renderAll(); };
++      wrap.appendChild(tab);
++    });
++  }
++
++  function entitySingular(key) { return { loan_files: 'loan_file', conditions: 'condition', exceptions: 'exception' }[key]; }
++
++  function renderStageList() {
++    document.getElementById('stageEntityLabel').textContent = ENTITY_LABELS[activeEntity].replace(/S$/, '');
++    const def = (MODEL.entities || {})[entitySingular(activeEntity)] || { stages: [] };
++    const list = document.getElementById('stageList');
++    list.innerHTML = '';
++    (def.stages || []).forEach(s => {
++      const row = document.createElement('div');
++      row.className = 'stage-item';
++      row.innerHTML = `<span class="stage-num">${s.order}</span><span class="stage-name">${s.label}</span><span class="stage-count" id="sc-${activeEntity}-${s.id}">0</span>`;
++      list.appendChild(row);
++    });
++  }
++
++  function fmtMoney(n) { return '$' + Number(n || 0).toLocaleString(); }
++
++  function renderKpis() {
++    const kpis = engine.computeKpis();
++    const grid = document.getElementById('kpiGrid');
++    const cards = [
++      { label: 'Open Loan Files', value: kpis.open_loan_files, cls: '' },
++      { label: 'Loans Over SLA', value: kpis.loans_over_sla, cls: kpis.loans_over_sla > 0 ? 'bad' : '' },
++      { label: 'CTC Ready', value: kpis.ctc_ready, cls: '' },
++      { label: 'Pipeline Value', value: fmtMoney(kpis.pipeline_value), cls: '' },
++      { label: 'Open UW Conditions', value: kpis.open_conditions, cls: kpis.open_conditions > 3 ? 'warn' : '' },
++      { label: 'Open Compliance Flags', value: kpis.open_exceptions, cls: kpis.open_exceptions > 0 ? 'bad' : '' }
++    ];
++    grid.innerHTML = cards.map(c => `
++      <div class="kpi-card">
++        <div class="kpi-label">${c.label}</div>
++        <div class="kpi-value ${c.cls}">${c.value}</div>
++      </div>`).join('');
++
++    const alertBar = document.getElementById('alertBar');
++    const alertText = document.getElementById('alertText');
++    if (kpis.loans_over_sla > 0 || kpis.open_exceptions > 0) {
++      alertBar.style.display = 'flex';
++      alertText.textContent = `${kpis.loans_over_sla} loan file(s) over SLA, ${kpis.open_exceptions} open compliance exception(s).`;
++    } else {
++      alertBar.style.display = 'none';
++    }
++  }
++
++  function renderTracker() {
++    const def = (MODEL.entities || {})[entitySingular(activeEntity)] || { stages: [] };
++    const dist = engine.getStageDistribution(activeEntity);
++    const tracker = document.getElementById('tracker');
++    tracker.innerHTML = (def.stages || []).map(s => {
++      const count = (dist[s.id] || { count: 0 }).count;
++      const hot = s.sla_hours != null && (engine.data[activeEntity] || []).some(r => r.stage === s.id && (r.entered_stage_at_hours_ago || 0) > s.sla_hours);
++      const scEl = document.getElementById(`sc-${activeEntity}-${s.id}`);
++      if (scEl) scEl.textContent = count;
++      return `<div class="tracker-stage${hot ? ' hot' : ''}"><div class="ts-label">${s.label}</div><div class="ts-count">${count}</div></div>`;
++    }).join('');
++  }
++
++  function renderTable() {
++    document.getElementById('tableEntityLabel').textContent = ENTITY_LABELS[activeEntity];
++    const breaches = engine.getSlaBreaches(activeEntity);
++    const breachIds = new Set(breaches.map(b => b.id));
++    const idField = ID_FIELDS[activeEntity];
++    const records = engine.data[activeEntity] || [];
++    const body = document.getElementById('breachBody');
++    document.getElementById('breachMeta').textContent = breaches.length ? `${breaches.length} over SLA` : '';
++
++    if (!records.length) { body.innerHTML = '<div class="empty-state">No data loaded yet. Click LOAD SAMPLE DATA.</div>'; return; }
++
++    let cols, rows;
++    if (activeEntity === 'loan_files') {
++      cols = ['LOAN ID', 'BORROWER', 'PROGRAM', 'AMOUNT', 'STAGE', 'OWNER', 'SLA'];
++      rows = records.map(r => [r.loan_id, r.borrower, r.program, fmtMoney(r.loan_amount), r.stage, r.owner, breachIds.has(r.loan_id) ? tagFor(r.severity, true) : tagFor(null, false)]);
++    } else if (activeEntity === 'conditions') {
++      cols = ['CONDITION ID', 'LOAN ID', 'DESCRIPTION', 'STAGE', 'SLA'];
++      rows = records.map(r => [r.condition_id, r.loan_id, r.description, r.stage, breachIds.has(r.condition_id) ? tagFor('MEDIUM', true) : tagFor(null, false)]);
++    } else {
++      cols = ['EXCEPTION ID', 'LOAN ID', 'TYPE', 'SEVERITY', 'STAGE', 'SLA'];
++      rows = records.map(r => [r.exception_id, r.loan_id, r.type, tagFor(r.severity, false), r.stage, breachIds.has(r.exception_id) ? tagFor(r.severity, true) : tagFor(null, false)]);
++    }
++
++    body.innerHTML = `<table><thead><tr>${cols.map(c => `<th>${c}</th>`).join('')}</tr></thead><tbody>
++      ${rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}
++    </tbody></table>`;
++  }
++
++  function tagFor(severity, breached) {
++    if (breached) return `<span class="tag tag-high">SLA BREACH</span>`;
++    if (severity === 'HIGH') return `<span class="tag tag-high">HIGH</span>`;
++    if (severity === 'MEDIUM') return `<span class="tag tag-medium">MEDIUM</span>`;
++    if (!severity) return `<span class="tag tag-ok">ON TRACK</span>`;
++    return `<span class="tag tag-ok">${severity}</span>`;
++  }
++
++  function renderSnapshot() {
++    const fin = engine.getFinancialSummary();
++    const grid = document.getElementById('snapGrid');
++    grid.innerHTML = `
++      <div class="snap-item"><div class="snap-label">CLOSING DELAY EXPOSURE</div><div class="snap-val ${fin.closing_delay_exposure_total > 0 ? 'warn' : ''}">${fmtMoney(fin.closing_delay_exposure_total)}</div></div>
++      <div class="snap-item"><div class="snap-label">COMPLIANCE EXPOSURE</div><div class="snap-val ${fin.compliance_exposure_total > 0 ? 'bad' : ''}">${fmtMoney(fin.compliance_exposure_total)}</div></div>
++      <div class="snap-item"><div class="snap-label">PIPELINE VALUE</div><div class="snap-val">${fmtMoney(fin.pipeline_value)}</div></div>
++      <div class="snap-item"><div class="snap-label">TOTAL EXPOSURE</div><div class="snap-val ${fin.total_exposure > 0 ? 'bad' : ''}">${fmtMoney(fin.total_exposure)}</div></div>
++    `;
++  }
++
++  function renderAll() {
++    renderKpis();
++    renderTracker();
++    renderTable();
++    renderSnapshot();
++  }
++
++  async function runAnalysis() {
++    const out = document.getElementById('aiOutput');
++    out.className = 'ai-output loading';
++    out.textContent = 'Running AI pipeline analysis...';
++    document.getElementById('navStatus').textContent = 'ENGINE: ANALYZING';
++    try {
++      const result = await engine.runAnalysis();
++      out.className = 'ai-output';
++      out.textContent = result.answer || result.output || JSON.stringify(result, null, 2);
++    } catch (e) {
++      out.className = 'ai-output';
++      out.innerHTML = `<span class="err">Analysis failed: ${e.message}</span>`;
++    }
++    document.getElementById('navStatus').textContent = 'ENGINE: IDLE';
++  }
++
++  function relayToStrategist() {
++    const aiText = document.getElementById('aiOutput').textContent;
++    const payload = engine.buildRelayPayload(aiText.startsWith('Run analysis') ? null : aiText);
++    engine.saveToStorage();
++    try {
++      localStorage.setItem('TSM_MORTGAGE_STRATEGIST_RELAY', JSON.stringify(payload));
++      if (window.TSM && window.TSM.relay && window.TSM.relay.write) {
++        window.TSM.relay.write('MORTGAGE', payload);
++      }
++    } catch (e) { console.warn('Relay storage failed', e); }
++
++    if (window.TSMEventBus && window.TSMEventBus.emit) {
++      window.TSMEventBus.emit('WAR_ROOM_READY', { vertical: 'mtg', payload, ts: Date.now() });
++    }
++    document.getElementById('navStatus').textContent = 'ENGINE: RELAYED TO STRATEGIST';
++    setTimeout(() => { window.location.href = '/html/war-rooms/mortgage/mortgage-strategist.html'; }, 500);
++  }
++
++  document.getElementById('btnLoadSample').addEventListener('click', () => {
++    engine.loadSampleData();
++    engine.saveToStorage();
++    renderAll();
++  });
++
++  document.getElementById('btnResetData').addEventListener('click', () => {
++    if (!confirm('Clear all saved Mortgage data from this browser? This cannot be undone.')) return;
++    engine.clearStorage();
++    Object.keys(engine.data).forEach(k => { engine.data[k] = []; });
++    renderAll();
++  });
++
++  document.getElementById('btnRunAnalysis').addEventListener('click', runAnalysis);
++  document.getElementById('btnRelay').addEventListener('click', relayToStrategist);
++
++  loadModel();
++})();
++</script>
++
++<!-- TSM CONTROL PLANE -- correct load order, same as noc-war-room.html -->
++<script src="/js/core/tsm-event-bus.js"></script>
++<script src="/js/core/tsm-state.js"></script>
++<script src="/js/core/tsm-mission-engine.js"></script>
++<script src="/js/core/tsm-auto-pipeline.js"></script>
++<script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
++<script src="/html/core/tsm-runtime.js"></script>
++</body>
++</html>
+diff --git a/html/war-rooms/mortgage/services/mortgage-engine.js b/html/war-rooms/mortgage/services/mortgage-engine.js
+new file mode 100644
+index 0000000..e0c617d
+--- /dev/null
++++ b/html/war-rooms/mortgage/services/mortgage-engine.js
+@@ -0,0 +1,312 @@
++/* ============================================================
++   TSM MORTGAGE ENGINE
++   war-rooms/mortgage/services/mortgage-engine.js
++   Mirrors war-rooms/noc/services/noc-engine.js's method shape,
++   generalized across Mortgage's three entity kinds (loan_file,
++   condition, exception). Conditions and exceptions correlate to
++   a loan_file via loan_id, same non-mutating correlation pattern
++   NOC uses for alerts -> incidents.
++   ============================================================ */
++
++(function (global) {
++  'use strict';
++
++  const ENTITY_KEYS = ['loan_files', 'conditions', 'exceptions'];
++
++  class TSMMortgageEngine {
++    constructor(model) {
++      this.model = model || { entities: {}, kpis: [], risk_signals: [] };
++      this.data = { loan_files: [], conditions: [], exceptions: [] };
++      this._canonicalCore = null;
++    }
++
++    /* ---------- Loading ---------- */
++
++    loadSampleData() {
++      const sample = this.model.sample_data || {};
++      ENTITY_KEYS.forEach(k => { this.data[k] = [...(sample[k] || [])]; });
++    }
++
++    loadRecords(entityKey, records) {
++      if (!ENTITY_KEYS.includes(entityKey)) {
++        console.warn('TSMMortgageEngine: unknown entity key', entityKey);
++        return;
++      }
++      this.data[entityKey] = [...(this.data[entityKey] || []), ...records];
++    }
++
++    /* ---------- Persistence ---------- */
++
++    saveToStorage() {
++      try {
++        localStorage.setItem('TSM_MORTGAGE_DATA', JSON.stringify(this.data));
++        return true;
++      } catch (e) {
++        console.warn('TSMMortgageEngine: saveToStorage failed', e);
++        return false;
++      }
++    }
++
++    loadFromStorage() {
++      try {
++        const raw = localStorage.getItem('TSM_MORTGAGE_DATA');
++        if (!raw) return false;
++        const parsed = JSON.parse(raw);
++        ENTITY_KEYS.forEach(k => { this.data[k] = Array.isArray(parsed[k]) ? parsed[k] : []; });
++        return true;
++      } catch (e) {
++        console.warn('TSMMortgageEngine: loadFromStorage failed', e);
++        return false;
++      }
++    }
++
++    clearStorage() {
++      try { localStorage.removeItem('TSM_MORTGAGE_DATA'); } catch (e) { /* noop */ }
++    }
++
++    /* ---------- Stage model helpers ---------- */
++
++    _idField(entityKey) {
++      return { loan_files: 'loan_id', conditions: 'condition_id', exceptions: 'exception_id' }[entityKey];
++    }
++
++    _entityDef(entityKey) {
++      const singular = { loan_files: 'loan_file', conditions: 'condition', exceptions: 'exception' }[entityKey];
++      return (this.model.entities || {})[singular] || { stages: [] };
++    }
++
++    getStageDistribution(entityKey) {
++      const def = this._entityDef(entityKey);
++      const dist = {};
++      (def.stages || []).forEach(s => { dist[s.id] = { count: 0 }; });
++      (this.data[entityKey] || []).forEach(r => {
++        if (!dist[r.stage]) dist[r.stage] = { count: 0 };
++        dist[r.stage].count += 1;
++      });
++      return dist;
++    }
++
++    /** SLA breach detection, same "hours over" model NOC/CRM/O2C use. */
++    getSlaBreaches(entityKey) {
++      const def = this._entityDef(entityKey);
++      const stageMap = {};
++      (def.stages || []).forEach(s => { stageMap[s.id] = s; });
++      const idField = this._idField(entityKey);
++
++      return (this.data[entityKey] || [])
++        .map(r => {
++          const stage = stageMap[r.stage];
++          if (!stage || stage.sla_hours == null) return null;
++          const hoursOver = (r.entered_stage_at_hours_ago || 0) - stage.sla_hours;
++          if (hoursOver <= 0) return null;
++          return { id: r[idField], stage: stage.label, hours_over: hoursOver, record: r };
++        })
++        .filter(Boolean)
++        .sort((a, b) => b.hours_over - a.hours_over);
++    }
++
++    /* ---------- KPIs ----------
++       Field names match what mortgage-war-room.html reads directly:
++       open_loan_files, loans_over_sla, ctc_ready, pipeline_value,
++       open_conditions, open_exceptions. */
++
++    computeKpis() {
++      const CLOSED_STAGES = ['funded', 'denied'];
++      const openLoans = this.data.loan_files.filter(l => !CLOSED_STAGES.includes(l.stage)).length;
++      const loansOverSla = this.getSlaBreaches('loan_files').length;
++      const ctcReady = this.data.loan_files.filter(l => l.stage === 'clear_to_close').length;
++      const pipelineValue = this.data.loan_files
++        .filter(l => !CLOSED_STAGES.includes(l.stage))
++        .reduce((sum, l) => sum + (l.loan_amount || 0), 0);
++      const openConditions = this.data.conditions.filter(c => c.stage !== 'cleared').length;
++      const openExceptions = this.data.exceptions.filter(e => e.stage !== 'remediated').length;
++
++      return {
++        open_loan_files: openLoans,
++        loans_over_sla: loansOverSla,
++        ctc_ready: ctcReady,
++        pipeline_value: pipelineValue,
++        open_conditions: openConditions,
++        open_exceptions: openExceptions
++      };
++    }
++
++    /* ---------- WIP (work-in-progress) by stage ---------- */
++
++    getStageWip(entityKey) {
++      const def = this._entityDef(entityKey);
++      const idField = this._idField(entityKey);
++      const records = this.data[entityKey] || [];
++
++      return (def.stages || []).map(stage => {
++        const inStage = records.filter(r => r.stage === stage.id);
++        const withAge = inStage.filter(r => r.entered_stage_at_hours_ago !== undefined);
++        const avgHours = withAge.length
++          ? Math.round((withAge.reduce((s, r) => s + r.entered_stage_at_hours_ago, 0) / withAge.length) * 10) / 10
++          : null;
++        const stalled = stage.sla_hours != null
++          ? inStage.filter(r => (r.entered_stage_at_hours_ago || 0) > stage.sla_hours)
++          : [];
++        return {
++          stage: stage.id,
++          label: stage.label,
++          order: stage.order,
++          sla_hours: stage.sla_hours,
++          count: inStage.length,
++          avg_hours_in_stage: avgHours,
++          stalled_count: stalled.length,
++          stalled_ids: stalled.map(r => r[idField])
++        };
++      });
++    }
++
++    /* ---------- Financial exposure ----------
++       Rate card lives in the model (financial_model), never hard-coded
++       here. Closing-delay cost applies to SLA-breached loan files;
++       compliance exposure applies to open exceptions by severity. Both
++       are disclosed estimate rates, never invented outright. */
++
++    getFinancialModel() {
++      return this.model.financial_model || null;
++    }
++
++    getClosingDelayExposure() {
++      const fm = this.getFinancialModel();
++      const breaches = this.getSlaBreaches('loan_files');
++      if (!fm || fm.closing_delay_cost_per_day == null) {
++        return { total: 0, currency: fm ? fm.currency : 'USD', items: [] };
++      }
++      const rate = fm.closing_delay_cost_per_day;
++      const items = breaches.map(b => {
++        const days = Math.max(1, Math.round((b.hours_over / 24) * 10) / 10);
++        const exposure = Math.round(days * rate);
++        return { id: b.id, borrower: b.record && b.record.borrower, stage: b.stage, hours_over: b.hours_over, days_over: days, exposure };
++      }).sort((a, b) => b.exposure - a.exposure);
++      return { total: items.reduce((s, it) => s + it.exposure, 0), currency: fm.currency || 'USD', items };
++    }
++
++    getComplianceExposure() {
++      const fm = this.getFinancialModel();
++      const open = this.data.exceptions.filter(e => e.stage !== 'remediated');
++      if (!fm || !fm.compliance_exposure_by_severity) {
++        return { total: 0, currency: fm ? fm.currency : 'USD', items: [] };
++      }
++      const rates = fm.compliance_exposure_by_severity;
++      const items = open.map(e => {
++        const rate = rates[e.severity] != null ? rates[e.severity] : 0;
++        return { id: e.exception_id, loan_id: e.loan_id, type: e.type, severity: e.severity, exposure: rate };
++      }).sort((a, b) => b.exposure - a.exposure);
++      return { total: items.reduce((s, it) => s + it.exposure, 0), currency: fm.currency || 'USD', items };
++    }
++
++    getFinancialSummary() {
++      const delay = this.getClosingDelayExposure();
++      const compliance = this.getComplianceExposure();
++      return {
++        currency: delay.currency || compliance.currency || 'USD',
++        closing_delay_exposure_total: delay.total,
++        closing_delay_exposure_items: delay.items,
++        compliance_exposure_total: compliance.total,
++        compliance_exposure_items: compliance.items,
++        pipeline_value: this.computeKpis().pipeline_value,
++        total_exposure: delay.total + compliance.total,
++        note: this.model.financial_model ? this.model.financial_model.note : null
++      };
++    }
++
++    /* ---------- Canonical core wiring ---------- */
++
++    async _canonical() {
++      if (this._canonicalCore) return this._canonicalCore;
++      if (typeof window === 'undefined' || !window.CanonicalCore) {
++        console.warn('TSMMortgageEngine: CanonicalCore not available -- include /runtime/kernel/canonical-core.js before mortgage-engine.js to enable getCanonicalRecords().');
++        return null;
++      }
++      const cc = new window.CanonicalCore();
++      await cc.load();
++      this._canonicalCore = cc;
++      return cc;
++    }
++
++    _riskLevelFor(entityKey, record) {
++      const breaches = this.getSlaBreaches(entityKey);
++      const idField = this._idField(entityKey);
++      const breach = breaches.find(b => b.id === record[idField]);
++      if (!breach) return 'low';
++      return breach.hours_over > 24 ? 'high' : 'medium';
++    }
++
++    async getCanonicalRecords() {
++      const cc = await this._canonical();
++      if (!cc) return this.data;
++
++      const kindConfig = [
++        { key: 'loan_files', type: 'mtg_loan_file',           idField: 'loan_id',       ownerField: 'owner', statusField: 'stage', warRoom: '/html/war-rooms/mortgage/mortgage-war-room.html' },
++        { key: 'conditions', type: 'mtg_uw_condition',        idField: 'condition_id',  ownerField: null,    statusField: 'stage', warRoom: '/html/war-rooms/mortgage/mortgage-war-room.html' },
++        { key: 'exceptions', type: 'mtg_compliance_exception',idField: 'exception_id',  ownerField: null,    statusField: 'stage', warRoom: '/html/war-rooms/mortgage/mortgage-war-room.html' }
++      ];
++
++      const out = {};
++      for (const cfg of kindConfig) {
++        const breaches = this.getSlaBreaches(cfg.key);
++        const breachIds = new Set(breaches.map(b => b.id));
++        out[cfg.key] = this.data[cfg.key].map(r => {
++          const def = this._entityDef(cfg.key);
++          const stage = (def.stages || []).find(s => s.id === r.stage);
++          const { record } = cc.process({
++            id: r[cfg.idField],
++            type: cfg.type,
++            vertical: 'mtg',
++            owner: (cfg.ownerField && r[cfg.ownerField]) || 'Unassigned',
++            status: stage ? stage.label : r.stage,
++            current_stage: r.stage,
++            risk_level: this._riskLevelFor(cfg.key, r),
++            sla_state: breachIds.has(r[cfg.idField]) ? 'breached' : 'on_track',
++            linked_war_room: cfg.warRoom,
++            related_to: r.related_to || [],
++            ...r
++          });
++          return record;
++        });
++      }
++      return out;
++    }
++
++    /* ---------- AI + relay (mirrors NOCEngine) ---------- */
++
++    async runAnalysis() {
++      const res = await fetch('/api/mortgage/query', {
++        method: 'POST',
++        headers: { 'Content-Type': 'application/json' },
++        body: JSON.stringify({
++          kpis: this.computeKpis(),
++          loan_breaches: this.getSlaBreaches('loan_files'),
++          conditions: this.data.conditions,
++          exceptions: this.data.exceptions.filter(e => e.stage !== 'remediated')
++        })
++      });
++      if (!res.ok) throw new Error('Mortgage analysis endpoint returned ' + res.status);
++      return res.json();
++    }
++
++    buildRelayPayload(aiText) {
++      return {
++        vertical: 'mtg',
++        timestamp: Date.now(),
++        kpis: this.computeKpis(),
++        loan_breaches: this.getSlaBreaches('loan_files'),
++        loan_wip: this.getStageWip('loan_files'),
++        financials: this.getFinancialSummary(),
++        records: {
++          loan_files: this.data.loan_files,
++          conditions: this.data.conditions,
++          exceptions: this.data.exceptions
++        },
++        ai_summary: aiText || null,
++        ts: Date.now()
++      };
++    }
++  }
++
++  global.TSMMortgageEngine = TSMMortgageEngine;
++})(typeof window !== 'undefined' ? window : this);
+diff --git a/server.js b/server.js
+index d320ac8..2db8d98 100644
+--- a/server.js
++++ b/server.js
+@@ -977,6 +977,31 @@ app.post('/api/noc/query', async (req, res) => {
+ });
+ 
+ 
++app.post('/api/mortgage/query', async (req, res) => {
++  const { kpis, loan_breaches, conditions, exceptions, context, maxTokens } = req.body || {};
++  const summary = JSON.stringify({
++    kpis,
++    loan_breaches,
++    conditions,
++    exceptions,
++    counts: {
++      conditions: Array.isArray(conditions) ? conditions.length : undefined,
++      exceptions: Array.isArray(exceptions) ? exceptions.length : undefined
++    }
++  }, null, 2);
++  const prompt = `Current Mortgage pipeline snapshot:\n${summary}\n\n` +
++    (context ? `Additional context: ${context}\n\n` : '') +
++    `Identify the highest-risk loan files, the root cause of any SLA breaches or stalled UW conditions, open compliance exceptions requiring escalation, and the single most important next action for each at-risk loan file. Reference loan/condition/exception IDs.`;
++  try {
++    const answer = await groqChat(SP.mortgage, prompt, maxTokens || 1200);
++    return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
++  } catch (e) {
++    console.error('MORTGAGE GROQ ERROR:', e.message);
++    return res.status(500).json({ ok: false, error: e.message });
++  }
++});
++
++
+ app.post('/api/approval/query', async (req, res) => {
+   const { requests, kpis, sla_breaches, attention_flags, stage_distribution, context, maxTokens } = req.body || {};
+   if (!Array.isArray(requests)) return res.status(400).json({ ok: false, error: 'requests array required' });
+-- 
+2.43.0

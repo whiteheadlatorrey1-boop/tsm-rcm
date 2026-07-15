@@ -1,0 +1,210 @@
+From a1557569c94821081a197c3dbc483573cc21500b Mon Sep 17 00:00:00 2001
+From: tsm-consultz <brightmindsfinancial@gmail.com>
+Date: Wed, 15 Jul 2026 20:38:05 +0000
+Subject: [PATCH] Fix Career Training Platform: dead Interview Proof Map +
+ insecure client-side AI calls
+
+- Define iqSelect/iqLens/iqGenerate/iqCopy/iqClear, which were wired
+  via onclick but never defined anywhere -- every button in the
+  Interview Proof Map panel threw ReferenceError on click.
+- Add server-side /api/career/ai-complete proxy (Anthropic-message-
+  shaped response over Groq, matching the pattern every other TSM
+  vertical uses) and SP.career system prompt.
+- Point msaiTutor/msaiGenScen/msaiGradeAnswer/iqGenerate at the new
+  proxy instead of calling https://api.anthropic.com/v1/messages
+  directly from the browser with no auth header -- that call could
+  never have succeeded in production (no key, no CORS allowance).
+- Remove a stale duplicate /api/mortgage/query stub that was
+  shadowing the real handler (req.body.question/query shape vs. the
+  kpis/loan_breaches/conditions/exceptions shape mortgage-engine.js
+  actually sends).
+---
+ html/tsm-career-training-platform.html | 92 ++++++++++++++++++++++++--
+ server.js                              | 31 +++++++--
+ 2 files changed, 112 insertions(+), 11 deletions(-)
+
+diff --git a/html/tsm-career-training-platform.html b/html/tsm-career-training-platform.html
+index b0726af..70d0f42 100644
+--- a/html/tsm-career-training-platform.html
++++ b/html/tsm-career-training-platform.html
+@@ -2890,6 +2890,86 @@ function msaiPrev(){ msaiIdx=(msaiIdx-1+msaiCards.length)%msaiCards.length; msai
+ function msaiGotIt(){ msaiDone.add(msaiCards[msaiIdx].q); msaiNext(); }
+ function msaiShuffle(){ msaiCards.sort(()=>Math.random()-.5); msaiIdx=0; msaiRenderCard(); }
+ 
++// ── INTERVIEW PROOF MAP SIMULATOR ──
++let iqQuestionId = null, iqQuestionText = null;
++let iqLensLabel = null, iqLensDesc = null;
++
++function iqSelect(btn, id, questionText) {
++  iqQuestionId = id;
++  iqQuestionText = questionText;
++  document.querySelectorAll('.iq-qbtn').forEach(b => b.classList.remove('sel'));
++  btn.classList.add('sel');
++  const el = document.getElementById('iq-selected-q');
++  el.textContent = 'Q: ' + questionText;
++  el.style.display = 'block';
++}
++
++function iqLens(btn, label, desc) {
++  iqLensLabel = label;
++  iqLensDesc = desc;
++  document.querySelectorAll('.iq-lbtn').forEach(b => b.classList.remove('sel'));
++  btn.classList.add('sel');
++  const el = document.getElementById('iq-selected-lens');
++  el.textContent = 'Lens: ' + label;
++  el.style.display = 'block';
++}
++
++async function iqGenerate() {
++  if (!iqQuestionText || !iqLensLabel) {
++    alert('Select a question and a proof lens first.');
++    return;
++  }
++  const loading = document.getElementById('iq-loading');
++  const output = document.getElementById('iq-output');
++  const meta = document.getElementById('iq-meta');
++  loading.style.display = 'block';
++  output.style.display = 'none';
++  meta.style.display = 'none';
++  output.textContent = '';
++
++  const prompt = `Interview question: "${iqQuestionText}"\n\n` +
++    `Answer it using this specific TSM Shell workflow as the concrete proof point: ${iqLensLabel} — ${iqLensDesc}\n\n` +
++    `Write an 80-120 word presales-strength interview answer. Reference specific architecture details from the lens above. No preamble.`;
++
++  try {
++    const res = await fetch('/api/career/ai-complete', {
++      method: 'POST', headers: { 'Content-Type': 'application/json' },
++      body: JSON.stringify({ maxTokens: 500, messages: [{ role: 'user', content: prompt }] })
++    });
++    const data = await res.json();
++    const text = data.content?.map(c => c.text || '').join('') || 'No response.';
++    output.textContent = text;
++    meta.innerHTML = `<span>Question: ${iqQuestionText}</span><span>Lens: ${iqLensLabel}</span>`;
++    meta.style.display = 'flex';
++  } catch (e) {
++    output.textContent = 'Error connecting to AI.';
++  }
++  loading.style.display = 'none';
++  output.style.display = 'block';
++}
++
++function iqCopy() {
++  const output = document.getElementById('iq-output');
++  const btn = document.getElementById('iq-copy-btn');
++  if (!output.textContent) return;
++  navigator.clipboard?.writeText(output.textContent).catch(() => {});
++  const original = btn.textContent;
++  btn.textContent = '✓ COPIED';
++  setTimeout(() => { btn.textContent = original; }, 1500);
++}
++
++function iqClear() {
++  iqQuestionId = null; iqQuestionText = null;
++  iqLensLabel = null; iqLensDesc = null;
++  document.querySelectorAll('.iq-qbtn, .iq-lbtn').forEach(b => b.classList.remove('sel'));
++  document.getElementById('iq-selected-q').style.display = 'none';
++  document.getElementById('iq-selected-lens').style.display = 'none';
++  document.getElementById('iq-output').style.display = 'none';
++  document.getElementById('iq-output').textContent = '';
++  document.getElementById('iq-meta').style.display = 'none';
++  document.getElementById('iq-loading').style.display = 'none';
++}
++
+ async function msaiTutor(action, topic) {
+   const loading = document.getElementById('msai-loading');
+   const output = document.getElementById('msai-output');
+@@ -2901,9 +2981,9 @@ async function msaiTutor(action, topic) {
+   loading.classList.add('show');
+   output.textContent = '';
+   try {
+-    const res = await fetch('https://api.anthropic.com/v1/messages', {
++    const res = await fetch('/api/career/ai-complete', {
+       method:'POST', headers:{'Content-Type':'application/json'},
+-      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1000,messages:[{role:'user',content:prompts[action]||`Explain ${topic} briefly for the AB-100 exam.`}]})
++      body:JSON.stringify({maxTokens:1000,messages:[{role:'user',content:prompts[action]||`Explain ${topic} briefly for the AB-100 exam.`}]})
+     });
+     const data = await res.json();
+     output.textContent = data.content?.map(c=>c.text||'').join('') || 'No response.';
+@@ -2935,9 +3015,9 @@ async function msaiGenScen() {
+   scen.style.display='block'; grade.style.display='none';
+   scen.textContent = '⟳ Generating...';
+   try {
+-    const res = await fetch('https://api.anthropic.com/v1/messages', {
++    const res = await fetch('/api/career/ai-complete', {
+       method:'POST', headers:{'Content-Type':'application/json'},
+-      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1000,messages:[{role:'user',content:`Generate a 2-sentence realistic enterprise AI scenario for a ${msaiVert} client. They have a specific operational problem agentic AI could solve. End with: "How would you architect a solution?" Don't provide the answer.`}]})
++      body:JSON.stringify({maxTokens:1000,messages:[{role:'user',content:`Generate a 2-sentence realistic enterprise AI scenario for a ${msaiVert} client. They have a specific operational problem agentic AI could solve. End with: "How would you architect a solution?" Don't provide the answer.`}]})
+     });
+     const data = await res.json();
+     scen.textContent = data.content?.map(c=>c.text||'').join('') || 'Error.';
+@@ -2951,9 +3031,9 @@ async function msaiGradeAnswer() {
+   if(!ans){ grade.style.display='block'; grade.textContent='Write your answer first.'; return; }
+   grade.style.display='block'; grade.textContent='⟳ Grading...';
+   try {
+-    const res = await fetch('https://api.anthropic.com/v1/messages', {
++    const res = await fetch('/api/career/ai-complete', {
+       method:'POST', headers:{'Content-Type':'application/json'},
+-      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1000,messages:[{role:'user',content:`Grade this AB-100 presales answer.\nScenario: ${scen}\nAnswer: ${ans}\nScore 1-10 on: (1) Technical accuracy (2) Microsoft vocabulary use (Copilot Studio, Azure AI, HITL, RAG, multi-agent) (3) Presales effectiveness. Give score + 2 sentences of coaching. Be direct.`}]})
++      body:JSON.stringify({maxTokens:1000,messages:[{role:'user',content:`Grade this AB-100 presales answer.\nScenario: ${scen}\nAnswer: ${ans}\nScore 1-10 on: (1) Technical accuracy (2) Microsoft vocabulary use (Copilot Studio, Azure AI, HITL, RAG, multi-agent) (3) Presales effectiveness. Give score + 2 sentences of coaching. Be direct.`}]})
+     });
+     const data = await res.json();
+     grade.textContent = data.content?.map(c=>c.text||'').join('') || 'Error.';
+diff --git a/server.js b/server.js
+index d320ac8..902d628 100644
+--- a/server.js
++++ b/server.js
+@@ -123,6 +123,7 @@ var SP = {
+   o2c: 'You are an Order-to-Cash operations AI for TSM Command. Expert in quote-to-order, credit management, ATP/inventory allocation, shipping, invoicing, AR, and cash application. Given structured order, KPI, and SLA-breach data, identify root causes of bottlenecks, flag financial/operational risk, and recommend the specific next action for each at-risk order. Be precise and operational. No preamble.',
+   crm: 'You are a CRM customer-lifecycle AI for TSM Command. Expert in lead qualification, account/opportunity management, pipeline health, case escalation, and churn risk. Given structured lead/contact/account/opportunity/case data, KPIs, and SLA-breach data, identify the highest-risk records, the root cause of stalled deals or breached cases, and the specific next action per record. Reference record IDs. Be precise and operational. No preamble.',
+   noc: 'You are a Network Operations Center AI for TSM Command. Expert in incident management, alert correlation, device/fleet health, and SLA-driven escalation. Given structured incident/alert/device data, KPIs, and SLA-breach data, identify the highest-severity or highest-risk incidents, correlate related alerts to their root incident, flag devices contributing to fleet-uptime risk, and recommend the specific next action per at-risk incident or device. Reference incident/alert/device IDs. Be precise and operational. No preamble.',
++  career: 'You are the TSM Career Training Platform AI. Expert in Microsoft AB-100/AI-103 certification prep, presales interview coaching, and enterprise AI vocabulary (Copilot Studio, Azure AI, HITL, RAG, multi-agent). Answer exactly what is asked — explanations, practice questions, scenarios, or grading — concisely and directly. No preamble, no markdown headers unless the prompt specifically asks for structured output.',
+   approval: 'You are an Enterprise Approval Center AI for TSM Command. Expert in multi-level approval workflows, delegation rules, escalation management, SLA compliance, and audit governance. Given structured approval request data, KPIs, SLA breaches, and attention flags, identify bottlenecks, escalation risks, and the specific next action per at-risk request. Reference request IDs. Be precise and operational. No preamble.',
+   cpq: 'You are a CPQ (Configure-Price-Quote) operations AI for TSM Command. Expert in product configuration, compatibility rules, discount policy, margin management, quote lifecycle, and approval workflows. Given structured quote pipeline, KPI, and SLA-breach data, identify configuration conflicts, margin risks, stalled quotes, and the specific next action per at-risk quote. Reference quote IDs. Be precise and operational. No preamble.',
+   catalog: 'You are a Product Catalog Management AI for TSM Command. Expert in product hierarchy, lifecycle management, SKU/variant management, bill of materials, compliance tracking, inventory linkage, and pricing synchronization. Given structured product catalog data, KPIs, and attention flags (low-stock, compliance, end-of-life), identify catalog data-quality risks, lifecycle bottlenecks, and the specific next action per flagged product. Reference SKUs/product IDs. Be precise and operational. No preamble.',
+@@ -895,11 +896,6 @@ app.post('/api/financial/query', async (req, res) => {
+   }
+ });
+ 
+-app.post('/api/mortgage/query', async (req, res) => {
+-  try { var sys = req.body.context || req.body.system || SP.mortgage; var a = await groqChat(sys, req.body.question || req.body.query || '', req.body.maxTokens || 1024); return res.json({ ok: true, answer: a, createdAt: new Date().toISOString() }); }
+-  catch (e) { return res.status(500).json({ ok: false, error: e.message }); }
+-});
+-
+ app.post('/api/legal/query', async (req, res) => {
+   try { var a = await groqChat(SP.legal, req.body.question || req.body.query || '', req.body.maxTokens || 1024); return res.json({ ok: true, answer: a, createdAt: new Date().toISOString() }); }
+   catch (e) { return res.status(500).json({ ok: false, error: e.message }); }
+@@ -977,6 +973,31 @@ app.post('/api/noc/query', async (req, res) => {
+ });
+ 
+ 
++// Anthropic-message-shaped proxy for the Career Training Platform's
++// client-side calls (msaiTutor, msaiGenScen, msaiGradeAnswer, iqGenerate).
++// Front-end code reads `data.content?.map(c=>c.text||'').join('')`, so the
++// response is shaped like the Anthropic Messages API even though this is
++// backed by Groq like every other TSM endpoint.
++app.post('/api/career/ai-complete', async (req, res) => {
++  const { messages, maxTokens } = req.body || {};
++  if (!Array.isArray(messages) || messages.length === 0) {
++    return res.status(400).json({ ok: false, error: 'messages[] is required' });
++  }
++  const lastUser = [...messages].reverse().find(m => m && m.role === 'user');
++  const prompt = (lastUser && lastUser.content) || '';
++  if (!prompt) {
++    return res.status(400).json({ ok: false, error: 'no user message content found' });
++  }
++  try {
++    const answer = await groqChat(SP.career, prompt, maxTokens || 1000);
++    return res.json({ content: [{ type: 'text', text: answer }] });
++  } catch (e) {
++    console.error('CAREER GROQ ERROR:', e.message);
++    return res.status(500).json({ ok: false, error: e.message });
++  }
++});
++
++
+ app.post('/api/approval/query', async (req, res) => {
+   const { requests, kpis, sla_breaches, attention_flags, stage_distribution, context, maxTokens } = req.body || {};
+   if (!Array.isArray(requests)) return res.status(400).json({ ok: false, error: 'requests array required' });
+-- 
+2.43.0
