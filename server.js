@@ -19,6 +19,7 @@ const HTML_ROOT = path.join(__dirname, "html");
 // const { tsmAuthMiddleware } = require('./html/tsm-auth');
 
 app.use(express.json());
+app.use(require('./routes/career-ai'));
 app.use(require('express').urlencoded({ extended: false }));
 // tsmAuthMiddleware(app); // removed — war rooms are in-house
 
