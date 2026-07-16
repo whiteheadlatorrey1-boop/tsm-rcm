@@ -1,7 +1,7 @@
 const rooms = [
 {
 name:"BPO",
-url:"/html/war-rooms/bpo/bpo-war-room.html",
+url:"/html/bpo/bpo-situation-room.html",
 load:"#btnLoadSample",
 analyze:"#btnRunAnalysis",
 relay:"#btnRelay"

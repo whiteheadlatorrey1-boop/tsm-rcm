@@ -94,7 +94,7 @@ const phaseChains = [
   { name: 'MDM', domain: 'mdm', dir: 'mdm' },
   { name: 'Governance', domain: 'governance', dir: 'governance' },
   { name: 'Digital Twin', domain: 'digital-twin', dir: 'digital-twin', warRoomFile: 'digital-twin.html' },
-  { name: 'BPO Services (SAP phase)', domain: 'bpo', dir: 'bpo', warRoomFile: 'bpo-war-room.html' },
+  { name: 'BPO Services (SAP phase)', domain: 'bpo', dir: 'bpo', warRoomFile: 'bpo-situation-room.html' },
   { name: 'NOC', domain: 'noc', dir: 'noc' },
 ].map((p) => ({
   name: p.name,
