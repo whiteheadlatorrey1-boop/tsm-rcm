@@ -1,5 +1,11 @@
 'use strict';
 
+// Was: hardcoded score:86 whenever context.order/invoice/payment/contract
+// was present. Now reads the real, case-linked order store that
+// routes/enterprise-capability-bridge.js writes to (POST /api/o2c/orders),
+// the same store the capability-sweep orchestrator uses.
+
+const { getJSON } = require('./_live');
 
 module.exports = {
 
@@ -10,63 +16,59 @@ module.exports = {
 
     async analyze(context = {}) {
 
+        let orders;
 
-        if (
-            !context.order &&
-            !context.invoice &&
-            !context.payment &&
-            !context.contract
-        ) {
-
-            return {
-                relevant:false
-            };
-
+        try {
+            const path = '/api/o2c/orders' +
+                (context.caseId ? ('?caseId=' + encodeURIComponent(context.caseId)) : '');
+            const data = await getJSON(context.baseUrl, path);
+            orders = data.orders || [];
+        }
+        catch (err) {
+            return { relevant: false, error: err.message };
         }
 
+        if (!orders.length) {
+            return { relevant: false };
+        }
+
+        const frozen = orders.filter(o => o.status === 'FROZEN');
+
+        const totalAtRisk = orders.reduce(
+            (sum, o) => sum + (Number(o.amountAtRisk) || 0),
+            0
+        );
+
+        const score = Math.round((frozen.length / orders.length) * 100);
 
         return {
 
-            relevant:true,
+            relevant: true,
 
-            score:86,
+            score,
 
-            confidence:90,
+            confidence: Math.min(95, 60 + orders.length * 5),
 
+            findings: orders.slice(0, 5).map(
+                o => `${o.orderRef} (${o.customer}): ${o.status}` +
+                    (o.amountAtRisk ? ` — $${o.amountAtRisk} at risk` : '')
+            ),
 
-            findings:[
+            recommendations: frozen.length
+                ? ["Review frozen orders for release conditions", "Validate billing accuracy on at-risk accounts"]
+                : ["Monitor order pipeline for emerging risk"],
 
-                "Order-to-cash transaction detected",
+            evidence: orders.map(o => o.id),
 
-                "Revenue lifecycle analysis available"
-
-            ],
-
-
-            recommendations:[
-
-                "Validate billing accuracy",
-
-                "Review collection lifecycle"
-
-            ],
-
-
-            evidence:[
-
-                context.order?.id ||
-                context.invoice?.id ||
-                context.contract?.id ||
-                "O2C-001"
-
-            ],
-
-
-            explainability:{
+            explainability: {
 
                 reason:
+                    `${frozen.length} of ${orders.length} tracked orders are frozen; ` +
+                    `$${totalAtRisk} total amount at risk.`,
 
-                    "O2C intelligence evaluated transaction lifecycle."
+                orderCount: orders.length,
+                frozenCount: frozen.length,
+                totalAmountAtRisk: totalAtRisk
 
             }
 

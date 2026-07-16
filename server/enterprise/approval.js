@@ -1,5 +1,10 @@
 'use strict';
 
+// Was: hardcoded score:87. Now reads the real, HITL-gated approval store
+// that routes/enterprise-capability-bridge.js writes to
+// (POST /api/approval/requests, approve/reject endpoints).
+
+const { getJSON } = require('./_live');
 
 module.exports = {
 
@@ -10,65 +15,52 @@ module.exports = {
 
     async analyze(context = {}) {
 
+        let requests;
 
-        if (
-            !context.approval &&
-            !context.request &&
-            !context.workflow
-        ) {
-
-            return {
-                relevant:false
-            };
-
+        try {
+            const path = '/api/approval/requests' +
+                (context.caseId ? ('?caseId=' + encodeURIComponent(context.caseId)) : '');
+            const data = await getJSON(context.baseUrl, path);
+            requests = data.requests || [];
+        }
+        catch (err) {
+            return { relevant: false, error: err.message };
         }
 
+        if (!requests.length) {
+            return { relevant: false };
+        }
+
+        const pending = requests.filter(r => r.status === 'PENDING');
+
+        const score = Math.round((pending.length / requests.length) * 100);
 
         return {
 
-            relevant:true,
+            relevant: true,
 
+            score,
 
-            score:87,
+            confidence: Math.min(95, 60 + requests.length * 5),
 
+            findings: requests.slice(0, 5).map(
+                r => `${r.title}: ${r.status}` +
+                    (r.amount ? ` — $${r.amount}` : '')
+            ),
 
-            confidence:91,
+            recommendations: pending.length
+                ? ["Route pending approvals to the correct approver", "Escalate any approval past SLA"]
+                : ["Continue standard approval monitoring"],
 
+            evidence: requests.map(r => r.id),
 
-            findings:[
-
-                "Approval workflow detected",
-
-                "Decision routing analysis available"
-
-            ],
-
-
-            recommendations:[
-
-                "Validate approval authority",
-
-                "Review workflow escalation rules",
-
-                "Confirm policy compliance"
-
-            ],
-
-
-            evidence:[
-
-                context.approval?.id ||
-                context.request?.id ||
-                "APPROVAL-001"
-
-            ],
-
-
-            explainability:{
+            explainability: {
 
                 reason:
+                    `${pending.length} of ${requests.length} tracked approval requests are still PENDING.`,
 
-                    "Approval intelligence evaluated workflow and decision controls."
+                requestCount: requests.length,
+                pendingCount: pending.length
 
             }
 

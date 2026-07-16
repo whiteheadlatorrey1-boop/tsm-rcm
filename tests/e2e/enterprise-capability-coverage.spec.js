@@ -41,6 +41,7 @@ const MATRIX = {
     Legal: ['engagement', 'invoice'],
     Finance: ['revenue cycle'],
     'BPO Services': ['client delivery', 'invoicing'],
+    Mortgage: ['closing', 'funding'],
   },
   CRM: {
     Construction: ['owner', 'gc', 'general contractor', 'sub'],
@@ -50,6 +51,7 @@ const MATRIX = {
     Legal: ['client', 'attorney'],
     Finance: ['customer', 'vendor'],
     'BPO Services': ['client', 'workforce'],
+    Mortgage: ['borrower', 'loan officer'],
   },
   CPQ: {
     Construction: ['estimate', 'bid', 'proposal'],
@@ -59,6 +61,7 @@ const MATRIX = {
     Legal: ['legal service package'],
     Finance: ['financial product'],
     'BPO Services': ['outsourcing proposal'],
+    Mortgage: ['loan program', 'rate lock'],
   },
   'Product Catalog': {
     Construction: ['material', 'equipment', 'labor'],
@@ -68,6 +71,7 @@ const MATRIX = {
     Legal: ['legal service'],
     Finance: ['financial product'],
     'BPO Services': ['service catalog'],
+    Mortgage: ['loan product', 'program'],
   },
   'Approval Center': {
     Construction: ['change order'],
@@ -77,6 +81,7 @@ const MATRIX = {
     Legal: ['legal review'],
     Finance: ['loan approval', 'investment approval'],
     'BPO Services': ['qa approval'],
+    Mortgage: ['condition', 'underwriting approval'],
   },
   'Master Data Management': {
     Construction: ['project', 'vendor'],
@@ -86,6 +91,7 @@ const MATRIX = {
     Legal: ['matter', 'client'],
     Finance: ['account', 'entit'],
     'BPO Services': ['client', 'employee'],
+    Mortgage: ['borrower', 'loan file'],
   },
   'Integration Hub': {
     Construction: ['procore', 'erp', 'accounting'],
@@ -95,6 +101,7 @@ const MATRIX = {
     Legal: ['case system'],
     Finance: ['banking system'],
     'BPO Services': ['ocr', 'rpa', 'erp'],
+    Mortgage: ['aus', 'credit report', 'flood cert'],
   },
   Governance: {
     Construction: ['osha', 'contract'],
@@ -104,6 +111,7 @@ const MATRIX = {
     Legal: ['legal standard'],
     Finance: ['financial control'],
     'BPO Services': ['iso', 'soc2', 'sla'],
+    Mortgage: ['compliance', 'exception'],
   },
   'WIP Command Center': {
     Construction: ['project status'],
@@ -113,6 +121,7 @@ const MATRIX = {
     Legal: ['case workload', 'workload'],
     Finance: ['portfolio monitoring'],
     'BPO Services': ['work queue', 'queue'],
+    Mortgage: ['pipeline', 'stage'],
   },
   'Digital Twin': {
     Construction: ['portfolio simulation', 'simulation'],
@@ -122,6 +131,7 @@ const MATRIX = {
     Legal: ['case forecast'],
     Finance: ['financial model'],
     'BPO Services': ['workforce planning'],
+    Mortgage: ['portfolio forecast', 'servicing forecast'],
   },
 };
 
@@ -162,6 +172,11 @@ const VERTICALS = [
     '/html/bpo/bpo-situation-room.html',
     '/html/bpo/bpo-strategist-v2.html',
     '/html/bpo/bpo-executive-portal.html',
+  ]},
+  { column: 'Mortgage', key: 'Mortgage', pages: [
+    '/html/war-rooms/mortgage/mortgage-war-room.html',
+    '/html/war-rooms/mortgage/mortgage-strategist.html',
+    '/html/war-rooms/mortgage/mortgage-executive-portal.html',
   ]},
 ];
 
