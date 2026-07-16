@@ -555,24 +555,24 @@ body::before{content:'';position:fixed;top:0;right:0;width:600px;height:600px;ba
 
     <div class="sec-hdr">
       <div class="sec-dot"></div>
-      <div class="sec-title">ENGINE OUTPUTS · INSURANCE ANALYSIS PIPELINE</div>
+      <div class="sec-title">ENGINE OUTPUTS · INSURANCE ANALYSIS PIPELINE · RISK MODEL · COVERAGE PACKAGE</div>
     </div>
 
     <div class="engine-grid" id="engineGrid">
       <div class="eng-card" id="card-e1">
-        <div class="ec-hdr"><div><span class="ec-num">01</span><span class="ec-title">CLAIM INTELLIGENCE</span></div><span class="ec-tag" id="tag-e1">IDLE</span></div>
+        <div class="ec-hdr"><div><span class="ec-num">01</span><span class="ec-title">CLAIM INTELLIGENCE · POLICY SYSTEM</span></div><span class="ec-tag" id="tag-e1">IDLE</span></div>
         <div class="ec-body" id="body-e1">// Waiting for insurance document...
 // Extracts: claim type, parties, amounts, denial codes, policy details</div>
         <div class="ec-foot"><span class="ec-chars" id="chars-e1">0 chars</span><button class="copy-btn" onclick="copyField('body-e1')">COPY</button></div>
       </div>
       <div class="eng-card" id="card-e2">
-        <div class="ec-hdr"><div><span class="ec-num">02</span><span class="ec-title">RISK & DENIAL ANALYSIS</span></div><span class="ec-tag" id="tag-e2">IDLE</span></div>
+        <div class="ec-hdr"><div><span class="ec-num">02</span><span class="ec-title">RISK & DENIAL ANALYSIS · POLICYHOLDER BROKER</span></div><span class="ec-tag" id="tag-e2">IDLE</span></div>
         <div class="ec-body" id="body-e2">// Waiting for Engine 01...
 // Flags: denial codes, appeal windows, coverage gaps, fraud indicators</div>
         <div class="ec-foot"><span class="ec-chars" id="chars-e2">0 chars</span><button class="copy-btn" onclick="copyField('body-e2')">COPY</button></div>
       </div>
       <div class="eng-card" id="card-e3">
-        <div class="ec-hdr"><div><span class="ec-num">03</span><span class="ec-title">FINANCIAL EXPOSURE</span></div><span class="ec-tag" id="tag-e3">IDLE</span></div>
+        <div class="ec-hdr"><div><span class="ec-num">03</span><span class="ec-title">FINANCIAL EXPOSURE · POLICY BILLING</span></div><span class="ec-tag" id="tag-e3">IDLE</span></div>
         <div class="ec-body" id="body-e3">// Waiting for Engine 01 + 02...
 // Models: exposure range, recoverable revenue, appeal ROI</div>
         <div class="ec-foot"><span class="ec-chars" id="chars-e3">0 chars</span><button class="copy-btn" onclick="copyField('body-e3')">COPY</button></div>
@@ -584,7 +584,7 @@ body::before{content:'';position:fixed;top:0;right:0;width:600px;height:600px;ba
         <div class="ec-foot"><span class="ec-chars" id="chars-e4">0 chars</span><button class="copy-btn" onclick="copyField('body-e4')">COPY</button></div>
       </div>
       <div class="eng-card" id="card-e5">
-        <div class="ec-hdr"><div><span class="ec-num">05</span><span class="ec-title">RECOVERY & APPEAL PLAN</span></div><span class="ec-tag" id="tag-e5">IDLE</span></div>
+        <div class="ec-hdr"><div><span class="ec-num">05</span><span class="ec-title">RECOVERY & APPEAL PLAN · CLAIMS APPROVAL</span></div><span class="ec-tag" id="tag-e5">IDLE</span></div>
         <div class="ec-body" id="body-e5">// Waiting for Engine 03 + 04...
 // Generates: appeal strategy, action steps, deadlines, owner assignments</div>
         <div class="ec-foot"><span class="ec-chars" id="chars-e5">0 chars</span><button class="copy-btn" onclick="copyField('body-e5')">COPY</button></div>
@@ -599,7 +599,7 @@ body::before{content:'';position:fixed;top:0;right:0;width:600px;height:600px;ba
 
     <div class="sec-hdr" id="dispatchHdr" style="display:none">
       <div class="sec-dot" style="background:var(--pink)"></div>
-      <div class="sec-title" style="color:var(--pink)">APP ROUTING · REMEDIATION GUIDANCE</div>
+      <div class="sec-title" style="color:var(--pink)">APP ROUTING · REMEDIATION GUIDANCE · COVERAGE PACKAGE</div>
     </div>
     <div class="app-dispatch" id="appDispatch"></div>
 
@@ -876,6 +876,7 @@ async function fireEngines(){
   addLog('Anomaly Advisor','Auto-analysis available — click ANOMALY ADVISOR or open node','p');
 
   storeRelay(e);
+  fireCapabilitySweep_INS(e);
 
   // ── TSM Mission Guide trigger ──────────────────────────────────────────
   if (window.TSMMissionGuide) {
@@ -1038,6 +1039,35 @@ function clearAll(){
   }
   sessionStorage.removeItem('TSM_INS_WAR_STATE');
   addLog('War Room cleared','Ready for new document','f');
+}
+
+function fireCapabilitySweep_INS(e) {
+  try {
+    const e1 = e?.[1] || '';
+    const e3 = e?.[3] || '';
+    const claimM = e1.match(/CLAIM\/POLICY ID:[\s]*([^\n]+)/i);
+    const partiesM = e1.match(/KEY PARTIES:[\s]*([^\n]+)/i);
+    const amountM = e1.match(/TOTAL AMOUNT:[\s]*([^\n]+)/i);
+    const expM = e3.match(/TOTAL EXPOSURE:[\s]*([^\n]+)/i);
+    const parties = partiesM ? partiesM[1].trim() : '';
+    fetch('/api/enterprise/capability-sweep', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        vertical: 'insurance',
+        title: (selectedDocType || 'Insurance Claim') + (claimM ? ' — ' + claimM[1].trim().slice(0, 60) : ''),
+        summary: docText.slice(0, 1500),
+        exposure: expM ? expM[1].trim().slice(0, 30) : (amountM ? amountM[1].trim().slice(0, 30) : null),
+        entities: {
+          customer: parties.split(/[,;]/)[0]?.trim() || claimM?.[1]?.trim() || 'Insurance Claim',
+          relationshipType: 'Claimant',
+          contingency: 'Appeal / claim resolution reserve',
+          sku: claimM ? 'CLAIM-' + claimM[1].trim().slice(0, 20) : (selectedDocType || 'INS-CLAIM'),
+          productName: selectedDocType
+        }
+      })
+    }).catch(err => console.warn('[Capability Sweep Insurance]', err.message));
+  } catch (err) { console.warn('[Capability Sweep Insurance]', err.message); }
 }
 
 function pushCollectiveSignal_INS() {

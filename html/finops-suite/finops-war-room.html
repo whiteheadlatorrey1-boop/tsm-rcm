@@ -413,18 +413,18 @@ body::before{content:'';position:fixed;top:0;right:0;width:500px;height:500px;ba
 
     <div class="sec-hdr">
       <div class="sec-dot"></div>
-      <div class="sec-title">ENGINE OUTPUTS · FINANCIAL ANALYSIS PIPELINE</div>
+      <div class="sec-title">ENGINE OUTPUTS · FINANCIAL ANALYSIS PIPELINE · FINANCIAL PRODUCT</div>
     </div>
 
     <div class="engine-grid">
       <div class="eng-card">
-        <div class="ec-hdr"><div><span class="ec-num">01</span><span class="ec-title">DOCUMENT INTELLIGENCE</span></div><span class="ec-tag" id="tag-e1">IDLE</span></div>
+        <div class="ec-hdr"><div><span class="ec-num">01</span><span class="ec-title">DOCUMENT INTELLIGENCE · REVENUE CYCLE</span></div><span class="ec-tag" id="tag-e1">IDLE</span></div>
         <div class="ec-body" id="body-e1">// Waiting for financial document...
 // Extracts: doc type, parties, amounts, periods, key line items</div>
         <div class="ec-foot"><span class="ec-chars" id="chars-e1">0 chars</span><button class="copy-btn" onclick="copyField('body-e1')">COPY</button></div>
       </div>
       <div class="eng-card">
-        <div class="ec-hdr"><div><span class="ec-num">02</span><span class="ec-title">RISK & ANOMALY DETECTION</span></div><span class="ec-tag" id="tag-e2">IDLE</span></div>
+        <div class="ec-hdr"><div><span class="ec-num">02</span><span class="ec-title">RISK & ANOMALY DETECTION · PORTFOLIO MONITORING</span></div><span class="ec-tag" id="tag-e2">IDLE</span></div>
         <div class="ec-body" id="body-e2">// Waiting for Engine 01...
 // Flags: duplicates, missing POs, aging buckets, variance outliers</div>
         <div class="ec-foot"><span class="ec-chars" id="chars-e2">0 chars</span><button class="copy-btn" onclick="copyField('body-e2')">COPY</button></div>
@@ -436,19 +436,19 @@ body::before{content:'';position:fixed;top:0;right:0;width:500px;height:500px;ba
         <div class="ec-foot"><span class="ec-chars" id="chars-e3">0 chars</span><button class="copy-btn" onclick="copyField('body-e3')">COPY</button></div>
       </div>
       <div class="eng-card">
-        <div class="ec-hdr"><div><span class="ec-num">04</span><span class="ec-title">COMPLIANCE & REGULATORY</span></div><span class="ec-tag" id="tag-e4">IDLE</span></div>
+        <div class="ec-hdr"><div><span class="ec-num">04</span><span class="ec-title">COMPLIANCE & REGULATORY · FINANCIAL CONTROL</span></div><span class="ec-tag" id="tag-e4">IDLE</span></div>
         <div class="ec-body" id="body-e4">// Waiting for Engine 01 + 02...
 // Checks: OIG risk, 1099 flags, audit trail gaps, control failures</div>
         <div class="ec-foot"><span class="ec-chars" id="chars-e4">0 chars</span><button class="copy-btn" onclick="copyField('body-e4')">COPY</button></div>
       </div>
       <div class="eng-card">
-        <div class="ec-hdr"><div><span class="ec-num">05</span><span class="ec-title">RECOVERY PLAN</span></div><span class="ec-tag" id="tag-e5">IDLE</span></div>
+        <div class="ec-hdr"><div><span class="ec-num">05</span><span class="ec-title">RECOVERY PLAN · LOAN APPROVAL</span></div><span class="ec-tag" id="tag-e5">IDLE</span></div>
         <div class="ec-body" id="body-e5">// Waiting for Engine 03 + 04...
 // Generates: prioritized action steps, owner assignments, deadlines</div>
         <div class="ec-foot"><span class="ec-chars" id="chars-e5">0 chars</span><button class="copy-btn" onclick="copyField('body-e5')">COPY</button></div>
       </div>
       <div class="eng-card">
-        <div class="ec-hdr"><div><span class="ec-num">06</span><span class="ec-title">APP DISPATCH</span></div><span class="ec-tag" id="tag-e6">IDLE</span></div>
+        <div class="ec-hdr"><div><span class="ec-num">06</span><span class="ec-title">APP DISPATCH · BANKING SYSTEM</span></div><span class="ec-tag" id="tag-e6">IDLE</span></div>
         <div class="ec-body" id="body-e6">// Waiting for all 5 engines...
 // Routes to: AP/AR, GL, Compliance, Accounting, Operations nodes</div>
         <div class="ec-foot"><span class="ec-chars" id="chars-e6">0 chars</span><button class="copy-btn" onclick="copyField('body-e6')">COPY</button></div>
@@ -980,6 +980,7 @@ async function fireEngines() {
   addLog('All 6 Engines Complete', 'Ready to escalate to FinOps Strategist', 'p');
 
   storeRelay(e);
+  fireCapabilitySweep_FINOPS(e);
 
   setTimeout(() => {
     try {
@@ -1094,6 +1095,35 @@ function launchApp(href, appMeta){
     window.open('/html/finops-suite/' + href, '_blank');
   }
 }
+function fireCapabilitySweep_FINOPS(e) {
+  try {
+    const e1 = e?.[1] || '';
+    const e3 = e?.[3] || '';
+    const partiesM = e1.match(/KEY PARTIES:[\s]*([^\n]+)/i);
+    const amountM = e1.match(/TOTAL AMOUNT:[\s]*([^\n]+)/i);
+    const expM = e3.match(/TOTAL EXPOSURE:[\s]*([^\n]+)/i);
+    const periodM = e1.match(/PERIOD:[\s]*([^\n]+)/i);
+    const parties = partiesM ? partiesM[1].trim() : '';
+    fetch('/api/enterprise/capability-sweep', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        vertical: 'finops',
+        title: (selectedDocType || 'FinOps Document') + (periodM ? ' — ' + periodM[1].trim().slice(0, 40) : ''),
+        summary: docText.slice(0, 1500),
+        exposure: expM ? expM[1].trim().slice(0, 30) : (amountM ? amountM[1].trim().slice(0, 30) : null),
+        entities: {
+          customer: parties.split(/[,;]/)[0]?.trim() || selectedDocType || 'FinOps Document',
+          relationshipType: 'Vendor',
+          contingency: 'Reserve allocation / collections resolution',
+          sku: selectedDocType || 'FINOPS-DOC',
+          productName: parties || selectedDocType
+        }
+      })
+    }).catch(err => console.warn('[Capability Sweep FinOps]', err.message));
+  } catch (err) { console.warn('[Capability Sweep FinOps]', err.message); }
+}
+
 function pushCollectiveSignal_FINOPS() {
   try {
     const e = engOut;

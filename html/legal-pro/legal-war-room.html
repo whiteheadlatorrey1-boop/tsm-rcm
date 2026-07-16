@@ -503,7 +503,7 @@ main{padding:18px;display:flex;flex-direction:column;gap:14px}
   <div class="engine-grid">
     <div class="engine-card" id="ec1">
       <div class="ec-header">
-        <div><div class="ec-num">01</div><div class="ec-title">DOCUMENT INTELLIGENCE</div><div class="ec-sub">Extract · Parse · Classify</div></div>
+        <div><div class="ec-num">01</div><div class="ec-title">DOCUMENT INTELLIGENCE · CLIENT RECORDS</div><div class="ec-sub">Extract · Parse · Classify · Legal Standard</div></div>
         <div class="ec-status idle" id="es1">IDLE</div>
       </div>
       <div class="ec-body"><div class="ec-out" id="eo1"><span style="color:var(--m)">// Waiting for matter document...
@@ -516,7 +516,7 @@ main{padding:18px;display:flex;flex-direction:column;gap:14px}
     </div>
     <div class="engine-card" id="ec2">
       <div class="ec-header">
-        <div><div class="ec-num">02</div><div class="ec-title">KEY LEGAL ISSUES</div><div class="ec-sub">Claims · Defenses · Complexity</div></div>
+        <div><div class="ec-num">02</div><div class="ec-title">KEY LEGAL ISSUES · CASE SYSTEM</div><div class="ec-sub">Claims · Defenses · Complexity · Legal Review</div></div>
         <div class="ec-status idle" id="es2">IDLE</div>
       </div>
       <div class="ec-body"><div class="ec-out" id="eo2"><span style="color:var(--m)">// Waiting for Engine 01 output...
@@ -529,7 +529,7 @@ main{padding:18px;display:flex;flex-direction:column;gap:14px}
     </div>
     <div class="engine-card" id="ec3">
       <div class="ec-header">
-        <div><div class="ec-num">03</div><div class="ec-title">FINANCIAL IMPACT</div><div class="ec-sub">Revenue · Liability · Deadlines</div></div>
+        <div><div class="ec-num">03</div><div class="ec-title">FINANCIAL IMPACT</div><div class="ec-sub">Revenue · Liability · Deadlines · Legal Service Package</div></div>
         <div class="ec-status idle" id="es3">IDLE</div>
       </div>
       <div class="ec-body"><div class="ec-out" id="eo3"><span style="color:var(--m)">// Waiting for Engine 02 output...
@@ -542,7 +542,7 @@ main{padding:18px;display:flex;flex-direction:column;gap:14px}
     </div>
     <div class="engine-card" id="ec4">
       <div class="ec-header">
-        <div><div class="ec-num">04</div><div class="ec-title">RECOVERY PLAN &amp; APPEAL</div><div class="ec-sub">Strategy · Documents · Roadmap</div></div>
+        <div><div class="ec-num">04</div><div class="ec-title">RECOVERY PLAN &amp; APPEAL</div><div class="ec-sub">Strategy · Documents · Roadmap · Case Forecast</div></div>
         <div class="ec-status idle" id="es4">IDLE</div>
       </div>
       <div class="ec-body"><div class="ec-out" id="eo4"><span style="color:var(--m)">// Waiting for Engine 03 output...
@@ -1237,6 +1237,35 @@ function launchApp(href, appMeta) {
 // ═══════════════════════════════════════════════════
 // ESCALATION
 // ═══════════════════════════════════════════════════
+function fireCapabilitySweep_LEGAL(e) {
+  try {
+    const e1 = e?.[1] || '';
+    const e3 = e?.[3] || '';
+    const combined = e1 + e3;
+    const partiesM = e1.match(/PARTIES:[\s]*([^\n]+)/i);
+    const caseTypeM = e1.match(/CASE TYPE:[\s]*([^\n]+)/i);
+    const expM = combined.match(/DAMAGES EXPOSURE[:\s]+([^\n]+)/i) || combined.match(/KEY AMOUNTS[:\s]+([^\n]+)/i);
+    const parties = partiesM ? partiesM[1].trim() : '';
+    fetch('/api/enterprise/capability-sweep', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        vertical: 'legal',
+        title: (selectedDocType || 'Legal Matter') + (caseTypeM ? ' — ' + caseTypeM[1].trim().slice(0, 60) : ''),
+        summary: docText.slice(0, 1500),
+        exposure: expM ? expM[1].trim().slice(0, 30) : null,
+        entities: {
+          customer: parties.split(/\s+v\.?\s+|,|;/)[0]?.trim() || caseTypeM?.[1]?.trim() || 'Legal Matter',
+          relationshipType: 'Opposing Party',
+          contingency: 'Settlement authority / litigation reserve',
+          sku: selectedDocType || 'LEGAL-MATTER',
+          productName: caseTypeM ? caseTypeM[1].trim().slice(0, 60) : selectedDocType
+        }
+      })
+    }).catch(err => console.warn('[Capability Sweep Legal]', err.message));
+  } catch (err) { console.warn('[Capability Sweep Legal]', err.message); }
+}
+
 function storeSession() {
   try {
     const _legalRelay = JSON.stringify({
@@ -1444,6 +1473,7 @@ for (let i = 1; i <= 6; i++) {
   document.getElementById('fireBtn').disabled = false;
   addTL('All 6 Engines Complete — App Dispatch Ready', 'Select app or escalate to Chief Strategist', 'p');
   storeSession();
+  fireCapabilitySweep_LEGAL(e);
 setTimeout(() => {
   try {
     const docEl = document.getElementById('docText') || document.getElementById('doc-text') || document.querySelector('textarea');
