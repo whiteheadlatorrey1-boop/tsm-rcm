@@ -46,6 +46,8 @@
   --dtwin:    #e879f9;  /* Digital Twin – fuchsia */
   --bpoops:   #2dd4bf;  /* BPO Ops – teal */
   --hw:   #ff6b4a;  /* Honeywell Industrial – ember */
+  --log:  #5eead4;  /* Logistics – teal */
+  --vnd:  #f87171;  /* Supplier/Vendor Management – red */
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -362,6 +364,10 @@ body::before {
 .vtab[data-v="integration-hub"] .vtab-dot { background: var(--inthub); }
 .vtab[data-v="digital-twin"]    .vtab-dot { background: var(--dtwin); }
 .vtab[data-v="bpo-ops"]  .vtab-dot { background: var(--bpoops); }
+.vtab.active[data-v="logistics"] { background: rgba(94,234,212,0.08); color: var(--log); border-bottom: 2px solid var(--log); }
+.vtab[data-v="logistics"] .vtab-dot { background: var(--log); }
+.vtab.active[data-v="vendor"] { background: rgba(248,113,113,0.08); color: var(--vnd); border-bottom: 2px solid var(--vnd); }
+.vtab[data-v="vendor"] .vtab-dot { background: var(--vnd); }
 .vtab[data-v="hw"]  .vtab-dot { background: var(--hw); }
 
 /* ─── NODE QUICK LINKS ───────────────────────────── */
@@ -1060,6 +1066,8 @@ if (window.pdfjsLib) {
     <button class="vtab"        data-v="digital-twin" onclick="switchVertical('digital-twin')"><span class="vtab-dot"></span>Digital Twin</button>
     <button class="vtab"        data-v="bpo-ops" onclick="switchVertical('bpo-ops')"><span class="vtab-dot"></span>BPO Ops</button>
     <button class="vtab"        data-v="hw" onclick="switchVertical('hw')"><span class="vtab-dot"></span>Honeywell Industrial</button>
+    <button class="vtab"        data-v="logistics" onclick="switchVertical('logistics')"><span class="vtab-dot"></span>Logistics</button>
+    <button class="vtab"        data-v="vendor" onclick="switchVertical('vendor')"><span class="vtab-dot"></span>Supplier/Vendor</button>
 
   </div>
 
@@ -1230,6 +1238,38 @@ const VERTICALS = {
       { fileName:"BNCA_SLA_Acme_June.report",        documentType:"ESCALATION",      vendor:"Acme Corp",        invoiceNo:"SLA-06-24",   exclusionCode:"SLA-BRK", amount:0,      sourceNode:"bpo-cmd",  routing:["bpo-cmd","strategist","bnca-engine"],     timestamp:Date.now()-6*3600000, _ext:{client:"Acme Corp",      ref:"ESC-SLA"} },
       { fileName:"SOP_Document_CallHandling_v3.record",documentType:"POLICY",        vendor:"Internal",         invoiceNo:"SOP-CH-003",  exclusionCode:"",        amount:0,      sourceNode:"bpo-sops", routing:["bpo-sops","strategist"],                  timestamp:Date.now()-1*86400000,_ext:{client:"Internal",      ref:"SOP-003"} },
     { fileName:"SOP_Document_CallHandling_v3.record",documentType:"POLICY",        vendor:"Internal",         invoiceNo:"SOP-CH-003",  exclusionCode:"",        amount:0,      sourceNode:"bpo-sops", routing:["bpo-sops","strategist"],                  timestamp:Date.now()-1*86400000,_ext:{client:"Internal",      ref:"SOP-003"} },
+    ]
+  },
+  logistics: {
+    label: "Logistics",
+    color: "#5eead4",
+    cls:   "logistics",
+    storageKey: "tsm_doc_index_logistics",
+    searchPlaceholder: "Search by carrier, lane, shipment, PO...",
+    nodes: {
+      // Situation Room only — Strategist and Executive Portal stages are
+      // not built yet for this vertical. Not routing bnca-engine anywhere
+      // until that page exists (see bpo's own bnca-engine TODO above for
+      // the same honesty pattern).
+      "logistics-war-room": { label:"Logistics War Room", route:"/html/logistics/logistics-situation-room.html" },
+      "strategist":         { label:"Strategist",         route:null },
+    },
+    seed: [
+      { fileName:"Carrier_Exception_CHI-DAL.record", documentType:"DOCUMENT REPORT", vendor:"Meridian Freight Lines", invoiceNo:"CEX-CHI-DAL", exclusionCode:"CARR-EXC", amount:310000, sourceNode:"logistics-war-room", routing:["logistics-war-room","strategist"], timestamp:Date.now()-2*3600000, _ext:{client:"Meridian Freight Lines", ref:"CEX-001"} },
+    ]
+  },
+  vendor: {
+    label: "Supplier/Vendor Management",
+    color: "#f87171",
+    cls:   "vendor",
+    storageKey: "tsm_doc_index_vendor",
+    searchPlaceholder: "Search by supplier, PO, quality hold, contract...",
+    nodes: {
+      "vendor-war-room": { label:"Supplier/Vendor War Room", route:"/html/supplier-vendor/supplier-vendor-situation-room.html" },
+      "strategist":      { label:"Strategist",               route:null },
+    },
+    seed: [
+      { fileName:"Vendor_Risk_Alert_Ashgrove.record", documentType:"DOCUMENT REPORT", vendor:"Ashgrove Components", invoiceNo:"VRA-ASH-01", exclusionCode:"QUAL-HOLD", amount:145000, sourceNode:"vendor-war-room", routing:["vendor-war-room","strategist"], timestamp:Date.now()-3*3600000, _ext:{client:"Ashgrove Components", ref:"VRA-001"} },
     ]
   },
   re: {
@@ -2252,6 +2292,8 @@ const WAR_ROOM_ROUTES = {
   'bpoops-war-room': { label:'BPO Ops War Room',    url:'/html/bpo/bpo-war-room.html',              relay:'tsm_bpoops_docsearch_relay', autoKey:'TSM_BPOOPS_WAR_RELAY' },
   'bpo-ops':      { label:'BPO Ops War Room',       url:'/html/bpo/bpo-war-room.html',              relay:'tsm_bpoops_docsearch_relay', autoKey:'TSM_BPOOPS_WAR_RELAY' },
   're-war-room':  { label:'Real Estate War Room',   url:'/html/reo-pro/re-war-room.html',                     relay:'tsm_re_docsearch_relay',     autoKey:'TSM_RE_WAR_RELAY' },
+  'logistics-war-room': { label:'Logistics War Room',        url:'/html/logistics/logistics-situation-room.html',        relay:'tsm_logistics_docsearch_relay', autoKey:'TSM_LOGISTICS_WAR_RELAY' },
+  'vendor-war-room':    { label:'Supplier/Vendor War Room',  url:'/html/supplier-vendor/supplier-vendor-situation-room.html', relay:'tsm_vendor_docsearch_relay', autoKey:'TSM_VENDOR_WAR_RELAY' },
   'mortgage-war-room': { label:'Mortgage Command',  url:'/html/reo-pro/mortgage/index.html',                  relay:'tsm_mortgage_docsearch_relay',autoKey:'TSM_MORTGAGE_WAR_RELAY' },
   'leg-war-room': { label:'Legal War Room',         url:'/html/legal-pro/legal-war-room.html',                relay:'tsm_leg_docsearch_relay',    autoKey:'TSM_LEG_WAR_RELAY' },
   'hc-war-room':  { label:'HC Denial War Room',     url:'/html/healthcare/hc-denial-war-room.html',           relay:'tsm_hc_docsearch_relay',     autoKey:'TSM_HC_WAR_RELAY' },
