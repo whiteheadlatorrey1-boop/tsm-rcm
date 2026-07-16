@@ -2111,7 +2111,9 @@ function renderCard(doc, query) {
         <span class="doc-filename" title="${doc.fileName}">${hl(doc.fileName, query)}</span>
       </div>
       <div class="doc-card-actions">
-      ${openNodeRoute === '__HC_NODE__' ? `<button class="btn-open-node" onclick="openHcNodeWithDoc('${doc.id}')">↗ Open HC Node</button>` : openNodeRoute ? `<a class="btn-open-node" href="${openNodeRoute}" target="_blank">↗ Open Node</a>` : ""}
+      ${openNodeRoute === '__HC_NODE__' ? `<button class="btn-open-node" onclick="openHcNodeWithDoc('${doc.id}')">↗ Open HC Node</button>`
+        : GEN_PLAYBOOK_VERTICALS.has(currentVertical) ? `<button class="btn-open-node" onclick="openGenNodeWithDoc('${doc.id}','${currentVertical}')">↗ Open Node</button>`
+        : openNodeRoute ? `<a class="btn-open-node" href="${openNodeRoute}" target="_blank">↗ Open Node</a>` : ""}
       <button class="btn-view" onclick="viewDocument('${doc.id}')">👁 View</button>
       <button class="btn-warroom" onclick="openWarRoomPicker('${doc.id}')">⚡ Send to War Room</button>
       <button class="btn-remove" onclick="removeDoc('${doc.id}')">✕ Remove</button>
@@ -3386,6 +3388,176 @@ async function openHcNodeWithDoc(docId) {
   else window.open(targetUrl, '_blank'); // popup was blocked outright — last-ditch attempt
 }
 window.openHcNodeWithDoc = openHcNodeWithDoc;
+
+// ── GENERIC NODE ROUTING (FO/INS/CON/RE/LEG/BPO) ────────────────────────────
+// Same generative-playbook pattern as openHcNodeWithDoc above, generalized
+// for the other 6 verticals. Two things differ from the HC version:
+//   1. Node resolution: HC has ~16 named specialist nodes and a code/type
+//      lookup table to pick among them. These verticals only have 3 real
+//      nodes each ({v}-war-room, strategist, bnca-engine), so resolution
+//      just needs to land on whichever of those the doc actually belongs to.
+//   2. Navigation target: HC hardcodes /html/healthcare/hc-{nodeId}/. These
+//      verticals' nodes already carry their real route in VERTICALS[v].nodes,
+//      so we read that directly instead of constructing a path.
+// checkStatus derivation is intentionally identical to openHcNodeWithDoc's --
+// the code prefixes (CO-/PA-/OA-/PR-/LIEN/AKS) are shared conventions across
+// verticals in this codebase (see seed data), not HC-specific.
+const GEN_PLAYBOOK_VERTICALS = new Set(['fo', 'ins', 'con', 're', 'leg', 'bpo']);
+
+function deriveCheckStatus(excCode, docType, defects) {
+  return excCode.startsWith('PA-') || docType.includes('PRIOR AUTH') ? 'AUTH_BLOCK'
+    : excCode.startsWith('CO-') || docType.includes('DENIAL') || docType.includes('CLAIM APPEAL') ? 'DENIAL_RISK'
+    : excCode.startsWith('OA-') || excCode.startsWith('PR-') ? 'PAYMENT_BLOCK'
+    : docType.includes('AUDIT') || docType.includes('POLICY') ? 'COMPLIANCE_BLOCK'
+    : docType.includes('FILING') || docType.includes('CONTRACT') ? 'LEGAL_HOLD'
+    : defects.length ? 'DOCUMENTATION_BLOCK' : 'ACTIVE';
+}
+
+function resolveGenNodeId(vertical, doc, nodes) {
+  if (doc.sourceNode && nodes[doc.sourceNode]) return doc.sourceNode;
+  if (Array.isArray(doc.routing)) {
+    for (let i = doc.routing.length - 1; i >= 0; i--) {
+      if (nodes[doc.routing[i]]) return doc.routing[i];
+    }
+  }
+  return Object.keys(nodes).find(k => k.endsWith('-war-room')) || Object.keys(nodes)[0];
+}
+
+async function openGenNodeWithDoc(docId, vertical) {
+  const def = VERTICALS[vertical];
+  if (!def) { console.warn('TSM: unknown vertical for generic node routing:', vertical); return; }
+
+  let doc = null;
+  for (const c of getClientRegistry()) {
+    const list = loadIndexForClient(vertical, c.id);
+    doc = list.find(d => d.id === docId);
+    if (doc) break;
+  }
+  if (!doc) doc = (typeof DEMO_DOCS !== 'undefined' ? DEMO_DOCS : []).find(d => d.id === docId);
+  if (!doc) { console.warn('TSM: doc not found', docId); return; }
+
+  const excCode = (doc.exclusionCode || '').toUpperCase();
+  const docType = (doc.documentType || '').toUpperCase();
+  const amount  = Number(doc.amount) || 0;
+  const defects = (doc._ext && doc._ext.defectFlags) || [];
+  const nodes   = def.nodes || {};
+
+  const cs     = deriveCheckStatus(excCode, docType, defects);
+  const nodeId = resolveGenNodeId(vertical, doc, nodes);
+
+  // Pre-open synchronously, same reasoning as the HC version -- keeps the
+  // popup tied to the click so browsers don't block it once we go async.
+  const popup = window.open('about:blank', '_blank');
+
+  const FALLBACK_STEP_SETS = {
+    DENIAL_RISK:   ['Pull the source record and identify the exact rejection/denial code',
+                    'Verify terms and documentation alignment',
+                    'Confirm dispute/appeal window — deadline critical',
+                    'Draft resolution with supporting documentation',
+                    'Submit and log tracking reference'],
+    AUTH_BLOCK:    ['Verify current approval status',
+                    'Contact approver — escalate if wait > 2 business days',
+                    'Do NOT proceed until approval is confirmed and on file',
+                    'Document approval reference before proceeding',
+                    'Set 48-hr follow-up until resolved'],
+    PAYMENT_BLOCK: ['Pull remittance/invoice detail and compare to contracted terms',
+                    'Flag variances >5% as discrepancies — initiate review',
+                    'Check for holds — contact relevant party if active',
+                    'Post clean items; quarantine disputed amounts',
+                    'Escalate unresolved failures within 24 hours'],
+    COMPLIANCE_BLOCK:['Halt processing until all compliance flags are cleared',
+                    'Obtain updated authorization/sign-off if expired',
+                    'Verify standing for all parties involved',
+                    'Complete documentation checklist before release',
+                    'File compliance resolution memo and update tracker'],
+    LEGAL_HOLD:    ['Escalate to legal counsel immediately',
+                    'Document chain of custody for all related files',
+                    'Suspend related payments pending legal clearance',
+                    'Prepare defense memo if requested',
+                    'Set 48-hr check-in cadence with legal team'],
+    DOCUMENTATION_BLOCK:['Identify defects: '+(defects.join(', ')||'see findings'),
+                    'Send query — 24-hour response expectation',
+                    'Block release for undocumented items',
+                    'Route corrected records for validation',
+                    'Re-submit to queue only after defects resolved'],
+  };
+
+  const fallbackSteps = FALLBACK_STEP_SETS[cs] || ['Review document for anomalies','Escalate to node specialist','Document findings','Follow up within 48 hours'];
+  const fallbackNarr = {
+    DENIAL_RISK:   `Denial/rejection detected on ${doc.invoiceNo||'—'} from ${doc.vendor||'vendor'}${amount?` ($${amount.toLocaleString()} exposure)`:''}. Code: ${excCode||doc.documentType}. Immediate review required.`,
+    AUTH_BLOCK:    `Authorization issue on ${doc.invoiceNo||'—'}${amount?` ($${amount.toLocaleString()})`:''}. Work must NOT proceed — risk is high without resolved approval.`,
+    PAYMENT_BLOCK: `Payment anomaly on ${doc.invoiceNo||'—'} from ${doc.vendor||'vendor'}${amount?` ($${amount.toLocaleString()})`:''}. Requires manual reconciliation before posting.`,
+    COMPLIANCE_BLOCK:`Compliance flag on ${doc.fileName||doc.invoiceNo||'—'}. Documentation gaps or authorization issues must be resolved before proceeding.`,
+    LEGAL_HOLD:    `Legal anomaly on ${doc.invoiceNo||'—'}. Code ${excCode} requires legal review before any further action.`,
+    DOCUMENTATION_BLOCK:`Documentation defects in ${doc.fileName||doc.invoiceNo||'—'}: ${defects.join(', ')||'see findings'}. Records must be corrected before release.`,
+    ACTIVE:        `Anomaly detected on ${doc.fileName||doc.invoiceNo||'—'} from Document Search${amount?` ($${amount.toLocaleString()})`:''}. Review and resolve before proceeding.`,
+  }[cs] || 'Anomaly detected — review required.';
+
+  let narr = fallbackNarr, steps = fallbackSteps, risk = amount>50000?82:amount>10000?68:55;
+  try {
+    const ctrl = new AbortController();
+    const timeout = setTimeout(() => ctrl.abort(), 12000);
+    const res = await fetch('/api/doc-router/playbook', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: ctrl.signal,
+      body: JSON.stringify({
+        vertical, checkStatus: cs, documentType: doc.documentType||'', exclusionCode: excCode,
+        vendor: doc.vendor||'', invoiceNo: doc.invoiceNo||'', amount,
+        client: (doc._ext&&doc._ext.client)||'', ref: (doc._ext&&doc._ext.ref)||'',
+        summary: (doc._ext&&doc._ext.summary)||'', defectFlags: defects,
+        rawText: (doc._ext&&doc._ext.rawText)||'',
+      }),
+    });
+    clearTimeout(timeout);
+    if (res.ok) {
+      const gen = await res.json();
+      if (gen && Array.isArray(gen.steps) && gen.steps.length && typeof gen.narrative === 'string') {
+        narr = gen.narrative;
+        steps = gen.steps;
+        if (Number.isFinite(gen.risk)) risk = gen.risk;
+      }
+    }
+  } catch (e) {
+    console.warn('TSM: generative playbook unavailable, using template fallback:', e);
+  }
+
+  const findings = defects.length
+    ? defects.map(f=>'❌ '+f)
+    : (excCode ? ['❌ '+excCode+' — '+(doc.documentType||'anomaly')+' on '+(doc.invoiceNo||doc.fileName||'this record'),
+                  '❌ Source: '+(doc.vendor||'Unknown')+'  ·  Client: '+(doc._ext&&doc._ext.client||'—'),
+                  '❌ Routed from Document Search  ·  Node origin: '+(doc.sourceNode||vertical)]
+               : ['⚠️ Document flagged — review before action']);
+
+  const warRoomKey = Object.keys(nodes).find(k => k.endsWith('-war-room'));
+  const targetUrl = (nodes[nodeId] && nodes[nodeId].route)
+    || (warRoomKey && nodes[warRoomKey] && nodes[warRoomKey].route)
+    || null;
+
+  try {
+    const payload = {
+      checkStatus: cs, narrative: narr, findings, steps,
+      financialImpact: amount, risk,
+      fileName: doc.fileName||'', documentType: doc.documentType||'',
+      docType: doc.documentType||'', ref: doc.invoiceNo||(doc._ext&&doc._ext.ref)||'',
+      client: (doc._ext&&doc._ext.client)||'', exclusionCode: excCode,
+      vendor: doc.vendor||'', nodeId, targetNodeIds:[nodeId],
+      source:'doc-search', warRoomUrl: targetUrl||'',
+      ts: Date.now(), timestamp: new Date().toISOString(),
+    };
+    localStorage.setItem('tsm-doc-anomaly', JSON.stringify(payload));
+    localStorage.setItem('tsm-last-analysis', JSON.stringify({...payload, missionKey:nodeId, type:nodeId}));
+  } catch(e) { console.warn('TSM write failed:', e); }
+
+  if (!targetUrl) {
+    console.warn('TSM: no route available for', vertical, nodeId, '— closing popup, no war room page exists yet for this node.');
+    if (popup) popup.close();
+    return;
+  }
+  if (popup) popup.location.href = targetUrl;
+  else window.open(targetUrl, '_blank');
+}
+window.openGenNodeWithDoc = openGenNodeWithDoc;
 </script>
 
 <div id="viewerModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:100000;align-items:center;justify-content:center">
