@@ -18,9 +18,6 @@ const domainMap =
 
 
 
-<<<<<<< HEAD
-function resolveContext(body = {}) {
-=======
 // Capability modules (o2c.js, crm.js, governance.js, etc.) now self-fetch
 // the real, already-mounted endpoints for their data instead of returning
 // hardcoded stub values. They need to know what host to call — same
@@ -32,7 +29,6 @@ function baseUrlFrom(req) {
 
 
 function resolveContext(body = {}, baseUrl) {
->>>>>>> fix/hipaa-iso-soc2-governance-gaps
 
     if (body.demo) {
 
@@ -43,21 +39,13 @@ function resolveContext(body = {}, baseUrl) {
         return Object.assign(
             {},
             fixture,
-<<<<<<< HEAD
-            body.context || {}
-=======
             body.context || {},
             { baseUrl }
->>>>>>> fix/hipaa-iso-soc2-governance-gaps
         );
 
     }
 
-<<<<<<< HEAD
-    return body;
-=======
     return Object.assign({}, body, { baseUrl });
->>>>>>> fix/hipaa-iso-soc2-governance-gaps
 
 }
 
@@ -163,11 +151,7 @@ router.post(
         try {
 
             const context =
-<<<<<<< HEAD
-                resolveContext(req.body);
-=======
                 resolveContext(req.body, baseUrlFrom(req));
->>>>>>> fix/hipaa-iso-soc2-governance-gaps
 
             const result =
                 await orchestrator.execute(
