@@ -18,7 +18,17 @@ const domainMap =
 
 
 
-function resolveContext(body = {}) {
+// Capability modules (o2c.js, crm.js, governance.js, etc.) now self-fetch
+// the real, already-mounted endpoints for their data instead of returning
+// hardcoded stub values. They need to know what host to call — same
+// process, so this is just the incoming request's own origin.
+function baseUrlFrom(req) {
+    return req.protocol + '://' + req.get('host');
+}
+
+
+
+function resolveContext(body = {}, baseUrl) {
 
     if (body.demo) {
 
@@ -29,12 +39,13 @@ function resolveContext(body = {}) {
         return Object.assign(
             {},
             fixture,
-            body.context || {}
+            body.context || {},
+            { baseUrl }
         );
 
     }
 
-    return body;
+    return Object.assign({}, body, { baseUrl });
 
 }
 
@@ -140,7 +151,7 @@ router.post(
         try {
 
             const context =
-                resolveContext(req.body);
+                resolveContext(req.body, baseUrlFrom(req));
 
             const result =
                 await orchestrator.execute(
@@ -196,7 +207,7 @@ audit:{
  id:"AUDIT-2026-001"
 }
 
-},req.body || {});
+},req.body || {}, { baseUrl: baseUrlFrom(req) });
 
 }
 

@@ -1,8 +1,14 @@
 'use strict';
 
+// CORRECTED: this previously required '../mdm/mdm-engine', whose
+// detectAnomalies() returns one hardcoded anomaly object every time —
+// it was a stub with an extra layer of indirection, not real analysis.
+// The genuinely real MDM data is MDM_SEED_DATA in server.js, computed via
+// mdmFindDuplicates()/mdmScoreDataset() and exposed at GET /api/mdm/summary
+// (domain-by-domain quality score + duplicate counts from the actual seed
+// dataset). This now reads that instead.
 
-const mdmEngine = require('../mdm/mdm-engine');
-
+const { getJSON } = require('./_live');
 
 module.exports = {
 
@@ -13,72 +19,53 @@ module.exports = {
 
     async analyze(context = {}) {
 
+        let summary;
 
-        const anomalies =
-            mdmEngine.detectAnomalies();
-
-
-
-        if (!anomalies || anomalies.length === 0) {
-
-            return {
-                relevant:false
-            };
-
+        try {
+            summary = await getJSON(context.baseUrl, '/api/mdm/summary');
+        }
+        catch (err) {
+            return { relevant: false, error: err.message };
         }
 
+        const domains = summary.domains || [];
+        const withDupes = domains
+            .filter(d => d.duplicateCount > 0)
+            .sort((a, b) => a.avgQualityScore - b.avgQualityScore);
 
+        if (!withDupes.length) {
+            return { relevant: false };
+        }
 
-        const highestRisk =
-            Math.max(
-                ...anomalies.map(
-                    a => a.riskScore || 0
-                )
-            );
-
-
+        const riskScore = Math.max(0, 100 - summary.overallScore);
 
         return {
 
-            relevant:true,
+            relevant: true,
 
+            score: riskScore,
 
-            score:
-                highestRisk,
+            confidence: 92,
 
+            findings: withDupes.slice(0, 5).map(
+                d => `${d.domain}: ${d.duplicateCount} duplicates, quality ${d.avgQualityScore}/100 across ${d.recordCount} records`
+            ),
 
-            confidence:
-                92,
+            recommendations: [
+                "Review duplicate master records",
+                "Initiate golden record remediation"
+            ],
 
+            evidence: withDupes.map(d => d.domain),
 
-            findings:
-                anomalies.map(
-                    a =>
-                        `${a.type}: ${a.finding}`
-                ),
-
-
-            recommendations:
-                [
-                    "Review duplicate master records",
-                    "Initiate golden record remediation"
-                ],
-
-
-            evidence:
-                anomalies.map(
-                    a => a.id
-                ),
-
-
-            explainability:{
+            explainability: {
 
                 reason:
-                    "MDM anomaly detection identified master data quality issues.",
+                    `Master data quality is ${summary.overallScore}/100 overall; ` +
+                    `${withDupes.length} of ${domains.length} domains have open duplicates.`,
 
-
-                anomalies:
-                    anomalies.length
+                overallScore: summary.overallScore,
+                domainsWithDuplicates: withDupes.length
 
             }
 

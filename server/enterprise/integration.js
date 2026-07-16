@@ -1,5 +1,9 @@
 'use strict';
 
+// Was: hardcoded score:84. Now reads the real INTEGRATION_CATALOG health
+// rollup server.js maintains (GET /api/integration/health).
+
+const { getJSON } = require('./_live');
 
 module.exports = {
 
@@ -10,66 +14,49 @@ module.exports = {
 
     async analyze(context = {}) {
 
+        let health;
 
-        if (
-            !context.integration &&
-            !context.api &&
-            !context.system &&
-            !context.interface
-        ) {
-
-            return {
-                relevant:false
-            };
-
+        try {
+            health = await getJSON(context.baseUrl, '/api/integration/health');
+        }
+        catch (err) {
+            return { relevant: false, error: err.message };
         }
 
+        if (!health.total || !health.degraded) {
+            return { relevant: false };
+        }
+
+        const score = Math.round((health.degraded / health.total) * 100);
 
         return {
 
-            relevant:true,
+            relevant: true,
 
+            score,
 
-            score:84,
+            confidence: Math.min(95, 60 + health.total * 3),
 
-
-            confidence:89,
-
-
-            findings:[
-
-                "Enterprise integration endpoint detected",
-
-                "System connectivity analysis available"
-
+            findings: [
+                `${health.degraded} of ${health.total} integrations degraded`,
+                `${health.healthy} of ${health.total} integrations healthy`
             ],
 
-
-            recommendations:[
-
-                "Validate API contracts",
-
-                "Monitor integration health",
-
-                "Review data synchronization"
-
+            recommendations: [
+                "Review and remediate degraded integrations via the HITL gate",
+                "Confirm error logs on any repeatedly-degraded connection"
             ],
 
+            evidence: [],
 
-            evidence:[
-
-                context.integration?.id ||
-                context.api?.id ||
-                "INT-001"
-
-            ],
-
-
-            explainability:{
+            explainability: {
 
                 reason:
+                    `${health.degraded} of ${health.total} tracked integrations are currently degraded.`,
 
-                    "Integration intelligence evaluated enterprise system connectivity."
+                total: health.total,
+                healthy: health.healthy,
+                degraded: health.degraded
 
             }
 
