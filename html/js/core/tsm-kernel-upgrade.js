@@ -103,6 +103,7 @@
     constructor() {
       this.key = "TSM_EVENT_LOG_V2";
       this._cache = this.load();
+      this._replaying = false;
     }
 
     load() {
@@ -118,6 +119,13 @@
     }
 
     log(event) {
+      // Replaying history must never generate new history. Without this
+      // guard, apply()'s MISSION_UPDATED case calls bus.emit() again, the
+      // patched emit logs it here, and that new entry is picked up by the
+      // still-running replay() loop below (for...of is live over arrays) —
+      // an infinite, ever-growing loop that pegs the main thread and
+      // eventually crashes the tab.
+      if (this._replaying) return;
       this._cache.push(event);
       this.save();
     }
@@ -126,7 +134,9 @@
 
       console.log("[TSM-REPLAY] Rebuilding system from event log...");
 
-      const events = this._cache;
+      // Snapshot, not a live reference — defensive even with the log()
+      // guard above, so this loop always has a fixed length.
+      const events = [...this._cache];
 
       if (!store || !bus) {
         console.warn("[TSM-REPLAY] Missing store or bus");
@@ -137,8 +147,13 @@
       store.state.missions = [];
       store.state.history = [];
 
-      for (const e of events) {
-        this.apply(e, store, bus);
+      this._replaying = true;
+      try {
+        for (const e of events) {
+          this.apply(e, store, bus);
+        }
+      } finally {
+        this._replaying = false;
       }
 
       store.save();
