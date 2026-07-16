@@ -272,6 +272,69 @@
       return out;
     }
 
+    /* ---------- Enterprise capability enrichment ----------
+       Wires a single loan file into the shared 10-capability
+       enterprise engine (server/enterprise/) the other verticals
+       already use — the same POST /api/enterprise/enrich endpoint,
+       with a REAL context built from this loan's own data (no
+       `demo` key, so the server treats it as a real document, per
+       enterprise-router.js's resolveContext()).
+
+       Field mapping to the capability modules' trigger fields:
+         customer   <- borrower                (crm)
+         contract   <- the loan file itself     (o2c)
+         approval   <- open (non-cleared) conditions for this loan (approval)
+         compliance <- open (non-remediated) exceptions for this loan (governance)
+         project    <- the loan file's pipeline stage (wip)
+       mdm always fires regardless of context — see mdm.js / mdm-engine.js,
+       its anomaly detection is a static stub, not loan-specific. */
+
+    buildEnrichmentContext(loanId) {
+      const loan = this.data.loan_files.find(l => l.loan_id === loanId);
+      if (!loan) return null;
+
+      const openConditions = this.data.conditions.filter(
+        c => c.loan_id === loanId && c.stage !== 'cleared'
+      );
+      const openExceptions = this.data.exceptions.filter(
+        e => e.loan_id === loanId && e.stage !== 'remediated'
+      );
+
+      const context = {
+        vertical: 'mortgage',
+        entity: loan.borrower,
+        documentType: 'Loan File',
+        customer: { id: loan.loan_id, name: loan.borrower },
+        contract: { id: loan.loan_id, program: loan.program, amount: loan.loan_amount },
+        project: { id: loan.loan_id, stage: loan.stage }
+      };
+
+      if (openConditions.length) {
+        const c = openConditions[0];
+        context.approval = { id: c.condition_id, description: c.description };
+      }
+
+      if (openExceptions.length) {
+        const e = openExceptions[0];
+        context.compliance = { id: e.exception_id, type: e.type, severity: e.severity };
+      }
+
+      return context;
+    }
+
+    async runEnterpriseEnrichment(loanId) {
+      const context = this.buildEnrichmentContext(loanId);
+      if (!context) throw new Error('TSMMortgageEngine: unknown loan_id ' + loanId);
+
+      const res = await fetch('/api/enterprise/enrich', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(context)
+      });
+      if (!res.ok) throw new Error('Enterprise enrich endpoint returned ' + res.status);
+      return res.json();
+    }
+
     /* ---------- AI + relay (mirrors NOCEngine) ---------- */
 
     async runAnalysis() {

@@ -10,6 +10,108 @@ const router =
 const orchestrator =
     require('../enterprise-orchestrator');
 
+const demoFixtures =
+    require('../demo-fixtures');
+
+const domainMap =
+    require('../domain-map');
+
+
+
+function resolveContext(body = {}) {
+
+    if (body.demo) {
+
+        const fixture =
+            demoFixtures[body.demo] ||
+            demoFixtures.healthcare;
+
+        return Object.assign(
+            {},
+            fixture,
+            body.context || {}
+        );
+
+    }
+
+    return body;
+
+}
+
+
+
+function reshapeForClient(result, context) {
+
+    const vertical =
+        result.enrichment.vertical ||
+        "unknown";
+
+    const labels =
+        domainMap[vertical] || {};
+
+    const capabilities =
+        result.enrichment.capabilities.map(
+            c => Object.assign(
+                {},
+                c,
+                {
+                    domainLabel:
+                        labels[c.id] || c.title
+                }
+            )
+        );
+
+    return Object.assign(
+        {},
+        result,
+        {
+
+            sector:
+                vertical,
+
+            documentType:
+                context.documentType ||
+                null,
+
+            capabilityCount:
+                capabilities.length,
+
+            capabilities,
+
+            bnca:{
+
+                recommendedAction:
+                    result.decision.action,
+
+                priority:
+                    result.decision.priority ||
+                    null,
+
+                confidence:
+                    result.decision.confidence,
+
+                escalate:
+                    result.decision.priority === "HIGH",
+
+                evidence:
+                    result.explainability.evidence,
+
+                reasoning:
+                    result.explainability.reasoning,
+
+                exposure:
+                    undefined,
+
+                decisionWindow:
+                    undefined
+
+            }
+
+        }
+    );
+
+}
+
 
 
 router.get(
@@ -37,14 +139,17 @@ router.post(
 
         try {
 
+            const context =
+                resolveContext(req.body);
 
             const result =
                 await orchestrator.execute(
-                    req.body || {}
+                    context
                 );
 
-
-            res.json(result);
+            res.json(
+                reshapeForClient(result, context)
+            );
 
 
         }
@@ -187,4 +292,3 @@ c.recommendations
 });
 
 });
-
