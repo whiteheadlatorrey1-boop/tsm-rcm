@@ -1542,7 +1542,7 @@ app.post('/api/doc-router/classify', async (req, res) => {
 // Same fixed fallback content as the current frontend STEP_SETS — kept
 // here so the server can degrade gracefully without depending on the
 // client to have its own copy in sync.
-const PLAYBOOK_FALLBACK_STEPS = {
+const PLAYBOOK_FALLBACK_STEPS_HC = {
   DENIAL_RISK: ['Pull full EOB/ERA — identify exact CARC/RARC denial codes',
     'Verify CPT/ICD-10 pairing and modifier alignment',
     'Confirm appeal window — timely filing deadline critical',
@@ -1576,14 +1576,251 @@ const PLAYBOOK_FALLBACK_STEPS = {
     'Document findings in AR system', 'Follow up within 48 hours'],
 };
 
-const PLAYBOOK_PROMPT = `You are TSM's billing/denial triage assistant. You are given a document that has already been classified and routed — your only job is to write the specific, actionable playbook a billing specialist should follow for THIS document, grounded in its actual content. Do not invent facts not present in the input. Return ONLY valid JSON, no markdown fences, no commentary.
+const PLAYBOOK_FALLBACK_STEPS_FO = {
+  DENIAL_RISK: ['Pull the source ledger entry and identify the exact variance/rejection code',
+    'Verify GL account coding and posting period alignment',
+    'Confirm reconciliation deadline for this cycle',
+    'Draft variance explanation with supporting documentation',
+    'Post adjustment and log reference number in the ledger'],
+  AUTH_BLOCK: ['Verify current approval status for this transaction',
+    'Contact approver/manager — escalate if pending > 2 business days',
+    'Do NOT post until approval is confirmed and documented',
+    'Attach approval reference before final posting',
+    'Set 48-hr follow-up until resolved'],
+  PAYMENT_BLOCK: ['Pull AP/AR aging detail and compare to expected terms',
+    'Flag variances >5% as discrepancies — initiate review',
+    'Check for vendor/client hold — contact AP/AR relations if active',
+    'Post clean items; quarantine disputed amounts',
+    'Escalate unresolved reconciliation failures within 24 hours'],
+  COMPLIANCE_BLOCK: ['Halt posting until all compliance flags are cleared',
+    'Obtain updated internal control sign-off if expired',
+    'Verify vendor/client standing before proceeding',
+    'Complete documentation checklist before releasing to close',
+    'File resolution memo and update variance tracker'],
+  LEGAL_HOLD: ['Escalate to legal/compliance counsel immediately',
+    'Document chain of custody for all related records',
+    'Suspend related payments pending legal clearance',
+    'Prepare audit defense memo if requested',
+    'Set 48-hr check-in cadence with legal/compliance team'],
+  DOCUMENTATION_BLOCK: ['Send preparer query — 24-hour response expectation',
+    'Block record release for undocumented entries',
+    'Route corrected records for GL coding validation',
+    'Re-submit to close queue only after defects resolved'],
+  ACTIVE: ['Review document for anomalies', 'Escalate to node specialist',
+    'Document findings in the ledger', 'Follow up within 48 hours'],
+};
+
+const PLAYBOOK_FALLBACK_STEPS_INS = {
+  DENIAL_RISK: ['Pull the full claim file and identify exact denial/exception code',
+    'Verify coverage terms and policy exclusions against the claim',
+    'Confirm appeal/dispute window — timely filing deadline critical',
+    'Draft appeal with supporting coverage documentation',
+    'Submit via carrier portal and log tracking number'],
+  AUTH_BLOCK: ['Verify current underwriting/approval status for this policy',
+    'Contact carrier underwriting line — escalate if wait > 2 business days',
+    'Do NOT bind or renew until approval is confirmed and on file',
+    'Document approval number before proceeding',
+    'Set 48-hr follow-up until resolved'],
+  PAYMENT_BLOCK: ['Pull remittance detail and compare posted amounts to policy terms',
+    'Flag variances >5% as underpayments — initiate dispute',
+    'Check for carrier hold — contact carrier relations if active',
+    'Post clean items; quarantine disputed amounts',
+    'Escalate unresolved remittance failures within 24 hours'],
+  COMPLIANCE_BLOCK: ['Halt processing until all compliance flags are cleared',
+    'Obtain updated authorization/disclosure if expired',
+    'Verify licensing/exclusion status for all parties on this policy',
+    'Complete documentation checklist before releasing for binding',
+    'File compliance resolution memo and update tracker'],
+  LEGAL_HOLD: ['Escalate to legal counsel immediately',
+    'Document chain of custody for all related files',
+    'Suspend related payments pending legal clearance',
+    'Prepare regulatory defense memo if requested',
+    'Set 48-hr check-in cadence with legal team'],
+  DOCUMENTATION_BLOCK: ['Send insured/agent query — 24-hour response expectation',
+    'Block claim release for undocumented items',
+    'Route corrected records for underwriting validation',
+    'Re-submit to processing queue only after defects resolved'],
+  ACTIVE: ['Review document for anomalies', 'Escalate to node specialist',
+    'Document findings in the claims system', 'Follow up within 48 hours'],
+};
+
+const PLAYBOOK_FALLBACK_STEPS_CON = {
+  DENIAL_RISK: ['Pull the full permit/inspection file and identify exact rejection code',
+    'Verify plan/spec alignment against the cited violation',
+    'Confirm appeal/resubmission window — deadline critical',
+    'Draft response with corrected documentation',
+    'Submit via jurisdiction portal and log tracking number'],
+  AUTH_BLOCK: ['Verify current permit/authorization status for all affected work',
+    'Contact permitting office — escalate if wait > 2 business days',
+    'Do NOT proceed with work until authorization is confirmed and on file',
+    'Document permit number before work resumes',
+    'Set 48-hr follow-up until resolved'],
+  PAYMENT_BLOCK: ['Pull subcontractor/vendor invoice and compare to contracted rate',
+    'Flag variances >5% as discrepancies — initiate dispute',
+    'Check for vendor hold — contact AP if active',
+    'Post clean items; quarantine disputed amounts',
+    'Escalate unresolved billing failures within 24 hours'],
+  COMPLIANCE_BLOCK: ['Halt work until all compliance/code flags are cleared',
+    'Obtain updated safety/inspection sign-off if expired',
+    'Verify licensing/insurance status for all subs on this job',
+    'Complete documentation checklist before releasing to next phase',
+    'File compliance resolution memo and update tracker'],
+  LEGAL_HOLD: ['Escalate to legal counsel immediately',
+    'Document chain of custody for all related permits/records',
+    'Suspend vendor payments pending legal clearance',
+    'Prepare regulatory defense memo if requested',
+    'Set 48-hr check-in cadence with legal team'],
+  DOCUMENTATION_BLOCK: ['Send site/PM query — 24-hour response expectation',
+    'Block phase release for undocumented items',
+    'Route corrected records for plan-review validation',
+    'Re-submit to permitting queue only after defects resolved'],
+  ACTIVE: ['Review document for anomalies', 'Escalate to node specialist',
+    'Document findings in the project log', 'Follow up within 48 hours'],
+};
+
+const PLAYBOOK_FALLBACK_STEPS_RE = {
+  DENIAL_RISK: ['Pull the full title/closing file and identify exact defect code',
+    'Verify chain of title and lien status against the report',
+    'Confirm cure/resolution window — closing deadline critical',
+    'Draft resolution with supporting title documentation',
+    'Submit to title company and log tracking number'],
+  AUTH_BLOCK: ['Verify current approval status for financing/contingencies',
+    'Contact lender/broker — escalate if wait > 2 business days',
+    'Do NOT proceed to closing until approval is confirmed and on file',
+    'Document approval reference before proceeding',
+    'Set 48-hr follow-up until resolved'],
+  PAYMENT_BLOCK: ['Pull closing disclosure and compare figures to contract terms',
+    'Flag variances >5% as discrepancies — initiate review',
+    'Check for escrow hold — contact escrow officer if active',
+    'Post clean items; quarantine disputed amounts',
+    'Escalate unresolved disclosure failures within 24 hours'],
+  COMPLIANCE_BLOCK: ['Halt closing until all compliance/disclosure flags are cleared',
+    'Obtain updated inspection/disclosure sign-off if expired',
+    'Verify licensing status for all parties on this transaction',
+    'Complete documentation checklist before releasing to closing',
+    'File compliance resolution memo and update tracker'],
+  LEGAL_HOLD: ['Escalate to legal counsel immediately',
+    'Document chain of custody for all related title records',
+    'Suspend disbursements pending legal clearance',
+    'Prepare regulatory defense memo if requested',
+    'Set 48-hr check-in cadence with legal team'],
+  DOCUMENTATION_BLOCK: ['Send buyer/seller/agent query — 24-hour response expectation',
+    'Block closing release for undocumented items',
+    'Route corrected records for title validation',
+    'Re-submit to closing queue only after defects resolved'],
+  ACTIVE: ['Review document for anomalies', 'Escalate to node specialist',
+    'Document findings in the transaction file', 'Follow up within 48 hours'],
+};
+
+const PLAYBOOK_FALLBACK_STEPS_LEG = {
+  DENIAL_RISK: ['Pull the full filing/motion record and identify exact rejection basis',
+    'Verify procedural posture and deadline against the docket',
+    'Confirm appeal/response window — filing deadline critical',
+    'Draft response with supporting case documentation',
+    'Submit via court/e-filing portal and log tracking number'],
+  AUTH_BLOCK: ['Verify current engagement/authorization status for this matter',
+    'Contact supervising attorney — escalate if wait > 2 business days',
+    'Do NOT proceed until authorization is confirmed and on file',
+    'Document engagement reference before proceeding',
+    'Set 48-hr follow-up until resolved'],
+  PAYMENT_BLOCK: ['Pull outside counsel invoice and compare to engagement rate',
+    'Flag variances >5% as discrepancies — initiate review',
+    'Check for billing hold — contact AP if active',
+    'Post clean items; quarantine disputed amounts',
+    'Escalate unresolved billing failures within 24 hours'],
+  COMPLIANCE_BLOCK: ['Halt filing until all compliance/privilege flags are cleared',
+    'Obtain updated conflict-check sign-off if expired',
+    'Verify privilege/confidentiality status for all documents',
+    'Complete documentation checklist before releasing to filing',
+    'File compliance resolution memo and update tracker'],
+  LEGAL_HOLD: ['Escalate to supervising/outside counsel immediately',
+    'Document chain of custody for all related records',
+    'Suspend related disbursements pending clearance',
+    'Prepare defense memo if requested',
+    'Set 48-hr check-in cadence with counsel'],
+  DOCUMENTATION_BLOCK: ['Send client/co-counsel query — 24-hour response expectation',
+    'Block filing release for undocumented items',
+    'Route corrected records for privilege-review validation',
+    'Re-submit to filing queue only after defects resolved'],
+  ACTIVE: ['Review document for anomalies', 'Escalate to node specialist',
+    'Document findings in the case file', 'Follow up within 48 hours'],
+};
+
+const PLAYBOOK_FALLBACK_STEPS_BPO = {
+  DENIAL_RISK: ['Pull the full SLA/incident record and identify exact breach code',
+    'Verify contracted terms and thresholds against the incident',
+    'Confirm dispute/response window — client deadline critical',
+    'Draft resolution with supporting operational documentation',
+    'Submit to client and log tracking number'],
+  AUTH_BLOCK: ['Verify current approval status for this engagement/scope change',
+    'Contact client/account lead — escalate if wait > 2 business days',
+    'Do NOT proceed until approval is confirmed and on file',
+    'Document approval reference before proceeding',
+    'Set 48-hr follow-up until resolved'],
+  PAYMENT_BLOCK: ['Pull vendor/client invoice and compare to contracted rate',
+    'Flag variances >5% as discrepancies — initiate review',
+    'Check for billing hold — contact AP if active',
+    'Post clean items; quarantine disputed amounts',
+    'Escalate unresolved billing failures within 24 hours'],
+  COMPLIANCE_BLOCK: ['Halt delivery until all compliance/SOP flags are cleared',
+    'Obtain updated policy sign-off if expired',
+    'Verify vendor/staff standing for all parties on this engagement',
+    'Complete documentation checklist before releasing to delivery',
+    'File compliance resolution memo and update tracker'],
+  LEGAL_HOLD: ['Escalate to legal counsel immediately',
+    'Document chain of custody for all related records',
+    'Suspend vendor payments pending legal clearance',
+    'Prepare regulatory defense memo if requested',
+    'Set 48-hr check-in cadence with legal team'],
+  DOCUMENTATION_BLOCK: ['Send client/ops query — 24-hour response expectation',
+    'Block delivery release for undocumented items',
+    'Route corrected records for SOP validation',
+    'Re-submit to delivery queue only after defects resolved'],
+  ACTIVE: ['Review document for anomalies', 'Escalate to node specialist',
+    'Document findings in the ops log', 'Follow up within 48 hours'],
+};
+
+const PLAYBOOK_FALLBACK_STEPS_BY_VERTICAL = {
+  hc: PLAYBOOK_FALLBACK_STEPS_HC,
+  fo: PLAYBOOK_FALLBACK_STEPS_FO,
+  ins: PLAYBOOK_FALLBACK_STEPS_INS,
+  con: PLAYBOOK_FALLBACK_STEPS_CON,
+  re: PLAYBOOK_FALLBACK_STEPS_RE,
+  leg: PLAYBOOK_FALLBACK_STEPS_LEG,
+  bpo: PLAYBOOK_FALLBACK_STEPS_BPO,
+};
+
+// vertical -> { role: what kind of specialist, domain: short hint about the
+
+// document universe, so the model grounds itself in the right vocabulary
+// (CPT/ICD-10 for HC, CARC/RARC codes, vs. permits/change-orders for
+// construction, vs. title/escrow for real estate, etc.) without needing a
+// fully separate prompt per vertical.
+const PLAYBOOK_VERTICAL_CONTEXT = {
+  hc:  { role: 'billing specialist', domain: 'medical billing, payer denials/appeals, prior authorization, and clinical documentation (CPT/ICD-10, CARC/RARC denial codes, HIPAA)' },
+  fo:  { role: 'FinOps analyst', domain: 'general ledger reconciliation, AP/AR, budget variance, and financial controls' },
+  ins: { role: 'insurance claims/policy specialist', domain: 'claims adjudication, policy underwriting, coverage disputes, and carrier remittances' },
+  con: { role: 'construction operations lead', domain: 'permits, subcontractor invoices, change orders, and compliance/code violations' },
+  re:  { role: 'real estate transaction coordinator', domain: 'title defects, escrow/closing disclosures, listing agreements, and inspection findings' },
+  leg: { role: 'legal operations specialist', domain: 'case filings, discovery/privilege review, engagement agreements, and outside counsel invoices' },
+  bpo: { role: 'BPO operations manager', domain: 'SLA compliance, client onboarding, vendor invoices, and internal SOP adherence' },
+};
+
+function buildPlaybookPrompt(vertical) {
+  const ctx = PLAYBOOK_VERTICAL_CONTEXT[vertical] || PLAYBOOK_VERTICAL_CONTEXT.hc;
+  return `You are TSM's ${ctx.role} triage assistant, working in the domain of ${ctx.domain}. You are given a document that has already been classified and routed — your only job is to write the specific, actionable playbook a ${ctx.role} should follow for THIS document, grounded in its actual content. Do not invent facts not present in the input. Return ONLY valid JSON, no markdown fences, no commentary.
 
 Return JSON matching exactly this schema:
 {
-  "narrative": one or two sentences stating what's wrong, citing the specific payer/code/policy/amount from the input — not a generic category description,
-  "steps": array of 3-6 short, specific, actionable steps a billing specialist would actually do next for THIS document. Reference the specific denial code, policy bulletin, missing documentation, or clinical detail mentioned in the input wherever the input contains one. Do not output generic steps that would apply to any document in this category if the input gives you something more specific to say,
-  "risk": integer 0-100 — likelihood-weighted financial/compliance risk if this is not resolved, considering dollar exposure AND how strong the underlying denial/dispute appears to be from the input (not dollar amount alone),
+  "narrative": one or two sentences stating what's wrong, citing the specific vendor/code/policy/amount from the input — not a generic category description,
+  "steps": array of 3-6 short, specific, actionable steps a ${ctx.role} would actually do next for THIS document. Reference the specific code, policy, missing documentation, or detail mentioned in the input wherever the input contains one. Do not output generic steps that would apply to any document in this category if the input gives you something more specific to say,
+  "risk": integer 0-100 — likelihood-weighted financial/compliance risk if this is not resolved, considering dollar exposure AND how strong the underlying issue appears to be from the input (not dollar amount alone),
   "riskRationale": one sentence explaining the risk number}`;
+}
+
+// Kept as a named export-equivalent for anything still referencing the old
+// HC-only constant directly.
+const PLAYBOOK_PROMPT = buildPlaybookPrompt('hc');
 
 // Separate limiter from classify's — this fires far less often (only when
 // an operator opens a routed doc into its war room node) and shouldn't
@@ -1598,8 +1835,9 @@ function docRouterPlaybookRateOk(ip) {
   return true;
 }
 
-function fallbackPlaybook(checkStatus, defectFlags) {
-  const steps = PLAYBOOK_FALLBACK_STEPS[checkStatus] || PLAYBOOK_FALLBACK_STEPS.ACTIVE;
+function fallbackPlaybook(checkStatus, defectFlags, vertical) {
+  const stepSet = PLAYBOOK_FALLBACK_STEPS_BY_VERTICAL[vertical] || PLAYBOOK_FALLBACK_STEPS_HC;
+  const steps = stepSet[checkStatus] || stepSet.ACTIVE;
   return {
     narrative: 'Anomaly detected — review required.',
     steps: (defectFlags && defectFlags.length)
@@ -1614,8 +1852,13 @@ function fallbackPlaybook(checkStatus, defectFlags) {
 app.post('/api/doc-router/playbook', async (req, res) => {
   const {
     checkStatus, documentType, exclusionCode, vendor, invoiceNo,
-    amount, client, ref, summary, defectFlags, rawText,
+    amount, client, ref, summary, defectFlags, rawText, vertical,
   } = req.body || {};
+
+  // Default to 'hc' when omitted -- preserves exact prior behavior for
+  // any caller (e.g. cached frontend bundles) that hasn't been updated
+  // to send vertical yet.
+  const v = (vertical && PLAYBOOK_VERTICAL_CONTEXT[vertical]) ? vertical : 'hc';
 
   if (!checkStatus) {
     return res.status(400).json({ error: 'checkStatus is required.' });
@@ -1623,7 +1866,7 @@ app.post('/api/doc-router/playbook', async (req, res) => {
 
   if (!docRouterPlaybookRateOk(req.ip)) {
     // Degrade, don't 429 — an operator waiting on this is mid-workflow.
-    return res.json(fallbackPlaybook(checkStatus, defectFlags));
+    return res.json(fallbackPlaybook(checkStatus, defectFlags, v));
   }
 
   const inputSummary = `
@@ -1650,7 +1893,7 @@ ${rawText ? '\nOriginal document text (truncated):\n' + String(rawText).slice(0,
         model: GROQ_TEXT_MODEL,
         messages: [
           { role: 'system', content: 'Respond with ONLY valid JSON. No markdown fences, no preamble, no trailing text.' },
-          { role: 'user', content: `${PLAYBOOK_PROMPT}\n\nInput:\n${inputSummary}` },
+          { role: 'user', content: `${buildPlaybookPrompt(v)}\n\nInput:\n${inputSummary}` },
         ],
         temperature: 0.3,
         response_format: { type: 'json_object' },
@@ -1659,7 +1902,7 @@ ${rawText ? '\nOriginal document text (truncated):\n' + String(rawText).slice(0,
 
     if (!groqRes.ok) {
       console.error('[doc-router/playbook] Groq error:', groqRes.status, await groqRes.text());
-      return res.json(fallbackPlaybook(checkStatus, defectFlags));
+      return res.json(fallbackPlaybook(checkStatus, defectFlags, v));
     }
 
     const data = await groqRes.json();
@@ -1668,12 +1911,12 @@ ${rawText ? '\nOriginal document text (truncated):\n' + String(rawText).slice(0,
       parsed = JSON.parse(data.choices[0].message.content);
     } catch (e) {
       console.error('[doc-router/playbook] Bad JSON from model:', data.choices?.[0]?.message?.content);
-      return res.json(fallbackPlaybook(checkStatus, defectFlags));
+      return res.json(fallbackPlaybook(checkStatus, defectFlags, v));
     }
 
     if (!Array.isArray(parsed.steps) || !parsed.steps.length || typeof parsed.narrative !== 'string') {
       console.error('[doc-router/playbook] Malformed model output, falling back:', parsed);
-      return res.json(fallbackPlaybook(checkStatus, defectFlags));
+      return res.json(fallbackPlaybook(checkStatus, defectFlags, v));
     }
 
     res.json({
@@ -1685,7 +1928,7 @@ ${rawText ? '\nOriginal document text (truncated):\n' + String(rawText).slice(0,
     });
   } catch (err) {
     console.error('[doc-router/playbook] error:', err);
-    res.json(fallbackPlaybook(checkStatus, defectFlags));
+    res.json(fallbackPlaybook(checkStatus, defectFlags, v));
   }
 });
 
