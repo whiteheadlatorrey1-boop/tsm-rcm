@@ -146,17 +146,21 @@
     { id: 'closing', label: 'Closing Agent' }
   ]);
 
-  // BPO (bpo-strategist-v2.html): roster registered, matchers honestly
-  // stubbed (always false -> everything falls through to "Unassigned")
-  // until real finding text from this page's getExplainItems()/
-  // toExplainItems() output is confirmed to pattern-match against.
-  // Labels sourced from this page's own existing tabs (SLA/Client
-  // Impact/Escalations) and sector list (Plant/Supply Chain/OT-ICS),
-  // not invented.
+  // BPO (bpo-strategist-v2.html): supply-chain/plant-ops/security have real
+  // matchers -- toExplainItems() now stamps a deterministic `sector` field
+  // (warData.selectedSector, always exactly 'Supply Chain', 'Plant
+  // Operations', or 'OT/ICS Security') onto the item, so these three match
+  // on that field rather than guessing at LLM-generated claim/rationale
+  // text. client-impact and escalation stay honestly stubbed: this page
+  // emits one blended recommendation per generation, not per-concern
+  // findings, and nothing in the item distinguishes "this is a client-impact
+  // finding" from the rest of the object -- that breakdown only exists in
+  // the separate SLA/Client Impact/Escalations report tabs (pullEscalations()
+  // etc.), which never flow through toExplainItems() at all.
   registerRoster('bpo-war-room', [
-    { id: 'supply-chain', label: 'Supply Chain Agent' },
-    { id: 'plant-ops', label: 'Plant Operations Agent' },
-    { id: 'security', label: 'OT/ICS Security Agent' },
+    { id: 'supply-chain', label: 'Supply Chain Agent', match: function (it) { return it.sector === 'Supply Chain'; } },
+    { id: 'plant-ops', label: 'Plant Operations Agent', match: function (it) { return it.sector === 'Plant Operations'; } },
+    { id: 'security', label: 'OT/ICS Security Agent', match: function (it) { return it.sector === 'OT/ICS Security'; } },
     { id: 'client-impact', label: 'Client Impact Agent' },
     { id: 'escalation', label: 'Escalation Agent' }
   ]);
