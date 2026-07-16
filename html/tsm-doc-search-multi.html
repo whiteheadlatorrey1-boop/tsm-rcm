@@ -3042,7 +3042,7 @@ async function captureAttachment(file) {
   }
 }
 
-function routeDocument(fileName, classification, attachment) {
+function routeDocument(fileName, classification, attachment, extraction) {
   const verticals = classification.verticals || [];
   const routedTo  = [];
   const docClientId = ensureClientRegistered(classification.client);
@@ -3069,7 +3069,13 @@ function routeDocument(fileName, classification, attachment) {
         client:      classification.client  || "",
         ref:         classification.ref     || "",
         summary:     classification.summary || "",
-        defectFlags: Array.isArray(classification.defectFlags) ? classification.defectFlags : []
+        defectFlags: Array.isArray(classification.defectFlags) ? classification.defectFlags : [],
+        // Raw extracted text, capped — lets the generative playbook route
+        // ground its output in what the document actually says instead of
+        // just the classifier's summary. Same 6000-char cap the server
+        // route applies, so nothing bigger is carried around client-side
+        // for no benefit.
+        rawText: (extraction && extraction.type === "text") ? String(extraction.value).slice(0, 6000) : ""
       }
     };
 
@@ -3154,7 +3160,7 @@ async function processFile(file) {
     const attachment = await captureAttachment(file);
     uqStatus(qid, '<span class="uq-spinner"></span> Classifying...');
     const classification = await classifyExtraction(file.name, extraction);
-    const routed = routeDocument(file.name, classification, attachment);
+    const routed = routeDocument(file.name, classification, attachment, extraction);
  
     if (routed.length === 0) {
       uqStatus(qid, "No vertical matched — not routed", "err");
@@ -3235,7 +3241,7 @@ const HC_TYPE_NODE = {
   'POLICY':'compliance','PHARMACY':'pharmacy','VENDOR INVOICE':'vendor',
   'GRANT':'grants','FILING':'legal','CONTRACT':'legal','ESCALATION':'billing',
 };
-function openHcNodeWithDoc(docId) {
+async function openHcNodeWithDoc(docId) {
   // find doc across every vertical's per-client compartments
   let doc = null;
   for (const v of Object.keys(VERTICALS)) {
@@ -3254,14 +3260,16 @@ function openHcNodeWithDoc(docId) {
   const amount   = Number(doc.amount) || 0;
   const defects  = (doc._ext && doc._ext.defectFlags) || [];
 
-  // resolve node
+  // resolve node — deterministic, unchanged. This decision (which
+  // specialist queue the doc lands in) stays rule-based on purpose:
+  // a model miscategorizing this is worse than a generic step list.
   let nodeId = 'billing';
   for (const {p,n} of HC_CODE_NODE) { if (excCode.startsWith(p)) { nodeId=n; break; } }
   if (nodeId==='billing') for (const [k,n] of Object.entries(HC_TYPE_NODE)) { if (docType.includes(k)){nodeId=n;break;} }
   if (doc.sourceNode && doc.sourceNode.startsWith('hc-') && doc.sourceNode!=='hc-denial')
     nodeId = doc.sourceNode.replace(/^hc-/,'');
 
-  // derive check status
+  // derive check status — deterministic, unchanged
   const cs = excCode.startsWith('PA-') || docType.includes('PRIOR AUTH') ? 'AUTH_BLOCK'
     : excCode.startsWith('CO-') || docType.includes('DENIAL') || docType.includes('CLAIM APPEAL') ? 'DENIAL_RISK'
     : excCode.startsWith('OA-') || excCode.startsWith('PR-') ? 'PAYMENT_BLOCK'
@@ -3269,7 +3277,13 @@ function openHcNodeWithDoc(docId) {
     : docType.includes('FILING') || docType.includes('CONTRACT') ? 'LEGAL_HOLD'
     : defects.length ? 'DOCUMENTATION_BLOCK' : 'ACTIVE';
 
-  const STEP_SETS = {
+  // Pre-open the destination window SYNCHRONOUSLY, before any await —
+  // this keeps it tied to the click that triggered this function, so
+  // browsers don't treat it as an unrequested popup once we go async
+  // below. We navigate it later, once we know what to show.
+  const popup = window.open('about:blank', '_blank');
+
+  const FALLBACK_STEP_SETS = {
     DENIAL_RISK:   ['Pull full EOB/ERA — identify exact CARC/RARC denial codes',
                     'Verify CPT/ICD-10 pairing and modifier alignment',
                     'Confirm appeal window — timely filing deadline critical',
@@ -3302,15 +3316,8 @@ function openHcNodeWithDoc(docId) {
                     'Re-submit to billing queue only after defects resolved'],
   };
 
-  const steps   = STEP_SETS[cs] || ['Review document for anomalies','Escalate to node specialist','Document findings in AR system','Follow up within 48 hours'];
-  const findings = defects.length
-    ? defects.map(f=>'❌ '+f)
-    : (excCode ? ['❌ '+excCode+' — '+(doc.documentType||'anomaly')+' on '+(doc.invoiceNo||doc.fileName||'this record'),
-                  '❌ Source: '+(doc.vendor||'Unknown')+'  ·  Client: '+(doc._ext&&doc._ext.client||'—'),
-                  '❌ Routed from Document Search  ·  Node origin: '+(doc.sourceNode||'hc')]
-               : ['⚠️ Document flagged — review before action']);
-
-  const narr = {
+  const fallbackSteps = FALLBACK_STEP_SETS[cs] || ['Review document for anomalies','Escalate to node specialist','Document findings in AR system','Follow up within 48 hours'];
+  const fallbackNarr = {
     DENIAL_RISK:   `Denial detected on ${doc.invoiceNo||'—'} from ${doc.vendor||'payer'}${amount?` ($${amount.toLocaleString()} exposure)`:''}. Code: ${excCode||doc.documentType}. Immediate billing review required.`,
     AUTH_BLOCK:    `Prior authorization issue on ${doc.invoiceNo||'—'}${amount?` ($${amount.toLocaleString()})`:''}. Procedures must NOT proceed — denial risk is 100% without resolved auth.`,
     PAYMENT_BLOCK: `Payment anomaly on ${doc.invoiceNo||'—'} from ${doc.vendor||'payer'}${amount?` ($${amount.toLocaleString()})`:''}. ERA/remittance requires manual reconciliation before posting.`,
@@ -3320,10 +3327,49 @@ function openHcNodeWithDoc(docId) {
     ACTIVE:        `Anomaly detected on ${doc.fileName||doc.invoiceNo||'—'} from Document Search${amount?` ($${amount.toLocaleString()})`:''}. Review and resolve before proceeding.`,
   }[cs] || 'Anomaly detected — review required.';
 
+  // Try the generative playbook, grounded in the actual document.
+  // Any failure (network, timeout, malformed response) falls back to
+  // the exact template behavior this replaced — never a dead end.
+  let narr = fallbackNarr, steps = fallbackSteps, risk = amount>50000?82:amount>10000?68:55;
+  try {
+    const ctrl = new AbortController();
+    const timeout = setTimeout(() => ctrl.abort(), 12000);
+    const res = await fetch('/api/doc-router/playbook', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: ctrl.signal,
+      body: JSON.stringify({
+        checkStatus: cs, documentType: doc.documentType||'', exclusionCode: excCode,
+        vendor: doc.vendor||'', invoiceNo: doc.invoiceNo||'', amount,
+        client: (doc._ext&&doc._ext.client)||'', ref: (doc._ext&&doc._ext.ref)||'',
+        summary: (doc._ext&&doc._ext.summary)||'', defectFlags: defects,
+        rawText: (doc._ext&&doc._ext.rawText)||'',
+      }),
+    });
+    clearTimeout(timeout);
+    if (res.ok) {
+      const gen = await res.json();
+      if (gen && Array.isArray(gen.steps) && gen.steps.length && typeof gen.narrative === 'string') {
+        narr = gen.narrative;
+        steps = gen.steps;
+        if (Number.isFinite(gen.risk)) risk = gen.risk;
+      }
+    }
+  } catch (e) {
+    console.warn('TSM: generative playbook unavailable, using template fallback:', e);
+  }
+
+  const findings = defects.length
+    ? defects.map(f=>'❌ '+f)
+    : (excCode ? ['❌ '+excCode+' — '+(doc.documentType||'anomaly')+' on '+(doc.invoiceNo||doc.fileName||'this record'),
+                  '❌ Source: '+(doc.vendor||'Unknown')+'  ·  Client: '+(doc._ext&&doc._ext.client||'—'),
+                  '❌ Routed from Document Search  ·  Node origin: '+(doc.sourceNode||'hc')]
+               : ['⚠️ Document flagged — review before action']);
+
   try {
     const payload = {
       checkStatus: cs, narrative: narr, findings, steps,
-      financialImpact: amount, risk: amount>50000?82:amount>10000?68:55,
+      financialImpact: amount, risk,
       fileName: doc.fileName||'', documentType: doc.documentType||'',
       docType: doc.documentType||'', ref: doc.invoiceNo||(doc._ext&&doc._ext.ref)||'',
       client: (doc._ext&&doc._ext.client)||'', exclusionCode: excCode,
@@ -3335,7 +3381,9 @@ function openHcNodeWithDoc(docId) {
     localStorage.setItem('tsm-last-analysis', JSON.stringify({...payload, missionKey:nodeId, type:nodeId}));
   } catch(e) { console.warn('TSM write failed:', e); }
 
-  window.open('/html/healthcare/hc-'+nodeId+'/index.html', '_blank');
+  const targetUrl = '/html/healthcare/hc-'+nodeId+'/index.html';
+  if (popup) popup.location.href = targetUrl;
+  else window.open(targetUrl, '_blank'); // popup was blocked outright — last-ditch attempt
 }
 window.openHcNodeWithDoc = openHcNodeWithDoc;
 </script>
