@@ -976,6 +976,38 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
     } catch(e){ console.warn('Ticket autosave failed', e); }
   }
 
+  // ── NOC escalation intake ───────────────────────────────────────────────
+  const NOC_RELAY_SEEN_KEY = 'TSM_L1_NOC_RELAY_SEEN_ID';
+  function loadNocRelay(){
+    try {
+      if (!window.TSM || !window.TSM.relay) return false;
+      const payload = window.TSM.relay.read('L1COPILOT');
+      if (!payload || !payload.id) return false;
+      if (localStorage.getItem(NOC_RELAY_SEEN_KEY) === payload.id) return false;
+
+      const fieldMap = {
+        incident: 'tkIncident', priority: 'tkPriority', status: 'tkStatus',
+        assignmentGroup: 'tkGroup', asset: 'tkAsset', description: 'tkDescription'
+      };
+      Object.keys(fieldMap).forEach(key => {
+        if (payload[key] == null) return;
+        const el = document.getElementById(fieldMap[key]);
+        if (el) el.value = payload[key];
+      });
+
+      const bar = document.getElementById('alertBar');
+      const text = document.getElementById('alertText');
+      if (bar && text) {
+        text.textContent = `Escalated from NOC — ${payload.incident || 'incident'} (${payload.priority || ''})`;
+        bar.classList.add('show');
+      }
+
+      localStorage.setItem(NOC_RELAY_SEEN_KEY, payload.id);
+      refreshSlaDisplay();
+      return true;
+    } catch(e) { console.warn('NOC relay load failed', e); return false; }
+  }
+
   function loadCurrentTicket(){
     try {
       const raw = localStorage.getItem(CURRENT_TICKET_KEY);
@@ -1441,7 +1473,8 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
   renderChecklist();
   renderHistory();
   renderExecStrip();
-  loadCurrentTicket();
+  const fromNoc = loadNocRelay();
+  if (!fromNoc) loadCurrentTicket();
 })();
 </script>
 
