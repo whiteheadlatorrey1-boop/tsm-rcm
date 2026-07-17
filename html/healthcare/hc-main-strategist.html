@@ -1346,6 +1346,24 @@ async function escalateToExecPortal(){
 
     sessionStorage.setItem('TSM_EXEC_RELAY', JSON.stringify(payload));
     localStorage.setItem('TSM_EXEC_RELAY', JSON.stringify(payload));
+    try {
+      const hasEscalation = decisions.some(d => d.urgency === 'ESCALATE' || d.urgency === 'SIGN NOW');
+      const riskLevel = urgent.length > 0 ? 'HIGH' : (hasEscalation ? 'WATCH' : 'READY');
+      fetch('/api/collective/signal', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vertical: 'healthcare', warRoom: 'HC Main Strategist',
+          bnca: bnca.strategistSummary || bnca.revenuePosition || 'Healthcare revenue-cycle analysis complete.',
+          riskLevel, confidence: 75,
+          topIssue: urgent[0] || (decisions[0] && decisions[0].action) || 'Revenue cycle nominal',
+          ownerLanes: ['HC Billing', 'HC Compliance'],
+          hitlRequired: riskLevel !== 'READY',
+          actions: decisions.slice(0, 3).map(d => d.action),
+          kpi: { 'Revenue at Risk': kpi.totalAtRisk || '—', 'Denial Rate': kpi.denialRate || '—' },
+          source: 'hc-main-strategist'
+        })
+      }).catch(() => {});
+    } catch (e) { console.warn('Collective signal push failed', e); }
     fireCapabilitySweep_HEALTHCARE(payload);
     if (window.TSMMemory) TSMMemory.push(TSMMemory.EVENT_TYPES.STRATEGIST_RELAY, 'Main Strategist relayed to Executive Portal', {}, 'success');
     window.location.href = '/html/healthcare/executive-portal.html';
