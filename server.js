@@ -2674,22 +2674,29 @@ app.get('/api/integration/detail', (req, res) => {
   });
 });
 
-// Add this to your main Express/Node backend file
-app.post('/api/l1-copilot/assistant', (req, res) => {
+// ... (Your existing Integration GET/POST routes) ...
+
+// Repaired L1 Copilot Assistant Route
+app.post('/api/l1-copilot/assistant', async (req, res) => {
   const { scenario } = req.body;
 
   if (!scenario) {
     return res.status(400).json({ ok: false, error: 'Missing scenario text' });
   }
 
-  // Placeholder logic: Replace this with your actual AI/LLM integration
-  console.log('Received L1 Copilot scenario:', scenario);
-  
-  res.json({
-    ok: true,
-    answer: `Analysis received for: "${scenario.substring(0, 50)}...". [AI integration pending - replace this with your LLM response]`
-  });
+  const prompt = `As a technical L1 Support Copilot, analyze the following user scenario and provide actionable troubleshooting steps, root cause analysis, and escalation criteria. Be concise and technical.\n\nScenario: ${scenario}`;
+
+  try {
+    // Assuming SP.copilot is your system prompt for the L1 assistant
+    const answer = await groqChat(SP.copilot, prompt, 1000); 
+    return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
+  } catch (e) {
+    console.error('L1 COPILOT GROQ ERROR:', e.message);
+    return res.status(500).json({ ok: false, error: 'Assistant unavailable: ' + e.message });
+  }
 });
+
+// ... (Your existing /api/integration/query route) ...
 
 app.post('/api/integration/query', async (req, res) => {
   const { systems, flows, queues, etlJobs, errorLog, kpis, maxTokens } = req.body || {};
