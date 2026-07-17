@@ -2674,6 +2674,23 @@ app.get('/api/integration/detail', (req, res) => {
   });
 });
 
+// Add this to your main Express/Node backend file
+app.post('/api/l1-copilot/assistant', (req, res) => {
+  const { scenario } = req.body;
+
+  if (!scenario) {
+    return res.status(400).json({ ok: false, error: 'Missing scenario text' });
+  }
+
+  // Placeholder logic: Replace this with your actual AI/LLM integration
+  console.log('Received L1 Copilot scenario:', scenario);
+  
+  res.json({
+    ok: true,
+    answer: `Analysis received for: "${scenario.substring(0, 50)}...". [AI integration pending - replace this with your LLM response]`
+  });
+});
+
 app.post('/api/integration/query', async (req, res) => {
   const { systems, flows, queues, etlJobs, errorLog, kpis, maxTokens } = req.body || {};
   const summary = JSON.stringify({
