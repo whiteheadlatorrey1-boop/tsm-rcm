@@ -22,7 +22,7 @@ pages:[
 name:"BPO",
 pages:[
 "/html/war-rooms/bpo/bpo-war-room.html",
-"/html/war-rooms/html/war-rooms/bpo/bpo-strategist.html",
+"/html/war-rooms/bpo/bpo-strategist.html",
 "/html/war-rooms/bpo/bpo-executive-portal.html"
 ]
 },
@@ -66,7 +66,7 @@ pages:[
 
 {
 name:"Music Command",
-url:"/html/music/music-command-center.html"
+url:"/html/music-command/index.html"
 },
 
 {
