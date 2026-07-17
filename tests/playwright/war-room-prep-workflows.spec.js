@@ -79,7 +79,7 @@ const sectorChains = [
   {
     name: 'BPO (demo chain)',
     warRoom: '/html/war-rooms/bpo/bpo-war-room.html',
-    strategist: '/html/war-rooms/html/war-rooms/bpo/bpo-strategist.html',
+    strategist: '/html/war-rooms/bpo/bpo-strategist.html',
     executive: '/html/war-rooms/bpo/bpo-executive-portal.html',
   },
 ];

@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>TSM · BPO Situation Room</title>
@@ -231,7 +232,7 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
 
   <span style="color:#1a3a50;margin-right:6px;">──▶</span>
 
-  <a id="tsm-chain-exec" href="/html/war-rooms/bpo/bpo-exec-portal.html" style="
+  <a id="tsm-chain-exec" href="/html/war-rooms/bpo/bpo-executive-portal.html" style="
     color:#94a3b8;border:1px solid #1a3a50;
     padding:3px 10px;border-radius:3px;text-decoration:none;margin-right:6px;
     font-size:9px;letter-spacing:1px;transition:all .3s;
@@ -964,12 +965,14 @@ function renderFallback(raw) {
 
 // ── STORE WAR ROOM RELAY FOR STRATEGIST ──
 function storeWarRoomRelay(extracted) {
+  const caseId = 'BPO-' + new Date().toISOString().slice(0,10) + '-' + Math.random().toString(36).slice(2,8);
   const payload = {
     selectedSector: relayData?.selectedSector || 'BPO',
     selectedDocType: relayData?.selectedDocType || '—',
     docText: relayData?.docText || '',
     timestamp: new Date().toISOString(),
     extraction: extracted,
+    caseId,
     engines: {
       engine1: extracted.situationSummary || '',
       engine2: (extracted.risks || []).map(r => r.text).join(' | '),
@@ -980,6 +983,7 @@ function storeWarRoomRelay(extracted) {
   try {
     sessionStorage.setItem('TSM_BPO_WAR_RELAY', JSON.stringify(payload));
     localStorage.setItem('TSM_BPO_WAR_RELAY', JSON.stringify(payload));
+    TSM.relay.write("BPO", payload, {caseId, stage: 'war-room'});
     addMemoryEntry('War Room relay stored → Strategist ready');
   } catch(e) {}
 }
