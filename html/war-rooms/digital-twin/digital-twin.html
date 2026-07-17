@@ -163,16 +163,73 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
     return {type:'warn', text:'BPO: no active case data — open bpo-war-room.html to generate live signal', src:'BPO', time:'—', live:false};
   }
 
-  const SIGNALS=[
-    getBpoLiveSignal(),
-    {type:'ok',text:'O2C pipeline: 5 orders active, $333K in flight','src':'O2C','time':'12:09'},
-    {type:'warn',text:'CPQ: Glendale Data Center credit hold — $97.5K at risk','src':'CPQ','time':'12:07'},
-    {type:'bad',text:'Procurement score dropped 8pts — supplier risk elevated','src':'SUPPLY CHAIN','time':'11:58'},
-    {type:'ok',text:'CRM: Honeywell proposal at $280K — health score 82','src':'CRM','time':'11:45'},
-    {type:'warn',text:'Approvals: 8 SLA breaches — Finance Review bottleneck','src':'APPROVALS','time':'11:32'},
-    {type:'ok',text:'Governance: SOX controls passing — ISO 27001 exception noted','src':'GOVERNANCE','time':'11:20'},
-    {type:'ok',text:'Integration Hub: 8 systems online, 16 errors/hr avg','src':'INTEGRATION','time':'11:15'}
+  // ── Shared severity tally for the `explain` arrays every vertical writes.
+  // Confirmed convention across BPO/O2C/CPQ/CRM/APPROVAL/GOVERNANCE/INTEGRATION:
+  // getExplainItems() tags each item severity: 'high'|'med'|'low'.
+  function countBySeverity(explain) {
+    const c = { high: 0, med: 0, low: 0 };
+    (explain || []).forEach(item => {
+      if (item && c.hasOwnProperty(item.severity)) c[item.severity]++;
+    });
+    return c;
+  }
+
+  // ── Storage-key fallback map, sourced from relay.core.js REGISTRY values
+  // (verified at patch time -- see REQUIRED_KEYS check in the apply script).
+  // Kept as a local literal rather than importing relay.core.js's REGISTRY
+  // object directly, since that module may not expose it globally; update
+  // this map if relay.core.js's REGISTRY ever changes.
+  const RELAY_STORAGE_KEYS = {
+    BPO: 'TSM_BPO_RELAY',
+    O2C: 'TSM_O2C_RELAY',
+    CPQ: 'TSM_CPQ_RELAY',
+    CRM: 'TSM_CRM_RELAY',
+    APPROVAL: 'TSM_APPROVAL_RELAY',
+    GOVERNANCE: 'TSM_GOVERNANCE_RELAY',
+    INTEGRATION: 'TSM_INTEGRATION_RELAY'
+  };
+
+  // ── Config-driven signal list. To add a new live vertical, add one
+  // entry here -- no new function needed.
+  const VERTICAL_SIGNAL_CONFIG = [
+    { key: 'BPO',         label: 'BPO',         tsField: 'timestamp',   okText: 'BPO: pipeline operational — no risk signals' },
+    { key: 'O2C',         label: 'O2C',         tsField: 'relayed_at',  okText: 'O2C: pipeline operational — no risk signals' },
+    { key: 'CPQ',         label: 'CPQ',         tsField: 'timestamp',   okText: 'CPQ: quote pipeline healthy — no SLA risk' },
+    { key: 'CRM',         label: 'CRM',         tsField: 'ts',          okText: 'CRM: cases and opportunities on track' },
+    { key: 'APPROVAL',    label: 'APPROVALS',   tsField: 'timestamp',   okText: 'Approvals: queue clear — no SLA breaches' },
+    { key: 'GOVERNANCE',  label: 'GOVERNANCE',  tsField: 'timestamp',   okText: 'Governance: controls passing — no open risks' },
+    { key: 'INTEGRATION', label: 'INTEGRATION', tsField: 'timestamp',   okText: 'Integration Hub: systems and queues nominal' }
   ];
+
+  function buildLiveSignal(cfg){
+    try {
+      let raw = null;
+      if (window.TSM && window.TSM.relay && window.TSM.relay.read) {
+        raw = window.TSM.relay.read(cfg.key);
+      } else {
+        const storageKey = RELAY_STORAGE_KEYS[cfg.key];
+        const r = storageKey && (localStorage.getItem(storageKey) || sessionStorage.getItem(storageKey));
+        raw = r ? JSON.parse(r) : null;
+      }
+      if (raw) {
+        const t = new Date(raw[cfg.tsField]);
+        const time = isNaN(t) ? '—' : t.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+        const { high, med, low } = countBySeverity(raw.explain);
+        if (high > 0) {
+          return {type:'bad', text:`${cfg.label}: ${high} high-severity item${high===1?'':'s'} flagged`, src:cfg.label, time, live:true};
+        }
+        if (med + low > 0) {
+          const n = med + low;
+          return {type:'warn', text:`${cfg.label}: ${n} item${n===1?'':'s'} needs attention`, src:cfg.label, time, live:true};
+        }
+        return {type:'ok', text:cfg.okText, src:cfg.label, time, live:true};
+      }
+    } catch(e) {}
+    return {type:'warn', text:`${cfg.label}: no active data — open the ${cfg.label.toLowerCase()} war room to generate a live signal`, src:cfg.label, time:'—', live:false};
+  }
+
+
+    const SIGNALS = VERTICAL_SIGNAL_CONFIG.map(buildLiveSignal);
 
   const FORECASTS=[
     {label:'Revenue (30d)',value:'$2.4M',trend:'+12%',up:true},
