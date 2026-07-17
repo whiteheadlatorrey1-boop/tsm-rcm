@@ -399,6 +399,25 @@ tr:hover td{background:rgba(45,212,191,.03)}
     try {
       TSM.relay.write("NOC", payload);
     } catch (e) { console.warn('Relay storage failed', e); }
+    try {
+      const breaches = payload.incident_breaches || [];
+      const k = payload.kpis || {};
+      const riskLevel = k.sev1_incidents > 0 ? 'HIGH' : (k.incident_breach_count > 0 || k.open_alerts > 0 ? 'WATCH' : 'READY');
+      fetch('/api/collective/signal', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vertical: 'noc', warRoom: 'NOC War Room',
+          bnca: 'NOC incident/uptime analysis complete.',
+          riskLevel, confidence: 75,
+          topIssue: k.sev1_incidents > 0 ? `${k.sev1_incidents} active SEV1 incident(s)` : (breaches.length ? `${breaches.length} incident(s) breaching SLA` : 'Network nominal'),
+          ownerLanes: ['NOC Lead', 'Network Engineering'],
+          hitlRequired: riskLevel !== 'READY',
+          actions: breaches.slice(0, 3).map(b => b.detail || 'Incident needs review'),
+          kpi: { 'Open Incidents': k.open_incidents, 'SEV1': k.sev1_incidents, 'Uptime': k.uptime_pct + '%', 'Devices Down': k.devices_down },
+          source: 'noc-war-room'
+        })
+      }).catch(() => {});
+    } catch (e) { console.warn('Collective signal push failed', e); }
 
     if (window.TSMEventBus && window.TSMEventBus.emit) {
       window.TSMEventBus.emit('WAR_ROOM_READY', { vertical: 'noc', payload, ts: Date.now() });

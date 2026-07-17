@@ -358,6 +358,25 @@ tr:hover td{background:rgba(212,175,55,.03)}
         window.TSM.relay.write('MORTGAGE', payload);
       }
     } catch (e) { console.warn('Relay storage failed', e); }
+    try {
+      const breaches = payload.loan_breaches || [];
+      const k = payload.kpis || {};
+      const riskLevel = k.loans_over_sla > 2 ? 'HIGH' : (k.loans_over_sla > 0 || k.open_exceptions > 0 ? 'WATCH' : 'READY');
+      fetch('/api/collective/signal', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vertical: 'mortgage', warRoom: 'Mortgage War Room',
+          bnca: 'Mortgage pipeline analysis complete.',
+          riskLevel, confidence: 75,
+          topIssue: breaches.length ? `${breaches.length} loan file(s) breaching SLA` : 'Loan pipeline nominal',
+          ownerLanes: ['Loan Officer', 'Underwriting'],
+          hitlRequired: riskLevel !== 'READY',
+          actions: breaches.slice(0, 3).map(b => b.detail || 'Loan file needs review'),
+          kpi: { 'Open Loans': k.open_loan_files, 'Over SLA': k.loans_over_sla, 'CTC Ready': k.ctc_ready, 'Pipeline Value': k.pipeline_value },
+          source: 'mortgage-war-room'
+        })
+      }).catch(() => {});
+    } catch (e) { console.warn('Collective signal push failed', e); }
 
     if (window.TSMEventBus && window.TSMEventBus.emit) {
       window.TSMEventBus.emit('WAR_ROOM_READY', { vertical: 'mtg', payload, ts: Date.now() });

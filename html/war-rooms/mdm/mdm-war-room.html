@@ -322,6 +322,27 @@ td{padding:7px 8px;border-bottom:1px solid var(--border);color:var(--text)}
       const caseId = 'MDM-' + new Date().toISOString().slice(0,10) + '-' + Math.random().toString(36).slice(2,8);
       TSM.relay.write("MDM",{vertical:'mdm',records,duplicates,kpis:computeKpis(),explain:getExplainItems(),ai_analysis:document.getElementById('aiOutput').textContent,timestamp:new Date().toISOString(),caseId},{caseId, stage:'war-room'});
     } catch(e){}
+    try {
+      const k = computeKpis();
+      const riskLevel = k.duplicate_count > 10 ? 'HIGH' : (k.duplicate_count > 0 || k.anomalies > 0 ? 'WATCH' : 'READY');
+      fetch('/api/collective/signal', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vertical: 'mdm', warRoom: 'MDM War Room',
+          bnca: document.getElementById('aiOutput').textContent || 'Master data quality analysis complete.',
+          riskLevel, confidence: 75,
+          topIssue: k.duplicate_count > 0 ? `${k.duplicate_count} duplicate record(s) pending review` : (k.anomalies > 0 ? `${k.anomalies} incomplete record(s)` : 'Data quality nominal'),
+          ownerLanes: ['Data Steward', 'Master Data Management'],
+          hitlRequired: riskLevel !== 'READY',
+          actions: [
+            k.pending_approvals > 0 ? `Review ${k.pending_approvals} pending merge approval(s)` : null,
+            k.anomalies > 0 ? `Remediate ${k.anomalies} incomplete record(s)` : null
+          ].filter(Boolean),
+          kpi: { 'Total Records': k.total_records, 'Duplicates': k.duplicate_count, 'Quality Score': k.quality_score, 'Pending Approvals': k.pending_approvals },
+          source: 'mdm-war-room'
+        })
+      }).catch(() => {});
+    } catch (e) { console.warn('Collective signal push failed', e); }
     document.getElementById('navStatus').textContent='ENGINE: RELAYED — opening Strategist…';
     setTimeout(()=>{ window.location.href = '/html/war-rooms/mdm/mdm-strategist.html'; }, 500);
   });

@@ -301,6 +301,28 @@ td{padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text)}
   document.getElementById('btnAnalyze').addEventListener('click',runAnalysis);
   document.getElementById('btnRelay').addEventListener('click',()=>{
     try{ TSM.relay.write("INTEGRATION",{vertical:'integration',systems:SYSTEMS,flows:FLOWS,kpis:computeKpis(),explain:getExplainItems(),ai_analysis:document.getElementById('aiOutput').textContent,timestamp:new Date().toISOString()}); } catch(e){}
+    try {
+      const k = computeKpis();
+      const riskLevel = k.failedEtl > 0 || k.totalErrors > 5 ? 'HIGH' : (k.degraded > 0 || k.backedUpQueues > 0 ? 'WATCH' : 'READY');
+      fetch('/api/collective/signal', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vertical: 'integration-hub', warRoom: 'Integration Hub War Room',
+          bnca: document.getElementById('aiOutput').textContent || 'Integration bus health analysis complete.',
+          riskLevel, confidence: 75,
+          topIssue: k.failedEtl > 0 ? `${k.failedEtl} ETL job(s) failed` : (k.degraded > 0 ? `${k.degraded} system(s) degraded` : 'Integration bus nominal'),
+          ownerLanes: ['Integration Engineering', 'Platform Ops'],
+          hitlRequired: riskLevel !== 'READY',
+          actions: [
+            k.failedEtl > 0 ? `Investigate ${k.failedEtl} failed ETL job(s)` : null,
+            k.backedUpQueues > 0 ? `Clear ${k.backedUpQueues} backed-up queue(s)` : null,
+            k.degraded > 0 ? `Review ${k.degraded} degraded system(s)` : null
+          ].filter(Boolean),
+          kpi: { 'Healthy Systems': `${k.healthy}/${k.total}`, 'Degraded': k.degraded, 'Avg Latency': k.avgLatency + 'ms', 'Failed ETL': k.failedEtl },
+          source: 'integration-hub'
+        })
+      }).catch(() => {});
+    } catch (e) { console.warn('Collective signal push failed', e); }
     document.getElementById('navStatus').textContent='MONITORING: RELAYED';
     setTimeout(() => { window.location.href = '/html/war-rooms/integration-hub/integration-hub-strategist.html'; }, 500);
   });
