@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TSM FinOps Enterprise Management · Command Center</title>
+<style>
+:root{
+  --bg:#0b0d1a; --bg2:#12152a; --bg3:#181c34;
+  --border:rgba(168,85,247,.18); --border2:rgba(168,85,247,.28);
+  --accent:#b56cff; --accent-dim:rgba(181,108,255,.14);
+  --text:#e7e6f0; --text-dim:#8d8aa3;
+  --success:#34d399; --warning:#fbbf24; --danger:#f87171; --info:#38bdf8;
+  --mono:'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --sans:-apple-system,'Inter',system-ui,sans-serif;
+  --radius:12px;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{
+  background:radial-gradient(1200px 600px at 15% -10%, rgba(181,108,255,.08), transparent),
+             radial-gradient(1000px 600px at 100% 0%, rgba(56,189,248,.06), transparent),
+             var(--bg);
+  color:var(--text); font-family:var(--sans); min-height:100vh; padding:28px 32px 60px;
+}
+.header{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:24px;flex-wrap:wrap;gap:16px;}
+.header h1{font-size:22px;font-weight:700;letter-spacing:-.01em;}
+.header .sub{color:var(--text-dim);font-size:13px;margin-top:4px;font-family:var(--mono);}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+  padding:5px 10px;border-radius:999px;border:1px solid var(--border2);background:var(--accent-dim);color:var(--accent);font-weight:600;}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--success);box-shadow:0 0 6px var(--success);}
+
+/* KPI ROW */
+.kpi-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:20px;}
+.kpi{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;}
+.kpi-label{font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--text-dim);font-weight:600;margin-bottom:8px;}
+.kpi-val{font-family:var(--mono);font-size:22px;font-weight:700;}
+.kpi-val.warn{color:var(--warning);} .kpi-val.bad{color:var(--danger);} .kpi-val.good{color:var(--success);}
+.kpi-sub{font-size:11px;color:var(--text-dim);margin-top:4px;font-family:var(--mono);}
+
+/* AI OPS STATUS STRIP */
+.ops-strip{display:flex;gap:10px;flex-wrap:wrap;background:var(--bg2);border:1px solid var(--border);
+  border-radius:var(--radius);padding:12px 16px;margin-bottom:26px;align-items:center;}
+.ops-strip .lbl{font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--text-dim);font-weight:600;margin-right:6px;}
+.ops-pill{display:flex;align-items:center;gap:6px;font-size:12px;font-family:var(--mono);color:var(--text-dim);}
+.ops-pill.online{color:var(--success);}
+.ops-pill .dot{background:currentColor;box-shadow:0 0 6px currentColor;}
+
+/* MODULE GRID */
+.section-title{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-dim);font-weight:700;margin:26px 0 12px;}
+.module-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;}
+.module{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:18px;
+  cursor:pointer;transition:.15s;position:relative;overflow:hidden;}
+.module:hover{border-color:var(--border2);transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,.35);}
+.module.pending{opacity:.55;cursor:not-allowed;}
+.module.pending:hover{transform:none;box-shadow:none;}
+.module-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;}
+.module-icon{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;
+  font-size:16px;background:var(--accent-dim);border:1px solid var(--border2);}
+.module-status{font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;font-weight:700;padding:3px 8px;border-radius:6px;}
+.module-status.live{background:rgba(52,211,153,.14);color:var(--success);}
+.module-status.pending-s{background:rgba(251,191,36,.14);color:var(--warning);}
+.module-name{font-size:15px;font-weight:700;margin-bottom:4px;}
+.module-desc{font-size:12.5px;color:var(--text-dim);line-height:1.45;margin-bottom:10px;}
+.module-meta{display:flex;gap:14px;font-family:var(--mono);font-size:11px;color:var(--text-dim);}
+.module-meta b{color:var(--text);}
+
+/* AI STRATEGIST */
+.strategist{background:linear-gradient(160deg, var(--bg2), var(--bg3));border:1px solid var(--border2);
+  border-radius:var(--radius);padding:20px;margin-top:26px;}
+.strategist-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;}
+.strategist-head h3{font-size:14px;font-weight:700;}
+.strategist-head button{background:var(--accent);color:#fff;border:none;border-radius:8px;padding:8px 14px;
+  font-size:12px;font-weight:600;cursor:pointer;font-family:var(--sans);}
+.strategist-head button:disabled{opacity:.5;cursor:wait;}
+.strategist-body{font-size:13px;line-height:1.6;color:var(--text-dim);white-space:pre-wrap;font-family:var(--mono);
+  min-height:60px;}
+.strategist-body.ready{color:var(--text);}
+
+@media (max-width:1100px){.kpi-grid{grid-template-columns:repeat(3,1fr);}}
+@media (max-width:640px){.kpi-grid{grid-template-columns:repeat(2,1fr);}}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>TSM FinOps Enterprise Management</h1>
+    <div class="sub">Order-to-Cash · Procure-to-Pay · Supply Chain Operations Command Center</div>
+  </div>
+  <div class="badge"><span class="dot"></span>Runtime Connected</div>
+</div>
+
+<div class="kpi-grid" id="kpiGrid">
+  <div class="kpi"><div class="kpi-label">Revenue Exposure</div><div class="kpi-val" id="kpiRevenue">—</div><div class="kpi-sub">live orders</div></div>
+  <div class="kpi"><div class="kpi-label">Open Orders</div><div class="kpi-val" id="kpiOrders">—</div><div class="kpi-sub">in pipeline</div></div>
+  <div class="kpi"><div class="kpi-label">Vendor Risk</div><div class="kpi-val warn" id="kpiVendorRisk">—</div><div class="kpi-sub">active alerts</div></div>
+  <div class="kpi"><div class="kpi-label">AR Outstanding</div><div class="kpi-val" id="kpiAR">—</div><div class="kpi-sub">receivables</div></div>
+  <div class="kpi"><div class="kpi-label">Shipment Delays</div><div class="kpi-val warn" id="kpiDelays">—</div><div class="kpi-sub">no logistics engine yet</div></div>
+  <div class="kpi"><div class="kpi-label">Compliance Score</div><div class="kpi-val good" id="kpiCompliance">—</div><div class="kpi-sub">controls health</div></div>
+</div>
+
+<div class="ops-strip" id="opsStrip">
+  <span class="lbl">AI Operations Status</span>
+  <span class="ops-pill" id="opStatusOrder"><span class="dot"></span>Order Intelligence</span>
+  <span class="ops-pill" id="opStatusPayment"><span class="dot"></span>Payment Reconciliation</span>
+  <span class="ops-pill" id="opStatusVendor"><span class="dot"></span>Vendor Monitoring</span>
+  <span class="ops-pill" id="opStatusCompliance"><span class="dot"></span>Compliance Guardian</span>
+  <span class="ops-pill" id="opStatusLogistics"><span class="dot"></span>Logistics Intelligence</span>
+</div>
+
+<div class="section-title">Enterprise Modules</div>
+<div class="module-grid" id="moduleGrid"></div>
+
+<div class="strategist">
+  <div class="strategist-head">
+    <h3>FinOps AI Strategist</h3>
+    <button id="strategistBtn" onclick="runStrategist()">Run Analysis</button>
+  </div>
+  <div class="strategist-body" id="strategistBody">Click "Run Analysis" for a cross-module read on orders, vendors, and cash position.</div>
+</div>
+
+<script src="/js/core/tsm-event-bus.js"></script>
+<script>
+// ---------------------------------------------------------------------
+// MODULE REGISTRY
+// Routes into the existing finops-suite. Modules without a live page
+// (Logistics, standalone Supplier UI) are marked pending — no dead links.
+// ---------------------------------------------------------------------
+const FINOPS_MODULES = [
+  {
+    id: 'order-mgmt', name: 'Order Management Center', icon: '\u{1F4E6}',
+    desc: 'Order control tower, document intelligence, PO validation.',
+    url: '/html/finops-suite/finops-operations.html',
+    status: 'live', meta: [['Source','finops-operations.html']]
+  },
+  {
+    id: 'procurement', name: 'Supplier & Vendor Management', icon: '\u{1F3ED}',
+    desc: 'Real MDM vendor records — duplicate/quality scoring, merge recommendations. Domain-scoped to vendor via Phase 6 MDM (not a fabricated performance view — MDM tracks data quality, not pricing/delivery).',
+    url: '/html/war-rooms/mdm/mdm-war-room.html?domain=vendor',
+    status: 'live', meta: [['SAP Phase','phase-6-mdm'],['API','/api/mdm/*']]
+  },
+  {
+    id: 'logistics', name: 'Logistics & Shipping Control', icon: '\u{1F69A}',
+    desc: 'Shipment tracking, carrier delays, documentation, delivery ETA — deterministic risk scoring.',
+    url: '/html/finops/tsm-logistics-command-center.html',
+    status: 'live', meta: [['Source','tsm-logistics-command-center.html'],['API','/api/logistics/*']]
+  },
+  {
+    id: 'finance-ops', name: 'Financial Operations', icon: '\u{1F4B0}',
+    desc: 'AR/AP, cash position, payments, crypto/AML verification.',
+    url: '/html/finops-suite/finops-accounting.html',
+    status: 'live', meta: [['Source','finops-accounting.html']]
+  },
+  {
+    id: 'customer-comm', name: 'Customer Communication Hub', icon: '\u{1F4AC}',
+    desc: 'CRM-linked mission queue with AI-suggested responses.',
+    url: '/html/finops-suite/finops-war-room.html',
+    status: 'live', meta: [['Source','finops-war-room.html']]
+  },
+  {
+    id: 'compliance', name: 'Compliance Intelligence', icon: '\u{1F6E1}\uFE0F',
+    desc: 'Financial controls, vendor compliance, AML/KYC, audit findings.',
+    url: '/html/finops-suite/compliance.html',
+    status: 'live', meta: [['Source','compliance.html']]
+  }
+];
+
+function renderModules(){
+  const grid = document.getElementById('moduleGrid');
+  grid.innerHTML = FINOPS_MODULES.map(m => `
+    <div class="module ${m.status === 'pending' ? 'pending' : ''}" data-id="${m.id}"
+         onclick="${m.status === 'pending' ? '' : `openModule('${m.id}')`}">
+      <div class="module-top">
+        <div class="module-icon">${m.icon}</div>
+        <div class="module-status ${m.status === 'live' ? 'live' : 'pending-s'}">${m.status === 'live' ? 'Live' : 'Pending Build'}</div>
+      </div>
+      <div class="module-name">${m.name}</div>
+      <div class="module-desc">${m.desc}</div>
+      <div class="module-meta">${m.meta.map(([k,v]) => `<span>${k}: <b>${v}</b></span>`).join('')}</div>
+    </div>
+  `).join('');
+}
+
+function openModule(id){
+  const mod = FINOPS_MODULES.find(m => m.id === id);
+  if (!mod || !mod.url) return;
+  if (window.TSMEventBus && typeof window.TSMEventBus.publish === 'function') {
+    window.TSMEventBus.publish('FINOPS_MODULE_OPENED', { module: id, url: mod.url }, { origin: 'tsm-finops-enterprise-management' });
+  }
+  window.location.href = mod.url;
+}
+
+// ---------------------------------------------------------------------
+// KPI + OPS STATUS
+// Pulls from existing servers/finops.js endpoints where they exist.
+// No order/vendor/shipment/payment engines exist yet, so those KPIs
+// render as "no data source" rather than fabricated numbers.
+// ---------------------------------------------------------------------
+async function loadOpsStatus(){
+  // servers/finops.js (/copilot, /mesh-health) is NOT mounted in server.js — dead code.
+  // routes/finops.js is the live router; it has no health endpoint, so status here
+  // reflects whether GROQ_API_KEY-backed /api/finops/report responds, not a real mesh score.
+  try {
+    const r = await fetch('/api/finops/report', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workflow: 'health-check', source: 'tsm-finops-enterprise-management' })
+    });
+    const online = r.ok;
+    ['opStatusOrder','opStatusPayment','opStatusVendor','opStatusCompliance'].forEach(id => {
+      document.getElementById(id).classList.toggle('online', online);
+    });
+    if (online) {
+      const d = await r.json();
+      if (d.confidence) document.getElementById('kpiCompliance').textContent = d.confidence + '%';
+    }
+  } catch(e) {
+    console.warn('[finops-enterprise] /api/finops/report unavailable', e);
+  }
+  // Logistics now has a live backend (server/finops-enterprise/logistics-router.js)
+  try {
+    const lr = await fetch('/api/logistics/health');
+    document.getElementById('opStatusLogistics').classList.toggle('online', lr.ok);
+  } catch(e) {
+    document.getElementById('opStatusLogistics').classList.remove('online');
+  }
+}
+
+function setKpisUnavailable(){
+  // Order/AR/vendor-risk KPIs still need order-engine.js, payment-engine.js, supplier-engine.js —
+  // none exist yet. Rendering "n/a" instead of placeholder numbers per DevShon1's flagged
+  // production gap (TSMExceptions has no data source on main either).
+  document.getElementById('kpiRevenue').textContent = 'n/a';
+  document.getElementById('kpiOrders').textContent = 'n/a';
+  document.getElementById('kpiVendorRisk').textContent = 'n/a';
+  document.getElementById('kpiAR').textContent = 'n/a';
+}
+
+async function loadLogisticsKpi(){
+  try {
+    const r = await fetch('/api/logistics/summary');
+    const d = await r.json();
+    if (d.ok) {
+      document.getElementById('kpiDelays').textContent = d.summary.delayed;
+      document.getElementById('kpiDelays').nextElementSibling.textContent = 'of ' + d.summary.totalShipments + ' tracked';
+    }
+  } catch(e) {
+    document.getElementById('kpiDelays').textContent = 'n/a';
+  }
+}
+
+// ---------------------------------------------------------------------
+// AI STRATEGIST — wired to existing /api/finops/copilot (servers/finops.js)
+// ---------------------------------------------------------------------
+async function runStrategist(){
+  const btn = document.getElementById('strategistBtn');
+  const body = document.getElementById('strategistBody');
+  btn.disabled = true; btn.textContent = 'Analyzing…';
+  body.classList.remove('ready');
+  body.textContent = 'Querying FinOps Copilot…';
+  try {
+    const r = await fetch('/api/finops/report', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        workflow: 'Enterprise Strategist — cross-module read across Order Management, Financial Operations, Vendor/Supplier, Compliance. No logistics or dedicated order/payment engines are wired yet.',
+        source: 'tsm-finops-enterprise-management'
+      })
+    });
+    const d = await r.json();
+    if (d.summary) {
+      body.textContent = `${d.summary}\n\nRisk: ${d.risk_level || 'n/a'}  ·  Confidence: ${d.confidence || 'n/a'}%\n\n`
+        + `Findings:\n${(d.findings || []).map(f => '  - ' + f).join('\n')}\n\n`
+        + `Actions:\n${(d.actions || []).map(a => '  - ' + a).join('\n')}`;
+    } else {
+      body.textContent = d.report || d.error || 'No response from FinOps report engine.';
+    }
+    body.classList.add('ready');
+  } catch(e) {
+    body.textContent = 'FinOps report engine unreachable: ' + e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Run Analysis';
+  }
+}
+
+renderModules();
+loadOpsStatus();
+setKpisUnavailable();
+loadLogisticsKpi();
+</script>
+</body>
+</html>

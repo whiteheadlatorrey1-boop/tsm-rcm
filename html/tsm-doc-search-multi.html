@@ -46,6 +46,8 @@
   --dtwin:    #e879f9;  /* Digital Twin – fuchsia */
   --bpoops:   #2dd4bf;  /* BPO Ops – teal */
   --hw:   #ff6b4a;  /* Honeywell Industrial – ember */
+  --log:  #5eead4;  /* Logistics – teal */
+  --vnd:  #f87171;  /* Supplier/Vendor Management – red */
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -362,6 +364,10 @@ body::before {
 .vtab[data-v="integration-hub"] .vtab-dot { background: var(--inthub); }
 .vtab[data-v="digital-twin"]    .vtab-dot { background: var(--dtwin); }
 .vtab[data-v="bpo-ops"]  .vtab-dot { background: var(--bpoops); }
+.vtab.active[data-v="logistics"] { background: rgba(94,234,212,0.08); color: var(--log); border-bottom: 2px solid var(--log); }
+.vtab[data-v="logistics"] .vtab-dot { background: var(--log); }
+.vtab.active[data-v="vendor"] { background: rgba(248,113,113,0.08); color: var(--vnd); border-bottom: 2px solid var(--vnd); }
+.vtab[data-v="vendor"] .vtab-dot { background: var(--vnd); }
 .vtab[data-v="hw"]  .vtab-dot { background: var(--hw); }
 
 /* ─── NODE QUICK LINKS ───────────────────────────── */
@@ -936,7 +942,7 @@ if (window.pdfjsLib) {
       <a href="/html/tsm-collective-bnca.html" class="btn-nav">⚡ Collective BNCA</a>
       <a href="/html/war-rooms/tsm-wip-command-center.html" class="btn-nav">📋 WIP Command</a>
       <a href="/html/war-rooms/war-room-prep.html" class="btn-nav">🛡 War Room Prep</a>
-      <a href="/html/bpo/suite-hub.html" class="btn-nav">← Suite Hub</a>
+      <a href="/html/war-rooms/bpo/suite-hub.html" class="btn-nav">← Suite Hub</a>
       <button id="auto-mode-toggle" onclick="toggleAutoMode()" style="font-family:var(--mono);font-size:.48rem;letter-spacing:.08em;padding:4px 10px;border-radius:3px;border:1px solid #1ee8b633;background:#080c14;color:#1ee8b6;cursor:pointer;">⚡ AUTO</button>
     </div>
   </div>
@@ -1060,6 +1066,8 @@ if (window.pdfjsLib) {
     <button class="vtab"        data-v="digital-twin" onclick="switchVertical('digital-twin')"><span class="vtab-dot"></span>Digital Twin</button>
     <button class="vtab"        data-v="bpo-ops" onclick="switchVertical('bpo-ops')"><span class="vtab-dot"></span>BPO Ops</button>
     <button class="vtab"        data-v="hw" onclick="switchVertical('hw')"><span class="vtab-dot"></span>Honeywell Industrial</button>
+    <button class="vtab"        data-v="logistics" onclick="switchVertical('logistics')"><span class="vtab-dot"></span>Logistics</button>
+    <button class="vtab"        data-v="vendor" onclick="switchVertical('vendor')"><span class="vtab-dot"></span>Supplier/Vendor</button>
 
   </div>
 
@@ -1213,15 +1221,15 @@ const VERTICALS = {
     storageKey: "tsm_doc_index_bpo",
     searchPlaceholder: "Search by client, SOP, team, ticket #, service line...",
     nodes: {
-      "bpo-war-room":   { label:"BPO War Room", route:"/html/bpo/bpo-situation-room.html" },
+      "bpo-war-room":   { label:"BPO War Room", route:"/html/war-rooms/bpo/bpo-war-room.html" },
       "strategist":     { label:"Strategist",   route:null },
-      // TODO: /html/bpo/bpo-executive-portal.html does not exist yet in this
+      // TODO: /html/war-rooms/bpo/bpo-executive-portal.html does not exist yet in this
       // repo as far as I can tell — this matches the naming convention every
       // other vertical uses (legal/construction/healthcare/re all route
       // bnca-engine to a dedicated executive-portal page). Create that file,
-      // or point this at bpo-situation-room.html as an interim measure if
+      // or point this at bpo-war-room.html as an interim measure if
       // you'd rather not stand up a separate page yet.
-      "bnca-engine":    { label:"BNCA Escalated", route:"/html/bpo/bpo-executive-portal.html" },
+      "bnca-engine":    { label:"BNCA Escalated", route:"/html/war-rooms/bpo/bpo-executive-portal.html" },
     },
     seed: [
       { fileName:"SLA_Report_Acme_June.record",      documentType:"DOCUMENT REPORT", vendor:"Acme Corp",        invoiceNo:"SLA-06-24",   exclusionCode:"SLA-BRK", amount:0,      sourceNode:"bpo-cmd",  routing:["bpo-cmd","strategist"],                  timestamp:Date.now()-1*3600000, _ext:{client:"Acme Corp",      ref:"SLA-24-06"} },
@@ -1230,6 +1238,38 @@ const VERTICALS = {
       { fileName:"BNCA_SLA_Acme_June.report",        documentType:"ESCALATION",      vendor:"Acme Corp",        invoiceNo:"SLA-06-24",   exclusionCode:"SLA-BRK", amount:0,      sourceNode:"bpo-cmd",  routing:["bpo-cmd","strategist","bnca-engine"],     timestamp:Date.now()-6*3600000, _ext:{client:"Acme Corp",      ref:"ESC-SLA"} },
       { fileName:"SOP_Document_CallHandling_v3.record",documentType:"POLICY",        vendor:"Internal",         invoiceNo:"SOP-CH-003",  exclusionCode:"",        amount:0,      sourceNode:"bpo-sops", routing:["bpo-sops","strategist"],                  timestamp:Date.now()-1*86400000,_ext:{client:"Internal",      ref:"SOP-003"} },
     { fileName:"SOP_Document_CallHandling_v3.record",documentType:"POLICY",        vendor:"Internal",         invoiceNo:"SOP-CH-003",  exclusionCode:"",        amount:0,      sourceNode:"bpo-sops", routing:["bpo-sops","strategist"],                  timestamp:Date.now()-1*86400000,_ext:{client:"Internal",      ref:"SOP-003"} },
+    ]
+  },
+  logistics: {
+    label: "Logistics",
+    color: "#5eead4",
+    cls:   "logistics",
+    storageKey: "tsm_doc_index_logistics",
+    searchPlaceholder: "Search by carrier, lane, shipment, PO...",
+    nodes: {
+      // Situation Room only — Strategist and Executive Portal stages are
+      // not built yet for this vertical. Not routing bnca-engine anywhere
+      // until that page exists (see bpo's own bnca-engine TODO above for
+      // the same honesty pattern).
+      "logistics-war-room": { label:"Logistics War Room", route:"/html/logistics/logistics-situation-room.html" },
+      "strategist":         { label:"Strategist",         route:null },
+    },
+    seed: [
+      { fileName:"Carrier_Exception_CHI-DAL.record", documentType:"DOCUMENT REPORT", vendor:"Meridian Freight Lines", invoiceNo:"CEX-CHI-DAL", exclusionCode:"CARR-EXC", amount:310000, sourceNode:"logistics-war-room", routing:["logistics-war-room","strategist"], timestamp:Date.now()-2*3600000, _ext:{client:"Meridian Freight Lines", ref:"CEX-001"} },
+    ]
+  },
+  vendor: {
+    label: "Supplier/Vendor Management",
+    color: "#f87171",
+    cls:   "vendor",
+    storageKey: "tsm_doc_index_vendor",
+    searchPlaceholder: "Search by supplier, PO, quality hold, contract...",
+    nodes: {
+      "vendor-war-room": { label:"Supplier/Vendor War Room", route:"/html/supplier-vendor/supplier-vendor-situation-room.html" },
+      "strategist":      { label:"Strategist",               route:null },
+    },
+    seed: [
+      { fileName:"Vendor_Risk_Alert_Ashgrove.record", documentType:"DOCUMENT REPORT", vendor:"Ashgrove Components", invoiceNo:"VRA-ASH-01", exclusionCode:"QUAL-HOLD", amount:145000, sourceNode:"vendor-war-room", routing:["vendor-war-room","strategist"], timestamp:Date.now()-3*3600000, _ext:{client:"Ashgrove Components", ref:"VRA-001"} },
     ]
   },
   re: {
@@ -2248,10 +2288,12 @@ const WAR_ROOM_ROUTES = {
   'fo-war-room':  { label:'FinOps War Room',       url:'/html/finops-suite/finops-war-room.html',            relay:'tsm_fin_docsearch_relay',    autoKey:'TSM_FIN_WAR_RELAY' },
   'ins-war-room': { label:'Insurance War Room',     url:'/html/tsm-insurance/insurance-war-room.html',        relay:'tsm_ins_docsearch_relay',    autoKey:'TSM_INS_WAR_RELAY' },
   'con-war-room': { label:'Construction War Room',  url:'/html/construction-suite/construction-war-room.html',relay:'tsm_con_docsearch_relay',    autoKey:'TSM_CONSTRUCTION_WAR_RELAY' },
-  'bpo-war-room': { label:'BPO War Room',           url:'/html/bpo/bpo-situation-room.html',                  relay:'tsm_bpo_docsearch_relay',    autoKey:'TSM_BPO_WAR_RELAY' },
+  'bpo-war-room': { label:'BPO War Room',           url:'/html/war-rooms/bpo/bpo-war-room.html',                  relay:'tsm_bpo_docsearch_relay',    autoKey:'TSM_BPO_WAR_RELAY' },
   'bpoops-war-room': { label:'BPO Ops War Room',    url:'/html/war-rooms/bpo/bpo-war-room.html',              relay:'tsm_bpoops_docsearch_relay', autoKey:'TSM_BPOOPS_WAR_RELAY' },
   'bpo-ops':      { label:'BPO Ops War Room',       url:'/html/war-rooms/bpo/bpo-war-room.html',              relay:'tsm_bpoops_docsearch_relay', autoKey:'TSM_BPOOPS_WAR_RELAY' },
   're-war-room':  { label:'Real Estate War Room',   url:'/html/reo-pro/re-war-room.html',                     relay:'tsm_re_docsearch_relay',     autoKey:'TSM_RE_WAR_RELAY' },
+  'logistics-war-room': { label:'Logistics War Room',        url:'/html/logistics/logistics-situation-room.html',        relay:'tsm_logistics_docsearch_relay', autoKey:'TSM_LOGISTICS_WAR_RELAY' },
+  'vendor-war-room':    { label:'Supplier/Vendor War Room',  url:'/html/supplier-vendor/supplier-vendor-situation-room.html', relay:'tsm_vendor_docsearch_relay', autoKey:'TSM_VENDOR_WAR_RELAY' },
   'mortgage-war-room': { label:'Mortgage Command',  url:'/html/reo-pro/mortgage/index.html',                  relay:'tsm_mortgage_docsearch_relay',autoKey:'TSM_MORTGAGE_WAR_RELAY' },
   'leg-war-room': { label:'Legal War Room',         url:'/html/legal-pro/legal-war-room.html',                relay:'tsm_leg_docsearch_relay',    autoKey:'TSM_LEG_WAR_RELAY' },
   'hc-war-room':  { label:'HC Denial War Room',     url:'/html/healthcare/hc-denial-war-room.html',           relay:'tsm_hc_docsearch_relay',     autoKey:'TSM_HC_WAR_RELAY' },
@@ -2337,9 +2379,9 @@ Object.assign(WAR_ROOM_ROUTES, {
   're-strategist':  { label:'Real Estate War Room',  url:'/html/reo-pro/re-war-room.html',                     relay:'tsm_re_docsearch_relay',     autoKey:'TSM_RE_WAR_RELAY' },
   'fo-accounting':  { label:'FinOps War Room',       url:'/html/finops-suite/finops-war-room.html',            relay:'tsm_fin_docsearch_relay',    autoKey:'TSM_FIN_WAR_RELAY' },
   'fo-financial':   { label:'FinOps War Room',       url:'/html/finops-suite/finops-war-room.html',            relay:'tsm_fin_docsearch_relay',    autoKey:'TSM_FIN_WAR_RELAY' },
-  'bpo-sops':       { label:'BPO War Room',          url:'/html/bpo/bpo-situation-room.html',                  relay:'tsm_bpo_docsearch_relay',    autoKey:'TSM_BPO_WAR_RELAY' },
-  'bpo-cmd':        { label:'BPO War Room',          url:'/html/bpo/bpo-situation-room.html',                  relay:'tsm_bpo_docsearch_relay',    autoKey:'TSM_BPO_WAR_RELAY' },
-  'bpo-launch':     { label:'BPO War Room',          url:'/html/bpo/bpo-situation-room.html',                  relay:'tsm_bpo_docsearch_relay',    autoKey:'TSM_BPO_WAR_RELAY' },
+  'bpo-sops':       { label:'BPO War Room',          url:'/html/war-rooms/bpo/bpo-war-room.html',                  relay:'tsm_bpo_docsearch_relay',    autoKey:'TSM_BPO_WAR_RELAY' },
+  'bpo-cmd':        { label:'BPO War Room',          url:'/html/war-rooms/bpo/bpo-war-room.html',                  relay:'tsm_bpo_docsearch_relay',    autoKey:'TSM_BPO_WAR_RELAY' },
+  'bpo-launch':     { label:'BPO War Room',          url:'/html/war-rooms/bpo/bpo-war-room.html',                  relay:'tsm_bpo_docsearch_relay',    autoKey:'TSM_BPO_WAR_RELAY' },
   'ins-bpo':        { label:'Insurance War Room',    url:'/html/tsm-insurance/insurance-war-room.html',        relay:'tsm_ins_docsearch_relay',    autoKey:'TSM_INS_WAR_RELAY' },
   'con-pitch':      { label:'Construction War Room', url:'/html/construction-suite/construction-war-room.html',relay:'tsm_con_docsearch_relay',    autoKey:'TSM_CONSTRUCTION_WAR_RELAY' },
 });
@@ -2477,7 +2519,7 @@ function redispatch(id) {
     legal:        { key: 'tsm_legal_docsearch_relay',  path: '/html/legal-pro/legal-war-room.html' },
     construction: { key: 'tsm_con_docsearch_relay',    path: '/html/construction-suite/construction-war-room.html' },
     realestate:   { key: 'tsm_re_docsearch_relay',     path: '/html/reo-pro/re-war-room.html' },
-    bpo:          { key: 'tsm_bpo_docsearch_relay',    path: '/html/bpo/bpo-situation-room.html' }
+    bpo:          { key: 'tsm_bpo_docsearch_relay',    path: '/html/war-rooms/bpo/bpo-war-room.html' }
   };
 
   const route = DOCSEARCH_ROUTES[currentVertical];

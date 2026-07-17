@@ -1,5 +1,10 @@
 'use strict';
 
+// Was: hardcoded score:89. Now reads the real GOVERNANCE_RISK_REGISTER that
+// server.js maintains in-memory (GET /api/governance/risk). Optionally
+// scoped to context.vertical since risks carry a vertical field.
+
+const { getJSON } = require('./_live');
 
 module.exports = {
 
@@ -10,66 +15,58 @@ module.exports = {
 
     async analyze(context = {}) {
 
+        let risks;
 
-        if (
-            !context.compliance &&
-            !context.risk &&
-            !context.policy &&
-            !context.audit
-        ) {
-
-            return {
-                relevant:false
-            };
-
+        try {
+            const data = await getJSON(context.baseUrl, '/api/governance/risk');
+            risks = data.risks || [];
+        }
+        catch (err) {
+            return { relevant: false, error: err.message };
         }
 
+        if (context.vertical) {
+            risks = risks.filter(r => r.vertical === context.vertical);
+        }
+
+        const open = risks.filter(r => r.status === 'OPEN');
+
+        if (!open.length) {
+            return { relevant: false };
+        }
+
+        const critical = open.filter(r => r.severity === 'CRITICAL');
+
+        const score = Math.round(
+            (critical.length * 100 + (open.length - critical.length) * 60) / open.length
+        );
 
         return {
 
-            relevant:true,
+            relevant: true,
 
+            score,
 
-            score:89,
+            confidence: Math.min(95, 60 + open.length * 5),
 
+            findings: open.slice(0, 5).map(
+                r => `${r.title} (${r.severity}) — owner: ${r.owner}`
+            ),
 
-            confidence:93,
+            recommendations: critical.length
+                ? ["Escalate CRITICAL risks for immediate remediation sign-off", "Assign owners to any unassigned open risks"]
+                : ["Continue standard risk register review"],
 
+            evidence: open.map(r => r.id),
 
-            findings:[
-
-                "Governance review initiated",
-
-                "Compliance and risk controls evaluated"
-
-            ],
-
-
-            recommendations:[
-
-                "Review policy alignment",
-
-                "Capture audit evidence",
-
-                "Validate control ownership"
-
-            ],
-
-
-            evidence:[
-
-                context.audit?.id ||
-                context.policy?.id ||
-                "GOV-001"
-
-            ],
-
-
-            explainability:{
+            explainability: {
 
                 reason:
+                    `${open.length} open risk${open.length === 1 ? '' : 's'} in the register` +
+                    (critical.length ? `, ${critical.length} at CRITICAL severity.` : '.'),
 
-                    "Governance intelligence evaluated compliance, risk, and control context."
+                openCount: open.length,
+                criticalCount: critical.length
 
             }
 
