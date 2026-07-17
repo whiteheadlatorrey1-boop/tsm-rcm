@@ -5,7 +5,7 @@
 //
 // Two chain families are covered, because they don't share a URL pattern:
 //   1. SECTOR_IDS chain (war-room-prep.html) — hc, finops, ins, con, legal, re,
-//      plus the BPO "evolved demo chain" (bpo-situation-room.html entry, the
+//      plus the BPO "evolved demo chain" (bpo-war-room.html entry, the
 //      one doc-search-multi.html actually routes to).
 //   2. PHASE_IDS chain (architecture/kernel/phases.json) — the SAP-phase
 //      war rooms under /html/war-rooms/<domain>/, which use a consistent
@@ -78,9 +78,9 @@ const sectorChains = [
   },
   {
     name: 'BPO (demo chain)',
-    warRoom: '/html/bpo/bpo-situation-room.html',
-    strategist: '/html/bpo/bpo-strategist-v2.html',
-    executive: '/html/bpo/bpo-executive-portal.html',
+    warRoom: '/html/war-rooms/bpo/bpo-war-room.html',
+    strategist: '/html/war-rooms/html/war-rooms/bpo/bpo-strategist.html',
+    executive: '/html/war-rooms/bpo/bpo-executive-portal.html',
   },
 ];
 
@@ -94,7 +94,7 @@ const phaseChains = [
   { name: 'MDM', domain: 'mdm', dir: 'mdm' },
   { name: 'Governance', domain: 'governance', dir: 'governance' },
   { name: 'Digital Twin', domain: 'digital-twin', dir: 'digital-twin', warRoomFile: 'digital-twin.html' },
-  { name: 'BPO Services (SAP phase)', domain: 'bpo', dir: 'bpo', warRoomFile: 'bpo-situation-room.html' },
+  { name: 'BPO Services (SAP phase)', domain: 'bpo', dir: 'bpo' },
   { name: 'NOC', domain: 'noc', dir: 'noc' },
 ].map((p) => ({
   name: p.name,

@@ -55,7 +55,7 @@
     color: "#f87171",
     entities: ["vendor", "customer", "order", "workflow"],
     weights: { vendor: 7, customer: 7, order: 8 },
-    route: "/html/bpo/bpo-situation-room.html"
+    route: "/html/war-rooms/bpo/bpo-war-room.html"
   });
 
   TSMRegistry.register({

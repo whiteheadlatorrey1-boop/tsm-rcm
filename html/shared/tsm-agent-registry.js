@@ -146,7 +146,7 @@
     { id: 'closing', label: 'Closing Agent' }
   ]);
 
-  // BPO (bpo-strategist-v2.html): supply-chain/plant-ops/security have real
+  // BPO (bpo-strategist.html): supply-chain/plant-ops/security have real
   // matchers -- toExplainItems() now stamps a deterministic `sector` field
   // (warData.selectedSector, always exactly 'Supply Chain', 'Plant
   // Operations', or 'OT/ICS Security') onto the item, so these three match
