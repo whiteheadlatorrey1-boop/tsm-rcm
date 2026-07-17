@@ -334,10 +334,14 @@ tr:hover td{background:rgba(45,212,191,.03)}
     const idField = ID_FIELDS[activeEntity];
     const nameField = { incidents: 'title', alerts: 'message', devices: 'name' }[activeEntity];
     const extraField = { incidents: 'affected_system', alerts: 'severity', devices: 'site' }[activeEntity];
+    const showEscalate = activeEntity === 'incidents';
 
     let rows = records.map(r => {
       const breach = breachMap[r[idField]];
       const slaTag = breach ? `<span class="tag ${breach.hours_over > 2 ? 'tag-high' : 'tag-medium'}">+${breach.hours_over}H</span>` : '<span class="tag tag-ok">OK</span>';
+      const escalateCell = showEscalate
+        ? `<td><button class="btn-escalate-l1" data-incident-id="${r[idField]}">&rarr; L1</button></td>`
+        : '';
       return `<tr>
         <td>${r[idField]}</td>
         <td>${r[nameField] || ''}</td>
@@ -345,14 +349,53 @@ tr:hover td{background:rgba(45,212,191,.03)}
         <td>${slaTag}</td>
         <td>${r[extraField] || ''}</td>
         <td>${r.notes || ''}</td>
+        ${escalateCell}
       </tr>`;
     }).join('');
 
     body.innerHTML = `<table>
-      <thead><tr><th>ID</th><th>${nameField.toUpperCase()}</th><th>STAGE</th><th>OVER SLA</th><th>${extraField.toUpperCase()}</th><th>DETAIL</th></tr></thead>
+      <thead><tr><th>ID</th><th>${nameField.toUpperCase()}</th><th>STAGE</th><th>OVER SLA</th><th>${extraField.toUpperCase()}</th><th>DETAIL</th>${showEscalate ? '<th></th>' : ''}</tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
   }
+
+  // ── NOC -> L1 escalation ────────────────────────────────────────────────
+  const SEVERITY_TO_PRIORITY = { SEV1: 'P1', SEV2: 'P2', SEV3: 'P3', SEV4: 'P4' };
+  const STAGE_TO_STATUS = {
+    new: 'New', triaged: 'Pending', in_progress: 'In Progress',
+    escalated: 'In Progress', resolved: 'Resolved', closed: 'Resolved'
+  };
+
+  function escalateToL1(incidentId) {
+    const record = (engine.data.incidents || []).find(r => r.incident_id === incidentId);
+    if (!record) { console.warn('Incident not found for escalation:', incidentId); return; }
+
+    const payload = {
+      incident: record.incident_id,
+      priority: SEVERITY_TO_PRIORITY[record.severity] || 'P3',
+      status: STAGE_TO_STATUS[record.stage] || 'In Progress',
+      assignmentGroup: record.owner || '',
+      asset: record.affected_system || '',
+      description: `${record.title || ''}${record.notes ? '\n\n' + record.notes : ''}`
+    };
+
+    try {
+      TSM.relay.write('L1COPILOT', payload, { caseId: record.incident_id, stage: 'ESCALATED_TO_L1' });
+    } catch (e) { console.warn('Relay to L1 failed', e); return; }
+
+    if (window.TSMEventBus && window.TSMEventBus.emit) {
+      window.TSMEventBus.emit('WAR_ROOM_READY', { vertical: 'noc', payload, ts: Date.now() });
+    }
+
+    document.getElementById('navStatus').textContent = `ENGINE: ESCALATED ${record.incident_id} TO L1`;
+    setTimeout(() => { window.location.href = '/html/l1-copilot/l1-ticket-copilot.html'; }, 300);
+  }
+
+  document.getElementById('breachBody').addEventListener('click', (e) => {
+    const btn = e.target.closest('.btn-escalate-l1');
+    if (!btn) return;
+    escalateToL1(btn.dataset.incidentId);
+  });
 
   function renderSnapshot(kpis) {
     const grid = document.getElementById('snapGrid');
