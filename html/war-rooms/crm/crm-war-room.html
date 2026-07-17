@@ -427,6 +427,27 @@ tr:hover td{background:rgba(0,255,80,.03)}
     try {
       TSM.relay.write("CRM", payload);
     } catch (e) { console.warn('Relay storage failed', e); }
+    try {
+      const caseBreaches = payload.case_breaches || [];
+      const oppBreaches = payload.opp_breaches || [];
+      const k = payload.kpis || {};
+      const totalBreaches = caseBreaches.length + oppBreaches.length;
+      const riskLevel = totalBreaches > 2 ? 'HIGH' : (totalBreaches > 0 ? 'WATCH' : 'READY');
+      fetch('/api/collective/signal', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vertical: 'crm', warRoom: 'CRM War Room',
+          bnca: payload.ai_summary ? String(payload.ai_summary).slice(0, 400) : 'CRM pipeline analysis complete.',
+          riskLevel, confidence: 75,
+          topIssue: totalBreaches ? `${totalBreaches} case/opportunity SLA breach(es)` : 'Pipeline nominal',
+          ownerLanes: ['Sales Manager', 'Customer Success'],
+          hitlRequired: riskLevel !== 'READY',
+          actions: caseBreaches.concat(oppBreaches).slice(0, 3).map(b => b.detail || 'SLA review needed'),
+          kpi: { 'Open Leads': k.open_leads, 'Win Rate': k.win_rate + '%', 'Open Cases': k.open_cases },
+          source: 'crm-war-room'
+        })
+      }).catch(() => {});
+    } catch (e) { console.warn('Collective signal push failed', e); }
 
     if (window.TSMEventBus && window.TSMEventBus.emit) {
       window.TSMEventBus.emit('WAR_ROOM_READY', { vertical: 'crm', payload, ts: Date.now() });

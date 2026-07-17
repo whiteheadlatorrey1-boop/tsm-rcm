@@ -214,6 +214,25 @@ td{padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text)}
   document.getElementById('btnAnalyze').addEventListener('click',runAnalysis);
   document.getElementById('btnRelay').addEventListener('click',()=>{
     try{ TSM.relay.write("GOVERNANCE",{vertical:'governance',controls:CONTROLS,risks:RISKS,kpis:computeKpis(),explain:getExplainItems(),ai_analysis:document.getElementById('aiOutput').textContent,timestamp:new Date().toISOString()}); } catch(e){}
+    try {
+      const k = computeKpis();
+      const highRisks = RISKS.filter(r => r.severity >= 75);
+      const riskLevel = highRisks.length > 0 ? 'HIGH' : (k.open_risks > 0 ? 'WATCH' : 'READY');
+      fetch('/api/collective/signal', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vertical: 'governance', warRoom: 'Governance War Room',
+          bnca: document.getElementById('aiOutput').textContent || 'Governance compliance analysis complete.',
+          riskLevel, confidence: 75,
+          topIssue: highRisks[0] ? `${highRisks[0].id} ("${highRisks[0].name}") at ${highRisks[0].severity}/100` : 'Controls nominal',
+          ownerLanes: ['Compliance Officer', 'Risk Owner'],
+          hitlRequired: riskLevel !== 'READY',
+          actions: highRisks.slice(0, 3).map(r => `Mitigate ${r.id}: ${r.name}`),
+          kpi: { 'Controls Pass': k.controls_pass, 'Open Risks': k.open_risks, 'Avg Risk Score': k.avg_risk_score },
+          source: 'governance-war-room'
+        })
+      }).catch(() => {});
+    } catch (e) { console.warn('Collective signal push failed', e); }
     document.getElementById('navStatus').textContent='COMPLIANCE: RELAYED';
     setTimeout(() => { window.location.href = '/html/war-rooms/governance/governance-executive-portal.html'; }, 500);
   });

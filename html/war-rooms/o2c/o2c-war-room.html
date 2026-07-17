@@ -440,6 +440,25 @@ const O2C_MODEL_FALLBACK = {
     try {
       TSM.relay.write("O2C", payload);
     } catch (e) { console.warn('Relay storage failed', e); }
+    try {
+      const breaches = payload.sla_breaches || [];
+      const k = payload.kpis || {};
+      const riskLevel = k.bottleneck_count > 2 ? 'HIGH' : (k.bottleneck_count > 0 ? 'WATCH' : 'READY');
+      fetch('/api/collective/signal', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vertical: 'o2c', warRoom: 'O2C War Room',
+          bnca: payload.analysis ? String(payload.analysis).slice(0, 400) : 'Order-to-cash analysis complete.',
+          riskLevel, confidence: 75,
+          topIssue: breaches.length ? `${breaches.length} order(s) bottlenecked` : 'Order flow nominal',
+          ownerLanes: ['Order Management', 'Credit/Collections'],
+          hitlRequired: riskLevel !== 'READY',
+          actions: breaches.slice(0, 3).map(b => b.detail || 'Order needs review'),
+          kpi: { 'Cycle Time': k.cycle_time + 'd', 'Order Value': k.order_value, 'Bottlenecks': k.bottleneck_count },
+          source: 'o2c-war-room'
+        })
+      }).catch(() => {});
+    } catch (e) { console.warn('Collective signal push failed', e); }
 
     if (window.TSMEventBus && window.TSMEventBus.emit) {
       window.TSMEventBus.emit('WAR_ROOM_READY', { vertical: 'o2c', payload, ts: Date.now() });

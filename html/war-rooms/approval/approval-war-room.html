@@ -512,6 +512,25 @@ tr:hover td{background:rgba(0,255,80,.03)}
     try {
       TSM.relay.write("APPROVAL", payload);
     } catch (e) { console.warn('Relay storage failed', e); }
+    try {
+      const flags = payload.attention_flags || [];
+      const k = payload.kpis || {};
+      const riskLevel = k.sla_breach_count > 0 ? 'HIGH' : (k.escalated_count > 0 ? 'WATCH' : 'READY');
+      fetch('/api/collective/signal', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vertical: 'approval', warRoom: 'Approval War Room',
+          bnca: payload.ai_analysis ? String(payload.ai_analysis).slice(0, 400) : 'Approval queue analysis complete.',
+          riskLevel, confidence: 75,
+          topIssue: (flags[0] && flags[0].detail) || 'Approval queue nominal',
+          ownerLanes: ['Approvals Manager', 'Compliance'],
+          hitlRequired: riskLevel !== 'READY',
+          actions: flags.slice(0, 3).map(f => f.detail),
+          kpi: { 'Pending': k.pending_requests, 'Escalated': k.escalated_count, 'SLA Breaches': k.sla_breach_count, 'Approval Rate': k.approval_rate_pct + '%' },
+          source: 'approval-war-room'
+        })
+      }).catch(() => {});
+    } catch (e) { console.warn('Collective signal push failed', e); }
     if (window.TSMEventBus && window.TSMEventBus.emit) {
       window.TSMEventBus.emit('WAR_ROOM_READY', { vertical: 'approval', payload, ts: Date.now() });
     }

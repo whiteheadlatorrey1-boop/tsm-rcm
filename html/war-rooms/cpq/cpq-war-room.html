@@ -425,6 +425,25 @@ tr:hover td{background:rgba(0,255,80,.03)}
     try {
       TSM.relay.write("CPQ", payload);
     } catch (e) { console.warn('Relay storage failed', e); }
+    try {
+      const breaches = payload.sla_breaches || [];
+      const k = payload.kpis || {};
+      const riskLevel = breaches.length > 2 ? 'HIGH' : (breaches.length > 0 ? 'WATCH' : 'READY');
+      fetch('/api/collective/signal', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vertical: 'cpq', warRoom: 'CPQ War Room',
+          bnca: payload.ai_analysis ? String(payload.ai_analysis).slice(0, 400) : 'CPQ quote analysis complete.',
+          riskLevel, confidence: 75,
+          topIssue: breaches.length ? `${breaches.length} quote(s) breaching SLA` : 'Quote pipeline nominal',
+          ownerLanes: ['Sales Ops', 'Deal Desk'],
+          hitlRequired: riskLevel !== 'READY',
+          actions: breaches.slice(0, 3).map(b => b.detail || `Quote ${b.quote_id || ''} needs review`),
+          kpi: { 'Open Quotes': k.open_quotes, 'Quote Value': k.quote_value, 'Avg Discount': k.avg_discount_pct + '%' },
+          source: 'cpq-war-room'
+        })
+      }).catch(() => {});
+    } catch (e) { console.warn('Collective signal push failed', e); }
     if (window.TSMEventBus && window.TSMEventBus.emit) {
       window.TSMEventBus.emit('WAR_ROOM_READY', { vertical: 'cpq', payload, ts: Date.now() });
     }

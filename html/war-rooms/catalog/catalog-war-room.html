@@ -397,6 +397,25 @@ tr:hover td{background:rgba(0,255,80,.03)}
     try {
       TSM.relay.write("CATALOG", payload);
     } catch (e) { console.warn('Relay storage failed', e); }
+    try {
+      const flags = payload.attention_flags || [];
+      const k = payload.kpis || {};
+      const riskLevel = k.compliance_flag_count > 0 ? 'HIGH' : (k.low_stock_count > 0 || k.eol_count > 0 ? 'WATCH' : 'READY');
+      fetch('/api/collective/signal', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vertical: 'catalog', warRoom: 'Catalog War Room',
+          bnca: payload.ai_analysis ? String(payload.ai_analysis).slice(0, 400) : 'Catalog lifecycle analysis complete.',
+          riskLevel, confidence: 75,
+          topIssue: (flags[0] && flags[0].detail) || 'Catalog nominal',
+          ownerLanes: ['Product Manager', 'Pricing'],
+          hitlRequired: riskLevel !== 'READY',
+          actions: flags.slice(0, 3).map(f => f.detail),
+          kpi: { 'Active SKUs': k.active_skus, 'Low Stock': k.low_stock_count, 'Compliance Flags': k.compliance_flag_count, 'EOL': k.eol_count },
+          source: 'catalog-war-room'
+        })
+      }).catch(() => {});
+    } catch (e) { console.warn('Collective signal push failed', e); }
     if (window.TSMEventBus && window.TSMEventBus.emit) {
       window.TSMEventBus.emit('WAR_ROOM_READY', { vertical: 'catalog', payload, ts: Date.now() });
     }
