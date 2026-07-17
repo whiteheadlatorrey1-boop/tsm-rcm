@@ -157,7 +157,10 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
     CRM: 'TSM_CRM_RELAY',
     APPROVAL: 'TSM_APPROVAL_RELAY',
     GOVERNANCE: 'TSM_GOVERNANCE_RELAY',
-    INTEGRATION: 'TSM_INTEGRATION_HUB_RELAY' // fixed: was 'TSM_INTEGRATION_RELAY'
+    INTEGRATION: 'TSM_INTEGRATION_HUB_RELAY', // fixed: was 'TSM_INTEGRATION_RELAY'
+    HONEYWELL_PLANT: 'TSM_HONEYWELL_PLANT_RELAY',
+    HONEYWELL_CYBER: 'TSM_HONEYWELL_CYBER_RELAY',
+    HONEYWELL_SUPPLIER: 'TSM_HONEYWELL_SUPPLIER_RELAY'
   };
 
   // ── BPO's custom evaluator. BPO's payload has no `explain` array;
@@ -220,7 +223,57 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
     return {type:'warn', text:`${cfg.label}: no active data — open the ${cfg.label.toLowerCase()} war room to generate a live signal`, src:cfg.label, time:'—', live:false};
   }
 
-  const SIGNALS = VERTICAL_SIGNAL_CONFIG.map(buildLiveSignal);
+  // ── Honeywell risk-score evaluator (plant + cyber share this shape):
+  // kpis.risk.riskScore is a 0-100 number when AI parsing succeeds;
+  // otherwise kpis.risk.raw holds a string fallback from regex parsing.
+  function evaluateHoneywellRisk(raw) {
+    const c = { high: 0, med: 0, low: 0 };
+    const risk = raw.kpis && raw.kpis.risk;
+    if (!risk) return c;
+    let score = typeof risk.riskScore === 'number' ? risk.riskScore : null;
+    if (score === null && risk.raw) score = parseInt(risk.raw, 10);
+    if (score === null || isNaN(score)) return c;
+    if (score >= 70) c.high = 1;
+    else if (score >= 40) c.med = 1;
+    else c.low = 1;
+    return c;
+  }
+
+  // ── Honeywell supplier-shutdown exposure evaluator. Dollar thresholds
+  // below are NOT derived from source -- no defined threshold exists in
+  // supplier-shutdown.html. Adjust these two constants if you have real
+  // business thresholds in mind.
+  const HONEYWELL_SUPPLIER_HIGH_THRESHOLD = 500000;
+  const HONEYWELL_SUPPLIER_MED_THRESHOLD = 100000;
+  function evaluateHoneywellSupplier(raw) {
+    const c = { high: 0, med: 0, low: 0 };
+    const exposure = raw.kpis && raw.kpis.exposure;
+    if (!exposure) return c;
+    let amount = null;
+    if (typeof exposure.totalExposureHigh === 'number') amount = exposure.totalExposureHigh;
+    else if (typeof exposure.totalExposureLow === 'number') amount = exposure.totalExposureLow;
+    else if (exposure.raw) {
+      const m = String(exposure.raw).replace(/[^0-9.]/g, '');
+      amount = m ? parseFloat(m) : null;
+    }
+    if (amount === null || isNaN(amount)) return c;
+    if (amount >= HONEYWELL_SUPPLIER_HIGH_THRESHOLD) c.high = 1;
+    else if (amount >= HONEYWELL_SUPPLIER_MED_THRESHOLD) c.med = 1;
+    else c.low = 1;
+    return c;
+  }
+
+  const SIGNALS = VERTICAL_SIGNAL_CONFIG.concat([
+    { key: 'HONEYWELL_PLANT', label: 'HONEYWELL PLANT', tsField: 'timestamp',
+      okText: 'Honeywell Plant: no active incident — risk within normal range',
+      evaluate: evaluateHoneywellRisk },
+    { key: 'HONEYWELL_CYBER', label: 'HONEYWELL CYBER', tsField: 'timestamp',
+      okText: 'Honeywell Cyber: no active incident — risk within normal range',
+      evaluate: evaluateHoneywellRisk },
+    { key: 'HONEYWELL_SUPPLIER', label: 'HONEYWELL SUPPLIER', tsField: 'timestamp',
+      okText: 'Honeywell Supplier: no active shutdown — exposure within normal range',
+      evaluate: evaluateHoneywellSupplier },
+  ]).map(buildLiveSignal);
 
   const FORECASTS=[
     {label:'Revenue (30d)',value:'$2.4M',trend:'+12%',up:true},
