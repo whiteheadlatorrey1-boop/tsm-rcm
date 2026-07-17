@@ -890,7 +890,8 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
     goToSection('ai');
     try {
       const res = await fetch('/api/l1-copilot/analyze', {
-        method: 'POST', headers: { 'Content-Type':'application/json' },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ticket: {
             incident: document.getElementById('tkIncident').value,
@@ -901,24 +902,29 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
             manufacturer: document.getElementById('tkMfr').value,
             model: document.getElementById('tkModel').value,
             warranty: document.getElementById('tkWarranty').value,
-            description
+            description: document.getElementById('tkDescription').value
           }
         })
       });
+
       const data = await res.json();
-      if (!data.ok) throw new Error(data.error || 'analysis failed');
-      currentAnalysis = data.analysis || {};
-      renderAnalysis(currentAnalysis);
-      applyExtractedFields(currentAnalysis.extracted_fields);
-      saveCurrentTicket();
-      try { TSM.relay.write('L1COPILOT', { ticket: document.getElementById('tkIncident').value, analysis: currentAnalysis, ts: Date.now() }); } catch(e){ console.warn('Relay write failed', e); }
-    } catch (e) {
-      out.className = 'ai-output';
-      out.innerHTML = `<span class="err">Analysis failed: ${e.message}. Confirm /api/l1-copilot/analyze is wired server-side.</span>`;
-    } finally {
+
+      if (!res.ok) {
+        throw new Error(data.error || `Error ${res.status}: Failed to analyze ticket`);
+      }
+
+      // Success: Update UI
       document.getElementById('navStatus').textContent = 'ENGINE: IDLE';
+      renderAnalysis(data.analysis);
+      applyExtractedFields(data.analysis.extracted_fields);
+
+    } catch (err) {
+      console.error('AI Analysis Error:', err);
+      document.getElementById('navStatus').textContent = 'ENGINE: IDLE';
+      const out = document.getElementById('aiOutput');
+      out.className = 'ai-output error';
+      out.textContent = 'Analysis failed: ' + err.message;
     }
-  }
 
   function renderAnalysis(a){
     const out = document.getElementById('aiOutput');
@@ -1475,11 +1481,14 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
 })();
 </script>
 
-<script src="/js/core/tsm-event-bus.js"></script>
-<script src="/js/core/tsm-state.js"></script>
-<script src="/js/core/tsm-mission-engine.js"></script>
-<script src="/js/core/tsm-auto-pipeline.js"></script>
+<!-- Core Workspace Runtime -->
 <script src="/html/core/tsm-runtime.js"></script>
+
+<!-- Live L1 Ticket Copilot Core Modules -->
+<script type="module" src="../../js/enterprise-lab/event-bus.js"></script>
+<script type="module" src="../../js/enterprise-lab/dashboard.js"></script>
+<script type="module" src="../../js/enterprise-lab/l1-copilot.js"></script>
+
 <!--
   L1 Ticket Copilot — Floating AI Assistant
   ------------------------------------------
@@ -1745,5 +1754,11 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
   }
 })();
 </script>
+
+<!-- Live L1 Ticket Copilot Core Modules -->
+<script type="module" src="../../js/enterprise-lab/event-bus.js"></script>
+<script type="module" src="../../js/enterprise-lab/dashboard.js"></script>
+<script type="module" src="../../js/enterprise-lab/l1-copilot.js"></script>
+
 </body>
 </html>

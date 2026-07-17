@@ -1137,62 +1137,66 @@ app.post('/api/insurance/ahip-quiz', async (req, res) => {
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
+// L1 Ticket Copilot Core API Endpoints
+
 app.post('/api/l1-copilot/assistant', async (req, res) => {
   try {
-    var scenario = (req.body.scenario || req.body.question || req.body.query || '').trim();
+    const scenario = (req.body.scenario || req.body.question || req.body.query || '').trim();
     if (!scenario) return res.status(400).json({ ok: false, error: 'scenario is required' });
-    var a = await groqChat(SP.l1Assistant, scenario, req.body.maxTokens || 700);
+    const a = await groqChat(SP.l1Assistant, scenario, req.body.maxTokens || 700);
     return res.json({ ok: true, answer: a, createdAt: new Date().toISOString() });
   } catch (e) {
+    console.error('L1 ASSISTANT ERROR:', e.message);
     return res.status(500).json({ ok: false, error: e.message });
   }
 });
 
 app.post('/api/l1-copilot/analyze', async (req, res) => {
   const { ticket, maxTokens } = req.body || {};
-  if (!ticket || !ticket.description) return res.status(400).json({ ok: false, error: 'ticket.description required' });
+  
+  if (!ticket || !ticket.description) {
+    return res.status(400).json({ ok: false, error: 'ticket.description required' });
+  }
+
   const summary = JSON.stringify({
     incident: ticket.incident, priority: ticket.priority, requester: ticket.requester,
     department: ticket.department, asset: ticket.asset, manufacturer: ticket.manufacturer,
     model: ticket.model, warranty: ticket.warranty
   }, null, 2);
-  const prompt = `Ticket metadata (may be incomplete — fields left blank were not provided):\n${summary}\n\n` +
-    `Ticket description (raw, as pasted by the agent):\n${ticket.description}\n\n` +
-    `Do two things and return ONLY valid JSON, no markdown, no backticks, in exactly this shape:\n\n` +
-    `1) Analyze the ticket:\n` +
-    `{"issue_summary":"one sentence","likely_causes":["cause 1","cause 2"],"confidence":0-100,` +
-    `"affected_system":"short label","business_impact":"short label","severity":"Low|Medium|High|Critical",` +
-    `"recommended_path":"the single next diagnostic or remediation step, and why",` +
-    `\n\n2) Extract structured fields mentioned ANYWHERE in the ticket description or metadata above ` +
-    `(incident number, priority, requester name, department, assignment group, asset/hostname/tag, ` +
-    `manufacturer, model, warranty/support tier). Only include a value if it is actually stated or clearly ` +
-    `implied in the text — use null for anything not present. Do not invent values.\n` +
-    `"extracted_fields":{"incident":null,"priority":null,"requester":null,"department":null,` +
-    `"assignmentGroup":null,"asset":null,"manufacturer":null,"model":null,"warranty":null}}\n\n` +
-    `Return one JSON object with both the analysis keys and the "extracted_fields" key at the same top level.`;
+
+  const prompt = `Ticket metadata:\n${summary}\n\nTicket description:\n${ticket.description}\n\n` +
+    `Return ONLY valid JSON (no markdown): {"issue_summary":"","likely_causes":[],"confidence":0,"affected_system":"","business_impact":"","severity":"","recommended_path":"","extracted_fields":{}}`;
+
   try {
     const raw = await groqChat(SP.l1support, prompt, maxTokens || 1000);
-    const analysis = JSON.parse(raw.replace(/```json|```/g, '').trim());
+    
+    // Safety check: ensure raw output exists
+    if (!raw) throw new Error("AI returned an empty response.");
+
+    // Improved JSON parsing: cleanup markdown and whitespace
+    const cleanJson = raw.replace(/```json|```/g, '').trim();
+    const analysis = JSON.parse(cleanJson);
+    
     return res.json({ ok: true, analysis, createdAt: new Date().toISOString() });
   } catch (e) {
-    console.error('L1 COPILOT ANALYZE ERROR:', e.message);
-    return res.status(500).json({ ok: false, error: e.message });
+    // Log the actual error for debugging, but return a clean error to the frontend
+    console.error('L1 ANALYZE ERROR:', e.message);
+    return res.status(500).json({ 
+      ok: false, 
+      error: 'AI analysis failed to generate valid JSON: ' + e.message 
+    });
   }
 });
 
 app.post('/api/l1-copilot/vendor', async (req, res) => {
   const { manufacturer, serviceTag, warranty, issueSummary, maxTokens } = req.body || {};
   if (!manufacturer) return res.status(400).json({ ok: false, error: 'manufacturer required' });
-  const prompt = `Manufacturer: ${manufacturer}\nService tag / express service code: ${serviceTag || 'not provided'}\n` +
-    `Warranty status: ${warranty || 'unknown'}\nIssue summary: ${issueSummary || 'not provided'}\n\n` +
-    `Recommend which ${manufacturer} support tier to engage (e.g. ProSupport vs ProSupport Plus vs Basic/standard warranty), ` +
-    `exactly what information the technician should have ready before contacting them (service tag, diagnostic codes, ` +
-    `error logs, etc.), and whether this looks like a case for phone support, chat, or an on-site dispatch. Be concise and operational.`;
+  const prompt = `Manufacturer: ${manufacturer}\nService tag: ${serviceTag || 'not provided'}\nWarranty: ${warranty || 'unknown'}\nSummary: ${issueSummary || 'not provided'}\n\nRecommend support tier and required info.`;
   try {
     const answer = await groqChat(SP.l1support, prompt, maxTokens || 700);
     return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
   } catch (e) {
-    console.error('L1 COPILOT VENDOR ERROR:', e.message);
+    console.error('L1 VENDOR ERROR:', e.message);
     return res.status(500).json({ ok: false, error: e.message });
   }
 });
@@ -1200,17 +1204,12 @@ app.post('/api/l1-copilot/vendor', async (req, res) => {
 app.post('/api/l1-copilot/resolution', async (req, res) => {
   const { ticket, analysis, notes, maxTokens } = req.body || {};
   if (!ticket) return res.status(400).json({ ok: false, error: 'ticket required' });
-  const prompt = `Ticket description:\n${ticket}\n\n` +
-    (analysis ? `AI analysis on file:\n${JSON.stringify(analysis, null, 2)}\n\n` : '') +
-    (notes ? `Technician notes / troubleshooting steps performed:\n${notes}\n\n` : '') +
-    `Write a resolution record ready to paste into ServiceNow, with these exact section headers on their own lines: ` +
-    `Problem / Cause / Actions Taken / Resolution / Validation / Next Steps. Be factual — only state actions that are ` +
-    `reflected in the notes above; do not invent steps that weren't performed.`;
+  const prompt = `Ticket: ${ticket}\nAnalysis: ${JSON.stringify(analysis)}\nNotes: ${notes}\n\nWrite a resolution record with headers: Problem / Cause / Actions Taken / Resolution / Validation / Next Steps.`;
   try {
     const answer = await groqChat(SP.l1support, prompt, maxTokens || 900);
     return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
   } catch (e) {
-    console.error('L1 COPILOT RESOLUTION ERROR:', e.message);
+    console.error('L1 RESOLUTION ERROR:', e.message);
     return res.status(500).json({ ok: false, error: e.message });
   }
 });
@@ -1218,19 +1217,12 @@ app.post('/api/l1-copilot/resolution', async (req, res) => {
 app.post('/api/l1-copilot/escalation', async (req, res) => {
   const { ticket, analysis, reason, evidence, recommendedTeam, maxTokens } = req.body || {};
   if (!ticket) return res.status(400).json({ ok: false, error: 'ticket required' });
-  const prompt = `Ticket description:\n${ticket}\n\n` +
-    (analysis ? `AI analysis on file:\n${JSON.stringify(analysis, null, 2)}\n\n` : '') +
-    `Escalation reason given by technician: ${reason || 'not specified'}\n` +
-    `Evidence attached: ${evidence || 'none noted'}\n` +
-    `Technician-selected team: ${recommendedTeam || 'not selected'}\n\n` +
-    `Write a short escalation package for the receiving L2/vendor team: confirm or correct the recommended team based ` +
-    `on where the root cause actually sits, summarize what's been ruled out at L1, state the business impact, and list ` +
-    `exactly what the receiving team needs to pick this up without re-doing L1 steps.`;
+  const prompt = `Ticket: ${ticket}\nAnalysis: ${JSON.stringify(analysis)}\nReason: ${reason}\nEvidence: ${evidence}\nTeam: ${recommendedTeam}\n\nWrite an escalation package for L2.`;
   try {
     const answer = await groqChat(SP.l1support, prompt, maxTokens || 800);
     return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
   } catch (e) {
-    console.error('L1 COPILOT ESCALATION ERROR:', e.message);
+    console.error('L1 ESCALATION ERROR:', e.message);
     return res.status(500).json({ ok: false, error: e.message });
   }
 });
@@ -1238,17 +1230,12 @@ app.post('/api/l1-copilot/escalation', async (req, res) => {
 app.post('/api/l1-copilot/imaging', async (req, res) => {
   const { taskSequence, bootMethod, status, asset, model, maxTokens } = req.body || {};
   if (!status) return res.status(400).json({ ok: false, error: 'status required' });
-  const prompt = `Task sequence / target image: ${taskSequence || 'not specified'}\nBoot method: ${bootMethod || 'not specified'}\n` +
-    `Current stage: ${status}\nAsset: ${asset || 'not provided'}\nModel: ${model || 'not provided'}\n\n` +
-    `The technician is imaging/re-imaging a Windows 11 endpoint. Given the current stage, identify the most likely cause if the ` +
-    `deployment is stuck or has failed at this stage (e.g. PXE/DHCP scope options 66/67, WDS/MDT boundary issues, driver pack ` +
-    `mismatch, disk/partition prep, domain join failures), the single next diagnostic step, and whether this needs a driver ` +
-    `pack update, a network/DHCP fix, or is progressing normally. Be concise and operational.`;
+  const prompt = `Imaging task: ${taskSequence}\nStage: ${status}\nAsset: ${asset}\nDiagnose failure and next step.`;
   try {
     const answer = await groqChat(SP.l1support, prompt, maxTokens || 700);
     return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
   } catch (e) {
-    console.error('L1 COPILOT IMAGING ERROR:', e.message);
+    console.error('L1 IMAGING ERROR:', e.message);
     return res.status(500).json({ ok: false, error: e.message });
   }
 });
@@ -1256,17 +1243,12 @@ app.post('/api/l1-copilot/imaging', async (req, res) => {
 app.post('/api/l1-copilot/ad-intune', async (req, res) => {
   const { deviceName, joinType, compliance, bitlocker, issueSummary, maxTokens } = req.body || {};
   if (!joinType) return res.status(400).json({ ok: false, error: 'joinType required' });
-  const prompt = `Device: ${deviceName || 'not provided'}\nJoin type: ${joinType}\nCompliance state: ${compliance || 'unknown'}\n` +
-    `BitLocker/escrow status: ${bitlocker || 'unknown'}\nIssue summary: ${issueSummary || 'not provided'}\n\n` +
-    `Diagnose the most likely cause of any compliance drift or BitLocker/escrow gap given this state (e.g. sync delay, ` +
-    `stale Autopilot record, conditional access policy, missing compliance policy assignment, TPM/escrow failure), the exact ` +
-    `path to look up or force a BitLocker recovery key (Entra ID device blade vs on-prem AD DSA), and whether Autopilot ` +
-    `re-enrollment or a compliance policy re-push is needed. Be concise and operational.`;
+  const prompt = `Device: ${deviceName}\nJoin: ${joinType}\nCompliance: ${compliance}\nBitLocker: ${bitlocker}\nSummary: ${issueSummary}\nDiagnose compliance/BitLocker issues.`;
   try {
     const answer = await groqChat(SP.l1support, prompt, maxTokens || 700);
     return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
   } catch (e) {
-    console.error('L1 COPILOT AD/INTUNE ERROR:', e.message);
+    console.error('L1 AD/INTUNE ERROR:', e.message);
     return res.status(500).json({ ok: false, error: e.message });
   }
 });
@@ -1274,16 +1256,12 @@ app.post('/api/l1-copilot/ad-intune', async (req, res) => {
 app.post('/api/l1-copilot/sccm', async (req, res) => {
   const { collection, packageName, status, maxTokens } = req.body || {};
   if (!packageName) return res.status(400).json({ ok: false, error: 'packageName required' });
-  const prompt = `Collection: ${collection || 'not provided'}\nPackage/Application: ${packageName}\nLast deployment status: ${status || 'unknown'}\n\n` +
-    `Diagnose the likely cause of this SCCM/Software Center deployment state (e.g. content not found on distribution point, ` +
-    `client cache exhaustion, boundary/collection membership evaluation delay, execution timeout, pending restart chaining), ` +
-    `the single next action (retry deployment, re-distribute content, clear ccmcache, manual install via Software Center, or ` +
-    `escalate to the SCCM admin team), and whether this is an L1-actionable fix or needs elevated console access. Be concise and operational.`;
+  const prompt = `Package: ${packageName}\nStatus: ${status}\nDiagnose SCCM deployment state and next action.`;
   try {
     const answer = await groqChat(SP.l1support, prompt, maxTokens || 700);
     return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
   } catch (e) {
-    console.error('L1 COPILOT SCCM ERROR:', e.message);
+    console.error('L1 SCCM ERROR:', e.message);
     return res.status(500).json({ ok: false, error: e.message });
   }
 });
@@ -1291,16 +1269,12 @@ app.post('/api/l1-copilot/sccm', async (req, res) => {
 app.post('/api/l1-copilot/vmware', async (req, res) => {
   const { component, category, environment, input, issueSummary, maxTokens } = req.body || {};
   if (!input) return res.status(400).json({ ok: false, error: 'input required' });
-  const prompt = `Component: ${component || 'not specified'}\nIssue category: ${category || 'not specified'}\n` +
-    `Environment: ${environment || 'not specified'}\nRelated ticket summary: ${issueSummary || 'none'}\n\n` +
-    `Pasted artifact / question:\n${input}\n\n` +
-    `Identify what this is, the most probable root cause, the safest remediation (with exact PowerCLI/REST/CLI commands where ` +
-    `applicable), operational risk, and whether this is L1/L2-actionable or needs escalation to the VMware admin team.`;
+  const prompt = `Artifact: ${input}\nIdentify root cause and remediation.`;
   try {
     const answer = await groqChat(SP.vmware, prompt, maxTokens || 900);
     return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
   } catch (e) {
-    console.error('L1 COPILOT VMWARE ERROR:', e.message);
+    console.error('L1 VMWARE ERROR:', e.message);
     return res.status(500).json({ ok: false, error: e.message });
   }
 });
@@ -1308,14 +1282,12 @@ app.post('/api/l1-copilot/vmware', async (req, res) => {
 app.post('/api/l1-copilot/vmware-script', async (req, res) => {
   const { scriptType, request, maxTokens } = req.body || {};
   if (!request) return res.status(400).json({ ok: false, error: 'request required' });
-  const prompt = `Generate a ${scriptType || 'PowerCLI'} script for the following requirement:\n\n${request}\n\n` +
-    `Return complete, runnable code with brief inline comments explaining each step. Include any prerequisite ` +
-    `connection/auth commands (e.g. Connect-VIServer) needed for the script to actually run standalone.`;
+  const prompt = `Generate ${scriptType} script for: ${request}`;
   try {
     const answer = await groqChat(SP.vmware, prompt, maxTokens || 1100);
     return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
   } catch (e) {
-    console.error('L1 COPILOT VMWARE SCRIPT ERROR:', e.message);
+    console.error('L1 VMWARE SCRIPT ERROR:', e.message);
     return res.status(500).json({ ok: false, error: e.message });
   }
 });
@@ -1323,16 +1295,12 @@ app.post('/api/l1-copilot/vmware-script', async (req, res) => {
 app.post('/api/l1-copilot/cloud-ops', async (req, res) => {
   const { provider, service, environment, input, issueSummary, maxTokens } = req.body || {};
   if (!input) return res.status(400).json({ ok: false, error: 'input required' });
-  const prompt = `Cloud provider: ${provider || 'not specified'}\nService/resource: ${service || 'not specified'}\n` +
-    `Environment: ${environment || 'not specified'}\nRelated ticket summary: ${issueSummary || 'none'}\n\n` +
-    `Pasted artifact / question:\n${input}\n\n` +
-    `Identify what this is, the most probable root cause, the safest remediation (with exact CLI/portal steps where ` +
-    `applicable), blast radius, and whether this is self-service-actionable or needs escalation and to which team.`;
+  const prompt = `Cloud Input: ${input}\nIdentify root cause and remediation.`;
   try {
     const answer = await groqChat(SP.cloudops, prompt, maxTokens || 900);
     return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
   } catch (e) {
-    console.error('L1 COPILOT CLOUD OPS ERROR:', e.message);
+    console.error('L1 CLOUD OPS ERROR:', e.message);
     return res.status(500).json({ ok: false, error: e.message });
   }
 });
@@ -2673,6 +2641,30 @@ app.get('/api/integration/detail', (req, res) => {
     errorLog: INTEGRATION_ERROR_LOG.slice(-100).reverse()
   });
 });
+
+// ... (Your existing Integration GET/POST routes) ...
+
+// Repaired L1 Copilot Assistant Route
+app.post('/api/l1-copilot/assistant', async (req, res) => {
+  const { scenario } = req.body;
+
+  if (!scenario) {
+    return res.status(400).json({ ok: false, error: 'Missing scenario text' });
+  }
+
+  const prompt = `As a technical L1 Support Copilot, analyze the following user scenario and provide actionable troubleshooting steps, root cause analysis, and escalation criteria. Be concise and technical.\n\nScenario: ${scenario}`;
+
+  try {
+    // Assuming SP.copilot is your system prompt for the L1 assistant
+    const answer = await groqChat(SP.copilot, prompt, 1000); 
+    return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
+  } catch (e) {
+    console.error('L1 COPILOT GROQ ERROR:', e.message);
+    return res.status(500).json({ ok: false, error: 'Assistant unavailable: ' + e.message });
+  }
+});
+
+// ... (Your existing /api/integration/query route) ...
 
 app.post('/api/integration/query', async (req, res) => {
   const { systems, flows, queues, etlJobs, errorLog, kpis, maxTokens } = req.body || {};

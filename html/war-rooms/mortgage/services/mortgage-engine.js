@@ -12,11 +12,15 @@
   'use strict';
 
   const ENTITY_KEYS = ['loan_files', 'conditions', 'exceptions'];
+  // Auxiliary data buckets: not stage-driven pipelines like ENTITY_KEYS,
+  // so they don't get getStageDistribution/getSlaBreaches, but they load
+  // and persist the same way and are used by the CRM/CPQ methods below.
+  const AUX_KEYS = ['loan_officers', 'rate_locks'];
 
   class TSMMortgageEngine {
     constructor(model) {
       this.model = model || { entities: {}, kpis: [], risk_signals: [] };
-      this.data = { loan_files: [], conditions: [], exceptions: [] };
+      this.data = { loan_files: [], conditions: [], exceptions: [], loan_officers: [], rate_locks: [] };
       this._canonicalCore = null;
     }
 
@@ -25,10 +29,11 @@
     loadSampleData() {
       const sample = this.model.sample_data || {};
       ENTITY_KEYS.forEach(k => { this.data[k] = [...(sample[k] || [])]; });
+      AUX_KEYS.forEach(k => { this.data[k] = [...(sample[k] || [])]; });
     }
 
     loadRecords(entityKey, records) {
-      if (!ENTITY_KEYS.includes(entityKey)) {
+      if (!ENTITY_KEYS.concat(AUX_KEYS).includes(entityKey)) {
         console.warn('TSMMortgageEngine: unknown entity key', entityKey);
         return;
       }
@@ -52,7 +57,7 @@
         const raw = localStorage.getItem('TSM_MORTGAGE_DATA');
         if (!raw) return false;
         const parsed = JSON.parse(raw);
-        ENTITY_KEYS.forEach(k => { this.data[k] = Array.isArray(parsed[k]) ? parsed[k] : []; });
+        ENTITY_KEYS.concat(AUX_KEYS).forEach(k => { this.data[k] = Array.isArray(parsed[k]) ? parsed[k] : []; });
         return true;
       } catch (e) {
         console.warn('TSMMortgageEngine: loadFromStorage failed', e);
@@ -335,6 +340,145 @@
       return res.json();
     }
 
+    /* ---------- CRM: loan officer roster + workload ----------
+       Non-mutating rollup of the open pipeline (same CLOSED_STAGES
+       exclusion computeKpis uses) grouped by loan_officer_id, joined
+       against the loan_officers roster in sample_data. */
+
+    getLoanOfficers() {
+      return this.data.loan_officers || [];
+    }
+
+    getLoanOfficerWorkload() {
+      const CLOSED_STAGES = ['funded', 'denied'];
+      const roster = this.data.loan_officers || [];
+      const breaches = new Set(this.getSlaBreaches('loan_files').map(b => b.id));
+
+      return roster.map(officer => {
+        const loans = this.data.loan_files.filter(l => l.loan_officer_id === officer.officer_id);
+        const openLoans = loans.filter(l => !CLOSED_STAGES.includes(l.stage));
+        return {
+          officer_id: officer.officer_id,
+          name: officer.name,
+          team: officer.team,
+          channel: officer.channel,
+          capacity: officer.capacity,
+          open_loan_count: openLoans.length,
+          utilization_pct: officer.capacity ? Math.round((openLoans.length / officer.capacity) * 1000) / 10 : null,
+          pipeline_value: openLoans.reduce((sum, l) => sum + (l.loan_amount || 0), 0),
+          loans_over_sla: loans.filter(l => breaches.has(l.loan_id)).length,
+          loan_ids: loans.map(l => l.loan_id)
+        };
+      }).sort((a, b) => b.pipeline_value - a.pipeline_value);
+    }
+
+    /* ---------- CPQ: product catalog + rate-lock pricing ----------
+       Rates always come from the model's product_catalog/rate_lock_options
+       config, never hard-coded here — same pattern as getFinancialModel(). */
+
+    getProductCatalog() {
+      return this.model.product_catalog || null;
+    }
+
+    getRateLockOptions() {
+      return this.model.rate_lock_options || null;
+    }
+
+    getRateLocks() {
+      return this.data.rate_locks || [];
+    }
+
+    getActiveRateLocks() {
+      const opts = this.getRateLockOptions();
+      const extPct = opts && opts.extension_cost_per_day_pct != null ? opts.extension_cost_per_day_pct : 0;
+      return (this.data.rate_locks || [])
+        .filter(rl => rl.status === 'active')
+        .map(rl => {
+          const daysRemaining = rl.lock_days - Math.round((rl.locked_at_hours_ago || 0) / 24);
+          return { ...rl, days_remaining: daysRemaining, at_risk: daysRemaining <= 5, extension_cost_per_day_pct: extPct };
+        })
+        .sort((a, b) => a.days_remaining - b.days_remaining);
+    }
+
+    /** Quotes a rate for a program + lock period from the product catalog
+     *  and rate_lock_options config — this is the CPQ "quote" primitive;
+     *  it does not create a rate_lock record, just prices one. */
+    quoteRateLock(program, lockDays) {
+      const catalog = this.getProductCatalog();
+      const lockOpts = this.getRateLockOptions();
+      if (!catalog || !lockOpts) return null;
+
+      const productDef = (catalog.programs || []).find(p => p.program === program);
+      const periodDef = (lockOpts.lock_periods || []).find(p => p.days === lockDays);
+      if (!productDef || !periodDef) return null;
+
+      const quotedRate = Math.round((productDef.base_rate_pct + periodDef.rate_adder_pct) * 1000) / 1000;
+      return {
+        program,
+        label: productDef.label,
+        lock_days: lockDays,
+        lock_label: periodDef.label,
+        base_rate_pct: productDef.base_rate_pct,
+        rate_adder_pct: periodDef.rate_adder_pct,
+        quoted_rate_pct: quotedRate,
+        min_fico: productDef.min_fico,
+        max_ltv_pct: productDef.max_ltv_pct,
+        min_down_pct: productDef.min_down_pct,
+        currency: catalog.currency || 'USD'
+      };
+    }
+
+    /* ---------- Digital Twin: portfolio / servicing forecast ----------
+       Projects the CURRENT open pipeline forward using the model's
+       prepayment / default / servicing-cost assumptions. This is a
+       planning projection, not a live MSR valuation. */
+
+    getPortfolioForecast() {
+      const fm = this.model.portfolio_forecast_model;
+      if (!fm) return null;
+
+      const CLOSED_STAGES = ['funded', 'denied'];
+      const openLoans = this.data.loan_files.filter(l => !CLOSED_STAGES.includes(l.stage));
+      const horizonMonths = fm.forecast_horizon_months || 12;
+      const servicingCostPerLoan = fm.servicing_cost_per_loan_per_month || 0;
+
+      const byProgram = {};
+      openLoans.forEach(l => {
+        if (!byProgram[l.program]) byProgram[l.program] = { program: l.program, loan_count: 0, upb: 0 };
+        byProgram[l.program].loan_count += 1;
+        byProgram[l.program].upb += (l.loan_amount || 0);
+      });
+
+      const programs = Object.values(byProgram).map(p => {
+        const prepaySpeed = (fm.annual_prepayment_speed_pct || {})[p.program] || 0;
+        const defaultRate = (fm.annual_default_rate_pct || {})[p.program] || 0;
+        const horizonFraction = horizonMonths / 12;
+        const projectedPrepaidUpb = Math.round(p.upb * (prepaySpeed / 100) * horizonFraction);
+        const projectedDefaultedUpb = Math.round(p.upb * (defaultRate / 100) * horizonFraction);
+        const projectedEndingUpb = Math.max(0, p.upb - projectedPrepaidUpb - projectedDefaultedUpb);
+        const servicingCostHorizon = Math.round(p.loan_count * servicingCostPerLoan * horizonMonths);
+        return {
+          ...p,
+          annual_prepayment_speed_pct: prepaySpeed,
+          annual_default_rate_pct: defaultRate,
+          projected_prepaid_upb: projectedPrepaidUpb,
+          projected_defaulted_upb: projectedDefaultedUpb,
+          projected_ending_upb: projectedEndingUpb,
+          servicing_cost_over_horizon: servicingCostHorizon
+        };
+      }).sort((a, b) => b.upb - a.upb);
+
+      return {
+        horizon_months: horizonMonths,
+        currency: this.getFinancialModel() ? this.getFinancialModel().currency : 'USD',
+        total_upb: openLoans.reduce((s, l) => s + (l.loan_amount || 0), 0),
+        total_projected_ending_upb: programs.reduce((s, p) => s + p.projected_ending_upb, 0),
+        total_servicing_cost_over_horizon: programs.reduce((s, p) => s + p.servicing_cost_over_horizon, 0),
+        programs,
+        note: fm.note || null
+      };
+    }
+
     /* ---------- AI + relay (mirrors NOCEngine) ---------- */
 
     async runAnalysis() {
@@ -360,10 +504,16 @@
         loan_breaches: this.getSlaBreaches('loan_files'),
         loan_wip: this.getStageWip('loan_files'),
         financials: this.getFinancialSummary(),
+        loan_officer_workload: this.getLoanOfficerWorkload(),
+        active_rate_locks: this.getActiveRateLocks(),
+        product_catalog: this.getProductCatalog(),
+        portfolio_forecast: this.getPortfolioForecast(),
         records: {
           loan_files: this.data.loan_files,
           conditions: this.data.conditions,
-          exceptions: this.data.exceptions
+          exceptions: this.data.exceptions,
+          loan_officers: this.data.loan_officers,
+          rate_locks: this.data.rate_locks
         },
         ai_summary: aiText || null,
         ts: Date.now()

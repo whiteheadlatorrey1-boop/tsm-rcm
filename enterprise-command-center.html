@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TSM-Consultz | NOC Command Center</title>
+  <link rel="stylesheet" href="css/enterprise-lab/enterprise.css">
+  <style>
+    /* NOC specific layouts */
+    .noc-grid {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 1.5rem;
+      margin-top: 1rem;
+    }
+    .device-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 1rem;
+    }
+    .device-card {
+      border-left: 4px solid var(--status-success);
+      position: relative;
+    }
+    .device-card.degraded { border-left-color: var(--status-warning); }
+    .device-card.critical { border-left-color: var(--status-danger); }
+    .device-card.offline { border-left-color: var(--status-danger); }
+    .device-card.rebooting { border-left-color: var(--status-info); animation: border-pulse 1.5s infinite; }
+
+    @keyframes border-pulse {
+      0% { border-left-color: var(--status-info); }
+      50% { border-left-color: transparent; }
+      100% { border-left-color: var(--status-info); }
+    }
+
+    .telemetry-bar {
+      height: 4px;
+      width: 100%;
+      background: var(--bg-tertiary);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+      margin-top: 0.25rem;
+    }
+    .telemetry-progress {
+      height: 100%;
+      background: var(--brand-primary);
+    }
+    .service-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      font-size: 0.70rem;
+      padding: 0.15rem 0.35rem;
+      border-radius: var(--radius-sm);
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-color);
+    }
+    .service-badge.running { color: var(--status-success); border-color: rgba(16, 185, 129, 0.3); }
+    .service-badge.stopped { color: var(--status-danger); border-color: rgba(239, 68, 68, 0.3); }
+
+    .chart-container {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border-color);
+      border-radius: var(--radius-lg);
+      padding: 1.25rem;
+      height: 250px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .mini-logs {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      height: 330px;
+      overflow-y: auto;
+      background: #05070c;
+      padding: 0.75rem;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border-color);
+    }
+  </style>
+</head>
+<body class="lab-layout">
+
+  <!-- Header -->
+  <header class="lab-header">
+    <h1>TSM-NOC <span>// Systems Operations Center</span></h1>
+    <div style="display: flex; gap: 1.5rem; align-items: center;">
+      <div id="sim-time" class="mono" style="color: var(--text-secondary)">TIME: --:--:--</div>
+      <div style="display: flex; gap: 0.5rem; align-items: center;">
+        <span class="status-indicator online" id="sync-status"></span>
+        <span class="mono" style="font-size: 0.85rem;" id="sync-text">SYNC ACTIVE</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="lab-main">
+    
+    <!-- Enterprise Health Summary -->
+    <div class="grid-cols-3" style="margin-bottom: 1.5rem;">
+      <div class="card">
+        <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 600;">Global Infrastructure Health</div>
+        <div id="metric-health" style="font-size: 2.25rem; font-weight: 700; color: var(--status-success); margin-top: 0.25rem;">100%</div>
+        <div class="telemetry-bar"><div id="metric-health-bar" class="telemetry-progress" style="width: 100%; background: var(--status-success);"></div></div>
+      </div>
+      <div class="card">
+        <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 600;">Infrastructure Workload (CPU)</div>
+        <div id="metric-cpu" style="font-size: 2.25rem; font-weight: 700; color: var(--brand-primary); margin-top: 0.25rem;">0%</div>
+        <div class="telemetry-bar"><div id="metric-cpu-bar" class="telemetry-progress" style="width: 0%;"></div></div>
+      </div>
+      <div class="card">
+        <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 600;">Memory Commitment (RAM)</div>
+        <div id="metric-ram" style="font-size: 2.25rem; font-weight: 700; color: var(--brand-secondary); margin-top: 0.25rem;">0%</div>
+        <div class="telemetry-bar"><div id="metric-ram-bar" class="telemetry-progress" style="width: 0%; background: var(--brand-secondary);"></div></div>
+      </div>
+    </div>
+
+    <!-- Active Device Grid & Logs -->
+    <div class="noc-grid">
+      
+      <!-- Left side: Live Hardware Map -->
+      <div>
+        <h3 class="card-title" style="margin-bottom: 1rem;">Managed Asset Inventory</h3>
+        <div class="device-grid" id="asset-grid">
+          <!-- Populated dynamically by Device Engine state sync -->
+          <div style="color: var(--text-muted); padding: 2rem; grid-column: 1/-1; text-align: center;">
+            No asset records in database. Ensure the Simulator is running.
+          </div>
+        </div>
+      </div>
+
+      <!-- Right side: NOC logs and diagnostics -->
+      <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+        
+        <div class="card">
+          <h3 class="card-title">Console Diagnostics</h3>
+          <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1rem;">
+            Select hardware devices on the left to invoke overrides, trigger reboots, or restart crashed local services.
+          </p>
+          <div id="diagnostic-panel" style="background: var(--bg-tertiary); padding: 1rem; border-radius: var(--radius-md); font-size: 0.85rem; border: 1px dashed var(--border-color);">
+            <div style="color: var(--text-muted); text-align: center;">No device selected.</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3 class="card-title">Infrastructure Event Stream</h3>
+          <div class="mini-logs" id="noc-logs-container">
+            <div style="color: var(--text-muted); text-align: center; margin-top: 5rem;">Awaiting engine telemetry...</div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- Interactive Logic Script -->
+  <script type="module">
+    import eventBus from './js/enterprise-lab/event-bus.js';
+
+    // UI elements
+    const assetGrid = document.getElementById('asset-grid');
+    const metricHealth = document.getElementById('metric-health');
+    const metricHealthBar = document.getElementById('metric-health-bar');
+    const metricCpu = document.getElementById('metric-cpu');
+    const metricCpuBar = document.getElementById('metric-cpu-bar');
+    const metricRam = document.getElementById('metric-ram');
+    const metricRamBar = document.getElementById('metric-ram-bar');
+    const diagnosticPanel = document.getElementById('diagnostic-panel');
+    const clockText = document.getElementById('sim-time');
+    const logContainer = document.getElementById('noc-logs-container');
+
+    let cachedDevices = {};
+
+    // 1. Render active device state cards
+    function renderDevices(devices) {
+      cachedDevices = devices;
+      assetGrid.innerHTML = '';
+      
+      Object.keys(devices).forEach(id => {
+        const d = devices[id];
+        const card = document.createElement('div');
+        card.className = `card device-card ${d.status}`;
+        card.style.cursor = 'pointer';
+        card.addEventListener('click', () => loadDiagnostics(d.id));
+
+        // Format telemetry metrics depending on asset hardware type
+        let specString = '';
+        if (d.type === 'server' || d.type === 'virtual_machine' || d.type === 'hypervisor') {
+          specString = `
+            <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-top: 0.5rem; color: var(--text-secondary)">
+              <span>CPU: ${d.cpu}%</span>
+              <span>RAM: ${d.ram}%</span>
+            </div>
+          `;
+        } else if (d.type === 'firewall') {
+          specString = `
+            <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-top: 0.5rem; color: var(--text-secondary)">
+              <span>CPU: ${d.cpu}%</span>
+              <span>Users: ${d.connections}</span>
+            </div>
+          `;
+        } else if (d.type === 'printer') {
+          specString = `
+            <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-top: 0.5rem; color: var(--text-secondary)">
+              <span>Toner: ${d.toner}%</span>
+              <span>Queue: ${d.jobsInQueue} jobs</span>
+            </div>
+          `;
+        }
+
+        // Render Services Sub-List
+        let servicesList = '';
+        if (d.services) {
+          servicesList = '<div style="display: flex; gap: 0.25rem; flex-wrap: wrap; margin-top: 0.5rem;">';
+          Object.keys(d.services).forEach(srv => {
+            const statusClass = d.services[srv];
+            servicesList += `<span class="service-badge ${statusClass}">${srv}</span>`;
+          });
+          servicesList += '</div>';
+        }
+
+        card.innerHTML = `
+          <div class="flex-between">
+            <span class="mono" style="font-size: 0.8rem; color: var(--text-muted)">${d.ip || 'Local Network'}</span>
+            <span class="badge badge-${d.status === 'online' ? 'success' : d.status === 'rebooting' ? 'info' : 'danger'}">${d.status}</span>
+          </div>
+          <h4 style="margin: 0.25rem 0 0.15rem 0; font-size: 1.1rem;">${d.name}</h4>
+          <span style="font-size: 0.75rem; color: var(--text-secondary); display: block;">${d.role}</span>
+          ${specString}
+          ${servicesList}
+        `;
+        
+        assetGrid.appendChild(card);
+      });
+    }
+
+    // 2. Render diagnostic panel on active asset select
+    function loadDiagnostics(deviceId) {
+      const device = cachedDevices[deviceId];
+      if (!device) return;
+
+      let actions = '';
+      if (device.status === 'rebooting') {
+        actions = `<div style="color: var(--status-info); font-weight: 500;">Reboot sequence is in progress...</div>`;
+      } else {
+        actions = `<button class="btn btn-danger" id="btn-reboot-node" style="width: 100%; margin-bottom: 0.5rem;">Hard Reboot Device</button>`;
+        
+        // Add service restart capabilities if server services exist
+        if (device.services) {
+          actions += `<div style="margin-top: 0.75rem; font-weight: 600; font-size: 0.8rem; text-transform: uppercase; margin-bottom: 0.25rem;">Local Software Daemons</div>`;
+          Object.keys(device.services).forEach(srv => {
+            const state = device.services[srv];
+            if (state === 'stopped') {
+              actions += `<button class="btn btn-secondary btn-restart-srv" data-service="${srv}" style="width: 100%; font-size: 0.75rem; padding: 0.25rem; margin-top: 0.25rem;">Start Service: ${srv}</button>`;
+            } else {
+              actions += `<div style="font-size: 0.75rem; color: var(--status-success); padding: 0.25rem 0; display: flex; justify-content: space-between;"><span>${srv}</span><span>Active</span></div>`;
+            }
+          });
+        }
+      }
+
+      diagnosticPanel.innerHTML = `
+        <h4 style="font-size: 1rem; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+          <span class="status-indicator ${device.status === 'online' ? 'online' : device.status === 'rebooting' ? 'warning' : 'danger'}"></span>
+          ${device.name}
+        </h4>
+        <table style="width: 100%; font-size: 0.75rem; margin-bottom: 1rem; border-collapse: collapse;">
+          <tr style="border-bottom: 1px solid var(--border-color);"><td style="padding: 0.25rem 0; color: var(--text-muted)">Role:</td><td style="text-align: right; font-weight: 500;">${device.role}</td></tr>
+          <tr style="border-bottom: 1px solid var(--border-color);"><td style="padding: 0.25rem 0; color: var(--text-muted)">OS Platform:</td><td style="text-align: right; font-weight: 500;">${device.os || 'Firmware'}</td></tr>
+          <tr><td style="padding: 0.25rem 0; color: var(--text-muted)">IP:</td><td style="text-align: right;" class="mono">${device.ip || 'Dynamic'}</td></tr>
+        </table>
+        <div style="margin-top: 1rem;">
+          ${actions}
+        </div>
+      `;
+
+      // Bind action handlers
+      const rebootBtn = document.getElementById('btn-reboot-node');
+      if (rebootBtn) {
+        rebootBtn.addEventListener('click', () => {
+          eventBus.emit('device:reboot', { deviceId: device.id });
+          diagnosticPanel.innerHTML = `<div style="color: var(--status-info); font-weight: 500;">Sent hard reboot packet...</div>`;
+        });
+      }
+
+      document.querySelectorAll('.btn-restart-srv').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const srv = e.target.getAttribute('data-service');
+          eventBus.emit('device:restart-service', { deviceId: device.id, serviceName: srv });
+          e.target.disabled = true;
+          e.target.textContent = 'Restarting...';
+        });
+      });
+    }
+
+    // 3. Listen to system tick updates
+    eventBus.on('sim:tick', (data) => {
+      // Clock
+      const sec = data.gameTime;
+      const hrs = String(Math.floor(sec / 3600)).padStart(2, '0');
+      const mins = String(Math.floor((sec % 3600) / 60)).padStart(2, '0');
+      const secs = String(sec % 60).padStart(2, '0');
+      clockText.textContent = `TIME: ${hrs}:${mins}:${secs}`;
+
+      // Global Stats
+      const state = data.state;
+      metricHealth.textContent = `${state.enterpriseHealth}%`;
+      metricHealthBar.style.width = `${state.enterpriseHealth}%`;
+      metricHealthBar.style.backgroundColor = state.enterpriseHealth > 80 ? 'var(--status-success)' : state.enterpriseHealth > 50 ? 'var(--status-warning)' : 'var(--status-danger)';
+      
+      metricCpu.textContent = `${state.metrics.globalCpu}%`;
+      metricCpuBar.style.width = `${state.metrics.globalCpu}%`;
+      
+      metricRam.textContent = `${state.metrics.globalRam}%`;
+      metricRamBar.style.width = `${state.metrics.globalRam}%`;
+
+      // Active Devices Repopulator
+      if (state.devices) {
+        renderDevices(state.devices);
+        
+        // Re-align selected diagnostic pane values
+        const activeDiagnosticsHeader = diagnosticPanel.querySelector('h4');
+        if (activeDiagnosticsHeader) {
+          const activeId = Object.keys(state.devices).find(id => state.devices[id].name === activeDiagnosticsHeader.textContent.trim());
+          if (activeId) {
+            loadDiagnostics(activeId);
+          }
+        }
+      }
+    });
+
+    // Event Logging stream
+    eventBus.on('system:log', (data) => {
+      const line = document.createElement('div');
+      line.style.borderBottom = '1px solid var(--bg-tertiary)';
+      line.style.padding = '0.25rem 0';
+      const color = data.type === 'success' ? 'var(--status-success)' : data.type === 'danger' ? 'var(--status-danger)' : data.type === 'warn' ? 'var(--status-warning)' : 'var(--text-secondary)';
+      line.innerHTML = `<span style="color: var(--text-muted)">[${new Date().toLocaleTimeString()}]</span> <span style="color: ${color}">${data.message}</span>`;
+      
+      if (logContainer.querySelector('span') && logContainer.querySelector('span').textContent.includes('Awaiting')) {
+        logContainer.innerHTML = '';
+      }
+      
+      logContainer.appendChild(line);
+      logContainer.scrollTop = logContainer.scrollHeight;
+    });
+
+    // Handle clean reloads on reset
+    eventBus.on('sim:reset-complete', () => {
+      location.reload();
+    });
+
+    // Fast-boot from current cache state
+    const currentCache = localStorage.getItem('tsm_simulator_state');
+    if (currentCache) {
+      try {
+        const parsed = JSON.parse(currentCache);
+        if (parsed.devices) renderDevices(parsed.devices);
+      } catch (e) {}
+    }
+  </script>
+</body>
+</html>
