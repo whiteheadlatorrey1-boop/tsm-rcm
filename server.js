@@ -1957,6 +1957,8 @@ app.delete('/api/collective/signals', (req, res) => {
 app.post('/api/collective/bnca', async (req, res) => {
   try {
     if (!COLLECTIVE_SIGNALS.length) return res.status(400).json({ ok: false, error: 'No signals to synthesize' });
+    // GROQ_API_KEY_CHECK_INSERTED
+    if (!process.env.GROQ_API_KEY) return res.status(500).json({ ok: false, error: 'GROQ_API_KEY is not set in this environment' });
     const prompt = `You are TSM's cross-vertical BNCA synthesizer. Given the following signals from multiple verticals, identify: (1) conflicts between verticals, (2) synergies or compounding risks, (3) a ranked HITL decision queue. Respond ONLY in valid JSON with keys: conflicts (array), synergies (array), hitlQueue (array of {priority, vertical, action, rationale}), summary (string).\n\nSignals:\n${JSON.stringify(COLLECTIVE_SIGNALS.slice(0, 50), null, 2)}`;
     const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
@@ -1971,7 +1973,15 @@ app.post('/api/collective/bnca', async (req, res) => {
         response_format: { type: 'json_object' }
       })
     });
-    if (!groqRes.ok) return res.status(502).json({ ok: false, error: 'Groq error' });
+    if (!groqRes.ok) {
+      const errBody = await groqRes.text();
+      console.error(`[collective/bnca] Groq HTTP ${groqRes.status}:`, errBody);
+      return res.status(502).json({
+        ok: false,
+        error: `Groq error (HTTP ${groqRes.status})`,
+        detail: errBody.slice(0, 500)
+      });
+    }
     const data = await groqRes.json();
     const parsed = JSON.parse(data.choices[0].message.content);
     const result = { ...parsed, timestamp: Date.now(), signalCount: COLLECTIVE_SIGNALS.length };
