@@ -8,6 +8,7 @@
 
 const { VMwareTwin } = require('./server/enterprise-lab/vmware-twin');
 const { NetworkTwin } = require('./server/enterprise-lab/network-twin');
+const { DeviceTwin } = require('./server/enterprise-lab/device-twin');
 
 let failures = 0;
 
@@ -93,8 +94,61 @@ function testNetworkTwin() {
   assert(threw, 'invalid targetId throws instead of silently failing');
 }
 
+function testDeviceTwin() {
+  console.log('\nDevice Twin');
+  const twin = new DeviceTwin();
+
+  twin.applyFault('disk-full', 'lap-jdoe');
+  const lap = twin.state.endpoints.find((e) => e.id === 'lap-jdoe');
+  assert(lap.status === 'disk-full' && lap.diskFreePct === 1, 'disk-full fills disk and sets status');
+
+  twin.reset();
+  twin.applyFault('battery-failure', 'lap-bsmith');
+  const bsmith = twin.state.endpoints.find((e) => e.id === 'lap-bsmith');
+  assert(bsmith.status === 'battery-failure' && bsmith.batteryHealthPct === 0, 'battery-failure zeroes battery health');
+
+  let threw = false;
+  try {
+    twin.applyFault('battery-failure', 'dsk-kchen');
+  } catch (e) {
+    threw = true;
+  }
+  assert(threw, 'battery-failure rejects non-laptop endpoints');
+
+  twin.reset();
+  twin.applyFault('printer-jam', 'prn-3f');
+  const prn = twin.state.endpoints.find((e) => e.id === 'prn-3f');
+  assert(prn.status === 'paper-jam', 'printer-jam sets paper-jam status');
+
+  threw = false;
+  try {
+    twin.applyFault('printer-jam', 'lap-jdoe');
+  } catch (e) {
+    threw = true;
+  }
+  assert(threw, 'printer-jam rejects non-printer endpoints');
+
+  twin.reset();
+  twin.applyFault('patch-failure', 'dsk-finance-01');
+  const dsk = twin.state.endpoints.find((e) => e.id === 'dsk-finance-01');
+  assert(dsk.patchStatus === 'failed' && dsk.status === 'patch-failure', 'patch-failure marks patch and status');
+
+  twin.applyFault('clear');
+  const freshLap = twin.state.endpoints.find((e) => e.id === 'lap-jdoe');
+  assert(freshLap.status === 'healthy', 'clear resets twin to healthy baseline');
+
+  threw = false;
+  try {
+    twin.applyFault('disk-full', 'not-a-real-endpoint');
+  } catch (e) {
+    threw = true;
+  }
+  assert(threw, 'invalid targetId throws instead of silently failing');
+}
+
 testVMwareTwin();
 testNetworkTwin();
+testDeviceTwin();
 
 console.log(`\n${failures === 0 ? '✅ All checks passed' : `❌ ${failures} check(s) failed`}`);
 process.exit(failures === 0 ? 0 : 1);
