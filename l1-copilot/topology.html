@@ -1,0 +1,284 @@
+<!--
+  Topology Panels Snippet
+  Paste the <section> block into your layout (wherever the other
+  Command Center panels live), the <style> into your stylesheet or
+  a <style> block, and the <script> before your closing </body>.
+
+  This snippet assumes /api/twins/vmware/state and /api/twins/network/state
+  are reachable from the page (same origin as enterprise-command-center.html).
+-->
+
+<!-- ============ MARKUP ============ -->
+<section class="twin-panels">
+  <div class="twin-panel" id="vmware-panel">
+    <div class="twin-panel-header">
+      <h3>VMware Digital Twin</h3>
+      <div class="twin-panel-actions">
+        <select id="vmware-fault-target"></select>
+        <select id="vmware-fault-type">
+          <option value="host-down">Host Down</option>
+          <option value="datastore-full">Datastore Full</option>
+          <option value="network-partition">Network Partition</option>
+          <option value="clear">Clear / Reset</option>
+        </select>
+        <button id="vmware-fault-btn">Inject Fault</button>
+      </div>
+    </div>
+    <div class="twin-entities" id="vmware-entities"></div>
+    <div class="twin-events" id="vmware-events"></div>
+  </div>
+
+  <div class="twin-panel" id="network-panel">
+    <div class="twin-panel-header">
+      <h3>Network Digital Twin</h3>
+      <div class="twin-panel-actions">
+        <select id="network-fault-target"></select>
+        <select id="network-fault-type">
+          <option value="link-down">Link Down</option>
+          <option value="latency-spike">Latency Spike</option>
+          <option value="packet-loss">Packet Loss</option>
+          <option value="bgp-flap">BGP Flap</option>
+          <option value="clear">Clear / Reset</option>
+        </select>
+        <button id="network-fault-btn">Inject Fault</button>
+      </div>
+    </div>
+    <div class="twin-entities" id="network-entities"></div>
+    <div class="twin-events" id="network-events"></div>
+  </div>
+</section>
+
+<!-- ============ STYLES ============ -->
+<style>
+  .twin-panels {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-top: 16px;
+  }
+  .twin-panel {
+    background: #12161c;
+    border: 1px solid #262b33;
+    border-radius: 8px;
+    padding: 14px 16px;
+  }
+  .twin-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .twin-panel-header h3 {
+    margin: 0;
+    font-size: 14px;
+    color: #e6e9ef;
+  }
+  .twin-panel-actions {
+    display: flex;
+    gap: 6px;
+  }
+  .twin-panel-actions select,
+  .twin-panel-actions button {
+    background: #1b2028;
+    color: #cfd4dc;
+    border: 1px solid #333a45;
+    border-radius: 4px;
+    font-size: 12px;
+    padding: 4px 6px;
+  }
+  .twin-panel-actions button {
+    cursor: pointer;
+  }
+  .twin-panel-actions button:hover {
+    background: #262d38;
+  }
+  .twin-entities {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 220px;
+    overflow-y: auto;
+  }
+  .twin-entity-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 8px;
+    border-radius: 4px;
+    background: #171b22;
+    font-size: 12px;
+    color: #cfd4dc;
+  }
+  .twin-entity-status {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 8px;
+  }
+  .twin-entity-status.status-up { background: #3ecf8e; }
+  .twin-entity-status.status-down { background: #e5484d; }
+  .twin-entity-status.status-unreachable { background: #e5484d; }
+  .twin-entity-status.status-isolated { background: #f5a623; }
+  .twin-entity-status.status-full { background: #f5a623; }
+  .twin-entity-status.status-flapping { background: #f5a623; }
+  .twin-events {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid #262b33;
+    font-size: 11px;
+    color: #8b94a3;
+    max-height: 90px;
+    overflow-y: auto;
+  }
+  .twin-events div {
+    padding: 2px 0;
+  }
+  @media (max-width: 900px) {
+    .twin-panels { grid-template-columns: 1fr; }
+  }
+</style>
+
+<!-- ============ SCRIPT ============ -->
+<script>
+(function () {
+  const POLL_MS = 5000;
+
+  function statusDot(status) {
+    return `<span class="twin-entity-status status-${status}"></span>`;
+  }
+
+  // ---- VMware panel ----
+
+  async function fetchVMwareState() {
+    const res = await fetch('/api/twins/vmware/state');
+    return res.json();
+  }
+
+  function renderVMware(state) {
+    const container = document.getElementById('vmware-entities');
+    const targetSelect = document.getElementById('vmware-fault-target');
+    const rows = [];
+    const targets = [];
+
+    state.clusters.forEach((cluster) => {
+      cluster.hosts.forEach((host) => {
+        rows.push(`<div class="twin-entity-row">
+          <span>${statusDot(host.status)}${host.name} — ${cluster.name}</span>
+          <span>${host.status} · cpu ${host.cpuPct}% · mem ${host.memPct}%</span>
+        </div>`);
+        targets.push(host.id);
+      });
+    });
+    state.datastores.forEach((ds) => {
+      rows.push(`<div class="twin-entity-row">
+        <span>${statusDot(ds.status === 'full' ? 'full' : 'up')}${ds.name}</span>
+        <span>${ds.usedGB}/${ds.capacityGB} GB — ${ds.status}</span>
+      </div>`);
+      targets.push(ds.id);
+    });
+
+    container.innerHTML = rows.join('');
+
+    const currentTarget = targetSelect.value;
+    targetSelect.innerHTML = targets.map((id) => `<option value="${id}">${id}</option>`).join('');
+    if (targets.includes(currentTarget)) targetSelect.value = currentTarget;
+
+    const eventsEl = document.getElementById('vmware-events');
+    eventsEl.innerHTML = state.events.slice(0, 5).map((e) => `<div>${e.ts.slice(11, 19)} — ${e.message}</div>`).join('');
+  }
+
+  async function pollVMware() {
+    try {
+      renderVMware(await fetchVMwareState());
+    } catch (err) {
+      console.error('VMware twin poll failed', err);
+    }
+  }
+
+  document.getElementById('vmware-fault-btn').addEventListener('click', async () => {
+    const type = document.getElementById('vmware-fault-type').value;
+    const targetId = document.getElementById('vmware-fault-target').value;
+    try {
+      await fetch('/api/twins/vmware/fault', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type, targetId }),
+      });
+      pollVMware();
+    } catch (err) {
+      console.error('Failed to inject VMware fault', err);
+    }
+  });
+
+  // ---- Network panel ----
+
+  async function fetchNetworkState() {
+    const res = await fetch('/api/twins/network/state');
+    return res.json();
+  }
+
+  function renderNetwork(state) {
+    const container = document.getElementById('network-entities');
+    const targetSelect = document.getElementById('network-fault-target');
+    const rows = [];
+    const targets = [];
+
+    state.nodes.forEach((node) => {
+      rows.push(`<div class="twin-entity-row">
+        <span>${statusDot(node.status)}${node.name}</span>
+        <span>${node.type} · ${node.status}</span>
+      </div>`);
+    });
+    state.links.forEach((link) => {
+      const status = link.status === 'down' ? 'down' : (link.bgpSession === 'flapping' ? 'flapping' : (link.lossPct > 0 ? 'isolated' : 'up'));
+      rows.push(`<div class="twin-entity-row">
+        <span>${statusDot(status)}${link.from} ↔ ${link.to}</span>
+        <span>${link.status}${link.latencyMs != null ? ' · ' + link.latencyMs + 'ms' : ''}${link.lossPct ? ' · ' + link.lossPct + '% loss' : ''}</span>
+      </div>`);
+      targets.push(link.id);
+    });
+
+    container.innerHTML = rows.join('');
+
+    const currentTarget = targetSelect.value;
+    targetSelect.innerHTML = targets.map((id) => `<option value="${id}">${id}</option>`).join('');
+    if (targets.includes(currentTarget)) targetSelect.value = currentTarget;
+
+    const eventsEl = document.getElementById('network-events');
+    eventsEl.innerHTML = state.events.slice(0, 5).map((e) => `<div>${e.ts.slice(11, 19)} — ${e.message}</div>`).join('');
+  }
+
+  async function pollNetwork() {
+    try {
+      renderNetwork(await fetchNetworkState());
+    } catch (err) {
+      console.error('Network twin poll failed', err);
+    }
+  }
+
+  document.getElementById('network-fault-btn').addEventListener('click', async () => {
+    const type = document.getElementById('network-fault-type').value;
+    const targetId = document.getElementById('network-fault-target').value;
+    try {
+      await fetch('/api/twins/network/fault', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type, targetId }),
+      });
+      pollNetwork();
+    } catch (err) {
+      console.error('Failed to inject network fault', err);
+    }
+  });
+
+  // ---- Kick off ----
+
+  pollVMware();
+  pollNetwork();
+  setInterval(pollVMware, POLL_MS);
+  setInterval(pollNetwork, POLL_MS);
+})();
+</script>
