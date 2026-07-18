@@ -3182,6 +3182,9 @@ app.use((err, req, res, next) => {
 });
 
 // ── START ─────────────────────────────────────────────────────────────────────
+const twinsRouter = require('./server/enterprise-lab/twins-router');
+app.use('/api/twins', twinsRouter);
+
 const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`TSM Platform Core Engine listening on port ${PORT}`);
 });
