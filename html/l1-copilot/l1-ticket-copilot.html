@@ -209,6 +209,20 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
           </div>
         </div>
       </div>
+
+      <div class="card" id="netContextCard" style="display:none">
+        <div class="card-head">NETWORK CONTEXT — VIRTUAL LAB DIRECTORY</div>
+        <div class="card-body">
+          <div class="status-row"><span>Hostname</span><span id="ncHostname">--</span></div>
+          <div class="status-row"><span>IP Address</span><span id="ncIp">--</span></div>
+          <div class="status-row"><span>VLAN / Subnet</span><span id="ncVlan">--</span></div>
+          <div class="status-row"><span>Department / Site</span><span id="ncSite">--</span></div>
+          <div class="status-row"><span>OS</span><span id="ncOs">--</span></div>
+          <div class="status-row"><span>AD Group</span><span id="ncAdGroup">--</span></div>
+          <div class="status-row"><span>Compliance / Live State</span><span id="ncCompliance">--</span></div>
+          <div class="status-row"><span>Last Seen</span><span id="ncLastSeen">--</span></div>
+        </div>
+      </div>
     </section>
 
     <!-- AI ANALYSIS -->
@@ -870,6 +884,7 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
     document.getElementById('vManufacturer').value = t.vManufacturer;
     document.getElementById('vServiceTag').value = t.vServiceTag;
     document.getElementById('vWarranty').value = t.vWarranty;
+    renderNetContext(t.asset);
     saveCurrentTicket();
   }
 
@@ -883,6 +898,30 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
     .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
     .then(list => { sampleTickets = Array.isArray(list) && list.length ? list : [FALLBACK_TICKET]; populateSamplePicker(); })
     .catch(() => { sampleTickets = [FALLBACK_TICKET]; populateSamplePicker(); });
+
+  // ── Network context (virtual lab directory) ────────────────────────────
+  let labDirectory = {};
+  let labTopology = [];
+  Promise.all([
+    fetch('/data/lab/directory.json').then(r => r.ok ? r.json() : {}).catch(() => ({})),
+    fetch('/data/lab/network-topology.json').then(r => r.ok ? r.json() : []).catch(() => [])
+  ]).then(([dir, topo]) => { labDirectory = dir || {}; labTopology = topo || []; });
+
+  function renderNetContext(assetTag){
+    const card = document.getElementById('netContextCard');
+    const rec = labDirectory[assetTag];
+    if (!rec) { card.style.display = 'none'; return; }
+    const vlanInfo = labTopology.find(v => v.vlan === rec.vlan);
+    document.getElementById('ncHostname').textContent = rec.hostname || '--';
+    document.getElementById('ncIp').textContent = rec.ip || '--';
+    document.getElementById('ncVlan').textContent = rec.vlan + (vlanInfo ? ` (${vlanInfo.cidr})` : '');
+    document.getElementById('ncSite').textContent = vlanInfo ? `${vlanInfo.dept} — ${vlanInfo.site}` : '--';
+    document.getElementById('ncOs').textContent = rec.os || '--';
+    document.getElementById('ncAdGroup').textContent = rec.adGroup || '--';
+    document.getElementById('ncCompliance').textContent = rec.complianceState || '--';
+    document.getElementById('ncLastSeen').textContent = rec.lastSeen || '--';
+    card.style.display = '';
+  }
 
   document.getElementById('btnLoadSample').addEventListener('click', () => {
     const picker = document.getElementById('tkSamplePicker');
@@ -906,6 +945,7 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
     ['kpiConfidence','kpiSeverity','kpiSystem','kpiImpact'].forEach(id => document.getElementById(id).textContent = '--');
     const notesEl = document.getElementById('notesArea');
     notesEl.value = ''; notesEl.dataset.manual = '';
+    document.getElementById('netContextCard').style.display = 'none';
     renderChecklist();
     clearCurrentTicket();
   });
