@@ -220,13 +220,57 @@ td{padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text)}
 
   async function hydrateAndRender(){
     if (window.TSMLiveData) {
-      const model = { controls: CONTROLS };
-      const liveInfo = await window.TSMLiveData.hydrateModel('governance', model, 'controls');
-      if (liveInfo.source === 'live') CONTROLS = model.controls;
+      let usingLiveControls = false, usingLiveRisks = false, usingLiveAudit = false;
+      try {
+        const st = await window.TSMLiveData.status('governance');
+        if (st.ok && st.source === 'live' && st.record_count) {
+          const d = await window.TSMLiveData.getData('governance');
+          const records = (d && d.records) || [];
+          // Two supported upload shapes for the 'governance' domain:
+          //  1) flat array of control rows (original behavior)
+          //  2) a single JSON object {controls, risks, audit} -- lets one
+          //     upload drive all three panels instead of just controls.
+          const combined = (records.length === 1 && records[0] && typeof records[0] === 'object'
+            && (Array.isArray(records[0].controls) || Array.isArray(records[0].risks) || Array.isArray(records[0].audit)))
+            ? records[0] : null;
+
+          if (combined && Array.isArray(combined.controls) && combined.controls.length) {
+            CONTROLS = combined.controls;
+            usingLiveControls = true;
+          } else if (!combined && records.length) {
+            CONTROLS = records;
+            usingLiveControls = true;
+          }
+
+          if (combined && Array.isArray(combined.risks) && combined.risks.length) {
+            RISKS.length = 0;
+            RISKS.push(...combined.risks);
+            usingLiveRisks = true;
+          }
+          if (combined && Array.isArray(combined.audit) && combined.audit.length) {
+            AUDIT.length = 0;
+            AUDIT.push(...combined.audit);
+            usingLiveAudit = true;
+          }
+        }
+      } catch (e) {}
+
+      let label;
+      if (!usingLiveControls && !usingLiveRisks && !usingLiveAudit) {
+        label = 'SAMPLE DATA (ALL PANELS) — UPLOAD A {controls,risks,audit} JSON FILE TO DRIVE LIVE DATA';
+      } else if (usingLiveControls && usingLiveRisks && usingLiveAudit) {
+        label = 'LIVE DATA — CONTROLS, RISKS & AUDIT TRAIL ALL FROM UPLOAD';
+      } else {
+        const parts = [];
+        if (usingLiveControls) parts.push('CONTROLS');
+        if (usingLiveRisks) parts.push('RISKS');
+        if (usingLiveAudit) parts.push('AUDIT TRAIL');
+        label = `LIVE DATA (${parts.join(', ')}) — UPLOAD A {controls,risks,audit} JSON FILE TO DRIVE THE REST`;
+      }
 
       window.TSMLiveData.mountWidget(document.getElementById('liveDataBody'), {
         domain: 'governance',
-        label: 'LIVE DATA (CONTROLS) — RISKS & AUDIT TRAIL REMAIN SAMPLE DATA',
+        label,
         onChange: async () => { await hydrateAndRender(); }
       });
     }
