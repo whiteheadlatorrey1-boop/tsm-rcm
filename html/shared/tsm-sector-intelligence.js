@@ -127,19 +127,19 @@
       "BPO Operations": {
         id: "bpo-ops",
         label: "BPO Operations",
-        url: "/html/bpo/bpo-war-room.html?mode=operations",
+        url: "/html/war-rooms/bpo/bpo-war-room.html?mode=operations",
         type: "operations"
       },
       "Staffing Queue Manager": {
         id: "bpo-staffing",
         label: "Staffing Queue Manager",
-        url: "/html/bpo/bpo-war-room.html?mode=staffing",
+        url: "/html/war-rooms/bpo/bpo-war-room.html?mode=staffing",
         type: "staffing"
       },
       "BPO Strategist": {
         id: "bpo-strategist",
         label: "BPO Strategist",
-        url: "/html/bpo/bpo-war-room.html?mode=strategist",
+        url: "/html/war-rooms/bpo/bpo-war-room.html?mode=strategist",
         type: "strategist"
       }
     },
@@ -600,7 +600,7 @@
     bpo: {
       __meta: {
         label: "BPO",
-        warRoom: "/html/bpo/bpo-war-room.html",
+        warRoom: "/html/war-rooms/bpo/bpo-war-room.html",
         defaultOwner: "Operations Lead",
         executiveAudience: ["strategist", "ops-director", "executive"],
         continuityNarrative:

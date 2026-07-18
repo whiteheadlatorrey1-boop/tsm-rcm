@@ -28,7 +28,7 @@ window.TSMEventBus = window.TSMEventBus || {
     construction: { keys: ['TSM_CONSTRUCTION_WAR_RELAY','tsm_construction_war_relay'],   entryFn: 'runBNCA',        strategistPath: '/construction-suite/construction-strategist.html' },
     legal:        { keys: ['TSM_LEGAL_WAR_RELAY','tsm_legal_war_relay'],                 entryFn: 'runSynthesis',   strategistPath: '/legal-pro/legal-main-strategist.html' },
     realestate:   { keys: ['TSM_RE_WAR_RELAY','tsm_re_war_relay'],                       entryFn: 'runStrategist',  strategistPath: '/reo-pro/re-strategist.html' },
-    bpo:          { keys: ['TSM_BPO_WAR_RELAY','tsm_bpo_war_relay','tsm_war_relay_bpo'], entryFn: 'runStrategist',  strategistPath: '/bpo/bpo-strategist-v2.html' },
+    bpo:          { keys: ['TSM_BPO_WAR_RELAY','tsm_bpo_war_relay','tsm_war_relay_bpo'], entryFn: 'runStrategist',  strategistPath: '/html/war-rooms/bpo/bpo-strategist.html' },
 
     /* Added: verticals that exist in server.js (SP.cpq / SP.o2c / SP.crm / SP.approval /
        SP.mdm / SP.integration / SP.governance / SP.digital_twin) but were never wired

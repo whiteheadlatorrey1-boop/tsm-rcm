@@ -1437,11 +1437,41 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
     renderExecStrip();
   });
 
+  // ── Incoming escalation (e.g. from NOC Asset Console "ESCALATE TO L1") ───
+  // The relay only stores the last payload per domain with no read-consumed
+  // flag, so dedupe locally by remembering the last payload id we've already
+  // applied — otherwise every reload would re-apply the same escalation.
+  const ESCALATION_SEEN_KEY = 'TSM_L1_LAST_ESCALATION_SEEN';
+  function applyIncomingEscalation() {
+    let payload;
+    try {
+      if (!window.TSM || !window.TSM.relay) return;
+      payload = window.TSM.relay.read('L1COPILOT');
+    } catch (e) { return; }
+    if (!payload || !payload.incident) return;
+
+    const seenId = sessionStorage.getItem(ESCALATION_SEEN_KEY);
+    if (seenId === payload.id) return; // already applied this exact escalation
+    try { sessionStorage.setItem(ESCALATION_SEEN_KEY, payload.id); } catch (e) {}
+
+    applyExtractedFields(payload);
+    if (payload.status) {
+      const sel = document.getElementById('tkStatus');
+      const match = Array.from(sel.options).find(o => o.value === payload.status);
+      if (match) sel.value = match.value;
+    }
+    if (payload.description) document.getElementById('tkDescription').value = payload.description;
+    refreshSlaDisplay();
+    saveCurrentTicket();
+    goToSection('ticket');
+  }
+
   // ── Init ─────────────────────────────────────────────────────────────────
   renderChecklist();
   renderHistory();
   renderExecStrip();
   loadCurrentTicket();
+  applyIncomingEscalation();
 })();
 </script>
 

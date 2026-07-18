@@ -169,9 +169,14 @@ const VERTICALS = [
     '/html/reo-pro/re-exec-portal.html',
   ]},
   { column: 'BPO Services', key: 'BPO', pages: [
-    '/html/bpo/bpo-situation-room.html',
-    '/html/bpo/bpo-strategist-v2.html',
-    '/html/bpo/bpo-executive-portal.html',
+    '/html/war-rooms/bpo/bpo-war-room.html',
+    '/html/war-rooms/bpo/bpo-strategist.html',
+    '/html/war-rooms/bpo/bpo-executive-portal.html',
+  ]},
+  { column: 'Mortgage', key: 'Mortgage', pages: [
+    '/html/war-rooms/mortgage/mortgage-war-room.html',
+    '/html/war-rooms/mortgage/mortgage-strategist.html',
+    '/html/war-rooms/mortgage/mortgage-executive-portal.html',
   ]},
   { column: 'Mortgage', key: 'Mortgage', pages: [
     '/html/war-rooms/mortgage/mortgage-war-room.html',
