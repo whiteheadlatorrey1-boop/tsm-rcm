@@ -40,6 +40,7 @@ const chaosEngine = new ChaosEngine({
   network: { twin: networkTwin, faultTypes: NETWORK_FAULTS },
   device: { twin: deviceTwin, faultTypes: DEVICE_FAULTS },
   vendor: { twin: vendorOpsTwin, faultTypes: VENDOR_FAULTS },
+  vmware: { twin: vmwareTwin, faultTypes: VMWARE_FAULTS },
 });
 const slaEngine = new SLAEngine(
   { ad: adTwin, m365: m365Twin, network: networkTwin, device: deviceTwin, vmware: vmwareTwin },
@@ -451,4 +452,16 @@ router.post('/knowledge/query', async (req, res) => {
   }
 });
 
+// Applies a real fault to the named twin and records it against Technician
+// Performance, without creating a second Service Desk ticket — callers that
+// already created their own ticket (e.g. api.js's /incidents/generate) want
+// the twin/SLA/analytics side effects only, not a duplicate mission entry.
+function triggerModuleFault(moduleName) {
+  const result = chaosEngine.triggerOnce(moduleName);
+  technicianMetrics.recordIncident(result);
+  return result;
+}
+
 module.exports = router;
+module.exports.triggerModuleFault = triggerModuleFault;
+

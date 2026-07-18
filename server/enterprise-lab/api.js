@@ -3,6 +3,7 @@
 const express = require('express');
 const router = express.Router();
 const { engine, CATEGORIES } = require('./incident-engine');
+const twinsRouter = require('./twins-router');
 
 router.get('/health', (req, res) => {
   res.json({ ok: true, service: 'TSM Enterprise Lab' });
@@ -25,10 +26,38 @@ router.get('/missions/:id', (req, res) => {
   res.json({ ok: true, mission: m });
 });
 
-// Manually inject an incident (Chaos Engine button).
+// Categories that have a matching digital twin get a real twin fault applied
+// (feeding SLA/AI Risk/Technician/Historical Analytics) in addition to the
+// ticket this route already creates below. VPN and SCADA are intentionally
+// left unmapped — no twin models those systems yet.
+const CATEGORY_TO_MODULE = {
+  'Dell Laptop': 'device',
+  'Desktop': 'device',
+  'Printer': 'device',
+  'Network': 'network',
+  'Active Directory': 'ad',
+  'Microsoft 365': 'm365',
+  'VMware': 'vmware',
+};
+
+// Manually inject an incident (Chaos Engine button). Best-effort also
+// applies a matching digital-twin fault so SLA/AI Risk/Technician/
+// Historical Analytics reflect it, not just the Service Desk Wall.
 router.post('/incidents/generate', (req, res) => {
   const { category, priority, issue } = req.body || {};
   const mission = engine.createIncident({ category, priority, issue });
+
+  const moduleName = CATEGORY_TO_MODULE[mission.category];
+  if (moduleName) {
+    try {
+      twinsRouter.triggerModuleFault(moduleName);
+    } catch (err) {
+      // Best-effort: e.g. no valid target currently exists for any fault
+      // type on this twin. The ticket above was already created
+      // successfully, so don't fail the request over this.
+    }
+  }
+
   res.json({ ok: true, mission });
 });
 
