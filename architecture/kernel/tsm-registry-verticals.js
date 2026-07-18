@@ -86,4 +86,70 @@
     weights: { customer: 7, quote: 6, order: 8, shipment: 6, invoice: 8 },
     route: "/html/o2c/o2c-war-room.html"
   });
+
+  // ── SAP-centric verticals backfill ─────────────────────────────────
+  TSMRegistry.register({
+    id: "crm-war-room",
+    title: "CRM",
+    color: "#fb7185",
+    entities: ["lead", "opportunity", "contractRenewal", "churnRisk"],
+    weights: { lead: 6, opportunity: 9, contractRenewal: 7, churnRisk: 9 },
+    route: "/html/war-rooms/crm/crm-war-room.html"
+  });
+  TSMRegistry.register({
+    id: "cpq-war-room",
+    title: "CPQ",
+    color: "#fbbf24",
+    entities: ["quote", "priceException", "bundle", "product"],
+    weights: { quote: 8, priceException: 9, bundle: 6, product: 5 },
+    route: "/html/war-rooms/cpq/cpq-war-room.html"
+  });
+  TSMRegistry.register({
+    id: "catalog-war-room",
+    title: "Catalog",
+    color: "#a3e635",
+    entities: ["sku", "priceList", "discontinuation"],
+    weights: { sku: 7, priceList: 7, discontinuation: 8 },
+    route: "/html/war-rooms/catalog/catalog-war-room.html"
+  });
+  TSMRegistry.register({
+    id: "approval-war-room",
+    title: "Approval Center",
+    color: "#facc15",
+    entities: ["purchaseOrder", "expense", "discountRequest"],
+    weights: { purchaseOrder: 8, expense: 8, discountRequest: 6 },
+    route: "/html/war-rooms/approval/approval-war-room.html"
+  });
+  TSMRegistry.register({
+    id: "mdm-war-room",
+    title: "Master Data Management",
+    color: "#22d3ee",
+    entities: ["customerRecord", "goldenRecord", "dataQualityException"],
+    weights: { customerRecord: 7, goldenRecord: 8, dataQualityException: 9 },
+    route: "/html/war-rooms/mdm/mdm-war-room.html"
+  });
+  TSMRegistry.register({
+    id: "governance-war-room",
+    title: "Governance",
+    color: "#818cf8",
+    entities: ["policyException", "auditFinding", "complianceCert"],
+    weights: { policyException: 7, auditFinding: 9, complianceCert: 6 },
+    route: "/html/war-rooms/governance/governance-war-room.html"
+  });
+  TSMRegistry.register({
+    id: "integration-hub",
+    title: "Integration Hub",
+    color: "#2dd4bf",
+    entities: ["apiSync", "webhook", "dataMapping"],
+    weights: { apiSync: 9, webhook: 6, dataMapping: 7 },
+    route: "/html/war-rooms/integration-hub/integration-hub.html"
+  });
+  TSMRegistry.register({
+    id: "digital-twin-war-room",
+    title: "Digital Twin",
+    color: "#f472b6",
+    entities: ["sensorAnomaly", "simulation", "assetHealth"],
+    weights: { sensorAnomaly: 9, simulation: 6, assetHealth: 7 },
+    route: "/html/war-rooms/digital-twin/digital-twin.html"
+  });
 })();
