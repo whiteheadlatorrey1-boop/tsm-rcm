@@ -47,7 +47,7 @@ router.post('/incidents/generate', (req, res) => {
   const { category, priority, issue } = req.body || {};
   const mission = engine.createIncident({ category, priority, issue });
 
-  const moduleName = CATEGORY_TO_MODULE[mission.category];
+  const moduleName = CATEGORY_TO_MODULE[mission.device];
   if (moduleName) {
     try {
       twinsRouter.triggerModuleFault(moduleName);
