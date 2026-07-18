@@ -261,6 +261,35 @@ function renderRiskRegister(fin){
   </div>`;
 }
 
+function renderPortfolioOutlook(data){
+  const k = (data && data.kpis) || {};
+  const currency = (data.financials && data.financials.currency) || 'USD';
+  const loanFiles = (data.records && data.records.loan_files) || [];
+  const ctcValue = loanFiles
+    .filter(l => l.stage === 'clear_to_close')
+    .reduce((sum, l) => sum + (l.loan_amount || 0), 0);
+  return `<div class="sec">
+    <div class="sec-hdr"><span class="lbl">PORTFOLIO OUTLOOK</span><span class="sec-hdr-note">current-state snapshot &mdash; not a trend projection</span></div>
+    <div class="fin-row">
+      <div class="fin-card">
+        <div class="fin-val">${k.open_loan_files||0}</div>
+        <div class="fin-lbl">OPEN LOAN FILES</div>
+        <div class="fin-sub">Active in pipeline right now</div>
+      </div>
+      <div class="fin-card">
+        <div class="fin-val green">${k.ctc_ready||0}</div>
+        <div class="fin-lbl">CLEAR TO CLOSE</div>
+        <div class="fin-sub">Loan file(s) ready to fund</div>
+      </div>
+      <div class="fin-card hero">
+        <div class="fin-val">${money(ctcValue, currency)}</div>
+        <div class="fin-lbl">EXPECTED TO CLOSE, CURRENT PACE</div>
+        <div class="fin-sub">Dollar value of loans already at Clear to Close today</div>
+      </div>
+    </div>
+  </div>`;
+}
+
 function render(){
   const data = loadRelay();
   if(!data){ renderEmpty(); return; }
@@ -269,6 +298,7 @@ function render(){
 
   let html = '';
   html += renderFinancials(data.financials);
+  html += renderPortfolioOutlook(data);
 
   if(data.ai_summary){
     html += `<div class="ai-box"><strong style="color:var(--gold);font-family:'Orbitron',sans-serif;font-size:.65rem;letter-spacing:.1em;display:block;margin-bottom:8px;">EXECUTIVE RECOMMENDATION</strong>${renderEngineOutput(data.ai_summary)}</div>`;
