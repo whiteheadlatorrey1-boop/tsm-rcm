@@ -46,7 +46,7 @@ const GROQ_MODELS = [
 ];
 
 async function groqChat(system, message, maxTokens, clientKey) {
-  const groqKey = process.env.GROQ_KEY || process.env.GROQ_API_KEY || clientKey;
+  const groqKey = process.env.GROQ_API_KEY || clientKey;
   if (!groqKey) throw new Error('No Groq API key configured (server env missing and no client key provided)');
   for (const model of GROQ_MODELS) {
     try {
@@ -80,7 +80,7 @@ async function groqChat(system, message, maxTokens, clientKey) {
 // JSON-returning variant for structured routes
 async function tsmAIJSON(prompt, fallback) {
   try {
-    const groqKey = process.env.GROQ_KEY || process.env.GROQ_API_KEY;
+    const groqKey = process.env.GROQ_API_KEY;
     if (!groqKey) return fallback || null;
     const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
@@ -332,15 +332,15 @@ app.post('/api/hc/stream', async (req, res) => {
     return res.status(429).json({ error: 'Daily analysis limit reached. Contact TSM to upgrade.' });
   }
 
-  const groqKey = process.env.GROQ_KEY || process.env.GROQ_API_KEY;
-  if (!groqKey) return res.status(500).json({ error: 'GROQ_KEY not configured on server.' });
+  const groqKey = process.env.GROQ_API_KEY;
+  if (!groqKey) return res.status(500).json({ error: 'GROQ_API_KEY not configured on server.' });
 
   try {
     const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + (process.env.GROQ_KEY || process.env.GROQ_API_KEY)
+        'Authorization': 'Bearer ' + (process.env.GROQ_API_KEY)
       },
       body: JSON.stringify({
         model: model || 'openai/gpt-oss-120b',
@@ -424,8 +424,8 @@ app.post('/api/war-room/stream', async (req, res) => {
   const { model, messages, max_tokens, temperature } = req.body;
   if (!Array.isArray(messages) || !messages.length) return res.status(400).json({ error: 'Missing messages' });
 
-  const groqKey = process.env.GROQ_KEY || process.env.GROQ_API_KEY;
-  if (!groqKey) return res.status(500).json({ error: 'GROQ_KEY not configured on server.' });
+  const groqKey = process.env.GROQ_API_KEY;
+  if (!groqKey) return res.status(500).json({ error: 'GROQ_API_KEY not configured on server.' });
 
   async function fetchGroqStream(retriesLeft = 3) {
     const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
