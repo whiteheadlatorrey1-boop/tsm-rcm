@@ -281,6 +281,48 @@ setInterval(tick, 5000);
     <div class="twin-entities" id="network-entities"></div>
     <div class="twin-events" id="network-events"></div>
   </div>
+
+  <div class="twin-panel" id="ad-panel">
+    <div class="twin-panel-header">
+      <h3>Active Directory Digital Twin (Users)</h3>
+      <div class="twin-panel-actions">
+        <select id="ad-fault-target"></select>
+        <select id="ad-fault-type">
+          <option value="account-lockout">Account Lockout</option>
+          <option value="password-expired">Password Expired</option>
+          <option value="mfa-failure">MFA Failure</option>
+          <option value="replication-failure">Replication Failure</option>
+          <option value="gpo-corruption">GPO Corruption</option>
+          <option value="clear">Clear / Reset</option>
+        </select>
+        <button id="ad-fault-btn">Inject Fault</button>
+      </div>
+    </div>
+    <div class="twin-entities" id="ad-entities"></div>
+    <div class="twin-events" id="ad-events"></div>
+  </div>
+
+  <div class="twin-panel" id="device-panel">
+    <div class="twin-panel-header">
+      <h3>Device Digital Twin</h3>
+      <div class="twin-panel-actions">
+        <select id="device-fault-target"></select>
+        <select id="device-fault-type">
+          <option value="disk-full">Disk Full</option>
+          <option value="bsod-crash">BSOD Crash</option>
+          <option value="battery-failure">Battery Failure</option>
+          <option value="driver-crash">Driver Crash</option>
+          <option value="patch-failure">Patch Failure</option>
+          <option value="printer-jam">Printer Jam</option>
+          <option value="printer-offline">Printer Offline</option>
+          <option value="clear">Clear / Reset</option>
+        </select>
+        <button id="device-fault-btn">Inject Fault</button>
+      </div>
+    </div>
+    <div class="twin-entities" id="device-entities"></div>
+    <div class="twin-events" id="device-events"></div>
+  </div>
 </section>
 
 <style>
@@ -503,12 +545,147 @@ setInterval(tick, 5000);
     }
   });
 
+  // Buckets twin-specific status strings into the existing up/down dots
+  // rather than growing a new CSS class per twin's status vocabulary.
+  function statusBucket(status) {
+    const healthy = ['active', 'up', 'healthy', 'applied', 'current'];
+    return healthy.includes(status) ? 'up' : 'down';
+  }
+
+  async function fetchADState() {
+    const res = await fetch('/api/twins/ad/state');
+    return res.json();
+  }
+
+  function renderAD(state) {
+    const container = document.getElementById('ad-entities');
+    const targetSelect = document.getElementById('ad-fault-target');
+    const rows = [];
+    const targets = [];
+
+    state.domainControllers.forEach((dc) => {
+      rows.push(`<div class="twin-entity-row">
+        <span>${statusDot(statusBucket(dc.replicationStatus))}${dc.name}</span>
+        <span>${dc.role} · repl ${dc.replicationStatus}</span>
+      </div>`);
+      targets.push(dc.id);
+    });
+    state.organizationalUnits.forEach((ou) => {
+      rows.push(`<div class="twin-entity-row">
+        <span>${statusDot(statusBucket(ou.gpoStatus))}${ou.name} (OU)</span>
+        <span>gpo ${ou.gpoStatus}</span>
+      </div>`);
+      targets.push(ou.id);
+    });
+    Object.values(state.users).forEach((user) => {
+      rows.push(`<div class="twin-entity-row">
+        <span>${statusDot(statusBucket(user.status))}${user.name} (${user.id})</span>
+        <span>${user.status}${user.mfaEnrolled ? ' · mfa' : ''} · pwd ${user.passwordExpiresInDays}d</span>
+      </div>`);
+      targets.push(user.id);
+    });
+
+    container.innerHTML = rows.join('');
+
+    const currentTarget = targetSelect.value;
+    targetSelect.innerHTML = targets.map((id) => `<option value="${id}">${id}</option>`).join('');
+    if (targets.includes(currentTarget)) targetSelect.value = currentTarget;
+
+    const eventsEl = document.getElementById('ad-events');
+    eventsEl.innerHTML = state.events.slice(0, 5).map((e) => `<div>${e.ts.slice(11, 19)} — ${e.message}</div>`).join('');
+  }
+
+  async function pollAD() {
+    try {
+      renderAD(await fetchADState());
+    } catch (err) {
+      console.error('AD twin poll failed', err);
+    }
+  }
+
+  document.getElementById('ad-fault-btn').addEventListener('click', async () => {
+    const type = document.getElementById('ad-fault-type').value;
+    const targetId = document.getElementById('ad-fault-target').value;
+    try {
+      await fetch('/api/twins/ad/fault', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type, targetId }),
+      });
+      pollAD();
+    } catch (err) {
+      console.error('Failed to inject AD fault', err);
+    }
+  });
+
+  async function fetchDeviceState() {
+    const res = await fetch('/api/twins/device/state');
+    return res.json();
+  }
+
+  function renderDevice(state) {
+    const container = document.getElementById('device-entities');
+    const targetSelect = document.getElementById('device-fault-target');
+    const rows = [];
+    const targets = [];
+
+    state.endpoints.forEach((ep) => {
+      const metric = ep.type === 'printer'
+        ? `toner ${ep.tonerPct}%`
+        : ep.type === 'laptop'
+          ? `disk ${ep.diskFreePct}% · batt ${ep.batteryHealthPct}%`
+          : `disk ${ep.diskFreePct}%`;
+      rows.push(`<div class="twin-entity-row">
+        <span>${statusDot(statusBucket(ep.status))}${ep.name}${ep.assignedTo ? ' — ' + ep.assignedTo : ''}</span>
+        <span>${ep.type} · ${ep.status} · ${metric}</span>
+      </div>`);
+      targets.push(ep.id);
+    });
+
+    container.innerHTML = rows.join('');
+
+    const currentTarget = targetSelect.value;
+    targetSelect.innerHTML = targets.map((id) => `<option value="${id}">${id}</option>`).join('');
+    if (targets.includes(currentTarget)) targetSelect.value = currentTarget;
+
+    const eventsEl = document.getElementById('device-events');
+    eventsEl.innerHTML = state.events.slice(0, 5).map((e) => `<div>${e.ts.slice(11, 19)} — ${e.message}</div>`).join('');
+  }
+
+  async function pollDevice() {
+    try {
+      renderDevice(await fetchDeviceState());
+    } catch (err) {
+      console.error('Device twin poll failed', err);
+    }
+  }
+
+  document.getElementById('device-fault-btn').addEventListener('click', async () => {
+    const type = document.getElementById('device-fault-type').value;
+    const targetId = document.getElementById('device-fault-target').value;
+    try {
+      await fetch('/api/twins/device/fault', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type, targetId }),
+      });
+      pollDevice();
+    } catch (err) {
+      console.error('Failed to inject device fault', err);
+    }
+  });
+
   pollVMware();
   pollNetwork();
+  pollAD();
+  pollDevice();
   setInterval(pollVMware, POLL_MS);
   setInterval(pollNetwork, POLL_MS);
+  setInterval(pollAD, POLL_MS);
+  setInterval(pollDevice, POLL_MS);
 })();
 </script>
 
 </body>
 </html>
+

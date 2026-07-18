@@ -20,6 +20,13 @@ const SLA_RULES = [
   { match: /HA restarted .*'s VMs on/i, category: 'vmware:host-down', hours: 1 },
   { match: /network-partitioned from vCenter/i, category: 'vmware:network-partition', hours: 1 },
   { match: /Datastore .* reached capacity/i, category: 'vmware:datastore-full', hours: 4 },
+  { match: /Disk full on/i, category: 'device:disk-full', hours: 4 },
+  { match: /BSOD crash on/i, category: 'device:bsod-crash', hours: 1 },
+  { match: /Battery failure on/i, category: 'device:battery-failure', hours: 8 },
+  { match: /Driver crash on/i, category: 'device:driver-crash', hours: 2 },
+  { match: /Patch deployment failed on/i, category: 'device:patch-failure', hours: 24 },
+  { match: /Paper jam on/i, category: 'device:printer-jam', hours: 4 },
+  { match: /went offline/i, category: 'device:printer-offline', hours: 4 },
 ];
 
 const RESET_MATCH = /reset to healthy baseline/i;

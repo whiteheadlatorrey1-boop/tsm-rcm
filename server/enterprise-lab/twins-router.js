@@ -12,6 +12,7 @@
 const express = require('express');
 const { VMwareTwin, FAULT_TYPES: VMWARE_FAULTS } = require('./vmware-twin');
 const { NetworkTwin, FAULT_TYPES: NETWORK_FAULTS } = require('./network-twin');
+const { DeviceTwin, FAULT_TYPES: DEVICE_FAULTS, CATEGORY_BY_TYPE: DEVICE_CATEGORY_BY_TYPE } = require('./device-twin');
 const { ADTwin, FAULT_TYPES: AD_FAULTS } = require('./ad-twin');
 const { M365Twin, FAULT_TYPES: M365_FAULTS } = require('./m365-twin');
 const { KnowledgeCopilot } = require('./knowledge-copilot');
@@ -21,12 +22,14 @@ const { SLAEngine } = require('./sla-engine');
 const { AIScoringEngine } = require('./ai-scoring');
 const { TechnicianMetrics } = require('./technician-performance-metrics');
 const { HistoricalAnalytics } = require('./historical-analytics');
+const { engine: incidentEngine } = require('./incident-engine');
 
 const router = express.Router();
 
 // Singleton twin instances shared across all requests (in-memory demo state).
 const vmwareTwin = new VMwareTwin();
 const networkTwin = new NetworkTwin();
+const deviceTwin = new DeviceTwin();
 const adTwin = new ADTwin();
 const m365Twin = new M365Twin();
 const knowledgeCopilot = new KnowledgeCopilot();
@@ -35,10 +38,11 @@ const chaosEngine = new ChaosEngine({
   ad: { twin: adTwin, faultTypes: AD_FAULTS },
   m365: { twin: m365Twin, faultTypes: M365_FAULTS },
   network: { twin: networkTwin, faultTypes: NETWORK_FAULTS },
+  device: { twin: deviceTwin, faultTypes: DEVICE_FAULTS },
   vendor: { twin: vendorOpsTwin, faultTypes: VENDOR_FAULTS },
 });
 const slaEngine = new SLAEngine(
-  { ad: adTwin, m365: m365Twin, network: networkTwin, vmware: vmwareTwin },
+  { ad: adTwin, m365: m365Twin, network: networkTwin, device: deviceTwin, vmware: vmwareTwin },
   vendorOpsTwin
 );
 const aiScoringEngine = new AIScoringEngine(slaEngine);
@@ -97,6 +101,30 @@ router.post('/network/fault', (req, res) => {
 
 router.post('/network/reset', (req, res) => {
   res.json(networkTwin.reset());
+});
+
+// ---- Device twin ----
+
+router.get('/device/state', (req, res) => {
+  res.json(deviceTwin.getState());
+});
+
+router.get('/device/fault-types', (req, res) => {
+  res.json({ faultTypes: DEVICE_FAULTS });
+});
+
+router.post('/device/fault', (req, res) => {
+  const { type, targetId } = req.body || {};
+  try {
+    const state = deviceTwin.applyFault(type, targetId);
+    res.json(state);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.post('/device/reset', (req, res) => {
+  res.json(deviceTwin.reset());
 });
 
 // ---- AD twin ----
@@ -222,11 +250,46 @@ router.post('/chaos/stop', (req, res) => {
   res.json(chaosEngine.stop());
 });
 
+// Maps a successful chaos-engine fault into a real Service Desk ticket
+// (Mission Queue entry), so injected faults are visible in the same
+// queue technicians and the L1 Copilot already work from — not just
+// in /api/twins/*/state and /api/twins/sla/status.
+const SERVICE_DESK_CATEGORY_BY_MODULE = {
+  ad: 'Active Directory',
+  network: 'Network',
+  vmware: 'VMware',
+  m365: 'Microsoft 365',
+  // device resolved dynamically below (laptop/desktop/printer)
+  // vendor intentionally excluded: vendorOpsTwin has its own ticket flow
+};
+
+function humanizeFaultType(type) {
+  return (type || '').replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function bridgeToServiceDesk(result) {
+  if (!result.ok || result.module === 'vendor') return null;
+
+  let category = SERVICE_DESK_CATEGORY_BY_MODULE[result.module];
+  if (result.module === 'device') {
+    const endpoint = deviceTwin.getState().endpoints.find((e) => e.id === result.targetId);
+    category = endpoint ? DEVICE_CATEGORY_BY_TYPE[endpoint.type] : undefined;
+  }
+  if (!category) return null;
+
+  return incidentEngine.createIncident({
+    category,
+    issue: `${humanizeFaultType(result.type)} (${result.targetId}) [Chaos Engine]`,
+  });
+}
+
 router.post('/chaos/trigger', (req, res) => {
   const { module: moduleName } = req.body || {};
   try {
     const result = moduleName ? chaosEngine.triggerOnce(moduleName) : chaosEngine.triggerRandom();
     technicianMetrics.recordIncident(result);
+    const mission = bridgeToServiceDesk(result);
+    if (mission) result.missionId = mission.id;
     res.json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });
