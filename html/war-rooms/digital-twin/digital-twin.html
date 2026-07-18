@@ -157,7 +157,8 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
     CRM: 'TSM_CRM_RELAY',
     APPROVAL: 'TSM_APPROVAL_RELAY',
     GOVERNANCE: 'TSM_GOVERNANCE_RELAY',
-    INTEGRATION: 'TSM_INTEGRATION_HUB_RELAY' // fixed: was 'TSM_INTEGRATION_RELAY'
+    INTEGRATION: 'TSM_INTEGRATION_HUB_RELAY', // fixed: was 'TSM_INTEGRATION_RELAY'
+    MORTGAGE: 'TSM_MORTGAGE_RELAY' // matches relay.core.js RELAY_REGISTRY
   };
 
   // ── BPO's custom evaluator. BPO's payload has no `explain` array;
@@ -178,6 +179,22 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
     return c;
   }
 
+  // ── Mortgage's custom evaluator. mortgage-engine.js's buildRelayPayload()
+  // has no `explain` array either; instead it carries kpis.{loans_over_sla,
+  // open_exceptions, open_conditions} from computeKpis(). Exceptions are
+  // compliance-stage items (regulatory risk) so they're weighted high;
+  // SLA-breached loans are med; open conditions (routine underwriting
+  // items still outstanding) are low. Same {high,med,low} contract as
+  // countBySeverity() / evaluateBpo().
+  function evaluateMortgage(raw) {
+    const k = raw.kpis || {};
+    return {
+      high: k.open_exceptions || 0,
+      med: k.loans_over_sla || 0,
+      low: k.open_conditions || 0
+    };
+  }
+
   // ── Config-driven signal list. To add a new live vertical:
   //   - if its payload has explain[].severity (high/med/low), just add
   //     { key, label, tsField, okText } -- no function needed.
@@ -190,7 +207,8 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
     { key: 'CRM',         label: 'CRM',         tsField: 'ts',          okText: 'CRM: cases and opportunities on track' },
     { key: 'APPROVAL',    label: 'APPROVALS',   tsField: 'timestamp',   okText: 'Approvals: queue clear — no SLA breaches' },
     { key: 'GOVERNANCE',  label: 'GOVERNANCE',  tsField: 'timestamp',   okText: 'Governance: controls passing — no open risks' },
-    { key: 'INTEGRATION', label: 'INTEGRATION', tsField: 'timestamp',   okText: 'Integration Hub: systems and queues nominal' }
+    { key: 'INTEGRATION', label: 'INTEGRATION', tsField: 'timestamp',   okText: 'Integration Hub: systems and queues nominal' },
+    { key: 'MORTGAGE',    label: 'MORTGAGE',    tsField: 'timestamp',   okText: 'Mortgage: pipeline healthy — no exceptions or SLA breaches', evaluate: evaluateMortgage }
   ];
 
   function buildLiveSignal(cfg){
