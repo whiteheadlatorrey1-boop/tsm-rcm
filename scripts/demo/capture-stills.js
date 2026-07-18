@@ -26,6 +26,7 @@
 //   BASE_URL=http://localhost:4173 node scripts/demo/capture-stills.js
 //   node scripts/demo/capture-stills.js --only=music,noc   # filter by group keyword
 //   node scripts/demo/capture-stills.js --settle=3000      # longer wait for slow data loads
+//   node scripts/demo/capture-stills.js --headed            # watch it run, for debugging bad stills
 
 const fs = require('fs');
 const path = require('path');
@@ -41,6 +42,7 @@ const onlyArg = args.find((a) => a.startsWith('--only='));
 const onlyFilter = onlyArg ? onlyArg.split('=')[1].split(',').map((s) => s.trim().toLowerCase()) : null;
 const settleArg = args.find((a) => a.startsWith('--settle='));
 const settleMs = settleArg ? parseInt(settleArg.split('=')[1], 10) : 2000;
+const headed = args.includes('--headed'); // watch it navigate live, for debugging bad stills
 
 function loadPages() {
   const lines = fs.readFileSync(CONF_PATH, 'utf8').split('\n');
@@ -83,6 +85,7 @@ async function main() {
   console.log('---');
 
   const browser = await chromium.launch({
+    headless: !headed,
     args: ['--disable-dev-shm-usage'], // avoid renderer crashes in Codespaces (64MB /dev/shm cap)
   });
   const context = await browser.newContext({
