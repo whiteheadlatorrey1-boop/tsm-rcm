@@ -851,6 +851,15 @@ app.use(
     enterpriseRouter
 );
 
+// ── ENTERPRISE LAB (Incident Generator / Live Mission Queue) ─────────────────
+const enterpriseLabRouter =
+    require('./server/enterprise-lab/api');
+
+app.use(
+    '/api/enterprise-lab',
+    enterpriseLabRouter
+);
+
 app.post('/api/chat', (req, res) => res.json({ ok: true }));
 
 // ── AI QUERY ROUTES ───────────────────────────────────────────────────────────
