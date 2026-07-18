@@ -10,6 +10,16 @@ const SLA_RULES = [
   { match: /License pool exhausted/i, category: 'm365:license-exhausted', hours: 24 },
   { match: /Service outage/i, category: 'm365:service-outage', hours: 1 },
   { match: /Sync failure/i, category: 'm365:sync-failure', hours: 4 },
+  { match: /BGP session flapping/i, category: 'network:bgp-flap', hours: 1 },
+  { match: /is now unreachable/i, category: 'network:link-down', hours: 1 },
+  { match: /Link .* went down/i, category: 'network:link-down', hours: 1 },
+  { match: /Packet loss injected/i, category: 'network:packet-loss', hours: 2 },
+  { match: /Latency spike injected/i, category: 'network:latency-spike', hours: 4 },
+  { match: /HA failed: no surviving host/i, category: 'vmware:host-down-critical', hours: 0.5 },
+  { match: /^Host .* went down/i, category: 'vmware:host-down', hours: 1 },
+  { match: /HA restarted .*'s VMs on/i, category: 'vmware:host-down', hours: 1 },
+  { match: /network-partitioned from vCenter/i, category: 'vmware:network-partition', hours: 1 },
+  { match: /Datastore .* reached capacity/i, category: 'vmware:datastore-full', hours: 4 },
 ];
 
 const RESET_MATCH = /reset to healthy baseline/i;

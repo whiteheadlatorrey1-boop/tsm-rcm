@@ -18,6 +18,9 @@ const { KnowledgeCopilot } = require('./knowledge-copilot');
 const { VendorOpsTwin, FAULT_TYPES: VENDOR_FAULTS } = require('./vendor-ops-twin');
 const { ChaosEngine } = require('./chaos-engine');
 const { SLAEngine } = require('./sla-engine');
+const { AIScoringEngine } = require('./ai-scoring');
+const { TechnicianMetrics } = require('./technician-performance-metrics');
+const { HistoricalAnalytics } = require('./historical-analytics');
 
 const router = express.Router();
 
@@ -34,7 +37,19 @@ const chaosEngine = new ChaosEngine({
   network: { twin: networkTwin, faultTypes: NETWORK_FAULTS },
   vendor: { twin: vendorOpsTwin, faultTypes: VENDOR_FAULTS },
 });
-const slaEngine = new SLAEngine({ ad: adTwin, m365: m365Twin }, vendorOpsTwin);
+const slaEngine = new SLAEngine(
+  { ad: adTwin, m365: m365Twin, network: networkTwin, vmware: vmwareTwin },
+  vendorOpsTwin
+);
+const aiScoringEngine = new AIScoringEngine(slaEngine);
+const technicianMetrics = new TechnicianMetrics();
+const historicalAnalytics = new HistoricalAnalytics({
+  slaEngine,
+  chaosEngine,
+  vendorOpsTwin,
+  aiScoring: aiScoringEngine,
+});
+historicalAnalytics.start();
 
 // ---- VMware twin ----
 
@@ -211,6 +226,7 @@ router.post('/chaos/trigger', (req, res) => {
   const { module: moduleName } = req.body || {};
   try {
     const result = moduleName ? chaosEngine.triggerOnce(moduleName) : chaosEngine.triggerRandom();
+    technicianMetrics.recordIncident(result);
     res.json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -225,6 +241,59 @@ router.get('/sla/status', (req, res) => {
 
 router.get('/sla/summary', (req, res) => {
   res.json(slaEngine.summary());
+});
+
+// ---- AI Scoring ----
+
+router.get('/scoring/status', (req, res) => {
+  res.json(aiScoringEngine.score());
+});
+
+router.get('/scoring/summary', (req, res) => {
+  res.json(aiScoringEngine.summary());
+});
+
+// ---- Technician Performance Metrics ----
+
+router.get('/technicians/roster', (req, res) => {
+  res.json(technicianMetrics.roster);
+});
+
+router.get('/technicians/metrics', (req, res) => {
+  res.json(technicianMetrics.metrics());
+});
+
+router.get('/technicians/assignments', (req, res) => {
+  res.json(technicianMetrics.listAssignments(req.query.techId));
+});
+
+router.post('/technicians/assignments/:id/resolve', (req, res) => {
+  const a = technicianMetrics.resolve(req.params.id);
+  if (!a) return res.status(404).json({ error: 'Assignment not found' });
+  res.json(a);
+});
+
+// ---- Historical Analytics ----
+
+router.get('/analytics/snapshots', (req, res) => {
+  res.json(historicalAnalytics.getSnapshots(req.query.limit));
+});
+
+router.get('/analytics/latest', (req, res) => {
+  res.json(historicalAnalytics.latest());
+});
+
+router.post('/analytics/snapshot', (req, res) => {
+  res.json(historicalAnalytics.snapshotNow());
+});
+
+router.post('/analytics/start', (req, res) => {
+  const { intervalMs } = req.body || {};
+  res.json(historicalAnalytics.start(intervalMs));
+});
+
+router.post('/analytics/stop', (req, res) => {
+  res.json(historicalAnalytics.stop());
 });
 
 module.exports = router;

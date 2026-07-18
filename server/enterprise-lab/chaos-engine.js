@@ -7,6 +7,7 @@ class ChaosEngine {
     this.timer = null;
     this.running = false;
     this.history = [];
+    this.counters = { triggered: 0, succeeded: 0, failed: 0 };
   }
 
   _pickTargetId(state) {
@@ -47,6 +48,9 @@ class ChaosEngine {
     }
     this.history.unshift(result);
     this.history = this.history.slice(0, 50);
+    this.counters.triggered += 1;
+    if (result.ok) this.counters.succeeded += 1;
+    else this.counters.failed += 1;
     return result;
   }
 
@@ -85,6 +89,7 @@ class ChaosEngine {
       intervalMs: this.intervalMs,
       modules: Object.keys(this.twins),
       history: this.history.slice(0, 10),
+      counters: { ...this.counters },
     };
   }
 }
