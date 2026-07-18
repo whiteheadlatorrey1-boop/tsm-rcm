@@ -363,6 +363,29 @@ setInterval(tick, 5000);
   </div>
 </section>
 
+<!-- AI Query Widget -->
+<section class="ai-widget" id="ai-widget">
+  <div class="ai-widget-header">
+    <h3>AI Widget — Describe the Issue, Get the Playbook</h3>
+    <span class="ai-widget-badge">GROQ-POWERED</span>
+  </div>
+  <p class="ai-widget-subtitle">
+    Type what you're seeing in plain language and the AI will match it against the
+    documented Scenario Library below and return the exact step-by-step response.
+  </p>
+  <form class="ai-widget-form" id="ai-widget-form">
+    <input
+      type="text"
+      class="ai-widget-input"
+      id="ai-widget-input"
+      placeholder="e.g. &quot;users can't log in and getting locked out repeatedly&quot;"
+      autocomplete="off"
+    />
+    <button type="submit" class="ai-widget-submit" id="ai-widget-submit">Get Guidance</button>
+  </form>
+  <div class="ai-widget-result" id="ai-widget-result"></div>
+</section>
+
 <section class="scenario-library" id="scenario-library">
   <div class="scenario-library-header">
     <h3>Scenario Library — Documented Response Playbooks</h3>
@@ -604,6 +627,120 @@ setInterval(tick, 5000);
     color: #8b94a3;
     font-style: italic;
   }
+
+  /* AI Query Widget */
+  .ai-widget {
+    margin: 20px 22px 0;
+    background: #12161c;
+    border: 1px solid #262b33;
+    border-radius: 8px;
+    padding: 16px 18px;
+  }
+  .ai-widget-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 4px;
+  }
+  .ai-widget-header h3 {
+    margin: 0;
+    font-size: 14px;
+    color: #e6e9ef;
+  }
+  .ai-widget-badge {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: rgba(0, 229, 255, 0.12);
+    color: #00e5ff;
+    border: 1px solid rgba(0, 229, 255, 0.4);
+  }
+  .ai-widget-subtitle {
+    font-size: 11px;
+    color: #8b94a3;
+    margin: 6px 0 14px;
+    max-width: 900px;
+    line-height: 1.5;
+  }
+  .ai-widget-form {
+    display: flex;
+    gap: 8px;
+  }
+  .ai-widget-input {
+    flex: 1;
+    background: #1b2028;
+    color: #cfd4dc;
+    border: 1px solid #333a45;
+    border-radius: 4px;
+    font-size: 12px;
+    padding: 8px 10px;
+    font-family: inherit;
+  }
+  .ai-widget-input:focus {
+    outline: none;
+    border-color: #00e5ff;
+  }
+  .ai-widget-submit {
+    background: rgba(0, 229, 255, 0.12);
+    color: #00e5ff;
+    border: 1px solid #00e5ff;
+    border-radius: 4px;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+    padding: 8px 16px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .ai-widget-submit:hover { background: rgba(0, 229, 255, 0.2); }
+  .ai-widget-submit:disabled { opacity: 0.5; cursor: default; }
+  .ai-widget-result {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid #262b33;
+  }
+  .ai-widget-result:empty { display: none; border-top: none; margin-top: 0; padding-top: 0; }
+  .ai-widget-result-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .ai-widget-result-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #e6e9ef;
+  }
+  .ai-widget-confidence {
+    font-size: 8px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-weight: 700;
+  }
+  .ai-widget-confidence.high { background: rgba(0, 255, 80, 0.12); color: #00ff50; border: 1px solid #00ff50; }
+  .ai-widget-confidence.medium { background: rgba(255, 149, 0, 0.12); color: #ff9500; border: 1px solid #ff9500; }
+  .ai-widget-confidence.low { background: rgba(255, 59, 59, 0.12); color: #ff3b3b; border: 1px solid #ff3b3b; }
+  .ai-widget-reasoning {
+    font-size: 11px;
+    color: #8b94a3;
+    font-style: italic;
+    margin: 6px 0 10px;
+  }
+  .ai-widget-result-steps {
+    font-size: 11px;
+    color: #cfd4dc;
+  }
+  .ai-widget-result-steps ol { margin: 0; padding-left: 18px; }
+  .ai-widget-result-steps li { margin-bottom: 4px; line-height: 1.4; }
+  .ai-widget-status {
+    font-size: 11px;
+    color: #8b94a3;
+    font-style: italic;
+  }
+  .ai-widget-status.error { color: #ff3b3b; font-style: normal; }
 
   .intel-panels {
     display: grid;
@@ -1372,6 +1509,82 @@ setInterval(tick, 5000);
 })();
 </script>
 
+<script>
+(function () {
+  const TWIN_LABELS_AI = {
+    ad: 'Active Directory',
+    m365: 'Microsoft 365',
+    network: 'Network',
+    vmware: 'VMware',
+    device: 'Device',
+    vendor: 'Vendor',
+  };
+
+  const form = document.getElementById('ai-widget-form');
+  const input = document.getElementById('ai-widget-input');
+  const submitBtn = document.getElementById('ai-widget-submit');
+  const resultEl = document.getElementById('ai-widget-result');
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[c]));
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const query = input.value.trim();
+    if (!query) return;
+
+    submitBtn.disabled = true;
+    resultEl.innerHTML = '<div class="ai-widget-status">Thinking…</div>';
+
+    let res, body;
+    try {
+      res = await fetch('/api/twins/knowledge/query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query }),
+      });
+      body = await res.json().catch(() => null);
+    } catch (networkErr) {
+      resultEl.innerHTML = '<div class="ai-widget-status error">Could not reach the AI service. Check your connection and try again.</div>';
+      submitBtn.disabled = false;
+      return;
+    }
+
+    if (!res.ok || !body) {
+      const msg = (body && body.error) ? body.error : `Request failed (${res.status})`;
+      resultEl.innerHTML = `<div class="ai-widget-status error">${escapeHtml(msg)}</div>`;
+      submitBtn.disabled = false;
+      return;
+    }
+
+    const twinLabel = TWIN_LABELS_AI[body.twinType] || body.twinType;
+    const conf = (body.confidence || '').toLowerCase();
+    const confBadge = conf
+      ? `<span class="ai-widget-confidence ${conf}">${escapeHtml(conf)}</span>`
+      : '';
+    const reasoning = body.reasoning
+      ? `<div class="ai-widget-reasoning">${escapeHtml(body.reasoning)}</div>`
+      : '';
+    const stepsHtml = (body.steps || []).map((s) => `<li>${escapeHtml(s)}</li>`).join('');
+
+    resultEl.innerHTML = `
+      <div class="ai-widget-result-top">
+        <span class="ai-widget-result-title">${escapeHtml(body.title)}</span>
+        <span class="scenario-card-twin">${escapeHtml(twinLabel)}</span>
+        ${confBadge}
+      </div>
+      ${reasoning}
+      <div class="ai-widget-result-steps"><ol>${stepsHtml}</ol></div>
+    `;
+    submitBtn.disabled = false;
+  });
+})();
+</script>
+
+
 <div class="howto-overlay" id="howto-overlay">
   <div class="howto-modal">
     <div class="howto-modal-header">
@@ -1404,6 +1617,11 @@ setInterval(tick, 5000);
       <div class="howto-section">
         <h4>Scenario Library</h4>
         <p>Browse every documented fault-response playbook across all six twins. Use the category filters to narrow the list, and click any card to expand it and view the exact step-by-step technician response. Triggering a matching fault above surfaces this same playbook automatically on the resulting ticket.</p>
+      </div>
+
+      <div class="howto-section">
+        <h4>AI Widget</h4>
+        <p>Type a plain-language description of what you're seeing into the AI Widget box and click "Get Guidance." Groq reasons over the real Scenario Library and returns the single best-matching playbook, its confidence, a one-line explanation of the match, and the full step list — no keyword matching involved.</p>
       </div>
 
       <div class="howto-section">

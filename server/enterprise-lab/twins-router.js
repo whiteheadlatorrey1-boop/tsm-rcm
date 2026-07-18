@@ -359,4 +359,96 @@ router.post('/analytics/stop', (req, res) => {
   res.json(historicalAnalytics.stop());
 });
 
+// ---- AI Query Widget ----
+// End users describe a problem in free text; Groq picks the single
+// best-matching documented scenario out of the real Knowledge Copilot
+// catalog (never invents one) and we return its full step list.
+// No keyword-match fallback by design — if the AI call fails, the
+// widget reports that rather than silently guessing.
+
+const AI_WIDGET_MODELS = ['openai/gpt-oss-120b', 'llama-3.1-8b-instant'];
+
+async function matchScenarioToQuery(query, entries) {
+  const groqKey = process.env.GROQ_KEY || process.env.GROQ_API_KEY;
+  if (!groqKey) throw new Error('No Groq API key configured');
+
+  const catalog = entries
+    .map((e) => `${e.twinType}:${e.faultType} — ${e.title}`)
+    .join('\n');
+
+  const system = [
+    'You are a triage assistant for an IT Service Desk knowledge base.',
+    "Given a user's free-text description of a problem, pick the single best-matching",
+    'documented scenario from the catalog below. Always pick the closest match even if',
+    'imperfect. Never invent a scenario key that is not in the catalog.',
+    'Return JSON only, no markdown fences, in exactly this shape:',
+    '{"key":"<twinType>:<faultType>","confidence":"high|medium|low","reasoning":"<one sentence>"}',
+    '',
+    'CATALOG:',
+    catalog,
+  ].join('\n');
+
+  let lastErr;
+  for (const model of AI_WIDGET_MODELS) {
+    try {
+      const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + groqKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model,
+          max_tokens: 200,
+          temperature: 0.1,
+          messages: [
+            { role: 'system', content: system },
+            { role: 'user', content: query },
+          ],
+        }),
+      });
+      if (!r.ok) {
+        const errText = await r.text();
+        lastErr = new Error(`Groq API error ${r.status}: ${errText}`);
+        if ([429, 500, 502, 503].includes(r.status)) continue;
+        throw lastErr;
+      }
+      const data = await r.json();
+      const text = data?.choices?.[0]?.message?.content || '';
+      const parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
+      if (!parsed.key || typeof parsed.key !== 'string') {
+        throw new Error('Malformed AI response: missing key');
+      }
+      return parsed;
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr || new Error('AI matching failed');
+}
+
+router.post('/knowledge/query', async (req, res) => {
+  const { query } = req.body || {};
+  if (!query || typeof query !== 'string' || !query.trim()) {
+    return res.status(400).json({ error: 'query is required' });
+  }
+  try {
+    const entries = knowledgeCopilot.listEntries();
+    const matched = await matchScenarioToQuery(query.trim(), entries);
+    const [twinType, faultType] = matched.key.split(':');
+    const full = knowledgeCopilot.lookup(twinType, faultType);
+    if (!full) {
+      return res.status(502).json({ error: `AI returned an unknown scenario key: ${matched.key}` });
+    }
+    res.json({
+      query: query.trim(),
+      twinType,
+      faultType,
+      title: full.title,
+      steps: full.steps,
+      confidence: matched.confidence || null,
+      reasoning: matched.reasoning || null,
+    });
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
 module.exports = router;
