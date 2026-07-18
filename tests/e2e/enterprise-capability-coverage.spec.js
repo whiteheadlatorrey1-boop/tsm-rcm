@@ -178,6 +178,11 @@ const VERTICALS = [
     '/html/war-rooms/mortgage/mortgage-strategist.html',
     '/html/war-rooms/mortgage/mortgage-executive-portal.html',
   ]},
+  { column: 'Mortgage', key: 'Mortgage', pages: [
+    '/html/war-rooms/mortgage/mortgage-war-room.html',
+    '/html/war-rooms/mortgage/mortgage-strategist.html',
+    '/html/war-rooms/mortgage/mortgage-executive-portal.html',
+  ]},
 ];
 
 async function poolText(page, urls) {
