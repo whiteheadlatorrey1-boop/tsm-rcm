@@ -1370,8 +1370,8 @@ app.get(['/html/healthcare/poc-html', '/html/healthcare/poc-html/'], (req, res) 
 app.get('/_debug', (_req, res) => res.json({ dirname: __dirname, dirPath, suitesConfigured: suites.length, cacheBust: 'v2-20260607' }));
 app.get('/', (_req, res) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
-  res.sendFile(path.join(dirPath, 'bpo', 'bpo-command-center.html'), (err) => {
-    if (err) res.sendFile(path.join(dirPath, 'healthcare', 'hc-strategist', 'index.html'));
+  res.sendFile(path.join(dirPath, 'tsm-platform-hub.html'), (err) => {
+    if (err) res.sendFile(path.join(dirPath, 'war-rooms', 'bpo', 'bpo-command-center.html'));
   });
 });
 
