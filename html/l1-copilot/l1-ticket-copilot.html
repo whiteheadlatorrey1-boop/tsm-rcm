@@ -184,7 +184,7 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
           <select id="tkPriority"><option>P1</option><option selected>P2</option><option>P3</option><option>P4</option></select>
         </div>
         <div class="field"><div class="field-label">Status</div>
-          <select id="tkStatus"><option selected>In Progress</option><option>New</option><option>Pending</option><option>Resolved</option></select>
+          <select id="tkStatus"><option selected>In Progress</option><option>New</option><option>Pending</option><option>Resolved</option><option>Closed</option></select>
         </div>
         <div class="field"><div class="field-label">Requester</div><input id="tkRequester" placeholder="Jane Doe"></div>
         <div class="field"><div class="field-label">Department</div><input id="tkDept" placeholder="Finance"></div>
@@ -203,6 +203,7 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
           <textarea id="tkDescription" rows="10" placeholder="Paste the full ticket text here — symptoms, error messages, what the user has already tried..."></textarea>
           <div class="btn-row">
             <button class="btn btn-cyan" id="btnAnalyze">RUN AI ANALYSIS</button>
+            <select id="tkSamplePicker" class="btn btn-ghost" style="min-width:220px" title="Pick a lab scenario, then Load"></select>
             <button class="btn btn-ghost" id="btnLoadSample">LOAD SAMPLE TICKET</button>
             <button class="btn btn-ghost" id="btnClearTicket">CLEAR</button>
           </div>
@@ -840,23 +841,53 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
     document.querySelector(`.sb-item[data-section="${name}"]`).click();
   }
 
-  // ── Ticket sample / clear ───────────────────────────────────────────────
-  document.getElementById('btnLoadSample').addEventListener('click', () => {
-    document.getElementById('tkIncident').value = 'INC0012345';
-    document.getElementById('tkRequester').value = 'Jane Doe';
-    document.getElementById('tkDept').value = 'Finance';
-    document.getElementById('tkGroup').value = 'Desktop Support L1';
-    document.getElementById('tkAsset').value = 'FIN-LT-0042';
-    document.getElementById('tkMfr').value = 'Dell';
-    document.getElementById('tkModel').value = 'Latitude 7440';
-    document.getElementById('tkWarranty').value = 'ProSupport Plus';
-    document.getElementById('tkDescription').value =
-      'User reports laptop will not boot. Powered on this morning, saw Dell logo then black screen. ' +
-      'No POST beeps. Tried holding power button 30s, no change. AC adapter light is on. User has not tried anything else.';
-    document.getElementById('vManufacturer').value = 'Dell';
-    document.getElementById('vServiceTag').value = '5G7XXXXX';
-    document.getElementById('vWarranty').value = 'Valid — ProSupport Plus';
+  // ── Ticket sample library / clear ───────────────────────────────────────
+  // Lab scenario library — synthetic ServiceNow-style tickets for demo/testing.
+  // Falls back to a single built-in ticket if the JSON can't be fetched
+  // (e.g. file:// usage, or before the endpoint is wired server-side).
+  let sampleTickets = [];
+  const FALLBACK_TICKET = {
+    id: 'INC0012345', label: 'Dell Latitude — No POST / Black Screen',
+    priority: 'P2', requester: 'Jane Doe', dept: 'Finance', group: 'Desktop Support L1',
+    asset: 'FIN-LT-0042', mfr: 'Dell', model: 'Latitude 7440', warranty: 'ProSupport Plus',
+    description: 'User reports laptop will not boot. Powered on this morning, saw Dell logo then black screen. ' +
+      'No POST beeps. Tried holding power button 30s, no change. AC adapter light is on. User has not tried anything else.',
+    vManufacturer: 'Dell', vServiceTag: '5G7XXXXX', vWarranty: 'Valid — ProSupport Plus'
+  };
+
+  function applySampleTicket(t){
+    document.getElementById('tkIncident').value = t.id;
+    document.getElementById('tkPriority').value = t.priority;
+    document.getElementById('tkStatus').value = 'In Progress';
+    document.getElementById('tkRequester').value = t.requester;
+    document.getElementById('tkDept').value = t.dept;
+    document.getElementById('tkGroup').value = t.group;
+    document.getElementById('tkAsset').value = t.asset;
+    document.getElementById('tkMfr').value = t.mfr;
+    document.getElementById('tkModel').value = t.model;
+    document.getElementById('tkWarranty').value = t.warranty;
+    document.getElementById('tkDescription').value = t.description;
+    document.getElementById('vManufacturer').value = t.vManufacturer;
+    document.getElementById('vServiceTag').value = t.vServiceTag;
+    document.getElementById('vWarranty').value = t.vWarranty;
     saveCurrentTicket();
+  }
+
+  function populateSamplePicker(){
+    const picker = document.getElementById('tkSamplePicker');
+    picker.innerHTML = sampleTickets.map((t, i) =>
+      `<option value="${i}">${t.id} — ${t.label}</option>`).join('');
+  }
+
+  fetch('/data/lab/sample-tickets.json')
+    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then(list => { sampleTickets = Array.isArray(list) && list.length ? list : [FALLBACK_TICKET]; populateSamplePicker(); })
+    .catch(() => { sampleTickets = [FALLBACK_TICKET]; populateSamplePicker(); });
+
+  document.getElementById('btnLoadSample').addEventListener('click', () => {
+    const picker = document.getElementById('tkSamplePicker');
+    const idx = picker.value ? parseInt(picker.value, 10) : 0;
+    applySampleTicket(sampleTickets[idx] || sampleTickets[0] || FALLBACK_TICKET);
   });
 
   document.getElementById('btnClearTicket').addEventListener('click', () => {
@@ -1398,17 +1429,24 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
     catch(e){ console.warn('History save failed', e); }
   }
   function recordHistoryEntry(){
+    // Generating a resolution write-up is the terminal step of the lab
+    // workflow (upload → analysis → guidance → resolution) — stamp the
+    // ticket Closed here so the demo shows an explicit end state.
+    document.getElementById('tkStatus').value = 'Closed';
     const list = loadHistory();
     list.push({
       incident: document.getElementById('tkIncident').value || '(no incident #)',
       manufacturer: document.getElementById('tkMfr').value,
       priority: document.getElementById('tkPriority').value,
       severity: currentAnalysis && currentAnalysis.severity,
+      status: 'Closed',
+      closedAt: Date.now(),
       ts: Date.now()
     });
     saveHistory(list);
     renderHistory();
     renderExecStrip();
+    try { TSM.relay.write('L1COPILOT', { ticket: document.getElementById('tkIncident').value, status: 'Closed', ts: Date.now() }); } catch(e){ console.warn('Relay write failed', e); }
     clearCurrentTicket();
   }
   function renderHistory(){
