@@ -230,6 +230,62 @@
 
   .footer-note{ margin-top:30px; font-size:10.5px; color:var(--dim2); text-align:center; line-height:1.8; }
   .footer-note code{ color:var(--dim); }
+
+  /* ---------- Locked vertical teaser rows (UPGRADE: subscription upsell) ---------- */
+  .vrow.locked{ opacity:.5; cursor:pointer; }
+  .vrow.locked:hover{ opacity:.75; background:rgba(255,255,255,0.02); }
+  .vrow.locked .vrow-head{ cursor:pointer; }
+  .lock-badge{
+    font-size:9px; letter-spacing:1px; padding:3px 7px; border-radius:3px; text-transform:uppercase;
+    background:rgba(91,107,125,.15); color:var(--dim); border:1px solid var(--border); width:fit-content;
+  }
+  .unlock-cell{ font-size:10px; color:var(--dim); text-align:center; }
+  .locked-section-note{ font-size:10.5px; color:var(--dim2); padding:10px 18px 4px; font-style:italic; }
+
+  /* ---------- Freshness / provenance (UPGRADE) ---------- */
+  .status-stale{ background:rgba(251,191,36,.10); color:var(--amber); border:1px solid rgba(251,191,36,.3); }
+  .freshness-line{ font-size:10.5px; color:var(--dim); padding:8px 14px 2px; border-top:1px solid var(--border); margin-top:4px; }
+
+  /* ---------- BPS trend (UPGRADE) ---------- */
+  .trend-up{ color:var(--green); }
+  .trend-down{ color:var(--red); }
+
+  /* ---------- Causality confidence tag (UPGRADE) ---------- */
+  .conf-tag{ font-size:8.5px; letter-spacing:.5px; padding:2px 6px; border-radius:3px; margin-left:8px; text-transform:uppercase; white-space:nowrap; }
+  .conf-tag.verified{ background:rgba(52,211,153,.12); color:var(--green); border:1px solid rgba(52,211,153,.3); }
+  .conf-tag.modeled{ background:rgba(91,107,125,.15); color:var(--dim); border:1px solid var(--border); }
+
+  /* ---------- Settings: alert config (UPGRADE) ---------- */
+  .settings-alert{ padding-top:16px; }
+  .settings-alert label{ display:block; font-size:10px; letter-spacing:1px; color:var(--dim); text-transform:uppercase; margin-bottom:6px; }
+  .settings-alert input[type=number], .settings-alert input[type=url]{
+    width:100%; background:var(--panel); border:1px solid var(--border); border-radius:4px;
+    color:var(--text); font-family:inherit; font-size:12px; padding:8px 10px; margin-bottom:14px;
+  }
+  .settings-alert .hint{ font-size:10px; color:var(--dim2); margin-top:-10px; margin-bottom:14px; line-height:1.5; }
+
+  /* ---------- Alert banner (UPGRADE) ---------- */
+  .alert-banner{
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    background:rgba(248,113,113,.08); border:1px solid rgba(248,113,113,.3); border-radius:6px;
+    padding:9px 14px; margin-bottom:12px; font-size:11px; color:var(--red);
+  }
+  .alert-banner .dismiss{ cursor:pointer; color:var(--dim); font-size:14px; line-height:1; }
+
+  /* ---------- Audit Log (UPGRADE) ---------- */
+  .audit-toolbar{ display:flex; gap:10px; margin-bottom:16px; }
+  .audit-toolbar .btn{ flex:1; }
+  .audit-entry{ padding:11px 0; border-bottom:1px solid var(--border); }
+  .audit-entry:last-child{ border-bottom:none; }
+  .audit-entry .arow{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:4px; }
+  .audit-type{ font-size:9px; letter-spacing:1px; padding:3px 7px; border-radius:3px; text-transform:uppercase; white-space:nowrap; }
+  .audit-type.subscription{ background:rgba(56,189,248,.12); color:var(--cyan); border:1px solid rgba(56,189,248,.3); }
+  .audit-type.alert{ background:rgba(248,113,113,.12); color:var(--red); border:1px solid rgba(248,113,113,.3); }
+  .audit-type.recovery{ background:rgba(52,211,153,.12); color:var(--green); border:1px solid rgba(52,211,153,.3); }
+  .audit-type.config{ background:rgba(251,191,36,.10); color:var(--amber); border:1px solid rgba(251,191,36,.3); }
+  .audit-type.export{ background:rgba(192,132,252,.12); color:var(--purple); border:1px solid rgba(192,132,252,.3); }
+  .audit-time{ font-size:10px; color:var(--dim2); font-family:'Share Tech Mono',monospace; white-space:nowrap; }
+  .audit-detail{ font-size:11.5px; color:var(--text); line-height:1.5; }
 </style>
 </head>
 <body>
@@ -241,6 +297,7 @@
   </div>
   <div class="right">
     <span><span class="live-dot"></span><span id="reportingCount">-</span> VERTICALS REPORTING</span>
+    <button class="btn small" id="auditBtn">&#128220; Audit Log</button>
     <button class="btn small" id="settingsBtn">&#9881; Configure Verticals</button>
     <span id="clock">--:--:--</span>
   </div>
@@ -256,11 +313,13 @@
     </div>
     <div style="display:flex; gap:10px;">
       <button class="btn" id="resetSimBtn" style="display:none;">Reset Simulation</button>
+      <button class="btn" id="exportBtn">Export Snapshot</button>
       <button class="btn" id="uploadBtn">Upload Relay Export</button>
       <input type="file" id="fileInput" accept="application/json" style="display:none;">
     </div>
   </div>
 
+  <div class="alert-banner" id="alertBanner" style="display:none;"></div>
   <div class="ingest-notice" id="ingestNotice" style="display:none;"></div>
 
   <div class="kpis">
@@ -340,6 +399,17 @@
     <div class="title">How this number is calculated, vertical by vertical — no black box.</div>
   </div>
   <div class="ip-body" id="bpsBody"></div>
+</div>
+
+<div class="overlay" id="auditOverlay"></div>
+<div class="impact-panel" id="auditPanel" style="width:480px;">
+  <div class="ip-head">
+    <span class="close" id="closeAudit">&times;</span>
+    <div class="eyebrow">Compliance</div>
+    <div class="name">Audit Log</div>
+    <div class="title">Append-only record of subscription changes, alert crossings, and snapshot exports — kept locally in this browser.</div>
+  </div>
+  <div class="ip-body" id="auditBody"></div>
 </div>
 
 <button class="ai-fab" id="aiFabBtn">&#128172; Ask Sentinel</button>
@@ -626,9 +696,9 @@ function loadData(){
     const relayKey = 'TSM_' + v.id.toUpperCase() + '_STRATEGIST_RELAY';
     const live = relayRead(relayKey);
     if (live && Array.isArray(live.anomalies)){
-      STATE.data[v.id] = { anomalies: live.anomalies, live: true };
+      STATE.data[v.id] = { anomalies: live.anomalies, live: true, generatedAt: live.generatedAt || null };
     } else {
-      STATE.data[v.id] = { anomalies: (SAMPLE[v.id] || { anomalies: [] }).anomalies, live: false };
+      STATE.data[v.id] = { anomalies: (SAMPLE[v.id] || { anomalies: [] }).anomalies, live: false, generatedAt: null };
     }
   });
 }
@@ -674,6 +744,45 @@ function businessPostureScore(overrideVId, overrideRisk){
   return Math.round(100 - acc);
 }
 
+// ── BPS HISTORY / TREND (UPGRADE) ────────────────────────────────────────
+// A point-in-time score can't tell an exec whether posture is improving.
+// This records a lightweight local snapshot at most once per hour (so
+// re-renders don't flood it) and reports delta vs the oldest snapshot
+// inside the last 7 days -- falling back to whatever's oldest if the tab's
+// history is younger than that. Purely local (localStorage) -- this is a
+// client-side convenience, not a server-tracked audit trail.
+const BPS_HISTORY_KEY = 'TSM_SENTINEL_BPS_HISTORY';
+const BPS_SNAPSHOT_MIN_GAP_MS = 60 * 60 * 1000;
+function loadBpsHistory(){
+  try{
+    const arr = JSON.parse(localStorage.getItem(BPS_HISTORY_KEY) || '[]');
+    return Array.isArray(arr) ? arr : [];
+  }catch(e){ return []; }
+}
+function saveBpsHistory(hist){
+  try{ localStorage.setItem(BPS_HISTORY_KEY, JSON.stringify(hist.slice(-90))); }catch(e){}
+}
+function recordBpsSnapshot(bps){
+  const hist = loadBpsHistory();
+  const last = hist[hist.length - 1];
+  const now = Date.now();
+  if (!last || (now - last.t) > BPS_SNAPSHOT_MIN_GAP_MS){
+    hist.push({ t: now, bps });
+    saveBpsHistory(hist);
+  }
+  return hist;
+}
+function bpsTrend(hist, currentBps){
+  if (hist.length < 2) return null;
+  const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const latest = hist[hist.length - 1];
+  let ref = hist.find(h => h.t >= weekAgo) || hist[0];
+  if (ref.t === latest.t) return null;
+  const delta = Math.round(currentBps - ref.bps);
+  if (delta === 0) return null;
+  return { delta, ago: fmtFreshness(new Date(ref.t).toISOString()) };
+}
+
 function fmtMoney(n){
   if (n >= 1000000) return '$' + (n/1000000).toFixed(2) + 'M';
   if (n >= 1000) return '$' + Math.round(n/1000) + 'K';
@@ -683,6 +792,31 @@ function riskColor(r){
   if (r >= 60) return 'var(--red)';
   if (r >= 35) return 'var(--amber)';
   return 'var(--green)';
+}
+
+// ── FRESHNESS / PROVENANCE (UPGRADE) ────────────────────────────────────
+// Turns a relay's generatedAt (or any past ISO timestamp) into a short
+// human label. Reused for both per-vertical relay freshness and the BPS
+// trend reference point, so "how stale is this" reads the same everywhere.
+function fmtFreshness(iso){
+  if (!iso) return null;
+  const t = new Date(iso).getTime();
+  if (isNaN(t)) return null;
+  const diffMs = Date.now() - t;
+  if (diffMs < 0) return 'just now';
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return mins + 'm ago';
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return hrs + 'h ago';
+  const days = Math.floor(hrs / 24);
+  return days + 'd ago';
+}
+function isStale(iso){
+  if (!iso) return false;
+  const t = new Date(iso).getTime();
+  if (isNaN(t)) return false;
+  return (Date.now() - t) > 24 * 60 * 60 * 1000;
 }
 
 function render(){
@@ -696,6 +830,17 @@ function render(){
   const bpsEl = document.getElementById('kpiBps');
   bpsEl.textContent = bps;
   bpsEl.className = 'value ' + (bps >= 70 ? 'good' : bps >= 45 ? 'warn' : 'bad');
+
+  const bpsHist = recordBpsSnapshot(bps);
+  const trend = bpsTrend(bpsHist, bps);
+  const bpsSubEl = document.getElementById('kpiBpsSub');
+  if (trend){
+    const up = trend.delta > 0;
+    bpsSubEl.innerHTML = `weighted across active exposure &nbsp;·&nbsp; <span class="${up ? 'trend-up' : 'trend-down'}">${up ? '▲' : '▼'} ${up ? '+' : ''}${trend.delta} vs ${trend.ago}</span>`;
+  } else {
+    bpsSubEl.textContent = 'weighted across active exposure';
+  }
+  checkAlertThreshold(bps);
 
   document.getElementById('kpiExposure').textContent = fmtMoney(totalExposure());
 
@@ -731,6 +876,7 @@ function render(){
   rowsEl.innerHTML = '';
   if (!scope.length){
     rowsEl.innerHTML = '<div class="empty-note">No verticals configured — click Configure Verticals above to choose which ones this business is subscribed to.</div>';
+    renderLockedRows(rowsEl, scope);
     return;
   }
   scope.forEach(v => {
@@ -749,10 +895,17 @@ function render(){
       ? `<a class="exec-link" href="${execUrl}" target="_blank" rel="noopener">Exec Portal ↗</a>`
       : `<span class="exec-link-placeholder">${live ? 'no portal linked' : 'no data yet'}</span>`;
 
+    const generatedAt = STATE.data[v.id].generatedAt;
+    const freshLabel = live ? fmtFreshness(generatedAt) : null;
+    const stale = live && isStale(generatedAt);
+    const pillClass = stale ? 'status-stale' : (live ? 'status-live' : 'status-sample');
+    const pillText = stale ? 'STALE' : (live ? 'LIVE' : 'SAMPLE');
+    const pillTitle = live ? (freshLabel ? `Relay updated ${freshLabel}` : 'Live relay data, timestamp not reported') : 'Sample data — no Strategist relay received yet';
+
     row.innerHTML = `
       <div class="vrow-head">
         <div class="vname"><span class="dot" style="background:${v.color}"></span>${v.name}</div>
-        <div class="status-pill ${live ? 'status-live' : 'status-sample'}">${live ? 'LIVE' : 'SAMPLE'}</div>
+        <div class="status-pill ${pillClass}" title="${pillTitle}">${pillText}</div>
         <div class="top-anom">${ top ? escapeHtml(top.title) : '<span class="none">No active anomalies</span>' }</div>
         <div>${ top ? `<span class="sev sev-${top.severity}">${top.severity}</span>` : '' }</div>
         <div class="riskbar-wrap"><div class="riskbar"><i style="width:${risk}%;background:${riskColor(risk)}"></i></div><span style="font-size:11px;color:${riskColor(risk)}">${risk}</span></div>
@@ -771,6 +924,47 @@ function render(){
       row.classList.toggle('open');
       if (row.classList.contains('open')) renderAnomalyList(row, v);
     });
+  });
+
+  renderLockedRows(rowsEl, scope);
+}
+
+// ── LOCKED VERTICAL TEASER ROWS (UPGRADE) ────────────────────────────────
+// Verticals this business hasn't subscribed to don't just vanish -- they
+// show as a dimmed, unscored row so the gap is visible instead of silent.
+// This mirrors the same "must subscribe to see it" logic Sentinel itself
+// is sold under, one level down. Clicking a locked row opens Configure
+// Verticals rather than any real data -- these rows never read STATE.data
+// or contribute to BPS/Exposure/Standings.
+function renderLockedRows(rowsEl, scope){
+  const scopeIds = new Set(scope.map(v => v.id));
+  const locked = VERTICALS.filter(v => !scopeIds.has(v.id));
+  if (!locked.length) return;
+
+  const note = document.createElement('div');
+  note.className = 'locked-section-note';
+  note.textContent = `${locked.length} more vertical${locked.length === 1 ? '' : 's'} available on this platform, not yet in your subscription:`;
+  rowsEl.appendChild(note);
+
+  locked.forEach(v => {
+    const row = document.createElement('div');
+    row.className = 'vrow locked';
+    row.dataset.vid = v.id;
+    row.title = `Subscribe to ${v.name} to see it in Sentinel`;
+    row.innerHTML = `
+      <div class="vrow-head">
+        <div class="vname"><span class="dot" style="background:${v.color}"></span>${v.name}</div>
+        <div class="lock-badge">&#128274; Locked</div>
+        <div class="top-anom"><span class="none">Subscribe to unlock this vertical's signal</span></div>
+        <div></div>
+        <div class="riskbar-wrap"><div class="riskbar"><i style="width:0%"></i></div><span style="font-size:11px;color:var(--dim2)">--</span></div>
+        <div class="exposure" style="color:var(--dim2)">--</div>
+        <div class="unlock-cell">Configure &#8594;</div>
+        <div></div>
+      </div>
+    `;
+    row.addEventListener('click', openSettingsPanel);
+    rowsEl.appendChild(row);
   });
 }
 
@@ -791,6 +985,7 @@ function computeCausalityBoard(){
           anomaly: a,
           pts: Math.round(info.weight * 60),
           reason: info.reason || `Clearing this reduces measurable risk pressure on ${target.name}.`,
+          verified: !!info.reason,
         });
       });
     });
@@ -813,7 +1008,7 @@ function renderCausalityBoard(){
         <span class="dot" style="background:${r.target.color}"></span>${r.target.name}
       </div>
       <div class="causal-anom">${escapeHtml(r.anomaly.title)}<span class="sev sev-${r.anomaly.severity}">${r.anomaly.severity}</span></div>
-      <div class="causal-reason">${escapeHtml(r.reason)}</div>
+      <div class="causal-reason">${escapeHtml(r.reason)}<span class="conf-tag ${r.verified ? 'verified' : 'modeled'}">${r.verified ? 'Verified' : 'Modeled'}</span></div>
       <div class="causal-pts">-${r.pts}pt</div>
     </div>
   `).join('');
@@ -827,6 +1022,13 @@ function renderAnomalyList(row, v){
     return;
   }
   body.innerHTML = '';
+  const dataInfo = STATE.data[v.id];
+  const freshLine = document.createElement('div');
+  freshLine.className = 'freshness-line';
+  freshLine.textContent = dataInfo.live
+    ? (fmtFreshness(dataInfo.generatedAt) ? `Relay updated ${fmtFreshness(dataInfo.generatedAt)}${isStale(dataInfo.generatedAt) ? ' — stale, confirm this vertical is still reporting' : ''}` : 'Live relay data — no timestamp reported')
+    : 'Sample data — this vertical has not written to its Strategist relay yet';
+  body.appendChild(freshLine);
   all.forEach(a => {
     const cleared = STATE.cleared.has(a.id);
     const el = document.createElement('div');
@@ -868,6 +1070,7 @@ function openImpactPanel(v, a){
     const target = VERTICALS.find(x => x.id === vid);
     const relief = Math.round(info.weight * 60);
     const reason = info.reason || `Clearing this reduces measurable risk pressure on ${target.name}.`;
+    const verified = !!info.reason;
     return `
       <div class="impact-row-block">
         <div class="impact-row">
@@ -875,7 +1078,7 @@ function openImpactPanel(v, a){
           <div class="ibar"><i style="width:${Math.min(100, relief*3)}%"></i></div>
           <div class="ival">-${relief}pt</div>
         </div>
-        <div class="impact-reason">${escapeHtml(reason)}</div>
+        <div class="impact-reason">${escapeHtml(reason)}<span class="conf-tag ${verified ? 'verified' : 'modeled'}">${verified ? 'Verified' : 'Modeled'}</span></div>
       </div>`;
   }).join('') || '<div class="txt" style="color:var(--dim)">No measurable cross-vertical relief mapped for this anomaly among your subscribed verticals.</div>';
 
@@ -984,6 +1187,9 @@ function closePanel(){
 
 function openSettingsPanel(){
   const subs = new Set(getSubscription());
+  const currentThreshold = getAlertThreshold();
+  const currentWebhook = getAlertWebhook() || '';
+
   document.getElementById('settingsBody').innerHTML = `
     <div class="ip-section">
       ${VERTICALS.map(v => `
@@ -993,13 +1199,58 @@ function openSettingsPanel(){
           <span>${v.name}</span>
         </label>`).join('')}
     </div>
+    <div class="ip-section settings-alert">
+      <div class="lbl">Alerting</div>
+      <label for="alertThresholdInput">Alert if Business Posture Score drops below</label>
+      <input type="number" id="alertThresholdInput" min="0" max="100" placeholder="e.g. 50 (blank = off)" value="${currentThreshold === null ? '' : currentThreshold}">
+      <div class="hint">Fires a TSM_SENTINEL_ALERT event and an in-page banner the first time BPS crosses below this floor. Leave blank to disable.</div>
+      <label for="alertWebhookInput">Webhook URL (optional)</label>
+      <input type="url" id="alertWebhookInput" placeholder="https://..." value="${escapeHtml(currentWebhook)}">
+      <div class="hint">Best-effort POST of {bps, threshold, at} when the alert fires. Failures are silent and never block the board.</div>
+    </div>
   `;
   document.getElementById('settingsBody').querySelectorAll('input[type=checkbox]').forEach(cb => {
     cb.addEventListener('change', () => {
+      const before = getSubscription();
       const checked = [...document.getElementById('settingsBody').querySelectorAll('input[type=checkbox]:checked')].map(x => x.dataset.vid);
       setSubscription(checked); // empty selection intentionally shows "no verticals configured" state
+      const beforeSet = new Set(before), afterSet = new Set(checked);
+      const added = checked.filter(id => !beforeSet.has(id)).map(id => VERTICALS.find(v=>v.id===id)?.name || id);
+      const removed = before.filter(id => !afterSet.has(id)).map(id => VERTICALS.find(v=>v.id===id)?.name || id);
+      if (added.length || removed.length){
+        const parts = [];
+        if (added.length) parts.push(`added ${added.join(', ')}`);
+        if (removed.length) parts.push(`removed ${removed.join(', ')}`);
+        appendAuditLog('subscription_change', parts.join('; '), { added, removed });
+      }
       render();
     });
+  });
+  document.getElementById('alertThresholdInput').addEventListener('change', (e) => {
+    const v = e.target.value.trim();
+    if (v === ''){
+      const had = getAlertThreshold();
+      localStorage.removeItem(ALERT_THRESHOLD_KEY);
+      if (had !== null) appendAuditLog('alert_config_changed', `Alert threshold disabled (was ${had})`);
+    } else {
+      const next = Math.max(0, Math.min(100, parseInt(v, 10) || 0));
+      const prev = getAlertThreshold();
+      localStorage.setItem(ALERT_THRESHOLD_KEY, String(next));
+      if (prev !== next) appendAuditLog('alert_config_changed', `Alert threshold set to ${next}${prev !== null ? ` (was ${prev})` : ''}`);
+    }
+    STATE.alertFired = false;
+    render();
+  });
+  document.getElementById('alertWebhookInput').addEventListener('change', (e) => {
+    const v = e.target.value.trim();
+    const hadOne = !!getAlertWebhook();
+    if (v === ''){
+      localStorage.removeItem(ALERT_WEBHOOK_KEY);
+      if (hadOne) appendAuditLog('alert_config_changed', 'Alert webhook removed');
+    } else {
+      localStorage.setItem(ALERT_WEBHOOK_KEY, v);
+      appendAuditLog('alert_config_changed', hadOne ? 'Alert webhook updated' : 'Alert webhook configured');
+    }
   });
   document.getElementById('settingsOverlay').classList.add('show');
   document.getElementById('settingsPanel').classList.add('show');
@@ -1063,6 +1314,223 @@ document.getElementById('resetSimBtn').addEventListener('click', () => {
   persistSim();
   render();
 });
+
+// ── EXPORT SNAPSHOT (UPGRADE) ────────────────────────────────────────────
+// A standalone, self-contained, print-friendly HTML file of the current
+// board state -- for dropping into a board packet or emailing to someone
+// without Sentinel access. Deliberately light-themed (dark terminal UI
+// doesn't print well) and has no script/dependency on the live page, so
+// it stays readable after Sentinel's own data has moved on.
+function buildSnapshotHtml(){
+  const scope = activeVerticals();
+  const bps = businessPostureScore();
+  const exposure = totalExposure();
+  const atRisk = scope.filter(v => verticalRisk(v.id) > 40).length;
+  const causality = computeCausalityBoard().slice(0, 8);
+  const generated = new Date().toLocaleString('en-US');
+
+  const standingsRows = scope.map(v => {
+    const risk = verticalRisk(v.id);
+    const exp = verticalExposure(v.id);
+    const top = topAnomaly(v.id);
+    const live = STATE.data[v.id].live;
+    return `<tr>
+      <td>${escapeHtml(v.name)}</td>
+      <td>${live ? 'LIVE' : 'SAMPLE'}</td>
+      <td>${risk}</td>
+      <td>${fmtMoney(exp)}</td>
+      <td>${top ? escapeHtml(top.title) + ' (' + top.severity + ')' : 'None active'}</td>
+    </tr>`;
+  }).join('');
+
+  const causalityRows = causality.map(r => `<tr>
+      <td>${escapeHtml(r.source.name)} &rarr; ${escapeHtml(r.target.name)}</td>
+      <td>${escapeHtml(r.anomaly.title)} (${r.anomaly.severity})</td>
+      <td>${escapeHtml(r.reason)}</td>
+      <td>${r.verified ? 'Verified' : 'Modeled'}</td>
+      <td>-${r.pts}pt</td>
+    </tr>`).join('') || '<tr><td colspan="5">No cross-vertical risk transfers detected.</td></tr>';
+
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<title>TSM Sentinel Snapshot — ${generated}</title>
+<style>
+  body{ font-family:Georgia,'Times New Roman',serif; color:#1a1a1a; max-width:900px; margin:40px auto; padding:0 24px; }
+  h1{ font-size:20px; margin-bottom:2px; } h2{ font-size:14px; margin-top:32px; border-bottom:1px solid #ccc; padding-bottom:6px; }
+  .meta{ color:#666; font-size:12px; margin-bottom:24px; }
+  .kpis{ display:flex; gap:24px; margin:16px 0 28px; }
+  .kpi{ border:1px solid #ddd; border-radius:6px; padding:12px 16px; }
+  .kpi .lbl{ font-size:10px; letter-spacing:1px; color:#888; text-transform:uppercase; }
+  .kpi .val{ font-size:22px; font-weight:bold; }
+  table{ width:100%; border-collapse:collapse; font-size:12px; }
+  th, td{ text-align:left; border-bottom:1px solid #e2e2e2; padding:8px 10px; vertical-align:top; }
+  th{ color:#888; font-weight:normal; text-transform:uppercase; font-size:10px; letter-spacing:.5px; }
+  .disclaimer{ margin-top:36px; font-size:11px; color:#888; line-height:1.6; }
+  @media print{ body{ margin:0; padding:20px; } }
+</style></head><body>
+  <h1>TSM Sentinel — Board Snapshot</h1>
+  <div class="meta">Generated ${generated} &middot; scoped to ${scope.length} subscribed vertical${scope.length===1?'':'s'}</div>
+  <div class="kpis">
+    <div class="kpi"><div class="lbl">Business Posture Score</div><div class="val">${bps} / 100</div></div>
+    <div class="kpi"><div class="lbl">Enterprise Exposure</div><div class="val">${fmtMoney(exposure)}</div></div>
+    <div class="kpi"><div class="lbl">Verticals At Risk</div><div class="val">${atRisk} / ${scope.length}</div></div>
+  </div>
+  <h2>Strategist Standings</h2>
+  <table><tr><th>Vertical</th><th>Status</th><th>Risk</th><th>Exposure</th><th>Top Anomaly</th></tr>${standingsRows}</table>
+  <h2>Cross-Vertical Causality Board</h2>
+  <table><tr><th>Path</th><th>Anomaly</th><th>Why</th><th>Confidence</th><th>Points</th></tr>${causalityRows}</table>
+  <div class="disclaimer">Business Posture Score is a deterministic weighted formula over each vertical's reported severity/exposure figures — not a trained model. "Modeled" causality rows use a default weighting when the source Strategist didn't supply an explicit reason; "Verified" rows quote the reason as reported. This snapshot reflects data as of the generation time above and is not live.</div>
+</body></html>`;
+}
+function exportSnapshot(){
+  const html = buildSnapshotHtml();
+  const blob = new Blob([html], { type: 'text/html' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().slice(0,16).replace(/[:T]/g,'-');
+  a.href = url;
+  a.download = `tsm-sentinel-snapshot-${stamp}.html`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  appendAuditLog('snapshot_exported', `Board snapshot exported (BPS ${businessPostureScore()}, ${activeVerticals().length} verticals in scope)`);
+}
+document.getElementById('exportBtn').addEventListener('click', exportSnapshot);
+
+// ── ALERT THRESHOLD (UPGRADE) ────────────────────────────────────────────
+// Optional push instead of pull: if BPS drops below a configurable floor,
+// fire a DOM CustomEvent (for anything embedding this page to listen for)
+// and show an in-page banner. If a webhook URL is configured, best-effort
+// POST to it -- failures are swallowed since this must never block
+// rendering. Hysteresis (STATE.alertFired) prevents re-firing on every
+// render() call while BPS stays below the floor; it resets once BPS
+// recovers above it.
+const ALERT_THRESHOLD_KEY = 'TSM_SENTINEL_ALERT_THRESHOLD';
+const ALERT_WEBHOOK_KEY = 'TSM_SENTINEL_ALERT_WEBHOOK';
+function getAlertThreshold(){
+  const raw = localStorage.getItem(ALERT_THRESHOLD_KEY);
+  const n = raw !== null ? parseInt(raw, 10) : NaN;
+  return isNaN(n) ? null : n;
+}
+function getAlertWebhook(){
+  return localStorage.getItem(ALERT_WEBHOOK_KEY) || null;
+}
+STATE.alertFired = false;
+function checkAlertThreshold(bps){
+  const threshold = getAlertThreshold();
+  const banner = document.getElementById('alertBanner');
+  if (threshold === null){ banner.style.display = 'none'; return; }
+
+  if (bps < threshold && !STATE.alertFired){
+    STATE.alertFired = true;
+    const detail = { bps, threshold, at: new Date().toISOString() };
+    window.dispatchEvent(new CustomEvent('TSM_SENTINEL_ALERT', { detail }));
+    appendAuditLog('alert_threshold_crossed', `BPS dropped to ${bps}, below floor of ${threshold}`, detail);
+    banner.innerHTML = `<span>Business Posture Score (${bps}) dropped below your configured floor of ${threshold}.</span><span class="dismiss" id="alertDismiss">&times;</span>`;
+    banner.style.display = 'flex';
+    document.getElementById('alertDismiss').addEventListener('click', () => { banner.style.display = 'none'; });
+    const webhook = getAlertWebhook();
+    if (webhook){
+      fetch(webhook, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source: 'tsm-sentinel', ...detail })
+      }).catch(() => {});
+    }
+  } else if (bps >= threshold && STATE.alertFired){
+    STATE.alertFired = false;
+    appendAuditLog('alert_recovered', `BPS recovered to ${bps}, at or above floor of ${threshold}`);
+    banner.style.display = 'none';
+  }
+}
+
+// ── AUDIT LOG (UPGRADE) ──────────────────────────────────────────────────
+// Local, append-only record for "what did the board say and who changed
+// what, when" -- the actual ask behind an audit walk-in, as opposed to
+// Export Snapshot which only answers "what does it say right now."
+// Kept in localStorage, capped at 500 entries (oldest drop off first).
+// Entries are never edited or removed once written, only appended.
+const AUDIT_LOG_KEY = 'TSM_SENTINEL_AUDIT_LOG';
+const AUDIT_LOG_CAP = 500;
+function loadAuditLog(){
+  try{
+    const arr = JSON.parse(localStorage.getItem(AUDIT_LOG_KEY) || '[]');
+    return Array.isArray(arr) ? arr : [];
+  }catch(e){ return []; }
+}
+function appendAuditLog(type, detail, meta){
+  try{
+    const log = loadAuditLog();
+    log.push({ t: new Date().toISOString(), type, detail, meta: meta || null });
+    localStorage.setItem(AUDIT_LOG_KEY, JSON.stringify(log.slice(-AUDIT_LOG_CAP)));
+  }catch(e){}
+}
+function fmtAuditTime(iso){
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? iso : d.toLocaleString('en-US', { hour12:false });
+}
+function auditTypeClass(type){
+  if (type === 'subscription_change') return 'subscription';
+  if (type === 'alert_threshold_crossed') return 'alert';
+  if (type === 'alert_recovered') return 'recovery';
+  if (type === 'alert_config_changed') return 'config';
+  if (type === 'snapshot_exported') return 'export';
+  return 'config';
+}
+function auditTypeLabel(type){
+  return {
+    subscription_change: 'Subscription',
+    alert_threshold_crossed: 'Alert',
+    alert_recovered: 'Recovered',
+    alert_config_changed: 'Config',
+    snapshot_exported: 'Export',
+  }[type] || type;
+}
+function renderAuditPanel(){
+  const log = loadAuditLog().slice().reverse();
+  const body = document.getElementById('auditBody');
+  const toolbar = `
+    <div class="audit-toolbar">
+      <button class="btn small" id="exportAuditBtn">Export Log</button>
+    </div>`;
+  const rows = log.length
+    ? log.map(e => `
+      <div class="audit-entry">
+        <div class="arow">
+          <span class="audit-type ${auditTypeClass(e.type)}">${auditTypeLabel(e.type)}</span>
+          <span class="audit-time">${fmtAuditTime(e.t)}</span>
+        </div>
+        <div class="audit-detail">${escapeHtml(e.detail)}</div>
+      </div>`).join('')
+    : '<div class="empty-note">No audit events recorded yet in this browser. Subscription changes, alert crossings, and snapshot exports will appear here as they happen.</div>';
+  body.innerHTML = toolbar + rows;
+  document.getElementById('exportAuditBtn').addEventListener('click', exportAuditLog);
+}
+function exportAuditLog(){
+  const log = loadAuditLog();
+  const blob = new Blob([JSON.stringify(log, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().slice(0,16).replace(/[:T]/g,'-');
+  a.href = url;
+  a.download = `tsm-sentinel-audit-log-${stamp}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+function openAuditPanel(){
+  renderAuditPanel();
+  document.getElementById('auditOverlay').classList.add('show');
+  document.getElementById('auditPanel').classList.add('show');
+}
+function closeAuditPanel(){
+  document.getElementById('auditOverlay').classList.remove('show');
+  document.getElementById('auditPanel').classList.remove('show');
+}
+document.getElementById('auditBtn').addEventListener('click', openAuditPanel);
+document.getElementById('closeAudit').addEventListener('click', closeAuditPanel);
+document.getElementById('auditOverlay').addEventListener('click', closeAuditPanel);
 
 // ── LIVE REFRESH ─────────────────────────────────────────────────────────
 // Without this, Sentinel only ever renders once on load. A Strategist page
