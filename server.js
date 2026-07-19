@@ -11,6 +11,11 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 const https = require('https');
+const multer = require('multer');
+const sentinelUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 } // 10MB per file, plenty for contracts/claims docs
+});
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -3205,6 +3210,72 @@ app.post('/api/mdm/query', async (req, res) => {
   } catch (e) {
     console.error('MDM GROQ ERROR:', e.message);
     return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// ── SENTINEL: real document analysis ─────────────────────────────────────────
+// Accepts a real uploaded file (multipart/form-data, field name "document"),
+// extracts its text, and runs it through the same groqChat/SP pattern the rest
+// of the platform already uses (see /api/mdm/query above). No new AI provider,
+// no separate service — this is the "minimal proxy" we discussed, just built
+// as a route on the backend that already exists instead of a standalone server.
+app.post('/api/sentinel/analyze', sentinelUpload.single('document'), async (req, res) => {
+  const file = req.file;
+  if (!file) return res.status(400).json({ ok: false, error: 'document file required (field name "document")' });
+
+  const vertical = (req.body && req.body.vertical) || 'enterprise';
+  const promptKey = SP[vertical] ? vertical : 'enterprise';
+  const name = file.originalname || 'uploaded document';
+  const ext = (name.split('.').pop() || '').toLowerCase();
+
+  let text = '';
+  try {
+    if (ext === 'pdf') {
+      const pdfParse = require('pdf-parse');
+      const data = await pdfParse(file.buffer);
+      text = data.text || '';
+    } else if (ext === 'docx') {
+      const mammoth = require('mammoth');
+      const result = await mammoth.extractRawText({ buffer: file.buffer });
+      text = result.value || '';
+    } else {
+      // txt, csv, and anything else plain-text
+      text = file.buffer.toString('utf8');
+    }
+  } catch (e) {
+    return res.status(422).json({ ok: false, error: 'Could not extract text from ' + name + ': ' + e.message });
+  }
+
+  if (!text.trim()) {
+    return res.status(422).json({ ok: false, error: 'No extractable text found in ' + name });
+  }
+
+  // Keep the prompt bounded — long contracts get truncated, not rejected
+  const truncated = text.length > 12000;
+  const excerpt = text.slice(0, 12000);
+
+  const system = SP[promptKey];
+  const userPrompt =
+    `Analyze the following real document uploaded by the user. Identify the single most ` +
+    `important finding, estimate dollar exposure or risk if the document supports one, and ` +
+    `quote or reference the specific clause/section/line that supports your finding so it can ` +
+    `be cited back to the source document. Be concise and operational. No preamble.\n\n` +
+    `DOCUMENT: ${name}\n\n${excerpt}`;
+
+  try {
+    const answer = await groqChat(system, userPrompt, 1200);
+    res.json({
+      ok: true,
+      vertical: promptKey,
+      sourceFile: name,
+      extractedChars: text.length,
+      truncated,
+      finding: answer,
+      createdAt: new Date().toISOString()
+    });
+  } catch (e) {
+    console.error('SENTINEL AI ERROR:', e.message);
+    res.status(500).json({ ok: false, error: e.message });
   }
 });
 
