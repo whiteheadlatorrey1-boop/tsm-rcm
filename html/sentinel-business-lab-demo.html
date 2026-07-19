@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TSM Sentinel — Business Simulation Lab</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+:root{
+  --ink:#0A0F1C;
+  --panel:#111A2C;
+  --panel-raised:#16223A;
+  --line:#243450;
+  --text:#EEF1F8;
+  --muted:#8A96B2;
+  --muted-dim:#5C6885;
+  --amber:#E8A33D;
+  --amber-dim:#8A6528;
+  --risk:#E5484D;
+  --risk-dim:#5C2528;
+  --good:#3DD68C;
+  --good-dim:#1F5A42;
+  --info:#5B8DEF;
+}
+
+*{box-sizing:border-box; margin:0; padding:0;}
+
+body{
+  background:
+    radial-gradient(1200px 600px at 15% -10%, rgba(91,141,239,0.10), transparent 60%),
+    radial-gradient(1000px 500px at 110% 10%, rgba(232,163,61,0.08), transparent 60%),
+    var(--ink);
+  color:var(--text);
+  font-family:'Inter', sans-serif;
+  min-height:100vh;
+  padding-bottom:60px;
+}
+
+.mono{font-family:'IBM Plex Mono', monospace;}
+
+/* ===== TOP BAR ===== */
+.topbar{
+  display:flex; align-items:center; justify-content:space-between;
+  padding:18px 32px;
+  border-bottom:1px solid var(--line);
+  background:rgba(10,15,28,0.85);
+  backdrop-filter:blur(8px);
+  position:sticky; top:0; z-index:50;
+}
+.brand{display:flex; align-items:center; gap:12px;}
+.brand-mark{
+  width:34px; height:34px; border-radius:8px;
+  background:linear-gradient(135deg, var(--amber), #C87B1F);
+  display:flex; align-items:center; justify-content:center;
+  font-family:'Space Grotesk'; font-weight:700; color:#0A0F1C; font-size:16px;
+  flex-shrink:0;
+}
+.brand-text .name{font-family:'Space Grotesk'; font-weight:600; font-size:16px; letter-spacing:0.02em;}
+.brand-text .tag{font-size:11px; color:var(--muted); letter-spacing:0.08em; text-transform:uppercase; margin-top:1px;}
+
+.mode-toggle{display:flex; gap:6px; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:4px;}
+.mode-btn{
+  padding:8px 16px; border-radius:7px; border:none; background:transparent;
+  color:var(--muted); font-size:12.5px; font-weight:600; letter-spacing:0.02em;
+  font-family:'Inter'; cursor:pointer; transition:all .15s ease;
+}
+.mode-btn.active{background:var(--amber); color:#241705;}
+.mode-btn.locked{cursor:not-allowed; opacity:.55;}
+.mode-btn.locked:hover{color:var(--muted);}
+
+/* ===== LAYOUT ===== */
+.shell{
+  max-width:1400px; margin:0 auto; padding:28px 32px;
+  display:grid; grid-template-columns:270px 1fr; gap:22px;
+}
+@media (max-width:960px){ .shell{grid-template-columns:1fr;} }
+
+/* ===== COMPANY RAIL ===== */
+.rail-label{
+  font-size:11px; letter-spacing:0.12em; text-transform:uppercase; color:var(--muted-dim);
+  margin-bottom:12px; font-weight:600;
+}
+.company-card{
+  background:var(--panel); border:1px solid var(--line); border-radius:12px;
+  padding:14px 14px; margin-bottom:10px; cursor:pointer; transition:all .18s ease;
+}
+.company-card:hover{border-color:var(--amber-dim);}
+.company-card.active{border-color:var(--amber); background:var(--panel-raised); box-shadow:0 0 0 1px var(--amber) inset;}
+.company-card .cname{font-family:'Space Grotesk'; font-weight:600; font-size:13.5px; margin-bottom:3px;}
+.company-card .cindustry{font-size:11px; color:var(--muted); margin-bottom:10px;}
+.score-row{display:flex; align-items:center; justify-content:space-between;}
+.score-bar-track{flex:1; height:5px; background:var(--line); border-radius:3px; margin-right:8px; overflow:hidden;}
+.score-bar-fill{height:100%; border-radius:3px; transition:width 1.1s cubic-bezier(.4,0,.2,1), background .6s ease;}
+.score-num{font-size:11px; font-family:'IBM Plex Mono'; color:var(--muted); min-width:26px; text-align:right;}
+
+.rail-footer{
+  margin-top:18px; padding:14px; border-radius:12px; border:1px dashed var(--line);
+  font-size:11.5px; color:var(--muted-dim); line-height:1.5;
+}
+
+/* ===== MAIN STAGE ===== */
+.stage{display:flex; flex-direction:column; gap:20px;}
+
+.card{
+  background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:24px;
+}
+.card-eyebrow{
+  font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:var(--muted-dim);
+  font-weight:600; margin-bottom:6px;
+}
+
+/* Company header */
+.company-head{display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px;}
+.company-head h1{font-family:'Space Grotesk'; font-size:26px; font-weight:600; margin-bottom:6px;}
+.company-meta{display:flex; gap:16px; flex-wrap:wrap; margin-top:10px;}
+.meta-chip{
+  font-size:11.5px; color:var(--muted); background:var(--panel-raised); border:1px solid var(--line);
+  padding:5px 10px; border-radius:20px; font-family:'IBM Plex Mono';
+}
+.twin-assets{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-top:18px;}
+.asset-group{background:var(--panel-raised); border:1px solid var(--line); border-radius:10px; padding:12px 14px;}
+.asset-group .g-title{font-size:11px; color:var(--amber); font-weight:600; letter-spacing:0.05em; text-transform:uppercase; margin-bottom:8px;}
+.asset-group ul{list-style:none;}
+.asset-group li{font-size:12.5px; color:var(--muted); padding:2px 0; padding-left:14px; position:relative;}
+.asset-group li::before{content:"–"; position:absolute; left:0; color:var(--muted-dim);}
+
+/* Scenario runner */
+.scenario-top{display:flex; justify-content:space-between; align-items:flex-start; gap:20px; flex-wrap:wrap;}
+.scenario-title{font-family:'Space Grotesk'; font-size:19px; font-weight:600; margin-bottom:6px;}
+.scenario-desc{font-size:13px; color:var(--muted); max-width:560px; line-height:1.55;}
+.trigger-list{margin-top:12px; display:flex; gap:8px; flex-wrap:wrap;}
+.trigger-chip{
+  font-size:11.5px; padding:5px 10px; border-radius:6px; background:rgba(229,72,77,0.1);
+  color:#F2A0A3; border:1px solid var(--risk-dim); font-family:'IBM Plex Mono';
+}
+
+.run-btn{
+  background:var(--amber); color:#241705; border:none; padding:13px 22px; border-radius:9px;
+  font-family:'Space Grotesk'; font-weight:600; font-size:14px; cursor:pointer; white-space:nowrap;
+  transition:transform .12s ease, box-shadow .12s ease; box-shadow:0 0 0 0 rgba(232,163,61,0.4);
+}
+.run-btn:hover{transform:translateY(-1px); box-shadow:0 6px 18px rgba(232,163,61,0.25);}
+.run-btn:disabled{opacity:.5; cursor:not-allowed; transform:none; box-shadow:none;}
+.run-btn.running{background:var(--panel-raised); color:var(--amber); border:1px solid var(--amber-dim);}
+
+/* Pipeline */
+.pipeline{display:flex; align-items:center; margin-top:26px; overflow-x:auto; padding-bottom:6px;}
+.pipe-step{
+  display:flex; flex-direction:column; align-items:center; gap:8px; min-width:92px; flex-shrink:0;
+}
+.pipe-dot{
+  width:30px; height:30px; border-radius:50%; border:2px solid var(--line); background:var(--panel-raised);
+  display:flex; align-items:center; justify-content:center; font-size:12px; color:var(--muted-dim);
+  transition:all .25s ease; font-family:'IBM Plex Mono';
+}
+.pipe-step.done .pipe-dot{border-color:var(--good); background:var(--good-dim); color:var(--good);}
+.pipe-step.active .pipe-dot{border-color:var(--amber); background:var(--amber-dim); color:var(--amber); box-shadow:0 0 0 5px rgba(232,163,61,0.12);}
+.pipe-label{font-size:10px; text-align:center; color:var(--muted-dim); letter-spacing:0.02em; line-height:1.3;}
+.pipe-step.done .pipe-label, .pipe-step.active .pipe-label{color:var(--muted);}
+.pipe-connector{flex:1; height:2px; background:var(--line); min-width:20px; transition:background .3s ease;}
+.pipe-connector.done{background:var(--good-dim);}
+
+/* Findings card */
+.finding-grid{display:grid; grid-template-columns:1.3fr 1fr; gap:20px; margin-top:6px;}
+@media (max-width:760px){ .finding-grid{grid-template-columns:1fr;} }
+.finding-title{font-family:'Space Grotesk'; font-size:16px; font-weight:600; margin-bottom:8px; color:#F2A0A3;}
+.finding-body{font-size:13.5px; color:var(--muted); line-height:1.6;}
+.impact-tag{
+  display:inline-block; margin-top:12px; font-family:'IBM Plex Mono'; font-size:13px;
+  color:var(--risk); background:rgba(229,72,77,0.08); border:1px solid var(--risk-dim);
+  padding:6px 12px; border-radius:7px;
+}
+.mission-box{background:var(--panel-raised); border:1px solid var(--amber-dim); border-radius:10px; padding:16px;}
+.mission-box .m-id{font-family:'IBM Plex Mono'; font-size:10.5px; color:var(--amber); letter-spacing:0.05em;}
+.mission-box .m-title{font-family:'Space Grotesk'; font-size:14.5px; font-weight:600; margin:6px 0 10px;}
+.mission-row{display:flex; justify-content:space-between; font-size:12px; color:var(--muted); padding:5px 0; border-top:1px solid var(--line);}
+.mission-row span:first-child{color:var(--muted-dim);}
+.status-pill{background:rgba(61,214,140,0.1); color:var(--good); border:1px solid var(--good-dim); padding:2px 9px; border-radius:20px; font-size:11px; font-family:'IBM Plex Mono';}
+
+/* Causality board — signature element */
+.causality-wrap{overflow-x:auto; padding:30px 4px 10px;}
+.causality-chain{display:flex; align-items:center; min-width:max-content;}
+.cnode{
+  display:flex; flex-direction:column; align-items:center; gap:10px; width:150px; flex-shrink:0; position:relative;
+}
+.cnode .dot{
+  width:14px; height:14px; border-radius:50%; background:var(--line); border:2px solid var(--muted-dim);
+  transition:all .3s ease;
+}
+.cnode.risk .dot{background:var(--risk); border-color:var(--risk);}
+.cnode.lit .dot{background:var(--amber); border-color:var(--amber); box-shadow:0 0 0 6px rgba(232,163,61,0.15);}
+.cnode .clabel{font-size:11.5px; text-align:center; color:var(--muted); line-height:1.35; font-weight:500;}
+.cnode.risk .clabel{color:#F2A0A3; font-weight:600;}
+.carrow{flex:1; min-width:38px; height:2px; background:var(--line); position:relative; margin-top:-30px;}
+.carrow::after{
+  content:""; position:absolute; right:-1px; top:50%; transform:translateY(-50%);
+  width:0; height:0; border-top:4px solid transparent; border-bottom:4px solid transparent;
+  border-left:6px solid var(--line);
+}
+.carrow.lit{background:var(--amber);}
+.carrow.lit::after{border-left-color:var(--amber);}
+
+/* Score panel */
+.score-panel{display:flex; align-items:center; gap:36px; flex-wrap:wrap;}
+.gauge-block{display:flex; flex-direction:column; gap:6px; min-width:220px;}
+.gauge-top{display:flex; justify-content:space-between; align-items:baseline;}
+.gauge-name{font-size:12.5px; color:var(--muted); font-weight:500;}
+.gauge-val{font-family:'IBM Plex Mono'; font-size:15px; font-weight:600;}
+.gauge-track{height:8px; background:var(--panel-raised); border-radius:5px; overflow:hidden; border:1px solid var(--line);}
+.gauge-fill{height:100%; border-radius:5px; transition:width 1.4s cubic-bezier(.4,0,.2,1);}
+
+.hint{font-size:12px; color:var(--muted-dim); margin-top:4px; font-style:italic;}
+
+.footer-note{
+  text-align:center; font-size:11.5px; color:var(--muted-dim); margin-top:30px; line-height:1.6;
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <div class="brand-mark">TS</div>
+    <div class="brand-text">
+      <div class="name">TSM Sentinel</div>
+      <div class="tag">Business Simulation Lab</div>
+    </div>
+  </div>
+  <div class="mode-toggle">
+    <button class="mode-btn active" id="simBtn">Simulation Mode</button>
+    <button class="mode-btn locked" id="liveBtn" title="Connects to live CCU pilot member data — enabled at go-live">Live Mode 🔒</button>
+  </div>
+</div>
+
+<div class="shell">
+
+  <!-- COMPANY RAIL -->
+  <div>
+    <div class="rail-label">CCU Pilot Companies</div>
+    <div id="companyRail"></div>
+    <div class="rail-footer">
+      This rail mirrors the <strong style="color:var(--muted)">Business Identity Layer</strong> —
+      the SMB equivalent of the Enterprise Lab's device &amp; user directory. Each card is a live
+      Company Digital Twin.
+    </div>
+  </div>
+
+  <!-- MAIN STAGE -->
+  <div class="stage">
+
+    <!-- Company header / digital twin -->
+    <div class="card">
+      <div class="company-head">
+        <div>
+          <div class="card-eyebrow">Company Digital Twin</div>
+          <h1 id="cName">—</h1>
+          <div class="company-meta" id="cMeta"></div>
+        </div>
+      </div>
+      <div class="twin-assets" id="twinAssets"></div>
+    </div>
+
+    <!-- Scenario runner -->
+    <div class="card">
+      <div class="card-eyebrow">Scenario Engine</div>
+      <div class="scenario-top">
+        <div>
+          <div class="scenario-title" id="scenTitle">—</div>
+          <div class="scenario-desc" id="scenDesc">—</div>
+          <div class="trigger-list" id="scenTriggers"></div>
+        </div>
+        <button class="run-btn" id="runBtn">Run Scenario ▸</button>
+      </div>
+
+      <div class="pipeline" id="pipeline"></div>
+    </div>
+
+    <!-- Findings + Mission (hidden until run) -->
+    <div class="card" id="findingsCard" style="display:none;">
+      <div class="card-eyebrow">Sentinel Output</div>
+      <div class="finding-grid">
+        <div>
+          <div class="finding-title" id="findTitle">—</div>
+          <div class="finding-body" id="findBody">—</div>
+          <div class="impact-tag" id="findImpact">—</div>
+        </div>
+        <div class="mission-box">
+          <div class="m-id" id="missId">—</div>
+          <div class="m-title" id="missTitle">—</div>
+          <div class="mission-row"><span>Owner</span><span id="missOwner">—</span></div>
+          <div class="mission-row"><span>Risk</span><span id="missRisk">—</span></div>
+          <div class="mission-row"><span>Status</span><span class="status-pill" id="missStatus">Open</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Causality board -->
+    <div class="card">
+      <div class="card-eyebrow">Cross-Vertical Causality Board</div>
+      <div class="hint">How one operational event propagates into financial and credit risk for the CCU relationship.</div>
+      <div class="causality-wrap">
+        <div class="causality-chain" id="causalityChain"></div>
+      </div>
+    </div>
+
+    <!-- Business score -->
+    <div class="card">
+      <div class="card-eyebrow">Executive Portal — Business Intelligence Score</div>
+      <div class="score-panel" id="scorePanel"></div>
+    </div>
+
+  </div>
+</div>
+
+<div class="footer-note">
+  Simulation Mode uses seeded companies, synthetic documents, and scripted scenarios to demonstrate the Sentinel<br>
+  intelligence pipeline end-to-end. Live Mode runs the identical pipeline against real CCU member uploads.
+</div>
+
+<script>
+const COMPANIES = [
+  {
+    id:"mcdaniel", name:"McDaniel Construction Group", industry:"Construction",
+    meta:["45 employees","Battle Creek, MI","$8.5M revenue","Tier: Professional"],
+    color:"var(--amber)",
+    score:{before:72, after:84},
+    assets:{
+      Projects:["Hospital Renovation","Commercial Building","Residential Development"],
+      Financial:["Bank Accounts","SBA Loan","Vendor Contracts (12)"],
+      Operational:["45 Employees","Equipment Fleet","Suppliers (8)"],
+      Compliance:["Building Permits","Insurance Policy","OSHA Certifications"]
+    },
+    scenario:{
+      title:"Project Margin Collapse",
+      desc:"Material costs are climbing while vendor delays and untracked change orders quietly erode project margin.",
+      triggers:["Material costs +18%","Vendor delay: framing subcontractor","Change orders not logged"]
+    },
+    finding:{
+      title:"Project ABC margin declining",
+      body:"Sentinel cross-referenced the signed contract, three change-order emails, and the vendor payment schedule. Additional labor and materials were approved verbally but never entered into the change-order log, so the client was never billed for the scope increase.",
+      impact:"$85,000 margin exposure"
+    },
+    mission:{
+      id:"SENT-CON-001", title:"Implement change-order approval workflow before additional labor begins",
+      owner:"Project Manager", risk:"High"
+    },
+    chain:["Vendor Delay","Project Delay","Invoice Delay","Cash Flow Pressure","Loan Risk"]
+  },
+  {
+    id:"bcmed", name:"Battle Creek Medical Billing Solutions", industry:"Healthcare BPO",
+    meta:["30 employees","Battle Creek, MI","$4.1M revenue","Tier: Growth"],
+    color:"var(--info)",
+    score:{before:68, after:81},
+    assets:{
+      Claims:["BlueCross Book","Medicare Book","Commercial Payers (6)"],
+      Financial:["AR Ledger","Payer Contracts","Collections Line of Credit"],
+      Operational:["Coding Team (9)","Denial Management Queue"],
+      Compliance:["HIPAA Policy Set","Payer Audit History"]
+    },
+    scenario:{
+      title:"Revenue Leakage Event",
+      desc:"A rising denial rate on one payer, paired with a coding inconsistency, is quietly leaking billable revenue.",
+      triggers:["BlueCross denials +22%","CPT coding inconsistency","Documentation gap on 3 claim types"]
+    },
+    finding:{
+      title:"BlueCross denial trend detected",
+      body:"Sentinel compared 90 days of claims against payer policy updates and found a coding pattern used correctly under the old policy but now triggering automatic denials under the revised BlueCross guidelines.",
+      impact:"$42,000 revenue exposure"
+    },
+    mission:{
+      id:"SENT-HC-001", title:"Create coding validation workflow against current payer policy set",
+      owner:"Compliance Officer", risk:"High"
+    },
+    chain:["Coding Gap","Claim Denial","Revenue Delay","AR Aging","Cash Flow Pressure"]
+  },
+  {
+    id:"glm", name:"Great Lakes Mortgage Partners", industry:"Mortgage / Real Estate",
+    meta:["22 employees","Grand Rapids, MI","$3.3M revenue","Tier: Professional"],
+    color:"#8B7CF6",
+    score:{before:75, after:88},
+    assets:{
+      Pipeline:["Purchase Loans (41)","Refinance Loans (17)"],
+      Financial:["Warehouse Line","Investor Contracts"],
+      Operational:["Processors (6)","Underwriters (3)"],
+      Compliance:["Document Checklists","State Licensing","Audit Log"]
+    },
+    scenario:{
+      title:"Loan Processing Bottleneck",
+      desc:"Manual document verification is stretching closing timelines and putting rate locks at risk.",
+      triggers:["Document delays on 60% of files","Compliance review failures ↑","Manual verification bottleneck"]
+    },
+    finding:{
+      title:"Average closing delay: 9 days",
+      body:"Sentinel traced the delay to manual, file-by-file document verification with no standardized checklist — processors were each tracking requirements differently across loan types.",
+      impact:"9-day average closing delay"
+    },
+    mission:{
+      id:"SENT-MORT-001", title:"Automate document checklist by loan type before submission",
+      owner:"Operations Manager", risk:"Medium"
+    },
+    chain:["Manual Verification","Processing Delay","Closing Delay","Client Attrition Risk","Pipeline Risk"]
+  },
+  {
+    id:"midwest", name:"Midwest Industrial Supply", industry:"Manufacturing",
+    meta:["60 employees","Kalamazoo, MI","$11.2M revenue","Tier: Enterprise Pilot"],
+    color:"#4FB0C6",
+    score:{before:70, after:83},
+    assets:{
+      Inventory:["Raw Materials","Finished Goods","3 Warehouses"],
+      Financial:["Revolving Credit Line","Vendor Contracts (24)"],
+      Operational:["60 Employees","Production Lines (4)"],
+      Compliance:["Safety Certifications","Vendor Quality Audits"]
+    },
+    scenario:{
+      title:"Vendor Cost & Inventory Drift",
+      desc:"Rising vendor costs and slowing inventory turnover are tying up cash and compressing margin at once.",
+      triggers:["Top-3 vendor costs +14%","Inventory turnover slowing","Working capital tightening"]
+    },
+    finding:{
+      title:"Margin compression across top product lines",
+      body:"Sentinel found vendor cost increases were not reflected in customer pricing, while slower turnover on two SKU families left cash tied up in inventory for 18 extra days on average.",
+      impact:"$63,000 quarterly margin impact"
+    },
+    mission:{
+      id:"SENT-FIN-001", title:"Renegotiate top-3 vendor contracts and rebalance SKU-family stock levels",
+      owner:"CFO", risk:"High"
+    },
+    chain:["Vendor Cost Spike","Margin Compression","Inventory Buildup","Cash Tied Up","Credit Risk"]
+  },
+  {
+    id:"sentinelpro", name:"Sentinel Professional Services", industry:"Accounting / Legal",
+    meta:["18 employees","Kalamazoo, MI","$2.6M revenue","Tier: Growth"],
+    color:"#5FD68C",
+    score:{before:77, after:90},
+    assets:{
+      Clients:["Retainer Clients (14)","Project Clients (22)"],
+      Financial:["Trust Accounts","Partner Distributions"],
+      Operational:["Attorneys/CPAs (9)","Support Staff (9)"],
+      Compliance:["Engagement Letters","Bar/Board Compliance"]
+    },
+    scenario:{
+      title:"Client Profitability Drift",
+      desc:"Scope creep on a handful of retainer clients is quietly dragging down realization rate firm-wide.",
+      triggers:["Realization rate ↓ on 3 retainers","Unbilled scope creep","Engagement letters out of date"]
+    },
+    finding:{
+      title:"Realization rate declining on 3 retainer clients",
+      body:"Sentinel compared time entries against original engagement letters and found recurring out-of-scope work being absorbed rather than billed, concentrated in three long-tenured accounts.",
+      impact:"11% realization rate decline"
+    },
+    mission:{
+      id:"SENT-LEG-001", title:"Rebuild engagement scoping templates and enable change-order billing",
+      owner:"CEO", risk:"Medium"
+    },
+    chain:["Scope Creep","Realization Drop","Margin Erosion","Partner Distribution Risk","Growth Risk"]
+  }
+];
+
+const PIPELINE_STEPS = [
+  "Event Created","Document Ingestion","AI Analysis","Business Context Mapping",
+  "Risk Identification","Mission Generation","Owner Assignment","Score Update"
+];
+
+let currentId = COMPANIES[0].id;
+let ranState = {}; // id -> bool
+let runningLock = false;
+
+function company(id){ return COMPANIES.find(c=>c.id===id); }
+
+function scoreColor(v){
+  if(v>=85) return "var(--good)";
+  if(v>=70) return "var(--amber)";
+  return "var(--risk)";
+}
+
+function renderRail(){
+  const rail = document.getElementById('companyRail');
+  rail.innerHTML = '';
+  COMPANIES.forEach(c=>{
+    const has = ranState[c.id];
+    const score = has ? c.score.after : c.score.before;
+    const div = document.createElement('div');
+    div.className = 'company-card' + (c.id===currentId ? ' active' : '');
+    div.onclick = ()=>selectCompany(c.id);
+    div.innerHTML = `
+      <div class="cname">${c.name}</div>
+      <div class="cindustry">${c.industry}</div>
+      <div class="score-row">
+        <div class="score-bar-track"><div class="score-bar-fill" style="width:${score}%; background:${scoreColor(score)};"></div></div>
+        <div class="score-num">${score}</div>
+      </div>`;
+    rail.appendChild(div);
+  });
+}
+
+function renderCompany(){
+  const c = company(currentId);
+  document.getElementById('cName').textContent = c.name;
+  document.getElementById('cMeta').innerHTML = c.meta.map(m=>`<span class="meta-chip">${m}</span>`).join('');
+
+  const twin = document.getElementById('twinAssets');
+  twin.innerHTML = '';
+  Object.entries(c.assets).forEach(([group, items])=>{
+    const div = document.createElement('div');
+    div.className = 'asset-group';
+    div.innerHTML = `<div class="g-title">${group}</div><ul>${items.map(i=>`<li>${i}</li>`).join('')}</ul>`;
+    twin.appendChild(div);
+  });
+
+  document.getElementById('scenTitle').textContent = c.scenario.title;
+  document.getElementById('scenDesc').textContent = c.scenario.desc;
+  document.getElementById('scenTriggers').innerHTML = c.scenario.triggers.map(t=>`<span class="trigger-chip">${t}</span>`).join('');
+
+  renderPipeline(ranState[c.id] ? PIPELINE_STEPS.length : -1);
+
+  const findCard = document.getElementById('findingsCard');
+  if(ranState[c.id]){
+    findCard.style.display = 'block';
+    document.getElementById('findTitle').textContent = c.finding.title;
+    document.getElementById('findBody').textContent = c.finding.body;
+    document.getElementById('findImpact').textContent = c.finding.impact;
+    document.getElementById('missId').textContent = c.mission.id;
+    document.getElementById('missTitle').textContent = c.mission.title;
+    document.getElementById('missOwner').textContent = c.mission.owner;
+    document.getElementById('missRisk').textContent = c.mission.risk;
+  } else {
+    findCard.style.display = 'none';
+  }
+
+  renderCausality(ranState[c.id]);
+  renderScore(ranState[c.id]);
+
+  const btn = document.getElementById('runBtn');
+  btn.disabled = false;
+  btn.classList.remove('running');
+  btn.textContent = ranState[c.id] ? 'Re-run Scenario ▸' : 'Run Scenario ▸';
+}
+
+function renderPipeline(activeIndex){
+  const el = document.getElementById('pipeline');
+  el.innerHTML = '';
+  PIPELINE_STEPS.forEach((label, i)=>{
+    const step = document.createElement('div');
+    const state = i < activeIndex || activeIndex >= PIPELINE_STEPS.length ? 'done' : (i===activeIndex ? 'active' : '');
+    step.className = 'pipe-step ' + state;
+    step.innerHTML = `<div class="pipe-dot">${state==='done' ? '✓' : i+1}</div><div class="pipe-label">${label}</div>`;
+    el.appendChild(step);
+    if(i < PIPELINE_STEPS.length - 1){
+      const conn = document.createElement('div');
+      conn.className = 'pipe-connector' + (i < activeIndex || activeIndex >= PIPELINE_STEPS.length ? ' done' : '');
+      el.appendChild(conn);
+    }
+  });
+}
+
+function renderCausality(lit){
+  const c = company(currentId);
+  const el = document.getElementById('causalityChain');
+  el.innerHTML = '';
+  c.chain.forEach((label, i)=>{
+    const isLast = i === c.chain.length - 1;
+    const node = document.createElement('div');
+    node.className = 'cnode' + (isLast ? ' risk' : '') + (lit ? ' lit' : '');
+    node.innerHTML = `<div class="clabel">${label}</div><div class="dot"></div>`;
+    el.appendChild(node);
+    if(!isLast){
+      const arrow = document.createElement('div');
+      arrow.className = 'carrow' + (lit ? ' lit' : '');
+      el.appendChild(arrow);
+    }
+  });
+}
+
+function renderScore(has){
+  const c = company(currentId);
+  const panel = document.getElementById('scorePanel');
+  const before = c.score.before;
+  const after = has ? c.score.after : c.score.before;
+  panel.innerHTML = `
+    <div class="gauge-block">
+      <div class="gauge-top"><span class="gauge-name">Overall Business Health</span><span class="gauge-val" style="color:${scoreColor(after)}">${after}/100</span></div>
+      <div class="gauge-track"><div class="gauge-fill" style="width:${after}%; background:${scoreColor(after)};"></div></div>
+      <div class="hint" style="margin-top:2px;">${has ? `Before scenario: ${before}/100 — mission completed` : 'Baseline — run the scenario to update'}</div>
+    </div>
+    <div class="gauge-block">
+      <div class="gauge-top"><span class="gauge-name">Risk Exposure</span><span class="gauge-val" style="color:${has?'var(--good)':'var(--risk)'}">${has ? 'Mitigated' : 'Active'}</span></div>
+      <div class="gauge-track"><div class="gauge-fill" style="width:${has?18:78}%; background:${has?'var(--good)':'var(--risk)'};"></div></div>
+      <div class="hint" style="margin-top:2px;">${has ? c.mission.title.slice(0,46)+'… — in progress' : c.finding ? c.finding.impact : ''}</div>
+    </div>`;
+}
+
+function selectCompany(id){
+  if(runningLock) return;
+  currentId = id;
+  renderRail();
+  renderCompany();
+}
+
+function runScenario(){
+  if(runningLock) return;
+  runningLock = true;
+  const btn = document.getElementById('runBtn');
+  btn.disabled = true;
+  btn.classList.add('running');
+  btn.textContent = 'Running…';
+
+  let i = 0;
+  renderPipeline(0);
+  const interval = setInterval(()=>{
+    i++;
+    if(i >= PIPELINE_STEPS.length){
+      clearInterval(interval);
+      renderPipeline(PIPELINE_STEPS.length);
+      ranState[currentId] = true;
+      document.getElementById('findingsCard').style.display = 'block';
+      const c = company(currentId);
+      document.getElementById('findTitle').textContent = c.finding.title;
+      document.getElementById('findBody').textContent = c.finding.body;
+      document.getElementById('findImpact').textContent = c.finding.impact;
+      document.getElementById('missId').textContent = c.mission.id;
+      document.getElementById('missTitle').textContent = c.mission.title;
+      document.getElementById('missOwner').textContent = c.mission.owner;
+      document.getElementById('missRisk').textContent = c.mission.risk;
+      renderCausality(true);
+      renderScore(true);
+      renderRail();
+      btn.disabled = false;
+      btn.classList.remove('running');
+      btn.textContent = 'Re-run Scenario ▸';
+      runningLock = false;
+      return;
+    }
+    renderPipeline(i);
+  }, 380);
+}
+
+document.getElementById('runBtn').addEventListener('click', runScenario);
+document.getElementById('liveBtn').addEventListener('click', ()=>{
+  alert('Live Mode connects to real CCU member uploads and connected systems. Enabled at pilot go-live.');
+});
+
+renderRail();
+renderCompany();
+</script>
+
+</body>
+</html>
