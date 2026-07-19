@@ -201,7 +201,7 @@ app.post('/api/bpo/query', async (req, res) => {
   try {
     const sys = 'You are a BPO operations intelligence AI for TSM Command. Expert in BPO, workforce management, SLA performance, staffing ops. Be direct.';
     const msg = req.body.message || req.body.question || req.body.query || '';
-    const a = await groqChat(sys, msg, req.body.maxTokens || 1024);
+    const a = await groqChat(sys, msg, req.body.maxTokens || 2200);
     return res.json({ ok: true, reply: a, answer: a, output: a, createdAt: new Date().toISOString() });
   } catch (e) { return res.status(500).json({ ok: false, error: e.message }); }
 });
@@ -261,7 +261,7 @@ app.post('/api/hc/query', async (req, res) => {
     var sys = body.system || SP.healthcare;
     var msg = body.message || body.question || body.query;
     if (!msg) return res.status(400).json({ ok: false, error: 'Query required' });
-    var a = await groqChat(sys, msg, body.maxTokens || 1024);
+    var a = await groqChat(sys, msg, body.maxTokens || 2200);
     console.log('[HC QUERY DEBUG] a =', JSON.stringify(a));
     return res.json({ ok: true, output: a, answer: a, reply: a, content: a, createdAt: new Date().toISOString() });
   } catch (e) { console.log('[HC ERROR]', e.message); return res.status(500).json({ ok: false, error: e.message }); }
@@ -878,7 +878,7 @@ app.post('/api/ai/query', async (req, res) => {
   var system = SP[appType] || SP.enterprise;
   try {
     var userMsg = body.context ? 'Context:\n' + body.context + '\n\nQuestion: ' + question : question;
-    var answer = await groqChat(system, userMsg, body.maxTokens || 1024);
+    var answer = await groqChat(system, userMsg, body.maxTokens || 2200);
     return res.json({ ok: true, app: appType, question, answer, createdAt: new Date().toISOString() });
   } catch (e) { return res.status(500).json({ ok: false, error: e.message }); }
 });
@@ -929,7 +929,7 @@ app.post('/api/financial/query', async (req, res) => {
 });
 
 app.post('/api/legal/query', async (req, res) => {
-  try { var a = await groqChat(SP.legal, req.body.question || req.body.query || '', req.body.maxTokens || 1024); return res.json({ ok: true, answer: a, createdAt: new Date().toISOString() }); }
+  try { var a = await groqChat(SP.legal, req.body.question || req.body.query || '', req.body.maxTokens || 2200); return res.json({ ok: true, answer: a, createdAt: new Date().toISOString() }); }
   catch (e) { return res.status(500).json({ ok: false, error: e.message }); }
 });
 
@@ -1356,7 +1356,7 @@ app.post('/api/l1-copilot/cloud-ops', async (req, res) => {
 });
 
 app.post('/api/schools/query', async (req, res) => {
-  try { var a = await groqChat(SP.education, req.body.question || req.body.query || '', req.body.maxTokens || 1024); return res.json({ ok: true, answer: a, createdAt: new Date().toISOString() }); }
+  try { var a = await groqChat(SP.education, req.body.question || req.body.query || '', req.body.maxTokens || 2200); return res.json({ ok: true, answer: a, createdAt: new Date().toISOString() }); }
   catch (e) { return res.status(500).json({ ok: false, error: e.message }); }
 });
 
