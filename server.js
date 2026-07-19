@@ -50,33 +50,41 @@ const GROQ_MODELS = [
   'gemma2-9b-it'
 ];
 
-async function groqChat(system, message, maxTokens, clientKey) {
+async function groqChat(system, message, maxTokens, clientKey, jsonMode) {
   const groqKey = process.env.GROQ_KEY || process.env.GROQ_API_KEY || clientKey;
   if (!groqKey) throw new Error('No Groq API key configured (server env missing and no client key provided)');
   for (const model of GROQ_MODELS) {
-    try {
-      const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + groqKey, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+    for (const useJsonMode of (jsonMode ? [true, false] : [false])) {
+      try {
+        const body = {
           model,
           max_tokens: maxTokens,
           messages: [{ role: 'system', content: system }, { role: 'user', content: message }]
-        })
-      });
-      if (!r.ok) {
-        const err = await r.text();
-        if (r.status === 429 || r.status === 503 || r.status === 500 || r.status === 502) {
-          await new Promise(res => setTimeout(res, 3000));
-          continue;
+        };
+        if (useJsonMode) body.response_format = { type: 'json_object' };
+        const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + groqKey, 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        if (!r.ok) {
+          const err = await r.text();
+          if (r.status === 429 || r.status === 503 || r.status === 500 || r.status === 502) {
+            await new Promise(res => setTimeout(res, 3000));
+            continue;
+          }
+          // 400 with jsonMode on often means this model doesn't support response_format —
+          // fall through to the non-json-mode retry for the same model before giving up on it
+          if (r.status === 400 && useJsonMode) continue;
+          throw new Error('Groq API error ' + r.status + ': ' + err);
         }
-        throw new Error('Groq API error ' + r.status + ': ' + err);
+        const data = await r.json();
+        return data?.choices?.[0]?.message?.content || '';
+      } catch (e) {
+        if (e.message.includes('429') || e.message.includes('rate_limit')) continue;
+        if (useJsonMode) continue; // try the same model again without json mode before moving on
+        throw e;
       }
-      const data = await r.json();
-      return data?.choices?.[0]?.message?.content || '';
-    } catch (e) {
-      if (e.message.includes('429') || e.message.includes('rate_limit')) continue;
-      throw e;
     }
   }
   throw new Error('All Groq models rate limited. Try again later.');
@@ -3270,13 +3278,18 @@ app.post('/api/sentinel/analyze', sentinelUpload.single('document'), async (req,
     `DOCUMENT: ${name}\n\n${excerpt}`;
 
   try {
-    const raw = await groqChat(system, userPrompt, 1200);
+    const raw = await groqChat(system, userPrompt, 1200, null, true);
 
     let structured = null;
     try {
       structured = JSON.parse(raw.replace(/```json|```/g, '').trim());
     } catch (e) {
-      structured = null; // model didn't return clean JSON — still show raw text below, just no structured card
+      // Model wrapped the JSON in extra prose despite instructions — pull out
+      // the first {...} block and try again before giving up on structured data
+      const match = raw.match(/\{[\s\S]*\}/);
+      if (match) {
+        try { structured = JSON.parse(match[0]); } catch (e2) { structured = null; }
+      }
     }
 
     const finding = structured
