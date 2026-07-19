@@ -1029,6 +1029,33 @@ app.post('/api/mortgage/query', async (req, res) => {
   }
 });
 
+// ── SCHOOLS: structured grant/monitoring/exception analysis ──────────────────
+// Mirrors /api/mortgage/query's shape. Kept separate from the pre-existing
+// generic /api/schools/query (plain question/answer) so nothing there breaks.
+app.post('/api/schools/analysis', async (req, res) => {
+  const { kpis, grant_breaches, monitoring_items, exceptions, context, maxTokens } = req.body || {};
+  const summary = JSON.stringify({
+    kpis,
+    grant_breaches,
+    monitoring_items,
+    exceptions,
+    counts: {
+      monitoring_items: Array.isArray(monitoring_items) ? monitoring_items.length : undefined,
+      exceptions: Array.isArray(exceptions) ? exceptions.length : undefined
+    }
+  }, null, 2);
+  const prompt = `Current Schools/Grants compliance snapshot:\n${summary}\n\n` +
+    (context ? `Additional context: ${context}\n\n` : '') +
+    `Identify the highest-risk grant files, the root cause of any SLA breaches or stalled monitoring items, open compliance exceptions requiring escalation (FERPA/IDEA/NSLP/Title I/ESSER as applicable), and the single most important next action for each at-risk grant file. Reference grant/monitoring-item/exception IDs.`;
+  try {
+    const answer = await groqChat(SP.education, prompt, maxTokens || 1200);
+    return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
+  } catch (e) {
+    console.error('SCHOOLS ANALYSIS GROQ ERROR:', e.message);
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 
 app.post('/api/approval/query', async (req, res) => {
   const { requests, kpis, sla_breaches, attention_flags, stage_distribution, context, maxTokens } = req.body || {};
