@@ -212,6 +212,66 @@ body{
 
 .hint{font-size:12px; color:var(--muted-dim); margin-top:4px; font-style:italic;}
 
+/* ===== DOCUMENT INTAKE / UPLOADER ===== */
+.intake-top{display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:14px;}
+.intake-mode-badge{
+  font-family:'IBM Plex Mono'; font-size:10.5px; padding:5px 11px; border-radius:20px;
+  white-space:nowrap; font-weight:600; letter-spacing:0.02em;
+}
+.intake-mode-badge.seeded{background:rgba(138,150,178,0.1); color:var(--muted); border:1px solid var(--line);}
+.intake-mode-badge.live{background:rgba(61,214,140,0.12); color:var(--good); border:1px solid var(--good-dim);}
+
+.dropzone{
+  margin-top:16px; border:1.5px dashed var(--line); border-radius:12px; padding:26px 20px;
+  text-align:center; cursor:pointer; transition:all .18s ease; background:var(--panel-raised);
+}
+.dropzone:hover, .dropzone.dragover{border-color:var(--amber); background:rgba(232,163,61,0.05);}
+.dropzone .dz-icon{font-size:22px; margin-bottom:8px;}
+.dropzone .dz-title{font-family:'Space Grotesk'; font-size:14px; font-weight:600; color:var(--text); margin-bottom:4px;}
+.dropzone .dz-sub{font-size:11.5px; color:var(--muted-dim);}
+
+.file-list{display:flex; flex-direction:column; gap:8px; margin-top:16px;}
+.file-chip{
+  display:flex; align-items:center; gap:12px; background:var(--panel-raised); border:1px solid var(--line);
+  border-radius:9px; padding:10px 12px;
+}
+.file-chip .f-icon{
+  width:30px; height:30px; border-radius:7px; background:rgba(232,163,61,0.1); color:var(--amber);
+  display:flex; align-items:center; justify-content:center; font-size:13px; flex-shrink:0; font-family:'IBM Plex Mono';
+}
+.file-chip.seed .f-icon{background:rgba(138,150,178,0.1); color:var(--muted);}
+.file-chip .f-info{flex:1; min-width:0;}
+.file-chip .f-name{font-size:12.5px; color:var(--text); font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.file-chip .f-meta{font-size:10.5px; color:var(--muted-dim); font-family:'IBM Plex Mono'; margin-top:1px;}
+.file-chip .f-remove{
+  background:none; border:none; color:var(--muted-dim); font-size:15px; cursor:pointer; padding:2px 6px;
+  border-radius:5px; flex-shrink:0; line-height:1;
+}
+.file-chip .f-remove:hover{color:var(--risk); background:rgba(229,72,77,0.08);}
+.file-chip .f-tag{
+  font-family:'IBM Plex Mono'; font-size:9.5px; padding:2px 7px; border-radius:10px; flex-shrink:0;
+  background:rgba(61,214,140,0.1); color:var(--good); border:1px solid var(--good-dim);
+}
+
+.excerpt-box{
+  margin-top:6px; background:#0D1424; border:1px solid var(--line); border-radius:8px; padding:10px 12px;
+  font-family:'IBM Plex Mono'; font-size:11px; color:var(--muted); line-height:1.5; max-height:70px; overflow:hidden;
+  position:relative;
+}
+.excerpt-box::after{
+  content:""; position:absolute; bottom:0; left:0; right:0; height:24px;
+  background:linear-gradient(transparent, #0D1424);
+}
+
+.source-section{margin-top:16px; padding-top:14px; border-top:1px solid var(--line);}
+.source-section .s-label{font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase; color:var(--muted-dim); font-weight:600; margin-bottom:10px;}
+.source-chip-row{display:flex; flex-wrap:wrap; gap:8px;}
+.source-chip{
+  font-family:'IBM Plex Mono'; font-size:11px; padding:6px 11px; border-radius:7px;
+  background:rgba(91,141,239,0.08); color:#A9C1F5; border:1px solid rgba(91,141,239,0.3);
+}
+.source-chip.seed{background:var(--panel-raised); color:var(--muted); border:1px solid var(--line);}
+
 .footer-note{
   text-align:center; font-size:11.5px; color:var(--muted-dim); margin-top:30px; line-height:1.6;
 }
@@ -261,6 +321,27 @@ body{
       <div class="twin-assets" id="twinAssets"></div>
     </div>
 
+    <!-- Document intake / uploader -->
+    <div class="card">
+      <div class="intake-top">
+        <div>
+          <div class="card-eyebrow">Document Ingestion</div>
+          <div class="scenario-title" style="margin-bottom:2px;">Feed Sentinel this company's real documents</div>
+          <div class="scenario-desc">Drop in an actual contract, invoice, or statement and Sentinel will read it directly — the finding below will cite it as a source instead of using seeded sample documents.</div>
+        </div>
+        <div class="intake-mode-badge seeded" id="intakeModeBadge">Using seeded documents</div>
+      </div>
+
+      <div class="dropzone" id="dropzone">
+        <div class="dz-icon">⬆</div>
+        <div class="dz-title">Drop files here or click to upload</div>
+        <div class="dz-sub">PDF, DOCX, XLSX, CSV, TXT, or images — read locally in your browser, never sent anywhere</div>
+        <input type="file" id="fileInput" multiple style="display:none;" accept=".pdf,.doc,.docx,.xlsx,.csv,.txt,.png,.jpg,.jpeg">
+      </div>
+
+      <div class="file-list" id="fileList"></div>
+    </div>
+
     <!-- Scenario runner -->
     <div class="card">
       <div class="card-eyebrow">Scenario Engine</div>
@@ -284,6 +365,11 @@ body{
           <div class="finding-title" id="findTitle">—</div>
           <div class="finding-body" id="findBody">—</div>
           <div class="impact-tag" id="findImpact">—</div>
+
+          <div class="source-section">
+            <div class="s-label">Source Documents</div>
+            <div class="source-chip-row" id="sourceChips"></div>
+          </div>
         </div>
         <div class="mission-box">
           <div class="m-id" id="missId">—</div>
@@ -345,7 +431,8 @@ const COMPANIES = [
       id:"SENT-CON-001", title:"Implement change-order approval workflow before additional labor begins",
       owner:"Project Manager", risk:"High"
     },
-    chain:["Vendor Delay","Project Delay","Invoice Delay","Cash Flow Pressure","Loan Risk"]
+    chain:["Vendor Delay","Project Delay","Invoice Delay","Cash Flow Pressure","Loan Risk"],
+    seedDocs:["Signed Contract — Hospital Renovation.pdf","Change Order Log.xlsx","Vendor Payment Schedule.csv"]
   },
   {
     id:"bcmed", name:"Battle Creek Medical Billing Solutions", industry:"Healthcare BPO",
@@ -372,7 +459,8 @@ const COMPANIES = [
       id:"SENT-HC-001", title:"Create coding validation workflow against current payer policy set",
       owner:"Compliance Officer", risk:"High"
     },
-    chain:["Coding Gap","Claim Denial","Revenue Delay","AR Aging","Cash Flow Pressure"]
+    chain:["Coding Gap","Claim Denial","Revenue Delay","AR Aging","Cash Flow Pressure"],
+    seedDocs:["BlueCross Claims Export.csv","CPT Coding Reference.pdf","Payer Policy Update.pdf"]
   },
   {
     id:"glm", name:"Great Lakes Mortgage Partners", industry:"Mortgage / Real Estate",
@@ -399,7 +487,8 @@ const COMPANIES = [
       id:"SENT-MORT-001", title:"Automate document checklist by loan type before submission",
       owner:"Operations Manager", risk:"Medium"
     },
-    chain:["Manual Verification","Processing Delay","Closing Delay","Client Attrition Risk","Pipeline Risk"]
+    chain:["Manual Verification","Processing Delay","Closing Delay","Client Attrition Risk","Pipeline Risk"],
+    seedDocs:["Loan File Checklist.pdf","Processor Assignment Log.xlsx","Closing Disclosure — Sample.pdf"]
   },
   {
     id:"midwest", name:"Midwest Industrial Supply", industry:"Manufacturing",
@@ -426,7 +515,8 @@ const COMPANIES = [
       id:"SENT-FIN-001", title:"Renegotiate top-3 vendor contracts and rebalance SKU-family stock levels",
       owner:"CFO", risk:"High"
     },
-    chain:["Vendor Cost Spike","Margin Compression","Inventory Buildup","Cash Tied Up","Credit Risk"]
+    chain:["Vendor Cost Spike","Margin Compression","Inventory Buildup","Cash Tied Up","Credit Risk"],
+    seedDocs:["Vendor Contracts — Top 3.pdf","Inventory Turnover Report.csv","Warehouse Stock Levels.xlsx"]
   },
   {
     id:"sentinelpro", name:"Sentinel Professional Services", industry:"Accounting / Legal",
@@ -453,7 +543,8 @@ const COMPANIES = [
       id:"SENT-LEG-001", title:"Rebuild engagement scoping templates and enable change-order billing",
       owner:"CEO", risk:"Medium"
     },
-    chain:["Scope Creep","Realization Drop","Margin Erosion","Partner Distribution Risk","Growth Risk"]
+    chain:["Scope Creep","Realization Drop","Margin Erosion","Partner Distribution Risk","Growth Risk"],
+    seedDocs:["Engagement Letters — Retainer Clients.pdf","Time Entry Export.csv","Realization Rate Report.xlsx"]
   }
 ];
 
@@ -465,8 +556,101 @@ const PIPELINE_STEPS = [
 let currentId = COMPANIES[0].id;
 let ranState = {}; // id -> bool
 let runningLock = false;
+let uploadedFiles = {}; // company id -> [{name, size, type, excerpt}]
 
 function company(id){ return COMPANIES.find(c=>c.id===id); }
+
+function fmtBytes(n){
+  if(n < 1024) return n + ' B';
+  if(n < 1024*1024) return (n/1024).toFixed(1) + ' KB';
+  return (n/1024/1024).toFixed(1) + ' MB';
+}
+
+function fileIcon(name){
+  const ext = name.split('.').pop().toLowerCase();
+  if(ext === 'pdf') return 'PDF';
+  if(['xlsx','xls','csv'].includes(ext)) return 'XLS';
+  if(['doc','docx'].includes(ext)) return 'DOC';
+  if(['png','jpg','jpeg'].includes(ext)) return 'IMG';
+  return 'TXT';
+}
+
+function currentFiles(){
+  if(!uploadedFiles[currentId]) uploadedFiles[currentId] = [];
+  return uploadedFiles[currentId];
+}
+
+function handleFiles(fileListObj){
+  const files = Array.from(fileListObj);
+  const list = currentFiles();
+  let pending = files.length;
+  if(pending === 0) return;
+  files.forEach(f=>{
+    const record = { name:f.name, size:f.size, excerpt:null };
+    list.push(record);
+    const ext = f.name.split('.').pop().toLowerCase();
+    if(['txt','csv'].includes(ext) && f.size < 200000){
+      const reader = new FileReader();
+      reader.onload = e=>{
+        record.excerpt = String(e.target.result).slice(0, 220).trim();
+        renderFileList();
+      };
+      reader.readAsText(f);
+    }
+  });
+  renderFileList();
+  renderIntakeBadge();
+}
+
+function removeFile(idx){
+  currentFiles().splice(idx, 1);
+  renderFileList();
+  renderIntakeBadge();
+}
+
+function renderIntakeBadge(){
+  const badge = document.getElementById('intakeModeBadge');
+  const has = currentFiles().length > 0;
+  badge.textContent = has ? 'Reading your uploaded documents' : 'Using seeded documents';
+  badge.className = 'intake-mode-badge ' + (has ? 'live' : 'seeded');
+}
+
+function renderFileList(){
+  const el = document.getElementById('fileList');
+  const files = currentFiles();
+  el.innerHTML = '';
+  files.forEach((f, i)=>{
+    const chip = document.createElement('div');
+    chip.className = 'file-chip';
+    chip.innerHTML = `
+      <div class="f-icon">${fileIcon(f.name)}</div>
+      <div class="f-info">
+        <div class="f-name">${f.name}</div>
+        <div class="f-meta">${fmtBytes(f.size)}${f.excerpt ? ' · excerpt read' : ''}</div>
+        ${f.excerpt ? `<div class="excerpt-box">${f.excerpt.replace(/</g,'&lt;')}…</div>` : ''}
+      </div>
+      <span class="f-tag">uploaded</span>
+      <button class="f-remove" data-idx="${i}" title="Remove">×</button>
+    `;
+    chip.querySelector('.f-remove').onclick = ()=>removeFile(i);
+    el.appendChild(chip);
+  });
+}
+
+function renderSourceChips(has){
+  const c = company(currentId);
+  const wrap = document.getElementById('sourceChips');
+  if(!wrap) return;
+  wrap.innerHTML = '';
+  const docs = has ? currentFiles().map(f=>f.name) : c.seedDocs;
+  const seed = !has;
+  docs.forEach(d=>{
+    const chip = document.createElement('span');
+    chip.className = 'source-chip' + (seed ? ' seed' : '');
+    chip.textContent = (seed ? '' : '✓ ') + d;
+    wrap.appendChild(chip);
+  });
+}
 
 function scoreColor(v){
   if(v>=85) return "var(--good)";
@@ -513,6 +697,8 @@ function renderCompany(){
   document.getElementById('scenTriggers').innerHTML = c.scenario.triggers.map(t=>`<span class="trigger-chip">${t}</span>`).join('');
 
   renderPipeline(ranState[c.id] ? PIPELINE_STEPS.length : -1);
+  renderFileList();
+  renderIntakeBadge();
 
   const findCard = document.getElementById('findingsCard');
   if(ranState[c.id]){
@@ -524,6 +710,7 @@ function renderCompany(){
     document.getElementById('missTitle').textContent = c.mission.title;
     document.getElementById('missOwner').textContent = c.mission.owner;
     document.getElementById('missRisk').textContent = c.mission.risk;
+    renderSourceChips(currentFiles().length > 0);
   } else {
     findCard.style.display = 'none';
   }
@@ -540,11 +727,13 @@ function renderCompany(){
 function renderPipeline(activeIndex){
   const el = document.getElementById('pipeline');
   el.innerHTML = '';
+  const hasUploads = currentFiles().length > 0;
   PIPELINE_STEPS.forEach((label, i)=>{
     const step = document.createElement('div');
     const state = i < activeIndex || activeIndex >= PIPELINE_STEPS.length ? 'done' : (i===activeIndex ? 'active' : '');
     step.className = 'pipe-step ' + state;
-    step.innerHTML = `<div class="pipe-dot">${state==='done' ? '✓' : i+1}</div><div class="pipe-label">${label}</div>`;
+    const displayLabel = (i === 1 && hasUploads) ? `Document Ingestion (${currentFiles().length} uploaded)` : label;
+    step.innerHTML = `<div class="pipe-dot">${state==='done' ? '✓' : i+1}</div><div class="pipe-label">${displayLabel}</div>`;
     el.appendChild(step);
     if(i < PIPELINE_STEPS.length - 1){
       const conn = document.createElement('div');
@@ -622,6 +811,7 @@ function runScenario(){
       document.getElementById('missTitle').textContent = c.mission.title;
       document.getElementById('missOwner').textContent = c.mission.owner;
       document.getElementById('missRisk').textContent = c.mission.risk;
+      renderSourceChips(currentFiles().length > 0);
       renderCausality(true);
       renderScore(true);
       renderRail();
@@ -634,6 +824,14 @@ function runScenario(){
     renderPipeline(i);
   }, 380);
 }
+
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+dropzone.addEventListener('click', ()=>fileInput.click());
+fileInput.addEventListener('change', e=>{ handleFiles(e.target.files); fileInput.value = ''; });
+['dragenter','dragover'].forEach(ev=>dropzone.addEventListener(ev, e=>{ e.preventDefault(); dropzone.classList.add('dragover'); }));
+['dragleave','drop'].forEach(ev=>dropzone.addEventListener(ev, e=>{ e.preventDefault(); dropzone.classList.remove('dragover'); }));
+dropzone.addEventListener('drop', e=>{ if(e.dataTransfer.files.length) handleFiles(e.dataTransfer.files); });
 
 document.getElementById('runBtn').addEventListener('click', runScenario);
 document.getElementById('liveBtn').addEventListener('click', ()=>{
