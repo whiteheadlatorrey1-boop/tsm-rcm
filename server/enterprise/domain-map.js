@@ -119,6 +119,24 @@ module.exports = {
     governance:     "TRID / RESPA / HMDA Compliance",
     wip:            "Loan Pipeline Progress",
     "digital-twin": "Pipeline & Rate Lock Forecast"
+  },
+
+  // Keyed "sch" to match schools-model.json's own "vertical": "sch" and
+  // schools-engine.js's buildRelayPayload()/getCanonicalRecords() --
+  // buildEnrichmentContext() previously sent 'schools' instead (a split
+  // identifier bug), now fixed to send 'sch' too, so this key is what
+  // enterprise-router.js's reshapeForClient() actually looks up.
+  sch: {
+    o2c:            "Grant Application → Funded Award",
+    crm:            "Grantee Relationship",
+    cpq:            "Award / Funding Rate Pricing",
+    catalog:        "Grant Program Catalog",
+    approval:       "Monitoring Item Approval",
+    mdm:            "Grantee & Award Master",
+    integration:    "State / Federal Reporting Integration",
+    governance:     "FERPA / IDEA / ESSER Compliance",
+    wip:            "Grant Pipeline Progress",
+    "digital-twin": "Award & Obligation Forecast"
   }
 
 };
