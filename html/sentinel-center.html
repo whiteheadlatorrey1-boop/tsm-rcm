@@ -1600,6 +1600,150 @@ function tickClock(){
 setInterval(tickClock, 1000);
 tickClock();
 
+// ── ASK SENTINEL ──────────────────────────────────────────────────────────
+// Deliberately NOT a general-purpose AI widget: every answer is assembled
+// from the same deterministic functions that already drive the Business
+// Posture Score, the vertical rows, and the Causality Board above. This is
+// pattern-matched intent -> live numbers, not a model generating text --
+// consistent with the "not invented AI-sounding text" claim made elsewhere
+// on this board (BPS explainability, causality confidence tags).
+function aiScrollToBottom(){
+  const body = document.getElementById('aiMessages');
+  body.scrollTop = body.scrollHeight;
+}
+function appendAiMsg(role, text, src){
+  const body = document.getElementById('aiMessages');
+  const el = document.createElement('div');
+  el.className = 'ai-msg ' + role;
+  el.textContent = text;
+  if (src){
+    const s = document.createElement('span');
+    s.className = 'src';
+    s.textContent = src;
+    el.appendChild(s);
+  }
+  body.appendChild(el);
+  aiScrollToBottom();
+}
+
+function findVerticalInQuery(q){
+  return VERTICALS.find(v => q.includes(v.name.toLowerCase()) || q.includes(v.id));
+}
+
+function aiVerticalReport(v){
+  const risk = verticalRisk(v.id);
+  const exp = verticalExposure(v.id);
+  const openCount = activeAnomalies(v.id).length;
+  const top = topAnomaly(v.id);
+  const board = computeCausalityBoard();
+  const outbound = board.filter(r => r.source.id === v.id);
+  const inbound = board.filter(r => r.target.id === v.id);
+  const lines = [`${v.name}: risk ${risk}/100, ${fmtMoney(exp)} active exposure across ${openCount} open anomal${openCount===1?'y':'ies'}.`];
+  lines.push(top
+    ? `Top driver: "${top.title}" (${top.severity}, ${top.confidence}% confidence) — ${top.rootCause} Recommended: ${top.recommendedAction}`
+    : 'No open anomalies reported for this vertical right now.');
+  if (outbound.length){
+    lines.push(`${v.name} is pushing risk pressure onto: ` +
+      outbound.slice(0,3).map(r => `${r.target.name} (-${r.pts}pt, ${r.verified ? 'verified' : 'modeled'})`).join(', ') + '.');
+  }
+  if (inbound.length){
+    lines.push(`${v.name} is absorbing risk pressure from: ` +
+      inbound.slice(0,3).map(r => `${r.source.name} (-${r.pts}pt)`).join(', ') + '.');
+  }
+  return lines.join('\n');
+}
+
+function answerAiQuery(raw){
+  const q = raw.toLowerCase().trim();
+  const active = activeVerticals();
+
+  if (!active.length){
+    return { text: 'No verticals are currently subscribed — open Configure Verticals to bring data into scope.', src: null };
+  }
+
+  if (/^(hi|hello|hey)\b|help|what can you|what do you/.test(q)){
+    return {
+      text: 'Ask me things like: "which vertical needs attention first", "why is Construction elevated", "what\'s our BPS", "total exposure", or "what\'s driving risk into Legal". I only answer from the numbers already on this board — no outside guessing.',
+      src: null
+    };
+  }
+
+  if (/\bbps\b|posture|\bscore\b/.test(q)){
+    const bps = businessPostureScore();
+    const trend = bpsTrend(loadBpsHistory(), bps);
+    let text = `Business Posture Score is ${bps}/100 across ${active.length} subscribed vertical${active.length===1?'':'s'}.`;
+    if (trend) text += ` That's ${trend.delta > 0 ? 'up' : 'down'} ${Math.abs(trend.delta)} pts vs ${trend.ago}.`;
+    return { text, src: 'Business Posture Score engine' };
+  }
+
+  if (/exposure|dollar|how much|\$/.test(q)){
+    const total = totalExposure();
+    const ranked = [...active].sort((a,b) => verticalExposure(b.id) - verticalExposure(a.id)).slice(0,3);
+    const text = `Total active exposure across subscribed verticals is ${fmtMoney(total)}. Largest contributors: ` +
+      ranked.map(v => `${v.name} (${fmtMoney(verticalExposure(v.id))})`).join(', ') + '.';
+    return { text, src: 'Exposure aggregation — sum of open anomaly exposure' };
+  }
+
+  const matched = findVerticalInQuery(q);
+
+  if (/causal|driving|flowing|cascad|spillover|ripple/.test(q)){
+    const board = computeCausalityBoard();
+    const rows = matched ? board.filter(r => r.target.id === matched.id || r.source.id === matched.id).slice(0,3) : board.slice(0,3);
+    if (!rows.length){
+      return {
+        text: matched
+          ? `No cross-vertical risk transfers touching ${matched.name} detected right now.`
+          : 'No cross-vertical risk transfers detected among your subscribed verticals right now.',
+        src: 'Causality Board'
+      };
+    }
+    const text = rows.map(r => `${r.source.name} \u2192 ${r.target.name}: ${r.reason} (-${r.pts}pt, ${r.verified ? 'verified' : 'modeled'})`).join('\n');
+    return { text, src: 'Cross-Vertical Causality Board' };
+  }
+
+  if (!matched && /which|priority|worst|attention|focus|first|top risk/.test(q)){
+    const ranked = [...active].sort((a,b) => verticalRisk(b.id) - verticalRisk(a.id) || verticalExposure(b.id) - verticalExposure(a.id));
+    return { text: aiVerticalReport(ranked[0]), src: 'Vertical risk ranking — severity-weighted' };
+  }
+
+  if (matched){
+    return { text: aiVerticalReport(matched), src: 'Vertical risk + Causality Board' };
+  }
+
+  return {
+    text: 'I can answer questions about posture score, total exposure, which vertical needs attention, a specific vertical (e.g. "why is Legal elevated"), or what\'s driving cross-vertical risk. Try one of those, or open the BPS Explainability panel / Causality Board for the full breakdown.',
+    src: null
+  };
+}
+
+function sendAiQuery(){
+  const input = document.getElementById('aiInput');
+  const val = input.value.trim();
+  if (!val) return;
+  appendAiMsg('user', val);
+  input.value = '';
+  const { text, src } = answerAiQuery(val);
+  appendAiMsg('bot', text, src);
+}
+
+function openAiWidget(){
+  document.getElementById('aiWidget').classList.add('show');
+  if (!document.getElementById('aiMessages').children.length){
+    appendAiMsg('bot', 'Sentinel Q&A is grounded in the same Business Posture Score, exposure, and Causality Board data on this page — not a general-purpose model. Ask about posture, a vertical, or what\'s driving risk.', null);
+  }
+  document.getElementById('aiInput').focus();
+}
+function closeAiWidget(){
+  document.getElementById('aiWidget').classList.remove('show');
+}
+
+document.getElementById('aiFabBtn').addEventListener('click', openAiWidget);
+document.getElementById('aiWidgetClose').addEventListener('click', closeAiWidget);
+document.getElementById('aiSendBtn').addEventListener('click', sendAiQuery);
+document.getElementById('aiInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') sendAiQuery();
+});
+
 render();
 </script>
 </body>
