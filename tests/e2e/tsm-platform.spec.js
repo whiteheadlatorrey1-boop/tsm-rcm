@@ -12,9 +12,9 @@ url:"/html/war-rooms/war-room-prep.html"
 {
 name:"Healthcare",
 pages:[
-"/html/war-rooms/healthcare/hc-war-room.html",
-"/html/war-rooms/healthcare/hc-strategist.html",
-"/html/war-rooms/healthcare/hc-executive-portal.html"
+"/html/healthcare/hc-denial-war-room.html",
+"/html/healthcare/hc-main-strategist.html",
+"/html/healthcare/executive-portal.html"
 ]
 },
 
@@ -22,7 +22,7 @@ pages:[
 name:"BPO",
 pages:[
 "/html/war-rooms/bpo/bpo-war-room.html",
-"/html/war-rooms/html/war-rooms/bpo/bpo-strategist.html",
+"/html/war-rooms/bpo/bpo-strategist.html",
 "/html/war-rooms/bpo/bpo-executive-portal.html"
 ]
 },
@@ -66,17 +66,15 @@ pages:[
 
 {
 name:"Music Command",
-url:"/html/music/music-command-center.html"
-},
-
-{
-name:"Sweet OS",
-url:"/html/sweet-os/index.html"
+url:"/music/"
 },
 
 {
 name:"Honeywell Demo",
-url:"/html/demo/honeywell-demo.html"
+pages:[
+"/html/war-rooms/honeywell-strategist.html",
+"/html/war-rooms/honeywell-executive-portal.html"
+]
 }
 
 ];

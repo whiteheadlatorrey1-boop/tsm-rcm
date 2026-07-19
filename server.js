@@ -175,6 +175,8 @@ app.use('/html/runtime', express.static(path.join(__dirname, 'html', 'runtime'))
 app.use('/runtime', express.static(path.join(__dirname, 'runtime'), { setHeaders: (res) => res.setHeader('Cache-Control', 'no-store') }));
 app.use('/architecture', express.static(path.join(__dirname, 'architecture'), { setHeaders: (res) => res.setHeader('Cache-Control', 'no-store') }));
 app.use('/', express.static(path.join(__dirname, 'html')));
+
+// ── HEALTH & STUB ROUTES ──────────────────────────────────────────────────────
 const suites = [
   { route: '/construction', dir: 'html/construction-suite', index: 'construction-hub.html' },
   { route: '/finops', dir: 'html/finops-suite', index: 'finops-presentation/index.html' },
@@ -183,7 +185,6 @@ const suites = [
   { route: '/music', dir: 'html/music-command', index: 'index.html' },
 ];
 
-// ── HEALTH & STUB ROUTES ──────────────────────────────────────────────────────
 app.post('/api/re/query', async (req, res) => {
   try { const a = await groqChat(SP.mortgage, req.body.message||req.body.question||req.body.query||'', req.body.maxTokens||1024); return res.json({ ok:true, answer:a, output:a, reply:a }); }
   catch(e){ return res.status(500).json({ ok:false, error:e.message }); }
@@ -230,6 +231,7 @@ app.use('/bpo', express.static(path.join(__dirname, 'html/bpo')));
 app.use('/shared', express.static(path.join(__dirname, 'html/bpo/shared')));
 app.use('/insurance', express.static(path.join(__dirname, 'html/tsm-insurance')));
 app.use('/construction', express.static(path.join(__dirname, 'html/construction-suite')));
+app.use('/music', express.static(path.join(__dirname, 'html/music-command')));
 // NOTE: /runtime and /architecture mounts now live earlier in this file
 // (right after the '/html/runtime' mount, before the '/' catch-all) so they
 // can't be shadowed by stale files inside html/. See fix note there.
@@ -250,8 +252,9 @@ app.get('/html/hc-strategist/index.html', (req, res) => res.redirect('/healthcar
 // ── SUITE ROUTES ──────────────────────────────────────────────────────────────
 suites.forEach(s => {
   if (!s.route || !s.index) return;
-  app.get(s.route, (req, res) => res.sendFile(path.join(dirPath, s.index)));
-  app.get(s.route + '/', (req, res) => res.sendFile(path.join(dirPath, s.index)));
+  const suiteDir = path.join(__dirname, s.dir);
+  app.get(s.route, (req, res) => res.sendFile(path.join(suiteDir, s.index)));
+  app.get(s.route + '/', (req, res) => res.sendFile(path.join(suiteDir, s.index)));
 });
 
 // ── HC API ROUTES ─────────────────────────────────────────────────────────────
