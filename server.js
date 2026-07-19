@@ -3256,21 +3256,43 @@ app.post('/api/sentinel/analyze', sentinelUpload.single('document'), async (req,
 
   const system = SP[promptKey];
   const userPrompt =
-    `Analyze the following real document uploaded by the user. Identify the single most ` +
-    `important finding, estimate dollar exposure or risk if the document supports one, and ` +
-    `quote or reference the specific clause/section/line that supports your finding so it can ` +
-    `be cited back to the source document. Be concise and operational. No preamble.\n\n` +
+    `Analyze the following real document uploaded by the user for a small-business risk-intelligence ` +
+    `platform. Return ONLY valid JSON — no markdown code fences, no prose outside the JSON — matching ` +
+    `exactly this schema:\n` +
+    `{\n` +
+    `  "findingTitle": "short headline under 10 words describing the core finding",\n` +
+    `  "findingBody": "2-4 sentences explaining what was found, citing specific evidence (a clause, line, or figure) from the document",\n` +
+    `  "impactTag": "short dollar or metric impact string, e.g. '$13,020 unbilled exposure' or '9-day average delay'",\n` +
+    `  "missionTitle": "one specific, actionable corrective step under 15 words",\n` +
+    `  "missionOwner": "the role best suited to own this, e.g. CFO, Compliance Officer, Operations Manager, Project Manager",\n` +
+    `  "missionRisk": "High, Medium, or Low"\n` +
+    `}\n\n` +
     `DOCUMENT: ${name}\n\n${excerpt}`;
 
   try {
-    const answer = await groqChat(system, userPrompt, 1200);
+    const raw = await groqChat(system, userPrompt, 1200);
+
+    let structured = null;
+    try {
+      structured = JSON.parse(raw.replace(/```json|```/g, '').trim());
+    } catch (e) {
+      structured = null; // model didn't return clean JSON — still show raw text below, just no structured card
+    }
+
+    const finding = structured
+      ? `${structured.findingTitle}\n\n${structured.findingBody}\n\n` +
+        `Impact: ${structured.impactTag}\n\n` +
+        `Recommended action: ${structured.missionTitle} (Owner: ${structured.missionOwner}, Risk: ${structured.missionRisk})`
+      : raw;
+
     res.json({
       ok: true,
       vertical: promptKey,
       sourceFile: name,
       extractedChars: text.length,
       truncated,
-      finding: answer,
+      finding,
+      structured,
       createdAt: new Date().toISOString()
     });
   } catch (e) {

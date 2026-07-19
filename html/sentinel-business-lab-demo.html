@@ -548,6 +548,7 @@ const INDUSTRY_VERTICAL = {
   "Accounting / Legal": "legal"
 };
 let selectedFile = null;
+let liveAnalysis = {}; // company id -> { title, body, impact, missionTitle, missionOwner, missionRisk, sourceFile }
 
 function company(id){ return COMPANIES.find(c=>c.id===id); }
 
@@ -599,27 +600,39 @@ function renderCompany(){
 
   renderPipeline(ranState[c.id] ? PIPELINE_STEPS.length : -1);
 
+  renderFindings(c, ranState[c.id]);
+  renderCausality(ranState[c.id]);
+  renderScore(ranState[c.id]);
+  updateRunButton(c);
+}
+
+function renderFindings(c, show){
   const findCard = document.getElementById('findingsCard');
-  if(ranState[c.id]){
+  const live = liveAnalysis[c.id];
+  if(show && live){
     findCard.style.display = 'block';
-    document.getElementById('findTitle').textContent = c.finding.title;
-    document.getElementById('findBody').textContent = c.finding.body;
-    document.getElementById('findImpact').textContent = c.finding.impact;
-    document.getElementById('missId').textContent = c.mission.id;
-    document.getElementById('missTitle').textContent = c.mission.title;
-    document.getElementById('missOwner').textContent = c.mission.owner;
-    document.getElementById('missRisk').textContent = c.mission.risk;
+    document.getElementById('findTitle').textContent = live.title;
+    document.getElementById('findBody').textContent = live.body;
+    document.getElementById('findImpact').textContent = live.impact;
+    document.getElementById('missId').textContent = 'SENTINEL-LIVE';
+    document.getElementById('missTitle').textContent = live.missionTitle;
+    document.getElementById('missOwner').textContent = live.missionOwner;
+    document.getElementById('missRisk').textContent = live.missionRisk;
   } else {
     findCard.style.display = 'none';
   }
+}
 
-  renderCausality(ranState[c.id]);
-  renderScore(ranState[c.id]);
-
+function updateRunButton(c){
   const btn = document.getElementById('runBtn');
-  btn.disabled = false;
   btn.classList.remove('running');
-  btn.textContent = ranState[c.id] ? 'Re-run Scenario ▸' : 'Run Scenario ▸';
+  if(liveAnalysis[c.id]){
+    btn.disabled = false;
+    btn.textContent = ranState[c.id] ? 'Re-run Scenario ▸' : 'Run Scenario ▸';
+  } else {
+    btn.disabled = true;
+    btn.textContent = 'Analyze a Document First ▸';
+  }
 }
 
 function renderPipeline(activeIndex){
@@ -671,7 +684,7 @@ function renderScore(has){
     <div class="gauge-block">
       <div class="gauge-top"><span class="gauge-name">Risk Exposure</span><span class="gauge-val" style="color:${has?'var(--good)':'var(--risk)'}">${has ? 'Mitigated' : 'Active'}</span></div>
       <div class="gauge-track"><div class="gauge-fill" style="width:${has?18:78}%; background:${has?'var(--good)':'var(--risk)'};"></div></div>
-      <div class="hint" style="margin-top:2px;">${has ? c.mission.title.slice(0,46)+'… — in progress' : c.finding ? c.finding.impact : ''}</div>
+      <div class="hint" style="margin-top:2px;">${has ? (liveAnalysis[c.id] ? liveAnalysis[c.id].missionTitle.slice(0,46)+'… — in progress' : '') : 'Baseline — analyze a real document to reveal actual exposure'}</div>
     </div>`;
 }
 
@@ -684,6 +697,7 @@ function selectCompany(id){
 
 function runScenario(){
   if(runningLock) return;
+  if(!liveAnalysis[currentId]) return; // guard — button should already be disabled in this case
   runningLock = true;
   const btn = document.getElementById('runBtn');
   btn.disabled = true;
@@ -698,22 +712,13 @@ function runScenario(){
       clearInterval(interval);
       renderPipeline(PIPELINE_STEPS.length);
       ranState[currentId] = true;
-      document.getElementById('findingsCard').style.display = 'block';
       const c = company(currentId);
-      document.getElementById('findTitle').textContent = c.finding.title;
-      document.getElementById('findBody').textContent = c.finding.body;
-      document.getElementById('findImpact').textContent = c.finding.impact;
-      document.getElementById('missId').textContent = c.mission.id;
-      document.getElementById('missTitle').textContent = c.mission.title;
-      document.getElementById('missOwner').textContent = c.mission.owner;
-      document.getElementById('missRisk').textContent = c.mission.risk;
+      renderFindings(c, true);
       renderCausality(true);
       renderScore(true);
       renderRail();
-      btn.disabled = false;
-      btn.classList.remove('running');
-      btn.textContent = 'Re-run Scenario ▸';
       runningLock = false;
+      updateRunButton(c);
       return;
     }
     renderPipeline(i);
@@ -792,6 +797,23 @@ document.getElementById('analyzeBtn').addEventListener('click', async ()=>{
         Vertical: ${escapeHtml(data.vertical)} · Extracted ${data.extractedChars.toLocaleString()} chars
         ${data.truncated ? ' · document truncated to fit prompt' : ''} · ${new Date(data.createdAt).toLocaleTimeString()}
       </div>`;
+
+    if(data.structured){
+      liveAnalysis[currentId] = {
+        title: data.structured.findingTitle,
+        body: data.structured.findingBody,
+        impact: data.structured.impactTag,
+        missionTitle: data.structured.missionTitle,
+        missionOwner: data.structured.missionOwner,
+        missionRisk: data.structured.missionRisk,
+        sourceFile: data.sourceFile
+      };
+      ranState[currentId] = false; // require Run Scenario to be clicked again with the new result
+      renderFindings(company(currentId), false);
+      updateRunButton(company(currentId));
+    } else {
+      ow.innerHTML += `<div class="ow-meta">Note: the model's response couldn't be parsed into a structured finding, so it can't populate the Scenario Engine card below — the raw analysis above is still real, just not run-able as a scenario.</div>`;
+    }
   } catch(err){
     ow.innerHTML = `<div class="ow-head"><span>Analysis failed</span><span class="ow-badge err">ERROR</span></div>Could not reach Sentinel backend: ${escapeHtml(err.message)}`;
   } finally {
