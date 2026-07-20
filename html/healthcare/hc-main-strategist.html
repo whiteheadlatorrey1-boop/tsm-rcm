@@ -1193,23 +1193,19 @@ function fireCapabilitySweep_HEALTHCARE(payload) {
     const claimId = payload.claimId || '';
     const exposure = payload.kpi?.totalAtRisk || null;
     const summary = (payload.warRoomBrief || payload.aiSummary || payload.bnca?.revenuePosition || '').slice(0, 1500);
-    fetch('/api/enterprise/capability-sweep', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        vertical: 'healthcare',
-        title: 'HC Strategist Relay' + (claimId ? ' — Claim ' + claimId : ''),
-        summary,
-        exposure,
-        entities: {
-          customer: claimId ? 'Claim ' + claimId : 'HonorHealth',
-          relationshipType: 'Payer',
-          contingency: 'Denial appeal / revenue recovery reserve',
-          sku: claimId ? 'CLAIM-' + claimId : 'HC-STRATEGIST',
-          productName: payload.denialCodes || 'HC Denial Management'
-        }
-      })
-    }).catch(err => console.warn('[Capability Sweep Healthcare]', err.message));
+    TSMCapabilitySweep.fire({
+      vertical: 'healthcare',
+      title: 'HC Strategist Relay' + (claimId ? ' — Claim ' + claimId : ''),
+      summary,
+      exposure,
+      entities: {
+        customer: claimId ? 'Claim ' + claimId : 'HonorHealth',
+        relationshipType: 'Payer',
+        contingency: 'Denial appeal / revenue recovery reserve',
+        sku: claimId ? 'CLAIM-' + claimId : 'HC-STRATEGIST',
+        productName: payload.denialCodes || 'HC Denial Management'
+      }
+    });
   } catch (err) { console.warn('[Capability Sweep Healthcare]', err.message); }
 }
 
@@ -1845,6 +1841,7 @@ PATTERN MATCH: [does this match active HonorHealth denial patterns CO-4/CO-11/CO
 
 
 <script src="/shared/tsm-cure-cheatsheet.js"></script>
+<script src="/shared/tsm-capability-sweep.js"></script>
 <script src="/js/core/tsm-event-bus.js"></script>
 <script src="/html/core/tsm-kernel.js"></script>
 <script src="/html/healthcare/js/relay.engine.js"></script>

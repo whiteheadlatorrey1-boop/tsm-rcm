@@ -1444,6 +1444,7 @@
   <script src="/js/core/tsm-state.js"></script>
   <script src="/js/core/tsm-mission-engine.js"></script>
   <script src="/js/core/tsm-auto-pipeline.js"></script>
+  <script src="/shared/tsm-capability-sweep.js"></script>
 </head>
 
 <body>
@@ -2802,24 +2803,20 @@ Dollar amounts and party names required.`;
         const exposure = lienM ? lienM[0].replace(/^(?:mechanic lien|lien)\s*/i, '') : (contractM ? contractM[1] : null);
         const property = propertyM ? propertyM[1].trim().slice(0, 80) : 'RE Transaction';
 
-        fetch('/api/enterprise/capability-sweep', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            vertical: 'real-estate',
-            title: (payload.reportTitle || 'RE War Room Report') + ' — ' + property,
-            summary: (payload.docText || payload.feedText || '').slice(0, 1500),
-            exposure,
-            entities: {
-              customer: buyerM ? buyerM[1].trim() : property,
-              relationshipType: 'Buyer',
-              contingency: 'Title cure / lien resolution',
-              sku: escrowM ? 'ESCROW-' + escrowM[1].trim() : 'RE-TRANSACTION',
-              productName: property,
-              seller: sellerM ? sellerM[1].trim() : undefined
-            }
-          })
-        }).catch(err => console.warn('[Capability Sweep RE]', err.message));
+        TSMCapabilitySweep.fire({
+          vertical: 'real-estate',
+          title: (payload.reportTitle || 'RE War Room Report') + ' — ' + property,
+          summary: (payload.docText || payload.feedText || '').slice(0, 1500),
+          exposure,
+          entities: {
+            customer: buyerM ? buyerM[1].trim() : property,
+            relationshipType: 'Buyer',
+            contingency: 'Title cure / lien resolution',
+            sku: escrowM ? 'ESCROW-' + escrowM[1].trim() : 'RE-TRANSACTION',
+            productName: property,
+            seller: sellerM ? sellerM[1].trim() : undefined
+          }
+        });
       } catch (err) { console.warn('[Capability Sweep RE]', err.message); }
     }
 

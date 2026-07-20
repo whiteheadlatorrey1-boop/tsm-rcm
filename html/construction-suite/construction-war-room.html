@@ -186,6 +186,7 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
   <script src="/js/core/tsm-state.js"></script>
   <script src="/js/core/tsm-mission-engine.js"></script>
   <script src="/js/core/tsm-auto-pipeline.js"></script>
+  <script src="/shared/tsm-capability-sweep.js"></script>
 </head>
 <body>
 
@@ -1444,23 +1445,19 @@ function fireCapabilitySweep(e) {
     const projectM = e1.match(/PROJECT:[\s]*([^\n]+)/i);
     const expM = combined.match(/EXPOSURE[:\s]+([^\n]+)/i);
     const parties = partiesM ? partiesM[1].trim() : '';
-    fetch('/api/enterprise/capability-sweep', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        vertical: 'construction',
-        title: (selectedDocType || 'Construction Document') + (projectM ? ' — ' + projectM[1].trim().slice(0, 60) : ''),
-        summary: docText.slice(0, 1500),
-        exposure: expM ? expM[1].trim().slice(0, 30) : null,
-        entities: {
-          customer: parties.split(/[·,]/)[0]?.trim() || projectM?.[1]?.trim() || 'Construction Project',
-          relationshipType: 'Contractor',
-          contingency: 'Reserve allocation / change-order resolution',
-          sku: selectedDocType || 'CHANGE-ORDER',
-          productName: projectM ? projectM[1].trim().slice(0, 60) : selectedDocType
-        }
-      })
-    }).catch(err => console.warn('[Capability Sweep Construction]', err.message));
+    TSMCapabilitySweep.fire({
+      vertical: 'construction',
+      title: (selectedDocType || 'Construction Document') + (projectM ? ' — ' + projectM[1].trim().slice(0, 60) : ''),
+      summary: docText.slice(0, 1500),
+      exposure: expM ? expM[1].trim().slice(0, 30) : null,
+      entities: {
+        customer: parties.split(/[·,]/)[0]?.trim() || projectM?.[1]?.trim() || 'Construction Project',
+        relationshipType: 'Contractor',
+        contingency: 'Reserve allocation / change-order resolution',
+        sku: selectedDocType || 'CHANGE-ORDER',
+        productName: projectM ? projectM[1].trim().slice(0, 60) : selectedDocType
+      }
+    });
   } catch (err) { console.warn('[Capability Sweep Construction]', err.message); }
 }
 

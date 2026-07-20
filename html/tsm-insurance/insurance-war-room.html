@@ -284,6 +284,7 @@ body::before{content:'';position:fixed;top:0;right:0;width:600px;height:600px;ba
   <script src="/js/core/tsm-state.js"></script>
   <script src="/js/core/tsm-mission-engine.js"></script>
   <script src="/js/core/tsm-auto-pipeline.js"></script>
+  <script src="/shared/tsm-capability-sweep.js"></script>
 </head>
 <body>
 
@@ -1051,23 +1052,19 @@ function fireCapabilitySweep_INS(e) {
     const amountM = e1.match(/TOTAL AMOUNT:[\s]*([^\n]+)/i);
     const expM = e3.match(/TOTAL EXPOSURE:[\s]*([^\n]+)/i);
     const parties = partiesM ? partiesM[1].trim() : '';
-    fetch('/api/enterprise/capability-sweep', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        vertical: 'insurance',
-        title: (selectedDocType || 'Insurance Claim') + (claimM ? ' — ' + claimM[1].trim().slice(0, 60) : ''),
-        summary: docText.slice(0, 1500),
-        exposure: expM ? expM[1].trim().slice(0, 30) : (amountM ? amountM[1].trim().slice(0, 30) : null),
-        entities: {
-          customer: parties.split(/[,;]/)[0]?.trim() || claimM?.[1]?.trim() || 'Insurance Claim',
-          relationshipType: 'Claimant',
-          contingency: 'Appeal / claim resolution reserve',
-          sku: claimM ? 'CLAIM-' + claimM[1].trim().slice(0, 20) : (selectedDocType || 'INS-CLAIM'),
-          productName: selectedDocType
-        }
-      })
-    }).catch(err => console.warn('[Capability Sweep Insurance]', err.message));
+    TSMCapabilitySweep.fire({
+      vertical: 'insurance',
+      title: (selectedDocType || 'Insurance Claim') + (claimM ? ' — ' + claimM[1].trim().slice(0, 60) : ''),
+      summary: docText.slice(0, 1500),
+      exposure: expM ? expM[1].trim().slice(0, 30) : (amountM ? amountM[1].trim().slice(0, 30) : null),
+      entities: {
+        customer: parties.split(/[,;]/)[0]?.trim() || claimM?.[1]?.trim() || 'Insurance Claim',
+        relationshipType: 'Claimant',
+        contingency: 'Appeal / claim resolution reserve',
+        sku: claimM ? 'CLAIM-' + claimM[1].trim().slice(0, 20) : (selectedDocType || 'INS-CLAIM'),
+        productName: selectedDocType
+      }
+    });
   } catch (err) { console.warn('[Capability Sweep Insurance]', err.message); }
 }
 
