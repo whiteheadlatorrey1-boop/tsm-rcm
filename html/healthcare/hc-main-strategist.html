@@ -980,6 +980,45 @@ async function callClaudeWithExplain(userMsg, outEl, thinkEl, errEl){
           const jsonStr = jsonMatch[1].trim().replace(/```json|```/g,'').trim();
           const obj = JSON.parse(jsonStr);
           renderExplainPanel(obj);
+
+          // ── SENTINEL PUSH ────────────────────────────────────────
+          // Real numbers only: reuses the same parsed obj the explainability
+          // panel just rendered from. This page previously had no Sentinel
+          // integration at all -- hc-strategist-relay.js is a separate
+          // backend-API mechanism (/api/hc/strategist-memory) unrelated to
+          // Sentinel Center, so Healthcare never appeared there.
+          try {
+            function hcParseExposureNumber(str){
+              if (!str) return 0;
+              const nums = String(str).match(/[\d,]+(?:\.\d+)?/g);
+              if (!nums || !nums.length) return 0;
+              const mult = /m\b/i.test(str) ? 1000000 : (/k\b/i.test(str) ? 1000 : 1);
+              return Math.round(parseFloat(nums[0].replace(/,/g,'')) * mult);
+            }
+            function hcSeverityForExposure(n, conf){
+              if (n >= 100000 || (conf !== null && conf < 60)) return 'CRIT';
+              if (n >= 25000 || (conf !== null && conf < 75)) return 'HIGH';
+              if (n >= 5000) return 'MED';
+              return 'LOW';
+            }
+            const hcExposureNum = hcParseExposureNumber(obj.noActionRevLoss || obj.actionRevLoss);
+            const hcConf = Number.isFinite(obj.confidence) ? obj.confidence : null;
+            const hcAnomaly = {
+              id: 'hc-' + Date.now(),
+              title: 'HonorHealth Strategist Synthesis',
+              severity: hcSeverityForExposure(hcExposureNum, hcConf),
+              exposure: hcExposureNum,
+              confidence: hcConf !== null ? hcConf : 78,
+              rootCause: (Array.isArray(obj.reasoning) && obj.reasoning[0]) ? (obj.reasoning[0].key + ': ' + obj.reasoning[0].val) : briefText.slice(0,240),
+              recommendedAction: (Array.isArray(obj.recommendedActions) && obj.recommendedActions[0]) ? (obj.recommendedActions[0].text + (obj.recommendedActions[0].owner ? ' (Owner: ' + obj.recommendedActions[0].owner + ')' : '')) : 'Review the HC strategist brief and route Controller priority actions.'
+            };
+            localStorage.setItem('TSM_HEALTHCARE_STRATEGIST_RELAY', JSON.stringify({
+              generatedAt: new Date().toISOString(),
+              anomalies: [hcAnomaly]
+            }));
+            window.dispatchEvent(new CustomEvent('TSM_SENTINEL_REFRESH'));
+          } catch(se) { console.warn('[sentinel-push] healthcare error:', se); }
+          // ── END SENTINEL PUSH ───────────────────────────────────────────
         } catch(je){
           console.warn('HC Explain JSON parse error:', je);
         }
