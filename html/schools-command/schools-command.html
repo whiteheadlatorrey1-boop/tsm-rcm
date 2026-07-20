@@ -1966,6 +1966,7 @@ document.addEventListener('DOMContentLoaded',()=>{
         try { window.TSM.relay.write(SCH_DOMAIN, payload); } catch (e) { /* noop */ }
       }
       window.dispatchEvent(new CustomEvent('TSM_RELAY_EVENT', { detail: { domain: SCH_DOMAIN, data: payload } }));
+      schPushToSentinel();
     } catch (e) {
       console.warn('Schools: relay write failed', e);
     }
@@ -1975,6 +1976,72 @@ document.addEventListener('DOMContentLoaded',()=>{
     try { sessionStorage.removeItem(SCH_RELAY_KEY); } catch (e) { /* noop */ }
     try { localStorage.removeItem(SCH_RELAY_KEY); } catch (e) { /* noop */ }
     window.dispatchEvent(new CustomEvent('TSM_RELAY_EVENT', { detail: { domain: SCH_DOMAIN, data: null } }));
+  }
+
+  // ── RELAY TO SENTINEL CENTER ────────────────────────────────────────────
+  // Sentinel reads TSM_<VERTICAL>_STRATEGIST_RELAY from localStorage as
+  // { generatedAt, anomalies: [...] } — a different key AND a different
+  // shape than the TSM_SCHOOLS_RELAY payload above, which Sentinel never
+  // sees (relay.core's window.TSM.relay.read() is keyed by domain name,
+  // not by that literal string, so it returns null for Sentinel's lookup).
+  //
+  // Unlike construction's version of this function, nothing here is
+  // LLM-invented: severity, exposure, and rootCause all come straight off
+  // engine.getFinancialSummary() / engine.getSlaBreaches(), the same
+  // deterministic model data the Command Center itself renders. Confidence
+  // is fixed at 90 (not a model guess) to signal "computed from the loaded
+  // model," not measured certainty.
+  const SCH_SEV_THRESHOLDS = { crit: 0.30, high: 0.15 }; // breach ratio cutoffs
+  function schBreachSeverity(breachCount, totalCount) {
+    if (!totalCount) return breachCount > 0 ? 'MED' : 'LOW';
+    const ratio = breachCount / totalCount;
+    if (ratio >= SCH_SEV_THRESHOLDS.crit) return 'CRIT';
+    if (ratio >= SCH_SEV_THRESHOLDS.high) return 'HIGH';
+    if (ratio > 0) return 'MED';
+    return 'LOW';
+  }
+  function schPushToSentinel() {
+    if (!engine) return;
+    try {
+      const fin = engine.getFinancialSummary();
+      const kpis = engine.computeKpis();
+      const grantBreaches = engine.getSlaBreaches('grant_files') || [];
+      const exceptionBreaches = engine.getSlaBreaches('exceptions') || [];
+      const anomalies = [];
+
+      if ((fin.funding_delay_exposure_total || 0) > 0 || grantBreaches.length > 0) {
+        anomalies.push({
+          id: 'sch-funding-delay',
+          title: 'Grant Funding Delay — SLA Breaches',
+          severity: schBreachSeverity(kpis.grants_over_sla || grantBreaches.length, kpis.open_grant_files || 1),
+          exposure: fin.funding_delay_exposure_total || 0,
+          confidence: 90,
+          rootCause: `${kpis.grants_over_sla || grantBreaches.length} of ${kpis.open_grant_files || 0} open grant files are past their SLA clock.`,
+          recommendedAction: 'Escalate stalled grant files to the review desk / program officer per stage.',
+          impacts: {}
+        });
+      }
+      if ((fin.compliance_exposure_total || 0) > 0 || exceptionBreaches.length > 0) {
+        anomalies.push({
+          id: 'sch-compliance',
+          title: 'Open Compliance Exceptions',
+          severity: schBreachSeverity(kpis.open_compliance_exceptions || exceptionBreaches.length, kpis.open_grant_files || 1),
+          exposure: fin.compliance_exposure_total || 0,
+          confidence: 90,
+          rootCause: `${kpis.open_compliance_exceptions || exceptionBreaches.length} open compliance exceptions across active grants.`,
+          recommendedAction: 'Clear corrective-action items before the next reporting deadline.',
+          impacts: {}
+        });
+      }
+
+      localStorage.setItem('TSM_SCHOOLS_STRATEGIST_RELAY', JSON.stringify({
+        generatedAt: new Date().toISOString(),
+        anomalies
+      }));
+      window.dispatchEvent(new CustomEvent('TSM_SENTINEL_REFRESH'));
+    } catch (e) {
+      console.warn('Schools: sentinel push failed', e);
+    }
   }
 
   const SCH_ENTITY_LABELS = { grant_files: 'GRANT FILES', monitoring_items: 'MONITORING ITEMS', exceptions: 'COMPLIANCE EXCEPTIONS' };
