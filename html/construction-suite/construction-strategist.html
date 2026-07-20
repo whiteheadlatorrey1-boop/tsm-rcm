@@ -849,6 +849,7 @@ async function runConstructionBNCA(){
     const {brief: conBrief2, obj: conObj2} = conXPParseExplain(full);
     if(conBrief2) out.textContent = conBrief2;
     conXPRenderExplain(conObj2);
+    lastConObj = conObj2;
     localStorage.setItem('tsm_construction_strategist_output',JSON.stringify({summary:out.textContent,scenario:mission.scenarioId||'manual',timestamp:Date.now()}));
   }catch(e){out.textContent='Error: '+e.message;}
 }
@@ -856,6 +857,7 @@ async function runConstructionBNCA(){
 // WAR ROOM RELAY RECEIVER
 // ═══════════════════════════════════════════════════
 let warRoomRelay = null;
+let lastConObj = null; // most recent parsed BNCA JSON (confidence/dataSources/recommendedActions/noActionRevLoss/etc) — kept so storeStrategistRelay() can build a Sentinel-shaped anomaly even when called from escalateToExecutive() without a fresh run
  
 function loadWarRoomRelay() {
   try {
@@ -865,11 +867,12 @@ function loadWarRoomRelay() {
     warRoomRelay = JSON.parse(raw);
     if (!warRoomRelay) return false;
     populateFromWarRoom(warRoomRelay);
-    // TSM AUTO-CHAIN — synthesize BNCA and escalate to Executive Portal without manual clicks
+    // TSM AUTO-CHAIN — synthesize BNCA automatically, but leave escalation to
+    // Executive Portal as a manual step (click "→ ESCALATE TO EXECUTIVE")
+    // so the user has time to review the synthesis before navigating away.
     if (localStorage.getItem('tsm_auto_mode') !== 'off') {
       setTimeout(async () => {
         if (typeof runConstructionBNCAFromRelay === 'function') await runConstructionBNCAFromRelay();
-        setTimeout(() => { if (typeof escalateToExecutive === 'function') escalateToExecutive(); }, 1500);
       }, 1000);
     }
     return true;
@@ -1056,20 +1059,19 @@ ENGINE 06 — BNCA EXEC: ${engines.e6||''}
     const {brief: conBrief, obj: conObj} = conXPParseExplain(full);
     if(conBrief) out.textContent = conBrief;
     conXPRenderExplain(conObj);
+    lastConObj = conObj;
     out.classList.remove('streaming');
     nodeEl.textContent = `BNCA complete — War Room relay synthesized · ${new Date().toLocaleTimeString()}`;
  
-    // Store for executive portal
-    storeStrategistRelay(full);
+    // Store for executive portal (also escalates to Sentinel Center)
+    storeStrategistRelay(full, conObj);
  
     // Update escalate bar
     const sub = document.getElementById('escalBarSub');
     if (sub) sub.textContent = 'BNCA synthesis complete — ready to escalate to Executive Portal.';
 
-    // TSM AUTO-ESCALATE TO EXEC
-    if (localStorage.getItem('tsm_auto_mode') === 'on') {
-      setTimeout(() => { escalateToExecutive(); }, 2000);
-    }
+    // Auto-escalate disabled by design: synthesis result stays on this page
+    // until the user manually clicks "→ ESCALATE TO EXECUTIVE".
  
   } catch(e) {
     out.textContent = '[Error] ' + e.message;
@@ -1078,9 +1080,83 @@ ENGINE 06 — BNCA EXEC: ${engines.e6||''}
 }
  
 // ═══════════════════════════════════════════════════
+// SENTINEL RELAY HELPERS
+// ═══════════════════════════════════════════════════
+// Parses dollar strings into a single number. Handles plain amounts
+// ("$250,000"), K/M suffixes ("$250K", "$1.2M"), and ranges
+// ("$50K - $500K" / "$50,000-$500,000") by taking the midpoint of a range.
+function parseDollarToNumber(str) {
+  if (str == null) return null;
+  const s = String(str);
+  const nums = s.match(/[\d,.]+\s*[kKmM]?/g);
+  if (!nums || !nums.length) return null;
+  const toNum = t => {
+    const mult = /[mM]\s*$/.test(t) ? 1e6 : /[kK]\s*$/.test(t) ? 1e3 : 1;
+    const n = parseFloat(t.replace(/[^\d.]/g, ''));
+    return isNaN(n) ? null : n * mult;
+  };
+  const parsed = nums.map(toNum).filter(n => n !== null);
+  if (!parsed.length) return null;
+  return parsed.length > 1 ? (parsed[0] + parsed[parsed.length - 1]) / 2 : parsed[0];
+}
+// Parses a risk score that may arrive as "68/100", "68", or a bare number.
+function parseRiskToNumber(val) {
+  if (val == null) return null;
+  const m = String(val).match(/(\d+)/);
+  return m ? parseInt(m[1], 10) : null;
+}
+function riskToSeverity(riskNum) {
+  if (riskNum == null) return 'MED';
+  if (riskNum >= 75) return 'CRIT';
+  if (riskNum >= 55) return 'HIGH';
+  if (riskNum >= 30) return 'MED';
+  return 'LOW';
+}
+
+// ═══════════════════════════════════════════════════
+// PUSH TO SENTINEL CENTER
+// ═══════════════════════════════════════════════════
+// sentinel-center.html reads localStorage["TSM_CONSTRUCTION_STRATEGIST_RELAY"]
+// and requires { generatedAt, anomalies: [...] } — a flat summary object
+// does not satisfy its Array.isArray(live.anomalies) check and silently
+// falls back to sample data. This builds that shape from whatever the BNCA
+// run produced and writes it to the key/storage Sentinel actually reads
+// (localStorage, not sessionStorage), then fires the same-tab refresh event
+// Sentinel listens for.
+//
+// Exposure collapsing rule: prefer the model's own noActionRevLoss guess
+// (it's grounded in the specific document run) and fall back to the
+// midpoint of the war room's exposure range if that field is missing or
+// unparseable.
+function pushToSentinel(bncaText, conObj) {
+  if (!warRoomRelay) return;
+  const riskNum = parseRiskToNumber(warRoomRelay.snapshot?.risk);
+  const exposureNum = parseDollarToNumber(conObj?.noActionRevLoss) ??
+                       parseDollarToNumber(warRoomRelay.snapshot?.exposure) ?? 0;
+  const topAction = conObj?.recommendedActions?.[0];
+  const anomaly = {
+    id: 'con-' + Date.now(),
+    title: (warRoomRelay.docType || 'Construction') + ' — Strategist Synthesis',
+    severity: riskToSeverity(riskNum),
+    exposure: exposureNum,
+    confidence: conObj?.confidence ?? 70,
+    rootCause: (bncaText || '').slice(0, 240) || 'See BNCA synthesis for detail.',
+    recommendedAction: topAction ? `${topAction.text}${topAction.owner ? ' (Owner: ' + topAction.owner + ')' : ''}` : 'See strategist brief.',
+    impacts: {}
+  };
+  try {
+    localStorage.setItem('TSM_CONSTRUCTION_STRATEGIST_RELAY', JSON.stringify({
+      generatedAt: new Date().toISOString(),
+      anomalies: [anomaly]
+    }));
+    window.dispatchEvent(new CustomEvent('TSM_SENTINEL_REFRESH'));
+  } catch(e) { console.warn('[sentinel-relay] write failed:', e); }
+}
+
+// ═══════════════════════════════════════════════════
 // STORE RELAY FOR EXECUTIVE PORTAL
 // ═══════════════════════════════════════════════════
-function storeStrategistRelay(bncaText) {
+function storeStrategistRelay(bncaText, conObj) {
   if (!warRoomRelay) return;
   const payload = {
     summary: bncaText,
@@ -1115,6 +1191,9 @@ function storeStrategistRelay(bncaText) {
     sessionStorage.setItem('TSM_CONSTRUCTION_STRATEGIST_RELAY', JSON.stringify(payload));
     localStorage.setItem('tsm_construction_strategist_output', JSON.stringify(payload));
   } catch(e) { console.warn('Store error:', e); }
+
+  // Also escalate to Sentinel Center in its own expected shape/storage.
+  pushToSentinel(bncaText, conObj || lastConObj);
 }
  
 // ═══════════════════════════════════════════════════
@@ -1367,6 +1446,3 @@ function tsmWriteScopedStrat(vertical, missionId){
   <script src="/html/core/tsm-runtime.js"></script>
 </body>
 </html>
-
-
-

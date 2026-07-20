@@ -1014,6 +1014,43 @@ function storeStratRelay(){
   try {
     sessionStorage.setItem('TSM_BPO_STRAT_RELAY', JSON.stringify(payload));
     localStorage.setItem('TSM_BPO_STRAT_RELAY', JSON.stringify(payload));
+
+    // ── SENTINEL PUSH ──────────────────────────────────────────────
+    // Real numbers only: generatedRec is the actual parsed strategy
+    // JSON this page rendered from the API/fallback response above.
+    try {
+      function bpoParseExposureNumber(str){
+        if (!str) return 0;
+        const nums = String(str).match(/[\d,]+(?:\.\d+)?/g);
+        if (!nums) return 0;
+        const mult = /m\b/i.test(str) ? 1000000 : (/k\b/i.test(str) ? 1000 : 1);
+        return Math.round(parseFloat(nums[0].replace(/,/g,'')) * mult);
+      }
+      function bpoSeverityForExposure(n){
+        if (n >= 250000) return 'CRIT';
+        if (n >= 100000) return 'HIGH';
+        if (n >= 25000) return 'MED';
+        return 'LOW';
+      }
+      const bpoExposureNum = bpoParseExposureNumber(generatedRec?.actionRevLoss || generatedRec?.noActionRevLoss);
+      const bpoConf = generatedRec?.confidence ? parseInt(generatedRec.confidence) : null;
+      const bpoAnomalies = [{
+        id: 'bpo-strat-' + Date.now(),
+        title: (warData?.selectedSector || 'BPO') + ' \u2014 ' + (warData?.selectedDocType || 'Strategist Synthesis'),
+        severity: bpoSeverityForExposure(bpoExposureNum),
+        exposure: bpoExposureNum,
+        confidence: bpoConf !== null ? bpoConf : 91,
+        rootCause: 'Scenario ' + (selectedScenario || 'A') + ' recommendation on ' + (warData?.selectedSector || 'this account') + '; no-action loss ' + (generatedRec?.noActionRevLoss || '\u2014') + '.',
+        recommendedAction: 'Recovery time ' + (generatedRec?.recoveryTime || '\u2014') + ' if action plan is executed \u2014 escalate per strategist brief.'
+      }];
+      const bpoSentinelKey = 'TSM_BPO_STRATEGIST_RELAY';
+      const bpoSentinelExisting = JSON.parse(localStorage.getItem(bpoSentinelKey) || 'null') || {};
+      bpoSentinelExisting.anomalies = bpoAnomalies;
+      bpoSentinelExisting.generatedAt = new Date().toISOString();
+      localStorage.setItem(bpoSentinelKey, JSON.stringify(bpoSentinelExisting));
+      window.dispatchEvent(new CustomEvent('TSM_SENTINEL_REFRESH'));
+    } catch(e) { console.warn('[sentinel-push] bpo error:', e); }
+    // ── END SENTINEL PUSH ─────────────────────────────────────────
     document.getElementById('relayBar').style.display = 'flex';
     document.getElementById('relayInfo').textContent = (warData?.selectedSector||'BPO') + ' · Scenario ' + (selectedScenario||'A') + ' · Confidence ' + (generatedRec?.confidence||91) + '%';
   } catch(e){}

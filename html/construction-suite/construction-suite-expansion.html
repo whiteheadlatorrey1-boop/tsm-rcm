@@ -983,6 +983,9 @@ console.log("TSM_UI: Direct Neural Link Established.");
   </div>
 </div>
 
+<!-- ─── WAR ROOM REMEDIATION BANNER (populated by JS if a mission task is waiting) ─── -->
+<div id="tsm-remediation-banner" style="display:none;background:rgba(255,196,0,.08);border:1px solid rgba(255,196,0,.35);margin:10px 14px;padding:10px 14px;font-family:var(--mono);font-size:11px;color:#ffdb70;line-height:1.7;"></div>
+
 <!-- ══════════════════════════════════════════════════════════
      MODULE 1 — FIELDOPS DAILY
 ═══════════════════════════════════════════════════════════════ -->
@@ -3602,6 +3605,25 @@ window.tsmMission = window.tsmMission || {
 function tsmWriteRelay(payload){
   TSM_KERNEL.setRelay("construction-suite", JSON.stringify(payload));
 }
+</script>
+
+<script>
+// ===== WAR ROOM REMEDIATION TASK READER =====
+// If War Room's Anomaly Advisor built a remediation mission with items
+// routed here, show them so this page's role in the chain is visible.
+(function(){
+  try {
+    const raw = localStorage.getItem('tsm_construction_fieldops_remediation_task');
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    if (!data.ts || (Date.now() - data.ts) > 60 * 60 * 1000) return; // 1hr freshness window
+    const banner = document.getElementById('tsm-remediation-banner');
+    if (!banner) return;
+    const items = (data.items || []).map(i => '<div style="margin-top:4px">' + i.replace(/</g,'&lt;') + '</div>').join('');
+    banner.innerHTML = '<div style="color:#ffc400;font-weight:700;letter-spacing:1px;">⚡ REMEDIATION TASK FROM WAR ROOM — MISSION ' + (data.missionId||'') + '</div>' + items;
+    banner.style.display = 'block';
+  } catch(e) {}
+})();
 </script>
 </body>
 </html>

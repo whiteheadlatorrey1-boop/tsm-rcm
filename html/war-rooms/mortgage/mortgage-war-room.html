@@ -348,15 +348,67 @@ tr:hover td{background:rgba(212,175,55,.03)}
     document.getElementById('navStatus').textContent = 'ENGINE: IDLE';
   }
 
+  // ── SENTINEL COMPATIBILITY ──────────────────────────────────────────────
+  // The key here (TSM_MORTGAGE_STRATEGIST_RELAY) already matches what
+  // Sentinel reads, but the payload shape doesn't — Sentinel requires
+  // Array.isArray(payload.anomalies) or it silently falls back to sample
+  // data. This attaches that array to the SAME payload object (harmless
+  // for mortgage-strategist.html, which just ignores fields it doesn't
+  // read) using real engine numbers — nothing invented here.
+  const MTG_SEV_THRESHOLDS = { crit: 0.30, high: 0.15 };
+  function mtgBreachSeverity(breachCount, totalCount) {
+    if (!totalCount) return breachCount > 0 ? 'MED' : 'LOW';
+    const ratio = breachCount / totalCount;
+    if (ratio >= MTG_SEV_THRESHOLDS.crit) return 'CRIT';
+    if (ratio >= MTG_SEV_THRESHOLDS.high) return 'HIGH';
+    if (ratio > 0) return 'MED';
+    return 'LOW';
+  }
+  function mtgBuildSentinelAnomalies() {
+    const fin = engine.getFinancialSummary();
+    const kpis = engine.computeKpis();
+    const loanBreaches = engine.getSlaBreaches('loan_files') || [];
+    const exceptionBreaches = engine.getSlaBreaches('exceptions') || [];
+    const anomalies = [];
+    if ((fin.closing_delay_exposure_total || 0) > 0 || loanBreaches.length > 0) {
+      anomalies.push({
+        id: 'mtg-closing-delay',
+        title: 'Loan Closing Delay — SLA Breaches',
+        severity: mtgBreachSeverity(kpis.loans_over_sla || loanBreaches.length, kpis.open_loan_files || 1),
+        exposure: fin.closing_delay_exposure_total || 0,
+        confidence: 90,
+        rootCause: `${kpis.loans_over_sla || loanBreaches.length} of ${kpis.open_loan_files || 0} open loan files are past their SLA clock.`,
+        recommendedAction: 'Prioritize processing effort on the stalled underwriting/closing stages.',
+        impacts: {}
+      });
+    }
+    if ((fin.compliance_exposure_total || 0) > 0 || exceptionBreaches.length > 0) {
+      anomalies.push({
+        id: 'mtg-compliance',
+        title: 'Open Compliance Exceptions',
+        severity: mtgBreachSeverity(kpis.open_exceptions || exceptionBreaches.length, kpis.open_loan_files || 1),
+        exposure: fin.compliance_exposure_total || 0,
+        confidence: 90,
+        rootCause: `${kpis.open_exceptions || exceptionBreaches.length} open compliance exceptions across active loan files.`,
+        recommendedAction: 'Clear flagged exceptions before rate-lock or closing deadlines.',
+        impacts: {}
+      });
+    }
+    return anomalies;
+  }
+
   function relayToStrategist() {
     const aiText = document.getElementById('aiOutput').textContent;
     const payload = engine.buildRelayPayload(aiText.startsWith('Run analysis') ? null : aiText);
+    payload.generatedAt = payload.generatedAt || new Date().toISOString();
+    payload.anomalies = mtgBuildSentinelAnomalies();
     engine.saveToStorage();
     try {
       localStorage.setItem('TSM_MORTGAGE_STRATEGIST_RELAY', JSON.stringify(payload));
       if (window.TSM && window.TSM.relay && window.TSM.relay.write) {
         window.TSM.relay.write('MORTGAGE', payload);
       }
+      window.dispatchEvent(new CustomEvent('TSM_SENTINEL_REFRESH'));
     } catch (e) { console.warn('Relay storage failed', e); }
 
     if (window.TSMEventBus && window.TSMEventBus.emit) {

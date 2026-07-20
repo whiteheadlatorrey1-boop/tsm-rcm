@@ -51,7 +51,7 @@ const GROQ_MODELS = [
 ];
 
 async function groqChat(system, message, maxTokens, clientKey, jsonMode) {
-  const groqKey = process.env.GROQ_KEY || process.env.GROQ_API_KEY || clientKey;
+  const groqKey = process.env.GROQ_API_KEY || process.env.GROQ_KEY || clientKey;
   if (!groqKey) throw new Error('No Groq API key configured (server env missing and no client key provided)');
   for (const model of GROQ_MODELS) {
     for (const useJsonMode of (jsonMode ? [true, false] : [false])) {
@@ -93,7 +93,7 @@ async function groqChat(system, message, maxTokens, clientKey, jsonMode) {
 // JSON-returning variant for structured routes
 async function tsmAIJSON(prompt, fallback) {
   try {
-    const groqKey = process.env.GROQ_KEY || process.env.GROQ_API_KEY;
+    const groqKey = process.env.GROQ_API_KEY || process.env.GROQ_KEY;
     if (!groqKey) return fallback || null;
     const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
@@ -344,7 +344,7 @@ app.post('/api/hc/stream', async (req, res) => {
     return res.status(429).json({ error: 'Daily analysis limit reached. Contact TSM to upgrade.' });
   }
 
-  const groqKey = process.env.GROQ_KEY || process.env.GROQ_API_KEY;
+  const groqKey = process.env.GROQ_API_KEY || process.env.GROQ_KEY;
   if (!groqKey) return res.status(500).json({ error: 'GROQ_KEY not configured on server.' });
 
   try {
@@ -352,7 +352,7 @@ app.post('/api/hc/stream', async (req, res) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + (process.env.GROQ_KEY || process.env.GROQ_API_KEY)
+        'Authorization': 'Bearer ' + (process.env.GROQ_API_KEY || process.env.GROQ_KEY)
       },
       body: JSON.stringify({
         model: model || 'openai/gpt-oss-120b',
@@ -429,6 +429,20 @@ app.post('/api/groq/validate-key', async (req, res) => {
   }
 });
 
+
+
+// Health probe for War Room Stream
+// Keeps diagnostics and monitoring from failing.
+// AI generation remains POST only.
+app.get('/api/war-room/stream', (req,res)=>{
+  res.json({
+    status:"online",
+    route:"/api/war-room/stream",
+    methods:["POST"],
+    service:"TSM Neural Core"
+  });
+});
+
 app.post('/api/war-room/stream', async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -436,7 +450,7 @@ app.post('/api/war-room/stream', async (req, res) => {
   const { model, messages, max_tokens, temperature } = req.body;
   if (!Array.isArray(messages) || !messages.length) return res.status(400).json({ error: 'Missing messages' });
 
-  const groqKey = process.env.GROQ_KEY || process.env.GROQ_API_KEY;
+  const groqKey = process.env.GROQ_API_KEY || process.env.GROQ_KEY;
   if (!groqKey) return res.status(500).json({ error: 'GROQ_KEY not configured on server.' });
 
   async function fetchGroqStream(retriesLeft = 3) {
