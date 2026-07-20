@@ -547,14 +547,14 @@ body {
 
 <!-- ─── TOPBAR ─── -->
 <div class="topbar">
-  <div class="logo">⚡ TSM CONSTRUCTION MISSIONOS</div>
+  <div class="logo">⚡ TSM CONSTRUCTION MISSIONS</div>
   <div class="topbar-links">
     <a href="/construction-suite/construction-hub.html">HUB</a>
     <a href="/construction-suite/construction-scenarios.html">SCENARIOS</a>
     <a href="/construction-suite/construction-strategist.html">STRATEGIST</a>
     <a href="/construction-suite/construction-war-room.html">WAR ROOM</a>
     <a href="/construction-suite/compliance.html">COMPLIANCE</a>
-    <a href="/construction-suite/document-showcase.html" style="color:var(--purple);border-color:rgba(168,85,247,.3)">📋 DOCS</a>
+    <a href="/finops-suite/finops-accounting.html" style="color:var(--purple);border-color:rgba(168,85,247,.3)">📋 DOCS</a>
     <a href="/finops-suite/financial/index.html" style="color:var(--amber);border-color:rgba(255,179,0,.2)">FINANCIAL</a>
     <a href="/construction-suite/permits-proposals.html" class="active" style="color:var(--cyan)">PERMITS ↗</a>
   </div>
@@ -575,6 +575,9 @@ body {
   <a href="/construction-suite/construction-scenarios.html">SCENARIOS</a>
   <a href="/construction-suite/permits-proposals.html" class="active">PERMITS & PROPOSALS</a>
 </div>
+
+<!-- ─── WAR ROOM REMEDIATION BANNER (populated by JS if a mission task is waiting) ─── -->
+<div id="tsm-remediation-banner" style="display:none;background:rgba(255,196,0,.08);border:1px solid rgba(255,196,0,.35);margin:10px 14px;padding:10px 14px;font-family:var(--mono);font-size:11px;color:#ffdb70;line-height:1.7;"></div>
 
 <!-- ─── TICKER ─── -->
 <div class="ticker">
@@ -2014,6 +2017,25 @@ window.tsmMission = window.tsmMission || {
 function tsmWriteRelay(payload){
   TSM_KERNEL.setRelay("construction-suite", JSON.stringify(payload));
 }
+</script>
+
+<script>
+// ===== WAR ROOM REMEDIATION TASK READER =====
+// If War Room's Anomaly Advisor built a remediation mission with items
+// routed here, show them so this page's role in the chain is visible.
+(function(){
+  try {
+    const raw = localStorage.getItem('tsm_permits_remediation_task');
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    if (!data.ts || (Date.now() - data.ts) > 60 * 60 * 1000) return; // 1hr freshness window
+    const banner = document.getElementById('tsm-remediation-banner');
+    if (!banner) return;
+    const items = (data.items || []).map(i => '<div style="margin-top:4px">' + i.replace(/</g,'&lt;') + '</div>').join('');
+    banner.innerHTML = '<div style="color:#ffc400;font-weight:700;letter-spacing:1px;">⚡ REMEDIATION TASK FROM WAR ROOM — MISSION ' + (data.missionId||'') + '</div>' + items;
+    banner.style.display = 'block';
+  } catch(e) {}
+})();
 </script>
 
 </body>
