@@ -205,10 +205,79 @@
     render(el, readStored(vertical));
   }
 
+  // -- SENTINEL ENRICHMENT (new) --------------------------------------------
+
+  function sentinelStorageKey(vertical) {
+    return 'TSM_' + String(vertical || '').toUpperCase() + '_STRATEGIST_RELAY';
+  }
+
+  /**
+   * enrichSentinelAnomaly(anomaly, sweepPkg) -- returns a NEW object, never
+   * mutates the input. Never touches severity/exposure/confidence/rootCause/
+   * recommendedAction/id/title -- those feed real risk arithmetic elsewhere.
+   * Sweep-derived context goes under a separate 'sweep' namespace so it can
+   * never collide with or be mistaken for a risk field.
+   */
+  function enrichSentinelAnomaly(anomaly, sweepPkg) {
+    if (!anomaly || !sweepPkg) return anomaly;
+    var out = {};
+    for (var k in anomaly) { if (Object.prototype.hasOwnProperty.call(anomaly, k)) out[k] = anomaly[k]; }
+    var touched = sweepPkg.phasesTouched != null
+      ? sweepPkg.phasesTouched
+      : (sweepPkg.phases ? Object.keys(sweepPkg.phases).length : null);
+    out.sweep = {
+      caseId: sweepPkg.caseId || null,
+      phasesTouched: touched,
+      errorCount: sweepPkg.errors ? sweepPkg.errors.length : 0,
+      capturedAt: new Date().toISOString()
+    };
+    return out;
+  }
+
+  /**
+   * autoEnrichSentinel(vertical) -- reads the vertical's existing Sentinel
+   * relay entry (TSM_<VERTICAL>_STRATEGIST_RELAY) and its capability sweep
+   * entry (TSM_<VERTICAL>_CAPABILITY_SWEEP). If BOTH exist, enriches every
+   * anomaly in relay.anomalies with sweep context and writes back to the
+   * SAME relay key. Never creates the relay key if it's missing -- this
+   * augments an existing push, it does not stand one up.
+   *
+   * Returns the updated relay object, or null on any no-op/failure path.
+   */
+  function autoEnrichSentinel(vertical) {
+    if (!vertical) return null;
+    var relayKey = sentinelStorageKey(vertical);
+    var relay;
+    try {
+      var relayRaw = localStorage.getItem(relayKey);
+      relay = relayRaw ? JSON.parse(relayRaw) : null;
+    } catch (e) {
+      console.warn('[TSMCapabilitySweep] Sentinel relay read failed for ' + vertical + ':', e);
+      return null;
+    }
+    if (!relay || !Array.isArray(relay.anomalies) || !relay.anomalies.length) return null;
+
+    var sweepWrapper = readStored(vertical);
+    var sweepPkg = sweepWrapper && sweepWrapper.decisionPackage;
+    if (!sweepPkg) return null;
+
+    relay.anomalies = relay.anomalies.map(function (a) { return enrichSentinelAnomaly(a, sweepPkg); });
+
+    try {
+      localStorage.setItem(relayKey, JSON.stringify(relay));
+    } catch (e) {
+      console.warn('[TSMCapabilitySweep] Sentinel relay write failed for ' + vertical + ':', e);
+      return null;
+    }
+    return relay;
+  }
+
   global.TSMCapabilitySweep = {
     fire: fire,
     render: render,
     renderFromStorage: renderFromStorage,
-    readStored: readStored
+    readStored: readStored,
+    enrichSentinelAnomaly: enrichSentinelAnomaly,
+    autoEnrichSentinel: autoEnrichSentinel
   };
 })(window);
