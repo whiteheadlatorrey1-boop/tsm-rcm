@@ -355,6 +355,7 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
   <div class="sb-section">
     <div class="sb-label">QUICK SCENARIOS</div>
     <div class="samples">
+      <button class="sample-chip" id="smp-demo" onclick="loadDemoAnomaly()" style="border-color:var(--green);color:var(--green);font-weight:700;">🧪 LOAD DEMO ANOMALY — CO-114</button>
       <button class="sample-chip" id="smp-co"        onclick="loadSample('co')">📋 Change Order — Unforeseen Soil</button>
       <button class="sample-chip" id="smp-osha"      onclick="loadSample('osha')">🛡 OSHA Citation — Fall Protection</button>
       <button class="sample-chip" id="smp-lien"      onclick="loadSample('lien')">⚖ Prelim Lien Notice — Steel Fab</button>
@@ -779,6 +780,50 @@ Available cash per GL: $791,440
 Available cash per bank: $847,320
 Cash shortfall risk if $487,200 draw not funded by June 3: CRITICAL`
 };
+
+SAMPLES.demo = `CHANGE ORDER #114 — DEEPENED CAISSON REVISION
+Project: Riverside Tower Phase 2 · P-1003
+Owner: Pacific Development Group · Contractor: Meridian Construction LLC
+Original Contract: $2.4M · Change Amount: $410,000
+
+REASON: Deepened caissons discovered mid-excavation — geotech re-inspection during drilling revealed the bearing stratum 14ft below the original geotech report depth. Structural revision drawing S-114R issued 06/28/2026. Crew has been working to the revised scope for 4 days under verbal PM direction, pending formal change order execution.
+
+SCOPE ITEMS:
+1. Caisson depth revision x22 (extra 14ft each) — $260,000
+2. Revised structural drawing S-114R — engineer of record supplement — $34,000
+3. Extended excavation equipment mobilization — $58,000
+4. Crew standby / re-sequencing during revision — $58,000
+
+SCHEDULE IMPACT: Crew proceeding on revised scope since 06/24/2026 — 4 working days ahead of formal CO execution
+PERMIT STATUS: Original excavation permit on file does not cover revised caisson depth — amendment required
+SAFETY STATUS: Site safety walk sign-offs pending for revised excavation depth
+PAYMENT STATUS: Not yet submitted for owner review`;
+
+// Seeds the same localStorage shapes getPermitsContext() and getFieldOpsContext()
+// already read (tsm_permits_custom_doc / tsm_construction_fieldops_context), so
+// the 6-engine sweep grounds Engine 02 + Engine 05 in real cross-tool context
+// instead of just the raw document, without needing the other two pages open.
+function loadDemoAnomaly(){
+  const doc = SAMPLES.demo;
+  document.getElementById('docPaste').value = doc;
+  docText = doc;
+  document.querySelectorAll('.sample-chip').forEach(b=>b.classList.remove('loaded'));
+  document.getElementById('smp-demo')?.classList.add('loaded');
+  document.getElementById('sbDoc').textContent = 'DEMO ANOMALY · ' + doc.length + ' chars loaded';
+
+  const now = Date.now();
+  localStorage.setItem('tsm_permits_custom_doc', JSON.stringify({
+    ts: now,
+    result: 'Amended permit for the deepened caisson excavation (CO-114 revision) has not been filed with the City. The original excavation permit on file covers the prior depth only — working outside permitted scope creates stop-work exposure until the amendment is submitted.'
+  }));
+  localStorage.setItem('tsm_construction_fieldops_context', JSON.stringify({
+    ts: now,
+    scheduleRisk: 'Medium-High — crew has been working 4 days under revised scope ahead of formal CO execution; critical path exposure if the CO is rejected or delayed.',
+    summary: '3 safety walk sign-offs missed for the deepened excavation area (weeks of 06/22, 06/29, 07/06). OSHA excavation log last updated 06/20/2026 — predates the caisson depth revision; shoring/protective system entries do not reflect current excavation depth.'
+  }));
+
+  addLog('Demo anomaly loaded', 'CO-114 — deepened caissons · Permits & Field Ops context seeded', 'g');
+}
 
 function loadSample(k){
   const s=SAMPLES[k];
@@ -1216,33 +1261,6 @@ function buildDefectManifest(e) {
   const src = [e[2]||'', e[3]||'', e[4]||'', e[5]||''].join('\n');
   const patterns = [
     /DEFECT[:\s]+([^\n]+)/gi,
-    /OSHA EXPOSURE[:\s]+([^\n]+)/gi,
-    /LIEN EXPOSURE[:\s]+([^\n]+)/gi,
-    /CONTRACT BREACH RISK[:\s]+([^\n]+)/gi,
-    /COST OVERRUN[:\s]+([^\n]+)/gi,
-    /AP VERIFICATION GAPS[:\s]+([^\n]+)/gi,
-    /ABATEMENT REQUIRED[:\s]+([^\n]+)/gi,
-    /RESTATEMENT RISK[:\s]+([^\n]+)/gi,
-    /CRITICAL PATH THREAT[:\s]+([^\n]+)/gi,
-    /FILING DEADLINES[\s\S]*?1\.\s*([^\n]+)/i,
-    /IMMEDIATE COMPLIANCE ACTIONS[\s\S]*?1\.\s*([^\n]+)/i,
-    /PRIMARY LEGAL RISK[:\s]+([^\n]+)/gi,
-  ];
-  patterns.forEach(p => {
-    let m;
-    while ((m = p.exec(src)) !== null) {
-      const line = m[1].trim();
-      if (line.length > 10 && !lines.includes(line)) lines.push(line);
-    }
-  });
-  return lines.slice(0, 12).map((d, i) => `DEFECT ${i+1}: ${d}`).join('\n') || 'No structured defects extracted — use Engine 01-05 output directly.';
-}
-
-function buildDefectManifest(e) {
-  const lines = [];
-  const src = [e[2]||'', e[3]||'', e[4]||'', e[5]||''].join('\n');
-  const patterns = [
-    /DEFECT[:\s]+([^\n]+)/gi,
     /OSHA[:\s]+([^\n]+)/gi,
     /LIEN[:\s]+([^\n]+)/gi,
     /BREACH[:\s]+([^\n]+)/gi,
@@ -1381,6 +1399,7 @@ async function fireEngines() {
   addLog('All 6 Engines Complete','App dispatch ready — escalate to Strategist','p');
   storeSession(e);
   fireCapabilitySweep(e);
+  showAnomalyAdvisorPanel(e, docText);
   // TSM AUTO-ESCALATE
   if (localStorage.getItem('tsm_auto_mode') === 'on') {
     addLog('Auto-escalating to Strategist','TSM Autonomy Engine active','p');
@@ -1561,7 +1580,7 @@ function showAnomalyAdvisorPanel(outputs, docText) {
   requestAnimationFrame(() => { panel.style.transform = 'translateY(0)'; });
 
   const body = document.getElementById('anomaly-panel-body');
-  const context = `ENGINE 1 (DOCUMENT INTEL):\n${(outputs[0]||'').slice(0,400)}\n\nENGINE 2 (RISK & ANOMALY):\n${(outputs[1]||'').slice(0,400)}\n\nENGINE 3 (FINANCIAL IMPACT):\n${(outputs[2]||'').slice(0,300)}\n\nENGINE 4 (COMPLIANCE):\n${(outputs[3]||'').slice(0,300)}\n\nDOC SAMPLE:\n${(docText||'').slice(0,500)}`;
+  const context = `ENGINE 1 (DOCUMENT INTEL):\n${(outputs[1]||'').slice(0,400)}\n\nENGINE 2 (RISK & ANOMALY):\n${(outputs[2]||'').slice(0,400)}\n\nENGINE 3 (FINANCIAL IMPACT):\n${(outputs[3]||'').slice(0,300)}\n\nENGINE 4 (COMPLIANCE):\n${(outputs[4]||'').slice(0,300)}\n\nDOC SAMPLE:\n${(docText||'').slice(0,500)}`;
 
   const sys = `You are TSM Anomaly Advisor, a field-level defect detection engine for construction project documents. Analyze the engine outputs and identify specific actionable defects. Output ONLY a numbered list. Each item must follow this exact format:
 ⚠ [FIELD/SECTION] — what is wrong — exact fix instruction (which document, which line item, which spec section, what to correct or flag).
@@ -1592,13 +1611,70 @@ Maximum 8 items. No preamble. No headers. No summary. Start immediately with ite
       if (btn) { btn.dataset.anomaly = body.innerText || ''; btn.style.display = 'block'; }
     },
     (err) => {
-      const errDiv = document.createElement('div');
-      errDiv.style.color = '#ef4444';
-      errDiv.textContent = '[Advisor error: ' + err + ']';
-      body.appendChild(errDiv);
+      console.warn('[TSM] Anomaly Advisor live call failed, using local fallback:', err);
+      if (firstChunk) {
+        firstChunk = false;
+        const scanMsg = document.getElementById('anomaly-scan-msg');
+        if (scanMsg) scanMsg.remove();
+      }
+      const manifest = buildDefectManifest(outputs);
+      const synthesized = manifest.split('\n').filter(Boolean).map((line, i) => {
+        const clean = line.replace(/^DEFECT \d+:\s*/, '');
+        return `⚠ ITEM ${i + 1} — ${clean} — cross-reference with source engine output and flag for remediation.`;
+      }).join('\n');
+      const span = document.createElement('span');
+      span.innerHTML = synthesized
+        .replace(/⚠/g, '<span style="color:#f59e0b">⚠</span>')
+        .replace(/—/g, '<span style="color:#1ee8b660"> — </span>')
+        .replace(/\n/g, '<br>');
+      body.appendChild(span);
+      body.scrollTop = body.scrollHeight;
+      const footer = document.createElement('div');
+      footer.style.cssText = 'margin-top:14px;padding-top:10px;border-top:1px solid #1ee8b620;color:#1ee8b650;font-size:9px;letter-spacing:1px;';
+      footer.textContent = '⬡ LOCAL FALLBACK — SYNTHESIZED FROM ENGINE OUTPUT (LIVE API UNREACHABLE)';
+      body.appendChild(footer);
+      const btn = document.getElementById('tsm-build-mission-btn');
+      if (btn) { btn.dataset.anomaly = body.innerText || ''; btn.style.display = 'block'; }
     },
     600
   );
+}
+
+// Thin wrapper around the same /api/construction/query endpoint the 6 engines
+// use, with a typewriter-style reveal so the Anomaly Advisor panel streams
+// the same way it would with a true SSE endpoint. Calls onError (rather than
+// throwing) on any failure so callers can fall back to local synthesis.
+function groqStreamModel(model, sys, userContext, onChunk, onDone, onError, maxTokens) {
+  (async () => {
+    try {
+      const r = await fetch('/api/construction/query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: sys + '\n\n' + userContext, maxTokens: maxTokens || 400 })
+      });
+      if (!r.ok) throw new Error('API ' + r.status);
+      const d = await r.json();
+      const text = (d.answer || d.response || '').trim();
+      if (!text) throw new Error('empty response');
+      await tsmRevealText(text, onChunk);
+      onDone();
+    } catch (err) {
+      onError(err.message || String(err));
+    }
+  })();
+}
+
+function tsmRevealText(text, onChunk) {
+  return new Promise(resolve => {
+    let i = 0;
+    (function step() {
+      if (i >= text.length) { resolve(); return; }
+      const n = 3 + Math.floor(Math.random() * 4);
+      onChunk(text.slice(i, i + n));
+      i += n;
+      setTimeout(step, 12);
+    })();
+  });
 }
 </script>
 <!-- HOW-TO GUIDE MODAL -->
@@ -1898,16 +1974,14 @@ function tsmRouteToPermits() {
   goNav('permits-proposals.html');
 }
 
-// NOTE: construction-suite-expansion.html isn't part of this file set, so this
-// localStorage key/shape is a best-effort match to the tsm_permits_remediation_task
-// pattern above. If that page doesn't already have a matching reader for
-// 'tsm_fieldops_remediation_task', it'll need one added (mirror the permits
-// reader in permits-proposals.html) for the yellow banner to show there.
+// Confirmed against construction-suite-expansion.html's own reader block
+// ("WAR ROOM REMEDIATION TASK READER") — key name and {ts, missionId, items}
+// shape match exactly what that page expects for its yellow banner.
 function tsmRouteToFieldOps() {
   const panel = document.getElementById('tsm-mission-panel');
   const items = (panel && panel._tsmFieldOpsItems) || [];
   const missionId = panel && panel._tsmMissionId;
-  localStorage.setItem('tsm_fieldops_remediation_task', JSON.stringify({ missionId, ts: Date.now(), items }));
+  localStorage.setItem('tsm_construction_fieldops_remediation_task', JSON.stringify({ missionId, ts: Date.now(), items }));
   goNav('construction-suite-expansion.html');
 }
 
