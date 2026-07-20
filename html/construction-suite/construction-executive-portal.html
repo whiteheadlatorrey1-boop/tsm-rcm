@@ -1438,7 +1438,7 @@ document.getElementById("execCompliance").textContent=compliance;
 <script>
 /* TSM EXEC KIT — AUTO-INJECTED 2026-06-29 23:19 UTC */
 (function() {
-  var RELAY_KEYS = ["TSM_CONSTRUCTION_STRATEGIST_RELAY", "tsm_construction_war_relay", "tsm_construction_strategist_output", "TSM_CONSTRUCTION_WAR_RELAY"];
+  var RELAY_KEYS = ["tsm_construction_strategist_output", "TSM_CONSTRUCTION_STRATEGIST_RELAY", "tsm_construction_war_relay", "TSM_CONSTRUCTION_WAR_RELAY"];
   var WIP_TITLE  = "Construction Pipeline Status";
   var WIP_ID     = 'tsmk-wip-auto';
   var EXP_ID     = 'tsmk-exp-auto';
@@ -1446,11 +1446,18 @@ document.getElementById("execCompliance").textContent=compliance;
   var BENCHMARK_ID = 'tsmk-benchmark-auto';
 
   function readRelay() {
+    // Checks the fully-synthesized strategist output first (has summary/
+    // bncaText/wip), falling back to the raw war-room hand-off only if no
+    // synthesized version exists yet. Also checks sessionStorage, since
+    // TSM_CONSTRUCTION_STRATEGIST_RELAY is only ever written there.
     for (var i = 0; i < RELAY_KEYS.length; i++) {
-      var raw = localStorage.getItem(RELAY_KEYS[i]);
-      if (raw) {
-        try { return JSON.parse(raw); } catch(e) { return null; }
-      }
+      var key = RELAY_KEYS[i];
+      var raw = localStorage.getItem(key) || sessionStorage.getItem(key);
+      if (!raw) continue;
+      try {
+        var parsed = JSON.parse(raw);
+        if (parsed && (parsed.summary || parsed.bncaText || parsed.wip)) return parsed;
+      } catch(e) { /* bad JSON on this key — try the next one */ }
     }
     return null;
   }
