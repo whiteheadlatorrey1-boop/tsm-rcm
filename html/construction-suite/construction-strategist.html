@@ -865,11 +865,12 @@ function loadWarRoomRelay() {
     warRoomRelay = JSON.parse(raw);
     if (!warRoomRelay) return false;
     populateFromWarRoom(warRoomRelay);
-    // TSM AUTO-CHAIN — synthesize BNCA and escalate to Executive Portal without manual clicks
+    // TSM AUTO-CHAIN — synthesize BNCA automatically, but leave escalation to
+    // Executive Portal as a manual step (click "→ ESCALATE TO EXECUTIVE")
+    // so the user has time to review the synthesis before navigating away.
     if (localStorage.getItem('tsm_auto_mode') !== 'off') {
       setTimeout(async () => {
         if (typeof runConstructionBNCAFromRelay === 'function') await runConstructionBNCAFromRelay();
-        setTimeout(() => { if (typeof escalateToExecutive === 'function') escalateToExecutive(); }, 1500);
       }, 1000);
     }
     return true;
@@ -1066,10 +1067,8 @@ ENGINE 06 — BNCA EXEC: ${engines.e6||''}
     const sub = document.getElementById('escalBarSub');
     if (sub) sub.textContent = 'BNCA synthesis complete — ready to escalate to Executive Portal.';
 
-    // TSM AUTO-ESCALATE TO EXEC
-    if (localStorage.getItem('tsm_auto_mode') === 'on') {
-      setTimeout(() => { escalateToExecutive(); }, 2000);
-    }
+    // Auto-escalate disabled by design: synthesis result stays on this page
+    // until the user manually clicks "→ ESCALATE TO EXECUTIVE".
  
   } catch(e) {
     out.textContent = '[Error] ' + e.message;
@@ -1367,6 +1366,3 @@ function tsmWriteScopedStrat(vertical, missionId){
   <script src="/html/core/tsm-runtime.js"></script>
 </body>
 </html>
-
-
-
