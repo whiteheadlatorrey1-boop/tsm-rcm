@@ -946,34 +946,6 @@ document.addEventListener('click', (e) => {
 });
 console.log("TSM_UI: Direct Neural Link Established.");
 </script>
-window.TSM_UI = {
-    runAudit: async (sector, factor) => {
-        const feed = document.querySelector('.intelligence-feed-output') || document.getElementById('intelligence-feed-output');
-        if (feed) feed.innerHTML = '<span style="color: #00ffff;">[STRATEGIST] Internal Link: Processing...</span>';
-        try {
-            const res = await fetch('/api/audit', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ query: `auditops "${sector}" --factor "${factor}" --logic strategist` })
-            });
-            const data = await res.json();
-            if (feed) feed.innerText = `[STRATEGIST] ${data.output || "Analysis Complete."}`;
-        } catch (e) {
-            if (feed) feed.innerText = "[STRATEGIST] Local API Bridge Failed.";
-        }
-    }
-};
-// Wire the sector cards to the auto-fill search prompt logic
-document.addEventListener('click', (e) => {
-    const card = e.target.closest('.module-card');
-    if (card) {
-        const sector = card.dataset.sector || "Construction";
-        const factor = card.querySelector('h3')?.innerText || "General Audit";
-        TSM_UI.runAudit(sector, factor);
-    }
-});
-console.log("TSM_UI: Direct Neural Link Established.");
-</script>
   <link rel="stylesheet" href="/shared/tsm-shared.css">
   <script src="/shared/tsm-shared.js"></script>
 <script src="./html/js/tsm-runtime-lock.js"></script>
@@ -1881,6 +1853,7 @@ console.log("TSM_UI: Direct Neural Link Established.");
 <!-- FLOATING AI BUTTON -->
 <button class="groq-fab" id="groq-fab" data-tsm-action="toggleGroqPanel" data-tsm-args="">&#9632; AI ASSIST</button>
 
+<script>
 // ── DATE ──
 const d = new Date();
 document.getElementById('fo-date-display').textContent =
@@ -3228,6 +3201,7 @@ window.addEventListener('load', () => {
 });
 </script>
 
+<script>
 (function(){
   if(window.__CONSTRUCTION_OCR_GEO_FLYIN__) return;
   window.__CONSTRUCTION_OCR_GEO_FLYIN__ = true;
@@ -3354,6 +3328,7 @@ window.addEventListener('load', () => {
 
 <script src="/tsm-ai-client.js"></script>
 
+<script>
 /* ═══════════════════════════════════════════════════════════════
    TSM STRATEGIST SYNC — Construction Suite Expansion
    Serialises live module state → localStorage → Strategist reads
@@ -3521,6 +3496,16 @@ function tsmSyncNow() {
   try {
     localStorage.setItem(TSM_SYNC_KEY, JSON.stringify(snapshot));
     TSM_SYNC_CH.postMessage({ type: 'expansion_update', snapshot });
+    // Bridge to War Room's cross-tool reasoning context (getFieldOpsContext()).
+    // Shape must match what construction-war-room.html expects.
+    const scheduleRisk = snapshot.schedule.behindCount > 0
+      ? `${snapshot.schedule.behindCount} task(s) behind schedule`
+      : 'On schedule';
+    localStorage.setItem('tsm_construction_fieldops_context', JSON.stringify({
+      summary: snapshot.digest,
+      scheduleRisk,
+      ts: Date.now()
+    }));
     const ts = document.getElementById('sync-ts');
     if (ts) ts.textContent = 'synced ' + new Date().toLocaleTimeString();
     const btn = document.getElementById('strategist-sync-btn');
@@ -3582,10 +3567,8 @@ document.addEventListener('click', function(e){
   <script src="/core/tsm-kernel.js"></script>
   <script src="/core/tsm-enforcer.js"></script>
   <script src="/js/core/tsm-kernel-upgrade.js"></script>
-</body>
-y
-  
 <script src="/tsm-bnca-bridge.js"></script>
+<script>
 (function(){
   function reportBNCA(){
     if(typeof TSM_BNCA==='undefined') return;
@@ -3603,10 +3586,12 @@ y
 })();
 </script>
 
+<script>
 // ===== TSM_AUTONOMY_STANDARDIZED =====
 window.TSM_AUTONOMY_STANDARDIZED = true;
 </script>
 
+<script>
 // ===== TSM WAR ROOM SCOPED RELAY FIX =====
 window.tsmMission = window.tsmMission || {
   id: "CONSTRUCTION-SUITE-" + Date.now().toString(36),
@@ -3618,4 +3603,5 @@ function tsmWriteRelay(payload){
   TSM_KERNEL.setRelay("construction-suite", JSON.stringify(payload));
 }
 </script>
-
+</body>
+</html>

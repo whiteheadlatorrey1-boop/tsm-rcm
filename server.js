@@ -11,6 +11,11 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 const https = require('https');
+const multer = require('multer');
+const sentinelUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 } // 10MB per file, plenty for contracts/claims docs
+});
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -45,33 +50,41 @@ const GROQ_MODELS = [
   'gemma2-9b-it'
 ];
 
-async function groqChat(system, message, maxTokens, clientKey) {
+async function groqChat(system, message, maxTokens, clientKey, jsonMode) {
   const groqKey = process.env.GROQ_KEY || process.env.GROQ_API_KEY || clientKey;
   if (!groqKey) throw new Error('No Groq API key configured (server env missing and no client key provided)');
   for (const model of GROQ_MODELS) {
-    try {
-      const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + groqKey, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+    for (const useJsonMode of (jsonMode ? [true, false] : [false])) {
+      try {
+        const body = {
           model,
           max_tokens: maxTokens,
           messages: [{ role: 'system', content: system }, { role: 'user', content: message }]
-        })
-      });
-      if (!r.ok) {
-        const err = await r.text();
-        if (r.status === 429 || r.status === 503 || r.status === 500 || r.status === 502) {
-          await new Promise(res => setTimeout(res, 3000));
-          continue;
+        };
+        if (useJsonMode) body.response_format = { type: 'json_object' };
+        const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + groqKey, 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        if (!r.ok) {
+          const err = await r.text();
+          if (r.status === 429 || r.status === 503 || r.status === 500 || r.status === 502) {
+            await new Promise(res => setTimeout(res, 3000));
+            continue;
+          }
+          // 400 with jsonMode on often means this model doesn't support response_format —
+          // fall through to the non-json-mode retry for the same model before giving up on it
+          if (r.status === 400 && useJsonMode) continue;
+          throw new Error('Groq API error ' + r.status + ': ' + err);
         }
-        throw new Error('Groq API error ' + r.status + ': ' + err);
+        const data = await r.json();
+        return data?.choices?.[0]?.message?.content || '';
+      } catch (e) {
+        if (e.message.includes('429') || e.message.includes('rate_limit')) continue;
+        if (useJsonMode) continue; // try the same model again without json mode before moving on
+        throw e;
       }
-      const data = await r.json();
-      return data?.choices?.[0]?.message?.content || '';
-    } catch (e) {
-      if (e.message.includes('429') || e.message.includes('rate_limit')) continue;
-      throw e;
     }
   }
   throw new Error('All Groq models rate limited. Try again later.');
@@ -1025,6 +1038,33 @@ app.post('/api/mortgage/query', async (req, res) => {
     return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
   } catch (e) {
     console.error('MORTGAGE GROQ ERROR:', e.message);
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// ── SCHOOLS: structured grant/monitoring/exception analysis ──────────────────
+// Mirrors /api/mortgage/query's shape. Kept separate from the pre-existing
+// generic /api/schools/query (plain question/answer) so nothing there breaks.
+app.post('/api/schools/analysis', async (req, res) => {
+  const { kpis, grant_breaches, monitoring_items, exceptions, context, maxTokens } = req.body || {};
+  const summary = JSON.stringify({
+    kpis,
+    grant_breaches,
+    monitoring_items,
+    exceptions,
+    counts: {
+      monitoring_items: Array.isArray(monitoring_items) ? monitoring_items.length : undefined,
+      exceptions: Array.isArray(exceptions) ? exceptions.length : undefined
+    }
+  }, null, 2);
+  const prompt = `Current Schools/Grants compliance snapshot:\n${summary}\n\n` +
+    (context ? `Additional context: ${context}\n\n` : '') +
+    `Identify the highest-risk grant files, the root cause of any SLA breaches or stalled monitoring items, open compliance exceptions requiring escalation (FERPA/IDEA/NSLP/Title I/ESSER as applicable), and the single most important next action for each at-risk grant file. Reference grant/monitoring-item/exception IDs.`;
+  try {
+    const answer = await groqChat(SP.education, prompt, maxTokens || 1200);
+    return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
+  } catch (e) {
+    console.error('SCHOOLS ANALYSIS GROQ ERROR:', e.message);
     return res.status(500).json({ ok: false, error: e.message });
   }
 });
@@ -3178,6 +3218,99 @@ app.post('/api/mdm/query', async (req, res) => {
   } catch (e) {
     console.error('MDM GROQ ERROR:', e.message);
     return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// ── SENTINEL: real document analysis ─────────────────────────────────────────
+// Accepts a real uploaded file (multipart/form-data, field name "document"),
+// extracts its text, and runs it through the same groqChat/SP pattern the rest
+// of the platform already uses (see /api/mdm/query above). No new AI provider,
+// no separate service — this is the "minimal proxy" we discussed, just built
+// as a route on the backend that already exists instead of a standalone server.
+app.post('/api/sentinel/analyze', sentinelUpload.single('document'), async (req, res) => {
+  const file = req.file;
+  if (!file) return res.status(400).json({ ok: false, error: 'document file required (field name "document")' });
+
+  const vertical = (req.body && req.body.vertical) || 'enterprise';
+  const promptKey = SP[vertical] ? vertical : 'enterprise';
+  const name = file.originalname || 'uploaded document';
+  const ext = (name.split('.').pop() || '').toLowerCase();
+
+  let text = '';
+  try {
+    if (ext === 'pdf') {
+      const pdfParse = require('pdf-parse');
+      const data = await pdfParse(file.buffer);
+      text = data.text || '';
+    } else if (ext === 'docx') {
+      const mammoth = require('mammoth');
+      const result = await mammoth.extractRawText({ buffer: file.buffer });
+      text = result.value || '';
+    } else {
+      // txt, csv, and anything else plain-text
+      text = file.buffer.toString('utf8');
+    }
+  } catch (e) {
+    return res.status(422).json({ ok: false, error: 'Could not extract text from ' + name + ': ' + e.message });
+  }
+
+  if (!text.trim()) {
+    return res.status(422).json({ ok: false, error: 'No extractable text found in ' + name });
+  }
+
+  // Keep the prompt bounded — long contracts get truncated, not rejected
+  const truncated = text.length > 12000;
+  const excerpt = text.slice(0, 12000);
+
+  const system = SP[promptKey];
+  const userPrompt =
+    `Analyze the following real document uploaded by the user for a small-business risk-intelligence ` +
+    `platform. Return ONLY valid JSON — no markdown code fences, no prose outside the JSON — matching ` +
+    `exactly this schema:\n` +
+    `{\n` +
+    `  "findingTitle": "short headline under 10 words describing the core finding",\n` +
+    `  "findingBody": "2-4 sentences explaining what was found, citing specific evidence (a clause, line, or figure) from the document",\n` +
+    `  "impactTag": "short dollar or metric impact string, e.g. '$13,020 unbilled exposure' or '9-day average delay'",\n` +
+    `  "missionTitle": "one specific, actionable corrective step under 15 words",\n` +
+    `  "missionOwner": "the role best suited to own this, e.g. CFO, Compliance Officer, Operations Manager, Project Manager",\n` +
+    `  "missionRisk": "High, Medium, or Low"\n` +
+    `}\n\n` +
+    `DOCUMENT: ${name}\n\n${excerpt}`;
+
+  try {
+    const raw = await groqChat(system, userPrompt, 1200, null, true);
+
+    let structured = null;
+    try {
+      structured = JSON.parse(raw.replace(/```json|```/g, '').trim());
+    } catch (e) {
+      // Model wrapped the JSON in extra prose despite instructions — pull out
+      // the first {...} block and try again before giving up on structured data
+      const match = raw.match(/\{[\s\S]*\}/);
+      if (match) {
+        try { structured = JSON.parse(match[0]); } catch (e2) { structured = null; }
+      }
+    }
+
+    const finding = structured
+      ? `${structured.findingTitle}\n\n${structured.findingBody}\n\n` +
+        `Impact: ${structured.impactTag}\n\n` +
+        `Recommended action: ${structured.missionTitle} (Owner: ${structured.missionOwner}, Risk: ${structured.missionRisk})`
+      : raw;
+
+    res.json({
+      ok: true,
+      vertical: promptKey,
+      sourceFile: name,
+      extractedChars: text.length,
+      truncated,
+      finding,
+      structured,
+      createdAt: new Date().toISOString()
+    });
+  } catch (e) {
+    console.error('SENTINEL AI ERROR:', e.message);
+    res.status(500).json({ ok: false, error: e.message });
   }
 });
 

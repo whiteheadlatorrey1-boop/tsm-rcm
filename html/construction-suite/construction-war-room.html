@@ -514,6 +514,7 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
   <span>Groq: openai/gpt-oss-120b</span>
 </div>
 
+<script>
 document.addEventListener('DOMContentLoaded',function(){
   const relayed=sessionStorage.getItem('constructionWarRoomDoc');
   const src=sessionStorage.getItem('constructionWarRoomSource');
@@ -823,6 +824,39 @@ function copyField(id){ navigator.clipboard.writeText(document.getElementById(id
 // ═══════════════════════════════
 // PROMPTS — chained construction + accounting
 // ═══════════════════════════════
+// ═══════════════════════════════
+// CROSS-TOOL REASONING CONTEXT
+// Pulls in analysis already done in sibling construction-suite tools so the
+// 6-engine sweep isn't reasoning from the raw document alone.
+// ═══════════════════════════════
+let PERMITS_CONTEXT = '', FIELDOPS_CONTEXT = '';
+
+// Permits & Proposals writes tsm_permits_custom_doc whenever someone runs
+// "Analyze" on a document over there. We treat it as live grounding for the
+// Compliance (engine 5) and FieldOps (engine 2) engines if it's recent.
+function getPermitsContext(maxAgeMs = 60 * 60 * 1000) {
+  try {
+    const raw = localStorage.getItem('tsm_permits_custom_doc');
+    if (!raw) return '';
+    const data = JSON.parse(raw);
+    if (!data.ts || (Date.now() - data.ts) > maxAgeMs) return '';
+    return `PERMITS & PROPOSALS DESK — RECENT ANALYSIS (${Math.round((Date.now()-data.ts)/60000)}m ago):\n${(data.result||'').slice(0,400)}`;
+  } catch(e) { return ''; }
+}
+
+// Written by construction-suite-expansion.html's tsmSyncNow() — live FieldOps,
+// PlanRoom, Procurement, RFI/CO, and Gantt state, auto-synced every 90s and on
+// tab switches. Shape: { summary: string, scheduleRisk: string, ts: number }
+function getFieldOpsContext(maxAgeMs = 60 * 60 * 1000) {
+  try {
+    const raw = localStorage.getItem('tsm_construction_fieldops_context');
+    if (!raw) return '';
+    const data = JSON.parse(raw);
+    if (!data.ts || (Date.now() - data.ts) > maxAgeMs) return '';
+    return `FIELD OPS — LIVE CONTEXT (${Math.round((Date.now()-data.ts)/60000)}m ago):\nSCHEDULE: ${data.scheduleRisk||'Unknown'}\n${(data.summary||'').slice(0,500)}`;
+  } catch(e) { return ''; }
+}
+
 const PROMPTS=[
 (doc)=>`You are a Construction Intelligence + Accounting AI — first-pass document assessment.
 DOCUMENT TYPE: ${selectedDocType}
@@ -847,7 +881,7 @@ MATERIAL FACTS:
 
 (doc,e)=>`You are a Construction FieldOps + Job Cost Analyst. CRITICAL: Respond in structured key:value lines only. No prose. No explanations. Max 15 words per field.
 ENGINE 01: ${compressed[1]}
-
+${FIELDOPS_CONTEXT ? '\n'+FIELDOPS_CONTEXT+'\n' : ''}${PERMITS_CONTEXT ? '\n'+PERMITS_CONTEXT+'\n' : ''}
 ENGINE 02 — FIELDOPS ANALYSIS
 SCHEDULE IMPACT: [X days — reason]
 COST VARIANCE: [+/- $amount by division]
@@ -889,7 +923,7 @@ LEGAL RISK LEVEL: [Low/Medium/High/Critical]`,
 (doc,e)=>`You are a Construction Compliance + Payroll Officer. CRITICAL: Respond in structured key:value lines only. No prose. No explanations. Max 15 words per field.
 ENGINE 01: ${compressed[1]}
 ENGINE 02 FIELDOPS: ${compressed[2]}
-
+${PERMITS_CONTEXT ? '\n'+PERMITS_CONTEXT+'\n' : ''}
 ENGINE 05 — COMPLIANCE SHIELD
 OSHA: [$penalty estimate]
 DAVIS-BACON: [Compliant/At Risk]
@@ -1235,6 +1269,11 @@ async function fireEngines() {
   docText=document.getElementById('docPaste').value.trim();
   if(!docText){alert('Load or paste a construction document first.');return;}
 
+  PERMITS_CONTEXT = getPermitsContext();
+  FIELDOPS_CONTEXT = getFieldOpsContext();
+  if (PERMITS_CONTEXT) addLog('Permits & Proposals context loaded','Grounding Engine 02 + Engine 05 with recent permits-desk analysis','g');
+  if (FIELDOPS_CONTEXT) addLog('Field Ops context loaded','Grounding Engine 02 with live field data','g');
+
   document.getElementById('fireBtn').disabled=true;
   document.getElementById('spinner').classList.add('active');
   document.getElementById('escalateBar').classList.remove('visible');
@@ -1488,6 +1527,7 @@ function clearAll(){
 
 addLog('Construction War Room initialized','6 engines standing by — load construction document to begin','g');
 </script>
+<script>
 function showAnomalyAdvisorPanel(outputs, docText) {
   const existing = document.getElementById('anomaly-slide-panel');
   if (existing) existing.remove();
@@ -1675,6 +1715,7 @@ Maximum 8 items. No preamble. No headers. No summary. Start immediately with ite
   </div>
 </div>
 
+<script>
 const TOUR_SLIDES = [
   {
     "id": "welcome",
@@ -1776,7 +1817,6 @@ const TOUR_SLIDES = [
     "actionHint": null
   }
 ];
-</script>
 let tourActive=false,tourStep=0,autoMode=false,autoTimer=null,autoMs=6000;
 function spotlightEl(id){const sp=document.getElementById('tourSpotlight');if(!id){sp.style.display='none';return;}const el=document.getElementById(id);if(!el){sp.style.display='none';return;}const r=el.getBoundingClientRect(),p=8;sp.style.display='block';sp.style.top=(r.top-p)+'px';sp.style.left=(r.left-p)+'px';sp.style.width=(r.width+p*2)+'px';sp.style.height=(r.height+p*2)+'px';el.scrollIntoView({behavior:'smooth',block:'nearest'});}
 function buildPips(){const prog=document.getElementById('hudProgress');prog.innerHTML='';TOUR_SLIDES.forEach((s,i)=>{const pip=document.createElement('div');pip.className='hud-pip'+(i<tourStep?' done':i===tourStep?' active':'');prog.appendChild(pip);});}
@@ -1799,7 +1839,6 @@ function speechPlay(){if(typeof responsiveVoice==='undefined'){alert('Responsive
 function speechPause(){if(typeof responsiveVoice!=='undefined')responsiveVoice.pause();speechSetState('paused');}
 function speechStop(){if(typeof responsiveVoice!=='undefined')responsiveVoice.cancel();speechSetState('idle');}
 function speechSetState(state){const pb=document.getElementById('speechPlayBtn'),ps=document.getElementById('speechPauseBtn'),st=document.getElementById('speechStopBtn');if(!pb)return;if(state==='speaking'){pb.style.display='none';ps.style.display='';st.style.display='';ps.className='hud-speech-btn speaking';}else if(state==='paused'){pb.style.display='';pb.textContent='▶ RESUME';pb.className='hud-speech-btn paused';ps.style.display='none';st.style.display='';}else{pb.style.display='';pb.textContent='🔊 SPEAK';pb.className='hud-speech-btn';ps.style.display='none';st.style.display='none';}}
-</script>
 const TSM_MISSION_VERTICAL = 'construction';
 async function tsmLaunchMission() {
   const btn = document.getElementById('tsm-build-mission-btn');
@@ -1817,21 +1856,22 @@ async function tsmLaunchMission() {
 }
 </script>
   <script src="/html/core/tsm-runtime.js"></script>
-</body>
-</html>
-
+<script>
 // ===== TSM_AUTONOMY_STANDARDIZED =====
 window.TSM_AUTONOMY_STANDARDIZED = true;
 </script>
 
 <!-- TSM ENFORCER BOOT -->
 
-
+<script>
 // ===== TSM WAR ROOM SCOPED RELAY FIX =====
+// NOTE: TSM_KERNEL is not loaded anywhere in this file (no /core/tsm-kernel.js
+// include here, unlike permits-proposals.html and construction-suite-expansion.html).
+// tsmWriteRelay() will throw a ReferenceError if it's ever actually called until
+// that script is included. It is not currently called from anywhere in this file.
 window.tsmMission = window.tsmMission || {
   id: "CONSTRUCTION-SUITE-" + Date.now().toString(36),
   vertical: "construction-suite",
-  
 };
 
 function tsmWriteRelay(payload){
@@ -1869,3 +1909,6 @@ document.addEventListener("DOMContentLoaded", function() {
   });
 });
 </script>
+
+</body>
+</html>
