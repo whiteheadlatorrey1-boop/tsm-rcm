@@ -822,6 +822,48 @@ function writeExecRelay(e) {
     // ── END TSM EXEC KIT ─────────────────────────────────────────────
 
     sessionStorage.setItem('TSM_STRATEGIST_RELAY', JSON.stringify(payload));
+
+    // ── SENTINEL PUSH ────────────────────────────────────────────────────
+    // Real numbers only: reuses payload.exposure/riskScore already read
+    // from the rendered KPI tiles above -- no invented figures. This page
+    // previously had no Sentinel integration at all (unlike the other
+    // live verticals), so Legal never showed up in Sentinel Center.
+    try {
+      function legalProParseExposureNumber(str){
+        if (!str) return 0;
+        const nums = String(str).match(/[\d,]+(?:\.\d+)?/g);
+        if (!nums || !nums.length) return 0;
+        const mult = /m\b/i.test(str) ? 1000000 : (/k\b/i.test(str) ? 1000 : 1);
+        const vals = nums.map(n => parseFloat(n.replace(/,/g,'')) * mult);
+        return Math.round(vals.reduce((a,b)=>a+b,0) / vals.length);
+      }
+      function legalProSeverityForRisk(str){
+        const n = parseInt(str, 10) || 0;
+        if (n >= 75) return 'CRIT';
+        if (n >= 55) return 'HIGH';
+        if (n >= 30) return 'MED';
+        return 'LOW';
+      }
+      const legalProExposureNum = legalProParseExposureNumber(payload.exposure);
+      const legalProRiskNum = parseInt(payload.riskScore, 10) || 0;
+      const legalProAnomaly = {
+        id: 'legalpro-' + Date.now(),
+        title: (payload.matter || 'Legal Matter') + ' — Strategist Synthesis',
+        severity: legalProSeverityForRisk(payload.riskScore),
+        exposure: legalProExposureNum,
+        confidence: Math.max(0, 100 - legalProRiskNum),
+        rootCause: (actionsData && actionsData[0]) ? String(actionsData[0]).replace(/^\d+\.\s*/,'') : ('Risk score ' + (payload.riskScore || 'n/a') + ' on ' + (payload.docType || 'this matter') + '.'),
+        recommendedAction: (actionsData && actionsData[1]) ? String(actionsData[1]).replace(/^\d+\.\s*/,'') : 'Review the Legal strategist brief and route for executive sign-off.'
+      };
+      const legalProSentinelKey = 'TSM_LEGAL_STRATEGIST_RELAY';
+      const legalProSentinelExisting = JSON.parse(localStorage.getItem(legalProSentinelKey) || 'null') || {};
+      legalProSentinelExisting.anomalies = [legalProAnomaly];
+      legalProSentinelExisting.generatedAt = new Date().toISOString();
+      localStorage.setItem(legalProSentinelKey, JSON.stringify(legalProSentinelExisting));
+      window.dispatchEvent(new CustomEvent('TSM_SENTINEL_REFRESH'));
+    } catch(e) { console.warn('[sentinel-push] legal error:', e); }
+    // ── END SENTINEL PUSH ────────────────────────────────────────────────────
+
   } catch(err) { console.warn('Relay write error:', err); }
 }
 
