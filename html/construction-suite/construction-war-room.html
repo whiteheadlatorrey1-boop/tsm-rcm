@@ -1646,17 +1646,65 @@ if (typeof window.groqStreamModel !== 'function') {
 }
 
 if (!window.TSMMission) {
+
+  // Offline fallback only — used if the classification API call below fails.
+  // Not the primary path anymore.
+  function keywordClassify(items) {
+    const isPermits = l => /permit|zoning|variance|inspection\s+approval|city\s+of\b/i.test(l);
+    const isFieldOps = l => /safety|osha|crew|schedule|field|rfi|walk|inspection\s+log|excavation/i.test(l);
+    return {
+      permitsItems: items.filter(isPermits),
+      fieldOpsItems: items.filter(l => isFieldOps(l) && !isPermits(l)),
+      generalItems: items.filter(l => !isPermits(l) && !isFieldOps(l))
+    };
+  }
+
+  // Real classification: ask the same model used for the 6 engines to route
+  // each flagged item. NOTE: there's no existing platform-wide taxonomy for
+  // "which downstream tool should own this remediation item" — con-permits /
+  // con-hub in the doc-search routing table classify document INTAKE, not
+  // defect remediation, so this PERMITS/FIELDOPS/GENERAL split is one I
+  // defined for this feature, not one I inherited. Swap it out if a real
+  // taxonomy shows up later.
+  async function llmClassify(items) {
+    if (!items.length) return { permitsItems: [], fieldOpsItems: [], generalItems: [] };
+    const numbered = items.map((l, i) => `${i+1}. ${l}`).join('\n');
+    const prompt = `Classify each numbered construction defect item below by which team should remediate it.
+Categories:
+PERMITS — requires filing, amending, or following up on a permit/zoning/inspection approval with a city or authority
+FIELDOPS — requires action by the on-site field crew: safety walks, OSHA/inspection logs, schedule, RFIs, procurement, jobsite conditions
+GENERAL — anything else (financial, legal, contractual, ownership decisions)
+
+Respond with ONLY one line per item, exact format "N: CATEGORY" (e.g. "1: PERMITS"). No other text.
+
+ITEMS:
+${numbered}`;
+    const txt = await callGroq(prompt, 5); // reuse Engine 05's token budget
+    const map = {};
+    txt.split('\n').forEach(line => {
+      const m = line.match(/^\s*(\d+)\s*:\s*(PERMITS|FIELDOPS|GENERAL)/i);
+      if (m) map[parseInt(m[1])] = m[2].toUpperCase();
+    });
+    if (Object.keys(map).length < items.length) throw new Error('incomplete classification');
+    return {
+      permitsItems: items.filter((l,i) => map[i+1] === 'PERMITS'),
+      fieldOpsItems: items.filter((l,i) => map[i+1] === 'FIELDOPS'),
+      generalItems: items.filter((l,i) => map[i+1] === 'GENERAL')
+    };
+  }
+
   window.TSMMission = {
     async launch({ vertical, anomaly, container, onComplete }) {
       const missionId = 'MISSION-' + Date.now().toString(36).toUpperCase();
       const items = (anomaly || '').split('\n').map(l => l.trim()).filter(l => l.startsWith('⚠'));
 
-      const isPermits = l => /permit|zoning|variance|inspection\s+approval|city\s+of\b/i.test(l);
-      const isFieldOps = l => /safety|osha|crew|schedule|field|rfi|walk|inspection\s+log|excavation/i.test(l);
-
-      const permitsItems = items.filter(isPermits);
-      const fieldOpsItems = items.filter(isFieldOps);
-      const generalItems = items.filter(l => !isPermits(l) && !isFieldOps(l));
+      let permitsItems, fieldOpsItems, generalItems, usedFallback = false;
+      try {
+        ({ permitsItems, fieldOpsItems, generalItems } = await llmClassify(items));
+      } catch (err) {
+        usedFallback = true;
+        ({ permitsItems, fieldOpsItems, generalItems } = keywordClassify(items));
+      }
 
       if (permitsItems.length) {
         localStorage.setItem('tsm_permits_remediation_task', JSON.stringify({
@@ -1673,7 +1721,7 @@ if (!window.TSMMission) {
 
       container.innerHTML = `
         <div style="border:1px solid #1ee8b640;background:#0d1a0d;padding:10px;font-size:10px;line-height:1.7;color:#a0b8a0;">
-          <div style="color:#1ee8b6;font-weight:700;letter-spacing:1px;margin-bottom:6px;">⚡ MISSION ${missionId}</div>
+          <div style="color:#1ee8b6;font-weight:700;letter-spacing:1px;margin-bottom:6px;">⚡ MISSION ${missionId}${usedFallback ? ' <span style="color:#ffc400;font-weight:400;">(offline classifier)</span>' : ''}</div>
           <div>${permitsItems.length} item(s) routed to <b style="color:#1ee8b6;">Permits & Proposals</b></div>
           <div>${fieldOpsItems.length} item(s) routed to <b style="color:#1ee8b6;">Field &amp; Document Ops</b></div>
           ${generalItems.length ? `<div>${generalItems.length} item(s) held for Strategist review</div>` : ''}
