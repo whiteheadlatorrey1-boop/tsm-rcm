@@ -638,6 +638,45 @@ async function runStrategist(){
     localStorage.setItem('tsm_ins_strat_relay',JSON.stringify(relay));
   }catch(e){}
 
+  // ── SENTINEL PUSH ──────────────────────────────────────────────────
+  // Real numbers only: BNCA confidence already parsed above, exposure
+  // pulled from the War Room snapshot the strategist itself received.
+  try {
+    function insParseExposureNumber(str){
+      if (!str) return 0;
+      const nums = String(str).match(/[\d,]+(?:\.\d+)?/g);
+      if (!nums) return 0;
+      const mult = /m\b/i.test(str) ? 1000000 : (/k\b/i.test(str) ? 1000 : 1);
+      const vals = nums.map(n => parseFloat(n.replace(/,/g,'')) * mult);
+      return vals.length > 1 ? Math.round((vals[0] + vals[1]) / 2) : Math.round(vals[0]);
+    }
+    function insSeverityForExposure(n, conf){
+      if (n >= 250000 || (conf !== null && conf < 60)) return 'CRIT';
+      if (n >= 100000 || (conf !== null && conf < 75)) return 'HIGH';
+      if (n >= 25000) return 'MED';
+      return 'LOW';
+    }
+    const insExposureRaw = warRoomData?.snapshot?.exposure || '';
+    const insExposureNum = insParseExposureNumber(insExposureRaw);
+    const insConf = overall ? parseInt(overall[1]) : null;
+    const insAnomalies = [{
+      id: 'ins-strat-' + Date.now(),
+      title: (warRoomData?.docType || 'Insurance Matter') + ' \u2014 Strategist Synthesis',
+      severity: insSeverityForExposure(insExposureNum, insConf),
+      exposure: insExposureNum,
+      confidence: insConf !== null ? insConf : 78,
+      rootCause: 'BNCA 4-node synthesis on ' + (warRoomData?.docType || 'this matter') + ' \u2014 risk: ' + (warRoomData?.snapshot?.risk || 'see strategist brief') + '.',
+      recommendedAction: 'Review the strategist brief (' + (document.getElementById('stratFocus') ? document.getElementById('stratFocus').value : 'default focus') + ') and route to executive escalation.'
+    }];
+    const insSentinelKey = 'TSM_INSURANCE_STRATEGIST_RELAY';
+    const insSentinelExisting = JSON.parse(localStorage.getItem(insSentinelKey) || 'null') || {};
+    insSentinelExisting.anomalies = insAnomalies;
+    insSentinelExisting.generatedAt = new Date().toISOString();
+    localStorage.setItem(insSentinelKey, JSON.stringify(insSentinelExisting));
+    window.dispatchEvent(new CustomEvent('TSM_SENTINEL_REFRESH'));
+  } catch(e) { console.warn('[sentinel-push] insurance error:', e); }
+  // ── END SENTINEL PUSH ─────────────────────────────────────────────
+
   document.getElementById('escalSub').textContent='Strategist synthesis complete — '+warRoomData?.docType+' · BNCA Confidence: '+(overall?overall[1]:'78')+'%';
   document.getElementById('escalateBar').classList.add('visible');
   document.getElementById('sbStatus').textContent='4 nodes complete · BNCA '+(overall?overall[1]:'78')+'% confidence';

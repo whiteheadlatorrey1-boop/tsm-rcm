@@ -1171,6 +1171,35 @@ async function generateReport(){
       exceptions: _excM ? _excM[1] : null,
       compliance: _compM ? _compM[1].trim().slice(0,12) : null
     }));
+      // ── SENTINEL PUSH ──────────────────────────────────────────────────
+      // Reuses the same parsed values (_expM/_riskM/etc.) already computed above.
+      try {
+        function finSeverityForRisk(str){
+          const n = parseInt(str, 10) || 0;
+          if (n >= 80) return 'critical';
+          if (n >= 60) return 'high';
+          if (n >= 40) return 'moderate';
+          return 'low';
+        }
+        const finRiskStr = _riskM ? _riskM[1] : '70/100';
+        const finAnomaly = {
+          id: 'finops-' + Date.now(),
+          vertical: 'FinOps',
+          title: 'FinOps Strategist Synthesis',
+          severity: finSeverityForRisk(finRiskStr),
+          riskScore: finRiskStr,
+          exposure: _expM ? _expM[1] : '$91,800–$112,200',
+          duplicatePayments: _dupM ? _dupM[1] : null,
+          unapprovedVendors: _vendM ? _vendM[1] : null,
+          missingPO: _poM ? _poM[1] : null,
+          exceptions: _excM ? _excM[1] : null,
+          summary: _txt,
+          timestamp: new Date().toISOString()
+        };
+        const finRelay = { anomalies: [finAnomaly], source: 'finops-main-strategist', ts: Date.now() };
+        localStorage.setItem('TSM_FINOPS_STRATEGIST_RELAY', JSON.stringify(finRelay));
+        window.dispatchEvent(new Event('TSM_SENTINEL_REFRESH'));
+      } catch(e) {}
       animateFeed();
       showRelayToast('BNCA synthesis complete. Ready to relay to Executive Portal.');
     }

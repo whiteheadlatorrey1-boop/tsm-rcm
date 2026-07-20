@@ -869,6 +869,32 @@ function writeExecRelay(e) {
     };
     sessionStorage.setItem('TSM_STRATEGIST_RELAY', JSON.stringify(payload));
   } catch(err) { console.warn('Relay write error:', err); }
+    // ── SENTINEL PUSH ──────────────────────────────────────────────────
+    // Reuses the payload object already built above -- no invented numbers.
+    try {
+      function legalSeverityForRisk(score){
+        const s = parseFloat(score) || 0;
+        if (s >= 75) return 'critical';
+        if (s >= 50) return 'high';
+        if (s >= 25) return 'moderate';
+        return 'low';
+      }
+      const legalAnomaly = {
+        id: 'legal-' + Date.now(),
+        vertical: 'Legal',
+        title: 'Legal Strategist Synthesis',
+        severity: legalSeverityForRisk(payload.riskScore),
+        riskScore: payload.riskScore,
+        winProb: payload.winProb,
+        settleRange: payload.settleRange,
+        summary: payload.synthesisText,
+        engines: payload.enginesCount,
+        timestamp: new Date().toISOString()
+      };
+      const legalRelay = { anomalies: [legalAnomaly], source: 'legal-main-strategist', ts: Date.now() };
+      localStorage.setItem('TSM_LEGAL_STRATEGIST_RELAY', JSON.stringify(legalRelay));
+      window.dispatchEvent(new Event('TSM_SENTINEL_REFRESH'));
+    } catch(e) {}
 }
 
 // ── EXPORT ─────────────────────────────────────────────────────────────────
