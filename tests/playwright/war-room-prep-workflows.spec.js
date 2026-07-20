@@ -95,7 +95,6 @@ const phaseChains = [
   { name: 'Governance', domain: 'governance', dir: 'governance' },
   { name: 'Digital Twin', domain: 'digital-twin', dir: 'digital-twin', warRoomFile: 'digital-twin.html' },
   { name: 'BPO Services (SAP phase)', domain: 'bpo', dir: 'bpo' },
-  { name: 'NOC', domain: 'noc', dir: 'noc' },
 ].map((p) => ({
   name: p.name,
   warRoom: `/html/war-rooms/${p.dir}/${p.warRoomFile || `${p.domain}-war-room.html`}`,
@@ -109,6 +108,12 @@ phaseChains.push({
   warRoom: '/html/war-rooms/integration-hub/integration-hub.html',
   strategist: '/html/war-rooms/integration-hub/integration-hub-strategist.html',
   executive: '/html/war-rooms/integration-hub/integration-hub-executive-portal.html',
+});
+phaseChains.push({
+  name: 'NOC',
+  warRoom: '/html/l1-copilot/noc/noc-war-room.html',
+  strategist: '/html/l1-copilot/noc/noc-strategist.html',
+  executive: '/html/l1-copilot/noc/noc-executive-portal.html',
 });
 
 // --- Honeywell scenario chain (nested under BPO in war-room-prep.html) ---
