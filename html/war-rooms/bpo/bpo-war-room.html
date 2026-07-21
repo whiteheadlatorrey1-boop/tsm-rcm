@@ -986,6 +986,21 @@ function storeWarRoomRelay(extracted) {
     TSM.relay.write("BPO", payload, {caseId, stage: 'war-room'});
     addMemoryEntry('War Room relay stored → Strategist ready');
   } catch(e) {}
+
+  // ── Mission runtime (Phase 2, additive — does not affect existing relay) ──
+  try {
+    if (window.TSMMissionModel && window.TSMMissionStore) {
+      const mission = window.TSMMissionModel.createMission({
+        id: caseId,
+        tenantId: 'default',
+        vertical: 'bpo',
+        client: null,
+        extraction: extracted,
+        classification: { docType: payload.selectedDocType, sector: payload.selectedSector }
+      });
+      window.TSMMissionStore.saveMission(mission);
+    }
+  } catch (e) { console.error('Mission write failed (non-fatal):', e); }
 }
 
 // ── NAVIGATION ──
@@ -1158,5 +1173,7 @@ function tsmWriteRelay(payload){
 </script>
 
   <script src="/html/core/tsm-runtime.js"></script>
+  <script src="/html/shared/runtime/mission/mission-model.js"></script>
+  <script src="/html/shared/runtime/mission/mission-store.js"></script>
 </body>
 </html>
