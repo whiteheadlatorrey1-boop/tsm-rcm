@@ -1055,14 +1055,26 @@ function nav(url) { window.location.href = url; }
 </script>
 <script>
 
-/* TSM AUTO-FIRE: read docsearch relay and fire engines */
+/* TSM AUTO-FIRE: read docsearch relay and fire engines
+   NOTE: bpo-war-room.html is the routing target for TWO intake verticals —
+   'bpo' (tsm_bpo_docsearch_relay) and 'bpo-ops' (tsm_bpoops_docsearch_relay).
+   This is an interim stopgap so BPO Ops documents aren't silently dropped;
+   BPO Ops is expected to get its own dedicated operations-platform page
+   (work queues / SLA timers / tenant scoping) later, at which point this
+   bpoops branch should be removed in favor of that page reading its own
+   relay key directly. */
 (function tsmAutoFire(){
   try {
-    const raw = localStorage.getItem('tsm_bpo_docsearch_relay');
+    var RELAY_KEYS = ['tsm_bpo_docsearch_relay', 'tsm_bpoops_docsearch_relay'];
+    var raw = null, usedKey = null;
+    for (var i = 0; i < RELAY_KEYS.length; i++) {
+      var v = localStorage.getItem(RELAY_KEYS[i]);
+      if (v) { raw = v; usedKey = RELAY_KEYS[i]; break; }
+    }
     if (!raw) return;
     const relay = JSON.parse(raw);
     if (!relay.summary && !relay.doc) return;
-    localStorage.removeItem('tsm_bpo_docsearch_relay');
+    localStorage.removeItem(usedKey);
     const summary = relay.summary || (relay.doc ? JSON.stringify(relay.doc).slice(0,800) : '');
     const ta = document.getElementById('docPaste') || document.querySelector('textarea');
     if (ta) {
