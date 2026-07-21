@@ -202,7 +202,7 @@ function log(ok, msg) {
         const m = window.TSMMissionModel.createMission({ vertical: 'bpo', tenantId: 'verify-tenant', client: 'Puppeteer Timeline Test' });
         window.TSMMissionModel.addTask(m, { title: 'Verify step 1', status: 'complete' });
         window.TSMMissionModel.transitionStage(m, window.TSMMissionModel.STAGES.IN_PROGRESS, 'verify-script');
-        window.TSMMissionModel.transitionStage(m, window.TSMMissionModel.STAGES.IN_REVIEW, 'verify-script');
+        window.TSMMissionModel.transitionStage(m, window.TSMMissionModel.STAGES.QA, 'verify-script');
         window.TSMMissionStore.saveMission(m);
         localStorage.setItem('TSM_BPO_WAR_RELAY', JSON.stringify({
           caseId: m.id, selectedSector: 'BPO', selectedDocType: 'Verify Doc'
