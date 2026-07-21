@@ -417,10 +417,11 @@ async function fetchGroqWithRetry(groqKey, body, maxRetries = 3) {
 
 app.post('/api/groq/validate-key', async (req, res) => {
   const clientKey = (req.body && req.body.apiKey || '').trim();
-  if (!clientKey) return res.status(400).json({ ok: false, error: 'No API key provided.' });
+  const groqKey = clientKey || process.env.GROQ_API_KEY || process.env.GROQ_KEY;
+  if (!groqKey) return res.status(400).json({ ok: false, error: 'No API key provided (client or server).' });
   try {
     const r = await fetch('https://api.groq.com/openai/v1/models', {
-      headers: { 'Authorization': 'Bearer ' + clientKey }
+      headers: { 'Authorization': 'Bearer ' + groqKey }
     });
     return res.json({ ok: r.ok });
   } catch (e) {
