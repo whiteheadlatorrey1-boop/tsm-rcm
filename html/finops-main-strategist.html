@@ -423,9 +423,9 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:13
 .tsm-recovery{text-align:center;font-family:'JetBrains Mono',monospace;font-size:.59rem;margin-top:5px;opacity:.4}
 
 </style>
-<script src="./html/js/tsm-runtime-lock.js"></script>
-<script src="./html/js/tsm-event-contract.js"></script>
-<script src="./html/js/tsm-autonomy-layer.js"></script>
+<script src="./js/tsm-runtime-lock.js"></script>
+<script src="./js/tsm-event-contract.js"></script>
+<script src="./js/tsm-autonomy-layer.js"></script>
 </head>
 <body>
 
@@ -1171,7 +1171,7 @@ async function callGroq(messages, onChunk){
   const res = await fetch('/api/war-room/stream',{
     method:'POST',
     headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({model, messages, max_tokens:1800, stream:true, temperature:0.4})
+    body:JSON.stringify({model, messages, max_tokens:4000, stream:true, temperature:0.4})
   });
   if(!res.ok){ const e=await res.text(); throw new Error('Groq: '+e); }
   const reader=res.body.getReader(), dec=new TextDecoder();
@@ -1823,11 +1823,23 @@ function finXPParseExplain(raw){
   const brief = briefMatch ? briefMatch[1].trim() : raw;
   let obj = null;
   if(jsonMatch){
+  const clean = jsonMatch[1].trim().replace(/```json|```/g,'').trim();
+  if(clean.endsWith('}')){
     try{
-      const clean = jsonMatch[1].trim().replace(/```json|```/g,'').trim();
       obj = JSON.parse(clean);
-    }catch(e){ console.warn('finXP explain JSON parse:',e); }
+    }catch(e){
+      // Try repairing common AI JSON mistakes: trailing commas before ] or }
+      try{
+        const repaired = clean.replace(/,(\s*[\]}])/g, '$1');
+        obj = JSON.parse(repaired);
+      }catch(e2){
+    console.warn('finXP explain JSON parse (unrepairable):', e2);
+    window.lastBadJSON = clean;
+    console.log('Stored in window.lastBadJSON — length:', clean.length);
+   }
+    }
   }
+}
   return {brief, obj};
 }
 

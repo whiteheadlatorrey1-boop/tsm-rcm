@@ -228,6 +228,7 @@
     out.sweep = {
       caseId: sweepPkg.caseId || null,
       phasesTouched: touched,
+      phaseNames: sweepPkg.phases ? Object.keys(sweepPkg.phases) : [],
       errorCount: sweepPkg.errors ? sweepPkg.errors.length : 0,
       capturedAt: new Date().toISOString()
     };

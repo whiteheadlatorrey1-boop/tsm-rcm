@@ -108,6 +108,62 @@ summary::marker{content:''}
   let relay = null;
   let lastLoggedCaseId = null;
 
+  // ── SENTINEL PUSH ────────────────────────────────────────────────────
+  // MDM is a STANDALONE phase -- gets its own TSM_MDM_STRATEGIST_RELAY
+  // key. Unlike governance/integration-hub/digital-twin, MDM already has
+  // a real backend (/api/mdm/merge) and its own relay shape (duplicates/
+  // ambiguous/highConfidence pools + quality_score), so severity is
+  // derived from data-quality signal, not a generic severity field.
+  // Hooked at relay load (loadRelay already tracks lastLoggedCaseId for
+  // its own TSM.relay.write() call, so we piggyback the same dedupe key
+  // rather than adding a second one).
+  const SENTINEL_ID = 'mdm';
+  const SENTINEL_RELAY_KEY = 'TSM_' + SENTINEL_ID.toUpperCase() + '_STRATEGIST_RELAY';
+  let lastSentinelCaseId = null;
+
+  function pushToSentinel(r){
+    try {
+      if(!r || !r.caseId || r.caseId === lastSentinelCaseId) return; // already pushed this case
+      const ambiguous = r.ambiguous || (r.duplicates||[]).filter(m=>!(m.matchReason==='identifier_exact'&&m.matchScore>=95));
+      const kpis = r.kpis || {};
+      const quality = kpis.quality_score;
+
+      let sev = null;
+      if(typeof quality === 'number'){
+        if(quality < 70) sev = 'HIGH';
+        else if(quality < 90) sev = 'MED';
+      }
+      if(!sev && ambiguous.length >= 5) sev = 'MED'; // large ambiguous backlog is worth flagging even if quality_score is missing
+      if(!sev) return; // clean data, nothing to surface
+
+      const anomaly = {
+        id: SENTINEL_ID + '-' + r.caseId,
+        title: 'MDM data quality \u2014 ' + ambiguous.length + ' match(es) need review',
+        severity: sev,
+        exposure: 0, // quality_score is a %, not a dollar figure
+        confidence: 55,
+        rootCause: 'Data quality score ' + (typeof quality==='number' ? quality+'%' : '\u2014') + '; ' + ambiguous.length + ' ambiguous duplicate match(es) awaiting a strategist decision.',
+        recommendedAction: 'Review the MDM strategist queue for case ' + r.caseId + '.',
+        impacts: {}
+      };
+
+      const existing = JSON.parse(localStorage.getItem(SENTINEL_RELAY_KEY) || 'null') || { anomalies: [] };
+      if(!Array.isArray(existing.anomalies)) existing.anomalies = [];
+      existing.anomalies = existing.anomalies.filter(a => a.id !== anomaly.id);
+      existing.anomalies.push(anomaly);
+      existing.generatedAt = new Date().toISOString();
+      localStorage.setItem(SENTINEL_RELAY_KEY, JSON.stringify(existing));
+
+      lastSentinelCaseId = r.caseId;
+
+      if(window.TSMCapabilitySweep && typeof window.TSMCapabilitySweep.autoEnrichSentinel === 'function'){
+        window.TSMCapabilitySweep.autoEnrichSentinel(SENTINEL_ID);
+      }
+      window.dispatchEvent(new CustomEvent('TSM_SENTINEL_REFRESH'));
+    } catch(e){ console.warn('[sentinel-push] mdm error:', e); }
+  }
+  // ── END SENTINEL PUSH ──────────────────────────────────────────────────
+
   function loadRelay(){
     relay = (window.TSMAutoPipeline && window.TSMAutoPipeline.readRelay)
       ? window.TSMAutoPipeline.readRelay('mdm')
@@ -123,6 +179,7 @@ summary::marker{content:''}
       try{ TSM.relay.write("MDM", relay, {caseId: relay.caseId, stage:'strategist'}); }catch(e){}
       lastLoggedCaseId = relay.caseId;
     }
+    pushToSentinel(relay);
     render();
   }
 

@@ -1480,7 +1480,10 @@ Return JSON matching exactly this schema:
   "ref": string or "",
   "summary": one short sentence describing the document,
   "defectFlags": array of short strings — specific issues/exceptions found in the document. For vertical "re", choose ONLY from this fixed set when applicable: ["Financing Failure","Appraisal Gap","Title Defect","Inspection Issues","UW Conditions","Closing Delay"], and use them to inform routing.re.sourceNode (Financing Failure->re-finance, Appraisal Gap->re-market, Title Defect/UW Conditions->re-strategist, Closing Delay->re-exec, Inspection Issues->re-doc-command). For all other verticals, use concise 2-4 word freeform issue labels relevant to the content (e.g. "Coverage Gap", "Code Violation", "Late Filing"), or [] if no issues are present,
-  "bnca": boolean — true ONLY if the document represents an anomaly, discrepancy, denial, dispute, or risk that should escalate to BNCA review
+  "bnca": boolean — true ONLY if the document represents an anomaly, discrepancy, denial, dispute, or risk that should escalate to BNCA review,
+  "confidence": integer 0-100 -- your confidence that documentType, verticals, and routing above are correct. Lower this for blurry/ambiguous/low-signal content, raise it for clear unambiguous matches,
+  "reasoning": array of 2-4 short strings -- the specific signals in the content (keywords, structure, terminology) that drove this classification. e.g. ["Contains ICD-10 codes", "References CMS-1500 form", "Mentions denial appeal deadline"],
+  "missingFields": array of short strings -- fields you would normally expect to find for this specific documentType that are NOT present in the content provided. Return [] if nothing expected is missing
 }
 
 Valid node IDs per vertical:

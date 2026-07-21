@@ -172,9 +172,79 @@ function renderList(items, label, opts){
   return `<div class="sec"><div class="sec-hdr">${label}</div>${rows || '<div class="no-items">All clear &mdash; no flagged items.</div>'}</div>`;
 }
 
+// ── SENTINEL PUSH ──────────────────────────────────────────────────────
+// Integration Hub is a STANDALONE phase -- gets its own
+// TSM_<ID>_STRATEGIST_RELAY key. This template has no severity field on
+// its "systems" list items (status is healthy/degraded/down, not
+// CRIT/HIGH/MED/LOW), so severity is derived from system status +
+// error/queue KPIs instead of a generic severity lookup. Hooked into
+// render() itself and guarded by data.timestamp, same pattern as
+// governance-strategist.html.
+const SENTINEL_ID = 'integration-hub'; // NOTE: matches sentinel-center.html's VERTICALS id, NOT CFG.domain ('INTEGRATION')
+const SENTINEL_RELAY_KEY = 'TSM_' + SENTINEL_ID.toUpperCase() + '_STRATEGIST_RELAY';
+const SENTINEL_PUSH_MARK_KEY = 'TSM_' + SENTINEL_ID.toUpperCase() + '_LAST_SENTINEL_PUSH';
+
+function worstSystemSeverity(systems, kpiBase){
+  let sev = null;
+  (systems || []).forEach(s=>{
+    if(!s || typeof s !== 'object') return;
+    const status = String(s.status || '').toLowerCase();
+    if(status === 'down' || status === 'failed' || status === 'critical'){ sev = 'HIGH'; }
+    else if(status === 'degraded' && sev !== 'HIGH'){ sev = 'MED'; }
+  });
+  if(!sev){
+    // Fall back to KPI-level signal when no single system is individually flagged.
+    if(Number(kpiBase.failedEtl) > 0) sev = 'HIGH';
+    else if(Number(kpiBase.backedUpQueues) > 0 || Number(kpiBase.totalErrors) > 0 || Number(kpiBase.degraded) > 0) sev = 'MED';
+  }
+  return sev;
+}
+
+function pushToSentinel(data){
+  try {
+    const mark = String(data.timestamp || '');
+    if(mark && sessionStorage.getItem(SENTINEL_PUSH_MARK_KEY) === mark) return;
+
+    const kpiBase = getPath(data, CFG.kpiPath) || {};
+    const systems = getPath(data, CFG.lists[0].path) || [];
+    const sev = worstSystemSeverity(systems, kpiBase);
+    if(!sev) return; // all systems healthy, nothing to surface
+
+    const flaggedSystem = systems.find(s => s && s.status && String(s.status).toLowerCase() !== 'healthy');
+
+    const anomaly = {
+      id: SENTINEL_ID + '-' + (mark || Date.now()),
+      title: flaggedSystem ? ((flaggedSystem.name || flaggedSystem.id || 'System') + ' \u2014 ' + flaggedSystem.status) : 'Integration Hub degradation',
+      severity: sev,
+      exposure: 0, // no $ KPI in this template's CFG -- throughput/latency/error counts, not dollars
+      confidence: 55,
+      rootCause: flaggedSystem ? itemText(flaggedSystem) : ('Errors: ' + (kpiBase.totalErrors||0) + ', backed-up queues: ' + (kpiBase.backedUpQueues||0) + ', failed ETL: ' + (kpiBase.failedEtl||0)),
+      recommendedAction: 'Review the Integration Hub strategist report for case relayed ' + (data.timestamp ? new Date(data.timestamp).toLocaleString() : ''),
+      impacts: {}
+    };
+
+    const existing = JSON.parse(localStorage.getItem(SENTINEL_RELAY_KEY) || 'null') || { anomalies: [] };
+    if(!Array.isArray(existing.anomalies)) existing.anomalies = [];
+    existing.anomalies = existing.anomalies.filter(a => a.id !== anomaly.id);
+    existing.anomalies.push(anomaly);
+    existing.generatedAt = new Date().toISOString();
+    localStorage.setItem(SENTINEL_RELAY_KEY, JSON.stringify(existing));
+
+    if(mark) sessionStorage.setItem(SENTINEL_PUSH_MARK_KEY, mark);
+
+    if(window.TSMCapabilitySweep && typeof window.TSMCapabilitySweep.autoEnrichSentinel === 'function'){
+      window.TSMCapabilitySweep.autoEnrichSentinel(SENTINEL_ID);
+    }
+    window.dispatchEvent(new CustomEvent('TSM_SENTINEL_REFRESH'));
+  } catch(e){ console.warn('[sentinel-push] integration-hub error:', e); }
+}
+// ── END SENTINEL PUSH ────────────────────────────────────────────────────
+
 function render(){
   const data = loadRelay();
   if(!data){ renderEmpty(); return; }
+
+  pushToSentinel(data);
 
   document.getElementById('hdrSub').textContent = `Relayed ${data.timestamp ? new Date(data.timestamp).toLocaleString() : '&mdash;'}`;
 

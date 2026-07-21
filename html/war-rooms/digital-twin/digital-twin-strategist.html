@@ -172,9 +172,81 @@ function renderList(items, label, opts){
   return `<div class="sec"><div class="sec-hdr">${label}</div>${rows || '<div class="no-items">All clear &mdash; no flagged items.</div>'}</div>`;
 }
 
+// ── SENTINEL PUSH ──────────────────────────────────────────────────────
+// Digital Twin is a STANDALONE phase -- gets its own
+// TSM_<ID>_STRATEGIST_RELAY key. This template has no severity strings
+// anywhere -- everything is a 0-100 health_score (root-level KPI, since
+// CFG.kpiPath is "") plus a "domains" list of per-domain scores. Severity
+// is derived from the same thresholds dynamicCls() already uses for
+// color-coding (>=80 green/fine, >=50 amber/MED, <50 red/HIGH), so the
+// pushed severity always matches what's visually shown on this page.
+// Hooked into render() itself, guarded by data.timestamp.
+const SENTINEL_ID = 'digital-twin'; // NOTE: matches sentinel-center.html's VERTICALS id, NOT CFG.domain ('DIGITAL_TWIN')
+const SENTINEL_RELAY_KEY = 'TSM_' + SENTINEL_ID.toUpperCase() + '_STRATEGIST_RELAY';
+const SENTINEL_PUSH_MARK_KEY = 'TSM_' + SENTINEL_ID.toUpperCase() + '_LAST_SENTINEL_PUSH';
+
+function scoreSeverity(score){
+  const n = Number(score);
+  if(isNaN(n)) return null;
+  if(n < 50) return 'HIGH';
+  if(n < 80) return 'MED';
+  return null; // healthy -- nothing to surface
+}
+
+function pushToSentinel(data){
+  try {
+    const mark = String(data.timestamp || '');
+    if(mark && sessionStorage.getItem(SENTINEL_PUSH_MARK_KEY) === mark) return;
+
+    const kpiBase = getPath(data, CFG.kpiPath) || {}; // = data itself, CFG.kpiPath is ""
+    const domains = getPath(data, CFG.lists[0].path) || [];
+
+    let worstDomain = null, worstSev = null, worstScore = 101;
+    domains.forEach(d=>{
+      if(!d || typeof d !== 'object') return;
+      const sev = scoreSeverity(d.score);
+      if(sev && Number(d.score) < worstScore){ worstScore = Number(d.score); worstDomain = d; worstSev = sev; }
+    });
+
+    // Overall health_score can independently be worse than any single domain.
+    const overallSev = scoreSeverity(kpiBase.health_score);
+    let sev = worstSev, source = worstDomain ? (worstDomain.label || worstDomain.name || worstDomain.id) : null;
+    if(overallSev === 'HIGH' && sev !== 'HIGH'){ sev = 'HIGH'; source = 'Overall Twin Health'; }
+    if(!sev) return; // everything healthy, nothing to surface
+
+    const anomaly = {
+      id: SENTINEL_ID + '-' + (mark || Date.now()),
+      title: (source || 'Digital Twin') + ' health degraded',
+      severity: sev,
+      exposure: 0, // health_score is a %, not a dollar figure
+      confidence: 55,
+      rootCause: 'Overall health score: ' + fmtVal(kpiBase.health_score, 'pct') + (source ? ('; worst domain: ' + source) : ''),
+      recommendedAction: 'Review the Digital Twin strategist report for case relayed ' + (data.timestamp ? new Date(data.timestamp).toLocaleString() : ''),
+      impacts: {}
+    };
+
+    const existing = JSON.parse(localStorage.getItem(SENTINEL_RELAY_KEY) || 'null') || { anomalies: [] };
+    if(!Array.isArray(existing.anomalies)) existing.anomalies = [];
+    existing.anomalies = existing.anomalies.filter(a => a.id !== anomaly.id);
+    existing.anomalies.push(anomaly);
+    existing.generatedAt = new Date().toISOString();
+    localStorage.setItem(SENTINEL_RELAY_KEY, JSON.stringify(existing));
+
+    if(mark) sessionStorage.setItem(SENTINEL_PUSH_MARK_KEY, mark);
+
+    if(window.TSMCapabilitySweep && typeof window.TSMCapabilitySweep.autoEnrichSentinel === 'function'){
+      window.TSMCapabilitySweep.autoEnrichSentinel(SENTINEL_ID);
+    }
+    window.dispatchEvent(new CustomEvent('TSM_SENTINEL_REFRESH'));
+  } catch(e){ console.warn('[sentinel-push] digital-twin error:', e); }
+}
+// ── END SENTINEL PUSH ────────────────────────────────────────────────────
+
 function render(){
   const data = loadRelay();
   if(!data){ renderEmpty(); return; }
+
+  pushToSentinel(data);
 
   document.getElementById('hdrSub').textContent = `Relayed ${data.timestamp ? new Date(data.timestamp).toLocaleString() : '&mdash;'}`;
 

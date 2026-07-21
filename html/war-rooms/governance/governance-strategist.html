@@ -172,9 +172,79 @@ function renderList(items, label, opts){
   return `<div class="sec"><div class="sec-hdr">${label}</div>${rows || '<div class="no-items">All clear &mdash; no flagged items.</div>'}</div>`;
 }
 
+// ── SENTINEL PUSH ──────────────────────────────────────────────────────
+// Governance is a STANDALONE phase (its own war room -> strategist ->
+// executive portal triad), so it gets its own TSM_<ID>_STRATEGIST_RELAY
+// key -- unlike O2C/CRM/CPQ/Catalog/Approval/WIP, which stay
+// enrichment-only forever (Phase 9 rule). Hooked into render() itself,
+// since this template has no report-generation step of its own -- the
+// war room's relay IS the report. Guarded by data.timestamp so a
+// storage/TSM_RELAY_EVENT-triggered re-render doesn't push duplicates.
+const SENTINEL_ID = 'governance';
+const SENTINEL_RELAY_KEY = 'TSM_' + SENTINEL_ID.toUpperCase() + '_STRATEGIST_RELAY';
+const SENTINEL_PUSH_MARK_KEY = 'TSM_' + SENTINEL_ID.toUpperCase() + '_LAST_SENTINEL_PUSH';
+const SEV_ORDER = { CRIT:4, CRITICAL:4, HIGH:3, MED:2, MEDIUM:2, LOW:1 };
+
+function worstSeverity(items){
+  if(!Array.isArray(items) || !items.length) return null;
+  let worst = null, worstScore = 0;
+  items.forEach(it=>{
+    if(!it || typeof it !== 'object') return;
+    const raw = it.severity || it.status || it.priority;
+    if(!raw) return;
+    const key = String(raw).toUpperCase();
+    const score = SEV_ORDER[key] || 0;
+    if(score > worstScore){ worstScore = score; worst = key; }
+  });
+  if(!worst) return null;
+  return worst === 'CRITICAL' ? 'CRIT' : (worst === 'MEDIUM' ? 'MED' : worst);
+}
+
+function pushToSentinel(data){
+  try {
+    const mark = String(data.timestamp || '');
+    if(mark && sessionStorage.getItem(SENTINEL_PUSH_MARK_KEY) === mark) return; // already pushed this relay
+
+    const risks = getPath(data, CFG.lists[0].path) || [];
+    const sev = worstSeverity(risks);
+    if(!sev) return; // nothing worth surfacing -- controls passing, no open risks
+
+    const kpiBase = getPath(data, CFG.kpiPath) || {};
+    const topRisk = risks.find(r => (r && (r.severity||r.status||'').toUpperCase() === sev)) || risks[0];
+
+    const anomaly = {
+      id: SENTINEL_ID + '-' + (mark || Date.now()),
+      title: itemText(topRisk) || 'Governance & Risk finding',
+      severity: sev,
+      exposure: 0, // no $ KPI in this template's CFG -- avg_risk_score/open_risks are counts, not dollars
+      confidence: 60,
+      rootCause: itemText(topRisk) || 'See Governance & Risk war room for detail.',
+      recommendedAction: 'Review the Governance & Risk strategist report for case relayed ' + (data.timestamp ? new Date(data.timestamp).toLocaleString() : ''),
+      impacts: {}
+    };
+
+    const existing = JSON.parse(localStorage.getItem(SENTINEL_RELAY_KEY) || 'null') || { anomalies: [] };
+    if(!Array.isArray(existing.anomalies)) existing.anomalies = [];
+    existing.anomalies = existing.anomalies.filter(a => a.id !== anomaly.id);
+    existing.anomalies.push(anomaly);
+    existing.generatedAt = new Date().toISOString();
+    localStorage.setItem(SENTINEL_RELAY_KEY, JSON.stringify(existing));
+
+    if(mark) sessionStorage.setItem(SENTINEL_PUSH_MARK_KEY, mark);
+
+    if(window.TSMCapabilitySweep && typeof window.TSMCapabilitySweep.autoEnrichSentinel === 'function'){
+      window.TSMCapabilitySweep.autoEnrichSentinel(SENTINEL_ID);
+    }
+    window.dispatchEvent(new CustomEvent('TSM_SENTINEL_REFRESH'));
+  } catch(e){ console.warn('[sentinel-push] governance error:', e); }
+}
+// ── END SENTINEL PUSH ────────────────────────────────────────────────────
+
 function render(){
   const data = loadRelay();
   if(!data){ renderEmpty(); return; }
+
+  pushToSentinel(data);
 
   document.getElementById('hdrSub').textContent = `Relayed ${data.timestamp ? new Date(data.timestamp).toLocaleString() : '&mdash;'}`;
 

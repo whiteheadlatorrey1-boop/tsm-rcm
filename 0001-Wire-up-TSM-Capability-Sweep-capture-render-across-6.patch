@@ -1,0 +1,775 @@
+From d0de333e59bb44049e9dc11568b11d59d483150e Mon Sep 17 00:00:00 2001
+From: tsm-consultz <brightmindsfinancial@gmail.com>
+Date: Mon, 20 Jul 2026 21:36:53 +0000
+Subject: [PATCH] Wire up TSM Capability Sweep capture + render across 6
+ verticals
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Every war-room call site to POST /api/enterprise/capability-sweep was
+fire-and-forget (fetch(...).catch(...) with no .then()), so the real
+caseId + decisionPackage returned by the endpoint was thrown away and
+never shown to anyone.
+
+- Add html/shared/tsm-capability-sweep.js: fire() captures the response,
+  writes it to localStorage under TSM_<VERTICAL>_CAPABILITY_SWEEP, and
+  dispatches TSM_CAPABILITY_SWEEP_READY. render()/renderFromStorage()
+  show exactly what came back — no invented phase values; errors,
+  context-only phases, and pending phases are labeled honestly.
+
+- Swap the dead fetch(...).catch(...) call for TSMCapabilitySweep.fire()
+  in the 6 real call sites: RE, Construction, Legal, Healthcare,
+  Insurance, FinOps war rooms.
+
+- Add a "Enterprise Capability Sweep · 10-Phase Case Status" panel to
+  each vertical's actual escalation destination (confirmed via each
+  war room's window.location.href), so the captured decision package
+  is actually rendered where the user lands:
+    re-strategist.html, construction-strategist.html,
+    legal-main-strategist.html, executive-portal.html (healthcare),
+    insurance-strategist.html, finops-main-strategist.html
+
+- legal-main-strategist.html: added missing .sec.cyan CSS rule
+  (var(--cyan) existed, the class variant didn't).
+
+BPO and backups/ intentionally left untouched — BPO never called this
+endpoint to begin with; wiring it in is a separate decision.
+---
+ .../construction-strategist.html              |  22 ++
+ .../construction-war-room.html                |  31 ++-
+ html/finops-suite/finops-main-strategist.html |  18 ++
+ html/finops-suite/finops-war-room.html        |  31 ++-
+ html/healthcare/executive-portal.html         |  20 ++
+ html/healthcare/hc-main-strategist.html       |  31 ++-
+ html/legal-pro/legal-main-strategist.html     |  20 ++
+ html/legal-pro/legal-war-room.html            |  31 ++-
+ html/reo-pro/re-strategist.html               |  23 ++
+ html/reo-pro/re-war-room.html                 |  33 ++-
+ html/shared/tsm-capability-sweep.js           | 214 ++++++++++++++++++
+ html/tsm-insurance/insurance-strategist.html  |  22 ++
+ html/tsm-insurance/insurance-war-room.html    |  31 ++-
+ 13 files changed, 424 insertions(+), 103 deletions(-)
+ create mode 100644 html/shared/tsm-capability-sweep.js
+
+diff --git a/html/construction-suite/construction-strategist.html b/html/construction-suite/construction-strategist.html
+index 1e427a4d..4b5c1630 100644
+--- a/html/construction-suite/construction-strategist.html
++++ b/html/construction-suite/construction-strategist.html
+@@ -568,6 +568,28 @@ body{font-family:var(--mono);background:var(--bg);color:var(--text);font-size:12
+         <div class="tsm-recovery" id="conXPRecovery"></div>
+       </div>
+     </div>
++
++    <div class="tsm-xp" style="background:linear-gradient(135deg,rgba(16,185,129,.04),rgba(6,182,212,.02));border:1px solid rgba(16,185,129,.18)">
++      <div class="tsm-xp-title" style="color:#10b981">
++        <div class="tsm-xp-pulse" style="background:#10b981"></div>
++        ENTERPRISE CAPABILITY SWEEP — 10-PHASE CASE STATUS
++      </div>
++      <div id="tsm-capsweep-report"></div>
++    </div>
++    <script src="/shared/tsm-capability-sweep.js"></script>
++    <script>
++      (function () {
++        function renderCapSweep() {
++          if (window.TSMCapabilitySweep) {
++            TSMCapabilitySweep.renderFromStorage('construction', document.getElementById('tsm-capsweep-report'));
++          }
++        }
++        renderCapSweep();
++        window.addEventListener('TSM_CAPABILITY_SWEEP_READY', function (e) {
++          if (e.detail && e.detail.vertical === 'construction') renderCapSweep();
++        });
++      })();
++    </script>
+     <div class="bnca-lbl">Cross-App State</div>
+     <div class="cross-box" id="crossBox">
+       • Operations <span class="hi">[ready]</span> — Rebalance workload before backlog expands.<br>
+diff --git a/html/construction-suite/construction-war-room.html b/html/construction-suite/construction-war-room.html
+index df17f83f..87991f84 100644
+--- a/html/construction-suite/construction-war-room.html
++++ b/html/construction-suite/construction-war-room.html
+@@ -186,6 +186,7 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
+   <script src="/js/core/tsm-state.js"></script>
+   <script src="/js/core/tsm-mission-engine.js"></script>
+   <script src="/js/core/tsm-auto-pipeline.js"></script>
++  <script src="/shared/tsm-capability-sweep.js"></script>
+ </head>
+ <body>
+ 
+@@ -1444,23 +1445,19 @@ function fireCapabilitySweep(e) {
+     const projectM = e1.match(/PROJECT:[\s]*([^\n]+)/i);
+     const expM = combined.match(/EXPOSURE[:\s]+([^\n]+)/i);
+     const parties = partiesM ? partiesM[1].trim() : '';
+-    fetch('/api/enterprise/capability-sweep', {
+-      method: 'POST',
+-      headers: { 'Content-Type': 'application/json' },
+-      body: JSON.stringify({
+-        vertical: 'construction',
+-        title: (selectedDocType || 'Construction Document') + (projectM ? ' — ' + projectM[1].trim().slice(0, 60) : ''),
+-        summary: docText.slice(0, 1500),
+-        exposure: expM ? expM[1].trim().slice(0, 30) : null,
+-        entities: {
+-          customer: parties.split(/[·,]/)[0]?.trim() || projectM?.[1]?.trim() || 'Construction Project',
+-          relationshipType: 'Contractor',
+-          contingency: 'Reserve allocation / change-order resolution',
+-          sku: selectedDocType || 'CHANGE-ORDER',
+-          productName: projectM ? projectM[1].trim().slice(0, 60) : selectedDocType
+-        }
+-      })
+-    }).catch(err => console.warn('[Capability Sweep Construction]', err.message));
++    TSMCapabilitySweep.fire({
++      vertical: 'construction',
++      title: (selectedDocType || 'Construction Document') + (projectM ? ' — ' + projectM[1].trim().slice(0, 60) : ''),
++      summary: docText.slice(0, 1500),
++      exposure: expM ? expM[1].trim().slice(0, 30) : null,
++      entities: {
++        customer: parties.split(/[·,]/)[0]?.trim() || projectM?.[1]?.trim() || 'Construction Project',
++        relationshipType: 'Contractor',
++        contingency: 'Reserve allocation / change-order resolution',
++        sku: selectedDocType || 'CHANGE-ORDER',
++        productName: projectM ? projectM[1].trim().slice(0, 60) : selectedDocType
++      }
++    });
+   } catch (err) { console.warn('[Capability Sweep Construction]', err.message); }
+ }
+ 
+diff --git a/html/finops-suite/finops-main-strategist.html b/html/finops-suite/finops-main-strategist.html
+index 69225f4f..f752d4c9 100644
+--- a/html/finops-suite/finops-main-strategist.html
++++ b/html/finops-suite/finops-main-strategist.html
+@@ -620,6 +620,24 @@ Output is formatted for Executive Portal relay and CFO review.</div>
+       </div>
+     </div>
+ 
++    <!-- Enterprise Capability Sweep -->
++    <div class="section-label">Enterprise Capability Sweep · 10-Phase Case Status</div>
++    <div class="priority-block" id="tsm-capsweep-report" style="border:1px solid rgba(16,185,129,.3);"></div>
++    <script src="/shared/tsm-capability-sweep.js"></script>
++    <script>
++      (function () {
++        function renderCapSweep() {
++          if (window.TSMCapabilitySweep) {
++            TSMCapabilitySweep.renderFromStorage('finops', document.getElementById('tsm-capsweep-report'));
++          }
++        }
++        renderCapSweep();
++        window.addEventListener('TSM_CAPABILITY_SWEEP_READY', function (e) {
++          if (e.detail && e.detail.vertical === 'finops') renderCapSweep();
++        });
++      })();
++    </script>
++
+     <div class="action-row">
+       <button class="act-btn war" onclick="navigator.clipboard.writeText(document.getElementById('stratOutput').textContent)">COPY REPORT</button>
+       <button class="act-btn" onclick="exportTxt()">↓ EXPORT TXT</button>
+diff --git a/html/finops-suite/finops-war-room.html b/html/finops-suite/finops-war-room.html
+index 50a075a1..75926b71 100644
+--- a/html/finops-suite/finops-war-room.html
++++ b/html/finops-suite/finops-war-room.html
+@@ -168,6 +168,7 @@ body::before{content:'';position:fixed;top:0;right:0;width:500px;height:500px;ba
+   <script src="/js/core/tsm-state.js"></script>
+   <script src="/js/core/tsm-mission-engine.js"></script>
+   <script src="/js/core/tsm-auto-pipeline.js"></script>
++  <script src="/shared/tsm-capability-sweep.js"></script>
+ </head>
+ <body>
+ 
+@@ -1105,23 +1106,19 @@ function fireCapabilitySweep_FINOPS(e) {
+     const expM = e3.match(/TOTAL EXPOSURE:[\s]*([^\n]+)/i);
+     const periodM = e1.match(/PERIOD:[\s]*([^\n]+)/i);
+     const parties = partiesM ? partiesM[1].trim() : '';
+-    fetch('/api/enterprise/capability-sweep', {
+-      method: 'POST',
+-      headers: { 'Content-Type': 'application/json' },
+-      body: JSON.stringify({
+-        vertical: 'finops',
+-        title: (selectedDocType || 'FinOps Document') + (periodM ? ' — ' + periodM[1].trim().slice(0, 40) : ''),
+-        summary: docText.slice(0, 1500),
+-        exposure: expM ? expM[1].trim().slice(0, 30) : (amountM ? amountM[1].trim().slice(0, 30) : null),
+-        entities: {
+-          customer: parties.split(/[,;]/)[0]?.trim() || selectedDocType || 'FinOps Document',
+-          relationshipType: 'Vendor',
+-          contingency: 'Reserve allocation / collections resolution',
+-          sku: selectedDocType || 'FINOPS-DOC',
+-          productName: parties || selectedDocType
+-        }
+-      })
+-    }).catch(err => console.warn('[Capability Sweep FinOps]', err.message));
++    TSMCapabilitySweep.fire({
++      vertical: 'finops',
++      title: (selectedDocType || 'FinOps Document') + (periodM ? ' — ' + periodM[1].trim().slice(0, 40) : ''),
++      summary: docText.slice(0, 1500),
++      exposure: expM ? expM[1].trim().slice(0, 30) : (amountM ? amountM[1].trim().slice(0, 30) : null),
++      entities: {
++        customer: parties.split(/[,;]/)[0]?.trim() || selectedDocType || 'FinOps Document',
++        relationshipType: 'Vendor',
++        contingency: 'Reserve allocation / collections resolution',
++        sku: selectedDocType || 'FINOPS-DOC',
++        productName: parties || selectedDocType
++      }
++    });
+   } catch (err) { console.warn('[Capability Sweep FinOps]', err.message); }
+ }
+ 
+diff --git a/html/healthcare/executive-portal.html b/html/healthcare/executive-portal.html
+index ea51eb35..64654378 100644
+--- a/html/healthcare/executive-portal.html
++++ b/html/healthcare/executive-portal.html
+@@ -1482,6 +1482,26 @@ border-radius: 2px; flex-shrink: 0; white-space: nowrap;
+     </div>
+   </div>
+ 
++  <!-- ── ENTERPRISE CAPABILITY SWEEP ──────────────────────────────────────── -->
++  <div class="sec green-sec">
++    <div class="sec-label">Enterprise Capability Sweep · 10-Phase Case Status</div>
++  </div>
++  <div id="tsm-capsweep-report" style="background:var(--panel-bg,#0a1520);border:1px solid rgba(16,185,129,.18);border-radius:6px;padding:14px 16px;margin-bottom:16px;"></div>
++  <script src="/shared/tsm-capability-sweep.js"></script>
++  <script>
++    (function () {
++      function renderCapSweep() {
++        if (window.TSMCapabilitySweep) {
++          TSMCapabilitySweep.renderFromStorage('healthcare', document.getElementById('tsm-capsweep-report'));
++        }
++      }
++      renderCapSweep();
++      window.addEventListener('TSM_CAPABILITY_SWEEP_READY', function (e) {
++        if (e.detail && e.detail.vertical === 'healthcare') renderCapSweep();
++      });
++    })();
++  </script>
++
+ </div><!-- /main -->
+ 
+ <!-- ── STATUSBAR ──────────────────────────────────────────────────────────── -->
+diff --git a/html/healthcare/hc-main-strategist.html b/html/healthcare/hc-main-strategist.html
+index c9e32e81..3b5c32d3 100644
+--- a/html/healthcare/hc-main-strategist.html
++++ b/html/healthcare/hc-main-strategist.html
+@@ -1193,23 +1193,19 @@ function fireCapabilitySweep_HEALTHCARE(payload) {
+     const claimId = payload.claimId || '';
+     const exposure = payload.kpi?.totalAtRisk || null;
+     const summary = (payload.warRoomBrief || payload.aiSummary || payload.bnca?.revenuePosition || '').slice(0, 1500);
+-    fetch('/api/enterprise/capability-sweep', {
+-      method: 'POST',
+-      headers: { 'Content-Type': 'application/json' },
+-      body: JSON.stringify({
+-        vertical: 'healthcare',
+-        title: 'HC Strategist Relay' + (claimId ? ' — Claim ' + claimId : ''),
+-        summary,
+-        exposure,
+-        entities: {
+-          customer: claimId ? 'Claim ' + claimId : 'HonorHealth',
+-          relationshipType: 'Payer',
+-          contingency: 'Denial appeal / revenue recovery reserve',
+-          sku: claimId ? 'CLAIM-' + claimId : 'HC-STRATEGIST',
+-          productName: payload.denialCodes || 'HC Denial Management'
+-        }
+-      })
+-    }).catch(err => console.warn('[Capability Sweep Healthcare]', err.message));
++    TSMCapabilitySweep.fire({
++      vertical: 'healthcare',
++      title: 'HC Strategist Relay' + (claimId ? ' — Claim ' + claimId : ''),
++      summary,
++      exposure,
++      entities: {
++        customer: claimId ? 'Claim ' + claimId : 'HonorHealth',
++        relationshipType: 'Payer',
++        contingency: 'Denial appeal / revenue recovery reserve',
++        sku: claimId ? 'CLAIM-' + claimId : 'HC-STRATEGIST',
++        productName: payload.denialCodes || 'HC Denial Management'
++      }
++    });
+   } catch (err) { console.warn('[Capability Sweep Healthcare]', err.message); }
+ }
+ 
+@@ -1845,6 +1841,7 @@ PATTERN MATCH: [does this match active HonorHealth denial patterns CO-4/CO-11/CO
+ 
+ 
+ <script src="/shared/tsm-cure-cheatsheet.js"></script>
++<script src="/shared/tsm-capability-sweep.js"></script>
+ <script src="/js/core/tsm-event-bus.js"></script>
+ <script src="/html/core/tsm-kernel.js"></script>
+ <script src="/html/healthcare/js/relay.engine.js"></script>
+diff --git a/html/legal-pro/legal-main-strategist.html b/html/legal-pro/legal-main-strategist.html
+index d80d6cd1..663bea92 100644
+--- a/html/legal-pro/legal-main-strategist.html
++++ b/html/legal-pro/legal-main-strategist.html
+@@ -125,6 +125,8 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:1000;
+ .sec.green::before{background:var(--green);}
+ .sec.pink .sec-label{color:var(--pink);}
+ .sec.pink::before{background:var(--pink);}
++.sec.cyan .sec-label{color:var(--cyan);}
++.sec.cyan::before{background:var(--cyan);}
+ 
+ /* KPI strip */
+ .kpi-strip{display:grid;grid-template-columns:repeat(5,1fr);gap:1px;
+@@ -459,6 +461,24 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:1000;
+       <div style="padding:20px;text-align:center;color:var(--faint);font-size:9px">Run Strategic Synthesis to generate recommended actions</div>
+     </div>
+ 
++    <!-- ENTERPRISE CAPABILITY SWEEP -->
++    <div class="sec cyan"><div class="sec-label">Enterprise Capability Sweep · 10-Phase Case Status</div></div>
++    <div id="tsm-capsweep-report" style="background:var(--bg2);border:1px solid rgba(16,185,129,.18);padding:16px 20px;"></div>
++    <script src="/shared/tsm-capability-sweep.js"></script>
++    <script>
++      (function () {
++        function renderCapSweep() {
++          if (window.TSMCapabilitySweep) {
++            TSMCapabilitySweep.renderFromStorage('legal', document.getElementById('tsm-capsweep-report'));
++          }
++        }
++        renderCapSweep();
++        window.addEventListener('TSM_CAPABILITY_SWEEP_READY', function (e) {
++          if (e.detail && e.detail.vertical === 'legal') renderCapSweep();
++        });
++      })();
++    </script>
++
+     <!-- ESCALATE STRIP -->
+     <div class="sec pink" style="margin-top:24px"><div class="sec-label">Escalation · Chief Strategist Authorization Required</div></div>
+     <div style="background:var(--bg2);border:1px solid rgba(255,45,120,0.2);padding:16px 20px;display:flex;align-items:center;justify-content:space-between;gap:16px">
+diff --git a/html/legal-pro/legal-war-room.html b/html/legal-pro/legal-war-room.html
+index 42dd45f8..3d946547 100644
+--- a/html/legal-pro/legal-war-room.html
++++ b/html/legal-pro/legal-war-room.html
+@@ -279,6 +279,7 @@ main{padding:18px;display:flex;flex-direction:column;gap:14px}
+   <script src="/js/core/tsm-state.js"></script>
+   <script src="/js/core/tsm-mission-engine.js"></script>
+   <script src="/js/core/tsm-auto-pipeline.js"></script>
++  <script src="/shared/tsm-capability-sweep.js"></script>
+ </head>
+ <body>
+ 
+@@ -1246,23 +1247,19 @@ function fireCapabilitySweep_LEGAL(e) {
+     const caseTypeM = e1.match(/CASE TYPE:[\s]*([^\n]+)/i);
+     const expM = combined.match(/DAMAGES EXPOSURE[:\s]+([^\n]+)/i) || combined.match(/KEY AMOUNTS[:\s]+([^\n]+)/i);
+     const parties = partiesM ? partiesM[1].trim() : '';
+-    fetch('/api/enterprise/capability-sweep', {
+-      method: 'POST',
+-      headers: { 'Content-Type': 'application/json' },
+-      body: JSON.stringify({
+-        vertical: 'legal',
+-        title: (selectedDocType || 'Legal Matter') + (caseTypeM ? ' — ' + caseTypeM[1].trim().slice(0, 60) : ''),
+-        summary: docText.slice(0, 1500),
+-        exposure: expM ? expM[1].trim().slice(0, 30) : null,
+-        entities: {
+-          customer: parties.split(/\s+v\.?\s+|,|;/)[0]?.trim() || caseTypeM?.[1]?.trim() || 'Legal Matter',
+-          relationshipType: 'Opposing Party',
+-          contingency: 'Settlement authority / litigation reserve',
+-          sku: selectedDocType || 'LEGAL-MATTER',
+-          productName: caseTypeM ? caseTypeM[1].trim().slice(0, 60) : selectedDocType
+-        }
+-      })
+-    }).catch(err => console.warn('[Capability Sweep Legal]', err.message));
++    TSMCapabilitySweep.fire({
++      vertical: 'legal',
++      title: (selectedDocType || 'Legal Matter') + (caseTypeM ? ' — ' + caseTypeM[1].trim().slice(0, 60) : ''),
++      summary: docText.slice(0, 1500),
++      exposure: expM ? expM[1].trim().slice(0, 30) : null,
++      entities: {
++        customer: parties.split(/\s+v\.?\s+|,|;/)[0]?.trim() || caseTypeM?.[1]?.trim() || 'Legal Matter',
++        relationshipType: 'Opposing Party',
++        contingency: 'Settlement authority / litigation reserve',
++        sku: selectedDocType || 'LEGAL-MATTER',
++        productName: caseTypeM ? caseTypeM[1].trim().slice(0, 60) : selectedDocType
++      }
++    });
+   } catch (err) { console.warn('[Capability Sweep Legal]', err.message); }
+ }
+ 
+diff --git a/html/reo-pro/re-strategist.html b/html/reo-pro/re-strategist.html
+index 050d99a1..324c4191 100644
+--- a/html/reo-pro/re-strategist.html
++++ b/html/reo-pro/re-strategist.html
+@@ -511,11 +511,34 @@ body::before{content:'';position:fixed;inset:0;
+             <div class="tsm-recovery" id="reXPRecovery"></div>
+           </div>
+         </div>
++
++        <div class="tsm-xp" id="tsm-capsweep-panel" style="background:linear-gradient(135deg,rgba(16,185,129,.04),rgba(6,182,212,.02));border:1px solid rgba(16,185,129,.18)">
++          <div class="tsm-xp-title" style="color:#10b981">
++            <div class="tsm-xp-pulse" style="background:#10b981"></div>
++            ENTERPRISE CAPABILITY SWEEP — 10-PHASE CASE STATUS
++          </div>
++          <div id="tsm-capsweep-report"></div>
++        </div>
+       </div>
+     </div>
+   </div>
+ </div>
+ 
++<script src="/shared/tsm-capability-sweep.js"></script>
++<script>
++  (function () {
++    function renderCapSweep() {
++      if (window.TSMCapabilitySweep) {
++        TSMCapabilitySweep.renderFromStorage('real-estate', document.getElementById('tsm-capsweep-report'));
++      }
++    }
++    renderCapSweep();
++    window.addEventListener('TSM_CAPABILITY_SWEEP_READY', function (e) {
++      if (e.detail && e.detail.vertical === 'real-estate') renderCapSweep();
++    });
++  })();
++</script>
++
+ <script>
+ const API = '/api/mortgage/query';
+ const APP = 'realestate';
+diff --git a/html/reo-pro/re-war-room.html b/html/reo-pro/re-war-room.html
+index 7478798b..474ec9d0 100644
+--- a/html/reo-pro/re-war-room.html
++++ b/html/reo-pro/re-war-room.html
+@@ -1444,6 +1444,7 @@
+   <script src="/js/core/tsm-state.js"></script>
+   <script src="/js/core/tsm-mission-engine.js"></script>
+   <script src="/js/core/tsm-auto-pipeline.js"></script>
++  <script src="/shared/tsm-capability-sweep.js"></script>
+ </head>
+ 
+ <body>
+@@ -2802,24 +2803,20 @@ Dollar amounts and party names required.`;
+         const exposure = lienM ? lienM[0].replace(/^(?:mechanic lien|lien)\s*/i, '') : (contractM ? contractM[1] : null);
+         const property = propertyM ? propertyM[1].trim().slice(0, 80) : 'RE Transaction';
+ 
+-        fetch('/api/enterprise/capability-sweep', {
+-          method: 'POST',
+-          headers: { 'Content-Type': 'application/json' },
+-          body: JSON.stringify({
+-            vertical: 'real-estate',
+-            title: (payload.reportTitle || 'RE War Room Report') + ' — ' + property,
+-            summary: (payload.docText || payload.feedText || '').slice(0, 1500),
+-            exposure,
+-            entities: {
+-              customer: buyerM ? buyerM[1].trim() : property,
+-              relationshipType: 'Buyer',
+-              contingency: 'Title cure / lien resolution',
+-              sku: escrowM ? 'ESCROW-' + escrowM[1].trim() : 'RE-TRANSACTION',
+-              productName: property,
+-              seller: sellerM ? sellerM[1].trim() : undefined
+-            }
+-          })
+-        }).catch(err => console.warn('[Capability Sweep RE]', err.message));
++        TSMCapabilitySweep.fire({
++          vertical: 'real-estate',
++          title: (payload.reportTitle || 'RE War Room Report') + ' — ' + property,
++          summary: (payload.docText || payload.feedText || '').slice(0, 1500),
++          exposure,
++          entities: {
++            customer: buyerM ? buyerM[1].trim() : property,
++            relationshipType: 'Buyer',
++            contingency: 'Title cure / lien resolution',
++            sku: escrowM ? 'ESCROW-' + escrowM[1].trim() : 'RE-TRANSACTION',
++            productName: property,
++            seller: sellerM ? sellerM[1].trim() : undefined
++          }
++        });
+       } catch (err) { console.warn('[Capability Sweep RE]', err.message); }
+     }
+ 
+diff --git a/html/shared/tsm-capability-sweep.js b/html/shared/tsm-capability-sweep.js
+new file mode 100644
+index 00000000..0bc50fb1
+--- /dev/null
++++ b/html/shared/tsm-capability-sweep.js
+@@ -0,0 +1,214 @@
++/**
++ * TSM Capability Sweep — capture + render helper
++ * --------------------------------------------------------------------------
++ * The backend endpoint POST /api/enterprise/capability-sweep already writes
++ * real, caseId+vertical-tagged records into up to 10 SAP-phase capability
++ * stores (O2C, CRM, CPQ, Catalog, Approval, Governance, WIP) and pulls
++ * read-only context (no fabricated writes) from the 3 phases with no generic
++ * create path (MDM, Integration Hub, Digital Twin). See
++ * routes/enterprise-capability-bridge.js for the full design.
++ *
++ * Problem this fixes: every current call site fires that endpoint and
++ * discards the response (fetch(...).catch(...) with no .then()), so the
++ * real decisionPackage — and its caseId — is thrown away and never shown
++ * to anyone. This module:
++ *
++ *   1. fire(payload)   — POSTs to the endpoint, captures the real response,
++ *                        writes it to localStorage under
++ *                        TSM_<VERTICAL>_CAPABILITY_SWEEP, and dispatches
++ *                        'TSM_CAPABILITY_SWEEP_READY' so an open strategist
++ *                        tab can re-render immediately.
++ *   2. render(el, pkg) — renders exactly what came back. No phase is ever
++ *                        shown with an invented value: phases present in
++ *                        pkg.errors are shown as unavailable with the real
++ *                        error text; contextOnly phases are labeled as
++ *                        read-only context, not a case record; phases with
++ *                        no aiAnalysis and no error are labeled pending.
++ *
++ * ZERO RISK PATTERN — replace an existing fire-and-forget call:
++ *
++ *   fetch('/api/enterprise/capability-sweep', {...}).catch(err => ...);
++ *
++ * with:
++ *
++ *   TSMCapabilitySweep.fire({...same body...});
++ *
++ * and add a container + render call to the matching strategist page:
++ *
++ *   <div id="tsm-capsweep-report"></div>
++ *   <script>
++ *     TSMCapabilitySweep.renderFromStorage('legal', document.getElementById('tsm-capsweep-report'));
++ *     window.addEventListener('TSM_CAPABILITY_SWEEP_READY', function(e){
++ *       if (e.detail && e.detail.vertical === 'legal') {
++ *         TSMCapabilitySweep.renderFromStorage('legal', document.getElementById('tsm-capsweep-report'));
++ *       }
++ *     });
++ *   </script>
++ * ========================================================================== */
++
++(function (global) {
++  'use strict';
++
++  var PHASE_META = {
++    o2c:        { label: 'O2C — Order-to-Cash',        writable: true  },
++    crm:        { label: 'CRM',                        writable: true  },
++    cpq:        { label: 'CPQ — Configure/Price/Quote', writable: true  },
++    catalog:    { label: 'Catalog',                     writable: true  },
++    approval:   { label: 'Approval',                    writable: true  },
++    governance: { label: 'Governance',                  writable: true  },
++    wip:        { label: 'WIP',                         writable: true  },
++    mdm:        { label: 'MDM',                          writable: false },
++    integration:{ label: 'Integration Hub',              writable: false },
++    digitalTwin:{ label: 'Digital Twin',                 writable: false }
++  };
++  var PHASE_ORDER = ['o2c','crm','cpq','catalog','approval','governance','wip','mdm','integration','digitalTwin'];
++
++  function escapeHtml(s) {
++    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
++      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
++    });
++  }
++
++  function storageKey(vertical) {
++    return 'TSM_' + String(vertical || '').toUpperCase() + '_CAPABILITY_SWEEP';
++  }
++
++  /**
++   * fire(payload) — payload: { vertical, title, summary, exposure, entities, caseId? }
++   * Returns the fetch promise so callers can still .then/.catch if they want,
++   * but capture + storage + event dispatch happen regardless.
++   */
++  function fire(payload) {
++    if (!payload || !payload.vertical) {
++      console.warn('[TSMCapabilitySweep] fire() requires payload.vertical');
++      return Promise.resolve(null);
++    }
++    var vertical = payload.vertical;
++    return fetch('/api/enterprise/capability-sweep', {
++      method: 'POST',
++      headers: { 'Content-Type': 'application/json' },
++      body: JSON.stringify(payload)
++    })
++      .then(function (res) { return res.json(); })
++      .then(function (decisionPackage) {
++        try {
++          localStorage.setItem(storageKey(vertical), JSON.stringify({
++            capturedAt: new Date().toISOString(),
++            decisionPackage: decisionPackage
++          }));
++        } catch (e) { console.warn('[TSMCapabilitySweep] storage write failed:', e); }
++        try {
++          global.dispatchEvent(new CustomEvent('TSM_CAPABILITY_SWEEP_READY', { detail: { vertical: vertical, decisionPackage: decisionPackage } }));
++        } catch (e) { /* CustomEvent unsupported — no-op */ }
++        return decisionPackage;
++      })
++      .catch(function (err) {
++        console.warn('[TSMCapabilitySweep] fire failed for ' + vertical + ':', err.message);
++        return null;
++      });
++  }
++
++  function readStored(vertical) {
++    try {
++      var raw = localStorage.getItem(storageKey(vertical));
++      return raw ? JSON.parse(raw) : null;
++    } catch (e) { return null; }
++  }
++
++  function phaseHasError(pkg, phaseKey) {
++    if (!pkg.errors || !pkg.errors.length) return null;
++    var hit = pkg.errors.filter(function (e) { return e.indexOf(phaseKey + '.') === 0 || e.indexOf(phaseKey + ':') === 0; });
++    return hit.length ? hit.join('; ') : null;
++  }
++
++  function recordSummaryLine(phaseKey, record) {
++    if (!record) return null;
++    switch (phaseKey) {
++      case 'o2c':        return (record.orderRef || record.id) + ' \u2014 ' + (record.customer || '\u2014') + ' \u00b7 ' + (record.status || '\u2014');
++      case 'crm':        return record.accountName + ' \u00b7 ' + (record.relationshipType || '\u2014') + ' \u00b7 risk: ' + (record.riskFlag || '\u2014');
++      case 'cpq':        return (record.quoteRef || record.id) + ' \u2014 ' + (record.description || '\u2014') + ' \u00b7 ' + (record.status || '\u2014');
++      case 'catalog':    return (record.sku || record.id) + ' \u2014 ' + (record.name || '\u2014') + ' \u00b7 flag: ' + (record.flag || '\u2014');
++      case 'approval':   return record.title + ' \u00b7 ' + (record.status || '\u2014');
++      case 'governance':return (record.title || record.id) + ' \u00b7 severity: ' + (record.severity || '\u2014');
++      case 'wip':        return (record.action || record.id) + ' \u00b7 ' + (record.status || '\u2014');
++      default:           return record.id || null;
++    }
++  }
++
++  /**
++   * render(el, pkg) — pkg is the raw decisionPackage from the endpoint
++   * (or the {capturedAt, decisionPackage} wrapper — both accepted).
++   */
++  function render(el, pkgOrWrapper) {
++    if (!el) return;
++    if (!pkgOrWrapper) {
++      el.innerHTML = '<div style="font-family:monospace;font-size:.7rem;color:#5a7a99;padding:16px;">No capability sweep run yet for this case.</div>';
++      return;
++    }
++    var wrapper = pkgOrWrapper.decisionPackage ? pkgOrWrapper : { decisionPackage: pkgOrWrapper, capturedAt: pkgOrWrapper.generatedAt };
++    var pkg = wrapper.decisionPackage;
++    if (!pkg || !pkg.phases) {
++      el.innerHTML = '<div style="font-family:monospace;font-size:.7rem;color:#5a7a99;padding:16px;">Capability sweep response was empty or malformed.</div>';
++      return;
++    }
++
++    var rows = PHASE_ORDER.map(function (key) {
++      var meta = PHASE_META[key];
++      var phase = pkg.phases[key];
++      var errMsg = phaseHasError(pkg, key);
++      var statusLabel, statusColor, body;
++
++      if (!phase) {
++        statusLabel = 'NOT TOUCHED'; statusColor = '#5a7a99';
++        body = '<span style="color:#5a7a99;">This phase was not part of the sweep response.</span>';
++      } else if (errMsg && !phase.record && !phase.currentHealth && !phase.currentSnapshot) {
++        statusLabel = 'UNAVAILABLE'; statusColor = '#ef4444';
++        body = '<span style="color:#ef4444;">' + escapeHtml(errMsg) + '</span>';
++      } else if (phase.contextOnly) {
++        statusLabel = 'CONTEXT ONLY'; statusColor = '#f5a623';
++        var ctxBits = [];
++        if (phase.currentHealth) ctxBits.push('current health: ' + escapeHtml(JSON.stringify(phase.currentHealth).slice(0, 160)));
++        if (phase.currentSnapshot) ctxBits.push('current snapshot: ' + escapeHtml(JSON.stringify(phase.currentSnapshot).slice(0, 160)));
++        if (phase.aiAnalysis) ctxBits.push(escapeHtml(String(phase.aiAnalysis).slice(0, 400)));
++        body = '<div style="color:#94a3b8;">Read-only context \u2014 no case record was created for this phase.</div>' +
++          (ctxBits.length ? '<div style="margin-top:6px;font-size:.68rem;color:#7a9db5;">' + ctxBits.join('<br>') + '</div>' : '');
++      } else {
++        statusLabel = 'RECORD CREATED'; statusColor = '#10b981';
++        var summaryLine = recordSummaryLine(key, phase.record);
++        var aiBlock = phase.aiAnalysis
++          ? '<div style="margin-top:6px;font-size:.7rem;color:#c8e8f8;white-space:pre-wrap;">' + escapeHtml(String(phase.aiAnalysis).slice(0, 500)) + '</div>'
++          : (meta.writable && ('aiAnalysis' in phase)
++              ? '<div style="margin-top:6px;font-size:.65rem;color:#5a7a99;">AI analysis unavailable for this phase (no error reported, no synthesis returned).</div>'
++              : '');
++        body = (summaryLine ? '<div style="color:#e0eaf5;">' + escapeHtml(summaryLine) + '</div>' : '<div style="color:#5a7a99;">No record summary available.</div>') + aiBlock;
++      }
++
++      return '<div style="border:1px solid #1a3050;border-radius:6px;padding:10px 14px;margin-bottom:8px;background:#0a1520;">' +
++        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">' +
++        '<span style="font-family:monospace;font-size:.7rem;letter-spacing:.06em;color:#f2e8d0;">' + escapeHtml(meta.label) + '</span>' +
++        '<span style="font-family:monospace;font-size:.6rem;font-weight:700;letter-spacing:.08em;color:' + statusColor + ';">' + statusLabel + '</span>' +
++        '</div>' + body + '</div>';
++    }).join('');
++
++    var touched = pkg.phasesTouched != null ? pkg.phasesTouched : Object.keys(pkg.phases).length;
++    var errCount = pkg.errors ? pkg.errors.length : 0;
++    var header = '<div style="font-family:monospace;font-size:.62rem;color:#7a9db5;margin-bottom:10px;">' +
++      'CASE ' + escapeHtml(pkg.caseId || '\u2014') + ' \u00b7 ' + escapeHtml(pkg.vertical || '') + ' \u00b7 ' +
++      touched + '/10 phases touched' + (errCount ? ' \u00b7 ' + errCount + ' phase error(s)' : '') +
++      (wrapper.capturedAt ? ' \u00b7 captured ' + new Date(wrapper.capturedAt).toLocaleString() : '') +
++      '</div>';
++
++    el.innerHTML = header + rows;
++  }
++
++  function renderFromStorage(vertical, el) {
++    render(el, readStored(vertical));
++  }
++
++  global.TSMCapabilitySweep = {
++    fire: fire,
++    render: render,
++    renderFromStorage: renderFromStorage,
++    readStored: readStored
++  };
++})(window);
+diff --git a/html/tsm-insurance/insurance-strategist.html b/html/tsm-insurance/insurance-strategist.html
+index bae4ecc9..df5377bb 100644
+--- a/html/tsm-insurance/insurance-strategist.html
++++ b/html/tsm-insurance/insurance-strategist.html
+@@ -312,6 +312,28 @@ body::before{content:'';position:fixed;top:0;left:0;width:500px;height:500px;bac
+       </div>
+     </div>
+ 
++    <div class="tsm-xp" style="background:linear-gradient(135deg,rgba(16,185,129,.04),rgba(6,182,212,.02));border:1px solid rgba(16,185,129,.18)">
++      <div class="tsm-xp-title" style="color:#10b981">
++        <div class="tsm-xp-pulse" style="background:#10b981"></div>
++        ENTERPRISE CAPABILITY SWEEP — 10-PHASE CASE STATUS
++      </div>
++      <div id="tsm-capsweep-report"></div>
++    </div>
++    <script src="/shared/tsm-capability-sweep.js"></script>
++    <script>
++      (function () {
++        function renderCapSweep() {
++          if (window.TSMCapabilitySweep) {
++            TSMCapabilitySweep.renderFromStorage('insurance', document.getElementById('tsm-capsweep-report'));
++          }
++        }
++        renderCapSweep();
++        window.addEventListener('TSM_CAPABILITY_SWEEP_READY', function (e) {
++          if (e.detail && e.detail.vertical === 'insurance') renderCapSweep();
++        });
++      })();
++    </script>
++
+     <div class="escalate-bar" id="escalateBar">
+       <div>
+         <div class="eb-title">→ ESCALATE TO EXECUTIVE PORTAL</div>
+diff --git a/html/tsm-insurance/insurance-war-room.html b/html/tsm-insurance/insurance-war-room.html
+index 652d5149..6be7e5ef 100644
+--- a/html/tsm-insurance/insurance-war-room.html
++++ b/html/tsm-insurance/insurance-war-room.html
+@@ -284,6 +284,7 @@ body::before{content:'';position:fixed;top:0;right:0;width:600px;height:600px;ba
+   <script src="/js/core/tsm-state.js"></script>
+   <script src="/js/core/tsm-mission-engine.js"></script>
+   <script src="/js/core/tsm-auto-pipeline.js"></script>
++  <script src="/shared/tsm-capability-sweep.js"></script>
+ </head>
+ <body>
+ 
+@@ -1051,23 +1052,19 @@ function fireCapabilitySweep_INS(e) {
+     const amountM = e1.match(/TOTAL AMOUNT:[\s]*([^\n]+)/i);
+     const expM = e3.match(/TOTAL EXPOSURE:[\s]*([^\n]+)/i);
+     const parties = partiesM ? partiesM[1].trim() : '';
+-    fetch('/api/enterprise/capability-sweep', {
+-      method: 'POST',
+-      headers: { 'Content-Type': 'application/json' },
+-      body: JSON.stringify({
+-        vertical: 'insurance',
+-        title: (selectedDocType || 'Insurance Claim') + (claimM ? ' — ' + claimM[1].trim().slice(0, 60) : ''),
+-        summary: docText.slice(0, 1500),
+-        exposure: expM ? expM[1].trim().slice(0, 30) : (amountM ? amountM[1].trim().slice(0, 30) : null),
+-        entities: {
+-          customer: parties.split(/[,;]/)[0]?.trim() || claimM?.[1]?.trim() || 'Insurance Claim',
+-          relationshipType: 'Claimant',
+-          contingency: 'Appeal / claim resolution reserve',
+-          sku: claimM ? 'CLAIM-' + claimM[1].trim().slice(0, 20) : (selectedDocType || 'INS-CLAIM'),
+-          productName: selectedDocType
+-        }
+-      })
+-    }).catch(err => console.warn('[Capability Sweep Insurance]', err.message));
++    TSMCapabilitySweep.fire({
++      vertical: 'insurance',
++      title: (selectedDocType || 'Insurance Claim') + (claimM ? ' — ' + claimM[1].trim().slice(0, 60) : ''),
++      summary: docText.slice(0, 1500),
++      exposure: expM ? expM[1].trim().slice(0, 30) : (amountM ? amountM[1].trim().slice(0, 30) : null),
++      entities: {
++        customer: parties.split(/[,;]/)[0]?.trim() || claimM?.[1]?.trim() || 'Insurance Claim',
++        relationshipType: 'Claimant',
++        contingency: 'Appeal / claim resolution reserve',
++        sku: claimM ? 'CLAIM-' + claimM[1].trim().slice(0, 20) : (selectedDocType || 'INS-CLAIM'),
++        productName: selectedDocType
++      }
++    });
+   } catch (err) { console.warn('[Capability Sweep Insurance]', err.message); }
+ }
+ 
+-- 
+2.43.0
