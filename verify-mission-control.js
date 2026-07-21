@@ -46,8 +46,32 @@ function log(ok, msg) {
   await page.setViewport({ width: 1440, height: 900 });
 
   const consoleErrors = [];
-  page.on('console', msg => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
+  const failedRequests = [];
+  page.on('console', msg => {
+    // "Failed to load resource: ..." console messages carry no URL and are
+    // always paired with a 'requestfailed' event for the same failure (which
+    // does have the URL) — so we let requestfailed own that class of error
+    // entirely and only track genuine console errors (thrown exceptions,
+    // console.error calls, etc.) here, to avoid double-counting/un-filterable
+    // duplicates of the same underlying failure.
+    if (msg.type() === 'error' && !/^Failed to load resource:/.test(msg.text())) {
+      consoleErrors.push(msg.text());
+    }
+  });
   page.on('pageerror', err => consoleErrors.push(err.message));
+  // Failed resource loads (404s, etc.) don't show up usefully via the
+  // 'console' event — Chrome's console text for these is just
+  // "Failed to load resource: net::ERR_FILE_NOT_FOUND" with no URL at all,
+  // so a substring filter on that text can never distinguish /core/* from
+  // anything else. The 'requestfailed' event carries the real URL, so we
+  // track failures there instead and filter by URL below.
+  page.on('requestfailed', request => {
+    const failure = request.failure();
+    failedRequests.push({
+      url: request.url(),
+      error: failure ? failure.errorText : 'unknown error',
+    });
+  });
 
   console.log('Loading', url, '\n');
   await page.goto(url, { waitUntil: 'networkidle0' });
@@ -123,18 +147,26 @@ function log(ok, msg) {
   await new Promise(r => setTimeout(r, 150));
   await page.screenshot({ path: path.join(SCREENSHOT_DIR, 'dashboard.png'), fullPage: true });
 
-  // 7. No uncaught JS errors anywhere in the run — except two known pre-existing
-  // 404s for /core/tsm-kernel.js and /core/tsm-enforcer.js. Those are absolute,
-  // server-relative paths meant to be served by the Express app (localhost:8080),
-  // not resolvable under file://. They existed before Phase 5 and are unrelated
-  // to this diff — filtered out here so real regressions aren't masked by them.
-  const realErrors = consoleErrors.filter(e =>
-    !(e.includes('ERR_FILE_NOT_FOUND') && (e.includes('tsm-kernel') || e.includes('tsm-enforcer')))
-  );
-  const ignoredCount = consoleErrors.length - realErrors.length;
-  if (ignoredCount > 0) console.log(`       (ignored ${ignoredCount} pre-existing /core/* 404 error(s) — unrelated to this diff, see file:// vs http:// note above)`);
-  allPassed &= log(realErrors.length === 0, 'No console/page errors during the whole run (excluding known /core/* 404s)');
-  if (realErrors.length) realErrors.forEach(e => console.log('        ' + e));
+  // 7. No uncaught JS errors or unexpected failed network requests anywhere
+  // in the run — except known pre-existing 404s for /core/tsm-kernel.js and
+  // /core/tsm-enforcer.js. Those are absolute, server-relative paths meant
+  // to be served by the Express app (localhost:8080), not resolvable under
+  // file://. They existed before Phase 5 and are unrelated to this diff —
+  // filtered out here by URL (via requestfailed) so real regressions aren't
+  // masked by them.
+  const realFailedRequests = failedRequests.filter(f => !f.url.includes('/core/'));
+  const ignoredCount = failedRequests.length - realFailedRequests.length;
+  if (ignoredCount > 0) {
+    console.log(`       (ignored ${ignoredCount} pre-existing /core/* 404 error(s) — unrelated to this diff, see file:// vs http:// note above)`);
+    failedRequests
+      .filter(f => f.url.includes('/core/'))
+      .forEach(f => console.log(`         ignored: ${f.error} — ${f.url}`));
+  }
+
+  const noErrors = consoleErrors.length === 0 && realFailedRequests.length === 0;
+  allPassed &= log(noErrors, 'No console/page errors or unexpected failed requests during the whole run (excluding known /core/* 404s)');
+  if (consoleErrors.length) consoleErrors.forEach(e => console.log('        [console] ' + e));
+  if (realFailedRequests.length) realFailedRequests.forEach(f => console.log(`        [request] ${f.error} — ${f.url}`));
 
   console.log('\n' + (allPassed ? 'ALL CHECKS PASSED' : 'SOME CHECKS FAILED — see [FAIL] lines above'));
 
