@@ -26,6 +26,8 @@
   --c-tax:#3b82f6;    --c-tax-bg:#0d1a2b;    --c-tax-dim:#1a4a8f;
   --c-realty:#ef4444; --c-realty-bg:#2b0d0d; --c-realty-dim:#8f1a1a;
   --c-ins:#06b6d4;    --c-ins-bg:#0a1e2b;    --c-ins-dim:#0a5066;
+  --c-mortgage:#6366f1; --c-mortgage-bg:#161a2b; --c-mortgage-dim:#3730a3;
+  --c-schools:#ec4899; --c-schools-bg:#2b0d1e; --c-schools-dim:#8f1a5a;
 }
 html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.5}
 
@@ -286,6 +288,14 @@ html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sa
   <div class="nav-item" data-panel="ins" onclick="switchPanel(this)">
     <i class="ti ti-shield-check" style="color:var(--c-ins)"></i> Insurance
     <span class="nav-badge" id="nb-ins">61</span>
+  </div>
+  <div class="nav-item" data-panel="mortgage" onclick="switchPanel(this)">
+    <i class="ti ti-building-bank" style="color:var(--c-mortgage)"></i> Mortgage
+    <span class="nav-badge" id="nb-mortgage">29</span>
+  </div>
+  <div class="nav-item" data-panel="schools" onclick="switchPanel(this)">
+    <i class="ti ti-school" style="color:var(--c-schools)"></i> Schools
+    <span class="nav-badge" id="nb-schools">19</span>
   </div>
 
   <div class="nav-divider"></div>
@@ -727,6 +737,106 @@ const SECTORS = {
       lossrun:'LOSS RUN REQUEST\n━━━━━━━━━━━━━━━━\nDate: [Date]\nTo: [Prior Carrier Name] · Attn: Loss Control Dept.\nRe: Loss runs — Policy No.: [#]\nInsured: [Name] · FEIN: [#]\n\nPlease provide a 5-year loss run history for the above-referenced account. We need this for renewal underwriting.\n\nPlease send to: [Agent name] · [Email] · [Fax]\nRequired by: [Date — 5 business days requested]\n\nAuthorized by insured: _____________________ Date: ___________',
       binder:'INSURANCE BINDER / EVIDENCE OF COVERAGE\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nDate: [Date] · Binder No.: [#]\nInsured: [Name] · Carrier: [Name]\nPolicy period: [Start] to [End]\n\nCoverage bound (pending formal policy):\nGeneral liability: $[Amount] per occ / $[Amount] agg\nWorkers comp: Statutory\nCommercial auto: $[Amount] CSL\n\nThis binder is valid for 30 days. A formal policy will be issued. Coverage is effective [Date] at 12:01 AM standard time.\n\nProducer: [Agency name] · License No.: [#]'
     }
+  },
+  mortgage:{
+    id:'mortgage', label:'Mortgage', icon:'ti-building-bank',
+    color:'var(--c-mortgage)', bg:'var(--c-mortgage-bg)', dim:'var(--c-mortgage-dim)',
+    active:29, inReview:11, docsGenerated:158, avgDays:3.4, slaDays:5, slaTarget:95, slaActual:96,
+    pipeline:[
+      {label:'Intake',count:7,auto:true},
+      {label:'Processing',count:10,auto:false},
+      {label:'Underwriting',count:11,auto:false},
+      {label:'Closing',count:6,auto:true},
+      {label:'Funded',count:9,auto:true}
+    ],
+    kanban:{
+      'Processing':[
+        {name:'Nguyen refi — 30yr fixed',meta:'Due Jun 5',tag:'Refi',sla:75},
+        {name:'Whitfield purchase',meta:'Due Jun 9',tag:'Purchase',sla:55}
+      ],
+      'Underwriting':[
+        {name:'Osei conventional',meta:'Conditions out',tag:'Conv',sla:65},
+        {name:'Hardaway FHA',meta:'Appraisal pending',tag:'FHA',sla:45}
+      ],
+      'Closed / Funded':[
+        {name:'Delgado — closed',meta:'$412,000',tag:'Done',sla:100},
+        {name:'Park — funded',meta:'$287,500',tag:'Done',sla:100}
+      ]
+    },
+    intake:[
+      {label:'Borrower name',type:'text',placeholder:'Marcus Whitfield'},
+      {label:'Loan type',type:'select',options:['Conventional','FHA','VA','Jumbo','Refinance','HELOC']},
+      {label:'Property address',type:'text',placeholder:'2140 W Deer Valley Rd, Phoenix'},
+      {label:'Loan amount',type:'text',placeholder:'$412,000'},
+      {label:'Target close date',type:'text',placeholder:'Jul 18, 2026'},
+      {label:'Priority',type:'select',options:['Standard','Rush','VIP']}
+    ],
+    docs:[
+      {icon:'ti-file-text',label:'Loan application (URLA/1003)',key:'urla'},
+      {icon:'ti-file-text',label:'Pre-approval letter',key:'preapproval'},
+      {icon:'ti-file-invoice',label:'Loan estimate',key:'estimate'},
+      {icon:'ti-file-check',label:'Closing disclosure',key:'closing'},
+      {icon:'ti-file-text',label:'Rate lock agreement',key:'ratelock'},
+      {icon:'ti-file-check',label:'Verification of employment',key:'voe'}
+    ],
+    docContent:{
+      urla:'UNIFORM RESIDENTIAL LOAN APPLICATION (URLA / FORM 1003)\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nBorrower: [Name] · SSN: [###-##-####]\nProperty address: [Full address]\nLoan amount: $[Amount] · Loan purpose: [Purchase/Refinance]\n\nEmployment: [Employer] · [#] years · Gross monthly income: $[Amount]\nAssets: $[Amount] · Liabilities: $[Amount]\n\nDeclarations: ☐ Bankruptcy (7yr) ☐ Foreclosure (7yr) ☐ Outstanding judgments\n\nBorrower signature: _________________________ Date: ___________',
+      preapproval:'MORTGAGE PRE-APPROVAL LETTER\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nDate: [Date]\nBorrower(s): [Name(s)]\nLender: [Lender Name] · NMLS #: [#]\n\nBased on a preliminary review of credit and stated income/assets, borrower is pre-approved for a loan amount up to $[Amount] at an estimated rate of [Rate]% ([Loan Type]).\n\nThis pre-approval is subject to: full underwriting, satisfactory appraisal, title review, and verification of all application information. Not a commitment to lend.\n\nExpires: [Date — 90 days]\nLoan Officer: [Name] · NMLS #: [#]',
+      estimate:'LOAN ESTIMATE\n━━━━━━━━━━━━\nDate issued: [Date] · Borrower: [Name]\nProperty: [Address] · Loan amount: $[Amount]\nLoan term: [#] years · Interest rate: [Rate]% ☐ Fixed ☐ Adjustable\n\nEstimated monthly payment:      $[Amount]\nEstimated closing costs:        $[Amount]\nEstimated cash to close:        $[Amount]\n\nPrepayment penalty: ☐ Yes ☐ No\nBalloon payment: ☐ Yes ☐ No\n\nThis estimate is not a guarantee. Actual terms depend on final underwriting.',
+      closing:'CLOSING DISCLOSURE\n━━━━━━━━━━━━━━━━━\nClosing date: [Date] · Borrower: [Name]\nProperty: [Address]\nLoan amount: $[Amount] · Interest rate: [Rate]% · Term: [#] years\n\nTotal closing costs:             $[Amount]\nCash to close from borrower:     $[Amount]\n\nLoan costs:\n  Origination charges:  $[Amount]\n  Services borrower did not shop for: $[Amount]\n  Services borrower did shop for:     $[Amount]\n\nMonthly principal & interest:    $[Amount]\nEstimated escrow (taxes/ins.):   $[Amount]\n\nBorrower: _________________ Date: ________',
+      ratelock:'RATE LOCK AGREEMENT\n━━━━━━━━━━━━━━━━━━\nDate: [Date] · Borrower: [Name]\nLoan No.: [#] · Property: [Address]\n\nLocked interest rate: [Rate]%\nLock period: [#] days, expiring [Date]\nLoan program: [Conventional/FHA/VA/Jumbo]\nPoints: [#]\n\nThis rate is locked contingent on loan closing within the lock period and no material change to borrower qualification. Extension fees apply beyond expiration per lender policy.\n\nLender authorized signature: _____________________',
+      voe:'VERIFICATION OF EMPLOYMENT (VOE)\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nDate: [Date]\nEmployee: [Name] · SSN (last 4): [####]\nEmployer: [Company Name]\n\nPosition: [Title] · Date hired: [Date]\nEmployment status: ☐ Full-time ☐ Part-time ☐ Seasonal\nCurrent base salary: $[Amount] / [Hour/Year]\nYTD earnings: $[Amount] · Prior year earnings: $[Amount]\nLikelihood of continued employment: ☐ Excellent ☐ Good ☐ Fair\n\nCompleted by (employer rep): _____________________ Title: [Title]'
+    }
+  },
+  schools:{
+    id:'schools', label:'Schools', icon:'ti-school',
+    color:'var(--c-schools)', bg:'var(--c-schools-bg)', dim:'var(--c-schools-dim)',
+    active:19, inReview:7, docsGenerated:96, avgDays:5.1, slaDays:8, slaTarget:93, slaActual:95,
+    pipeline:[
+      {label:'Intake',count:5,auto:true},
+      {label:'Verification',count:6,auto:false},
+      {label:'Compliance Review',count:7,auto:false},
+      {label:'Board Approval',count:4,auto:false},
+      {label:'Filed',count:3,auto:true}
+    ],
+    kanban:{
+      'Verification':[
+        {name:'Desert Vista USD — Title I',meta:'Due Jun 6',tag:'Grant',sla:70},
+        {name:'Mesa ISD enrollment audit',meta:'Due Jun 10',tag:'Enrollment',sla:55}
+      ],
+      'Compliance Review':[
+        {name:'Cactus Wren Elem — IEP batch',meta:'12 files',tag:'IEP',sla:60},
+        {name:'Sunrise Charter — vendor PO',meta:'Awaiting sig.',tag:'Vendor',sla:45}
+      ],
+      'Filed':[
+        {name:'Horizon USD — board minutes',meta:'Complete',tag:'Done',sla:100},
+        {name:'Palo Verde — Title I closeout',meta:'Filed 5/29',tag:'Done',sla:100}
+      ]
+    },
+    intake:[
+      {label:'District / school name',type:'text',placeholder:'Desert Vista Unified School District'},
+      {label:'Document category',type:'select',options:['Enrollment / registration','Grant application','IEP / special education','Vendor / purchase order','Board resolution','Compliance / audit']},
+      {label:'Program / grant #',type:'text',placeholder:'Title I — TI-2026-0042'},
+      {label:'Due date',type:'text',placeholder:'Jun 10, 2026'},
+      {label:'Priority',type:'select',options:['Standard','Rush','VIP']},
+      {label:'Assigned to',type:'select',options:['Auto-assign','Team A','Team B','Team C']}
+    ],
+    docs:[
+      {icon:'ti-file-text',label:'Enrollment / registration form',key:'enrollment'},
+      {icon:'ti-file-invoice',label:'Grant application (Title I)',key:'grant'},
+      {icon:'ti-file-text',label:'IEP document',key:'iep'},
+      {icon:'ti-file-invoice',label:'Vendor purchase order',key:'po'},
+      {icon:'ti-file-check',label:'Board resolution',key:'resolution'},
+      {icon:'ti-file-check',label:'Compliance / audit report',key:'audit'}
+    ],
+    docContent:{
+      enrollment:'STUDENT ENROLLMENT / REGISTRATION FORM\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nDistrict: [Name] · School: [Name] · Date: [Date]\nStudent name: [Name] · DOB: [Date] · Grade: [#]\nParent/Guardian: [Name] · Phone: [#] · Email: [Email]\nHome address: [Address]\n\nPrior school attended: [Name] · Withdrawal date: [Date]\nImmunization records on file: ☐ Yes ☐ Pending\nSpecial services needed: ☐ None ☐ IEP ☐ 504 ☐ ELL\n\nParent/Guardian signature: _____________________ Date: ___________',
+      grant:'TITLE I GRANT APPLICATION\n━━━━━━━━━━━━━━━━━━━━━━━━\nDistrict: [Name] · Grant #: [#] · Fiscal year: [Year]\nAuthorized representative: [Name] · Title: [Title]\n\nRequested amount: $[Amount]\nProgram description: [Description of services/allocation]\nEligible student count: [#] · % low-income: [%]\n\nAssurances:\n☐ Compliance with ESSA Title I requirements\n☐ Comparability of services certification\n☐ Parent involvement policy on file\n\nAuthorized signature: _____________________ Date: ___________',
+      iep:'INDIVIDUALIZED EDUCATION PROGRAM (IEP)\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nStudent: [Name] · DOB: [Date] · District: [Name]\nMeeting date: [Date] · Annual review due: [Date]\n\nPresent levels of performance: [Summary]\nEligibility category: [Category]\n\nAnnual goals:\n1. [Goal description]\n2. [Goal description]\n\nServices: [Type] — [Frequency] — [Duration]\nLeast restrictive environment: [Placement description]\n\nParent/Guardian consent: ☐ Yes ☐ Pending — Date: ___________',
+      po:'VENDOR PURCHASE ORDER\n━━━━━━━━━━━━━━━━━━━━━\nDistrict: [Name] · PO #: [#] · Date: [Date]\nVendor: [Name] · Vendor ID: [#]\n\nItems / services:\n[Description] — Qty [#] — Unit price $[Amount] — Total $[Amount]\n\nFunding source: [General fund / Title I / Grant #]\nTotal PO amount: $[Amount]\nApproved budget line: [Code]\n\nAuthorized by: _____________________ Title: [Business Manager/Superintendent]',
+      resolution:'SCHOOL BOARD RESOLUTION\n━━━━━━━━━━━━━━━━━━━━━━\nDistrict: [Name] · Resolution No.: [#] · Meeting date: [Date]\n\nWHEREAS, [background/justification for the resolution];\n\nNOW, THEREFORE, BE IT RESOLVED that the Board of Education of [District Name] hereby [approves/authorizes/adopts] [action described].\n\nMotion by: [Name] · Seconded by: [Name]\nVote: [#] Ayes, [#] Nays, [#] Abstain\n\nBoard President: _____________________ Date: ___________\nBoard Secretary: _____________________',
+      audit:'COMPLIANCE / AUDIT REPORT\n━━━━━━━━━━━━━━━━━━━━━━━━\nDistrict: [Name] · Audit period: [Start] to [End]\nAuditor: [Firm/Agency name] · Report date: [Date]\n\nScope: [Federal programs / financial / enrollment]\n\nFindings:\n☐ No findings — clean audit\n☐ Findings noted (see attached corrective action plan)\n\nCorrective action required by: [Date]\nResponsible official: [Name] · Title: [Title]\n\nAuditor signature: _____________________ Date: ___________'
+    }
   }
 };
 
@@ -803,7 +913,9 @@ const SECTOR_TO_VERTICAL = {
   health: 'healthcare',
   tax: 'finops',
   realty: 'realestate',
-  ins: 'insurance'
+  ins: 'insurance',
+  mortgage: 'mortgage',
+  schools: 'schools'
 };
 
 // Default tenant until a real client/tenant picker exists in the intake form.
@@ -833,7 +945,9 @@ const KANBAN_BUCKET_LABELS = {
   health: ['Intake','Coding','Submitted','Reconciled'],
   tax:    ['Intake','Prep / Entry','CPA Review','Filed'],
   realty: ['Intake','Contract Prep','In Escrow','Closed'],
-  ins:    ['Intake','Underwriting','Claims','Resolved']
+  ins:    ['Intake','Underwriting','Claims','Resolved'],
+  mortgage: ['Intake','Processing','Underwriting','Closed / Funded'],
+  schools: ['Intake','Verification','Compliance Review','Filed']
 };
 
 function computeSlaPct(mission, sector){
