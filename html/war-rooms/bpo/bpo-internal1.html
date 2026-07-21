@@ -128,7 +128,7 @@ html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sa
 @keyframes fadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
 
 /* ── KANBAN ── */
-.kanban{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.kanban{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
 .kanban-col{}
 .kanban-col-head{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);padding:0 0 8px;display:flex;align-items:center;justify-content:space-between}
 .kanban-col-head .col-count{background:var(--bg4);border-radius:10px;padding:1px 7px;font-size:9px;color:var(--text2)}
@@ -420,13 +420,17 @@ html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sa
 </main>
 </div>
 
+<!-- Mission Store (Phase 5 wiring) — must load before the script below -->
+<script src="../../shared/runtime/mission/mission-model.js"></script>
+<script src="../../shared/runtime/mission/mission-store.js"></script>
+
 <script>
 /* ── DATA ── */
 const SECTORS = {
   constr:{
     id:'constr', label:'Construction', icon:'ti-building-factory-2',
     color:'var(--c-constr)', bg:'var(--c-constr-bg)', dim:'var(--c-constr-dim)',
-    active:24, inReview:8, docs:147, avgDays:2.1, slaDays:4, slaTarget:95, slaActual:97,
+    active:24, inReview:8, docsGenerated:147, avgDays:2.1, slaDays:4, slaTarget:95, slaActual:97,
     pipeline:[
       {label:'Intake',count:6,auto:true},
       {label:'Scope',count:9,auto:false},
@@ -477,7 +481,7 @@ const SECTORS = {
   legal:{
     id:'legal', label:'Legal', icon:'ti-scale',
     color:'var(--c-legal)', bg:'var(--c-legal-bg)', dim:'var(--c-legal-dim)',
-    active:31, inReview:12, docs:203, avgDays:1.8, slaDays:3, slaTarget:95, slaActual:98,
+    active:31, inReview:12, docsGenerated:203, avgDays:1.8, slaDays:3, slaTarget:95, slaActual:98,
     pipeline:[
       {label:'Intake',count:7,auto:true},
       {label:'Conflict chk',count:4,auto:true},
@@ -527,7 +531,7 @@ const SECTORS = {
   health:{
     id:'health', label:'Healthcare', icon:'ti-heart-rate-monitor',
     color:'var(--c-health)', bg:'var(--c-health-bg)', dim:'var(--c-health-dim)',
-    active:18, inReview:43, docs:389, avgDays:0.9, slaDays:2, slaTarget:97, slaActual:99,
+    active:18, inReview:43, docsGenerated:389, avgDays:0.9, slaDays:2, slaTarget:97, slaActual:99,
     pipeline:[
       {label:'Intake',count:11,auto:true},
       {label:'Eligibility',count:8,auto:true},
@@ -577,7 +581,7 @@ const SECTORS = {
   tax:{
     id:'tax', label:'Tax / FinOps', icon:'ti-calculator',
     color:'var(--c-tax)', bg:'var(--c-tax-bg)', dim:'var(--c-tax-dim)',
-    active:52, inReview:19, docs:218, avgDays:3.4, slaDays:7, slaTarget:93, slaActual:95,
+    active:52, inReview:19, docsGenerated:218, avgDays:3.4, slaDays:7, slaTarget:93, slaActual:95,
     pipeline:[
       {label:'Intake',count:9,auto:true},
       {label:'Gather docs',count:14,auto:false},
@@ -627,7 +631,7 @@ const SECTORS = {
   realty:{
     id:'realty', label:'Realty', icon:'ti-home-2',
     color:'var(--c-realty)', bg:'var(--c-realty-bg)', dim:'var(--c-realty-dim)',
-    active:37, inReview:14, docs:174, avgDays:4.2, slaDays:7, slaTarget:94, slaActual:96,
+    active:37, inReview:14, docsGenerated:174, avgDays:4.2, slaDays:7, slaTarget:94, slaActual:96,
     pipeline:[
       {label:'Intake',count:5,auto:true},
       {label:'Title search',count:8,auto:true},
@@ -677,7 +681,7 @@ const SECTORS = {
   ins:{
     id:'ins', label:'Insurance', icon:'ti-shield-check',
     color:'var(--c-ins)', bg:'var(--c-ins-bg)', dim:'var(--c-ins-dim)',
-    active:61, inReview:28, docs:312, avgDays:1.6, slaDays:3, slaTarget:96, slaActual:97,
+    active:61, inReview:28, docsGenerated:312, avgDays:1.6, slaDays:3, slaTarget:96, slaActual:97,
     pipeline:[
       {label:'Intake',count:12,auto:true},
       {label:'Underwriting',count:9,auto:false},
@@ -771,6 +775,177 @@ const FEED_EVENTS = [
 function slaColor(pct){return pct>=90?'var(--green)':pct>=60?'var(--accent)':'var(--red)'}
 function slaClass(pct){return pct>=90?'sla-ok':pct>=60?'sla-warn':'sla-late'}
 
+function escapeHtml(str){
+  return String(str==null?'':str)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+/* ══════════════════ MISSION STORE WIRING (Phase 5) ══════════════════
+ * Everything below reads from window.TSMMissionStore / TSMMissionModel
+ * (Phase 1) and overwrites the mock fields on SECTORS[*] in place, so
+ * renderSectorPanel/renderDashboard/renderLiveFeed above need NO changes
+ * — they just render whatever numbers/kanban/feed data is already sitting
+ * on the SECTORS object and FEED_EVENTS array by the time they run.
+ *
+ * FALLBACK BEHAVIOR: if a sector has zero real missions in the store yet
+ * (fresh install, no intake volume), that sector's original mock numbers
+ * are left untouched so the dashboard doesn't show an empty/broken-looking
+ * wall of zeros during rollout. Once at least one real mission exists for
+ * a vertical, mock numbers for that sector are fully replaced by computed
+ * real values. This is a deliberate transitional tradeoff — flag for
+ * removal once every sector has live intake flowing.
+ */
+
+const SECTOR_TO_VERTICAL = {
+  constr: 'construction',
+  legal: 'legal',
+  health: 'healthcare',
+  tax: 'finops',
+  realty: 'realestate',
+  ins: 'insurance'
+};
+
+// Default tenant until a real client/tenant picker exists in the intake form.
+const DEFAULT_TENANT_ID = 'tsm-bpo-default';
+
+// 4-bucket grouping of the model's 12 canonical stages, in STAGE_ORDER order.
+// bucket 0 = not yet staffed, 1 = active work, 2 = review/external-wait, 3 = terminal.
+const STAGE_BUCKETS = [
+  ['uploaded','ocr','classified','extracted','validated','created'],
+  ['assigned','in_progress'],
+  ['qa'],
+  ['delivered','billed','closed']
+];
+
+function bucketIndexForStage(stage){
+  for(let i=0;i<STAGE_BUCKETS.length;i++){
+    if(STAGE_BUCKETS[i].indexOf(stage)!==-1) return i;
+  }
+  return 0; // unknown/legacy stage → treat as not-yet-staffed rather than throw
+}
+
+// Per-sector display labels for the 4 kanban buckets, chosen to match each
+// sector's existing domain vocabulary from the old 3-column mock kanban.
+const KANBAN_BUCKET_LABELS = {
+  constr: ['Intake','Scoping','Client Review','Delivered'],
+  legal:  ['Intake','Drafting','Attorney QC','Filed'],
+  health: ['Intake','Coding','Submitted','Reconciled'],
+  tax:    ['Intake','Prep / Entry','CPA Review','Filed'],
+  realty: ['Intake','Contract Prep','In Escrow','Closed'],
+  ins:    ['Intake','Underwriting','Claims','Resolved']
+};
+
+function computeSlaPct(mission, sector){
+  if(mission.workflow && mission.workflow.sla && typeof mission.workflow.sla.percentElapsed === 'number'){
+    return Math.max(0, Math.min(100, Math.round(100 - mission.workflow.sla.percentElapsed)));
+  }
+  if(mission.stage === 'closed' || mission.stage === 'delivered' || mission.stage === 'billed'){
+    return 100;
+  }
+  // Heuristic fallback: age vs this sector's SLA window (slaDays).
+  const ageMs = Date.now() - new Date(mission.createdAt).getTime();
+  const ageDays = ageMs / 86400000;
+  const pctElapsed = Math.min(100, Math.round((ageDays / (sector.slaDays||3)) * 100));
+  return Math.max(0, 100 - pctElapsed);
+}
+
+function missionToKanbanCard(mission, sector){
+  return {
+    name: mission.client || mission.missionNo || mission.id,
+    meta: mission.missionNo || mission.id,
+    tag: (mission.workflow && mission.workflow.priority) ? mission.workflow.priority : 'Standard',
+    sla: computeSlaPct(mission, sector)
+  };
+}
+
+function buildRealKanban(sectorId, missions, sector){
+  const labels = KANBAN_BUCKET_LABELS[sectorId];
+  const cols = {};
+  labels.forEach((label,i)=>{ cols[label] = []; });
+  missions.forEach(m=>{
+    const idx = bucketIndexForStage(m.stage);
+    cols[labels[idx]].push(missionToKanbanCard(m, sector));
+  });
+  return cols;
+}
+
+function buildRealPipeline(sectorId, missions){
+  // Reuse each sector's existing 5 pipeline step labels; distribute real
+  // counts across them using the same 4-bucket grouping (first bucket
+  // covers the first 2 pipeline steps, since "Intake" mock pipelines
+  // typically split uploaded/ocr/classified across 2 sub-steps).
+  const counts = [0,0,0,0];
+  missions.forEach(m=>{ counts[bucketIndexForStage(m.stage)]++; });
+  return [counts[0], counts[0], counts[1], counts[2], counts[3]].slice(0,5);
+}
+
+function syncSectorsFromMissionStore(){
+  if(!window.TSMMissionStore){
+    console.warn('Mission Control: TSMMissionStore not loaded — showing seed/demo data only.');
+    return;
+  }
+  Object.keys(SECTORS).forEach(sectorId=>{
+    const sector = SECTORS[sectorId];
+    const vertical = SECTOR_TO_VERTICAL[sectorId];
+    const missions = window.TSMMissionStore.listMissions({ vertical: vertical });
+    if(missions.length === 0) return; // keep mock/seed numbers for this sector
+
+    const analytics = window.TSMMissionStore.getAnalytics({ vertical: vertical });
+    const closedMissions = missions.filter(m=>m.stage==='closed');
+    const avgDays = closedMissions.length
+      ? closedMissions.reduce((sum,m)=>sum + (new Date(m.updatedAt)-new Date(m.createdAt))/86400000, 0) / closedMissions.length
+      : sector.avgDays; // no closed missions yet → keep prior avg rather than show 0
+
+    sector.active = analytics.open;
+    sector.inReview = missions.filter(m=>m.stage==='qa').length;
+    sector.docsGenerated = missions.reduce((sum,m)=>sum + (Array.isArray(m.documents)?m.documents.length:0), 0);
+    sector.avgDays = Math.round(avgDays*10)/10;
+    sector.slaActual = analytics.total ? Math.round(((analytics.total-analytics.late)/analytics.total)*100) : sector.slaActual;
+
+    const pl = buildRealPipeline(sectorId, missions);
+    sector.pipeline.forEach((step,i)=>{ step.count = pl[i]; });
+
+    sector.kanban = buildRealKanban(sectorId, missions, sector);
+  });
+}
+
+function buildLiveFeedFromMissions(){
+  if(!window.TSMMissionStore) return null; // caller keeps mock FEED_EVENTS
+  const missions = window.TSMMissionStore.listMissions();
+  if(missions.length === 0) return null;
+
+  const events = [];
+  missions.forEach(m=>{
+    (m.audit||[]).forEach(a=>{
+      events.push({
+        icon: 'ti-activity', bg:'#1a1a1f', color:'#9898a8',
+        text: `<strong>${escapeHtml(a.event)}</strong> — ${escapeHtml(m.client||m.missionNo||m.id)} · ${escapeHtml(m.vertical)}`,
+        at: a.at
+      });
+    });
+  });
+  events.sort((a,b)=> new Date(b.at) - new Date(a.at));
+  return events.map(e=>({icon:e.icon,bg:e.bg,color:e.color,text:e.text,time:new Date(e.at).toLocaleTimeString('en-US',{hour12:true})}));
+}
+
+function createMissionFromIntake(sectorId, formValues){
+  if(!window.TSMMissionModel || !window.TSMMissionStore){
+    console.warn('Mission Control: cannot create mission — Mission Store not loaded.');
+    return null;
+  }
+  const vertical = SECTOR_TO_VERTICAL[sectorId];
+  const mission = window.TSMMissionModel.createMission({
+    vertical: vertical,
+    tenantId: DEFAULT_TENANT_ID,
+    client: formValues.client || null,
+    workflow: { assignedTo:null, queue:null, priority: formValues.priority || 'normal', sla:null },
+    actor: 'intake-form'
+  });
+  window.TSMMissionStore.saveMission(mission);
+  return mission;
+}
+
 function renderSectorPanel(s){
   const el = document.createElement('div');
   el.className = 'panel';
@@ -797,7 +972,7 @@ function renderSectorPanel(s){
     </div>
     <div class="metric">
       <div class="metric-label">Docs generated</div>
-      <div class="metric-val" style="color:var(--blue)">${s.docs}</div>
+      <div class="metric-val" style="color:var(--blue)">${s.docsGenerated}</div>
       <div class="metric-trend up"><i class="ti ti-robot"></i> AI-assisted</div>
     </div>
     <div class="metric">
@@ -826,9 +1001,9 @@ function renderSectorPanel(s){
     <div>
       <div class="section-label">New intake</div>
       <div class="card">
-        <div class="intake-form">
-          ${s.intake.map(f=>`
-            <div class="field ${f.type==='textarea'?'full':''}">
+        <div class="intake-form" id="intake-form-${s.id}">
+          ${s.intake.map((f,i)=>`
+            <div class="field ${f.type==='textarea'?'full':''}" data-label="${f.label}">
               <label>${f.label}</label>
               ${f.type==='select'
                 ?`<select>${f.options.map(o=>`<option>${o}</option>`).join('')}</select>`
@@ -913,7 +1088,7 @@ function renderDashboard(){
       <div class="wf-card-stats">
         <div class="wf-stat"><div class="wf-stat-val">${s.active}</div>Active</div>
         <div class="wf-stat"><div class="wf-stat-val" style="color:${s.slaActual>=95?'var(--green)':'var(--accent)'}">${s.slaActual}%</div>SLA</div>
-        <div class="wf-stat"><div class="wf-stat-val">${s.docs}</div>Docs</div>
+        <div class="wf-stat"><div class="wf-stat-val">${s.docsGenerated}</div>Docs</div>
         <div class="wf-stat"><div class="wf-stat-val">${s.avgDays}d</div>Avg</div>
       </div>
       <div class="wf-sla-strip">
@@ -942,7 +1117,8 @@ function renderDashboard(){
       </div>`;
   });
 
-  FEED_EVENTS.slice(0,6).forEach(e=>{
+  const dashFeedSource = buildLiveFeedFromMissions() || FEED_EVENTS;
+  dashFeedSource.slice(0,6).forEach(e=>{
     feedEl.innerHTML += `
       <div class="feed-item">
         <div class="feed-icon" style="background:${e.bg}"><i class="ti ${e.icon}" style="color:${e.color}"></i></div>
@@ -987,7 +1163,8 @@ function renderAutomation(){
 
 function renderLiveFeed(){
   const el = document.getElementById('live-feed');
-  FEED_EVENTS.forEach(e=>{
+  const source = buildLiveFeedFromMissions() || FEED_EVENTS;
+  source.forEach(e=>{
     el.innerHTML += `
       <div class="feed-item">
         <div class="feed-icon" style="background:${e.bg}"><i class="ti ${e.icon}" style="color:${e.color}"></i></div>
@@ -1005,10 +1182,34 @@ function switchPanel(el){
   document.getElementById('panel-'+el.dataset.panel).classList.add('active');
 }
 
+function readIntakeFormValues(sectorId){
+  const form = document.getElementById('intake-form-'+sectorId);
+  const values = { client: null, priority: 'normal' };
+  form.querySelectorAll('.field').forEach((fieldEl, i)=>{
+    const label = fieldEl.dataset.label;
+    const input = fieldEl.querySelector('input,select,textarea');
+    const val = input ? input.value : '';
+    if(i === 0) values.client = val || null; // first field is always the client/name identifier across all sectors
+    if(label === 'Priority') values.priority = (val||'Standard').toLowerCase();
+  });
+  return values;
+}
+
 function submitIntake(id){
   const toast = document.getElementById('toast-'+id);
   toast.style.display = 'block';
   setTimeout(()=>{ toast.style.display='none'; }, 5000);
+
+  const formValues = readIntakeFormValues(id);
+  const mission = createMissionFromIntake(id, formValues);
+  if(mission){
+    // saveMission already published a MISSION_CREATED event, which the
+    // subscribe('*', rerenderAll) hook in init() picks up — no need to
+    // call rerenderAll() again here or it'll double-render.
+    return;
+  }
+  // Mission Store unavailable (e.g. localStorage blocked) — fall back to
+  // the old cosmetic feed entry so the form doesn't feel broken.
   addFeedEvent(id);
 }
 
@@ -1073,6 +1274,8 @@ function updateClock(){
 
 /* ── INIT ── */
 function init(){
+  syncSectorsFromMissionStore();
+
   // Render sector panels into main
   const main = document.querySelector('.main');
   Object.values(SECTORS).forEach(s=>{
@@ -1083,6 +1286,39 @@ function init(){
   renderLiveFeed();
   updateClock();
   setInterval(updateClock, 1000);
+
+  // Live refresh: any mission create/update/assign/close anywhere re-syncs
+  // sector numbers/kanban and re-renders. Full re-render is the simplest
+  // correct option given renderSectorPanel builds static DOM once — worth
+  // revisiting with incremental DOM patching if mission volume gets heavy.
+  if(window.TSMMissionStore){
+    window.TSMMissionStore.subscribe('*', ()=>{ rerenderAll(); });
+  }
+}
+
+function rerenderAll(){
+  syncSectorsFromMissionStore();
+  document.querySelectorAll('.panel').forEach(p=>{
+    if(p.id !== 'panel-dashboard' && p.id !== 'panel-automation' && p.id !== 'panel-activity'){
+      p.remove();
+    }
+  });
+  document.getElementById('wf-overview').innerHTML = '';
+  document.getElementById('sla-bars').innerHTML = '';
+  document.getElementById('turnaround-bars').innerHTML = '';
+  document.getElementById('dash-feed').innerHTML = '';
+  document.getElementById('live-feed').innerHTML = '';
+
+  const activePanelId = document.querySelector('.nav-item.active')?.dataset.panel;
+  const main = document.querySelector('.main');
+  Object.values(SECTORS).forEach(s=>{
+    main.appendChild(renderSectorPanel(s));
+  });
+  renderDashboard();
+  renderLiveFeed();
+  if(activePanelId){
+    document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active', p.id === 'panel-'+activePanelId));
+  }
 }
 
 document.addEventListener('DOMContentLoaded', init);
