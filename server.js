@@ -187,6 +187,7 @@ app.use('/html/runtime', express.static(path.join(__dirname, 'html', 'runtime'))
 // the stub for every /runtime/* request and this mount never runs.
 app.use('/runtime', express.static(path.join(__dirname, 'runtime'), { setHeaders: (res) => res.setHeader('Cache-Control', 'no-store') }));
 app.use('/architecture', express.static(path.join(__dirname, 'architecture'), { setHeaders: (res) => res.setHeader('Cache-Control', 'no-store') }));
+app.use('/core', express.static(path.join(__dirname, 'core')));
 app.use('/', express.static(path.join(__dirname, 'html')));
 const suites = [
   { route: '/construction', dir: 'html/construction-suite', index: 'construction-hub.html' },
