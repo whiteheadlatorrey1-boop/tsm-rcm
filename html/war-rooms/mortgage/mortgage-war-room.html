@@ -414,6 +414,44 @@ tr:hover td{background:rgba(212,175,55,.03)}
     if (window.TSMEventBus && window.TSMEventBus.emit) {
       window.TSMEventBus.emit('WAR_ROOM_READY', { vertical: 'mtg', payload, ts: Date.now() });
     }
+    // Phase 2: Mission Core creation
+    try {
+      if (window.TSMMissionModel && window.TSMMissionStore) {
+        const mtgSeverityRank = { CRIT: 3, HIGH: 2, MED: 1, LOW: 0 };
+        const mtgWorstAnomaly = (payload.anomalies || []).reduce((worst, a) => {
+          if (!worst) return a;
+          return (mtgSeverityRank[a.severity] || 0) > (mtgSeverityRank[worst.severity] || 0) ? a : worst;
+        }, null);
+        const mtgSeverity = mtgWorstAnomaly ? mtgWorstAnomaly.severity : 'LOW';
+        const mtgPriority = mtgSeverity === 'CRIT' ? 'Critical'
+          : mtgSeverity === 'HIGH' ? 'High'
+          : mtgSeverity === 'MED' ? 'Medium'
+          : 'normal';
+        const mission = window.TSMMissionModel.createMission({
+          vertical: 'mortgage',
+          tenantId: 'default',
+          client: null,
+          classification: {
+            summary: mtgWorstAnomaly ? mtgWorstAnomaly.rootCause : '',
+            anomalies: payload.anomalies || [],
+            source: 'Mortgage War Room'
+          },
+          workflow: {
+            assignedTo: null,
+            queue: null,
+            priority: mtgPriority,
+            sla: null
+          },
+          actor: 'mortgage-war-room'
+        });
+        window.TSMMissionStore.saveMission(mission);
+      } else {
+        console.warn('Mission Core not loaded — skipping mission creation, Mortgage relay write already succeeded.');
+      }
+    } catch (missionErr) {
+      console.warn('Mission Core creation failed (non-fatal, Mortgage relay already written):', missionErr);
+    }
+
     document.getElementById('navStatus').textContent = 'ENGINE: RELAYED TO STRATEGIST';
     setTimeout(() => { window.location.href = '/html/war-rooms/mortgage/mortgage-strategist.html'; }, 500);
   }
@@ -441,6 +479,8 @@ tr:hover td{background:rgba(212,175,55,.03)}
 <!-- TSM CONTROL PLANE -- correct load order, same as noc-war-room.html -->
 <script src="/js/core/tsm-event-bus.js"></script>
 <script src="/js/core/tsm-state.js"></script>
+<script src="/html/shared/runtime/mission/mission-model.js"></script>
+<script src="/html/shared/runtime/mission/mission-store.js"></script>
 <script src="/js/core/tsm-mission-engine.js"></script>
 <script src="/js/core/tsm-auto-pipeline.js"></script>
 <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
