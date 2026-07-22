@@ -861,41 +861,11 @@ app.use(require('./routes/enterprise-capability-bridge'));
 
 // ── FINOPS ────────────────────────────────────────────────────────────────────
 app.post('/api/finops/bnca/report', (req, res) => res.json({ ok: true }));
-// routes/finops.js implements docs, run-doc, upload-doc (with field
-// extraction), report, multi-report, and actions endpoints. Mounted after
-// the inline handler above so that handler keeps precedence on any overlap.
-const liveDataModule = require('./routes/live-data');
+// routes/finops.js implements the fuller finops API (docs, decision-service bridge, etc.)
+app.use(require('./routes/hc'));
+app.use(require('./routes/strategist'));
+app.use(require('./routes/construction'));
 app.use(require('./routes/finops'));
-app.use(liveDataModule);
-
-// ── ENTERPRISE INTELLIGENCE ───────────────────────────────────────────────────
-const enterpriseRouter =
-    require('./server/enterprise/api/enterprise-router');
-
-app.use(
-    '/api/enterprise',
-    enterpriseRouter
-);
-
-// ── ENTERPRISE LAB (Incident Generator / Live Mission Queue) ─────────────────
-const enterpriseLabRouter =
-    require('./server/enterprise-lab/api');
-
-app.use(
-    '/api/enterprise-lab',
-    enterpriseLabRouter
-);
-
-// ── ENTERPRISE LAB (Digital Twins: VMware, Network, Device, AD, M365, +) ─────
-const twinsRouter =
-    require('./server/enterprise-lab/twins-router');
-
-app.use(
-    '/api/twins',
-    twinsRouter
-);
-
-app.post('/api/chat', (req, res) => res.json({ ok: true }));
 
 // ── AI QUERY ROUTES ───────────────────────────────────────────────────────────
 app.post('/api/ai/query', async (req, res) => {

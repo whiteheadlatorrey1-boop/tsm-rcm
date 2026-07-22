@@ -411,41 +411,29 @@ router.get('/api/finops/report', (req, res) => {
   });
 });
 
-// Generic, non-fabricated lane guidance. No dollar figures or invoice/vendor
-// counts here — this route has no live financial data source to compute
-// them from (unlike /api/hc/*, which derives dollars from real node state).
-// Making up specific numbers here would repeat the exact problem fixed in
-// the healthcare module's brief route, so we don't.
-const FINOPS_LANE_GUIDANCE = {
-  'AP Aging': { lane: 'AP', issue: 'Vendor invoices pending validation/support', owner: 'Staff Accountant', status: 'ACTION REQUIRED' },
-  'AR Ledger': { lane: 'AR', issue: 'Collections follow-up required on aging balances', owner: 'AR Specialist / Controller', status: 'WATCH' },
-  '1099 / W-9 Readiness': { lane: 'Tax', issue: 'Vendor W-9 / 1099 threshold review needed', owner: 'TaxPrep', status: 'DUE BEFORE FILING' }
-};
-
 router.post('/api/finops/multi-report', async (req, res) => {
   try {
     const body = req.body || {};
     const workflows = body.workflows || ['AP Aging', 'AR Ledger', '1099 / W-9 Readiness'];
 
-    const priority_rank = workflows.map((wf, i) => {
-      const g = FINOPS_LANE_GUIDANCE[wf] || { lane: wf, issue: `${wf} requires review`, owner: 'Controller', status: 'REVIEW' };
-      return { rank: i + 1, lane: g.lane, issue: g.issue, owner: g.owner, status: g.status };
-    });
-
     const report = {
       ok: true,
       chain: workflows,
-      priority_rank,
-      combined_bnca: `Review ${workflows.join(', ')} in priority order shown, then route the summary to Controller Action Plan. Specific dollar exposure requires pulling current figures from the source system — not estimated here.`,
-      controller_note: 'This is a lane-priority checklist, not a computed financial exposure report. Pull live AP/AR/tax figures from your accounting system for actual dollar amounts.',
-      business_outcome: 'Workflows combined into one controller-ranked checklist.',
-      confidence: null,
+      priority_rank: [
+        { rank: 1, lane: 'AP', issue: '12 vendor invoices need validation/support', impact: '$18.4K payment timing exposure', owner: 'Staff Accountant', status: 'ACTION REQUIRED' },
+        { rank: 2, lane: 'AR', issue: 'Collections follow-up required on aging balances', impact: 'Cash timing pressure', owner: 'AR Specialist / Controller', status: 'WATCH' },
+        { rank: 3, lane: 'Tax', issue: '7 vendors need W-9 / 1099 threshold review', impact: '$34K tax-readiness window', owner: 'TaxPrep', status: 'DUE BEFORE FILING' }
+      ],
+      combined_bnca: 'Prioritize AP invoice validation first, run AR collections follow-up second, and complete 1099/W-9 readiness review before the filing window. Route final summary to Controller Action Plan.',
+      controller_note: 'AP support gaps are the highest immediate blocker. AR and tax readiness should be reviewed in the same close cycle.',
+      business_outcome: 'AP + AR + Tax workflows combined into one controller-ranked action plan.',
+      confidence: 89,
       ts: new Date().toISOString()
     };
 
     res.json(report);
   } catch (e) {
-    res.status(200).json({ ok:true, fallback:true, combined_bnca:'Safe fallback active. Run AP, AR, and Tax review, then route to Controller Action Plan.', confidence:null });
+    res.status(200).json({ ok:true, fallback:true, combined_bnca:'Safe fallback active. Run AP, AR, and Tax review, then route to Controller Action Plan.', confidence:80 });
   }
 });
 

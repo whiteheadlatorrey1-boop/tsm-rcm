@@ -1,0 +1,139 @@
+diff --git a/html/war-rooms/bpo/bpo-executive-portal.html b/html/war-rooms/bpo/bpo-executive-portal.html
+index 402a62f..3485b16 100644
+--- a/html/war-rooms/bpo/bpo-executive-portal.html
++++ b/html/war-rooms/bpo/bpo-executive-portal.html
+@@ -555,6 +555,8 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
+   <script src="/js/core/tsm-state.js"></script>
+   <script src="/js/core/tsm-mission-engine.js"></script>
+   <script src="/js/core/tsm-auto-pipeline.js"></script>
++  <script src="/html/shared/runtime/mission/mission-model.js"></script>
++  <script src="/html/shared/runtime/mission/mission-store.js"></script>
+ </head>
+ <body>
+ 
+@@ -799,6 +801,14 @@ function nav(url){ window.location.href = url; }
+     stratData = JSON.parse(raw);
+     hydratePage(stratData);
+   initThreeBlocks(stratData);
++
++    // ── Mission runtime (Phase 3, additive — does not affect existing relay) ──
++    try {
++      if (window.TSMMissionStore && stratData?.caseId) {
++        window.tsmMission = window.TSMMissionStore.getMission(stratData.caseId) || null;
++      }
++    } catch (e) { console.error('Mission read failed (non-fatal):', e); }
++
+   } catch(e) {
+     loadDemoMode();
+   }
+@@ -1377,34 +1387,10 @@ function buildExplainability(data) {
+     if (RELAY_KEYS.indexOf(e.key) !== -1) mount();
+   });
+ })();
+-</script>
+-  <script src="/html/core/tsm-runtime.js"></script>
+-</body>
+-</html>
+-
+-// ===== TSM_AUTONOMY_STANDARDIZED =====
+ window.TSM_AUTONOMY_STANDARDIZED = true;
+ </script>
+-
+-<!-- TSM ENFORCER BOOT -->
+-<script src="/html/core/tsm-enforcer.js"></script>
+-
+-
+-// ===== TSM WAR ROOM SCOPED RELAY FIX =====
+-window.tsmMission = window.tsmMission || {
+-  id: "BPO-" + Date.now().toString(36),
+-  vertical: "bpo",
+-  
+-};
+-
+-function tsmWriteRelay(payload){
+-  TSM_KERNEL.setRelay("bpo", JSON.stringify(payload));
+-}
+-</script>
+-<!-- TSM CONTROL PLANE -->
+-<script src="/html/js/core/tsm-event-bus.js"></script>
+-<script src="/html/js/core/tsm-state.js"></script>
+-<script src="/html/js/core/tsm-mission-engine.js"></script>
+-<script src="/shared/tsm-exec-portal-upgrade.js"></script>
++  <script src="/html/core/tsm-runtime.js"></script>
++  <script src="/html/core/tsm-enforcer.js"></script>
++  <script src="/shared/tsm-exec-portal-upgrade.js"></script>
+ </body>
+ </html>
+\ No newline at end of file
+diff --git a/html/war-rooms/bpo/bpo-strategist.html b/html/war-rooms/bpo/bpo-strategist.html
+index a8347e5..eab92af 100644
+--- a/html/war-rooms/bpo/bpo-strategist.html
++++ b/html/war-rooms/bpo/bpo-strategist.html
+@@ -225,7 +225,8 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
+   <script src="/shared/tsm-exceptions.js"></script>
+   <script src="/js/core/tsm-event-bus.js"></script>
+   <script src="/js/core/tsm-state.js"></script>
+-  <script src="/js/tsm-mission-store.js"></script>
++  <script src="/html/shared/runtime/mission/mission-model.js"></script>
++  <script src="/html/shared/runtime/mission/mission-store.js"></script>
+   <script src="/js/core/tsm-mission-engine.js"></script>
+   <script src="/js/core/tsm-auto-pipeline.js"></script>
+ </head>
+@@ -581,6 +582,16 @@ function adaptHoneywellRelay(raw) {
+     if (window.TSMMemory) TSMMemory.timeline('Decision Intelligence loaded — ' + (selectedSector||'BPO'));
+     autoSelectRecommended();
+ 
++    // ── Mission runtime (Phase 3, additive — does not affect existing relay) ──
++    try {
++      if (window.TSMMissionStore && warData?.caseId) {
++        window.tsmMission = window.TSMMissionStore.getMission(warData.caseId) || null;
++        if (window.tsmMission && window.TSMMemory) {
++          TSMMemory.timeline('Mission ' + warData.caseId + ' loaded into Strategist');
++        }
++      }
++    } catch (e) { console.error('Mission read failed (non-fatal):', e); }
++
+   } catch(e) {
+     loadDemoMode();
+   }
+@@ -1009,7 +1020,8 @@ function storeStratRelay(){
+     timestamp: new Date().toISOString(),
+     chainStep: 'strategist',
+     recommendation: generatedRec,
+-    selectedScenario
++    selectedScenario,
++    caseId: warData?.caseId
+   };
+   try {
+     sessionStorage.setItem('TSM_BPO_STRAT_RELAY', JSON.stringify(payload));
+@@ -1053,6 +1065,18 @@ function storeStratRelay(){
+     // ── END SENTINEL PUSH ─────────────────────────────────────────
+     document.getElementById('relayBar').style.display = 'flex';
+     document.getElementById('relayInfo').textContent = (warData?.selectedSector||'BPO') + ' · Scenario ' + (selectedScenario||'A') + ' · Confidence ' + (generatedRec?.confidence||91) + '%';
++
++    // ── Mission runtime write-back (Phase 3, additive) ──
++    try {
++      if (window.TSMMissionStore && window.TSMMissionModel && window.tsmMission) {
++        window.TSMMissionModel.transitionStage(window.tsmMission, window.TSMMissionModel.STAGES.IN_PROGRESS, 'strategist');
++        window.TSMMissionModel.addAuditEvent(window.tsmMission, window.TSMMissionModel.EVENT_TYPES.MISSION_UPDATED, 'strategist', {
++          selectedScenario,
++          confidence: generatedRec?.confidence || 91
++        });
++        window.TSMMissionStore.saveMission(window.tsmMission);
++      }
++    } catch (e) { console.error('Mission write-back failed (non-fatal):', e); }
+   } catch(e){}
+ }
+ 
+@@ -1175,11 +1199,6 @@ async function runStrategist() {
+ window.TSM_AUTONOMY_STANDARDIZED = true;
+ 
+ // ── TSM WAR ROOM SCOPED RELAY FIX ──
+-window.tsmMission = window.tsmMission || {
+-  id: "BPO-" + Date.now().toString(36),
+-  vertical: "bpo"
+-};
+-
+ function tsmWriteRelay(payload){
+   if (window.TSM_KERNEL && typeof TSM_KERNEL.setRelay === 'function') {
+     TSM_KERNEL.setRelay("bpo", JSON.stringify(payload));
