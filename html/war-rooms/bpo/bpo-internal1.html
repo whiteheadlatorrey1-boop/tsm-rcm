@@ -134,6 +134,18 @@ html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sa
 .kanban-col{}
 .kanban-col-head{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);padding:0 0 8px;display:flex;align-items:center;justify-content:space-between}
 .kanban-col-head .col-count{background:var(--bg4);border-radius:10px;padding:1px 7px;font-size:9px;color:var(--text2)}
+.k-task-row{display:flex;align-items:center;gap:4px;font-size:9px;color:var(--text3);margin-top:6px;padding-top:6px;border-top:1px solid var(--bg4);cursor:pointer;user-select:none}
+.k-task-row:hover{color:var(--text2)}
+.k-task-panel{margin-top:6px;padding:6px;background:var(--bg4);border-radius:6px}
+.k-task-empty{font-size:9px;color:var(--text3);padding:2px 0}
+.task-row{display:flex;align-items:center;gap:6px;padding:3px 0;font-size:10px}
+.task-check{width:12px;height:12px;border:1px solid var(--text3);border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:9px;color:var(--green);cursor:pointer;flex-shrink:0}
+.task-check.done{background:var(--green);border-color:var(--green);color:#000}
+.task-title{color:var(--text2)}
+.task-title.done{color:var(--text3);text-decoration:line-through}
+.k-task-add{display:flex;gap:4px;margin-top:4px}
+.k-task-add input{flex:1;background:var(--bg2);border:1px solid var(--bg4);border-radius:4px;color:var(--text);font-size:10px;padding:3px 6px}
+.k-task-add button{background:var(--accent);border:none;border-radius:4px;color:#000;font-size:11px;font-weight:700;padding:3px 8px;cursor:pointer}
 .k-card{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 11px;margin-bottom:6px;cursor:pointer;transition:.12s}
 .k-card:hover{border-color:var(--border2);background:var(--bg4);transform:translateY(-1px)}
 .k-card-name{font-size:12px;font-weight:600;color:var(--text);margin-bottom:4px}
@@ -964,12 +976,66 @@ function computeSlaPct(mission, sector){
   return Math.max(0, 100 - pctElapsed);
 }
 
+let expandedMissionTasks = {}; // missionId -> bool; module-level so it survives rerenderAll()'s full DOM rebuild
+
+function toggleTaskPanel(missionId){
+  expandedMissionTasks[missionId] = !expandedMissionTasks[missionId];
+  rerenderAll();
+}
+
+function renderTaskPanelHTML(missionId){
+  if(!window.TSMMissionStore) return '';
+  const m = window.TSMMissionStore.getMission(missionId);
+  if(!m) return '';
+  const tasks = m.tasks || [];
+  const rows = tasks.map(t=>`
+    <div class="task-row">
+      <div class="task-check ${t.status==='complete'?'done':''}" onclick="event.stopPropagation();toggleTaskDone('${missionId}','${t.id}')">${t.status==='complete'?'✓':''}</div>
+      <div class="task-title ${t.status==='complete'?'done':''}">${escapeHtml(t.title)}</div>
+    </div>`).join('');
+  return `
+    <div class="k-task-panel" onclick="event.stopPropagation()">
+      ${rows || '<div class="k-task-empty">No tasks yet</div>'}
+      <div class="k-task-add">
+        <input type="text" placeholder="Add task..." id="task-input-${missionId}" onkeydown="if(event.key==='Enter'){event.preventDefault();addTaskToMission('${missionId}')}">
+        <button onclick="addTaskToMission('${missionId}')">+</button>
+      </div>
+    </div>`;
+}
+
+function addTaskToMission(missionId){
+  if(!window.TSMMissionStore || !window.TSMMissionModel) return;
+  const input = document.getElementById('task-input-'+missionId);
+  const title = input?.value?.trim();
+  if(!title) return;
+  const m = window.TSMMissionStore.getMission(missionId);
+  if(!m) return;
+  window.TSMMissionModel.addTask(m, { title });
+  expandedMissionTasks[missionId] = true; // keep panel open through the rerender saveMission triggers
+  window.TSMMissionStore.saveMission(m);
+}
+
+function toggleTaskDone(missionId, taskId){
+  if(!window.TSMMissionStore || !window.TSMMissionModel) return;
+  const m = window.TSMMissionStore.getMission(missionId);
+  if(!m) return;
+  const task = (m.tasks||[]).find(t=>t.id===taskId);
+  if(!task) return;
+  window.TSMMissionModel.updateTaskStatus(m, taskId, task.status==='complete'?'open':'complete', 'war-room-user');
+  expandedMissionTasks[missionId] = true;
+  window.TSMMissionStore.saveMission(m);
+}
+
 function missionToKanbanCard(mission, sector){
+  const tasks = mission.tasks || [];
   return {
+    id: mission.id,
     name: mission.client || mission.missionNo || mission.id,
     meta: mission.missionNo || mission.id,
     tag: (mission.workflow && mission.workflow.priority) ? mission.workflow.priority : 'Standard',
-    sla: computeSlaPct(mission, sector)
+    sla: computeSlaPct(mission, sector),
+    taskDone: tasks.filter(t=>t.status==='complete').length,
+    taskTotal: tasks.length
   };
 }
 
@@ -1177,6 +1243,11 @@ function renderSectorPanel(s){
               <div class="sla-progress-wrap">
                 <div class="sla-progress" style="width:${c.sla}%;background:${slaColor(c.sla)}"></div>
               </div>
+              <div class="k-task-row" onclick="event.stopPropagation();toggleTaskPanel('${c.id}')">
+                <i class="ti ti-list-check"></i> Tasks ${c.taskDone}/${c.taskTotal}
+                <i class="ti ti-chevron-${expandedMissionTasks[c.id]?'up':'down'}" style="margin-left:auto"></i>
+              </div>
+              ${expandedMissionTasks[c.id] ? renderTaskPanelHTML(c.id) : ''}
             </div>`).join('')}
         </div>`).join('')}
     </div>

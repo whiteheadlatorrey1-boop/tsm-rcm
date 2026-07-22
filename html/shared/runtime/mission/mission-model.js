@@ -173,6 +173,21 @@
     return t;
   }
 
+  function updateTaskStatus(mission, taskId, status, actor) {
+    if (!mission || !Array.isArray(mission.tasks)) {
+      throw new Error('updateTaskStatus: mission.tasks must be an array');
+    }
+    var t = mission.tasks.find(function (x) { return x.id === taskId; });
+    if (!t) {
+      throw new Error('updateTaskStatus: no task with id ' + taskId);
+    }
+    t.status = status;
+    t.completedAt = status === 'complete' ? nowISO() : null;
+    mission.updatedAt = nowISO();
+    addAuditEvent(mission, EVENT_TYPES.MISSION_UPDATED, actor || 'system', { taskId: taskId, taskStatus: status });
+    return t;
+  }
+
   function completionPercent(mission) {
     if (!mission.tasks || mission.tasks.length === 0) return 0;
     var done = mission.tasks.filter(function (t) { return t.status === 'complete'; }).length;
@@ -231,6 +246,7 @@
     addAuditEvent: addAuditEvent,
     transitionStage: transitionStage,
     addTask: addTask,
+    updateTaskStatus: updateTaskStatus,
     completionPercent: completionPercent,
     validateMission: validateMission,
     normalizeLegacyWorkItem: normalizeLegacyWorkItem
