@@ -215,6 +215,8 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:1000;
 </style>
   <script src="/js/core/tsm-event-bus.js"></script>
   <script src="/js/core/tsm-state.js"></script>
+  <script src="/html/shared/runtime/mission/mission-model.js"></script>
+  <script src="/html/shared/runtime/mission/mission-store.js"></script>
   <script src="/js/core/tsm-mission-engine.js"></script>
   <script src="/js/core/tsm-auto-pipeline.js"></script>
 </head>
@@ -863,6 +865,42 @@ function writeExecRelay(e) {
       window.dispatchEvent(new CustomEvent('TSM_SENTINEL_REFRESH'));
     } catch(e) { console.warn('[sentinel-push] legal error:', e); }
     // ── END SENTINEL PUSH ────────────────────────────────────────────────────
+
+    // Phase 2: Mission Core creation
+    try {
+      if (window.TSMMissionModel && window.TSMMissionStore) {
+        const legalMissionSeverity = legalProSeverityForRisk(payload.riskScore);
+        const legalMissionPriority = legalMissionSeverity === 'CRIT' ? 'Critical'
+          : legalMissionSeverity === 'HIGH' ? 'High'
+          : legalMissionSeverity === 'MED' ? 'Medium'
+          : 'normal';
+        const mission = window.TSMMissionModel.createMission({
+          vertical: 'legal',
+          tenantId: 'default',
+          client: payload.matter || null,
+          classification: {
+            summary: payload.synthesisText || '',
+            exposure: payload.exposure || null,
+            riskScore: payload.riskScore || null,
+            winProb: payload.winProb || null,
+            settleRange: payload.settleRange || null,
+            source: 'Legal Strategist'
+          },
+          workflow: {
+            assignedTo: null,
+            queue: null,
+            priority: legalMissionPriority,
+            sla: null
+          },
+          actor: 'legal-main-strategist'
+        });
+        window.TSMMissionStore.saveMission(mission);
+      } else {
+        console.warn('Mission Core not loaded - skipping mission creation, Legal relay write already succeeded.');
+      }
+    } catch (missionErr) {
+      console.warn('Mission Core creation failed (non-fatal, Legal relay already written):', missionErr);
+    }
 
   } catch(err) { console.warn('Relay write error:', err); }
 }
