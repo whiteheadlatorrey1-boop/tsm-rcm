@@ -555,6 +555,8 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
   <script src="/js/core/tsm-state.js"></script>
   <script src="/js/core/tsm-mission-engine.js"></script>
   <script src="/js/core/tsm-auto-pipeline.js"></script>
+  <script src="../../shared/runtime/mission/mission-model.js"></script>
+  <script src="../../shared/runtime/mission/mission-store.js"></script>
 </head>
 <body>
 
@@ -712,6 +714,13 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
       </div>
     </div>
 
+    <div class="panel">
+      <div class="panel-title"><div class="dot" style="background:var(--green)"></div>SUPERVISOR ROLLUP · CROSS-MISSION</div>
+      <div id="supervisorRollup">
+        <div style="color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:.68rem">Mission Store not available.</div>
+      </div>
+    </div>
+
     <div class="panel" style="flex:1">
       <div class="panel-title"><div class="dot" style="background:var(--purple)"></div>RECOMMENDED APPS · ROUTE TO</div>
       <div id="recommendedApps">
@@ -797,12 +806,71 @@ function nav(url){ window.location.href = url; }
     const raw = sessionStorage.getItem('TSM_BPO_STRAT_RELAY') || localStorage.getItem('TSM_BPO_STRAT_RELAY');
     if (!raw) { loadDemoMode(); return; }
     stratData = JSON.parse(raw);
+
+    // ── Mission runtime (Phase 3, additive) — load BEFORE hydratePage so
+    // buildExecPlan can seed/read real mission.tasks instead of the old
+    // ephemeral in-memory checklist. ──
+    try {
+      if (window.TSMMissionStore && stratData?.caseId) {
+        window.tsmMission = window.TSMMissionStore.getMission(stratData.caseId) || null;
+      }
+    } catch (e) { console.error('Mission read failed (non-fatal):', e); }
+
     hydratePage(stratData);
-  initThreeBlocks(stratData);
+    initThreeBlocks(stratData);
+
   } catch(e) {
     loadDemoMode();
   }
 })();
+
+renderSupervisorRollup();
+
+function renderSupervisorRollup(){
+  const el = document.getElementById('supervisorRollup');
+  if (!window.TSMMissionStore || !window.TSMMissionModel) return; // leaves the "not available" placeholder in place
+
+  const analytics = window.TSMMissionStore.getAnalytics();
+  const allMissions = window.TSMMissionStore.listMissions();
+
+  if (!allMissions.length) {
+    el.innerHTML = '<div style="color:var(--muted);font-family:\'JetBrains Mono\',monospace;font-size:.68rem">No missions in the store yet.</div>';
+    return;
+  }
+
+  // Per-vertical breakdown: mission counts + avg task completion.
+  const byVertical = {};
+  allMissions.forEach(m => {
+    if (!byVertical[m.vertical]) byVertical[m.vertical] = { total: 0, open: 0, closed: 0, completionSum: 0 };
+    const v = byVertical[m.vertical];
+    v.total++;
+    if (m.stage === 'closed') v.closed++; else v.open++;
+    v.completionSum += window.TSMMissionModel.completionPercent(m);
+  });
+
+  const rows = Object.keys(byVertical).sort().map(vertical => {
+    const v = byVertical[vertical];
+    const avgCompletion = Math.round(v.completionSum / v.total);
+    return `
+      <div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-family:'JetBrains Mono',monospace;font-size:.68rem">
+        <div style="width:80px;color:var(--text2);text-transform:capitalize">${vertical}</div>
+        <div style="width:70px;color:var(--muted)">${v.open} open · ${v.closed} done</div>
+        <div style="flex:1;height:5px;background:var(--bg4);border-radius:3px;overflow:hidden">
+          <div style="height:100%;width:${avgCompletion}%;background:${avgCompletion>=80?'var(--green)':avgCompletion>=40?'var(--amber)':'var(--red)'}"></div>
+        </div>
+        <div style="width:32px;text-align:right;color:var(--text2)">${avgCompletion}%</div>
+      </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div style="display:flex;gap:14px;font-family:'JetBrains Mono',monospace;font-size:.68rem;color:var(--muted);margin-bottom:8px">
+      <div>Total: <span style="color:var(--text2)">${analytics.total}</span></div>
+      <div>Open: <span style="color:var(--text2)">${analytics.open}</span></div>
+      <div>Closed: <span style="color:var(--text2)">${analytics.closed}</span></div>
+      <div>Late: <span style="color:${analytics.late>0?'var(--red)':'var(--text2)'}">${analytics.late}</span></div>
+    </div>
+    ${rows}`;
+}
 
 function loadDemoMode() {
   stratData = {
@@ -889,6 +957,23 @@ function formatDollar(n){
 // ── EXECUTION PLAN CHECKLIST ──
 function buildExecPlan(actions) {
   const el = document.getElementById('execPlanList');
+
+  // Real mission loaded: seed tasks from recommendedActions on first view
+  // (mission.tasks is empty), then always render/persist against the real
+  // mission model rather than the old ephemeral in-memory checklist.
+  if (window.tsmMission && window.TSMMissionModel && window.TSMMissionStore) {
+    const m = window.tsmMission;
+    if ((!m.tasks || m.tasks.length === 0) && actions.length) {
+      actions.forEach(a => {
+        window.TSMMissionModel.addTask(m, { title: a.text, assignedTo: a.owner || null });
+      });
+      window.TSMMissionStore.saveMission(m);
+    }
+    renderExecPlanFromMission();
+    return;
+  }
+
+  // No mission loaded (demo mode / relay without caseId) — old ephemeral behavior.
   if (!actions.length) {
     el.innerHTML = '<div style="color:var(--muted);font-family:\'JetBrains Mono\',monospace;font-size:.68rem">No recommended actions in this strategy brief.</div>';
     document.getElementById('execProgress').textContent = '0 / 0 complete';
@@ -907,6 +992,47 @@ function buildExecPlan(actions) {
   `).join('');
 
   updateExecProgress(actions.length);
+}
+
+function renderExecPlanFromMission(){
+  const el = document.getElementById('execPlanList');
+  const m = window.tsmMission;
+  const tasks = (m && m.tasks) || [];
+
+  if (!tasks.length) {
+    el.innerHTML = '<div style="color:var(--muted);font-family:\'JetBrains Mono\',monospace;font-size:.68rem">No recommended actions in this strategy brief.</div>';
+    document.getElementById('execProgress').textContent = '0 / 0 complete';
+    return;
+  }
+
+  el.innerHTML = tasks.map((t,i) => `
+    <div class="exec-item">
+      <div class="exec-check ${t.status==='complete'?'done':''}" onclick="toggleExecTask('${t.id}')">${t.status==='complete'?'✓':''}</div>
+      <div class="exec-num">0${i+1}</div>
+      <div class="exec-body">
+        <div class="exec-text ${t.status==='complete'?'done':''}">${t.title}</div>
+        <div class="exec-owner">→ ${t.assignedTo || 'Unassigned'}</div>
+      </div>
+    </div>
+  `).join('');
+
+  const done = tasks.filter(t=>t.status==='complete').length;
+  document.getElementById('execProgress').textContent = done + ' / ' + tasks.length + ' complete';
+}
+
+function toggleExecTask(taskId){
+  const m = window.tsmMission;
+  if (!m || !window.TSMMissionModel || !window.TSMMissionStore) return;
+  const task = (m.tasks||[]).find(t=>t.id===taskId);
+  if (!task) return;
+  window.TSMMissionModel.updateTaskStatus(m, taskId, task.status==='complete'?'open':'complete', 'executive-portal-user');
+  window.TSMMissionStore.saveMission(m);
+
+  if (window.TSMMemory) {
+    TSMMemory.timeline((task.status === 'complete' ? 'Execution step completed: ' : 'Execution step reopened: ') + task.title);
+  }
+
+  renderExecPlanFromMission();
 }
 
 function toggleExec(i, text) {
@@ -1377,34 +1503,10 @@ function buildExplainability(data) {
     if (RELAY_KEYS.indexOf(e.key) !== -1) mount();
   });
 })();
-</script>
-  <script src="/html/core/tsm-runtime.js"></script>
-</body>
-</html>
-
-// ===== TSM_AUTONOMY_STANDARDIZED =====
 window.TSM_AUTONOMY_STANDARDIZED = true;
 </script>
-
-<!-- TSM ENFORCER BOOT -->
-<script src="/html/core/tsm-enforcer.js"></script>
-
-
-// ===== TSM WAR ROOM SCOPED RELAY FIX =====
-window.tsmMission = window.tsmMission || {
-  id: "BPO-" + Date.now().toString(36),
-  vertical: "bpo",
-  
-};
-
-function tsmWriteRelay(payload){
-  TSM_KERNEL.setRelay("bpo", JSON.stringify(payload));
-}
-</script>
-<!-- TSM CONTROL PLANE -->
-<script src="/html/js/core/tsm-event-bus.js"></script>
-<script src="/html/js/core/tsm-state.js"></script>
-<script src="/html/js/core/tsm-mission-engine.js"></script>
-<script src="/shared/tsm-exec-portal-upgrade.js"></script>
+  <script src="/html/core/tsm-runtime.js"></script>
+  <script src="/html/core/tsm-enforcer.js"></script>
+  <script src="/shared/tsm-exec-portal-upgrade.js"></script>
 </body>
 </html>

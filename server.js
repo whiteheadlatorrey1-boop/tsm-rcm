@@ -861,41 +861,11 @@ app.use(require('./routes/enterprise-capability-bridge'));
 
 // ── FINOPS ────────────────────────────────────────────────────────────────────
 app.post('/api/finops/bnca/report', (req, res) => res.json({ ok: true }));
-// routes/finops.js implements docs, run-doc, upload-doc (with field
-// extraction), report, multi-report, and actions endpoints. Mounted after
-// the inline handler above so that handler keeps precedence on any overlap.
-const liveDataModule = require('./routes/live-data');
+// routes/finops.js implements the fuller finops API (docs, decision-service bridge, etc.)
+app.use(require('./routes/hc'));
+app.use(require('./routes/strategist'));
+app.use(require('./routes/construction'));
 app.use(require('./routes/finops'));
-app.use(liveDataModule);
-
-// ── ENTERPRISE INTELLIGENCE ───────────────────────────────────────────────────
-const enterpriseRouter =
-    require('./server/enterprise/api/enterprise-router');
-
-app.use(
-    '/api/enterprise',
-    enterpriseRouter
-);
-
-// ── ENTERPRISE LAB (Incident Generator / Live Mission Queue) ─────────────────
-const enterpriseLabRouter =
-    require('./server/enterprise-lab/api');
-
-app.use(
-    '/api/enterprise-lab',
-    enterpriseLabRouter
-);
-
-// ── ENTERPRISE LAB (Digital Twins: VMware, Network, Device, AD, M365, +) ─────
-const twinsRouter =
-    require('./server/enterprise-lab/twins-router');
-
-app.use(
-    '/api/twins',
-    twinsRouter
-);
-
-app.post('/api/chat', (req, res) => res.json({ ok: true }));
 
 // ── AI QUERY ROUTES ───────────────────────────────────────────────────────────
 app.post('/api/ai/query', async (req, res) => {
@@ -1479,8 +1449,16 @@ Return JSON matching exactly this schema:
   "ref": string or "",
   "summary": one short sentence describing the document,
   "defectFlags": array of short strings — specific issues/exceptions found in the document. For vertical "re", choose ONLY from this fixed set when applicable: ["Financing Failure","Appraisal Gap","Title Defect","Inspection Issues","UW Conditions","Closing Delay"], and use them to inform routing.re.sourceNode (Financing Failure->re-finance, Appraisal Gap->re-market, Title Defect/UW Conditions->re-strategist, Closing Delay->re-exec, Inspection Issues->re-doc-command). For all other verticals, use concise 2-4 word freeform issue labels relevant to the content (e.g. "Coverage Gap", "Code Violation", "Late Filing"), or [] if no issues are present,
-  "bnca": boolean — true ONLY if the document represents an anomaly, discrepancy, denial, dispute, or risk that should escalate to BNCA review
+  "bnca": boolean - true ONLY if the document represents an anomaly, discrepancy, denial, dispute, or risk that should escalate to BNCA review,
+  "entities": {
+    "parties": array of strings - named people/organizations referenced (e.g. "Acme Roofing LLC", "Jane Doe"), [] if none,
+    "dates": array of strings - dates found in the document in the format they appear, [] if none,
+    "amounts": array of strings - every distinct dollar amount mentioned, formatted as written (e.g. "$47,000.00"), [] if none,
+    "identifiers": array of strings - reference numbers, policy numbers, claim numbers, permit numbers, case numbers etc. found in the document (label included, e.g. "Policy #: HP-88231"), [] if none
+  }
 }
+
+Note: do NOT include a "confidence" or "validation" field - those are computed by the server, not the model.
 
 Valid node IDs per vertical:
 fo:  ${DOC_ROUTER_NODES.fo.join(', ')}
@@ -1497,6 +1475,107 @@ Rules:
 - "sourceNode" must be the node most directly responsible for this document type (not "strategist" unless nothing else fits).
 - If the document doesn't clearly belong anywhere, return "verticals": [] and leave "routing" as {}.
 - Be conservative with "bnca" — only flag genuine anomalies, denials, disputes, code violations, SLA breaches, or financial exposure outliers.`;
+
+// -- Deterministic validation + confidence (Phase 4, Mission Preview) --
+// Deliberately NOT model-generated: LLM self-reported confidence scores are
+// poorly calibrated, and routing correctness is a safety-relevant decision
+// (same principle already used for checkStatus in the playbook route below -
+// the model proposes content, code decides anything that affects where a
+// document actually goes). This just checks the model's own output against
+// its own schema and scores completeness; it can't fix a wrong classification,
+// only catch a malformed one.
+function validateClassification(parsed) {
+  const errors = [];
+  const verticals = Array.isArray(parsed.verticals) ? parsed.verticals : [];
+  const validVerticalIds = Object.keys(DOC_ROUTER_NODES);
+
+  if (!DOC_ROUTER_DOC_TYPES.includes(parsed.documentType)) {
+    errors.push('documentType "' + parsed.documentType + '" is not in the allowed set.');
+  }
+
+  verticals.forEach((v) => {
+    if (!validVerticalIds.includes(v)) {
+      errors.push('vertical "' + v + '" is not a recognized vertical.');
+      return;
+    }
+    const r = (parsed.routing && parsed.routing[v]) || null;
+    if (!r) {
+      errors.push('vertical "' + v + '" is listed but has no routing entry.');
+      return;
+    }
+    const validNodes = DOC_ROUTER_NODES[v];
+    if (!validNodes.includes(r.sourceNode)) {
+      errors.push('routing.' + v + '.sourceNode "' + r.sourceNode + '" is not a valid node id.');
+    }
+    const nodes = Array.isArray(r.nodes) ? r.nodes : [];
+    nodes.forEach((n) => {
+      if (n === 'bnca-engine') return; // cross-cutting node, valid in every vertical when bnca is flagged
+      if (!validNodes.includes(n)) {
+        errors.push('routing.' + v + '.nodes contains invalid node id "' + n + '".');
+      }
+    });
+    if (!nodes.includes('strategist')) {
+      errors.push('routing.' + v + '.nodes is missing required "strategist" entry.');
+    }
+  });
+
+  if (verticals.length > 0 && !verticals.includes(parsed.primaryVertical)) {
+    errors.push('primaryVertical "' + parsed.primaryVertical + '" is not one of the listed verticals.');
+  }
+
+  const amountNum = Number(parsed.amount);
+  if (parsed.amount !== undefined && (!Number.isFinite(amountNum) || amountNum < 0)) {
+    errors.push('amount "' + parsed.amount + '" is not a valid non-negative number.');
+  }
+
+  return { valid: errors.length === 0, errors };
+}
+
+function scoreConfidence(parsed, validation) {
+  if (!validation.valid) {
+    // A schema violation means the routing itself can't be trusted;
+    // cap confidence low regardless of how "complete" the rest looks.
+    return 0.2;
+  }
+
+  let score = 0.5; // base score for a structurally valid, in-schema response
+  const bump = (cond, amt) => { if (cond) score += amt; };
+
+  bump(!!parsed.vendor, 0.05);
+  bump(!!parsed.invoiceNo || !!(parsed.entities && parsed.entities.identifiers && parsed.entities.identifiers.length), 0.05);
+  bump(!!parsed.client, 0.05);
+  bump(!!parsed.summary && parsed.summary.length > 0, 0.05);
+  bump(Number(parsed.amount) > 0, 0.05);
+  bump(!!(parsed.entities && parsed.entities.parties && parsed.entities.parties.length), 0.05);
+  bump(!!(parsed.entities && parsed.entities.dates && parsed.entities.dates.length), 0.05);
+  bump(Array.isArray(parsed.verticals) && parsed.verticals.length === 1, 0.05); // single clear vertical > ambiguous multi-vertical guess
+  bump(Array.isArray(parsed.defectFlags) && parsed.defectFlags.length > 0, 0.05);
+
+  return Math.max(0, Math.min(1, Math.round(score * 100) / 100));
+}
+
+// -- Phase 8: derived routing recommendations (still deterministic) --
+// Solo-owner phase: every vertical routes to Latorrey until a client/team
+// subscribes to that vertical specifically. Update TEAM_BY_VERTICAL entries
+// as ownership gets assigned out — this map is meant to grow, not stay flat.
+const TEAM_BY_VERTICAL = {}; // empty = fall through to default owner below
+const DEFAULT_OWNER = 'Latorrey';
+
+function suggestTeam(parsed) {
+  if (!parsed.primaryVertical) return DEFAULT_OWNER;
+  return TEAM_BY_VERTICAL[parsed.primaryVertical] || DEFAULT_OWNER;
+}
+
+function scorePriority(parsed, validation, confidence) {
+  const amountNum = Number(parsed.amount) || 0;
+  const hasDefects = Array.isArray(parsed.defectFlags) && parsed.defectFlags.length > 0;
+
+  if (!validation.valid) return 'Needs Review';
+  if (confidence < 0.5) return 'Needs Review';
+  if (hasDefects || amountNum > 25000) return 'High';
+  if (amountNum > 5000) return 'Medium';
+  return 'Low';
+}
 
 // crude in-memory rate limit: 20 requests / 5 min / IP
 const docRouterHits = new Map();
@@ -1565,6 +1644,19 @@ app.post('/api/doc-router/classify', async (req, res) => {
       console.error('[doc-router] Bad JSON from model:', data.choices?.[0]?.message?.content);
       return res.status(502).json({ error: 'Invalid classification response.' });
     }
+
+    // Deterministic pass - never trust the model's own read of its schema
+    // compliance. Attached to the response, not thrown, so a malformed doc
+    // still reaches the frontend (Mission Preview) with a visible warning
+    // instead of a hard failure - same reasoning as the playbook route below.
+    const validation = validateClassification(parsed);
+    if (!validation.valid) {
+      console.warn('[doc-router] classification failed validation:', validation.errors);
+    }
+    parsed.validation = validation;
+    parsed.confidence = scoreConfidence(parsed, validation);
+    parsed.suggestedTeam = suggestTeam(parsed);
+    parsed.priority = scorePriority(parsed, validation, parsed.confidence);
 
     res.json(parsed);
   } catch (err) {

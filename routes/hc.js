@@ -267,48 +267,42 @@ router.post('/api/hc/brief', async (req, res) => {
     const audienceLabel = { om: 'Office Manager', director: 'Director', cfo: 'CFO', ceo: 'CEO' }[audience] || 'leadership';
     const formatLabel = { brief: 'executive brief', email: 'professional email', status_update: 'status update', talking_points: 'bullet-point talking points' }[format] || 'brief';
 
-    const systemPrompt = `You are a senior healthcare revenue cycle strategist writing on behalf of the Revenue Cycle team at ${system || 'HonorHealth'} ${location || 'Scottsdale-Shea'}.
+    const topNode = result.top?.[0]?.node || {};
+    const topNodeDetail = [
+      topNode.authBacklog != null ? `auth backlog ${topNode.authBacklog}` : null,
+      topNode.authDelayHours != null ? `avg auth delay ${topNode.authDelayHours}h` : null,
+      topNode.denialRate != null ? `denial rate ${topNode.denialRate}%` : null
+    ].filter(Boolean).join(', ');
 
-CANONICAL FIGURES — use these exactly, do not recalculate:
-- Total revenue at risk: $229,850
-- Recoverable in 72 hours: $78,149 (United Healthcare auth backlog — 27 pending claims, 56-hour avg delay)
-- 14-day cash acceleration: $109,409
-- Denial rate: 12.4% (CMS threshold: 15%) — goal is to REDUCE this, not maintain it
-- Highest-yield lane: Insurance, 91% confidence
+    const systemPrompt = `You are a senior healthcare revenue cycle strategist writing on behalf of the Revenue Cycle team at ${system || 'the health system'} ${location || ''}.
+
+You will be given the ACTUAL computed figures for this office/system, derived from live node telemetry. Use ONLY those figures — do not invent, round dramatically, or substitute different numbers. If a figure is missing or zero, say so plainly rather than making one up.
 
 RULES:
 1. Open with a specific dollar figure or action — never with 'I am writing to' or 'I wanted to reach out'
-2. Never use placeholder names like [CFO Name] or [Your Name] — omit the salutation and sign off as 'Revenue Cycle · Scottsdale-Shea'
+2. Never use placeholder names like [CFO Name] or [Your Name] — omit the salutation and sign off as 'Revenue Cycle${location ? ' · ' + location : ''}'
 3. Never fabricate context like 'following our previous discussion'
 4. Every sentence ties to a dollar figure, a lane, or a named action with an owner
 5. Output must be copy-paste ready — no brackets, no blanks, no instructions to the reader
-6. United Healthcare is the primary payer to name specifically
+6. Only name a specific payer if it appears in the data provided
 
 Audience: ${audienceLabel}
-Format: ${formatLabel} — ${format === 'email' ? 'include Subject: line, then the email body, then sign off as Revenue Cycle · Scottsdale-Shea' : format === 'talking_points' ? 'tight bullets, dollar figure on every line' : format === 'status_update' ? 'structured paragraphs, metrics up front' : 'two paragraphs max, action and dollar impact only'}`;
+Format: ${formatLabel} — ${format === 'email' ? 'include Subject: line, then the email body, then sign off as Revenue Cycle' + (location ? ' · ' + location : '') : format === 'talking_points' ? 'tight bullets, dollar figure on every line' : format === 'status_update' ? 'structured paragraphs, metrics up front' : 'two paragraphs max, action and dollar impact only'}`;
 
-    // Scrub computed numbers from rawBrief — replace with canonical Scottsdale-Shea figures
-    const scrubbed = rawBrief
-      .replace(/\$[0-9,]+/g, '')
-      .replace(/recoverable[^.\n]*/gi, '')
-      .replace(/revenue at risk[^.\n]*/gi, '')
-      .replace(/cash acceleration[^.\n]*/gi, '')
-      .replace(/highest.yield lane[^.\n]*/gi, '');
+    const userMessage = `ACTUAL FIGURES — computed from live node data, use only these:
+- Revenue at risk: $${Number(result.revenueAtRisk || 0).toLocaleString()}
+- Recoverable in 72 hours: $${Number(result.recoverable72h || 0).toLocaleString()}
+- Recoverable in 30 days: $${Number(result.recoverable30d || 0).toLocaleString()}
+- 14-day cash acceleration: $${Number(result.cashAcceleration14d || 0).toLocaleString()}
+- Highest-yield lane: ${highestYieldLane}
+${topNodeDetail ? '- Top lane detail: ' + topNodeDetail : ''}
 
-    const userMessage = `CANONICAL NUMBERS — these are the only figures you may use. Do not use any other dollar amounts:
-- Revenue at risk: $229,850
-- Recoverable in 72 hours: $78,149
-- 14-day cash acceleration: $109,409
-- Denial rate: 12.4%
-- Highest-yield lane: Insurance (91% confidence) — never prefix percentages with a dollar sign
-- United Healthcare: 27 pending auth claims, 56-hour avg delay
-
-Operational context (use for narrative only — ignore any dollar figures in this block):
-${scrubbed}
+Operational context (narrative only):
+${rawBrief}
 
 ${question ? 'The reader specifically asked: ' + question : ''}
 
-Write the ${formatLabel} for the ${audienceLabel} now. Sharp, specific, sendable. Only use the canonical numbers above.`;
+Write the ${formatLabel} for the ${audienceLabel} now. Sharp, specific, sendable. Only use the figures above — do not introduce other numbers.`;
 
     let brief = rawBrief; // fallback if Groq fails
     try {

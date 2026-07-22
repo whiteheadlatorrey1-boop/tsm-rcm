@@ -1937,6 +1937,8 @@ document.addEventListener('DOMContentLoaded',()=>{
 <script>window.ui = TSM_UI;</script>
 
 <!-- GRANTS LIVE DASHBOARD -- mirrors mortgage-war-room.html's engine wiring -->
+<script src="/html/shared/runtime/mission/mission-model.js"></script>
+<script src="/html/shared/runtime/mission/mission-store.js"></script>
 <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
 <script src="/html/core/tsm-runtime.js"></script>
 <script src="/runtime/kernel/canonical-core.js"></script>
@@ -2041,6 +2043,51 @@ document.addEventListener('DOMContentLoaded',()=>{
       window.dispatchEvent(new CustomEvent('TSM_SENTINEL_REFRESH'));
     } catch (e) {
       console.warn('Schools: sentinel push failed', e);
+    }
+  }
+  // Phase 2: Mission Core creation. Only called from schRunAnalysis() (explicit
+  // user-triggered analysis run), NOT from schWriteRelay()'s other automatic
+  // call sites (hydration on load, sample-data load) to avoid creating a
+  // mission on every passive page visit.
+  function schCreateMissionFromRelay() {
+    try {
+      if (!(window.TSMMissionModel && window.TSMMissionStore)) {
+        console.warn('Mission Core not loaded — skipping mission creation, Schools relay write already succeeded.');
+        return;
+      }
+      const raw = localStorage.getItem('TSM_SCHOOLS_STRATEGIST_RELAY');
+      const sentinelPayload = raw ? JSON.parse(raw) : null;
+      const anomalies = (sentinelPayload && sentinelPayload.anomalies) || [];
+      const schSeverityRank = { CRIT: 3, HIGH: 2, MED: 1, LOW: 0 };
+      const worst = anomalies.reduce((w, a) => {
+        if (!w) return a;
+        return (schSeverityRank[a.severity] || 0) > (schSeverityRank[w.severity] || 0) ? a : w;
+      }, null);
+      const severity = worst ? worst.severity : 'LOW';
+      const priority = severity === 'CRIT' ? 'Critical'
+        : severity === 'HIGH' ? 'High'
+        : severity === 'MED' ? 'Medium'
+        : 'normal';
+      const mission = window.TSMMissionModel.createMission({
+        vertical: 'schools',
+        tenantId: 'default',
+        client: null,
+        classification: {
+          summary: worst ? worst.rootCause : '',
+          anomalies: anomalies,
+          source: 'Schools Command Center'
+        },
+        workflow: {
+          assignedTo: null,
+          queue: null,
+          priority: priority,
+          sla: null
+        },
+        actor: 'schools-command'
+      });
+      window.TSMMissionStore.saveMission(mission);
+    } catch (missionErr) {
+      console.warn('Mission Core creation failed (non-fatal, Schools relay already written):', missionErr);
     }
   }
 
@@ -2171,11 +2218,13 @@ document.addEventListener('DOMContentLoaded',()=>{
       const text = result.answer || result.output || JSON.stringify(result, null, 2);
       out.textContent = text;
       schWriteRelay(text);
+      schCreateMissionFromRelay();
     } catch (e) {
       out.innerHTML = `<span style="color:var(--red)">Analysis failed: ${e.message}</span>`;
       // Still relay KPI/financial data even when the AI call itself fails --
       // Strategist/Exec Portal shouldn't go dark just because the AI endpoint did.
       schWriteRelay(null);
+      schCreateMissionFromRelay();
     }
   }
 

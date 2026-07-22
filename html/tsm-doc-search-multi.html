@@ -635,6 +635,41 @@ body::before {
   padding:7px;cursor:pointer;border-radius:6px;
 }
 .wr-modal-cancel:hover { color:var(--text); }
+
+/* Mission Preview (Phase 4) - reuses .wr-modal-overlay for the backdrop */
+.mp-modal {
+  background:#0d1a20;border:1px solid rgba(30,232,182,.2);border-radius:12px;
+  padding:24px;width:420px;max-width:92vw;max-height:82vh;overflow-y:auto;
+  font-family:var(--mono);
+}
+.mp-title { font-size:10px;letter-spacing:2px;color:var(--accent);margin-bottom:4px; }
+.mp-sub { font-size:11px;color:var(--text);margin-bottom:14px;border-bottom:1px solid var(--border);padding-bottom:10px; }
+.mp-warn {
+  font-size:10px;color:var(--danger);background:rgba(248,113,113,.08);
+  border:1px solid rgba(248,113,113,.25);border-radius:8px;padding:8px 10px;margin-bottom:12px;
+}
+.mp-warn ul { margin:6px 0 0 16px;padding:0; }
+.mp-row { display:flex;align-items:center;gap:8px;margin-bottom:9px;font-size:10px; }
+.mp-label { color:var(--muted);letter-spacing:1px;min-width:90px;flex-shrink:0;text-transform:uppercase;font-size:9px; }
+.mp-bar { flex:1;height:6px;background:var(--panel2);border-radius:3px;overflow:hidden; }
+.mp-bar-fill { height:100%;border-radius:3px;transition:width .3s; }
+.mp-conf-num { font-size:10px;font-weight:600;min-width:32px;text-align:right; }
+.mp-section { margin-bottom:10px; }
+.mp-chips { display:flex;flex-wrap:wrap;gap:5px;margin-top:4px; }
+.mp-chip {
+  font-size:9px;color:var(--text);background:var(--panel2);border:1px solid var(--border);
+  border-radius:5px;padding:3px 7px;
+}
+.mp-empty { font-size:9px;color:var(--dim);font-style:italic; }
+.mp-actions { display:flex;gap:8px;margin-top:16px; }
+.mp-btn {
+  flex:1;font-family:var(--mono);font-size:9px;letter-spacing:1px;text-transform:uppercase;
+  padding:9px;border-radius:6px;cursor:pointer;border:1px solid var(--border);
+  background:transparent;color:var(--dim);
+}
+.mp-btn:hover { color:var(--text); }
+.mp-confirm { background:var(--accent-dim);border-color:rgba(30,232,182,.3);color:var(--accent); }
+.mp-confirm:hover { background:var(--accent-mid); }
 .btn-redispatch {
   font-family: var(--mono); font-size: 9px; padding: 4px 10px;
   border-radius: 6px; border: 1px solid rgba(30,232,182,0.25);
@@ -882,6 +917,9 @@ if (window.pdfjsLib) {
 }
 </script>
 <script src="/html/js/core/tsm-war-room-registry.js"></script>
+<!-- Mission runtime (Phase 4, additive - does not affect existing relay/routing) -->
+<script src="/html/shared/runtime/mission/mission-model.js"></script>
+<script src="/html/shared/runtime/mission/mission-store.js"></script>
 </head>
 <body>
 <div class="page">
@@ -1640,6 +1678,7 @@ const FIELD_POLICY = {
 };
 
 const INTERNAL_ONLY_DOC_TYPES = new Set(['ESCALATION']);
+const GEN_PLAYBOOK_VERTICALS = new Set(['fo', 'ins', 'con', 're', 'leg', 'bpo']);
 function docTypeIsClientSafe(documentType) {
   return !INTERNAL_ONLY_DOC_TYPES.has(documentType);
 }
@@ -3107,6 +3146,116 @@ async function captureAttachment(file) {
   }
 }
 
+// -- Mission runtime bridge (Phase 4, additive) --
+// Doc-router vertical codes (fo/ins/con/bpo/re/leg/hc) are NOT the same
+// strings as TSMMissionModel's canonical vertical names (finops/insurance/
+// construction/bpo/realestate/legal/healthcare) - mapping required, or every
+// createMission() call below throws "invalid vertical".
+const DOC_ROUTER_TO_MISSION_VERTICAL = {
+  fo:  'finops',
+  ins: 'insurance',
+  con: 'construction',
+  bpo: 'bpo',
+  re:  'realestate',
+  leg: 'legal',
+  hc:  'healthcare'
+};
+
+// Below this confidence (or on any validation failure) the document pauses
+// for human review in a Mission Preview modal instead of auto-routing.
+// Confident, schema-valid classifications skip the modal entirely - existing
+// upload speed is unaffected for the common case.
+const MISSION_PREVIEW_CONFIDENCE_THRESHOLD = 0.6;
+
+function classificationNeedsReview(classification) {
+  if (classification && classification.validation && classification.validation.valid === false) return true;
+  const conf = typeof classification.confidence === 'number' ? classification.confidence : 1;
+  return conf < MISSION_PREVIEW_CONFIDENCE_THRESHOLD;
+}
+
+// Builds + persists a Mission record from a doc-router classification result.
+// Non-fatal by design (mirrors the try/catch pattern already used in
+// bpo-war-room.html) - a Mission write failure should never block the
+// existing routing/relay flow this file already depends on.
+function buildMissionFromClassification(classification, fileName) {
+  try {
+    if (!window.TSMMissionModel || !window.TSMMissionStore) return null;
+    const primaryCode = classification.primaryVertical || (classification.verticals || [])[0];
+    const missionVertical = DOC_ROUTER_TO_MISSION_VERTICAL[primaryCode];
+    if (!missionVertical) return null; // unmapped/unknown vertical - skip silently, routing still proceeds
+
+    const mission = window.TSMMissionModel.createMission({
+      tenantId: 'default',
+      vertical: missionVertical,
+      client: classification.client || null,
+      classification: classification,
+      confidence: { score: classification.confidence, computedBy: 'server:doc-router' },
+      validation: classification.validation || {},
+      entities: classification.entities || {},
+      workflow: {
+        assignedTo: classification.suggestedTeam || null,
+        queue: null,
+        priority: classification.priority || 'normal',
+        sla: null
+      },
+      documents: [{ fileName: classification.fileName || fileName }]
+    });
+    window.TSMMissionStore.saveMission(mission);
+    return mission;
+  } catch (e) {
+    console.error('Mission write failed (non-fatal):', e);
+    return null;
+  }
+}
+
+// Shows the Mission Preview modal and resolves true/false with the user's
+// decision. Only invoked when classificationNeedsReview() is true.
+function showMissionPreview(classification, fileName) {
+  return new Promise((resolve) => {
+    const entities = classification.entities || {};
+    const errs = (classification.validation && classification.validation.errors) || [];
+    const confPct = Math.round((typeof classification.confidence === 'number' ? classification.confidence : 0) * 100);
+    const confColor = confPct >= 70 ? 'var(--accent)' : confPct >= 40 ? '#f8b73f' : 'var(--danger)';
+
+    const chipsOrNone = (arr) => (Array.isArray(arr) && arr.length)
+      ? arr.map(x => '<span class="mp-chip">' + escapeHtml(x) + '</span>').join('')
+      : '<span class="mp-empty">none detected</span>';
+
+    const errList = errs.map(e => '<li>' + escapeHtml(e) + '</li>').join('');
+    const warnBlock = errs.length
+      ? '<div class="mp-warn">Classifier output failed validation - review carefully before confirming.<ul>' + errList + '</ul></div>'
+      : '';
+
+    const overlay = document.createElement('div');
+    overlay.className = 'wr-modal-overlay';
+    overlay.innerHTML =
+      '<div class="mp-modal">' +
+        '<div class="mp-title">MISSION PREVIEW - REVIEW BEFORE ROUTING</div>' +
+        '<div class="mp-sub">' + escapeHtml(fileName) + '</div>' +
+        warnBlock +
+        '<div class="mp-row">' +
+          '<span class="mp-label">Confidence</span>' +
+          '<div class="mp-bar"><div class="mp-bar-fill" style="width:' + confPct + '%;background:' + confColor + ';"></div></div>' +
+          '<span class="mp-conf-num" style="color:' + confColor + ';">' + confPct + '%</span>' +
+        '</div>' +
+        '<div class="mp-row"><span class="mp-label">Doc Type</span><span>' + escapeHtml(classification.documentType || '-') + '</span></div>' +
+        '<div class="mp-row"><span class="mp-label">Vertical(s)</span><span>' + escapeHtml((classification.verticals || []).join(', ') || '-') + '</span></div>' +
+        '<div class="mp-row"><span class="mp-label">Client</span><span>' + escapeHtml(classification.client || '-') + '</span></div>' +
+        '<div class="mp-section"><div class="mp-label">Parties</div><div class="mp-chips">' + chipsOrNone(entities.parties) + '</div></div>' +
+        '<div class="mp-section"><div class="mp-label">Dates</div><div class="mp-chips">' + chipsOrNone(entities.dates) + '</div></div>' +
+        '<div class="mp-section"><div class="mp-label">Amounts</div><div class="mp-chips">' + chipsOrNone(entities.amounts) + '</div></div>' +
+        '<div class="mp-section"><div class="mp-label">Identifiers</div><div class="mp-chips">' + chipsOrNone(entities.identifiers) + '</div></div>' +
+        '<div class="mp-actions">' +
+          '<button class="mp-btn mp-discard">Discard</button>' +
+          '<button class="mp-btn mp-confirm">Confirm and Route</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    overlay.querySelector('.mp-discard').onclick = () => { overlay.remove(); resolve(false); };
+    overlay.querySelector('.mp-confirm').onclick = () => { overlay.remove(); resolve(true); };
+  });
+}
+
 function routeDocument(fileName, classification, attachment, extraction) {
   const verticals = classification.verticals || [];
   const routedTo  = [];
@@ -3225,6 +3374,21 @@ async function processFile(file) {
     const attachment = await captureAttachment(file);
     uqStatus(qid, '<span class="uq-spinner"></span> Classifying...');
     const classification = await classifyExtraction(file.name, extraction);
+
+    // Mission Preview (Phase 4) - only pauses for review when the classifier
+    // itself flagged low confidence or failed its own schema validation.
+    // Confident, valid classifications flow straight through exactly as
+    // before, so existing upload speed/behavior is unchanged for the common case.
+    if (classificationNeedsReview(classification)) {
+      uqStatus(qid, "Awaiting review - low-confidence classification", "err");
+      const confirmed = await showMissionPreview(classification, file.name);
+      if (!confirmed) {
+        uqStatus(qid, "Discarded by reviewer", "err");
+        return;
+      }
+    }
+    buildMissionFromClassification(classification, file.name);
+
     const routed = routeDocument(file.name, classification, attachment, extraction);
  
     if (routed.length === 0) {
@@ -3465,7 +3629,6 @@ window.openHcNodeWithDoc = openHcNodeWithDoc;
 // checkStatus derivation is intentionally identical to openHcNodeWithDoc's --
 // the code prefixes (CO-/PA-/OA-/PR-/LIEN/AKS) are shared conventions across
 // verticals in this codebase (see seed data), not HC-specific.
-const GEN_PLAYBOOK_VERTICALS = new Set(['fo', 'ins', 'con', 're', 'leg', 'bpo']);
 
 function deriveCheckStatus(excCode, docType, defects) {
   return excCode.startsWith('PA-') || docType.includes('PRIOR AUTH') ? 'AUTH_BLOCK'

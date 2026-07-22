@@ -1,0 +1,314 @@
+diff --git a/html/shared/runtime/mission/mission-model.js b/html/shared/runtime/mission/mission-model.js
+index 5effd00..c2934f3 100644
+--- a/html/shared/runtime/mission/mission-model.js
++++ b/html/shared/runtime/mission/mission-model.js
+@@ -173,6 +173,21 @@
+     return t;
+   }
+ 
++  function updateTaskStatus(mission, taskId, status, actor) {
++    if (!mission || !Array.isArray(mission.tasks)) {
++      throw new Error('updateTaskStatus: mission.tasks must be an array');
++    }
++    var t = mission.tasks.find(function (x) { return x.id === taskId; });
++    if (!t) {
++      throw new Error('updateTaskStatus: no task with id ' + taskId);
++    }
++    t.status = status;
++    t.completedAt = status === 'complete' ? nowISO() : null;
++    mission.updatedAt = nowISO();
++    addAuditEvent(mission, EVENT_TYPES.MISSION_UPDATED, actor || 'system', { taskId: taskId, taskStatus: status });
++    return t;
++  }
++
+   function completionPercent(mission) {
+     if (!mission.tasks || mission.tasks.length === 0) return 0;
+     var done = mission.tasks.filter(function (t) { return t.status === 'complete'; }).length;
+@@ -231,6 +246,7 @@
+     addAuditEvent: addAuditEvent,
+     transitionStage: transitionStage,
+     addTask: addTask,
++    updateTaskStatus: updateTaskStatus,
+     completionPercent: completionPercent,
+     validateMission: validateMission,
+     normalizeLegacyWorkItem: normalizeLegacyWorkItem
+diff --git a/html/war-rooms/bpo/bpo-executive-portal.html b/html/war-rooms/bpo/bpo-executive-portal.html
+index 3485b16..f7db255 100644
+--- a/html/war-rooms/bpo/bpo-executive-portal.html
++++ b/html/war-rooms/bpo/bpo-executive-portal.html
+@@ -555,8 +555,8 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
+   <script src="/js/core/tsm-state.js"></script>
+   <script src="/js/core/tsm-mission-engine.js"></script>
+   <script src="/js/core/tsm-auto-pipeline.js"></script>
+-  <script src="/html/shared/runtime/mission/mission-model.js"></script>
+-  <script src="/html/shared/runtime/mission/mission-store.js"></script>
++  <script src="../../shared/runtime/mission/mission-model.js"></script>
++  <script src="../../shared/runtime/mission/mission-store.js"></script>
+ </head>
+ <body>
+ 
+@@ -714,6 +714,13 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
+       </div>
+     </div>
+ 
++    <div class="panel">
++      <div class="panel-title"><div class="dot" style="background:var(--green)"></div>SUPERVISOR ROLLUP · CROSS-MISSION</div>
++      <div id="supervisorRollup">
++        <div style="color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:.68rem">Mission Store not available.</div>
++      </div>
++    </div>
++
+     <div class="panel" style="flex:1">
+       <div class="panel-title"><div class="dot" style="background:var(--purple)"></div>RECOMMENDED APPS · ROUTE TO</div>
+       <div id="recommendedApps">
+@@ -799,21 +806,72 @@ function nav(url){ window.location.href = url; }
+     const raw = sessionStorage.getItem('TSM_BPO_STRAT_RELAY') || localStorage.getItem('TSM_BPO_STRAT_RELAY');
+     if (!raw) { loadDemoMode(); return; }
+     stratData = JSON.parse(raw);
+-    hydratePage(stratData);
+-  initThreeBlocks(stratData);
+ 
+-    // ── Mission runtime (Phase 3, additive — does not affect existing relay) ──
++    // ── Mission runtime (Phase 3, additive) — load BEFORE hydratePage so
++    // buildExecPlan can seed/read real mission.tasks instead of the old
++    // ephemeral in-memory checklist. ──
+     try {
+       if (window.TSMMissionStore && stratData?.caseId) {
+         window.tsmMission = window.TSMMissionStore.getMission(stratData.caseId) || null;
+       }
+     } catch (e) { console.error('Mission read failed (non-fatal):', e); }
+ 
++    hydratePage(stratData);
++    initThreeBlocks(stratData);
++
+   } catch(e) {
+     loadDemoMode();
+   }
+ })();
+ 
++renderSupervisorRollup();
++
++function renderSupervisorRollup(){
++  const el = document.getElementById('supervisorRollup');
++  if (!window.TSMMissionStore || !window.TSMMissionModel) return; // leaves the "not available" placeholder in place
++
++  const analytics = window.TSMMissionStore.getAnalytics();
++  const allMissions = window.TSMMissionStore.listMissions();
++
++  if (!allMissions.length) {
++    el.innerHTML = '<div style="color:var(--muted);font-family:\'JetBrains Mono\',monospace;font-size:.68rem">No missions in the store yet.</div>';
++    return;
++  }
++
++  // Per-vertical breakdown: mission counts + avg task completion.
++  const byVertical = {};
++  allMissions.forEach(m => {
++    if (!byVertical[m.vertical]) byVertical[m.vertical] = { total: 0, open: 0, closed: 0, completionSum: 0 };
++    const v = byVertical[m.vertical];
++    v.total++;
++    if (m.stage === 'closed') v.closed++; else v.open++;
++    v.completionSum += window.TSMMissionModel.completionPercent(m);
++  });
++
++  const rows = Object.keys(byVertical).sort().map(vertical => {
++    const v = byVertical[vertical];
++    const avgCompletion = Math.round(v.completionSum / v.total);
++    return `
++      <div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-family:'JetBrains Mono',monospace;font-size:.68rem">
++        <div style="width:80px;color:var(--text2);text-transform:capitalize">${vertical}</div>
++        <div style="width:70px;color:var(--muted)">${v.open} open · ${v.closed} done</div>
++        <div style="flex:1;height:5px;background:var(--bg4);border-radius:3px;overflow:hidden">
++          <div style="height:100%;width:${avgCompletion}%;background:${avgCompletion>=80?'var(--green)':avgCompletion>=40?'var(--amber)':'var(--red)'}"></div>
++        </div>
++        <div style="width:32px;text-align:right;color:var(--text2)">${avgCompletion}%</div>
++      </div>`;
++  }).join('');
++
++  el.innerHTML = `
++    <div style="display:flex;gap:14px;font-family:'JetBrains Mono',monospace;font-size:.68rem;color:var(--muted);margin-bottom:8px">
++      <div>Total: <span style="color:var(--text2)">${analytics.total}</span></div>
++      <div>Open: <span style="color:var(--text2)">${analytics.open}</span></div>
++      <div>Closed: <span style="color:var(--text2)">${analytics.closed}</span></div>
++      <div>Late: <span style="color:${analytics.late>0?'var(--red)':'var(--text2)'}">${analytics.late}</span></div>
++    </div>
++    ${rows}`;
++}
++
+ function loadDemoMode() {
+   stratData = {
+     sector: 'Supply Chain',
+@@ -899,6 +957,23 @@ function formatDollar(n){
+ // ── EXECUTION PLAN CHECKLIST ──
+ function buildExecPlan(actions) {
+   const el = document.getElementById('execPlanList');
++
++  // Real mission loaded: seed tasks from recommendedActions on first view
++  // (mission.tasks is empty), then always render/persist against the real
++  // mission model rather than the old ephemeral in-memory checklist.
++  if (window.tsmMission && window.TSMMissionModel && window.TSMMissionStore) {
++    const m = window.tsmMission;
++    if ((!m.tasks || m.tasks.length === 0) && actions.length) {
++      actions.forEach(a => {
++        window.TSMMissionModel.addTask(m, { title: a.text, assignedTo: a.owner || null });
++      });
++      window.TSMMissionStore.saveMission(m);
++    }
++    renderExecPlanFromMission();
++    return;
++  }
++
++  // No mission loaded (demo mode / relay without caseId) — old ephemeral behavior.
+   if (!actions.length) {
+     el.innerHTML = '<div style="color:var(--muted);font-family:\'JetBrains Mono\',monospace;font-size:.68rem">No recommended actions in this strategy brief.</div>';
+     document.getElementById('execProgress').textContent = '0 / 0 complete';
+@@ -919,6 +994,47 @@ function buildExecPlan(actions) {
+   updateExecProgress(actions.length);
+ }
+ 
++function renderExecPlanFromMission(){
++  const el = document.getElementById('execPlanList');
++  const m = window.tsmMission;
++  const tasks = (m && m.tasks) || [];
++
++  if (!tasks.length) {
++    el.innerHTML = '<div style="color:var(--muted);font-family:\'JetBrains Mono\',monospace;font-size:.68rem">No recommended actions in this strategy brief.</div>';
++    document.getElementById('execProgress').textContent = '0 / 0 complete';
++    return;
++  }
++
++  el.innerHTML = tasks.map((t,i) => `
++    <div class="exec-item">
++      <div class="exec-check ${t.status==='complete'?'done':''}" onclick="toggleExecTask('${t.id}')">${t.status==='complete'?'✓':''}</div>
++      <div class="exec-num">0${i+1}</div>
++      <div class="exec-body">
++        <div class="exec-text ${t.status==='complete'?'done':''}">${t.title}</div>
++        <div class="exec-owner">→ ${t.assignedTo || 'Unassigned'}</div>
++      </div>
++    </div>
++  `).join('');
++
++  const done = tasks.filter(t=>t.status==='complete').length;
++  document.getElementById('execProgress').textContent = done + ' / ' + tasks.length + ' complete';
++}
++
++function toggleExecTask(taskId){
++  const m = window.tsmMission;
++  if (!m || !window.TSMMissionModel || !window.TSMMissionStore) return;
++  const task = (m.tasks||[]).find(t=>t.id===taskId);
++  if (!task) return;
++  window.TSMMissionModel.updateTaskStatus(m, taskId, task.status==='complete'?'open':'complete', 'executive-portal-user');
++  window.TSMMissionStore.saveMission(m);
++
++  if (window.TSMMemory) {
++    TSMMemory.timeline((task.status === 'complete' ? 'Execution step completed: ' : 'Execution step reopened: ') + task.title);
++  }
++
++  renderExecPlanFromMission();
++}
++
+ function toggleExec(i, text) {
+   execChecklist[i] = !execChecklist[i];
+   const check = document.getElementById('execCheck' + i);
+diff --git a/html/war-rooms/bpo/bpo-internal1.html b/html/war-rooms/bpo/bpo-internal1.html
+index ee846b0..17e9c34 100644
+--- a/html/war-rooms/bpo/bpo-internal1.html
++++ b/html/war-rooms/bpo/bpo-internal1.html
+@@ -134,6 +134,18 @@ html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sa
+ .kanban-col{}
+ .kanban-col-head{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);padding:0 0 8px;display:flex;align-items:center;justify-content:space-between}
+ .kanban-col-head .col-count{background:var(--bg4);border-radius:10px;padding:1px 7px;font-size:9px;color:var(--text2)}
++.k-task-row{display:flex;align-items:center;gap:4px;font-size:9px;color:var(--text3);margin-top:6px;padding-top:6px;border-top:1px solid var(--bg4);cursor:pointer;user-select:none}
++.k-task-row:hover{color:var(--text2)}
++.k-task-panel{margin-top:6px;padding:6px;background:var(--bg4);border-radius:6px}
++.k-task-empty{font-size:9px;color:var(--text3);padding:2px 0}
++.task-row{display:flex;align-items:center;gap:6px;padding:3px 0;font-size:10px}
++.task-check{width:12px;height:12px;border:1px solid var(--text3);border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:9px;color:var(--green);cursor:pointer;flex-shrink:0}
++.task-check.done{background:var(--green);border-color:var(--green);color:#000}
++.task-title{color:var(--text2)}
++.task-title.done{color:var(--text3);text-decoration:line-through}
++.k-task-add{display:flex;gap:4px;margin-top:4px}
++.k-task-add input{flex:1;background:var(--bg2);border:1px solid var(--bg4);border-radius:4px;color:var(--text);font-size:10px;padding:3px 6px}
++.k-task-add button{background:var(--accent);border:none;border-radius:4px;color:#000;font-size:11px;font-weight:700;padding:3px 8px;cursor:pointer}
+ .k-card{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 11px;margin-bottom:6px;cursor:pointer;transition:.12s}
+ .k-card:hover{border-color:var(--border2);background:var(--bg4);transform:translateY(-1px)}
+ .k-card-name{font-size:12px;font-weight:600;color:var(--text);margin-bottom:4px}
+@@ -964,12 +976,66 @@ function computeSlaPct(mission, sector){
+   return Math.max(0, 100 - pctElapsed);
+ }
+ 
++let expandedMissionTasks = {}; // missionId -> bool; module-level so it survives rerenderAll()'s full DOM rebuild
++
++function toggleTaskPanel(missionId){
++  expandedMissionTasks[missionId] = !expandedMissionTasks[missionId];
++  rerenderAll();
++}
++
++function renderTaskPanelHTML(missionId){
++  if(!window.TSMMissionStore) return '';
++  const m = window.TSMMissionStore.getMission(missionId);
++  if(!m) return '';
++  const tasks = m.tasks || [];
++  const rows = tasks.map(t=>`
++    <div class="task-row">
++      <div class="task-check ${t.status==='complete'?'done':''}" onclick="event.stopPropagation();toggleTaskDone('${missionId}','${t.id}')">${t.status==='complete'?'✓':''}</div>
++      <div class="task-title ${t.status==='complete'?'done':''}">${escapeHtml(t.title)}</div>
++    </div>`).join('');
++  return `
++    <div class="k-task-panel" onclick="event.stopPropagation()">
++      ${rows || '<div class="k-task-empty">No tasks yet</div>'}
++      <div class="k-task-add">
++        <input type="text" placeholder="Add task..." id="task-input-${missionId}" onkeydown="if(event.key==='Enter'){event.preventDefault();addTaskToMission('${missionId}')}">
++        <button onclick="addTaskToMission('${missionId}')">+</button>
++      </div>
++    </div>`;
++}
++
++function addTaskToMission(missionId){
++  if(!window.TSMMissionStore || !window.TSMMissionModel) return;
++  const input = document.getElementById('task-input-'+missionId);
++  const title = input?.value?.trim();
++  if(!title) return;
++  const m = window.TSMMissionStore.getMission(missionId);
++  if(!m) return;
++  window.TSMMissionModel.addTask(m, { title });
++  expandedMissionTasks[missionId] = true; // keep panel open through the rerender saveMission triggers
++  window.TSMMissionStore.saveMission(m);
++}
++
++function toggleTaskDone(missionId, taskId){
++  if(!window.TSMMissionStore || !window.TSMMissionModel) return;
++  const m = window.TSMMissionStore.getMission(missionId);
++  if(!m) return;
++  const task = (m.tasks||[]).find(t=>t.id===taskId);
++  if(!task) return;
++  window.TSMMissionModel.updateTaskStatus(m, taskId, task.status==='complete'?'open':'complete', 'war-room-user');
++  expandedMissionTasks[missionId] = true;
++  window.TSMMissionStore.saveMission(m);
++}
++
+ function missionToKanbanCard(mission, sector){
++  const tasks = mission.tasks || [];
+   return {
++    id: mission.id,
+     name: mission.client || mission.missionNo || mission.id,
+     meta: mission.missionNo || mission.id,
+     tag: (mission.workflow && mission.workflow.priority) ? mission.workflow.priority : 'Standard',
+-    sla: computeSlaPct(mission, sector)
++    sla: computeSlaPct(mission, sector),
++    taskDone: tasks.filter(t=>t.status==='complete').length,
++    taskTotal: tasks.length
+   };
+ }
+ 
+@@ -1177,6 +1243,11 @@ function renderSectorPanel(s){
+               <div class="sla-progress-wrap">
+                 <div class="sla-progress" style="width:${c.sla}%;background:${slaColor(c.sla)}"></div>
+               </div>
++              <div class="k-task-row" onclick="event.stopPropagation();toggleTaskPanel('${c.id}')">
++                <i class="ti ti-list-check"></i> Tasks ${c.taskDone}/${c.taskTotal}
++                <i class="ti ti-chevron-${expandedMissionTasks[c.id]?'up':'down'}" style="margin-left:auto"></i>
++              </div>
++              ${expandedMissionTasks[c.id] ? renderTaskPanelHTML(c.id) : ''}
+             </div>`).join('')}
+         </div>`).join('')}
+     </div>
