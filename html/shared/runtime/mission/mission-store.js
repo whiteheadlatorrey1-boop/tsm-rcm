@@ -169,9 +169,11 @@
     return mission;
   }
 
-  function computeOperatorStats(operatorId) {
+  function computeOperatorStats(operatorId, vertical) {
     var all = listMissions().filter(function (m) {
-      return m.workflow && m.workflow.assignedTo === operatorId;
+      if (!m.workflow || m.workflow.assignedTo !== operatorId) return false;
+      if (vertical && m.vertical !== vertical) return false;
+      return true;
     });
     var closedStage = Model ? Model.STAGES.CLOSED : 'CLOSED';
     var open = all.filter(function (m) { return m.stage !== closedStage; });
@@ -202,7 +204,7 @@
     var candidates = listOperators({ vertical: vertical });
     if (!candidates.length) return null;
     var scored = candidates.map(function (op) {
-      var stats = computeOperatorStats(op.id);
+      var stats = computeOperatorStats(op.id, vertical);
       return { operator: op, stats: stats };
     });
     scored.sort(function (a, b) {
