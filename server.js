@@ -1509,6 +1509,7 @@ function validateClassification(parsed) {
     }
     const nodes = Array.isArray(r.nodes) ? r.nodes : [];
     nodes.forEach((n) => {
+      if (n === 'bnca-engine') return; // cross-cutting node, valid in every vertical when bnca is flagged
       if (!validNodes.includes(n)) {
         errors.push('routing.' + v + '.nodes contains invalid node id "' + n + '".');
       }
