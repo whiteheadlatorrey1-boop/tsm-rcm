@@ -19,7 +19,8 @@
     'realestate',
     'bpo',
     'mortgage',
-    'schools'
+    'schools',
+    'honeywell'
   ]);
 
   var STAGES = Object.freeze({
@@ -63,7 +64,8 @@
 
   var VERT_CODES = {
     healthcare: 'HC', finops: 'FO', insurance: 'INS', construction: 'CON',
-    legal: 'LGL', realestate: 'RE', bpo: 'BPO', mortgage: 'MTG', schools: 'SCH'
+    legal: 'LGL', realestate: 'RE', bpo: 'BPO', mortgage: 'MTG', schools: 'SCH',
+    honeywell: 'HWL'
   };
 
   var _seqCounters = {};
