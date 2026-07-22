@@ -120,7 +120,10 @@
         assignedTo: null,
         queue: null,
         priority: 'normal',
-        sla: null
+        sla: null,
+        dueDate: opts.dueDate || null,
+        completedAt: null,
+        reviewOutcome: null
       },
 
       tasks: opts.tasks || [],
@@ -228,6 +231,9 @@
         assignedTo: workItem.assignedTo || null,
         queue: workItem.queue || null,
         priority: workItem.priority || 'normal',
+        dueDate: workItem.dueDate || null,
+        completedAt: null,
+        reviewOutcome: null,
         sla: workItem.sla || null
       },
       actor: 'migration'

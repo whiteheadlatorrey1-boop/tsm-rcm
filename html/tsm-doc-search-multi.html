@@ -1678,6 +1678,7 @@ const FIELD_POLICY = {
 };
 
 const INTERNAL_ONLY_DOC_TYPES = new Set(['ESCALATION']);
+const GEN_PLAYBOOK_VERTICALS = new Set(['fo', 'ins', 'con', 're', 'leg', 'bpo']);
 function docTypeIsClientSafe(documentType) {
   return !INTERNAL_ONLY_DOC_TYPES.has(documentType);
 }
@@ -3191,6 +3192,12 @@ function buildMissionFromClassification(classification, fileName) {
       confidence: { score: classification.confidence, computedBy: 'server:doc-router' },
       validation: classification.validation || {},
       entities: classification.entities || {},
+      workflow: {
+        assignedTo: classification.suggestedTeam || null,
+        queue: null,
+        priority: classification.priority || 'normal',
+        sla: null
+      },
       documents: [{ fileName: classification.fileName || fileName }]
     });
     window.TSMMissionStore.saveMission(mission);
@@ -3622,7 +3629,6 @@ window.openHcNodeWithDoc = openHcNodeWithDoc;
 // checkStatus derivation is intentionally identical to openHcNodeWithDoc's --
 // the code prefixes (CO-/PA-/OA-/PR-/LIEN/AKS) are shared conventions across
 // verticals in this codebase (see seed data), not HC-specific.
-const GEN_PLAYBOOK_VERTICALS = new Set(['fo', 'ins', 'con', 're', 'leg', 'bpo']);
 
 function deriveCheckStatus(excCode, docType, defects) {
   return excCode.startsWith('PA-') || docType.includes('PRIOR AUTH') ? 'AUTH_BLOCK'

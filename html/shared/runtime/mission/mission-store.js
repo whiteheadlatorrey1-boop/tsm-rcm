@@ -137,11 +137,12 @@
     });
   }
 
-  function assignMission(id, operatorId, actor) {
+  function assignMission(id, operatorId, actor, dueDate) {
     var mission = getMission(id);
     if (!mission) throw new Error('assignMission: mission not found — ' + id);
     mission.workflow = mission.workflow || {};
     mission.workflow.assignedTo = operatorId;
+    if (dueDate) mission.workflow.dueDate = dueDate;
     if (Model) {
       Model.transitionStage(mission, Model.STAGES.ASSIGNED, actor);
       Model.addAuditEvent(mission, Model.EVENT_TYPES.MISSION_ASSIGNED, actor, { operatorId: operatorId });
@@ -151,16 +152,66 @@
     return mission;
   }
 
-  function closeMission(id, actor) {
+  function closeMission(id, actor, reviewOutcome) {
     var mission = getMission(id);
     if (!mission) throw new Error('closeMission: mission not found — ' + id);
+    mission.workflow = mission.workflow || {};
+    mission.workflow.completedAt = new Date().toISOString();
+    if (reviewOutcome === 'accurate' || reviewOutcome === 'corrected') {
+      mission.workflow.reviewOutcome = reviewOutcome;
+    }
     if (Model) {
       Model.transitionStage(mission, Model.STAGES.CLOSED, actor);
-      Model.addAuditEvent(mission, Model.EVENT_TYPES.MISSION_CLOSED, actor);
+      Model.addAuditEvent(mission, Model.EVENT_TYPES.MISSION_CLOSED, actor, { reviewOutcome: reviewOutcome || null });
     }
     saveMission(mission);
     _publish('MISSION_CLOSED', mission);
     return mission;
+  }
+
+  function computeOperatorStats(operatorId) {
+    var all = listMissions().filter(function (m) {
+      return m.workflow && m.workflow.assignedTo === operatorId;
+    });
+    var closedStage = Model ? Model.STAGES.CLOSED : 'CLOSED';
+    var open = all.filter(function (m) { return m.stage !== closedStage; });
+    var closed = all.filter(function (m) { return m.stage === closedStage; });
+
+    var slaEligible = closed.filter(function (m) {
+      return m.workflow.dueDate && m.workflow.completedAt;
+    });
+    var slaMet = slaEligible.filter(function (m) {
+      return new Date(m.workflow.completedAt) <= new Date(m.workflow.dueDate);
+    });
+
+    var reviewed = closed.filter(function (m) {
+      return m.workflow.reviewOutcome === 'accurate' || m.workflow.reviewOutcome === 'corrected';
+    });
+    var accurate = reviewed.filter(function (m) { return m.workflow.reviewOutcome === 'accurate'; });
+
+    return {
+      operatorId: operatorId,
+      workload: open.length,
+      closedCount: closed.length,
+      slaPercent: slaEligible.length ? Math.round((slaMet.length / slaEligible.length) * 100) : null,
+      accuracyPercent: reviewed.length ? Math.round((accurate.length / reviewed.length) * 100) : null
+    };
+  }
+
+  function recommendAssignment(vertical) {
+    var candidates = listOperators({ vertical: vertical });
+    if (!candidates.length) return null;
+    var scored = candidates.map(function (op) {
+      var stats = computeOperatorStats(op.id);
+      return { operator: op, stats: stats };
+    });
+    scored.sort(function (a, b) {
+      if (a.stats.workload !== b.stats.workload) return a.stats.workload - b.stats.workload;
+      var aSla = a.stats.slaPercent === null ? -1 : a.stats.slaPercent;
+      var bSla = b.stats.slaPercent === null ? -1 : b.stats.slaPercent;
+      return bSla - aSla;
+    });
+    return scored[0];
   }
 
   function upsertTenant(tenant) {
@@ -228,6 +279,8 @@
     getTenant: getTenant,
     upsertOperator: upsertOperator,
     listOperators: listOperators,
+    computeOperatorStats: computeOperatorStats,
+    recommendAssignment: recommendAssignment,
     getAnalytics: getAnalytics,
     subscribe: subscribe,
     _resetStore: _resetStore
