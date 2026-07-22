@@ -1553,6 +1553,29 @@ function scoreConfidence(parsed, validation) {
   return Math.max(0, Math.min(1, Math.round(score * 100) / 100));
 }
 
+// -- Phase 8: derived routing recommendations (still deterministic) --
+// Solo-owner phase: every vertical routes to Latorrey until a client/team
+// subscribes to that vertical specifically. Update TEAM_BY_VERTICAL entries
+// as ownership gets assigned out — this map is meant to grow, not stay flat.
+const TEAM_BY_VERTICAL = {}; // empty = fall through to default owner below
+const DEFAULT_OWNER = 'Latorrey';
+
+function suggestTeam(parsed) {
+  if (!parsed.primaryVertical) return DEFAULT_OWNER;
+  return TEAM_BY_VERTICAL[parsed.primaryVertical] || DEFAULT_OWNER;
+}
+
+function scorePriority(parsed, validation, confidence) {
+  const amountNum = Number(parsed.amount) || 0;
+  const hasDefects = Array.isArray(parsed.defectFlags) && parsed.defectFlags.length > 0;
+
+  if (!validation.valid) return 'Needs Review';
+  if (confidence < 0.5) return 'Needs Review';
+  if (hasDefects || amountNum > 25000) return 'High';
+  if (amountNum > 5000) return 'Medium';
+  return 'Low';
+}
+
 // crude in-memory rate limit: 20 requests / 5 min / IP
 const docRouterHits = new Map();
 function docRouterRateOk(ip) {
@@ -1631,6 +1654,8 @@ app.post('/api/doc-router/classify', async (req, res) => {
     }
     parsed.validation = validation;
     parsed.confidence = scoreConfidence(parsed, validation);
+    parsed.suggestedTeam = suggestTeam(parsed);
+    parsed.priority = scorePriority(parsed, validation, parsed.confidence);
 
     res.json(parsed);
   } catch (err) {
