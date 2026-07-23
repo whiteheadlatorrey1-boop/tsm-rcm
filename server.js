@@ -868,6 +868,18 @@ app.use(require('./routes/strategist'));
 app.use(require('./routes/construction'));
 app.use(require('./routes/finops'));
 
+// ── RCM RELAY ─────────────────────────────────────────────────────────────────
+// Server-side staging for the FinOps Doc Showcase -> TSM RCM OS handoff.
+// See routes/rcm-relay.js header for the full endpoint contract.
+app.use('/api/rcm', require('./routes/rcm-relay'));
+
+// ── FINANCIAL INTELLIGENCE (finance-index.html) ─────────────────────────────
+// Groq-backed chat (per-tab assistant) + audit engine with real persisted
+// audit-log entries. See routes/finance-chat.js header for the full contract.
+const { chatRouter: financeChatRouter, auditRouter: financeAuditRouter } = require('./routes/finance-chat');
+app.use('/api/chat', financeChatRouter);
+app.use('/api/audit', financeAuditRouter);
+
 // ── AI QUERY ROUTES ───────────────────────────────────────────────────────────
 app.post('/api/ai/query', async (req, res) => {
   var body = req.body || {};

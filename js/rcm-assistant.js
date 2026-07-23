@@ -22,7 +22,7 @@
   }
 
   function init(opts) {
-    const { getContext, quickPrompts = [], endpoint = '/api/financial/query' } = opts;
+    const { getContext, quickPrompts = [], endpoint = '/api/financial/query', getBriefing = null } = opts;
 
     document.body.appendChild(el(`
       <button class="assistant-fab" id="assistantFab" title="Ask the RCM Assistant">🤖</button>
@@ -58,12 +58,49 @@
       chip.addEventListener('click', () => ask(quickPrompts[i]));
     });
 
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
     function addMsg(text, cls) {
       const div = document.createElement('div');
       div.className = 'a-msg ' + cls;
       div.textContent = text;
       body.appendChild(div);
       body.scrollTop = body.scrollHeight;
+      return div;
+    }
+
+    // Renders the proactive guidance list as a structured bot message —
+    // severity badge, concrete next action, and the reasoning behind the
+    // route (why this tool, what's gained, what's at risk from inaction) —
+    // rather than a generic greeting. Falls back to plain addMsg() if no
+    // items are supplied (nothing currently needs attention).
+    function addBriefingMsg(items) {
+      const div = document.createElement('div');
+      div.className = 'a-msg bot briefing';
+      if (!items || !items.length) {
+        div.innerHTML = `<div class="a-brief-empty">No open flags or exceptions right now — you're caught up. Ask me anything about status, WIP, SLAs, or how to use a specific module.</div>`;
+        body.appendChild(div);
+        body.scrollTop = body.scrollHeight;
+        return div;
+      }
+      const rows = items.slice(0, 5).map(it => `
+        <div class="a-brief-item" data-tool="${esc(it.tool || '')}" data-title="${esc(it.title || '')}">
+          <div class="a-brief-top">
+            <span class="sev-badge ${esc(it.severity || 'medium')}">${esc(it.severity || 'medium')}</span>
+            <span class="a-brief-title">${esc(it.title || 'Untitled item')}</span>
+          </div>
+          <div class="a-brief-next"><strong>Next:</strong> ${esc(it.nextAction || '—')}</div>
+          <div class="a-brief-why">${esc(it.why || '')}${it.riskOfInaction ? ' · <strong>If left:</strong> ' + esc(it.riskOfInaction) : ''}</div>
+          ${it.tool ? `<button class="a-brief-open" data-tool="${esc(it.tool)}">Open ${esc(it.tool.replace('.html', ''))} ↗</button>` : ''}
+        </div>`).join('');
+      div.innerHTML = `<div class="a-brief-head">Here's what needs attention right now, ranked by severity:</div>${rows}`;
+      body.appendChild(div);
+      body.scrollTop = body.scrollHeight;
+      div.querySelectorAll('.a-brief-open').forEach(btn => {
+        btn.addEventListener('click', () => { window.open(btn.dataset.tool, '_blank'); });
+      });
       return div;
     }
 
@@ -82,7 +119,7 @@
           body: JSON.stringify({ query: prompt.slice(0, 3000), max_tokens: 500 })
         });
         const data = await res.json();
-        const answer = (data && (data.content || data.reply || data.output)) ||
+        const answer = (data && (data.answer || data.content || data.reply || data.output)) ||
           "I couldn't get an answer back from the assistant service just now.";
         pending.textContent = answer;
         pending.classList.remove('pending');
@@ -92,10 +129,22 @@
       }
     }
 
-    fab.addEventListener('click', () => {
+    fab.addEventListener('click', async () => {
       panel.classList.toggle('open');
       if (panel.classList.contains('open') && !body.children.length) {
-        addMsg("Hi — I can help with status, WIP, and SLA questions for this workspace. Ask me anything, or tap a suggestion below.", 'bot');
+        if (getBriefing) {
+          const thinking = addMsg('Checking current status…', 'bot pending');
+          try {
+            const items = await getBriefing();
+            thinking.remove();
+            addBriefingMsg(items);
+          } catch (e) {
+            thinking.remove();
+            addMsg("Hi — I can help with status, WIP, and SLA questions for this workspace. Ask me anything, or tap a suggestion below.", 'bot');
+          }
+        } else {
+          addMsg("Hi — I can help with status, WIP, and SLA questions for this workspace. Ask me anything, or tap a suggestion below.", 'bot');
+        }
       }
     });
     close.addEventListener('click', () => panel.classList.remove('open'));

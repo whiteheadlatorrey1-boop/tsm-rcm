@@ -296,6 +296,16 @@ body{
 .a-msg.user{align-self:flex-end; background:var(--amber-dim); color:var(--text); border:1px solid var(--amber-dim);}
 .a-msg.bot{align-self:flex-start; background:var(--panel-raised); color:var(--text); border:1px solid var(--line);}
 .a-msg.pending{color:var(--muted-dim); font-style:italic;}
+.a-msg.briefing{max-width:100%; white-space:normal; padding:10px; display:flex; flex-direction:column; gap:8px;}
+.a-brief-head{font-weight:700; font-size:12px; color:var(--text); margin-bottom:2px;}
+.a-brief-empty{color:var(--muted);}
+.a-brief-item{border:1px solid var(--line); border-radius:8px; padding:8px 10px; background:var(--panel);}
+.a-brief-top{display:flex; align-items:center; gap:8px; margin-bottom:5px;}
+.a-brief-title{font-weight:600; font-size:12px;}
+.a-brief-next{font-size:12px; margin-bottom:3px;}
+.a-brief-why{font-size:11px; color:var(--muted); margin-bottom:6px;}
+.a-brief-open{font-size:11px; padding:4px 10px; border-radius:6px; border:1px solid var(--info-dim); background:var(--info-dim); color:var(--info); cursor:pointer;}
+.a-brief-open:hover{filter:brightness(1.15);}
 .assistant-quick{display:flex; gap:6px; flex-wrap:wrap; padding:0 16px 10px;}
 .qchip{font-size:10.5px; color:var(--muted); background:var(--panel-raised); border:1px solid var(--line); border-radius:20px; padding:5px 10px; cursor:pointer;}
 .qchip:hover{color:var(--amber); border-color:var(--amber-dim);}
@@ -349,6 +359,14 @@ body{
 .sev-badge.high{background:var(--amber-dim); color:var(--amber); border:1px solid var(--amber);}
 .sev-badge.medium{background:var(--info-dim); color:var(--info); border:1px solid var(--info);}
 .sev-badge.low{background:var(--good-dim); color:var(--good); border:1px solid var(--good);}
+.guidance-item{border:1px solid var(--line); border-radius:10px; padding:12px 14px; margin-bottom:10px; background:var(--panel-raised);}
+.guidance-top{display:flex; align-items:center; gap:10px; margin-bottom:6px;}
+.guidance-title{font-weight:600; font-size:13.5px;}
+.guidance-summary{font-size:12.5px; color:var(--muted); margin-bottom:8px;}
+.guidance-next{font-size:12.5px; margin-bottom:6px;}
+.guidance-explain{font-size:11.5px; color:var(--muted-dim); display:flex; flex-direction:column; gap:2px; margin-bottom:8px;}
+.guidance-open{font-size:11.5px; padding:5px 12px; border-radius:6px; border:1px solid var(--info-dim); background:var(--info-dim); color:var(--info); cursor:pointer; text-decoration:none; display:inline-block;}
+.guidance-open:hover{filter:brightness(1.15);}
 .guidance-row{font-size:12px; color:var(--muted); margin-top:7px; line-height:1.55;}
 .guidance-row strong{color:var(--text);}
 .guidance-tool{font-family:'IBM Plex Mono'; font-size:10.5px; color:var(--gc,var(--amber)); margin-top:9px;}
@@ -456,6 +474,13 @@ body{
       <div class="route-grid" id="routeGrid"></div>
     </div>
 
+    <!-- Proactive Guidance — ranked severity + next-best-action, same engine that drives the AI Assistant's opening briefing -->
+    <div class="card" id="guidanceCard" style="display:none;">
+      <div class="card-eyebrow">Proactive Guidance</div>
+      <p class="hint" style="margin-bottom:12px;">Ranked by severity — what to do next, which module owns it, and why.</p>
+      <div id="guidanceList"></div>
+    </div>
+
     <!-- Cadence flow -->
     <div class="card">
       <div class="card-eyebrow">Reconciliation Flow — Time Horizon</div>
@@ -543,7 +568,7 @@ body{
 <div class="footer-note">
   TSM RCM OS sequences finops-operations.html, finops-accounting.html, compliance.html,<br>
   finops-scenarios.html, supplier-vendor-situation-room.html, logistics-situation-room.html<br>
-  and tsm-doc-search-multi.html into a single reconciliation cadence.
+  and html/finops-suite/finops-showcase-v1.html into a single reconciliation cadence.
 </div>
 
 <script src="js/rcm-relay-client.js"></script>
@@ -557,9 +582,10 @@ const MODULES = [
   {name:"Accounting Ledger", file:"finops-accounting.html", cat:"Accounting", color:"var(--info)"},
   {name:"Compliance Desk", file:"compliance.html", cat:"Compliance", color:"var(--risk)"},
   {name:"Scenario Modeling", file:"finops-scenarios.html", cat:"Forecasting", color:"var(--cyan)"},
-  {name:"Vendor Situation Room", file:"supplier-vendor/supplier-vendor-situation-room.html", cat:"Vendor / AP", color:"var(--gold)"},
-  {name:"Logistics Situation Room", file:"logistics-situation-room.html", cat:"Logistics", color:"var(--good)"},
-  {name:"Document Search", file:"tsm-doc-search-multi.html", cat:"Search / Evidence", color:"var(--muted)"}
+  {name:"Financial Intelligence", file:"finance-index.html", cat:"Accounts / Audit", color:"var(--gold)"},
+  {name:"Vendor Situation Room", file:"../supplier-vendor/supplier-vendor-situation-room.html", cat:"Vendor / AP", color:"var(--gold)"},
+  {name:"Logistics Situation Room", file:"../logistics/logistics-situation-room.html", cat:"Logistics", color:"var(--good)"},
+  {name:"Document Search", file:"../html/finops-suite/finops-showcase-v1.html", cat:"Search / Evidence", color:"var(--muted)"}
 ];
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -703,7 +729,7 @@ const BLUEPRINT = [
   {phase:"Daily Rhythm", focus:"Cash positioning, invoice processing, exception logging, subledger matching.", tools:["finops-operations.html","finops-accounting.html"]},
   {phase:"Weekly Rhythm", focus:"Expenditure tracking against budgets, compliance checks, vendor liability reviews.", tools:["compliance.html","supplier-vendor-situation-room.html","logistics-situation-room.html"]},
   {phase:"Monthly Close", focus:"Accruals, prepaids, trial balance adjustments, reconciliation sign-offs, financial statement generation.", tools:["finops-accounting.html","finops-scenarios.html","Executive Tab"]},
-  {phase:"Annual Cycle", focus:"External audit coordination, non-discrimination testing prep, and internal policy tuning.", tools:["compliance.html","tsm-doc-search-multi.html"]}
+  {phase:"Annual Cycle", focus:"External audit coordination, non-discrimination testing prep, and internal policy tuning.", tools:["compliance.html","html/finops-suite/finops-showcase-v1.html"]}
 ];
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -736,14 +762,14 @@ function taskKey(cad, p, t){ return `${cad}-${p}-${t}`; }
 function renderRail(){
   const rail = document.getElementById('moduleRail');
   rail.innerHTML = MODULES.map(m => `
-    <div class="module-card" style="--mc:${m.color}">
+    <a class="module-card" href="${m.file}" style="--mc:${m.color}; text-decoration:none; display:block;">
       <div class="mtop">
         <span class="mname">${m.name}</span>
         <span class="mdot"></span>
       </div>
       <div class="mfile">${m.file}</div>
       <div class="mcat">${m.cat}</div>
-    </div>
+    </a>
   `).join('');
 }
 
@@ -1030,6 +1056,7 @@ async function loadRelayData(){
       relayData = raw ? JSON.parse(raw) : null;
     } catch(e) { relayData = null; }
     renderIntake();
+    fetchGuidance();
     return;
   }
 
@@ -1037,7 +1064,58 @@ async function loadRelayData(){
   const isNew = data && RCMRelay.isUnseen(data);
   relayData = data;
   renderIntake();
+  fetchGuidance();
   if(isNew) renderRelayModal(data);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// PROACTIVE GUIDANCE — ranked severity + next-best-action, drives both the
+// Overview card and the AI Assistant's opening briefing (same data, same
+// engine — see routes/rcm-relay.js POST /api/rcm/guidance).
+// ─────────────────────────────────────────────────────────────────────────
+let guidanceItems = [];
+
+async function fetchGuidance(){
+  const s = crossCadenceStats();
+  const body = {
+    engines: relayData ? relayData.engines : {},
+    stats: { openExceptions: s.open, pctComplete: s.total ? Math.round((s.done/s.total)*100) : 0, docName: relayData ? relayData.docName : null }
+  };
+  try {
+    const res = await fetch('/api/rcm/guidance', {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    guidanceItems = data.items || [];
+  } catch(e) {
+    guidanceItems = [];
+  }
+  renderGuidance();
+}
+
+function renderGuidance(){
+  const card = document.getElementById('guidanceCard');
+  const list = document.getElementById('guidanceList');
+  if(!guidanceItems.length){
+    card.style.display = 'none';
+    return;
+  }
+  card.style.display = '';
+  list.innerHTML = guidanceItems.map(it => `
+    <div class="guidance-item">
+      <div class="guidance-top">
+        <span class="sev-badge ${escapeHtml(it.severity||'medium')}">${escapeHtml(it.severity||'medium')}</span>
+        <span class="guidance-title">${escapeHtml(it.title||'Untitled item')}</span>
+      </div>
+      ${it.summary ? `<div class="guidance-summary">${escapeHtml(it.summary)}</div>` : ''}
+      <div class="guidance-next"><strong>Next action:</strong> ${escapeHtml(it.nextAction||'—')}</div>
+      <div class="guidance-explain">
+        ${it.why ? `<span><strong>Why this route:</strong> ${escapeHtml(it.why)}</span>` : ''}
+        ${it.gain ? `<span><strong>Gain from acting now:</strong> ${escapeHtml(it.gain)}</span>` : ''}
+        ${it.riskOfInaction ? `<span><strong>Risk if left:</strong> ${escapeHtml(it.riskOfInaction)}</span>` : ''}
+      </div>
+      ${it.tool ? `<a class="guidance-open" href="${escapeHtml(it.tool)}" target="_blank">Open ${escapeHtml(it.tool.replace('.html',''))} ↗</a>` : ''}
+    </div>`).join('');
 }
 
 function renderIntake(){
@@ -1143,16 +1221,33 @@ function updateScore(){
 const QUICK_PROMPTS = [
   "What's my SLA status right now?",
   "What's still WIP for this cadence?",
-  "Any open exceptions I should worry about?",
-  "Summarize the relayed document"
+  "What should I do about the highest-severity item right now?",
+  "How do I use the Compliance Desk?"
 ];
 
 function initAssistant(){
   RCMAssistant.init({
     getContext: () => buildAssistantContext(''),
-    quickPrompts: QUICK_PROMPTS
+    quickPrompts: QUICK_PROMPTS,
+    getBriefing: async () => { await fetchGuidance(); return guidanceItems; }
   });
 }
+
+// Grounds "how do I use X" / "what does this app do" questions in the
+// assistant's context so it can guide EUs through the app itself, not just
+// the workspace's live data.
+const APP_FEATURES_KB = `
+APP FEATURES & MODULES (for questions about how to use this app):
+- Branch Operations (finops-operations.html): morning cash/AP/AR checks, daily entry point.
+- Accounting Ledger (finops-accounting.html): journal entries, budget-to-actual variance, expenditure tracking.
+- Compliance Desk (compliance.html): exception flags, segregation-of-duties checks, audit-readiness log — this is where open exceptions get signed off.
+- Scenario Modeling (finops-scenarios.html): forecasting and what-if modeling.
+- Financial Intelligence (finance-index.html): account-level audit engine, reports, invoices, financial health scoring, and its own AI assistant tabs.
+- Vendor Situation Room / Logistics Situation Room: vendor liability and freight/fulfillment exception tracking.
+- Document Search: cross-vertical document/evidence search.
+- Document Intake: when the FinOps Doc Showcase relays an analyzed document here, its 4 engine outputs (Triage, Variance, Action Plan, CFO Brief) each route to a specific module above — that routing is shown in the Document Intake card.
+- Cadence tabs (Daily/Weekly/Month-End/Controller Framework/Executive): the reconciliation rhythm this whole app is built around; each phase lists its owning tool and concrete tasks.
+`;
 
 // buildAssistantContext still lives here since it needs direct access to
 // CADENCES/taskState/relayData/currentCadence. RCMAssistant just renders
@@ -1162,8 +1257,9 @@ function buildAssistantContext(userQuestion){
   const pct = s.total ? Math.round((s.done/s.total)*100) : 0;
   const c = CADENCES[currentCadence] || null;
 
-  let ctx = `You are the RCM Assistant embedded in TSM RCM OS, a reconciliation-management cockpit for end users (EUs) working a Daily/Weekly/Month-End close cadence.\n\n`;
-  ctx += `CURRENT TAB: ${currentCadence}\n`;
+  let ctx = `You are the RCM Assistant embedded in TSM RCM OS, a reconciliation-management copilot for end users (EUs) working a Daily/Weekly/Month-End close cadence. You don't just answer questions — you proactively guide EUs through curing anomalies: what's wrong, what to do next, which tool owns it, and why. When asked about the app itself, use the APP FEATURES section below.\n\n`;
+  ctx += APP_FEATURES_KB;
+  ctx += `\nCURRENT TAB: ${currentCadence}\n`;
   ctx += `CROSS-CADENCE COMPLETION: ${pct}% (${s.done}/${s.total} tasks done across Daily/Weekly/Month-End)\n`;
   ctx += `OPEN EXCEPTIONS: ${s.open}\n`;
   ctx += `MONTH-END CLOSE CHECKLIST: ${s.checklistDone}/${s.checklistTotal}\n`;
@@ -1181,6 +1277,12 @@ function buildAssistantContext(userQuestion){
     ctx += `Controller Action Plan: ${(relayData.engines.actionPlan||'').slice(0,400)}\n`;
   } else {
     ctx += `\nNo document currently relayed from FinOps Doc Showcase.\n`;
+  }
+  if(guidanceItems && guidanceItems.length){
+    ctx += `\nCURRENT PROACTIVE GUIDANCE QUEUE (ranked, act on these):\n`;
+    guidanceItems.forEach(it => {
+      ctx += `- [${it.severity}] ${it.title} — Next: ${it.nextAction} (tool: ${it.tool})\n`;
+    });
   }
   return ctx;
 }
@@ -1218,6 +1320,7 @@ document.getElementById('intakeClearBtn').addEventListener('click', async ()=>{
   }
   relayData = null;
   renderIntake();
+  fetchGuidance();
   if(currentCadence === 'executive') renderExecutive();
 });
 document.getElementById('execExportBtn').addEventListener('click', exportExecutiveReport);

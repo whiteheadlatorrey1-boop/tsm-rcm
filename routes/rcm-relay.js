@@ -19,6 +19,8 @@
 //   GET    /api/rcm/relay/:id    — fetch a specific staged payload by id
 //   GET    /api/rcm/relay/history — list of recent staged payloads (metadata only)
 //   DELETE /api/rcm/relay        — clear the current staged payload
+//   POST   /api/rcm/guidance     — proactive severity / next-best-action engine
+//                                  (ranked, explainable action list for the AI Assistant)
 
 const express = require('express');
 const crypto = require('crypto');
@@ -106,5 +108,155 @@ router.delete('/relay', (req, res) => {
   current = null;
   res.json({ ok: true });
 });
+
+// ── POST /api/rcm/guidance ────────────────────────────────────────────────────
+// The proactive severity / next-best-action engine behind the AI Assistant's
+// briefing and the "Proactive Guidance" card. Takes the raw engine narratives
+// (triage/variance/actionPlan/executive — free text, not pre-structured) plus
+// live workspace stats, and returns a ranked, explainable action list:
+//   { items: [{ id, severity, title, summary, tool, nextAction,
+//               why, gain, riskOfInaction }] }
+// severity is one of critical|high|medium|low (matches .sev-badge CSS).
+//
+// Body: { engines: { triage, variance, actionPlan, executive },
+//          stats: { openExceptions, pctComplete, docName } }
+router.post('/guidance', express.json({ limit: '1mb' }), async (req, res) => {
+  const { engines = {}, stats = {} } = req.body || {};
+  const hasAnyEngineText = ['triage', 'variance', 'actionPlan', 'executive'].some(k => (engines[k] || '').trim());
+
+  if (!process.env.GROQ_API_KEY) {
+    return res.json({ items: heuristicGuidance(engines, stats), degraded: true, reason: 'GROQ_API_KEY not configured on server' });
+  }
+  if (!hasAnyEngineText && !stats.openExceptions) {
+    return res.json({ items: [] });
+  }
+
+  const prompt = buildGuidancePrompt(engines, stats);
+
+  try {
+    const upstream = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: process.env.TSM_FINANCE_MODEL || 'openai/gpt-oss-120b',
+        messages: [
+          {
+            role: 'system',
+            content: 'You are the TSM RCM OS proactive guidance engine. Return JSON only — no ' +
+              'prose, no markdown fences, no mention of provider/model. Read the raw analysis ' +
+              'text given and turn it into a ranked list of concrete, specific issues an End ' +
+              'User (EU) needs to act on. Never invent numbers or facts not present in the input.'
+          },
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.2,
+        max_tokens: 1400
+      })
+    });
+
+    if (!upstream.ok) {
+      return res.json({ items: heuristicGuidance(engines, stats), degraded: true, reason: `Upstream ${upstream.status}` });
+    }
+    const data = await upstream.json();
+    const text = data?.choices?.[0]?.message?.content || '';
+    let parsed;
+    try {
+      parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
+    } catch {
+      return res.json({ items: heuristicGuidance(engines, stats), degraded: true, reason: 'Could not parse model output' });
+    }
+    const items = Array.isArray(parsed.items) ? parsed.items.slice(0, 8) : heuristicGuidance(engines, stats);
+    return res.json({ items, degraded: false });
+  } catch (err) {
+    return res.json({ items: heuristicGuidance(engines, stats), degraded: true, reason: err.message });
+  }
+});
+
+function buildGuidancePrompt(engines, stats) {
+  return `Workspace stats: ${JSON.stringify(stats)}
+
+Triage/Flags:
+${(engines.triage || '(none)').slice(0, 3000)}
+
+Variance/Risk:
+${(engines.variance || '(none)').slice(0, 3000)}
+
+Controller Action Plan:
+${(engines.actionPlan || '(none)').slice(0, 3000)}
+
+CFO Executive Intelligence:
+${(engines.executive || '(none)').slice(0, 3000)}
+
+Return JSON only, in this exact shape:
+{
+  "items": [
+    {
+      "id": "short-slug",
+      "severity": "critical|high|medium|low",
+      "title": "short specific issue name, reference real figures/accounts if given",
+      "summary": "1-2 sentences on what this is, grounded in the text above",
+      "tool": "one of: finops-operations.html, finops-accounting.html, compliance.html, finops-scenarios.html, finance-index.html, supplier-vendor-situation-room.html, logistics-situation-room.html",
+      "nextAction": "the single concrete next step the EU should take, as an instruction",
+      "why": "why this is the right route/tool for this issue specifically",
+      "gain": "what's gained by acting on this now",
+      "riskOfInaction": "what's at risk if this sits untouched"
+    }
+  ]
+}
+Rank items by severity (critical first). Only include issues actually supported by the text above — do not pad the list.`;
+}
+
+// Keyword-based fallback so the guidance card still shows *something* real
+// (not fabricated) when Groq is unavailable — scans the raw text for
+// explicit severity language rather than inventing structured findings.
+function heuristicGuidance(engines, stats) {
+  const items = [];
+  const sources = [
+    { key: 'triage', tool: 'compliance.html', label: 'Triage flag' },
+    { key: 'variance', tool: 'finops-accounting.html', label: 'Variance/risk item' },
+    { key: 'actionPlan', tool: 'finops-operations.html', label: 'Controller action item' },
+    { key: 'executive', tool: 'finance-index.html', label: 'Executive intelligence item' }
+  ];
+  const sevWords = [
+    { re: /\bcritical\b/i, sev: 'critical' },
+    { re: /\bhigh[- ]risk\b|\burgent\b/i, sev: 'high' },
+    { re: /\bmedium\b|\bmoderate\b/i, sev: 'medium' }
+  ];
+  sources.forEach(s => {
+    const text = engines[s.key];
+    if (!text) return;
+    const matched = sevWords.find(w => w.re.test(text));
+    if (matched) {
+      items.push({
+        id: `${s.key}-flag`,
+        severity: matched.sev,
+        title: `${s.label} detected`,
+        summary: text.slice(0, 200),
+        tool: s.tool,
+        nextAction: `Review the ${s.label.toLowerCase()} in ${s.tool.replace('.html', '')}.`,
+        why: `This text was routed from the ${s.key} engine, which owns this category of issue.`,
+        gain: 'Catching this now avoids it compounding into a larger reconciliation gap.',
+        riskOfInaction: 'Left unaddressed, this stays open through the next cadence checkpoint.'
+      });
+    }
+  });
+  if ((stats.openExceptions || 0) > 0) {
+    items.push({
+      id: 'open-exceptions',
+      severity: stats.openExceptions > 5 ? 'high' : 'medium',
+      title: `${stats.openExceptions} open exception${stats.openExceptions === 1 ? '' : 's'} requiring sign-off`,
+      summary: 'Exceptions are pending review across the current cadence.',
+      tool: 'compliance.html',
+      nextAction: 'Open Compliance Desk and clear or escalate each pending exception.',
+      why: 'Compliance Desk is the module of record for exception sign-off.',
+      gain: 'Clearing exceptions on schedule keeps the audit trail clean.',
+      riskOfInaction: 'Unsigned exceptions block month-end close.'
+    });
+  }
+  return items;
+}
 
 module.exports = router;
