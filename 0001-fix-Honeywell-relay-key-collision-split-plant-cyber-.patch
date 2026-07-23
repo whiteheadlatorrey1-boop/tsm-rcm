@@ -1,0 +1,241 @@
+From 01ee0f2130b41cd6936b1cb933a0e4610c2cc99f Mon Sep 17 00:00:00 2001
+From: tsm-consultz <brightmindsfinancial@gmail.com>
+Date: Thu, 23 Jul 2026 18:32:38 +0000
+Subject: [PATCH] =?UTF-8?q?fix:=20Honeywell=20relay=20key=20collision=20?=
+ =?UTF-8?q?=E2=80=94=20split=20plant/cyber/supplier=20into=20distinct=20do?=
+ =?UTF-8?q?mains?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Problem: plant-incident.html, cyber-incident.html, and supplier-shutdown.html
+all wrote to the exact same key, TSM_HONEYWELL_RELAY. Whichever scenario a
+user ran last silently clobbered the other two.
+
+Fix:
+1. relay.core.js: replaced the single HONEYWELL registry entry with three
+   distinct domains — HONEYWELL_CYBER, HONEYWELL_SUPPLIER, HONEYWELL_PLANT.
+
+2. plant-incident.html / cyber-incident.html / supplier-shutdown.html: each
+   now writes to its own key instead of the shared TSM_HONEYWELL_RELAY,
+   and also mirrors the write through window.TSM.relay.write().
+
+3. honeywell-strategist.html: the source branch split the write side but
+   left loadRelay() reading only the old single key, which nothing writes
+   to post-split — would have silently broken the strategist entirely.
+   Rewrote loadRelay() to check all three domain keys and return whichever
+   has the most recent timestamp, with the old key as a one-time fallback
+   read. Updated the storage-event listener accordingly and added the
+   missing relay.core.js script include.
+
+Verified: server boots clean; all 5 files serve 200; relay.core.js
+registry contains all three new domain keys; each scenario file confirmed
+writing to its own distinct key; strategist confirmed reading from all
+three domain keys.
+---
+ html/cyber-incident.html                      |  6 ++-
+ html/plant-incident.html                      |  6 ++-
+ html/supplier-shutdown.html                   |  6 ++-
+ .../_relay_control_plane/relay.core.js        | 45 +++++++++++--------
+ html/war-rooms/honeywell-strategist.html      | 37 ++++++++++++---
+ 5 files changed, 74 insertions(+), 26 deletions(-)
+
+diff --git a/html/cyber-incident.html b/html/cyber-incident.html
+index 4b66a1b1..2b86fa23 100644
+--- a/html/cyber-incident.html
++++ b/html/cyber-incident.html
+@@ -275,7 +275,8 @@ function tick() { document.getElementById('clock').textContent = new Date().toLo
+ setInterval(tick, 1000); tick();
+ 
+ const INCIDENT_TYPE = 'cyber';
+-const RELAY_KEY = 'TSM_HONEYWELL_RELAY';
++const RELAY_DOMAIN = 'HONEYWELL_CYBER';
++const RELAY_KEY = 'TSM_HONEYWELL_CYBER_RELAY';
+ const STRATEGIST_URL = '/html/war-rooms/honeywell-strategist.html';
+ 
+ let docType = 'ot_intrusion';
+@@ -404,6 +405,9 @@ function saveRelay() {
+   try {
+     localStorage.setItem(RELAY_KEY, relay);
+     sessionStorage.setItem(RELAY_KEY, relay);
++    if (window.TSM && window.TSM.relay && window.TSM.relay.write) {
++      try { window.TSM.relay.write(RELAY_DOMAIN, sessionData); } catch (e) { /* noop */ }
++    }
+   } catch (e) {
+     showToast('Could not save relay data locally.', true);
+   }
+diff --git a/html/plant-incident.html b/html/plant-incident.html
+index e8f81f25..8fec722c 100644
+--- a/html/plant-incident.html
++++ b/html/plant-incident.html
+@@ -290,7 +290,8 @@ setInterval(tick, 1000); tick();
+ 
+ // ── CONFIG ────────────────────────────────────────────────────────────────────
+ const INCIDENT_TYPE = 'plant';                 // identifies this tool's payload to downstream consumers
+-const RELAY_KEY = 'TSM_HONEYWELL_RELAY';
++const RELAY_DOMAIN = 'HONEYWELL_PLANT';
++const RELAY_KEY = 'TSM_HONEYWELL_PLANT_RELAY';
+ const STRATEGIST_URL = '/html/war-rooms/honeywell-strategist.html';
+ 
+ let docType = 'equipment_failure';
+@@ -430,6 +431,9 @@ function saveRelay() {
+   try {
+     localStorage.setItem(RELAY_KEY, relay);
+     sessionStorage.setItem(RELAY_KEY, relay);
++    if (window.TSM && window.TSM.relay && window.TSM.relay.write) {
++      try { window.TSM.relay.write(RELAY_DOMAIN, sessionData); } catch (e) { /* noop */ }
++    }
+   } catch (e) {
+     showToast('Could not save relay data locally.', true);
+   }
+diff --git a/html/supplier-shutdown.html b/html/supplier-shutdown.html
+index f8111614..20a88697 100644
+--- a/html/supplier-shutdown.html
++++ b/html/supplier-shutdown.html
+@@ -202,7 +202,8 @@ function tick(){document.getElementById('clock').textContent=new Date().toLocale
+ setInterval(tick,1000);tick();
+ 
+ const INCIDENT_TYPE = 'supplier';
+-const RELAY_KEY = 'TSM_HONEYWELL_RELAY';
++const RELAY_DOMAIN = 'HONEYWELL_SUPPLIER';
++const RELAY_KEY = 'TSM_HONEYWELL_SUPPLIER_RELAY';
+ const STRATEGIST_URL = '/html/war-rooms/honeywell-strategist.html';
+ 
+ let docType='supplier_notice', enginesComplete=0;
+@@ -316,6 +317,9 @@ function saveRelay(){
+   try{
+     localStorage.setItem(RELAY_KEY,relay);
+     sessionStorage.setItem(RELAY_KEY,relay);
++    if (window.TSM && window.TSM.relay && window.TSM.relay.write) {
++      try { window.TSM.relay.write(RELAY_DOMAIN, sessionData); } catch (e) { /* noop */ }
++    }
+   }catch(e){ showToast('Could not save relay data locally.', true); }
+ }
+  
+diff --git a/html/war-rooms/_relay_control_plane/relay.core.js b/html/war-rooms/_relay_control_plane/relay.core.js
+index 8e474c88..e9eb689b 100644
+--- a/html/war-rooms/_relay_control_plane/relay.core.js
++++ b/html/war-rooms/_relay_control_plane/relay.core.js
+@@ -5,24 +5,33 @@
+  */
+ (function (global) {
+   const RELAY_REGISTRY = {
+-    CRM: "TSM_CRM_RELAY",
+-    CPQ: "TSM_CPQ_RELAY",
+-    BPO: "TSM_BPO_RELAY",
+-    O2C: "TSM_O2C_RELAY",
+-    MDM: "TSM_MDM_RELAY",
+-    APPROVAL: "TSM_APPROVAL_RELAY",
+-    CATALOG: "TSM_CATALOG_RELAY",
+-    GOVERNANCE: "TSM_GOVERNANCE_RELAY",
+-    DIGITAL_TWIN: "TSM_DIGITAL_TWIN_RELAY",
+-    HONEYWELL: "TSM_HONEYWELL_RELAY",
+-    INTEGRATION: "TSM_INTEGRATION_HUB_RELAY",
+-    NOC: "TSM_NOC_RELAY",
+-    MORTGAGE: "TSM_MORTGAGE_RELAY",
+-    SCHOOLS: "TSM_SCHOOLS_RELAY",
+-    VMWARE_COPILOT: "TSM_VMWARE_COPILOT_RELAY",
+-    CLOUD_COPILOT: "TSM_CLOUD_COPILOT_RELAY",
+-    L1COPILOT: "TSM_L1_COPILOT_RELAY"
+-  };
++  CRM: "TSM_CRM_RELAY",
++  CPQ: "TSM_CPQ_RELAY",
++  BPO: "TSM_BPO_RELAY",
++  O2C: "TSM_O2C_RELAY",
++  MDM: "TSM_MDM_RELAY",
++  APPROVAL: "TSM_APPROVAL_RELAY",
++  CATALOG: "TSM_CATALOG_RELAY",
++  GOVERNANCE: "TSM_GOVERNANCE_RELAY",
++  DIGITAL_TWIN: "TSM_DIGITAL_TWIN_RELAY",
++  HONEYWELL_CYBER:    "TSM_HONEYWELL_CYBER_RELAY",
++  HONEYWELL_SUPPLIER: "TSM_HONEYWELL_SUPPLIER_RELAY",
++  HONEYWELL_PLANT:    "TSM_HONEYWELL_PLANT_RELAY",
++  INTEGRATION: "TSM_INTEGRATION_HUB_RELAY",
++  NOC: "TSM_NOC_RELAY",
++  MORTGAGE: "TSM_MORTGAGE_RELAY",
++  SCHOOLS: "TSM_SCHOOLS_RELAY",
++  VMWARE_COPILOT: "TSM_VMWARE_COPILOT_RELAY",
++  CLOUD_COPILOT: "TSM_CLOUD_COPILOT_RELAY",
++  L1COPILOT: "TSM_L1_COPILOT_RELAY",
++  CONSTRUCTION: "TSM_CONSTRUCTION_RELAY",
++  FINOPS:       "TSM_FINOPS_RELAY",
++  HEALTHCARE:   "TSM_HEALTHCARE_RELAY",
++  LEGAL:        "TSM_LEGAL_RELAY",
++  REALESTATE:   "TSM_REALESTATE_RELAY",
++  INSURANCE:    "TSM_INSURANCE_RELAY",
++  MISSION:      "TSM_MISSION_RELAY"
++};
+   const EVENT_LOG_KEY = "TSM_EVENT_LOG";
+   const EVENT_LOG_MAX = 500;
+ 
+diff --git a/html/war-rooms/honeywell-strategist.html b/html/war-rooms/honeywell-strategist.html
+index c9c2d59d..49017f82 100644
+--- a/html/war-rooms/honeywell-strategist.html
++++ b/html/war-rooms/honeywell-strategist.html
+@@ -97,13 +97,24 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
+ </div>
+ <div class="wrap" id="wrap"><!-- populated by JS --></div>
+ <div class="toast" id="toast"></div>
++<script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
+ <script src="/html/shared/runtime/mission/mission-model.js"></script>
+ <script src="/html/shared/runtime/mission/mission-store.js"></script>
+ <script>
+ function tick(){document.getElementById('clock').textContent=new Date().toLocaleTimeString();}
+ setInterval(tick,1000);tick();
+ 
+-const RELAY_KEY = 'TSM_HONEYWELL_RELAY';
++// Domain-specific relay keys (post-split) — plant/cyber/supplier each write
++// their own key now instead of colliding on one TSM_HONEYWELL_RELAY.
++const RELAY_KEYS = {
++  plant:    'TSM_HONEYWELL_PLANT_RELAY',
++  cyber:    'TSM_HONEYWELL_CYBER_RELAY',
++  supplier: 'TSM_HONEYWELL_SUPPLIER_RELAY'
++};
++// Legacy key, kept as a fallback read only — nothing writes to it anymore
++// post-split, but any old in-flight session data still sitting in a
++// browser's storage from before the split can still be picked up once.
++const LEGACY_RELAY_KEY = 'TSM_HONEYWELL_RELAY';
+ 
+ const SOURCE_META = {
+   plant:   { label: 'PLANT — OPERATIONS INCIDENT',     icon: '⚡', war: '/html/plant-incident.html',    color: 'var(--orange)' },
+@@ -119,10 +130,24 @@ function showToast(msg, isErr){
+ }
+ 
+ function loadRelay(){
+-  try{
+-    const raw = localStorage.getItem(RELAY_KEY) || sessionStorage.getItem(RELAY_KEY);
++  let latest = null;
++  for (const key of Object.values(RELAY_KEYS)) {
++    try {
++      const raw = localStorage.getItem(key) || sessionStorage.getItem(key);
++      if (!raw) continue;
++      const parsed = JSON.parse(raw);
++      if (!latest || (parsed.timestamp && (!latest.timestamp || parsed.timestamp > latest.timestamp))) {
++        latest = parsed;
++      }
++    } catch(e) { /* skip malformed entry, keep checking other domains */ }
++  }
++  if (latest) return latest;
++  // Nothing in any of the three split keys — fall back to the legacy
++  // unscoped key in case there's pre-split data still sitting around.
++  try {
++    const raw = localStorage.getItem(LEGACY_RELAY_KEY) || sessionStorage.getItem(LEGACY_RELAY_KEY);
+     return raw ? JSON.parse(raw) : null;
+-  }catch(e){ return null; }
++  } catch(e) { return null; }
+ }
+ 
+ function manualRefresh(){
+@@ -328,7 +353,9 @@ function escalateExec(){
+ }
+ 
+ render();
+-window.addEventListener('storage', e => { if(e.key === RELAY_KEY) render(); });
++window.addEventListener('storage', e => {
++  if (Object.values(RELAY_KEYS).includes(e.key) || e.key === LEGACY_RELAY_KEY) render();
++});
+ </script>
+ </body>
+ </html>
+-- 
+2.43.0

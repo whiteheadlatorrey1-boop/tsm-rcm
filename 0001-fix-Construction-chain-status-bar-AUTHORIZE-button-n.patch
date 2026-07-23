@@ -1,0 +1,163 @@
+From e116c6e683113ab2f28141941839168f548e78cf Mon Sep 17 00:00:00 2001
+From: tsm-consultz <brightmindsfinancial@gmail.com>
+Date: Thu, 23 Jul 2026 18:00:40 +0000
+Subject: [PATCH] =?UTF-8?q?fix:=20Construction=20chain-status-bar=20?=
+ =?UTF-8?q?=E2=80=94=20AUTHORIZE=20button=20never=20wrote=20EXEC=5FCONFIRM?=
+ =?UTF-8?q?ED?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Three-part fix for the strategist -> exec-portal -> war-room confirmation chain:
+
+1. construction-executive-portal.html: the AUTHORIZE button had no click
+   handler at all, so TSM_EXEC_CONFIRMED_construction-suite was never
+   written by any code path. Added tsmConfirmExec() wired to the button's
+   onclick, writing the real (Convention A) unscoped key and flipping the
+   button to AUTHORIZED once clicked.
+
+2. construction-strategist.html: storeStrategistRelay() now writes the
+   real TSM_STRAT_CONFIRMED_construction-suite key inline (previously
+   only written by the dead tsmWriteScopedStrat(), which was never
+   called anywhere in the repo). Removed that dead function. Also loads
+   relay.core.js (already present on main) which was missing from this
+   page's script includes. pushToSentinel() simplified to overwrite
+   rather than merge/filter anomalies array (matches other verticals'
+   pattern).
+
+3. construction-war-room.html: status bar's strat/exec confirmation
+   checks now fall back to scanning TSM_STRAT_CONFIRMED_construction-suite_*
+   / TSM_EXEC_CONFIRMED_construction-suite_* scoped keys if the exact
+   unscoped key isn't found, so the bar lights up regardless of which
+   convention wrote the confirmation.
+
+Isolated from feat/mission-preview-phase4 (194-file drift) — only these
+3 files, no relay.core.js registry changes (Honeywell split / new domain
+keys on that branch are unrelated and tracked separately).
+
+Verified: server boots clean, all 3 pages + relay.core.js dependency
+serve 200, onclick handler / dead-code removal / scoped-key fallback
+all confirmed present in served output.
+---
+ .../construction-executive-portal.html        | 15 ++++++----
+ .../construction-strategist.html              | 28 +++++++++----------
+ .../construction-war-room.html                |  4 +--
+ 3 files changed, 26 insertions(+), 21 deletions(-)
+
+diff --git a/html/construction-suite/construction-executive-portal.html b/html/construction-suite/construction-executive-portal.html
+index 335b0609..79f47104 100644
+--- a/html/construction-suite/construction-executive-portal.html
++++ b/html/construction-suite/construction-executive-portal.html
+@@ -531,7 +531,7 @@ body { background: var(--bg); color: var(--text); font-family: 'Courier New', mo
+       <div><div class="decision-title" id="d1-title">Run War Room analysis to populate</div><div class="decision-sub" id="d1-sub">Load a construction document in War Room and fire 6-engine analysis</div></div>
+       <div class="decision-amount" id="d1-amount">—</div>
+       <div class="decision-urgency" id="d1-urgency">—</div>
+-      <button class="decision-action">AUTHORIZE</button>
++      <button class="decision-action" id="d1-authorize-btn" data-action="approve" onclick="tsmConfirmExec()">AUTHORIZE</button>
+     </div>
+     <div class="decision-row">
+       <div class="decision-badge badge-esc">ESCALATE</div>
+@@ -1539,12 +1539,17 @@ function tsmWriteRelay(payload){
+ <script>
+ // ===== TSM EXEC BRIDGE LAYER =====
+ 
+-function tsmWriteScopedExec(vertical, missionId){
+-  localStorage.setItem("TSM_EXEC_CONFIRMED_construction-suite_" + vertical, JSON.stringify({
+-    vertical,
+-    missionId,
++function tsmConfirmExec(){
++  // Real EXEC_CONFIRMED write (Convention A shape) — read by
++  // tsm-demo-runner.js AUTO-RUN and core/tsm-enforcer.js health audit.
++  // Previously this button had no click handler at all; nothing ever
++  // set TSM_EXEC_CONFIRMED_* for any vertical through any code path.
++  localStorage.setItem("TSM_EXEC_CONFIRMED_construction-suite", JSON.stringify({
++    vertical: "construction-suite",
+     timestamp: Date.now()
+   }));
++  var btn = document.getElementById("d1-authorize-btn");
++  if (btn) { btn.textContent = "AUTHORIZED \u2713"; btn.disabled = true; }
+ }
+ </script>
+ <!-- TSM KERNEL ENGINE -->
+diff --git a/html/construction-suite/construction-strategist.html b/html/construction-suite/construction-strategist.html
+index 6dffb1f8..021cea81 100644
+--- a/html/construction-suite/construction-strategist.html
++++ b/html/construction-suite/construction-strategist.html
+@@ -1145,13 +1145,10 @@ function pushToSentinel(bncaText, conObj) {
+     impacts: {}
+   };
+   try {
+-    var existing = {};
+-    try { existing = JSON.parse(localStorage.getItem('TSM_CONSTRUCTION_STRATEGIST_RELAY') || 'null') || {}; } catch(e) {}
+-    existing.anomalies = existing.anomalies || [];
+-    existing.anomalies = existing.anomalies.filter(function(a) { return a.id !== anomaly.id; });
+-    existing.anomalies.push(anomaly);
+-    existing.generatedAt = new Date().toISOString();
+-    localStorage.setItem('TSM_CONSTRUCTION_STRATEGIST_RELAY', JSON.stringify(existing));
++    localStorage.setItem('TSM_CONSTRUCTION_STRATEGIST_RELAY', JSON.stringify({
++      generatedAt: new Date().toISOString(),
++      anomalies: [anomaly]
++    }));
+     window.dispatchEvent(new CustomEvent('TSM_SENTINEL_REFRESH'));
+   } catch(e) { console.warn('[sentinel-relay] write failed:', e); }
+ }
+@@ -1193,6 +1190,12 @@ function storeStrategistRelay(bncaText, conObj) {
+ 
+     sessionStorage.setItem('TSM_CONSTRUCTION_STRATEGIST_RELAY', JSON.stringify(payload));
+     localStorage.setItem('tsm_construction_strategist_output', JSON.stringify(payload));
++    // Real strategist-confirmed signal (Convention A shape) — read by
++    // tsm-demo-runner.js AUTO-RUN and core/tsm-enforcer.js health audit.
++    localStorage.setItem('TSM_STRAT_CONFIRMED_construction-suite', JSON.stringify({
++      vertical: 'construction-suite',
++      timestamp: Date.now()
++    }));
+   } catch(e) { console.warn('Store error:', e); }
+ 
+   // ── Phase 2: Mission Core creation ──
+@@ -1433,6 +1436,7 @@ EXECUTIVE ESCALATION: [Yes/No] — [reason]`;
+   } catch(e) { console.warn('[TSM AutoRun Strategist]', e); }
+ })();
+ </script>
++  <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
+   <script src="/html/shared/runtime/mission/mission-model.js"></script>
+   <script src="/js/tsm-mission-store.js"></script>
+   <script src="/js/core/tsm-kernel-upgrade.js"></script>
+@@ -1466,13 +1470,9 @@ function tsmReadScopedRelay(vertical){
+   }
+ }
+ 
+-function tsmWriteScopedStrat(vertical, missionId){
+-  localStorage.setItem("TSM_STRAT_CONFIRMED_construction-suite_" + vertical, JSON.stringify({
+-    vertical,
+-    missionId,
+-    timestamp: Date.now()
+-  }));
+-}
++// tsmWriteScopedStrat() removed — dead code, never called anywhere in the
++// repo (Convention C). Real STRAT_CONFIRMED write now lives inline in
++// storeStrategistRelay() above.
+ </script>
+ 
+ <!-- TSM KERNEL ENGINE -->
+diff --git a/html/construction-suite/construction-war-room.html b/html/construction-suite/construction-war-room.html
+index df17f83f..ff2af048 100644
+--- a/html/construction-suite/construction-war-room.html
++++ b/html/construction-suite/construction-war-room.html
+@@ -257,13 +257,13 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
+         ts.textContent = new Date(d.timestamp).toLocaleTimeString();
+ 
+         // If strategist confirmed
+-        const stratRaw = localStorage.getItem('TSM_STRAT_CONFIRMED_construction-suite');
++        const stratRaw = (function(){var __v = localStorage.getItem("TSM_STRAT_CONFIRMED_construction-suite"); if (__v !== null) return __v; var __prefixes = ["TSM_STRAT_CONFIRMED_construction-suite_"]; for (var __p = 0; __p < __prefixes.length; __p++) { for (var __i = 0; __i < localStorage.length; __i++) { var __k = localStorage.key(__i); if (__k && __k.indexOf(__prefixes[__p]) === 0) { return localStorage.getItem(__k); } } } return null; })();
+         if (stratRaw) {
+           pulse(strat, '#00ffc6');
+           pulse(exec, '#f5a623');
+           status.textContent = 'Strategist confirmed → Exec Portal ready';
+         }
+-        const execRaw = localStorage.getItem('TSM_EXEC_CONFIRMED_construction-suite');
++        const execRaw = (function(){var __v = localStorage.getItem("TSM_EXEC_CONFIRMED_construction-suite"); if (__v !== null) return __v; var __prefixes = ["TSM_EXEC_CONFIRMED_construction-suite_"]; for (var __p = 0; __p < __prefixes.length; __p++) { for (var __i = 0; __i < localStorage.length; __i++) { var __k = localStorage.key(__i); if (__k && __k.indexOf(__prefixes[__p]) === 0) { return localStorage.getItem(__k); } } } return null; })();
+         if (execRaw) {
+           pulse(exec, '#00ffc6');
+           status.textContent = 'Chain complete ✓ All three tiers confirmed';
+-- 
+2.43.0
