@@ -1581,7 +1581,7 @@ async function tsmAI(s,u,m){try{const r=await fetch('/api/chat',{method:'POST',h
 </div><!-- /layout -->
 
 <!-- MODAL -->
-<div class="modal-overlay" id="modalOverlay" data-tsm-action="if" data-tsm-args="event.target===this)closeModal(">
+<div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)closeModal();">
   <div class="modal">
     <div class="modal-header">
       <div class="modal-title" id="modalTitle">AI Analysis</div>
@@ -2288,12 +2288,26 @@ document.addEventListener('click', function(e){
   if(!el) return;
 
   const action = el.getAttribute('data-tsm-action');
-  const args = el.getAttribute('data-tsm-args');
+  const argsStr = el.getAttribute('data-tsm-args') || '';
 
   if(window.TSM && TSM.launcher && TSM.launcher.run){
-    TSM.launcher.run(action, args);
-  } else {
-    console.warn('[TSM] launcher missing:', action, args);
+    TSM.launcher.run(action, argsStr);
+    return;
+  }
+
+  // No external launcher loaded — call the matching local function directly.
+  const fn = window[action];
+  if (typeof fn !== 'function') {
+    console.warn('[TSM] No handler found for action:', action, argsStr);
+    return;
+  }
+  try {
+    const argList = argsStr.trim()
+      ? Function('return [' + argsStr + '];').call(el)
+      : [];
+    fn.apply(el, argList);
+  } catch (err) {
+    console.error('[TSM] Failed to run action:', action, err);
   }
 
 });
