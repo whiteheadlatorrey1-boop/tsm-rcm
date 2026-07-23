@@ -279,6 +279,30 @@ body{
   transition:transform .15s ease;
 }
 .assistant-fab:hover{transform:scale(1.06);}
+@keyframes slaPulseRed{
+  0%{ box-shadow:0 0 0 0 rgba(229,72,77,0.65); }
+  70%{ box-shadow:0 0 0 9px rgba(229,72,77,0); }
+  100%{ box-shadow:0 0 0 0 rgba(229,72,77,0); }
+}
+@keyframes slaPulseAmber{
+  0%{ box-shadow:0 0 0 0 rgba(232,163,61,0.6); }
+  70%{ box-shadow:0 0 0 8px rgba(232,163,61,0); }
+  100%{ box-shadow:0 0 0 0 rgba(232,163,61,0); }
+}
+.sla-dot{
+  display:inline-block; width:7px; height:7px; border-radius:50%;
+  margin-left:7px; vertical-align:middle; background:transparent;
+}
+.sla-dot.amber{ background:var(--amber); animation:slaPulseAmber 1.8s infinite; }
+.sla-dot.red{ background:var(--risk); animation:slaPulseRed 1.4s infinite; }
+.fab-sla-dot{
+  position:absolute; top:2px; right:2px; width:12px; height:12px; border-radius:50%;
+  border:2px solid var(--ink); display:none;
+}
+.fab-sla-dot.amber{ display:block; background:var(--amber); animation:slaPulseAmber 1.8s infinite; }
+.fab-sla-dot.red{ display:block; background:var(--risk); animation:slaPulseRed 1.4s infinite; }
+.gauge-val.sla-pulse{ animation:textFade 1.6s infinite; }
+@keyframes textFade{ 0%,100%{opacity:1;} 50%{opacity:.5;} }
 .assistant-panel{
   position:fixed; right:26px; bottom:94px; z-index:100;
   width:360px; max-width:calc(100vw - 40px); height:480px; max-height:calc(100vh - 140px);
@@ -402,7 +426,10 @@ body{
     </div>
   </div>
   <div class="cadence-toggle" id="cadenceToggle"></div>
-  <div class="clock mono" id="clock">—</div>
+  <div style="display:flex; align-items:center; gap:14px;">
+    <a class="back-link" href="tsm-rcm-os-howto.html" target="_blank" rel="noopener">📘 How-To Guide</a>
+    <div class="clock mono" id="clock">—</div>
+  </div>
 </div>
 
 <div class="shell">
@@ -423,7 +450,7 @@ body{
       <div class="qr-row"><span class="qr-k">Liabilities</span><span>Credit ↑ · Debit ↓</span></div>
       <div class="qr-row"><span class="qr-k">Revenue</span><span>Credit ↑ · Debit ↓</span></div>
       <div class="qr-row"><span class="qr-k">Expenses</span><span>Debit ↑ · Credit ↓</span></div>
-      <div class="qr-note">Full GL account map lives in the How-To Guide → Quick Reference tab.</div>
+      <div class="qr-note">Full GL account map lives in the <a href="tsm-rcm-os-howto.html" target="_blank" rel="noopener">How-To Guide</a> → Quick Reference tab.</div>
     </div>
   </div>
 
@@ -453,7 +480,7 @@ body{
           <div class="hint" id="scoreHint">Check off tasks below to track this session's close progress.</div>
         </div>
         <div class="gauge-block">
-          <div class="gauge-top"><span class="gauge-name">Open Exceptions Requiring Sign-off</span><span class="gauge-val" id="excVal" style="color:var(--risk)">—</span></div>
+          <div class="gauge-top"><span class="gauge-name">Open Exceptions Requiring Sign-off</span><span class="gauge-val" id="excVal" style="color:var(--risk)">—</span><span class="sla-dot" id="excDot"></span></div>
           <div class="gauge-track"><div class="gauge-fill" id="excFill" style="width:0%; background:var(--risk);"></div></div>
           <div class="hint">Pulled from compliance.html flags and unmatched cash-to-ledger items.</div>
         </div>
@@ -780,10 +807,11 @@ function renderToggle(){
   const wrap = document.getElementById('cadenceToggle');
   const order = ["daily","weekly","monthend","framework","executive"];
   const labels = {daily:"Daily", weekly:"Weekly", monthend:"Month-End", framework:"Controller Framework", executive:"Executive"};
-  wrap.innerHTML = order.map(k => `<button class="cadence-btn ${k===currentCadence?'active':''}" data-k="${k}">${labels[k]}</button>`).join('');
+  wrap.innerHTML = order.map(k => `<button class="cadence-btn ${k===currentCadence?'active':''}" data-k="${k}">${labels[k]}<span class="sla-dot" id="slaDot-${k}"></span></button>`).join('');
   wrap.querySelectorAll('.cadence-btn').forEach(btn=>{
     btn.addEventListener('click', ()=>{ currentCadence = btn.dataset.k; renderAll(); });
   });
+  updateSLAIndicators();
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -1191,6 +1219,7 @@ function updateScore(){
     document.getElementById('scoreHint').textContent = 'Reference view — no checklist on this tab.';
     document.getElementById('excVal').textContent = '—';
     document.getElementById('excFill').style.width = '0%';
+    updateSLAIndicators();
     return;
   }
   const c = CADENCES[currentCadence];
@@ -1213,6 +1242,109 @@ function updateScore(){
   const excPct = total ? Math.round((openExceptions/total)*100) : 0;
   document.getElementById('excVal').textContent = openExceptions;
   document.getElementById('excFill').style.width = excPct + '%';
+
+  updateSLAIndicators();
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// SLA / DEADLINE ALERTS — lightweight, client-side heuristic against each
+// cadence's stated window (CADENCES[k].window) plus real task-completion
+// state. Not a persisted deadline engine — just an honest "is this cadence's
+// window active/closing and still incomplete" read, refreshed on a timer.
+// ─────────────────────────────────────────────────────────────────────────
+function cadenceStats(key){
+  const c = CADENCES[key];
+  if(!c || !c.phases) return {total:0, done:0};
+  let total = 0, done = 0;
+  c.phases.forEach((p,pi)=>{
+    p.tasks.forEach((_,ti)=>{
+      total++;
+      if(taskState[taskKey(key,pi,ti)]) done++;
+    });
+  });
+  return {total, done};
+}
+
+// Parses strings like "6:00 AM – 6:00 PM" or "Every Friday, 1:00 – 4:00 PM"
+// into {startMin, endMin} minutes-since-midnight for *today*, or null if the
+// window doesn't apply today (e.g. a Friday-only window on a Tuesday).
+function parseWindowToday(windowStr, now){
+  const fridayOnly = /Friday/i.test(windowStr);
+  if(fridayOnly && now.getDay() !== 5) return null; // 5 = Friday
+  const times = windowStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/gi);
+  if(!times || times.length < 2) return null;
+  const parseOne = (t, fallbackMeridiem) => {
+    const m = t.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+    let hr = parseInt(m[1],10);
+    const min = parseInt(m[2],10);
+    const mer = (m[3] || fallbackMeridiem || '').toUpperCase();
+    if(mer === 'PM' && hr !== 12) hr += 12;
+    if(mer === 'AM' && hr === 12) hr = 0;
+    return hr*60 + min;
+  };
+  const endMeridiem = (times[1].match(/AM|PM/i) || [''])[0];
+  const startMin = parseOne(times[0], endMeridiem);
+  const endMin = parseOne(times[1]);
+  return {startMin, endMin};
+}
+
+// Month-end: "urgent" once inside the last 3 calendar days of the month.
+function isMonthEndWindow(now){
+  const lastDay = new Date(now.getFullYear(), now.getMonth()+1, 0).getDate();
+  return (lastDay - now.getDate()) <= 2;
+}
+
+function computeCadenceSLA(key, now){
+  const {total, done} = cadenceStats(key);
+  if(total === 0 || done >= total) return 'ok'; // nothing to track, or already clear
+
+  if(key === 'monthend'){
+    if(!isMonthEndWindow(now)) return 'ok';
+    const lastDay = new Date(now.getFullYear(), now.getMonth()+1, 0).getDate();
+    return (lastDay - now.getDate()) === 0 ? 'red' : 'amber';
+  }
+
+  const c = CADENCES[key];
+  if(!c || !c.window) return 'ok';
+  const win = parseWindowToday(c.window, now);
+  if(!win) return 'ok'; // window doesn't apply today (e.g. weekly on a non-Friday)
+
+  const nowMin = now.getHours()*60 + now.getMinutes();
+  if(nowMin > win.endMin) return 'red';                 // window closed, still incomplete
+  if(nowMin < win.startMin) return 'ok';                 // window hasn't opened yet
+  const minsLeft = win.endMin - nowMin;
+  return minsLeft <= 60 ? 'red' : 'amber';               // inside window: amber, urgent in last hour
+}
+
+function updateSLAIndicators(){
+  const now = new Date();
+  const levels = {};
+  ['daily','weekly','monthend'].forEach(k => { levels[k] = computeCadenceSLA(k, now); });
+
+  ['daily','weekly','monthend'].forEach(k => {
+    const dot = document.getElementById('slaDot-'+k);
+    if(dot) dot.className = 'sla-dot' + (levels[k] !== 'ok' ? ' '+levels[k] : '');
+  });
+
+  const excDot = document.getElementById('excDot');
+  const excValEl = document.getElementById('excVal');
+  const openExceptions = excValEl ? (parseInt(excValEl.textContent, 10) || 0) : 0;
+  if(excDot){
+    excDot.className = 'sla-dot' + (openExceptions > 0 ? ' amber' : '');
+  }
+  if(excValEl) excValEl.classList.toggle('sla-pulse', openExceptions > 0);
+
+  const worst = Object.values(levels).includes('red') ? 'red'
+    : (Object.values(levels).includes('amber') || openExceptions > 0) ? 'amber' : 'none';
+  let fabDot = document.getElementById('fabSlaDot');
+  const fab = document.getElementById('assistantFab');
+  if(fab && !fabDot){
+    fabDot = document.createElement('span');
+    fabDot.id = 'fabSlaDot';
+    fabDot.className = 'fab-sla-dot';
+    fab.appendChild(fabDot);
+  }
+  if(fabDot) fabDot.className = 'fab-sla-dot' + (worst !== 'none' ? ' '+worst : '');
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -1311,6 +1443,8 @@ renderAll();
 initRelayModal();
 loadRelayData();
 initAssistant();
+updateSLAIndicators(); // fab now exists — attach its dot immediately
+setInterval(updateSLAIndicators, 30000); // keep pulses honest as the clock moves
 
 document.getElementById('intakeClearBtn').addEventListener('click', async ()=>{
   if(typeof RCMRelay !== 'undefined'){
