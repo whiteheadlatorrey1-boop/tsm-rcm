@@ -28,6 +28,7 @@ class TSMMissionStore {
       timestamp: Date.now()
     });
     this.save();
+    this._bridgeToRelay(mission, "MISSION_CREATED");
   }
 
   updateMission(id, patch) {
@@ -35,6 +36,21 @@ class TSMMissionStore {
     if (!m) return;
     Object.assign(m, patch);
     this.save();
+    this._bridgeToRelay(m, "MISSION_UPDATED");
+  }
+
+  // Construction predates the shared runtime mission-store.js and keeps its
+  // own storage shape/key — this only mirrors that store's relay bridge so
+  // Construction's missions still show up in the cross-vertical TSM_EVENT_LOG
+  // (Phase 11 cross-mission intelligence reads that log across all verticals).
+  _bridgeToRelay(mission, stage) {
+    if (typeof window === "undefined" || !window.TSM || !window.TSM.relay) return;
+    try {
+      window.TSM.relay.write("MISSION", Object.assign({}, mission, { vertical: mission.vertical || "construction" }), {
+        caseId: mission.id,
+        stage: stage
+      });
+    } catch (e) { /* relay bridge is best-effort, never block a mission write */ }
   }
 
   getAll() {
