@@ -119,19 +119,25 @@ router.delete('/relay', (req, res) => {
 // severity is one of critical|high|medium|low (matches .sev-badge CSS).
 //
 // Body: { engines: { triage, variance, actionPlan, executive },
-//          stats: { openExceptions, pctComplete, docName } }
+//          stats: { openExceptions, pctComplete, docName },
+//          selfReported: [{ phase, tool, field, value, reportedAt }] }
+// selfReported comes from the Task Data Requirements Registry (see
+// routes/rcm-requirements.js) — EU-entered values, never verified against a
+// live source. The prompt below is explicit that these are self-reported so
+// the model doesn't present them with false certainty.
 router.post('/guidance', express.json({ limit: '1mb' }), async (req, res) => {
-  const { engines = {}, stats = {} } = req.body || {};
+  const { engines = {}, stats = {}, selfReported = [] } = req.body || {};
   const hasAnyEngineText = ['triage', 'variance', 'actionPlan', 'executive'].some(k => (engines[k] || '').trim());
+  const hasSelfReported = Array.isArray(selfReported) && selfReported.length > 0;
 
   if (!process.env.GROQ_API_KEY) {
-    return res.json({ items: heuristicGuidance(engines, stats), degraded: true, reason: 'GROQ_API_KEY not configured on server' });
+    return res.json({ items: heuristicGuidance(engines, stats, selfReported), degraded: true, reason: 'GROQ_API_KEY not configured on server' });
   }
-  if (!hasAnyEngineText && !stats.openExceptions) {
+  if (!hasAnyEngineText && !stats.openExceptions && !hasSelfReported) {
     return res.json({ items: [] });
   }
 
-  const prompt = buildGuidancePrompt(engines, stats);
+  const prompt = buildGuidancePrompt(engines, stats, selfReported);
 
   try {
     const upstream = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -147,8 +153,11 @@ router.post('/guidance', express.json({ limit: '1mb' }), async (req, res) => {
             role: 'system',
             content: 'You are the TSM RCM OS proactive guidance engine. Return JSON only — no ' +
               'prose, no markdown fences, no mention of provider/model. Read the raw analysis ' +
-              'text given and turn it into a ranked list of concrete, specific issues an End ' +
-              'User (EU) needs to act on. Never invent numbers or facts not present in the input.'
+              'text and any self-reported field values given, and turn it into a ranked list of ' +
+              'concrete, specific issues an End User (EU) needs to act on. Never invent numbers ' +
+              'or facts not present in the input. Self-reported values are EU-entered, not ' +
+              'verified against a live system — when you reference one, phrase it accordingly ' +
+              '(e.g. "self-reported open flag count is 3"), never as a confirmed/audited figure.'
           },
           { role: 'user', content: prompt }
         ],
@@ -175,8 +184,15 @@ router.post('/guidance', express.json({ limit: '1mb' }), async (req, res) => {
   }
 });
 
-function buildGuidancePrompt(engines, stats) {
+function buildGuidancePrompt(engines, stats, selfReported = []) {
+  const selfReportedBlock = selfReported.length
+    ? selfReported.map(sr => `- [${sr.phase}, source: self-reported ${new Date(sr.reportedAt).toLocaleDateString()}] ${sr.field}: ${sr.value} (owning tool: ${sr.tool})`).join('\n')
+    : '(none entered yet)';
+
   return `Workspace stats: ${JSON.stringify(stats)}
+
+Self-reported field values (EU-entered, NOT verified against a live source — treat as unverified input, not fact):
+${selfReportedBlock}
 
 Triage/Flags:
 ${(engines.triage || '(none)').slice(0, 3000)}
@@ -212,7 +228,7 @@ Rank items by severity (critical first). Only include issues actually supported 
 // Keyword-based fallback so the guidance card still shows *something* real
 // (not fabricated) when Groq is unavailable — scans the raw text for
 // explicit severity language rather than inventing structured findings.
-function heuristicGuidance(engines, stats) {
+function heuristicGuidance(engines, stats, selfReported = []) {
   const items = [];
   const sources = [
     { key: 'triage', tool: 'compliance.html', label: 'Triage flag' },
@@ -243,6 +259,26 @@ function heuristicGuidance(engines, stats) {
       });
     }
   });
+  // Surface self-reported values that read as an open finding (not "0",
+  // "none", "no", "n/a") rather than a clean status. Kept deliberately
+  // simple in the fallback path — the Groq path above does the real
+  // judgment call on what's worth surfacing.
+  const nonIssueValues = new Set(['0', 'none', 'no', 'n/a', 'na', 'false', '']);
+  selfReported.forEach(sr => {
+    if (nonIssueValues.has(String(sr.value).trim().toLowerCase())) return;
+    items.push({
+      id: `self-reported-${sr.phase}-${sr.field}`.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+      severity: 'medium',
+      title: `${sr.field}: ${sr.value}`,
+      summary: `Self-reported during ${sr.phase} on ${new Date(sr.reportedAt).toLocaleDateString()} — not yet verified against a live source.`,
+      tool: /\.html\b/.test(sr.tool) ? sr.tool.split(/\s*\+\s*/)[0].trim() : 'compliance.html',
+      nextAction: `Follow up on "${sr.field}" in ${sr.tool}.`,
+      why: `This value was self-reported for the ${sr.phase} phase, which owns this check.`,
+      gain: 'Acting on self-reported findings before they age keeps the cadence honest.',
+      riskOfInaction: 'Self-reported issues left untouched won\'t self-resolve and will still be open at the next checkpoint.'
+    });
+  });
+
   if ((stats.openExceptions || 0) > 0) {
     items.push({
       id: 'open-exceptions',

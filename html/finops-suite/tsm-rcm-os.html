@@ -179,6 +179,32 @@ body{
 .phase-progress .fill{height:100%; background:var(--pc,var(--amber)); border-radius:3px; transition:width .4s ease;}
 .phase-progress .pct{font-family:'IBM Plex Mono'; font-size:10.5px; color:var(--muted-dim); min-width:32px; text-align:right;}
 
+/* Data Requirements block (self-reported, per phase) */
+.req-block{margin-top:14px; padding-top:12px; border-top:1px dashed var(--line);}
+.req-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;}
+.req-label{font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase; color:var(--muted-dim); font-weight:600;}
+.req-field{display:flex; flex-direction:column; gap:5px; padding:8px 0; border-top:1px solid var(--line);}
+.req-field:first-of-type{border-top:none;}
+.req-field-top{display:flex; align-items:baseline; justify-content:space-between; gap:8px; flex-wrap:wrap;}
+.req-field-name{font-size:12px; color:var(--text); font-weight:500;}
+.req-why{font-size:11px; color:var(--muted-dim); font-style:italic; line-height:1.4;}
+.req-row{display:flex; gap:6px; margin-top:4px; align-items:center;}
+.req-input{
+  flex:1; background:var(--panel); border:1px solid var(--line); border-radius:6px;
+  color:var(--text); font-family:'IBM Plex Mono'; font-size:11.5px; padding:6px 9px;
+}
+.req-input:focus-visible{outline:2px solid var(--amber); outline-offset:1px;}
+.req-save{
+  background:var(--panel); border:1px solid var(--line); border-radius:6px; color:var(--muted);
+  font-size:11px; font-weight:600; padding:6px 11px; cursor:pointer; white-space:nowrap; transition:all .15s ease;
+}
+.req-save:hover{border-color:var(--amber); color:var(--amber);}
+.req-badge{
+  font-size:9.5px; font-family:'IBM Plex Mono'; padding:2px 7px; border-radius:20px; white-space:nowrap;
+  background:var(--gold-dim); color:var(--gold); border:1px solid var(--gold);
+}
+.req-badge.empty{background:transparent; color:var(--muted-dim); border-color:var(--line);}
+
 /* Protocol pipeline (daily close steps) */
 .protocol-list{display:flex; flex-direction:column; gap:10px; margin-top:16px;}
 .protocol-step{display:flex; align-items:center; gap:14px; background:var(--panel-raised); border:1px solid var(--line); border-radius:10px; padding:12px 16px;}
@@ -578,6 +604,11 @@ body{
       <div class="exec-stats" id="execStats"></div>
 
       <div class="exec-block">
+        <div class="exec-block-title">Self-Reported Data <span style="color:var(--muted-dim); font-weight:400; text-transform:none; letter-spacing:0; font-size:11.5px;">(EU-entered, not yet verified against a live source)</span></div>
+        <div id="execSelfReported"></div>
+      </div>
+
+      <div class="exec-block">
         <div class="exec-block-title">Controller Action Plan</div>
         <div id="execActionPlan"></div>
       </div>
@@ -784,6 +815,110 @@ const checklistState = loadState(CHECKLIST_STATE_KEY); // key: idx -> bool
 function taskKey(cad, p, t){ return `${cad}-${p}-${t}`; }
 
 // ─────────────────────────────────────────────────────────────────────────
+// TASK DATA REQUIREMENTS REGISTRY — what an EU needs to gather from each
+// phase's owning module, and their self-reported values until that module
+// exposes a real read endpoint. See routes/rcm-requirements.js.
+// Everything here is explicitly source: 'self-reported' — never presented
+// as verified/computed. That honesty is the whole point of this layer.
+// ─────────────────────────────────────────────────────────────────────────
+let REQUIREMENTS = {};   // { "daily-2": { phaseName, tool, requiredFields:[{id,field,type,why}] } }
+let selfReported = {};   // { "daily-2": { openFlagCount: {value, reportedAt, source} } }
+
+async function loadRequirements(){
+  try {
+    const [reqRes, srRes] = await Promise.all([
+      fetch('/api/rcm/requirements'),
+      fetch('/api/rcm/self-reported')
+    ]);
+    const reqData = await reqRes.json();
+    const srData = await srRes.json();
+    REQUIREMENTS = reqData.phases || {};
+    selfReported = srData.data || {};
+  } catch(e) {
+    REQUIREMENTS = {};
+    selfReported = {};
+  }
+  // Re-render whatever's currently on screen so the new data shows up.
+  if(currentCadence === 'executive') renderExecutive();
+  else renderCadenceBody();
+}
+
+function reqSummaryCount(){
+  let filled = 0, expected = 0;
+  Object.keys(REQUIREMENTS).forEach(key=>{
+    const fields = REQUIREMENTS[key].requiredFields || [];
+    expected += fields.length;
+    fields.forEach(f=>{ if(selfReported[key] && selfReported[key][f.id]) filled++; });
+  });
+  return { filled, expected };
+}
+
+function renderReqBlock(cadence, phaseIdx){
+  const key = `${cadence}-${phaseIdx}`;
+  const spec = REQUIREMENTS[key];
+  if(!spec || !spec.requiredFields || !spec.requiredFields.length) return '';
+  const filledForPhase = spec.requiredFields.filter(f=>selfReported[key] && selfReported[key][f.id]).length;
+
+  return `
+  <div class="req-block" data-req-key="${key}">
+    <div class="req-head">
+      <span class="req-label">Data to gather from ${escapeHtml(spec.tool)}</span>
+      <span class="req-label">${filledForPhase}/${spec.requiredFields.length} self-reported</span>
+    </div>
+    ${spec.requiredFields.map(f=>{
+      const entry = selfReported[key] && selfReported[key][f.id];
+      const badge = entry
+        ? `<span class="req-badge" title="Self-reported, not verified">✎ self-reported · ${new Date(entry.reportedAt).toLocaleDateString()}</span>`
+        : `<span class="req-badge empty">not yet gathered</span>`;
+      return `
+      <div class="req-field" data-field-id="${escapeHtml(f.id)}">
+        <div class="req-field-top">
+          <span class="req-field-name">${escapeHtml(f.field)}</span>
+          ${badge}
+        </div>
+        <div class="req-why">${escapeHtml(f.why)}</div>
+        <div class="req-row">
+          <input class="req-input" type="text" placeholder="Enter value from ${escapeHtml(spec.tool)}..." value="${escapeHtml(entry ? entry.value : '')}">
+          <button class="req-save">Save</button>
+        </div>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
+function wireReqBlocks(container){
+  container.querySelectorAll('.req-block').forEach(block=>{
+    const key = block.dataset.reqKey;
+    block.querySelectorAll('.req-field').forEach(fieldEl=>{
+      const fieldId = fieldEl.dataset.fieldId;
+      const input = fieldEl.querySelector('.req-input');
+      const btn = fieldEl.querySelector('.req-save');
+      const submit = () => saveSelfReport(key, fieldId, input.value);
+      btn.addEventListener('click', submit);
+      input.addEventListener('keydown', (e)=>{ if(e.key === 'Enter') submit(); });
+    });
+  });
+}
+
+async function saveSelfReport(key, fieldId, value){
+  if(!value || !value.trim()) return;
+  try {
+    const res = await fetch('/api/rcm/self-reported', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ key, fieldId, value: value.trim() })
+    });
+    const data = await res.json();
+    if(data.ok){
+      if(!selfReported[key]) selfReported[key] = {};
+      selfReported[key][fieldId] = data.entry;
+      renderCadenceBody();
+      if(currentCadence === 'executive') renderExecutive();
+      fetchGuidance();
+    }
+  } catch(e) { /* silent — form just won't show as saved */ }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // RENDER: module rail
 // ─────────────────────────────────────────────────────────────────────────
 function renderRail(){
@@ -903,6 +1038,7 @@ function renderCadenceBody(){
         <div class="track"><div class="fill" style="width:${pct}%;"></div></div>
         <span class="pct">${done}/${total}</span>
       </div>
+      ${renderReqBlock(currentCadence, pi)}
     </div>`;
   }).join('');
 
@@ -916,6 +1052,8 @@ function renderCadenceBody(){
       updateScore();
     });
   });
+
+  wireReqBlocks(phaseList);
 
   // protocol
   document.getElementById('protocolEyebrow').textContent = c.protocolTitle;
@@ -1018,6 +1156,28 @@ function renderExecutive(){
     <div class="exec-stat"><div class="es-label">Month-End Close Checklist</div><div class="es-val" style="color:var(--amber)">${s.checklistDone}/${s.checklistTotal}</div></div>
   `;
 
+  const srCount = reqSummaryCount();
+  const srEl = document.getElementById('execSelfReported');
+  const srRows = [];
+  Object.keys(REQUIREMENTS).forEach(key=>{
+    const spec = REQUIREMENTS[key];
+    (spec.requiredFields||[]).forEach(f=>{
+      const entry = selfReported[key] && selfReported[key][f.id];
+      if(entry){
+        srRows.push(`<div class="req-field" style="border-top:1px solid var(--line); padding:8px 0;">
+          <div class="req-field-top">
+            <span class="req-field-name">${escapeHtml(spec.phaseName)} — ${escapeHtml(f.field)}</span>
+            <span class="req-badge" title="Self-reported, not verified">✎ self-reported · ${new Date(entry.reportedAt).toLocaleDateString()}</span>
+          </div>
+          <div class="req-why" style="font-style:normal; color:var(--text);">${escapeHtml(entry.value)}</div>
+        </div>`);
+      }
+    });
+  });
+  srEl.innerHTML = srRows.length
+    ? `<div class="exec-block-body" style="max-height:300px;">${srRows.join('')}<div style="margin-top:8px; color:var(--muted-dim); font-size:11px;">${srCount.filled}/${srCount.expected} required fields gathered across all cadences.</div></div>`
+    : `<div class="exec-empty">No self-reported data yet — fill in the "Data to gather" fields on any phase card in Daily / Weekly / Month-End to populate this.</div>`;
+
   const ap = document.getElementById('execActionPlan');
   const cfo = document.getElementById('execCfo');
   if(relayData){
@@ -1103,11 +1263,24 @@ async function loadRelayData(){
 // ─────────────────────────────────────────────────────────────────────────
 let guidanceItems = [];
 
+function selfReportedForGuidance(){
+  const out = [];
+  Object.keys(REQUIREMENTS).forEach(key=>{
+    const spec = REQUIREMENTS[key];
+    (spec.requiredFields||[]).forEach(f=>{
+      const entry = selfReported[key] && selfReported[key][f.id];
+      if(entry) out.push({ phase: spec.phaseName, tool: spec.tool, field: f.field, value: entry.value, reportedAt: entry.reportedAt });
+    });
+  });
+  return out;
+}
+
 async function fetchGuidance(){
   const s = crossCadenceStats();
   const body = {
     engines: relayData ? relayData.engines : {},
-    stats: { openExceptions: s.open, pctComplete: s.total ? Math.round((s.done/s.total)*100) : 0, docName: relayData ? relayData.docName : null }
+    stats: { openExceptions: s.open, pctComplete: s.total ? Math.round((s.done/s.total)*100) : 0, docName: relayData ? relayData.docName : null },
+    selfReported: selfReportedForGuidance()
   };
   try {
     const res = await fetch('/api/rcm/guidance', {
@@ -1379,6 +1552,7 @@ APP FEATURES & MODULES (for questions about how to use this app):
 - Document Search: cross-vertical document/evidence search.
 - Document Intake: when the FinOps Doc Showcase relays an analyzed document here, its 4 engine outputs (Triage, Variance, Action Plan, CFO Brief) each route to a specific module above — that routing is shown in the Document Intake card.
 - Cadence tabs (Daily/Weekly/Month-End/Controller Framework/Executive): the reconciliation rhythm this whole app is built around; each phase lists its owning tool and concrete tasks.
+- Data Requirements ("Data to gather from [module]" on each phase card): tells an EU exactly which specific field(s) that phase needs from its owning module and why, with an input to self-report the value. Self-reported values are explicitly unverified — they show up flagged that way here, in the Executive tab, and in guidance — until the owning module exposes a real read endpoint.
 `;
 
 // buildAssistantContext still lives here since it needs direct access to
@@ -1409,6 +1583,15 @@ function buildAssistantContext(userQuestion){
     ctx += `Controller Action Plan: ${(relayData.engines.actionPlan||'').slice(0,400)}\n`;
   } else {
     ctx += `\nNo document currently relayed from FinOps Doc Showcase.\n`;
+  }
+  const sr = selfReportedForGuidance();
+  if(sr.length){
+    ctx += `\nSELF-REPORTED DATA (EU-entered via the Data Requirements fields on each phase card — NOT verified against a live source, treat as unverified input, say "self-reported" when citing it):\n`;
+    sr.forEach(item => {
+      ctx += `- [${item.phase}] ${item.field}: ${item.value} (self-reported ${new Date(item.reportedAt).toLocaleDateString()}, owning tool: ${item.tool})\n`;
+    });
+  } else {
+    ctx += `\nNo self-reported data entered yet on any phase card.\n`;
   }
   if(guidanceItems && guidanceItems.length){
     ctx += `\nCURRENT PROACTIVE GUIDANCE QUEUE (ranked, act on these):\n`;
@@ -1442,6 +1625,7 @@ renderRail();
 renderAll();
 initRelayModal();
 loadRelayData();
+loadRequirements();
 initAssistant();
 updateSLAIndicators(); // fab now exists — attach its dot immediately
 setInterval(updateSLAIndicators, 30000); // keep pulses honest as the clock moves

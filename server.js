@@ -872,6 +872,7 @@ app.use(require('./routes/finops'));
 // Server-side staging for the FinOps Doc Showcase -> TSM RCM OS handoff.
 // See routes/rcm-relay.js header for the full endpoint contract.
 app.use('/api/rcm', require('./routes/rcm-relay'));
+app.use('/api/rcm', require('./routes/rcm-requirements'));
 
 // ── FINANCIAL INTELLIGENCE (finance-index.html) ─────────────────────────────
 // Groq-backed chat (per-tab assistant) + audit engine with real persisted
