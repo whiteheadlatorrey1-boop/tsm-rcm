@@ -8,9 +8,14 @@ Groq prompt, not by storeStrategistRelay(), not by pushToSentinel().
 The only data that reaches the BNCA report / Sentinel Center is the
 war room's 6-engine relay (docType, snapshot.risk/exposure, engines
 e1/e3/e4/e5/e6). Real project-phase status has zero path into the
-report or the anomaly pushed to Sentinel -- despite pushToSentinel()
-already carrying an `impacts: {}` field that looks built for exactly
-this and was never populated.
+report or the anomaly pushed to Sentinel.
+
+CORRECTED (2026-07-23): the original version of this script assumed
+pushToSentinel()'s `impacts` field was still a static `{}`. Since this
+script was written, a separate fix landed that populates it with
+`impacts: impact ? { financial: impact } : {}` (financial-impact data).
+This version merges phase data into that instead of overwriting it, and
+fixes a cosmetic indentation mismatch in the ctx-template anchor.
 
 This patch:
   1. Adds getPhaseSnapshot() -- reads the 4 .phase-card DOM blocks into
@@ -20,9 +25,10 @@ This patch:
      BNCA brief and recommended actions can actually reference real
      phase-level risk (e.g. "Phase 4 Systems at 5%, due Jan 20 -- MEP
      inspection blocker compounds schedule risk").
-  4. Populates pushToSentinel()'s `impacts` field with the phase
-     snapshot, so Sentinel Center receives phase-level detail with
-     the anomaly instead of an empty object.
+  4. Merges getPhaseSnapshot() into pushToSentinel()'s `impacts` field
+     alongside the existing financial-impact data, so Sentinel Center
+     receives phase-level detail with the anomaly instead of losing
+     the financial impact that's already there.
   5. Adds `payload.phases` to storeStrategistRelay(), so the Executive
      Portal (which reads this same relay key) gets it too.
 
@@ -63,14 +69,19 @@ function phaseSnapshotToText(phases) {
 // SENTINEL RELAY HELPERS"""
 
 # 2. Inject phase status into the Groq ctx template.
+#    (Fixed: real file has a 2-space indent before the closing `.trim();`)
 OLD_CTX = "ENGINE 06 — BNCA EXEC: ${engines.e6||''}\n  `.trim();"
 NEW_CTX = ("ENGINE 06 — BNCA EXEC: ${engines.e6||''}\n"
            "PROJECT PHASE STATUS:\n${phaseSnapshotToText(getPhaseSnapshot())}\n"
            "  `.trim();")
 
-# 3. Populate pushToSentinel()'s impacts field.
-OLD_IMPACTS = "    recommendedAction: topAction ? `${topAction.text}${topAction.owner ? ' (Owner: ' + topAction.owner + ')' : ''}` : 'See strategist brief.',\n    impacts: {}\n  };"
-NEW_IMPACTS = "    recommendedAction: topAction ? `${topAction.text}${topAction.owner ? ' (Owner: ' + topAction.owner + ')' : ''}` : 'See strategist brief.',\n    impacts: { phases: getPhaseSnapshot() }\n  };"
+# 3. Merge phase data into pushToSentinel()'s impacts field, alongside the
+#    financial-impact data a later fix already put there (was previously
+#    static `{}` when this script was first written -- no longer true).
+OLD_IMPACTS = ("    recommendedAction: topAction ? `${topAction.text}${topAction.owner ? ' (Owner: ' + topAction.owner + ')' : ''}` : 'See strategist brief.',\n"
+               "    impacts: impact ? { financial: impact } : {}\n  };")
+NEW_IMPACTS = ("    recommendedAction: topAction ? `${topAction.text}${topAction.owner ? ' (Owner: ' + topAction.owner + ')' : ''}` : 'See strategist brief.',\n"
+               "    impacts: { ...(impact ? { financial: impact } : {}), phases: getPhaseSnapshot() }\n  };")
 
 # 4. Add payload.phases to storeStrategistRelay()'s relay object.
 OLD_PAYLOAD = "    timestamp: new Date().toISOString(),\n    chainStep: 'strategist'\n  };"
@@ -100,13 +111,13 @@ def main():
     final = TARGET.read_text()
     assert "function getPhaseSnapshot()" in final
     assert "PROJECT PHASE STATUS" in final
-    assert "impacts: { phases: getPhaseSnapshot() }" in final
+    assert "impacts: { ...(impact ? { financial: impact } : {}), phases: getPhaseSnapshot() }" in final
     assert "phases: getPhaseSnapshot()" in final and final.count("getPhaseSnapshot()") >= 4
 
     print(f"OK: patched {TARGET}")
     print("  Added getPhaseSnapshot()/phaseSnapshotToText()")
     print("  Groq ctx now includes PROJECT PHASE STATUS")
-    print("  pushToSentinel() impacts now carries real phase data")
+    print("  pushToSentinel() impacts now merges phase data with existing financial impact")
     print("  storeStrategistRelay() payload now includes phases (reaches Executive Portal too)")
 
 if __name__ == "__main__":
