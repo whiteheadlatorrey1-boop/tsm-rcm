@@ -2475,7 +2475,7 @@ app.post('/api/wip/decision', (req, res) => {
   res.json({ ok: true, decision });
 });
 
-app.patch('/api/wip/decision/:id', requireApiKey, (req, res) => {
+app.patch('/api/wip/decision/:id', requireAuth, (req, res) => {
   const { vertical, status } = req.body || {};
   if (!ensureWipVertical(vertical)) return res.status(400).json({ ok: false, error: 'valid vertical required' });
   if (!['APPROVED', 'REJECTED', 'PENDING'].includes(status)) return res.status(400).json({ ok: false, error: 'status must be APPROVED, REJECTED, or PENDING' });
