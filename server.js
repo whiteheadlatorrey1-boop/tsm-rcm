@@ -18,10 +18,11 @@ const sentinelUpload = multer({
 });
 
 const app = express();
+app.use(express.json());
+app.use(require('express').urlencoded({ extended: false }));
 const PORT = process.env.PORT || 8080;
 const HTML_ROOT = path.join(__dirname, "html");
-// AUTH REMOVED — in-house use only
-// const { tsmAuthMiddleware } = require('./html/tsm-auth');
+
 // AUTH REMOVED — in-house use only
 // const { tsmAuthMiddleware } = require('./html/tsm-auth');
 const crypto = require('crypto');
@@ -30,7 +31,6 @@ const crypto = require('crypto');
 // Password + signing secret live server-side ONLY (Fly secrets / .env), never
 // shipped to the client. Session token = base64(payload).hmacSignature.
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000; // 12h
-
 function signSession(payload) {
   const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
   const sig = crypto.createHmac('sha256', process.env.TSM_SESSION_SECRET || '')
@@ -87,9 +87,6 @@ app.post('/api/auth/logout', (req, res) => {
 app.get('/api/auth/status', (req, res) => {
   res.json({ ok: true, authenticated: !!verifySession(getCookie(req, 'tsm_session')) });
 });
-
-app.use(express.json());
-app.use(require('express').urlencoded({ extended: false }));
 // tsmAuthMiddleware(app); // removed — war rooms are in-house
 
 // ── GLOBAL NO-CACHE ───────────────────────────────────────────────────────────
