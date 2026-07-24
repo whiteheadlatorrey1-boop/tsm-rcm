@@ -1,0 +1,148 @@
+diff --git a/html/finops-suite/finops-showcase-v1.html b/html/finops-suite/finops-showcase-v1.html
+index 0c56a713..6431e80e 100644
+--- a/html/finops-suite/finops-showcase-v1.html
++++ b/html/finops-suite/finops-showcase-v1.html
+@@ -567,6 +567,7 @@ console.log("TSM_UI: Direct Neural Link Established.");
+ </script>
+   <link rel="stylesheet" href="/shared/tsm-shared.css">
+   <script src="/shared/tsm-shared.js"></script>
++<script src="/config/tsm-client-key.js"></script>
+ <script src="js/rcm-relay-client.js"></script>
+ <script src="./html/js/tsm-runtime-lock.js"></script>
+ <script src="./html/js/tsm-event-contract.js"></script>
+diff --git a/html/finops-suite/js/rcm-relay-client.js b/html/finops-suite/js/rcm-relay-client.js
+index e0cb7449..6da5f462 100644
+--- a/html/finops-suite/js/rcm-relay-client.js
++++ b/html/finops-suite/js/rcm-relay-client.js
+@@ -28,9 +28,11 @@
+     try { localStorage.setItem(LOCAL_KEY, JSON.stringify(payload)); } catch (e) { /* ignore */ }
+ 
+     try {
++      const key = global.TSM_CLIENT_KEY;
++      if (!key) console.warn('[RCMRelay] TSM_CLIENT_KEY is unset â€” relay push will 401. See html/config/tsm-client-key.js');
+       const res = await fetch(`${API_BASE}/relay`, {
+         method: 'POST',
+-        headers: { 'Content-Type': 'application/json' },
++        headers: { 'Content-Type': 'application/json', 'x-api-key': key || '' },
+         body: JSON.stringify(payload)
+       });
+       if (!res.ok) throw new Error(`Relay API responded ${res.status}`);
+@@ -59,7 +61,7 @@
+ 
+   async function clear() {
+     try { localStorage.rm¯eItem(LOCAL_KEY); } catch (e) { /* ignore */ }
+-    try { await fetch(`${API_BASE}/relay`, { method: 'DELETE' }); } catch (e) { /* ignore */ }
++    try { await fetch(`${API_BASE}/relay`, { method: 'DELETE', headers: { 'x-api-key': global.TSM_CLIENT_KEY || '' } }); } catch (e) { /* ignore */ }
+   }
+
+   // Has this relay (identified by its generatedAt timestamp) already been
+diff --git a/html/finops-suite/tsm-rcm-os.html b/html/finops-suite/tsm-rcm-os.html
+index a15d367c..9e6f57f7 100644
+--- a/html/finops-suite/tsm-rcm-os.html
++++ b/html/finops-suite/tsm-rcm-os.html
+@@ -629,6 +629,7 @@ body{
+   and html/finops-suite/finops-showcase-v1.html into a single reconciliation cadence.
+ </div>
+ 
++<script src="/config/tsm-client-key.js"></script>
+ <script src="js/rcm-relay-client.js"></script>
+ <script src="js/rcm-assistant.js"></script>
+ <script>
+@@ -903,8 +904,10 @@ function wireReqBlocks(container){
+ async function saveSelfReport(key, fieldId, value){
+   if(!value || !value.trim()) return;
+   try {
++    const apiKey = window.TSM_CLIENT_KEY;
++    if(!apiKey) console.warn('[RCM OS] TSM_CLIENT_KEY is unset â€” self-report save will 401. See html/config/tsm-client-key.js');
+     const res = await fetch('/api/rcm/self-reported', {
+-      method: 'POST', headers: {'Content-Type':'application/json'},
++      method: 'POST', headers: {'Content-Type':'application/json', 'x-api-key': apiKey || ''},
+       body: JSON.stringify({ key, fieldId, value: value.trim() })
+     });
+     const data = await res.json();
+@@ -1284,7 +1287,7 @@ async function fetchGuidance(){
+   };
+   try {
+     const res = await fetch('/api/rcm/guidance', {
+-      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
++      method: 'POST', headers: {'Content-Type':'application/json', 'x-api-key': window.TSM_CLIENT_KEY || ''}, body: JSON.stringify(body)
+     });
+     const data = await res.json();
+     guidanceItems = data.items || [];
+diff --git a/routes/rcm-relay.js b/routes/rcm-relay.js
+index 935ceb8d..ca1d4803 100644
+--- a/routes/rcm-relay.js
++++ b/routes/rcm-relay.js
+@@ -26,6 +26,19 @@ const express = require('express');
+ const crypto = require('crypto');
+ const router = express.Router();
+ 
++// â”€â”€ AUTH: shared-secret gate for mutating endpoints â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
++// Mirrors the requireApiKey convention in server.js (MDM/WIP gated
++// endpoints). Duplicated here rather than imported since routes/ modules
++// don't share server.js's module scope â€” see html/config/tsm-client-key.js
++// for the client-side key this checks against.
++function requireApiKey(req, res, next) {
++  const key = req.headers['x-api-key'];
++  if (!key || key !== process.env.TSM_API_KEY) {
++    return res.status(401).json({ ok: false, error: 'Unauthorized' });
++  }
++  next();
++}
++
+ // â”€â”€ In-memory staging store â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+ // Swap for a real store when ready. Keeps the last N relays so RCM OS can
+// show intake history, not just the single latest handoff.
+@@ -52,7 +65,7 @@ function summarize(entry) {
+
+// â”€â”€ POST /api/rcm/relay â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Body: { docName, generatedAt, engines: { triage, variance, actionPlan, executive } }
+-router.post('/relay', express.json({ limit: '2mb' }), (req, res) => {
++router.post('/relay', requireApiKey, express.json({ limit: '2mb' }), (req, res) => {
+   const body = req.body || {};
+
+   if (!body.docName || !body.engines) {
+@@ -104,7 +117,7 @@ router.get('/relay/:id', (req, res) => {
+// â”€â”€ DELETE /api/rcm/relay â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Clears the "current" pointer (used by the RCM OS "Clear intake" button).
+// History is left intact so past intakes are still browsable.
+-router.delete('/relay', (req, res) => {
++router.delete('/relay', requireApiKey, (req, res) => {
+   current = null;
+   res.json({ ok: true });
+ });
+@@ -125,7 +138,7 @@ router.delete('/relay', (req, res) => {
+// routes/rcm-requirements.js) â€” EU-entered values, never verified against a
+// live source. The prompt below is explicit that these are self-reported so
+// the model doesn't present them with false certainty.
+-router.post('/guidance', express.json({ limit: '1mb' }), async (req, res) => {
++router.post('/guidance', requireApiKey, express.json({ limit: '1mb' }), async (req, res) => {
+   const { engines = {}, stats = {}, selfReported = [] } = req.body || {};
+   const hasAnyEngineText = ['triage', 'variance', 'actionPlan', 'executive'].some(k => (engines[k] || '').trim());
+   const hasSelfReported = Array.isArray(selfReported) && selfReported.length > 0;
+diff --git a/routes/rcm-requirements.js b/routes/rcm-requirements.js
+index 1661d0a9..13700d77 100644
+--- a/routes/rcm-requirements.js
++++ b/routes/rcm-requirements.js
+@@ -26,6 +26,18 @@ const fs = require('fs');
+ const path = require('path');
+ const router = express.Router();
+
++// â”€â”€ AUTH: shared-secret gate for mutating endpoints â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
++// Mirrors the requireApiKey convention in server.js (MDM/WIP gated
++// endpoints) and routes/rcm-relay.js. Duplicated per-file rather than
++// imported since routes/ modules don't share server.js's module scope.
++function requireApiKey(req, res, next) {
++  const key = req.headers['x-api-key'];
++  if (!key || key !== process.env.TSM_API_KEY) {
++    return res.status(401).json({ ok: false, error: 'Unauthorized' });
++  }
++  next();
++}
++
+ const REGISTRY_PATH = path.join(__dirname, '..', 'data', 'rcm', 'task-requirements.json');
+
+let REGISTRY = {};
+@@ -54,7 +66,7 @@ router.get('/self-reported', (req, res) => {
+
+// â”€â”€ POST /api/rcm/self-reported â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€€€¼¼	½‘äèì­•äè€‰‘…¥±ä´Èˆ°™¥•±‘%è€‰½Á•¹±…½Õ¹Ğˆ°Ù…±Õ”è€ˆÌˆô(µÉ½ÕÑ•È¹Á½ÍĞ œ½Í•±˜µÉ•Á½ÉÑ•œ°•áÁÉ•ÍÌ¹©Í½¸¡ì±¥µ¥Ğè€œÄÀÁ­ˆœô¤°€¡É•Ä°É•Ì¤€ôøì­É½ÕÑ•È¹Á½ÍĞ œ½Í•±˜µÉ•Á½ÉÑ•œ°É•ÅÕ¥É•Á¥-•ä°•áÁÉ•ÍÌ¹©Í½¸¡ì±¥µ¥Ğè€œÄÀÁ­ˆœô¤°€¡É•Ä°É•Ì¤€ôøì(€€½¹ÍĞì­•ä°™¥•±‘%°Ù…±Õ”ô€ôÉ•Ä¹‰½‘äñğíôì(€€¥˜€ …­•äñğ€…™¥•±‘%ñğÙ…±Õ”€ôôôÕ¹‘•™¥¹•¤ì(€€€€É•ÑÕÉ¸É•Ì¹ÍÑ…ÑÕÌ ĞÀÀ¤¹©Í½¸¡ì•ÉÉ½Èèìµ•ÍÍ…”è€	½‘äµÕÍĞ¥¹±Õ‘”­•ä°™¥•±‘%°…¹Ù…±Õ”¸œôô¤ì) €´ÜĞ°Ü€¬àØ°Ü É½ÕÑ•È¹Á½ÍĞ œ½Í•±˜µÉ•Á½ÉÑ•œ°•áÁÉ•ÍÌ¹©Í½¸¡ì±¥µ¥Ğè€œÄÀÁ­ˆœô¤°€¡É•Ä°É•Ì¤€ôøì(ô¤ì((¼¼ƒŠRŠR 1Q€½…Á¤½É´½Í•±˜µÉ•Á½ÉÑ•¼é­•ä¼é™¥•±‘%ƒŠRŠRŠRŠRŠRŠRŠRŠRŠRŠRŠRŠRŠRŠRŠRŠRŠRŠRŠRŠRŠRŠRŠRŠRŠRŠRŠRŠRŠRŠRŠRŠRŠRŠRŠRŠR (µÉ½ÕÑ•È¹‘•±•Ñ” œ½Í•±˜µÉ•Á½ÉÑ•¼é­•ä¼é™¥•±‘%œ°€¡É•Ä°É•Ì¤€ôøì­É½ÕÑ•È¹‘•±•Ñ” œ½Í•±˜µÉ•Á½ÉÑ•¼é­•ä¼é™¥•±‘%œ°É•ÅÕ¥É•Á¥-•ä°€¡É•Ä°É•Ì¤€ôøì(€€½¹ÍĞì­•ä°™¥•±‘%ô€ôÉ•Ä¹Á…É…µÌì(€€¥˜€¡Í•±™I•Á½ÉÑ•‘m­•åt€˜˜Í•±™I•Á½ÉÑ•‘m­•åum™¥•±‘%‘t¤ì(€€€€‘•±•Ñ”Í•±™I•Á½ÉÑ•‘m­•åum™¥•±‘%‘tì

@@ -26,6 +26,18 @@ const fs = require('fs');
 const path = require('path');
 const router = express.Router();
 
+// ── AUTH: shared-secret gate for mutating endpoints ──────────────────────
+// Mirrors the requireApiKey convention in server.js (MDM/WIP gated
+// endpoints) and routes/rcm-relay.js. Duplicated per-file rather than
+// imported since routes/ modules don't share server.js's module scope.
+function requireApiKey(req, res, next) {
+  const key = req.headers['x-api-key'];
+  if (!key || key !== process.env.TSM_API_KEY) {
+    return res.status(401).json({ ok: false, error: 'Unauthorized' });
+  }
+  next();
+}
+
 const REGISTRY_PATH = path.join(__dirname, '..', 'data', 'rcm', 'task-requirements.json');
 
 let REGISTRY = {};
@@ -54,7 +66,7 @@ router.get('/self-reported', (req, res) => {
 
 // ── POST /api/rcm/self-reported ─────────────────────────────────────────────
 // Body: { key: "daily-2", fieldId: "openFlagCount", value: "3" }
-router.post('/self-reported', express.json({ limit: '100kb' }), (req, res) => {
+router.post('/self-reported', requireApiKey, express.json({ limit: '100kb' }), (req, res) => {
   const { key, fieldId, value } = req.body || {};
   if (!key || !fieldId || value === undefined) {
     return res.status(400).json({ error: { message: 'Body must include key, fieldId, and value.' } });
@@ -74,7 +86,7 @@ router.post('/self-reported', express.json({ limit: '100kb' }), (req, res) => {
 });
 
 // ── DELETE /api/rcm/self-reported/:key/:fieldId ─────────────────────────────
-router.delete('/self-reported/:key/:fieldId', (req, res) => {
+router.delete('/self-reported/:key/:fieldId', requireApiKey, (req, res) => {
   const { key, fieldId } = req.params;
   if (selfReported[key] && selfReported[key][fieldId]) {
     delete selfReported[key][fieldId];

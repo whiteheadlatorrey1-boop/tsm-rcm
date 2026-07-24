@@ -28,9 +28,11 @@
     try { localStorage.setItem(LOCAL_KEY, JSON.stringify(payload)); } catch (e) { /* ignore */ }
 
     try {
+      const key = global.TSM_CLIENT_KEY;
+      if (!key) console.warn('[RCMRelay] TSM_CLIENT_KEY is unset — relay push will 401. See html/config/tsm-client-key.js');
       const res = await fetch(`${API_BASE}/relay`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-api-key': key || '' },
         body: JSON.stringify(payload)
       });
       if (!res.ok) throw new Error(`Relay API responded ${res.status}`);
@@ -59,7 +61,7 @@
 
   async function clear() {
     try { localStorage.removeItem(LOCAL_KEY); } catch (e) { /* ignore */ }
-    try { await fetch(`${API_BASE}/relay`, { method: 'DELETE' }); } catch (e) { /* ignore */ }
+    try { await fetch(`${API_BASE}/relay`, { method: 'DELETE', headers: { 'x-api-key': global.TSM_CLIENT_KEY || '' } }); } catch (e) { /* ignore */ }
   }
 
   // Has this relay (identified by its generatedAt timestamp) already been
