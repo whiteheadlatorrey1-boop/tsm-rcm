@@ -1009,6 +1009,8 @@ ENGINE 03 — FINANCIAL: ${engines.e3||''}
 ENGINE 04 — LEGAL: ${engines.e4||''}
 ENGINE 05 — COMPLIANCE: ${engines.e5||''}
 ENGINE 06 — BNCA EXEC: ${engines.e6||''}
+PROJECT PHASE STATUS:
+${phaseSnapshotToText(getPhaseSnapshot())}
   `.trim();
  
   const sys = `You are a Construction Strategist AI. Synthesize war room engine data into a complete executive intelligence package. Be specific, dollar-quantified, and action-oriented.`;
@@ -1080,6 +1082,29 @@ ENGINE 06 — BNCA EXEC: ${engines.e6||''}
 }
  
 // ═══════════════════════════════════════════════════
+// PROJECT PHASE SNAPSHOT
+// ═══════════════════════════════════════════════════
+// Reads the .phase-card blocks rendered in the Strategist view (currently
+// static markup) into a structured object, so the BNCA report and the
+// Sentinel/Executive relay payloads can carry real phase-level status
+// instead of only the war room's 6-engine risk/exposure summary.
+function getPhaseSnapshot() {
+  return Array.from(document.querySelectorAll('.phase-card')).map(card => {
+    const meta = card.querySelectorAll('.ph-meta span');
+    return {
+      phase: card.querySelector('.ph-tag')?.textContent?.trim() || '',
+      name: card.querySelector('.ph-name')?.textContent?.trim() || '',
+      pct: meta[0]?.textContent?.trim() || '',
+      due: meta[1]?.textContent?.trim() || '',
+      desc: card.querySelector('.ph-desc')?.textContent?.trim() || ''
+    };
+  });
+}
+function phaseSnapshotToText(phases) {
+  return phases.map(p => `${p.phase} -- ${p.name}: ${p.pct}, ${p.due}. ${p.desc}`).join('\n');
+}
+
+// ═══════════════════════════════════════════════════
 // SENTINEL RELAY HELPERS
 // ═══════════════════════════════════════════════════
 // Parses dollar strings into a single number. Handles plain amounts
@@ -1142,7 +1167,7 @@ function pushToSentinel(bncaText, conObj) {
     confidence: conObj?.confidence ?? 70,
     rootCause: (bncaText || '').slice(0, 240) || 'See BNCA synthesis for detail.',
     recommendedAction: topAction ? `${topAction.text}${topAction.owner ? ' (Owner: ' + topAction.owner + ')' : ''}` : 'See strategist brief.',
-    impacts: {}
+    impacts: { phases: getPhaseSnapshot() }
   };
   try {
     localStorage.setItem('TSM_CONSTRUCTION_STRATEGIST_RELAY', JSON.stringify({
@@ -1166,7 +1191,8 @@ function storeStrategistRelay(bncaText, conObj) {
     engines: warRoomRelay.engines,
     snapshot: warRoomRelay.snapshot,
     timestamp: new Date().toISOString(),
-    chainStep: 'strategist'
+    chainStep: 'strategist',
+    phases: getPhaseSnapshot()
   };
   try {
     // ── TSM EXEC KIT: WIP + explainability ──────────────────────────
