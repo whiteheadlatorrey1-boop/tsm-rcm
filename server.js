@@ -18,10 +18,10 @@ const sentinelUpload = multer({
 });
 
 const app = express();
+app.use(express.json());
+app.use(require('express').urlencoded({ extended: false }));
 const PORT = process.env.PORT || 8080;
 const HTML_ROOT = path.join(__dirname, "html");
-// AUTH REMOVED — in-house use only
-// const { tsmAuthMiddleware } = require('./html/tsm-auth');
 // AUTH REMOVED — in-house use only
 // const { tsmAuthMiddleware } = require('./html/tsm-auth');
 const crypto = require('crypto');
@@ -87,9 +87,6 @@ app.post('/api/auth/logout', (req, res) => {
 app.get('/api/auth/status', (req, res) => {
   res.json({ ok: true, authenticated: !!verifySession(getCookie(req, 'tsm_session')) });
 });
-
-app.use(express.json());
-app.use(require('express').urlencoded({ extended: false }));
 // tsmAuthMiddleware(app); // removed — war rooms are in-house
 
 // ── GLOBAL NO-CACHE ───────────────────────────────────────────────────────────
