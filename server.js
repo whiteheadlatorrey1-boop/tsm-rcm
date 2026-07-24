@@ -22,6 +22,7 @@ const PORT = process.env.PORT || 8080;
 const HTML_ROOT = path.join(__dirname, "html");
 // AUTH REMOVED — in-house use only
 // const { tsmAuthMiddleware } = require('./html/tsm-auth');
+const { requireApiKey } = require('./middleware/require-api-key');
 
 app.use(express.json());
 app.use(require('express').urlencoded({ extended: false }));
@@ -2973,15 +2974,6 @@ const MDM_LAST_VALIDATED = {};
 // and "change approvals" requirements. Survives process lifetime, not restarts (matches
 // the rest of the platform's in-memory-state pattern; swap for the Fly volume if needed).
 const MDM_MERGE_LOG = [];
-
-// ── AUTH: shared-secret gate for mutating endpoints ────────────────────────
-function requireApiKey(req, res, next) {
-  const key = req.headers['x-api-key'];
-  if (!key || key !== process.env.TSM_API_KEY) {
-    return res.status(401).json({ ok: false, error: 'Unauthorized' });
-  }
-  next();
-}
 
 app.post('/api/mdm/merge', requireApiKey, (req, res) => {
   const { domain, survivorId, mergedId, actor, decision } = req.body || {};
