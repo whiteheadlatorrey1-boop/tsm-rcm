@@ -1,0 +1,687 @@
+From 082ac84d13f9f79536522ef45fb416b8cdbfbd52 Mon Sep 17 00:00:00 2001
+From: DevShon1976 <devshon@tsm-consultz.local>
+Date: Fri, 24 Jul 2026 04:35:28 +0000
+Subject: [PATCH] Apply 6 pending Honeywell branch fixes: mortgage/schools
+ suite hub, exec-portal overlap x2, hub command links, suite-hub link, phases
+ wired into strategist report
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- suite-hub.html: add mortgage/schools tiles
+- bpo-executive-portal.html: fix bottom overlap (.gov-panel padding) + actionbar overlap (.action-bar z-index/position)
+- bpo-internal1.html: fix dead hub/command links
+- suite-hub.html: fix BPO Command Center link
+- construction-strategist.html: wire getPhaseSnapshot() into groq ctx, pushToSentinel impacts, and storeStrategistRelay payload
+  (impacts fix adapted from original script — no 'impact' var exists in live code, so merged phases into a plain object instead)
+---
+ apply_add_mortgage_schools_suite_hub.py       | 109 +++++++++++++++
+ apply_fix_execportal_actionbar_overlap.py     |  47 +++++++
+ apply_fix_execportal_bottom_overlap.py        |  39 ++++++
+ apply_fix_hub_command.py                      |  59 +++++++++
+ apply_fix_suite_hub_command_link.py           |  36 +++++
+ apply_wire_phases_into_report.py              | 124 ++++++++++++++++++
+ .../construction-strategist.html              |  30 ++++-
+ html/war-rooms/bpo/bpo-executive-portal.html  |   4 +-
+ html/war-rooms/bpo/bpo-internal1.html         |   6 +-
+ html/war-rooms/bpo/suite-hub.html             |  47 ++++++-
+ 10 files changed, 493 insertions(+), 8 deletions(-)
+ create mode 100644 apply_add_mortgage_schools_suite_hub.py
+ create mode 100644 apply_fix_execportal_actionbar_overlap.py
+ create mode 100644 apply_fix_execportal_bottom_overlap.py
+ create mode 100644 apply_fix_hub_command.py
+ create mode 100644 apply_fix_suite_hub_command_link.py
+ create mode 100644 apply_wire_phases_into_report.py
+
+diff --git a/apply_add_mortgage_schools_suite_hub.py b/apply_add_mortgage_schools_suite_hub.py
+new file mode 100644
+index 00000000..38cea414
+--- /dev/null
++++ b/apply_add_mortgage_schools_suite_hub.py
+@@ -0,0 +1,109 @@
++#!/usr/bin/env python3
++"""
++Adds Mortgage and Schools sections to suite-hub.html, matching the
++existing card/section-label pattern. Real files confirmed via repo
++find (backups/ excluded):
++
++  Mortgage: html/war-rooms/mortgage/{mortgage-war-room,mortgage-strategist,
++            mortgage-executive-portal}.html, html/mortgage-command.html
++  Schools:  html/schools-command/{schools-command,schools-strategist,
++            schools-executive-portal}.html
++
++URL aliasing assumption: mirrors the existing "/bpo/..." pattern already
++in this file for html/war-rooms/bpo/* -> so html/war-rooms/mortgage/*
++becomes "/mortgage/...". Schools isn't under war-rooms/, so it's aliased
++off its own top-level folder name, same as "/healthcare/..." does for
++html/healthcare/* -> "/schools-command/...". If either alias doesn't
++resolve once clicked live, it's a one-line href swap, not a rebuild.
++
++Run from the repo root (contains html/war-rooms/bpo/suite-hub.html):
++    python3 apply_add_mortgage_schools_suite_hub.py
++"""
++import pathlib
++
++TARGET = pathlib.Path("html/war-rooms/bpo/suite-hub.html")
++
++# 1. New color variables (after --music, before --gray)
++OLD_VARS = "  --music: #f472b6;\n  --gray: #94a3b8;"
++NEW_VARS = "  --music: #f472b6;\n  --mortgage: #60a5fa;\n  --schools: #34d399;\n  --gray: #94a3b8;"
++
++# 2. New icon classes (after ic-music)
++OLD_IC = ".ic-music  { background: rgba(244,114,182,0.12); color: var(--music); }"
++NEW_IC = (".ic-music  { background: rgba(244,114,182,0.12); color: var(--music); }\n"
++          ".ic-mortgage { background: rgba(96,165,250,0.12); color: var(--mortgage); }\n"
++          ".ic-schools  { background: rgba(52,211,153,0.12); color: var(--schools); }")
++
++# 3. New dot classes (after dot-music)
++OLD_DOT = ".dot-music  { background: var(--music); }"
++NEW_DOT = (".dot-music  { background: var(--music); }\n"
++           ".dot-mortgage { background: var(--mortgage); }\n"
++           ".dot-schools  { background: var(--schools); }")
++
++# 4. New sections, inserted right before the "Music & Demos" section comment
++OLD_SECTION_MARKER = "  <!-- Music & Demos -->"
++NEW_SECTIONS = """  <!-- Mortgage -->
++  <div class="section-label">
++    <span class="section-dot dot-mortgage"></span>
++    Mortgage
++  </div>
++  <div class="suite-grid">
++    <div class="card">
++      <div class="card-header">
++        <div class="card-icon ic-mortgage">MG</div>
++        <div class="card-title">Mortgage Suite</div>
++      </div>
++      <div class="link-list">
++        <a class="suite-link" href="/mortgage-command.html">Mortgage Command</a>
++        <a class="suite-link" href="/mortgage/mortgage-war-room.html">War Room</a>
++        <a class="suite-link" href="/mortgage/mortgage-strategist.html">Strategist</a>
++        <a class="suite-link" href="/mortgage/mortgage-executive-portal.html">Executive Portal</a>
++      </div>
++    </div>
++  </div>
++
++  <!-- Schools -->
++  <div class="section-label">
++    <span class="section-dot dot-schools"></span>
++    Schools
++  </div>
++  <div class="suite-grid">
++    <div class="card">
++      <div class="card-header">
++        <div class="card-icon ic-schools">SC</div>
++        <div class="card-title">Schools Suite</div>
++      </div>
++      <div class="link-list">
++        <a class="suite-link" href="/schools-command/schools-command.html">Schools Command</a>
++        <a class="suite-link" href="/schools-command/schools-strategist.html">Strategist</a>
++        <a class="suite-link" href="/schools-command/schools-executive-portal.html">Executive Portal</a>
++      </div>
++    </div>
++  </div>
++
++  <!-- Music & Demos -->"""
++
++def main():
++    assert TARGET.exists(), f"Not found: {TARGET} (run this from the repo root)"
++    text = TARGET.read_text()
++
++    for label, old in [("vars", OLD_VARS), ("icon classes", OLD_IC), ("dot classes", OLD_DOT), ("section marker", OLD_SECTION_MARKER)]:
++        count = text.count(old)
++        assert count == 1, f"Expected exactly 1 match for {label}, found {count} -- aborting, file may have changed"
++
++    text = text.replace(OLD_VARS, NEW_VARS)
++    text = text.replace(OLD_IC, NEW_IC)
++    text = text.replace(OLD_DOT, NEW_DOT)
++    text = text.replace(OLD_SECTION_MARKER, NEW_SECTIONS)
++
++    TARGET.write_text(text)
++
++    final = TARGET.read_text()
++    assert "dot-mortgage" in final and "dot-schools" in final
++    assert "Mortgage Suite" in final and "Schools Suite" in final
++    assert final.count("<!-- Music & Demos -->") == 1
++
++    print(f"OK: patched {TARGET}")
++    print("  Added Mortgage section (4 links) and Schools section (3 links)")
++
++if __name__ == "__main__":
++    main()
+\ No newline at end of file
+diff --git a/apply_fix_execportal_actionbar_overlap.py b/apply_fix_execportal_actionbar_overlap.py
+new file mode 100644
+index 00000000..ef9a9901
+--- /dev/null
++++ b/apply_fix_execportal_actionbar_overlap.py
+@@ -0,0 +1,47 @@
++#!/usr/bin/env python3
++"""
++Real root cause of the bottom-right clipping on bpo-executive-portal.html:
++two bars both claim bottom:0 --
++
++  .action-bar     -- position:sticky;  bottom:0;  height:52px  (no z-index)
++  #tsm-chain-bar  -- position:fixed;   bottom:0;  height:32px  z-index:9999
++
++The fixed chain bar (z-index 9999) paints on top of the sticky action
++bar's bottom 32px, clipping its right-aligned "MARK EXECUTED" button --
++that's the artifact showing up in the bottom-right corner.
++
++Fix: stick .action-bar 32px above the viewport bottom (bottom:32px)
++so it sits flush above the chain bar instead of underneath it. The
++earlier .gov-panel padding-bottom fix stays -- it's harmless and still
++gives clearance above the action bar itself -- this is the piece that
++was still missing.
++
++Run from the repo root (contains html/war-rooms/bpo/bpo-executive-portal.html):
++    python3 apply_fix_execportal_actionbar_overlap.py
++"""
++import pathlib
++
++TARGET = pathlib.Path("html/war-rooms/bpo/bpo-executive-portal.html")
++
++OLD = ".action-bar{height:52px;background:#020810;border-top:2px solid var(--border);display:flex;align-items:center;padding:0 20px;gap:10px;position:sticky;bottom:0;}"
++NEW = ".action-bar{height:52px;background:#020810;border-top:2px solid var(--border);display:flex;align-items:center;padding:0 20px;gap:10px;position:sticky;bottom:32px;z-index:500;}"
++
++def main():
++    assert TARGET.exists(), f"Not found: {TARGET} (run this from the repo root)"
++    text = TARGET.read_text()
++
++    count = text.count(OLD)
++    assert count == 1, f"Expected exactly 1 match, found {count} -- aborting, file may have changed"
++
++    text = text.replace(OLD, NEW)
++    TARGET.write_text(text)
++
++    final = TARGET.read_text()
++    assert final.count(NEW) == 1
++    assert OLD not in final
++
++    print(f"OK: patched {TARGET}")
++    print("  .action-bar now sticks at bottom:32px (clears the fixed #tsm-chain-bar) with z-index:500")
++
++if __name__ == "__main__":
++    main()
+\ No newline at end of file
+diff --git a/apply_fix_execportal_bottom_overlap.py b/apply_fix_execportal_bottom_overlap.py
+new file mode 100644
+index 00000000..9681d0ad
+--- /dev/null
++++ b/apply_fix_execportal_bottom_overlap.py
+@@ -0,0 +1,39 @@
++#!/usr/bin/env python3
++"""
++Fixes the bottom-right overlap on bpo-executive-portal.html: the fixed
++#tsm-chain-bar (32px, position:fixed;bottom:0) has zero body clearance
++below it, so the last real content block -- .gov-panel (Governance +
++WIP Measures, including the CROSS-UPLOAD MEMORY badge) -- sits directly
++underneath it and gets visually clipped/overlapped at the bottom edge.
++
++Fix: give .gov-panel enough bottom padding to clear the fixed bar.
++
++Run from the repo root (contains html/war-rooms/bpo/bpo-executive-portal.html):
++    python3 apply_fix_execportal_bottom_overlap.py
++"""
++import pathlib
++
++TARGET = pathlib.Path("html/war-rooms/bpo/bpo-executive-portal.html")
++
++OLD = ".gov-panel{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:18px 20px;margin:0 0 16px;}"
++NEW = ".gov-panel{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:18px 20px;margin:0 0 16px;padding-bottom:56px;}"
++
++def main():
++    assert TARGET.exists(), f"Not found: {TARGET} (run this from the repo root)"
++    text = TARGET.read_text()
++
++    count = text.count(OLD)
++    assert count == 1, f"Expected exactly 1 match, found {count} -- aborting, file may have changed"
++
++    text = text.replace(OLD, NEW)
++    TARGET.write_text(text)
++
++    final = TARGET.read_text()
++    assert final.count(NEW) == 1
++    assert OLD not in final
++
++    print(f"OK: patched {TARGET}")
++    print("  .gov-panel now has 56px bottom padding, clearing the fixed 32px #tsm-chain-bar")
++
++if __name__ == "__main__":
++    main()
+\ No newline at end of file
+diff --git a/apply_fix_hub_command.py b/apply_fix_hub_command.py
+new file mode 100644
+index 00000000..c7e82e4a
+--- /dev/null
++++ b/apply_fix_hub_command.py
+@@ -0,0 +1,59 @@
++#!/usr/bin/env python3
++"""
++Fixes the top-right Hub / Command links in bpo-internal1.html.
++
++Hub:     tsm-bpo-website-copy.html  ->  suite-hub.html
++         (was pointing at marketing website copy, not a real nav hub;
++         suite-hub.html is the actual cross-vertical site map with
++         live links to every sector/suite)
++
++Command: bpo-command-center.html    ->  bpo-executive-portal.html
++         (bpo-command-center.html's KPIs/mission feed reference
++         TSMHub.launch / TSMTelemetry / TSMOrchestrator, none of which
++         connect to the real TSMMissionStore data bpo-internal1.html
++         actually writes to -- confirmed dead. bpo-executive-portal.html
++         genuinely reads TSMMissionStore.listMissions()/getAnalytics()
++         and renders a real live cross-vertical rollup, with a safe
++         demo-mode fallback if no relay data is present.)
++
++Run from the repo root (contains html/war-rooms/bpo/bpo-internal1.html):
++    python3 apply_fix_hub_command.py
++"""
++import pathlib
++
++TARGET = pathlib.Path("html/war-rooms/bpo/bpo-internal1.html")
++
++OLD_HUB = 'href="tsm-bpo-website-copy.html"'
++NEW_HUB = 'href="suite-hub.html"'
++
++OLD_CMD = 'href="bpo-command-center.html"'
++NEW_CMD = 'href="bpo-executive-portal.html"'
++
++def main():
++    assert TARGET.exists(), f"Not found: {TARGET} (run this from the repo root)"
++    text = TARGET.read_text()
++
++    hub_count = text.count(OLD_HUB)
++    cmd_count = text.count(OLD_CMD)
++
++    assert hub_count == 1, f"Expected exactly 1 Hub link, found {hub_count} -- aborting, file may have changed"
++    assert cmd_count == 2, f"Expected exactly 2 Command links, found {cmd_count} -- aborting, file may have changed"
++
++    text = text.replace(OLD_HUB, NEW_HUB)
++    text = text.replace(OLD_CMD, NEW_CMD)
++
++    TARGET.write_text(text)
++
++    # verify
++    final = TARGET.read_text()
++    assert final.count(NEW_HUB) == 1
++    assert final.count(NEW_CMD) == 2
++    assert OLD_HUB not in final
++    assert OLD_CMD not in final
++
++    print(f"OK: patched {TARGET}")
++    print(f"  Hub     -> suite-hub.html")
++    print(f"  Command -> bpo-executive-portal.html (topbar + sidebar 'Command Center' nav item)")
++
++if __name__ == "__main__":
++    main()
+\ No newline at end of file
+diff --git a/apply_fix_suite_hub_command_link.py b/apply_fix_suite_hub_command_link.py
+new file mode 100644
+index 00000000..3df6ddc8
+--- /dev/null
++++ b/apply_fix_suite_hub_command_link.py
+@@ -0,0 +1,36 @@
++#!/usr/bin/env python3
++"""
++Fixes suite-hub.html's "BPO Command Center" link, which pointed at the
++dead bpo-command-center.html (same page just retired as the Command
++target in bpo-internal1.html). Points it at bpo-executive-portal.html
++instead, consistent with that fix.
++
++Run from the repo root (contains html/war-rooms/bpo/suite-hub.html):
++    python3 apply_fix_suite_hub_command_link.py
++"""
++import pathlib
++
++TARGET = pathlib.Path("html/war-rooms/bpo/suite-hub.html")
++
++OLD = 'href="/bpo/bpo-command-center.html">BPO Command Center</a>'
++NEW = 'href="/bpo/bpo-executive-portal.html">BPO Command Center</a>'
++
++def main():
++    assert TARGET.exists(), f"Not found: {TARGET} (run this from the repo root)"
++    text = TARGET.read_text()
++
++    count = text.count(OLD)
++    assert count == 1, f"Expected exactly 1 match, found {count} -- aborting, file may have changed"
++
++    text = text.replace(OLD, NEW)
++    TARGET.write_text(text)
++
++    final = TARGET.read_text()
++    assert final.count(NEW) == 1
++    assert OLD not in final
++
++    print(f"OK: patched {TARGET}")
++    print(f'  "BPO Command Center" -> /bpo/bpo-executive-portal.html')
++
++if __name__ == "__main__":
++    main()
+\ No newline at end of file
+diff --git a/apply_wire_phases_into_report.py b/apply_wire_phases_into_report.py
+new file mode 100644
+index 00000000..3cac5d42
+--- /dev/null
++++ b/apply_wire_phases_into_report.py
+@@ -0,0 +1,124 @@
++#!/usr/bin/env python3
++"""
++CONFIRMED FINDING: the "Phase 1-4" cards on construction-strategist.html
++(.phase-card blocks: Foundation/Structure/Envelope/Systems, % complete,
++due dates, blockers) are 100% static hardcoded markup. They are never
++read by any JS on the page -- not by runConstructionBNCAFromRelay()'s
++Groq prompt, not by storeStrategistRelay(), not by pushToSentinel().
++The only data that reaches the BNCA report / Sentinel Center is the
++war room's 6-engine relay (docType, snapshot.risk/exposure, engines
++e1/e3/e4/e5/e6). Real project-phase status has zero path into the
++report or the anomaly pushed to Sentinel.
++
++CORRECTED (2026-07-23): the original version of this script assumed
++pushToSentinel()'s `impacts` field was still a static `{}`. Since this
++script was written, a separate fix landed that populates it with
++`impacts: impact ? { financial: impact } : {}` (financial-impact data).
++This version merges phase data into that instead of overwriting it, and
++fixes a cosmetic indentation mismatch in the ctx-template anchor.
++
++This patch:
++  1. Adds getPhaseSnapshot() -- reads the 4 .phase-card DOM blocks into
++     a structured array (phase, name, pct, due, desc).
++  2. Adds phaseSnapshotToText() -- flattens that into readable lines.
++  3. Injects "PROJECT PHASE STATUS" into the ctx sent to Groq, so the
++     BNCA brief and recommended actions can actually reference real
++     phase-level risk (e.g. "Phase 4 Systems at 5%, due Jan 20 -- MEP
++     inspection blocker compounds schedule risk").
++  4. Merges getPhaseSnapshot() into pushToSentinel()'s `impacts` field
++     alongside the existing financial-impact data, so Sentinel Center
++     receives phase-level detail with the anomaly instead of losing
++     the financial impact that's already there.
++  5. Adds `payload.phases` to storeStrategistRelay(), so the Executive
++     Portal (which reads this same relay key) gets it too.
++
++Run from the repo root (contains html/construction-suite/construction-strategist.html):
++    python3 apply_wire_phases_into_report.py
++"""
++import pathlib
++
++TARGET = pathlib.Path("html/construction-suite/construction-strategist.html")
++
++# 1. Insert getPhaseSnapshot()/phaseSnapshotToText() right before the
++#    Sentinel relay helpers block, which is where pushToSentinel() lives.
++OLD_ANCHOR = "// ═══════════════════════════════════════════════════\n// SENTINEL RELAY HELPERS"
++NEW_ANCHOR = """// ═══════════════════════════════════════════════════
++// PROJECT PHASE SNAPSHOT
++// ═══════════════════════════════════════════════════
++// Reads the .phase-card blocks rendered in the Strategist view (currently
++// static markup) into a structured object, so the BNCA report and the
++// Sentinel/Executive relay payloads can carry real phase-level status
++// instead of only the war room's 6-engine risk/exposure summary.
++function getPhaseSnapshot() {
++  return Array.from(document.querySelectorAll('.phase-card')).map(card => {
++    const meta = card.querySelectorAll('.ph-meta span');
++    return {
++      phase: card.querySelector('.ph-tag')?.textContent?.trim() || '',
++      name: card.querySelector('.ph-name')?.textContent?.trim() || '',
++      pct: meta[0]?.textContent?.trim() || '',
++      due: meta[1]?.textContent?.trim() || '',
++      desc: card.querySelector('.ph-desc')?.textContent?.trim() || ''
++    };
++  });
++}
++function phaseSnapshotToText(phases) {
++  return phases.map(p => `${p.phase} -- ${p.name}: ${p.pct}, ${p.due}. ${p.desc}`).join('\\n');
++}
++
++// ═══════════════════════════════════════════════════
++// SENTINEL RELAY HELPERS"""
++
++# 2. Inject phase status into the Groq ctx template.
++#    (Fixed: real file has a 2-space indent before the closing `.trim();`)
++OLD_CTX = "ENGINE 06 — BNCA EXEC: ${engines.e6||''}\n  `.trim();"
++NEW_CTX = ("ENGINE 06 — BNCA EXEC: ${engines.e6||''}\n"
++           "PROJECT PHASE STATUS:\n${phaseSnapshotToText(getPhaseSnapshot())}\n"
++           "  `.trim();")
++
++# 3. Merge phase data into pushToSentinel()'s impacts field, alongside the
++#    financial-impact data a later fix already put there (was previously
++#    static `{}` when this script was first written -- no longer true).
++OLD_IMPACTS = ("    recommendedAction: topAction ? `${topAction.text}${topAction.owner ? ' (Owner: ' + topAction.owner + ')' : ''}` : 'See strategist brief.',\n"
++               "    impacts: impact ? { financial: impact } : {}\n  };")
++NEW_IMPACTS = ("    recommendedAction: topAction ? `${topAction.text}${topAction.owner ? ' (Owner: ' + topAction.owner + ')' : ''}` : 'See strategist brief.',\n"
++               "    impacts: { ...(impact ? { financial: impact } : {}), phases: getPhaseSnapshot() }\n  };")
++
++# 4. Add payload.phases to storeStrategistRelay()'s relay object.
++OLD_PAYLOAD = "    timestamp: new Date().toISOString(),\n    chainStep: 'strategist'\n  };"
++NEW_PAYLOAD = "    timestamp: new Date().toISOString(),\n    chainStep: 'strategist',\n    phases: getPhaseSnapshot()\n  };"
++
++def main():
++    assert TARGET.exists(), f"Not found: {TARGET} (run this from the repo root)"
++    text = TARGET.read_text()
++
++    checks = [
++        ("phase snapshot anchor", OLD_ANCHOR),
++        ("groq ctx template", OLD_CTX),
++        ("pushToSentinel impacts", OLD_IMPACTS),
++        ("storeStrategistRelay payload", OLD_PAYLOAD),
++    ]
++    for label, old in checks:
++        count = text.count(old)
++        assert count == 1, f"Expected exactly 1 match for {label}, found {count} -- aborting, file may have changed"
++
++    text = text.replace(OLD_ANCHOR, NEW_ANCHOR)
++    text = text.replace(OLD_CTX, NEW_CTX)
++    text = text.replace(OLD_IMPACTS, NEW_IMPACTS)
++    text = text.replace(OLD_PAYLOAD, NEW_PAYLOAD)
++
++    TARGET.write_text(text)
++
++    final = TARGET.read_text()
++    assert "function getPhaseSnapshot()" in final
++    assert "PROJECT PHASE STATUS" in final
++    assert "impacts: { ...(impact ? { financial: impact } : {}), phases: getPhaseSnapshot() }" in final
++    assert "phases: getPhaseSnapshot()" in final and final.count("getPhaseSnapshot()") >= 4
++
++    print(f"OK: patched {TARGET}")
++    print("  Added getPhaseSnapshot()/phaseSnapshotToText()")
++    print("  Groq ctx now includes PROJECT PHASE STATUS")
++    print("  pushToSentinel() impacts now merges phase data with existing financial impact")
++    print("  storeStrategistRelay() payload now includes phases (reaches Executive Portal too)")
++
++if __name__ == "__main__":
++    main()
+\ No newline at end of file
+diff --git a/html/construction-suite/construction-strategist.html b/html/construction-suite/construction-strategist.html
+index 021cea81..9952f199 100644
+--- a/html/construction-suite/construction-strategist.html
++++ b/html/construction-suite/construction-strategist.html
+@@ -1009,6 +1009,8 @@ ENGINE 03 — FINANCIAL: ${engines.e3||''}
+ ENGINE 04 — LEGAL: ${engines.e4||''}
+ ENGINE 05 — COMPLIANCE: ${engines.e5||''}
+ ENGINE 06 — BNCA EXEC: ${engines.e6||''}
++PROJECT PHASE STATUS:
++${phaseSnapshotToText(getPhaseSnapshot())}
+   `.trim();
+  
+   const sys = `You are a Construction Strategist AI. Synthesize war room engine data into a complete executive intelligence package. Be specific, dollar-quantified, and action-oriented.`;
+@@ -1079,6 +1081,29 @@ ENGINE 06 — BNCA EXEC: ${engines.e6||''}
+   }
+ }
+  
++// ═══════════════════════════════════════════════════
++// PROJECT PHASE SNAPSHOT
++// ═══════════════════════════════════════════════════
++// Reads the .phase-card blocks rendered in the Strategist view (currently
++// static markup) into a structured object, so the BNCA report and the
++// Sentinel/Executive relay payloads can carry real phase-level status
++// instead of only the war room's 6-engine risk/exposure summary.
++function getPhaseSnapshot() {
++  return Array.from(document.querySelectorAll('.phase-card')).map(card => {
++    const meta = card.querySelectorAll('.ph-meta span');
++    return {
++      phase: card.querySelector('.ph-tag')?.textContent?.trim() || '',
++      name: card.querySelector('.ph-name')?.textContent?.trim() || '',
++      pct: meta[0]?.textContent?.trim() || '',
++      due: meta[1]?.textContent?.trim() || '',
++      desc: card.querySelector('.ph-desc')?.textContent?.trim() || ''
++    };
++  });
++}
++function phaseSnapshotToText(phases) {
++  return phases.map(p => `${p.phase} -- ${p.name}: ${p.pct}, ${p.due}. ${p.desc}`).join('\n');
++}
++
+ // ═══════════════════════════════════════════════════
+ // SENTINEL RELAY HELPERS
+ // ═══════════════════════════════════════════════════
+@@ -1142,7 +1167,7 @@ function pushToSentinel(bncaText, conObj) {
+     confidence: conObj?.confidence ?? 70,
+     rootCause: (bncaText || '').slice(0, 240) || 'See BNCA synthesis for detail.',
+     recommendedAction: topAction ? `${topAction.text}${topAction.owner ? ' (Owner: ' + topAction.owner + ')' : ''}` : 'See strategist brief.',
+-    impacts: {}
++    impacts: { phases: getPhaseSnapshot() }
+   };
+   try {
+     localStorage.setItem('TSM_CONSTRUCTION_STRATEGIST_RELAY', JSON.stringify({
+@@ -1166,7 +1191,8 @@ function storeStrategistRelay(bncaText, conObj) {
+     engines: warRoomRelay.engines,
+     snapshot: warRoomRelay.snapshot,
+     timestamp: new Date().toISOString(),
+-    chainStep: 'strategist'
++    chainStep: 'strategist',
++    phases: getPhaseSnapshot()
+   };
+   try {
+     // ── TSM EXEC KIT: WIP + explainability ──────────────────────────
+diff --git a/html/war-rooms/bpo/bpo-executive-portal.html b/html/war-rooms/bpo/bpo-executive-portal.html
+index f7db2552..fba64f1e 100644
+--- a/html/war-rooms/bpo/bpo-executive-portal.html
++++ b/html/war-rooms/bpo/bpo-executive-portal.html
+@@ -470,7 +470,7 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
+ .app-chip-arrow{font-family:'JetBrains Mono',monospace;font-size:.65rem;color:var(--muted);}
+ 
+ /* ── BOTTOM ACTION BAR ── */
+-.action-bar{height:52px;background:#020810;border-top:2px solid var(--border);display:flex;align-items:center;padding:0 20px;gap:10px;position:sticky;bottom:0;}
++.action-bar{height:52px;background:#020810;border-top:2px solid var(--border);display:flex;align-items:center;padding:0 20px;gap:10px;position:sticky;bottom:32px;z-index:500;}
+ .act-btn{padding:8px 18px;border-radius:3px;font-family:'Orbitron',sans-serif;font-size:.6rem;cursor:pointer;letter-spacing:.08em;transition:.2s;border:1px solid;}
+ .act-btn.primary{background:var(--green);border-color:var(--green);color:#001;}
+ .act-btn.primary:hover{opacity:.85;}
+@@ -528,7 +528,7 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
+ 
+ 
+ /* ── WIP + GOVERNANCE PANEL ── */
+-.gov-panel{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:18px 20px;margin:0 0 16px;}
++.gov-panel{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:18px 20px;margin:0 0 16px;padding-bottom:56px;}
+ .gov-panel-title{font-family:"Orbitron",sans-serif;font-size:.6rem;letter-spacing:.15em;color:var(--amber);margin-bottom:14px;display:flex;align-items:center;gap:8px;}
+ .gov-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+ .gov-item{background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:10px 12px;}
+diff --git a/html/war-rooms/bpo/bpo-internal1.html b/html/war-rooms/bpo/bpo-internal1.html
+index 17e9c34e..6390ac3c 100644
+--- a/html/war-rooms/bpo/bpo-internal1.html
++++ b/html/war-rooms/bpo/bpo-internal1.html
+@@ -253,8 +253,8 @@ html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sa
+   <div class="tb-right">
+     <div class="sla-badge"><i class="ti ti-check"></i> All SLAs On Track</div>
+     <div class="tb-clock" id="clock">--:--:--</div>
+-    <a href="tsm-bpo-website-copy.html" class="back-btn"><i class="ti ti-arrow-left" style="font-size:13px"></i> Hub</a>
+-    <a href="bpo-command-center.html" class="back-btn"><i class="ti ti-layout-dashboard" style="font-size:13px"></i> Command</a>
++    <a href="suite-hub.html" class="back-btn"><i class="ti ti-arrow-left" style="font-size:13px"></i> Hub</a>
++    <a href="bpo-executive-portal.html" class="back-btn"><i class="ti ti-layout-dashboard" style="font-size:13px"></i> Command</a>
+   </div>
+ </header>
+ 
+@@ -312,7 +312,7 @@ html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sa
+ 
+   <div class="nav-divider"></div>
+   <div class="sidebar-section">Tools</div>
+-  <a class="nav-item" href="bpo-command-center.html">
++  <a class="nav-item" href="bpo-executive-portal.html">
+     <i class="ti ti-terminal-2"></i> Command Center
+   </a>
+   <a class="nav-item" href="client-access.html">
+diff --git a/html/war-rooms/bpo/suite-hub.html b/html/war-rooms/bpo/suite-hub.html
+index fb3429a2..cdfbddc0 100644
+--- a/html/war-rooms/bpo/suite-hub.html
++++ b/html/war-rooms/bpo/suite-hub.html
+@@ -26,6 +26,8 @@
+   --legal: #c084fc;
+   --bpo: #f87171;
+   --music: #f472b6;
++  --mortgage: #60a5fa;
++  --schools: #34d399;
+   --gray: #94a3b8;
+ }
+ 
+@@ -262,6 +264,8 @@ body::before {
+ .ic-legal  { background: rgba(192,132,252,0.12); color: var(--legal); }
+ .ic-bpo    { background: rgba(248,113,113,0.12); color: var(--bpo); }
+ .ic-music  { background: rgba(244,114,182,0.12); color: var(--music); }
++.ic-mortgage { background: rgba(96,165,250,0.12); color: var(--mortgage); }
++.ic-schools  { background: rgba(52,211,153,0.12); color: var(--schools); }
+ .ic-gray   { background: rgba(148,163,184,0.12); color: var(--gray); }
+ 
+ /* section dot colors */
+@@ -271,6 +275,8 @@ body::before {
+ .dot-con    { background: var(--con); }
+ .dot-legal  { background: var(--legal); }
+ .dot-music  { background: var(--music); }
++.dot-mortgage { background: var(--mortgage); }
++.dot-schools  { background: var(--schools); }
+ .dot-gray   { background: var(--gray); }
+ 
+ /* ── Footer ── */
+@@ -352,7 +358,7 @@ body::before {
+         <div class="card-title">BPO Internal</div>
+       </div>
+       <div class="link-list">
+-        <a class="suite-link" href="/bpo/bpo-command-center.html">BPO Command Center</a>
++        <a class="suite-link" href="/bpo/bpo-executive-portal.html">BPO Command Center</a>
+         <a class="suite-link" href="/bpo/bpo-internal1.html">BPO Internal 1</a>
+         <a class="suite-link" href="/bpo/client-access.html">Client Access</a>
+         <a class="suite-link" href="/bpo/launch.html">Launch</a>
+@@ -466,6 +472,45 @@ body::before {
+     </div>
+   </div>
+ 
++  <!-- Mortgage -->
++  <div class="section-label">
++    <span class="section-dot dot-mortgage"></span>
++    Mortgage
++  </div>
++  <div class="suite-grid">
++    <div class="card">
++      <div class="card-header">
++        <div class="card-icon ic-mortgage">MG</div>
++        <div class="card-title">Mortgage Suite</div>
++      </div>
++      <div class="link-list">
++        <a class="suite-link" href="/mortgage-command.html">Mortgage Command</a>
++        <a class="suite-link" href="/mortgage/mortgage-war-room.html">War Room</a>
++        <a class="suite-link" href="/mortgage/mortgage-strategist.html">Strategist</a>
++        <a class="suite-link" href="/mortgage/mortgage-executive-portal.html">Executive Portal</a>
++      </div>
++    </div>
++  </div>
++
++  <!-- Schools -->
++  <div class="section-label">
++    <span class="section-dot dot-schools"></span>
++    Schools
++  </div>
++  <div class="suite-grid">
++    <div class="card">
++      <div class="card-header">
++        <div class="card-icon ic-schools">SC</div>
++        <div class="card-title">Schools Suite</div>
++      </div>
++      <div class="link-list">
++        <a class="suite-link" href="/schools-command/schools-command.html">Schools Command</a>
++        <a class="suite-link" href="/schools-command/schools-strategist.html">Strategist</a>
++        <a class="suite-link" href="/schools-command/schools-executive-portal.html">Executive Portal</a>
++      </div>
++    </div>
++  </div>
++
+   <!-- Music & Demos -->
+   <div class="section-label">
+     <span class="section-dot dot-music"></span>
+-- 
+2.43.0

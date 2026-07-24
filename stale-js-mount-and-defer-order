@@ -1,0 +1,40 @@
+From a926caea78b2cf065f707639704356f5b8b3e623 Mon Sep 17 00:00:00 2001
+From: DevShon1976 <devshon@tsm-consultz.local>
+Date: Fri, 24 Jul 2026 04:41:55 +0000
+Subject: [PATCH] Remove stale /js static mount and fix relay.core.js
+ defer-order in tsm-wip-command-center.html
+
+- server.js: remove dead /js mount pointing at html/tsm-insurance/public/js (dir doesn't exist, was silently shadowed by the real /js mount right after it anyway)
+- tsm-wip-command-center.html: remove defer from relay.core.js so it executes in its actual document position (first), consistent with tsm-client-key.js and tsm-relay-core.js loading right after it without defer. Previously relay.core.js appeared first in markup but defer made it execute last -- an inverted load-order footgun. No current caller in this file hit the race, but fixing it removes the risk for future changes.
+---
+ html/war-rooms/tsm-wip-command-center.html | 2 +-
+ server.js                                  | 1 -
+ 2 files changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/html/war-rooms/tsm-wip-command-center.html b/html/war-rooms/tsm-wip-command-center.html
+index e02e7c4e..fe80c2fc 100644
+--- a/html/war-rooms/tsm-wip-command-center.html
++++ b/html/war-rooms/tsm-wip-command-center.html
+@@ -1,7 +1,7 @@
+ <!DOCTYPE html>
+ <html lang="en">
+ <head>
+-    <script defer src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
++    <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
+ <script src="/config/tsm-client-key.js"></script>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+diff --git a/server.js b/server.js
+index 412b445b..1d41b8a1 100644
+--- a/server.js
++++ b/server.js
+@@ -237,7 +237,6 @@ app.get('/healthcare/executive-portal', (req, res) => res.redirect('/html/execut
+ const dirPath = path.join(__dirname, 'html');// ── STATIC MOUNTS v2 ──
+ 
+ app.use('/html', express.static(path.join(__dirname, 'html'), { setHeaders: (res) => res.setHeader('Cache-Control', 'no-store') }));
+-app.use('/js', express.static(path.join(__dirname, 'html/tsm-insurance/public/js')));
+ app.use('/js', express.static(path.join(__dirname, 'html/js')));
+ app.use('/bpo', express.static(path.join(__dirname, 'html/bpo')));
+ app.use('/shared', express.static(path.join(__dirname, 'html/bpo/shared')));
+-- 
+2.43.0
