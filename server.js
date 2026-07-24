@@ -22,6 +22,71 @@ const PORT = process.env.PORT || 8080;
 const HTML_ROOT = path.join(__dirname, "html");
 // AUTH REMOVED — in-house use only
 // const { tsmAuthMiddleware } = require('./html/tsm-auth');
+// AUTH REMOVED — in-house use only
+// const { tsmAuthMiddleware } = require('./html/tsm-auth');
+const crypto = require('crypto');
+
+// ── AUTH: signed session cookie, server-verified only ──────────────────────
+// Password + signing secret live server-side ONLY (Fly secrets / .env), never
+// shipped to the client. Session token = base64(payload).hmacSignature.
+const SESSION_TTL_MS = 12 * 60 * 60 * 1000; // 12h
+
+function signSession(payload) {
+  const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const sig = crypto.createHmac('sha256', process.env.TSM_SESSION_SECRET || '')
+    .update(body).digest('base64url');
+  return `${body}.${sig}`;
+}
+
+function verifySession(token) {
+  if (!token || !process.env.TSM_SESSION_SECRET) return null;
+  const [body, sig] = token.split('.');
+  if (!body || !sig) return null;
+  const expected = crypto.createHmac('sha256', process.env.TSM_SESSION_SECRET)
+    .update(body).digest('base64url');
+  const a = Buffer.from(sig), b = Buffer.from(expected);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(body, 'base64url').toString());
+    if (!payload.exp || Date.now() > payload.exp) return null;
+    return payload;
+  } catch { return null; }
+}
+
+function getCookie(req, name) {
+  const raw = req.headers.cookie || '';
+  const match = raw.split(';').map(c => c.trim()).find(c => c.startsWith(name + '='));
+  return match ? decodeURIComponent(match.slice(name.length + 1)) : null;
+}
+
+function requireAuth(req, res, next) {
+  const session = verifySession(getCookie(req, 'tsm_session'));
+  if (!session) return res.status(401).json({ ok: false, error: 'Unauthorized' });
+  next();
+}
+
+app.post('/api/auth/login', (req, res) => {
+  const { password } = req.body || {};
+  if (!process.env.TSM_ADMIN_PASSWORD || !process.env.TSM_SESSION_SECRET) {
+    return res.status(500).json({ ok: false, error: 'Auth not configured on server' });
+  }
+  if (!password || password !== process.env.TSM_ADMIN_PASSWORD) {
+    return res.status(401).json({ ok: false, error: 'Invalid password' });
+  }
+  const token = signSession({ exp: Date.now() + SESSION_TTL_MS });
+  res.setHeader('Set-Cookie',
+    `tsm_session=${encodeURIComponent(token)}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${SESSION_TTL_MS / 1000}`);
+  res.json({ ok: true });
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  res.setHeader('Set-Cookie', 'tsm_session=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0');
+  res.json({ ok: true });
+});
+
+app.get('/api/auth/status', (req, res) => {
+  res.json({ ok: true, authenticated: !!verifySession(getCookie(req, 'tsm_session')) });
+});
 
 app.use(express.json());
 app.use(require('express').urlencoded({ extended: false }));
@@ -2960,15 +3025,6 @@ const MDM_LAST_VALIDATED = {};
 // and "change approvals" requirements. Survives process lifetime, not restarts (matches
 // the rest of the platform's in-memory-state pattern; swap for the Fly volume if needed).
 const MDM_MERGE_LOG = [];
-
-// ── AUTH: shared-secret gate for mutating endpoints ────────────────────────
-function requireApiKey(req, res, next) {
-  const key = req.headers['x-api-key'];
-  if (!key || key !== process.env.TSM_API_KEY) {
-    return res.status(401).json({ ok: false, error: 'Unauthorized' });
-  }
-  next();
-}
 
 app.post('/api/mdm/merge', requireApiKey, (req, res) => {
   const { domain, survivorId, mergedId, actor, decision } = req.body || {};
