@@ -27,16 +27,8 @@ const path = require('path');
 const router = express.Router();
 
 // ── AUTH: shared-secret gate for mutating endpoints ──────────────────────
-// Mirrors the requireApiKey convention in server.js (MDM/WIP gated
-// endpoints) and routes/rcm-relay.js. Duplicated per-file rather than
-// imported since routes/ modules don't share server.js's module scope.
-function requireApiKey(req, res, next) {
-  const key = req.headers['x-api-key'];
-  if (!key || key !== process.env.TSM_API_KEY) {
-    return res.status(401).json({ ok: false, error: 'Unauthorized' });
-  }
-  next();
-}
+// Shared with server.js and routes/rcm-relay.js via middleware/require-api-key.js.
+const { requireApiKey } = require('../middleware/require-api-key');
 
 const REGISTRY_PATH = path.join(__dirname, '..', 'data', 'rcm', 'task-requirements.json');
 
