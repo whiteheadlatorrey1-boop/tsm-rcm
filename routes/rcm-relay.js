@@ -27,17 +27,9 @@ const crypto = require('crypto');
 const router = express.Router();
 
 // ── AUTH: shared-secret gate for mutating endpoints ──────────────────────
-// Mirrors the requireApiKey convention in server.js (MDM/WIP gated
-// endpoints). Duplicated here rather than imported since routes/ modules
-// don't share server.js's module scope — see html/config/tsm-client-key.js
-// for the client-side key this checks against.
-function requireApiKey(req, res, next) {
-  const key = req.headers['x-api-key'];
-  if (!key || key !== process.env.TSM_API_KEY) {
-    return res.status(401).json({ ok: false, error: 'Unauthorized' });
-  }
-  next();
-}
+// Shared with server.js via middleware/require-api-key.js.
+// See html/config/tsm-client-key.js for the client-side key this checks against.
+const { requireApiKey } = require('../middleware/require-api-key');
 
 // ── In-memory staging store ────────────────────────────────────────────────
 // Swap for a real store when ready. Keeps the last N relays so RCM OS can
