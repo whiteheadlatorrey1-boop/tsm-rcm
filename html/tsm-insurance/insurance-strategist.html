@@ -143,6 +143,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:500px;height:500px;bac
 .tsm-recovery{text-align:center;font-family:'IBM Plex Mono',monospace;font-size:.59rem;margin-top:5px;opacity:.4}
 </style>
   <script src="/js/core/tsm-event-bus.js"></script>
+  <script src="/js/tsm-bnca-exposure-engine.js"></script>
   <script src="/js/core/tsm-state.js"></script>
   <script src="/html/shared/runtime/mission/mission-model.js"></script>
   <script src="/html/shared/runtime/mission/mission-store.js"></script>
@@ -498,7 +499,7 @@ RELAY TO EXECUTIVE PORTAL: YES
 PACKAGE CONFIDENCE: [1-100]%
 
 Format your ENTIRE response exactly as follows: start with the literal line ===BRIEF=== followed by the full package above, then a new line with the literal ===JSON=== followed by a single JSON object (no markdown fences) with this exact shape:
-{"confidence":0-100,"dataSources":[{"name":"...","weight":"HIGH|MED|LOW"}],"reasoning":[{"key":"...","val":"..."}],"recommendedActions":[{"text":"...","owner":"..."}],"noActionRevLoss":"$amount","actionRevLoss":"$amount","recoveryTime":"e.g. 90 Days"}`
+{"confidence":0-100,"dataSources":[{"name":"...","weight":"HIGH|MED|LOW"}],"reasoning":[{"key":"...","val":"..."}],"recommendedActions":[{"text":"...","owner":"..."}]}`
 ];
 
 const NODE_FALLBACKS=[
@@ -588,7 +589,32 @@ async function runStrategist(){
     setNodeState(i,'done');
     document.getElementById('nodesComplete').textContent=i+'/4 NODES';
     document.getElementById('nodesComplete').className='out-badge done';
-    if(i===4){ const {brief:insBrief,obj:insObj}=insXPParseExplain(txt); setNodeBody(4,insBrief||txt); if(insObj) insXPRenderExplain(insObj); }
+    if(i===4){
+      const {brief:insBrief,obj:insObj}=insXPParseExplain(txt); setNodeBody(4,insBrief||txt);
+      if(insObj){
+        // Self-contained (does not depend on the Sentinel-push helpers defined
+        // later in this function, which aren't safely callable yet at this point).
+        const insNodeExpStr = warRoomData?.snapshot?.exposure || '';
+        const insNodeExpNums = String(insNodeExpStr).match(/[\d,]+(?:\.\d+)?/g);
+        const insNodeMult = /m\b/i.test(insNodeExpStr) ? 1000000 : (/k\b/i.test(insNodeExpStr) ? 1000 : 1);
+        const insNodeExposureNum = insNodeExpNums
+          ? Math.round(insNodeExpNums.map(n=>parseFloat(n.replace(/,/g,''))*insNodeMult).reduce((a,b)=>a+b,0) / insNodeExpNums.length)
+          : 0;
+        const insNodeConf = Number.isFinite(insObj.confidence) ? insObj.confidence : null;
+        const insNodeSeverity = (insNodeExposureNum >= 250000 || (insNodeConf !== null && insNodeConf < 60)) ? 'CRIT'
+          : (insNodeExposureNum >= 100000 || (insNodeConf !== null && insNodeConf < 75)) ? 'HIGH'
+          : (insNodeExposureNum >= 25000) ? 'MED' : 'LOW';
+        const insNodeImpact = window.TSMBNCAExposureEngine
+          ? TSMBNCAExposureEngine.project({
+              baseExposure: insNodeExposureNum,
+              severity: insNodeSeverity,
+              confidence: insNodeConf !== null ? insNodeConf : 50,
+              daysUntilDeadline: 0
+            })
+          : null;
+        insXPRenderExplain(insObj, insNodeImpact);
+      }
+    }
     await new Promise(r=>setTimeout(r,300));
   }
 
@@ -1112,7 +1138,7 @@ function insXPResetExplain(){
   document.getElementById('insXPDeltaAct').textContent='—';
   document.getElementById('insXPRecovery').textContent='';
 }
-function insXPRenderExplain(obj){
+function insXPRenderExplain(obj, impact){
   if(!obj) return;
   const conf = obj.confidence||0;
   document.getElementById('insXPConfNum').textContent=conf+'%';
@@ -1130,9 +1156,15 @@ function insXPRenderExplain(obj){
   document.getElementById('insXPActions').innerHTML=actions.length
     ?actions.map(a=>`<div class="tsm-action" style="background:rgba(181,108,255,.05);border:1px solid rgba(181,108,255,.2)"><span class="tsm-owner" style="background:rgba(181,108,255,.12);color:#b56cff">${a.owner}</span><span class="tsm-action-text">${a.text}</span></div>`).join('')
     :'<div style="opacity:.4;font-size:.63rem">No actions returned.</div>';
-  if(obj.noActionRevLoss) document.getElementById('insXPDeltaNo').textContent=obj.noActionRevLoss;
-  if(obj.actionRevLoss) document.getElementById('insXPDeltaAct').textContent=obj.actionRevLoss;
-  if(obj.recoveryTime) document.getElementById('insXPRecovery').textContent='Est. recovery: '+obj.recoveryTime;
+  if (impact) {
+    document.getElementById('insXPDeltaNo').textContent = '$' + Math.round(impact.ifIgnored.exposure).toLocaleString();
+    document.getElementById('insXPDeltaAct').textContent = '$' + Math.round(impact.ifActed.exposure).toLocaleString();
+    document.getElementById('insXPRecovery').textContent = impact.urgencyWindow + ' · ' + impact.methodology;
+  } else {
+    document.getElementById('insXPDeltaNo').textContent = '—';
+    document.getElementById('insXPDeltaAct').textContent = '—';
+    document.getElementById('insXPRecovery').textContent = 'No exposure data available to compute impact.';
+  }
 }
 function insXPParseExplain(raw){
   const briefMatch = raw.match(/===BRIEF===\s*([\s\S]*?)(?:===JSON===|$)/);
@@ -1210,4 +1242,3 @@ function tsmWriteScopedStrat(vertical, missionId){
 
 <!-- TSM KERNEL ENGINE -->
 <script src="/html/core/tsm-kernel.js"></script>
-

@@ -146,6 +146,11 @@ html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sa
 .k-task-add{display:flex;gap:4px;margin-top:4px}
 .k-task-add input{flex:1;background:var(--bg2);border:1px solid var(--bg4);border-radius:4px;color:var(--text);font-size:10px;padding:3px 6px}
 .k-task-add button{background:var(--accent);border:none;border-radius:4px;color:#000;font-size:11px;font-weight:700;padding:3px 8px;cursor:pointer}
+.k-advance-row{margin-top:6px;padding-top:6px;border-top:1px solid var(--bg4)}
+.k-advance-btn{width:100%;background:var(--bg4);border:1px solid var(--border2);border-radius:4px;color:var(--text2);font-size:9px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:4px 6px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:4px;transition:.12s}
+.k-advance-btn:hover{background:var(--bg3);color:var(--text);border-color:var(--accent)}
+.k-advance-btn.done{cursor:default;color:var(--green);border-color:rgba(16,185,129,.25);background:var(--green-bg)}
+.k-advance-btn.done:hover{color:var(--green);border-color:rgba(16,185,129,.25);background:var(--green-bg)}
 .k-card{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 11px;margin-bottom:6px;cursor:pointer;transition:.12s}
 .k-card:hover{border-color:var(--border2);background:var(--bg4);transform:translateY(-1px)}
 .k-card-name{font-size:12px;font-weight:600;color:var(--text);margin-bottom:4px}
@@ -253,8 +258,8 @@ html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sa
   <div class="tb-right">
     <div class="sla-badge"><i class="ti ti-check"></i> All SLAs On Track</div>
     <div class="tb-clock" id="clock">--:--:--</div>
-    <a href="tsm-bpo-website-copy.html" class="back-btn"><i class="ti ti-arrow-left" style="font-size:13px"></i> Hub</a>
-    <a href="bpo-command-center.html" class="back-btn"><i class="ti ti-layout-dashboard" style="font-size:13px"></i> Command</a>
+    <a href="suite-hub.html" class="back-btn"><i class="ti ti-arrow-left" style="font-size:13px"></i> Hub</a>
+    <a href="bpo-executive-portal.html" class="back-btn"><i class="ti ti-layout-dashboard" style="font-size:13px"></i> Command</a>
   </div>
 </header>
 
@@ -312,7 +317,7 @@ html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sa
 
   <div class="nav-divider"></div>
   <div class="sidebar-section">Tools</div>
-  <a class="nav-item" href="bpo-command-center.html">
+  <a class="nav-item" href="bpo-executive-portal.html">
     <i class="ti ti-terminal-2"></i> Command Center
   </a>
   <a class="nav-item" href="client-access.html">
@@ -1026,16 +1031,60 @@ function toggleTaskDone(missionId, taskId){
   window.TSMMissionStore.saveMission(m);
 }
 
+// Ordered lifecycle a mission moves through once real work begins. Mirrors
+// the 4 kanban buckets (STAGE_BUCKETS above): created -> assigned -> qa ->
+// delivered -> closed.
+const STAGE_PROGRESSION = ['created','assigned','qa','delivered','closed'];
+const STAGE_ADVANCE_LABEL = { created:'Assign', assigned:'Send to QA', qa:'Mark Delivered', delivered:'Close Mission' };
+
+// Placeholder turnaround windows by priority, used only to compute
+// workflow.dueDate when a mission is assigned. This is separate from
+// workflow.sla (an object with .percentElapsed/.breached, populated by
+// the SLA monitor elsewhere in the repo) — computeSlaPct() below already
+// falls back to an age heuristic until that monitor populates it for real.
+const DEFAULT_DUE_HOURS_BY_PRIORITY = { vip:4, rush:8, extension:48, standard:24 };
+
+function nextStageFor(stage){
+  const idx = STAGE_PROGRESSION.indexOf(stage);
+  if(idx === -1) return 'assigned'; // unknown/legacy stage -> treat as not-yet-staffed
+  return STAGE_PROGRESSION[idx+1] || null; // null once already at 'closed'
+}
+
+function advanceMissionStage(missionId){
+  if(!window.TSMMissionStore || !window.TSMMissionModel) return;
+  const Store = window.TSMMissionStore, Model = window.TSMMissionModel;
+  const m = Store.getMission(missionId);
+  if(!m) return;
+  const next = nextStageFor(m.stage);
+  if(!next) return; // already closed
+
+  if(next === 'assigned'){
+    const priority = (m.workflow && m.workflow.priority) || 'standard';
+    const hours = DEFAULT_DUE_HOURS_BY_PRIORITY[priority] ?? DEFAULT_DUE_HOURS_BY_PRIORITY.standard;
+    const dueDate = new Date(Date.now() + hours * 3600 * 1000).toISOString();
+    Store.assignMission(missionId, (m.workflow && m.workflow.assignedTo) || null, 'war-room-user', dueDate);
+  } else if(next === 'closed'){
+    Store.closeMission(missionId, 'war-room-user', null);
+  } else {
+    Model.transitionStage(m, next, 'war-room-user');
+    Store.saveMission(m);
+  }
+}
+
 function missionToKanbanCard(mission, sector){
   const tasks = mission.tasks || [];
+  const next = nextStageFor(mission.stage);
   return {
     id: mission.id,
-    name: mission.client || mission.missionNo || mission.id,
+    name: escapeHtml(mission.client || mission.missionNo || mission.id),
     meta: mission.missionNo || mission.id,
     tag: (mission.workflow && mission.workflow.priority) ? mission.workflow.priority : 'Standard',
     sla: computeSlaPct(mission, sector),
     taskDone: tasks.filter(t=>t.status==='complete').length,
-    taskTotal: tasks.length
+    taskTotal: tasks.length,
+    stage: mission.stage,
+    nextStage: next,
+    advanceLabel: next ? (STAGE_ADVANCE_LABEL[mission.stage] || 'Advance') : 'Closed'
   };
 }
 
@@ -1248,6 +1297,12 @@ function renderSectorPanel(s){
                 <i class="ti ti-chevron-${expandedMissionTasks[c.id]?'up':'down'}" style="margin-left:auto"></i>
               </div>
               ${expandedMissionTasks[c.id] ? renderTaskPanelHTML(c.id) : ''}
+              ${c.stage !== undefined ? `
+              <div class="k-advance-row">
+                <button class="k-advance-btn ${c.nextStage ? '' : 'done'}" ${c.nextStage ? `onclick="event.stopPropagation();advanceMissionStage('${c.id}')"` : 'disabled'}>
+                  <i class="ti ti-${c.nextStage ? 'arrow-right' : 'circle-check'}"></i> ${c.advanceLabel}
+                </button>
+              </div>` : ''}
             </div>`).join('')}
         </div>`).join('')}
     </div>

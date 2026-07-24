@@ -264,6 +264,7 @@ body{font-family:var(--mono);background:var(--bg);color:var(--text);font-size:12
 <script src="/js/tsm-runtime-lock.js"></script>
 <script src="/js/tsm-event-contract.js"></script>
 <script src="/js/tsm-autonomy-layer.js"></script>
+<script src="/js/tsm-bnca-exposure-engine.js"></script>
 </head>
 <body>
 
@@ -837,7 +838,7 @@ async function runConstructionBNCA(){
   const ctx=CONSTRUCTION_SCENARIOS[mission.scenarioId]||'Full construction portfolio review';
   out.textContent='Generating BNCA...';
   try{
-    const r=await fetch('/api/war-room/stream',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'openai/gpt-oss-120b',max_tokens:1024,stream:true,messages:[{role:'user',content:'Construction strategist BNCA for: '+ctx+'\n\nFormat: CONTROLLER PRIORITY ACTIONS (numbered, dollar-quantified, owner assigned) then BNCA — BEST NEXT COURSE OF ACTION (one paragraph).\n\nAfter the brief above, on a new line output exactly ===JSON=== followed by a single JSON object (no markdown fences) with this exact shape: {"confidence":0-100,"dataSources":[{"name":"...","weight":"HIGH|MED|LOW"}],"reasoning":[{"key":"...","val":"..."}],"recommendedActions":[{"text":"...","owner":"..."}],"noActionRevLoss":"$amount","actionRevLoss":"$amount","recoveryTime":"e.g. 30 Days"}'}]})});
+    const r=await fetch('/api/war-room/stream',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'openai/gpt-oss-120b',max_tokens:1024,stream:true,messages:[{role:'user',content:'Construction strategist BNCA for: '+ctx+'\n\nFormat: CONTROLLER PRIORITY ACTIONS (numbered, dollar-quantified, owner assigned) then BNCA — BEST NEXT COURSE OF ACTION (one paragraph).\n\nAfter the brief above, on a new line output exactly ===JSON=== followed by a single JSON object (no markdown fences) with this exact shape: {"confidence":0-100,"dataSources":[{"name":"...","weight":"HIGH|MED|LOW"}],"reasoning":[{"key":"...","val":"..."}],"recommendedActions":[{"text":"...","owner":"..."}]}'}]})});
     const reader=r.body.getReader();const dec=new TextDecoder();let full='';
     out.style.whiteSpace='pre-wrap';
     while(true){const{done,value}=await reader.read();if(done)break;
@@ -848,8 +849,9 @@ async function runConstructionBNCA(){
     }
     const {brief: conBrief2, obj: conObj2} = conXPParseExplain(full);
     if(conBrief2) out.textContent = conBrief2;
-    conXPRenderExplain(conObj2);
+    conXPRenderExplain(conObj2, null);
     lastConObj = conObj2;
+    lastImpact = null;
     localStorage.setItem('tsm_construction_strategist_output',JSON.stringify({summary:out.textContent,scenario:mission.scenarioId||'manual',timestamp:Date.now()}));
   }catch(e){out.textContent='Error: '+e.message;}
 }
@@ -857,7 +859,8 @@ async function runConstructionBNCA(){
 // WAR ROOM RELAY RECEIVER
 // ═══════════════════════════════════════════════════
 let warRoomRelay = null;
-let lastConObj = null; // most recent parsed BNCA JSON (confidence/dataSources/recommendedActions/noActionRevLoss/etc) — kept so storeStrategistRelay() can build a Sentinel-shaped anomaly even when called from escalateToExecutive() without a fresh run
+let lastConObj = null; // most recent parsed BNCA JSON (confidence/dataSources/recommendedActions/etc) — kept so storeStrategistRelay() can build a Sentinel-shaped anomaly even when called from escalateToExecutive() without a fresh run
+let lastImpact = null; // most recent TSMBNCAExposureEngine.project() result — same purpose as lastConObj, for the deterministic act-vs-ignore delta
  
 function loadWarRoomRelay() {
   try {
@@ -949,7 +952,7 @@ function conXPResetExplain(){
   document.getElementById('conXPDeltaAct').textContent='—';
   document.getElementById('conXPRecovery').textContent='';
 }
-function conXPRenderExplain(obj){
+function conXPRenderExplain(obj, impact){
   if(!obj) return;
   const conf = obj.confidence||0;
   document.getElementById('conXPConfNum').textContent=conf+'%';
@@ -967,9 +970,35 @@ function conXPRenderExplain(obj){
   document.getElementById('conXPActions').innerHTML=actions.length
     ?actions.map(a=>`<div class="tsm-action" style="background:rgba(255,215,0,.05);border:1px solid rgba(255,215,0,.2)"><span class="tsm-owner" style="background:rgba(255,215,0,.12);color:#ffd700">${a.owner}</span><span class="tsm-action-text">${a.text}</span></div>`).join('')
     :'<div style="opacity:.4;font-size:.63rem">No actions returned.</div>';
-  if(obj.noActionRevLoss) document.getElementById('conXPDeltaNo').textContent=obj.noActionRevLoss;
-  if(obj.actionRevLoss) document.getElementById('conXPDeltaAct').textContent=obj.actionRevLoss;
-  if(obj.recoveryTime) document.getElementById('conXPRecovery').textContent='Est. recovery: '+obj.recoveryTime;
+  // Business Impact Delta — deterministic (see TSMBNCAExposureEngine), not LLM-invented.
+  if (impact) {
+    document.getElementById('conXPDeltaNo').textContent = '$' + Math.round(impact.ifIgnored.exposure).toLocaleString();
+    document.getElementById('conXPDeltaAct').textContent = '$' + Math.round(impact.ifActed.exposure).toLocaleString();
+    document.getElementById('conXPRecovery').textContent = impact.urgencyWindow + ' · ' + impact.methodology;
+  } else {
+    document.getElementById('conXPDeltaNo').textContent = '—';
+    document.getElementById('conXPDeltaAct').textContent = '—';
+    document.getElementById('conXPRecovery').textContent = 'No exposure data available to compute impact.';
+  }
+}
+// Reads the existing .phase-card "Due <Mon> <D>" labels and returns the number
+// of days until the nearest upcoming deadline, or null if none parse. Assumes
+// the current year; rolls forward to next year if the parsed date has already
+// passed this year (handles the Jan-due-date-shown-in-a-later-month case).
+function getNearestPhaseDeadlineDays() {
+  const spans = document.querySelectorAll('.phase-card .ph-meta span:last-child');
+  const now = new Date();
+  let nearest = null;
+  spans.forEach(span => {
+    const m = (span.textContent || '').match(/Due\s+([A-Za-z]{3})\s+(\d{1,2})/);
+    if (!m) return;
+    let d = new Date(`${m[1]} ${m[2]}, ${now.getFullYear()}`);
+    if (isNaN(d.getTime())) return;
+    if (d < now) d = new Date(`${m[1]} ${m[2]}, ${now.getFullYear() + 1}`);
+    const days = Math.round((d - now) / 86400000);
+    if (nearest === null || days < nearest) nearest = days;
+  });
+  return nearest;
 }
 function conXPParseExplain(raw){
   const briefMatch = raw.match(/===BRIEF===\s*([\s\S]*?)(?:===JSON===|$)/);
@@ -1012,7 +1041,7 @@ ENGINE 06 — BNCA EXEC: ${engines.e6||''}
   `.trim();
  
   const sys = `You are a Construction Strategist AI. Synthesize war room engine data into a complete executive intelligence package. Be specific, dollar-quantified, and action-oriented.`;
-  const usr = `War Room Data:\n${ctx}\n\nGenerate:\n\nCONTROLLER PRIORITY ACTIONS (4 actions, numbered, dollar-quantified, owner assigned, deadline):\n\nAPP ROUTING GUIDANCE (for each Construction Suite app — AuditOps, Financial, Legal, Compliance — give 2-3 sentences of specific step-by-step instruction on what tab to open, what data to enter, and what output to produce for THIS specific document and issue):\n\nBNCA — BEST NEXT COURSE OF ACTION (one paragraph, most important 72-hour action sequence):\n\nESCALATION TRIGGER (condition for immediate executive involvement):\n\nAfter the brief above, on a new line output exactly ===JSON=== followed by a single JSON object (no markdown fences) with this exact shape:\n{"confidence":0-100,"dataSources":[{"name":"...","weight":"HIGH|MED|LOW"}],"reasoning":[{"key":"...","val":"..."}],"recommendedActions":[{"text":"...","owner":"..."}],"noActionRevLoss":"$amount","actionRevLoss":"$amount","recoveryTime":"e.g. 30 Days"}`;
+  const usr = `War Room Data:\n${ctx}\n\nGenerate:\n\nCONTROLLER PRIORITY ACTIONS (4 actions, numbered, dollar-quantified, owner assigned, deadline):\n\nAPP ROUTING GUIDANCE (for each Construction Suite app — AuditOps, Financial, Legal, Compliance — give 2-3 sentences of specific step-by-step instruction on what tab to open, what data to enter, and what output to produce for THIS specific document and issue):\n\nBNCA — BEST NEXT COURSE OF ACTION (one paragraph, most important 72-hour action sequence):\n\nESCALATION TRIGGER (condition for immediate executive involvement):\n\nAfter the brief above, on a new line output exactly ===JSON=== followed by a single JSON object (no markdown fences) with this exact shape:\n{"confidence":0-100,"dataSources":[{"name":"...","weight":"HIGH|MED|LOW"}],"reasoning":[{"key":"...","val":"..."}],"recommendedActions":[{"text":"...","owner":"..."}]}`;
  
   try {
     const res = await fetch('/api/war-room/stream', {
@@ -1058,13 +1087,31 @@ ENGINE 06 — BNCA EXEC: ${engines.e6||''}
     out.textContent = full;
     const {brief: conBrief, obj: conObj} = conXPParseExplain(full);
     if(conBrief) out.textContent = conBrief;
-    conXPRenderExplain(conObj);
+
+    // Deterministic act-vs-ignore exposure delta (replaces the old LLM-invented
+    // noActionRevLoss/actionRevLoss/recoveryTime fields — see TSMBNCAExposureEngine).
+    const riskNum = parseRiskToNumber(snap.risk);
+    const severity = riskToSeverity(riskNum);
+    const exposureBase = parseDollarToNumber(snap.exposure) ?? 0;
+    const daysUntilDeadline = getNearestPhaseDeadlineDays();
+    const impact = (window.TSMBNCAExposureEngine)
+      ? TSMBNCAExposureEngine.project({
+          baseExposure: exposureBase,
+          severity: severity,
+          confidence: conObj?.confidence ?? 50,
+          daysUntilDeadline: daysUntilDeadline
+        })
+      : null;
+    if (!window.TSMBNCAExposureEngine) console.warn('[exposure-impact] TSMBNCAExposureEngine not loaded — impact will be omitted.');
+
+    conXPRenderExplain(conObj, impact);
     lastConObj = conObj;
+    lastImpact = impact;
     out.classList.remove('streaming');
     nodeEl.textContent = `BNCA complete — War Room relay synthesized · ${new Date().toLocaleTimeString()}`;
  
     // Store for executive portal (also escalates to Sentinel Center)
-    storeStrategistRelay(full, conObj);
+    storeStrategistRelay(full, conObj, impact);
  
     // Update escalate bar
     const sub = document.getElementById('escalBarSub');
@@ -1124,14 +1171,14 @@ function riskToSeverity(riskNum) {
 // (localStorage, not sessionStorage), then fires the same-tab refresh event
 // Sentinel listens for.
 //
-// Exposure collapsing rule: prefer the model's own noActionRevLoss guess
-// (it's grounded in the specific document run) and fall back to the
-// midpoint of the war room's exposure range if that field is missing or
-// unparseable.
-function pushToSentinel(bncaText, conObj) {
+// Exposure collapsing rule: prefer TSMBNCAExposureEngine's deterministic
+// ifIgnored figure (grounded in severity/exposure/deadline for this document
+// run) and fall back to the midpoint of the war room's exposure range if no
+// impact was computed.
+function pushToSentinel(bncaText, conObj, impact) {
   if (!warRoomRelay) return;
   const riskNum = parseRiskToNumber(warRoomRelay.snapshot?.risk);
-  const exposureNum = parseDollarToNumber(conObj?.noActionRevLoss) ??
+  const exposureNum = impact?.ifIgnored?.exposure ??
                        parseDollarToNumber(warRoomRelay.snapshot?.exposure) ?? 0;
   const topAction = conObj?.recommendedActions?.[0];
   const anomaly = {
@@ -1142,7 +1189,7 @@ function pushToSentinel(bncaText, conObj) {
     confidence: conObj?.confidence ?? 70,
     rootCause: (bncaText || '').slice(0, 240) || 'See BNCA synthesis for detail.',
     recommendedAction: topAction ? `${topAction.text}${topAction.owner ? ' (Owner: ' + topAction.owner + ')' : ''}` : 'See strategist brief.',
-    impacts: {}
+    impacts: impact ? { financial: impact } : {}
   };
   try {
     localStorage.setItem('TSM_CONSTRUCTION_STRATEGIST_RELAY', JSON.stringify({
@@ -1156,7 +1203,7 @@ function pushToSentinel(bncaText, conObj) {
 // ═══════════════════════════════════════════════════
 // STORE RELAY FOR EXECUTIVE PORTAL
 // ═══════════════════════════════════════════════════
-function storeStrategistRelay(bncaText, conObj) {
+function storeStrategistRelay(bncaText, conObj, impact) {
   if (!warRoomRelay) return;
   const payload = {
     summary: bncaText,
@@ -1165,6 +1212,7 @@ function storeStrategistRelay(bncaText, conObj) {
     scenario: warRoomRelay.docType || 'manual',
     engines: warRoomRelay.engines,
     snapshot: warRoomRelay.snapshot,
+    impact: impact || lastImpact || null,
     timestamp: new Date().toISOString(),
     chainStep: 'strategist'
   };
@@ -1233,7 +1281,7 @@ function storeStrategistRelay(bncaText, conObj) {
   }
 
   // Also escalate to Sentinel Center in its own expected shape/storage.
-  pushToSentinel(bncaText, conObj || lastConObj);
+  pushToSentinel(bncaText, conObj || lastConObj, impact || lastImpact);
 }
  
 // ═══════════════════════════════════════════════════
