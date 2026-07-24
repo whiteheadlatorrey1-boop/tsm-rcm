@@ -2608,7 +2608,7 @@ app.get('/api/governance/risk', (req, res) => {
 // replaces the old single /resolve route (no frontend called it, so this is
 // a safe swap, not a breaking change) with the same pattern MDM already uses
 // for recommendation approvals.
-app.post('/api/governance/risk/:id/approve', requireApiKey, (req, res) => {
+app.post('/api/governance/risk/:id/approve', requireAuth, (req, res) => {
   const { actor } = req.body || {};
   const risk = GOVERNANCE_RISK_REGISTER.find(r => r.id === req.params.id);
   if (!risk) return res.status(404).json({ ok: false, error: "Risk not found" });
@@ -2623,7 +2623,7 @@ app.post('/api/governance/risk/:id/approve', requireApiKey, (req, res) => {
   res.json({ ok: true, risk, decision });
 });
 
-app.post('/api/governance/risk/:id/reject', requireApiKey, (req, res) => {
+app.post('/api/governance/risk/:id/reject', requireAuth, (req, res) => {
   const { actor } = req.body || {};
   const risk = GOVERNANCE_RISK_REGISTER.find(r => r.id === req.params.id);
   if (!risk) return res.status(404).json({ ok: false, error: "Risk not found" });
@@ -2767,7 +2767,7 @@ app.get('/api/integration/catalog', (req, res) => {
   res.json({ ok: true, integrations: records });
 });
 
-app.post('/api/integration/:id/sync', requireApiKey, (req, res) => {
+app.post('/api/integration/:id/sync', requireAuth, (req, res) => {
   const { records, live } = getActiveIntegrationCatalog();
   const item = records.find(i => i.id === req.params.id);
   if (!item) return res.status(404).json({ ok: false, error: "Integration not found" });
@@ -2801,7 +2801,7 @@ app.get('/api/integration/health', (req, res) => {
 // silent auto-heal). Only applies to integrations currently 'degraded';
 // 'healthy' or 'warning' items aren't gated since they don't need a
 // go/no-go decision yet.
-app.post('/api/integration/:id/remediate/approve', requireApiKey, (req, res) => {
+app.post('/api/integration/:id/remediate/approve', requireAuth, (req, res) => {
   const { actor } = req.body || {};
   const { records, live } = getActiveIntegrationCatalog();
   const item = records.find(i => i.id === req.params.id);
@@ -2819,7 +2819,7 @@ app.post('/api/integration/:id/remediate/approve', requireApiKey, (req, res) => 
   res.json({ ok: true, integration: item, decision });
 });
 
-app.post('/api/integration/:id/remediate/reject', requireApiKey, (req, res) => {
+app.post('/api/integration/:id/remediate/reject', requireAuth, (req, res) => {
   const { actor } = req.body || {};
   const { records, live } = getActiveIntegrationCatalog();
   const item = records.find(i => i.id === req.params.id);
@@ -3026,7 +3026,7 @@ const MDM_LAST_VALIDATED = {};
 // the rest of the platform's in-memory-state pattern; swap for the Fly volume if needed).
 const MDM_MERGE_LOG = [];
 
-app.post('/api/mdm/merge', requireApiKey, (req, res) => {
+app.post('/api/mdm/merge', requireAuth, (req, res) => {
   const { domain, survivorId, mergedId, actor, decision } = req.body || {};
   if (!domain || !survivorId || !mergedId) {
     return res.status(400).json({ ok: false, error: 'domain, survivorId, mergedId required' });
@@ -3079,7 +3079,7 @@ app.get('/api/mdm/recommendations', (req, res) => {
   res.json({ ok: true, count: recs.length, recommendations: recs });
 });
 
-app.post('/api/mdm/recommendations/:id/approve', requireApiKey, (req, res) => {
+app.post('/api/mdm/recommendations/:id/approve', requireAuth, (req, res) => {
   const { actor } = req.body || {};
   const recs = generateRecommendations(MDM_SEED_DATA, MDM_RESOLVED_RECS);
   const rec = recs.find(r => r.id === req.params.id);
@@ -3111,7 +3111,7 @@ app.post('/api/mdm/recommendations/:id/approve', requireApiKey, (req, res) => {
   res.json({ ok: true, resolved: rec });
 });
 
-app.post('/api/mdm/recommendations/:id/reject', requireApiKey, (req, res) => {
+app.post('/api/mdm/recommendations/:id/reject', requireAuth, (req, res) => {
   const { actor } = req.body || {};
   const recs = generateRecommendations(MDM_SEED_DATA, MDM_RESOLVED_RECS);
   const rec = recs.find(r => r.id === req.params.id);
@@ -3277,7 +3277,7 @@ app.get('/api/mdm/mission-queue', (req, res) => {
   res.json({ ok: true, summary: mdmSummarizeQueue(queue), queue });
 });
 
-app.post('/api/mdm/mission-queue/:id/claim', requireApiKey, (req, res) => {
+app.post('/api/mdm/mission-queue/:id/claim', requireAuth, (req, res) => {
   const { actor } = req.body || {};
   if (!actor) return res.status(400).json({ ok: false, error: 'actor required' });
   const queue = mdmBuildQueue(MDM_SEED_DATA, MDM_RESOLVED_RECS, MDM_MISSION_CLAIMS);
@@ -3290,7 +3290,7 @@ app.post('/api/mdm/mission-queue/:id/claim', requireApiKey, (req, res) => {
   res.json({ ok: true, mission: { ...mission, missionStatus: 'CLAIMED', claimedBy: actor } });
 });
 
-app.post('/api/mdm/mission-queue/:id/release', requireApiKey, (req, res) => {
+app.post('/api/mdm/mission-queue/:id/release', requireAuth, (req, res) => {
   const existed = MDM_MISSION_CLAIMS.delete(req.params.id);
   if (!existed) return res.status(404).json({ ok: false, error: 'Mission was not claimed' });
   res.json({ ok: true, released: req.params.id });
@@ -3299,7 +3299,7 @@ app.post('/api/mdm/mission-queue/:id/release', requireApiKey, (req, res) => {
 // Real reset: restores every domain to its original seeded state (undoes any
 // approved merges) and clears the decision log. Previously "RESET DATA" just
 // re-fetched current state with no way to actually undo anything.
-app.post('/api/mdm/reset', requireApiKey, (req, res) => {
+app.post('/api/mdm/reset', requireAuth, (req, res) => {
   Object.keys(MDM_SEED_DATA_ORIGINAL).forEach(domain => {
     MDM_SEED_DATA[domain] = JSON.parse(JSON.stringify(MDM_SEED_DATA_ORIGINAL[domain]));
   });
@@ -3321,7 +3321,7 @@ app.post('/api/mdm/reset', requireApiKey, (req, res) => {
 // tax ID, not just a fuzzy name match) create a risk — a fuzzy name-only
 // match is too weak to escalate automatically and would just add noise to
 // Governance's queue.
-app.post('/api/mdm/cross-domain-scan', requireApiKey, (req, res) => {
+app.post('/api/mdm/cross-domain-scan', requireAuth, (req, res) => {
   const requestedDomain = req.body && req.body.domain;
   const domains = requestedDomain ? [requestedDomain] : Object.keys(MDM_SEED_DATA);
 
