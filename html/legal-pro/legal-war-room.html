@@ -350,13 +350,13 @@ main{padding:18px;display:flex;flex-direction:column;gap:14px}
         ts.textContent = new Date(d.timestamp).toLocaleTimeString();
 
         // If strategist confirmed
-        const stratRaw = localStorage.getItem('TSM_STRAT_CONFIRMED_legal-pro');
+        const stratRaw = (function(){var __v = localStorage.getItem("TSM_STRAT_CONFIRMED_legal-pro"); if (__v !== null) return __v; var __prefixes = ["TSM_STRAT_CONFIRMED_legal-pro_"]; for (var __p = 0; __p < __prefixes.length; __p++) { for (var __i = 0; __i < localStorage.length; __i++) { var __k = localStorage.key(__i); if (__k && __k.indexOf(__prefixes[__p]) === 0) { return localStorage.getItem(__k); } } } return null; })();
         if (stratRaw) {
           pulse(strat, '#00ffc6');
           pulse(exec, '#f5a623');
           status.textContent = 'Strategist confirmed → Exec Portal ready';
         }
-        const execRaw = localStorage.getItem('TSM_EXEC_CONFIRMED_legal-pro');
+        const execRaw = (function(){var __v = localStorage.getItem("TSM_EXEC_CONFIRMED_legal-pro"); if (__v !== null) return __v; var __prefixes = ["TSM_EXEC_CONFIRMED_legal-pro_"]; for (var __p = 0; __p < __prefixes.length; __p++) { for (var __i = 0; __i < localStorage.length; __i++) { var __k = localStorage.key(__i); if (__k && __k.indexOf(__prefixes[__p]) === 0) { return localStorage.getItem(__k); } } } return null; })();
         if (execRaw) {
           pulse(exec, '#00ffc6');
           status.textContent = 'Chain complete ✓ All three tiers confirmed';
@@ -1291,6 +1291,9 @@ function storeSession() {
     sessionStorage.setItem('TSM_WAR_ROOM_RELAY', _legalRelay);
     sessionStorage.setItem('TSM_LEGAL_WAR_RELAY', _legalRelay);
     localStorage.setItem('TSM_LEGAL_WAR_RELAY', _legalRelay);
+    if (window.TSM && window.TSM.relay && window.TSM.relay.write) {
+      try { window.TSM.relay.write('LEGAL', JSON.parse(_legalRelay)); } catch (e) { /* noop */ }
+    }
   } catch(e) {}
 }
 
@@ -1475,9 +1478,10 @@ for (let i = 1; i <= 6; i++) {
   storeSession();
   fireCapabilitySweep_LEGAL(e);
 setTimeout(() => {
+  let dt = '';
   try {
     const docEl = document.getElementById('docText') || document.getElementById('doc-text') || document.querySelector('textarea');
-    const dt = docEl ? docEl.value : '';
+    dt = docEl ? docEl.value : '';
     sessionStorage.setItem('TSM_LEGAL_WAR_RELAY', JSON.stringify({ docText: dt, selectedDocType: 'Legal', engineOutputs: outputs, timestamp: Date.now() }));
   } catch(e) {}
   showAnomalyAdvisorPanel(outputs, dt);

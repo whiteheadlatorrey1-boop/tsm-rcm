@@ -221,6 +221,7 @@ body::before{content:'';position:fixed;inset:0;
 </style>
   <script src="/js/core/tsm-event-bus.js"></script>
   <script src="/js/core/tsm-state.js"></script>
+  <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
   <script src="/html/shared/runtime/mission/mission-model.js"></script>
   <script src="/html/shared/runtime/mission/mission-store.js"></script>
   <script src="/js/core/tsm-mission-engine.js"></script>
@@ -947,6 +948,30 @@ function escalateToExec(silent) {
       reSentinelExisting.generatedAt = new Date().toISOString();
       localStorage.setItem(reSentinelKey, JSON.stringify(reSentinelExisting));
       window.dispatchEvent(new CustomEvent('TSM_SENTINEL_REFRESH'));
+
+      // ── COLLECTIVE SIGNAL PUSH ────────────────────────────────────
+      // Same real signals the Sentinel push just used above: reExposureNum,
+      // reSeverityForExposure, reIssueCount — nothing new invented here.
+      try {
+        const reCsRisk = reSeverityForExposure(reExposureNum);
+        fetch('/api/collective/signal', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            vertical: 'realestate',
+            warRoom: 'RE Strategist',
+            bnca: (payload.reportContent || '').slice(0, 400) || 'RE strategist brief complete.',
+            confidence: Math.max(50, 95 - reIssueCount * 5),
+            riskLevel: reCsRisk,
+            topIssue: (payload.reportTitle || 'RE Strategic Analysis') + ' \u2014 ' + reIssueCount + ' open issue(s), pull-through ' + (payload.kpis.pullThrough || '\u2014'),
+            ownerLanes: ['RE Strategist', 'Executive Portal'],
+            hitlRequired: reCsRisk === 'CRIT' || reCsRisk === 'HIGH',
+            actions: ['Review ' + (payload.stratModulesRun || 0) + '-module strategist brief', 'Route to re-exec-portal.html for sign-off'],
+            source: window.location.pathname
+          })
+        }).catch(()=>{});
+      } catch(cse) { console.warn('[collective-signal] re strategist push error:', cse); }
+      // ── END COLLECTIVE SIGNAL PUSH ─────────────────────────────────
     } catch(e) { console.warn('[sentinel-push] re error:', e); }
     // ── END SENTINEL PUSH ───────────────────────────────────────────
     window.location.href = 're-exec-portal.html';

@@ -170,10 +170,10 @@
   }
 
   function computeOperatorStats(operatorId, vertical) {
-    var all = listMissions().filter(function (m) {
-      if (!m.workflow || m.workflow.assignedTo !== operatorId) return false;
-      if (vertical && m.vertical !== vertical) return false;
-      return true;
+    var filter = { assignedTo: operatorId };
+    if (vertical) filter.vertical = vertical;
+    var all = listMissions(filter).filter(function (m) {
+      return m.workflow && m.workflow.assignedTo === operatorId;
     });
     var closedStage = Model ? Model.STAGES.CLOSED : 'CLOSED';
     var open = all.filter(function (m) { return m.stage !== closedStage; });

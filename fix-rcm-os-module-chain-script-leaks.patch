@@ -1,0 +1,202 @@
+From 8b6d9a89cc0ecfe691cc7ef71112fe0e4958dcb6 Mon Sep 17 00:00:00 2001
+From: Claude <claude@anthropic.com>
+Date: Thu, 23 Jul 2026 03:05:50 +0000
+Subject: [PATCH] fix: unwrapped script leaks + duplicate </body></html> in RCM
+ OS module chain
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Scoped fully to the 10 files wired into tsm-rcm-os.html's Connected
+Modules (compliance.html, finops-operations.html, finops-accounting.html,
+finops-scenarios.html, finance-index.html, finops-showcase-v1.html,
+supplier-vendor-situation-room.html, logistics-situation-room.html,
+tsm-rcm-os.html, tsm-rcm-os-howto.html). 6 of the 10 were already clean.
+
+compliance.html (deeper fix beyond the earlier tsmAI patch):
+- 5 separate regions of raw JS were rendering as visible text on the
+  page because they were pasted in without a wrapping <script> tag:
+  the BNCA node reporter IIFE, a duplicate/dead showTab() + stub
+  aiAnalyzeAlerts() pair, and the License & Renewal / Audit Workspace
+  helper functions.
+- The duplicate showTab()/aiAnalyzeAlerts() were REMOVED rather than
+  wrapped: they targeted a .tab-content class that doesn't exist
+  anywhere in this file (real markup uses .tab-pane) and a plain-fetch
+  stub with no spinner/modal, respectively. Wrapping them as-is would
+  have made them execute last and silently override the real, working
+  showTab() (line 1656) and aiAnalyzeAlerts() (line 1945).
+- The file also had a duplicate </body></html> pair: trailing
+  TSM_AUTONOMY_STANDARDIZED + war-room-relay code had been appended
+  after the real closing tags with its own (invalid) closing tags.
+  Merged into one properly wrapped <script> block before the single
+  real </body></html>.
+
+finops-operations.html, finops-accounting.html, finops-scenarios.html:
+- Same duplicate </body></html> pattern as compliance.html (trailing
+  TSM_AUTONOMY_STANDARDIZED + war-room-relay fix appended post-close).
+  finops-accounting.html and finops-scenarios.html were missing a
+  final closing tag entirely. Fixed identically: content wrapped in
+  one <script> block, moved before a single closing </body></html>.
+- Checked all three for duplicate function/variable names introduced
+  by the fix — none found.
+
+Verified via a script-tag balance walker (accounting for same-line
+close-then-reopen patterns) across all 10 files: zero unwrapped
+regions, exactly one <body>/<html> close each.
+
+Left the other ~430 affected files elsewhere in the repo untouched
+per scope — same underlying pattern exists there but is out of scope
+for this pass.
+---
+ html/finops-suite/compliance.html        | 28 ++++--------------------
+ html/finops-suite/finops-accounting.html |  8 +++----
+ html/finops-suite/finops-operations.html |  5 +----
+ html/finops-suite/finops-scenarios.html  |  8 +++----
+ 4 files changed, 13 insertions(+), 36 deletions(-)
+
+diff --git a/html/finops-suite/compliance.html b/html/finops-suite/compliance.html
+index 8e11fd5c..4ee26fbc 100644
+--- a/html/finops-suite/compliance.html
++++ b/html/finops-suite/compliance.html
+@@ -1597,6 +1597,7 @@ async function tsmAI(s,u,m){try{const r=await fetch('/api/chat',{method:'POST',h
+   </div>
+ </div>
+ 
++<script>
+ // ─── STATE ───────────────────────────────────────────────────────────────────
+ let tsmNeuralCoreKey = localStorage.getItem('tsm_tsm-neural-core_key') || '';
+ const TSM_NEURAL_CORE_URL = '/api/chat';
+@@ -2002,6 +2003,7 @@ function refreshEndpoints() {
+ 
+ <div onclick="window.open('/how-to','_blank')" style="position:fixed;right:20px;bottom:20px;background:#00FFC6;color:#001;padding:10px 14px;border-radius:20px;font-family:DM Mono,monospace;font-size:12px;cursor:pointer;z-index:9999;">HOW TO</div>
+ <script src="/tsm-ai-client.js"></script>
++<script>
+ // BNCA NODE REPORT — Compliance Shield
+ (function(){
+   function reportBNCA(){
+@@ -2024,26 +2026,6 @@ function refreshEndpoints() {
+ })();
+ </script>
+ 
+-function showTab(name, el) {
+-  document.querySelectorAll('.tab-content').forEach(t => t.style.display = 'none');
+-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+-  var tab = document.getElementById('tab-' + name) || document.getElementById(name);
+-  if (tab) tab.style.display = 'block';
+-  if (el) el.classList.add('active');
+-}
+-function aiAnalyzeAlerts() {
+-  var out = document.querySelector('.ai-output, #ai-output, .synthesis-output');
+-  if (out) out.textContent = 'Analyzing compliance alerts...';
+-  fetch('/api/chat', {
+-    method: 'POST',
+-    headers: {'Content-Type': 'application/json'},
+-    body: JSON.stringify({ messages: [{ role: 'user', content: 'Analyze the current compliance alerts and provide prioritized remediation steps for HIPAA, SOX, AML/KYC, and GDPR issues. Be specific and actionable.' }] })
+-  }).then(r => r.json())
+-    .then(d => { if (out) out.textContent = d.content || 'Analysis complete.'; })
+-    .catch(e => { if (out) out.textContent = 'Error: ' + e.message; });
+-}
+-</script>
+-
+ <!-- ══════════════════════════════════════════════════
+      TAB: LICENSE & RENEWAL COMPLIANCE TRACKER
+      ══════════════════════════════════════════════════ -->
+@@ -2263,6 +2245,7 @@ function aiAnalyzeAlerts() {
+ </div>
+ 
+ 
++<script>
+ /* ── License & Renewal ── */
+ function renewalRenew(btn) { btn.textContent = '✓ INITIATED'; btn.style.opacity = '.5'; }
+ function renewalShowCalendar() { alert('Calendar view — coming soon'); }
+@@ -2333,12 +2316,9 @@ document.addEventListener('click', function(e){
+   <script src="/core/tsm-kernel.js"></script>
+   <script src="/core/tsm-enforcer.js"></script>
+   <script src="/js/core/tsm-kernel-upgrade.js"></script>
+-</body>
+-</html>
+-
++<script>
+ // ===== TSM_AUTONOMY_STANDARDIZED =====
+ window.TSM_AUTONOMY_STANDARDIZED = true;
+-</script>
+ 
+ // ===== TSM WAR ROOM SCOPED RELAY FIX =====
+ window.tsmMission = window.tsmMission || {
+diff --git a/html/finops-suite/finops-accounting.html b/html/finops-suite/finops-accounting.html
+index 003e4009..39f62aa0 100644
+--- a/html/finops-suite/finops-accounting.html
++++ b/html/finops-suite/finops-accounting.html
+@@ -1095,11 +1095,9 @@ setDoc('invoice', document.querySelector('.doc-btn.active'));
+   <script src="/core/tsm-kernel.js"></script>
+   <script src="/core/tsm-enforcer.js"></script>
+   <script src="/js/core/tsm-kernel-upgrade.js"></script>
+-</body>
+-</html>
++<script>
+ // ===== TSM_AUTONOMY_STANDARDIZED =====
+ window.TSM_AUTONOMY_STANDARDIZED = true;
+-</script>
+ 
+ // ===== TSM WAR ROOM SCOPED RELAY FIX =====
+ window.tsmMission = window.tsmMission || {
+@@ -1111,4 +1109,6 @@ window.tsmMission = window.tsmMission || {
+ function tsmWriteRelay(payload){
+   TSM_KERNEL.setRelay("finops-suite", JSON.stringify(payload));
+ }
+-</script>
+\ No newline at end of file
++</script>
++</body>
++</html>
+\ No newline at end of file
+diff --git a/html/finops-suite/finops-operations.html b/html/finops-suite/finops-operations.html
+index 1077f6db..bf06a548 100644
+--- a/html/finops-suite/finops-operations.html
++++ b/html/finops-suite/finops-operations.html
+@@ -1691,15 +1691,12 @@ document.addEventListener('click', function(e){
+   <script src="/core/tsm-kernel.js"></script>
+   <script src="/core/tsm-enforcer.js"></script>
+   <script src="/js/core/tsm-kernel-upgrade.js"></script>
+-</body>
+-</html><script>
++<script>
+ 
+ 
+ // ===== TSM_AUTONOMY_STANDARDIZED =====
+ window.TSM_AUTONOMY_STANDARDIZED = true;
+ 
+-</script><script>
+-
+ 
+ // ===== TSM WAR ROOM SCOPED RELAY FIX =====
+ window.tsmMission = window.tsmMission || {
+diff --git a/html/finops-suite/finops-scenarios.html b/html/finops-suite/finops-scenarios.html
+index aedd54e5..da499a28 100644
+--- a/html/finops-suite/finops-scenarios.html
++++ b/html/finops-suite/finops-scenarios.html
+@@ -578,11 +578,9 @@ window.addEventListener('load', function() {
+   <script src="/core/tsm-kernel.js"></script>
+   <script src="/core/tsm-enforcer.js"></script>
+   <script src="/js/core/tsm-kernel-upgrade.js"></script>
+-</body>
+-</html>
++<script>
+ // ===== TSM_AUTONOMY_STANDARDIZED =====
+ window.TSM_AUTONOMY_STANDARDIZED = true;
+-</script>
+ 
+ // ===== TSM WAR ROOM SCOPED RELAY FIX =====
+ window.tsmMission = window.tsmMission || {
+@@ -594,4 +592,6 @@ window.tsmMission = window.tsmMission || {
+ function tsmWriteRelay(payload){
+   TSM_KERNEL.setRelay("finops-suite", JSON.stringify(payload));
+ }
+-</script>
+\ No newline at end of file
++</script>
++</body>
++</html>
+\ No newline at end of file
+-- 
+2.43.0

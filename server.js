@@ -187,6 +187,7 @@ app.use('/html/runtime', express.static(path.join(__dirname, 'html', 'runtime'))
 // the stub for every /runtime/* request and this mount never runs.
 app.use('/runtime', express.static(path.join(__dirname, 'runtime'), { setHeaders: (res) => res.setHeader('Cache-Control', 'no-store') }));
 app.use('/architecture', express.static(path.join(__dirname, 'architecture'), { setHeaders: (res) => res.setHeader('Cache-Control', 'no-store') }));
+app.use('/core', express.static(path.join(__dirname, 'core')));
 app.use('/', express.static(path.join(__dirname, 'html')));
 const suites = [
   { route: '/construction', dir: 'html/construction-suite', index: 'construction-hub.html' },
@@ -867,6 +868,19 @@ app.use(require('./routes/strategist'));
 app.use(require('./routes/construction'));
 app.use(require('./routes/finops'));
 app.use(require('./routes/live-data'));
+
+// ── RCM RELAY ─────────────────────────────────────────────────────────────────
+// Server-side staging for the FinOps Doc Showcase -> TSM RCM OS handoff.
+// See routes/rcm-relay.js header for the full endpoint contract.
+app.use('/api/rcm', require('./routes/rcm-relay'));
+app.use('/api/rcm', require('./routes/rcm-requirements'));
+
+// ── FINANCIAL INTELLIGENCE (finance-index.html) ─────────────────────────────
+// Groq-backed chat (per-tab assistant) + audit engine with real persisted
+// audit-log entries. See routes/finance-chat.js header for the full contract.
+const { chatRouter: financeChatRouter, auditRouter: financeAuditRouter } = require('./routes/finance-chat');
+app.use('/api/chat', financeChatRouter);
+app.use('/api/audit', financeAuditRouter);
 
 // ── AI QUERY ROUTES ───────────────────────────────────────────────────────────
 app.post('/api/ai/query', async (req, res) => {

@@ -2017,12 +2017,24 @@ function exportBoard() {
     // ── TSM PATCH: wire Strategist JSON fields into KPI tiles ──────────
     (function wireStratKPIs(relayJson) {
       try {
-        // relayJson may be the parsed JSON object from the ===JSON=== block
-        // or embedded in TSM_HC_RELAY / TSM_RELAY_DATA localStorage keys
-        var raw = relayJson
-          || JSON.parse(localStorage.getItem('TSM_HC_RELAY') || '{}')
-          || JSON.parse(localStorage.getItem('TSM_RELAY_DATA') || '{}');
-
+        function hasData(obj) {
+          return obj && typeof obj === 'object' && Object.keys(obj).length > 0;
+        }
+        // relayJson: parsed JSON from the ===JSON=== block, when present.
+        // Falls back to this file's real relay keys (same order as the
+        // RELAY_KEYS array defined earlier in this file, at line ~1969 --
+        // duplicated here because that array lives in a different <script>
+        // tag's scope and isn't reachable from this one). The previous
+        // fallback keys (TSM_HC_RELAY / TSM_RELAY_DATA) were copy-pasted
+        // from the healthcare portal and never written by anything here.
+        var RE_RELAY_KEYS = ["TSM_REALESTATE_STRATEGIST_RELAY", "TSM_RE_WAR_RELAY", "TSM_WAR_ROOM_RELAY"];
+        var raw = relayJson;
+        if (!hasData(raw)) {
+          for (var __i = 0; __i < RE_RELAY_KEYS.length && !hasData(raw); __i++) {
+            raw = JSON.parse(localStorage.getItem(RE_RELAY_KEYS[__i]) || 'null');
+          }
+        }
+        raw = raw || {};
         var stratJson = raw.stratJson || raw.json || raw;
 
         var noAction   = stratJson.noActionRevLoss  || '—';

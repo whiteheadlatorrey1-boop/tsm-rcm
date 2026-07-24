@@ -1415,6 +1415,47 @@ async function escalateToExecPortal(){
       console.warn('Mission Core creation failed (non-fatal, exec relay already written):', missionErr);
     }
     if (window.TSMMemory) TSMMemory.push(TSMMemory.EVENT_TYPES.STRATEGIST_RELAY, 'Main Strategist relayed to Executive Portal', {}, 'success');
+
+    // ── COLLECTIVE SIGNAL PUSH ──────────────────────────────────────
+    // Real numbers only: reuses live.revenueAtRisk/denialRate (the same
+    // KPI tiles already pulled at the top of this function) — no new
+    // fields invented.
+    try {
+      function hcCsParseExposureNumber(str){
+        if (!str) return 0;
+        const nums = String(str).match(/[\d,]+(?:\.\d+)?/g);
+        if (!nums || !nums.length) return 0;
+        const mult = /m\b/i.test(str) ? 1000000 : (/k\b/i.test(str) ? 1000 : 1);
+        return Math.round(parseFloat(nums[0].replace(/,/g,'')) * mult);
+      }
+      function hcCsSeverityForExposure(n){
+        if (n >= 100000) return 'CRIT';
+        if (n >= 25000) return 'HIGH';
+        if (n >= 5000) return 'MED';
+        return 'LOW';
+      }
+      const hcCsExposureNum = hcCsParseExposureNumber(kpi.totalAtRisk || live.revenueAtRisk);
+      const hcCsRisk = hcCsSeverityForExposure(hcCsExposureNum);
+      const hcCsHasUrgent = Array.isArray(payload.alerts?.urgent) && payload.alerts.urgent.length > 0;
+      fetch('/api/collective/signal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vertical: 'healthcare',
+          warRoom: 'HC Main Strategist',
+          bnca: (bnca.revenuePosition || bnca.denialIntel || '').slice(0, 400) || 'Healthcare strategist synthesis complete.',
+          confidence: 78,
+          riskLevel: hcCsRisk,
+          topIssue: (payload.alerts?.urgent?.[0]) || ('Revenue at risk ' + (live.revenueAtRisk || 'unspecified') + ', denial hotspot ' + (live.denialRate || 'unspecified')),
+          ownerLanes: ['HC-Billing', 'HC-Compliance', 'Executive Portal'],
+          hitlRequired: hcCsHasUrgent || hcCsRisk === 'CRIT' || hcCsRisk === 'HIGH',
+          actions: ['Review HC Main Strategist synthesis', 'Route to Executive Portal for review'],
+          source: window.location.pathname
+        })
+      }).catch(()=>{});
+    } catch(cse) { console.warn('[collective-signal] healthcare strategist push error:', cse); }
+    // ── END COLLECTIVE SIGNAL PUSH ───────────────────────────────────
+
     window.location.href = '/html/healthcare/executive-portal.html';
   } catch(e) {
     console.warn('Exec relay sync failed:', e);
@@ -1875,6 +1916,7 @@ PATTERN MATCH: [does this match active HonorHealth denial patterns CO-4/CO-11/CO
 <script src="/shared/tsm-cure-cheatsheet.js"></script>
 <script src="/js/core/tsm-event-bus.js"></script>
 <script src="/html/core/tsm-kernel.js"></script>
+<script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
 <script src="/html/shared/runtime/mission/mission-model.js"></script>
 <script src="/html/shared/runtime/mission/mission-store.js"></script>
 <script src="/html/healthcare/js/relay.engine.js"></script>
@@ -1931,5 +1973,3 @@ function tsmWriteScopedStrat(vertical, missionId){
 
 
 <!-- TSM KERNEL ENGINE -->
-
-

@@ -1,0 +1,631 @@
+From d37e111297e70008a982aa821e4cd00c45f8f0b5 Mon Sep 17 00:00:00 2001
+From: tsm-consultz <brightmindsfinancial@gmail.com>
+Date: Thu, 23 Jul 2026 02:32:04 +0000
+Subject: [PATCH] feat: Task Data Requirements Registry for RCM OS
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Closes the gap from the earlier compliance.html/finops-operations.html
+audit: the AI Assistant could only give generic guidance because
+nothing defined what data a given cadence phase actually needs from
+its owning module. This adds that definition and wires it through.
+
+- data/rcm/task-requirements.json: registry keyed by `${cadence}-${phaseIndex}`
+  (matches the existing taskKey convention), 12 phase entries across
+  Daily/Weekly/Month-End, fields grounded directly in the tasks/purpose
+  text already in CADENCES -- nothing invented.
+- routes/rcm-requirements.js: GET /api/rcm/requirements (serves the
+  registry), GET/POST /api/rcm/self-reported, DELETE .../:key/:fieldId.
+  In-memory store, same convention as routes/rcm-relay.js.
+- tsm-rcm-os.html: each phase card now renders a "Data to gather from
+  [module]" block with inputs + save, badged "self-reported · date"
+  once filled -- never presented as verified. Executive tab gets a
+  matching self-reported summary panel. buildAssistantContext() and
+  fetchGuidance()'s request body both include self-reported values,
+  explicitly labeled unverified.
+- routes/rcm-relay.js: /api/rcm/guidance now accepts selfReported[],
+  passes it to the Groq prompt with instructions to phrase it as
+  self-reported (never as confirmed/audited), and the heuristic
+  fallback surfaces non-empty self-reported findings the same way it
+  already does for open exceptions.
+
+Verified end-to-end against a locally running instance of the full
+server.js (registry GET, self-reported POST/GET round-trip, guidance
+heuristic correctly surfaces a non-zero self-reported value and
+filters out a "none" one, page HTML renders the new blocks, assistant
+script paths resolve 200).
+
+No real backend data exists yet for compliance.html et al. -- this is
+intentionally the self-reporting layer, not a fix for that. The
+validation layer (compare self-reported vs. a real value once a
+module exposes one) is still a follow-up, not built here.
+---
+ data/rcm/task-requirements.json   | 101 ++++++++++++++++
+ html/finops-suite/tsm-rcm-os.html | 186 +++++++++++++++++++++++++++++-
+ routes/rcm-relay.js               |  54 +++++++--
+ routes/rcm-requirements.js        |  85 ++++++++++++++
+ server.js                         |   1 +
+ 5 files changed, 417 insertions(+), 10 deletions(-)
+ create mode 100644 data/rcm/task-requirements.json
+ create mode 100644 routes/rcm-requirements.js
+
+diff --git a/data/rcm/task-requirements.json b/data/rcm/task-requirements.json
+new file mode 100644
+index 00000000..8fdbe676
+--- /dev/null
++++ b/data/rcm/task-requirements.json
+@@ -0,0 +1,101 @@
++{
++  "_readme": "Task Data Requirements Registry. Key = `${cadence}-${phaseIndex}`, matching the phase order in CADENCES inside tsm-rcm-os.html. Each entry names the specific fields an EU needs to gather from the owning module for that phase, why the field matters, and its type. This is what makes the AI Assistant's guidance specific instead of generic — see routes/rcm-requirements.js.",
++
++  "daily-0": {
++    "phaseName": "Morning Kickoff & Branch Controls",
++    "tool": "finops-operations.html",
++    "requiredFields": [
++      { "id": "cashReceiptTotal", "field": "Overnight cash receipt batch total", "type": "currency", "why": "Confirms the overnight batch was actually pulled before the 9 AM cutoff, not just assumed complete." },
++      { "id": "apInvoicesQueuedCount", "field": "AP invoices verified as queued for payment", "type": "number", "why": "Task 2 requires verifying queued invoices; without a count there's no evidence the check happened." },
++      { "id": "entryGapsFlagged", "field": "Entry gaps flagged before cutoff", "type": "text", "why": "Task 4 is explicitly to flag gaps — this is the record of what was found, even if the answer is \"none\"." }
++    ]
++  },
++  "daily-1": {
++    "phaseName": "Ledger & Expenditure Tracking",
++    "tool": "finops-accounting.html",
++    "requiredFields": [
++      { "id": "journalEntriesPosted", "field": "Daily journal entries posted", "type": "number", "why": "Confirms task 1 (post daily journal entries) actually happened today." },
++      { "id": "departmentsOverVariance", "field": "Departments over 5% budget variance", "type": "text", "why": "Task 3 requires flagging variance over 5% — names the specific departments, not just a yes/no." },
++      { "id": "unapprovedExpendituresTagged", "field": "Unapproved expenditures tagged for review", "type": "number", "why": "Task 4's output — how many items were tagged today." }
++    ]
++  },
++  "daily-2": {
++    "phaseName": "Mid-Day Exception & Policy Review",
++    "tool": "compliance.html",
++    "requiredFields": [
++      { "id": "openFlagCount", "field": "Open compliance flags", "type": "number", "why": "The dashboard review in task 1 isn't evidenced without a current flag count." },
++      { "id": "missingDocRequestsSent", "field": "Missing-documentation requests sent", "type": "number", "why": "Task 2's concrete output for the day." },
++      { "id": "highSeverityFlagsEscalated", "field": "High-severity flags escalated to management", "type": "text", "why": "Task 4 requires escalation — names which flags, not just that escalation occurred." }
++    ]
++  },
++
++  "weekly-0": {
++    "phaseName": "Budget-to-Actual Variance Sweep",
++    "tool": "finops-accounting.html",
++    "requiredFields": [
++      { "id": "departmentsOverThreshold", "field": "Departments over the >5% variance threshold this week", "type": "text", "why": "Task 2's rollup result — the whole point of the weekly sweep." },
++      { "id": "unappliedCashOrNegativeBalances", "field": "Unapplied cash or negative balances found", "type": "number", "why": "Task 3's specific finding, needed before the branch-lead summary in task 4 can be written." }
++    ]
++  },
++  "weekly-1": {
++    "phaseName": "Compliance Checkpoint",
++    "tool": "compliance.html",
++    "requiredFields": [
++      { "id": "sodViolations", "field": "Segregation-of-duties violations found", "type": "text", "why": "Task 1's spot-check result — SoD gaps must be named, not just counted, to be actionable." },
++      { "id": "unresolvedFlagsFromWeek", "field": "Flags from the week still unresolved", "type": "number", "why": "Task 2 requires confirming all flagged items were resolved — this is the count that didn't get there." }
++    ]
++  },
++  "weekly-2": {
++    "phaseName": "Vendor & AP Liability Review",
++    "tool": "supplier-vendor-situation-room.html",
++    "requiredFields": [
++      { "id": "outstandingVendorInvoiceTotal", "field": "Outstanding vendor invoice total", "type": "currency", "why": "Task 1's core figure — the liability position for the week." },
++      { "id": "duplicateOrDisputedCharges", "field": "Duplicate or disputed vendor charges found", "type": "text", "why": "Task 3's specific finding, needed to catch AP leakage before it compounds." }
++    ]
++  },
++  "weekly-3": {
++    "phaseName": "Logistics & Fulfillment Exception Sync",
++    "tool": "logistics-situation-room.html",
++    "requiredFields": [
++      { "id": "openLogisticsExceptions", "field": "Open logistics exceptions", "type": "number", "why": "Task 1's status count — how many exceptions are still open." },
++      { "id": "unresolvedFinancialExposure", "field": "Unresolved financial exposure from exceptions", "type": "currency", "why": "Task 4 requires flagging exceptions with unresolved exposure — the dollar figure ties logistics back to the books." }
++    ]
++  },
++
++  "monthend-0": {
++    "phaseName": "Cross-Vertical Performance & Variance Analysis",
++    "tool": "Executive Tab",
++    "requiredFields": [
++      { "id": "verticalsOverBudget", "field": "Verticals trending materially over budget", "type": "text", "why": "Task 4's explicit output — names which verticals, so leadership isn't left guessing." }
++    ]
++  },
++  "monthend-1": {
++    "phaseName": "Scenario Modeling & Adjustment",
++    "tool": "finops-scenarios.html",
++    "requiredFields": [
++      { "id": "recommendedLevers", "field": "Recommended operational levers", "type": "text", "why": "Task 4 requires documenting the levers — this is that documentation, not just that modeling ran." }
++    ]
++  },
++  "monthend-2": {
++    "phaseName": "Vendor & Accounts Ledger Audit",
++    "tool": "supplier-vendor-situation-room.html",
++    "requiredFields": [
++      { "id": "unresolvedVendorDisputes", "field": "Vendor disputes still unresolved before close", "type": "text", "why": "Task 4 requires resolving remaining disputes before books close — this tracks what's still open." }
++    ]
++  },
++  "monthend-3": {
++    "phaseName": "Final Compliance & Audit Packaging",
++    "tool": "compliance.html",
++    "requiredFields": [
++      { "id": "gaapAdherenceReportGenerated", "field": "GAAP adherence report generated", "type": "boolean", "why": "Task 1's deliverable — a direct yes/no evidence point for the audit package." },
++      { "id": "auditTrailIntact", "field": "Append-only audit trail confirmed intact", "type": "boolean", "why": "Task 3 requires this confirmation before sign-off." }
++    ]
++  },
++  "monthend-4": {
++    "phaseName": "Executive Reporting",
++    "tool": "finops-accounting.html + Executive Tab",
++    "requiredFields": [
++      { "id": "reportDeliveredToCFO", "field": "Final report delivered to CFO", "type": "boolean", "why": "Task 4's closing confirmation for the month-end cycle." }
++    ]
++  }
++}
+diff --git a/html/finops-suite/tsm-rcm-os.html b/html/finops-suite/tsm-rcm-os.html
+index 531493a8..24b7454a 100644
+--- a/html/finops-suite/tsm-rcm-os.html
++++ b/html/finops-suite/tsm-rcm-os.html
+@@ -179,6 +179,32 @@ body{
+ .phase-progress .fill{height:100%; background:var(--pc,var(--amber)); border-radius:3px; transition:width .4s ease;}
+ .phase-progress .pct{font-family:'IBM Plex Mono'; font-size:10.5px; color:var(--muted-dim); min-width:32px; text-align:right;}
+ 
++/* Data Requirements block (self-reported, per phase) */
++.req-block{margin-top:14px; padding-top:12px; border-top:1px dashed var(--line);}
++.req-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;}
++.req-label{font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase; color:var(--muted-dim); font-weight:600;}
++.req-field{display:flex; flex-direction:column; gap:5px; padding:8px 0; border-top:1px solid var(--line);}
++.req-field:first-of-type{border-top:none;}
++.req-field-top{display:flex; align-items:baseline; justify-content:space-between; gap:8px; flex-wrap:wrap;}
++.req-field-name{font-size:12px; color:var(--text); font-weight:500;}
++.req-why{font-size:11px; color:var(--muted-dim); font-style:italic; line-height:1.4;}
++.req-row{display:flex; gap:6px; margin-top:4px; align-items:center;}
++.req-input{
++  flex:1; background:var(--panel); border:1px solid var(--line); border-radius:6px;
++  color:var(--text); font-family:'IBM Plex Mono'; font-size:11.5px; padding:6px 9px;
++}
++.req-input:focus-visible{outline:2px solid var(--amber); outline-offset:1px;}
++.req-save{
++  background:var(--panel); border:1px solid var(--line); border-radius:6px; color:var(--muted);
++  font-size:11px; font-weight:600; padding:6px 11px; cursor:pointer; white-space:nowrap; transition:all .15s ease;
++}
++.req-save:hover{border-color:var(--amber); color:var(--amber);}
++.req-badge{
++  font-size:9.5px; font-family:'IBM Plex Mono'; padding:2px 7px; border-radius:20px; white-space:nowrap;
++  background:var(--gold-dim); color:var(--gold); border:1px solid var(--gold);
++}
++.req-badge.empty{background:transparent; color:var(--muted-dim); border-color:var(--line);}
++
+ /* Protocol pipeline (daily close steps) */
+ .protocol-list{display:flex; flex-direction:column; gap:10px; margin-top:16px;}
+ .protocol-step{display:flex; align-items:center; gap:14px; background:var(--panel-raised); border:1px solid var(--line); border-radius:10px; padding:12px 16px;}
+@@ -577,6 +603,11 @@ body{
+       </div>
+       <div class="exec-stats" id="execStats"></div>
+ 
++      <div class="exec-block">
++        <div class="exec-block-title">Self-Reported Data <span style="color:var(--muted-dim); font-weight:400; text-transform:none; letter-spacing:0; font-size:11.5px;">(EU-entered, not yet verified against a live source)</span></div>
++        <div id="execSelfReported"></div>
++      </div>
++
+       <div class="exec-block">
+         <div class="exec-block-title">Controller Action Plan</div>
+         <div id="execActionPlan"></div>
+@@ -783,6 +814,110 @@ const checklistState = loadState(CHECKLIST_STATE_KEY); // key: idx -> bool
+ 
+ function taskKey(cad, p, t){ return `${cad}-${p}-${t}`; }
+ 
++// ─────────────────────────────────────────────────────────────────────────
++// TASK DATA REQUIREMENTS REGISTRY — what an EU needs to gather from each
++// phase's owning module, and their self-reported values until that module
++// exposes a real read endpoint. See routes/rcm-requirements.js.
++// Everything here is explicitly source: 'self-reported' — never presented
++// as verified/computed. That honesty is the whole point of this layer.
++// ─────────────────────────────────────────────────────────────────────────
++let REQUIREMENTS = {};   // { "daily-2": { phaseName, tool, requiredFields:[{id,field,type,why}] } }
++let selfReported = {};   // { "daily-2": { openFlagCount: {value, reportedAt, source} } }
++
++async function loadRequirements(){
++  try {
++    const [reqRes, srRes] = await Promise.all([
++      fetch('/api/rcm/requirements'),
++      fetch('/api/rcm/self-reported')
++    ]);
++    const reqData = await reqRes.json();
++    const srData = await srRes.json();
++    REQUIREMENTS = reqData.phases || {};
++    selfReported = srData.data || {};
++  } catch(e) {
++    REQUIREMENTS = {};
++    selfReported = {};
++  }
++  // Re-render whatever's currently on screen so the new data shows up.
++  if(currentCadence === 'executive') renderExecutive();
++  else renderCadenceBody();
++}
++
++function reqSummaryCount(){
++  let filled = 0, expected = 0;
++  Object.keys(REQUIREMENTS).forEach(key=>{
++    const fields = REQUIREMENTS[key].requiredFields || [];
++    expected += fields.length;
++    fields.forEach(f=>{ if(selfReported[key] && selfReported[key][f.id]) filled++; });
++  });
++  return { filled, expected };
++}
++
++function renderReqBlock(cadence, phaseIdx){
++  const key = `${cadence}-${phaseIdx}`;
++  const spec = REQUIREMENTS[key];
++  if(!spec || !spec.requiredFields || !spec.requiredFields.length) return '';
++  const filledForPhase = spec.requiredFields.filter(f=>selfReported[key] && selfReported[key][f.id]).length;
++
++  return `
++  <div class="req-block" data-req-key="${key}">
++    <div class="req-head">
++      <span class="req-label">Data to gather from ${escapeHtml(spec.tool)}</span>
++      <span class="req-label">${filledForPhase}/${spec.requiredFields.length} self-reported</span>
++    </div>
++    ${spec.requiredFields.map(f=>{
++      const entry = selfReported[key] && selfReported[key][f.id];
++      const badge = entry
++        ? `<span class="req-badge" title="Self-reported, not verified">✎ self-reported · ${new Date(entry.reportedAt).toLocaleDateString()}</span>`
++        : `<span class="req-badge empty">not yet gathered</span>`;
++      return `
++      <div class="req-field" data-field-id="${escapeHtml(f.id)}">
++        <div class="req-field-top">
++          <span class="req-field-name">${escapeHtml(f.field)}</span>
++          ${badge}
++        </div>
++        <div class="req-why">${escapeHtml(f.why)}</div>
++        <div class="req-row">
++          <input class="req-input" type="text" placeholder="Enter value from ${escapeHtml(spec.tool)}..." value="${escapeHtml(entry ? entry.value : '')}">
++          <button class="req-save">Save</button>
++        </div>
++      </div>`;
++    }).join('')}
++  </div>`;
++}
++
++function wireReqBlocks(container){
++  container.querySelectorAll('.req-block').forEach(block=>{
++    const key = block.dataset.reqKey;
++    block.querySelectorAll('.req-field').forEach(fieldEl=>{
++      const fieldId = fieldEl.dataset.fieldId;
++      const input = fieldEl.querySelector('.req-input');
++      const btn = fieldEl.querySelector('.req-save');
++      const submit = () => saveSelfReport(key, fieldId, input.value);
++      btn.addEventListener('click', submit);
++      input.addEventListener('keydown', (e)=>{ if(e.key === 'Enter') submit(); });
++    });
++  });
++}
++
++async function saveSelfReport(key, fieldId, value){
++  if(!value || !value.trim()) return;
++  try {
++    const res = await fetch('/api/rcm/self-reported', {
++      method: 'POST', headers: {'Content-Type':'application/json'},
++      body: JSON.stringify({ key, fieldId, value: value.trim() })
++    });
++    const data = await res.json();
++    if(data.ok){
++      if(!selfReported[key]) selfReported[key] = {};
++      selfReported[key][fieldId] = data.entry;
++      renderCadenceBody();
++      if(currentCadence === 'executive') renderExecutive();
++      fetchGuidance();
++    }
++  } catch(e) { /* silent — form just won't show as saved */ }
++}
++
+ // ─────────────────────────────────────────────────────────────────────────
+ // RENDER: module rail
+ // ─────────────────────────────────────────────────────────────────────────
+@@ -903,6 +1038,7 @@ function renderCadenceBody(){
+         <div class="track"><div class="fill" style="width:${pct}%;"></div></div>
+         <span class="pct">${done}/${total}</span>
+       </div>
++      ${renderReqBlock(currentCadence, pi)}
+     </div>`;
+   }).join('');
+ 
+@@ -917,6 +1053,8 @@ function renderCadenceBody(){
+     });
+   });
+ 
++  wireReqBlocks(phaseList);
++
+   // protocol
+   document.getElementById('protocolEyebrow').textContent = c.protocolTitle;
+   document.getElementById('protocolHint').textContent = c.protocolHint;
+@@ -1018,6 +1156,28 @@ function renderExecutive(){
+     <div class="exec-stat"><div class="es-label">Month-End Close Checklist</div><div class="es-val" style="color:var(--amber)">${s.checklistDone}/${s.checklistTotal}</div></div>
+   `;
+ 
++  const srCount = reqSummaryCount();
++  const srEl = document.getElementById('execSelfReported');
++  const srRows = [];
++  Object.keys(REQUIREMENTS).forEach(key=>{
++    const spec = REQUIREMENTS[key];
++    (spec.requiredFields||[]).forEach(f=>{
++      const entry = selfReported[key] && selfReported[key][f.id];
++      if(entry){
++        srRows.push(`<div class="req-field" style="border-top:1px solid var(--line); padding:8px 0;">
++          <div class="req-field-top">
++            <span class="req-field-name">${escapeHtml(spec.phaseName)} — ${escapeHtml(f.field)}</span>
++            <span class="req-badge" title="Self-reported, not verified">✎ self-reported · ${new Date(entry.reportedAt).toLocaleDateString()}</span>
++          </div>
++          <div class="req-why" style="font-style:normal; color:var(--text);">${escapeHtml(entry.value)}</div>
++        </div>`);
++      }
++    });
++  });
++  srEl.innerHTML = srRows.length
++    ? `<div class="exec-block-body" style="max-height:300px;">${srRows.join('')}<div style="margin-top:8px; color:var(--muted-dim); font-size:11px;">${srCount.filled}/${srCount.expected} required fields gathered across all cadences.</div></div>`
++    : `<div class="exec-empty">No self-reported data yet — fill in the "Data to gather" fields on any phase card in Daily / Weekly / Month-End to populate this.</div>`;
++
+   const ap = document.getElementById('execActionPlan');
+   const cfo = document.getElementById('execCfo');
+   if(relayData){
+@@ -1103,11 +1263,24 @@ async function loadRelayData(){
+ // ─────────────────────────────────────────────────────────────────────────
+ let guidanceItems = [];
+ 
++function selfReportedForGuidance(){
++  const out = [];
++  Object.keys(REQUIREMENTS).forEach(key=>{
++    const spec = REQUIREMENTS[key];
++    (spec.requiredFields||[]).forEach(f=>{
++      const entry = selfReported[key] && selfReported[key][f.id];
++      if(entry) out.push({ phase: spec.phaseName, tool: spec.tool, field: f.field, value: entry.value, reportedAt: entry.reportedAt });
++    });
++  });
++  return out;
++}
++
+ async function fetchGuidance(){
+   const s = crossCadenceStats();
+   const body = {
+     engines: relayData ? relayData.engines : {},
+-    stats: { openExceptions: s.open, pctComplete: s.total ? Math.round((s.done/s.total)*100) : 0, docName: relayData ? relayData.docName : null }
++    stats: { openExceptions: s.open, pctComplete: s.total ? Math.round((s.done/s.total)*100) : 0, docName: relayData ? relayData.docName : null },
++    selfReported: selfReportedForGuidance()
+   };
+   try {
+     const res = await fetch('/api/rcm/guidance', {
+@@ -1379,6 +1552,7 @@ APP FEATURES & MODULES (for questions about how to use this app):
+ - Document Search: cross-vertical document/evidence search.
+ - Document Intake: when the FinOps Doc Showcase relays an analyzed document here, its 4 engine outputs (Triage, Variance, Action Plan, CFO Brief) each route to a specific module above — that routing is shown in the Document Intake card.
+ - Cadence tabs (Daily/Weekly/Month-End/Controller Framework/Executive): the reconciliation rhythm this whole app is built around; each phase lists its owning tool and concrete tasks.
++- Data Requirements ("Data to gather from [module]" on each phase card): tells an EU exactly which specific field(s) that phase needs from its owning module and why, with an input to self-report the value. Self-reported values are explicitly unverified — they show up flagged that way here, in the Executive tab, and in guidance — until the owning module exposes a real read endpoint.
+ `;
+ 
+ // buildAssistantContext still lives here since it needs direct access to
+@@ -1410,6 +1584,15 @@ function buildAssistantContext(userQuestion){
+   } else {
+     ctx += `\nNo document currently relayed from FinOps Doc Showcase.\n`;
+   }
++  const sr = selfReportedForGuidance();
++  if(sr.length){
++    ctx += `\nSELF-REPORTED DATA (EU-entered via the Data Requirements fields on each phase card — NOT verified against a live source, treat as unverified input, say "self-reported" when citing it):\n`;
++    sr.forEach(item => {
++      ctx += `- [${item.phase}] ${item.field}: ${item.value} (self-reported ${new Date(item.reportedAt).toLocaleDateString()}, owning tool: ${item.tool})\n`;
++    });
++  } else {
++    ctx += `\nNo self-reported data entered yet on any phase card.\n`;
++  }
+   if(guidanceItems && guidanceItems.length){
+     ctx += `\nCURRENT PROACTIVE GUIDANCE QUEUE (ranked, act on these):\n`;
+     guidanceItems.forEach(it => {
+@@ -1442,6 +1625,7 @@ renderRail();
+ renderAll();
+ initRelayModal();
+ loadRelayData();
++loadRequirements();
+ initAssistant();
+ updateSLAIndicators(); // fab now exists — attach its dot immediately
+ setInterval(updateSLAIndicators, 30000); // keep pulses honest as the clock moves
+diff --git a/routes/rcm-relay.js b/routes/rcm-relay.js
+index 46510fe7..935ceb8d 100644
+--- a/routes/rcm-relay.js
++++ b/routes/rcm-relay.js
+@@ -119,19 +119,25 @@ router.delete('/relay', (req, res) => {
+ // severity is one of critical|high|medium|low (matches .sev-badge CSS).
+ //
+ // Body: { engines: { triage, variance, actionPlan, executive },
+-//          stats: { openExceptions, pctComplete, docName } }
++//          stats: { openExceptions, pctComplete, docName },
++//          selfReported: [{ phase, tool, field, value, reportedAt }] }
++// selfReported comes from the Task Data Requirements Registry (see
++// routes/rcm-requirements.js) — EU-entered values, never verified against a
++// live source. The prompt below is explicit that these are self-reported so
++// the model doesn't present them with false certainty.
+ router.post('/guidance', express.json({ limit: '1mb' }), async (req, res) => {
+-  const { engines = {}, stats = {} } = req.body || {};
++  const { engines = {}, stats = {}, selfReported = [] } = req.body || {};
+   const hasAnyEngineText = ['triage', 'variance', 'actionPlan', 'executive'].some(k => (engines[k] || '').trim());
++  const hasSelfReported = Array.isArray(selfReported) && selfReported.length > 0;
+ 
+   if (!process.env.GROQ_API_KEY) {
+-    return res.json({ items: heuristicGuidance(engines, stats), degraded: true, reason: 'GROQ_API_KEY not configured on server' });
++    return res.json({ items: heuristicGuidance(engines, stats, selfReported), degraded: true, reason: 'GROQ_API_KEY not configured on server' });
+   }
+-  if (!hasAnyEngineText && !stats.openExceptions) {
++  if (!hasAnyEngineText && !stats.openExceptions && !hasSelfReported) {
+     return res.json({ items: [] });
+   }
+ 
+-  const prompt = buildGuidancePrompt(engines, stats);
++  const prompt = buildGuidancePrompt(engines, stats, selfReported);
+ 
+   try {
+     const upstream = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+@@ -147,8 +153,11 @@ router.post('/guidance', express.json({ limit: '1mb' }), async (req, res) => {
+             role: 'system',
+             content: 'You are the TSM RCM OS proactive guidance engine. Return JSON only — no ' +
+               'prose, no markdown fences, no mention of provider/model. Read the raw analysis ' +
+-              'text given and turn it into a ranked list of concrete, specific issues an End ' +
+-              'User (EU) needs to act on. Never invent numbers or facts not present in the input.'
++              'text and any self-reported field values given, and turn it into a ranked list of ' +
++              'concrete, specific issues an End User (EU) needs to act on. Never invent numbers ' +
++              'or facts not present in the input. Self-reported values are EU-entered, not ' +
++              'verified against a live system — when you reference one, phrase it accordingly ' +
++              '(e.g. "self-reported open flag count is 3"), never as a confirmed/audited figure.'
+           },
+           { role: 'user', content: prompt }
+         ],
+@@ -175,9 +184,16 @@ router.post('/guidance', express.json({ limit: '1mb' }), async (req, res) => {
+   }
+ });
+ 
+-function buildGuidancePrompt(engines, stats) {
++function buildGuidancePrompt(engines, stats, selfReported = []) {
++  const selfReportedBlock = selfReported.length
++    ? selfReported.map(sr => `- [${sr.phase}, source: self-reported ${new Date(sr.reportedAt).toLocaleDateString()}] ${sr.field}: ${sr.value} (owning tool: ${sr.tool})`).join('\n')
++    : '(none entered yet)';
++
+   return `Workspace stats: ${JSON.stringify(stats)}
+ 
++Self-reported field values (EU-entered, NOT verified against a live source — treat as unverified input, not fact):
++${selfReportedBlock}
++
+ Triage/Flags:
+ ${(engines.triage || '(none)').slice(0, 3000)}
+ 
+@@ -212,7 +228,7 @@ Rank items by severity (critical first). Only include issues actually supported
+ // Keyword-based fallback so the guidance card still shows *something* real
+ // (not fabricated) when Groq is unavailable — scans the raw text for
+ // explicit severity language rather than inventing structured findings.
+-function heuristicGuidance(engines, stats) {
++function heuristicGuidance(engines, stats, selfReported = []) {
+   const items = [];
+   const sources = [
+     { key: 'triage', tool: 'compliance.html', label: 'Triage flag' },
+@@ -243,6 +259,26 @@ function heuristicGuidance(engines, stats) {
+       });
+     }
+   });
++  // Surface self-reported values that read as an open finding (not "0",
++  // "none", "no", "n/a") rather than a clean status. Kept deliberately
++  // simple in the fallback path — the Groq path above does the real
++  // judgment call on what's worth surfacing.
++  const nonIssueValues = new Set(['0', 'none', 'no', 'n/a', 'na', 'false', '']);
++  selfReported.forEach(sr => {
++    if (nonIssueValues.has(String(sr.value).trim().toLowerCase())) return;
++    items.push({
++      id: `self-reported-${sr.phase}-${sr.field}`.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
++      severity: 'medium',
++      title: `${sr.field}: ${sr.value}`,
++      summary: `Self-reported during ${sr.phase} on ${new Date(sr.reportedAt).toLocaleDateString()} — not yet verified against a live source.`,
++      tool: /\.html\b/.test(sr.tool) ? sr.tool.split(/\s*\+\s*/)[0].trim() : 'compliance.html',
++      nextAction: `Follow up on "${sr.field}" in ${sr.tool}.`,
++      why: `This value was self-reported for the ${sr.phase} phase, which owns this check.`,
++      gain: 'Acting on self-reported findings before they age keeps the cadence honest.',
++      riskOfInaction: 'Self-reported issues left untouched won\'t self-resolve and will still be open at the next checkpoint.'
++    });
++  });
++
+   if ((stats.openExceptions || 0) > 0) {
+     items.push({
+       id: 'open-exceptions',
+diff --git a/routes/rcm-requirements.js b/routes/rcm-requirements.js
+new file mode 100644
+index 00000000..1661d0a9
+--- /dev/null
++++ b/routes/rcm-requirements.js
+@@ -0,0 +1,85 @@
++// routes/rcm-requirements.js
++//
++// Task Data Requirements Registry — the small structured spec (per cadence
++// phase) that tells an EU exactly what data a phase needs from its owning
++// module, and lets them self-report it until that module exposes a real
++// API. This is deliberately NOT a database of "real" numbers — every value
++// stored here is honestly labeled source: 'self-reported' so the Assistant,
++// Executive tab, and exported reports never present it as verified.
++//
++// When a module (compliance.html, finops-operations.html, etc.) eventually
++// gets a real read endpoint, the validation step is: fetch the real value,
++// compare it to what's stored here, and surface a mismatch — that's the
++// actual "intelligence" gain. Nothing below invents that comparison yet.
++//
++// Mount in server.js:
++//   app.use('/api/rcm', require('./routes/rcm-requirements'));
++//
++// Endpoints:
++//   GET    /api/rcm/requirements         — full registry spec
++//   GET    /api/rcm/self-reported        — all self-reported values on file
++//   POST   /api/rcm/self-reported        — upsert one field's value
++//   DELETE /api/rcm/self-reported/:key/:fieldId — clear one field
++
++const express = require('express');
++const fs = require('fs');
++const path = require('path');
++const router = express.Router();
++
++const REGISTRY_PATH = path.join(__dirname, '..', 'data', 'rcm', 'task-requirements.json');
++
++let REGISTRY = {};
++try {
++  REGISTRY = JSON.parse(fs.readFileSync(REGISTRY_PATH, 'utf8'));
++} catch (err) {
++  console.error('[rcm-requirements] Failed to load registry at', REGISTRY_PATH, err.message);
++  REGISTRY = {};
++}
++
++// ── In-memory self-reported store ───────────────────────────────────────────
++// Swap for a real store when ready (same convention as routes/rcm-relay.js).
++// Shape: { "daily-2": { "openFlagCount": { value, reportedAt, source: 'self-reported' } } }
++const selfReported = {};
++
++// ── GET /api/rcm/requirements ───────────────────────────────────────────────
++router.get('/requirements', (req, res) => {
++  const { _readme, ...phases } = REGISTRY;
++  res.json({ phases });
++});
++
++// ── GET /api/rcm/self-reported ──────────────────────────────────────────────
++router.get('/self-reported', (req, res) => {
++  res.json({ data: selfReported });
++});
++
++// ── POST /api/rcm/self-reported ─────────────────────────────────────────────
++// Body: { key: "daily-2", fieldId: "openFlagCount", value: "3" }
++router.post('/self-reported', express.json({ limit: '100kb' }), (req, res) => {
++  const { key, fieldId, value } = req.body || {};
++  if (!key || !fieldId || value === undefined) {
++    return res.status(400).json({ error: { message: 'Body must include key, fieldId, and value.' } });
++  }
++  if (!REGISTRY[key] || !(REGISTRY[key].requiredFields || []).some(f => f.id === fieldId)) {
++    return res.status(400).json({ error: { message: `Unknown key/fieldId: ${key}/${fieldId}` } });
++  }
++
++  if (!selfReported[key]) selfReported[key] = {};
++  selfReported[key][fieldId] = {
++    value: String(value).slice(0, 2000),
++    reportedAt: new Date().toISOString(),
++    source: 'self-reported'
++  };
++
++  res.json({ ok: true, key, fieldId, entry: selfReported[key][fieldId] });
++});
++
++// ── DELETE /api/rcm/self-reported/:key/:fieldId ─────────────────────────────
++router.delete('/self-reported/:key/:fieldId', (req, res) => {
++  const { key, fieldId } = req.params;
++  if (selfReported[key] && selfReported[key][fieldId]) {
++    delete selfReported[key][fieldId];
++  }
++  res.json({ ok: true });
++});
++
++module.exports = router;
+diff --git a/server.js b/server.js
+index 8f7473d1..8dcdb6f2 100644
+--- a/server.js
++++ b/server.js
+@@ -872,6 +872,7 @@ app.use(require('./routes/finops'));
+ // Server-side staging for the FinOps Doc Showcase -> TSM RCM OS handoff.
+ // See routes/rcm-relay.js header for the full endpoint contract.
+ app.use('/api/rcm', require('./routes/rcm-relay'));
++app.use('/api/rcm', require('./routes/rcm-requirements'));
+ 
+ // ── FINANCIAL INTELLIGENCE (finance-index.html) ─────────────────────────────
+ // Groq-backed chat (per-tab assistant) + audit engine with real persisted
+-- 
+2.43.0
