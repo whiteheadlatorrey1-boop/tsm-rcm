@@ -1,0 +1,196 @@
+// tests/playwright/healthcare-relay-sentinel-propagation.spec.js
+//
+// Healthcare chain, per explicit direction: doc-search-multi -> war room ->
+// hc-main-strategist.html -> sentinel-center + executive-portal.
+//
+// Unlike BPO, Healthcare's chain runs through TWO parallel relay systems and
+// had THREE confirmed, root-caused bugs, all fixed alongside this spec (not
+// patched around):
+//
+//   BUG A/B [FIXED] -- hc-denial-war-room.html never read doc-search's
+//     payload (tsm_hc_docsearch_relay / TSM_HC_WAR_RELAY) and had NO
+//     outbound navigation/escalation to hc-main-strategist.html at all,
+//     despite including relay.engine.js. Fixed by adding an intake banner +
+//     escalateHcDenialToStrategist() that builds a real TSM_WAR_ROOM_BRIEF
+//     payload from the doc-search data and navigates to
+//     hc-main-strategist.html. See hc-denial-war-room.html's
+//     "tsm-docsearch-intake-and-escalate" script block.
+//
+//   BUG C [FIXED] -- sentinel-center.html's EXEC_PORTAL_PATHS.healthcare
+//     pointed at /html/war-rooms/healthcare/executive-portal.html, a
+//     directory that doesn't exist. Real file: /html/healthcare/executive-portal.html.
+//
+// Chain under test:
+//   tsm-doc-search-multi.html
+//     -> writes tsm_hc_docsearch_relay (+ TSM_HC_WAR_RELAY)
+//   hc-denial-war-room.html
+//     -> [FIXED] reads tsm_hc_docsearch_relay, renders intake banner
+//     -> [FIXED] escalateHcDenialToStrategist() writes TSM_WAR_ROOM_BRIEF
+//   hc-main-strategist.html
+//     -> reads TSM_WAR_ROOM_BRIEF
+//     -> writes TSM_EXEC_RELAY (-> executive-portal.html)
+//     -> writes TSM_HEALTHCARE_STRATEGIST_RELAY (-> sentinel-center.html)
+//   executive-portal.html   (reads TSM_HEALTHCARE_STRATEGIST_RELAY primary,
+//                            TSM_EXEC_RELAY / TSM_WAR_ROOM_BRIEF fallback)
+//   sentinel-center.html    (reads TSM_HEALTHCARE_STRATEGIST_RELAY, id:'healthcare')
+//
+// No GROQ key / network needed -- seeds relay state directly.
+// Run: npx playwright test tests/playwright/healthcare-relay-sentinel-propagation.spec.js
+
+const { test, expect } = require('@playwright/test');
+
+const BASE_URL = process.env.BASE_URL || 'http://localhost:8080';
+
+const WAR_ROOM = '/html/healthcare/hc-denial-war-room.html';
+const STRATEGIST = '/html/healthcare/hc-main-strategist.html';
+const EXEC_PORTAL = '/html/healthcare/executive-portal.html';
+const SENTINEL = '/html/sentinel-center.html';
+
+const CASE_TAG = 'PLAYWRIGHT_HC_TEST_' + Date.now();
+
+// Exact shape doc-search-multi.html's launchWarRoom() actually writes
+// (confirmed by reading the function directly, not invented).
+const DOC_SEARCH_PAYLOAD = {
+  docText: CASE_TAG + ': Denied claim, BCBS, filing limit in 6 days, $58,000 exposure.',
+  docType: 'Denial Notice',
+  fileName: CASE_TAG + '.pdf',
+  client: 'Acme Medical Group',
+  ref: 'CLM-99182',
+  source: 'doc-search',
+  timestamp: Date.now(),
+};
+
+// Exact shape escalateHcDenialToStrategist() (the fix) writes, and what
+// hc-main-strategist.html's readWarRoomBrief() expects (timestamp as a
+// number it feeds to `new Date()`, checked for < 2hr staleness).
+const WAR_ROOM_BRIEF_PAYLOAD = {
+  source: 'hc-denial-war-room',
+  vertical: 'Healthcare',
+  sessionId: 'hc_test_session',
+  docText: DOC_SEARCH_PAYLOAD.docText,
+  docType: DOC_SEARCH_PAYLOAD.docType,
+  fileName: DOC_SEARCH_PAYLOAD.fileName,
+  client: DOC_SEARCH_PAYLOAD.client,
+  ref: DOC_SEARCH_PAYLOAD.ref,
+  timestamp: Date.now(),
+};
+
+// Exact shape hc-main-strategist.html writes to TSM_HEALTHCARE_STRATEGIST_RELAY
+// (confirmed by reading the "sentinel-push" write site directly -- it's
+// narrower than the BPO/other-vertical strategist payloads: just
+// generatedAt + a single-item anomalies array, no docText/caseId/source).
+const STRATEGIST_RELAY_PAYLOAD = {
+  generatedAt: new Date().toISOString(),
+  anomalies: [{
+    id: 'hc-' + Date.now(),
+    title: 'HonorHealth Strategist Synthesis — ' + CASE_TAG,
+    severity: 'HIGH',
+    exposure: 58000,
+    confidence: 88,
+    rootCause: CASE_TAG + ': denied claim, BCBS, 6-day filing window.',
+    recommendedAction: 'Review the HC strategist brief and route Controller priority actions.',
+  }],
+};
+
+async function seedStorage(page, url, entries) {
+  await page.goto(`${BASE_URL}${url}`, { waitUntil: 'load', timeout: 20000 });
+  await page.evaluate((data) => {
+    for (const [key, value] of Object.entries(data)) {
+      const serialized = typeof value === 'string' ? value : JSON.stringify(value);
+      localStorage.setItem(key, serialized);
+      sessionStorage.setItem(key, serialized);
+    }
+  }, entries);
+  await page.reload({ waitUntil: 'load', timeout: 20000 });
+}
+
+test.describe('Healthcare relay propagation — doc-search -> war-room -> strategist -> exec + sentinel', () => {
+
+  test('1. doc-search payload triggers the intake banner on hc-denial-war-room.html (validates the fix)', async ({ page }) => {
+    await seedStorage(page, WAR_ROOM, { tsm_hc_docsearch_relay: DOC_SEARCH_PAYLOAD });
+    const banner = page.locator('#docsearch-intake-banner');
+    await expect(
+      banner,
+      'Intake banner never rendered -- readDocSearchPayload()/renderIntakeBanner() may be broken, or the fix regressed.'
+    ).toBeVisible({ timeout: 5000 });
+    await expect(banner).toContainText(DOC_SEARCH_PAYLOAD.fileName);
+  });
+
+  test('2. escalate button writes a real TSM_WAR_ROOM_BRIEF and navigates to hc-main-strategist.html', async ({ page }) => {
+    await seedStorage(page, WAR_ROOM, { tsm_hc_docsearch_relay: DOC_SEARCH_PAYLOAD });
+    await page.locator('#docsearch-intake-banner button').click();
+    await page.waitForURL('**/hc-main-strategist.html**', { timeout: 10000 });
+
+    const brief = await page.evaluate(() => {
+      const raw = localStorage.getItem('TSM_WAR_ROOM_BRIEF');
+      return raw ? JSON.parse(raw) : null;
+    });
+    expect(brief, 'TSM_WAR_ROOM_BRIEF was never written by the escalate button.').not.toBeNull();
+    expect(brief.source).toBe('hc-denial-war-room');
+    expect(brief.docText).toContain(CASE_TAG);
+  });
+
+  test('3. hc-main-strategist.html renders a seeded TSM_WAR_ROOM_BRIEF', async ({ page }) => {
+    await seedStorage(page, STRATEGIST, { TSM_WAR_ROOM_BRIEF: WAR_ROOM_BRIEF_PAYLOAD });
+    const html = await page.content();
+    expect(
+      html.includes(CASE_TAG),
+      'Strategist never surfaced the seeded war-room brief\'s docText -- readWarRoomBrief() wiring may be broken.'
+    ).toBe(true);
+  });
+
+  test('4. hc-main-strategist.html -> executive-portal.html: real case data hydrates the portal (documents a suspected GAP)', async ({ page }) => {
+    // KNOWN GAP (static-read evidence, NOT yet confirmed live -- this
+    // sandbox couldn't download a Playwright browser to verify): unlike
+    // BPO, executive-portal.html has no hydratePage()/loadDemoMode()/
+    // mountPage() function anywhere. The only two consumers of relay data
+    // are (a) wireStratKPIs(), which reads stratJson.noActionRevLoss /
+    // .actionRevLoss / .recoveryTime / .confidence -- none of which exist
+    // on the real { generatedAt, anomalies:[...] } payload -- and (b) the
+    // "TSM Exec Kit" widget, which reads relay.wip / relay.explain -- also
+    // absent from the real payload. Best guess from reading the code: the
+    // page likely shows static/demo content regardless of real relay data.
+    // This test exists to get a definitive live answer the next time it's
+    // run somewhere with browser access -- treat its outcome as new
+    // information, not a confirmed pre-existing expectation either way.
+    const pageErrors = [];
+    page.on('pageerror', (err) => pageErrors.push(err.stack || String(err)));
+    await seedStorage(page, EXEC_PORTAL, {
+      TSM_HEALTHCARE_STRATEGIST_RELAY: STRATEGIST_RELAY_PAYLOAD,
+      TSM_EXEC_RELAY: STRATEGIST_RELAY_PAYLOAD,
+    });
+    expect(pageErrors, `Portal threw uncaught errors with seeded relay data: ${pageErrors.join(' | ')}`).toEqual([]);
+
+    const html = await page.content();
+    const foundRealData = html.includes(CASE_TAG);
+    test.info().annotations.push({
+      type: foundRealData ? 'gap-resolved' : 'known-gap-confirmed-live',
+      description: foundRealData
+        ? 'Real case data DID render -- static-read analysis was wrong or something else picks it up. Investigate what, and delete this annotation once understood.'
+        : 'Confirmed live: CASE_TAG never appeared. wireStratKPIs()/TSM Exec Kit field mismatches are real -- ' +
+          'executive-portal.html needs a real hydration path added for TSM_HEALTHCARE_STRATEGIST_RELAY\'s actual shape.',
+    });
+  });
+
+  test('5. sentinel-center.html: healthcare case surfaces with seeded exposure', async ({ page }) => {
+    await seedStorage(page, SENTINEL, { TSM_HEALTHCARE_STRATEGIST_RELAY: STRATEGIST_RELAY_PAYLOAD });
+    const html = await page.content();
+    expect(html.includes('Healthcare'), 'Sentinel Center does not render the Healthcare vertical row.').toBe(true);
+    await page.waitForTimeout(500);
+    const bodyText = await page.evaluate(() => document.body.innerText);
+    expect(
+      bodyText.includes('58,000') || bodyText.includes('58000') || bodyText.includes('$58') || html.includes(CASE_TAG),
+      'Seeded exposure/case never surfaced in Sentinel Center\'s rendered text.'
+    ).toBe(true);
+  });
+
+  test('6. sentinel-center.html: healthcare exec-portal link points at the real file (validates the path fix)', async ({ page }) => {
+    await seedStorage(page, SENTINEL, { TSM_HEALTHCARE_STRATEGIST_RELAY: STRATEGIST_RELAY_PAYLOAD });
+    const html = await page.content();
+    expect(
+      html.includes(EXEC_PORTAL) && !html.includes('/html/war-rooms/healthcare/'),
+      'Sentinel\'s EXEC_PORTAL_PATHS.healthcare still points at the old, non-existent /html/war-rooms/healthcare/ path.'
+    ).toBe(true);
+  });
+
+});
