@@ -2902,12 +2902,23 @@ setInterval(buildStratBriefTab, 30000);
     // ── TSM PATCH: wire Strategist JSON fields into KPI tiles ──────────
     (function wireStratKPIs(relayJson) {
       try {
-        // relayJson may be the parsed JSON object from the ===JSON=== block
-        // or embedded in TSM_HC_RELAY / TSM_RELAY_DATA localStorage keys
-        var raw = relayJson
-          || JSON.parse(localStorage.getItem('TSM_HC_RELAY') || '{}')
-          || JSON.parse(localStorage.getItem('TSM_RELAY_DATA') || '{}');
-
+        function hasData(obj) {
+          return obj && typeof obj === 'object' && Object.keys(obj).length > 0;
+        }
+        // relayJson: parsed JSON from the ===JSON=== block, when present.
+        // Falls back to the keys that are actually written at runtime:
+        // TSM_HC_WAR_RELAY (generic room.autoKey writer in
+        // tsm-doc-search-multi.html) and TSM_HEALTHCARE_STRATEGIST_RELAY
+        // (written by hc-main-strategist.html). The previous fallback keys
+        // (TSM_HC_RELAY / TSM_RELAY_DATA) were never written by anything.
+        var raw = relayJson;
+        if (!hasData(raw)) {
+          raw = JSON.parse(localStorage.getItem('TSM_HC_WAR_RELAY') || 'null');
+        }
+        if (!hasData(raw)) {
+          raw = JSON.parse(localStorage.getItem('TSM_HEALTHCARE_STRATEGIST_RELAY') || 'null');
+        }
+        raw = raw || {};
         var stratJson = raw.stratJson || raw.json || raw;
 
         var noAction   = stratJson.noActionRevLoss  || '—';

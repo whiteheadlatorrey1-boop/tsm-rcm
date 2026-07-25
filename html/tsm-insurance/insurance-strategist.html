@@ -144,6 +144,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:500px;height:500px;bac
 </style>
   <script src="/js/core/tsm-event-bus.js"></script>
   <script src="/js/core/tsm-state.js"></script>
+  <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
   <script src="/html/shared/runtime/mission/mission-model.js"></script>
   <script src="/html/shared/runtime/mission/mission-store.js"></script>
   <script src="/js/core/tsm-mission-engine.js"></script>
@@ -722,6 +723,45 @@ async function runStrategist(){
 }
 
 function escalateToExec(){
+  // ── COLLECTIVE SIGNAL PUSH ──────────────────────────────────────────
+  // Real numbers only: reads back the relay this same run just persisted
+  // (docType, warRoomSnapshot.exposure, confidence.overall) rather than
+  // inventing anything new. Same exposure/severity thresholds already
+  // trusted by the Sentinel push above.
+  try {
+    const insCsRelay = JSON.parse(localStorage.getItem('tsm_ins_strat_relay') || 'null');
+    if (insCsRelay) {
+      const insCsExposureRaw = insCsRelay.warRoomSnapshot?.exposure || '';
+      const insCsNums = String(insCsExposureRaw).match(/[\d,]+(?:\.\d+)?/g);
+      let insCsExposureNum = 0;
+      if (insCsNums) {
+        const mult = /m\b/i.test(insCsExposureRaw) ? 1000000 : (/k\b/i.test(insCsExposureRaw) ? 1000 : 1);
+        const vals = insCsNums.map(n => parseFloat(n.replace(/,/g,'')) * mult);
+        insCsExposureNum = vals.length > 1 ? Math.round((vals[0] + vals[1]) / 2) : Math.round(vals[0]);
+      }
+      const insCsConf = insCsRelay.confidence?.overall != null ? parseInt(insCsRelay.confidence.overall) : null;
+      const insCsRisk = (insCsExposureNum >= 250000 || (insCsConf !== null && insCsConf < 60)) ? 'CRIT'
+        : (insCsExposureNum >= 100000 || (insCsConf !== null && insCsConf < 75)) ? 'HIGH'
+        : (insCsExposureNum >= 25000) ? 'MED' : 'LOW';
+      fetch('/api/collective/signal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vertical: 'insurance',
+          warRoom: 'Insurance Strategist',
+          bnca: (insCsRelay.nodes?.n4 || '').slice(0, 400) || 'Insurance 4-node strategist synthesis complete.',
+          confidence: insCsConf !== null ? insCsConf : 78,
+          riskLevel: insCsRisk,
+          topIssue: (insCsRelay.docType || 'Insurance matter') + ' \u2014 exposure ' + (insCsExposureRaw || 'unspecified'),
+          ownerLanes: ['Principal Agent', 'Claims Manager', 'Compliance Officer'],
+          hitlRequired: insCsRisk === 'CRIT' || insCsRisk === 'HIGH',
+          actions: ['Review strategist synthesis', 'Route to Executive Portal for authorization'],
+          source: window.location.pathname
+        })
+      }).catch(()=>{});
+    }
+  } catch(e) { console.warn('[collective-signal] insurance strategist push error:', e); }
+  // ── END COLLECTIVE SIGNAL PUSH ───────────────────────────────────────
   setTimeout(()=>nav('insurance-executive-portal.html'),400);
 }
 
@@ -1240,4 +1280,3 @@ function tsmWriteScopedStrat(vertical, missionId){
 
 <!-- TSM KERNEL ENGINE -->
 <script src="/html/core/tsm-kernel.js"></script>
-

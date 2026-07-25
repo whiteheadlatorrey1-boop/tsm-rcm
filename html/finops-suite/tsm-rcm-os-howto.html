@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TSM RCM OS — How-To Guide</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+:root{
+  --ink:#0A0F1C;
+  --panel:#111A2C;
+  --panel-raised:#16223A;
+  --line:#243450;
+  --text:#EEF1F8;
+  --muted:#8A96B2;
+  --muted-dim:#5C6885;
+  --amber:#E8A33D;
+  --amber-dim:#8A6528;
+  --risk:#E5484D;
+  --risk-dim:#5C2528;
+  --good:#3DD68C;
+  --good-dim:#1F5A42;
+  --info:#5B8DEF;
+  --info-dim:#2A3E6B;
+  --purple:#8B7CF6;
+  --purple-dim:#3E3670;
+  --cyan:#3DC8D6;
+  --cyan-dim:#1E5A61;
+  --gold:#C9A84C;
+  --gold-dim:#5C4E24;
+}
+
+*{box-sizing:border-box; margin:0; padding:0;}
+html{scroll-behavior:smooth;}
+body{
+  background:
+    radial-gradient(1200px 600px at 15% -10%, rgba(91,141,239,0.10), transparent 60%),
+    radial-gradient(1000px 500px at 110% 10%, rgba(232,163,61,0.08), transparent 60%),
+    var(--ink);
+  color:var(--text);
+  font-family:'Inter', sans-serif;
+  min-height:100vh;
+  padding-bottom:60px;
+}
+.mono{font-family:'IBM Plex Mono', monospace;}
+:focus-visible{outline:2px solid var(--amber); outline-offset:2px;}
+a{color:var(--amber);}
+
+/* ===== TOP BAR ===== */
+.topbar{
+  display:flex; align-items:center; justify-content:space-between;
+  padding:18px 32px; border-bottom:1px solid var(--line);
+  background:rgba(10,15,28,0.85); backdrop-filter:blur(8px);
+  position:sticky; top:0; z-index:50; flex-wrap:wrap; gap:14px;
+}
+.brand{display:flex; align-items:center; gap:12px;}
+.brand-mark{
+  width:34px; height:34px; border-radius:8px;
+  background:linear-gradient(135deg, var(--good), #1a9962);
+  display:flex; align-items:center; justify-content:center;
+  font-family:'Space Grotesk'; font-weight:700; color:#0A0F1C; font-size:13px; flex-shrink:0;
+}
+.brand-text .name{font-family:'Space Grotesk'; font-weight:600; font-size:16px; letter-spacing:0.02em;}
+.brand-text .tag{font-size:11px; color:var(--muted); letter-spacing:0.08em; text-transform:uppercase; margin-top:1px;}
+.back-link{font-size:12px; color:var(--muted); font-family:'IBM Plex Mono'; text-decoration:none; border:1px solid var(--line); padding:8px 14px; border-radius:8px; background:var(--panel);}
+.back-link:hover{border-color:var(--amber-dim); color:var(--amber);}
+
+/* ===== LAYOUT ===== */
+.shell{max-width:1440px; margin:0 auto; padding:28px 32px; display:grid; grid-template-columns:250px 1fr; gap:22px;}
+@media (max-width:960px){ .shell{grid-template-columns:1fr; padding:20px 16px;} .topbar{padding:16px 18px;} .toc{position:static !important;} }
+
+/* ===== TOC RAIL ===== */
+.toc{position:sticky; top:96px; align-self:start;}
+.toc-label{font-size:11px; letter-spacing:0.12em; text-transform:uppercase; color:var(--muted-dim); margin-bottom:12px; font-weight:600;}
+.toc-link{display:block; font-size:12.5px; color:var(--muted); padding:8px 12px; border-radius:8px; text-decoration:none; margin-bottom:2px; border-left:2px solid transparent; transition:all .15s ease;}
+.toc-link:hover{color:var(--text); background:var(--panel);}
+.toc-link.active{color:var(--amber); border-left-color:var(--amber); background:var(--panel); font-weight:600;}
+.toc-divider{height:1px; background:var(--line); margin:14px 0;}
+
+.role-box{margin-top:18px; padding:14px; border-radius:12px; border:1px dashed var(--line);}
+.role-box .rb-label{font-size:11px; color:var(--muted-dim); text-transform:uppercase; letter-spacing:0.08em; margin-bottom:10px; font-weight:600;}
+.role-chip{display:block; width:100%; text-align:left; background:var(--panel); border:1px solid var(--line); color:var(--muted); font-family:'Inter'; font-size:11.5px; padding:8px 10px; border-radius:8px; margin-bottom:6px; cursor:pointer; text-decoration:none;}
+.role-chip:hover{border-color:var(--amber-dim); color:var(--text);}
+
+/* ===== MAIN ===== */
+.stage{display:flex; flex-direction:column; gap:20px;}
+.card{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:26px; scroll-margin-top:90px;}
+.card-eyebrow{font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:var(--muted-dim); font-weight:600; margin-bottom:6px;}
+.card h2{font-family:'Space Grotesk'; font-size:22px; font-weight:600; margin-bottom:10px;}
+.card h3{font-family:'Space Grotesk'; font-size:15px; font-weight:600; margin:20px 0 8px; color:var(--text);}
+.card p{font-size:13.5px; color:var(--muted); line-height:1.65; margin-bottom:10px; max-width:760px;}
+.card p:last-child{margin-bottom:0;}
+.lede{font-size:14.5px; color:var(--text); line-height:1.65; max-width:760px;}
+
+/* Hero */
+.hero-chips{display:flex; gap:10px; flex-wrap:wrap; margin-top:16px;}
+.hero-chip{font-size:11.5px; color:var(--muted); background:var(--panel-raised); border:1px solid var(--line); padding:5px 10px; border-radius:20px; font-family:'IBM Plex Mono';}
+
+/* Element glossary */
+.elem-grid{display:flex; flex-direction:column; gap:2px; margin-top:14px;}
+.elem-row{display:grid; grid-template-columns:180px 1fr; gap:16px; padding:12px 0; border-top:1px solid var(--line);}
+.elem-row:first-child{border-top:none;}
+@media (max-width:700px){ .elem-row{grid-template-columns:1fr;} }
+.elem-name{font-family:'Space Grotesk'; font-weight:600; font-size:12.5px; color:var(--amber);}
+.elem-desc{font-size:12.5px; color:var(--muted); line-height:1.6;}
+.elem-desc strong{color:var(--text);}
+
+/* Numbered steps */
+.steps{display:flex; flex-direction:column; gap:12px; margin-top:16px;}
+.step{display:flex; gap:14px; align-items:flex-start;}
+.step-num{width:26px; height:26px; border-radius:50%; background:var(--panel-raised); border:1.5px solid var(--sc,var(--amber-dim)); color:var(--sc,var(--amber)); font-family:'IBM Plex Mono'; font-size:11.5px; display:flex; align-items:center; justify-content:center; flex-shrink:0;}
+.step-body{flex:1; padding-top:2px;}
+.step-title{font-family:'Space Grotesk'; font-weight:600; font-size:13.5px; margin-bottom:3px;}
+.step-desc{font-size:12.5px; color:var(--muted); line-height:1.6;}
+.step-tool{display:inline-block; margin-top:6px; font-size:10.5px; font-family:'IBM Plex Mono'; color:var(--sc,var(--amber)); background:rgba(255,255,255,0.03); border:1px solid var(--line); padding:2px 9px; border-radius:20px;}
+
+/* Cadence section header pill */
+.cadence-pill{display:inline-flex; align-items:center; gap:8px; font-family:'IBM Plex Mono'; font-size:11px; color:var(--sc,var(--amber)); background:rgba(255,255,255,0.03); border:1px solid var(--sc-dim,var(--amber-dim)); padding:5px 12px; border-radius:20px; margin-bottom:12px;}
+.cadence-pill .dot{width:6px; height:6px; border-radius:50%; background:var(--sc,var(--amber));}
+
+/* Module directory */
+.module-table{width:100%; border-collapse:collapse; margin-top:14px; font-size:12.5px;}
+.module-table th{text-align:left; font-family:'Space Grotesk'; font-size:10.5px; letter-spacing:0.06em; text-transform:uppercase; color:var(--muted-dim); padding:8px 10px; border-bottom:1px solid var(--line); white-space:nowrap;}
+.module-table td{padding:12px 10px; border-bottom:1px solid var(--line); color:var(--muted); vertical-align:top;}
+.module-table td.mname-cell{font-family:'Space Grotesk'; font-weight:600; color:var(--text); white-space:nowrap;}
+.module-table td.mfile-cell{font-family:'IBM Plex Mono'; font-size:11px; color:var(--mc,var(--amber));}
+.module-table td.report-cell{color:var(--text);}
+
+/* Report recipe cards */
+.recipe-card{background:var(--panel-raised); border:1px solid var(--line); border-left:3px solid var(--rc,var(--amber)); border-radius:12px; padding:16px 18px; margin-top:14px;}
+.recipe-top{display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-bottom:6px;}
+.recipe-title{font-family:'Space Grotesk'; font-weight:600; font-size:14px;}
+.recipe-freq{font-size:10.5px; font-family:'IBM Plex Mono'; color:var(--rc,var(--amber)); background:rgba(255,255,255,0.03); border:1px solid var(--line); padding:3px 9px; border-radius:20px; white-space:nowrap;}
+.recipe-desc{font-size:12.5px; color:var(--muted); line-height:1.6; margin-bottom:10px;}
+.recipe-sources{display:flex; gap:6px; flex-wrap:wrap;}
+.src-tag{font-size:10.5px; font-family:'IBM Plex Mono'; color:var(--text); background:var(--panel); border:1px solid var(--line); padding:3px 9px; border-radius:20px;}
+
+/* Quick reference tables */
+.qr-flex{display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-top:16px;}
+@media (max-width:760px){ .qr-flex{grid-template-columns:1fr;} }
+.dc-table{width:100%; border-collapse:collapse; font-size:12.5px;}
+.dc-table th{text-align:left; font-family:'Space Grotesk'; font-size:10.5px; text-transform:uppercase; letter-spacing:0.06em; color:var(--muted-dim); padding:7px 8px; border-bottom:1px solid var(--line);}
+.dc-table td{padding:9px 8px; border-bottom:1px solid var(--line); color:var(--muted);}
+.dc-table td.acct-type{color:var(--text); font-weight:600;}
+.gl-table{width:100%; border-collapse:collapse; font-size:11.5px; margin-top:14px;}
+.gl-table th{text-align:left; font-family:'Space Grotesk'; font-size:10px; text-transform:uppercase; letter-spacing:0.05em; color:var(--muted-dim); padding:6px 8px; border-bottom:1px solid var(--line);}
+.gl-table td{padding:8px; border-bottom:1px solid var(--line); color:var(--muted);}
+.gl-table td.acct-num{font-family:'IBM Plex Mono'; color:var(--amber);}
+.gl-table td.acct-name{color:var(--text);}
+
+.mnemonic-row{display:flex; align-items:center; gap:14px; flex-wrap:wrap; background:rgba(232,163,61,0.06); border:1px solid var(--amber-dim); border-radius:10px; padding:12px 16px; margin-top:16px;}
+.mnemonic-item{display:flex; align-items:center; gap:8px; font-size:11.5px; color:var(--muted);}
+.mnemonic-letter{font-family:'Space Grotesk'; font-weight:700; font-size:15px; color:var(--amber); background:var(--panel); border:1px solid var(--amber-dim); border-radius:8px; width:28px; height:28px; display:flex; align-items:center; justify-content:center; flex-shrink:0;}
+
+/* FAQ accordion */
+.faq-item{border-top:1px solid var(--line); padding:14px 0;}
+.faq-item:first-child{border-top:none;}
+.faq-q{display:flex; align-items:center; justify-content:space-between; gap:12px; cursor:pointer; font-family:'Space Grotesk'; font-weight:600; font-size:13.5px; color:var(--text);}
+.faq-q .chev{color:var(--muted-dim); transition:transform .2s ease; flex-shrink:0;}
+.faq-item.open .faq-q .chev{transform:rotate(45deg); color:var(--amber);}
+.faq-a{font-size:12.5px; color:var(--muted); line-height:1.65; max-height:0; overflow:hidden; transition:max-height .25s ease;}
+.faq-item.open .faq-a{max-height:260px; margin-top:10px;}
+
+/* callout */
+.callout{background:rgba(91,141,239,0.06); border:1px solid var(--info-dim); border-radius:10px; padding:14px 16px; margin-top:14px; font-size:12.5px; color:var(--muted); line-height:1.6;}
+.callout strong{color:var(--info);}
+.callout.warn{background:rgba(229,72,77,0.06); border-color:var(--risk-dim);}
+.callout.warn strong{color:var(--risk);}
+
+.footer-note{text-align:center; font-size:11.5px; color:var(--muted-dim); margin-top:30px; line-height:1.6;}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <div class="brand-mark">?</div>
+    <div class="brand-text">
+      <div class="name">TSM RCM OS</div>
+      <div class="tag">How-To Guide</div>
+    </div>
+  </div>
+  <a class="back-link" href="tsm-rcm-os.html">← Back to RCM OS</a>
+</div>
+
+<div class="shell">
+
+  <!-- TOC -->
+  <div class="toc">
+    <div class="toc-label">On This Page</div>
+    <nav id="tocNav">
+      <a class="toc-link" href="#overview">Overview</a>
+      <a class="toc-link" href="#orient">Getting Oriented</a>
+      <a class="toc-link" href="#relay">Data Intake: Showcase → RCM OS</a>
+      <a class="toc-link" href="#assistant">The AI Assistant</a>
+      <a class="toc-link" href="#daily">Daily Walkthrough</a>
+      <a class="toc-link" href="#weekly">Weekly Walkthrough</a>
+      <a class="toc-link" href="#monthend">Month-End Walkthrough</a>
+      <a class="toc-link" href="#reports">Generating Reports</a>
+      <a class="toc-link" href="#modules">Module Directory</a>
+      <a class="toc-link" href="#reference">Quick Reference</a>
+      <a class="toc-link" href="#glossary">Glossary &amp; FAQ</a>
+    </nav>
+    <div class="toc-divider"></div>
+    <div class="role-box">
+      <div class="rb-label">I am a...</div>
+      <a class="role-chip" href="#daily">Branch / Staff Accountant → start Daily</a>
+      <a class="role-chip" href="#weekly">Controller → start Weekly</a>
+      <a class="role-chip" href="#monthend">CFO / Leadership → start Month-End</a>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="stage">
+
+    <!-- OVERVIEW -->
+    <div class="card" id="overview">
+      <div class="card-eyebrow">Start Here</div>
+      <h2>What RCM OS Is — and Isn't</h2>
+      <p class="lede">RCM OS is the <strong style="color:var(--text)">map of the close</strong>, not the engine that runs it. It sequences your daily entries, weekly sweeps, and month-end close into one cadence, and tells you exactly which module owns each step — but the actual postings, reconciliations, and reports still happen inside the individual app files (finops-operations.html, finops-accounting.html, compliance.html, and the rest).</p>
+      <p>Think of RCM OS as the checklist and dashboard that sits above your existing tools. It answers three questions at any moment: <em>what do I do today, why does it matter, and which file do I open to actually do it?</em></p>
+      <div class="hero-chips">
+        <div class="hero-chip">Built for: Branch Staff · Controllers · CFO</div>
+        <div class="hero-chip">Covers: Daily · Weekly · Month-End · Annual</div>
+        <div class="hero-chip">9 connected modules</div>
+        <div class="hero-chip">🤖 Built-in AI Assistant</div>
+        <div class="hero-chip">Live relay intake from Doc Showcase</div>
+      </div>
+      <div class="callout">
+        <strong>Read this first:</strong> RCM OS's checklists and progress gauges reset every time the page reloads — there's no login or saved account state yet. Use it as a live working session (open it each morning, work through it, done for the day), not as a permanent system of record. The permanent record lives in finops-accounting.html's ledger and compliance.html's audit trail.
+      </div>
+    </div>
+
+    <!-- GETTING ORIENTED -->
+    <div class="card" id="orient">
+      <div class="card-eyebrow">Interface Guide</div>
+      <h2>Getting Oriented</h2>
+      <p class="lede">Every screen in RCM OS is built from the same handful of elements. Learn these once and every tab — Daily, Weekly, Month-End, Framework — reads the same way.</p>
+      <div class="elem-grid">
+        <div class="elem-row">
+          <div class="elem-name">Module Rail</div>
+          <div class="elem-desc">The left-hand column. <strong>Every connected app file</strong>, color-coded by category (Operations, Accounting, Compliance, Enterprise, Forecasting, Vendor, Logistics, Search). This is your directory — if you don't know which file to open, look here first.</div>
+        </div>
+        <div class="elem-row">
+          <div class="elem-name">Cadence Toggle</div>
+          <div class="elem-desc">Top bar buttons: <strong>Daily / Weekly / Month-End / Controller Framework / Executive</strong>. Switching tabs changes everything below it — the phases, the closing protocol, and the completion gauge all belong to whichever cadence is selected. Executive swaps the phase cards out for the Executive Summary — see <a href="#relay">Data Intake</a> below.</div>
+        </div>
+        <div class="elem-row">
+          <div class="elem-name">Relay-Received Modal</div>
+          <div class="elem-desc">Pops automatically the first time you land on RCM OS after sending a document over from FinOps Doc Showcase. Confirms the hand-off, names the document, and shows exactly which of the four engine outputs arrived and where each one routed. See <a href="#relay">Data Intake: Showcase → RCM OS</a>.</div>
+        </div>
+        <div class="elem-row">
+          <div class="elem-name">AI Assistant <span class="mono" style="color:var(--muted-dim)">(🤖 fab, bottom-right)</span></div>
+          <div class="elem-desc">A standing copilot, not a search box. Opens with the same ranked, severity-scored briefing as the Proactive Guidance card, and answers questions about how to use RCM OS or any connected module. See <a href="#assistant">The AI Assistant</a>.</div>
+        </div>
+        <div class="elem-row">
+          <div class="elem-name">Reconciliation Flow Board</div>
+          <div class="elem-desc">The horizontal chain (Daily Entry → Weekly Sweep → Month-End Close → Annual Cycle). It's clickable — click any node to jump straight to that cadence. It exists to remind you these aren't four separate systems; they're one data trail tightening in scope.</div>
+        </div>
+        <div class="elem-row">
+          <div class="elem-name">Completion Gauge</div>
+          <div class="elem-desc">Shows what percentage of the current cadence's tasks are checked off <strong>this session</strong>. Green (80%+) means you're on track to close clean; amber or red means items are still open.</div>
+        </div>
+        <div class="elem-row">
+          <div class="elem-name">Open Exceptions Gauge</div>
+          <div class="elem-desc">A placeholder count of unchecked tasks in the current cadence. Once compliance.html has a live flag feed, this should be wired to real exception data instead — see the note in the Module Directory below.</div>
+        </div>
+        <div class="elem-row">
+          <div class="elem-name">Phase Cards</div>
+          <div class="elem-desc">Each cadence breaks into 3–5 phases (e.g. "Morning Kickoff & Branch Controls"). Every phase names its <strong>owning module</strong>, the <strong>purpose</strong> of the work, and a checklist of concrete tasks. Check tasks off as you complete them in the real module.</div>
+        </div>
+        <div class="elem-row">
+          <div class="elem-name">Closing Protocol</div>
+          <div class="elem-desc">The lock-step sequence that ends each cadence (e.g. Cash-to-Ledger Matching → Exception Flagging → Daily Log Closure). This is the sign-off order — don't skip ahead to step 3 before step 1 is done.</div>
+        </div>
+        <div class="elem-row">
+          <div class="elem-name">Close Checklist <span class="mono" style="color:var(--muted-dim)">(Month-End only)</span></div>
+          <div class="elem-desc">The 12-item final sign-off list, organized around the <strong>ABCDE mnemonic</strong>. Nothing on this list should be a surprise if the daily and weekly cadences were followed all month.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- DATA INTAKE / RELAY -->
+    <div class="card" id="relay">
+      <div class="card-eyebrow">How Data Gets In</div>
+      <h2>Data Intake: FinOps Doc Showcase → RCM OS</h2>
+      <p class="lede">RCM OS doesn't sit in isolation — it's the landing pad for whatever FinOps Doc Showcase (finops-showcase-v1.html) just analyzed. This is the intended entry point for a real document, not just the module rail.</p>
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <div class="step-title">Run the engines in Doc Showcase</div>
+            <div class="step-desc">Upload or select a document in finops-showcase-v1.html and fire its analysis engines (triage, variance/risk, controller action plan, CFO brief). The <strong>⇄ SEND TO RCM OS</strong> button stays disabled until there's an actual analysis to relay — it won't let you send an empty run.</div>
+            <div class="step-tool">finops-showcase-v1.html</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <div class="step-title">Click ⇄ SEND TO RCM OS</div>
+            <div class="step-desc">The four engine outputs are staged server-side (with a localStorage fallback if the relay endpoint is unreachable) and the browser navigates you straight to tsm-rcm-os.html.</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <div class="step-title">The ✓ RELAY RECEIVED modal confirms the hand-off</div>
+            <div class="step-desc">On arrival, RCM OS checks for an unseen relay and — if found — opens a modal naming the document and timestamp, then lists exactly where each piece of the analysis routed:</div>
+            <table class="module-table" style="margin-top:10px;">
+              <thead><tr><th>Engine output</th><th>Routed to</th></tr></thead>
+              <tbody>
+                <tr><td class="mname-cell">Document Triage &amp; Flag Analysis</td><td class="mfile-cell" style="--mc:var(--risk);">Compliance Desk (compliance.html)</td></tr>
+                <tr><td class="mname-cell">Variance &amp; Risk Intelligence</td><td class="mfile-cell" style="--mc:var(--info);">Accounting Ledger (finops-accounting.html)</td></tr>
+                <tr><td class="mname-cell">Controller Action Plan</td><td class="mfile-cell" style="--mc:var(--amber);">Today's Cadence Tasks (Daily / Weekly view)</td></tr>
+                <tr><td class="mname-cell">CFO Executive Intelligence</td><td class="mfile-cell" style="--mc:var(--purple);">Executive Tab (this workspace)</td></tr>
+              </tbody>
+            </table>
+            <div class="step-desc" style="margin-top:10px;">Any route the current document didn't actually produce shows dimmed rather than disappearing — so you can see the full menu of what <em>could</em> arrive, not just what did. <strong>Dismiss</strong> closes it; <strong>View in Document Intake</strong> jumps you to the populated intake card.</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">4</div>
+          <div class="step-body">
+            <div class="step-title">Remediate from the Proactive Guidance card or the Assistant</div>
+            <div class="step-desc">Every routed item also feeds the ranked, severity-scored guidance queue (see <a href="#assistant">The AI Assistant</a>) — each entry names the concrete next action, which module owns it, why that's the right route, and what's at risk if it sits. That's the actual anomaly-remediation path: relay in, guidance ranks it, you act in the named module.</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">5</div>
+          <div class="step-body">
+            <div class="step-title">Switch to the Executive tab to see it rolled up</div>
+            <div class="step-desc">The Controller Action Plan and CFO Executive Intelligence blocks populate automatically once a document has been relayed. From there, <strong>↓ Export Executive Report</strong> compiles the cadence completion stats, open-exception count, Controller Action Plan, and CFO brief into one downloadable report — the closest thing RCM OS has today to a real one-click export.</div>
+            <div class="step-tool">Executive Tab</div>
+          </div>
+        </div>
+      </div>
+      <div class="callout">
+        <strong>Nothing relayed yet?</strong> The Executive tab and Document Intake card stay in an honest empty state ("No document has been relayed from FinOps Doc Showcase yet") rather than showing fabricated placeholder data.
+      </div>
+    </div>
+
+    <!-- AI ASSISTANT -->
+    <div class="card" id="assistant">
+      <div class="card-eyebrow">Copilot, Not Search Box</div>
+      <h2>The AI Assistant</h2>
+      <p class="lede">The 🤖 fab in the bottom-right corner is a standing copilot — it leads with guidance instead of waiting to be asked something.</p>
+      <div class="elem-grid">
+        <div class="elem-row">
+          <div class="elem-name">Opens with a briefing, not a greeting</div>
+          <div class="elem-desc">First open pulls the same ranked, severity-scored, next-best-action list shown on the Overview tab's Proactive Guidance card — so the assistant and the dashboard never disagree with each other; it's one guidance engine surfaced in two places.</div>
+        </div>
+        <div class="elem-row">
+          <div class="elem-name">Guides you through curing anomalies</div>
+          <div class="elem-desc">Each guidance item names the concrete next action, the module that owns it, why that's the right route, and what's at stake if it sits — a systematic path from "here's an anomaly" to "here's the exact tool and step to fix it," not just a flag.</div>
+        </div>
+        <div class="elem-row">
+          <div class="elem-name">Answers app questions too</div>
+          <div class="elem-desc">Ask it things like "how do I use the Compliance Desk?" and it answers grounded in a built-in knowledge base of RCM OS's modules and cadences, rather than guessing.</div>
+        </div>
+        <div class="elem-row">
+          <div class="elem-name">Degrades honestly, never fabricates</div>
+          <div class="elem-desc">If the Groq-backed guidance engine is unreachable, the assistant and the Proactive Guidance card fall back to a real keyword scan of the relayed data instead of inventing an answer — the feature narrows, it doesn't lie.</div>
+        </div>
+      </div>
+      <div class="callout warn">
+        <strong>Honest limitation:</strong> guidance quality depends on a live GROQ_API_KEY being configured. Without it, expect the fallback keyword-scan behavior described above rather than the full ranked analysis.
+      </div>
+    </div>
+
+    <!-- DAILY -->
+    <div class="card" id="daily">
+      <div class="card-eyebrow">Cadence Walkthrough</div>
+      <div class="cadence-pill" style="--sc:var(--amber); --sc-dim:var(--amber-dim);"><span class="dot"></span>DAILY · 6:00 AM – 6:00 PM</div>
+      <h2>Running Your Day in RCM OS</h2>
+      <p class="lede">Open the Daily tab first thing each morning. Work top to bottom — each phase feeds the next.</p>
+      <div class="steps">
+        <div class="step" style="--sc:var(--amber); --sc-dim:var(--amber-dim);">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <div class="step-title">Open finops-operations.html and clear Morning Kickoff</div>
+            <div class="step-desc">Pull the overnight cash receipt batch, verify queued AP invoices, and confirm yesterday's AR postings. Check off each task in RCM OS as you confirm it in the module — don't check a box you haven't actually verified.</div>
+            <div class="step-tool">finops-operations.html</div>
+          </div>
+        </div>
+        <div class="step" style="--sc:var(--info); --sc-dim:var(--info-dim);">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <div class="step-title">Switch to finops-accounting.html for Ledger & Expenditure Tracking</div>
+            <div class="step-desc">Post the day's journal entries and compare department burn rate to budget. Flag anything over a 5% variance right away — this is what prevents a surprise at the weekly sweep.</div>
+            <div class="step-tool">finops-accounting.html</div>
+          </div>
+        </div>
+        <div class="step" style="--sc:var(--risk); --sc-dim:var(--risk-dim);">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <div class="step-title">Mid-day, run the compliance.html exception review</div>
+            <div class="step-desc">Scan the compliance dashboard for flags, confirm missing-documentation requests went out, and escalate anything high-severity. This keeps audit-readiness a daily habit instead of a month-end scramble.</div>
+            <div class="step-tool">compliance.html</div>
+          </div>
+        </div>
+        <div class="step" style="--sc:var(--good); --sc-dim:var(--good-dim);">
+          <div class="step-num">4</div>
+          <div class="step-body">
+            <div class="step-title">Close the day with the Daily Reconciliation Protocol</div>
+            <div class="step-desc">Cash-to-Ledger Matching → Exception Flagging → Daily Log Closure. Once the ledger is locked, that day's entries are part of the immutable audit trail — treat lock as final.</div>
+            <div class="step-tool">finops-operations.html → compliance.html → finops-accounting.html</div>
+          </div>
+        </div>
+      </div>
+      <div class="callout">
+        <strong>Tip:</strong> If you're behind, don't skip a phase — finish it late rather than leave it unchecked. RCM OS's weekly sweep assumes every day's numbers are real.
+      </div>
+    </div>
+
+    <!-- WEEKLY -->
+    <div class="card" id="weekly">
+      <div class="card-eyebrow">Cadence Walkthrough</div>
+      <div class="cadence-pill" style="--sc:var(--info); --sc-dim:var(--info-dim);"><span class="dot"></span>WEEKLY · Every Friday, 1:00 – 4:00 PM</div>
+      <h2>Running Your Week in RCM OS</h2>
+      <p class="lede">Weekly is where you zoom out from single transactions to trends. Budget drift, compliance posture, and everything owed to vendors and carriers gets reviewed here — before it becomes a month-end surprise.</p>
+      <div class="steps">
+        <div class="step" style="--sc:var(--info); --sc-dim:var(--info-dim);">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <div class="step-title">Roll up the week in finops-accounting.html</div>
+            <div class="step-desc">Aggregate the week's journal entries by department, re-run the budget-to-actual threshold check, and review any unapplied cash or negative balances.</div>
+            <div class="step-tool">finops-accounting.html</div>
+          </div>
+        </div>
+        <div class="step" style="--sc:var(--risk); --sc-dim:var(--risk-dim);">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <div class="step-title">Spot-check controls in compliance.html</div>
+            <div class="step-desc">Confirm segregation-of-duties is holding, all of the week's flags were resolved, and documentation is complete for large transactions.</div>
+            <div class="step-tool">compliance.html</div>
+          </div>
+        </div>
+        <div class="step" style="--sc:var(--gold); --sc-dim:var(--gold-dim);">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <div class="step-title">Review liability in the Vendor Situation Room</div>
+            <div class="step-desc">Check outstanding vendor invoices and due dates, verify recurring subscription and contract costs, and flag any duplicate or disputed charges.</div>
+            <div class="step-tool">supplier-vendor-situation-room.html</div>
+          </div>
+        </div>
+        <div class="step" style="--sc:var(--good); --sc-dim:var(--good-dim);">
+          <div class="step-num">4</div>
+          <div class="step-body">
+            <div class="step-title">Sync operational exceptions in the Logistics Situation Room</div>
+            <div class="step-desc">Match freight or carrier disputes to pending AP holds, and confirm inventory receipts match vendor invoices — this is where operational problems become financial exposure.</div>
+            <div class="step-tool">logistics-situation-room.html</div>
+          </div>
+        </div>
+        <div class="step" style="--sc:var(--amber); --sc-dim:var(--amber-dim);">
+          <div class="step-num">5</div>
+          <div class="step-body">
+            <div class="step-title">Close the week with sign-off</div>
+            <div class="step-desc">Variance Sign-off → Compliance Attestation → Vendor Liability Snapshot. This snapshot becomes next week's baseline.</div>
+            <div class="step-tool">finops-accounting.html → compliance.html → supplier-vendor-situation-room.html</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MONTH-END -->
+    <div class="card" id="monthend">
+      <div class="card-eyebrow">Cadence Walkthrough</div>
+      <div class="cadence-pill" style="--sc:var(--purple); --sc-dim:var(--purple-dim);"><span class="dot"></span>MONTH-END · Last 3 business days</div>
+      <h2>Running Month-End in RCM OS</h2>
+      <p class="lede">This is the shift from daily maintenance to aggregate reporting. If the daily and weekly cadences were followed, month-end is packaging and sign-off — not discovery.</p>
+      <div class="steps">
+        <div class="step" style="--sc:var(--purple); --sc-dim:var(--purple-dim);">
+          <div class="step-num">1</div>
+          <div class="step-body">
+            <div class="step-title">Enterprise Performance & Variance Analysis</div>
+            <div class="step-desc">Pull cross-vertical posture scores, aggregate department budgets and actuals, and compare against the month's forecast.</div>
+            <div class="step-tool">tsm-finops-enterprise-management.html</div>
+          </div>
+        </div>
+        <div class="step" style="--sc:var(--cyan); --sc-dim:var(--cyan-dim);">
+          <div class="step-num">2</div>
+          <div class="step-body">
+            <div class="step-title">Scenario Modeling & Adjustment</div>
+            <div class="step-desc">Run predictive scenarios off this month's variance data, and document any operational levers to pull if a branch is trending over budget.</div>
+            <div class="step-tool">finops-scenarios.html</div>
+          </div>
+        </div>
+        <div class="step" style="--sc:var(--gold); --sc-dim:var(--gold-dim);">
+          <div class="step-num">3</div>
+          <div class="step-body">
+            <div class="step-title">Vendor & Accounts Ledger Audit</div>
+            <div class="step-desc">Reconcile all outstanding vendor invoices and confirm every vendor payment is fully accounted for before the books close.</div>
+            <div class="step-tool">supplier-vendor-situation-room.html</div>
+          </div>
+        </div>
+        <div class="step" style="--sc:var(--risk); --sc-dim:var(--risk-dim);">
+          <div class="step-num">4</div>
+          <div class="step-body">
+            <div class="step-title">Final Compliance & Audit Packaging</div>
+            <div class="step-desc">Generate the GAAP adherence report and assemble supporting documentation so everything satisfies internal controls and external regulators.</div>
+            <div class="step-tool">compliance.html</div>
+          </div>
+        </div>
+        <div class="step" style="--sc:var(--info); --sc-dim:var(--info-dim);">
+          <div class="step-num">5</div>
+          <div class="step-body">
+            <div class="step-title">Executive Reporting</div>
+            <div class="step-desc">Compile the income statement, balance sheet, and cash flow statement, draft the MD&A summary, and deliver the packaged report to branch leadership and the CFO.</div>
+            <div class="step-tool">finops-accounting.html + Enterprise Suite</div>
+          </div>
+        </div>
+      </div>
+      <h3>Then work the Close Checklist</h3>
+      <p>Once all five phases are done, switch to the Close Checklist card on the Month-End tab and work it top to bottom. It's organized around a simple mnemonic:</p>
+      <div class="mnemonic-row">
+        <div class="mnemonic-item"><span class="mnemonic-letter">A</span>Accrue unbilled expenses</div>
+        <div class="mnemonic-item"><span class="mnemonic-letter">B</span>Bank recon cleared</div>
+        <div class="mnemonic-item"><span class="mnemonic-letter">C</span>Cut off transactions</div>
+        <div class="mnemonic-item"><span class="mnemonic-letter">D</span>Depreciation posted</div>
+        <div class="mnemonic-item"><span class="mnemonic-letter">E</span>Export close package</div>
+      </div>
+    </div>
+
+    <!-- GENERATING REPORTS -->
+    <div class="card" id="reports">
+      <div class="card-eyebrow">Where the Numbers Actually Come From</div>
+      <h2>Generating Reports from RCM OS + Its Modules</h2>
+      <p class="lede">RCM OS doesn't generate reports itself — it tells you which module to open and in what order. Here's the recipe for the reports people ask for most, and exactly which module produces each one.</p>
+
+      <div class="recipe-card" style="--rc:var(--purple);">
+        <div class="recipe-top">
+          <div class="recipe-title">Executive Report (one-click export)</div>
+          <div class="recipe-freq">Any time, once a document has been relayed</div>
+        </div>
+        <div class="recipe-desc">The one real export button in RCM OS today. Switch to the Executive tab and click <strong>↓ Export Executive Report</strong> — it compiles cadence completion percentage, the open-exceptions count, the Controller Action Plan, and the CFO Executive Intelligence brief into a single downloadable file. Requires a document to have been relayed from FinOps Doc Showcase first; otherwise the Executive tab stays in its empty state.</div>
+        <div class="recipe-sources"><span class="src-tag">Executive Tab</span><span class="src-tag">finops-showcase-v1.html</span></div>
+      </div>
+
+      <div class="recipe-card" style="--rc:var(--info);">
+        <div class="recipe-top">
+          <div class="recipe-title">Daily Cash & Exception Snapshot</div>
+          <div class="recipe-freq">Daily, end of day</div>
+        </div>
+        <div class="recipe-desc">After the Daily Reconciliation Protocol locks the ledger, export the day's cash-to-ledger match results and any open compliance flags. This is the fastest read on "did today close clean."</div>
+        <div class="recipe-sources"><span class="src-tag">finops-operations.html</span><span class="src-tag">compliance.html</span></div>
+      </div>
+
+      <div class="recipe-card" style="--rc:var(--gold);">
+        <div class="recipe-top">
+          <div class="recipe-title">Weekly Vendor Liability & Variance Summary</div>
+          <div class="recipe-freq">Weekly, Friday close</div>
+        </div>
+        <div class="recipe-desc">Pull the budget-to-actual variance summary from the accounting ledger, then the outstanding invoice list from the Vendor Situation Room. Combine into one memo for branch leads: what drifted, and what's owed.</div>
+        <div class="recipe-sources"><span class="src-tag">finops-accounting.html</span><span class="src-tag">supplier-vendor-situation-room.html</span></div>
+      </div>
+
+      <div class="recipe-card" style="--rc:var(--purple);">
+        <div class="recipe-top">
+          <div class="recipe-title">Month-End Executive Pack (Balance Sheet + P&amp;L + MD&amp;A)</div>
+          <div class="recipe-freq">Monthly, close week</div>
+        </div>
+        <div class="recipe-desc">This is the big one, and it's a compile job, not a single export:
+          <br>1) Trial balance and GL detail from the accounting ledger.
+          <br>2) Cross-vertical posture and variance from the Enterprise Suite.
+          <br>3) Vendor liability position from the Vendor Situation Room.
+          <br>4) Compliance and audit-trail sign-off from the Compliance Desk.
+          <br>Stack these in that order, write the MD&A summary over them, and that's your executive pack.</div>
+        <div class="recipe-sources"><span class="src-tag">finops-accounting.html</span><span class="src-tag">tsm-finops-enterprise-management.html</span><span class="src-tag">supplier-vendor-situation-room.html</span><span class="src-tag">compliance.html</span></div>
+      </div>
+
+      <div class="recipe-card" style="--rc:var(--risk);">
+        <div class="recipe-top">
+          <div class="recipe-title">Compliance & Audit Trail Export</div>
+          <div class="recipe-freq">Weekly spot-check · full export at month-end</div>
+        </div>
+        <div class="recipe-desc">Generate the GAAP adherence report and export the append-only audit log. This is what you hand an external auditor — it should never need reconstruction after the fact, because it was built daily.</div>
+        <div class="recipe-sources"><span class="src-tag">compliance.html</span></div>
+      </div>
+
+      <div class="recipe-card" style="--rc:var(--cyan);">
+        <div class="recipe-top">
+          <div class="recipe-title">Forward-Looking Scenario Brief</div>
+          <div class="recipe-freq">Monthly, before the new period opens</div>
+        </div>
+        <div class="recipe-desc">Run a scenario off the current month's real variance data, and document the levers you'd pull if a branch is trending over budget. Attach this to the executive pack as the "what we're watching next month" section.</div>
+        <div class="recipe-sources"><span class="src-tag">finops-scenarios.html</span></div>
+      </div>
+
+      <div class="callout warn">
+        <strong>Honest limitation:</strong> outside of the Executive Report export above, the module files referenced here are demo/blueprint tools today — most don't yet have a one-click "export PDF" button. Until they do, "generating a report" means opening the relevant module, reading off the current figures, and compiling them into your document or slide of choice. Treat those recipes as the assembly order, not a literal export button to click.
+      </div>
+    </div>
+
+    <!-- MODULE DIRECTORY -->
+    <div class="card" id="modules">
+      <div class="card-eyebrow">Reference</div>
+      <h2>Module Directory</h2>
+      <p class="lede">Every file connected to RCM OS, what it's for, and the report it's the source of truth for.</p>
+      <table class="module-table">
+        <thead><tr><th>Module</th><th>File</th><th>What it's for</th><th>Source of truth for</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="mname-cell">Branch Operations</td>
+            <td class="mfile-cell" style="--mc:var(--amber);">finops-operations.html</td>
+            <td>Daily cash receipts, AP/AR transaction entry, invoice processing</td>
+            <td class="report-cell">Daily cash-to-ledger match, invoice batches</td>
+          </tr>
+          <tr>
+            <td class="mname-cell">Accounting Ledger</td>
+            <td class="mfile-cell" style="--mc:var(--info);">finops-accounting.html</td>
+            <td>Journal entries, trial balance, budget-to-actual tracking</td>
+            <td class="report-cell">Trial balance, GL detail, budget variance report</td>
+          </tr>
+          <tr>
+            <td class="mname-cell">Compliance Desk</td>
+            <td class="mfile-cell" style="--mc:var(--risk);">compliance.html</td>
+            <td>Exception flags, SoD checks, GAAP adherence, audit trail</td>
+            <td class="report-cell">Audit trail export, GAAP adherence report</td>
+          </tr>
+          <tr>
+            <td class="mname-cell">Tax Intelligence</td>
+            <td class="mfile-cell" style="--mc:var(--purple);">tax.html</td>
+            <td>AI-assisted tax workpapers, filing status tracking, 1099/W-9 compliance, audit-readiness scoring</td>
+            <td class="report-cell">Tax filing status report, 1099 compliance summary</td>
+          </tr>
+          <tr>
+            <td class="mname-cell">Financial Intelligence</td>
+            <td class="mfile-cell" style="--mc:var(--gold);">finance-index.html</td>
+            <td>Groq-backed AI chat and audit-query engine across Dashboard/Reports/Audit/Invoices/Health, with a real persisted, retrievable audit log (including failed runs)</td>
+            <td class="report-cell">Audit history export, ad-hoc financial Q&amp;A</td>
+          </tr>
+          <tr>
+            <td class="mname-cell">Scenario Modeling</td>
+            <td class="mfile-cell" style="--mc:var(--cyan);">finops-scenarios.html</td>
+            <td>Predictive financial scenario runs, lever modeling</td>
+            <td class="report-cell">Forward-looking scenario brief</td>
+          </tr>
+          <tr>
+            <td class="mname-cell">Vendor Situation Room</td>
+            <td class="mfile-cell" style="--mc:var(--gold);">supplier-vendor-situation-room.html</td>
+            <td>Outstanding invoices, contract/subscription tracking, vendor disputes</td>
+            <td class="report-cell">AP liability position, vendor audit</td>
+          </tr>
+          <tr>
+            <td class="mname-cell">Logistics Situation Room</td>
+            <td class="mfile-cell" style="--mc:var(--good);">logistics-situation-room.html</td>
+            <td>Shipping/inventory exceptions, carrier disputes</td>
+            <td class="report-cell">Logistics exception → financial exposure sync</td>
+          </tr>
+          <tr>
+            <td class="mname-cell">Document Search</td>
+            <td class="mfile-cell" style="--mc:var(--muted);">finops-showcase-v1.html</td>
+            <td>Cross-file search for supporting evidence and documentation — and the actual intake point that relays a document's analysis into RCM OS (see <a href="#relay">Data Intake</a>)</td>
+            <td class="report-cell">Evidence lookup for audit packaging</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="callout">
+        <strong>Next build candidate:</strong> wire the Open Exceptions gauge on the RCM OS overview card to compliance.html's real flag feed once that module has an API or shared data layer, rather than deriving it from unchecked RCM OS tasks.
+      </div>
+    </div>
+
+    <!-- QUICK REFERENCE -->
+    <div class="card" id="reference">
+      <div class="card-eyebrow">Cheat Sheet</div>
+      <h2>Quick Reference</h2>
+      <p class="lede">The accounting basics that make every checklist item above make sense.</p>
+      <div class="qr-flex">
+        <div>
+          <h3>Debit / Credit Rules</h3>
+          <table class="dc-table">
+            <thead><tr><th>Account Type</th><th>To Increase</th><th>To Decrease</th></tr></thead>
+            <tbody>
+              <tr><td class="acct-type">Assets</td><td>Debit</td><td>Credit</td></tr>
+              <tr><td class="acct-type">Liabilities</td><td>Credit</td><td>Debit</td></tr>
+              <tr><td class="acct-type">Revenue</td><td>Credit</td><td>Debit</td></tr>
+              <tr><td class="acct-type">Expenses</td><td>Debit</td><td>Credit</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div>
+          <h3>Month-End Mnemonic</h3>
+          <div class="mnemonic-row" style="margin-top:0; flex-direction:column; align-items:flex-start; gap:8px;">
+            <div class="mnemonic-item"><span class="mnemonic-letter">A</span>Accrue unbilled expenses</div>
+            <div class="mnemonic-item"><span class="mnemonic-letter">B</span>Bank recon cleared</div>
+            <div class="mnemonic-item"><span class="mnemonic-letter">C</span>Cut off transactions</div>
+            <div class="mnemonic-item"><span class="mnemonic-letter">D</span>Depreciation posted</div>
+            <div class="mnemonic-item"><span class="mnemonic-letter">E</span>Export close package</div>
+          </div>
+        </div>
+      </div>
+
+      <h3>Key GL Accounts</h3>
+      <table class="gl-table">
+        <thead><tr><th>Acct</th><th>Name</th><th>Type</th><th>Rule</th></tr></thead>
+        <tbody>
+          <tr><td class="acct-num">1000</td><td class="acct-name">Cash & Cash Equivalents</td><td>Asset</td><td>Debit to increase</td></tr>
+          <tr><td class="acct-num">1100</td><td class="acct-name">Accounts Receivable</td><td>Asset</td><td>Debit to increase</td></tr>
+          <tr><td class="acct-num">1500</td><td class="acct-name">Prepaid Expenses</td><td>Asset</td><td>Debit to increase</td></tr>
+          <tr><td class="acct-num">1600</td><td class="acct-name">Fixed Assets (PP&amp;E)</td><td>Asset</td><td>Debit to increase</td></tr>
+          <tr><td class="acct-num">1601</td><td class="acct-name">Accumulated Depreciation</td><td>Asset (contra)</td><td>Credit to increase</td></tr>
+          <tr><td class="acct-num">2000</td><td class="acct-name">Accounts Payable</td><td>Liability</td><td>Credit to increase</td></tr>
+          <tr><td class="acct-num">2150</td><td class="acct-name">Accrued Liabilities</td><td>Liability</td><td>Credit to increase</td></tr>
+          <tr><td class="acct-num">4000</td><td class="acct-name">Revenue</td><td>Revenue</td><td>Credit to increase</td></tr>
+          <tr><td class="acct-num">5010</td><td class="acct-name">Cost of Goods Sold</td><td>Expense</td><td>Debit to increase</td></tr>
+          <tr><td class="acct-num">6120</td><td class="acct-name">Bank Service Charges</td><td>Expense</td><td>Debit to increase</td></tr>
+          <tr><td class="acct-num">6140</td><td class="acct-name">Legal & Professional</td><td>Expense</td><td>Debit to increase</td></tr>
+          <tr><td class="acct-num">6200</td><td class="acct-name">Office Supplies</td><td>Expense</td><td>Debit to increase</td></tr>
+          <tr><td class="acct-num">6300</td><td class="acct-name">Depreciation Expense</td><td>Expense</td><td>Debit to increase</td></tr>
+          <tr><td class="acct-num">6400</td><td class="acct-name">Insurance Expense</td><td>Expense</td><td>Debit to increase</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- GLOSSARY / FAQ -->
+    <div class="card" id="glossary">
+      <div class="card-eyebrow">Definitions</div>
+      <h2>Glossary &amp; FAQ</h2>
+      <p class="lede">Click a question to expand it.</p>
+      <div id="faqList"></div>
+    </div>
+
+  </div>
+</div>
+
+<div class="footer-note">
+  This guide describes TSM RCM OS as of the current build. As modules gain live data feeds and export functions,<br>
+  the "Generating Reports" section above should be the first thing updated.
+</div>
+
+<script>
+const FAQ = [
+  {q:"What is Segregation of Duties (SoD)?", a:"A control that prevents one person from controlling every step of a transaction. In practice: the person who initiates a payment can't also approve or release it. In this system, invoices over a set dollar threshold route to a second approver automatically."},
+  {q:"What's a 3-Way Match?", a:"Verifying that the Purchase Order, the Invoice, and the Receipt all agree before an AP payment is released. Discrepancies between the three should auto-flag rather than post silently."},
+  {q:"What's the difference between a hard-close and a soft-close?", a:"A soft-close allows adjustments within the current period without extra approval. A hard-close locks the period entirely — any change after that point needs dual-authorization sign-off and leaves an audit note."},
+  {q:"What does a Trial Balance prove?", a:"That total debits equal total credits across every GL account. If they don't match, there's an unposted or single-sided entry somewhere that has to be found and fixed before the books can close."},
+  {q:"What's the difference between an accrual and a prepaid?", a:"A prepaid is cash paid in advance for value you'll receive later — it starts as an asset and becomes an expense over time (amortization). An accrual is the opposite: you recognize the expense and a liability now, before cash changes hands, then reverse it when the actual invoice arrives."},
+  {q:"What is a reversing journal entry?", a:"A journal entry that automatically posts its exact opposite on the first day of the next period. Used with accruals so the same expense isn't counted twice — once when accrued, and again when the real invoice posts."},
+  {q:"What are DSO and DPO?", a:"Days Sales Outstanding measures how long it takes to collect from customers after a sale. Days Payable Outstanding measures how long you take to pay vendors. Together they show your cash-conversion cycle and working-capital health."},
+  {q:"What counts as a 'budget variance' worth flagging?", a:"In this framework, anything exceeding roughly a 5% deviation from budget at the department level should be flagged and investigated — not just noted and moved past."},
+  {q:"Why does RCM OS reset my checkboxes when I reload the page?", a:"The current build keeps checklist state only in memory for the session, with no backend or login yet. It's a working session tool today, not a permanent tracker — the durable record is still whatever you post inside finops-accounting.html and compliance.html."},
+  {q:"I don't see a report export button anywhere — how do I actually deliver a report?", a:"Most of the connected modules are demo/blueprint tools without one-click export yet. For now, treat the 'Generating Reports' section above as an assembly recipe: open each source module, read the current figures, and compile them into whatever document format your team delivers in."}
+];
+
+function renderFAQ(){
+  const el = document.getElementById('faqList');
+  el.innerHTML = FAQ.map((f,i)=>`
+    <div class="faq-item" data-i="${i}">
+      <div class="faq-q"><span>${f.q}</span><span class="chev">+</span></div>
+      <div class="faq-a">${f.a}</div>
+    </div>
+  `).join('');
+  el.querySelectorAll('.faq-item').forEach(item=>{
+    item.querySelector('.faq-q').addEventListener('click', ()=>{
+      item.classList.toggle('open');
+    });
+  });
+}
+renderFAQ();
+
+// Scrollspy for TOC
+const sections = document.querySelectorAll('.stage > .card[id]');
+const links = document.querySelectorAll('.toc-link');
+function updateActive(){
+  let current = sections[0]?.id;
+  sections.forEach(s=>{
+    if(window.scrollY + 120 >= s.offsetTop) current = s.id;
+  });
+  links.forEach(l=>l.classList.toggle('active', l.getAttribute('href') === '#'+current));
+}
+window.addEventListener('scroll', updateActive);
+updateActive();
+</script>
+
+</body>
+</html>
