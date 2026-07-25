@@ -11,16 +11,45 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 const https = require('https');
+const multer = require('multer');
+const sentinelUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 } // 10MB per file, plenty for contracts/claims docs
+});
 
 const app = express();
 const PORT = process.env.PORT || 8080;
 const HTML_ROOT = path.join(__dirname, "html");
 // AUTH REMOVED — in-house use only
 // const { tsmAuthMiddleware } = require('./html/tsm-auth');
+const { requireAuth, signSession, verifySession, getCookie, SESSION_TTL_MS } = require('./middleware/require-auth');
 
 app.use(express.json());
 app.use(require('express').urlencoded({ extended: false }));
 // tsmAuthMiddleware(app); // removed — war rooms are in-house
+
+app.post('/api/auth/login', (req, res) => {
+  const { password } = req.body || {};
+  if (!process.env.TSM_ADMIN_PASSWORD || !process.env.TSM_SESSION_SECRET) {
+    return res.status(500).json({ ok: false, error: 'Auth not configured on server' });
+  }
+  if (!password || password !== process.env.TSM_ADMIN_PASSWORD) {
+    return res.status(401).json({ ok: false, error: 'Invalid password' });
+  }
+  const token = signSession({ exp: Date.now() + SESSION_TTL_MS });
+  res.setHeader('Set-Cookie',
+    `tsm_session=${encodeURIComponent(token)}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${SESSION_TTL_MS / 1000}`);
+  res.json({ ok: true });
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  res.setHeader('Set-Cookie', 'tsm_session=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0');
+  res.json({ ok: true });
+});
+
+app.get('/api/auth/status', (req, res) => {
+  res.json({ ok: true, authenticated: !!verifySession(getCookie(req, 'tsm_session')) });
+});
 
 // ── GLOBAL NO-CACHE ───────────────────────────────────────────────────────────
 app.use((req, res, next) => {
@@ -39,39 +68,48 @@ app.use((req, res, next) => {
 // ── GROQ AI ENGINE ────────────────────────────────────────────────────────────
 // Primary: fetch-based (reliable on Railway)
 const GROQ_MODELS = [
-  'llama-3.3-70b-versatile',
+  'openai/gpt-oss-120b',
+  'openai/gpt-oss-20b',
   'llama-3.1-8b-instant',
   'llama3-8b-8192',
   'gemma2-9b-it'
 ];
 
-async function groqChat(system, message, maxTokens, clientKey) {
-  const groqKey = process.env.GROQ_KEY || process.env.GROQ_API_KEY || clientKey;
+async function groqChat(system, message, maxTokens, clientKey, jsonMode) {
+  const groqKey = process.env.GROQ_API_KEY || process.env.GROQ_KEY || clientKey;
   if (!groqKey) throw new Error('No Groq API key configured (server env missing and no client key provided)');
   for (const model of GROQ_MODELS) {
-    try {
-      const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + groqKey, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+    for (const useJsonMode of (jsonMode ? [true, false] : [false])) {
+      try {
+        const body = {
           model,
           max_tokens: maxTokens,
           messages: [{ role: 'system', content: system }, { role: 'user', content: message }]
-        })
-      });
-      if (!r.ok) {
-        const err = await r.text();
-        if (r.status === 429 || r.status === 503 || r.status === 500 || r.status === 502) {
-          await new Promise(res => setTimeout(res, 3000));
-          continue;
+        };
+        if (useJsonMode) body.response_format = { type: 'json_object' };
+        const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + groqKey, 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        if (!r.ok) {
+          const err = await r.text();
+          if (r.status === 429 || r.status === 503 || r.status === 500 || r.status === 502) {
+            await new Promise(res => setTimeout(res, 3000));
+            continue;
+          }
+          // 400 with jsonMode on often means this model doesn't support response_format —
+          // fall through to the non-json-mode retry for the same model before giving up on it
+          if (r.status === 400 && useJsonMode) continue;
+          throw new Error('Groq API error ' + r.status + ': ' + err);
         }
-        throw new Error('Groq API error ' + r.status + ': ' + err);
+        const data = await r.json();
+        return data?.choices?.[0]?.message?.content || '';
+      } catch (e) {
+        if (e.message.includes('429') || e.message.includes('rate_limit')) continue;
+        if (useJsonMode) continue; // try the same model again without json mode before moving on
+        throw e;
       }
-      const data = await r.json();
-      return data?.choices?.[0]?.message?.content || '';
-    } catch (e) {
-      if (e.message.includes('429') || e.message.includes('rate_limit')) continue;
-      throw e;
     }
   }
   throw new Error('All Groq models rate limited. Try again later.');
@@ -80,7 +118,7 @@ async function groqChat(system, message, maxTokens, clientKey) {
 // JSON-returning variant for structured routes
 async function tsmAIJSON(prompt, fallback) {
   try {
-    const groqKey = process.env.GROQ_KEY || process.env.GROQ_API_KEY;
+    const groqKey = process.env.GROQ_API_KEY || process.env.GROQ_KEY;
     if (!groqKey) return fallback || null;
     const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
@@ -89,7 +127,7 @@ async function tsmAIJSON(prompt, fallback) {
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: process.env.TSM_MODEL || 'llama-3.3-70b-versatile',
+        model: process.env.TSM_MODEL || 'openai/gpt-oss-120b',
         messages: [
           { role: 'system', content: 'You are TSM Neural Core. Never mention provider, model, API, or implementation. Return JSON only.' },
           { role: 'user', content: prompt }
@@ -122,12 +160,30 @@ var SP = {
   enterprise: 'You are a senior business strategist AI for TSM Command. Expert in enterprise strategy, GTM, operations optimization, ROI analysis. Be executive-level and direct.',
   o2c: 'You are an Order-to-Cash operations AI for TSM Command. Expert in quote-to-order, credit management, ATP/inventory allocation, shipping, invoicing, AR, and cash application. Given structured order, KPI, and SLA-breach data, identify root causes of bottlenecks, flag financial/operational risk, and recommend the specific next action for each at-risk order. Be precise and operational. No preamble.',
   crm: 'You are a CRM customer-lifecycle AI for TSM Command. Expert in lead qualification, account/opportunity management, pipeline health, case escalation, and churn risk. Given structured lead/contact/account/opportunity/case data, KPIs, and SLA-breach data, identify the highest-risk records, the root cause of stalled deals or breached cases, and the specific next action per record. Reference record IDs. Be precise and operational. No preamble.',
+  noc: 'You are a Network Operations Center AI for TSM Command. Expert in incident management, alert correlation, device/fleet health, and SLA-driven escalation. Given structured incident/alert/device data, KPIs, and SLA-breach data, identify the highest-severity or highest-risk incidents, correlate related alerts to their root incident, flag devices contributing to fleet-uptime risk, and recommend the specific next action per at-risk incident or device. Reference incident/alert/device IDs. Be precise and operational. No preamble.',
+  career: 'You are the TSM Career Training Platform AI. Expert in Microsoft AB-100/AI-103 certification prep, presales interview coaching, and enterprise AI vocabulary (Copilot Studio, Azure AI, HITL, RAG, multi-agent). Answer exactly what is asked — explanations, practice questions, scenarios, or grading — concisely and directly. No preamble, no markdown headers unless the prompt specifically asks for structured output.',
   approval: 'You are an Enterprise Approval Center AI for TSM Command. Expert in multi-level approval workflows, delegation rules, escalation management, SLA compliance, and audit governance. Given structured approval request data, KPIs, SLA breaches, and attention flags, identify bottlenecks, escalation risks, and the specific next action per at-risk request. Reference request IDs. Be precise and operational. No preamble.',
   cpq: 'You are a CPQ (Configure-Price-Quote) operations AI for TSM Command. Expert in product configuration, compatibility rules, discount policy, margin management, quote lifecycle, and approval workflows. Given structured quote pipeline, KPI, and SLA-breach data, identify configuration conflicts, margin risks, stalled quotes, and the specific next action per at-risk quote. Reference quote IDs. Be precise and operational. No preamble.',
   catalog: 'You are a Product Catalog Management AI for TSM Command. Expert in product hierarchy, lifecycle management, SKU/variant management, bill of materials, compliance tracking, inventory linkage, and pricing synchronization. Given structured product catalog data, KPIs, and attention flags (low-stock, compliance, end-of-life), identify catalog data-quality risks, lifecycle bottlenecks, and the specific next action per flagged product. Reference SKUs/product IDs. Be precise and operational. No preamble.',
+  governance: 'You are a Governance & Compliance AI for TSM Command. Expert in internal controls, risk management, regulatory compliance frameworks, and audit oversight. Given structured control status, open risks, and flagged audit events, identify the highest-priority failing or at-risk controls, the risks most likely to escalate, and any suspicious or flagged audit events requiring follow-up. Reference control IDs and risk IDs. Be precise and operational. No preamble.',
   strategist: 'You are the TSM Sovereign Strategist — the ultimate business consultant AI. Deep expertise across healthcare, financial, legal, real estate, construction, insurance, education, hospitality, enterprise strategy, M&A, GTM. Be bold and transformative.',
   mdm: 'You are a Master Data Management AI for TSM Command. Expert in data stewardship, golden-record strategy, duplicate resolution, validation rule design, and data quality governance. Given structured master-record data, duplicate-match clusters, and quality scores across customer/vendor/GL domains, identify the highest-risk data anomalies, recommend which record in each duplicate cluster should survive a merge and why, and flag stewardship or validation-rule gaps. Reference record IDs. Be precise and operational. No preamble.',
-  integration: 'You are an Enterprise Integration AI for TSM Command. Expert in API monitoring, event-driven architecture, ETL pipelines, message queue health, and data lineage across CRM/ERP/HR/Finance/Supply Chain/Manufacturing/BI/AI systems. Given system health, integration flow throughput/latency, message queue depth, ETL job status, and recent error events, identify the highest-risk integration failures or bottlenecks, trace root cause across the affected flow, and recommend specific remediation. Reference system and flow IDs. Be precise and operational. No preamble.'
+  integration: 'You are an Enterprise Integration AI for TSM Command. Expert in API monitoring, event-driven architecture, ETL pipelines, message queue health, and data lineage across CRM/ERP/HR/Finance/Supply Chain/Manufacturing/BI/AI systems. Given system health, integration flow throughput/latency, message queue depth, ETL job status, and recent error events, identify the highest-risk integration failures or bottlenecks, trace root cause across the affected flow, and recommend specific remediation. Reference system and flow IDs. Be precise and operational. No preamble.',
+  digitalTwin: 'You are the Enterprise Digital Twin AI for TSM Command. Expert in cross-domain business simulation across Sales, Finance, Operations, Manufacturing, Procurement, HR, Customer Service, Supply Chain, Logistics, and IT Ops. Given structured domain health scores, live signal feed, and 30-day forecast data, synthesize an executive brief: identify the domains driving the biggest swings in enterprise health, the highest-priority cross-domain risk, and the single most important executive action this week. Reference domain names and specific figures. Be precise and operational. No preamble.',
+  l1Assistant: 'You are the L1 Ticket Copilot Assistant for TSM Command IT support. ' +
+    'A tier-1 technician will describe a live scenario in their own words — a ticket ' +
+    'they are stuck on, an error message, a user complaint, or a "what should I do here" ' +
+    'question. Give fast, practical, best-practice guidance a working L1 tech can act on ' +
+    'immediately. Structure every answer as: (1) likely root cause in one line, ' +
+    '(2) the 2-4 concrete next steps in order, (3) when to escalate and to whom ' +
+    '(L2, vendor, or manager) if the steps do not resolve it. If the scenario mentions ' +
+    'Dell hardware, factor in ProSupport vs Basic warranty guidance and what info ' +
+    '(service tag / express service code) to have ready before contacting Dell. ' +
+    'Be concise, no filler, no preamble, plain operational language a technician can ' +
+    'read in a few seconds mid-ticket.',
+  l1support: 'You are a Senior Network and Systems Engineer acting as the decision-making core of TSM L1 Ticket Copilot, a desktop/network support triage tool. You have 15+ years of enterprise IT experience across Windows/macOS endpoint management, Active Directory/Entra ID, DNS/DHCP, VLAN and routing, firewall/ACL policy, VPN and SD-WAN, virtualization, Microsoft 365/Azure, and OEM hardware (Dell, HP, Lenovo, Cisco, Meraki, Fortinet). Triage every ticket in OSI-layer order — physical/hardware first, then link/network (VLAN, switchport, DHCP, DNS), then transport/session (VPN, firewall, auth/SSO/MFA), then application — and do not skip layers. Distinguish clearly between an L1-actionable fix, a fix that needs elevated/L2 access, and a fix that needs vendor hardware service, and say which one applies and why. When recommending escalation, name the correct team (Desktop, Network, Server, Azure, O365, Security, Application, or Vendor) based on where in the stack the root cause actually sits, not just ticket category. Be precise, operational, and quantify confidence and risk where you can. No filler, no preamble, no restating the question back.',
+  vmware: 'You are a VMware Virtualization & Cloud Operations SME acting as the decision-making core of the TSM VMware Infrastructure Copilot. You have deep, current operational expertise across vCenter, vRealize Automation (vRA)/Aria Automation, vRealize Orchestrator (vRO), VMware Cloud Director (VCD), NSX, vSAN, and the surrounding IaC tooling (PowerCLI, Terraform vSphere/VCD providers, vRO scriptable tasks, REST APIs). Given pasted logs, config, Blueprint/vORG YAML, NSX errors, or a plain-English description of a failure, you: (1) identify what the artifact/error actually is, (2) state the most probable root cause ranked by likelihood, (3) give the safest remediation path with exact commands (PowerCLI cmdlets, REST calls, or CLI) where applicable, (4) flag operational risk (production impact, snapshot/rollback needs, downtime), and (5) state whether this is L1/L2-actionable or needs escalation to the VMware admin/platform team and why. When asked to generate a script (PowerCLI, Terraform, vRO scriptable task, REST call), produce complete, runnable code with brief inline comments — assume the operator understands VMware but wants to move fast, not a tutorial. No filler, no preamble, no restating the question back.',
+  cloudops: 'You are a Multi-Cloud Operations SME (Azure, AWS, and Azure VMware Solution / VMware Cloud on AWS / Google Cloud VMware Engine) acting as the decision-making core of the TSM Cloud Operations Copilot. You have deep operational expertise across Azure (VMs, VNets, NSGs, Azure AD/Entra, ARM/Bicep, Azure NetApp Files), AWS (EC2, VPC, IAM, S3, FSx ONTAP), and hybrid VMware-on-cloud fabric (AVS, VMC on AWS, GCVE). Given pasted logs, error output, resource config, or a plain-English description, you: (1) identify the artifact/error, (2) rank probable root causes, (3) give the safest remediation with exact CLI/portal steps, (4) flag blast radius and rollback considerations, (5) state whether this is self-service-actionable or needs escalation and to which team (Cloud Platform, Networking, Security/IAM, or the vendor). When asked to generate infrastructure-as-code (Terraform, ARM, Bicep, Azure CLI, AWS CLI), produce complete, runnable code with brief inline comments. No filler, no preamble, no restating the question back.',
 };
 
 // ── GLOBAL STATE ──────────────────────────────────────────────────────────────
@@ -148,6 +204,15 @@ const TSM_MESH = {
 };
 
 app.use('/html/runtime', express.static(path.join(__dirname, 'html', 'runtime')));
+// FIX (shadow-duplication routing bug): these two MUST be registered before
+// the '/' catch-all below. html/runtime/kernel/canonical-core.js is a stale
+// 7-line stub; the real CanonicalCore class lives at repo-root
+// runtime/kernel/canonical-core.js. Express matches static mounts in
+// registration order, so if the catch-all comes first, it silently serves
+// the stub for every /runtime/* request and this mount never runs.
+app.use('/runtime', express.static(path.join(__dirname, 'runtime'), { setHeaders: (res) => res.setHeader('Cache-Control', 'no-store') }));
+app.use('/architecture', express.static(path.join(__dirname, 'architecture'), { setHeaders: (res) => res.setHeader('Cache-Control', 'no-store') }));
+app.use('/core', express.static(path.join(__dirname, 'core')));
 app.use('/', express.static(path.join(__dirname, 'html')));
 const suites = [
   { route: '/construction', dir: 'html/construction-suite', index: 'construction-hub.html' },
@@ -158,18 +223,6 @@ const suites = [
 ];
 
 // ── HEALTH & STUB ROUTES ──────────────────────────────────────────────────────
-app.post('/api/re/query', async (req, res) => {
-  try { const a = await groqChat(SP.mortgage, req.body.message||req.body.question||req.body.query||'', req.body.maxTokens||1024); return res.json({ ok:true, answer:a, output:a }); }
-  catch(e){ return res.status(500).json({ ok:false, error:e.message }); }
-});
-app.post('/api/education/query', async (req, res) => {
-  try { const a = await groqChat(SP.education, req.body.message||req.body.question||req.body.query||'', req.body.maxTokens||1024); return res.json({ ok:true, answer:a, output:a }); }
-  catch(e){ return res.status(500).json({ ok:false, error:e.message }); }
-});
-app.post('/api/enterprise/query', async (req, res) => {
-  try { const a = await groqChat(SP.enterprise, req.body.message||req.body.question||req.body.query||'', req.body.maxTokens||1024); return res.json({ ok:true, answer:a, output:a }); }
-  catch(e){ return res.status(500).json({ ok:false, error:e.message }); }
-});
 app.post('/api/re/query', async (req, res) => {
   try { const a = await groqChat(SP.mortgage, req.body.message||req.body.question||req.body.query||'', req.body.maxTokens||1024); return res.json({ ok:true, answer:a, output:a, reply:a }); }
   catch(e){ return res.status(500).json({ ok:false, error:e.message }); }
@@ -187,7 +240,7 @@ app.post('/api/bpo/query', async (req, res) => {
   try {
     const sys = 'You are a BPO operations intelligence AI for TSM Command. Expert in BPO, workforce management, SLA performance, staffing ops. Be direct.';
     const msg = req.body.message || req.body.question || req.body.query || '';
-    const a = await groqChat(sys, msg, req.body.maxTokens || 1024);
+    const a = await groqChat(sys, msg, req.body.maxTokens || 2200);
     return res.json({ ok: true, reply: a, answer: a, output: a, createdAt: new Date().toISOString() });
   } catch (e) { return res.status(500).json({ ok: false, error: e.message }); }
 });
@@ -216,6 +269,9 @@ app.use('/bpo', express.static(path.join(__dirname, 'html/bpo')));
 app.use('/shared', express.static(path.join(__dirname, 'html/bpo/shared')));
 app.use('/insurance', express.static(path.join(__dirname, 'html/tsm-insurance')));
 app.use('/construction', express.static(path.join(__dirname, 'html/construction-suite')));
+// NOTE: /runtime and /architecture mounts now live earlier in this file
+// (right after the '/html/runtime' mount, before the '/' catch-all) so they
+// can't be shadowed by stale files inside html/. See fix note there.
 app.use(express.static(dirPath));
 
 // ── HC NODE ROUTES ────────────────────────────────────────────────────────────
@@ -244,7 +300,7 @@ app.post('/api/hc/query', async (req, res) => {
     var sys = body.system || SP.healthcare;
     var msg = body.message || body.question || body.query;
     if (!msg) return res.status(400).json({ ok: false, error: 'Query required' });
-    var a = await groqChat(sys, msg, body.maxTokens || 1024);
+    var a = await groqChat(sys, msg, body.maxTokens || 2200);
     console.log('[HC QUERY DEBUG] a =', JSON.stringify(a));
     return res.json({ ok: true, output: a, answer: a, reply: a, content: a, createdAt: new Date().toISOString() });
   } catch (e) { console.log('[HC ERROR]', e.message); return res.status(500).json({ ok: false, error: e.message }); }
@@ -314,7 +370,7 @@ app.post('/api/hc/stream', async (req, res) => {
     return res.status(429).json({ error: 'Daily analysis limit reached. Contact TSM to upgrade.' });
   }
 
-  const groqKey = process.env.GROQ_KEY || process.env.GROQ_API_KEY;
+  const groqKey = process.env.GROQ_API_KEY || process.env.GROQ_KEY;
   if (!groqKey) return res.status(500).json({ error: 'GROQ_KEY not configured on server.' });
 
   try {
@@ -322,10 +378,10 @@ app.post('/api/hc/stream', async (req, res) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + (process.env.GROQ_KEY || process.env.GROQ_API_KEY)
+        'Authorization': 'Bearer ' + (process.env.GROQ_API_KEY || process.env.GROQ_KEY)
       },
       body: JSON.stringify({
-        model: model || 'llama-3.3-70b-versatile',
+        model: model || 'openai/gpt-oss-120b',
         stream: true,
         max_tokens: maxTok || 500,
         messages: [{ role: 'system', content: sys }, { role: 'user', content: user }]
@@ -343,8 +399,74 @@ app.post('/api/hc/stream', async (req, res) => {
     const { Readable } = require('stream');
     Readable.fromWeb(groqRes.body).pipe(res);
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(e.status || 500).json({ error: e.message });
   }
+});
+
+function debugLog(msg) {
+  try {
+    fs.appendFileSync('/app/data/debug.log', `[${new Date().toISOString()}] ${msg}\n`);
+  } catch (e) { /* ignore logging failures */ }
+}
+
+async function fetchGroqWithRetry(groqKey, body, maxRetries = 3) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + groqKey
+      },
+      body: JSON.stringify(body)
+    });
+    if (groqRes.ok) return groqRes;
+    const err = await groqRes.json().catch(() => ({}));
+    console.error('Groq error response:', JSON.stringify(err)); debugLog('Groq error: ' + JSON.stringify(err));
+    const isRateLimit = err.error?.code === 'rate_limit_exceeded';
+    if (isRateLimit && attempt < maxRetries) {
+      const match = /try again in ([\d.]+)(ms|s)/.exec(err.error.message || '');
+      let waitMs = 1500;
+      if (match) {
+        const val = parseFloat(match[1]);
+        waitMs = match[2] === 's' ? val * 1000 : val;
+      }
+      waitMs = Math.min(waitMs + 250, 10000);
+      console.error(`Rate limited, retrying in ${waitMs}ms (attempt ${attempt + 1}/${maxRetries})`); debugLog(`Retrying in ${waitMs}ms attempt ${attempt + 1}/${maxRetries}`);
+      await new Promise(r => setTimeout(r, waitMs));
+      continue;
+    }
+    const failErr = new Error(err.error?.message || 'Groq error');
+    failErr.status = 502;
+    throw failErr;
+  }
+}
+
+app.post('/api/groq/validate-key', async (req, res) => {
+  const clientKey = (req.body && req.body.apiKey || '').trim();
+  if (!clientKey) return res.status(400).json({ ok: false, error: 'No API key provided.' });
+  try {
+    const r = await fetch('https://api.groq.com/openai/v1/models', {
+      headers: { 'Authorization': 'Bearer ' + clientKey }
+    });
+    return res.json({ ok: r.ok });
+  } catch (e) {
+    console.error('Groq key validation error:', e.message);
+    return res.status(502).json({ ok: false, error: 'Could not reach Groq.' });
+  }
+});
+
+
+
+// Health probe for War Room Stream
+// Keeps diagnostics and monitoring from failing.
+// AI generation remains POST only.
+app.get('/api/war-room/stream', (req,res)=>{
+  res.json({
+    status:"online",
+    route:"/api/war-room/stream",
+    methods:["POST"],
+    service:"TSM Neural Core"
+  });
 });
 
 app.post('/api/war-room/stream', async (req, res) => {
@@ -354,10 +476,10 @@ app.post('/api/war-room/stream', async (req, res) => {
   const { model, messages, max_tokens, temperature } = req.body;
   if (!Array.isArray(messages) || !messages.length) return res.status(400).json({ error: 'Missing messages' });
 
-  const groqKey = process.env.GROQ_KEY || process.env.GROQ_API_KEY;
+  const groqKey = process.env.GROQ_API_KEY || process.env.GROQ_KEY;
   if (!groqKey) return res.status(500).json({ error: 'GROQ_KEY not configured on server.' });
 
-  try {
+  async function fetchGroqStream(retriesLeft = 3) {
     const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -365,26 +487,97 @@ app.post('/api/war-room/stream', async (req, res) => {
         'Authorization': 'Bearer ' + groqKey
       },
       body: JSON.stringify({
-        model: model || 'llama-3.3-70b-versatile',
+        model: model || 'openai/gpt-oss-120b',
         stream: true,
         max_tokens: max_tokens || 600,
         temperature: temperature ?? 0.4,
+        reasoning_effort: 'low',
         messages
       })
     });
-
     if (!groqRes.ok) {
       const err = await groqRes.json().catch(() => ({}));
-      return res.status(502).json({ error: err.error?.message || 'Groq error' });
+      console.error('Groq error response:', JSON.stringify(err));
+
+      // Groq's TPM rate limit is transient and self-clears within seconds.
+      // Retry automatically (honoring the wait time Groq reports) instead of
+      // failing the whole engine run on a momentary cap — this is what was
+      // surfacing as opaque "502" errors on engines fired in quick succession.
+      if (groqRes.status === 429 && retriesLeft > 0) {
+        const waitMatch = /try again in ([\d.]+)s/i.exec(err.error?.message || '');
+        const waitMs = waitMatch ? Math.ceil(parseFloat(waitMatch[1]) * 1000) + 250 : 3000;
+        console.warn(`[war-room/stream] Rate limited, retrying in ${waitMs}ms (${retriesLeft} retries left)`);
+        await new Promise(r => setTimeout(r, waitMs));
+        return fetchGroqStream(retriesLeft - 1);
+      }
+
+      const e = new Error(err.error?.message || 'Groq error');
+      e.status = groqRes.status === 429 ? 429 : 502;
+      throw e;
+    }
+    return groqRes;
+  }
+
+  const maxEmptyRetries = 2;
+  let succeeded = false;
+  let headersSent = false;
+
+  function ensureHeaders() {
+    if (!headersSent) {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      headersSent = true;
+    }
+  }
+
+  try {
+    for (let attempt = 0; attempt <= maxEmptyRetries && !succeeded; attempt++) {
+      const groqRes = await fetchGroqStream();
+      const reader = groqRes.body.getReader();
+      const dec = new TextDecoder();
+      let buf = '';
+      let gotContent = false;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const d = line.slice(6);
+          if (d === '[DONE]') continue;
+          let delta = '';
+          try { delta = JSON.parse(d).choices?.[0]?.delta?.content || ''; } catch (e) {}
+          if (delta) {
+            gotContent = true;
+            ensureHeaders();
+            res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: delta } }] })}\n\n`);
+          }
+        }
+      }
+
+      if (gotContent) {
+        succeeded = true;
+      } else {
+        debugLog(`Empty stream content on attempt ${attempt + 1}/${maxEmptyRetries + 1}, retrying`);
+        if (attempt === maxEmptyRetries) {
+          debugLog('Exhausted empty-stream retries, giving up');
+        }
+      }
     }
 
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    const { Readable } = require('stream');
-    Readable.fromWeb(groqRes.body).pipe(res);
+    ensureHeaders();
+    res.write('data: [DONE]\n\n');
+    res.end();
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    if (res.headersSent) {
+      res.end();
+    } else {
+      res.status(e.status || 500).json({ error: e.message });
+    }
   }
 });
 
@@ -601,7 +794,7 @@ app.post('/api/music/agent-pass', async (req, res) => {
   var draft = body.draft || body.lyrics || '';
   var request = body.request || 'Refine this draft';
   try {
-    var output = await groqChat(SP.music, 'Agent: ' + agent + '\nRequest: ' + request + '\n\nDraft:\n' + draft + '\n\nProvide your refined version:', 512);
+    var output = await groqChat(SP.music, 'Agent: ' + agent + '\nRequest: ' + request + '\n\nDraft:\n' + draft + '\n\nProvide your refined version:', 700);
     return res.json({ ok: true, agent: agent, output: output, createdAt: new Date().toISOString() });
   } catch (e) { return res.status(500).json({ ok: false, error: e.message }); }
 });
@@ -611,9 +804,15 @@ app.post('/api/music/chain', async (req, res) => {
   var draft = body.draft || '';
   var request = body.request || 'Sharpen this draft';
   try {
-    var zay = await groqChat(SP.music, 'Agent ZAY cadence/flow focus.\nRequest: ' + request + '\nDraft: ' + draft + '\nRefine:', 400);
-    var riya = await groqChat(SP.music, 'Agent RIYA emotion/imagery focus.\nRequest: ' + request + '\nDraft: ' + zay + '\nRefine:', 400);
-    var dj = await groqChat(SP.music, 'Agent DJ hook/structure focus.\nRequest: ' + request + '\nDraft: ' + riya + '\nFinal version:', 400);
+    // maxTokens bumped 400->900: each stage refines the previous stage's
+    // (already generated) text, so a 400-token cap on ZAY truncated before
+    // the hook/bridge ever appeared, RIYA then refined that truncated draft,
+    // and DJ refined RIYA's truncated output -- compounding the cutoff
+    // across all three hops so the final song never included a complete
+    // hook, bridge, or outro.
+    var zay = await groqChat(SP.music, 'Agent ZAY cadence/flow focus.\nRequest: ' + request + '\nDraft: ' + draft + '\nRefine:', 900);
+    var riya = await groqChat(SP.music, 'Agent RIYA emotion/imagery focus.\nRequest: ' + request + '\nDraft: ' + zay + '\nRefine:', 900);
+    var dj = await groqChat(SP.music, 'Agent DJ hook/structure focus.\nRequest: ' + request + '\nDraft: ' + riya + '\nFinal version:', 900);
     return res.json({ ok: true, mode: 'chain', input: draft, zay, riya, output: dj, score: { overall: 0.87 }, createdAt: new Date().toISOString() });
   } catch (e) { return res.status(500).json({ ok: false, error: e.message }); }
 });
@@ -624,9 +823,9 @@ app.post('/api/music/revision/generate', async (req, res) => {
     var draft = body.draft || '';
     var request = body.request || 'Give me 3 revision options';
     var results = await Promise.all([
-      groqChat(SP.music, 'Flow-first revision.\nRequest: ' + request + '\nDraft: ' + draft + '\nOption A:', 400),
-      groqChat(SP.music, 'Emotion-first revision.\nRequest: ' + request + '\nDraft: ' + draft + '\nOption B:', 400),
-      groqChat(SP.music, 'Hook-first revision.\nRequest: ' + request + '\nDraft: ' + draft + '\nOption C:', 400)
+      groqChat(SP.music, 'Flow-first revision.\nRequest: ' + request + '\nDraft: ' + draft + '\nOption A:', 700),
+      groqChat(SP.music, 'Emotion-first revision.\nRequest: ' + request + '\nDraft: ' + draft + '\nOption B:', 700),
+      groqChat(SP.music, 'Hook-first revision.\nRequest: ' + request + '\nDraft: ' + draft + '\nOption C:', 700)
     ]);
     var scoreA = musicHeuristicScore(results[0]);
     var scoreB = musicHeuristicScore(results[1]);
@@ -679,9 +878,33 @@ app.post('/api/music/song/learn', async (req, res) => {
 // inline handlers keep precedence for any overlapping paths.
 app.use(require('./routes/music'));
 
+// ── ENTERPRISE CAPABILITY BRIDGE ───────────────────────────────────────────────
+// Session-persisted stores for O2C/CRM/CPQ/Catalog/Approval (previously
+// stateless /query-only) + the capability-sweep orchestrator. BPO reference
+// chain — see routes/enterprise-capability-bridge.js header for full design.
+app.use(require('./routes/enterprise-capability-bridge'));
+
+
 // ── FINOPS ────────────────────────────────────────────────────────────────────
 app.post('/api/finops/bnca/report', (req, res) => res.json({ ok: true }));
-app.post('/api/chat', (req, res) => res.json({ ok: true }));
+// routes/finops.js implements the fuller finops API (docs, decision-service bridge, etc.)
+app.use(require('./routes/hc'));
+app.use(require('./routes/strategist'));
+app.use(require('./routes/construction'));
+app.use(require('./routes/finops'));
+
+// ── RCM RELAY ─────────────────────────────────────────────────────────────────
+// Server-side staging for the FinOps Doc Showcase -> TSM RCM OS handoff.
+// See routes/rcm-relay.js header for the full endpoint contract.
+app.use('/api/rcm', require('./routes/rcm-relay'));
+app.use('/api/rcm', require('./routes/rcm-requirements'));
+
+// ── FINANCIAL INTELLIGENCE (finance-index.html) ─────────────────────────────
+// Groq-backed chat (per-tab assistant) + audit engine with real persisted
+// audit-log entries. See routes/finance-chat.js header for the full contract.
+const { chatRouter: financeChatRouter, auditRouter: financeAuditRouter } = require('./routes/finance-chat');
+app.use('/api/chat', financeChatRouter);
+app.use('/api/audit', financeAuditRouter);
 
 // ── AI QUERY ROUTES ───────────────────────────────────────────────────────────
 app.post('/api/ai/query', async (req, res) => {
@@ -691,7 +914,7 @@ app.post('/api/ai/query', async (req, res) => {
   var system = SP[appType] || SP.enterprise;
   try {
     var userMsg = body.context ? 'Context:\n' + body.context + '\n\nQuestion: ' + question : question;
-    var answer = await groqChat(system, userMsg, body.maxTokens || 1024);
+    var answer = await groqChat(system, userMsg, body.maxTokens || 2200);
     return res.json({ ok: true, app: appType, question, answer, createdAt: new Date().toISOString() });
   } catch (e) { return res.status(500).json({ ok: false, error: e.message }); }
 });
@@ -741,13 +964,8 @@ app.post('/api/financial/query', async (req, res) => {
   }
 });
 
-app.post('/api/mortgage/query', async (req, res) => {
-  try { var sys = req.body.context || req.body.system || SP.mortgage; var a = await groqChat(sys, req.body.question || req.body.query || '', req.body.maxTokens || 1024); return res.json({ ok: true, answer: a, createdAt: new Date().toISOString() }); }
-  catch (e) { return res.status(500).json({ ok: false, error: e.message }); }
-});
-
 app.post('/api/legal/query', async (req, res) => {
-  try { var a = await groqChat(SP.legal, req.body.question || req.body.query || '', req.body.maxTokens || 1024); return res.json({ ok: true, answer: a, createdAt: new Date().toISOString() }); }
+  try { var a = await groqChat(SP.legal, req.body.question || req.body.query || '', req.body.maxTokens || 2200); return res.json({ ok: true, answer: a, createdAt: new Date().toISOString() }); }
   catch (e) { return res.status(500).json({ ok: false, error: e.message }); }
 });
 
@@ -793,6 +1011,83 @@ app.post('/api/crm/query', async (req, res) => {
     return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
   } catch (e) {
     console.error('CRM GROQ ERROR:', e.message);
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+
+app.post('/api/noc/query', async (req, res) => {
+  const { kpis, incident_breaches, alerts, devices_down, context, maxTokens } = req.body || {};
+  const summary = JSON.stringify({
+    kpis,
+    incident_breaches,
+    alerts,
+    devices_down,
+    counts: {
+      alerts: Array.isArray(alerts) ? alerts.length : undefined,
+      devices_down: Array.isArray(devices_down) ? devices_down.length : undefined
+    }
+  }, null, 2);
+  const prompt = `Current NOC snapshot:\n${summary}\n\n` +
+    (context ? `Additional context: ${context}\n\n` : '') +
+    `Identify the highest-severity incidents, correlate any related alerts to their root incident, flag devices contributing to fleet-uptime risk, and the single most important next action for each at-risk incident or device. Reference incident/alert/device IDs.`;
+  try {
+    const answer = await groqChat(SP.noc, prompt, maxTokens || 1200);
+    return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
+  } catch (e) {
+    console.error('NOC GROQ ERROR:', e.message);
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+
+app.post('/api/mortgage/query', async (req, res) => {
+  const { kpis, loan_breaches, conditions, exceptions, context, maxTokens } = req.body || {};
+  const summary = JSON.stringify({
+    kpis,
+    loan_breaches,
+    conditions,
+    exceptions,
+    counts: {
+      conditions: Array.isArray(conditions) ? conditions.length : undefined,
+      exceptions: Array.isArray(exceptions) ? exceptions.length : undefined
+    }
+  }, null, 2);
+  const prompt = `Current Mortgage pipeline snapshot:\n${summary}\n\n` +
+    (context ? `Additional context: ${context}\n\n` : '') +
+    `Identify the highest-risk loan files, the root cause of any SLA breaches or stalled UW conditions, open compliance exceptions requiring escalation, and the single most important next action for each at-risk loan file. Reference loan/condition/exception IDs.`;
+  try {
+    const answer = await groqChat(SP.mortgage, prompt, maxTokens || 1200);
+    return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
+  } catch (e) {
+    console.error('MORTGAGE GROQ ERROR:', e.message);
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// ── SCHOOLS: structured grant/monitoring/exception analysis ──────────────────
+// Mirrors /api/mortgage/query's shape. Kept separate from the pre-existing
+// generic /api/schools/query (plain question/answer) so nothing there breaks.
+app.post('/api/schools/analysis', async (req, res) => {
+  const { kpis, grant_breaches, monitoring_items, exceptions, context, maxTokens } = req.body || {};
+  const summary = JSON.stringify({
+    kpis,
+    grant_breaches,
+    monitoring_items,
+    exceptions,
+    counts: {
+      monitoring_items: Array.isArray(monitoring_items) ? monitoring_items.length : undefined,
+      exceptions: Array.isArray(exceptions) ? exceptions.length : undefined
+    }
+  }, null, 2);
+  const prompt = `Current Schools/Grants compliance snapshot:\n${summary}\n\n` +
+    (context ? `Additional context: ${context}\n\n` : '') +
+    `Identify the highest-risk grant files, the root cause of any SLA breaches or stalled monitoring items, open compliance exceptions requiring escalation (FERPA/IDEA/NSLP/Title I/ESSER as applicable), and the single most important next action for each at-risk grant file. Reference grant/monitoring-item/exception IDs.`;
+  try {
+    const answer = await groqChat(SP.education, prompt, maxTokens || 1200);
+    return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
+  } catch (e) {
+    console.error('SCHOOLS ANALYSIS GROQ ERROR:', e.message);
     return res.status(500).json({ ok: false, error: e.message });
   }
 });
@@ -923,8 +1218,208 @@ app.post('/api/insurance/ahip-quiz', async (req, res) => {
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
+app.post('/api/l1-copilot/assistant', async (req, res) => {
+  try {
+    var scenario = (req.body.scenario || req.body.question || req.body.query || '').trim();
+    if (!scenario) return res.status(400).json({ ok: false, error: 'scenario is required' });
+    var a = await groqChat(SP.l1Assistant, scenario, req.body.maxTokens || 700);
+    return res.json({ ok: true, answer: a, createdAt: new Date().toISOString() });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/api/l1-copilot/analyze', async (req, res) => {
+  const { ticket, maxTokens } = req.body || {};
+  if (!ticket || !ticket.description) return res.status(400).json({ ok: false, error: 'ticket.description required' });
+  const summary = JSON.stringify({
+    incident: ticket.incident, priority: ticket.priority, requester: ticket.requester,
+    department: ticket.department, asset: ticket.asset, manufacturer: ticket.manufacturer,
+    model: ticket.model, warranty: ticket.warranty
+  }, null, 2);
+  const prompt = `Ticket metadata (may be incomplete — fields left blank were not provided):\n${summary}\n\n` +
+    `Ticket description (raw, as pasted by the agent):\n${ticket.description}\n\n` +
+    `Do two things and return ONLY valid JSON, no markdown, no backticks, in exactly this shape:\n\n` +
+    `1) Analyze the ticket:\n` +
+    `{"issue_summary":"one sentence","likely_causes":["cause 1","cause 2"],"confidence":0-100,` +
+    `"affected_system":"short label","business_impact":"short label","severity":"Low|Medium|High|Critical",` +
+    `"recommended_path":"the single next diagnostic or remediation step, and why",` +
+    `\n\n2) Extract structured fields mentioned ANYWHERE in the ticket description or metadata above ` +
+    `(incident number, priority, requester name, department, assignment group, asset/hostname/tag, ` +
+    `manufacturer, model, warranty/support tier). Only include a value if it is actually stated or clearly ` +
+    `implied in the text — use null for anything not present. Do not invent values.\n` +
+    `"extracted_fields":{"incident":null,"priority":null,"requester":null,"department":null,` +
+    `"assignmentGroup":null,"asset":null,"manufacturer":null,"model":null,"warranty":null}}\n\n` +
+    `Return one JSON object with both the analysis keys and the "extracted_fields" key at the same top level.`;
+  try {
+    const raw = await groqChat(SP.l1support, prompt, maxTokens || 1000);
+    const analysis = JSON.parse(raw.replace(/```json|```/g, '').trim());
+    return res.json({ ok: true, analysis, createdAt: new Date().toISOString() });
+  } catch (e) {
+    console.error('L1 COPILOT ANALYZE ERROR:', e.message);
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/api/l1-copilot/vendor', async (req, res) => {
+  const { manufacturer, serviceTag, warranty, issueSummary, maxTokens } = req.body || {};
+  if (!manufacturer) return res.status(400).json({ ok: false, error: 'manufacturer required' });
+  const prompt = `Manufacturer: ${manufacturer}\nService tag / express service code: ${serviceTag || 'not provided'}\n` +
+    `Warranty status: ${warranty || 'unknown'}\nIssue summary: ${issueSummary || 'not provided'}\n\n` +
+    `Recommend which ${manufacturer} support tier to engage (e.g. ProSupport vs ProSupport Plus vs Basic/standard warranty), ` +
+    `exactly what information the technician should have ready before contacting them (service tag, diagnostic codes, ` +
+    `error logs, etc.), and whether this looks like a case for phone support, chat, or an on-site dispatch. Be concise and operational.`;
+  try {
+    const answer = await groqChat(SP.l1support, prompt, maxTokens || 700);
+    return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
+  } catch (e) {
+    console.error('L1 COPILOT VENDOR ERROR:', e.message);
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/api/l1-copilot/resolution', async (req, res) => {
+  const { ticket, analysis, notes, maxTokens } = req.body || {};
+  if (!ticket) return res.status(400).json({ ok: false, error: 'ticket required' });
+  const prompt = `Ticket description:\n${ticket}\n\n` +
+    (analysis ? `AI analysis on file:\n${JSON.stringify(analysis, null, 2)}\n\n` : '') +
+    (notes ? `Technician notes / troubleshooting steps performed:\n${notes}\n\n` : '') +
+    `Write a resolution record ready to paste into ServiceNow, with these exact section headers on their own lines: ` +
+    `Problem / Cause / Actions Taken / Resolution / Validation / Next Steps. Be factual — only state actions that are ` +
+    `reflected in the notes above; do not invent steps that weren't performed.`;
+  try {
+    const answer = await groqChat(SP.l1support, prompt, maxTokens || 900);
+    return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
+  } catch (e) {
+    console.error('L1 COPILOT RESOLUTION ERROR:', e.message);
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/api/l1-copilot/escalation', async (req, res) => {
+  const { ticket, analysis, reason, evidence, recommendedTeam, maxTokens } = req.body || {};
+  if (!ticket) return res.status(400).json({ ok: false, error: 'ticket required' });
+  const prompt = `Ticket description:\n${ticket}\n\n` +
+    (analysis ? `AI analysis on file:\n${JSON.stringify(analysis, null, 2)}\n\n` : '') +
+    `Escalation reason given by technician: ${reason || 'not specified'}\n` +
+    `Evidence attached: ${evidence || 'none noted'}\n` +
+    `Technician-selected team: ${recommendedTeam || 'not selected'}\n\n` +
+    `Write a short escalation package for the receiving L2/vendor team: confirm or correct the recommended team based ` +
+    `on where the root cause actually sits, summarize what's been ruled out at L1, state the business impact, and list ` +
+    `exactly what the receiving team needs to pick this up without re-doing L1 steps.`;
+  try {
+    const answer = await groqChat(SP.l1support, prompt, maxTokens || 800);
+    return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
+  } catch (e) {
+    console.error('L1 COPILOT ESCALATION ERROR:', e.message);
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/api/l1-copilot/imaging', async (req, res) => {
+  const { taskSequence, bootMethod, status, asset, model, maxTokens } = req.body || {};
+  if (!status) return res.status(400).json({ ok: false, error: 'status required' });
+  const prompt = `Task sequence / target image: ${taskSequence || 'not specified'}\nBoot method: ${bootMethod || 'not specified'}\n` +
+    `Current stage: ${status}\nAsset: ${asset || 'not provided'}\nModel: ${model || 'not provided'}\n\n` +
+    `The technician is imaging/re-imaging a Windows 11 endpoint. Given the current stage, identify the most likely cause if the ` +
+    `deployment is stuck or has failed at this stage (e.g. PXE/DHCP scope options 66/67, WDS/MDT boundary issues, driver pack ` +
+    `mismatch, disk/partition prep, domain join failures), the single next diagnostic step, and whether this needs a driver ` +
+    `pack update, a network/DHCP fix, or is progressing normally. Be concise and operational.`;
+  try {
+    const answer = await groqChat(SP.l1support, prompt, maxTokens || 700);
+    return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
+  } catch (e) {
+    console.error('L1 COPILOT IMAGING ERROR:', e.message);
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/api/l1-copilot/ad-intune', async (req, res) => {
+  const { deviceName, joinType, compliance, bitlocker, issueSummary, maxTokens } = req.body || {};
+  if (!joinType) return res.status(400).json({ ok: false, error: 'joinType required' });
+  const prompt = `Device: ${deviceName || 'not provided'}\nJoin type: ${joinType}\nCompliance state: ${compliance || 'unknown'}\n` +
+    `BitLocker/escrow status: ${bitlocker || 'unknown'}\nIssue summary: ${issueSummary || 'not provided'}\n\n` +
+    `Diagnose the most likely cause of any compliance drift or BitLocker/escrow gap given this state (e.g. sync delay, ` +
+    `stale Autopilot record, conditional access policy, missing compliance policy assignment, TPM/escrow failure), the exact ` +
+    `path to look up or force a BitLocker recovery key (Entra ID device blade vs on-prem AD DSA), and whether Autopilot ` +
+    `re-enrollment or a compliance policy re-push is needed. Be concise and operational.`;
+  try {
+    const answer = await groqChat(SP.l1support, prompt, maxTokens || 700);
+    return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
+  } catch (e) {
+    console.error('L1 COPILOT AD/INTUNE ERROR:', e.message);
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/api/l1-copilot/sccm', async (req, res) => {
+  const { collection, packageName, status, maxTokens } = req.body || {};
+  if (!packageName) return res.status(400).json({ ok: false, error: 'packageName required' });
+  const prompt = `Collection: ${collection || 'not provided'}\nPackage/Application: ${packageName}\nLast deployment status: ${status || 'unknown'}\n\n` +
+    `Diagnose the likely cause of this SCCM/Software Center deployment state (e.g. content not found on distribution point, ` +
+    `client cache exhaustion, boundary/collection membership evaluation delay, execution timeout, pending restart chaining), ` +
+    `the single next action (retry deployment, re-distribute content, clear ccmcache, manual install via Software Center, or ` +
+    `escalate to the SCCM admin team), and whether this is an L1-actionable fix or needs elevated console access. Be concise and operational.`;
+  try {
+    const answer = await groqChat(SP.l1support, prompt, maxTokens || 700);
+    return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
+  } catch (e) {
+    console.error('L1 COPILOT SCCM ERROR:', e.message);
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/api/l1-copilot/vmware', async (req, res) => {
+  const { component, category, environment, input, issueSummary, maxTokens } = req.body || {};
+  if (!input) return res.status(400).json({ ok: false, error: 'input required' });
+  const prompt = `Component: ${component || 'not specified'}\nIssue category: ${category || 'not specified'}\n` +
+    `Environment: ${environment || 'not specified'}\nRelated ticket summary: ${issueSummary || 'none'}\n\n` +
+    `Pasted artifact / question:\n${input}\n\n` +
+    `Identify what this is, the most probable root cause, the safest remediation (with exact PowerCLI/REST/CLI commands where ` +
+    `applicable), operational risk, and whether this is L1/L2-actionable or needs escalation to the VMware admin team.`;
+  try {
+    const answer = await groqChat(SP.vmware, prompt, maxTokens || 900);
+    return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
+  } catch (e) {
+    console.error('L1 COPILOT VMWARE ERROR:', e.message);
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/api/l1-copilot/vmware-script', async (req, res) => {
+  const { scriptType, request, maxTokens } = req.body || {};
+  if (!request) return res.status(400).json({ ok: false, error: 'request required' });
+  const prompt = `Generate a ${scriptType || 'PowerCLI'} script for the following requirement:\n\n${request}\n\n` +
+    `Return complete, runnable code with brief inline comments explaining each step. Include any prerequisite ` +
+    `connection/auth commands (e.g. Connect-VIServer) needed for the script to actually run standalone.`;
+  try {
+    const answer = await groqChat(SP.vmware, prompt, maxTokens || 1100);
+    return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
+  } catch (e) {
+    console.error('L1 COPILOT VMWARE SCRIPT ERROR:', e.message);
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/api/l1-copilot/cloud-ops', async (req, res) => {
+  const { provider, service, environment, input, issueSummary, maxTokens } = req.body || {};
+  if (!input) return res.status(400).json({ ok: false, error: 'input required' });
+  const prompt = `Cloud provider: ${provider || 'not specified'}\nService/resource: ${service || 'not specified'}\n` +
+    `Environment: ${environment || 'not specified'}\nRelated ticket summary: ${issueSummary || 'none'}\n\n` +
+    `Pasted artifact / question:\n${input}\n\n` +
+    `Identify what this is, the most probable root cause, the safest remediation (with exact CLI/portal steps where ` +
+    `applicable), blast radius, and whether this is self-service-actionable or needs escalation and to which team.`;
+  try {
+    const answer = await groqChat(SP.cloudops, prompt, maxTokens || 900);
+    return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
+  } catch (e) {
+    console.error('L1 COPILOT CLOUD OPS ERROR:', e.message);
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 app.post('/api/schools/query', async (req, res) => {
-  try { var a = await groqChat(SP.education, req.body.question || req.body.query || '', req.body.maxTokens || 1024); return res.json({ ok: true, answer: a, createdAt: new Date().toISOString() }); }
+  try { var a = await groqChat(SP.education, req.body.question || req.body.query || '', req.body.maxTokens || 2200); return res.json({ ok: true, answer: a, createdAt: new Date().toISOString() }); }
   catch (e) { return res.status(500).json({ ok: false, error: e.message }); }
 });
 
@@ -938,8 +1433,8 @@ app.get(['/html/healthcare/poc-html', '/html/healthcare/poc-html/'], (req, res) 
 app.get('/_debug', (_req, res) => res.json({ dirname: __dirname, dirPath, suitesConfigured: suites.length, cacheBust: 'v2-20260607' }));
 app.get('/', (_req, res) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
-  res.sendFile(path.join(dirPath, 'bpo', 'bpo-command-center.html'), (err) => {
-    if (err) res.sendFile(path.join(dirPath, 'healthcare', 'hc-strategist', 'index.html'));
+  res.sendFile(path.join(dirPath, 'tsm-platform-hub.html'), (err) => {
+    if (err) res.sendFile(path.join(dirPath, 'war-rooms', 'bpo', 'bpo-command-center.html'));
   });
 });
 
@@ -952,7 +1447,7 @@ app.get('/', (_req, res) => {
 ════════════════════════════════════════════════════════════════ */
 
 // Models — verify current availability in Groq console if these change
-const GROQ_TEXT_MODEL = 'llama-3.3-70b-versatile';
+const GROQ_TEXT_MODEL = 'openai/gpt-oss-120b';
 const GROQ_VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
 
 // Valid node IDs per vertical — keep in sync with VERTICALS in
@@ -993,8 +1488,16 @@ Return JSON matching exactly this schema:
   "ref": string or "",
   "summary": one short sentence describing the document,
   "defectFlags": array of short strings — specific issues/exceptions found in the document. For vertical "re", choose ONLY from this fixed set when applicable: ["Financing Failure","Appraisal Gap","Title Defect","Inspection Issues","UW Conditions","Closing Delay"], and use them to inform routing.re.sourceNode (Financing Failure->re-finance, Appraisal Gap->re-market, Title Defect/UW Conditions->re-strategist, Closing Delay->re-exec, Inspection Issues->re-doc-command). For all other verticals, use concise 2-4 word freeform issue labels relevant to the content (e.g. "Coverage Gap", "Code Violation", "Late Filing"), or [] if no issues are present,
-  "bnca": boolean — true ONLY if the document represents an anomaly, discrepancy, denial, dispute, or risk that should escalate to BNCA review
+  "bnca": boolean - true ONLY if the document represents an anomaly, discrepancy, denial, dispute, or risk that should escalate to BNCA review,
+  "entities": {
+    "parties": array of strings - named people/organizations referenced (e.g. "Acme Roofing LLC", "Jane Doe"), [] if none,
+    "dates": array of strings - dates found in the document in the format they appear, [] if none,
+    "amounts": array of strings - every distinct dollar amount mentioned, formatted as written (e.g. "$47,000.00"), [] if none,
+    "identifiers": array of strings - reference numbers, policy numbers, claim numbers, permit numbers, case numbers etc. found in the document (label included, e.g. "Policy #: HP-88231"), [] if none
+  }
 }
+
+Note: do NOT include a "confidence" or "validation" field - those are computed by the server, not the model.
 
 Valid node IDs per vertical:
 fo:  ${DOC_ROUTER_NODES.fo.join(', ')}
@@ -1011,6 +1514,107 @@ Rules:
 - "sourceNode" must be the node most directly responsible for this document type (not "strategist" unless nothing else fits).
 - If the document doesn't clearly belong anywhere, return "verticals": [] and leave "routing" as {}.
 - Be conservative with "bnca" — only flag genuine anomalies, denials, disputes, code violations, SLA breaches, or financial exposure outliers.`;
+
+// -- Deterministic validation + confidence (Phase 4, Mission Preview) --
+// Deliberately NOT model-generated: LLM self-reported confidence scores are
+// poorly calibrated, and routing correctness is a safety-relevant decision
+// (same principle already used for checkStatus in the playbook route below -
+// the model proposes content, code decides anything that affects where a
+// document actually goes). This just checks the model's own output against
+// its own schema and scores completeness; it can't fix a wrong classification,
+// only catch a malformed one.
+function validateClassification(parsed) {
+  const errors = [];
+  const verticals = Array.isArray(parsed.verticals) ? parsed.verticals : [];
+  const validVerticalIds = Object.keys(DOC_ROUTER_NODES);
+
+  if (!DOC_ROUTER_DOC_TYPES.includes(parsed.documentType)) {
+    errors.push('documentType "' + parsed.documentType + '" is not in the allowed set.');
+  }
+
+  verticals.forEach((v) => {
+    if (!validVerticalIds.includes(v)) {
+      errors.push('vertical "' + v + '" is not a recognized vertical.');
+      return;
+    }
+    const r = (parsed.routing && parsed.routing[v]) || null;
+    if (!r) {
+      errors.push('vertical "' + v + '" is listed but has no routing entry.');
+      return;
+    }
+    const validNodes = DOC_ROUTER_NODES[v];
+    if (!validNodes.includes(r.sourceNode)) {
+      errors.push('routing.' + v + '.sourceNode "' + r.sourceNode + '" is not a valid node id.');
+    }
+    const nodes = Array.isArray(r.nodes) ? r.nodes : [];
+    nodes.forEach((n) => {
+      if (n === 'bnca-engine') return; // cross-cutting node, valid in every vertical when bnca is flagged
+      if (!validNodes.includes(n)) {
+        errors.push('routing.' + v + '.nodes contains invalid node id "' + n + '".');
+      }
+    });
+    if (!nodes.includes('strategist')) {
+      errors.push('routing.' + v + '.nodes is missing required "strategist" entry.');
+    }
+  });
+
+  if (verticals.length > 0 && !verticals.includes(parsed.primaryVertical)) {
+    errors.push('primaryVertical "' + parsed.primaryVertical + '" is not one of the listed verticals.');
+  }
+
+  const amountNum = Number(parsed.amount);
+  if (parsed.amount !== undefined && (!Number.isFinite(amountNum) || amountNum < 0)) {
+    errors.push('amount "' + parsed.amount + '" is not a valid non-negative number.');
+  }
+
+  return { valid: errors.length === 0, errors };
+}
+
+function scoreConfidence(parsed, validation) {
+  if (!validation.valid) {
+    // A schema violation means the routing itself can't be trusted;
+    // cap confidence low regardless of how "complete" the rest looks.
+    return 0.2;
+  }
+
+  let score = 0.5; // base score for a structurally valid, in-schema response
+  const bump = (cond, amt) => { if (cond) score += amt; };
+
+  bump(!!parsed.vendor, 0.05);
+  bump(!!parsed.invoiceNo || !!(parsed.entities && parsed.entities.identifiers && parsed.entities.identifiers.length), 0.05);
+  bump(!!parsed.client, 0.05);
+  bump(!!parsed.summary && parsed.summary.length > 0, 0.05);
+  bump(Number(parsed.amount) > 0, 0.05);
+  bump(!!(parsed.entities && parsed.entities.parties && parsed.entities.parties.length), 0.05);
+  bump(!!(parsed.entities && parsed.entities.dates && parsed.entities.dates.length), 0.05);
+  bump(Array.isArray(parsed.verticals) && parsed.verticals.length === 1, 0.05); // single clear vertical > ambiguous multi-vertical guess
+  bump(Array.isArray(parsed.defectFlags) && parsed.defectFlags.length > 0, 0.05);
+
+  return Math.max(0, Math.min(1, Math.round(score * 100) / 100));
+}
+
+// -- Phase 8: derived routing recommendations (still deterministic) --
+// Solo-owner phase: every vertical routes to Latorrey until a client/team
+// subscribes to that vertical specifically. Update TEAM_BY_VERTICAL entries
+// as ownership gets assigned out — this map is meant to grow, not stay flat.
+const TEAM_BY_VERTICAL = {}; // empty = fall through to default owner below
+const DEFAULT_OWNER = 'Latorrey';
+
+function suggestTeam(parsed) {
+  if (!parsed.primaryVertical) return DEFAULT_OWNER;
+  return TEAM_BY_VERTICAL[parsed.primaryVertical] || DEFAULT_OWNER;
+}
+
+function scorePriority(parsed, validation, confidence) {
+  const amountNum = Number(parsed.amount) || 0;
+  const hasDefects = Array.isArray(parsed.defectFlags) && parsed.defectFlags.length > 0;
+
+  if (!validation.valid) return 'Needs Review';
+  if (confidence < 0.5) return 'Needs Review';
+  if (hasDefects || amountNum > 25000) return 'High';
+  if (amountNum > 5000) return 'Medium';
+  return 'Low';
+}
 
 // crude in-memory rate limit: 20 requests / 5 min / IP
 const docRouterHits = new Map();
@@ -1080,6 +1684,19 @@ app.post('/api/doc-router/classify', async (req, res) => {
       return res.status(502).json({ error: 'Invalid classification response.' });
     }
 
+    // Deterministic pass - never trust the model's own read of its schema
+    // compliance. Attached to the response, not thrown, so a malformed doc
+    // still reaches the frontend (Mission Preview) with a visible warning
+    // instead of a hard failure - same reasoning as the playbook route below.
+    const validation = validateClassification(parsed);
+    if (!validation.valid) {
+      console.warn('[doc-router] classification failed validation:', validation.errors);
+    }
+    parsed.validation = validation;
+    parsed.confidence = scoreConfidence(parsed, validation);
+    parsed.suggestedTeam = suggestTeam(parsed);
+    parsed.priority = scorePriority(parsed, validation, parsed.confidence);
+
     res.json(parsed);
   } catch (err) {
     console.error('[doc-router] error:', err);
@@ -1087,11 +1704,442 @@ app.post('/api/doc-router/classify', async (req, res) => {
   }
 });
 
+
+/* ══════════════════════════════════════════════════════════════════════
+   POST /api/doc-router/playbook
+   ------------------------------------------------------------------
+   Drop-in addition to server.js, placed directly after the existing
+   /api/doc-router/classify route (~line 1488) so it can reuse
+   GROQ_TEXT_MODEL and the same conventions.
+
+   WHAT THIS DOES
+   Takes the already-classified document (documentType, exclusionCode,
+   vendor, amount, defectFlags, summary, and — new — the raw extracted
+   text) and generates a narrative + action steps + risk assessment
+   GROUNDED IN THIS SPECIFIC DOCUMENT, instead of the fixed STEP_SETS
+   lookup table in openHcNodeWithDoc() on the frontend.
+
+   WHAT THIS DELIBERATELY DOES NOT DO
+   It does NOT decide checkStatus or which node/specialist the doc
+   routes to. That stays on the frontend, deterministic, driven by
+   HC_CODE_NODE / HC_TYPE_NODE string-matching on the exclusion code —
+   unchanged. Routing a denial to the wrong specialist because a model
+   miscategorized it is a worse failure than a generic step list, so
+   the safety-relevant decision stays rule-based and auditable; only
+   the *content* (narrative/steps/risk rationale) is generated. If you
+   later want the model to also propose checkStatus, have it return a
+   suggestion and diff it against the deterministic value rather than
+   trusting it outright — surfacing disagreement is more useful than
+   silently overriding a rule you already trust.
+
+   FAILURE MODE
+   Unlike /api/doc-router/classify (which 502s on failure — a doc that
+   fails to classify just doesn't get filed anywhere, so failing loud
+   is correct), this route degrades to the same template steps the
+   frontend used before, server-side, so callers always get a 200 with
+   *something* clinically usable. This endpoint sits in front of an
+   active billing/appeal workflow — returning a hard error mid-triage
+   is worse than returning the conservative generic playbook.
+   ══════════════════════════════════════════════════════════════════════ */
+
+// Same fixed fallback content as the current frontend STEP_SETS — kept
+// here so the server can degrade gracefully without depending on the
+// client to have its own copy in sync.
+const PLAYBOOK_FALLBACK_STEPS_HC = {
+  DENIAL_RISK: ['Pull full EOB/ERA — identify exact CARC/RARC denial codes',
+    'Verify CPT/ICD-10 pairing and modifier alignment',
+    'Confirm appeal window — timely filing deadline critical',
+    'Draft appeal with medical necessity documentation',
+    'Submit via payer portal and log tracking number in AR'],
+  AUTH_BLOCK: ['Verify current prior auth status for all procedures',
+    'Contact payer prior auth line — escalate if wait > 2 hrs',
+    'Do NOT bill until auth is confirmed and on file',
+    'Document auth number in claim header before submission',
+    'Set 48-hr follow-up until resolved'],
+  PAYMENT_BLOCK: ['Pull ERA/835 and compare posted amounts to contracted rate',
+    'Flag variances >5% as underpayments — initiate appeal',
+    'Check for payer hold — contact payer relations if active',
+    'Post clean items; quarantine disputed amounts',
+    'Escalate unresolved ERA failures within 24 hours'],
+  COMPLIANCE_BLOCK: ['Halt billing until all compliance flags are cleared',
+    'Obtain updated HIPAA authorization if expired',
+    'Verify OIG exclusion list for all providers on this account',
+    'Complete documentation checklist before releasing to billing',
+    'File compliance resolution memo and update score tracker'],
+  LEGAL_HOLD: ['Escalate to legal counsel immediately',
+    'Document chain of custody for all related files',
+    'Suspend vendor payments pending legal clearance',
+    'Prepare regulatory defense memo if requested',
+    'Set 48-hr check-in cadence with legal team'],
+  DOCUMENTATION_BLOCK: ['Send provider query — 24-hour response expectation',
+    'Block claim release for undocumented encounters',
+    'Route corrected records to coding for ICD-10 validation',
+    'Re-submit to billing queue only after defects resolved'],
+  ACTIVE: ['Review document for anomalies', 'Escalate to node specialist',
+    'Document findings in AR system', 'Follow up within 48 hours'],
+};
+
+const PLAYBOOK_FALLBACK_STEPS_FO = {
+  DENIAL_RISK: ['Pull the source ledger entry and identify the exact variance/rejection code',
+    'Verify GL account coding and posting period alignment',
+    'Confirm reconciliation deadline for this cycle',
+    'Draft variance explanation with supporting documentation',
+    'Post adjustment and log reference number in the ledger'],
+  AUTH_BLOCK: ['Verify current approval status for this transaction',
+    'Contact approver/manager — escalate if pending > 2 business days',
+    'Do NOT post until approval is confirmed and documented',
+    'Attach approval reference before final posting',
+    'Set 48-hr follow-up until resolved'],
+  PAYMENT_BLOCK: ['Pull AP/AR aging detail and compare to expected terms',
+    'Flag variances >5% as discrepancies — initiate review',
+    'Check for vendor/client hold — contact AP/AR relations if active',
+    'Post clean items; quarantine disputed amounts',
+    'Escalate unresolved reconciliation failures within 24 hours'],
+  COMPLIANCE_BLOCK: ['Halt posting until all compliance flags are cleared',
+    'Obtain updated internal control sign-off if expired',
+    'Verify vendor/client standing before proceeding',
+    'Complete documentation checklist before releasing to close',
+    'File resolution memo and update variance tracker'],
+  LEGAL_HOLD: ['Escalate to legal/compliance counsel immediately',
+    'Document chain of custody for all related records',
+    'Suspend related payments pending legal clearance',
+    'Prepare audit defense memo if requested',
+    'Set 48-hr check-in cadence with legal/compliance team'],
+  DOCUMENTATION_BLOCK: ['Send preparer query — 24-hour response expectation',
+    'Block record release for undocumented entries',
+    'Route corrected records for GL coding validation',
+    'Re-submit to close queue only after defects resolved'],
+  ACTIVE: ['Review document for anomalies', 'Escalate to node specialist',
+    'Document findings in the ledger', 'Follow up within 48 hours'],
+};
+
+const PLAYBOOK_FALLBACK_STEPS_INS = {
+  DENIAL_RISK: ['Pull the full claim file and identify exact denial/exception code',
+    'Verify coverage terms and policy exclusions against the claim',
+    'Confirm appeal/dispute window — timely filing deadline critical',
+    'Draft appeal with supporting coverage documentation',
+    'Submit via carrier portal and log tracking number'],
+  AUTH_BLOCK: ['Verify current underwriting/approval status for this policy',
+    'Contact carrier underwriting line — escalate if wait > 2 business days',
+    'Do NOT bind or renew until approval is confirmed and on file',
+    'Document approval number before proceeding',
+    'Set 48-hr follow-up until resolved'],
+  PAYMENT_BLOCK: ['Pull remittance detail and compare posted amounts to policy terms',
+    'Flag variances >5% as underpayments — initiate dispute',
+    'Check for carrier hold — contact carrier relations if active',
+    'Post clean items; quarantine disputed amounts',
+    'Escalate unresolved remittance failures within 24 hours'],
+  COMPLIANCE_BLOCK: ['Halt processing until all compliance flags are cleared',
+    'Obtain updated authorization/disclosure if expired',
+    'Verify licensing/exclusion status for all parties on this policy',
+    'Complete documentation checklist before releasing for binding',
+    'File compliance resolution memo and update tracker'],
+  LEGAL_HOLD: ['Escalate to legal counsel immediately',
+    'Document chain of custody for all related files',
+    'Suspend related payments pending legal clearance',
+    'Prepare regulatory defense memo if requested',
+    'Set 48-hr check-in cadence with legal team'],
+  DOCUMENTATION_BLOCK: ['Send insured/agent query — 24-hour response expectation',
+    'Block claim release for undocumented items',
+    'Route corrected records for underwriting validation',
+    'Re-submit to processing queue only after defects resolved'],
+  ACTIVE: ['Review document for anomalies', 'Escalate to node specialist',
+    'Document findings in the claims system', 'Follow up within 48 hours'],
+};
+
+const PLAYBOOK_FALLBACK_STEPS_CON = {
+  DENIAL_RISK: ['Pull the full permit/inspection file and identify exact rejection code',
+    'Verify plan/spec alignment against the cited violation',
+    'Confirm appeal/resubmission window — deadline critical',
+    'Draft response with corrected documentation',
+    'Submit via jurisdiction portal and log tracking number'],
+  AUTH_BLOCK: ['Verify current permit/authorization status for all affected work',
+    'Contact permitting office — escalate if wait > 2 business days',
+    'Do NOT proceed with work until authorization is confirmed and on file',
+    'Document permit number before work resumes',
+    'Set 48-hr follow-up until resolved'],
+  PAYMENT_BLOCK: ['Pull subcontractor/vendor invoice and compare to contracted rate',
+    'Flag variances >5% as discrepancies — initiate dispute',
+    'Check for vendor hold — contact AP if active',
+    'Post clean items; quarantine disputed amounts',
+    'Escalate unresolved billing failures within 24 hours'],
+  COMPLIANCE_BLOCK: ['Halt work until all compliance/code flags are cleared',
+    'Obtain updated safety/inspection sign-off if expired',
+    'Verify licensing/insurance status for all subs on this job',
+    'Complete documentation checklist before releasing to next phase',
+    'File compliance resolution memo and update tracker'],
+  LEGAL_HOLD: ['Escalate to legal counsel immediately',
+    'Document chain of custody for all related permits/records',
+    'Suspend vendor payments pending legal clearance',
+    'Prepare regulatory defense memo if requested',
+    'Set 48-hr check-in cadence with legal team'],
+  DOCUMENTATION_BLOCK: ['Send site/PM query — 24-hour response expectation',
+    'Block phase release for undocumented items',
+    'Route corrected records for plan-review validation',
+    'Re-submit to permitting queue only after defects resolved'],
+  ACTIVE: ['Review document for anomalies', 'Escalate to node specialist',
+    'Document findings in the project log', 'Follow up within 48 hours'],
+};
+
+const PLAYBOOK_FALLBACK_STEPS_RE = {
+  DENIAL_RISK: ['Pull the full title/closing file and identify exact defect code',
+    'Verify chain of title and lien status against the report',
+    'Confirm cure/resolution window — closing deadline critical',
+    'Draft resolution with supporting title documentation',
+    'Submit to title company and log tracking number'],
+  AUTH_BLOCK: ['Verify current approval status for financing/contingencies',
+    'Contact lender/broker — escalate if wait > 2 business days',
+    'Do NOT proceed to closing until approval is confirmed and on file',
+    'Document approval reference before proceeding',
+    'Set 48-hr follow-up until resolved'],
+  PAYMENT_BLOCK: ['Pull closing disclosure and compare figures to contract terms',
+    'Flag variances >5% as discrepancies — initiate review',
+    'Check for escrow hold — contact escrow officer if active',
+    'Post clean items; quarantine disputed amounts',
+    'Escalate unresolved disclosure failures within 24 hours'],
+  COMPLIANCE_BLOCK: ['Halt closing until all compliance/disclosure flags are cleared',
+    'Obtain updated inspection/disclosure sign-off if expired',
+    'Verify licensing status for all parties on this transaction',
+    'Complete documentation checklist before releasing to closing',
+    'File compliance resolution memo and update tracker'],
+  LEGAL_HOLD: ['Escalate to legal counsel immediately',
+    'Document chain of custody for all related title records',
+    'Suspend disbursements pending legal clearance',
+    'Prepare regulatory defense memo if requested',
+    'Set 48-hr check-in cadence with legal team'],
+  DOCUMENTATION_BLOCK: ['Send buyer/seller/agent query — 24-hour response expectation',
+    'Block closing release for undocumented items',
+    'Route corrected records for title validation',
+    'Re-submit to closing queue only after defects resolved'],
+  ACTIVE: ['Review document for anomalies', 'Escalate to node specialist',
+    'Document findings in the transaction file', 'Follow up within 48 hours'],
+};
+
+const PLAYBOOK_FALLBACK_STEPS_LEG = {
+  DENIAL_RISK: ['Pull the full filing/motion record and identify exact rejection basis',
+    'Verify procedural posture and deadline against the docket',
+    'Confirm appeal/response window — filing deadline critical',
+    'Draft response with supporting case documentation',
+    'Submit via court/e-filing portal and log tracking number'],
+  AUTH_BLOCK: ['Verify current engagement/authorization status for this matter',
+    'Contact supervising attorney — escalate if wait > 2 business days',
+    'Do NOT proceed until authorization is confirmed and on file',
+    'Document engagement reference before proceeding',
+    'Set 48-hr follow-up until resolved'],
+  PAYMENT_BLOCK: ['Pull outside counsel invoice and compare to engagement rate',
+    'Flag variances >5% as discrepancies — initiate review',
+    'Check for billing hold — contact AP if active',
+    'Post clean items; quarantine disputed amounts',
+    'Escalate unresolved billing failures within 24 hours'],
+  COMPLIANCE_BLOCK: ['Halt filing until all compliance/privilege flags are cleared',
+    'Obtain updated conflict-check sign-off if expired',
+    'Verify privilege/confidentiality status for all documents',
+    'Complete documentation checklist before releasing to filing',
+    'File compliance resolution memo and update tracker'],
+  LEGAL_HOLD: ['Escalate to supervising/outside counsel immediately',
+    'Document chain of custody for all related records',
+    'Suspend related disbursements pending clearance',
+    'Prepare defense memo if requested',
+    'Set 48-hr check-in cadence with counsel'],
+  DOCUMENTATION_BLOCK: ['Send client/co-counsel query — 24-hour response expectation',
+    'Block filing release for undocumented items',
+    'Route corrected records for privilege-review validation',
+    'Re-submit to filing queue only after defects resolved'],
+  ACTIVE: ['Review document for anomalies', 'Escalate to node specialist',
+    'Document findings in the case file', 'Follow up within 48 hours'],
+};
+
+const PLAYBOOK_FALLBACK_STEPS_BPO = {
+  DENIAL_RISK: ['Pull the full SLA/incident record and identify exact breach code',
+    'Verify contracted terms and thresholds against the incident',
+    'Confirm dispute/response window — client deadline critical',
+    'Draft resolution with supporting operational documentation',
+    'Submit to client and log tracking number'],
+  AUTH_BLOCK: ['Verify current approval status for this engagement/scope change',
+    'Contact client/account lead — escalate if wait > 2 business days',
+    'Do NOT proceed until approval is confirmed and on file',
+    'Document approval reference before proceeding',
+    'Set 48-hr follow-up until resolved'],
+  PAYMENT_BLOCK: ['Pull vendor/client invoice and compare to contracted rate',
+    'Flag variances >5% as discrepancies — initiate review',
+    'Check for billing hold — contact AP if active',
+    'Post clean items; quarantine disputed amounts',
+    'Escalate unresolved billing failures within 24 hours'],
+  COMPLIANCE_BLOCK: ['Halt delivery until all compliance/SOP flags are cleared',
+    'Obtain updated policy sign-off if expired',
+    'Verify vendor/staff standing for all parties on this engagement',
+    'Complete documentation checklist before releasing to delivery',
+    'File compliance resolution memo and update tracker'],
+  LEGAL_HOLD: ['Escalate to legal counsel immediately',
+    'Document chain of custody for all related records',
+    'Suspend vendor payments pending legal clearance',
+    'Prepare regulatory defense memo if requested',
+    'Set 48-hr check-in cadence with legal team'],
+  DOCUMENTATION_BLOCK: ['Send client/ops query — 24-hour response expectation',
+    'Block delivery release for undocumented items',
+    'Route corrected records for SOP validation',
+    'Re-submit to delivery queue only after defects resolved'],
+  ACTIVE: ['Review document for anomalies', 'Escalate to node specialist',
+    'Document findings in the ops log', 'Follow up within 48 hours'],
+};
+
+const PLAYBOOK_FALLBACK_STEPS_BY_VERTICAL = {
+  hc: PLAYBOOK_FALLBACK_STEPS_HC,
+  fo: PLAYBOOK_FALLBACK_STEPS_FO,
+  ins: PLAYBOOK_FALLBACK_STEPS_INS,
+  con: PLAYBOOK_FALLBACK_STEPS_CON,
+  re: PLAYBOOK_FALLBACK_STEPS_RE,
+  leg: PLAYBOOK_FALLBACK_STEPS_LEG,
+  bpo: PLAYBOOK_FALLBACK_STEPS_BPO,
+};
+
+// vertical -> { role: what kind of specialist, domain: short hint about the
+
+// document universe, so the model grounds itself in the right vocabulary
+// (CPT/ICD-10 for HC, CARC/RARC codes, vs. permits/change-orders for
+// construction, vs. title/escrow for real estate, etc.) without needing a
+// fully separate prompt per vertical.
+const PLAYBOOK_VERTICAL_CONTEXT = {
+  hc:  { role: 'billing specialist', domain: 'medical billing, payer denials/appeals, prior authorization, and clinical documentation (CPT/ICD-10, CARC/RARC denial codes, HIPAA)' },
+  fo:  { role: 'FinOps analyst', domain: 'general ledger reconciliation, AP/AR, budget variance, and financial controls' },
+  ins: { role: 'insurance claims/policy specialist', domain: 'claims adjudication, policy underwriting, coverage disputes, and carrier remittances' },
+  con: { role: 'construction operations lead', domain: 'permits, subcontractor invoices, change orders, and compliance/code violations' },
+  re:  { role: 'real estate transaction coordinator', domain: 'title defects, escrow/closing disclosures, listing agreements, and inspection findings' },
+  leg: { role: 'legal operations specialist', domain: 'case filings, discovery/privilege review, engagement agreements, and outside counsel invoices' },
+  bpo: { role: 'BPO operations manager', domain: 'SLA compliance, client onboarding, vendor invoices, and internal SOP adherence' },
+};
+
+function buildPlaybookPrompt(vertical) {
+  const ctx = PLAYBOOK_VERTICAL_CONTEXT[vertical] || PLAYBOOK_VERTICAL_CONTEXT.hc;
+  return `You are TSM's ${ctx.role} triage assistant, working in the domain of ${ctx.domain}. You are given a document that has already been classified and routed — your only job is to write the specific, actionable playbook a ${ctx.role} should follow for THIS document, grounded in its actual content. Do not invent facts not present in the input. Return ONLY valid JSON, no markdown fences, no commentary.
+
+Return JSON matching exactly this schema:
+{
+  "narrative": one or two sentences stating what's wrong, citing the specific vendor/code/policy/amount from the input — not a generic category description,
+  "steps": array of 3-6 short, specific, actionable steps a ${ctx.role} would actually do next for THIS document. Reference the specific code, policy, missing documentation, or detail mentioned in the input wherever the input contains one. Do not output generic steps that would apply to any document in this category if the input gives you something more specific to say,
+  "risk": integer 0-100 — likelihood-weighted financial/compliance risk if this is not resolved, considering dollar exposure AND how strong the underlying issue appears to be from the input (not dollar amount alone),
+  "riskRationale": one sentence explaining the risk number}`;
+}
+
+// Kept as a named export-equivalent for anything still referencing the old
+// HC-only constant directly.
+const PLAYBOOK_PROMPT = buildPlaybookPrompt('hc');
+
+// Separate limiter from classify's — this fires far less often (only when
+// an operator opens a routed doc into its war room node) and shouldn't
+// compete with upload-time classification traffic for the same budget.
+const docRouterPlaybookHits = new Map();
+function docRouterPlaybookRateOk(ip) {
+  const now = Date.now();
+  const hits = (docRouterPlaybookHits.get(ip) || []).filter(t => now - t < 5 * 60 * 1000);
+  if (hits.length >= 20) return false;
+  hits.push(now);
+  docRouterPlaybookHits.set(ip, hits);
+  return true;
+}
+
+function fallbackPlaybook(checkStatus, defectFlags, vertical) {
+  const stepSet = PLAYBOOK_FALLBACK_STEPS_BY_VERTICAL[vertical] || PLAYBOOK_FALLBACK_STEPS_HC;
+  const steps = stepSet[checkStatus] || stepSet.ACTIVE;
+  return {
+    narrative: 'Anomaly detected — review required.',
+    steps: (defectFlags && defectFlags.length)
+      ? ['Identify defects: ' + defectFlags.join(', '), ...steps.slice(0, 3)]
+      : steps,
+    risk: 55,
+    riskRationale: 'Fallback estimate — generative playbook unavailable, using category default.',
+    generated: false,
+  };
+}
+
+app.post('/api/doc-router/playbook', async (req, res) => {
+  const {
+    checkStatus, documentType, exclusionCode, vendor, invoiceNo,
+    amount, client, ref, summary, defectFlags, rawText, vertical,
+  } = req.body || {};
+
+  // Default to 'hc' when omitted -- preserves exact prior behavior for
+  // any caller (e.g. cached frontend bundles) that hasn't been updated
+  // to send vertical yet.
+  const v = (vertical && PLAYBOOK_VERTICAL_CONTEXT[vertical]) ? vertical : 'hc';
+
+  if (!checkStatus) {
+    return res.status(400).json({ error: 'checkStatus is required.' });
+  }
+
+  if (!docRouterPlaybookRateOk(req.ip)) {
+    // Degrade, don't 429 — an operator waiting on this is mid-workflow.
+    return res.json(fallbackPlaybook(checkStatus, defectFlags, v));
+  }
+
+  const inputSummary = `
+checkStatus: ${checkStatus}
+documentType: ${documentType || ''}
+exclusionCode: ${exclusionCode || ''}
+vendor: ${vendor || ''}
+invoiceNo: ${invoiceNo || ''}
+amount: ${amount || 0}
+client: ${client || ''}
+ref: ${ref || ''}
+summary: ${summary || ''}
+defectFlags: ${(defectFlags || []).join(', ')}
+${rawText ? '\nOriginal document text (truncated):\n' + String(rawText).slice(0, 6000) : ''}`.trim();
+
+  try {
+    const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: GROQ_TEXT_MODEL,
+        messages: [
+          { role: 'system', content: 'Respond with ONLY valid JSON. No markdown fences, no preamble, no trailing text.' },
+          { role: 'user', content: `${buildPlaybookPrompt(v)}\n\nInput:\n${inputSummary}` },
+        ],
+        temperature: 0.3,
+        response_format: { type: 'json_object' },
+      }),
+    });
+
+    if (!groqRes.ok) {
+      console.error('[doc-router/playbook] Groq error:', groqRes.status, await groqRes.text());
+      return res.json(fallbackPlaybook(checkStatus, defectFlags, v));
+    }
+
+    const data = await groqRes.json();
+    let parsed;
+    try {
+      parsed = JSON.parse(data.choices[0].message.content);
+    } catch (e) {
+      console.error('[doc-router/playbook] Bad JSON from model:', data.choices?.[0]?.message?.content);
+      return res.json(fallbackPlaybook(checkStatus, defectFlags, v));
+    }
+
+    if (!Array.isArray(parsed.steps) || !parsed.steps.length || typeof parsed.narrative !== 'string') {
+      console.error('[doc-router/playbook] Malformed model output, falling back:', parsed);
+      return res.json(fallbackPlaybook(checkStatus, defectFlags, v));
+    }
+
+    res.json({
+      narrative: parsed.narrative,
+      steps: parsed.steps.slice(0, 6),
+      risk: Number.isFinite(parsed.risk) ? Math.max(0, Math.min(100, Math.round(parsed.risk))) : 55,
+      riskRationale: parsed.riskRationale || '',
+      generated: true,
+    });
+  } catch (err) {
+    console.error('[doc-router/playbook] error:', err);
+    res.json(fallbackPlaybook(checkStatus, defectFlags, v));
+  }
+});
+
 // ══════════════════════════════════════════════════════════════════════════════
 // ── COLLECTIVE BNCA ───────────────────────────────────────────────────────────
 // ══════════════════════════════════════════════════════════════════════════════
 
-const COLLECTIVE_VERTICALS = ['healthcare', 'finops', 'bpo', 'legal', 'real-estate', 'insurance', 'construction', 'o2c', 'crm', 'cpq'];
+const COLLECTIVE_VERTICALS = ['healthcare', 'finops', 'bpo', 'legal', 'real-estate', 'insurance', 'construction', 'o2c', 'crm', 'cpq', 'approval'];
 
 const COLLECTIVE_SIGNALS = []; // { vertical, signal, severity, riskLevel, confidence, topIssue, ownerLanes, hitlRequired, actions, impactDelta, kpi, warRoom, bnca, timestamp, source }
 const COLLECTIVE_BNCA = [];   // synthesis results
@@ -1149,7 +2197,7 @@ app.post('/api/collective/bnca', async (req, res) => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
+        model: 'openai/gpt-oss-120b',
         messages: [
           { role: 'system', content: 'Respond with ONLY valid JSON. No markdown fences, no preamble.' },
           { role: 'user', content: prompt }
@@ -1253,6 +2301,33 @@ function computeReadinessOverall(r) {
   return Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
 }
 
+// Map WIP verticals to live-data-store domains, where one exists.
+// Only the 4 SAP-phase verticals that share the live-data-store pipeline
+// have a real signal here — the other 6 (healthcare, finops, legal,
+// real-estate, insurance, construction) have no server-side data source
+// and stay manual-entry. This does not fabricate a value for them.
+const WIP_LIVE_DATA_DOMAIN = { bpo: 'bpo', o2c: 'o2c', crm: 'crm', cpq: 'cpq' };
+
+function getWipLiveSignal(vertical) {
+  const domain = WIP_LIVE_DATA_DOMAIN[vertical];
+  if (!domain) return { available: false };
+  try {
+    const stored = liveDataModule.readStore(domain);
+    if (!stored || !Array.isArray(stored.records) || !stored.records.length) {
+      return { available: false, domain };
+    }
+    return {
+      available: true,
+      domain,
+      filename: stored.filename || null,
+      uploadedAt: stored.uploaded_at || null,
+      recordCount: stored.records.length
+    };
+  } catch (e) {
+    return { available: false, domain };
+  }
+}
+
 function wipId(prefix) {
   return prefix + '_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
 }
@@ -1261,13 +2336,22 @@ function wipId(prefix) {
 app.get('/api/wip/board', (req, res) => {
   const v = req.query.vertical;
   if (!ensureWipVertical(v)) return res.status(400).json({ ok: false, error: `vertical must be one of: ${COLLECTIVE_VERTICALS.join(', ')}` });
-  const readiness = WIP_READINESS[v] || null;
+  const liveSignal = getWipLiveSignal(v);
+  let readiness = WIP_READINESS[v] || null;
+  // Where a real live-data upload exists for this vertical, data completeness
+  // is a known fact (data was actually supplied), not a guess -- override the
+  // display value. Manual entries for the other 4 subjective fields are left
+  // untouched; those aren't derivable from uploaded records.
+  if (liveSignal.available) {
+    readiness = Object.assign({}, readiness, { dataCompleteness: 100, dataCompletenessAuto: true });
+  }
   res.json({
     ok: true,
     vertical: v,
     tasks: WIP_TASKS[v],
     readiness,
     readinessOverall: computeReadinessOverall(readiness),
+    liveSignal,
     dataQuality: WIP_DATA_QUALITY[v],
     decisions: WIP_DECISIONS[v],
     trends: WIP_TRENDS[v]
@@ -1311,9 +2395,17 @@ app.delete('/api/wip/task/:id', (req, res) => {
 app.post('/api/wip/readiness', (req, res) => {
   const { vertical, dataCompleteness, stakeholderCoverage, mitigationPlans, resourceAvailability, openRisks } = req.body || {};
   if (!ensureWipVertical(vertical)) return res.status(400).json({ ok: false, error: 'valid vertical required' });
-  WIP_READINESS[vertical] = { dataCompleteness, stakeholderCoverage, mitigationPlans, resourceAvailability, openRisks, updatedAt: Date.now() };
+  const liveSignal = getWipLiveSignal(vertical);
+  // If live data exists for this vertical, dataCompleteness is a known fact, not
+  // a manual estimate -- always store 100 rather than whatever (or nothing) the
+  // now-disabled slider on the client sent.
+  const effectiveDataCompleteness = liveSignal.available ? 100 : dataCompleteness;
+  WIP_READINESS[vertical] = { dataCompleteness: effectiveDataCompleteness, stakeholderCoverage, mitigationPlans, resourceAvailability, openRisks, updatedAt: Date.now() };
   saveWipState();
-  res.json({ ok: true, readiness: WIP_READINESS[vertical], overall: computeReadinessOverall(WIP_READINESS[vertical]) });
+  const readiness = liveSignal.available
+    ? Object.assign({}, WIP_READINESS[vertical], { dataCompletenessAuto: true })
+    : WIP_READINESS[vertical];
+  res.json({ ok: true, readiness, overall: computeReadinessOverall(readiness), liveSignal });
 });
 
 // ── DATA QUALITY ───────────────────────────────────────────────────────────────
@@ -1356,7 +2448,7 @@ app.post('/api/wip/decision', (req, res) => {
   res.json({ ok: true, decision });
 });
 
-app.patch('/api/wip/decision/:id', requireApiKey, (req, res) => {
+app.patch('/api/wip/decision/:id', requireAuth, (req, res) => {
   const { vertical, status } = req.body || {};
   if (!ensureWipVertical(vertical)) return res.status(400).json({ ok: false, error: 'valid vertical required' });
   if (!['APPROVED', 'REJECTED', 'PENDING'].includes(status)) return res.status(400).json({ ok: false, error: 'status must be APPROVED, REJECTED, or PENDING' });
@@ -1397,19 +2489,60 @@ app.get('/api/digital-twin/snapshot', (req, res) => {
     .filter(r => r.status === 'OPEN').length;
   const mdmDomains = typeof MDM_SEED_DATA !== 'undefined' ? Object.keys(MDM_SEED_DATA) : [];
 
+  // AI Decision Intelligence Layer rollup: MDM (Phase 5) only. CRM/CPQ/O2C/
+  // Approval/Catalog are analyze(context) services consumed by the Industry
+  // War Rooms, not standalone capabilities with their own decision engines —
+  // no rollup entry for them here by design.
+  let mdmOpenRecs = 0;
+  try {
+    mdmOpenRecs = generateRecommendations(MDM_SEED_DATA, MDM_RESOLVED_RECS).length;
+  } catch (e) { /* MDM engine not loaded yet at snapshot time — leave at 0 */ }
+  const capabilityEngines = { mdm: mdmOpenRecs };
+  const capabilityOpenTotal = mdmOpenRecs;
+
   res.json({
     ok: true,
     generatedAt: Date.now(),
     wip: { verticalsTracked: wipVerticals.length, verticals: wipVerticals },
     governance: { openRisks },
     mdm: { domainsTracked: mdmDomains.length, domains: mdmDomains },
+    decisionIntelligence: {
+      enginesLive: Object.keys(capabilityEngines).length,
+      totalCapabilityRows: 10,
+      openRecommendations: capabilityOpenTotal,
+      byCapability: capabilityEngines
+    },
   });
+});
+
+app.post('/api/digital-twin/query', async (req, res) => {
+  const { domains, signals, forecasts, health_score, maxTokens } = req.body || {};
+  if (!Array.isArray(domains)) return res.status(400).json({ ok: false, error: 'domains array required' });
+  const summary = JSON.stringify({
+    health_score,
+    domains: domains.map(d => ({ name: d.name, score: d.score, delta: d.delta })),
+    recent_signals: (signals || []).slice(0, 15).map(s => ({ text: s.text, src: s.src, time: s.time })),
+    forecasts: (forecasts || []).map(f => ({ label: f.label, value: f.value, trend: f.trend }))
+  }, null, 2);
+  const prompt = `Current Enterprise Digital Twin snapshot:\n${summary}\n\nSynthesize an executive brief: identify the domains driving the biggest swings in enterprise health, the highest-priority cross-domain risk, and the single most important executive action this week. Reference domain names and specific figures. Be specific and operational.`;
+  try {
+    const answer = await groqChat(SP.digitalTwin, prompt, maxTokens || 1400);
+    return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
+  } catch (e) {
+    console.error('DIGITAL TWIN GROQ ERROR:', e.message);
+    return res.status(500).json({ ok: false, error: e.message });
+  }
 });
 
 
 // ── PHASE 8: GOVERNANCE & COMPLIANCE ───────────────────────────────────────────
+const { createGate: createHitlGate } = require('./html/shared/tsm-hitl-gate.js');
 const GOVERNANCE_AUDIT_LOG = [];
 const GOVERNANCE_RISK_REGISTER = [];
+// Standardized HITL approval gate (BPO Enterprise Roadmap #4). Replaces the
+// prior one-step resolve with an explicit approve/reject decision + actor,
+// using the same pattern already proven in MDM's recommendation approvals.
+const GOVERNANCE_HITL_GATE = createHitlGate('GOV');
 
 function governanceId(prefix) {
   return prefix + '-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7);
@@ -1443,17 +2576,74 @@ app.get('/api/governance/risk', (req, res) => {
   res.json({ ok: true, risks: GOVERNANCE_RISK_REGISTER });
 });
 
-app.post('/api/governance/risk/:id/resolve', requireApiKey, (req, res) => {
+// Two-step HITL gate: approve or reject a risk, with an explicit actor and
+// an audit-trail entry recorded before the underlying status changes. This
+// replaces the old single /resolve route (no frontend called it, so this is
+// a safe swap, not a breaking change) with the same pattern MDM already uses
+// for recommendation approvals.
+app.post('/api/governance/risk/:id/approve', requireAuth, (req, res) => {
+  const { actor } = req.body || {};
   const risk = GOVERNANCE_RISK_REGISTER.find(r => r.id === req.params.id);
   if (!risk) return res.status(404).json({ ok: false, error: "Risk not found" });
+  if (risk.status !== 'OPEN') return res.status(409).json({ ok: false, error: `Risk already ${risk.status}` });
+
   risk.status = 'RESOLVED';
   risk.resolvedAt = Date.now();
-  res.json({ ok: true, risk });
+  const decision = GOVERNANCE_HITL_GATE.recordDecision({
+    entityId: risk.id, entityType: 'risk', decision: 'APPROVED',
+    actor, meta: { title: risk.title, severity: risk.severity, vertical: risk.vertical }
+  });
+  res.json({ ok: true, risk, decision });
+});
+
+app.post('/api/governance/risk/:id/reject', requireAuth, (req, res) => {
+  const { actor } = req.body || {};
+  const risk = GOVERNANCE_RISK_REGISTER.find(r => r.id === req.params.id);
+  if (!risk) return res.status(404).json({ ok: false, error: "Risk not found" });
+  if (risk.status !== 'OPEN') return res.status(409).json({ ok: false, error: `Risk already ${risk.status}` });
+
+  risk.status = 'DISMISSED';
+  risk.resolvedAt = Date.now();
+  const decision = GOVERNANCE_HITL_GATE.recordDecision({
+    entityId: risk.id, entityType: 'risk', decision: 'REJECTED',
+    actor, meta: { title: risk.title, severity: risk.severity, vertical: risk.vertical }
+  });
+  res.json({ ok: true, risk, decision });
+});
+
+app.get('/api/governance/risk/decisions', (req, res) => {
+  const { limit } = req.query;
+  res.json({ ok: true, log: GOVERNANCE_HITL_GATE.getLog(parseInt(limit, 10) || 100) });
+});
+
+app.post('/api/governance/query', async (req, res) => {
+  const { controls, risks, audit, kpis, maxTokens } = req.body || {};
+  if (!Array.isArray(controls)) return res.status(400).json({ ok: false, error: 'controls array required' });
+  const summary = JSON.stringify({
+    kpis,
+    failing_or_review_controls: (controls || []).filter(c => c.status !== 'PASS'),
+    at_risk: (risks || []).filter(r => r.status === 'OPEN' || r.severity >= 70),
+    flagged_or_blocked_audit_events: (audit || []).filter(a => a.result !== 'OK')
+  }, null, 2);
+  const prompt = `Current governance & compliance snapshot:\n${summary}\n\nIdentify the highest-priority failing or at-risk controls, the risks most likely to escalate, and any suspicious or flagged audit events requiring follow-up. Reference control IDs and risk IDs. Recommend the specific next action for each. Be specific and operational.`;
+  try {
+    const answer = await groqChat(SP.governance, prompt, maxTokens || 1200);
+    return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
+  } catch (e) {
+    console.error('GOVERNANCE GROQ ERROR:', e.message);
+    return res.status(500).json({ ok: false, error: e.message });
+  }
 });
 
 
 // ── PHASE 7: ENTERPRISE INTEGRATION HUB ────────────────────────────────────────
-const INTEGRATION_CATALOG = [
+// Standardized HITL approval gate (BPO Enterprise Roadmap #4), same shared
+// module Governance uses. A degraded integration needs a human decision
+// before it's either remediated (approved) or escalated (rejected) --
+// previously /sync just silently reset status to 'healthy' with no record
+// of who decided that, or whether the underlying issue was actually fixed.
+const INTEGRATION_HITL_GATE = createHitlGate('IHUB');
+let INTEGRATION_CATALOG = [
   {
     "id": "int-01",
     "system": "CRM",
@@ -1512,31 +2702,115 @@ const INTEGRATION_CATALOG = [
   }
 ];
 
+// Returns whichever catalog is currently "active": the live-uploaded one if
+// a file has been uploaded via /api/live-data/integration-hub/upload, else
+// the hardcoded sample INTEGRATION_CATALOG above.
+function getActiveIntegrationCatalog() {
+  try {
+    const stored = liveDataModule.readStore('integration-hub');
+    if (stored && Array.isArray(stored.records) && stored.records.length) {
+      const normalized = stored.records.map((r, i) => ({
+        id: r.id || `int-live-${i + 1}`,
+        system: r.system || r.name || `System ${i + 1}`,
+        status: r.status || 'healthy',
+        lastSync: r.lastSync || null,
+        errorCount: typeof r.errorCount === 'number' ? r.errorCount : 0
+      }));
+      return { records: normalized, live: true };
+    }
+  } catch (e) { /* fall through to sample */ }
+  return { records: INTEGRATION_CATALOG, live: false };
+}
+
+// Persists a mutation (sync/error) back to wherever the record actually
+// lives, so live-uploaded data doesn't silently revert to the file on the
+// next request.
+function persistIntegrationCatalog(records, live) {
+  if (live) {
+    const stored = liveDataModule.readStore('integration-hub') || {};
+    stored.records = records;
+    liveDataModule.writeStore('integration-hub', stored);
+  } else {
+    INTEGRATION_CATALOG = records;
+  }
+}
+
 app.get('/api/integration/catalog', (req, res) => {
-  res.json({ ok: true, integrations: INTEGRATION_CATALOG });
+  const { records } = getActiveIntegrationCatalog();
+  res.json({ ok: true, integrations: records });
 });
 
-app.post('/api/integration/:id/sync', requireApiKey, (req, res) => {
-  const item = INTEGRATION_CATALOG.find(i => i.id === req.params.id);
+app.post('/api/integration/:id/sync', requireAuth, (req, res) => {
+  const { records, live } = getActiveIntegrationCatalog();
+  const item = records.find(i => i.id === req.params.id);
   if (!item) return res.status(404).json({ ok: false, error: "Integration not found" });
   item.lastSync = Date.now();
   item.status = 'healthy';
+  persistIntegrationCatalog(records, live);
   res.json({ ok: true, integration: item });
 });
 
 app.post('/api/integration/:id/error', (req, res) => {
-  const item = INTEGRATION_CATALOG.find(i => i.id === req.params.id);
+  const { records, live } = getActiveIntegrationCatalog();
+  const item = records.find(i => i.id === req.params.id);
   if (!item) return res.status(404).json({ ok: false, error: "Integration not found" });
-  item.errorCount += 1;
+  item.errorCount = (item.errorCount || 0) + 1;
   item.status = item.errorCount >= 3 ? 'degraded' : 'warning';
   const message = (req.body && req.body.message) || `Sync error on ${item.system}`;
   INTEGRATION_ERROR_LOG.push({ id: `err-${Date.now()}`, ts: new Date().toISOString(), system: item.system, flowId: null, message });
+  persistIntegrationCatalog(records, live);
   res.json({ ok: true, integration: item });
 });
 
 app.get('/api/integration/health', (req, res) => {
-  const healthy = INTEGRATION_CATALOG.filter(i => i.status === 'healthy').length;
-  res.json({ ok: true, total: INTEGRATION_CATALOG.length, healthy, degraded: INTEGRATION_CATALOG.length - healthy });
+  const { records } = getActiveIntegrationCatalog();
+  const healthy = records.filter(i => i.status === 'healthy').length;
+  res.json({ ok: true, total: records.length, healthy, degraded: records.length - healthy });
+});
+
+// Two-step HITL gate for degraded integrations: approve = remediate (reset
+// to healthy, clear error count, log the actor who signed off), reject =
+// escalate (leave broken, but on record as a human decision rather than a
+// silent auto-heal). Only applies to integrations currently 'degraded';
+// 'healthy' or 'warning' items aren't gated since they don't need a
+// go/no-go decision yet.
+app.post('/api/integration/:id/remediate/approve', requireAuth, (req, res) => {
+  const { actor } = req.body || {};
+  const { records, live } = getActiveIntegrationCatalog();
+  const item = records.find(i => i.id === req.params.id);
+  if (!item) return res.status(404).json({ ok: false, error: "Integration not found" });
+  if (item.status !== 'degraded') return res.status(409).json({ ok: false, error: `Integration is not degraded (current status: ${item.status})` });
+
+  item.status = 'healthy';
+  item.errorCount = 0;
+  item.lastSync = Date.now();
+  persistIntegrationCatalog(records, live);
+  const decision = INTEGRATION_HITL_GATE.recordDecision({
+    entityId: item.id, entityType: 'integration', decision: 'APPROVED',
+    actor, meta: { system: item.system }
+  });
+  res.json({ ok: true, integration: item, decision });
+});
+
+app.post('/api/integration/:id/remediate/reject', requireAuth, (req, res) => {
+  const { actor } = req.body || {};
+  const { records, live } = getActiveIntegrationCatalog();
+  const item = records.find(i => i.id === req.params.id);
+  if (!item) return res.status(404).json({ ok: false, error: "Integration not found" });
+  if (item.status !== 'degraded') return res.status(409).json({ ok: false, error: `Integration is not degraded (current status: ${item.status})` });
+
+  item.status = 'escalated';
+  persistIntegrationCatalog(records, live);
+  const decision = INTEGRATION_HITL_GATE.recordDecision({
+    entityId: item.id, entityType: 'integration', decision: 'REJECTED',
+    actor, meta: { system: item.system }
+  });
+  res.json({ ok: true, integration: item, decision });
+});
+
+app.get('/api/integration/decisions', (req, res) => {
+  const { limit } = req.query;
+  res.json({ ok: true, log: INTEGRATION_HITL_GATE.getLog(parseInt(limit, 10) || 100) });
 });
 
 // Point-to-point integration flows between systems — this IS the "integration catalog"
@@ -1590,9 +2864,11 @@ const INTEGRATION_ERROR_LOG = [
 ];
 
 app.get('/api/integration/detail', (req, res) => {
+  const { records, live } = getActiveIntegrationCatalog();
   res.json({
     ok: true,
-    systems: INTEGRATION_CATALOG,
+    systems: records,
+    systems_source: live ? 'live' : 'sample',
     flows: INTEGRATION_FLOWS,
     queues: MESSAGE_QUEUES,
     etlJobs: ETL_JOBS,
@@ -1624,6 +2900,7 @@ app.post('/api/integration/query', async (req, res) => {
 
 // ── PHASE 6: MASTER DATA MANAGEMENT (MDM) ──────────────────────────────────────
 const { findDuplicates: mdmFindDuplicates, scoreDataset: mdmScoreDataset } = require('./html/mdm-suite/mdm-core.js');
+const TSMQualityScoreEngine = require('./html/shared/tsm-quality-score-engine.js');
 const MDM_SEED_DATA = require('./html/mdm-suite/mdm-seed-data.json');
 // Deep-cloned at load time, before any merge can mutate MDM_SEED_DATA, so a real
 // reset is possible (restores retired records and clears the decision log).
@@ -1650,6 +2927,22 @@ app.get('/api/mdm/summary', (req, res) => {
   });
   const overallScore = Math.round(summary.reduce((s, d) => s + d.avgQualityScore, 0) / (summary.length || 1));
   res.json({ ok: true, overallScore, domains: summary });
+});
+
+// TSM Quality Score Engine wired into live MDM data (BPO Enterprise Roadmap #2:
+// Quality Assurance Command Center). Runs the existing mdmScoreDataset() output
+// through TSMQualityScoreEngine.fromMdmScore() to get the unified
+// accuracy/completeness/compliance/confidence/overall/band shape per domain,
+// then rolls those up into a single platform-level score.
+app.get('/api/mdm/quality-score', (req, res) => {
+  const domains = Object.keys(MDM_SEED_DATA);
+  const perDomain = domains.map(d => {
+    const scored = mdmScoreDataset(MDM_SEED_DATA[d], d);
+    const engineScore = TSMQualityScoreEngine.fromMdmScore(scored);
+    return Object.assign({ domain: d }, engineScore);
+  });
+  const overall = TSMQualityScoreEngine.rollup(perDomain);
+  res.json({ ok: true, overall, domains: perDomain });
 });
 
 // Full detail across all domains: records + per-record quality/issues + duplicate clusters.
@@ -1706,16 +2999,7 @@ const MDM_LAST_VALIDATED = {};
 // the rest of the platform's in-memory-state pattern; swap for the Fly volume if needed).
 const MDM_MERGE_LOG = [];
 
-// ── AUTH: shared-secret gate for mutating endpoints ────────────────────────
-function requireApiKey(req, res, next) {
-  const key = req.headers['x-api-key'];
-  if (!key || key !== process.env.TSM_API_KEY) {
-    return res.status(401).json({ ok: false, error: 'Unauthorized' });
-  }
-  next();
-}
-
-app.post('/api/mdm/merge', requireApiKey, (req, res) => {
+app.post('/api/mdm/merge', requireAuth, (req, res) => {
   const { domain, survivorId, mergedId, actor, decision } = req.body || {};
   if (!domain || !survivorId || !mergedId) {
     return res.status(400).json({ ok: false, error: 'domain, survivorId, mergedId required' });
@@ -1749,15 +3033,303 @@ app.get('/api/mdm/merge-history', (req, res) => {
   res.json({ ok: true, log: MDM_MERGE_LOG.slice(-200).reverse() });
 });
 
+// ── PHASE 5: MDM DECISION ENGINE (recommendations + approve/reject) ───────────
+const { generateRecommendations } = require('./html/mdm-suite/mdm-decision-engine.js');
+// Tracks recommendation ids explicitly acted on. Merge recs don't strictly need
+// this (retiring a record naturally removes the pair from regeneration), but
+// quality-review recs flag a record without mutating it, so without this set
+// a reviewed-and-dismissed item would just reappear on the next fetch.
+const MDM_RESOLVED_RECS = new Set();
+const MDM_RECOMMENDATION_DECISIONS = [];
+// Tracks which duplicate-record pairs have already been escalated to Governance
+// via /api/mdm/cross-domain-scan, so re-running the scan doesn't create a
+// second risk for the same pair every time (mirrors the resolve-once pattern
+// MDM already uses for recommendation decisions above).
+const MDM_CROSS_DOMAIN_FLAGGED = new Set();
+
+app.get('/api/mdm/recommendations', (req, res) => {
+  const recs = generateRecommendations(MDM_SEED_DATA, MDM_RESOLVED_RECS);
+  res.json({ ok: true, count: recs.length, recommendations: recs });
+});
+
+app.post('/api/mdm/recommendations/:id/approve', requireAuth, (req, res) => {
+  const { actor } = req.body || {};
+  const recs = generateRecommendations(MDM_SEED_DATA, MDM_RESOLVED_RECS);
+  const rec = recs.find(r => r.id === req.params.id);
+  if (!rec) return res.status(404).json({ ok: false, error: 'Recommendation not found or already resolved' });
+
+  if (rec.type === 'merge') {
+    const raw = MDM_SEED_DATA[rec.domain];
+    const survivor = raw.find(r => r.id === rec.survivorId);
+    const merged = raw.find(r => r.id === rec.mergedId);
+    if (!survivor || !merged) return res.status(404).json({ ok: false, error: 'Underlying record no longer exists' });
+    const entry = {
+      id: `MRG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      domain: rec.domain, survivorId: rec.survivorId, mergedId: rec.mergedId,
+      survivorName: survivor.name, mergedName: merged.name,
+      decision: 'APPROVED', actor: actor || 'Unassigned', ts: new Date().toISOString(),
+      recommendationId: rec.id
+    };
+    MDM_MERGE_LOG.push(entry);
+    MDM_SEED_DATA[rec.domain] = raw.filter(r => r.id !== rec.mergedId);
+  }
+
+  MDM_RESOLVED_RECS.add(rec.id);
+  MDM_MISSION_CLAIMS.delete(rec.id);
+  MDM_RECOMMENDATION_DECISIONS.push({
+    id: `DEC-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    recommendationId: rec.id, domain: rec.domain, type: rec.type,
+    decision: 'APPROVED', actor: actor || 'Unassigned', ts: new Date().toISOString()
+  });
+  res.json({ ok: true, resolved: rec });
+});
+
+app.post('/api/mdm/recommendations/:id/reject', requireAuth, (req, res) => {
+  const { actor } = req.body || {};
+  const recs = generateRecommendations(MDM_SEED_DATA, MDM_RESOLVED_RECS);
+  const rec = recs.find(r => r.id === req.params.id);
+  if (!rec) return res.status(404).json({ ok: false, error: 'Recommendation not found or already resolved' });
+
+  if (rec.type === 'merge') {
+    MDM_MERGE_LOG.push({
+      id: `MRG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      domain: rec.domain, survivorId: rec.survivorId, mergedId: rec.mergedId,
+      survivorName: rec.survivorName, mergedName: rec.mergedName,
+      decision: 'REJECTED', actor: actor || 'Unassigned', ts: new Date().toISOString(),
+      recommendationId: rec.id
+    });
+  }
+
+  MDM_RESOLVED_RECS.add(rec.id);
+  MDM_MISSION_CLAIMS.delete(rec.id);
+  MDM_RECOMMENDATION_DECISIONS.push({
+    id: `DEC-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    recommendationId: rec.id, domain: rec.domain, type: rec.type,
+    decision: 'REJECTED', actor: actor || 'Unassigned', ts: new Date().toISOString()
+  });
+  res.json({ ok: true, resolved: rec });
+});
+
+app.get('/api/mdm/recommendation-decisions', (req, res) => {
+  res.json({ ok: true, log: MDM_RECOMMENDATION_DECISIONS.slice(-200).reverse() });
+});
+
+// ── PHASE 6: MDM EXECUTIVE PORTAL ──────────────────────────────────────────
+// Real governance KPI rollup, computed fresh from live MDM_SEED_DATA + the
+// Phase 5 decision engine + the merge/decision logs -- no relay dependency,
+// no AI dependency. This is the single-source-of-truth feed the executive
+// portal renders from; the war-room-to-portal sessionStorage relay is kept
+// as a fallback only (e.g. if this endpoint is ever unreachable client-side).
+app.get('/api/mdm/executive-summary', (req, res) => {
+  const domains = Object.keys(MDM_SEED_DATA);
+  const domainSummaries = domains.map(d => {
+    const q = mdmScoreDataset(MDM_SEED_DATA[d], d);
+    const dupes = mdmFindDuplicates(MDM_SEED_DATA[d], d);
+    return {
+      domain: d,
+      avgQualityScore: q.avgScore,
+      recordCount: q.recordCount,
+      duplicateCount: dupes.length,
+      steward: MDM_STEWARDS[d] || 'Unassigned'
+    };
+  });
+
+  const totalRecords = domainSummaries.reduce((s, d) => s + d.recordCount, 0);
+  const totalDuplicates = domainSummaries.reduce((s, d) => s + d.duplicateCount, 0);
+  const overallQuality = Math.round(
+    domainSummaries.reduce((s, d) => s + d.avgQualityScore, 0) / (domainSummaries.length || 1)
+  );
+
+  const recs = generateRecommendations(MDM_SEED_DATA, MDM_RESOLVED_RECS);
+  const riskBreakdown = { HIGH: 0, MEDIUM: 0, LOW: 0 };
+  recs.forEach(r => { riskBreakdown[r.risk] = (riskBreakdown[r.risk] || 0) + 1; });
+
+  res.json({
+    ok: true,
+    generatedAt: new Date().toISOString(),
+    kpis: {
+      total_records: totalRecords,
+      duplicate_count: totalDuplicates,
+      quality_score: overallQuality,
+      pending_approvals: recs.length,
+      anomalies: riskBreakdown.HIGH,
+      stewards_active: new Set(Object.values(MDM_STEWARDS)).size
+    },
+    riskBreakdown,
+    domains: domainSummaries.sort((a, b) => a.avgQualityScore - b.avgQualityScore),
+    openRecommendations: recs.slice(0, 15),
+    recentDecisions: MDM_RECOMMENDATION_DECISIONS.slice(-10).reverse()
+  });
+});
+
+// ── Client Trust Package ────────────────────────────────────────────────────
+// Bundles the reports a real BPO client expects as ONE deliverable, instead
+// of the client having to piece it together from 6 separate API calls
+// themselves. Every section below reuses data that already exists elsewhere
+// in this file (quality scoring, duplicate detection, the Governance risks
+// created by /api/mdm/cross-domain-scan, and the HITL decision log) --
+// this is an assembly/packaging endpoint, not new business logic.
+//
+// "Processed Documents" is deliberately named "recordsProcessed" here rather
+// than fabricating document metadata that doesn't exist -- MDM's real input
+// is structured master-data records, not scanned documents, and inventing
+// fake document counts would be the same kind of dishonest scaffolding this
+// session has been finding and removing all night.
+app.get('/api/mdm/trust-package', (req, res) => {
+  const domains = Object.keys(MDM_SEED_DATA);
+
+  // Quality Report -- reuses the same engine as /api/mdm/quality-score
+  const qualityByDomain = domains.map(d => {
+    const scored = mdmScoreDataset(MDM_SEED_DATA[d], d);
+    return Object.assign({ domain: d }, TSMQualityScoreEngine.fromMdmScore(scored));
+  });
+  const qualityOverall = TSMQualityScoreEngine.rollup(qualityByDomain);
+
+  // Exception Report -- every high-confidence duplicate across all domains,
+  // same detection used by /api/mdm/cross-domain-scan, shown here even for
+  // pairs that scored below the auto-escalation threshold so the client can
+  // see everything that was reviewed, not just what got escalated.
+  const exceptions = [];
+  domains.forEach(d => {
+    mdmFindDuplicates(MDM_SEED_DATA[d], d).forEach(m => {
+      exceptions.push({
+        domain: d,
+        recordA: m.recordA.name, recordB: m.recordB.name,
+        matchScore: m.matchScore, matchReason: m.matchReason, matchField: m.matchField,
+        escalatedToGovernance: m.matchScore >= 90,
+      });
+    });
+  });
+
+  // Risk Report -- only risks this package's own pipeline (MDM -> Governance)
+  // actually created, not the whole Governance register (which may hold
+  // risks from other verticals entirely unrelated to this deliverable).
+  const risks = GOVERNANCE_RISK_REGISTER.filter(r => r.source && r.source.system === 'mdm');
+
+  // Audit Trail -- HITL decisions on those specific risks, plus MDM's own
+  // merge/recommendation decision logs.
+  const riskIds = new Set(risks.map(r => r.id));
+  const riskDecisions = GOVERNANCE_HITL_GATE.getLog(200).filter(d => riskIds.has(d.entityId));
+
+  // Recommended Actions + Executive Summary -- reuse the same recommendation
+  // engine as /api/mdm/executive-summary.
+  const recs = generateRecommendations(MDM_SEED_DATA, MDM_RESOLVED_RECS);
+
+  res.json({
+    ok: true,
+    generatedAt: new Date().toISOString(),
+    package: 'TSM Client Trust Package v1.0',
+    recordsProcessed: {
+      totalRecords: domains.reduce((s, d) => s + MDM_SEED_DATA[d].length, 0),
+      byDomain: domains.map(d => ({ domain: d, count: MDM_SEED_DATA[d].length })),
+    },
+    qualityReport: { overall: qualityOverall, byDomain: qualityByDomain },
+    exceptionReport: { total: exceptions.length, escalatedCount: exceptions.filter(e => e.escalatedToGovernance).length, exceptions },
+    riskReport: { total: risks.length, open: risks.filter(r => r.status === 'OPEN').length, risks },
+    auditTrail: { riskDecisions, mdmMergeLog: MDM_MERGE_LOG.slice(-50).reverse(), mdmRecommendationDecisions: MDM_RECOMMENDATION_DECISIONS.slice(-50).reverse() },
+    recommendedActions: recs,
+    executiveSummary: {
+      overallQualityScore: qualityOverall.overall,
+      totalExceptions: exceptions.length,
+      openRisks: risks.filter(r => r.status === 'OPEN').length,
+      pendingRecommendations: recs.length,
+    },
+  });
+});
+
+// ── PHASE 7: MDM MISSION QUEUE ──────────────────────────────────────────────
+// A "mission" is an open Phase 5 recommendation plus claim/assignment state.
+// No separate resolve step -- approving/rejecting the underlying recommendation
+// (existing Phase 5 routes) is what retires a mission, so the queue can never
+// drift out of sync with what recommendations actually exist.
+const { buildQueue: mdmBuildQueue, summarize: mdmSummarizeQueue } = require('./html/mdm-suite/mdm-mission-queue.js');
+const MDM_MISSION_CLAIMS = new Map(); // recommendationId -> { actor, claimedAt }
+
+app.get('/api/mdm/mission-queue', (req, res) => {
+  const queue = mdmBuildQueue(MDM_SEED_DATA, MDM_RESOLVED_RECS, MDM_MISSION_CLAIMS);
+  res.json({ ok: true, summary: mdmSummarizeQueue(queue), queue });
+});
+
+app.post('/api/mdm/mission-queue/:id/claim', requireAuth, (req, res) => {
+  const { actor } = req.body || {};
+  if (!actor) return res.status(400).json({ ok: false, error: 'actor required' });
+  const queue = mdmBuildQueue(MDM_SEED_DATA, MDM_RESOLVED_RECS, MDM_MISSION_CLAIMS);
+  const mission = queue.find(m => m.id === req.params.id);
+  if (!mission) return res.status(404).json({ ok: false, error: 'Mission not found or already resolved' });
+  if (mission.claimedBy && mission.claimedBy !== actor) {
+    return res.status(409).json({ ok: false, error: `Already claimed by ${mission.claimedBy}` });
+  }
+  MDM_MISSION_CLAIMS.set(mission.id, { actor, claimedAt: new Date().toISOString() });
+  res.json({ ok: true, mission: { ...mission, missionStatus: 'CLAIMED', claimedBy: actor } });
+});
+
+app.post('/api/mdm/mission-queue/:id/release', requireAuth, (req, res) => {
+  const existed = MDM_MISSION_CLAIMS.delete(req.params.id);
+  if (!existed) return res.status(404).json({ ok: false, error: 'Mission was not claimed' });
+  res.json({ ok: true, released: req.params.id });
+});
+
 // Real reset: restores every domain to its original seeded state (undoes any
 // approved merges) and clears the decision log. Previously "RESET DATA" just
 // re-fetched current state with no way to actually undo anything.
-app.post('/api/mdm/reset', requireApiKey, (req, res) => {
+app.post('/api/mdm/reset', requireAuth, (req, res) => {
   Object.keys(MDM_SEED_DATA_ORIGINAL).forEach(domain => {
     MDM_SEED_DATA[domain] = JSON.parse(JSON.stringify(MDM_SEED_DATA_ORIGINAL[domain]));
   });
   MDM_MERGE_LOG.length = 0;
+  MDM_RESOLVED_RECS.clear();
+  MDM_RECOMMENDATION_DECISIONS.length = 0;
+  MDM_MISSION_CLAIMS.clear();
+  MDM_CROSS_DOMAIN_FLAGGED.clear();
   res.json({ ok: true, reset: true });
+});
+
+// ── Cross-War-Room Intelligence: MDM duplicate detection → Governance risk ──
+// Real example this implements: MDM finds a duplicate vendor master record
+// (e.g. shared tax ID) → that's a live financial risk (potential duplicate
+// payment) → Governance should have it on record as a risk needing a human
+// decision, without someone manually re-typing it in from the MDM screen.
+//
+// Only high-confidence matches (score >= 90, i.e. a shared identifier like
+// tax ID, not just a fuzzy name match) create a risk — a fuzzy name-only
+// match is too weak to escalate automatically and would just add noise to
+// Governance's queue.
+app.post('/api/mdm/cross-domain-scan', requireAuth, (req, res) => {
+  const requestedDomain = req.body && req.body.domain;
+  const domains = requestedDomain ? [requestedDomain] : Object.keys(MDM_SEED_DATA);
+
+  const created = [];
+  let skippedAlreadyFlagged = 0;
+  let skippedLowConfidence = 0;
+
+  domains.forEach(domain => {
+    const records = MDM_SEED_DATA[domain];
+    if (!records) return;
+
+    mdmFindDuplicates(records, domain).forEach(match => {
+      if (match.matchScore < 90) { skippedLowConfidence++; return; }
+
+      const pairKey = domain + ':' + [match.recordA.id, match.recordB.id].sort().join(':');
+      if (MDM_CROSS_DOMAIN_FLAGGED.has(pairKey)) { skippedAlreadyFlagged++; return; }
+      MDM_CROSS_DOMAIN_FLAGGED.add(pairKey);
+
+      const risk = {
+        id:        governanceId('risk'),
+        title:     `Duplicate ${domain} master record: "${match.recordA.name}" / "${match.recordB.name}" ` +
+                   `(shared ${match.matchField || 'multiple fields'}) — duplicate payment/processing risk`,
+        severity:  match.matchScore >= 95 ? 'critical' : 'high',
+        owner:     MDM_STEWARDS[domain] || 'Unassigned',
+        vertical:  domain,
+        status:    'OPEN',
+        createdAt: Date.now(),
+        source:    { system: 'mdm', matchScore: match.matchScore, matchReason: match.matchReason, recordIds: [match.recordA.id, match.recordB.id] },
+      };
+      GOVERNANCE_RISK_REGISTER.push(risk);
+      created.push(risk);
+    });
+  });
+
+  res.json({ ok: true, created, skippedAlreadyFlagged, skippedLowConfidence });
 });
 
 app.post('/api/mdm/query', async (req, res) => {
@@ -1782,6 +3354,99 @@ app.post('/api/mdm/query', async (req, res) => {
   } catch (e) {
     console.error('MDM GROQ ERROR:', e.message);
     return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// ── SENTINEL: real document analysis ─────────────────────────────────────────
+// Accepts a real uploaded file (multipart/form-data, field name "document"),
+// extracts its text, and runs it through the same groqChat/SP pattern the rest
+// of the platform already uses (see /api/mdm/query above). No new AI provider,
+// no separate service — this is the "minimal proxy" we discussed, just built
+// as a route on the backend that already exists instead of a standalone server.
+app.post('/api/sentinel/analyze', sentinelUpload.single('document'), async (req, res) => {
+  const file = req.file;
+  if (!file) return res.status(400).json({ ok: false, error: 'document file required (field name "document")' });
+
+  const vertical = (req.body && req.body.vertical) || 'enterprise';
+  const promptKey = SP[vertical] ? vertical : 'enterprise';
+  const name = file.originalname || 'uploaded document';
+  const ext = (name.split('.').pop() || '').toLowerCase();
+
+  let text = '';
+  try {
+    if (ext === 'pdf') {
+      const pdfParse = require('pdf-parse');
+      const data = await pdfParse(file.buffer);
+      text = data.text || '';
+    } else if (ext === 'docx') {
+      const mammoth = require('mammoth');
+      const result = await mammoth.extractRawText({ buffer: file.buffer });
+      text = result.value || '';
+    } else {
+      // txt, csv, and anything else plain-text
+      text = file.buffer.toString('utf8');
+    }
+  } catch (e) {
+    return res.status(422).json({ ok: false, error: 'Could not extract text from ' + name + ': ' + e.message });
+  }
+
+  if (!text.trim()) {
+    return res.status(422).json({ ok: false, error: 'No extractable text found in ' + name });
+  }
+
+  // Keep the prompt bounded — long contracts get truncated, not rejected
+  const truncated = text.length > 12000;
+  const excerpt = text.slice(0, 12000);
+
+  const system = SP[promptKey];
+  const userPrompt =
+    `Analyze the following real document uploaded by the user for a small-business risk-intelligence ` +
+    `platform. Return ONLY valid JSON — no markdown code fences, no prose outside the JSON — matching ` +
+    `exactly this schema:\n` +
+    `{\n` +
+    `  "findingTitle": "short headline under 10 words describing the core finding",\n` +
+    `  "findingBody": "2-4 sentences explaining what was found, citing specific evidence (a clause, line, or figure) from the document",\n` +
+    `  "impactTag": "short dollar or metric impact string, e.g. '$13,020 unbilled exposure' or '9-day average delay'",\n` +
+    `  "missionTitle": "one specific, actionable corrective step under 15 words",\n` +
+    `  "missionOwner": "the role best suited to own this, e.g. CFO, Compliance Officer, Operations Manager, Project Manager",\n` +
+    `  "missionRisk": "High, Medium, or Low"\n` +
+    `}\n\n` +
+    `DOCUMENT: ${name}\n\n${excerpt}`;
+
+  try {
+    const raw = await groqChat(system, userPrompt, 1200, null, true);
+
+    let structured = null;
+    try {
+      structured = JSON.parse(raw.replace(/```json|```/g, '').trim());
+    } catch (e) {
+      // Model wrapped the JSON in extra prose despite instructions — pull out
+      // the first {...} block and try again before giving up on structured data
+      const match = raw.match(/\{[\s\S]*\}/);
+      if (match) {
+        try { structured = JSON.parse(match[0]); } catch (e2) { structured = null; }
+      }
+    }
+
+    const finding = structured
+      ? `${structured.findingTitle}\n\n${structured.findingBody}\n\n` +
+        `Impact: ${structured.impactTag}\n\n` +
+        `Recommended action: ${structured.missionTitle} (Owner: ${structured.missionOwner}, Risk: ${structured.missionRisk})`
+      : raw;
+
+    res.json({
+      ok: true,
+      vertical: promptKey,
+      sourceFile: name,
+      extractedChars: text.length,
+      truncated,
+      finding,
+      structured,
+      createdAt: new Date().toISOString()
+    });
+  } catch (e) {
+    console.error('SENTINEL AI ERROR:', e.message);
+    res.status(500).json({ ok: false, error: e.message });
   }
 });
 
