@@ -884,6 +884,16 @@ app.use(require('./routes/music'));
 // chain — see routes/enterprise-capability-bridge.js header for full design.
 app.use(require('./routes/enterprise-capability-bridge'));
 
+// ── ENTERPRISE ENRICHMENT ENGINE ────────────────────────────────────────────────
+// server/enterprise/api/enterprise-router.js (POST /enrich, /dashboard,
+// /decision, /missions, GET /health) was fully built and unit-tested
+// (scripts/test-enterprise-engine.js etc.) but never mounted here, so
+// POST /api/enterprise/enrich 404'd in production despite
+// html/war-rooms/mortgage/services/mortgage-engine.js and
+// html/war-rooms/schools/services/schools-engine.js both already calling
+// it directly. This is the missing mount.
+app.use('/api/enterprise', require('./server/enterprise/api/enterprise-router'));
+
 
 // ── FINOPS ────────────────────────────────────────────────────────────────────
 app.post('/api/finops/bnca/report', (req, res) => res.json({ ok: true }));
