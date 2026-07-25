@@ -887,7 +887,7 @@ async function runStrategist(){
     forecast:'30-Day Revenue Cycle Forecast — project denial rate, revenue recovery, and clean claim rate improvements if recommended actions are taken.',
     board:'Board Talking Points — frame our current challenges as managed opportunities. Concise, confident executive language.'
   };
-  const prompt = `Mode: ${modeLabels[mode]}\n\nAdditional context: ${ctx||'None'}\n\nPull HonorHealth healthcare mesh. Compare satellite office summaries. Provide scoped HC-only analysis.\n\nReturn EXACTLY this format:\n\n===BRIEF===\nEXECUTIVE SUMMARY\n[2-3 sentences with dollar impact and recovery probability]\n\nCRITICAL FINDINGS\n[Top 3-5 findings with $ amounts and timeframes]\n\nRECOMMENDED STRATEGY\n[Numbered actions with owner roles and 24/48/72hr deadlines]\n\nRISK ASSESSMENT\n[High/Med/Low risks with exposure amounts]\n\n===JSON===\n{\n  "confidence": 88,\n  "recommendedActions": [\n    {"text": "Action description", "owner": "Billing Manager"},\n    {"text": "Action description", "owner": "Compliance Officer"},\n    {"text": "Action description", "owner": "Payer Relations"},\n    {"text": "Action description", "owner": "Office Manager"}\n  ],\n  "dataSources": [\n    {"name": "HC-Billing / EOB data", "weight": "HIGH"},\n    {"name": "Denial code registry (PR-96/CO-4)", "weight": "HIGH"},\n    {"name": "Payer policy database", "weight": "MED"},\n    {"name": "Satellite office summaries", "weight": "MED"}\n  ],\n  "reasoning": [\n    {"key": "Threshold", "val": "Denial rate 18.4% exceeds CMS 15% threshold — $48K at risk"},\n    {"key": "Evidence", "val": "PR-96 drives 45% of denials; Mesa at 22.1% is highest severity"},\n    {"key": "History", "val": "CO-29 timely filing denials recoverable within 48hr appeal window"},\n    {"key": "Risk", "val": "Inaction on CLM-0334 results in $3,800 permanent write-off"}\n  ],\n  "escalationTriggers": [\n    "CLM-0334 CO-29 deadline expires without appeal — $3,800 write-off",\n    "Mesa denial rate exceeds 25% without intervention",\n    "CPT 99215 audit exposure crosses $15K"\n  ],\n  "noActionRevLoss": "$48K",\n  "actionRevLoss": "$12K",\n  "recoveryTime": "30 Days"\n}`;
+  const prompt = `Mode: ${modeLabels[mode]}\n\nAdditional context: ${ctx||'None'}\n\nPull HonorHealth healthcare mesh. Compare satellite office summaries. Provide scoped HC-only analysis.\n\nReturn EXACTLY this format:\n\n===BRIEF===\nEXECUTIVE SUMMARY\n[2-3 sentences with dollar impact and recovery probability]\n\nCRITICAL FINDINGS\n[Top 3-5 findings with $ amounts and timeframes]\n\nRECOMMENDED STRATEGY\n[Numbered actions with owner roles and 24/48/72hr deadlines]\n\nRISK ASSESSMENT\n[High/Med/Low risks with exposure amounts]\n\n===JSON===\n{\n  "confidence": 88,\n  "recommendedActions": [\n    {"text": "Action description", "owner": "Billing Manager"},\n    {"text": "Action description", "owner": "Compliance Officer"},\n    {"text": "Action description", "owner": "Payer Relations"},\n    {"text": "Action description", "owner": "Office Manager"}\n  ],\n  "dataSources": [\n    {"name": "HC-Billing / EOB data", "weight": "HIGH"},\n    {"name": "Denial code registry (PR-96/CO-4)", "weight": "HIGH"},\n    {"name": "Payer policy database", "weight": "MED"},\n    {"name": "Satellite office summaries", "weight": "MED"}\n  ],\n  "reasoning": [\n    {"key": "Threshold", "val": "Denial rate 18.4% exceeds CMS 15% threshold — $48K at risk"},\n    {"key": "Evidence", "val": "PR-96 drives 45% of denials; Mesa at 22.1% is highest severity"},\n    {"key": "History", "val": "CO-29 timely filing denials recoverable within 48hr appeal window"},\n    {"key": "Risk", "val": "Inaction on CLM-0334 results in $3,800 permanent write-off"}\n  ],\n  "escalationTriggers": [\n    "CLM-0334 CO-29 deadline expires without appeal — $3,800 write-off",\n    "Mesa denial rate exceeds 25% without intervention",\n    "CPT 99215 audit exposure crosses $15K"\n  ]\n}`;
   const outEl = document.getElementById('strat-out');
   const thinkEl = document.getElementById('thinking-bar');
   const errEl = document.getElementById('strat-err');
@@ -931,10 +931,40 @@ function renderExplainPanel(obj){
   document.getElementById('hcExplainActions').innerHTML = actions.length
     ? actions.map(a=>`<div class="hc-action-item"><span class="hc-action-owner">${a.owner}</span><span class="hc-action-text">${a.text}</span></div>`).join('')
     : '<div style="color:var(--muted);font-size:.63rem">No actions returned.</div>';
-  // Delta
-  if (obj.noActionRevLoss) document.getElementById('hcDeltaNo').textContent = obj.noActionRevLoss;
-  if (obj.actionRevLoss) document.getElementById('hcDeltaAct').textContent = obj.actionRevLoss;
-  if (obj.recoveryTime) document.getElementById('hcRecoveryTime').textContent = 'Est. recovery: ' + obj.recoveryTime;
+  // Deterministic exposure impact — sourced from the real "Revenue at Risk"
+  // KPI tile, not the LLM's JSON output. Self-contained to avoid unsafe
+  // hoisting against functions declared later in this file.
+  try {
+    if (window.TSMBNCAExposureEngine) {
+      function hcXPParseExposureLow(str){
+        if (!str) return 0;
+        const nums = String(str).match(/[\d,]+(?:\.\d+)?/g);
+        if (!nums || !nums.length) return 0;
+        const mult = /m\b/i.test(str) ? 1000000 : (/k\b/i.test(str) ? 1000 : 1);
+        return Math.round(parseFloat(nums[0].replace(/,/g,'')) * mult);
+      }
+      function hcXPSeverityForExposure(n, conf){
+        if (n >= 100000 || (conf !== null && conf < 60)) return 'CRIT';
+        if (n >= 25000 || (conf !== null && conf < 75)) return 'HIGH';
+        if (n >= 5000) return 'MED';
+        return 'LOW';
+      }
+      const hcXPKpiTile = typeof getKpiByLabel === 'function' ? getKpiByLabel('Revenue at Risk') : null;
+      const hcXPBaseExposure = hcXPParseExposureLow(hcXPKpiTile);
+      const hcXPConf = Number.isFinite(obj.confidence) ? obj.confidence : null;
+      const hcXPSeverity = hcXPSeverityForExposure(hcXPBaseExposure, hcXPConf);
+      const hcXPImpact = window.TSMBNCAExposureEngine.project({
+        baseExposure: hcXPBaseExposure,
+        severity: hcXPSeverity,
+        confidence: hcXPConf !== null ? hcXPConf : 70,
+        daysUntilDeadline: 0 // no independent deadline signal for this vertical yet
+      });
+      const fmt = n => '$' + Math.round(n).toLocaleString('en-US');
+      document.getElementById('hcDeltaNo').textContent = fmt(hcXPImpact.ifIgnored.exposure);
+      document.getElementById('hcDeltaAct').textContent = fmt(hcXPImpact.ifActed.exposure);
+      document.getElementById('hcRecoveryTime').textContent = hcXPImpact.urgencyWindow + ' \u00b7 ' + hcXPImpact.methodology;
+    }
+  } catch(dee) { console.warn('[bnca-exposure-engine] healthcare render error:', dee); }
 }
 
 // ── CALL CLAUDE WITH EXPLAINABILITY PARSING ──
@@ -1001,7 +1031,7 @@ async function callClaudeWithExplain(userMsg, outEl, thinkEl, errEl){
               if (n >= 5000) return 'MED';
               return 'LOW';
             }
-            const hcExposureNum = hcParseExposureNumber(obj.noActionRevLoss || obj.actionRevLoss);
+            const hcExposureNum = hcParseExposureNumber(getKpiByLabel('Revenue at Risk'));
             const hcConf = Number.isFinite(obj.confidence) ? obj.confidence : null;
             const hcAnomaly = {
               id: 'hc-' + Date.now(),
@@ -1914,6 +1944,7 @@ PATTERN MATCH: [does this match active HonorHealth denial patterns CO-4/CO-11/CO
 
 
 <script src="/shared/tsm-cure-cheatsheet.js"></script>
+<script src="/html/js/tsm-bnca-exposure-engine.js"></script>
 <script src="/js/core/tsm-event-bus.js"></script>
 <script src="/html/core/tsm-kernel.js"></script>
 <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>

@@ -104,7 +104,17 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 function tick(){document.getElementById('clock').textContent=new Date().toLocaleTimeString();}
 setInterval(tick,1000);tick();
 
-const RELAY_KEY = 'TSM_HONEYWELL_RELAY';
+// Domain-specific relay keys (post-split) — plant/cyber/supplier each write
+// their own key now instead of colliding on one TSM_HONEYWELL_RELAY.
+const RELAY_KEYS = {
+  plant:    'TSM_HONEYWELL_PLANT_RELAY',
+  cyber:    'TSM_HONEYWELL_CYBER_RELAY',
+  supplier: 'TSM_HONEYWELL_SUPPLIER_RELAY'
+};
+// Legacy key, kept as a fallback read only — nothing writes to it anymore
+// post-split, but any old in-flight session data still sitting in a
+// browser's storage from before the split can still be picked up once.
+const LEGACY_RELAY_KEY = 'TSM_HONEYWELL_RELAY';
 
 const SOURCE_META = {
   plant:   { label: 'PLANT — OPERATIONS INCIDENT',     icon: '⚡', war: '/html/plant-incident.html',    color: 'var(--orange)' },
@@ -120,10 +130,24 @@ function showToast(msg, isErr){
 }
 
 function loadRelay(){
-  try{
-    const raw = localStorage.getItem(RELAY_KEY) || sessionStorage.getItem(RELAY_KEY);
+  let latest = null;
+  for (const key of Object.values(RELAY_KEYS)) {
+    try {
+      const raw = localStorage.getItem(key) || sessionStorage.getItem(key);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw);
+      if (!latest || (parsed.timestamp && (!latest.timestamp || parsed.timestamp > latest.timestamp))) {
+        latest = parsed;
+      }
+    } catch(e) { /* skip malformed entry, keep checking other domains */ }
+  }
+  if (latest) return latest;
+  // Nothing in any of the three split keys — fall back to the legacy
+  // unscoped key in case there's pre-split data still sitting around.
+  try {
+    const raw = localStorage.getItem(LEGACY_RELAY_KEY) || sessionStorage.getItem(LEGACY_RELAY_KEY);
     return raw ? JSON.parse(raw) : null;
-  }catch(e){ return null; }
+  } catch(e) { return null; }
 }
 
 function manualRefresh(){
@@ -329,7 +353,9 @@ function escalateExec(){
 }
 
 render();
-window.addEventListener('storage', e => { if(e.key === RELAY_KEY) render(); });
+window.addEventListener('storage', e => {
+  if (Object.values(RELAY_KEYS).includes(e.key) || e.key === LEGACY_RELAY_KEY) render();
+});
 </script>
 </body>
 </html>

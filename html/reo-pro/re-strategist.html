@@ -225,6 +225,7 @@ body::before{content:'';position:fixed;inset:0;
   <script src="/html/shared/runtime/mission/mission-model.js"></script>
   <script src="/html/shared/runtime/mission/mission-store.js"></script>
   <script src="/js/core/tsm-mission-engine.js"></script>
+  <script src="/html/js/tsm-bnca-exposure-engine.js"></script>
   <script src="/js/core/tsm-auto-pipeline.js"></script>
 </head>
 <body>
@@ -627,8 +628,8 @@ async function generateAutoBrief() {
   }
 
   const prompt = context
-    ? `Based on this war room intelligence:\n\n${context}\n\nGenerate a STRATEGIC BRIEF covering: (1) Portfolio Health, (2) Top 3 Critical Issues, (3) Immediate Actions This Week, (4) 30-Day Priorities, (5) Revenue Impact Analysis. Use ► headers.\n\nFormat your ENTIRE response exactly as follows: start with the literal line ===BRIEF=== followed by the full brief above, then a new line with the literal ===JSON=== followed by a single JSON object (no markdown fences) with this exact shape:\n{"confidence":0-100,"dataSources":[{"name":"...","weight":"HIGH|MED|LOW"}],"reasoning":[{"key":"...","val":"..."}],"recommendedActions":[{"text":"...","owner":"..."}],"noActionRevLoss":"$amount","actionRevLoss":"$amount","recoveryTime":"e.g. 30 Days"}`
-    : `Generate a COMPREHENSIVE STRATEGIC BRIEF for a real estate and mortgage operation. Current conditions: 22 loans, $18.4M pipeline, 68% pull-through, 2 TRID violations, $1,247 cure needed, 6 REO assets, Phoenix metro market. Cover: portfolio health, critical issues, immediate actions, 30-day priorities, revenue impact. Use ► headers.\n\nFormat your ENTIRE response exactly as follows: start with the literal line ===BRIEF=== followed by the full brief above, then a new line with the literal ===JSON=== followed by a single JSON object (no markdown fences) with this exact shape:\n{"confidence":0-100,"dataSources":[{"name":"...","weight":"HIGH|MED|LOW"}],"reasoning":[{"key":"...","val":"..."}],"recommendedActions":[{"text":"...","owner":"..."}],"noActionRevLoss":"$amount","actionRevLoss":"$amount","recoveryTime":"e.g. 30 Days"}`;
+    ? `Based on this war room intelligence:\n\n${context}\n\nGenerate a STRATEGIC BRIEF covering: (1) Portfolio Health, (2) Top 3 Critical Issues, (3) Immediate Actions This Week, (4) 30-Day Priorities, (5) Revenue Impact Analysis. Use ► headers.\n\nFormat your ENTIRE response exactly as follows: start with the literal line ===BRIEF=== followed by the full brief above, then a new line with the literal ===JSON=== followed by a single JSON object (no markdown fences) with this exact shape:\n{"confidence":0-100,"dataSources":[{"name":"...","weight":"HIGH|MED|LOW"}],"reasoning":[{"key":"...","val":"..."}],"recommendedActions":[{"text":"...","owner":"..."}]}`
+    : `Generate a COMPREHENSIVE STRATEGIC BRIEF for a real estate and mortgage operation. Current conditions: 22 loans, $18.4M pipeline, 68% pull-through, 2 TRID violations, $1,247 cure needed, 6 REO assets, Phoenix metro market. Cover: portfolio health, critical issues, immediate actions, 30-day priorities, revenue impact. Use ► headers.\n\nFormat your ENTIRE response exactly as follows: start with the literal line ===BRIEF=== followed by the full brief above, then a new line with the literal ===JSON=== followed by a single JSON object (no markdown fences) with this exact shape:\n{"confidence":0-100,"dataSources":[{"name":"...","weight":"HIGH|MED|LOW"}],"reasoning":[{"key":"...","val":"..."}],"recommendedActions":[{"text":"...","owner":"..."}]}`;
 
   reXPResetExplain();
   try {
@@ -1012,9 +1013,39 @@ function reXPRenderExplain(obj){
   document.getElementById('reXPActions').innerHTML=actions.length
     ?actions.map(a=>`<div class="tsm-action" style="background:rgba(167,139,250,.05);border:1px solid rgba(167,139,250,.2)"><span class="tsm-owner" style="background:rgba(167,139,250,.12);color:var(--acc)">${a.owner}</span><span class="tsm-action-text">${a.text}</span></div>`).join('')
     :'<div style="opacity:.4;font-size:.63rem">No actions returned.</div>';
-  if(obj.noActionRevLoss) document.getElementById('reXPDeltaNo').textContent=obj.noActionRevLoss;
-  if(obj.actionRevLoss) document.getElementById('reXPDeltaAct').textContent=obj.actionRevLoss;
-  if(obj.recoveryTime) document.getElementById('reXPRecovery').textContent='Est. recovery: '+obj.recoveryTime;
+  // Deterministic exposure impact — self-contained (no reliance on functions
+  // declared later in this file) to avoid unsafe hoisting.
+  try {
+    if (window.TSMBNCAExposureEngine) {
+      function reXPParseExposureLow(str){
+        if (!str) return 0;
+        const nums = String(str).match(/[\d,]+(?:\.\d+)?/g);
+        if (!nums || !nums.length) return 0;
+        const mult = /m\b/i.test(str) ? 1000000 : (/k\b/i.test(str) ? 1000 : 1);
+        return Math.round(parseFloat(nums[0].replace(/,/g,'')) * mult);
+      }
+      function reXPSeverityForExposure(n){
+        if (n >= 2000000) return 'CRIT';
+        if (n >= 500000) return 'HIGH';
+        if (n >= 100000) return 'MED';
+        return 'LOW';
+      }
+      const reXPDollarRisk = document.getElementById('dollarRisk') ? document.getElementById('dollarRisk').textContent : '';
+      const reXPBaseExposure = reXPParseExposureLow(reXPDollarRisk);
+      const reXPSeverity = reXPSeverityForExposure(reXPBaseExposure);
+      const reXPConf = Number.isFinite(obj.confidence) ? obj.confidence : 70;
+      const reXPImpact = window.TSMBNCAExposureEngine.project({
+        baseExposure: reXPBaseExposure,
+        severity: reXPSeverity,
+        confidence: reXPConf,
+        daysUntilDeadline: 0 // no independent deadline signal for this vertical yet
+      });
+      const fmt = n => '$' + Math.round(n).toLocaleString('en-US');
+      document.getElementById('reXPDeltaNo').textContent = fmt(reXPImpact.ifIgnored.exposure);
+      document.getElementById('reXPDeltaAct').textContent = fmt(reXPImpact.ifActed.exposure);
+      document.getElementById('reXPRecovery').textContent = reXPImpact.urgencyWindow + ' \u00b7 ' + reXPImpact.methodology;
+    }
+  } catch(dee) { console.warn('[bnca-exposure-engine] re render error:', dee); }
 }
 function reXPParseExplain(raw){
   const briefMatch = raw.match(/===BRIEF===\s*([\s\S]*?)(?:===JSON===|$)/);

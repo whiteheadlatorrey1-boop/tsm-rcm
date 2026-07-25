@@ -216,6 +216,7 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
 .slide-in{animation:slideIn .35s ease-out;}
 </style>
 <script src="/shared/tsm-memory-engine.js?v=phase3"></script>
+  <script src="/html/js/tsm-bnca-exposure-engine.js"></script>
   <script src="/shared/tsm-quality-score-engine.js"></script>
   <script src="/shared/evidence-ledger.js"></script>
   <script src="/shared/decision-provenance.js"></script>
@@ -701,10 +702,7 @@ SUCCESS METRICS
     "Revenue exposure exceeds $X without action in 2 hours",
     "Supplier B confirmation not received by deadline",
     "Customer escalation from Tier-1 accounts"
-  ],
-  "noActionRevLoss": "$8.2M",
-  "actionRevLoss": "$1.2M",
-  "recoveryTime": "48 Hours"
+  ]
 }`;
 
   try {
@@ -785,13 +783,42 @@ function parseAndRenderStrategy(raw) {
       renderExplainability(obj);
       renderQualityScore(obj);
 
-      // Update impact model
-      if (obj.noActionRevLoss) document.getElementById('noActRev').textContent = obj.noActionRevLoss;
-      if (obj.actionRevLoss) { document.getElementById('actRev').textContent = obj.actionRevLoss; }
-      if (obj.recoveryTime) document.getElementById('actRecov').textContent = obj.recoveryTime;
+      // Deterministic exposure impact — sourced from the real extraction
+      // signal that was already displayed on load (hydrateImpactModel),
+      // not the LLM's JSON output. Previously obj.noActionRevLoss silently
+      // overwrote the real value here.
+      try {
+        if (window.TSMBNCAExposureEngine) {
+          function bpoXPParseExposureLow(str){
+            if (!str) return 0;
+            const nums = String(str).match(/[\d,]+(?:\.\d+)?/g);
+            if (!nums || !nums.length) return 0;
+            const mult = /m\b/i.test(str) ? 1000000 : (/k\b/i.test(str) ? 1000 : 1);
+            return Math.round(parseFloat(nums[0].replace(/,/g,'')) * mult);
+          }
+          function bpoXPSeverityForExposure(n){
+            if (n >= 250000) return 'CRIT';
+            if (n >= 100000) return 'HIGH';
+            if (n >= 25000) return 'MED';
+            return 'LOW';
+          }
+          const bpoXPBaseExposure = bpoXPParseExposureLow(warData?.extraction?.revenueAtRisk || '');
+          const bpoXPSeverity = bpoXPSeverityForExposure(bpoXPBaseExposure);
+          const bpoXPConf = Number.isFinite(obj.confidence) ? obj.confidence : 70;
+          const bpoXPImpact = window.TSMBNCAExposureEngine.project({
+            baseExposure: bpoXPBaseExposure,
+            severity: bpoXPSeverity,
+            confidence: bpoXPConf,
+            daysUntilDeadline: 0 // no independent deadline signal for this vertical yet
+          });
+          const fmt = n => '$' + Math.round(n).toLocaleString('en-US');
+          document.getElementById('noActRev').textContent = fmt(bpoXPImpact.ifIgnored.exposure);
+          document.getElementById('actRev').textContent = fmt(bpoXPImpact.ifActed.exposure);
+          document.getElementById('actRecov').textContent = bpoXPImpact.urgencyWindow;
+        }
+      } catch(dee) { console.warn('[bnca-exposure-engine] bpo render error:', dee); }
       if (obj.confidence) {
         document.getElementById('tbConf').textContent = obj.confidence + '%';
-        document.getElementById('tbExposure').textContent = obj.noActionRevLoss || '—';
       }
     } catch(e) {
       renderFallbackRec();
@@ -1068,7 +1095,7 @@ function storeStratRelay(){
         if (n >= 25000) return 'MED';
         return 'LOW';
       }
-      const bpoExposureNum = bpoParseExposureNumber(generatedRec?.actionRevLoss || generatedRec?.noActionRevLoss);
+      const bpoExposureNum = bpoParseExposureNumber(warData?.extraction?.revenueAtRisk);
       const bpoConf = generatedRec?.confidence ? parseInt(generatedRec.confidence) : null;
       const bpoAnomalies = [{
         id: 'bpo-strat-' + Date.now(),
@@ -1076,8 +1103,8 @@ function storeStratRelay(){
         severity: bpoSeverityForExposure(bpoExposureNum),
         exposure: bpoExposureNum,
         confidence: bpoConf !== null ? bpoConf : 91,
-        rootCause: 'Scenario ' + (selectedScenario || 'A') + ' recommendation on ' + (warData?.selectedSector || 'this account') + '; no-action loss ' + (generatedRec?.noActionRevLoss || '\u2014') + '.',
-        recommendedAction: 'Recovery time ' + (generatedRec?.recoveryTime || '\u2014') + ' if action plan is executed \u2014 escalate per strategist brief.'
+        rootCause: 'Scenario ' + (selectedScenario || 'A') + ' recommendation on ' + (warData?.selectedSector || 'this account') + '; exposure ' + (warData?.extraction?.revenueAtRisk || '\u2014') + '.',
+        recommendedAction: 'Review the strategist brief and route to executive escalation.'
       }];
       const bpoSentinelKey = 'TSM_BPO_STRATEGIST_RELAY';
       const bpoSentinelExisting = JSON.parse(localStorage.getItem(bpoSentinelKey) || 'null') || {};
