@@ -181,7 +181,7 @@ test.describe('BPO relay propagation — doc-search -> war-room -> strategist ->
     ).toBe(true);
   });
 
-  test('3. bpo-war-room.html -> bpo-strategist.html: war-room relay reaches strategist (documents GAP 3)', async ({ page }) => {
+  test('3. bpo-war-room.html -> bpo-strategist.html: war-room relay reaches strategist (GAP 3 -- fixed)', async ({ page }) => {
     await seedStorage(page, STRATEGIST, { TSM_BPO_WAR_RELAY: WAR_RELAY_PAYLOAD });
     // CONFIRMED: loadRelay() correctly parses TSM_BPO_WAR_RELAY and destructures
     // caseId/docText out of warData (see bpo-strategist.html:647). The read
@@ -211,9 +211,14 @@ test.describe('BPO relay propagation — doc-search -> war-room -> strategist ->
       type: 'known-gap',
       description: `caseId (${CASE_ID}) and docText read correctly into warData but never rendered anywhere visible; sector/docType DO render (see GAP 3 in file header).`,
     });
+    const caseIdText = await page.locator('#tbCaseId').textContent().catch(() => null);
     expect(
       html.includes('BPO') && html.includes('ESCALATION'),
       'Strategist page never rendered the seeded selectedSector/selectedDocType in its header -- warData may not have parsed correctly.'
+    ).toBe(true);
+    expect(
+      caseIdText === CASE_ID,
+      `Expected #tbCaseId to show the seeded caseId (${CASE_ID}), got "${caseIdText}" -- GAP 3 fix may be broken.`
     ).toBe(true);
   });
 
