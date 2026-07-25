@@ -18,52 +18,15 @@ const sentinelUpload = multer({
 });
 
 const app = express();
-app.use(express.json());
-app.use(require('express').urlencoded({ extended: false }));
 const PORT = process.env.PORT || 8080;
 const HTML_ROOT = path.join(__dirname, "html");
-
 // AUTH REMOVED — in-house use only
 // const { tsmAuthMiddleware } = require('./html/tsm-auth');
-const crypto = require('crypto');
+const { requireAuth, signSession, verifySession, getCookie, SESSION_TTL_MS } = require('./middleware/require-auth');
 
-// ── AUTH: signed session cookie, server-verified only ──────────────────────
-// Password + signing secret live server-side ONLY (Fly secrets / .env), never
-// shipped to the client. Session token = base64(payload).hmacSignature.
-const SESSION_TTL_MS = 12 * 60 * 60 * 1000; // 12h
-function signSession(payload) {
-  const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
-  const sig = crypto.createHmac('sha256', process.env.TSM_SESSION_SECRET || '')
-    .update(body).digest('base64url');
-  return `${body}.${sig}`;
-}
-
-function verifySession(token) {
-  if (!token || !process.env.TSM_SESSION_SECRET) return null;
-  const [body, sig] = token.split('.');
-  if (!body || !sig) return null;
-  const expected = crypto.createHmac('sha256', process.env.TSM_SESSION_SECRET)
-    .update(body).digest('base64url');
-  const a = Buffer.from(sig), b = Buffer.from(expected);
-  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
-  try {
-    const payload = JSON.parse(Buffer.from(body, 'base64url').toString());
-    if (!payload.exp || Date.now() > payload.exp) return null;
-    return payload;
-  } catch { return null; }
-}
-
-function getCookie(req, name) {
-  const raw = req.headers.cookie || '';
-  const match = raw.split(';').map(c => c.trim()).find(c => c.startsWith(name + '='));
-  return match ? decodeURIComponent(match.slice(name.length + 1)) : null;
-}
-
-function requireAuth(req, res, next) {
-  const session = verifySession(getCookie(req, 'tsm_session'));
-  if (!session) return res.status(401).json({ ok: false, error: 'Unauthorized' });
-  next();
-}
+app.use(express.json());
+app.use(require('express').urlencoded({ extended: false }));
+// tsmAuthMiddleware(app); // removed — war rooms are in-house
 
 app.post('/api/auth/login', (req, res) => {
   const { password } = req.body || {};
@@ -87,7 +50,6 @@ app.post('/api/auth/logout', (req, res) => {
 app.get('/api/auth/status', (req, res) => {
   res.json({ ok: true, authenticated: !!verifySession(getCookie(req, 'tsm_session')) });
 });
-// tsmAuthMiddleware(app); // removed — war rooms are in-house
 
 // ── GLOBAL NO-CACHE ───────────────────────────────────────────────────────────
 app.use((req, res, next) => {
@@ -249,6 +211,7 @@ app.use('/html/runtime', express.static(path.join(__dirname, 'html', 'runtime'))
 // the stub for every /runtime/* request and this mount never runs.
 app.use('/runtime', express.static(path.join(__dirname, 'runtime'), { setHeaders: (res) => res.setHeader('Cache-Control', 'no-store') }));
 app.use('/architecture', express.static(path.join(__dirname, 'architecture'), { setHeaders: (res) => res.setHeader('Cache-Control', 'no-store') }));
+app.use('/core', express.static(path.join(__dirname, 'core')));
 app.use('/', express.static(path.join(__dirname, 'html')));
 const suites = [
   { route: '/construction', dir: 'html/construction-suite', index: 'construction-hub.html' },
@@ -928,7 +891,19 @@ app.use(require('./routes/hc'));
 app.use(require('./routes/strategist'));
 app.use(require('./routes/construction'));
 app.use(require('./routes/finops'));
-app.use(require('./routes/live-data'));
+
+// ── RCM RELAY ─────────────────────────────────────────────────────────────────
+// Server-side staging for the FinOps Doc Showcase -> TSM RCM OS handoff.
+// See routes/rcm-relay.js header for the full endpoint contract.
+app.use('/api/rcm', require('./routes/rcm-relay'));
+app.use('/api/rcm', require('./routes/rcm-requirements'));
+
+// ── FINANCIAL INTELLIGENCE (finance-index.html) ─────────────────────────────
+// Groq-backed chat (per-tab assistant) + audit engine with real persisted
+// audit-log entries. See routes/finance-chat.js header for the full contract.
+const { chatRouter: financeChatRouter, auditRouter: financeAuditRouter } = require('./routes/finance-chat');
+app.use('/api/chat', financeChatRouter);
+app.use('/api/audit', financeAuditRouter);
 
 // ── AI QUERY ROUTES ───────────────────────────────────────────────────────────
 app.post('/api/ai/query', async (req, res) => {
