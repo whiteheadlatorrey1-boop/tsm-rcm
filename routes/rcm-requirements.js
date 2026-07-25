@@ -28,7 +28,7 @@ const router = express.Router();
 
 // ── AUTH: shared-secret gate for mutating endpoints ──────────────────────
 // Shared with server.js and routes/rcm-relay.js via middleware/require-api-key.js.
-const { requireApiKey } = require('../middleware/require-api-key');
+const { requireAuth } = require('../middleware/require-auth');
 
 const REGISTRY_PATH = path.join(__dirname, '..', 'data', 'rcm', 'task-requirements.json');
 
@@ -58,7 +58,7 @@ router.get('/self-reported', (req, res) => {
 
 // ── POST /api/rcm/self-reported ─────────────────────────────────────────────
 // Body: { key: "daily-2", fieldId: "openFlagCount", value: "3" }
-router.post('/self-reported', requireApiKey, express.json({ limit: '100kb' }), (req, res) => {
+router.post('/self-reported', requireAuth, express.json({ limit: '100kb' }), (req, res) => {
   const { key, fieldId, value } = req.body || {};
   if (!key || !fieldId || value === undefined) {
     return res.status(400).json({ error: { message: 'Body must include key, fieldId, and value.' } });
@@ -78,7 +78,7 @@ router.post('/self-reported', requireApiKey, express.json({ limit: '100kb' }), (
 });
 
 // ── DELETE /api/rcm/self-reported/:key/:fieldId ─────────────────────────────
-router.delete('/self-reported/:key/:fieldId', requireApiKey, (req, res) => {
+router.delete('/self-reported/:key/:fieldId', requireAuth, (req, res) => {
   const { key, fieldId } = req.params;
   if (selfReported[key] && selfReported[key][fieldId]) {
     delete selfReported[key][fieldId];
