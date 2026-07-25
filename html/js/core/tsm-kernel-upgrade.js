@@ -143,6 +143,20 @@
         return;
       }
 
+      // Defensive: this replay logic assumes a store shaped like
+      // { state: { missions: [], history: [] } }. TSMMissionStore (the
+      // canonical Phase 1-9 mission module) doesn't expose .state at all —
+      // it manages missions via listMissions()/getMission()/saveMission()
+      // directly against localStorage. Rather than throw on that mismatch
+      // (which was happening as an uncaught page error on every page that
+      // loads both tsm-event-bus.js and TSMMissionStore together), skip
+      // replay gracefully until this is reconciled with TSMMissionStore's
+      // real API.
+      if (!store.state) {
+        console.warn("[TSM-REPLAY] Store has no .state property (likely TSMMissionStore, which uses a different API) — skipping replay.");
+        return;
+      }
+
       // reset state
       store.state.missions = [];
       store.state.history = [];
