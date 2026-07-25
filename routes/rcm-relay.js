@@ -29,7 +29,7 @@ const router = express.Router();
 // ── AUTH: shared-secret gate for mutating endpoints ──────────────────────
 // Shared with server.js via middleware/require-api-key.js.
 // See html/config/tsm-client-key.js for the client-side key this checks against.
-const { requireApiKey } = require('../middleware/require-api-key');
+const { requireAuth } = require('../middleware/require-auth');
 
 // ── In-memory staging store ────────────────────────────────────────────────
 // Swap for a real store when ready. Keeps the last N relays so RCM OS can
@@ -57,7 +57,7 @@ function summarize(entry) {
 
 // ── POST /api/rcm/relay ─────────────────────────────────────────────────────
 // Body: { docName, generatedAt, engines: { triage, variance, actionPlan, executive } }
-router.post('/relay', requireApiKey, express.json({ limit: '2mb' }), (req, res) => {
+router.post('/relay', requireAuth, express.json({ limit: '2mb' }), (req, res) => {
   const body = req.body || {};
 
   if (!body.docName || !body.engines) {
@@ -109,7 +109,7 @@ router.get('/relay/:id', (req, res) => {
 // ── DELETE /api/rcm/relay ────────────────────────────────────────────────────
 // Clears the "current" pointer (used by the RCM OS "Clear intake" button).
 // History is left intact so past intakes are still browsable.
-router.delete('/relay', requireApiKey, (req, res) => {
+router.delete('/relay', requireAuth, (req, res) => {
   current = null;
   res.json({ ok: true });
 });
@@ -130,7 +130,7 @@ router.delete('/relay', requireApiKey, (req, res) => {
 // routes/rcm-requirements.js) — EU-entered values, never verified against a
 // live source. The prompt below is explicit that these are self-reported so
 // the model doesn't present them with false certainty.
-router.post('/guidance', requireApiKey, express.json({ limit: '1mb' }), async (req, res) => {
+router.post('/guidance', requireAuth, express.json({ limit: '1mb' }), async (req, res) => {
   const { engines = {}, stats = {}, selfReported = [] } = req.body || {};
   const hasAnyEngineText = ['triage', 'variance', 'actionPlan', 'executive'].some(k => (engines[k] || '').trim());
   const hasSelfReported = Array.isArray(selfReported) && selfReported.length > 0;
