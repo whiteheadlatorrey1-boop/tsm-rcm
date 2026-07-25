@@ -69,6 +69,7 @@ app.use((req, res, next) => {
 // Primary: fetch-based (reliable on Railway)
 const GROQ_MODELS = [
   'openai/gpt-oss-120b',
+  'openai/gpt-oss-20b',
   'llama-3.1-8b-instant',
   'llama3-8b-8192',
   'gemma2-9b-it'
@@ -235,19 +236,6 @@ app.post('/api/enterprise/query', async (req, res) => {
   catch(e){ return res.status(500).json({ ok:false, error:e.message }); }
 });
 app.get('/health', (req, res) => res.json({ status: 'ok', v: 3 }));
-
-// Serves window.TSM_CLIENT_KEY for the browser-side relay client
-// (html/finops-suite/js/rcm-relay-client.js), which sends it back as the
-// x-api-key header on /api/rcm/relay (see middleware/require-api-key.js).
-// Generated from the same TSM_API_KEY the server checks, instead of a
-// committed static file, so client and server can never drift out of sync
-// across environments. This was previously referenced as a static file at
-// /config/tsm-client-key.js that never existed, 404ing on every load of
-// tsm-rcm-os.html and finops-showcase-v1.html.
-app.get('/config/tsm-client-key.js', (req, res) => {
-  res.type('application/javascript');
-  res.send(`window.TSM_CLIENT_KEY = ${JSON.stringify(process.env.TSM_API_KEY || '')};`);
-});
 app.post('/api/bpo/query', async (req, res) => {
   try {
     const sys = 'You are a BPO operations intelligence AI for TSM Command. Expert in BPO, workforce management, SLA performance, staffing ops. Be direct.';
