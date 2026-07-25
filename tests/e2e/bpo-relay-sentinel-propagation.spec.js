@@ -35,14 +35,27 @@
 //     Test 2 below now asserts the real banner values instead of documenting
 //     the gap.
 //
-//   GAP 2 -- the "bnca-engine" BNCA-escalation node in doc-search-multi.html
+//   GAP 2 [FIXED] -- the "bnca-engine" BNCA-escalation node in doc-search-multi.html
 //     links directly to bpo-executive-portal.html, skipping War Room and
 //     Strategist entirely. The executive portal only ever reads
 //     TSM_BPO_STRATEGIST_RELAY / TSM_BPO_STRAT_RELAY, which only
-//     bpo-strategist.html writes -- so that direct link always lands on an
-//     empty/demo-mode portal. Test 4 documents this as current behavior
-//     (not a crash, just no real data) so a future fix can flip the
-//     assertion once it's actually wired.
+//     bpo-strategist.html writes -- so that direct link always landed on an
+//     empty/demo-mode portal. Fixed in openGenNodeWithDoc() (doc-search-multi.html)
+//     to synthesize and write a real relay payload (both key names) before
+//     navigating. Test 4b confirms the portal genuinely hydrates from it.
+//
+//   GAP 2b [FIXED] -- found while verifying GAP 2's fix: even with real relay
+//     data present and loadRelay()/hydratePage() completing without error,
+//     the executive portal had NO element anywhere that rendered the case
+//     ID -- hydratePage(d) never referenced d.caseId at all. loadRelay()'s
+//     outer try/catch also swallowed errors silently (no logging), which is
+//     why this took several rounds of narrowing to find: the failure mode
+//     looked identical to a demo-mode fallback but was actually a genuinely
+//     missing UI element with real data sitting right behind it. Fixed by
+//     adding a #tbCaseId span to the topbar and wiring it in hydratePage();
+//     also added a console.error to loadRelay()'s catch block so a future
+//     silent-fallback bug surfaces immediately instead of masquerading as
+//     "relay data present but nothing renders".
 //
 //   GAP 3 -- bpo-strategist.html reads TSM_BPO_WAR_RELAY correctly and DOES
 //     render selectedSector/selectedDocType in the page header (confirmed:
@@ -235,34 +248,71 @@ test.describe('BPO relay propagation — doc-search -> war-room -> strategist ->
     ).toBe(true);
   });
 
-  test('4b. bpo-executive-portal.html direct link with NO strategist relay (documents GAP 2 -- the bnca-engine shortcut)', async ({ page }) => {
-    // Simulates clicking the "BNCA Escalated" node directly from
-    // doc-search-multi.html, which skips War Room + Strategist and never
-    // writes TSM_BPO_STRATEGIST_RELAY / TSM_BPO_STRAT_RELAY.
-    await page.goto(`${BASE_URL}${EXEC_PORTAL}`, { waitUntil: 'load', timeout: 20000 });
-    await page.evaluate(() => {
-      localStorage.removeItem('TSM_BPO_STRAT_RELAY');
-      localStorage.removeItem('TSM_BPO_STRATEGIST_RELAY');
-      sessionStorage.removeItem('TSM_BPO_STRAT_RELAY');
-    });
-    const pageErrors = [];
-    page.on('pageerror', (err) => pageErrors.push(err.stack || String(err)));
+  test('4b. doc-search-multi.html BNCA-escalation shortcut writes real relay data before navigating (GAP 2 -- fixed)', async ({ page }) => {
+    // Previously: this shortcut skipped War Room + Strategist entirely and
+    // never wrote TSM_BPO_STRATEGIST_RELAY / TSM_BPO_STRAT_RELAY, so it
+    // always landed on the executive portal in demo mode even with a real
+    // document in hand. Fixed in openGenNodeWithDoc() (doc-search-multi.html)
+    // to synthesize and write a real relay payload before navigating, scoped
+    // specifically to the BPO executive portal route.
+    const DOC_SEARCH_URL = '/html/tsm-doc-search-multi.html';
+    const TEST_DOC_ID = 'test-bnca-doc-' + Date.now();
+    const TEST_CLIENT = 'Playwright Test Client';
+
+    await page.goto(`${BASE_URL}${DOC_SEARCH_URL}`, { waitUntil: 'load', timeout: 20000 });
+    await page.evaluate(({ docId, client }) => {
+      // Use the app's own client-registration function (the only real path
+      // for creating a new compartment) rather than guessing a clientId or
+      // writing to the '__all__' bucket, which openGenNodeWithDoc's lookup
+      // loop never actually reads -- it iterates getClientRegistry() and
+      // calls loadIndexForClient(vertical, c.id) per registered client.
+      const clientId = ensureClientRegistered(client);
+      const key = clientScopedKey('bpo', clientId);
+      const doc = {
+        id: docId,
+        fileName: 'BNCA_Playwright_Test.report',
+        documentType: 'ESCALATION',
+        vendor: 'Playwright Vendor',
+        invoiceNo: 'PW-TEST-001',
+        exclusionCode: 'SLA-BRK',
+        amount: 47000,
+        sourceNode: 'bpo-cmd',
+        routing: ['bpo-cmd', 'strategist', 'bnca-engine'],
+        timestamp: Date.now(),
+        _ext: { client, ref: 'PW-ESC-001' },
+      };
+      localStorage.setItem(key, JSON.stringify([doc]));
+    }, { docId: TEST_DOC_ID, client: TEST_CLIENT });
     await page.reload({ waitUntil: 'load', timeout: 20000 });
 
-    expect(pageErrors, `Portal threw uncaught errors with no relay data present: ${pageErrors.join(' | ')}`).toEqual([]);
-    // KNOWN GAP: this should currently fall into loadDemoMode() -- it does
-    // NOT crash, but it also never reflects anything from doc-search-multi.
-    // If you wire the bnca-engine link to write a real relay payload before
-    // navigating, this test's expectation should change to require real
-    // case data instead of demo mode.
+    // Call the real function the click handler invokes -- not a fake
+    // simulation, this is the actual code path a user's click triggers.
+    // It opens a popup/new tab internally; stub window.open so the call
+    // completes without actually spawning a second page in the test.
+    await page.evaluate(() => { window.open = () => null; });
+    await page.evaluate((docId) => window.openGenNodeWithDoc(docId, 'bpo'), TEST_DOC_ID);
+    // openGenNodeWithDoc is async (awaits a fetch with a timeout/catch) --
+    // give it a moment to finish before reading the relay it writes.
+    await page.waitForTimeout(1000);
+
+    const relayRaw = await page.evaluate(() => localStorage.getItem('TSM_BPO_STRATEGIST_RELAY'));
+    expect(relayRaw, 'openGenNodeWithDoc never wrote TSM_BPO_STRATEGIST_RELAY -- GAP 2 fix may be broken.').toBeTruthy();
+    const relay = JSON.parse(relayRaw);
+    expect(relay.sector, 'Relay payload missing expected sector.').toBe('BPO');
+    expect(relay.caseId, 'Relay payload missing a caseId.').toBeTruthy();
+
+    // Now confirm the executive portal actually renders this real data
+    // instead of falling into demo mode.
+    await page.goto(`${BASE_URL}${EXEC_PORTAL}`, { waitUntil: 'load', timeout: 20000 });
     const html = await page.content();
-    test.info().annotations.push({
-      type: 'known-gap',
-      description: 'Direct bnca-engine link currently lands on demo-mode content, not a real handoff from doc-search-multi.',
-    });
+    expect(
+      html.includes(relay.caseId),
+      `Executive portal never rendered the real caseId (${relay.caseId}) written by the BNCA shortcut -- ` +
+      'it may still be falling into demo mode despite the relay data being present.'
+    ).toBe(true);
   });
 
-  test('5. bpo-strategist.html -> sentinel-center.html: case surfaces as LIVE with the seeded exposure', async ({ page }) => {
+test('5. bpo-strategist.html -> sentinel-center.html: case surfaces as LIVE with the seeded exposure', async ({ page }) => {
     await seedStorage(page, SENTINEL, { TSM_BPO_STRATEGIST_RELAY: SENTINEL_PAYLOAD });
     const html = await page.content();
     expect(
