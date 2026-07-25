@@ -21,16 +21,19 @@
 // notes from the prod-readiness review -- do not "fix" these by loosening
 // assertions; if a test below fails, that's the gap surfacing correctly):
 //
-//   GAP 1 -- bpo-war-room.html has TWO uncoordinated relay-intake listeners:
-//     - the primary loadRelay() IIFE only reads TSM_BPO_DOC /
-//       TSM_BPO_UPLOADER_RELAY and populates the topbar/incident banner
-//     - a separate tsmAutoFire() IIFE reads tsm_bpo_docsearch_relay (the key
-//       doc-search-multi.html ACTUALLY writes) but only pastes text into a
-//       textarea + fires the engine -- it never touches the topbar/banner
-//     Net effect: real doc-search-multi.html traffic may fire real
-//     extraction while the banner still shows demo-mode placeholder text
-//     ("Supply Chain" / "Supplier Notice"). Test 2 below checks the banner
-//     directly against real doc metadata to surface this if it happens.
+//   GAP 1 [FIXED] -- bpo-war-room.html had TWO uncoordinated relay-intake
+//     listeners: the primary loadRelay() IIFE only read TSM_BPO_DOC /
+//     TSM_BPO_UPLOADER_RELAY and populated the topbar/incident banner, while
+//     a separate tsmAutoFire() IIFE read tsm_bpo_docsearch_relay (the key
+//     doc-search-multi.html ACTUALLY writes) but only pasted text into a
+//     textarea + fired the engine, never touching the topbar/banner. Net
+//     effect: real doc-search-multi.html traffic fired real extraction while
+//     the banner still showed demo-mode placeholder text. Fixed by having
+//     loadRelay() also check tsm_bpo_docsearch_relay (read-only, so it
+//     doesn't race tsmAutoFire out of the same key) and synthesize a
+//     selectedSector='BPO' / selectedDocType='Doc Search Intake' banner.
+//     Test 2 below now asserts the real banner values instead of documenting
+//     the gap.
 //
 //   GAP 2 -- the "bnca-engine" BNCA-escalation node in doc-search-multi.html
 //     links directly to bpo-executive-portal.html, skipping War Room and
@@ -159,22 +162,23 @@ test.describe('BPO relay propagation — doc-search -> war-room -> strategist ->
     ).toBe(true);
   });
 
-  test('2. doc-search-multi.html -> bpo-war-room.html: topbar/banner reflect real metadata, not demo placeholders (documents GAP 1)', async ({ page }) => {
+  test('2. doc-search-multi.html -> bpo-war-room.html: topbar/banner reflect real metadata, not demo placeholders (GAP 1 -- fixed)', async ({ page }) => {
     await seedStorage(page, WAR_ROOM, { tsm_bpo_docsearch_relay: DOC_SEARCH_PAYLOAD });
     const sectorText = await page.locator('#tbSector').textContent().catch(() => null);
     const docTypeText = await page.locator('#tbDocType').textContent().catch(() => null);
-    // KNOWN GAP: the primary loadRelay() IIFE that populates these fields
-    // only reads TSM_BPO_DOC / TSM_BPO_UPLOADER_RELAY, not
-    // tsm_bpo_docsearch_relay -- so as of this writing we expect these to
-    // still show demo-mode values ("BPO"/blank or the supplier-notice demo)
-    // rather than anything derived from DOC_SEARCH_PAYLOAD. This test
-    // documents current behavior; flip test.fail() to a real assertion
-    // once bpo-war-room.html's primary loader is fixed to also check
-    // tsm_bpo_docsearch_relay.
-    test.info().annotations.push({
-      type: 'known-gap',
-      description: `tbSector="${sectorText}" tbDocType="${docTypeText}" -- expected to NOT reflect real doc metadata until GAP 1 is fixed.`,
-    });
+    const html = await page.content();
+    // loadRelay() now falls back to tsm_bpo_docsearch_relay when TSM_BPO_DOC /
+    // TSM_BPO_UPLOADER_RELAY are absent, synthesizing selectedSector='BPO'
+    // and selectedDocType='Doc Search Intake' from the doc-search payload.
+    expect(
+      docTypeText === 'Doc Search Intake' && sectorText === 'BPO',
+      `Expected topbar to reflect real doc-search intake (tbSector="BPO", tbDocType="Doc Search Intake"), ` +
+      `got tbSector="${sectorText}" tbDocType="${docTypeText}" -- still falling into demo mode.`
+    ).toBe(true);
+    expect(
+      html.includes('PLAYWRIGHT_TEST_SUMMARY') || html.includes('Acme Corp'),
+      'Real doc-search summary never reached the raw doc / evidence panel rendering.'
+    ).toBe(true);
   });
 
   test('3. bpo-war-room.html -> bpo-strategist.html: war-room relay reaches strategist (documents GAP 3)', async ({ page }) => {

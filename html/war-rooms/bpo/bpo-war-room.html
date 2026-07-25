@@ -589,7 +589,34 @@ document.addEventListener('DOMContentLoaded', async function tsmBpoAutoPipeline(
 
 (function loadRelay() {
   try {
-    const raw = sessionStorage.getItem('TSM_BPO_DOC') || sessionStorage.getItem('TSM_BPO_UPLOADER_RELAY');
+    let raw = sessionStorage.getItem('TSM_BPO_DOC') || sessionStorage.getItem('TSM_BPO_UPLOADER_RELAY');
+    if (!raw) {
+      // GAP 1 fix: also check the raw doc-search-multi.html relay key so the
+      // topbar/banner reflect real doc metadata instead of always falling to
+      // demo mode when only tsm_bpo_docsearch_relay was written.
+      // IMPORTANT: read-only here -- do NOT remove this key. tsmAutoFire()
+      // (further down, runs on DOMContentLoaded) also reads this same key to
+      // paste into the manual textarea + fire the extraction engine, and it
+      // owns removing the key once consumed. Deleting it here would race
+      // tsmAutoFire out of its own data.
+      const docSearchKeys = ['tsm_bpo_docsearch_relay', 'tsm_bpoops_docsearch_relay'];
+      for (const k of docSearchKeys) {
+        const v = localStorage.getItem(k);
+        if (!v) continue;
+        try {
+          const parsed = JSON.parse(v);
+          if (parsed.summary || parsed.doc) {
+            raw = JSON.stringify({
+              docText: parsed.summary || (parsed.doc ? JSON.stringify(parsed.doc) : ''),
+              selectedSector: 'BPO',
+              selectedDocType: 'Doc Search Intake',
+              timestamp: new Date().toISOString()
+            });
+          }
+        } catch(e) {}
+        break;
+      }
+    }
     if (!raw) {
       setStatus('No relay data — paste a document below or navigate from Doc Search');
       // Show manual paste fallback
