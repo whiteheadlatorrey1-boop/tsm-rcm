@@ -41,13 +41,25 @@
 //     (not a crash, just no real data) so a future fix can flip the
 //     assertion once it's actually wired.
 //
-//   GAP 3 -- bpo-strategist.html reads TSM_BPO_WAR_RELAY correctly (caseId
-//     and docText are parsed into warData without error), but neither value
-//     is ever written to a visible DOM element. caseId is used only for an
-//     internal TSMMissionStore lookup; docText is only forwarded onward to
-//     the next stage's outgoing payload. A user has no on-page confirmation
-//     of which case/document is loaded. Test 3 below documents this as
-//     current behavior rather than asserting it's broken wiring.
+//   GAP 3 -- bpo-strategist.html reads TSM_BPO_WAR_RELAY correctly and DOES
+//     render selectedSector/selectedDocType in the page header (confirmed:
+//     "SECTOR: BPO" / "DOC TYPE: ESCALATION" both show real seeded values).
+//     However, caseId and docText specifically are never rendered anywhere
+//     visible -- caseId only feeds an internal TSMMissionStore lookup (line
+//     590) and is forwarded onward in the outgoing relay payload (line
+//     1075); docText is destructured from warData (line 647) and also only
+//     forwarded onward (line 1070). A user has no on-page confirmation of
+//     which specific case/document they're looking at, even though sector
+//     and doc-type context do come through. Test 3 below documents this as
+//     current behavior rather than asserting broken wiring.
+//
+//   FIXED -- bpo-war-room.html's tsmAutoFire() IIFE looked for
+//     document.getElementById('docPaste'), but the real textarea's id is
+//     'bpo-manual-doc'. It also ran inline before the textarea existed in
+//     the DOM, so both the id lookup and the querySelector('textarea')
+//     fallback returned null on first execution. Fixed by correcting the id
+//     and wrapping the body in a DOMContentLoaded listener (with an
+//     immediate-run fallback if the DOM is already loaded).
 //
 // Requires BASE_URL (default http://localhost:8080) pointing at a running
 // `node server.js`. No GROQ key / network calls needed -- this seeds relay
