@@ -261,13 +261,9 @@ body{font-family:var(--mono);background:var(--bg);color:var(--text);font-size:12
 </style>
   <link rel="stylesheet" href="/shared/tsm-shared.css">
   <script src="/shared/tsm-shared.js"></script>
-<script src="./html/js/tsm-runtime-lock.js"></script>
-<script src="./html/js/tsm-event-contract.js"></script>
-<script src="./html/js/tsm-autonomy-layer.js"></script>
-  <script src="/js/core/tsm-event-bus.js"></script>
-  <script src="/js/core/tsm-state.js"></script>
-  <script src="/js/core/tsm-mission-engine.js"></script>
-  <script src="/js/core/tsm-auto-pipeline.js"></script>
+<script src="/js/tsm-runtime-lock.js"></script>
+<script src="/js/tsm-event-contract.js"></script>
+<script src="/js/tsm-autonomy-layer.js"></script>
 </head>
 <body>
 
@@ -714,7 +710,7 @@ async function runBNCA() {
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body: JSON.stringify({
-        model:'llama-3.3-70b-versatile', max_tokens:600, temperature:0.4, stream:true,
+        model:'openai/gpt-oss-120b', max_tokens:600, temperature:0.4, stream:true,
         messages:[{role:'system',content:sys},{role:'user',content:usr}]
       })
     });
@@ -786,6 +782,7 @@ console.log('[TSM ENGINE ACTIVE]');
 });
 })();</script>
 
+<script>
 document.addEventListener('click', function(e){
 
   const el = e.target.closest('[data-tsm-action]');
@@ -801,8 +798,6 @@ document.addEventListener('click', function(e){
   }
 
 });
-})();
-</script>
 const CONSTRUCTION_SCENARIOS = {
   scenario_1:'Permit Block — Foundation CO-7 Disputed · $340K at Risk. Permit hold + Change Order 7 dispute. 30-day cure window.',
   scenario_2:'OSHA Incident Apr-14 — $180K Citation Exposure. Fall event. 15-day informal conference window.',
@@ -842,7 +837,7 @@ async function runConstructionBNCA(){
   const ctx=CONSTRUCTION_SCENARIOS[mission.scenarioId]||'Full construction portfolio review';
   out.textContent='Generating BNCA...';
   try{
-    const r=await fetch('/api/war-room/stream',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'llama-3.3-70b-versatile',max_tokens:1024,stream:true,messages:[{role:'user',content:'Construction strategist BNCA for: '+ctx+'\n\nFormat: CONTROLLER PRIORITY ACTIONS (numbered, dollar-quantified, owner assigned) then BNCA — BEST NEXT COURSE OF ACTION (one paragraph).\n\nAfter the brief above, on a new line output exactly ===JSON=== followed by a single JSON object (no markdown fences) with this exact shape: {"confidence":0-100,"dataSources":[{"name":"...","weight":"HIGH|MED|LOW"}],"reasoning":[{"key":"...","val":"..."}],"recommendedActions":[{"text":"...","owner":"..."}],"noActionRevLoss":"$amount","actionRevLoss":"$amount","recoveryTime":"e.g. 30 Days"}'}]})});
+    const r=await fetch('/api/war-room/stream',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'openai/gpt-oss-120b',max_tokens:1024,stream:true,messages:[{role:'user',content:'Construction strategist BNCA for: '+ctx+'\n\nFormat: CONTROLLER PRIORITY ACTIONS (numbered, dollar-quantified, owner assigned) then BNCA — BEST NEXT COURSE OF ACTION (one paragraph).\n\nAfter the brief above, on a new line output exactly ===JSON=== followed by a single JSON object (no markdown fences) with this exact shape: {"confidence":0-100,"dataSources":[{"name":"...","weight":"HIGH|MED|LOW"}],"reasoning":[{"key":"...","val":"..."}],"recommendedActions":[{"text":"...","owner":"..."}],"noActionRevLoss":"$amount","actionRevLoss":"$amount","recoveryTime":"e.g. 30 Days"}'}]})});
     const reader=r.body.getReader();const dec=new TextDecoder();let full='';
     out.style.whiteSpace='pre-wrap';
     while(true){const{done,value}=await reader.read();if(done)break;
@@ -854,14 +849,15 @@ async function runConstructionBNCA(){
     const {brief: conBrief2, obj: conObj2} = conXPParseExplain(full);
     if(conBrief2) out.textContent = conBrief2;
     conXPRenderExplain(conObj2);
+    lastConObj = conObj2;
     localStorage.setItem('tsm_construction_strategist_output',JSON.stringify({summary:out.textContent,scenario:mission.scenarioId||'manual',timestamp:Date.now()}));
   }catch(e){out.textContent='Error: '+e.message;}
 }
-</script>
 // ═══════════════════════════════════════════════════
 // WAR ROOM RELAY RECEIVER
 // ═══════════════════════════════════════════════════
 let warRoomRelay = null;
+let lastConObj = null; // most recent parsed BNCA JSON (confidence/dataSources/recommendedActions/noActionRevLoss/etc) — kept so storeStrategistRelay() can build a Sentinel-shaped anomaly even when called from escalateToExecutive() without a fresh run
  
 function loadWarRoomRelay() {
   try {
@@ -871,11 +867,12 @@ function loadWarRoomRelay() {
     warRoomRelay = JSON.parse(raw);
     if (!warRoomRelay) return false;
     populateFromWarRoom(warRoomRelay);
-    // TSM AUTO-CHAIN — synthesize BNCA and escalate to Executive Portal without manual clicks
+    // TSM AUTO-CHAIN — synthesize BNCA automatically, but leave escalation to
+    // Executive Portal as a manual step (click "→ ESCALATE TO EXECUTIVE")
+    // so the user has time to review the synthesis before navigating away.
     if (localStorage.getItem('tsm_auto_mode') !== 'off') {
       setTimeout(async () => {
         if (typeof runConstructionBNCAFromRelay === 'function') await runConstructionBNCAFromRelay();
-        setTimeout(() => { if (typeof escalateToExecutive === 'function') escalateToExecutive(); }, 1500);
       }, 1000);
     }
     return true;
@@ -1012,6 +1009,8 @@ ENGINE 03 — FINANCIAL: ${engines.e3||''}
 ENGINE 04 — LEGAL: ${engines.e4||''}
 ENGINE 05 — COMPLIANCE: ${engines.e5||''}
 ENGINE 06 — BNCA EXEC: ${engines.e6||''}
+PROJECT PHASE STATUS:
+${phaseSnapshotToText(getPhaseSnapshot())}
   `.trim();
  
   const sys = `You are a Construction Strategist AI. Synthesize war room engine data into a complete executive intelligence package. Be specific, dollar-quantified, and action-oriented.`;
@@ -1022,7 +1021,7 @@ ENGINE 06 — BNCA EXEC: ${engines.e6||''}
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
+        model: 'openai/gpt-oss-120b',
         max_tokens: 1200,
         temperature: 0.4,
         stream: true,
@@ -1062,20 +1061,19 @@ ENGINE 06 — BNCA EXEC: ${engines.e6||''}
     const {brief: conBrief, obj: conObj} = conXPParseExplain(full);
     if(conBrief) out.textContent = conBrief;
     conXPRenderExplain(conObj);
+    lastConObj = conObj;
     out.classList.remove('streaming');
     nodeEl.textContent = `BNCA complete — War Room relay synthesized · ${new Date().toLocaleTimeString()}`;
  
-    // Store for executive portal
-    storeStrategistRelay(full);
+    // Store for executive portal (also escalates to Sentinel Center)
+    storeStrategistRelay(full, conObj);
  
     // Update escalate bar
     const sub = document.getElementById('escalBarSub');
     if (sub) sub.textContent = 'BNCA synthesis complete — ready to escalate to Executive Portal.';
 
-    // TSM AUTO-ESCALATE TO EXEC
-    if (localStorage.getItem('tsm_auto_mode') === 'on') {
-      setTimeout(() => { escalateToExecutive(); }, 2000);
-    }
+    // Auto-escalate disabled by design: synthesis result stays on this page
+    // until the user manually clicks "→ ESCALATE TO EXECUTIVE".
  
   } catch(e) {
     out.textContent = '[Error] ' + e.message;
@@ -1084,9 +1082,106 @@ ENGINE 06 — BNCA EXEC: ${engines.e6||''}
 }
  
 // ═══════════════════════════════════════════════════
+// PROJECT PHASE SNAPSHOT
+// ═══════════════════════════════════════════════════
+// Reads the .phase-card blocks rendered in the Strategist view (currently
+// static markup) into a structured object, so the BNCA report and the
+// Sentinel/Executive relay payloads can carry real phase-level status
+// instead of only the war room's 6-engine risk/exposure summary.
+function getPhaseSnapshot() {
+  return Array.from(document.querySelectorAll('.phase-card')).map(card => {
+    const meta = card.querySelectorAll('.ph-meta span');
+    return {
+      phase: card.querySelector('.ph-tag')?.textContent?.trim() || '',
+      name: card.querySelector('.ph-name')?.textContent?.trim() || '',
+      pct: meta[0]?.textContent?.trim() || '',
+      due: meta[1]?.textContent?.trim() || '',
+      desc: card.querySelector('.ph-desc')?.textContent?.trim() || ''
+    };
+  });
+}
+function phaseSnapshotToText(phases) {
+  return phases.map(p => `${p.phase} -- ${p.name}: ${p.pct}, ${p.due}. ${p.desc}`).join('\n');
+}
+
+// ═══════════════════════════════════════════════════
+// SENTINEL RELAY HELPERS
+// ═══════════════════════════════════════════════════
+// Parses dollar strings into a single number. Handles plain amounts
+// ("$250,000"), K/M suffixes ("$250K", "$1.2M"), and ranges
+// ("$50K - $500K" / "$50,000-$500,000") by taking the midpoint of a range.
+function parseDollarToNumber(str) {
+  if (str == null) return null;
+  const s = String(str);
+  const nums = s.match(/[\d,.]+\s*[kKmM]?/g);
+  if (!nums || !nums.length) return null;
+  const toNum = t => {
+    const mult = /[mM]\s*$/.test(t) ? 1e6 : /[kK]\s*$/.test(t) ? 1e3 : 1;
+    const n = parseFloat(t.replace(/[^\d.]/g, ''));
+    return isNaN(n) ? null : n * mult;
+  };
+  const parsed = nums.map(toNum).filter(n => n !== null);
+  if (!parsed.length) return null;
+  return parsed.length > 1 ? (parsed[0] + parsed[parsed.length - 1]) / 2 : parsed[0];
+}
+// Parses a risk score that may arrive as "68/100", "68", or a bare number.
+function parseRiskToNumber(val) {
+  if (val == null) return null;
+  const m = String(val).match(/(\d+)/);
+  return m ? parseInt(m[1], 10) : null;
+}
+function riskToSeverity(riskNum) {
+  if (riskNum == null) return 'MED';
+  if (riskNum >= 75) return 'CRIT';
+  if (riskNum >= 55) return 'HIGH';
+  if (riskNum >= 30) return 'MED';
+  return 'LOW';
+}
+
+// ═══════════════════════════════════════════════════
+// PUSH TO SENTINEL CENTER
+// ═══════════════════════════════════════════════════
+// sentinel-center.html reads localStorage["TSM_CONSTRUCTION_STRATEGIST_RELAY"]
+// and requires { generatedAt, anomalies: [...] } — a flat summary object
+// does not satisfy its Array.isArray(live.anomalies) check and silently
+// falls back to sample data. This builds that shape from whatever the BNCA
+// run produced and writes it to the key/storage Sentinel actually reads
+// (localStorage, not sessionStorage), then fires the same-tab refresh event
+// Sentinel listens for.
+//
+// Exposure collapsing rule: prefer the model's own noActionRevLoss guess
+// (it's grounded in the specific document run) and fall back to the
+// midpoint of the war room's exposure range if that field is missing or
+// unparseable.
+function pushToSentinel(bncaText, conObj) {
+  if (!warRoomRelay) return;
+  const riskNum = parseRiskToNumber(warRoomRelay.snapshot?.risk);
+  const exposureNum = parseDollarToNumber(conObj?.noActionRevLoss) ??
+                       parseDollarToNumber(warRoomRelay.snapshot?.exposure) ?? 0;
+  const topAction = conObj?.recommendedActions?.[0];
+  const anomaly = {
+    id: 'con-' + Date.now(),
+    title: (warRoomRelay.docType || 'Construction') + ' — Strategist Synthesis',
+    severity: riskToSeverity(riskNum),
+    exposure: exposureNum,
+    confidence: conObj?.confidence ?? 70,
+    rootCause: (bncaText || '').slice(0, 240) || 'See BNCA synthesis for detail.',
+    recommendedAction: topAction ? `${topAction.text}${topAction.owner ? ' (Owner: ' + topAction.owner + ')' : ''}` : 'See strategist brief.',
+    impacts: { phases: getPhaseSnapshot() }
+  };
+  try {
+    localStorage.setItem('TSM_CONSTRUCTION_STRATEGIST_RELAY', JSON.stringify({
+      generatedAt: new Date().toISOString(),
+      anomalies: [anomaly]
+    }));
+    window.dispatchEvent(new CustomEvent('TSM_SENTINEL_REFRESH'));
+  } catch(e) { console.warn('[sentinel-relay] write failed:', e); }
+}
+
+// ═══════════════════════════════════════════════════
 // STORE RELAY FOR EXECUTIVE PORTAL
 // ═══════════════════════════════════════════════════
-function storeStrategistRelay(bncaText) {
+function storeStrategistRelay(bncaText, conObj) {
   if (!warRoomRelay) return;
   const payload = {
     summary: bncaText,
@@ -1096,7 +1191,8 @@ function storeStrategistRelay(bncaText) {
     engines: warRoomRelay.engines,
     snapshot: warRoomRelay.snapshot,
     timestamp: new Date().toISOString(),
-    chainStep: 'strategist'
+    chainStep: 'strategist',
+    phases: getPhaseSnapshot()
   };
   try {
     // ── TSM EXEC KIT: WIP + explainability ──────────────────────────
@@ -1120,7 +1216,50 @@ function storeStrategistRelay(bncaText) {
 
     sessionStorage.setItem('TSM_CONSTRUCTION_STRATEGIST_RELAY', JSON.stringify(payload));
     localStorage.setItem('tsm_construction_strategist_output', JSON.stringify(payload));
+    // Real strategist-confirmed signal (Convention A shape) — read by
+    // tsm-demo-runner.js AUTO-RUN and core/tsm-enforcer.js health audit.
+    localStorage.setItem('TSM_STRAT_CONFIRMED_construction-suite', JSON.stringify({
+      vertical: 'construction-suite',
+      timestamp: Date.now()
+    }));
   } catch(e) { console.warn('Store error:', e); }
+
+  // ── Phase 2: Mission Core creation ──
+  // NOTE: Construction already has its own TSMMissionStore (html/js/tsm-mission-store.js,
+  // a class instance keyed to localStorage["TSM_MISSION_STORE"]) — a DIFFERENT system than
+  // the runtime/ scaffold's TSMMissionStore used by Healthcare/Legal. We use
+  // TSMMissionModel.createMission() for canonical schema, but push into the EXISTING store
+  // via addMission(), not the scaffold's store, to avoid a global-name collision.
+  try {
+    if (window.TSMMissionModel && window.TSMMissionStore && typeof window.TSMMissionStore.addMission === 'function') {
+      const mission = window.TSMMissionModel.createMission({
+        vertical: 'construction',
+        tenantId: 'default',
+        client: payload.docType ? ('Construction ' + payload.docType) : null,
+        classification: {
+          summary: payload.summary || payload.bncaText || '',
+          scenario: payload.scenario || null,
+          source: 'Construction Strategist'
+        },
+        workflow: {
+          assignedTo: null,
+          queue: null,
+          priority: 'normal', // no reliable risk/urgency signal available locally; see snapshot.risk (upstream, unverified)
+          sla: null
+        },
+        actor: 'construction-strategist'
+      });
+      mission.status = mission.stage; // existing store's getByStatus() filters on .status, not .stage
+      window.TSMMissionStore.addMission(mission);
+    } else {
+      console.warn('Mission Core (model) or existing TSMMissionStore not available — skipping mission creation, strategist relay write already succeeded.');
+    }
+  } catch (missionErr) {
+    console.warn('Mission Core creation failed (non-fatal, strategist relay already written):', missionErr);
+  }
+
+  // Also escalate to Sentinel Center in its own expected shape/storage.
+  pushToSentinel(bncaText, conObj || lastConObj);
 }
  
 // ═══════════════════════════════════════════════════
@@ -1280,7 +1419,7 @@ EXECUTIVE ESCALATION: [Yes/No] — [reason]`;
       fetch('/api/war-room/stream',{
         method:'POST',
         headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({model:'llama-3.3-70b-versatile',max_tokens:700,temperature:0.2,stream:true,messages:[{role:'user',content:prompt}]})
+        body:JSON.stringify({model:'openai/gpt-oss-120b',max_tokens:700,temperature:0.2,stream:true,messages:[{role:'user',content:prompt}]})
       })
       .then(async r=>{
         const reader=r.body.getReader();const dec=new TextDecoder();let txt='';
@@ -1312,7 +1451,6 @@ EXECUTIVE ESCALATION: [Yes/No] — [reason]`;
 
   } catch(e){ console.warn('Construction issue pack error:',e); }
 })();
-</script>
 
 /* TSM AUTO-RUN STRATEGIST */
 (function(){
@@ -1324,18 +1462,17 @@ EXECUTIVE ESCALATION: [Yes/No] — [reason]`;
   } catch(e) { console.warn('[TSM AutoRun Strategist]', e); }
 })();
 </script>
-  <script src="/tsm-kernel-upgrade.js"></script>
+  <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
+  <script src="/html/shared/runtime/mission/mission-model.js"></script>
+  <script src="/js/tsm-mission-store.js"></script>
+  <script src="/js/core/tsm-kernel-upgrade.js"></script>
   <script src="/shared/tsm-exec-kit-producer.js"></script>
-</body>
-</html>
 
+<script>
 // ===== TSM_AUTONOMY_STANDARDIZED =====
 window.TSM_AUTONOMY_STANDARDIZED = true;
-</script>
 
 <!-- TSM ENFORCER BOOT -->
-
-
 
 // ===== TSM WAR ROOM SCOPED RELAY FIX =====
 window.tsmMission = window.tsmMission || {
@@ -1347,8 +1484,6 @@ window.tsmMission = window.tsmMission || {
 function tsmWriteRelay(payload){
   TSM_KERNEL.setRelay("construction-suite", JSON.stringify(payload));
 }
-</script>
-
 
 // ===== TSM STRATEGIST BRIDGE LAYER =====
 
@@ -1361,19 +1496,17 @@ function tsmReadScopedRelay(vertical){
   }
 }
 
-function tsmWriteScopedStrat(vertical, missionId){
-  localStorage.setItem("TSM_STRAT_CONFIRMED_construction-suite_" + vertical, JSON.stringify({
-    vertical,
-    missionId,
-    timestamp: Date.now()
-  }));
-}
+// tsmWriteScopedStrat() removed — dead code, never called anywhere in the
+// repo (Convention C). Real STRAT_CONFIRMED write now lives inline in
+// storeStrategistRelay() above.
 </script>
-
 
 <!-- TSM KERNEL ENGINE -->
 <script src="/js/core/tsm-event-bus.js"></script>
 <script src="/js/core/tsm-state.js"></script>
 <script src="/js/core/tsm-mission-engine.js"></script>
+<script src="/js/core/tsm-auto-pipeline.js"></script>
 <script src="/construction-suite/tsm-construction-strategist-bridge.js"></script>
-
+  <script src="/html/core/tsm-runtime.js"></script>
+</body>
+</html>

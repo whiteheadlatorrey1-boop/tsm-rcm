@@ -14,7 +14,7 @@ app.post('/api/groq', (req, res) => {
   const key = process.env.GROQ_API_KEY;
   if (!key) return res.status(500).json({ error: 'GROQ_API_KEY not set on server' });
 
-  const { messages, model = 'llama-3.3-70b-versatile', max_tokens = 1200, stream = true } = req.body;
+  const { messages, model = 'openai/gpt-oss-120b', max_tokens = 1200, stream = true } = req.body;
   if (!messages?.length) return res.status(400).json({ error: 'messages required' });
 
   const payload = JSON.stringify({ model, max_tokens, stream, messages });

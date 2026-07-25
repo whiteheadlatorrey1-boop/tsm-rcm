@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script defer src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
+<script src="/config/tsm-client-key.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TSM SHELL · Execution &amp; WIP Command Center</title>
+<style>
+  :root{
+    --bg:#07090a;
+    --panel:#0d1113;
+    --panel-2:#101517;
+    --line:#1b2326;
+    --cyan:#19e0d6;
+    --cyan-dim:#0d6f6a;
+    --green:#3ddc84;
+    --gold:#e8b84b;
+    --orange:#090908;
+    --red:#e0473d;
+    --text:#cfe0df;
+    --text-dim:#6f8584;
+    --mono:'JetBrains Mono','Share Tech Mono',monospace;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:
+      radial-gradient(circle at 12% -10%, rgba(25,224,214,0.06), transparent 45%),
+      radial-gradient(circle at 100% 110%, rgba(61,220,132,0.05), transparent 50%),
+      var(--bg);
+    color:var(--text);
+    font-family:var(--mono);
+    min-height:100vh;
+  }
+  ::selection{background:var(--cyan);color:#03100f;}
+  input,select,textarea{font-family:var(--mono);}
+
+  header{
+    border-bottom:1px solid var(--line);
+    padding:18px 28px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:16px;
+    flex-wrap:wrap;
+    background:linear-gradient(180deg, rgba(255,255,255,0.015), transparent);
+  }
+  .brand{display:flex;align-items:baseline;gap:10px;}
+  .brand .mark{
+    color:var(--cyan);
+    font-size:11px;
+    letter-spacing:0.25em;
+    border:1px solid var(--cyan-dim);
+    padding:3px 7px;
+    border-radius:2px;
+  }
+  .brand h1{margin:0;font-size:17px;letter-spacing:0.06em;font-weight:600;color:#eef7f6;}
+  .brand .sub{color:var(--text-dim);font-size:12px;margin-top:2px;letter-spacing:0.04em;}
+  .header-right{display:flex;align-items:center;gap:10px;}
+  a.nav-link, button.ghost{
+    background:transparent;
+    border:1px solid var(--line);
+    color:var(--text-dim);
+    font-family:var(--mono);
+    font-size:11px;
+    letter-spacing:0.05em;
+    padding:8px 12px;
+    border-radius:3px;
+    cursor:pointer;
+    text-decoration:none;
+    transition:border-color .15s, color .15s;
+    display:inline-block;
+  }
+  a.nav-link:hover{border-color:var(--cyan-dim);color:var(--cyan);}
+  button.ghost:hover{border-color:var(--red);color:var(--red);}
+
+  .vtabs{
+    display:flex;
+    gap:6px;
+    padding:14px 28px 0;
+    flex-wrap:wrap;
+    border-bottom:1px solid var(--line);
+    max-width:1280px;
+    margin:0 auto;
+  }
+  .vtab{
+    background:transparent;
+    border:1px solid var(--line);
+    border-bottom:none;
+    color:var(--text-dim);
+    font-family:var(--mono);
+    font-size:11px;
+    letter-spacing:0.05em;
+    padding:9px 14px;
+    border-radius:4px 4px 0 0;
+    cursor:pointer;
+    transition:all .15s;
+    margin-bottom:-1px;
+  }
+  .vtab.active{
+    color:var(--cyan);
+    border-color:var(--line);
+    background:var(--panel);
+    border-bottom:1px solid var(--panel);
+  }
+  .vtab:hover:not(.active){color:#bfd2d0;}
+
+  main{padding:26px 28px 60px;max-width:1280px;margin:0 auto;}
+
+  .warroom-link{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    font-size:11px;
+    color:var(--cyan);
+    text-decoration:none;
+    margin-bottom:22px;
+    border:1px solid var(--cyan-dim);
+    padding:7px 12px;
+    border-radius:3px;
+  }
+  .warroom-link:hover{background:rgba(25,224,214,0.06);}
+
+  .section-label{
+    font-size:11px;
+    letter-spacing:0.22em;
+    color:var(--text-dim);
+    margin:0 0 14px;
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+  .section-label::after{content:'';flex:1;height:1px;background:var(--line);}
+  .section-label .add-toggle{
+    font-size:10px;
+    letter-spacing:0.04em;
+    color:var(--cyan);
+    cursor:pointer;
+    border:1px solid var(--cyan-dim);
+    padding:3px 9px;
+    border-radius:2px;
+    white-space:nowrap;
+  }
+
+  /* ── READINESS ── */
+  .readiness-row{
+    display:grid;
+    grid-template-columns:140px 1fr;
+    gap:24px;
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:5px;
+    padding:20px 22px;
+    margin-bottom:34px;
+    align-items:center;
+  }
+  @media (max-width:680px){.readiness-row{grid-template-columns:1fr;}}
+  .readiness-dial{
+    width:128px;height:128px;
+    border-radius:50%;
+    border:4px solid var(--line);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    flex-direction:column;
+  }
+  .readiness-dial .num{font-size:32px;font-weight:800;color:var(--cyan);line-height:1;}
+  .readiness-dial .lbl{font-size:9px;letter-spacing:0.1em;color:var(--text-dim);margin-top:4px;}
+  .readiness-bars{display:flex;flex-direction:column;gap:9px;}
+  .rbar-row{display:grid;grid-template-columns:160px 1fr 70px;align-items:center;gap:10px;}
+  .rbar-row label{font-size:10.5px;color:var(--text-dim);letter-spacing:0.03em;}
+  .rbar-row input[type=range]{width:100%;accent-color:var(--cyan);}
+  .rbar-row .rval{font-size:11px;color:var(--cyan);text-align:right;}
+  .readiness-save{
+    margin-top:8px;
+    background:transparent;
+    border:1px solid var(--cyan-dim);
+    color:var(--cyan);
+    font-size:10.5px;
+    letter-spacing:0.06em;
+    padding:6px 12px;
+    border-radius:3px;
+    cursor:pointer;
+    align-self:flex-start;
+  }
+  .readiness-save:hover{border-color:var(--cyan);}
+  .live-badge{
+    display:inline-block; font-size:8px; font-weight:800; letter-spacing:0.08em;
+    color:#00171a; background:var(--cyan); border-radius:3px; padding:1px 5px; margin-left:6px; vertical-align:middle;
+  }
+  .rbar-input:disabled{opacity:0.55;}
+
+  /* ── PANELS / SHARED ── */
+  .panel{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:5px;
+    padding:18px 20px;
+    margin-bottom:34px;
+  }
+  .add-form{
+    display:none;
+    gap:8px;
+    flex-wrap:wrap;
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    border-radius:4px;
+    padding:12px;
+    margin-bottom:14px;
+  }
+  .add-form.open{display:flex;}
+  .add-form input, .add-form select{
+    background:var(--bg);
+    border:1px solid var(--line);
+    color:var(--text);
+    font-size:11px;
+    padding:7px 9px;
+    border-radius:3px;
+  }
+  .add-form input::placeholder{color:var(--text-dim);}
+  .add-form button{
+    background:rgba(25,224,214,0.1);
+    border:1px solid var(--cyan-dim);
+    color:var(--cyan);
+    font-size:11px;
+    letter-spacing:0.04em;
+    padding:7px 14px;
+    border-radius:3px;
+    cursor:pointer;
+  }
+  .add-form button:hover{border-color:var(--cyan);}
+
+  .badge{font-size:9.5px;letter-spacing:0.06em;padding:2px 7px;border-radius:2px;font-weight:700;white-space:nowrap;}
+  .badge.LOW, .badge.VERIFIED, .badge.COMPLETE, .badge.APPROVED{background:rgba(61,220,132,0.14);color:var(--green);}
+  .badge.MEDIUM, .badge.STALE, .badge.PENDING{background:rgba(232,184,75,0.14);color:var(--gold);}
+  .badge.HIGH, .badge.MISSING, .badge.BLOCKED, .badge.REJECTED{background:rgba(224,71,61,0.18);color:var(--red);}
+  .badge.UNKNOWN, .badge.TODO{background:rgba(255,255,255,0.05);color:var(--text-dim);}
+  .badge.INPROGRESS{background:rgba(25,224,214,0.14);color:var(--cyan);}
+
+  /* ── TASK TABLE ── */
+  .task-row{
+    display:grid;
+    grid-template-columns:1fr 130px 120px 90px 80px 28px;
+    gap:12px;
+    align-items:center;
+    padding:11px 0;
+    border-top:1px solid var(--line);
+    font-size:11.5px;
+  }
+  .task-row.head{
+    color:var(--text-dim);
+    font-size:9.5px;
+    letter-spacing:0.08em;
+    border-top:none;
+    padding-bottom:8px;
+  }
+  .task-row:not(.head):first-of-type{border-top:none;}
+  .task-row .taction{color:#e3f1ef;}
+  .task-row .towner{color:var(--text-dim);}
+  .status-cycle{cursor:pointer;}
+  .task-del{
+    background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:13px;
+  }
+  .task-del:hover{color:var(--red);}
+
+  /* ── DATA QUALITY ── */
+  .dq-row{
+    display:grid;
+    grid-template-columns:1fr 110px 90px 24px;
+    gap:12px;
+    align-items:center;
+    padding:10px 0;
+    border-top:1px solid var(--line);
+    font-size:11.5px;
+  }
+  .dq-row:first-of-type{border-top:none;}
+  .dq-row .src{color:#e3f1ef;}
+  .dq-row .upd{font-size:10px;color:var(--text-dim);}
+  .dq-del{background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:13px;}
+  .dq-del:hover{color:var(--red);}
+
+  /* ── DECISION QUEUE ── */
+  .dec-card{
+    border:1px solid var(--line);
+    border-left:3px solid var(--gold);
+    border-radius:4px;
+    padding:14px 16px;
+    margin-top:12px;
+    background:var(--panel-2);
+  }
+  .dec-card.APPROVED{border-left-color:var(--green);}
+  .dec-card.REJECTED{border-left-color:var(--red);opacity:0.6;}
+  .dec-card:first-of-type{margin-top:0;}
+  .dec-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;}
+  .dec-title{font-size:12.5px;color:#eef7f6;font-weight:600;}
+  .dec-meta{display:flex;gap:16px;margin-top:8px;font-size:10.5px;color:var(--text-dim);flex-wrap:wrap;}
+  .dec-meta b{color:var(--text);}
+  .dec-actions{display:flex;gap:8px;margin-top:12px;}
+  .dec-btn{
+    flex:1;
+    font-size:10.5px;
+    letter-spacing:0.05em;
+    padding:7px 0;
+    border-radius:3px;
+    cursor:pointer;
+    text-align:center;
+  }
+  .dec-btn.approve{background:rgba(61,220,132,0.1);border:1px solid var(--green);color:var(--green);}
+  .dec-btn.reject{background:rgba(224,71,61,0.1);border:1px solid var(--red);color:var(--red);}
+  .dec-btn:hover{filter:brightness(1.2);}
+  .dec-decided{font-size:10px;color:var(--text-dim);margin-top:10px;}
+
+  /* ── TRENDS ── */
+  .trend-row{
+    display:grid;
+    grid-template-columns:1fr 100px 90px 1fr;
+    gap:12px;
+    padding:10px 0;
+    border-top:1px solid var(--line);
+    font-size:11.5px;
+    align-items:start;
+  }
+  .trend-row:first-of-type{border-top:none;}
+  .trend-row.current{color:var(--cyan);}
+  .trend-row .tevent{color:#e3f1ef;}
+  .trend-row .tnotes{color:var(--text-dim);font-size:10.5px;}
+
+  .empty-row{font-size:11px;color:var(--text-dim);font-style:italic;padding:10px 0;}
+  .api-error-banner{
+    display:none;
+    border:1px solid var(--red);
+    background:rgba(224,71,61,0.08);
+    border-radius:4px;
+    padding:12px 16px;
+    margin-bottom:18px;
+    font-size:11.5px;
+    color:#ffd5d1;
+    align-items:flex-start;
+    gap:10px;
+  }
+  .api-error-banner b{color:var(--red);letter-spacing:0.06em;}
+  .toast{
+    position:fixed;bottom:22px;left:50%;
+    transform:translateX(-50%) translateY(12px);
+    background:#0d1113;border:1px solid var(--line);color:var(--text);
+    font-size:11.5px;padding:10px 16px;border-radius:4px;
+    opacity:0;pointer-events:none;transition:opacity .2s, transform .2s;z-index:50;
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+  .toast.err{border-color:var(--red);color:#ffd5d1;}
+  footer{text-align:center;padding:24px;font-size:10.5px;color:var(--text-dim);letter-spacing:0.06em;border-top:1px solid var(--line);}
+</style>
+<script src="/html/core/tsm-relay-core.js"></script>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <span class="mark">TSM SHELL</span>
+    <div>
+      <h1>Execution &amp; WIP Command Center</h1>
+      <div class="sub">Active resolution tracking · readiness · decision queue</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <a class="nav-link" href="/html/tsm-collective-bnca.html">Collective BNCA</a>
+    <a class="nav-link" href="/html/tsm-doc-search-multi.html">← Doc Search Hub</a>
+  </div>
+</header>
+
+<div class="vtabs" id="vtabs"></div>
+
+<main>
+  <div class="api-error-banner" id="apiErrorBanner">
+    <span>⚠</span>
+    <div><b>API UNREACHABLE —</b> <span id="apiErrorText">Could not reach WIP Command Center endpoints.</span></div>
+  </div>
+
+  <a class="warroom-link" id="warRoomLink" href="#">Open War Room →</a>
+
+  <div class="section-label">READINESS SCORE</div>
+  <div class="readiness-row">
+    <div class="readiness-dial"><div class="num" id="readinessNum">—</div><div class="lbl">READY</div></div>
+    <div>
+      <div class="readiness-bars" id="readinessBars"></div>
+      <button class="readiness-save" id="readinessSave">Save readiness</button>
+    </div>
+  </div>
+
+  <div class="section-label">DATA QUALITY <span class="add-toggle" data-toggle="dqForm">+ Add source</span></div>
+  <div class="panel">
+    <div class="add-form" id="dqForm">
+      <input type="text" id="dqSource" placeholder="Source name (e.g. ERP Feed)">
+      <select id="dqStatus">
+        <option value="VERIFIED">VERIFIED</option>
+        <option value="STALE">STALE</option>
+        <option value="MISSING">MISSING</option>
+        <option value="UNKNOWN">UNKNOWN</option>
+      </select>
+      <button id="dqAddBtn">Add</button>
+    </div>
+    <div id="dqRows"></div>
+  </div>
+
+  <div class="section-label">WIP TASK BOARD <span class="add-toggle" data-toggle="taskForm">+ Add task</span></div>
+  <div class="panel">
+    <div class="add-form" id="taskForm">
+      <input type="text" id="taskAction" placeholder="Action" style="flex:2;min-width:200px;">
+      <input type="text" id="taskOwner" placeholder="Owner">
+      <select id="taskStatus">
+        <option value="TO DO">TO DO</option>
+        <option value="IN PROGRESS">IN PROGRESS</option>
+        <option value="BLOCKED">BLOCKED</option>
+        <option value="COMPLETE">COMPLETE</option>
+      </select>
+      <input type="text" id="taskDue" placeholder="Due (e.g. 2 PM)">
+      <select id="taskRisk">
+        <option value="LOW">LOW</option>
+        <option value="MEDIUM">MEDIUM</option>
+        <option value="HIGH">HIGH</option>
+      </select>
+      <button id="taskAddBtn">Add</button>
+    </div>
+    <div class="task-row head">
+      <span>ACTION</span><span>OWNER</span><span>STATUS</span><span>DUE</span><span>RISK</span><span></span>
+    </div>
+    <div id="taskRows"></div>
+  </div>
+
+  <div class="section-label">EXECUTIVE DECISION QUEUE <span class="add-toggle" data-toggle="decForm">+ Add decision</span></div>
+  <div class="panel">
+    <div class="add-form" id="decForm">
+      <input type="text" id="decTitle" placeholder="Decision (e.g. Approve emergency supplier transfer)" style="flex:2;min-width:240px;">
+      <input type="text" id="decImpact" placeholder="Impact (e.g. Saves $1.2M revenue)">
+      <input type="text" id="decCost" placeholder="Cost (e.g. Costs $180K freight)">
+      <input type="text" id="decRec" placeholder="Recommendation (e.g. Proceed)">
+      <input type="number" id="decConf" placeholder="Confidence %" min="0" max="100" style="width:90px;">
+      <button id="decAddBtn">Add</button>
+    </div>
+    <div id="decRows"></div>
+  </div>
+
+  <div class="section-label">TREND INTELLIGENCE <span class="add-toggle" data-toggle="trendForm">+ Add historical event</span></div>
+  <div class="panel">
+    <div class="add-form" id="trendForm">
+      <input type="text" id="trendEvent" placeholder="Event (e.g. Supplier Shutdown A)" style="flex:2;min-width:200px;">
+      <input type="date" id="trendDate">
+      <input type="number" id="trendHours" placeholder="Resolution hrs" style="width:120px;">
+      <input type="text" id="trendNotes" placeholder="Notes" style="flex:1;min-width:160px;">
+      <button id="trendAddBtn">Add</button>
+    </div>
+    <div class="trend-row head" style="color:var(--text-dim);font-size:9.5px;letter-spacing:0.08em;">
+      <span>EVENT</span><span>DATE</span><span>RESOLUTION</span><span>NOTES</span>
+    </div>
+    <div id="trendRows"></div>
+  </div>
+</main>
+
+<footer>TSM SHELL · DETECT → ANALYZE → DECIDE → EXECUTE → TRACK → RESOLVE</footer>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const VERTICALS = [
+  { id:'healthcare',   label:'Healthcare RCM',  warRoom:'/html/healthcare/hc-denial-war-room.html' },
+  { id:'finops',       label:'FinOps',          warRoom:'/html/finops-suite/finops-war-room.html' },
+  { id:'bpo',          label:'BPO / Workforce', warRoom:'/html/war-rooms/bpo/bpo-war-room.html' },
+  { id:'legal',        label:'Legal',           warRoom:'/html/legal-pro/legal-war-room.html' },
+  { id:'real-estate',  label:'Real Estate',     warRoom:'/html/reo-pro/re-war-room.html' },
+  { id:'insurance',    label:'Insurance',       warRoom:'/html/tsm-insurance/insurance-war-room.html' },
+  { id:'construction', label:'Construction',    warRoom:'/html/construction-suite/construction-war-room.html' },
+  { id:'cpq',          label:'CPQ',             warRoom:'/html/war-rooms/cpq/cpq-war-room.html' },
+  { id:'o2c',          label:'Order-to-Cash',    warRoom:'/html/war-rooms/o2c/o2c-war-room.html' },
+  { id:'crm',          label:'CRM',              warRoom:'/html/war-rooms/crm/crm-war-room.html' }
+];
+const READINESS_FIELDS = [
+  { key:'dataCompleteness',     label:'Data completeness' },
+  { key:'stakeholderCoverage',  label:'Stakeholder coverage' },
+  { key:'mitigationPlans',      label:'Mitigation plans' },
+  { key:'resourceAvailability', label:'Resource availability' },
+  { key:'openRisks',            label:'Open risks (inverse)' }
+];
+const STATUS_CYCLE = ['TO DO', 'IN PROGRESS', 'BLOCKED', 'COMPLETE'];
+
+let currentVertical = VERTICALS[0].id;
+let currentBoard = null;
+
+function toast(msg, isErr){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (isErr ? ' err' : '');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('show'), 3200);
+}
+
+function esc(s){
+  const d = document.createElement('div');
+  d.textContent = s == null ? '' : String(s);
+  return d.innerHTML;
+}
+
+function setApiError(msg){
+  const banner = document.getElementById('apiErrorBanner');
+  if(msg){
+    document.getElementById('apiErrorText').textContent = msg;
+    banner.style.display = 'flex';
+  } else {
+    banner.style.display = 'none';
+  }
+}
+
+async function safeJson(response){
+  const ct = response.headers.get('content-type') || '';
+  if(!ct.includes('application/json')){
+    throw new Error(`Expected JSON, got "${ct || 'unknown'}" (status ${response.status})`);
+  }
+  return response.json();
+}
+
+function badgeClass(s){ return String(s || '').toUpperCase().replace(/\s+/g, ''); }
+
+function timeAgo(ts){
+  if(!ts) return '';
+  const s = Math.floor((Date.now() - ts) / 1000);
+  if(s < 60) return s + 's ago';
+  if(s < 3600) return Math.floor(s/60) + 'm ago';
+  return Math.floor(s/3600) + 'h ago';
+}
+
+function renderTabs(){
+  const wrap = document.getElementById('vtabs');
+  wrap.innerHTML = VERTICALS.map(v =>
+    `<button class="vtab${v.id===currentVertical?' active':''}" data-v="${v.id}">${esc(v.label)}</button>`
+  ).join('');
+  wrap.querySelectorAll('.vtab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      currentVertical = btn.dataset.v;
+      renderTabs();
+      const v = VERTICALS.find(x => x.id === currentVertical);
+      document.getElementById('warRoomLink').href = v.warRoom;
+      loadBoard();
+    });
+  });
+  const v = VERTICALS.find(x => x.id === currentVertical);
+  document.getElementById('warRoomLink').href = v.warRoom;
+}
+
+function renderReadinessBars(readiness, liveSignal){
+  const wrap = document.getElementById('readinessBars');
+  const autoField = (readiness && readiness.dataCompletenessAuto) ? 'dataCompleteness' : null;
+  wrap.innerHTML = READINESS_FIELDS.map(f => {
+    const val = readiness && readiness[f.key] != null ? readiness[f.key] : 50;
+    if(f.key === autoField){
+      const meta = liveSignal && liveSignal.available
+        ? `${liveSignal.recordCount} record${liveSignal.recordCount===1?'':'s'} synced${liveSignal.filename ? ' from ' + esc(liveSignal.filename) : ''}`
+        : 'live data synced';
+      return `
+        <div class="rbar-row">
+          <label>${f.label} <span class="live-badge" title="Auto-derived from an actual uploaded data file, not a manual estimate">LIVE</span></label>
+          <input type="range" min="0" max="100" step="1" value="${val}" data-field="${f.key}" class="rbar-input" disabled>
+          <span class="rval" data-out="${f.key}">${val}% · ${meta}</span>
+        </div>`;
+    }
+    return `
+      <div class="rbar-row">
+        <label>${f.label}</label>
+        <input type="range" min="0" max="100" step="1" value="${val}" data-field="${f.key}" class="rbar-input">
+        <span class="rval" data-out="${f.key}">${val}%</span>
+      </div>`;
+  }).join('');
+  wrap.querySelectorAll('.rbar-input:not([disabled])').forEach(inp => {
+    inp.addEventListener('input', () => {
+      wrap.querySelector(`[data-out="${inp.dataset.field}"]`).textContent = inp.value + '%';
+    });
+  });
+}
+
+function renderReadinessScore(overall){
+  document.getElementById('readinessNum').textContent = overall != null ? overall : '—';
+}
+
+function renderDataQuality(list){
+  const wrap = document.getElementById('dqRows');
+  if(!list || !list.length){
+    wrap.innerHTML = '<div class="empty-row">No data sources tracked yet for this vertical.</div>';
+    return;
+  }
+  wrap.innerHTML = list.map(d => `
+    <div class="dq-row">
+      <span class="src">${esc(d.source)}</span>
+      <span class="badge ${badgeClass(d.status)}">${esc(d.status)}</span>
+      <span class="upd">${timeAgo(d.updatedAt)}</span>
+      <button class="dq-del" data-id="${d.id}" title="Remove">×</button>
+    </div>`).join('');
+  wrap.querySelectorAll('.dq-del').forEach(btn => {
+    btn.addEventListener('click', () => deleteDataQuality(btn.dataset.id));
+  });
+}
+
+function renderTasks(list){
+  const wrap = document.getElementById('taskRows');
+  if(!list || !list.length){
+    wrap.innerHTML = '<div class="empty-row">No active tasks. Add one above to start tracking execution.</div>';
+    return;
+  }
+  wrap.innerHTML = list.map(t => `
+    <div class="task-row">
+      <span class="taction">${esc(t.action)}</span>
+      <span class="towner">${esc(t.owner)}</span>
+      <span class="badge status-cycle ${badgeClass(t.status)}" data-id="${t.id}" title="Click to advance status">${esc(t.status)}</span>
+      <span>${esc(t.due || '—')}</span>
+      <span class="badge ${badgeClass(t.risk)}">${esc(t.risk)}</span>
+      <button class="task-del" data-id="${t.id}" title="Remove">×</button>
+    </div>`).join('');
+  wrap.querySelectorAll('.status-cycle').forEach(el => {
+    el.addEventListener('click', () => cycleTaskStatus(el.dataset.id, el.textContent.trim()));
+  });
+  wrap.querySelectorAll('.task-del').forEach(btn => {
+    btn.addEventListener('click', () => deleteTask(btn.dataset.id));
+  });
+}
+
+function renderDecisions(list){
+  const wrap = document.getElementById('decRows');
+  if(!list || !list.length){
+    wrap.innerHTML = '<div class="empty-row">No decisions awaiting approval for this vertical.</div>';
+    return;
+  }
+  wrap.innerHTML = list.map(d => `
+    <div class="dec-card ${d.status}">
+      <div class="dec-top">
+        <span class="dec-title">${esc(d.title)}</span>
+        <span class="badge ${badgeClass(d.status)}">${esc(d.status)}</span>
+      </div>
+      <div class="dec-meta">
+        ${d.impact ? `<span><b>Impact:</b> ${esc(d.impact)}</span>` : ''}
+        ${d.cost ? `<span><b>Cost:</b> ${esc(d.cost)}</span>` : ''}
+        ${d.recommendation ? `<span><b>Rec:</b> ${esc(d.recommendation)}</span>` : ''}
+        <span><b>Confidence:</b> ${d.confidence}%</span>
+      </div>
+      ${d.status === 'PENDING' ? `
+        <div class="dec-actions">
+          <div class="dec-btn approve" data-id="${d.id}" data-status="APPROVED">Approve</div>
+          <div class="dec-btn reject" data-id="${d.id}" data-status="REJECTED">Reject</div>
+        </div>` : `<div class="dec-decided">Decided ${timeAgo(d.decidedAt)}</div>`}
+    </div>`).join('');
+  wrap.querySelectorAll('.dec-btn').forEach(btn => {
+    btn.addEventListener('click', () => decideDecision(btn.dataset.id, btn.dataset.status));
+  });
+}
+
+function renderTrends(list){
+  const wrap = document.getElementById('trendRows');
+  const rows = [];
+  if(list && list.length){
+    list.forEach(t => rows.push(`
+      <div class="trend-row">
+        <span class="tevent">${esc(t.event)}</span>
+        <span>${esc(t.date)}</span>
+        <span>${t.resolutionHours != null ? t.resolutionHours + 'h' : '—'}</span>
+        <span class="tnotes">${esc(t.notes || '—')}</span>
+      </div>`));
+  }
+  rows.push(`
+    <div class="trend-row current">
+      <span class="tevent">Current event</span>
+      <span>${new Date().toISOString().slice(0,10)}</span>
+      <span>Active</span>
+      <span class="tnotes">Tracked live via this WIP board</span>
+    </div>`);
+  wrap.innerHTML = rows.join('');
+}
+
+function renderBoard(board){
+  currentBoard = board;
+  renderReadinessBars(board.readiness, board.liveSignal);
+  renderReadinessScore(board.readinessOverall);
+  renderDataQuality(board.dataQuality);
+  renderTasks(board.tasks);
+  renderDecisions(board.decisions);
+  renderTrends(board.trends);
+}
+
+async function loadBoard(){
+  try{
+    const r = await fetch(`/api/wip/board?vertical=${encodeURIComponent(currentVertical)}`);
+    const data = await safeJson(r);
+    if(!data.ok){ throw new Error(data.error || 'board fetch failed'); }
+    renderBoard(data);
+    setApiError(null);
+  }catch(e){
+    console.error('board load failed', e);
+    setApiError('Could not load WIP board — ' + e.message);
+    renderBoard({ readiness:null, readinessOverall:null, dataQuality:[], tasks:[], decisions:[], trends:[] });
+  }
+}
+
+async function postJson(url, method, body){
+  const r = await fetch(url, {
+    method,
+    headers:{ 'Content-Type':'application/json', 'x-api-key': window.TSM_CLIENT_KEY || '' },
+    body: JSON.stringify(body)
+  });
+  return safeJson(r);
+}
+
+document.getElementById('readinessSave').addEventListener('click', async () => {
+  const body = { vertical: currentVertical };
+  document.querySelectorAll('.rbar-input:not([disabled])').forEach(inp => body[inp.dataset.field] = Number(inp.value));
+  try{
+    const data = await postJson('/api/wip/readiness', 'POST', body);
+    if(!data.ok) throw new Error(data.error || 'save failed');
+    renderReadinessScore(data.overall);
+    toast('Readiness score saved.');
+  }catch(e){ toast('Save failed — ' + e.message, true); }
+});
+
+async function deleteDataQuality(id){
+  try{
+    const data = await postJson(`/api/wip/data-quality/${id}`, 'DELETE', { vertical: currentVertical });
+    if(!data.ok) throw new Error(data.error || 'delete failed');
+    loadBoard();
+  }catch(e){ toast('Remove failed — ' + e.message, true); }
+}
+
+document.getElementById('dqAddBtn').addEventListener('click', async () => {
+  const source = document.getElementById('dqSource').value.trim();
+  const status = document.getElementById('dqStatus').value;
+  if(!source){ toast('Source name required.', true); return; }
+  try{
+    const data = await postJson('/api/wip/data-quality', 'POST', { vertical: currentVertical, source, status });
+    if(!data.ok) throw new Error(data.error || 'add failed');
+    document.getElementById('dqSource').value = '';
+    loadBoard();
+    toast('Data source added.');
+  }catch(e){ toast('Add failed — ' + e.message, true); }
+});
+
+async function cycleTaskStatus(id, current){
+  const idx = STATUS_CYCLE.indexOf(current);
+  const next = STATUS_CYCLE[(idx + 1) % STATUS_CYCLE.length];
+  try{
+    const data = await postJson(`/api/wip/task/${id}`, 'PATCH', { vertical: currentVertical, status: next });
+    if(!data.ok) throw new Error(data.error || 'update failed');
+    loadBoard();
+  }catch(e){ toast('Status update failed — ' + e.message, true); }
+}
+
+async function deleteTask(id){
+  try{
+    const data = await postJson(`/api/wip/task/${id}`, 'DELETE', { vertical: currentVertical });
+    if(!data.ok) throw new Error(data.error || 'delete failed');
+    loadBoard();
+  }catch(e){ toast('Remove failed — ' + e.message, true); }
+}
+
+document.getElementById('taskAddBtn').addEventListener('click', async () => {
+  const action = document.getElementById('taskAction').value.trim();
+  if(!action){ toast('Action description required.', true); return; }
+  const body = {
+    vertical: currentVertical,
+    action,
+    owner: document.getElementById('taskOwner').value.trim(),
+    status: document.getElementById('taskStatus').value,
+    due: document.getElementById('taskDue').value.trim(),
+    risk: document.getElementById('taskRisk').value
+  };
+  try{
+    const data = await postJson('/api/wip/task', 'POST', body);
+    if(!data.ok) throw new Error(data.error || 'add failed');
+    document.getElementById('taskAction').value = '';
+    document.getElementById('taskOwner').value = '';
+    document.getElementById('taskDue').value = '';
+    loadBoard();
+    toast('Task added.');
+  }catch(e){ toast('Add failed — ' + e.message, true); }
+});
+
+document.getElementById('decAddBtn').addEventListener('click', async () => {
+  const title = document.getElementById('decTitle').value.trim();
+  if(!title){ toast('Decision title required.', true); return; }
+  const body = {
+    vertical: currentVertical,
+    title,
+    impact: document.getElementById('decImpact').value.trim(),
+    cost: document.getElementById('decCost').value.trim(),
+    recommendation: document.getElementById('decRec').value.trim(),
+    confidence: document.getElementById('decConf').value ? Number(document.getElementById('decConf').value) : 80
+  };
+  try{
+    const data = await postJson('/api/wip/decision', 'POST', body);
+    if(!data.ok) throw new Error(data.error || 'add failed');
+    ['decTitle','decImpact','decCost','decRec','decConf'].forEach(id => document.getElementById(id).value = '');
+    loadBoard();
+    toast('Decision added to queue.');
+  }catch(e){ toast('Add failed — ' + e.message, true); }
+});
+
+async function decideDecision(id, status){
+  try{
+    const data = await postJson(`/api/wip/decision/${id}`, 'PATCH', { vertical: currentVertical, status });
+    if(!data.ok) throw new Error(data.error || 'update failed');
+    loadBoard();
+    toast(status === 'APPROVED' ? 'Decision approved.' : 'Decision rejected.');
+  }catch(e){ toast('Update failed — ' + e.message, true); }
+}
+
+document.getElementById('trendAddBtn').addEventListener('click', async () => {
+  const event = document.getElementById('trendEvent').value.trim();
+  if(!event){ toast('Event name required.', true); return; }
+  const body = {
+    vertical: currentVertical,
+    event,
+    date: document.getElementById('trendDate').value || undefined,
+    resolutionHours: document.getElementById('trendHours').value ? Number(document.getElementById('trendHours').value) : null,
+    notes: document.getElementById('trendNotes').value.trim()
+  };
+  try{
+    const data = await postJson('/api/wip/trend', 'POST', body);
+    if(!data.ok) throw new Error(data.error || 'add failed');
+    ['trendEvent','trendDate','trendHours','trendNotes'].forEach(id => document.getElementById(id).value = '');
+    loadBoard();
+    toast('Historical event added.');
+  }catch(e){ toast('Add failed — ' + e.message, true); }
+});
+
+document.querySelectorAll('.add-toggle').forEach(t => {
+  t.addEventListener('click', () => {
+    document.getElementById(t.dataset.toggle).classList.toggle('open');
+  });
+});
+
+renderTabs();
+loadBoard();
+</script>
+</body>
+</html>

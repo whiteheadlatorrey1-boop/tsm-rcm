@@ -1,179 +1,325 @@
 #!/usr/bin/env python3
 """
-TSM War Room + Demo/Prep Audit
-Scans all war-room, demo, and prep files across the 7 verticals.
-
-Run from repo root:
+TSM War Room Audit
+==================
+Run from the repo root:
     python3 audit_war_rooms.py
+
+Checks every war-room-related HTML file under html/ for the specific failure
+patterns already found in this codebase:
+
+  1. HTML corruption      - unbalanced <script>/<html>/<body> tags, or content
+                             appended after the real closing </html> (the
+                             "duplicate </body></html> + orphaned JS" pattern
+                             found in html/bpo/bpo-strategist.html).
+  2. Inline JS syntax      - every <script>...</script> block is passed through
+                             `node --check` so a broken block fails loudly
+                             instead of silently no-op'ing in the browser.
+  3. Missing referenced    - every <script src="..."> and fetch('...') target
+     files                   is checked for existence on disk (both repo-root-
+                             relative and html/-relative, since this repo mixes
+                             both conventions).
+  4. Relay-key chain       - for each vertical, cross-checks the localStorage/
+                             sessionStorage keys WRITTEN by the war-room page
+                             against the keys READ by that vertical's
+                             strategist page, and the keys WRITTEN by the
+                             strategist against the keys READ by the
+                             executive-portal page. Flags any write with no
+                             matching reader (a dead-end relay) and any read
+                             with no matching writer (a page that will always
+                             show its empty state).
+  5. Chain completeness    - flags any vertical folder under html/war-rooms/
+                             that is missing a strategist and/or
+                             executive-portal file entirely.
+  6. Placeholder/TODO      - flags leftover placeholder URLs / TODO comments
+     leftovers                (e.g. STRATEGIST_URL pointing at a page that
+                             doesn't exist, or literal "TODO" markers).
+
+Prints a per-vertical PASS/FAIL report. No third-party dependencies; requires
+`node` on PATH for check #2 (skipped with a warning if not found).
 """
-import os, re, json
+import os
+import re
+import json
+import subprocess
+import sys
 
-# ── Discovery: find all candidate files ─────────────────────────────────────
-PATTERNS = [
-    r'war.?room', r'-demo\.html$', r'demo-.*\.html$', r'prep\.html$', r'-prep-',
-]
-SKIP_DIRS = {'.git', 'node_modules', '__pycache__'}
-SKIP_FILE_MARKERS = ('.bak', 'backup', '_backup_')
+REPO_ROOT = os.getcwd()
+HTML_ROOT = os.path.join(REPO_ROOT, "html")
+WAR_ROOMS = os.path.join(HTML_ROOT, "war-rooms")
 
-ENGINE_FEATURES = {
-    "engine_counter":     [r'engines?Complete', r'enginesCount', r'\d\s*/\s*\d\s*engines?', r'engine\s*0?\d\s*of\s*\d'],
-    "progress_bar":       [r'progress-bar', r'progressBar', r'\.progress\b'],
-    "relay_write":        [r'setItem\(\s*[\'"]TSM_', r'setItem\(\s*[\'"]tsm_'],
-    "wip_field":          [r'\.wip\s*=', r'wip\s*:\s*\['],
-    "explain_field":      [r'\.explain\s*=', r'explain\s*:\s*\['],
-    "exec_kit_producer":  [r'TSMExecKitProducer'],
-    "live_ai_call":       [r'fetch\([\'"][^\'"]*api[^\'"]*[\'"]', r'/api/'],
-    "demo_data_only":     [r'DEMO\s*MODE', r'DEMO:', r'fake.?data', r'mock.?data', r'sampleData'],
-    "navigation_chain":   [r'window\.location\.href\s*=\s*[\'"][^\'"]*strategist', r'window\.location\.href\s*=\s*[\'"][^\'"]*exec'],
-    "error_handling":     [r'catch\s*\(\s*e(rr)?\s*\)'],
-    "session_persist":    [r'sessionStorage\.setItem', r'localStorage\.setItem'],
-}
+NODE_AVAILABLE = True
+try:
+    subprocess.run(["node", "--version"], capture_output=True, check=True)
+except Exception:
+    NODE_AVAILABLE = False
 
-VERTICAL_HINTS = {
-    'healthcare': 'HC', 'hc-': 'HC',
-    'finops': 'FinOps',
-    'tsm-insurance': 'Insurance', 'insurance': 'Insurance',
-    'construction': 'Construction',
-    'legal': 'Legal',
-    'reo-pro': 'RE', 're-': 'RE',
-    'bpo': 'BPO',
-}
+RELAY_KEY_RE = re.compile(
+    r"(?:localStorage|sessionStorage)\.(setItem|getItem|removeItem)\(\s*['\"]([A-Za-z0-9_]+)['\"]"
+)
+SRC_RE = re.compile(r'<script[^>]*\ssrc=["\']([^"\']+)["\']')
+FETCH_RE = re.compile(r"fetch\(\s*['\"]([^'\"]+)['\"]")
+TODO_RE = re.compile(r"TODO[:\s].{0,80}", re.IGNORECASE)
+SCRIPT_BLOCK_RE = re.compile(r"<script(?![^>]*\ssrc=)[^>]*>(.*?)</script>", re.DOTALL | re.IGNORECASE)
 
-def guess_vertical(path):
-    p = path.lower()
-    for hint, vert in VERTICAL_HINTS.items():
-        if hint in p:
-            return vert
-    return '?'
+def find_war_room_verticals():
+    """The authoritative vertical list = subfolder names under html/war-rooms/."""
+    if not os.path.isdir(WAR_ROOMS):
+        return []
+    return sorted(
+        d for d in os.listdir(WAR_ROOMS)
+        if os.path.isdir(os.path.join(WAR_ROOMS, d))
+    )
 
-def find_candidates(root='.'):
-    candidates = []
-    for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS and not any(m in d.lower() for m in SKIP_FILE_MARKERS)]
-        for fname in filenames:
-            if not fname.endswith('.html'):
+def find_all_html():
+    """
+    Scoped to war-rooms only: everything under html/war-rooms/**, plus any
+    file elsewhere in html/ whose name is prefixed with a known war-room
+    vertical (covers the repo's mixed convention where some strategist /
+    executive-portal pages live at html/<vertical>/ or html/ root instead of
+    html/war-rooms/<vertical>/, e.g. html/mdm-strategist.html,
+    html/bpo/bpo-executive-portal.html).
+    Deliberately excludes unrelated product verticals (insurance, healthcare,
+    construction, etc.) that live elsewhere in html/ and aren't war rooms.
+    """
+    out = []
+    verticals = find_war_room_verticals()
+
+    for base, _dirs, files in os.walk(WAR_ROOMS):
+        for f in files:
+            if f.lower().endswith(".html"):
+                out.append(os.path.join(base, f))
+
+    keyword_re = re.compile(r"(war-room|war_room|strategist|executive-portal|executive_portal)", re.IGNORECASE)
+
+    for base, dirs, files in os.walk(HTML_ROOT):
+        if os.path.commonpath([base, WAR_ROOMS]) == WAR_ROOMS:
+            continue  # already covered above
+        rel_base = os.path.relpath(base, HTML_ROOT)
+        top = rel_base.split(os.sep)[0].lower()
+        for f in files:
+            if not f.lower().endswith(".html"):
                 continue
-            if any(m in fname.lower() for m in SKIP_FILE_MARKERS):
+            fbase = f.lower()
+            # must both (a) look like a war-room-chain page by filename, and
+            # (b) be associated with a known war-room vertical (folder name
+            # or filename prefix) — avoids pulling in unrelated marketing
+            # sites that just happen to share a folder name like html/bpo/.
+            if not keyword_re.search(fbase):
                 continue
-            full = os.path.join(dirpath, fname).replace('\\', '/').lstrip('./')
-            if any(m in full for m in SKIP_FILE_MARKERS):
-                continue
-            for pat in PATTERNS:
-                if re.search(pat, fname, re.IGNORECASE):
-                    candidates.append(full)
-                    break
-    return sorted(set(candidates))
+            if top in verticals or any(fbase.startswith(v + "-") or fbase.startswith(v + "_") for v in verticals):
+                out.append(os.path.join(base, f))
 
-def audit_file(path):
-    try:
-        content = open(path, encoding='utf-8', errors='ignore').read()
-    except Exception as e:
-        return None
+    return sorted(set(out))
 
-    result = {'path': path, 'vertical': guess_vertical(path), 'lines': content.count('\n'), 'features': {}}
+def read(path):
+    with open(path, encoding="utf-8", errors="replace") as fh:
+        return fh.read()
 
-    for feat, patterns in ENGINE_FEATURES.items():
-        found = any(re.search(p, content, re.IGNORECASE) for p in patterns)
-        result['features'][feat] = found
+def check_corruption(path, html):
+    issues = []
+    counts = {
+        "<script": len(re.findall(r"<script[\s>]", html, re.IGNORECASE)),
+        "</script>": html.lower().count("</script>"),
+        "<html": len(re.findall(r"<html[\s>]", html, re.IGNORECASE)),
+        "</html>": html.lower().count("</html>"),
+        "<body": len(re.findall(r"<body[\s>]", html, re.IGNORECASE)),
+        "</body>": html.lower().count("</body>"),
+    }
+    if counts["<script"] != counts["</script>"]:
+        issues.append(f"unbalanced <script> tags: {counts['<script']} open vs {counts['</script>']} close")
+    if counts["<html"] != counts["</html>"]:
+        issues.append(f"unbalanced <html> tags: {counts['<html']} open vs {counts['</html>']} close")
+    if counts["<body"] != counts["</body>"]:
+        issues.append(f"unbalanced <body> tags: {counts['<body']} open vs {counts['</body>']} close")
 
-    # relay keys written
-    relay_keys = set(re.findall(r'setItem\(\s*[\'"]([^\'"]*(?:RELAY|relay|BRIEF|brief)[^\'"]*)[\'"]', content))
-    result['relay_keys'] = sorted(relay_keys)
+    last_close = html.lower().rfind("</html>")
+    if last_close != -1:
+        tail = html[last_close + len("</html>"):].strip()
+        if tail:
+            preview = tail[:80].replace("\n", " ")
+            issues.append(f"content found AFTER the closing </html> ({len(tail)} chars): \"{preview}...\"")
+    return issues
 
-    # rough classification
-    is_demo = bool(re.search(r'demo', path, re.IGNORECASE)) or result['features']['demo_data_only']
-    is_war_room = bool(re.search(r'war.?room', path, re.IGNORECASE))
-    is_prep = bool(re.search(r'prep', path, re.IGNORECASE))
-    result['type'] = 'demo' if is_demo else ('war_room' if is_war_room else ('prep' if is_prep else 'other'))
+def check_script_syntax(path, html):
+    if not NODE_AVAILABLE:
+        return ["(skipped: node not found on PATH)"]
+    issues = []
+    blocks = SCRIPT_BLOCK_RE.findall(html)
+    tmp = "/tmp/_audit_block.js"
+    for i, block in enumerate(blocks):
+        with open(tmp, "w", encoding="utf-8") as fh:
+            fh.write(block)
+        r = subprocess.run(["node", "--check", tmp], capture_output=True, text=True)
+        if r.returncode != 0:
+            first_line = r.stderr.strip().splitlines()[0] if r.stderr.strip() else "unknown error"
+            issues.append(f"script block {i+1}/{len(blocks)}: {first_line}")
+    return issues
 
-    return result
-
-def print_report(results):
-    by_vertical = {}
-    for r in results:
-        by_vertical.setdefault(r['vertical'], []).append(r)
-
-    order = ['HC', 'FinOps', 'Insurance', 'Construction', 'Legal', 'RE', 'BPO', '?']
-
-    for vert in order:
-        files = by_vertical.get(vert, [])
-        if not files:
+def check_referenced_files(path, html):
+    issues = []
+    file_dir = os.path.dirname(path)
+    refs = SRC_RE.findall(html) + FETCH_RE.findall(html)
+    for ref in refs:
+        if ref.startswith(("http://", "https://", "//", "data:")):
             continue
-        print(f"\n{'='*70}")
-        print(f"  {vert}  ({len(files)} files)")
-        print(f"{'='*70}")
+        if ref.startswith("/api/"):
+            continue  # server route, not a static file — not checkable this way
+        if "${" in ref or "{{" in ref:
+            continue  # dynamic/templated path, can't statically check
+        ref = ref.split("?")[0]  # strip cache-busting query strings before checking disk
+        candidates = []
+        if ref.startswith("/"):
+            candidates.append(os.path.join(REPO_ROOT, ref.lstrip("/")))
+            candidates.append(os.path.join(HTML_ROOT, ref.lstrip("/")))
+        else:
+            candidates.append(os.path.normpath(os.path.join(file_dir, ref)))
+            candidates.append(os.path.normpath(os.path.join(REPO_ROOT, ref)))
+        if not any(os.path.isfile(c) for c in candidates):
+            issues.append(f"referenced file not found: '{ref}' (tried: {', '.join(os.path.relpath(c, REPO_ROOT) for c in candidates)})")
+    return issues
 
-        for r in files:
-            f = r['features']
-            type_tag = r['type'].upper()
-            print(f"\n  [{type_tag}] {r['path']}  ({r['lines']} lines)")
+def check_todos(path, html):
+    return [m.group(0).strip() for m in TODO_RE.finditer(html)]
 
-            checks = [
-                ('engine_counter',    'Engine progress counter'),
-                ('progress_bar',      'Visual progress bar'),
-                ('relay_write',       'Writes relay to next stage'),
-                ('navigation_chain',  'Navigates to strategist/exec'),
-                ('wip_field',         'Emits wip[] (exec kit)'),
-                ('explain_field',     'Emits explain[] (exec kit)'),
-                ('exec_kit_producer', 'Uses TSMExecKitProducer'),
-                ('live_ai_call',      'Live API call (vs static)'),
-                ('demo_data_only',    'Contains DEMO/mock markers'),
-                ('error_handling',    'Has try/catch error handling'),
-            ]
-            for key, label in checks:
-                mark = '✓' if f.get(key) else '✗'
-                flag = '  ⚠️ ' if (key == 'demo_data_only' and f.get(key)) else '    '
-                print(f"{flag}{mark} {label}")
+def extract_relay_keys(html):
+    writes, reads = set(), set()
+    for verb, key in RELAY_KEY_RE.findall(html):
+        if verb == "setItem":
+            writes.add(key)
+        elif verb == "getItem":
+            reads.add(key)
+    return writes, reads
 
-            if r['relay_keys']:
-                print(f"      Relay keys written: {r['relay_keys']}")
-            else:
-                print(f"      ⚠️  NO relay keys detected — may be a dead end")
+def guess_vertical(path, known_verticals):
+    rel = os.path.relpath(path, HTML_ROOT)
+    parts = rel.split(os.sep)
+    if parts[0] == "war-rooms" and len(parts) > 1 and parts[1] in known_verticals:
+        return parts[1]
+    # root-level files like mdm-strategist.html, bpo-executive-portal.html
+    base = os.path.basename(path).lower()
+    m = re.match(r"([a-z0-9]+)-(?:strategist|executive-portal|war-room)", base)
+    if m and m.group(1) in known_verticals:
+        return m.group(1)
+    if len(parts) > 1 and parts[0] in known_verticals:
+        return parts[0]
+    return None  # not attributable to a known vertical — exclude from chain report
+
+def classify_role(path):
+    base = os.path.basename(path).lower()
+    if "executive-portal" in base or "executive_portal" in base:
+        return "executive-portal"
+    if "strategist" in base:
+        return "strategist"
+    if "war-room" in base or base.endswith("war-room.html") or "-war-room" in base:
+        return "war-room"
+    return "other"
 
 def main():
-    print("="*70)
-    print("  TSM WAR ROOM + DEMO/PREP AUDIT")
-    print("="*70)
+    if not os.path.isdir(WAR_ROOMS):
+        print(f"ERROR: {WAR_ROOMS} not found. Run this from the repo root.")
+        sys.exit(1)
 
-    candidates = find_candidates('.')
-    print(f"\nFound {len(candidates)} candidate files\n")
+    all_html = find_all_html()
+    print(f"Scanning {len(all_html)} HTML files under {os.path.relpath(HTML_ROOT, REPO_ROOT)}/ ...\n")
 
-    results = []
-    for path in candidates:
-        r = audit_file(path)
-        if r:
-            results.append(r)
+    per_file = {}
+    vertical_files = {}
+    known_verticals = set(find_war_room_verticals())
 
-    print_report(results)
+    for path in all_html:
+        html = read(path)
+        rel = os.path.relpath(path, REPO_ROOT)
+        writes, reads = extract_relay_keys(html)
+        role = classify_role(path)
+        vertical = guess_vertical(path, known_verticals)
+        per_file[path] = {
+            "rel": rel,
+            "role": role,
+            "vertical": vertical,
+            "writes": writes,
+            "reads": reads,
+            "corruption": check_corruption(path, html),
+            "syntax": check_script_syntax(path, html),
+            "missing_refs": check_referenced_files(path, html),
+            "todos": check_todos(path, html),
+        }
+        if role in ("war-room", "strategist", "executive-portal") and vertical:
+            vertical_files.setdefault(vertical, {}).setdefault(role, []).append(path)
 
-    # Summary stats
-    print(f"\n{'='*70}")
-    print("  SUMMARY")
-    print(f"{'='*70}")
+    # ── Section 1: corruption / syntax / missing-file report (only files with issues) ──
+    print("=" * 78)
+    print("STRUCTURAL ISSUES (corruption, JS syntax, missing referenced files)")
+    print("=" * 78)
+    any_structural = False
+    for path in all_html:
+        info = per_file[path]
+        problems = info["corruption"] + info["syntax"] + info["missing_refs"]
+        if problems:
+            any_structural = True
+            print(f"\n[{info['rel']}]")
+            for p in problems:
+                print(f"  ✗ {p}")
+        if info["todos"]:
+            any_structural = True
+            print(f"\n[{info['rel']}]")
+            for t in info["todos"]:
+                print(f"  ⚠ leftover marker: {t}")
+    if not any_structural:
+        print("\n  none found ✓")
 
-    total = len(results)
-    war_rooms = [r for r in results if r['type'] == 'war_room']
-    demos = [r for r in results if r['type'] == 'demo']
-    no_relay = [r for r in results if not r['relay_keys']]
-    no_engine_counter = [r for r in results if not r['features']['engine_counter']]
-    has_demo_markers = [r for r in results if r['features']['demo_data_only']]
+    # ── Section 2: chain completeness per vertical ──
+    print("\n" + "=" * 78)
+    print("CHAIN COMPLETENESS (war-room -> strategist -> executive-portal)")
+    print("=" * 78)
+    for vertical in sorted(vertical_files.keys()):
+        roles = vertical_files[vertical]
+        has_war = bool(roles.get("war-room"))
+        has_strat = bool(roles.get("strategist"))
+        has_exec = bool(roles.get("executive-portal"))
+        status = "✓ COMPLETE" if (has_war and has_strat and has_exec) else "✗ INCOMPLETE"
+        print(f"\n{vertical.upper():15s} {status}")
+        print(f"  war-room:          {'yes -> ' + ', '.join(os.path.relpath(p, REPO_ROOT) for p in roles.get('war-room', [])) if has_war else 'MISSING'}")
+        print(f"  strategist:        {'yes -> ' + ', '.join(os.path.relpath(p, REPO_ROOT) for p in roles.get('strategist', [])) if has_strat else 'MISSING'}")
+        print(f"  executive-portal:  {'yes -> ' + ', '.join(os.path.relpath(p, REPO_ROOT) for p in roles.get('executive-portal', [])) if has_exec else 'MISSING'}")
 
-    print(f"  Total files audited:        {total}")
-    print(f"  War rooms:                  {len(war_rooms)}")
-    print(f"  Demo files:                 {len(demos)}")
-    print(f"  Files with NO relay write:  {len(no_relay)}")
-    print(f"  Files with NO engine counter: {len(no_engine_counter)}")
-    print(f"  Files with DEMO/mock markers: {len(has_demo_markers)}")
+    # ── Section 3: relay-key chain consistency per vertical ──
+    print("\n" + "=" * 78)
+    print("RELAY-KEY CHAIN CONSISTENCY")
+    print("=" * 78)
+    for vertical in sorted(vertical_files.keys()):
+        roles = vertical_files[vertical]
+        war_writes = set()
+        for p in roles.get("war-room", []):
+            war_writes |= per_file[p]["writes"]
+        strat_reads = set()
+        strat_writes = set()
+        for p in roles.get("strategist", []):
+            strat_reads |= per_file[p]["reads"]
+            strat_writes |= per_file[p]["writes"]
+        exec_reads = set()
+        for p in roles.get("executive-portal", []):
+            exec_reads |= per_file[p]["reads"]
 
-    if no_relay:
-        print(f"\n  ⚠️  Files with no detected relay (dead ends?):")
-        for r in no_relay:
-            print(f"      {r['path']}")
+        print(f"\n{vertical.upper()}")
+        if roles.get("war-room"):
+            print(f"  war-room writes:        {sorted(war_writes) or '(none found)'}")
+        if roles.get("strategist"):
+            print(f"  strategist reads:       {sorted(strat_reads) or '(none found)'}")
+            print(f"  strategist writes:      {sorted(strat_writes) or '(none found)'}")
+        if roles.get("executive-portal"):
+            print(f"  executive-portal reads: {sorted(exec_reads) or '(none found)'}")
 
-    if has_demo_markers:
-        print(f"\n  ⚠️  Files containing DEMO/mock data markers:")
-        for r in has_demo_markers:
-            print(f"      {r['path']}")
+        if roles.get("war-room") and roles.get("strategist"):
+            if war_writes and not (war_writes & strat_reads):
+                print(f"  ✗ DEAD END: war-room writes {sorted(war_writes)} but strategist never reads any of those keys")
+        if roles.get("strategist") and roles.get("executive-portal"):
+            if strat_writes and not (strat_writes & exec_reads):
+                print(f"  ✗ DEAD END: strategist writes {sorted(strat_writes)} but executive-portal never reads any of those keys")
 
-if __name__ == '__main__':
+    print("\n" + "=" * 78)
+    print("Done. Paste this whole output back to Claude for help fixing anything flagged.")
+    print("=" * 78)
+
+if __name__ == "__main__":
     main()

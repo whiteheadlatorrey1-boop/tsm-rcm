@@ -1,0 +1,1749 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TSM L1 Ticket Copilot</title>
+<style>
+:root {
+  --bg:#0a0e12;--bg2:#0d1216;--bg3:#11161b;
+  --border:rgba(0,229,255,.14);
+  --cyan:#00e5ff;--cyan-dim:rgba(0,229,255,.6);
+  --green:#00ff50;--gold:#ffd700;--red:#ff3b3b;--amber:#ff9500;--purple:#c084fc;
+  --text:#c9d6dc;--text-dim:#5a7684;--card:#0d1418;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;font-size:12px;min-height:100vh}
+.nav{display:flex;align-items:center;gap:0;background:#080b0e;border-bottom:1px solid var(--border);height:38px;padding:0 16px}
+.nav-brand{color:var(--cyan);font-weight:700;font-size:11px;letter-spacing:2px;margin-right:24px}
+.nav-right{margin-left:auto;display:flex;align-items:center;gap:16px;color:var(--text-dim);font-size:10px}
+.nav-clock{color:var(--cyan-dim)}
+
+.exec-strip{display:flex;gap:0;background:var(--bg2);border-bottom:1px solid var(--border);overflow-x:auto}
+.exec-item{padding:8px 16px;border-right:1px solid var(--border);white-space:nowrap;min-width:110px}
+.exec-label{font-size:8px;letter-spacing:1px;color:var(--text-dim);text-transform:uppercase}
+.exec-val{font-size:14px;font-weight:700;color:var(--cyan);margin-top:2px}
+
+.alert-bar{background:rgba(255,149,0,.06);border-bottom:1px solid rgba(255,149,0,.2);padding:6px 20px;display:none;align-items:center;gap:8px;font-size:10px;letter-spacing:1.5px;color:var(--amber)}
+.alert-bar.show{display:flex}
+.alert-dot{width:6px;height:6px;border-radius:50%;background:var(--amber);box-shadow:0 0 6px var(--amber);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+.layout{display:grid;grid-template-columns:200px 1fr;min-height:calc(100vh - 70px)}
+.sidebar{background:var(--bg2);border-right:1px solid var(--border);padding:10px 0}
+.sb-item{display:flex;align-items:center;gap:10px;padding:10px 18px;font-size:10px;letter-spacing:1.5px;color:var(--text-dim);cursor:pointer;border-left:2px solid transparent}
+.sb-item:hover{color:var(--text);background:rgba(0,229,255,.03)}
+.sb-item.active{color:var(--cyan);border-left-color:var(--cyan);background:rgba(0,229,255,.06)}
+.sb-dot{width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.5}
+.sb-item.active .sb-dot{opacity:1;box-shadow:0 0 6px var(--cyan)}
+
+.main{overflow-y:auto;background:var(--bg);padding:18px 22px}
+.section{display:none}
+.section.active{display:block}
+
+.ticket-head-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:16px}
+.field{background:var(--card);border:1px solid var(--border);padding:8px 10px}
+.field-label{font-size:8px;letter-spacing:1px;color:var(--text-dim);text-transform:uppercase;margin-bottom:4px}
+.field input,.field select{background:transparent;border:none;color:var(--text);font-family:inherit;font-size:11px;width:100%;outline:none}
+
+.card{background:var(--card);border:1px solid var(--border);margin-bottom:16px}
+.card-head{padding:10px 14px;border-bottom:1px solid var(--border);font-size:10px;letter-spacing:1.5px;color:var(--text-dim);display:flex;justify-content:space-between;align-items:center}
+.card-body{padding:14px}
+
+textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:inherit;font-size:11px;padding:10px;width:100%;resize:vertical;outline:none}
+.btn{border:1px solid;font-family:inherit;font-size:9px;letter-spacing:1.5px;cursor:pointer;padding:8px 14px;transition:all .2s;background:transparent}
+.btn-cyan{background:var(--cyan);border-color:var(--cyan);color:#000;font-weight:700}
+.btn-cyan:hover{background:#00c4d6}
+.btn-outline{border-color:var(--cyan);color:var(--cyan)}
+.btn-ghost{border-color:var(--border);color:var(--text-dim)}
+.btn-ghost:hover{border-color:var(--text-dim);color:var(--text)}
+.btn-gold{background:var(--gold);border-color:var(--gold);color:#000;font-weight:700}
+.btn-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+
+.ai-output{background:var(--bg3);border:1px solid var(--border);padding:12px;font-size:11px;line-height:1.7;color:var(--text);white-space:pre-wrap;min-height:60px}
+.ai-output.loading{color:var(--text-dim)}
+.ai-output .err{color:var(--red)}
+
+.analysis-grid{display:grid;grid-template-columns:2fr 1fr;gap:12px}
+.analysis-kpis{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.kpi-card{background:var(--bg3);border:1px solid var(--border);padding:10px}
+.kpi-label{font-size:8px;letter-spacing:1px;color:var(--text-dim);margin-bottom:5px;text-transform:uppercase}
+.kpi-value{font-size:15px;font-weight:700;color:var(--cyan)}
+.kpi-value.warn{color:var(--amber)}
+.kpi-value.bad{color:var(--red)}
+.kpi-value.good{color:var(--green)}
+
+.checklist-step{background:var(--bg3);border:1px solid var(--border);margin-bottom:8px}
+.checklist-step-head{padding:8px 12px;font-size:10px;letter-spacing:1px;color:var(--cyan);border-bottom:1px solid var(--border);display:flex;justify-content:space-between}
+.checklist-items{padding:8px 12px}
+.check-row{display:flex;align-items:center;gap:8px;padding:5px 0;font-size:11px}
+.check-row input{accent-color:var(--cyan)}
+.check-row.done label{color:var(--text-dim);text-decoration:line-through}
+
+.vendor-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.vendor-fields .field{margin-bottom:8px}
+.vendor-links{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.tag{display:inline-block;font-size:8px;letter-spacing:1px;padding:3px 7px;border:1px solid}
+.tag-high{color:var(--red);border-color:var(--red)}
+.tag-medium{color:var(--amber);border-color:var(--amber)}
+.tag-ok{color:var(--green);border-color:var(--green)}
+.tag-info{color:var(--cyan);border-color:var(--cyan)}
+
+.sla-hero{display:flex;gap:20px;align-items:center;padding:20px;background:var(--bg3);border:1px solid var(--border)}
+.sla-timer{font-size:36px;font-weight:700;color:var(--green);font-family:'Courier New',monospace}
+.sla-timer.warn{color:var(--amber)}
+.sla-timer.bad{color:var(--red)}
+.sla-meta{display:flex;flex-direction:column;gap:6px;font-size:10px;color:var(--text-dim)}
+.sla-meta b{color:var(--text)}
+
+.escalation-team-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px}
+.team-chip{padding:8px;text-align:center;font-size:9px;letter-spacing:1px;border:1px solid var(--border);color:var(--text-dim);cursor:pointer}
+.team-chip.selected{border-color:var(--cyan);color:var(--cyan);background:rgba(0,229,255,.06)}
+
+.env-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.progress-track{background:var(--bg3);border:1px solid var(--border);height:8px;margin-top:6px;overflow:hidden}
+.progress-fill{height:100%;background:var(--cyan);transition:width .3s}
+.status-row{display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:10px}
+.status-row:last-child{border-bottom:none}
+.status-row span:first-child{color:var(--text-dim);letter-spacing:.5px}
+.deploy-row{display:flex;justify-content:space-between;padding:7px 10px;border-bottom:1px solid var(--border);font-size:10px}
+.deploy-row:last-child{border-bottom:none}
+
+.feature-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.feature-card{background:var(--bg3);border:1px solid var(--border);padding:12px;display:flex;flex-direction:column}
+.feature-card .fc-num{font-size:9px;color:var(--text-dim);letter-spacing:1px;margin-bottom:2px}
+.feature-card h4{color:var(--cyan);font-size:11px;letter-spacing:1px;margin-bottom:6px;text-transform:uppercase}
+.feature-card p{color:var(--text-dim);font-size:10px;line-height:1.5;margin-bottom:8px}
+.feature-card ul{list-style:none;padding:0;margin:0 0 0 0}
+.feature-card li{font-size:10px;color:var(--text);padding:3px 0 3px 12px;position:relative;line-height:1.4}
+.feature-card li:before{content:"›";position:absolute;left:0;color:var(--cyan)}
+@media (max-width:1100px){.feature-grid{grid-template-columns:repeat(2,1fr)}}
+
+.history-row{display:flex;justify-content:space-between;padding:8px 10px;border-bottom:1px solid var(--border);font-size:10px}
+.history-row:hover{background:rgba(0,229,255,.03)}
+.empty-state{color:var(--text-dim);font-size:10px;padding:20px;text-align:center}
+
+/* Mount point for the external L1 Assistant chat widget.
+   apply-l1-assistant.js targets this page and injects its floating
+   assistant UI + script include here. Do not remove this container. */
+#l1AssistantWidgetMount{position:fixed;bottom:0;right:0;z-index:9999}
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <div class="nav-brand">TSM SHELL // L1 TICKET COPILOT</div>
+  <div class="nav-right">
+    <span id="navStatus">ENGINE: IDLE</span>
+    <span class="nav-clock" id="navClock">--:--:--</span>
+  </div>
+</div>
+
+<div class="exec-strip">
+  <div class="exec-item"><div class="exec-label">Today's Tickets</div><div class="exec-val" id="execToday">0</div></div>
+  <div class="exec-item"><div class="exec-label">Resolved</div><div class="exec-val" id="execResolved">0</div></div>
+  <div class="exec-item"><div class="exec-label">Open</div><div class="exec-val" id="execOpen">0</div></div>
+  <div class="exec-item"><div class="exec-label">Avg Resolution</div><div class="exec-val" id="execAvgRes">--</div></div>
+  <div class="exec-item"><div class="exec-label">SLA %</div><div class="exec-val" id="execSlaPct">--</div></div>
+  <div class="exec-item"><div class="exec-label">Vendor Cases</div><div class="exec-val" id="execVendorCases">0</div></div>
+  <div class="exec-item"><div class="exec-label">Repeat Issues</div><div class="exec-val" id="execRepeat">0</div></div>
+</div>
+
+<div class="alert-bar" id="alertBar">
+  <span class="alert-dot"></span>
+  <span id="alertText">SLA breach imminent on current ticket.</span>
+</div>
+
+<div class="layout">
+  <div class="sidebar" id="sideNav">
+    <div class="sb-item active" data-section="ticket"><span class="sb-dot"></span>Ticket</div>
+    <div class="sb-item" data-section="ai"><span class="sb-dot"></span>AI Analysis</div>
+    <div class="sb-item" data-section="troubleshoot"><span class="sb-dot"></span>Troubleshooting</div>
+    <div class="sb-item" data-section="imaging"><span class="sb-dot"></span>Imaging</div>
+    <div class="sb-item" data-section="adintune"><span class="sb-dot"></span>AD / Intune</div>
+    <div class="sb-item" data-section="sccm"><span class="sb-dot"></span>SCCM</div>
+    <div class="sb-item" data-section="vmware"><span class="sb-dot"></span>VMware SME</div>
+    <div class="sb-item" data-section="cloudops"><span class="sb-dot"></span>Cloud Ops</div>
+    <div class="sb-item" data-section="vendor"><span class="sb-dot"></span>Vendor Support</div>
+    <div class="sb-item" data-section="sla"><span class="sb-dot"></span>SLA</div>
+    <div class="sb-item" data-section="resolution"><span class="sb-dot"></span>Resolution</div>
+    <div class="sb-item" data-section="notes"><span class="sb-dot"></span>Notes</div>
+    <div class="sb-item" data-section="escalation"><span class="sb-dot"></span>Escalation</div>
+    <div class="sb-item" data-section="history"><span class="sb-dot"></span>History</div>
+    <div class="sb-item" data-section="howto"><span class="sb-dot"></span>How To</div>
+  </div>
+
+  <div class="main">
+
+    <!-- TICKET -->
+    <section class="section active" id="sec-ticket">
+      <div class="ticket-head-grid">
+        <div class="field"><div class="field-label">Incident #</div><input id="tkIncident" placeholder="INC0012345"></div>
+        <div class="field"><div class="field-label">Priority</div>
+          <select id="tkPriority"><option>P1</option><option selected>P2</option><option>P3</option><option>P4</option></select>
+        </div>
+        <div class="field"><div class="field-label">Status</div>
+          <select id="tkStatus"><option selected>In Progress</option><option>New</option><option>Pending</option><option>Resolved</option></select>
+        </div>
+        <div class="field"><div class="field-label">Requester</div><input id="tkRequester" placeholder="Jane Doe"></div>
+        <div class="field"><div class="field-label">Department</div><input id="tkDept" placeholder="Finance"></div>
+        <div class="field"><div class="field-label">Assignment Group</div><input id="tkGroup" placeholder="Desktop Support L1"></div>
+        <div class="field"><div class="field-label">Asset</div><input id="tkAsset" placeholder="Hostname / Tag"></div>
+        <div class="field"><div class="field-label">Manufacturer</div><input id="tkMfr" placeholder="Dell"></div>
+        <div class="field"><div class="field-label">Model</div><input id="tkModel" placeholder="Latitude 7440"></div>
+        <div class="field"><div class="field-label">Warranty</div><input id="tkWarranty" placeholder="ProSupport Plus"></div>
+        <div class="field"><div class="field-label">SLA Remaining</div><input id="tkSlaRemaining" placeholder="00:38" readonly></div>
+        <div class="field"><div class="field-label">Time Open</div><input id="tkTimeOpen" placeholder="3h 12m" readonly></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">TICKET DESCRIPTION</div>
+        <div class="card-body">
+          <textarea id="tkDescription" rows="10" placeholder="Paste the full ticket text here — symptoms, error messages, what the user has already tried..."></textarea>
+          <div class="btn-row">
+            <button class="btn btn-cyan" id="btnAnalyze">RUN AI ANALYSIS</button>
+            <button class="btn btn-ghost" id="btnLoadSample">LOAD SAMPLE TICKET</button>
+            <button class="btn btn-ghost" id="btnClearTicket">CLEAR</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- AI ANALYSIS -->
+    <section class="section" id="sec-ai">
+      <div class="card">
+        <div class="card-head">AI TICKET UNDERSTANDING<span id="aiConfBadge"></span></div>
+        <div class="card-body">
+          <div class="analysis-grid">
+            <div class="ai-output" id="aiOutput">Run AI analysis from the Ticket tab to populate this panel.</div>
+            <div class="analysis-kpis" id="aiKpis">
+              <div class="kpi-card"><div class="kpi-label">Confidence</div><div class="kpi-value" id="kpiConfidence">--</div></div>
+              <div class="kpi-card"><div class="kpi-label">Severity</div><div class="kpi-value" id="kpiSeverity">--</div></div>
+              <div class="kpi-card"><div class="kpi-label">Affected System</div><div class="kpi-value" id="kpiSystem" style="font-size:11px">--</div></div>
+              <div class="kpi-card"><div class="kpi-label">Business Impact</div><div class="kpi-value" id="kpiImpact" style="font-size:11px">--</div></div>
+            </div>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-outline" id="btnReanalyze">RE-RUN ANALYSIS</button>
+            <button class="btn btn-ghost" id="btnSendToTroubleshoot">SEND TO GUIDED TROUBLESHOOTING →</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TROUBLESHOOTING -->
+    <section class="section" id="sec-troubleshoot">
+      <div class="card">
+        <div class="card-head">GUIDED TROUBLESHOOTING</div>
+        <div class="card-body" id="checklistBody"></div>
+      </div>
+    </section>
+
+    <!-- IMAGING -->
+    <section class="section" id="sec-imaging">
+      <div class="card">
+        <div class="card-head">IMAGING / RE-IMAGE (WIN11, PXE)</div>
+        <div class="card-body">
+          <div class="env-grid">
+            <div>
+              <div class="field" style="margin-bottom:8px"><div class="field-label">Target Image / Task Sequence</div>
+                <select id="imgTaskSequence"><option>Win11 Standard Build</option><option>Win11 Finance Build</option><option>Win11 Engineering Build</option><option>Win11 Kiosk Build</option></select>
+              </div>
+              <div class="field" style="margin-bottom:8px"><div class="field-label">Boot Method</div>
+                <select id="imgBootMethod"><option>PXE Boot</option><option>USB Media</option><option>Autopilot (OOBE)</option></select>
+              </div>
+              <div class="field" style="margin-bottom:8px"><div class="field-label">PXE / Deployment Status</div>
+                <select id="imgStatus"><option selected>Not Started</option><option>PXE Boot Detected</option><option>Partition/Format</option><option>Applying Image</option><option>Driver Injection</option><option>Post-Config (Domain Join)</option><option>Complete</option><option>Failed</option></select>
+              </div>
+              <div class="field-label" style="margin:10px 0 4px">Task Sequence Progress</div>
+              <div class="progress-track"><div class="progress-fill" id="imgProgressFill" style="width:0%"></div></div>
+              <div class="btn-row">
+                <button class="btn btn-cyan" id="btnImgGuidance">GET IMAGING GUIDANCE</button>
+                <button class="btn btn-ghost" id="btnImgAdvance">ADVANCE STAGE (DEMO)</button>
+              </div>
+            </div>
+            <div>
+              <div class="ai-output" id="imagingOutput">Imaging guidance (stuck-stage triage, driver pack, PXE/DHCP scope issues) will appear here.</div>
+              <div class="vendor-links">
+                <span class="tag tag-info">Driver Pack</span><span class="tag tag-info">DHCP Scope Options 66/67</span>
+                <span class="tag tag-info">WDS/MDT Logs</span><span class="tag tag-info">Unattend.xml</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- AD / INTUNE -->
+    <section class="section" id="sec-adintune">
+      <div class="card">
+        <div class="card-head">ACTIVE DIRECTORY / ENTRA / INTUNE</div>
+        <div class="card-body">
+          <div class="env-grid">
+            <div class="vendor-fields">
+              <div class="field" style="margin-bottom:8px"><div class="field-label">Device Name</div><input id="adDeviceName" placeholder="FIN-LT-0042"></div>
+              <div class="field" style="margin-bottom:8px"><div class="field-label">Join Type</div>
+                <select id="adJoinType"><option>Entra ID Joined</option><option>Hybrid Entra Joined</option><option>Entra Registered</option><option>On-Prem AD Only</option></select>
+              </div>
+              <div class="field" style="margin-bottom:8px"><div class="field-label">Compliance State</div>
+                <select id="adCompliance"><option>Compliant</option><option>In Grace Period</option><option>Non-Compliant</option><option>Not Evaluated</option></select>
+              </div>
+              <div class="field" style="margin-bottom:8px"><div class="field-label">BitLocker / Escrow Status</div>
+                <select id="adBitlocker"><option>Encrypted — Key Escrowed to Entra/AD</option><option>Encrypted — Key NOT Escrowed</option><option>Not Encrypted</option><option>Suspended</option></select>
+              </div>
+              <div class="btn-row">
+                <button class="btn btn-cyan" id="btnAdGuidance">GET AD / INTUNE GUIDANCE</button>
+              </div>
+            </div>
+            <div>
+              <div class="status-row"><span>Autopilot Enrollment</span><span class="tag tag-ok" id="adAutopilotTag">Registered</span></div>
+              <div class="status-row"><span>Group Membership Sync</span><span class="tag tag-ok" id="adSyncTag">Current</span></div>
+              <div class="status-row"><span>Last Check-in</span><span id="adLastCheckin">14 min ago</span></div>
+              <div class="status-row"><span>Conditional Access Impact</span><span id="adCaImpact">None flagged</span></div>
+              <div class="ai-output" id="adIntuneOutput" style="margin-top:10px">AD/Intune guidance (compliance drift causes, BitLocker recovery key lookup path, Autopilot re-enrollment steps) will appear here.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SCCM -->
+    <section class="section" id="sec-sccm">
+      <div class="card">
+        <div class="card-head">SCCM / SOFTWARE CENTER</div>
+        <div class="card-body">
+          <div class="env-grid">
+            <div class="vendor-fields">
+              <div class="field" style="margin-bottom:8px"><div class="field-label">Collection</div><input id="sccmCollection" placeholder="Finance - All Workstations"></div>
+              <div class="field" style="margin-bottom:8px"><div class="field-label">Package / Application</div><input id="sccmPackage" placeholder="Adobe Acrobat DC 24.x"></div>
+              <div class="field" style="margin-bottom:8px"><div class="field-label">Last Deployment Status</div>
+                <select id="sccmStatus"><option>Success</option><option>In Progress</option><option>Failed — Content Not Found</option><option>Failed — Timeout</option><option>Requires Restart</option></select>
+              </div>
+              <div class="btn-row">
+                <button class="btn btn-cyan" id="btnSccmGuidance">GET SCCM GUIDANCE</button>
+              </div>
+            </div>
+            <div>
+              <div class="card-head" style="border:1px solid var(--border);border-bottom:1px solid var(--border)">RECENT SOFTWARE CENTER PUSH HISTORY</div>
+              <div id="sccmHistory">
+                <div class="deploy-row"><span>Adobe Acrobat DC 24.x</span><span class="tag tag-ok">Success</span></div>
+                <div class="deploy-row"><span>Dell Command | Update</span><span class="tag tag-ok">Success</span></div>
+                <div class="deploy-row"><span>Windows Cumulative Update</span><span class="tag tag-medium">Pending Restart</span></div>
+                <div class="deploy-row"><span>Zoom Client Update</span><span class="tag tag-high">Failed — Content</span></div>
+              </div>
+              <div class="ai-output" id="sccmOutput" style="margin-top:10px">SCCM guidance (client cache, content distribution, retry vs manual install) will appear here.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- VMWARE SME -->
+    <section class="section" id="sec-vmware">
+      <div class="card">
+        <div class="card-head">VMWARE INFRASTRUCTURE SME<span style="font-weight:400">vCenter · vRA / vRO · Cloud Director · NSX · IaC</span></div>
+        <div class="card-body">
+          <div class="ticket-head-grid" style="grid-template-columns:repeat(3,1fr)">
+            <div class="field"><div class="field-label">Component</div>
+              <select id="vmwComponent">
+                <option>vCenter</option>
+                <option>vRA</option>
+                <option>vRO</option>
+                <option>Cloud Director</option>
+                <option>NSX</option>
+                <option>Terraform / IaC</option>
+              </select>
+            </div>
+            <div class="field"><div class="field-label">Issue Category</div>
+              <select id="vmwCategory">
+                <option>Provisioning Failure</option>
+                <option>Endpoint / Fabric Group</option>
+                <option>Blueprint Failure</option>
+                <option>NSX Edge Deployment</option>
+                <option>Catalog Synchronization</option>
+                <option>Upgrade Readiness</option>
+                <option>Other</option>
+              </select>
+            </div>
+            <div class="field"><div class="field-label">Environment</div>
+              <select id="vmwEnv">
+                <option>Production</option>
+                <option>Non-Production / Test</option>
+                <option>DR</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="card-head" style="border:none;padding:0 0 6px">PASTE LOGS / CONFIG / SCRIPT</div>
+          <textarea id="vmwInput" rows="8" placeholder="Paste vCenter/vRA/vRO logs, Blueprint YAML, Cloud Director config, NSX error, or Terraform/PowerCLI code here..."></textarea>
+
+          <div class="field-label" style="margin:10px 0 4px">Quick Prompts</div>
+          <div class="vendor-links" id="vmwQuickPrompts">
+            <span class="tag tag-info" data-prompt="Why is provisioning failing?">Why is provisioning failing?</span>
+            <span class="tag tag-info" data-prompt="Explain Endpoint Priority">Explain Endpoint Priority</span>
+            <span class="tag tag-info" data-prompt="Why is this Blueprint failing?">Why is this Blueprint failing?</span>
+            <span class="tag tag-info" data-prompt="NSX Edge deployment failed">NSX Edge deployment failed</span>
+            <span class="tag tag-info" data-prompt="VCD Catalog synchronization issue">VCD Catalog sync issue</span>
+          </div>
+
+          <div class="btn-row">
+            <button class="btn btn-cyan" id="btnVmwGuidance">GET SME GUIDANCE</button>
+            <button class="btn btn-ghost" id="btnVmwClear">CLEAR</button>
+          </div>
+
+          <div class="ai-output" id="vmwOutput" style="margin-top:12px">Root cause, recommended fix, PowerCLI/REST examples, and escalation guidance will appear here.</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">SCRIPT GENERATOR<span style="font-weight:400">PowerCLI · Terraform · vRO Scriptable Task · REST</span></div>
+        <div class="card-body">
+          <div class="field" style="max-width:260px;margin-bottom:10px"><div class="field-label">Script Type</div>
+            <select id="vmwScriptType">
+              <option>PowerCLI</option>
+              <option>Terraform</option>
+              <option>vRO Scriptable Task</option>
+              <option>REST API Call</option>
+            </select>
+          </div>
+          <textarea id="vmwScriptRequest" rows="3" placeholder="e.g. Deploy ten Windows Server VMs into Cluster 4 from template WIN2022-BASE, 4vCPU/16GB each..."></textarea>
+          <div class="btn-row">
+            <button class="btn btn-cyan" id="btnVmwScript">GENERATE SCRIPT</button>
+            <button class="btn btn-ghost" id="btnVmwScriptClear">CLEAR</button>
+          </div>
+          <div class="ai-output" id="vmwScriptOutput" style="margin-top:12px">Generated script will appear here.</div>
+        </div>
+      </div>
+
+      <div class="btn-row" style="justify-content:flex-end">
+        <button class="btn btn-outline" id="btnOpenVmwModule">OPEN FULL VMWARE OPERATIONS MODULE →</button>
+      </div>
+    </section>
+
+    <!-- CLOUD OPS -->
+    <section class="section" id="sec-cloudops">
+      <div class="card">
+        <div class="card-head">CLOUD OPERATIONS SME<span style="font-weight:400">Azure · AWS · AVS / VMC on AWS · GCVE</span></div>
+        <div class="card-body">
+          <div class="ticket-head-grid" style="grid-template-columns:repeat(3,1fr)">
+            <div class="field"><div class="field-label">Provider</div>
+              <select id="cloudProvider">
+                <option>Azure</option>
+                <option>AWS</option>
+                <option>Azure VMware Solution</option>
+                <option>VMware Cloud on AWS</option>
+                <option>Google Cloud VMware Engine</option>
+              </select>
+            </div>
+            <div class="field"><div class="field-label">Service / Resource</div>
+              <input type="text" id="cloudService" placeholder="e.g. VM, VNet, NSG, IAM, S3, NetApp Files">
+            </div>
+            <div class="field"><div class="field-label">Environment</div>
+              <select id="cloudEnv">
+                <option>Production</option>
+                <option>Non-Production / Test</option>
+                <option>DR</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="card-head" style="border:none;padding:0 0 6px">PASTE LOGS / CONFIG / ERROR</div>
+          <textarea id="cloudInput" rows="8" placeholder="Paste Azure/AWS error output, resource config, IAM policy, or describe the issue..."></textarea>
+
+          <div class="btn-row">
+            <button class="btn btn-cyan" id="btnCloudGuidance">GET SME GUIDANCE</button>
+            <button class="btn btn-ghost" id="btnCloudClear">CLEAR</button>
+          </div>
+
+          <div class="ai-output" id="cloudOutput" style="margin-top:12px">Root cause, recommended fix, CLI/portal steps, and escalation guidance will appear here.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- VENDOR SUPPORT -->
+    <section class="section" id="sec-vendor">
+      <div class="card">
+        <div class="card-head">VENDOR LOOKUP &amp; ESCALATION</div>
+        <div class="card-body">
+          <div class="vendor-grid">
+            <div class="vendor-fields">
+              <div class="field"><div class="field-label">Manufacturer</div>
+                <select id="vManufacturer"><option>Dell</option><option>HP</option><option>Lenovo</option><option>Apple</option><option>Microsoft</option><option>Cisco</option><option>Meraki</option><option>Fortinet</option><option>VMware</option></select>
+              </div>
+              <div class="field"><div class="field-label">Service Tag / Express Service Code</div><input id="vServiceTag" placeholder="5G7XXXXX"></div>
+              <div class="field"><div class="field-label">Warranty Status</div><input id="vWarranty" placeholder="Valid — ProSupport Plus"></div>
+              <div class="btn-row">
+                <button class="btn btn-cyan" id="btnVendorGuidance">GET ESCALATION GUIDANCE</button>
+              </div>
+            </div>
+            <div>
+              <div class="ai-output" id="vendorOutput">Escalation guidance (support tier to engage, info to have ready) will appear here.</div>
+              <div class="vendor-links">
+                <span class="tag tag-info">Drivers</span><span class="tag tag-info">BIOS</span><span class="tag tag-info">Firmware</span>
+                <span class="tag tag-info">Diagnostics</span><span class="tag tag-info">Known Issues</span><span class="tag tag-info">Recalls</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLA -->
+    <section class="section" id="sec-sla">
+      <div class="card">
+        <div class="card-head">SLA DASHBOARD</div>
+        <div class="card-body">
+          <div class="sla-hero">
+            <div class="sla-timer" id="slaTimer">00:38</div>
+            <div class="sla-meta">
+              <div>Priority: <b id="slaPriority">P2</b></div>
+              <div>Escalation in: <b id="slaEscalationIn">20 minutes</b></div>
+              <div>Time Open: <b id="slaTimeOpen">3h 12m</b></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- RESOLUTION -->
+    <section class="section" id="sec-resolution">
+      <div class="card">
+        <div class="card-head">RESOLUTION BUILDER</div>
+        <div class="card-body">
+          <div class="btn-row" style="margin-top:0;margin-bottom:10px">
+            <button class="btn btn-cyan" id="btnBuildResolution">GENERATE RESOLUTION</button>
+            <button class="btn btn-gold" id="btnCopyResolution">COPY TO CLIPBOARD</button>
+          </div>
+          <div class="ai-output" id="resolutionOutput">Problem / Cause / Actions Taken / Resolution / Validation / Next Steps will be generated here from the ticket, checklist, and AI analysis.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- NOTES -->
+    <section class="section" id="sec-notes">
+      <div class="card">
+        <div class="card-head">TICKET NOTES</div>
+        <div class="card-body">
+          <textarea id="notesArea" rows="14" placeholder="Notes auto-populate as you check off troubleshooting steps. Editable."></textarea>
+          <div class="btn-row"><button class="btn btn-ghost" id="btnClearNotes">CLEAR NOTES</button></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ESCALATION -->
+    <section class="section" id="sec-escalation">
+      <div class="card">
+        <div class="card-head">ESCALATE</div>
+        <div class="card-body">
+          <div class="field" style="margin-bottom:8px"><div class="field-label">Reason</div><input id="escReason" placeholder="Root cause requires L2/vendor-level access"></div>
+          <div class="field" style="margin-bottom:8px"><div class="field-label">Evidence Attached</div><input id="escEvidence" placeholder="Logs, screenshots, diagnostics referenced"></div>
+          <div class="field-label" style="margin:10px 0 4px">Recommended Team</div>
+          <div class="escalation-team-grid" id="escTeamGrid">
+            <div class="team-chip" data-team="L2 Desktop">L2 Desktop</div>
+            <div class="team-chip" data-team="Network">Network</div>
+            <div class="team-chip" data-team="Server">Server</div>
+            <div class="team-chip" data-team="Azure">Azure</div>
+            <div class="team-chip" data-team="O365">O365</div>
+            <div class="team-chip" data-team="Security">Security</div>
+            <div class="team-chip" data-team="Application">Application</div>
+            <div class="team-chip" data-team="Vendor">Vendor</div>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-cyan" id="btnBuildEscalation">GENERATE ESCALATION PACKAGE</button>
+          </div>
+          <div class="ai-output" id="escalationOutput" style="margin-top:10px">Escalation package will appear here.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- HISTORY -->
+    <section class="section" id="sec-history">
+      <div class="card">
+        <div class="card-head">TICKET HISTORY<span><button class="btn btn-ghost" id="btnClearHistory" style="padding:4px 8px">CLEAR</button></span></div>
+        <div class="card-body" id="historyBody">
+          <div class="empty-state">No resolved tickets recorded yet this session.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- HOW TO -->
+    <section class="section" id="sec-howto">
+
+      <div class="card">
+        <div class="card-head">WHAT THIS APP DOES</div>
+        <div class="card-body">
+          <div class="ai-output" style="white-space:normal;line-height:1.8">
+            TSM Shell is an AI-assisted copilot for working service desk tickets end to end — from intake through
+            root-cause analysis, specialist troubleshooting, resolution write-up, and escalation. Instead of switching
+            between separate tools and cheat sheets, everything lives in one place: paste in a ticket, let the AI
+            read it, get pointed to the right specialist workspace for the actual issue, and walk out with a
+            documented resolution or a ready-to-send escalation package. The <b>exec strip</b> at the very top
+            (Today's Tickets, Resolved, Open, SLA %, Vendor Cases, Repeat Issues) is a live snapshot of your queue,
+            and the <b>floating chat bubble</b> in the bottom-right corner is always available for a quick
+            question — you don't need to be on a specific tab to use it.
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">FEATURE GUIDE — WHAT EACH TAB DOES</div>
+        <div class="card-body">
+          <div class="feature-grid">
+
+            <div class="feature-card">
+              <div class="fc-num">01 · INTAKE</div>
+              <h4>Ticket</h4>
+              <p>The ticket record and starting point for every workflow. Capture the who/what/where, then hand the raw description to the AI.</p>
+              <ul>
+                <li>Incident #, priority, requester, department, asset/warranty fields</li>
+                <li>Paste the full ticket text as the user wrote it — you don't have to fill the fields above by hand first</li>
+                <li>RUN AI ANALYSIS reads the pasted text, auto-fills any of those fields it finds (incident #, priority, requester, department, asset, manufacturer, model, warranty), and kicks off the rest of the workflow</li>
+                <li>Everything you've entered — fields, description, analysis, checklist progress, notes — is saved to this browser automatically and reloads if you refresh or switch tabs, until you hit CLEAR or load a new ticket</li>
+                <li>LOAD SAMPLE TICKET to demo or test the app</li>
+              </ul>
+            </div>
+
+            <div class="feature-card">
+              <div class="fc-num">02 · TRIAGE</div>
+              <h4>AI Analysis</h4>
+              <p>The AI's read of the ticket — what's actually going on, how confident it is, and where to go next.</p>
+              <ul>
+                <li>Issue summary and likely root cause(s)</li>
+                <li>Confidence %, severity, affected system, business impact</li>
+                <li>Recommended path forward</li>
+                <li>SEND TO GUIDED TROUBLESHOOTING to act on it immediately</li>
+              </ul>
+            </div>
+
+            <div class="feature-card">
+              <div class="fc-num">03 · TRIAGE</div>
+              <h4>Troubleshooting</h4>
+              <p>A guided, ordered checklist so nothing gets assumed or skipped.</p>
+              <ul>
+                <li>Verify User → Power → Hardware → OS, in sequence</li>
+                <li>Live progress counter per step</li>
+                <li>Checked items auto-populate Notes</li>
+              </ul>
+            </div>
+
+            <div class="feature-card">
+              <div class="fc-num">04 · SPECIALIST</div>
+              <h4>Imaging</h4>
+              <p>For OS deployment issues — re-images stuck on PXE, partitioning, or driver injection.</p>
+              <ul>
+                <li>Select task sequence and boot method (PXE / USB / Autopilot)</li>
+                <li>Visual stage tracker with progress bar</li>
+                <li>GET IMAGING GUIDANCE for stuck-stage triage, driver packs, DHCP scope issues</li>
+              </ul>
+            </div>
+
+            <div class="feature-card">
+              <div class="fc-num">05 · SPECIALIST</div>
+              <h4>AD / Intune</h4>
+              <p>For Entra/Intune device state issues — compliance drift, encryption, enrollment.</p>
+              <ul>
+                <li>Join type, compliance state, BitLocker/escrow status</li>
+                <li>Autopilot enrollment and sync status at a glance</li>
+                <li>GET AD / INTUNE GUIDANCE for drift causes, key recovery path, re-enrollment steps</li>
+              </ul>
+            </div>
+
+            <div class="feature-card">
+              <div class="fc-num">06 · SPECIALIST</div>
+              <h4>SCCM</h4>
+              <p>For failed or stuck Software Center deployments.</p>
+              <ul>
+                <li>Collection, package/application, last deployment status</li>
+                <li>Recent push history at a glance</li>
+                <li>GET SCCM GUIDANCE on client cache, content distribution, retry vs. manual install</li>
+              </ul>
+            </div>
+
+            <div class="feature-card">
+              <div class="fc-num">07 · SPECIALIST</div>
+              <h4>VMware SME</h4>
+              <p>For anything touching vCenter, vRA/vRO, Cloud Director, NSX, or infrastructure-as-code.</p>
+              <ul>
+                <li>Paste raw logs, Blueprint YAML, NSX errors, or PowerCLI/Terraform code directly</li>
+                <li>Quick-prompt chips for common questions (provisioning failures, endpoint priority, catalog sync)</li>
+                <li>Returns root cause, doc summary, recommended fix, and ready-to-run PowerCLI/REST examples</li>
+              </ul>
+            </div>
+
+            <div class="feature-card">
+              <div class="fc-num">08 · SPECIALIST</div>
+              <h4>Cloud Ops</h4>
+              <p>For anything touching Azure, AWS, or the VMware-on-cloud stack (AVS, VMC on AWS, GCVE).</p>
+              <ul>
+                <li>Pick provider, service/resource, and environment (Production / Non-Prod / DR)</li>
+                <li>Paste raw error output, resource config, or an IAM policy directly</li>
+                <li>Returns root cause, recommended fix, CLI/portal steps, and escalation guidance</li>
+              </ul>
+            </div>
+
+            <div class="feature-card">
+              <div class="fc-num">09 · SPECIALIST</div>
+              <h4>Vendor Support</h4>
+              <p>For hardware-implicated issues — know the warranty tier before you need it.</p>
+              <ul>
+                <li>Manufacturer, service tag, warranty status</li>
+                <li>GET ESCALATION GUIDANCE for which support tier to engage and what info to have ready</li>
+                <li>Quick links: drivers, BIOS, firmware, diagnostics, known issues, recalls</li>
+              </ul>
+            </div>
+
+            <div class="feature-card">
+              <div class="fc-num">10 · MONITOR</div>
+              <h4>SLA</h4>
+              <p>The countdown that should drive every decision you make on a ticket.</p>
+              <ul>
+                <li>Live remaining-time timer, color-coded green/amber/red</li>
+                <li>Priority and time-open shown side by side with the timer</li>
+                <li>Alert bar at the top of the app fires automatically near breach</li>
+              </ul>
+            </div>
+
+            <div class="feature-card">
+              <div class="fc-num">11 · CLOSE-OUT</div>
+              <h4>Resolution</h4>
+              <p>Turns the ticket, checklist, and AI analysis into a documented write-up.</p>
+              <ul>
+                <li>GENERATE RESOLUTION builds Problem / Cause / Actions Taken / Resolution / Validation / Next Steps</li>
+                <li>COPY TO CLIPBOARD for pasting into your ticketing system</li>
+                <li>Automatically logs the ticket to History</li>
+              </ul>
+            </div>
+
+            <div class="feature-card">
+              <div class="fc-num">12 · CLOSE-OUT</div>
+              <h4>Notes</h4>
+              <p>Your working scratchpad for the ticket.</p>
+              <ul>
+                <li>Auto-fills as you check off Troubleshooting steps</li>
+                <li>Fully editable — correct anything the AI got wrong</li>
+                <li>Feeds directly into Resolution generation</li>
+              </ul>
+            </div>
+
+            <div class="feature-card">
+              <div class="fc-num">13 · CLOSE-OUT</div>
+              <h4>Escalation</h4>
+              <p>For when the ticket needs to leave L1.</p>
+              <ul>
+                <li>Reason and evidence fields</li>
+                <li>Pick the recommended team (L2, Network, Server, Azure, O365, Security, Application, Vendor)</li>
+                <li>GENERATE ESCALATION PACKAGE builds the handoff summary for you</li>
+              </ul>
+            </div>
+
+            <div class="feature-card">
+              <div class="fc-num">14 · REFERENCE</div>
+              <h4>History</h4>
+              <p>Your local record of resolved tickets this session/browser — separate from the autosave that keeps your current, still-open ticket from being lost.</p>
+              <ul>
+                <li>Incident #, manufacturer, priority, and timestamp per entry</li>
+                <li>Drives the Exec Strip counters at the top of the app</li>
+                <li>Logged automatically when you GENERATE RESOLUTION, which also clears the autosaved in-progress ticket</li>
+                <li>CLEAR wipes local history — this cannot be undone</li>
+              </ul>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">WORKING THE QUEUE — RECOMMENDED ORDER</div>
+        <div class="card-body">
+          <div class="ai-output" style="white-space:normal;line-height:1.8">
+            <b style="color:var(--cyan)">1. Ticket →</b> paste the full ticket text as soon as it lands, before you touch the hardware or remote in. The AI reads best on raw, unfiltered user language — running analysis will also pull any incident #, asset, manufacturer, or warranty details it finds straight into the fields above, so you don't need to re-type what's already in the text.<br>
+            <b style="color:var(--cyan)">2. AI Analysis →</b> run it immediately after intake. Treat <b>Confidence</b> as a triage signal, not a verdict — below ~70%, expect to spend more time in Troubleshooting before you trust the recommended path.<br>
+            <b style="color:var(--cyan)">3. Troubleshooting →</b> work the checklist in order (Verify User → Power → Hardware → OS). Skipping ahead because you "know" the fix is the single biggest cause of re-opened tickets — the checklist exists so nothing gets assumed.<br>
+            <b style="color:var(--cyan)">4. Imaging / AD &amp; Intune / SCCM / VMware SME / Cloud Ops →</b> open whichever specialist tab matches what the checklist pointed to, not all of them by habit. <b>Imaging</b> for OSD builds stuck on PXE, partitioning, or driver injection; <b>AD / Intune</b> for compliance drift, BitLocker escrow, or Autopilot enrollment issues; <b>SCCM</b> for a failed or stuck Software Center deployment; <b>VMware SME</b> for anything touching vCenter, vRA/vRO, Cloud Director, NSX, or IaC provisioning; <b>Cloud Ops</b> for Azure/AWS resources or the VMware-on-cloud stack (AVS, VMC on AWS, GCVE). Jumping straight to Vendor Support on a provisioning or deployment issue means missing the fix that's native to the tool that actually owns it.<br>
+            <b style="color:var(--cyan)">5. Vendor Support →</b> pull this up the moment hardware is implicated, even if you think it's software. Knowing the warranty tier before you need it saves the hold-time later.<br>
+            <b style="color:var(--cyan)">6. SLA →</b> check this every time you switch tabs, not just when the alert bar fires. Color changes are your cue to act, not a background indicator.<br>
+            <b style="color:var(--cyan)">7. Notes →</b> review what auto-populated from the checklist before you move to Resolution. Edit anything the AI got wrong instead of deleting it — an accurate note is what makes the History record trustworthy later.<br>
+            <b style="color:var(--cyan)">8. Resolution →</b> generate this before you close the ticket, not after — it forces you to confirm the actions taken actually match what's in Notes.<br>
+            <b style="color:var(--cyan)">9. Escalation →</b> if you reach this tab, you should already know why — it should confirm your reasoning, not create it from scratch.
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">STAYING AHEAD OF SLA</div>
+        <div class="card-body">
+          <div class="ai-output" style="white-space:normal;line-height:1.8">
+            <span class="tag tag-ok">GREEN</span> Plenty of runway — work the checklist fully, don't shortcut steps to save time you don't need to save.<br><br>
+            <span class="tag tag-medium">AMBER</span> You're inside the window where escalation should already be in motion if L1 hasn't resolved it — open the Escalation tab now, not when it flips red.<br><br>
+            <span class="tag tag-high">RED</span> Breach is imminent or has happened. Stop troubleshooting, escalate immediately, and note the breach reason in Resolution so the pattern can be tracked — a late escalation is still better than a silent one.<br><br>
+            A P1 with 20 minutes remaining and a P3 with 20 minutes remaining are not the same urgency — always read the <b>Priority</b> field next to the timer, not the timer alone.
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">ANOMALY SIGNALS TO WATCH FOR</div>
+        <div class="card-body">
+          <div class="ai-output" style="white-space:normal;line-height:1.8">
+            <b style="color:var(--amber)">Repeat asset/user in History →</b> the same hostname or requester showing up more than once usually means the last fix treated a symptom, not the root cause. Say so explicitly in the new ticket's notes and consider escalating on the second occurrence rather than the third.<br><br>
+            <b style="color:var(--amber)">Low confidence + high severity together →</b> this is the highest-risk combination in the queue — the AI isn't sure, but the stakes are high. Don't rely on the recommended path alone; work the full checklist and lean toward earlier escalation.<br><br>
+            <b style="color:var(--amber)">Vendor case opened but warranty status unclear →</b> resolve this before dispatch gets involved — an expired warranty discovered mid-repair costs more time than checking it up front.<br><br>
+            <b style="color:var(--amber)">Escalations clustering on one team →</b> if Network or Server escalations spike in a short window, that's an infrastructure signal, not a coincidence of unrelated tickets — flag it up rather than closing each ticket independently.
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<!-- L1 Assistant widget mounts here (see apply-l1-assistant.js) -->
+<div id="l1AssistantWidgetMount"></div>
+
+<script>
+(function(){
+  // ── State ────────────────────────────────────────────────────────────────
+  const STORAGE_KEY = 'TSM_L1_TICKET_HISTORY';
+  const CURRENT_TICKET_KEY = 'TSM_L1_CURRENT_TICKET';
+  const TICKET_FIELD_IDS = ['tkIncident','tkPriority','tkStatus','tkRequester','tkDept','tkGroup',
+    'tkAsset','tkMfr','tkModel','tkWarranty','tkDescription','vManufacturer','vServiceTag','vWarranty',
+    'escReason','escEvidence'];
+  let currentAnalysis = null;
+  let checklistState = {};
+  let selectedTeam = null;
+
+  const CHECKLIST = [
+    { title: 'Step 1 — Verify User', items: ['Confirm callback number', 'Verify hostname', 'Verify asset tag'] },
+    { title: 'Step 2 — Power', items: ['AC Adapter', 'Dock', 'Battery', 'External Monitor'] },
+    { title: 'Step 3 — Hardware', items: ['ePSA / hardware diagnostics', 'BIOS reset / reseat', 'SSD / NVMe detection'] },
+    { title: 'Step 4 — Operating System', items: ['Safe Mode boot', 'Startup Repair', 'Event Viewer review'] }
+  ];
+
+  // ── Clock ────────────────────────────────────────────────────────────────
+  function tickClock(){
+    document.getElementById('navClock').textContent = new Date().toLocaleTimeString('en-US', { hour12:false });
+  }
+  setInterval(tickClock, 1000); tickClock();
+
+  // ── Nav switching ────────────────────────────────────────────────────────
+  document.querySelectorAll('.sb-item').forEach(item => {
+    item.addEventListener('click', () => {
+      document.querySelectorAll('.sb-item').forEach(i => i.classList.remove('active'));
+      document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+      item.classList.add('active');
+      document.getElementById('sec-' + item.dataset.section).classList.add('active');
+    });
+  });
+
+  function goToSection(name){
+    document.querySelector(`.sb-item[data-section="${name}"]`).click();
+  }
+
+  // ── Ticket sample / clear ───────────────────────────────────────────────
+  document.getElementById('btnLoadSample').addEventListener('click', () => {
+    document.getElementById('tkIncident').value = 'INC0012345';
+    document.getElementById('tkRequester').value = 'Jane Doe';
+    document.getElementById('tkDept').value = 'Finance';
+    document.getElementById('tkGroup').value = 'Desktop Support L1';
+    document.getElementById('tkAsset').value = 'FIN-LT-0042';
+    document.getElementById('tkMfr').value = 'Dell';
+    document.getElementById('tkModel').value = 'Latitude 7440';
+    document.getElementById('tkWarranty').value = 'ProSupport Plus';
+    document.getElementById('tkDescription').value =
+      'User reports laptop will not boot. Powered on this morning, saw Dell logo then black screen. ' +
+      'No POST beeps. Tried holding power button 30s, no change. AC adapter light is on. User has not tried anything else.';
+    document.getElementById('vManufacturer').value = 'Dell';
+    document.getElementById('vServiceTag').value = '5G7XXXXX';
+    document.getElementById('vWarranty').value = 'Valid — ProSupport Plus';
+    saveCurrentTicket();
+  });
+
+  document.getElementById('btnClearTicket').addEventListener('click', () => {
+    // Starting a fresh ticket — wipe fields, analysis, checklist, notes, and the saved session state
+    document.querySelectorAll('#sec-ticket input').forEach(i => { if (!i.readOnly) i.value=''; });
+    document.getElementById('tkDescription').value = '';
+    document.getElementById('vManufacturer').selectedIndex = 0;
+    document.getElementById('vServiceTag').value = '';
+    document.getElementById('vWarranty').value = '';
+    currentAnalysis = null;
+    checklistState = {};
+    selectedTeam = null;
+    document.querySelectorAll('.team-chip').forEach(c => c.classList.remove('selected'));
+    document.getElementById('aiOutput').className = 'ai-output';
+    document.getElementById('aiOutput').textContent = 'Run AI analysis from the Ticket tab to populate this panel.';
+    ['kpiConfidence','kpiSeverity','kpiSystem','kpiImpact'].forEach(id => document.getElementById(id).textContent = '--');
+    const notesEl = document.getElementById('notesArea');
+    notesEl.value = ''; notesEl.dataset.manual = '';
+    renderChecklist();
+    clearCurrentTicket();
+  });
+
+  // ── AI Analysis ──────────────────────────────────────────────────────────
+  async function runAnalysis(){
+    const description = document.getElementById('tkDescription').value.trim();
+    if (!description) { alert('Paste a ticket description first.'); return; }
+    document.getElementById('navStatus').textContent = 'ENGINE: ANALYZING';
+    const out = document.getElementById('aiOutput');
+    out.className = 'ai-output loading';
+    out.textContent = 'Running AI analysis on ticket...';
+    goToSection('ai');
+    try {
+      const res = await fetch('/api/l1-copilot/analyze', {
+        method: 'POST', headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({
+          ticket: {
+            incident: document.getElementById('tkIncident').value,
+            priority: document.getElementById('tkPriority').value,
+            requester: document.getElementById('tkRequester').value,
+            department: document.getElementById('tkDept').value,
+            asset: document.getElementById('tkAsset').value,
+            manufacturer: document.getElementById('tkMfr').value,
+            model: document.getElementById('tkModel').value,
+            warranty: document.getElementById('tkWarranty').value,
+            description
+          }
+        })
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'analysis failed');
+      currentAnalysis = data.analysis || {};
+      renderAnalysis(currentAnalysis);
+      applyExtractedFields(currentAnalysis.extracted_fields);
+      saveCurrentTicket();
+      try { TSM.relay.write('L1COPILOT', { ticket: document.getElementById('tkIncident').value, analysis: currentAnalysis, ts: Date.now() }); } catch(e){ console.warn('Relay write failed', e); }
+    } catch (e) {
+      out.className = 'ai-output';
+      out.innerHTML = `<span class="err">Analysis failed: ${e.message}. Confirm /api/l1-copilot/analyze is wired server-side.</span>`;
+    } finally {
+      document.getElementById('navStatus').textContent = 'ENGINE: IDLE';
+    }
+  }
+
+  function renderAnalysis(a){
+    const out = document.getElementById('aiOutput');
+    out.className = 'ai-output';
+    const causes = Array.isArray(a.likely_causes) ? a.likely_causes.join(', ') : (a.likely_causes || '--');
+    out.textContent =
+      `ISSUE SUMMARY\n${a.issue_summary || '--'}\n\n` +
+      `LIKELY ROOT CAUSE\n${causes}\n\n` +
+      `RECOMMENDED PATH\n${a.recommended_path || '--'}`;
+    document.getElementById('kpiConfidence').textContent = a.confidence != null ? a.confidence + '%' : '--';
+    const sevEl = document.getElementById('kpiSeverity');
+    sevEl.textContent = a.severity || '--';
+    sevEl.className = 'kpi-value ' + (a.severity === 'Critical' || a.severity === 'High' ? 'bad' : a.severity === 'Medium' ? 'warn' : 'good');
+    document.getElementById('kpiSystem').textContent = a.affected_system || '--';
+    document.getElementById('kpiImpact').textContent = a.business_impact || '--';
+  }
+
+  // ── Auto-fill ticket fields from what the AI found in the pasted description ──
+  const EXTRACTED_FIELD_MAP = {
+    incident: 'tkIncident', requester: 'tkRequester', department: 'tkDept',
+    assignmentGroup: 'tkGroup', asset: 'tkAsset', manufacturer: 'tkMfr',
+    model: 'tkModel', warranty: 'tkWarranty'
+  };
+  function applyExtractedFields(fields){
+    if (!fields || typeof fields !== 'object') return;
+    Object.keys(EXTRACTED_FIELD_MAP).forEach(key => {
+      const val = fields[key];
+      if (val && typeof val === 'string' && val.trim()) {
+        const el = document.getElementById(EXTRACTED_FIELD_MAP[key]);
+        if (el) el.value = val.trim();
+      }
+    });
+    if (fields.priority && typeof fields.priority === 'string') {
+      const sel = document.getElementById('tkPriority');
+      const norm = fields.priority.trim().toUpperCase();
+      const match = Array.from(sel.options).find(o =>
+        o.value.toUpperCase() === norm || norm.indexOf(o.value.toUpperCase()) !== -1);
+      if (match) { sel.value = match.value; refreshSlaDisplay(); }
+    }
+  }
+
+  // ── Persist the in-progress ticket across reloads/tab switches ─────────
+  // (separate from ticket History, which only records completed/resolved tickets)
+  function saveCurrentTicket(){
+    try {
+      const values = {};
+      TICKET_FIELD_IDS.forEach(id => { const el = document.getElementById(id); if (el) values[id] = el.value; });
+      const notesEl = document.getElementById('notesArea');
+      const state = {
+        values, currentAnalysis, checklistState, selectedTeam,
+        notesManual: notesEl ? (notesEl.dataset.manual || '') : '',
+        savedAt: Date.now()
+      };
+      localStorage.setItem(CURRENT_TICKET_KEY, JSON.stringify(state));
+    } catch(e){ console.warn('Ticket autosave failed', e); }
+  }
+
+  function loadCurrentTicket(){
+    try {
+      const raw = localStorage.getItem(CURRENT_TICKET_KEY);
+      if (!raw) return;
+      const state = JSON.parse(raw);
+      if (!state || !state.values) return;
+      Object.keys(state.values).forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = state.values[id];
+      });
+      if (state.currentAnalysis) { currentAnalysis = state.currentAnalysis; renderAnalysis(currentAnalysis); }
+      if (state.checklistState) { checklistState = state.checklistState; renderChecklist(); }
+      if (state.selectedTeam) {
+        selectedTeam = state.selectedTeam;
+        document.querySelectorAll('.team-chip').forEach(c => {
+          c.classList.toggle('selected', c.dataset.team === selectedTeam);
+        });
+      }
+      if (state.notesManual) {
+        document.getElementById('notesArea').dataset.manual = state.notesManual;
+        syncNotesFromChecklist();
+      }
+      refreshSlaDisplay();
+    } catch(e){ console.warn('Ticket restore failed', e); }
+  }
+
+  function clearCurrentTicket(){
+    try { localStorage.removeItem(CURRENT_TICKET_KEY); } catch(e){}
+  }
+
+  // Autosave whenever any ticket-relevant field changes
+  document.addEventListener('input', (e) => { if (TICKET_FIELD_IDS.includes(e.target.id)) saveCurrentTicket(); });
+  document.addEventListener('change', (e) => { if (TICKET_FIELD_IDS.includes(e.target.id)) saveCurrentTicket(); });
+
+  document.getElementById('btnAnalyze').addEventListener('click', runAnalysis);
+  document.getElementById('btnReanalyze').addEventListener('click', runAnalysis);
+  document.getElementById('btnSendToTroubleshoot').addEventListener('click', () => goToSection('troubleshoot'));
+
+  // ── Guided Troubleshooting checklist ────────────────────────────────────
+  function renderChecklist(){
+    const body = document.getElementById('checklistBody');
+    body.innerHTML = '';
+    CHECKLIST.forEach((step, si) => {
+      const wrap = document.createElement('div');
+      wrap.className = 'checklist-step';
+      const done = step.items.filter((_, ii) => checklistState[`${si}-${ii}`]).length;
+      wrap.innerHTML = `<div class="checklist-step-head"><span>${step.title}</span><span>${done}/${step.items.length}</span></div>
+        <div class="checklist-items">${step.items.map((it, ii) => `
+          <div class="check-row ${checklistState[`${si}-${ii}`] ? 'done' : ''}">
+            <input type="checkbox" data-key="${si}-${ii}" ${checklistState[`${si}-${ii}`] ? 'checked' : ''}>
+            <label>${it}</label>
+          </div>`).join('')}</div>`;
+      body.appendChild(wrap);
+    });
+    body.querySelectorAll('input[type=checkbox]').forEach(cb => {
+      cb.addEventListener('change', () => {
+        checklistState[cb.dataset.key] = cb.checked;
+        renderChecklist();
+        syncNotesFromChecklist();
+        saveCurrentTicket();
+      });
+    });
+  }
+
+  function syncNotesFromChecklist(){
+    const notes = document.getElementById('notesArea');
+    const lines = [];
+    CHECKLIST.forEach((step, si) => {
+      step.items.forEach((it, ii) => {
+        if (checklistState[`${si}-${ii}`]) lines.push(`[x] ${step.title}: ${it}`);
+      });
+    });
+    const auto = lines.join('\n');
+    const manual = notes.dataset.manual || '';
+    notes.value = (auto ? auto + '\n\n' : '') + manual;
+  }
+
+  document.getElementById('notesArea').addEventListener('input', function(){
+    // preserve anything typed below the auto-generated checklist lines
+    this.dataset.manual = this.value;
+    saveCurrentTicket();
+  });
+
+  document.getElementById('btnClearNotes').addEventListener('click', () => {
+    document.getElementById('notesArea').value = '';
+    document.getElementById('notesArea').dataset.manual = '';
+  });
+
+  // ── Vendor lookup / escalation guidance ─────────────────────────────────
+  async function getVendorGuidance(){
+    const out = document.getElementById('vendorOutput');
+    out.className = 'ai-output loading';
+    out.textContent = 'Getting escalation guidance...';
+    try {
+      const res = await fetch('/api/l1-copilot/vendor', {
+        method: 'POST', headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({
+          manufacturer: document.getElementById('vManufacturer').value,
+          serviceTag: document.getElementById('vServiceTag').value,
+          warranty: document.getElementById('vWarranty').value,
+          issueSummary: (currentAnalysis && currentAnalysis.issue_summary) || document.getElementById('tkDescription').value
+        })
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'vendor lookup failed');
+      out.className = 'ai-output';
+      out.textContent = data.answer || 'No guidance returned.';
+    } catch (e) {
+      out.className = 'ai-output';
+      out.innerHTML = `<span class="err">Lookup failed: ${e.message}. Confirm /api/l1-copilot/vendor is wired server-side.</span>`;
+    }
+  }
+  document.getElementById('btnVendorGuidance').addEventListener('click', getVendorGuidance);
+
+  // ── Imaging ──────────────────────────────────────────────────────────────
+  const IMG_STAGES = ['Not Started','PXE Boot Detected','Partition/Format','Applying Image','Driver Injection','Post-Config (Domain Join)','Complete'];
+  function refreshImgProgress(){
+    const idx = IMG_STAGES.indexOf(document.getElementById('imgStatus').value);
+    const pct = idx < 0 ? 0 : Math.round((idx / (IMG_STAGES.length - 1)) * 100);
+    document.getElementById('imgProgressFill').style.width = pct + '%';
+  }
+  document.getElementById('imgStatus').addEventListener('change', refreshImgProgress);
+  document.getElementById('btnImgAdvance').addEventListener('click', () => {
+    const sel = document.getElementById('imgStatus');
+    const idx = IMG_STAGES.indexOf(sel.value);
+    if (idx >= 0 && idx < IMG_STAGES.length - 1) sel.value = IMG_STAGES[idx + 1];
+    refreshImgProgress();
+  });
+  refreshImgProgress();
+
+  async function getImagingGuidance(){
+    const out = document.getElementById('imagingOutput');
+    out.className = 'ai-output loading';
+    out.textContent = 'Getting imaging guidance...';
+    try {
+      const res = await fetch('/api/l1-copilot/imaging', {
+        method: 'POST', headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({
+          taskSequence: document.getElementById('imgTaskSequence').value,
+          bootMethod: document.getElementById('imgBootMethod').value,
+          status: document.getElementById('imgStatus').value,
+          asset: document.getElementById('tkAsset').value,
+          model: document.getElementById('tkModel').value
+        })
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'imaging guidance failed');
+      out.className = 'ai-output';
+      out.textContent = data.answer || 'No guidance returned.';
+    } catch (e) {
+      out.className = 'ai-output';
+      out.innerHTML = `<span class="err">Lookup failed: ${e.message}. Confirm /api/l1-copilot/imaging is wired server-side.</span>`;
+    }
+  }
+  document.getElementById('btnImgGuidance').addEventListener('click', getImagingGuidance);
+
+  // ── AD / Intune ──────────────────────────────────────────────────────────
+  async function getAdIntuneGuidance(){
+    const out = document.getElementById('adIntuneOutput');
+    out.className = 'ai-output loading';
+    out.textContent = 'Getting AD/Intune guidance...';
+    try {
+      const res = await fetch('/api/l1-copilot/ad-intune', {
+        method: 'POST', headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({
+          deviceName: document.getElementById('adDeviceName').value,
+          joinType: document.getElementById('adJoinType').value,
+          compliance: document.getElementById('adCompliance').value,
+          bitlocker: document.getElementById('adBitlocker').value,
+          issueSummary: (currentAnalysis && currentAnalysis.issue_summary) || document.getElementById('tkDescription').value
+        })
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'AD/Intune guidance failed');
+      out.className = 'ai-output';
+      out.textContent = data.answer || 'No guidance returned.';
+    } catch (e) {
+      out.className = 'ai-output';
+      out.innerHTML = `<span class="err">Lookup failed: ${e.message}. Confirm /api/l1-copilot/ad-intune is wired server-side.</span>`;
+    }
+  }
+  document.getElementById('btnAdGuidance').addEventListener('click', getAdIntuneGuidance);
+
+  // ── SCCM ─────────────────────────────────────────────────────────────────
+  async function getSccmGuidance(){
+    const out = document.getElementById('sccmOutput');
+    out.className = 'ai-output loading';
+    out.textContent = 'Getting SCCM guidance...';
+    try {
+      const res = await fetch('/api/l1-copilot/sccm', {
+        method: 'POST', headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({
+          collection: document.getElementById('sccmCollection').value,
+          packageName: document.getElementById('sccmPackage').value,
+          status: document.getElementById('sccmStatus').value
+        })
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'SCCM guidance failed');
+      out.className = 'ai-output';
+      out.textContent = data.answer || 'No guidance returned.';
+    } catch (e) {
+      out.className = 'ai-output';
+      out.innerHTML = `<span class="err">Lookup failed: ${e.message}. Confirm /api/l1-copilot/sccm is wired server-side.</span>`;
+    }
+  }
+  document.getElementById('btnSccmGuidance').addEventListener('click', getSccmGuidance);
+
+  // ── VMware SME ───────────────────────────────────────────────────────────
+  async function getVmwareGuidance(){
+    const input = document.getElementById('vmwInput').value.trim();
+    const component = document.getElementById('vmwComponent').value;
+    const category = document.getElementById('vmwCategory').value;
+    if (!input) { alert('Paste logs, config, a script, or a question first.'); return; }
+    const out = document.getElementById('vmwOutput');
+    out.className = 'ai-output loading';
+    out.textContent = 'Getting VMware SME guidance...';
+    try {
+      const res = await fetch('/api/l1-copilot/vmware', {
+        method: 'POST', headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({
+          component,
+          category,
+          environment: document.getElementById('vmwEnv').value,
+          input,
+          issueSummary: (currentAnalysis && currentAnalysis.issue_summary) || ''
+        })
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'VMware SME guidance failed');
+      out.className = 'ai-output';
+      out.textContent = data.answer || 'No guidance returned.';
+    } catch (e) {
+      out.className = 'ai-output';
+      out.innerHTML = `<span class="err">Lookup failed: ${e.message}. Confirm /api/l1-copilot/vmware is wired server-side.</span>`;
+    }
+  }
+  document.getElementById('btnVmwGuidance').addEventListener('click', getVmwareGuidance);
+
+  document.getElementById('btnVmwClear').addEventListener('click', () => {
+    document.getElementById('vmwInput').value = '';
+    document.getElementById('vmwOutput').className = 'ai-output';
+    document.getElementById('vmwOutput').textContent = 'Root cause, recommended fix, PowerCLI/REST examples, and escalation guidance will appear here.';
+  });
+
+  document.getElementById('vmwQuickPrompts').addEventListener('click', (e) => {
+    const chip = e.target.closest('.tag');
+    if (!chip) return;
+    const box = document.getElementById('vmwInput');
+    const prompt = chip.dataset.prompt;
+    box.value = box.value ? box.value + '\n\n' + prompt : prompt;
+    box.focus();
+  });
+
+  // ── VMware Script Generator ────────────────────────────────────────────────
+  async function generateVmwareScript(){
+    const request = document.getElementById('vmwScriptRequest').value.trim();
+    const scriptType = document.getElementById('vmwScriptType').value;
+    if (!request) { alert('Describe what the script needs to do first.'); return; }
+    const out = document.getElementById('vmwScriptOutput');
+    out.className = 'ai-output loading';
+    out.textContent = 'Generating ' + scriptType + ' script...';
+    try {
+      const res = await fetch('/api/l1-copilot/vmware-script', {
+        method: 'POST', headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({ scriptType, request })
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'Script generation failed');
+      out.className = 'ai-output';
+      out.textContent = data.answer || 'No script returned.';
+    } catch (e) {
+      out.className = 'ai-output';
+      out.innerHTML = `<span class="err">Generation failed: ${e.message}. Confirm /api/l1-copilot/vmware-script is wired server-side.</span>`;
+    }
+  }
+  document.getElementById('btnVmwScript').addEventListener('click', generateVmwareScript);
+  document.getElementById('btnVmwScriptClear').addEventListener('click', () => {
+    document.getElementById('vmwScriptRequest').value = '';
+    document.getElementById('vmwScriptOutput').className = 'ai-output';
+    document.getElementById('vmwScriptOutput').textContent = 'Generated script will appear here.';
+  });
+
+  // ── Launch full VMware Operations module, carrying ticket context via relay ─
+  document.getElementById('btnOpenVmwModule').addEventListener('click', () => {
+    try {
+      if (window.TSM && window.TSM.relay) {
+        window.TSM.relay.write('VMWARE_COPILOT', {
+          ticketId: document.getElementById('tkIncident') ? document.getElementById('tkIncident').value : '',
+          issueSummary: (currentAnalysis && currentAnalysis.issue_summary) || '',
+          component: document.getElementById('vmwComponent').value,
+          category: document.getElementById('vmwCategory').value,
+          environment: document.getElementById('vmwEnv').value
+        });
+      }
+    } catch (e) { /* relay is best-effort, don't block navigation */ }
+    window.open('/html/l1-copilot/vmware-copilot.html', '_blank');
+  });
+
+  // ── Cloud Ops ───────────────────────────────────────────────────────────────
+  async function getCloudGuidance(){
+    const input = document.getElementById('cloudInput').value.trim();
+    if (!input) { alert('Paste logs, config, or a question first.'); return; }
+    const out = document.getElementById('cloudOutput');
+    out.className = 'ai-output loading';
+    out.textContent = 'Getting Cloud Ops SME guidance...';
+    try {
+      const res = await fetch('/api/l1-copilot/cloud-ops', {
+        method: 'POST', headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({
+          provider: document.getElementById('cloudProvider').value,
+          service: document.getElementById('cloudService').value,
+          environment: document.getElementById('cloudEnv').value,
+          input,
+          issueSummary: (currentAnalysis && currentAnalysis.issue_summary) || ''
+        })
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'Cloud Ops guidance failed');
+      out.className = 'ai-output';
+      out.textContent = data.answer || 'No guidance returned.';
+    } catch (e) {
+      out.className = 'ai-output';
+      out.innerHTML = `<span class="err">Lookup failed: ${e.message}. Confirm /api/l1-copilot/cloud-ops is wired server-side.</span>`;
+    }
+  }
+  document.getElementById('btnCloudGuidance').addEventListener('click', getCloudGuidance);
+  document.getElementById('btnCloudClear').addEventListener('click', () => {
+    document.getElementById('cloudInput').value = '';
+    document.getElementById('cloudOutput').className = 'ai-output';
+    document.getElementById('cloudOutput').textContent = 'Root cause, recommended fix, CLI/portal steps, and escalation guidance will appear here.';
+  });
+
+  // ── SLA ──────────────────────────────────────────────────────────────────
+  function refreshSlaDisplay(){
+    const priority = document.getElementById('tkPriority').value;
+    document.getElementById('slaPriority').textContent = priority;
+    document.getElementById('tkSlaRemaining').value = document.getElementById('slaTimer').textContent;
+  }
+  document.getElementById('tkPriority').addEventListener('change', refreshSlaDisplay);
+  refreshSlaDisplay();
+
+  // ── Resolution builder ──────────────────────────────────────────────────
+  async function buildResolution(){
+    const out = document.getElementById('resolutionOutput');
+    out.className = 'ai-output loading';
+    out.textContent = 'Generating resolution write-up...';
+    goToSection('resolution');
+    try {
+      const res = await fetch('/api/l1-copilot/resolution', {
+        method: 'POST', headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({
+          ticket: document.getElementById('tkDescription').value,
+          analysis: currentAnalysis,
+          notes: document.getElementById('notesArea').value
+        })
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'resolution build failed');
+      out.className = 'ai-output';
+      out.textContent = data.answer || 'No resolution returned.';
+      recordHistoryEntry();
+    } catch (e) {
+      out.className = 'ai-output';
+      out.innerHTML = `<span class="err">Build failed: ${e.message}. Confirm /api/l1-copilot/resolution is wired server-side.</span>`;
+    }
+  }
+  document.getElementById('btnBuildResolution').addEventListener('click', buildResolution);
+  document.getElementById('btnCopyResolution').addEventListener('click', () => {
+    const text = document.getElementById('resolutionOutput').textContent;
+    navigator.clipboard.writeText(text).then(() => {
+      document.getElementById('navStatus').textContent = 'ENGINE: COPIED TO CLIPBOARD';
+      setTimeout(() => document.getElementById('navStatus').textContent = 'ENGINE: IDLE', 1500);
+    });
+  });
+
+  // ── Escalation ───────────────────────────────────────────────────────────
+  document.getElementById('escTeamGrid').addEventListener('click', (e) => {
+    const chip = e.target.closest('.team-chip');
+    if (!chip) return;
+    document.querySelectorAll('.team-chip').forEach(c => c.classList.remove('selected'));
+    chip.classList.add('selected');
+    selectedTeam = chip.dataset.team;
+    saveCurrentTicket();
+  });
+
+  async function buildEscalation(){
+    const out = document.getElementById('escalationOutput');
+    out.className = 'ai-output loading';
+    out.textContent = 'Building escalation package...';
+    try {
+      const res = await fetch('/api/l1-copilot/escalation', {
+        method: 'POST', headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({
+          ticket: document.getElementById('tkDescription').value,
+          analysis: currentAnalysis,
+          reason: document.getElementById('escReason').value,
+          evidence: document.getElementById('escEvidence').value,
+          recommendedTeam: selectedTeam
+        })
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'escalation build failed');
+      out.className = 'ai-output';
+      out.textContent = data.answer || 'No escalation package returned.';
+    } catch (e) {
+      out.className = 'ai-output';
+      out.innerHTML = `<span class="err">Build failed: ${e.message}. Confirm /api/l1-copilot/escalation is wired server-side.</span>`;
+    }
+  }
+  document.getElementById('btnBuildEscalation').addEventListener('click', buildEscalation);
+
+  // ── History (local, per-browser) ────────────────────────────────────────
+  function loadHistory(){
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); }
+    catch(e){ return []; }
+  }
+  function saveHistory(list){
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(list.slice(-100))); }
+    catch(e){ console.warn('History save failed', e); }
+  }
+  function recordHistoryEntry(){
+    const list = loadHistory();
+    list.push({
+      incident: document.getElementById('tkIncident').value || '(no incident #)',
+      manufacturer: document.getElementById('tkMfr').value,
+      priority: document.getElementById('tkPriority').value,
+      severity: currentAnalysis && currentAnalysis.severity,
+      ts: Date.now()
+    });
+    saveHistory(list);
+    renderHistory();
+    renderExecStrip();
+    clearCurrentTicket();
+  }
+  function renderHistory(){
+    const body = document.getElementById('historyBody');
+    const list = loadHistory();
+    if (!list.length) { body.innerHTML = '<div class="empty-state">No resolved tickets recorded yet this session.</div>'; return; }
+    body.innerHTML = list.slice().reverse().map(h =>
+      `<div class="history-row"><span>${h.incident} — ${h.manufacturer || '--'}</span><span>${h.priority || '--'} · ${new Date(h.ts).toLocaleString()}</span></div>`
+    ).join('');
+  }
+  function renderExecStrip(){
+    const list = loadHistory();
+    const today = list.filter(h => new Date(h.ts).toDateString() === new Date().toDateString());
+    document.getElementById('execToday').textContent = today.length;
+    document.getElementById('execResolved').textContent = list.length;
+    document.getElementById('execOpen').textContent = 0;
+    document.getElementById('execVendorCases').textContent = list.filter(h => h.manufacturer).length;
+    const mfrCounts = {};
+    list.forEach(h => { if (h.manufacturer) mfrCounts[h.manufacturer] = (mfrCounts[h.manufacturer]||0)+1; });
+    document.getElementById('execRepeat').textContent = Object.values(mfrCounts).filter(c => c > 1).length;
+  }
+  document.getElementById('btnClearHistory').addEventListener('click', () => {
+    if (!confirm('Clear local ticket history from this browser? This cannot be undone.')) return;
+    saveHistory([]);
+    renderHistory();
+    renderExecStrip();
+  });
+
+  // ── Incoming escalation (e.g. from NOC Asset Console "ESCALATE TO L1") ───
+  // The relay only stores the last payload per domain with no read-consumed
+  // flag, so dedupe locally by remembering the last payload id we've already
+  // applied — otherwise every reload would re-apply the same escalation.
+  const ESCALATION_SEEN_KEY = 'TSM_L1_LAST_ESCALATION_SEEN';
+  function applyIncomingEscalation() {
+    let payload;
+    try {
+      if (!window.TSM || !window.TSM.relay) return;
+      payload = window.TSM.relay.read('L1COPILOT');
+    } catch (e) { return; }
+    if (!payload || !payload.incident) return;
+
+    const seenId = sessionStorage.getItem(ESCALATION_SEEN_KEY);
+    if (seenId === payload.id) return; // already applied this exact escalation
+    try { sessionStorage.setItem(ESCALATION_SEEN_KEY, payload.id); } catch (e) {}
+
+    applyExtractedFields(payload);
+    if (payload.status) {
+      const sel = document.getElementById('tkStatus');
+      const match = Array.from(sel.options).find(o => o.value === payload.status);
+      if (match) sel.value = match.value;
+    }
+    if (payload.description) document.getElementById('tkDescription').value = payload.description;
+    refreshSlaDisplay();
+    saveCurrentTicket();
+    goToSection('ticket');
+  }
+
+  // ── Init ─────────────────────────────────────────────────────────────────
+  renderChecklist();
+  renderHistory();
+  renderExecStrip();
+  loadCurrentTicket();
+  applyIncomingEscalation();
+})();
+</script>
+
+<script src="/js/core/tsm-event-bus.js"></script>
+<script src="/js/core/tsm-state.js"></script>
+<script src="/js/core/tsm-mission-engine.js"></script>
+<script src="/js/core/tsm-auto-pipeline.js"></script>
+<script src="/html/core/tsm-runtime.js"></script>
+<!--
+  L1 Ticket Copilot — Floating AI Assistant
+  ------------------------------------------
+  Paste this fragment right before </body> on your L1 Ticket Copilot page.
+  It is self-contained (no build step, no external deps) and talks to
+  POST /api/l1-copilot/assistant  ->  { ok, answer, createdAt }
+
+  Theming: everything reads from CSS variables at the top of the <style>
+  block. If your war-room pages already define --tsm-accent / --tsm-bg /
+  --tsm-panel etc. globally, delete the ":root" block below and the widget
+  will just inherit your existing palette instead.
+-->
+
+<style>
+  :root {
+    --l1a-accent:      #00d4a0;
+    --l1a-accent-dark: #00a37a;
+    --l1a-bg:          #0d1117;
+    --l1a-panel:       #161b22;
+    --l1a-border:      #2a313c;
+    --l1a-text:        #e6edf3;
+    --l1a-text-dim:    #8b949e;
+    --l1a-danger:      #f85149;
+  }
+
+  #l1a-fab {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    width: 58px;
+    height: 58px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--l1a-accent), var(--l1a-accent-dark));
+    color: #04120e;
+    border: none;
+    box-shadow: 0 4px 18px rgba(0, 212, 160, 0.35);
+    cursor: pointer;
+    z-index: 9998;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  #l1a-fab:hover { transform: scale(1.06); box-shadow: 0 6px 22px rgba(0, 212, 160, 0.5); }
+  #l1a-fab:active { transform: scale(0.96); }
+  #l1a-fab .l1a-badge {
+    position: absolute;
+    top: -2px; right: -2px;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: var(--l1a-accent);
+    border: 2px solid var(--l1a-bg);
+  }
+
+  #l1a-panel {
+    position: fixed;
+    bottom: 96px;
+    right: 24px;
+    width: 380px;
+    max-width: calc(100vw - 32px);
+    max-height: 560px;
+    background: var(--l1a-panel);
+    border: 1px solid var(--l1a-border);
+    border-radius: 14px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+    z-index: 9999;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  #l1a-panel.l1a-open { display: flex; }
+
+  #l1a-header {
+    padding: 14px 16px;
+    background: linear-gradient(135deg, rgba(0,212,160,0.12), rgba(0,212,160,0.02));
+    border-bottom: 1px solid var(--l1a-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  #l1a-header .l1a-title { color: var(--l1a-text); font-weight: 600; font-size: 14px; }
+  #l1a-header .l1a-sub { color: var(--l1a-text-dim); font-size: 11px; margin-top: 2px; }
+  #l1a-close {
+    background: none; border: none; color: var(--l1a-text-dim);
+    font-size: 18px; cursor: pointer; line-height: 1; padding: 4px;
+  }
+  #l1a-close:hover { color: var(--l1a-text); }
+
+  #l1a-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  #l1a-answer {
+    background: var(--l1a-bg);
+    border: 1px solid var(--l1a-border);
+    border-radius: 10px;
+    padding: 12px;
+    color: var(--l1a-text);
+    font-size: 13px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    display: none;
+  }
+  #l1a-answer.l1a-show { display: block; }
+  #l1a-answer.l1a-error { border-color: var(--l1a-danger); color: var(--l1a-danger); }
+
+  #l1a-empty {
+    color: var(--l1a-text-dim);
+    font-size: 12.5px;
+    line-height: 1.5;
+    padding: 4px 2px;
+  }
+
+  #l1a-loading {
+    color: var(--l1a-accent);
+    font-size: 12.5px;
+    display: none;
+    align-items: center;
+    gap: 8px;
+  }
+  #l1a-loading.l1a-show { display: flex; }
+  .l1a-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--l1a-accent); animation: l1a-pulse 1.2s infinite ease-in-out; }
+  .l1a-dot:nth-child(2) { animation-delay: 0.15s; }
+  .l1a-dot:nth-child(3) { animation-delay: 0.3s; }
+  @keyframes l1a-pulse { 0%, 80%, 100% { opacity: 0.25; } 40% { opacity: 1; } }
+
+  #l1a-footer {
+    padding: 12px 14px;
+    border-top: 1px solid var(--l1a-border);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  #l1a-input {
+    width: 100%;
+    resize: none;
+    background: var(--l1a-bg);
+    border: 1px solid var(--l1a-border);
+    border-radius: 8px;
+    color: var(--l1a-text);
+    padding: 9px 10px;
+    font-size: 13px;
+    font-family: inherit;
+    box-sizing: border-box;
+    min-height: 56px;
+  }
+  #l1a-input:focus { outline: none; border-color: var(--l1a-accent); }
+  #l1a-send {
+    background: var(--l1a-accent);
+    color: #04120e;
+    border: none;
+    border-radius: 8px;
+    padding: 9px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  #l1a-send:hover { background: var(--l1a-accent-dark); }
+  #l1a-send:disabled { opacity: 0.5; cursor: not-allowed; }
+  #l1a-hint { color: var(--l1a-text-dim); font-size: 10.5px; }
+</style>
+
+<button id="l1a-fab" title="Ask the L1 Copilot Assistant" aria-label="Open L1 Copilot Assistant">
+  💬<span class="l1a-badge"></span>
+</button>
+
+<div id="l1a-panel" role="dialog" aria-label="L1 Copilot Assistant">
+  <div id="l1a-header">
+    <div>
+      <div class="l1a-title">L1 Copilot Assistant</div>
+      <div class="l1a-sub">Describe the scenario, get best-practice guidance</div>
+    </div>
+    <button id="l1a-close" aria-label="Close">✕</button>
+  </div>
+
+  <div id="l1a-body">
+    <div id="l1a-empty">
+      Paste in what you're seeing — an error message, a user complaint, a ticket
+      you're stuck on — and get root cause, next steps, and when to escalate.
+    </div>
+    <div id="l1a-loading">
+      <span class="l1a-dot"></span><span class="l1a-dot"></span><span class="l1a-dot"></span>
+      Thinking it through…
+    </div>
+    <div id="l1a-answer"></div>
+  </div>
+
+  <div id="l1a-footer">
+    <textarea id="l1a-input" placeholder="e.g. User's Dell laptop won't detect the docking station after the latest Windows update..."></textarea>
+    <button id="l1a-send">Get Advice</button>
+    <div id="l1a-hint">Shift+Enter for a new line · Enter to send</div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var fab      = document.getElementById('l1a-fab');
+  var panel    = document.getElementById('l1a-panel');
+  var closeBtn = document.getElementById('l1a-close');
+  var input    = document.getElementById('l1a-input');
+  var sendBtn  = document.getElementById('l1a-send');
+  var answerEl = document.getElementById('l1a-answer');
+  var loadingEl= document.getElementById('l1a-loading');
+  var emptyEl  = document.getElementById('l1a-empty');
+
+  function openPanel()  { panel.classList.add('l1a-open'); input.focus(); }
+  function closePanel() { panel.classList.remove('l1a-open'); }
+
+  fab.addEventListener('click', function () {
+    panel.classList.contains('l1a-open') ? closePanel() : openPanel();
+  });
+  closeBtn.addEventListener('click', closePanel);
+
+  input.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      submitScenario();
+    }
+  });
+  sendBtn.addEventListener('click', submitScenario);
+
+  function setLoading(isLoading) {
+    sendBtn.disabled = isLoading;
+    loadingEl.classList.toggle('l1a-show', isLoading);
+  }
+
+  async function submitScenario() {
+    var scenario = input.value.trim();
+    if (!scenario) return;
+
+    emptyEl.style.display = 'none';
+    answerEl.classList.remove('l1a-show', 'l1a-error');
+    setLoading(true);
+
+    try {
+      var res = await fetch('/api/l1-copilot/assistant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scenario: scenario })
+      });
+      var data = await res.json();
+
+      setLoading(false);
+
+      if (!res.ok || !data.ok) {
+        throw new Error((data && data.error) || ('Request failed (' + res.status + ')'));
+      }
+
+      answerEl.textContent = data.answer;
+      answerEl.classList.add('l1a-show');
+    } catch (err) {
+      setLoading(false);
+      answerEl.textContent = 'Could not reach the assistant: ' + err.message;
+      answerEl.classList.add('l1a-show', 'l1a-error');
+    }
+  }
+})();
+</script>
+</body>
+</html>

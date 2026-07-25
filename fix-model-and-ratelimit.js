@@ -2,9 +2,9 @@ const fs = require('fs');
 let src = fs.readFileSync('server.js', 'utf8');
 let changes = 0;
 
-// STEP 1 — switch default model from llama-3.3-70b-versatile to llama-3.1-8b-instant
+// STEP 1 — switch default model from openai/gpt-oss-120b to llama-3.1-8b-instant
 // 70b uses ~10x more tokens per request vs 8b — free tier burns out in minutes
-const oldModel = `process.env.TSM_MODEL || 'llama-3.3-70b-versatile'`;
+const oldModel = `process.env.TSM_MODEL || 'openai/gpt-oss-120b'`;
 const newModel = `process.env.TSM_MODEL || 'llama-3.1-8b-instant'`;
 const modelCount = (src.match(new RegExp(oldModel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length;
 src = src.replaceAll(oldModel, newModel);

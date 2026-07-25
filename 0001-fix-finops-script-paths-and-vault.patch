@@ -1,0 +1,643 @@
+From 6d2f6a007d71f5a49322bd73e223165d3989bcde Mon Sep 17 00:00:00 2001
+From: Tron <tron@tsm-consultz.dev>
+Date: Sat, 25 Jul 2026 02:26:37 +0000
+Subject: [PATCH] fix(finops-suite): correct relative script paths + remove
+ dead Vault calls
+
+- 32 files under html/finops-suite/ referenced tsm-runtime-lock.js,
+  tsm-event-contract.js, and tsm-autonomy-layer.js via a relative path
+  (./html/js/...) instead of an absolute one (/html/js/...). Since these
+  pages are served one directory deep (e.g. /finops-suite/x.html), the
+  relative path resolved to a nonexistent /finops-suite/html/js/... and
+  404'd, which killed window.TSMEventBus and broke TSM-KERNEL init
+  ('EventBus not found. Load core first.').
+
+- finops-operations.html (Branch Operations): removed the dead Vault
+  system-prompt lookup. getVaultPrompt() posted {key} to /api/chat, but
+  that route only ever accepted {query,...} or {message,...} - there
+  was never a server-side vault endpoint, in this file or any other
+  file that used the same pattern. Every page load fired 7 guaranteed
+  400s (one per AI context) and silently ran every AI panel with an
+  empty system prompt. Replaced with static per-context prompts inline
+  (no network round-trip needed for fixed instruction text).
+
+Verified via headless Playwright against a live server instance:
+before -> 3x 404 + EventBus error + 7x /api/chat 400 on load;
+after -> zero app-caused console/network errors, load time 1.3s -> ~0.5s.
+
+Note: the same relative-path bug also exists in ~30 html/construction-suite
+files, left untouched here as out of scope for this sprint.
+---
+ html/finops-suite/copilot.html                |  6 ++--
+ html/finops-suite/crcr-study-mode.html        |  6 ++--
+ html/finops-suite/doc-analysis-tab.html       |  6 ++--
+ html/finops-suite/doc-analysis-tab1.html      |  6 ++--
+ html/finops-suite/financial-ui.html           |  6 ++--
+ html/finops-suite/finops-accounting.html      |  6 ++--
+ .../finops-suite/finops-executive-portal.html |  6 ++--
+ html/finops-suite/finops-main-strategist.html |  6 ++--
+ .../finops-main-strategist/index.html         |  6 ++--
+ .../finops-main-strategist/index1.html        |  6 ++--
+ .../main-strategist.html                      |  6 ++--
+ .../manager-bar-patch.html                    |  6 ++--
+ html/finops-suite/finops-operations.html      | 35 ++++++++++---------
+ html/finops-suite/finops-presentation.html    |  6 ++--
+ .../finops-presentation/index.html            |  6 ++--
+ html/finops-suite/finops-scenarios.html       |  6 ++--
+ html/finops-suite/finops-showcase-v1.html     |  6 ++--
+ html/finops-suite/finops-showcase-v2.html     |  6 ++--
+ html/finops-suite/finops-showcase/index.html  |  6 ++--
+ html/finops-suite/finops-war-room.html        |  6 ++--
+ html/finops-suite/how-to-finops-updated.html  |  6 ++--
+ html/finops-suite/how-to-finops.html          |  6 ++--
+ html/finops-suite/how-to.html                 |  6 ++--
+ .../staff-accountant-interview.html           |  6 ++--
+ html/finops-suite/study-guide.html            |  6 ++--
+ html/finops-suite/suite-index.html            |  6 ++--
+ html/finops-suite/tax.html                    |  6 ++--
+ html/finops-suite/tsm-finops-pitch.html       |  6 ++--
+ html/finops-suite/tsm-presentation.html       |  6 ++--
+ html/finops-suite/wip-billing/index.html      |  6 ++--
+ html/finops-suite/wip/index.html              |  6 ++--
+ html/finops-suite/zero-trust.html             |  6 ++--
+ 32 files changed, 112 insertions(+), 109 deletions(-)
+
+diff --git a/html/finops-suite/copilot.html b/html/finops-suite/copilot.html
+index 2bc3543..9f28ca7 100644
+--- a/html/finops-suite/copilot.html
++++ b/html/finops-suite/copilot.html
+@@ -59,9 +59,9 @@ console.log("TSM_UI: Direct Neural Link Established.");
+ <script src="/healthcare/js/hc-universal-tab-ai.js?v=relay2" defer></script>
+ <script src="/healthcare/js/hc-strategist-relay.js?v=relay2" defer></script>
+ <script src="/healthcare/js/hc-howto-system.js?v=relay2" defer></script>
+-<script src="./html/js/tsm-runtime-lock.js"></script>
+-<script src="./html/js/tsm-event-contract.js"></script>
+-<script src="./html/js/tsm-autonomy-layer.js"></script>
++<script src="/html/js/tsm-runtime-lock.js"></script>
++<script src="/html/js/tsm-event-contract.js"></script>
++<script src="/html/js/tsm-autonomy-layer.js"></script>
+ </head>
+ <body>
+ <div style="position:fixed;top:10px;right:10px;z-index:9999"><a href="/html/finops-suite/finops-showcase/index.html" style="background:#f0c040;color:#000;border:0;border-radius:6px;padding:4px 12px;text-decoration:none;font-size:11px;font-weight:900">⚡ DOC SHOWCASE</a></div>
+diff --git a/html/finops-suite/crcr-study-mode.html b/html/finops-suite/crcr-study-mode.html
+index e391513..726c00e 100644
+--- a/html/finops-suite/crcr-study-mode.html
++++ b/html/finops-suite/crcr-study-mode.html
+@@ -184,9 +184,9 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13
+ ::-webkit-scrollbar-track{background:var(--s1)}
+ ::-webkit-scrollbar-thumb{background:rgba(0,255,198,.2)}
+ </style>
+-<script src="./html/js/tsm-runtime-lock.js"></script>
+-<script src="./html/js/tsm-event-contract.js"></script>
+-<script src="./html/js/tsm-autonomy-layer.js"></script>
++<script src="/html/js/tsm-runtime-lock.js"></script>
++<script src="/html/js/tsm-event-contract.js"></script>
++<script src="/html/js/tsm-autonomy-layer.js"></script>
+ </head>
+ <body>
+ 
+diff --git a/html/finops-suite/doc-analysis-tab.html b/html/finops-suite/doc-analysis-tab.html
+index b1211f5..8e48748 100644
+--- a/html/finops-suite/doc-analysis-tab.html
++++ b/html/finops-suite/doc-analysis-tab.html
+@@ -234,9 +234,9 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:13
+ .wt-btn.war:hover{background:var(--cyan-pale)}
+ .wt-btn.stay{border-color:var(--border);color:var(--text-muted)}
+ </style>
+-<script src="./html/js/tsm-runtime-lock.js"></script>
+-<script src="./html/js/tsm-event-contract.js"></script>
+-<script src="./html/js/tsm-autonomy-layer.js"></script>
++<script src="/html/js/tsm-runtime-lock.js"></script>
++<script src="/html/js/tsm-event-contract.js"></script>
++<script src="/html/js/tsm-autonomy-layer.js"></script>
+ </head>
+ <body>
+ 
+diff --git a/html/finops-suite/doc-analysis-tab1.html b/html/finops-suite/doc-analysis-tab1.html
+index f13fd37..3d30551 100644
+--- a/html/finops-suite/doc-analysis-tab1.html
++++ b/html/finops-suite/doc-analysis-tab1.html
+@@ -222,9 +222,9 @@ html,body{background:var(--bg);color:var(--text);font-family:var(--sans)}
+ .step-badge.offline{background:rgba(239,68,68,.1);color:var(--red);border:1px solid rgba(239,68,68,.2)}
+ .step-badge.complete{background:rgba(6,182,212,.12);color:var(--cyan);border:1px solid rgba(6,182,212,.25)}
+ </style>
+-<script src="./html/js/tsm-runtime-lock.js"></script>
+-<script src="./html/js/tsm-event-contract.js"></script>
+-<script src="./html/js/tsm-autonomy-layer.js"></script>
++<script src="/html/js/tsm-runtime-lock.js"></script>
++<script src="/html/js/tsm-event-contract.js"></script>
++<script src="/html/js/tsm-autonomy-layer.js"></script>
+ </head>
+ <body>
+ <div class="shell">
+diff --git a/html/finops-suite/financial-ui.html b/html/finops-suite/financial-ui.html
+index 68b6afc..c51d3b0 100644
+--- a/html/finops-suite/financial-ui.html
++++ b/html/finops-suite/financial-ui.html
+@@ -254,9 +254,9 @@ console.log("TSM_UI: Direct Neural Link Established.");
+   <link rel="stylesheet" href="/shared/tsm-shared.css">
+   <script src="/shared/tsm-shared.js"></script>
+   <script src="/finops-suite/assets/doc-parser.js"></script>
+-<script src="./html/js/tsm-runtime-lock.js"></script>
+-<script src="./html/js/tsm-event-contract.js"></script>
+-<script src="./html/js/tsm-autonomy-layer.js"></script>
++<script src="/html/js/tsm-runtime-lock.js"></script>
++<script src="/html/js/tsm-event-contract.js"></script>
++<script src="/html/js/tsm-autonomy-layer.js"></script>
+ </head>
+ <body>
+ 
+diff --git a/html/finops-suite/finops-accounting.html b/html/finops-suite/finops-accounting.html
+index 39f62aa..a72a958 100644
+--- a/html/finops-suite/finops-accounting.html
++++ b/html/finops-suite/finops-accounting.html
+@@ -347,9 +347,9 @@ select.fi option{background:var(--s2)}
+ .relay-exec{background:var(--cyan-lo);border-color:rgba(0,200,255,.2);color:var(--cyan)}
+ .relay-exec:hover{background:rgba(0,200,255,.1)}
+ </style>
+-<script src="./html/js/tsm-runtime-lock.js"></script>
+-<script src="./html/js/tsm-event-contract.js"></script>
+-<script src="./html/js/tsm-autonomy-layer.js"></script>
++<script src="/html/js/tsm-runtime-lock.js"></script>
++<script src="/html/js/tsm-event-contract.js"></script>
++<script src="/html/js/tsm-autonomy-layer.js"></script>
+ </head>
+ <body>
+ 
+diff --git a/html/finops-suite/finops-executive-portal.html b/html/finops-suite/finops-executive-portal.html
+index 41f33be..d8da9cf 100644
+--- a/html/finops-suite/finops-executive-portal.html
++++ b/html/finops-suite/finops-executive-portal.html
+@@ -446,9 +446,9 @@ body::before{content:'';position:fixed;top:0;right:0;width:600px;height:400px;ba
+     if (window.TSMMemory) TSMMemory.timeline("Executive Portal opened - reviewing escalation");
+   });
+ </script>
+-<script src="./html/js/tsm-runtime-lock.js"></script>
+-<script src="./html/js/tsm-event-contract.js"></script>
+-<script src="./html/js/tsm-autonomy-layer.js"></script>
++<script src="/html/js/tsm-runtime-lock.js"></script>
++<script src="/html/js/tsm-event-contract.js"></script>
++<script src="/html/js/tsm-autonomy-layer.js"></script>
+ </head>
+ <body>
+ 
+diff --git a/html/finops-suite/finops-main-strategist.html b/html/finops-suite/finops-main-strategist.html
+index 3008c7b..1f27c46 100644
+--- a/html/finops-suite/finops-main-strategist.html
++++ b/html/finops-suite/finops-main-strategist.html
+@@ -367,9 +367,9 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:13
+ .rt-btn.exec{border-color:var(--accent2-border);color:var(--green-bright)}
+ .rt-btn:hover{opacity:.8}
+ </style>
+-<script src="./html/js/tsm-runtime-lock.js"></script>
+-<script src="./html/js/tsm-event-contract.js"></script>
+-<script src="./html/js/tsm-autonomy-layer.js"></script>
++<script src="/html/js/tsm-runtime-lock.js"></script>
++<script src="/html/js/tsm-event-contract.js"></script>
++<script src="/html/js/tsm-autonomy-layer.js"></script>
+   <script src="/js/core/tsm-event-bus.js"></script>
+   <script src="/js/core/tsm-state.js"></script>
+   <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
+diff --git a/html/finops-suite/finops-main-strategist/index.html b/html/finops-suite/finops-main-strategist/index.html
+index b4da835..b27ef13 100644
+--- a/html/finops-suite/finops-main-strategist/index.html
++++ b/html/finops-suite/finops-main-strategist/index.html
+@@ -302,9 +302,9 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:13
+   <script src="/shared/tsm-shared.js"></script>
+   <!-- FinOps Doc Parser -->
+   <script src="/finops-suite/assets/doc-parser.js"></script>
+-<script src="./html/js/tsm-runtime-lock.js"></script>
+-<script src="./html/js/tsm-event-contract.js"></script>
+-<script src="./html/js/tsm-autonomy-layer.js"></script>
++<script src="/html/js/tsm-runtime-lock.js"></script>
++<script src="/html/js/tsm-event-contract.js"></script>
++<script src="/html/js/tsm-autonomy-layer.js"></script>
+ </head>
+ <body>
+ 
+diff --git a/html/finops-suite/finops-main-strategist/index1.html b/html/finops-suite/finops-main-strategist/index1.html
+index f73573d..98643f5 100644
+--- a/html/finops-suite/finops-main-strategist/index1.html
++++ b/html/finops-suite/finops-main-strategist/index1.html
+@@ -104,9 +104,9 @@ async function tsmAI(s,u,m){try{const r=await fetch('/api/financial/query',{meth
+ <script src="/healthcare/js/hc-universal-tab-ai.js?v=relay2" defer></script>
+ <script src="/healthcare/js/hc-strategist-relay.js?v=relay2" defer></script>
+ <script src="/healthcare/js/hc-howto-system.js?v=relay2" defer></script>
+-<script src="./html/js/tsm-runtime-lock.js"></script>
+-<script src="./html/js/tsm-event-contract.js"></script>
+-<script src="./html/js/tsm-autonomy-layer.js"></script>
++<script src="/html/js/tsm-runtime-lock.js"></script>
++<script src="/html/js/tsm-event-contract.js"></script>
++<script src="/html/js/tsm-autonomy-layer.js"></script>
+ </head>
+ <body>
+ <header>
+diff --git a/html/finops-suite/finops-main-strategist/main-strategist.html b/html/finops-suite/finops-main-strategist/main-strategist.html
+index 617bff7..507e0c0 100644
+--- a/html/finops-suite/finops-main-strategist/main-strategist.html
++++ b/html/finops-suite/finops-main-strategist/main-strategist.html
+@@ -161,9 +161,9 @@ footer{display:flex;align-items:center;justify-content:space-between;padding:7px
+ <script src="/healthcare/js/hc-universal-tab-ai.js?v=relay2" defer></script>
+ <script src="/healthcare/js/hc-strategist-relay.js?v=relay2" defer></script>
+ <script src="/healthcare/js/hc-howto-system.js?v=relay2" defer></script>
+-<script src="./html/js/tsm-runtime-lock.js"></script>
+-<script src="./html/js/tsm-event-contract.js"></script>
+-<script src="./html/js/tsm-autonomy-layer.js"></script>
++<script src="/html/js/tsm-runtime-lock.js"></script>
++<script src="/html/js/tsm-event-contract.js"></script>
++<script src="/html/js/tsm-autonomy-layer.js"></script>
+ </head>
+ <body>
+ 
+diff --git a/html/finops-suite/finops-main-strategist/manager-bar-patch.html b/html/finops-suite/finops-main-strategist/manager-bar-patch.html
+index 849f5be..94111b2 100644
+--- a/html/finops-suite/finops-main-strategist/manager-bar-patch.html
++++ b/html/finops-suite/finops-main-strategist/manager-bar-patch.html
+@@ -240,9 +240,9 @@ async function tsmAI(s,u,m){try{const r=await fetch('/api/financial/query',{meth
+ <script src="/healthcare/js/hc-universal-tab-ai.js?v=relay2" defer></script>
+ <script src="/healthcare/js/hc-strategist-relay.js?v=relay2" defer></script>
+ <script src="/healthcare/js/hc-howto-system.js?v=relay2" defer></script>
+-<script src="./html/js/tsm-runtime-lock.js"></script>
+-<script src="./html/js/tsm-event-contract.js"></script>
+-<script src="./html/js/tsm-autonomy-layer.js"></script>
++<script src="/html/js/tsm-runtime-lock.js"></script>
++<script src="/html/js/tsm-event-contract.js"></script>
++<script src="/html/js/tsm-autonomy-layer.js"></script>
+ </head>
+ <body>
+ 
+diff --git a/html/finops-suite/finops-operations.html b/html/finops-suite/finops-operations.html
+index bf06a54..ba0fea5 100644
+--- a/html/finops-suite/finops-operations.html
++++ b/html/finops-suite/finops-operations.html
+@@ -269,29 +269,32 @@ document.addEventListener('click', (e) => {
+ console.log("TSM_UI: Direct Neural Link Established.");
+ </script>
+ <script>
++// Static context prompts — there was never a server-side vault endpoint
++// backing these (/api/chat only accepts {query,...} or {message,...}), so
++// every getVaultPrompt() call unconditionally 400'd on every page load.
++// Since these are fixed instruction text, not per-user data, they belong
++// inline rather than behind a network round-trip.
++const VAULT_PROMPTS = {
++  ops_general: 'You are the FinOps Branch Operations assistant. Help staff with day-to-day branch cash, AP/AR, client, and compliance questions. Be concise and specific to the Operations Suite (Cashiering, Service Requests, Client Inbox, Client Records, Portfolio Prep, Compliance).',
++  ops_cashiering: 'You are assisting with branch cashiering: daily cash drawer counts, teller transactions, and exception handling. Flag any variance or unresolved exception clearly and suggest the next reconciliation step.',
++  ops_requests: 'You are assisting with open service requests from clients and internal teams. Help triage by urgency/SLA, and suggest a clear next action or owner for each request.',
++  ops_inbox: 'You are assisting with the client inbox. Help draft professional, warm, concise client-service responses and flag any SLA-breach risk.',
++  ops_clients: 'You are assisting with client records: account details, relationship history, and required documentation. Be precise about which client fields are missing or need verification.',
++  ops_portfolio: 'You are assisting with portfolio prep: preparing account and relationship summaries ahead of client or management review. Keep responses structured and reference-ready.',
++  ops_compliance: 'You are assisting with branch compliance: policy exceptions, audit findings, and required remediation. Be precise about compliance status and cite the specific rule or control at issue.'
++};
++
+ async function getVaultPrompt(key) {
+-  try {
+-    const r = await fetch('/api/chat', {
+-      method: 'POST',
+-      headers: {'Content-Type':'application/json'},
+-      body: JSON.stringify({ key })
+-    });
+-    if (!r.ok) throw new Error(r.status);
+-    const d = await r.json();
+-    return d.system || d.prompt || '';
+-  } catch(e) {
+-    console.warn(`[Vault] "${key}" failed — continuing without system prompt.`);
+-    return '';
+-  }
++  return VAULT_PROMPTS[key] || '';
+ }
+ 
+ async function tsmAI(s,u,m){try{const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:s?(s+'\n\n'+u):u,maxTokens:m||1024})});if(!r.ok)throw new Error('Server '+r.status);const d=await r.json();return d.answer||'No response.';}catch(e){return'[AI Error] '+e.message;}}
+ </script>
+   <link rel="stylesheet" href="/shared/tsm-shared.css">
+   <script src="/shared/tsm-shared.js"></script>
+-<script src="./html/js/tsm-runtime-lock.js"></script>
+-<script src="./html/js/tsm-event-contract.js"></script>
+-<script src="./html/js/tsm-autonomy-layer.js"></script>
++<script src="/html/js/tsm-runtime-lock.js"></script>
++<script src="/html/js/tsm-event-contract.js"></script>
++<script src="/html/js/tsm-autonomy-layer.js"></script>
+ </head>
+ <body>
+ 
+diff --git a/html/finops-suite/finops-presentation.html b/html/finops-suite/finops-presentation.html
+index fd90b55..33aba99 100644
+--- a/html/finops-suite/finops-presentation.html
++++ b/html/finops-suite/finops-presentation.html
+@@ -177,9 +177,9 @@ footer p{font-family:var(--font);font-size:9px;color:var(--muted);letter-spacing
+ @media(max-width:1000px){.grid{grid-template-columns:repeat(2,1fr)}.crcr-domains{grid-template-columns:repeat(3,1fr)}.scenarios,.crcr-scenarios{grid-template-columns:1fr}.exam-tracker{grid-template-columns:1fr 1fr}}
+ @media(max-width:600px){.grid,.grid-3{grid-template-columns:1fr}.crcr-domains{grid-template-columns:repeat(2,1fr)}.exam-tracker{grid-template-columns:1fr}.nav-links{display:none}nav,section,.hero,.steps,.sec-hdr{padding-left:16px;padding-right:16px}.grid,.walklist,.scenarios,.crcr-scenarios,.crcr-domains,.exam-tracker,.crcr-banner{margin-left:16px;margin-right:16px}}
+ </style>
+-<script src="./html/js/tsm-runtime-lock.js"></script>
+-<script src="./html/js/tsm-event-contract.js"></script>
+-<script src="./html/js/tsm-autonomy-layer.js"></script>
++<script src="/html/js/tsm-runtime-lock.js"></script>
++<script src="/html/js/tsm-event-contract.js"></script>
++<script src="/html/js/tsm-autonomy-layer.js"></script>
+ </head>
+ <body>
+ 
+diff --git a/html/finops-suite/finops-presentation/index.html b/html/finops-suite/finops-presentation/index.html
+index 0573dc0..2f50806 100644
+--- a/html/finops-suite/finops-presentation/index.html
++++ b/html/finops-suite/finops-presentation/index.html
+@@ -177,9 +177,9 @@ footer p{font-family:var(--font);font-size:9px;color:var(--muted);letter-spacing
+ @media(max-width:1000px){.grid{grid-template-columns:repeat(2,1fr)}.crcr-domains{grid-template-columns:repeat(3,1fr)}.scenarios,.crcr-scenarios{grid-template-columns:1fr}.exam-tracker{grid-template-columns:1fr 1fr}}
+ @media(max-width:600px){.grid,.grid-3{grid-template-columns:1fr}.crcr-domains{grid-template-columns:repeat(2,1fr)}.exam-tracker{grid-template-columns:1fr}.nav-links{display:none}nav,section,.hero,.steps,.sec-hdr{padding-left:16px;padding-right:16px}.grid,.walklist,.scenarios,.crcr-scenarios,.crcr-domains,.exam-tracker,.crcr-banner{margin-left:16px;margin-right:16px}}
+ </style>
+-<script src="./html/js/tsm-runtime-lock.js"></script>
+-<script src="./html/js/tsm-event-contract.js"></script>
+-<script src="./html/js/tsm-autonomy-layer.js"></script>
++<script src="/html/js/tsm-runtime-lock.js"></script>
++<script src="/html/js/tsm-event-contract.js"></script>
++<script src="/html/js/tsm-autonomy-layer.js"></script>
+ </head>
+ <body>
+ 
+diff --git a/html/finops-suite/finops-scenarios.html b/html/finops-suite/finops-scenarios.html
+index da499a2..5afa8c7 100644
+--- a/html/finops-suite/finops-scenarios.html
++++ b/html/finops-suite/finops-scenarios.html
+@@ -119,9 +119,9 @@ body::before{content:'';position:fixed;top:0;right:0;width:600px;height:600px;ba
+ 
+ @media(max-width:600px){.scenarios{grid-template-columns:1fr}.poc-banner,.engine-banner{flex-direction:column}.float-toggle{display:none}}
+ </style>
+-<script src="./html/js/tsm-runtime-lock.js"></script>
+-<script src="./html/js/tsm-event-contract.js"></script>
+-<script src="./html/js/tsm-autonomy-layer.js"></script>
++<script src="/html/js/tsm-runtime-lock.js"></script>
++<script src="/html/js/tsm-event-contract.js"></script>
++<script src="/html/js/tsm-autonomy-layer.js"></script>
+ </head>
+ <body>
+ 
+diff --git a/html/finops-suite/finops-showcase-v1.html b/html/finops-suite/finops-showcase-v1.html
+index 6431e80..727d02a 100644
+--- a/html/finops-suite/finops-showcase-v1.html
++++ b/html/finops-suite/finops-showcase-v1.html
+@@ -569,9 +569,9 @@ console.log("TSM_UI: Direct Neural Link Established.");
+   <script src="/shared/tsm-shared.js"></script>
+ <script src="/config/tsm-client-key.js"></script>
+ <script src="js/rcm-relay-client.js"></script>
+-<script src="./html/js/tsm-runtime-lock.js"></script>
+-<script src="./html/js/tsm-event-contract.js"></script>
+-<script src="./html/js/tsm-autonomy-layer.js"></script>
++<script src="/html/js/tsm-runtime-lock.js"></script>
++<script src="/html/js/tsm-event-contract.js"></script>
++<script src="/html/js/tsm-autonomy-layer.js"></script>
+ </head>
+ <body>
+ 
+diff --git a/html/finops-suite/finops-showcase-v2.html b/html/finops-suite/finops-showcase-v2.html
+index 6493aa1..5e7d02e 100644
+--- a/html/finops-suite/finops-showcase-v2.html
++++ b/html/finops-suite/finops-showcase-v2.html
+@@ -169,9 +169,9 @@ body{font-family:var(--mono);background:var(--bg);color:var(--text);min-height:1
+ </style>
+   <link rel="stylesheet" href="/shared/tsm-shared.css">
+   <script src="/shared/tsm-shared.js"></script>
+-<script src="./html/js/tsm-runtime-lock.js"></script>
+-<script src="./html/js/tsm-event-contract.js"></script>
+-<script src="./html/js/tsm-autonomy-layer.js"></script>
++<script src="/html/js/tsm-runtime-lock.js"></script>
++<script src="/html/js/tsm-event-contract.js"></script>
++<script src="/html/js/tsm-autonomy-layer.js"></script>
+ </head>
+ <body>
+ 
+diff --git a/html/finops-suite/finops-showcase/index.html b/html/finops-suite/finops-showcase/index.html
+index a0b9595..b85808e 100644
+--- a/html/finops-suite/finops-showcase/index.html
++++ b/html/finops-suite/finops-showcase/index.html
+@@ -110,9 +110,9 @@ console.log("TSM_UI: Direct Neural Link Established.");
+ </script>
+   <link rel="stylesheet" href="/shared/tsm-shared.css">
+   <script src="/shared/tsm-shared.js"></script>
+-<script src="./html/js/tsm-runtime-lock.js"></script>
+-<script src="./html/js/tsm-event-contract.js"></script>
+-<script src="./html/js/tsm-autonomy-layer.js"></script>
++<script src="/html/js/tsm-runtime-lock.js"></script>
++<script src="/html/js/tsm-event-contract.js"></script>
++<script src="/html/js/tsm-autonomy-layer.js"></script>
+ </head>
+ <body>
+ <div class="save-toast" id="saveToast">✅ REPORT SAVED</div>
+diff --git a/html/finops-suite/finops-war-room.html b/html/finops-suite/finops-war-room.html
+index ced75ca..3667033 100644
+--- a/html/finops-suite/finops-war-room.html
++++ b/html/finops-suite/finops-war-room.html
+@@ -161,9 +161,9 @@ body::before{content:'';position:fixed;top:0;right:0;width:500px;height:500px;ba
+ .sb-dot{width:4px;height:4px;border-radius:50%;background:var(--blue);box-shadow:0 0 4px var(--blue)}
+ .sb-sep{color:var(--border)}
+ </style>
+-<script src="./html/js/tsm-runtime-lock.js"></script>
+-<script src="./html/js/tsm-event-contract.js"></script>
+-<script src="./html/js/tsm-autonomy-layer.js"></script>
++<script src="/html/js/tsm-runtime-lock.js"></script>
++<script src="/html/js/tsm-event-contract.js"></script>
++<script src="/html/js/tsm-autonomy-layer.js"></script>
+   <script src="/js/core/tsm-event-bus.js"></script>
+   <script src="/js/core/tsm-state.js"></script>
+   <script src="/js/core/tsm-mission-engine.js"></script>
+diff --git a/html/finops-suite/how-to-finops-updated.html b/html/finops-suite/how-to-finops-updated.html
+index 5b2bdc6..7a592c7 100644
+--- a/html/finops-suite/how-to-finops-updated.html
++++ b/html/finops-suite/how-to-finops-updated.html
+@@ -130,9 +130,9 @@ body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,
+ h2{font-size:1rem;font-weight:700;color:var(--text);margin:1.25rem 0 .6rem;letter-spacing:-.01em}
+ hr{border:none;border-top:1px solid var(--border);margin:1.5rem 0}
+ </style>
+-<script src="./html/js/tsm-runtime-lock.js"></script>
+-<script src="./html/js/tsm-event-contract.js"></script>
+-<script src="./html/js/tsm-autonomy-layer.js"></script>
++<script src="/html/js/tsm-runtime-lock.js"></script>
++<script src="/html/js/tsm-event-contract.js"></script>
++<script src="/html/js/tsm-autonomy-layer.js"></script>
+ </head>
+ <body>
+ 
+diff --git a/html/finops-suite/how-to-finops.html b/html/finops-suite/how-to-finops.html
+index b2ef37f..383a8bd 100644
+--- a/html/finops-suite/how-to-finops.html
++++ b/html/finops-suite/how-to-finops.html
+@@ -392,9 +392,9 @@
+ </style>
+   <link rel="stylesheet" href="/shared/tsm-shared.css">
+   <script src="/shared/tsm-shared.js"></script>
+-<script src="./html/js/tsm-runtime-lock.js"></script>
+-<script src="./html/js/tsm-event-contract.js"></script>
+-<script src="./html/js/tsm-autonomy-layer.js"></script>
++<script src="/html/js/tsm-runtime-lock.js"></script>
++<script src="/html/js/tsm-event-contract.js"></script>
++<script src="/html/js/tsm-autonomy-layer.js"></script>
+ </head>
+ <body>
+ 
+diff --git a/html/finops-suite/how-to.html b/html/finops-suite/how-to.html
+index 0f8bf60..a2aa53f 100644
+--- a/html/finops-suite/how-to.html
++++ b/html/finops-suite/how-to.html
+@@ -113,9 +113,9 @@ body{background:var(--bg);color:var(--text);font-family:var(--body);font-size:14
+ @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+ .live{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--green);animation:pulse 2s infinite;margin-right:.35rem}
+ </style>
+-<script src="./html/js/tsm-runtime-lock.js"></script>
+-<script src="./html/js/tsm-event-contract.js"></script>
+-<script src="./html/js/tsm-autonomy-layer.js"></script>
++<script src="/html/js/tsm-runtime-lock.js"></script>
++<script src="/html/js/tsm-event-contract.js"></script>
++<script src="/html/js/tsm-autonomy-layer.js"></script>
+ </head>
+ <body>
+ 
+diff --git a/html/finops-suite/staff-accountant-interview.html b/html/finops-suite/staff-accountant-interview.html
+index e57e702..85c3abe 100644
+--- a/html/finops-suite/staff-accountant-interview.html
++++ b/html/finops-suite/staff-accountant-interview.html
+@@ -1101,9 +1101,9 @@
+   select:focus { outline: none; border-color: var(--purple); }
+ 
+ </style>
+-<script src="./html/js/tsm-runtime-lock.js"></script>
+-<script src="./html/js/tsm-event-contract.js"></script>
+-<script src="./html/js/tsm-autonomy-layer.js"></script>
++<script src="/html/js/tsm-runtime-lock.js"></script>
++<script src="/html/js/tsm-event-contract.js"></script>
++<script src="/html/js/tsm-autonomy-layer.js"></script>
+ </head>
+ <body>
+ 
+diff --git a/html/finops-suite/study-guide.html b/html/finops-suite/study-guide.html
+index 3a01b44..ec63fe7 100644
+--- a/html/finops-suite/study-guide.html
++++ b/html/finops-suite/study-guide.html
+@@ -110,9 +110,9 @@ body{background:var(--bg);color:var(--text);font-family:Inter,system-ui,Arial;fo
+ 
+ @media(max-width:700px){.two-col{grid-template-columns:1fr}.step-flow{flex-direction:column}.step{border-right:1px solid var(--border);border-bottom:none}.step:last-child{border-bottom:1px solid var(--border)}.step::after{content:"↓";right:50%;bottom:-14px;top:auto;transform:translateX(50%)}}
+ </style>
+-<script src="./html/js/tsm-runtime-lock.js"></script>
+-<script src="./html/js/tsm-event-contract.js"></script>
+-<script src="./html/js/tsm-autonomy-layer.js"></script>
++<script src="/html/js/tsm-runtime-lock.js"></script>
++<script src="/html/js/tsm-event-contract.js"></script>
++<script src="/html/js/tsm-autonomy-layer.js"></script>
+ </head>
+ <body>
+ 
+diff --git a/html/finops-suite/suite-index.html b/html/finops-suite/suite-index.html
+index 1bd9658..8a350af 100644
+--- a/html/finops-suite/suite-index.html
++++ b/html/finops-suite/suite-index.html
+@@ -1,6 +1,6 @@
+-<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Suite Index</title><script src="./html/js/tsm-runtime-lock.js"></script>
+-<script src="./html/js/tsm-event-contract.js"></script>
+-<script src="./html/js/tsm-autonomy-layer.js"></script>
++<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Suite Index</title><script src="/html/js/tsm-runtime-lock.js"></script>
++<script src="/html/js/tsm-event-contract.js"></script>
++<script src="/html/js/tsm-autonomy-layer.js"></script>
+ </head>
+ <body style="font-family:monospace;background:#050a10;color:#e2e8f0;padding:20px">
+ <h2>Suite Navigation</h2><a href="finops-operations.html">FinOps Operations</a> <a href="finops-main-strategist.html">FinOps Main Strategist</a>
+diff --git a/html/finops-suite/tax.html b/html/finops-suite/tax.html
+index 33e3f7f..31adb57 100644
+--- a/html/finops-suite/tax.html
++++ b/html/finops-suite/tax.html
+@@ -315,9 +315,9 @@ async function tsmAI(s,u,m){try{const r=await fetch('/api/chat',{method:'POST',h
+ </script>
+   <link rel="stylesheet" href="/shared/tsm-shared.css">
+   <script src="/shared/tsm-shared.js"></script>
+-<script src="./html/js/tsm-runtime-lock.js"></script>
+-<script src="./html/js/tsm-event-contract.js"></script>
+-<script src="./html/js/tsm-autonomy-layer.js"></script>
++<script src="/html/js/tsm-runtime-lock.js"></script>
++<script src="/html/js/tsm-event-contract.js"></script>
++<script src="/html/js/tsm-autonomy-layer.js"></script>
+ </head>
+ <body>
+ 
+diff --git a/html/finops-suite/tsm-finops-pitch.html b/html/finops-suite/tsm-finops-pitch.html
+index 8787c9c..d7c22ed 100644
+--- a/html/finops-suite/tsm-finops-pitch.html
++++ b/html/finops-suite/tsm-finops-pitch.html
+@@ -380,9 +380,9 @@ p strong{color:var(--text);font-weight:500}
+   .stat-grid{grid-template-columns:1fr 1fr}
+ }
+ </style>
+-<script src="./html/js/tsm-runtime-lock.js"></script>
+-<script src="./html/js/tsm-event-contract.js"></script>
+-<script src="./html/js/tsm-autonomy-layer.js"></script>
++<script src="/html/js/tsm-runtime-lock.js"></script>
++<script src="/html/js/tsm-event-contract.js"></script>
++<script src="/html/js/tsm-autonomy-layer.js"></script>
+ </head>
+ <body>
+ 
+diff --git a/html/finops-suite/tsm-presentation.html b/html/finops-suite/tsm-presentation.html
+index 82364f1..972d916 100644
+--- a/html/finops-suite/tsm-presentation.html
++++ b/html/finops-suite/tsm-presentation.html
+@@ -190,9 +190,9 @@ html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--chalk);fo
+ </style>
+   <link rel="stylesheet" href="/shared/tsm-shared.css">
+   <script src="/shared/tsm-shared.js"></script>
+-<script src="./html/js/tsm-runtime-lock.js"></script>
+-<script src="./html/js/tsm-event-contract.js"></script>
+-<script src="./html/js/tsm-autonomy-layer.js"></script>
++<script src="/html/js/tsm-runtime-lock.js"></script>
++<script src="/html/js/tsm-event-contract.js"></script>
++<script src="/html/js/tsm-autonomy-layer.js"></script>
+ </head>
+ <body>
+ 
+diff --git a/html/finops-suite/wip-billing/index.html b/html/finops-suite/wip-billing/index.html
+index 8771289..4f2e314 100644
+--- a/html/finops-suite/wip-billing/index.html
++++ b/html/finops-suite/wip-billing/index.html
+@@ -80,9 +80,9 @@ button{
+ }
+ 
+ </style>
+-<script src="./html/js/tsm-runtime-lock.js"></script>
+-<script src="./html/js/tsm-event-contract.js"></script>
+-<script src="./html/js/tsm-autonomy-layer.js"></script>
++<script src="/html/js/tsm-runtime-lock.js"></script>
++<script src="/html/js/tsm-event-contract.js"></script>
++<script src="/html/js/tsm-autonomy-layer.js"></script>
+ </head>
+ 
+ <body>
+diff --git a/html/finops-suite/wip/index.html b/html/finops-suite/wip/index.html
+index ac00f64..6aba91b 100644
+--- a/html/finops-suite/wip/index.html
++++ b/html/finops-suite/wip/index.html
+@@ -18,9 +18,9 @@ pre{white-space:pre-wrap;line-height:1.55;background:#050c13;border:1px solid rg
+ .actionbar{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:99;background:#06111b;border:1px solid rgba(0,255,198,.3);border-radius:16px;padding:10px;display:flex;gap:8px;flex-wrap:wrap}
+ @media(max-width:900px){.kpis,.two{grid-template-columns:1fr}.actionbar{left:12px;right:12px;transform:none}}
+ </style>
+-<script src="./html/js/tsm-runtime-lock.js"></script>
+-<script src="./html/js/tsm-event-contract.js"></script>
+-<script src="./html/js/tsm-autonomy-layer.js"></script>
++<script src="/html/js/tsm-runtime-lock.js"></script>
++<script src="/html/js/tsm-event-contract.js"></script>
++<script src="/html/js/tsm-autonomy-layer.js"></script>
+ </head>
+ <body>
+ <header>
+diff --git a/html/finops-suite/zero-trust.html b/html/finops-suite/zero-trust.html
+index df39412..298a6a4 100644
+--- a/html/finops-suite/zero-trust.html
++++ b/html/finops-suite/zero-trust.html
+@@ -281,9 +281,9 @@ async function tsmAI(s,u,m){try{const r=await fetch('/api/chat',{method:'POST',h
+ </script>
+   <link rel="stylesheet" href="/shared/tsm-shared.css">
+   <script src="/shared/tsm-shared.js"></script>
+-<script src="./html/js/tsm-runtime-lock.js"></script>
+-<script src="./html/js/tsm-event-contract.js"></script>
+-<script src="./html/js/tsm-autonomy-layer.js"></script>
++<script src="/html/js/tsm-runtime-lock.js"></script>
++<script src="/html/js/tsm-event-contract.js"></script>
++<script src="/html/js/tsm-autonomy-layer.js"></script>
+ </head>
+ <body>
+ 
+-- 
+2.43.0

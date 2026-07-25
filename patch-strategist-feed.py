@@ -379,7 +379,7 @@ async function efGroq(apiKey, system, user) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
     body: JSON.stringify({
-      model: 'llama-3.3-70b-versatile',
+      model: 'openai/gpt-oss-120b',
       max_tokens: 700,
       messages: [
         { role: 'system', content: system },

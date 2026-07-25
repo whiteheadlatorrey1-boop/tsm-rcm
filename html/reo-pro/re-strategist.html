@@ -221,7 +221,11 @@ body::before{content:'';position:fixed;inset:0;
 </style>
   <script src="/js/core/tsm-event-bus.js"></script>
   <script src="/js/core/tsm-state.js"></script>
+  <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
+  <script src="/html/shared/runtime/mission/mission-model.js"></script>
+  <script src="/html/shared/runtime/mission/mission-store.js"></script>
   <script src="/js/core/tsm-mission-engine.js"></script>
+  <script src="/html/js/tsm-bnca-exposure-engine.js"></script>
   <script src="/js/core/tsm-auto-pipeline.js"></script>
 </head>
 <body>
@@ -624,8 +628,8 @@ async function generateAutoBrief() {
   }
 
   const prompt = context
-    ? `Based on this war room intelligence:\n\n${context}\n\nGenerate a STRATEGIC BRIEF covering: (1) Portfolio Health, (2) Top 3 Critical Issues, (3) Immediate Actions This Week, (4) 30-Day Priorities, (5) Revenue Impact Analysis. Use ► headers.\n\nFormat your ENTIRE response exactly as follows: start with the literal line ===BRIEF=== followed by the full brief above, then a new line with the literal ===JSON=== followed by a single JSON object (no markdown fences) with this exact shape:\n{"confidence":0-100,"dataSources":[{"name":"...","weight":"HIGH|MED|LOW"}],"reasoning":[{"key":"...","val":"..."}],"recommendedActions":[{"text":"...","owner":"..."}],"noActionRevLoss":"$amount","actionRevLoss":"$amount","recoveryTime":"e.g. 30 Days"}`
-    : `Generate a COMPREHENSIVE STRATEGIC BRIEF for a real estate and mortgage operation. Current conditions: 22 loans, $18.4M pipeline, 68% pull-through, 2 TRID violations, $1,247 cure needed, 6 REO assets, Phoenix metro market. Cover: portfolio health, critical issues, immediate actions, 30-day priorities, revenue impact. Use ► headers.\n\nFormat your ENTIRE response exactly as follows: start with the literal line ===BRIEF=== followed by the full brief above, then a new line with the literal ===JSON=== followed by a single JSON object (no markdown fences) with this exact shape:\n{"confidence":0-100,"dataSources":[{"name":"...","weight":"HIGH|MED|LOW"}],"reasoning":[{"key":"...","val":"..."}],"recommendedActions":[{"text":"...","owner":"..."}],"noActionRevLoss":"$amount","actionRevLoss":"$amount","recoveryTime":"e.g. 30 Days"}`;
+    ? `Based on this war room intelligence:\n\n${context}\n\nGenerate a STRATEGIC BRIEF covering: (1) Portfolio Health, (2) Top 3 Critical Issues, (3) Immediate Actions This Week, (4) 30-Day Priorities, (5) Revenue Impact Analysis. Use ► headers.\n\nFormat your ENTIRE response exactly as follows: start with the literal line ===BRIEF=== followed by the full brief above, then a new line with the literal ===JSON=== followed by a single JSON object (no markdown fences) with this exact shape:\n{"confidence":0-100,"dataSources":[{"name":"...","weight":"HIGH|MED|LOW"}],"reasoning":[{"key":"...","val":"..."}],"recommendedActions":[{"text":"...","owner":"..."}]}`
+    : `Generate a COMPREHENSIVE STRATEGIC BRIEF for a real estate and mortgage operation. Current conditions: 22 loans, $18.4M pipeline, 68% pull-through, 2 TRID violations, $1,247 cure needed, 6 REO assets, Phoenix metro market. Cover: portfolio health, critical issues, immediate actions, 30-day priorities, revenue impact. Use ► headers.\n\nFormat your ENTIRE response exactly as follows: start with the literal line ===BRIEF=== followed by the full brief above, then a new line with the literal ===JSON=== followed by a single JSON object (no markdown fences) with this exact shape:\n{"confidence":0-100,"dataSources":[{"name":"...","weight":"HIGH|MED|LOW"}],"reasoning":[{"key":"...","val":"..."}],"recommendedActions":[{"text":"...","owner":"..."}]}`;
 
   reXPResetExplain();
   try {
@@ -850,6 +854,107 @@ function escalateToExec(silent) {
     localStorage.setItem('TSM_RE_WAR_RELAY', JSON.stringify(payload));
     sessionStorage.setItem('TSM_RE_WAR_RELAY', JSON.stringify(payload));
     localStorage.setItem('tsm_re_strat_payload', JSON.stringify(payload));
+
+    // ── Phase 2: Mission Core creation ──
+    try {
+      if (window.TSMMissionModel && window.TSMMissionStore) {
+        function reMissionParseExposure(str){
+          if (!str) return 0;
+          const nums = String(str).match(/[\d,]+(?:\.\d+)?/g);
+          if (!nums) return 0;
+          const mult = /m\b/i.test(str) ? 1000000 : (/k\b/i.test(str) ? 1000 : 1);
+          return Math.round(parseFloat(nums[0].replace(/,/g,'')) * mult);
+        }
+        const reMissionExposure = reMissionParseExposure(payload.kpis && payload.kpis.dollarRisk);
+        const reMissionPriority = reMissionExposure >= 2000000 ? 'Critical'
+          : reMissionExposure >= 500000 ? 'High'
+          : reMissionExposure >= 100000 ? 'Medium'
+          : 'normal';
+        const mission = window.TSMMissionModel.createMission({
+          vertical: 'realestate',
+          tenantId: 'default',
+          client: payload.reportTitle || payload.docName || null,
+          classification: {
+            summary: payload.fullBrief || payload.narrative || payload.summary || '',
+            source: 'RE Strategist'
+          },
+          workflow: {
+            assignedTo: null,
+            queue: null,
+            priority: reMissionPriority,
+            sla: null
+          },
+          actor: 're-strategist'
+        });
+        window.TSMMissionStore.saveMission(mission);
+      } else {
+        console.warn('Mission Core not loaded — skipping mission creation, RE relay writes already succeeded.');
+      }
+    } catch (missionErr) {
+      console.warn('Mission Core creation failed (non-fatal, RE relay already written):', missionErr);
+    }
+
+    // ── SENTINEL PUSH ────────────────────────────────────────────────
+    // Real numbers only: dollarRisk/issueCount/pullThrough/pipeline are
+    // the same KPIs already rendered on this page from real strategist
+    // runs, not invented for Sentinel.
+    try {
+      function reParseExposureNumber(str){
+        if (!str) return 0;
+        const nums = String(str).match(/[\d,]+(?:\.\d+)?/g);
+        if (!nums) return 0;
+        const mult = /m\b/i.test(str) ? 1000000 : (/k\b/i.test(str) ? 1000 : 1);
+        return Math.round(parseFloat(nums[0].replace(/,/g,'')) * mult);
+      }
+      function reSeverityForExposure(n){
+        if (n >= 2000000) return 'CRIT';
+        if (n >= 500000) return 'HIGH';
+        if (n >= 100000) return 'MED';
+        return 'LOW';
+      }
+      const reExposureNum = reParseExposureNumber(payload.kpis.dollarRisk);
+      const reIssueCount = parseInt(payload.kpis.issueCount) || 0;
+      const reAnomalies = [{
+        id: 're-strat-' + Date.now(),
+        title: (payload.reportTitle || 'RE Strategic Analysis'),
+        severity: reSeverityForExposure(reExposureNum),
+        exposure: reExposureNum,
+        confidence: Math.max(50, 95 - reIssueCount * 5),
+        rootCause: reIssueCount + ' open issue(s) flagged across the strategist run, pull-through ' + (payload.kpis.pullThrough || '\u2014') + '.',
+        recommendedAction: 'Review the ' + (payload.stratModulesRun || 0) + '-module strategist brief and route to re-exec-portal.html for executive sign-off.'
+      }];
+      const reSentinelKey = 'TSM_REALESTATE_STRATEGIST_RELAY';
+      const reSentinelExisting = JSON.parse(localStorage.getItem(reSentinelKey) || 'null') || {};
+      reSentinelExisting.anomalies = reAnomalies;
+      reSentinelExisting.generatedAt = new Date().toISOString();
+      localStorage.setItem(reSentinelKey, JSON.stringify(reSentinelExisting));
+      window.dispatchEvent(new CustomEvent('TSM_SENTINEL_REFRESH'));
+
+      // ── COLLECTIVE SIGNAL PUSH ────────────────────────────────────
+      // Same real signals the Sentinel push just used above: reExposureNum,
+      // reSeverityForExposure, reIssueCount — nothing new invented here.
+      try {
+        const reCsRisk = reSeverityForExposure(reExposureNum);
+        fetch('/api/collective/signal', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            vertical: 'realestate',
+            warRoom: 'RE Strategist',
+            bnca: (payload.reportContent || '').slice(0, 400) || 'RE strategist brief complete.',
+            confidence: Math.max(50, 95 - reIssueCount * 5),
+            riskLevel: reCsRisk,
+            topIssue: (payload.reportTitle || 'RE Strategic Analysis') + ' \u2014 ' + reIssueCount + ' open issue(s), pull-through ' + (payload.kpis.pullThrough || '\u2014'),
+            ownerLanes: ['RE Strategist', 'Executive Portal'],
+            hitlRequired: reCsRisk === 'CRIT' || reCsRisk === 'HIGH',
+            actions: ['Review ' + (payload.stratModulesRun || 0) + '-module strategist brief', 'Route to re-exec-portal.html for sign-off'],
+            source: window.location.pathname
+          })
+        }).catch(()=>{});
+      } catch(cse) { console.warn('[collective-signal] re strategist push error:', cse); }
+      // ── END COLLECTIVE SIGNAL PUSH ─────────────────────────────────
+    } catch(e) { console.warn('[sentinel-push] re error:', e); }
+    // ── END SENTINEL PUSH ───────────────────────────────────────────
     window.location.href = 're-exec-portal.html';
   } catch(e) {
     alert('Payload saved. Open re-exec-portal.html to continue.');
@@ -908,9 +1013,39 @@ function reXPRenderExplain(obj){
   document.getElementById('reXPActions').innerHTML=actions.length
     ?actions.map(a=>`<div class="tsm-action" style="background:rgba(167,139,250,.05);border:1px solid rgba(167,139,250,.2)"><span class="tsm-owner" style="background:rgba(167,139,250,.12);color:var(--acc)">${a.owner}</span><span class="tsm-action-text">${a.text}</span></div>`).join('')
     :'<div style="opacity:.4;font-size:.63rem">No actions returned.</div>';
-  if(obj.noActionRevLoss) document.getElementById('reXPDeltaNo').textContent=obj.noActionRevLoss;
-  if(obj.actionRevLoss) document.getElementById('reXPDeltaAct').textContent=obj.actionRevLoss;
-  if(obj.recoveryTime) document.getElementById('reXPRecovery').textContent='Est. recovery: '+obj.recoveryTime;
+  // Deterministic exposure impact — self-contained (no reliance on functions
+  // declared later in this file) to avoid unsafe hoisting.
+  try {
+    if (window.TSMBNCAExposureEngine) {
+      function reXPParseExposureLow(str){
+        if (!str) return 0;
+        const nums = String(str).match(/[\d,]+(?:\.\d+)?/g);
+        if (!nums || !nums.length) return 0;
+        const mult = /m\b/i.test(str) ? 1000000 : (/k\b/i.test(str) ? 1000 : 1);
+        return Math.round(parseFloat(nums[0].replace(/,/g,'')) * mult);
+      }
+      function reXPSeverityForExposure(n){
+        if (n >= 2000000) return 'CRIT';
+        if (n >= 500000) return 'HIGH';
+        if (n >= 100000) return 'MED';
+        return 'LOW';
+      }
+      const reXPDollarRisk = document.getElementById('dollarRisk') ? document.getElementById('dollarRisk').textContent : '';
+      const reXPBaseExposure = reXPParseExposureLow(reXPDollarRisk);
+      const reXPSeverity = reXPSeverityForExposure(reXPBaseExposure);
+      const reXPConf = Number.isFinite(obj.confidence) ? obj.confidence : 70;
+      const reXPImpact = window.TSMBNCAExposureEngine.project({
+        baseExposure: reXPBaseExposure,
+        severity: reXPSeverity,
+        confidence: reXPConf,
+        daysUntilDeadline: 0 // no independent deadline signal for this vertical yet
+      });
+      const fmt = n => '$' + Math.round(n).toLocaleString('en-US');
+      document.getElementById('reXPDeltaNo').textContent = fmt(reXPImpact.ifIgnored.exposure);
+      document.getElementById('reXPDeltaAct').textContent = fmt(reXPImpact.ifActed.exposure);
+      document.getElementById('reXPRecovery').textContent = reXPImpact.urgencyWindow + ' \u00b7 ' + reXPImpact.methodology;
+    }
+  } catch(dee) { console.warn('[bnca-exposure-engine] re render error:', dee); }
 }
 function reXPParseExplain(raw){
   const briefMatch = raw.match(/===BRIEF===\s*([\s\S]*?)(?:===JSON===|$)/);
@@ -938,10 +1073,11 @@ function reXPParseExplain(raw){
   } catch(e) { console.warn('[TSM AutoRun Strategist]', e); }
 })();
 </script>
-  <script src="./tsm-kernel-upgrade.js"></script>
+  <script src="/js/core/tsm-kernel-upgrade.js"></script>
 
 <div id="tsm-chain-bar" style="position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#040c12;border-top:1px solid #0d2233;display:flex;align-items:center;height:32px;padding:0 16px;font-family:'IBM Plex Mono',monospace;font-size:10px;"><span style="color:#3a5a70;margin-right:12px;font-size:9px;">TSM CHAIN</span><a href="/html/reo-pro/re-war-room.html" style="color:#94a3b8;border:1px solid #1a3a50;padding:3px 10px;border-radius:3px;text-decoration:none;margin-right:6px;font-size:9px;">&#9675; WAR ROOM</a><span style="color:#1a3a50;margin-right:6px;">--&gt;</span><a href="#" style="color:var(--amber, #ffab00);background:rgba(255,255,255,.05);border:1px solid var(--amber, #ffab00)55;padding:3px 10px;border-radius:3px;text-decoration:none;margin-right:6px;font-size:9px;">&#9679; STRATEGIST</a><span style="color:#1a3a50;margin-right:6px;">--&gt;</span><a href="/html/reo-pro/re-exec-portal.html" style="color:#94a3b8;border:1px solid #1a3a50;padding:3px 10px;border-radius:3px;text-decoration:none;margin-right:6px;font-size:9px;">&#9675; EXEC PORTAL</a><span style="color:#1a3a50;margin-left:auto;font-size:9px;">REAL ESTATE</span></div>
   <script src="/shared/tsm-exec-kit-producer.js"></script>
+  <script src="/html/core/tsm-runtime.js"></script>
 </body>
 </html>
 
@@ -950,7 +1086,7 @@ window.TSM_AUTONOMY_STANDARDIZED = true;
 </script>
 
 <!-- TSM ENFORCER BOOT -->
-<script src="../../core/tsm-enforcer.js"></script>
+<script src="/html/core/tsm-enforcer.js"></script>
 
 
 // ===== TSM WAR ROOM SCOPED RELAY FIX =====
@@ -988,5 +1124,4 @@ function tsmWriteScopedStrat(vertical, missionId){
 
 
 <!-- TSM KERNEL ENGINE -->
-<script src="../../core/tsm-kernel.js"></script>
-
+<script src="/html/core/tsm-kernel.js"></script>

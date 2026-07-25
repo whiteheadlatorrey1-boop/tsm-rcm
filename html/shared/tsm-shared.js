@@ -22,7 +22,7 @@ window.TSM = {
 };
 
 // Global Groq caller
-window.callGroq = async function(messages, onStream, model='llama-3.3-70b-versatile'){
+window.callGroq = async function(messages, onStream, model='openai/gpt-oss-120b'){
   const key = document.querySelector('[id*=groq],[id*=api-key]')?.value
     || localStorage.getItem('tsm_groq_key') || '';
   if(!key) throw new Error('No Groq API key');

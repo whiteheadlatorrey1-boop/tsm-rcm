@@ -3,7 +3,7 @@ const path = require('path');
 const Groq = require('groq-sdk');
 
 // Ensure the client loads with the system shell environment key
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY, maxRetries: 5 });
 
 /**
  * High-performance inference engine to convert unstructured medical operational logs 

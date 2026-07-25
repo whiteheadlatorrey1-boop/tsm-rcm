@@ -345,7 +345,21 @@
 
             // Only package if we have at least engine 1 output
             if (outputs[1] || data.e1) {
-              packageMission(docTxt, docTp, outputs);
+              const mission = packageMission(docTxt, docTp, outputs);
+
+              // Signal completion on the bus for any other vertical/consumer
+              // that wants to react (mirrors bpo-engine.js's BPO_ANALYSIS_COMPLETE).
+              // missionId is included so Strategy 3's own listener below skips
+              // re-processing this same payload (prevents an emit/on loop).
+              if (global.TSMBus && mission) {
+                global.TSMBus.emit('WARROOM_COMPLETE', {
+                  sector:        SECTOR,
+                  missionId:     mission.id,
+                  docText:       docTxt,
+                  docType:       docTp,
+                  engineOutputs: outputs,
+                });
+              }
             }
           }
         } catch (err) {
@@ -367,8 +381,10 @@
     };
 
     // Strategy 3: listen on TSMBus for any vertical triggering analysis
+    // (event name is a plain string, matching this codebase's convention —
+    // there is no TSMBus.EVENTS constants map anywhere in the platform)
     if (global.TSMBus) {
-      global.TSMBus.on(global.TSMBus.EVENTS.WARROOM_COMPLETE, (payload) => {
+      global.TSMBus.on('WARROOM_COMPLETE', (payload) => {
         if (payload.sector === SECTOR && !payload.missionId) {
           packageMission(
             payload.docText  || '',

@@ -9,7 +9,7 @@
  *  4. Polls localStorage for relay completion key
  *  5. Auto-checks war-room-prep checklist boxes as each stage completes
  *
- * Drop into html/ and add one script tag to war-room-prep.html:
+ * Drop into html/war-rooms/ and add one script tag to war-room-prep.html:
  *   <script src="/tsm-demo-runner.js"></script>
  */
 
@@ -143,7 +143,7 @@
       }
 
       // Check exec portal confirmation
-      const execRaw = localStorage.getItem('TSM_EXEC_CONFIRMED');
+      const execRaw = (function(){var __v = localStorage.getItem("TSM_EXEC_CONFIRMED"); if (__v !== null) return __v; var __prefixes = ["TSM_EXEC_CONFIRMED_construction-suite_", "TSM_EXEC_CONFIRMED_finops-suite_", "TSM_EXEC_CONFIRMED_healthcare_", "TSM_EXEC_CONFIRMED_legal-pro_", "TSM_EXEC_CONFIRMED_tsm-insurance_"]; for (var __p = 0; __p < __prefixes.length; __p++) { for (var __i = 0; __i < localStorage.length; __i++) { var __k = localStorage.key(__i); if (__k && __k.indexOf(__prefixes[__p]) === 0) { return localStorage.getItem(__k); } } } return null; })();
       const execData = _safeJson(execRaw);
       if (execData && execData.ts > (Date.now() - TIMEOUT)) {
         _checkBoxes(vertical, [5]);

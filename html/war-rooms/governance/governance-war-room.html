@@ -1,4 +1,5 @@
 <!DOCTYPE html><html lang="en"><head>
+    <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>TSM Governance & Compliance</title>
 <style>
@@ -34,7 +35,8 @@ td{padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text)}
 .btn{border:1px solid;font-family:inherit;font-size:9px;letter-spacing:1.5px;cursor:pointer;padding:7px 16px;transition:.2s;margin-right:8px}
 .btn-violet{background:var(--violet);border-color:var(--violet);color:#000;font-weight:700}
 .btn-gold{background:var(--gold);border-color:var(--gold);color:#000;font-weight:700}
-</style></head><body>
+
+</head><body>
 <div class="nav">
   <div class="nav-brand">TSM SHELL // GOVERNANCE</div>
   <div class="nav-right"><span id="navStatus">COMPLIANCE: MONITORING</span><span class="nav-clock" id="navClock">--:--:--</span></div>
@@ -45,6 +47,10 @@ td{padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text)}
     <div style="color:var(--text-dim);font-size:10px;margin-top:2px">Role-based security · Audit trail · Risk register · AI compliance advisor</div>
   </div>
   <div class="kpi-grid" id="kpiGrid"></div>
+  <div class="section" id="liveDataSection">
+    <div class="section-head"><span>LIVE DATA</span></div>
+    <div class="section-body" id="liveDataBody"></div>
+  </div>
   <div class="gov-grid">
     <div class="section">
       <div class="section-head"><span>COMPLIANCE DASHBOARD</span></div>
@@ -71,12 +77,13 @@ td{padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text)}
   </div>
 </div>
 <script src="/runtime/kernel/canonical-core.js"></script>
+<script src="/war-rooms/shared/tsm-live-data.js"></script>
 <script>
 (function(){
   function tick(){ document.getElementById('navClock').textContent=new Date().toLocaleTimeString(); }
   setInterval(tick,1000); tick();
 
-  const CONTROLS=[
+  let CONTROLS=[
     {id:'SOX-001',name:'Segregation of Duties',framework:'SOX',status:'PASS',last_tested:'2026-06-28'},
     {id:'SOX-002',name:'Financial Close Controls',framework:'SOX',status:'PASS',last_tested:'2026-06-30'},
     {id:'HIPAA-001',name:'PHI Access Controls',framework:'HIPAA',status:'REVIEW',last_tested:'2026-06-15'},
@@ -153,16 +160,81 @@ td{padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text)}
     out.className='ai-output loading'; out.textContent='Running compliance analysis...';
     try{
       const res=await fetch('/api/governance/query',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({controls:CONTROLS,risks:RISKS,audit:AUDIT,kpis:computeKpis(),maxTokens:1200})});
-      const d=await res.json(); out.className='ai-output'; out.textContent=d.answer||d.output||'No analysis returned.';
+      const d=await res.json(); out.className='ai-output'; out.textContent=d.answer||d.output||d.error||'No analysis returned.';
     } catch(e){ out.className='ai-output'; out.textContent=`Analysis failed: ${e.message}`; }
+  }
+
+  /** Explainability feed for the risk register. Two real signal types:
+   *  control test failures/reviews (using each control's actual last-tested
+   *  status against its framework) and open/mitigating enterprise risks
+   *  (using the same severity score the risk table already renders). */
+  function getExplainItems(){
+    const items=[];
+
+    CONTROLS.filter(c=>c.status==='FAIL'||c.status==='REVIEW').forEach(c=>{
+      const severity = c.status==='FAIL' ? 'high' : 'med';
+      items.push({
+        id: 'ctrl-'+c.id,
+        claim: `${c.id} ("${c.name}", ${c.framework}) is ${c.status} as of ${c.last_tested}`,
+        confidence: 92,
+        severity,
+        impact: c.status==='FAIL' ? `${c.framework} control failure — audit and regulatory exposure` : `${c.framework} control pending re-test — status unconfirmed`,
+        rationale: `Control ${c.id} under the ${c.framework} framework last tested ${c.last_tested} with result ${c.status}. ${c.status==='FAIL' ? 'A failed control is a direct compliance gap until remediated and re-tested.' : 'A review-status control has not yet cleared its test cycle.'}`,
+        sources: [`Governance control register ${c.id}`],
+        dataPoints: [
+          { label: 'Framework', value: c.framework },
+          { label: 'Status', value: c.status },
+          { label: 'Last tested', value: c.last_tested }
+        ]
+      });
+    });
+
+    RISKS.filter(r=>r.status==='OPEN'||r.status==='MITIGATING').forEach(r=>{
+      const severity = r.severity>=75 ? 'high' : (r.severity>=50 ? 'med' : 'low');
+      items.push({
+        id: 'risk-'+r.id,
+        claim: `${r.id} ("${r.name}") scored ${r.severity}/100 — ${r.status}, owned by ${r.owner}`,
+        confidence: 85,
+        severity,
+        impact: r.severity>=75 ? 'High-severity risk — active exposure until mitigated' : 'Moderate exposure being tracked',
+        rationale: `${r.name} (${r.id}) carries a severity score of ${r.severity}/100 and is currently ${r.status.toLowerCase()}, owned by ${r.owner}.`,
+        sources: [`Governance risk register ${r.id}`],
+        dataPoints: [
+          { label: 'Severity', value: r.severity+'/100' },
+          { label: 'Status', value: r.status },
+          { label: 'Owner', value: r.owner }
+        ]
+      });
+    });
+
+    const rank={high:0,med:1,low:2};
+    return items.sort((a,b)=>(rank[a.severity]??3)-(rank[b.severity]??3));
   }
 
   document.getElementById('btnAnalyze').addEventListener('click',runAnalysis);
   document.getElementById('btnRelay').addEventListener('click',()=>{
-    try{ localStorage.setItem('TSM_GOV_RELAY',JSON.stringify({vertical:'governance',controls:CONTROLS,risks:RISKS,kpis:computeKpis(),timestamp:new Date().toISOString()})); } catch(e){}
+    try{ TSM.relay.write("GOVERNANCE",{vertical:'governance',controls:CONTROLS,risks:RISKS,kpis:computeKpis(),explain:getExplainItems(),ai_analysis:document.getElementById('aiOutput').textContent,timestamp:new Date().toISOString()}); } catch(e){}
     document.getElementById('navStatus').textContent='COMPLIANCE: RELAYED';
+    setTimeout(() => { window.location.href = '/html/war-rooms/governance/governance-executive-portal.html'; }, 500);
   });
 
-  renderKpis(); renderCompliance(); renderRisks(); renderAudit();
+  async function hydrateAndRender(){
+    if (window.TSMLiveData) {
+      const model = { controls: CONTROLS };
+      const liveInfo = await window.TSMLiveData.hydrateModel('governance', model, 'controls');
+      if (liveInfo.source === 'live') CONTROLS = model.controls;
+
+      window.TSMLiveData.mountWidget(document.getElementById('liveDataBody'), {
+        domain: 'governance',
+        label: 'LIVE DATA (CONTROLS) — RISKS & AUDIT TRAIL REMAIN SAMPLE DATA',
+        onChange: async () => { await hydrateAndRender(); }
+      });
+    }
+    renderKpis(); renderCompliance(); renderRisks(); renderAudit();
+  }
+
+  hydrateAndRender();
 })();
-</script></body></html>
+</script>
+  <script src="/html/core/tsm-runtime.js"></script>
+</body></html>

@@ -16,6 +16,7 @@
  *   DOCUMENT_IMPORTED        → { vertical, relay }
  *   WAR_ROOM_READY           → { vertical, relay }
  *   AI_ANALYSIS_COMPLETE     → { vertical, relay }
+ *   WARROOM_COMPLETE         → { sector, missionId, docText, docType?, engineOutputs }
  *   WARROOM_FINDINGS_READY   → { id, analysis, mission }
  *   STRATEGIST_READY         → { id, mission }
  *   EXECUTIVE_APPROVED       → { id, vertical, decision }
@@ -35,6 +36,18 @@
 
 (function (global) {
   'use strict';
+
+  // ── Idempotency guard ─────────────────────────────────────────────────────
+  // Several pages load this script 2-3 times (duplicate <script> tags from
+  // different eras of the codebase). Without this guard, every reload
+  // replaced window.TSMBus with a brand-new object, silently discarding
+  // every listener registered before it — including analyzers, exception
+  // queues, and anything else wired up earlier in page load. Now a repeat
+  // load is a harmless no-op that keeps the original bus intact.
+  if (global.TSMBus && global.TSMBus.__tsmBusReady) {
+    console.info('[TSMBus] Already initialized — skipping duplicate load.');
+    return;
+  }
 
   // ── Internal registry ─────────────────────────────────────────────────────
   // Map<eventName, Set<{fn, once}>>
@@ -227,7 +240,7 @@
   }
 
   // ── Expose ────────────────────────────────────────────────────────────────
-  const TSMBus = { on, once, off, emit, clear, history, waitFor, debug };
+  const TSMBus = { on, once, off, emit, clear, history, waitFor, debug, __tsmBusReady: true };
 
   global.TSMBus      = TSMBus;
   global.TSMEventBus = TSMBus; // alias for files using either name

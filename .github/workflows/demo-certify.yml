@@ -1,0 +1,43 @@
+name: Demo Certify
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  certify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run demo certification suite
+        run: bash scripts/demo/demo-certify.sh
+
+      - name: Upload readiness report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: demo-readiness-report
+          path: reports/demo-readiness.txt
+          if-no-files-found: warn
+
+      - name: Upload logs and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: demo-certify-logs
+          path: |
+            reports/logs/
+            reports/screenshots/
+          if-no-files-found: warn

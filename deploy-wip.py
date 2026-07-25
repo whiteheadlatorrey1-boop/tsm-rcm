@@ -179,7 +179,7 @@ app.post('/api/wip/narrative', express.json({limit:'1mb'}), async (req, res) => 
     const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method:'POST',
       headers:{'Authorization':'Bearer '+key,'Content-Type':'application/json'},
-      body:JSON.stringify({model:process.env.TSM_MODEL||'llama-3.3-70b-versatile',max_tokens:400,messages:[{role:'system',content:'You are the TSM Sovereign Mesh WIP Strategist. Be specific with numbers. Use clear section labels.'},{role:'user',content:prompt}]})
+      body:JSON.stringify({model:process.env.TSM_MODEL||'openai/gpt-oss-120b',max_tokens:400,messages:[{role:'system',content:'You are the TSM Sovereign Mesh WIP Strategist. Be specific with numbers. Use clear section labels.'},{role:'user',content:prompt}]})
     });
     const d = await r.json();
     res.json({ok:true, narrative: d.choices?.[0]?.message?.content||'AI unavailable'});

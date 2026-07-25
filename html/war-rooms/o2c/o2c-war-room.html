@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>TSM Order-to-Cash War Room</title>
@@ -106,6 +107,7 @@ tr:hover td{background:rgba(0,255,80,.03)}
 .ai-output.loading{color:var(--text-dim)}
 .ai-output .err{color:var(--red)}
 </style>
+
 </head>
 <body>
 
@@ -134,6 +136,8 @@ tr:hover td{background:rgba(0,255,80,.03)}
         <button class="btn btn-ghost" id="btnLoadSample">LOAD SAMPLES</button>
       </div>
     </div>
+
+    <div class="sb-section" id="liveDataSection"></div>
 
     <div class="sb-section">
       <div class="sb-label">PIPELINE STAGES</div>
@@ -208,6 +212,7 @@ tr:hover td{background:rgba(0,255,80,.03)}
 <script src="/js/foundation/tsm-governance.js"></script>
 <script src="/js/foundation/tsm-integration-layer.js"></script>
 
+<script src="/war-rooms/shared/tsm-live-data.js"></script>
 <script src="/war-rooms/o2c/services/o2c-engine.js"></script>
 <script>
 // Inline fallback copy of o2c-model.json. Used only if the live fetch below
@@ -269,8 +274,31 @@ const O2C_MODEL_FALLBACK = {
       // Falls back to the inline copy -- full functionality either way.
       MODEL = O2C_MODEL_FALLBACK;
     }
+
+    let liveInfo = { source: 'sample', record_count: 0 };
+    if (window.TSMLiveData) {
+      liveInfo = await window.TSMLiveData.hydrateModel('o2c', MODEL, 'sample_orders');
+    }
+    updateSampleButtonLabel(liveInfo);
+
     engine = new TSMO2CEngine(MODEL);
     renderStageList();
+
+    if (window.TSMLiveData) {
+      window.TSMLiveData.mountWidget(document.getElementById('liveDataSection'), {
+        domain: 'o2c',
+        label: 'LIVE DATA (ORDERS)',
+        onChange: async () => { await loadModel(); renderAll(); }
+      });
+    }
+  }
+
+  function updateSampleButtonLabel(liveInfo) {
+    const btn = document.getElementById('btnLoadSample');
+    if (!btn) return;
+    btn.textContent = liveInfo && liveInfo.source === 'live'
+      ? 'LOAD LIVE ORDERS'
+      : 'LOAD SAMPLES';
   }
 
   function renderStageList() {
@@ -410,14 +438,14 @@ const O2C_MODEL_FALLBACK = {
     const aiText = document.getElementById('aiOutput').textContent;
     const payload = engine.buildRelayPayload(aiText);
     try {
-      localStorage.setItem('TSM_O2C_RELAY', JSON.stringify(payload));
-      sessionStorage.setItem('TSM_O2C_RELAY', JSON.stringify(payload));
+      TSM.relay.write("O2C", payload);
     } catch (e) { console.warn('Relay storage failed', e); }
 
     if (window.TSMEventBus && window.TSMEventBus.emit) {
       window.TSMEventBus.emit('WAR_ROOM_READY', { vertical: 'o2c', payload, ts: Date.now() });
     }
     document.getElementById('navStatus').textContent = 'ENGINE: RELAYED TO STRATEGIST';
+    setTimeout(() => { window.location.href = '/html/war-rooms/o2c/o2c-strategist.html'; }, 500);
   }
 
   document.getElementById('btnLoadSample').addEventListener('click', () => {
@@ -443,5 +471,6 @@ const O2C_MODEL_FALLBACK = {
   loadModel();
 })();
 </script>
+  <script src="/html/core/tsm-runtime.js"></script>
 </body>
 </html>

@@ -35,7 +35,7 @@ PATCH = r"""
     });
   })();
 
-  var MODELS = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"];
+  var MODELS = ["openai/gpt-oss-120b", "llama-3.1-8b-instant", "mixtral-8x7b-32768"];
 
   /* ── Groq caller with 429 retry + model cascade ── */
   async function callGroq(prompt) {
@@ -148,7 +148,7 @@ PATCH = r"""
       + '<div style="color:' + c[2] + ';font-size:17px;font-weight:700;margin-top:3px;">' + d.risk + '</div></div>'
       + '<div style="background:#0A1929;border:1px solid #1e3a5a;border-radius:4px;padding:7px 12px;flex:1;">'
       + '<div style="color:#4A6FA5;font-size:10px;letter-spacing:.1em;text-transform:uppercase;">Engine</div>'
-      + '<div style="color:#2C4A6E;font-size:10px;margin-top:3px;">llama-3.3-70b-versatile · BNCA Mesh · Groq</div></div></div>'
+      + '<div style="color:#2C4A6E;font-size:10px;margin-top:3px;">openai/gpt-oss-120b · BNCA Mesh · Groq</div></div></div>'
       /* owners */
       + own;
   }

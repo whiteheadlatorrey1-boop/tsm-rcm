@@ -14,7 +14,7 @@
 (function() {
   'use strict';
 
-  const GROQ_MODEL = 'llama-3.3-70b-versatile';
+  const GROQ_MODEL = 'openai/gpt-oss-120b';
   const GROQ_URL   = 'https://api.groq.com/openai/v1/chat/completions';
 
   /* ── NODE CONFIG ───────────────────────────────── */

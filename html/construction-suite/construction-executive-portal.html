@@ -476,9 +476,9 @@ body { background: var(--bg); color: var(--text); font-family: 'Courier New', mo
     if (window.TSMMemory) TSMMemory.timeline("Executive Portal opened - reviewing escalation");
   });
 </script>
-<script src="./html/js/tsm-runtime-lock.js"></script>
-<script src="./html/js/tsm-event-contract.js"></script>
-<script src="./html/js/tsm-autonomy-layer.js"></script>
+<script src="/html/js/tsm-runtime-lock.js"></script>
+<script src="/html/js/tsm-event-contract.js"></script>
+<script src="/html/js/tsm-autonomy-layer.js"></script>
   <script src="/js/core/tsm-event-bus.js"></script>
   <script src="/js/core/tsm-state.js"></script>
   <script src="/js/core/tsm-mission-engine.js"></script>
@@ -531,7 +531,7 @@ body { background: var(--bg); color: var(--text); font-family: 'Courier New', mo
       <div><div class="decision-title" id="d1-title">Run War Room analysis to populate</div><div class="decision-sub" id="d1-sub">Load a construction document in War Room and fire 6-engine analysis</div></div>
       <div class="decision-amount" id="d1-amount">—</div>
       <div class="decision-urgency" id="d1-urgency">—</div>
-      <button class="decision-action">AUTHORIZE</button>
+      <button class="decision-action" id="d1-authorize-btn" data-action="approve" onclick="tsmConfirmExec()">AUTHORIZE</button>
     </div>
     <div class="decision-row">
       <div class="decision-badge badge-esc">ESCALATE</div>
@@ -555,13 +555,6 @@ body { background: var(--bg); color: var(--text); font-family: 'Courier New', mo
   <div class="port-cell">
     <div class="port-label">ACTIVE PROJECTS</div>
     <div class="port-val green" id="kpiProjects">—</div>
-<!-- ▼ TSM EXEC KIT: WIP + EXPLAINABILITY ▼ -->
-<div style="padding:0 20px;">
-<div id="tsmk-wip-auto" style="margin:18px 0 10px;"></div>
-<div id="tsmk-exp-auto" style="margin:10px 0 24px;"></div>
-</div>
-<!-- ▲ TSM EXEC KIT ▲ -->
-
     <div class="port-sub">under management</div>
   </div>
   <div class="port-cell">
@@ -589,6 +582,21 @@ body { background: var(--bg); color: var(--text); font-family: 'Courier New', mo
     <div class="port-val red" id="kpiLegal">—</div>
     <div class="port-sub">lien & bond risk</div>
   </div>
+</div>
+
+<!-- ▼ TSM EXEC KIT: WIP + EXPLAINABILITY ▼ (moved out of the ACTIVE PROJECTS KPI tile, where it was inflating the whole KPI row's height) -->
+<div style="padding:0 20px;">
+  <div id="tsmk-wip-auto" style="margin:18px 0 10px;"></div>
+  <div id="tsmk-exp-auto" style="margin:10px 0 24px;"></div>
+  <div id="tsmk-outcome-auto" style="margin:10px 0 24px;"></div>
+  <div id="tsmk-benchmark-auto" style="margin:10px 0 24px;"></div>
+</div>
+<!-- ▲ TSM EXEC KIT ▲ -->
+
+<!-- EXCEPTION QUEUE — derived live from mission engine findings -->
+<div class="decisions-section">
+  <div class="sec-label">EXCEPTION QUEUE</div>
+  <div id="tsm-exception-queue"></div>
 </div>
 
 <!-- MAIN GRID -->
@@ -676,6 +684,7 @@ body { background: var(--bg); color: var(--text); font-family: 'Courier New', mo
   <span>TSM OS v4.1 · Fly.io</span>
 </div>
 
+<script>
 // ═══════════════════════════════════════════════════
 // CLOCK
 // ═══════════════════════════════════════════════════
@@ -986,7 +995,7 @@ color:black!important;
 
 </style>
 
-
+<script>
 (function(){
 
 const anchor=document.querySelector("nav") ||
@@ -1163,7 +1172,7 @@ document.getElementById("execCompliance").textContent=compliance;
 </script>
 
 
-  <script src="./tsm-kernel-upgrade.js"></script>
+  <script src="/js/core/tsm-kernel-upgrade.js"></script>
 <script>
 /* TSM EXECUTIVE_APPROVED — Control Plane wiring */
 (function(){
@@ -1340,29 +1349,115 @@ document.getElementById("execCompliance").textContent=compliance;
     };
   }
 
+  /* Roadmap #7 — renders TSMExecutiveOutcome.build()'s four-question view.
+     Pure render layer, same as renderExplainability above: no scoring or
+     classification logic here, just display of what the engine computed. */
+  function renderOutcome(target, outcome) {
+    var el = typeof target === 'string' ? document.getElementById(target) : target;
+    if (!el) return;
+    if (!outcome) {
+      el.innerHTML = '<div class="tsmk-explain"><div class="tsmk-exp-empty">No executive outcome data yet.</div></div>';
+      return;
+    }
+    var wh = outcome.whatHappened || {};
+    var wim = outcome.whyItMatters || {};
+    var wsd = outcome.whatShouldWeDo || [];
+    var who = outcome.whoOwnsIt || {};
+
+    var actionsHtml = wsd.length
+      ? wsd.map(function (a) {
+          return '<div class="tsmk-exp-card" data-severity="' + esc(a.severity || '') + '">' +
+                   '<div class="tsmk-exp-row"><div class="tsmk-exp-claim">' + esc(a.action) + '</div>' +
+                   (a.confidence != null ? '<span class="tsmk-conf-badge">' + Math.round(a.confidence) + '% conf</span>' : '') +
+                   '</div></div>';
+        }).join('')
+      : '<div class="tsmk-exp-empty">No open action items.</div>';
+
+    el.innerHTML =
+      '<div class="tsmk-explain">' +
+        '<div class="tsmk-exp-why-label">WHAT HAPPENED</div>' +
+        '<div class="tsmk-exp-rationale">' + esc(wh.domain || '') + ' &mdash; ' +
+          esc(wh.documentsProcessed != null ? wh.documentsProcessed : '\u2014') + ' record(s), accuracy ' +
+          esc(wh.accuracy || '\u2014') + ' (' + esc(wh.band || '\u2014') + '), ' +
+          esc(wh.openFindings) + ' open finding(s).</div>' +
+        '<div class="tsmk-exp-why-label" style="margin-top:14px;">WHY IT MATTERS</div>' +
+        '<div class="tsmk-exp-rationale">' + esc(wim.highSeverityFindings) + ' high-severity finding(s).' +
+          (wim.financialExposure != null
+            ? ' Est. exposure: $' + esc(wim.financialExposure.toLocaleString()) +
+              (wim.financialExposureIsPartial ? ' (partial \u2014 not all items estimated)' : '')
+            : ' Exposure not estimated.') +
+          '</div>' +
+        '<div class="tsmk-exp-why-label" style="margin-top:14px;">WHAT TO DO</div>' +
+        actionsHtml +
+        '<div class="tsmk-exp-why-label" style="margin-top:14px;">WHO OWNS IT</div>' +
+        '<div class="tsmk-exp-rationale">' + esc(who.owner) + ' \u00b7 ' +
+          esc(who.claimedCount) + ' claimed, ' + esc(who.queuedCount) + ' queued</div>' +
+      '</div>';
+  }
+
+  /* Roadmap #8 -- renders TSMBenchmarkIntelligence.compare()'s single-domain
+     row. Pure render layer, same convention as renderOutcome above: no
+     aggregation/comparison logic here, just display of what the engine
+     computed. Reference-table rows (source:'reference') are labeled as
+     such rather than presented as measured fact. */
+  function renderBenchmark(target, benchmark) {
+    var el = typeof target === 'string' ? document.getElementById(target) : target;
+    if (!el) return;
+    if (!benchmark) {
+      el.innerHTML = '<div class="tsmk-explain"><div class="tsmk-exp-empty">No benchmark data yet.</div></div>';
+      return;
+    }
+    var isLive = benchmark.source === 'live';
+    el.innerHTML =
+      '<div class="tsmk-explain">' +
+        '<div class="tsmk-exp-why-label">BENCHMARK &mdash; ' + esc(benchmark.metric || '') + '</div>' +
+        '<div class="tsmk-exp-rationale">Avg ' + esc(benchmark.avgDays) + ' day(s)' +
+          (benchmark.topPerformerDays != null ? ', top performers ' + esc(benchmark.topPerformerDays) + ' day(s)' : '') +
+          '.' +
+          (isLive
+            ? ' Based on ' + esc(benchmark.sampleSize) + ' live case(s).'
+            : ' Reference figure &mdash; not yet backed by live case volume.') +
+          '</div>' +
+      '</div>';
+  }
+
   global.TSMExecKit = {
     renderWIP: renderWIP,
     renderExplainability: renderExplainability,
+    renderOutcome: renderOutcome,
+    renderBenchmark: renderBenchmark,
     fromRelay: fromRelay
   };
 
 })(window);
 </script>
+<script src="/html/shared/tsm-quality-score-engine.js"></script>
+<script src="/html/shared/tsm-executive-outcome.js"></script>
+<script src="/html/shared/tsm-benchmark-intelligence.js"></script>
 
 <script>
 /* TSM EXEC KIT — AUTO-INJECTED 2026-06-29 23:19 UTC */
 (function() {
-  var RELAY_KEYS = ["TSM_CONSTRUCTION_STRATEGIST_RELAY", "tsm_construction_war_relay", "tsm_construction_strategist_output", "TSM_CONSTRUCTION_WAR_RELAY"];
+  var RELAY_KEYS = ["tsm_construction_strategist_output", "TSM_CONSTRUCTION_STRATEGIST_RELAY", "tsm_construction_war_relay", "TSM_CONSTRUCTION_WAR_RELAY"];
   var WIP_TITLE  = "Construction Pipeline Status";
   var WIP_ID     = 'tsmk-wip-auto';
   var EXP_ID     = 'tsmk-exp-auto';
+  var OUTCOME_ID = 'tsmk-outcome-auto';
+  var BENCHMARK_ID = 'tsmk-benchmark-auto';
 
   function readRelay() {
+    // Checks the fully-synthesized strategist output first (has summary/
+    // bncaText/wip), falling back to the raw war-room hand-off only if no
+    // synthesized version exists yet. Also checks sessionStorage, since
+    // TSM_CONSTRUCTION_STRATEGIST_RELAY is only ever written there.
     for (var i = 0; i < RELAY_KEYS.length; i++) {
-      var raw = localStorage.getItem(RELAY_KEYS[i]);
-      if (raw) {
-        try { return JSON.parse(raw); } catch(e) { return null; }
-      }
+      var key = RELAY_KEYS[i];
+      var raw = localStorage.getItem(key) || sessionStorage.getItem(key);
+      if (!raw) continue;
+      try {
+        var parsed = JSON.parse(raw);
+        if (parsed && (parsed.summary || parsed.bncaText || parsed.wip)) return parsed;
+      } catch(e) { /* bad JSON on this key — try the next one */ }
     }
     return null;
   }
@@ -1385,6 +1480,26 @@ document.getElementById("execCompliance").textContent=compliance;
         ? new Date(relay.timestamp).toLocaleTimeString() : 'loaded')) : '' });
 
     TSMExecKit.renderExplainability(EXP_ID, items, { openFirst: true });
+
+    // Roadmap #7 — same items already flow through the explain widget above;
+    // reuse them rather than re-deriving anything.
+    if (window.TSMQualityScoreEngine && window.TSMExecutiveOutcome) {
+      var qualityScore = TSMQualityScoreEngine.fromExplainItems(items, { recordCount: items.length });
+      var outcome = TSMExecutiveOutcome.build({
+        domain: 'Construction',
+        explainItems: items,
+        qualityScore: qualityScore
+      });
+      TSMExecKit.renderOutcome(OUTCOME_ID, outcome);
+    }
+
+    // Roadmap #8 -- reference-table only for now (Process Mining #5 isn't
+    // feeding live event data on this domain yet); compare() falls back to
+    // REFERENCE_BENCHMARKS.CONSTRUCTION automatically when no opts.live is passed.
+    if (window.TSMBenchmarkIntelligence) {
+      var benchmark = TSMBenchmarkIntelligence.compare('CONSTRUCTION');
+      TSMExecKit.renderBenchmark(BENCHMARK_ID, benchmark);
+    }
   }
 
   if (document.readyState === 'loading') {
@@ -1399,16 +1514,16 @@ document.getElementById("execCompliance").textContent=compliance;
   });
 })();
 </script>
-</body>
-</html>
+  <script src="/html/core/tsm-runtime.js"></script>
 
+<script>
 // ===== TSM_AUTONOMY_STANDARDIZED =====
 window.TSM_AUTONOMY_STANDARDIZED = true;
 </script>
 
 <!-- TSM ENFORCER BOOT -->
 
-
+<script>
 // ===== TSM WAR ROOM SCOPED RELAY FIX =====
 window.tsmMission = window.tsmMission || {
   id: "CONSTRUCTION-SUITE-" + Date.now().toString(36),
@@ -1421,15 +1536,20 @@ function tsmWriteRelay(payload){
 }
 </script>
 
-
+<script>
 // ===== TSM EXEC BRIDGE LAYER =====
 
-function tsmWriteScopedExec(vertical, missionId){
-  localStorage.setItem("TSM_EXEC_CONFIRMED_construction-suite_" + vertical, JSON.stringify({
-    vertical,
-    missionId,
+function tsmConfirmExec(){
+  // Real EXEC_CONFIRMED write (Convention A shape) — read by
+  // tsm-demo-runner.js AUTO-RUN and core/tsm-enforcer.js health audit.
+  // Previously this button had no click handler at all; nothing ever
+  // set TSM_EXEC_CONFIRMED_* for any vertical through any code path.
+  localStorage.setItem("TSM_EXEC_CONFIRMED_construction-suite", JSON.stringify({
+    vertical: "construction-suite",
     timestamp: Date.now()
   }));
+  var btn = document.getElementById("d1-authorize-btn");
+  if (btn) { btn.textContent = "AUTHORIZED \u2713"; btn.disabled = true; }
 }
 </script>
 <!-- TSM KERNEL ENGINE -->
@@ -1445,7 +1565,12 @@ function tsmWriteScopedExec(vertical, missionId){
 <!-- TSM CONTROL PLANE -->
 <script src="/html/js/core/tsm-event-bus.js"></script>
 <script src="/html/js/core/tsm-state.js"></script>
-<script src="/html/js/core/tsm-mission-engine.js"></script>
 <script src="/shared/tsm-exec-portal-upgrade.js"></script>
+<!-- TSM EXCEPTION QUEUE — mounted after the final event-bus/mission-engine reload above -->
+<script src="/html/shared/tsm-exceptions.js"></script>
+<script src="/html/js/widgets/tsm-exception-widget.js"></script>
+<script>
+  TSMExceptionWidget.mount('tsm-exception-queue', { sector: 'construction' });
+</script>
 </body>
 </html>

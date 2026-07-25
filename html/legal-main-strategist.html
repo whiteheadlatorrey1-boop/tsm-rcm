@@ -556,7 +556,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:1000;
   <span class="sb-sep">·</span>
   <span id="sb-matter">No matter loaded</span>
   <span class="sb-sep">·</span>
-  <span>Groq: llama-3.3-70b-versatile</span>
+  <span>Groq: openai/gpt-oss-120b</span>
   <div class="sb-right" id="sb-time">--:--:--</div>
 </div>
 
@@ -760,7 +760,7 @@ Keep it sharp, actionable, and executive-ready. No legal jargon overload. Dollar
     const res = await fetch('/api/war-room/stream', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({model:'llama-3.3-70b-versatile',messages:[{role:'user',content:prompt}],temperature:0.4,max_tokens:800})
+      body: JSON.stringify({model:'openai/gpt-oss-120b',messages:[{role:'user',content:prompt}],temperature:0.4,max_tokens:800})
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const reader=res.body.getReader();const dec=new TextDecoder();synthesisText='';
@@ -869,6 +869,32 @@ function writeExecRelay(e) {
     };
     sessionStorage.setItem('TSM_STRATEGIST_RELAY', JSON.stringify(payload));
   } catch(err) { console.warn('Relay write error:', err); }
+    // ── SENTINEL PUSH ──────────────────────────────────────────────────
+    // Reuses the payload object already built above -- no invented numbers.
+    try {
+      function legalSeverityForRisk(score){
+        const s = parseFloat(score) || 0;
+        if (s >= 75) return 'critical';
+        if (s >= 50) return 'high';
+        if (s >= 25) return 'moderate';
+        return 'low';
+      }
+      const legalAnomaly = {
+        id: 'legal-' + Date.now(),
+        vertical: 'Legal',
+        title: 'Legal Strategist Synthesis',
+        severity: legalSeverityForRisk(payload.riskScore),
+        riskScore: payload.riskScore,
+        winProb: payload.winProb,
+        settleRange: payload.settleRange,
+        summary: payload.synthesisText,
+        engines: payload.enginesCount,
+        timestamp: new Date().toISOString()
+      };
+      const legalRelay = { anomalies: [legalAnomaly], source: 'legal-main-strategist', ts: Date.now() };
+      localStorage.setItem('TSM_LEGAL_STRATEGIST_RELAY', JSON.stringify(legalRelay));
+      window.dispatchEvent(new Event('TSM_SENTINEL_REFRESH'));
+    } catch(e) {}
 }
 
 // ── EXPORT ─────────────────────────────────────────────────────────────────
@@ -958,14 +984,14 @@ function legXPParseExplain(raw){
   return {brief, obj};
 }
 </script>
-  <script src="./tsm-kernel-upgrade.js"></script>
+  <script src="/js/core/tsm-kernel-upgrade.js"></script>
 </body>
 </html>
 
 <!-- TSM ENFORCER BOOT -->
-<script src="../../core/tsm-enforcer.js"></script>
+<script src="/html/core/tsm-enforcer.js"></script>
 
 
 <!-- TSM KERNEL ENGINE -->
-<script src="../../core/tsm-kernel.js"></script>
+<script src="/html/core/tsm-kernel.js"></script>
 

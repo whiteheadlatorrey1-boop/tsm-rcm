@@ -175,7 +175,7 @@ async function proStreamApp(app, key) {
       method: 'POST',
       headers: { 'Content-Type':'application/json', 'Authorization':'Bearer ' + key },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
+        model: 'openai/gpt-oss-120b',
         max_tokens: 900,
         temperature: 0.35,
         stream: true,
@@ -257,7 +257,7 @@ async function proTestKey() {
     const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method:'POST',
       headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
-      body:JSON.stringify({model:'llama-3.3-70b-versatile',max_tokens:5,messages:[{role:'user',content:'ping'}]})
+      body:JSON.stringify({model:'openai/gpt-oss-120b',max_tokens:5,messages:[{role:'user',content:'ping'}]})
     });
     if (res.ok) {
       btn.textContent = '✓ LIVE';

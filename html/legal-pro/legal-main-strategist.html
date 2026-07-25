@@ -215,6 +215,9 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:1000;
 </style>
   <script src="/js/core/tsm-event-bus.js"></script>
   <script src="/js/core/tsm-state.js"></script>
+  <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
+  <script src="/html/shared/runtime/mission/mission-model.js"></script>
+  <script src="/html/shared/runtime/mission/mission-store.js"></script>
   <script src="/js/core/tsm-mission-engine.js"></script>
   <script src="/js/core/tsm-auto-pipeline.js"></script>
 </head>
@@ -490,7 +493,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:1000;
   <span class="sb-sep">·</span>
   <span id="sb-matter">No matter loaded</span>
   <span class="sb-sep">·</span>
-  <span>Groq: llama-3.3-70b-versatile</span>
+  <span>Groq: openai/gpt-oss-120b</span>
   <div class="sb-right" id="sb-time">--:--:--</div>
 </div>
 
@@ -694,7 +697,7 @@ Keep it sharp, actionable, and executive-ready. No legal jargon overload. Dollar
     const res = await fetch('/api/war-room/stream', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({model:'llama-3.3-70b-versatile',messages:[{role:'user',content:prompt}],temperature:0.4,max_tokens:800})
+      body: JSON.stringify({model:'openai/gpt-oss-120b',messages:[{role:'user',content:prompt}],temperature:0.4,max_tokens:800})
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const reader=res.body.getReader();const dec=new TextDecoder();synthesisText='';
@@ -822,6 +825,84 @@ function writeExecRelay(e) {
     // ── END TSM EXEC KIT ─────────────────────────────────────────────
 
     sessionStorage.setItem('TSM_STRATEGIST_RELAY', JSON.stringify(payload));
+
+    // ── SENTINEL PUSH ────────────────────────────────────────────────────
+    // Real numbers only: reuses payload.exposure/riskScore already read
+    // from the rendered KPI tiles above -- no invented figures. This page
+    // previously had no Sentinel integration at all (unlike the other
+    // live verticals), so Legal never showed up in Sentinel Center.
+    try {
+      function legalProParseExposureNumber(str){
+        if (!str) return 0;
+        const nums = String(str).match(/[\d,]+(?:\.\d+)?/g);
+        if (!nums || !nums.length) return 0;
+        const mult = /m\b/i.test(str) ? 1000000 : (/k\b/i.test(str) ? 1000 : 1);
+        const vals = nums.map(n => parseFloat(n.replace(/,/g,'')) * mult);
+        return Math.round(vals.reduce((a,b)=>a+b,0) / vals.length);
+      }
+      function legalProSeverityForRisk(str){
+        const n = parseInt(str, 10) || 0;
+        if (n >= 75) return 'CRIT';
+        if (n >= 55) return 'HIGH';
+        if (n >= 30) return 'MED';
+        return 'LOW';
+      }
+      const legalProExposureNum = legalProParseExposureNumber(payload.exposure);
+      const legalProRiskNum = parseInt(payload.riskScore, 10) || 0;
+      const legalProAnomaly = {
+        id: 'legalpro-' + Date.now(),
+        title: (payload.matter || 'Legal Matter') + ' — Strategist Synthesis',
+        severity: legalProSeverityForRisk(payload.riskScore),
+        exposure: legalProExposureNum,
+        confidence: Math.max(0, 100 - legalProRiskNum),
+        rootCause: (actionsData && actionsData[0]) ? String(actionsData[0]).replace(/^\d+\.\s*/,'') : ('Risk score ' + (payload.riskScore || 'n/a') + ' on ' + (payload.docType || 'this matter') + '.'),
+        recommendedAction: (actionsData && actionsData[1]) ? String(actionsData[1]).replace(/^\d+\.\s*/,'') : 'Review the Legal strategist brief and route for executive sign-off.'
+      };
+      const legalProSentinelKey = 'TSM_LEGAL_STRATEGIST_RELAY';
+      const legalProSentinelExisting = JSON.parse(localStorage.getItem(legalProSentinelKey) || 'null') || {};
+      legalProSentinelExisting.anomalies = [legalProAnomaly];
+      legalProSentinelExisting.generatedAt = new Date().toISOString();
+      localStorage.setItem(legalProSentinelKey, JSON.stringify(legalProSentinelExisting));
+      window.dispatchEvent(new CustomEvent('TSM_SENTINEL_REFRESH'));
+    } catch(e) { console.warn('[sentinel-push] legal error:', e); }
+    // ── END SENTINEL PUSH ────────────────────────────────────────────────────
+
+    // Phase 2: Mission Core creation
+    try {
+      if (window.TSMMissionModel && window.TSMMissionStore) {
+        const legalMissionSeverity = legalProSeverityForRisk(payload.riskScore);
+        const legalMissionPriority = legalMissionSeverity === 'CRIT' ? 'Critical'
+          : legalMissionSeverity === 'HIGH' ? 'High'
+          : legalMissionSeverity === 'MED' ? 'Medium'
+          : 'normal';
+        const mission = window.TSMMissionModel.createMission({
+          vertical: 'legal',
+          tenantId: 'default',
+          client: payload.matter || null,
+          classification: {
+            summary: payload.synthesisText || '',
+            exposure: payload.exposure || null,
+            riskScore: payload.riskScore || null,
+            winProb: payload.winProb || null,
+            settleRange: payload.settleRange || null,
+            source: 'Legal Strategist'
+          },
+          workflow: {
+            assignedTo: null,
+            queue: null,
+            priority: legalMissionPriority,
+            sla: null
+          },
+          actor: 'legal-main-strategist'
+        });
+        window.TSMMissionStore.saveMission(mission);
+      } else {
+        console.warn('Mission Core not loaded - skipping mission creation, Legal relay write already succeeded.');
+      }
+    } catch (missionErr) {
+      console.warn('Mission Core creation failed (non-fatal, Legal relay already written):', missionErr);
+    }
+
   } catch(err) { console.warn('Relay write error:', err); }
 }
 
@@ -864,7 +945,7 @@ window.addEventListener('DOMContentLoaded', () => {
 setInterval(() => {
   if (!relayData) loadRelay();
 }, 10000);
-</script>
+</script><script>
 
 /* TSM AUTO-RUN STRATEGIST */
 (function(){
@@ -876,20 +957,21 @@ setInterval(() => {
   } catch(e) { console.warn('[TSM AutoRun Strategist]', e); }
 })();
 </script>
-  <script src="./tsm-kernel-upgrade.js"></script>
+  <script src="/js/core/tsm-kernel-upgrade.js"></script>
 
 
 <style>body{padding-bottom:40px!important}</style>
 <div id="tsm-chain-bar" style="position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#040c12;border-top:1px solid #0d2233;display:flex;align-items:center;height:32px;padding:0 16px;font-family:'IBM Plex Mono',monospace;font-size:10px;"><span style="color:#3a5a70;margin-right:12px;font-size:9px;">TSM CHAIN</span><a href="/html/legal-pro/legal-war-room.html" style="color:#94a3b8;border:1px solid #1a3a50;padding:3px 10px;border-radius:3px;text-decoration:none;margin-right:6px;font-size:9px;">&#9675; WAR ROOM</a><span style="color:#1a3a50;margin-right:6px;">--&gt;</span><a href="#" style="color:var(--purple, #b388ff);background:rgba(255,255,255,.05);border:1px solid var(--purple, #b388ff)55;padding:3px 10px;border-radius:3px;text-decoration:none;margin-right:6px;font-size:9px;">&#9679; STRATEGIST</a><span style="color:#1a3a50;margin-right:6px;">--&gt;</span><a href="/html/legal-pro/legal-executive-portal.html" style="color:#94a3b8;border:1px solid #1a3a50;padding:3px 10px;border-radius:3px;text-decoration:none;margin-right:6px;font-size:9px;">&#9675; EXEC PORTAL</a><span style="color:#1a3a50;margin-left:auto;font-size:9px;">LEGAL</span></div>
   <script src="/shared/tsm-exec-kit-producer.js"></script>
-</body>
-</html>
+  <script src="/html/core/tsm-runtime.js"></script>
+<script>
 // ===== TSM_AUTONOMY_STANDARDIZED =====
 window.TSM_AUTONOMY_STANDARDIZED = true;
 </script>
-
 <!-- TSM ENFORCER BOOT -->
-<script src="../../core/tsm-enforcer.js"></script>
+<script src="/html/core/tsm-enforcer.js">
+</script>
+<script>
 
 
 // ===== TSM WAR ROOM SCOPED RELAY FIX =====
@@ -903,6 +985,7 @@ function tsmWriteRelay(payload){
   TSM_KERNEL.setRelay("legal-pro", JSON.stringify(payload));
 }
 </script>
+<script>
 
 
 // ===== TSM STRATEGIST BRIDGE LAYER =====
@@ -924,8 +1007,8 @@ function tsmWriteScopedStrat(vertical, missionId){
   }));
 }
 </script>
-
-
 <!-- TSM KERNEL ENGINE -->
-<script src="../../core/tsm-kernel.js"></script>
-
+<script src="/html/core/tsm-kernel.js">
+</script>
+</body>
+</html>

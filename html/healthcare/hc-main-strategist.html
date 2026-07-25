@@ -887,7 +887,7 @@ async function runStrategist(){
     forecast:'30-Day Revenue Cycle Forecast — project denial rate, revenue recovery, and clean claim rate improvements if recommended actions are taken.',
     board:'Board Talking Points — frame our current challenges as managed opportunities. Concise, confident executive language.'
   };
-  const prompt = `Mode: ${modeLabels[mode]}\n\nAdditional context: ${ctx||'None'}\n\nPull HonorHealth healthcare mesh. Compare satellite office summaries. Provide scoped HC-only analysis.\n\nReturn EXACTLY this format:\n\n===BRIEF===\nEXECUTIVE SUMMARY\n[2-3 sentences with dollar impact and recovery probability]\n\nCRITICAL FINDINGS\n[Top 3-5 findings with $ amounts and timeframes]\n\nRECOMMENDED STRATEGY\n[Numbered actions with owner roles and 24/48/72hr deadlines]\n\nRISK ASSESSMENT\n[High/Med/Low risks with exposure amounts]\n\n===JSON===\n{\n  "confidence": 88,\n  "recommendedActions": [\n    {"text": "Action description", "owner": "Billing Manager"},\n    {"text": "Action description", "owner": "Compliance Officer"},\n    {"text": "Action description", "owner": "Payer Relations"},\n    {"text": "Action description", "owner": "Office Manager"}\n  ],\n  "dataSources": [\n    {"name": "HC-Billing / EOB data", "weight": "HIGH"},\n    {"name": "Denial code registry (PR-96/CO-4)", "weight": "HIGH"},\n    {"name": "Payer policy database", "weight": "MED"},\n    {"name": "Satellite office summaries", "weight": "MED"}\n  ],\n  "reasoning": [\n    {"key": "Threshold", "val": "Denial rate 18.4% exceeds CMS 15% threshold — $48K at risk"},\n    {"key": "Evidence", "val": "PR-96 drives 45% of denials; Mesa at 22.1% is highest severity"},\n    {"key": "History", "val": "CO-29 timely filing denials recoverable within 48hr appeal window"},\n    {"key": "Risk", "val": "Inaction on CLM-0334 results in $3,800 permanent write-off"}\n  ],\n  "escalationTriggers": [\n    "CLM-0334 CO-29 deadline expires without appeal — $3,800 write-off",\n    "Mesa denial rate exceeds 25% without intervention",\n    "CPT 99215 audit exposure crosses $15K"\n  ],\n  "noActionRevLoss": "$48K",\n  "actionRevLoss": "$12K",\n  "recoveryTime": "30 Days"\n}`;
+  const prompt = `Mode: ${modeLabels[mode]}\n\nAdditional context: ${ctx||'None'}\n\nPull HonorHealth healthcare mesh. Compare satellite office summaries. Provide scoped HC-only analysis.\n\nReturn EXACTLY this format:\n\n===BRIEF===\nEXECUTIVE SUMMARY\n[2-3 sentences with dollar impact and recovery probability]\n\nCRITICAL FINDINGS\n[Top 3-5 findings with $ amounts and timeframes]\n\nRECOMMENDED STRATEGY\n[Numbered actions with owner roles and 24/48/72hr deadlines]\n\nRISK ASSESSMENT\n[High/Med/Low risks with exposure amounts]\n\n===JSON===\n{\n  "confidence": 88,\n  "recommendedActions": [\n    {"text": "Action description", "owner": "Billing Manager"},\n    {"text": "Action description", "owner": "Compliance Officer"},\n    {"text": "Action description", "owner": "Payer Relations"},\n    {"text": "Action description", "owner": "Office Manager"}\n  ],\n  "dataSources": [\n    {"name": "HC-Billing / EOB data", "weight": "HIGH"},\n    {"name": "Denial code registry (PR-96/CO-4)", "weight": "HIGH"},\n    {"name": "Payer policy database", "weight": "MED"},\n    {"name": "Satellite office summaries", "weight": "MED"}\n  ],\n  "reasoning": [\n    {"key": "Threshold", "val": "Denial rate 18.4% exceeds CMS 15% threshold — $48K at risk"},\n    {"key": "Evidence", "val": "PR-96 drives 45% of denials; Mesa at 22.1% is highest severity"},\n    {"key": "History", "val": "CO-29 timely filing denials recoverable within 48hr appeal window"},\n    {"key": "Risk", "val": "Inaction on CLM-0334 results in $3,800 permanent write-off"}\n  ],\n  "escalationTriggers": [\n    "CLM-0334 CO-29 deadline expires without appeal — $3,800 write-off",\n    "Mesa denial rate exceeds 25% without intervention",\n    "CPT 99215 audit exposure crosses $15K"\n  ]\n}`;
   const outEl = document.getElementById('strat-out');
   const thinkEl = document.getElementById('thinking-bar');
   const errEl = document.getElementById('strat-err');
@@ -931,10 +931,40 @@ function renderExplainPanel(obj){
   document.getElementById('hcExplainActions').innerHTML = actions.length
     ? actions.map(a=>`<div class="hc-action-item"><span class="hc-action-owner">${a.owner}</span><span class="hc-action-text">${a.text}</span></div>`).join('')
     : '<div style="color:var(--muted);font-size:.63rem">No actions returned.</div>';
-  // Delta
-  if (obj.noActionRevLoss) document.getElementById('hcDeltaNo').textContent = obj.noActionRevLoss;
-  if (obj.actionRevLoss) document.getElementById('hcDeltaAct').textContent = obj.actionRevLoss;
-  if (obj.recoveryTime) document.getElementById('hcRecoveryTime').textContent = 'Est. recovery: ' + obj.recoveryTime;
+  // Deterministic exposure impact — sourced from the real "Revenue at Risk"
+  // KPI tile, not the LLM's JSON output. Self-contained to avoid unsafe
+  // hoisting against functions declared later in this file.
+  try {
+    if (window.TSMBNCAExposureEngine) {
+      function hcXPParseExposureLow(str){
+        if (!str) return 0;
+        const nums = String(str).match(/[\d,]+(?:\.\d+)?/g);
+        if (!nums || !nums.length) return 0;
+        const mult = /m\b/i.test(str) ? 1000000 : (/k\b/i.test(str) ? 1000 : 1);
+        return Math.round(parseFloat(nums[0].replace(/,/g,'')) * mult);
+      }
+      function hcXPSeverityForExposure(n, conf){
+        if (n >= 100000 || (conf !== null && conf < 60)) return 'CRIT';
+        if (n >= 25000 || (conf !== null && conf < 75)) return 'HIGH';
+        if (n >= 5000) return 'MED';
+        return 'LOW';
+      }
+      const hcXPKpiTile = typeof getKpiByLabel === 'function' ? getKpiByLabel('Revenue at Risk') : null;
+      const hcXPBaseExposure = hcXPParseExposureLow(hcXPKpiTile);
+      const hcXPConf = Number.isFinite(obj.confidence) ? obj.confidence : null;
+      const hcXPSeverity = hcXPSeverityForExposure(hcXPBaseExposure, hcXPConf);
+      const hcXPImpact = window.TSMBNCAExposureEngine.project({
+        baseExposure: hcXPBaseExposure,
+        severity: hcXPSeverity,
+        confidence: hcXPConf !== null ? hcXPConf : 70,
+        daysUntilDeadline: 0 // no independent deadline signal for this vertical yet
+      });
+      const fmt = n => '$' + Math.round(n).toLocaleString('en-US');
+      document.getElementById('hcDeltaNo').textContent = fmt(hcXPImpact.ifIgnored.exposure);
+      document.getElementById('hcDeltaAct').textContent = fmt(hcXPImpact.ifActed.exposure);
+      document.getElementById('hcRecoveryTime').textContent = hcXPImpact.urgencyWindow + ' \u00b7 ' + hcXPImpact.methodology;
+    }
+  } catch(dee) { console.warn('[bnca-exposure-engine] healthcare render error:', dee); }
 }
 
 // ── CALL CLAUDE WITH EXPLAINABILITY PARSING ──
@@ -980,6 +1010,45 @@ async function callClaudeWithExplain(userMsg, outEl, thinkEl, errEl){
           const jsonStr = jsonMatch[1].trim().replace(/```json|```/g,'').trim();
           const obj = JSON.parse(jsonStr);
           renderExplainPanel(obj);
+
+          // ── SENTINEL PUSH ────────────────────────────────────────
+          // Real numbers only: reuses the same parsed obj the explainability
+          // panel just rendered from. This page previously had no Sentinel
+          // integration at all -- hc-strategist-relay.js is a separate
+          // backend-API mechanism (/api/hc/strategist-memory) unrelated to
+          // Sentinel Center, so Healthcare never appeared there.
+          try {
+            function hcParseExposureNumber(str){
+              if (!str) return 0;
+              const nums = String(str).match(/[\d,]+(?:\.\d+)?/g);
+              if (!nums || !nums.length) return 0;
+              const mult = /m\b/i.test(str) ? 1000000 : (/k\b/i.test(str) ? 1000 : 1);
+              return Math.round(parseFloat(nums[0].replace(/,/g,'')) * mult);
+            }
+            function hcSeverityForExposure(n, conf){
+              if (n >= 100000 || (conf !== null && conf < 60)) return 'CRIT';
+              if (n >= 25000 || (conf !== null && conf < 75)) return 'HIGH';
+              if (n >= 5000) return 'MED';
+              return 'LOW';
+            }
+            const hcExposureNum = hcParseExposureNumber(getKpiByLabel('Revenue at Risk'));
+            const hcConf = Number.isFinite(obj.confidence) ? obj.confidence : null;
+            const hcAnomaly = {
+              id: 'hc-' + Date.now(),
+              title: 'HonorHealth Strategist Synthesis',
+              severity: hcSeverityForExposure(hcExposureNum, hcConf),
+              exposure: hcExposureNum,
+              confidence: hcConf !== null ? hcConf : 78,
+              rootCause: (Array.isArray(obj.reasoning) && obj.reasoning[0]) ? (obj.reasoning[0].key + ': ' + obj.reasoning[0].val) : briefText.slice(0,240),
+              recommendedAction: (Array.isArray(obj.recommendedActions) && obj.recommendedActions[0]) ? (obj.recommendedActions[0].text + (obj.recommendedActions[0].owner ? ' (Owner: ' + obj.recommendedActions[0].owner + ')' : '')) : 'Review the HC strategist brief and route Controller priority actions.'
+            };
+            localStorage.setItem('TSM_HEALTHCARE_STRATEGIST_RELAY', JSON.stringify({
+              generatedAt: new Date().toISOString(),
+              anomalies: [hcAnomaly]
+            }));
+            window.dispatchEvent(new CustomEvent('TSM_SENTINEL_REFRESH'));
+          } catch(se) { console.warn('[sentinel-push] healthcare error:', se); }
+          // ── END SENTINEL PUSH ───────────────────────────────────────────
         } catch(je){
           console.warn('HC Explain JSON parse error:', je);
         }
@@ -1147,6 +1216,31 @@ function extractUrgentFromText(rawText, sections){
     }
   }
   return out;
+}
+
+function fireCapabilitySweep_HEALTHCARE(payload) {
+  try {
+    const claimId = payload.claimId || '';
+    const exposure = payload.kpi?.totalAtRisk || null;
+    const summary = (payload.warRoomBrief || payload.aiSummary || payload.bnca?.revenuePosition || '').slice(0, 1500);
+    fetch('/api/enterprise/capability-sweep', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        vertical: 'healthcare',
+        title: 'HC Strategist Relay' + (claimId ? ' — Claim ' + claimId : ''),
+        summary,
+        exposure,
+        entities: {
+          customer: claimId ? 'Claim ' + claimId : 'HonorHealth',
+          relationshipType: 'Payer',
+          contingency: 'Denial appeal / revenue recovery reserve',
+          sku: claimId ? 'CLAIM-' + claimId : 'HC-STRATEGIST',
+          productName: payload.denialCodes || 'HC Denial Management'
+        }
+      })
+    }).catch(err => console.warn('[Capability Sweep Healthcare]', err.message));
+  } catch (err) { console.warn('[Capability Sweep Healthcare]', err.message); }
 }
 
 async function escalateToExecPortal(){
@@ -1321,7 +1415,77 @@ async function escalateToExecPortal(){
 
     sessionStorage.setItem('TSM_EXEC_RELAY', JSON.stringify(payload));
     localStorage.setItem('TSM_EXEC_RELAY', JSON.stringify(payload));
+    fireCapabilitySweep_HEALTHCARE(payload);
+    // ── Phase 2: Mission Core creation, mirrors BPO's createMissionFromIntake pattern ──
+    try {
+      if (window.TSMMissionModel && window.TSMMissionStore) {
+        const hasUrgent = Array.isArray(payload.alerts?.urgent) && payload.alerts.urgent.length > 0;
+        const mission = window.TSMMissionModel.createMission({
+          missionNo: payload.claimId || undefined,
+          vertical: 'healthcare',
+          tenantId: 'default',
+          client: payload.claimId ? ('Claim ' + payload.claimId) : null,
+          classification: {
+            summary: payload.dashSummary || payload.aiSummary || '',
+            source: 'HC Main Strategist'
+          },
+          workflow: {
+            assignedTo: null,
+            queue: null,
+            priority: hasUrgent ? 'High' : 'normal',
+            sla: null
+          },
+          actor: 'hc-main-strategist'
+        });
+        window.TSMMissionStore.saveMission(mission);
+      } else {
+        console.warn('Mission Core not loaded — skipping mission creation, TSM_EXEC_RELAY write still succeeded.');
+      }
+    } catch (missionErr) {
+      console.warn('Mission Core creation failed (non-fatal, exec relay already written):', missionErr);
+    }
     if (window.TSMMemory) TSMMemory.push(TSMMemory.EVENT_TYPES.STRATEGIST_RELAY, 'Main Strategist relayed to Executive Portal', {}, 'success');
+
+    // ── COLLECTIVE SIGNAL PUSH ──────────────────────────────────────
+    // Real numbers only: reuses live.revenueAtRisk/denialRate (the same
+    // KPI tiles already pulled at the top of this function) — no new
+    // fields invented.
+    try {
+      function hcCsParseExposureNumber(str){
+        if (!str) return 0;
+        const nums = String(str).match(/[\d,]+(?:\.\d+)?/g);
+        if (!nums || !nums.length) return 0;
+        const mult = /m\b/i.test(str) ? 1000000 : (/k\b/i.test(str) ? 1000 : 1);
+        return Math.round(parseFloat(nums[0].replace(/,/g,'')) * mult);
+      }
+      function hcCsSeverityForExposure(n){
+        if (n >= 100000) return 'CRIT';
+        if (n >= 25000) return 'HIGH';
+        if (n >= 5000) return 'MED';
+        return 'LOW';
+      }
+      const hcCsExposureNum = hcCsParseExposureNumber(kpi.totalAtRisk || live.revenueAtRisk);
+      const hcCsRisk = hcCsSeverityForExposure(hcCsExposureNum);
+      const hcCsHasUrgent = Array.isArray(payload.alerts?.urgent) && payload.alerts.urgent.length > 0;
+      fetch('/api/collective/signal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vertical: 'healthcare',
+          warRoom: 'HC Main Strategist',
+          bnca: (bnca.revenuePosition || bnca.denialIntel || '').slice(0, 400) || 'Healthcare strategist synthesis complete.',
+          confidence: 78,
+          riskLevel: hcCsRisk,
+          topIssue: (payload.alerts?.urgent?.[0]) || ('Revenue at risk ' + (live.revenueAtRisk || 'unspecified') + ', denial hotspot ' + (live.denialRate || 'unspecified')),
+          ownerLanes: ['HC-Billing', 'HC-Compliance', 'Executive Portal'],
+          hitlRequired: hcCsHasUrgent || hcCsRisk === 'CRIT' || hcCsRisk === 'HIGH',
+          actions: ['Review HC Main Strategist synthesis', 'Route to Executive Portal for review'],
+          source: window.location.pathname
+        })
+      }).catch(()=>{});
+    } catch(cse) { console.warn('[collective-signal] healthcare strategist push error:', cse); }
+    // ── END COLLECTIVE SIGNAL PUSH ───────────────────────────────────
+
     window.location.href = '/html/healthcare/executive-portal.html';
   } catch(e) {
     console.warn('Exec relay sync failed:', e);
@@ -1777,14 +1941,23 @@ PATTERN MATCH: [does this match active HonorHealth denial patterns CO-4/CO-11/CO
   });
 })();
 </script>
+
+
 <script src="/shared/tsm-cure-cheatsheet.js"></script>
+<script src="/html/js/tsm-bnca-exposure-engine.js"></script>
+<script src="/js/core/tsm-event-bus.js"></script>
+<script src="/html/core/tsm-kernel.js"></script>
+<script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
+<script src="/html/shared/runtime/mission/mission-model.js"></script>
+<script src="/html/shared/runtime/mission/mission-store.js"></script>
 <script src="/html/healthcare/js/relay.engine.js"></script>
 <script src="/html/healthcare/js/memory.engine.js"></script>
 <script src="/html/healthcare/js/relay-card.component.js"></script>
-  <script src="./tsm-kernel-upgrade.js"></script>
+  <script src="/js/core/tsm-kernel-upgrade.js"></script>
 
 <div id="tsm-chain-bar" style="position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#040c12;border-top:1px solid #0d2233;display:flex;align-items:center;height:32px;padding:0 16px;font-family:'IBM Plex Mono',monospace;font-size:10px;"><span style="color:#3a5a70;margin-right:12px;font-size:9px;">TSM CHAIN</span><a href="/html/healthcare/hc-denial-war-room.html" style="color:#94a3b8;border:1px solid #1a3a50;padding:3px 10px;border-radius:3px;text-decoration:none;margin-right:6px;font-size:9px;">&#9675; WAR ROOM</a><span style="color:#1a3a50;margin-right:6px;">--&gt;</span><a href="#" style="color:var(--pink, #ec4899);background:rgba(255,255,255,.05);border:1px solid var(--pink, #ec4899)55;padding:3px 10px;border-radius:3px;text-decoration:none;margin-right:6px;font-size:9px;">&#9679; STRATEGIST</a><span style="color:#1a3a50;margin-right:6px;">--&gt;</span><a href="/html/healthcare/executive-portal.html" style="color:#94a3b8;border:1px solid #1a3a50;padding:3px 10px;border-radius:3px;text-decoration:none;margin-right:6px;font-size:9px;">&#9675; EXEC PORTAL</a><span style="color:#1a3a50;margin-left:auto;font-size:9px;">HEALTHCARE RCM</span></div>
   <script src="/shared/tsm-exec-kit-producer.js"></script>
+  <script src="/html/core/tsm-runtime.js"></script>
 </body>
 </html>
 
@@ -1793,7 +1966,7 @@ window.TSM_AUTONOMY_STANDARDIZED = true;
 </script>
 
 <!-- TSM ENFORCER BOOT -->
-<script src="../../core/tsm-enforcer.js"></script>
+<script src="/html/core/tsm-enforcer.js"></script>
 
 
 // ===== TSM WAR ROOM SCOPED RELAY FIX =====
@@ -1831,5 +2004,3 @@ function tsmWriteScopedStrat(vertical, missionId){
 
 
 <!-- TSM KERNEL ENGINE -->
-<script src="../../core/tsm-kernel.js"></script>
-

@@ -67,6 +67,9 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 .status-done{background:rgba(34,197,94,.15);color:var(--green);}
 .eng-card-body{padding:14px;font-family:'JetBrains Mono',monospace;font-size:.65rem;color:var(--muted);line-height:1.7;min-height:100px;white-space:pre-wrap;}
 .eng-card-body.active{color:var(--text);}
+.eng-card-body table.md-table{border-collapse:collapse;width:100%;margin:8px 0;white-space:normal;}
+.eng-card-body table.md-table th,.eng-card-body table.md-table td{border:1px solid var(--border);padding:4px 6px;text-align:left;vertical-align:top;}
+.eng-card-body table.md-table th{color:var(--muted);text-transform:uppercase;font-size:.6rem;}
 .action-panel{background:var(--bg2);border:1px solid rgba(245,166,35,.3);border-radius:6px;padding:16px 20px;}
 .action-title{font-family:'Orbitron',sans-serif;font-size:.7rem;color:var(--amber);margin-bottom:12px;letter-spacing:.08em;}
 .action-list{display:flex;flex-direction:column;gap:8px;}
@@ -84,6 +87,9 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 .esc-btn:hover{opacity:.85;}
 .esc-btn:disabled{opacity:.4;cursor:not-allowed;}
 .esc-btn.secondary{background:transparent;border:1px solid var(--amber);color:var(--amber);}
+.toast{position:fixed;bottom:44px;right:20px;background:var(--bg2);border:1px solid var(--green);border-radius:6px;padding:12px 16px;font-family:'JetBrains Mono',monospace;font-size:.65rem;color:var(--green);box-shadow:0 4px 20px rgba(0,0,0,.4);z-index:999;opacity:0;transform:translateY(8px);transition:.25s;pointer-events:none;}
+.toast.show{opacity:1;transform:translateY(0);}
+.toast.err{border-color:var(--red);color:var(--red);}
 .statusbar{height:28px;background:#020810;border-top:1px solid var(--border);display:flex;align-items:center;padding:0 20px;gap:20px;font-family:'JetBrains Mono',monospace;font-size:.6rem;color:var(--muted);position:fixed;bottom:0;left:0;right:0;}
 .sb-item span{color:var(--green);}
 .sb-item.warn span{color:var(--amber);}
@@ -107,8 +113,8 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
   <div class="nav-tab" onclick="window.location='/html/plant-incident.html'">⚡ PLANT</div>
   <div class="nav-tab active">📦 SUPPLIER SHUTDOWN</div>
   <div class="nav-tab" onclick="window.location='/html/cyber-incident.html'">🛡 CYBER</div>
-  <div class="nav-tab">→ STRATEGIST</div>
-  <div class="nav-tab">↑ EXECUTIVE</div>
+  <div class="nav-tab" onclick="goToStrategist()">→ STRATEGIST</div>
+  <div class="nav-tab" onclick="window.location='/html/war-rooms/honeywell-executive-portal.html'">↑ EXECUTIVE</div>
 </div>
 <div class="main">
   <div class="sidebar">
@@ -132,6 +138,7 @@ Alternative sources: IronWorks ($2.79M, +2 wk lead)"></textarea>
         <div class="doc-tag" onclick="setDocType(this,'disruption_alert')">Disruption Alert</div>
       </div>
       <button class="fire-btn" id="fireBtn" onclick="fireAllEngines()">⚡ FIRE ALL 6 ENGINES</button>
+      <button class="fire-btn" id="sampleBtn" onclick="loadSampleDoc()" style="background:transparent;border:1px solid var(--border);color:var(--muted);margin-top:8px;">⤓ Load Sample Incident</button>
     </div>
     <div>
       <div class="sb-section">LIVE KPIs</div>
@@ -180,27 +187,64 @@ Alternative sources: IronWorks ($2.79M, +2 wk lead)"></textarea>
     </div>
   </div>
 </div>
+<div class="toast" id="toast"></div>
 <div class="statusbar">
   <span class="sb-item">TSM · Supplier Shutdown War Room</span>
   <span class="sb-item warn">DISRUPTION <span>ACTIVE</span></span>
   <span class="sb-item">ENGINES <span id="sbEngines">0 / 6</span></span>
-  <span class="sb-item">MODEL <span>llama-3.3-70b-versatile</span></span>
+  <span class="sb-item">MODEL <span>openai/gpt-oss-120b</span></span>
   <span class="sb-item" style="margin-left:auto">TSM OS v4.1 · Fly.io</span>
 </div>
  
+<script src="js/war-room-stream.js"></script>
 <script>
 function tick(){document.getElementById('clock').textContent=new Date().toLocaleTimeString();}
 setInterval(tick,1000);tick();
+
+const INCIDENT_TYPE = 'supplier';
+const RELAY_DOMAIN = 'HONEYWELL_SUPPLIER';
+const RELAY_KEY = 'TSM_HONEYWELL_SUPPLIER_RELAY';
+const STRATEGIST_URL = '/html/war-rooms/honeywell-strategist.html';
+
 let docType='supplier_notice', enginesComplete=0;
-let sessionData={outputs:[],docText:'',timestamp:null,docType:''};
+let sessionData={source:INCIDENT_TYPE,outputs:[],docText:'',timestamp:null,docType:''};
 function setDocType(el,type){document.querySelectorAll('.doc-tag').forEach(t=>t.classList.remove('active'));el.classList.add('active');docType=type;}
+
+const SAMPLE_DOC = `Supplier: Meridian Alloys Group — sole-source supplier of Grade 316L stainless steel tubing for Honeywell's Building Management valve assemblies
+Notice received: 7/2/2026, via supplier portal escalation
+Disruption: Meridian's primary rolling mill (Gary, IN) suffered an electrical substation fire on 6/30/2026. Facility is offline indefinitely — supplier estimates 8-12 weeks to restore full production, pending utility company transformer replacement (no committed date from utility yet).
+Open POs affected: PO-88231 (42,000 units, due 7/18/2026), PO-88304 (18,500 units, due 8/02/2026). Meridian has confirmed zero fulfillment capability on either PO from current inventory.
+Current inventory buffer: 6,100 units on hand at Honeywell's Fort Wayne DC — approximately 9 days of downstream assembly-line consumption at current build rate.
+Contractual exposure: Two OEM customers (HVAC integrator contracts) carry late-delivery penalty clauses of 1.5%/week of PO value after a 5-day grace period.
+Alternative sources identified by procurement: IronWorks Steel Supply ($2.79M quote, +2 week lead time, no prior qualification on this alloy spec — would need expedited PPAP); Cascade Metal Works (pre-qualified vendor, $3.15M quote, +5 week lead time, can partial-ship in 2 weeks).
+Downstream: Assembly line 2 at Fort Wayne is 316L-dependent for 70% of current valve orders; line would need to shift to a lower-spec alloy substitution (pending engineering sign-off) or idle if buffer runs out before alternate supply arrives.`;
+
+function loadSampleDoc() {
+  document.getElementById('docInput').value = SAMPLE_DOC;
+  const tag = Array.from(document.querySelectorAll('.doc-tag')).find(t => t.textContent.trim() === 'Disruption Alert');
+  if (tag) setDocType(tag, 'disruption_alert');
+  showToast('Sample supplier disruption loaded — hit FIRE ALL 6 ENGINES.');
+}
+
+function showToast(msg, isErr) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (isErr ? ' err' : '');
+  clearTimeout(showToast._h);
+  showToast._h = setTimeout(() => { t.className = 'toast'; }, 3000);
+}
  
-function getPrompts(doc){
-  const base=`You are a supply chain disruption intelligence engine for TSM Command. Analyze this supplier disruption report with precision. Focus on revenue exposure, inventory risk, alternate sourcing, and ranked executive actions. Be specific with dollar amounts and timelines.\n\nDISRUPTION REPORT:\n${doc}\n\n`;
+function getPrompts(doc, brief){
+  // Engine 01 needs the raw report; engines 02-06 run after it, so they use
+  // the condensed brief it extracted instead of re-sending the full doc.
+  const full=`You are a supply chain disruption intelligence engine for TSM Command. Analyze this supplier disruption report with precision. Focus on revenue exposure, inventory risk, alternate sourcing, and ranked executive actions. Be specific with dollar amounts and timelines.\n\nDISRUPTION REPORT:\n${doc}\n\n`;
+  const base=brief
+    ? `You are a supply chain disruption intelligence engine for TSM Command. Continue analyzing this disruption using the extracted intelligence below — do not ask for the original report, this is the complete factual basis.\n\nEXTRACTED DISRUPTION INTELLIGENCE:\n${brief}\n\n`
+    : full;
   return[
-    base+`ENGINE 01 — DISRUPTION INTELLIGENCE\nExtract:\n▸ SUPPLIER — name, location, relationship tier\n▸ DISRUPTION TYPE — shutdown, delay, force majeure, quality hold\n▸ EFFECTIVE DATE — when disruption started or will start\n▸ AFFECTED PRODUCTS/PARTS — specific SKUs or categories\n▸ OPEN PURCHASE ORDERS — count and total value\n▸ INITIAL SEVERITY — critical, high, medium`,
-    base+`ENGINE 02 — INVENTORY ANALYSIS\nCalculate:\n▸ CURRENT INVENTORY — days of supply on hand per critical part\n▸ CRITICAL PARTS — items with <30 days buffer\n▸ PRODUCTION WINDOW — how long before lines are affected\n▸ SAFETY STOCK ADEQUACY — is safety stock sufficient\n▸ REORDER LEAD TIMES — standard vs expedited\n▸ INVENTORY RISK SCORE — 1-10`,
-    base+`ENGINE 03 — REVENUE EXPOSURE\nCalculate:\n▸ TOTAL PO VALUE AT RISK — all open orders in dollars\n▸ CUSTOMER COMMITMENTS — orders promised with delivery dates at risk\n▸ DAILY REVENUE EXPOSURE — $/day if disruption continues\n▸ PENALTY EXPOSURE — late delivery penalties or liquidated damages\n▸ TOTAL FINANCIAL RISK — combined worst-case exposure\n▸ RECOVERY WINDOW — days to mitigate with ideal response`,
+    base+`ENGINE 01 — DISRUPTION INTELLIGENCE\nExtract:\n▸ SUPPLIER — name, location, relationship tier\n▸ DISRUPTION TYPE — shutdown, delay, force majeure, quality hold\n▸ EFFECTIVE DATE — when disruption started or will start\n▸ AFFECTED PRODUCTS/PARTS — specific SKUs or categories\n▸ OPEN PURCHASE ORDERS — count and total value\n▸ INITIAL SEVERITY — critical, high, medium\n\nIMPORTANT: On its own final line, output: KPI_JSON: {"ordersAtRisk": <integer>}`,
+    base+`ENGINE 02 — INVENTORY ANALYSIS\nCalculate:\n▸ CURRENT INVENTORY — days of supply on hand per critical part\n▸ CRITICAL PARTS — items with <30 days buffer\n▸ PRODUCTION WINDOW — how long before lines are affected\n▸ SAFETY STOCK ADEQUACY — is safety stock sufficient\n▸ REORDER LEAD TIMES — standard vs expedited\n▸ INVENTORY RISK SCORE — 1-10\n\nIMPORTANT: On its own final line, output: KPI_JSON: {"bufferDays": <integer>}`,
+    base+`ENGINE 03 — REVENUE EXPOSURE\nCalculate:\n▸ TOTAL PO VALUE AT RISK — all open orders in dollars\n▸ CUSTOMER COMMITMENTS — orders promised with delivery dates at risk\n▸ DAILY REVENUE EXPOSURE — $/day if disruption continues\n▸ PENALTY EXPOSURE — late delivery penalties or liquidated damages\n▸ TOTAL FINANCIAL RISK — combined worst-case exposure\n▸ RECOVERY WINDOW — days to mitigate with ideal response\n\nIMPORTANT: On its own final line, output: KPI_JSON: {"totalExposureLow": <number>, "totalExposureHigh": <number>}`,
     base+`ENGINE 04 — ALTERNATE SOURCING ANALYSIS\nAnalyze:\n▸ IDENTIFIED ALTERNATIVES — name, location, qualification status\n▸ LEAD TIME DELTA — weeks longer than primary supplier\n▸ COST PREMIUM — % price increase for alternate source\n▸ QUALIFICATION REQUIREMENTS — testing, certification needed\n▸ QUALIFICATION TIMELINE — weeks to qualify alternate\n▸ RECOMMENDATION — best alternate with rationale`,
     base+`ENGINE 05 — RANKED ACTION PLAN\n1. IMMEDIATE (0-24 hrs) — communication, inventory hold, internal escalation\n2. SHORT-TERM (1-7 days) — alternate supplier engagement, customer notification, expediting\n3. MEDIUM-TERM (1-4 weeks) — qualification of alternates, contractual actions\n4. PREVENTIVE — dual-source strategy, safety stock policy update\nFor each: OWNER · DEADLINE · ESTIMATED COST · EXPECTED OUTCOME`,
     base+`ENGINE 06 — EXECUTIVE DISPATCH\n▸ SITUATION SUMMARY — 2 sentences for C-suite\n▸ TOTAL REVENUE AT RISK — dollar figure\n▸ DECISIONS REQUIRED:\n  1. [Decision] · Owner: [role] · Deadline: [timeframe] · Budget: $[amount]\n  2. [Decision] · Owner: [role] · Deadline: [timeframe]\n  3. [Decision] · Owner: [role] · Deadline: [timeframe]\n▸ BNCA — Best Next Course of Action in one sentence\n▸ ESCALATION TRIGGER — when CEO/Board notification is required`
@@ -209,59 +253,206 @@ function getPrompts(doc){
  
 async function fireAllEngines(){
   const doc=document.getElementById('docInput').value.trim();
-  if(!doc){alert('Paste a supplier disruption report first.');return;}
+  if(!doc){showToast('Paste a supplier disruption report first.', true);return;}
   enginesComplete=0;
-  sessionData={outputs:[],docText:doc,timestamp:new Date().toISOString(),docType};
+  sessionData={source:INCIDENT_TYPE,outputs:[],docText:doc,timestamp:new Date().toISOString(),docType,kpis:{}};
   document.getElementById('fireBtn').disabled=true;
   document.getElementById('escalateBtn').disabled=true;
   document.getElementById('actionPanel').style.display='none';
   document.getElementById('incTitle').textContent='⚡ SUPPLIER DISRUPTION ANALYSIS IN PROGRESS';
   document.getElementById('incMeta').textContent=`Doc type: ${docType} · ${doc.length} chars · ${new Date().toLocaleTimeString()}`;
   document.getElementById('incBadge').textContent='ANALYZING';
-  const prompts=getPrompts(doc);
+  document.getElementById('kpiExposure').textContent='—';
+  document.getElementById('kpiBuffer').textContent='—';
+  document.getElementById('kpiOrders').textContent='—';
+  let prompts=getPrompts(doc, null);
   const titles=['Disruption Intel','Inventory Analysis','Revenue Exposure','Alternate Sourcing','Action Plan','Exec Dispatch'];
+  let hadError=false;
   for(let i=0;i<prompts.length;i++){
+    if(i>0) await new Promise(r=>setTimeout(r,600));
+    if(i===1){
+      const brief=sessionData.outputs[0]?.text;
+      if(brief) prompts=getPrompts(doc, brief);
+    }
     setEng(i,'running');
     try{
       const text=await callAPI(prompts[i]);
-      document.getElementById(`eo${i}`).textContent=text;
+      document.getElementById(`eo${i}`).innerHTML=renderEngineOutput(text);
       document.getElementById(`eo${i}`).classList.add('active');
       setEng(i,'done');
       enginesComplete++;
       document.getElementById('kpiEngines').textContent=`${enginesComplete}/6`;
       document.getElementById('sbEngines').textContent=`${enginesComplete} / 6`;
       sessionData.outputs.push({engine:i+1,title:titles[i],text});
-      if(i===2){const m=text.match(/\$[\d,.]+(?:\s*[-–]\s*\$[\d,.]+)?/);if(m)document.getElementById('kpiExposure').textContent=m[0].slice(0,14);}
-      if(i===1){const m=text.match(/(\d+)\s*days?/i);if(m)document.getElementById('kpiBuffer').textContent=m[0];}
-      if(i===0){const m=text.match(/(\d+)\s*orders?/i);if(m)document.getElementById('kpiOrders').textContent=m[1]+' orders';}
-      if(i===5)buildActions();
-    }catch(e){document.getElementById(`eo${i}`).textContent=`Engine ${i+1} error: ${e.message}`;setEng(i,'idle');}
+      if(i===2)extractExposureKPI(text);
+      if(i===1)extractBufferKPI(text);
+      if(i===0)extractOrdersKPI(text);
+      if(i===5)buildActions(text);
+    }catch(e){
+      hadError=true;
+      document.getElementById(`eo${i}`).textContent=`Engine ${i+1} error: ${e.message}`;
+      document.getElementById(`eo${i}`).classList.add('active');
+      setEng(i,'error');
+      showToast(`Engine ${i+1} failed — ${e.message}`, true);
+    }
   }
-  document.getElementById('incTitle').textContent='✓ 6-ENGINE ANALYSIS COMPLETE — SUPPLIER DISRUPTION';
-  document.getElementById('incBadge').textContent='COMPLETE';
-  document.getElementById('incBadge').style.borderColor='#22c55e';
-  document.getElementById('incBadge').style.color='#22c55e';
+  if(hadError){
+    document.getElementById('incTitle').textContent='⚠ ANALYSIS COMPLETE WITH ERRORS — SUPPLIER DISRUPTION';
+    document.getElementById('incBadge').textContent='PARTIAL';
+    document.getElementById('incBadge').style.borderColor='#f5a623';
+    document.getElementById('incBadge').style.color='#f5a623';
+  } else {
+    document.getElementById('incTitle').textContent='✓ 6-ENGINE ANALYSIS COMPLETE — SUPPLIER DISRUPTION';
+    document.getElementById('incBadge').textContent='COMPLETE';
+    document.getElementById('incBadge').style.borderColor='#22c55e';
+    document.getElementById('incBadge').style.color='#22c55e';
+  }
   document.getElementById('fireBtn').disabled=false;
-  document.getElementById('escalateBtn').disabled=false;
+  document.getElementById('escalateBtn').disabled=!sessionData.outputs.length;
+  saveRelay();
+}
+
+function saveRelay(){
   const relay=JSON.stringify(sessionData);
-  localStorage.setItem('TSM_HONEYWELL_RELAY',relay);
-  sessionStorage.setItem('TSM_HONEYWELL_RELAY',relay);
+  try{
+    localStorage.setItem(RELAY_KEY,relay);
+    sessionStorage.setItem(RELAY_KEY,relay);
+    if (window.TSM && window.TSM.relay && window.TSM.relay.write) {
+      try { window.TSM.relay.write(RELAY_DOMAIN, sessionData); } catch (e) { /* noop */ }
+    }
+  }catch(e){ showToast('Could not save relay data locally.', true); }
 }
  
 function setEng(i,s){
   const b=document.getElementById(`es${i}`);const c=document.getElementById(`ec${i}`);
-  b.className=`eng-badge ${s}`;b.textContent=s==='running'?'RUNNING':s==='done'?'COMPLETE ✓':'IDLE';
+  b.className=`eng-badge ${s}`;b.textContent=s==='running'?'RUNNING':s==='done'?'COMPLETE ✓':s==='error'?'ERROR':'IDLE';
   c.className=`eng-card-status status-${s==='done'?'done':s==='running'?'run':'idle'}`;c.textContent=b.textContent;
 }
+
+function escapeHtml(s){
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function renderEngineOutput(text){
+  const clean=text.replace(/\n?KPI_JSON:\s*\{[^}]*\}\s*$/i,'').trim();
+
+  const lines=clean.split('\n');
+  const isTableSep=l=>/^\s*\|?[\s:|-]+\|?\s*$/.test(l)&&l.includes('-');
+  const inlineFmt=s=>escapeHtml(s).replace(/&lt;br\s*\/?&gt;/gi,'<br>').replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
+  const tables=[];
+  const outLines=[];
+  let i=0;
+  while(i<lines.length){
+    const line=lines[i];
+    if(/^\s*\|.*\|\s*$/.test(line)&&lines[i+1]!==undefined&&isTableSep(lines[i+1])){
+      const headers=line.trim().replace(/^\||\|$/g,'').split('|').map(c=>c.trim());
+      let t='<table class="md-table"><thead><tr>'+headers.map(c=>`<th>${inlineFmt(c)}</th>`).join('')+'</tr></thead><tbody>';
+      i+=2;
+      while(i<lines.length&&/^\s*\|.*\|\s*$/.test(lines[i])){
+        const cells=lines[i].trim().replace(/^\||\|$/g,'').split('|').map(c=>c.trim());
+        t+='<tr>'+cells.map(c=>`<td>${inlineFmt(c)}</td>`).join('')+'</tr>';
+        i++;
+      }
+      t+='</tbody></table>';
+      outLines.push(`@@TABLE${tables.length}@@`);
+      tables.push(t);
+      continue;
+    }
+    outLines.push(line);
+    i++;
+  }
+
+  let html=escapeHtml(outLines.join('\n'));
+  html=html.replace(/&lt;br\s*\/?&gt;/gi,'<br>');
+  html=html.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
+  html=html.replace(/^▸\s*(.+)$/gm,'<div style="margin:4px 0">▸ $1</div>');
+  html=html.replace(/^(\d+)\.\s+(.+)$/gm,'<div style="margin:4px 0 4px 8px"><strong>$1.</strong> $2</div>');
+  html=html.replace(/\n{2,}/g,'<br><br>').replace(/\n/g,'<br>');
+  tables.forEach((t,idx)=>{html=html.replace(`@@TABLE${idx}@@`,t);});
+  return html;
+}
+
+function parseDecisionActions(text){
+  const startIdx=text.search(/DECISIONS REQUIRED/i);
+  if(startIdx===-1)return null;
+  let block=text.slice(startIdx);
+  const nextSection=block.slice(20).search(/\n\s*▸/);
+  if(nextSection!==-1)block=block.slice(0,nextSection+20);
+
+  const lineRe=/(\d+)\.\s*([^\n·]+?)\s*·\s*Owner:\s*([^·\n]+?)(?:\s*·\s*Deadline:\s*([^·\n]+?))?(?:\s*·\s*(?:Cost|Budget):\s*\$?([^\n]+))?\s*(?=\n|$)/gi;
+  const defaultLabels=['authorize','escalate','review','authorize'];
+  const results=[];
+  let m;
+  while((m=lineRe.exec(block))!==null){
+    let decisionText=m[2].trim();
+    const labelMatch=decisionText.match(/^(authorize|escalate|review)\b[:\-]?\s*/i);
+    const label=labelMatch?labelMatch[1].toLowerCase():(defaultLabels[results.length]||'review');
+    if(labelMatch)decisionText=decisionText.slice(labelMatch[0].length).trim();
+    results.push({
+      rank:Number(m[1]),
+      label,
+      text:decisionText,
+      owner:(m[3]||'Unassigned').trim(),
+      deadline:(m[4]||'TBD').trim(),
+    });
+  }
+  return results.length?results:null;
+}
+
+function parseKpiJson(text){
+  const m=text.match(/KPI_JSON:\s*(\{.*\})\s*$/);
+  if(!m)return null;
+  try{return JSON.parse(m[1]);}catch(e){return null;}
+}
+
+function extractExposureKPI(text){
+  const json=parseKpiJson(text);
+  if(json&&(json.totalExposureLow||json.totalExposureHigh)){
+    const lo=json.totalExposureLow,hi=json.totalExposureHigh;
+    const fmt=n=>'$'+Number(n).toLocaleString();
+    document.getElementById('kpiExposure').textContent=(lo&&hi&&lo!==hi)?`${fmt(lo)}–${fmt(hi)}`:fmt(hi||lo);
+    sessionData.kpis.exposure=json;
+    return;
+  }
+  const m=text.match(/\$[\d,.]+(?:\s*[-–]\s*\$[\d,.]+)?/);
+  document.getElementById('kpiExposure').textContent=m?m[0].slice(0,14):'N/A';
+  sessionData.kpis.exposure={raw:m?m[0]:null,source:'regex-fallback'};
+}
+
+function extractBufferKPI(text){
+  const json=parseKpiJson(text);
+  if(json&&typeof json.bufferDays==='number'){
+    document.getElementById('kpiBuffer').textContent=json.bufferDays+' days';
+    sessionData.kpis.buffer=json;
+    return;
+  }
+  const m=text.match(/(\d+)\s*days?/i);
+  document.getElementById('kpiBuffer').textContent=m?m[0]:'N/A';
+  sessionData.kpis.buffer={raw:m?m[0]:null,source:'regex-fallback'};
+}
+
+function extractOrdersKPI(text){
+  const json=parseKpiJson(text);
+  if(json&&typeof json.ordersAtRisk==='number'){
+    document.getElementById('kpiOrders').textContent=json.ordersAtRisk+' orders';
+    sessionData.kpis.orders=json;
+    return;
+  }
+  const m=text.match(/(\d+)\s*orders?/i);
+  document.getElementById('kpiOrders').textContent=m?m[1]+' orders':'N/A';
+  sessionData.kpis.orders={raw:m?m[1]:null,source:'regex-fallback'};
+}
  
-function buildActions(){
+function buildActions(text){
   document.getElementById('actionPanel').style.display='block';
-  const actions=[
+  const fallback=[
     {rank:1,label:'authorize',text:'Engage alternate supplier immediately — issue emergency PO to cover critical parts gap',owner:'Procurement Director',deadline:'0–24 hrs'},
     {rank:2,label:'escalate',text:'Pause non-critical production orders — conserve inventory for priority customer commitments',owner:'Operations VP',deadline:'24–48 hrs'},
     {rank:3,label:'review',text:'Notify at-risk customers of potential delay — assess penalty exposure and negotiate timeline',owner:'Supply Chain',deadline:'24–48 hrs'},
     {rank:4,label:'authorize',text:'Expedite freight for critical in-transit inventory — activate premium logistics if needed',owner:'Logistics',deadline:'48–72 hrs'},
   ];
+  const actions=(text?parseDecisionActions(text):null)||fallback;
+  sessionData.kpis.actions={parsed: !!(text&&parseDecisionActions(text))};
   document.getElementById('actionList').innerHTML=actions.map(a=>`
     <div class="action-item">
       <div class="action-rank">${a.rank}</div>
@@ -272,24 +463,20 @@ function buildActions(){
 }
  
 async function callAPI(prompt){
-  const res=await fetch('/api/war-room/stream',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'llama-3.3-70b-versatile',max_tokens:800,messages:[{role:'system',content:'You are a supply chain disruption intelligence engine for TSM Command. Expert in supplier risk, inventory management, alternate sourcing, and executive decision support. Be specific with dollar amounts and timelines.'},{role:'user',content:prompt}]})});
-  if(res.headers.get('content-type')?.includes('text/event-stream')){
-    const reader=res.body.getReader();const dec=new TextDecoder();let out='';
-    while(true){const{done,value}=await reader.read();if(done)break;for(const line of dec.decode(value).split('\n')){if(line.startsWith('data: ')){const d=line.slice(6);if(d==='[DONE]')continue;try{out+=JSON.parse(d).choices?.[0]?.delta?.content||'';}catch(e){}}}}
-    return out;
-  }
-  const data=await res.json();return data.output||data.answer||data.choices?.[0]?.message?.content||'';
+  return callWarRoomAPI(prompt, 'You are a supply chain disruption intelligence engine for TSM Command. Expert in supplier risk, inventory management, alternate sourcing, and executive decision support. Be specific with dollar amounts and timelines.', { maxTokens: 400 });
+}
+function goToStrategist(){
+  window.location.href = STRATEGIST_URL;
 }
  
 function escalateToStrategist(){
-  const relay=JSON.stringify(sessionData);
-  localStorage.setItem('TSM_HONEYWELL_RELAY',relay);
-  sessionStorage.setItem('TSM_HONEYWELL_RELAY',relay);
-  alert('Relay packaged — navigate to Supply Chain Strategist to continue the chain.');
+  saveRelay();
+  showToast('Relay packaged — opening Supply Chain Strategist…');
+  setTimeout(()=>{ window.location.href = STRATEGIST_URL; }, 600);
 }
  
 function exportReport(){
-  if(!sessionData.outputs.length){alert('Run analysis first.');return;}
+  if(!sessionData.outputs.length){showToast('Run analysis first.', true);return;}
   const text=sessionData.outputs.map(o=>`=== ENGINE ${o.engine}: ${o.title} ===\n\n${o.text}`).join('\n\n'+'─'.repeat(60)+'\n\n');
   const blob=new Blob([text],{type:'text/plain'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);

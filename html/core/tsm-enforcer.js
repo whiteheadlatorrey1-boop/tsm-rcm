@@ -1,5 +1,5 @@
 (function () {
-  const block = (k) => k && k.includes("tsm_war_relay_");
+  const block = (k) => k && k.includes("tsm_war_relay_") && !window.__TSM_KERNEL_WRITE__;
 
   const l = localStorage.setItem;
   const s = sessionStorage.setItem;

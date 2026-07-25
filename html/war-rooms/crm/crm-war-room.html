@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>TSM CRM War Room</title>
@@ -102,6 +103,7 @@ tr:hover td{background:rgba(0,255,80,.03)}
 .ai-output.loading{color:var(--text-dim)}
 .ai-output .err{color:var(--red)}
 </style>
+
 </head>
 <body>
 
@@ -130,6 +132,8 @@ tr:hover td{background:rgba(0,255,80,.03)}
         <button class="btn btn-ghost btn-full" id="btnResetData">RESET SAVED DATA</button>
       </div>
     </div>
+
+    <div class="sb-section" id="liveDataSection"></div>
 
     <div class="sb-section">
       <div class="sb-label">STAGES // <span id="stageEntityLabel">LEAD</span></div>
@@ -188,6 +192,7 @@ tr:hover td{background:rgba(0,255,80,.03)}
 </div>
 
 <script src="/runtime/kernel/canonical-core.js"></script>
+<script src="/war-rooms/shared/tsm-live-data.js"></script>
 <script src="/war-rooms/crm/services/crm-engine.js"></script>
 <script>
 (function () {
@@ -207,11 +212,46 @@ tr:hover td{background:rgba(0,255,80,.03)}
   async function loadModel() {
     const res = await fetch('/war-rooms/crm/data/crm-model.json');
     MODEL = await res.json();
+
+    let liveInfo = { source: 'sample', record_count: 0 };
+    if (window.TSMLiveData) {
+      // CRM has 5 entity tables; a single uploaded file maps to leads,
+      // the entry point of the CRM lifecycle. Contacts/accounts/
+      // opportunities/cases keep using sample data.
+      liveInfo = await window.TSMLiveData.hydrateModel('crm', MODEL, 'sample_data.leads');
+    }
+    updateSampleButtonLabel(liveInfo);
+
     engine = new TSMCRMEngine(MODEL);
-    const hydrated = engine.loadFromStorage();
+
+    let hydrated;
+    if (liveInfo.source === 'live') {
+      engine.loadSampleData();
+      engine.saveToStorage();
+      hydrated = true;
+    } else {
+      hydrated = engine.loadFromStorage();
+    }
+
     renderTabs();
     renderStageList();
     if (hydrated) renderAll();
+
+    if (window.TSMLiveData) {
+      window.TSMLiveData.mountWidget(document.getElementById('liveDataSection'), {
+        domain: 'crm',
+        label: 'LIVE DATA (LEADS)',
+        onChange: async () => { await loadModel(); renderAll(); }
+      });
+    }
+  }
+
+  function updateSampleButtonLabel(liveInfo) {
+    const btn = document.getElementById('btnLoadSample');
+    if (!btn) return;
+    btn.textContent = liveInfo && liveInfo.source === 'live'
+      ? 'RELOAD SAMPLE DATA (LIVE LEADS UPLOADED)'
+      : 'LOAD SAMPLE DATA';
   }
 
   function renderTabs() {
@@ -385,14 +425,14 @@ tr:hover td{background:rgba(0,255,80,.03)}
     const aiText = document.getElementById('aiOutput').textContent;
     const payload = engine.buildRelayPayload(aiText);
     try {
-      localStorage.setItem('TSM_CRM_RELAY', JSON.stringify(payload));
-      sessionStorage.setItem('TSM_CRM_RELAY', JSON.stringify(payload));
+      TSM.relay.write("CRM", payload);
     } catch (e) { console.warn('Relay storage failed', e); }
 
     if (window.TSMEventBus && window.TSMEventBus.emit) {
       window.TSMEventBus.emit('WAR_ROOM_READY', { vertical: 'crm', payload, ts: Date.now() });
     }
     document.getElementById('navStatus').textContent = 'ENGINE: RELAYED TO STRATEGIST';
+    setTimeout(() => { window.location.href = '/html/war-rooms/crm/crm-strategist.html'; }, 500);
   }
 
   document.getElementById('btnLoadSample').addEventListener('click', () => {
@@ -420,5 +460,6 @@ tr:hover td{background:rgba(0,255,80,.03)}
 <script src="/js/core/tsm-state.js"></script>
 <script src="/js/core/tsm-mission-engine.js"></script>
 <script src="/js/core/tsm-auto-pipeline.js"></script>
+  <script src="/html/core/tsm-runtime.js"></script>
 </body>
 </html>

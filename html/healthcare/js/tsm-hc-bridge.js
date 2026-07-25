@@ -93,7 +93,7 @@ Never mention the underlying AI provider or model name in your responses.`;
 
     const model = extra.model
       || (typeof window !== 'undefined' && document.getElementById('modelSel')?.value)
-      || 'llama-3.3-70b-versatile';
+      || 'openai/gpt-oss-120b';
 
     try {
       const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {

@@ -144,8 +144,12 @@ body::before{content:'';position:fixed;top:0;left:0;width:500px;height:500px;bac
 </style>
   <script src="/js/core/tsm-event-bus.js"></script>
   <script src="/js/core/tsm-state.js"></script>
+  <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
+  <script src="/html/shared/runtime/mission/mission-model.js"></script>
+  <script src="/html/shared/runtime/mission/mission-store.js"></script>
   <script src="/js/core/tsm-mission-engine.js"></script>
   <script src="/js/core/tsm-auto-pipeline.js"></script>
+  <script src="/html/js/tsm-bnca-exposure-engine.js"></script>
 </head>
 <body>
 
@@ -332,7 +336,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:500px;height:500px;bac
   <span style="color:rgba(181,108,255,.3)">·</span>
   <span id="sbStatus">Awaiting war room data</span>
   <span style="color:rgba(181,108,255,.3)">·</span>
-  <span>Groq: llama-3.3-70b-versatile</span>
+  <span>Groq: openai/gpt-oss-120b</span>
 </div>
 
 <script>
@@ -496,7 +500,7 @@ RELAY TO EXECUTIVE PORTAL: YES
 PACKAGE CONFIDENCE: [1-100]%
 
 Format your ENTIRE response exactly as follows: start with the literal line ===BRIEF=== followed by the full package above, then a new line with the literal ===JSON=== followed by a single JSON object (no markdown fences) with this exact shape:
-{"confidence":0-100,"dataSources":[{"name":"...","weight":"HIGH|MED|LOW"}],"reasoning":[{"key":"...","val":"..."}],"recommendedActions":[{"text":"...","owner":"..."}],"noActionRevLoss":"$amount","actionRevLoss":"$amount","recoveryTime":"e.g. 90 Days"}`
+{"confidence":0-100,"dataSources":[{"name":"...","weight":"HIGH|MED|LOW"}],"reasoning":[{"key":"...","val":"..."}],"recommendedActions":[{"text":"...","owner":"..."}]}`
 ];
 
 const NODE_FALLBACKS=[
@@ -638,6 +642,79 @@ async function runStrategist(){
     localStorage.setItem('tsm_ins_strat_relay',JSON.stringify(relay));
   }catch(e){}
 
+  // ── SENTINEL PUSH ──────────────────────────────────────────────────
+  // Real numbers only: BNCA confidence already parsed above, exposure
+  // pulled from the War Room snapshot the strategist itself received.
+  try {
+    function insParseExposureNumber(str){
+      if (!str) return 0;
+      const nums = String(str).match(/[\d,]+(?:\.\d+)?/g);
+      if (!nums) return 0;
+      const mult = /m\b/i.test(str) ? 1000000 : (/k\b/i.test(str) ? 1000 : 1);
+      const vals = nums.map(n => parseFloat(n.replace(/,/g,'')) * mult);
+      return vals.length > 1 ? Math.round((vals[0] + vals[1]) / 2) : Math.round(vals[0]);
+    }
+    function insSeverityForExposure(n, conf){
+      if (n >= 250000 || (conf !== null && conf < 60)) return 'CRIT';
+      if (n >= 100000 || (conf !== null && conf < 75)) return 'HIGH';
+      if (n >= 25000) return 'MED';
+      return 'LOW';
+    }
+    const insExposureRaw = warRoomData?.snapshot?.exposure || '';
+    const insExposureNum = insParseExposureNumber(insExposureRaw);
+    const insConf = overall ? parseInt(overall[1]) : null;
+    const insAnomalies = [{
+      id: 'ins-strat-' + Date.now(),
+      title: (warRoomData?.docType || 'Insurance Matter') + ' \u2014 Strategist Synthesis',
+      severity: insSeverityForExposure(insExposureNum, insConf),
+      exposure: insExposureNum,
+      confidence: insConf !== null ? insConf : 78,
+      rootCause: 'BNCA 4-node synthesis on ' + (warRoomData?.docType || 'this matter') + ' \u2014 risk: ' + (warRoomData?.snapshot?.risk || 'see strategist brief') + '.',
+      recommendedAction: 'Review the strategist brief (' + (document.getElementById('stratFocus') ? document.getElementById('stratFocus').value : 'default focus') + ') and route to executive escalation.'
+    }];
+    const insSentinelKey = 'TSM_INSURANCE_STRATEGIST_RELAY';
+    const insSentinelExisting = JSON.parse(localStorage.getItem(insSentinelKey) || 'null') || {};
+    insSentinelExisting.anomalies = insAnomalies;
+    insSentinelExisting.generatedAt = new Date().toISOString();
+    localStorage.setItem(insSentinelKey, JSON.stringify(insSentinelExisting));
+    window.dispatchEvent(new CustomEvent('TSM_SENTINEL_REFRESH'));
+  } catch(e) { console.warn('[sentinel-push] insurance error:', e); }
+  // Phase 2: Mission Core creation
+  try {
+    if (window.TSMMissionModel && window.TSMMissionStore) {
+      const insMissionSeverity = insSeverityForExposure(insExposureNum, insConf);
+      const insMissionPriority = insMissionSeverity === 'CRIT' ? 'Critical'
+        : insMissionSeverity === 'HIGH' ? 'High'
+        : insMissionSeverity === 'MED' ? 'Medium'
+        : 'normal';
+      const mission = window.TSMMissionModel.createMission({
+        vertical: 'insurance',
+        tenantId: 'default',
+        client: warRoomData?.docType || null,
+        classification: {
+          summary: relay.bncaText || relay.summary || relay.fullBrief || '',
+          exposure: insExposureRaw || null,
+          confidence: insConf !== null ? insConf : 78,
+          risk: warRoomData?.snapshot?.risk || null,
+          source: 'Insurance Strategist'
+        },
+        workflow: {
+          assignedTo: null,
+          queue: null,
+          priority: insMissionPriority,
+          sla: null
+        },
+        actor: 'insurance-strategist'
+      });
+      window.TSMMissionStore.saveMission(mission);
+    } else {
+      console.warn('Mission Core not loaded - skipping mission creation, Insurance relay write already succeeded.');
+    }
+  } catch (missionErr) {
+    console.warn('Mission Core creation failed (non-fatal, Insurance relay already written):', missionErr);
+  }
+  // ── END SENTINEL PUSH ─────────────────────────────────────────────
+
   document.getElementById('escalSub').textContent='Strategist synthesis complete — '+warRoomData?.docType+' · BNCA Confidence: '+(overall?overall[1]:'78')+'%';
   document.getElementById('escalateBar').classList.add('visible');
   document.getElementById('sbStatus').textContent='4 nodes complete · BNCA '+(overall?overall[1]:'78')+'% confidence';
@@ -646,6 +723,45 @@ async function runStrategist(){
 }
 
 function escalateToExec(){
+  // ── COLLECTIVE SIGNAL PUSH ──────────────────────────────────────────
+  // Real numbers only: reads back the relay this same run just persisted
+  // (docType, warRoomSnapshot.exposure, confidence.overall) rather than
+  // inventing anything new. Same exposure/severity thresholds already
+  // trusted by the Sentinel push above.
+  try {
+    const insCsRelay = JSON.parse(localStorage.getItem('tsm_ins_strat_relay') || 'null');
+    if (insCsRelay) {
+      const insCsExposureRaw = insCsRelay.warRoomSnapshot?.exposure || '';
+      const insCsNums = String(insCsExposureRaw).match(/[\d,]+(?:\.\d+)?/g);
+      let insCsExposureNum = 0;
+      if (insCsNums) {
+        const mult = /m\b/i.test(insCsExposureRaw) ? 1000000 : (/k\b/i.test(insCsExposureRaw) ? 1000 : 1);
+        const vals = insCsNums.map(n => parseFloat(n.replace(/,/g,'')) * mult);
+        insCsExposureNum = vals.length > 1 ? Math.round((vals[0] + vals[1]) / 2) : Math.round(vals[0]);
+      }
+      const insCsConf = insCsRelay.confidence?.overall != null ? parseInt(insCsRelay.confidence.overall) : null;
+      const insCsRisk = (insCsExposureNum >= 250000 || (insCsConf !== null && insCsConf < 60)) ? 'CRIT'
+        : (insCsExposureNum >= 100000 || (insCsConf !== null && insCsConf < 75)) ? 'HIGH'
+        : (insCsExposureNum >= 25000) ? 'MED' : 'LOW';
+      fetch('/api/collective/signal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vertical: 'insurance',
+          warRoom: 'Insurance Strategist',
+          bnca: (insCsRelay.nodes?.n4 || '').slice(0, 400) || 'Insurance 4-node strategist synthesis complete.',
+          confidence: insCsConf !== null ? insCsConf : 78,
+          riskLevel: insCsRisk,
+          topIssue: (insCsRelay.docType || 'Insurance matter') + ' \u2014 exposure ' + (insCsExposureRaw || 'unspecified'),
+          ownerLanes: ['Principal Agent', 'Claims Manager', 'Compliance Officer'],
+          hitlRequired: insCsRisk === 'CRIT' || insCsRisk === 'HIGH',
+          actions: ['Review strategist synthesis', 'Route to Executive Portal for authorization'],
+          source: window.location.pathname
+        })
+      }).catch(()=>{});
+    }
+  } catch(e) { console.warn('[collective-signal] insurance strategist push error:', e); }
+  // ── END COLLECTIVE SIGNAL PUSH ───────────────────────────────────────
   setTimeout(()=>nav('insurance-executive-portal.html'),400);
 }
 
@@ -774,7 +890,7 @@ PRINCIPAL ESCALATION: [Yes/No] — [reason]`;
       fetch('/api/war-room/stream',{
         method:'POST',
         headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({model:'llama-3.3-70b-versatile',max_tokens:700,temperature:0.2,messages:[{role:'user',content:prompt}]})
+        body:JSON.stringify({model:'openai/gpt-oss-120b',max_tokens:700,temperature:0.2,messages:[{role:'user',content:prompt}]})
       })
       .then(async r=>{
         const reader=r.body.getReader();const dec=new TextDecoder();let txt='';
@@ -1055,9 +1171,38 @@ function insXPRenderExplain(obj){
   document.getElementById('insXPActions').innerHTML=actions.length
     ?actions.map(a=>`<div class="tsm-action" style="background:rgba(181,108,255,.05);border:1px solid rgba(181,108,255,.2)"><span class="tsm-owner" style="background:rgba(181,108,255,.12);color:#b56cff">${a.owner}</span><span class="tsm-action-text">${a.text}</span></div>`).join('')
     :'<div style="opacity:.4;font-size:.63rem">No actions returned.</div>';
-  if(obj.noActionRevLoss) document.getElementById('insXPDeltaNo').textContent=obj.noActionRevLoss;
-  if(obj.actionRevLoss) document.getElementById('insXPDeltaAct').textContent=obj.actionRevLoss;
-  if(obj.recoveryTime) document.getElementById('insXPRecovery').textContent='Est. recovery: '+obj.recoveryTime;
+  // Deterministic exposure impact — self-contained (no reliance on functions
+  // declared later in runStrategist) to avoid unsafe hoisting.
+  try {
+    if (window.TSMBNCAExposureEngine) {
+      function insXPParseExposureLow(str){
+        if (!str) return 0;
+        const nums = String(str).match(/[\d,]+(?:\.\d+)?/g);
+        if (!nums || !nums.length) return 0;
+        const mult = /m\b/i.test(str) ? 1000000 : (/k\b/i.test(str) ? 1000 : 1);
+        return Math.round(parseFloat(nums[0].replace(/,/g,'')) * mult);
+      }
+      function insXPSeverityForExposure(n, conf){
+        if (n >= 250000 || (conf !== null && conf < 60)) return 'CRIT';
+        if (n >= 100000 || (conf !== null && conf < 75)) return 'HIGH';
+        if (n >= 25000) return 'MED';
+        return 'LOW';
+      }
+      const insXPBaseExposure = insXPParseExposureLow(warRoomData?.snapshot?.exposure || '');
+      const insXPConf = Number.isFinite(obj.confidence) ? obj.confidence : null;
+      const insXPSeverity = insXPSeverityForExposure(insXPBaseExposure, insXPConf);
+      const insXPImpact = window.TSMBNCAExposureEngine.project({
+        baseExposure: insXPBaseExposure,
+        severity: insXPSeverity,
+        confidence: insXPConf !== null ? insXPConf : 70,
+        daysUntilDeadline: 0 // no independent deadline signal for this vertical yet
+      });
+      const fmt = n => '$' + Math.round(n).toLocaleString('en-US');
+      document.getElementById('insXPDeltaNo').textContent = fmt(insXPImpact.ifIgnored.exposure);
+      document.getElementById('insXPDeltaAct').textContent = fmt(insXPImpact.ifActed.exposure);
+      document.getElementById('insXPRecovery').textContent = insXPImpact.urgencyWindow + ' \u00b7 ' + insXPImpact.methodology;
+    }
+  } catch(dee) { console.warn('[bnca-exposure-engine] insurance render error:', dee); }
 }
 function insXPParseExplain(raw){
   const briefMatch = raw.match(/===BRIEF===\s*([\s\S]*?)(?:===JSON===|$)/);
@@ -1085,8 +1230,9 @@ function insXPParseExplain(raw){
   } catch(e) { console.warn('[TSM AutoRun Strategist]', e); }
 })();
 </script>
-  <script src="./tsm-kernel-upgrade.js"></script>
+  <script src="/js/core/tsm-kernel-upgrade.js"></script>
   <script src="/shared/tsm-exec-kit-producer.js"></script>
+  <script src="/html/core/tsm-runtime.js"></script>
 </body>
 </html>
 
@@ -1095,7 +1241,7 @@ window.TSM_AUTONOMY_STANDARDIZED = true;
 </script>
 
 <!-- TSM ENFORCER BOOT -->
-<script src="../../core/tsm-enforcer.js"></script>
+<script src="/html/core/tsm-enforcer.js"></script>
 
 
 // ===== TSM WAR ROOM SCOPED RELAY FIX =====
@@ -1133,5 +1279,4 @@ function tsmWriteScopedStrat(vertical, missionId){
 
 
 <!-- TSM KERNEL ENGINE -->
-<script src="../../core/tsm-kernel.js"></script>
-
+<script src="/html/core/tsm-kernel.js"></script>

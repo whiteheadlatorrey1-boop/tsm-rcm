@@ -79,6 +79,9 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 .status-done{background:rgba(34,197,94,.15);color:var(--green);}
 .eng-card-body{padding:14px;font-family:'JetBrains Mono',monospace;font-size:.65rem;color:var(--muted);line-height:1.7;min-height:100px;white-space:pre-wrap;}
 .eng-card-body.active{color:var(--text);}
+.eng-card-body table.md-table{border-collapse:collapse;width:100%;margin:8px 0;white-space:normal;}
+.eng-card-body table.md-table th,.eng-card-body table.md-table td{border:1px solid var(--border);padding:4px 6px;text-align:left;vertical-align:top;}
+.eng-card-body table.md-table th{color:var(--muted);text-transform:uppercase;font-size:.6rem;}
 
 .action-panel{background:var(--bg2);border:1px solid rgba(168,85,247,.3);border-radius:6px;padding:16px 20px;}
 .action-title{font-family:'Orbitron',sans-serif;font-size:.7rem;color:var(--accent);margin-bottom:12px;letter-spacing:.08em;}
@@ -97,6 +100,10 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 .esc-btn{flex:1;padding:12px;background:var(--accent);color:#fff;border:none;border-radius:4px;font-family:'Orbitron',sans-serif;font-size:.65rem;letter-spacing:.1em;cursor:pointer;transition:.2s;}
 .esc-btn:hover{opacity:.85;}
 .esc-btn.secondary{background:transparent;border:1px solid var(--accent);color:var(--accent);}
+
+.toast{position:fixed;bottom:44px;right:20px;background:var(--bg2);border:1px solid var(--green);border-radius:6px;padding:12px 16px;font-family:'JetBrains Mono',monospace;font-size:.65rem;color:var(--green);box-shadow:0 4px 20px rgba(0,0,0,.4);z-index:999;opacity:0;transform:translateY(8px);transition:.25s;pointer-events:none;}
+.toast.show{opacity:1;transform:translateY(0);}
+.toast.err{border-color:var(--red);color:var(--red);}
 
 .statusbar{height:28px;background:#020810;border-top:1px solid var(--border);display:flex;align-items:center;padding:0 20px;gap:20px;font-family:'JetBrains Mono',monospace;font-size:.6rem;color:var(--muted);position:fixed;bottom:0;left:0;right:0;}
 .sb-item span{color:var(--green);}
@@ -127,8 +134,8 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
   <div class="nav-tab" onclick="window.location='/html/plant-incident.html'">⚡ PLANT</div>
   <div class="nav-tab" onclick="window.location='/html/supplier-shutdown.html'">📦 SUPPLIER</div>
   <div class="nav-tab active">🛡 CYBER</div>
-  <div class="nav-tab">→ STRATEGIST</div>
-  <div class="nav-tab">↑ EXECUTIVE</div>
+  <div class="nav-tab" onclick="goToStrategist()">→ STRATEGIST</div>
+  <div class="nav-tab" onclick="window.location='/html/war-rooms/honeywell-executive-portal.html'">↑ EXECUTIVE</div>
 </div>
 
 <div class="main">
@@ -152,6 +159,7 @@ Affected: 1 HMI, 1 engineering workstation, network segment B3"></textarea>
         <div class="doc-tag" onclick="setDocType(this,'soc_report')">SOC Report</div>
       </div>
       <button class="fire-btn" id="fireBtn" onclick="fireAllEngines()">🛡 FIRE ALL 6 ENGINES</button>
+      <button class="fire-btn" id="sampleBtn" onclick="loadSampleDoc()" style="background:transparent;border:1px solid var(--border);color:var(--muted);">⤓ Load Sample Incident</button>
     </div>
 
     <div>
@@ -251,21 +259,29 @@ Affected: 1 HMI, 1 engineering workstation, network segment B3"></textarea>
   </div>
 </div>
 
+<div class="toast" id="toast"></div>
+
 <div class="statusbar">
   <span class="sb-item">TSM · Cyber/OT Incident Command Center</span>
   <span class="sb-item crit">INCIDENT <span>ACTIVE</span></span>
   <span class="sb-item">ENGINES <span id="sbEngines">0 / 6</span></span>
-  <span class="sb-item">MODEL <span>llama-3.3-70b-versatile</span></span>
+  <span class="sb-item">MODEL <span>openai/gpt-oss-120b</span></span>
   <span class="sb-item" style="margin-left:auto">TSM OS v4.1 · Fly.io</span>
 </div>
 
+<script src="js/war-room-stream.js"></script>
 <script>
 function tick() { document.getElementById('clock').textContent = new Date().toLocaleTimeString(); }
 setInterval(tick, 1000); tick();
 
+const INCIDENT_TYPE = 'cyber';
+const RELAY_DOMAIN = 'HONEYWELL_CYBER';
+const RELAY_KEY = 'TSM_HONEYWELL_CYBER_RELAY';
+const STRATEGIST_URL = '/html/war-rooms/honeywell-strategist.html';
+
 let docType = 'ot_intrusion';
 let enginesComplete = 0;
-let sessionData = { outputs: [], docText: '', timestamp: null };
+let sessionData = { source: INCIDENT_TYPE, outputs: [], docText: '', timestamp: null };
 
 function setDocType(el, type) {
   document.querySelectorAll('.doc-tag').forEach(t => t.classList.remove('active'));
@@ -273,29 +289,57 @@ function setDocType(el, type) {
   docType = type;
 }
 
-function getPrompts(doc) {
-  const base = `You are an OT/ICS cybersecurity intelligence engine for TSM Command. Analyze this industrial control system security incident with precision. Focus on operational/safety impact, attack vector, financial exposure, and ranked executive actions. Be specific with numbers and timelines.\n\nINCIDENT REPORT:\n${doc}\n\n`;
+const SAMPLE_DOC = `Source: SOC SIEM correlation alert, escalated to Tier 2 at 04:52 UTC
+Detection: EDR flagged anomalous encryption activity on 14 endpoints across the corporate IT network (Building 3, Finance & Engineering VLANs) beginning 04:11 UTC — file rename patterns and entropy signatures consistent with ransomware staging, not yet full encryption execution.
+Lateral movement: SIEM shows the initial foothold originated from a phished credential (Finance analyst) at 03:20 UTC, followed by use of legitimate admin tools (PsExec, WMI) to move from the finance VLAN toward the historian server segment. One connection attempt was logged from the compromised finance workstation to HIST-DB-02 (plant historian, bridges IT/OT via a data diode) at 04:38 UTC — attempt was blocked by the diode's one-way policy, no confirmed OT-side compromise yet.
+Affected: 14 IT endpoints (Finance, Engineering), 1 domain controller showing suspicious Kerberos ticket activity (possible Golden Ticket attempt), and 1 blocked probe against the IT/OT boundary.
+Current containment: Affected VLANs isolated from the core network at 05:05 UTC. Domain controller password reset in progress for all privileged accounts. EDR has quarantined 9 of the 14 endpoints; 5 remain under investigation (false-positive review).
+Business context: Finance is mid-quarter-close; Engineering has CAD files for an active customer RFQ due this week on the affected endpoints (last verified backup: 36 hours ago).
+Open question: No confirmed ransom note or C2 beacon yet — SOC assesses this as pre-encryption staging, giving a narrow window to contain before file-level impact.`;
+
+function loadSampleDoc() {
+  document.getElementById('docInput').value = SAMPLE_DOC;
+  const tag = Array.from(document.querySelectorAll('.doc-tag')).find(t => t.textContent.trim() === 'SIEM Alert');
+  if (tag) setDocType(tag, 'siem_alert');
+  showToast('Sample cyber incident loaded — hit FIRE ALL 6 ENGINES.');
+}
+
+function showToast(msg, isErr) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (isErr ? ' err' : '');
+  clearTimeout(showToast._h);
+  showToast._h = setTimeout(() => { t.className = 'toast'; }, 3000);
+}
+
+function getPrompts(doc, brief) {
+  // Engine 01 needs the raw report; engines 02-06 run after it, so they use
+  // the condensed brief it extracted instead of re-sending the full doc.
+  const full = `You are an OT/ICS cybersecurity intelligence engine for TSM Command. Analyze this industrial control system security incident with precision. Focus on operational/safety impact, attack vector, financial exposure, and ranked executive actions. Be specific with numbers and timelines.\n\nINCIDENT REPORT:\n${doc}\n\n`;
+  const base = brief
+    ? `You are an OT/ICS cybersecurity intelligence engine for TSM Command. Continue analyzing this incident using the extracted intelligence below — do not ask for the original report, this is the complete factual basis.\n\nEXTRACTED INCIDENT INTELLIGENCE:\n${brief}\n\n`
+    : full;
   return [
     base + `ENGINE 01 — INCIDENT INTELLIGENCE\nExtract and structure:\n▸ INCIDENT TYPE — intrusion, malware, unauthorized access, anomalous traffic, etc.\n▸ AFFECTED SYSTEMS — specific OT/ICS assets, network segments, IT/OT boundary points impacted\n▸ DETECTION TIME — when was it caught, how (SIEM, IDS, manual)\n▸ CURRENT STATUS — isolated, contained, active, unknown scope\n▸ KEY PARTIES — SOC, OT engineering, IT security, plant operations involved\nBe specific. Extract all facts from the document.`,
 
-    base + `ENGINE 02 — OPERATIONAL & SAFETY IMPACT ANALYSIS\nCalculate and structure:\n▸ SAFETY RISK — any risk to physical safety systems, interlocks, or personnel\n▸ PRODUCTION IMPACT — systems taken offline, capacity loss, manual fallback in use\n▸ SCOPE OF COMPROMISE — confirmed vs. suspected affected systems\n▸ CONTAINMENT STATUS — segments isolated, systems quarantined\n▸ BUSINESS CONTINUITY RISK — how close to full operational disruption\n▸ OPERATIONAL IMPACT SCORE — 1-10 severity\nQuantify everything with specific numbers where possible.`,
+    base + `ENGINE 02 — OPERATIONAL & SAFETY IMPACT ANALYSIS\nCalculate and structure:\n▸ SAFETY RISK — any risk to physical safety systems, interlocks, or personnel\n▸ PRODUCTION IMPACT — systems taken offline, capacity loss, manual fallback in use\n▸ SCOPE OF COMPROMISE — confirmed vs. suspected affected systems\n▸ CONTAINMENT STATUS — segments isolated, systems quarantined\n▸ BUSINESS CONTINUITY RISK — how close to full operational disruption\n▸ OPERATIONAL IMPACT SCORE — 1-10 severity\nQuantify everything with specific numbers where possible.\n\nIMPORTANT: On its own final line, output: KPI_JSON: {"containmentEta": "<short string>"}`,
 
     base + `ENGINE 03 — ATTACK VECTOR & ROOT CAUSE ANALYSIS\nAnalyze and structure:\n▸ PROBABLE ENTRY POINT — phishing, remote access, supply chain, physical access, IT/OT boundary gap\n▸ LATERAL MOVEMENT PATH — how the threat moved between systems\n▸ EXPLOITED VULNERABILITY — unpatched system, weak segmentation, credential compromise, etc.\n▸ DETECTION GAPS — why was this not caught earlier\n▸ ATTRIBUTION CONFIDENCE — opportunistic vs. targeted, any indicators of actor sophistication\n▸ SIMILAR ASSETS AT RISK — other systems that may share the same vulnerability\nBe direct about probable causes even with limited data.`,
 
-    base + `ENGINE 04 — FINANCIAL EXPOSURE CALCULATION\nCalculate and structure:\n▸ INCIDENT RESPONSE COST — forensics, remediation, external IR firm engagement\n▸ DOWNTIME COST — $/hour or $/day of lost production from isolation/containment\n▸ REGULATORY EXPOSURE — breach notification obligations, potential fines\n▸ CUSTOMER/CONTRACT IMPACT — SLA penalties, reputational cost, contract risk\n▸ CYBER INSURANCE APPLICABILITY — what losses may be recoverable\n▸ TOTAL FINANCIAL RISK — combined exposure range\nProvide dollar amounts. Estimate if exact figures not available.`,
+    base + `ENGINE 04 — FINANCIAL EXPOSURE CALCULATION\nCalculate and structure:\n▸ INCIDENT RESPONSE COST — forensics, remediation, external IR firm engagement\n▸ DOWNTIME COST — $/hour or $/day of lost production from isolation/containment\n▸ REGULATORY EXPOSURE — breach notification obligations, potential fines\n▸ CUSTOMER/CONTRACT IMPACT — SLA penalties, reputational cost, contract risk\n▸ CYBER INSURANCE APPLICABILITY — what losses may be recoverable\n▸ TOTAL FINANCIAL RISK — combined exposure range\nProvide dollar amounts. Estimate if exact figures not available.\n\nIMPORTANT: On its own final line, output: KPI_JSON: {"totalExposureLow": <number>, "totalExposureHigh": <number>}`,
 
     base + `ENGINE 05 — RANKED CONTAINMENT & ACTION PLAN\nGenerate ranked response with owners and deadlines:\n1. IMMEDIATE (0-2 hours) — isolation, containment, evidence preservation\n2. SHORT-TERM (2-24 hours) — forensic investigation, credential rotation, patch/mitigate\n3. MEDIUM-TERM (1-7 days) — full remediation, system restoration, validation\n4. PREVENTIVE — segmentation improvements, monitoring gaps to close\n\nFor each action include: OWNER · DEADLINE · ESTIMATED COST · EXPECTED OUTCOME\nRank by urgency and impact.`,
 
-    base + `ENGINE 06 — EXECUTIVE DISPATCH\nGenerate executive decision package:\n▸ INCIDENT SUMMARY — 2 sentences for C-suite\n▸ FINANCIAL IMPACT — total exposure in dollars\n▸ DECISIONS REQUIRED — ranked list with AUTHORIZE/ESCALATE/REVIEW labels\n  1. [Decision] · Owner: [role] · Deadline: [timeframe] · Cost: $[amount]\n  2. [Decision] · Owner: [role] · Deadline: [timeframe]\n  3. [Decision] · Owner: [role] · Deadline: [timeframe]\n▸ BNCA — Best Next Course of Action in one clear sentence\n▸ ESCALATION TRIGGER — what would require CEO/Board/regulator notification\nThis goes directly to the executive team. Be decisive.`
+    base + `ENGINE 06 — EXECUTIVE DISPATCH\nGenerate executive decision package:\n▸ INCIDENT SUMMARY — 2 sentences for C-suite\n▸ FINANCIAL IMPACT — total exposure in dollars\n▸ DECISIONS REQUIRED — ranked list with AUTHORIZE/ESCALATE/REVIEW labels\n  1. [Decision] · Owner: [role] · Deadline: [timeframe] · Cost: $[amount]\n  2. [Decision] · Owner: [role] · Deadline: [timeframe]\n  3. [Decision] · Owner: [role] · Deadline: [timeframe]\n▸ BNCA — Best Next Course of Action in one clear sentence\n▸ ESCALATION TRIGGER — what would require CEO/Board/regulator notification\nThis goes directly to the executive team. Be decisive.\n\nIMPORTANT: On its own final line, output: KPI_JSON: {"riskScore": <0-100 integer>}`
   ];
 }
 
 async function fireAllEngines() {
   const doc = document.getElementById('docInput').value.trim();
-  if (!doc) { alert('Paste an incident report first.'); return; }
+  if (!doc) { showToast('Paste an incident report first.', true); return; }
 
   enginesComplete = 0;
-  sessionData = { outputs: [], docText: doc, timestamp: new Date().toISOString(), docType };
+  sessionData = { source: INCIDENT_TYPE, outputs: [], docText: doc, timestamp: new Date().toISOString(), docType, kpis: {} };
   document.getElementById('fireBtn').disabled = true;
   document.getElementById('escalateBtn').disabled = true;
   document.getElementById('actionPanel').style.display = 'none';
@@ -303,14 +347,23 @@ async function fireAllEngines() {
   document.getElementById('incTitle').textContent = '🛡 INCIDENT ANALYSIS IN PROGRESS';
   document.getElementById('incMeta').textContent = `Doc type: ${docType} · ${doc.length} chars · ${new Date().toLocaleTimeString()}`;
   document.getElementById('incBadge').textContent = 'ANALYZING';
+  document.getElementById('kpiRisk').textContent = '—';
+  document.getElementById('kpiExposure').textContent = '—';
+  document.getElementById('kpiDowntime').textContent = '—';
 
-  const prompts = getPrompts(doc);
+  let prompts = getPrompts(doc, null);
+  let hadError = false;
 
   for (let i = 0; i < prompts.length; i++) {
+    if (i === 1) {
+      const brief = sessionData.outputs[0]?.text;
+      if (brief) prompts = getPrompts(doc, brief);
+    }
+    if (i > 0) await new Promise(r => setTimeout(r, 600));
     setEngineStatus(i, 'running');
     try {
       const text = await callAPI(prompts[i]);
-      document.getElementById(`eo${i}`).textContent = text;
+      document.getElementById(`eo${i}`).innerHTML = renderEngineOutput(text);
       document.getElementById(`eo${i}`).classList.add('active');
       setEngineStatus(i, 'done');
       enginesComplete++;
@@ -322,48 +375,173 @@ async function fireAllEngines() {
       if (i === 1) extractDowntimeKPI(text);
       if (i === 5) { buildActionPanel(text); buildRiskKPI(text); }
     } catch(e) {
+      hadError = true;
       document.getElementById(`eo${i}`).textContent = `Engine ${i+1} error: ${e.message}`;
-      setEngineStatus(i, 'idle');
+      document.getElementById(`eo${i}`).classList.add('active');
+      setEngineStatus(i, 'error');
+      showToast(`Engine ${i+1} failed — ${e.message}`, true);
     }
   }
 
-  document.getElementById('incTitle').textContent = '✓ 6-ENGINE ANALYSIS COMPLETE — CYBER/OT INCIDENT';
-  document.getElementById('incBadge').textContent = 'COMPLETE';
-  document.getElementById('incBadge').style.borderColor = '#22c55e';
-  document.getElementById('incBadge').style.color = '#22c55e';
+  if (hadError) {
+    document.getElementById('incTitle').textContent = '⚠ ANALYSIS COMPLETE WITH ERRORS — CYBER/OT INCIDENT';
+    document.getElementById('incBadge').textContent = 'PARTIAL';
+    document.getElementById('incBadge').style.borderColor = '#f5a623';
+    document.getElementById('incBadge').style.color = '#f5a623';
+  } else {
+    document.getElementById('incTitle').textContent = '✓ 6-ENGINE ANALYSIS COMPLETE — CYBER/OT INCIDENT';
+    document.getElementById('incBadge').textContent = 'COMPLETE';
+    document.getElementById('incBadge').style.borderColor = '#22c55e';
+    document.getElementById('incBadge').style.color = '#22c55e';
+  }
   document.getElementById('fireBtn').disabled = false;
-  document.getElementById('escalateBtn').disabled = false;
+  document.getElementById('escalateBtn').disabled = !sessionData.outputs.length;
 
+  saveRelay();
+}
+
+function saveRelay() {
   const relay = JSON.stringify(sessionData);
-  localStorage.setItem('TSM_HONEYWELL_RELAY', relay);
-  sessionStorage.setItem('TSM_HONEYWELL_RELAY', relay);
+  try {
+    localStorage.setItem(RELAY_KEY, relay);
+    sessionStorage.setItem(RELAY_KEY, relay);
+    if (window.TSM && window.TSM.relay && window.TSM.relay.write) {
+      try { window.TSM.relay.write(RELAY_DOMAIN, sessionData); } catch (e) { /* noop */ }
+    }
+  } catch (e) {
+    showToast('Could not save relay data locally.', true);
+  }
 }
 
 function setEngineStatus(i, status) {
   const badge = document.getElementById(`es${i}`);
   const card  = document.getElementById(`ec${i}`);
   const cls   = status === 'running' ? 'running' : status === 'done' ? 'done' : 'idle';
-  const lbl   = status === 'running' ? 'RUNNING' : status === 'done' ? 'COMPLETE ✓' : 'IDLE';
+  const lbl   = status === 'running' ? 'RUNNING' : status === 'done' ? 'COMPLETE ✓' : status === 'error' ? 'ERROR' : 'IDLE';
   badge.className = `eng-badge ${cls}`;
   badge.textContent = lbl;
   card.className = `eng-card-status status-${status === 'done' ? 'done' : status === 'running' ? 'run' : 'idle'}`;
   card.textContent = lbl;
 }
 
+function escapeHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function renderEngineOutput(text) {
+  const clean = text.replace(/\n?KPI_JSON:\s*\{[^}]*\}\s*$/i, '').trim();
+
+  const lines = clean.split('\n');
+  const isTableSep = l => /^\s*\|?[\s:|-]+\|?\s*$/.test(l) && l.includes('-');
+  const inlineFmt = s => escapeHtml(s).replace(/&lt;br\s*\/?&gt;/gi, '<br>').replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  const tables = [];
+  const outLines = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (/^\s*\|.*\|\s*$/.test(line) && lines[i + 1] !== undefined && isTableSep(lines[i + 1])) {
+      const headers = line.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+      let t = '<table class="md-table"><thead><tr>' + headers.map(c => `<th>${inlineFmt(c)}</th>`).join('') + '</tr></thead><tbody>';
+      i += 2;
+      while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) {
+        const cells = lines[i].trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+        t += '<tr>' + cells.map(c => `<td>${inlineFmt(c)}</td>`).join('') + '</tr>';
+        i++;
+      }
+      t += '</tbody></table>';
+      outLines.push(`@@TABLE${tables.length}@@`);
+      tables.push(t);
+      continue;
+    }
+    outLines.push(line);
+    i++;
+  }
+
+  let html = escapeHtml(outLines.join('\n'));
+  html = html.replace(/&lt;br\s*\/?&gt;/gi, '<br>');
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/^▸\s*(.+)$/gm, '<div style="margin:4px 0">▸ $1</div>');
+  html = html.replace(/^(\d+)\.\s+(.+)$/gm, '<div style="margin:4px 0 4px 8px"><strong>$1.</strong> $2</div>');
+  html = html.replace(/\n{2,}/g, '<br><br>').replace(/\n/g, '<br>');
+  tables.forEach((t, idx) => { html = html.replace(`@@TABLE${idx}@@`, t); });
+  return html;
+}
+
+function parseDecisionActions(text) {
+  const startIdx = text.search(/DECISIONS REQUIRED/i);
+  if (startIdx === -1) return null;
+  let block = text.slice(startIdx);
+  const nextSection = block.slice(20).search(/\n\s*▸/);
+  if (nextSection !== -1) block = block.slice(0, nextSection + 20);
+
+  // Strip markdown emphasis (**bold**, *italic*, _underscore_) that the LLM
+  // wraps decision/owner/deadline text in — otherwise raw asterisks render
+  // in the UI and the AUTHORIZE/ESCALATE/REVIEW label regex (which expects
+  // the label at the very start of the string) never matches.
+  const stripMd = s => s.replace(/\*\*/g, '').replace(/^[\*_]+|[\*_]+$/g, '').trim();
+
+  const lineRe = /(\d+)\.\s*([^\n·]+?)\s*·\s*Owner:\s*([^·\n]+?)(?:\s*·\s*Deadline:\s*([^·\n]+?))?(?:\s*·\s*(?:Cost|Budget):\s*\$?([^\n]+))?\s*(?=\n|$)/gi;
+  const defaultLabels = ['AUTHORIZE','ESCALATE','REVIEW','AUTHORIZE'];
+  const results = [];
+  let m;
+  while ((m = lineRe.exec(block)) !== null) {
+    let decisionText = stripMd(m[2]);
+    const labelMatch = decisionText.match(/^(AUTHORIZE|ESCALATE|REVIEW)\b[:\-]?\s*/i);
+    const label = labelMatch ? labelMatch[1].toUpperCase() : (defaultLabels[results.length] || 'REVIEW');
+    if (labelMatch) decisionText = decisionText.slice(labelMatch[0].length).trim();
+    results.push({
+      rank: Number(m[1]),
+      label,
+      text: decisionText,
+      owner: stripMd(m[3] || 'Unassigned'),
+      deadline: stripMd(m[4] || 'TBD'),
+    });
+  }
+  return results.length ? results : null;
+}
+
+function parseKpiJson(text) {
+  const m = text.match(/KPI_JSON:\s*(\{.*\})\s*$/);
+  if (!m) return null;
+  try { return JSON.parse(m[1]); } catch (e) { return null; }
+}
+
 function extractFinancialKPI(text) {
+  const json = parseKpiJson(text);
+  if (json && (json.totalExposureLow || json.totalExposureHigh)) {
+    const lo = json.totalExposureLow, hi = json.totalExposureHigh;
+    const fmt = n => '$' + Number(n).toLocaleString();
+    document.getElementById('kpiExposure').textContent = (lo && hi && lo !== hi) ? `${fmt(lo)}–${fmt(hi)}` : fmt(hi || lo);
+    sessionData.kpis.exposure = json;
+    return;
+  }
   const m = text.match(/\$[\d,]+(?:\s*[-–]\s*\$[\d,]+)?/);
-  if (m) document.getElementById('kpiExposure').textContent = m[0].slice(0,16);
+  document.getElementById('kpiExposure').textContent = m ? m[0].slice(0,16) : 'N/A';
+  sessionData.kpis.exposure = { raw: m ? m[0] : null, source: 'regex-fallback' };
 }
 
 function extractDowntimeKPI(text) {
+  const json = parseKpiJson(text);
+  if (json && json.containmentEta) {
+    document.getElementById('kpiDowntime').textContent = json.containmentEta;
+    sessionData.kpis.containment = json;
+    return;
+  }
   const m = text.match(/(\d+[-–]\d+\s*hours?|\d+\s*hours?|\d+\s*days?)/i);
-  if (m) document.getElementById('kpiDowntime').textContent = m[0];
+  document.getElementById('kpiDowntime').textContent = m ? m[0] : 'N/A';
+  sessionData.kpis.containment = { raw: m ? m[0] : null, source: 'regex-fallback' };
 }
 
 function buildRiskKPI(text) {
+  const json = parseKpiJson(text);
+  if (json && typeof json.riskScore === 'number') {
+    document.getElementById('kpiRisk').textContent = json.riskScore + '/100';
+    sessionData.kpis.risk = json;
+    return;
+  }
   const m = text.match(/(\d{2,3})\/100|RISK[:\s]+(\d{2,3})/i);
-  if (m) document.getElementById('kpiRisk').textContent = (m[1]||m[2]) + '/100';
-  else document.getElementById('kpiRisk').textContent = 'HIGH';
+  document.getElementById('kpiRisk').textContent = m ? (m[1]||m[2]) + '/100' : 'N/A';
+  sessionData.kpis.risk = { raw: m ? (m[1]||m[2]) : null, source: 'regex-fallback' };
 }
 
 function buildActionPanel(text) {
@@ -371,12 +549,15 @@ function buildActionPanel(text) {
   const list  = document.getElementById('actionList');
   panel.style.display = 'block';
 
-  const actions = [
+  const fallback = [
     { rank: 1, label: 'AUTHORIZE', text: 'Emergency network isolation — segment affected OT assets and engage incident response team immediately', owner: 'CISO / OT Security Lead', deadline: '0–2 hrs' },
     { rank: 2, label: 'ESCALATE', text: 'Engage external forensics/IR firm — preserve evidence and determine scope of compromise', owner: 'CISO', deadline: '2–6 hrs' },
     { rank: 3, label: 'REVIEW', text: 'Assess regulatory/customer notification obligations — legal and compliance review of breach disclosure requirements', owner: 'Legal / Compliance', deadline: '4–12 hrs' },
     { rank: 4, label: 'AUTHORIZE', text: 'Rotate credentials and patch exploited vulnerability across similar assets', owner: 'IT/OT Security', deadline: '2–8 hrs' },
   ];
+
+  const actions = parseDecisionActions(text) || fallback;
+  sessionData.kpis.actions = { parsed: parseDecisionActions(text) !== null };
 
   list.innerHTML = actions.map(a => `
     <div class="action-item">
@@ -394,47 +575,21 @@ function buildActionPanel(text) {
 }
 
 async function callAPI(prompt) {
-  const res = await fetch('/api/war-room/stream', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'llama-3.3-70b-versatile',
-      max_tokens: 800,
-      messages: [
-        { role: 'system', content: 'You are an OT/ICS cybersecurity intelligence engine for TSM Command. Expert in industrial control system security, attack analysis, operational/safety impact, and executive decision support. Be specific with dollar amounts and timelines.' },
-        { role: 'user', content: prompt }
-      ]
-    })
-  });
-  if (res.headers.get('content-type')?.includes('text/event-stream')) {
-    const reader = res.body.getReader();
-    const dec = new TextDecoder();
-    let out = '';
-    while(true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      for (const line of dec.decode(value).split('\n')) {
-        if (line.startsWith('data: ')) {
-          const d = line.slice(6);
-          if (d === '[DONE]') continue;
-          try { out += JSON.parse(d).choices?.[0]?.delta?.content || ''; } catch(e) {}
-        }
-      }
-    }
-    return out;
-  }
-  const data = await res.json();
-  return data.output || data.answer || data.choices?.[0]?.message?.content || '';
+  return callWarRoomAPI(prompt, 'You are an OT/ICS cybersecurity intelligence engine for TSM Command. Expert in industrial control system security, attack analysis, operational/safety impact, and executive decision support. Be specific with dollar amounts and timelines.', { maxTokens: 700 });
+}
+
+function goToStrategist() {
+  window.location.href = STRATEGIST_URL;
 }
 
 function escalateToStrategist() {
-  localStorage.setItem('TSM_HONEYWELL_RELAY', JSON.stringify(sessionData));
-  sessionStorage.setItem('TSM_HONEYWELL_RELAY', JSON.stringify(sessionData));
-  alert('Relay packaged — navigate to Operations Strategist to continue the chain.');
+  saveRelay();
+  showToast('Relay packaged — opening Operations Strategist…');
+  setTimeout(() => { window.location.href = STRATEGIST_URL; }, 600);
 }
 
 function exportReport() {
-  if (!sessionData.outputs.length) { alert('Run analysis first.'); return; }
+  if (!sessionData.outputs.length) { showToast('Run analysis first.', true); return; }
   const text = sessionData.outputs.map(o => `=== ENGINE ${o.engine}: ${o.title} ===\n\n${o.text}`).join('\n\n' + '─'.repeat(60) + '\n\n');
   const blob = new Blob([text], { type: 'text/plain' });
   const a = document.createElement('a');

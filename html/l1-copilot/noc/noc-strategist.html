@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TSM &middot; NOC Command Center Strategist</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#050a0f;--bg2:#0a1020;--bg3:#0d1528;
+  --cyan:#00d4d4;--amber:#f5a623;--green:#22c55e;
+  --red:#ef4444;--purple:#a855f7;--blue:#3b82f6;
+  --orange:#f97316;--text:#e2e8f0;--muted:#64748b;--border:#1e293b;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;min-height:100vh;padding-bottom:60px;}
+.topbar{height:42px;background:#020810;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 20px;}
+.tb-brand{font-family:'Orbitron',sans-serif;font-size:.7rem;color:var(--cyan);letter-spacing:.15em;}
+.tb-time{font-family:'Orbitron',sans-serif;font-size:.75rem;color:var(--cyan);}
+.hdr{padding:18px 24px;border-bottom:1px solid var(--border);background:var(--bg2);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;}
+.hdr-title{font-family:'Orbitron',sans-serif;font-size:1rem;letter-spacing:.08em;color:var(--text);}
+.hdr-sub{font-family:'JetBrains Mono',monospace;font-size:.65rem;color:var(--muted);margin-top:4px;}
+.hdr-btns{display:flex;gap:8px;flex-wrap:wrap;}
+.hbtn{background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:.62rem;padding:8px 14px;border-radius:4px;cursor:pointer;text-decoration:none;display:inline-block;}
+.hbtn:hover{border-color:var(--cyan);color:var(--cyan);}
+.hbtn.primary{border-color:var(--cyan);color:var(--cyan);}
+.wrap{max-width:1200px;margin:0 auto;padding:20px 24px;}
+.empty{text-align:center;padding:80px 20px;}
+.empty h2{font-family:'Orbitron',sans-serif;font-size:.9rem;color:var(--muted);letter-spacing:.08em;margin-bottom:14px;}
+.empty p{font-family:'JetBrains Mono',monospace;font-size:.7rem;color:var(--muted);margin-bottom:24px;}
+.kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px;}
+.kpi{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:16px;text-align:center;}
+.kpi-val{font-family:'Orbitron',sans-serif;font-size:1.3rem;font-weight:700;color:var(--orange);}
+.kpi-val.red{color:var(--red);}.kpi-val.green{color:var(--green);}.kpi-val.cyan{color:var(--cyan);}.kpi-val.amber{color:var(--amber);}
+.kpi-lbl{font-size:.6rem;color:var(--muted);margin-top:6px;font-family:'JetBrains Mono',monospace;letter-spacing:.08em;}
+.sec{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:18px;margin-bottom:16px;}
+.sec-hdr{font-family:'Orbitron',sans-serif;font-size:.68rem;color:var(--cyan);letter-spacing:.12em;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.sec-hdr .lbl::before{content:'\25C6';font-size:.55rem;margin-right:8px;}
+.sec-hdr-note{font-family:'JetBrains Mono',monospace;font-size:.58rem;color:var(--muted);text-transform:none;letter-spacing:0;}
+.ai-box{background:rgba(0,212,212,.06);border:1px solid var(--cyan);border-radius:6px;padding:16px;margin-bottom:16px;white-space:pre-wrap;font-size:.88rem;line-height:1.55;}
+.ai-box table.md-table{border-collapse:collapse;width:100%;margin:8px 0;white-space:normal;}
+.ai-box table.md-table th,.ai-box table.md-table td{border:1px solid var(--border);padding:4px 6px;text-align:left;vertical-align:top;}
+.ai-box table.md-table th{color:var(--muted);text-transform:uppercase;font-size:.6rem;}
+.no-items{font-family:'JetBrains Mono',monospace;font-size:.7rem;color:var(--muted);}
+.toast{position:fixed;bottom:20px;right:20px;background:var(--bg2);border:1px solid var(--cyan);color:var(--cyan);padding:10px 18px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:.65rem;opacity:0;pointer-events:none;transition:.3s;z-index:50;}
+.toast.show{opacity:1;transform:translateY(-4px);}
+
+/* WIP board */
+.wip-board{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;}
+.wip-stage{background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:12px;text-align:center;position:relative;}
+.wip-stage.stalled{border-color:var(--red);background:rgba(239,68,68,.06);}
+.wip-stage .ws-lbl{font-family:'JetBrains Mono',monospace;font-size:.58rem;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px;min-height:26px;}
+.wip-stage .ws-count{font-family:'Orbitron',sans-serif;font-size:1.4rem;font-weight:700;color:var(--cyan);}
+.wip-stage.stalled .ws-count{color:var(--red);}
+.wip-stage .ws-meta{font-family:'JetBrains Mono',monospace;font-size:.58rem;color:var(--muted);margin-top:6px;}
+.wip-stage .ws-flag{position:absolute;top:6px;right:8px;font-size:.55rem;color:var(--red);}
+.wip-arrow{display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:.9rem;}
+
+/* Action queue table */
+.aq-table{width:100%;border-collapse:collapse;font-size:.78rem;}
+.aq-table th{text-align:left;font-family:'JetBrains Mono',monospace;font-size:.58rem;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;padding:6px 8px;border-bottom:1px solid var(--border);}
+.aq-table td{padding:9px 8px;border-bottom:1px solid #0f1a2e;vertical-align:top;}
+.aq-table tr:last-child td{border-bottom:none;}
+.impact{font-family:'JetBrains Mono',monospace;font-size:.55rem;font-weight:700;padding:2px 8px;border-radius:10px;white-space:nowrap;}
+.impact.high{background:rgba(239,68,68,.12);color:var(--red);border:1px solid var(--red);}
+.impact.medium{background:rgba(245,166,35,.12);color:var(--amber);border:1px solid var(--amber);}
+.impact.low{background:rgba(100,116,139,.12);color:var(--muted);border:1px solid var(--muted);}
+.time-hot{color:var(--red);font-weight:700;}
+.action-hint{color:var(--text);}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <span class="tb-brand">TSM &middot; NOC COMMAND CENTER STRATEGIST</span>
+  <span class="tb-time" id="clock"></span>
+</div>
+<div class="hdr">
+  <div>
+    <div class="hdr-title" id="hdrTitle">&#128225; NOC COMMAND CENTER STRATEGIST</div>
+    <div class="hdr-sub" id="hdrSub">Awaiting relay from the NOC war room&hellip;</div>
+  </div>
+  <div class="hdr-btns">
+    <a class="hbtn" href="noc-war-room.html">&larr; War Room</a>
+    <a class="hbtn primary" href="noc-executive-portal.html">Executive View &rarr;</a>
+    <button class="hbtn" id="printBtn" onclick="window.print()">&darr; Export</button>
+  </div>
+</div>
+<div class="wrap" id="wrap"><!-- populated by JS --></div>
+<div class="toast" id="toast"></div>
+<script>
+function tick(){document.getElementById('clock').textContent=new Date().toLocaleTimeString();}
+setInterval(tick,1000);tick();
+
+const DOMAIN = 'NOC';
+const RELAY_KEY_FALLBACK = 'TSM_' + DOMAIN + '_RELAY';
+
+function showToast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(showToast._h);
+  showToast._h=setTimeout(()=>t.classList.remove('show'),2500);
+}
+
+function loadRelay(){
+  try {
+    if(window.TSM && window.TSM.relay && window.TSM.relay.read){
+      const d = window.TSM.relay.read(DOMAIN);
+      if(d) return d;
+    }
+  } catch(e){}
+  try {
+    const raw = sessionStorage.getItem(RELAY_KEY_FALLBACK) || localStorage.getItem(RELAY_KEY_FALLBACK);
+    return raw ? JSON.parse(raw) : null;
+  } catch(e){ return null; }
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function fmtVal(v, fmt){
+  if(v===undefined || v===null || v==='') return '&mdash;';
+  if(fmt==='money') return '$' + Number(v).toLocaleString();
+  if(fmt==='pct') return v + '%';
+  return String(v);
+}
+
+function renderEmpty(){
+  document.getElementById('wrap').innerHTML = `
+    <div class="empty">
+      <h2>NO DATA RECEIVED</h2>
+      <p>Run an analysis in the NOC war room, then relay it here.</p>
+      <div class="hdr-btns" style="justify-content:center;">
+        <a class="hbtn primary" href="noc-war-room.html">&#128225; Go to War Room</a>
+      </div>
+    </div>`;
+}
+
+function renderEngineOutput(text) {
+  if(!text) return '';
+  const clean = text.replace(/KPI_JSON:\s*\{[^}]*\}\n*/i, '').trim();
+  const lines = clean.split('\n');
+  const isTableSep = l => /^\s*\|?[\s:|-]+\|?\s*$/.test(l) && l.includes('-');
+  const inlineFmt = s => escapeHtml(s).replace(/&lt;br\s*\/?&gt;/gi, '<br>').replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  const tables = [];
+  const outLines = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (/^\s*\|.*\|\s*$/.test(line) && lines[i + 1] !== undefined && isTableSep(lines[i + 1])) {
+      const headers = line.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+      let t = '<table class="md-table"><thead><tr>' + headers.map(c => `<th>${inlineFmt(c)}</th>`).join('') + '</tr></thead><tbody>';
+      i += 2;
+      while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) {
+        const cells = lines[i].trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+        t += '<tr>' + cells.map(c => `<td>${inlineFmt(c)}</td>`).join('') + '</tr>';
+        i++;
+      }
+      t += '</tbody></table>';
+      outLines.push(`@@TABLE${tables.length}@@`);
+      tables.push(t);
+      continue;
+    }
+    outLines.push(line);
+    i++;
+  }
+  let html = escapeHtml(outLines.join('\n'));
+  html = html.replace(/&lt;br\s*\/?&gt;/gi, '<br>');
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/^▸\s*(.+)$/gm, '<div style="margin:4px 0">▸ $1</div>');
+  html = html.replace(/^(\d+)\.\s+(.+)$/gm, '<div style="margin:4px 0 4px 8px"><strong>$1.</strong> $2</div>');
+  html = html.replace(/\n{2,}/g, '<br><br>').replace(/\n/g, '<br>');
+  tables.forEach((t, idx) => { html = html.replace(`@@TABLE${idx}@@`, t); });
+  return html;
+}
+
+/* ---------- Business-value framing helpers ---------- */
+
+// Deterministic, rule-based next action -- derived from stage + breach
+// status + ownership, never invented. Keeps the "recommended action"
+// column honest even when no AI summary is available yet.
+function nextAction(rec, isBreached){
+  const owner = rec.owner || 'Unassigned';
+  if(rec.stage === 'new' && owner === 'Unassigned') return 'Assign an owner and begin triage now.';
+  if(rec.stage === 'new') return 'Begin triage against SLA clock.';
+  if(rec.stage === 'escalated' && isBreached) return 'Already past SLA \u2014 escalate to on-call lead immediately.';
+  if(rec.stage === 'escalated') return 'Confirm escalation owner and expected resolution time.';
+  if(rec.stage === 'in_progress' && isBreached) return 'Remediation stalled past SLA \u2014 add resources or escalate.';
+  if(rec.stage === 'in_progress') return 'Continue remediation; monitor against SLA clock.';
+  if(rec.stage === 'triaged') return 'Move to active remediation; confirm owner has capacity.';
+  return 'Confirm resolution and close out.';
+}
+
+function impactFromSeverity(sev){
+  if(sev === 'SEV1') return { cls: 'high', label: 'HIGH IMPACT' };
+  if(sev === 'SEV2') return { cls: 'medium', label: 'MED IMPACT' };
+  return { cls: 'low', label: 'LOW IMPACT' };
+}
+
+function renderWipBoard(wip){
+  if(!wip || !wip.length) return '';
+  const stages = wip.map(s => {
+    const stalled = s.stalled_count > 0;
+    const meta = s.avg_hours_in_stage !== null
+      ? `avg ${s.avg_hours_in_stage}h in stage${s.sla_hours!=null ? ' / SLA '+s.sla_hours+'h' : ''}`
+      : (s.sla_hours!=null ? `SLA ${s.sla_hours}h` : 'no SLA clock');
+    return `<div class="wip-stage${stalled?' stalled':''}">
+      ${stalled?'<span class="ws-flag">&#9888;</span>':''}
+      <div class="ws-lbl">${escapeHtml(s.label)}</div>
+      <div class="ws-count">${s.count}</div>
+      <div class="ws-meta">${escapeHtml(meta)}</div>
+      ${stalled?`<div class="ws-meta" style="color:var(--red)">${s.stalled_count} stalled past SLA</div>`:''}
+    </div>`;
+  }).join('<div class="wip-arrow">&rarr;</div>');
+  return `<div class="sec">
+    <div class="sec-hdr"><span class="lbl">WORK-IN-PROGRESS BY STAGE</span><span class="sec-hdr-note">time-in-stage vs. SLA clock, live from war room data</span></div>
+    <div class="wip-board">${stages}</div>
+  </div>`;
+}
+
+function renderActionQueue(records, breachIds){
+  const incidents = (records && records.incidents) || [];
+  const open = incidents.filter(r => !['resolved','closed'].includes(r.stage));
+  if(!open.length){
+    return `<div class="sec"><div class="sec-hdr"><span class="lbl">ACTION QUEUE</span></div><div class="no-items">No open incidents &mdash; queue is clear.</div></div>`;
+  }
+  const rows = open
+    .slice()
+    .sort((a,b) => (b.entered_stage_at_hours_ago||0) - (a.entered_stage_at_hours_ago||0))
+    .map(r => {
+      const isBreached = breachIds.has(r.incident_id);
+      const impact = impactFromSeverity(r.severity);
+      const hours = r.entered_stage_at_hours_ago;
+      return `<tr>
+        <td><strong>${escapeHtml(r.incident_id)}</strong><br><span style="color:var(--muted);font-size:.7rem;">${escapeHtml(r.title||'')}</span></td>
+        <td><span class="impact ${impact.cls}">${impact.label}</span></td>
+        <td>${escapeHtml(r.stage)}</td>
+        <td class="${isBreached?'time-hot':''}">${hours!==undefined?hours+'h':'&mdash;'}</td>
+        <td>${escapeHtml(r.owner||'Unassigned')}</td>
+        <td class="action-hint">${escapeHtml(nextAction(r, isBreached))}</td>
+      </tr>`;
+    }).join('');
+  return `<div class="sec">
+    <div class="sec-hdr"><span class="lbl">ACTION QUEUE</span><span class="sec-hdr-note">ranked by time in current stage</span></div>
+    <table class="aq-table">
+      <thead><tr><th>Incident</th><th>Impact</th><th>Stage</th><th>Time in Stage</th><th>Owner</th><th>Recommended Next Step</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`;
+}
+
+function render(){
+  const data = loadRelay();
+  if(!data){ renderEmpty(); return; }
+
+  document.getElementById('hdrSub').textContent = `Relayed ${data.timestamp ? new Date(data.timestamp).toLocaleString() : '&mdash;'}`;
+
+  const kpis = data.kpis || {};
+  const breaches = data.incident_breaches || [];
+  const breachIds = new Set(breaches.map(b => b.id));
+  const openIncidents = kpis.open_incidents || 0;
+  const compliancePct = openIncidents > 0
+    ? Math.round(((openIncidents - breaches.length) / openIncidents) * 1000) / 10
+    : 100;
+
+  let html = '';
+
+  html += `<div class="kpi-row">
+    <div class="kpi"><div class="kpi-val amber">${fmtVal(kpis.open_incidents)}</div><div class="kpi-lbl">OPEN INCIDENTS</div></div>
+    <div class="kpi"><div class="kpi-val red">${fmtVal(kpis.sev1_incidents)}</div><div class="kpi-lbl">SEV-1 (HIGH IMPACT)</div></div>
+    <div class="kpi"><div class="kpi-val ${compliancePct>=90?'green':compliancePct>=70?'amber':'red'}">${compliancePct}%</div><div class="kpi-lbl">SLA COMPLIANCE</div></div>
+    <div class="kpi"><div class="kpi-val green">${fmtVal(kpis.uptime_pct,'pct')}</div><div class="kpi-lbl">FLEET UPTIME</div></div>
+    <div class="kpi"><div class="kpi-val red">${fmtVal(kpis.devices_down)}</div><div class="kpi-lbl">DEVICES DOWN</div></div>
+    <div class="kpi"><div class="kpi-val cyan">${fmtVal(kpis.open_alerts)}</div><div class="kpi-lbl">OPEN ALERTS</div></div>
+  </div>`;
+
+  if(data.ai_summary){
+    html += `<div class="ai-box"><strong style="color:var(--cyan);font-family:'Orbitron',sans-serif;font-size:.65rem;letter-spacing:.1em;display:block;margin-bottom:8px;">AI CORRELATION ANALYSIS</strong>${renderEngineOutput(data.ai_summary)}</div>`;
+  }
+
+  html += renderWipBoard(data.incident_wip);
+  html += renderActionQueue(data.records, breachIds);
+
+  document.getElementById('wrap').innerHTML = html;
+}
+
+render();
+window.addEventListener('storage', e => { if(e.key === RELAY_KEY_FALLBACK || e.key === 'TSM_EVENT_LOG') render(); });
+window.addEventListener('TSM_RELAY_EVENT', e => { if(e.detail && e.detail.domain === DOMAIN) render(); });
+</script>
+  <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
+  <script src="/html/core/tsm-runtime.js"></script>
+</body>
+</html>

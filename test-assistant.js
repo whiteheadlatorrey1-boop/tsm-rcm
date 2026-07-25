@@ -134,7 +134,7 @@ console.log('\n── Step 5: Live Groq API calls ──────────
 
 // Detect model used in the HTML
 const modelMatch = html.match(/model['":\s]+['"`]([\w\d.:-]+)['"`]/i);
-const MODEL = modelMatch ? modelMatch[1] : 'llama-3.3-70b-versatile';
+const MODEL = modelMatch ? modelMatch[1] : 'openai/gpt-oss-120b';
 log(`Using model: ${MODEL}`);
 
 const HEADERS = {

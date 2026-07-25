@@ -367,11 +367,14 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:13
 .rt-btn.exec{border-color:var(--accent2-border);color:var(--green-bright)}
 .rt-btn:hover{opacity:.8}
 </style>
-<script src="./html/js/tsm-runtime-lock.js"></script>
-<script src="./html/js/tsm-event-contract.js"></script>
-<script src="./html/js/tsm-autonomy-layer.js"></script>
+<script src="/html/js/tsm-runtime-lock.js"></script>
+<script src="/html/js/tsm-event-contract.js"></script>
+<script src="/html/js/tsm-autonomy-layer.js"></script>
   <script src="/js/core/tsm-event-bus.js"></script>
   <script src="/js/core/tsm-state.js"></script>
+  <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
+  <script src="/html/shared/runtime/mission/mission-model.js"></script>
+  <script src="/html/shared/runtime/mission/mission-store.js"></script>
   <script src="/js/core/tsm-mission-engine.js"></script>
   <script src="/js/core/tsm-auto-pipeline.js"></script>
 </head>
@@ -504,13 +507,13 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:13
     <div class="config-block">
       <div class="config-label">Model</div>
       <select class="config-select" id="modelSel" onchange="updateModelInfo()">
-        <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile</option>
+        <option value="openai/gpt-oss-120b">openai/gpt-oss-120b</option>
         <option value="llama-3.1-8b-instant">llama-3.1-8b-instant</option>
         <option value="mixtral-8x7b-32768">mixtral-8x7b-32768</option>
         <option value="gemma2-9b-it">gemma2-9b-it</option>
       </select>
       <div class="model-info" id="modelInfo">
-        <div class="model-info-name">llama-3.3-70b-versatile</div>
+        <div class="model-info-name">openai/gpt-oss-120b</div>
         <div class="model-info-desc">70B params · 128k ctx · ~800 tok/s<br>Best for: executive-level financial synthesis</div>
       </div>
     </div>
@@ -934,7 +937,7 @@ function switchTab(id, btn){
 
 // ===== MODEL INFO =====
 const modelMeta = {
-  'llama-3.3-70b-versatile':{name:'llama-3.3-70b-versatile',desc:'70B params · 128k ctx · ~800 tok/s\nBest for: executive-level financial synthesis'},
+  'openai/gpt-oss-120b':{name:'openai/gpt-oss-120b',desc:'70B params · 128k ctx · ~800 tok/s\nBest for: executive-level financial synthesis'},
   'llama-3.1-8b-instant':{name:'llama-3.1-8b-instant',desc:'8B params · 128k ctx · ~2000 tok/s\nBest for: fast triage and summaries'},
   'mixtral-8x7b-32768':{name:'mixtral-8x7b-32768',desc:'8x7B MoE · 32k ctx · ~500 tok/s\nBest for: multi-document analysis'},
   'gemma2-9b-it':{name:'gemma2-9b-it',desc:'9B params · 8k ctx · ~800 tok/s\nBest for: structured output and compliance'}
@@ -1215,6 +1218,51 @@ function relayToExecutive(){
     exceptions: _excM ? _excM[1] : existing.exceptions || null,
     compliance: _compM ? _compM[1].trim().slice(0,12) : existing.compliance || null
   }));
+  // ── Phase 2: Mission Core creation ──
+  try {
+    if (window.TSMMissionModel && window.TSMMissionStore) {
+      function finopsMissionParseExposure(str){
+        if (!str) return 0;
+        const nums = String(str).match(/[\d,]+(?:\.\d+)?/g);
+        if (!nums) return 0;
+        const mult = /m\b/i.test(str) ? 1000000 : (/k\b/i.test(str) ? 1000 : 1);
+        const vals = nums.map(n => parseFloat(n.replace(/,/g,'')) * mult);
+        return Math.round(Math.max.apply(null, vals));
+      }
+      const finopsExposureVal = finopsMissionParseExposure(_expM ? _expM[1] : (existing.exposure || null));
+      const finopsRiskStr = _riskM ? _riskM[1] : (existing.riskScore || null);
+      const finopsRiskNum = finopsRiskStr ? parseInt(finopsRiskStr) : null;
+      const finopsPriority =
+        finopsExposureVal >= 500000 || (finopsRiskNum !== null && finopsRiskNum >= 80) ? 'Critical'
+        : finopsExposureVal >= 100000 || (finopsRiskNum !== null && finopsRiskNum >= 60) ? 'High'
+        : finopsExposureVal >= 25000 || (finopsRiskNum !== null && finopsRiskNum >= 40) ? 'Medium'
+        : 'normal';
+      const mission = window.TSMMissionModel.createMission({
+        vertical: 'finops',
+        tenantId: 'default',
+        client: relaySource || null,
+        classification: {
+          summary: output || '',
+          exposure: _expM ? _expM[1] : (existing.exposure || null),
+          riskScore: finopsRiskStr,
+          source: 'FinOps Strategist'
+        },
+        workflow: {
+          assignedTo: null,
+          queue: null,
+          priority: finopsPriority,
+          sla: null
+        },
+        actor: 'finops-main-strategist'
+      });
+      window.TSMMissionStore.saveMission(mission);
+    } else {
+      console.warn('Mission Core not loaded — skipping mission creation, FinOps relay write already succeeded.');
+    }
+  } catch (missionErr) {
+    console.warn('Mission Core creation failed (non-fatal, FinOps relay already written):', missionErr);
+  }
+
   showRelayToast('Relaying to Executive Portal...');
   setTimeout(()=>{ window.location.href='finops-executive-portal.html'; }, 1200);
 }
@@ -1600,12 +1648,13 @@ function managerExport(){
   a.download='TSM-Controller-Action-Plan.txt';a.click();
 }
 </script>
-  <script src="./tsm-kernel-upgrade.js"></script>
+  <script src="/js/core/tsm-kernel-upgrade.js"></script>
 
 
 <style>body{padding-bottom:40px!important}</style>
 <div id="tsm-chain-bar" style="position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#040c12;border-top:1px solid #0d2233;display:flex;align-items:center;height:32px;padding:0 16px;font-family:'IBM Plex Mono',monospace;font-size:10px;"><span style="color:#3a5a70;margin-right:12px;font-size:9px;">TSM CHAIN</span><a href="/html/finops-suite/finops-war-room.html" style="color:#94a3b8;border:1px solid #1a3a50;padding:3px 10px;border-radius:3px;text-decoration:none;margin-right:6px;font-size:9px;">&#9675; WAR ROOM</a><span style="color:#1a3a50;margin-right:6px;">--&gt;</span><a href="#" style="color:var(--green, #00ff94);background:rgba(255,255,255,.05);border:1px solid var(--green, #00ff94)55;padding:3px 10px;border-radius:3px;text-decoration:none;margin-right:6px;font-size:9px;">&#9679; STRATEGIST</a><span style="color:#1a3a50;margin-right:6px;">--&gt;</span><a href="/html/finops-suite/finops-executive-portal.html" style="color:#94a3b8;border:1px solid #1a3a50;padding:3px 10px;border-radius:3px;text-decoration:none;margin-right:6px;font-size:9px;">&#9675; EXEC PORTAL</a><span style="color:#1a3a50;margin-left:auto;font-size:9px;">FINOPS</span></div>
   <script src="/shared/tsm-exec-kit-producer.js"></script>
+  <script src="/html/core/tsm-runtime.js"></script>
 </body>
 </html>
 // ===== TSM AUTONOMY PATCH (FINOPS MISSION CORE) =====
@@ -1656,7 +1705,7 @@ window.TSM_AUTONOMY_STANDARDIZED = true;
 </script>
 
 <!-- TSM ENFORCER BOOT -->
-<script src="../../core/tsm-enforcer.js"></script>
+<script src="/html/core/tsm-enforcer.js"></script>
 
 
 // ===== TSM WAR ROOM SCOPED RELAY FIX =====
@@ -1694,5 +1743,4 @@ function tsmWriteScopedStrat(vertical, missionId){
 
 
 <!-- TSM KERNEL ENGINE -->
-<script src="../../core/tsm-kernel.js"></script>
-
+<script src="/html/core/tsm-kernel.js"></script>
