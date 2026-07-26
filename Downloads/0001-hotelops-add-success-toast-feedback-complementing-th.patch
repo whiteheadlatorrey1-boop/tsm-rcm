@@ -1,0 +1,84 @@
+From 0d31f50468456a3202cd5d70d52e888ceccc2a9a Mon Sep 17 00:00:00 2001
+From: Claude <claude@anthropic.com>
+Date: Sun, 26 Jul 2026 10:41:57 +0000
+Subject: [PATCH] hotelops: add success-toast feedback, complementing the
+ requireEngine guards
+
+The capability sweep's requireEngine() guards handle the failure path
+(engine not ready yet) with a visible red error. This adds the missing
+complementary piece: visible confirmation on the success path, so
+Load Sample / Reset / Relay all give on-screen proof a click actually
+registered, instead of the silent same-data-reloaded look they had
+before (sample data auto-loads on first visit, so re-clicking Load
+Sample/Reset previously changed nothing visible).
+
+Reapplied by hand against the current file rather than via patch --
+the original patch's line offsets no longer matched after the sweep's
+requireEngine() insertions. Verified live via Puppeteer against the
+real post-sweep code: all 3 toasts fire with correct text, 0 page
+errors, relay data still lands correctly, strategist page still 200s.
+---
+ .../hotel-war/hotelops-war-room.html          | 19 ++++++++++++++++++-
+ 1 file changed, 18 insertions(+), 1 deletion(-)
+
+diff --git a/html/war-rooms/hotel-war/hotelops-war-room.html b/html/war-rooms/hotel-war/hotelops-war-room.html
+index 2355700f..c77b94b0 100644
+--- a/html/war-rooms/hotel-war/hotelops-war-room.html
++++ b/html/war-rooms/hotel-war/hotelops-war-room.html
+@@ -43,6 +43,8 @@ body{font-family:var(--body);background:var(--bg);color:var(--white);min-height:
+ .panel-hdr{padding:8px 12px;border-bottom:1px solid var(--border2);font-family:var(--display);font-size:.6rem;letter-spacing:.1em;color:var(--accent);display:flex;justify-content:space-between;align-items:center;}
+ .panel-body{padding:12px;}
+ textarea#docIntake{width:100%;min-height:80px;background:var(--bg3);border:1px solid var(--border);color:var(--white);font-family:var(--mono);font-size:.6rem;padding:8px;resize:vertical;}
++#tsm-toast{position:fixed;bottom:20px;right:20px;background:var(--bg2);border:1px solid var(--accent);color:var(--accent);padding:10px 18px;font-family:var(--mono);font-size:.65rem;letter-spacing:.04em;opacity:0;pointer-events:none;transition:opacity .25s,transform .25s;transform:translateY(6px);z-index:999;}
++#tsm-toast.show{opacity:1;transform:translateY(0);}
+ .btn{font-family:var(--display);font-size:.55rem;font-weight:700;letter-spacing:.08em;padding:7px 16px;background:var(--accent);color:#000;border:none;cursor:pointer;}
+ .btn:hover{opacity:.85;}
+ .btn.ghost{background:transparent;color:var(--accent);border:1px solid var(--accent);}
+@@ -157,7 +159,16 @@ textarea#docIntake{width:100%;min-height:80px;background:var(--bg3);border:1px s
+ </div>
+ 
+ <script src="services/hotelops-engine.js"></script>
++<div id="tsm-toast"></div>
+ <script>
++function showToast(msg){
++  const t = document.getElementById('tsm-toast');
++  if(!t) return;
++  t.textContent = msg;
++  t.classList.add('show');
++  clearTimeout(showToast._h);
++  showToast._h = setTimeout(() => t.classList.remove('show'), 2600);
++}
+ let model = null, engine = null;
+ 
+ function showInitError(msg) {
+@@ -461,7 +472,11 @@ function relayToStrategist(){
+       window.TSM.relay.write('HOTELOPS', payload);
+     }
+     window.dispatchEvent(new CustomEvent('TSM_SENTINEL_REFRESH'));
+-  } catch (e) { console.warn('Relay storage failed', e); }
++    showToast('Relayed to Strategist — click "Strategist →" above to view it.');
++  } catch (e) {
++    console.warn('Relay storage failed', e);
++    showToast('Relay failed — see console for details.');
++  }
+   if (window.TSMEventBus && window.TSMEventBus.emit) {
+     window.TSMEventBus.emit('WAR_ROOM_READY', { vertical: 'hotelops', payload, ts: Date.now() });
+   }
+@@ -483,6 +498,7 @@ document.getElementById('btnLoadSample').addEventListener('click', () => {
+   engine.loadSampleData();
+   engine.saveToStorage();
+   render();
++  showToast('Sample data loaded.');
+ });
+ 
+ document.getElementById('btnResetData').addEventListener('click', () => {
+@@ -491,6 +507,7 @@ document.getElementById('btnResetData').addEventListener('click', () => {
+   engine.loadSampleData();
+   engine.saveToStorage();
+   render();
++  showToast('Saved data cleared — reset to sample data.');
+ });
+ 
+ // ── IOT SENSOR IMPORT (PASTE) ─────────────────────────────────────────────
+-- 
+2.43.0
