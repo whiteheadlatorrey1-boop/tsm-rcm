@@ -49,6 +49,7 @@
   --hw:   #ff6b4a;  /* Honeywell Industrial – ember */
   --log:  #5eead4;  /* Logistics – teal */
   --vnd:  #f87171;  /* Supplier/Vendor Management – red */
+  --hotel: #22d3ee;  /* HotelOps – cyan */
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -372,6 +373,8 @@ body::before {
 .vtab.active[data-v="vendor"] { background: rgba(248,113,113,0.08); color: var(--vnd); border-bottom: 2px solid var(--vnd); }
 .vtab[data-v="vendor"] .vtab-dot { background: var(--vnd); }
 .vtab[data-v="hw"]  .vtab-dot { background: var(--hw); }
+.vtab[data-v="hotel"] .vtab-dot { background: var(--hotel); }
+.vtab.active[data-v="hotel"] { background: rgba(34,211,238,0.08); color: var(--hotel); border-bottom: 2px solid var(--hotel); }
 
 /* ─── NODE QUICK LINKS ───────────────────────────── */
 .node-links {
@@ -1119,6 +1122,7 @@ if (window.pdfjsLib) {
     <button class="vtab"        data-v="hw" onclick="switchVertical('hw')"><span class="vtab-dot"></span>Honeywell Industrial</button>
     <button class="vtab"        data-v="logistics" onclick="switchVertical('logistics')"><span class="vtab-dot"></span>Logistics</button>
     <button class="vtab"        data-v="vendor" onclick="switchVertical('vendor')"><span class="vtab-dot"></span>Supplier/Vendor</button>
+    <button class="vtab"        data-v="hotel" onclick="switchVertical('hotel')"><span class="vtab-dot"></span>HotelOps</button>
 
   </div>
 
@@ -1321,6 +1325,23 @@ const VERTICALS = {
     },
     seed: [
       { fileName:"Vendor_Risk_Alert_Ashgrove.record", documentType:"DOCUMENT REPORT", vendor:"Ashgrove Components", invoiceNo:"VRA-ASH-01", exclusionCode:"QUAL-HOLD", amount:145000, sourceNode:"vendor-war-room", routing:["vendor-war-room","strategist"], timestamp:Date.now()-3*3600000, _ext:{client:"Ashgrove Components", ref:"VRA-001"} },
+    ]
+  },
+  hotel: {
+    label: "HotelOps",
+    color: "#22d3ee",
+    cls:   "hotel",
+    storageKey: "tsm_doc_index_hotel",
+    searchPlaceholder: "Search by folio, maintenance ticket, OTA ref, guest...",
+    nodes: {
+      "hotelops-war-room": { label:"HotelOps War Room",     route:"/html/war-rooms/hotel-war/hotelops-war-room.html" },
+      "strategist":        { label:"Strategist",            route:"/html/war-rooms/hotel-war/hotelops-strategist.html" },
+      "bnca-engine":       { label:"BNCA Escalated",        route:"/html/war-rooms/hotel-war/hotelops-executive-portal.html" },
+    },
+    seed: [
+      { fileName:"OTA_Overcharge_Expedia_Q2.record",     documentType:"VENDOR INVOICE",  vendor:"Expedia",      invoiceNo:"OTA-EXP-Q2",  exclusionCode:"OTA-COMM", amount:8400,  sourceNode:"hotelops-war-room", routing:["hotelops-war-room","strategist"],            timestamp:Date.now()-2*3600000, _ext:{client:"Property Ops", ref:"OTA-EXP-Q2"} },
+      { fileName:"Maintenance_SLA_Breach_Rm412.record",  documentType:"INCIDENT",        vendor:"",             invoiceNo:"MNT-412",     exclusionCode:"SLA-BREACH", amount:0,   sourceNode:"hotelops-war-room", routing:["hotelops-war-room","strategist"],            timestamp:Date.now()-4*3600000, _ext:{client:"Property Ops", ref:"MNT-412"} },
+      { fileName:"Compliance_FireSafety_Renewal.record", documentType:"DOCUMENT REPORT", vendor:"",             invoiceNo:"CMP-FS-01",   exclusionCode:"COMPLY-DUE", amount:0,   sourceNode:"hotelops-war-room", routing:["hotelops-war-room","strategist","bnca-engine"], timestamp:Date.now()-6*3600000, _ext:{client:"Property Ops", ref:"CMP-FS-01"} },
     ]
   },
   re: {
@@ -2394,6 +2415,8 @@ const WAR_ROOM_ROUTES = {
   'hw-supplier':          { label:'Honeywell Supplier Shutdown War Room',   url:'/html/supplier-shutdown.html',   relay:'tsm_hw_supplier_docsearch_relay', autoKey:'TSM_HW_SUPPLIER_WAR_RELAY' },
   'hw-cyber-war-room':    { label:'Honeywell Cyber Incident War Room',      url:'/html/cyber-incident.html',      relay:'tsm_hw_cyber_docsearch_relay',    autoKey:'TSM_HW_CYBER_WAR_RELAY' },
   'hw-cyber':             { label:'Honeywell Cyber Incident War Room',      url:'/html/cyber-incident.html',      relay:'tsm_hw_cyber_docsearch_relay',    autoKey:'TSM_HW_CYBER_WAR_RELAY' },
+  'hotelops-war-room':    { label:'HotelOps War Room',                      url:'/html/war-rooms/hotel-war/hotelops-war-room.html', relay:'tsm_hotelops_docsearch_relay', autoKey:'TSM_HOTELOPS_WAR_RELAY' },
+  'hotel':                { label:'HotelOps War Room',                      url:'/html/war-rooms/hotel-war/hotelops-war-room.html', relay:'tsm_hotelops_docsearch_relay', autoKey:'TSM_HOTELOPS_WAR_RELAY' },
 };
 
 TSMWarRoomRegistry.registerWarRooms(WAR_ROOM_ROUTES);
@@ -2751,6 +2774,12 @@ const DEMO_DOCS = [
   { id:'dd-mtg-cd-d',  verticals:['mortgage'], fileName:'Closing_Disclosure_Whitfield.pdf',      documentType:'CLOSING DISCLOSURE',vendor:'Premier Escrow Co',   invoiceNo:'CD-24-0132',   exclusionCode:'FEE-VAR', amount:452000, sourceNodes:{mortgage:'mortgage-war-room'}, routing:{mortgage:['mortgage-war-room','strategist','bnca-engine']},   _ext:{client:'Amanda Whitfield',  ref:'CD-24-0132',   defectFlags:['Closing Delay']},  tags:['closing disclosure','trid','escrow','mortgage','borrower','fee variance','tolerance cure'] },
   { id:'dd-mtg-appr-a',verticals:['mortgage'], fileName:'Appraisal_Report_88_Saguaro_Way.pdf',   documentType:'APPRAISAL REPORT',  vendor:'AZ Valuation Group',  invoiceNo:'APR-24-0091',  exclusionCode:'',        amount:398000, sourceNodes:{mortgage:'mortgage-war-room'}, routing:{mortgage:['mortgage-war-room','strategist']},                 _ext:{client:'Carlos Reyes',      ref:'APR-24-0091',  defectFlags:[]},                 tags:['appraisal','uad','comps','mortgage','borrower','ltv'] },
   { id:'dd-mtg-appr-e',verticals:['mortgage'], fileName:'Appraisal_Report_14_Cactus_Bloom_Ln.pdf',documentType:'APPRAISAL REPORT', vendor:'AZ Valuation Group',  invoiceNo:'APR-24-0132',  exclusionCode:'APPR-GAP',amount:452000, sourceNodes:{mortgage:'mortgage-war-room'}, routing:{mortgage:['mortgage-war-room','strategist','bnca-engine']},   _ext:{client:'Amanda Whitfield',  ref:'APR-24-0132',  defectFlags:['Appraisal Gap']},  tags:['appraisal','uad','comps','mortgage','borrower','ltv','value gap'] },
+
+  // ── HOTELOPS SAMPLE DOCS ────────────────────
+  { id:'dd-hotel-ota',    verticals:['hotel'], fileName:'OTA_Commission_Overcharge_Expedia_Q2.pdf', documentType:'VENDOR INVOICE',  vendor:'Expedia',  invoiceNo:'OTA-EXP-Q2',   exclusionCode:'OTA-COMM',   amount:8400, sourceNodes:{hotel:'hotelops-war-room'}, routing:{hotel:['hotelops-war-room','strategist']},               _ext:{client:'Property Ops', ref:'OTA-EXP-Q2',   defectFlags:[]}, tags:['ota','commission','expedia','overcharge','revenue'] },
+  { id:'dd-hotel-maint',  verticals:['hotel'], fileName:'Maintenance_SLA_Breach_Room412.pdf',        documentType:'INCIDENT',        vendor:'',         invoiceNo:'MNT-412',      exclusionCode:'SLA-BREACH', amount:0,    sourceNodes:{hotel:'hotelops-war-room'}, routing:{hotel:['hotelops-war-room','strategist']},               _ext:{client:'Property Ops', ref:'MNT-412',      defectFlags:['SLA Breach']}, tags:['maintenance','sla breach','ticket','hotelops'] },
+  { id:'dd-hotel-comply', verticals:['hotel'], fileName:'Fire_Safety_Permit_Renewal_Due.pdf',        documentType:'DOCUMENT REPORT', vendor:'',         invoiceNo:'CMP-FS-01',    exclusionCode:'COMPLY-DUE', amount:0,    sourceNodes:{hotel:'hotelops-war-room'}, routing:{hotel:['hotelops-war-room','strategist','bnca-engine']}, _ext:{client:'Property Ops', ref:'CMP-FS-01',    defectFlags:[]}, tags:['compliance','fire safety','permit','renewal','hotelops'] },
+  { id:'dd-hotel-iot',    verticals:['hotel'], fileName:'IoT_Leak_Sensor_Alert_Floor3.pdf',          documentType:'INCIDENT',        vendor:'',         invoiceNo:'IOT-LEAK-03',  exclusionCode:'',           amount:0,    sourceNodes:{hotel:'hotelops-war-room'}, routing:{hotel:['hotelops-war-room','strategist']},               _ext:{client:'Property Ops', ref:'IOT-LEAK-03',  defectFlags:[]}, tags:['iot','sensor','leak','smart systems','hotelops'] },
 ];
 
 function cleanRouting(doc, v) {
