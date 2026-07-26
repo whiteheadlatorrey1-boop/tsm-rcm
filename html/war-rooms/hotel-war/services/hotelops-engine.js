@@ -21,6 +21,8 @@
       this.model = model || { entities: {}, kpis: [], sample_data: {}, portfolio: [] };
       this.data = { maintenance_tickets: [], ota_charges: [], compliance_items: [], iot_sensors: [] };
       this.property = null; // revenue/occupancy snapshot, set via loadSampleData()
+      this.energyUsage = null; // energy_usage snapshot, set via loadSampleData()
+      this.predictiveAlerts = []; // predictive_alerts list, set via loadSampleData()
     }
 
     /* ---------- Loading ---------- */
@@ -29,6 +31,8 @@
       const sample = this.model.sample_data || {};
       ENTITY_KEYS.forEach(k => { this.data[k] = [...(sample[k] || [])]; });
       this.property = sample.property ? { ...sample.property } : null;
+      this.energyUsage = sample.energy_usage ? { ...sample.energy_usage } : null;
+      this.predictiveAlerts = [...(sample.predictive_alerts || [])];
     }
 
     loadRecords(entityKey, records) {
@@ -160,7 +164,8 @@
           return {
             id: s.sensor_id,
             room: s.room,
-            sensor_type: s.type,
+            type: s.type,
+            status: s.status,
             severity: evalResult.severity,
             issue: evalResult.issue,
             detail: evalResult.detail,
@@ -172,6 +177,25 @@
         })
         .filter(Boolean)
         .sort((a, b) => (IOT_SEV_ORDER[a.severity] ?? 4) - (IOT_SEV_ORDER[b.severity] ?? 4));
+    }
+
+    /* ---------- Energy usage summary ----------
+       Straight passthrough of the energy_usage snapshot from the model
+       (period/hvac_cost/lighting_cost/total_cost/trend/cost-per-room) --
+       these are point-in-time facility metrics, not derived from other
+       entity arrays, so there's nothing to compute here. */
+
+    getEnergySummary() {
+      return this.energyUsage ? { ...this.energyUsage } : null;
+    }
+
+    /* ---------- Predictive maintenance risk ----------
+       Straight passthrough of the predictive_alerts snapshot, sorted
+       worst-health-first so the highest-risk equipment surfaces on top. */
+
+    getPredictiveRisk() {
+      return [...(this.predictiveAlerts || [])]
+        .sort((a, b) => (a.health_score ?? 100) - (b.health_score ?? 100));
     }
 
     /* ---------- Revenue KPIs ----------
