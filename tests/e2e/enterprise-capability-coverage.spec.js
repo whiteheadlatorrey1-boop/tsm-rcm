@@ -154,19 +154,19 @@ const VERTICALS = [
     '/html/tsm-insurance/insurance-executive-portal.html',
   ]},
   { column: 'Construction', key: 'Construction', pages: [
-    '/html/construction-suite/construction-war-room.html',
-    '/html/construction-suite/construction-strategist.html',
-    '/html/construction-suite/construction-executive-portal.html',
+    '/html/war-rooms/construct-war/construction-war-room.html',
+    '/html/war-rooms/construct-war/construction-strategist.html',
+    '/html/war-rooms/construct-war/construction-executive-portal.html',
   ]},
   { column: 'Legal', key: 'Legal', pages: [
-    '/html/legal-pro/legal-war-room.html',
-    '/html/legal-pro/legal-main-strategist.html',
-    '/html/legal-pro/legal-executive-portal.html',
+    '/html/war-rooms/legal-war/legal-war-room.html',
+    '/html/war-rooms/legal-war/legal-main-strategist.html',
+    '/html/war-rooms/legal-war/legal-executive-portal.html',
   ]},
   { column: 'Real Estate', key: 'Real Estate', pages: [
-    '/html/reo-pro/re-war-room.html',
-    '/html/reo-pro/re-strategist.html',
-    '/html/reo-pro/re-exec-portal.html',
+    '/html/war-rooms/re-war/re-war-room.html',
+    '/html/war-rooms/re-war/re-strategist.html',
+    '/html/war-rooms/re-war/re-exec-portal.html',
   ]},
   { column: 'BPO Services', key: 'BPO', pages: [
     '/html/war-rooms/bpo/bpo-war-room.html',
