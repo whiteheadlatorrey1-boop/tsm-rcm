@@ -1110,13 +1110,32 @@ function buildLiveFeedFromMissions(){
   return events.map(e=>({icon:e.icon,bg:e.bg,color:e.color,text:e.text,time:new Date(e.at).toLocaleTimeString('en-US',{hour12:true})}));
 }
 
+// caseId prefix per vertical, matching the format each war room already
+// generates its own caseId with (e.g. bpo-war-room.html uses 'BPO-YYYY-MM-DD-xxxxxx').
+// Intentionally NOT writing a TSM_<VERTICAL>_WAR_RELAY payload here — strategist
+// pages expect real document-extraction fields (docType, scenario, summary,
+// confidence) that a manual intake form has no legitimate way to supply.
+// Fabricating that payload would mean making up strategist input, which this
+// platform explicitly avoids elsewhere. This only makes the mission
+// addressable the same way a war-room case is, via caseId.
+const CASE_ID_PREFIX = {
+  construction: 'CONSTRUCTION', legal: 'LEGAL', healthcare: 'HEALTHCARE',
+  finops: 'FINOPS', realestate: 'RE', insurance: 'INS',
+  mortgage: 'MORTGAGE', schools: 'SCHOOLS'
+};
+function generateCaseId(vertical){
+  const prefix = CASE_ID_PREFIX[vertical] || vertical.toUpperCase();
+  return prefix + '-' + new Date().toISOString().slice(0,10) + '-' + Math.random().toString(36).slice(2,8);
+}
 function createMissionFromIntake(sectorId, formValues){
   if(!window.TSMMissionModel || !window.TSMMissionStore){
     console.warn('Mission Control: cannot create mission — Mission Store not loaded.');
     return null;
   }
   const vertical = SECTOR_TO_VERTICAL[sectorId];
+  const caseId = generateCaseId(vertical);
   const mission = window.TSMMissionModel.createMission({
+    id: caseId,
     vertical: vertical,
     tenantId: DEFAULT_TENANT_ID,
     client: formValues.client || null,
