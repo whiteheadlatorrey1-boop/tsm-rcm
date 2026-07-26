@@ -7,7 +7,7 @@ const puppeteer = require('puppeteer');
 const BASE = process.env.TSM_BASE_URL || 'https://tsm-consultz.fly.dev';
 
 const PAGES = [
-  { name: 'BPO Internal 1', path: '/war-rooms/bpo/bpo-internal1.html' },
+  { name: 'BPO Internal 1', path: '/bpo-files/bpo-internal1.html' },
 ];
 
 // Known-benign noise -- adjust/extend if verification turns up more.
