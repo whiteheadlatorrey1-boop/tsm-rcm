@@ -76,6 +76,7 @@ textarea#docIntake{width:100%;min-height:80px;background:var(--bg3);border:1px s
     <a href="hotelops-strategist.html">Strategist &rarr;</a>
     <a href="hotelops-executive-portal.html">Exec Portal &rarr;</a>
     <a href="../../hotelops/concierge-command.html">Concierge Command</a>
+    <a href="hotelops-howto.html" target="_blank" rel="noopener">📘 How-To Guide</a>
   </div>
   <div id="sys-status"><span id="sys-dot"></span><span id="navStatus">ENGINE: READY</span></div>
 </div>
@@ -634,5 +635,58 @@ init();
   <script src="hotelops-staffops-tab.js"></script>
   <script src="hotelops-incidents-tab.js"></script>
   <script src="hotelops-tabs.js"></script>
+  <script src="/html/shared/js/tsm-assistant-widget.js"></script>
+  <script>
+  // AI Assistant — opening briefing reuses buildSentinelAnomalies() (the same
+  // explainability-shaped data already fed to the Strategist relay) instead
+  // of a generic greeting, and still answers free-text WIP/status questions.
+  function hotelopsBriefingItems() {
+    if (!engine) return [];
+    const sevMap = { CRIT: 'critical', HIGH: 'high', MED: 'medium', LOW: 'low' };
+    const order = { critical: 0, high: 1, medium: 2, low: 3 };
+    return buildSentinelAnomalies()
+      .map(a => ({
+        severity: sevMap[a.severity] || 'medium',
+        title: a.title,
+        nextAction: a.recommendedAction,
+        why: a.rootCause,
+        tool: 'hotelops-strategist.html'
+      }))
+      .sort((a, b) => (order[a.severity] ?? 9) - (order[b.severity] ?? 9));
+  }
+  // Grounds "how do I..." / "what does this app do" questions — mirrors the
+  // full How-To Guide (hotelops-howto.html) so the assistant can answer
+  // feature/navigation questions, not just live workspace status.
+  const HOTELOPS_APP_FEATURES_KB = `
+APP FEATURES & MODULES (sidebar tabs, for questions about how to use this app — full detail at hotelops-howto.html):
+- Reservations: payment-failed, unconfirmed-near-arrival, and waitlist-risk bookings that need action before arrival.
+- Front Desk: live check-in/check-out/request queue with SLA breaches called out.
+- VIP Arrivals: readiness gaps (amenities, room prep, arrival notes) for VIP guests.
+- Housekeeping: room-turn tasks and any past their target turnaround time.
+- Maintenance: open tickets, SLA-breached and urgent ones surfaced first.
+- IoT / Smart Systems: live sensor alerts, energy usage summary, predictive risk signals; supports pasting a BMS/IoT sensor export via the sidebar importer (Parse Preview → Import to War Room).
+- Staff Operations: staffing gaps by shift/department.
+- Incident Center: open incidents, with past-SLA ones flagged for duty-manager escalation.
+- OTA Intelligence: OTA (Expedia/Booking.com) commission audit vs. contracted rate — period overcharge and annualized exposure.
+- Revenue Management: RevPAR/ADR/occupancy/GOP margin detail behind the KPI bar.
+- Compliance: items due within the compliance window (I-9, licensing, fire safety, health permits).
+- Sidebar DATA panel: LOAD SAMPLE DATA (populate with sample records), RESET SAVED DATA (clear local + reload sample), RELAY TO STRATEGIST → (push this War Room's snapshot to the Strategist, which rolls up to the Executive Portal).
+`;
+  function hotelopsContext() {
+    if (!engine) return 'Engine still loading.\n' + HOTELOPS_APP_FEATURES_KB;
+    const kpis = engine.computeKpis();
+    return `HotelOps property snapshot — RevPAR $${kpis.revpar}, ADR $${kpis.adr}, Occupancy ${kpis.occupancy_pct}%, ` +
+      `${kpis.open_maint_tickets} open maintenance ticket(s) (${kpis.maint_tickets_over_sla} past SLA), ` +
+      `${kpis.compliance_items_at_risk} compliance item(s) at risk, ${kpis.active_iot_alerts} active IoT alert(s).\n` +
+      HOTELOPS_APP_FEATURES_KB;
+  }
+  TSMAssistant.init({
+    vertical: 'HotelOps',
+    app: 'hotelops',
+    getContext: hotelopsContext,
+    getBriefing: hotelopsBriefingItems,
+    quickPrompts: ['What needs attention today?', 'Any SLA breaches?', 'How do I use the IoT tab?']
+  });
+  </script>
 </body>
 </html><!--  -->
