@@ -4,7 +4,7 @@
  *
  * Pushes newly-created missions into Sentinel Center, using the same
  * localStorage + CustomEvent pattern every strategist page already uses
- * to feed Sentinel manually (see legal-pro/legal-main-strategist.html).
+ * to feed Sentinel manually (see war-rooms/legal-war/legal-main-strategist.html).
  *
  * Handles TWO different mission-store implementations transparently:
  *   1. Shared runtime store (html/shared/runtime/mission/mission-store.js)

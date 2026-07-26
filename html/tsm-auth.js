@@ -55,9 +55,9 @@ const PUBLIC_EXACT = new Set([
   '/html/tsm-doc-search-multi.html',
   '/html/tsm-career-training-platform.html',
   '/html/war-rooms/war-room-prep.html',
-  '/html/construction-suite/construction-war-room.html',
-  '/html/construction-suite/construction-strategist.html',
-  '/html/construction-suite/construction-executive-portal.html',
+  '/html/war-rooms/construct-war/construction-war-room.html',
+  '/html/war-rooms/construct-war/construction-strategist.html',
+  '/html/war-rooms/construct-war/construction-executive-portal.html',
   '/html/tsm-doc-search-multi.html',
 ]);
 
