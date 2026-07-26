@@ -251,6 +251,31 @@ function renderRiskRegister(maintBreaches, complianceRisk){
   </div>`;
 }
 
+function renderAirbnbRisks(airbnbRisks){
+  const items = (airbnbRisks && airbnbRisks.items) || [];
+  if(!items.length){
+    return `<div class="sec"><div class="sec-hdr"><span class="lbl">AIRBNB / STR RISK REGISTER</span></div><div class="no-items">No flagged listings right now.</div></div>`;
+  }
+  const rows = items.map((it, idx) => {
+    const isHigh = it.severity === 'high';
+    const action = isHigh
+      ? 'Escalate to property manager today \u2014 guest-impact or double-booking risk.'
+      : 'Schedule a fix within 48h \u2014 within normal STR ops cadence.';
+    return `
+    <div class="risk-item">
+      <div class="risk-rank">${idx+1}</div>
+      <div class="risk-body">
+        <div class="risk-title">${isHigh ? '<b>' + escapeHtml(it.unit_name || it.listing_id) + '</b>' : escapeHtml(it.unit_name || it.listing_id)} &mdash; ${escapeHtml(it.issue)}</div>
+        <div class="risk-action">${escapeHtml(action)}</div>
+      </div>
+    </div>`;
+  }).join('');
+  return `<div class="sec">
+    <div class="sec-hdr"><span class="lbl">AIRBNB / STR RISK REGISTER</span><span class="sec-hdr-note">${airbnbRisks.at_risk} of ${airbnbRisks.total_listings} listings flagged</span></div>
+    ${rows}
+  </div>`;
+}
+
 function renderPortfolio(portfolio){
   if(!portfolio || !portfolio.length) return '';
   const cards = portfolio.map(p => `
@@ -285,6 +310,7 @@ function render(){
   }
 
   html += renderRiskRegister(data.maintenance_breaches, data.compliance_risk);
+  html += renderAirbnbRisks(data.airbnb_risks);
   html += renderPortfolio(data.portfolio);
 
   html += `<div class="sec"><div class="sec-hdr"><span class="lbl">EXECUTIVE ACTIONS</span></div>
