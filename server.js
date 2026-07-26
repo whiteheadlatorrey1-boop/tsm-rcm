@@ -152,6 +152,7 @@ var SP = {
   healthcare: 'You are a healthcare operations AI for TSM Command. Expert in claims adjudication, prior auth, denial management, HIPAA/CMS compliance, billing, staffing, throughput, revenue cycle. Be precise and data-driven.',
   financial: 'You are a financial intelligence AI for TSM Command. Expert in revenue cycle, P&L, cash flow, compliance, audit, tax strategy, investment analysis. Be analytical and strategic.',
   mortgage: 'You are a mortgage and real estate AI for TSM Command. Expert in mortgage origination, underwriting, REO, BPO realty, title, closing. Be precise and regulatory-aware.',
+  hotelops: 'You are a HotelOps operations AI for TSM Command. Expert in property maintenance, OTA (Expedia/Booking.com) commission audit, hospitality compliance (fire safety, health permits, elevator certs), and revenue KPIs (RevPAR, ADR, occupancy, GOP margin). Given structured maintenance ticket, OTA overcharge, and compliance data, identify the highest-severity SLA-breached tickets, the largest OTA overcharge exposure, and the most urgent compliance deadline. Recommend the single most important next action for each. Reference ticket/OTA/compliance IDs. Be precise and operational. No preamble.',
   construction: 'You are a construction operations AI for TSM Command. Expert in project management, bid analysis, cost control, contractor/vendor management, scheduling. Be direct and operational.',
   legal: 'You are a legal intelligence AI for TSM Command. Expert in contract analysis, regulatory compliance, case strategy, risk assessment. Note: AI analysis only, not legal advice.',
   insurance: 'You are an insurance intelligence AI for TSM Command. Expert in P&C, life, health insurance, claims, underwriting, AZ market, NPN licensing. Be precise.',
@@ -1075,6 +1076,31 @@ app.post('/api/mortgage/query', async (req, res) => {
   }
 });
 
+// ── HOTELOPS: structured maintenance/OTA/compliance analysis ─────────────────
+// Mirrors /api/mortgage/query's shape.
+app.post('/api/hotelops/query', async (req, res) => {
+  const { kpis, maintenance_breaches, ota_exposure, compliance_risk, context, maxTokens } = req.body || {};
+  const summary = JSON.stringify({
+    kpis,
+    maintenance_breaches,
+    ota_exposure,
+    compliance_risk,
+    counts: {
+      maintenance_breaches: Array.isArray(maintenance_breaches) ? maintenance_breaches.length : undefined,
+      compliance_risk: Array.isArray(compliance_risk) ? compliance_risk.length : undefined
+    }
+  }, null, 2);
+  const prompt = `Current HotelOps property snapshot:\n${summary}\n\n` +
+    (context ? `Additional context: ${context}\n\n` : '') +
+    `Identify the highest-severity SLA-breached maintenance tickets, the largest OTA overcharge exposure, and the most urgent compliance deadline. Recommend the single most important next action for each. Reference ticket/OTA/compliance IDs.`;
+  try {
+    const answer = await groqChat(SP.hotelops, prompt, maxTokens || 1200);
+    return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
+  } catch (e) {
+    console.error('HOTELOPS GROQ ERROR:', e.message);
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
 // ── SCHOOLS: structured grant/monitoring/exception analysis ──────────────────
 // Mirrors /api/mortgage/query's shape. Kept separate from the pre-existing
 // generic /api/schools/query (plain question/answer) so nothing there breaks.
