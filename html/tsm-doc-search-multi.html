@@ -3787,6 +3787,34 @@ async function openGenNodeWithDoc(docId, vertical) {
     if (popup) popup.close();
     return;
   }
+  // GAP 2 fix: the BPO bnca-engine node links directly to
+  // bpo-executive-portal.html, skipping War Room + Strategist entirely.
+  // The exec portal only reads TSM_BPO_STRATEGIST_RELAY / TSM_BPO_STRAT_RELAY,
+  // which normally only bpo-strategist.html writes -- so this direct link
+  // used to always land on an empty/demo-mode portal even with real data in
+  // hand. Fix: synthesize a minimal real relay payload from the same fields
+  // already collected above (narr, findings, financialImpact, client, etc.)
+  // and write it before navigating, scoped to only the BPO exec portal route
+  // so no other vertical's behavior changes.
+  if (targetUrl === '/html/war-rooms/bpo/bpo-executive-portal.html') {
+    try {
+      const bncaCaseId = 'BPO-BNCA-' + Date.now();
+      const bncaRelay = {
+        sector: 'BPO',
+        docType: doc.documentType || 'ESCALATION',
+        stratBrief: narr || findings.join(' '),
+        engines: { engine1: narr || '', engine2: '', engine3: '', engine4: findings.join('\n') },
+        docText: (doc._ext && doc._ext.rawText) || narr || findings.join('\n'),
+        timestamp: new Date().toISOString(),
+        chainStep: 'strategist',
+        recommendation: { confidence: Number.isFinite(risk) ? String(risk) : '91' },
+        selectedScenario: 'A',
+        caseId: bncaCaseId,
+      };
+      localStorage.setItem('TSM_BPO_STRATEGIST_RELAY', JSON.stringify(bncaRelay));
+      localStorage.setItem('TSM_BPO_STRAT_RELAY', JSON.stringify(bncaRelay));
+    } catch(e) { console.warn('TSM: BNCA direct-relay write failed:', e); }
+  }
   if (popup) popup.location.href = targetUrl;
   else window.open(targetUrl, '_blank');
 }
