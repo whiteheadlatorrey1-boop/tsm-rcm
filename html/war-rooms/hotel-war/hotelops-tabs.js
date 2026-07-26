@@ -33,6 +33,18 @@
         panel.innerHTML =
           '<div class="panel"><div class="panel-hdr">IOT / SMART SYSTEMS</div>' +
           '<div class="panel-body" id="panel-iot-body" style="padding:0;">Loading&hellip;</div></div>';
+      } else if (slug === 'ota-intelligence') {
+        panel.innerHTML =
+          '<div class="panel"><div class="panel-hdr">OTA INTELLIGENCE</div>' +
+          '<div class="panel-body" id="panel-ota-intelligence-body" style="padding:0;">Loading&hellip;</div></div>';
+      } else if (slug === 'revenue-management') {
+        panel.innerHTML =
+          '<div class="panel"><div class="panel-hdr">REVENUE MANAGEMENT</div>' +
+          '<div class="panel-body" id="panel-revenue-management-body" style="padding:0;">Loading&hellip;</div></div>';
+      } else if (slug === 'compliance') {
+        panel.innerHTML =
+          '<div class="panel"><div class="panel-hdr">COMPLIANCE</div>' +
+          '<div class="panel-body" id="panel-compliance-body" style="padding:0;">Loading&hellip;</div></div>';
       } else {
         panel.innerHTML =
           '<div class="panel"><div class="panel-hdr">' + mod.textContent.toUpperCase() +
@@ -55,6 +67,15 @@
         }
         if (typeof renderIotTab === 'function' && document.getElementById('panel-iot-body') && target && target.querySelector('#panel-iot-body')) {
           renderIotTab();
+        }
+        if (slug === 'ota-intelligence' && typeof renderOtaTab === 'function') {
+          renderOtaTab();
+        }
+        if (slug === 'revenue-management' && typeof renderRevenueTab === 'function') {
+          renderRevenueTab();
+        }
+        if (slug === 'compliance' && typeof renderComplianceTab === 'function') {
+          renderComplianceTab();
         }
       });
     });
