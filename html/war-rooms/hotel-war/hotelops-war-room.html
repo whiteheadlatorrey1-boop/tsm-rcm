@@ -208,6 +208,7 @@ async function init() {
       engine.saveToStorage();
     }
     render();
+    pollOnlineBookings(); // engine is ready now -- safe to do the first live check
   } catch (e) {
     showInitError(e.message);
   }
@@ -621,6 +622,72 @@ document.getElementById('btnIotImportCommit').addEventListener('click', () => {
   _pendingIotImport = null;
   render();
 });
+
+/* ---------- Online booking sync ----------
+   Bridges the server-side booking-webhook queue (see POST
+   /api/hotelops/booking-webhook + GET /api/hotelops/bookings/pending in
+   server.js) into this war room. TSM.relay is browser-only storage, so the
+   server can't push into it directly -- this poll is what closes that gap:
+   fetch anything new since the last seq we've seen, commit it into the
+   engine as a reservation record (same shape/commit path as the manual IoT
+   importer -- loadRecords + saveToStorage + render), and remember the seq
+   so we don't re-import on the next poll or after a page reload. */
+const HOTELOPS_BOOKING_SEQ_KEY = 'TSM_HOTELOPS_BOOKING_LAST_SEQ';
+const HOTELOPS_BOOKING_POLL_MS = 20000;
+
+function getLastBookingSeq() {
+  const raw = localStorage.getItem(HOTELOPS_BOOKING_SEQ_KEY);
+  const n = Number(raw);
+  return isNaN(n) ? 0 : n;
+}
+
+function setLastBookingSeq(seq) {
+  try { localStorage.setItem(HOTELOPS_BOOKING_SEQ_KEY, String(seq)); } catch (e) {}
+}
+
+async function pollOnlineBookings() {
+  // Silent no-op (not requireEngine()) if the engine isn't ready yet --
+  // this is a background poll, not a user action, so it shouldn't surface
+  // an error toast just because it raced init()'s async load. The next
+  // interval tick will pick it up once init() finishes.
+  if (!engine) return;
+  const since = getLastBookingSeq();
+  let payload;
+  try {
+    const res = await fetch(`/api/hotelops/bookings/pending?since=${since}`);
+    if (!res.ok) return; // fail silent on poll -- don't spam toasts for a transient network blip
+    payload = await res.json();
+  } catch (e) {
+    return;
+  }
+  const bookings = (payload && payload.bookings) || [];
+  if (!bookings.length) {
+    if (payload && payload.latest_seq != null) setLastBookingSeq(payload.latest_seq);
+    return;
+  }
+
+  const newReservations = bookings.map(b => ({
+    res_id: b.res_id,
+    guest: b.guest,
+    room_type: b.room_type,
+    status: b.status,
+    payment_status: b.payment_status,
+    hours_to_arrival: b.hours_to_arrival,
+    amount: b.amount
+  }));
+
+  engine.loadRecords('reservations', newReservations);
+  engine.saveToStorage();
+  setLastBookingSeq(payload.latest_seq);
+  render();
+  showToast(
+    bookings.length === 1
+      ? `New online booking registered: ${bookings[0].res_id} (${bookings[0].guest})`
+      : `${bookings.length} new online bookings registered.`
+  );
+}
+
+setInterval(pollOnlineBookings, HOTELOPS_BOOKING_POLL_MS);
 
 init();
 </script>
