@@ -82,6 +82,51 @@ setInterval(tick,1000);tick();
 const DOMAIN = 'HOTELOPS';
 const RELAY_KEY_FALLBACK = 'TSM_' + DOMAIN + '_RELAY';
 
+// ── ENTERPRISE CAPABILITY SWEEP ──
+// Reference pattern: bpo-strategist.html's fireCapabilitySweep_BPO(), fired
+// from an explicit user click (storeStratRelay). This page has no equivalent
+// click — render() re-runs automatically on every relay/storage event — so
+// firing unconditionally would create a brand-new O2C/CRM/CPQ/Catalog/
+// Approval case on every re-render for the same underlying incident.
+// lastSweptSignature guards against that: sweep fires once per distinct
+// relay payload (keyed on data.timestamp, falling back to a shape hash for
+// payloads that omit it), not once per render() call.
+let lastSweptSignature = null;
+
+function fireCapabilitySweep_HotelOps(data){
+  try {
+    const kpis = data.kpis || {};
+    const fin = data.financials || {};
+    const worstMaint = (data.maintenance_breaches || []).slice().sort((a,b) => b.hours_over - a.hours_over)[0];
+    const worstCompliance = (data.compliance_risk || []).slice().sort((a,b) => a.due_in_days - b.due_in_days)[0];
+    const exposureStr = fin.ota_overcharge_period ? ('$' + Number(fin.ota_overcharge_period).toLocaleString()) : null;
+
+    const summaryParts = [];
+    if (data.ai_summary) summaryParts.push(String(data.ai_summary).slice(0, 800));
+    if (worstMaint) summaryParts.push(`Highest SLA breach: Room ${worstMaint.room} \u2014 ${worstMaint.title} (${worstMaint.hours_over}h over SLA).`);
+    if (worstCompliance) summaryParts.push(`Most urgent compliance item: ${worstCompliance.type}, due in ${worstCompliance.due_in_days}d.`);
+    const summary = (summaryParts.join(' ') || 'HotelOps strategist synthesis.').slice(0, 1500);
+
+    fetch('/api/enterprise/capability-sweep', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        vertical: 'hotelops',
+        title: 'HotelOps' + (worstMaint || worstCompliance ? ' \u2014 Operations Sweep' : ''),
+        summary,
+        exposure: exposureStr,
+        entities: {
+          customer: 'HotelOps Property',
+          relationshipType: 'Property Account',
+          contingency: 'Maintenance / compliance remediation reserve',
+          sku: worstCompliance ? worstCompliance.type : 'HOTELOPS-CASE',
+          productName: worstMaint ? worstMaint.title : 'HotelOps Operations'
+        }
+      })
+    }).catch(err => console.warn('[Capability Sweep HotelOps]', err.message));
+  } catch (err) { console.warn('[Capability Sweep HotelOps]', err.message); }
+}
+
 function showToast(msg){
   const t=document.getElementById('toast');
   t.textContent=msg; t.classList.add('show');
@@ -258,6 +303,12 @@ function render(){
   if(!data){ renderEmpty(); return; }
 
   document.getElementById('hdrSub').textContent = `Relayed ${data.timestamp ? new Date(data.timestamp).toLocaleString() : '&mdash;'}`;
+
+  const sweepSignature = data.timestamp || JSON.stringify({ kpis: data.kpis, fin: data.financials, m: data.maintenance_breaches, c: data.compliance_risk });
+  if (sweepSignature !== lastSweptSignature) {
+    lastSweptSignature = sweepSignature;
+    fireCapabilitySweep_HotelOps(data);
+  }
 
   const kpis = data.kpis || {};
   const fin = data.financials || {};

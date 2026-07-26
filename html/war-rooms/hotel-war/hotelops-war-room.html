@@ -160,15 +160,44 @@ textarea#docIntake{width:100%;min-height:80px;background:var(--bg3);border:1px s
 <script>
 let model = null, engine = null;
 
-async function init() {
-  const res = await fetch('data/hotelops-model.json');
-  model = await res.json();
-  engine = new TSMHotelOpsEngine(model);
-  if (!engine.loadFromStorage()) {
-    engine.loadSampleData();
-    engine.saveToStorage();
+function showInitError(msg) {
+  const status = document.getElementById('navStatus');
+  if (status) { status.textContent = 'ENGINE: FAILED'; status.style.color = 'var(--red)'; }
+  const out = document.getElementById('aiOutput');
+  if (out) out.innerHTML = `<span style="color:var(--red)">War room failed to initialize: ${msg}. Check the Network tab for a 404 on data/hotelops-model.json or services/hotelops-engine.js.</span>`;
+  console.error('[HotelOps War Room init failed]', msg);
+}
+
+// Buttons attach their click listeners before init() finishes (init() is
+// called last, at the bottom of this script, and is async). Every handler
+// below previously called engine.* directly with no readiness check, so a
+// slow or failed init() (e.g. a 404 on data/hotelops-model.json or
+// services/hotelops-engine.js) left engine === null and each click threw an
+// uncaught TypeError with zero visible change on the page. requireEngine()
+// makes that failure visible instead of silent.
+function requireEngine() {
+  if (!engine) {
+    showInitError('engine not ready yet (still loading, or failed to load)');
+    return false;
   }
-  render();
+  return true;
+}
+
+async function init() {
+  try {
+    const res = await fetch('data/hotelops-model.json');
+    if (!res.ok) throw new Error(`data/hotelops-model.json returned ${res.status}`);
+    model = await res.json();
+    if (typeof TSMHotelOpsEngine === 'undefined') throw new Error('TSMHotelOpsEngine is undefined — services/hotelops-engine.js did not load');
+    engine = new TSMHotelOpsEngine(model);
+    if (!engine.loadFromStorage()) {
+      engine.loadSampleData();
+      engine.saveToStorage();
+    }
+    render();
+  } catch (e) {
+    showInitError(e.message);
+  }
 }
 
 function fmtMoney(v){ return v==null ? '&mdash;' : '$' + Number(v).toLocaleString(); }
@@ -285,6 +314,7 @@ function renderMissionQueue(){
 }
 
 document.getElementById('btnAnalyze').addEventListener('click', async () => {
+  if (!requireEngine()) return;
   const out = document.getElementById('aiOutput');
   document.getElementById('navStatus').textContent = 'ENGINE: ANALYZING';
   out.textContent = 'Running analysis...';
@@ -420,6 +450,7 @@ function buildSentinelAnomalies(){
 }
 
 function relayToStrategist(){
+  if (!requireEngine()) return;
   const aiText = document.getElementById('aiOutput').textContent;
   const payload = engine.buildRelayPayload(aiText.startsWith('Run analysis') ? null : aiText);
   payload.anomalies = buildSentinelAnomalies();
@@ -448,12 +479,14 @@ document.getElementById('navIotSensors').addEventListener('click', () => {
 
 // ── DATA CONTROLS ────────────────────────────────────────────────────────
 document.getElementById('btnLoadSample').addEventListener('click', () => {
+  if (!requireEngine()) return;
   engine.loadSampleData();
   engine.saveToStorage();
   render();
 });
 
 document.getElementById('btnResetData').addEventListener('click', () => {
+  if (!requireEngine()) return;
   engine.clearStorage();
   engine.loadSampleData();
   engine.saveToStorage();
@@ -557,6 +590,7 @@ document.getElementById('btnIotImportPreview').addEventListener('click', () => {
 });
 
 document.getElementById('btnIotImportCommit').addEventListener('click', () => {
+  if (!requireEngine()) return;
   if (!_pendingIotImport || !_pendingIotImport.length) return;
   const replace = document.getElementById('iotImportReplace').checked;
   if (replace) engine.data.iot_sensors = [];
@@ -584,4 +618,4 @@ init();
   <script src="hotelops-incidents-tab.js"></script>
   <script src="hotelops-tabs.js"></script>
 </body>
-</html>
+</html><!--  -->
