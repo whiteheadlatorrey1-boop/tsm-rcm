@@ -478,6 +478,7 @@
           staff_shifts: this.data.staff_shifts,
           incidents: this.data.incidents
         },
+        portfolio: this.getPortfolio(),
         ai_summary: aiText || null,
         ts: Date.now()
       };
