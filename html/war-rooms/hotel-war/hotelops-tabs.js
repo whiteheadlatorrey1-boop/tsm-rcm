@@ -29,6 +29,30 @@
         panel.innerHTML =
           '<div class="panel"><div class="panel-hdr">MAINTENANCE</div>' +
           '<div class="panel-body" id="panel-maintenance-body" style="padding:0;">Loading&hellip;</div></div>';
+      } else if (slug === 'reservations') {
+        panel.innerHTML =
+          '<div class="panel"><div class="panel-hdr">RESERVATIONS</div>' +
+          '<div class="panel-body" id="panel-reservations-body" style="padding:0;">Loading&hellip;</div></div>';
+      } else if (slug === 'front-desk') {
+        panel.innerHTML =
+          '<div class="panel"><div class="panel-hdr">FRONT DESK</div>' +
+          '<div class="panel-body" id="panel-front-desk-body" style="padding:0;">Loading&hellip;</div></div>';
+      } else if (slug === 'vip-arrivals') {
+        panel.innerHTML =
+          '<div class="panel"><div class="panel-hdr">VIP ARRIVALS</div>' +
+          '<div class="panel-body" id="panel-vip-arrivals-body" style="padding:0;">Loading&hellip;</div></div>';
+      } else if (slug === 'housekeeping') {
+        panel.innerHTML =
+          '<div class="panel"><div class="panel-hdr">HOUSEKEEPING</div>' +
+          '<div class="panel-body" id="panel-housekeeping-body" style="padding:0;">Loading&hellip;</div></div>';
+      } else if (slug === 'staff-operations') {
+        panel.innerHTML =
+          '<div class="panel"><div class="panel-hdr">STAFF OPERATIONS</div>' +
+          '<div class="panel-body" id="panel-staff-operations-body" style="padding:0;">Loading&hellip;</div></div>';
+      } else if (slug === 'incident-center') {
+        panel.innerHTML =
+          '<div class="panel"><div class="panel-hdr">INCIDENT CENTER</div>' +
+          '<div class="panel-body" id="panel-incident-center-body" style="padding:0;">Loading&hellip;</div></div>';
       } else if (slug === 'iot-smart-systems' || slug === 'smart-systems' || mod.textContent.trim().toLowerCase().indexOf('iot') !== -1) {
         panel.innerHTML =
           '<div class="panel"><div class="panel-hdr">IOT / SMART SYSTEMS</div>' +
@@ -64,6 +88,24 @@
         if (target) target.style.display = '';
         if (slug === 'maintenance' && typeof renderMaintenanceTab === 'function') {
           renderMaintenanceTab();
+        }
+        if (slug === 'reservations' && typeof renderReservationsTab === 'function') {
+          renderReservationsTab();
+        }
+        if (slug === 'front-desk' && typeof renderFrontDeskTab === 'function') {
+          renderFrontDeskTab();
+        }
+        if (slug === 'vip-arrivals' && typeof renderVipTab === 'function') {
+          renderVipTab();
+        }
+        if (slug === 'housekeeping' && typeof renderHousekeepingTab === 'function') {
+          renderHousekeepingTab();
+        }
+        if (slug === 'staff-operations' && typeof renderStaffOpsTab === 'function') {
+          renderStaffOpsTab();
+        }
+        if (slug === 'incident-center' && typeof renderIncidentsTab === 'function') {
+          renderIncidentsTab();
         }
         if (typeof renderIotTab === 'function' && document.getElementById('panel-iot-body') && target && target.querySelector('#panel-iot-body')) {
           renderIotTab();

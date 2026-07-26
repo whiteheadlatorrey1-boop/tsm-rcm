@@ -13,13 +13,22 @@
 (function (global) {
   'use strict';
 
-  const ENTITY_KEYS = ['maintenance_tickets', 'ota_charges', 'compliance_items', 'iot_sensors'];
+  const ENTITY_KEYS = [
+    'maintenance_tickets', 'ota_charges', 'compliance_items', 'iot_sensors',
+    'reservations', 'front_desk_queue', 'vip_arrivals', 'housekeeping_tasks',
+    'staff_shifts', 'incidents'
+  ];
   const IOT_SEV_ORDER = { urgent: 0, high: 1, medium: 2, low: 3 };
+  const SEV_ORDER = { urgent: 0, high: 1, medium: 2, low: 3 };
 
   class TSMHotelOpsEngine {
     constructor(model) {
       this.model = model || { entities: {}, kpis: [], sample_data: {}, portfolio: [] };
-      this.data = { maintenance_tickets: [], ota_charges: [], compliance_items: [], iot_sensors: [] };
+      this.data = {
+        maintenance_tickets: [], ota_charges: [], compliance_items: [], iot_sensors: [],
+        reservations: [], front_desk_queue: [], vip_arrivals: [], housekeeping_tasks: [],
+        staff_shifts: [], incidents: []
+      };
       this.property = null; // revenue/occupancy snapshot, set via loadSampleData()
       this.energyUsage = null; // energy_usage snapshot, set via loadSampleData()
       this.predictiveAlerts = []; // predictive_alerts list, set via loadSampleData()
@@ -179,6 +188,165 @@
         .sort((a, b) => (IOT_SEV_ORDER[a.severity] ?? 4) - (IOT_SEV_ORDER[b.severity] ?? 4));
     }
 
+    /* ---------- Reservations: payment failures, unconfirmed-near-arrival, waitlist risk ----------
+       Threshold (unconfirmed_warning_hours) comes from the model, same
+       "hours over" style as maintenance SLA, just framed as "hours until
+       arrival" rather than "hours since opened". */
+
+    getReservationRisks() {
+      const warnHours = (this.model.entities && this.model.entities.reservation &&
+        this.model.entities.reservation.unconfirmed_warning_hours) != null
+        ? this.model.entities.reservation.unconfirmed_warning_hours : 48;
+
+      return (this.data.reservations || [])
+        .map(r => {
+          if (r.payment_status === 'failed') {
+            return { id: r.res_id, guest: r.guest, type: 'payment_failed', severity: 'urgent',
+              hours_to_arrival: r.hours_to_arrival,
+              detail: `Payment failed — ${r.room_type}, arriving in ${r.hours_to_arrival}h.`, record: r };
+          }
+          if (r.status === 'unconfirmed' && r.hours_to_arrival <= warnHours) {
+            const severity = r.hours_to_arrival <= warnHours / 4 ? 'urgent' : r.hours_to_arrival <= warnHours / 2 ? 'high' : 'medium';
+            return { id: r.res_id, guest: r.guest, type: 'unconfirmed_near_arrival', severity,
+              hours_to_arrival: r.hours_to_arrival,
+              detail: `Still unconfirmed, arriving in ${r.hours_to_arrival}h.`, record: r };
+          }
+          if (r.status === 'waitlist') {
+            const severity = r.hours_to_arrival <= warnHours / 4 ? 'urgent' : r.hours_to_arrival <= warnHours / 2 ? 'high' : 'medium';
+            return { id: r.res_id, guest: r.guest, type: 'waitlist_risk', severity,
+              hours_to_arrival: r.hours_to_arrival,
+              detail: `On waitlist, arriving in ${r.hours_to_arrival}h — ${r.room_type} not yet secured.`, record: r };
+          }
+          return null;
+        })
+        .filter(Boolean)
+        .sort((a, b) => (SEV_ORDER[a.severity] ?? 4) - (SEV_ORDER[b.severity] ?? 4) || a.hours_to_arrival - b.hours_to_arrival);
+    }
+
+    /* ---------- Front Desk: check-in/out/request wait-time SLA breaches ----------
+       sla_minutes_by_type comes from the model, mirrors the maintenance
+       sla_hours_by_severity pattern but keyed by request type instead
+       of severity, and measured in minutes since that's the real unit
+       front-desk wait times are tracked in. */
+
+    _frontDeskSlaMinutes(type) {
+      const slaMap = (this.model.entities && this.model.entities.front_desk_ticket &&
+        this.model.entities.front_desk_ticket.sla_minutes_by_type) || {};
+      return slaMap[type] != null ? slaMap[type] : null;
+    }
+
+    getFrontDeskBreaches() {
+      return (this.data.front_desk_queue || [])
+        .filter(t => t.status !== 'complete')
+        .map(t => {
+          const slaMin = this._frontDeskSlaMinutes(t.type);
+          if (slaMin == null) return null;
+          const minutesOver = (t.waited_minutes || 0) - slaMin;
+          if (minutesOver <= 0) return null;
+          return { id: t.ticket_id, guest: t.guest, room: t.room, type: t.type,
+            minutes_over: Math.round(minutesOver), waited_minutes: t.waited_minutes, record: t };
+        })
+        .filter(Boolean)
+        .sort((a, b) => b.minutes_over - a.minutes_over);
+    }
+
+    /* ---------- VIP Arrivals: readiness gaps ahead of arrival ----------
+       Gap detection is binary from the record (amenities_ready/host_assigned
+       flags, not invented here); severity blends gap count with how close
+       arrival is, using the readiness_warning_hours threshold from the model. */
+
+    getVipReadiness() {
+      const warnHours = (this.model.entities && this.model.entities.vip_arrival &&
+        this.model.entities.vip_arrival.readiness_warning_hours) != null
+        ? this.model.entities.vip_arrival.readiness_warning_hours : 24;
+
+      return (this.data.vip_arrivals || [])
+        .map(v => {
+          const gaps = [];
+          if (!v.amenities_ready) gaps.push('Amenities not staged');
+          if (!v.host_assigned) gaps.push('Host not assigned');
+          if (!gaps.length) return null;
+          const close = v.arrival_hours_away <= warnHours / 4;
+          const severity = close && gaps.length > 1 ? 'urgent' : close ? 'high' : gaps.length > 1 ? 'high' : 'medium';
+          return { id: v.vip_id, guest: v.guest, room: v.room, tier: v.tier,
+            arrival_hours_away: v.arrival_hours_away, gaps, severity, record: v };
+        })
+        .filter(Boolean)
+        .sort((a, b) => a.arrival_hours_away - b.arrival_hours_away);
+    }
+
+    /* ---------- Housekeeping: task SLA breaches by type ----------
+       Same shape as getMaintenanceBreaches, sla_hours_by_type from the
+       model instead of sla_hours_by_severity since housekeeping tasks
+       don't carry a severity field. */
+
+    _housekeepingSlaHours(type) {
+      const slaMap = (this.model.entities && this.model.entities.housekeeping_task &&
+        this.model.entities.housekeeping_task.sla_hours_by_type) || {};
+      return slaMap[type] != null ? slaMap[type] : null;
+    }
+
+    getHousekeepingBreaches() {
+      return (this.data.housekeeping_tasks || [])
+        .filter(t => t.stage !== 'complete')
+        .map(t => {
+          const slaHours = this._housekeepingSlaHours(t.type);
+          if (slaHours == null) return null;
+          const hoursOver = (t.started_hours_ago || 0) - slaHours;
+          if (hoursOver <= 0) return null;
+          return { id: t.task_id, room: t.room, type: t.type, assigned_to: t.assigned_to,
+            hours_over: Math.round(hoursOver * 10) / 10, record: t };
+        })
+        .filter(Boolean)
+        .sort((a, b) => b.hours_over - a.hours_over);
+    }
+
+    /* ---------- Staff Operations: staffing gaps vs required headcount ----------
+       gap_pct_by_severity thresholds come from the model; gap is computed
+       from required_headcount vs scheduled_headcount on each shift record,
+       never a hard-coded headcount number. */
+
+    getStaffingGaps() {
+      const thresholds = (this.model.entities && this.model.entities.staff_shift &&
+        this.model.entities.staff_shift.gap_pct_by_severity) || { high: 30, medium: 15 };
+
+      return (this.data.staff_shifts || [])
+        .map(s => {
+          const gap = (s.required_headcount || 0) - (s.scheduled_headcount || 0);
+          if (gap <= 0) return null;
+          const gapPct = s.required_headcount > 0 ? Math.round((gap / s.required_headcount) * 1000) / 10 : 0;
+          const severity = gapPct >= thresholds.high ? 'high' : gapPct >= thresholds.medium ? 'medium' : 'low';
+          return { id: s.shift_id, department: s.department, shift: s.shift,
+            required: s.required_headcount, scheduled: s.scheduled_headcount,
+            gap, gap_pct: gapPct, severity, record: s };
+        })
+        .filter(Boolean)
+        .sort((a, b) => b.gap_pct - a.gap_pct);
+    }
+
+    /* ---------- Incident Center: open incidents with response-time SLA escalation ----------
+       response_sla_hours_by_severity from the model, same "hours over"
+       shape as maintenance breaches. */
+
+    _incidentSlaHours(severity) {
+      const slaMap = (this.model.entities && this.model.entities.incident &&
+        this.model.entities.incident.response_sla_hours_by_severity) || {};
+      return slaMap[severity] != null ? slaMap[severity] : null;
+    }
+
+    getOpenIncidents() {
+      return (this.data.incidents || [])
+        .filter(i => i.status !== 'resolved')
+        .map(i => {
+          const slaHours = this._incidentSlaHours(i.severity);
+          const hoursOver = slaHours != null ? Math.round(((i.reported_hours_ago || 0) - slaHours) * 10) / 10 : null;
+          return { id: i.incident_id, type: i.type, area: i.room_or_area, severity: i.severity,
+            status: i.status, reported_hours_ago: i.reported_hours_ago,
+            hours_over: hoursOver, escalated: hoursOver != null && hoursOver > 0, record: i };
+        })
+        .sort((a, b) => (SEV_ORDER[a.severity] ?? 4) - (SEV_ORDER[b.severity] ?? 4) || (b.hours_over ?? -999) - (a.hours_over ?? -999));
+    }
+
     /* ---------- Energy usage summary ----------
        Straight passthrough of the energy_usage snapshot from the model
        (period/hvac_cost/lighting_cost/total_cost/trend/cost-per-room) --
@@ -216,6 +384,12 @@
       const openTickets = (this.data.maintenance_tickets || []).filter(t => t.stage !== 'resolved').length;
       const complianceRisk = this.getComplianceRisk();
       const iotAlerts = this.getIotAlerts();
+      const reservationRisks = this.getReservationRisks();
+      const frontDeskBreaches = this.getFrontDeskBreaches();
+      const vipReadiness = this.getVipReadiness();
+      const housekeepingBreaches = this.getHousekeepingBreaches();
+      const staffingGaps = this.getStaffingGaps();
+      const openIncidents = this.getOpenIncidents();
 
       return {
         revpar,
@@ -233,7 +407,15 @@
         maint_tickets_over_sla: maintBreaches.length,
         compliance_items_at_risk: complianceRisk.filter(c => c.severity !== 'LOW').length,
         active_iot_alerts: iotAlerts.length,
-        urgent_iot_alerts: iotAlerts.filter(a => a.severity === 'urgent').length
+        urgent_iot_alerts: iotAlerts.filter(a => a.severity === 'urgent').length,
+        reservation_risks: reservationRisks.length,
+        reservation_payment_failures: reservationRisks.filter(r => r.type === 'payment_failed').length,
+        front_desk_breaches: frontDeskBreaches.length,
+        vip_readiness_gaps: vipReadiness.length,
+        housekeeping_breaches: housekeepingBreaches.length,
+        staffing_gaps: staffingGaps.length,
+        open_incidents: openIncidents.length,
+        escalated_incidents: openIncidents.filter(i => i.escalated).length
       };
     }
 
@@ -278,11 +460,23 @@
         financials: this.getFinancialSummary(),
         compliance_risk: this.getComplianceRisk(),
         iot_alerts: this.getIotAlerts(),
+        reservation_risks: this.getReservationRisks(),
+        front_desk_breaches: this.getFrontDeskBreaches(),
+        vip_readiness: this.getVipReadiness(),
+        housekeeping_breaches: this.getHousekeepingBreaches(),
+        staffing_gaps: this.getStaffingGaps(),
+        open_incidents: this.getOpenIncidents(),
         records: {
           maintenance_tickets: this.data.maintenance_tickets,
           ota_charges: this.data.ota_charges,
           compliance_items: this.data.compliance_items,
-          iot_sensors: this.data.iot_sensors
+          iot_sensors: this.data.iot_sensors,
+          reservations: this.data.reservations,
+          front_desk_queue: this.data.front_desk_queue,
+          vip_arrivals: this.data.vip_arrivals,
+          housekeeping_tasks: this.data.housekeeping_tasks,
+          staff_shifts: this.data.staff_shifts,
+          incidents: this.data.incidents
         },
         ai_summary: aiText || null,
         ts: Date.now()

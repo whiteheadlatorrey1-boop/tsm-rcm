@@ -217,6 +217,12 @@ function render(){
   renderMissionQueue();
   if (typeof renderMaintenanceTab === 'function') renderMaintenanceTab();
   if (typeof renderIotTab === 'function') renderIotTab();
+  if (typeof renderReservationsTab === 'function') renderReservationsTab();
+  if (typeof renderFrontDeskTab === 'function') renderFrontDeskTab();
+  if (typeof renderVipTab === 'function') renderVipTab();
+  if (typeof renderHousekeepingTab === 'function') renderHousekeepingTab();
+  if (typeof renderStaffOpsTab === 'function') renderStaffOpsTab();
+  if (typeof renderIncidentsTab === 'function') renderIncidentsTab();
 }
 
 function renderMissionQueue(){
@@ -225,6 +231,12 @@ function renderMissionQueue(){
   const compliance = engine.getComplianceRisk();
   const ota = engine.getOtaExposure();
   const iotAlerts = engine.getIotAlerts();
+  const reservationRisks = engine.getReservationRisks();
+  const frontDeskBreaches = engine.getFrontDeskBreaches();
+  const vipReadiness = engine.getVipReadiness();
+  const housekeepingBreaches = engine.getHousekeepingBreaches();
+  const staffingGaps = engine.getStaffingGaps();
+  const openIncidents = engine.getOpenIncidents();
 
   const items = [];
   iotAlerts.forEach(a => {
@@ -239,6 +251,24 @@ function renderMissionQueue(){
   });
   ota.items.forEach(it => {
     items.push({ sev: 'high', title: `OTA Chargeback — ${it.ota}`, meta: fmtMoney(it.overcharge_amount).replace('&mdash;','—') + ' overcharge' });
+  });
+  reservationRisks.forEach(r => {
+    items.push({ sev: r.severity, title: `Reservation — ${r.guest}`, meta: r.detail });
+  });
+  frontDeskBreaches.forEach(b => {
+    items.push({ sev: 'urgent', title: `Front Desk — Room ${b.room}: ${b.guest}`, meta: `${b.minutes_over}m over SLA (waited ${b.waited_minutes}m)` });
+  });
+  vipReadiness.forEach(v => {
+    items.push({ sev: v.severity, title: `VIP — ${v.guest}, Room ${v.room}`, meta: `${v.gaps.join(', ')} — arriving in ${v.arrival_hours_away}h` });
+  });
+  housekeepingBreaches.forEach(h => {
+    items.push({ sev: 'high', title: `Housekeeping — Room ${h.room} (${h.type})`, meta: `${h.hours_over}h over SLA — ${h.assigned_to}` });
+  });
+  staffingGaps.forEach(s => {
+    items.push({ sev: s.severity, title: `Staffing — ${s.department} ${s.shift}`, meta: `${s.scheduled}/${s.required} scheduled — ${s.gap} short` });
+  });
+  openIncidents.filter(i => i.escalated).forEach(i => {
+    items.push({ sev: i.severity, title: `Incident — ${i.type}`, meta: `${i.area} — ${i.hours_over}h past response SLA` });
   });
 
   const sevOrder = { urgent: 0, high: 1, medium: 2, low: 3 };
@@ -318,6 +348,72 @@ function buildSentinelAnomalies(){
       confidence: 80,
       rootCause: `${kpis.active_iot_alerts} sensor alert(s) active, ${kpis.urgent_iot_alerts} marked urgent.`,
       recommendedAction: 'Dispatch engineering to confirm sensor readings and open a maintenance ticket if unaddressed.'
+    });
+  }
+  if (kpis.reservation_risks > 0) {
+    anomalies.push({
+      id: 'hotelops-reservation-risks',
+      title: 'Reservation Risks — Payment / Unconfirmed / Waitlist',
+      severity: kpis.reservation_payment_failures > 0 ? 'CRIT' : 'HIGH',
+      exposure: 0,
+      confidence: 85,
+      rootCause: `${kpis.reservation_risks} reservation(s) at risk, ${kpis.reservation_payment_failures} with failed payment.`,
+      recommendedAction: 'Front desk/reservations to re-run failed cards and confirm unconfirmed bookings before arrival.'
+    });
+  }
+  if (kpis.front_desk_breaches > 0) {
+    anomalies.push({
+      id: 'hotelops-front-desk-sla',
+      title: 'Front Desk Wait-Time SLA Breaches',
+      severity: 'HIGH',
+      exposure: 0,
+      confidence: 85,
+      rootCause: `${kpis.front_desk_breaches} guest(s) in queue past check-in/check-out/request SLA.`,
+      recommendedAction: 'Pull additional front desk staff or open a secondary check-in line.'
+    });
+  }
+  if (kpis.vip_readiness_gaps > 0) {
+    anomalies.push({
+      id: 'hotelops-vip-readiness',
+      title: 'VIP Arrival Readiness Gaps',
+      severity: 'HIGH',
+      exposure: 0,
+      confidence: 90,
+      rootCause: `${kpis.vip_readiness_gaps} VIP arrival(s) missing amenities staging or an assigned host.`,
+      recommendedAction: 'Confirm amenities and host assignment for each VIP before arrival window.'
+    });
+  }
+  if (kpis.housekeeping_breaches > 0) {
+    anomalies.push({
+      id: 'hotelops-housekeeping-sla',
+      title: 'Housekeeping Task SLA Breaches',
+      severity: 'MED',
+      exposure: 0,
+      confidence: 85,
+      rootCause: `${kpis.housekeeping_breaches} task(s) past SLA across turnover/deep-clean/inspection/linen.`,
+      recommendedAction: 'Reassign or reprioritize overdue tasks; check room-ready status against arrivals.'
+    });
+  }
+  if (kpis.staffing_gaps > 0) {
+    anomalies.push({
+      id: 'hotelops-staffing-gaps',
+      title: 'Staffing Gaps vs Required Headcount',
+      severity: 'MED',
+      exposure: 0,
+      confidence: 80,
+      rootCause: `${kpis.staffing_gaps} shift(s) understaffed relative to required headcount.`,
+      recommendedAction: 'Call in on-call staff or approve overtime for the affected department/shift.'
+    });
+  }
+  if (kpis.open_incidents > 0) {
+    anomalies.push({
+      id: 'hotelops-open-incidents',
+      title: 'Open Incidents',
+      severity: kpis.escalated_incidents > 0 ? 'CRIT' : 'HIGH',
+      exposure: 0,
+      confidence: 90,
+      rootCause: `${kpis.open_incidents} open incident(s), ${kpis.escalated_incidents} past response-time SLA.`,
+      recommendedAction: 'Escalate past-SLA incidents to duty manager immediately.'
     });
   }
   return anomalies;
@@ -480,6 +576,12 @@ init();
   <script src="hotelops-ota-tab.js"></script>
   <script src="hotelops-revenue-tab.js"></script>
   <script src="hotelops-compliance-tab.js"></script>
+  <script src="hotelops-reservations-tab.js"></script>
+  <script src="hotelops-frontdesk-tab.js"></script>
+  <script src="hotelops-vip-tab.js"></script>
+  <script src="hotelops-housekeeping-tab.js"></script>
+  <script src="hotelops-staffops-tab.js"></script>
+  <script src="hotelops-incidents-tab.js"></script>
   <script src="hotelops-tabs.js"></script>
 </body>
 </html>
