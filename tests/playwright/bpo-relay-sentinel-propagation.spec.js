@@ -249,4 +249,50 @@ test.describe('BPO relay propagation — doc-search -> war-room -> strategist ->
     ).toBe(true);
   });
 
+  test('7. bpo-strategist.html -> /api/enterprise/capability-sweep: capability-sweep: fires with real relay data (BPO SAP-phase integration)', async ({ page }) => {
+    await seedStorage(page, STRATEGIST, { TSM_BPO_WAR_RELAY: WAR_RELAY_PAYLOAD });
+
+    let capturedBody = null;
+    await page.route('**/api/enterprise/capability-sweep', async (route) => {
+      capturedBody = route.request().postDataJSON();
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ok: true, caseId: 'mocked-in-test', phases: {}, errors: [] }),
+      });
+    });
+
+    const fired = await page.evaluate(() => {
+      if (typeof window.fireCapabilitySweep_BPO !== 'function') return false;
+      window.fireCapabilitySweep_BPO();
+      return true;
+    });
+    expect(
+      fired,
+      'fireCapabilitySweep_BPO is not defined on window -- the capability-sweep patch ' +
+      '(apply-bpo-capability-sweep.sh) may not be applied to bpo-strategist.html.'
+    ).toBe(true);
+
+    // fireCapabilitySweep_BPO's fetch() is fire-and-forget (the caller
+    // never awaits it), so give the network a beat to reach our mock route.
+    await page.waitForTimeout(300);
+
+    expect(
+      capturedBody,
+      'No request reached /api/enterprise/capability-sweep after calling ' +
+      'fireCapabilitySweep_BPO() -- check the fetch() call inside the function.'
+    ).not.toBeNull();
+
+    expect(capturedBody.vertical).toBe('bpo');
+    expect(capturedBody.caseId).toBe(CASE_ID);
+    expect(
+      capturedBody.title,
+      'title should include the seeded sector (BPO).'
+    ).toContain('BPO');
+    expect(
+      capturedBody.summary,
+      'summary should carry the seeded relay docText through untouched.'
+    ).toContain(TEST_SUMMARY.slice(0, 50));
+  });
+
 });

@@ -1067,6 +1067,30 @@ function pullEscalations(){
   document.getElementById('briefBody').innerHTML = '<div class="brief-section-head">ACTIVE ESCALATION QUEUE</div><pre style="font-family:JetBrains Mono,monospace;font-size:.72rem;color:#bbb;line-height:1.7">ESC-001 [CRITICAL]  HonorHealth PR-96 denial spike\n                    Exposure: $47K · Deadline: 24hrs\n                    Owner: RCM Director\n\nESC-002 [HIGH]      Meridian Construction lien deadline\n                    Exposure: $340K · Deadline: 14 days\n                    Owner: Operations Director\n\nQueue total: 2 active · 0 overdue · 4 pending review</pre>';
 }
 
+function fireCapabilitySweep_BPO() {
+  try {
+    const exposureStr = warData?.extraction?.revenueAtRisk || null;
+    fetch('/api/enterprise/capability-sweep', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        vertical: 'bpo',
+        title: (warData?.selectedSector || 'BPO') + (warData?.selectedDocType ? ' — ' + warData.selectedDocType : ''),
+        summary: (warData?.docText || stratBrief || '').slice(0, 1500),
+        exposure: exposureStr ? String(exposureStr).slice(0, 30) : null,
+        caseId: warData?.caseId,
+        entities: {
+          customer: warData?.selectedSector || 'BPO Client',
+          relationshipType: 'Client Account',
+          contingency: 'Escalation / SLA remediation reserve',
+          sku: warData?.selectedDocType || 'BPO-CASE',
+          productName: warData?.selectedDocType || warData?.selectedSector
+        }
+      })
+    }).catch(err => console.warn('[Capability Sweep BPO]', err.message));
+  } catch (err) { console.warn('[Capability Sweep BPO]', err.message); }
+}
+
 // ── STORE + RELAY ──
 function storeStratRelay(){
   const payload = {
@@ -1121,6 +1145,7 @@ function storeStratRelay(){
       window.dispatchEvent(new CustomEvent('TSM_SENTINEL_REFRESH'));
     } catch(e) { console.warn('[sentinel-push] bpo error:', e); }
     // ── END SENTINEL PUSH ─────────────────────────────────────────
+    fireCapabilitySweep_BPO();
     document.getElementById('relayBar').style.display = 'flex';
     document.getElementById('relayInfo').textContent = (warData?.selectedSector||'BPO') + ' · Scenario ' + (selectedScenario||'A') + ' · Confidence ' + (generatedRec?.confidence||91) + '%';
 
