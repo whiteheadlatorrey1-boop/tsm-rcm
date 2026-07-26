@@ -86,10 +86,26 @@ textarea#docIntake{width:100%;min-height:80px;background:var(--bg3);border:1px s
   <div class="kpi"><div class="kpi-val" id="kNps">&mdash;</div><div class="kpi-lbl">NPS SCORE</div></div>
   <div class="kpi"><div class="kpi-val" id="kMaint">&mdash;</div><div class="kpi-lbl">OPEN MAINT TICKETS</div></div>
   <div class="kpi"><div class="kpi-val" id="kCompliance">&mdash;</div><div class="kpi-lbl">COMPLIANCE AT RISK</div></div>
+  <div class="kpi"><div class="kpi-val" id="kIot">&mdash;</div><div class="kpi-lbl">ACTIVE IOT ALERTS</div></div>
 </div>
 
 <div id="layout">
   <div id="sidebar">
+    <div class="sb-lbl">DATA</div>
+    <div style="padding:0 14px 10px">
+      <button class="btn ghost" style="width:100%;margin-bottom:6px" id="btnLoadSample">LOAD SAMPLE DATA</button>
+      <button class="btn ghost" style="width:100%" id="btnResetData">RESET SAVED DATA</button>
+    </div>
+    <div class="sb-lbl">IMPORT IOT SENSORS (PASTE)</div>
+    <div style="padding:0 14px 10px">
+      <textarea id="iotImportPaste" placeholder="Paste sensor export rows (including header row) from your BMS/IoT platform — tab or multi-space delimited." style="width:100%;min-height:70px;background:var(--bg3);border:1px solid var(--border);color:var(--white);font-family:var(--mono);font-size:.5rem;padding:6px;resize:vertical"></textarea>
+      <label style="display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:.45rem;color:var(--muted);margin:6px 0">
+        <input type="checkbox" id="iotImportReplace" checked> Replace existing sensors
+      </label>
+      <button class="btn ghost" style="width:100%;margin-bottom:6px" id="btnIotImportPreview">PARSE PREVIEW</button>
+      <button class="btn" style="width:100%" id="btnIotImportCommit" disabled>IMPORT TO WAR ROOM</button>
+      <div id="iotImportStatus" style="font-family:var(--mono);font-size:.45rem;color:var(--dim);margin-top:6px;white-space:pre-wrap"></div>
+    </div>
     <div class="sb-lbl">GUEST &amp; FRONT OF HOUSE</div>
     <div class="module active">Guest Intelligence</div>
     <div class="module">Reservations</div>
@@ -98,6 +114,7 @@ textarea#docIntake{width:100%;min-height:80px;background:var(--bg3);border:1px s
     <div class="sb-lbl">OPERATIONS</div>
     <div class="module">Housekeeping</div>
     <div class="module">Maintenance</div>
+    <div class="module" id="navIotSensors">IoT / Smart Systems</div>
     <div class="module">Staff Operations</div>
     <div class="module">Incident Center</div>
     <div class="sb-lbl">REVENUE &amp; COMPLIANCE</div>
@@ -133,6 +150,8 @@ textarea#docIntake{width:100%;min-height:80px;background:var(--bg3);border:1px s
     <div id="otaPanel" style="font-family:var(--mono);font-size:.55rem;color:var(--muted);line-height:1.8;"></div>
     <div class="rr-lbl">COMPLIANCE RISK REGISTER</div>
     <div id="compliancePanel" style="font-family:var(--mono);font-size:.55rem;color:var(--muted);line-height:1.8;"></div>
+    <div class="rr-lbl" id="iotSensorsAnchor">IOT SENSOR ALERTS</div>
+    <div id="iotPanel" style="font-family:var(--mono);font-size:.55rem;color:var(--muted);line-height:1.8;"></div>
   </div>
 </div>
 
@@ -166,6 +185,7 @@ function render(){
   document.getElementById('kNps').textContent = kpis.nps_score;
   document.getElementById('kMaint').textContent = kpis.open_maint_tickets;
   document.getElementById('kCompliance').textContent = kpis.compliance_items_at_risk;
+  document.getElementById('kIot').textContent = kpis.active_iot_alerts;
 
   document.getElementById('glance').innerHTML = `
     Weekday occupancy: <span style="color:var(--yellow)">${kpis.weekday_occ_pct}%</span><br>
@@ -187,7 +207,15 @@ function render(){
     &nbsp;&nbsp;${c.detail} — due in ${c.due_in_days}d
   `).join('<br>') || 'No open compliance items.';
 
+  const iotAlerts = engine.getIotAlerts();
+  document.getElementById('iotPanel').innerHTML = iotAlerts.map(a => `
+    <span class="mtag ${a.severity}" style="display:inline-block;margin-bottom:2px;">${a.severity.toUpperCase()}</span> Room ${a.room} — ${a.issue}<br>
+    &nbsp;&nbsp;${a.detail}
+  `).join('<br>') || 'No active IoT sensor alerts.';
+
   renderMissionQueue();
+  if (typeof renderMaintenanceTab === 'function') renderMaintenanceTab();
+  if (typeof renderIotTab === 'function') renderIotTab();
 }
 
 function renderMissionQueue(){
@@ -195,8 +223,12 @@ function renderMissionQueue(){
   const allTickets = model.sample_data.maintenance_tickets.filter(t => t.stage !== 'resolved');
   const compliance = engine.getComplianceRisk();
   const ota = engine.getOtaExposure();
+  const iotAlerts = engine.getIotAlerts();
 
   const items = [];
+  iotAlerts.forEach(a => {
+    items.push({ sev: a.severity, title: `IoT — Room ${a.room}: ${a.issue}`, meta: a.detail });
+  });
   allTickets.forEach(t => {
     const isBreach = breaches.some(b => b.id === t.ticket_id);
     items.push({ sev: t.severity, title: `Room ${t.room}: ${t.title}`, meta: isBreach ? 'SLA BREACHED' : `Opened ${t.opened_hours_ago}h ago` });
@@ -276,6 +308,17 @@ function buildSentinelAnomalies(){
       recommendedAction: 'Assign HR/ops owner to clear before due date.'
     });
   }
+  if (kpis.active_iot_alerts > 0) {
+    anomalies.push({
+      id: 'hotelops-iot-alerts',
+      title: 'Active IoT Sensor Alerts',
+      severity: kpis.urgent_iot_alerts > 0 ? 'CRIT' : 'HIGH',
+      exposure: 0,
+      confidence: 80,
+      rootCause: `${kpis.active_iot_alerts} sensor alert(s) active, ${kpis.urgent_iot_alerts} marked urgent.`,
+      recommendedAction: 'Dispatch engineering to confirm sensor readings and open a maintenance ticket if unaddressed.'
+    });
+  }
   return anomalies;
 }
 
@@ -298,7 +341,141 @@ function relayToStrategist(){
 
 document.getElementById('btnRelay').addEventListener('click', relayToStrategist);
 
+// ── SIDEBAR NAV ─────────────────────────────────────────────────────────
+document.getElementById('navIotSensors').addEventListener('click', () => {
+  document.querySelectorAll('.module').forEach(m => m.classList.remove('active'));
+  document.getElementById('navIotSensors').classList.add('active');
+  const anchor = document.getElementById('iotSensorsAnchor');
+  if (anchor) anchor.scrollIntoView({ behavior: 'smooth', block: 'center' });
+});
+
+// ── DATA CONTROLS ────────────────────────────────────────────────────────
+document.getElementById('btnLoadSample').addEventListener('click', () => {
+  engine.loadSampleData();
+  engine.saveToStorage();
+  render();
+});
+
+document.getElementById('btnResetData').addEventListener('click', () => {
+  engine.clearStorage();
+  engine.loadSampleData();
+  engine.saveToStorage();
+  render();
+});
+
+// ── IOT SENSOR IMPORT (PASTE) ─────────────────────────────────────────────
+// Mirrors NOC's parsePastedTable -> mapRows... -> preview -> commit flow
+// (html/war-rooms/noc/noc-war-room.html) so pasted exports from a BMS/IoT
+// platform land on the same iot_sensors shape sample_data already uses --
+// no engine changes needed to consume it once imported.
+
+function splitIotRow(line) {
+  if (line.indexOf('\t') !== -1) return line.split('\t').map(c => c.trim());
+  return line.split(/ {2,}/).map(c => c.trim()).filter(c => c.length);
+}
+
+function parseIotPastedTable(raw) {
+  const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(l => l.length);
+  if (lines.length < 2) return { headers: [], rows: [] };
+  const headers = splitIotRow(lines[0]).map(h => h.toLowerCase());
+  const rows = lines.slice(1).map(line => {
+    const cells = splitIotRow(line);
+    const row = {};
+    headers.forEach((h, i) => { row[h] = cells[i] !== undefined ? cells[i] : ''; });
+    return row;
+  });
+  return { headers, rows };
+}
+
+function findIotField(row, candidates) {
+  const keys = Object.keys(row);
+  for (const key of keys) {
+    for (const c of candidates) { if (key === c) return row[key]; }
+  }
+  const tokenize = s => s.split(/[^a-z0-9]+/).filter(Boolean);
+  for (const key of keys) {
+    const keyTokens = tokenize(key);
+    for (const c of candidates) {
+      const cTokens = tokenize(c);
+      if (cTokens.length && cTokens.every(t => keyTokens.includes(t))) return row[key];
+    }
+  }
+  return '';
+}
+
+function parseIotValue(raw) {
+  if (raw === undefined || raw === '' || raw === null) return null;
+  const num = Number(raw);
+  return isNaN(num) ? raw : num;
+}
+
+function mapRowsToIotSensors(rows) {
+  const seen = new Set();
+  const sensors = [];
+  const skipped = [];
+  rows.forEach((row, i) => {
+    const rawId = findIotField(row, ['sensor id', 'sensor_id', 'device id', 'id']) || `IOT-IMPORT-${i + 1}`;
+    const room = findIotField(row, ['room', 'room number']);
+    const type = (findIotField(row, ['type', 'sensor type', 'category']) || '').toLowerCase().replace(/\s+/g, '_');
+    if (!room && !type) { skipped.push(rawId || `row ${i + 1}`); return; }
+    let sensorId = rawId;
+    let n = 2;
+    while (seen.has(sensorId)) { sensorId = `${rawId}-${n++}`; }
+    seen.add(sensorId);
+    sensors.push({
+      sensor_id: sensorId,
+      room: room || '',
+      type: type || 'unknown',
+      status: (findIotField(row, ['status', 'state']) || 'online').toLowerCase(),
+      reading: parseIotValue(findIotField(row, ['reading', 'value'])),
+      unit: findIotField(row, ['unit', 'uom']) || null,
+      target: parseIotValue(findIotField(row, ['target', 'setpoint']))
+    });
+  });
+  return { sensors, skipped };
+}
+
+let _pendingIotImport = null;
+
+document.getElementById('btnIotImportPreview').addEventListener('click', () => {
+  const raw = document.getElementById('iotImportPaste').value;
+  const status = document.getElementById('iotImportStatus');
+  const commitBtn = document.getElementById('btnIotImportCommit');
+
+  const { headers, rows } = parseIotPastedTable(raw);
+  if (!rows.length) {
+    status.textContent = 'No rows detected. Paste table rows (including the header row) from your BMS/IoT platform.';
+    commitBtn.disabled = true;
+    _pendingIotImport = null;
+    return;
+  }
+  const { sensors, skipped } = mapRowsToIotSensors(rows);
+  _pendingIotImport = sensors;
+  status.textContent =
+    `Detected ${headers.length} column(s), ${rows.length} row(s).\n` +
+    `Parsed ${sensors.length} sensor record(s).` +
+    (skipped.length ? `\n${skipped.length} row(s) skipped (no reading/message found): ${skipped.join(', ')}` : '') +
+    (sensors.length ? `\nPreview: ${sensors.slice(0, 3).map(s => `${s.sensor_id} [Room ${s.room}, ${s.type}, ${s.status}]`).join(', ')}${sensors.length > 3 ? '...' : ''}` : '');
+  commitBtn.disabled = sensors.length === 0;
+});
+
+document.getElementById('btnIotImportCommit').addEventListener('click', () => {
+  if (!_pendingIotImport || !_pendingIotImport.length) return;
+  const replace = document.getElementById('iotImportReplace').checked;
+  if (replace) engine.data.iot_sensors = [];
+  engine.loadRecords('iot_sensors', _pendingIotImport);
+  engine.saveToStorage();
+  document.getElementById('iotImportStatus').textContent =
+    `Imported ${_pendingIotImport.length} sensor record(s) into the war room.`;
+  document.getElementById('btnIotImportCommit').disabled = true;
+  _pendingIotImport = null;
+  render();
+});
+
 init();
 </script>
+  <script src="hotelops-maintenance-tab.js"></script>
+  <script src="hotelops-iot-tab.js"></script>
+  <script src="hotelops-tabs.js"></script>
 </body>
 </html>

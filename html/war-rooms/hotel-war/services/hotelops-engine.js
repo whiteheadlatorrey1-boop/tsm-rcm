@@ -13,12 +13,13 @@
 (function (global) {
   'use strict';
 
-  const ENTITY_KEYS = ['maintenance_tickets', 'ota_charges', 'compliance_items'];
+  const ENTITY_KEYS = ['maintenance_tickets', 'ota_charges', 'compliance_items', 'iot_sensors'];
+  const IOT_SEV_ORDER = { urgent: 0, high: 1, medium: 2, low: 3 };
 
   class TSMHotelOpsEngine {
     constructor(model) {
       this.model = model || { entities: {}, kpis: [], sample_data: {}, portfolio: [] };
-      this.data = { maintenance_tickets: [], ota_charges: [], compliance_items: [] };
+      this.data = { maintenance_tickets: [], ota_charges: [], compliance_items: [], iot_sensors: [] };
       this.property = null; // revenue/occupancy snapshot, set via loadSampleData()
     }
 
@@ -127,6 +128,52 @@
         .sort((a, b) => (a.due_in_days ?? 999) - (b.due_in_days ?? 999));
     }
 
+    /* ---------- IoT sensor alerts ----------
+       Real sensor records (this.data.iot_sensors) carry type/status/reading/
+       target/unit -- no pre-set severity or stage. Alerts are derived from
+       actual sensor behavior: an offline device, a leak sensor in alert
+       state, or a thermostat drifting from its setpoint. Occupancy sensors
+       are informational only and never generate an alert. */
+
+    _iotSensorEvaluation(s) {
+      if ((s.status || '').toLowerCase() === 'offline') {
+        return { severity: 'high', issue: 'Sensor offline', detail: `${s.type || 'Sensor'} in room ${s.room} is offline — no readings available.` };
+      }
+      if ((s.status || '').toLowerCase() === 'alert' || (s.type === 'water_leak' && s.reading === 'detected')) {
+        return { severity: 'urgent', issue: 'Water leak detected', detail: `Water leak sensor in room ${s.room} reports a leak.` };
+      }
+      if (s.type === 'thermostat' && typeof s.reading === 'number' && typeof s.target === 'number') {
+        const diff = Math.round(Math.abs(s.reading - s.target) * 10) / 10;
+        const unit = s.unit || '';
+        if (diff >= 8) return { severity: 'high', issue: 'Temperature drift', detail: `Room ${s.room} reading ${s.reading}${unit} vs target ${s.target}${unit} (${diff}${unit} off).` };
+        if (diff >= 4) return { severity: 'medium', issue: 'Temperature drift', detail: `Room ${s.room} reading ${s.reading}${unit} vs target ${s.target}${unit} (${diff}${unit} off).` };
+      }
+      return null;
+    }
+
+    getIotAlerts() {
+      const sensors = this.data.iot_sensors || [];
+      return sensors
+        .map(s => {
+          const evalResult = this._iotSensorEvaluation(s);
+          if (!evalResult) return null;
+          return {
+            id: s.sensor_id,
+            room: s.room,
+            sensor_type: s.type,
+            severity: evalResult.severity,
+            issue: evalResult.issue,
+            detail: evalResult.detail,
+            reading: s.reading,
+            target: s.target,
+            unit: s.unit,
+            record: s
+          };
+        })
+        .filter(Boolean)
+        .sort((a, b) => (IOT_SEV_ORDER[a.severity] ?? 4) - (IOT_SEV_ORDER[b.severity] ?? 4));
+    }
+
     /* ---------- Revenue KPIs ----------
        Field names match what hotelops-war-room.html reads directly:
        revpar, adr, occupancy_pct, gop_margin_pct, nps_score,
@@ -144,6 +191,7 @@
       const urgentTickets = (this.data.maintenance_tickets || []).filter(t => t.stage !== 'resolved' && t.severity === 'urgent').length;
       const openTickets = (this.data.maintenance_tickets || []).filter(t => t.stage !== 'resolved').length;
       const complianceRisk = this.getComplianceRisk();
+      const iotAlerts = this.getIotAlerts();
 
       return {
         revpar,
@@ -159,7 +207,9 @@
         open_maint_tickets: openTickets,
         urgent_maint_tickets: urgentTickets,
         maint_tickets_over_sla: maintBreaches.length,
-        compliance_items_at_risk: complianceRisk.filter(c => c.severity !== 'LOW').length
+        compliance_items_at_risk: complianceRisk.filter(c => c.severity !== 'LOW').length,
+        active_iot_alerts: iotAlerts.length,
+        urgent_iot_alerts: iotAlerts.filter(a => a.severity === 'urgent').length
       };
     }
 
@@ -187,7 +237,8 @@
           kpis: this.computeKpis(),
           maintenance_breaches: this.getMaintenanceBreaches(),
           ota_exposure: this.getOtaExposure(),
-          compliance_risk: this.getComplianceRisk()
+          compliance_risk: this.getComplianceRisk(),
+          iot_alerts: this.getIotAlerts()
         })
       });
       if (!res.ok) throw new Error('HotelOps analysis endpoint returned ' + res.status);
@@ -202,10 +253,12 @@
         maintenance_breaches: this.getMaintenanceBreaches(),
         financials: this.getFinancialSummary(),
         compliance_risk: this.getComplianceRisk(),
+        iot_alerts: this.getIotAlerts(),
         records: {
           maintenance_tickets: this.data.maintenance_tickets,
           ota_charges: this.data.ota_charges,
-          compliance_items: this.data.compliance_items
+          compliance_items: this.data.compliance_items,
+          iot_sensors: this.data.iot_sensors
         },
         ai_summary: aiText || null,
         ts: Date.now()
