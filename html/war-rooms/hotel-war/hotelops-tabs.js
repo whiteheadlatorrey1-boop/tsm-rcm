@@ -57,6 +57,10 @@
         panel.innerHTML =
           '<div class="panel"><div class="panel-hdr">IOT / SMART SYSTEMS</div>' +
           '<div class="panel-body" id="panel-iot-body" style="padding:0;">Loading&hellip;</div></div>';
+      } else if (slug === 'airbnb-str-operations') {
+        panel.innerHTML =
+          '<div class="panel"><div class="panel-hdr">AIRBNB / STR OPERATIONS</div>' +
+          '<div class="panel-body" id="panel-airbnb-str-operations-body" style="padding:0;">Loading&hellip;</div></div>';
       } else if (slug === 'ota-intelligence') {
         panel.innerHTML =
           '<div class="panel"><div class="panel-hdr">OTA INTELLIGENCE</div>' +
@@ -109,6 +113,9 @@
         }
         if (typeof renderIotTab === 'function' && document.getElementById('panel-iot-body') && target && target.querySelector('#panel-iot-body')) {
           renderIotTab();
+        }
+        if (slug === 'airbnb-str-operations' && typeof renderAirbnbTab === 'function') {
+          renderAirbnbTab();
         }
         if (slug === 'ota-intelligence' && typeof renderOtaTab === 'function') {
           renderOtaTab();

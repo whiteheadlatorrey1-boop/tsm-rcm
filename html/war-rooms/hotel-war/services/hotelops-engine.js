@@ -16,7 +16,7 @@
   const ENTITY_KEYS = [
     'maintenance_tickets', 'ota_charges', 'compliance_items', 'iot_sensors',
     'reservations', 'front_desk_queue', 'vip_arrivals', 'housekeeping_tasks',
-    'staff_shifts', 'incidents'
+    'staff_shifts', 'incidents', 'airbnb_listings'
   ];
   const IOT_SEV_ORDER = { urgent: 0, high: 1, medium: 2, low: 3 };
   const SEV_ORDER = { urgent: 0, high: 1, medium: 2, low: 3 };
@@ -466,6 +466,7 @@
         housekeeping_breaches: this.getHousekeepingBreaches(),
         staffing_gaps: this.getStaffingGaps(),
         open_incidents: this.getOpenIncidents(),
+        airbnb_risks: this.getAirbnbRisks(),
         records: {
           maintenance_tickets: this.data.maintenance_tickets,
           ota_charges: this.data.ota_charges,
@@ -476,12 +477,33 @@
           vip_arrivals: this.data.vip_arrivals,
           housekeeping_tasks: this.data.housekeeping_tasks,
           staff_shifts: this.data.staff_shifts,
-          incidents: this.data.incidents
+          incidents: this.data.incidents,
+          airbnb_listings: this.data.airbnb_listings
         },
         portfolio: this.getPortfolio(),
         ai_summary: aiText || null,
         ts: Date.now()
       };
+    }
+
+    getAirbnbRisks() {
+      const listings = this.data.airbnb_listings || [];
+      const items = [];
+      listings.forEach(l => {
+        if (l.turnover_status === 'overdue') {
+          items.push({ listing_id: l.listing_id, unit_name: l.unit_name, issue: 'Turnover overdue before next check-in', severity: 'high' });
+        }
+        if (!l.calendar_synced) {
+          items.push({ listing_id: l.listing_id, unit_name: l.unit_name, issue: `${l.platform} calendar not synced \u2014 double-booking risk`, severity: 'high' });
+        }
+        if (!l.lockbox_code_rotated) {
+          items.push({ listing_id: l.listing_id, unit_name: l.unit_name, issue: 'Lockbox/access code not rotated since last guest', severity: 'medium' });
+        }
+        if (l.host_response_mins > 60) {
+          items.push({ listing_id: l.listing_id, unit_name: l.unit_name, issue: `Host response time ${l.host_response_mins}min (SLA: 60min)`, severity: 'medium' });
+        }
+      });
+      return { items, total_listings: listings.length, at_risk: items.length };
     }
 
     /* ---------- Portfolio (Executive Portal, multi-property) ----------
