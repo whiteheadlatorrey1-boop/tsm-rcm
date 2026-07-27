@@ -1184,8 +1184,8 @@ function normalizeIncomingBooking(body) {
 
 // Booking source calls this the moment a reservation is made (direct site
 // on successful payment, or the channel manager's webhook config once one
-// exists). Not authenticated yet -- add a shared-secret header check here
-// once a real booking source is wired up.
+// exists). Requires an X-Webhook-Secret header matching HOTELOPS_WEBHOOK_SECRET
+// (see hotelopsWebhookAuthorized() above) -- no real booking source connected yet.
 
 // Stopgap for the still-missing auth on the booking webhook (see comment
 // below) -- not a substitute for it, just a backstop against runaway/junk
