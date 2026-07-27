@@ -1185,12 +1185,78 @@ function normalizeIncomingBooking(body) {
 // on successful payment, or the channel manager's webhook config once one
 // exists). Not authenticated yet -- add a shared-secret header check here
 // once a real booking source is wired up.
+
+// Stopgap for the still-missing auth on the booking webhook (see comment
+// below) -- not a substitute for it, just a backstop against runaway/junk
+// traffic in the meantime. Hand-rolled, no new dependency -- consistent
+// with this file's existing style (e.g. the WIP save debounce).
+const HOTELOPS_WEBHOOK_RATE_LIMIT = { windowMs: 10 * 60 * 1000, maxRequests: 20 };
+const hotelopsWebhookHits = new Map(); // ip -> [timestamps]
+function hotelopsWebhookRateLimited(ip) {
+  const now = Date.now();
+  const windowStart = now - HOTELOPS_WEBHOOK_RATE_LIMIT.windowMs;
+  let hits = hotelopsWebhookHits.get(ip);
+  if (!hits) {
+    hits = [];
+    hotelopsWebhookHits.set(ip, hits);
+  }
+  // Drop hits outside the sliding window before counting/pushing.
+  while (hits.length && hits[0] < windowStart) hits.shift();
+  if (hits.length >= HOTELOPS_WEBHOOK_RATE_LIMIT.maxRequests) return true;
+  hits.push(now);
+  // Opportunistic cleanup sweep (~1% of calls) so the Map doesn't grow
+  // unbounded over a long server lifetime. IP-based only, so this is weak
+  // against shared NAT/proxy IPs or a spoofed header.
+  if (Math.random() < 0.01) {
+    for (const [key, arr] of hotelopsWebhookHits) {
+      const trimmed = arr.filter(t => t >= windowStart);
+      if (trimmed.length === 0) hotelopsWebhookHits.delete(key);
+      else hotelopsWebhookHits.set(key, trimmed);
+    }
+  }
+  return false;
+}
+
+function validateBookingPayload(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return { valid: false, error: 'Payload must be a JSON object' };
+  }
+  const guest = pickField(body, ['guest', 'guest_name', 'guestName', 'name']);
+  if (guest != null && String(guest).length > 200) {
+    return { valid: false, error: 'guest name exceeds 200 characters' };
+  }
+  const roomType = pickField(body, ['room_type', 'roomType', 'room', 'unit_type']);
+  if (roomType != null && String(roomType).length > 200) {
+    return { valid: false, error: 'room_type exceeds 200 characters' };
+  }
+  const amountRaw = pickField(body, ['amount', 'total_amount', 'totalAmount', 'total', 'price']);
+  if (amountRaw != null) {
+    const amount = Number(amountRaw);
+    if (!isFinite(amount) || amount < 0 || amount > 1000000) {
+      return { valid: false, error: 'amount must be a finite number between 0 and 1,000,000' };
+    }
+  }
+  const arrivalRaw = pickField(body, ['check_in', 'checkIn', 'arrival_date', 'arrivalDate', 'arrival']);
+  if (arrivalRaw != null && isNaN(Date.parse(arrivalRaw))) {
+    return { valid: false, error: 'check_in date could not be parsed' };
+  }
+  return { valid: true };
+}
+
 app.post('/api/hotelops/booking-webhook', (req, res) => {
   const body = req.body || {};
   if (!body || (Object.keys(body).length === 0)) {
     return res.status(400).json({ ok: false, error: 'Empty booking payload' });
   }
   try {
+    const clientIp = req.ip || (req.connection && req.connection.remoteAddress) || 'unknown';
+    if (hotelopsWebhookRateLimited(clientIp)) {
+      return res.status(429).json({ ok: false, error: 'Rate limit exceeded, try again later' });
+    }
+    const validation = validateBookingPayload(body);
+    if (!validation.valid) {
+      return res.status(400).json({ ok: false, error: validation.error });
+    }
     const record = normalizeIncomingBooking(body);
     HOTELOPS_BOOKING_QUEUE.seq += 1;
     record.seq = HOTELOPS_BOOKING_QUEUE.seq;
