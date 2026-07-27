@@ -161,6 +161,9 @@ textarea#docIntake{width:100%;min-height:80px;background:var(--bg3);border:1px s
   </div>
 </div>
 
+<!-- Mission Store (hotelops wiring, mirrors bpo-internal1.html Phase 5) -->
+<script src="../../shared/runtime/mission/mission-model.js"></script>
+<script src="../../shared/runtime/mission/mission-store.js"></script>
 <script src="services/hotelops-engine.js"></script>
 <div id="tsm-toast"></div>
 <script>
@@ -210,8 +213,45 @@ async function init() {
     }
     render();
     pollOnlineBookings(); // engine is ready now -- safe to do the first live check
+    if (window.TSMMissionStore) {
+      window.TSMMissionStore.subscribe('*', () => render());
+    }
   } catch (e) {
     showInitError(e.message);
+  }
+}
+
+// Real missions created elsewhere (currently: bpo-internal1.html's `hotel`
+// sector intake form) surface here as incidents/compliance items. Only
+// incidents and compliance are mission-shaped — revpar/ADR/occupancy are
+// operational metrics the mission object has no legitimate way to supply,
+// so this deliberately does NOT touch the revenue KPI tiles.
+function getLiveHotelopsMissions() {
+  if (!window.TSMMissionStore) return [];
+  return window.TSMMissionStore.listMissions({ vertical: 'hotelops' });
+}
+
+function renderLiveMissionOverlay() {
+  const missions = getLiveHotelopsMissions();
+  if (!missions.length) return; // no real missions yet — leave sample data as-is
+
+  const open = missions.filter(m => m.stage !== 'closed' && m.stage !== 'delivered');
+  const incidentsPanel = document.getElementById('panel-incident-center-body');
+  if (incidentsPanel) {
+    const liveHtml = open.map(m => `
+      <div class="mission-item">
+        <span class="mtag">LIVE MISSION</span>
+        <span class="mtitle">${m.client || m.missionNo || m.id}</span>
+        <span class="mmeta">stage: ${m.stage}${m.workflow && m.workflow.priority ? ' — priority: ' + m.workflow.priority : ''}</span>
+      </div>`).join('');
+    incidentsPanel.innerHTML += liveHtml;
+  }
+
+  const complianceMissions = open.filter(m => (m.classification && m.classification.type === 'compliance') || /compliance|license|permit/i.test(m.client || ''));
+  const compliancePanel = document.getElementById('compliancePanel');
+  if (compliancePanel && complianceMissions.length) {
+    const liveHtml = complianceMissions.map(m => `<br><span class="mtag">LIVE</span> ${m.client || m.id} — stage: ${m.stage}`).join('');
+    compliancePanel.innerHTML += liveHtml;
   }
 }
 
@@ -267,6 +307,7 @@ function render(){
   if (typeof renderHousekeepingTab === 'function') renderHousekeepingTab();
   if (typeof renderStaffOpsTab === 'function') renderStaffOpsTab();
   if (typeof renderIncidentsTab === 'function') renderIncidentsTab();
+  renderLiveMissionOverlay();
 }
 
 function renderMissionQueue(){
