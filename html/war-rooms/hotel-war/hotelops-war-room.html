@@ -460,6 +460,34 @@ function buildSentinelAnomalies(){
       recommendedAction: 'Escalate past-SLA incidents to duty manager immediately.'
     });
   }
+  const airbnbRisks = engine.getAirbnbRisks();
+  if (airbnbRisks.at_risk > 0) {
+    // Qualitative "if unaddressed..." consequence per issue type -- no
+    // invented dollar figures, just the real operational chain of
+    // events each unresolved STR issue leads to.
+    const consequenceByIssue = (issue) => {
+      if (/turnover overdue/i.test(issue)) return 'the next guest\u2019s check-in may be delayed or cancelled, risking a refund and a platform penalty for late check-in';
+      if (/calendar not synced/i.test(issue)) return 'a double-booking becomes likely, typically forcing a same-day relocation or refund and a platform strike';
+      if (/lockbox|access code/i.test(issue)) return 'the previous guest retains access to the unit, creating a security and liability exposure until the code is rotated';
+      if (/host response time/i.test(issue)) return 'slow response time drags down the listing\u2019s response-rate metric, which OTAs use to suppress search ranking';
+      if (/water leak/i.test(issue)) return 'undetected water damage compounds the longer it runs, risking a larger repair bill and a disrupted future booking';
+      if (/sensor offline/i.test(issue)) return 'a real issue (leak, temperature, security) could be developing with no visibility until a guest reports it';
+      if (/temperature drift/i.test(issue)) return 'guest comfort complaints and a lower review score become more likely the longer it goes unaddressed';
+      return 'the issue compounds the longer it goes unaddressed';
+    };
+    const detailed = airbnbRisks.items.slice(0, 4).map(it =>
+      `${it.unit_name} (${it.listing_id}): ${it.issue} \u2014 if unaddressed, ${consequenceByIssue(it.issue)}.`
+    ).join(' ');
+    anomalies.push({
+      id: 'hotelops-airbnb-risks',
+      title: 'Airbnb/STR Listing Risks',
+      severity: airbnbRisks.items.some(it => it.severity === 'urgent') ? 'CRIT' : (airbnbRisks.items.some(it => it.severity === 'high') ? 'HIGH' : 'MED'),
+      exposure: 0,
+      confidence: 85,
+      rootCause: `${airbnbRisks.at_risk} of ${airbnbRisks.total_listings} STR listing(s) flagged. ${detailed}`,
+      recommendedAction: 'Review the Airbnb/STR Operations panel and clear each flagged item before the next guest interaction.'
+    });
+  }
   return anomalies;
 }
 
