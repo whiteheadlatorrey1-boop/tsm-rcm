@@ -148,18 +148,31 @@
        state, or a thermostat drifting from its setpoint. Occupancy sensors
        are informational only and never generate an alert. */
 
+    /* Resolves a sensor's location label -- either its hotel room number
+       (rooms) or its matched Airbnb listing's unit name + code (STR
+       units). Falls back to a bare listing_id if the sensor references
+       a listing_id not found in the currently-loaded airbnb_listings. */
+    _iotLocationLabel(s) {
+      if (s.listing_id) {
+        const listing = (this.data.airbnb_listings || []).find(l => l.listing_id === s.listing_id);
+        return listing ? `${listing.unit_name} (${listing.listing_id})` : `listing ${s.listing_id}`;
+      }
+      return `room ${s.room}`;
+    }
+
     _iotSensorEvaluation(s) {
+      const loc = this._iotLocationLabel(s);
       if ((s.status || '').toLowerCase() === 'offline') {
-        return { severity: 'high', issue: 'Sensor offline', detail: `${s.type || 'Sensor'} in room ${s.room} is offline — no readings available.` };
+        return { severity: 'high', issue: 'Sensor offline', detail: `${s.type || 'Sensor'} in ${loc} is offline — no readings available.` };
       }
       if ((s.status || '').toLowerCase() === 'alert' || (s.type === 'water_leak' && s.reading === 'detected')) {
-        return { severity: 'urgent', issue: 'Water leak detected', detail: `Water leak sensor in room ${s.room} reports a leak.` };
+        return { severity: 'urgent', issue: 'Water leak detected', detail: `Water leak sensor in ${loc} reports a leak.` };
       }
       if (s.type === 'thermostat' && typeof s.reading === 'number' && typeof s.target === 'number') {
         const diff = Math.round(Math.abs(s.reading - s.target) * 10) / 10;
         const unit = s.unit || '';
-        if (diff >= 8) return { severity: 'high', issue: 'Temperature drift', detail: `Room ${s.room} reading ${s.reading}${unit} vs target ${s.target}${unit} (${diff}${unit} off).` };
-        if (diff >= 4) return { severity: 'medium', issue: 'Temperature drift', detail: `Room ${s.room} reading ${s.reading}${unit} vs target ${s.target}${unit} (${diff}${unit} off).` };
+        if (diff >= 8) return { severity: 'high', issue: 'Temperature drift', detail: `${loc} reading ${s.reading}${unit} vs target ${s.target}${unit} (${diff}${unit} off).` };
+        if (diff >= 4) return { severity: 'medium', issue: 'Temperature drift', detail: `${loc} reading ${s.reading}${unit} vs target ${s.target}${unit} (${diff}${unit} off).` };
       }
       return null;
     }
@@ -170,9 +183,12 @@
         .map(s => {
           const evalResult = this._iotSensorEvaluation(s);
           if (!evalResult) return null;
+          const listing = s.listing_id ? (this.data.airbnb_listings || []).find(l => l.listing_id === s.listing_id) : null;
           return {
             id: s.sensor_id,
-            room: s.room,
+            room: s.room || null,
+            listing_id: s.listing_id || null,
+            unit_name: listing ? listing.unit_name : null,
             type: s.type,
             status: s.status,
             severity: evalResult.severity,
@@ -503,6 +519,16 @@
           items.push({ listing_id: l.listing_id, unit_name: l.unit_name, issue: `Host response time ${l.host_response_mins}min (SLA: 60min)`, severity: 'medium' });
         }
       });
+      // IoT sensor-driven risks -- reuses the same real evaluation logic
+      // as room-based sensors (offline / water leak / thermostat drift);
+      // no new severity rules invented here.
+      const listingsById = new Map(listings.map(l => [l.listing_id, l]));
+      this.getIotAlerts()
+        .filter(a => a.listing_id && listingsById.has(a.listing_id))
+        .forEach(a => {
+          const l = listingsById.get(a.listing_id);
+          items.push({ listing_id: l.listing_id, unit_name: l.unit_name, issue: `${a.issue} \u2014 ${a.detail}`, severity: a.severity });
+        });
       return { items, total_listings: listings.length, at_risk: items.length };
     }
 

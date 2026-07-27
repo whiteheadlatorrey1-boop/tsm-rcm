@@ -253,7 +253,7 @@ function render(){
 
   const iotAlerts = engine.getIotAlerts();
   document.getElementById('iotPanel').innerHTML = iotAlerts.map(a => `
-    <span class="mtag ${a.severity}" style="display:inline-block;margin-bottom:2px;">${a.severity.toUpperCase()}</span> Room ${a.room} — ${a.issue}<br>
+    <span class="mtag ${a.severity}" style="display:inline-block;margin-bottom:2px;">${a.severity.toUpperCase()}</span> ${a.room ? 'Room ' + a.room : (a.unit_name ? a.unit_name + ' (' + a.listing_id + ')' : 'Listing ' + a.listing_id)} — ${a.issue}<br>
     &nbsp;&nbsp;${a.detail}
   `).join('<br>') || 'No active IoT sensor alerts.';
 
@@ -283,7 +283,8 @@ function renderMissionQueue(){
 
   const items = [];
   iotAlerts.forEach(a => {
-    items.push({ sev: a.severity, title: `IoT — Room ${a.room}: ${a.issue}`, meta: a.detail });
+    const loc = a.room ? `Room ${a.room}` : (a.unit_name ? `${a.unit_name} (${a.listing_id})` : `Listing ${a.listing_id}`);
+    items.push({ sev: a.severity, title: `IoT — ${loc}: ${a.issue}`, meta: a.detail });
   });
   allTickets.forEach(t => {
     const isBreach = breaches.some(b => b.id === t.ticket_id);
@@ -594,8 +595,9 @@ function mapRowsToIotSensors(rows) {
   rows.forEach((row, i) => {
     const rawId = findIotField(row, ['sensor id', 'sensor_id', 'device id', 'id']) || `IOT-IMPORT-${i + 1}`;
     const room = findIotField(row, ['room', 'room number']);
+    const listingId = findIotField(row, ['listing id', 'listing_id', 'listing']);
     const type = (findIotField(row, ['type', 'sensor type', 'category']) || '').toLowerCase().replace(/\s+/g, '_');
-    if (!room && !type) { skipped.push(rawId || `row ${i + 1}`); return; }
+    if (!room && !listingId && !type) { skipped.push(rawId || `row ${i + 1}`); return; }
     let sensorId = rawId;
     let n = 2;
     while (seen.has(sensorId)) { sensorId = `${rawId}-${n++}`; }
@@ -603,6 +605,7 @@ function mapRowsToIotSensors(rows) {
     sensors.push({
       sensor_id: sensorId,
       room: room || '',
+      listing_id: listingId || '',
       type: type || 'unknown',
       status: (findIotField(row, ['status', 'state']) || 'online').toLowerCase(),
       reading: parseIotValue(findIotField(row, ['reading', 'value'])),
@@ -633,7 +636,7 @@ document.getElementById('btnIotImportPreview').addEventListener('click', () => {
     `Detected ${headers.length} column(s), ${rows.length} row(s).\n` +
     `Parsed ${sensors.length} sensor record(s).` +
     (skipped.length ? `\n${skipped.length} row(s) skipped (no reading/message found): ${skipped.join(', ')}` : '') +
-    (sensors.length ? `\nPreview: ${sensors.slice(0, 3).map(s => `${s.sensor_id} [Room ${s.room}, ${s.type}, ${s.status}]`).join(', ')}${sensors.length > 3 ? '...' : ''}` : '');
+    (sensors.length ? `\nPreview: ${sensors.slice(0, 3).map(s => `${s.sensor_id} [${s.listing_id ? 'Listing ' + s.listing_id : 'Room ' + s.room}, ${s.type}, ${s.status}]`).join(', ')}${sensors.length > 3 ? '...' : ''}` : '');
   commitBtn.disabled = sensors.length === 0;
 });
 
