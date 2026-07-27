@@ -98,6 +98,10 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 <!-- Mission Store (hotelops wiring, mirrors hotelops-war-room.html) -->
 <script src="../../shared/runtime/mission/mission-model.js"></script>
 <script src="../../shared/runtime/mission/mission-store.js"></script>
+<!-- Loaded here, BEFORE the main inline script below, so window.TSMIntegrity
+     exists by the time render() -> loadRelay() first runs synchronously on
+     page load. -->
+<script src="/html/shared/runtime/integrity/tsm-integrity.js"></script>
 <script>
 function tick(){document.getElementById('clock').textContent=new Date().toLocaleTimeString();}
 setInterval(tick,1000);tick();
@@ -112,17 +116,42 @@ function showToast(msg){
   showToast._h=setTimeout(()=>t.classList.remove('show'),2500);
 }
 
+// Dedupe on the full raw string, not the claimed hash — see hotelops
+// strategist page for the reasoning (keying off the hash alone would let
+// unsigned tampering slip past after the first legitimate check).
+const HOTELOPS_VERIFIED_CONTENT = new Set();
+function verifyRelayIntegrity(data, raw){
+  if (!data || !data._integrity || !data._integrity.hash || !raw) return;
+  if (!window.TSMIntegrity || typeof window.TSMIntegrity.verify !== 'function') return;
+  if (HOTELOPS_VERIFIED_CONTENT.has(raw)) return;
+  HOTELOPS_VERIFIED_CONTENT.add(raw);
+  window.TSMIntegrity.verify(data).then(result => {
+    if (!result.ok && result.reason === 'mismatch') {
+      console.warn('[hotelops-executive-portal] relay integrity mismatch:', result);
+      if (typeof showToast === 'function') {
+        showToast('Warning: relay data failed integrity check — may be stale or tampered.');
+      }
+    }
+  }).catch(() => {});
+}
+
 function loadRelay(){
+  let data = null;
+  let raw = null;
   try {
     if(window.TSM && window.TSM.relay && window.TSM.relay.read){
       const d = window.TSM.relay.read(DOMAIN);
-      if(d) return d;
+      if(d) { data = d; raw = JSON.stringify(d); }
     }
   } catch(e){}
-  try {
-    const raw = sessionStorage.getItem(RELAY_KEY_FALLBACK) || localStorage.getItem(RELAY_KEY_FALLBACK) || localStorage.getItem('TSM_HOTELOPS_STRATEGIST_RELAY');
-    return raw ? JSON.parse(raw) : null;
-  } catch(e){ return null; }
+  if (data === null) {
+    try {
+      raw = sessionStorage.getItem(RELAY_KEY_FALLBACK) || localStorage.getItem(RELAY_KEY_FALLBACK) || localStorage.getItem('TSM_HOTELOPS_STRATEGIST_RELAY');
+      data = raw ? JSON.parse(raw) : null;
+    } catch(e){ data = null; }
+  }
+  verifyRelayIntegrity(data, raw);
+  return data;
 }
 
 function escapeHtml(s){
