@@ -209,6 +209,9 @@
        "hours over" style as maintenance SLA, just framed as "hours until
        arrival" rather than "hours since opened". */
 
+    _fmtAmount(amount) {
+      return (amount != null && !isNaN(amount)) ? ` — $${Number(amount).toLocaleString()}` : '';
+    }
     getReservationRisks() {
       const warnHours = (this.model.entities && this.model.entities.reservation &&
         this.model.entities.reservation.unconfirmed_warning_hours) != null
@@ -219,19 +222,19 @@
           if (r.payment_status === 'failed') {
             return { id: r.res_id, guest: r.guest, type: 'payment_failed', severity: 'urgent',
               hours_to_arrival: r.hours_to_arrival,
-              detail: `Payment failed — ${r.room_type}, arriving in ${r.hours_to_arrival}h.`, record: r };
+              amount: r.amount, detail: `Payment failed — ${r.room_type}, arriving in ${r.hours_to_arrival}h.${this._fmtAmount(r.amount)}`, record: r };
           }
           if (r.status === 'unconfirmed' && r.hours_to_arrival <= warnHours) {
             const severity = r.hours_to_arrival <= warnHours / 4 ? 'urgent' : r.hours_to_arrival <= warnHours / 2 ? 'high' : 'medium';
             return { id: r.res_id, guest: r.guest, type: 'unconfirmed_near_arrival', severity,
               hours_to_arrival: r.hours_to_arrival,
-              detail: `Still unconfirmed, arriving in ${r.hours_to_arrival}h.`, record: r };
+              amount: r.amount, detail: `Still unconfirmed, arriving in ${r.hours_to_arrival}h.${this._fmtAmount(r.amount)}`, record: r };
           }
           if (r.status === 'waitlist') {
             const severity = r.hours_to_arrival <= warnHours / 4 ? 'urgent' : r.hours_to_arrival <= warnHours / 2 ? 'high' : 'medium';
             return { id: r.res_id, guest: r.guest, type: 'waitlist_risk', severity,
               hours_to_arrival: r.hours_to_arrival,
-              detail: `On waitlist, arriving in ${r.hours_to_arrival}h — ${r.room_type} not yet secured.`, record: r };
+              amount: r.amount, detail: `On waitlist, arriving in ${r.hours_to_arrival}h — ${r.room_type} not yet secured.${this._fmtAmount(r.amount)}`, record: r };
           }
           return null;
         })
