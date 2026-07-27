@@ -95,6 +95,9 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 </div>
 <div class="wrap" id="wrap"><!-- populated by JS --></div>
 <div class="toast" id="toast"></div>
+<!-- Mission Store (hotelops wiring, mirrors hotelops-war-room.html) -->
+<script src="../../shared/runtime/mission/mission-model.js"></script>
+<script src="../../shared/runtime/mission/mission-store.js"></script>
 <script>
 function tick(){document.getElementById('clock').textContent=new Date().toLocaleTimeString();}
 setInterval(tick,1000);tick();
@@ -131,7 +134,28 @@ function money(n, currency){
   return sym + Math.round(n||0).toLocaleString();
 }
 
+function renderLiveMissionsRegister(){
+  if(!window.TSMMissionStore) return '';
+  const missions = window.TSMMissionStore.listMissions({ vertical: 'hotelops' });
+  if(!missions.length) return '';
+  const open = missions.filter(m => m.stage !== 'closed' && m.stage !== 'delivered');
+  if(!open.length) return '';
+  const rows = open.map((m, idx) => `
+    <div class="risk-item">
+      <div class="risk-rank">${idx+1}</div>
+      <div class="risk-body">
+        <div class="risk-title">${escapeHtml(m.client || m.missionNo || m.id)} &mdash; stage: ${escapeHtml(m.stage)}</div>
+        <div class="risk-action">${m.workflow && m.workflow.priority ? 'Priority: ' + escapeHtml(m.workflow.priority) : 'No priority set'}</div>
+      </div>
+    </div>`).join('');
+  return `<div class="sec">
+    <div class="sec-hdr"><span class="lbl">LIVE MISSIONS</span><span class="sec-hdr-note">from Mission Store, vertical: hotelops</span></div>
+    ${rows}
+  </div>`;
+}
+
 function renderEmpty(){
+  const liveHtml = renderLiveMissionsRegister();
   document.getElementById('wrap').innerHTML = `
     <div class="empty">
       <h2>NO DATA RECEIVED</h2>
@@ -139,7 +163,7 @@ function renderEmpty(){
       <div class="hdr-btns" style="justify-content:center;">
         <a class="hbtn primary" href="hotelops-war-room.html">&#127976; Go to War Room</a>
       </div>
-    </div>`;
+    </div>${liveHtml}`;
 }
 
 // Same generic markdown/table renderer used by Mortgage's exec portal --
@@ -312,6 +336,7 @@ function render(){
   html += renderRiskRegister(data.maintenance_breaches, data.compliance_risk);
   html += renderAirbnbRisks(data.airbnb_risks);
   html += renderPortfolio(data.portfolio);
+  html += renderLiveMissionsRegister();
 
   html += `<div class="sec"><div class="sec-hdr"><span class="lbl">EXECUTIVE ACTIONS</span></div>
     <div class="action-bar">
@@ -326,6 +351,9 @@ function render(){
 render();
 window.addEventListener('storage', e => { if(e.key === RELAY_KEY_FALLBACK || e.key === 'TSM_EVENT_LOG') render(); });
 window.addEventListener('TSM_RELAY_EVENT', e => { if(e.detail && e.detail.domain === DOMAIN) render(); });
+if (window.TSMMissionStore) {
+  window.TSMMissionStore.subscribe('*', () => render());
+}
 </script>
   <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
   <script src="/html/core/tsm-runtime.js"></script>
