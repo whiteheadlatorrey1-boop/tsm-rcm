@@ -20,6 +20,7 @@
     'bpo',
     'mortgage',
     'schools',
+    'hotelops',
     'honeywell'
   ]);
 
@@ -65,7 +66,7 @@
   var VERT_CODES = {
     healthcare: 'HC', finops: 'FO', insurance: 'INS', construction: 'CON',
     legal: 'LGL', realestate: 'RE', bpo: 'BPO', mortgage: 'MTG', schools: 'SCH',
-    honeywell: 'HWL'
+    honeywell: 'HWL', hotelops: 'HTL'
   };
 
   var _seqCounters = {};
