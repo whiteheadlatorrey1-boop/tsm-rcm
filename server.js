@@ -1101,6 +1101,128 @@ app.post('/api/hotelops/query', async (req, res) => {
     return res.status(500).json({ ok: false, error: e.message });
   }
 });
+// ── HOTELOPS: online booking ingestion ────────────────────────────────────────
+// Live guests-book-online path. TSM.relay is a browser-only (localStorage/
+// sessionStorage) bus, so a server-side webhook cannot push into it directly.
+// This is the bridge: booking source -> server queue (file-persisted, mirrors
+// the WIP persistence pattern below) -> war-room client polls -> client commits
+// into the engine and does the actual TSM.relay.write() locally.
+// Self-contained data dir (not WIP_DATA_DIR -- that's declared further down
+// this file, in the WIP persistence section, and this route registers earlier
+// at module load time, so referencing it here would throw a TDZ ReferenceError
+// on server start).
+const HOTELOPS_DATA_DIR = fs.existsSync('/app/data') ? '/app/data' : path.join(__dirname, 'data');
+if (!fs.existsSync(HOTELOPS_DATA_DIR)) fs.mkdirSync(HOTELOPS_DATA_DIR, { recursive: true });
+const HOTELOPS_BOOKINGS_FILE = path.join(HOTELOPS_DATA_DIR, 'hotelops-bookings.json');
+
+function loadHotelopsBookingQueue() {
+  try {
+    if (fs.existsSync(HOTELOPS_BOOKINGS_FILE)) {
+      const raw = fs.readFileSync(HOTELOPS_BOOKINGS_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      return { seq: parsed.seq || 0, bookings: Array.isArray(parsed.bookings) ? parsed.bookings : [] };
+    }
+  } catch (err) {
+    console.error('[hotelops-bookings] load failed, starting empty:', err.message);
+  }
+  return { seq: 0, bookings: [] };
+}
+
+const HOTELOPS_BOOKING_QUEUE = loadHotelopsBookingQueue();
+const HOTELOPS_BOOKING_QUEUE_MAX = 500; // trim oldest once polled bookings pile up
+
+let hotelopsBookingSaveTimer = null;
+function saveHotelopsBookingQueue() {
+  if (hotelopsBookingSaveTimer) clearTimeout(hotelopsBookingSaveTimer);
+  hotelopsBookingSaveTimer = setTimeout(() => {
+    try {
+      fs.writeFileSync(HOTELOPS_BOOKINGS_FILE, JSON.stringify(HOTELOPS_BOOKING_QUEUE, null, 2));
+    } catch (err) {
+      console.error('[hotelops-bookings] save failed:', err.message);
+    }
+  }, 250);
+}
+
+// Best-effort field extraction so this works whether the caller is our own
+// future booking form, a channel manager (Cloudbeds/SiteMinder), or an OTA
+// webhook -- each names fields slightly differently.
+function pickField(obj, candidates) {
+  for (const c of candidates) {
+    if (obj[c] !== undefined && obj[c] !== null && obj[c] !== '') return obj[c];
+  }
+  return undefined;
+}
+
+function normalizeIncomingBooking(body) {
+  const guestName = pickField(body, ['guest', 'guest_name', 'guestName', 'name']) || 'Unknown guest';
+  const roomType = pickField(body, ['room_type', 'roomType', 'room', 'unit_type']) || 'Unspecified';
+  const amountRaw = pickField(body, ['amount', 'total_amount', 'totalAmount', 'total', 'price']);
+  const amount = amountRaw != null ? Number(amountRaw) : null;
+  const paymentStatusRaw = (pickField(body, ['payment_status', 'paymentStatus', 'payment']) || '').toString().toLowerCase();
+  const arrivalRaw = pickField(body, ['check_in', 'checkIn', 'arrival_date', 'arrivalDate', 'arrival']);
+
+  let hoursToArrival = null;
+  if (arrivalRaw) {
+    const arrivalMs = Date.parse(arrivalRaw);
+    if (!isNaN(arrivalMs)) hoursToArrival = Math.max(0, Math.round((arrivalMs - Date.now()) / 36e5));
+  }
+
+  const isPaid = paymentStatusRaw === 'paid' || paymentStatusRaw === 'succeeded';
+  const isFailed = paymentStatusRaw === 'failed' || paymentStatusRaw === 'declined';
+
+  return {
+    res_id: pickField(body, ['res_id', 'reservation_id', 'confirmation_number', 'confirmationNumber']) ||
+      `RES-WEB-${Date.now().toString(36).toUpperCase()}`,
+    guest: String(guestName),
+    room_type: String(roomType),
+    // Paid online bookings are confirmed on arrival into the system --
+    // only payment-pending bookings sit as 'unconfirmed' (and correctly
+    // surface as a risk once they're within the arrival warning window,
+    // per getReservationRisks() in hotelops-engine.js). A failed payment
+    // stays 'unconfirmed' too (there's no room held on a failed charge)
+    // but is what actually drives the urgent 'payment_failed' risk type,
+    // which getReservationRisks() checks before anything else.
+    status: isPaid ? 'confirmed' : 'unconfirmed',
+    payment_status: isPaid ? 'paid' : isFailed ? 'failed' : 'pending',
+    hours_to_arrival: hoursToArrival,
+    amount: amount != null && !isNaN(amount) ? amount : null,
+    source: pickField(body, ['source', 'channel', 'platform']) || 'online_booking',
+    received_at: new Date().toISOString()
+  };
+}
+
+// Booking source calls this the moment a reservation is made (direct site
+// on successful payment, or the channel manager's webhook config once one
+// exists). Not authenticated yet -- add a shared-secret header check here
+// once a real booking source is wired up.
+app.post('/api/hotelops/booking-webhook', (req, res) => {
+  const body = req.body || {};
+  if (!body || (Object.keys(body).length === 0)) {
+    return res.status(400).json({ ok: false, error: 'Empty booking payload' });
+  }
+  try {
+    const record = normalizeIncomingBooking(body);
+    HOTELOPS_BOOKING_QUEUE.seq += 1;
+    record.seq = HOTELOPS_BOOKING_QUEUE.seq;
+    HOTELOPS_BOOKING_QUEUE.bookings.push(record);
+    if (HOTELOPS_BOOKING_QUEUE.bookings.length > HOTELOPS_BOOKING_QUEUE_MAX) {
+      HOTELOPS_BOOKING_QUEUE.bookings = HOTELOPS_BOOKING_QUEUE.bookings.slice(-HOTELOPS_BOOKING_QUEUE_MAX);
+    }
+    saveHotelopsBookingQueue();
+    return res.json({ ok: true, res_id: record.res_id, seq: record.seq });
+  } catch (e) {
+    console.error('[hotelops-booking-webhook] error:', e.message);
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// War-room client polls this; ?since=<lastSeenSeq> returns only newer bookings.
+app.get('/api/hotelops/bookings/pending', (req, res) => {
+  const since = Number(req.query.since) || 0;
+  const pending = HOTELOPS_BOOKING_QUEUE.bookings.filter(b => b.seq > since);
+  res.json({ ok: true, bookings: pending, latest_seq: HOTELOPS_BOOKING_QUEUE.seq });
+});
+
 // ── SCHOOLS: structured grant/monitoring/exception analysis ──────────────────
 // Mirrors /api/mortgage/query's shape. Kept separate from the pre-existing
 // generic /api/schools/query (plain question/answer) so nothing there breaks.
