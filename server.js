@@ -1,6 +1,7 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 process.on('uncaughtException', (err) => {
   console.error('💥 UNCAUGHT EXCEPTION:', err.message, err.stack);
@@ -1243,7 +1244,31 @@ function validateBookingPayload(body) {
   return { valid: true };
 }
 
+const HOTELOPS_WEBHOOK_SECRET = process.env.HOTELOPS_WEBHOOK_SECRET || '';
+
+function hotelopsWebhookAuthorized(req) {
+  // Fail closed: if no secret is configured, reject everything rather than
+  // silently allowing unauthenticated writes.
+  if (!HOTELOPS_WEBHOOK_SECRET) return false;
+
+  const provided = req.get('X-Webhook-Secret') || '';
+  const providedBuf = Buffer.from(provided);
+  const secretBuf = Buffer.from(HOTELOPS_WEBHOOK_SECRET);
+
+  if (providedBuf.length !== secretBuf.length) {
+    // timingSafeEqual throws on length mismatch. Do a same-length dummy
+    // compare so the length check itself doesn't leak timing info.
+    crypto.timingSafeEqual(secretBuf, secretBuf);
+    return false;
+  }
+  return crypto.timingSafeEqual(providedBuf, secretBuf);
+}
+
 app.post('/api/hotelops/booking-webhook', (req, res) => {
+  if (!hotelopsWebhookAuthorized(req)) {
+    return res.status(401).json({ ok: false, error: 'Unauthorized' });
+  }
+
   const body = req.body || {};
   if (!body || (Object.keys(body).length === 0)) {
     return res.status(400).json({ ok: false, error: 'Empty booking payload' });
