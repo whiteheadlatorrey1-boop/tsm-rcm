@@ -98,6 +98,7 @@ textarea#docIntake{width:100%;min-height:80px;background:var(--bg3);border:1px s
   <div id="sidebar">
     <div class="sb-lbl">DATA</div>
     <div style="padding:0 14px 10px">
+      <select id="sampleDataSelect" style="width:100%;margin-bottom:6px;background:var(--bg3);border:1px solid var(--border);color:var(--white);font-family:var(--mono);font-size:.55rem;padding:6px"></select>
       <button class="btn ghost" style="width:100%;margin-bottom:6px" id="btnLoadSample">LOAD SAMPLE DATA</button>
       <button class="btn ghost" style="width:100%" id="btnResetData">RESET SAVED DATA</button>
     </div>
@@ -208,6 +209,7 @@ async function init() {
     model = await res.json();
     if (typeof TSMHotelOpsEngine === 'undefined') throw new Error('TSMHotelOpsEngine is undefined — services/hotelops-engine.js did not load');
     engine = new TSMHotelOpsEngine(model);
+    populateSampleDataSelect();
     if (!engine.loadFromStorage()) {
       engine.loadSampleData();
       engine.saveToStorage();
@@ -591,21 +593,43 @@ document.getElementById('navIotSensors').addEventListener('click', () => {
 });
 
 // ── DATA CONTROLS ────────────────────────────────────────────────────────
+// Multiple named sample properties (model.sample_data_sets) ship alongside
+// the original default. The dropdown picks one; loadSampleData() on the
+// engine has always read from model.sample_data, so switching scenarios
+// just means swapping that reference before calling it — every tab file
+// that reads model.sample_data.X directly (not through engine.data) picks
+// up the change for free since they all share this one model object.
+function populateSampleDataSelect() {
+  const sel = document.getElementById('sampleDataSelect');
+  if (!sel || !model || !Array.isArray(model.sample_data_sets)) return;
+  sel.innerHTML = model.sample_data_sets.map(s => `<option value="${s.id}">${s.label}</option>`).join('');
+  sel.value = model.sample_data_default_id || model.sample_data_sets[0].id;
+}
+
+function applySelectedSampleData() {
+  const sel = document.getElementById('sampleDataSelect');
+  const sets = (model && model.sample_data_sets) || [];
+  const chosen = sets.find(s => s.id === (sel && sel.value)) || sets[0];
+  if (chosen) model.sample_data = JSON.parse(JSON.stringify(chosen.data));
+  engine.loadSampleData();
+  return chosen;
+}
+
 document.getElementById('btnLoadSample').addEventListener('click', () => {
   if (!requireEngine()) return;
-  engine.loadSampleData();
+  const chosen = applySelectedSampleData();
   engine.saveToStorage();
   render();
-  showToast('Sample data loaded.');
+  showToast(chosen ? `Sample data loaded: ${chosen.label}` : 'Sample data loaded.');
 });
 
 document.getElementById('btnResetData').addEventListener('click', () => {
   if (!requireEngine()) return;
   engine.clearStorage();
-  engine.loadSampleData();
+  const chosen = applySelectedSampleData();
   engine.saveToStorage();
   render();
-  showToast('Saved data cleared — reset to sample data.');
+  showToast(chosen ? `Saved data cleared — reset to: ${chosen.label}` : 'Saved data cleared — reset to sample data.');
 });
 
 // ── IOT SENSOR IMPORT (PASTE) ─────────────────────────────────────────────
