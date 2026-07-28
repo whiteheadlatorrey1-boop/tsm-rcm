@@ -425,6 +425,7 @@
   </div>
 </div>
 
+<script src="shared/runtime/integrity/tsm-integrity.js"></script>
 <script>
 /* ============================================================
    TSM SENTINEL STRATEGIST CENTER
@@ -468,26 +469,75 @@
      window.TSM_SENTINEL.ingest('healthcare', payload)
    ============================================================ */
 
+// SHA-256 verification is best-effort and non-fatal: a failed/missing
+// signature flags the record (console warning + audit-log entry so it's
+// visible in the Audit tab) but Sentinel still ingests and displays the
+// data rather than dropping it. Unsigned data (e.g. from a vertical that
+// hasn't adopted TSMIntegrity yet) is expected and not treated as an error.
+async function verifyRelayIntegrity(key, data){
+  if (!data || !window.TSMIntegrity || typeof window.TSMIntegrity.verify !== 'function') return null;
+  try{
+    const result = await window.TSMIntegrity.verify(data);
+    if (!result.ok && result.reason === 'mismatch'){
+      console.warn('[sentinel-center] integrity mismatch for', key, result);
+      if (typeof appendAuditLog === 'function'){
+        appendAuditLog('integrity_mismatch', `Signature mismatch on ${key} — stored payload does not match its SHA-256 seal.`, result);
+      }
+    }
+    return result;
+  }catch(e){ return { ok:false, reason:'error', error:e.message }; }
+}
+
+// Stays synchronous on purpose — render() and its 13 call sites read the
+// return value immediately, and crypto.subtle is only available async.
+// So: return the data right away (unchanged behavior), and kick off
+// verification in the background. A mismatch surfaces a moment later via
+// console.warn + the audit log rather than gating the render.
+//
+// Dedupe key is the full stored string, not just the claimed hash: an
+// attacker (or accidental corruption) that mutates content WITHOUT
+// re-signing leaves _integrity.hash unchanged, so keying off the hash
+// alone would treat "already verified this hash, skip" as true forever
+// after the first legitimate check — silently disabling detection for
+// exactly the case this exists to catch.
+const VERIFIED_CONTENT = new Set();
 function relayRead(key){
+  let data = null;
+  let raw = null;
   try{
     if (window.TSM && window.TSM.relay && typeof window.TSM.relay.read === 'function'){
       const v = window.TSM.relay.read(key);
-      if (v) return typeof v === 'string' ? JSON.parse(v) : v;
+      if (v) { data = typeof v === 'string' ? JSON.parse(v) : v; raw = typeof v === 'string' ? v : JSON.stringify(v); }
     }
   }catch(e){}
-  try{
-    const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : null;
-  }catch(e){ return null; }
+  if (data === null){
+    try{
+      raw = localStorage.getItem(key);
+      data = raw ? JSON.parse(raw) : null;
+    }catch(e){ data = null; }
+  }
+  if (data && data._integrity && data._integrity.hash && raw){
+    const marker = key + ':' + raw;
+    if (!VERIFIED_CONTENT.has(marker)){
+      VERIFIED_CONTENT.add(marker);
+      verifyRelayIntegrity(key, data);
+    }
+  }
+  return data;
 }
-function relayWrite(key, obj){
+async function relayWrite(key, obj){
+  let signed = obj;
+  if (window.TSMIntegrity && typeof window.TSMIntegrity.sign === 'function'){
+    try{ signed = await window.TSMIntegrity.sign(obj, { module:'sentinel-center' }); }
+    catch(e){ console.warn('[sentinel-center] signing failed (writing unsigned):', e.message); }
+  }
   try{
     if (window.TSM && window.TSM.relay && typeof window.TSM.relay.write === 'function'){
-      window.TSM.relay.write(key, JSON.stringify(obj));
+      window.TSM.relay.write(key, JSON.stringify(signed));
       return;
     }
   }catch(e){}
-  try{ localStorage.setItem(key, JSON.stringify(obj)); }catch(e){}
+  try{ localStorage.setItem(key, JSON.stringify(signed)); }catch(e){}
 }
 
 const SEV_POINTS = { CRIT:25, HIGH:15, MED:8, LOW:4 };
@@ -1476,6 +1526,7 @@ function auditTypeClass(type){
   if (type === 'alert_recovered') return 'recovery';
   if (type === 'alert_config_changed') return 'config';
   if (type === 'snapshot_exported') return 'export';
+  if (type === 'integrity_mismatch') return 'alert';
   return 'config';
 }
 function auditTypeLabel(type){
@@ -1485,6 +1536,7 @@ function auditTypeLabel(type){
     alert_recovered: 'Recovered',
     alert_config_changed: 'Config',
     snapshot_exported: 'Export',
+    integrity_mismatch: 'Integrity',
   }[type] || type;
 }
 function renderAuditPanel(){
@@ -1568,12 +1620,12 @@ document.getElementById('fileInput').addEventListener('change', (e) => {
   const file = e.target.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = () => {
+  reader.onload = async () => {
     try{
       const payload = JSON.parse(reader.result);
       const vId = payload.vertical || prompt('Vertical id for this export? (e.g. healthcare)');
       if (vId && VERTICALS.some(v=>v.id===vId)){
-        relayWrite('TSM_' + vId.toUpperCase() + '_STRATEGIST_RELAY', payload);
+        await relayWrite('TSM_' + vId.toUpperCase() + '_STRATEGIST_RELAY', payload);
         render();
         showIngestNotice(vId);
       } else {
@@ -1588,8 +1640,8 @@ document.getElementById('fileInput').addEventListener('change', (e) => {
 
 // Programmatic ingestion hook for other pages / relay bridges
 window.TSM_SENTINEL = {
-  ingest(verticalId, payload){
-    relayWrite('TSM_' + verticalId.toUpperCase() + '_STRATEGIST_RELAY', payload);
+  async ingest(verticalId, payload){
+    await relayWrite('TSM_' + verticalId.toUpperCase() + '_STRATEGIST_RELAY', payload);
     render();
     showIngestNotice(verticalId);
   }

@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
+<script src="/html/shared/runtime/integrity/tsm-integrity.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>GID | HotelOps War Room</title>
@@ -534,17 +535,40 @@ function buildSentinelAnomalies(){
   return anomalies;
 }
 
-function relayToStrategist(){
+async function relayToStrategist(){
   if (!requireEngine()) return;
   const aiText = document.getElementById('aiOutput').textContent;
   const payload = engine.buildRelayPayload(aiText.startsWith('Run analysis') ? null : aiText);
   payload.anomalies = buildSentinelAnomalies();
   engine.saveToStorage();
+
+  let finalPayload = payload;
+  let signedPayload = payload;
   try {
-    localStorage.setItem('TSM_HOTELOPS_STRATEGIST_RELAY', JSON.stringify(payload));
+    // relay.core.js's write() mutates its payload in place (fills in
+    // .id/.timestamp if missing) before storing it. Call it FIRST so that
+    // mutation happens before we sign — otherwise it would land after
+    // signing and silently invalidate the seal the next time it re-writes
+    // the same storage key. finalPayload is that same object, post-mutation.
     if (window.TSM && window.TSM.relay && window.TSM.relay.write) {
-      window.TSM.relay.write('HOTELOPS', payload);
+      finalPayload = window.TSM.relay.write('HOTELOPS', payload);
     }
+
+    // SHA-256 seal so Strategist/Executive Portal (and Sentinel) can detect
+    // if this payload was altered after leaving the War Room. Non-fatal if
+    // TSMIntegrity didn't load — relays unsigned rather than blocking.
+    signedPayload = finalPayload;
+    if (window.TSMIntegrity && typeof window.TSMIntegrity.sign === 'function') {
+      try { signedPayload = await window.TSMIntegrity.sign(finalPayload, { module: 'hotelops' }); }
+      catch (e) { console.warn('[hotelops] signing failed (relaying unsigned):', e.message); }
+    }
+
+    // Write the SIGNED version last (both storage locations relay.write
+    // uses) so it's what actually persists — nothing after this point
+    // touches the same key.
+    localStorage.setItem('TSM_HOTELOPS_STRATEGIST_RELAY', JSON.stringify(signedPayload));
+    sessionStorage.setItem('TSM_HOTELOPS_STRATEGIST_RELAY', JSON.stringify(signedPayload));
+
     window.dispatchEvent(new CustomEvent('TSM_SENTINEL_REFRESH'));
     showToast('Relayed to Strategist — click "Strategist →" above to view it.');
   } catch (e) {
@@ -552,7 +576,7 @@ function relayToStrategist(){
     showToast('Relay failed — see console for details.');
   }
   if (window.TSMEventBus && window.TSMEventBus.emit) {
-    window.TSMEventBus.emit('WAR_ROOM_READY', { vertical: 'hotelops', payload, ts: Date.now() });
+    window.TSMEventBus.emit('WAR_ROOM_READY', { vertical: 'hotelops', payload: signedPayload, ts: Date.now() });
   }
 }
 
