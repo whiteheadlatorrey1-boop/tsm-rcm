@@ -41,6 +41,7 @@
     try {
       const res = await fetch(`${API_BASE}/relay`, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(signed)
       });
@@ -65,7 +66,7 @@
 
   async function load() {
     try {
-      const res = await fetch(`${API_BASE}/relay`);
+      const res = await fetch(`${API_BASE}/relay`, { credentials: 'include' });
       if (res.status === 204) return { data: null, source: 'server', integrity: null };
       if (!res.ok) throw new Error(`Relay API responded ${res.status}`);
       const data = await res.json();
@@ -85,7 +86,7 @@
 
   async function clear() {
     try { localStorage.removeItem(LOCAL_KEY); } catch (e) { /* ignore */ }
-    try { await fetch(`${API_BASE}/relay`, { method: 'DELETE' }); } catch (e) { /* ignore */ }
+    try { await fetch(`${API_BASE}/relay`, { method: 'DELETE', credentials: 'include' }); } catch (e) { /* ignore */ }
   }
 
   // Has this relay (identified by its generatedAt timestamp) already been
