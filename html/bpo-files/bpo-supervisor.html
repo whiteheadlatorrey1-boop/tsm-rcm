@@ -50,6 +50,43 @@ tbody tr:hover{background:var(--bg3)}
 .empty-state{text-align:center;padding:60px 20px;color:var(--text2)}
 .empty-state .big{font-size:15px;color:var(--text);margin-bottom:6px;font-weight:600}
 code{background:var(--bg4);padding:1px 6px;border-radius:4px;font-size:12px}
+
+.tab-row{display:flex;gap:4px;margin-bottom:20px;border-bottom:1px solid var(--border)}
+.tab-btn{font-size:13px;padding:9px 16px;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;transition:.12s;font-weight:600}
+.tab-btn:hover{color:var(--text)}
+.tab-btn.active{color:var(--accent);border-bottom-color:var(--accent)}
+.tab-panel{display:none}
+.tab-panel.active{display:block}
+
+.feed-list{display:flex;flex-direction:column;gap:1px;background:var(--border);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.feed-row{display:flex;align-items:flex-start;gap:14px;padding:10px 14px;background:var(--bg2)}
+.feed-time{font-size:12px;color:var(--text3);min-width:64px;padding-top:1px;font-variant-numeric:tabular-nums}
+.feed-sector{min-width:96px}
+.feed-body{flex:1;min-width:0}
+.feed-desc{font-size:13px}
+.feed-meta{font-size:11px;color:var(--text2);margin-top:2px}
+.load-more-btn{width:100%;padding:10px;background:var(--bg3);border:none;color:var(--text2);font-size:12px;cursor:pointer;border-top:1px solid var(--border)}
+.load-more-btn:hover{color:var(--text)}
+
+.opt-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}
+.opt-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px}
+.opt-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;font-size:12px}
+.opt-stats{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--text2);margin-bottom:8px}
+.opt-suggestion{font-size:12px;color:var(--text);background:var(--bg3);border-radius:var(--radius-sm);padding:8px 10px;border:1px solid var(--border2)}
+
+.playback-controls{display:flex;align-items:center;gap:14px;margin-bottom:16px}
+.playback-btn{font-size:12px;padding:7px 16px;border-radius:var(--radius-sm);border:1px solid var(--border2);background:var(--bg3);color:var(--text);cursor:pointer;min-width:80px;text-align:center}
+.playback-btn:hover{border-color:var(--accent)}
+.playback-scrubber{flex:1;accent-color:var(--accent)}
+.playback-time{font-size:12px;color:var(--text2);min-width:150px;text-align:right;font-variant-numeric:tabular-nums}
+
+.placeholder-banner{display:flex;align-items:center;gap:10px;background:var(--bg3);border:1px dashed var(--border2);border-radius:var(--radius);padding:10px 14px;margin-bottom:20px;font-size:12px;color:var(--text2)}
+.placeholder-badge{font-size:10px;text-transform:uppercase;letter-spacing:.06em;font-weight:700;color:var(--accent2);background:var(--bg4);border:1px solid var(--border2);border-radius:20px;padding:3px 9px;white-space:nowrap}
+.exec-banner-row{display:flex;gap:14px;margin-bottom:22px;flex-wrap:wrap}
+.status-pill{display:flex;align-items:center;gap:8px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:12px 18px;font-size:13px;font-weight:600}
+.status-dot{width:9px;height:9px;border-radius:50%}
+.section-label{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text2);margin:24px 0 10px}
+.floor-map-wrap{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:10px}
 </style>
 </head>
 <body>
@@ -63,25 +100,73 @@ code{background:var(--bg4);padding:1px 6px;border-radius:4px;font-size:12px}
   <div class="page-title">Operator Roster &amp; Workload</div>
   <div class="page-sub">Live from TSMMissionStore across every sector this BPO desk handles. Filtering by sector scopes workload/SLA/accuracy to that sector's missions only (matches how the per-mission assignment panel already scores operators).</div>
 
-  <div class="summary-row" id="summaryRow"></div>
-  <div class="filter-row" id="filterRow"></div>
+  <div class="tab-row" id="tabRow">
+    <div class="tab-btn active" data-tab="roster">Roster</div>
+    <div class="tab-btn" data-tab="feed">Mission Feed</div>
+    <div class="tab-btn" data-tab="optimizer">Workforce Optimizer</div>
+    <div class="tab-btn" data-tab="playback">Playback</div>
+    <div class="tab-btn" data-tab="executive">Executive View</div>
+  </div>
 
-  <table id="rosterTable" style="display:none">
-    <thead>
-      <tr>
-        <th data-sort="name">Operator</th>
-        <th data-sort="specialties">Specialties</th>
-        <th data-sort="workload" class="sorted">Open Workload</th>
-        <th data-sort="closedCount">Closed</th>
-        <th data-sort="slaPercent">SLA %</th>
-        <th data-sort="accuracyPercent">Accuracy %</th>
-      </tr>
-    </thead>
-    <tbody id="rosterBody"></tbody>
-  </table>
-  <div class="empty-state" id="emptyState" style="display:none">
-    <div class="big">No operators yet</div>
-    <div>Add one from any mission's assignment panel in <a href="bpo-internal1.html" style="color:var(--accent)">the case queue</a> — this roster reads the same <code>TSMMissionStore</code> live, no separate setup needed.</div>
+  <div class="tab-panel active" id="rosterPanel">
+    <div class="summary-row" id="summaryRow"></div>
+    <div class="filter-row" id="filterRow"></div>
+
+    <table id="rosterTable" style="display:none">
+      <thead>
+        <tr>
+          <th data-sort="name">Operator</th>
+          <th data-sort="specialties">Specialties</th>
+          <th data-sort="workload" class="sorted">Open Workload</th>
+          <th data-sort="closedCount">Closed</th>
+          <th data-sort="slaPercent">SLA %</th>
+          <th data-sort="accuracyPercent">Accuracy %</th>
+        </tr>
+      </thead>
+      <tbody id="rosterBody"></tbody>
+    </table>
+    <div class="empty-state" id="emptyState" style="display:none">
+      <div class="big">No operators yet</div>
+      <div>Add one from any mission's assignment panel in <a href="bpo-internal1.html" style="color:var(--accent)">the case queue</a> — this roster reads the same <code>TSMMissionStore</code> live, no separate setup needed.</div>
+    </div>
+  </div>
+
+  <div class="tab-panel" id="feedPanel">
+    <div class="page-sub">Every mission audit event across all sectors, most recent first. Reads the same <code>audit[]</code> array each mission already carries — no separate logging needed.</div>
+    <div class="filter-row" id="feedFilterRow"></div>
+    <div id="feedList"></div>
+  </div>
+
+  <div class="tab-panel" id="optimizerPanel">
+    <div class="page-sub">Compares each sector's open workload per operator against the cross-sector average. "Next assignment" uses the same <code>recommendAssignment()</code> function the case queue's assignment panel already calls.</div>
+    <div class="opt-grid" id="optimizerBody"></div>
+  </div>
+
+  <div class="tab-panel" id="playbackPanel">
+    <div class="page-sub">Scrub through today's mission activity in order, reconstructed from real audit events — not a simulation.</div>
+    <div class="playback-controls">
+      <div class="playback-btn" id="playbackPlayBtn">&#9654; Play</div>
+      <input type="range" class="playback-scrubber" id="playbackScrubber" min="0" max="0" value="0" />
+      <div class="playback-time" id="playbackTimeLabel">&mdash;</div>
+    </div>
+    <div class="summary-row" id="playbackSummary"></div>
+    <div id="playbackDetail"></div>
+  </div>
+
+  <div class="tab-panel" id="executivePanel">
+    <div class="placeholder-banner">
+      <span class="placeholder-badge">Sample Data</span>
+      <span>Financials and AI Confidence below are still placeholders — see <code>SAMPLE_EXECUTIVE_DATA</code> at the top of this page's script for the one place to wire in real billing/AI data later. Operations status and floor-map sizing are computed live from <code>TSMMissionStore</code>.</span>
+    </div>
+
+    <div class="exec-banner-row" id="execBannerRow"></div>
+    <div style="font-size:11px;color:var(--text3);margin:-14px 0 20px 2px" id="execOpsDetail"></div>
+
+    <div class="section-label">Financials</div>
+    <div class="summary-row" id="execFinancialsRow"></div>
+
+    <div class="section-label">Sector Floor Map</div>
+    <div class="floor-map-wrap" id="execFloorMap"></div>
   </div>
 </div>
 
@@ -98,10 +183,100 @@ let activeFilter = null; // null = all sectors combined
 let sortKey = 'workload';
 let sortDir = -1; // -1 desc, 1 asc
 
+let activeTab = 'roster';
+let feedFilter = null;
+let feedLimit = 100;
+
+let playbackEvents = [];
+let playbackIndex = -1;
+let playbackPlaying = false;
+let playbackTimer = null;
+
+// ---------------------------------------------------------------------
+// PLACEHOLDER DATA -- Executive View tab only. Financials and AI
+// Confidence below are NOT derived from TSMMissionStore (no rate-card
+// or AI-confidence-scoring data exists yet -- see project notes on
+// what each needs before it can go live). Operations-health status and
+// floor-map node sizing are computed live in renderExecutive() from
+// real getAnalytics() data and do NOT read this object.
+// ---------------------------------------------------------------------
+const SAMPLE_EXECUTIVE_DATA = {
+  aiConfidence: 97,
+  financials: {
+    revenueToday: 48290,
+    automationSavings: 12480,
+    laborCost: 19320,
+    profitMarginPct: 37,
+    forecast: 1440000
+  },
+  // Positions only -- layout is illustrative. Real per-sector node SIZE
+  // is computed live from getAnalytics().byVertical in renderExecutive().
+  floorMapSectors: [
+    { key: 'healthcare', x: 260, y: 40 },
+    { key: 'legal', x: 90, y: 120 },
+    { key: 'insurance', x: 430, y: 120 },
+    { key: 'construction', x: 60, y: 230 },
+    { key: 'mortgage', x: 460, y: 230 },
+    { key: 'finops', x: 190, y: 300 },
+    { key: 'hotelops', x: 330, y: 300 }
+  ]
+};
+
 function fmtPct(v) {
   if (v == null) return '<span class="stat-none">—</span>';
   const cls = v >= 90 ? 'stat-good' : v >= 70 ? 'stat-mid' : 'stat-bad';
   return `<span class="${cls}">${v}%</span>`;
+}
+
+function fmtTime(iso) {
+  const d = new Date(iso);
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function makeChip(label, active, onClick) {
+  const chip = document.createElement('div');
+  chip.className = 'filter-chip' + (active ? ' active' : '');
+  chip.textContent = label;
+  chip.onclick = onClick;
+  return chip;
+}
+
+// Human label for a real audit event -- mirrors AUDIT_EVENT_LABELS in
+// bpo-internal1.html's timeline panel so wording matches across pages.
+function auditLabel(e) {
+  const m = e.meta || {};
+  switch (e.event) {
+    case 'MISSION_CREATED': return 'Mission created';
+    case 'MISSION_ASSIGNED': return `Assigned to operator ${escapeHtml(m.operatorId || '—')}`;
+    case 'MISSION_STARTED': return 'Work started';
+    case 'MISSION_QA': return 'Sent to QA';
+    case 'MISSION_DELIVERED': return 'Delivered';
+    case 'MISSION_CLOSED': return `Closed${m.reviewOutcome ? ' — ' + escapeHtml(m.reviewOutcome) : ''}`;
+    case 'MISSION_UPDATED':
+      if (m.stage) return `Stage changed to ${escapeHtml(m.stage)}`;
+      if (m.taskId) return `Task ${escapeHtml(m.taskId)} → ${escapeHtml(m.taskStatus || '')}`;
+      return 'Mission updated';
+    default: return escapeHtml(e.event);
+  }
+}
+
+// Flattens every mission's real audit[] array into one cross-sector event
+// list, most recent first. This is the single source both the Mission
+// Feed and the Playback scrubber read from -- no separate log kept.
+function collectAuditEvents() {
+  if (!window.TSMMissionStore) return [];
+  const missions = window.TSMMissionStore.listMissions();
+  const rows = [];
+  missions.forEach(m => {
+    (m.audit || []).forEach(a => {
+      rows.push({
+        missionId: m.id, vertical: m.vertical, client: m.client,
+        event: a.event, at: a.at, actor: a.actor, meta: a.meta || {}
+      });
+    });
+  });
+  rows.sort((a, b) => new Date(b.at) - new Date(a.at));
+  return rows;
 }
 
 function render() {
@@ -184,6 +359,283 @@ function render() {
   });
 }
 
+function renderFeed() {
+  const events = collectAuditEvents();
+
+  const seen = new Set(events.map(e => e.vertical));
+  const filterRow = document.getElementById('feedFilterRow');
+  filterRow.innerHTML = '';
+  filterRow.appendChild(makeChip('All Sectors', feedFilter === null, () => { feedFilter = null; feedLimit = 100; renderFeed(); }));
+  [...seen].sort().forEach(v => {
+    filterRow.appendChild(makeChip(SECTOR_LABELS[v] || v, feedFilter === v, () => { feedFilter = v; feedLimit = 100; renderFeed(); }));
+  });
+
+  const scoped = feedFilter ? events.filter(e => e.vertical === feedFilter) : events;
+  const list = document.getElementById('feedList');
+  if (!scoped.length) {
+    list.innerHTML = '<div class="empty-state"><div class="big">No activity yet</div><div>Mission events will appear here as they happen in <a href="bpo-internal1.html" style="color:var(--accent)">the case queue</a>.</div></div>';
+    return;
+  }
+
+  const shown = scoped.slice(0, feedLimit);
+  let html = '<div class="feed-list">' + shown.map(e => `
+    <div class="feed-row">
+      <div class="feed-time">${fmtTime(e.at)}</div>
+      <div class="feed-sector"><span class="specialty-tag">${escapeHtml(SECTOR_LABELS[e.vertical] || e.vertical)}</span></div>
+      <div class="feed-body">
+        <div class="feed-desc">${auditLabel(e)}</div>
+        <div class="feed-meta">${escapeHtml(e.missionId)}${e.client ? ' · ' + escapeHtml(e.client) : ''} · ${escapeHtml(e.actor)}</div>
+      </div>
+    </div>
+  `).join('') + '</div>';
+  if (scoped.length > shown.length) {
+    html += `<button class="load-more-btn" id="feedLoadMore">Load more (${scoped.length - shown.length} remaining)</button>`;
+  }
+  list.innerHTML = html;
+  const moreBtn = document.getElementById('feedLoadMore');
+  if (moreBtn) moreBtn.onclick = () => { feedLimit += 100; renderFeed(); };
+}
+
+function renderOptimizer() {
+  const allOps = window.TSMMissionStore.listOperators();
+  const seenSectors = new Set();
+  allOps.forEach(o => (o.specialties || []).forEach(s => seenSectors.add(s)));
+  const body = document.getElementById('optimizerBody');
+
+  if (!seenSectors.size) {
+    body.innerHTML = '<div class="empty-state"><div class="big">No operators yet</div><div>Add operators from the case queue to see workload balance across sectors.</div></div>';
+    return;
+  }
+
+  const sectorStats = [...seenSectors].sort().map(v => {
+    const ops = allOps.filter(o => (o.specialties || []).includes(v));
+    const analytics = window.TSMMissionStore.getAnalytics({ vertical: v });
+    return {
+      vertical: v,
+      operatorCount: ops.length,
+      openMissions: analytics.open,
+      avgLoad: ops.length ? analytics.open / ops.length : null
+    };
+  });
+
+  const validLoads = sectorStats.filter(s => s.avgLoad != null).map(s => s.avgLoad);
+  const crossMean = validLoads.length ? validLoads.reduce((a, b) => a + b, 0) / validLoads.length : 0;
+
+  body.innerHTML = sectorStats.map(s => {
+    const status = s.avgLoad == null ? 'no-data'
+      : s.avgLoad > crossMean * 1.15 ? 'over'
+      : s.avgLoad < crossMean * 0.85 ? 'under'
+      : 'balanced';
+    const statusLabel = { over: 'Above average load', under: 'Below average load', balanced: 'Balanced', 'no-data': 'No operators' }[status];
+    const statusClass = { over: 'stat-bad', under: 'stat-mid', balanced: 'stat-good', 'no-data': 'stat-none' }[status];
+
+    let suggestion = '';
+    if (status === 'over') {
+      const rec = window.TSMMissionStore.recommendAssignment(s.vertical);
+      if (rec) {
+        suggestion = `<div class="opt-suggestion">Next assignment should go to <b>${escapeHtml(rec.operator.name)}</b> — current workload ${rec.stats.workload}${rec.stats.slaPercent != null ? ', SLA ' + rec.stats.slaPercent + '%' : ''}</div>`;
+      }
+    }
+
+    return `
+      <div class="opt-card">
+        <div class="opt-head">
+          <span class="specialty-tag">${escapeHtml(SECTOR_LABELS[s.vertical] || s.vertical)}</span>
+          <span class="${statusClass}">${statusLabel}</span>
+        </div>
+        <div class="opt-stats">
+          <div>${s.operatorCount} operator${s.operatorCount === 1 ? '' : 's'}</div>
+          <div>${s.openMissions} open mission${s.openMissions === 1 ? '' : 's'}</div>
+          <div>${s.avgLoad != null ? s.avgLoad.toFixed(1) + ' avg open / operator' : '— no operators'}</div>
+        </div>
+        ${suggestion}
+      </div>
+    `;
+  }).join('');
+}
+
+function renderPlayback() {
+  const events = collectAuditEvents().slice().reverse(); // chronological, oldest first
+  playbackEvents = events;
+  if (playbackIndex >= events.length) playbackIndex = events.length - 1;
+  if (playbackIndex < 0 && events.length) playbackIndex = 0;
+
+  const scrubber = document.getElementById('playbackScrubber');
+  scrubber.max = String(Math.max(0, events.length - 1));
+  scrubber.value = String(Math.max(0, playbackIndex));
+  scrubber.disabled = events.length === 0;
+
+  renderPlaybackFrame();
+}
+
+function renderPlaybackFrame() {
+  const label = document.getElementById('playbackTimeLabel');
+  const detail = document.getElementById('playbackDetail');
+  const summary = document.getElementById('playbackSummary');
+
+  if (!playbackEvents.length) {
+    label.textContent = '—';
+    detail.innerHTML = '<div class="empty-state"><div class="big">No activity yet</div><div>Playback will populate once missions have audit events.</div></div>';
+    summary.innerHTML = '';
+    return;
+  }
+
+  const current = playbackEvents[playbackIndex];
+  label.textContent = `${new Date(current.at).toLocaleDateString()} ${fmtTime(current.at)} · event ${playbackIndex + 1} of ${playbackEvents.length}`;
+
+  detail.innerHTML = `
+    <div class="feed-list">
+      <div class="feed-row">
+        <div class="feed-time">${fmtTime(current.at)}</div>
+        <div class="feed-sector"><span class="specialty-tag">${escapeHtml(SECTOR_LABELS[current.vertical] || current.vertical)}</span></div>
+        <div class="feed-body">
+          <div class="feed-desc">${auditLabel(current)}</div>
+          <div class="feed-meta">${escapeHtml(current.missionId)}${current.client ? ' · ' + escapeHtml(current.client) : ''} · ${escapeHtml(current.actor)}</div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Reconstruct real state as of this point in the timeline -- every
+  // number here comes from replaying actual events up to playbackIndex,
+  // not a scripted narrative.
+  const upTo = playbackEvents.slice(0, playbackIndex + 1);
+  const touchedMissions = new Set(upTo.map(e => e.missionId));
+  const operatorsInvolved = new Set();
+  const missionStage = {};
+  upTo.forEach(e => {
+    if (e.event === 'MISSION_ASSIGNED' && e.meta && e.meta.operatorId) {
+      operatorsInvolved.add(e.meta.operatorId);
+      missionStage[e.missionId] = 'assigned';
+    }
+    if (e.event === 'MISSION_UPDATED' && e.meta && e.meta.stage) missionStage[e.missionId] = e.meta.stage;
+    if (e.event === 'MISSION_CLOSED') missionStage[e.missionId] = 'closed';
+  });
+  const closedSoFar = Object.values(missionStage).filter(s => s === 'closed').length;
+
+  summary.innerHTML = `
+    <div class="summary-card"><div class="val">${touchedMissions.size}</div><div class="lbl">Missions Touched</div></div>
+    <div class="summary-card"><div class="val">${closedSoFar}</div><div class="lbl">Closed So Far</div></div>
+    <div class="summary-card"><div class="val">${operatorsInvolved.size}</div><div class="lbl">Operators Involved</div></div>
+  `;
+}
+
+function stopPlayback() {
+  clearInterval(playbackTimer);
+  playbackTimer = null;
+  playbackPlaying = false;
+  document.getElementById('playbackPlayBtn').innerHTML = '&#9654; Play';
+}
+
+function togglePlayback() {
+  if (playbackPlaying) { stopPlayback(); return; }
+  if (!playbackEvents.length) return;
+  if (playbackIndex >= playbackEvents.length - 1) playbackIndex = 0;
+  playbackPlaying = true;
+  document.getElementById('playbackPlayBtn').innerHTML = '&#9616;&#9616; Pause';
+  playbackTimer = setInterval(() => {
+    if (playbackIndex >= playbackEvents.length - 1) { stopPlayback(); return; }
+    playbackIndex += 1;
+    document.getElementById('playbackScrubber').value = String(playbackIndex);
+    renderPlaybackFrame();
+  }, 900);
+}
+
+function fmtCurrency(n) {
+  return '$' + Math.round(n).toLocaleString('en-US');
+}
+
+function renderExecutive() {
+  const d = SAMPLE_EXECUTIVE_DATA;
+
+  // Real: computed live from actual mission data, not the sample config.
+  const analytics = window.TSMMissionStore.getAnalytics();
+  const lateRatio = analytics.open > 0 ? analytics.late / analytics.open : 0;
+  const opsHealthy = analytics.open === 0 || lateRatio < 0.15;
+  const opsDetail = analytics.open > 0
+    ? `${analytics.late} of ${analytics.open} open missions currently late (${Math.round(lateRatio * 100)}%)`
+    : 'No open missions right now';
+  document.getElementById('execOpsDetail').textContent = opsDetail;
+
+  document.getElementById('execBannerRow').innerHTML = `
+    <div class="status-pill">
+      <span class="status-dot" style="background:${opsHealthy ? 'var(--green)' : 'var(--red)'}"></span>
+      ${opsHealthy ? 'Operations Healthy' : 'Operations Attention Needed'}
+      <span class="placeholder-badge" style="color:var(--green);border-color:var(--green)">Live</span>
+    </div>
+    <div class="status-pill">
+      AI Confidence ${d.aiConfidence}%
+      <span class="placeholder-badge">Sample</span>
+    </div>
+  `;
+
+  const f = d.financials;
+  document.getElementById('execFinancialsRow').innerHTML = `
+    <div class="summary-card"><div class="val">${fmtCurrency(f.revenueToday)}</div><div class="lbl">Revenue Today</div></div>
+    <div class="summary-card"><div class="val">${fmtCurrency(f.automationSavings)}</div><div class="lbl">Automation Savings</div></div>
+    <div class="summary-card"><div class="val">${fmtCurrency(f.laborCost)}</div><div class="lbl">Labor Cost</div></div>
+    <div class="summary-card"><div class="val">${f.profitMarginPct}%</div><div class="lbl">Profit Margin</div></div>
+    <div class="summary-card"><div class="val">${fmtCurrency(f.forecast)}</div><div class="lbl">Forecast</div></div>
+  `;
+
+  // Real: node radius reflects each sector's actual open-mission count
+  // from getAnalytics().byVertical. Positions stay illustrative (no
+  // real x/y meaning), but size is not made up.
+  const byVertical = analytics.byVertical || {};
+  const maxCount = Math.max(1, ...d.floorMapSectors.map(s => byVertical[s.key] || 0));
+  const core = { x: 260, y: 170 };
+  const nodes = d.floorMapSectors.map(s => `
+    <line x1="${core.x}" y1="${core.y}" x2="${s.x}" y2="${s.y}" stroke="var(--border2)" stroke-width="1.5" stroke-dasharray="4 3" />
+  `).join('');
+  const labels = d.floorMapSectors.map(s => {
+    const count = byVertical[s.key] || 0;
+    const r = 16 + (count / maxCount) * 22;
+    return `
+      <circle cx="${s.x}" cy="${s.y}" r="${r}" fill="var(--bg3)" stroke="var(--border2)" stroke-width="1.5" />
+      <text x="${s.x}" y="${s.y - 4}" text-anchor="middle" dominant-baseline="middle" font-size="10" fill="var(--text2)">${escapeHtml(SECTOR_LABELS[s.key] || s.key)}</text>
+      <text x="${s.x}" y="${s.y + 9}" text-anchor="middle" dominant-baseline="middle" font-size="9" fill="var(--text3)">${count} mission${count === 1 ? '' : 's'}</text>
+    `;
+  }).join('');
+  document.getElementById('execFloorMap').innerHTML = `
+    <div style="font-size:11px;color:var(--text3);margin-bottom:4px">Node size = real mission volume per sector <span class="placeholder-badge" style="color:var(--green);border-color:var(--green)">Live</span></div>
+    <svg viewBox="0 0 520 340" width="100%" style="max-height:340px">
+      ${nodes}
+      <circle cx="${core.x}" cy="${core.y}" r="30" fill="var(--bg4)" stroke="var(--accent)" stroke-width="1.5" />
+      <text x="${core.x}" y="${core.y}" text-anchor="middle" dominant-baseline="middle" font-size="10" fill="var(--text)">BPO Core</text>
+      ${labels}
+    </svg>
+    <div style="text-align:center;font-size:11px;color:var(--text3);margin-top:4px">Connections are topology only — cross-sector work routing isn't tracked yet.</div>
+  `;
+}
+
+function refreshActiveTab() {
+  if (activeTab === 'roster') render();
+  else if (activeTab === 'feed') renderFeed();
+  else if (activeTab === 'optimizer') renderOptimizer();
+  else if (activeTab === 'playback') renderPlayback();
+  else if (activeTab === 'executive') renderExecutive();
+}
+
+function setTab(tab) {
+  activeTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  const panelId = { roster: 'rosterPanel', feed: 'feedPanel', optimizer: 'optimizerPanel', playback: 'playbackPanel', executive: 'executivePanel' }[tab];
+  document.getElementById(panelId).classList.add('active');
+  if (tab !== 'playback') stopPlayback();
+  refreshActiveTab();
+}
+
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => setTab(btn.dataset.tab));
+});
+document.getElementById('playbackPlayBtn').addEventListener('click', togglePlayback);
+document.getElementById('playbackScrubber').addEventListener('input', (e) => {
+  stopPlayback();
+  playbackIndex = parseInt(e.target.value, 10);
+  renderPlaybackFrame();
+});
+
 function escapeHtml(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
@@ -198,7 +650,7 @@ document.querySelectorAll('thead th').forEach(th => {
 
 document.addEventListener('DOMContentLoaded', () => {
   render();
-  if (window.TSMMissionStore) window.TSMMissionStore.subscribe('*', render);
+  if (window.TSMMissionStore) window.TSMMissionStore.subscribe('*', refreshActiveTab);
 });
 </script>
 </body>
