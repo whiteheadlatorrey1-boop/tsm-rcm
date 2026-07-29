@@ -1218,6 +1218,51 @@ function relayToExecutive(){
     exceptions: _excM ? _excM[1] : existing.exceptions || null,
     compliance: _compM ? _compM[1].trim().slice(0,12) : existing.compliance || null
   }));
+
+  // ── SENTINEL PUSH ──────────────────────────────────────────────
+  // Real numbers only: exposure/risk parsed above from the actual
+  // strategist output, not fabricated. Mirrors the same
+  // TSM_<VERTICAL>_STRATEGIST_RELAY convention/shape already used by
+  // the BPO strategist's storeStratRelay(), which Sentinel Center reads
+  // generically as 'TSM_' + id.toUpperCase() + '_STRATEGIST_RELAY'.
+  // Without this, FinOps's row in Sentinel Center could never go LIVE
+  // from real navigation through doc-search -> war-room -> strategist.
+  try {
+    function finopsParseExposureNumber(str){
+      if (!str) return 0;
+      const nums = String(str).match(/[\d,]+(?:\.\d+)?/g);
+      if (!nums) return 0;
+      const mult = /m\b/i.test(str) ? 1000000 : (/k\b/i.test(str) ? 1000 : 1);
+      return Math.round(parseFloat(nums[0].replace(/,/g,'')) * mult);
+    }
+    function finopsSeverityForExposure(n){
+      if (n >= 250000) return 'CRIT';
+      if (n >= 100000) return 'HIGH';
+      if (n >= 25000) return 'MED';
+      return 'LOW';
+    }
+    const finopsSentExposureStr = _expM ? _expM[1] : (existing.exposure || null);
+    const finopsSentExposureNum = finopsParseExposureNumber(finopsSentExposureStr);
+    const finopsSentRiskStr = _riskM ? _riskM[1] : (existing.riskScore || null);
+    const finopsSentConf = finopsSentRiskStr ? parseInt(finopsSentRiskStr) : null;
+    const finopsSentAnomalies = [{
+      id: 'finops-strat-' + Date.now(),
+      title: 'FinOps Strategist Synthesis',
+      severity: finopsSeverityForExposure(finopsSentExposureNum),
+      exposure: finopsSentExposureNum,
+      confidence: finopsSentConf !== null ? finopsSentConf : 62,
+      rootCause: output ? output.slice(0, 240) : 'See strategist brief for detailed reasoning.',
+      recommendedAction: 'Review the strategist brief and route to executive escalation.'
+    }];
+    const finopsSentKey = 'TSM_FINOPS_STRATEGIST_RELAY';
+    const finopsSentExisting = JSON.parse(localStorage.getItem(finopsSentKey) || 'null') || {};
+    finopsSentExisting.anomalies = finopsSentAnomalies;
+    finopsSentExisting.generatedAt = new Date().toISOString();
+    localStorage.setItem(finopsSentKey, JSON.stringify(finopsSentExisting));
+    window.dispatchEvent(new CustomEvent('TSM_SENTINEL_REFRESH'));
+  } catch(e) { console.warn('[sentinel-push] finops error:', e); }
+  // ── END SENTINEL PUSH ─────────────────────────────────────────
+
   // ── Phase 2: Mission Core creation ──
   try {
     if (window.TSMMissionModel && window.TSMMissionStore) {
