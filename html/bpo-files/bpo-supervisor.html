@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>BPO Supervisor Roster</title>
+<style>
+:root{
+  --bg:#0d0d0f;--bg2:#141417;--bg3:#1a1a1f;--bg4:#222228;
+  --border:#2a2a32;--border2:#35353f;
+  --text:#e8e8ec;--text2:#9898a8;--text3:#5a5a6a;
+  --accent:#f59e0b;--accent2:#fbbf24;
+  --green:#10b981;--green-bg:#0d2b1f;
+  --red:#ef4444;--red-bg:#2b0d0d;
+  --blue:#3b82f6;--blue-bg:#0d1a2b;
+  --purple:#8b5cf6;--purple-bg:#1a0d2b;
+  --radius:10px;--radius-sm:6px;--radius-lg:14px;
+  --shadow:0 2px 12px rgba(0,0,0,.4);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.5}
+.topbar{display:flex;align-items:center;gap:12px;padding:0 20px;height:52px;border-bottom:1px solid var(--border);background:var(--bg2)}
+.logo{font-size:15px;font-weight:700;color:var(--accent);letter-spacing:-.3px}
+.logo span{color:var(--text2);font-weight:400}
+.back-btn{font-size:12px;color:var(--text2);text-decoration:none;display:flex;align-items:center;gap:4px;padding:5px 10px;border:1px solid var(--border2);border-radius:var(--radius-sm);margin-left:auto;transition:.15s}
+.back-btn:hover{color:var(--text);border-color:var(--border2)}
+.wrap{max-width:1200px;margin:0 auto;padding:28px 24px 60px}
+.page-title{font-size:20px;font-weight:700;margin-bottom:4px}
+.page-sub{color:var(--text2);font-size:13px;margin-bottom:22px}
+.summary-row{display:flex;gap:14px;margin-bottom:24px;flex-wrap:wrap}
+.summary-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px 18px;min-width:120px}
+.summary-card .val{font-size:22px;font-weight:700}
+.summary-card .lbl{font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.05em;margin-top:2px}
+.filter-row{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+.filter-chip{font-size:12px;padding:5px 12px;border-radius:20px;border:1px solid var(--border2);background:var(--bg3);color:var(--text2);cursor:pointer;transition:.12s}
+.filter-chip:hover{color:var(--text)}
+.filter-chip.active{background:var(--accent);color:#1a1200;border-color:var(--accent);font-weight:600}
+table{width:100%;border-collapse:collapse;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+thead th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--text2);padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer;user-select:none}
+thead th:hover{color:var(--text)}
+thead th.sorted::after{content:' \25BC';font-size:9px}
+tbody td{padding:11px 14px;border-bottom:1px solid var(--border);font-size:13px}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:var(--bg3)}
+.op-name{font-weight:600}
+.specialty-tag{display:inline-block;font-size:10px;padding:2px 7px;border-radius:10px;background:var(--bg4);color:var(--text2);margin:1px 3px 1px 0}
+.stat-good{color:var(--green)}
+.stat-bad{color:var(--red)}
+.stat-mid{color:var(--accent2)}
+.stat-none{color:var(--text3)}
+.empty-state{text-align:center;padding:60px 20px;color:var(--text2)}
+.empty-state .big{font-size:15px;color:var(--text);margin-bottom:6px;font-weight:600}
+code{background:var(--bg4);padding:1px 6px;border-radius:4px;font-size:12px}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="logo">TSM <span>· BPO Supervisor Roster</span></div>
+  <a class="back-btn" href="bpo-internal1.html">&larr; Back to Case Queue</a>
+</div>
+
+<div class="wrap">
+  <div class="page-title">Operator Roster &amp; Workload</div>
+  <div class="page-sub">Live from TSMMissionStore across every sector this BPO desk handles. Filtering by sector scopes workload/SLA/accuracy to that sector's missions only (matches how the per-mission assignment panel already scores operators).</div>
+
+  <div class="summary-row" id="summaryRow"></div>
+  <div class="filter-row" id="filterRow"></div>
+
+  <table id="rosterTable" style="display:none">
+    <thead>
+      <tr>
+        <th data-sort="name">Operator</th>
+        <th data-sort="specialties">Specialties</th>
+        <th data-sort="workload" class="sorted">Open Workload</th>
+        <th data-sort="closedCount">Closed</th>
+        <th data-sort="slaPercent">SLA %</th>
+        <th data-sort="accuracyPercent">Accuracy %</th>
+      </tr>
+    </thead>
+    <tbody id="rosterBody"></tbody>
+  </table>
+  <div class="empty-state" id="emptyState" style="display:none">
+    <div class="big">No operators yet</div>
+    <div>Add one from any mission's assignment panel in <a href="bpo-internal1.html" style="color:var(--accent)">the case queue</a> — this roster reads the same <code>TSMMissionStore</code> live, no separate setup needed.</div>
+  </div>
+</div>
+
+<script src="../shared/runtime/mission/mission-model.js"></script>
+<script src="../shared/runtime/mission/mission-store.js"></script>
+<script>
+const SECTOR_LABELS = {
+  construction: 'Construction', legal: 'Legal', healthcare: 'Healthcare',
+  finops: 'FinOps/Tax', realestate: 'Real Estate', insurance: 'Insurance',
+  mortgage: 'Mortgage', schools: 'Schools', hotelops: 'HotelOps', bpo: 'BPO'
+};
+
+let activeFilter = null; // null = all sectors combined
+let sortKey = 'workload';
+let sortDir = -1; // -1 desc, 1 asc
+
+function fmtPct(v) {
+  if (v == null) return '<span class="stat-none">—</span>';
+  const cls = v >= 90 ? 'stat-good' : v >= 70 ? 'stat-mid' : 'stat-bad';
+  return `<span class="${cls}">${v}%</span>`;
+}
+
+function render() {
+  if (!window.TSMMissionStore) return;
+  const allOps = window.TSMMissionStore.listOperators();
+
+  // Build filter chips from whatever specialties actually appear on
+  // real operators -- never a hard-coded sector list, so a sector with
+  // no operators yet doesn't clutter the filter row.
+  const seenSectors = new Set();
+  allOps.forEach(o => (o.specialties || []).forEach(s => seenSectors.add(s)));
+  const filterRow = document.getElementById('filterRow');
+  filterRow.innerHTML = '';
+  const allChip = document.createElement('div');
+  allChip.className = 'filter-chip' + (activeFilter === null ? ' active' : '');
+  allChip.textContent = 'All Sectors';
+  allChip.onclick = () => { activeFilter = null; render(); };
+  filterRow.appendChild(allChip);
+  [...seenSectors].sort().forEach(s => {
+    const chip = document.createElement('div');
+    chip.className = 'filter-chip' + (activeFilter === s ? ' active' : '');
+    chip.textContent = SECTOR_LABELS[s] || s;
+    chip.onclick = () => { activeFilter = s; render(); };
+    filterRow.appendChild(chip);
+  });
+
+  const ops = activeFilter
+    ? allOps.filter(o => (o.specialties || []).includes(activeFilter))
+    : allOps;
+
+  const rows = ops.map(o => {
+    const stats = window.TSMMissionStore.computeOperatorStats(o.id, activeFilter || undefined);
+    return { operator: o, stats };
+  });
+
+  rows.sort((a, b) => {
+    const av = sortKey === 'name' ? a.operator.name : a.stats[sortKey];
+    const bv = sortKey === 'name' ? b.operator.name : b.stats[sortKey];
+    if (av == null && bv == null) return 0;
+    if (av == null) return 1;
+    if (bv == null) return -1;
+    if (typeof av === 'string') return av.localeCompare(bv) * sortDir * -1;
+    return (av - bv) * sortDir;
+  });
+
+  // Summary cards -- scoped to the active filter, matching getAnalytics'
+  // own filter shape so these numbers agree with any other view reading
+  // the same store.
+  const analytics = window.TSMMissionStore.getAnalytics(activeFilter ? { vertical: activeFilter } : undefined);
+  document.getElementById('summaryRow').innerHTML = `
+    <div class="summary-card"><div class="val">${ops.length}</div><div class="lbl">Operators${activeFilter ? ' · ' + SECTOR_LABELS[activeFilter] : ''}</div></div>
+    <div class="summary-card"><div class="val">${analytics.open}</div><div class="lbl">Open Missions</div></div>
+    <div class="summary-card"><div class="val" style="color:${analytics.late > 0 ? 'var(--red)' : 'var(--green)'}">${analytics.late}</div><div class="lbl">Currently Late</div></div>
+    <div class="summary-card"><div class="val">${analytics.closed}</div><div class="lbl">Closed</div></div>
+  `;
+
+  const table = document.getElementById('rosterTable');
+  const empty = document.getElementById('emptyState');
+  if (!rows.length) {
+    table.style.display = 'none';
+    empty.style.display = 'block';
+    return;
+  }
+  table.style.display = 'table';
+  empty.style.display = 'none';
+
+  document.getElementById('rosterBody').innerHTML = rows.map(({ operator, stats }) => `
+    <tr>
+      <td class="op-name">${escapeHtml(operator.name)}</td>
+      <td>${(operator.specialties || []).map(s => `<span class="specialty-tag">${escapeHtml(SECTOR_LABELS[s] || s)}</span>`).join('')}</td>
+      <td>${stats.workload}</td>
+      <td>${stats.closedCount}</td>
+      <td>${fmtPct(stats.slaPercent)}</td>
+      <td>${fmtPct(stats.accuracyPercent)}</td>
+    </tr>
+  `).join('');
+
+  document.querySelectorAll('thead th').forEach(th => {
+    th.classList.toggle('sorted', th.dataset.sort === sortKey);
+  });
+}
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+document.querySelectorAll('thead th').forEach(th => {
+  th.addEventListener('click', () => {
+    const key = th.dataset.sort;
+    if (sortKey === key) sortDir *= -1; else { sortKey = key; sortDir = -1; }
+    render();
+  });
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+  render();
+  if (window.TSMMissionStore) window.TSMMissionStore.subscribe('*', render);
+});
+</script>
+</body>
+</html>
