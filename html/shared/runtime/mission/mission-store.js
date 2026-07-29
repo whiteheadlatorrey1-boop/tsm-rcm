@@ -248,8 +248,27 @@
     var missions = listMissions(filter);
     var open = missions.filter(function (m) { return m.stage !== 'closed'; }).length;
     var closed = missions.filter(function (m) { return m.stage === 'closed'; }).length;
+    var now = new Date();
+    // "late" = currently overdue. Two ways a mission can qualify:
+    //  1. Its vertical's own engine already determined it's over SLA and
+    //     set workflow.sla.breached explicitly (e.g. hotelops's maintenance/
+    //     incident/compliance breach detection, which has richer per-type
+    //     SLA math than a single dueDate can express).
+    //  2. It has a workflow.dueDate in the past and isn't closed yet --
+    //     computed live here rather than requiring some separate "SLA
+    //     monitor" process to have run and stamped the flag first, since
+    //     no such process exists anywhere in the codebase (confirmed: grep
+    //     for anything that sets workflow.sla.breached found only vertical-
+    //     specific bridges that explicitly pass it in, never a monitor).
+    // A closed mission is never "late" here -- computeOperatorStats already
+    // covers "was this operator's completed work on time" via dueDate vs
+    // completedAt; this is strictly the live "still open and overdue" signal.
     var late = missions.filter(function (m) {
-      return m.workflow && m.workflow.sla && m.workflow.sla.breached === true;
+      if (m.stage === 'closed') return false;
+      var explicit = m.workflow && m.workflow.sla && m.workflow.sla.breached === true;
+      if (explicit) return true;
+      var due = m.workflow && m.workflow.dueDate;
+      return !!due && new Date(due) < now;
     }).length;
 
     return {

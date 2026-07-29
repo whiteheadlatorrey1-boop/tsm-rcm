@@ -1,7 +1,7 @@
 /* ============================================================
    TSM RE PORTFOLIO-OPS TAB ORCHESTRATOR
    war-rooms/re-war/re-tabs.js
-   Mirrors war-rooms/hotel-war/hotelops-tabs.js's module/tabpanel
+   Mirrors concierge/hotelops/hotelops-tabs.js's module/tabpanel
    click-wiring pattern, scoped to #pfSidebar/#pfMain (the new
    "Portfolio Ops" view added additively to re-war-room.html) so
    it never touches the existing #sidebar .node-btn nodes.
