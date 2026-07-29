@@ -74,10 +74,10 @@ textarea#docIntake{width:100%;min-height:80px;background:var(--bg3);border:1px s
     <div id="logo-sub">DESERT RIDGE PROPERTY &middot; LIVE OPERATIONS</div>
   </div>
   <div class="nav-links">
-    <a href="hotelops-strategist.html">Strategist &rarr;</a>
-    <a href="hotelops-executive-portal.html">Exec Portal &rarr;</a>
-    <a href="../../hotelops/concierge-command.html">Concierge Command</a>
-    <a href="hotelops-howto.html">How To &rarr;</a>
+    <a href="concierge-strategist.html">Strategist &rarr;</a>
+    <a href="concierge-executive-portal.html">Exec Portal &rarr;</a>
+    <a href="../hotelops/concierge-command.html">Concierge Command</a>
+    <a href="concierge-howto.html">How To &rarr;</a>
   </div>
   <div id="sys-status"><span id="sys-dot"></span><span id="navStatus">ENGINE: READY</span></div>
 </div>
@@ -164,9 +164,10 @@ textarea#docIntake{width:100%;min-height:80px;background:var(--bg3);border:1px s
 </div>
 
 <!-- Mission Store (hotelops wiring, mirrors bpo-internal1.html Phase 5) -->
-<script src="../../shared/runtime/mission/mission-model.js"></script>
-<script src="../../shared/runtime/mission/mission-store.js"></script>
+<script src="../shared/runtime/mission/mission-model.js"></script>
+<script src="../shared/runtime/mission/mission-store.js"></script>
 <script src="services/hotelops-engine.js"></script>
+<script src="missions/hotelops-mission-bridge.js"></script>
 <div id="tsm-toast"></div>
 <script>
 function showToast(msg){
@@ -214,11 +215,22 @@ async function init() {
       engine.loadSampleData();
       engine.saveToStorage();
     }
-    await engine.refresh();
+    // NOTE: engine.refresh() was called here but TSMHotelOpsEngine has no
+    // refresh() method -- this was throwing on every load and hitting
+    // showInitError() below, before the page ever rendered. Guarding it
+    // rather than inventing a refresh() implementation; flagging this as
+    // a pre-existing bug, not something introduced by this reorg.
+    if (typeof engine.refresh === 'function') await engine.refresh();
     render();
     pollOnlineBookings(); // engine is ready now -- safe to do the first live check
     if (window.TSMMissionStore) {
       window.TSMMissionStore.subscribe('*', () => render());
+    }
+    if (window.TSMHotelOpsMissionBridge) {
+      const syncResult = window.TSMHotelOpsMissionBridge.syncToMissionStore(engine, {
+        propertyName: model && model.property_name
+      });
+      console.info('hotelops-mission-bridge: synced', syncResult.synced, 'missions into TSMMissionStore');
     }
   } catch (e) {
     showInitError(e.message);
@@ -813,19 +825,19 @@ setInterval(pollOnlineBookings, HOTELOPS_BOOKING_POLL_MS);
 
 init();
 </script>
-  <script src="hotelops-maintenance-tab.js"></script>
-  <script src="hotelops-iot-tab.js"></script>
-  <script src="hotelops-ota-tab.js"></script>
-  <script src="hotelops-revenue-tab.js"></script>
-  <script src="hotelops-compliance-tab.js"></script>
-  <script src="hotelops-reservations-tab.js"></script>
-  <script src="hotelops-frontdesk-tab.js"></script>
-  <script src="hotelops-vip-tab.js"></script>
-  <script src="hotelops-housekeeping-tab.js"></script>
-  <script src="hotelops-staffops-tab.js"></script>
-  <script src="hotelops-incidents-tab.js"></script>
-  <script src="hotelops-airbnb-tab.js"></script>
-  <script src="hotelops-tabs.js"></script>
+  <script src="hotelops/maintenance-tab.js"></script>
+  <script src="hotelops/iot-tab.js"></script>
+  <script src="hotelops/ota-tab.js"></script>
+  <script src="hotelops/revenue-tab.js"></script>
+  <script src="hotelops/compliance-tab.js"></script>
+  <script src="hotelops/reservations-tab.js"></script>
+  <script src="hotelops/frontdesk-tab.js"></script>
+  <script src="hotelops/vip-tab.js"></script>
+  <script src="hotelops/housekeeping-tab.js"></script>
+  <script src="hotelops/staffops-tab.js"></script>
+  <script src="hotelops/incidents-tab.js"></script>
+  <script src="hotelops/airbnb-tab.js"></script>
+  <script src="hotelops/hotelops-tabs.js"></script>
   <script src="js/hotelops-doc-anomaly-bridge.js"></script>
 </body>
 </html><!--  -->
