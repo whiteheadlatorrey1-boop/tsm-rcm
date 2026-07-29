@@ -1223,10 +1223,25 @@ function fireCapabilitySweep_HEALTHCARE(payload) {
     const claimId = payload.claimId || '';
     const exposure = payload.kpi?.totalAtRisk || null;
     const summary = (payload.warRoomBrief || payload.aiSummary || payload.bnca?.revenuePosition || '').slice(0, 1500);
+    // ── Stable caseId so repeat escalations of the same claim (or the same
+    // no-claim session) dedupe server-side instead of minting a fresh case
+    // -- and a fresh O2C/CRM/CPQ/catalog/approval/governance/WIP record --
+    // on every click. ──
+    let sweepCaseId;
+    if (claimId) {
+      sweepCaseId = 'CLAIM-' + claimId;
+    } else {
+      sweepCaseId = sessionStorage.getItem('TSM_HC_SWEEP_SESSION_CASE');
+      if (!sweepCaseId) {
+        sweepCaseId = 'HC-SESSION-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7);
+        sessionStorage.setItem('TSM_HC_SWEEP_SESSION_CASE', sweepCaseId);
+      }
+    }
     fetch('/api/enterprise/capability-sweep', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        caseId: sweepCaseId,
         vertical: 'healthcare',
         title: 'HC Strategist Relay' + (claimId ? ' — Claim ' + claimId : ''),
         summary,
