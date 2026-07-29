@@ -21,9 +21,9 @@ pages:[
 {
 name:"BPO",
 pages:[
-"/html/war-rooms/bpo/bpo-war-room.html",
-"/html/war-rooms/bpo/bpo-strategist.html",
-"/html/war-rooms/bpo/bpo-executive-portal.html"
+"/html/war-rooms/bpo-war/bpo-war-room.html",
+"/html/war-rooms/bpo-war/bpo-strategist.html",
+"/html/war-rooms/bpo-war/bpo-executive-portal.html"
 ]
 },
 
@@ -76,7 +76,7 @@ url:"/html/sweet-os/sweet-os.html"
 
 {
 name:"Honeywell Demo",
-url:"/html/demo/honeywell/honeywell-demo.html"
+url:"/html/TSM_Shell_Honeywell_TalkTrack_30min.html"
 }
 
 ];
@@ -84,7 +84,7 @@ url:"/html/demo/honeywell/honeywell-demo.html"
 
 const heavyPages = [
 "/html/healthcare/hc-denial-war-room.html",
-"/html/war-rooms/bpo/bpo-war-room.html"
+"/html/war-rooms/bpo-war/bpo-war-room.html"
 ];
 
 async function inspect(page,name,path){
