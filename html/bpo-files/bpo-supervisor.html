@@ -87,6 +87,22 @@ code{background:var(--bg4);padding:1px 6px;border-radius:4px;font-size:12px}
 .status-dot{width:9px;height:9px;border-radius:50%}
 .section-label{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text2);margin:24px 0 10px}
 .floor-map-wrap{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:10px}
+
+.op-drawer-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;display:none}
+.op-drawer-overlay.open{display:block}
+.op-drawer{position:fixed;top:0;right:-400px;width:400px;max-width:92vw;height:100%;background:var(--bg2);border-left:1px solid var(--border2);z-index:201;transition:right .2s ease;overflow-y:auto;padding:22px}
+.op-drawer.open{right:0}
+.op-drawer-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px}
+.op-drawer-name{font-size:17px;font-weight:700}
+.op-drawer-close{cursor:pointer;color:var(--text2);font-size:20px;line-height:1;padding:2px 6px}
+.op-drawer-close:hover{color:var(--text)}
+.op-drawer-tags{margin-bottom:18px}
+.op-drawer-perf{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:22px}
+.op-drawer-mission{display:flex;justify-content:space-between;align-items:center;padding:9px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:6px;font-size:12.5px}
+.op-drawer-mission .late{color:var(--red)}
+tbody tr.op-row{cursor:pointer}
+
+.client-note{font-size:11px;color:var(--text3);margin:-4px 0 10px 2px}
 </style>
 </head>
 <body>
@@ -156,19 +172,32 @@ code{background:var(--bg4);padding:1px 6px;border-radius:4px;font-size:12px}
   <div class="tab-panel" id="executivePanel">
     <div class="placeholder-banner">
       <span class="placeholder-badge">Sample Data</span>
-      <span>Financials and AI Confidence below are still placeholders — see <code>SAMPLE_EXECUTIVE_DATA</code> at the top of this page's script for the one place to wire in real billing/AI data later. Operations status and floor-map sizing are computed live from <code>TSMMissionStore</code>.</span>
+      <span>AI Confidence stays a placeholder — no confidence-scoring data exists in the mission model yet. Financials are now <strong>real</strong> once you enter a rate card and labor cost below (math shown per-vertical, nothing invented); until then they show sample numbers. Operations status and floor-map sizing are already computed live from <code>TSMMissionStore</code>.</span>
     </div>
 
     <div class="exec-banner-row" id="execBannerRow"></div>
     <div style="font-size:11px;color:var(--text3);margin:-14px 0 20px 2px" id="execOpsDetail"></div>
 
     <div class="section-label">Financials</div>
+    <div id="execFinancialsNote" style="font-size:11px;color:var(--text3);margin:-4px 0 10px 2px"></div>
     <div class="summary-row" id="execFinancialsRow"></div>
+    <div id="rateCardPanel" style="margin:14px 0 24px"></div>
+
+    <div class="section-label">Efficiency</div>
+    <div id="execEfficiencyNote" style="font-size:11px;color:var(--text3);margin:-4px 0 10px 2px"></div>
+    <div class="summary-row" id="execEfficiencyRow"></div>
+
+    <div class="section-label">Client Portfolio</div>
+    <div class="client-note" id="clientPortfolioNote"></div>
+    <div class="opt-grid" id="clientPortfolioGrid"></div>
 
     <div class="section-label">Sector Floor Map</div>
     <div class="floor-map-wrap" id="execFloorMap"></div>
   </div>
 </div>
+
+<div class="op-drawer-overlay" id="opDrawerOverlay" onclick="closeOperatorDrawer()"></div>
+<div class="op-drawer" id="opDrawer"></div>
 
 <script src="../shared/runtime/mission/mission-model.js"></script>
 <script src="../shared/runtime/mission/mission-store.js"></script>
@@ -179,6 +208,13 @@ const SECTOR_LABELS = {
   mortgage: 'Mortgage', schools: 'Schools', hotelops: 'HotelOps', bpo: 'BPO'
 };
 
+const STAGE_LABELS = {
+  uploaded: 'Uploaded', ocr: 'OCR', classified: 'Classified', extracted: 'Extracted',
+  validated: 'Validated', created: 'Created', assigned: 'Assigned',
+  in_progress: 'In Progress', qa: 'QA', delivered: 'Delivered',
+  billed: 'Billed', closed: 'Closed'
+};
+
 let activeFilter = null; // null = all sectors combined
 let sortKey = 'workload';
 let sortDir = -1; // -1 desc, 1 asc
@@ -186,6 +222,8 @@ let sortDir = -1; // -1 desc, 1 asc
 let activeTab = 'roster';
 let feedFilter = null;
 let feedLimit = 100;
+let feedClientFilter = null;
+let drawerOperatorId = null;
 
 let playbackEvents = [];
 let playbackIndex = -1;
@@ -344,7 +382,7 @@ function render() {
   empty.style.display = 'none';
 
   document.getElementById('rosterBody').innerHTML = rows.map(({ operator, stats }) => `
-    <tr>
+    <tr class="op-row" onclick="openOperatorDrawer('${operator.id}')">
       <td class="op-name">${escapeHtml(operator.name)}</td>
       <td>${(operator.specialties || []).map(s => `<span class="specialty-tag">${escapeHtml(SECTOR_LABELS[s] || s)}</span>`).join('')}</td>
       <td>${stats.workload}</td>
@@ -370,15 +408,25 @@ function renderFeed() {
     filterRow.appendChild(makeChip(SECTOR_LABELS[v] || v, feedFilter === v, () => { feedFilter = v; feedLimit = 100; renderFeed(); }));
   });
 
-  const scoped = feedFilter ? events.filter(e => e.vertical === feedFilter) : events;
+  let scoped = feedFilter ? events.filter(e => e.vertical === feedFilter) : events;
+  if (feedClientFilter) {
+    scoped = feedClientFilter === '__none__'
+      ? scoped.filter(e => !e.client)
+      : scoped.filter(e => e.client === feedClientFilter);
+  }
+
   const list = document.getElementById('feedList');
+  const clientBanner = feedClientFilter
+    ? `<div style="font-size:12px;color:var(--text2);margin-bottom:10px">Filtering by client: <b>${escapeHtml(feedClientFilter === '__none__' ? 'No client recorded' : feedClientFilter)}</b> · <span style="cursor:pointer;color:var(--accent)" onclick="clearClientFeedFilter()">&times; clear</span></div>`
+    : '';
+
   if (!scoped.length) {
-    list.innerHTML = '<div class="empty-state"><div class="big">No activity yet</div><div>Mission events will appear here as they happen in <a href="bpo-internal1.html" style="color:var(--accent)">the case queue</a>.</div></div>';
+    list.innerHTML = clientBanner + '<div class="empty-state"><div class="big">No activity yet</div><div>Mission events will appear here as they happen in <a href="bpo-internal1.html" style="color:var(--accent)">the case queue</a>.</div></div>';
     return;
   }
 
   const shown = scoped.slice(0, feedLimit);
-  let html = '<div class="feed-list">' + shown.map(e => `
+  let html = clientBanner + '<div class="feed-list">' + shown.map(e => `
     <div class="feed-row">
       <div class="feed-time">${fmtTime(e.at)}</div>
       <div class="feed-sector"><span class="specialty-tag">${escapeHtml(SECTOR_LABELS[e.vertical] || e.vertical)}</span></div>
@@ -545,6 +593,195 @@ function fmtCurrency(n) {
   return '$' + Math.round(n).toLocaleString('en-US');
 }
 
+// Formats a millisecond duration as "Xm", "Xh Ym", or "Xd Yh" -- whichever
+// is coarsest without losing the next unit down. Real durations only;
+// negative/missing input means we don't have a valid pair of timestamps
+// to compare, so it's an honest "—", never a guess.
+function fmtDuration(ms) {
+  if (ms == null || !isFinite(ms) || ms < 0) return '—';
+  const totalMin = Math.round(ms / 60000);
+  if (totalMin < 60) return totalMin + 'm';
+  const totalHours = Math.floor(totalMin / 60);
+  const remMin = totalMin % 60;
+  if (totalHours < 24) return totalHours + 'h ' + remMin + 'm';
+  const days = Math.floor(totalHours / 24);
+  const remHours = totalHours % 24;
+  return days + 'd ' + remHours + 'h';
+}
+
+// Average Handle Time: completedAt minus the moment work actually started
+// on the mission. Uses the real MISSION_ASSIGNED audit event when present
+// (that's when it left the queue and became this operator's problem);
+// falls back to createdAt only if no assignment event was ever recorded,
+// which undercounts queue-wait time but is still a real elapsed span, not
+// a fabricated one. Missions with a negative or missing span are excluded
+// entirely rather than clamped to zero.
+function computeAHT(closedMissions) {
+  const durations = [];
+  closedMissions.forEach(m => {
+    if (!m.workflow || !m.workflow.completedAt) return;
+    const assignedEvt = (m.audit || []).find(a => a.event === 'MISSION_ASSIGNED');
+    const startTime = assignedEvt ? assignedEvt.at : m.createdAt;
+    if (!startTime) return;
+    const ms = new Date(m.workflow.completedAt) - new Date(startTime);
+    if (ms >= 0) durations.push(ms);
+  });
+  if (!durations.length) return { aht: null, sampleSize: 0 };
+  const avg = durations.reduce((a, b) => a + b, 0) / durations.length;
+  return { aht: avg, sampleSize: durations.length };
+}
+
+function countCompletedToday(closedMissions) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return closedMissions.filter(m => {
+    if (!m.workflow || !m.workflow.completedAt) return false;
+    return new Date(m.workflow.completedAt) >= today;
+  }).length;
+}
+
+// ---------------------------------------------------------------------
+// OPERATOR DETAIL DRAWER -- every field here is read straight off real
+// TSMMissionStore records for this operator; nothing here is sample data.
+// ---------------------------------------------------------------------
+function openOperatorDrawer(operatorId) {
+  drawerOperatorId = operatorId;
+  renderOperatorDrawer();
+  document.getElementById('opDrawerOverlay').classList.add('open');
+  document.getElementById('opDrawer').classList.add('open');
+}
+
+function closeOperatorDrawer() {
+  document.getElementById('opDrawerOverlay').classList.remove('open');
+  document.getElementById('opDrawer').classList.remove('open');
+  drawerOperatorId = null;
+}
+
+function renderOperatorDrawer() {
+  if (!drawerOperatorId) return;
+  const drawer = document.getElementById('opDrawer');
+  const operator = window.TSMMissionStore.listOperators().find(o => o.id === drawerOperatorId);
+  if (!operator) { closeOperatorDrawer(); return; }
+
+  const stats = window.TSMMissionStore.computeOperatorStats(operator.id);
+  const missions = window.TSMMissionStore.listMissions({ assignedTo: operator.id });
+  const open = missions.filter(m => m.stage !== 'closed')
+    .sort((a, b) => {
+      const ad = a.workflow && a.workflow.dueDate ? new Date(a.workflow.dueDate) : null;
+      const bd = b.workflow && b.workflow.dueDate ? new Date(b.workflow.dueDate) : null;
+      if (ad && bd) return ad - bd;
+      if (ad) return -1;
+      if (bd) return 1;
+      return 0;
+    });
+  const closed = missions.filter(m => m.stage === 'closed');
+  const aht = computeAHT(closed);
+  const completedToday = countCompletedToday(closed);
+  const now = new Date();
+
+  const missionRows = open.length
+    ? open.map(m => {
+        const due = m.workflow && m.workflow.dueDate ? new Date(m.workflow.dueDate) : null;
+        const late = due && due < now;
+        return `
+          <div class="op-drawer-mission">
+            <div>
+              <div>${escapeHtml(m.missionNo || m.id)}${m.client ? ' · ' + escapeHtml(m.client) : ''}</div>
+              <div style="font-size:10.5px;color:var(--text3)">${escapeHtml(SECTOR_LABELS[m.vertical] || m.vertical)}</div>
+            </div>
+            <div class="${late ? 'late' : ''}">${escapeHtml(STAGE_LABELS[m.stage] || m.stage)}${due ? (late ? ' · overdue' : ' · due ' + due.toLocaleDateString()) : ''}</div>
+          </div>
+        `;
+      }).join('')
+    : '<div style="font-size:12px;color:var(--text3)">No open missions.</div>';
+
+  drawer.innerHTML = `
+    <div class="op-drawer-head">
+      <div>
+        <div class="op-drawer-name">${escapeHtml(operator.name)}</div>
+      </div>
+      <span class="op-drawer-close" onclick="closeOperatorDrawer()">&times;</span>
+    </div>
+    <div class="op-drawer-tags">${(operator.specialties || []).map(s => `<span class="specialty-tag">${escapeHtml(SECTOR_LABELS[s] || s)}</span>`).join('')}</div>
+
+    <div class="section-label" style="margin-top:0">Current Missions</div>
+    ${missionRows}
+
+    <div class="section-label">Performance</div>
+    <div class="op-drawer-perf">
+      <div class="summary-card"><div class="val">${fmtPct(stats.accuracyPercent)}</div><div class="lbl">Accuracy</div></div>
+      <div class="summary-card"><div class="val">${fmtPct(stats.slaPercent)}</div><div class="lbl">SLA</div></div>
+      <div class="summary-card"><div class="val">${aht.sampleSize ? fmtDuration(aht.aht) : '—'}</div><div class="lbl">Avg Handle Time${aht.sampleSize ? ' (' + aht.sampleSize + ' closed)' : ' (no closed missions with timestamps yet)'}</div></div>
+      <div class="summary-card"><div class="val">${completedToday}</div><div class="lbl">Completed Today</div></div>
+    </div>
+  `;
+}
+
+// ---------------------------------------------------------------------
+// CLIENT PORTFOLIO -- grouped straight from real mission.client values,
+// no client roster/CRM to join against. "SLA" here reuses the exact same
+// dueDate-vs-completedAt math as computeOperatorStats, just grouped by
+// client instead of operator, so the definition of "on time" agrees
+// everywhere in this file. Clients with zero SLA-eligible closed missions
+// show "—", not a guessed percentage.
+// ---------------------------------------------------------------------
+function renderClientPortfolio() {
+  const grid = document.getElementById('clientPortfolioGrid');
+  const note = document.getElementById('clientPortfolioNote');
+  const missions = window.TSMMissionStore.listMissions();
+
+  const byClient = {};
+  missions.forEach(m => {
+    const key = m.client || 'No client recorded';
+    if (!byClient[key]) byClient[key] = [];
+    byClient[key].push(m);
+  });
+
+  const clients = Object.keys(byClient).sort((a, b) => byClient[b].length - byClient[a].length);
+
+  if (!clients.length) {
+    note.textContent = '';
+    grid.innerHTML = '<div class="empty-state"><div class="big">No missions yet</div><div>Client cards populate once missions carry a client name.</div></div>';
+    return;
+  }
+
+  note.textContent = `${clients.length} client${clients.length === 1 ? '' : 's'} across ${missions.length} mission${missions.length === 1 ? '' : 's'}.`;
+
+  grid.innerHTML = clients.map(client => {
+    const group = byClient[client];
+    const open = group.filter(m => m.stage !== 'closed').length;
+    const eligible = group.filter(m => m.stage === 'closed' && m.workflow && m.workflow.dueDate && m.workflow.completedAt);
+    const met = eligible.filter(m => new Date(m.workflow.completedAt) <= new Date(m.workflow.dueDate));
+    const slaPercent = eligible.length ? Math.round((met.length / eligible.length) * 100) : null;
+
+    return `
+      <div class="opt-card" style="cursor:pointer" onclick="openClientInFeed('${escapeHtml(client).replace(/'/g, "\\'")}')">
+        <div class="opt-head">
+          <span class="op-name">${escapeHtml(client)}</span>
+          ${fmtPct(slaPercent)}
+        </div>
+        <div class="opt-stats">
+          <div>${group.length} mission${group.length === 1 ? '' : 's'}</div>
+          <div>${open} open</div>
+          <div style="font-size:11px;color:var(--text3)">${eligible.length ? eligible.length + ' scored for SLA' : 'no closed missions with due dates yet'}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function openClientInFeed(client) {
+  feedClientFilter = client === 'No client recorded' ? '__none__' : client;
+  feedFilter = null;
+  feedLimit = 100;
+  setTab('feed');
+}
+
+function clearClientFeedFilter() {
+  feedClientFilter = null;
+  renderFeed();
+}
+
 function renderExecutive() {
   const d = SAMPLE_EXECUTIVE_DATA;
 
@@ -569,14 +806,10 @@ function renderExecutive() {
     </div>
   `;
 
-  const f = d.financials;
-  document.getElementById('execFinancialsRow').innerHTML = `
-    <div class="summary-card"><div class="val">${fmtCurrency(f.revenueToday)}</div><div class="lbl">Revenue Today</div></div>
-    <div class="summary-card"><div class="val">${fmtCurrency(f.automationSavings)}</div><div class="lbl">Automation Savings</div></div>
-    <div class="summary-card"><div class="val">${fmtCurrency(f.laborCost)}</div><div class="lbl">Labor Cost</div></div>
-    <div class="summary-card"><div class="val">${f.profitMarginPct}%</div><div class="lbl">Profit Margin</div></div>
-    <div class="summary-card"><div class="val">${fmtCurrency(f.forecast)}</div><div class="lbl">Forecast</div></div>
-  `;
+  renderFinancials();
+  renderRateCardPanel();
+  renderEfficiency();
+  renderClientPortfolio();
 
   // Real: node radius reflects each sector's actual open-mission count
   // from getAnalytics().byVertical. Positions stay illustrative (no
@@ -608,6 +841,158 @@ function renderExecutive() {
   `;
 }
 
+// Real once a rate card exists (window.TSMMissionStore.setRate). Until
+// then, falls back to SAMPLE_EXECUTIVE_DATA.financials with a Sample
+// badge -- same null-handling pattern as fmtPct/AI Confidence.
+function renderFinancials() {
+  const fin = window.TSMMissionStore.getFinancials();
+  const fc = window.TSMMissionStore.getForecast();
+  const noteEl = document.getElementById('execFinancialsNote');
+  const liveBadge = '<span class="placeholder-badge" style="color:var(--green);border-color:var(--green)">Live</span>';
+  const sampleBadge = '<span class="placeholder-badge">Sample</span>';
+
+  function forecastCard() {
+    if (!fc.hasEnoughData) {
+      return `<div class="summary-card"><div class="val">${fmtCurrency(SAMPLE_EXECUTIVE_DATA.financials.forecast)} ${sampleBadge}</div><div class="lbl">Forecast (need 3+ days of mission activity in last ${fc.trendDays}d)</div></div>`;
+    }
+    if (fc.forecastRevenue === null) {
+      return `<div class="summary-card"><div class="val">${fmtCurrency(SAMPLE_EXECUTIVE_DATA.financials.forecast)} ${sampleBadge}</div><div class="lbl">Forecast (${fc.projectedMissions} missions/${fc.projectDays}d projected — set a rate card to price it)</div></div>`;
+    }
+    return `<div class="summary-card"><div class="val">${fmtCurrency(fc.forecastRevenue)} ${liveBadge}</div><div class="lbl">Forecast: ${fc.projectedMissions} missions over next ${fc.projectDays}d (trend: ${fc.dailyAvg}/day over last ${fc.trendDays}d) × $${fc.avgRatePerMission}/mission avg rate</div></div>`;
+  }
+
+  if (!fin.hasRateCard) {
+    const f = SAMPLE_EXECUTIVE_DATA.financials;
+    noteEl.innerHTML = '';
+    document.getElementById('execFinancialsRow').innerHTML = `
+      <div class="summary-card"><div class="val">${fmtCurrency(f.revenueToday)} <span class="placeholder-badge">Sample</span></div><div class="lbl">Revenue Today</div></div>
+      <div class="summary-card"><div class="val">${fmtCurrency(f.automationSavings)} <span class="placeholder-badge">Sample</span></div><div class="lbl">Automation Savings</div></div>
+      <div class="summary-card"><div class="val">${fmtCurrency(f.laborCost)} <span class="placeholder-badge">Sample</span></div><div class="lbl">Labor Cost</div></div>
+      <div class="summary-card"><div class="val">${f.profitMarginPct}% <span class="placeholder-badge">Sample</span></div><div class="lbl">Profit Margin</div></div>
+      ${forecastCard()}
+    `;
+    return;
+  }
+
+  const excluded = Object.entries(fin.excludedVerticals)
+    .map(([v, c]) => `${c} ${SECTOR_LABELS[v] || v}`)
+    .join(', ');
+  noteEl.textContent = excluded
+    ? `Revenue includes ${fin.includedForRevenue} of ${fin.missionCount} missions — excluded (no rate set): ${excluded}.`
+    : `Revenue includes all ${fin.missionCount} missions.`;
+
+  const laborCostCard = fin.hasLaborCost
+    ? `<div class="summary-card"><div class="val">${fmtCurrency(fin.laborCost)} ${liveBadge}</div><div class="lbl">Labor Cost (${fin.laborHours}h × rate, ${fin.missionsWithHours} closed missions)</div></div>`
+    : `<div class="summary-card"><div class="val">${fmtCurrency(SAMPLE_EXECUTIVE_DATA.financials.laborCost)} ${sampleBadge}</div><div class="lbl">Labor Cost</div></div>`;
+
+  const marginCard = fin.margin !== null
+    ? `<div class="summary-card"><div class="val">${fin.marginPct}% ${liveBadge}</div><div class="lbl">Profit Margin</div></div>`
+    : `<div class="summary-card"><div class="val">${SAMPLE_EXECUTIVE_DATA.financials.profitMarginPct}% ${sampleBadge}</div><div class="lbl">Profit Margin</div></div>`;
+
+  document.getElementById('execFinancialsRow').innerHTML = `
+    <div class="summary-card"><div class="val">${fmtCurrency(fin.revenue)} ${liveBadge}</div><div class="lbl">Revenue (rate card × real mission count)</div></div>
+    ${laborCostCard}
+    ${marginCard}
+    ${forecastCard()}
+  `;
+}
+
+// Hours Saved is inherently a projection against an assumed manual
+// baseline (set via the panel below) -- it's never fully "real" the way
+// revenue is, but the pieces that ARE real (closed-mission count, actual
+// elapsed time) are computed from actual timestamps, and the assumption
+// is shown next to the number rather than hidden inside it. If actual
+// time exceeded the assumed baseline, hoursSaved comes back negative and
+// is shown as-is -- not clamped to look better than reality.
+function renderEfficiency() {
+  const hs = window.TSMMissionStore.getHoursSaved();
+  const noteEl = document.getElementById('execEfficiencyNote');
+  const liveBadge = '<span class="placeholder-badge" style="color:var(--green);border-color:var(--green)">Live</span>';
+  const sampleBadge = '<span class="placeholder-badge">Sample</span>';
+
+  if (!hs.hasBaseline) {
+    noteEl.textContent = 'Set a manual baseline (minutes/mission) below to compute Hours Saved for real.';
+    document.getElementById('execEfficiencyRow').innerHTML = `
+      <div class="summary-card"><div class="val">— ${sampleBadge}</div><div class="lbl">Hours Saved (no baseline set)</div></div>
+    `;
+    return;
+  }
+  if (hs.missionsIncluded === 0) {
+    noteEl.textContent = 'No closed missions with recorded completion times yet.';
+    document.getElementById('execEfficiencyRow').innerHTML = `
+      <div class="summary-card"><div class="val">— ${sampleBadge}</div><div class="lbl">Hours Saved (no closed missions yet)</div></div>
+    `;
+    return;
+  }
+
+  noteEl.textContent = `Assumes ${hs.baselineMinutes} min/mission manual review × ${hs.missionsIncluded} closed missions = ${hs.baselineHours}h baseline, vs ${hs.actualHours}h actual (real createdAt→completedAt).`;
+  const negative = hs.hoursSaved < 0;
+  document.getElementById('execEfficiencyRow').innerHTML = `
+    <div class="summary-card"><div class="val" style="${negative ? 'color:var(--red)' : ''}">${hs.hoursSaved}h ${liveBadge}</div><div class="lbl">Hours Saved${negative ? ' (actual took longer than baseline)' : ''}</div></div>
+    <div class="summary-card"><div class="val">${hs.baselineHours}h</div><div class="lbl">Baseline (assumed)</div></div>
+    <div class="summary-card"><div class="val">${hs.actualHours}h ${liveBadge}</div><div class="lbl">Actual (real)</div></div>
+  `;
+}
+
+function renderRateCardPanel() {
+  const rateCard = window.TSMMissionStore.getRateCard();
+  const laborCostPerHour = window.TSMMissionStore.getLaborCostPerHour();
+  const baselineMinutes = window.TSMMissionStore.getManualBaselineMinutes();
+
+  const rows = Object.keys(SECTOR_LABELS).map(v => `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+      <label style="width:110px;font-size:12px;color:var(--text2)">${escapeHtml(SECTOR_LABELS[v])}</label>
+      <span style="font-size:12px;color:var(--text3)">$</span>
+      <input type="number" min="0" step="1" data-rate-vertical="${v}" value="${rateCard[v] != null ? rateCard[v] : ''}"
+        placeholder="—" style="width:100px;padding:4px 8px;border-radius:var(--radius-sm);border:1px solid var(--border2);background:var(--bg3);color:var(--text)" />
+      <span style="font-size:11px;color:var(--text3)">per mission</span>
+    </div>
+  `).join('');
+
+  document.getElementById('rateCardPanel').innerHTML = `
+    <details>
+      <summary style="cursor:pointer;font-size:12px;color:var(--text2)">Configure Rate Card, Labor Cost &amp; Manual Baseline (real inputs — drives Financials &amp; Efficiency above)</summary>
+      <div style="margin-top:12px;padding:14px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--bg2)">
+        <div style="font-size:11px;color:var(--text3);margin-bottom:10px">One entry per vertical is enough to start; verticals left blank are excluded from Revenue until a rate is set.</div>
+        ${rows}
+        <div style="display:flex;align-items:center;gap:8px;margin:10px 0">
+          <label style="width:110px;font-size:12px;color:var(--text2)">Labor cost</label>
+          <span style="font-size:12px;color:var(--text3)">$</span>
+          <input type="number" min="0" step="0.5" id="laborCostInput" value="${laborCostPerHour != null ? laborCostPerHour : ''}"
+            placeholder="—" style="width:100px;padding:4px 8px;border-radius:var(--radius-sm);border:1px solid var(--border2);background:var(--bg3);color:var(--text)" />
+          <span style="font-size:11px;color:var(--text3)">per operator-hour</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin:10px 0">
+          <label style="width:110px;font-size:12px;color:var(--text2)">Manual baseline</label>
+          <input type="number" min="0" step="1" id="baselineMinutesInput" value="${baselineMinutes != null ? baselineMinutes : ''}"
+            placeholder="e.g. 12" style="width:100px;padding:4px 8px;border-radius:var(--radius-sm);border:1px solid var(--border2);background:var(--bg3);color:var(--text)" />
+          <span style="font-size:11px;color:var(--text3)">minutes/mission if done manually — assumption you set, shown next to Hours Saved</span>
+        </div>
+        <div class="playback-btn" style="display:inline-block" onclick="saveRateCard()">Save</div>
+      </div>
+    </details>
+  `;
+}
+
+function saveRateCard() {
+  document.querySelectorAll('[data-rate-vertical]').forEach(input => {
+    const v = input.getAttribute('data-rate-vertical');
+    const val = input.value.trim();
+    if (val !== '' && !isNaN(Number(val))) {
+      window.TSMMissionStore.setRate(v, Number(val));
+    }
+  });
+  const laborInput = document.getElementById('laborCostInput');
+  if (laborInput && laborInput.value.trim() !== '' && !isNaN(Number(laborInput.value))) {
+    window.TSMMissionStore.setLaborCostPerHour(Number(laborInput.value));
+  }
+  const baselineInput = document.getElementById('baselineMinutesInput');
+  if (baselineInput && baselineInput.value.trim() !== '' && !isNaN(Number(baselineInput.value))) {
+    window.TSMMissionStore.setManualBaselineMinutes(Number(baselineInput.value));
+  }
+  renderExecutive();
+}
+
 function refreshActiveTab() {
   if (activeTab === 'roster') render();
   else if (activeTab === 'feed') renderFeed();
@@ -623,6 +1008,7 @@ function setTab(tab) {
   const panelId = { roster: 'rosterPanel', feed: 'feedPanel', optimizer: 'optimizerPanel', playback: 'playbackPanel', executive: 'executivePanel' }[tab];
   document.getElementById(panelId).classList.add('active');
   if (tab !== 'playback') stopPlayback();
+  closeOperatorDrawer();
   refreshActiveTab();
 }
 
