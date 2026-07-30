@@ -5,9 +5,10 @@
   a <style> block, and the <script> before your closing </body>.
 
   This snippet assumes /api/twins/vmware/state and /api/twins/network/state
-  are reachable from the page (same origigrep -rn "html/war-rooms/noc/" html/war-room-prep.html html/*.html html/**/*.html 2>/dev/null
-grep -rn "html/bpo/bpo-" html/war-room-prep.html
-grep -n "index.html" html/music-command/**/music-cadence-builder.htmln as enterprise-command-center.html).
+  are reachable from the page (same origin as enterprise-command-center.html).
+  As of this revision, both are live — mounted via
+  server/enterprise-lab/twins-router.js at app.use('/api/twins', twinsRouter)
+  in server.js.
 -->
 
 <!-- ============ MARKUP ============ -->
@@ -26,6 +27,7 @@ grep -n "index.html" html/music-command/**/music-cadence-builder.htmln as enterp
         <button id="vmware-fault-btn">Inject Fault</button>
       </div>
     </div>
+    <div class="twin-status" id="vmware-status"></div>
     <div class="twin-entities" id="vmware-entities"></div>
     <div class="twin-events" id="vmware-events"></div>
   </div>
@@ -45,6 +47,7 @@ grep -n "index.html" html/music-command/**/music-cadence-builder.htmln as enterp
         <button id="network-fault-btn">Inject Fault</button>
       </div>
     </div>
+    <div class="twin-status" id="network-status"></div>
     <div class="twin-entities" id="network-entities"></div>
     <div class="twin-events" id="network-events"></div>
   </div>
@@ -95,6 +98,18 @@ grep -n "index.html" html/music-command/**/music-cadence-builder.htmln as enterp
   }
   .twin-panel-actions button:hover {
     background: #262d38;
+  }
+  .twin-status {
+    font-size: 10.5px;
+    color: #8b94a3;
+    margin-bottom: 8px;
+  }
+  .twin-status.twin-status-error {
+    color: #e5484d;
+  }
+  .twin-panel-actions button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
   .twin-entities {
     display: flex;
@@ -193,25 +208,34 @@ grep -n "index.html" html/music-command/**/music-cadence-builder.htmln as enterp
   }
 
   async function pollVMware() {
+    const statusEl = document.getElementById('vmware-status');
     try {
       renderVMware(await fetchVMwareState());
+      statusEl.textContent = 'Live · updated ' + new Date().toLocaleTimeString('en-US', { hour12: false });
+      statusEl.classList.remove('twin-status-error');
     } catch (err) {
       console.error('VMware twin poll failed', err);
+      statusEl.textContent = 'Could not reach /api/twins/vmware/state: ' + err.message;
+      statusEl.classList.add('twin-status-error');
     }
   }
 
   document.getElementById('vmware-fault-btn').addEventListener('click', async () => {
+    const btn = document.getElementById('vmware-fault-btn');
     const type = document.getElementById('vmware-fault-type').value;
     const targetId = document.getElementById('vmware-fault-target').value;
+    btn.disabled = true;
     try {
       await fetch('/api/twins/vmware/fault', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type, targetId }),
       });
-      pollVMware();
+      await pollVMware();
     } catch (err) {
       console.error('Failed to inject VMware fault', err);
+    } finally {
+      btn.disabled = false;
     }
   });
 
@@ -254,25 +278,34 @@ grep -n "index.html" html/music-command/**/music-cadence-builder.htmln as enterp
   }
 
   async function pollNetwork() {
+    const statusEl = document.getElementById('network-status');
     try {
       renderNetwork(await fetchNetworkState());
+      statusEl.textContent = 'Live · updated ' + new Date().toLocaleTimeString('en-US', { hour12: false });
+      statusEl.classList.remove('twin-status-error');
     } catch (err) {
       console.error('Network twin poll failed', err);
+      statusEl.textContent = 'Could not reach /api/twins/network/state: ' + err.message;
+      statusEl.classList.add('twin-status-error');
     }
   }
 
   document.getElementById('network-fault-btn').addEventListener('click', async () => {
+    const btn = document.getElementById('network-fault-btn');
     const type = document.getElementById('network-fault-type').value;
     const targetId = document.getElementById('network-fault-target').value;
+    btn.disabled = true;
     try {
       await fetch('/api/twins/network/fault', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type, targetId }),
       });
-      pollNetwork();
+      await pollNetwork();
     } catch (err) {
       console.error('Failed to inject network fault', err);
+    } finally {
+      btn.disabled = false;
     }
   });
 
