@@ -287,6 +287,252 @@
     _write(_emptyStore());
   }
 
+  // -----------------------------------------------------------------
+  // Rate card / labor cost -- lives in store.settings because this is
+  // cross-tenant config (per-vertical pricing), not a single tenant's
+  // record. Callers (e.g. bpo-supervisor.html Executive tab) read this
+  // to compute real revenue/labor-cost/margin instead of sample data.
+  // Everything here is opt-in: until a vertical has a rate entered,
+  // getFinancials() reports it as excluded rather than assuming $0 or
+  // inventing a number.
+  // -----------------------------------------------------------------
+
+  function getRateCard() {
+    var store = _read();
+    return Object.assign({}, store.settings.rateCard || {});
+  }
+
+  function setRate(vertical, amountPerMission) {
+    if (!vertical) throw new Error('setRate: vertical is required');
+    if (typeof amountPerMission !== 'number' || amountPerMission < 0) {
+      throw new Error('setRate: amountPerMission must be a non-negative number');
+    }
+    var store = _read();
+    store.settings.rateCard = store.settings.rateCard || {};
+    store.settings.rateCard[vertical] = amountPerMission;
+    _write(store);
+    _publish('settings-updated', { rateCard: store.settings.rateCard });
+    return store.settings.rateCard;
+  }
+
+  function getLaborCostPerHour() {
+    var store = _read();
+    return typeof store.settings.laborCostPerHour === 'number' ? store.settings.laborCostPerHour : null;
+  }
+
+  function setLaborCostPerHour(amount) {
+    if (typeof amount !== 'number' || amount < 0) {
+      throw new Error('setLaborCostPerHour: amount must be a non-negative number');
+    }
+    var store = _read();
+    store.settings.laborCostPerHour = amount;
+    _write(store);
+    _publish('settings-updated', { laborCostPerHour: amount });
+    return amount;
+  }
+
+  // Real revenue/labor-cost/margin, computed only from missions whose
+  // vertical has a configured rate and (for labor cost) only from
+  // closed missions with both createdAt and completedAt timestamps.
+  // Anything that can't be computed honestly is reported as "excluded"
+  // rather than silently treated as zero, so the caller can show its
+  // work (e.g. "3 of 20 missions excluded -- no rate set for legal").
+  function getFinancials(filter) {
+    var store = _read();
+    var rateCard = store.settings.rateCard || {};
+    var laborCostPerHour = typeof store.settings.laborCostPerHour === 'number' ? store.settings.laborCostPerHour : null;
+    var missions = listMissions(filter);
+
+    var revenue = 0;
+    var includedForRevenue = 0;
+    var excludedVerticals = {};
+
+    missions.forEach(function (m) {
+      var rate = rateCard[m.vertical];
+      if (typeof rate === 'number') {
+        revenue += rate;
+        includedForRevenue += 1;
+      } else {
+        excludedVerticals[m.vertical] = (excludedVerticals[m.vertical] || 0) + 1;
+      }
+    });
+
+    var laborHours = 0;
+    var hoursComputable = laborCostPerHour !== null;
+    var missionsWithHours = 0;
+    if (hoursComputable) {
+      missions.forEach(function (m) {
+        if (m.stage === 'closed' && m.workflow && m.workflow.completedAt && m.createdAt) {
+          var ms = new Date(m.workflow.completedAt) - new Date(m.createdAt);
+          if (ms > 0) {
+            laborHours += ms / (1000 * 60 * 60);
+            missionsWithHours += 1;
+          }
+        }
+      });
+    }
+    var laborCost = hoursComputable ? laborHours * laborCostPerHour : null;
+    var margin = (hoursComputable && laborCost !== null) ? revenue - laborCost : null;
+
+    return {
+      hasRateCard: Object.keys(rateCard).length > 0,
+      hasLaborCost: laborCostPerHour !== null,
+      revenue: revenue,
+      missionCount: missions.length,
+      includedForRevenue: includedForRevenue,
+      excludedVerticals: excludedVerticals, // { vertical: countExcluded }
+      laborHours: hoursComputable ? Math.round(laborHours * 10) / 10 : null,
+      missionsWithHours: missionsWithHours,
+      laborCost: laborCost,
+      margin: margin,
+      marginPct: (margin !== null && revenue > 0) ? Math.round((margin / revenue) * 100) : null
+    };
+  }
+
+  // Forecast: least-squares linear trend fit to daily mission counts over
+  // the last `trendDays`, projected forward `projectDays`, multiplied by
+  // the rate-card-weighted average $/mission actually seen in that
+  // window. Nothing here is a guess: the slope/intercept come from real
+  // createdAt timestamps, and only missions in verticals with a set rate
+  // count toward the $/mission average (same exclusion pattern as
+  // getFinancials). Returns hasEnoughData:false rather than fabricating
+  // a trend from fewer than 3 distinct days of activity.
+  function getForecast(opts) {
+    opts = opts || {};
+    var trendDays = opts.trendDays || 14;
+    var projectDays = opts.projectDays || 30;
+    var store = _read();
+    var rateCard = store.settings.rateCard || {};
+    var hasRateCard = Object.keys(rateCard).length > 0;
+    var missions = listMissions();
+
+    var msPerDay = 24 * 60 * 60 * 1000;
+    var windowStart = new Date(Date.now() - trendDays * msPerDay);
+    windowStart.setHours(0, 0, 0, 0);
+
+    var counts = new Array(trendDays).fill(0);
+    var verticalCounts = {};
+    var daysWithData = {};
+
+    missions.forEach(function (m) {
+      var created = new Date(m.createdAt);
+      var dayIdx = Math.floor((created - windowStart) / msPerDay);
+      if (dayIdx < 0 || dayIdx >= trendDays) return;
+      counts[dayIdx] += 1;
+      daysWithData[dayIdx] = true;
+      verticalCounts[m.vertical] = (verticalCounts[m.vertical] || 0) + 1;
+    });
+
+    if (Object.keys(daysWithData).length < 3) {
+      return { hasEnoughData: false, hasRateCard: hasRateCard, trendDays: trendDays, projectDays: projectDays };
+    }
+
+    // Least-squares fit: count(day) = a + b * dayIndex
+    var n = trendDays, sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
+    for (var x = 0; x < n; x++) {
+      var y = counts[x];
+      sumX += x; sumY += y; sumXY += x * y; sumXX += x * x;
+    }
+    var denom = (n * sumXX - sumX * sumX) || 1;
+    var b = (n * sumXY - sumX * sumY) / denom;
+    var a = (sumY - b * sumX) / n;
+
+    var projectedMissions = 0;
+    for (var fx = n; fx < n + projectDays; fx++) {
+      projectedMissions += Math.max(0, a + b * fx);
+    }
+    projectedMissions = Math.round(projectedMissions);
+
+    var totalInWindow = sumY;
+    var revenueWeighted = 0, includedCount = 0;
+    Object.keys(verticalCounts).forEach(function (v) {
+      if (typeof rateCard[v] === 'number') {
+        revenueWeighted += verticalCounts[v] * rateCard[v];
+        includedCount += verticalCounts[v];
+      }
+    });
+    var avgRate = includedCount > 0 ? revenueWeighted / includedCount : null;
+    var forecastRevenue = avgRate !== null ? Math.round(projectedMissions * avgRate) : null;
+
+    return {
+      hasEnoughData: true,
+      hasRateCard: hasRateCard,
+      trendDays: trendDays,
+      projectDays: projectDays,
+      dailyAvg: Math.round((sumY / n) * 10) / 10,
+      trendSlope: Math.round(b * 100) / 100,
+      totalInWindow: totalInWindow,
+      includedForRevenue: includedCount,
+      projectedMissions: projectedMissions,
+      avgRatePerMission: avgRate !== null ? Math.round(avgRate * 100) / 100 : null,
+      forecastRevenue: forecastRevenue
+    };
+  }
+
+  function getManualBaselineMinutes() {
+    var store = _read();
+    return typeof store.settings.manualBaselineMinutes === 'number' ? store.settings.manualBaselineMinutes : null;
+  }
+
+  function setManualBaselineMinutes(minutes) {
+    if (typeof minutes !== 'number' || minutes < 0) {
+      throw new Error('setManualBaselineMinutes: minutes must be a non-negative number');
+    }
+    var store = _read();
+    store.settings.manualBaselineMinutes = minutes;
+    _write(store);
+    _publish('settings-updated', { manualBaselineMinutes: minutes });
+    return minutes;
+  }
+
+  // "Hours saved" is inherently a projection against an assumed manual
+  // baseline that was never actually measured -- it can never be fully
+  // "real" the way revenue or ops-health are. What IS real: the count of
+  // actually-closed missions and their actual elapsed createdAt->completedAt
+  // time. The baseline minutes/mission is a number the caller must supply
+  // explicitly (via setManualBaselineMinutes) so it's visible and editable,
+  // never a silently baked-in constant. hoursSaved can come back negative
+  // if actual time exceeded the assumed baseline -- that's reported as-is,
+  // not clamped, since hiding it would be worse than an unflattering number.
+  function getHoursSaved(filter) {
+    var store = _read();
+    var baselineMinutes = typeof store.settings.manualBaselineMinutes === 'number' ? store.settings.manualBaselineMinutes : null;
+    var missions = listMissions(filter);
+    var closedWithTimes = missions.filter(function (m) {
+      return m.stage === 'closed' && m.workflow && m.workflow.completedAt && m.createdAt;
+    });
+
+    var actualHours = 0;
+    closedWithTimes.forEach(function (m) {
+      var ms = new Date(m.workflow.completedAt) - new Date(m.createdAt);
+      if (ms > 0) actualHours += ms / (1000 * 60 * 60);
+    });
+    actualHours = Math.round(actualHours * 10) / 10;
+
+    if (baselineMinutes === null || closedWithTimes.length === 0) {
+      return {
+        hasBaseline: baselineMinutes !== null,
+        missionsIncluded: closedWithTimes.length,
+        actualHours: actualHours,
+        baselineMinutes: baselineMinutes,
+        baselineHours: null,
+        hoursSaved: null
+      };
+    }
+
+    var baselineHours = Math.round((closedWithTimes.length * baselineMinutes / 60) * 10) / 10;
+    var hoursSaved = Math.round((baselineHours - actualHours) * 10) / 10;
+
+    return {
+      hasBaseline: true,
+      missionsIncluded: closedWithTimes.length,
+      actualHours: actualHours,
+      baselineMinutes: baselineMinutes,
+      baselineHours: baselineHours,
+      hoursSaved: hoursSaved
+    };
+  }
+
   global.TSMMissionStore = {
     STORE_KEY: STORE_KEY,
     saveMission: saveMission,
@@ -303,6 +549,15 @@
     computeOperatorStats: computeOperatorStats,
     recommendAssignment: recommendAssignment,
     getAnalytics: getAnalytics,
+    getRateCard: getRateCard,
+    setRate: setRate,
+    getLaborCostPerHour: getLaborCostPerHour,
+    setLaborCostPerHour: setLaborCostPerHour,
+    getFinancials: getFinancials,
+    getForecast: getForecast,
+    getManualBaselineMinutes: getManualBaselineMinutes,
+    setManualBaselineMinutes: setManualBaselineMinutes,
+    getHoursSaved: getHoursSaved,
     subscribe: subscribe,
     _resetStore: _resetStore
   };
