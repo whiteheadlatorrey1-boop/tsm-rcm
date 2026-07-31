@@ -13,6 +13,19 @@
   --green:#00ff50;--gold:#ffd700;--red:#ff3b3b;--amber:#ff9500;--purple:#c084fc;
   --text:#c9d6dc;--text-dim:#5a7684;--card:#0d1418;
 }
+.fix-validated-banner {
+  display: none;
+  margin: 0 0 14px;
+  padding: 10px 14px;
+  border: 1px solid var(--green);
+  border-radius: 8px;
+  background: rgba(0,255,80,.08);
+  color: var(--green);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: .02em;
+}
+.fix-validated-banner.show { display: block; }
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;font-size:12px;min-height:100vh}
 .nav{display:flex;align-items:center;gap:0;background:#080b0e;border-bottom:1px solid var(--border);height:38px;padding:0 16px}
@@ -196,6 +209,7 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
 
     <!-- TICKET -->
     <section class="section active" id="sec-ticket">
+      <div id="fixValidatedBanner" class="fix-validated-banner"></div>
       <div class="ticket-head-grid">
         <div class="field"><div class="field-label">Incident #</div><input id="tkIncident" placeholder="INC0012345"></div>
         <div class="field"><div class="field-label">Priority</div>
@@ -1952,12 +1966,40 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
     goToSection('ticket');
   }
 
+  // ── Fix-validated notification (from Command Center) ─────────────────────
+  // Same dedupe pattern as applyIncomingEscalation above: relay only stores
+  // the last payload per domain, so remember the last id we've applied.
+  // NOTE (orphan relay key as of this commit): no page currently writes
+  // FIX_VALIDATED_FROM_CC — this is a consumer with no producer yet. Add the
+  // Command Center write-side before expecting this banner to ever show.
+  const FIX_VALIDATED_SEEN_KEY = 'TSM_L1_LAST_FIX_VALIDATED_SEEN';
+  function applyFixValidatedNotification() {
+    let payload;
+    try {
+      if (!window.TSM || !window.TSM.relay) return;
+      payload = window.TSM.relay.read('FIX_VALIDATED_FROM_CC');
+    } catch (e) { return; }
+    if (!payload || !payload.ticketId || !payload.message) return;
+
+    const seenId = sessionStorage.getItem(FIX_VALIDATED_SEEN_KEY);
+    if (seenId === payload.id) return;
+    try { sessionStorage.setItem(FIX_VALIDATED_SEEN_KEY, payload.id); } catch (e) {}
+
+    const currentIncident = document.getElementById('tkIncident').value;
+    if (!currentIncident || currentIncident !== payload.ticketId) return;
+
+    const banner = document.getElementById('fixValidatedBanner');
+    banner.textContent = 'ENTERPRISE COMMAND CENTER: ' + payload.message;
+    banner.classList.add('show');
+  }
+
   // ── Init ─────────────────────────────────────────────────────────────────
   renderChecklist();
   renderHistory();
   renderExecStrip();
   loadCurrentTicket();
   applyIncomingEscalation();
+  applyFixValidatedNotification();
 })();
 </script>
 
