@@ -123,9 +123,9 @@ test.describe('L1 Platform — relay chains (real write -> read round trips)', (
     // btnOpenVmwModule click handler (~line 1766).
     const payload = {
       ticketId: 'INC0099887',
-      issueSummary: 'ESXi host unresponsive after firmware update',
-      component: 'ESXi Host',
-      category: 'Host Failure',
+      issueSummary: 'vCenter unresponsive after firmware update',
+      component: 'vCenter',
+      category: 'Upgrade Readiness',
       environment: 'Production',
     };
     await page.addInitScript((p) => {
@@ -139,9 +139,9 @@ test.describe('L1 Platform — relay chains (real write -> read round trips)', (
     const banner = page.locator('#ctxBanner');
     await expect(banner).toBeVisible({ timeout: 5000 });
     await expect(banner).toContainText('INC0099887');
-    await expect(banner).toContainText('ESXi host unresponsive after firmware update');
-    await expect(page.locator('#vmwComponent')).toHaveValue('ESXi Host');
-    await expect(page.locator('#vmwCategory')).toHaveValue('Host Failure');
+    await expect(banner).toContainText('vCenter unresponsive after firmware update');
+    await expect(page.locator('#vmwComponent')).toHaveValue('vCenter');
+    await expect(page.locator('#vmwCategory')).toHaveValue('Upgrade Readiness');
     await expect(page.locator('#vmwEnv')).toHaveValue('Production');
   });
 
