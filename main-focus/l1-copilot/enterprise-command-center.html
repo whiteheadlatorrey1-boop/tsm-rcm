@@ -1,0 +1,1951 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TSM Enterprise Command Center</title>
+<style>
+:root {
+  --bg:#0a0e12;--bg2:#0d1216;--bg3:#11161b;
+  --border:rgba(0,229,255,.14);
+  --cyan:#00e5ff;--cyan-dim:rgba(0,229,255,.6);
+  --green:#00ff50;--gold:#ffd700;--red:#ff3b3b;--amber:#ff9500;--purple:#c084fc;
+  --text:#c9d6dc;--text-dim:#5a7684;--card:#0d1418;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;font-size:12px;min-height:100vh}
+a{color:var(--cyan)}
+
+.nav{display:flex;align-items:center;gap:0;background:#080b0e;border-bottom:1px solid var(--border);height:38px;padding:0 16px}
+.nav-brand{color:var(--cyan);font-weight:700;font-size:11px;letter-spacing:2px;margin-right:24px}
+.nav-links{display:flex;gap:16px;font-size:10px;letter-spacing:1px}
+.nav-links a{color:var(--text-dim);text-decoration:none}
+.nav-links a:hover{color:var(--cyan)}
+.nav-right{margin-left:auto;display:flex;align-items:center;gap:16px;color:var(--text-dim);font-size:10px}
+.nav-clock{color:var(--cyan-dim)}
+
+.stats-strip{display:grid;grid-template-columns:repeat(8,1fr);gap:0;background:var(--bg2);border-bottom:1px solid var(--border)}
+.stat{padding:10px 14px;border-right:1px solid var(--border)}
+.stat-label{font-size:8px;letter-spacing:1px;color:var(--text-dim);text-transform:uppercase}
+.stat-val{font-size:16px;font-weight:700;color:var(--cyan);margin-top:3px}
+
+.layout{display:grid;grid-template-columns:1fr 360px;gap:16px;padding:18px 22px}
+.card{background:var(--card);border:1px solid var(--border)}
+.card-head{padding:10px 14px;border-bottom:1px solid var(--border);font-size:10px;letter-spacing:1.5px;color:var(--text-dim);display:flex;justify-content:space-between;align-items:center}
+.card-body{padding:14px}
+
+.wall{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
+.ticket{border:1px solid var(--border);padding:10px;background:var(--bg3);cursor:pointer;transition:border-color .15s}
+.ticket:hover{border-color:var(--cyan)}
+.ticket-id{font-size:9px;color:var(--text-dim);letter-spacing:1px}
+.ticket-title{font-size:12px;color:var(--text);margin:4px 0;font-weight:700}
+.ticket-meta{font-size:9px;color:var(--text-dim)}
+.badge{display:inline-block;font-size:8px;letter-spacing:1px;padding:2px 6px;border-radius:2px;font-weight:700;margin-right:4px}
+.p-P1{background:rgba(255,59,59,.15);color:var(--red);border:1px solid var(--red)}
+.p-P2{background:rgba(255,149,0,.15);color:var(--amber);border:1px solid var(--amber)}
+.p-P3{background:rgba(0,229,255,.1);color:var(--cyan);border:1px solid var(--cyan-dim)}
+.p-P4{background:rgba(90,118,132,.15);color:var(--text-dim);border:1px solid var(--text-dim)}
+.sla{font-size:9px;margin-top:6px;font-weight:700}
+.sla.ok{color:var(--green)}
+.sla.warn{color:var(--amber)}
+.sla.over{color:var(--red)}
+
+.mission-item{border-bottom:1px solid var(--border);padding:10px 14px;font-size:10px}
+.mission-item:last-child{border-bottom:none}
+.mission-top{display:flex;justify-content:space-between;color:var(--text-dim)}
+.mission-status{text-transform:uppercase;letter-spacing:1px;font-size:8px}
+
+.chaos-btns{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.btn{border:1px solid;font-family:inherit;font-size:9px;letter-spacing:1.5px;cursor:pointer;padding:8px 10px;transition:all .2s;background:transparent}
+.btn-cyan{background:var(--cyan);border-color:var(--cyan);color:#000;font-weight:700}
+.btn-cyan:hover{background:#00c4d6}
+.btn-outline{border-color:var(--cyan);color:var(--cyan)}
+.btn-outline:hover{background:rgba(0,229,255,.08)}
+.btn-ghost{border-color:var(--border);color:var(--text-dim)}
+.btn-ghost:hover{border-color:var(--text-dim);color:var(--text)}
+
+.footer-note{padding:10px 22px;color:var(--text-dim);font-size:9px;border-top:1px solid var(--border)}
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <div class="nav-brand">TSM ENTERPRISE COMMAND CENTER</div>
+  <div class="nav-links">
+    <a href="/l1-copilot/l1-ticket-copilot.html">L1 Ticket Copilot</a>
+    <a href="/l1-copilot/vmware-copilot.html">VMware SME</a>
+    <a href="/l1-copilot/noc/noc-war-room.html">NOC Command</a>
+    <a href="#" id="howto-link">How To</a>
+  </div>
+  <div class="nav-right">
+    <span id="clock" class="nav-clock"></span>
+    <span id="engineStatus">● SIMULATOR LIVE</span>
+  </div>
+</div>
+
+<div class="stats-strip" id="statsStrip">
+  <!-- populated by JS -->
+</div>
+
+<div class="layout">
+  <div>
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-head">
+        <span>SERVICE DESK WALL — OPEN TICKETS</span>
+        <span id="wallCount" style="color:var(--cyan)"></span>
+      </div>
+      <div class="card-body">
+        <div class="wall" id="wall"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><span>AI CHAOS ENGINE — INJECT INCIDENT</span></div>
+      <div class="card-body">
+        <div class="chaos-btns" id="chaosBtns"></div>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="card">
+      <div class="card-head">
+        <span>LIVE MISSION QUEUE</span>
+        <span style="color:var(--cyan-dim);font-size:8px">SLA-SORTED</span>
+      </div>
+      <div id="missionQueue"></div>
+    </div>
+  </div>
+</div>
+
+<div class="footer-note" id="footerNote">Simulated enterprise environment — no real infrastructure. Data resets on server restart.</div>
+
+<script>
+const API = '/api/enterprise-lab';
+let categories = [];
+
+function fmtClock() {
+  document.getElementById('clock').textContent = new Date().toLocaleTimeString();
+}
+setInterval(fmtClock, 1000); fmtClock();
+
+async function fetchJSON(url, opts) {
+  const res = await fetch(url, opts);
+  return res.json();
+}
+
+function slaClass(deadline) {
+  const remaining = deadline - Date.now();
+  if (remaining < 0) return 'over';
+  if (remaining < 5 * 60 * 1000) return 'warn';
+  return 'ok';
+}
+
+function slaText(deadline) {
+  const remaining = deadline - Date.now();
+  const mins = Math.round(Math.abs(remaining) / 60000);
+  return remaining < 0 ? `SLA BREACHED ${mins}m ago` : `${mins}m to SLA`;
+}
+
+async function renderStats() {
+  const { benchmark } = await fetchJSON(`${API}/benchmark`);
+  const items = [
+    ['Tickets', benchmark.tickets],
+    ['Resolved', benchmark.resolved],
+    ['AI Diagnosis', benchmark.aiDiagnosisPct + '%'],
+    ['Avg Resolution', benchmark.avgResolutionMinutes + 'm'],
+    ['Escalations', benchmark.escalations],
+    ['SLA', benchmark.slaPct + '%'],
+    ['Knowledge Used', benchmark.knowledgeUsedPct + '%'],
+    ['Automation', benchmark.automationPct + '%'],
+  ];
+  document.getElementById('statsStrip').innerHTML = items.map(([label, val]) => `
+    <div class="stat">
+      <div class="stat-label">${label}</div>
+      <div class="stat-val">${val}</div>
+    </div>
+  `).join('');
+}
+
+async function renderWallAndQueue() {
+  const { missions } = await fetchJSON(`${API}/missions?limit=60`);
+  const open = missions.filter(m => m.status !== 'resolved');
+
+  document.getElementById('wallCount').textContent = open.length + ' open';
+  document.getElementById('wall').innerHTML = open.slice(0, 24).map(m => `
+    <div class="ticket" onclick="openMission('${m.id}')">
+      <div class="ticket-id">${m.id}</div>
+      <div class="ticket-title">${m.device} — ${m.issue}</div>
+      <div class="ticket-meta">${m.site} · ${m.dept}</div>
+      <div style="margin-top:6px">
+        <span class="badge p-${m.priority}">${m.priority}</span>
+        <span class="badge" style="border-color:var(--border);color:var(--text-dim)">${m.status.toUpperCase()}</span>
+      </div>
+      <div class="sla ${slaClass(m.slaDeadline)}">${slaText(m.slaDeadline)}</div>
+    </div>
+  `).join('') || '<div style="color:var(--text-dim)">No open tickets — queue is clear.</div>';
+
+  document.getElementById('missionQueue').innerHTML = open.slice(0, 12).map(m => `
+    <div class="mission-item">
+      <div class="mission-top">
+        <span>${m.id}</span>
+        <span class="mission-status" style="color:${m.priority === 'P1' ? 'var(--red)' : m.priority === 'P2' ? 'var(--amber)' : 'var(--cyan-dim)'}">${m.priority}</span>
+      </div>
+      <div style="color:var(--text);margin:4px 0">${m.device} — ${m.issue}</div>
+      <div class="sla ${slaClass(m.slaDeadline)}">${slaText(m.slaDeadline)}</div>
+    </div>
+  `).join('') || '<div class="mission-item" style="color:var(--text-dim)">Queue empty.</div>';
+}
+
+async function openMission(id) {
+  const { mission } = await fetchJSON(`${API}/missions/${id}`);
+  if (!mission) return;
+  // Run simulated AI analysis, then advance status, then refresh.
+  await fetchJSON(`${API}/missions/${id}/ai-analyze`, { method: 'POST' });
+  const next = mission.status === 'new' ? 'working'
+    : mission.status === 'working' ? 'resolved'
+    : mission.status;
+  await fetchJSON(`${API}/missions/${id}/advance`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status: next }),
+  });
+  if (next === 'resolved') {
+    try {
+      window.TSM.relay.write('FIX_VALIDATED_FROM_CC', {
+        id: 'fv-' + id + '-' + Date.now(),
+        ticketId: id,
+        message: `Fix validated for ${mission.device} — ${mission.issue}. Ticket resolved and closed out.`,
+      });
+    } catch (e) { console.warn('Relay write failed', e); }
+  }
+  renderWallAndQueue();
+  renderStats();
+}
+
+async function injectIncident(category) {
+  await fetchJSON(`${API}/incidents/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ category }),
+  });
+  renderWallAndQueue();
+  renderStats();
+}
+
+async function loadCategories() {
+  const { categories: cats } = await fetchJSON(`${API}/incidents/categories`);
+  categories = cats;
+  document.getElementById('chaosBtns').innerHTML = cats.map(c => `
+    <button class="btn btn-outline" onclick="injectIncident('${c}')">${c}</button>
+  `).join('');
+}
+
+async function tick() {
+  await Promise.all([renderStats(), renderWallAndQueue()]);
+}
+
+loadCategories();
+tick();
+setInterval(tick, 5000);
+</script>
+
+<!--
+  Topology Panels Snippet
+-->
+
+<section class="twin-panels">
+  <div class="twin-panel" id="vmware-panel">
+    <div class="twin-panel-header">
+      <h3>VMware Digital Twin <span class="twin-status-badge" id="vmware-status"></span></h3>
+      <div class="twin-panel-actions">
+        <select id="vmware-fault-target"></select>
+        <select id="vmware-fault-type">
+          <option value="host-down">Host Down</option>
+          <option value="datastore-full">Datastore Full</option>
+          <option value="network-partition">Network Partition</option>
+          <option value="clear">Clear / Reset</option>
+        </select>
+        <button id="vmware-fault-btn">Inject Fault</button>
+      </div>
+    </div>
+    <div class="twin-entities" id="vmware-entities"></div>
+    <div class="twin-events" id="vmware-events"></div>
+  </div>
+
+  <div class="twin-panel" id="network-panel">
+    <div class="twin-panel-header">
+      <h3>Network Digital Twin <span class="twin-status-badge" id="network-status"></span></h3>
+      <div class="twin-panel-actions">
+        <select id="network-fault-target"></select>
+        <select id="network-fault-type">
+          <option value="link-down">Link Down</option>
+          <option value="latency-spike">Latency Spike</option>
+          <option value="packet-loss">Packet Loss</option>
+          <option value="bgp-flap">BGP Flap</option>
+          <option value="clear">Clear / Reset</option>
+        </select>
+        <button id="network-fault-btn">Inject Fault</button>
+      </div>
+    </div>
+    <div class="twin-entities" id="network-entities"></div>
+    <div class="twin-events" id="network-events"></div>
+  </div>
+
+  <div class="twin-panel" id="ad-panel">
+    <div class="twin-panel-header">
+      <h3>Active Directory Digital Twin (Users) <span class="twin-status-badge" id="ad-status"></span></h3>
+      <div class="twin-panel-actions">
+        <select id="ad-fault-target"></select>
+        <select id="ad-fault-type">
+          <option value="account-lockout">Account Lockout</option>
+          <option value="password-expired">Password Expired</option>
+          <option value="mfa-failure">MFA Failure</option>
+          <option value="replication-failure">Replication Failure</option>
+          <option value="gpo-corruption">GPO Corruption</option>
+          <option value="clear">Clear / Reset</option>
+        </select>
+        <button id="ad-fault-btn">Inject Fault</button>
+      </div>
+    </div>
+    <div class="twin-entities" id="ad-entities"></div>
+    <div class="twin-events" id="ad-events"></div>
+  </div>
+
+  <div class="twin-panel" id="device-panel">
+    <div class="twin-panel-header">
+      <h3>Device Digital Twin <span class="twin-status-badge" id="device-status"></span></h3>
+      <div class="twin-panel-actions">
+        <select id="device-fault-target"></select>
+        <select id="device-fault-type">
+          <option value="disk-full">Disk Full</option>
+          <option value="bsod-crash">BSOD Crash</option>
+          <option value="battery-failure">Battery Failure</option>
+          <option value="driver-crash">Driver Crash</option>
+          <option value="patch-failure">Patch Failure</option>
+          <option value="printer-jam">Printer Jam</option>
+          <option value="printer-offline">Printer Offline</option>
+          <option value="clear">Clear / Reset</option>
+        </select>
+        <button id="device-fault-btn">Inject Fault</button>
+      </div>
+    </div>
+    <div class="twin-entities" id="device-entities"></div>
+    <div class="twin-events" id="device-events"></div>
+  </div>
+</section>
+
+<section class="intel-panels">
+  <div class="intel-panel" id="sla-panel">
+    <div class="intel-panel-header">
+      <h3>SLA Summary <span class="twin-status-badge" id="sla-status"></span></h3>
+    </div>
+    <div class="intel-stat-row" id="sla-stats"></div>
+    <div class="intel-list" id="sla-list"></div>
+  </div>
+
+  <div class="intel-panel" id="risk-panel">
+    <div class="intel-panel-header">
+      <h3>AI Risk Scoring <span class="twin-status-badge" id="risk-status"></span></h3>
+    </div>
+    <div class="intel-stat-row" id="risk-stats"></div>
+    <div class="intel-list" id="risk-list"></div>
+  </div>
+
+  <div class="intel-panel" id="tech-panel">
+    <div class="intel-panel-header">
+      <h3>Technician Performance <span class="twin-status-badge" id="tech-status"></span></h3>
+    </div>
+    <div class="intel-list" id="tech-list"></div>
+  </div>
+
+  <div class="intel-panel" id="analytics-panel">
+    <div class="intel-panel-header">
+      <h3>Historical Analytics <span class="twin-status-badge" id="analytics-status"></span></h3>
+      <span style="font-size:9px;color:#8b94a3" id="analytics-updated"></span>
+    </div>
+    <div class="intel-stat-row" id="analytics-stats"></div>
+    <div class="trend-block">
+      <div class="trend-label">SLA-Tracked Items — Recent Snapshots</div>
+      <div class="trend-bars" id="analytics-trend"></div>
+    </div>
+  </div>
+</section>
+
+<!-- AI Query Widget -->
+<section class="ai-widget" id="ai-widget">
+  <div class="ai-widget-header">
+    <h3>AI Widget — Describe the Issue, Get the Playbook</h3>
+    <span class="ai-widget-badge">GROQ-POWERED</span>
+  </div>
+  <p class="ai-widget-subtitle">
+    Type what you're seeing in plain language and the AI will match it against the
+    documented Scenario Library below and return the exact step-by-step response.
+  </p>
+  <form class="ai-widget-form" id="ai-widget-form">
+    <input
+      type="text"
+      class="ai-widget-input"
+      id="ai-widget-input"
+      placeholder="e.g. &quot;users can't log in and getting locked out repeatedly&quot;"
+      autocomplete="off"
+    />
+    <button type="submit" class="ai-widget-submit" id="ai-widget-submit">Get Guidance</button>
+  </form>
+  <div class="ai-widget-result" id="ai-widget-result"></div>
+</section>
+
+<section class="scenario-library" id="scenario-library">
+  <div class="scenario-library-header">
+    <h3>Scenario Library — Documented Response Playbooks</h3>
+    <span class="scenario-count-badge" id="scenario-count-badge"></span>
+  </div>
+  <p class="scenario-library-subtitle">
+    Every anomaly type across every digital twin has a documented, step-by-step response —
+    the same playbook a trained technician would follow. Browse them here, or trigger any
+    fault above and watch its playbook get surfaced automatically on the ticket.
+  </p>
+  <div class="scenario-library-filters" id="scenario-library-filters"></div>
+  <div class="scenario-library-grid" id="scenario-library-grid"></div>
+</section>
+
+<style>
+  .twin-panels {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-top: 16px;
+  }
+  .twin-panel {
+    background: #12161c;
+    border: 1px solid #262b33;
+    border-radius: 8px;
+    padding: 14px 16px;
+  }
+  .twin-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .twin-panel-header h3 {
+    margin: 0;
+    font-size: 14px;
+    color: #e6e9ef;
+  }
+  .twin-panel-actions {
+    display: flex;
+    gap: 6px;
+  }
+  .twin-panel-actions select,
+  .twin-panel-actions button {
+    background: #1b2028;
+    color: #cfd4dc;
+    border: 1px solid #333a45;
+    border-radius: 4px;
+    font-size: 12px;
+    padding: 4px 6px;
+  }
+  .twin-panel-actions button {
+    cursor: pointer;
+  }
+  .twin-panel-actions button:hover {
+    background: #262d38;
+  }
+  .twin-entities {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 220px;
+    overflow-y: auto;
+  }
+  .twin-entity-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 8px;
+    border-radius: 4px;
+    background: #171b22;
+    font-size: 12px;
+    color: #cfd4dc;
+  }
+  .twin-entity-status {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 8px;
+  }
+  .twin-entity-status.status-up { background: #3ecf8e; }
+  .twin-entity-status.status-down { background: #e5484d; }
+  .twin-entity-status.status-unreachable { background: #e5484d; }
+  .twin-entity-status.status-isolated { background: #f5a623; }
+  .twin-entity-status.status-full { background: #f5a623; }
+  .twin-entity-status.status-flapping { background: #f5a623; }
+  .twin-events {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid #262b33;
+    font-size: 11px;
+    color: #8b94a3;
+    max-height: 90px;
+    overflow-y: auto;
+  }
+  .twin-events div {
+    padding: 2px 0;
+  }
+  .twin-status-badge {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    vertical-align: middle;
+    margin-left: 4px;
+  }
+  .twin-status-badge:empty { display: none; }
+  .twin-status-badge.offline {
+    background: rgba(229, 72, 77, 0.15);
+    color: #e5484d;
+    border: 1px solid #e5484d;
+  }
+  .twin-offline-note {
+    padding: 10px;
+    color: #8b94a3;
+    font-size: 11px;
+    font-style: italic;
+  }
+  @media (max-width: 900px) {
+    .twin-panels { grid-template-columns: 1fr; }
+  }
+
+  .scenario-library {
+    margin: 20px 22px 24px;
+    background: #12161c;
+    border: 1px solid #262b33;
+    border-radius: 8px;
+    padding: 16px 18px;
+  }
+  .scenario-library-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 4px;
+  }
+  .scenario-library-header h3 {
+    margin: 0;
+    font-size: 14px;
+    color: #e6e9ef;
+  }
+  .scenario-count-badge {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: rgba(0, 229, 255, 0.12);
+    color: #00e5ff;
+    border: 1px solid rgba(0, 229, 255, 0.4);
+  }
+  .scenario-library-subtitle {
+    font-size: 11px;
+    color: #8b94a3;
+    margin: 6px 0 14px;
+    max-width: 900px;
+    line-height: 1.5;
+  }
+  .scenario-library-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 14px;
+  }
+  .scenario-filter-btn {
+    background: #1b2028;
+    color: #8b94a3;
+    border: 1px solid #333a45;
+    border-radius: 12px;
+    font-size: 10px;
+    letter-spacing: 0.5px;
+    padding: 4px 12px;
+    cursor: pointer;
+    text-transform: uppercase;
+  }
+  .scenario-filter-btn:hover { color: #cfd4dc; border-color: #4a5464; }
+  .scenario-filter-btn.active {
+    background: rgba(0, 229, 255, 0.12);
+    color: #00e5ff;
+    border-color: #00e5ff;
+  }
+  .scenario-library-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 10px;
+  }
+  .scenario-card {
+    background: #171b22;
+    border: 1px solid #262b33;
+    border-radius: 6px;
+    padding: 10px 12px;
+    cursor: pointer;
+  }
+  .scenario-card:hover { border-color: #4a5464; }
+  .scenario-card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+  }
+  .scenario-card-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: #e6e9ef;
+  }
+  .scenario-card-twin {
+    font-size: 8px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: #8b94a3;
+    background: #1b2028;
+    border: 1px solid #333a45;
+    border-radius: 3px;
+    padding: 2px 6px;
+    white-space: nowrap;
+  }
+  .scenario-card-steps {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid #262b33;
+    font-size: 11px;
+    color: #cfd4dc;
+    display: none;
+  }
+  .scenario-card.expanded .scenario-card-steps { display: block; }
+  .scenario-card-steps ol {
+    margin: 0;
+    padding-left: 18px;
+  }
+  .scenario-card-steps li {
+    margin-bottom: 4px;
+    line-height: 1.4;
+  }
+  .scenario-card-loading {
+    font-size: 10px;
+    color: #8b94a3;
+    font-style: italic;
+  }
+
+  /* AI Query Widget */
+  .ai-widget {
+    margin: 20px 22px 0;
+    background: #12161c;
+    border: 1px solid #262b33;
+    border-radius: 8px;
+    padding: 16px 18px;
+  }
+  .ai-widget-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 4px;
+  }
+  .ai-widget-header h3 {
+    margin: 0;
+    font-size: 14px;
+    color: #e6e9ef;
+  }
+  .ai-widget-badge {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: rgba(0, 229, 255, 0.12);
+    color: #00e5ff;
+    border: 1px solid rgba(0, 229, 255, 0.4);
+  }
+  .ai-widget-subtitle {
+    font-size: 11px;
+    color: #8b94a3;
+    margin: 6px 0 14px;
+    max-width: 900px;
+    line-height: 1.5;
+  }
+  .ai-widget-form {
+    display: flex;
+    gap: 8px;
+  }
+  .ai-widget-input {
+    flex: 1;
+    background: #1b2028;
+    color: #cfd4dc;
+    border: 1px solid #333a45;
+    border-radius: 4px;
+    font-size: 12px;
+    padding: 8px 10px;
+    font-family: inherit;
+  }
+  .ai-widget-input:focus {
+    outline: none;
+    border-color: #00e5ff;
+  }
+  .ai-widget-submit {
+    background: rgba(0, 229, 255, 0.12);
+    color: #00e5ff;
+    border: 1px solid #00e5ff;
+    border-radius: 4px;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+    padding: 8px 16px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .ai-widget-submit:hover { background: rgba(0, 229, 255, 0.2); }
+  .ai-widget-submit:disabled { opacity: 0.5; cursor: default; }
+  .ai-widget-result {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid #262b33;
+  }
+  .ai-widget-result:empty { display: none; border-top: none; margin-top: 0; padding-top: 0; }
+  .ai-widget-result-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .ai-widget-result-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #e6e9ef;
+  }
+  .ai-widget-confidence {
+    font-size: 8px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-weight: 700;
+  }
+  .ai-widget-confidence.high { background: rgba(0, 255, 80, 0.12); color: #00ff50; border: 1px solid #00ff50; }
+  .ai-widget-confidence.medium { background: rgba(255, 149, 0, 0.12); color: #ff9500; border: 1px solid #ff9500; }
+  .ai-widget-confidence.low { background: rgba(255, 59, 59, 0.12); color: #ff3b3b; border: 1px solid #ff3b3b; }
+  .ai-widget-reasoning {
+    font-size: 11px;
+    color: #8b94a3;
+    font-style: italic;
+    margin: 6px 0 10px;
+  }
+  .ai-widget-result-steps {
+    font-size: 11px;
+    color: #cfd4dc;
+  }
+  .ai-widget-result-steps ol { margin: 0; padding-left: 18px; }
+  .ai-widget-result-steps li { margin-bottom: 4px; line-height: 1.4; }
+  .ai-widget-status {
+    font-size: 11px;
+    color: #8b94a3;
+    font-style: italic;
+  }
+  .ai-widget-status.error { color: #ff3b3b; font-style: normal; }
+
+  .intel-panels {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin: 16px 22px 0;
+  }
+  .intel-panel {
+    background: #12161c;
+    border: 1px solid #262b33;
+    border-radius: 8px;
+    padding: 14px 16px;
+  }
+  .intel-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .intel-panel-header h3 {
+    margin: 0;
+    font-size: 14px;
+    color: #e6e9ef;
+  }
+  .intel-stat-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .intel-stat {
+    background: #171b22;
+    border: 1px solid #262b33;
+    border-radius: 4px;
+    padding: 8px 4px;
+    text-align: center;
+  }
+  .intel-stat-label {
+    font-size: 8px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: #8b94a3;
+  }
+  .intel-stat-val {
+    font-size: 15px;
+    font-weight: 700;
+    margin-top: 3px;
+  }
+  .intel-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+  .intel-list-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 4px;
+    background: #171b22;
+    font-size: 11px;
+    color: #cfd4dc;
+  }
+  .intel-list-row span:first-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .intel-list-empty {
+    padding: 10px;
+    color: #8b94a3;
+    font-size: 11px;
+    font-style: italic;
+  }
+  .risk-badge {
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    padding: 2px 6px;
+    border-radius: 3px;
+    white-space: nowrap;
+  }
+  .risk-badge.tier-normal, .risk-badge.status-on-track { background: rgba(62,207,142,.15); color: #3ecf8e; border: 1px solid #3ecf8e; }
+  .risk-badge.tier-elevated, .risk-badge.status-at-risk { background: rgba(245,166,35,.15); color: #f5a623; border: 1px solid #f5a623; }
+  .risk-badge.tier-critical, .risk-badge.status-breached { background: rgba(229,72,77,.15); color: #e5484d; border: 1px solid #e5484d; }
+
+  .tech-row {
+    display: grid;
+    grid-template-columns: 1.3fr repeat(4, 0.8fr);
+    gap: 6px;
+    padding: 6px 8px;
+    border-radius: 4px;
+    background: #171b22;
+    font-size: 11px;
+    color: #cfd4dc;
+    align-items: center;
+    text-align: right;
+  }
+  .tech-row span:first-child { text-align: left; }
+  .tech-row.tech-head {
+    background: transparent;
+    color: #8b94a3;
+    font-size: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 0 8px 4px;
+  }
+
+  .trend-block { margin-top: 4px; }
+  .trend-label {
+    font-size: 8px;
+    color: #8b94a3;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .trend-bars {
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+    height: 60px;
+    border-bottom: 1px solid #262b33;
+    padding-bottom: 2px;
+  }
+  .trend-bar {
+    flex: 1;
+    background: #00e5ff;
+    opacity: .55;
+    border-radius: 2px 2px 0 0;
+    min-height: 2px;
+  }
+
+  @media (max-width: 900px) {
+    .intel-panels { grid-template-columns: 1fr; }
+  }
+
+  .howto-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.65);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+    padding: 30px;
+  }
+  .howto-overlay.open { display: flex; }
+  .howto-modal {
+    background: #0d1216;
+    border: 1px solid rgba(0,229,255,.14);
+    border-radius: 8px;
+    max-width: 760px;
+    width: 100%;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+  }
+  .howto-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 18px;
+    border-bottom: 1px solid #262b33;
+  }
+  .howto-modal-header h2 {
+    font-size: 13px;
+    color: #00e5ff;
+    letter-spacing: 1px;
+    margin: 0;
+    text-transform: uppercase;
+  }
+  .howto-close {
+    background: transparent;
+    border: 1px solid #333a45;
+    color: #cfd4dc;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    font-family: inherit;
+    padding: 4px 9px;
+  }
+  .howto-close:hover { border-color: #00e5ff; color: #00e5ff; }
+  .howto-modal-body {
+    padding: 16px 18px;
+    overflow-y: auto;
+  }
+  .howto-section { margin-bottom: 18px; }
+  .howto-section:last-child { margin-bottom: 0; }
+  .howto-section h4 {
+    font-size: 11px;
+    color: #e6e9ef;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    margin: 0 0 6px;
+    border-left: 2px solid #00e5ff;
+    padding-left: 8px;
+  }
+  .howto-section p {
+    font-size: 11px;
+    color: #8b94a3;
+    line-height: 1.6;
+    margin: 0 0 4px;
+  }
+  .howto-section ol, .howto-section ul {
+    margin: 4px 0 0 18px;
+    padding: 0;
+  }
+  .howto-section li {
+    font-size: 11px;
+    color: #8b94a3;
+    line-height: 1.6;
+  }
+</style>
+
+<script>
+(function () {
+  const POLL_MS = 5000;
+
+  function statusDot(status) {
+    return `<span class="twin-entity-status status-${status}"></span>`;
+  }
+
+  // Tracks last-known online/offline state per twin so we only console.error
+  // once per transition (not on every 5s poll while a backend is down), and
+  // so the UI can show a clear "twin offline" badge instead of leaving stale
+  // data on screen or crashing on res.json() against a non-JSON response
+  // (e.g. an HTML error page when /api/twins isn't mounted or reachable).
+  const twinOnlineState = {};
+
+  function setTwinStatus(name, online, entitiesElId) {
+    const badge = document.getElementById(`${name}-status`);
+    const wasOnline = twinOnlineState[name];
+    twinOnlineState[name] = online;
+
+    if (online) {
+      if (badge) badge.textContent = '';
+      if (badge) badge.className = 'twin-status-badge';
+      return;
+    }
+
+    if (badge) {
+      badge.textContent = 'OFFLINE';
+      badge.className = 'twin-status-badge offline';
+    }
+    // Only log the very first failure of a run, not every 5s retry.
+    if (wasOnline !== false) {
+      console.warn(`${name} twin: backend unreachable, will keep retrying every ${POLL_MS / 1000}s`);
+    }
+    if (wasOnline === undefined && entitiesElId) {
+      const container = document.getElementById(entitiesElId);
+      if (container) {
+        container.innerHTML = '<div class="twin-offline-note">Twin backend not reachable yet — retrying…</div>';
+      }
+    }
+  }
+
+  // Fetch helper that never throws on a non-2xx or non-JSON response.
+  // Returns null on any failure so callers can leave existing UI state
+  // alone instead of crashing mid-render.
+  async function safeFetchJSON(url) {
+    let res;
+    try {
+      res = await fetch(url);
+    } catch (networkErr) {
+      return null; // server unreachable entirely (offline, wrong port, etc.)
+    }
+    if (!res.ok) return null; // e.g. 404 because /api/twins isn't mounted
+    const contentType = res.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) return null; // got an HTML error page, not real JSON
+    try {
+      return await res.json();
+    } catch (parseErr) {
+      return null;
+    }
+  }
+
+  async function fetchVMwareState() {
+    return safeFetchJSON('/api/twins/vmware/state');
+  }
+
+  function renderVMware(state) {
+    const container = document.getElementById('vmware-entities');
+    const targetSelect = document.getElementById('vmware-fault-target');
+    const rows = [];
+    const targets = [];
+
+    state.clusters.forEach((cluster) => {
+      cluster.hosts.forEach((host) => {
+        rows.push(`<div class="twin-entity-row">
+          <span>${statusDot(host.status)}${host.name} — ${cluster.name}</span>
+          <span>${host.status} · cpu ${host.cpuPct}% · mem ${host.memPct}%</span>
+        </div>`);
+        targets.push(host.id);
+      });
+    });
+    state.datastores.forEach((ds) => {
+      rows.push(`<div class="twin-entity-row">
+        <span>${statusDot(ds.status === 'full' ? 'full' : 'up')}${ds.name}</span>
+        <span>${ds.usedGB}/${ds.capacityGB} GB — ${ds.status}</span>
+      </div>`);
+      targets.push(ds.id);
+    });
+
+    container.innerHTML = rows.join('');
+
+    const currentTarget = targetSelect.value;
+    targetSelect.innerHTML = targets.map((id) => `<option value="${id}">${id}</option>`).join('');
+    if (targets.includes(currentTarget)) targetSelect.value = currentTarget;
+
+    const eventsEl = document.getElementById('vmware-events');
+    eventsEl.innerHTML = state.events.slice(0, 5).map((e) => `<div>${e.ts.slice(11, 19)} — ${e.message}</div>`).join('');
+  }
+
+  async function pollVMware() {
+    const state = await fetchVMwareState();
+    if (!state) {
+      setTwinStatus('vmware', false, 'vmware-entities');
+      return;
+    }
+    setTwinStatus('vmware', true);
+    renderVMware(state);
+  }
+
+  document.getElementById('vmware-fault-btn').addEventListener('click', async () => {
+    const type = document.getElementById('vmware-fault-type').value;
+    const targetId = document.getElementById('vmware-fault-target').value;
+    try {
+      await fetch('/api/twins/vmware/fault', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type, targetId }),
+      });
+      pollVMware();
+    } catch (err) {
+      console.error('Failed to inject VMware fault', err);
+    }
+  });
+
+  async function fetchNetworkState() {
+    return safeFetchJSON('/api/twins/network/state');
+  }
+
+  function renderNetwork(state) {
+    const container = document.getElementById('network-entities');
+    const targetSelect = document.getElementById('network-fault-target');
+    const rows = [];
+    const targets = [];
+
+    state.nodes.forEach((node) => {
+      rows.push(`<div class="twin-entity-row">
+        <span>${statusDot(node.status)}${node.name}</span>
+        <span>${node.type} · ${node.status}</span>
+      </div>`);
+    });
+    state.links.forEach((link) => {
+      const status = link.status === 'down' ? 'down' : (link.bgpSession === 'flapping' ? 'flapping' : (link.lossPct > 0 ? 'isolated' : 'up'));
+      rows.push(`<div class="twin-entity-row">
+        <span>${statusDot(status)}${link.from} ↔ ${link.to}</span>
+        <span>${link.status}${link.latencyMs != null ? ' · ' + link.latencyMs + 'ms' : ''}${link.lossPct ? ' · ' + link.lossPct + '% loss' : ''}</span>
+      </div>`);
+      targets.push(link.id);
+    });
+
+    container.innerHTML = rows.join('');
+
+    const currentTarget = targetSelect.value;
+    targetSelect.innerHTML = targets.map((id) => `<option value="${id}">${id}</option>`).join('');
+    if (targets.includes(currentTarget)) targetSelect.value = currentTarget;
+
+    const eventsEl = document.getElementById('network-events');
+    eventsEl.innerHTML = state.events.slice(0, 5).map((e) => `<div>${e.ts.slice(11, 19)} — ${e.message}</div>`).join('');
+  }
+
+  async function pollNetwork() {
+    const state = await fetchNetworkState();
+    if (!state) {
+      setTwinStatus('network', false, 'network-entities');
+      return;
+    }
+    setTwinStatus('network', true);
+    renderNetwork(state);
+  }
+
+  document.getElementById('network-fault-btn').addEventListener('click', async () => {
+    const type = document.getElementById('network-fault-type').value;
+    const targetId = document.getElementById('network-fault-target').value;
+    try {
+      await fetch('/api/twins/network/fault', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type, targetId }),
+      });
+      pollNetwork();
+    } catch (err) {
+      console.error('Failed to inject network fault', err);
+    }
+  });
+
+  // Buckets twin-specific status strings into the existing up/down dots
+  // rather than growing a new CSS class per twin's status vocabulary.
+  function statusBucket(status) {
+    const healthy = ['active', 'up', 'healthy', 'applied', 'current'];
+    return healthy.includes(status) ? 'up' : 'down';
+  }
+
+  async function fetchADState() {
+    return safeFetchJSON('/api/twins/ad/state');
+  }
+
+  function renderAD(state) {
+    const container = document.getElementById('ad-entities');
+    const targetSelect = document.getElementById('ad-fault-target');
+    const rows = [];
+    const targets = [];
+
+    state.domainControllers.forEach((dc) => {
+      rows.push(`<div class="twin-entity-row">
+        <span>${statusDot(statusBucket(dc.replicationStatus))}${dc.name}</span>
+        <span>${dc.role} · repl ${dc.replicationStatus}</span>
+      </div>`);
+      targets.push(dc.id);
+    });
+    state.organizationalUnits.forEach((ou) => {
+      rows.push(`<div class="twin-entity-row">
+        <span>${statusDot(statusBucket(ou.gpoStatus))}${ou.name} (OU)</span>
+        <span>gpo ${ou.gpoStatus}</span>
+      </div>`);
+      targets.push(ou.id);
+    });
+    Object.values(state.users).forEach((user) => {
+      rows.push(`<div class="twin-entity-row">
+        <span>${statusDot(statusBucket(user.status))}${user.name} (${user.id})</span>
+        <span>${user.status}${user.mfaEnrolled ? ' · mfa' : ''} · pwd ${user.passwordExpiresInDays}d</span>
+      </div>`);
+      targets.push(user.id);
+    });
+
+    container.innerHTML = rows.join('');
+
+    const currentTarget = targetSelect.value;
+    targetSelect.innerHTML = targets.map((id) => `<option value="${id}">${id}</option>`).join('');
+    if (targets.includes(currentTarget)) targetSelect.value = currentTarget;
+
+    const eventsEl = document.getElementById('ad-events');
+    eventsEl.innerHTML = state.events.slice(0, 5).map((e) => `<div>${e.ts.slice(11, 19)} — ${e.message}</div>`).join('');
+  }
+
+  async function pollAD() {
+    const state = await fetchADState();
+    if (!state) {
+      setTwinStatus('ad', false, 'ad-entities');
+      return;
+    }
+    setTwinStatus('ad', true);
+    renderAD(state);
+  }
+
+  document.getElementById('ad-fault-btn').addEventListener('click', async () => {
+    const type = document.getElementById('ad-fault-type').value;
+    const targetId = document.getElementById('ad-fault-target').value;
+    try {
+      await fetch('/api/twins/ad/fault', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type, targetId }),
+      });
+      pollAD();
+    } catch (err) {
+      console.error('Failed to inject AD fault', err);
+    }
+  });
+
+  async function fetchDeviceState() {
+    return safeFetchJSON('/api/twins/device/state');
+  }
+
+  function renderDevice(state) {
+    const container = document.getElementById('device-entities');
+    const targetSelect = document.getElementById('device-fault-target');
+    const rows = [];
+    const targets = [];
+
+    state.endpoints.forEach((ep) => {
+      const metric = ep.type === 'printer'
+        ? `toner ${ep.tonerPct}%`
+        : ep.type === 'laptop'
+          ? `disk ${ep.diskFreePct}% · batt ${ep.batteryHealthPct}%`
+          : `disk ${ep.diskFreePct}%`;
+      rows.push(`<div class="twin-entity-row">
+        <span>${statusDot(statusBucket(ep.status))}${ep.name}${ep.assignedTo ? ' — ' + ep.assignedTo : ''}</span>
+        <span>${ep.type} · ${ep.status} · ${metric}</span>
+      </div>`);
+      targets.push(ep.id);
+    });
+
+    container.innerHTML = rows.join('');
+
+    const currentTarget = targetSelect.value;
+    targetSelect.innerHTML = targets.map((id) => `<option value="${id}">${id}</option>`).join('');
+    if (targets.includes(currentTarget)) targetSelect.value = currentTarget;
+
+    const eventsEl = document.getElementById('device-events');
+    eventsEl.innerHTML = state.events.slice(0, 5).map((e) => `<div>${e.ts.slice(11, 19)} — ${e.message}</div>`).join('');
+  }
+
+  async function pollDevice() {
+    const state = await fetchDeviceState();
+    if (!state) {
+      setTwinStatus('device', false, 'device-entities');
+      return;
+    }
+    setTwinStatus('device', true);
+    renderDevice(state);
+  }
+
+  document.getElementById('device-fault-btn').addEventListener('click', async () => {
+    const type = document.getElementById('device-fault-type').value;
+    const targetId = document.getElementById('device-fault-target').value;
+    try {
+      await fetch('/api/twins/device/fault', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type, targetId }),
+      });
+      pollDevice();
+    } catch (err) {
+      console.error('Failed to inject device fault', err);
+    }
+  });
+
+  pollVMware();
+  pollNetwork();
+  pollAD();
+  pollDevice();
+  setInterval(pollVMware, POLL_MS);
+  setInterval(pollNetwork, POLL_MS);
+  setInterval(pollAD, POLL_MS);
+  setInterval(pollDevice, POLL_MS);
+
+  // ---- SLA Summary ----
+  // /api/twins/sla/summary -> { onTrack, atRisk, breached, total }
+  // /api/twins/sla/status  -> [ { module, message, ts, hoursElapsed, slaHours, status } ]
+
+  function renderSLA(summary, items) {
+    document.getElementById('sla-stats').innerHTML = `
+      <div class="intel-stat"><div class="intel-stat-label">On Track</div><div class="intel-stat-val" style="color:#3ecf8e">${summary.onTrack}</div></div>
+      <div class="intel-stat"><div class="intel-stat-label">At Risk</div><div class="intel-stat-val" style="color:#f5a623">${summary.atRisk}</div></div>
+      <div class="intel-stat"><div class="intel-stat-label">Breached</div><div class="intel-stat-val" style="color:#e5484d">${summary.breached}</div></div>
+      <div class="intel-stat"><div class="intel-stat-label">Total</div><div class="intel-stat-val" style="color:#00e5ff">${summary.total}</div></div>
+    `;
+    const listEl = document.getElementById('sla-list');
+    listEl.innerHTML = items.length ? items.map((it) => `
+      <div class="intel-list-row">
+        <span title="${it.message}">${it.message}</span>
+        <span class="risk-badge status-${it.status}">${it.status.replace(/-/g, ' ')}</span>
+      </div>
+    `).join('') : '<div class="intel-list-empty">No active SLA-tracked items.</div>';
+  }
+
+  async function pollSLA() {
+    const summary = await safeFetchJSON('/api/twins/sla/summary');
+    if (!summary) { setTwinStatus('sla', false, 'sla-list'); return; }
+    setTwinStatus('sla', true);
+    const items = (await safeFetchJSON('/api/twins/sla/status')) || [];
+    renderSLA(summary, items);
+  }
+
+  // ---- AI Risk Scoring ----
+  // /api/twins/scoring/summary -> { critical, elevated, normal, avgScore, total }
+  // /api/twins/scoring/status  -> [ { module, message, ts, hoursElapsed, slaHours, status, riskScore, riskTier } ]
+
+  function renderRisk(summary, items) {
+    document.getElementById('risk-stats').innerHTML = `
+      <div class="intel-stat"><div class="intel-stat-label">Normal</div><div class="intel-stat-val" style="color:#3ecf8e">${summary.normal}</div></div>
+      <div class="intel-stat"><div class="intel-stat-label">Elevated</div><div class="intel-stat-val" style="color:#f5a623">${summary.elevated}</div></div>
+      <div class="intel-stat"><div class="intel-stat-label">Critical</div><div class="intel-stat-val" style="color:#e5484d">${summary.critical}</div></div>
+      <div class="intel-stat"><div class="intel-stat-label">Avg Score</div><div class="intel-stat-val" style="color:#00e5ff">${summary.avgScore}</div></div>
+    `;
+    const listEl = document.getElementById('risk-list');
+    const sorted = [...items].sort((a, b) => b.riskScore - a.riskScore);
+    listEl.innerHTML = sorted.length ? sorted.map((it) => `
+      <div class="intel-list-row">
+        <span title="${it.message}">${it.message}</span>
+        <span class="risk-badge tier-${it.riskTier}">${it.riskTier} · ${it.riskScore}</span>
+      </div>
+    `).join('') : '<div class="intel-list-empty">No items currently scored.</div>';
+  }
+
+  async function pollRisk() {
+    const summary = await safeFetchJSON('/api/twins/scoring/summary');
+    if (!summary) { setTwinStatus('risk', false, 'risk-list'); return; }
+    setTwinStatus('risk', true);
+    const items = (await safeFetchJSON('/api/twins/scoring/status')) || [];
+    renderRisk(summary, items);
+  }
+
+  // ---- Technician Performance Metrics ----
+  // /api/twins/technicians/metrics -> [ { techId, techName, assigned, resolved, open, totalResolutionMinutes, avgResolutionMinutes } ]
+
+  function renderTech(list) {
+    const el = document.getElementById('tech-list');
+    const head = `<div class="tech-row tech-head"><span>Tech</span><span>Assigned</span><span>Resolved</span><span>Open</span><span>Avg Min</span></div>`;
+    const rows = list.map((t) => `
+      <div class="tech-row">
+        <span>${t.techName}</span>
+        <span>${t.assigned}</span>
+        <span>${t.resolved}</span>
+        <span>${t.open}</span>
+        <span>${t.avgResolutionMinutes != null ? t.avgResolutionMinutes : '—'}</span>
+      </div>
+    `).join('');
+    el.innerHTML = head + (list.length ? rows : '<div class="intel-list-empty">No technician data yet.</div>');
+  }
+
+  async function pollTech() {
+    const list = await safeFetchJSON('/api/twins/technicians/metrics');
+    if (!list) { setTwinStatus('tech', false, 'tech-list'); return; }
+    setTwinStatus('tech', true);
+    renderTech(list);
+  }
+
+  // ---- Historical Analytics ----
+  // /api/twins/analytics/latest    -> { ts, sla:{onTrack,atRisk,breached,total}, chaos:{...}, scoring:{...}, openVendorTickets }
+  // /api/twins/analytics/snapshots -> [ same shape, newest first ]
+
+  function renderAnalytics(latest, snapshots) {
+    document.getElementById('analytics-stats').innerHTML = `
+      <div class="intel-stat"><div class="intel-stat-label">SLA Total</div><div class="intel-stat-val" style="color:#00e5ff">${latest.sla.total}</div></div>
+      <div class="intel-stat"><div class="intel-stat-label">Breached</div><div class="intel-stat-val" style="color:#e5484d">${latest.sla.breached}</div></div>
+      <div class="intel-stat"><div class="intel-stat-label">Chaos Events</div><div class="intel-stat-val" style="color:#c084fc">${latest.chaos.triggeredCumulative}</div></div>
+      <div class="intel-stat"><div class="intel-stat-label">Vendor Tickets</div><div class="intel-stat-val" style="color:#f5a623">${latest.openVendorTickets}</div></div>
+    `;
+    document.getElementById('analytics-updated').textContent = 'as of ' + latest.ts.slice(11, 19);
+
+    const chron = [...snapshots].reverse(); // API returns newest-first; chart reads left(old) to right(new)
+    const max = Math.max(1, ...chron.map((s) => s.sla.total));
+    const trendEl = document.getElementById('analytics-trend');
+    trendEl.innerHTML = chron.length ? chron.map((s) => {
+      const h = Math.max(2, Math.round((s.sla.total / max) * 58));
+      const color = s.sla.breached > 0 ? '#e5484d' : (s.sla.atRisk > 0 ? '#f5a623' : '#00e5ff');
+      return `<div class="trend-bar" style="height:${h}px;background:${color}" title="${s.ts.slice(11, 19)} — total ${s.sla.total}, breached ${s.sla.breached}"></div>`;
+    }).join('') : '<div class="intel-list-empty">No snapshots yet.</div>';
+  }
+
+  async function pollAnalytics() {
+    const latest = await safeFetchJSON('/api/twins/analytics/latest');
+    if (!latest) { setTwinStatus('analytics', false, 'analytics-stats'); return; }
+    setTwinStatus('analytics', true);
+    const snapshots = (await safeFetchJSON('/api/twins/analytics/snapshots?limit=20')) || [];
+    renderAnalytics(latest, snapshots);
+  }
+
+  pollSLA();
+  pollRisk();
+  pollTech();
+  pollAnalytics();
+  setInterval(pollSLA, POLL_MS);
+  setInterval(pollRisk, POLL_MS);
+  setInterval(pollTech, POLL_MS);
+  setInterval(pollAnalytics, POLL_MS);
+
+  // ---- Scenario Library ----
+  // Browsable, filterable list of every documented anomaly-response playbook
+  // across every twin (AD, M365, Network, VMware, Device, Vendor). Steps are
+  // fetched lazily per-card on first expand and cached in memory, so a single
+  // page load only needs one list call plus one lookup call per card actually
+  // opened — not 28 lookups up front.
+  const TWIN_LABELS = {
+    ad: 'Active Directory',
+    m365: 'Microsoft 365',
+    network: 'Network',
+    vmware: 'VMware',
+    device: 'Device',
+    vendor: 'Vendor',
+  };
+
+  let scenarioEntries = [];
+  let scenarioStepsCache = {};
+  let activeScenarioFilter = 'all';
+
+  async function loadScenarioLibrary() {
+    const data = await safeFetchJSON('/api/twins/knowledge/entries');
+    if (!data || !Array.isArray(data.entries)) return;
+    scenarioEntries = data.entries;
+    renderScenarioFilters();
+    renderScenarioGrid();
+  }
+
+  function renderScenarioFilters() {
+    const twins = ['all', ...new Set(scenarioEntries.map((e) => e.twinType))];
+    const container = document.getElementById('scenario-library-filters');
+    container.innerHTML = twins.map((t) => {
+      const label = t === 'all' ? `All (${scenarioEntries.length})` : (TWIN_LABELS[t] || t);
+      const active = t === activeScenarioFilter ? 'active' : '';
+      return `<button class="scenario-filter-btn ${active}" data-twin="${t}">${label}</button>`;
+    }).join('');
+    container.querySelectorAll('.scenario-filter-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        activeScenarioFilter = btn.dataset.twin;
+        renderScenarioFilters();
+        renderScenarioGrid();
+      });
+    });
+  }
+
+  function renderScenarioGrid() {
+    const grid = document.getElementById('scenario-library-grid');
+    const badge = document.getElementById('scenario-count-badge');
+    const visible = activeScenarioFilter === 'all'
+      ? scenarioEntries
+      : scenarioEntries.filter((e) => e.twinType === activeScenarioFilter);
+
+    badge.textContent = `${scenarioEntries.length} SCENARIOS DOCUMENTED`;
+
+    grid.innerHTML = visible.map((e) => {
+      const key = `${e.twinType}:${e.faultType}`;
+      const cached = scenarioStepsCache[key];
+      const stepsHtml = cached
+        ? `<ol>${cached.steps.map((s) => `<li>${s}</li>`).join('')}</ol>`
+        : `<span class="scenario-card-loading">Click to load steps…</span>`;
+      return `
+        <div class="scenario-card" data-key="${key}">
+          <div class="scenario-card-top">
+            <span class="scenario-card-title">${e.title}</span>
+            <span class="scenario-card-twin">${TWIN_LABELS[e.twinType] || e.twinType}</span>
+          </div>
+          <div class="scenario-card-steps">${stepsHtml}</div>
+        </div>
+      `;
+    }).join('') || '<div style="color:#8b94a3;font-size:11px;">No scenarios in this category.</div>';
+
+    grid.querySelectorAll('.scenario-card').forEach((card) => {
+      card.addEventListener('click', () => toggleScenarioCard(card));
+    });
+  }
+
+  async function toggleScenarioCard(card) {
+    const key = card.dataset.key;
+    const [twinType, faultType] = key.split(':');
+    const wasExpanded = card.classList.contains('expanded');
+
+    if (wasExpanded) {
+      card.classList.remove('expanded');
+      return;
+    }
+
+    card.classList.add('expanded');
+
+    if (!scenarioStepsCache[key]) {
+      const full = await safeFetchJSON(`/api/twins/knowledge/lookup/${twinType}/${faultType}`);
+      if (full) {
+        scenarioStepsCache[key] = full;
+        const stepsEl = card.querySelector('.scenario-card-steps');
+        stepsEl.innerHTML = `<ol>${full.steps.map((s) => `<li>${s}</li>`).join('')}</ol>`;
+      }
+    }
+  }
+
+  loadScenarioLibrary();
+})();
+</script>
+
+<script>
+(function () {
+  const TWIN_LABELS_AI = {
+    ad: 'Active Directory',
+    m365: 'Microsoft 365',
+    network: 'Network',
+    vmware: 'VMware',
+    device: 'Device',
+    vendor: 'Vendor',
+  };
+
+  const form = document.getElementById('ai-widget-form');
+  const input = document.getElementById('ai-widget-input');
+  const submitBtn = document.getElementById('ai-widget-submit');
+  const resultEl = document.getElementById('ai-widget-result');
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[c]));
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const query = input.value.trim();
+    if (!query) return;
+
+    submitBtn.disabled = true;
+    resultEl.innerHTML = '<div class="ai-widget-status">Thinking…</div>';
+
+    let res, body;
+    try {
+      res = await fetch('/api/twins/knowledge/query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query }),
+      });
+      body = await res.json().catch(() => null);
+    } catch (networkErr) {
+      resultEl.innerHTML = '<div class="ai-widget-status error">Could not reach the AI service. Check your connection and try again.</div>';
+      submitBtn.disabled = false;
+      return;
+    }
+
+    if (!res.ok || !body) {
+      const msg = (body && body.error) ? body.error : `Request failed (${res.status})`;
+      resultEl.innerHTML = `<div class="ai-widget-status error">${escapeHtml(msg)}</div>`;
+      submitBtn.disabled = false;
+      return;
+    }
+
+    const twinLabel = TWIN_LABELS_AI[body.twinType] || body.twinType;
+    const conf = (body.confidence || '').toLowerCase();
+    const confBadge = conf
+      ? `<span class="ai-widget-confidence ${conf}">${escapeHtml(conf)}</span>`
+      : '';
+    const reasoning = body.reasoning
+      ? `<div class="ai-widget-reasoning">${escapeHtml(body.reasoning)}</div>`
+      : '';
+    const stepsHtml = (body.steps || []).map((s) => `<li>${escapeHtml(s)}</li>`).join('');
+
+    resultEl.innerHTML = `
+      <div class="ai-widget-result-top">
+        <span class="ai-widget-result-title">${escapeHtml(body.title)}</span>
+        <span class="scenario-card-twin">${escapeHtml(twinLabel)}</span>
+        ${confBadge}
+      </div>
+      ${reasoning}
+      <div class="ai-widget-result-steps"><ol>${stepsHtml}</ol></div>
+    `;
+    submitBtn.disabled = false;
+  });
+})();
+</script>
+
+
+<div class="howto-overlay" id="howto-overlay">
+  <div class="howto-modal">
+    <div class="howto-modal-header">
+      <h2>Command Center — How To Guide</h2>
+      <button class="howto-close" id="howto-close">✕ Close</button>
+    </div>
+    <div class="howto-modal-body">
+
+      <div class="howto-section">
+        <h4>Service Desk Wall &amp; Live Mission Queue</h4>
+        <p>Every open ticket appears as a card on the Service Desk Wall, and the same tickets are sorted by SLA urgency in the Live Mission Queue on the right. Click any ticket card to run it through AI diagnosis and advance it one stage (New → Working → Resolved).</p>
+      </div>
+
+      <div class="howto-section">
+        <h4>AI Chaos Engine</h4>
+        <p>Click any category button under "AI Chaos Engine — Inject Incident" to generate a new simulated ticket in that category. It lands immediately on the Service Desk Wall and Mission Queue. For categories with a matching digital twin (Dell Laptop, Desktop, Printer, Network, Active Directory, Microsoft 365, VMware), a real fault is also applied to that twin, so SLA Summary, AI Risk Scoring, Technician Performance, and Historical Analytics update too. VPN and SCADA tickets are ticket-only for now — no twin models those systems yet.</p>
+      </div>
+
+      <div class="howto-section">
+        <h4>Digital Twin Panels (VMware, Network, Active Directory, Device)</h4>
+        <p>Each panel shows the live simulated state of that system — hosts, links, users, endpoints — refreshed automatically every 5 seconds. To inject a fault:</p>
+        <ol>
+          <li>Pick the target entity from the first dropdown (e.g. a specific host, link, or user).</li>
+          <li>Pick the fault type from the second dropdown (e.g. Host Down, Account Lockout).</li>
+          <li>Click "Inject Fault." The panel updates immediately, and a matching ticket is created on the Service Desk Wall.</li>
+        </ol>
+        <p>Select "Clear / Reset" and click Inject Fault to return that entity to healthy status.</p>
+      </div>
+
+      <div class="howto-section">
+        <h4>Scenario Library</h4>
+        <p>Browse every documented fault-response playbook across all six twins. Use the category filters to narrow the list, and click any card to expand it and view the exact step-by-step technician response. Triggering a matching fault above surfaces this same playbook automatically on the resulting ticket.</p>
+      </div>
+
+      <div class="howto-section">
+        <h4>AI Widget</h4>
+        <p>Type a plain-language description of what you're seeing into the AI Widget box and click "Get Guidance." Groq reasons over the real Scenario Library and returns the single best-matching playbook, its confidence, a one-line explanation of the match, and the full step list — no keyword matching involved.</p>
+      </div>
+
+      <div class="howto-section">
+        <h4>SLA Summary</h4>
+        <p>Shows how many currently-tracked items are on track, at risk, or breached against their SLA targets, plus the live list of tracked items with time-remaining status. Updates automatically as faults are injected and resolved.</p>
+      </div>
+
+      <div class="howto-section">
+        <h4>AI Risk Scoring</h4>
+        <p>Every SLA-tracked item is also scored for risk (0–100) and bucketed into Normal / Elevated / Critical. The list is sorted highest-risk first, so the item most likely to need attention next is always at the top.</p>
+      </div>
+
+      <div class="howto-section">
+        <h4>Technician Performance</h4>
+        <p>A live roster of technicians with assignment counts, resolved counts, currently-open items, and average resolution time in minutes. Assignments are created automatically as the Chaos Engine generates incidents.</p>
+      </div>
+
+      <div class="howto-section">
+        <h4>Historical Analytics</h4>
+        <p>Snapshots of the whole environment's health are taken automatically over time. The stat row shows the most recent snapshot; the bar chart shows SLA-tracked item totals across recent snapshots — bars turn amber or red when that snapshot had at-risk or breached items.</p>
+      </div>
+
+      <div class="howto-section">
+        <h4>Notes</h4>
+        <p>This is a simulated environment — no real infrastructure is affected. All data resets when the server restarts. A panel showing an "OFFLINE" badge means its backend isn't reachable; it will keep retrying automatically every 5 seconds.</p>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const overlay = document.getElementById('howto-overlay');
+  document.getElementById('howto-link').addEventListener('click', (e) => {
+    e.preventDefault();
+    overlay.classList.add('open');
+  });
+  document.getElementById('howto-close').addEventListener('click', () => {
+    overlay.classList.remove('open');
+  });
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) overlay.classList.remove('open');
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') overlay.classList.remove('open');
+  });
+})();
+</script>
+
+<!--
+  L1 Ticket Copilot — Floating AI Assistant
+  ------------------------------------------
+  Paste this fragment right before </body> on your L1 Ticket Copilot page.
+  It is self-contained (no build step, no external deps) and talks to
+  POST /api/l1-copilot/assistant  ->  { ok, answer, createdAt }
+
+  Theming: everything reads from CSS variables at the top of the <style>
+  block. If your war-room pages already define --tsm-accent / --tsm-bg /
+  --tsm-panel etc. globally, delete the ":root" block below and the widget
+  will just inherit your existing palette instead.
+-->
+
+<style>
+  :root {
+    --l1a-accent:      #00d4a0;
+    --l1a-accent-dark: #00a37a;
+    --l1a-bg:          #0d1117;
+    --l1a-panel:       #161b22;
+    --l1a-border:      #2a313c;
+    --l1a-text:        #e6edf3;
+    --l1a-text-dim:    #8b949e;
+    --l1a-danger:      #f85149;
+  }
+
+  #l1a-fab {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    width: 58px;
+    height: 58px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--l1a-accent), var(--l1a-accent-dark));
+    color: #04120e;
+    border: none;
+    box-shadow: 0 4px 18px rgba(0, 212, 160, 0.35);
+    cursor: pointer;
+    z-index: 9998;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  #l1a-fab:hover { transform: scale(1.06); box-shadow: 0 6px 22px rgba(0, 212, 160, 0.5); }
+  #l1a-fab:active { transform: scale(0.96); }
+  #l1a-fab .l1a-badge {
+    position: absolute;
+    top: -2px; right: -2px;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: var(--l1a-accent);
+    border: 2px solid var(--l1a-bg);
+  }
+
+  #l1a-panel {
+    position: fixed;
+    bottom: 96px;
+    right: 24px;
+    width: 380px;
+    max-width: calc(100vw - 32px);
+    max-height: 560px;
+    background: var(--l1a-panel);
+    border: 1px solid var(--l1a-border);
+    border-radius: 14px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+    z-index: 9999;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  #l1a-panel.l1a-open { display: flex; }
+
+  #l1a-header {
+    padding: 14px 16px;
+    background: linear-gradient(135deg, rgba(0,212,160,0.12), rgba(0,212,160,0.02));
+    border-bottom: 1px solid var(--l1a-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  #l1a-header .l1a-title { color: var(--l1a-text); font-weight: 600; font-size: 14px; }
+  #l1a-header .l1a-sub { color: var(--l1a-text-dim); font-size: 11px; margin-top: 2px; }
+  #l1a-close {
+    background: none; border: none; color: var(--l1a-text-dim);
+    font-size: 18px; cursor: pointer; line-height: 1; padding: 4px;
+  }
+  #l1a-close:hover { color: var(--l1a-text); }
+
+  #l1a-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  #l1a-answer {
+    background: var(--l1a-bg);
+    border: 1px solid var(--l1a-border);
+    border-radius: 10px;
+    padding: 12px;
+    color: var(--l1a-text);
+    font-size: 13px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    display: none;
+  }
+  #l1a-answer.l1a-show { display: block; }
+  #l1a-answer.l1a-error { border-color: var(--l1a-danger); color: var(--l1a-danger); }
+
+  #l1a-empty {
+    color: var(--l1a-text-dim);
+    font-size: 12.5px;
+    line-height: 1.5;
+    padding: 4px 2px;
+  }
+
+  #l1a-loading {
+    color: var(--l1a-accent);
+    font-size: 12.5px;
+    display: none;
+    align-items: center;
+    gap: 8px;
+  }
+  #l1a-loading.l1a-show { display: flex; }
+  .l1a-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--l1a-accent); animation: l1a-pulse 1.2s infinite ease-in-out; }
+  .l1a-dot:nth-child(2) { animation-delay: 0.15s; }
+  .l1a-dot:nth-child(3) { animation-delay: 0.3s; }
+  @keyframes l1a-pulse { 0%, 80%, 100% { opacity: 0.25; } 40% { opacity: 1; } }
+
+  #l1a-footer {
+    padding: 12px 14px;
+    border-top: 1px solid var(--l1a-border);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  #l1a-input {
+    width: 100%;
+    resize: none;
+    background: var(--l1a-bg);
+    border: 1px solid var(--l1a-border);
+    border-radius: 8px;
+    color: var(--l1a-text);
+    padding: 9px 10px;
+    font-size: 13px;
+    font-family: inherit;
+    box-sizing: border-box;
+    min-height: 56px;
+  }
+  #l1a-input:focus { outline: none; border-color: var(--l1a-accent); }
+  #l1a-send {
+    background: var(--l1a-accent);
+    color: #04120e;
+    border: none;
+    border-radius: 8px;
+    padding: 9px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  #l1a-send:hover { background: var(--l1a-accent-dark); }
+  #l1a-send:disabled { opacity: 0.5; cursor: not-allowed; }
+  #l1a-hint { color: var(--l1a-text-dim); font-size: 10.5px; }
+</style>
+
+<button id="l1a-fab" title="Ask the L1 Copilot Assistant" aria-label="Open L1 Copilot Assistant">
+  💬<span class="l1a-badge"></span>
+</button>
+
+<div id="l1a-panel" role="dialog" aria-label="L1 Copilot Assistant">
+  <div id="l1a-header">
+    <div>
+      <div class="l1a-title">L1 Copilot Assistant</div>
+      <div class="l1a-sub">Describe the scenario, get best-practice guidance</div>
+    </div>
+    <button id="l1a-close" aria-label="Close">✕</button>
+  </div>
+
+  <div id="l1a-body">
+    <div id="l1a-empty">
+      Paste in what you're seeing — an error message, a user complaint, a ticket
+      you're stuck on — and get root cause, next steps, and when to escalate.
+    </div>
+    <div id="l1a-loading">
+      <span class="l1a-dot"></span><span class="l1a-dot"></span><span class="l1a-dot"></span>
+      Thinking it through…
+    </div>
+    <div id="l1a-answer"></div>
+  </div>
+
+  <div id="l1a-footer">
+    <textarea id="l1a-input" placeholder="e.g. User's Dell laptop won't detect the docking station after the latest Windows update..."></textarea>
+    <button id="l1a-send">Get Advice</button>
+    <div id="l1a-hint">Shift+Enter for a new line · Enter to send</div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var fab      = document.getElementById('l1a-fab');
+  var panel    = document.getElementById('l1a-panel');
+  var closeBtn = document.getElementById('l1a-close');
+  var input    = document.getElementById('l1a-input');
+  var sendBtn  = document.getElementById('l1a-send');
+  var answerEl = document.getElementById('l1a-answer');
+  var loadingEl= document.getElementById('l1a-loading');
+  var emptyEl  = document.getElementById('l1a-empty');
+
+  function openPanel()  { panel.classList.add('l1a-open'); input.focus(); }
+  function closePanel() { panel.classList.remove('l1a-open'); }
+
+  fab.addEventListener('click', function () {
+    panel.classList.contains('l1a-open') ? closePanel() : openPanel();
+  });
+  closeBtn.addEventListener('click', closePanel);
+
+  input.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      submitScenario();
+    }
+  });
+  sendBtn.addEventListener('click', submitScenario);
+
+  function setLoading(isLoading) {
+    sendBtn.disabled = isLoading;
+    loadingEl.classList.toggle('l1a-show', isLoading);
+  }
+
+  async function submitScenario() {
+    var scenario = input.value.trim();
+    if (!scenario) return;
+
+    emptyEl.style.display = 'none';
+    answerEl.classList.remove('l1a-show', 'l1a-error');
+    setLoading(true);
+
+    try {
+      var res = await fetch('/api/l1-copilot/assistant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scenario: scenario })
+      });
+      var data = await res.json();
+
+      setLoading(false);
+
+      if (!res.ok || !data.ok) {
+        throw new Error((data && data.error) || ('Request failed (' + res.status + ')'));
+      }
+
+      answerEl.textContent = data.answer;
+      answerEl.classList.add('l1a-show');
+    } catch (err) {
+      setLoading(false);
+      answerEl.textContent = 'Could not reach the assistant: ' + err.message;
+      answerEl.classList.add('l1a-show', 'l1a-error');
+    }
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,1744 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TSM BPO — Sector Workflow Hub</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.10.0/dist/tabler-icons.min.css">
+<style>
+/* ── RESET & BASE ── */
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0d0d0f;--bg2:#141417;--bg3:#1a1a1f;--bg4:#222228;
+  --border:#2a2a32;--border2:#35353f;
+  --text:#e8e8ec;--text2:#9898a8;--text3:#5a5a6a;
+  --accent:#f59e0b;--accent2:#fbbf24;
+  --green:#10b981;--green-bg:#0d2b1f;
+  --red:#ef4444;--red-bg:#2b0d0d;
+  --blue:#3b82f6;--blue-bg:#0d1a2b;
+  --purple:#8b5cf6;--purple-bg:#1a0d2b;
+  --radius:10px;--radius-sm:6px;--radius-lg:14px;
+  --shadow:0 2px 12px rgba(0,0,0,.4);
+
+  --c-constr:#f59e0b; --c-constr-bg:#2b1e0a; --c-constr-dim:#78480a;
+  --c-legal:#8b5cf6;  --c-legal-bg:#1a0d2b;  --c-legal-dim:#4c2b8f;
+  --c-health:#10b981; --c-health-bg:#0d2b1f; --c-health-dim:#0a6644;
+  --c-tax:#3b82f6;    --c-tax-bg:#0d1a2b;    --c-tax-dim:#1a4a8f;
+  --c-realty:#ef4444; --c-realty-bg:#2b0d0d; --c-realty-dim:#8f1a1a;
+  --c-ins:#06b6d4;    --c-ins-bg:#0a1e2b;    --c-ins-dim:#0a5066;
+  --c-mortgage:#6366f1; --c-mortgage-bg:#161a2b; --c-mortgage-dim:#3730a3;
+  --c-schools:#ec4899; --c-schools-bg:#2b0d1e; --c-schools-dim:#8f1a5a;
+  --c-hotel:#f59e0b; --c-hotel-bg:#2b1e0a; --c-hotel-dim:#92660a;
+}
+html,body{height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.5}
+
+/* ── LAYOUT ── */
+.app{display:grid;grid-template-columns:220px 1fr;grid-template-rows:52px 1fr;height:100vh;overflow:hidden}
+.topbar{grid-column:1/-1;display:flex;align-items:center;gap:12px;padding:0 20px;border-bottom:1px solid var(--border);background:var(--bg2);z-index:10}
+.sidebar{grid-column:1;border-right:1px solid var(--border);background:var(--bg2);overflow-y:auto;display:flex;flex-direction:column}
+.main{grid-column:2;overflow-y:auto;padding:20px}
+
+/* ── TOPBAR ── */
+.logo{font-size:15px;font-weight:700;color:var(--accent);letter-spacing:-.3px}
+.logo span{color:var(--text2);font-weight:400}
+.tb-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.tb-clock{font-size:12px;color:var(--text3);font-variant-numeric:tabular-nums}
+.sla-badge{font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;background:var(--green-bg);color:var(--green);border:1px solid rgba(16,185,129,.25)}
+.back-btn{font-size:12px;color:var(--text2);text-decoration:none;display:flex;align-items:center;gap:4px;padding:5px 10px;border:1px solid var(--border2);border-radius:var(--radius-sm);transition:.15s}
+.back-btn:hover{color:var(--text);border-color:var(--border2)}
+
+/* ── SIDEBAR ── */
+.sidebar-section{padding:14px 12px 6px;font-size:10px;font-weight:600;color:var(--text3);letter-spacing:.08em;text-transform:uppercase}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 14px;cursor:pointer;border-radius:var(--radius-sm);margin:1px 6px;transition:.12s;color:var(--text2);font-size:13px;font-weight:500;position:relative}
+.nav-item:hover{background:var(--bg3);color:var(--text)}
+.nav-item.active{color:var(--text);background:var(--bg4)}
+.nav-item.active::before{content:'';position:absolute;left:0;top:50%;transform:translateY(-50%);width:3px;height:20px;border-radius:0 3px 3px 0;background:var(--accent)}
+.nav-item i{font-size:16px;width:18px;text-align:center}
+.nav-badge{margin-left:auto;font-size:10px;font-weight:600;padding:2px 6px;border-radius:10px;background:var(--bg4)}
+.nav-divider{height:1px;background:var(--border);margin:8px 0}
+
+/* ── SECTOR BUTTONS ── */
+.sector-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:10px 8px}
+.sector-btn{padding:10px 8px;border-radius:var(--radius-sm);cursor:pointer;border:1px solid transparent;transition:.15s;text-align:center;font-size:11px;font-weight:600}
+.sector-btn i{display:block;font-size:20px;margin-bottom:4px}
+.sector-btn:hover{filter:brightness(1.2)}
+.sector-btn.active{border-color:currentColor;filter:brightness(1.2)}
+
+/* ── CONTENT PANELS ── */
+.panel{display:none}
+.panel.active{display:block}
+
+/* ── PAGE HEADER ── */
+.page-header{display:flex;align-items:center;gap:14px;margin-bottom:20px}
+.page-icon{width:40px;height:40px;border-radius:var(--radius);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
+.page-title{font-size:20px;font-weight:700;margin-bottom:2px}
+.page-sub{font-size:13px;color:var(--text2)}
+
+/* ── METRICS ── */
+.metrics-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px}
+.metric{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px}
+.metric-label{font-size:11px;color:var(--text3);margin-bottom:6px;font-weight:500}
+.metric-val{font-size:26px;font-weight:700;line-height:1}
+.metric-sub{font-size:11px;color:var(--text3);margin-top:4px}
+.metric-trend{font-size:11px;margin-top:4px}
+.metric-trend.up{color:var(--green)}
+.metric-trend.warn{color:var(--accent)}
+
+/* ── SLA GAUGE ── */
+.sla-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px}
+.sla-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px}
+.sla-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;font-size:12px;font-weight:600}
+.sla-bar-wrap{height:6px;background:var(--bg4);border-radius:3px;overflow:hidden;margin-bottom:6px}
+.sla-bar{height:100%;border-radius:3px;transition:width .6s ease}
+.sla-legend{display:flex;justify-content:space-between;font-size:10px;color:var(--text3)}
+
+/* ── PIPELINE ── */
+.pipeline-wrap{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:18px}
+.pipeline-title{font-size:12px;font-weight:600;color:var(--text2);margin-bottom:12px;display:flex;align-items:center;gap:6px}
+.pipeline-steps{display:flex;gap:0;position:relative}
+.pipe-step{flex:1;position:relative;cursor:pointer}
+.pipe-step:not(:last-child)::after{content:'›';position:absolute;right:-8px;top:50%;transform:translateY(-50%);color:var(--text3);font-size:16px;z-index:2;pointer-events:none}
+.pipe-inner{margin-right:10px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 10px 8px;transition:.15s;text-align:center}
+.pipe-step:last-child .pipe-inner{margin-right:0}
+.pipe-inner:hover,.pipe-inner.active-step{border-color:var(--border2);background:var(--bg4)}
+.pipe-num{font-size:9px;font-weight:700;color:var(--text3);letter-spacing:.06em;margin-bottom:4px;text-transform:uppercase}
+.pipe-label{font-size:11px;font-weight:600;color:var(--text2);margin-bottom:6px}
+.pipe-count{font-size:22px;font-weight:700}
+.pipe-auto{font-size:9px;color:var(--green);margin-top:3px;font-weight:600}
+
+/* ── TWO COL ── */
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+.three-col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:14px}
+
+/* ── CARD ── */
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px}
+.card-title{font-size:12px;font-weight:600;color:var(--text2);margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:6px}
+.card-title i{font-size:15px}
+
+/* ── INTAKE ── */
+.intake-form{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+.field{display:flex;flex-direction:column;gap:4px}
+.field.full{grid-column:1/-1}
+.field label{font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.06em}
+.field input,.field select,.field textarea{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;padding:7px 10px;outline:none;transition:.12s;font-family:inherit}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--border2);background:var(--bg4)}
+.field select option{background:var(--bg3)}
+.field textarea{resize:vertical;min-height:60px}
+.submit-btn{width:100%;padding:10px;border:none;border-radius:var(--radius-sm);font-size:13px;font-weight:700;cursor:pointer;transition:.15s;display:flex;align-items:center;justify-content:center;gap:6px;margin-top:4px;letter-spacing:.02em}
+.submit-btn:hover{filter:brightness(1.12);transform:translateY(-1px)}
+.submit-btn:active{transform:translateY(0)}
+.toast{font-size:12px;font-weight:600;text-align:center;padding:8px;border-radius:var(--radius-sm);margin-top:8px;display:none;animation:fadeIn .2s}
+@keyframes fadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+
+/* ── KANBAN ── */
+.kanban{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.kanban-col{}
+.kanban-col-head{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);padding:0 0 8px;display:flex;align-items:center;justify-content:space-between}
+.kanban-col-head .col-count{background:var(--bg4);border-radius:10px;padding:1px 7px;font-size:9px;color:var(--text2)}
+.k-task-row{display:flex;align-items:center;gap:4px;font-size:9px;color:var(--text3);margin-top:6px;padding-top:6px;border-top:1px solid var(--bg4);cursor:pointer;user-select:none}
+.k-task-row:hover{color:var(--text2)}
+.k-task-panel{margin-top:6px;padding:6px;background:var(--bg4);border-radius:6px}
+.k-task-empty{font-size:9px;color:var(--text3);padding:2px 0}
+.task-row{display:flex;align-items:center;gap:6px;padding:3px 0;font-size:10px}
+.task-check{width:12px;height:12px;border:1px solid var(--text3);border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:9px;color:var(--green);cursor:pointer;flex-shrink:0}
+.task-check.done{background:var(--green);border-color:var(--green);color:#000}
+.task-title{color:var(--text2)}
+.task-title.done{color:var(--text3);text-decoration:line-through}
+.k-task-add{display:flex;gap:4px;margin-top:4px}
+.k-task-add input{flex:1;background:var(--bg2);border:1px solid var(--bg4);border-radius:4px;color:var(--text);font-size:10px;padding:3px 6px}
+.k-task-add button{background:var(--accent);border:none;border-radius:4px;color:#000;font-size:11px;font-weight:700;padding:3px 8px;cursor:pointer}
+.k-assign-row{display:flex;align-items:center;gap:4px;font-size:9px;color:var(--text3);margin-top:4px;padding-top:6px;border-top:1px solid var(--bg4);cursor:pointer;user-select:none}
+.k-assign-row:hover{color:var(--text2)}
+.k-assign-row.is-assigned{color:var(--green)}
+.k-assign-panel{margin-top:6px;padding:6px;background:var(--bg4);border-radius:6px;display:flex;flex-direction:column;gap:6px}
+.assign-current{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text)}
+.assign-stats{font-size:9px;color:var(--text3)}
+.assign-rec{display:flex;flex-wrap:wrap;align-items:center;gap:5px;font-size:10px;color:var(--text2)}
+.assign-rec-stats{font-size:9px;color:var(--text3)}
+.assign-empty{font-size:10px;color:var(--text3);font-style:italic}
+.assign-manual{display:flex;gap:5px;align-items:center}
+.assign-manual select{flex:1;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:4px;font-size:10px;padding:3px 5px}
+.assign-btn{font-size:9px;font-weight:600;padding:3px 8px;border-radius:5px;border:none;background:var(--accent);color:#000;cursor:pointer;white-space:nowrap}
+.assign-btn:hover{background:var(--accent2)}
+.assign-btn.ghost{background:transparent;border:1px solid var(--border2);color:var(--text2)}
+.assign-btn.ghost:hover{color:var(--text);border-color:var(--text2)}
+.k-card{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 11px;margin-bottom:6px;cursor:pointer;transition:.12s}
+.k-card:hover{border-color:var(--border2);background:var(--bg4);transform:translateY(-1px)}
+.k-card-name{font-size:12px;font-weight:600;color:var(--text);margin-bottom:4px}
+.k-card-meta{font-size:11px;color:var(--text3);display:flex;align-items:center;gap:6px}
+.k-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.k-card-tag{font-size:9px;font-weight:700;padding:2px 6px;border-radius:10px;margin-left:auto;text-transform:uppercase;letter-spacing:.04em}
+.k-card-sla{font-size:10px;margin-top:5px;display:flex;align-items:center;gap:4px}
+.k-card-sla i{font-size:11px}
+.sla-ok{color:var(--green)}
+.sla-warn{color:var(--accent)}
+.sla-late{color:var(--red)}
+.sla-progress-wrap{height:3px;background:var(--bg4);border-radius:2px;margin-top:5px}
+.sla-progress{height:100%;border-radius:2px}
+
+/* ── AI DOC GEN ── */
+.docgen{}
+.doc-type-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px}
+.doc-type-btn{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:9px 10px;cursor:pointer;transition:.12s;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text2);font-family:inherit}
+.doc-type-btn:hover{background:var(--bg4);border-color:var(--border2);color:var(--text)}
+.doc-type-btn i{font-size:15px}
+.doc-output{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;font-size:11px;color:var(--text2);min-height:100px;line-height:1.7;font-family:'SF Mono',Consolas,monospace;white-space:pre-wrap;display:none;position:relative}
+.doc-output.visible{display:block}
+.doc-toolbar{display:flex;gap:6px;margin-top:8px}
+.doc-tool-btn{font-size:11px;padding:5px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg3);color:var(--text2);cursor:pointer;display:flex;align-items:center;gap:5px;transition:.12s;font-family:inherit}
+.doc-tool-btn:hover{background:var(--bg4);color:var(--text)}
+.doc-status{font-size:10px;color:var(--text3);margin-top:6px;display:flex;align-items:center;gap:4px}
+.cursor-blink{display:inline-block;width:2px;height:11px;background:var(--text2);margin-left:1px;animation:blink .7s step-end infinite;vertical-align:middle}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+
+/* ── AUTOMATION ENGINE ── */
+.auto-engine{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:18px}
+.auto-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.auto-title{font-size:13px;font-weight:700;display:flex;align-items:center;gap:8px}
+.auto-status{font-size:11px;font-weight:600;display:flex;align-items:center;gap:5px;color:var(--green)}
+.auto-rules{display:flex;flex-direction:column;gap:6px}
+.auto-rule{display:flex;align-items:center;gap:10px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;transition:.12s}
+.auto-rule:hover{border-color:var(--border2)}
+.rule-icon{width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+.rule-text{flex:1}
+.rule-name{font-size:12px;font-weight:600;margin-bottom:1px}
+.rule-desc{font-size:10px;color:var(--text3)}
+.rule-toggle{position:relative;width:34px;height:19px;flex-shrink:0}
+.rule-toggle input{opacity:0;width:0;height:0;position:absolute}
+.toggle-track{position:absolute;inset:0;border-radius:10px;background:var(--bg4);border:1px solid var(--border);cursor:pointer;transition:.2s}
+.rule-toggle input:checked + .toggle-track{background:var(--green);border-color:var(--green)}
+.toggle-thumb{position:absolute;top:2px;left:2px;width:13px;height:13px;background:#fff;border-radius:50%;transition:.2s;pointer-events:none}
+.rule-toggle input:checked ~ .toggle-thumb{left:17px}
+.rule-last{font-size:10px;color:var(--text3);min-width:70px;text-align:right}
+
+/* ── ACTIVITY FEED ── */
+.feed{display:flex;flex-direction:column;gap:6px;max-height:260px;overflow-y:auto}
+.feed-item{display:flex;gap:10px;padding:8px 10px;background:var(--bg3);border-radius:var(--radius-sm);border:1px solid var(--border);font-size:11px;align-items:flex-start}
+.feed-icon{width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;margin-top:1px}
+.feed-text{flex:1;color:var(--text2);line-height:1.4}
+.feed-text strong{color:var(--text)}
+.feed-time{color:var(--text3);font-size:10px;white-space:nowrap}
+
+/* ── WORKFLOW OVERVIEW (dashboard) ── */
+.wf-overview{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px}
+.wf-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;cursor:pointer;transition:.15s;position:relative;overflow:hidden}
+.wf-card:hover{border-color:var(--border2);transform:translateY(-2px)}
+.wf-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px}
+.wf-card-sector{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.wf-card-sector i{font-size:16px}
+.wf-card-stats{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.wf-stat{font-size:10px;color:var(--text3)}
+.wf-stat-val{font-size:16px;font-weight:700;color:var(--text);margin-bottom:1px}
+.wf-sla-strip{margin-top:10px;display:flex;gap:2px}
+.wf-sla-seg{height:4px;flex:1;border-radius:2px;background:var(--bg4)}
+.wf-sla-seg.filled{background:var(--green)}
+.wf-sla-seg.warn{background:var(--accent)}
+.wf-sla-seg.late{background:var(--red)}
+
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+
+/* ── SECTION LABEL ── */
+.section-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:8px;margin-top:2px}
+
+/* ── STATUS PILL ── */
+.pill{font-size:9px;font-weight:700;padding:2px 8px;border-radius:10px;text-transform:uppercase;letter-spacing:.05em}
+
+/* ── RESPONSIVE ── */
+@media(max-width:900px){
+  .app{grid-template-columns:1fr;grid-template-rows:52px auto 1fr}
+  .sidebar{grid-column:1;grid-row:2;flex-direction:row;overflow-x:auto;border-right:none;border-bottom:1px solid var(--border)}
+  .main{grid-column:1;grid-row:3}
+  .metrics-row{grid-template-columns:repeat(2,1fr)}
+  .two-col,.three-col,.kanban{grid-template-columns:1fr}
+  .wf-overview{grid-template-columns:1fr 1fr}
+}
+</style>
+</head>
+<body>
+
+<div class="app">
+
+<!-- ── TOPBAR ── -->
+<header class="topbar">
+  <div class="logo">TSM <span>BPO Suite</span></div>
+  <div style="width:1px;height:20px;background:var(--border);margin:0 4px"></div>
+  <span style="font-size:12px;color:var(--text2)">Workflow Engine</span>
+  <div class="tb-right">
+    <div class="sla-badge"><i class="ti ti-check"></i> All SLAs On Track</div>
+    <div class="tb-clock" id="clock">--:--:--</div>
+    <a href="suite-hub.html" class="back-btn"><i class="ti ti-arrow-left" style="font-size:13px"></i> Hub</a>
+    <a href="/html/war-rooms/bpo-war/bpo-executive-portal.html" class="back-btn"><i class="ti ti-layout-dashboard" style="font-size:13px"></i> Command</a>
+  </div>
+</header>
+
+<!-- ── SIDEBAR ── -->
+<nav class="sidebar">
+  <div class="sidebar-section">Overview</div>
+  <div class="nav-item active" data-panel="dashboard" onclick="switchPanel(this)">
+    <i class="ti ti-layout-dashboard"></i> All Sectors
+    <span class="nav-badge" style="background:var(--accent);color:#000">9</span>
+  </div>
+  <div class="nav-item" data-panel="automation" onclick="switchPanel(this)">
+    <i class="ti ti-robot"></i> Automation Engine
+    <span class="nav-badge" id="auto-count" style="color:var(--green)">●</span>
+  </div>
+  <div class="nav-item" data-panel="activity" onclick="switchPanel(this)">
+    <i class="ti ti-activity"></i> Live Activity Feed
+    <span class="nav-badge" id="feed-count">0</span>
+  </div>
+
+  <div class="nav-divider"></div>
+  <div class="sidebar-section">Team</div>
+  <a class="nav-item" href="bpo-supervisor.html" style="text-decoration:none">
+    <i class="ti ti-users-group"></i> Supervisor Roster
+  </a>
+
+  <div class="nav-divider"></div>
+  <div class="sidebar-section">Sectors</div>
+
+  <div class="nav-item" data-panel="constr" onclick="switchPanel(this)">
+    <i class="ti ti-building-factory-2" style="color:var(--c-constr)"></i> Construction
+    <span class="nav-badge" id="nb-constr">24</span>
+  </div>
+  <div class="nav-item" data-panel="legal" onclick="switchPanel(this)">
+    <i class="ti ti-scale" style="color:var(--c-legal)"></i> Legal
+    <span class="nav-badge" id="nb-legal">31</span>
+  </div>
+  <div class="nav-item" data-panel="health" onclick="switchPanel(this)">
+    <i class="ti ti-heart-rate-monitor" style="color:var(--c-health)"></i> Healthcare
+    <span class="nav-badge" id="nb-health">18</span>
+  </div>
+  <div class="nav-item" data-panel="tax" onclick="switchPanel(this)">
+    <i class="ti ti-calculator" style="color:var(--c-tax)"></i> Tax / FinOps
+    <span class="nav-badge" id="nb-tax">52</span>
+  </div>
+  <div class="nav-item" data-panel="realty" onclick="switchPanel(this)">
+    <i class="ti ti-home-2" style="color:var(--c-realty)"></i> Realty
+    <span class="nav-badge" id="nb-realty">37</span>
+  </div>
+  <div class="nav-item" data-panel="ins" onclick="switchPanel(this)">
+    <i class="ti ti-shield-check" style="color:var(--c-ins)"></i> Insurance
+    <span class="nav-badge" id="nb-ins">61</span>
+  </div>
+  <div class="nav-item" data-panel="mortgage" onclick="switchPanel(this)">
+    <i class="ti ti-building-bank" style="color:var(--c-mortgage)"></i> Mortgage
+    <span class="nav-badge" id="nb-mortgage">29</span>
+  </div>
+  <div class="nav-item" data-panel="schools" onclick="switchPanel(this)">
+    <i class="ti ti-school" style="color:var(--c-schools)"></i> Schools
+    <span class="nav-badge" id="nb-schools">19</span>
+  </div>
+  <div class="nav-item" data-panel="hotel" onclick="switchPanel(this)">
+    <i class="ti ti-building-lighthouse" style="color:var(--c-hotel)"></i> HotelOps
+    <span class="nav-badge" id="nb-hotel">14</span>
+  </div>
+
+  <div class="nav-divider"></div>
+  <div class="sidebar-section">Tools</div>
+  <a class="nav-item" href="/html/war-rooms/bpo-war/bpo-executive-portal.html">
+    <i class="ti ti-terminal-2"></i> Command Center
+  </a>
+  <a class="nav-item" href="client-access.html">
+    <i class="ti ti-users"></i> Client Portal
+  </a>
+  <a class="nav-item" href="sops.html">
+    <i class="ti ti-book"></i> SOPs
+  </a>
+</nav>
+
+<!-- ── MAIN ── -->
+<main class="main">
+
+<!-- ════════════════════ DASHBOARD ════════════════════ -->
+<div class="panel active" id="panel-dashboard">
+  <div class="page-header">
+    <div class="page-icon" style="background:#1a1a0a"><i class="ti ti-layout-dashboard" style="color:var(--accent)"></i></div>
+    <div>
+      <div class="page-title">All Sectors Overview</div>
+      <div class="page-sub">Real-time workflow status · <span id="dash-date"></span></div>
+    </div>
+  </div>
+
+  <!-- Global metrics -->
+  <div class="metrics-row">
+    <div class="metric">
+      <div class="metric-label">Total active jobs</div>
+      <div class="metric-val" style="color:var(--accent)">223</div>
+      <div class="metric-trend up"><i class="ti ti-trending-up"></i> +12 this week</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">Docs generated today</div>
+      <div class="metric-val" style="color:var(--blue)">47</div>
+      <div class="metric-trend up"><i class="ti ti-robot"></i> 39 automated</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">Overall SLA compliance</div>
+      <div class="metric-val" style="color:var(--green)">96.4%</div>
+      <div class="metric-trend up">Target: 95%</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">Avg turnaround</div>
+      <div class="metric-val">2.1<span style="font-size:14px;font-weight:400;color:var(--text2)">d</span></div>
+      <div class="metric-trend up">SLA target: 3d</div>
+    </div>
+  </div>
+
+  <!-- Sector cards -->
+  <div class="section-label">Sector health</div>
+  <div class="wf-overview" id="wf-overview"></div>
+
+  <!-- SLA overview -->
+  <div class="sla-row">
+    <div class="sla-card">
+      <div class="sla-header"><span><i class="ti ti-target"></i> SLA compliance by sector</span><span style="color:var(--green);font-size:12px">96.4%</span></div>
+      <div id="sla-bars"></div>
+    </div>
+    <div class="sla-card">
+      <div class="sla-header"><span><i class="ti ti-clock"></i> Turnaround vs target</span></div>
+      <div id="turnaround-bars"></div>
+    </div>
+  </div>
+
+  <!-- Recent activity preview -->
+  <div class="section-label">Recent activity</div>
+  <div class="card">
+    <div class="feed" id="dash-feed"></div>
+  </div>
+</div>
+
+<!-- ════════════════════ AUTOMATION ════════════════════ -->
+<div class="panel" id="panel-automation">
+  <div class="page-header">
+    <div class="page-icon" style="background:#0d1a0d"><i class="ti ti-robot" style="color:var(--green)"></i></div>
+    <div>
+      <div class="page-title">Automation Engine</div>
+      <div class="page-sub">Configure rules that run 24/7 to keep SLAs green</div>
+    </div>
+  </div>
+
+  <div class="metrics-row" style="grid-template-columns:repeat(3,1fr)">
+    <div class="metric">
+      <div class="metric-label">Rules active</div>
+      <div class="metric-val" style="color:var(--green)" id="rules-active-count">12</div>
+      <div class="metric-sub">of 14 configured</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">Actions last 24h</div>
+      <div class="metric-val" style="color:var(--blue)">83</div>
+      <div class="metric-trend up"><i class="ti ti-check"></i> 83 successful</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">Time saved today</div>
+      <div class="metric-val" style="color:var(--accent)">5.2<span style="font-size:14px;font-weight:400;color:var(--text2)">h</span></div>
+      <div class="metric-sub">est. manual hours</div>
+    </div>
+  </div>
+
+  <div class="section-label">Intake automation</div>
+  <div class="auto-engine" id="auto-intake"></div>
+
+  <div class="section-label">Processing automation</div>
+  <div class="auto-engine" id="auto-processing"></div>
+
+  <div class="section-label">SLA & delivery automation</div>
+  <div class="auto-engine" id="auto-sla"></div>
+
+  <div class="section-label">Client communication automation</div>
+  <div class="auto-engine" id="auto-comms"></div>
+</div>
+
+<!-- ════════════════════ LIVE FEED ════════════════════ -->
+<div class="panel" id="panel-activity">
+  <div class="page-header">
+    <div class="page-icon" style="background:#0a1a2b"><i class="ti ti-activity" style="color:var(--blue)"></i></div>
+    <div>
+      <div class="page-title">Live Activity Feed</div>
+      <div class="page-sub">All automated actions and manual updates, real-time</div>
+    </div>
+  </div>
+  <div class="card" style="max-height:600px;overflow-y:auto">
+    <div class="feed" id="live-feed"></div>
+  </div>
+</div>
+
+<!-- ════════════════════ SECTOR PANELS ════════════════════ -->
+</main>
+</div>
+
+<!-- Mission Store (Phase 5 wiring) — must load before the script below -->
+<script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
+<script src="/html/shared/runtime/mission/mission-model.js"></script>
+<script src="/html/shared/runtime/mission/mission-store.js"></script>
+
+<script>
+/* ── DATA ── */
+const SECTORS = {
+  constr:{
+    id:'constr', label:'Construction', icon:'ti-building-factory-2',
+    color:'var(--c-constr)', bg:'var(--c-constr-bg)', dim:'var(--c-constr-dim)',
+    warRoomUrl:'/html/war-rooms/construct-war/construction-war-room.html',
+    active:24, inReview:8, docsGenerated:147, avgDays:2.1, slaDays:4, slaTarget:95, slaActual:97,
+    pipeline:[
+      {label:'Intake',count:6,auto:true},
+      {label:'Scope',count:9,auto:false},
+      {label:'Docs',count:5,auto:true},
+      {label:'Review',count:8,auto:false},
+      {label:'Deliver',count:4,auto:true}
+    ],
+    kanban:{
+      'Scoping':[
+        {name:'Harmon Tower Retrofit',meta:'Due Jun 4',tag:'Commercial',sla:80},
+        {name:'Mesa Civic Center',meta:'Due Jun 7',tag:'Gov',sla:60},
+        {name:'Verde Valley Water',meta:'Due Jun 9',tag:'Infra',sla:40}
+      ],
+      'In Progress':[
+        {name:'Redrock Pipeline',meta:'Lien waiver',tag:'Docs',sla:70},
+        {name:'Summit Ridge Homes',meta:'Subcontract',tag:'Docs',sla:55}
+      ],
+      'Client Review':[
+        {name:'Valley Solar Farm',meta:'Awaiting sig.',tag:'Final',sla:95},
+        {name:'Phoenix Arena Phase 2',meta:'Change order',tag:'Final',sla:90}
+      ]
+    },
+    intake:[
+      {label:'Client / GC name',type:'text',placeholder:'Meridian Construction LLC'},
+      {label:'Project type',type:'select',options:['Commercial build','Residential','Infrastructure','Renovation','Industrial']},
+      {label:'Contract value',type:'text',placeholder:'$1,200,000'},
+      {label:'Start date',type:'text',placeholder:'Jun 15, 2026'},
+      {label:'Priority',type:'select',options:['Standard','Rush','VIP']},
+      {label:'Assigned to',type:'select',options:['Auto-assign','Team A','Team B','Team C']}
+    ],
+    docs:[
+      {icon:'ti-file-text',label:'Lien waiver',key:'lien'},
+      {icon:'ti-file-text',label:'Subcontract agreement',key:'subcontract'},
+      {icon:'ti-file-text',label:'Change order',key:'co'},
+      {icon:'ti-file-text',label:'Project closeout',key:'closeout'},
+      {icon:'ti-file-invoice',label:'AIA pay app',key:'aia'},
+      {icon:'ti-file-check',label:'Notice to proceed',key:'ntp'}
+    ],
+    docContent:{
+      lien:'CONDITIONAL WAIVER AND RELEASE ON PROGRESS PAYMENT\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nProperty: [Project Address]\nClaimant: [Subcontractor / Supplier]\nThrough date: [Date]\nPayment amount: $[Amount]\n\nUpon receipt of the sum identified above, claimant conditionally waives and releases any lien, stop payment notice, and payment bond right claimant has for labor, services, equipment, or material furnished to the jobsite through the Through Date of this document.\n\nClaimant: _________________________ Date: ___________\nTitle: _________________________',
+      subcontract:'SUBCONTRACT AGREEMENT\n━━━━━━━━━━━━━━━━━━━\nDate: [Date]\nContractor: [GC Name] ("Contractor")\nSubcontractor: [Sub Name] ("Subcontractor")\n\nProject: [Project Name & Address]\nScope: [Full description of work]\nContract sum: $[Amount]\nSchedule: Commence [Date], substantial completion [Date]\n\n1. PERFORMANCE — Subcontractor shall furnish all labor, materials, tools, equipment, and supervision.\n2. PAYMENT — Progress payments within 10 days of GC receipt from Owner.\n3. INSURANCE — Minimum $1M GL, $1M auto, statutory WC.\n4. INDEMNIFICATION — Subcontractor shall indemnify Contractor from claims arising from Sub\'s work.',
+      co:'CHANGE ORDER NO. [#]\n━━━━━━━━━━━━━━━━━\nProject: [Name] · Owner: [Name]\nContractor: [Name] · Date: [Date]\nOriginal contract: $[Amount]\n\nDescription of change:\n[Detailed description of added/deleted/modified work]\n\nAdjustment to contract sum: +$[Amount]\nRevised contract total:      $[New Total]\nTime extension granted:      [#] calendar days\nRevised completion date:     [Date]\n\nOwner: _________________ Date: ___________\nContractor: _____________ Date: ___________',
+      closeout:'PROJECT CLOSEOUT PACKAGE\n━━━━━━━━━━━━━━━━━━━━━━\nProject: [Name]\nSubstantial completion date: [Date]\nFinal completion date: [Date]\n\n✓ Final unconditional lien waivers — all subs & suppliers\n✓ As-built drawing log (attached)\n✓ Equipment warranties & O&M manuals\n✓ Punch list — 100% complete certification\n✓ Certificate of occupancy (copy)\n✓ Final payment application\n✓ Consent of surety to final payment\n✓ Contractor\'s affidavit of payment of debts',
+      aia:'AIA G702 APPLICATION FOR PAYMENT\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nApplication No.: [#] · Period: [Date] to [Date]\nProject: [Name] · Architect: [Name]\n\nOriginal contract sum:          $[Amount]\nChange orders to date:          $[Amount]\nAdjusted contract sum:          $[Amount]\nWork completed this period:     $[Amount]\nMaterials stored:               $[Amount]\nTotal earned to date:           $[Amount]\nRetainage (10%):               ($[Amount])\nTotal earned less retainage:    $[Amount]\nLess previous certificates:    ($[Amount])\nCURRENT PAYMENT DUE:            $[Amount]',
+      ntp:'NOTICE TO PROCEED\n━━━━━━━━━━━━━━━━\nDate: [Date]\nTo: [Contractor Name]\nProject: [Name & Address]\nContract No.: [#]\n\nYou are hereby notified to commence work under the above-referenced contract on [Start Date]. The contract time of [#] calendar days shall commence on this date, establishing a completion date of [End Date].\n\nAuthorized by: ________________________\nTitle: [Owner / Owner\'s Representative]'
+    }
+  },
+  legal:{
+    id:'legal', label:'Legal', icon:'ti-scale',
+    color:'var(--c-legal)', bg:'var(--c-legal-bg)', dim:'var(--c-legal-dim)',
+    warRoomUrl:'/html/war-rooms/legal-war/legal-war-room.html',
+    active:31, inReview:12, docsGenerated:203, avgDays:1.8, slaDays:3, slaTarget:95, slaActual:98,
+    pipeline:[
+      {label:'Intake',count:7,auto:true},
+      {label:'Conflict chk',count:4,auto:true},
+      {label:'Drafting',count:9,auto:false},
+      {label:'Atty QC',count:12,auto:false},
+      {label:'Filed',count:6,auto:true}
+    ],
+    kanban:{
+      'Drafting':[
+        {name:'Arroyo NDA review',meta:'Due Jun 3',tag:'NDA',sla:85},
+        {name:'SkyBridge MSA',meta:'Due Jun 6',tag:'MSA',sla:60}
+      ],
+      'Attorney QC':[
+        {name:'Patel estate trust',meta:'3rd draft',tag:'Estate',sla:75},
+        {name:'Vega LLC operating',meta:'Waiting review',tag:'Corp',sla:50}
+      ],
+      'Filed':[
+        {name:'Ortega LLC formation',meta:'Complete',tag:'Done',sla:100},
+        {name:'Rivera demand ltr',meta:'Sent 5/27',tag:'Done',sla:100}
+      ]
+    },
+    intake:[
+      {label:'Client name',type:'text',placeholder:'Velasco & Partners LLP'},
+      {label:'Matter type',type:'select',options:['Contract drafting','Litigation support','Compliance','M&A','Estate planning','Corporate']},
+      {label:'Jurisdiction',type:'text',placeholder:'AZ / Federal'},
+      {label:'Deadline',type:'text',placeholder:'Jun 15, 2026'},
+      {label:'Priority',type:'select',options:['Standard','Rush','VIP']},
+      {label:'Conflict check',type:'select',options:['Auto-run','Manual review needed']}
+    ],
+    docs:[
+      {icon:'ti-file-text',label:'NDA / Confidentiality',key:'nda'},
+      {icon:'ti-file-text',label:'Master service agreement',key:'msa'},
+      {icon:'ti-file-text',label:'Demand letter',key:'demand'},
+      {icon:'ti-file-text',label:'Corporate resolution',key:'corp'},
+      {icon:'ti-file-invoice',label:'Retainer agreement',key:'retainer'},
+      {icon:'ti-file-check',label:'Settlement agreement',key:'settlement'}
+    ],
+    docContent:{
+      nda:'NON-DISCLOSURE AGREEMENT\n━━━━━━━━━━━━━━━━━━━━━━━\nDate: [Date]\nDisclosing Party: [Name] ("Disclosor")\nReceiving Party: [Name] ("Recipient")\n\n1. CONFIDENTIAL INFORMATION — Any non-public technical, financial, business, or operational information disclosed in any form.\n\n2. OBLIGATIONS — Recipient shall hold all Confidential Information in strict confidence and shall not disclose to third parties or use for any purpose other than evaluating a potential business relationship.\n\n3. TERM — Obligations survive for 3 years from disclosure date.\n\n4. EXCEPTIONS — Excludes information (a) publicly known, (b) independently developed, (c) received from third party without restriction.\n\nDISCLOSOR: _________________ Date: ________\nRECIPIENT: __________________ Date: ________',
+      msa:'MASTER SERVICE AGREEMENT\n━━━━━━━━━━━━━━━━━━━━━━\nDate: [Date]\nClient: [Name] ("Client")\nProvider: [Name] ("Provider")\n\nServices shall be detailed in individual Statements of Work (SOWs). Each SOW incorporates this MSA by reference.\n\n1. PERFORMANCE — Professional manner consistent with industry standards.\n2. PAYMENT — Net 30 from invoice date. Late fee: 1.5%/month.\n3. IP — Work product ownership transfers to Client upon full payment.\n4. LIMITATION — Provider liability capped at fees paid in prior 3 months.\n5. TERM — Continues until terminated by either party on 30 days notice.',
+      demand:'DEMAND LETTER\n━━━━━━━━━━━━\n[Date]\n\nVIA CERTIFIED MAIL / EMAIL\nRe: Formal Demand — Account No. [#] · Amount Due: $[Amount]\n\nDear [Name]:\n\nThis office represents [Client Name]. Our records indicate you owe $[Amount] for [description of debt/breach]. Despite prior written notice on [Date], this balance remains unpaid.\n\nDEMAND IS HEREBY MADE for payment in full within ten (10) days. Failure to respond may result in legal action seeking principal, prejudgment interest, attorney\'s fees, and costs.\n\nThis letter is a communication from a law firm. Any information obtained may be used for that purpose.\n\n[Attorney Name], Esq.',
+      corp:'CORPORATE RESOLUTION\n━━━━━━━━━━━━━━━━━━━\nCertificate of Board Action Without Meeting\n[Company Name] — a [State] [Corporation/LLC]\nDate: [Date]\n\nRESOLVED: The Board hereby authorizes [Name], [Title], to execute, deliver, and perform any and all agreements, contracts, instruments, and documents on behalf of the Corporation in connection with [specific purpose].\n\nFURTHER RESOLVED: This authorization shall remain in effect until revoked.\n\nSecretary: _________________________ Date: ___________',
+      retainer:'RETAINER AGREEMENT\n━━━━━━━━━━━━━━━━━━\nDate: [Date]\nClient: [Name]\nFirm: [Firm Name]\n\nClient retains Firm to provide legal services for: [matter description]\n\nFee arrangement: $[Rate]/hour (Partner) / $[Rate]/hour (Associate)\nInitial retainer: $[Amount] (replenished when below $[Amount])\nBilling cycle: Monthly itemized invoice\n\nClient acknowledges right to terminate at any time; unused retainer returned promptly.',
+      settlement:'SETTLEMENT AGREEMENT AND RELEASE\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nDate: [Date]\nParties: [Party A] and [Party B]\n\nIn consideration of $[Amount] paid by [Payor] to [Payee], receipt acknowledged, the parties mutually release all claims, known or unknown, arising from [dispute description].\n\nThis settlement is not an admission of liability.\n\n[Party A]: _________________ Date: ___________\n[Party B]: _________________ Date: ___________'
+    }
+  },
+  health:{
+    id:'health', label:'Healthcare', icon:'ti-heart-rate-monitor',
+    color:'var(--c-health)', bg:'var(--c-health-bg)', dim:'var(--c-health-dim)',
+    warRoomUrl:'/html/war-rooms/health-war/hc-denial-war-room.html',
+    active:18, inReview:43, docsGenerated:389, avgDays:0.9, slaDays:2, slaTarget:97, slaActual:99,
+    pipeline:[
+      {label:'Intake',count:11,auto:true},
+      {label:'Eligibility',count:8,auto:true},
+      {label:'Coding',count:14,auto:false},
+      {label:'Claim sub.',count:43,auto:true},
+      {label:'Reconciled',count:22,auto:true}
+    ],
+    kanban:{
+      'Coding':[
+        {name:'Desert Ridge — batch 44',meta:'ICD-10 review',tag:'Coding',sla:70},
+        {name:'Sunrise PT — June',meta:'CPT auditing',tag:'Coding',sla:55}
+      ],
+      'Submitted':[
+        {name:'Chandler Imaging',meta:'ERA pending',tag:'Pending',sla:80},
+        {name:'Mesa Ortho batch 12',meta:'Day 3 follow-up',tag:'Pending',sla:65}
+      ],
+      'Reconciled':[
+        {name:'Mesa Ortho — May',meta:'$48,200',tag:'Done',sla:100},
+        {name:'PHX Cardiology Q1',meta:'$121,000',tag:'Done',sla:100}
+      ]
+    },
+    intake:[
+      {label:'Practice name',type:'text',placeholder:'Desert Ridge Medical Group'},
+      {label:'Specialty',type:'select',options:['Primary care','Orthopedics','Mental health','Dental','Imaging','Cardiology','PT/OT']},
+      {label:'Monthly claim volume',type:'text',placeholder:'~200 claims/mo'},
+      {label:'Primary payer',type:'text',placeholder:'BCBS / Medicare / Aetna'},
+      {label:'Priority',type:'select',options:['Standard','Rush','VIP']},
+      {label:'Billing software',type:'select',options:['DrChrono','Kareo','athenahealth','eClinicalWorks','Other']}
+    ],
+    docs:[
+      {icon:'ti-file-text',label:'Claim appeal letter',key:'appeal'},
+      {icon:'ti-file-text',label:'Prior auth request',key:'auth'},
+      {icon:'ti-file-text',label:'EOB reconciliation',key:'eob'},
+      {icon:'ti-file-text',label:'HIPAA compliance notice',key:'hipaa'},
+      {icon:'ti-file-invoice',label:'Patient statement',key:'statement'},
+      {icon:'ti-file-check',label:'Credentialing packet',key:'cred'}
+    ],
+    docContent:{
+      appeal:'CLAIM APPEAL LETTER\n━━━━━━━━━━━━━━━━━━\nDate: [Date]\nClaim No.: [#] · Patient: [Name] · DOB: [Date]\nDate of service: [Date] · CPT: [Code] · ICD-10: [Code]\n\nDear Appeals Department,\n\nWe formally appeal your denial of the above claim. The services rendered were medically necessary as documented in the attached clinical notes dated [Date].\n\nReason for denial received: [stated reason]\nClinical basis for appeal: [Diagnosis summary, treatment rationale, supporting evidence]\n\nWe request a full review and reversal. Please respond within 30 days per state mandate.\n\nPractice Manager: _________________________',
+      auth:'PRIOR AUTHORIZATION REQUEST\n━━━━━━━━━━━━━━━━━━━━━━━━━━\nDate: [Date]\nPayer: [Insurance Company] · Member ID: [#]\nPatient: [Name] · DOB: [Date]\nProvider: [Name], NPI: [#]\nRequesting: [Procedure/medication — CPT/NDC code]\nICD-10 diagnosis: [Code] — [Description]\n\nClinical justification:\nPatient presents with [diagnosis]. Conservative treatment attempted: [prior therapies]. Requested service is medically necessary because [clinical rationale, citing guidelines where applicable].\n\nSupporting documentation attached: ☐ Clinical notes ☐ Test results ☐ Prior auth history',
+      eob:'EOB RECONCILIATION SUMMARY\n━━━━━━━━━━━━━━━━━━━━━━━━━\nPractice: [Name] · Period: [Month/Year]\nPayer: [Insurance] · Batch: [#]\n\nTotal claims submitted:    [#]       $[Billed]\nTotal allowed:                        $[Allowed]\nContractual adjustments:             ($[Adj])\nCo-pays / deductibles collected:      $[Patient]\nNet reimbursement:                    $[Net]\n\nClaims denied (action required):\n[Claim #] — [Reason] — [Recommended action]\n\nClaims pending (>30 days): [#]\nFollow-up priority queue attached.',
+      hipaa:'NOTICE OF PRIVACY PRACTICES\n━━━━━━━━━━━━━━━━━━━━━━━━━━\nEffective: [Date] · Practice: [Name]\n\nYour rights:\n• Access and copy your health record\n• Request corrections\n• Restrict certain uses\n• Receive confidential communications\n• Receive an accounting of disclosures\n• Revoke authorization\n\nOur uses: Treatment, payment, healthcare operations, and as required by law.\n\nComplaints: Contact our Privacy Officer at [phone] or HHS at www.hhs.gov/ocr/privacy.',
+      statement:'PATIENT STATEMENT\n━━━━━━━━━━━━━━━━\nDate: [Date]\nPatient: [Name] · Account No.: [#]\nProvider: [Name] · DOS: [Date]\n\nService                         Billed    Ins Paid   You Owe\n─────────────────────────────────────────────────────────\n[CPT description]              $[Amount]  $[Amount]  $[Amount]\n\nTOTAL DUE: $[Amount]\n\nPlease pay by [Date]. Payment plan available — call [phone].',
+      cred:'CREDENTIALING PACKET CHECKLIST\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nProvider: [Name], [Degree], NPI: [#]\nSpecialty: [Name] · DEA: [#]\n\n☐ Completed CAQH application (username: ______)\n☐ State medical license (expiry: ______)\n☐ DEA certificate (expiry: ______)\n☐ Board certification certificate\n☐ Malpractice insurance face sheet ($1M/$3M)\n☐ CV — last 5 years, no gaps\n☐ Attestation questions answered\n☐ Work history affiliation forms'
+    }
+  },
+  tax:{
+    id:'tax', label:'Tax / FinOps', icon:'ti-calculator',
+    color:'var(--c-tax)', bg:'var(--c-tax-bg)', dim:'var(--c-tax-dim)',
+    warRoomUrl:'/html/finops-suite/finops-war/finops-war-room.html',
+    active:52, inReview:19, docsGenerated:218, avgDays:3.4, slaDays:7, slaTarget:93, slaActual:95,
+    pipeline:[
+      {label:'Intake',count:9,auto:true},
+      {label:'Gather docs',count:14,auto:false},
+      {label:'Prep/entry',count:11,auto:false},
+      {label:'CPA review',count:19,auto:false},
+      {label:'Filed',count:7,auto:true}
+    ],
+    kanban:{
+      'Prep / Entry':[
+        {name:'Vega Landscaping 1065',meta:'Due Jun 10',tag:'Partner',sla:70},
+        {name:'Kim & Chen S-Corp',meta:'Due Jun 14',tag:'S-Corp',sla:55}
+      ],
+      'CPA Review':[
+        {name:'Alvarez Trust 2025',meta:'2nd pass',tag:'Trust',sla:80},
+        {name:'Nguyen 1040 — ext.',meta:'Oct deadline',tag:'Indiv',sla:30}
+      ],
+      'Filed':[
+        {name:'Nguyen 1040 — orig.',meta:'Refund: $3,140',tag:'Done',sla:100},
+        {name:'Reyes S-Corp',meta:'Filed 4/12',tag:'Done',sla:100}
+      ]
+    },
+    intake:[
+      {label:'Client name',type:'text',placeholder:'Torres Family Holdings'},
+      {label:'Filing type',type:'select',options:['Individual (1040)','S-Corp (1120S)','Partnership (1065)','C-Corp (1120)','Trust (1041)','Bookkeeping']},
+      {label:'Tax year',type:'text',placeholder:'2025'},
+      {label:'CPA assigned',type:'select',options:['Auto-assign','CPA A','CPA B','CPA C']},
+      {label:'Priority',type:'select',options:['Standard','Extension','Rush','VIP']},
+      {label:'Estimated complexity',type:'select',options:['Simple','Moderate','Complex','High complexity']}
+    ],
+    docs:[
+      {icon:'ti-file-text',label:'Engagement letter',key:'engagement'},
+      {icon:'ti-file-text',label:'Client doc checklist',key:'checklist'},
+      {icon:'ti-file-text',label:'Extension notice',key:'extension'},
+      {icon:'ti-file-text',label:'P&L summary',key:'financials'},
+      {icon:'ti-file-invoice',label:'Estimated tax voucher',key:'estimated'},
+      {icon:'ti-file-check',label:'Tax return transmittal',key:'transmittal'}
+    ],
+    docContent:{
+      engagement:'ENGAGEMENT LETTER\n━━━━━━━━━━━━━━━━\nDate: [Date]\nClient: [Name]\nRe: Tax preparation — Form [type], Tax year [Year]\n\nDear [Name],\n\nThis confirms our engagement to prepare your [form type] for the year ended December 31, [Year].\n\nFee: $[Amount], due upon completion. We reserve the right to withdraw if information is not provided timely.\n\nYou are responsible for the accuracy of all information provided. We will rely on your representations without audit.\n\nPlease sign below to authorize us to proceed.\n\nClient signature: _____________________ Date: ___________',
+      checklist:'TAX DOCUMENT CHECKLIST — [Year]\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nClient: [Name] · Form: [Type]\n\n☐ W-2s from all employers\n☐ 1099-NEC / 1099-MISC\n☐ 1099-INT, 1099-DIV, 1099-B\n☐ Schedule K-1s received\n☐ Business income summary by month\n☐ Business expense detail (by category)\n☐ Vehicle mileage log\n☐ Home office dimensions (if applicable)\n☐ Depreciation schedule (prior year)\n☐ Mortgage interest statement (Form 1098)\n☐ Property tax receipts\n☐ Charitable contribution receipts\n☐ Prior year return (if new client)',
+      extension:'EXTENSION NOTICE\n━━━━━━━━━━━━━━━\nDate: [Date]\nClient: [Name]\n\nDear [Name],\n\nWe have filed Form 4868 / 7004 on your behalf. Your new filing deadline is October 15, [Year].\n\n⚠️ IMPORTANT: An extension to FILE is NOT an extension to PAY.\n\nEstimated tax balance due: $[Amount]\nIf not paid by April 15, penalties and interest accrue from the original due date at [current IRS rate]%/year.\n\nWe recommend remitting $[Amount] immediately via IRS Direct Pay or we can arrange electronic payment on your behalf.',
+      financials:'PROFIT & LOSS SUMMARY\n━━━━━━━━━━━━━━━━━━━\nEntity: [Name] · EIN: [#]\nPeriod: January 1 – December 31, [Year]\n\nREVENUE\nGross revenue:               $[Amount]\nReturns & allowances:       ($[Amount])\nNet revenue:                 $[Amount]\n\nCOST OF GOODS SOLD\nDirect materials:            $[Amount]\nDirect labor:                $[Amount]\nTotal COGS:                 ($[Amount])\nGross profit:                $[Amount]  ([%]%)\n\nOPERATING EXPENSES:         ($[Amount])\nEBITDA:                      $[Amount]\nDepreciation & amort.:      ($[Amount])\nNet income:                  $[Amount]',
+      estimated:'ESTIMATED TAX PAYMENT VOUCHER\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\nTaxpayer: [Name] · SSN/EIN: [#]\n\nQ1 — Due Apr 15:   $[Amount]\nQ2 — Due Jun 15:   $[Amount]\nQ3 — Due Sep 15:   $[Amount]\nQ4 — Due Jan 15:   $[Amount]\n\nAnnual total:      $[Amount]\n\nBasis: [Prior year safe harbor / Current year estimate]\nPay via IRS Direct Pay at irs.gov/payments',
+      transmittal:'TAX RETURN TRANSMITTAL LETTER\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\nDate: [Date] · Client: [Name]\nReturn type: [Form] · Tax year: [Year]\n\nEnclosed / e-filed for your records:\n☐ Complete copy of filed return\n☐ Filing confirmation / acknowledgment\n☐ Balance due receipt OR refund detail\n\nRefund expected: $[Amount] via [Direct deposit / Check] in 21 days.\n-OR-\nBalance due: $[Amount] — payment confirmation enclosed.\n\nPlease retain this return for at least 7 years.'
+    }
+  },
+  realty:{
+    id:'realty', label:'Realty', icon:'ti-home-2',
+    color:'var(--c-realty)', bg:'var(--c-realty-bg)', dim:'var(--c-realty-dim)',
+    warRoomUrl:'/html/war-rooms/re-war/re-war-room.html',
+    active:37, inReview:14, docsGenerated:174, avgDays:4.2, slaDays:7, slaTarget:94, slaActual:96,
+    pipeline:[
+      {label:'Intake',count:5,auto:true},
+      {label:'Title search',count:8,auto:true},
+      {label:'Contract prep',count:10,auto:false},
+      {label:'Escrow',count:14,auto:false},
+      {label:'Closed',count:9,auto:true}
+    ],
+    kanban:{
+      'Contract Prep':[
+        {name:'4210 E Camelback',meta:'Purchase · $610k',tag:'Purchase',sla:80},
+        {name:'7800 N Scottsdale Rd',meta:'Commercial lease',tag:'Lease',sla:60}
+      ],
+      'In Escrow':[
+        {name:'Tempe duplex — Garza',meta:'Day 12 of 30',tag:'Escrow',sla:75},
+        {name:'Gilbert SFR — Okonkwo',meta:'Day 6 of 30',tag:'Escrow',sla:40}
+      ],
+      'Closed':[
+        {name:'Mesa SFR — Patel',meta:'$485,000',tag:'Done',sla:100},
+        {name:'Chandler condo — Wu',meta:'$298,000',tag:'Done',sla:100}
+      ]
+    },
+    intake:[
+      {label:'Agent / brokerage',type:'text',placeholder:'Reyes Real Estate Group'},
+      {label:'Transaction type',type:'select',options:['Purchase','Listing / seller','Lease','Commercial','Short sale','Foreclosure']},
+      {label:'Property address',type:'text',placeholder:'4210 E Camelback Rd, Phoenix'},
+      {label:'Sale price',type:'text',placeholder:'$610,000'},
+      {label:'Close date target',type:'text',placeholder:'Jun 28, 2026'},
+      {label:'Priority',type:'select',options:['Standard','Rush','VIP']}
+    ],
+    docs:[
+      {icon:'ti-file-text',label:'Purchase agreement',key:'purchase'},
+      {icon:'ti-file-text',label:'Seller disclosure',key:'disclosure'},
+      {icon:'ti-file-text',label:'Contract addendum',key:'addendum'},
+      {icon:'ti-file-text',label:'Lease agreement',key:'lease'},
+      {icon:'ti-file-invoice',label:'Listing agreement',key:'listing'},
+      {icon:'ti-file-check',label:'Escrow instructions',key:'escrow'}
+    ],
+    docContent:{
+      purchase:'RESIDENTIAL PURCHASE AGREEMENT\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nDate: [Date]\nProperty: [Full address]\nBuyer(s): [Names]\nSeller(s): [Names]\nPurchase price: $[Amount]\n\nFinancing: ☐ Conventional ☐ FHA ☐ VA ☐ Cash\nEarnest money: $[Amount] due within [3] business days\n\nContingencies:\n• Inspection: [10] days\n• Loan: [21] days\n• Appraisal: [21] days\n\nClose of escrow: [Date]\nPossession: ☐ COE ☐ [#] days after COE\n\nBuyer: _________________ Date: ________\nSeller: _________________ Date: ________',
+      disclosure:'SELLER PROPERTY DISCLOSURE STATEMENT\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nProperty: [Address] · Seller: [Name] · Date: [Date]\n\nSeller discloses the following known material facts:\n\nROOF: Age [#] yrs · Condition: [Good/Fair/Poor] · Leaks: ☐Y ☐N\nHVAC: Age [#] yrs · Last service: [Date] · Issues: ☐Y ☐N\nPLUMBING: Issues known: ☐Y ☐N\nELECTRICAL: Panel age: [#] yrs · Issues: ☐Y ☐N\nFOUNDATION: Cracks/settlement: ☐Y ☐N\nWATER DAMAGE/MOLD: ☐Y ☐N\nHOA: ☐Y ☐N — Monthly dues: $[Amount]\nPERMITS pulled for improvements: ☐Y ☐N',
+      addendum:'CONTRACT ADDENDUM NO. [#]\n━━━━━━━━━━━━━━━━━━━━━━━\nDate: [Date]\nProperty: [Address]\nOriginal contract date: [Date]\nBuyer: [Name] · Seller: [Name]\n\nThis addendum is incorporated into and modifies the Purchase Agreement as follows:\n\n[Description of modification or additional terms]\n\nAll other terms and conditions remain in full force and effect. In case of conflict, this addendum controls.\n\nBuyer: _________________ Date: ________\nSeller: _________________ Date: ________',
+      lease:'RESIDENTIAL LEASE AGREEMENT\n━━━━━━━━━━━━━━━━━━━━━━━━━━\nProperty: [Address]\nLandlord: [Name] · Tenant: [Name]\nTerm: [Start] to [End]\nMonthly rent: $[Amount] due on 1st, 5-day grace\nSecurity deposit: $[Amount] (held per ARS §33-1321)\nPets: ☐ Not permitted ☐ Permitted with $[Amount] deposit\n\nTenant agrees to maintain premises, comply with all laws, and permit access for repairs with 48-hour notice. Landlord agrees to maintain habitability and make timely repairs.\n\nLandlord: _________________ Date: ________\nTenant: __________________ Date: ________',
+      listing:'EXCLUSIVE RIGHT TO SELL — LISTING AGREEMENT\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nDate: [Date] · Expiration: [Date]\nProperty: [Address] · Seller: [Name]\nBrokerage: [Name] · Agent: [Name]\n\nList price: $[Amount]\nCommission: [X]% of sale price, split [Y]%/[Z]% buyer/seller broker\nKey box authorization: ☐ Yes ☐ No\nMLS listing: ☐ Immediate ☐ Delay [#] days\n\nSeller: _________________ Date: ________\nAgent: __________________ Date: ________',
+      escrow:'ESCROW INSTRUCTIONS\n━━━━━━━━━━━━━━━━━━\nEscrow No.: [#] · Escrow Co.: [Name]\nProperty: [Address] · COE date: [Date]\n\nBuyer funds due at closing:    $[Amount]\nLender loan amount:            $[Amount]\nSale price:                    $[Amount]\n\nProrations as of COE:\n• Property tax: $[Amount]\n• HOA dues: $[Amount]\n• Rent (if tenant-occupied): $[Amount]\n\nTitle company to provide ALTA policy.\nAll parties sign closing disclosure 3 days prior.'
+    }
+  },
+  ins:{
+    id:'ins', label:'Insurance', icon:'ti-shield-check',
+    color:'var(--c-ins)', bg:'var(--c-ins-bg)', dim:'var(--c-ins-dim)',
+    warRoomUrl:'/html/war-rooms/insure-war/insurance-war-room.html',
+    active:61, inReview:28, docsGenerated:312, avgDays:1.6, slaDays:3, slaTarget:96, slaActual:97,
+    pipeline:[
+      {label:'Intake',count:12,auto:true},
+      {label:'Underwriting',count:9,auto:false},
+      {label:'Issuance',count:6,auto:true},
+      {label:'Claims',count:28,auto:false},
+      {label:'Resolved',count:18,auto:true}
+    ],
+    kanban:{
+      'Underwriting':[
+        {name:'Flores & Sons GL',meta:'Due Jun 5',tag:'GL',sla:80},
+        {name:'Castillo Auto fleet',meta:'Due Jun 8',tag:'Auto',sla:60}
+      ],
+      'Claims':[
+        {name:'Rivera WC — knee',meta:'Day 6',tag:'WC',sla:70},
+        {name:'Gomez auto collision',meta:'Day 2',tag:'Auto',sla:30}
+      ],
+      'Resolved':[
+        {name:'Cruz auto — settled',meta:'$12,400',tag:'Done',sla:100},
+        {name:'Diaz GL — closed',meta:'Denied / upheld',tag:'Done',sla:100}
+      ]
+    },
+    intake:[
+      {label:'Insured name',type:'text',placeholder:'Flores & Sons Roofing'},
+      {label:'Coverage type',type:'select',options:['General liability','Workers comp','Commercial auto','E&O / Prof. liability','BOP','Umbrella']},
+      {label:'Carrier',type:'text',placeholder:'Travelers / Nationwide'},
+      {label:'Effective date',type:'text',placeholder:'Jul 1, 2026'},
+      {label:'Annual premium est.',type:'text',placeholder:'$8,400'},
+      {label:'Priority',type:'select',options:['Standard','Rush','VIP']}
+    ],
+    docs:[
+      {icon:'ti-file-text',label:'ACORD application',key:'acord'},
+      {icon:'ti-file-text',label:'Certificate of insurance',key:'coi'},
+      {icon:'ti-file-text',label:'Claim denial / appeal',key:'denial'},
+      {icon:'ti-file-text',label:'Policy endorsement',key:'endorsement'},
+      {icon:'ti-file-invoice',label:'Loss run request',key:'lossrun'},
+      {icon:'ti-file-check',label:'Binder / coverage letter',key:'binder'}
+    ],
+    docContent:{
+      acord:'ACORD 125 — COMMERCIAL INSURANCE APPLICATION\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nApplicant: [Name] · FEIN: [#] · SIC: [Code]\nBusiness description: [Description]\nYears in business: [#] · Annual gross revenue: $[Amount]\n\nCoverage requested:\n☐ General liability — Occurrence: $[Amount] / Aggregate: $[Amount]\n☐ Workers compensation — Payroll: $[Amount]\n☐ Commercial auto — # vehicles: [#] · Radius: [miles]\n☐ Umbrella — Limit: $[Amount]\n\nClaims in past 5 years: ☐ None ☐ See attached loss runs\n\nSignature: _____________________ Date: ___________',
+      coi:'CERTIFICATE OF LIABILITY INSURANCE\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nDate: [Date]\nProducer: [Agency] · Insured: [Name]\n\nTHIS CERTIFICATE IS ISSUED AS INFORMATION ONLY AND CONFERS NO RIGHTS UPON THE CERTIFICATE HOLDER.\n\nGeneral liability:\n  Per occurrence: $[Amount] · Aggregate: $[Amount]\n  Products/comp-ops aggregate: $[Amount]\n\nWorkers compensation: Statutory\nEmployers liability: $[Amount] / $[Amount] / $[Amount]\n\nCommercial auto — Combined single limit: $[Amount]\n\nCertificate holder: [Name]\n[Address]',
+      denial:'CLAIM DENIAL LETTER / APPEAL RESPONSE\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nDate: [Date]\nClaim No.: [#] · Policy No.: [#]\nInsured: [Name] · Date of loss: [Date]\n\nDear [Name],\n\nWe have completed our investigation. Coverage is denied for the following reason:\n\n[Specific reason, citing policy section / exclusion]\n\nYou have the right to appeal within 60 days by submitting:\n• Written statement of dispute\n• Supporting documentation\n• Request for independent review (if applicable by state law)\n\nFor questions: [Adjuster Name] · [Phone] · [Email]',
+      endorsement:'POLICY ENDORSEMENT\n━━━━━━━━━━━━━━━━━\nEffective: [Date]\nPolicy No.: [#] · Insured: [Name]\nEndorsement No.: [#]\n\nThis endorsement modifies coverage under:\n[COMMERCIAL GENERAL LIABILITY / WORKERS COMP / etc.]\n\nAmendment:\n[Specific change — additional insured, waiver of subrogation, coverage territory change, etc.]\n\nPremium adjustment:\n☐ Additional: $[Amount]  ☐ Return: $[Amount]  ☐ No change\n\nAll other policy terms remain unchanged.\n\nAuthorized representative: _____________________',
+      lossrun:'LOSS RUN REQUEST\n━━━━━━━━━━━━━━━━\nDate: [Date]\nTo: [Prior Carrier Name] · Attn: Loss Control Dept.\nRe: Loss runs — Policy No.: [#]\nInsured: [Name] · FEIN: [#]\n\nPlease provide a 5-year loss run history for the above-referenced account. We need this for renewal underwriting.\n\nPlease send to: [Agent name] · [Email] · [Fax]\nRequired by: [Date — 5 business days requested]\n\nAuthorized by insured: _____________________ Date: ___________',
+      binder:'INSURANCE BINDER / EVIDENCE OF COVERAGE\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nDate: [Date] · Binder No.: [#]\nInsured: [Name] · Carrier: [Name]\nPolicy period: [Start] to [End]\n\nCoverage bound (pending formal policy):\nGeneral liability: $[Amount] per occ / $[Amount] agg\nWorkers comp: Statutory\nCommercial auto: $[Amount] CSL\n\nThis binder is valid for 30 days. A formal policy will be issued. Coverage is effective [Date] at 12:01 AM standard time.\n\nProducer: [Agency name] · License No.: [#]'
+    }
+  },
+  mortgage:{
+    id:'mortgage', label:'Mortgage', icon:'ti-building-bank',
+    color:'var(--c-mortgage)', bg:'var(--c-mortgage-bg)', dim:'var(--c-mortgage-dim)',
+    warRoomUrl:'/html/war-rooms/mortgage/mortgage-war-room.html',
+    active:29, inReview:11, docsGenerated:158, avgDays:3.4, slaDays:5, slaTarget:95, slaActual:96,
+    pipeline:[
+      {label:'Intake',count:7,auto:true},
+      {label:'Processing',count:10,auto:false},
+      {label:'Underwriting',count:11,auto:false},
+      {label:'Closing',count:6,auto:true},
+      {label:'Funded',count:9,auto:true}
+    ],
+    kanban:{
+      'Processing':[
+        {name:'Nguyen refi — 30yr fixed',meta:'Due Jun 5',tag:'Refi',sla:75},
+        {name:'Whitfield purchase',meta:'Due Jun 9',tag:'Purchase',sla:55}
+      ],
+      'Underwriting':[
+        {name:'Osei conventional',meta:'Conditions out',tag:'Conv',sla:65},
+        {name:'Hardaway FHA',meta:'Appraisal pending',tag:'FHA',sla:45}
+      ],
+      'Closed / Funded':[
+        {name:'Delgado — closed',meta:'$412,000',tag:'Done',sla:100},
+        {name:'Park — funded',meta:'$287,500',tag:'Done',sla:100}
+      ]
+    },
+    intake:[
+      {label:'Borrower name',type:'text',placeholder:'Marcus Whitfield'},
+      {label:'Loan type',type:'select',options:['Conventional','FHA','VA','Jumbo','Refinance','HELOC']},
+      {label:'Property address',type:'text',placeholder:'2140 W Deer Valley Rd, Phoenix'},
+      {label:'Loan amount',type:'text',placeholder:'$412,000'},
+      {label:'Target close date',type:'text',placeholder:'Jul 18, 2026'},
+      {label:'Priority',type:'select',options:['Standard','Rush','VIP']}
+    ],
+    docs:[
+      {icon:'ti-file-text',label:'Loan application (URLA/1003)',key:'urla'},
+      {icon:'ti-file-text',label:'Pre-approval letter',key:'preapproval'},
+      {icon:'ti-file-invoice',label:'Loan estimate',key:'estimate'},
+      {icon:'ti-file-check',label:'Closing disclosure',key:'closing'},
+      {icon:'ti-file-text',label:'Rate lock agreement',key:'ratelock'},
+      {icon:'ti-file-check',label:'Verification of employment',key:'voe'}
+    ],
+    docContent:{
+      urla:'UNIFORM RESIDENTIAL LOAN APPLICATION (URLA / FORM 1003)\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nBorrower: [Name] · SSN: [###-##-####]\nProperty address: [Full address]\nLoan amount: $[Amount] · Loan purpose: [Purchase/Refinance]\n\nEmployment: [Employer] · [#] years · Gross monthly income: $[Amount]\nAssets: $[Amount] · Liabilities: $[Amount]\n\nDeclarations: ☐ Bankruptcy (7yr) ☐ Foreclosure (7yr) ☐ Outstanding judgments\n\nBorrower signature: _________________________ Date: ___________',
+      preapproval:'MORTGAGE PRE-APPROVAL LETTER\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nDate: [Date]\nBorrower(s): [Name(s)]\nLender: [Lender Name] · NMLS #: [#]\n\nBased on a preliminary review of credit and stated income/assets, borrower is pre-approved for a loan amount up to $[Amount] at an estimated rate of [Rate]% ([Loan Type]).\n\nThis pre-approval is subject to: full underwriting, satisfactory appraisal, title review, and verification of all application information. Not a commitment to lend.\n\nExpires: [Date — 90 days]\nLoan Officer: [Name] · NMLS #: [#]',
+      estimate:'LOAN ESTIMATE\n━━━━━━━━━━━━\nDate issued: [Date] · Borrower: [Name]\nProperty: [Address] · Loan amount: $[Amount]\nLoan term: [#] years · Interest rate: [Rate]% ☐ Fixed ☐ Adjustable\n\nEstimated monthly payment:      $[Amount]\nEstimated closing costs:        $[Amount]\nEstimated cash to close:        $[Amount]\n\nPrepayment penalty: ☐ Yes ☐ No\nBalloon payment: ☐ Yes ☐ No\n\nThis estimate is not a guarantee. Actual terms depend on final underwriting.',
+      closing:'CLOSING DISCLOSURE\n━━━━━━━━━━━━━━━━━\nClosing date: [Date] · Borrower: [Name]\nProperty: [Address]\nLoan amount: $[Amount] · Interest rate: [Rate]% · Term: [#] years\n\nTotal closing costs:             $[Amount]\nCash to close from borrower:     $[Amount]\n\nLoan costs:\n  Origination charges:  $[Amount]\n  Services borrower did not shop for: $[Amount]\n  Services borrower did shop for:     $[Amount]\n\nMonthly principal & interest:    $[Amount]\nEstimated escrow (taxes/ins.):   $[Amount]\n\nBorrower: _________________ Date: ________',
+      ratelock:'RATE LOCK AGREEMENT\n━━━━━━━━━━━━━━━━━━\nDate: [Date] · Borrower: [Name]\nLoan No.: [#] · Property: [Address]\n\nLocked interest rate: [Rate]%\nLock period: [#] days, expiring [Date]\nLoan program: [Conventional/FHA/VA/Jumbo]\nPoints: [#]\n\nThis rate is locked contingent on loan closing within the lock period and no material change to borrower qualification. Extension fees apply beyond expiration per lender policy.\n\nLender authorized signature: _____________________',
+      voe:'VERIFICATION OF EMPLOYMENT (VOE)\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nDate: [Date]\nEmployee: [Name] · SSN (last 4): [####]\nEmployer: [Company Name]\n\nPosition: [Title] · Date hired: [Date]\nEmployment status: ☐ Full-time ☐ Part-time ☐ Seasonal\nCurrent base salary: $[Amount] / [Hour/Year]\nYTD earnings: $[Amount] · Prior year earnings: $[Amount]\nLikelihood of continued employment: ☐ Excellent ☐ Good ☐ Fair\n\nCompleted by (employer rep): _____________________ Title: [Title]'
+    }
+  },
+  schools:{
+    id:'schools', label:'Schools', icon:'ti-school',
+    color:'var(--c-schools)', bg:'var(--c-schools-bg)', dim:'var(--c-schools-dim)',
+    warRoomUrl:'/html/war-rooms/schools-command/schools-command.html',
+    active:19, inReview:7, docsGenerated:96, avgDays:5.1, slaDays:8, slaTarget:93, slaActual:95,
+    pipeline:[
+      {label:'Intake',count:5,auto:true},
+      {label:'Verification',count:6,auto:false},
+      {label:'Compliance Review',count:7,auto:false},
+      {label:'Board Approval',count:4,auto:false},
+      {label:'Filed',count:3,auto:true}
+    ],
+    kanban:{
+      'Verification':[
+        {name:'Desert Vista USD — Title I',meta:'Due Jun 6',tag:'Grant',sla:70},
+        {name:'Mesa ISD enrollment audit',meta:'Due Jun 10',tag:'Enrollment',sla:55}
+      ],
+      'Compliance Review':[
+        {name:'Cactus Wren Elem — IEP batch',meta:'12 files',tag:'IEP',sla:60},
+        {name:'Sunrise Charter — vendor PO',meta:'Awaiting sig.',tag:'Vendor',sla:45}
+      ],
+      'Filed':[
+        {name:'Horizon USD — board minutes',meta:'Complete',tag:'Done',sla:100},
+        {name:'Palo Verde — Title I closeout',meta:'Filed 5/29',tag:'Done',sla:100}
+      ]
+    },
+    intake:[
+      {label:'District / school name',type:'text',placeholder:'Desert Vista Unified School District'},
+      {label:'Document category',type:'select',options:['Enrollment / registration','Grant application','IEP / special education','Vendor / purchase order','Board resolution','Compliance / audit']},
+      {label:'Program / grant #',type:'text',placeholder:'Title I — TI-2026-0042'},
+      {label:'Due date',type:'text',placeholder:'Jun 10, 2026'},
+      {label:'Priority',type:'select',options:['Standard','Rush','VIP']},
+      {label:'Assigned to',type:'select',options:['Auto-assign','Team A','Team B','Team C']}
+    ],
+    docs:[
+      {icon:'ti-file-text',label:'Enrollment / registration form',key:'enrollment'},
+      {icon:'ti-file-invoice',label:'Grant application (Title I)',key:'grant'},
+      {icon:'ti-file-text',label:'IEP document',key:'iep'},
+      {icon:'ti-file-invoice',label:'Vendor purchase order',key:'po'},
+      {icon:'ti-file-check',label:'Board resolution',key:'resolution'},
+      {icon:'ti-file-check',label:'Compliance / audit report',key:'audit'}
+    ],
+    docContent:{
+      enrollment:'STUDENT ENROLLMENT / REGISTRATION FORM\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nDistrict: [Name] · School: [Name] · Date: [Date]\nStudent name: [Name] · DOB: [Date] · Grade: [#]\nParent/Guardian: [Name] · Phone: [#] · Email: [Email]\nHome address: [Address]\n\nPrior school attended: [Name] · Withdrawal date: [Date]\nImmunization records on file: ☐ Yes ☐ Pending\nSpecial services needed: ☐ None ☐ IEP ☐ 504 ☐ ELL\n\nParent/Guardian signature: _____________________ Date: ___________',
+      grant:'TITLE I GRANT APPLICATION\n━━━━━━━━━━━━━━━━━━━━━━━━\nDistrict: [Name] · Grant #: [#] · Fiscal year: [Year]\nAuthorized representative: [Name] · Title: [Title]\n\nRequested amount: $[Amount]\nProgram description: [Description of services/allocation]\nEligible student count: [#] · % low-income: [%]\n\nAssurances:\n☐ Compliance with ESSA Title I requirements\n☐ Comparability of services certification\n☐ Parent involvement policy on file\n\nAuthorized signature: _____________________ Date: ___________',
+      iep:'INDIVIDUALIZED EDUCATION PROGRAM (IEP)\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nStudent: [Name] · DOB: [Date] · District: [Name]\nMeeting date: [Date] · Annual review due: [Date]\n\nPresent levels of performance: [Summary]\nEligibility category: [Category]\n\nAnnual goals:\n1. [Goal description]\n2. [Goal description]\n\nServices: [Type] — [Frequency] — [Duration]\nLeast restrictive environment: [Placement description]\n\nParent/Guardian consent: ☐ Yes ☐ Pending — Date: ___________',
+      po:'VENDOR PURCHASE ORDER\n━━━━━━━━━━━━━━━━━━━━━\nDistrict: [Name] · PO #: [#] · Date: [Date]\nVendor: [Name] · Vendor ID: [#]\n\nItems / services:\n[Description] — Qty [#] — Unit price $[Amount] — Total $[Amount]\n\nFunding source: [General fund / Title I / Grant #]\nTotal PO amount: $[Amount]\nApproved budget line: [Code]\n\nAuthorized by: _____________________ Title: [Business Manager/Superintendent]',
+      resolution:'SCHOOL BOARD RESOLUTION\n━━━━━━━━━━━━━━━━━━━━━━\nDistrict: [Name] · Resolution No.: [#] · Meeting date: [Date]\n\nWHEREAS, [background/justification for the resolution];\n\nNOW, THEREFORE, BE IT RESOLVED that the Board of Education of [District Name] hereby [approves/authorizes/adopts] [action described].\n\nMotion by: [Name] · Seconded by: [Name]\nVote: [#] Ayes, [#] Nays, [#] Abstain\n\nBoard President: _____________________ Date: ___________\nBoard Secretary: _____________________',
+      audit:'COMPLIANCE / AUDIT REPORT\n━━━━━━━━━━━━━━━━━━━━━━━━\nDistrict: [Name] · Audit period: [Start] to [End]\nAuditor: [Firm/Agency name] · Report date: [Date]\n\nScope: [Federal programs / financial / enrollment]\n\nFindings:\n☐ No findings — clean audit\n☐ Findings noted (see attached corrective action plan)\n\nCorrective action required by: [Date]\nResponsible official: [Name] · Title: [Title]\n\nAuditor signature: _____________________ Date: ___________'
+    }
+  },
+  hotel:{
+    id:'hotel', label:'HotelOps', icon:'ti-building-lighthouse',
+    color:'var(--c-hotel)', bg:'var(--c-hotel-bg)', dim:'var(--c-hotel-dim)',
+    warRoomUrl:'/html/concierge/concierge-war-room.html',
+    active:14, inReview:5, docsGenerated:63, avgDays:1.8, slaDays:3, slaTarget:94, slaActual:95,
+    pipeline:[
+      {label:'Intake',count:4,auto:true},
+      {label:'Triage',count:5,auto:false},
+      {label:'Vendor / Ops Review',count:3,auto:false},
+      {label:'Resolved',count:2,auto:true}
+    ],
+    kanban:{
+      'Triage':[
+        {name:'Room 412 — HVAC breach',meta:'SLA over by 6h',tag:'Maint',sla:35},
+        {name:'OTA chargeback — Expedia',meta:'Contract variance',tag:'OTA',sla:50}
+      ],
+      'Vendor / Ops Review':[
+        {name:'I-9 re-verification batch',meta:'Due in 12d',tag:'Compliance',sla:65},
+        {name:'Liquor license renewal',meta:'Due in 21d',tag:'Compliance',sla:55}
+      ],
+      'Resolved':[
+        {name:'VIP arrival — Suite 8',meta:'Comped upgrade',tag:'Guest',sla:100},
+        {name:'Health inspection — passed',meta:'Score 96',tag:'Compliance',sla:100}
+      ]
+    },
+    intake:[
+      {label:'Property / room #',type:'text',placeholder:'Desert Ridge — Room 412'},
+      {label:'Issue category',type:'select',options:['Maintenance','OTA / Revenue','Guest Experience','Compliance','Staff Operations']},
+      {label:'Guest / vendor name',type:'text',placeholder:'Optional'},
+      {label:'Priority',type:'select',options:['Standard','Rush','VIP']},
+      {label:'Assigned to',type:'select',options:['Auto-assign','Team A','Team B','Team C']}
+    ],
+    docs:[
+      {icon:'ti-file-text',label:'Maintenance work order',key:'workorder'},
+      {icon:'ti-file-invoice',label:'OTA commission dispute',key:'otadispute'},
+      {icon:'ti-file-check',label:'Compliance checklist (I-9 / license)',key:'compliance'},
+      {icon:'ti-file-text',label:'Guest incident report',key:'incident'}
+    ],
+    docContent:{
+      workorder:'MAINTENANCE WORK ORDER\n━━━━━━━━━━━━━━━━━━━━━━\nProperty: [Name] · Room/Area: [#] · Date: [Date]\nReported by: [Name/Dept] · Severity: [Urgent/High/Medium/Low]\n\nIssue description: [Description]\nRoom status: ☐ Out of order ☐ In service, guest notified\n\nAssigned to: [Vendor/Staff name] · Target completion: [Date/Time]\nParts/materials needed: [List]\n\nCompleted by: _____________________ Date: ___________',
+      otadispute:'OTA COMMISSION DISPUTE\n━━━━━━━━━━━━━━━━━━━━━\nOTA partner: [Name] · Statement period: [Start] to [End]\nProperty: [Name]\n\nContracted commission rate: [%]\nCharged commission rate: [%]\nBooking count in dispute: [#] · Total variance: $[Amount]\n\nSupporting evidence: [Contract reference / booking IDs attached]\nRequested resolution: [Credit / rate correction]\n\nSubmitted by: _____________________ Date: ___________',
+      compliance:'COMPLIANCE CHECKLIST\n━━━━━━━━━━━━━━━━━━━━\nProperty: [Name] · Item type: [I-9 re-verification / Liquor license / Health permit]\nDue date: [Date]\n\nCurrent status: ☐ Valid ☐ Expiring ☐ Expired\nResponsible owner: [Name/Dept]\n\nAction required: [Description]\nDocumentation attached: ☐ Yes ☐ Pending\n\nReviewed by: _____________________ Date: ___________',
+      incident:'GUEST INCIDENT REPORT\n━━━━━━━━━━━━━━━━━━━━━\nProperty: [Name] · Room/Area: [#] · Date/Time: [Date/Time]\nGuest name: [Name] · Reservation #: [#]\n\nIncident description: [Description]\nSeverity: ☐ Minor ☐ Moderate ☐ Serious\n\nImmediate action taken: [Description]\nCompensation offered: ☐ None ☐ Comp/upgrade ☐ Refund — Amount: $[Amount]\n\nFiled by: _____________________ Title: [Title] · Date: ___________'
+    }
+  }
+};
+
+/* ── AUTOMATION RULES ── */
+const AUTO_RULES = {
+  intake:[
+    {icon:'ti-mail-forward',color:'#3b82f6',bg:'#0d1a2b',name:'Email-to-intake parser',desc:'Parses inbound emails → creates intake record → assigns sector + priority automatically',on:true,last:'2 min ago'},
+    {icon:'ti-user-check',color:'#10b981',bg:'#0d2b1f',name:'Auto-assign by workload',desc:'Routes new intakes to the team member with fewest open items in the relevant sector',on:true,last:'8 min ago'},
+    {icon:'ti-bell',color:'#f59e0b',bg:'#2b1e0a',name:'Intake confirmation email',desc:'Sends branded confirmation to client within 2 min of intake with reference number and SLA commitment',on:true,last:'11 min ago'},
+  ],
+  processing:[
+    {icon:'ti-file-text',color:'#8b5cf6',bg:'#1a0d2b',name:'AI doc drafting — first pass',desc:'Generates first-draft documents from intake fields using sector-specific templates; flags fields needing human input',on:true,last:'4 min ago'},
+    {icon:'ti-checklist',color:'#10b981',bg:'#0d2b1f',name:'Conflict / compliance check',desc:'Runs automated conflict-of-interest and compliance flags before any doc enters review queue',on:true,last:'19 min ago'},
+    {icon:'ti-clock-check',color:'#3b82f6',bg:'#0d1a2b',name:'SLA countdown trigger',desc:'Calculates SLA deadline on intake → sets countdown → auto-escalates at 75% elapsed',on:true,last:'Continuous'},
+    {icon:'ti-copy',color:'#f59e0b',bg:'#2b1e0a',name:'Version + audit trail',desc:'Auto-saves every doc version with timestamp, user, and change summary to client file',on:true,last:'Continuous'},
+  ],
+  sla:[
+    {icon:'ti-alert-triangle',color:'#ef4444',bg:'#2b0d0d',name:'SLA breach pre-alert',desc:'Fires at 75% of SLA window → notifies assigned team member + supervisor by email and SMS',on:true,last:'1 hr ago'},
+    {icon:'ti-urgent',color:'#f59e0b',bg:'#2b1e0a',name:'Auto-escalation at 90%',desc:'At 90% of window, reassigns to on-call senior processor; manager copied on all comms',on:true,last:'3 hrs ago'},
+    {icon:'ti-send',color:'#10b981',bg:'#0d2b1f',name:'On-time delivery confirmation',desc:'On successful delivery, auto-sends timestamped delivery email to client + internal log entry',on:true,last:'32 min ago'},
+    {icon:'ti-chart-bar',color:'#3b82f6',bg:'#0d1a2b',name:'SLA report (weekly)',desc:'Every Monday 6AM: sends SLA compliance report to management with sector-by-sector breakdown',on:true,last:'Mon 6:00 AM'},
+  ],
+  comms:[
+    {icon:'ti-progress-check',color:'#10b981',bg:'#0d2b1f',name:'Status update at key stages',desc:'Automatically emails client when job advances: Intake received → In progress → In review → Delivered',on:true,last:'6 min ago'},
+    {icon:'ti-refresh',color:'#8b5cf6',bg:'#1a0d2b',name:'24h no-update nudge',desc:'If no activity on a job for 24h, pings assigned processor + logs to supervisor dashboard',on:true,last:'Today 9 AM'},
+    {icon:'ti-star',color:'#f59e0b',bg:'#2b1e0a',name:'Post-delivery satisfaction',desc:'48h after delivery: auto-sends 1-question satisfaction survey; low scores trigger manager callback',on:false,last:'Not active'},
+    {icon:'ti-refresh-alert',color:'#06b6d4',bg:'#0a1e2b',name:'Renewal / re-engagement',desc:'90 days after close: auto-sends sector-relevant re-engagement email for repeat business',on:false,last:'Not active'},
+  ]
+};
+
+/* ── FEED EVENTS ── */
+const FEED_EVENTS = [
+  {icon:'ti-file-text',bg:'#1a0d2b',color:'#8b5cf6',text:'<strong>AI drafted</strong> NDA for Arroyo matter — Legal sector',time:'2 min ago'},
+  {icon:'ti-check',bg:'#0d2b1f',color:'#10b981',text:'<strong>SLA met</strong> — Harmon Tower lien waiver delivered to client',time:'5 min ago'},
+  {icon:'ti-mail',bg:'#0d1a2b',color:'#3b82f6',text:'<strong>Intake created</strong> — Desert Ridge Medical batch 45 · Healthcare',time:'8 min ago'},
+  {icon:'ti-alert-triangle',bg:'#2b1a0a',color:'#f59e0b',text:'<strong>SLA alert (75%)</strong> — Mesa Civic Center scoping due Jun 7',time:'11 min ago'},
+  {icon:'ti-file-check',bg:'#0d2b1f',color:'#10b981',text:'<strong>Delivered</strong> — Ortega LLC formation documents · Legal',time:'18 min ago'},
+  {icon:'ti-user-plus',bg:'#1a1a0a',color:'#f59e0b',text:'<strong>Auto-assigned</strong> — Torres Tax 1065 → Team B · Tax/FinOps',time:'22 min ago'},
+  {icon:'ti-file-text',bg:'#1a0d2b',color:'#8b5cf6',text:'<strong>AI drafted</strong> change order — Phoenix Arena Phase 2 · Construction',time:'29 min ago'},
+  {icon:'ti-star',bg:'#2b1e0a',color:'#f59e0b',text:'<strong>Satisfaction survey</strong> sent — Mesa Ortho reconciliation · Healthcare',time:'34 min ago'},
+  {icon:'ti-check',bg:'#0d2b1f',color:'#10b981',text:'<strong>SLA met</strong> — Nguyen 1040 filed · Tax/FinOps · 2d ahead of target',time:'41 min ago'},
+  {icon:'ti-shield-check',bg:'#0a1e2b',color:'#06b6d4',text:'<strong>COI issued</strong> — Flores & Sons GL binder · Insurance',time:'55 min ago'},
+];
+
+/* ── RENDER HELPERS ── */
+function slaColor(pct){return pct>=90?'var(--green)':pct>=60?'var(--accent)':'var(--red)'}
+function slaClass(pct){return pct>=90?'sla-ok':pct>=60?'sla-warn':'sla-late'}
+
+function escapeHtml(str){
+  return String(str==null?'':str)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+/* ══════════════════ MISSION STORE WIRING (Phase 5) ══════════════════
+ * Everything below reads from window.TSMMissionStore / TSMMissionModel
+ * (Phase 1) and overwrites the mock fields on SECTORS[*] in place, so
+ * renderSectorPanel/renderDashboard/renderLiveFeed above need NO changes
+ * — they just render whatever numbers/kanban/feed data is already sitting
+ * on the SECTORS object and FEED_EVENTS array by the time they run.
+ *
+ * FALLBACK BEHAVIOR: if a sector has zero real missions in the store yet
+ * (fresh install, no intake volume), that sector's original mock numbers
+ * are left untouched so the dashboard doesn't show an empty/broken-looking
+ * wall of zeros during rollout. Once at least one real mission exists for
+ * a vertical, mock numbers for that sector are fully replaced by computed
+ * real values. This is a deliberate transitional tradeoff — flag for
+ * removal once every sector has live intake flowing.
+ */
+
+const SECTOR_TO_VERTICAL = {
+  constr: 'construction',
+  legal: 'legal',
+  health: 'healthcare',
+  tax: 'finops',
+  realty: 'realestate',
+  ins: 'insurance',
+  mortgage: 'mortgage',
+  schools: 'schools',
+  hotel: 'hotelops'
+};
+
+// Default tenant until a real client/tenant picker exists in the intake form.
+const DEFAULT_TENANT_ID = 'tsm-bpo-default';
+
+// 4-bucket grouping of the model's 12 canonical stages, in STAGE_ORDER order.
+// bucket 0 = not yet staffed, 1 = active work, 2 = review/external-wait, 3 = terminal.
+const STAGE_BUCKETS = [
+  ['uploaded','ocr','classified','extracted','validated','created'],
+  ['assigned','in_progress'],
+  ['qa'],
+  ['delivered','billed','closed']
+];
+
+function bucketIndexForStage(stage){
+  for(let i=0;i<STAGE_BUCKETS.length;i++){
+    if(STAGE_BUCKETS[i].indexOf(stage)!==-1) return i;
+  }
+  return 0; // unknown/legacy stage → treat as not-yet-staffed rather than throw
+}
+
+// Per-sector display labels for the 4 kanban buckets, chosen to match each
+// sector's existing domain vocabulary from the old 3-column mock kanban.
+const KANBAN_BUCKET_LABELS = {
+  constr: ['Intake','Scoping','Client Review','Delivered'],
+  legal:  ['Intake','Drafting','Attorney QC','Filed'],
+  health: ['Intake','Coding','Submitted','Reconciled'],
+  tax:    ['Intake','Prep / Entry','CPA Review','Filed'],
+  realty: ['Intake','Contract Prep','In Escrow','Closed'],
+  ins:    ['Intake','Underwriting','Claims','Resolved'],
+  mortgage: ['Intake','Processing','Underwriting','Closed / Funded'],
+  schools: ['Intake','Verification','Compliance Review','Filed'],
+  hotel: ['Intake','Triage','Vendor / Ops Review','Resolved']
+};
+
+function computeSlaPct(mission, sector){
+  if(mission.workflow && mission.workflow.sla && typeof mission.workflow.sla.percentElapsed === 'number'){
+    return Math.max(0, Math.min(100, Math.round(100 - mission.workflow.sla.percentElapsed)));
+  }
+  if(mission.stage === 'closed' || mission.stage === 'delivered' || mission.stage === 'billed'){
+    return 100;
+  }
+  // Heuristic fallback: age vs this sector's SLA window (slaDays).
+  const ageMs = Date.now() - new Date(mission.createdAt).getTime();
+  const ageDays = ageMs / 86400000;
+  const pctElapsed = Math.min(100, Math.round((ageDays / (sector.slaDays||3)) * 100));
+  return Math.max(0, 100 - pctElapsed);
+}
+
+let expandedMissionTasks = {}; // missionId -> bool; module-level so it survives rerenderAll()'s full DOM rebuild
+
+function toggleTaskPanel(missionId){
+  expandedMissionTasks[missionId] = !expandedMissionTasks[missionId];
+  rerenderAll();
+}
+
+// ── Phase 9: workforce engine UI (assign/reassign panel on kanban cards) ──
+let expandedMissionAssign = {}; // missionId -> bool, panel open/closed
+let reassigningMission = {};    // missionId -> bool, showing picker even though already assigned
+
+function toggleAssignPanel(missionId){
+  expandedMissionAssign[missionId] = !expandedMissionAssign[missionId];
+  rerenderAll();
+}
+
+function toggleReassign(missionId){
+  reassigningMission[missionId] = !reassigningMission[missionId];
+  rerenderAll();
+}
+
+function getOperatorById(operatorId){
+  if(!window.TSMMissionStore || !operatorId) return null;
+  return window.TSMMissionStore.listOperators().find(function(o){ return o.id === operatorId; }) || null;
+}
+
+function renderAssignPanelHTML(missionId, vertical){
+  if(!window.TSMMissionStore) return '';
+  const m = window.TSMMissionStore.getMission(missionId);
+  if(!m) return '';
+  const assignedTo = m.workflow && m.workflow.assignedTo;
+
+  if(assignedTo && !reassigningMission[missionId]){
+    const op = getOperatorById(assignedTo);
+    const stats = window.TSMMissionStore.computeOperatorStats(assignedTo, vertical);
+    return `
+      <div class="k-assign-panel" onclick="event.stopPropagation()">
+        <div class="assign-current">
+          <i class="ti ti-user-check" style="color:var(--green)"></i>
+          <strong>${escapeHtml(op ? op.name : assignedTo)}</strong>
+        </div>
+        <div class="assign-stats">
+          Workload ${stats.workload} · SLA ${stats.slaPercent==null?'—':stats.slaPercent+'%'} · Accuracy ${stats.accuracyPercent==null?'—':stats.accuracyPercent+'%'}
+        </div>
+        <button class="assign-btn ghost" onclick="event.stopPropagation();toggleReassign('${missionId}')">Reassign</button>
+      </div>`;
+  }
+
+  const operators = window.TSMMissionStore.listOperators({ vertical: vertical });
+  const rec = window.TSMMissionStore.recommendAssignment(vertical);
+
+  const recRow = rec
+    ? `<div class="assign-rec">
+        <i class="ti ti-sparkles" style="color:var(--accent)"></i>
+        Recommended: <strong>${escapeHtml(rec.operator.name)}</strong>
+        <span class="assign-rec-stats">(workload ${rec.stats.workload}${rec.stats.slaPercent!=null?', SLA '+rec.stats.slaPercent+'%':''})</span>
+        <button class="assign-btn" onclick="event.stopPropagation();assignRecommendedOperator('${missionId}','${vertical}')">Assign</button>
+      </div>`
+    : `<div class="assign-empty">No operators yet for ${escapeHtml(vertical)}</div>`;
+
+  const options = operators.map(o=>`<option value="${o.id}">${escapeHtml(o.name)}</option>`).join('');
+
+  return `
+    <div class="k-assign-panel" onclick="event.stopPropagation()">
+      ${recRow}
+      ${operators.length ? `
+        <div class="assign-manual">
+          <select id="assign-select-${missionId}">${options}</select>
+          <button class="assign-btn ghost" onclick="event.stopPropagation();assignManualOperator('${missionId}')">Assign</button>
+        </div>` : ''}
+      <div class="k-task-add">
+        <input type="text" placeholder="New operator name..." id="op-input-${missionId}" onkeydown="if(event.key==='Enter'){event.preventDefault();addOperatorInline('${missionId}','${vertical}')}">
+        <button onclick="event.stopPropagation();addOperatorInline('${missionId}','${vertical}')">+</button>
+      </div>
+    </div>`;
+}
+
+function assignOperatorToMission(missionId, operatorId){
+  if(!window.TSMMissionStore || !operatorId) return;
+  window.TSMMissionStore.assignMission(missionId, operatorId, 'war-room-user');
+  expandedMissionAssign[missionId] = true;
+  reassigningMission[missionId] = false;
+  // no manual rerenderAll() needed — assignMission -> saveMission publishes
+  // MISSION_UPDATED/MISSION_ASSIGNED, which the '*' subscription below catches.
+}
+
+function assignRecommendedOperator(missionId, vertical){
+  if(!window.TSMMissionStore) return;
+  const rec = window.TSMMissionStore.recommendAssignment(vertical);
+  if(!rec) return;
+  assignOperatorToMission(missionId, rec.operator.id);
+}
+
+function assignManualOperator(missionId){
+  const select = document.getElementById('assign-select-'+missionId);
+  const operatorId = select && select.value;
+  if(!operatorId) return;
+  assignOperatorToMission(missionId, operatorId);
+}
+
+function addOperatorInline(missionId, vertical){
+  if(!window.TSMMissionStore) return;
+  const input = document.getElementById('op-input-'+missionId);
+  const name = input && input.value && input.value.trim();
+  if(!name) return;
+  const id = 'op-' + name.toLowerCase().replace(/[^a-z0-9]+/g,'-') + '-' + Math.random().toString(36).slice(2,6);
+  window.TSMMissionStore.upsertOperator({ id: id, name: name, specialties: [vertical] });
+  expandedMissionAssign[missionId] = true;
+  rerenderAll(); // upsertOperator doesn't publish an event, so trigger manually
+}
+
+function renderTaskPanelHTML(missionId){
+  if(!window.TSMMissionStore) return '';
+  const m = window.TSMMissionStore.getMission(missionId);
+  if(!m) return '';
+  const tasks = m.tasks || [];
+  const rows = tasks.map(t=>`
+    <div class="task-row">
+      <div class="task-check ${t.status==='complete'?'done':''}" onclick="event.stopPropagation();toggleTaskDone('${missionId}','${t.id}')">${t.status==='complete'?'✓':''}</div>
+      <div class="task-title ${t.status==='complete'?'done':''}">${escapeHtml(t.title)}</div>
+    </div>`).join('');
+  return `
+    <div class="k-task-panel" onclick="event.stopPropagation()">
+      ${rows || '<div class="k-task-empty">No tasks yet</div>'}
+      <div class="k-task-add">
+        <input type="text" placeholder="Add task..." id="task-input-${missionId}" onkeydown="if(event.key==='Enter'){event.preventDefault();addTaskToMission('${missionId}')}">
+        <button onclick="addTaskToMission('${missionId}')">+</button>
+      </div>
+    </div>`;
+}
+
+function addTaskToMission(missionId){
+  if(!window.TSMMissionStore || !window.TSMMissionModel) return;
+  const input = document.getElementById('task-input-'+missionId);
+  const title = input?.value?.trim();
+  if(!title) return;
+  const m = window.TSMMissionStore.getMission(missionId);
+  if(!m) return;
+  window.TSMMissionModel.addTask(m, { title });
+  expandedMissionTasks[missionId] = true; // keep panel open through the rerender saveMission triggers
+  window.TSMMissionStore.saveMission(m);
+}
+
+function toggleTaskDone(missionId, taskId){
+  if(!window.TSMMissionStore || !window.TSMMissionModel) return;
+  const m = window.TSMMissionStore.getMission(missionId);
+  if(!m) return;
+  const task = (m.tasks||[]).find(t=>t.id===taskId);
+  if(!task) return;
+  window.TSMMissionModel.updateTaskStatus(m, taskId, task.status==='complete'?'open':'complete', 'war-room-user');
+  expandedMissionTasks[missionId] = true;
+  window.TSMMissionStore.saveMission(m);
+}
+
+function missionToKanbanCard(mission, sector){
+  const tasks = mission.tasks || [];
+  const assignedTo = (mission.workflow && mission.workflow.assignedTo) || null;
+  const assignedOperator = assignedTo ? getOperatorById(assignedTo) : null;
+  return {
+    id: mission.id,
+    name: mission.client || mission.missionNo || mission.id,
+    meta: mission.missionNo || mission.id,
+    tag: (mission.workflow && mission.workflow.priority) ? mission.workflow.priority : 'Standard',
+    sla: computeSlaPct(mission, sector),
+    taskDone: tasks.filter(t=>t.status==='complete').length,
+    taskTotal: tasks.length,
+    vertical: mission.vertical,
+    assignedTo: assignedTo,
+    assignedLabel: assignedOperator ? assignedOperator.name : assignedTo
+  };
+}
+
+function buildRealKanban(sectorId, missions, sector){
+  const labels = KANBAN_BUCKET_LABELS[sectorId];
+  const cols = {};
+  labels.forEach((label,i)=>{ cols[label] = []; });
+  missions.forEach(m=>{
+    const idx = bucketIndexForStage(m.stage);
+    cols[labels[idx]].push(missionToKanbanCard(m, sector));
+  });
+  return cols;
+}
+
+function buildRealPipeline(sectorId, missions){
+  // Reuse each sector's existing 5 pipeline step labels; distribute real
+  // counts across them using the same 4-bucket grouping (first bucket
+  // covers the first 2 pipeline steps, since "Intake" mock pipelines
+  // typically split uploaded/ocr/classified across 2 sub-steps).
+  const counts = [0,0,0,0];
+  missions.forEach(m=>{ counts[bucketIndexForStage(m.stage)]++; });
+  return [counts[0], counts[0], counts[1], counts[2], counts[3]].slice(0,5);
+}
+
+function syncSectorsFromMissionStore(){
+  if(!window.TSMMissionStore){
+    console.warn('Mission Control: TSMMissionStore not loaded — showing seed/demo data only.');
+    return;
+  }
+  Object.keys(SECTORS).forEach(sectorId=>{
+    const sector = SECTORS[sectorId];
+    const vertical = SECTOR_TO_VERTICAL[sectorId];
+    const missions = window.TSMMissionStore.listMissions({ vertical: vertical });
+    if(missions.length === 0) return; // keep mock/seed numbers for this sector
+
+    const analytics = window.TSMMissionStore.getAnalytics({ vertical: vertical });
+    const closedMissions = missions.filter(m=>m.stage==='closed');
+    const avgDays = closedMissions.length
+      ? closedMissions.reduce((sum,m)=>sum + (new Date(m.updatedAt)-new Date(m.createdAt))/86400000, 0) / closedMissions.length
+      : sector.avgDays; // no closed missions yet → keep prior avg rather than show 0
+
+    sector.active = analytics.open;
+    sector.inReview = missions.filter(m=>m.stage==='qa').length;
+    sector.docsGenerated = missions.reduce((sum,m)=>sum + (Array.isArray(m.documents)?m.documents.length:0), 0);
+    sector.avgDays = Math.round(avgDays*10)/10;
+    sector.slaActual = analytics.total ? Math.round(((analytics.total-analytics.late)/analytics.total)*100) : sector.slaActual;
+
+    const pl = buildRealPipeline(sectorId, missions);
+    sector.pipeline.forEach((step,i)=>{ step.count = pl[i]; });
+
+    sector.kanban = buildRealKanban(sectorId, missions, sector);
+  });
+}
+
+function buildLiveFeedFromMissions(){
+  if(!window.TSMMissionStore) return null; // caller keeps mock FEED_EVENTS
+  const missions = window.TSMMissionStore.listMissions();
+  if(missions.length === 0) return null;
+
+  const events = [];
+  missions.forEach(m=>{
+    (m.audit||[]).forEach(a=>{
+      events.push({
+        icon: 'ti-activity', bg:'#1a1a1f', color:'#9898a8',
+        text: `<strong>${escapeHtml(a.event)}</strong> — ${escapeHtml(m.client||m.missionNo||m.id)} · ${escapeHtml(m.vertical)}`,
+        at: a.at
+      });
+    });
+  });
+  events.sort((a,b)=> new Date(b.at) - new Date(a.at));
+  return events.map(e=>({icon:e.icon,bg:e.bg,color:e.color,text:e.text,time:new Date(e.at).toLocaleTimeString('en-US',{hour12:true})}));
+}
+
+// caseId prefix per vertical, matching the format each war room already
+// generates its own caseId with (e.g. bpo-war-room.html uses 'BPO-YYYY-MM-DD-xxxxxx').
+// Intentionally NOT writing a TSM_<VERTICAL>_WAR_RELAY payload here — strategist
+// pages expect real document-extraction fields (docType, scenario, summary,
+// confidence) that a manual intake form has no legitimate way to supply.
+// Fabricating that payload would mean making up strategist input, which this
+// platform explicitly avoids elsewhere. This only makes the mission
+// addressable the same way a war-room case is, via caseId.
+const CASE_ID_PREFIX = {
+  construction: 'CONSTRUCTION', legal: 'LEGAL', healthcare: 'HEALTHCARE',
+  finops: 'FINOPS', realestate: 'RE', insurance: 'INS',
+  mortgage: 'MORTGAGE', schools: 'SCHOOLS', hotelops: 'HOTELOPS'
+};
+function generateCaseId(vertical){
+  const prefix = CASE_ID_PREFIX[vertical] || vertical.toUpperCase();
+  return prefix + '-' + new Date().toISOString().slice(0,10) + '-' + Math.random().toString(36).slice(2,8);
+}
+function createMissionFromIntake(sectorId, formValues){
+  if(!window.TSMMissionModel || !window.TSMMissionStore){
+    console.warn('Mission Control: cannot create mission — Mission Store not loaded.');
+    return null;
+  }
+  const vertical = SECTOR_TO_VERTICAL[sectorId];
+  const caseId = generateCaseId(vertical);
+  const mission = window.TSMMissionModel.createMission({
+    id: caseId,
+    vertical: vertical,
+    tenantId: DEFAULT_TENANT_ID,
+    client: formValues.client || null,
+    workflow: { assignedTo:null, queue:null, priority: formValues.priority || 'normal', sla:null },
+    actor: 'intake-form'
+  });
+  window.TSMMissionStore.saveMission(mission);
+  return mission;
+}
+
+function renderSectorPanel(s){
+  const el = document.createElement('div');
+  el.className = 'panel';
+  el.id = 'panel-'+s.id;
+  el.innerHTML = `
+  <div class="page-header">
+    <div class="page-icon" style="background:${s.bg}"><i class="ti ${s.icon}" style="color:${s.color}"></i></div>
+    <div style="flex:1">
+      <div class="page-title">${s.label} Workflow</div>
+      <div class="page-sub">Intake · pipeline · kanban · AI docs · SLA ${s.avgDays}d avg vs ${s.slaDays}d target</div>
+    </div>
+    ${s.warRoomUrl ? `<a class="back-btn" href="${s.warRoomUrl}" style="white-space:nowrap"><i class="ti ti-radar-2" style="font-size:13px"></i> ${s.label} War Room</a>` : ''}
+  </div>
+
+  <div class="metrics-row">
+    <div class="metric">
+      <div class="metric-label">Active jobs</div>
+      <div class="metric-val" style="color:${s.color}">${s.active}</div>
+      <div class="metric-trend up"><i class="ti ti-trending-up"></i> +3 this week</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">In review / pending</div>
+      <div class="metric-val">${s.inReview}</div>
+      <div class="metric-sub">awaiting action</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">Docs generated</div>
+      <div class="metric-val" style="color:var(--blue)">${s.docsGenerated}</div>
+      <div class="metric-trend up"><i class="ti ti-robot"></i> AI-assisted</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">SLA compliance</div>
+      <div class="metric-val" style="color:${slaColor(s.slaActual)}">${s.slaActual}%</div>
+      <div class="metric-sub">target: ${s.slaTarget}%</div>
+    </div>
+  </div>
+
+  <div class="section-label">Workflow pipeline</div>
+  <div class="pipeline-wrap">
+    <div class="pipeline-steps">
+      ${s.pipeline.map((p,i)=>`
+        <div class="pipe-step">
+          <div class="pipe-inner">
+            <div class="pipe-num">0${i+1}</div>
+            <div class="pipe-label">${p.label}</div>
+            <div class="pipe-count" style="color:${s.color}">${p.count}</div>
+            ${p.auto?`<div class="pipe-auto">⚡ AUTO</div>`:''}
+          </div>
+        </div>`).join('')}
+    </div>
+  </div>
+
+  <div class="two-col">
+    <div>
+      <div class="section-label">New intake</div>
+      <div class="card">
+        <div class="intake-form" id="intake-form-${s.id}">
+          ${s.intake.map((f,i)=>`
+            <div class="field ${f.type==='textarea'?'full':''}" data-label="${f.label}">
+              <label>${f.label}</label>
+              ${f.type==='select'
+                ?`<select>${f.options.map(o=>`<option>${o}</option>`).join('')}</select>`
+                :f.type==='textarea'
+                  ?`<textarea placeholder="${f.placeholder||''}"></textarea>`
+                  :`<input type="text" placeholder="${f.placeholder||''}">`}
+            </div>`).join('')}
+        </div>
+        <button class="submit-btn" style="background:${s.color};color:#fff" onclick="submitIntake('${s.id}')">
+          <i class="ti ti-plus"></i> Add to pipeline — auto-assign + confirmation email
+        </button>
+        <div class="toast" id="toast-${s.id}" style="background:var(--green-bg);color:var(--green);border:1px solid rgba(16,185,129,.3)">
+          ✓ Intake created · Reference #${s.id.toUpperCase()}-${Math.floor(1000+Math.random()*9000)} · Confirmation email sent · SLA clock started
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-label">AI document generation</div>
+      <div class="card docgen">
+        <div class="doc-type-grid">
+          ${s.docs.map(d=>`
+            <button class="doc-type-btn" onclick="genDoc('${s.id}','${d.key}')">
+              <i class="ti ${d.icon}" style="color:${s.color}"></i>${d.label}
+            </button>`).join('')}
+        </div>
+        <div class="doc-output" id="docout-${s.id}"></div>
+        <div class="doc-toolbar" id="doctoolbar-${s.id}" style="display:none">
+          <button class="doc-tool-btn" onclick="copyDoc('${s.id}')"><i class="ti ti-copy"></i> Copy</button>
+          <button class="doc-tool-btn"><i class="ti ti-download"></i> Export .docx</button>
+          <button class="doc-tool-btn"><i class="ti ti-send"></i> Send to client</button>
+        </div>
+        <div class="doc-status" id="docstatus-${s.id}" style="display:none">
+          <i class="ti ti-robot" style="color:var(--green)"></i> AI-generated · Review before sending · Version auto-saved
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-label">Kanban board</div>
+  <div class="card">
+    <div class="kanban">
+      ${Object.entries(s.kanban).map(([col,cards])=>`
+        <div class="kanban-col">
+          <div class="kanban-col-head">${col}<span class="col-count">${cards.length}</span></div>
+          ${cards.map(c=>`
+            <div class="k-card">
+              <div class="k-card-name">${c.name}</div>
+              <div class="k-card-meta">
+                <span class="k-dot" style="background:${c.sla>=90?'var(--green)':c.sla>=60?'var(--accent)':'var(--red)'}"></span>
+                ${c.meta}
+                <span class="k-card-tag" style="background:${s.bg};color:${s.color}">${c.tag}</span>
+              </div>
+              <div class="k-card-sla ${slaClass(c.sla)}">
+                <i class="ti ti-clock"></i> SLA ${c.sla}%
+              </div>
+              <div class="sla-progress-wrap">
+                <div class="sla-progress" style="width:${c.sla}%;background:${slaColor(c.sla)}"></div>
+              </div>
+              <div class="k-task-row" onclick="event.stopPropagation();toggleTaskPanel('${c.id}')">
+                <i class="ti ti-list-check"></i> Tasks ${c.taskDone}/${c.taskTotal}
+                <i class="ti ti-chevron-${expandedMissionTasks[c.id]?'up':'down'}" style="margin-left:auto"></i>
+              </div>
+              ${expandedMissionTasks[c.id] ? renderTaskPanelHTML(c.id) : ''}
+              <div class="k-assign-row ${c.assignedTo?'is-assigned':''}" onclick="event.stopPropagation();toggleAssignPanel('${c.id}')">
+                <i class="ti ti-user-circle"></i> ${c.assignedLabel ? escapeHtml(c.assignedLabel) : 'Unassigned'}
+                <i class="ti ti-chevron-${expandedMissionAssign[c.id]?'up':'down'}" style="margin-left:auto"></i>
+              </div>
+              ${expandedMissionAssign[c.id] ? renderAssignPanelHTML(c.id, c.vertical) : ''}
+            </div>`).join('')}
+        </div>`).join('')}
+    </div>
+  </div>`;
+  return el;
+}
+
+function renderDashboard(){
+  const overviewEl = document.getElementById('wf-overview');
+  const slaEl = document.getElementById('sla-bars');
+  const turnEl = document.getElementById('turnaround-bars');
+  const feedEl = document.getElementById('dash-feed');
+
+  Object.values(SECTORS).forEach(s=>{
+    const card = document.createElement('div');
+    card.className = 'wf-card';
+    card.style.cssText = `--card-color:${s.color}`;
+    card.innerHTML = `
+      <div style="position:absolute;top:0;left:0;right:0;height:3px;background:${s.color};border-radius:10px 10px 0 0"></div>
+      <div class="wf-card-sector" style="color:${s.color}">
+        <i class="ti ${s.icon}"></i>${s.label}
+      </div>
+      <div class="wf-card-stats">
+        <div class="wf-stat"><div class="wf-stat-val">${s.active}</div>Active</div>
+        <div class="wf-stat"><div class="wf-stat-val" style="color:${s.slaActual>=95?'var(--green)':'var(--accent)'}">${s.slaActual}%</div>SLA</div>
+        <div class="wf-stat"><div class="wf-stat-val">${s.docsGenerated}</div>Docs</div>
+        <div class="wf-stat"><div class="wf-stat-val">${s.avgDays}d</div>Avg</div>
+      </div>
+      <div class="wf-sla-strip">
+        ${Array.from({length:10},(_,i)=>`<div class="wf-sla-seg ${i<Math.round(s.slaActual/10)?i<9?'filled':'warn':''}" ></div>`).join('')}
+      </div>`;
+    card.onclick = ()=>{ document.querySelector(`[data-panel="${s.id}"]`).click(); };
+    overviewEl.appendChild(card);
+
+    slaEl.innerHTML += `
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <span style="font-size:10px;color:var(--text3);width:90px">${s.label}</span>
+        <div class="sla-bar-wrap" style="flex:1">
+          <div class="sla-bar" style="width:${s.slaActual}%;background:${slaColor(s.slaActual)}"></div>
+        </div>
+        <span style="font-size:11px;font-weight:600;min-width:36px;text-align:right;color:${slaColor(s.slaActual)}">${s.slaActual}%</span>
+      </div>`;
+
+    const pct = Math.round((s.avgDays/s.slaDays)*100);
+    turnEl.innerHTML += `
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <span style="font-size:10px;color:var(--text3);width:90px">${s.label}</span>
+        <div class="sla-bar-wrap" style="flex:1">
+          <div class="sla-bar" style="width:${pct}%;background:${pct<80?'var(--green)':pct<95?'var(--accent)':'var(--red)'}"></div>
+        </div>
+        <span style="font-size:10px;color:var(--text3)">${s.avgDays}d / ${s.slaDays}d</span>
+      </div>`;
+  });
+
+  const dashFeedSource = buildLiveFeedFromMissions() || FEED_EVENTS;
+  dashFeedSource.slice(0,6).forEach(e=>{
+    feedEl.innerHTML += `
+      <div class="feed-item">
+        <div class="feed-icon" style="background:${e.bg}"><i class="ti ${e.icon}" style="color:${e.color}"></i></div>
+        <div class="feed-text">${e.text}</div>
+        <div class="feed-time">${e.time}</div>
+      </div>`;
+  });
+}
+
+function renderAutomation(){
+  const groups = [
+    {id:'auto-intake',rules:AUTO_RULES.intake,title:'Intake rules'},
+    {id:'auto-processing',rules:AUTO_RULES.processing,title:'Processing rules'},
+    {id:'auto-sla',rules:AUTO_RULES.sla,title:'SLA rules'},
+    {id:'auto-comms',rules:AUTO_RULES.comms,title:'Communication rules'}
+  ];
+  groups.forEach(g=>{
+    const el = document.getElementById(g.id);
+    el.innerHTML = `
+      <div class="auto-header">
+        <div class="auto-title"><i class="ti ti-bolt" style="color:var(--accent)"></i>${g.title}</div>
+        <div class="auto-status"><i class="ti ti-circle-filled"></i> Running</div>
+      </div>
+      <div class="auto-rules">
+        ${g.rules.map((r,i)=>`
+          <div class="auto-rule">
+            <div class="rule-icon" style="background:${r.bg}"><i class="ti ${r.icon}" style="color:${r.color}"></i></div>
+            <div class="rule-text">
+              <div class="rule-name">${r.name}</div>
+              <div class="rule-desc">${r.desc}</div>
+            </div>
+            <div class="rule-last">${r.last}</div>
+            <label class="rule-toggle">
+              <input type="checkbox" ${r.on?'checked':''} onchange="toggleRule(this)">
+              <div class="toggle-track"></div>
+              <div class="toggle-thumb"></div>
+            </label>
+          </div>`).join('')}
+      </div>`;
+  });
+}
+
+function renderLiveFeed(){
+  const el = document.getElementById('live-feed');
+  const source = buildLiveFeedFromMissions() || FEED_EVENTS;
+  source.forEach(e=>{
+    el.innerHTML += `
+      <div class="feed-item">
+        <div class="feed-icon" style="background:${e.bg}"><i class="ti ${e.icon}" style="color:${e.color}"></i></div>
+        <div class="feed-text">${e.text}</div>
+        <div class="feed-time">${e.time}</div>
+      </div>`;
+  });
+}
+
+/* ── INTERACTIONS ── */
+function switchPanel(el){
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  el.classList.add('active');
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.getElementById('panel-'+el.dataset.panel).classList.add('active');
+}
+
+function readIntakeFormValues(sectorId){
+  const form = document.getElementById('intake-form-'+sectorId);
+  const values = { client: null, priority: 'normal' };
+  form.querySelectorAll('.field').forEach((fieldEl, i)=>{
+    const label = fieldEl.dataset.label;
+    const input = fieldEl.querySelector('input,select,textarea');
+    const val = input ? input.value : '';
+    if(i === 0) values.client = val || null; // first field is always the client/name identifier across all sectors
+    if(label === 'Priority') values.priority = (val||'Standard').toLowerCase();
+  });
+  return values;
+}
+
+function submitIntake(id){
+  const toast = document.getElementById('toast-'+id);
+  toast.style.display = 'block';
+  setTimeout(()=>{ toast.style.display='none'; }, 5000);
+
+  const formValues = readIntakeFormValues(id);
+  const mission = createMissionFromIntake(id, formValues);
+  if(mission){
+    // saveMission already published a MISSION_CREATED event, which the
+    // subscribe('*', rerenderAll) hook in init() picks up — no need to
+    // call rerenderAll() again here or it'll double-render.
+    return;
+  }
+  // Mission Store unavailable (e.g. localStorage blocked) — fall back to
+  // the old cosmetic feed entry so the form doesn't feel broken.
+  addFeedEvent(id);
+}
+
+function addFeedEvent(sectorId){
+  const s = SECTORS[sectorId];
+  const el = document.getElementById('live-feed');
+  const item = document.createElement('div');
+  item.className = 'feed-item';
+  item.style.borderColor = s.color;
+  item.innerHTML = `
+    <div class="feed-icon" style="background:${s.bg}"><i class="ti ${s.icon}" style="color:${s.color}"></i></div>
+    <div class="feed-text"><strong>New intake</strong> — ${s.label} sector · Auto-assigned · Confirmation sent</div>
+    <div class="feed-time">just now</div>`;
+  el.prepend(item);
+  document.getElementById('feed-count').textContent = parseInt(document.getElementById('feed-count').textContent||0)+1;
+}
+
+function genDoc(sectorId, routeId){
+  const s = SECTORS[sectorId];
+  const text = s.docContent[routeId] || 'Document template loading...';
+  const el = document.getElementById('docout-'+sectorId);
+  const toolbar = document.getElementById('doctoolbar-'+sectorId);
+  const status = document.getElementById('docstatus-'+sectorId);
+  el.classList.add('visible');
+  el.innerHTML = '';
+  toolbar.style.display = 'none';
+  status.style.display = 'none';
+  const cursor = document.createElement('span');
+  cursor.className = 'cursor-blink';
+  el.appendChild(cursor);
+  let i = 0;
+  function type(){
+    if(i < text.length){
+      cursor.before(document.createTextNode(text[i]));
+      i++;
+      setTimeout(type, i < 20 ? 10 : 3);
+    } else {
+      cursor.remove();
+      toolbar.style.display = 'flex';
+      status.style.display = 'flex';
+    }
+  }
+  type();
+}
+
+function copyDoc(sectorId){
+  const el = document.getElementById('docout-'+sectorId);
+  navigator.clipboard?.writeText(el.textContent||'').catch(()=>{});
+}
+
+function toggleRule(checkbox){
+  const count = document.querySelectorAll('.rule-toggle input:checked').length;
+  document.getElementById('rules-active-count').textContent = count;
+}
+
+/* ── CLOCK & DATE ── */
+function updateClock(){
+  const now = new Date();
+  document.getElementById('clock').textContent = now.toLocaleTimeString('en-US',{hour12:true});
+  document.getElementById('dash-date').textContent = now.toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+}
+
+/* ── INIT ── */
+function init(){
+  syncSectorsFromMissionStore();
+
+  // Render sector panels into main
+  const main = document.querySelector('.main');
+  Object.values(SECTORS).forEach(s=>{
+    main.appendChild(renderSectorPanel(s));
+  });
+  renderDashboard();
+  renderAutomation();
+  renderLiveFeed();
+  updateClock();
+  setInterval(updateClock, 1000);
+
+  // Live refresh: any mission create/update/assign/close anywhere re-syncs
+  // sector numbers/kanban and re-renders. Full re-render is the simplest
+  // correct option given renderSectorPanel builds static DOM once — worth
+  // revisiting with incremental DOM patching if mission volume gets heavy.
+  if(window.TSMMissionStore){
+    window.TSMMissionStore.subscribe('*', ()=>{ rerenderAll(); });
+  }
+}
+
+function rerenderAll(){
+  syncSectorsFromMissionStore();
+  document.querySelectorAll('.panel').forEach(p=>{
+    if(p.id !== 'panel-dashboard' && p.id !== 'panel-automation' && p.id !== 'panel-activity'){
+      p.remove();
+    }
+  });
+  document.getElementById('wf-overview').innerHTML = '';
+  document.getElementById('sla-bars').innerHTML = '';
+  document.getElementById('turnaround-bars').innerHTML = '';
+  document.getElementById('dash-feed').innerHTML = '';
+  document.getElementById('live-feed').innerHTML = '';
+
+  const activePanelId = document.querySelector('.nav-item.active')?.dataset.panel;
+  const main = document.querySelector('.main');
+  Object.values(SECTORS).forEach(s=>{
+    main.appendChild(renderSectorPanel(s));
+  });
+  renderDashboard();
+  renderLiveFeed();
+  if(activePanelId){
+    document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active', p.id === 'panel-'+activePanelId));
+  }
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+  <script src="/core/tsm-kernel.js"></script>
+  <script src="/core/tsm-enforcer.js"></script>
+  <script>
+    // ===== TSM_AUTONOMY_STANDARDIZED =====
+    window.TSM_AUTONOMY_STANDARDIZED = true;
+
+    // ===== TSM WAR ROOM SCOPED RELAY FIX =====
+    window.tsmMission = window.tsmMission || {
+      id: "BPO-" + Date.now().toString(36),
+      vertical: "bpo"
+    };
+
+    function tsmWriteRelay(payload){
+      TSM_KERNEL.setRelay("bpo", JSON.stringify(payload));
+    }
+  </script>
+</body>
+</html>

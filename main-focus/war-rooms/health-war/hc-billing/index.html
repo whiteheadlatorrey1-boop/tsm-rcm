@@ -1,0 +1,822 @@
+<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HC BILLING COMMAND · TSM Healthcare</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow-y:auto}
+body{background:#0a0f0a;color:#e0ffe0;font-family:'Courier New',monospace;font-size:13px;padding-bottom:80px}
+:root{--g:#00ff88;--a:#ffaa00;--r:#ff4444;--b:#00aaff;--dim:#0d150d;--border:#1e3a1e}
+@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+
+/* ── TABS: default hidden via JS, NOT CSS ── */
+.tab-panel{display:none}
+.tab-panel.active{display:block}
+
+main{padding-bottom:80px!important;min-height:calc(100vh - 60px)}
+
+.hdr{display:flex;justify-content:space-between;align-items:center;padding:10px 20px;border-bottom:1px solid var(--border);background:#0b120b}
+.hdr-left{display:flex;align-items:center;gap:12px}
+.hdr-title{font-size:16px;font-weight:700;letter-spacing:2px;color:var(--g)}
+.hdr-sub{font-size:10px;color:#556655;letter-spacing:1px}
+.node-pill{padding:4px 12px;border-radius:12px;font-size:10px;font-weight:700;border:1px solid var(--g);color:var(--g)}
+.nav{display:flex;border-bottom:1px solid var(--border);background:#0b120b;padding:0 20px;overflow-x:auto}
+.nav-btn{padding:10px 18px;font-family:inherit;font-size:11px;font-weight:700;letter-spacing:1px;border:none;background:none;color:#558855;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;transition:all .2s}
+.nav-btn:hover{color:var(--g)}.nav-btn.active{color:var(--g);border-bottom-color:var(--g)}
+
+.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding:16px 20px}
+.kpi{background:var(--dim);border:1px solid var(--border);border-radius:6px;padding:16px}
+.kpi-val{font-size:28px;font-weight:700;margin-bottom:4px}
+.kpi-lbl{font-size:10px;color:#558855;letter-spacing:1px;text-transform:uppercase}
+.kpi-sub{font-size:10px;margin-top:4px}
+.green{color:var(--g)}.amber{color:var(--a)}.red{color:var(--r)}.blue{color:var(--b)}
+
+.sec{margin:0 20px 16px;background:var(--dim);border:1px solid var(--border);border-radius:6px;padding:16px}
+.sec-hdr{font-size:11px;font-weight:700;letter-spacing:2px;color:var(--g);margin-bottom:12px}
+.sec-hdr::before{content:'◆ ';font-size:8px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;padding:6px 10px;font-size:10px;letter-spacing:1px;color:#558855;border-bottom:1px solid var(--border)}
+td{padding:8px 10px;border-bottom:1px solid #0f1f0f}
+tr:hover td{background:#0f1f0f}
+.badge{padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700}
+.bg{background:#003322;color:var(--g);border:1px solid var(--g)}
+.ba{background:#332200;color:var(--a);border:1px solid var(--a)}
+.br{background:#330000;color:var(--r);border:1px solid var(--r)}
+.bb{background:#001133;color:var(--b);border:1px solid var(--b)}
+
+.alert-row{display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid #0f1f0f}
+.pri{padding:2px 8px;border-radius:10px;font-size:9px;font-weight:700;min-width:52px;text-align:center}
+.purgent{background:#330000;color:var(--r);border:1px solid var(--r)}
+.pmed{background:#332200;color:var(--a);border:1px solid var(--a)}
+.plow{background:#001133;color:var(--b);border:1px solid var(--b)}
+.pok{background:#003322;color:var(--g);border:1px solid var(--g)}
+.alert-txt{font-size:12px;flex:1}.alert-imp{font-size:11px;color:var(--a);min-width:70px;text-align:right}
+
+.ai-box{margin:0 20px 16px;background:var(--dim);border:1px solid var(--border);border-radius:6px;padding:16px}
+.ai-hdr{font-size:11px;font-weight:700;letter-spacing:2px;color:var(--a);margin-bottom:10px}
+.ai-row{display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+.ai-btn{padding:5px 12px;background:#1a2000;border:1px solid var(--a);color:var(--a);font-family:inherit;font-size:10px;font-weight:700;border-radius:4px;cursor:pointer;transition:background .2s}
+.ai-btn:hover{background:#2a3000}
+.ai-inp{flex:1;min-width:200px;background:#0b120b;border:1px solid var(--border);color:var(--g);font-family:inherit;font-size:12px;padding:8px 12px;border-radius:4px;outline:none}
+.ai-inp:focus{border-color:var(--g)}
+.ask-btn{padding:8px 16px;background:var(--g);color:#000;font-family:inherit;font-size:11px;font-weight:700;border:none;border-radius:4px;cursor:pointer}
+.ask-btn:disabled{opacity:.5;cursor:not-allowed}
+.ai-res{margin-top:10px;padding:10px;background:#0b120b;border:1px solid var(--border);border-radius:4px;color:#99cc99;font-size:12px;min-height:40px;white-space:pre-wrap;line-height:1.6}
+
+.pr-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:8px}
+.pr-card{background:#0b120b;border:1px solid var(--border);border-radius:6px;padding:12px;cursor:pointer;transition:border-color .2s}
+.pr-card:hover{border-color:var(--a)}
+.pr-card-title{color:var(--a);font-weight:700;font-size:11px;margin-bottom:4px}
+.pr-card-desc{color:#558855;font-size:10px}
+
+.stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px}
+.stat-box{background:#0b120b;border:1px solid var(--border);border-radius:6px;padding:12px;text-align:center}
+.stat-val{font-size:22px;font-weight:700;margin-bottom:4px}
+.stat-lbl{font-size:10px;color:#558855;letter-spacing:1px}
+
+/* ── HC NODE GUIDE PANEL ── */
+#hc-node-guide{position:fixed;top:110px;right:0;width:310px;background:#0b120b;border-left:1px solid var(--border);border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:14px;z-index:50;border-radius:6px 0 0 6px;font-size:11px;font-family:'Courier New',monospace;max-height:calc(100vh - 180px);overflow-y:auto}
+.guide-hdr{color:var(--g);font-size:11px;font-weight:700;letter-spacing:2px;margin-bottom:6px}
+.guide-desc{font-size:10px;color:#556655;margin-bottom:10px;line-height:1.5}
+.guide-divider{border:none;border-top:1px solid var(--border);margin:10px 0}
+.guide-obj{color:var(--g);font-size:10px;font-weight:700;letter-spacing:2px;margin-bottom:6px}
+.guide-meta{font-size:10px;color:#99cc99;margin-bottom:10px}
+.guide-meta span{color:var(--g)}
+.guide-step-label{font-size:9px;letter-spacing:2px;color:#556655;margin-bottom:6px}
+.guide-step-box{background:#0f1e0f;border:1px solid #1e3a1e;border-radius:4px;padding:10px;margin-bottom:8px}
+.guide-step-box.active-step{border-color:var(--a)}
+.guide-step-text{font-size:11px;color:#ccddcc;line-height:1.6;margin-bottom:8px}
+.guide-step-actions{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+.guide-action-btn{padding:4px 10px;font-family:inherit;font-size:9px;font-weight:700;border-radius:3px;cursor:pointer;letter-spacing:1px;transition:all .2s}
+.btn-explain{background:#001122;border:1px solid var(--b);color:var(--b)}
+.btn-explain:hover{background:#002244}
+.btn-risk{background:#220011;border:1px solid var(--r);color:var(--r)}
+.btn-risk:hover{background:#440022}
+.btn-talk{background:#112200;border:1px solid var(--g);color:var(--g)}
+.btn-talk:hover{background:#224400}
+.guide-submit-btn{width:100%;padding:7px;background:#003322;border:1px solid var(--g);color:var(--g);font-family:inherit;font-size:10px;font-weight:700;border-radius:3px;cursor:pointer;letter-spacing:1px;margin-bottom:6px;transition:background .2s}
+.guide-submit-btn:hover{background:#004433}
+.guide-result{background:#0a0f0a;border:1px solid var(--border);border-radius:3px;padding:8px;font-size:10px;color:#99cc99;min-height:30px;white-space:pre-wrap;line-height:1.5;margin-top:8px;display:none}
+.guide-result.visible{display:block}
+.guide-field{width:100%;background:#0a0f0a;border:1px solid var(--border);color:var(--g);font-family:inherit;font-size:10px;padding:5px 8px;border-radius:3px;margin-bottom:6px}
+.guide-field:focus{outline:none;border-color:var(--g)}
+.step-nav{display:flex;justify-content:space-between;align-items:center;margin-top:8px}
+.step-nav-btn{padding:4px 10px;font-family:inherit;font-size:9px;font-weight:700;border-radius:3px;cursor:pointer;background:transparent;border:1px solid var(--border);color:#558855;transition:all .2s}
+.step-nav-btn:hover{border-color:var(--g);color:var(--g)}
+.step-counter{font-size:9px;color:#556655;letter-spacing:1px}
+
+/* ── FOOTER ── */
+.footer{position:fixed;bottom:0;left:0;right:0;background:#0b120b;border-top:1px solid var(--border);padding:8px 20px;display:flex;justify-content:space-between;align-items:center;z-index:100}
+.fn{font-size:10px;color:#558855;letter-spacing:1px}
+.fbtns{display:flex;gap:8px}
+.fbtn{padding:6px 14px;font-family:inherit;font-size:10px;font-weight:700;border-radius:4px;cursor:pointer;letter-spacing:1px}
+.fbnca{background:#003322;border:1px solid var(--g);color:var(--g)}
+.frelay{background:#001133;border:1px solid var(--b);color:var(--b)}
+
+/* ── CAPABILITY CARDS ── */
+.cap-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin:0 20px 16px}
+.cap-card{background:var(--dim);border:1px solid var(--border);border-radius:6px;padding:12px;cursor:pointer;transition:border-color .2s}
+.cap-card:hover{border-color:var(--g)}
+.cap-card-title{color:var(--g);font-weight:700;font-size:11px;margin-bottom:4px}
+.cap-card-desc{color:#556655;font-size:10px;line-height:1.4}
+
+/* Spinner in guide */
+.guide-spinner{display:inline-block;animation:spin 1s linear infinite}
+</style>
+</head><body>
+
+<div class="hdr">
+  <div class="hdr-left">
+    <span style="font-size:22px">🧾</span>
+    <div>
+      <div class="hdr-title">HC BILLING COMMAND</div>
+      <div class="hdr-sub">CMS-1500 · UB-04 · CPT Audit · Claims Processing · Coding Compliance</div>
+    </div>
+  </div>
+  <div class="node-pill">NODE ACTIVE</div>
+</div>
+
+<nav class="nav">
+  <button class="nav-btn active" onclick="switchTab('dash',this)">⊞ DASHBOARD</button>
+  <button class="nav-btn" onclick="switchTab('claims',this)">📋 CLAIMS</button>
+  <button class="nav-btn" onclick="switchTab('coding',this)">💻 CODING</button>
+  <button class="nav-btn" onclick="switchTab('ai',this)">🧠 AI ANALYSIS</button>
+  <button class="nav-btn" onclick="switchTab('presets',this)">⚡ PRESETS</button>
+</nav>
+
+<!-- ═══════════════ DASHBOARD TAB ═══════════════ -->
+<div id="tab-dash" class="tab-panel active">
+  <div class="kpi-row">
+    <div class="kpi"><div class="kpi-val red">1,256</div><div class="kpi-lbl">Claims This Month</div><div class="kpi-sub red">231 denied · 18.4% denial rate</div></div>
+    <div class="kpi"><div class="kpi-val red">231</div><div class="kpi-lbl">Denied / Rejected</div><div class="kpi-sub red">Exceeds 15% threshold · action required</div></div>
+    <div class="kpi"><div class="kpi-val amber">$48K</div><div class="kpi-lbl">Stalled Revenue</div><div class="kpi-sub amber">Adjudication queue · 14 aging >30d</div></div>
+    <div class="kpi"><div class="kpi-val amber">94.2%</div><div class="kpi-lbl">Clean Claim Rate</div><div class="kpi-sub amber">Target 97% · 2.8pt gap to close</div></div>
+  </div>
+  <div class="sec"><div class="sec-hdr">ACTIVE ALERTS</div>
+    <div class="alert-row"><span class="pri purgent">URGENT</span><div class="alert-txt">18.4% denial rate exceeds 15% CMS threshold — top codes: PR-96, CO-4, CO-11</div><div class="alert-imp">$48K</div></div>
+    <div class="alert-row"><span class="pri purgent">URGENT</span><div class="alert-txt">CLM-0334 (93454 · $3,800) — CO-29 timely filing · write-off risk in 48hrs</div><div class="alert-imp">$3.8K</div></div>
+    <div class="alert-row"><span class="pri pmed">MED</span><div class="alert-txt">CPT 99215 upcoding pattern — 23 claims · $12,040 audit exposure</div><div class="alert-imp">Audit risk</div></div>
+    <div class="alert-row"><span class="pri pmed">MED</span><div class="alert-txt">Modifier -25 overuse detected on 47 claims — compliance review required</div><div class="alert-imp">$8,460</div></div>
+    <div class="alert-row"><span class="pri plow">LOW</span><div class="alert-txt">ICD-10 specificity gaps on 14 claims — documentation incomplete</div><div class="alert-imp">Documentation</div></div>
+    <div class="alert-row"><span class="pri pok">OK</span><div class="alert-txt">Clean claim rate 94.2% above 90% baseline — appeal win rate tracking at 68%</div><div class="alert-imp">✓</div></div>
+  </div>
+
+  <div style="margin:0 20px 8px;font-size:10px;color:#556655;letter-spacing:2px">◆ ENTERPRISE CAPABILITY LAYER · BILLING</div>
+  <div class="cap-grid">
+    <div class="cap-card" onclick="switchTab('claims',document.querySelectorAll('.nav-btn')[1])">
+      <div class="cap-card-title">CMS-1500 Processing</div>
+      <div class="cap-card-desc">Professional claim form validation, field mapping, and submission tracking.</div>
+    </div>
+    <div class="cap-card" onclick="switchTab('claims',document.querySelectorAll('.nav-btn')[1])">
+      <div class="cap-card-title">UB-04 Facility Claims</div>
+      <div class="cap-card-desc">Institutional billing, revenue codes, and facility charge capture.</div>
+    </div>
+    <div class="cap-card" onclick="switchTab('coding',document.querySelectorAll('.nav-btn')[2])">
+      <div class="cap-card-title">CPT Audit Queue</div>
+      <div class="cap-card-desc">Upcoding detection, modifier compliance, and documentation gap alerts.</div>
+    </div>
+    <div class="cap-card" onclick="switchTab('claims',document.querySelectorAll('.nav-btn')[1])">
+      <div class="cap-card-title">Claims Processing</div>
+      <div class="cap-card-desc">Submission pipeline, status tracking, rejection management, and resubmission.</div>
+    </div>
+    <div class="cap-card" onclick="switchTab('coding',document.querySelectorAll('.nav-btn')[2])">
+      <div class="cap-card-title">Coding Compliance</div>
+      <div class="cap-card-desc">ICD-10 specificity, modifier validation, OIG risk monitoring.</div>
+    </div>
+  </div>
+
+  <div class="ai-box">
+    <div class="ai-hdr">⚡ DEEP INTEL WORKBENCH — BILLING AI ANALYSIS</div>
+    <div style="font-size:10px;color:#556655;margin-bottom:10px">Run deep analysis across all billing node data. Synthesizes claims, coding, and compliance into a unified intelligence brief.</div>
+    <div class="ai-row">
+      <button class="ai-btn" onclick="Q('Summarize the current billing dashboard state: denial rate, stalled revenue, clean claim rate, and top 3 priority actions','dash-btn','dash-res')">AI Summary</button>
+      <button class="ai-btn" onclick="Q('Identify highest risk item across all claims, coding, and compliance — explain why it matters, financial impact, and who owns the resolution','dash-btn','dash-res')">Risk + Owner</button>
+      <button class="ai-btn" onclick="Q('Run full BNCA for HC BILLING COMMAND: top risks, compliance gaps, next best actions with confidence levels','dash-btn','dash-res')">BNCA</button>
+      <button class="ai-btn" onclick="Q('Generate a presenter talk track for the current billing dashboard — explain each KPI, top alert, and recommended action in plain language suitable for a leadership presentation','dash-btn','dash-res')">Talk Track</button>
+    </div>
+    <div class="ai-row">
+      <input id="dash-inp" class="ai-inp" type="text" placeholder="Find highest risk item across claims, coding, and compliance — explain why it matters and who owns it">
+      <button class="ask-btn" id="dash-btn" onclick="Q(document.getElementById('dash-inp').value||document.getElementById('dash-inp').placeholder,'dash-btn','dash-res')">▶ ASK</button>
+    </div>
+    <div id="dash-res" class="ai-res">> AI ready.</div>
+  </div>
+</div>
+
+<!-- ═══════════════ CLAIMS TAB ═══════════════ -->
+<div id="tab-claims" class="tab-panel">
+  <div class="sec" style="margin-top:16px">
+    <div class="sec-hdr">CLAIMS WORKLIST — ACTION REQUIRED</div>
+    <div class="stat-grid">
+      <div class="stat-box"><div class="stat-val red">231</div><div class="stat-lbl">Claims Requiring Action</div></div>
+      <div class="stat-box"><div class="stat-val amber">$48K</div><div class="stat-lbl">Revenue At Risk</div></div>
+      <div class="stat-box"><div class="stat-val red">18.4%</div><div class="stat-lbl">Denial Rate</div></div>
+    </div>
+    <table><thead><tr><th>CLAIM #</th><th>CPT</th><th>PAYER</th><th>AMOUNT</th><th>DENIAL CODE</th><th>AGE (DAYS)</th><th>ACTION</th></tr></thead>
+    <tbody>
+      <tr><td>CLM-0289</td><td>99215</td><td>Medicare</td><td>$248</td><td>PR-96</td><td>14</td><td><span class="badge br">APPEAL</span></td></tr>
+      <tr><td>CLM-0301</td><td>27447</td><td>Aetna</td><td>$8,200</td><td>CO-4 no auth</td><td>7</td><td><span class="badge br">GET AUTH</span></td></tr>
+      <tr><td>CLM-0318</td><td>70553</td><td>BlueCross</td><td>$1,400</td><td>CO-11 bundling</td><td>3</td><td><span class="badge ba">RECODE</span></td></tr>
+      <tr><td>CLM-0334</td><td>93454</td><td>UHC</td><td>$3,800</td><td>CO-29 timely</td><td>21</td><td><span class="badge br">WRITE-OFF</span></td></tr>
+      <tr><td>CLM-0341</td><td>97110</td><td>Medicaid</td><td>$180</td><td>CO-B7 cert</td><td>5</td><td><span class="badge bb">AUTHORIZE</span></td></tr>
+      <tr><td>CLM-0356</td><td>99214</td><td>Aetna</td><td>$218</td><td>CO-4 modifier</td><td>8</td><td><span class="badge ba">RECODE</span></td></tr>
+    </tbody></table>
+  </div>
+  <div class="ai-box">
+    <div class="ai-hdr">⚡ AI ANALYSIS</div>
+    <div class="ai-row">
+      <button class="ai-btn" onclick="Q('Analyze 18.4% denial rate — top codes, payer patterns, 30-day reduction plan','claims-btn','claims-res')">Denial Root Cause</button>
+      <button class="ai-btn" onclick="Q('Create appeal letter templates for PR-96 and CO-4 denial codes','claims-btn','claims-res')">Appeal Templates</button>
+      <button class="ai-btn" onclick="Q('Prioritize $48K stalled claims by recovery probability and payer','claims-btn','claims-res')">AR Recovery</button>
+    </div>
+    <div class="ai-row">
+      <input id="claims-inp" class="ai-inp" type="text" placeholder="Claims query...">
+      <button class="ask-btn" id="claims-btn" onclick="Q(document.getElementById('claims-inp').value,'claims-btn','claims-res')">▶ ASK</button>
+    </div>
+    <div id="claims-res" class="ai-res">> AI ready.</div>
+  </div>
+</div>
+
+<!-- ═══════════════ CODING TAB ═══════════════ -->
+<div id="tab-coding" class="tab-panel">
+  <div class="sec" style="margin-top:16px">
+    <div class="sec-hdr">CPT CODING COMPLIANCE AUDIT</div>
+    <table><thead><tr><th>CPT CODE</th><th>DESCRIPTION</th><th>VOLUME</th><th>UPCODING RISK</th><th>REVENUE IMPACT</th><th>DOCUMENTATION</th><th>ACTION</th></tr></thead>
+    <tbody>
+      <tr><td>99215</td><td>E&M Level 5</td><td>23</td><td><span class="badge br">HIGH</span></td><td>$12,040</td><td>Incomplete</td><td><span class="badge br">AUDIT</span></td></tr>
+      <tr><td>99214</td><td>E&M Level 4</td><td>189</td><td><span class="badge bg">LOW</span></td><td>$41,202</td><td>Complete</td><td><span class="badge bg">COMPLIANT</span></td></tr>
+      <tr><td>25 Modifier</td><td>Separate E&M</td><td>47</td><td><span class="badge ba">MED</span></td><td>$8,460</td><td>Review</td><td><span class="badge ba">REVIEW</span></td></tr>
+      <tr><td>93000</td><td>EKG Routine</td><td>84</td><td><span class="badge bg">LOW</span></td><td>$23,856</td><td>Complete</td><td><span class="badge bg">COMPLIANT</span></td></tr>
+      <tr><td>71046</td><td>Chest X-Ray 2V</td><td>112</td><td><span class="badge bg">LOW</span></td><td>$21,504</td><td>Complete</td><td><span class="badge bg">COMPLIANT</span></td></tr>
+    </tbody></table>
+  </div>
+  <div class="sec">
+    <div class="sec-hdr">ICD-10 SPECIFICITY FLAGS</div>
+    <table><thead><tr><th>CLAIM #</th><th>ICD-10 USED</th><th>RECOMMENDED</th><th>PAYER</th><th>IMPACT</th><th>STATUS</th></tr></thead>
+    <tbody>
+      <tr><td>CLM-0290</td><td>M54.5 Low back pain</td><td>M54.51 Vertebrogenic</td><td>Medicare</td><td>Reimbursement delta</td><td><span class="badge ba">RECODE</span></td></tr>
+      <tr><td>CLM-0305</td><td>J06.9 URI</td><td>J06.0 Strep pharyngitis</td><td>Aetna</td><td>Specificity gap</td><td><span class="badge ba">RECODE</span></td></tr>
+      <tr><td>CLM-0312</td><td>R51 Headache</td><td>G43.909 Migraine</td><td>BlueCross</td><td>Authorization gap</td><td><span class="badge br">URGENT</span></td></tr>
+    </tbody></table>
+  </div>
+  <div class="ai-box">
+    <div class="ai-hdr">⚡ AI ANALYSIS</div>
+    <div class="ai-row">
+      <button class="ai-btn" onclick="Q('Review CPT 99215 upcoding risk across 23 claims — documentation gaps and remediation steps','coding-btn','coding-res')">CPT Audit</button>
+      <button class="ai-btn" onclick="Q('Analyze Modifier -25 overuse — identify risk patterns and compliance guidelines for separate E&M billing','coding-btn','coding-res')">Modifier Compliance</button>
+      <button class="ai-btn" onclick="Q('Design coder training program to improve ICD-10 specificity and reduce claim rejections','coding-btn','coding-res')">ICD-10 Training</button>
+    </div>
+    <div class="ai-row">
+      <input id="coding-inp" class="ai-inp" type="text" placeholder="Coding compliance query...">
+      <button class="ask-btn" id="coding-btn" onclick="Q(document.getElementById('coding-inp').value,'coding-btn','coding-res')">▶ ASK</button>
+    </div>
+    <div id="coding-res" class="ai-res">> AI ready.</div>
+  </div>
+</div>
+
+<!-- ═══════════════ AI ANALYSIS TAB ═══════════════ -->
+<div id="tab-ai" class="tab-panel">
+  <div class="ai-box" style="margin-top:16px">
+    <div class="ai-hdr">⚡ DEEP AI ANALYSIS</div>
+    <div class="ai-row">
+      <input id="ai-inp" class="ai-inp" type="text" placeholder="Enter detailed query...">
+      <button class="ask-btn" id="ai-btn" onclick="Q(document.getElementById('ai-inp').value,'ai-btn','ai-res')">▶ ASK</button>
+    </div>
+    <div id="ai-res" class="ai-res">> AI Analysis ready.</div>
+  </div>
+</div>
+
+<!-- ═══════════════ PRESETS TAB ═══════════════ -->
+<div id="tab-presets" class="tab-panel">
+  <div class="sec" style="margin-top:16px">
+    <div class="sec-hdr">PRESET LIBRARY — Click any to load into AI</div>
+    <div class="pr-grid">
+      <div class="pr-card" onclick="loadPreset(this.dataset.p)" data-p="Analyze 18.4% denial rate — top denial codes PR-96, CO-4, CO-11 by payer, root cause, and 30-day reduction plan to reach 12% target"><div class="pr-card-title">Denial Root Cause</div><div class="pr-card-desc">Denial analysis + reduction plan</div></div>
+      <div class="pr-card" onclick="loadPreset(this.dataset.p)" data-p="Create appeal letter templates for PR-96 medical necessity and CO-4 modifier denial codes — include CMS citations and supporting documentation checklist"><div class="pr-card-title">Appeal Templates</div><div class="pr-card-desc">PR-96 + CO-4 appeal letters</div></div>
+      <div class="pr-card" onclick="loadPreset(this.dataset.p)" data-p="Prioritize $48K stalled claims by recovery probability, payer, and aging — identify write-off risks and escalation path for CLM-0334 timely filing"><div class="pr-card-title">AR Recovery Plan</div><div class="pr-card-desc">$48K revenue recovery</div></div>
+      <div class="pr-card" onclick="loadPreset(this.dataset.p)" data-p="Review CPT 99215 upcoding risk across 23 claims — documentation gaps, audit exposure estimate, and remediation to reduce from HIGH to LOW risk"><div class="pr-card-title">CPT Audit</div><div class="pr-card-desc">Upcoding compliance review</div></div>
+      <div class="pr-card" onclick="loadPreset(this.dataset.p)" data-p="Build plan to improve clean claim rate from 94.2% to 97% — identify top coding errors, payer-specific edits, and staff training priorities"><div class="pr-card-title">Clean Claim Plan</div><div class="pr-card-desc">94.2% → 97% improvement</div></div>
+      <div class="pr-card" onclick="loadPreset(this.dataset.p)" data-p="Analyze Modifier -25 overuse pattern on 47 claims — identify risk, provide compliance guidelines, and design coder education module"><div class="pr-card-title">Modifier Compliance</div><div class="pr-card-desc">Modifier -25 audit</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ HC NODE GUIDE PANEL ═══════════════ -->
+<div id="hc-node-guide">
+  <div class="guide-hdr">HC NODE GUIDE</div>
+  <div class="guide-desc">Use this panel while presenting. It explains the current tab, runs BNCA, and creates a next-action summary.</div>
+  <hr class="guide-divider">
+
+  <!-- INTAKE FORM -->
+  <div id="guide-intake" style="margin-bottom:10px">
+    <div style="font-size:9px;font-weight:700;letter-spacing:2px;color:var(--a);margin-bottom:6px">◆ SET CLIENT MISSION</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px">
+      <div>
+        <div style="font-size:8px;color:#556655;margin-bottom:2px;letter-spacing:1px">PATIENT NAME</div>
+        <input id="intake-patient" class="guide-field" type="text" placeholder="e.g. Jane Smith">
+      </div>
+      <div>
+        <div style="font-size:8px;color:#556655;margin-bottom:2px;letter-spacing:1px">CLAIM #</div>
+        <input id="intake-claim" class="guide-field" type="text" placeholder="e.g. CLM-1042">
+      </div>
+      <div>
+        <div style="font-size:8px;color:#556655;margin-bottom:2px;letter-spacing:1px">PAYER</div>
+        <input id="intake-payer" class="guide-field" type="text" placeholder="e.g. Aetna">
+      </div>
+      <div>
+        <div style="font-size:8px;color:#556655;margin-bottom:2px;letter-spacing:1px">DENIAL CODE</div>
+        <input id="intake-denial" class="guide-field" type="text" placeholder="e.g. CO-4">
+      </div>
+      <div>
+        <div style="font-size:8px;color:#556655;margin-bottom:2px;letter-spacing:1px">CPT CODE</div>
+        <input id="intake-cpt" class="guide-field" type="text" placeholder="e.g. 99213">
+      </div>
+      <div>
+        <div style="font-size:8px;color:#556655;margin-bottom:2px;letter-spacing:1px">AMOUNT AT RISK</div>
+        <input id="intake-amount" class="guide-field" type="text" placeholder="e.g. $1,240">
+      </div>
+    </div>
+    <div style="font-size:8px;color:#556655;margin-bottom:2px;letter-spacing:1px">ISSUE / DENIAL REASON</div>
+    <textarea id="intake-issue" class="guide-field" rows="2" placeholder="e.g. Modifier conflict on same-day E&amp;M and procedure. Missing -25 on 99213." style="resize:none;width:100%;margin-bottom:6px"></textarea>
+    <button onclick="applyIntake()" style="width:100%;padding:6px;background:var(--a);color:#000;font-family:'Courier New',monospace;font-size:9px;font-weight:700;border:none;border-radius:3px;cursor:pointer;letter-spacing:1px">⚡ SET MISSION FROM CLIENT DATA</button>
+    <button onclick="toggleIntake(false)" id="intake-collapse-btn" style="display:none;width:100%;margin-top:4px;padding:5px;background:transparent;border:1px solid var(--border);color:#556655;font-family:'Courier New',monospace;font-size:9px;border-radius:3px;cursor:pointer;letter-spacing:1px">▲ COLLAPSE INTAKE</button>
+  </div>
+  <button onclick="toggleIntake(true)" id="intake-expand-btn" style="display:none;width:100%;padding:5px;background:transparent;border:1px solid var(--a);color:var(--a);font-family:'Courier New',monospace;font-size:9px;font-weight:700;border-radius:3px;cursor:pointer;letter-spacing:1px;margin-bottom:8px">✎ EDIT CLIENT DATA</button>
+  <hr class="guide-divider">
+
+  <div class="guide-obj">MISSION OBJECTIVES · BILLING</div>
+  <div id="guide-meta" class="guide-meta"></div>
+
+  <!-- ── MISSION TASKS ── -->
+  <div id="guide-tasks" style="margin-bottom:10px">
+    <!-- completed task -->
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+      <div style="width:18px;height:18px;border-radius:50%;background:#003322;border:1px solid var(--g);display:flex;align-items:center;justify-content:center;font-size:9px;color:var(--g);font-weight:700;flex-shrink:0">✓</div>
+      <span style="color:#334433;font-size:10px;text-decoration:line-through">Denial codes identified</span>
+    </div>
+    <div id="guide-denial-codes" style="font-size:9px;color:#223322;padding-left:26px;margin-bottom:8px">PR-96 · CO-4 · CO-11 · CO-29 flagged</div>
+
+    <!-- active urgent task -->
+    <div id="guide-urgent-task" style="background:#1a0000;border:1px solid var(--r);border-radius:4px;padding:8px;margin-bottom:8px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+        <div style="width:18px;height:18px;border-radius:50%;background:var(--r);display:flex;align-items:center;justify-content:center;font-size:9px;color:#fff;font-weight:700;flex-shrink:0">!</div>
+        <span style="color:var(--r);font-size:10px;font-weight:700">File CO-29 appeal — 48hr window</span>
+      </div>
+      <div style="font-size:9px;color:#556655;padding-left:26px;margin-bottom:6px">CLM-0334 · CPT 93454 · UHC · $3,800</div>
+      <div style="display:flex;align-items:center;gap:8px;background:#0a0000;border:1px solid #3a0000;border-radius:3px;padding:5px 8px;margin-bottom:6px">
+        <span style="font-size:16px;font-weight:700;color:var(--r)">48hr</span>
+        <span style="font-size:9px;color:#cc9999">timely filing deadline — act now or write off $3,800</span>
+      </div>
+      <div style="font-size:9px;color:#99cc99;line-height:1.5;margin-bottom:6px">Include original submission date, proof of timely filing, and UHC appeal reference number.</div>
+      <button onclick="loadAI('Draft CO-29 timely filing appeal letter for CLM-0334, CPT 93454, UHC payer, $3,800. Include original submission date placeholder, proof of timely filing checklist, and UHC appeal portal instructions.')" style="width:100%;padding:6px;background:var(--r);color:#fff;font-family:'Courier New',monospace;font-size:9px;font-weight:700;border:none;border-radius:3px;cursor:pointer;letter-spacing:1px;margin-bottom:4px">⚡ DRAFT CO-29 APPEAL</button>
+      <button onclick="loadAI('Prioritize $48K stalled claims by recovery probability — which to appeal first, which are write-off risks, and 30-day AR recovery plan')" style="width:100%;padding:6px;background:transparent;border:1px solid var(--g);color:var(--g);font-family:'Courier New',monospace;font-size:9px;font-weight:700;border-radius:3px;cursor:pointer;letter-spacing:1px">AR RECOVERY PLAN ↗</button>
+    </div>
+  </div>
+
+  <hr class="guide-divider">
+
+  <!-- ── STEPS ── -->
+  <div id="guide-step-label" class="guide-step-label">STEP 1 OF 2</div>
+
+  <div id="guide-step-1" class="guide-step-box active-step">
+    <div id="guide-step-1-text" class="guide-step-text"></div>
+    <div class="guide-step-actions">
+      <button class="guide-action-btn btn-explain" onclick="guideAction('explain',1)">Explain Current Tab</button>
+      <button class="guide-action-btn btn-risk" onclick="guideAction('risk',1)">Find Highest Risk</button>
+      <button class="guide-action-btn btn-talk" onclick="guideAction('talk',1)">Talk Track</button>
+    </div>
+    <button class="guide-submit-btn" onclick="submitStep(1)">Submit Step Response</button>
+    <div id="guide-res-1" class="guide-result"></div>
+  </div>
+
+  <div id="guide-step-2" class="guide-step-box" style="margin-top:8px">
+    <div id="guide-step-2-text" class="guide-step-text"></div>
+    <div class="guide-step-actions">
+      <button class="guide-action-btn btn-explain" onclick="guideAction('explain',2)">Explain Current Tab</button>
+      <button class="guide-action-btn btn-risk" onclick="guideAction('risk',2)">Find Highest Risk</button>
+      <button class="guide-action-btn btn-talk" onclick="guideAction('talk',2)">Talk Track</button>
+    </div>
+    <button class="guide-submit-btn" onclick="submitStep(2)">Submit Step Response</button>
+    <div id="guide-res-2" class="guide-result"></div>
+  </div>
+
+  <hr class="guide-divider">
+
+  <!-- ── BNCA vs STRATEGIST GUIDANCE ── -->
+  <div style="margin-bottom:10px">
+    <div style="font-size:9px;font-weight:700;letter-spacing:2px;color:#556655;margin-bottom:6px">◆ WHEN TO RUN WHAT</div>
+    <div style="background:#0a1400;border:1px solid #1e3a00;border-radius:3px;padding:7px 8px;margin-bottom:5px">
+      <div style="color:var(--g);font-size:9px;font-weight:700;margin-bottom:3px">⚡ RUN BNCA FIRST</div>
+      <div style="font-size:9px;color:#556655;line-height:1.5">Always start here. BNCA surfaces the highest-risk billing item within this node — denial codes, modifier errors, timely filing gaps. Run before escalating anything.</div>
+    </div>
+    <div style="background:#00111a;border:1px solid #001e3a;border-radius:3px;padding:7px 8px">
+      <div style="color:var(--b);font-size:9px;font-weight:700;margin-bottom:3px">🔗 RELAY TO STRATEGIST AFTER</div>
+      <div style="font-size:9px;color:#556655;line-height:1.5">Only escalate when BNCA reveals a <span style="color:var(--a)">cross-domain issue</span> — prior auth gaps (clinical), payer contract disputes (ops), or systemic denial patterns needing C-suite visibility. Don't relay single-claim issues.</div>
+    </div>
+  </div>
+
+  <button onclick="Q('Run full BNCA for HC BILLING COMMAND: top issue, why it matters, best next actions, confidence level','dash-btn','dash-res');switchTab('dash',document.querySelector('.nav-btn'))" style="width:100%;padding:7px;background:#003322;border:1px solid var(--g);color:var(--g);font-family:'Courier New',monospace;font-size:9px;font-weight:700;border-radius:3px;cursor:pointer;letter-spacing:1px;margin-bottom:5px">⚡ RUN NODE BNCA</button>
+
+  <hr class="guide-divider">
+
+  <!-- ── POST STEP 2 NEXT ACTIONS (hidden until both steps run) ── -->
+  <div id="guide-next-actions" style="display:none">
+    <div style="font-size:9px;font-weight:700;letter-spacing:2px;color:var(--g);margin-bottom:6px">◆ STEPS COMPLETE — NEXT ACTIONS</div>
+    <div style="font-size:9px;color:#556655;line-height:1.5;margin-bottom:8px">Both steps responded. Choose your escalation path based on what the analysis revealed:</div>
+    <div style="display:flex;flex-direction:column;gap:5px">
+      <button onclick="Q('Run full BNCA for HC BILLING COMMAND: synthesize both step findings into top risk, owner, resolution timeline, and confidence score','dash-btn','dash-res');switchTab('dash',document.querySelector('.nav-btn'))" style="width:100%;padding:6px;background:#003322;border:1px solid var(--g);color:var(--g);font-family:'Courier New',monospace;font-size:9px;font-weight:700;border-radius:3px;cursor:pointer;letter-spacing:1px">⚡ RE-RUN BNCA WITH FINDINGS</button>
+      <button onclick="relayToStrategist('HC BILLING');window.open('/html/healthcare/hc-main-strategist.html','_blank')" style="width:100%;padding:6px;background:#001133;border:1px solid var(--b);color:var(--b);font-family:'Courier New',monospace;font-size:9px;font-weight:700;border-radius:3px;cursor:pointer;letter-spacing:1px">🔗 ESCALATE TO STRATEGIST</button>
+      <button onclick="Q('Export billing session summary for patient '+clientData.patient+', claim '+clientData.claim+', payer '+clientData.payer+', denial '+clientData.denial+', amount '+clientData.amount+': both step findings, mission task status, denial codes, recommended actions, and escalation decision','dash-btn','dash-res');switchTab('dash',document.querySelector('.nav-btn'))" style="width:100%;padding:6px;background:#221100;border:1px solid var(--a);color:var(--a);font-family:'Courier New',monospace;font-size:9px;font-weight:700;border-radius:3px;cursor:pointer;letter-spacing:1px">📋 EXPORT SESSION SUMMARY</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- ═══════════════ FOOTER ═══════════════ -->
+<div class="footer">
+  <div class="fn">🧾 BILLING NODE &nbsp; Ready — run analysis or relay to Strategist</div>
+  <div class="fbtns">
+    <button class="fbtn fbnca" onclick="Q('Run a full BNCA for HC BILLING COMMAND: top risks, compliance gaps, priority actions','dash-btn','dash-res');switchTab('dash',document.querySelector('.nav-btn'))">⚡ RUN BNCA</button>
+    <button class="fbtn frelay" onclick="relayToStrategist('HC BILLING');window.open('/html/healthcare/hc-main-strategist.html','_blank')">🔗 RELAY TO STRATEGIST</button>
+  </div>
+</div>
+
+<!-- Subscribe badge -->
+<div style="position:fixed;top:10px;right:10px;z-index:9999">
+  <a href="https://buy.stripe.com/28EbJ1e9i0dV53p0qQ0gw01" target="_blank" style="font-family:inherit;font-size:7px;letter-spacing:2px;padding:5px 12px;border:1px solid #4ade80;color:#4ade80;text-decoration:none;white-space:nowrap;background:transparent;" onmouseover="this.style.background='#4ade80';this.style.color='#000'" onmouseout="this.style.background='transparent';this.style.color='#4ade80'">SUBSCRIBE — $399/MO</a>
+</div>
+
+<script>
+// ─────────────────────────────────────────────
+//  TAB DEFINITIONS — drives Node Guide context
+// ─────────────────────────────────────────────
+const TAB_CONFIG = {
+  dash: {
+    patient: 'Maria Santos',
+    claim: '27447',
+    payer: 'BlueCross BlueShield',
+    steps: [
+      'CMS-1500 claim CLM-8821 has modifier error. Identify correct modifier combination for E&M with procedure same day.',
+      'Review 18.4% denial rate against CMS 15% threshold. Identify top 3 denial codes and draft 30-day reduction plan.'
+    ]
+  },
+  claims: {
+    patient: 'James Okafor',
+    claim: '99213+36415',
+    payer: 'UnitedHealthcare',
+    steps: [
+      'Review the claim below. CO-4 (modifier conflict) was received. Identify the missing modifier for CPT 99213 billed same-day as CPT 36415.',
+      'UB-04 facility claim denied CO-4. Review revenue code and occurrence code alignment for inpatient stay.'
+    ]
+  },
+  coding: {
+    patient: 'Linda Park',
+    claim: '99215-23x',
+    payer: 'Medicare',
+    steps: [
+      'CPT 99215 upcoding risk flagged on 23 claims. Review documentation thresholds and identify which claims lack medical decision-making support.',
+      'Modifier -25 overuse on 47 claims. Verify each claim has a distinct, separately identifiable E&M service documented on the same day as the procedure.'
+    ]
+  },
+  ai: {
+    patient: 'Portfolio',
+    claim: 'ALL',
+    payer: 'All Payers',
+    steps: [
+      'Run deep intelligence brief across all billing data. Synthesize denial patterns, coding risks, and compliance gaps into unified action plan.',
+      'Generate executive summary with top 3 revenue recovery opportunities ranked by probability and dollar impact.'
+    ]
+  },
+  presets: {
+    patient: 'Portfolio',
+    claim: 'ALL',
+    payer: 'All Payers',
+    steps: [
+      'Select a preset analysis to load into the AI engine. Each preset targets a specific billing risk or compliance scenario.',
+      'After running a preset, review output and escalate high-priority findings to the Strategist node for cross-domain analysis.'
+    ]
+  }
+};
+
+let currentTab = 'dash';
+
+// ─────────────────────────────────────────────
+//  CLIENT INTAKE DATA
+// ─────────────────────────────────────────────
+let clientData = { patient:'Maria Santos', claim:'CLM-0334', payer:'BlueCross BlueShield', denial:'CO-29', cpt:'93454', amount:'$3,800', issue:'Timely filing deadline — 48hr window to file appeal or write off $3,800.' };
+
+function v(id){ const el=document.getElementById(id); return el?el.value.trim():''; }
+
+function applyIntake(){
+  const p=v('intake-patient')||clientData.patient;
+  const cl=v('intake-claim')||clientData.claim;
+  const py=v('intake-payer')||clientData.payer;
+  const dn=v('intake-denial')||clientData.denial;
+  const cp=v('intake-cpt')||clientData.cpt;
+  const am=v('intake-amount')||clientData.amount;
+  const is=v('intake-issue')||clientData.issue;
+  clientData={patient:p,claim:cl,payer:py,denial:dn,cpt:cp,amount:am,issue:is};
+  document.getElementById('guide-urgent-task').innerHTML=
+    '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><div style="width:18px;height:18px;border-radius:50%;background:var(--r);display:flex;align-items:center;justify-content:center;font-size:9px;color:#fff;font-weight:700;flex-shrink:0">!</div>'
+    +'<span style="color:var(--r);font-size:10px;font-weight:700">File '+dn+' appeal — action required</span></div>'
+    +'<div style="font-size:9px;color:#556655;padding-left:26px;margin-bottom:6px">'+cl+' · CPT '+cp+' · '+py+' · '+am+'</div>'
+    +'<div style="background:#0a0000;border:1px solid #3a0000;border-radius:3px;padding:5px 8px;margin-bottom:6px;font-size:9px;color:#cc9999;line-height:1.5">'+is+'</div>'
+    +'<div style="font-size:9px;color:#99cc99;line-height:1.5;margin-bottom:6px">Include original submission date, proof of timely filing, and '+py+' appeal reference number.</div>'
+    +'<button onclick="draftAppeal()" style="width:100%;padding:6px;background:var(--r);color:#fff;font-family:inherit;font-size:9px;font-weight:700;border:none;border-radius:3px;cursor:pointer;letter-spacing:1px;margin-bottom:4px">⚡ DRAFT '+dn+' APPEAL</button>'
+    +'<button onclick="draftAR()" style="width:100%;padding:6px;background:transparent;border:1px solid var(--g);color:var(--g);font-family:inherit;font-size:9px;font-weight:700;border-radius:3px;cursor:pointer;letter-spacing:1px">AR RECOVERY PLAN ↗</button>';
+  const dc=document.getElementById('guide-denial-codes');
+  if(dc) dc.textContent=dn+' flagged · CPT '+cp+' · '+py;
+  document.getElementById('guide-meta').innerHTML='Patient: <span>'+p+'</span> &nbsp;·&nbsp; Claim: <span>'+cl+'</span> &nbsp;·&nbsp; Payer: <span>'+py+'</span>';
+  rebuildStepsFromClient();
+  toggleIntake(false);
+  resetSteps();
+}
+
+function toggleIntake(show){
+  document.getElementById('guide-intake').style.display=show?'block':'none';
+  document.getElementById('intake-expand-btn').style.display=show?'none':'block';
+}
+
+function rebuildStepsFromClient(){
+  const {patient,claim,payer,denial,cpt,amount,issue}=clientData;
+  const s1=claim+' denied '+denial+'. Patient: '+patient+', Payer: '+payer+', CPT: '+cpt+', Amount: '+amount+'. Issue: '+issue+' — Identify the correct resolution and required modifier or code fix.';
+  const s2='Review revenue code and documentation alignment for '+claim+' ('+payer+'). Verify all codes support medical necessity for CPT '+cpt+' and confirm resubmission requirements to resolve '+denial+'.';
+  document.getElementById('guide-step-1-text').textContent='Step 1: `'+s1+'`';
+  document.getElementById('guide-step-2-text').textContent='Step 2: `'+s2+'`';
+  if(TAB_CONFIG[currentTab]){TAB_CONFIG[currentTab].patient=patient;TAB_CONFIG[currentTab].claim=claim;TAB_CONFIG[currentTab].payer=payer;TAB_CONFIG[currentTab].steps=[s1,s2];}
+}
+
+function resetSteps(){
+  stepsCompleted[1]=false; stepsCompleted[2]=false;
+  ['guide-res-1','guide-res-2'].forEach(function(id){var el=document.getElementById(id);el.textContent='';el.classList.remove('visible');});
+  var na=document.getElementById('guide-next-actions'); if(na) na.style.display='none';
+  document.getElementById('guide-step-label').textContent='STEP 1 OF 2';
+  document.getElementById('guide-step-1').classList.add('active-step');
+  document.getElementById('guide-step-2').classList.remove('active-step');
+}
+
+function draftAppeal(){
+  const {denial,claim,cpt,payer,amount}=clientData;
+  loadAI('Draft a '+denial+' appeal letter for claim '+claim+', CPT '+cpt+', payer '+payer+', amount '+amount+'. Include: original submission date placeholder, denial reason, supporting documentation checklist, and '+payer+' appeal portal instructions.');
+}
+function draftAR(){
+  const {amount,claim}=clientData;
+  loadAI('Prioritize AR recovery for '+amount+' stalled on '+claim+' — recovery probability, appeal vs write-off decision, and 30-day action plan.');
+}
+
+// ─────────────────────────────────────────────
+//  SWITCH TAB
+// ─────────────────────────────────────────────
+function switchTab(id, btn) {
+  document.querySelectorAll('.tab-panel').forEach(el => el.classList.remove('active'));
+  const t = document.getElementById('tab-' + id);
+  if (t) t.classList.add('active');
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  currentTab = id;
+  updateGuide(id);
+}
+
+// ─────────────────────────────────────────────
+//  UPDATE NODE GUIDE FOR CURRENT TAB
+// ─────────────────────────────────────────────
+function updateGuide(id) {
+  const cfg = TAB_CONFIG[id] || TAB_CONFIG['dash'];
+  // Meta
+  document.getElementById('guide-meta').innerHTML =
+    `Patient: <span>${cfg.patient}</span> &nbsp;·&nbsp; Claim: <span>${cfg.claim}</span> &nbsp;·&nbsp; Payer: <span>${cfg.payer}</span>`;
+  // Steps
+  document.getElementById('guide-step-label').textContent = 'STEP 1 OF 2';
+  document.getElementById('guide-step-1-text').textContent = 'Step 1: `' + cfg.steps[0] + '`';
+  document.getElementById('guide-step-2-text').textContent = 'Step 2: `' + cfg.steps[1] + '`';
+  // Reset results
+  ['guide-res-1','guide-res-2'].forEach(id => {
+    const el = document.getElementById(id);
+    el.textContent = '';
+    el.classList.remove('visible');
+  });
+  // Highlight step 1
+  document.getElementById('guide-step-1').classList.add('active-step');
+  document.getElementById('guide-step-2').classList.remove('active-step');
+}
+
+// ─────────────────────────────────────────────
+//  GUIDE ACTION BUTTONS (Explain / Risk / Talk)
+// ─────────────────────────────────────────────
+function guideAction(type, stepNum) {
+  const cfg = TAB_CONFIG[currentTab] || TAB_CONFIG['dash'];
+  const stepText = cfg.steps[stepNum - 1];
+  const resId = 'guide-res-' + stepNum;
+  const res = document.getElementById(resId);
+
+  let prompt = '';
+  if (type === 'explain') {
+    prompt = `Explain the following billing issue in plain language for a presenter: "${stepText}". Context: Patient ${cfg.patient}, Claim ${cfg.claim}, Payer ${cfg.payer}. Include what the code means, why it matters, and what action is required.`;
+  } else if (type === 'risk') {
+    prompt = `Identify the highest financial and compliance risk in this scenario: "${stepText}". Patient ${cfg.patient}, Claim ${cfg.claim}, Payer ${cfg.payer}. Quantify the risk, name the owner, and state the resolution deadline.`;
+  } else if (type === 'talk') {
+    prompt = `Write a 60-second presenter talk track for this billing scenario: "${stepText}". Patient ${cfg.patient}, Payer ${cfg.payer}. Use plain language, explain the problem, the financial impact, and the recommended next action.`;
+  }
+
+  res.classList.add('visible');
+  res.innerHTML = '<span class="guide-spinner">⟳</span> Processing...';
+
+  callAPI(prompt).then(reply => {
+    res.textContent = reply;
+  }).catch(err => {
+    res.textContent = '> ERROR: ' + err.message;
+  });
+}
+
+// ─────────────────────────────────────────────
+//  SUBMIT STEP
+// ─────────────────────────────────────────────
+const stepsCompleted = { 1: false, 2: false };
+
+function submitStep(stepNum) {
+  const cfg = TAB_CONFIG[currentTab] || TAB_CONFIG['dash'];
+  const stepText = cfg.steps[stepNum - 1];
+  const resId = 'guide-res-' + stepNum;
+  const res = document.getElementById(resId);
+
+  const prompt = `For billing step: "${stepText}" — Patient: ${cfg.patient}, Claim: ${cfg.claim}, Payer: ${cfg.payer}. Provide the complete resolution: correct codes, modifier corrections, documentation requirements, and submission instructions.`;
+
+  res.classList.add('visible');
+  res.innerHTML = '<span class="guide-spinner">⟳</span> Generating response...';
+
+  // Highlight current step
+  document.getElementById('guide-step-1').classList.toggle('active-step', stepNum === 1);
+  document.getElementById('guide-step-2').classList.toggle('active-step', stepNum === 2);
+  document.getElementById('guide-step-label').textContent = `STEP ${stepNum} OF 2`;
+
+  callAPI(prompt).then(reply => {
+    res.textContent = reply;
+    stepsCompleted[stepNum] = true;
+    // Reveal next actions block only after both steps have been submitted
+    if (stepsCompleted[1] && stepsCompleted[2]) {
+      const na = document.getElementById('guide-next-actions');
+      if (na) na.style.display = 'block';
+      document.getElementById('guide-step-label').textContent = 'STEPS 1 & 2 COMPLETE';
+    }
+  }).catch(err => {
+    res.textContent = '> ERROR: ' + err.message;
+  });
+}
+
+// ─────────────────────────────────────────────
+//  CORE API CALL → Railway /api/hc/query
+// ─────────────────────────────────────────────
+async function callAPI(prompt) {
+  const r = await fetch('/api/hc/query', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      system: 'You are a healthcare billing and claims expert specializing in CMS-1500, UB-04, CPT coding, denial management, and payer compliance. Provide precise, actionable intelligence with specific coding and regulatory citations.',
+      message: prompt,
+      stream: false,
+      max_tokens: 1000
+    })
+  });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const d = await r.json();
+  const reply = d.response || d.content || (d.choices && d.choices[0]?.message?.content) || 'No response';
+  return '> TSM NEURAL [' + new Date().toLocaleTimeString() + ']\n\n' +
+    reply.replace(/\*\*(.+?)\*\*/g,'$1').replace(/\*(.+?)\*/g,'$1').replace(/#{1,3}\s*/g,'').trim();
+}
+
+// ─────────────────────────────────────────────
+//  Q — main AI query for tab panels
+// ─────────────────────────────────────────────
+async function Q(prompt, btnId, resId) {
+  if (!prompt || !prompt.trim()) return;
+  const btn = document.getElementById(btnId);
+  const res = document.getElementById(resId);
+  if (!btn || !res) return;
+  btn.disabled = true;
+  res.innerHTML = '<span style="display:inline-block;animation:spin 1s linear infinite">⟳</span> TSM Neural processing...';
+  try {
+    const reply = await callAPI(prompt);
+    res.style.whiteSpace = 'pre-wrap';
+    res.textContent = reply;
+  } catch(e) {
+    res.textContent = '> TSM NEURAL ERROR: ' + e.message;
+  }
+  btn.disabled = false;
+}
+
+function loadAI(p) {
+  const aiBtn = document.querySelectorAll('.nav-btn')[3];
+  switchTab('ai', aiBtn);
+  const inp = document.getElementById('ai-inp');
+  if (inp) { inp.value = p; inp.focus(); }
+  setTimeout(() => Q(p,'ai-btn','ai-res'), 50);
+}
+function loadPreset(p) { loadAI(p); }
+
+window.Q = Q;
+window.switchTab = switchTab;
+window.loadAI = loadAI;
+window.loadPreset = loadPreset;
+
+// Init
+document.addEventListener('DOMContentLoaded', () => {
+  switchTab('dash', document.querySelector('.nav-btn'));
+  if (window.TSMMissionObj) TSMMissionObj.render ? TSMMissionObj.render() : null;
+});
+</script>
+<script src="/shared/tsm-operational-mesh.js?v=mesh1"></script>
+<script src="/shared/tsm-relay-bus.js?v=relay2"></script>
+<script src="/shared/tsm-memory-engine.js?v=phase3"></script>
+<script src="/shared/tsm-global-command.js?v=phase4"></script>
+<script src="/shared/tsm-sector-intelligence.js?v=phase5si"></script>
+<script src="/shared/tsm-autonomous-execution.js?v=phase5"></script>
+<script src="/healthcare/tsm-launcher.js"></script>
+<script src="/js/guided-mission-workflow.js"></script>
+<script src="../js/tsm-mission-system.js"></script>
+<script src="../js/tsm-mission-objectives.js"></script>
+<script src="../js/tsm-doc-anomaly-bridge.js"></script>
+function relayToStrategist(nodeLabel){try{var engineOutputs={};document.querySelectorAll('.ai-res').forEach(function(el){var text=(el.textContent||'').trim();if(!text)return;if(/^>?\s*(ai|intel workbench|enterprise bnca|leadership brief|report studio)\b.*ready\.?$/i.test(text))return;if(/processing\.\.\.$/i.test(text))return;var label=(el.id||'AI OUTPUT').replace(/-res$/i,'').replace(/[-_]/g,' ').toUpperCase();engineOutputs[label]=text;});var alerts=[];document.querySelectorAll('.alert-row').forEach(function(row){var pri=row.querySelector('.pri');var txt=row.querySelector('.alert-txt');var imp=row.querySelector('.alert-imp');if(txt)alerts.push('['+(pri?pri.textContent.trim():'\u2014')+'] '+txt.textContent.trim()+(imp?' ('+imp.textContent.trim()+')':''));});var kpis=[];document.querySelectorAll('.kpi').forEach(function(k){var val=k.querySelector('.kpi-val');var lbl=k.querySelector('.kpi-lbl');var sub=k.querySelector('.kpi-sub');if(val&&lbl)kpis.push(lbl.textContent.trim()+': '+val.textContent.trim()+(sub?' \u2014 '+sub.textContent.trim():''));});var clientLine='';if(typeof clientData!=='undefined'&&clientData){try{clientLine=JSON.stringify(clientData).slice(0,400);}catch(e){}}var narrativeParts=[];if(kpis.length)narrativeParts.push('KPIs \u2014 '+kpis.join(' \u00b7 '));if(alerts.length)narrativeParts.push('Active alerts \u2014 '+alerts.slice(0,5).join(' | '));if(clientLine)narrativeParts.push('Client/claim context \u2014 '+clientLine);var narrative=narrativeParts.join('\n\n')||(nodeLabel+' relay \u2014 no live findings captured at time of relay.');if(!Object.keys(engineOutputs).length)engineOutputs[nodeLabel]=narrative;var payload={sessionId:'REL-'+Date.now().toString(36).toUpperCase(),timestamp:new Date().toISOString(),engineOutputs:engineOutputs,engine06:{narrative:narrative,recommendations:[]},documentMeta:{ingestType:nodeLabel,charCount:narrative.length}};sessionStorage.setItem('TSM_WAR_ROOM_BRIEF',JSON.stringify(payload));localStorage.setItem('TSM_WAR_ROOM_BRIEF',JSON.stringify(payload));}catch(e){console.error('['+nodeLabel+'] relayToStrategist failed:',e);}}
+</script>
+<script src="/shared/tsm-cure-cheatsheet.js"></script>
+<script src="/shared/tsm-chain-assistant.js"></script>  
+<script src="/healthcare/js/tsm-mission-system.js"></script>
+<script src="/healthcare/js/tsm-mission-objectives.js"></script>
+<!-- ── DOC ANOMALY BRIDGE ─────────────────────────────── -->
+(function initAnomalyBridge() {
+  const raw = localStorage.getItem('tsm-doc-anomaly');
+  if (!raw) return;
+  let p;
+  try { p = JSON.parse(raw); } catch(e) { return; }
+
+  // Only fire if this payload targets this node
+  const thisNode = document.location.pathname.split('/').slice(-2,-1)[0]; // e.g. "hc-billing"
+  const nodeId   = thisNode.replace('hc-',''); // e.g. "billing"
+  if (p.targetNodeIds && p.targetNodeIds.length &&
+      !p.targetNodeIds.includes(nodeId) && !p.targetNodeIds.includes(thisNode)) return;
+
+  // Build banner
+  const banner = document.createElement('div');
+  banner.id = 'tsm-anomaly-bridge-banner';
+  banner.style.cssText = `
+    display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px;
+    background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.3);
+    border-radius:6px; padding:16px 20px; margin:12px 16px 0;
+    font-family:var(--mono, monospace); font-size:.72rem;
+  `;
+
+  const findings = Array.isArray(p.findings) ? p.findings.join('<br>') : p.findings || '—';
+  const steps    = Array.isArray(p.steps)    ? p.steps.map((s,i)=>`${i+1}. ${s}`).join('<br>') : '—';
+  const appLabel = p.nodeId ? `HC ${p.nodeId.charAt(0).toUpperCase()+p.nodeId.slice(1)} Node` : 'This Node';
+
+  banner.innerHTML = `
+    <div>
+      <div style="color:var(--red,#ef4444);font-weight:700;margin-bottom:6px">⚠ WHAT'S WRONG</div>
+      <div style="color:var(--text,#e2e8f0);line-height:1.6">${p.narrative || findings}</div>
+      ${p.ref ? `<div style="margin-top:6px;color:var(--muted,#94a3b8)">Ref: ${p.ref} · ${p.client||''}</div>` : ''}
+    </div>
+    <div>
+      <div style="color:var(--amber,#f59e0b);font-weight:700;margin-bottom:6px">🔧 BEST APP TO CURE IT</div>
+      <div style="color:var(--text,#e2e8f0)">${appLabel}</div>
+      <div style="margin-top:4px;color:var(--muted,#94a3b8)">Status: ${p.checkStatus||'FLAGGED'}</div>
+      ${p.financialImpact ? `<div style="margin-top:4px;color:var(--red,#ef4444)">Exposure: $${Number(p.financialImpact).toLocaleString()}</div>` : ''}
+    </div>
+    <div>
+      <div style="color:var(--green,#4ade80);font-weight:700;margin-bottom:6px">📋 GUIDED REMEDIATION</div>
+      <div style="color:var(--text,#e2e8f0);line-height:1.8">${steps}</div>
+    </div>
+  `;
+
+  // Inject after first h1/topbar or at top of main content
+  const anchor = document.querySelector('.main, #main, .content, main, .topbar + *');
+  if (anchor) anchor.insertAdjacentElement('afterbegin', banner);
+  else document.body.insertAdjacentElement('afterbegin', banner);
+})();
+</script>
+  <script src="/js/core/tsm-kernel-upgrade.js"></script>
+</body>
+</html>
+
+
+// ===== TSM_AUTONOMY_STANDARDIZED =====
+window.TSM_AUTONOMY_STANDARDIZED = true;
+</script>
+
+<!-- TSM ENFORCER BOOT -->
+<script src="/html/core/tsm-enforcer.js"></script>
+
+
+// ===== TSM WAR ROOM SCOPED RELAY FIX =====
+window.tsmMission = window.tsmMission || {
+  id: "HEALTHCARE-" + Date.now().toString(36),
+  vertical: "healthcare",
+  
+};
+
+function tsmWriteRelay(payload){
+  TSM_KERNEL.setRelay("healthcare", JSON.stringify(payload));
+}
+</script>
+
+
+<!-- TSM KERNEL ENGINE -->
+<script src="/html/core/tsm-kernel.js"></script>
+

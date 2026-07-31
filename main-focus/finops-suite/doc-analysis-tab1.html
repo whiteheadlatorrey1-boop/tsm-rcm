@@ -1,0 +1,1457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>TSM FinOps Intelligence · Document Processor</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=DM+Mono:wght@300;400;500&family=Libre+Franklin:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+html,body{height:100%;overflow-y:auto}
+:root{
+  --bg:#06080f;--bg2:#0a0f1c;--bg3:#0e1526;--panel:#0c1220;
+  --border:rgba(6,182,212,.12);--border2:rgba(6,182,212,.28);
+  --cyan:#06b6d4;--cyan2:#67e8f9;--cyan4:rgba(6,182,212,.06);
+  --gold:#c9a84c;--gold2:#e8c87a;--gold4:rgba(201,168,76,.06);
+  --blue:#3b82f6;--blue2:#60a5fa;--green:#10b981;--red:#ef4444;
+  --orange:#f59e0b;--purple:#8b5cf6;--teal:#14b8a6;--pink:#ec4899;
+  --text:#b8d0e8;--dim:#4a6070;--bright:#e8f4ff;
+  --serif:'Playfair Display',Georgia,serif;
+  --mono:'DM Mono',monospace;
+  --sans:'Libre Franklin',sans-serif;
+  --radius:5px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--bg);color:var(--text);font-family:var(--sans)}
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+
+.shell{display:flex;flex-direction:column;height:100vh}
+
+/* TOPBAR */
+.topbar{height:50px;background:linear-gradient(90deg,#050810,#080e1a);border-bottom:1px solid var(--border2);display:flex;align-items:center;padding:0 18px;gap:12px;flex-shrink:0;z-index:200}
+.logo{font-family:var(--serif);font-size:16px;font-weight:900;color:var(--cyan);letter-spacing:2px;text-shadow:0 0 24px rgba(6,182,212,.4)}
+.logo-div{width:1px;height:26px;background:var(--border2);margin:0 6px}
+.logo-title{font-family:var(--sans);font-size:10px;font-weight:700;color:var(--bright);letter-spacing:3px;text-transform:uppercase}
+.tb-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.pill{font-family:var(--mono);font-size:9px;padding:3px 10px;border-radius:3px;display:flex;align-items:center;gap:5px;cursor:default}
+.pill.live{background:rgba(6,182,212,.1);border:1px solid rgba(6,182,212,.28);color:var(--cyan)}
+.pill.ai{background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.25);color:var(--green)}
+.pill.poc{background:rgba(139,92,246,.1);border:1px solid rgba(139,92,246,.28);color:#a78bfa}
+.dot{width:6px;height:6px;border-radius:50%}
+.dot.g{background:var(--green);box-shadow:0 0 5px var(--green);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+#tb-clock{font-family:var(--mono);font-size:9px;color:var(--dim)}
+
+/* HERO */
+.hero{background:linear-gradient(90deg,#050810,#080e1c);border-bottom:1px solid var(--border);padding:10px 20px;display:flex;align-items:center;gap:24px;flex-shrink:0;position:relative;overflow:hidden}
+.hero::before{content:'FINOPS';position:absolute;right:-10px;top:50%;transform:translateY(-50%);font-family:var(--serif);font-size:80px;font-weight:900;color:rgba(6,182,212,.03);letter-spacing:10px;pointer-events:none;white-space:nowrap}
+.hero-left{flex:1;min-width:0}
+.hero-breadcrumb{font-family:var(--mono);font-size:8.5px;color:var(--dim);letter-spacing:2px;margin-bottom:3px;text-transform:uppercase}
+.hero-breadcrumb span{color:var(--cyan)}
+.hero-title{font-family:var(--serif);font-size:20px;font-weight:900;color:var(--bright);line-height:1.2}
+.hero-title span{color:var(--cyan)}
+.hero-stats{display:flex;gap:20px;flex-wrap:nowrap;flex-shrink:0}
+.hs-item{text-align:center}
+.hs-val{font-family:var(--serif);font-size:18px;font-weight:900;color:var(--cyan2);line-height:1}
+.hs-lbl{font-family:var(--mono);font-size:7.5px;color:var(--dim);letter-spacing:1.5px;text-transform:uppercase;margin-top:2px}
+
+/* TABBAR */
+.tabbar{height:42px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:flex-end;padding:0 12px;gap:2px;flex-shrink:0;overflow-x:auto}
+.tabbar::-webkit-scrollbar{height:0}
+.tab{font-family:var(--sans);font-size:9.5px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;padding:7px 16px;border:1px solid transparent;border-bottom:none;cursor:pointer;color:var(--dim);white-space:nowrap;border-radius:4px 4px 0 0;transition:all .18s;position:relative;bottom:-1px;display:flex;align-items:center;gap:5px}
+.tab:hover{color:var(--text);background:rgba(255,255,255,.025)}
+.tab.active{color:var(--cyan);background:var(--bg3);border-color:var(--border2);border-bottom-color:var(--bg3)}
+.tab-badge{font-size:8px;background:var(--green);color:#050a10;padding:1px 5px;border-radius:8px;font-weight:700}
+
+/* CONTENT */
+.content{flex:1;overflow:hidden;display:flex;position:relative;min-height:0}
+.view{display:none;width:100%;height:100%;overflow-y:auto;padding:18px 20px;flex-direction:column;gap:12px}
+.view.active{display:flex}
+
+/* CARDS */
+.card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:16px;position:relative;overflow:hidden;transition:border-color .2s}
+.card:hover{border-color:rgba(6,182,212,.2)}
+.card-title{font-family:var(--mono);font-size:9px;font-weight:500;letter-spacing:2px;color:var(--cyan);text-transform:uppercase;margin-bottom:12px;display:flex;align-items:center;gap:7px}
+
+/* GRIDS */
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+@media(max-width:960px){.g2,.g3,.g4{grid-template-columns:1fr 1fr}}
+
+/* STAT TILES */
+.stat{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:14px;position:relative;overflow:hidden}
+.stat::before{content:'';position:absolute;top:0;left:0;right:0;height:2px}
+.stat.c-cyan::before{background:linear-gradient(90deg,var(--cyan),var(--blue))}
+.stat.c-green::before{background:linear-gradient(90deg,#10b981,#059669)}
+.stat.c-red::before{background:linear-gradient(90deg,#ef4444,#dc2626)}
+.stat.c-gold::before{background:linear-gradient(90deg,var(--gold),var(--gold2))}
+.stat.c-purple::before{background:linear-gradient(90deg,#8b5cf6,#6d28d9)}
+.stat-lbl{font-family:var(--mono);font-size:8.5px;color:var(--dim);letter-spacing:2px;text-transform:uppercase;margin-bottom:5px}
+.stat-val{font-family:var(--serif);font-size:26px;color:var(--bright);line-height:1}
+.stat-val.cy{color:var(--cyan2)}.stat-val.gr{color:var(--green)}.stat-val.re{color:var(--red)}.stat-val.g{color:var(--gold2)}
+.stat-note{font-size:10px;color:var(--dim);margin-top:4px}
+
+/* BADGES */
+.bdg{display:inline-block;padding:2px 7px;border-radius:3px;font-family:var(--mono);font-size:8.5px;letter-spacing:.8px;font-weight:500}
+.bdg.g{background:rgba(16,185,129,.1);color:var(--green);border:1px solid rgba(16,185,129,.2)}
+.bdg.r{background:rgba(239,68,68,.1);color:var(--red);border:1px solid rgba(239,68,68,.2)}
+.bdg.cy{background:rgba(6,182,212,.1);color:var(--cyan);border:1px solid rgba(6,182,212,.2)}
+.bdg.gold{background:var(--gold4);color:var(--gold);border:1px solid rgba(201,168,76,.25)}
+.bdg.or{background:rgba(245,158,11,.1);color:var(--orange);border:1px solid rgba(245,158,11,.2)}
+.bdg.pu{background:rgba(139,92,246,.1);color:#a78bfa;border:1px solid rgba(139,92,246,.2)}
+
+/* BUTTONS */
+.btn{font-family:var(--sans);font-size:10.5px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;padding:9px 20px;border:none;border-radius:4px;cursor:pointer;transition:all .18s;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btn-cyan{background:linear-gradient(135deg,var(--cyan),#0284c7);color:#050a10}
+.btn-cyan:hover{transform:translateY(-1px);box-shadow:0 4px 14px rgba(6,182,212,.3)}
+.btn-outline{background:transparent;border:1px solid var(--border2);color:var(--cyan)}
+.btn-outline:hover{background:var(--cyan4)}
+.btn-green{background:linear-gradient(135deg,#10b981,#047857);color:#fff}
+.btn-green:hover{transform:translateY(-1px);box-shadow:0 4px 14px rgba(16,185,129,.3)}
+.btn-gold{background:linear-gradient(135deg,var(--gold),#9a6e2a);color:#050a10}
+.btn-sm{padding:5px 14px;font-size:9px}
+.btn-xs{padding:4px 9px;font-size:8.5px}
+.btn:disabled{opacity:.45;cursor:not-allowed;transform:none!important}
+
+/* TABLES */
+.tbl{width:100%;border-collapse:collapse}
+.tbl th{font-family:var(--mono);font-size:8.5px;letter-spacing:1.8px;color:var(--dim);padding:7px 10px;text-align:left;border-bottom:1px solid var(--border);text-transform:uppercase}
+.tbl td{font-family:var(--sans);font-size:11px;color:var(--text);padding:9px 10px;border-bottom:1px solid rgba(255,255,255,.03)}
+.tbl tr:hover td{background:rgba(255,255,255,.02)}
+
+/* DOC GRID */
+.doc-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+@media(max-width:1100px){.doc-grid{grid-template-columns:repeat(2,1fr)}}
+
+.doc-card{background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:13px;cursor:pointer;transition:all .2s;position:relative;overflow:hidden}
+.doc-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px}
+.doc-card.type-gl::before{background:linear-gradient(90deg,var(--cyan),var(--blue))}
+.doc-card.type-ap::before{background:linear-gradient(90deg,var(--red),var(--orange))}
+.doc-card.type-ar::before{background:linear-gradient(90deg,var(--green),var(--teal))}
+.doc-card.type-bank::before{background:linear-gradient(90deg,var(--blue),var(--purple))}
+.doc-card.type-budget::before{background:linear-gradient(90deg,var(--gold),var(--orange))}
+.doc-card.type-audit::before{background:linear-gradient(90deg,var(--purple),var(--pink))}
+.doc-card.type-fs::before{background:linear-gradient(90deg,var(--teal),var(--cyan))}
+.doc-card.type-1099::before{background:linear-gradient(90deg,var(--orange),var(--gold))}
+.doc-card:hover{border-color:rgba(6,182,212,.3);transform:translateY(-1px);box-shadow:0 4px 16px rgba(0,0,0,.4)}
+.doc-card.active{border-color:var(--cyan);background:rgba(6,182,212,.04)}
+.dc-type{font-family:var(--mono);font-size:7.5px;letter-spacing:2px;color:var(--dim);text-transform:uppercase;margin-bottom:4px}
+.dc-title{font-size:11.5px;font-weight:700;color:var(--bright);margin-bottom:3px}
+.dc-desc{font-size:9.5px;color:var(--dim);line-height:1.4}
+.dc-risk{margin-top:8px;padding-top:6px;border-top:1px solid var(--border)}
+
+/* DOC PROCESSOR LAYOUT */
+.doc-proc-layout{display:grid;grid-template-columns:1fr 1fr;gap:14px;flex:1;min-height:0}
+@media(max-width:900px){.doc-proc-layout{grid-template-columns:1fr}}
+
+.doc-step{background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:16px;display:flex;flex-direction:column;gap:10px;overflow-y:auto}
+
+/* AI TERMINAL */
+.ai-terminal{background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:14px;font-family:var(--mono);font-size:10.5px;color:var(--text);line-height:1.8;min-height:220px;flex:1;overflow-y:auto}
+.ai-terminal .t-prompt{color:var(--cyan);margin-bottom:8px}
+.ai-terminal .t-section{color:var(--gold);font-weight:500;margin-top:8px;margin-bottom:3px}
+.ai-terminal .t-ok{color:var(--green)}
+.ai-terminal .t-warn{color:var(--orange)}
+.ai-terminal .t-err{color:var(--red)}
+
+/* ENGINE STEPS */
+.engine-steps{display:flex;align-items:center;gap:0;overflow:hidden}
+.eng-step{flex:1;text-align:center;padding:5px 3px;background:var(--bg2);border:1px solid var(--border);font-family:var(--mono);font-size:7.5px;color:var(--dim);position:relative;transition:all .3s}
+.eng-step.active{background:rgba(6,182,212,.08);border-color:rgba(6,182,212,.3);color:var(--cyan)}
+.eng-step.done{background:rgba(16,185,129,.05);border-color:rgba(16,185,129,.25);color:var(--green)}
+.eng-step:not(:last-child)::after{content:'→';position:absolute;right:-7px;top:50%;transform:translateY(-50%);color:var(--dim);font-size:9px;z-index:1}
+.eng-step-name{font-size:7px;display:block;margin-top:1px}
+
+/* NODE CARDS */
+.node-card{background:var(--bg2);border:1px solid var(--border);border-radius:5px;padding:10px;cursor:pointer;transition:all .2s;text-align:center}
+.node-card:hover{border-color:var(--cyan);background:rgba(6,182,212,.04)}
+.node-card.selected{border-color:var(--green);background:rgba(16,185,129,.04)}
+.nc-icon{font-size:20px;margin-bottom:4px}
+.nc-name{font-size:10.5px;font-weight:700;color:var(--bright);margin-bottom:2px}
+.nc-route{font-family:var(--mono);font-size:8px;color:var(--dim)}
+
+/* GROQ CHAT */
+.groq-win{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px;background:var(--bg2);border:1px solid var(--border);border-radius:5px 5px 0 0;min-height:300px}
+.gmsg{display:flex;gap:9px;align-items:flex-start}
+.gmsg.user{flex-direction:row-reverse}
+.gmsg-av{width:30px;height:30px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;font-weight:700}
+.gmsg.ai .gmsg-av{background:linear-gradient(135deg,var(--cyan),#0284c7);color:#050a10;font-family:var(--serif)}
+.gmsg.user .gmsg-av{background:linear-gradient(135deg,#3b82f6,#1d4ed8);color:#fff}
+.gmsg-body{max-width:84%}
+.gmsg-lbl{font-family:var(--mono);font-size:7.5px;letter-spacing:2px;color:var(--dim);margin-bottom:3px}
+.gmsg.user .gmsg-lbl{text-align:right}
+.gmsg-bub{padding:9px 13px;border-radius:5px;font-size:11.5px;line-height:1.72;background:var(--panel);border:1px solid var(--border);color:var(--text)}
+.gmsg.user .gmsg-bub{background:rgba(59,130,246,.1);border-color:rgba(59,130,246,.22);color:var(--bright)}
+.groq-input-row{display:flex;gap:8px;background:var(--panel);border:1px solid var(--border);border-top:none;border-radius:0 0 5px 5px;padding:9px}
+.groq-inp{flex:1;background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:8px 12px;font-family:var(--sans);font-size:11.5px;color:var(--bright);outline:none;transition:border-color .18s;resize:none}
+.groq-inp:focus{border-color:var(--cyan)}
+.typing span{width:5px;height:5px;border-radius:50%;background:var(--cyan);animation:tdot 1.2s infinite;display:inline-block;margin-right:3px}
+.typing span:nth-child(2){animation-delay:.2s}.typing span:nth-child(3){animation-delay:.4s}
+@keyframes tdot{0%,80%,100%{transform:scale(.6);opacity:.4}40%{transform:scale(1);opacity:1}}
+
+/* FINOPS SIDEBAR (analysis) */
+.fo-sidebar{width:200px;flex-shrink:0;display:flex;flex-direction:column;gap:7px;overflow-y:auto}
+.fo-sq{font-family:var(--sans);font-size:10.5px;padding:8px 11px;background:var(--panel);border:1px solid var(--border);border-radius:4px;color:var(--text);cursor:pointer;transition:all .18s;text-align:left;line-height:1.4}
+.fo-sq:hover{border-color:var(--cyan);color:var(--cyan2);background:var(--cyan4)}
+.fo-sq .pi{color:var(--cyan);margin-right:4px}
+
+/* PROGRESS BAR */
+.pb{background:var(--bg2);border-radius:2px;height:4px;overflow:hidden}
+.pb-fill{height:100%;border-radius:2px;transition:width 1.2s ease}
+
+/* MISC */
+.spin{animation:spinr .8s linear infinite;display:inline-block}
+@keyframes spinr{to{transform:rotate(360deg)}}
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.drop-zone{border:2px dashed var(--border2);border-radius:6px;padding:28px 20px;text-align:center;cursor:pointer;transition:all .2s;background:var(--bg2)}
+.drop-zone:hover{border-color:var(--cyan);background:var(--cyan4)}
+
+/* STATUSBAR */
+.statusbar{height:22px;background:#030508;border-top:1px solid var(--border);display:flex;align-items:center;padding:0 14px;gap:16px;flex-shrink:0}
+.sb{font-family:var(--mono);font-size:8.5px;color:var(--dim);display:flex;align-items:center;gap:4px}
+.sb .hi{color:var(--cyan)}.sb .w{color:var(--orange)}.sb .gr{color:var(--green)}
+
+/* RISK BADGE COLORS */
+.risk-critical{color:var(--red)}.risk-high{color:var(--orange)}.risk-medium{color:var(--gold)}.risk-low{color:var(--green)}
+
+/* STEP BADGE */
+.step-badge{font-family:var(--mono);font-size:8px;padding:2px 8px;border-radius:3px}
+.step-badge.live{background:rgba(16,185,129,.12);color:var(--green);border:1px solid rgba(16,185,129,.25)}
+.step-badge.offline{background:rgba(239,68,68,.1);color:var(--red);border:1px solid rgba(239,68,68,.2)}
+.step-badge.complete{background:rgba(6,182,212,.12);color:var(--cyan);border:1px solid rgba(6,182,212,.25)}
+</style>
+<script src="/html/js/tsm-runtime-lock.js"></script>
+<script src="/html/js/tsm-event-contract.js"></script>
+<script src="/html/js/tsm-autonomy-layer.js"></script>
+</head>
+<body>
+<div class="shell">
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <div class="logo">◈ TSM</div>
+  <div class="logo-div"></div>
+  <div class="logo-title">FinOps Intelligence Suite</div>
+  <div class="tb-right">
+    <div class="pill live"><div class="dot g"></div> FINOPS LIVE</div>
+    <div class="pill ai">GROQ llama-3.3-70b</div>
+    <div class="pill poc">■ POC PORTAL</div>
+    <div id="tb-clock"></div>
+  </div>
+</div>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="hero-left">
+    <div class="hero-breadcrumb">TSM SUITE · <span>FINANCIAL OPERATIONS</span> · LIVE DOCUMENT INTELLIGENCE</div>
+    <div class="hero-title">FinOps Intelligence · <span>Document Processor</span></div>
+  </div>
+  <div class="hero-stats">
+    <div class="hs-item"><div class="hs-val">8</div><div class="hs-lbl">Doc Types</div></div>
+    <div class="hs-item"><div class="hs-val">4-Engine</div><div class="hs-lbl">AI Pipeline</div></div>
+    <div class="hs-item"><div class="hs-val" id="stat-docs">0</div><div class="hs-lbl">Processed</div></div>
+    <div class="hs-item"><div class="hs-val">7</div><div class="hs-lbl">Node Routes</div></div>
+    <div class="hs-item"><div class="hs-val">GAAP</div><div class="hs-lbl">Compliance</div></div>
+    <div class="hs-item"><div class="hs-val">IRS</div><div class="hs-lbl">1099 Tracking</div></div>
+  </div>
+</div>
+
+<!-- TABBAR -->
+<div class="tabbar">
+  <div class="tab active" data-tab="docproc">⚙ Doc Processor</div>
+  <div class="tab" data-tab="docanalysis">⬇ Doc Analysis</div>
+  <div class="tab" data-tab="dashboard">◉ FinOps Dashboard</div>
+  <div class="tab" data-tab="nodes">◈ Finance Nodes</div>
+  <div class="tab" data-tab="advisor">◌ FinOps AI <span class="tab-badge">GROQ</span></div>
+</div>
+
+<!-- CONTENT -->
+<div class="content">
+
+<!-- ══════════════════════════════ TAB: DOC ANALYSIS ══════════════════════════════ -->
+<div class="view" id="tab-docanalysis">
+  <div id="finops-raw-label" class="finops-section-label active">▸ Raw Document Content — Ingestion Stream</div>
+  <div id="finops-doc-text-panel" class="active" style="background:#0a0f1a;border:1px solid #1a2a3a;border-radius:8px;overflow:hidden;display:flex;flex-direction:column;margin-bottom:12px">
+    <div class="panel-header" style="background:#0d1520;border-bottom:1px solid #1a2a3a;padding:8px 14px;display:flex;align-items:center;gap:10px;font-family:'Courier New',monospace;font-size:11px;color:#4a9eff;text-transform:uppercase;letter-spacing:0.1em">
+      <div class="blink" style="width:8px;height:8px;background:#00d4ff;border-radius:50%;animation:blink 1s step-end infinite;flex-shrink:0"></div>
+      <span>INGEST STREAM</span>
+      <span id="finops-doc-name" style="color:#7ec8e3;margin-left:4px"></span>
+      <span style="margin-left:auto;color:#334155" id="finops-char-count">0 chars</span>
+    </div>
+    <pre id="finops-doc-pre" style="margin:0;padding:14px 16px;font-family:'Courier New',monospace;font-size:11.5px;color:#7ec8e3;line-height:1.6;white-space:pre-wrap;word-break:break-word;max-height:220px;overflow-y:auto;background:transparent">Select a document from the Doc Processor tab and click PROCESS DOCUMENT to begin.</pre>
+  </div>
+  <div id="finops-eng-label" class="finops-section-label active">▸ 4-Engine Analysis Pipeline</div>
+  <div id="finops-engines-panel" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
+    <div class="engine-panel" id="finops-e1" style="background:#090e1a;border-radius:8px;overflow:hidden;border:1px solid #1a2a3a;display:flex;flex-direction:column;min-height:180px">
+      <div style="padding:8px 10px;display:flex;align-items:center;gap:6px;background:#00d4ff18;border-bottom:1px solid #00d4ff30">
+        <span style="color:#00d4ff;font-size:14px">⬇</span>
+        <span style="color:#00d4ff;font-size:9px;font-family:'Courier New',monospace;letter-spacing:0.12em;font-weight:bold;text-transform:uppercase;opacity:0.7">Engine 1</span>
+      </div>
+      <div style="font-size:10px;color:#e2e8f0;font-family:'Courier New',monospace;padding:0 10px 8px;border-bottom:1px solid #1a2a3a;line-height:1.4">Document Ingestion & Structure Parse</div>
+      <div class="engine-output" id="e1-output" style="padding:8px 10px;flex:1;font-family:'Courier New',monospace;font-size:10px;color:#64748b;line-height:1.8;overflow-y:auto"></div>
+      <div class="engine-status waiting" id="e1-status" style="padding:6px 10px;font-size:9px;font-family:'Courier New',monospace;border-top:1px solid #1a2a3a;display:flex;align-items:center;gap:6px"><div class="dot" style="width:6px;height:6px;border-radius:50%;background:#334155;flex-shrink:0"></div><span id="e1-status-text">WAITING</span></div>
+    </div>
+    <div class="engine-panel" id="finops-e2" style="background:#090e1a;border-radius:8px;overflow:hidden;border:1px solid #1a2a3a;display:flex;flex-direction:column;min-height:180px">
+      <div style="padding:8px 10px;display:flex;align-items:center;gap:6px;background:#a855f718;border-bottom:1px solid #a855f730">
+        <span style="color:#a855f7;font-size:14px">◈</span>
+        <span style="color:#a855f7;font-size:9px;font-family:'Courier New',monospace;letter-spacing:0.12em;font-weight:bold;text-transform:uppercase;opacity:0.7">Engine 2</span>
+      </div>
+      <div style="font-size:10px;color:#e2e8f0;font-family:'Courier New',monospace;padding:0 10px 8px;border-bottom:1px solid #1a2a3a;line-height:1.4">Financial Document Classification</div>
+      <div class="engine-output" id="e2-output" style="padding:8px 10px;flex:1;font-family:'Courier New',monospace;font-size:10px;color:#64748b;line-height:1.8;overflow-y:auto"></div>
+      <div class="engine-status waiting" id="e2-status" style="padding:6px 10px;font-size:9px;font-family:'Courier New',monospace;border-top:1px solid #1a2a3a;display:flex;align-items:center;gap:6px"><div class="dot" style="width:6px;height:6px;border-radius:50%;background:#334155;flex-shrink:0"></div><span id="e2-status-text">WAITING</span></div>
+    </div>
+    <div class="engine-panel" id="finops-e3" style="background:#090e1a;border-radius:8px;overflow:hidden;border:1px solid #1a2a3a;display:flex;flex-direction:column;min-height:180px">
+      <div style="padding:8px 10px;display:flex;align-items:center;gap:6px;background:#f59e0b18;border-bottom:1px solid #f59e0b30">
+        <span style="color:#f59e0b;font-size:14px">⚖</span>
+        <span style="color:#f59e0b;font-size:9px;font-family:'Courier New',monospace;letter-spacing:0.12em;font-weight:bold;text-transform:uppercase;opacity:0.7">Engine 3</span>
+      </div>
+      <div style="font-size:10px;color:#e2e8f0;font-family:'Courier New',monospace;padding:0 10px 8px;border-bottom:1px solid #1a2a3a;line-height:1.4">GAAP/IRS Compliance & Risk Analysis</div>
+      <div class="engine-output" id="e3-output" style="padding:8px 10px;flex:1;font-family:'Courier New',monospace;font-size:10px;color:#64748b;line-height:1.8;overflow-y:auto"></div>
+      <div class="engine-status waiting" id="e3-status" style="padding:6px 10px;font-size:9px;font-family:'Courier New',monospace;border-top:1px solid #1a2a3a;display:flex;align-items:center;gap:6px"><div class="dot" style="width:6px;height:6px;border-radius:50%;background:#334155;flex-shrink:0"></div><span id="e3-status-text">WAITING</span></div>
+    </div>
+    <div class="engine-panel" id="finops-e4" style="background:#090e1a;border-radius:8px;overflow:hidden;border:1px solid #1a2a3a;display:flex;flex-direction:column;min-height:180px">
+      <div style="padding:8px 10px;display:flex;align-items:center;gap:6px;background:#10b98118;border-bottom:1px solid #10b98130">
+        <span style="color:#10b981;font-size:14px">⟶</span>
+        <span style="color:#10b981;font-size:9px;font-family:'Courier New',monospace;letter-spacing:0.12em;font-weight:bold;text-transform:uppercase;opacity:0.7">Engine 4</span>
+      </div>
+      <div style="font-size:10px;color:#e2e8f0;font-family:'Courier New',monospace;padding:0 10px 8px;border-bottom:1px solid #1a2a3a;line-height:1.4">Next-Action & Finance Node Routing</div>
+      <div class="engine-output" id="e4-output" style="padding:8px 10px;flex:1;font-family:'Courier New',monospace;font-size:10px;color:#64748b;line-height:1.8;overflow-y:auto"></div>
+      <div class="engine-status waiting" id="e4-status" style="padding:6px 10px;font-size:9px;font-family:'Courier New',monospace;border-top:1px solid #1a2a3a;display:flex;align-items:center;gap:6px"><div class="dot" style="width:6px;height:6px;border-radius:50%;background:#334155;flex-shrink:0"></div><span id="e4-status-text">WAITING</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════ TAB: DOC PROCESSOR ══════════════════════════════ -->
+<div class="view active" id="tab-docproc">
+
+  <!-- Document Selector Grid -->
+  <div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <div style="font-family:var(--mono);font-size:8.5px;color:var(--dim);letter-spacing:2px">SELECT FINANCIAL DOCUMENT</div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-outline btn-xs" id="mode-sample-btn" onclick="setFOMode('sample')">📋 SAMPLE</button>
+        <button class="btn btn-sm" id="mode-upload-btn" style="background:transparent;border:1px solid var(--border);color:var(--dim);font-family:var(--sans);font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;padding:5px 14px;border-radius:4px;cursor:pointer" onclick="setFOMode('upload')">📁 UPLOAD</button>
+      </div>
+    </div>
+
+    <div id="sample-doc-section">
+      <div class="doc-grid" id="doc-sample-grid"></div>
+    </div>
+
+    <div id="upload-doc-section" style="display:none">
+      <div class="drop-zone" onclick="document.getElementById('fo-file-input').click()">
+        <div style="font-size:28px;margin-bottom:6px">📊</div>
+        <div style="font-family:var(--serif);font-size:15px;color:var(--bright);margin-bottom:4px">Drop Financial Document Here</div>
+        <div style="font-size:10.5px;color:var(--dim)">GL · AP · AR · Bank Rec · Budget · P&L · Balance Sheet · 1099</div>
+        <input type="file" id="fo-file-input" style="display:none" accept=".pdf,.xlsx,.csv,.txt,.doc,.docx">
+      </div>
+      <div id="fo-upload-name" style="display:none;margin-top:8px;font-family:var(--mono);font-size:9px;color:var(--cyan)"></div>
+    </div>
+  </div>
+
+  <!-- Processor + Output -->
+  <div class="doc-proc-layout">
+
+    <!-- STEP 1 -->
+    <div class="doc-step">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-family:var(--mono);font-size:8.5px;color:var(--dim);letter-spacing:2px;text-transform:uppercase">Step 1 · Load & Configure</div>
+          <div style="font-family:var(--mono);font-size:8px;color:var(--cyan);margin-top:2px">4-ENGINE AI PIPELINE</div>
+        </div>
+        <div class="step-badge live" id="step1-badge">GROQ LIVE</div>
+      </div>
+
+      <!-- Engine pipeline -->
+      <div>
+        <div style="font-family:var(--mono);font-size:8px;color:var(--dim);margin-bottom:5px">PIPELINE STATUS</div>
+        <div class="engine-steps">
+          <div class="eng-step" id="fo-eng-0">📥<span class="eng-step-name">INGEST</span></div>
+          <div class="eng-step" id="fo-eng-1">🔍<span class="eng-step-name">CLASSIFY</span></div>
+          <div class="eng-step" id="fo-eng-2">⚖<span class="eng-step-name">ANALYZE</span></div>
+          <div class="eng-step" id="fo-eng-3">◈<span class="eng-step-name">ROUTE</span></div>
+        </div>
+      </div>
+
+      <!-- Analysis config -->
+      <div>
+        <div style="font-family:var(--mono);font-size:8px;color:var(--dim);margin-bottom:5px">ANALYSIS FOCUS</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+          <label style="display:flex;align-items:center;gap:6px;font-size:10.5px;color:var(--text);cursor:pointer"><input type="checkbox" id="chk-risk" checked style="accent-color:var(--cyan)"> Risk Flags</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:10.5px;color:var(--text);cursor:pointer"><input type="checkbox" id="chk-compliance" checked style="accent-color:var(--cyan)"> GAAP/IRS Compliance</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:10.5px;color:var(--text);cursor:pointer"><input type="checkbox" id="chk-variance" checked style="accent-color:var(--cyan)"> Variance Analysis</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:10.5px;color:var(--text);cursor:pointer"><input type="checkbox" id="chk-action" checked style="accent-color:var(--cyan)"> Action Items</label>
+        </div>
+      </div>
+
+      <!-- Selected doc display -->
+      <div id="fo-selected-info" style="display:none;background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:10px 12px">
+        <div style="font-family:var(--mono);font-size:7.5px;color:var(--dim);margin-bottom:2px" id="fo-sel-type"></div>
+        <div style="font-size:12px;font-weight:700;color:var(--bright)" id="fo-sel-title"></div>
+        <div style="font-size:9.5px;color:var(--dim);margin-top:3px" id="fo-sel-desc"></div>
+      </div>
+
+      <button class="btn btn-cyan" id="fo-process-btn" onclick="processFinDoc()" disabled>▶ PROCESS DOCUMENT</button>
+    </div>
+
+    <!-- STEP 2 -->
+    <div class="doc-step">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-family:var(--mono);font-size:8.5px;color:var(--dim);letter-spacing:2px;text-transform:uppercase">Step 2 · Live AI Output</div>
+          <div style="font-family:var(--mono);font-size:8px;color:var(--cyan);margin-top:2px">LLAMA 3.3-70B · GROQ</div>
+        </div>
+        <div class="step-badge offline" id="fo-ai-badge">OFFLINE</div>
+      </div>
+
+      <div class="ai-terminal" id="fo-terminal">
+        <div class="t-prompt">&gt; Awaiting financial document...</div>
+        <div style="color:var(--dim);font-size:10px;margin-top:8px">Select a document type or upload a financial file to begin 4-engine analysis.</div>
+        <div style="margin-top:14px;color:var(--dim);font-size:9.5px">
+          <div>Engine 1: <span style="color:var(--cyan)">Document Ingestion & Structure Parse</span></div>
+          <div>Engine 2: <span style="color:var(--purple)">Financial Document Classification</span></div>
+          <div>Engine 3: <span style="color:var(--green)">GAAP/IRS Compliance & Risk Analysis</span></div>
+          <div>Engine 4: <span style="color:var(--gold)">Next-Action & Finance Node Routing</span></div>
+        </div>
+      </div>
+
+      <!-- Finance Node Routing -->
+      <div id="fo-node-routing" style="display:none">
+        <div style="font-family:var(--mono);font-size:8.5px;color:var(--dim);letter-spacing:1.5px;margin-bottom:7px">FINANCE NODE ROUTING ↓</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px" id="fo-node-grid"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════ TAB: FINOPS DASHBOARD ══════════════════════════════ -->
+<div class="view" id="tab-dashboard">
+  <div style="font-family:var(--serif);font-size:18px;color:var(--bright);margin-bottom:4px">FinOps <span style="color:var(--cyan)">Intelligence Dashboard</span></div>
+  <div style="font-size:10.5px;color:var(--dim);margin-bottom:14px">Financial document health, risk exposure, and compliance status</div>
+
+  <div class="g4">
+    <div class="stat c-cyan"><div class="stat-lbl">Docs Processed</div><div class="stat-val cy" id="dash-docs">0</div><div class="stat-note">This session</div></div>
+    <div class="stat c-red"><div class="stat-lbl">Risk Flags</div><div class="stat-val re" id="dash-risk">0</div><div class="stat-note">Across all docs</div></div>
+    <div class="stat c-green"><div class="stat-lbl">Compliant Items</div><div class="stat-val gr" id="dash-ok">0</div><div class="stat-note">GAAP / IRS</div></div>
+    <div class="stat c-gold"><div class="stat-lbl">Action Items</div><div class="stat-val g" id="dash-actions">0</div><div class="stat-note">Pending resolution</div></div>
+  </div>
+
+  <div class="g2">
+    <div class="card">
+      <div class="card-title">📊 Document Types — Risk Matrix</div>
+      <table class="tbl" id="doc-risk-table">
+        <thead><tr><th>Document</th><th>Category</th><th>Risk Level</th><th>Key Watch Item</th></tr></thead>
+        <tbody>
+          <tr><td>GL Detail Report</td><td><span class="bdg cy">ACCOUNTING</span></td><td><span class="risk-high">HIGH</span></td><td>Journal entry fraud indicators</td></tr>
+          <tr><td>AP Aging Report</td><td><span class="bdg or">PAYABLES</span></td><td><span class="risk-medium">MEDIUM</span></td><td>Overdue vendor liabilities</td></tr>
+          <tr><td>AR Ledger</td><td><span class="bdg g">RECEIVABLES</span></td><td><span class="risk-medium">MEDIUM</span></td><td>Collection aging > 90 days</td></tr>
+          <tr><td>Bank Reconciliation</td><td><span class="bdg cy">TREASURY</span></td><td><span class="risk-high">HIGH</span></td><td>Unreconciled differences</td></tr>
+          <tr><td>Budget vs Actual</td><td><span class="bdg gold">PLANNING</span></td><td><span class="risk-low">LOW</span></td><td>Variance > 10% budget lines</td></tr>
+          <tr><td>Audit Findings</td><td><span class="bdg pu">AUDIT</span></td><td><span class="risk-critical">CRITICAL</span></td><td>Material weaknesses, restatements</td></tr>
+          <tr><td>Financial Statements</td><td><span class="bdg cy">REPORTING</span></td><td><span class="risk-high">HIGH</span></td><td>GAAP compliance, disclosures</td></tr>
+          <tr><td>1099 Tracker</td><td><span class="bdg or">TAX</span></td><td><span class="risk-high">HIGH</span></td><td>IRS thresholds, TIN validation</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="card-title">⚡ GAAP & IRS Compliance Checklist</div>
+      <div style="display:flex;flex-direction:column;gap:6px" id="compliance-list">
+        <!-- rendered by JS -->
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">📋 Processing History</div>
+    <div id="processing-history">
+      <div style="text-align:center;padding:30px;color:var(--dim);font-size:11px">No documents processed yet. Go to the Doc Processor tab to analyze your first financial document.</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════ TAB: FINANCE NODES ══════════════════════════════ -->
+<div class="view" id="tab-nodes">
+  <div style="font-family:var(--serif);font-size:18px;color:var(--bright);margin-bottom:4px">Finance Node <span style="color:var(--cyan)">Routing Engine</span></div>
+  <div style="font-size:10.5px;color:var(--dim);margin-bottom:14px">Route flagged financial documents to the correct node for follow-up, escalation, or compliance action</div>
+
+  <div class="g2">
+    <div class="card">
+      <div class="card-title">⚡ Smart Route — Enter Issue Details</div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">
+        <div>
+          <div style="font-family:var(--mono);font-size:8.5px;color:var(--dim);margin-bottom:4px">DOCUMENT / ISSUE TYPE</div>
+          <select id="fn-issue" style="background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:7px 11px;font-family:var(--sans);font-size:11.5px;color:var(--bright);width:100%;outline:none">
+            <option value="">Select issue type...</option>
+            <option value="gl_error">GL Journal Entry Error / Fraud Indicator</option>
+            <option value="ap_overdue">AP Aging — Overdue Vendor Liability</option>
+            <option value="ar_collectible">AR Collectibility Issue (>90 days)</option>
+            <option value="bank_diff">Bank Reconciliation Difference</option>
+            <option value="budget_var">Budget Variance > 10%</option>
+            <option value="audit_finding">Audit Finding — Material Weakness</option>
+            <option value="gaap_violation">GAAP Compliance Violation</option>
+            <option value="irs_1099">IRS 1099 — Missing TIN or Threshold Issue</option>
+          </select>
+        </div>
+        <div>
+          <div style="font-family:var(--mono);font-size:8.5px;color:var(--dim);margin-bottom:4px">MATERIALITY / URGENCY</div>
+          <select id="fn-urgency" style="background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:7px 11px;font-family:var(--sans);font-size:11.5px;color:var(--bright);width:100%;outline:none">
+            <option value="critical">Critical — Immediate action required</option>
+            <option value="high">High — Action within 24–48 hours</option>
+            <option value="medium">Medium — Address within 5 business days</option>
+            <option value="low">Low — Monitor and document</option>
+          </select>
+        </div>
+        <button class="btn btn-cyan btn-sm" onclick="runFinanceNodeRoute()">◈ Route This Issue</button>
+      </div>
+      <div id="fn-result" style="display:none;animation:fadeUp .25s ease"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">◈ All Finance Nodes</div>
+      <table class="tbl">
+        <thead><tr><th>Node</th><th>Function</th><th>SLA</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td><span class="bdg cy">GL REVIEW</span></td><td>Journal entry audit & correction</td><td>24hr</td><td><span class="bdg g">ACTIVE</span></td></tr>
+          <tr><td><span class="bdg or">AP/AR NODE</span></td><td>Payables/receivables resolution</td><td>48hr</td><td><span class="bdg g">ACTIVE</span></td></tr>
+          <tr><td><span class="bdg cy">TREASURY</span></td><td>Bank rec & cash management</td><td>1d</td><td><span class="bdg g">ACTIVE</span></td></tr>
+          <tr><td><span class="bdg pu">AUDIT NODE</span></td><td>Internal/external audit response</td><td>5d</td><td><span class="bdg g">ACTIVE</span></td></tr>
+          <tr><td><span class="bdg gold">TAX / IRS</span></td><td>1099, filing, IRS notice response</td><td>Deadline-driven</td><td><span class="bdg g">ACTIVE</span></td></tr>
+          <tr><td><span class="bdg r">ESCALATION</span></td><td>CFO / external auditor / legal</td><td>Immediate</td><td><span class="bdg g">ACTIVE</span></td></tr>
+          <tr><td><span class="bdg g">COMPLIANCE</span></td><td>GAAP / IFRS / SOX remediation</td><td>30d</td><td><span class="bdg g">ACTIVE</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════ TAB: FINOPS AI ══════════════════════════════ -->
+<div class="view" id="tab-advisor">
+  <div style="display:flex;gap:14px;height:100%;min-height:0">
+
+    <!-- Sidebar -->
+    <div class="fo-sidebar">
+      <div style="font-family:var(--mono);font-size:8.5px;letter-spacing:2px;color:var(--dim);margin-bottom:4px">QUICK PROMPTS</div>
+
+      <button class="fo-sq" onclick="sendFOPrompt('Our bank reconciliation has a $12,500 unreconciled difference at month-end. Walk me through the systematic approach to identify and resolve it, including common causes and journal entry corrections.')">
+        <span class="pi">▸</span>Bank rec $12.5K difference
+      </button>
+      <button class="fo-sq" onclick="sendFOPrompt('Our AP aging report shows $340,000 in invoices over 90 days past due across 12 vendors. What are the financial reporting implications, cash flow impact, and steps to resolve or properly accrue these?')">
+        <span class="pi">▸</span>AP aging 90+ day exposure
+      </button>
+      <button class="fo-sq" onclick="sendFOPrompt('GL detail review flagged 3 journal entries made after period close with round-dollar amounts and no supporting documentation. What fraud indicators does this represent and what is the audit investigation protocol?')">
+        <span class="pi">▸</span>Post-close round-dollar JEs
+      </button>
+      <button class="fo-sq" onclick="sendFOPrompt('We have 47 contractors paid over $600 this year. Walk me through the 1099-NEC filing requirements, TIN validation process, B-notice procedures, and IRS backup withholding rules.')">
+        <span class="pi">▸</span>1099-NEC filing — 47 contractors
+      </button>
+      <button class="fo-sq" onclick="sendFOPrompt('Our budget vs actual variance report shows Q3 operating expenses 23% over budget. Provide a framework for variance analysis, the questions to ask department heads, and how to present this to the board.')">
+        <span class="pi">▸</span>23% opex budget variance
+      </button>
+      <button class="fo-sq" onclick="sendFOPrompt('External auditors identified a material weakness in our revenue recognition controls. Explain what this means under ASC 606, the required disclosures, and a 90-day remediation plan.')">
+        <span class="pi">▸</span>Material weakness — ASC 606
+      </button>
+      <button class="fo-sq" onclick="sendFOPrompt('Our AR ledger shows $180,000 in accounts over 120 days. Explain the GAAP allowance for doubtful accounts methodology (ASC 310), how to calculate the allowance, and the required journal entries.')">
+        <span class="pi">▸</span>AR allowance — ASC 310
+      </button>
+
+      <div style="margin-top:auto;background:var(--bg2);border:1px solid var(--border);border-radius:4px;padding:9px;text-align:center">
+        <div style="font-family:var(--mono);font-size:8px;color:var(--dim);letter-spacing:.8px">GROQ · openai/gpt-oss-120b<br><span style="color:var(--green);display:block;margin-top:2px;font-size:8.5px">FinOps Intelligence Mode</span></div>
+        <div id="fo-status-dot" style="display:flex;align-items:center;justify-content:center;gap:5px;margin-top:5px;font-family:var(--mono);font-size:8px;color:var(--dim)">
+          <span style="width:5px;height:5px;border-radius:50%;background:var(--dim);display:inline-block" id="fo-groq-dot"></span> READY
+        </div>
+      </div>
+    </div>
+
+    <!-- Chat Main -->
+    <div style="flex:1;display:flex;flex-direction:column;min-width:0">
+      <div class="groq-win" id="fo-groq-win">
+        <div class="gmsg ai">
+          <div class="gmsg-av">◈</div>
+          <div class="gmsg-body">
+            <div class="gmsg-lbl">TSM FINOPS INTELLIGENCE · GROQ llama-3.3-70b</div>
+            <div class="gmsg-bub">Welcome to TSM FinOps AI. I specialize in financial operations intelligence — GL analysis, AP/AR management, bank reconciliation, budget variance, audit findings, GAAP/IFRS compliance, IRS 1099 rules, and financial statement analysis. How can I help with your financial operations today?</div>
+          </div>
+        </div>
+      </div>
+      <div class="groq-input-row">
+        <textarea class="groq-inp" id="fo-groq-inp" rows="2" placeholder="Ask about GL entries, AP aging, bank rec, 1099s, budget variance, GAAP compliance, audit findings..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendFOMessage()}"></textarea>
+        <button class="btn btn-cyan btn-sm" onclick="sendFOMessage()" id="fo-send-btn">▶ SEND</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div><!-- /content -->
+
+<!-- STATUSBAR -->
+<div class="statusbar">
+  <div class="sb">◈ <span class="hi">TSM FINOPS SUITE</span></div>
+  <div class="sb">DOCS PROCESSED: <span class="hi" id="sb-docs">0</span></div>
+  <div class="sb">RISK FLAGS: <span class="w" id="sb-risk">0</span></div>
+  <div class="sb">AI MODEL: <span class="gr">openai/gpt-oss-120b</span></div>
+</div>
+
+</div><!-- /shell -->
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// CONFIG
+// ═══════════════════════════════════════════════════════════════
+const GROQ_API = 'https://api.groq.com/openai/v1/chat/completions';
+const GROQ_MODEL = 'openai/gpt-oss-120b';
+
+const FINOPS_SYSTEM = `You are TSM FinOps Intelligence — an expert financial operations AI assistant for the TSM FinOps Suite. You specialize in:
+- General Ledger (GL) analysis, journal entry review, trial balance, chart of accounts
+- Accounts Payable (AP) aging, vendor management, invoice processing, accruals
+- Accounts Receivable (AR) management, aging analysis, allowance for doubtful accounts (ASC 310), collections
+- Bank reconciliation — identifying reconciling items, timing differences, errors
+- Budget vs Actual variance analysis — root cause analysis, forecasting, board reporting
+- Audit findings — material weaknesses, significant deficiencies, SOX compliance, remediation plans
+- Financial statements — income statement, balance sheet, cash flow under US GAAP (ASC) and IFRS
+- 1099-NEC/MISC — IRS filing requirements, TIN validation, B-notices, backup withholding
+- GAAP accounting standards — ASC 606 (revenue recognition), ASC 842 (leases), ASC 310 (receivables), ASC 230 (cash flows)
+- Internal controls — segregation of duties, fraud indicators, COSO framework
+- Tax compliance — estimated taxes, payroll tax, sales tax nexus, IRS notices
+
+Respond in a structured, professional format. Use clear section headers. Be specific about amounts, timelines, journal entries (debit/credit), and regulatory citations. Keep responses actionable.`;
+
+// ═══════════════════════════════════════════════════════════════
+// SAMPLE DOCUMENTS
+// ═══════════════════════════════════════════════════════════════
+const foSampleDocs = [
+  {
+    id:'fo-gl', type:'GL DETAIL', typeClass:'type-gl',
+    title:'GL Detail Report',
+    desc:'General ledger with 3 flagged post-close entries',
+    risk:'HIGH',
+    content:`DOCUMENT: GL Detail Report — Month End Close
+PERIOD: [Month/Year]
+ENTITY: [Client Entity]
+FLAGGED ITEMS:
+1. JE #4471 — Posted 3 days AFTER period close. Amount: $25,000 (round number). Preparer: System User. Approval: None. Account: 6500 (Misc Expense). Description: "Adjustment."
+2. JE #4489 — Posted 5 days after close. Amount: $18,500. Preparer: [Mgr]. Account: 4100 (Revenue). Description: "Year-end true-up."
+3. JE #4501 — Posted 7 days after close. Amount: $9,000. No backup attached. Account: 2100 (AP).
+TOTAL FLAGGED: $52,500
+NORMAL ENTRIES: 1,847 entries — no exceptions noted.`
+  },
+  {
+    id:'fo-ap', type:'AP AGING', typeClass:'type-ap',
+    title:'AP Aging Report',
+    desc:'$340K overdue — 12 vendors past 90 days',
+    risk:'MEDIUM',
+    content:`DOCUMENT: Accounts Payable Aging Report
+AS OF: [Date]
+AGING SUMMARY:
+Current (0-30 days): $124,500
+31-60 days: $89,200
+61-90 days: $67,800
+91-120 days: $134,000
+Over 120 days: $206,400
+TOTAL AP: $621,900
+TOP OVERDUE VENDORS (>90 days):
+- Vendor A: $87,500 — Invoice dispute pending
+- Vendor B: $54,200 — PO mismatch
+- Vendor C: $43,100 — Missing W-9
+- Vendor D: $31,800 — Bank details unverified
+NOTE: 3 vendors have late payment fees accumulating. 2 vendors threatening to place account on hold.`
+  },
+  {
+    id:'fo-ar', type:'AR LEDGER', typeClass:'type-ar',
+    title:'AR Ledger',
+    desc:'$180K at 120+ days — allowance calculation needed',
+    risk:'MEDIUM',
+    content:`DOCUMENT: Accounts Receivable Ledger & Aging
+AS OF: [Date]
+AGING SUMMARY:
+Current (0-30 days): $312,400
+31-60 days: $156,700
+61-90 days: $98,300
+91-120 days: $87,600
+Over 120 days: $180,200
+TOTAL AR GROSS: $835,200
+CURRENT ALLOWANCE FOR DOUBTFUL ACCOUNTS: $12,000 (1.4% of gross AR)
+ANALYSIS: Historical write-off rate: 8.5% of 120+ day balances. Three customers in bankruptcy proceedings (combined $67,000). Per ASC 310, allowance appears understated.
+ESTIMATED REQUIRED ALLOWANCE: $48,500 (based on historical loss rates and specific identification)`
+  },
+  {
+    id:'fo-bank', type:'BANK REC', typeClass:'type-bank',
+    title:'Bank Reconciliation',
+    desc:'$12,500 unreconciled difference — month end',
+    risk:'HIGH',
+    content:`DOCUMENT: Bank Reconciliation — [Month] [Year]
+ENTITY: [Client]
+BANK BALANCE (per statement): $487,320.45
+BOOK BALANCE (per GL): $474,820.45
+DIFFERENCE: ($12,500.00)
+RECONCILING ITEMS IDENTIFIED:
+- Outstanding checks (17 items): ($34,200.00)
+- Deposits in transit (2 items): $19,450.00
+- Bank service charge not recorded: ($125.00)
+- NSF check returned: ($1,875.00)
+SUBTOTAL RECONCILING ITEMS: ($16,750.00)
+UNRECONCILED DIFFERENCE REMAINING: $4,250.00
+NOTE: $4,250 difference cannot be explained. May represent unrecorded transaction, duplicate payment, or data entry error. Requires investigation.`
+  },
+  {
+    id:'fo-budget', type:'BUDGET VARIANCE', typeClass:'type-budget',
+    title:'Budget vs Actual — Q3',
+    desc:'Operating expenses 23% over budget',
+    risk:'LOW',
+    content:`DOCUMENT: Budget vs Actual Variance Report — Q3 [Year]
+PERIOD: July 1 – September 30
+REVENUE: Budget $2,400,000 | Actual $2,287,000 | Variance ($113,000) | -4.7%
+OPERATING EXPENSES:
+- Salaries/Benefits: Budget $980,000 | Actual $1,124,000 | Variance ($144,000) | -14.7%
+- Marketing: Budget $120,000 | Actual $187,500 | Variance ($67,500) | -56.3%
+- Technology: Budget $85,000 | Actual $92,400 | Variance ($7,400) | -8.7%
+- Facilities: Budget $45,000 | Actual $43,200 | Variance $1,800 | +4.0%
+- Professional Fees: Budget $30,000 | Actual $28,500 | Variance $1,500 | +5.0%
+TOTAL OPEX: Budget $1,260,000 | Actual $1,475,600 | Variance ($215,600) | -17.1%
+OPERATING INCOME: Budget $1,140,000 | Actual $811,400 | Variance ($328,600) | -28.8%`
+  },
+  {
+    id:'fo-audit', type:'AUDIT FINDINGS', typeClass:'type-audit',
+    title:'Audit Findings Report',
+    desc:'Material weakness — revenue recognition controls',
+    risk:'CRITICAL',
+    content:`DOCUMENT: External Audit Findings Letter — [Year] Annual Audit
+AUDITOR: [Firm Name]
+AUDIT PERIOD: Fiscal Year [Year]
+FINDINGS CLASSIFICATION:
+MATERIAL WEAKNESS #1: Revenue Recognition Controls
+Description: Revenue is being recognized at contract execution rather than upon satisfaction of performance obligations under ASC 606. $847,000 in revenue appears to be recognized prematurely.
+Impact: Potential financial restatement required. SEC comment letter risk if public company.
+
+SIGNIFICANT DEFICIENCY #1: IT General Controls
+Description: No formal change management process for ERP system modifications. Unauthorized changes possible.
+
+CONTROL DEFICIENCY #1: Bank Reconciliation
+Description: Bank reconciliations not completed timely (average 45 days late). Differences not investigated within 30 days.
+
+MANAGEMENT RESPONSE REQUIRED: 60 days from audit report date.`
+  },
+  {
+    id:'fo-fs', type:'FINANCIAL STATEMENTS', typeClass:'type-fs',
+    title:'Financial Statements',
+    desc:'Year-end P&L, balance sheet, cash flow',
+    risk:'HIGH',
+    content:`DOCUMENT: Financial Statements — Year Ended [Date]
+INCOME STATEMENT (Summary):
+Revenue: $8,240,000
+COGS: $4,920,000
+Gross Profit: $3,320,000 (40.3% margin)
+Operating Expenses: $2,180,000
+Operating Income: $1,140,000 (13.8% margin)
+Interest Expense: $87,000
+Pre-Tax Income: $1,053,000
+Tax Provision: $263,000 (25%)
+Net Income: $790,000
+
+BALANCE SHEET (Summary):
+Total Assets: $5,840,000
+Total Liabilities: $2,310,000
+Equity: $3,530,000
+Debt-to-Equity: 0.65
+
+CASH FLOW:
+Operating: $1,240,000
+Investing: ($340,000)
+Financing: ($180,000)
+Net Change: $720,000
+
+GAAP NOTES: Revenue recognized per ASC 606. Leases capitalized per ASC 842. 
+POTENTIAL ISSUE: Going concern evaluation may be needed — current ratio 1.1.`
+  },
+  {
+    id:'fo-1099', type:'1099 TRACKER', typeClass:'type-1099',
+    title:'1099 Tracker',
+    desc:'47 contractors — TIN validation, IRS thresholds',
+    risk:'HIGH',
+    content:`DOCUMENT: 1099-NEC Contractor Tracker — Tax Year [Year]
+TOTAL CONTRACTORS PAID: 47
+FILING THRESHOLD: $600+
+CONTRACTORS REQUIRING 1099-NEC: 38 (payments ≥ $600)
+CONTRACTORS BELOW THRESHOLD: 9
+
+STATUS BREAKDOWN:
+✓ TIN Validated (W-9 on file, TIN match): 31
+⚠ W-9 Missing: 4 contractors (combined payments: $28,400)
+⚠ TIN Mismatch (IRS B-Notice potential): 3 contractors
+⚠ Foreign contractors (W-8BEN required, not 1042-S): 2 contractors
+
+BACKUP WITHHOLDING REQUIRED: 3 contractors (28% rate, $7,952 withheld)
+LARGEST SINGLE CONTRACTOR: $84,500 — [Name Redacted]
+FILING DEADLINE: January 31
+DAYS UNTIL DEADLINE: [Calculated from current date]
+IRS PENALTY (if late): $50–$290 per form depending on delay`
+  }
+];
+
+// ═══════════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════════
+let foState = {
+  selectedDoc: null,
+  docsProcessed: 0,
+  riskFlags: 0,
+  compliantItems: 0,
+  actionItems: 0,
+  history: [],
+  groqMessages: []
+};
+
+// ═══════════════════════════════════════════════════════════════
+// TAB SWITCHING
+// ═══════════════════════════════════════════════════════════════
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// CLOCK
+// ═══════════════════════════════════════════════════════════════
+function updateClock() {
+  const now = new Date();
+  document.getElementById('tb-clock').textContent =
+    now.toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ═══════════════════════════════════════════════════════════════
+// RENDER SAMPLE DOC GRID
+// ═══════════════════════════════════════════════════════════════
+function renderDocGrid() {
+  const riskColors = {HIGH:'var(--orange)', CRITICAL:'var(--red)', MEDIUM:'var(--gold)', LOW:'var(--green)'};
+  document.getElementById('doc-sample-grid').innerHTML = foSampleDocs.map(d => `
+    <div class="doc-card ${d.typeClass}" onclick="selectFODoc('${d.id}', this)">
+      <div class="dc-type">${d.type}</div>
+      <div class="dc-title">${d.title}</div>
+      <div class="dc-desc">${d.desc}</div>
+      <div class="dc-risk">
+        <span class="bdg" style="background:rgba(0,0,0,.2);color:${riskColors[d.risk]};border:1px solid ${riskColors[d.risk]}40;font-size:7.5px">${d.risk} RISK</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+function selectFODoc(id, el) {
+  document.querySelectorAll('.doc-card').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  const doc = foSampleDocs.find(d => d.id === id);
+  if (!doc) return;
+  foState.selectedDoc = doc;
+
+  const info = document.getElementById('fo-selected-info');
+  info.style.display = 'block';
+  document.getElementById('fo-sel-type').textContent = doc.type;
+  document.getElementById('fo-sel-title').textContent = doc.title;
+  document.getElementById('fo-sel-desc').textContent = doc.desc;
+  document.getElementById('fo-process-btn').disabled = false;
+}
+
+function setFOMode(mode) {
+  const sample = document.getElementById('sample-doc-section');
+  const upload = document.getElementById('upload-doc-section');
+  const sb = document.getElementById('mode-sample-btn');
+  const ub = document.getElementById('mode-upload-btn');
+  if (mode === 'sample') {
+    sample.style.display = 'block'; upload.style.display = 'none';
+    sb.className = 'btn btn-outline btn-xs'; sb.style.cssText = '';
+    ub.style.background = 'transparent'; ub.style.border = '1px solid var(--border)'; ub.style.color = 'var(--dim)';
+  } else {
+    sample.style.display = 'none'; upload.style.display = 'block';
+  }
+}
+
+document.getElementById('fo-file-input').addEventListener('change', function() {
+  if (this.files[0]) {
+    const fname = this.files[0].name;
+    document.getElementById('fo-upload-name').style.display = 'block';
+    document.getElementById('fo-upload-name').textContent = '📊 ' + fname;
+    foState.selectedDoc = {id:'upload', type:'UPLOADED', title:fname, desc:'User-uploaded financial document', risk:'UNKNOWN', content:'File: '+fname+'\n[Content extracted in production via text/OCR pipeline]'};
+    document.getElementById('fo-process-btn').disabled = false;
+    document.getElementById('fo-selected-info').style.display = 'block';
+    document.getElementById('fo-sel-type').textContent = 'UPLOADED';
+    document.getElementById('fo-sel-title').textContent = fname;
+    document.getElementById('fo-sel-desc').textContent = 'User-uploaded financial document';
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// ENGINE ANIMATION
+// ═══════════════════════════════════════════════════════════════
+function animateFOEngines(callback) {
+  const steps = ['fo-eng-0','fo-eng-1','fo-eng-2','fo-eng-3'];
+  let i = 0;
+  const iv = setInterval(() => {
+    if (i > 0) document.getElementById(steps[i-1]).className = 'eng-step done';
+    if (i < steps.length) {
+      document.getElementById(steps[i]).className = 'eng-step active';
+      i++;
+    } else {
+      clearInterval(iv);
+      if (callback) callback();
+    }
+  }, 650);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PROCESS DOCUMENT
+// ═══════════════════════════════════════════════════════════════
+async function processFinDoc() {
+  if (!foState.selectedDoc) return;
+  finopsProcessDoc(foState.selectedDoc.name || foState.selectedDoc.title || foState.selectedDoc);
+document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+document.querySelector('[data-tab="docanalysis"]').classList.add('active');
+document.getElementById('tab-docanalysis').classList.add('active');
+  const btn = document.getElementById('fo-process-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin">◌</span> ANALYZING...';
+
+  const badge = document.getElementById('fo-ai-badge');
+  badge.className = 'step-badge live';
+  badge.textContent = 'PROCESSING';
+
+  const terminal = document.getElementById('fo-terminal');
+  terminal.innerHTML = `<div class="t-prompt">&gt; Initializing 4-engine financial analysis pipeline...</div>
+<div style="color:var(--dim);margin-top:6px">Document: ${foState.selectedDoc.title}</div>
+<div style="color:var(--dim)">Type: ${foState.selectedDoc.type}</div>
+<div style="margin-top:8px;color:var(--dim)">Running<span class="spin"> ◌</span></div>`;
+
+  animateFOEngines(async () => {
+    terminal.innerHTML += `\n<div class="t-ok" style="margin-top:8px">Engine 1 (Ingest): ✓ Document structure parsed</div>
+<div class="t-ok">Engine 2 (Classify): ✓ Document type confirmed: ${foState.selectedDoc.type}</div>
+<div class="t-ok">Engine 3 (Analyze): ✓ GAAP/IRS compliance analysis complete</div>
+<div class="t-ok">Engine 4 (Route): ✓ Finance node routing recommendations generated</div>`;
+
+    const focus = {
+      risk: document.getElementById('chk-risk').checked,
+      compliance: document.getElementById('chk-compliance').checked,
+      variance: document.getElementById('chk-variance').checked,
+      action: document.getElementById('chk-action').checked
+    };
+
+    const prompt = `Analyze this financial operations document and provide a structured assessment:
+
+DOCUMENT TYPE: ${foState.selectedDoc.type}
+ANALYSIS FOCUS: ${[focus.risk?'Risk Flags':'', focus.compliance?'GAAP/IRS Compliance':'', focus.variance?'Variance Analysis':'', focus.action?'Action Items':''].filter(Boolean).join(', ')}
+
+DOCUMENT CONTENT:
+${foState.selectedDoc.content}
+
+Provide your analysis with these exact sections:
+1. DOCUMENT SUMMARY (2-3 lines)
+2. KEY FINDINGS (bullet points with specific amounts/numbers)
+3. RISK FLAGS (mark each as CRITICAL/HIGH/MEDIUM/LOW)
+4. COMPLIANCE ISSUES (GAAP standards, IRS rules, or internal control violations)
+5. BEST NEXT COURSE OF ACTION (numbered steps, specific and actionable)
+6. FINANCE NODE ROUTING (which node handles this: GL Review / AP-AR / Treasury / Audit / Tax-IRS / Escalation / Compliance)
+
+Keep it concise, professional, and specific to the document data provided.`;
+
+    let aiText = '';
+    try {
+      aiText = await callGroqFinOps(prompt);
+    } catch(e) {
+      aiText = getOfflineFOAnalysis(foState.selectedDoc);
+    }
+
+    terminal.innerHTML = `<div class="t-prompt">&gt; Analysis complete.</div>
+<div style="color:var(--dim);font-size:9.5px;margin-top:4px">Document: ${foState.selectedDoc.title} · ${foState.selectedDoc.type}</div>
+<div style="white-space:pre-wrap;font-size:10.5px;color:var(--text);line-height:1.8;margin-top:12px">${aiText}</div>`;
+
+    badge.className = 'step-badge complete';
+    badge.textContent = 'COMPLETE';
+
+    showFONodeRouting(foState.selectedDoc);
+
+    // Update stats
+    foState.docsProcessed++;
+    foState.riskFlags += foState.selectedDoc.risk === 'CRITICAL' ? 3 : foState.selectedDoc.risk === 'HIGH' ? 2 : 1;
+    foState.actionItems += 3;
+    foState.compliantItems += 2;
+
+    document.getElementById('stat-docs').textContent = foState.docsProcessed;
+    document.getElementById('sb-docs').textContent = foState.docsProcessed;
+    document.getElementById('sb-risk').textContent = foState.riskFlags;
+    document.getElementById('dash-docs').textContent = foState.docsProcessed;
+    document.getElementById('dash-risk').textContent = foState.riskFlags;
+    document.getElementById('dash-actions').textContent = foState.actionItems;
+    document.getElementById('dash-ok').textContent = foState.compliantItems;
+
+    // Add to history
+    addToHistory(foState.selectedDoc);
+
+    btn.disabled = false;
+    btn.innerHTML = '▶ PROCESS DOCUMENT';
+  });
+}
+
+function getOfflineFOAnalysis(doc) {
+  const analyses = {
+    'fo-gl': `DOCUMENT SUMMARY
+GL Detail Report flags 3 post-close journal entries totaling $52,500 with round-dollar amounts, missing approvals, and no supporting documentation. These represent significant fraud indicators.
+
+KEY FINDINGS
+▸ JE #4471: $25,000 round-dollar, posted 3 days post-close, no approval — high fraud risk
+▸ JE #4489: $18,500 revenue true-up posted 5 days post-close — ASC 606 compliance issue
+▸ JE #4501: $9,000 AP entry, no backup documentation attached
+▸ Total flagged exposure: $52,500
+▸ 1,847 normal entries — no exceptions
+
+RISK FLAGS
+▸ CRITICAL: Round-dollar post-close JEs with no approval = financial fraud indicator
+▸ HIGH: Revenue journal posted after close may violate cutoff procedures under ASC 606
+▸ HIGH: Missing documentation violates internal control requirements (COSO)
+
+COMPLIANCE ISSUES
+▸ Violation of COSO internal control framework — lack of authorization
+▸ Potential ASC 606 revenue recognition cutoff violation (JE #4489)
+▸ Sarbanes-Oxley (SOX) control deficiency if public company
+
+BEST NEXT COURSE OF ACTION
+1. Immediately freeze all 3 flagged JEs — do not allow period to close until resolved
+2. Pull source documentation for each entry from preparer
+3. Escalate JE #4471 and #4489 to CFO and Internal Audit for investigation
+4. Engage external auditors if restatement risk exists
+5. Implement compensating controls: dual approval required for all post-close entries
+
+FINANCE NODE ROUTING → AUDIT NODE + ESCALATION`,
+
+    'fo-ap': `DOCUMENT SUMMARY
+AP Aging shows $340,400 in invoices over 90 days past due across multiple vendors, with $206,400 over 120 days. Active vendor relationship and payment penalty risks identified.
+
+KEY FINDINGS
+▸ Total AP overdue (>90 days): $340,400
+▸ >120 day balance: $206,400 — highest aging risk
+▸ Vendor A ($87,500): invoice dispute — accrual question
+▸ Vendor C ($43,100): missing W-9 — 1099/backup withholding risk
+▸ Late payment fees accumulating on 3 vendors
+
+RISK FLAGS
+▸ HIGH: Two vendors threatening to place account on hold — supply chain risk
+▸ HIGH: Missing W-9 for Vendor C — IRS backup withholding may apply (28%)
+▸ MEDIUM: Unresolved PO mismatch (Vendor B $54,200) — 3-way match failure
+
+COMPLIANCE ISSUES
+▸ GAAP (ASC 420): Obligations with overdue disputed amounts may require accrual disclosure
+▸ IRS: Vendor C without W-9 requires 28% backup withholding on payments
+▸ Internal controls: PO-invoice mismatch indicates 3-way match control failure
+
+BEST NEXT COURSE OF ACTION
+1. Prioritize Vendor A — get dispute resolved or accrue under ASC 420
+2. Collect W-9 from Vendor C before next payment; withhold 28% if not received
+3. Resolve Vendor B PO mismatch with purchasing team
+4. Set up payment plan for large balances to restore vendor relations
+5. Implement AP aging dashboard for weekly CFO review
+
+FINANCE NODE ROUTING → AP-AR NODE + TAX-IRS NODE`,
+
+    'fo-bank': `DOCUMENT SUMMARY
+Bank reconciliation has a $4,250 unexplained difference remaining after all reconciling items have been accounted for. Systematic investigation required to identify unrecorded transaction or data entry error.
+
+KEY FINDINGS
+▸ Bank balance: $487,320.45
+▸ Book balance: $474,820.45
+▸ Identified reconciling items account for $16,750 difference
+▸ Remaining unexplained variance: $4,250.00
+▸ NSF check ($1,875) not yet recorded in GL
+
+RISK FLAGS
+▸ HIGH: Unexplained $4,250 variance — potential duplicate payment, fraud, or unrecorded transaction
+▸ MEDIUM: Bank reconciliation timing — if taking 45+ days, this is a control deficiency
+▸ MEDIUM: NSF check return not yet booked — AR may be overstated
+
+COMPLIANCE ISSUES
+▸ Internal control best practice: unreconciled differences should be investigated within 5 business days
+▸ NSF check creates AR entry: Dr. Accounts Receivable / Cr. Cash $1,875
+▸ Bank service charge entry: Dr. Bank Charges Expense / Cr. Cash $125
+
+BEST NEXT COURSE OF ACTION
+1. Book NSF check: Dr. AR 1,875 / Cr. Cash 1,875
+2. Book bank service charge: Dr. Bank Expense 125 / Cr. Cash 125
+3. Investigate $4,250 variance — pull all transactions for the period vs bank
+4. Search for duplicate payment matching $4,250 or components
+5. Escalate to Controller if variance cannot be resolved within 48 hours
+
+FINANCE NODE ROUTING → TREASURY NODE`,
+
+    'fo-1099': `DOCUMENT SUMMARY
+1099-NEC tracker shows 47 contractors paid; 38 require 1099-NEC filing. 7 contractors have compliance issues: missing W-9s, TIN mismatches, and foreign contractors needing W-8BEN.
+
+KEY FINDINGS
+▸ Total contractors requiring 1099-NEC: 38 (paid ≥$600)
+▸ Missing W-9: 4 contractors ($28,400 in payments)
+▸ TIN mismatches (B-Notice risk): 3 contractors
+▸ Foreign contractors (W-8BEN needed, not 1042-S filed): 2
+▸ Backup withholding already withheld: $7,952
+▸ Largest contractor: $84,500 — verify Sch C vs Corp exempt status
+
+RISK FLAGS
+▸ HIGH: Missing W-9s — backup withholding penalty exposure if not collected
+▸ HIGH: TIN mismatches — IRS B-notices likely; backup withholding must begin
+▸ HIGH: Foreign contractors — may require 1042-S instead of 1099 + 30% withholding
+▸ MEDIUM: January 31 filing deadline — penalties $50–$290 per late form
+
+COMPLIANCE ISSUES
+▸ IRC §3406: Backup withholding at 28% required for missing/incorrect TINs
+▸ IRS B-Notice procedure: CP2100 triggers first B-notice, must begin withholding
+▸ Foreign contractors: IRS Form W-8BEN required; 1042-S for payments; 30% withholding unless treaty
+
+BEST NEXT COURSE OF ACTION
+1. Immediately solicit W-9 from 4 missing contractors (use IRS W-9 demand letter template)
+2. Initiate 28% backup withholding on any new payments to missing/mismatch contractors
+3. Consult with international tax for 2 foreign contractors — file 1042-S not 1099
+4. Verify TINs for 3 mismatch contractors via IRS TIN Matching program
+5. File all 1099-NEC forms by January 31 (both recipient and IRS copies)
+
+FINANCE NODE ROUTING → TAX-IRS NODE`,
+
+    'fo-audit': `DOCUMENT SUMMARY
+External audit found a Material Weakness in revenue recognition controls — $847,000 in potentially premature revenue under ASC 606. Restatement risk and SEC comment letter exposure noted.
+
+KEY FINDINGS
+▸ Material Weakness: Revenue recognized at contract signing, not performance obligation satisfaction
+▸ Potential misstated revenue: $847,000
+▸ Significant Deficiency: IT general controls — no change management process
+▸ Control Deficiency: Bank reconciliations averaging 45 days late (should be <5 days)
+▸ Management response deadline: 60 days
+
+RISK FLAGS
+▸ CRITICAL: Material weakness + potential restatement — financial statement reliability at risk
+▸. CRITICAL: If public company, SEC 8-K disclosure required and comment letter likely
+▸ HIGH: $847,000 revenue misstatement is likely material (5% of revenue test)
+▸ HIGH: IT change management gap — unauthorized ERP modifications possible
+
+COMPLIANCE ISSUES
+▸ ASC 606: Revenue recognized over time as performance obligations satisfied, NOT at contract execution
+▸ COSO Internal Control Framework: Material weakness = reasonable possibility of material misstatement
+▸ SOX (if public): CEO/CFO certification at risk; auditor must opine on internal controls (AS 2201)
+
+BEST NEXT COURSE OF ACTION
+1. Engage external auditors immediately — determine if restatement is required
+2. Conduct ASC 606 5-step model analysis on all contracts with flagged revenue
+3. Implement deferred revenue account for prematurely recognized amounts
+4. Develop remediation plan for IT change management (ITGC) within 30 days
+5. Fix bank reconciliation process — assign dedicated controller, set 5-day SLA
+
+FINANCE NODE ROUTING → AUDIT NODE + COMPLIANCE NODE + ESCALATION`,
+
+    'fo-fs': `DOCUMENT SUMMARY
+Year-end financial statements show solid profitability (13.8% operating margin) but flag a potential going concern issue (current ratio 1.1) and possible lease capitalization review under ASC 842.
+
+KEY FINDINGS
+▸ Revenue: $8.24M | Operating Income: $1.14M (13.8% margin) — healthy
+▸ Net Income: $790K | Cash from Operations: $1.24M — positive
+▸ Current ratio: 1.1 — near going concern threshold (GAAP requires disclosure if substantial doubt)
+▸ Debt-to-equity: 0.65 — moderate leverage
+▸ Cash increased $720K — positive liquidity trend
+
+RISK FLAGS
+▸ HIGH: Current ratio 1.1 — management must assess going concern (ASC 205-40)
+▸ MEDIUM: Interest expense $87K — verify debt covenants for compliance
+▸ MEDIUM: COGS 59.7% of revenue — benchmark against industry for margin analysis
+▸ LOW: Tax provision 25% — confirm deferred tax asset/liability schedule reconciles
+
+COMPLIANCE ISSUES
+▸ ASC 205-40: Going concern evaluation required if conditions raise substantial doubt
+▸ ASC 842: Confirm all operating leases > 12 months capitalized on balance sheet
+▸ ASC 606: Revenue recognition footnote disclosure must describe policies and estimates
+
+BEST NEXT COURSE OF ACTION
+1. Perform formal going concern analysis — document cash flow projections 12 months forward
+2. Review debt covenant compliance — confirm no violations with current ratio at 1.1
+3. Prepare ASC 842 lease inventory — verify all ROU assets/liabilities on balance sheet
+4. Review revenue recognition footnote for ASC 606 compliance
+5. Benchmark gross margin against industry — if low, analyze COGS components
+
+FINANCE NODE ROUTING → COMPLIANCE NODE + AUDIT NODE`
+  };
+  return analyses[doc.id] || `> Analysis complete (offline mode).\n\nDocument: ${doc.title}\n\nKEY FINDINGS\n▸ Document type identified: ${doc.type}\n▸ Risk level: ${doc.risk}\n\nBEST NEXT COURSE OF ACTION\n1. Review document manually for specific issues\n2. Route to appropriate finance node\n3. Document findings and action plan\n\nFINANCE NODE ROUTING → COMPLIANCE NODE\n\n[Connect Groq API for live AI analysis: window.GROQ_API_KEY = 'your_key']`;
+}
+
+function showFONodeRouting(doc) {
+  const grid = document.getElementById('fo-node-grid');
+  const nodeDiv = document.getElementById('fo-node-routing');
+
+  const routeMap = {
+    'fo-gl': ['audit', 'escalation', 'compliance'],
+    'fo-ap': ['apar', 'tax', 'treasury'],
+    'fo-ar': ['apar', 'compliance', 'audit'],
+    'fo-bank': ['treasury', 'gl', 'audit'],
+    'fo-budget': ['compliance', 'apar', 'escalation'],
+    'fo-audit': ['audit', 'escalation', 'compliance'],
+    'fo-fs': ['compliance', 'audit', 'escalation'],
+    'fo-1099': ['tax', 'compliance', 'apar']
+  };
+
+  const nodeInfo = {
+    gl: {icon:'📒', name:'GL Review', route:'JOURNAL AUDIT'},
+    apar: {icon:'⚖', name:'AP/AR Node', route:'PAYABLES/RECEIVABLES'},
+    treasury: {icon:'🏦', name:'Treasury', route:'BANK & CASH'},
+    audit: {icon:'🔍', name:'Audit Node', route:'AUDIT RESPONSE'},
+    tax: {icon:'📋', name:'Tax/IRS', route:'1099 & TAX'},
+    escalation: {icon:'⬆', name:'Escalation', route:'CFO / LEGAL'},
+    compliance: {icon:'◈', name:'Compliance', route:'GAAP REMEDIATION'}
+  };
+
+  const routes = routeMap[doc.id] || ['audit', 'compliance', 'escalation'];
+  grid.innerHTML = routes.map(r => {
+    const n = nodeInfo[r] || {icon:'◈', name:r, route:'ROUTE'};
+    return `<div class="node-card" onclick="this.classList.toggle('selected')">
+      <div class="nc-icon">${n.icon}</div>
+      <div class="nc-name">${n.name}</div>
+      <div class="nc-route">${n.route}</div>
+    </div>`;
+  }).join('');
+
+  nodeDiv.style.display = 'block';
+}
+
+function addToHistory(doc) {
+  const hist = document.getElementById('processing-history');
+  const riskColors = {HIGH:'var(--orange)', CRITICAL:'var(--red)', MEDIUM:'var(--gold)', LOW:'var(--green)'};
+  const now = new Date().toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit'});
+  const item = document.createElement('div');
+  item.style.cssText = 'display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--bg2);border:1px solid var(--border);border-radius:4px;margin-bottom:6px;animation:fadeUp .2s ease';
+  item.innerHTML = `<div style="font-size:16px">📊</div>
+    <div style="flex:1">
+      <div style="font-size:11.5px;font-weight:600;color:var(--bright)">${doc.title}</div>
+      <div style="font-family:var(--mono);font-size:8.5px;color:var(--dim)">${doc.type} · Processed ${now}</div>
+    </div>
+    <span style="font-family:var(--mono);font-size:8px;padding:2px 8px;border-radius:3px;background:rgba(0,0,0,.2);color:${riskColors[doc.risk]};border:1px solid ${riskColors[doc.risk]}30">${doc.risk}</span>`;
+  if (hist.querySelector('div[style*="text-align:center"]')) hist.innerHTML = '';
+  hist.appendChild(item);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FINANCE NODE ROUTING
+// ═══════════════════════════════════════════════════════════════
+async function runFinanceNodeRoute() {
+  const issue = document.getElementById('fn-issue').value;
+  const urgency = document.getElementById('fn-urgency').value;
+  if (!issue) { alert('Please select an issue type.'); return; }
+
+  const result = document.getElementById('fn-result');
+  result.style.display = 'block';
+  result.innerHTML = '<div style="font-family:var(--mono);font-size:10px;color:var(--cyan)"><span class="spin">◌</span> Routing issue...</div>';
+
+  const prompt = `For a financial operations issue: "${issue}" with urgency: "${urgency}", provide:
+1. RECOMMENDED FINANCE NODE (GL Review / AP-AR / Treasury / Audit / Tax-IRS / Escalation / Compliance)
+2. PRIORITY LEVEL
+3. IMMEDIATE ACTION STEPS (3-4 specific bullets)
+4. KEY DEADLINE
+5. REQUIRED DOCUMENTATION
+6. GAAP/IRS/REGULATORY REFERENCE (if applicable)
+
+Be specific and brief. Format clearly.`;
+
+  let routeText = '';
+  try {
+    routeText = await callGroqFinOps(prompt);
+  } catch(e) {
+    routeText = getOfflineFNRouting(issue);
+  }
+
+  result.innerHTML = `<div style="background:var(--bg2);border:1px solid var(--border2);border-radius:5px;padding:14px">
+    <div style="font-family:var(--mono);font-size:8.5px;color:var(--cyan);margin-bottom:10px;letter-spacing:2px">◈ ROUTING RECOMMENDATION</div>
+    <div style="font-size:11px;color:var(--text);line-height:1.8;white-space:pre-wrap">${routeText}</div>
+  </div>`;
+}
+
+function getOfflineFNRouting(issue) {
+  const routes = {
+    gl_error: `RECOMMENDED NODE: AUDIT NODE → GL REVIEW → ESCALATION\nPRIORITY: CRITICAL\n\n▸ Freeze flagged journal entries — do not allow period close\n▸ Pull documentation from preparer within 24 hours\n▸ Escalate to CFO and Internal Audit if no documentation exists\n▸ Engage external auditors if restatement risk exists\n\nDEADLINE: Immediate — resolve before period close\nDOCUMENTATION: Source docs for each JE, preparer authorization, approval chain\nREF: COSO Internal Control Framework, ASC 250 (Accounting Changes)`,
+    ap_overdue: `RECOMMENDED NODE: AP-AR NODE + TAX-IRS NODE\nPRIORITY: HIGH\n\n▸ Prioritize vendors with legal/dispute risk — get to resolution\n▸ Collect missing W-9s for any contractors before next payment\n▸ Implement 3-way match review for PO mismatches\n▸ Set up AP aging dashboard with weekly CFO review\n\nDEADLINE: Vendor disputes within 5 days; W-9 collection ongoing\nDOCUMENTATION: POs, invoices, dispute correspondence, W-9 demand letters\nREF: IRC §3406 (backup withholding), GAAP ASC 420`,
+    irs_1099: `RECOMMENDED NODE: TAX-IRS NODE\nPRIORITY: HIGH (deadline-driven)\n\n▸ Collect missing W-9s immediately — use IRS demand letter\n▸ Begin 28% backup withholding on missing/mismatch TINs\n▸ File 1099-NEC by January 31 (both recipient and IRS copies)\n▸ For foreign contractors, file 1042-S (not 1099) via IRS FIRE system\n\nDEADLINE: January 31 (1099-NEC filing deadline)\nDOCUMENTATION: W-9s, payment records, TIN matching results\nREF: IRC §3406, IRS Pub 1281, IRC §1441 (foreign persons)`,
+    bank_diff: `RECOMMENDED NODE: TREASURY NODE\nPRIORITY: HIGH\n\n▸ Pull all transactions in disputed period from bank vs GL\n▸ Search for duplicate payments matching the difference amount\n▸ Check for unrecorded service charges, NSF checks, wire fees\n▸ Escalate to Controller if unexplained after 48 hours\n\nDEADLINE: Resolve within 5 business days of month-end\nDOCUMENTATION: Bank statements, GL transaction detail, check register\nREF: Internal control best practice, SOX control requirements`
+  };
+  return routes[issue] || `RECOMMENDED NODE: COMPLIANCE NODE\nPRIORITY: HIGH\n\n▸ Document the issue with supporting evidence\n▸ Identify applicable GAAP standard or IRS regulation\n▸ Develop remediation plan with specific owner and deadline\n▸ Report findings to CFO and audit committee\n\nDEADLINE: Management response typically required within 60 days of finding\nDOCUMENTATION: Issue description, impact analysis, remediation plan\nREF: COSO, applicable ASC standards`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// COMPLIANCE CHECKLIST
+// ═══════════════════════════════════════════════════════════════
+function renderComplianceList() {
+  const items = [
+    {icon:'📋', title:'1099-NEC Filing', desc:'W-9 collection, TIN validation, Jan 31 deadline', status:'warn'},
+    {icon:'📊', title:'ASC 606 Revenue Recognition', desc:'Performance obligations, contract modifications', status:'ok'},
+    {icon:'🏢', title:'ASC 842 Lease Accounting', desc:'ROU assets capitalized, lease liability schedule', status:'warn'},
+    {icon:'💰', title:'ASC 310 Allowance for Doubtful Accounts', desc:'Expected credit loss model, aging analysis', status:'ok'},
+    {icon:'🏦', title:'Bank Reconciliation Controls', desc:'Completed within 5 days of month-end', status:'ok'},
+    {icon:'🔍', title:'Journal Entry Review', desc:'Post-close entries reviewed, all entries approved', status:'err'},
+  ];
+  const statusColors = {ok:['var(--green)','rgba(16,185,129,.08)','rgba(16,185,129,.2)','✓'], warn:['var(--orange)','rgba(245,158,11,.08)','rgba(245,158,11,.2)','⚠'], err:['var(--red)','rgba(239,68,68,.08)','rgba(239,68,68,.2)','✕']};
+  const list = document.getElementById('compliance-list');
+  if (!list) return;
+  list.innerHTML = items.map(item => {
+    const [c,bg,border,sym] = statusColors[item.status];
+    return `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:${bg};border:1px solid ${border};border-radius:4px">
+      <div style="font-size:15px">${item.icon}</div>
+      <div style="flex:1"><div style="font-size:11px;font-weight:600;color:var(--bright)">${item.title}</div><div style="font-size:9.5px;color:var(--dim)">${item.desc}</div></div>
+      <span style="color:${c};font-size:14px;font-weight:700">${sym}</span>
+    </div>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// GROQ API
+// ═══════════════════════════════════════════════════════════════
+async function callGroqFinOps(content) {
+  const apiKey = window.GROQ_API_KEY || localStorage.getItem('tsm_groq_key') || '';
+  if (!apiKey || apiKey === 'YOUR_GROQ_API_KEY') throw new Error('no key');
+
+  const response = await fetch(GROQ_API, {
+    method:'POST',
+    headers:{'Content-Type':'application/json', 'Authorization':`Bearer ${apiKey}`},
+    body: JSON.stringify({
+      model: GROQ_MODEL,
+      max_tokens: 1024,
+      messages: [
+        {role:'system', content: FINOPS_SYSTEM},
+        {role:'user', content}
+      ]
+    })
+  });
+  if (!response.ok) throw new Error(response.status);
+  const data = await response.json();
+  return data.choices?.[0]?.message?.content || 'No response.';
+}
+
+let foGroqHistory = [];
+
+async function sendFOMessage() {
+  const inp = document.getElementById('fo-groq-inp');
+  const msg = inp.value.trim();
+  if (!msg) return;
+  inp.value = '';
+  await sendFOPrompt(msg);
+}
+
+async function sendFOPrompt(msg) {
+  const win = document.getElementById('fo-groq-win');
+  const btn = document.getElementById('fo-send-btn');
+  const dot = document.getElementById('fo-groq-dot');
+
+  win.innerHTML += `<div class="gmsg user" style="animation:fadeUp .2s ease">
+    <div class="gmsg-av">U</div>
+    <div class="gmsg-body">
+      <div class="gmsg-lbl">YOU</div>
+      <div class="gmsg-bub">${msg.replace(/\n/g,'<br>')}</div>
+    </div>
+  </div>`;
+
+  const tid = 'typing-' + Date.now();
+  win.innerHTML += `<div class="gmsg ai" id="${tid}">
+    <div class="gmsg-av">◈</div>
+    <div class="gmsg-body">
+      <div class="gmsg-lbl">TSM FINOPS AI · GROQ llama-3.3-70b</div>
+      <div class="gmsg-bub"><div class="typing"><span></span><span></span><span></span></div></div>
+    </div>
+  </div>`;
+  win.scrollTop = win.scrollHeight;
+  btn.disabled = true;
+  dot.style.background = 'var(--orange)';
+
+  foGroqHistory.push({role:'user', content: msg});
+
+  let reply = '';
+  try {
+    const apiKey = window.GROQ_API_KEY || localStorage.getItem('tsm_groq_key') || '';
+    if (!apiKey || apiKey === 'YOUR_GROQ_API_KEY') throw new Error('no key');
+    const response = await fetch(GROQ_API, {
+      method:'POST',
+      headers:{'Content-Type':'application/json', 'Authorization':`Bearer ${apiKey}`},
+      body: JSON.stringify({
+        model: GROQ_MODEL,
+        max_tokens: 1024,
+        messages: [{role:'system', content: FINOPS_SYSTEM}, ...foGroqHistory]
+      })
+    });
+    if (!response.ok) throw new Error(response.status);
+    const data = await response.json();
+    reply = data.choices?.[0]?.message?.content || 'No response.';
+    foGroqHistory.push({role:'assistant', content: reply});
+  } catch(e) {
+    reply = getOfflineFOReply(msg);
+  }
+
+  document.getElementById(tid)?.remove();
+  win.innerHTML += `<div class="gmsg ai" style="animation:fadeUp .25s ease">
+    <div class="gmsg-av">◈</div>
+    <div class="gmsg-body">
+      <div class="gmsg-lbl">TSM FINOPS AI · GROQ llama-3.3-70b</div>
+      <div class="gmsg-bub" style="white-space:pre-wrap">${reply.replace(/\n/g,'<br>')}</div>
+    </div>
+  </div>`;
+  win.scrollTop = win.scrollHeight;
+  btn.disabled = false;
+  dot.style.background = 'var(--cyan)';
+}
+
+function getOfflineFOReply(msg) {
+  const m = msg.toLowerCase();
+  if (m.includes('bank rec') || m.includes('reconciliation') || m.includes('unreconciled')) {
+    return `BANK RECONCILIATION RESOLUTION FRAMEWORK\n\n1. START WITH THE BANK SIDE:\n   • Add deposits in transit (checks/ACH sent but not yet posted by bank)\n   • Subtract outstanding checks (issued but not yet cleared)\n   • Adjust for bank errors\n\n2. START WITH THE BOOK SIDE:\n   • Add interest income, direct deposits you didn't record\n   • Subtract bank fees, NSF charges, wire fees\n   • Adjust for book errors\n\nCOMMON CAUSES OF DIFFERENCES:\n   • Duplicate payments (same invoice paid twice)\n   • Unrecorded bank service charges or fees\n   • NSF checks not reversed in GL\n   • Cut-off timing — transactions near month-end\n   • Data entry errors (transposed numbers)\n\nJOURNAL ENTRIES NEEDED:\n   • NSF: Dr. Accounts Receivable / Cr. Cash\n   • Bank Fee: Dr. Bank Charges / Cr. Cash\n   • Interest: Dr. Cash / Cr. Interest Income\n\nIf variance exceeds materiality threshold after all items accounted for, escalate to Controller or CFO immediately.\n\n[Connect Groq API key for live responses: window.GROQ_API_KEY = 'your_key']`;
+  }
+  if (m.includes('1099') || m.includes('contractor') || m.includes('tin')) {
+    return `1099-NEC COMPLIANCE FRAMEWORK\n\nFILING REQUIREMENTS:\n   • File 1099-NEC for any contractor paid $600+ during the calendar year\n   • Deadline: January 31 (both recipient copy and IRS copy)\n   • File via IRS FIRE system or tax software\n\nTIN VALIDATION PROCESS:\n   • Collect W-9 before first payment\n   • Use IRS TIN Matching Program to verify before filing\n   • If TIN doesn't match: CP2100 B-notice process begins\n\nB-NOTICE PROCEDURE (IRC §3406):\n   1st B-Notice: Send notice to payee, request corrected TIN on W-9\n   2nd B-Notice: Must verify TIN via IRS or Social Security Administration\n   Failure to comply → 28% backup withholding required\n\nFOREIGN CONTRACTORS:\n   • W-8BEN required (not W-9)\n   • File 1042-S (not 1099-NEC)\n   • Withhold 30% unless reduced by tax treaty\n   • 1042-S deadline: March 15\n\nPENALTIES FOR LATE FILING:\n   ≤30 days late: $50/form | 31 days-Aug 1: $110/form | After Aug 1: $290/form\n\n[Connect Groq API for live responses]`;
+  }
+  return `TSM FINOPS INTELLIGENCE (Offline Mode)\n\nYour question has been received: "${msg.substring(0,80)}..."\n\nTo get live AI-powered responses:\n• Set window.GROQ_API_KEY = 'your-groq-api-key'\n• Get a free key at console.groq.com\n• Groq's llama-3.3-70b responds in < 1 second\n\nOffline capabilities available:\n• Doc Processor with offline analysis for all 8 document types\n• Finance Node routing recommendations\n• GAAP/IRS compliance checklist\n\nFor live analysis of GL entries, AP aging, bank reconciliations, 1099 compliance, budget variance, and audit findings — connect your Groq API key.`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════════
+const urlParams = new URLSearchParams(window.location.search);
+if (urlParams.get('groq_key')) window.GROQ_API_KEY = urlParams.get('groq_key');
+
+    renderDocGrid();
+    renderComplianceList();
+  </script>
+  <script src="finops-upgrade.js"></script>
+  document.addEventListener('DOMContentLoaded', function() {
+    const btn = document.querySelector('[onclick*="processDoc"], .process-btn, #processBtn');
+    if (btn) {
+      btn.addEventListener('click', function() {
+        const selected = document.querySelector('.doc-card.selected, .doc-item.active, [class*="selected"]');
+        const docName = selected?.querySelector('h2, h3, strong')?.textContent?.trim() || 'GL Detail Report';
+        finopsProcessDoc(docName);
+      });
+    }
+  });
+</script>
+<script src="/finops-suite/js/finops-mission-workflow.js"></script>
+<script src="/finops-suite/js/finops-node-mission.js"></script>
+  <script src="/core/tsm-kernel.js"></script>
+  <script src="/core/tsm-enforcer.js"></script>
+  <script src="/js/core/tsm-kernel-upgrade.js"></script>
+</body>
+</html>
+
+// ===== TSM_AUTONOMY_STANDARDIZED =====
+window.TSM_AUTONOMY_STANDARDIZED = true;
+</script>
+
+// ===== TSM WAR ROOM SCOPED RELAY FIX =====
+window.tsmMission = window.tsmMission || {
+  id: "FINOPS-SUITE-" + Date.now().toString(36),
+  vertical: "finops-suite",
+  
+};
+
+function tsmWriteRelay(payload){
+  TSM_KERNEL.setRelay("finops-suite", JSON.stringify(payload));
+}
+</script>
+

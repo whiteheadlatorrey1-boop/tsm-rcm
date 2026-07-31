@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>TSM Music Command - Amplified Studio</title>
+    <style>
+        :root { --bg: #070a13; --panel: #0f172a; --pink: #ec4899; --purple: #a855f7; --text: #f8fafc; }
+        body { font-family: sans-serif; background: var(--bg); color: var(--text); padding: 30px; display: flex; justify-content: center; }
+        .card { width: 100%; max-width: 600px; background: var(--panel); border-radius: 12px; padding: 24px; border: 1px solid #1e293b; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+        .row { margin: 12px 0; opacity: 0.15; transition: all 0.3s ease; padding-left: 8px; font-size: 1.1rem; }
+        .row.active { opacity: 1; border-left: 4px solid var(--pink); padding-left: 12px; font-weight: bold; color: #fff; }
+        .adlib { color: var(--purple); font-style: italic; font-size: 0.95rem; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; border-bottom:1px solid #1e293b; padding-bottom:12px;">
+            <div>
+                <h2 style="margin:0; color:var(--pink);">Scottsdale Payback</h2>
+                <small style="color:#64748b;">Amplified High-Output Synth Production Rack</small>
+            </div>
+            <button id="btn" data-tsm-action="toggle" data-tsm-args="" style="background:var(--pink); color:#fff; border:none; padding:12px 24px; font-weight:bold; border-radius:6px; cursor:pointer;">START REPLAY</button>
+        </div>
+        <div id="viewport" style="background:#020617; padding:20px; border-radius:8px; height:240px; overflow-y:auto;">
+            <div class="row" id="l1">(Yeah... uh huh...) <span class="adlib">[Look!]</span></div>
+            <div class="row" id="l2">New condo in Scottsdale, pajama party goin up, <span class="adlib">[Turn it up!]</span></div>
+            <div class="row" id="l3">Heard my ex was outside flexin, now he's really outta luck. <span class="adlib">[Straight facts!]</span></div>
+            <div class="row" id="l4" style="color:var(--pink);">FROM RAGS TO RICHES, RUNNIN CIRCLES ROUND BITCHES! <span class="adlib">[Woo!]</span></div>
+            <div class="row" id="l5" style="color:var(--pink);">DEY MAN'S FACE ALL IN MY CAT, LIKE A HUNGRY MAN DINNER... <span class="adlib">[Eat it up!]</span></div>
+        </div>
+    </div>
+<script>
+        let playing = false, step = 0, interval, audioCtx, beatInterval, fastTick = 0, masterGain;
+        
+        function playTone(freq, type, duration, vol, detune = 0) {
+            if (!audioCtx || audioCtx.state === 'closed') return;
+            
+            let osc = audioCtx.createOscillator();
+            let gainNode = audioCtx.createGain();
+            
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            osc.detune.setValueAtTime(detune, audioCtx.currentTime);
+            
+            // Linear fade out to prevent popping noises
+            gainNode.gain.setValueAtTime(vol, audioCtx.currentTime);
+            gainNode.gain.linearRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+            
+            // Route through Master Gain Booster instead of directly to hardware
+            osc.connect(gainNode);
+            gainNode.connect(masterGain);
+            
+            osc.start();
+            osc.stop(audioCtx.currentTime + duration);
+        }
+
+        function toggle() {
+            const btn = document.getElementById('btn');
+            if (playing) {
+                clearInterval(interval); clearInterval(beatInterval);
+                if(audioCtx) { audioCtx.close(); audioCtx = null; }
+                btn.innerText = "START REPLAY"; playing = false;
+            } else {
+                playing = true; btn.innerText = "STOP AUDIO";
+                
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                
+                // Establish Master Stage Compressor / Volume Booster
+                masterGain = audioCtx.createGain();
+                masterGain.gain.setValueAtTime(1.5, audioCtx.currentTime); // 150% Amplification Boost
+                masterGain.connect(audioCtx.destination);
+                
+                fastTick = 0;
+                
+                // Robust 150 BPM Sequencer
+                beatInterval = setInterval(() => {
+                    let beatIdx = fastTick % 8;
+                    
+                    // 1. Heavy Bass Kick Line (Louder Sine combination)
+                    if (beatIdx === 0 || beatIdx === 4) {
+                        playTone(55, 'sine', 0.3, 0.8);
+                        playTone(110, 'sine', 0.15, 0.3); // Upper Punch octave
+                    }
+                    if (beatIdx === 2 || beatIdx === 6) {
+                        playTone(65, 'sine', 0.2, 0.5);
+                    }
+                    
+                    // 2. Audible Mid-Range Snare Crack
+                    if (beatIdx === 4) {
+                        playTone(220, 'triangle', 0.15, 0.4);
+                    }
+                    
+                    // 3. High-Output Heavy Sawtooth Melody Layer (Cuts through tiny speakers)
+                    // Frequencies set to a gritty lower octave hook sequence
+                    let melody = [146.83, 164.81, 196.00, 220.00, 196.00, 164.81, 146.83, 130.81];
+                    playTone(melody[beatIdx], 'sawtooth', 0.18, 0.18, 10);
+                    
+                    fastTick++;
+                }, 200);
+
+                startLyrics();
+            }
+        }
+
+        function startLyrics() {
+            for(let i=1; i<=5; i++) document.getElementById('l'+i).classList.remove('active');
+            step = 1; document.getElementById('l'+step).classList.add('active');
+            
+            interval = setInterval(() => {
+                document.getElementById('l'+step).classList.remove('active');
+                step++; 
+                if(step > 5) { 
+                    clearInterval(interval); clearInterval(beatInterval);
+                    if(audioCtx) { audioCtx.close(); audioCtx = null; }
+                    document.getElementById('btn').innerText = "START REPLAY"; playing = false; return; 
+                }
+                document.getElementById('l'+step).classList.add('active');
+            }, 3800);
+        }
+    </script>
+<script src="/shared/tsm-operational-mesh.js?v=mesh1"></script>
+<script src="/shared/tsm-relay-bus.js?v=relay2"></script>
+<script src="/shared/tsm-sector-intelligence.js?v=phase5si"></script>
+
+<script>(function(){
+document.addEventListener('click', function(e){
+
+  const el = e.target.closest('[data-tsm-action]');
+  if(!el) return;
+
+  const action = el.getAttribute('data-tsm-action');
+  const args = el.getAttribute('data-tsm-args');
+
+  if(window.TSM && TSM.launcher && TSM.launcher.run){
+    TSM.launcher.run(action, args);
+  } else {
+    console.warn('[TSM] launcher missing:', action, args);
+  }
+
+});
+})();</script>
+<script src="js/sweet-music-engine.js"></script>
+<script src="js/producer-ai-widget.js"></script>
+</body>
+</html>

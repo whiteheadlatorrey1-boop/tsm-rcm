@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script>window.isExpired = false; window.demoActive = true; localStorage.setItem("demo_status", "active");</script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ZY Music Command — AI Songwriting Decision Engine</title>
+<style>
+/* TSM_SCROLL_FIX */
+html, body {
+  height: 100%;
+  overflow-y: auto;
+}
+main {
+  padding-bottom: 80px !important;
+  min-height: calc(100vh - 60px);
+}
+.footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 32px;
+  z-index: 10;
+}
+.ask-bar {
+  position: fixed;
+  bottom: 40px;
+  right: 12px;
+  z-index: 20;
+}
+.panel {
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+:root{
+  --bg:#07080d;--panel:#0d1018;--panel2:#111622;--text:#f8fafc;--muted:#9ca3af;
+  --gold:#ffd230;--purple:#a855f7;--teal:#14f195;--pink:#ff3d81;--line:rgba(255,255,255,.1);
+  --mono:"Courier New",monospace;--head:Arial Black,Impact,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:radial-gradient(circle at 20% 0%,rgba(168,85,247,.18),transparent 32%),radial-gradient(circle at 80% 10%,rgba(20,241,149,.12),transparent 30%),var(--bg);color:var(--text);font-family:Inter,Arial,sans-serif}
+a{color:inherit;text-decoration:none}
+.nav{height:74px;display:flex;align-items:center;justify-content:space-between;padding:0 48px;border-bottom:1px solid var(--line);background:rgba(7,8,13,.82);backdrop-filter:blur(16px);position:sticky;top:0;z-index:10}
+.brand{display:flex;align-items:center;gap:14px}
+.logo{width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,var(--gold),#ff9f1c);display:grid;place-items:center;color:#050505;font-family:var(--head);font-size:20px}
+.brand h3{margin:0;font-size:16px}
+.brand span{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:.18em;text-transform:uppercase}
+.navlinks{display:flex;gap:12px;align-items:center}
+.btn{border:1px solid var(--line);padding:12px 16px;border-radius:999px;background:rgba(255,255,255,.04);font-weight:800;font-size:13px}
+.btn.primary{background:var(--gold);color:#050505;border-color:var(--gold)}
+.btn.purple{border-color:rgba(168,85,247,.5);color:#d8b4fe}
+.hero{padding:86px 56px 62px;display:grid;grid-template-columns:1.05fr .95fr;gap:44px;align-items:center;max-width:1280px;margin:auto}
+.badge{display:inline-flex;gap:8px;align-items:center;border:1px solid rgba(255,210,48,.3);background:rgba(255,210,48,.08);color:var(--gold);border-radius:999px;padding:9px 14px;font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase}
+h1{font-family:var(--head);font-size:74px;line-height:.92;margin:22px 0 18px;letter-spacing:-.04em}
+h1 span{color:var(--gold)}
+.sub{font-size:20px;line-height:1.65;color:#cbd5e1;max-width:690px}
+.cta{display:flex;gap:12px;flex-wrap:wrap;margin-top:28px}
+.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:32px;max-width:620px}
+.metric{border:1px solid var(--line);background:rgba(255,255,255,.035);border-radius:16px;padding:18px}
+.metric b{display:block;color:var(--teal);font-size:26px;font-family:var(--head)}
+.metric span{font-family:var(--mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.14em}
+.device{border:1px solid rgba(168,85,247,.4);background:#070b13;border-radius:24px;padding:18px;box-shadow:0 0 60px rgba(168,85,247,.16)}
+.deviceTop{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--teal);border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:14px}
+.cards{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.card{border:1px solid var(--line);background:rgba(255,255,255,.04);border-radius:14px;padding:14px}
+.card small{font-family:var(--mono);color:var(--purple);text-transform:uppercase;letter-spacing:.12em}
+.card h4{margin:8px 0;color:var(--text)}
+.score{height:8px;background:rgba(255,255,255,.08);border-radius:999px;overflow:hidden;margin-top:12px}
+.score div{height:100%;background:linear-gradient(90deg,var(--teal),var(--purple))}
+.section{padding:70px 56px;max-width:1280px;margin:auto}
+.eyebrow{font-family:var(--mono);font-size:11px;color:var(--purple);letter-spacing:.16em;text-transform:uppercase}
+h2{font-family:var(--head);font-size:44px;line-height:1;margin:10px 0 18px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:28px}
+.feature{border:1px solid var(--line);background:rgba(255,255,255,.035);border-radius:18px;padding:22px}
+.feature .icon{font-size:24px;margin-bottom:10px}
+.feature h3{margin:0 0 10px}
+.feature p{color:var(--muted);line-height:1.6}
+.flow{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:28px}
+.step{border:1px solid rgba(20,241,149,.22);background:rgba(20,241,149,.045);border-radius:16px;padding:18px;min-height:140px}
+.step b{font-family:var(--mono);color:var(--teal);font-size:11px}
+.step h3{font-size:16px;margin:10px 0}
+.step p{font-size:13px;color:var(--muted);line-height:1.5}
+.pricing{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:30px}
+.plan{border:1px solid var(--line);background:rgba(255,255,255,.035);border-radius:20px;padding:22px;position:relative}
+.plan.hot{border-color:rgba(255,210,48,.65);box-shadow:0 0 34px rgba(255,210,48,.1)}
+.plan h3{font-size:20px;margin:0}
+.price{font-family:var(--head);font-size:32px;color:var(--teal);margin:12px 0}
+.plan ul{padding-left:18px;color:#cbd5e1;line-height:1.9;font-size:14px}
+.tag{position:absolute;top:-12px;right:18px;background:var(--gold);color:#050505;border-radius:999px;padding:6px 10px;font-family:var(--mono);font-size:10px;font-weight:900}
+.quote{border:1px solid rgba(168,85,247,.35);background:rgba(168,85,247,.08);border-radius:22px;padding:34px;margin-top:24px;font-size:24px;line-height:1.45}
+.final{padding:80px 56px 100px;text-align:center;background:linear-gradient(180deg,transparent,rgba(168,85,247,.12))}
+.final h2{font-size:56px}
+@media(max-width:980px){.hero,.grid3,.flow,.pricing{grid-template-columns:1fr}.nav{padding:0 20px}.hero,.section{padding-left:24px;padding-right:24px}h1{font-size:48px}.final h2{font-size:40px}}
+</style>
+</head>
+<body>
+<section style="padding:60px;text-align:center;">
+<h1 style="font-size:3rem;color:#ffd84d;">Write once. Let it evolve.</h1>
+<p style="font-size:1.2rem;color:#aaa;">
+Your song doesn't stop at generation. It improves itself until it's ready.
+</p>
+</section>
+
+
+<nav class="nav">
+  <div class="brand">
+    <div class="logo">ZY</div>
+    <div><h3>Music Command Center</h3><span>AI Songwriting Decision Engine</span></div>
+  </div>
+  <div class="navlinks">
+    <a class="btn purple" href="/html/music-command/academy/daw-academy.html">How It Works</a>
+    <a class="btn" href="/html/music-command/index.html">Open App</a>
+    <a class="btn primary" href="#pricing">Start Free</a>
+  </div>
+</nav>
+
+<header class="hero">
+  <div>
+    <div class="badge">Built for artists · producers · songwriters</div>
+    <h1>Stop guessing if the song is <span>actually good.</span></h1>
+    <p class="sub">ZY Music Command is a multi-agent AI songwriting system that helps you generate options, compare directions, score versions, pick the strongest path, and evolve your Artist DNA over time.</p>
+    <div class="cta">
+      <a class="btn primary" href="/html/music-command/index.html">Try the Music Command Center</a>
+      <a class="btn purple" href="/html/music-command/academy/daw-academy.html">See the Workflow</a>
+    </div>
+    <div class="metrics">
+      <div class="metric"><b>3</b><span>Specialized Agents</span></div>
+      <div class="metric"><b>10</b><span>Hook Upsell Pack</span></div>
+      <div class="metric"><b>86%</b><span>Release Ready Threshold</span></div>
+    </div>
+  </div>
+
+  <div class="device">
+    <div class="deviceTop"><span>Music Decision Engine</span><span>Agents Online</span></div>
+    <div class="cards">
+      <div class="card"><small>ZAY</small><h4>Cadence + Bounce</h4><p>Tightens flow and pocket.</p><div class="score"><div style="width:86%"></div></div></div>
+      <div class="card"><small>RIYA</small><h4>Emotion + Imagery</h4><p>Sharpens voice and feeling.</p><div class="score"><div style="width:79%"></div></div></div>
+      <div class="card"><small>DJ</small><h4>Structure + Hook</h4><p>Builds stronger repeatability.</p><div class="score"><div style="width:81%"></div></div></div>
+      <div class="card"><small>Decision</small><h4>Iterate Again</h4><p>Hit trajectory: 79%</p><div class="score"><div style="width:79%"></div></div></div>
+    </div>
+  </div>
+</header>
+
+<section class="section">
+  <div class="eyebrow">Why artists need this</div>
+  <h2>AI that helps you decide — not just generate.</h2>
+  <div class="grid3">
+    <div class="feature"><div class="icon">🎤</div><h3>For Artists</h3><p>Turn rough lines into stronger hooks, verses, and bridges while keeping your voice intact through Artist DNA.</p></div>
+    <div class="feature"><div class="icon">🎛</div><h3>For Producers</h3><p>Move sessions faster. Give writers multiple directions, score them, and push the strongest version forward.</p></div>
+    <div class="feature"><div class="icon">✍️</div><h3>For Songwriters</h3><p>Break creative blocks with three strategic options: flow first, emotion first, or hook first.</p></div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="eyebrow">The workflow</div>
+  <h2>Generate → Score → Pick → Rerun → Learn.</h2>
+  <div class="flow">
+    <div class="step"><b>01</b><h3>Build Artist DNA</h3><p>Teach the system your themes, cadence, vocabulary, and ad-libs.</p></div>
+    <div class="step"><b>02</b><h3>Run Agents</h3><p>ZAY handles flow. RIYA handles emotion. DJ handles structure.</p></div>
+    <div class="step"><b>03</b><h3>Get 3 Options</h3><p>Revision Mode creates multiple creative directions and scores them.</p></div>
+    <div class="step"><b>04</b><h3>Pick + Rerun</h3><p>Select the best option and run it through the full chain again.</p></div>
+    <div class="step"><b>05</b><h3>Track Evolution</h3><p>See hit trajectory, score delta, and release decision.</p></div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="eyebrow">Product hook</div>
+  <h2>Know when to keep going — and when it’s release ready.</h2>
+  <div class="quote">“The value isn’t just writing more lyrics. The value is knowing which version is strongest — and why.”</div>
+</section>
+
+<section class="section" id="pricing">
+  <div class="eyebrow">Plans</div>
+  <h2>Start free. Module Active when the system proves value.</h2>
+  <div class="pricing">
+    <div class="plan"><h3>Free Trial</h3><div class="price">$0</div><ul><li>5 AI iterations</li><li>1 project</li><li>Preview Artist DNA</li><li>No exports</li></ul></div>
+    <div class="plan hot"><div class="tag">Best Start</div><h3>Creator Mode</h3><div class="price">$99/mo</div><ul><li>25 AI iterations</li><li>5 projects</li><li>DAW-ready TXT export</li><li>Basic Artist DNA</li></ul></div>
+    <div class="plan hot"><div class="tag">Best Value</div><h3>Studio Mode</h3><div class="price">$249/mo</div><ul><li>100 AI iterations</li><li>25 projects</li><li>Evolution timeline</li><li>Hit trajectory scoring</li></ul></div>
+    <div class="plan"><h3>Label Mode</h3><div class="price">$499/mo</div><ul><li>500 AI iterations</li><li>100 projects</li><li>Deep catalog memory</li><li>Release decision engine</li></ul></div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="eyebrow">Upsells</div>
+  <h2>Fast add-ons when the song is close.</h2>
+  <div class="grid3">
+    <div class="feature"><h3>Generate 10 Hooks · $25</h3><p>For when the concept is right but the hook still isn’t landing.</p></div>
+    <div class="feature"><h3>Commercial Rewrite · $30</h3><p>For making the song more accessible and record-ready.</p></div>
+    <div class="feature"><h3>Radio Polish · $25</h3><p>For final clarity, structure, and hook tightening before release.</p></div>
+  </div>
+</section>
+
+<section class="final">
+  <h2>Build better songs faster — with confidence.</h2>
+  <p class="sub" style="margin:0 auto 28px;">ZY Music Command gives artists, producers, and writers a repeatable system for improving songs, not just generating lyrics.</p>
+  <a class="btn primary" href="/html/music-command/index.html">Open Music Command</a>
+</section>
+
+
+<script id="tsm-basic-deterrent">
+(function(){
+  // Block right-click
+  document.addEventListener('contextmenu', e => e.preventDefault());
+
+  // Block common DevTools keys
+  document.addEventListener('keydown', function(e){
+    if (
+      e.key === "F12" ||
+      (e.ctrlKey && e.shiftKey && ["I","J","C"].includes(e.key.toUpperCase())) ||
+      (e.ctrlKey && e.key.toUpperCase() === "U")
+    ){
+      e.preventDefault();
+    }
+  });
+
+  // Simple devtools open detection (weak)
+  let devtools = false;
+  setInterval(function(){
+    const threshold = 160;
+    if (window.outerWidth - window.innerWidth > threshold ||
+        window.outerHeight - window.innerHeight > threshold) {
+      if (!devtools) {
+        devtools = true;
+        console.warn("DevTools detected");
+      }
+    } else {
+      devtools = false;
+    }
+  }, 1000);
+})();
+</script>
+
+
+<script id="tsm-music-demo-protection">
+(function(){
+  if(window.__TSM_MUSIC_DEMO_PROTECTION__) return;
+  window.__TSM_MUSIC_DEMO_PROTECTION__ = true;
+
+  const params = new URLSearchParams(location.search);
+  const token = params.get('demo_token') || localStorage.getItem('tsm_music_demo_token') || 'public';
+
+  if(token){
+    localStorage.setItem('tsm_music_demo_token', token);
+  }
+
+  async function validateDemo(){
+    // Marketing page can remain viewable but still watermarked if token exists.
+    const isMarketing = location.pathname.includes('/marketing.html');
+
+    if(!token && !isMarketing){
+      document.body.innerHTML = `
+        <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#07080d;color:#fff;font-family:Arial;padding:24px">
+          <div style="max-width:560px;border:1px solid rgba(168,85,247,.45);background:#0d1018;border-radius:18px;padding:28px">
+            <div style="font-family:monospace;color:#a855f7;letter-spacing:.14em;text-transform:uppercase;font-size:12px">Protected Demo</div>
+            <h1 style="margin:12px 0 8px">Sovereign Access Granted</h1>
+            <p style="color:#9ca3af;line-height:1.6">This Music Command experience is now integrated with your Sovereign Bridge. Ask for a current demo token to continue.</p>
+          </div>
+        </div>`;
+      return;
+    }
+
+    if(!token) return;
+
+    try{
+      const res = { ok: true, json: async () => ({ ok: true, demo: { watermark: 'ZY MUSIC COMMAND' } }) };
+      const data = await res.json();
+
+      if(!data.ok && !isMarketing){
+        document.body.innerHTML = `
+          <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#07080d;color:#fff;font-family:Arial;padding:24px">
+            <div style="max-width:560px;border:1px solid rgba(251,113,133,.45);background:#0d1018;border-radius:18px;padding:28px">
+              <div style="font-family:monospace;color:#fb7185;letter-spacing:.14em;text-transform:uppercase;font-size:12px">Access Expired</div>
+              <h1 style="margin:12px 0 8px">Demo link expired</h1>
+              <p style="color:#9ca3af;line-height:1.6">Request a fresh Music Command demo link.</p>
+            </div>
+          </div>`;
+        return;
+      }
+
+      if(data.watermark){
+        const wm = document.createElement('div');
+        wm.id = 'tsm-demo-watermark';
+        wm.textContent = data.watermark;
+        wm.style.cssText = `
+          position:fixed;
+          right:14px;
+          bottom:14px;
+          z-index:999999;
+          pointer-events:none;
+          font-family:monospace;
+          font-size:10px;
+          letter-spacing:.12em;
+          color:rgba(255,255,255,.42);
+          background:rgba(0,0,0,.35);
+          border:1px solid rgba(255,255,255,.08);
+          padding:6px 8px;
+          border-radius:999px;
+        `;
+        document.body.appendChild(wm);
+      }
+
+      window.__TSM_DEMO_ACCESS__ = data;
+    }catch(e){
+      console.warn('Demo validation failed', e);
+    }
+  }
+
+  validateDemo();
+
+  const originalFetch = window.fetch;
+  window.fetch = function(url, opts){
+    opts = opts || {};
+    opts.headers = opts.headers || {};
+
+    const saved = localStorage.getItem('tsm_music_demo_token');
+    if(saved && String(url).includes('/api/music/')){
+      opts.headers['X-Demo-Token'] = saved;
+    }
+
+    return originalFetch(url, opts);
+  };
+})();
+</script>
+
+
+<script id="tsm-demo-deal-closing-ui">
+(function(){
+  if(window.__TSM_DEMO_DEAL_CLOSING_UI__) return;
+  window.__TSM_DEMO_DEAL_CLOSING_UI__ = true;
+
+  const token = new URLSearchParams(location.search).get('demo_token') || localStorage.getItem('tsm_music_demo_token');
+
+  function banner(msg, mode){
+    let el = document.getElementById('tsm-demo-urgency-banner');
+    if(!el){
+      el = document.createElement('div');
+      el.id = 'tsm-demo-urgency-banner';
+      el.style.cssText = `
+        position:fixed;
+        top:12px;
+        left:50%;
+        transform:translateX(-50%);
+        z-index:999998;
+        max-width:760px;
+        width:calc(100% - 32px);
+        padding:10px 14px;
+        border-radius:999px;
+        font-family:monospace;
+        font-size:11px;
+        letter-spacing:.08em;
+        text-align:center;
+        pointer-events:none;
+        backdrop-filter:blur(14px);
+      `;
+      document.body.appendChild(el);
+    }
+
+    const danger = mode === 'danger';
+    el.style.background = danger ? 'rgba(127,29,29,.78)' : 'rgba(5,10,20,.78)';
+    el.style.border = danger ? '1px solid rgba(251,113,133,.6)' : '1px solid rgba(20,241,149,.35)';
+    el.style.color = danger ? '#fecdd3' : '#bbf7d0';
+    el.textContent = msg;
+  }
+
+  function upgradePrompt(reason){
+    let modal = document.getElementById('tsm-demo-upgrade-prompt');
+    if(!modal){
+      modal = document.createElement('div');
+      modal.id = 'tsm-demo-upgrade-prompt';
+      modal.style.cssText = `
+        position:fixed;
+        right:18px;
+        bottom:58px;
+        z-index:999997;
+        width:340px;
+        background:#050b14;
+        border:1px solid rgba(168,85,247,.45);
+        border-radius:16px;
+        padding:16px;
+        box-shadow:0 0 36px rgba(168,85,247,.18);
+        color:#fff;
+        font-family:Arial,sans-serif;
+      `;
+      document.body.appendChild(modal);
+    }
+
+    modal.innerHTML = `
+      <div style="font-family:monospace;font-size:10px;color:#a855f7;letter-spacing:.14em;text-transform:uppercase">Next Step</div>
+      <h3 style="margin:8px 0 6px">Unlock the full Music Command system</h3>
+      <p style="margin:0 0 12px;color:#9ca3af;font-size:13px;line-height:1.45">${reason || 'You have seen the live engine. Module Active or book a walkthrough to continue.'}</p>
+      <div style="display:flex;gap:8px">
+        <a href="/html/music-command/release/marketing.html?demo_token=${encodeURIComponent(token || '')}" style="flex:1;text-align:center;background:#ffd230;color:#050505;text-decoration:none;border-radius:999px;padding:10px;font-weight:800">View Plans</a>
+        <button onclick="document.getElementById('tsm-demo-upgrade-prompt').remove()" style="border:1px solid rgba(255,255,255,.12);background:transparent;color:#fff;border-radius:999px;padding:10px 12px">Later</button>
+      </div>
+    `;
+  }
+
+  async function registerView(){
+    if(!token) return;
+
+    try{
+      const res = { ok: true, json: async () => ({ ok: true }) };
+      const data = await res.json();
+
+      if(!data.ok){
+        banner(data.error || 'Demo access locked', 'danger');
+        upgradePrompt('This private demo link has reached its limit. Request a fresh link or book the full walkthrough.');
+        return;
+      }
+
+      if(data.urgency && data.urgency.message){
+        banner(data.urgency.message, data.urgency.viewsLeft <= 1 ? 'danger' : 'normal');
+      }
+
+      window.__TSM_DEMO_DEAL__ = data;
+    }catch(e){
+      console.warn('demo view tracking failed', e);
+    }
+  }
+
+  const originalFetch = window.fetch;
+  window.fetch = async function(url, opts){
+    const response = await originalFetch(url, opts);
+
+    try{
+      const saved = localStorage.getItem('tsm_music_demo_token');
+      const isMusicApi = String(url).includes('/api/music/');
+      if(isMusicApi && saved){
+        const deal = window.__TSM_DEMO_DEAL__;
+        const usageHits = deal && deal.usage ? deal.usage.hits : 0;
+
+        if(usageHits >= 8){
+          setTimeout(() => upgradePrompt('You are actively using the demo. Studio Mode unlocks more runs, exports, and deeper Artist DNA.'), 700);
+        }
+      }
+    }catch(e){}
+
+    return response;
+  };
+
+  window.addEventListener('load', function(){
+    setTimeout(registerView, 600);
+  });
+})();
+</script>
+
+
+<script id="tsm-token-navigation-fix">
+(function(){
+  const params = new URLSearchParams(location.search);
+  const urlToken = params.get('demo_token');
+
+  if(urlToken){
+    localStorage.setItem('tsm_music_demo_token', urlToken);
+  }
+
+  const token = urlToken || localStorage.getItem('tsm_music_demo_token');
+
+  // Preserve token across internal Music Command links.
+  if(token){
+    document.querySelectorAll('a[href*="/html/music-command/"]').forEach(a => {
+      try{
+        const u = new URL(a.getAttribute('href'), location.origin);
+        if(!u.searchParams.get('demo_token')){
+          u.searchParams.set('demo_token', token);
+          a.setAttribute('href', u.pathname + u.search + u.hash);
+        }
+      }catch(e){}
+    });
+  }
+
+  // If a stale token causes an expired/invalid screen, user can clear it with ?clear_demo=1
+  if(params.get('clear_demo') === '1'){
+    localStorage.removeItem('tsm_music_demo_token');
+    const clean = location.pathname + '?v=clean';
+    location.replace(clean);
+  }
+})();
+</script>
+
+<script src="/shared/tsm-operational-mesh.js?v=mesh1"></script>
+<script src="/shared/tsm-relay-bus.js?v=relay2"></script>
+<script src="/shared/tsm-sector-intelligence.js?v=phase5si"></script>
+<script src="/shared/tsm-shared.js"></script>
+
+<script>(function(){
+document.addEventListener('click', function(e){
+
+  const el = e.target.closest('[data-tsm-action]');
+  if(!el) return;
+
+  const action = el.getAttribute('data-tsm-action');
+  const args = el.getAttribute('data-tsm-args');
+
+  if(window.TSM && TSM.launcher && TSM.launcher.run){
+    TSM.launcher.run(action, args);
+  } else {
+    console.warn('[TSM] launcher missing:', action, args);
+  }
+
+});
+})();</script>
+<script src="../js/sweet-music-engine.js"></script>
+<script src="../js/producer-ai-widget.js"></script>
+</body>
+</html>

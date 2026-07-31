@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FinOps Suite — How To Guide</title>
+<style>
+:root{
+  --bg:#07101a;--surface:#0a1520;--surface2:#0d1a28;--border:#1a2a3a;--border2:#243648;
+  --text:#c8d8e8;--muted:#4a6a7a;--gold:#f5a623;--green:#00e676;--blue:#3a8cf0;
+  --red:#ff3d57;--amber:#ffb300;--purple:#a78bfa;
+  --mono:'Courier New',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,sans-serif;font-size:14px;line-height:1.6;min-height:100vh}
+
+/* TOP BAR */
+.topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:10px 20px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;position:sticky;top:0;z-index:100}
+.topbar-logo{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--gold);letter-spacing:.1em;text-transform:uppercase}
+.topbar-logo span{color:var(--muted)}
+.tb-links{display:flex;gap:8px;margin-left:auto;flex-wrap:wrap}
+.tb-link{font-family:var(--mono);font-size:10px;padding:4px 10px;border:1px solid var(--border2);color:var(--muted);text-decoration:none;border-radius:2px;text-transform:uppercase;letter-spacing:.06em;transition:all .15s;white-space:nowrap}
+.tb-link:hover{border-color:var(--gold);color:var(--gold)}
+.tb-link.active{border-color:var(--gold);color:var(--gold);background:rgba(245,166,35,.08)}
+
+/* LAYOUT */
+.layout{display:grid;grid-template-columns:220px 1fr;min-height:calc(100vh - 49px)}
+@media(max-width:768px){.layout{grid-template-columns:1fr}}
+
+/* SIDEBAR */
+.sidebar{background:var(--surface);border-right:1px solid var(--border);padding:16px 0;position:sticky;top:49px;height:calc(100vh - 49px);overflow-y:auto}
+.sidebar-section{margin-bottom:4px}
+.sidebar-label{font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:.15em;text-transform:uppercase;padding:8px 16px 4px}
+.sidebar-btn{width:100%;background:none;border:none;color:var(--muted);font-family:var(--mono);font-size:11px;padding:7px 16px;text-align:left;cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:8px;border-left:2px solid transparent}
+.sidebar-btn:hover{color:var(--text);background:rgba(255,255,255,.03)}
+.sidebar-btn.active{color:var(--gold);border-left-color:var(--gold);background:rgba(245,166,35,.06)}
+.sidebar-btn .icon{font-size:13px;flex-shrink:0}
+.sidebar-divider{height:1px;background:var(--border);margin:8px 16px}
+
+/* MAIN */
+.main{padding:24px 28px;max-width:820px}
+
+/* SECTION */
+.section{display:none}
+.section.active{display:block}
+
+.section-eyebrow{font-family:var(--mono);font-size:10px;color:var(--gold);letter-spacing:.15em;text-transform:uppercase;margin-bottom:8px}
+.section-title{font-size:1.8rem;font-weight:800;line-height:1.15;letter-spacing:-.02em;margin-bottom:.5rem}
+.section-title span{color:var(--gold)}
+.section-sub{font-size:.9rem;color:var(--muted);max-width:600px;margin-bottom:1.5rem;line-height:1.65}
+
+/* CARDS */
+.card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-bottom:1.5rem}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:14px;transition:border-color .15s}
+.card:hover{border-color:var(--border2)}
+.card-icon{font-size:20px;margin-bottom:8px}
+.card-title{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--text);text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px}
+.card-desc{font-size:.82rem;color:var(--muted);line-height:1.55}
+.card.gold{border-left:3px solid var(--gold)}
+.card.green{border-left:3px solid var(--green)}
+.card.blue{border-left:3px solid var(--blue)}
+.card.red{border-left:3px solid var(--red)}
+.card.purple{border-left:3px solid var(--purple)}
+
+/* STEPS */
+.steps{display:flex;flex-direction:column;gap:10px;margin-bottom:1.5rem}
+.step{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:14px;display:flex;gap:12px;align-items:flex-start}
+.step-num{width:26px;height:26px;border-radius:50%;background:var(--gold);color:#000;font-family:var(--mono);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.step-num.blue{background:var(--blue);color:#fff}
+.step-num.green{background:var(--green);color:#000}
+.step-num.red{background:var(--red);color:#fff}
+.step-label{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--text);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px}
+.step-desc{font-size:.83rem;color:var(--muted);line-height:1.55}
+.step-tip{font-family:var(--mono);font-size:10px;color:var(--gold);margin-top:5px}
+
+/* URL */
+.url-chip{font-family:var(--mono);font-size:.78rem;background:var(--surface2);border:1px solid var(--border2);border-radius:3px;padding:5px 10px;color:var(--blue);display:inline-flex;align-items:center;gap:6px;margin:.4rem 0;text-decoration:none;transition:border-color .15s}
+.url-chip:hover{border-color:var(--blue)}
+.url-chip::before{content:'🌐';font-size:11px}
+
+/* CALLOUT */
+.callout{border-radius:4px;padding:10px 12px;margin:.75rem 0;font-size:.85rem;line-height:1.55;display:flex;gap:8px}
+.callout-icon{flex-shrink:0;font-size:15px}
+.callout.gold{background:rgba(245,166,35,.08);border:1px solid rgba(245,166,35,.2);color:#e8c068}
+.callout.green{background:rgba(0,230,118,.07);border:1px solid rgba(0,230,118,.2);color:#4ade80}
+.callout.blue{background:rgba(58,140,240,.07);border:1px solid rgba(58,140,240,.2);color:#7db4f8}
+.callout.red{background:rgba(255,61,87,.07);border:1px solid rgba(255,61,87,.2);color:#f87171}
+
+/* TABLE */
+.guide-table{width:100%;border-collapse:collapse;font-size:.83rem;margin-bottom:1.5rem}
+.guide-table th{font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);padding:7px 10px;text-align:left;border-bottom:1px solid var(--border2);background:var(--surface2)}
+.guide-table td{padding:8px 10px;border-bottom:1px solid var(--border);color:var(--text)}
+.guide-table tr:hover td{background:rgba(255,255,255,.02)}
+.tag{font-family:var(--mono);font-size:9px;padding:2px 7px;border-radius:2px;text-transform:uppercase;letter-spacing:.06em;display:inline-block}
+.tag-gold{background:rgba(245,166,35,.15);color:var(--gold);border:1px solid rgba(245,166,35,.3)}
+.tag-green{background:rgba(0,230,118,.12);color:var(--green);border:1px solid rgba(0,230,118,.25)}
+.tag-blue{background:rgba(58,140,240,.12);color:var(--blue);border:1px solid rgba(58,140,240,.25)}
+.tag-red{background:rgba(255,61,87,.12);color:var(--red);border:1px solid rgba(255,61,87,.25)}
+.tag-amber{background:rgba(255,179,0,.12);color:var(--amber);border:1px solid rgba(255,179,0,.25)}
+
+/* FAQ */
+.faq{margin-bottom:1.5rem}
+.faq-item{border:1px solid var(--border);border-radius:4px;margin-bottom:6px;overflow:hidden}
+.faq-q{width:100%;background:none;border:none;color:var(--text);font-family:inherit;font-size:.875rem;font-weight:600;padding:11px 14px;text-align:left;cursor:pointer;display:flex;justify-content:space-between;align-items:center;transition:background .15s}
+.faq-q:hover{background:rgba(255,255,255,.03)}
+.faq-q .chevron{color:var(--muted);transition:transform .2s;font-size:12px}
+.faq-item.open .faq-q .chevron{transform:rotate(90deg)}
+.faq-a{display:none;padding:0 14px 12px;font-size:.83rem;color:var(--muted);line-height:1.65;border-top:1px solid var(--border)}
+.faq-item.open .faq-a{display:block}
+
+/* NAV BUTTONS */
+.nav-row{display:flex;gap:8px;margin-top:1.5rem;flex-wrap:wrap}
+.nav-btn{font-family:var(--mono);font-size:11px;padding:8px 16px;border-radius:3px;cursor:pointer;text-transform:uppercase;letter-spacing:.06em;text-decoration:none;display:inline-flex;align-items:center;gap:6px;transition:all .15s;border:none}
+.nav-btn.gold{background:var(--gold);color:#000}
+.nav-btn.gold:hover{opacity:.85}
+.nav-btn.outline{background:transparent;border:1px solid var(--border2);color:var(--muted)}
+.nav-btn.outline:hover{border-color:var(--gold);color:var(--gold)}
+
+/* WIRING DIAGRAM */
+.wiring{background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:14px;margin-bottom:1.5rem;font-family:var(--mono);font-size:11px}
+.wiring-title{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.15em;margin-bottom:10px}
+.wire-row{display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap}
+.wire-box{padding:4px 10px;border-radius:3px;font-size:10px;border:1px solid}
+.wire-box.hub{background:rgba(245,166,35,.1);border-color:rgba(245,166,35,.3);color:var(--gold)}
+.wire-box.wip{background:rgba(58,140,240,.1);border-color:rgba(58,140,240,.3);color:var(--blue)}
+.wire-box.api{background:rgba(0,230,118,.08);border-color:rgba(0,230,118,.25);color:var(--green)}
+.wire-box.chart{background:rgba(167,139,250,.08);border-color:rgba(167,139,250,.25);color:var(--purple)}
+.wire-arrow{color:var(--muted);font-size:14px}
+
+h2{font-size:1rem;font-weight:700;color:var(--text);margin:1.25rem 0 .6rem;letter-spacing:-.01em}
+hr{border:none;border-top:1px solid var(--border);margin:1.5rem 0}
+</style>
+<script src="/html/js/tsm-runtime-lock.js"></script>
+<script src="/html/js/tsm-event-contract.js"></script>
+<script src="/html/js/tsm-autonomy-layer.js"></script>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="topbar-logo">TSM <span>/</span> FinOps Suite <span>/</span> How To</div>
+  <div class="tb-links">
+    <a class="tb-link" href="/finops-suite/financial-ui.html">← FinOps Hub</a>
+    <a class="tb-link" href="/wip-dashboard.html?sector=finops">WIP Dashboard</a>
+    <a class="tb-link" href="/finops-suite/finops-main-strategist.html">Strategist</a>
+    <a class="tb-link" href="/finops-suite/finops-accounting.html">Accounting</a>
+    <a class="tb-link" href="/wip-dashboard.html">All Sectors</a>
+  </div>
+</div>
+
+<div class="layout">
+
+  <!-- SIDEBAR NAV -->
+  <div class="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-label">Getting Started</div>
+      <button class="sidebar-btn active" data-tsm-action="show" data-tsm-args="'overview'"><span class="icon">🏠</span>Overview</button>
+      <button class="sidebar-btn" data-tsm-action="show" data-tsm-args="'quickstart'"><span class="icon">⚡</span>Quick Start</button>
+      <button class="sidebar-btn" data-tsm-action="show" data-tsm-args="'pages'"><span class="icon">📄</span>All Pages</button>
+    </div>
+    <div class="sidebar-divider"></div>
+    <div class="sidebar-section">
+      <div class="sidebar-label">WIP Intelligence</div>
+      <button class="sidebar-btn" data-tsm-action="show" data-tsm-args="'wip-overview'"><span class="icon">📊</span>WIP Overview</button>
+      <button class="sidebar-btn" data-tsm-action="show" data-tsm-args="'wip-charts'"><span class="icon">📈</span>Charts A–F</button>
+      <button class="sidebar-btn" data-tsm-action="show" data-tsm-args="'wip-api'"><span class="icon">🔌</span>Accrual-Recon API</button>
+      <button class="sidebar-btn" data-tsm-action="show" data-tsm-args="'wip-narrative'"><span class="icon">🤖</span>AI Narrative</button>
+    </div>
+    <div class="sidebar-divider"></div>
+    <div class="sidebar-section">
+      <div class="sidebar-label">Suite Pages</div>
+      <button class="sidebar-btn" data-tsm-action="show" data-tsm-args="'page-hub'"><span class="icon">🏗</span>FinOps Hub</button>
+      <button class="sidebar-btn" data-tsm-action="show" data-tsm-args="'page-accounting'"><span class="icon">💰</span>Financial Accounting</button>
+      <button class="sidebar-btn" data-tsm-action="show" data-tsm-args="'page-strategist'"><span class="icon">🧠</span>Main Strategist</button>
+      <button class="sidebar-btn" data-tsm-action="show" data-tsm-args="'page-wip'"><span class="icon">🔄</span>WIP Dashboard</button>
+    </div>
+    <div class="sidebar-divider"></div>
+    <div class="sidebar-section">
+      <div class="sidebar-label">Cross-Suite</div>
+      <button class="sidebar-btn" data-tsm-action="show" data-tsm-args="'cross-suite'"><span class="icon">🌐</span>All 4 Sectors</button>
+      <button class="sidebar-btn" data-tsm-action="show" data-tsm-args="'faq'"><span class="icon">❓</span>FAQ</button>
+    </div>
+  </div>
+
+  <!-- MAIN CONTENT -->
+  <div class="main">
+
+    <!-- OVERVIEW -->
+    <div class="section active" id="sec-overview">
+      <div class="section-eyebrow">// TSM FinOps Suite · How To Guide</div>
+      <h1 class="section-title">Everything in <span>one place.</span></h1>
+      <p class="section-sub">The FinOps Suite is your AI-powered financial operations platform. It now includes live WIP Intelligence with Charts A–F, Accrual-RECON API, and cross-sector visibility into Construction, Healthcare, and Insurance — all from one dashboard.</p>
+
+      <div class="card-grid">
+        <div class="card gold">
+          <div class="card-icon">💰</div>
+          <div class="card-title">Financial Accounting</div>
+          <div class="card-desc">Node 01 — AP/AR, WIP command, controller ops, reconciliation variance. Your primary daily workspace.</div>
+        </div>
+        <div class="card blue">
+          <div class="card-icon">📊</div>
+          <div class="card-title">WIP Intelligence</div>
+          <div class="card-desc">Charts A–F showing accrual health, forecast curve, budget fade, cash flow, node health, and risk heatmap.</div>
+        </div>
+        <div class="card green">
+          <div class="card-icon">🤖</div>
+          <div class="card-title">AI Strategist</div>
+          <div class="card-desc">FinOps Main Strategist generates CFO-ready narratives with owner lane, next actions, and 94% confidence scoring.</div>
+        </div>
+        <div class="card red">
+          <div class="card-icon">⚡</div>
+          <div class="card-title">Accrual-RECON API</div>
+          <div class="card-desc">Live API returning $500k variance, ACCRUAL_FLUSH action, and 4-step GL reconciliation plan. Fires in real time.</div>
+        </div>
+      </div>
+
+      <div class="wiring">
+        <div class="wiring-title">System Wiring — How Pages Connect</div>
+        <div class="wire-row">
+          <div class="wire-box hub">FinOps Hub</div>
+          <div class="wire-arrow">→</div>
+          <div class="wire-box wip">WIP Dashboard</div>
+          <div class="wire-arrow">→</div>
+          <div class="wire-box api">Accrual-RECON API</div>
+          <div class="wire-arrow">→</div>
+          <div class="wire-box chart">Charts A–F</div>
+        </div>
+        <div class="wire-row">
+          <div class="wire-box hub">FinOps Hub</div>
+          <div class="wire-arrow">→</div>
+          <div class="wire-box hub">Financial Accounting (Node 01)</div>
+          <div class="wire-arrow">→</div>
+          <div class="wire-box wip">Main Strategist</div>
+        </div>
+        <div class="wire-row">
+          <div class="wire-box wip">WIP Dashboard</div>
+          <div class="wire-arrow">↔</div>
+          <div class="wire-box hub">Construction Hub</div>
+          <div class="wire-arrow">↔</div>
+          <div class="wire-box hub">Healthcare Hub</div>
+          <div class="wire-arrow">↔</div>
+          <div class="wire-box hub">Insurance Hub</div>
+        </div>
+      </div>
+
+      <div class="nav-row">
+        <button class="nav-btn gold" data-tsm-action="show" data-tsm-args="'quickstart'">⚡ Quick Start →</button>
+        <button class="nav-btn outline" data-tsm-action="show" data-tsm-args="'wip-overview'">📊 WIP Guide →</button>
+      </div>
+    </div>
+
+    <!-- QUICK START -->
+    <div class="section" id="sec-quickstart">
+      <div class="section-eyebrow">// Quick Start</div>
+      <h1 class="section-title">Up and running <span>in 5 minutes.</span></h1>
+      <p class="section-sub">The fastest path through the FinOps Suite — from hub to live accrual data in one flow.</p>
+
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div>
+            <div class="step-label">Open the FinOps Hub</div>
+            <div class="step-desc">Your command center. Scroll past the WIP banner to see all 8 modules and the live Charts A–F section below them.</div>
+            <a class="url-chip" href="/finops-suite/financial-ui.html" target="_blank">tsm-shell.fly.dev/finops-suite/financial-ui.html</a>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num blue">2</div>
+          <div>
+            <div class="step-label">Click "Run Accrual-RECON"</div>
+            <div class="step-desc">The green button at the top of the WIP Intelligence section. It fires the live API and updates all 5 KPI cards instantly — accrued spend, invoiced, variance, match rate, and action.</div>
+            <div class="step-tip">Expected result: ACCRUAL_FLUSH · $500k variance · 89% match rate</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num green">3</div>
+          <div>
+            <div class="step-label">Read Charts B, C, D</div>
+            <div class="step-desc">Chart B shows the spend forecast curve — look for where actual spend diverges above budget (Azure, Month 4+). Chart C shows budget fade. Chart D shows when cash will be tight (August).</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">4</div>
+          <div>
+            <div class="step-label">Click "Generate" in the AI Narrative panel</div>
+            <div class="step-desc">The FinOps Strategist generates a CFO-ready narrative with owner lane, next actions, and confidence score. Takes 3–5 seconds.</div>
+            <div class="step-tip">Expected: FINOPS BNCA SYNTHESIS · OWNER: FinOps Controller · CONFIDENCE: 94%</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num red">5</div>
+          <div>
+            <div class="step-label">Open Financial Accounting (Node 01)</div>
+            <div class="step-desc">Click the first module card. This is your daily accounting workspace — AP/AR exposure, reconciliation variance, WIP command, and controller action routing.</div>
+            <a class="url-chip" href="/finops-suite/finops-accounting.html" target="_blank">tsm-shell.fly.dev/finops-suite/finops-accounting.html</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="callout gold">
+        <span class="callout-icon">💡</span>
+        <span><strong>Demo tip:</strong> For presentations, start at the hub, hit Run Accrual-RECON, then click Generate narrative. The live API response + AI synthesis in under 10 seconds is your strongest opening move.</span>
+      </div>
+    </div>
+
+    <!-- ALL PAGES -->
+    <div class="section" id="sec-pages">
+      <div class="section-eyebrow">// All Pages</div>
+      <h1 class="section-title">Every page in the <span>FinOps Suite.</span></h1>
+      <p class="section-sub">Complete map of all pages, what they do, and when to use them.</p>
+
+      <table class="guide-table">
+        <thead>
+          <tr><th>Page</th><th>URL</th><th>Purpose</th><th>When to use</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>FinOps Hub</strong></td><td><code style="font-family:var(--mono);font-size:10px">/finops-suite/financial-ui.html</code></td><td>Main command center — all modules + WIP charts</td><td><span class="tag tag-gold">Daily</span></td></tr>
+          <tr><td><strong>Financial Accounting</strong></td><td><code style="font-family:var(--mono);font-size:10px">/finops-suite/finops-accounting.html</code></td><td>Node 01 — AP/AR, reconciliation, WIP command</td><td><span class="tag tag-gold">Daily</span></td></tr>
+          <tr><td><strong>WIP Dashboard</strong></td><td><code style="font-family:var(--mono);font-size:10px">/wip-dashboard.html?sector=finops</code></td><td>Live accrual-recon, KPIs, heatmap, narrative</td><td><span class="tag tag-blue">Weekly</span></td></tr>
+          <tr><td><strong>Main Strategist</strong></td><td><code style="font-family:var(--mono);font-size:10px">/finops-suite/finops-main-strategist.html</code></td><td>AI CFO narrative, controller action plan</td><td><span class="tag tag-green">On demand</span></td></tr>
+          <tr><td><strong>Financial Intel</strong></td><td><code style="font-family:var(--mono);font-size:10px">/finops-suite/financial/index.html</code></td><td>Node 02 — find financial problems</td><td><span class="tag tag-blue">Weekly</span></td></tr>
+          <tr><td><strong>Tax Prep</strong></td><td><code style="font-family:var(--mono);font-size:10px">/finops-suite/tax.html</code></td><td>1099, W-9, filing windows, APR risk</td><td><span class="tag tag-amber">Monthly</span></td></tr>
+          <tr><td><strong>Compliance Shield</strong></td><td><code style="font-family:var(--mono);font-size:10px">/finops-suite/compliance.html</code></td><td>Audit risk, regulatory compliance</td><td><span class="tag tag-amber">Monthly</span></td></tr>
+          <tr><td><strong>Zero Trust</strong></td><td><code style="font-family:var(--mono);font-size:10px">/finops-suite/zero-trust.html</code></td><td>Access control, security posture</td><td><span class="tag tag-red">On demand</span></td></tr>
+          <tr><td><strong>FinOps Operations</strong></td><td><code style="font-family:var(--mono);font-size:10px">/finops-suite/finops-operations.html</code></td><td>Day-to-day ops, workflow management</td><td><span class="tag tag-gold">Daily</span></td></tr>
+          <tr><td><strong>How To (this page)</strong></td><td><code style="font-family:var(--mono);font-size:10px">/finops-suite/how-to-finops.html</code></td><td>Guide for all features</td><td><span class="tag tag-green">Reference</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- WIP OVERVIEW -->
+    <div class="section" id="sec-wip-overview">
+      <div class="section-eyebrow">// WIP Intelligence</div>
+      <h1 class="section-title">What is <span>WIP Intelligence?</span></h1>
+      <p class="section-sub">WIP (Work in Progress) Intelligence identifies the gap between what you've accrued and what's been invoiced — in real time. For FinOps, that means cloud spend that's recorded but not yet matched to a vendor invoice.</p>
+
+      <div class="card-grid">
+        <div class="card gold">
+          <div class="card-icon">📊</div>
+          <div class="card-title">Accrued Spend</div>
+          <div class="card-desc">Cloud costs recorded in your accounting system. What you expect to owe based on usage data.</div>
+        </div>
+        <div class="card blue">
+          <div class="card-icon">🧾</div>
+          <div class="card-title">Invoiced Amount</div>
+          <div class="card-desc">What vendors have actually billed you. Should match accruals at period close.</div>
+        </div>
+        <div class="card red">
+          <div class="card-icon">⚠</div>
+          <div class="card-title">Variance = The Risk</div>
+          <div class="card-desc">The gap between accrued and invoiced. Currently $500k — must be resolved before period close or P&L is misstated.</div>
+        </div>
+      </div>
+
+      <div class="callout red">
+        <span class="callout-icon">🔴</span>
+        <span><strong>Current status:</strong> $500,000 variance detected. Azure infrastructure invoices unmatched (76% match rate). ACCRUAL_FLUSH action queued. Resolve before period close.</span>
+      </div>
+
+      <h2>Where WIP Intelligence appears</h2>
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div>
+            <div class="step-label">FinOps Hub — WIP Banner + Charts A–F</div>
+            <div class="step-desc">The orange "ACCRUAL FLUSH QUEUED" banner at the top links to the WIP dashboard. Scroll down past the modules to see live Charts A–F with KPI cards and AI narrative.</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num blue">2</div>
+          <div>
+            <div class="step-label">WIP Dashboard — FinOps Sector</div>
+            <div class="step-desc">The universal WIP dashboard has a FinOps tab showing the full accrual reconciliation view — same data, different lens for CFO reporting.</div>
+            <a class="url-chip" href="/wip-dashboard.html?sector=finops" target="_blank">tsm-shell.fly.dev/wip-dashboard.html?sector=finops</a>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num green">3</div>
+          <div>
+            <div class="step-label">Main Strategist — AI Narrative</div>
+            <div class="step-desc">The FinOps Main Strategist uses the same accrual data to generate a CFO-ready narrative with specific remediation steps.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- WIP CHARTS -->
+    <div class="section" id="sec-wip-charts">
+      <div class="section-eyebrow">// Charts A–F</div>
+      <h1 class="section-title">The <span>Financial Intelligence Charts.</span></h1>
+      <p class="section-sub">Six charts that give you complete visibility into your cloud spend — from provider-level health to portfolio risk. All live, all wired to the Accrual-RECON API.</p>
+
+      <table class="guide-table">
+        <thead>
+          <tr><th>Chart</th><th>What it shows</th><th>Key insight</th><th>Action trigger</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="tag tag-blue">Chart A</span></td>
+            <td>Accrual Health Matrix — AWS / Azure / GCP</td>
+            <td>Azure at 76% match — lowest of 3 providers</td>
+            <td>Pull Azure invoices first</td>
+          </tr>
+          <tr>
+            <td><span class="tag tag-red">Chart B</span></td>
+            <td>Spend Forecast Curve — actual vs budget vs EAC</td>
+            <td>$280k overrun trend at Week 6</td>
+            <td>Azure Reserved Instance review</td>
+          </tr>
+          <tr>
+            <td><span class="tag tag-amber">Chart C</span></td>
+            <td>Budget Fade — utilization % by month</td>
+            <td>Dropped from 98% → 80% M1–M6</td>
+            <td>Unplanned Azure RI purchases</td>
+          </tr>
+          <tr>
+            <td><span class="tag tag-blue">Chart D</span></td>
+            <td>Cash Flow — accrued vs invoiced vs variance</td>
+            <td>Cash tight August — variance line rising</td>
+            <td>Accelerate invoice matching</td>
+          </tr>
+          <tr>
+            <td><span class="tag tag-green">Chart E</span></td>
+            <td>FinOps Node Health — 6 operational nodes</td>
+            <td>Operations at 65% — AT RISK</td>
+            <td>Operations node intervention</td>
+          </tr>
+          <tr>
+            <td><span class="tag tag-red">Chart F</span></td>
+            <td>Accrual Risk Heatmap — 6 cost categories</td>
+            <td>Azure + Data Transfer both RED</td>
+            <td>ACCRUAL_FLUSH on both</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="callout blue">
+        <span class="callout-icon">💡</span>
+        <span><strong>Reading the heatmap:</strong> RED = under-matched by &gt;$200k (immediate action). YELLOW = watch zone $50k–$200k. GREEN = matched within threshold. Azure and Data Transfer are both RED right now.</span>
+      </div>
+    </div>
+
+    <!-- WIP API -->
+    <div class="section" id="sec-wip-api">
+      <div class="section-eyebrow">// Accrual-RECON API</div>
+      <h1 class="section-title">The live <span>API behind the charts.</span></h1>
+      <p class="section-sub">Every KPI card and chart is powered by a real API endpoint. You can call it directly, wire it to your own tools, or trigger it from the Run button in the hub.</p>
+
+      <h2>Endpoint</h2>
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:12px 14px;font-family:var(--mono);font-size:12px;margin-bottom:1rem">
+        <div style="color:var(--muted);font-size:10px;margin-bottom:6px">POST</div>
+        <div style="color:var(--blue)">/api/wip/finops/accrual-recon</div>
+      </div>
+
+      <h2>Request body (all fields optional)</h2>
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:12px 14px;font-family:var(--mono);font-size:12px;margin-bottom:1rem;color:#c8d4e0">
+        {<br>
+        &nbsp;&nbsp;"accrued": 4400000,<br>
+        &nbsp;&nbsp;"invoiced": 3900000,<br>
+        &nbsp;&nbsp;"cloud_provider": "Multi-cloud",<br>
+        &nbsp;&nbsp;"period": "Current Month",<br>
+        &nbsp;&nbsp;"flush_threshold": 100000<br>
+        }
+      </div>
+
+      <h2>Response</h2>
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:12px 14px;font-family:var(--mono);font-size:12px;margin-bottom:1rem;color:#c8d4e0">
+        {<br>
+        &nbsp;&nbsp;"suite": "finops-suite",<br>
+        &nbsp;&nbsp;"logic": "ACCRUAL-RECON",<br>
+        &nbsp;&nbsp;"status": "VARIANCE_DETECTED",<br>
+        &nbsp;&nbsp;<span style="color:var(--red)">"action": "ACCRUAL_FLUSH"</span>,<br>
+        &nbsp;&nbsp;"message": "$500,000 variance. Manual flush queued.",<br>
+        &nbsp;&nbsp;"metrics": { "variance": 500000, "invoice_match_rate_pct": 89 },<br>
+        &nbsp;&nbsp;"next_steps": ["Pull cloud billing invoices", "Match to accrual entries", ...]<br>
+        }
+      </div>
+
+      <div class="callout green">
+        <span class="callout-icon">✓</span>
+        <span><strong>Test it now:</strong> The Run Accrual-RECON button in the hub calls this endpoint live. Or open the WIP Dashboard FinOps sector and the data auto-loads.</span>
+      </div>
+    </div>
+
+    <!-- AI NARRATIVE -->
+    <div class="section" id="sec-wip-narrative">
+      <div class="section-eyebrow">// AI Narrative</div>
+      <h1 class="section-title">CFO-ready <span>narrative generation.</span></h1>
+      <p class="section-sub">The FinOps Strategist reads your accrual data and generates a structured executive narrative — with owner lane, next actions, and confidence score — in under 5 seconds.</p>
+
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div>
+            <div class="step-label">Click Generate in the hub</div>
+            <div class="step-desc">The Generate button is in the FinOps Strategist Auto-Narrative panel at the bottom of the WIP Intelligence section.</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num blue">2</div>
+          <div>
+            <div class="step-label">What you'll see</div>
+            <div class="step-desc">FINOPS BNCA SYNTHESIS → TOP ISSUE → WHY IT MATTERS → BEST NEXT ACTIONS → OWNER LANE (FinOps Controller) → CONFIDENCE (94%)</div>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num green">3</div>
+          <div>
+            <div class="step-label">Or open the Main Strategist</div>
+            <div class="step-desc">For the full strategist interface with node selection, export options (TXT/JSON), and the complete HITL workflow.</div>
+            <a class="url-chip" href="/finops-suite/finops-main-strategist.html" target="_blank">tsm-shell.fly.dev/finops-suite/finops-main-strategist.html</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE: HUB -->
+    <div class="section" id="sec-page-hub">
+      <div class="section-eyebrow">// FinOps Hub</div>
+      <h1 class="section-title">Financial Operations <span>Command Center.</span></h1>
+      <p class="section-sub">financial-ui.html is where everything starts. It now has three distinct zones — WIP banner, module grid, and the new WIP Intelligence charts section.</p>
+
+      <h2>Three zones on the page</h2>
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div><div class="step-label">WIP Banner (top)</div><div class="step-desc">Orange "ACCRUAL FLUSH QUEUED" banner with live KPIs and a direct link to the WIP Dashboard. Always visible so you know the current accrual status at a glance.</div></div>
+        </div>
+        <div class="step">
+          <div class="step-num blue">2</div>
+          <div><div class="step-label">Module Grid (middle)</div><div class="step-desc">8 modules. Node 01 is now Financial Accounting (finops-accounting.html). Each card navigates to the relevant operational page.</div></div>
+        </div>
+        <div class="step">
+          <div class="step-num green">3</div>
+          <div><div class="step-label">WIP Intelligence Charts (bottom)</div><div class="step-desc">Charts A–F, 5 KPI cards, Run Accrual-RECON button, and AI narrative panel. This is new — scroll past the modules to find it.</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE: ACCOUNTING -->
+    <div class="section" id="sec-page-accounting">
+      <div class="section-eyebrow">// Financial Accounting · Node 01</div>
+      <h1 class="section-title">Your daily <span>accounting workspace.</span></h1>
+      <p class="section-sub">finops-accounting.html replaced finops-showcase-v2.html as Node 01. It's your AP/AR dashboard, reconciliation variance tracker, and WIP command center.</p>
+
+      <div class="callout gold">
+        <span class="callout-icon">⭐</span>
+        <span><strong>Node 01 is the priority page.</strong> Start here every morning. It shows your most critical financial exposures first — AR aging, WIP gaps, and reconciliation variance.</span>
+      </div>
+
+      <a class="url-chip" href="/finops-suite/finops-accounting.html" target="_blank">tsm-shell.fly.dev/finops-suite/finops-accounting.html</a>
+    </div>
+
+    <!-- PAGE: STRATEGIST -->
+    <div class="section" id="sec-page-strategist">
+      <div class="section-eyebrow">// FinOps Main Strategist</div>
+      <h1 class="section-title">AI-powered <span>controller actions.</span></h1>
+      <p class="section-sub">The Main Strategist generates structured executive narratives for any financial node. Select a sector, click Generate, and get a CFO-ready action plan in seconds.</p>
+
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div><div class="step-label">Select sector</div><div class="step-desc">Choose FINANCE, CONSTRUCTION, HEALTHCARE, or INSURANCE from the sector selector.</div></div>
+        </div>
+        <div class="step">
+          <div class="step-num blue">2</div>
+          <div><div class="step-label">Click Generate</div><div class="step-desc">The AI calls /api/hc/query with your sector context and returns a structured BNCA synthesis narrative.</div></div>
+        </div>
+        <div class="step">
+          <div class="step-num green">3</div>
+          <div><div class="step-label">Export or Copy</div><div class="step-desc">Export as TXT or JSON for your workflow tools. The narrative includes owner lane, next actions, and confidence score.</div></div>
+        </div>
+      </div>
+
+      <a class="url-chip" href="/finops-suite/finops-main-strategist.html" target="_blank">tsm-shell.fly.dev/finops-suite/finops-main-strategist.html</a>
+    </div>
+
+    <!-- PAGE: WIP DASHBOARD -->
+    <div class="section" id="sec-page-wip">
+      <div class="section-eyebrow">// WIP Dashboard</div>
+      <h1 class="section-title">Universal WIP <span>across all sectors.</span></h1>
+      <p class="section-sub">The WIP dashboard covers all 4 sectors. Use the tabs to switch between Construction, Healthcare, Insurance, and FinOps. Each sector has its own KPIs, alerts, and API buttons.</p>
+
+      <div class="card-grid">
+        <div class="card gold"><div class="card-title">🏗 Construction</div><div class="card-desc">Job 211 $900k gap · INVOICE_TRIGGER · AIA G702/G703</div></div>
+        <div class="card green"><div class="card-title">🏥 Healthcare</div><div class="card-desc">148 unbilled · $1.77M recovery · BNCA · ENC-8821</div></div>
+        <div class="card purple"><div class="card-title">🛡 Insurance</div><div class="card-desc">$1.7M unaudited · AUDIT-RECON · Surety bond risk</div></div>
+        <div class="card blue"><div class="card-title">📊 FinOps</div><div class="card-desc">$500k variance · ACCRUAL_FLUSH · Azure 76% match</div></div>
+      </div>
+
+      <a class="url-chip" href="/wip-dashboard.html?sector=finops" target="_blank">tsm-shell.fly.dev/wip-dashboard.html?sector=finops</a>
+    </div>
+
+    <!-- CROSS-SUITE -->
+    <div class="section" id="sec-cross-suite">
+      <div class="section-eyebrow">// Cross-Suite Navigation</div>
+      <h1 class="section-title">One mesh. <span>Four sectors.</span></h1>
+      <p class="section-sub">Every suite hub now has a WIP banner that links back to the universal WIP dashboard. You can navigate between all 4 sectors from any page.</p>
+
+      <table class="guide-table">
+        <thead><tr><th>Suite</th><th>Hub URL</th><th>WIP Sector</th><th>Key Metric</th></tr></thead>
+        <tbody>
+          <tr><td>🏗 Construction</td><td><code style="font-family:var(--mono);font-size:10px">/construction-suite/construction-hub.html</code></td><td>?sector=construction</td><td>$900k WIP gap</td></tr>
+          <tr><td>🏥 Healthcare</td><td><code style="font-family:var(--mono);font-size:10px">/healthcare/index.html</code></td><td>?sector=healthcare</td><td>$1.77M BNCA recovery</td></tr>
+          <tr><td>🛡 Insurance</td><td><code style="font-family:var(--mono);font-size:10px">/tsm-insurance/az-ins.html</code></td><td>?sector=insurance</td><td>$1.7M unaudited</td></tr>
+          <tr><td>📊 FinOps</td><td><code style="font-family:var(--mono);font-size:10px">/finops-suite/financial-ui.html</code></td><td>?sector=finops</td><td>$500k variance</td></tr>
+        </tbody>
+      </table>
+
+      <div class="callout blue">
+        <span class="callout-icon">🌐</span>
+        <span><strong>Suite Hubs bar:</strong> The WIP dashboard has a navigation bar at the top linking to all 4 suite hubs. Any hub → WIP dashboard → any other hub. Full cross-suite navigation.</span>
+      </div>
+    </div>
+
+    <!-- FAQ -->
+    <div class="section" id="sec-faq">
+      <div class="section-eyebrow">// FAQ</div>
+      <h1 class="section-title">Common <span>questions.</span></h1>
+      <p class="section-sub">Answers to the most common questions about the FinOps Suite and WIP Intelligence.</p>
+
+      <div class="faq">
+        <div class="faq-item">
+          <button class="faq-q" data-tsm-action="toggleFaq" data-tsm-args="this">What happened to the Showcase (old Node 01)? <span class="chevron">›</span></button>
+          <div class="faq-a">finops-showcase-v2.html was replaced by finops-accounting.html as Node 01. The showcase is still accessible directly at /finops-suite/finops-showcase-v2.html but is no longer the primary entry point.</div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-q" data-tsm-action="toggleFaq" data-tsm-args="this">What is ACCRUAL_FLUSH and when does it trigger? <span class="chevron">›</span></button>
+          <div class="faq-a">ACCRUAL_FLUSH is the action returned by the Accrual-RECON API when variance exceeds the flush threshold ($100k by default). It means the variance requires manual GL review before period close. Auto-flush triggers automatically for variances under $100k.</div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-q" data-tsm-action="toggleFaq" data-tsm-args="this">Why is Azure showing 76% match rate? <span class="chevron">›</span></button>
+          <div class="faq-a">Azure Reserved Instance purchases created unplanned accruals in months 4–6 that don't yet have matching invoices. The fix: pull the Azure billing batch, match to accrual entries, and manually flush the $280k variance before month-end close.</div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-q" data-tsm-action="toggleFaq" data-tsm-args="this">How do I switch between sectors in the WIP dashboard? <span class="chevron">›</span></button>
+          <div class="faq-a">Click the sector tabs at the top of the WIP dashboard (Construction / Healthcare / Insurance / FinOps). Or navigate directly via URL: wip-dashboard.html?sector=finops. Each sector tab shows completely different content.</div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-q" data-tsm-action="toggleFaq" data-tsm-args="this">Where does the AI narrative come from? <span class="chevron">›</span></button>
+          <div class="faq-a">The narrative is generated by the /api/hc/query endpoint using your actual accrual metrics as context. The AI structures the analysis into BNCA Synthesis format — TOP ISSUE, WHY IT MATTERS, BEST NEXT ACTIONS, OWNER LANE, CONFIDENCE. It's not a static template.</div>
+        </div>
+        <div class="faq-item">
+          <button class="faq-q" data-tsm-action="toggleFaq" data-tsm-args="this">Can I run the test suite to verify everything is working? <span class="chevron">›</span></button>
+          <div class="faq-a">Yes — add ?run-finops-tests=1 to the financial-ui.html URL. A test panel slides in on the right showing pass/fail for all DOM elements, functions, and API endpoints. Target: 100% pass rate.</div>
+        </div>
+      </div>
+
+      <div class="nav-row">
+        <a class="nav-btn gold" href="/finops-suite/financial-ui.html">← Back to Hub</a>
+        <a class="nav-btn outline" href="/wip-dashboard.html?sector=finops">WIP Dashboard</a>
+        <a class="nav-btn outline" href="/finops-suite/financial-ui.html?run-finops-tests=1">🧪 Run Tests</a>
+      </div>
+    </div>
+
+  </div><!-- /main -->
+</div><!-- /layout -->
+
+<script>
+function show(id) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.sidebar-btn').forEach(b => b.classList.remove('active'));
+  var sec = document.getElementById('sec-' + id);
+  if(sec) sec.classList.add('active');
+  var btn = document.querySelector('[data-tsm-action="show" data-tsm-args="\'' + id + '\'"]');
+  if(btn) btn.classList.add('active');
+  window.scrollTo(0, 0);
+}
+
+function toggleFaq(btn) {
+  var item = btn.parentElement;
+  item.classList.toggle('open');
+}
+</script>
+<script src="/shared/tsm-operational-mesh.js?v=mesh1"></script>
+<script src="/shared/tsm-relay-bus.js?v=relay2"></script>
+<script src="/shared/tsm-memory-engine.js?v=phase3"></script>
+<script src="/shared/tsm-global-command.js?v=phase4"></script>
+<script src="/shared/tsm-sector-intelligence.js?v=phase5si"></script>
+<script src="/shared/tsm-autonomous-execution.js?v=phase5"></script>
+
+<script>(function(){
+document.addEventListener('click', function(e){
+
+  const el = e.target.closest('[data-tsm-action]');
+  if(!el) return;
+
+  const action = el.getAttribute('data-tsm-action');
+  const args = el.getAttribute('data-tsm-args');
+
+  if(window.TSM && TSM.launcher && TSM.launcher.run){
+    TSM.launcher.run(action, args);
+  } else {
+    console.warn('[TSM] launcher missing:', action, args);
+  }
+
+});
+})();</script>
+  <script src="/core/tsm-kernel.js"></script>
+  <script src="/core/tsm-enforcer.js"></script>
+  <script src="/js/core/tsm-kernel-upgrade.js"></script>
+</body>
+</html>
+
+// ===== TSM_AUTONOMY_STANDARDIZED =====
+window.TSM_AUTONOMY_STANDARDIZED = true;
+</script>
+
+// ===== TSM WAR ROOM SCOPED RELAY FIX =====
+window.tsmMission = window.tsmMission || {
+  id: "FINOPS-SUITE-" + Date.now().toString(36),
+  vertical: "finops-suite",
+  
+};
+
+function tsmWriteRelay(payload){
+  TSM_KERNEL.setRelay("finops-suite", JSON.stringify(payload));
+}
+</script>
+

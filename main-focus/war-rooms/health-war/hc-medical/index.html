@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HC MEDICAL COMMAND · TSM Healthcare</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow-y:auto;background:#0a0f0a;color:#e0ffe0;font-family:'Courier New',monospace;font-size:13px}
+:root{--g:#00ff88;--a:#ffaa00;--r:#ff4444;--b:#00aaff;--dim:#0d150d;--border:#1e3a1e}
+main{padding-bottom:80px;min-height:calc(100vh - 60px)}
+.hdr{display:flex;justify-content:space-between;align-items:center;padding:10px 20px;border-bottom:1px solid var(--border);background:#0b120b}
+.hdr-left{display:flex;align-items:center;gap:12px}
+.hdr-title{font-size:16px;font-weight:700;letter-spacing:2px;color:var(--g)}
+.hdr-sub{font-size:10px;color:#556655;letter-spacing:1px}
+.node-pill{padding:4px 12px;border-radius:12px;font-size:10px;font-weight:700;border:1px solid var(--g);color:var(--g)}
+.nav{display:flex;border-bottom:1px solid var(--border);background:#0b120b;padding:0 20px;overflow-x:auto}
+.nav-btn{padding:10px 18px;font-family:inherit;font-size:11px;font-weight:700;letter-spacing:1px;border:none;background:none;color:#558855;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;transition:all .2s}
+.nav-btn:hover{color:var(--g)}
+.nav-btn.active{color:var(--g);border-bottom-color:var(--g)}
+.sub-badge{position:fixed;top:10px;right:10px;z-index:9999}
+.sub-badge a{font-family:inherit;font-size:7px;letter-spacing:2px;padding:5px 12px;border:1px solid #4ade80;color:#4ade80;text-decoration:none;white-space:nowrap;background:transparent;transition:all .2s}
+.sub-badge a:hover{background:#4ade80;color:#000}
+.cap-layer{background:#001a0a;border-bottom:1px solid var(--border);padding:14px 20px}
+.cap-lbl{color:var(--g);font-size:9px;font-weight:700;letter-spacing:3px;margin-bottom:10px}
+.cap-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px}
+.cap-card{background:var(--dim);border:1px solid var(--border);padding:10px 12px}
+.cap-card-title{color:#e0ffe0;font-size:11px;font-weight:600;margin-bottom:4px}
+.cap-card-desc{color:#556655;font-size:10px}
+.cap-btns{display:flex;gap:10px;margin-top:12px}
+.cap-btn-primary{background:var(--g);color:#000;border:none;padding:8px 16px;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;letter-spacing:1px}
+.cap-btn-secondary{background:transparent;border:1px solid var(--g);color:var(--g);padding:8px 16px;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;letter-spacing:1px}
+.tab-panel{display:none;padding-bottom:20px}
+.tab-panel.active{display:block}
+.sec{margin:16px 20px;background:var(--dim);border:1px solid var(--border);border-radius:6px;padding:16px}
+.sec-hdr{font-size:11px;font-weight:700;letter-spacing:2px;color:var(--g);margin-bottom:12px}
+.sec-hdr::before{content:'◆ ';font-size:8px}
+.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding:16px 20px}
+.kpi{background:var(--dim);border:1px solid var(--border);border-radius:6px;padding:16px}
+.kpi-val{font-size:28px;font-weight:700;margin-bottom:4px}
+.kpi-lbl{font-size:10px;color:#558855;letter-spacing:1px;text-transform:uppercase}
+.kpi-sub{font-size:10px;margin-top:4px}
+.green{color:var(--g)}.amber{color:var(--a)}.red{color:var(--r)}.blue{color:var(--b)}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;padding:6px 10px;font-size:10px;letter-spacing:1px;color:#558855;border-bottom:1px solid var(--border)}
+td{padding:8px 10px;border-bottom:1px solid #0f1f0f}
+tr:hover td{background:#0f1f0f}
+.badge{padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700}
+.bg{background:#003322;color:var(--g);border:1px solid var(--g)}
+.ba{background:#332200;color:var(--a);border:1px solid var(--a)}
+.br{background:#330000;color:var(--r);border:1px solid var(--r)}
+.bb{background:#001133;color:var(--b);border:1px solid var(--b)}
+.alert-row{display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid #0f1f0f}
+.alert-row:last-child{border-bottom:none}
+.pri{padding:2px 8px;border-radius:10px;font-size:9px;font-weight:700;min-width:52px;text-align:center}
+.purgent{background:#330000;color:var(--r);border:1px solid var(--r)}
+.pmed{background:#332200;color:var(--a);border:1px solid var(--a)}
+.plow{background:#001133;color:var(--b);border:1px solid var(--b)}
+.pok{background:#003322;color:var(--g);border:1px solid var(--g)}
+.alert-txt{font-size:12px;flex:1}
+.alert-imp{font-size:11px;color:var(--a);min-width:70px;text-align:right}
+.ai-box{margin:0 20px 16px;background:var(--dim);border:1px solid var(--border);border-radius:6px;padding:16px}
+.ai-hdr{font-size:11px;font-weight:700;letter-spacing:2px;color:var(--a);margin-bottom:10px}
+.ai-row{display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+.ai-btn{padding:5px 12px;background:#1a2000;border:1px solid var(--a);color:var(--a);font-family:inherit;font-size:10px;font-weight:700;border-radius:4px;cursor:pointer;transition:all .15s}
+.ai-btn:hover{background:#2a3000}
+.ai-inp{flex:1;min-width:200px;background:#0b120b;border:1px solid var(--border);color:var(--g);font-family:inherit;font-size:12px;padding:8px 12px;border-radius:4px;outline:none}
+.ai-inp:focus{border-color:var(--g)}
+.ask-btn{padding:8px 16px;background:var(--g);color:#000;font-family:inherit;font-size:11px;font-weight:700;border:none;border-radius:4px;cursor:pointer}
+.ask-btn:disabled{opacity:.5;cursor:not-allowed}
+.ai-res{margin-top:10px;padding:10px;background:#0b120b;border:1px solid var(--border);border-radius:4px;color:#99cc99;font-size:12px;min-height:40px;white-space:pre-wrap;line-height:1.6}
+.stat-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:16px}
+.stat-box{background:#0b120b;border:1px solid var(--border);border-radius:6px;padding:12px;text-align:center}
+.stat-val{font-size:22px;font-weight:700;margin-bottom:4px}
+.stat-lbl{font-size:10px;color:#558855;letter-spacing:1px}
+.pr-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:8px}
+.pr-card{background:#0b120b;border:1px solid var(--border);border-radius:6px;padding:12px;cursor:pointer;transition:border-color .2s}
+.pr-card:hover{border-color:var(--a)}
+.pr-card-title{color:var(--a);font-weight:700;font-size:11px;margin-bottom:4px}
+.pr-card-desc{color:#558855;font-size:10px}
+.footer{position:fixed;bottom:0;left:0;right:0;background:#0b120b;border-top:1px solid var(--border);padding:8px 20px;display:flex;justify-content:space-between;align-items:center;z-index:100}
+.fn{font-size:10px;color:#558855;letter-spacing:1px}
+.fbtns{display:flex;gap:8px}
+.fbtn{padding:6px 14px;font-family:inherit;font-size:10px;font-weight:700;border-radius:4px;cursor:pointer;letter-spacing:1px}
+.fbnca{background:#003322;border:1px solid var(--g);color:var(--g)}
+.frelay{background:#001133;border:1px solid var(--b);color:var(--b)}
+.bnca-box{margin:0 20px 16px;background:#001a00;border:1px solid #005500;border-radius:6px;padding:14px}
+.bnca-hdr{font-size:9px;letter-spacing:3px;color:var(--g);margin-bottom:8px;font-weight:700}
+.bnca-body{font-size:11px;color:#99cc99;white-space:pre-wrap;line-height:1.6}
+.bnca-actions{display:flex;gap:8px;margin-top:10px}
+.bnca-action-btn{padding:6px 14px;background:var(--g);color:#000;font-family:inherit;font-size:10px;font-weight:700;border:none;border-radius:4px;cursor:pointer}
+.bnca-action-btn.outline{background:transparent;border:1px solid var(--g);color:var(--g)}
+
+/* ── HC GUIDE PANEL ── */
+.hc-guide{position:fixed;top:120px;right:0;width:300px;background:#0b120b;border-left:1px solid var(--border);border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:14px;z-index:50;font-size:11px;border-radius:6px 0 0 6px;overflow-y:auto;max-height:calc(100vh - 140px)}
+.guide-field{background:#060d06;border:1px solid #1a2a1a;border-radius:3px;color:#aaccaa;font-family:'Courier New',monospace;font-size:9px;padding:4px 6px;width:100%;outline:none}
+.guide-field:focus{border-color:var(--g)}
+.guide-field::placeholder{color:#2a3a2a}
+textarea.guide-field{resize:none}
+.guide-divider{border:none;border-top:1px solid #1e3a1e;margin:8px 0}
+.guide-result{margin-top:6px;font-size:10px;color:#99cc99;line-height:1.5;background:#060d06;border-radius:3px;padding:6px;display:none;border:1px solid #1a2a1a;max-height:100px;overflow-y:auto;white-space:pre-wrap}
+.guide-result.visible{display:block}
+.hc-guide-lbl{font-size:9px;letter-spacing:2px;color:#556655;margin-bottom:6px;margin-top:10px}
+.hc-guide-output{background:var(--dim);border:1px solid var(--border);border-radius:3px;padding:8px;font-size:10px;color:#99cc99;white-space:pre-wrap;line-height:1.5;max-height:160px;overflow-y:auto}
+
+/* step rows */
+.step-data-row{display:flex;justify-content:space-between;align-items:center;font-size:11px;padding:3px 0;border-bottom:1px solid #0d1a0d}
+.step-data-row:last-of-type{border-bottom:none}
+.step-data-lbl{color:#556655}
+.step-data-val{font-weight:700}
+
+/* step action mini-buttons */
+.step-mini-btns{display:grid;grid-template-columns:1fr 1fr 1fr;gap:3px;margin:6px 0}
+.step-mini-btn{padding:4px 2px;background:transparent;font-family:'Courier New',monospace;font-size:8px;font-weight:700;border-radius:3px;cursor:pointer;letter-spacing:.5px}
+.smb-exp{border:1px solid #336633;color:#336633}
+.smb-exp:hover{border-color:var(--g);color:var(--g)}
+.smb-risk{border:1px solid #664400;color:#886600}
+.smb-risk:hover{border-color:var(--a);color:var(--a)}
+.smb-talk{border:1px solid #003366;color:#004488}
+.smb-talk:hover{border-color:var(--b);color:var(--b)}
+
+@media(max-width:1100px){.hc-guide{display:none}main{padding-right:0}}
+@media(min-width:1101px){main{padding-right:310px}}
+</style>
+</head>
+<body>
+
+<div class="sub-badge">
+  <a href="https://buy.stripe.com/28EbJ1e9i0dV53p0qQ0gw01" target="_blank">SUBSCRIBE — $399/MO</a>
+</div>
+
+<div class="hdr">
+  <div class="hdr-left">
+    <span style="font-size:22px">🏥</span>
+    <div>
+      <div class="hdr-title">HC MEDICAL COMMAND</div>
+      <div class="hdr-sub">Clinical Ops · Revenue Cycle · CPT Audit · Prior Auth</div>
+    </div>
+  </div>
+  <div class="node-pill">NODE ACTIVE</div>
+</div>
+
+<nav class="nav">
+  <button class="nav-btn active" data-tsm-action="switchTab" data-tsm-args="'dash',this">⊞ DASHBOARD</button>
+  <button class="nav-btn" data-tsm-action="switchTab" data-tsm-args="'clinical',this">🏥 CLINICAL OPS</button>
+  <button class="nav-btn" data-tsm-action="switchTab" data-tsm-args="'billing',this">📋 BILLING & CPT</button>
+  <button class="nav-btn" data-tsm-action="switchTab" data-tsm-args="'auth',this">✅ PRIOR AUTH</button>
+  <button class="nav-btn" data-tsm-action="switchTab" data-tsm-args="'intel',this">🧠 INTEL WORKBENCH</button>
+  <button class="nav-btn" data-tsm-action="switchTab" data-tsm-args="'presets',this">⚡ PRESETS</button>
+</nav>
+
+<div class="node-guide">
+  <div class="guide-hdr">HC NODE GUIDE</div>
+  <div class="guide-body">Use this panel while presenting. It explains the current tab, runs BNCA, and creates a next-action summary.</div>
+  <div class="guide-divider"></div>
+  <div class="guide-mission-hdr">MISSION OBJECTIVES · MEDICAL</div>
+  <div class="guide-patient">Patient: <span class="guide-hi">Maria Santos</span> · Claim: <span class="guide-hi">27447</span> · Payer: <span class="guide-hi">BlueCross BlueShield</span></div>
+  <div class="guide-step">
+    <div class="guide-step-lbl">STEP 1 OF 2</div>
+    <div class="guide-step-body">Step 1: `14 prior auth requests exceeding 72hr SLA — payer escalation required. Identify top 3 payers and draft escalation letters.`</div>
+    <div class="guide-step-submit"><button class="guide-submit-btn" data-tsm-action="runQ" data-tsm-args="'[step1 query]','dash-btn','dash-res'">Submit Step Response</button></div>
+  </div>
+  <div class="guide-step">
+    <div class="guide-step-lbl">STEP 2 OF 2</div>
+    <div class="guide-step-body">Step 2: `CPT 99215 upcoding pattern detected — 23 claims flagged. Pull documentation and run compliance review against LCD guidelines.`</div>
+  </div>
+</div>
+
+<div class="cap-layer">
+  <div class="cap-lbl">ENTERPRISE CAPABILITY LAYER · MEDICAL</div>
+  <div class="cap-grid">
+    <div class="cap-card"><div class="cap-card-title">Prior Auth Queue</div><div class="cap-card-desc">Mapped to this node for clean ownership and cross-node Strategist synthesis.</div></div>
+    <div class="cap-card"><div class="cap-card-title">CPT Documentation Gaps</div><div class="cap-card-desc">Mapped to this node for clean ownership and cross-node Strategist synthesis.</div></div>
+    <div class="cap-card"><div class="cap-card-title">Clinical Throughput</div><div class="cap-card-desc">Mapped to this node for clean ownership and cross-node Strategist synthesis.</div></div>
+    <div class="cap-card"><div class="cap-card-title">Coding Compliance</div><div class="cap-card-desc">Mapped to this node for clean ownership and cross-node Strategist synthesis.</div></div>
+    <div class="cap-card"><div class="cap-card-title">Documentation Drift</div><div class="cap-card-desc">Mapped to this node for clean ownership and cross-node Strategist synthesis.</div></div>
+    <div class="cap-card"><div class="cap-card-title">Patient Flow Analysis</div><div class="cap-card-desc">Mapped to this node for clean ownership and cross-node Strategist synthesis.</div></div>
+  </div>
+  <div class="cap-btns">
+    <button class="cap-btn-primary" data-tsm-action="switchTab" data-tsm-args="'intel',document.querySelectorAll('.nav-btn')[4]">Open Intel Workbench</button>
+    <button class="cap-btn-secondary" data-tsm-action="fillAndRun" data-tsm-args="'dash-inp','dash-btn','dash-res','Run a full BNCA for HC MEDICAL COMMAND: top risks, compliance gaps, priority actions, owner lanes');switchTab('dash',document.querySelector('.nav-btn'))">Run Feature BNCA</button>
+  </div>
+</div>
+
+<main>
+<div id="tab-dash" class="tab-panel active">
+<div class="kpi-row">
+  <div class="kpi"><div class="kpi-val green">97.4%</div><div class="kpi-lbl">MEDICAL Performance</div><div class="kpi-sub green">Above 95% target · OIG watch clear</div></div>
+  <div class="kpi"><div class="kpi-val amber">38</div><div class="kpi-lbl">Auth Pending</div><div class="kpi-sub amber">14 urgent · avg 2.3 days pending</div></div>
+  <div class="kpi"><div class="kpi-val green">1,842</div><div class="kpi-lbl">Active Patients</div><div class="kpi-sub green">+6% vs prior month · census stable</div></div>
+  <div class="kpi"><div class="kpi-val red">$124K</div><div class="kpi-lbl">Revenue At Risk</div><div class="kpi-sub red">Auth denials + coding gaps flagged</div></div>
+</div>
+<div class="sec wip-snapshot">
+  <div class="sec-hdr">WIP SNAPSHOT · CURRENT OPERATING QUEUE</div>
+  <div class="stat-grid">
+    <div class="stat-box"><div class="stat-val green">38</div><div class="stat-lbl">Open Items</div></div>
+    <div class="stat-box"><div class="stat-val amber">7</div><div class="stat-lbl">Aging > SLA</div></div>
+    <div class="stat-box"><div class="stat-val green">82%</div><div class="stat-lbl">Owner Assigned</div></div>
+    <div class="stat-box"><div class="stat-val red">$124K</div><div class="stat-lbl">Risk Exposure</div></div>
+    <div class="stat-box"><div class="stat-val blue">Today 4:00 PM</div><div class="stat-lbl">Next Review</div></div>
+  </div>
+  <div style="color:#99cc99;font-size:11px;line-height:1.6;margin-top:10px">Use this snapshot during demos to explain what is open, what is aging, who owns it, what is financially or operationally exposed, and what needs review today.</div>
+</div>
+<div class="sec"><div class="sec-hdr">ACTIVE ALERTS</div>
+  <div class="alert-row"><span class="pri purgent">URGENT</span><div class="alert-txt">14 prior auth requests exceeding 72hr SLA — payer escalation required</div><div class="alert-imp">$62K</div></div>
+  <div class="alert-row"><span class="pri purgent">URGENT</span><div class="alert-txt">CPT 99215 upcoding pattern detected — 23 claims flagged for audit review</div><div class="alert-imp">$18K risk</div></div>
+  <div class="alert-row"><span class="pri pmed">MED</span><div class="alert-txt">ICD-10 specificity gaps on 31 claims — documentation incomplete for Level 4/5</div><div class="alert-imp">Audit risk</div></div>
+  <div class="alert-row"><span class="pri pmed">MED</span><div class="alert-txt">Medicare annual wellness visit billing rate below benchmark by 12%</div><div class="alert-imp">$44K opp</div></div>
+  <div class="alert-row"><span class="pri plow">LOW</span><div class="alert-txt">Modifier -25 overuse on 47 claims — compliance review recommended</div><div class="alert-imp">$8K</div></div>
+  <div class="alert-row"><span class="pri pok">OK</span><div class="alert-txt">Medical compliance at 97.4% — above OIG threshold · documentation current</div><div class="alert-imp">✓ Clear</div></div>
+</div>
+<div class="sec"><div class="sec-hdr">CLINICAL REVENUE SNAPSHOT</div>
+<table><thead><tr><th>SERVICE LINE</th><th>VOLUME</th><th>AVG RVU</th><th>NET REVENUE</th><th>CLEAN RATE</th><th>STATUS</th></tr></thead>
+<tbody>
+  <tr><td>E&amp;M Visits</td><td>842</td><td>2.1</td><td>$187,440</td><td>91%</td><td><span class="badge bg">GOOD</span></td></tr>
+  <tr><td>Procedures</td><td>312</td><td>4.8</td><td>$224,640</td><td>87%</td><td><span class="badge ba">WATCH</span></td></tr>
+  <tr><td>Diagnostics</td><td>1,204</td><td>1.2</td><td>$128,266</td><td>94%</td><td><span class="badge bg">GOOD</span></td></tr>
+  <tr><td>Surgery</td><td>89</td><td>18.4</td><td>$244,944</td><td>82%</td><td><span class="badge ba">WATCH</span></td></tr>
+  <tr><td>ER Visits</td><td>421</td><td>3.6</td><td>$225,174</td><td>76%</td><td><span class="badge br">POOR</span></td></tr>
+</tbody></table></div>
+<div class="ai-box">
+  <div class="ai-hdr">⚡ DASHBOARD AI ANALYSIS</div>
+  <div class="ai-row">
+    <button class="ai-btn" data-tsm-action="fillAndRun" data-tsm-args="'dash-inp','dash-btn','dash-res','Summarize top risks on this dashboard and provide priority actions for the medical lead'">Top Risks</button>
+    <button class="ai-btn" data-tsm-action="fillAndRun" data-tsm-args="'dash-inp','dash-btn','dash-res','What revenue is at risk this week and what are the fastest recovery actions?'">Revenue Risk</button>
+    <button class="ai-btn" data-tsm-action="fillAndRun" data-tsm-args="'dash-inp','dash-btn','dash-res','Run a full BNCA for HC MEDICAL COMMAND: top risks, compliance gaps, priority actions, owner lanes'">Full BNCA</button>
+  </div>
+  <div class="ai-row">
+    <input id="dash-inp" class="ai-inp" type="text" placeholder="Dashboard query...">
+    <button class="ask-btn" id="dash-btn" data-tsm-action="runQ" data-tsm-args="document.getElementById('dash-inp').value,'dash-btn','dash-res'">▶ ASK</button>
+  </div>
+  <div id="dash-res" class="ai-res">&gt; AI ready. Ask a question or click a preset above.</div>
+</div></div>
+
+<div id="tab-clinical" class="tab-panel">
+<div class="sec" style="margin-top:16px"><div class="sec-hdr">DEPARTMENT PERFORMANCE</div>
+<div class="stat-grid">
+  <div class="stat-box"><div class="stat-val green">92%</div><div class="stat-lbl">Primary Care</div></div>
+  <div class="stat-box"><div class="stat-val amber">78%</div><div class="stat-lbl">Emergency Dept</div></div>
+  <div class="stat-box"><div class="stat-val green">95%</div><div class="stat-lbl">Surgery</div></div>
+  <div class="stat-box"><div class="stat-val green">88%</div><div class="stat-lbl">Radiology</div></div>
+  <div class="stat-box"><div class="stat-val green">97%</div><div class="stat-lbl">Lab Services</div></div>
+</div>
+<table><thead><tr><th>DEPARTMENT</th><th>PHYSICIANS</th><th>AVG DAILY VISITS</th><th>COMPLIANCE</th><th>RVU/DAY</th><th>STATUS</th></tr></thead>
+<tbody>
+  <tr><td>Primary Care</td><td>12</td><td>284</td><td>92%</td><td>2.4</td><td><span class="badge bg">GOOD</span></td></tr>
+  <tr><td>Emergency Dept</td><td>18</td><td>421</td><td>78%</td><td>3.6</td><td><span class="badge ba">WATCH</span></td></tr>
+  <tr><td>Surgery</td><td>8</td><td>89</td><td>95%</td><td>18.4</td><td><span class="badge bg">GOOD</span></td></tr>
+  <tr><td>Radiology</td><td>6</td><td>312</td><td>88%</td><td>4.8</td><td><span class="badge bg">GOOD</span></td></tr>
+  <tr><td>Lab Services</td><td>4</td><td>1,204</td><td>97%</td><td>1.2</td><td><span class="badge bg">GOOD</span></td></tr>
+</tbody></table></div>
+<div class="sec"><div class="sec-hdr">CLINICAL ALERTS</div>
+  <div class="alert-row"><span class="pri pmed">MED</span><div class="alert-txt">CPT 99215 upcoding pattern detected</div><div class="alert-imp">$12K</div></div>
+  <div class="alert-row"><span class="pri pmed">MED</span><div class="alert-txt">Discharge doc gaps — CMS risk</div><div class="alert-imp">Compliance</div></div>
+  <div class="alert-row"><span class="pri plow">LOW</span><div class="alert-txt">HEDIS gap: diabetic eye exam</div><div class="alert-imp">Quality</div></div>
+  <div class="alert-row"><span class="pri pok">OK</span><div class="alert-txt">Readmit rate 4.1% — below 5% target</div><div class="alert-imp">✓</div></div>
+</div>
+<div class="ai-box">
+  <div class="ai-hdr">⚡ CLINICAL OPS AI ANALYSIS</div>
+  <div class="ai-row">
+    <button class="ai-btn" data-tsm-action="fillAndRun" data-tsm-args="'clinical-inp','clinical-btn','clinical-res','Analyze department performance gaps — identify bottom performers and improvement plan'">Dept Performance</button>
+    <button class="ai-btn" data-tsm-action="fillAndRun" data-tsm-args="'clinical-inp','clinical-btn','clinical-res','Review ED 78% compliance score — identify bottlenecks and throughput improvement actions'">ED Throughput</button>
+    <button class="ai-btn" data-tsm-action="fillAndRun" data-tsm-args="'clinical-inp','clinical-btn','clinical-res','Build HEDIS gap closure plan for diabetic eye exam — outreach strategy and timeline'">HEDIS Closure</button>
+  </div>
+  <div class="ai-row">
+    <input id="clinical-inp" class="ai-inp" type="text" placeholder="CLINICAL OPS query...">
+    <button class="ask-btn" id="clinical-btn" data-tsm-action="runQ" data-tsm-args="document.getElementById('clinical-inp').value,'clinical-btn','clinical-res'">▶ ASK</button>
+  </div>
+  <div id="clinical-res" class="ai-res">&gt; AI ready. Ask a question or click a preset above.</div>
+</div></div>
+
+<div id="tab-billing" class="tab-panel">
+<div class="bnca-box" style="margin-top:16px">
+  <div class="bnca-hdr">⚡ BNCA AI SYNTHESIS — BILLING</div>
+  <div class="bnca-body">Denial rate at 18.4% — double target. ENC-8821 appeal window closes in 30 days. Immediate action: file with auth reference. AR aging &gt;$189K requires owner escalation this week.</div>
+  <div class="bnca-actions">
+    <button class="bnca-action-btn" data-tsm-action="fillAndRun" data-tsm-args="'billing-inp','billing-btn','billing-res','Generate full billing narrative: denial rate 18.4%, ENC-8821 appeal, AR aging $189K, CO-197 queue, CPT upcoding risk. Provide owner actions and timeline.'">⚡ Generate Full Narrative</button>
+    <button class="bnca-action-btn outline" data-tsm-action="switchTab" data-tsm-args="'intel',document.querySelectorAll('.nav-btn')[4]">Open Node ↗</button>
+  </div>
+</div>
+<div class="sec"><div class="sec-hdr">BILLING ALERTS</div>
+  <div class="alert-row"><span style="font-size:11px;min-width:24px;text-align:center;color:var(--r);font-weight:700">01</span><div class="alert-txt">Denial rate 18.4% vs 9% target</div><div class="alert-imp red">Critical</div></div>
+  <div class="alert-row"><span style="font-size:11px;min-width:24px;text-align:center;color:var(--a);font-weight:700">02</span><div class="alert-txt">CO-197 appeal queue — 12 pending</div><div class="alert-imp amber">$186K</div></div>
+  <div class="alert-row"><span style="font-size:11px;min-width:24px;text-align:center;color:var(--a);font-weight:700">03</span><div class="alert-txt">AR aging &gt;30d — $189K</div><div class="alert-imp amber">Escalate</div></div>
+  <div class="alert-row"><span style="font-size:11px;min-width:24px;text-align:center;color:var(--b);font-weight:700">04</span><div class="alert-txt">ENC-8821 prior auth missing</div><div class="alert-imp blue">Appeal</div></div>
+</div>
+<div class="sec"><div class="sec-hdr">CPT AUDIT QUEUE</div>
+<table><thead><tr><th>CPT CODE</th><th>DESCRIPTION</th><th>COUNT</th><th>RISK LEVEL</th><th>REVENUE</th><th>ACTION</th></tr></thead>
+<tbody>
+  <tr><td>99215</td><td>E&amp;M Level 5 — upcoding pattern</td><td>23</td><td><span class="badge br">HIGH</span></td><td>$12,040</td><td>Review docs</td></tr>
+  <tr><td>27447</td><td>Total knee replacement</td><td>18</td><td><span class="badge ba">MED</span></td><td>$333,000</td><td>Auth check</td></tr>
+  <tr><td>93454</td><td>Cardiac catheterization</td><td>12</td><td><span class="badge ba">MED</span></td><td>$216,000</td><td>Verify DX</td></tr>
+  <tr><td>70553</td><td>MRI Brain w/ contrast</td><td>41</td><td><span class="badge bg">LOW</span></td><td>$98,400</td><td>Monitor</td></tr>
+  <tr><td>97110</td><td>Therapeutic exercise</td><td>152</td><td><span class="badge bg">LOW</span></td><td>$91,200</td><td>Compliant</td></tr>
+</tbody></table></div>
+<div class="ai-box">
+  <div class="ai-hdr">⚡ BILLING & CPT AI ANALYSIS</div>
+  <div class="ai-row">
+    <button class="ai-btn" data-tsm-action="fillAndRun" data-tsm-args="'billing-inp','billing-btn','billing-res','Analyze CPT 99215 upcoding risk across 23 claims — documentation gaps and remediation steps'">CPT Audit</button>
+    <button class="ai-btn" data-tsm-action="fillAndRun" data-tsm-args="'billing-inp','billing-btn','billing-res','Review modifier usage patterns for compliance — identify overcoding risk and corrective actions'">Modifier Review</button>
+    <button class="ai-btn" data-tsm-action="fillAndRun" data-tsm-args="'billing-inp','billing-btn','billing-res','Build plan to improve clean claim rate — top rejection reasons and front-end edits needed'">Clean Claim</button>
+  </div>
+  <div class="ai-row">
+    <input id="billing-inp" class="ai-inp" type="text" placeholder="BILLING & CPT query...">
+    <button class="ask-btn" id="billing-btn" data-tsm-action="runQ" data-tsm-args="document.getElementById('billing-inp').value,'billing-btn','billing-res'">▶ ASK</button>
+  </div>
+  <div id="billing-res" class="ai-res">&gt; AI ready. Ask a question or click a preset above.</div>
+</div></div>
+
+<div id="tab-auth" class="tab-panel">
+<div class="sec" style="margin-top:16px"><div class="sec-hdr">PRIOR AUTHORIZATION QUEUE</div>
+<table><thead><tr><th>PROCEDURE</th><th>PAYER</th><th>QTY</th><th>DAYS PENDING</th><th>AMOUNT</th><th>STATUS</th></tr></thead>
+<tbody>
+  <tr><td>Total Knee (27447)</td><td>BlueCross</td><td>18</td><td>12.3</td><td>$333,000</td><td><span class="badge br">URGENT</span></td></tr>
+  <tr><td>Shoulder Scope (29826)</td><td>Aetna</td><td>24</td><td>7.1</td><td>$196,800</td><td><span class="badge ba">PENDING</span></td></tr>
+  <tr><td>MRI Brain (70553)</td><td>Medicare</td><td>41</td><td>4.2</td><td>$98,400</td><td><span class="badge bb">IN REVIEW</span></td></tr>
+  <tr><td>Cardiac Cath (93454)</td><td>UHC</td><td>12</td><td>9.8</td><td>$216,000</td><td><span class="badge br">DELAYED</span></td></tr>
+  <tr><td>PT 12-Visit (97110)</td><td>Medicaid</td><td>152</td><td>3.1</td><td>$91,200</td><td><span class="badge bg">PROCESSING</span></td></tr>
+</tbody></table></div>
+<div class="ai-box">
+  <div class="ai-hdr">⚡ PRIOR AUTH AI ANALYSIS</div>
+  <div class="ai-row">
+    <button class="ai-btn" data-tsm-action="fillAndRun" data-tsm-args="'auth-inp','auth-btn','auth-res','Create prior auth backlog reduction plan for 247 pending auths worth $186K — priority actions by payer'">Auth Backlog</button>
+    <button class="ai-btn" data-tsm-action="fillAndRun" data-tsm-args="'auth-inp','auth-btn','auth-res','Analyze payer-specific auth denial patterns for BlueCross and UHC — appeal strategies and timelines'">Payer Strategy</button>
+    <button class="ai-btn" data-tsm-action="fillAndRun" data-tsm-args="'auth-inp','auth-btn','auth-res','Identify procedures eligible for auto-authorization to reduce manual queue — criteria and implementation'">Auto-Auth Plan</button>
+  </div>
+  <div class="ai-row">
+    <input id="auth-inp" class="ai-inp" type="text" placeholder="PRIOR AUTH query...">
+    <button class="ask-btn" id="auth-btn" data-tsm-action="runQ" data-tsm-args="document.getElementById('auth-inp').value,'auth-btn','auth-res'">▶ ASK</button>
+  </div>
+  <div id="auth-res" class="ai-res">&gt; AI ready. Ask a question or click a preset above.</div>
+</div></div>
+
+<div id="tab-intel" class="tab-panel">
+<div class="ai-box" style="margin-top:16px">
+  <div class="ai-hdr">🧠 DEEP INTEL WORKBENCH — AI ANALYSIS</div>
+  <p style="color:#556655;font-size:10px;margin-bottom:12px;line-height:1.6">Run deep analysis across all intel workbench node data. Synthesizes all domains into a unified intelligence brief.</p>
+  <div class="ai-row">
+    <button class="ai-btn" data-tsm-action="fillAndRun" data-tsm-args="'intel-inp','intel-btn','intel-res','Generate AI Summary for HC Medical node: top 3 risks, owner assignments, SLA status, and executive brief'">AI Summary</button>
+    <button class="ai-btn" data-tsm-action="fillAndRun" data-tsm-args="'intel-inp','intel-btn','intel-res','Find highest risk item across clinical ops, billing, and prior auth — explain why it matters and who owns it'">Risk + Owner</button>
+    <button class="ai-btn" data-tsm-action="fillAndRun" data-tsm-args="'intel-inp','intel-btn','intel-res','Run full BNCA for HC Medical: best next corrective actions across all domains with priority ranking'">BNCA</button>
+    <button class="ai-btn" data-tsm-action="fillAndRun" data-tsm-args="'intel-inp','intel-btn','intel-res','Generate a presentation talk track for HC Medical Command — executive-level narrative for office manager demo'">Talk Track</button>
+  </div>
+  <div class="ai-row">
+    <input id="intel-inp" class="ai-inp" type="text" placeholder="Enter detailed query...">
+    <button class="ask-btn" id="intel-btn" data-tsm-action="runQ" data-tsm-args="document.getElementById('intel-inp').value,'intel-btn','intel-res'">▶ ASK</button>
+  </div>
+  <div id="intel-res" class="ai-res">&gt; Intel Workbench ready. Select a mode or type a query.</div>
+</div></div>
+
+<div id="tab-presets" class="tab-panel">
+<div class="sec" style="margin-top:16px">
+  <div class="sec-hdr">PRESET LIBRARY — Click any to run in Intel Workbench</div>
+  <div class="pr-grid">
+    <div class="pr-card" data-tsm-action="runPreset" data-tsm-args="`Analyze prior auth denial patterns across 38 pending requests — identify top payers denying, SLA breach root cause, and 30-day resolution plan`"><div class="pr-card-title">Prior Auth Crisis</div><div class="pr-card-desc">Auth denial + SLA analysis</div></div>
+    <div class="pr-card" data-tsm-action="runPreset" data-tsm-args="`Review CPT 99215 upcoding risk across 23 flagged claims — documentation gaps, audit exposure, and remediation steps`"><div class="pr-card-title">CPT Upcoding Audit</div><div class="pr-card-desc">Level 5 E&M compliance</div></div>
+    <div class="pr-card" data-tsm-action="runPreset" data-tsm-args="`Identify ICD-10 specificity gaps across 31 claims and provide coder education recommendations to reduce documentation deficiencies`"><div class="pr-card-title">ICD-10 Specificity</div><div class="pr-card-desc">Coding accuracy + coder training</div></div>
+    <div class="pr-card" data-tsm-action="runPreset" data-tsm-args="`Analyze Medicare Annual Wellness Visit billing gap — why is rate 12% below benchmark and what is the revenue recovery opportunity`"><div class="pr-card-title">AWV Revenue Gap</div><div class="pr-card-desc">Wellness visit optimization</div></div>
+    <div class="pr-card" data-tsm-action="runPreset" data-tsm-args="`Review Modifier -25 usage pattern across 47 claims — identify overcoding risk and provide compliance guidelines for separate E&M billing`"><div class="pr-card-title">Modifier -25 Review</div><div class="pr-card-desc">Modifier compliance audit</div></div>
+    <div class="pr-card" data-tsm-action="runPreset" data-tsm-args="`Build a 90-day clinical revenue cycle improvement plan covering auth, coding accuracy, denial reduction, and documentation compliance`"><div class="pr-card-title">90-Day RCM Plan</div><div class="pr-card-desc">Revenue cycle improvement</div></div>
+  </div>
+</div></div>
+</main>
+
+<!-- ═══════════════ HC MEDICAL NODE GUIDE ═══════════════ -->
+<div class="hc-guide">
+
+  <!-- INTAKE -->
+  <div id="intake-section">
+    <div style="font-size:9px;font-weight:700;letter-spacing:2px;color:var(--a);margin-bottom:6px">◆ SET PATIENT MISSION</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px">
+      <div>
+        <div style="font-size:8px;color:#556655;margin-bottom:2px;letter-spacing:1px">PATIENT NAME</div>
+        <input id="pt-name" class="guide-field" type="text" placeholder="e.g. Maria Santos">
+      </div>
+      <div>
+        <div style="font-size:8px;color:#556655;margin-bottom:2px;letter-spacing:1px">MRN / CHART #</div>
+        <input id="pt-mrn" class="guide-field" type="text" placeholder="e.g. MRN-5821">
+      </div>
+      <div>
+        <div style="font-size:8px;color:#556655;margin-bottom:2px;letter-spacing:1px">PAYER / PLAN</div>
+        <input id="pt-payer" class="guide-field" type="text" placeholder="e.g. BlueCross PPO">
+      </div>
+      <div>
+        <div style="font-size:8px;color:#556655;margin-bottom:2px;letter-spacing:1px">DENIAL / AUTH CODE</div>
+        <input id="pt-code" class="guide-field" type="text" placeholder="e.g. N130 / PA-Denied">
+      </div>
+      <div>
+        <div style="font-size:8px;color:#556655;margin-bottom:2px;letter-spacing:1px">ICD-10 / CPT</div>
+        <input id="pt-icd" class="guide-field" type="text" placeholder="e.g. M17.11 / 27447">
+      </div>
+      <div>
+        <div style="font-size:8px;color:#556655;margin-bottom:2px;letter-spacing:1px">RISK / EXPOSURE</div>
+        <input id="pt-risk" class="guide-field" type="text" placeholder="e.g. $333,000">
+      </div>
+    </div>
+    <div style="font-size:8px;color:#556655;margin-bottom:2px;letter-spacing:1px">CLINICAL ISSUE / DENIAL REASON</div>
+    <textarea id="pt-issue" class="guide-field" rows="2" placeholder="e.g. Prior auth denied — medical necessity not established. Missing conservative treatment failure documentation." style="margin-bottom:6px"></textarea>
+    <button onclick="applyMedicalIntake()" style="width:100%;padding:6px;background:var(--g);color:#000;font-family:'Courier New',monospace;font-size:9px;font-weight:700;border:none;border-radius:3px;cursor:pointer;letter-spacing:1px">⚡ SET MISSION FROM PATIENT DATA</button>
+    <button onclick="toggleMedicalIntake(false)" id="intake-collapse-btn" style="display:none;width:100%;margin-top:4px;padding:5px;background:transparent;border:1px solid #1e3a1e;color:#556655;font-family:'Courier New',monospace;font-size:9px;border-radius:3px;cursor:pointer;letter-spacing:1px">▲ COLLAPSE INTAKE</button>
+  </div>
+  <button onclick="toggleMedicalIntake(true)" id="intake-expand-btn" style="display:none;width:100%;padding:5px;background:transparent;border:1px solid var(--g);color:var(--g);font-family:'Courier New',monospace;font-size:9px;font-weight:700;border-radius:3px;cursor:pointer;letter-spacing:1px;margin-bottom:8px">✎ EDIT PATIENT DATA</button>
+
+  <hr class="guide-divider">
+
+  <!-- PATIENT META -->
+  <div style="font-size:11px;color:#556655;margin-bottom:10px;line-height:1.8">
+    Patient: <span style="color:var(--g);font-weight:700" id="meta-patient">Maria Santos</span> · Claim: <span style="color:var(--g);font-weight:700" id="meta-mrn">27447</span> ·<br>
+    Payer: <span style="color:var(--b);font-weight:700" id="meta-payer">BlueCross BlueShield</span>
+  </div>
+
+  <!-- STEP 1 -->
+  <div id="med-step-1" style="background:#060d06;border:1px solid #1e3a1e;border-radius:4px;padding:10px 12px;margin-bottom:10px">
+    <div style="font-size:9px;color:#556655;letter-spacing:2px;margin-bottom:6px">STEP 1 OF 2</div>
+    <div style="font-size:12px;color:#ccddcc;line-height:1.5;margin-bottom:10px" id="step1-body">Review the clinical documentation for CPT 27447. Identify missing elements required for medical necessity.</div>
+
+    <div class="step-data-row"><span class="step-data-lbl">Diagnosis</span><span class="step-data-val" style="color:var(--g)" id="step1-dx">M17.11 — Primary osteoarthritis, right knee</span></div>
+    <div class="step-data-row"><span class="step-data-lbl">Conservative Treatment Documented</span><span class="step-data-val" style="color:var(--r)" id="step1-conservative">NO</span></div>
+    <div class="step-data-row"><span class="step-data-lbl">X-Ray on File</span><span class="step-data-val" style="color:var(--g)" id="step1-xray">YES</span></div>
+    <div class="step-data-row" style="margin-bottom:10px"><span class="step-data-lbl">Missing Element</span><span class="step-data-val" style="color:var(--r)" id="step1-missing">Functional limitation notes</span></div>
+
+    <div class="step-mini-btns">
+      <button class="step-mini-btn smb-exp" onclick="medGuideAction('explain',1)">Explain Tab</button>
+      <button class="step-mini-btn smb-risk" onclick="medGuideAction('risk',1)">Highest Risk</button>
+      <button class="step-mini-btn smb-talk" onclick="medGuideAction('talk',1)">Talk Track</button>
+    </div>
+
+    <button onclick="medFlagGap()" style="width:100%;padding:7px;background:var(--g);color:#000;font-family:'Courier New',monospace;font-size:10px;font-weight:700;border:none;border-radius:3px;cursor:pointer;letter-spacing:1px;margin-bottom:6px">Flag Documentation Gap</button>
+    <button onclick="medSubmitStep(1)" style="width:100%;padding:5px;background:transparent;border:1px solid #336633;color:#336633;font-family:'Courier New',monospace;font-size:9px;font-weight:700;border-radius:3px;cursor:pointer;letter-spacing:1px">Submit Step Response</button>
+    <div id="med-res-1" class="guide-result"></div>
+  </div>
+
+  <!-- STEP 2 -->
+  <div id="med-step-2" style="background:#060d06;border:1px solid #1e3a1e;border-radius:4px;padding:10px 12px;margin-bottom:10px;opacity:.6">
+    <div style="font-size:9px;color:#556655;letter-spacing:2px;margin-bottom:6px">STEP 2 OF 2</div>
+    <div style="font-size:12px;color:#ccddcc;line-height:1.5;margin-bottom:10px" id="step2-body">A peer-to-peer review is scheduled with the BCBS medical director. Prepare the clinical summary.</div>
+
+    <div class="step-data-row"><span class="step-data-lbl">CPT</span><span class="step-data-val" style="color:var(--g)" id="step2-cpt">27447 — Total Knee Replacement</span></div>
+    <div class="step-data-row"><span class="step-data-lbl">Diagnosis</span><span class="step-data-val" style="color:var(--g)" id="step2-dx">M17.11</span></div>
+    <div class="step-data-row"><span class="step-data-lbl">Key Clinical Arg</span><span class="step-data-val" style="color:var(--r)" id="step2-arg">Failed conservative tx · functional loss</span></div>
+    <div class="step-data-row" style="margin-bottom:10px"><span class="step-data-lbl">P2P Deadline</span><span class="step-data-val" style="color:var(--r)">72 hrs</span></div>
+
+    <div class="step-mini-btns">
+      <button class="step-mini-btn smb-exp" onclick="medGuideAction('explain',2)">Explain Tab</button>
+      <button class="step-mini-btn smb-risk" onclick="medGuideAction('risk',2)">Highest Risk</button>
+      <button class="step-mini-btn smb-talk" onclick="medGuideAction('talk',2)">Talk Track</button>
+    </div>
+
+    <button onclick="medDraftP2P()" style="width:100%;padding:7px;background:var(--r);color:#fff;font-family:'Courier New',monospace;font-size:10px;font-weight:700;border:none;border-radius:3px;cursor:pointer;letter-spacing:1px;margin-bottom:6px">⚡ Draft P2P Appeal Script</button>
+    <button onclick="medSubmitStep(2)" style="width:100%;padding:5px;background:transparent;border:1px solid #336633;color:#336633;font-family:'Courier New',monospace;font-size:9px;font-weight:700;border-radius:3px;cursor:pointer;letter-spacing:1px">Submit Step Response</button>
+    <div id="med-res-2" class="guide-result"></div>
+  </div>
+
+  <hr class="guide-divider">
+
+  <!-- WHEN TO RUN WHAT -->
+  <div style="margin-bottom:10px">
+    <div style="font-size:9px;font-weight:700;letter-spacing:2px;color:#556655;margin-bottom:6px">◆ WHEN TO RUN WHAT</div>
+    <div style="background:#0a1400;border:1px solid #1e3a00;border-radius:3px;padding:7px 8px;margin-bottom:5px">
+      <div style="color:var(--g);font-size:9px;font-weight:700;margin-bottom:3px">⚡ RUN BNCA FIRST</div>
+      <div style="font-size:9px;color:#556655;line-height:1.5">Always start here. BNCA surfaces the highest-risk clinical item — auth denials, documentation gaps, expired approvals, missed coding. Run before escalating anything.</div>
+    </div>
+    <div style="background:#00111a;border:1px solid #001e3a;border-radius:3px;padding:7px 8px">
+      <div style="color:var(--b);font-size:9px;font-weight:700;margin-bottom:3px">🔗 RELAY TO STRATEGIST AFTER</div>
+      <div style="font-size:9px;color:#556655;line-height:1.5">Only escalate when BNCA reveals a <span style="color:var(--a)">cross-domain issue</span> — payer contract disputes, systemic PA denial patterns needing CMO visibility, or recurring documentation failures. Don't relay single-patient cases.</div>
+    </div>
+  </div>
+
+  <!-- POST-STEPS NEXT ACTIONS (hidden until both steps done) -->
+  <div id="med-next-actions" style="display:none;margin-bottom:10px">
+    <div style="font-size:9px;font-weight:700;letter-spacing:2px;color:var(--g);margin-bottom:6px">◆ STEPS COMPLETE — NEXT ACTIONS</div>
+    <div style="display:flex;flex-direction:column;gap:5px">
+      <button onclick="medRunGuide('Run full BNCA for HC MEDICAL COMMAND: synthesize both step findings into top clinical risk, responsible clinician, resolution timeline, and confidence score')" style="width:100%;padding:6px;background:#003322;border:1px solid var(--g);color:var(--g);font-family:'Courier New',monospace;font-size:9px;font-weight:700;border-radius:3px;cursor:pointer;letter-spacing:1px">⚡ RE-RUN BNCA WITH FINDINGS</button>
+      <button onclick="relayToStrategist('HC MEDICAL');window.location.href='/html/healthcare/hc-main-strategist.html'" style="width:100%;padding:6px;background:#001133;border:1px solid var(--b);color:var(--b);font-family:'Courier New',monospace;font-size:9px;font-weight:700;border-radius:3px;cursor:pointer;letter-spacing:1px">🔗 ESCALATE TO STRATEGIST</button>
+      <button onclick="medRunGuide('Export medical session summary: both step findings, denial codes, recommended clinical actions, escalation decision')" style="width:100%;padding:6px;background:#221100;border:1px solid var(--a);color:var(--a);font-family:'Courier New',monospace;font-size:9px;font-weight:700;border-radius:3px;cursor:pointer;letter-spacing:1px">📋 EXPORT SESSION SUMMARY</button>
+    </div>
+  </div>
+
+  <button onclick="medRunGuide('Run full BNCA for HC MEDICAL COMMAND: top clinical issue, why it matters, best next actions, confidence level')" style="width:100%;padding:7px;background:#003322;border:1px solid var(--g);color:var(--g);font-family:'Courier New',monospace;font-size:9px;font-weight:700;border-radius:3px;cursor:pointer;letter-spacing:1px;margin-bottom:5px">⚡ RUN NODE BNCA</button>
+
+  <div class="hc-guide-lbl">HEALTHCARE BNCA SYNTHESIS</div>
+  <div class="hc-guide-output" id="guide-output">&gt; Select an action above.</div>
+</div>
+
+<div class="footer">
+  <div class="fn">🏥 MEDICAL NODE &nbsp; Ready — run analysis or relay to Strategist</div>
+  <div class="fbtns">
+    <button class="fbtn fbnca" data-tsm-action="fillAndRun" data-tsm-args="'dash-inp','dash-btn','dash-res','Run a full BNCA for HC MEDICAL COMMAND: top risks, compliance gaps, priority actions');switchTab('dash',document.querySelector('.nav-btn'))">⚡ RUN BNCA</button>
+    <button class="fbtn frelay" onclick="relayToStrategist('HC MEDICAL');window.location.href='/html/healthcare/hc-main-strategist.html'">🔗 RELAY TO STRATEGIST</button>
+  </div>
+</div>
+
+<script>
+var medClientData={patient:'Maria Santos',mrn:'27447',payer:'BlueCross BlueShield',code:'PA-Denied',icd:'M17.11 / 27447',risk:'$333,000',issue:'Prior auth denied — medical necessity not established. Missing conservative treatment failure documentation.'};
+var medStepsDone={1:false,2:false};
+
+function applyMedicalIntake(){
+  medClientData.patient=document.getElementById('pt-name').value||'—';
+  medClientData.mrn=document.getElementById('pt-mrn').value||'—';
+  medClientData.payer=document.getElementById('pt-payer').value||'—';
+  medClientData.code=document.getElementById('pt-code').value||'—';
+  medClientData.icd=document.getElementById('pt-icd').value||'—';
+  medClientData.risk=document.getElementById('pt-risk').value||'—';
+  medClientData.issue=document.getElementById('pt-issue').value||'—';
+
+  document.getElementById('meta-patient').textContent=medClientData.patient;
+  document.getElementById('meta-mrn').textContent=medClientData.mrn;
+  document.getElementById('meta-payer').textContent=medClientData.payer;
+
+  var icdParts=medClientData.icd.split('/');
+  var dx=(icdParts[0]||medClientData.icd).trim();
+  var cpt=(icdParts[1]||medClientData.icd).trim();
+
+  document.getElementById('step1-body').textContent='Review clinical documentation for '+cpt+'. Identify missing elements required for medical necessity.';
+  document.getElementById('step1-dx').textContent=dx;
+  document.getElementById('step1-missing').textContent=medClientData.code||'Review required';
+
+  document.getElementById('step2-body').textContent='A peer-to-peer review may be required with '+medClientData.payer+'. Prepare clinical summary and physician availability.';
+  document.getElementById('step2-cpt').textContent=cpt;
+  document.getElementById('step2-dx').textContent=dx;
+  document.getElementById('step2-arg').textContent=medClientData.issue.substring(0,42)+(medClientData.issue.length>42?'...':'');
+
+  toggleMedicalIntake(false);
+}
+
+function toggleMedicalIntake(show){
+  document.getElementById('intake-section').style.display=show?'block':'none';
+  document.getElementById('intake-collapse-btn').style.display=show?'block':'none';
+  document.getElementById('intake-expand-btn').style.display=show?'none':'block';
+}
+
+function medGuideAction(action,step){
+  var labels={
+    explain:'Explain the current medical tab and its key clinical metrics in simple terms for a presentation.',
+    risk:'Find the single highest clinical risk item — auth gap, denial code, or documentation failure — and explain why it matters.',
+    talk:'Generate a presentation talk track for HC MEDICAL COMMAND — clinical operations demo narrative.'
+  };
+  var ctx=' Patient: '+medClientData.patient+' / MRN: '+medClientData.mrn+' / Payer: '+medClientData.payer+' / Code: '+medClientData.code+' / Dx-CPT: '+medClientData.icd+' / Risk: '+medClientData.risk+'. Issue: '+medClientData.issue;
+  medRunGuide(labels[action]+ctx,'med-res-'+step);
+}
+
+function medFlagGap(){
+  document.getElementById('step1-conservative').textContent='FLAGGED';
+  medRunGuide('Flag documentation gap for patient '+medClientData.patient+', CPT/Dx '+medClientData.icd+', payer '+medClientData.payer+'. Issue: '+medClientData.issue+'. List all required documentation elements to establish medical necessity and what is currently missing.','med-res-1');
+}
+
+function medDraftP2P(){
+  medRunGuide('Draft peer-to-peer appeal script for prior auth denial. Patient: '+medClientData.patient+', CPT/Dx: '+medClientData.icd+', Payer: '+medClientData.payer+', Denial Code: '+medClientData.code+'. Include medical necessity argument, conservative treatment failure checklist, and peer-to-peer scheduling instructions for the ordering physician.','med-res-2');
+}
+
+function medSubmitStep(step){
+  var resEl=document.getElementById('med-res-'+step);
+  if(resEl&&!resEl.classList.contains('visible')){
+    medRunGuide('Analyze medical step '+step+' and provide summary findings with recommended next actions. Patient: '+medClientData.patient+'. Payer: '+medClientData.payer+'. Issue: '+medClientData.issue,'med-res-'+step);
+  }
+  medStepsDone[step]=true;
+  var box=document.getElementById('med-step-'+step);
+  if(box) box.style.borderColor='#336633';
+  if(medStepsDone[1]&&medStepsDone[2]){
+    document.getElementById('med-next-actions').style.display='block';
+  } else if(step===1){
+    var s2=document.getElementById('med-step-2');
+    if(s2) s2.style.opacity='1';
+  }
+}
+
+function medRunGuide(prompt,outId){
+  var out=document.getElementById(outId||'guide-output');
+  if(!out) return;
+  out.classList.add('visible');
+  out.textContent='Processing...';
+  fetch('/api/hc/query',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({query:prompt,nodeKey:'medical'})
+  })
+  .then(function(r){return r.json();})
+  .then(function(d){out.textContent=d.content||d.reply||d.output||'No response.';})
+  .catch(function(){
+    out.textContent='TOP ISSUE\nReview clinical auth and denial queue.\n\nBEST NEXT ACTIONS\n1. Assign peer-to-peer owner.\n2. Clear PA backlog by payer priority.\n3. Escalate CO-50 and N130 denials.\n\nCONFIDENCE\n91%';
+  });
+}
+
+// ── TAB CONTROLLER ──
+function switchTab(id,btn){
+  document.querySelectorAll('.tab-panel').forEach(function(el){el.classList.remove('active');});
+  var target=document.getElementById('tab-'+id);
+  if(target) target.classList.add('active');
+  document.querySelectorAll('.nav-btn').forEach(function(b){b.classList.remove('active');});
+  if(btn) btn.classList.add('active');
+}
+
+// ── AI RUNNER ──
+async function runQ(prompt,btnId,resId){
+  if(!prompt||!prompt.trim()) return;
+  var btn=document.getElementById(btnId);
+  var res=document.getElementById(resId);
+  if(!res) return;
+  if(btn){btn.disabled=true;btn.textContent='...';}
+  res.textContent='> TSM NEURAL ['+new Date().toLocaleTimeString()+']\n\nAnalyzing...';
+  try{
+    var r=await fetch('/api/hc/query',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:prompt,nodeKey:'medical'})});
+    var d=await r.json();
+    res.textContent='> TSM NEURAL ['+new Date().toLocaleTimeString()+']\n\n'+(d.content||d.reply||d.output||'No response received.');
+  } catch(e){
+    try{
+      var ar=await fetch('/api/hc/query',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'TSM Neural Core',max_tokens:1000,system:'You are the HC MEDICAL COMMAND AI — a healthcare operations intelligence system. Provide concise, actionable analysis. Format: TOP ISSUE, WHY IT MATTERS, BEST NEXT ACTIONS (numbered), CONFIDENCE.',messages:[{role:'user',content:prompt}]})});
+      var ad=await ar.json();
+      var text=(ad.content||[]).map(function(c){return c.text||'';}).join('\n');
+      res.textContent='> TSM NEURAL ['+new Date().toLocaleTimeString()+']\n\n'+(text||'Analysis complete.');
+    } catch(e2){res.textContent='> ERROR: Unable to reach AI endpoint.\n'+e.message;}
+  }
+  if(btn){btn.disabled=false;btn.textContent='▶ ASK';}
+}
+
+function fillAndRun(inpId,btnId,resId,prompt){
+  var inp=document.getElementById(inpId);
+  if(inp) inp.value=prompt;
+  runQ(prompt,btnId,resId);
+}
+
+window.fillAndRun=fillAndRun;
+
+function runPreset(prompt){
+  switchTab('intel',document.querySelectorAll('.nav-btn')[4]);
+  var inp=document.getElementById('intel-inp');
+  if(inp) inp.value=prompt;
+  runQ(prompt,'intel-btn','intel-res');
+}
+
+async function runGuide(prompt){
+  medRunGuide(prompt,'guide-output');
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+       switchTab('dash', document.querySelector('.nav-btn'));
+       updateGuide('dash');
+       if (window.TSMMissionObj) TSMMissionObj.render ? TSMMissionObj.render() : null;
+    });
+</script>
+<script src="/shared/tsm-operational-mesh.js?v=mesh1"></script>
+<script src="/shared/tsm-relay-bus.js?v=relay2"></script>
+<script src="/shared/tsm-memory-engine.js?v=phase3"></script>
+<script src="/shared/tsm-global-command.js?v=phase4"></script>
+<script src="/shared/tsm-sector-intelligence.js?v=phase5si"></script>
+<script src="/shared/tsm-autonomous-execution.js?v=phase5"></script>
+<script>(function(){
+document.addEventListener('click',function(e){
+  const el=e.target.closest('[data-tsm-action]');
+  if(!el) return;
+  const action=el.getAttribute('data-tsm-action');
+  const args=el.getAttribute('data-tsm-args');
+  if(window.TSM&&TSM.launcher&&TSM.launcher.run){TSM.launcher.run(action,args);}
+  else{console.warn('[TSM] launcher missing:',action,args);}
+});
+})();</script>
+<script src="/healthcare/tsm-launcher.js"></script>
+<script src="/js/guided-mission-workflow.js"></script>
+<script src="/js/tsm-mission-system.js"></script>
+<script src="/js/tsm-mission-objectives.js"></script>
+<script src="../js/tsm-doc-anomaly-bridge.js"></script>
+
+// ── TSM RELAY-TO-STRATEGIST (generic across HC nodes) ──
+
+function relayToStrategist(nodeLabel) {
+
+  try {
+
+    var engineOutputs = {};
+
+    document.querySelectorAll('.ai-res').forEach(function(el){
+
+      var text = (el.textContent || '').trim();
+
+      if (!text) return;
+
+      if (/^>?\s*(ai|intel workbench|enterprise bnca|leadership brief|report studio)\b.*ready\.?$/i.test(text)) return;
+
+      if (/processing\.\.\.$/i.test(text)) return;
+
+      var label = (el.id || 'AI OUTPUT').replace(/-res$/i,'').replace(/[-_]/g,' ').toUpperCase();
+
+      engineOutputs[label] = text;
+
+    });
+
+
+
+    var alerts = [];
+
+    document.querySelectorAll('.alert-row').forEach(function(row){
+
+      var pri = row.querySelector('.pri');
+
+      var txt = row.querySelector('.alert-txt');
+
+      var imp = row.querySelector('.alert-imp');
+
+      if (txt) alerts.push('[' + (pri ? pri.textContent.trim() : '\u2014') + '] ' + txt.textContent.trim() + (imp ? ' (' + imp.textContent.trim() + ')' : ''));
+
+    });
+
+
+
+    var kpis = [];
+
+    document.querySelectorAll('.kpi').forEach(function(k){
+
+      var val = k.querySelector('.kpi-val');
+
+      var lbl = k.querySelector('.kpi-lbl');
+
+      var sub = k.querySelector('.kpi-sub');
+
+      if (val && lbl) kpis.push(lbl.textContent.trim() + ': ' + val.textContent.trim() + (sub ? ' \u2014 ' + sub.textContent.trim() : ''));
+
+    });
+
+
+
+    var clientLine = '';
+
+    if (typeof clientData !== 'undefined' && clientData) {
+
+      try { clientLine = JSON.stringify(clientData).slice(0, 400); } catch (e) {}
+
+    }
+
+
+
+    var narrativeParts = [];
+
+    if (kpis.length) narrativeParts.push('KPIs \u2014 ' + kpis.join(' \u00b7 '));
+
+    if (alerts.length) narrativeParts.push('Active alerts \u2014 ' + alerts.slice(0, 5).join(' | '));
+
+    if (clientLine) narrativeParts.push('Client/claim context \u2014 ' + clientLine);
+
+    var narrative = narrativeParts.join('\n\n') || (nodeLabel + ' relay \u2014 no live findings captured at time of relay.');
+
+
+
+    if (!Object.keys(engineOutputs).length) engineOutputs[nodeLabel] = narrative;
+
+
+
+    var payload = {
+
+      sessionId: 'REL-' + Date.now().toString(36).toUpperCase(),
+
+      timestamp: new Date().toISOString(),
+
+      engineOutputs: engineOutputs,
+
+      engine06: { narrative: narrative, recommendations: [] },
+
+      documentMeta: { ingestType: nodeLabel, charCount: narrative.length }
+
+    };
+
+
+
+    sessionStorage.setItem('TSM_WAR_ROOM_BRIEF', JSON.stringify(payload));
+    localStorage.setItem('TSM_WAR_ROOM_BRIEF', JSON.stringify(payload));
+
+  } catch (e) {
+
+    console.error('[' + nodeLabel + '] relayToStrategist failed:', e);
+
+  }
+
+}
+
+</script>
+
+// updateGuide stub — node guide is static; tab context handled by switchTab
+function updateGuide(id) {}
+</script>
+<script src="/shared/tsm-cure-cheatsheet.js"></script>
+<script src="/shared/tsm-chain-assistant.js"></script>
+<script src="/healthcare/js/tsm-mission-system.js"></script>
+<script src="/healthcare/js/tsm-mission-objectives.js"></script>
+<!-- ── DOC ANOMALY BRIDGE ─────────────────────────────── -->
+(function initAnomalyBridge() {
+  const raw = localStorage.getItem('tsm-doc-anomaly');
+  if (!raw) return;
+  let p;
+  try { p = JSON.parse(raw); } catch(e) { return; }
+
+  // Only fire if this payload targets this node
+  const thisNode = document.location.pathname.split('/').slice(-2,-1)[0]; // e.g. "hc-billing"
+  const nodeId   = thisNode.replace('hc-',''); // e.g. "billing"
+  if (p.targetNodeIds && p.targetNodeIds.length &&
+      !p.targetNodeIds.includes(nodeId) && !p.targetNodeIds.includes(thisNode)) return;
+
+  // Build banner
+  const banner = document.createElement('div');
+  banner.id = 'tsm-anomaly-bridge-banner';
+  banner.style.cssText = `
+    display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px;
+    background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.3);
+    border-radius:6px; padding:16px 20px; margin:12px 16px 0;
+    font-family:var(--mono, monospace); font-size:.72rem;
+  `;
+
+  const findings = Array.isArray(p.findings) ? p.findings.join('<br>') : p.findings || '—';
+  const steps    = Array.isArray(p.steps)    ? p.steps.map((s,i)=>`${i+1}. ${s}`).join('<br>') : '—';
+  const appLabel = p.nodeId ? `HC ${p.nodeId.charAt(0).toUpperCase()+p.nodeId.slice(1)} Node` : 'This Node';
+
+  banner.innerHTML = `
+    <div>
+      <div style="color:var(--red,#ef4444);font-weight:700;margin-bottom:6px">⚠ WHAT'S WRONG</div>
+      <div style="color:var(--text,#e2e8f0);line-height:1.6">${p.narrative || findings}</div>
+      ${p.ref ? `<div style="margin-top:6px;color:var(--muted,#94a3b8)">Ref: ${p.ref} · ${p.client||''}</div>` : ''}
+    </div>
+    <div>
+      <div style="color:var(--amber,#f59e0b);font-weight:700;margin-bottom:6px">🔧 BEST APP TO CURE IT</div>
+      <div style="color:var(--text,#e2e8f0)">${appLabel}</div>
+      <div style="margin-top:4px;color:var(--muted,#94a3b8)">Status: ${p.checkStatus||'FLAGGED'}</div>
+      ${p.financialImpact ? `<div style="margin-top:4px;color:var(--red,#ef4444)">Exposure: $${Number(p.financialImpact).toLocaleString()}</div>` : ''}
+    </div>
+    <div>
+      <div style="color:var(--green,#4ade80);font-weight:700;margin-bottom:6px">📋 GUIDED REMEDIATION</div>
+      <div style="color:var(--text,#e2e8f0);line-height:1.8">${steps}</div>
+    </div>
+  `;
+
+  // Inject after first h1/topbar or at top of main content
+  const anchor = document.querySelector('.main, #main, .content, main, .topbar + *');
+  if (anchor) anchor.insertAdjacentElement('afterbegin', banner);
+  else document.body.insertAdjacentElement('afterbegin', banner);
+})();
+</script>
+  <script src="/js/core/tsm-kernel-upgrade.js"></script>
+</body>
+</html>
+
+
+// ===== TSM_AUTONOMY_STANDARDIZED =====
+window.TSM_AUTONOMY_STANDARDIZED = true;
+</script>
+
+<!-- TSM ENFORCER BOOT -->
+<script src="/html/core/tsm-enforcer.js"></script>
+
+
+// ===== TSM WAR ROOM SCOPED RELAY FIX =====
+window.tsmMission = window.tsmMission || {
+  id: "HEALTHCARE-" + Date.now().toString(36),
+  vertical: "healthcare",
+  
+};
+
+function tsmWriteRelay(payload){
+  TSM_KERNEL.setRelay("healthcare", JSON.stringify(payload));
+}
+</script>
+
+
+<!-- TSM KERNEL ENGINE -->
+<script src="/html/core/tsm-kernel.js"></script>
+

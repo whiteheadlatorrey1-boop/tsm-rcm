@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>TSM ZY Music Suite · Demo Conductor</title>
+<style>
+/* TSM_SCROLL_FIX */
+html, body {
+  height: 100%;
+  overflow-y: auto;
+}
+main {
+  padding-bottom: 80px !important;
+  min-height: calc(100vh - 60px);
+}
+.footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 32px;
+  z-index: 10;
+}
+.ask-bar {
+  position: fixed;
+  bottom: 40px;
+  right: 12px;
+  z-index: 20;
+}
+.panel {
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+:root{
+  --bg:#07080d;--panel:#0d1018;--panel2:#111827;--text:#f8fafc;--muted:#9ca3af;
+  --gold:#ffd230;--green:#39d98a;--purple:#a855f7;--line:rgba(255,255,255,.1);
+  --mono:"Courier New",monospace;--head:Arial Black,Impact,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,Arial,sans-serif;overflow:hidden}
+.shell{height:100vh;display:grid;grid-template-columns:360px 1fr}
+.side{background:#090d16;border-right:1px solid var(--line);padding:20px;overflow:auto}
+.stage{position:relative;background:#05070c}
+iframe{width:100%;height:100%;border:0;background:white}
+.logo{width:42px;height:42px;border-radius:10px;background:var(--gold);color:#050505;display:grid;place-items:center;font-family:var(--head);font-size:20px;margin-bottom:14px}
+h1{font-family:var(--head);font-size:28px;line-height:1;margin:0 0 8px}
+.sub{color:var(--muted);font-size:13px;line-height:1.5;margin-bottom:18px}
+.step{border:1px solid var(--line);background:rgba(255,255,255,.035);border-radius:14px;padding:14px;margin-bottom:12px;cursor:pointer}
+.step.active{border-color:rgba(57,217,138,.65);box-shadow:0 0 24px rgba(57,217,138,.12)}
+.kicker{font-family:var(--mono);font-size:10px;color:var(--green);letter-spacing:.14em;text-transform:uppercase}
+.step h3{margin:6px 0;font-size:16px}
+.step p{margin:0;color:var(--muted);font-size:12px;line-height:1.45}
+.controls{position:fixed;right:18px;bottom:18px;display:flex;gap:10px;z-index:10}
+button,.btn{border:1px solid var(--line);background:rgba(255,255,255,.08);color:var(--text);padding:11px 14px;border-radius:999px;font-weight:900;cursor:pointer;text-decoration:none}
+button.primary,.btn.primary{background:var(--gold);color:#050505;border-color:var(--gold)}
+.scriptBox{margin-top:18px;border:1px solid rgba(168,85,247,.3);background:rgba(168,85,247,.08);border-radius:14px;padding:14px}
+.scriptBox h2{font-size:15px;margin:0 0 8px;color:#d8b4fe}
+.scriptBox pre{white-space:pre-wrap;color:#e5e7eb;font-size:12px;line-height:1.55;font-family:var(--mono);margin:0}
+.actionBox{margin-top:12px;border:1px solid rgba(255,210,48,.3);background:rgba(255,210,48,.08);border-radius:14px;padding:14px}
+.actionBox b{color:var(--gold)}
+.url{font-size:10px;color:var(--muted);word-break:break-all;font-family:var(--mono);margin-top:8px}
+.topHint{position:absolute;left:18px;top:18px;z-index:4;background:rgba(0,0,0,.72);border:1px solid var(--line);border-radius:999px;padding:9px 13px;font-family:var(--mono);font-size:11px;color:var(--green)}
+@media(max-width:900px){.shell{grid-template-columns:1fr}.side{height:48vh}.stage{height:52vh}.controls{position:fixed}}
+</style>
+
+<style id="objection-css">
+.objectionBox{
+  margin-top:14px;
+  border:1px solid rgba(251,113,133,.28);
+  background:rgba(127,29,29,.12);
+  border-radius:14px;
+  padding:14px;
+}
+.objectionBox h2{
+  font-size:15px;
+  margin:0 0 8px;
+  color:#fecdd3;
+}
+.objBtn{
+  width:100%;
+  margin:6px 0;
+  text-align:left;
+  border:1px solid rgba(255,255,255,.12);
+  background:rgba(255,255,255,.055);
+  color:#fff;
+  padding:10px 12px;
+  border-radius:10px;
+  cursor:pointer;
+  font-weight:800;
+}
+.objBtn:hover{border-color:rgba(251,113,133,.6)}
+.objAnswer{
+  margin-top:10px;
+  white-space:pre-wrap;
+  font-family:var(--mono);
+  font-size:12px;
+  line-height:1.55;
+  color:#e5e7eb;
+}
+</style>
+
+
+<style id="instant-unlock-css">
+.unlockBox{
+  margin-top:16px;
+  border:1px solid rgba(57,217,138,.45);
+  background:rgba(57,217,138,.08);
+  border-radius:14px;
+  padding:14px;
+}
+.unlockBox h2{
+  color:#86efac;
+  font-size:15px;
+  margin:0 0 8px;
+}
+.unlockInput{
+  width:100%;
+  background:#07080d;
+  border:1px solid rgba(255,255,255,.16);
+  color:#fff;
+  padding:10px 12px;
+  border-radius:10px;
+  margin:6px 0;
+}
+.unlockBtn{
+  width:100%;
+  background:#39d98a;
+  color:#020617;
+  border:none;
+  border-radius:999px;
+  padding:11px 14px;
+  font-weight:900;
+  cursor:pointer;
+  margin-top:8px;
+}
+.unlockResult{
+  margin-top:10px;
+  white-space:pre-wrap;
+  font-family:var(--mono);
+  font-size:11px;
+  line-height:1.5;
+  color:#d1fae5;
+}
+</style>
+
+
+<script id="tsm-conductor-runtime-guard">
+(function(){
+  if(window.__TSM_CONDUCTOR_RUNTIME_GUARD__) return;
+  window.__TSM_CONDUCTOR_RUNTIME_GUARD__ = true;
+
+  window.safeSetText = function(id, value){
+    const el = document.getElementById(id);
+    if(el) el.textContent = value;
+  };
+
+  window.safeSetHTML = function(id, value){
+    const el = document.getElementById(id);
+    if(el) el.innerHTML = value;
+  };
+
+  window.__TSM_LOCKED__ = false;
+
+  const oldError = window.onerror;
+  window.onerror = function(msg, src, line, col, err){
+    if(String(msg || '').includes('Cannot set properties of null')){
+      console.warn('Suppressed null DOM write:', msg);
+      return true;
+    }
+    if(oldError) return oldError(msg, src, line, col, err);
+    return false;
+  };
+
+  window.addEventListener('unhandledrejection', function(e){
+    const msg = String(e.reason && (e.reason.message || e.reason) || '');
+    if(msg.includes('Cannot set properties of null')){
+      console.warn('Suppressed null DOM promise error:', msg);
+      e.preventDefault();
+    }
+  });
+
+  // Soften destructive devtools/reset behavior if any older script is present.
+  window.__SOVEREIGN_NO_RESET_ON_DEVTOOLS__ = true;
+})();
+</script>
+
+
+<script id="tsm-runtime-null-guard">
+(function(){
+  if(window.__TSM_RUNTIME_NULL_GUARD__) return;
+  window.__TSM_RUNTIME_NULL_GUARD__ = true;
+
+  window.safeSetText = function(id, value){
+    const el = document.getElementById(id);
+    if(el) el.textContent = value;
+  };
+
+  window.addEventListener('error', function(e){
+    if(String(e.message || '').includes('Cannot set properties of null')){
+      console.warn('Suppressed null DOM write:', e.message);
+      e.preventDefault();
+      return true;
+    }
+  }, true);
+
+  window.addEventListener('unhandledrejection', function(e){
+    const msg = String(e.reason && (e.reason.message || e.reason) || '');
+    if(msg.includes('Cannot set properties of null')){
+      console.warn('Suppressed null promise:', msg);
+      e.preventDefault();
+    }
+  });
+
+  window.__SOVEREIGN_NO_RESET_ON_DEVTOOLS__ = true;
+})();
+</script>
+
+<script>
+window.TSM_UI = {
+    runAudit: async (sector, factor) => {
+        const feed = document.querySelector('.intelligence-feed-output') || document.getElementById('intelligence-feed-output');
+        if (feed) feed.innerHTML = '<span style="color: #00ffff;">[STRATEGIST] Internal Link: Processing...</span>';
+        try {
+            const res = await fetch('/api/audit', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: `auditops "${sector}" --factor "${factor}" --logic strategist` })
+            });
+            const data = await res.json();
+            if (feed) feed.innerText = `[STRATEGIST] ${data.output || "Analysis Complete."}`;
+        } catch (e) {
+            if (feed) feed.innerText = "[STRATEGIST] Local API Bridge Failed.";
+        }
+    }
+};
+// Wire the sector cards to the auto-fill search prompt logic
+document.addEventListener('click', (e) => {
+    const card = e.target.closest('.module-card');
+    if (card) {
+        const sector = card.dataset.sector || "Construction";
+        const factor = card.querySelector('h3')?.innerText || "General Audit";
+        TSM_UI.runAudit(sector, factor);
+    }
+});
+console.log("TSM_UI: Direct Neural Link Established.");
+</script>
+window.TSM_UI = {
+    runAudit: async (sector, factor) => {
+        const feed = document.querySelector('.intelligence-feed-output') || document.getElementById('intelligence-feed-output');
+        if (feed) feed.innerHTML = '<span style="color: #00ffff;">[STRATEGIST] Internal Link: Processing...</span>';
+        try {
+            const res = await fetch('/api/audit', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: `auditops "${sector}" --factor "${factor}" --logic strategist` })
+            });
+            const data = await res.json();
+            if (feed) feed.innerText = `[STRATEGIST] ${data.output || "Analysis Complete."}`;
+        } catch (e) {
+            if (feed) feed.innerText = "[STRATEGIST] Local API Bridge Failed.";
+        }
+    }
+};
+// Wire the sector cards to the auto-fill search prompt logic
+document.addEventListener('click', (e) => {
+    const card = e.target.closest('.module-card');
+    if (card) {
+        const sector = card.dataset.sector || "Construction";
+        const factor = card.querySelector('h3')?.innerText || "General Audit";
+        TSM_UI.runAudit(sector, factor);
+    }
+});
+console.log("TSM_UI: Direct Neural Link Established.");
+</script>
+</head>
+<body>
+
+<div id="dealUrgency" style="
+position:fixed;
+top:0;
+left:0;
+right:0;
+z-index:9999;
+background:linear-gradient(90deg,#111827,#065f46);
+color:#ecfeff;
+padding:8px 14px;
+font-size:12px;
+font-family:var(--mono);
+border-bottom:1px solid rgba(255,255,255,.08);
+">
+  Private demo active · Limited runs remaining · Access expires soon
+</div>
+
+
+<div class="shell">
+  <aside class="side">
+    <div class="logo">ZY</div>
+    <h1>Music Suite Demo Conductor</h1>
+    <div class="sub">Use this page during face-to-face demos. It cycles through the whole suite and gives you exactly what to say and click.</div>
+
+    <div id="steps"></div>
+
+    <div class="scriptBox">
+      <h2>Say This</h2>
+      <pre id="talk"></pre>
+    </div>
+
+    
+<div class="objectionBox">
+  <h2>Live Objection Handler</h2>
+  <button class="objBtn" data-tsm-action="showObj" data-tsm-args="'chatgpt'">“I already use ChatGPT.”</button>
+  <button class="objBtn" data-tsm-action="showObj" data-tsm-args="'need'">“I don’t need this.”</button>
+  <button class="objBtn" data-tsm-action="showObj" data-tsm-args="'price'">“How much is it?”</button>
+  <button class="objBtn" data-tsm-action="showObj" data-tsm-args="'quality'">“Can AI really judge music?”</button>
+  <pre class="objAnswer" id="objAnswer">Click an objection if it comes up during the demo.</pre>
+</div>
+
+
+    <div class="actionBox">
+      <b>Button / Action:</b>
+      <div id="action" style="margin-top:6px;color:#e5e7eb;font-size:13px;line-height:1.45"></div>
+      <div class="url" id="url"></div>
+    </div>
+  </aside>
+
+  <main class="stage">
+    <div class="topHint" id="hint">Step 1 / 6</div>
+    <iframe id="frame" src="/html/music-command/marketing.html?v=conductor"></iframe>
+  </main>
+</div>
+
+<div class="controls">
+  <button data-tsm-action="prev" data-tsm-args="">← Back</button>
+  <button class="primary" data-tsm-action="next" data-tsm-args="">Next →</button>
+  <a class="btn" id="openNew" target="_blank">Open</a>
+</div>
+
+const params = new URLSearchParams(location.search);
+const demoToken = params.get("demo_token") || localStorage.getItem("tsm_music_demo_token") || "";
+
+function withToken(path){
+  if(!demoToken) return path;
+  const sep = path.includes("?") ? "&" : "?";
+  return path + sep + "demo_token=" + encodeURIComponent(demoToken);
+}
+
+const deck = [
+  {
+    title:"Marketing Page",
+    label:"Position the product",
+    url:"/html/music-command/marketing.html?v=conductor",
+    action:"Open with the big idea. Do not demo yet. Make them understand the shift first.",
+    talk:`This is the TSM ZY Music Suite.
+
+The core idea is simple:
+write once, let it evolve.
+
+Most AI tools generate one answer.
+Music does not work like that.
+
+Music is iteration, comparison, taste, and decision-making.
+
+This suite is designed to help artists, producers, and songwriters improve a song until it is actually ready.`
+  },
+  {
+    title:"Protected Live Presentation",
+    label:"Create urgency + trust",
+    url:withToken("/html/music-command/presentation-live.html?v=conductor"),
+    action:"Click Run Cinematic Demo or Run Live Demo. Let the system animate before talking too much.",
+    talk:`This is the controlled demo environment.
+
+Every link can be private, expiring, watermarked, and tracked.
+
+That matters because this is not just a public landing page.
+It is a controlled sales experience.
+
+Now watch the product engine wake up:
+DNA loads, agents activate, and the system runs a live improvement pass.`
+  },
+  {
+    title:"Guided Creation App",
+    label:"Show the real product",
+    url:"/html/music-command/index.html?clear_demo=1&v=conductor",
+    action:"Click Load Sample & Run. Then point to Hit Score, Pick This, and Improve Picked Version.",
+    talk:`Now we are inside the actual app.
+
+This is where the creator works.
+
+They paste a lyric, run the full chain, and the system gives them scored options.
+
+The key is not that it writes lyrics.
+The key is that it removes decision friction.
+
+It tells the user:
+which version is stronger,
+why it is stronger,
+and what to do next.`
+  },
+  {
+    title:"Auto-Evolution Loop",
+    label:"Make the aha moment clear",
+    url:"/html/music-command/index.html?clear_demo=1&v=loopfix",
+    action:"Use the recommended card. Click Improve Picked Version. Show score / trajectory moving.",
+    talk:`This is the moment that makes the app feel different.
+
+Instead of restarting from scratch,
+the recommended version becomes the next draft.
+
+Then the system improves it again.
+
+Generate.
+Improve.
+Score.
+Repeat.
+Stop when it is ready.
+
+That is why this feels like a producer sitting next to you.`
+  },
+  {
+    title:"How-To Guide",
+    label:"Show users can learn fast",
+    url:"/html/music-command/how-to-guide.html?v=conductor",
+    action:"Point to workflow sections. Explain that users do not need to understand AI to use it.",
+    talk:`The How-To Guide turns this into a repeatable workflow.
+
+The user does not need to understand AI.
+They only need to understand the process:
+
+paste a draft,
+run the chain,
+pick the strongest version,
+improve it,
+and track whether the song is getting closer to release-ready.`
+  },
+  {
+    title:"Outreach + Deal Room",
+    label:"Close the business case",
+    url:"/html/music-command/marketing.html?v=close",
+    action:"Explain private links, tracking, urgency, and follow-up. Then ask the qualifier.",
+    talk:`The business side is built into the system.
+
+We can create private demo links,
+limit views,
+watermark each prospect,
+track usage,
+and follow up based on real activity.
+
+That means we are not just sending a link.
+We are creating a controlled sales environment.
+
+The close is simple:
+If this helped you finish stronger songs faster,
+would it help more with speed, quality, or both?`
+  }
+];
+
+let i = 0;
+
+function render(){
+  document.getElementById("steps").innerHTML = deck.map((s,idx)=>`
+    <div class="step ${idx===i?'active':''}" data-tsm-action="go" data-tsm-args="${idx}">
+      <div class="kicker">Step ${idx+1}</div>
+      <h3>${s.title}</h3>
+      <p>${s.label}</p>
+    </div>
+  `).join("");
+
+  const s = deck[i];
+  document.getElementById("frame").src = s.url;
+  document.getElementById("talk").textContent = s.talk;
+  document.getElementById("action").textContent = s.action;
+  document.getElementById("url").textContent = s.url;
+  document.getElementById("hint").textContent = `Step ${i+1} / ${deck.length}`;
+  document.getElementById("openNew").href = s.url;
+}
+
+function go(n){i=n;render()}
+function next(){i=(i+1)%deck.length;render()}
+function prev(){i=(i-1+deck.length)%deck.length;render()}
+
+document.addEventListener("keydown", e=>{
+  if(e.key==="ArrowRight" || e.key==="ArrowDown") next();
+  if(e.key==="ArrowLeft" || e.key==="ArrowUp") prev();
+});
+
+render();
+</script>
+
+<script id="objection-js">
+const objectionAnswers = {
+  chatgpt: `Totally — ChatGPT is great for generating ideas.
+
+The difference is this is not built around one prompt and one answer.
+
+This is built around a music workflow:
+generate options, score directions, pick the strongest version, improve it again, and track whether the song is getting better.
+
+So ChatGPT gives you output.
+This gives you a process.`,
+
+  need: `That makes sense — not every writer needs help starting.
+
+Where this usually helps is after you already have something.
+
+The hard part is:
+which version is stronger,
+what should change next,
+and whether it is ready.
+
+This is less about replacing your creativity and more about removing the second-guessing loop.`,
+
+  price: `It depends on how often you are writing.
+
+The simple way to think about it is:
+Free shows how the system thinks.
+Creator Mode is for regular writing.
+Studio Mode is for serious release work.
+Label Mode is for catalog-building and teams.
+
+If it helps finish even one stronger release faster, it usually pays for itself.`,
+
+  quality: `It is not pretending to be the final judge of taste.
+
+It gives directional signals:
+cadence, emotion, structure, imagery, and hook strength.
+
+You still make the creative decision.
+The system just gives you better options and a clearer next move.`
+};
+
+function showObj(key){
+  const el = document.getElementById('objAnswer');
+  if(el) el.textContent = objectionAnswers[key] || '';
+}
+</script>
+
+
+<div class="objectionBox" id="closeBox" style="border-color:rgba(34,197,94,.4);background:rgba(16,185,129,.08)">
+  <h2 style="color:#86efac;">Final Close Script</h2>
+
+  <div style="font-size:13px;line-height:1.6;margin-bottom:10px;">
+    <b>Step 1 — Frame the outcome:</b><br/>
+    “So what you just saw isn’t about generating lyrics.<br/>
+    It’s about knowing which version is actually worth finishing.”
+  </div>
+
+  <div style="font-size:13px;line-height:1.6;margin-bottom:10px;">
+    <b>Step 2 — Anchor value:</b><br/>
+    “Most artists don’t get stuck starting…<br/>
+    they get stuck deciding and finishing.<br/>
+    This removes that loop.”
+  </div>
+
+  <div style="font-size:13px;line-height:1.6;margin-bottom:10px;">
+    <b>Step 3 — Transition to offer:</b><br/>
+    “There are a few ways to use this depending on how often you’re creating.”
+  </div>
+
+  <div style="font-size:13px;line-height:1.6;margin-bottom:10px;">
+    <b>Step 4 — Direct ask:</b><br/>
+    “Do you want access to this for your own songs?”
+  </div>
+
+  <div style="font-size:13px;line-height:1.6;margin-bottom:10px;">
+    <b>If they hesitate:</b><br/>
+    “No pressure — easiest way is just try it on one real track.<br/>
+    If it helps, keep it. If not, you’ll know quickly.”
+  </div>
+
+  <div style="font-size:13px;line-height:1.6;">
+    <b>If they say yes:</b><br/>
+    “Perfect — I’ll unlock your access and show you how to use it on your own material.”
+  </div>
+</div>
+
+
+<div class="objectionBox" style="
+border-color:rgba(251,191,36,.5);
+background:rgba(251,191,36,.08);
+margin-top:16px;
+">
+  <h2 style="color:#fde68a;">Access Options (Positioning)</h2>
+
+  <div style="font-size:13px;line-height:1.6;margin-bottom:10px;">
+    “This isn’t priced like a writing tool.<br/>
+    It’s closer to a decision engine for your music.”
+  </div>
+
+  <div style="font-size:13px;line-height:1.6;margin-bottom:10px;">
+    “There are 3 ways people use this:”<br/><br/>
+
+    • <b>Creator Mode</b> → consistent writing + iteration<br/>
+    • <b>Studio Mode</b> → serious track development<br/>
+    • <b>Catalog Mode</b> → building multiple release-ready songs
+  </div>
+
+  <div style="font-size:13px;line-height:1.6;margin-bottom:10px;">
+    “It usually pays for itself in one stronger release or saved session.”
+  </div>
+
+  <div style="font-size:13px;line-height:1.6;margin-bottom:10px;">
+    <b>Close:</b><br/>
+    “Based on what you saw… do you want access to use this on your own tracks?”
+  </div>
+
+  <div style="font-size:13px;line-height:1.6;">
+    <b>Decision Paths:</b><br/>
+    • “Try it on one real song” → low friction<br/>
+    • “Use it consistently” → creator tier<br/>
+    • “Build release-ready tracks” → studio tier
+  </div>
+</div>
+
+
+<script id="urgency-js">
+(function(){
+  const el = document.getElementById('dealUrgency');
+  if(!el) return;
+
+  let runs = 5 + Math.floor(Math.random()*5);
+  setInterval(()=>{
+    runs--;
+    if(runs > 0){
+      el.textContent = "Private demo active · " + runs + " guided runs remaining · Access expires soon";
+    } else {
+      el.textContent = "Demo limit reached · Unlock required to continue";
+      el.style.background = "linear-gradient(90deg,#7f1d1d,#450a0a)";
+    }
+  }, 9000);
+})();
+</script>
+
+
+<div class="unlockBox">
+  <h2>Instant Unlock Flow</h2>
+  <div style="font-size:13px;line-height:1.5;color:#d1d5db;margin-bottom:8px;">
+    Use this when they say: <b>“Yes, I want access.”</b>
+  </div>
+
+  <input class="unlockInput" id="unlockName" placeholder="Artist / Producer Name"/>
+  <input class="unlockInput" id="unlockEmail" placeholder="Email or LinkedIn handle"/>
+  <select class="unlockInput" id="unlockTier">
+    <option value="creator">Creator Mode · $99/mo</option>
+    <option value="studio">Studio Mode · $249/mo</option>
+    <option value="label">Catalog / Label Mode · $499/mo</option>
+  </select>
+
+  <button class="unlockBtn" data-tsm-action="instantUnlock" data-tsm-args="">Unlock Access Now</button>
+
+  <pre class="unlockResult" id="unlockResult">Lead capture + private link will appear here.</pre>
+</div>
+
+
+<script id="instant-unlock-js">
+async function instantUnlock(){
+  const name = document.getElementById('unlockName')?.value || 'Music Prospect';
+  const contact = document.getElementById('unlockEmail')?.value || 'No contact entered';
+  const tier = document.getElementById('unlockTier')?.value || 'creator';
+  const out = document.getElementById('unlockResult');
+
+  if(out) out.textContent = 'Creating private access link...';
+
+  try{
+    const res = await fetch('https://tsm-consultz.fly.dev/api/music/demo/create',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        client:name + ' · ' + tier,
+        hours:72
+      })
+    });
+
+    const data = await res.json();
+
+    if(!data.ok){
+      if(out) out.textContent = 'Unlock failed: ' + (data.error || 'unknown error');
+      return;
+    }
+
+    const fullLink = location.origin + data.links.presentation;
+
+    const record = {
+      name,
+      contact,
+      tier,
+      link:fullLink,
+      createdAt:new Date().toISOString()
+    };
+
+    const saved = JSON.parse(localStorage.getItem('zy_unlock_leads') || '[]');
+    saved.unshift(record);
+    localStorage.setItem('zy_unlock_leads', JSON.stringify(saved));
+
+    if(out){
+      out.textContent =
+`ACCESS UNLOCKED
+
+Name: ${name}
+Contact: ${contact}
+Tier: ${tier}
+
+Private 72-hour link:
+${fullLink}
+
+Say this:
+“Perfect — I unlocked your access. Start with one real song, run the full chain, then use Improve Picked Version until the score moves up.”`;
+    }
+  }catch(e){
+    if(out) out.textContent = 'Unlock failed: ' + e.message;
+  }
+}
+</script>
+
+
+<script id="tsm-conductor-clear-stale-demo-lock">
+(function(){
+  try{
+    const params = new URLSearchParams(location.search);
+    if(params.get("clear_demo") === "1" || !params.get("demo_token")){
+      localStorage.removeItem("tsm_music_demo_token");
+      sessionStorage.removeItem("tsm_demo_ran");
+      sessionStorage.removeItem("tsm_cinematic_demo_ran");
+    }
+
+    window.addEventListener("load", function(){
+      const banners = Array.from(document.querySelectorAll("div"));
+      banners.forEach(el=>{
+        const txt = (el.textContent || "").trim();
+        if(txt.includes("Demo limit reached") || txt.includes("Unlock required")){
+          el.style.display = "none";
+        }
+      });
+    });
+  }catch(e){}
+})();
+</script>
+
+<script src="/shared/tsm-operational-mesh.js?v=mesh1"></script>
+<script src="/shared/tsm-relay-bus.js?v=relay2"></script>
+<script src="/shared/tsm-sector-intelligence.js?v=phase5si"></script>
+<script src="/shared/tsm-shared.js"></script>
+
+<script>(function(){
+document.addEventListener('click', function(e){
+
+  const el = e.target.closest('[data-tsm-action]');
+  if(!el) return;
+
+  const action = el.getAttribute('data-tsm-action');
+  const args = el.getAttribute('data-tsm-args');
+
+  if(window.TSM && TSM.launcher && TSM.launcher.run){
+    TSM.launcher.run(action, args);
+  } else {
+    console.warn('[TSM] launcher missing:', action, args);
+  }
+
+});
+})();</script>
+<script src="js/sweet-music-engine.js"></script>
+<script src="js/producer-ai-widget.js"></script>
+</body>
+</html>

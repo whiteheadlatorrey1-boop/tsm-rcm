@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TSM Order-to-Cash War Room</title>
+<style>
+:root {
+  --bg:#0a0f0a;--bg2:#0d130d;--bg3:#111811;
+  --border:rgba(0,255,80,.12);
+  --green:#00ff50;--green-dim:rgba(0,255,80,.6);
+  --gold:#ffd700;--red:#ff3b3b;--amber:#ff9500;--cyan:#00e5ff;--purple:#c084fc;
+  --text:#c8d8c8;--text-dim:#5a7a5a;--card:#0d160d;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;font-size:12px;min-height:100vh}
+
+/* NAV */
+.nav{display:flex;align-items:center;gap:0;background:#080d08;border-bottom:1px solid var(--border);height:38px;padding:0 16px}
+.nav-brand{color:var(--green);font-weight:700;font-size:11px;letter-spacing:2px;margin-right:24px}
+.nav-right{margin-left:auto;display:flex;align-items:center;gap:16px;color:var(--text-dim);font-size:10px}
+.nav-clock{color:var(--green-dim)}
+
+/* ALERT BAR */
+.alert-bar{background:rgba(255,149,0,.06);border-bottom:1px solid rgba(255,149,0,.2);padding:6px 20px;display:flex;align-items:center;gap:8px;font-size:10px;letter-spacing:1.5px;color:var(--amber)}
+.alert-dot{width:6px;height:6px;border-radius:50%;background:var(--amber);box-shadow:0 0 6px var(--amber);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* LAYOUT */
+.layout{display:grid;grid-template-columns:290px 1fr;height:calc(100vh - 70px)}
+
+/* SIDEBAR */
+.sidebar{background:var(--bg2);border-right:1px solid var(--border);overflow-y:auto;display:flex;flex-direction:column}
+.sb-section{padding:14px 16px;border-bottom:1px solid var(--border)}
+.sb-label{font-size:9px;letter-spacing:2px;color:var(--text-dim);margin-bottom:8px}
+
+.btn{border:1px solid;font-family:inherit;font-size:9px;letter-spacing:1.5px;cursor:pointer;padding:7px 12px;transition:all .2s}
+.btn-green{background:var(--green);border-color:var(--green);color:#000;font-weight:700}
+.btn-green:hover{background:#00cc40}
+.btn-outline{background:transparent;border-color:var(--green);color:var(--green)}
+.btn-outline:hover{background:rgba(0,255,80,.08)}
+.btn-ghost{background:transparent;border-color:var(--border);color:var(--text-dim)}
+.btn-ghost:hover{border-color:var(--text-dim);color:var(--text)}
+.btn-gold{background:var(--gold);border-color:var(--gold);color:#000;font-weight:700}
+.btn-gold:hover{background:#e6c200}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn-row{display:flex;gap:6px;flex-wrap:wrap}
+.btn-full{width:100%}
+
+.paste-area{width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:inherit;font-size:10px;padding:8px;resize:vertical;min-height:90px;outline:none}
+.paste-area:focus{border-color:var(--green)}
+
+.stage-list{display:flex;flex-direction:column;gap:3px}
+.stage-item{display:flex;align-items:center;gap:8px;padding:5px 8px;background:var(--bg3);border:1px solid var(--border);font-size:9px}
+.stage-num{color:var(--text-dim);width:14px}
+.stage-name{flex:1;color:var(--text)}
+.stage-count{color:var(--green);font-weight:700}
+
+.snap-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.snap-item{background:var(--bg3);border:1px solid var(--border);padding:6px 8px}
+.snap-label{font-size:8px;color:var(--text-dim);letter-spacing:1px;margin-bottom:3px}
+.snap-val{font-size:13px;color:var(--green);font-weight:700}
+.snap-val.warn{color:var(--amber)}
+.snap-val.bad{color:var(--red)}
+
+/* MAIN */
+.main{overflow-y:auto;background:var(--bg);padding:18px 22px}
+.main-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.main-title{font-size:13px;letter-spacing:1px;color:var(--text)}
+.main-title b{color:var(--green)}
+.main-sub{color:var(--text-dim);font-size:10px;margin-top:2px}
+
+/* KPI CARDS */
+.kpi-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:20px}
+.kpi-card{background:var(--card);border:1px solid var(--border);padding:12px 10px}
+.kpi-label{font-size:8px;letter-spacing:1px;color:var(--text-dim);margin-bottom:6px;text-transform:uppercase}
+.kpi-value{font-size:18px;font-weight:700;color:var(--green)}
+.kpi-value.warn{color:var(--amber)}
+.kpi-value.bad{color:var(--red)}
+
+/* STAGE TRACKER */
+.section{background:var(--card);border:1px solid var(--border);margin-bottom:18px}
+.section-head{padding:10px 14px;border-bottom:1px solid var(--border);font-size:10px;letter-spacing:1.5px;color:var(--text-dim);display:flex;justify-content:space-between;align-items:center}
+.section-body{padding:14px}
+
+.tracker{display:flex;gap:4px;overflow-x:auto;padding-bottom:6px}
+.tracker-stage{flex:1;min-width:84px;background:var(--bg3);border:1px solid var(--border);padding:8px 6px;text-align:center;position:relative}
+.tracker-stage.hot{border-color:var(--red);background:rgba(255,59,59,.08)}
+.tracker-stage .ts-label{font-size:8px;color:var(--text-dim);letter-spacing:.5px;margin-bottom:4px;min-height:22px}
+.tracker-stage .ts-count{font-size:15px;font-weight:700;color:var(--green)}
+.tracker-stage.hot .ts-count{color:var(--red)}
+.tracker-stage .ts-value{font-size:8px;color:var(--text-dim);margin-top:2px}
+
+/* TABLE */
+table{width:100%;border-collapse:collapse;font-size:10px}
+th{text-align:left;color:var(--text-dim);font-size:8px;letter-spacing:1px;padding:6px 8px;border-bottom:1px solid var(--border)}
+td{padding:7px 8px;border-bottom:1px solid var(--border);color:var(--text)}
+tr:hover td{background:rgba(0,255,80,.03)}
+.tag{display:inline-block;font-size:8px;letter-spacing:1px;padding:2px 6px;border:1px solid}
+.tag-high{color:var(--red);border-color:var(--red)}
+.tag-medium{color:var(--amber);border-color:var(--amber)}
+.empty-state{color:var(--text-dim);font-size:10px;padding:20px;text-align:center}
+
+/* AI PANEL */
+.ai-output{background:var(--bg3);border:1px solid var(--border);padding:12px;font-size:10px;line-height:1.6;color:var(--text);white-space:pre-wrap;min-height:60px}
+.ai-output.loading{color:var(--text-dim)}
+.ai-output .err{color:var(--red)}
+</style>
+
+</head>
+<body>
+
+<div class="nav">
+  <div class="nav-brand">TSM SHELL // O2C</div>
+  <div class="nav-right">
+    <span id="navStatus">ENGINE: IDLE</span>
+    <span class="nav-clock" id="navClock">--:--:--</span>
+  </div>
+</div>
+
+<div class="alert-bar" id="alertBar" style="display:none">
+  <span class="alert-dot"></span>
+  <span id="alertText">SLA breaches detected in active order pipeline.</span>
+</div>
+
+<div class="layout">
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div class="sb-section">
+      <div class="sb-label">ORDER DATA INTAKE</div>
+      <textarea class="paste-area" id="orderPaste" placeholder="Paste order JSON, or leave blank and load samples..."></textarea>
+      <div class="btn-row" style="margin-top:8px">
+        <button class="btn btn-outline" id="btnLoadPaste">LOAD PASTED</button>
+        <button class="btn btn-ghost" id="btnLoadSample">LOAD SAMPLES</button>
+      </div>
+    </div>
+
+    <div class="sb-section" id="liveDataSection"></div>
+
+    <div class="sb-section">
+      <div class="sb-label">PIPELINE STAGES</div>
+      <div class="stage-list" id="stageList"></div>
+    </div>
+
+    <div class="sb-section">
+      <div class="sb-label">SNAPSHOT</div>
+      <div class="snap-grid" id="snapGrid"></div>
+    </div>
+
+    <div class="sb-section" style="margin-top:auto">
+      <div class="btn-row">
+        <button class="btn btn-green btn-full" id="btnRunAnalysis">RUN AI ANALYSIS</button>
+      </div>
+      <div class="btn-row" style="margin-top:6px">
+        <button class="btn btn-gold btn-full" id="btnRelay">RELAY TO STRATEGIST →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main">
+    <div class="main-header">
+      <div>
+        <div class="main-title">ORDER-TO-CASH <b>WAR ROOM</b></div>
+        <div class="main-sub">Customer inquiry through cash application — full O2C lifecycle, live.</div>
+      </div>
+    </div>
+
+    <div class="kpi-grid" id="kpiGrid"></div>
+
+    <div class="section">
+      <div class="section-head"><span>PIPELINE BOTTLENECK HEATMAP</span><span id="trackerMeta"></span></div>
+      <div class="section-body">
+        <div class="tracker" id="tracker"></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><span>SLA BREACHES</span><span id="breachMeta"></span></div>
+      <div class="section-body" id="breachBody">
+        <div class="empty-state">No orders loaded yet.</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><span>AI RISK ANALYSIS</span></div>
+      <div class="section-body">
+        <div class="ai-output" id="aiOutput">Run analysis to get AI-generated root-cause and recommended actions for current bottlenecks.</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script src="/runtime/kernel/canonical-core.js"></script>
+
+<!-- TSM CONTROL PLANE -- correct load order -->
+<script src="/js/core/tsm-event-bus.js"></script>
+<script src="/js/core/tsm-state.js"></script>
+<script src="/js/core/tsm-mission-engine.js"></script>
+<script src="/js/core/tsm-auto-pipeline.js"></script>
+
+<!-- TSM CROSS-WAR-ROOM FOUNDATION MODULES -->
+<script src="/js/foundation/tsm-kpi-cards.js"></script>
+<script src="/js/foundation/tsm-decision-engine.js"></script>
+<script src="/js/foundation/tsm-workflow-engine.js"></script>
+<script src="/js/foundation/tsm-analytics-hub.js"></script>
+<script src="/js/foundation/tsm-collaboration.js"></script>
+<script src="/js/foundation/tsm-enterprise-search.js"></script>
+<script src="/js/foundation/tsm-governance.js"></script>
+<script src="/js/foundation/tsm-integration-layer.js"></script>
+
+<script src="/war-rooms/shared/tsm-live-data.js"></script>
+<script src="/war-rooms/o2c/services/o2c-engine.js"></script>
+<script>
+// Inline fallback copy of o2c-model.json. Used only if the live fetch below
+// fails (e.g. standalone preview, no static server). Keep in sync with
+// war-rooms/o2c/data/o2c-model.json -- that file remains the source of truth
+// once this is deployed and served statically.
+const O2C_MODEL_FALLBACK = {
+  "version": "v1",
+  "vertical": "o2c",
+  "stages": [
+    { "id": "inquiry",    "label": "Customer Inquiry",       "order": 1,  "sla_hours": 4   },
+    { "id": "qualify",    "label": "Opportunity Qualify",    "order": 2,  "sla_hours": 24  },
+    { "id": "quote",      "label": "Quote Generation",       "order": 3,  "sla_hours": 24  },
+    { "id": "discount",   "label": "Discount Approval",      "order": 4,  "sla_hours": 12  },
+    { "id": "order",      "label": "Sales Order Creation",   "order": 5,  "sla_hours": 2   },
+    { "id": "credit",     "label": "Credit Check",           "order": 6,  "sla_hours": 4   },
+    { "id": "atp",        "label": "Inventory ATP",          "order": 7,  "sla_hours": 1   },
+    { "id": "allocation", "label": "Warehouse Allocation",   "order": 8,  "sla_hours": 4   },
+    { "id": "shipping",   "label": "Shipping Scheduler",     "order": 9,  "sla_hours": 24  },
+    { "id": "delivery",   "label": "Delivery Tracking",      "order": 10, "sla_hours": 72  },
+    { "id": "invoice",    "label": "Invoice Generation",     "order": 11, "sla_hours": 2   },
+    { "id": "ar",         "label": "Accounts Receivable",    "order": 12, "sla_hours": 720 },
+    { "id": "reconcile",  "label": "Payment Reconciliation", "order": 13, "sla_hours": 24  }
+  ],
+  "kpis": [
+    { "id": "cycle_time",       "label": "Avg Order-to-Cash Cycle", "unit": "days"  },
+    { "id": "order_value",      "label": "Open Order Value",        "unit": "usd"   },
+    { "id": "bottleneck_count", "label": "Stages Over SLA",         "unit": "count" },
+    { "id": "credit_holds",     "label": "Orders On Credit Hold",   "unit": "count" },
+    { "id": "dso",              "label": "Days Sales Outstanding",  "unit": "days"  },
+    { "id": "fill_rate",        "label": "Order Fill Rate",         "unit": "pct"   }
+  ],
+  "risk_signals": ["credit_hold_aging", "atp_shortfall", "shipping_delay", "invoice_dispute", "payment_overdue", "discount_outlier"],
+  "sample_orders": [
+    { "order_id": "SO-10042", "customer": "Meridian Industrial Supply", "stage": "credit",   "value": 184500, "currency": "USD", "entered_stage_at_hours_ago": 9,   "notes": "Credit check pending — customer near existing credit limit." },
+    { "order_id": "SO-10043", "customer": "Northbay Mechanical",        "stage": "shipping",  "value": 62300,  "currency": "USD", "entered_stage_at_hours_ago": 31,  "notes": "Carrier capacity constraint flagged at regional hub." },
+    { "order_id": "SO-10044", "customer": "Apex Fabrication Group",     "stage": "ar",         "value": 97800,  "currency": "USD", "entered_stage_at_hours_ago": 612, "notes": "Invoice 41 days past due, no response to two reminders." }
+  ]
+};
+</script>
+<script>
+(function () {
+  let MODEL = null;
+  let engine = null;
+
+  function setClock() {
+    const el = document.getElementById('navClock');
+    if (el) el.textContent = new Date().toLocaleTimeString();
+  }
+  setInterval(setClock, 1000); setClock();
+
+  async function loadModel() {
+    try {
+      const res = await fetch('/war-rooms/o2c/data/o2c-model.json');
+      if (!res.ok) throw new Error('not found');
+      MODEL = await res.json();
+    } catch (e) {
+      // Expected when there's no static file server (e.g. standalone preview).
+      // Falls back to the inline copy -- full functionality either way.
+      MODEL = O2C_MODEL_FALLBACK;
+    }
+
+    let liveInfo = { source: 'sample', record_count: 0 };
+    if (window.TSMLiveData) {
+      liveInfo = await window.TSMLiveData.hydrateModel('o2c', MODEL, 'sample_orders');
+    }
+    updateSampleButtonLabel(liveInfo);
+
+    engine = new TSMO2CEngine(MODEL);
+    renderStageList();
+
+    if (window.TSMLiveData) {
+      window.TSMLiveData.mountWidget(document.getElementById('liveDataSection'), {
+        domain: 'o2c',
+        label: 'LIVE DATA (ORDERS)',
+        onChange: async () => { await loadModel(); renderAll(); }
+      });
+    }
+  }
+
+  function updateSampleButtonLabel(liveInfo) {
+    const btn = document.getElementById('btnLoadSample');
+    if (!btn) return;
+    btn.textContent = liveInfo && liveInfo.source === 'live'
+      ? 'LOAD LIVE ORDERS'
+      : 'LOAD SAMPLES';
+  }
+
+  function renderStageList() {
+    const list = document.getElementById('stageList');
+    list.innerHTML = '';
+    (MODEL.stages || []).forEach(s => {
+      const row = document.createElement('div');
+      row.className = 'stage-item';
+      row.innerHTML = `<span class="stage-num">${s.order}</span><span class="stage-name">${s.label}</span><span class="stage-count" id="sc-${s.id}">0</span>`;
+      list.appendChild(row);
+    });
+  }
+
+  function renderAll() {
+    if (!engine) return;
+    const kpis = engine.computeKpis();
+    const dist = engine.getStageDistribution();
+    const breaches = engine.getSlaBreaches();
+
+    renderKpis(kpis);
+    renderStageCounts(dist);
+    renderTracker(dist);
+    renderBreaches(breaches);
+    renderSnapshot(kpis, breaches);
+    toggleAlert(breaches);
+
+    document.getElementById('navStatus').textContent = `ENGINE: ${engine.orders.length} ORDERS LOADED`;
+  }
+
+  function renderKpis(kpis) {
+    const defs = MODEL.kpis || [];
+    if (!window.TSMKpiCards) {
+      // Foundation module failed to load -- keep the war room usable.
+      const grid = document.getElementById('kpiGrid');
+      grid.innerHTML = defs.map(d => `<div class="kpi-card"><div class="kpi-label">${d.label}</div><div class="kpi-value">${kpis[d.id]}</div></div>`).join('');
+      return;
+    }
+    const cards = defs.map(d => {
+      const val = kpis[d.id];
+      const card = { id: d.id, label: d.label, value: val };
+      if (d.unit === 'usd') { card.kind = 'revenue'; }
+      else if (d.unit === 'pct') { card.kind = 'percent'; if (d.id === 'fill_rate') card.target = 90; }
+      else if (d.unit === 'days') { card.kind = 'custom'; card.format = v => v + 'd'; }
+      else { card.kind = 'risk'; }
+      if (d.id === 'bottleneck_count') { card.kind = 'risk'; card.badAt = 1; }
+      if (d.id === 'credit_holds') { card.kind = 'risk'; card.warnAt = 1; }
+      return card;
+    });
+    TSMKpiCards.render('#kpiGrid', cards);
+  }
+
+  function renderStageCounts(dist) {
+    Object.keys(dist).forEach(id => {
+      const el = document.getElementById('sc-' + id);
+      if (el) el.textContent = dist[id].count;
+    });
+  }
+
+  function renderTracker(dist) {
+    const wrap = document.getElementById('tracker');
+    wrap.innerHTML = '';
+    const breachStages = new Set(engine.getSlaBreaches().map(b => b.stage));
+    (MODEL.stages || []).forEach(s => {
+      const d = dist[s.id] || { count: 0, value: 0 };
+      const isHot = breachStages.has(s.label);
+      const el = document.createElement('div');
+      el.className = 'tracker-stage' + (isHot ? ' hot' : '');
+      el.innerHTML = `
+        <div class="ts-label">${s.label}</div>
+        <div class="ts-count">${d.count}</div>
+        <div class="ts-value">$${Number(d.value || 0).toLocaleString()}</div>`;
+      wrap.appendChild(el);
+    });
+    document.getElementById('trackerMeta').textContent = engine.orders.length + ' open orders';
+  }
+
+  function renderBreaches(breaches) {
+    const body = document.getElementById('breachBody');
+    document.getElementById('breachMeta').textContent = breaches.length + ' over SLA';
+    if (!breaches.length) {
+      body.innerHTML = '<div class="empty-state">No SLA breaches in current pipeline.</div>';
+      return;
+    }
+    let rows = breaches.map(b => `
+      <tr>
+        <td>${b.order_id}</td>
+        <td>${b.customer}</td>
+        <td>${b.stage}</td>
+        <td>$${Number(b.value || 0).toLocaleString()}</td>
+        <td><span class="tag ${b.hours_over > 48 ? 'tag-high' : 'tag-medium'}">+${b.hours_over}H</span></td>
+        <td>${b.notes}</td>
+      </tr>`).join('');
+    body.innerHTML = `<table>
+      <thead><tr><th>ORDER</th><th>CUSTOMER</th><th>STAGE</th><th>VALUE</th><th>OVER SLA</th><th>NOTES</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+  }
+
+  function renderSnapshot(kpis, breaches) {
+    const grid = document.getElementById('snapGrid');
+    grid.innerHTML = `
+      <div class="snap-item"><div class="snap-label">OPEN ORDERS</div><div class="snap-val">${engine.orders.length}</div></div>
+      <div class="snap-item"><div class="snap-label">OVER SLA</div><div class="snap-val ${breaches.length ? 'bad' : ''}">${breaches.length}</div></div>
+      <div class="snap-item"><div class="snap-label">CREDIT HOLDS</div><div class="snap-val ${kpis.credit_holds ? 'warn' : ''}">${kpis.credit_holds}</div></div>
+      <div class="snap-item"><div class="snap-label">DSO</div><div class="snap-val">${kpis.dso}d</div></div>`;
+  }
+
+  function toggleAlert(breaches) {
+    const bar = document.getElementById('alertBar');
+    const text = document.getElementById('alertText');
+    if (breaches.length) {
+      bar.style.display = 'flex';
+      text.textContent = `${breaches.length} order(s) over SLA — worst case ${breaches[0].order_id} at +${breaches[0].hours_over}h in ${breaches[0].stage}.`;
+    } else {
+      bar.style.display = 'none';
+    }
+  }
+
+  async function runAnalysis() {
+    const out = document.getElementById('aiOutput');
+    out.className = 'ai-output loading';
+    out.textContent = 'Running AI analysis on current pipeline...';
+    document.getElementById('navStatus').textContent = 'ENGINE: ANALYZING';
+    try {
+      const data = await engine.runAnalysis();
+      out.className = 'ai-output';
+      out.textContent = (data && data.answer) || 'No analysis returned.';
+    } catch (e) {
+      out.className = 'ai-output';
+      out.innerHTML = `<span class="err">Analysis failed: ${e.message}. Confirm /api/o2c/query is wired server-side.</span>`;
+    } finally {
+      document.getElementById('navStatus').textContent = `ENGINE: ${engine.orders.length} ORDERS LOADED`;
+    }
+  }
+
+  function relayToStrategist() {
+    const aiText = document.getElementById('aiOutput').textContent;
+    const payload = engine.buildRelayPayload(aiText);
+    try {
+      TSM.relay.write("O2C", payload);
+    } catch (e) { console.warn('Relay storage failed', e); }
+
+    if (window.TSMEventBus && window.TSMEventBus.emit) {
+      window.TSMEventBus.emit('WAR_ROOM_READY', { vertical: 'o2c', payload, ts: Date.now() });
+    }
+    document.getElementById('navStatus').textContent = 'ENGINE: RELAYED TO STRATEGIST';
+    setTimeout(() => { window.location.href = '/html/war-rooms/o2c/o2c-strategist.html'; }, 500);
+  }
+
+  document.getElementById('btnLoadSample').addEventListener('click', () => {
+    engine.loadSampleOrders();
+    renderAll();
+  });
+
+  document.getElementById('btnLoadPaste').addEventListener('click', () => {
+    const raw = document.getElementById('orderPaste').value.trim();
+    if (!raw) { alert('Paste order JSON first, or use LOAD SAMPLES.'); return; }
+    try {
+      const parsed = JSON.parse(raw);
+      engine.loadOrders(Array.isArray(parsed) ? parsed : [parsed]);
+      renderAll();
+    } catch (e) {
+      alert('Could not parse pasted JSON: ' + e.message);
+    }
+  });
+
+  document.getElementById('btnRunAnalysis').addEventListener('click', runAnalysis);
+  document.getElementById('btnRelay').addEventListener('click', relayToStrategist);
+
+  loadModel();
+})();
+</script>
+  <script src="/html/core/tsm-runtime.js"></script>
+</body>
+</html>

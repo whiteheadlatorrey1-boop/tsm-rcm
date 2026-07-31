@@ -1,0 +1,791 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>FinOps Main Strategist · TSM</title>
+<style>
+/* TSM_SCROLL_FIX */
+html, body { height: 100%; overflow-y: auto; }
+main { padding-bottom: 80px !important; min-height: calc(100vh - 60px); }
+.footer { position: fixed; bottom: 0; left: 0; right: 0; height: 32px; z-index: 10; }
+.ask-bar { position: fixed; bottom: 40px; right: 12px; z-index: 20; }
+.panel { max-height: 60vh; overflow-y: auto; }
+*{box-sizing:border-box}
+body{margin:0;background:#02070d;color:#d9f3ff;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+header{padding:18px 22px;border-bottom:1px solid #123050;background:#061018;display:flex;justify-content:space-between;align-items:center}
+.brand{color:#00e0ff;font-weight:900;letter-spacing:.16em;font-size:18px}
+.sub{font-size:12px;color:#8fb0c8;margin-top:4px}
+.badge{border:1px solid #00f59f;color:#00f59f;border-radius:999px;padding:7px 12px;font-size:11px}
+.wrap{padding:20px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:16px}
+.card{background:#07111b;border:1px solid #123050;border-radius:14px;padding:16px}
+.card b{color:#00e0ff}
+.val{font-size:28px;font-weight:900;color:#00f59f;margin-top:8px}
+.panel{background:#061018;border:1px solid #123050;border-radius:16px;padding:16px;margin-top:14px}
+.summary{white-space:pre-wrap;line-height:1.55;background:#02070d;border:1px solid #123050;border-radius:12px;padding:14px;max-height:360px;overflow:auto}
+.nodegrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-top:12px}
+.node{background:#07111b;border:1px solid #123050;border-radius:12px;padding:12px}
+.node b{color:#d9f3ff}
+.node .state{font-size:18px;font-weight:900;color:#00f59f;margin-top:6px}
+.btn{background:#00b7ff;color:#001018;border:0;border-radius:8px;padding:10px 13px;font:900 11px monospace;cursor:pointer;margin:8px 8px 0 0}
+.btn.dark{background:transparent;color:#00e0ff;border:1px solid #00e0ff}
+.footer{position:fixed;bottom:0;left:0;right:0;height:28px;background:#061018;border-top:1px solid #123050;color:#7aa6c2;font-size:10px;display:flex;align-items:center;justify-content:space-between;padding:0 14px}
+main{padding-bottom:42px}
+
+/* ============================================
+   MANAGER BRIEFING BAR
+   ============================================ */
+#mgr-bar {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: #021a0f;
+  border-bottom: 2px solid #00f59f;
+  box-shadow: 0 0 24px rgba(0,245,159,.2);
+  padding: 0;
+  font-family: ui-monospace, monospace;
+}
+
+/* Top strip — 3-sentence bottom line */
+#mgr-bar .mgr-top {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 20px 8px;
+  border-bottom: 1px solid rgba(0,245,159,.2);
+}
+#mgr-bar .mgr-label {
+  font-size: 9px;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: #00f59f;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+#mgr-bar .mgr-label::before {
+  content: '';
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: #00f59f;
+  animation: mgrPulse 1.8s infinite;
+}
+@keyframes mgrPulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+#mgr-bar .mgr-brief {
+  font-size: 13px;
+  color: #d9f3ff;
+  line-height: 1.55;
+  max-width: 780px;
+}
+#mgr-bar .mgr-brief strong { color: #00f59f; }
+#mgr-bar .mgr-brief .alert { color: #ff5c5c; font-weight: 700; }
+
+#mgr-bar .mgr-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  align-items: flex-end;
+  flex-shrink: 0;
+}
+.mgr-approve-btn {
+  background: #00f59f;
+  color: #001a0a;
+  border: none;
+  padding: 9px 18px;
+  font: 900 11px ui-monospace, monospace;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all .2s;
+  white-space: nowrap;
+}
+.mgr-approve-btn:hover { background: #00d486; box-shadow: 0 0 14px rgba(0,245,159,.4); }
+.mgr-export-btn {
+  background: transparent;
+  color: #00f59f;
+  border: 1px solid rgba(0,245,159,.5);
+  padding: 6px 14px;
+  font: 700 10px ui-monospace, monospace;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all .2s;
+  white-space: nowrap;
+}
+.mgr-export-btn:hover { background: rgba(0,245,159,.08); }
+
+/* Bottom strip — 4 quick-stat chips */
+#mgr-bar .mgr-chips {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 20px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+#mgr-bar .mgr-chips::-webkit-scrollbar { display: none; }
+
+.mgr-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid;
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 11px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.mgr-chip .chip-val { font-weight: 900; font-size: 13px; }
+.mgr-chip .chip-label { font-size: 10px; opacity: .75; }
+.mgr-chip.red   { border-color: rgba(255,77,77,.5);  color: #ff5c5c;  background: rgba(255,77,77,.06); }
+.mgr-chip.amber { border-color: rgba(245,166,35,.5); color: #f5a623; background: rgba(245,166,35,.06); }
+.mgr-chip.green { border-color: rgba(0,245,159,.4);  color: #00f59f; background: rgba(0,245,159,.05); }
+.mgr-chip.blue  { border-color: rgba(77,166,255,.4); color: #4da6ff; background: rgba(77,166,255,.05); }
+
+.mgr-divider { width: 1px; height: 20px; background: rgba(255,255,255,.1); flex-shrink: 0; }
+
+/* Needs your decision panel (collapsible) */
+#mgr-decisions {
+  display: none;
+  border-top: 1px solid rgba(0,245,159,.2);
+  padding: 12px 20px 14px;
+  background: #021208;
+}
+#mgr-decisions.open { display: block; }
+.mgr-decision-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+.mgr-decision-card {
+  border: 1px solid #123050;
+  background: #041018;
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+.mgr-decision-card .dc-tag {
+  font-size: 9px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+.mgr-decision-card .dc-tag.p1 { color: #ff5c5c; }
+.mgr-decision-card .dc-tag.p2 { color: #f5a623; }
+.mgr-decision-card .dc-text { font-size: 12px; color: #d9f3ff; line-height: 1.5; margin-bottom: 8px; }
+.mgr-decision-card .dc-deadline { font-size: 10px; color: #8fb0c8; }
+.dc-btn {
+  font: 700 10px ui-monospace, monospace;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  border: 1px solid rgba(0,245,159,.4);
+  color: #00f59f;
+  background: transparent;
+  padding: 4px 10px;
+  cursor: pointer;
+  border-radius: 3px;
+  margin-top: 4px;
+  transition: all .15s;
+}
+.dc-btn:hover { background: rgba(0,245,159,.1); }
+.dc-btn.done { border-color: rgba(0,245,159,.2); color: #3d6048; cursor: default; }
+
+#mgr-toggle {
+  font: 700 10px ui-monospace, monospace;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: #8fb0c8;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  transition: color .2s;
+}
+#mgr-toggle:hover { color: #00f59f; }
+</style>
+
+<script>
+window.TSM_UI = {
+  runAudit: async (sector, factor) => {
+    const feed = document.querySelector('.intelligence-feed-output') || document.getElementById('intelligence-feed-output');
+    if (feed) feed.innerHTML = '<span style="color: #00ffff;">[STRATEGIST] Internal Link: Processing...</span>';
+    try {
+      const res = await fetch('/api/audit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: `auditops "${sector}" --factor "${factor}" --logic strategist` }) });
+      const data = await res.json();
+      if (feed) feed.innerText = `[STRATEGIST] ${data.output || "Analysis Complete."}`;
+    } catch (e) { if (feed) feed.innerText = "[STRATEGIST] Local API Bridge Failed."; }
+  }
+};
+document.addEventListener('click', (e) => {
+  const card = e.target.closest('.module-card');
+  if (card) { const sector = card.dataset.sector || "Construction"; const factor = card.querySelector('h3')?.innerText || "General Audit"; TSM_UI.runAudit(sector, factor); }
+});
+console.log("TSM_UI: Direct Neural Link Established.");
+</script>
+
+<script>
+async function tsmAI(s,u,m){try{const r=await fetch('/api/financial/query',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:s?(s+'\n\n'+u):u,maxTokens:m||1024})});if(!r.ok)throw new Error('Server '+r.status);const d=await r.json();return d.answer||'No response.';}catch(e){return'[AI Error] '+e.message;}}
+</script>
+  <link rel="stylesheet" href="/shared/tsm-shared.css">
+  <script src="/shared/tsm-shared.js"></script>
+<script src="/healthcare/js/tsm-bridge.js?v=relay2" defer></script>
+<script src="/healthcare/js/hc-node-tab-controller.js?v=relay2" defer></script>
+<script src="/healthcare/js/hc-universal-tab-ai.js?v=relay2" defer></script>
+<script src="/healthcare/js/hc-strategist-relay.js?v=relay2" defer></script>
+<script src="/healthcare/js/hc-howto-system.js?v=relay2" defer></script>
+<script src="/html/js/tsm-runtime-lock.js"></script>
+<script src="/html/js/tsm-event-contract.js"></script>
+<script src="/html/js/tsm-autonomy-layer.js"></script>
+</head>
+<body>
+
+<!-- ============================================
+     MANAGER BRIEFING BAR — TOP OF PAGE
+     ============================================ -->
+<div id="mgr-bar">
+
+  <!-- Top: 3-sentence brief + approve button -->
+  <div class="mgr-top">
+    <div>
+      <div class="mgr-label">Manager Briefing · Updated <span id="mgrTime">now</span></div>
+      <div class="mgr-brief" id="mgrBrief">
+        <strong>3 things need your attention today.</strong>
+        <span class="alert"> Zero Trust is your biggest risk</span> — 6 access gaps open, score 67/100, two QuickBooks roles must be revoked before month-end.
+        AR has <strong>$18.4K</strong> aging past 60 days and Westside Holdings ($18.4K, 97 days) needs escalation to collections today.
+        1099 readiness is behind — <strong>3 missing W-9s</strong> and 2 vendors crossing the $600 threshold require follow-up this week.
+      </div>
+    </div>
+    <div class="mgr-actions">
+      <button class="mgr-approve-btn" data-tsm-action="openDecisions" data-tsm-args="">▶ Needs Your Decision</button>
+      <button class="mgr-export-btn" data-tsm-action="exportMgrBrief" data-tsm-args="">↓ Export Briefing</button>
+    </div>
+  </div>
+
+  <!-- Bottom: quick-stat chips -->
+  <div class="mgr-chips">
+    <div class="mgr-chip red">
+      <span class="chip-val">$18.4K</span>
+      <span class="chip-label">AR at risk · act today</span>
+    </div>
+    <div class="mgr-divider"></div>
+    <div class="mgr-chip red">
+      <span class="chip-val">6</span>
+      <span class="chip-label">security gaps · ZT 67/100</span>
+    </div>
+    <div class="mgr-divider"></div>
+    <div class="mgr-chip amber">
+      <span class="chip-val">3</span>
+      <span class="chip-label">approvals needed</span>
+    </div>
+    <div class="mgr-divider"></div>
+    <div class="mgr-chip amber">
+      <span class="chip-val">3</span>
+      <span class="chip-label">missing W-9s</span>
+    </div>
+    <div class="mgr-divider"></div>
+    <div class="mgr-chip amber">
+      <span class="chip-val">84%</span>
+      <span class="chip-label">month-end close</span>
+    </div>
+    <div class="mgr-divider"></div>
+    <div class="mgr-chip green">
+      <span class="chip-val">5/5</span>
+      <span class="chip-label">nodes reporting</span>
+    </div>
+    <div class="mgr-divider"></div>
+    <div class="mgr-chip blue">
+      <span class="chip-val">$34K</span>
+      <span class="chip-label">tax opportunity</span>
+    </div>
+    <div class="mgr-divider"></div>
+    <button id="mgr-toggle" data-tsm-action="toggleDecisions" data-tsm-args="">▼ See decisions</button>
+  </div>
+
+  <!-- Expandable decisions panel -->
+  <div id="mgr-decisions">
+    <div style="font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:#00f59f;margin-bottom:2px">Needs Your Decision</div>
+    <div style="font-size:11px;color:#8fb0c8;margin-bottom:10px">Tap Mark Done when each is actioned. These clear from the board.</div>
+    <div class="mgr-decision-grid">
+
+      <div class="mgr-decision-card">
+        <div class="dc-tag p1">P1 · Today</div>
+        <div class="dc-text">Approve escalation of Westside Holdings ($18.4K, 97 days) to third-party collections. No response after 3 attempts.</div>
+        <div class="dc-deadline">Owner: Controller · Due: EOD today</div><br>
+        <button class="dc-btn" data-tsm-action="markDone" data-tsm-args="this">Mark Done ✓</button>
+      </div>
+
+      <div class="mgr-decision-card">
+        <div class="dc-tag p1">P1 · Today</div>
+        <div class="dc-text">Revoke QuickBooks access for 2 flagged roles. Zero Trust score at 67/100 — must close before month-end audit window.</div>
+        <div class="dc-deadline">Owner: IT / Controller · Due: EOD today</div><br>
+        <button class="dc-btn" data-tsm-action="markDone" data-tsm-args="this">Mark Done ✓</button>
+      </div>
+
+      <div class="mgr-decision-card">
+        <div class="dc-tag p2">P2 · This Week</div>
+        <div class="dc-text">Approve VP exception for Marcus Webb expense report ($1,970 subcontractor meals over $500 policy limit) or deny and return.</div>
+        <div class="dc-deadline">Owner: VP / Controller · Due: Fri</div><br>
+        <button class="dc-btn" data-tsm-action="markDone" data-tsm-args="this">Mark Done ✓</button>
+      </div>
+
+      <div class="mgr-decision-card">
+        <div class="dc-tag p2">P2 · This Week</div>
+        <div class="dc-text">Confirm W-9 outreach to 3 vendors and flag 2 crossing $600 threshold. 1099 filing window approaching.</div>
+        <div class="dc-deadline">Owner: Staff Accountant · Due: Fri</div><br>
+        <button class="dc-btn" data-tsm-action="markDone" data-tsm-args="this">Mark Done ✓</button>
+      </div>
+
+      <div class="mgr-decision-card">
+        <div class="dc-tag p2">P2 · This Week</div>
+        <div class="dc-text">Unblock month-end close — payroll data not yet received from HR. Confirm who is responsible for submission and set hard deadline.</div>
+        <div class="dc-deadline">Owner: HR / Controller · Due: May 10</div><br>
+        <button class="dc-btn" data-tsm-action="markDone" data-tsm-args="this">Mark Done ✓</button>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+<!-- END MANAGER BRIEFING BAR -->
+
+<header>
+  <div>
+    <div class="brand">▶ FINOPS MAIN STRATEGIST</div>
+    <div class="sub">Financial Intel · Tax Intelligence · Compliance Shield · Zero Trust · Strategist</div>
+  </div>
+  <div style="display:flex;align-items:center;gap:14px">
+    <span style="font-size:11px;color:#8fb0c8" id="clockDisplay"></span>
+    <div class="badge" id="statusBadge">SYNCING</div>
+  </div>
+</header>
+
+<main class="wrap">
+
+<section class="grid">
+  <div class="card"><b>Nodes Reporting</b><div class="val" id="nodeCount">5 / 5</div><div style="font-size:11px;color:#8fb0c8;margin-top:4px">All nodes active</div></div>
+  <div class="card"><b>AR At Risk</b><div class="val" id="arRisk">$18.4K</div><div style="font-size:11px;color:#8fb0c8;margin-top:4px">aging collections</div></div>
+  <div class="card"><b>Tax Opportunity</b><div class="val" id="taxOpp">$34K</div><div style="font-size:11px;color:#8fb0c8;margin-top:4px">1099 + deductions</div></div>
+  <div class="card"><b>Security Gaps</b><div class="val" id="securityGaps">6</div><div style="font-size:11px;color:#8fb0c8;margin-top:4px">access + QB exposure</div></div>
+</section>
+
+<section class="panel">
+  <b style="color:#00e0ff;letter-spacing:.12em">NODE POSTURES</b>
+  <span style="float:right;font-size:10px;color:#8fb0c8">5 nodes · live status</span>
+  <div class="nodegrid" id="nodeGrid"></div>
+</section>
+
+<style id="finops-accounting-lanes-css">
+#finopsAccountingLanes { margin-top:16px; }
+.finops-lane-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:12px; margin-top:12px; }
+.finops-lane { background:#07111b; border:1px solid #123050; border-radius:14px; padding:14px; }
+.finops-lane b { color:#00e0ff; letter-spacing:.08em; }
+.finops-lane .metric { font-size:24px; color:#00f59f; font-weight:900; margin:8px 0 4px; }
+.finops-lane ul { margin:8px 0 0 18px; padding:0; line-height:1.45; }
+.finops-report-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:14px; }
+.finops-report-actions button { background:#00b7ff; color:#001018; border:0; border-radius:8px; padding:10px 13px; font:900 11px monospace; cursor:pointer; }
+.finops-report-actions button.dark { background:transparent; color:#00e0ff; border:1px solid #00e0ff; }
+</style>
+
+<section id="finopsAccountingLanes" class="panel">
+  <b style="color:#00e0ff;letter-spacing:.12em">ACCOUNTING OPERATIONS LANES</b>
+  <span style="float:right;font-size:10px;color:#8fb0c8">Staff Accountant coverage</span>
+  <div style="color:#8fb0c8;margin-top:6px">AP · AR · bank reconciliation · month-end close · 1099 readiness · executive reporting</div>
+  <div class="finops-lane-grid">
+    <div class="finops-lane">
+      <b>AP VENDOR INVOICE LANE</b>
+      <div class="metric" id="apMetric">12</div>
+      <small>vendor invoices pending validation</small>
+      <ul><li>3 over 30 days</li><li>2 duplicate flags</li><li>7 ready to post</li></ul>
+    </div>
+    <div class="finops-lane">
+      <b>BANK RECONCILIATION LANE</b>
+      <div class="metric" id="bankMetric">3</div>
+      <small>reconciling items need documentation</small>
+      <ul><li>2 unmatched deposits</li><li>1 timing difference</li><li>Balance confirmed</li></ul>
+    </div>
+    <div class="finops-lane">
+      <b>MONTH-END CLOSE CHECKLIST</b>
+      <div class="metric" id="closeMetric">84%</div>
+      <small>close readiness score</small>
+      <ul><li>AR/AP reviewed</li><li>Depreciation posted</li><li>Accruals pending</li></ul>
+    </div>
+    <div class="finops-lane">
+      <b>1099 TRACKER</b>
+      <div class="metric" id="tax1099Metric">7</div>
+      <small>vendors need W-9 / threshold review</small>
+      <ul><li>3 missing W-9</li><li>2 near $600 threshold</li><li>Track vendor total</li></ul>
+    </div>
+    <div class="finops-lane">
+      <b>EXECUTIVE REPORTING</b>
+      <div class="metric" id="reportMetric">READY</div>
+      <small>saved report available for review</small>
+      <ul><li>BNCA compiled</li><li>Board pack ready</li><li>Controller sign-off</li></ul>
+    </div>
+  </div>
+  <div class="finops-report-actions">
+    <button data-tsm-action="buildFinOpsAccountingReport" data-tsm-args="">BUILD ACCOUNTING OPS REPORT</button>
+    <button data-tsm-action="exportFinOpsReport" data-tsm-args="">EXPORT PDF-READY</button>
+    <button class="dark" data-tsm-action="saveFinOpsMainReport" data-tsm-args="">SAVE REPORT</button>
+  </div>
+</section>
+
+<section class="panel" style="margin-top:14px">
+  <b style="color:#00e0ff;letter-spacing:.12em">AI STRATEGIST · POWERED BY GROQ</b>
+  <span style="float:right;font-size:10px;color:#8fb0c8" id="modelLabel">openai/gpt-oss-120b</span>
+
+  <div style="display:grid;grid-template-columns:220px 1fr;gap:14px;margin-top:12px">
+    <div>
+      <div style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#8fb0c8;margin-bottom:5px">Groq API Key</div>
+      <input id="groqKey" type="password" placeholder="gsk_••••••••••" style="width:100%;background:#02070d;border:1px solid #123050;color:#d9f3ff;font-family:monospace;font-size:12px;padding:7px 9px;outline:none;border-radius:4px">
+
+      <div style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#8fb0c8;margin:10px 0 5px">Model</div>
+      <select id="modelSel" style="width:100%;background:#02070d;border:1px solid #123050;color:#d9f3ff;font-family:monospace;font-size:11px;padding:6px 9px;border-radius:4px">
+        <option value="openai/gpt-oss-120b">openai/gpt-oss-120b</option>
+        <option value="llama-3.1-8b-instant">llama-3.1-8b-instant</option>
+        <option value="mixtral-8x7b-32768">mixtral-8x7b-32768</option>
+      </select>
+
+      <div style="margin-top:10px;background:#041018;border:1px solid #123050;border-radius:6px;padding:8px;font-size:10px;color:#8fb0c8;line-height:1.5">
+        <span style="color:#00f59f;font-weight:700">openai/gpt-oss-120b</span><br>
+        70B params · 128k ctx · ~800 tok/s<br>
+        Best for: executive-level financial synthesis
+      </div>
+
+      <button data-tsm-action="generateReport" data-tsm-args="" style="width:100%;margin-top:10px;background:transparent;border:1px solid #00f59f;color:#00f59f;font:700 11px monospace;letter-spacing:.08em;text-transform:uppercase;padding:10px;cursor:pointer;border-radius:4px;transition:all .2s" onmouseover="this.style.background='rgba(0,245,159,.08)'" onmouseout="this.style.background='transparent'">▶ GENERATE STRATEGIST REPORT</button>
+      <button data-tsm-action="clearOutput" data-tsm-args="" style="width:100%;margin-top:5px;background:transparent;border:1px solid #123050;color:#8fb0c8;font:600 10px monospace;letter-spacing:.06em;text-transform:uppercase;padding:7px;cursor:pointer;border-radius:4px">↺ CLEAR OUTPUT</button>
+      <div style="font-size:10px;color:#3d5060;text-align:center;margin-top:6px">Groq inference · ultra-low latency</div>
+    </div>
+
+    <div>
+      <div id="stratOutput" style="background:#02070d;border:1px solid #123050;border-radius:8px;padding:14px;min-height:220px;font-size:12px;line-height:1.7;white-space:pre-wrap;font-family:monospace;color:#d9f3ff">Select a model, enter your Groq API key, and click Generate Strategist Report.</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 2px;font-size:10px;color:#3d5060">
+        <span>✓ <span id="stratStatus">IDLE</span> · <span id="stratTokens">—</span> tokens · <span id="stratSpeed">—</span></span>
+        <span id="stratTime">—</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Live feed + priority actions side by side -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px">
+    <div>
+      <div style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#8fb0c8;margin-bottom:6px">Live Node Data Feed → Strategist</div>
+      <div id="liveFeed" style="background:#02070d;border:1px solid #123050;border-radius:6px;padding:10px;max-height:180px;overflow-y:auto;font-size:11px;line-height:1.6"></div>
+    </div>
+    <div>
+      <div style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#8fb0c8;margin-bottom:6px">Controller Priority Actions</div>
+      <div id="priorityActions" style="background:#02070d;border:1px solid #123050;border-radius:6px;padding:10px;max-height:180px;overflow-y:auto">
+        <div style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid #123050"><span style="color:#ff5c5c;font-weight:700;font-size:11px;flex-shrink:0">P1</span><span style="font-size:11px;line-height:1.5">Clear $18.4K AR risk — escalate top 3 aging accounts to collections workflow</span></div>
+        <div style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid #123050"><span style="color:#ff5c5c;font-weight:700;font-size:11px;flex-shrink:0">P1</span><span style="font-size:11px;line-height:1.5">Zero Trust score 67/100 — 6 access gaps must close before month-end; revoke 2 QB roles</span></div>
+        <div style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid #123050"><span style="color:#f5a623;font-weight:700;font-size:11px;flex-shrink:0">P2</span><span style="font-size:11px;line-height:1.5">Collect 3 missing W-9s and flag 2 vendors crossing $600 threshold for 1099 readiness</span></div>
+        <div style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid #123050"><span style="color:#f5a623;font-weight:700;font-size:11px;flex-shrink:0">P2</span><span style="font-size:11px;line-height:1.5">Complete 3 reconciling items in Bank Recon lane — target 100% before close</span></div>
+        <div style="display:flex;gap:8px;padding:6px 0"><span style="color:#00f59f;font-weight:700;font-size:11px;flex-shrink:0">P3</span><span style="font-size:11px;line-height:1.5">Push Month-End Close from 84% → 100%: post accruals, finalize prepaid schedules</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="panel" style="margin-top:14px">
+  <b style="color:#00e0ff;letter-spacing:.12em">FINANCIAL OPERATIONS EXECUTIVE BNCA</b>
+  <div class="summary" id="summary">Waiting for Financial Command report...</div>
+  <button class="btn" onclick="location.href='/finops-suite/financial-command/index.html'">OPEN FINANCIAL COMMAND</button>
+  <button class="btn dark" onclick="location.href='/finops-suite/compliance.html'">OPEN COMPLIANCE</button>
+  <button class="btn dark" onclick="location.href='/finops-suite/financial/index.html'">OPEN FINANCIAL INTEL</button>
+  <button class="btn dark" data-tsm-action="refreshFinOps" data-tsm-args="">REFRESH</button>
+</section>
+
+<section id="finopsCrossSuiteApps" class="panel" style="margin-top:14px">
+  <b style="color:#00e0ff;letter-spacing:.12em">FINOPS CROSS-SUITE APPS</b>
+  <div style="color:#8fb0c8;margin-top:6px">Tax Prep and Compliance are injected into the FinOps suite as shared operating layers.</div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-top:12px">
+    <div style="background:#07111b;border:1px solid #123050;border-radius:14px;padding:14px">
+      <b style="color:#00e0ff">TAX PREP</b>
+      <div style="font-size:24px;color:#00f59f;font-weight:900;margin:8px 0">1099 / W-9</div>
+      <small>vendor tax readiness · deadline windows · filing support</small>
+      <ul><li>1099 vendor threshold review</li><li>W-9 completeness tracking</li><li>tax deadline monitoring</li></ul>
+      <button onclick="location.href='/finops-suite/tax.html'" style="background:transparent;color:#00e0ff;border:1px solid #00e0ff;border-radius:8px;padding:10px 13px;font:900 11px monospace;cursor:pointer;margin-top:10px">OPEN TAX PREP</button>
+    </div>
+    <div style="background:#07111b;border:1px solid #123050;border-radius:14px;padding:14px">
+      <b style="color:#00e0ff">COMPLIANCE SHIELD</b>
+      <div style="font-size:24px;color:#00f59f;font-weight:900;margin:8px 0">AUDIT TRAIL</div>
+      <small>documentation gaps · approvals · controls · policy risk</small>
+      <ul><li>missing approval review</li><li>supporting document validation</li><li>controller-ready audit trail</li></ul>
+      <button onclick="location.href='/finops-suite/compliance.html'" style="background:transparent;color:#00e0ff;border:1px solid #00e0ff;border-radius:8px;padding:10px 13px;font:900 11px monospace;cursor:pointer;margin-top:10px">OPEN COMPLIANCE</button>
+    </div>
+  </div>
+</section>
+
+<!-- ROI Close -->
+<section class="panel" style="margin-top:14px;border-color:rgba(0,245,159,.3)">
+  <b style="color:#00f59f;letter-spacing:.12em">WHY THIS BEATS AN UNKNOWN HIRE</b>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-top:12px">
+    <div style="background:#07111b;border:1px solid #123050;border-radius:10px;padding:12px"><div style="font-size:11px;color:#8fb0c8">Time Saved This Month</div><div style="font-size:24px;font-weight:900;color:#00f59f;margin:6px 0">18–25 hrs</div><small>AP chasing · reconciliation · month-end prep</small></div>
+    <div style="background:#07111b;border:1px solid #123050;border-radius:10px;padding:12px"><div style="font-size:11px;color:#8fb0c8">Manual Workload Replaced</div><div style="font-size:24px;font-weight:900;color:#00f59f;margin:6px 0">$5K–$7K/mo</div><small>typical staff accounting coordination cost</small></div>
+    <div style="background:#07111b;border:1px solid #123050;border-radius:10px;padding:12px"><div style="font-size:11px;color:#8fb0c8">TSM Financial Ops Layer</div><div style="font-size:24px;font-weight:900;color:#00f59f;margin:6px 0">$1,750/mo</div><small>visible system · action log · executive reporting</small></div>
+  </div>
+  <div style="margin-top:12px;padding:12px;border:1px solid rgba(0,245,159,.4);background:#021a12;color:#00f59f;font-weight:700">Instead of hiring unknown and hoping the process improves, you can see the system organize the work immediately.</div>
+</section>
+
+</main>
+
+<div class="footer">
+  <span>● FINOPS MAIN STRATEGIST · NODE 03 · BNCA ACTIVE · $1,750/MO</span>
+  <span id="footerStatus">READY</span>
+</div>
+
+<!-- ===== SCRIPTS ===== -->
+// Clock
+function tick(){
+  const t = new Date().toLocaleTimeString('en-US',{hour12:false});
+  const el = document.getElementById('clockDisplay');
+  if(el) el.textContent = t;
+  const mt = document.getElementById('mgrTime');
+  if(mt) mt.textContent = t;
+}
+tick(); setInterval(tick,1000);
+
+// Manager bar
+function openDecisions(){
+  const d = document.getElementById('mgr-decisions');
+  d.classList.add('open');
+  document.getElementById('mgr-toggle').textContent = '▲ Hide decisions';
+}
+function toggleDecisions(){
+  const d = document.getElementById('mgr-decisions');
+  const t = document.getElementById('mgr-toggle');
+  if(d.classList.contains('open')){
+    d.classList.remove('open'); t.textContent = '▼ See decisions';
+  } else {
+    d.classList.add('open'); t.textContent = '▲ Hide decisions';
+  }
+}
+function markDone(btn){
+  btn.textContent = '✓ Done';
+  btn.classList.add('done');
+  btn.disabled = true;
+  btn.closest('.mgr-decision-card').style.opacity = '.45';
+}
+function exportMgrBrief(){
+  const brief = document.getElementById('mgrBrief').textContent;
+  const chips = [...document.querySelectorAll('.mgr-chip')].map(c=>c.textContent.trim()).join(' · ');
+  const txt = `TSM MANAGER BRIEFING — ${new Date().toLocaleString()}\n\n${brief}\n\nKEY METRICS: ${chips}`;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([txt],{type:'text/plain'}));
+  a.download = 'TSM-Manager-Briefing.txt'; a.click();
+}
+
+// Groq strategist
+const PROMPT = `You are the TSM FinOps Strategist — a senior financial operations AI.
+
+LIVE NODE DATA:
+- AR: $18.4K at risk, Westside Holdings 97 days overdue, DSO 52 days (target 35)
+- AP: 12 invoices pending, 3 vendors on credit hold, $3.8K early pay discounts available
+- Zero Trust: 6 access gaps, 2 QB roles require revocation, score 67/100
+- Tax: 3 missing W-9s, 2 vendors near $600 threshold, 1099 mapping in progress
+- Compliance: 4 missing approvals, audit trail compiled, month-end close at 84%
+- Financial Intel: $480K HRSA grant restricted, Form 990 at 84%
+
+Generate:
+EXECUTIVE SUMMARY: (2-3 sentences)
+RISK MATRIX:
+P1: (today)
+P2: (this week)
+P3: (this month)
+NODE STATUS BRIEF: (each node one line)
+CONTROLLER PRIORITY ACTIONS: (5 numbered, dollar-specific)
+BNCA: (1 paragraph — single most important action right now)
+
+Write for a financial controller. Be specific with dollar amounts.`;
+
+async function generateReport(){
+  const key = document.getElementById('groqKey').value.trim();
+  const model = document.getElementById('modelSel').value;
+  if(!key){ alert('Enter your Groq API key first.'); return; }
+  const out = document.getElementById('stratOutput');
+  out.textContent = '';
+  document.getElementById('stratStatus').textContent = 'RUNNING';
+
+  try{
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
+      body:JSON.stringify({model,messages:[{role:'user',content:PROMPT}],max_tokens:1200,stream:true,temperature:0.4})
+    });
+    if(!res.ok) throw new Error(await res.text());
+    const reader=res.body.getReader(), dec=new TextDecoder();
+    let full='',toks=0,start=Date.now();
+    while(true){
+      const {done,value}=await reader.read();
+      if(done) break;
+      for(const line of dec.decode(value).split('\n')){
+        if(!line.startsWith('data:')) continue;
+        const d=line.slice(5).trim();
+        if(d==='[DONE]') continue;
+        try{
+          const j=JSON.parse(d);
+          const delta=j.choices?.[0]?.delta?.content||'';
+          full+=delta; toks+=(delta.match(/\S+/g)||[]).length;
+          out.textContent=full;
+          document.getElementById('stratTokens').textContent=toks;
+          document.getElementById('stratSpeed').textContent=Math.round(toks/((Date.now()-start)/1000))+' tok/s';
+        }catch{}
+      }
+    }
+    document.getElementById('stratStatus').textContent='COMPLETE';
+    document.getElementById('stratTime').textContent=new Date().toLocaleTimeString();
+    animateFeed();
+  }catch(e){
+    out.textContent='[ERROR] '+e.message;
+    document.getElementById('stratStatus').textContent='ERROR';
+  }
+}
+
+function clearOutput(){
+  document.getElementById('stratOutput').textContent='Cleared.';
+  document.getElementById('stratStatus').textContent='IDLE';
+}
+
+function animateFeed(){
+  const msgs=[
+    ['STR','#00f59f','BNCA synthesis complete'],
+    ['FIN','#00f59f','Financial intel transmitted'],
+    ['TAX','#f5a623','1099 mapping finalized'],
+    ['CMP','#f5a623','Approval gaps logged'],
+    ['ZT','#4da6ff','Access review queued'],
+    ['STR','#00f59f','Report pushed to controller']
+  ];
+  const feed=document.getElementById('liveFeed');
+  let i=0;
+  const iv=setInterval(()=>{
+    if(i>=msgs.length){clearInterval(iv);return;}
+    const [tag,col,msg]=msgs[i];
+    const t=new Date().toLocaleTimeString('en-US',{hour12:false});
+    const row=document.createElement('div');
+    row.style.cssText='display:flex;gap:8px;padding:2px 0;border-bottom:1px solid #123050;font-size:11px';
+    row.innerHTML=`<span style="color:#3d5060;flex-shrink:0;width:52px">${t}</span><span style="color:${col};font-weight:700;flex-shrink:0;width:32px">${tag}</span><span>${msg}</span>`;
+    feed.prepend(row);
+    i++;
+  },600);
+}
+
+// Init feed
+(function(){
+  const msgs=[
+    ['STR','#00f59f','Exec pack: compiled'],
+    ['ZT','#4da6ff','QB exposure: 2 roles'],
+    ['CMP','#f5a623','Missing approvals: 4'],
+    ['TAX','#f5a623','3 W-9 gaps – escalated'],
+    ['FIN','#00f59f','Cash timing: 3 alerts'],
+    ['STR','#00f59f','BNCA synthesis: ready'],
+    ['ZT','#4da6ff','6 access gaps flagged'],
+    ['CMP','#f5a623','Audit trail: 90-day compiled'],
+    ['TAX','#f5a623','1099 mapping: in progress'],
+    ['FIN','#00f59f','AP aging digest transmitted']
+  ];
+  const feed=document.getElementById('liveFeed');
+  const base=new Date();
+  msgs.forEach((m,i)=>{
+    const t=new Date(base - i*37000).toLocaleTimeString('en-US',{hour12:false});
+    const [tag,col,msg]=m;
+    const row=document.createElement('div');
+    row.style.cssText='display:flex;gap:8px;padding:2px 0;border-bottom:1px solid #123050;font-size:11px';
+    row.innerHTML=`<span style="color:#3d5060;flex-shrink:0;width:52px">${t}</span><span style="color:${col};font-weight:700;flex-shrink:0;width:32px">${tag}</span><span>${msg}</span>`;
+    feed.appendChild(row);
+  });
+})();
+
+// Node grid + refresh
+function loadReport(){ try{return JSON.parse(localStorage.getItem('tsm_finops_report')||'{}')}catch(e){return{}} }
+function refreshFinOps(){
+  const data=loadReport();
+  document.getElementById('statusBadge').textContent=data.summary?'LIVE REPORT':'DEMO READY';
+  document.getElementById('summary').textContent=data.summary||'Waiting for Financial Command report...';
+  const nodes=[
+    ['Financial Intel','AR collections + cash timing','READY'],
+    ['Tax Intelligence','1099 + deadline windows','READY'],
+    ['Compliance Shield','audit trail + supporting docs','READY'],
+    ['Zero Trust','permission / security review','WATCH'],
+    ['Strategist','executive BNCA synthesis','READY']
+  ];
+  document.getElementById('nodeGrid').innerHTML=nodes.map(n=>`
+    <div class="node">
+      <b>${n[0]}</b>
+      <div class="state" style="color:${n[2]==='WATCH'?'#f5a623':'#00f59f'}">${n[2]}</div>
+      <small style="color:#8fb0c8">${n[1]}</small>
+    </div>`).join('');
+}
+refreshFinOps();
+setInterval(refreshFinOps,4000);
+
+// Accounting ops
+function buildFinOpsAccountingReport(){
+  const report=`TSM FINANCIAL OPERATIONS LAYER — ACCOUNTING OPS REPORT\n\nAP VENDOR INVOICE LANE\n- 12 vendor invoices pending validation.\n- Prioritize by due date and vendor impact.\n\nBANK RECONCILIATION LANE\n- 3 reconciling items require documentation.\n- Match bank feed transactions to QuickBooks activity.\n\nMONTH-END CLOSE CHECKLIST\n- Close readiness: 84%.\n- Controller review package should be prepared before close.\n\n1099 TRACKER\n- 7 vendors require W-9 / threshold review.\n\nBEST NEXT COURSE OF ACTION\nPrioritize AP validation and bank reconciliation exceptions first, complete 1099 vendor review, then package month-end support for Controller review.\n\n$1,750/MO VALUE POSITION\nMost teams pay $5K–$7K/month for someone to manage this manually. TSM delivers it as a system for $1,750/month.`;
+  document.getElementById('summary').textContent=report;
+  localStorage.setItem('tsm_finops_report',JSON.stringify({ts:new Date().toISOString(),title:'TSM Accounting Ops Report',summary:report}));
+}
+function saveFinOpsMainReport(){
+  const txt=document.getElementById('summary')?.textContent||'FinOps report saved.';
+  localStorage.setItem('tsm_finops_report',JSON.stringify({ts:new Date().toISOString(),title:'TSM Financial Operations Executive Report',summary:txt}));
+  alert('Saved.');
+}
+function exportFinOpsReport(){
+  const txt=document.getElementById('summary')?.textContent||'';
+  const w=window.open('','_blank');
+  w.document.write(`<pre style="font-family:monospace;white-space:pre-wrap;line-height:1.5">${txt.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}</pre>`);
+  w.document.title='TSM Financial Operations Report';
+  w.document.close();
+  setTimeout(()=>w.print(),500);
+}
+</script>
+
+<script>(function(){
+document.addEventListener('click', function(e){
+
+  const el = e.target.closest('[data-tsm-action]');
+  if(!el) return;
+
+  const action = el.getAttribute('data-tsm-action');
+  const args = el.getAttribute('data-tsm-args');
+
+  if(window.TSM && TSM.launcher && TSM.launcher.run){
+    TSM.launcher.run(action, args);
+  } else {
+    console.warn('[TSM] launcher missing:', action, args);
+  }
+
+});
+})();</script>
+  <script src="/js/core/tsm-kernel-upgrade.js"></script>
+</body>
+</html>
+
+// ===== TSM_AUTONOMY_STANDARDIZED =====
+window.TSM_AUTONOMY_STANDARDIZED = true;
+</script>
+
+<!-- TSM ENFORCER BOOT -->
+<script src="/html/core/tsm-enforcer.js"></script>
+
+
+// ===== TSM WAR ROOM SCOPED RELAY FIX =====
+window.tsmMission = window.tsmMission || {
+  id: "FINOPS-SUITE-" + Date.now().toString(36),
+  vertical: "finops-suite",
+  
+};
+
+function tsmWriteRelay(payload){
+  TSM_KERNEL.setRelay("finops-suite", JSON.stringify(payload));
+}
+</script>
+
+
+<!-- TSM KERNEL ENGINE -->
+<script src="/html/core/tsm-kernel.js"></script>
+

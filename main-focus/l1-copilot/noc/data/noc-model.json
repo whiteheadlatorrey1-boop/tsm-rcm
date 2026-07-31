@@ -1,0 +1,74 @@
+{
+  "version": "v1",
+  "vertical": "noc",
+  "entities": {
+    "incident": {
+      "type": "noc_incident",
+      "stages": [
+        { "id": "new",         "label": "New",          "order": 1, "sla_hours": 1  },
+        { "id": "triaged",     "label": "Triaged",      "order": 2, "sla_hours": 4  },
+        { "id": "in_progress", "label": "In Progress",  "order": 3, "sla_hours": 8  },
+        { "id": "escalated",   "label": "Escalated",    "order": 4, "sla_hours": 2  },
+        { "id": "resolved",    "label": "Resolved",     "order": 5, "sla_hours": null },
+        { "id": "closed",      "label": "Closed",       "order": 6, "sla_hours": null }
+      ]
+    },
+    "alert": {
+      "type": "noc_alert",
+      "stages": [
+        { "id": "raised",       "label": "Raised",       "order": 1, "sla_hours": null },
+        { "id": "acknowledged", "label": "Acknowledged",  "order": 2, "sla_hours": null },
+        { "id": "correlated",   "label": "Correlated",    "order": 3, "sla_hours": null },
+        { "id": "resolved",     "label": "Resolved",      "order": 4, "sla_hours": null }
+      ]
+    },
+    "device": {
+      "type": "noc_device",
+      "stages": [
+        { "id": "online",      "label": "Online",      "order": 1, "sla_hours": null },
+        { "id": "degraded",    "label": "Degraded",    "order": 2, "sla_hours": null },
+        { "id": "down",        "label": "Down",        "order": 3, "sla_hours": null },
+        { "id": "maintenance", "label": "Maintenance", "order": 4, "sla_hours": null }
+      ]
+    }
+  },
+  "kpis": [
+    { "id": "open_incidents",       "label": "Open Incidents",     "unit": "count", "entity": "incident" },
+    { "id": "sev1_incidents",       "label": "Sev-1 Incidents",    "unit": "count", "entity": "incident" },
+    { "id": "incident_breach_count","label": "Incidents Over SLA", "unit": "count", "entity": "incident" },
+    { "id": "uptime_pct",           "label": "Fleet Uptime",       "unit": "pct",   "entity": "device" },
+    { "id": "devices_down",         "label": "Devices Down",       "unit": "count", "entity": "device" },
+    { "id": "open_alerts",          "label": "Open Alerts",        "unit": "count", "entity": "alert" }
+  ],
+  "risk_signals": [
+    "incident_sla_breach",
+    "sev1_open",
+    "device_flapping",
+    "alert_storm",
+    "no_ack_15m"
+  ],
+  "financial_model": {
+  "currency": "USD",
+  "note": "Estimate model for planning/reporting only — configure these rates to match your real SLA contracts and revenue mix before using externally.",
+  "sla_penalty_per_hour_by_severity": { "SEV1": 2500, "SEV2": 1000, "SEV3": 250 },
+  "revenue_at_risk_per_uptime_point_per_hour": 450
+  },
+  "sample_data": {
+    "incidents": [
+      { "incident_id": "INC-7701", "title": "Core switch packet loss - DC2",     "affected_system": "DC2-CoreSW-01", "severity": "SEV1", "stage": "escalated",   "entered_stage_at_hours_ago": 3,  "owner": "NOC L2", "notes": "Intermittent packet loss, escalated to network eng." },
+      { "incident_id": "INC-7702", "title": "VPN gateway auth latency",          "affected_system": "VPN-GW-East",   "severity": "SEV2", "stage": "in_progress", "entered_stage_at_hours_ago": 5,  "owner": "NOC L1", "notes": "Auth requests slow, monitoring after config change." },
+      { "incident_id": "INC-7703", "title": "Printer subnet unreachable - Site9","affected_system": "Site9-Subnet-C","severity": "SEV3", "stage": "new",         "entered_stage_at_hours_ago": 0.5,"owner": "Unassigned", "notes": "Reported by site contact, not yet triaged." }
+    ],
+    "alerts": [
+      { "alert_id": "ALT-8801", "message": "High CPU on DC2-CoreSW-01",        "severity": "critical", "stage": "correlated",   "incident_id": "INC-7701", "notes": "Correlated to open incident INC-7701." },
+      { "alert_id": "ALT-8802", "message": "VPN-GW-East response time > 800ms","severity": "warning",  "stage": "acknowledged", "incident_id": "INC-7702", "notes": "Ack'd by NOC L1, monitoring." },
+      { "alert_id": "ALT-8803", "message": "Site9-Subnet-C unreachable ping",  "severity": "warning",  "stage": "raised",       "incident_id": "INC-7703", "notes": "New alert, awaiting triage." }
+    ],
+    "devices": [
+      { "device_id": "DEV-9901", "name": "DC2-CoreSW-01",   "site": "DC2",   "stage": "degraded", "notes": "Under active incident INC-7701." },
+      { "device_id": "DEV-9902", "name": "VPN-GW-East",     "site": "DC1",   "stage": "online",   "notes": "Elevated latency but serving traffic." },
+      { "device_id": "DEV-9903", "name": "Site9-EdgeRTR-01","site": "Site9", "stage": "down",     "notes": "Unreachable, tied to INC-7703." },
+      { "device_id": "DEV-9904", "name": "DC1-CoreSW-02",   "site": "DC1",   "stage": "online",   "notes": "Healthy." }
+    ]
+  }
+}

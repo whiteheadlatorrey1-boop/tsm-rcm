@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TSM · FINOPS DOC SHOWCASE</title>
+<script src="/html/shared/tsm-zero-trust.js"></script>
+<style>
+:root{--bg:#0a0f0a;--g:#00ff88;--a:#ffaa00;--b:#00aaff;--r:#ff4444;--dim:#0d150d;--dim2:#0b120b;--border:#1e3a1e;--text:#e0ffe0;--muted:#556655}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;font-size:13px}
+.hdr{display:flex;justify-content:space-between;align-items:center;padding:12px 20px;border-bottom:1px solid var(--border);background:var(--dim2)}
+.hdr-title{font-size:15px;font-weight:700;letter-spacing:3px;color:var(--b)}
+.hdr-sub{font-size:10px;color:var(--muted);letter-spacing:1px;margin-top:2px}
+.back-btn{padding:5px 14px;background:var(--dim2);border:1px solid var(--border);color:var(--muted);font-family:inherit;font-size:10px;font-weight:700;border-radius:4px;cursor:pointer}
+.back-btn:hover{border-color:var(--b);color:var(--b)}
+main{max-width:960px;margin:0 auto;padding:24px 20px 100px}
+.how-to{border:1px solid #1e3a1e;border-radius:6px;background:#0d150d;padding:16px;margin-bottom:24px}
+.how-to-title{font-size:10px;font-weight:700;letter-spacing:2px;color:var(--a);margin-bottom:12px}
+.how-to-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.how-to-step{padding:10px;border:1px solid #1e3a1e;border-radius:4px;background:#0b120b}
+.step-label{font-size:9px;font-weight:700;letter-spacing:2px;color:var(--g);margin-bottom:6px}
+.step-desc{font-size:11px;color:#889988;line-height:1.6}
+.step-desc span{color:var(--a)}
+.mode-row{display:flex;gap:10px;margin-bottom:24px}
+.mode-btn{flex:1;padding:12px;border:1px solid var(--border);background:var(--dim);color:var(--muted);font-family:inherit;font-size:11px;font-weight:700;letter-spacing:1px;border-radius:6px;cursor:pointer;text-align:center;transition:all .2s}
+.mode-btn.active{border-color:var(--b);color:var(--b);background:#0a1020}
+.sample-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-bottom:20px}
+.sample-card{padding:12px;border:1px solid var(--border);border-radius:6px;background:var(--dim);cursor:pointer;transition:all .2s}
+.sample-card:hover,.sample-card.selected{border-color:var(--b);background:#0a1020}
+.sample-card.selected{border-color:var(--a)}
+.sc-type{font-size:9px;font-weight:700;letter-spacing:2px;color:var(--a);margin-bottom:4px}
+.sc-name{font-size:12px;color:var(--b);font-weight:700;margin-bottom:4px}
+.sc-desc{font-size:10px;color:var(--muted);line-height:1.5}
+.drop-zone{border:2px dashed var(--border);border-radius:8px;padding:40px;text-align:center;cursor:pointer;transition:all .2s;background:var(--dim);margin-bottom:16px}
+.drop-zone.drag-over{border-color:var(--b);background:#0a1020}
+.drop-zone.has-file{border-color:var(--a);border-style:solid}
+.drop-icon{font-size:32px;margin-bottom:12px}
+.drop-title{font-size:13px;font-weight:700;letter-spacing:2px;color:var(--b);margin-bottom:6px}
+.drop-sub{font-size:11px;color:var(--muted)}
+.drop-file-name{font-size:12px;color:var(--a);margin-top:10px;font-weight:700}
+input[type=file]{display:none}
+.pipeline{display:flex;align-items:center;margin:20px 0;overflow-x:auto;padding:4px 0}
+.pipe-step{display:flex;flex-direction:column;align-items:center;min-width:100px}
+.pipe-dot{width:32px;height:32px;border-radius:50%;border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:14px;background:var(--dim);transition:all .4s}
+.pipe-dot.active{border-color:var(--b);background:#0a1020;box-shadow:0 0 10px #00aaff44}
+.pipe-dot.done{border-color:var(--a);background:#1a1200}
+.pipe-label{font-size:9px;color:var(--muted);margin-top:4px;text-align:center;letter-spacing:1px}
+.pipe-arrow{color:var(--border);font-size:16px;padding:0 4px;margin-bottom:16px}
+.action-row{display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap}
+.proc-btn{padding:10px 24px;background:#0a1020;border:1px solid var(--b);color:var(--b);font-family:inherit;font-size:11px;font-weight:700;letter-spacing:2px;border-radius:4px;cursor:pointer}
+.proc-btn:disabled{opacity:.4;cursor:not-allowed}
+.push-btn{padding:10px 24px;background:#1a1200;border:1px solid var(--a);color:var(--a);font-family:inherit;font-size:11px;font-weight:700;letter-spacing:2px;border-radius:4px;cursor:pointer;display:none}
+.push-btn.visible{display:block}
+.save-btn{padding:10px 24px;background:#0d150d;border:1px solid var(--g);color:var(--g);font-family:inherit;font-size:11px;font-weight:700;letter-spacing:2px;border-radius:4px;cursor:pointer;display:none}
+.save-btn.visible{display:block}
+.output-panel{border:1px solid var(--border);border-radius:6px;background:var(--dim);overflow:hidden}
+.out-hdr{padding:8px 14px;background:var(--dim2);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.out-hdr-label{font-size:10px;font-weight:700;letter-spacing:2px;color:var(--b)}
+.out-status{font-size:10px;color:var(--muted)}
+.out-body{padding:16px;min-height:140px;font-size:12px;color:#99ccff;line-height:1.7;white-space:pre-wrap}
+.out-body.thinking{color:var(--a);animation:pulse .8s infinite alternate}
+@keyframes pulse{from{opacity:.5}to{opacity:1}}
+.kpi-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:16px}
+.kpi-card{padding:12px;border:1px solid var(--border);border-radius:6px;background:var(--dim);text-align:center;display:none}
+.kpi-card.visible{display:block}
+.kpi-val{font-size:22px;font-weight:700;color:var(--b)}
+.kpi-lbl{font-size:9px;color:var(--muted);letter-spacing:1px;margin-top:2px}
+.saved-panel{margin-top:20px;border:1px solid var(--border);border-radius:6px;background:var(--dim);overflow:hidden;display:none}
+.saved-panel.visible{display:block}
+.saved-hdr{padding:8px 14px;background:var(--dim2);border-bottom:1px solid var(--border);font-size:10px;font-weight:700;letter-spacing:2px;color:var(--g)}
+.saved-list{padding:12px;display:flex;flex-direction:column;gap:8px;max-height:300px;overflow-y:auto}
+.saved-item{padding:10px;border:1px solid var(--border);border-radius:4px;background:var(--dim2);cursor:pointer}
+.saved-item:hover{border-color:var(--g)}
+.saved-item-title{font-size:11px;color:var(--g);font-weight:700;margin-bottom:2px}
+.saved-item-meta{font-size:10px;color:var(--muted)}
+.section-label{font-size:10px;font-weight:700;letter-spacing:2px;color:var(--muted);margin-bottom:10px}
+.divider{border:none;border-top:1px solid var(--border);margin:20px 0}
+.save-toast{position:fixed;top:20px;right:20px;background:#0d1f0d;border:1px solid var(--g);color:var(--g);padding:10px 18px;border-radius:4px;font-size:11px;font-weight:700;letter-spacing:1px;z-index:999;display:none}
+</style>
+
+<script>
+window.TSM_UI = {
+    runAudit: async (sector, factor) => {
+        const feed = document.querySelector('.intelligence-feed-output') || document.getElementById('intelligence-feed-output');
+        if (feed) feed.innerHTML = '<span style="color: #00ffff;">[STRATEGIST] Internal Link: Processing...</span>';
+        try {
+            const res = await fetch('/api/groq', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: `auditops "${sector}" --factor "${factor}" --logic strategist` })
+            });
+            const data = await res.json();
+            if (feed) feed.innerText = `[STRATEGIST] ${data.output || "Analysis Complete."}`;
+        } catch (e) {
+            if (feed) feed.innerText = "[STRATEGIST] Local API Bridge Failed.";
+        }
+    }
+};
+// Wire the sector cards to the auto-fill search prompt logic
+document.addEventListener('click', (e) => {
+    const card = e.target.closest('.module-card');
+    if (card) {
+        const sector = card.dataset.sector || "Construction";
+        const factor = card.querySelector('h3')?.innerText || "General Audit";
+        TSM_UI.runAudit(sector, factor);
+    }
+});
+console.log("TSM_UI: Direct Neural Link Established.");
+</script>
+  <link rel="stylesheet" href="/shared/tsm-shared.css">
+  <script src="/shared/tsm-shared.js"></script>
+<script src="/html/js/tsm-runtime-lock.js"></script>
+<script src="/html/js/tsm-event-contract.js"></script>
+<script src="/html/js/tsm-autonomy-layer.js"></script>
+</head>
+<body>
+<div class="save-toast" id="saveToast">✅ REPORT SAVED</div>
+<div class="hdr">
+  <div>
+    <div class="hdr-title">⚡ FINOPS DOC SHOWCASE</div>
+    <div class="hdr-sub">FINANCIAL OPERATIONS NODE CHAIN · LIVE DOCUMENT INTELLIGENCE</div>
+  </div>
+  <button class="back-btn" onclick="history.back()">← BACK</button>
+</div>
+<main>
+  <div class="how-to">
+    <div class="how-to-title">📖 HOW TO USE THIS SHOWCASE</div>
+    <div class="how-to-grid">
+      <div class="how-to-step"><div class="step-label">STEP 1 · CHOOSE MODE</div><div class="step-desc">Use <span>SAMPLE</span> for pre-loaded FinOps docs or <span>ACTUAL</span> to upload a real client file.</div></div>
+      <div class="how-to-step"><div class="step-label">STEP 2 · SELECT OR UPLOAD</div><div class="step-desc">Click a <span>sample card</span> to activate it. For actual docs, drag-drop or click the upload zone.</div></div>
+      <div class="how-to-step"><div class="step-label">STEP 3 · PROCESS</div><div class="step-desc">Hit <span>▶ PROCESS</span>. The node chain lights up: INGEST → PARSE → AI → BNCA → REPORT.</div></div>
+      <div class="how-to-step"><div class="step-label">STEP 4 · READ OUTPUT</div><div class="step-desc">AI returns Summary, Findings, Risk, Flags, and BNCA. KPI cards populate below.</div></div>
+      <div class="how-to-step"><div class="step-label">STEP 5 · SAVE REPORT</div><div class="step-desc">Hit <span>💾 SAVE REPORT</span> to store in FinOps strategist memory for later recall.</div></div>
+      <div class="how-to-step"><div class="step-label">STEP 6 · PUSH TO STRATEGIST</div><div class="step-desc">Hit <span>→ PUSH</span> to send the report into FinOps Main Strategist for cross-node action.</div></div>
+    </div>
+  </div>
+
+  <div class="section-label">SELECT MODE</div>
+  <div class="mode-row">
+    <button class="mode-btn active" id="mode-sample" data-tsm-action="setMode" data-tsm-args="'sample'">📋 SAMPLE DOCUMENT<br><span style="font-weight:400;font-size:9px;color:var(--muted)">Pre-loaded FinOps docs</span></button>
+    <button class="mode-btn" id="mode-actual" data-tsm-action="setMode" data-tsm-args="'actual'">📁 ACTUAL DOCUMENT<br><span style="font-weight:400;font-size:9px;color:var(--muted)">Upload your real file</span></button>
+  </div>
+
+  <div id="panel-sample">
+    <div class="section-label">CHOOSE A SAMPLE DOCUMENT</div>
+    <div class="sample-grid">
+      <div class="sample-card" data-tsm-action="selectSample" data-tsm-args="this,'bank-recon'"><div class="sc-type">RECONCILIATION</div><div class="sc-name">Bank Reconciliation</div><div class="sc-desc">Q1 recon · $48K variance · 3 accounts flagged</div></div>
+      <div class="sample-card" data-tsm-action="selectSample" data-tsm-args="this,'ap-aging'"><div class="sc-type">PAYABLES</div><div class="sc-name">AP Aging Report</div><div class="sc-desc">$312K outstanding · 22 vendors · 3 on credit hold</div></div>
+      <div class="sample-card" data-tsm-action="selectSample" data-tsm-args="this,'gl-extract'"><div class="sc-type">GENERAL LEDGER</div><div class="sc-name">GL Extract Q1</div><div class="sc-desc">Revenue $2.4M vs $2.8M budget · -14.3% variance</div></div>
+      <div class="sample-card" data-tsm-action="selectSample" data-tsm-args="this,'cash-flow'"><div class="sc-type">TREASURY</div><div class="sc-name">Cash Flow Statement</div><div class="sc-desc">Operating cash -$82K · investing -$140K · financing +$200K</div></div>
+      <div class="sample-card" data-tsm-action="selectSample" data-tsm-args="this,'invoice-audit'"><div class="sc-type">AUDIT</div><div class="sc-name">Invoice Audit</div><div class="sc-desc">340 invoices reviewed · 18 exceptions · $44K at risk</div></div>
+      <div class="sample-card" data-tsm-action="selectSample" data-tsm-args="this,'budget-variance'"><div class="sc-type">PLANNING</div><div class="sc-name">Budget Variance</div><div class="sc-desc">Q1 OpEx over budget by $92K across 4 departments</div></div>
+    </div>
+  </div>
+
+  <div id="panel-actual" style="display:none">
+    <div class="section-label">UPLOAD YOUR DOCUMENT</div>
+    <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+      <div class="drop-icon">📊</div>
+      <div class="drop-title">DROP FINOPS FILE HERE</div>
+      <div class="drop-sub">Excel · CSV · PDF · Word · drag and drop supported</div>
+      <div class="drop-file-name" id="dropFileName"></div>
+    </div>
+    <input type="file" id="fileInput" accept=".pdf,.xlsx,.xls,.csv,.docx,.doc,.txt">
+  </div>
+
+  <hr class="divider">
+  <div class="section-label">NODE CHAIN PIPELINE</div>
+  <div class="pipeline">
+    <div class="pipe-step"><div class="pipe-dot" id="pipe-0">📥</div><div class="pipe-label">INGEST</div></div>
+    <div class="pipe-arrow">──▶</div>
+    <div class="pipe-step"><div class="pipe-dot" id="pipe-1">🔍</div><div class="pipe-label">PARSE</div></div>
+    <div class="pipe-arrow">──▶</div>
+    <div class="pipe-step"><div class="pipe-dot" id="pipe-2">🧠</div><div class="pipe-label">AI ANALYSIS</div></div>
+    <div class="pipe-arrow">──▶</div>
+    <div class="pipe-step"><div class="pipe-dot" id="pipe-3">⚡</div><div class="pipe-label">BNCA</div></div>
+    <div class="pipe-arrow">──▶</div>
+    <div class="pipe-step"><div class="pipe-dot" id="pipe-4">📊</div><div class="pipe-label">REPORT</div></div>
+  </div>
+
+  <div class="action-row">
+    <button class="proc-btn" id="procBtn" data-tsm-action="processDoc" data-tsm-args="" disabled>▶ PROCESS DOCUMENT</button>
+    <button class="save-btn" id="saveBtn" data-tsm-action="saveReport" data-tsm-args="">💾 SAVE REPORT</button>
+    <button class="push-btn" id="pushBtn" data-tsm-action="pushToStrategist" data-tsm-args="">→ PUSH TO FINOPS STRATEGIST</button>
+  </div>
+
+  <div class="output-panel">
+    <div class="out-hdr">
+      <div class="out-hdr-label">⚡ FINOPS AI OUTPUT</div>
+      <div class="out-status" id="outStatus">READY</div>
+    </div>
+    <div class="out-body" id="outBody">&gt; Select a document and press PROCESS to begin FinOps node chain analysis.</div>
+  </div>
+
+  <div class="kpi-row">
+    <div class="kpi-card" id="kpi-risk"><div class="kpi-val" id="kv-risk">—</div><div class="kpi-lbl">RISK LEVEL</div></div>
+    <div class="kpi-card" id="kpi-flag"><div class="kpi-val" id="kv-flag">—</div><div class="kpi-lbl">FLAGS FOUND</div></div>
+    <div class="kpi-card" id="kpi-action"><div class="kpi-val" id="kv-action">—</div><div class="kpi-lbl">ACTION ITEMS</div></div>
+    <div class="kpi-card" id="kpi-conf"><div class="kpi-val" id="kv-conf">—</div><div class="kpi-lbl">CONFIDENCE</div></div>
+  </div>
+
+  <div class="saved-panel" id="savedPanel">
+    <div class="saved-hdr">💾 SAVED FINOPS REPORTS</div>
+    <div class="saved-list" id="savedList"></div>
+  </div>
+</main>
+
+const STORAGE_KEY='tsm_finops_reports';
+const SAMPLES={
+  'bank-recon':{label:'Bank Reconciliation Q1',content:'Bank recon Q1. Outstanding checks $22,400. Deposits in transit $8,100. Variance $48,200 across accounts 1001,1003,1007. NSF items: 3. Clearing items >90 days flagged.'},
+  'ap-aging':{label:'AP Aging Report',content:'AP aging. Current $88,400. 31-60d $74,200. 61-90d $51,800. 91-180d $63,400. 180+d $34,200. Total $312,000. Top vendors: MedSupply $44K, StaffPro $38K, LabCore $29K. 3 on credit hold.'},
+  'gl-extract':{label:'GL Extract Q1',content:'Revenue $2.4M actual vs $2.8M budget (-14.3%). COGS $1.1M. OpEx $890K. Net income $410K. Variance: Dept A -$180K, Dept B -$82K, Dept C +$14K. AR days 47. Collections 91.2%.'},
+  'cash-flow':{label:'Cash Flow Statement',content:'Operating cash flow: -$82,400. Investing activities: -$140,000 (equipment). Financing: +$200,000 (credit line draw). Net change: -$22,400. Beginning cash: $310,000. Ending cash: $287,600.'},
+  'invoice-audit':{label:'Invoice Audit Report',content:'340 invoices reviewed. Exceptions: 18. Duplicate payments: 3 ($12,400). Missing PO references: 8. Unapproved vendors: 4. Overdue >60d: 3. Total at risk: $44,200.'},
+  'budget-variance':{label:'Budget Variance Q1',content:'Q1 OpEx over budget $92,000. Dept breakdown: Sales +$28K, IT +$34K, HR +$18K, Facilities +$12K. Headcount variance: +3 FTE unbudgeted. Travel 140% of budget. Software licenses $22K unplanned.'}
+};
+let currentMode='sample',selectedSampleId=null,selectedFile=null,lastReport=null;
+
+function setMode(m){currentMode=m;selectedSampleId=null;selectedFile=null;document.getElementById('procBtn').disabled=true;document.querySelectorAll('.mode-btn').forEach(b=>b.classList.remove('active'));document.getElementById('mode-'+m).classList.add('active');document.getElementById('panel-sample').style.display=m==='sample'?'':'none';document.getElementById('panel-actual').style.display=m==='actual'?'':'none';resetOutput();}
+function selectSample(el,id){document.querySelectorAll('.sample-card').forEach(c=>c.classList.remove('selected'));el.classList.add('selected');selectedSampleId=id;document.getElementById('procBtn').disabled=false;}
+const fi=document.getElementById('fileInput');const dz=document.getElementById('dropZone');
+fi.addEventListener('change',e=>{if(e.target.files[0])setFile(e.target.files[0])});
+dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('drag-over')});
+dz.addEventListener('dragleave',()=>dz.classList.remove('drag-over'));
+dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('drag-over');if(e.dataTransfer.files[0])setFile(e.dataTransfer.files[0])});
+function setFile(f){selectedFile=f;dz.classList.add('has-file');document.getElementById('dropFileName').textContent='📎 '+f.name+' ('+(f.size/1024).toFixed(1)+' KB)';document.getElementById('procBtn').disabled=false;}
+function setPipe(s){document.querySelectorAll('.pipe-dot').forEach((d,i)=>{if(i<s)d.className='pipe-dot done';else if(i===s)d.className='pipe-dot active';else d.className='pipe-dot'});}
+function pipeAll(){document.querySelectorAll('.pipe-dot').forEach(d=>d.className='pipe-dot done');}
+function resetOutput(){document.getElementById('outBody').textContent='> Select a document and press PROCESS to begin.';document.getElementById('outBody').className='out-body';document.getElementById('outStatus').textContent='READY';document.getElementById('pushBtn').classList.remove('visible');document.getElementById('saveBtn').classList.remove('visible');document.querySelectorAll('.kpi-card').forEach(k=>k.classList.remove('visible'));document.querySelectorAll('.pipe-dot').forEach(d=>d.className='pipe-dot');lastReport=null;}
+function showKPIs(o){document.getElementById('kv-risk').textContent=o.risk;document.getElementById('kv-flag').textContent=o.flags;document.getElementById('kv-action').textContent=o.actions;document.getElementById('kv-conf').textContent=o.conf;document.querySelectorAll('.kpi-card').forEach(k=>k.classList.add('visible'));}
+function delay(ms){return new Promise(r=>setTimeout(r,ms));}
+
+function saveReport(){
+  if(!lastReport)return;
+  try{
+    const reports=JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');
+    reports.unshift({...lastReport,id:Date.now(),saved:new Date().toLocaleString()});
+    localStorage.setItem(STORAGE_KEY,JSON.stringify(reports.slice(0,20)));
+    const t=document.getElementById('saveToast');
+    t.style.display='block';setTimeout(()=>t.style.display='none',2500);
+    loadSavedReports();
+  }catch(e){console.error(e);}
+}
+
+function loadSavedReports(){
+  try{
+    const reports=JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');
+    const panel=document.getElementById('savedPanel');
+    const list=document.getElementById('savedList');
+    if(!reports.length){panel.classList.remove('visible');return;}
+    panel.classList.add('visible');
+    list.innerHTML=reports.map(r=>`<div class="saved-item" data-tsm-action="loadSavedReport" data-tsm-args="${r.id}"><div class="saved-item-title">${r.label}</div><div class="saved-item-meta">${r.saved} · Risk: ${r.risk||'—'} · Conf: ${r.conf||'—'}</div></div>`).join('');
+  }catch(e){}
+}
+
+function loadSavedReport(id){
+  try{
+    const reports=JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');
+    const r=reports.find(x=>x.id===id);
+    if(!r)return;
+    document.getElementById('outBody').textContent=r.summary;
+    document.getElementById('outStatus').textContent='SAVED REPORT';
+    showKPIs({risk:r.risk||'—',flags:r.flags||'—',actions:r.actions||'—',conf:r.conf||'—'});
+    pipeAll();
+    document.getElementById('pushBtn').classList.add('visible');
+  }catch(e){}
+}
+
+function pushToStrategist(){location.href='/html/finops-main-strategist/index.html?v=doc-upload-'+Date.now();}
+
+async function processDoc(){
+  const btn=document.getElementById('procBtn');btn.disabled=true;resetOutput();
+  const ob=document.getElementById('outBody');const os=document.getElementById('outStatus');
+  let label,content;
+  if(currentMode==='actual'&&selectedFile){
+    ob.className='out-body thinking';ob.textContent='> Reading file...';os.textContent='INGESTING';setPipe(0);
+    await delay(400);setPipe(1);os.textContent='PARSING';
+    try{
+      const ext=selectedFile.name.split('.').pop().toLowerCase();
+      if(['txt','csv'].includes(ext)){
+        content=await new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>res(e.target.result.slice(0,3000));r.onerror=rej;r.readAsText(selectedFile);});
+      } else {
+        const fd=new FormData();fd.append('doc',selectedFile);
+        try{const r=await fetch('https://tsm-shell.fly.dev/api/finops/upload-doc',{method:'POST',body:fd});const d=await r.json();content=d.text||d.summary||`[${ext.toUpperCase()} processed]`;}
+        catch{content=`[${ext.toUpperCase()} file · ${(selectedFile.size/1024).toFixed(1)}KB]`;}
+      }
+    }catch{content=null;}
+    label=selectedFile.name;
+  } else {
+    if(!selectedSampleId){btn.disabled=false;return;}
+    const s=SAMPLES[selectedSampleId];label=s.label;content=s.content;
+    ob.className='out-body thinking';ob.textContent='> Ingesting sample...';os.textContent='INGESTING';setPipe(0);
+    await delay(400);setPipe(1);os.textContent='PARSING';
+  }
+  await delay(500);setPipe(2);ob.textContent='> FinOps AI node chain analyzing...';os.textContent='ANALYZING';
+  const prompt=content
+    ?`You are a TSMatter FinOps analyst AI. Analyze:\n\nDocument: ${label}\nContent: ${content}\n\nReturn in this exact format:\nDOCUMENT SUMMARY\n[2-3 sentences]\n\nKEY FINDINGS\n• [finding 1]\n• [finding 2]\n• [finding 3]\n\nRISK LEVEL: [LOW/MEDIUM/HIGH/CRITICAL]\n[one sentence why]\n\nFLAGS: [number]\n\nBEST NEXT COURSE OF ACTION\n1. [action]\n2. [action]\n3. [action]\n\nCONFIDENCE: [XX%]`
+    :`You are a TSMatter FinOps analyst. File: "${label}". Generate realistic FinOps analysis with DOCUMENT SUMMARY, KEY FINDINGS (3 bullets), RISK LEVEL, FLAGS count, BEST NEXT COURSE OF ACTION (3 steps), CONFIDENCE %.`;
+  try{
+    const res=await fetch('https://tsm-core.fly.dev/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({app:'finops-showcase',messages:[{role:'user',content:prompt}]})});
+    const d=await res.json();const text=d.reply||'No response.';
+    await delay(400);setPipe(3);os.textContent='GENERATING BNCA';
+    await delay(400);pipeAll();
+    ob.className='out-body';ob.textContent=text;os.textContent='COMPLETE';
+    const rm=text.match(/RISK LEVEL[:\s]+([A-Z]+)/i);
+    const fm=text.match(/FLAGS[:\s]+(\d+)/i);
+    const cm=text.match(/CONFIDENCE[:\s]+(\d+%)/i);
+    const am=(text.match(/^\d+\./gm)||[]).length;
+    const kpis={risk:rm?rm[1]:'HIGH',flags:fm?fm[1]:'3',actions:am||3,conf:cm?cm[1]:'88%'};
+    showKPIs(kpis);
+    lastReport={label,summary:text,...kpis};
+    document.getElementById('pushBtn').classList.add('visible');
+    document.getElementById('saveBtn').classList.add('visible');
+    window.__FINOPS_UPLOADED_REPORT__={summary:text,label};
+  }catch(e){
+    pipeAll();ob.className='out-body';
+    ob.textContent='> Analysis complete (offline).\n\nDocument: '+label+'\n\nBEST NEXT COURSE OF ACTION\n1. Verify tsm-core.fly.dev connectivity\n2. Re-run with active session\n3. Push to strategist for manual review';
+    os.textContent='OFFLINE';showKPIs({risk:'—',flags:'—',actions:'3',conf:'—'});
+    document.getElementById('pushBtn').classList.add('visible');
+  }
+  btn.disabled=false;
+}
+
+// Load saved reports on boot
+loadSavedReports();
+</script>
+
+<div onclick="window.open('/how-to','_blank')" style="position:fixed;right:20px;bottom:20px;background:#00FFC6;color:#001;padding:10px 14px;border-radius:20px;font-family:DM Mono,monospace;font-size:12px;cursor:pointer;z-index:9999;">HOW TO</div>
+<script src="/tsm-ai-client.js"></script>
+
+<script>(function(){
+document.addEventListener('click', function(e){
+
+  const el = e.target.closest('[data-tsm-action]');
+  if(!el) return;
+
+  const action = el.getAttribute('data-tsm-action');
+  const args = el.getAttribute('data-tsm-args');
+
+  if(window.TSM && TSM.launcher && TSM.launcher.run){
+    TSM.launcher.run(action, args);
+  } else {
+    console.warn('[TSM] launcher missing:', action, args);
+  }
+
+});
+})();</script>
+  <script src="/js/core/tsm-kernel-upgrade.js"></script>
+</body>
+</html>
+// ===== TSM_AUTONOMY_STANDARDIZED =====
+window.TSM_AUTONOMY_STANDARDIZED = true;
+</script>
+
+<!-- TSM ENFORCER BOOT -->
+<script src="/html/core/tsm-enforcer.js"></script>
+
+
+// ===== TSM WAR ROOM SCOPED RELAY FIX =====
+window.tsmMission = window.tsmMission || {
+  id: "FINOPS-SUITE-" + Date.now().toString(36),
+  vertical: "finops-suite",
+  
+};
+
+function tsmWriteRelay(payload){
+  TSM_KERNEL.setRelay("finops-suite", JSON.stringify(payload));
+}
+</script>
+
+
+<!-- TSM KERNEL ENGINE -->
+<script src="/html/core/tsm-kernel.js"></script>
+

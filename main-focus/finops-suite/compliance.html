@@ -1,0 +1,2497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TSM Compliance Command | AI-Powered Regulatory Intelligence</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+/* TSM_SCROLL_FIX */
+html, body {
+  height: 100%;
+  overflow-y: auto;
+}
+main {
+  padding-bottom: 80px !important;
+  min-height: calc(100vh - 60px);
+}
+.footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 32px;
+  z-index: 10;
+}
+.ask-bar {
+  position: fixed;
+  bottom: 40px;
+  right: 12px;
+  z-index: 20;
+}
+.panel {
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+:root {
+  --bg: #020b06;
+  --bg2: #061410;
+  --bg3: #0a1f18;
+  --card: rgba(8,28,22,0.95);
+  --border: rgba(0,255,128,0.15);
+  --border2: rgba(0,255,128,0.3);
+  --green: #00ff80;
+  --green2: #00cc66;
+  --green3: #004d26;
+  --amber: #ffb800;
+  --red: #ff3a3a;
+  --red2: #cc0000;
+  --blue: #00d4ff;
+  --purple: #a855f7;
+  --text: #c8ffe0;
+  --text2: #7ab896;
+  --text3: #3d6b52;
+  --mono: 'Share Tech Mono', monospace;
+  --head: 'Orbitron', monospace;
+  --body: 'Rajdhani', sans-serif;
+  --glow: 0 0 20px rgba(0,255,128,0.2);
+  --glow2: 0 0 40px rgba(0,255,128,0.1);
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+html { scroll-behavior: smooth; }
+body {
+  font-family: var(--body);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+body::before {
+  content:'';
+  position:fixed;
+  inset:0;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,255,128,0.015) 2px, rgba(0,255,128,0.015) 4px);
+  pointer-events:none;
+  z-index:0;
+}
+
+/* SCROLLBAR */
+::-webkit-scrollbar { width:4px; height:4px; }
+::-webkit-scrollbar-track { background: var(--bg2); }
+::-webkit-scrollbar-thumb { background: var(--green3); border-radius:2px; }
+
+/* TICKER */
+.ticker-wrap {
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  overflow: hidden;
+  height: 28px;
+  display:flex;
+  align-items:center;
+  position:relative;
+  z-index:10;
+}
+.ticker {
+  display:flex;
+  gap:3rem;
+  animation: tick 60s linear infinite;
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  color: var(--text2);
+}
+.ticker span.warn { color: var(--amber); }
+.ticker span.crit { color: var(--red); }
+.ticker span.ok { color: var(--green); }
+@keyframes tick { 0%{transform:translateX(0)} 100%{transform:translateX(-50%)} }
+
+/* HEADER */
+.header {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding: 12px 24px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border2);
+  position:sticky;
+  top:0;
+  z-index:100;
+  box-shadow: var(--glow2);
+}
+.header-brand {
+  display:flex;
+  align-items:center;
+  gap:14px;
+}
+.brand-icon {
+  width:36px;height:36px;
+  background: linear-gradient(135deg, var(--green3), var(--bg3));
+  border:1px solid var(--green);
+  border-radius:6px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:18px;
+}
+.brand-text h1 {
+  font-family: var(--head);
+  font-size:0.9rem;
+  font-weight:900;
+  color: var(--green);
+  letter-spacing:0.15em;
+  text-shadow: 0 0 20px rgba(0,255,128,0.5);
+}
+.brand-text p {
+  font-family: var(--mono);
+  font-size:0.55rem;
+  color: var(--text3);
+  letter-spacing:0.1em;
+  text-transform:uppercase;
+}
+.header-status {
+  display:flex;
+  gap:10px;
+  align-items:center;
+}
+.status-pill {
+  font-family: var(--mono);
+  font-size:0.6rem;
+  padding:4px 10px;
+  border-radius:3px;
+  border:1px solid;
+  letter-spacing:0.08em;
+  display:flex;
+  align-items:center;
+  gap:5px;
+}
+.status-pill.green { border-color: var(--green); color: var(--green); background: rgba(0,255,128,0.05); }
+.status-pill.amber { border-color: var(--amber); color: var(--amber); background: rgba(255,184,0,0.05); }
+.status-pill.red { border-color: var(--red); color: var(--red); background: rgba(255,58,58,0.05); }
+.pulse { width:6px;height:6px;border-radius:50%;animation:pulse 2s infinite; }
+.pulse.green { background:var(--green); box-shadow: 0 0 6px var(--green); }
+.pulse.amber { background:var(--amber); box-shadow: 0 0 6px var(--amber); }
+.pulse.red { background:var(--red); box-shadow: 0 0 6px var(--red); }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+.header-time {
+  font-family: var(--mono);
+  font-size:0.65rem;
+  color: var(--text3);
+}
+
+/* LAYOUT */
+.layout {
+  display:grid;
+  grid-template-columns: 220px 1fr 240px;
+  height: calc(100vh - 84px);
+  position:relative;
+  z-index:1;
+}
+
+/* SIDEBAR */
+.sidebar {
+  background: var(--bg2);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  padding: 16px 0;
+}
+.sidebar-section {
+  padding: 6px 16px;
+  font-family: var(--mono);
+  font-size:0.55rem;
+  color: var(--text3);
+  letter-spacing:0.12em;
+  text-transform:uppercase;
+  margin-top:12px;
+  margin-bottom:4px;
+}
+.nav-item {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding: 8px 16px;
+  cursor:pointer;
+  border-left:2px solid transparent;
+  transition: all 0.2s;
+  font-family: var(--body);
+  font-size:0.85rem;
+  font-weight:600;
+  color: var(--text2);
+  gap:8px;
+}
+.nav-item:hover { background: rgba(0,255,128,0.04); color: var(--text); }
+.nav-item.active {
+  border-left-color: var(--green);
+  background: rgba(0,255,128,0.07);
+  color: var(--green);
+}
+.nav-item .nav-icon { font-size:14px; width:18px; text-align:center; }
+.nav-item .nav-badge {
+  font-family: var(--mono);
+  font-size:0.55rem;
+  padding:2px 6px;
+  border-radius:2px;
+  font-weight:400;
+}
+.nav-badge.red { background: rgba(255,58,58,0.2); color: var(--red); border:1px solid var(--red2); }
+.nav-badge.amber { background: rgba(255,184,0,0.15); color: var(--amber); }
+.nav-badge.green { background: rgba(0,255,128,0.1); color: var(--green); }
+
+/* MAIN */
+.main {
+  overflow-y: auto;
+  padding: 20px;
+  display:flex;
+  flex-direction:column;
+  gap:16px;
+}
+
+/* KPI ROW */
+.kpi-row {
+  display:grid;
+  grid-template-columns: repeat(6,1fr);
+  gap:10px;
+}
+.kpi-card {
+  background: var(--card);
+  border:1px solid var(--border);
+  border-radius:4px;
+  padding:12px;
+  position:relative;
+  overflow:hidden;
+  transition: border-color 0.2s;
+}
+.kpi-card:hover { border-color: var(--border2); }
+.kpi-card::before {
+  content:'';
+  position:absolute;
+  top:0;left:0;right:0;
+  height:2px;
+}
+.kpi-card.green::before { background: var(--green); box-shadow: 0 0 10px var(--green); }
+.kpi-card.amber::before { background: var(--amber); box-shadow: 0 0 10px var(--amber); }
+.kpi-card.red::before { background: var(--red); box-shadow: 0 0 10px var(--red); }
+.kpi-card.blue::before { background: var(--blue); box-shadow: 0 0 10px var(--blue); }
+.kpi-label {
+  font-family: var(--mono);
+  font-size:0.5rem;
+  color: var(--text3);
+  letter-spacing:0.1em;
+  text-transform:uppercase;
+  margin-bottom:6px;
+}
+.kpi-value {
+  font-family: var(--head);
+  font-size:1.4rem;
+  font-weight:700;
+  line-height:1;
+  margin-bottom:4px;
+}
+.kpi-card.green .kpi-value { color: var(--green); }
+.kpi-card.amber .kpi-value { color: var(--amber); }
+.kpi-card.red .kpi-value { color: var(--red); }
+.kpi-card.blue .kpi-value { color: var(--blue); }
+.kpi-sub {
+  font-family: var(--mono);
+  font-size:0.55rem;
+  color: var(--text3);
+}
+
+/* SECTION HEADER */
+.section-hdr {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  margin-bottom:10px;
+}
+.section-title {
+  font-family: var(--mono);
+  font-size:0.6rem;
+  color: var(--green);
+  letter-spacing:0.15em;
+  text-transform:uppercase;
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.section-title::before {
+  content:'◆';
+  font-size:0.5rem;
+  color: var(--green);
+}
+
+/* ALERTS */
+.alert-list { display:flex; flex-direction:column; gap:6px; }
+.alert-item {
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:10px 14px;
+  border:1px solid;
+  border-radius:3px;
+  background: var(--card);
+  transition: all 0.2s;
+  cursor:pointer;
+  position:relative;
+  overflow:hidden;
+}
+.alert-item::before {
+  content:'';
+  position:absolute;
+  left:0;top:0;bottom:0;
+  width:3px;
+}
+.alert-item.critical { border-color: rgba(255,58,58,0.3); }
+.alert-item.critical::before { background: var(--red); }
+.alert-item.high { border-color: rgba(255,184,0,0.3); }
+.alert-item.high::before { background: var(--amber); }
+.alert-item.medium { border-color: rgba(0,212,255,0.2); }
+.alert-item.medium::before { background: var(--blue); }
+.alert-item.ok { border-color: rgba(0,255,128,0.15); }
+.alert-item.ok::before { background: var(--green); }
+.alert-badge {
+  font-family: var(--mono);
+  font-size:0.5rem;
+  padding:2px 6px;
+  border-radius:2px;
+  letter-spacing:0.08em;
+  white-space:nowrap;
+  flex-shrink:0;
+}
+.alert-badge.critical { background:rgba(255,58,58,0.2); color:var(--red); border:1px solid var(--red2); }
+.alert-badge.high { background:rgba(255,184,0,0.15); color:var(--amber); border:1px solid rgba(255,184,0,0.4); }
+.alert-badge.medium { background:rgba(0,212,255,0.1); color:var(--blue); border:1px solid rgba(0,212,255,0.3); }
+.alert-badge.ok { background:rgba(0,255,128,0.08); color:var(--green); border:1px solid var(--green3); }
+.alert-text {
+  flex:1;
+  font-size:0.82rem;
+  font-weight:500;
+  color: var(--text);
+  line-height:1.3;
+}
+.alert-meta {
+  font-family: var(--mono);
+  font-size:0.55rem;
+  color: var(--text3);
+  text-align:right;
+  flex-shrink:0;
+}
+.alert-action-btn {
+  font-family: var(--mono);
+  font-size:0.55rem;
+  padding:3px 8px;
+  background: rgba(0,255,128,0.08);
+  border:1px solid var(--green3);
+  color: var(--green);
+  border-radius:2px;
+  cursor:pointer;
+  white-space:nowrap;
+  transition: all 0.2s;
+}
+.alert-action-btn:hover { background: rgba(0,255,128,0.15); border-color: var(--green); }
+
+/* GRID 2COL */
+.grid2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+.grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; }
+
+/* FRAMEWORK CARD */
+.fw-card {
+  background: var(--card);
+  border:1px solid var(--border);
+  border-radius:4px;
+  padding:14px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.fw-card:hover { border-color: var(--border2); box-shadow: var(--glow2); }
+.fw-header {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  margin-bottom:10px;
+}
+.fw-name {
+  font-family: var(--head);
+  font-size:0.7rem;
+  font-weight:700;
+  letter-spacing:0.08em;
+  color: var(--text);
+}
+.fw-score {
+  font-family: var(--mono);
+  font-size:0.9rem;
+  font-weight:700;
+}
+.fw-bar-wrap {
+  height:4px;
+  background: var(--bg3);
+  border-radius:2px;
+  margin-bottom:8px;
+  overflow:hidden;
+}
+.fw-bar {
+  height:100%;
+  border-radius:2px;
+  transition: width 1s ease;
+  position:relative;
+}
+.fw-bar::after {
+  content:'';
+  position:absolute;
+  right:0;top:0;bottom:0;
+  width:4px;
+  background: inherit;
+  filter:brightness(2);
+  box-shadow: 0 0 8px currentColor;
+}
+.fw-detail {
+  display:flex;
+  justify-content:space-between;
+  font-family: var(--mono);
+  font-size:0.55rem;
+  color: var(--text3);
+}
+
+/* TABS */
+.tab-bar {
+  display:flex;
+  gap:2px;
+  border-bottom:1px solid var(--border);
+  margin-bottom:16px;
+}
+.tab-btn {
+  font-family: var(--mono);
+  font-size:0.6rem;
+  padding:8px 14px;
+  background:transparent;
+  border:none;
+  color: var(--text3);
+  cursor:pointer;
+  letter-spacing:0.08em;
+  border-bottom:2px solid transparent;
+  margin-bottom:-1px;
+  transition: all 0.2s;
+  text-transform:uppercase;
+}
+.tab-btn:hover { color: var(--text2); }
+.tab-btn.active { color: var(--green); border-bottom-color: var(--green); }
+.tab-pane { display:none; }
+.tab-pane.active { display:block; }
+
+/* PANEL (card wrapper) */
+.panel {
+  background: var(--card);
+  border:1px solid var(--border);
+  border-radius:4px;
+  padding:16px;
+}
+
+/* FORM ELEMENTS */
+.field-label {
+  font-family: var(--mono);
+  font-size:0.55rem;
+  color: var(--text3);
+  letter-spacing:0.1em;
+  text-transform:uppercase;
+  margin-bottom:5px;
+  display:block;
+}
+.field-input, .field-select, .field-textarea {
+  width:100%;
+  background: var(--bg3);
+  border:1px solid var(--border);
+  border-radius:3px;
+  color: var(--text);
+  font-family: var(--body);
+  font-size:0.88rem;
+  padding:8px 10px;
+  outline:none;
+  transition: border-color 0.2s;
+}
+.field-input:focus, .field-select:focus, .field-textarea:focus { border-color: var(--border2); }
+.field-textarea { min-height:90px; resize:vertical; }
+.field-select option { background: var(--bg2); }
+.field-group { margin-bottom:12px; }
+
+/* BUTTONS */
+.btn {
+  font-family: var(--mono);
+  font-size:0.65rem;
+  padding:9px 18px;
+  border-radius:3px;
+  border:1px solid;
+  cursor:pointer;
+  letter-spacing:0.08em;
+  text-transform:uppercase;
+  transition: all 0.2s;
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+}
+.btn-primary {
+  background: rgba(0,255,128,0.08);
+  border-color: var(--green);
+  color: var(--green);
+}
+.btn-primary:hover { background: rgba(0,255,128,0.15); box-shadow: 0 0 15px rgba(0,255,128,0.2); }
+.btn-primary:disabled { opacity:0.4; cursor:not-allowed; }
+.btn-amber {
+  background: rgba(255,184,0,0.08);
+  border-color: var(--amber);
+  color: var(--amber);
+}
+.btn-amber:hover { background: rgba(255,184,0,0.15); }
+.btn-ghost {
+  background: transparent;
+  border-color: var(--border2);
+  color: var(--text2);
+}
+.btn-ghost:hover { border-color: var(--border2); color: var(--text); }
+.btn-row { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+
+/* RIGHT PANEL */
+.right-panel {
+  background: var(--bg2);
+  border-left:1px solid var(--border);
+  overflow-y:auto;
+  display:flex;
+  flex-direction:column;
+}
+.rp-section {
+  padding:14px 16px;
+  border-bottom:1px solid var(--border);
+}
+.rp-title {
+  font-family: var(--mono);
+  font-size:0.55rem;
+  color: var(--text3);
+  letter-spacing:0.12em;
+  text-transform:uppercase;
+  margin-bottom:10px;
+}
+.kpi-mini { margin-bottom:8px; }
+.kpi-mini-label {
+  font-family: var(--mono);
+  font-size:0.5rem;
+  color: var(--text3);
+  margin-bottom:2px;
+}
+.kpi-mini-val {
+  font-family: var(--head);
+  font-size:1rem;
+  font-weight:700;
+}
+.deadline-item {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:6px 0;
+  border-bottom:1px solid rgba(0,255,128,0.05);
+  font-size:0.78rem;
+}
+.deadline-item:last-child { border-bottom:none; }
+.deadline-name { color: var(--text2); font-weight:600; }
+.deadline-date { font-family: var(--mono); font-size:0.6rem; }
+.deadline-date.overdue { color: var(--red); }
+.deadline-date.soon { color: var(--amber); }
+.deadline-date.ok { color: var(--green); }
+
+/* RISK EXPOSURE */
+.risk-item {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:5px 0;
+  font-size:0.8rem;
+}
+.risk-name { color: var(--text2); }
+.risk-val { font-family: var(--mono); font-size:0.65rem; }
+.risk-val.red { color: var(--red); }
+.risk-val.amber { color: var(--amber); }
+.risk-val.green { color: var(--green); }
+
+/* AI CHAT */
+.ai-chat {
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  padding:14px 16px;
+  min-height:300px;
+}
+.ai-chat-title {
+  font-family: var(--mono);
+  font-size:0.55rem;
+  color: var(--green);
+  letter-spacing:0.12em;
+  text-transform:uppercase;
+  margin-bottom:10px;
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+.chat-messages {
+  flex:1;
+  overflow-y:auto;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  margin-bottom:10px;
+  max-height:250px;
+}
+.chat-msg {
+  padding:8px 10px;
+  border-radius:3px;
+  font-size:0.8rem;
+  line-height:1.5;
+}
+.chat-msg.user {
+  background: rgba(0,255,128,0.06);
+  border:1px solid var(--green3);
+  color: var(--text);
+  align-self:flex-end;
+  max-width:90%;
+}
+.chat-msg.ai {
+  background: var(--bg3);
+  border:1px solid var(--border);
+  color: var(--text2);
+  align-self:flex-start;
+  max-width:95%;
+  white-space:pre-wrap;
+}
+.chat-msg.thinking {
+  color: var(--text3);
+  font-family: var(--mono);
+  font-size:0.6rem;
+  border:1px dashed var(--border);
+  background:transparent;
+}
+.chat-input-row {
+  display:flex;
+  gap:6px;
+}
+.chat-input {
+  flex:1;
+  background: var(--bg3);
+  border:1px solid var(--border);
+  border-radius:3px;
+  color: var(--text);
+  font-family: var(--body);
+  font-size:0.8rem;
+  padding:7px 10px;
+  outline:none;
+}
+.chat-input:focus { border-color: var(--border2); }
+.chat-send {
+  background: rgba(0,255,128,0.08);
+  border:1px solid var(--green3);
+  color: var(--green);
+  border-radius:3px;
+  padding:7px 12px;
+  cursor:pointer;
+  font-family: var(--mono);
+  font-size:0.7rem;
+  transition:all 0.2s;
+}
+.chat-send:hover { background: rgba(0,255,128,0.15); border-color: var(--green); }
+
+/* FLOATING AI ASSISTANT WIDGET */
+.ai-widget-bubble {
+  position:fixed; right:20px; bottom:20px; z-index:9999;
+  width:52px; height:52px; border-radius:50%;
+  background:#00FFC6; color:#001;
+  display:flex; align-items:center; justify-content:center;
+  font-size:22px; cursor:pointer;
+  box-shadow:0 4px 20px rgba(0,255,198,0.4);
+  transition:transform .15s;
+}
+.ai-widget-bubble:hover { transform:scale(1.07); }
+.ai-widget-dot {
+  position:absolute; top:2px; right:2px;
+  width:11px; height:11px; border-radius:50%;
+  background:var(--green); border:2px solid var(--bg);
+  animation:pulse 2s infinite;
+}
+.ai-widget-panel {
+  position:fixed; right:20px; bottom:84px; z-index:9998;
+  width:320px; max-height:460px;
+  background:var(--card); border:1px solid var(--border2); border-radius:8px;
+  box-shadow:0 8px 32px rgba(0,0,0,0.55), var(--glow2);
+  display:none; overflow:hidden;
+}
+.ai-widget-panel.open { display:flex; flex-direction:column; }
+@media (max-width:420px) {
+  .ai-widget-panel { right:10px; left:10px; width:auto; bottom:78px; }
+  .ai-widget-bubble { right:16px; bottom:16px; }
+}
+
+/* QUICK ACTIONS */
+.qa-grid { display:grid; grid-template-columns:1fr 1fr; gap:5px; }
+.qa-btn {
+  background: var(--bg3);
+  border:1px solid var(--border);
+  border-radius:3px;
+  color: var(--text2);
+  font-family: var(--mono);
+  font-size:0.55rem;
+  padding:7px 8px;
+  cursor:pointer;
+  text-align:left;
+  transition:all 0.2s;
+  letter-spacing:0.04em;
+}
+.qa-btn:hover { border-color: var(--border2); color: var(--green); background: rgba(0,255,128,0.04); }
+
+/* REPORT OUTPUT */
+.report-output {
+  background: var(--bg3);
+  border:1px solid var(--border);
+  border-radius:3px;
+  padding:14px;
+  margin-top:12px;
+  font-size:0.82rem;
+  line-height:1.7;
+  white-space:pre-wrap;
+  color: var(--text2);
+  max-height:400px;
+  overflow-y:auto;
+  display:none;
+}
+
+/* SCORE GAUGE */
+.gauge-wrap {
+  display:flex;
+  align-items:center;
+  gap:14px;
+  padding:12px;
+  background: var(--bg3);
+  border:1px solid var(--border);
+  border-radius:4px;
+  margin-bottom:12px;
+}
+.gauge-score {
+  font-family: var(--head);
+  font-size:2.5rem;
+  font-weight:900;
+  color: var(--green);
+  line-height:1;
+  text-shadow: 0 0 20px rgba(0,255,128,0.4);
+}
+.gauge-detail { flex:1; }
+.gauge-label {
+  font-family: var(--mono);
+  font-size:0.55rem;
+  color: var(--text3);
+  letter-spacing:0.1em;
+  text-transform:uppercase;
+  margin-bottom:4px;
+}
+.gauge-sub { font-size:0.78rem; color: var(--text2); }
+.gauge-change {
+  font-family: var(--mono);
+  font-size:0.6rem;
+  margin-top:3px;
+}
+
+/* LOADING */
+.spinner {
+  display:inline-block;
+  width:10px;height:10px;
+  border:2px solid rgba(0,255,128,0.2);
+  border-top-color: var(--green);
+  border-radius:50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform:rotate(360deg); } }
+
+/* MODAL */
+.modal-overlay {
+  position:fixed;
+  inset:0;
+  background: rgba(2,11,6,0.92);
+  z-index:1000;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  padding:20px;
+}
+.modal-overlay.open { display:flex; }
+.modal {
+  background: var(--bg2);
+  border:1px solid var(--border2);
+  border-radius:6px;
+  max-width:820px;
+  width:100%;
+  max-height:85vh;
+  display:flex;
+  flex-direction:column;
+  box-shadow: 0 0 60px rgba(0,255,128,0.1);
+}
+.modal-header {
+  padding:16px 20px;
+  border-bottom:1px solid var(--border);
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+}
+.modal-title {
+  font-family: var(--head);
+  font-size:0.75rem;
+  color: var(--green);
+  letter-spacing:0.1em;
+  text-transform:uppercase;
+}
+.modal-close {
+  background:none;
+  border:none;
+  color: var(--text3);
+  font-size:1.2rem;
+  cursor:pointer;
+  line-height:1;
+}
+.modal-close:hover { color: var(--text); }
+.modal-body {
+  padding:20px;
+  overflow-y:auto;
+  flex:1;
+  white-space:pre-wrap;
+  font-size:0.85rem;
+  line-height:1.75;
+  color: var(--text2);
+}
+
+/* CHART */
+.chart-box {
+  background: var(--bg3);
+  border:1px solid var(--border);
+  border-radius:4px;
+  padding:14px;
+  margin-top:12px;
+}
+.chart-box canvas { max-height:200px; }
+
+/* ENDPOINT STATUS */
+.ep-list { display:flex; flex-direction:column; gap:4px; }
+.ep-item {
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:5px 8px;
+  background: var(--bg3);
+  border:1px solid var(--border);
+  border-radius:3px;
+  font-family: var(--mono);
+  font-size:0.55rem;
+}
+.ep-path { color: var(--text2); }
+.ep-status { color: var(--green); }
+.ep-status.warn { color: var(--amber); }
+.ep-status.err { color: var(--red); }
+.ep-latency { color: var(--text3); }
+
+/* REMEDIATION */
+.remed-item {
+  display:flex;
+  gap:10px;
+  padding:10px;
+  border:1px solid var(--border);
+  border-radius:3px;
+  background: var(--card);
+  margin-bottom:6px;
+}
+.remed-num {
+  font-family: var(--mono);
+  font-size:0.6rem;
+  color: var(--green);
+  width:20px;
+  flex-shrink:0;
+  margin-top:2px;
+}
+.remed-content { flex:1; }
+.remed-title { font-weight:700; font-size:0.85rem; margin-bottom:3px; color: var(--text); }
+.remed-desc { font-size:0.78rem; color: var(--text2); line-height:1.4; }
+.remed-meta {
+  display:flex;
+  gap:8px;
+  margin-top:6px;
+}
+.remed-tag {
+  font-family: var(--mono);
+  font-size:0.5rem;
+  padding:2px 6px;
+  border-radius:2px;
+}
+.remed-tag.priority { background:rgba(255,58,58,0.15); color:var(--red); }
+.remed-tag.effort { background:rgba(255,184,0,0.1); color:var(--amber); }
+.remed-tag.timeline { background:rgba(0,212,255,0.08); color:var(--blue); }
+
+/* ANIMATIONS */
+.fade-in { animation: fadeIn 0.4s ease forwards; }
+@keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+.stagger > * { opacity:0; animation: fadeIn 0.4s ease forwards; }
+.stagger > *:nth-child(1) { animation-delay:0.05s }
+.stagger > *:nth-child(2) { animation-delay:0.1s }
+.stagger > *:nth-child(3) { animation-delay:0.15s }
+.stagger > *:nth-child(4) { animation-delay:0.2s }
+.stagger > *:nth-child(5) { animation-delay:0.25s }
+.stagger > *:nth-child(6) { animation-delay:0.3s }
+
+/* TSM NEURAL CORE KEY INPUT */
+.key-bar {
+  display:flex;
+  gap:8px;
+  padding:10px 16px;
+  background: var(--bg2);
+  border-bottom:1px solid var(--border);
+  align-items:center;
+  position:relative;
+  z-index:10;
+}
+.key-label { font-family:var(--mono); font-size:0.6rem; color:var(--text3); white-space:nowrap; }
+.key-input {
+  flex:1;
+  background: var(--bg3);
+  border:1px solid var(--border);
+  border-radius:3px;
+  color: var(--text2);
+  font-family: var(--mono);
+  font-size:0.65rem;
+  padding:5px 10px;
+  outline:none;
+}
+.key-input:focus { border-color: var(--border2); }
+.key-save {
+  font-family: var(--mono);
+  font-size:0.6rem;
+  padding:5px 12px;
+  background: rgba(0,255,128,0.08);
+  border:1px solid var(--green3);
+  color: var(--green);
+  border-radius:3px;
+  cursor:pointer;
+  white-space:nowrap;
+}
+.key-save:hover { border-color: var(--green); background: rgba(0,255,128,0.12); }
+.key-status { font-family:var(--mono); font-size:0.6rem; }
+.key-status.ok { color: var(--green); }
+.key-status.err { color: var(--red); }
+</style>
+
+<script>
+window.TSM_UI = {
+    runAudit: async (sector, factor) => {
+        const feed = document.querySelector('.intelligence-feed-output') || document.getElementById('intelligence-feed-output');
+        if (feed) feed.innerHTML = '<span style="color: #00ffff;">[STRATEGIST] Internal Link: Processing...</span>';
+        try {
+            const res = await fetch('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: `auditops "${sector}" --factor "${factor}" --logic strategist` })
+            });
+            const data = await res.json();
+            if (feed) feed.innerText = `[STRATEGIST] ${data.output || "Analysis Complete."}`;
+        } catch (e) {
+            if (feed) feed.innerText = "[STRATEGIST] Local API Bridge Failed.";
+        }
+    }
+};
+// Wire the sector cards to the auto-fill search prompt logic
+document.addEventListener('click', (e) => {
+    const card = e.target.closest('.module-card');
+    if (card) {
+        const sector = card.dataset.sector || "Construction";
+        const factor = card.querySelector('h3')?.innerText || "General Audit";
+        TSM_UI.runAudit(sector, factor);
+    }
+});
+console.log("TSM_UI: Direct Neural Link Established.");
+</script>
+
+<script>
+async function tsmAI(s,u,m){try{const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:s?(s+'\n\n'+u):u,maxTokens:m||1024})});if(!r.ok)throw new Error('Server '+r.status);const d=await r.json();return d.content||d.reply||'No response.';}catch(e){return'[AI Error] '+e.message;}}
+</script>
+</head>
+<body>
+
+<!-- TICKER -->
+<div class="ticker-wrap">
+  <div class="ticker" id="ticker">
+    <span class="warn">⚠ SOX Mapping Endpoint Failure — N/A latency — $240K penalty exposure</span>
+    <span class="crit">● CRITICAL: OIG Exclusion Screening — 47 staff overdue since Jan 15</span>
+    <span class="ok">✓ HIPAA Security Risk Assessment complete — 87% training complete</span>
+    <span class="warn">⚠ KYC/AML Performance Degradation — 150ms latency — 3 verifications blocked</span>
+    <span>PCI-DSS Q1 2026 scan window opens Apr 1 — schedule ASV now</span>
+    <span class="warn">NIST CSF Gap: IR-4 Incident Handling — last tested Q3 2024</span>
+    <span class="ok">✓ SOC-2 Type II controls 94% mapped — 3 gaps open</span>
+    <span>CCPA: 2 consumer data requests pending > 30 days</span>
+    <span class="crit">● ISO 27001 A.12.6 — 4 critical patches unresolved > 90 days</span>
+    <span class="warn">⚠ SOX Mapping Endpoint Failure — N/A latency — $240K penalty exposure</span>
+    <span class="crit">● CRITICAL: OIG Exclusion Screening — 47 staff overdue since Jan 15</span>
+    <span class="ok">✓ HIPAA Security Risk Assessment complete — 87% training complete</span>
+    <span class="warn">⚠ KYC/AML Performance Degradation — 150ms latency — 3 verifications blocked</span>
+    <span>PCI-DSS Q1 2026 scan window opens Apr 1 — schedule ASV now</span>
+    <span class="warn">NIST CSF Gap: IR-4 Incident Handling — last tested Q3 2024</span>
+    <span class="ok">✓ SOC-2 Type II controls 94% mapped — 3 gaps open</span>
+  </div>
+</div>
+
+<!-- TSM NEURAL CORE KEY BAR -->
+<div class="key-bar">
+  <span class="key-label">⚡ TSM NEURAL CORE API KEY:</span>
+  <input type="password" class="key-input" id="tsmNeuralCoreKey" placeholder="gsk_...  (required for AI features)" />
+  <button class="key-save" data-tsm-action="saveKey" data-tsm-args="">SET KEY</button>
+  <span class="key-status" id="keyStatus"></span>
+</div>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="header-brand">
+    <div class="brand-icon">⚖️</div>
+    <div class="brand-text">
+      <h1>TSM COMPLIANCE COMMAND</h1>
+      <p>HIPAA · SOX · SOC-2 · GDPR · PCI-DSS · NIST · ISO 27001 · CCPA · AML/KYC · OIG · IRS · JOINT COMMISSION</p>
+    </div>
+  </div>
+  <div class="header-status">
+    <div class="status-pill green"><div class="pulse green"></div>AI ACTIVE</div>
+    <div class="status-pill red"><div class="pulse red"></div>3 OPEN FLAGS</div>
+    <div class="status-pill green"><div class="pulse green"></div>94% COMPLIANT</div>
+    <div class="status-pill amber">SUBSCRIBE — $399/MO</div>
+    <a href="tsm-rcm-os.html" class="status-pill" style="text-decoration:none; cursor:pointer;">↩ RCM OS</a>
+    <a href="tsm-rcm-os-howto.html" class="status-pill" style="text-decoration:none; cursor:pointer;">📖 RCM OS Guide</a>
+  </div>
+  <div class="header-time" id="clock">2026-04-20 00:00:00 UTC</div>
+</div>
+
+<!-- LAYOUT -->
+<div class="layout">
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div class="sidebar-section">Navigation</div>
+    <div class="nav-item active" data-tsm-action="showTab" data-tsm-args="'dashboard', this">
+      <span class="nav-icon">📊</span> Dashboard
+      <span class="nav-badge red">3</span>
+    </div>
+    <div class="sidebar-section">Frameworks</div>
+    <div class="nav-item" data-tsm-action="showTab" data-tsm-args="'hipaa', this">
+      <span class="nav-icon">🏥</span> HIPAA
+      <span class="nav-badge amber">2</span>
+    </div>
+    <div class="nav-item" data-tsm-action="showTab" data-tsm-args="'sox', this">
+      <span class="nav-icon">📋</span> SOX / SOC-2
+      <span class="nav-badge red">1</span>
+    </div>
+    <div class="nav-item" data-tsm-action="showTab" data-tsm-args="'aml', this">
+      <span class="nav-icon">🔍</span> AML / KYC
+      <span class="nav-badge amber">2</span>
+    </div>
+    <div class="nav-item" data-tsm-action="showTab" data-tsm-args="'gdpr', this">
+      <span class="nav-icon">🌍</span> GDPR / Privacy
+      <span class="nav-badge green">✓</span>
+    </div>
+    <div class="nav-item" data-tsm-action="showTab" data-tsm-args="'pci', this">
+      <span class="nav-icon">💳</span> PCI-DSS
+      <span class="nav-badge amber">1</span>
+    </div>
+    <div class="nav-item" data-tsm-action="showTab" data-tsm-args="'nist', this">
+      <span class="nav-icon">🛡️</span> NIST / CMMC
+      <span class="nav-badge amber">2</span>
+    </div>
+    <div class="nav-item" data-tsm-action="showTab" data-tsm-args="'iso', this">
+      <span class="nav-icon">📊</span> ISO 27001
+      <span class="nav-badge red">1</span>
+    </div>
+    <div class="nav-item" data-tsm-action="showTab" data-tsm-args="'ccpa', this">
+      <span class="nav-icon">🔒</span> CCPA / State
+      <span class="nav-badge green">✓</span>
+    </div>
+    <div class="nav-item" data-tsm-action="showTab" data-tsm-args="'oig', this">
+      <span class="nav-icon">🏛️</span> OIG / CMS
+      <span class="nav-badge red">1</span>
+    </div>
+    <div class="nav-item" data-tsm-action="showTab" data-tsm-args="'irs', this">
+      <span class="nav-icon">💰</span> IRS / Tax
+      <span class="nav-badge amber">1</span>
+    </div>
+    <div class="sidebar-section">FinOps Operations</div>
+    <div class="nav-item" data-tsm-action="showTab" data-tsm-args="'renewal', this">
+      <span class="nav-icon">🔖</span> License &amp; Renewals
+      <span class="nav-badge red">2</span>
+    </div>
+    <div class="nav-item" data-tsm-action="showTab" data-tsm-args="'auditprep', this">
+      <span class="nav-icon">📁</span> Audit &amp; Tax Prep
+      <span class="nav-badge amber">3</span>
+    </div>
+    <div class="sidebar-section">AI Tools</div>
+    <div class="nav-item" data-tsm-action="showTab" data-tsm-args="'aiaudit', this">
+      <span class="nav-icon">🤖</span> AI Audit Reports
+    </div>
+    <div class="nav-item" data-tsm-action="showTab" data-tsm-args="'remediation', this">
+      <span class="nav-icon">🔧</span> AI Remediation
+    </div>
+    <div class="nav-item" data-tsm-action="showTab" data-tsm-args="'endpoints', this">
+      <span class="nav-icon">🔌</span> API Endpoints
+    </div>
+    <div class="sidebar-section">Help</div>
+    <div class="nav-item" data-tsm-action="showTab" data-tsm-args="'howto', this">
+      <span class="nav-icon">❓</span> How To
+    </div>
+  </div>
+
+  <!-- MAIN CONTENT -->
+  <div class="main" id="mainContent">
+
+    <!-- DASHBOARD TAB -->
+    <div id="tab-dashboard" class="tab-pane active fade-in">
+
+      <!-- KPI ROW -->
+      <div class="kpi-row stagger">
+        <div class="kpi-card green">
+          <div class="kpi-label">Overall Score</div>
+          <div class="kpi-value">94%</div>
+          <div class="kpi-sub">▼ 2pts this quarter</div>
+        </div>
+        <div class="kpi-card red">
+          <div class="kpi-label">Critical Flags</div>
+          <div class="kpi-value">3</div>
+          <div class="kpi-sub">↑ 1 new this week</div>
+        </div>
+        <div class="kpi-card amber">
+          <div class="kpi-label">Risk Exposure</div>
+          <div class="kpi-value">$1.9M</div>
+          <div class="kpi-sub">BAA + OIG penalties</div>
+        </div>
+        <div class="kpi-card blue">
+          <div class="kpi-label">Active Endpoints</div>
+          <div class="kpi-value">38</div>
+          <div class="kpi-sub">↑ 5 operational</div>
+        </div>
+        <div class="kpi-card green">
+          <div class="kpi-label">Avg API Latency</div>
+          <div class="kpi-value">18ms</div>
+          <div class="kpi-sub">▲ within SLA</div>
+        </div>
+        <div class="kpi-card amber">
+          <div class="kpi-label">Next Audit</div>
+          <div class="kpi-value">Apr 15</div>
+          <div class="kpi-sub">17 days remaining</div>
+        </div>
+      </div>
+
+      <!-- PRIORITY ALERTS -->
+      <div>
+        <div class="section-hdr">
+          <div class="section-title">Priority Alerts — Action Required</div>
+          <button class="btn btn-primary" data-tsm-action="aiAnalyzeAlerts" data-tsm-args=""><span class="spinner" id="alertSpinner" style="display:none"></span>⚡ AI Triage All</button>
+        </div>
+        <div class="alert-list stagger">
+          <div class="alert-item critical">
+            <span class="alert-badge critical">CRITICAL</span>
+            <div class="alert-text">SOX Mapping Endpoint Failure — legacy interface in critical state · N/A latency · SOX compliance reporting at risk · immediate restoration required</div>
+            <div class="alert-meta">$240K penalty<br>SOX</div>
+            <button class="alert-action-btn" data-tsm-action="aiRemediate" data-tsm-args="'SOX Mapping Endpoint Failure - legacy interface critical state, N/A latency, $240K penalty exposure'">AI FIX →</button>
+          </div>
+          <div class="alert-item high">
+            <span class="alert-badge high">HIGH</span>
+            <div class="alert-text">KYC/AML Performance Degradation — 150ms latency (warning threshold exceeded) · 3 pending customer verifications blocked · database query optimization needed</div>
+            <div class="alert-meta">BSA risk<br>AML/KYC</div>
+            <button class="alert-action-btn" data-tsm-action="aiRemediate" data-tsm-args="'KYC/AML 150ms latency degradation, 3 customer verifications blocked, BSA compliance risk'">AI FIX →</button>
+          </div>
+          <div class="alert-item high">
+            <span class="alert-badge high">HIGH</span>
+            <div class="alert-text">OIG Exclusion Screening Overdue — 47 staff not screened since Jan 15 · Medicare/Medicaid participation at risk · CMS penalty exposure active</div>
+            <div class="alert-meta">$1.9M risk<br>OIG/CMS</div>
+            <button class="alert-action-btn" data-tsm-action="aiRemediate" data-tsm-args="'OIG Exclusion Screening 47 staff overdue since Jan 15, Medicare/Medicaid participation risk, $1.9M CMS penalty exposure'">AI FIX →</button>
+          </div>
+          <div class="alert-item medium">
+            <span class="alert-badge medium">MED</span>
+            <div class="alert-text">HIPAA BAA Gap — 2 business associates missing signed agreements · PHI access not contractually protected · OCR audit trigger risk</div>
+            <div class="alert-meta">HIGH priority<br>HIPAA</div>
+            <button class="alert-action-btn" data-tsm-action="aiRemediate" data-tsm-args="'HIPAA BAA Gap - 2 business associates missing agreements, PHI access unprotected, OCR audit trigger risk'">AI FIX →</button>
+          </div>
+          <div class="alert-item ok">
+            <span class="alert-badge ok">OK</span>
+            <div class="alert-text">HIPAA Security Risk Assessment complete — all administrative safeguards current · breach notification plan verified · training 87% complete</div>
+            <div class="alert-meta">RESOLVED<br>HIPAA</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- FRAMEWORK SCORECARD -->
+      <div>
+        <div class="section-hdr">
+          <div class="section-title">Compliance Scorecard — Framework Status</div>
+          <button class="btn btn-ghost" data-tsm-action="aiGenerateScorecard" data-tsm-args="">📊 AI Full Report</button>
+        </div>
+        <div class="grid3 stagger" id="frameworkCards">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+
+      <!-- CHART -->
+      <div class="chart-box">
+        <canvas id="mainChart"></canvas>
+      </div>
+    </div>
+
+    <!-- HIPAA TAB -->
+    <div id="tab-hipaa" class="tab-pane">
+      <div class="panel">
+        <div class="section-hdr">
+          <div class="section-title">HIPAA Compliance Intelligence</div>
+          <button class="btn btn-primary" data-tsm-action="aiFrameworkAnalysis" data-tsm-args="'HIPAA'">⚡ AI Analysis</button>
+        </div>
+        <div class="gauge-wrap">
+          <div class="gauge-score">91%</div>
+          <div class="gauge-detail">
+            <div class="gauge-label">HIPAA Compliance Score</div>
+            <div class="gauge-sub">Privacy Rule 94% · Security Rule 89% · Breach Notification 92%</div>
+            <div class="gauge-change" style="color:var(--amber)">▼ 1pt this quarter · 2 open findings</div>
+          </div>
+        </div>
+        <div class="grid3">
+          <div class="fw-card"><div class="fw-header"><span class="fw-name">Privacy Rule</span><span class="fw-score" style="color:var(--green)">94%</span></div><div class="fw-bar-wrap"><div class="fw-bar" style="width:94%;background:var(--green)"></div></div><div class="fw-detail"><span>164.502–164.534</span><span>1 gap open</span></div></div>
+          <div class="fw-card"><div class="fw-header"><span class="fw-name">Security Rule</span><span class="fw-score" style="color:var(--amber)">89%</span></div><div class="fw-bar-wrap"><div class="fw-bar" style="width:89%;background:var(--amber)"></div></div><div class="fw-detail"><span>164.302–164.318</span><span>BAA gaps</span></div></div>
+          <div class="fw-card"><div class="fw-header"><span class="fw-name">Breach Notification</span><span class="fw-score" style="color:var(--green)">92%</span></div><div class="fw-bar-wrap"><div class="fw-bar" style="width:92%;background:var(--green)"></div></div><div class="fw-detail"><span>164.400–164.414</span><span>Plan current</span></div></div>
+        </div>
+        <div class="field-group" style="margin-top:16px">
+          <label class="field-label">Ask HIPAA AI</label>
+          <div style="display:flex;gap:8px">
+            <input type="text" class="field-input" id="hipaaQ" placeholder="e.g. What are the BAA requirements for cloud storage vendors?" />
+            <button class="btn btn-primary" data-tsm-action="askFramework" data-tsm-args="'hipaa', document.getElementById('hipaaQ').value">ASK</button>
+          </div>
+        </div>
+        <div class="report-output" id="hipaaOutput"></div>
+      </div>
+    </div>
+
+    <!-- SOX/SOC-2 TAB -->
+    <div id="tab-sox" class="tab-pane">
+      <div class="panel">
+        <div class="section-hdr">
+          <div class="section-title">SOX / SOC-2 Compliance Intelligence</div>
+          <button class="btn btn-primary" data-tsm-action="aiFrameworkAnalysis" data-tsm-args="'SOX and SOC-2'">⚡ AI Analysis</button>
+        </div>
+        <div class="gauge-wrap">
+          <div class="gauge-score" style="color:var(--amber)">76%</div>
+          <div class="gauge-detail">
+            <div class="gauge-label">SOX / SOC-2 Score</div>
+            <div class="gauge-sub">SOX Controls 76% · SOC-2 Type II 91% · ITGC 83%</div>
+            <div class="gauge-change" style="color:var(--red)">▼ CRITICAL: Endpoint failure — $240K exposure</div>
+          </div>
+        </div>
+        <div class="grid3">
+          <div class="fw-card"><div class="fw-header"><span class="fw-name">SOX Controls</span><span class="fw-score" style="color:var(--amber)">76%</span></div><div class="fw-bar-wrap"><div class="fw-bar" style="width:76%;background:var(--amber)"></div></div><div class="fw-detail"><span>ITGC mapping</span><span>CRITICAL gap</span></div></div>
+          <div class="fw-card"><div class="fw-header"><span class="fw-name">SOC-2 Type II</span><span class="fw-score" style="color:var(--green)">91%</span></div><div class="fw-bar-wrap"><div class="fw-bar" style="width:91%;background:var(--green)"></div></div><div class="fw-detail"><span>Trust criteria</span><span>3 gaps</span></div></div>
+          <div class="fw-card"><div class="fw-header"><span class="fw-name">ITGC</span><span class="fw-score" style="color:var(--amber)">83%</span></div><div class="fw-bar-wrap"><div class="fw-bar" style="width:83%;background:var(--amber)"></div></div><div class="fw-detail"><span>Access, change, ops</span><span>Review needed</span></div></div>
+        </div>
+        <div class="field-group" style="margin-top:16px">
+          <label class="field-label">Ask SOX/SOC-2 AI</label>
+          <div style="display:flex;gap:8px">
+            <input type="text" class="field-input" id="soxQ" placeholder="e.g. What ITGCs are required for SOX Section 404?" />
+            <button class="btn btn-primary" data-tsm-action="askFramework" data-tsm-args="'sox', document.getElementById('soxQ').value">ASK</button>
+          </div>
+        </div>
+        <div class="report-output" id="soxOutput"></div>
+      </div>
+    </div>
+
+    <!-- PCI-DSS TAB -->
+    <div id="tab-pci" class="tab-pane">
+      <div class="panel">
+        <div class="section-hdr">
+          <div class="section-title">PCI-DSS Compliance Intelligence</div>
+          <button class="btn btn-primary" data-tsm-action="aiFrameworkAnalysis" data-tsm-args="'PCI-DSS'">⚡ AI Analysis</button>
+        </div>
+        <div class="gauge-wrap">
+          <div class="gauge-score" style="color:var(--amber)">87%</div>
+          <div class="gauge-detail">
+            <div class="gauge-label">PCI-DSS v4.0 Score</div>
+            <div class="gauge-sub">Network Security 91% · Access Control 84% · Vulnerability Mgmt 88%</div>
+            <div class="gauge-change" style="color:var(--amber)">⚠ Q1 ASV scan window opens Apr 1</div>
+          </div>
+        </div>
+        <div class="grid3">
+          <div class="fw-card"><div class="fw-header"><span class="fw-name">Network Security</span><span class="fw-score" style="color:var(--green)">91%</span></div><div class="fw-bar-wrap"><div class="fw-bar" style="width:91%;background:var(--green)"></div></div><div class="fw-detail"><span>Req 1–2</span><span>Firewall config OK</span></div></div>
+          <div class="fw-card"><div class="fw-header"><span class="fw-name">Access Control</span><span class="fw-score" style="color:var(--amber)">84%</span></div><div class="fw-bar-wrap"><div class="fw-bar" style="width:84%;background:var(--amber)"></div></div><div class="fw-detail"><span>Req 7–8</span><span>MFA gap</span></div></div>
+          <div class="fw-card"><div class="fw-header"><span class="fw-name">Vulnerability Mgmt</span><span class="fw-score" style="color:var(--amber)">88%</span></div><div class="fw-bar-wrap"><div class="fw-bar" style="width:88%;background:var(--amber)"></div></div><div class="fw-detail"><span>Req 6</span><span>Patches pending</span></div></div>
+          <div class="fw-card"><div class="fw-header"><span class="fw-name">Cardholder Data</span><span class="fw-score" style="color:var(--green)">95%</span></div><div class="fw-bar-wrap"><div class="fw-bar" style="width:95%;background:var(--green)"></div></div><div class="fw-detail"><span>Req 3–4</span><span>Encryption OK</span></div></div>
+          <div class="fw-card"><div class="fw-header"><span class="fw-name">Monitoring & Testing</span><span class="fw-score" style="color:var(--amber)">82%</span></div><div class="fw-bar-wrap"><div class="fw-bar" style="width:82%;background:var(--amber)"></div></div><div class="fw-detail"><span>Req 10–11</span><span>ASV due</span></div></div>
+          <div class="fw-card"><div class="fw-header"><span class="fw-name">Security Policy</span><span class="fw-score" style="color:var(--green)">93%</span></div><div class="fw-bar-wrap"><div class="fw-bar" style="width:93%;background:var(--green)"></div></div><div class="fw-detail"><span>Req 12</span><span>Annual review OK</span></div></div>
+        </div>
+        <div class="field-group" style="margin-top:16px">
+          <label class="field-label">Ask PCI-DSS AI</label>
+          <div style="display:flex;gap:8px">
+            <input type="text" class="field-input" id="pciQ" placeholder="e.g. What are the PCI-DSS v4.0 changes for multi-factor authentication?" />
+            <button class="btn btn-primary" data-tsm-action="askFramework" data-tsm-args="'pci', document.getElementById('pciQ').value">ASK</button>
+          </div>
+        </div>
+        <div class="report-output" id="pciOutput"></div>
+      </div>
+    </div>
+
+    <!-- NIST/CMMC TAB -->
+    <div id="tab-nist" class="tab-pane">
+      <div class="panel">
+        <div class="section-hdr">
+          <div class="section-title">NIST / CMMC Compliance Intelligence</div>
+          <button class="btn btn-primary" data-tsm-action="aiFrameworkAnalysis" data-tsm-args="'NIST CSF and CMMC 2.0'">⚡ AI Analysis</button>
+        </div>
+        <div class="gauge-wrap">
+          <div class="gauge-score" style="color:var(--amber)">79%</div>
+          <div class="gauge-detail">
+            <div class="gauge-label">NIST CSF / CMMC 2.0 Score</div>
+            <div class="gauge-sub">Identify 88% · Protect 82% · Detect 75% · Respond 71% · Recover 78%</div>
+            <div class="gauge-change" style="color:var(--amber)">⚠ IR-4 Incident Handling gap — last tested Q3 2024</div>
+          </div>
+        </div>
+        <div class="grid3">
+          <div class="fw-card"><div class="fw-header"><span class="fw-name">Identify</span><span class="fw-score" style="color:var(--green)">88%</span></div><div class="fw-bar-wrap"><div class="fw-bar" style="width:88%;background:var(--green)"></div></div><div class="fw-detail"><span>Asset mgmt, risk</span><span>2 gaps</span></div></div>
+          <div class="fw-card"><div class="fw-header"><span class="fw-name">Protect</span><span class="fw-score" style="color:var(--amber)">82%</span></div><div class="fw-bar-wrap"><div class="fw-bar" style="width:82%;background:var(--amber)"></div></div><div class="fw-detail"><span>Access, training</span><span>3 gaps</span></div></div>
+          <div class="fw-card"><div class="fw-header"><span class="fw-name">Detect</span><span class="fw-score" style="color:var(--amber)">75%</span></div><div class="fw-bar-wrap"><div class="fw-bar" style="width:75%;background:var(--amber)"></div></div><div class="fw-detail"><span>Anomalies, monitoring</span><span>4 gaps</span></div></div>
+          <div class="fw-card"><div class="fw-header"><span class="fw-name">Respond</span><span class="fw-score" style="color:var(--red)">71%</span></div><div class="fw-bar-wrap"><div class="fw-bar" style="width:71%;background:var(--red)"></div></div><div class="fw-detail"><span>IR-4 gap</span><span>CRITICAL</span></div></div>
+          <div class="fw-card"><div class="fw-header"><span class="fw-name">Recover</span><span class="fw-score" style="color:var(--amber)">78%</span></div><div class="fw-bar-wrap"><div class="fw-bar" style="width:78%;background:var(--amber)"></div></div><div class="fw-detail"><span>Recovery planning</span><span>2 gaps</span></div></div>
+          <div class="fw-card"><div class="fw-header"><span class="fw-name">CMMC Level 2</span><span class="fw-score" style="color:var(--amber)">81%</span></div><div class="fw-bar-wrap"><div class="fw-bar" style="width:81%;background:var(--amber)"></div></div><div class="fw-detail"><span>110 practices</span><span>21 gaps</span></div></div>
+        </div>
+        <div class="field-group" style="margin-top:16px">
+          <label class="field-label">Ask NIST/CMMC AI</label>
+          <div style="display:flex;gap:8px">
+            <input type="text" class="field-input" id="nistQ" placeholder="e.g. What NIST CSF controls address ransomware detection?" />
+            <button class="btn btn-primary" data-tsm-action="askFramework" data-tsm-args="'nist', document.getElementById('nistQ').value">ASK</button>
+          </div>
+        </div>
+        <div class="report-output" id="nistOutput"></div>
+      </div>
+    </div>
+
+    <!-- ISO 27001 TAB -->
+    <div id="tab-iso" class="tab-pane">
+      <div class="panel">
+        <div class="section-hdr">
+          <div class="section-title">ISO 27001:2022 Compliance Intelligence</div>
+          <button class="btn btn-primary" data-tsm-action="aiFrameworkAnalysis" data-tsm-args="'ISO 27001:2022'">⚡ AI Analysis</button>
+        </div>
+        <div class="gauge-wrap">
+          <div class="gauge-score" style="color:var(--amber)">83%</div>
+          <div class="gauge-detail">
+            <div class="gauge-label">ISO 27001:2022 Score</div>
+            <div class="gauge-sub">Clauses 4–10 compliance · Annex A controls 114/114 assessed</div>
+            <div class="gauge-change" style="color:var(--red)">● CRITICAL: A.12.6 — 4 patches unresolved >90 days</div>
+          </div>
+        </div>
+        <div class="grid3">
+          <div class="fw-card"><div class="fw-header"><span class="fw-name">A.5 Policies</span><span class="fw-score" style="color:var(--green)">95%</span></div><div class="fw-bar-wrap"><div class="fw-bar" style="width:95%;background:var(--green)"></div></div><div class="fw-detail"><span>2 controls</span><span>Current</span></div></div>
+          <div class="fw-card"><div class="fw-header"><span class="fw-name">A.6 Organization</span><span class="fw-score" style="color:var(--green)">91%</span></div><div class="fw-bar-wrap"><div class="fw-bar" style="width:91%;background:var(--green)"></div></div><div class="fw-detail"><span>7 controls</span><span>1 gap</span></div></div>
+          <div class="fw-card"><div class="fw-header"><span class="fw-name">A.8 Asset Mgmt</span><span class="fw-score" style="color:var(--amber)">84%</span></div><div class="fw-bar-wrap"><div class="fw-bar" style="width:84%;background:var(--amber)"></div></div><div class="fw-detail"><span>10 controls</span><span>3 gaps</span></div></div>
+          <div class="fw-card"><div class="fw-header"><span class="fw-name">A.9 Access Control</span><span class="fw-score" style="color:var(--amber)">86%</span></div><div class="fw-bar-wrap"><div class="fw-bar" style="width:86%;background:var(--amber)"></div></div><div class="fw-detail"><span>14 controls</span><span>2 gaps</span></div></div>
+          <div class="fw-card"><div class="fw-header"><span class="fw-name">A.12 Operations</span><span class="fw-score" style="color:var(--red)">71%</span></div><div class="fw-bar-wrap"><div class="fw-bar" style="width:71%;background:var(--red)"></div></div><div class="fw-detail"><span>A.12.6 CRITICAL</span><span>4 patches</span></div></div>
+          <div class="fw-card"><div class="fw-header"><span class="fw-name">A.18 Compliance</span><span class="fw-score" style="color:var(--green)">92%</span></div><div class="fw-bar-wrap"><div class="fw-bar" style="width:92%;background:var(--green)"></div></div><div class="fw-detail"><span>8 controls</span><span>1 gap</span></div></div>
+        </div>
+        <div class="field-group" style="margin-top:16px">
+          <label class="field-label">Ask ISO 27001 AI</label>
+          <div style="display:flex;gap:8px">
+            <input type="text" class="field-input" id="isoQ" placeholder="e.g. What does ISO 27001:2022 require for vulnerability management?" />
+            <button class="btn btn-primary" data-tsm-action="askFramework" data-tsm-args="'iso', document.getElementById('isoQ').value">ASK</button>
+          </div>
+        </div>
+        <div class="report-output" id="isoOutput"></div>
+      </div>
+    </div>
+
+    <!-- CCPA TAB -->
+    <div id="tab-ccpa" class="tab-pane">
+      <div class="panel">
+        <div class="section-hdr">
+          <div class="section-title">CCPA / State Privacy Compliance</div>
+          <button class="btn btn-primary" data-tsm-action="aiFrameworkAnalysis" data-tsm-args="'CCPA and state privacy laws including CPRA, VCDPA, CPA, CTDPA'">⚡ AI Analysis</button>
+        </div>
+        <div class="gauge-wrap">
+          <div class="gauge-score" style="color:var(--green)">90%</div>
+          <div class="gauge-detail">
+            <div class="gauge-label">State Privacy Score</div>
+            <div class="gauge-sub">CCPA/CPRA 90% · VCDPA 88% · CPA 91% · CTDPA 89%</div>
+            <div class="gauge-change" style="color:var(--amber)">⚠ 2 consumer data requests pending >30 days</div>
+          </div>
+        </div>
+        <div class="grid3">
+          <div class="fw-card"><div class="fw-header"><span class="fw-name">CCPA / CPRA</span><span class="fw-score" style="color:var(--green)">90%</span></div><div class="fw-bar-wrap"><div class="fw-bar" style="width:90%;background:var(--green)"></div></div><div class="fw-detail"><span>California</span><span>2 DSR pending</span></div></div>
+          <div class="fw-card"><div class="fw-header"><span class="fw-name">VCDPA</span><span class="fw-score" style="color:var(--amber)">88%</span></div><div class="fw-bar-wrap"><div class="fw-bar" style="width:88%;background:var(--amber)"></div></div><div class="fw-detail"><span>Virginia</span><span>DPA needed</span></div></div>
+          <div class="fw-card"><div class="fw-header"><span class="fw-name">CPA</span><span class="fw-score" style="color:var(--green)">91%</span></div><div class="fw-bar-wrap"><div class="fw-bar" style="width:91%;background:var(--green)"></div></div><div class="fw-detail"><span>Colorado</span><span>Current</span></div></div>
+          <div class="fw-card"><div class="fw-header"><span class="fw-name">Data Inventory</span><span class="fw-score" style="color:var(--amber)">85%</span></div><div class="fw-bar-wrap"><div class="fw-bar" style="width:85%;background:var(--amber)"></div></div><div class="fw-detail"><span>All states</span><span>Review needed</span></div></div>
+          <div class="fw-card"><div class="fw-header"><span class="fw-name">Consent Mgmt</span><span class="fw-score" style="color:var(--green)">93%</span></div><div class="fw-bar-wrap"><div class="fw-bar" style="width:93%;background:var(--green)"></div></div><div class="fw-detail"><span>Opt-out flows</span><span>Current</span></div></div>
+          <div class="fw-card"><div class="fw-header"><span class="fw-name">DSR Response</span><span class="fw-score" style="color:var(--amber)">82%</span></div><div class="fw-bar-wrap"><div class="fw-bar" style="width:82%;background:var(--amber)"></div></div><div class="fw-detail"><span>45-day SLA</span><span>2 overdue</span></div></div>
+        </div>
+        <div class="field-group" style="margin-top:16px">
+          <label class="field-label">Ask Privacy AI</label>
+          <div style="display:flex;gap:8px">
+            <input type="text" class="field-input" id="ccpaQ" placeholder="e.g. What are the CPRA requirements for sensitive personal information?" />
+            <button class="btn btn-primary" data-tsm-action="askFramework" data-tsm-args="'ccpa', document.getElementById('ccpaQ').value">ASK</button>
+          </div>
+        </div>
+        <div class="report-output" id="ccpaOutput"></div>
+      </div>
+    </div>
+
+    <!-- AML/KYC, GDPR, OIG, IRS - simplified tabs -->
+    <div id="tab-aml" class="tab-pane"><div class="panel"><div class="section-hdr"><div class="section-title">AML / KYC Intelligence</div><button class="btn btn-primary" data-tsm-action="aiFrameworkAnalysis" data-tsm-args="'AML/KYC, BSA, FinCEN requirements'">⚡ AI Analysis</button></div><div class="gauge-wrap"><div class="gauge-score" style="color:var(--amber)">85%</div><div class="gauge-detail"><div class="gauge-label">AML/KYC Score</div><div class="gauge-sub">CIP 88% · CDD 85% · Transaction Monitoring 82% · SAR Filing 91%</div><div class="gauge-change" style="color:var(--amber)">⚠ 150ms latency · 3 verifications blocked</div></div></div><div class="field-group" style="margin-top:16px"><label class="field-label">Ask AML/KYC AI</label><div style="display:flex;gap:8px"><input type="text" class="field-input" id="amlQ" placeholder="e.g. What triggers a SAR filing under BSA requirements?" /><button class="btn btn-primary" data-tsm-action="askFramework" data-tsm-args="'aml', document.getElementById('amlQ').value">ASK</button></div></div><div class="report-output" id="amlOutput"></div></div></div>
+    <div id="tab-gdpr" class="tab-pane"><div class="panel"><div class="section-hdr"><div class="section-title">GDPR / Privacy Intelligence</div><button class="btn btn-primary" data-tsm-action="aiFrameworkAnalysis" data-tsm-args="'GDPR EU data protection requirements'">⚡ AI Analysis</button></div><div class="gauge-wrap"><div class="gauge-score" style="color:var(--green)">93%</div><div class="gauge-detail"><div class="gauge-label">GDPR Score</div><div class="gauge-sub">Lawful Basis 95% · Data Subject Rights 91% · DPA Agreements 89%</div><div class="gauge-change" style="color:var(--green)">▲ Strong position · Annual review due Q3</div></div></div><div class="field-group" style="margin-top:16px"><label class="field-label">Ask GDPR AI</label><div style="display:flex;gap:8px"><input type="text" class="field-input" id="gdprQ" placeholder="e.g. What is required for lawful basis of processing under GDPR Art 6?" /><button class="btn btn-primary" data-tsm-action="askFramework" data-tsm-args="'gdpr', document.getElementById('gdprQ').value">ASK</button></div></div><div class="report-output" id="gdprOutput"></div></div></div>
+    <div id="tab-oig" class="tab-pane"><div class="panel"><div class="section-hdr"><div class="section-title">OIG / CMS Compliance Intelligence</div><button class="btn btn-primary" data-tsm-action="aiFrameworkAnalysis" data-tsm-args="'OIG CMS Medicare Medicaid compliance requirements'">⚡ AI Analysis</button></div><div class="gauge-wrap"><div class="gauge-score" style="color:var(--red)">72%</div><div class="gauge-detail"><div class="gauge-label">OIG/CMS Score</div><div class="gauge-sub">Exclusion Screening 40% CRITICAL · CoP Compliance 91% · Billing 88%</div><div class="gauge-change" style="color:var(--red)">● CRITICAL: 47 staff unscreened — $1.9M exposure</div></div></div><div class="field-group" style="margin-top:16px"><label class="field-label">Ask OIG/CMS AI</label><div style="display:flex;gap:8px"><input type="text" class="field-input" id="oigQ" placeholder="e.g. How often must OIG exclusion screening be performed?" /><button class="btn btn-primary" data-tsm-action="askFramework" data-tsm-args="'oig', document.getElementById('oigQ').value">ASK</button></div></div><div class="report-output" id="oigOutput"></div></div></div>
+    <div id="tab-irs" class="tab-pane"><div class="panel"><div class="section-hdr"><div class="section-title">IRS / Tax Compliance Intelligence</div><button class="btn btn-primary" data-tsm-action="aiFrameworkAnalysis" data-tsm-args="'IRS tax compliance, Form 5500, Form 990, tax reporting requirements'">⚡ AI Analysis</button></div><div class="gauge-wrap"><div class="gauge-score" style="color:var(--amber)">88%</div><div class="gauge-detail"><div class="gauge-label">IRS/Tax Score</div><div class="gauge-sub">Form 5500 due Mar 31 · Form 990 due May 15 · Payroll 95%</div><div class="gauge-change" style="color:var(--amber)">⚠ Form 5500 deadline approaching</div></div></div><div class="field-group" style="margin-top:16px"><label class="field-label">Ask IRS/Tax AI</label><div style="display:flex;gap:8px"><input type="text" class="field-input" id="irsQ" placeholder="e.g. What are the Form 5500 filing requirements for a 401k plan?" /><button class="btn btn-primary" data-tsm-action="askFramework" data-tsm-args="'irs', document.getElementById('irsQ').value">ASK</button></div></div><div class="report-output" id="irsOutput"></div></div></div>
+
+    <!-- AI AUDIT REPORTS TAB -->
+    <div id="tab-aiaudit" class="tab-pane">
+      <div class="panel">
+        <div class="section-hdr">
+          <div class="section-title">AI Audit Report Generator</div>
+          <button class="btn btn-ghost" data-tsm-action="exportPDF" data-tsm-args="">📄 Export PDF</button>
+        </div>
+        <div class="grid2">
+          <div>
+            <div class="field-group">
+              <label class="field-label">Report Type</label>
+              <select class="field-select" id="reportType">
+                <option>Full Compliance Audit</option>
+                <option>HIPAA Risk Assessment</option>
+                <option>SOX ITGC Review</option>
+                <option>PCI-DSS Gap Analysis</option>
+                <option>NIST CSF Assessment</option>
+                <option>ISO 27001 Audit</option>
+                <option>CCPA Readiness Review</option>
+                <option>AML/KYC Program Review</option>
+                <option>OIG Exclusion Screening Audit</option>
+                <option>Executive Summary Report</option>
+              </select>
+            </div>
+            <div class="field-group">
+              <label class="field-label">Organization / Scope</label>
+              <input type="text" class="field-input" id="reportOrg" value="TSM Enterprise — Q2 2026" />
+            </div>
+            <div class="field-group">
+              <label class="field-label">Additional Context</label>
+              <textarea class="field-textarea" id="reportContext" placeholder="Describe specific areas of concern, recent incidents, or audit focus areas...">Multi-domain financial services org. Recent SOX endpoint failure, OIG screening gap, HIPAA BAA deficiency. Preparing for external audit Apr 15.</textarea>
+            </div>
+            <div class="btn-row">
+              <button class="btn btn-primary" id="genReportBtn" data-tsm-action="generateAuditReport" data-tsm-args=""><span id="reportSpinner" class="spinner" style="display:none"></span>⚡ GENERATE AI REPORT</button>
+            </div>
+          </div>
+          <div>
+            <div class="field-group">
+              <label class="field-label">Risk Flags (AI Real-Time)</label>
+              <div id="riskFlags" style="display:flex;flex-direction:column;gap:6px;">
+                <div class="alert-item critical" style="padding:8px 12px"><span class="alert-badge critical">CRITICAL</span><span class="alert-text" style="font-size:0.78rem">SOX endpoint offline — $240K exposure</span></div>
+                <div class="alert-item high" style="padding:8px 12px"><span class="alert-badge high">HIGH</span><span class="alert-text" style="font-size:0.78rem">OIG screening 47 staff overdue</span></div>
+                <div class="alert-item high" style="padding:8px 12px"><span class="alert-badge high">HIGH</span><span class="alert-text" style="font-size:0.78rem">ISO A.12.6 patches >90 days</span></div>
+                <div class="alert-item medium" style="padding:8px 12px"><span class="alert-badge medium">MED</span><span class="alert-text" style="font-size:0.78rem">HIPAA BAA 2 agreements missing</span></div>
+              </div>
+              <button class="btn btn-amber" style="margin-top:10px;width:100%" data-tsm-action="aiScanRisks" data-tsm-args=""><span id="riskSpinner" class="spinner" style="display:none"></span>🔍 AI SCAN FOR NEW RISKS</button>
+            </div>
+          </div>
+        </div>
+        <div class="report-output" id="auditReportOutput" style="max-height:500px"></div>
+      </div>
+    </div>
+
+    <!-- REMEDIATION TAB -->
+    <div id="tab-remediation" class="tab-pane">
+      <div class="panel">
+        <div class="section-hdr">
+          <div class="section-title">AI Remediation Engine</div>
+          <button class="btn btn-primary" data-tsm-action="aiGenerateAllRemediation" data-tsm-args=""><span id="remedSpinner" class="spinner" style="display:none"></span>⚡ GENERATE ALL PLANS</button>
+        </div>
+        <div class="field-group">
+          <label class="field-label">Describe Compliance Issue</label>
+          <div style="display:flex;gap:8px">
+            <input type="text" class="field-input" id="remedInput" placeholder="e.g. SOX mapping endpoint failure with $240K penalty exposure..." />
+            <button class="btn btn-primary" data-tsm-action="aiRemediate" data-tsm-args="document.getElementById('remedInput').value">GET PLAN</button>
+          </div>
+        </div>
+        <div id="remediationList" style="display:flex;flex-direction:column;gap:8px;margin-top:12px">
+          <div style="font-family:var(--mono);font-size:0.65rem;color:var(--text3);padding:20px;text-align:center;border:1px dashed var(--border);border-radius:3px">Click "Generate All Plans" or enter a specific issue above to get AI remediation guidance</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ENDPOINTS TAB -->
+    <div id="tab-endpoints" class="tab-pane">
+      <div class="panel">
+        <div class="section-hdr">
+          <div class="section-title">API Endpoint Status</div>
+          <button class="btn btn-ghost" data-tsm-action="refreshEndpoints" data-tsm-args="">↻ Refresh</button>
+        </div>
+        <div class="ep-list">
+          <div class="ep-item"><span class="ep-path">POST /api/compliance/hipaa</span><span class="ep-status">● READY</span><span class="ep-latency">12ms</span></div>
+          <div class="ep-item"><span class="ep-path">POST /api/compliance/sox</span><span class="ep-status err">● CRITICAL</span><span class="ep-latency">N/A</span></div>
+          <div class="ep-item"><span class="ep-path">POST /api/compliance/soc2</span><span class="ep-status">● READY</span><span class="ep-latency">18ms</span></div>
+          <div class="ep-item"><span class="ep-path">POST /api/compliance/aml-kyc</span><span class="ep-status warn">● DEGRADED</span><span class="ep-latency">150ms</span></div>
+          <div class="ep-item"><span class="ep-path">POST /api/compliance/gdpr</span><span class="ep-status">● READY</span><span class="ep-latency">14ms</span></div>
+          <div class="ep-item"><span class="ep-path">POST /api/compliance/pci-dss</span><span class="ep-status">● READY</span><span class="ep-latency">16ms</span></div>
+          <div class="ep-item"><span class="ep-path">POST /api/compliance/nist</span><span class="ep-status">● READY</span><span class="ep-latency">11ms</span></div>
+          <div class="ep-item"><span class="ep-path">POST /api/compliance/iso27001</span><span class="ep-status">● READY</span><span class="ep-latency">13ms</span></div>
+          <div class="ep-item"><span class="ep-path">POST /api/compliance/ccpa</span><span class="ep-status">● READY</span><span class="ep-latency">15ms</span></div>
+          <div class="ep-item"><span class="ep-path">POST /api/compliance/oig</span><span class="ep-status warn">● WARNING</span><span class="ep-latency">45ms</span></div>
+          <div class="ep-item"><span class="ep-path">POST /api/compliance/irs</span><span class="ep-status">● READY</span><span class="ep-latency">12ms</span></div>
+          <div class="ep-item"><span class="ep-path">POST /api/compliance/risk-score</span><span class="ep-status">● READY</span><span class="ep-latency">22ms</span></div>
+          <div class="ep-item"><span class="ep-path">POST /api/compliance/audit-report</span><span class="ep-status">● READY</span><span class="ep-latency">19ms</span></div>
+          <div class="ep-item"><span class="ep-path">POST /api/ai/chat</span><span class="ep-status">● READY</span><span class="ep-latency">8ms</span></div>
+          <div class="ep-item"><span class="ep-path">GET /api/health</span><span class="ep-status">● READY</span><span class="ep-latency">2ms</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- HOW TO TAB -->
+    <div id="tab-howto" class="tab-pane">
+      <div class="panel">
+        <div class="section-hdr">
+          <div class="section-title">How To Use TSM Compliance Command</div>
+        </div>
+        <div style="font-size:0.8rem;color:var(--text2);line-height:1.5;margin-bottom:14px">
+          This is the <strong style="color:var(--text)">Compliance Desk</strong> — the module that owns exception flags, SoD checks, GAAP adherence, and audit trail across all 11 connected regulatory frameworks. It's one of the modules wired into <strong style="color:var(--text)">TSM RCM OS</strong> (use the <span style="color:var(--green)">↩ RCM OS</span> button, top right, to go back, or <a href="tsm-rcm-os-howto.html" style="color:var(--green)">📖 RCM OS Guide</a> for the full cross-module walkthrough). Here's how to actually work it.
+        </div>
+
+        <!-- QUICK START -->
+        <div class="section-title" style="font-size:0.85rem;margin-bottom:8px">Quick Start</div>
+        <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:20px">
+          <div class="remed-item">
+            <div class="remed-num">01</div>
+            <div class="remed-content">
+              <div class="remed-title">Set your Neural Core API key</div>
+              <div class="remed-desc">Paste your key into the bar at the very top of the page and click SET KEY. Every AI feature on this page — AI Analysis, Ask [Framework] AI, AI Remediation, AI Audit Reports, and the floating AI Assistant — needs this to return live answers instead of an error.</div>
+            </div>
+          </div>
+          <div class="remed-item">
+            <div class="remed-num">02</div>
+            <div class="remed-content">
+              <div class="remed-title">Start on Dashboard</div>
+              <div class="remed-desc">Check Priority Alerts first — it's sorted CRITICAL → HIGH → MED → OK. Click <strong>⚡ AI Triage All</strong> to have every open alert re-ranked, or click <strong>AI FIX →</strong> on a single alert to jump straight to a remediation plan for that item.</div>
+            </div>
+          </div>
+          <div class="remed-item">
+            <div class="remed-num">03</div>
+            <div class="remed-content">
+              <div class="remed-title">Open the framework tab that matches your issue</div>
+              <div class="remed-desc">HIPAA, SOX / SOC-2, AML / KYC, GDPR, PCI-DSS, NIST / CMMC, ISO 27001, CCPA / State, OIG / CMS, or IRS / Tax — each has its own score gauge, sub-control breakdown, and an <strong>Ask [Framework] AI</strong> box for questions specific to that regulation.</div>
+            </div>
+          </div>
+          <div class="remed-item">
+            <div class="remed-num">04</div>
+            <div class="remed-content">
+              <div class="remed-title">Get a remediation plan</div>
+              <div class="remed-desc">In AI Remediation, describe an issue in your own words (or click <strong>⚡ Generate All Plans</strong> to cover every open flag at once) and the AI returns a prioritized, numbered action plan with effort and timeline tags.</div>
+            </div>
+          </div>
+          <div class="remed-item">
+            <div class="remed-num">05</div>
+            <div class="remed-content">
+              <div class="remed-title">Track what's due</div>
+              <div class="remed-desc">The right-rail Deadline Tracker and Risk Exposure widgets give you the at-a-glance view; License &amp; Renewals is the full tracker for permits, insurance, and contracts, with a calendar view and one-click renew.</div>
+            </div>
+          </div>
+          <div class="remed-item">
+            <div class="remed-num">06</div>
+            <div class="remed-content">
+              <div class="remed-title">Prep for an external audit</div>
+              <div class="remed-desc">Audit &amp; Tax Prep is a dedicated workspace for building the document request list and checklist an auditor or tax preparer will ask for — separate from the day-to-day AI Audit Reports tab, which generates internal compliance reports on demand.</div>
+            </div>
+          </div>
+          <div class="remed-item">
+            <div class="remed-num">07</div>
+            <div class="remed-content">
+              <div class="remed-title">Ask anything, anytime</div>
+              <div class="remed-desc">Click the 🤖 bubble in the bottom-right corner any time to open the floating AI Assistant — it stays with you across every tab. Use the Quick Actions grid in the right rail for one-click prompts; the answer opens straight into the assistant.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- WHAT'S WHERE -->
+        <div class="section-title" style="font-size:0.85rem;margin-bottom:8px">What's Where</div>
+        <div class="grid3" style="margin-bottom:20px">
+          <div style="border:1px solid var(--border);border-radius:3px;background:var(--card);padding:10px 12px">
+            <div style="font-weight:700;font-size:0.8rem;color:var(--text);margin-bottom:4px">📊 Dashboard</div>
+            <div style="font-size:0.72rem;color:var(--text2);line-height:1.4">Cross-framework KPIs, Priority Alerts queue, and the Compliance Scorecard — your single starting point every session.</div>
+          </div>
+          <div style="border:1px solid var(--border);border-radius:3px;background:var(--card);padding:10px 12px">
+            <div style="font-weight:700;font-size:0.8rem;color:var(--text);margin-bottom:4px">⚖️ Frameworks</div>
+            <div style="font-size:0.72rem;color:var(--text2);line-height:1.4">HIPAA through IRS/Tax — one tab per regulation, each with its own score, sub-controls, and Ask AI box.</div>
+          </div>
+          <div style="border:1px solid var(--border);border-radius:3px;background:var(--card);padding:10px 12px">
+            <div style="font-weight:700;font-size:0.8rem;color:var(--text);margin-bottom:4px">🔖 FinOps Operations</div>
+            <div style="font-size:0.72rem;color:var(--text2);line-height:1.4">License &amp; Renewals and Audit &amp; Tax Prep — the operational side: tracking expirations and assembling what an auditor will request.</div>
+          </div>
+          <div style="border:1px solid var(--border);border-radius:3px;background:var(--card);padding:10px 12px">
+            <div style="font-weight:700;font-size:0.8rem;color:var(--text);margin-bottom:4px">🤖 AI Audit Reports</div>
+            <div style="font-size:0.72rem;color:var(--text2);line-height:1.4">Generate a full compliance report for any framework, on demand, formatted for CFO or board circulation.</div>
+          </div>
+          <div style="border:1px solid var(--border);border-radius:3px;background:var(--card);padding:10px 12px">
+            <div style="font-weight:700;font-size:0.8rem;color:var(--text);margin-bottom:4px">🔧 AI Remediation</div>
+            <div style="font-size:0.72rem;color:var(--text2);line-height:1.4">Turns a described issue (or every open alert at once) into a prioritized, step-by-step fix plan.</div>
+          </div>
+          <div style="border:1px solid var(--border);border-radius:3px;background:var(--card);padding:10px 12px">
+            <div style="font-weight:700;font-size:0.8rem;color:var(--text);margin-bottom:4px">🔌 API Endpoints</div>
+            <div style="font-size:0.72rem;color:var(--text2);line-height:1.4">Live status and latency for every backend endpoint this page calls — check here first if an AI feature isn't responding.</div>
+          </div>
+        </div>
+
+        <div style="border:1px solid var(--border);border-left:3px solid var(--amber);background:rgba(255,184,0,0.05);padding:10px 14px;font-size:0.75rem;color:var(--text2);line-height:1.5">
+          <strong style="color:var(--amber)">Honest limitation:</strong> the scores, alerts, and endpoint statuses shown throughout this page are demo/blueprint data, not yet a live feed from a compliance data source. Treat every number as illustrative until this module is wired to a real backend.
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /main -->
+
+  <!-- RIGHT PANEL -->
+  <div class="right-panel">
+
+    <!-- SYNTHESIS SCORE -->
+    <div class="rp-section">
+      <div class="rp-title">Synthesis Score</div>
+      <div style="height:40px;display:flex;align-items:center">
+        <canvas id="miniChart" height="40"></canvas>
+      </div>
+      <div style="font-family:var(--mono);font-size:0.55rem;color:var(--text3);margin-top:6px">Strategic Confidence</div>
+    </div>
+
+    <!-- DOMAIN HEALTH -->
+    <div class="rp-section">
+      <div class="rp-title">Domain Health</div>
+      <div class="kpi-mini"><div class="kpi-mini-label">Frameworks Online</div><div class="kpi-mini-val" style="color:var(--green)">11/11</div></div>
+      <div class="kpi-mini"><div class="kpi-mini-label">AI Engine</div><div class="kpi-mini-val" style="color:var(--green);font-size:0.75rem" id="aiEngineStatus">CHECKING...</div></div>
+      <div class="kpi-mini"><div class="kpi-mini-label">Model</div><div class="kpi-mini-val" style="color:var(--blue);font-size:0.7rem">Llama 3.3 70B</div></div>
+    </div>
+
+    <!-- DEADLINE TRACKER -->
+    <div class="rp-section">
+      <div class="rp-title">Deadline Tracker</div>
+      <div class="deadline-item"><span class="deadline-name">OIG Screening</span><span class="deadline-date overdue">OVERDUE</span></div>
+      <div class="deadline-item"><span class="deadline-name">SOX Recovery</span><span class="deadline-date overdue">NOW</span></div>
+      <div class="deadline-item"><span class="deadline-name">HIPAA BAA Review</span><span class="deadline-date soon">Apr 15</span></div>
+      <div class="deadline-item"><span class="deadline-name">KYC Latency Fix</span><span class="deadline-date soon">Apr 18</span></div>
+      <div class="deadline-item"><span class="deadline-name">PCI-DSS ASV Scan</span><span class="deadline-date soon">Apr 28</span></div>
+      <div class="deadline-item"><span class="deadline-name">IRS Form 5500</span><span class="deadline-date soon">Mar 31</span></div>
+      <div class="deadline-item"><span class="deadline-name">JC Mock Survey</span><span class="deadline-date ok">Q2 2026</span></div>
+      <div class="deadline-item"><span class="deadline-name">IRS Form 990</span><span class="deadline-date ok">May 15</span></div>
+    </div>
+
+    <!-- RISK EXPOSURE -->
+    <div class="rp-section">
+      <div class="rp-title">Risk Exposure</div>
+      <div class="risk-item"><span class="risk-name">OIG/CMS Risk</span><span class="risk-val red">$1.9M</span></div>
+      <div class="risk-item"><span class="risk-name">SOX Penalty</span><span class="risk-val red">$240K</span></div>
+      <div class="risk-item"><span class="risk-name">HIPAA OCR Risk</span><span class="risk-val amber">$85K</span></div>
+      <div class="risk-item"><span class="risk-name">BSA/AML Exposure</span><span class="risk-val amber">$50K</span></div>
+      <div class="risk-item"><span class="risk-name">PCI-DSS Risk</span><span class="risk-val amber">$35K</span></div>
+      <div class="risk-item"><span class="risk-name">IRS Penalty Risk</span><span class="risk-val green">$12K</span></div>
+    </div>
+
+    <!-- QUICK ACTIONS -->
+    <div class="rp-section">
+      <div class="rp-title">Quick Actions</div>
+      <div class="qa-grid">
+        <button class="qa-btn" data-tsm-action="quickAction" data-tsm-args="'What are the immediate steps to remediate the SOX mapping endpoint failure and avoid the $240K penalty?'">⚡ SOX Fix</button>
+        <button class="qa-btn" data-tsm-action="quickAction" data-tsm-args="'How do we rapidly screen 47 overdue staff for OIG exclusions and document the process for CMS?'">🏛️ OIG Screen</button>
+        <button class="qa-btn" data-tsm-action="quickAction" data-tsm-args="'What HIPAA BAA template language is required for cloud storage vendors with PHI access?'">🏥 HIPAA BAA</button>
+        <button class="qa-btn" data-tsm-action="quickAction" data-tsm-args="'What PCI-DSS v4.0 requirements must be verified before the Q1 ASV scan?'">💳 PCI Scan</button>
+        <button class="qa-btn" data-tsm-action="quickAction" data-tsm-args="'Generate a NIST CSF IR-4 incident handling procedure template'">🛡️ NIST IR-4</button>
+        <button class="qa-btn" data-tsm-action="quickAction" data-tsm-args="'What ISO 27001 A.12.6 controls are required for patch management within 90 days?'">📊 ISO Patch</button>
+        <button class="qa-btn" data-tsm-action="quickAction" data-tsm-args="'How do we respond to the 2 overdue CCPA/CPRA data subject requests within the 45-day deadline?'">🔒 CCPA DSR</button>
+        <button class="qa-btn" data-tsm-action="quickAction" data-tsm-args="'Generate an executive compliance summary for the Apr 15 audit'">📋 Exec Report</button>
+      </div>
+    </div>
+
+  </div><!-- /right-panel -->
+
+</div><!-- /layout -->
+
+<!-- MODAL -->
+<div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)closeModal();">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="modalTitle">AI Analysis</div>
+      <button class="modal-close" data-tsm-action="closeModal" data-tsm-args="">×</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+
+<script>
+// ─── STATE ───────────────────────────────────────────────────────────────────
+let tsmNeuralCoreKey = localStorage.getItem('tsm_tsm-neural-core_key') || '';
+const TSM_NEURAL_CORE_URL = '/api/chat';
+const MODEL = 'openai/gpt-oss-120b';
+const chatHistory = [];
+
+const SYSTEM = `You are TSM Compliance Command AI — an expert regulatory compliance intelligence system. You have deep expertise in:
+- HIPAA (Privacy Rule, Security Rule, Breach Notification)
+- SOX / SOC-2 (ITGC, financial controls, trust criteria)
+- AML/KYC (BSA, FinCEN, CDD, SAR filing)
+- GDPR (data protection, lawful basis, data subject rights)
+- PCI-DSS v4.0 (cardholder data, network security, ASV scans)
+- NIST CSF / CMMC 2.0 (identify, protect, detect, respond, recover)
+- ISO 27001:2022 (Annex A controls, ISMS)
+- CCPA/CPRA and state privacy laws (VCDPA, CPA, CTDPA)
+- OIG/CMS (exclusion screening, Medicare/Medicaid, CoP)
+- IRS/Tax compliance (Form 5500, Form 990, payroll)
+
+Current organization status: 94% overall compliance, 3 critical flags:
+1. SOX Mapping Endpoint Failure — $240K penalty exposure
+2. OIG Exclusion Screening — 47 staff overdue since Jan 15 — $1.9M risk
+3. ISO A.12.6 — 4 critical patches unresolved >90 days
+
+Provide specific, actionable, expert-level compliance guidance. Reference specific regulatory citations. Be direct and concise.`;
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+window.onload = () => {
+  if (tsmNeuralCoreKey) {
+    document.getElementById('tsmNeuralCoreKey').value = tsmNeuralCoreKey;
+    document.getElementById('keyStatus').textContent = '✓ KEY SET';
+    document.getElementById('keyStatus').className = 'key-status ok';
+    document.getElementById('aiEngineStatus').textContent = 'LIVE';
+  }
+  updateClock();
+  setInterval(updateClock, 1000);
+  renderFrameworkCards();
+  renderMainChart();
+  renderMiniChart();
+};
+
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent = now.toISOString().replace('T',' ').slice(0,19) + ' UTC';
+}
+
+function saveKey() {
+  tsmNeuralCoreKey = document.getElementById('tsmNeuralCoreKey').value.trim();
+  if (!tsmNeuralCoreKey) { alert('Enter a TSM Neural Core API key'); return; }
+  localStorage.setItem('tsm_tsm-neural-core_key', tsmNeuralCoreKey);
+  document.getElementById('keyStatus').textContent = '✓ KEY SET';
+  document.getElementById('keyStatus').className = 'key-status ok';
+  document.getElementById('aiEngineStatus').textContent = 'LIVE';
+}
+
+// ─── NAVIGATION ───────────────────────────────────────────────────────────────
+function showTab(id, el) {
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const pane = document.getElementById('tab-' + id);
+  if (pane) { pane.classList.add('active'); pane.classList.add('fade-in'); }
+  if (el) el.classList.add('active');
+}
+
+// ─── FLOATING AI ASSISTANT WIDGET ──────────────────────────────────────────────
+function toggleAiWidget(force) {
+  const panel = document.getElementById('aiWidgetPanel');
+  if (!panel) return;
+  const shouldOpen = typeof force === 'boolean' ? force : !panel.classList.contains('open');
+  panel.classList.toggle('open', shouldOpen);
+}
+
+// ─── FRAMEWORK CARDS ──────────────────────────────────────────────────────────
+const frameworks = [
+  { name:'HIPAA Privacy', score:94, color:'var(--green)', detail:'164.502–534' },
+  { name:'HIPAA Security', score:89, color:'var(--amber)', detail:'BAA gaps' },
+  { name:'SOX Controls', score:76, color:'var(--red)', detail:'CRITICAL gap' },
+  { name:'SOC-2 Type II', score:91, color:'var(--green)', detail:'3 gaps open' },
+  { name:'AML / KYC', score:85, color:'var(--amber)', detail:'150ms latency' },
+  { name:'GDPR', score:93, color:'var(--green)', detail:'Annual review Q3' },
+  { name:'PCI-DSS v4.0', score:87, color:'var(--amber)', detail:'ASV due Apr' },
+  { name:'NIST CSF', score:79, color:'var(--amber)', detail:'IR-4 gap' },
+  { name:'ISO 27001', score:83, color:'var(--amber)', detail:'A.12.6 critical' },
+  { name:'CCPA / CPRA', score:90, color:'var(--green)', detail:'2 DSR pending' },
+  { name:'OIG / CMS', score:72, color:'var(--red)', detail:'47 staff overdue' },
+  { name:'IRS / Tax', score:88, color:'var(--amber)', detail:'5500 due Mar 31' },
+];
+
+function renderFrameworkCards() {
+  const el = document.getElementById('frameworkCards');
+  el.innerHTML = frameworks.map(f => `
+    <div class="fw-card">
+      <div class="fw-header">
+        <span class="fw-name">${f.name}</span>
+        <span class="fw-score" style="color:${f.color}">${f.score}%</span>
+      </div>
+      <div class="fw-bar-wrap">
+        <div class="fw-bar" style="width:${f.score}%;background:${f.color}"></div>
+      </div>
+      <div class="fw-detail"><span>${f.detail}</span><span style="color:${f.color}">${f.score >= 90 ? '✓' : f.score >= 80 ? '⚠' : '●'}</span></div>
+    </div>
+  `).join('');
+}
+
+// ─── CHARTS ───────────────────────────────────────────────────────────────────
+function renderMainChart() {
+  const ctx = document.getElementById('mainChart').getContext('2d');
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: frameworks.map(f => f.name),
+      datasets: [{
+        data: frameworks.map(f => f.score),
+        backgroundColor: frameworks.map(f => f.score >= 90 ? 'rgba(0,255,128,0.3)' : f.score >= 80 ? 'rgba(255,184,0,0.3)' : 'rgba(255,58,58,0.3)'),
+        borderColor: frameworks.map(f => f.score >= 90 ? 'rgba(0,255,128,0.8)' : f.score >= 80 ? 'rgba(255,184,0,0.8)' : 'rgba(255,58,58,0.8)'),
+        borderWidth: 1,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: false },
+        title: { display: true, text: 'COMPLIANCE SCORES BY FRAMEWORK', color: '#3d6b52', font: { family: "'Share Tech Mono'" , size: 10 } }
+      },
+      scales: {
+        y: { beginAtZero: false, min: 60, max: 100, ticks: { color: '#3d6b52', font: { family: "'Share Tech Mono'", size: 9 } }, grid: { color: 'rgba(0,255,128,0.05)' } },
+        x: { ticks: { color: '#3d6b52', font: { family: "'Share Tech Mono'", size: 8 }, maxRotation: 45 }, grid: { display: false } }
+      }
+    }
+  });
+}
+
+function renderMiniChart() {
+  const ctx = document.getElementById('miniChart').getContext('2d');
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: ['Q1','Q2','Q3','Q4','Q1','NOW'],
+      datasets: [{ data: [88,90,91,93,94,94], borderColor: 'rgba(0,255,128,0.6)', borderWidth: 1.5, pointRadius: 2, pointBackgroundColor: '#00ff80', fill: true, backgroundColor: 'rgba(0,255,128,0.05)', tension: 0.4 }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: { y: { display: false }, x: { display: false } }
+    }
+  });
+}
+
+// ─── TSM NEURAL CORE API ─────────────────────────────────────────────────────────────────
+async function tsmNeuralCoreChat(messages, maxTokens = 2048) {
+  if (!tsmNeuralCoreKey) {
+    alert('Set your TSM Neural Core API key first (top bar)');
+    throw new Error('No API key');
+  }
+  let res;
+  try {
+    res = await fetch(TSM_NEURAL_CORE_URL, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${tsmNeuralCoreKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: MODEL, messages, temperature: 0.4, max_tokens: maxTokens })
+    });
+  } catch (networkErr) {
+    throw new Error(`Can't reach the AI backend (${TSM_NEURAL_CORE_URL}) — check your connection or that the server is running.`);
+  }
+  const raw = await res.text();
+  let data;
+  try {
+    data = raw ? JSON.parse(raw) : {};
+  } catch (parseErr) {
+    throw new Error(`AI backend returned an unreadable response (status ${res.status})${raw ? ': ' + raw.slice(0, 120) : ' — empty body'}. Is ${TSM_NEURAL_CORE_URL} wired up on this server?`);
+  }
+  if (!res.ok) throw new Error(data.error?.message || `Server error ${res.status}`);
+  if (data.error) throw new Error(data.error.message || 'Unknown AI backend error');
+  return data.content || data.answer || data.choices?.[0]?.message?.content || "";
+}
+
+// ─── CHAT ─────────────────────────────────────────────────────────────────────
+async function sendChat() {
+  const input = document.getElementById('chatInput');
+  const msg = input.value.trim();
+  if (!msg) return;
+  input.value = '';
+  addChatMsg('user', msg);
+  chatHistory.push({ role: 'user', content: msg });
+  const thinking = addChatMsg('thinking', '🧠 Analyzing...');
+  try {
+    const reply = await tsmNeuralCoreChat([{ role: 'system', content: SYSTEM }, ...chatHistory.slice(-10)]);
+    thinking.remove();
+    addChatMsg('ai', reply);
+    chatHistory.push({ role: 'assistant', content: reply });
+  } catch(e) {
+    thinking.remove();
+    addChatMsg('ai', `⚠️ ${e.message}`);
+  }
+}
+
+function addChatMsg(role, text) {
+  toggleAiWidget(true);
+  const box = document.getElementById('chatMessages');
+  const div = document.createElement('div');
+  div.className = `chat-msg ${role}`;
+  div.textContent = text;
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+  return div;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('chatInput')?.addEventListener('keydown', e => { if (e.key === 'Enter') sendChat(); });
+});
+window.addEventListener('load', () => {
+  document.getElementById('chatInput')?.addEventListener('keydown', e => { if (e.key === 'Enter') sendChat(); });
+});
+
+async function quickAction(prompt) {
+  addChatMsg('user', prompt);
+  chatHistory.push({ role: 'user', content: prompt });
+  const thinking = addChatMsg('thinking', '🧠 Analyzing...');
+  try {
+    const reply = await tsmNeuralCoreChat([{ role: 'system', content: SYSTEM }, ...chatHistory.slice(-10)]);
+    thinking.remove();
+    addChatMsg('ai', reply);
+    chatHistory.push({ role: 'assistant', content: reply });
+  } catch(e) {
+    thinking.remove();
+    addChatMsg('ai', `⚠️ ${e.message}`);
+  }
+}
+
+// ─── FRAMEWORK ANALYSIS ───────────────────────────────────────────────────────
+async function aiFrameworkAnalysis(fw) {
+  showModal(`${fw} — AI Analysis`, '🧠 Generating analysis...');
+  try {
+    const result = await tsmNeuralCoreChat([
+      { role: 'system', content: SYSTEM },
+      { role: 'user', content: `Provide a comprehensive ${fw} compliance analysis for our organization. Include: current risk areas, specific regulatory requirements, gap assessment, and top 5 immediate action items. Be specific and cite regulation sections.` }
+    ], 3000);
+    document.getElementById('modalBody').textContent = result;
+  } catch(e) {
+    document.getElementById('modalBody').textContent = `⚠️ ${e.message}`;
+  }
+}
+
+async function askFramework(fw, question) {
+  if (!question.trim()) return;
+  const outputEl = document.getElementById(fw + 'Output');
+  outputEl.style.display = 'block';
+  outputEl.textContent = '🧠 Analyzing...';
+  try {
+    const result = await tsmNeuralCoreChat([
+      { role: 'system', content: SYSTEM },
+      { role: 'user', content: question }
+    ], 2048);
+    outputEl.textContent = result;
+  } catch(e) {
+    outputEl.textContent = `⚠️ ${e.message}`;
+  }
+}
+
+// ─── AI AUDIT REPORT ─────────────────────────────────────────────────────────
+async function generateAuditReport() {
+  const type = document.getElementById('reportType').value;
+  const org = document.getElementById('reportOrg').value;
+  const context = document.getElementById('reportContext').value;
+  const btn = document.getElementById('genReportBtn');
+  const spinner = document.getElementById('reportSpinner');
+  const output = document.getElementById('auditReportOutput');
+
+  btn.disabled = true;
+  spinner.style.display = 'inline-block';
+  output.style.display = 'block';
+  output.textContent = '🧠 Generating audit report...';
+
+  try {
+    const result = await tsmNeuralCoreChat([
+      { role: 'system', content: SYSTEM },
+      { role: 'user', content: `Generate a professional ${type} for: ${org}\n\nContext: ${context}\n\nStructure the report with:\n1. EXECUTIVE SUMMARY\n2. SCOPE & METHODOLOGY\n3. KEY FINDINGS (with severity ratings)\n4. RISK MATRIX\n5. COMPLIANCE GAPS BY FRAMEWORK\n6. FINANCIAL EXPOSURE ANALYSIS\n7. REMEDIATION ROADMAP (prioritized)\n8. TIMELINE & RESOURCE REQUIREMENTS\n9. CONCLUSIONS\n\nBe specific, cite regulations, include dollar amounts where relevant.` }
+    ], 4096);
+    output.textContent = result;
+  } catch(e) {
+    output.textContent = `⚠️ ${e.message}`;
+  } finally {
+    btn.disabled = false;
+    spinner.style.display = 'none';
+  }
+}
+
+// ─── AI RISK SCAN ─────────────────────────────────────────────────────────────
+async function aiScanRisks() {
+  const spinner = document.getElementById('riskSpinner');
+  spinner.style.display = 'inline-block';
+  try {
+    const result = await tsmNeuralCoreChat([
+      { role: 'system', content: SYSTEM },
+      { role: 'user', content: 'Based on current compliance status (94% overall, SOX critical, OIG overdue, ISO A.12.6 gap), identify any additional hidden risk flags that may not be immediately obvious. Return as JSON array with format: [{severity:"critical|high|medium", text:"description"}]' }
+    ], 1024);
+    let risks = [];
+    try {
+      const clean = result.replace(/```json|```/g,'').trim();
+      risks = JSON.parse(clean);
+    } catch { risks = [{severity:'medium', text: result.slice(0,200)}]; }
+    const flagsEl = document.getElementById('riskFlags');
+    risks.forEach(r => {
+      const div = document.createElement('div');
+      div.className = `alert-item ${r.severity}`;
+      div.style.padding = '8px 12px';
+      div.innerHTML = `<span class="alert-badge ${r.severity}">${r.severity.toUpperCase()}</span><span class="alert-text" style="font-size:0.78rem">${r.text}</span>`;
+      flagsEl.appendChild(div);
+    });
+  } catch(e) { alert(e.message); }
+  finally { spinner.style.display = 'none'; }
+}
+
+// ─── AI REMEDIATION ───────────────────────────────────────────────────────────
+async function aiRemediate(issue) {
+  const list = document.getElementById('remediationList');
+  const placeholder = list.querySelector('[style*="dashed"]');
+  if (placeholder) placeholder.remove();
+
+  const spinner = document.createElement('div');
+  spinner.style.cssText = 'font-family:var(--mono);font-size:0.65rem;color:var(--text3);padding:10px';
+  spinner.textContent = '🧠 Generating remediation plan...';
+  list.appendChild(spinner);
+
+  // switch to remediation tab
+  showTab('remediation', document.querySelector('.nav-item:nth-child(15)'));
+
+  try {
+    const result = await tsmNeuralCoreChat([
+      { role: 'system', content: SYSTEM },
+      { role: 'user', content: `Generate a detailed remediation plan for this compliance issue: "${issue}"\n\nProvide:\n1. Immediate actions (24-48 hours)\n2. Short-term fixes (1-2 weeks)\n3. Long-term controls (30-90 days)\n4. Regulatory citations\n5. Resource requirements\n6. Success metrics\n\nBe specific and actionable.` }
+    ], 2048);
+
+    spinner.remove();
+    const div = document.createElement('div');
+    div.className = 'remed-item fade-in';
+    div.innerHTML = `
+      <div class="remed-num">▶</div>
+      <div class="remed-content">
+        <div class="remed-title">${issue.slice(0,80)}${issue.length > 80 ? '...' : ''}</div>
+        <div class="remed-desc" style="white-space:pre-wrap">${result}</div>
+        <div class="remed-meta">
+          <span class="remed-tag priority">AI GENERATED</span>
+          <span class="remed-tag timeline">${new Date().toLocaleDateString()}</span>
+        </div>
+      </div>
+    `;
+    list.appendChild(div);
+  } catch(e) {
+    spinner.textContent = `⚠️ ${e.message}`;
+  }
+}
+
+async function aiGenerateAllRemediation() {
+  const spinner = document.getElementById('remedSpinner');
+  spinner.style.display = 'inline-block';
+  const issues = [
+    'SOX Mapping Endpoint Failure - $240K penalty exposure, N/A latency',
+    'OIG Exclusion Screening - 47 staff overdue since Jan 15, $1.9M CMS risk',
+    'ISO 27001 A.12.6 - 4 critical patches unresolved over 90 days',
+    'HIPAA BAA Gap - 2 business associates missing signed agreements'
+  ];
+  for (const issue of issues) await aiRemediate(issue);
+  spinner.style.display = 'none';
+}
+
+async function aiAnalyzeAlerts() {
+  const spinner = document.getElementById('alertSpinner');
+  spinner.style.display = 'inline-block';
+  try {
+    const result = await tsmNeuralCoreChat([
+      { role: 'system', content: SYSTEM },
+      { role: 'user', content: 'Triage our 3 critical compliance alerts in priority order with immediate action steps:\n1. SOX Mapping Endpoint Failure ($240K)\n2. OIG Exclusion Screening overdue 47 staff ($1.9M)\n3. ISO A.12.6 patches >90 days\n4. HIPAA BAA gap 2 vendors\n\nProvide a clear action matrix with owner, timeline, and success criteria for each.' }
+    ], 2048);
+    showModal('AI Alert Triage', result);
+  } catch(e) { alert(e.message); }
+  finally { spinner.style.display = 'none'; }
+}
+
+async function aiGenerateScorecard() {
+  showModal('Compliance Scorecard Report', '🧠 Generating...');
+  try {
+    const result = await tsmNeuralCoreChat([
+      { role: 'system', content: SYSTEM },
+      { role: 'user', content: 'Generate a full executive compliance scorecard report covering all 11 active frameworks. Include overall score analysis, top risks, trending, and strategic recommendations for Q2 2026.' }
+    ], 3000);
+    document.getElementById('modalBody').textContent = result;
+  } catch(e) { document.getElementById('modalBody').textContent = `⚠️ ${e.message}`; }
+}
+
+// ─── MODAL ────────────────────────────────────────────────────────────────────
+function showModal(title, body) {
+  document.getElementById('modalTitle').textContent = title;
+  document.getElementById('modalBody').textContent = body;
+  document.getElementById('modalOverlay').classList.add('open');
+}
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('open');
+}
+
+// ─── PDF EXPORT ───────────────────────────────────────────────────────────────
+function exportPDF() {
+  const output = document.getElementById('auditReportOutput');
+  if (!output || output.style.display === 'none') { alert('Generate a report first'); return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  doc.setFontSize(14);
+  doc.text('TSM COMPLIANCE COMMAND — AUDIT REPORT', 10, 15);
+  doc.setFontSize(9);
+  doc.text(`Generated: ${new Date().toISOString()}`, 10, 22);
+  const lines = doc.splitTextToSize(output.textContent, 180);
+  doc.text(lines, 10, 30);
+  doc.save(`TSM_Compliance_Report_${Date.now()}.pdf`);
+}
+
+function refreshEndpoints() {
+  // Simulate latency refresh
+  document.querySelectorAll('.ep-latency').forEach(el => {
+    if (el.closest('.ep-item').querySelector('.ep-status.err')) return;
+    const ms = Math.floor(Math.random() * 30) + 8;
+    el.textContent = ms + 'ms';
+  });
+}
+</script>
+
+<!-- FLOATING AI ASSISTANT WIDGET -->
+<div class="ai-widget-panel" id="aiWidgetPanel">
+  <div class="ai-chat" style="min-height:auto;padding:12px 14px 14px;">
+    <div class="ai-chat-title">
+      <div class="pulse green"></div>COMPLIANCE AI — LIVE
+      <span onclick="toggleAiWidget(false)" style="margin-left:auto;cursor:pointer;color:var(--text2);font-size:15px;line-height:1">×</span>
+    </div>
+    <div class="chat-messages" id="chatMessages">
+      <div class="chat-msg ai">⚖️ TSM Compliance AI online. I have full context on your 11 active frameworks — HIPAA, SOX, SOC-2, AML/KYC, GDPR, PCI-DSS, NIST/CMMC, ISO 27001, CCPA, OIG/CMS, and IRS/Tax. Ask me anything.</div>
+    </div>
+    <div class="chat-input-row">
+      <input type="text" class="chat-input" id="chatInput" placeholder="Ask compliance AI..." />
+      <button class="chat-send" id="chatSend" data-tsm-action="sendChat" data-tsm-args="">→</button>
+    </div>
+  </div>
+</div>
+<div class="ai-widget-bubble" onclick="toggleAiWidget()" title="Compliance AI">
+  🤖<span class="ai-widget-dot"></span>
+</div>
+<script>
+// BNCA NODE REPORT — Compliance Shield
+(function(){
+  function reportBNCA(){
+    if(typeof TSM_BNCA === 'undefined') return;
+    TSM_BNCA.report('compliance_shield', {
+      name: 'Compliance Shield',
+      subtitle: 'Audit support · Approvals · Policy gaps',
+      status: 'WATCH',
+      metrics: {
+        missing_approvals: '3',
+        policy_gaps: '2',
+        audit_trail: 'INCOMPLETE'
+      },
+      flags: ['Missing approval signatures on 3 JEs', 'Policy documentation gaps found'],
+      priority: 'MEDIUM'
+    });
+  }
+  setInterval(reportBNCA, 5000);
+  setTimeout(reportBNCA, 1000);
+})();
+</script>
+
+<!-- ══════════════════════════════════════════════════
+     TAB: LICENSE & RENEWAL COMPLIANCE TRACKER
+     ══════════════════════════════════════════════════ -->
+<div id="tab-renewal" class="tab-pane">
+  <div style="padding:20px;overflow-y:auto">
+    <!-- Header + Add -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <div>
+        <div style="color:var(--green);font-size:16px;font-weight:700;letter-spacing:.04em">LICENSE & RENEWAL TRACKER</div>
+        <div style="color:var(--text-dim);font-size:11px;margin-top:2px">All licenses, permits, insurance, and contracts in one view</div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button data-tsm-action="renewalShowCalendar" data-tsm-args="" style="background:none;border:1px solid var(--border);color:var(--text-dim);padding:6px 14px;font-size:10px;cursor:pointer;letter-spacing:.08em;text-transform:uppercase;transition:all .15s">📅 CALENDAR VIEW</button>
+        <button data-tsm-action="renewalAddItem" data-tsm-args="" style="background:var(--green);border:none;color:#000;padding:6px 14px;font-size:10px;font-weight:700;cursor:pointer;letter-spacing:.08em;text-transform:uppercase">+ ADD LICENSE</button>
+      </div>
+    </div>
+
+    <!-- Summary Chips -->
+    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+      <div style="border:1px solid rgba(255,92,92,.4);background:rgba(255,92,92,.06);padding:6px 14px;font-size:11px;color:#ff5c5c">
+        <strong style="font-size:16px">2</strong> EXPIRED
+      </div>
+      <div style="border:1px solid rgba(245,166,35,.4);background:rgba(245,166,35,.06);padding:6px 14px;font-size:11px;color:var(--amber)">
+        <strong style="font-size:16px">3</strong> DUE &lt;30 DAYS
+      </div>
+      <div style="border:1px solid rgba(245,166,35,.3);background:rgba(245,166,35,.04);padding:6px 14px;font-size:11px;color:var(--amber)">
+        <strong style="font-size:16px">4</strong> DUE 30–60 DAYS
+      </div>
+      <div style="border:1px solid rgba(0,200,100,.3);background:rgba(0,200,100,.05);padding:6px 14px;font-size:11px;color:#00c864">
+        <strong style="font-size:16px">18</strong> CURRENT
+      </div>
+    </div>
+
+    <!-- Action Center: Critical -->
+    <div style="background:rgba(255,92,92,.05);border:1px solid rgba(255,92,92,.2);border-left:3px solid #ff5c5c;padding:12px 14px;margin-bottom:16px">
+      <div style="color:#ff5c5c;font-size:10px;letter-spacing:.14em;text-transform:uppercase;margin-bottom:8px">⚠ ACTION REQUIRED — EXPIRED / EXPIRING SOON</div>
+      <table style="width:100%;border-collapse:collapse;font-size:11px">
+        <thead><tr style="color:var(--text-mute);font-size:9px;text-transform:uppercase;letter-spacing:.1em">
+          <th style="text-align:left;padding:4px 8px">LICENSE TYPE</th>
+          <th style="text-align:left;padding:4px 8px">STORE / ENTITY</th>
+          <th style="text-align:left;padding:4px 8px">EXPIRY DATE</th>
+          <th style="text-align:left;padding:4px 8px">STATUS</th>
+          <th style="text-align:left;padding:4px 8px">OWNER</th>
+          <th style="text-align:left;padding:4px 8px">ACTION</th>
+        </tr></thead>
+        <tbody id="renewal-critical-body">
+          <tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+            <td style="padding:7px 8px;color:var(--text)">Food Handler Permit</td>
+            <td style="padding:7px 8px;color:var(--text-dim)">BK #1042</td>
+            <td style="padding:7px 8px;color:#ff5c5c">Apr 30, 2026 <strong>(EXPIRED)</strong></td>
+            <td style="padding:7px 8px"><span style="background:rgba(255,92,92,.12);border:1px solid rgba(255,92,92,.4);color:#ff5c5c;font-size:9px;padding:2px 7px">EXPIRED</span></td>
+            <td style="padding:7px 8px;color:var(--text-dim)">R.Whitehead</td>
+            <td style="padding:7px 8px"><button data-tsm-action="renewalRenew" data-tsm-args="this" style="background:#ff5c5c;border:none;color:#fff;font-size:9px;padding:3px 10px;cursor:pointer">RENEW NOW</button></td>
+          </tr>
+          <tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+            <td style="padding:7px 8px;color:var(--text)">General Liability Insurance</td>
+            <td style="padding:7px 8px;color:var(--text-dim)">All Entities</td>
+            <td style="padding:7px 8px;color:#ff5c5c">May 15, 2026</td>
+            <td style="padding:7px 8px"><span style="background:rgba(255,92,92,.12);border:1px solid rgba(255,92,92,.4);color:#ff5c5c;font-size:9px;padding:2px 7px">&lt;7 DAYS</span></td>
+            <td style="padding:7px 8px;color:var(--text-dim)">M.Torres</td>
+            <td style="padding:7px 8px"><button data-tsm-action="renewalRenew" data-tsm-args="this" style="background:#ff5c5c;border:none;color:#fff;font-size:9px;padding:3px 10px;cursor:pointer">RENEW NOW</button></td>
+          </tr>
+          <tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+            <td style="padding:7px 8px;color:var(--text)">Health Department Permit</td>
+            <td style="padding:7px 8px;color:var(--text-dim)">BK #1087</td>
+            <td style="padding:7px 8px;color:var(--amber)">Jun 1, 2026</td>
+            <td style="padding:7px 8px"><span style="background:rgba(245,166,35,.1);border:1px solid rgba(245,166,35,.4);color:var(--amber);font-size:9px;padding:2px 7px">20 DAYS</span></td>
+            <td style="padding:7px 8px;color:var(--text-dim)">R.Whitehead</td>
+            <td style="padding:7px 8px"><button data-tsm-action="renewalRenew" data-tsm-args="this" style="background:rgba(245,166,35,.2);border:1px solid var(--amber);color:var(--amber);font-size:9px;padding:3px 10px;cursor:pointer">SCHEDULE</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Full Master List -->
+    <div style="margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">
+      <div style="color:var(--text-dim);font-size:10px;letter-spacing:.12em;text-transform:uppercase">RENEWAL MASTER LIST</div>
+      <input placeholder="Search licenses…" style="background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:10px;padding:5px 10px;outline:none;width:200px" oninput="renewalFilter(this.value)">
+    </div>
+    <table style="width:100%;border-collapse:collapse;font-size:11px" id="renewal-master">
+      <thead><tr style="background:var(--surface);color:var(--text-mute);font-size:9px;text-transform:uppercase;letter-spacing:.1em">
+        <th style="text-align:left;padding:8px">TYPE</th>
+        <th style="text-align:left;padding:8px">STORE</th>
+        <th style="text-align:left;padding:8px">RENEWAL DATE</th>
+        <th style="text-align:left;padding:8px">FREQUENCY</th>
+        <th style="text-align:left;padding:8px">STATUS</th>
+        <th style="text-align:left;padding:8px">OWNER</th>
+        <th style="text-align:left;padding:8px">ATTACHMENT</th>
+      </tr></thead>
+      <tbody>
+        <tr style="border-bottom:1px solid rgba(255,255,255,.04)"><td style="padding:7px 8px">Business License</td><td style="padding:7px 8px;color:var(--text-dim)">BK #1042</td><td style="padding:7px 8px">Jan 1, 2027</td><td style="padding:7px 8px;color:var(--text-mute)">Annual</td><td style="padding:7px 8px"><span style="background:rgba(0,200,100,.08);border:1px solid rgba(0,200,100,.3);color:#00c864;font-size:9px;padding:2px 7px">CURRENT</span></td><td style="padding:7px 8px;color:var(--text-dim)">M.Torres</td><td style="padding:7px 8px"><span style="color:var(--green);font-size:10px;cursor:pointer">📎 View</span></td></tr>
+        <tr style="border-bottom:1px solid rgba(255,255,255,.04)"><td style="padding:7px 8px">Fire Safety Cert</td><td style="padding:7px 8px;color:var(--text-dim)">BK #1087</td><td style="padding:7px 8px">Aug 15, 2026</td><td style="padding:7px 8px;color:var(--text-mute)">Annual</td><td style="padding:7px 8px"><span style="background:rgba(0,200,100,.08);border:1px solid rgba(0,200,100,.3);color:#00c864;font-size:9px;padding:2px 7px">CURRENT</span></td><td style="padding:7px 8px;color:var(--text-dim)">R.Whitehead</td><td style="padding:7px 8px"><span style="color:var(--text-mute);font-size:10px">No file</span></td></tr>
+        <tr style="border-bottom:1px solid rgba(255,255,255,.04)"><td style="padding:7px 8px">Workers Comp Policy</td><td style="padding:7px 8px;color:var(--text-dim)">All Entities</td><td style="padding:7px 8px">Jul 1, 2026</td><td style="padding:7px 8px;color:var(--text-mute)">Annual</td><td style="padding:7px 8px"><span style="background:rgba(0,200,100,.08);border:1px solid rgba(0,200,100,.3);color:#00c864;font-size:9px;padding:2px 7px">CURRENT</span></td><td style="padding:7px 8px;color:var(--text-dim)">Finance</td><td style="padding:7px 8px"><span style="color:var(--green);font-size:10px;cursor:pointer">📎 View</span></td></tr>
+        <tr style="border-bottom:1px solid rgba(255,255,255,.04)"><td style="padding:7px 8px">Lease — BK #1103</td><td style="padding:7px 8px;color:var(--text-dim)">BK #1103</td><td style="padding:7px 8px">Dec 31, 2026</td><td style="padding:7px 8px;color:var(--text-mute)">5-Year</td><td style="padding:7px 8px"><span style="background:rgba(0,200,100,.08);border:1px solid rgba(0,200,100,.3);color:#00c864;font-size:9px;padding:2px 7px">CURRENT</span></td><td style="padding:7px 8px;color:var(--text-dim)">Legal</td><td style="padding:7px 8px"><span style="color:var(--green);font-size:10px;cursor:pointer">📎 View</span></td></tr>
+        <tr style="border-bottom:1px solid rgba(255,255,255,.04)"><td style="padding:7px 8px">Sign Permit</td><td style="padding:7px 8px;color:var(--text-dim)">BK #1221</td><td style="padding:7px 8px">Jun 20, 2026</td><td style="padding:7px 8px;color:var(--text-mute)">3-Year</td><td style="padding:7px 8px"><span style="background:rgba(245,166,35,.1);border:1px solid rgba(245,166,35,.4);color:var(--amber);font-size:9px;padding:2px 7px">39 DAYS</span></td><td style="padding:7px 8px;color:var(--text-dim)">R.Whitehead</td><td style="padding:7px 8px"><span style="color:var(--text-mute);font-size:10px">No file</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     TAB: AUDIT & TAX PREP WORKSPACE
+     ══════════════════════════════════════════════════ -->
+<div id="tab-auditprep" class="tab-pane">
+  <div style="display:grid;grid-template-columns:260px 1fr;min-height:calc(100vh - 90px)">
+    <!-- Sidebar: Request List -->
+    <div style="background:var(--surface);border-right:1px solid var(--border);padding:16px;overflow-y:auto">
+      <div style="color:var(--green);font-size:12px;font-weight:700;margin-bottom:12px;letter-spacing:.06em">AUDIT REQUEST LIST</div>
+      <div style="font-size:10px;margin-bottom:12px" id="audit-checklist">
+        <div class="audit-req-item" style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer" data-tsm-action="auditToggle" data-tsm-args="this">
+          <span class="audit-box" style="width:14px;height:14px;border:1px solid rgba(255,255,255,.15);display:inline-flex;align-items:center;justify-content:center;font-size:9px;flex-shrink:0"></span>
+          <span style="color:var(--text-dim)">AP Aging Report</span>
+        </div>
+        <div class="audit-req-item" style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer" data-tsm-action="auditToggle" data-tsm-args="this">
+          <span class="audit-box" style="width:14px;height:14px;border:1px solid rgba(255,255,255,.15);display:inline-flex;align-items:center;justify-content:center;font-size:9px;flex-shrink:0"></span>
+          <span style="color:var(--text-dim)">Bank Reconciliations (3 months)</span>
+        </div>
+        <div class="audit-req-item" style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer" data-tsm-action="auditToggle" data-tsm-args="this">
+          <span class="audit-box" style="width:14px;height:14px;border:1px solid rgba(255,255,255,.15);display:inline-flex;align-items:center;justify-content:center;font-size:9px;flex-shrink:0"></span>
+          <span style="color:var(--text-dim)">Receipts — Capital Expenditures</span>
+        </div>
+        <div class="audit-req-item" style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer" data-tsm-action="auditToggle" data-tsm-args="this">
+          <span class="audit-box" style="width:14px;height:14px;border:1px solid rgba(255,255,255,.15);display:inline-flex;align-items:center;justify-content:center;font-size:9px;flex-shrink:0"></span>
+          <span style="color:var(--text-dim)">Fixed Asset Roster</span>
+        </div>
+        <div class="audit-req-item" style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer" data-tsm-action="auditToggle" data-tsm-args="this">
+          <span class="audit-box" style="width:14px;height:14px;border:1px solid rgba(255,255,255,.15);display:inline-flex;align-items:center;justify-content:center;font-size:9px;flex-shrink:0"></span>
+          <span style="color:var(--text-dim)">Lease Schedules</span>
+        </div>
+        <div class="audit-req-item" style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer" data-tsm-action="auditToggle" data-tsm-args="this">
+          <span class="audit-box" style="width:14px;height:14px;border:1px solid rgba(255,255,255,.15);display:inline-flex;align-items:center;justify-content:center;font-size:9px;flex-shrink:0"></span>
+          <span style="color:var(--text-dim)">Payroll Registers</span>
+        </div>
+        <div class="audit-req-item" style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer" data-tsm-action="auditToggle" data-tsm-args="this">
+          <span class="audit-box" style="width:14px;height:14px;border:1px solid rgba(255,255,255,.15);display:inline-flex;align-items:center;justify-content:center;font-size:9px;flex-shrink:0"></span>
+          <span style="color:var(--text-dim)">1099 / W-9 File</span>
+        </div>
+        <div class="audit-req-item" style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer" data-tsm-action="auditToggle" data-tsm-args="this">
+          <span class="audit-box" style="width:14px;height:14px;border:1px solid rgba(255,255,255,.15);display:inline-flex;align-items:center;justify-content:center;font-size:9px;flex-shrink:0"></span>
+          <span style="color:var(--text-dim)">Chart of Accounts Export</span>
+        </div>
+      </div>
+      <div style="background:var(--bg);border:1px solid var(--border);padding:8px;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px">
+          <span style="color:var(--text-mute)">Progress</span>
+          <span style="color:var(--green)" id="audit-progress-txt">0 / 8</span>
+        </div>
+        <div style="height:4px;background:rgba(255,255,255,.07);border-radius:2px;overflow:hidden">
+          <div id="audit-progress-bar" style="height:100%;background:var(--green);width:0%;transition:width .4s"></div>
+        </div>
+      </div>
+      <button data-tsm-action="auditExportChecklist" data-tsm-args="" style="width:100%;background:none;border:1px solid var(--border);color:var(--text-dim);font-size:10px;padding:7px;cursor:pointer;text-transform:uppercase;letter-spacing:.08em;transition:all .15s">↓ EXPORT CHECKLIST</button>
+    </div>
+
+    <!-- Main: Document Upload Center + Workflow Status -->
+    <div style="padding:20px;overflow-y:auto">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+        <div>
+          <div style="color:var(--green);font-size:16px;font-weight:700">AUDIT & TAX PREP WORKSPACE</div>
+          <div style="color:var(--text-dim);font-size:11px;margin-top:2px">Audit support · Tax prep · Document workflow</div>
+        </div>
+        <div style="background:rgba(0,200,100,.08);border:1px solid rgba(0,200,100,.25);padding:8px 16px;font-size:11px;color:#00c864">
+          Audit Period: <strong>FY 2025</strong>
+        </div>
+      </div>
+
+      <!-- Document Upload Center -->
+      <div style="background:var(--surface);border:1px solid var(--border);padding:14px;margin-bottom:16px">
+        <div style="color:var(--text-dim);font-size:10px;letter-spacing:.12em;text-transform:uppercase;margin-bottom:10px">DOCUMENT UPLOAD CENTER</div>
+        <div style="border:2px dashed rgba(0,200,100,.2);padding:24px;text-align:center;cursor:pointer;transition:all .2s;margin-bottom:10px" onclick="document.getElementById('audit-file').click()"
+          onmouseenter="this.style.borderColor='rgba(0,200,100,.5)'" onmouseleave="this.style.borderColor='rgba(0,200,100,.2)'">
+          <input type="file" id="audit-file" multiple accept=".pdf,.csv,.xlsx,.docx" style="display:none" onchange="auditHandleUpload(event)">
+          <div style="color:#00c864;font-size:24px;margin-bottom:6px">↑</div>
+          <div style="color:var(--text-dim);font-size:11px">Drag & drop or click to upload audit documents</div>
+          <div style="color:var(--text-mute);font-size:9px;margin-top:4px">PDF · XLSX · CSV · DOCX · Multiple files accepted</div>
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:11px" id="audit-doc-table">
+          <thead><tr style="background:rgba(255,255,255,.03);color:var(--text-mute);font-size:9px;text-transform:uppercase;letter-spacing:.08em">
+            <th style="text-align:left;padding:6px 8px">DOCUMENT</th>
+            <th style="text-align:left;padding:6px 8px">TYPE</th>
+            <th style="text-align:left;padding:6px 8px">UPLOADED</th>
+            <th style="text-align:left;padding:6px 8px">STATUS</th>
+            <th style="text-align:left;padding:6px 8px">ACTION</th>
+          </tr></thead>
+          <tbody id="audit-doc-body">
+            <tr><td style="padding:7px 8px;color:var(--text)">AP_Aging_FY2025.xlsx</td><td style="padding:7px 8px;color:var(--text-mute)">AP Aging</td><td style="padding:7px 8px;color:var(--text-mute)">May 10, 2026</td><td style="padding:7px 8px"><span style="background:rgba(0,200,100,.08);border:1px solid rgba(0,200,100,.3);color:#00c864;font-size:9px;padding:2px 7px">COMPLETE</span></td><td style="padding:7px 8px"><span style="color:var(--green);font-size:10px;cursor:pointer">View</span></td></tr>
+            <tr><td style="padding:7px 8px;color:var(--text)">BankRec_Q4_2025.pdf</td><td style="padding:7px 8px;color:var(--text-mute)">Bank Recon</td><td style="padding:7px 8px;color:var(--text-mute)">May 10, 2026</td><td style="padding:7px 8px"><span style="background:rgba(0,200,100,.08);border:1px solid rgba(0,200,100,.3);color:#00c864;font-size:9px;padding:2px 7px">COMPLETE</span></td><td style="padding:7px 8px"><span style="color:var(--green);font-size:10px;cursor:pointer">View</span></td></tr>
+            <tr><td style="padding:7px 8px;color:var(--text)">Fixed_Assets_2025.xlsx</td><td style="padding:7px 8px;color:var(--text-mute)">Fixed Assets</td><td style="padding:7px 8px;color:var(--text-mute)">—</td><td style="padding:7px 8px"><span style="background:rgba(245,166,35,.08);border:1px solid rgba(245,166,35,.3);color:var(--amber);font-size:9px;padding:2px 7px">WAITING</span></td><td style="padding:7px 8px"><span style="color:var(--text-mute);font-size:10px">Upload</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Workflow Status -->
+      <div style="background:var(--surface);border:1px solid var(--border);padding:14px">
+        <div style="color:var(--text-dim);font-size:10px;letter-spacing:.12em;text-transform:uppercase;margin-bottom:10px">WORKFLOW STATUS</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+          <div style="background:var(--bg);border:1px solid rgba(0,200,100,.3);padding:10px;text-align:center">
+            <div style="color:#00c864;font-size:20px;font-weight:700">3</div>
+            <div style="color:var(--text-mute);font-size:9px;text-transform:uppercase;margin-top:3px">COMPLETE</div>
+          </div>
+          <div style="background:var(--bg);border:1px solid rgba(245,166,35,.3);padding:10px;text-align:center">
+            <div style="color:var(--amber);font-size:20px;font-weight:700">2</div>
+            <div style="color:var(--text-mute);font-size:9px;text-transform:uppercase;margin-top:3px">IN PROGRESS</div>
+          </div>
+          <div style="background:var(--bg);border:1px solid rgba(255,255,255,.08);padding:10px;text-align:center">
+            <div style="color:var(--text-dim);font-size:20px;font-weight:700">3</div>
+            <div style="color:var(--text-mute);font-size:9px;text-transform:uppercase;margin-top:3px">WAITING</div>
+          </div>
+          <div style="background:var(--bg);border:1px solid rgba(255,255,255,.08);padding:10px;text-align:center">
+            <div style="color:var(--text-dim);font-size:20px;font-weight:700">8</div>
+            <div style="color:var(--text-mute);font-size:9px;text-transform:uppercase;margin-top:3px">TOTAL ITEMS</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<script>
+/* ── License & Renewal ── */
+function renewalRenew(btn) { btn.textContent = '✓ INITIATED'; btn.style.opacity = '.5'; }
+function renewalShowCalendar() { alert('Calendar view — coming soon'); }
+function renewalAddItem() { alert('Add license dialog — coming soon'); }
+function renewalFilter(q) {
+  const rows = document.querySelectorAll('#renewal-master tbody tr');
+  rows.forEach(r => {
+    r.style.display = r.textContent.toLowerCase().includes(q.toLowerCase()) ? '' : 'none';
+  });
+}
+
+/* ── Audit Workspace ── */
+let auditDone = 0;
+const auditTotal = 8;
+function auditToggle(item) {
+  const box = item.querySelector('.audit-box');
+  const label = item.querySelector('span:last-child');
+  const done = item.dataset.done === '1';
+  item.dataset.done = done ? '0' : '1';
+  box.textContent = done ? '' : '✓';
+  box.style.background = done ? '' : 'var(--green)';
+  box.style.borderColor = done ? '' : 'var(--green)';
+  box.style.color = done ? '' : '#000';
+  label.style.textDecoration = done ? '' : 'line-through';
+  label.style.color = done ? '' : 'var(--text-mute)';
+  auditDone = [...document.querySelectorAll('#audit-checklist [data-done="1"]')].length;
+  document.getElementById('audit-progress-txt').textContent = auditDone + ' / ' + auditTotal;
+  document.getElementById('audit-progress-bar').style.width = Math.round(auditDone/auditTotal*100) + '%';
+}
+function auditHandleUpload(e) {
+  const files = [...e.target.files];
+  const tbody = document.getElementById('audit-doc-body');
+  files.forEach(f => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td style="padding:7px 8px;color:var(--text)">${f.name}</td><td style="padding:7px 8px;color:var(--text-mute)">Uploaded</td><td style="padding:7px 8px;color:var(--text-mute)">${new Date().toLocaleDateString()}</td><td style="padding:7px 8px"><span style="background:rgba(0,200,100,.08);border:1px solid rgba(0,200,100,.3);color:#00c864;font-size:9px;padding:2px 7px">COMPLETE</span></td><td style="padding:7px 8px"><span style="color:var(--green);font-size:10px;cursor:pointer">View</span></td>`;
+    tbody.appendChild(tr);
+  });
+}
+function auditExportChecklist() { alert('Checklist exported'); }
+</script>
+
+
+<script>(function(){
+document.addEventListener('click', function(e){
+
+  const el = e.target.closest('[data-tsm-action]');
+  if(!el) return;
+
+  const action = el.getAttribute('data-tsm-action');
+  const argsStr = el.getAttribute('data-tsm-args') || '';
+
+  if(window.TSM && TSM.launcher && TSM.launcher.run){
+    TSM.launcher.run(action, argsStr);
+    return;
+  }
+
+  // No external launcher loaded — call the matching local function directly.
+  const fn = window[action];
+  if (typeof fn !== 'function') {
+    console.warn('[TSM] No handler found for action:', action, argsStr);
+    return;
+  }
+  try {
+    const argList = argsStr.trim()
+      ? Function('return [' + argsStr + '];').call(el)
+      : [];
+    fn.apply(el, argList);
+  } catch (err) {
+    console.error('[TSM] Failed to run action:', action, err);
+  }
+
+});
+})();</script>
+<script>
+// ===== TSM_AUTONOMY_STANDARDIZED =====
+window.TSM_AUTONOMY_STANDARDIZED = true;
+
+// ===== TSM WAR ROOM SCOPED RELAY FIX =====
+window.tsmMission = window.tsmMission || {
+  id: "FINOPS-SUITE-" + Date.now().toString(36),
+  vertical: "finops-suite",
+  
+};
+
+function tsmWriteRelay(payload){
+  if (typeof TSM_KERNEL === 'undefined') { console.warn('[TSM] TSM_KERNEL not loaded; relay write skipped.'); return; }
+  TSM_KERNEL.setRelay("finops-suite", JSON.stringify(payload));
+}
+</script>
+<!-- TSM ENFORCER BOOT -->
+<script src="/core/tsm-enforcer.js"></script>
+<!-- TSM KERNEL ENGINE -->
+<script src="/core/tsm-kernel.js"></script>
+</body>
+</html>
