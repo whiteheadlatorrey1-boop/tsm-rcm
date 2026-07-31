@@ -1,0 +1,363 @@
+
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>TSM · Insurance Premium Audit + Claims WIP</title>
+
+<style>
+:root{ --accent:#ffc400; }
+
+body{
+ margin:0;
+ background:#050b12;
+ color:#eaffff;
+ font-family:Inter,Arial;
+}
+.header{
+ padding:18px 24px;
+ border-bottom:1px solid rgba(255,255,255,.08);
+ position:sticky;
+ top:0;
+ background:#07111bcc;
+ backdrop-filter:blur(10px);
+ z-index:10;
+}
+.grid{
+ display:grid;
+ grid-template-columns:repeat(4,1fr);
+ gap:14px;
+ padding:20px;
+}
+.card{
+ background:#07131d;
+ border:1px solid rgba(255,255,255,.08);
+ border-radius:18px;
+ padding:16px;
+}
+.big{
+ font-size:32px;
+ font-weight:900;
+ margin-top:8px;
+}
+pre{
+ white-space:pre-wrap;
+ background:#050c13;
+ border-radius:14px;
+ padding:16px;
+ border:1px solid rgba(0,255,198,.2);
+ min-height:240px;
+}
+button{
+ background:var(--accent);
+ color:#001;
+ border:0;
+ border-radius:10px;
+ padding:10px 14px;
+ font-weight:900;
+ cursor:pointer;
+}
+.table{
+ width:100%;
+ border-collapse:collapse;
+}
+.table td,.table th{
+ padding:12px;
+ border-bottom:1px solid rgba(255,255,255,.08);
+}
+.bar{
+ position:fixed;
+ bottom:18px;
+ left:50%;
+ transform:translateX(-50%);
+ display:flex;
+ gap:8px;
+ background:#07111b;
+ border:1px solid rgba(255,255,255,.12);
+ padding:10px;
+ border-radius:16px;
+}
+
+</style>
+</head>
+
+<body>
+
+<div class="header">
+  <h1>Construction WIP + Billing</h1>
+  <div>Unified WIP • Billing • Strategist Relay • HITL</div>
+</div>
+
+<div class="grid">
+
+  <div class="card">
+    <div>Total Exposure</div>
+    <div class="big">$4.2M</div>
+  </div>
+
+  <div class="card">
+    <div>Risk Index</div>
+    <div class="big">42</div>
+  </div>
+
+  <div class="card">
+    <div>BNCA Alerts</div>
+    <div class="big">7</div>
+  </div>
+
+  <div class="card">
+    <div>Strategist Relay</div>
+    <div class="big">ACTIVE</div>
+  </div>
+
+</div>
+
+<div style="padding:20px">
+
+<div class="card">
+
+<h2>Unified Sector WIP Queue</h2>
+
+<table class="table">
+<tr>
+<th>ID</th>
+<th>Issue</th>
+<th>Variance</th>
+<th>Risk</th>
+<th>AI</th>
+</tr>
+
+<tr>
+<td>WIP-001</td>
+<td>Operational Drift</td>
+<td>-$210K</td>
+<td>HIGH</td>
+<td><button data-tsm-action="runBNCA" data-tsm-args="">Explain</button></td>
+</tr>
+
+<tr>
+<td>WIP-002</td>
+<td>Billing Variance</td>
+<td>-$87K</td>
+<td>MED</td>
+<td><button data-tsm-action="runBNCA" data-tsm-args="">Explain</button></td>
+</tr>
+
+</table>
+
+</div>
+
+<div class="card" style="margin-top:18px">
+
+<h2>Strategist Output</h2>
+
+<pre id="out">
+Ready. Run BNCA relay.
+</pre>
+
+</div>
+
+</div>
+
+<div class="bar">
+<button data-tsm-action="runBNCA" data-tsm-args="">Run BNCA</button>
+<button data-tsm-action="exportBrief" data-tsm-args="">Export Brief</button>
+<button onclick="location.href='/wip-dashboard.html'">Universal WIP</button>
+</div>
+
+<script>
+async function runBNCA(){
+  const out=document.getElementById("out");
+
+  out.textContent="Running strategist relay...";
+
+  try{
+
+    const r=await fetch("/api/construction/query",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({
+        payload:{
+          sector:"CONSTRUCTION",
+          context:"Analyze WIP exposure, billing drift, HITL escalation, strategist relay, and executive risk."
+        }
+      })
+    });
+
+    const d=await r.json();
+
+    out.textContent =
+      d.reply ||
+      d.content ||
+      d.message ||
+      (`${d.suite || SECTOR} · ${d.logic || "WIP"}\n\nSTATUS: ${d.status || "ACTIVE"}\nACTION: ${d.action || "REVIEW"}\nMESSAGE: ${d.message || ""}\n\nNEXT STEPS:\n${(d.next_steps || []).map((x,i)=>`${i+1}. ${x}`).join("\n")}\n\nMETRICS:\n${JSON.stringify(d.metrics || {}, null, 2)}`) ||
+      JSON.stringify(d,null,2);
+
+  }catch(e){
+    out.textContent="Relay unavailable: "+e.message;
+  }
+}
+
+function exportBrief(){
+  const txt=document.getElementById("out").textContent;
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([txt],{type:"text/plain"}));
+  a.download="construction-wip-brief.txt";
+  a.click();
+}
+</script>
+
+
+
+<script id="tsm-wip-runtime">
+(function(){
+
+console.log("TSM WIP Runtime Online");
+
+function safe(id){
+  return document.getElementById(id);
+}
+
+window.wipExportJSON = function(){
+  try{
+    const data = {
+      exported: new Date().toISOString(),
+      title: document.title,
+      sector: document.body.dataset.sector || "unknown"
+    };
+
+    const blob = new Blob(
+      [JSON.stringify(data,null,2)],
+      {type:"application/json"}
+    );
+
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);
+    a.download="wip-export.json";
+    a.click();
+  }catch(e){
+    console.warn(e);
+  }
+};
+
+window.wipExportTXT = function(){
+  try{
+    const txt = document.body.innerText.slice(0,12000);
+
+    const blob = new Blob([txt], {type:"text/plain"});
+
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);
+    a.download="wip-brief.txt";
+    a.click();
+  }catch(e){
+    console.warn(e);
+  }
+};
+
+window.wipSave = function(){
+  try{
+    localStorage.setItem(
+      "tsm-wip-last-state",
+      JSON.stringify({
+        ts:Date.now(),
+        title:document.title
+      })
+    );
+
+    alert("WIP state saved");
+  }catch(e){
+    console.warn(e);
+  }
+};
+
+function injectBar(){
+
+  if(document.getElementById("tsm-wip-command-bar")) return;
+
+  const bar=document.createElement("div");
+
+  bar.id="tsm-wip-command-bar";
+
+  bar.style.cssText=`
+    position:fixed;
+    bottom:18px;
+    left:50%;
+    transform:translateX(-50%);
+    z-index:99999;
+    display:flex;
+    gap:10px;
+    background:#07131d;
+    border:1px solid rgba(0,255,198,.25);
+    padding:12px;
+    border-radius:16px;
+    box-shadow:0 0 30px rgba(0,255,198,.15);
+  `;
+
+  bar.innerHTML=`
+    <button data-tsm-action="wipSave" data-tsm-args="" style="background:#00ffc6;color:#001;border:0;padding:10px 14px;border-radius:10px;font-weight:900">Save</button>
+
+    <button data-tsm-action="wipExportTXT" data-tsm-args="" style="background:#ffc400;color:#111;border:0;padding:10px 14px;border-radius:10px;font-weight:900">Export TXT</button>
+
+    <button data-tsm-action="wipExportJSON" data-tsm-args="" style="background:#b56cff;color:#fff;border:0;padding:10px 14px;border-radius:10px;font-weight:900">Export JSON</button>
+  `;
+
+  document.body.appendChild(bar);
+}
+
+if(document.readyState==="loading"){
+  document.addEventListener("DOMContentLoaded", injectBar);
+}else{
+  injectBar();
+}
+
+})();
+</script>
+
+
+<script>(function(){
+document.addEventListener('click', function(e){
+
+  const el = e.target.closest('[data-tsm-action]');
+  if(!el) return;
+
+  const action = el.getAttribute('data-tsm-action');
+  const args = el.getAttribute('data-tsm-args');
+
+  if(window.TSM && TSM.launcher && TSM.launcher.run){
+    TSM.launcher.run(action, args);
+  } else {
+    console.warn('[TSM] launcher missing:', action, args);
+  }
+
+});
+})();</script>
+  <script src="/js/core/tsm-kernel-upgrade.js"></script>
+</body>
+</html>
+
+// ===== TSM_AUTONOMY_STANDARDIZED =====
+window.TSM_AUTONOMY_STANDARDIZED = true;
+</script>
+
+<!-- TSM ENFORCER BOOT -->
+<script src="/html/core/tsm-enforcer.js"></script>
+
+
+// ===== TSM WAR ROOM SCOPED RELAY FIX =====
+window.tsmMission = window.tsmMission || {
+  id: "TSM-INSURANCE-" + Date.now().toString(36),
+  vertical: "tsm-insurance",
+  
+};
+
+function tsmWriteRelay(payload){
+  TSM_KERNEL.setRelay("tsm-insurance", JSON.stringify(payload));
+}
+</script>
+
+
+<!-- TSM KERNEL ENGINE -->
+<script src="/html/core/tsm-kernel.js"></script>
+

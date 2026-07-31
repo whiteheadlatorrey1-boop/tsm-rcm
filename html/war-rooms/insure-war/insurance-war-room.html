@@ -644,7 +644,6 @@ body::before{content:'';position:fixed;top:0;right:0;width:600px;height:600px;ba
   <span>TOKENS: <span id="sbTokens" style="color:var(--gold)">0</span> / <span id="sbCost" style="color:var(--green)">$0.0000</span></span>
 </div>
 
-<script>
 /* ════════════════════════════════════════
    CORE WAR ROOM LOGIC (unchanged)
 ════════════════════════════════════════ */
@@ -675,8 +674,7 @@ let selectedDocType = 'Claims Report';
 let engOut = {};
 let enginesComplete = 0;
 let groqKey = localStorage.getItem('tsm_groq_key') || '';
-const groqInput = document.getElementById('groqKey');
-if (groqKey && groqInput) groqInput.value = groqKey;
+if (groqKey) document.getElementById('groqKey').value = groqKey;
 
 // Doc Search relay — populate from redispatch
 (function(){
@@ -720,8 +718,7 @@ function setDocType(btn,type){
 
 function saveKey(){ groqKey=document.getElementById('groqKey').value.trim(); localStorage.setItem('tsm_groq_key',groqKey); }
 async function testKey(){
-  const keyInput = document.getElementById('groqKey');
-  groqKey = keyInput ? keyInput.value.trim() : '';
+  groqKey=document.getElementById('groqKey').value.trim();
   if(!groqKey){alert('Enter Groq API key first.');return;}
   addLog('Testing API key...','','a');
   try{
@@ -924,7 +921,7 @@ function launchApp(href, appMeta){
       vertical: 'Insurance'
     });
   } else {
-    window.open(href.startsWith('/')?href:'/html/tsm-insurance/'+href, '_blank');
+    window.open('/html/tsm-insurance/' + href, '_blank');
   }
 }
 function launchApp(href, appMeta){
@@ -1566,20 +1563,20 @@ endTour = function(){ speechStop(); _etOrig(); };
   <div class="howto-card">
     <h2>⚡ HOW TO USE — INSURANCE WAR ROOM</h2>
     <div class="howto-section">
-      <h3>STEP 1 — LOAD YOUR DOCUMENT</h2>
+      <h3>STEP 1 — LOAD YOUR DOCUMENT</h3>
       <ul>
         <li>Drop a claims document, EOB, policy filing, underwriting report, or compliance notice into the intake zone — or paste raw text.</li>
         <li>Use a sample document to demo the pipeline instantly.</li>
       </ul>
     </div>
     <div class="howto-section">
-      <h3>STEP 2 — CONFIGURE API KEY</h2>
+      <h3>STEP 2 — CONFIGURE API KEY</h3>
       <ul>
         <li>Enter your Groq API key and hit Test. Green dot = connected. Saved to localStorage.</li>
       </ul>
     </div>
     <div class="howto-section">
-      <h3>STEP 3 — RUN THE ENGINE PIPELINE</h2>
+      <h3>STEP 3 — RUN THE ENGINE PIPELINE</h3>
       <ul>
         <li><strong style="color:var(--cyan)">E1 · DOCUMENT INTEL</strong> — Extracts policy numbers, claim IDs, denial codes, coverage types, and dates.</li>
         <li><strong style="color:var(--cyan)">E2 · COVERAGE ANALYST</strong> — Maps denial to policy language, identifies coverage gaps and exclusions.</li>
@@ -1589,7 +1586,7 @@ endTour = function(){ speechStop(); _etOrig(); };
       </ul>
     </div>
     <div class="howto-section">
-      <h3>STEP 4 — NARRATED TOUR</h2>
+      <h3>STEP 4 — NARRATED TOUR</h3>
       <ul>
         <li>Hit the 🎙 SPEAK button to activate ResponsiveVoice narration of engine output.</li>
         <li>Use the App Dispatch panel to route to the recommended Insurance suite app.</li>
@@ -1630,6 +1627,7 @@ endTour = function(){ speechStop(); _etOrig(); };
 .tour-actions{display:flex;gap:10px;justify-content:flex-end}
 .tour-btn{padding:7px 18px;border-radius:4px;border:1px solid var(--cyan);background:transparent;color:var(--cyan);font-family:'Orbitron',sans-serif;font-size:.72rem;cursor:pointer;letter-spacing:.08em}
 .tour-btn.primary{background:var(--cyan);color:#000}
+.tour-btn:hover{opacity:.8}
 .tour-pip-row{display:flex;gap:6px;margin-bottom:18px}
 .tour-pip{width:28px;height:3px;border-radius:2px;background:#2a2a2a}
 .tour-pip.done{background:var(--cyan)}
@@ -1660,15 +1658,839 @@ endTour = function(){ speechStop(); _etOrig(); };
 .sev-low{color:var(--cyan)}
 .manifest-close-btn{margin-top:18px;padding:7px 20px;background:transparent;border:1px solid #ef4444;color:#ef4444;font-family:'Orbitron',sans-serif;font-size:.7rem;border-radius:4px;cursor:pointer;letter-spacing:.08em}
 .manifest-close-btn:hover{background:#ef4444;color:#000}
-#tmg-mission-modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.84);z-index:99998;align-items:center;justify-content:center}
-#tmg-mission-modal-overlay.active{display:flex}
-#tmg-mission-modal{width:540px;max-width:92vw;max-height:88vh;background:#0a0e0a;border:1px solid #2a4a2a;border-top:3px solid #39ff14;border-radius:4px;display:flex;flex-direction:column;overflow:hidden}
-.tmg-modal-header{padding:14px 16px;background:#0d140d;border-bottom:1px solid #1a3a1a}
-.tmg-modal-body{padding:14px 16px;overflow-y:auto}
-.tmg-modal-footer{border-top:1px solid #1a3a1a;padding:12px 16px;display:flex;justify-content:flex-end}
 </style>
 
-</body>", 1)
+const INS_TOUR_STEPS = [
+  { title: 'INSURANCE WAR ROOM', body: 'This is the Insurance Operations command center. The AI pipeline processes claims documents, EOBs, policy filings, and compliance notices — delivering coverage analysis, financial impact, and a full recovery strategy.' },
+  { title: 'E1 · DOCUMENT INTEL', body: 'Extracts structured data: policy numbers, claim IDs, denial codes, coverage types, carrier info, and key dates. Feeds all downstream engines.' },
+  { title: 'E2 · COVERAGE ANALYST', body: 'Maps the denial or dispute to specific policy language. Identifies coverage gaps, exclusions, and conditions precedent that apply to the claim.' },
+  { title: 'E3 · FINANCIAL IMPACT', body: 'Quantifies total dollar exposure: reserve requirements, subrogation potential, litigation risk, and carrier recovery estimates.' },
+  { title: 'E4 · RECOVERY STRATEGY', body: 'Builds a step-by-step appeal and re-submission plan with regulatory escalation path, documentation checklist, and carrier contact protocol.' },
+  { title: 'E5 · NAVIGATOR', body: 'Routes each action to the correct role — Claims Adjuster, Underwriter, Compliance Officer, or Carrier Contact — with priority and escalation order.' },
+  { title: 'NARRATION & DISPATCH', body: 'Use the 🎙 SPEAK button for ResponsiveVoice narration of engine output. The App Dispatch panel recommends the best Insurance suite app for your document type.' },
+  { title: 'YOU\'RE READY', body: 'Load a claims document or hit a sample, enter your Groq key, and run the pipeline. Hit HOW TO anytime for a full control walkthrough.' },
+];
 
-p.write_text(text, encoding="utf-8")
-print("Patched:", p)
+let insTourIdx = 0;
+function insTourOpen() { insTourIdx = 0; insTourRender(); document.getElementById('insTourOverlay').classList.add('active'); }
+function insTourClose() { document.getElementById('insTourOverlay').classList.remove('active'); }
+function insTourNav(dir) {
+  const total = INS_TOUR_STEPS.length;
+  if (dir === 1 && insTourIdx === total - 1) { insTourClose(); return; }
+  insTourIdx = Math.max(0, Math.min(total - 1, insTourIdx + dir));
+  insTourRender();
+}
+function insTourRender() {
+  const s = INS_TOUR_STEPS[insTourIdx];
+  const total = INS_TOUR_STEPS.length;
+  document.getElementById('insTourStepLabel').textContent = 'STEP ' + (insTourIdx + 1) + ' OF ' + total;
+  document.getElementById('insTourTitle').textContent = s.title;
+  document.getElementById('insTourBody').textContent = s.body;
+  document.getElementById('insTourBack').style.display = insTourIdx === 0 ? 'none' : '';
+  document.getElementById('insTourNext').textContent = insTourIdx === total - 1 ? 'FINISH' : 'NEXT →';
+  const pips = document.getElementById('insTourPips');
+  pips.innerHTML = '';
+  for (let i = 0; i < total; i++) {
+    const d = document.createElement('div');
+    d.className = 'tour-pip' + (i < insTourIdx ? ' done' : i === insTourIdx ? ' active' : '');
+    pips.appendChild(d);
+  }
+}
+window.addEventListener('DOMContentLoaded', () => {
+  const tb = document.getElementById('tour-btn') || document.getElementById('tourBtn') || document.getElementById('insTourBtn');
+  if (tb) tb.addEventListener('click', insTourOpen);
+  const hb = document.getElementById('howto-btn') || document.getElementById('howtoBtn') || document.getElementById('insHowtoBtn');
+  if (hb) hb.addEventListener('click', () => document.getElementById('insHowtoOverlay').classList.add('active'));
+  if (!localStorage.getItem('ins_war_tour_done')) {
+    setTimeout(insTourOpen, 800);
+    localStorage.setItem('ins_war_tour_done', '1');
+  }
+});
+window.insTourOpen = insTourOpen;
+window.insHowtoOpen = () => document.getElementById('insHowtoOverlay').classList.add('active');
+</script>
+<!-- ============================================================
+  TSM INSURANCE WAR ROOM — MISSION DISPATCH PATCH
+  Add this block just before   <script src="/js/core/tsm-kernel-upgrade.js"></script>
+<script src="/js/tsm-autorun-engine.js"></script>
+<script src="/html/shared/js/tsm-assistant-widget.js"></script>
+  <script src="/html/core/tsm-runtime.js"></script>
+</body> in insurance-war-room.html
+  Also add the mission guide script tag at the top of this block.
+  ============================================================ -->
+
+<script src="/js/tsm-mission-guide.js"></script>
+
+<style>
+/* ── Mission Preview Modal ─────────────────────────────────── */
+#tmg-mission-modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.85);
+  z-index: 99998;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(2px);
+}
+#tmg-mission-modal-overlay.active { display: flex; }
+
+#tmg-mission-modal {
+  width: 540px;
+  max-height: 88vh;
+  background: #0a0e0a;
+  border: 1px solid #2a4a2a;
+  border-top: 3px solid #39ff14;
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', 'Share Tech Mono', monospace;
+  font-size: 11px;
+  color: #c8e6c9;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 0 60px rgba(57,255,20,0.15);
+  animation: tmg-modal-in 0.2s ease;
+}
+@keyframes tmg-modal-in {
+  from { transform: translateY(12px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+.tmg-modal-header {
+  padding: 14px 16px;
+  background: #0d140d;
+  border-bottom: 1px solid #1a3a1a;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+.tmg-modal-header-title {
+  color: #39ff14;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 3px;
+}
+.tmg-modal-header-sub {
+  color: #5a8a5a;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+}
+.tmg-modal-close {
+  background: none;
+  border: 1px solid #2a4a2a;
+  color: #5a8a5a;
+  width: 22px; height: 22px;
+  border-radius: 2px;
+  font-size: 11px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  margin-left: 12px;
+}
+.tmg-modal-close:hover { border-color: #ff4444; color: #ff4444; }
+
+.tmg-modal-body { overflow-y: auto; flex: 1; padding: 14px 16px; }
+
+.tmg-modal-anomaly {
+  background: #0f1f0f;
+  border: 1px solid #1e3d1e;
+  border-left: 3px solid #ffd600;
+  padding: 10px 12px;
+  border-radius: 2px;
+  margin-bottom: 12px;
+}
+.tmg-modal-anomaly-label { color: #ffd600; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 4px; }
+.tmg-modal-anomaly-type { color: #fff; font-size: 12px; font-weight: 700; margin-bottom: 5px; }
+.tmg-modal-anomaly-details { color: #8ab48a; font-size: 10px; line-height: 1.5; }
+
+.tmg-modal-app-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: #0d1a0d;
+  border: 1px solid #1a3a1a;
+  border-radius: 3px;
+  margin-bottom: 12px;
+}
+.tmg-modal-app-star { color: #ffd600; font-size: 14px; }
+.tmg-modal-app-info { flex: 1; }
+.tmg-modal-app-rank { color: #5a8a5a; font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; }
+.tmg-modal-app-name { color: #39ff14; font-size: 12px; font-weight: 700; }
+
+.tmg-modal-steps-preview {
+  margin-bottom: 12px;
+}
+.tmg-modal-steps-label {
+  color: #5a8a5a;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.tmg-modal-step-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  background: #0d140d;
+  border: 1px solid #1a3a1a;
+  border-radius: 2px;
+}
+.tmg-modal-step-num {
+  color: #39ff14;
+  font-size: 9px;
+  font-weight: 700;
+  min-width: 16px;
+}
+.tmg-modal-step-content {}
+.tmg-modal-step-title { color: #c8e6c9; font-size: 10px; font-weight: 700; margin-bottom: 2px; }
+.tmg-modal-step-instruction { color: #7aaa7a; font-size: 10px; line-height: 1.4; margin-bottom: 4px; }
+.tmg-modal-step-hint {
+  background: #071207;
+  border-left: 2px solid #ffd600;
+  padding: 4px 7px;
+  color: #ffd600;
+  font-size: 9.5px;
+  line-height: 1.4;
+}
+
+.tmg-modal-generating {
+  text-align: center;
+  padding: 28px 0;
+}
+.tmg-modal-gen-spinner {
+  width: 28px; height: 28px;
+  border: 2px solid #1a3a1a;
+  border-top-color: #39ff14;
+  border-radius: 50%;
+  animation: tmg-spin 0.8s linear infinite;
+  margin: 0 auto 12px;
+}
+@keyframes tmg-spin { to { transform: rotate(360deg); } }
+.tmg-modal-gen-text { color: #5a8a5a; font-size: 10px; line-height: 1.7; letter-spacing: 0.06em; }
+.tmg-modal-gen-label { color: #39ff14; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 6px; }
+
+.tmg-modal-footer {
+  border-top: 1px solid #1a3a1a;
+  padding: 12px 16px;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+.tmg-modal-btn {
+  padding: 8px 16px;
+  border-radius: 2px;
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.tmg-modal-btn-primary {
+  background: #39ff14;
+  color: #000;
+  border: none;
+}
+.tmg-modal-btn-primary:hover { opacity: 0.88; transform: translateY(-1px); }
+.tmg-modal-btn-primary:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+.tmg-modal-btn-secondary {
+  background: none;
+  color: #5a8a5a;
+  border: 1px solid #2a4a2a;
+}
+.tmg-modal-btn-secondary:hover { border-color: #39ff14; color: #39ff14; }
+
+/* ── Upgrade existing recommendation cards ─── */
+.tmg-card-launch-btn {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  padding: 7px 0;
+  background: transparent;
+  border: 1px solid #2a5a1a;
+  color: #39ff14;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: all 0.15s;
+  text-align: center;
+}
+.tmg-card-launch-btn:hover {
+  background: #39ff14;
+  color: #000;
+  border-color: #39ff14;
+}
+</style>
+
+<!-- Mission Preview Modal -->
+<div id="tmg-mission-modal-overlay">
+  <div id="tmg-mission-modal">
+    <div class="tmg-modal-header">
+      <div>
+        <div class="tmg-modal-header-title">⚡ Mission Briefing</div>
+        <div class="tmg-modal-header-sub" id="tmg-modal-subtitle">Generating guided mission plan...</div>
+      </div>
+      <button class="tmg-modal-close" id="tmg-modal-close-btn">✕</button>
+    </div>
+    <div class="tmg-modal-body" id="tmg-modal-body">
+      <div class="tmg-modal-generating">
+        <div class="tmg-modal-gen-spinner"></div>
+        <div class="tmg-modal-gen-label">TSM Neural Core</div>
+        <div class="tmg-modal-gen-text">Analyzing anomaly...<br>Generating step-by-step mission plan...</div>
+      </div>
+    </div>
+    <div class="tmg-modal-footer" id="tmg-modal-footer" style="display:none">
+      <button class="tmg-modal-btn tmg-modal-btn-secondary" id="tmg-modal-cancel-btn">Cancel</button>
+      <button class="tmg-modal-btn tmg-modal-btn-primary" id="tmg-modal-launch-btn" disabled>
+        Launch with Guide →
+      </button>
+    </div>
+  </div>
+</div>
+
+(function () {
+  'use strict';
+
+  const STORAGE_KEY = 'tsm_active_mission';
+  let _pendingMission = null;
+
+  // ── Inject "Launch with Guide" button into each recommendation card ────────
+  function upgradeRecommendationCards() {
+    // Targets the existing OPEN ... → buttons and their parent cards
+    const openBtns = document.querySelectorAll('[class*="open-btn"], .rec-open-btn, a[href*=".html"]');
+
+    // More robust: find all card-level containers by looking for the rank labels
+    // Adjust selector to match your actual War Room card structure
+    const cards = document.querySelectorAll('.recommendation-card, .rec-card, [data-app-rank]');
+
+    if (cards.length > 0) {
+      cards.forEach(card => upgradeCard(card));
+    } else {
+      // Fallback: find by the open buttons pattern
+      document.querySelectorAll('button, a').forEach(btn => {
+        const text = (btn.textContent || '').toUpperCase();
+        if (text.includes('OPEN ') && text.includes('→')) {
+          injectLaunchBtn(btn.closest('[class]') || btn.parentElement, btn);
+        }
+      });
+    }
+  }
+
+  function upgradeCard(card) {
+    if (card.dataset.tmgUpgraded) return;
+    card.dataset.tmgUpgraded = '1';
+
+    const appName = extractAppName(card);
+    const appUrl  = extractAppUrl(card);
+    const rank    = card.dataset.appRank || card.querySelector('[class*="rank"]')?.textContent || '';
+
+    const btn = document.createElement('button');
+    btn.className = 'tmg-card-launch-btn';
+    btn.textContent = '⚡ Launch with Mission Guide';
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openMissionModal(appName, appUrl, rank, card);
+    });
+    card.appendChild(btn);
+  }
+
+  function injectLaunchBtn(container, existingBtn) {
+    if (!container || container.dataset.tmgUpgraded) return;
+    container.dataset.tmgUpgraded = '1';
+
+    const appName = extractAppName(container);
+    const appUrl  = existingBtn?.href || extractAppUrl(container);
+
+    const btn = document.createElement('button');
+    btn.className = 'tmg-card-launch-btn';
+    btn.textContent = '⚡ Launch with Mission Guide';
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openMissionModal(appName, appUrl, '', container);
+    });
+    existingBtn.insertAdjacentElement('afterend', btn);
+  }
+
+  function extractAppName(el) {
+    const nameEl = el.querySelector('[class*="app-name"], [class*="rec-name"], h3, h4, strong');
+    if (nameEl) return nameEl.textContent.trim();
+    const btn = el.querySelector('button, a');
+    if (btn) {
+      const t = btn.textContent.replace(/OPEN|→/gi, '').trim();
+      if (t.length > 0 && t.length < 60) return t;
+    }
+    return 'Recommended App';
+  }
+
+  function extractAppUrl(el) {
+    const a = el.querySelector('a[href*=".html"]');
+    if (a) return a.href;
+    const btn = el.querySelector('button');
+    if (btn) {
+      const onclick = btn.getAttribute('onclick') || '';
+      const match = onclick.match(/['"]([^'"]*\.html[^'"]*)['"]/);
+      if (match) return match[1];
+    }
+    return null;
+  }
+
+  // ── Open mission modal & trigger AI generation ─────────────────────────────
+  function openMissionModal(appName, appUrl, rank, cardEl) {
+    const overlay = document.getElementById('tmg-mission-modal-overlay');
+    const body    = document.getElementById('tmg-modal-body');
+    const footer  = document.getElementById('tmg-modal-footer');
+    const launchBtn = document.getElementById('tmg-modal-launch-btn');
+    const subtitle  = document.getElementById('tmg-modal-subtitle');
+
+    // Reset modal state
+    body.innerHTML = `
+      <div class="tmg-modal-generating">
+        <div class="tmg-modal-gen-spinner"></div>
+        <div class="tmg-modal-gen-label">TSM Neural Core</div>
+        <div class="tmg-modal-gen-text">Analyzing anomaly...<br>Generating mission steps for <strong style="color:#c8e6c9">${escHtml(appName)}</strong>...</div>
+      </div>
+    `;
+    footer.style.display = 'none';
+    launchBtn.disabled = true;
+    subtitle.textContent = appName + ' · Generating plan...';
+    overlay.classList.add('active');
+    _pendingMission = null;
+
+    // Gather context from the War Room
+    const context = gatherWarRoomContext();
+
+    function resolveTargetApp(context) {
+  const text = ((context.documentType||'') + ' ' + (context.denialReason||'') + ' ' + (context.documentText||'')).toLowerCase();
+  const code = context.denialCode || '';
+
+  // Denial code routing
+  const denialRoutes = {
+    'CO-5':  { app:'Insurance Strategist', url:'insurance-strategist.html', reason:'Authorization & prior auth dispute requires strategist workflow' },
+    'CO-4':  { app:'Insurance Strategist', url:'insurance-strategist.html', reason:'Medical necessity appeal requires strategist review' },
+    'CO-16': { app:'Insurance Strategist', url:'insurance-strategist.html', reason:'Claim correction and resubmission via strategist' },
+    'CO-22': { app:'Insurance Strategist', url:'insurance-strategist.html', reason:'COB dispute requires payer sequencing review' },
+    'CO-97': { app:'P&C Command',          url:'pc-command.html',           reason:'Coding/bundling error requires compliance review' },
+    'PR-96': { app:'Insurance Strategist', url:'insurance-strategist.html', reason:'Patient liability determination requires strategist' },
+  };
+  if (code && denialRoutes[code]) return denialRoutes[code];
+
+  // Document type / scenario routing
+  if (/dme|oxygen|hcpcs|concentrator|wheelchair|prosthetic/.test(text))
+    return { app:'DME Billing Module', url:'dme.html', reason:'DME claim requires DME-specific billing workflow' };
+
+  if (/compliance|stark|anti.?kickback|cms|regulation|audit|rac/.test(text))
+    return { app:'P&C Command', url:'pc-command.html', reason:'Compliance issue requires P&C regulatory review' };
+
+  if (/ce |continuing education|ahip|license|licensing|certification/.test(text))
+    return { app:'CE Study Prep', url:'ce-study-prep.html', reason:'Licensing/CE issue routed to CE Study Prep' };
+
+  if (/agent|onboard|npn|appointment|carrier appointment/.test(text))
+    return { app:'Agent Onboarding', url:'ins-hub.html', reason:'Agent credentialing issue routed to onboarding workflow' };
+
+  if (/underwriting|policy lapse|cancellation|non.?renewal|rescission/.test(text))
+    return { app:'AZ Insurance Command', url:'az-ins.html', reason:'Policy lifecycle issue routed to AZ Command' };
+
+  if (/p&c|property|casualty|auto|homeowner|liability|vehicle/.test(text))
+    return { app:'P&C Command', url:'pc-command.html', reason:'P&C claim routed to P&C Command' };
+
+  if (/era|835|remittance|eob|payment posting/.test(text))
+    return { app:'Insurance Strategist', url:'insurance-strategist.html', reason:'ERA/remittance issue routed to strategist' };
+
+  if (/bnca|negotiated|contract|fee schedule/.test(text))
+    return { app:'Insurance Intel', url:'ins-intel.html', reason:'Contract/BNCA analysis routed to Insurance Intel' };
+
+  // Default
+  return { app:'Insurance Strategist', url:'insurance-strategist.html', reason:'General claim anomaly routed to strategist' };
+}
+
+    generateMissionSteps(appName, appUrl, context)
+      .then(mission => {
+        _pendingMission = mission;
+        renderModalMission(mission);
+        footer.style.display = 'flex';
+        launchBtn.disabled = false;
+        subtitle.textContent = appName + ' · Mission ready — ' + (mission.steps?.length || 0) + ' steps';
+      })
+      .catch(err => {
+        console.error('Mission generation error:', err);
+        body.innerHTML = `
+          <div class="tmg-modal-generating">
+            <div style="color:#ff6b6b;font-size:11px;text-align:center;margin-bottom:10px">⚠ Generation Failed</div>
+            <div class="tmg-modal-gen-text" style="color:#5a8a5a">Could not connect to TSM Neural Core.<br>Check server connection and retry.</div>
+          </div>
+        `;
+        footer.style.display = 'flex';
+        launchBtn.disabled = true;
+      });
+  }
+
+  function renderModalMission(m) {
+    const body = document.getElementById('tmg-modal-body');
+    const prog = m.steps?.length || 0;
+
+    body.innerHTML = `
+      <div class="tmg-modal-anomaly">
+        <div class="tmg-modal-anomaly-label">Anomaly Detected</div>
+        <div class="tmg-modal-anomaly-type">${escHtml(m.anomalyType)}</div>
+        <div class="tmg-modal-anomaly-details">${escHtml(m.anomalySummary)}</div>
+      </div>
+
+      <div class="tmg-modal-app-row">
+        <div class="tmg-modal-app-star">★</div>
+        <div class="tmg-modal-app-info">
+          <div class="tmg-modal-app-rank">Recommended App</div>
+          <div class="tmg-modal-app-name">${escHtml(m.targetApp)}</div>
+        </div>
+        <div style="color:#5a8a5a;font-size:9px">${prog} steps generated</div>
+      </div>
+
+      <div class="tmg-modal-steps-preview">
+        <div class="tmg-modal-steps-label">Mission Steps Preview</div>
+        ${(m.steps || []).map((s, i) => `
+          <div class="tmg-modal-step-row">
+            <div class="tmg-modal-step-num">${String(i+1).padStart(2,'0')}</div>
+            <div class="tmg-modal-step-content">
+              <div class="tmg-modal-step-title">${escHtml(s.title)}</div>
+              <div class="tmg-modal-step-instruction">${escHtml(s.instruction)}</div>
+              ${s.fieldHint ? `<div class="tmg-modal-step-hint">↳ ${escHtml(s.fieldHint)}</div>` : ''}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  function resolveTargetApp(context) {
+    const text = ((context.documentType||'') + ' ' + (context.denialReason||'') + ' ' + (context.documentText||'')).toLowerCase();
+    const code = context.denialCode || '';
+    const denialRoutes = {
+      'CO-5':  { app:'Insurance Strategist', url:'insurance-strategist.html', reason:'Authorization & prior auth dispute' },
+      'CO-4':  { app:'Insurance Strategist', url:'insurance-strategist.html', reason:'Medical necessity appeal' },
+      'CO-16': { app:'Insurance Strategist', url:'insurance-strategist.html', reason:'Claim correction and resubmission' },
+      'CO-22': { app:'Insurance Strategist', url:'insurance-strategist.html', reason:'COB dispute — payer sequencing' },
+      'CO-97': { app:'P&C Command',          url:'pc-command.html',           reason:'Coding/bundling error — compliance review' },
+      'PR-96': { app:'Insurance Strategist', url:'insurance-strategist.html', reason:'Patient liability determination' },
+    };
+    if (code && denialRoutes[code]) return denialRoutes[code];
+    if (/dme|oxygen|hcpcs|concentrator|wheelchair|prosthetic/.test(text))
+      return { app:'DME Billing Module', url:'dme.html', reason:'DME claim requires DME billing workflow' };
+    if (/compliance|stark|anti.?kickback|cms|regulation|audit|rac/.test(text))
+      return { app:'P&C Command', url:'pc-command.html', reason:'Compliance issue — P&C regulatory review' };
+    if (/ce |continuing education|ahip|license|licensing|certification/.test(text))
+      return { app:'CE Study Prep', url:'ce-study-prep.html', reason:'Licensing/CE issue' };
+    if (/agent|onboard|npn|appointment|carrier appointment/.test(text))
+      return { app:'Agent Onboarding', url:'ins-hub.html', reason:'Agent credentialing issue' };
+    if (/underwriting|policy lapse|cancellation|non.?renewal|rescission/.test(text))
+      return { app:'AZ Insurance Command', url:'az-ins.html', reason:'Policy lifecycle issue' };
+    if (/p&c|property|casualty|auto|homeowner|liability|vehicle/.test(text))
+      return { app:'P&C Command', url:'pc-command.html', reason:'P&C claim' };
+    if (/era|835|remittance|eob|payment posting/.test(text))
+      return { app:'Insurance Strategist', url:'insurance-strategist.html', reason:'ERA/remittance issue' };
+    if (/bnca|negotiated|contract|fee schedule/.test(text))
+      return { app:'Insurance Intel', url:'ins-intel.html', reason:'Contract/BNCA analysis' };
+    return { app:'Insurance Strategist', url:'insurance-strategist.html', reason:'General claim anomaly' };
+  }
+
+  // ── Generate steps via TSM Neural Core ────────────────────────────────────
+  async function generateMissionSteps(appName, appUrl, context) {
+    const missionId =
+  ((window.location.pathname.match(/\/([^\/]+)-war-room/i)?.[1] || 'TSM')
+    .toUpperCase()) +
+  '-' +
+  Date.now().toString(36).toUpperCase();
+
+    // Override app routing based on anomaly intelligence
+    const route = resolveTargetApp(context);
+    if (route.url !== appUrl) {
+      appName = route.app;
+      appUrl = route.url;
+    }
+
+    const systemPrompt = `You are TSM Neural Core, an expert insurance operations AI. 
+You generate precise guided mission steps for insurance staff to resolve anomalies using specific apps.
+Respond ONLY with valid JSON. No markdown, no explanation, no code fences.`;
+
+    const userPrompt = `Generate a step-by-step guided mission for this insurance anomaly resolution task.
+
+TARGET APP: ${appName}
+ANOMALY TYPE: ${context.documentType || 'Insurance Claim'}
+DOCUMENT/CLAIM CONTEXT:
+${context.documentText || 'No document loaded'}
+
+CURRENT ANALYSIS CONTEXT:
+Claim Amount: ${context.claimAmount || 'Unknown'}
+Patient/Policy: ${context.patient || 'Unknown'}
+Status: ${context.status || 'Unknown'}
+Denial Reason: ${context.denialReason || 'Not specified'}
+
+Generate 5-7 actionable mission steps. Each must include:
+- title: short action title (max 7 words)
+- instruction: clear 1-2 sentence instruction of exactly what to do in the ${appName} app
+- fieldHint: specific field names, exact values, or inputs to enter (e.g., "In the Denial Analysis tab, set Denial Code to CO-16, enter ICD-10: 396.00 in the Diagnosis field, enter Claim Amount: $3,200")
+
+Also output:
+- anomalyType: one-line label for what the anomaly is
+- anomalySummary: 2-3 sentence summary of what happened and why this app was recommended
+
+Respond with ONLY this JSON structure:
+{
+  "anomalyType": "...",
+  "anomalySummary": "...",
+  "steps": [
+    { "title": "...", "instruction": "...", "fieldHint": "..." }
+  ]
+}`;
+
+    const res = await fetch('/api/insurance/query', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ system: systemPrompt, message: userPrompt })
+    });
+
+    if (!res.ok) throw new Error('API error: ' + res.status);
+
+    const data = await res.json();
+    const rawText = (data.response || data.content || data.result || '').replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(rawText);
+
+    return {
+      missionId,
+      anomalyType: parsed.anomalyType || context.documentType || 'Insurance Anomaly',
+      anomalySummary: parsed.anomalySummary || '',
+      targetApp: appName,
+      targetUrl: appUrl,
+      patientOrClient: context.patient,
+      claimAmount: context.claimAmount,
+      denialCode: context.denialCode || null,
+      payer: context.payer || null,
+      steps: (parsed.steps || []).map((s, i) => ({
+        id: `step-${i}`,
+        title: s.title,
+        instruction: s.instruction,
+        fieldHint: s.fieldHint || '',
+        status: i === 0 ? 'active' : 'pending'
+      })),
+      generatedAt: new Date().toISOString(),
+      warRoomContext: context
+    };
+  }
+
+  // ── Gather context from the War Room DOM ──────────────────────────────────
+  function gatherWarRoomContext() {
+    const ctx = {};
+
+    // Document type button that is active/selected
+    const activeDocType = document.querySelector(`
+  .doc-type-btn.active,
+  .doc-type-btn.selected,
+  .sample-btn.active,
+  .type-btn.active,
+  .guide-btn.active,
+  .doc-btn.active,
+  [data-doc-type].active,
+  [data-type].active,
+  button.active[data-type]
+`);
+
+    ctx.documentType = activeDocType?.textContent?.trim()
+      || document.querySelector('#selectedDocType, [id*="docType"]')?.textContent?.trim()
+      || 'AP Aging';
+
+    // Pasted document text
+    const docTextArea = document.querySelector(`
+  textarea[id*="doc"],
+  textarea[id*="paste"],
+  textarea[id*="text"],
+  textarea[id*="input"],
+  textarea[id*="claim"],
+  textarea[id*="contract"],
+  textarea[id*="legal"],
+  textarea[id*="financial"],
+  textarea[placeholder*="Paste"],
+  textarea[placeholder*="Document"],
+  #documentText,
+  #pasteArea,
+  #docText,
+  #inputText,
+  #sourceText
+`);
+    ctx.documentText = docTextArea?.value?.trim()?.slice(0, 1000) || '';
+
+    // Try to extract claim details from the text
+    if (ctx.documentText) {
+      const amtMatch = ctx.documentText.match(/CLAIM[\s_]?AMOUNT[:\s]+(\$[\d,]+)/i)
+        || ctx.documentText.match(/TOTAL[\s_]?AMOUNT[:\s]+(\$[\d,]+)/i)
+        || ctx.documentText.match(/(\$[\d,]+)/);
+      if (amtMatch) ctx.claimAmount = amtMatch[1];
+
+      const patMatch = ctx.documentText.match(/PATIENT[:\s]+([^\n]+)/i)
+        || ctx.documentText.match(/POLICY[\s_]?HOLDER[:\s]+([^\n]+)/i)
+        || ctx.documentText.match(/MEMBER[:\s]+([^\n]+)/i);
+      if (patMatch) ctx.patient = patMatch[1].trim();
+
+      const statusMatch = ctx.documentText.match(/STATUS[:\s]+([^\n]+)/i);
+      if (statusMatch) ctx.status = statusMatch[1].trim();
+
+      const denialMatch = ctx.documentText.match(/DENIAL[\s_]?REASON[:\s]+([^\n]+)/i)
+        || ctx.documentText.match(/DENIAL[:\s]+([^\n]+)/i)
+        || ctx.documentText.match(/REASON[\s_]?FOR[\s_]?DENIAL[:\s]+([^\n]+)/i);
+      if (denialMatch) ctx.denialReason = denialMatch[1].trim();
+
+      // Extract denial code (CO-5, PR-96, OA-23, etc.)
+      const codeMatch = ctx.documentText.match(/\b(CO-\d+|PR-\d+|OA-\d+|PI-\d+|CR-\d+)\b/i)
+        || (ctx.denialReason||'').match(/\b(CO-\d+|PR-\d+|OA-\d+|PI-\d+|CR-\d+)\b/i);
+      if (codeMatch) ctx.denialCode = codeMatch[1].toUpperCase();
+
+      // Extract payer
+      const payerMatch = ctx.documentText.match(/PAYER[:\s]+([^\n]+)/i)
+        || ctx.documentText.match(/INSURANCE[:\s]+([^\n]+)/i)
+        || ctx.documentText.match(/\b(Medicare|Medicaid|Blue Cross|Aetna|Cigna|UnitedHealth|Humana|Anthem|Centene)\b/i);
+      if (payerMatch) ctx.payer = payerMatch[1].trim();
+    }
+
+    // Fallback: scrape denial code from visible engine output panels
+    if (!ctx.denialCode) {
+      const allText = document.body.innerText || '';
+      const codeMatch = allText.match(/\b(CO-\d+|PR-\d+|OA-\d+|PI-\d+)\b/i);
+      if (codeMatch) ctx.denialCode = codeMatch[1].toUpperCase();
+    }
+
+    // Fallback: scrape payer from visible DOM
+    if (!ctx.payer) {
+      const allText = document.body.innerText || '';
+      const payerMatch = allText.match(/\b(Medicare|Medicaid|Blue Cross|Aetna|Cigna|UnitedHealth|Humana|Anthem|Centene)\b/i);
+      if (payerMatch) ctx.payer = payerMatch[1];
+    }
+
+    // Fallback claimAmount from status bar
+    if (!ctx.claimAmount) {
+      const statusBar = document.querySelector('[id*="statusBar"], .status-bar, #engineStatus');
+      ctx.claimAmount = statusBar?.textContent?.match(/\$[\d,]+/)?.[0] || '';
+    }
+
+    return ctx;
+  }
+
+  // ── Modal button handlers ──────────────────────────────────────────────────
+  document.addEventListener('DOMContentLoaded', function () {
+    document.getElementById('tmg-modal-close-btn')?.addEventListener('click', closeMissionModal);
+    document.getElementById('tmg-modal-cancel-btn')?.addEventListener('click', closeMissionModal);
+    document.getElementById('tmg-mission-modal-overlay')?.addEventListener('click', function(e) {
+      if (e.target === this) closeMissionModal();
+    });
+
+    document.getElementById('tmg-modal-launch-btn')?.addEventListener('click', function () {
+      if (!_pendingMission) return;
+      // Write mission to localStorage — the guide panel in the target app will read it
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(_pendingMission));
+if(window.TSMMissionGuide) window.TSMMissionGuide.show();
+      } catch(e) {}
+      closeMissionModal();
+
+      // Navigate to target app
+      if (_pendingMission.targetUrl) {
+        window.location.href = _pendingMission.targetUrl;
+      } else {
+        // Guide is now loaded — alert user the panel is ready
+        if (window.TSMMissionGuide) window.TSMMissionGuide.show();
+      }
+    });
+
+    // Upgrade recommendation cards after a short delay (let War Room render first)
+    setTimeout(upgradeRecommendationCards, 600);
+
+    // Also re-run after engine analysis completes (if War Room fires a custom event)
+    document.addEventListener('warRoomAnalysisComplete', upgradeRecommendationCards);
+    document.addEventListener('enginesComplete', upgradeRecommendationCards);
+
+    // MutationObserver to catch dynamically rendered cards
+    const observer = new MutationObserver(() => {
+      upgradeRecommendationCards();
+    });
+    const recContainer = document.querySelector(
+      '#recommendationsContainer, .recommendations, [id*="rec"], [class*="rec-container"]'
+    );
+    if (recContainer) {
+      observer.observe(recContainer, { childList: true, subtree: true });
+    }
+  });
+
+  function closeMissionModal() {
+    document.getElementById('tmg-mission-modal-overlay')?.classList.remove('active');
+    _pendingMission = null;
+  }
+
+  function escHtml(str) {
+    return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+ 
+})();
+</script>
+<script src="/html/tsm-insurance/public/js/tsm-mission-guide.js"></script>
+<script src="../..//js/tsm-mission-conductor.js"></script>
+<script src="/html/tsm-mission-orchestrator.js"></script>
+</body>
+</html>
+
+// ===== TSM_AUTONOMY_STANDARDIZED =====
+window.TSM_AUTONOMY_STANDARDIZED = true;
+</script>
+
+<!-- TSM ENFORCER BOOT -->
+<script src="/html/core/tsm-enforcer.js"></script>
+
+
+// ===== TSM WAR ROOM SCOPED RELAY FIX =====
+window.tsmMission = window.tsmMission || {
+  id: "TSM-INSURANCE-" + Date.now().toString(36),
+  vertical: "tsm-insurance",
+  
+};
+
+function tsmWriteRelay(payload){
+  TSM_KERNEL.setRelay("tsm-insurance", JSON.stringify(payload));
+}
+</script>
+
+
+<!-- TSM KERNEL ENGINE -->
+<script src="./insurance-war-tabs.js"></script>
+<script src="/html/core/tsm-kernel.js">
+function insHandleFile(file) {
+  if (!file) return;
+  const lbl = document.getElementById('ins-upload-name');
+  if (lbl) lbl.textContent = '⟳ READING ' + file.name + '...';
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const ta = document.getElementById('docPaste');
+    if (ta) { ta.value = e.target.result; ta.dispatchEvent(new Event('input')); }
+    if (lbl) lbl.textContent = '✓ ' + file.name;
+  };
+  reader.onerror = function() { if(lbl) lbl.textContent = '✗ Read error'; };
+  reader.readAsText(file);
+}
+document.addEventListener('DOMContentLoaded', function() {
+  const lbl = document.getElementById('ins-upload-label');
+  if (!lbl) return;
+  lbl.addEventListener('dragover', e => { e.preventDefault(); lbl.style.borderColor='var(--green)'; });
+  lbl.addEventListener('dragleave', () => { lbl.style.borderColor='rgba(0,255,150,0.2)'; });
+  lbl.addEventListener('drop', e => {
+    e.preventDefault(); lbl.style.borderColor='rgba(0,255,150,0.2)';
+    const f = e.dataTransfer.files[0];
+    if (f) { document.getElementById('ins-file-input').files=e.dataTransfer.files; insHandleFile(f); }
+  });
+});
+</script>

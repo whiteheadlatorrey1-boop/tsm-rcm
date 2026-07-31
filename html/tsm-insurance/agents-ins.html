@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>TSM Insurance Core - Broker & Agent Sync</title>
+    <style>
+        :root {
+            --gold-primary: #c5a880;
+            --gold-glow: rgba(197, 168, 128, 0.08);
+            --bg-main: #06080f;
+            --bg-card: #0b0e17;
+            --border-color: #161c2a;
+            --text-main: #f8fafc;
+            --text-muted: #4a5568;
+            --pink-accent: #ec4899;
+            --purple-accent: #a855f7;
+        }
+        body {
+            background-color: var(--bg-main);
+            color: var(--text-main);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+        /* Top Navigation Header Row matching original look exactly */
+        .insurance-suite-header {
+            background: #02040a;
+            border-bottom: 1px solid var(--border-color);
+            padding: 12px 24px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .suite-label {
+            color: var(--gold-primary);
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            font-weight: 900;
+            letter-spacing: 0.1em;
+            margin-right: 15px;
+        }
+        .nav-tab-node {
+            background: #0f1322;
+            border: 1px solid var(--border-color);
+            color: #94a3b8;
+            padding: 6px 14px;
+            border-radius: 4px;
+            text-decoration: none;
+            font-size: 0.8rem;
+            font-weight: 600;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .nav-tab-node:hover {
+            border-color: var(--gold-primary);
+            color: #fff;
+        }
+        .nav-tab-node.active-gold {
+            background: var(--gold-primary);
+            color: #02040a;
+            border-color: var(--gold-primary);
+        }
+        .nav-tab-node.purple-tab {
+            background: var(--purple-accent);
+            border-color: var(--purple-accent);
+            color: #fff;
+        }
+        .nav-tab-node.pink-tab {
+            border-color: var(--pink-accent);
+            color: var(--pink-accent);
+            background: rgba(236, 72, 153, 0.05);
+        }
+        .nav-tab-node.pink-tab:hover {
+            background: rgba(236, 72, 153, 0.15);
+        }
+
+        /* Identity and Sub-Control Row */
+        .sub-identity-row {
+            background: #080b14;
+            border-bottom: 1px solid var(--border-color);
+            padding: 14px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .brand-logo-text {
+            color: var(--gold-primary);
+            font-size: 1.05rem;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .search-prompt-field {
+            background: #020408;
+            border: 1px solid var(--gold-primary);
+            color: #fff;
+            padding: 7px 14px;
+            border-radius: 4px;
+            width: 380px;
+            font-family: monospace;
+            font-size: 0.8rem;
+            outline: none;
+            box-shadow: 0 0 8px rgba(197, 168, 128, 0.1);
+        }
+
+        /* Workspace Grid Enclosure */
+        .dashboard-canvas {
+            padding: 24px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        .hero-heading h1 {
+            font-size: 1.75rem;
+            margin: 0 0 4px 0;
+            font-weight: 300;
+            letter-spacing: -0.02em;
+        }
+        .hero-heading h1 strong {
+            color: var(--gold-primary);
+            font-weight: 700;
+        }
+        .hero-subtitle {
+            font-size: 0.8rem;
+            color: #475569;
+            margin-bottom: 24px;
+        }
+
+        /* Playbook Drawer Styling */
+        .playbook-drawer-panel {
+            background: #090c16;
+            border: 1px solid var(--gold-primary);
+            border-radius: 4px;
+            padding: 20px;
+            margin-bottom: 24px;
+            display: none;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+        }
+        .drawer-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+            margin-top: 15px;
+        }
+        .drawer-card-node {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            padding: 16px;
+            border-radius: 4px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .drawer-card-node:hover {
+            border-color: var(--pink-accent);
+            background: #121724;
+            transform: translateY(-1px);
+        }
+
+        /* Metric Counters Row Grid */
+        .metrics-row-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        .metric-tile-box {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-left: 3px solid var(--gold-primary);
+            padding: 16px;
+            border-radius: 4px;
+        }
+        .tile-label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            color: #64748b;
+            letter-spacing: 0.05em;
+        }
+        .tile-counter {
+            font-size: 1.7rem;
+            font-weight: 700;
+            color: var(--gold-primary);
+            margin-top: 4px;
+        }
+
+        /* Split Workspace Structure */
+        .workspace-split-layout {
+            display: grid;
+            grid-template-columns: 1.25fr 0.75fr;
+            gap: 20px;
+        }
+        .content-card-panel {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            padding: 24px;
+        }
+        .panel-caption-row {
+            font-size: 0.85rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #f1f5f9;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 10px;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* Focus Items Matrix Structure */
+        .matrix-list-row {
+            background: #06080f;
+            border: 1px solid var(--border-color);
+            padding: 14px;
+            border-radius: 4px;
+            margin-bottom: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .badge-critical {
+            background: rgba(236, 72, 153, 0.1);
+            color: var(--pink-accent);
+            border: 1px solid var(--pink-accent);
+            font-size: 0.65rem;
+            padding: 2px 6px;
+            font-weight: 800;
+            border-radius: 2px;
+        }
+
+        /* Action Buttons Grid Array */
+        .actions-button-cluster {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+        .action-click-btn {
+            padding: 14px;
+            font-weight: 700;
+            font-size: 0.8rem;
+            border-radius: 4px;
+            cursor: pointer;
+            text-align: left;
+            background: #101422;
+            border: 1px solid var(--border-color);
+            transition: all 0.2s;
+        }
+        .action-click-btn.gold-style { color: var(--gold-primary); border-color: var(--gold-primary); background: rgba(197, 168, 128, 0.03); }
+        .action-click-btn.gold-style:hover { background: rgba(197, 168, 128, 0.08); }
+        .action-click-btn.blue-style { color: #3b82f6; border-color: #3b82f6; background: rgba(59, 130, 246, 0.03); }
+        .action-click-btn.blue-style:hover { background: rgba(59, 130, 246, 0.08); }
+        .action-click-btn.green-style { color: #10b981; border-color: #10b981; background: rgba(16, 185, 129, 0.03); }
+        .action-click-btn.green-style:hover { background: rgba(16, 185, 129, 0.08); }
+    </style>
+</head>
+<body>
+
+    <div class="insurance-suite-header">
+        <div class="suite-label">⚜️ Insurance Suite:</div>
+        <a href="/tsm-insurance/az-ins.html" class="nav-tab-node ">⚜️ AZ Command</a>
+        <a href="/tsm-insurance/agents-ins.html" class="nav-tab-node active-gold">👥 Agents</a>
+        <a href="#" data-tsm-action="togglePlaybookDrawer" data-tsm-args="event" class="nav-tab-node pink-tab">📚 Playbook Library</a>
+        <a href="/tsm-insurance/ce-study-prep.html" class="nav-tab-node purple-tab">🎓 CE Study Prep</a>
+        <a href="#" data-tsm-action="handleWIPClick" data-tsm-args="'DME Core Matrix'" class="nav-tab-node">♿ DME</a>
+        <a href="#" data-tsm-action="handleWIPClick" data-tsm-args="'Property & Casualty Command'" class="nav-tab-node">🏡 P&C Command</a>
+        <a href="#" data-tsm-action="handleWIPClick" data-tsm-args="'Intel Analysis Engine'" class="nav-tab-node">👁️ Intel</a>
+        <a href="#" data-tsm-action="handleWIPClick" data-tsm-args="'Presentation Layout View'" class="nav-tab-node">📊 Presentation</a>
+        <a href="#" data-tsm-action="handleWIPClick" data-tsm-args="'Legal Compliance Dashboard'" class="nav-tab-node">⚖️ Legal</a>
+    </div>
+
+    <div class="sub-identity-row">
+        <div class="brand-logo-text">🌵 ARIZONA INSURANCE COMMAND MATRIX</div>
+        <div>
+            <input type="text" id="queryBoxInput" class="search-prompt-field" value="auditops --domain=insurance.tsmatter.com" readonly>
+        </div>
+        <div style="font-size: 0.75rem; font-family: monospace; color: var(--gold-primary);">
+            TSM Neural Core: <span style="color:#10b981; font-weight:bold;">● Active</span> | NPN: 18818059
+        </div>
+    </div>
+
+    <div class="dashboard-canvas">
+
+        <div id="playbookLibraryDrawer" class="playbook-drawer-panel">
+            <h4 style="margin: 0 0 4px 0; color: var(--pink-accent);">📚 Persistent Playbook Workspace Library</h4>
+            <p style="margin: 0 0 14px 0; font-size: 0.8rem; color: #64748b;">Select an operational asset module below to wire prompt telemetry parameters into your current core shell interface window session context:</p>
+            <div class="drawer-grid">
+                <div class="drawer-card-node" data-tsm-action="fireQueryWiring" data-tsm-args="'Medical'">
+                    <div style="font-size: 1.4rem; margin-bottom: 6px;">🏥</div>
+                    <strong style="color: #fff; font-size: 0.85rem;">Medical Sector</strong>
+                </div>
+                <div class="drawer-card-node" data-tsm-action="fireQueryWiring" data-tsm-args="'Legal'">
+                    <div style="font-size: 1.4rem; margin-bottom: 6px;">⚖️</div>
+                    <strong style="color: #fff; font-size: 0.85rem;">Legal Frameworks</strong>
+                </div>
+                <div class="drawer-card-node" data-tsm-action="fireQueryWiring" data-tsm-args="'Construction'">
+                    <div style="font-size: 1.4rem; margin-bottom: 6px;">🏗️</div>
+                    <strong style="color: #fff; font-size: 0.85rem;">Construction Logic</strong>
+                </div>
+            </div>
+        </div>
+
+        <div class="hero-heading">
+            <h1>Agent <strong>Command Center</strong></h1>
+            <div class="hero-subtitle">Arizona • Life • Health • Accident • Medicare — Premium Framework Node Hub Architecture</div>
+        </div>
+
+        <div class="metrics-row-grid">
+            <div class="metric-tile-box"><div class="tile-label">Active Clients</div><div class="tile-counter">0</div><small style="color:#4a5568; font-size:0.7rem;">-- Clients tab</small></div>
+            <div class="metric-tile-box"><div class="tile-label">Quotes Run</div><div class="tile-counter">0</div><small style="color:#4a5568; font-size:0.7rem;">This session</small></div>
+            <div class="metric-tile-box"><div class="tile-label">Docs Analyzed</div><div class="tile-counter">0</div><small style="color:#4a5568; font-size:0.7rem;">AI powered telemetry</small></div>
+            <div class="metric-tile-box"><div class="tile-label">Report Items</div><div class="tile-counter">0</div><small style="color:#4a5568; font-size:0.7rem;">-- Reports tab</small></div>
+        </div>
+
+        <div class="workspace-split-layout">
+            
+            <div class="content-card-panel">
+                <div class="panel-caption-row">⚠️ Top AZ Pain Points Target Focus Matrix</div>
+                
+                <div class="matrix-list-row">
+                    <div>
+                        <strong>💊 Medicare Part D Donut Hole Confusion</strong>
+                        <div style="font-size:0.75rem; color:#64748b; margin-top:3px;">Seniors overpaying avg $1,200/yr. Optimal matrix matching closes exposures.</div>
+                    </div>
+                    <span class="badge-critical">CRITICAL</span>
+                </div>
+
+                <div class="matrix-list-row">
+                    <div>
+                        <strong>💸 ACA APTC Clawback Risk Profile</strong>
+                        <div style="font-size:0.75rem; color:#64748b; margin-top:3px;">MAGI income mapping deviation triggers IRS recapture calculations.</div>
+                    </div>
+                    <span class="badge-critical">CRITICAL</span>
+                </div>
+
+                <div class="matrix-list-row">
+                    <div>
+                        <strong>⚡ Accident Coverage Gap Mitigation</strong>
+                        <div style="font-size:0.75rem; color:#64748b; margin-top:3px;">ER visits clip $2,400 median baselines. Supplemental fixed indemnity buffers cash reserves.</div>
+                    </div>
+                    <span class="badge-critical" style="color:#f59e0b; border-color:#f59e0b; background:rgba(245,158,11,0.05);">HIGH</span>
+                </div>
+            </div>
+
+            <div class="content-card-panel">
+                <div class="panel-caption-row">⚡ Rapid Operational Execution Buttons</div>
+                <div class="actions-button-cluster">
+                    <button class="action-click-btn gold-style" data-tsm-action="handleWIPClick" data-tsm-args="'Life Insurance Quotation Calculator'">💛 LIFE QUOTE</button>
+                    <button class="action-click-btn blue-style" data-tsm-action="handleWIPClick" data-tsm-args="'ACA Premium Subsidy Calculator'">💙 ACA QUOTE</button>
+                    <button class="action-click-btn gold-style" data-tsm-action="handleWIPClick" data-tsm-args="'IRMAA Surcharge Sifting Engine'">⭐ IRMAA CALC</button>
+                    <button class="action-click-btn blue-style" data-tsm-action="handleWIPClick" data-tsm-args="'Accident Indemnity Engine'">⚡ ACCIDENT CALC</button>
+                    <button class="action-click-btn green-style" data-tsm-action="handleWIPClick" data-tsm-args="'Secure Document Gateway Uploader'" style="grid-column: span 2; text-align:center;">📁 DROP ENCRYPTED AUDIT FILES HERE</button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        function togglePlaybookDrawer(e) {
+            if(e) e.preventDefault();
+            const panel = document.getElementById('playbookLibraryDrawer');
+            if (panel.style.display === 'block') {
+                panel.style.display = 'none';
+            } else {
+                panel.style.display = 'block';
+            }
+        }
+
+        function fireQueryWiring(sectorName) {
+            const searchBar = document.getElementById('queryBoxInput');
+            if (searchBar) {
+                searchBar.value = 'auditops "Mesa Premier Legal - Factor: Municipal Residency" --logic=strategist';
+                searchBar.style.borderColor = '#ec4899';
+                searchBar.style.boxShadow = '0 0 14px rgba(236, 72, 153, 0.6)';
+                console.log("TSM Core Link wired context parameters successfully for: " + sectorName);
+            }
+        }
+
+        function handleWIPClick(moduleLabel) {
+            alert("TSM Neural Core: The '" + moduleLabel + "' execution framework layer is currently provisioning inside this asset branch profile. Production layout updates finalize soon!");
+        }
+    </script>
+
+<script>(function(){
+document.addEventListener('DOMContentLoaded',()=>{
+document.querySelectorAll('button').forEach(b=>{
+if(b.dataset.tsm) return;
+b.dataset.tsm=1;
+b.onclick=()=>console.log('[TSM]',b.innerText);
+});
+console.log('[TSM ENGINE ACTIVE]');
+});
+})();</script>
+
+document.addEventListener('click', function(e){
+
+  const el = e.target.closest('[data-tsm-action]');
+  if(!el) return;
+
+  const action = el.getAttribute('data-tsm-action');
+  const args = el.getAttribute('data-tsm-args');
+
+  if(window.TSM && TSM.launcher && TSM.launcher.run){
+    TSM.launcher.run(action, args);
+  } else {
+    console.warn('[TSM] launcher missing:', action, args);
+  }
+
+});
+})();</script>
+  <script src="/core/tsm-kernel.js"></script>
+  <script src="/core/tsm-enforcer.js"></script>
+  <script src="/js/core/tsm-kernel-upgrade.js"></script>
+</body>
+</html>
+<script>
+// ===== TSM_AUTONOMY_STANDARDIZED =====
+window.TSM_AUTONOMY_STANDARDIZED = true;
+</script>
+
+// ===== TSM WAR ROOM SCOPED RELAY FIX =====
+window.tsmMission = window.tsmMission || {
+  id: "TSM-INSURANCE-" + Date.now().toString(36),
+  vertical: "tsm-insurance",
+  
+};
+
+function tsmWriteRelay(payload){
+  TSM_KERNEL.setRelay("tsm-insurance", JSON.stringify(payload));
+}
+</script>
+

@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TSM · Insurance Tax Prep · Agent Intelligence</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Exo+2:wght@300;400;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#080c14;--surf:#0d1525;--surf2:#111d2e;--border:#1a3050;--border2:#2a4a70;
+  --accent:#c060ff;--cyan:#00e5ff;--green:#40e080;--gold:#f5c842;--red:#ff4455;--blue:#4fc3f7;
+  --text:#c0d0e0;--muted:#5a7a9a;--white:#e8f4ff;
+  --mono:'Share Tech Mono',monospace;--body:'Exo 2',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--body);min-height:100vh}
+
+.topbar{background:rgba(8,12,20,.97);border-bottom:1px solid var(--border2);display:flex;align-items:center;justify-content:space-between;padding:.55rem 1.5rem;position:sticky;top:0;z-index:100}
+.tb-brand{font-family:var(--mono);font-size:.55rem;letter-spacing:.15em;color:var(--accent)}
+.tb-nav{display:flex;gap:.4rem}
+.tb-link{font-family:var(--mono);font-size:.48rem;color:var(--muted);padding:.28rem .6rem;border:1px solid transparent;text-decoration:none;transition:all .2s}
+.tb-link:hover{color:var(--accent);border-color:var(--border2)}
+
+.hero{padding:2.5rem 1.5rem 1.5rem;max-width:1100px;margin:0 auto}
+.hero-eye{font-family:var(--mono);font-size:.48rem;letter-spacing:.2em;color:var(--gold);margin-bottom:.6rem}
+.hero-title{font-size:clamp(1.8rem,4vw,3rem);font-weight:700;color:var(--white);line-height:1;margin-bottom:.5rem}
+.hero-title span{color:var(--gold)}
+.hero-desc{font-size:.88rem;color:var(--text);max-width:600px;line-height:1.7;margin-bottom:1.5rem}
+
+.section{max-width:1100px;margin:0 auto;padding:1.5rem 1.5rem}
+.sec-eye{font-family:var(--mono);font-size:.45rem;letter-spacing:.18em;color:var(--gold);margin-bottom:.4rem}
+.sec-title{font-size:1.4rem;font-weight:700;color:var(--white);margin-bottom:.3rem}
+.sec-desc{color:var(--text);max-width:580px;margin-bottom:1.2rem;font-size:.82rem}
+.divider{border:none;border-top:1px solid var(--border);margin:0 1.5rem}
+
+/* KEY INPUT AREA */
+.ai-panel{background:var(--surf);border:1px solid var(--border2);border-radius:4px;overflow:hidden;margin-bottom:1.2rem}
+.ap-head{background:var(--surf2);padding:.5rem .9rem;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.ap-title{font-family:var(--mono);font-size:.5rem;letter-spacing:.12em;color:var(--gold)}
+.ap-status{font-family:var(--mono);font-size:.45rem;color:var(--green);display:flex;align-items:center;gap:.3rem}
+.ap-body{padding:.8rem}
+.field-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:.8rem;margin-bottom:.7rem}
+@media(max-width:700px){.field-row{grid-template-columns:1fr}}
+.field-label{font-family:var(--mono);font-size:.42rem;letter-spacing:.1em;color:var(--gold);display:block;margin-bottom:.3rem}
+.field-input{width:100%;background:var(--surf2);border:1px solid var(--border2);color:var(--white);font-family:var(--mono);font-size:.65rem;padding:.4rem .6rem;border-radius:3px;outline:none;transition:border-color .2s}
+.field-input:focus{border-color:var(--gold)}
+select.field-input option{background:var(--surf2)}
+.btn-row{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.7rem}
+.btn{font-family:var(--mono);font-size:.5rem;letter-spacing:.1em;padding:.42rem .9rem;border-radius:3px;cursor:pointer;border:1px solid;transition:all .2s}
+.btn-gold{background:var(--gold);color:#080c14;border-color:var(--gold);font-weight:700}
+.btn-gold:hover{opacity:.85}
+.btn-gold:disabled{opacity:.4;cursor:not-allowed}
+.btn-ghost{background:transparent;border-color:var(--border2);color:var(--muted)}
+.btn-ghost:hover{color:var(--white)}
+
+/* OUTPUT */
+.output-grid{display:grid;grid-template-columns:1fr 1fr;gap:.8rem;margin-bottom:1.2rem}
+@media(max-width:700px){.output-grid{grid-template-columns:1fr}}
+.oc{background:var(--surf);border:1px solid var(--border2);border-radius:4px;overflow:hidden}
+.oc-head{background:var(--surf2);padding:.4rem .7rem;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.oc-title{font-family:var(--mono);font-size:.45rem;letter-spacing:.1em;color:var(--gold)}
+.oc-copy{font-family:var(--mono);font-size:.4rem;padding:.15rem .4rem;border:1px solid var(--border2);color:var(--muted);cursor:pointer;background:transparent}
+.oc-copy:hover{color:var(--white)}
+.oc-body{padding:.65rem;font-family:var(--mono);font-size:.62rem;color:var(--text);line-height:1.75;white-space:pre-wrap;min-height:80px}
+.oc-placeholder{color:var(--muted);font-style:italic}
+.oc-full{grid-column:1/-1}
+
+/* REFERENCE TABLES */
+.ref-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:.8rem;margin-bottom:1.2rem}
+.ref-card{background:var(--surf);border:1px solid var(--border);border-radius:4px;overflow:hidden}
+.rc-head{background:var(--surf2);padding:.45rem .7rem;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:.45rem;letter-spacing:.1em;color:var(--gold)}
+.rc-body{padding:.6rem}
+.rc-row{display:flex;justify-content:space-between;align-items:center;padding:.3rem 0;border-bottom:1px solid var(--border);font-size:.65rem}
+.rc-row:last-child{border-bottom:none}
+.rc-label{color:var(--text)}
+.rc-val{font-family:var(--mono);color:var(--white);font-weight:600}
+.rc-val.green{color:var(--green)}
+.rc-val.gold{color:var(--gold)}
+.rc-val.red{color:var(--red)}
+
+/* CHECKLIST */
+.checklist{background:var(--surf);border:1px solid var(--border2);border-radius:4px;overflow:hidden;margin-bottom:1.2rem}
+.cl-head{background:var(--surf2);padding:.45rem .7rem;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:.45rem;letter-spacing:.1em;color:var(--gold)}
+.cl-item{display:flex;align-items:center;gap:.6rem;padding:.45rem .7rem;border-bottom:1px solid var(--border);cursor:pointer;transition:background .2s}
+.cl-item:last-child{border-bottom:none}
+.cl-item:hover{background:var(--surf2)}
+.cl-item.done .cl-check{color:var(--green);border-color:var(--green)}
+.cl-item.done .cl-label{text-decoration:line-through;color:var(--muted)}
+.cl-check{width:16px;height:16px;border:1px solid var(--border2);border-radius:2px;display:flex;align-items:center;justify-content:center;font-size:.5rem;color:transparent;flex-shrink:0;transition:all .2s}
+.cl-label{font-size:.7rem;color:var(--white)}
+.cl-sub{font-size:.58rem;color:var(--muted);margin-left:auto;font-family:var(--mono)}
+
+/* DEDUCTION TRACKER */
+.ded-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:.6rem;margin-bottom:1.2rem}
+.ded-card{background:var(--surf);border:1px solid var(--border);border-radius:4px;padding:.8rem;cursor:pointer;transition:all .2s}
+.ded-card:hover{border-color:var(--gold);background:var(--surf2)}
+.ded-card.active{border-color:var(--gold);background:rgba(245,200,66,.06)}
+.ded-icon{font-size:1.1rem;margin-bottom:.4rem}
+.ded-title{font-size:.78rem;font-weight:600;color:var(--white);margin-bottom:.2rem}
+.ded-desc{font-size:.6rem;color:var(--text);line-height:1.5}
+.ded-limit{font-family:var(--mono);font-size:.55rem;color:var(--gold);margin-top:.3rem}
+
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.live{display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--green);animation:pulse 2s infinite;margin-right:.3rem}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="tb-brand">⚜ TSM · INSURANCE TAX PREP · AGENT INTELLIGENCE</div>
+  <nav class="tb-nav">
+    <a class="tb-link" href="/tsm-insurance/suite-index.html">← SUITE</a>
+    <a class="tb-link" href="/tsm-insurance/az-ins.html">COMMAND CENTER</a>
+    <a class="tb-link" href="/tsm-insurance/compliance.html">COMPLIANCE</a>
+  </nav>
+</div>
+
+<div class="hero">
+  <div class="hero-eye">// INSURANCE AGENT · TAX INTELLIGENCE · 2025 TAX YEAR</div>
+  <h1 class="hero-title">Insurance <span>Tax Prep</span><br>Agent Command</h1>
+  <p class="hero-desc">Complete tax intelligence for independent insurance agents — 1099-NEC readiness, commission income analysis, deduction maximization, ACA premium tax credit guidance for clients, and AI-generated tax strategy reports. Not tax advice — for planning purposes.</p>
+</div>
+
+<hr class="divider">
+
+<!-- AI TAX ANALYZER -->
+<div class="section">
+  <div class="sec-eye">// AI TAX ANALYSIS ENGINE</div>
+  <h2 class="sec-title">Agent Tax Analyzer</h2>
+  <p class="sec-desc">Enter your commission income and business profile — AI generates your full tax strategy, deduction checklist, and 1099 readiness report.</p>
+
+  <div class="ai-panel">
+    <div class="ap-head">
+      <span class="ap-title">AGENT PROFILE · TAX YEAR 2025</span>
+      <span class="ap-status"><span class="live"></span>GROQ NEURAL CORE ACTIVE</span>
+    </div>
+    <div class="ap-body">
+      <div class="field-row">
+        <div>
+          <span class="field-label">TOTAL COMMISSION INCOME (1099)</span>
+          <input class="field-input" id="commission" type="number" placeholder="e.g. 85000">
+        </div>
+        <div>
+          <span class="field-label">BUSINESS STRUCTURE</span>
+          <select class="field-input" id="entity">
+            <option value="sole-prop">Sole Proprietor (Schedule C)</option>
+            <option value="llc-single">Single-Member LLC</option>
+            <option value="llc-multi">Multi-Member LLC</option>
+            <option value="s-corp">S-Corporation</option>
+            <option value="1099-w2">Mixed: 1099 + W-2</option>
+          </select>
+        </div>
+        <div>
+          <span class="field-label">HOME OFFICE?</span>
+          <select class="field-input" id="home-office">
+            <option value="yes-exclusive">Yes — exclusive use</option>
+            <option value="yes-partial">Yes — partial use</option>
+            <option value="no">No home office</option>
+          </select>
+        </div>
+      </div>
+      <div class="field-row">
+        <div>
+          <span class="field-label">VEHICLE MILES (business)</span>
+          <input class="field-input" id="miles" type="number" placeholder="e.g. 12000">
+        </div>
+        <div>
+          <span class="field-label">HEALTH INSURANCE PREMIUM (self-paid)</span>
+          <input class="field-input" id="health-prem" type="number" placeholder="e.g. 6000">
+        </div>
+        <div>
+          <span class="field-label">E&O / LICENSE / DUES</span>
+          <input class="field-input" id="eo-dues" type="number" placeholder="e.g. 2400">
+        </div>
+      </div>
+      <div class="field-row">
+        <div>
+          <span class="field-label">PRODUCT LINES SOLD</span>
+          <select class="field-input" id="product-lines">
+            <option value="multi">Multi-line (Life, Health, P&C)</option>
+            <option value="health-only">Health / ACA only</option>
+            <option value="medicare">Medicare only</option>
+            <option value="life-only">Life only</option>
+            <option value="pc-only">P&C only</option>
+          </select>
+        </div>
+        <div>
+          <span class="field-label">ESTIMATED OTHER DEDUCTIONS</span>
+          <input class="field-input" id="other-ded" type="number" placeholder="marketing, tech, training...">
+        </div>
+        <div>
+          <span class="field-label">STATE</span>
+          <select class="field-input" id="state">
+            <option value="AZ">Arizona</option>
+            <option value="CA">California</option>
+            <option value="TX">Texas</option>
+            <option value="FL">Florida</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-gold" id="analyze-btn" data-tsm-action="runTaxAnalysis" data-tsm-args="">⚡ GENERATE TAX STRATEGY</button>
+        <button class="btn btn-ghost" data-tsm-action="run1099Check" data-tsm-args="">📋 1099 READINESS CHECK</button>
+        <button class="btn btn-ghost" data-tsm-action="runClientACATool" data-tsm-args="">🏥 ACA CLIENT CREDIT TOOL</button>
+        <button class="btn btn-ghost" data-tsm-action="copyAll" data-tsm-args="">⎘ COPY FULL REPORT</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="output-grid">
+    <div class="oc">
+      <div class="oc-head"><span class="oc-title">TAX EXPOSURE SUMMARY</span><button class="oc-copy" data-tsm-action="copyOC" data-tsm-args="'tax-summary'">COPY</button></div>
+      <div class="oc-body" id="tax-summary"><span class="oc-placeholder">Enter your income details and click Generate Tax Strategy.</span></div>
+    </div>
+    <div class="oc">
+      <div class="oc-head"><span class="oc-title">TOP DEDUCTIONS IDENTIFIED</span><button class="oc-copy" data-tsm-action="copyOC" data-tsm-args="'deductions-out'">COPY</button></div>
+      <div class="oc-body" id="deductions-out"><span class="oc-placeholder">Deduction analysis will appear here.</span></div>
+    </div>
+    <div class="oc">
+      <div class="oc-head"><span class="oc-title">SE TAX + QBI ANALYSIS</span><button class="oc-copy" data-tsm-action="copyOC" data-tsm-args="'se-tax-out'">COPY</button></div>
+      <div class="oc-body" id="se-tax-out"><span class="oc-placeholder">Self-employment tax and QBI deduction analysis.</span></div>
+    </div>
+    <div class="oc">
+      <div class="oc-head"><span class="oc-title">RETIREMENT STRATEGY</span><button class="oc-copy" data-tsm-action="copyOC" data-tsm-args="'retirement-out'">COPY</button></div>
+      <div class="oc-body" id="retirement-out"><span class="oc-placeholder">SEP-IRA, Solo 401k, and SIMPLE IRA options.</span></div>
+    </div>
+    <div class="oc oc-full">
+      <div class="oc-head"><span class="oc-title">AI STRATEGIC RECOMMENDATIONS · FULL REPORT</span><button class="oc-copy" data-tsm-action="copyOC" data-tsm-args="'full-report'">COPY</button></div>
+      <div class="oc-body" id="full-report"><span class="oc-placeholder">Full tax strategy report will appear here after analysis.</span></div>
+    </div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- REFERENCE TABLES -->
+<div class="section">
+  <div class="sec-eye">// 2025 TAX REFERENCE · INSURANCE AGENT</div>
+  <h2 class="sec-title">Key Tax Numbers</h2>
+
+  <div class="ref-grid">
+    <div class="ref-card">
+      <div class="rc-head">MILEAGE & HOME OFFICE · 2025</div>
+      <div class="rc-body">
+        <div class="rc-row"><span class="rc-label">Standard mileage rate</span><span class="rc-val gold">70¢ / mile</span></div>
+        <div class="rc-row"><span class="rc-label">Home office (simplified)</span><span class="rc-val">$5 / sq ft (max 300)</span></div>
+        <div class="rc-row"><span class="rc-label">Cell phone (business %)</span><span class="rc-val green">Deductible</span></div>
+        <div class="rc-row"><span class="rc-label">Internet (business %)</span><span class="rc-val green">Deductible</span></div>
+        <div class="rc-row"><span class="rc-label">CRM / tech tools</span><span class="rc-val green">100% deductible</span></div>
+      </div>
+    </div>
+    <div class="ref-card">
+      <div class="rc-head">SELF-EMPLOYMENT TAX · 2025</div>
+      <div class="rc-body">
+        <div class="rc-row"><span class="rc-label">SE tax rate (total)</span><span class="rc-val red">15.3%</span></div>
+        <div class="rc-row"><span class="rc-label">Social Security wage base</span><span class="rc-val">$176,100</span></div>
+        <div class="rc-row"><span class="rc-label">SE deduction (½ of SE tax)</span><span class="rc-val green">Deductible</span></div>
+        <div class="rc-row"><span class="rc-label">QBI deduction (pass-through)</span><span class="rc-val gold">Up to 20%</span></div>
+        <div class="rc-row"><span class="rc-label">Quarterly estimated tax due</span><span class="rc-val">Apr · Jun · Sep · Jan</span></div>
+      </div>
+    </div>
+    <div class="ref-card">
+      <div class="rc-head">RETIREMENT CONTRIBUTIONS · 2025</div>
+      <div class="rc-body">
+        <div class="rc-row"><span class="rc-label">SEP-IRA (max)</span><span class="rc-val gold">$70,000</span></div>
+        <div class="rc-row"><span class="rc-label">SEP-IRA (% of net SE income)</span><span class="rc-val">25% of net</span></div>
+        <div class="rc-row"><span class="rc-label">Solo 401k employee</span><span class="rc-val gold">$23,500</span></div>
+        <div class="rc-row"><span class="rc-label">Solo 401k catch-up (50+)</span><span class="rc-val gold">+$7,500</span></div>
+        <div class="rc-row"><span class="rc-label">SIMPLE IRA</span><span class="rc-val">$16,500</span></div>
+      </div>
+    </div>
+    <div class="ref-card">
+      <div class="rc-head">ACA / HEALTH INSURANCE · 2025</div>
+      <div class="rc-body">
+        <div class="rc-row"><span class="rc-label">Self-employed health deduction</span><span class="rc-val green">100% of premiums</span></div>
+        <div class="rc-row"><span class="rc-label">ACA APTC income limit</span><span class="rc-val">≤400% FPL</span></div>
+        <div class="rc-row"><span class="rc-label">FPL (single) 2025</span><span class="rc-val">$15,650</span></div>
+        <div class="rc-row"><span class="rc-label">HSA contribution (self)</span><span class="rc-val gold">$4,300</span></div>
+        <div class="rc-row"><span class="rc-label">HSA family</span><span class="rc-val gold">$8,550</span></div>
+      </div>
+    </div>
+    <div class="ref-card">
+      <div class="rc-head">1099-NEC THRESHOLDS · 2025</div>
+      <div class="rc-body">
+        <div class="rc-row"><span class="rc-label">1099-NEC filing threshold</span><span class="rc-val red">$600</span></div>
+        <div class="rc-row"><span class="rc-label">W-9 required from carriers</span><span class="rc-val">Before first payment</span></div>
+        <div class="rc-row"><span class="rc-label">1099-NEC due to recipients</span><span class="rc-val">Jan 31</span></div>
+        <div class="rc-row"><span class="rc-label">1099-NEC IRS filing deadline</span><span class="rc-val">Jan 31</span></div>
+        <div class="rc-row"><span class="rc-label">Backup withholding rate</span><span class="rc-val red">24%</span></div>
+      </div>
+    </div>
+    <div class="ref-card">
+      <div class="rc-head">AGENT DEDUCTIONS · TOP LINE ITEMS</div>
+      <div class="rc-body">
+        <div class="rc-row"><span class="rc-label">E&O insurance premiums</span><span class="rc-val green">100%</span></div>
+        <div class="rc-row"><span class="rc-label">License & CE fees</span><span class="rc-val green">100%</span></div>
+        <div class="rc-row"><span class="rc-label">Marketing / lead costs</span><span class="rc-val green">100%</span></div>
+        <div class="rc-row"><span class="rc-label">Professional memberships</span><span class="rc-val green">100%</span></div>
+        <div class="rc-row"><span class="rc-label">Client meals (business)</span><span class="rc-val gold">50%</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- DEDUCTION TRACKER -->
+<div class="section">
+  <div class="sec-eye">// DEDUCTION TRACKER</div>
+  <h2 class="sec-title">Agent Deduction Categories</h2>
+  <p class="sec-desc">Click any category to flag it for your tax analysis.</p>
+
+  <div class="ded-grid">
+    <div class="ded-card" data-tsm-action="toggleDed" data-tsm-args="this">
+      <div class="ded-icon">🚗</div>
+      <div class="ded-title">Vehicle & Mileage</div>
+      <div class="ded-desc">Client meetings, continuing education, carrier office visits, prospect appointments.</div>
+      <div class="ded-limit">70¢/mile · 2025 IRS rate</div>
+    </div>
+    <div class="ded-card" data-tsm-action="toggleDed" data-tsm-args="this">
+      <div class="ded-icon">🏠</div>
+      <div class="ded-title">Home Office</div>
+      <div class="ded-desc">Exclusive workspace, proportional utilities, internet, and phone. Must be principal place of business.</div>
+      <div class="ded-limit">$5/sq ft simplified · or actual</div>
+    </div>
+    <div class="ded-card" data-tsm-action="toggleDed" data-tsm-args="this">
+      <div class="ded-icon">💻</div>
+      <div class="ded-title">Technology & Software</div>
+      <div class="ded-desc">CRM subscriptions, TSM platform, quoting tools, phone, internet, hardware used for business.</div>
+      <div class="ded-limit">100% if business-exclusive</div>
+    </div>
+    <div class="ded-card" data-tsm-action="toggleDed" data-tsm-args="this">
+      <div class="ded-icon">📋</div>
+      <div class="ded-title">E&O / Licensing</div>
+      <div class="ded-desc">Errors & omissions premiums, state license fees, continuing education, NIPR fees, association dues.</div>
+      <div class="ded-limit">100% deductible</div>
+    </div>
+    <div class="ded-card" data-tsm-action="toggleDed" data-tsm-args="this">
+      <div class="ded-icon">📣</div>
+      <div class="ded-title">Marketing & Leads</div>
+      <div class="ded-desc">Lead purchase, digital ads, business cards, website hosting, promotional materials, referral fees.</div>
+      <div class="ded-limit">100% deductible</div>
+    </div>
+    <div class="ded-card" data-tsm-action="toggleDed" data-tsm-args="this">
+      <div class="ded-icon">🎓</div>
+      <div class="ded-title">Education & Training</div>
+      <div class="ded-desc">Continuing education courses, carrier training, industry conferences, books, and professional development directly related to current work.</div>
+      <div class="ded-limit">100% if maintaining skills</div>
+    </div>
+    <div class="ded-card" data-tsm-action="toggleDed" data-tsm-args="this">
+      <div class="ded-icon">🏥</div>
+      <div class="ded-title">Self-Employed Health</div>
+      <div class="ded-desc">Health, dental, and vision premiums for you, spouse, and dependents — taken as above-the-line deduction, not Schedule A.</div>
+      <div class="ded-limit">100% · above-the-line</div>
+    </div>
+    <div class="ded-card" data-tsm-action="toggleDed" data-tsm-args="this">
+      <div class="ded-icon">💰</div>
+      <div class="ded-title">Retirement Contributions</div>
+      <div class="ded-desc">SEP-IRA up to $70K, Solo 401k up to $69K employee+employer. Largest legal tax reducer available to self-employed agents.</div>
+      <div class="ded-limit">SEP: 25% net income max</div>
+    </div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- 1099 READINESS CHECKLIST -->
+<div class="section">
+  <div class="sec-eye">// 1099-NEC READINESS CHECKLIST</div>
+  <h2 class="sec-title">Agent 1099 Checklist</h2>
+
+  <div class="checklist">
+    <div class="cl-head">CARRIER / PAYER READINESS</div>
+    <div class="cl-item" onclick="this.classList.toggle('done');this.querySelector('.cl-check').style.color=this.classList.contains('done')?'var(--green)':'transparent'">
+      <div class="cl-check">✓</div><span class="cl-label">W-9 on file with all carriers paying commissions</span><span class="cl-sub">Required before payment</span>
+    </div>
+    <div class="cl-item" onclick="this.classList.toggle('done');this.querySelector('.cl-check').style.color=this.classList.contains('done')?'var(--green)':'transparent'">
+      <div class="cl-check">✓</div><span class="cl-label">EIN or SSN confirmed with each carrier/FMO</span><span class="cl-sub">Verify TIN match</span>
+    </div>
+    <div class="cl-item" onclick="this.classList.toggle('done');this.querySelector('.cl-check').style.color=this.classList.contains('done')?'var(--green)':'transparent'">
+      <div class="cl-check">✓</div><span class="cl-label">Current mailing address on file with all carriers</span><span class="cl-sub">1099s mailed Jan 31</span>
+    </div>
+    <div class="cl-item" onclick="this.classList.toggle('done');this.querySelector('.cl-check').style.color=this.classList.contains('done')?'var(--green)':'transparent'">
+      <div class="cl-check">✓</div><span class="cl-label">Year-end commission statement collected from all FMOs</span><span class="cl-sub">Cross-check 1099s</span>
+    </div>
+  </div>
+
+  <div class="checklist" style="margin-top:.6rem">
+    <div class="cl-head">INCOME RECONCILIATION</div>
+    <div class="cl-item" onclick="this.classList.toggle('done');this.querySelector('.cl-check').style.color=this.classList.contains('done')?'var(--green)':'transparent'">
+      <div class="cl-check">✓</div><span class="cl-label">All 1099-NEC amounts match commission statements</span><span class="cl-sub">Flag discrepancies immediately</span>
+    </div>
+    <div class="cl-item" onclick="this.classList.toggle('done');this.querySelector('.cl-check').style.color=this.classList.contains('done')?'var(--green)':'transparent'">
+      <div class="cl-check">✓</div><span class="cl-label">Chargeback/clawback amounts identified and documented</span><span class="cl-sub">Reduces gross income</span>
+    </div>
+    <div class="cl-item" onclick="this.classList.toggle('done');this.querySelector('.cl-check').style.color=this.classList.contains('done')?'var(--green)':'transparent'">
+      <div class="cl-check">✓</div><span class="cl-label">Bonus and override commission separated from base</span><span class="cl-sub">Same treatment, track separately</span>
+    </div>
+    <div class="cl-item" onclick="this.classList.toggle('done');this.querySelector('.cl-check').style.color=this.classList.contains('done')?'var(--green)':'transparent'">
+      <div class="cl-check">✓</div><span class="cl-label">Quarterly estimated tax payments documented</span><span class="cl-sub">Form 1040-ES records</span>
+    </div>
+  </div>
+
+  <div class="checklist" style="margin-top:.6rem">
+    <div class="cl-head">ACA / HEALTHCARE AGENT SPECIFIC</div>
+    <div class="cl-item" onclick="this.classList.toggle('done');this.querySelector('.cl-check').style.color=this.classList.contains('done')?'var(--green)':'transparent'">
+      <div class="cl-check">✓</div><span class="cl-label">APTC reconciliation (Form 8962) reviewed for clients you enrolled</span><span class="cl-sub">Client responsibility, but know it</span>
+    </div>
+    <div class="cl-item" onclick="this.classList.toggle('done');this.querySelector('.cl-check').style.color=this.classList.contains('done')?'var(--green)':'transparent'">
+      <div class="cl-check">✓</div><span class="cl-label">CMS compliance documentation archived</span><span class="cl-sub">Audit protection</span>
+    </div>
+    <div class="cl-item" onclick="this.classList.toggle('done');this.querySelector('.cl-check').style.color=this.classList.contains('done')?'var(--green)':'transparent'">
+      <div class="cl-check">✓</div><span class="cl-label">Medicare IRMAA risk assessed for high-income clients</span><span class="cl-sub">Value-add advisory</span>
+    </div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- ACA CLIENT TOOL -->
+<div class="section">
+  <div class="sec-eye">// CLIENT VALUE-ADD · ACA PREMIUM TAX CREDIT</div>
+  <h2 class="sec-title">ACA Client Credit Calculator</h2>
+  <p class="sec-desc">Use this with clients during enrollment to estimate their premium tax credit and show your value as their licensed agent.</p>
+
+  <div class="ai-panel">
+    <div class="ap-head"><span class="ap-title">ACA APTC ESTIMATOR · 2025</span><span class="ap-status"><span class="live"></span>PLANNING TOOL ONLY</span></div>
+    <div class="ap-body">
+      <div class="field-row">
+        <div>
+          <span class="field-label">HOUSEHOLD SIZE</span>
+          <select class="field-input" id="hh-size">
+            <option>1</option><option>2</option><option>3</option><option>4</option><option>5+</option>
+          </select>
+        </div>
+        <div>
+          <span class="field-label">ANNUAL HOUSEHOLD INCOME</span>
+          <input class="field-input" id="hh-income" type="number" placeholder="e.g. 45000">
+        </div>
+        <div>
+          <span class="field-label">STATE / MARKETPLACE</span>
+          <select class="field-input" id="hh-state">
+            <option value="AZ">Arizona (Healthcare.gov)</option>
+            <option value="CA">California (Covered CA)</option>
+            <option value="NY">New York (NY State)</option>
+            <option value="other">Other State</option>
+          </select>
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-gold" data-tsm-action="runACATool" data-tsm-args="">⚡ ESTIMATE ACA CREDIT</button>
+      </div>
+      <div class="oc" style="margin-top:.7rem">
+        <div class="oc-head"><span class="oc-title">ACA CREDIT ESTIMATE</span><button class="oc-copy" data-tsm-action="copyOC" data-tsm-args="'aca-out'">COPY</button></div>
+        <div class="oc-body" id="aca-out"><span class="oc-placeholder">Enter client household details and click Estimate ACA Credit.</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="padding-top:1rem;padding-bottom:2rem">
+  <div style="font-family:var(--mono);font-size:.45rem;color:var(--muted)">⚠ This tool is for planning and educational purposes only. Not tax, legal, or financial advice. Consult a licensed CPA or tax professional for your specific situation. TSM · NPN 18818059 · AZ Licensed</div>
+</div>
+
+<script>
+async function apiCall(endpoint, body) {
+  const r = await fetch('/api' + endpoint, {
+    method:'POST', headers:{'Content-Type':'application/json','x-api-key':'TSM_PRO_ALPHA_2026'},
+    body: JSON.stringify(body)
+  });
+  return r.json();
+}
+
+function setOut(id, text) { document.getElementById(id).textContent = text; }
+function copyOC(id) { navigator.clipboard.writeText(document.getElementById(id).textContent); }
+
+async function runTaxAnalysis() {
+  const commission = document.getElementById('commission').value || '0';
+  const entity = document.getElementById('entity').value;
+  const homeOffice = document.getElementById('home-office').value;
+  const miles = document.getElementById('miles').value || '0';
+  const healthPrem = document.getElementById('health-prem').value || '0';
+  const eoDues = document.getElementById('eo-dues').value || '0';
+  const otherDed = document.getElementById('other-ded').value || '0';
+  const state = document.getElementById('state').value;
+  const lines = document.getElementById('product-lines').value;
+  const btn = document.getElementById('analyze-btn');
+  btn.disabled = true; btn.textContent = 'ANALYZING…';
+
+  const mileageDeduction = parseFloat(miles) * 0.70;
+  const estimatedSETax = parseFloat(commission) * 0.1413;
+  const seDeduction = estimatedSETax / 2;
+  const qbi = parseFloat(commission) * 0.20;
+
+  const prompt = `You are a tax strategist specializing in independent insurance agents.
+Agent profile:
+- Commission income (1099-NEC): $${commission}
+- Business structure: ${entity}
+- Home office: ${homeOffice}
+- Business miles: ${miles} (=$${mileageDeduction.toFixed(0)} deduction at 70¢/mile)
+- Self-paid health insurance premium: $${healthPrem}
+- E&O / license / dues: $${eoDues}
+- Other deductions: $${otherDed}
+- Product lines: ${lines}
+- State: ${state}
+- 2025 tax year
+
+Provide a complete tax analysis with 5 sections:
+1. TAX EXPOSURE SUMMARY: Gross income, estimated total deductions, net taxable income, estimated SE tax, estimated federal income tax, total tax liability estimate
+2. TOP DEDUCTIONS IDENTIFIED: List top 8 deductions specific to this agent's profile with estimated dollar amounts
+3. SE TAX + QBI ANALYSIS: SE tax calculation ($${estimatedSETax.toFixed(0)} estimated), SE deduction ($${seDeduction.toFixed(0)}), QBI deduction eligibility (up to $${qbi.toFixed(0)}) and whether this agent qualifies
+4. RETIREMENT STRATEGY: Best retirement account recommendation (SEP-IRA vs Solo 401k) with maximum contribution amount and tax savings estimate
+5. FULL STRATEGIC RECOMMENDATIONS: Top 5 action items to reduce this agent's tax burden before year-end and for next year
+
+Be specific with dollar amounts. Flag any Arizona-specific considerations.`;
+
+  try {
+    const [summary, deductions, seTax, retirement, full] = await Promise.all([
+      apiCall('/taxprep/v1', { action:'summary', context: prompt.slice(0,800) }),
+      apiCall('/taxprep/v1', { action:'deductions', context: `Agent commission: $${commission}, structure: ${entity}, miles: ${miles}, health premium: $${healthPrem}, E&O: $${eoDues}, other: $${otherDed}` }),
+      apiCall('/taxprep/v1', { action:'se-tax-qbi', context: `Commission: $${commission}, entity: ${entity}, estimated SE tax: $${estimatedSETax.toFixed(0)}, QBI potential: $${qbi.toFixed(0)}` }),
+      apiCall('/taxprep/v1', { action:'retirement', context: `Commission: $${commission}, entity: ${entity}. Compare SEP-IRA (max $70K, 25% net) vs Solo 401k (max $69K) for this agent.` }),
+      apiCall('/taxprep/v1', { action:'full-strategy', context: prompt }),
+    ]);
+    setOut('tax-summary', summary.content || summary.reply || 'Analysis unavailable.');
+    setOut('deductions-out', deductions.content || deductions.reply || 'Analysis unavailable.');
+    setOut('se-tax-out', seTax.content || seTax.reply || 'Analysis unavailable.');
+    setOut('retirement-out', retirement.content || retirement.reply || 'Analysis unavailable.');
+    setOut('full-report', full.content || full.reply || 'Analysis unavailable.');
+  } catch(e) {
+    setOut('full-report', 'Error: ' + e.message);
+  }
+  btn.disabled = false; btn.textContent = '⚡ GENERATE TAX STRATEGY';
+}
+
+async function run1099Check() {
+  const commission = document.getElementById('commission').value || '0';
+  const d = await apiCall('/taxprep/v1', {
+    action:'1099-readiness',
+    context: `Insurance agent, commission income $${commission}, independent contractor. Check 1099-NEC readiness, W-9 status, carrier reconciliation, and chargeback handling.`
+  });
+  setOut('full-report', d.content || d.reply || 'Check unavailable.');
+}
+
+async function runClientACATool() {
+  const hhSize = document.getElementById('hh-size').value;
+  const hhIncome = document.getElementById('hh-income').value;
+  const state = document.getElementById('state').value;
+  const d = await apiCall('/taxprep/v1', {
+    action:'aca-credit',
+    context: `Calculate ACA Premium Tax Credit for: household size ${hhSize}, annual income $${hhIncome}, state ${state}, 2025. Show FPL percentage, estimated monthly APTC, silver plan benchmark, and agent talking points.`
+  });
+  setOut('aca-out', d.content || d.reply || 'Estimate unavailable.');
+}
+
+async function runACATool() {
+  const size = document.getElementById('hh-size').value;
+  const income = document.getElementById('hh-income').value;
+  const state = document.getElementById('hh-state').value;
+  const fpl2025 = [15650, 21150, 26650, 32150, 37650];
+  const fplBase = fpl2025[Math.min(parseInt(size)-1, 4)];
+  const fplPct = income ? ((parseFloat(income)/fplBase)*100).toFixed(0) : '—';
+  
+  const d = await apiCall('/taxprep/v1', {
+    action:'aca-credit',
+    context: `ACA APTC calculation for 2025: Household size: ${size}, Annual income: $${income}, FPL: ${fplPct}%, State: ${state}. Calculate: FPL percentage, estimated annual APTC, estimated monthly credit, eligibility status, silver plan benchmark cost, and 3 agent talking points to present this to the client.`
+  });
+  setOut('aca-out', d.content || d.reply || 'Estimate unavailable.');
+}
+
+function toggleDed(el) { el.classList.toggle('active'); }
+function copyAll() {
+  const ids = ['tax-summary','deductions-out','se-tax-out','retirement-out','full-report'];
+  navigator.clipboard.writeText(ids.map(id => document.getElementById(id).textContent).join('\n\n---\n\n'));
+}
+</script>
+<script src="/shared/tsm-operational-mesh.js?v=mesh1"></script>
+<script src="/shared/tsm-relay-bus.js?v=relay2"></script>
+<script src="/shared/tsm-memory-engine.js?v=phase3"></script>
+<script src="/shared/tsm-global-command.js?v=phase4"></script>
+<script src="/shared/tsm-sector-intelligence.js?v=phase5si"></script>
+<script src="/shared/tsm-autonomous-execution.js?v=phase5"></script>
+
+<script>(function(){
+document.addEventListener('click', function(e){
+
+  const el = e.target.closest('[data-tsm-action]');
+  if(!el) return;
+
+  const action = el.getAttribute('data-tsm-action');
+  const args = el.getAttribute('data-tsm-args');
+
+  if(window.TSM && TSM.launcher && TSM.launcher.run){
+    TSM.launcher.run(action, args);
+  } else {
+    console.warn('[TSM] launcher missing:', action, args);
+  }
+
+});
+})();</script>
+  <script src="/core/tsm-kernel.js"></script>
+  <script src="/core/tsm-enforcer.js"></script>
+  <script src="/js/core/tsm-kernel-upgrade.js"></script>
+</body>
+</html>
+
+// ===== TSM_AUTONOMY_STANDARDIZED =====
+window.TSM_AUTONOMY_STANDARDIZED = true;
+</script>
+
+// ===== TSM WAR ROOM SCOPED RELAY FIX =====
+window.tsmMission = window.tsmMission || {
+  id: "TSM-INSURANCE-" + Date.now().toString(36),
+  vertical: "tsm-insurance",
+  
+};
+
+function tsmWriteRelay(payload){
+  TSM_KERNEL.setRelay("tsm-insurance", JSON.stringify(payload));
+}
+</script>
+

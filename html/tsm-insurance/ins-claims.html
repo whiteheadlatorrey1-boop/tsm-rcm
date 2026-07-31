@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TSM Insurance · Claims Command</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:       #060d0a;
+  --panel:    #0a1510;
+  --border:   #1a2e1f;
+  --ins:      #38bdf8;
+  --ins-dim:  #38bdf822;
+  --green:    #1ee8b6;
+  --danger:   #f87171;
+  --dim:      #445544;
+  --text:     #c8e6c9;
+  --mono:     'Share Tech Mono', monospace;
+  --head:     'Rajdhani', sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: var(--mono); min-height: 100vh; }
+
+/* NAV */
+.nav { display:flex; align-items:center; gap:6px; padding:0 20px; height:48px; background:#060f09; border-bottom:1px solid var(--border); }
+.nav-brand { font-family:var(--head); font-weight:700; font-size:15px; color:var(--ins); letter-spacing:.1em; margin-right:12px; }
+.nav-btn { background:none; border:1px solid transparent; color:#668866; font-family:var(--mono); font-size:11px; padding:5px 12px; border-radius:2px; cursor:pointer; letter-spacing:.06em; transition:all .2s; }
+.nav-btn:hover { border-color:var(--ins); color:var(--ins); }
+.nav-btn.active { border-color:var(--ins); color:var(--ins); background:var(--ins-dim); }
+.nav-right { margin-left:auto; display:flex; align-items:center; gap:12px; }
+.nav-clock { font-size:11px; color:var(--dim); }
+
+/* ALERT BAR */
+.alert-bar { background:#0a1a10; border-bottom:1px solid #38bdf844; padding:7px 20px; display:flex; align-items:center; gap:10px; font-size:11px; color:var(--ins); letter-spacing:.07em; }
+.a-dot { width:7px; height:7px; border-radius:50%; background:var(--ins); animation:pulse 1.4s infinite; }
+@keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:.3;} }
+
+/* MAIN */
+.main { max-width:1200px; margin:0 auto; padding:24px 20px; }
+
+/* HEADER */
+.page-header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:24px; }
+.page-title { font-family:var(--head); font-size:28px; font-weight:700; color:#e2ffe8; letter-spacing:.05em; }
+.page-title span { color:var(--ins); }
+.page-sub { font-size:11px; color:var(--dim); margin-top:4px; letter-spacing:.06em; }
+.status-pill { display:flex; align-items:center; gap:8px; background:var(--ins-dim); border:1px solid var(--ins); padding:6px 14px; border-radius:3px; font-size:11px; color:var(--ins); letter-spacing:.07em; }
+.status-dot { width:6px; height:6px; border-radius:50%; background:var(--ins); animation:pulse 1.4s infinite; }
+
+/* STAT GRID */
+.stat-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:24px; }
+.stat-card { background:var(--panel); border:1px solid var(--border); border-radius:4px; padding:16px; }
+.stat-label { font-size:10px; color:var(--dim); letter-spacing:.08em; text-transform:uppercase; margin-bottom:6px; }
+.stat-value { font-family:var(--head); font-size:26px; font-weight:700; color:var(--ins); }
+.stat-value.danger { color:var(--danger); }
+.stat-value.green { color:var(--green); }
+
+/* TWO COL */
+.two-col { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px; }
+.full-col { margin-bottom:20px; }
+
+/* PANEL */
+.panel { background:var(--panel); border:1px solid var(--border); border-radius:4px; padding:18px; }
+.panel-title { font-family:var(--head); font-size:13px; font-weight:700; color:#88aa88; letter-spacing:.1em; text-transform:uppercase; margin-bottom:14px; display:flex; justify-content:space-between; align-items:center; }
+.panel-title span { font-size:10px; color:var(--ins); border:1px solid var(--ins); padding:2px 8px; border-radius:2px; }
+
+/* INTAKE FORM */
+.form-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.form-group { display:flex; flex-direction:column; gap:5px; }
+.form-group.full { grid-column:1/-1; }
+.form-label { font-size:10px; color:var(--dim); letter-spacing:.07em; text-transform:uppercase; }
+.form-input, .form-select, .form-textarea { background:#060d0a; border:1px solid var(--border); color:var(--text); font-family:var(--mono); font-size:12px; padding:8px 10px; border-radius:3px; outline:none; transition:border-color .2s; }
+.form-input:focus, .form-select:focus, .form-textarea:focus { border-color:var(--ins); }
+.form-select option { background:#0a1510; }
+.form-textarea { resize:vertical; min-height:80px; }
+.btn-run { width:100%; margin-top:12px; background:var(--ins-dim); border:1px solid var(--ins); color:var(--ins); font-family:var(--mono); font-size:12px; letter-spacing:.08em; padding:10px; border-radius:3px; cursor:pointer; transition:all .2s; }
+.btn-run:hover { background:#38bdf833; }
+
+/* STEP PROMPTS */
+.step-list { display:flex; flex-direction:column; gap:8px; }
+.step-item { background:#060d0a; border:1px solid var(--border); border-radius:3px; padding:10px 12px; cursor:pointer; transition:border-color .2s; display:flex; align-items:flex-start; gap:10px; }
+.step-item:hover { border-color:var(--ins); }
+.step-num { color:var(--ins); font-size:11px; min-width:20px; }
+.step-text { font-size:11px; color:#99bb99; line-height:1.5; }
+
+/* OUTPUT */
+.output-box { background:#040c07; border:1px solid var(--border); border-radius:3px; padding:14px; min-height:180px; font-size:12px; color:#a9b7a6; line-height:1.7; white-space:pre-wrap; position:relative; }
+.output-placeholder { color:var(--dim); font-size:11px; }
+.output-stream { color:#c8e6c9; }
+.thinking { color:var(--ins); animation:pulse 1s infinite; }
+
+/* CLAIMS TABLE */
+.table-wrap { overflow-x:auto; }
+table { width:100%; border-collapse:collapse; font-size:11px; }
+th { background:#060d0a; color:var(--dim); text-transform:uppercase; letter-spacing:.07em; padding:8px 10px; text-align:left; border-bottom:1px solid var(--border); font-weight:400; }
+td { padding:9px 10px; border-bottom:1px solid #0d1a10; color:#99bb99; }
+tr:hover td { background:#0a1510; }
+.badge { font-size:10px; padding:2px 7px; border-radius:2px; font-family:var(--mono); }
+.badge.open { background:#38bdf811; color:var(--ins); border:1px solid #38bdf844; }
+.badge.denied { background:#f8717111; color:var(--danger); border:1px solid #f8717144; }
+.badge.paid { background:#1ee8b611; color:var(--green); border:1px solid #1ee8b644; }
+.badge.bnca { background:#f8717122; color:var(--danger); border:1px solid var(--danger); }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-brand">⚜ TSM INSURANCE</div>
+  <button class="nav-btn" onclick="location.href='insurance-portal.html'">WAR ROOM</button>
+  <button class="nav-btn" onclick="location.href='insurance-strategist.html'">STRATEGIST</button>
+  <button class="nav-btn" onclick="location.href='insurance-executive-portal.html'">EXECUTIVE</button>
+  <button class="nav-btn" onclick="location.href='ins-hub.html'">HUB</button>
+  <button class="nav-btn active">CLAIMS</button>
+  <button class="nav-btn" onclick="location.href='ins-appeals.html'">APPEALS</button>
+  <button class="nav-btn" onclick="location.href='ins-liability.html'">LIABILITY</button>
+  <button class="nav-btn" onclick="location.href='ins-underwriting.html'">UNDERWRITING</button>
+  <button class="nav-btn" onclick="location.href='ins-malpractice.html'">MALPRACTICE</button>
+  <button class="nav-btn" onclick="location.href='ins-compliance.html'">COMPLIANCE</button>
+  <div class="nav-right">
+    <button class="nav-btn" onclick="location.href='pc-command.html'">P&amp;C</button>
+    <button class="nav-btn" onclick="location.href='dme.html'">DME</button>
+    <span class="nav-clock" id="navClock">--:--:--</span>
+  </div>
+</nav>
+
+<div class="alert-bar">
+  <div class="a-dot"></div>
+  <span>CLAIMS COMMAND ACTIVE — ENTER CLAIM DATA — RUN AI ANALYSIS</span>
+</div>
+
+<div class="main">
+
+  <div class="page-header">
+    <div>
+      <div class="page-title">Claims <span>Command</span></div>
+      <div class="page-sub">tsm-insurance · claims intake · ai analysis · bnca escalation</div>
+    </div>
+    <div class="status-pill"><span class="status-dot"></span>CLAIMS ENGINE ACTIVE</div>
+  </div>
+
+  <div class="stat-grid">
+    <div class="stat-card">
+      <div class="stat-label">Open Claims</div>
+      <div class="stat-value" id="s-open">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Denied</div>
+      <div class="stat-value danger" id="s-denied">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Paid / Closed</div>
+      <div class="stat-value green" id="s-paid">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Total Exposure</div>
+      <div class="stat-value" id="s-exposure">$0</div>
+    </div>
+  </div>
+
+  <div class="two-col">
+
+    <div class="panel">
+      <div class="panel-title">Claim Intake <span>ENGINE 01</span></div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="form-label">Claim Number</label>
+          <input class="form-input" id="f-claimno" placeholder="CLM-XXXXX">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Claim Type</label>
+          <select class="form-select" id="f-type">
+            <option>Property Damage</option>
+            <option>Bodily Injury</option>
+            <option>Medical Malpractice</option>
+            <option>Workers Compensation</option>
+            <option>General Liability</option>
+            <option>Professional Liability</option>
+            <option>Auto Liability</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Claimant</label>
+          <input class="form-input" id="f-claimant" placeholder="Full name">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Payer / Insurer</label>
+          <input class="form-input" id="f-payer" placeholder="Insurer name">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Date of Loss</label>
+          <input class="form-input" id="f-dol" type="date">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Claimed Amount ($)</label>
+          <input class="form-input" id="f-amount" type="number" placeholder="0">
+        </div>
+        <div class="form-group full">
+          <label class="form-label">Claim Summary</label>
+          <textarea class="form-textarea" id="f-summary" placeholder="Describe the claim, incident details, injuries, damages..."></textarea>
+        </div>
+      </div>
+      <button class="btn-run" onclick="runAnalysis()">⚡ RUN CLAIM ANALYSIS — TSM NEURAL CORE</button>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Analysis Steps <span>SELECT PROMPT</span></div>
+      <div class="step-list">
+        <div class="step-item" onclick="runStep(this)" data-prompt="Analyze this claim for liability exposure, coverage gaps, and settlement risk. Provide a structured assessment with recommended action steps.">
+          <span class="step-num">01</span>
+          <span class="step-text">Liability Exposure & Coverage Gap Analysis</span>
+        </div>
+        <div class="step-item" onclick="runStep(this)" data-prompt="Assess the documentation requirements for this claim. What records, evidence, and supporting documents are needed for processing?">
+          <span class="step-num">02</span>
+          <span class="step-text">Documentation Requirements Assessment</span>
+        </div>
+        <div class="step-item" onclick="runStep(this)" data-prompt="Evaluate settlement options and negotiation strategy for this claim. Provide a range, rationale, and negotiation approach.">
+          <span class="step-num">03</span>
+          <span class="step-text">Settlement Strategy & Negotiation Playbook</span>
+        </div>
+        <div class="step-item" onclick="runStep(this)" data-prompt="Identify subrogation opportunities and recovery potential in this claim. What third-party liability exists?">
+          <span class="step-num">04</span>
+          <span class="step-text">Subrogation & Recovery Opportunity Scan</span>
+        </div>
+        <div class="step-item" onclick="runStep(this)" data-prompt="Assess fraud indicators and red flags in this claim. Provide a risk score and recommended SIU referral decision.">
+          <span class="step-num">05</span>
+          <span class="step-text">Fraud Indicator & SIU Referral Assessment</span>
+        </div>
+        <div class="step-item" onclick="runStep(this)" data-prompt="Generate a BNCA escalation report for this claim. Identify critical risk factors, compliance obligations, and escalation path.">
+          <span class="step-num">06</span>
+          <span class="step-text">BNCA Escalation Report</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="full-col">
+    <div class="panel">
+      <div class="panel-title">TSM Neural Core Output <span id="engine-label">AWAITING INPUT</span></div>
+      <div class="output-box" id="output">
+        <span class="output-placeholder">&gt; Enter claim data and run analysis or select a step prompt above...</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="full-col">
+    <div class="panel">
+      <div class="panel-title">Claims Queue <span id="queue-count">0 ENTRIES</span></div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Claim No</th>
+              <th>Type</th>
+              <th>Claimant</th>
+              <th>Payer</th>
+              <th>Status</th>
+              <th>Amount</th>
+              <th>Date</th>
+            </tr>
+          </thead>
+          <tbody id="claims-tbody">
+            <tr>
+              <td colspan="7" style="text-align:center;color:var(--dim);padding:20px;">&gt; No claims entered yet</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// Clock
+setInterval(() => {
+  document.getElementById('navClock').textContent = new Date().toLocaleTimeString();
+}, 1000);
+
+function getContext() {
+  return `Claim No: ${document.getElementById('f-claimno').value || 'N/A'}
+Type: ${document.getElementById('f-type').value}
+Claimant: ${document.getElementById('f-claimant').value || 'N/A'}
+Payer: ${document.getElementById('f-payer').value || 'N/A'}
+Date of Loss: ${document.getElementById('f-dol').value || 'N/A'}
+Amount: $${document.getElementById('f-amount').value || '0'}
+Summary: ${document.getElementById('f-summary').value || 'N/A'}`;
+}
+
+async function callAI(prompt) {
+  const out = document.getElementById('output');
+  out.innerHTML = '<span class="thinking">&gt; TSM Neural Core processing...</span>';
+  document.getElementById('engine-label').textContent = 'RUNNING';
+  try {
+    const res = await fetch('/api/hc/query', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: prompt })
+    });
+    const data = await res.json();
+    const text = data.response || data.message || data.content || JSON.stringify(data);
+    out.innerHTML = '<span class="output-stream">' + text.replace(/</g,'&lt;') + '</span>';
+    document.getElementById('engine-label').textContent = 'COMPLETE';
+  } catch(e) {
+    out.innerHTML = '<span style="color:var(--danger)">&gt; Engine error: ' + e.message + '</span>';
+    document.getElementById('engine-label').textContent = 'ERROR';
+  }
+}
+
+function runAnalysis() {
+  const ctx = getContext();
+  if (!ctx.includes('N/A') === false && !document.getElementById('f-summary').value) {
+    alert('Enter claim details before running analysis.');
+    return;
+  }
+  callAI(`You are a TSM Insurance Claims Analyst. Analyze this claim and provide a structured assessment including: liability exposure, coverage analysis, documentation needs, recommended actions, and BNCA escalation flag if amount exceeds $10,000.\n\n${ctx}`);
+  addToQueue();
+}
+
+function runStep(el) {
+  const ctx = getContext();
+  callAI(`You are a TSM Insurance Claims Analyst. ${el.dataset.prompt}\n\nClaim Context:\n${ctx}`);
+}
+
+let queueCount = 0;
+function addToQueue() {
+  const tbody = document.getElementById('claims-tbody');
+  const existing = tbody.querySelector('td[colspan]');
+  if (existing) existing.parentElement.remove();
+
+  const amt = parseFloat(document.getElementById('f-amount').value) || 0;
+  const isBnca = amt > 10000;
+  queueCount++;
+
+  tbody.insertAdjacentHTML('afterbegin', `
+    <tr>
+      <td>${document.getElementById('f-claimno').value || 'CLM-' + Math.floor(Math.random()*90000+10000)}</td>
+      <td>${document.getElementById('f-type').value}</td>
+      <td>${document.getElementById('f-claimant').value || '—'}</td>
+      <td>${document.getElementById('f-payer').value || '—'}</td>
+      <td><span class="badge ${isBnca ? 'bnca' : 'open'}">${isBnca ? 'BNCA ESCALATED' : 'OPEN'}</span></td>
+      <td style="color:${isBnca ? 'var(--danger)' : 'var(--ins)'}">$${amt.toLocaleString()}</td>
+      <td style="color:var(--dim)">${new Date().toLocaleString()}</td>
+    </tr>
+  `);
+  document.getElementById('queue-count').textContent = queueCount + ' ENTR' + (queueCount === 1 ? 'Y' : 'IES');
+
+  // Push to doc index
+  try {
+    const rec = {
+      id: 'DOC-' + Date.now(),
+      fileName: document.getElementById('f-claimno').value || 'CLM-' + Date.now(),
+      documentType: 'CLAIM',
+      vendor: document.getElementById('f-claimant').value || '—',
+      invoiceNo: document.getElementById('f-claimno').value || '',
+      amount: amt,
+      routing: ['executive-portal','strategist','tsm-insurance'].concat(isBnca ? ['bnca-engine'] : []),
+      sourceNode: 'ins-claims',
+      timestamp: Date.now(),
+    };
+    const idx = JSON.parse(localStorage.getItem('tsm_doc_index') || '[]');
+    idx.unshift(rec);
+    localStorage.setItem('tsm_doc_index', JSON.stringify(idx.slice(0,200)));
+  } catch(e) {}
+}
+</script>
+  <script src="/core/tsm-kernel.js"></script>
+  <script src="/core/tsm-enforcer.js"></script>
+  <script src="/js/core/tsm-kernel-upgrade.js"></script>
+</body>
+</html>
+// ===== TSM_AUTONOMY_STANDARDIZED =====
+window.TSM_AUTONOMY_STANDARDIZED = true;
+</script>
+
+// ===== TSM WAR ROOM SCOPED RELAY FIX =====
+window.tsmMission = window.tsmMission || {
+  id: "TSM-INSURANCE-" + Date.now().toString(36),
+  vertical: "tsm-insurance",
+  
+};
+
+function tsmWriteRelay(payload){
+  TSM_KERNEL.setRelay("tsm-insurance", JSON.stringify(payload));
+}
+</script>
+
