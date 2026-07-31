@@ -63,7 +63,7 @@ const SENTINEL = '/html/sentinel-center.html';
 // currently a dead link in production. Test 6 checks against the OLD path on
 // purpose (documenting current, broken behavior); flip it to EXEC_PORTAL
 // once sentinel-center.html's own reference is fixed.
-const SENTINEL_STALE_EXEC_PORTAL_PATH = '/html/war-rooms/bpo/bpo-executive-portal.html';
+const SENTINEL_STALE_EXEC_PORTAL_PATH = '/html/war-rooms/bpo-war/bpo-executive-portal.html';
 
 const CASE_ID = 'BPO-TEST-' + Date.now();
 const TEST_SUMMARY = 'PLAYWRIGHT_TEST_SUMMARY: SLA breach on Acme Corp support queue, $47,000 exposure.';

@@ -149,9 +149,9 @@ const VERTICALS = [
     '/html/finops-suite/finops-executive-portal.html',
   ]},
   { column: 'Insurance', key: 'Insurance', pages: [
-    '/html/tsm-insurance/insurance-war-room.html',
-    '/html/tsm-insurance/insurance-strategist.html',
-    '/html/tsm-insurance/insurance-executive-portal.html',
+    '/html/war-rooms/insure-war/insurance-war-room.html',
+    '/html/war-rooms/insure-war/insurance-strategist.html',
+    '/html/war-rooms/insure-war/insurance-executive-portal.html',
   ]},
   { column: 'Construction', key: 'Construction', pages: [
     '/html/war-rooms/construct-war/construction-war-room.html',
@@ -169,9 +169,9 @@ const VERTICALS = [
     '/html/war-rooms/re-war/re-exec-portal.html',
   ]},
   { column: 'BPO Services', key: 'BPO', pages: [
-    '/html/war-rooms/bpo/bpo-war-room.html',
-    '/html/war-rooms/bpo/bpo-strategist.html',
-    '/html/war-rooms/bpo/bpo-executive-portal.html',
+    '/html/war-rooms/bpo-war/bpo-war-room.html',
+    '/html/war-rooms/bpo-war/bpo-strategist.html',
+    '/html/war-rooms/bpo-war/bpo-executive-portal.html',
   ]},
   { column: 'Mortgage', key: 'Mortgage', pages: [
     '/html/war-rooms/mortgage/mortgage-war-room.html',

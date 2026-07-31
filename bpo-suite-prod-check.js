@@ -30,20 +30,20 @@ const BASE = process.env.TSM_BASE_URL || 'https://tsm-consultz.fly.dev';
 const PAGES = [
   {
     name: 'BPO War Room',
-    path: '/war-rooms/bpo/bpo-war-room.html',
+    path: '/war-rooms/bpo-war/bpo-war-room.html',
     kernelVariant: '/core/tsm-kernel.js (old, no write-flag)',
     enforcerVariant: '/core/tsm-enforcer.js (audit-only, TSM_ENFORCER global present, does NOT block writes)',
   },
   {
     name: 'BPO Strategist',
-    path: '/war-rooms/bpo/bpo-strategist.html',
+    path: '/war-rooms/bpo-war/bpo-strategist.html',
     kernelVariant: '/html/core/tsm-kernel.js (new, sets write-flag)',
     enforcerVariant: '/html/core/tsm-enforcer.js (real blocker, NO global exposed -- expect hasEnforcer=false)',
     expectMissingEnforcerGlobal: true,
   },
   {
     name: 'BPO Executive Portal',
-    path: '/war-rooms/bpo/bpo-executive-portal.html',
+    path: '/war-rooms/bpo-war/bpo-executive-portal.html',
     kernelVariant: 'NONE LOADED',
     enforcerVariant: '/html/core/tsm-enforcer.js (real blocker, NO global exposed -- expect hasEnforcer=false)',
     expectMissingKernelGlobal: true,

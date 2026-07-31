@@ -52,19 +52,19 @@
       "Claims Review": {
         id: "ins-claims-review",
         label: "Claims Review",
-        url: "/html/tsm-insurance/insurance-war-room.html?mode=claims-review",
+        url: "/html/war-rooms/insure-war/insurance-war-room.html?mode=claims-review",
         type: "claims"
       },
       "Coverage Verification": {
         id: "ins-coverage-verification",
         label: "Coverage Verification",
-        url: "/html/tsm-insurance/insurance-war-room.html?mode=coverage",
+        url: "/html/war-rooms/insure-war/insurance-war-room.html?mode=coverage",
         type: "verification"
       },
       "Insurance Strategist": {
         id: "ins-strategist",
         label: "Insurance Strategist",
-        url: "/html/tsm-insurance/insurance-war-room.html?mode=strategist",
+        url: "/html/war-rooms/insure-war/insurance-war-room.html?mode=strategist",
         type: "strategist"
       }
     },
@@ -127,19 +127,19 @@
       "BPO Operations": {
         id: "bpo-ops",
         label: "BPO Operations",
-        url: "/html/war-rooms/bpo/bpo-war-room.html?mode=operations",
+        url: "/html/war-rooms/bpo-war/bpo-war-room.html?mode=operations",
         type: "operations"
       },
       "Staffing Queue Manager": {
         id: "bpo-staffing",
         label: "Staffing Queue Manager",
-        url: "/html/war-rooms/bpo/bpo-war-room.html?mode=staffing",
+        url: "/html/war-rooms/bpo-war/bpo-war-room.html?mode=staffing",
         type: "staffing"
       },
       "BPO Strategist": {
         id: "bpo-strategist",
         label: "BPO Strategist",
-        url: "/html/war-rooms/bpo/bpo-war-room.html?mode=strategist",
+        url: "/html/war-rooms/bpo-war/bpo-war-room.html?mode=strategist",
         type: "strategist"
       }
     },
@@ -322,7 +322,7 @@
     insurance: {
       __meta: {
         label: "Insurance",
-        warRoom: "/html/tsm-insurance/insurance-war-room.html",
+        warRoom: "/html/war-rooms/insure-war/insurance-war-room.html",
         defaultOwner: "Claims Ops",
         executiveAudience: ["strategist", "claims-director", "finance"],
         continuityNarrative:
@@ -600,7 +600,7 @@
     bpo: {
       __meta: {
         label: "BPO",
-        warRoom: "/html/war-rooms/bpo/bpo-war-room.html",
+        warRoom: "/html/war-rooms/bpo-war/bpo-war-room.html",
         defaultOwner: "Operations Lead",
         executiveAudience: ["strategist", "ops-director", "executive"],
         continuityNarrative:

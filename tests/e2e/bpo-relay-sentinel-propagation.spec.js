@@ -89,9 +89,9 @@ const { test, expect } = require('@playwright/test');
 const BASE_URL = process.env.BASE_URL || 'http://localhost:8080';
 
 const DOC_SEARCH = '/html/tsm-doc-search-multi.html';
-const WAR_ROOM = '/html/war-rooms/bpo/bpo-war-room.html';
-const STRATEGIST = '/html/war-rooms/bpo/bpo-strategist.html';
-const EXEC_PORTAL = '/html/war-rooms/bpo/bpo-executive-portal.html';
+const WAR_ROOM = '/html/war-rooms/bpo-war/bpo-war-room.html';
+const STRATEGIST = '/html/war-rooms/bpo-war/bpo-strategist.html';
+const EXEC_PORTAL = '/html/war-rooms/bpo-war/bpo-executive-portal.html';
 const SENTINEL = '/html/sentinel-center.html';
 
 const CASE_ID = 'BPO-TEST-' + Date.now();

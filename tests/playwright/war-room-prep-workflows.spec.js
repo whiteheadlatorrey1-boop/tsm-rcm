@@ -54,9 +54,9 @@ const sectorChains = [
   },
   {
     name: 'Insurance',
-    warRoom: '/html/tsm-insurance/insurance-war-room.html',
-    strategist: '/html/tsm-insurance/insurance-strategist.html',
-    executive: '/html/tsm-insurance/insurance-executive-portal.html',
+    warRoom: '/html/war-rooms/insure-war/insurance-war-room.html',
+    strategist: '/html/war-rooms/insure-war/insurance-strategist.html',
+    executive: '/html/war-rooms/insure-war/insurance-executive-portal.html',
   },
   {
     name: 'Construction',
@@ -78,9 +78,9 @@ const sectorChains = [
   },
   {
     name: 'BPO (demo chain)',
-    warRoom: '/html/war-rooms/bpo/bpo-war-room.html',
-    strategist: '/html/war-rooms/bpo/bpo-strategist.html',
-    executive: '/html/war-rooms/bpo/bpo-executive-portal.html',
+    warRoom: '/html/war-rooms/bpo-war/bpo-war-room.html',
+    strategist: '/html/war-rooms/bpo-war/bpo-strategist.html',
+    executive: '/html/war-rooms/bpo-war/bpo-executive-portal.html',
   },
 ];
 
