@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>TSM Enterprise Command Center</title>
@@ -210,6 +211,15 @@ async function openMission(id) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ status: next }),
   });
+  if (next === 'resolved') {
+    try {
+      window.TSM.relay.write('FIX_VALIDATED_FROM_CC', {
+        id: 'fv-' + id + '-' + Date.now(),
+        ticketId: id,
+        message: `Fix validated for ${mission.device} — ${mission.issue}. Ticket resolved and closed out.`,
+      });
+    } catch (e) { console.warn('Relay write failed', e); }
+  }
   renderWallAndQueue();
   renderStats();
 }
