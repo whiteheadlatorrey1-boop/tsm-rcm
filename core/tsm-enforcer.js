@@ -16,7 +16,20 @@
 
   function get(key) {
     try {
-      return JSON.parse(localStorage.getItem(key));
+      const exact = localStorage.getItem(key);
+      if (exact !== null) return JSON.parse(exact);
+      // Writer side stores these as LITERAL + "_" + <dynamic vertical
+      // suffix> for most verticals (e.g. "TSM_STRAT_CONFIRMED_reo-pro_"
+      // + vertical), so the bare key above is legitimately absent even
+      // when a confirmation exists. Fall back to a prefix scan.
+      const prefix = key + "_";
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.indexOf(prefix) === 0) {
+          return JSON.parse(localStorage.getItem(k));
+        }
+      }
+      return null;
     } catch (e) {
       return null;
     }
