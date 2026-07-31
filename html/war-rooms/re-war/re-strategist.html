@@ -566,7 +566,7 @@ function applyPayload() {
   const t = new Date(p.timestamp);
 
   document.getElementById('ib-detail').textContent =
-    `War Room payload received · ${t.toLocaleTimeString()} · ${p.modulesRun || 0} modules run${p.docTextPreview || p.docText ? ' · Doc loaded' : ''}${p.feedText ? ' · Feed captured' : ''}`;
+    `War Room payload received · ${t.toLocaleTimeString()} · ${p.modulesRun || 0} modules run${p.docText ? ' · Doc loaded' : ''}${p.feedText ? ' · Feed captured' : ''}`;
   document.getElementById('ib-modules').textContent = p.modulesRun || 0;
   document.getElementById('ib-saved').textContent = p.savedOutputs || 0;
   document.getElementById('ib-rescue').textContent = p.rescuePack ? '⚡ ACTIVE' : 'NONE';
@@ -617,7 +617,7 @@ async function generateAutoBrief() {
   let context = '';
   // Use outputs array if present, fall back to feedText/docText
   const hasOutputs = warRoomPayload && Array.isArray(warRoomPayload.outputs) && warRoomPayload.outputs.length > 0;
-  const hasFeed = warRoomPayload && (warRoomPayload.feedText || warRoomPayload.docTextPreview || warRoomPayload.docText);
+  const hasFeed = warRoomPayload && (warRoomPayload.feedText || warRoomPayload.docText);
   if (hasOutputs) {
     context = warRoomPayload.outputs.slice(0, 5)
       .map(o => `=== ${o.title} ===\n${o.text.substring(0, 600)}`)
@@ -683,7 +683,7 @@ async function runStratModule(card) {
   if (hasOutputs || hasFeed) {
     const ctx = hasOutputs
       ? warRoomPayload.outputs.slice(0,3).map(o => o.title + ': ' + o.text.substring(0,200)).join('\n')
-      : ((warRoomPayload.feedText || '') + '\n' + (warRoomPayload.docTextPreview || warRoomPayload.docText || '')).slice(0,600);
+      : ((warRoomPayload.feedText || '') + '\n' + (warRoomPayload.docText || '')).slice(0,600);
     enriched = `WAR ROOM CONTEXT:\n${ctx}\n\nSTRATEGY REQUEST:\n${prompt}`;
   }
 
@@ -736,7 +736,7 @@ async function buildFullBrief(silent) {
   const hasModules = stratSaved.length > 0;
   const hasRelay = warRoomPayload && (
     (Array.isArray(warRoomPayload.outputs) && warRoomPayload.outputs.length > 0) ||
-    warRoomPayload.feedText || warRoomPayload.docTextPreview || warRoomPayload.docText || warRoomPayload.synthesis
+    warRoomPayload.feedText || warRoomPayload.docText || warRoomPayload.synthesis
   );
 
   if (!hasModules && !hasRelay) { alert('Run a strategy module first, or escalate from the War Room with analysis complete.'); return; }
@@ -752,7 +752,7 @@ async function buildFullBrief(silent) {
       content += p.outputs.map(o => '## ' + (o.title||'Output') + '\n\n' + (o.text||'')).join('\n\n---\n\n') + '\n\n---\n\n';
     }
     if (p.feedText && !p.synthesis) content += '## Intelligence Feed\n\n' + p.feedText + '\n\n---\n\n';
-    if (p.docText) content += '## Source Document\n\n' + (p.docTextPreview || p.docText.substring(0, 100) + '... [SANITIZED]') + '\n\n---\n\n';
+    if (p.docText) content += '## Source Document\n\n' + p.docText + '\n\n---\n\n';
   }
 
   // Include the generated Strategic Brief if it exists
@@ -1063,6 +1063,7 @@ function reXPParseExplain(raw){
   async function runStrategist() { await runFullBrief(); }
 </script>
 
+<script>
 /* TSM AUTO-RUN STRATEGIST */
 (function(){
   try {
@@ -1078,19 +1079,21 @@ function reXPParseExplain(raw){
 <div id="tsm-chain-bar" style="position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#040c12;border-top:1px solid #0d2233;display:flex;align-items:center;height:32px;padding:0 16px;font-family:'IBM Plex Mono',monospace;font-size:10px;"><span style="color:#3a5a70;margin-right:12px;font-size:9px;">TSM CHAIN</span><a href="/html/war-rooms/re-war/re-war-room.html" style="color:#94a3b8;border:1px solid #1a3a50;padding:3px 10px;border-radius:3px;text-decoration:none;margin-right:6px;font-size:9px;">&#9675; WAR ROOM</a><span style="color:#1a3a50;margin-right:6px;">--&gt;</span><a href="#" style="color:var(--amber, #ffab00);background:rgba(255,255,255,.05);border:1px solid var(--amber, #ffab00)55;padding:3px 10px;border-radius:3px;text-decoration:none;margin-right:6px;font-size:9px;">&#9679; STRATEGIST</a><span style="color:#1a3a50;margin-right:6px;">--&gt;</span><a href="/html/war-rooms/re-war/re-exec-portal.html" style="color:#94a3b8;border:1px solid #1a3a50;padding:3px 10px;border-radius:3px;text-decoration:none;margin-right:6px;font-size:9px;">&#9675; EXEC PORTAL</a><span style="color:#1a3a50;margin-left:auto;font-size:9px;">REAL ESTATE</span></div>
   <script src="/shared/tsm-exec-kit-producer.js"></script>
   <script src="/html/core/tsm-runtime.js"></script>
-</body>
-</html>
+
+<script>
 // ===== TSM_AUTONOMY_STANDARDIZED =====
 window.TSM_AUTONOMY_STANDARDIZED = true;
+</script>
 
 <!-- TSM ENFORCER BOOT -->
 <script src="/html/core/tsm-enforcer.js"></script>
 
-<!-- TSM WAR ROOM SCOPED RELAY FIX -->
 <script>
+// ===== TSM WAR ROOM SCOPED RELAY FIX =====
 window.tsmMission = window.tsmMission || {
   id: "REO-PRO-" + Date.now().toString(36),
-  vertical: "reo-pro"
+  vertical: "reo-pro",
+  
 };
 
 function tsmWriteRelay(payload){
@@ -1105,11 +1108,12 @@ function tsmWriteRelay(payload){
      } catch(e) {
          // Suppress raw payload leakage in console
      }
-}
+ }
 </script>
 
-<!-- TSM STRATEGIST BRIDGE LAYER -->
 <script>
+// ===== TSM STRATEGIST BRIDGE LAYER =====
+
 function tsmReadScopedRelay(vertical){
   const key = "tsm_war_relay_" + vertical;
   try {
@@ -1130,3 +1134,5 @@ function tsmWriteScopedStrat(vertical, missionId){
 
 <!-- TSM KERNEL ENGINE -->
 <script src="/html/core/tsm-kernel.js"></script>
+</body>
+</html>
