@@ -142,13 +142,13 @@ body::before{content:'';position:fixed;top:0;left:0;width:500px;height:500px;bac
 .tsm-delta-act .tsm-delta-val{color:#00e564}
 .tsm-recovery{text-align:center;font-family:'IBM Plex Mono',monospace;font-size:.59rem;margin-top:5px;opacity:.4}
 </style>
-  
-  
+  <script src="/js/core/tsm-event-bus.js"></script>
+  <script src="/js/core/tsm-state.js"></script>
   <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
   <script src="/html/shared/runtime/mission/mission-model.js"></script>
   <script src="/html/shared/runtime/mission/mission-store.js"></script>
-  
-  
+  <script src="/js/core/tsm-mission-engine.js"></script>
+  <script src="/js/core/tsm-auto-pipeline.js"></script>
   <script src="/html/js/tsm-bnca-exposure-engine.js"></script>
 </head>
 <body>
@@ -347,7 +347,7 @@ if(groqKey) document.getElementById('groqKey').value=groqKey;
 
 function tick(){ document.getElementById('navClock').textContent=new Date().toLocaleTimeString('en-US',{hour12:false}); }
 tick(); setInterval(tick,1000);
-function nav(page){ window.location.href='/html/war-rooms/insure-war/'+page; }
+function nav(page){ window.location.href='/html/tsm-insurance/'+page; }
 function saveKey(){ groqKey=document.getElementById('groqKey').value.trim(); localStorage.setItem('tsm_groq_key',groqKey); }
 function copyNode(id){ navigator.clipboard.writeText(document.getElementById(id).textContent); }
 
@@ -645,24 +645,29 @@ async function runStrategist(){
   // ── SENTINEL PUSH ──────────────────────────────────────────────────
   // Real numbers only: BNCA confidence already parsed above, exposure
   // pulled from the War Room snapshot the strategist itself received.
+  // NOTE: declared at runStrategist scope (not inside the try block
+  // below) because the Phase 2 Mission Core block further down also
+  // needs them — they were previously trapped inside this try{} and
+  // threw "insExposureNum is not defined" once execution reached the
+  // Mission Core creation step.
+  function insParseExposureNumber(str){
+    if (!str) return 0;
+    const nums = String(str).match(/[\d,]+(?:\.\d+)?/g);
+    if (!nums) return 0;
+    const mult = /m\b/i.test(str) ? 1000000 : (/k\b/i.test(str) ? 1000 : 1);
+    const vals = nums.map(n => parseFloat(n.replace(/,/g,'')) * mult);
+    return vals.length > 1 ? Math.round((vals[0] + vals[1]) / 2) : Math.round(vals[0]);
+  }
+  function insSeverityForExposure(n, conf){
+    if (n >= 250000 || (conf !== null && conf < 60)) return 'CRIT';
+    if (n >= 100000 || (conf !== null && conf < 75)) return 'HIGH';
+    if (n >= 25000) return 'MED';
+    return 'LOW';
+  }
+  const insExposureRaw = warRoomData?.snapshot?.exposure || '';
+  const insExposureNum = insParseExposureNumber(insExposureRaw);
+  const insConf = overall ? parseInt(overall[1]) : null;
   try {
-    function insParseExposureNumber(str){
-      if (!str) return 0;
-      const nums = String(str).match(/[\d,]+(?:\.\d+)?/g);
-      if (!nums) return 0;
-      const mult = /m\b/i.test(str) ? 1000000 : (/k\b/i.test(str) ? 1000 : 1);
-      const vals = nums.map(n => parseFloat(n.replace(/,/g,'')) * mult);
-      return vals.length > 1 ? Math.round((vals[0] + vals[1]) / 2) : Math.round(vals[0]);
-    }
-    function insSeverityForExposure(n, conf){
-      if (n >= 250000 || (conf !== null && conf < 60)) return 'CRIT';
-      if (n >= 100000 || (conf !== null && conf < 75)) return 'HIGH';
-      if (n >= 25000) return 'MED';
-      return 'LOW';
-    }
-    const insExposureRaw = warRoomData?.snapshot?.exposure || '';
-    const insExposureNum = insParseExposureNumber(insExposureRaw);
-    const insConf = overall ? parseInt(overall[1]) : null;
     const insAnomalies = [{
       id: 'ins-strat-' + Date.now(),
       title: (warRoomData?.docType || 'Insurance Matter') + ' \u2014 Strategist Synthesis',
@@ -924,7 +929,6 @@ PRINCIPAL ESCALATION: [Yes/No] — [reason]`;
   } catch(e){ console.warn('Insurance issue pack error:',e); }
 })();
 </script>
-<script>
 /**
  * TSM MISSION GUIDE — Inlined
  */// v3
@@ -1219,8 +1223,8 @@ function insXPParseExplain(raw){
   return {brief, obj};
 }
 </script>
-<script src="/html/war-rooms/insure-war/public/js/tsm-mission-guide.js"></script>
-<script>
+<script src="/html/tsm-insurance/public/js/tsm-mission-guide.js"></script>
+
 /* TSM AUTO-RUN STRATEGIST */
 (function(){
   try {
@@ -1236,3 +1240,48 @@ function insXPParseExplain(raw){
   <script src="/html/core/tsm-runtime.js"></script>
 </body>
 </html>
+
+// ===== TSM_AUTONOMY_STANDARDIZED =====
+window.TSM_AUTONOMY_STANDARDIZED = true;
+</script>
+
+<!-- TSM ENFORCER BOOT -->
+<script src="/html/core/tsm-enforcer.js"></script>
+
+
+// ===== TSM WAR ROOM SCOPED RELAY FIX =====
+window.tsmMission = window.tsmMission || {
+  id: "TSM-INSURANCE-" + Date.now().toString(36),
+  vertical: "tsm-insurance",
+  
+};
+
+function tsmWriteRelay(payload){
+  TSM_KERNEL.setRelay("tsm-insurance", JSON.stringify(payload));
+}
+</script>
+
+
+// ===== TSM STRATEGIST BRIDGE LAYER =====
+
+function tsmReadScopedRelay(vertical){
+  const key = "tsm_war_relay_" + vertical;
+  try {
+    return JSON.parse(localStorage.getItem(key));
+  } catch(e){
+    return null;
+  }
+}
+
+function tsmWriteScopedStrat(vertical, missionId){
+  localStorage.setItem("TSM_STRAT_CONFIRMED_tsm-insurance_" + vertical, JSON.stringify({
+    vertical,
+    missionId,
+    timestamp: Date.now()
+  }));
+}
+</script>
+
+
+<!-- TSM KERNEL ENGINE -->
+<script src="/html/core/tsm-kernel.js"></script>
