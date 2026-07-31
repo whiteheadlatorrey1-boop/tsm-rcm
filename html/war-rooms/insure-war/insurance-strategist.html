@@ -570,14 +570,18 @@ async function runStrategist(){
     document.getElementById('spinLabel').textContent='Node '+i+' — '+labels[i-1]+'...';
     let txt='';
     try{
+      const ctrl = new AbortController();
+      const timeoutId = setTimeout(()=>ctrl.abort(), 20000);
       const res = await fetch('/api/insurance/query', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: NODE_PROMPTS[i-1](ctx,n),
           maxTokens: 700
-        })
+        }),
+        signal: ctrl.signal
       });
+      clearTimeout(timeoutId);
       if (!res.ok) throw new Error('API ' + res.status);
       const data = await res.json();
       txt = (data.answer || data.response || '').trim();
@@ -1238,50 +1242,7 @@ function insXPParseExplain(raw){
   <script src="/js/core/tsm-kernel-upgrade.js"></script>
   <script src="/shared/tsm-exec-kit-producer.js"></script>
   <script src="/html/core/tsm-runtime.js"></script>
+  <script src="/html/core/tsm-enforcer.js"></script>
+  <script src="/html/core/tsm-kernel.js"></script>
 </body>
 </html>
-
-// ===== TSM_AUTONOMY_STANDARDIZED =====
-window.TSM_AUTONOMY_STANDARDIZED = true;
-</script>
-
-<!-- TSM ENFORCER BOOT -->
-<script src="/html/core/tsm-enforcer.js"></script>
-
-
-// ===== TSM WAR ROOM SCOPED RELAY FIX =====
-window.tsmMission = window.tsmMission || {
-  id: "TSM-INSURANCE-" + Date.now().toString(36),
-  vertical: "tsm-insurance",
-  
-};
-
-function tsmWriteRelay(payload){
-  TSM_KERNEL.setRelay("tsm-insurance", JSON.stringify(payload));
-}
-</script>
-
-
-// ===== TSM STRATEGIST BRIDGE LAYER =====
-
-function tsmReadScopedRelay(vertical){
-  const key = "tsm_war_relay_" + vertical;
-  try {
-    return JSON.parse(localStorage.getItem(key));
-  } catch(e){
-    return null;
-  }
-}
-
-function tsmWriteScopedStrat(vertical, missionId){
-  localStorage.setItem("TSM_STRAT_CONFIRMED_tsm-insurance_" + vertical, JSON.stringify({
-    vertical,
-    missionId,
-    timestamp: Date.now()
-  }));
-}
-</script>
-
-
-<!-- TSM KERNEL ENGINE -->
-<script src="/html/core/tsm-kernel.js"></script>
