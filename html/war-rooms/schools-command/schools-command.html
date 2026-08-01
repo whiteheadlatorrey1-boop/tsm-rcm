@@ -1991,8 +1991,13 @@ document.addEventListener('DOMContentLoaded',()=>{
   // LLM-invented: severity, exposure, and rootCause all come straight off
   // engine.getFinancialSummary() / engine.getSlaBreaches(), the same
   // deterministic model data the Command Center itself renders. Confidence
-  // is fixed at 90 (not a model guess) to signal "computed from the loaded
-  // model," not measured certainty.
+  // is NOT a model guess (schools-engine.js makes no AI calls) — it's data
+  // completeness. Exposure numbers are only as good as the rate card
+  // (financial_model) they're computed from; if a required rate is
+  // missing, the engine silently defaults that exposure to $0, which would
+  // otherwise look like a real "no risk" reading. Confidence reflects
+  // whether the rate card actually has the field(s) this anomaly's
+  // exposure depends on.
   const SCH_SEV_THRESHOLDS = { crit: 0.30, high: 0.15 }; // breach ratio cutoffs
   function schBreachSeverity(breachCount, totalCount) {
     if (!totalCount) return breachCount > 0 ? 'MED' : 'LOW';
@@ -2002,35 +2007,56 @@ document.addEventListener('DOMContentLoaded',()=>{
     if (ratio > 0) return 'MED';
     return 'LOW';
   }
+  function schFundingDelayConfidence(fm) {
+    if (!fm || fm.funding_delay_cost_per_day == null) {
+      return { confidence: 30, note: ' Rate card is missing funding_delay_cost_per_day, so exposure defaulted to $0 — treat as unverified.' };
+    }
+    return { confidence: 95, note: '' };
+  }
+  function schComplianceConfidence(fm, breaches) {
+    if (!fm || !fm.compliance_exposure_by_severity) {
+      return { confidence: 30, note: ' Rate card is missing compliance_exposure_by_severity, so exposure defaulted to $0 — treat as unverified.' };
+    }
+    const rates = fm.compliance_exposure_by_severity;
+    const severities = [...new Set(breaches.map(b => b.severity).filter(Boolean))];
+    const missing = severities.filter(s => rates[s] == null);
+    if (missing.length) {
+      return { confidence: 65, note: ` Rate card has no entry for severity level(s) ${missing.join(', ')} — those items priced at $0.` };
+    }
+    return { confidence: 95, note: '' };
+  }
   function schPushToSentinel() {
     if (!engine) return;
     try {
       const fin = engine.getFinancialSummary();
       const kpis = engine.computeKpis();
+      const fm = engine.getFinancialModel();
       const grantBreaches = engine.getSlaBreaches('grant_files') || [];
       const exceptionBreaches = engine.getSlaBreaches('exceptions') || [];
       const anomalies = [];
 
       if ((fin.funding_delay_exposure_total || 0) > 0 || grantBreaches.length > 0) {
+        const { confidence, note } = schFundingDelayConfidence(fm);
         anomalies.push({
           id: 'sch-funding-delay',
           title: 'Grant Funding Delay — SLA Breaches',
           severity: schBreachSeverity(kpis.grants_over_sla || grantBreaches.length, kpis.open_grant_files || 1),
           exposure: fin.funding_delay_exposure_total || 0,
-          confidence: 90,
-          rootCause: `${kpis.grants_over_sla || grantBreaches.length} of ${kpis.open_grant_files || 0} open grant files are past their SLA clock.`,
+          confidence,
+          rootCause: `${kpis.grants_over_sla || grantBreaches.length} of ${kpis.open_grant_files || 0} open grant files are past their SLA clock.${note}`,
           recommendedAction: 'Escalate stalled grant files to the review desk / program officer per stage.',
           impacts: {}
         });
       }
       if ((fin.compliance_exposure_total || 0) > 0 || exceptionBreaches.length > 0) {
+        const { confidence, note } = schComplianceConfidence(fm, exceptionBreaches);
         anomalies.push({
           id: 'sch-compliance',
           title: 'Open Compliance Exceptions',
           severity: schBreachSeverity(kpis.open_compliance_exceptions || exceptionBreaches.length, kpis.open_grant_files || 1),
           exposure: fin.compliance_exposure_total || 0,
-          confidence: 90,
-          rootCause: `${kpis.open_compliance_exceptions || exceptionBreaches.length} open compliance exceptions across active grants.`,
+          confidence,
+          rootCause: `${kpis.open_compliance_exceptions || exceptionBreaches.length} open compliance exceptions across active grants.${note}`,
           recommendedAction: 'Clear corrective-action items before the next reporting deadline.',
           impacts: {}
         });

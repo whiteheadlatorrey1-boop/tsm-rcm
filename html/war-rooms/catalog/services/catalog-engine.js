@@ -160,6 +160,15 @@ class TSMCatalogEngine {
      Mirrors the three real signal types getAttentionFlags() already
      detects (low stock, compliance, upcoming EOL), grounded in the same
      product fields used on the KPI cards. */
+  // Confidence isn't a model guess -- these are deterministic threshold
+  // checks. It signals data completeness: whether the record actually has
+  // the field(s) the check depends on, vs. silently running on a fallback
+  // default (e.g. reorder_point defaulting to 0, or the EOL warning window
+  // defaulting to 90 days because model.thresholds wasn't configured).
+  _fieldConfidence(base, fieldOk) {
+    return fieldOk ? base : Math.max(60, base - 25);
+  }
+
   getExplainItems() {
     const items = [];
 
@@ -170,7 +179,7 @@ class TSMCatalogEngine {
       items.push({
         id: 'stock-' + p.sku,
         claim: `${p.sku} (${p.name}) has ${qty} on hand against a reorder point of ${reorder}`,
-        confidence: 90,
+        confidence: this._fieldConfidence(90, p.reorder_point != null),
         severity,
         impact: p.list_price ? ('Stockout risk on a $' + Number(p.list_price).toLocaleString() + ' list-price SKU') : 'Stockout risk',
         rationale: `${p.name} (${p.sku}) is at ${qty} units on hand, at or below its reorder point of ${reorder} ` +
@@ -189,7 +198,7 @@ class TSMCatalogEngine {
       items.push({
         id: 'compliance-' + p.sku,
         claim: `${p.sku} (${p.name}) compliance status is "${p.compliance_status}"`,
-        confidence: 88,
+        confidence: this._fieldConfidence(88, !!p.name),
         severity,
         impact: 'Regulatory / sellability risk until resolved',
         rationale: `${p.name} (${p.sku}) is currently flagged with compliance status "${p.compliance_status}" ` +
@@ -208,7 +217,7 @@ class TSMCatalogEngine {
       items.push({
         id: 'eol-' + p.sku,
         claim: `${p.sku} (${p.name}) reaches its lifecycle date in ${days} day${days === 1 ? '' : 's'} (${p.lifecycle_date})`,
-        confidence: 85,
+        confidence: this._fieldConfidence(85, this.model.thresholds?.eol_warning_days != null),
         severity,
         impact: p.list_price ? ('$' + Number(p.list_price).toLocaleString() + ' list-price SKU transitioning off active sale') : 'SKU transitioning off active sale',
         rationale: `${p.name} (${p.sku}) is currently "${p.stage}" with a lifecycle date of ${p.lifecycle_date}, ` +

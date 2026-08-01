@@ -168,6 +168,12 @@ td{padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text)}
    *  control test failures/reviews (using each control's actual last-tested
    *  status against its framework) and open/mitigating enterprise risks
    *  (using the same severity score the risk table already renders). */
+  // Confidence isn't a model guess -- control status and risk severity are
+  // deterministic reads off the register. It signals whether the record
+  // has the identifying/supporting fields the claim names, not a guess
+  // about the underlying compliance fact itself.
+  const identConfidence = (base, ok) => ok ? base : Math.max(60, base - 25);
+
   function getExplainItems(){
     const items=[];
 
@@ -176,7 +182,7 @@ td{padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text)}
       items.push({
         id: 'ctrl-'+c.id,
         claim: `${c.id} ("${c.name}", ${c.framework}) is ${c.status} as of ${c.last_tested}`,
-        confidence: 92,
+        confidence: identConfidence(92, !!(c.name && c.last_tested)),
         severity,
         impact: c.status==='FAIL' ? `${c.framework} control failure — audit and regulatory exposure` : `${c.framework} control pending re-test — status unconfirmed`,
         rationale: `Control ${c.id} under the ${c.framework} framework last tested ${c.last_tested} with result ${c.status}. ${c.status==='FAIL' ? 'A failed control is a direct compliance gap until remediated and re-tested.' : 'A review-status control has not yet cleared its test cycle.'}`,
@@ -194,7 +200,7 @@ td{padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text)}
       items.push({
         id: 'risk-'+r.id,
         claim: `${r.id} ("${r.name}") scored ${r.severity}/100 — ${r.status}, owned by ${r.owner}`,
-        confidence: 85,
+        confidence: identConfidence(85, !!(r.name && r.owner)),
         severity,
         impact: r.severity>=75 ? 'High-severity risk — active exposure until mitigated' : 'Moderate exposure being tracked',
         rationale: `${r.name} (${r.id}) carries a severity score of ${r.severity}/100 and is currently ${r.status.toLowerCase()}, owned by ${r.owner}.`,
