@@ -1244,13 +1244,26 @@ function relayToExecutive(){
     const finopsSentExposureStr = _expM ? _expM[1] : (existing.exposure || null);
     const finopsSentExposureNum = finopsParseExposureNumber(finopsSentExposureStr);
     const finopsSentRiskStr = _riskM ? _riskM[1] : (existing.riskScore || null);
-    const finopsSentConf = finopsSentRiskStr ? parseInt(finopsSentRiskStr) : null;
+    let finopsSentConf = finopsSentRiskStr ? parseInt(finopsSentRiskStr) : null;
+    // Flag when the live model's output has no parseable RISK SCORE — every
+    // downstream consumer (Sentinel Center card) reads this anomaly's
+    // confidence, so patch it here once instead of silently fabricating 62
+    // with no trace. Mirrors the same convention already applied to
+    // bpo-strategist.html / hc-main-strategist.html (console.warn + default
+    // + confidenceDefaulted flag) rather than a bare fallback.
+    let finopsConfDefaulted = false;
+    if (finopsSentConf === null || Number.isNaN(finopsSentConf)) {
+      console.warn('[finops-strategist] Live response had no parseable RISK SCORE — defaulting confidence to 62 for Sentinel push.');
+      finopsSentConf = 62;
+      finopsConfDefaulted = true;
+    }
     const finopsSentAnomalies = [{
       id: 'finops-strat-' + Date.now(),
       title: 'FinOps Strategist Synthesis',
       severity: finopsSeverityForExposure(finopsSentExposureNum),
       exposure: finopsSentExposureNum,
-      confidence: finopsSentConf !== null ? finopsSentConf : 62,
+      confidence: finopsSentConf,
+      confidenceDefaulted: finopsConfDefaulted,
       rootCause: output ? output.slice(0, 240) : 'See strategist brief for detailed reasoning.',
       recommendedAction: 'Review the strategist brief and route to executive escalation.'
     }];

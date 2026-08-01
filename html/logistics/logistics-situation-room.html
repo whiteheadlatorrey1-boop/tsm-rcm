@@ -518,6 +518,7 @@ const GROQ_MODEL = 'openai/gpt-oss-120b';
 
 // ── STATE ──
 let relayData = null;
+let lastLogisticsResult = null; // most recent parsed AI JSON (confidence/severity/etc) — kept so pushCollectiveSignal_LOGISTICS() can read real confidence instead of guessing from rendered text
 let extractionResult = '';
 let engineFired = false;
 let decisionWindowSecs = 6 * 3600;
@@ -729,6 +730,7 @@ Return a JSON object with these exact keys:
   "runway": "Time until critical failure (e.g. 6 Days)",
   "incidentLabel": "Short incident title (e.g. Supplier Bankruptcy · Critical)",
   "severity": "CRITICAL, HIGH, or MEDIUM",
+  "confidence": "Integer 0-100: your confidence in this analysis given the source document's completeness and specificity",
   "risks": [
     { "text": "Risk description", "level": "CRITICAL|HIGH|MED", "icon": "⚡" },
     { "text": "Risk description", "level": "CRITICAL|HIGH|MED", "icon": "⚠" },
@@ -817,7 +819,12 @@ function registerIncidentInMemory(result) {
     severity: result.severity,
     source: 'situation-room',
     detectedFrom: relayData?.selectedDocType || 'document',
-    meta: { revenueAtRisk: result.revenueAtRisk, runway: result.runway }
+    meta: {
+      revenueAtRisk: result.revenueAtRisk,
+      runway: result.runway,
+      confidence: Number.isFinite(result.confidence) ? result.confidence : null,
+      confidenceDefaulted: !Number.isFinite(result.confidence)
+    }
   });
 
   ['revenueAtRisk', 'linesImpacted', 'clientsImpacted', 'runway', 'rootCause'].forEach(field => {
@@ -857,6 +864,7 @@ function showCrossUploadInsight(anomalyCode, entityId) {
 
 // ── RENDER EXTRACTION ──
 function renderExtraction(r) {
+  lastLogisticsResult = r;
   // Incident banner
   document.getElementById('incLabel').textContent = r.incidentLabel || 'INCIDENT DETECTED';
   const sevBadge = document.getElementById('incSevBadge');
@@ -929,6 +937,11 @@ function pushCollectiveSignal_LOGISTICS() {
     const riskMap = { CRITICAL:'URGENT', HIGH:'RISK', MEDIUM:'WATCH', LOW:'READY' };
     const riskLevel = riskMap[(riskMatch?.[1]||'').toUpperCase()] || 'WATCH';
 
+    const logConf = Number.isFinite(lastLogisticsResult?.confidence) ? lastLogisticsResult.confidence : null;
+    if (logConf === null) {
+      console.warn('[collective-signal] logistics: live response omitted "confidence" field — defaulting to 70. Raw JSON:', lastLogisticsResult);
+    }
+
     fetch('/api/collective/signal', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -936,7 +949,8 @@ function pushCollectiveSignal_LOGISTICS() {
         vertical:     'logistics',
         warRoom:      'Logistics Situation Room',
         bnca:         fullBnca.slice(0, 400) || 'Logistics situation analysis complete.',
-        confidence:   80,
+        confidence:   logConf !== null ? logConf : 70,
+        confidenceDefaulted: logConf === null,
         riskLevel,
         topIssue:     fullBnca.split('\n').find(l => l.trim().length > 20) || 'Logistics operational risk detected',
         ownerLanes:   ['Operations Manager', 'Logistics Director', 'Account Lead'],

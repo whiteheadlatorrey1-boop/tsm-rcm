@@ -1255,12 +1255,23 @@ function renderExecExceptions(){
       if (!n) return 0;
       return /m\b/i.test(raw) ? n * 1000000 : (/k\b/i.test(raw) ? n * 1000 : n);
     }
+    // Prefer the confidence the source module (Vendor/Logistics AI extraction,
+    // or Compliance AI risk scan) already computed and stored in meta. Only
+    // fall back to a fixed number when a module genuinely didn't provide one
+    // (e.g. Compliance's static/demo alerts) — and even then, default lower
+    // for CRITICAL items than the rest of the platform's ~70 default, since
+    // an un-scored critical exception warrants more caution, not less.
+    function rcmExcConfidence(a){
+      const raw = a.meta && a.meta.confidence;
+      return Number.isFinite(raw) ? raw : 60;
+    }
     const rcmExcAnomalies = open.filter(a => a.severity === 'CRITICAL').map(a => ({
       id: 'rcm-exc-' + a.id,
       title: a.title || a.anomalyCode,
       severity: 'CRIT',
       exposure: rcmExcExposureNum(a),
-      confidence: null,
+      confidence: rcmExcConfidence(a),
+      confidenceDefaulted: !Number.isFinite(a.meta && a.meta.confidence),
       rootCause: a.title || a.anomalyCode,
       recommendedAction: 'Review in RCM-OS Cross-Module Exceptions — source: ' + (a.source || 'unknown') + '.'
     }));

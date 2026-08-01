@@ -1,0 +1,52 @@
+From e2e8dc36911675df9a36ef03b7cd3e63c8faea32 Mon Sep 17 00:00:00 2001
+From: Tron <tron@tsmconsultz.dev>
+Date: Sat, 1 Aug 2026 05:36:56 +0000
+Subject: [PATCH] fix: /shared static mount pointed at html/bpo/shared, a
+ directory that doesn't exist
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Every one of the platform's shared decision-intelligence engines —
+tsm-memory-engine.js, tsm-quality-score-engine.js, evidence-ledger.js,
+decision-provenance.js, tsm-agent-registry.js, tsm-executive-outcome.js
+— has been 404ing in production since this mount was introduced on
+2026-07-01. The route served html/bpo/shared, which has been empty of
+anything relevant since May 2026 (it briefly held bpo-framework.css,
+which has since moved to html/bpo-files/ and is no longer referenced
+via this path — confirmed nothing depends on the old mount target).
+
+The real files live in html/shared/ and have since April 2026.
+
+Scope: 104 files across nearly every vertical (construction, legal,
+healthcare, insurance, real estate, BPO, finops, music, logistics,
+supplier-vendor) reference /shared/*.js. All of them silently failed
+to load these engines in production for the past month.
+
+Fix is a one-line mount correction:
+  app.use('/shared', express.static(path.join(__dirname, 'html/bpo/shared')))
+  -> app.use('/shared', express.static(path.join(__dirname, 'html/shared')))
+
+Verified live, not just by inspection: booted a minimal Express
+instance with the corrected mount and fetched all 6 affected files —
+all returned 200 (previously 404 against the old path).
+---
+ server.js | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/server.js b/server.js
+index 907cb45e..571b6ddf 100644
+--- a/server.js
++++ b/server.js
+@@ -293,7 +293,7 @@ app.use('/html', express.static(path.join(__dirname, 'html'), { setHeaders: (res
+ app.use('/js', express.static(path.join(__dirname, 'html/tsm-insurance/public/js')));
+ app.use('/js', express.static(path.join(__dirname, 'html/js')));
+ app.use('/bpo', express.static(path.join(__dirname, 'html/bpo')));
+-app.use('/shared', express.static(path.join(__dirname, 'html/bpo/shared')));
++app.use('/shared', express.static(path.join(__dirname, 'html/shared')));
+ app.use('/insurance', express.static(path.join(__dirname, 'html/tsm-insurance')));
+ app.use('/construction', express.static(path.join(__dirname, 'html/construction-suite')));
+ // NOTE: /runtime and /architecture mounts now live earlier in this file
+-- 
+2.43.0
+

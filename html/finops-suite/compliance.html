@@ -1957,6 +1957,11 @@ function registerComplianceAnomaliesInMemory() {
   );
   COMPLIANCE_STATIC_ALERTS.forEach(alert => {
     if (openCodes.has(alert.anomalyCode)) return;
+    // No `confidence` in meta here on purpose: these are the static/demo
+    // alerts this page already discloses as illustrative, not AI output —
+    // assigning them a number would fabricate a score. Downstream (RCM-OS
+    // hub) falls back to a severity-based default for anomalies with no
+    // confidence in meta, same as it does for any other missing value.
     window.TSMMemory.registerAnomaly({
       entityType: 'compliance-flag',
       entityId: alert.anomalyCode,
@@ -2050,7 +2055,7 @@ async function aiScanRisks() {
   try {
     const result = await tsmNeuralCoreChat([
       { role: 'system', content: SYSTEM },
-      { role: 'user', content: 'Based on current compliance status (94% overall, SOX critical, OIG overdue, ISO A.12.6 gap), identify any additional hidden risk flags that may not be immediately obvious. Return as JSON array with format: [{severity:"critical|high|medium", text:"description"}]' }
+      { role: 'user', content: 'Based on current compliance status (94% overall, SOX critical, OIG overdue, ISO A.12.6 gap), identify any additional hidden risk flags that may not be immediately obvious. Return as JSON array with format: [{severity:"critical|high|medium", text:"description", confidence: <integer 0-100, your confidence in this specific flag>}]' }
     ], 1024);
     let risks = [];
     try {
@@ -2065,6 +2070,10 @@ async function aiScanRisks() {
       div.innerHTML = `<span class="alert-badge ${r.severity}">${r.severity.toUpperCase()}</span><span class="alert-text" style="font-size:0.78rem">${r.text}</span>`;
       flagsEl.appendChild(div);
       if (window.TSMMemory) {
+        const riskConf = Number.isFinite(r.confidence) ? r.confidence : null;
+        if (riskConf === null) {
+          console.warn('[compliance-ai-scan] live response omitted "confidence" field for flag — defaulting to 65. Raw item:', r);
+        }
         window.TSMMemory.registerAnomaly({
           entityType: 'compliance-flag',
           entityId: 'ai_risk_' + r.text.slice(0,40).replace(/[^a-z0-9]+/gi,'_').toLowerCase(),
@@ -2072,7 +2081,7 @@ async function aiScanRisks() {
           title: r.text,
           severity: (r.severity || 'medium').toUpperCase(),
           source: 'compliance-ai-scan',
-          meta: {}
+          meta: { confidence: riskConf !== null ? riskConf : 65, confidenceDefaulted: riskConf === null }
         });
       }
     });

@@ -1,0 +1,79 @@
+From 6bb3c98b19d6a9ec081280aea7d6eded317f237e Mon Sep 17 00:00:00 2001
+From: whiteheadlatorrey1-boop <whiteheadlatorrey1@gmail.com>
+Date: Sat, 1 Aug 2026 04:35:19 +0000
+Subject: [PATCH] RCM-OS: wire Cross-Module Exceptions to Sentinel relay on
+ CRITICAL
+
+Closes the RCM-OS -> Sentinel gap: renderExecExceptions() now writes
+CRITICAL exceptions (from Compliance/Vendor/Logistics via TSMMemory)
+into TSM_FINOPS_STRATEGIST_RELAY, the same relay key/shape convention
+already used by the FinOps and BPO strategists and read generically by
+Sentinel Center.
+
+- Merges rather than overwrites: entries are tagged with an 'rcm-exc-'
+  id prefix and only that slice is replaced on each render, so this
+  never clobbers the FinOps strategist's own synthesis entry in the
+  same key.
+- Runs independent of Mission Core availability.
+- Dispatches TSM_SENTINEL_REFRESH so an already-open Sentinel Center
+  tab picks up the change without a manual refresh.
+- Resolved/no-longer-critical exceptions drop off automatically since
+  the rcm-exc- slice is fully rebuilt from current 'open' state each
+  render.
+---
+ html/finops-suite/tsm-rcm-os.html | 39 +++++++++++++++++++++++++++++++
+ 1 file changed, 39 insertions(+)
+
+diff --git a/html/finops-suite/tsm-rcm-os.html b/html/finops-suite/tsm-rcm-os.html
+index d0ea29ca..1b4aba9e 100644
+--- a/html/finops-suite/tsm-rcm-os.html
++++ b/html/finops-suite/tsm-rcm-os.html
+@@ -1234,6 +1234,45 @@ function renderExecExceptions(){
+       </div>
+     </div>`).join('')}</div>`;
+ 
++  // ── SENTINEL PUSH ──────────────────────────────────────────────
++  // Closes the RCM-OS -> Sentinel gap: mirrors the same
++  // TSM_<VERTICAL>_STRATEGIST_RELAY convention the FinOps and BPO
++  // strategists already write to, so a CRITICAL exception opened here
++  // (Compliance/Vendor/Logistics via TSMMemory) shows up in Sentinel
++  // Center's cross-vertical posture score, not just in Mission Core.
++  // Merges rather than overwrites, so it doesn't clobber the FinOps
++  // strategist's own synthesis entry in the same relay key — each
++  // RCM-OS anomaly is tagged with an 'rcm-exc-' id prefix and only
++  // that slice is replaced/pruned on each render, independent of
++  // whether Mission Core is loaded.
++  try {
++    const sentKey = 'TSM_FINOPS_STRATEGIST_RELAY';
++    const sentExisting = JSON.parse(localStorage.getItem(sentKey) || 'null') || {};
++    const nonRcmExc = (sentExisting.anomalies || []).filter(x => !String(x.id || '').startsWith('rcm-exc-'));
++    function rcmExcExposureNum(a){
++      const raw = (a.meta && (a.meta.exposure || a.meta.revenueAtRisk)) || '';
++      const n = parseFloat(String(raw).replace(/[^0-9.]/g, ''));
++      if (!n) return 0;
++      return /m\b/i.test(raw) ? n * 1000000 : (/k\b/i.test(raw) ? n * 1000 : n);
++    }
++    const rcmExcAnomalies = open.filter(a => a.severity === 'CRITICAL').map(a => ({
++      id: 'rcm-exc-' + a.id,
++      title: a.title || a.anomalyCode,
++      severity: 'CRIT',
++      exposure: rcmExcExposureNum(a),
++      confidence: null,
++      rootCause: a.title || a.anomalyCode,
++      recommendedAction: 'Review in RCM-OS Cross-Module Exceptions — source: ' + (a.source || 'unknown') + '.'
++    }));
++    sentExisting.anomalies = nonRcmExc.concat(rcmExcAnomalies);
++    sentExisting.generatedAt = new Date().toISOString();
++    localStorage.setItem(sentKey, JSON.stringify(sentExisting));
++    window.dispatchEvent(new CustomEvent('TSM_SENTINEL_REFRESH'));
++  } catch (sentErr) {
++    console.warn('[sentinel-push] rcm-os cross-module exceptions error:', sentErr);
++  }
++  // ── END SENTINEL PUSH ─────────────────────────────────────────
++
+   if(!(window.TSMMissionModel && window.TSMMissionStore)){
+     console.warn('Mission Core not loaded — skipping mission creation for critical exceptions.');
+     return;
+-- 
+2.43.0
+

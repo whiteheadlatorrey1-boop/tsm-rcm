@@ -1,0 +1,202 @@
+diff --git a/html/finops-suite/compliance.html b/html/finops-suite/compliance.html
+index a0cac0a..c948284 100644
+--- a/html/finops-suite/compliance.html
++++ b/html/finops-suite/compliance.html
+@@ -1957,6 +1957,11 @@ function registerComplianceAnomaliesInMemory() {
+   );
+   COMPLIANCE_STATIC_ALERTS.forEach(alert => {
+     if (openCodes.has(alert.anomalyCode)) return;
++    // No `confidence` in meta here on purpose: these are the static/demo
++    // alerts this page already discloses as illustrative, not AI output —
++    // assigning them a number would fabricate a score. Downstream (RCM-OS
++    // hub) falls back to a severity-based default for anomalies with no
++    // confidence in meta, same as it does for any other missing value.
+     window.TSMMemory.registerAnomaly({
+       entityType: 'compliance-flag',
+       entityId: alert.anomalyCode,
+@@ -2050,7 +2055,7 @@ async function aiScanRisks() {
+   try {
+     const result = await tsmNeuralCoreChat([
+       { role: 'system', content: SYSTEM },
+-      { role: 'user', content: 'Based on current compliance status (94% overall, SOX critical, OIG overdue, ISO A.12.6 gap), identify any additional hidden risk flags that may not be immediately obvious. Return as JSON array with format: [{severity:"critical|high|medium", text:"description"}]' }
++      { role: 'user', content: 'Based on current compliance status (94% overall, SOX critical, OIG overdue, ISO A.12.6 gap), identify any additional hidden risk flags that may not be immediately obvious. Return as JSON array with format: [{severity:"critical|high|medium", text:"description", confidence: <integer 0-100, your confidence in this specific flag>}]' }
+     ], 1024);
+     let risks = [];
+     try {
+@@ -2065,6 +2070,10 @@ async function aiScanRisks() {
+       div.innerHTML = `<span class="alert-badge ${r.severity}">${r.severity.toUpperCase()}</span><span class="alert-text" style="font-size:0.78rem">${r.text}</span>`;
+       flagsEl.appendChild(div);
+       if (window.TSMMemory) {
++        const riskConf = Number.isFinite(r.confidence) ? r.confidence : null;
++        if (riskConf === null) {
++          console.warn('[compliance-ai-scan] live response omitted "confidence" field for flag — defaulting to 65. Raw item:', r);
++        }
+         window.TSMMemory.registerAnomaly({
+           entityType: 'compliance-flag',
+           entityId: 'ai_risk_' + r.text.slice(0,40).replace(/[^a-z0-9]+/gi,'_').toLowerCase(),
+@@ -2072,7 +2081,7 @@ async function aiScanRisks() {
+           title: r.text,
+           severity: (r.severity || 'medium').toUpperCase(),
+           source: 'compliance-ai-scan',
+-          meta: {}
++          meta: { confidence: riskConf !== null ? riskConf : 65, confidenceDefaulted: riskConf === null }
+         });
+       }
+     });
+diff --git a/html/finops-suite/tsm-rcm-os.html b/html/finops-suite/tsm-rcm-os.html
+index 1b4aba9..d07e398 100644
+--- a/html/finops-suite/tsm-rcm-os.html
++++ b/html/finops-suite/tsm-rcm-os.html
+@@ -1255,12 +1255,23 @@ function renderExecExceptions(){
+       if (!n) return 0;
+       return /m\b/i.test(raw) ? n * 1000000 : (/k\b/i.test(raw) ? n * 1000 : n);
+     }
++    // Prefer the confidence the source module (Vendor/Logistics AI extraction,
++    // or Compliance AI risk scan) already computed and stored in meta. Only
++    // fall back to a fixed number when a module genuinely didn't provide one
++    // (e.g. Compliance's static/demo alerts) — and even then, default lower
++    // for CRITICAL items than the rest of the platform's ~70 default, since
++    // an un-scored critical exception warrants more caution, not less.
++    function rcmExcConfidence(a){
++      const raw = a.meta && a.meta.confidence;
++      return Number.isFinite(raw) ? raw : 60;
++    }
+     const rcmExcAnomalies = open.filter(a => a.severity === 'CRITICAL').map(a => ({
+       id: 'rcm-exc-' + a.id,
+       title: a.title || a.anomalyCode,
+       severity: 'CRIT',
+       exposure: rcmExcExposureNum(a),
+-      confidence: null,
++      confidence: rcmExcConfidence(a),
++      confidenceDefaulted: !Number.isFinite(a.meta && a.meta.confidence),
+       rootCause: a.title || a.anomalyCode,
+       recommendedAction: 'Review in RCM-OS Cross-Module Exceptions — source: ' + (a.source || 'unknown') + '.'
+     }));
+diff --git a/html/logistics/logistics-situation-room.html b/html/logistics/logistics-situation-room.html
+index 65a1b37..24fb717 100644
+--- a/html/logistics/logistics-situation-room.html
++++ b/html/logistics/logistics-situation-room.html
+@@ -518,6 +518,7 @@ const GROQ_MODEL = 'openai/gpt-oss-120b';
+ 
+ // ── STATE ──
+ let relayData = null;
++let lastLogisticsResult = null; // most recent parsed AI JSON (confidence/severity/etc) — kept so pushCollectiveSignal_LOGISTICS() can read real confidence instead of guessing from rendered text
+ let extractionResult = '';
+ let engineFired = false;
+ let decisionWindowSecs = 6 * 3600;
+@@ -729,6 +730,7 @@ Return a JSON object with these exact keys:
+   "runway": "Time until critical failure (e.g. 6 Days)",
+   "incidentLabel": "Short incident title (e.g. Supplier Bankruptcy · Critical)",
+   "severity": "CRITICAL, HIGH, or MEDIUM",
++  "confidence": "Integer 0-100: your confidence in this analysis given the source document's completeness and specificity",
+   "risks": [
+     { "text": "Risk description", "level": "CRITICAL|HIGH|MED", "icon": "⚡" },
+     { "text": "Risk description", "level": "CRITICAL|HIGH|MED", "icon": "⚠" },
+@@ -817,7 +819,12 @@ function registerIncidentInMemory(result) {
+     severity: result.severity,
+     source: 'situation-room',
+     detectedFrom: relayData?.selectedDocType || 'document',
+-    meta: { revenueAtRisk: result.revenueAtRisk, runway: result.runway }
++    meta: {
++      revenueAtRisk: result.revenueAtRisk,
++      runway: result.runway,
++      confidence: Number.isFinite(result.confidence) ? result.confidence : null,
++      confidenceDefaulted: !Number.isFinite(result.confidence)
++    }
+   });
+ 
+   ['revenueAtRisk', 'linesImpacted', 'clientsImpacted', 'runway', 'rootCause'].forEach(field => {
+@@ -857,6 +864,7 @@ function showCrossUploadInsight(anomalyCode, entityId) {
+ 
+ // ── RENDER EXTRACTION ──
+ function renderExtraction(r) {
++  lastLogisticsResult = r;
+   // Incident banner
+   document.getElementById('incLabel').textContent = r.incidentLabel || 'INCIDENT DETECTED';
+   const sevBadge = document.getElementById('incSevBadge');
+@@ -929,6 +937,11 @@ function pushCollectiveSignal_LOGISTICS() {
+     const riskMap = { CRITICAL:'URGENT', HIGH:'RISK', MEDIUM:'WATCH', LOW:'READY' };
+     const riskLevel = riskMap[(riskMatch?.[1]||'').toUpperCase()] || 'WATCH';
+ 
++    const logConf = Number.isFinite(lastLogisticsResult?.confidence) ? lastLogisticsResult.confidence : null;
++    if (logConf === null) {
++      console.warn('[collective-signal] logistics: live response omitted "confidence" field — defaulting to 70. Raw JSON:', lastLogisticsResult);
++    }
++
+     fetch('/api/collective/signal', {
+       method: 'POST',
+       headers: { 'Content-Type': 'application/json' },
+@@ -936,7 +949,8 @@ function pushCollectiveSignal_LOGISTICS() {
+         vertical:     'logistics',
+         warRoom:      'Logistics Situation Room',
+         bnca:         fullBnca.slice(0, 400) || 'Logistics situation analysis complete.',
+-        confidence:   80,
++        confidence:   logConf !== null ? logConf : 70,
++        confidenceDefaulted: logConf === null,
+         riskLevel,
+         topIssue:     fullBnca.split('\n').find(l => l.trim().length > 20) || 'Logistics operational risk detected',
+         ownerLanes:   ['Operations Manager', 'Logistics Director', 'Account Lead'],
+diff --git a/html/supplier-vendor/supplier-vendor-situation-room.html b/html/supplier-vendor/supplier-vendor-situation-room.html
+index 42bd845..b1dcd95 100644
+--- a/html/supplier-vendor/supplier-vendor-situation-room.html
++++ b/html/supplier-vendor/supplier-vendor-situation-room.html
+@@ -520,6 +520,7 @@ const GROQ_MODEL = 'openai/gpt-oss-120b';
+ let relayData = null;
+ let extractionResult = '';
+ let engineFired = false;
++let lastVendorResult = null; // most recent parsed AI JSON (confidence/severity/etc) — kept so pushCollectiveSignal_VENDOR() can read real confidence instead of guessing from rendered text
+ let decisionWindowSecs = 6 * 3600;
+ let windowStart = Date.now();
+ 
+@@ -729,6 +730,7 @@ Return a JSON object with these exact keys:
+   "runway": "Time until critical failure (e.g. 6 Days)",
+   "incidentLabel": "Short incident title (e.g. Supplier Bankruptcy · Critical)",
+   "severity": "CRITICAL, HIGH, or MEDIUM",
++  "confidence": "Integer 0-100: your confidence in this analysis given the source document's completeness and specificity",
+   "risks": [
+     { "text": "Risk description", "level": "CRITICAL|HIGH|MED", "icon": "⚡" },
+     { "text": "Risk description", "level": "CRITICAL|HIGH|MED", "icon": "⚠" },
+@@ -817,7 +819,12 @@ function registerIncidentInMemory(result) {
+     severity: result.severity,
+     source: 'situation-room',
+     detectedFrom: relayData?.selectedDocType || 'document',
+-    meta: { revenueAtRisk: result.revenueAtRisk, runway: result.runway }
++    meta: {
++      revenueAtRisk: result.revenueAtRisk,
++      runway: result.runway,
++      confidence: Number.isFinite(result.confidence) ? result.confidence : null,
++      confidenceDefaulted: !Number.isFinite(result.confidence)
++    }
+   });
+ 
+   ['revenueAtRisk', 'linesImpacted', 'clientsImpacted', 'runway', 'rootCause'].forEach(field => {
+@@ -857,6 +864,7 @@ function showCrossUploadInsight(anomalyCode, entityId) {
+ 
+ // ── RENDER EXTRACTION ──
+ function renderExtraction(r) {
++  lastVendorResult = r;
+   // Incident banner
+   document.getElementById('incLabel').textContent = r.incidentLabel || 'INCIDENT DETECTED';
+   const sevBadge = document.getElementById('incSevBadge');
+@@ -929,6 +937,11 @@ function pushCollectiveSignal_VENDOR() {
+     const riskMap = { CRITICAL:'URGENT', HIGH:'RISK', MEDIUM:'WATCH', LOW:'READY' };
+     const riskLevel = riskMap[(riskMatch?.[1]||'').toUpperCase()] || 'WATCH';
+ 
++    const vendConf = Number.isFinite(lastVendorResult?.confidence) ? lastVendorResult.confidence : null;
++    if (vendConf === null) {
++      console.warn('[collective-signal] vendor: live response omitted "confidence" field — defaulting to 70. Raw JSON:', lastVendorResult);
++    }
++
+     fetch('/api/collective/signal', {
+       method: 'POST',
+       headers: { 'Content-Type': 'application/json' },
+@@ -936,7 +949,8 @@ function pushCollectiveSignal_VENDOR() {
+         vertical:     'vendor',
+         warRoom:      'Supplier/Vendor Management Situation Room',
+         bnca:         fullBnca.slice(0, 400) || 'Supplier/Vendor Management situation analysis complete.',
+-        confidence:   80,
++        confidence:   vendConf !== null ? vendConf : 70,
++        confidenceDefaulted: vendConf === null,
+         riskLevel,
+         topIssue:     fullBnca.split('\n').find(l => l.trim().length > 20) || 'Supplier/Vendor Management operational risk detected',
+         ownerLanes:   ['Operations Manager', 'Supplier/Vendor Management Director', 'Account Lead'],
