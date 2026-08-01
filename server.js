@@ -1706,7 +1706,8 @@ app.get('/', (_req, res) => {
 /* ════════════════════════════════════════════════════════════════
    DOC ROUTER — paste this block into server.js
    Placement: anywhere after `const app = express()` and after
-   `app.use(express.json(...))`, before `app.listen(...)`.
+   `app.use(express.json(...))`, before `
+app.listen(...)`.
    Requires: process.env.GROQ_API_KEY already set (same as other nodes).
    Requires: Node 18+ for global fetch (already a project requirement).
 ════════════════════════════════════════════════════════════════ */
@@ -3722,6 +3723,12 @@ app.use((err, req, res, next) => {
   if (res.headersSent) return next(err);
   res.status(500).json({ ok: false, error: err.message || 'Internal server error' });
 });
+
+// TSM Screenshot Assets
+app.use(
+  "/screenshots",
+  express.static(path.join(__dirname, "public/screenshots"))
+);
 
 // ── START ─────────────────────────────────────────────────────────────────────
 const server = app.listen(PORT, '0.0.0.0', () => {
