@@ -1482,6 +1482,16 @@ async function escalateToExecPortal(){
       const hcCsExposureNum = hcCsParseExposureNumber(kpi.totalAtRisk || live.revenueAtRisk);
       const hcCsRisk = hcCsSeverityForExposure(hcCsExposureNum);
       const hcCsHasUrgent = Array.isArray(payload.alerts?.urgent) && payload.alerts.urgent.length > 0;
+      // Was previously hardcoded to 78 on every escalation regardless of
+      // what the live Strategist Score DOM actually showed. live.strategistScore
+      // is the real deterministic score already computed for this page (see
+      // the "Pull REAL values straight off the live strategist DOM" block
+      // above) — reuse it instead of a static number.
+      const hcCsConfParsed = parseInt(live.strategistScore, 10);
+      const hcCsConf = Number.isFinite(hcCsConfParsed) ? hcCsConfParsed : 78;
+      if (!Number.isFinite(hcCsConfParsed)) {
+        console.warn('[collective-signal] healthcare: strat-score unavailable ("' + live.strategistScore + '"), defaulting confidence to 78');
+      }
       fetch('/api/collective/signal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1489,7 +1499,7 @@ async function escalateToExecPortal(){
           vertical: 'healthcare',
           warRoom: 'HC Main Strategist',
           bnca: (bnca.revenuePosition || bnca.denialIntel || '').slice(0, 400) || 'Healthcare strategist synthesis complete.',
-          confidence: 78,
+          confidence: hcCsConf,
           riskLevel: hcCsRisk,
           topIssue: (payload.alerts?.urgent?.[0]) || ('Revenue at risk ' + (live.revenueAtRisk || 'unspecified') + ', denial hotspot ' + (live.denialRate || 'unspecified')),
           ownerLanes: ['HC-Billing', 'HC-Compliance', 'Executive Portal'],
