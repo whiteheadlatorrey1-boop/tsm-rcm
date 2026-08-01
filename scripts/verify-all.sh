@@ -9,6 +9,12 @@
 #      round-trip, per sector, screenshots to scripts/screenshots/).
 #      Needs `npm install puppeteer` once, and a Chromium binary
 #      (blocked in the sandbox that wrote this; works in your Codespace).
+#   3. validate-patch.js — structural HTML check on every currently
+#      modified .html file (vs HEAD): catches the recurring missing-
+#      <script>-include / premature-</body></html> injector bug and dead
+#      local script/href targets. No deps beyond node. Always runs. Run
+#      `npm run validate-patch:all` separately to scan the whole repo
+#      (large pre-existing backlog — not part of this gate).
 #
 # Usage:
 #   scripts/verify-all.sh
@@ -27,7 +33,7 @@ TARGET="${1:-$REPO_ROOT/html/war-rooms/bpo/bpo-internal1.html}"
 overall_status=0
 
 echo "════════════════════════════════════════════════════════════"
-echo "  1/2  Mission runtime (mission-model.js / mission-store.js)"
+echo "  1/3  Mission runtime (mission-model.js / mission-store.js)"
 echo "════════════════════════════════════════════════════════════"
 if node "$SCRIPT_DIR/verify-mission-runtime.js"; then
   echo "[PASS] verify-mission-runtime.js"
@@ -38,7 +44,7 @@ fi
 
 echo
 echo "════════════════════════════════════════════════════════════"
-echo "  2/2  Mission Control DOM/UI (bpo-internal1.html via Puppeteer)"
+echo "  2/3  Mission Control DOM/UI (bpo-internal1.html via Puppeteer)"
 echo "════════════════════════════════════════════════════════════"
 
 if [ ! -f "$TARGET" ]; then
@@ -56,6 +62,17 @@ else
     echo "[FAIL] verify-mission-control.js"
     overall_status=1
   fi
+fi
+
+echo
+echo "════════════════════════════════════════════════════════════"
+echo "  3/3  Patch structural validator (modified .html files vs HEAD)"
+echo "════════════════════════════════════════════════════════════"
+if node "$SCRIPT_DIR/validate-patch.js"; then
+  echo "[PASS] validate-patch.js"
+else
+  echo "[FAIL] validate-patch.js"
+  overall_status=1
 fi
 
 echo
