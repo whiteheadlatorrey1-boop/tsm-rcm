@@ -499,7 +499,7 @@ body::before{content:'';position:fixed;top:0;right:0;width:600px;height:400px;ba
     <div><div class="d-title" id="d1-title">Run War Room analysis to populate decisions</div><div class="d-sub" id="d1-sub">Load a claim/policy document in the Insurance War Room and fire 6-engine analysis</div></div>
     <div class="d-amount" id="d1-amount">—</div>
     <div class="d-urgency" id="d1-urgency">—</div>
-    <button class="d-action" onclick="nav('insurance-war-room.html')">WAR ROOM</button>
+    <button class="d-action" id="d1-action-btn" onclick="nav('insurance-war-room.html')">WAR ROOM</button>
   </div>
   <div class="decision-row">
     <div class="d-badge badge-esc">ESCALATE</div>
@@ -814,6 +814,29 @@ function populateFromRelay(d) {
   document.getElementById('sbRelay').textContent = docType + ' · Relay active';
   document.getElementById('syncLabel').textContent = 'Synced ' + new Date().toLocaleTimeString('en-US',{hour12:false});
   document.getElementById('bncaStamp').textContent = 'Last run ' + new Date().toLocaleTimeString('en-US',{hour12:false});
+
+  // Real EXEC_CONFIRMED write (Convention A shape) — read by the war
+  // room's chain-status-bar and core/tsm-enforcer.js health audit.
+  // Previously the AUTHORIZE row's button always linked back to the war
+  // room; nothing ever set TSM_EXEC_CONFIRMED_tsm-insurance through any
+  // code path. Once a strategist relay lands, rewire it to a real
+  // authorization action instead.
+  const d1Btn = document.getElementById('d1-action-btn');
+  if (d1Btn && !d1Btn.disabled) {
+    d1Btn.textContent = 'AUTHORIZE';
+    d1Btn.onclick = tsmConfirmExec;
+  }
+}
+
+function tsmConfirmExec(){
+  try {
+    localStorage.setItem('TSM_EXEC_CONFIRMED_tsm-insurance', JSON.stringify({
+      vertical: 'tsm-insurance',
+      timestamp: Date.now()
+    }));
+  } catch(e) { console.warn('[exec-confirmed] insurance write error:', e); }
+  const btn = document.getElementById('d1-action-btn');
+  if (btn) { btn.textContent = 'AUTHORIZED \u2713'; btn.disabled = true; }
 }
 
 // ═══════════════════════════════════════════════════
