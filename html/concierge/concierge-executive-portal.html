@@ -329,6 +329,30 @@ function renderAirbnbRisks(airbnbRisks){
   </div>`;
 }
 
+function renderExplainTop(explainItems){
+  const items = (explainItems||[]).slice(0, 4);
+  if(!items.length){
+    return `<div class="sec"><div class="sec-hdr"><span class="lbl">WHY THESE ITEMS ARE FLAGGED</span></div><div class="no-items">Nothing currently flagged.</div></div>`;
+  }
+  const catLabel = {
+    maintenance: 'Maintenance', ota_overcharge: 'OTA Overcharge', compliance: 'Compliance',
+    iot: 'IoT Sensor', reservation: 'Reservation', front_desk: 'Front Desk', vip: 'VIP Readiness',
+    housekeeping: 'Housekeeping', staffing: 'Staffing', incident: 'Incident', airbnb: 'Airbnb/STR'
+  };
+  const rows = items.map((it, idx) => `
+    <div class="risk-item">
+      <div class="risk-rank">${idx+1}</div>
+      <div class="risk-body">
+        <div class="risk-title"><b>${escapeHtml(catLabel[it.category] || it.category)}</b>${it.severity ? ' &mdash; ' + escapeHtml(it.severity.toUpperCase()) : ''}</div>
+        <div class="risk-action">${escapeHtml(it.explain)}</div>
+      </div>
+    </div>`).join('');
+  return `<div class="sec">
+    <div class="sec-hdr"><span class="lbl">WHY THESE ITEMS ARE FLAGGED</span><span class="sec-hdr-note">top ${items.length} of ${(explainItems||[]).length}, by severity</span></div>
+    ${rows}
+  </div>`;
+}
+
 function renderPortfolio(portfolio){
   if(!portfolio || !portfolio.length) return '';
   const cards = portfolio.map(p => `
@@ -364,6 +388,7 @@ function render(){
 
   html += renderRiskRegister(data.maintenance_breaches, data.compliance_risk);
   html += renderAirbnbRisks(data.airbnb_risks);
+  html += renderExplainTop(data.explain_items);
   html += renderPortfolio(data.portfolio);
   html += renderLiveMissionsRegister();
 

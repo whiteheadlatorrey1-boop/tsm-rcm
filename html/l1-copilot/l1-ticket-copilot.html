@@ -80,6 +80,13 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
 .ai-output{background:var(--bg3);border:1px solid var(--border);padding:12px;font-size:11px;line-height:1.7;color:var(--text);white-space:pre-wrap;min-height:60px}
 .ai-output.loading{color:var(--text-dim)}
 .ai-output .err{color:var(--red)}
+#explainPanel:empty{display:none}
+.explain-panel{margin-top:10px;border:1px solid var(--border);border-radius:6px;padding:10px 12px;background:var(--bg3)}
+.explain-title{font-size:9px;letter-spacing:1.2px;color:var(--text-dim);text-transform:uppercase;margin-bottom:8px}
+.explain-row{padding:5px 0;border-top:1px solid var(--border)}
+.explain-row:first-of-type{border-top:none}
+.explain-label{font-size:9px;font-weight:700;letter-spacing:.8px;color:var(--text-dim);text-transform:uppercase;display:block;margin-bottom:2px}
+.explain-text{font-size:11px;line-height:1.6;color:var(--text)}
 
 .analysis-grid{display:grid;grid-template-columns:2fr 1fr;gap:12px}
 .analysis-kpis{display:grid;grid-template-columns:1fr 1fr;gap:8px}
@@ -264,6 +271,7 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
               <div class="kpi-card"><div class="kpi-label">Business Impact</div><div class="kpi-value" id="kpiImpact" style="font-size:11px">--</div></div>
             </div>
           </div>
+          <div id="explainPanel"></div>
           <div class="btn-row">
             <button class="btn btn-outline" id="btnReanalyze">RE-RUN ANALYSIS</button>
             <button class="btn btn-ghost" id="btnSendToTroubleshoot">SEND TO GUIDED TROUBLESHOOTING →</button>
@@ -1381,6 +1389,7 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
     document.getElementById('aiOutput').className = 'ai-output';
     document.getElementById('aiOutput').textContent = 'Run AI analysis from the Ticket tab to populate this panel.';
     ['kpiConfidence','kpiSeverity','kpiSystem','kpiImpact'].forEach(id => document.getElementById(id).textContent = '--');
+    document.getElementById('explainPanel').innerHTML = '';
     const notesEl = document.getElementById('notesArea');
     notesEl.value = ''; notesEl.dataset.manual = '';
     renderChecklist();
@@ -1428,6 +1437,41 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
     }
   }
 
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  // getExplainItems: cites only the real ticket fields the /analyze route
+  // actually sent to the model, plus the model's own confidence/severity/
+  // likely_causes output -- nothing here is invented narrative.
+  function getExplainItems(a){
+    const ticket = {
+      incident: document.getElementById('tkIncident').value,
+      priority: document.getElementById('tkPriority').value,
+      requester: document.getElementById('tkRequester').value,
+      department: document.getElementById('tkDept').value,
+      asset: document.getElementById('tkAsset').value,
+      manufacturer: document.getElementById('tkMfr').value,
+      model: document.getElementById('tkModel').value,
+      warranty: document.getElementById('tkWarranty').value
+    };
+    const provided = Object.entries(ticket).filter(([,v]) => v && String(v).trim()).map(([k]) => k);
+    const causes = Array.isArray(a.likely_causes) ? a.likely_causes.join('; ') : (a.likely_causes || 'none identified');
+    return [
+      { label: 'Confidence', detail: `${a.confidence != null ? a.confidence + '%' : 'unscored'} — self-reported by the model, based on the description text and the ${provided.length} ticket field(s) that were filled in.` },
+      { label: 'Severity driver', detail: `${a.severity || 'unscored'} severity, driven by: ${causes}.` },
+      { label: 'Affected system', detail: `${a.affected_system || 'unspecified'}${ticket.asset ? ' — asset ' + ticket.asset : ''}${ticket.manufacturer ? ' (' + ticket.manufacturer + (ticket.model ? ' ' + ticket.model : '') + ')' : ''}.` },
+      { label: 'Grounded on', detail: provided.length ? `${provided.length} ticket field(s) provided: ${provided.join(', ')}.` : 'No structured ticket fields were filled in — analysis is based on the pasted description text only.' }
+    ];
+  }
+
+  function renderExplainItems(items){
+    return `<div class="explain-panel">
+      <div class="explain-title">Why this assessment</div>
+      ${items.map(it => `<div class="explain-row"><span class="explain-label">${escapeHtml(it.label)}</span><div class="explain-text">${escapeHtml(it.detail)}</div></div>`).join('')}
+    </div>`;
+  }
+
   function renderAnalysis(a){
     const out = document.getElementById('aiOutput');
     out.className = 'ai-output';
@@ -1442,6 +1486,7 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
     sevEl.className = 'kpi-value ' + (a.severity === 'Critical' || a.severity === 'High' ? 'bad' : a.severity === 'Medium' ? 'warn' : 'good');
     document.getElementById('kpiSystem').textContent = a.affected_system || '--';
     document.getElementById('kpiImpact').textContent = a.business_impact || '--';
+    document.getElementById('explainPanel').innerHTML = renderExplainItems(getExplainItems(a));
   }
 
   // ── Auto-fill ticket fields from what the AI found in the pasted description ──
