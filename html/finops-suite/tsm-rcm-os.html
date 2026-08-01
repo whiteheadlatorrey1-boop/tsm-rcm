@@ -1234,6 +1234,45 @@ function renderExecExceptions(){
       </div>
     </div>`).join('')}</div>`;
 
+  // ── SENTINEL PUSH ──────────────────────────────────────────────
+  // Closes the RCM-OS -> Sentinel gap: mirrors the same
+  // TSM_<VERTICAL>_STRATEGIST_RELAY convention the FinOps and BPO
+  // strategists already write to, so a CRITICAL exception opened here
+  // (Compliance/Vendor/Logistics via TSMMemory) shows up in Sentinel
+  // Center's cross-vertical posture score, not just in Mission Core.
+  // Merges rather than overwrites, so it doesn't clobber the FinOps
+  // strategist's own synthesis entry in the same relay key — each
+  // RCM-OS anomaly is tagged with an 'rcm-exc-' id prefix and only
+  // that slice is replaced/pruned on each render, independent of
+  // whether Mission Core is loaded.
+  try {
+    const sentKey = 'TSM_FINOPS_STRATEGIST_RELAY';
+    const sentExisting = JSON.parse(localStorage.getItem(sentKey) || 'null') || {};
+    const nonRcmExc = (sentExisting.anomalies || []).filter(x => !String(x.id || '').startsWith('rcm-exc-'));
+    function rcmExcExposureNum(a){
+      const raw = (a.meta && (a.meta.exposure || a.meta.revenueAtRisk)) || '';
+      const n = parseFloat(String(raw).replace(/[^0-9.]/g, ''));
+      if (!n) return 0;
+      return /m\b/i.test(raw) ? n * 1000000 : (/k\b/i.test(raw) ? n * 1000 : n);
+    }
+    const rcmExcAnomalies = open.filter(a => a.severity === 'CRITICAL').map(a => ({
+      id: 'rcm-exc-' + a.id,
+      title: a.title || a.anomalyCode,
+      severity: 'CRIT',
+      exposure: rcmExcExposureNum(a),
+      confidence: null,
+      rootCause: a.title || a.anomalyCode,
+      recommendedAction: 'Review in RCM-OS Cross-Module Exceptions — source: ' + (a.source || 'unknown') + '.'
+    }));
+    sentExisting.anomalies = nonRcmExc.concat(rcmExcAnomalies);
+    sentExisting.generatedAt = new Date().toISOString();
+    localStorage.setItem(sentKey, JSON.stringify(sentExisting));
+    window.dispatchEvent(new CustomEvent('TSM_SENTINEL_REFRESH'));
+  } catch (sentErr) {
+    console.warn('[sentinel-push] rcm-os cross-module exceptions error:', sentErr);
+  }
+  // ── END SENTINEL PUSH ─────────────────────────────────────────
+
   if(!(window.TSMMissionModel && window.TSMMissionStore)){
     console.warn('Mission Core not loaded — skipping mission creation for critical exceptions.');
     return;
