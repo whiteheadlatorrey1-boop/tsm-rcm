@@ -1478,6 +1478,12 @@ function pushCollectiveSignal_CON() {
     const scoreM = bncaText.match(/OVERALL\s*RISK\s*SCORE[:\s]+(\d+)/i);
     const score = scoreM ? parseInt(scoreM[1]) : 68;
     const riskLevel = score >= 80 ? 'URGENT' : score >= 60 ? 'RISK' : score >= 40 ? 'WATCH' : 'READY';
+    // Confidence in the pushed signal isn't a flat number -- it depends on
+    // whether Engine 06 actually returned a parsable "OVERALL RISK SCORE"
+    // line. When the regex misses, score silently falls back to 68 and
+    // riskLevel is built on that guess, so the signal deserves a visibly
+    // lower confidence rather than the same number every time.
+    const pushConfidence = scoreM ? 90 : 55;
 
     // Parse financial exposure
     const dollarAmounts = [...(bncaText.matchAll(/\$[\d,.]+(?:\s*[MK])?(?:\s*(?:exposure|at risk|TBD|reserve))?/gi))];
@@ -1498,7 +1504,7 @@ function pushCollectiveSignal_CON() {
         vertical:     'construction',
         warRoom:      'Construction War Room',
         bnca:         bncaText.slice(0, 400) || 'Construction 6-engine BNCA complete.',
-        confidence:   77,
+        confidence:   pushConfidence,
         riskLevel,
         topIssue,
         ownerLanes:   ['Project Manager', 'Project Accountant', 'Construction Attorney'],
@@ -1958,12 +1964,12 @@ FIELDOPS = safety, OSHA, schedule, crew, RFI, site conditions, equipment, subcon
 Item: "${String(line).replace(/"/g, "'")}"`;
     const answer = await callGroq(prompt, 4);
     const upper = (answer || '').toUpperCase();
-    if (upper.includes('PERMIT')) return 'PERMITS';
-    if (upper.includes('FIELD')) return 'FIELDOPS';
+    if (upper.includes('PERMIT')) return { target: 'PERMITS', viaAI: true };
+    if (upper.includes('FIELD')) return { target: 'FIELDOPS', viaAI: true };
   } catch (e) {
     console.warn('[TSM] Classification call failed, using keyword fallback:', e);
   }
-  return /permit|zoning|\bcity\b|entitlement|licens/i.test(line) ? 'PERMITS' : 'FIELDOPS';
+  return { target: /permit|zoning|\bcity\b|entitlement|licens/i.test(line) ? 'PERMITS' : 'FIELDOPS', viaAI: false };
 }
 
 function tsmRenderMissionCard(panel, mission, permitsItems, fieldOpsItems) {
@@ -2023,11 +2029,19 @@ async function tsmLaunchMission() {
     });
 
     const permitsItems = [], fieldOpsItems = [], findings = [];
+    let aiClassifiedCount = 0;
     for (const line of lines) {
-      const target = await tsmClassifyDefectLine(line);
+      const { target, viaAI } = await tsmClassifyDefectLine(line);
+      if (viaAI) aiClassifiedCount++;
       (target === 'PERMITS' ? permitsItems : fieldOpsItems).push(line);
       findings.push({ title: line.slice(0, 140), severity: 'high', detail: line });
     }
+    // Confidence reflects how many lines the routing actually got from the
+    // AI classifier vs. the keyword fallback (used when the call fails) --
+    // real data completeness, not a flat guess every time.
+    const routingConfidence = lines.length
+      ? Math.round(55 + (aiClassifiedCount / lines.length) * 40)
+      : 55;
 
     TSMMission.publishAnalysis(mission.id, {
       findings,
@@ -2035,7 +2049,7 @@ async function tsmLaunchMission() {
         permitsItems.length ? `Route ${permitsItems.length} item(s) to Permits & Proposals` : null,
         fieldOpsItems.length ? `Route ${fieldOpsItems.length} item(s) to Field & Document Ops` : null
       ].filter(Boolean),
-      confidence: 80
+      confidence: routingConfidence
     });
     TSMMission.addTimeline(mission.id, { event: 'mission_routed', data: { permits: permitsItems.length, fieldOps: fieldOpsItems.length } });
     const completed = TSMMission.complete(mission.id, { outcome: 'routed', metrics: { permitsCount: permitsItems.length, fieldOpsCount: fieldOpsItems.length } });

@@ -403,25 +403,37 @@ function buildSentinelAnomalies(){
   const kpis = engine.computeKpis();
   const ota = engine.getOtaExposure();
   const anomalies = [];
+  // Most of these anomalies are plain count thresholds (kpis.X > 0) --
+  // deterministically true whenever they fire, with no rate card or
+  // optional field behind them, so there's no completeness gap to signal.
+  // A flat, high confidence here is honest; the varying 80/85/90 values
+  // this replaced were arbitrary flavor, not a real certainty signal.
+  const COUNT_ANOMALY_CONFIDENCE = 95;
   if (kpis.maint_tickets_over_sla > 0) {
     anomalies.push({
       id: 'hotelops-maint-sla',
       title: 'Maintenance Tickets Past SLA',
       severity: kpis.urgent_maint_tickets > 0 ? 'CRIT' : 'HIGH',
       exposure: 0,
-      confidence: 90,
+      confidence: COUNT_ANOMALY_CONFIDENCE,
       rootCause: `${kpis.maint_tickets_over_sla} of ${kpis.open_maint_tickets} open tickets are past their SLA clock, ${kpis.urgent_maint_tickets} marked urgent.`,
       recommendedAction: 'Prioritize urgent-severity rooms; confirm guest-impact rooms are relocated or comped.'
     });
   }
   if (ota.period_total > 0) {
+    // Unlike the count-based anomalies above, this exposure is computed
+    // from a per-item rate (charged_pct vs contracted_pct). If any item
+    // behind the total is missing contracted_pct, that item's overcharge
+    // defaulted from a fallback rate of 0 rather than a disclosed contract
+    // term -- worth a lower confidence rather than treating it as solid.
+    const missingContractedRate = ota.items.some(it => it.contracted_pct == null);
     anomalies.push({
       id: 'hotelops-ota-overcharge',
       title: 'OTA Commission Overcharge',
       severity: ota.period_total > 1000 ? 'HIGH' : 'MED',
       exposure: ota.annualized_estimate,
-      confidence: 85,
-      rootCause: `Charged commission rate exceeds contracted rate, ${fmtMoney(ota.period_total).replace('&mdash;','—')} this period.`,
+      confidence: missingContractedRate ? 55 : 90,
+      rootCause: `Charged commission rate exceeds contracted rate, ${fmtMoney(ota.period_total).replace('&mdash;','—')} this period.` + (missingContractedRate ? ' One or more listings is missing its contracted rate — exposure may be understated.' : ''),
       recommendedAction: 'Audit OTA contract terms and file a commission dispute for the variance.'
     });
   }
@@ -431,7 +443,7 @@ function buildSentinelAnomalies(){
       title: 'Compliance Items At Risk',
       severity: 'HIGH',
       exposure: 0,
-      confidence: 90,
+      confidence: COUNT_ANOMALY_CONFIDENCE,
       rootCause: `${kpis.compliance_items_at_risk} compliance item(s) due within 30 days (I-9 re-verification, licensing).`,
       recommendedAction: 'Assign HR/ops owner to clear before due date.'
     });
@@ -442,7 +454,7 @@ function buildSentinelAnomalies(){
       title: 'Active IoT Sensor Alerts',
       severity: kpis.urgent_iot_alerts > 0 ? 'CRIT' : 'HIGH',
       exposure: 0,
-      confidence: 80,
+      confidence: COUNT_ANOMALY_CONFIDENCE,
       rootCause: `${kpis.active_iot_alerts} sensor alert(s) active, ${kpis.urgent_iot_alerts} marked urgent.`,
       recommendedAction: 'Dispatch engineering to confirm sensor readings and open a maintenance ticket if unaddressed.'
     });
@@ -453,7 +465,7 @@ function buildSentinelAnomalies(){
       title: 'Reservation Risks — Payment / Unconfirmed / Waitlist',
       severity: kpis.reservation_payment_failures > 0 ? 'CRIT' : 'HIGH',
       exposure: 0,
-      confidence: 85,
+      confidence: COUNT_ANOMALY_CONFIDENCE,
       rootCause: `${kpis.reservation_risks} reservation(s) at risk, ${kpis.reservation_payment_failures} with failed payment.`,
       recommendedAction: 'Front desk/reservations to re-run failed cards and confirm unconfirmed bookings before arrival.'
     });
@@ -464,7 +476,7 @@ function buildSentinelAnomalies(){
       title: 'Front Desk Wait-Time SLA Breaches',
       severity: 'HIGH',
       exposure: 0,
-      confidence: 85,
+      confidence: COUNT_ANOMALY_CONFIDENCE,
       rootCause: `${kpis.front_desk_breaches} guest(s) in queue past check-in/check-out/request SLA.`,
       recommendedAction: 'Pull additional front desk staff or open a secondary check-in line.'
     });
@@ -475,7 +487,7 @@ function buildSentinelAnomalies(){
       title: 'VIP Arrival Readiness Gaps',
       severity: 'HIGH',
       exposure: 0,
-      confidence: 90,
+      confidence: COUNT_ANOMALY_CONFIDENCE,
       rootCause: `${kpis.vip_readiness_gaps} VIP arrival(s) missing amenities staging or an assigned host.`,
       recommendedAction: 'Confirm amenities and host assignment for each VIP before arrival window.'
     });
@@ -486,7 +498,7 @@ function buildSentinelAnomalies(){
       title: 'Housekeeping Task SLA Breaches',
       severity: 'MED',
       exposure: 0,
-      confidence: 85,
+      confidence: COUNT_ANOMALY_CONFIDENCE,
       rootCause: `${kpis.housekeeping_breaches} task(s) past SLA across turnover/deep-clean/inspection/linen.`,
       recommendedAction: 'Reassign or reprioritize overdue tasks; check room-ready status against arrivals.'
     });
@@ -497,7 +509,7 @@ function buildSentinelAnomalies(){
       title: 'Staffing Gaps vs Required Headcount',
       severity: 'MED',
       exposure: 0,
-      confidence: 80,
+      confidence: COUNT_ANOMALY_CONFIDENCE,
       rootCause: `${kpis.staffing_gaps} shift(s) understaffed relative to required headcount.`,
       recommendedAction: 'Call in on-call staff or approve overtime for the affected department/shift.'
     });
@@ -508,7 +520,7 @@ function buildSentinelAnomalies(){
       title: 'Open Incidents',
       severity: kpis.escalated_incidents > 0 ? 'CRIT' : 'HIGH',
       exposure: 0,
-      confidence: 90,
+      confidence: COUNT_ANOMALY_CONFIDENCE,
       rootCause: `${kpis.open_incidents} open incident(s), ${kpis.escalated_incidents} past response-time SLA.`,
       recommendedAction: 'Escalate past-SLA incidents to duty manager immediately.'
     });
@@ -536,7 +548,7 @@ function buildSentinelAnomalies(){
       title: 'Airbnb/STR Listing Risks',
       severity: airbnbRisks.items.some(it => it.severity === 'urgent') ? 'CRIT' : (airbnbRisks.items.some(it => it.severity === 'high') ? 'HIGH' : 'MED'),
       exposure: 0,
-      confidence: 85,
+      confidence: COUNT_ANOMALY_CONFIDENCE,
       rootCause: `${airbnbRisks.at_risk} of ${airbnbRisks.total_listings} STR listing(s) flagged. ${detailed}`,
       recommendedAction: 'Review the Airbnb/STR Operations panel and clear each flagged item before the next guest interaction.'
     });

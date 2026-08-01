@@ -131,6 +131,14 @@ class TSMApprovalEngine {
   }
 
   /* ── Explainability ─────────────────────────────────────────────────────── */
+  // Confidence isn't a model guess -- the SLA breach and escalation checks
+  // are deterministic. It signals data completeness: whether the record
+  // has the identifying field (type) the claim names, vs. a generic
+  // "request" fallback.
+  _identConfidence(base, ok) {
+    return ok ? base : Math.max(60, base - 25);
+  }
+
   getExplainItems() {
     const items = [];
     const byId = {};
@@ -143,7 +151,7 @@ class TSMApprovalEngine {
       items.push({
         id: 'req-' + b.request_id,
         claim: `${b.request_id} (${r.type || 'request'}${amount ? ', $' + amount.toLocaleString() : ''}) is ${b.hours_over}h over SLA in "${b.stage}"`,
-        confidence: 95,
+        confidence: this._identConfidence(95, !!r.type),
         severity,
         impact: amount ? ('$' + amount.toLocaleString() + ' held up pending approval') : '',
         rationale: `Submitted ${r.submitted_at || 'unknown date'} as a "${r.type || 'request'}", carrying a defined SLA window for that type. ` +
@@ -164,7 +172,7 @@ class TSMApprovalEngine {
       items.push({
         id: 'esc-' + r.request_id,
         claim: `${r.request_id} (${r.type || 'request'}) is escalated` + (amount ? ` with $${amount.toLocaleString()} pending` : ''),
-        confidence: 90,
+        confidence: this._identConfidence(90, !!r.type),
         severity: amount >= 50000 ? 'high' : 'med',
         impact: delegation.on_leave ? `Routed to delegate \u2014 approver ${r.approver} is on leave` : (amount ? '$' + amount.toLocaleString() + ' awaiting escalated review' : ''),
         rationale: `"${r.type || 'This request'}" was escalated to ${r.approver || 'an approver'}. ${delegation.message}`,

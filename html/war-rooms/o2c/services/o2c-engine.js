@@ -194,7 +194,7 @@
         items.push({
           id: 'order-' + b.order_id,
           claim: `${b.order_id} (${b.customer}) is $${Number(b.value || 0).toLocaleString()} stalled ${b.hours_over}h past its "${b.stage}" SLA`,
-          confidence: 92,
+          confidence: b.customer ? 92 : 65,
           severity,
           impact: b.value ? ('$' + Number(b.value).toLocaleString() + ' order value delayed in cash cycle') : '',
           rationale: `Order ${b.order_id} for ${b.customer} entered the "${b.stage}" stage ${b.hours_in_stage}h ago, ` +
