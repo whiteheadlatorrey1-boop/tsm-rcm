@@ -1052,7 +1052,25 @@ PRINCIPAL ESCALATION: [Yes/No] — [reason]`;
   }
   let mission = null;
   let collapsed = false;
-  function loadMission() { try { const raw = localStorage.getItem(STORAGE_KEY); if (!raw) return null; return JSON.parse(raw); } catch (e) { return null; } }
+  function loadMission() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return null;
+      const m = JSON.parse(raw);
+      // tsm_active_mission is a single key shared by every war room that
+      // loads tsm-mission-conductor.js (Insurance, Legal, Real Estate), and
+      // insurance-war-room.html also writes its own missions here directly.
+      // Only show it if it actually belongs to Insurance — otherwise
+      // whichever vertical last created a mission bleeds into this panel.
+      // Two prefix conventions exist for this vertical ('INSURANCE-' from
+      // the shared conductor, 'INS-' from insurance-war-room.html's own
+      // escalateToStrategist()) — both are unique to Insurance, so a
+      // startsWith('INS') check covers both safely.
+      const missionId = (m && m.missionId ? m.missionId : '').toUpperCase();
+      if (!missionId.startsWith('INS')) return null;
+      return m;
+    } catch (e) { return null; }
+  }
   function saveMission(m) { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(m)); } catch (e) {} }
   function getProgress(steps) { if (!steps || !steps.length) return { done: 0, total: 0, pct: 0 }; const done = steps.filter(s => s.status === 'done').length; return { done, total: steps.length, pct: Math.round((done / steps.length) * 100) }; }
   function escHtml(str) { return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -1256,22 +1274,13 @@ function insXPParseExplain(raw){
 <script src="/html/tsm-insurance/public/js/tsm-mission-guide.js"></script>
 
 <script>
-/* TSM AUTO-RUN STRATEGIST */
-(function(){
-  try {
-    const raw = sessionStorage.getItem('TSM_INS_WAR_RELAY') || localStorage.getItem('TSM_INS_WAR_RELAY') || localStorage.getItem('tsm_ins_war_relay');
-    if (!raw) return;
-    if (localStorage.getItem('tsm_auto_mode') === 'off') return;
-    // Only auto-run once per fresh war-room escalation. Without this, every
-    // reopen/reload of this tab re-fires the full chain against whatever
-    // relay data happens to still be sitting in storage from a prior visit.
-    const relayTimestamp = (JSON.parse(raw) || {}).timestamp;
-    if (!relayTimestamp) return;
-    if (localStorage.getItem('tsm_ins_last_autorun_ts') === relayTimestamp) return;
-    localStorage.setItem('tsm_ins_last_autorun_ts', relayTimestamp);
-    setTimeout(() => { if (typeof runStrategist === 'function') runStrategist(); }, 1500);
-  } catch(e) { console.warn('[TSM AutoRun Strategist]', e); }
-})();
+/* TSM AUTO-RUN STRATEGIST — removed.
+   This used to fire runStrategist() automatically whenever relay data was
+   sitting in storage. Even gated to "once per relay timestamp," it still
+   ran without any explicit user action on this page, and could re-fire on
+   fresh browser sessions where the guard state itself didn't yet exist.
+   The strategist chain now only ever runs when the user clicks
+   "RUN STRATEGIST CHAIN" below. */
 </script>
   <script src="/js/core/tsm-kernel-upgrade.js"></script>
   <script src="/shared/tsm-exec-kit-producer.js"></script>
