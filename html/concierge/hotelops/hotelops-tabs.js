@@ -29,6 +29,15 @@
         panel.innerHTML =
           '<div class="panel"><div class="panel-hdr">MAINTENANCE</div>' +
           '<div class="panel-body" id="panel-maintenance-body" style="padding:0;">Loading&hellip;</div></div>';
+      } else if (slug === 'document-intake') {
+        // The real Document Intake & AI Analysis panel already lives in
+        // the Guest Intelligence tab (it was the page's original default
+        // content, wrapped into tabpanel-guest-intelligence above). Don't
+        // duplicate it here — that would clone #docIntake/#btnAnalyze/
+        // #btnRelay/#aiOutput ids and break the click handlers already
+        // wired to them. Just skip creating a panel for this slug; the
+        // click handler below redirects it to the Guest Intelligence panel.
+        return;
       } else if (slug === 'reservations') {
         panel.innerHTML =
           '<div class="panel"><div class="panel-hdr">RESERVATIONS</div>' +
@@ -88,7 +97,12 @@
         mod.classList.add('active');
         document.querySelectorAll('#main .tabpanel').forEach(function (p) { p.style.display = 'none'; });
         var slug = mod.getAttribute('data-tab');
-        var target = document.getElementById('tabpanel-' + slug);
+        // Document Intake has no panel of its own — its content lives in
+        // the Guest Intelligence tab (see comment above). Show that panel
+        // instead, while still marking Document Intake as the active nav
+        // item so the sidebar reflects what the user clicked.
+        var targetSlug = slug === 'document-intake' ? firstSlug : slug;
+        var target = document.getElementById('tabpanel-' + targetSlug);
         if (target) target.style.display = '';
         if (slug === 'maintenance' && typeof renderMaintenanceTab === 'function') {
           renderMaintenanceTab();
