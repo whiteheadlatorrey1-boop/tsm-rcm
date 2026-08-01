@@ -14,7 +14,7 @@
     if(path.includes("construction")) return "construction";
     if(path.includes("healthcare") || path.includes("hc-")) return "healthcare";
     if(path.includes("insurance") || path.includes("az-ins")) return "insurance";
-    if(path.includes("finops") || path.includes("financial")) return "finops";
+    if(path.includes("finops") || path.includes("financial") || path.includes("supplier-vendor") || path.includes("logistics")) return "finops";
     if(path.includes("legal")) return "legal";
     if(path.includes("tax")) return "tax";
     if(path.includes("bpo")) return "bpo";
