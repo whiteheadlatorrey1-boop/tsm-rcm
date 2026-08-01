@@ -785,6 +785,15 @@ function parseAndRenderStrategy(raw) {
     try {
       const jsonStr = jsonMatch[1].trim().replace(/```json|```/g,'');
       const obj = JSON.parse(jsonStr.match(/\{[\s\S]*\}/)[0]);
+      // Flag when the live model's JSON omits confidence — every downstream
+      // consumer (sentinel push, relay bar, mission store, escalation memo)
+      // reads generatedRec.confidence, so patch it here once instead of
+      // silently defaulting to 91 in four separate places.
+      if (obj.confidence === undefined || obj.confidence === null) {
+        console.warn('[bpo-strategist] Live response omitted "confidence" field — defaulting to 91. Raw JSON:', obj);
+        obj.confidence = 91;
+        obj.confidenceDefaulted = true;
+      }
       generatedRec = obj;
       renderRecommendation(obj);
       renderExplainability(obj);
