@@ -161,7 +161,15 @@ window.TSMEventBus = window.TSMEventBus || {
 
   async function init() {
     if (localStorage.getItem('tsm_auto_mode') === 'off') { log('Auto-mode OFF'); return; }
-    if (localStorage.getItem('TSM_AUTO_LAUNCH') === 'false') { log('TSM_AUTO_LAUNCH=false'); return; }
+    // Auto-launch is opt-in, not opt-out. Previously this only bailed when
+    // TSM_AUTO_LAUNCH was explicitly 'false', so every strategist page on
+    // every vertical auto-ran its full analysis chain by default, the
+    // instant it detected relay data in storage — with zero prompt, and the
+    // only opt-out being a toggle button that lives on an unrelated
+    // document-search page nobody visiting a strategist page directly would
+    // ever see. Now nothing auto-launches unless something has explicitly
+    // set TSM_AUTO_LAUNCH to 'true' (e.g. via TSMAutoPipeline.enable()).
+    if (localStorage.getItem('TSM_AUTO_LAUNCH') !== 'true') { log('Auto-launch not explicitly enabled — skipping'); return; }
 
     const vertical = detectVertical();
     if (!vertical) { log('Vertical not detected'); return; }

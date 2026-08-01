@@ -347,7 +347,7 @@ if(groqKey) document.getElementById('groqKey').value=groqKey;
 
 function tick(){ document.getElementById('navClock').textContent=new Date().toLocaleTimeString('en-US',{hour12:false}); }
 tick(); setInterval(tick,1000);
-function nav(page){ window.location.href='/html/tsm-insurance/'+page; }
+function nav(page){ window.location.href='/html/war-rooms/insure-war/'+page; }
 function saveKey(){ groqKey=document.getElementById('groqKey').value.trim(); localStorage.setItem('tsm_groq_key',groqKey); }
 function copyNode(id){ navigator.clipboard.writeText(document.getElementById(id).textContent); }
 
@@ -540,7 +540,12 @@ KEY DECISION POINTS:
 
 APPROVAL PATH: Principal → Compliance Officer → Billing Manager
 CONFIDENCE RATIONALE: Moderate confidence due to documentation gaps; increases to 90%+ once records obtained`,
-(ctx,n)=>`EXECUTIVE SUMMARY: Insurance operations face a recoverable revenue crisis of $40,000-$80,000 with concurrent compliance exposure. Immediate action on appeals and CE renewals is recommended with 78% BNCA confidence. Expected recovery of 60-80% of exposed revenue within 90 days.
+(ctx,n)=>{
+  const bncaMatch = (n[3]||'').match(/BNCA CONFIDENCE SCORE[:\s]+(\d+)/i);
+  const conf = bncaMatch ? parseInt(bncaMatch[1]) : 78;
+  const liveN3 = !!bncaMatch; // did Node 3 actually return a live score to inherit?
+  return `===BRIEF===
+EXECUTIVE SUMMARY: Insurance operations face a recoverable revenue crisis of $40,000-$80,000 with concurrent compliance exposure. Immediate action on appeals and CE renewals is recommended with ${conf}% BNCA confidence. Expected recovery of 60-80% of exposed revenue within 90 days.
 FINANCIAL IMPACT: $40,000-$80,000 exposure | $28,000-$56,000 recoverable | Net risk $12,000-$24,000
 RECOMMENDED ACTION: Authorize parallel appeals and compliance remediation immediately
 APPROVAL REQUIRED: YES — Principal sign-off on appeal strategy and budget
@@ -551,7 +556,9 @@ BOARD ITEMS: NO — below board threshold unless exposure exceeds $100,000
 - Complete CE renewals for expiring agents — $0 direct / license protection
 - Address top 3 coverage gaps with clients — $42,800 premium opportunity
 RELAY TO EXECUTIVE PORTAL: YES
-PACKAGE CONFIDENCE: 78%`
+PACKAGE CONFIDENCE: ${conf}%
+===JSON===
+{"confidence":${conf},"dataSources":[{"name":"War room engine snapshot","weight":"HIGH"},{"name":"Node 01-03 strategist synthesis","weight":"${liveN3?'HIGH':'MED'}"},{"name":"Historical denial pattern (fallback estimate — live model unavailable)","weight":"LOW"}],"reasoning":[{"key":"Exposure basis","val":"Estimated from war room snapshot; not confirmed against live model output"},{"key":"Recovery estimate","val":"$28,000-$56,000 based on typical 60-80% appeal success rate for this denial mix"},{"key":"Confidence note","val":"This package was generated from a fallback template because the live analysis call failed or timed out — treat figures as directional, not verified${liveN3?'. BNCA score inherited from Node 3, which did complete live.':''}"}],"recommendedActions":[{"text":"Authorize appeal filing budget","owner":"Principal"},{"text":"Assign compliance lead for DOI audit prep","owner":"Compliance Officer"},{"text":"Approve coverage gap outreach to clients","owner":"Billing Manager"}]}`;}
 ];
 
 async function runStrategist(){
@@ -594,7 +601,7 @@ async function runStrategist(){
     setNodeState(i,'done');
     document.getElementById('nodesComplete').textContent=i+'/4 NODES';
     document.getElementById('nodesComplete').className='out-badge done';
-    if(i===4){ const {brief:insBrief,obj:insObj}=insXPParseExplain(txt); setNodeBody(4,insBrief||txt); if(insObj) insXPRenderExplain(insObj); }
+    if(i===4){ const {brief:insBrief,obj:insObj}=insXPParseExplain(txt); setNodeBody(4,insBrief||txt); if(insObj) insXPRenderExplain(insObj); else insXPRenderExplainFailed(); }
     await new Promise(r=>setTimeout(r,300));
   }
 
@@ -771,6 +778,18 @@ function escalateToExec(){
     }
   } catch(e) { console.warn('[collective-signal] insurance strategist push error:', e); }
   // ── END COLLECTIVE SIGNAL PUSH ───────────────────────────────────────
+
+  // Real strategist-confirmed signal (Convention A shape) — read by the
+  // war room's chain-status-bar and core/tsm-enforcer.js health audit.
+  // Previously nothing ever wrote TSM_STRAT_CONFIRMED_tsm-insurance, so the
+  // chain bar could reach "Relay fired" but never "Strategist confirmed".
+  try {
+    localStorage.setItem('TSM_STRAT_CONFIRMED_tsm-insurance', JSON.stringify({
+      vertical: 'tsm-insurance',
+      timestamp: Date.now()
+    }));
+  } catch(e) { console.warn('[strat-confirmed] insurance write error:', e); }
+
   setTimeout(()=>nav('insurance-executive-portal.html'),400);
 }
 
@@ -933,6 +952,7 @@ PRINCIPAL ESCALATION: [Yes/No] — [reason]`;
   } catch(e){ console.warn('Insurance issue pack error:',e); }
 })();
 </script>
+<script>
 /**
  * TSM MISSION GUIDE — Inlined
  */// v3
@@ -1036,7 +1056,25 @@ PRINCIPAL ESCALATION: [Yes/No] — [reason]`;
   }
   let mission = null;
   let collapsed = false;
-  function loadMission() { try { const raw = localStorage.getItem(STORAGE_KEY); if (!raw) return null; return JSON.parse(raw); } catch (e) { return null; } }
+  function loadMission() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return null;
+      const m = JSON.parse(raw);
+      // tsm_active_mission is a single key shared by every war room that
+      // loads tsm-mission-conductor.js (Insurance, Legal, Real Estate), and
+      // insurance-war-room.html also writes its own missions here directly.
+      // Only show it if it actually belongs to Insurance — otherwise
+      // whichever vertical last created a mission bleeds into this panel.
+      // Two prefix conventions exist for this vertical ('INSURANCE-' from
+      // the shared conductor, 'INS-' from insurance-war-room.html's own
+      // escalateToStrategist()) — both are unique to Insurance, so a
+      // startsWith('INS') check covers both safely.
+      const missionId = (m && m.missionId ? m.missionId : '').toUpperCase();
+      if (!missionId.startsWith('INS')) return null;
+      return m;
+    } catch (e) { return null; }
+  }
   function saveMission(m) { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(m)); } catch (e) {} }
   function getProgress(steps) { if (!steps || !steps.length) return { done: 0, total: 0, pct: 0 }; const done = steps.filter(s => s.status === 'done').length; return { done, total: steps.length, pct: Math.round((done / steps.length) * 100) }; }
   function escHtml(str) { return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -1213,6 +1251,16 @@ function insXPRenderExplain(obj){
     }
   } catch(dee) { console.warn('[bnca-exposure-engine] insurance render error:', dee); }
 }
+function insXPRenderExplainFailed(){
+  document.getElementById('insXPConfNum').textContent='N/A';
+  document.getElementById('insXPConfBar').style.width='0%';
+  document.getElementById('insXPSources').innerHTML='<div style="opacity:.6;font-family:\'IBM Plex Mono\',monospace;font-size:.63rem;color:#e8a33d">Explainability data unavailable — Node 04 output could not be parsed. See NODE 04 raw output above for the underlying package.</div>';
+  document.getElementById('insXPReasoning').innerHTML='<div style="opacity:.6;color:#e8a33d">Reasoning trace unavailable for this run.</div>';
+  document.getElementById('insXPActions').innerHTML='<div style="opacity:.6;font-family:\'IBM Plex Mono\',monospace;font-size:.63rem;color:#e8a33d">Action owners unavailable for this run.</div>';
+  document.getElementById('insXPDeltaNo').textContent='N/A';
+  document.getElementById('insXPDeltaAct').textContent='N/A';
+  document.getElementById('insXPRecovery').textContent='';
+}
 function insXPParseExplain(raw){
   const briefMatch = raw.match(/===BRIEF===\s*([\s\S]*?)(?:===JSON===|$)/);
   const jsonMatch = raw.match(/===JSON===\s*([\s\S]*)/);
@@ -1229,15 +1277,14 @@ function insXPParseExplain(raw){
 </script>
 <script src="/html/tsm-insurance/public/js/tsm-mission-guide.js"></script>
 
-/* TSM AUTO-RUN STRATEGIST */
-(function(){
-  try {
-    const raw = sessionStorage.getItem('TSM_INS_WAR_RELAY') || localStorage.getItem('TSM_INS_WAR_RELAY') || localStorage.getItem('tsm_ins_war_relay');
-    if (!raw) return;
-    if (localStorage.getItem('tsm_auto_mode') === 'off') return;
-    setTimeout(() => { if (typeof runStrategist === 'function') runStrategist(); }, 1500);
-  } catch(e) { console.warn('[TSM AutoRun Strategist]', e); }
-})();
+<script>
+/* TSM AUTO-RUN STRATEGIST — removed.
+   This used to fire runStrategist() automatically whenever relay data was
+   sitting in storage. Even gated to "once per relay timestamp," it still
+   ran without any explicit user action on this page, and could re-fire on
+   fresh browser sessions where the guard state itself didn't yet exist.
+   The strategist chain now only ever runs when the user clicks
+   "RUN STRATEGIST CHAIN" below. */
 </script>
   <script src="/js/core/tsm-kernel-upgrade.js"></script>
   <script src="/shared/tsm-exec-kit-producer.js"></script>

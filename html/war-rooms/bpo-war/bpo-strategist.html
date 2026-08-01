@@ -785,6 +785,15 @@ function parseAndRenderStrategy(raw) {
     try {
       const jsonStr = jsonMatch[1].trim().replace(/```json|```/g,'');
       const obj = JSON.parse(jsonStr.match(/\{[\s\S]*\}/)[0]);
+      // Flag when the live model's JSON omits confidence — every downstream
+      // consumer (sentinel push, relay bar, mission store, escalation memo)
+      // reads generatedRec.confidence, so patch it here once instead of
+      // silently defaulting to 91 in four separate places.
+      if (obj.confidence === undefined || obj.confidence === null) {
+        console.warn('[bpo-strategist] Live response omitted "confidence" field — defaulting to 91. Raw JSON:', obj);
+        obj.confidence = 91;
+        obj.confidenceDefaulted = true;
+      }
       generatedRec = obj;
       renderRecommendation(obj);
       renderExplainability(obj);
@@ -1168,6 +1177,18 @@ function escalateToExec(){
   if (window.TSMMemory) TSMMemory.timeline('Escalating to Executive Portal');
   resolveIncidentInMemory();
   try { fetch('/api/collective/signal', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ vertical:'bpo', warRoom:'BPO Strategist V2', signal:'Strategy packaged — escalating to Executive Portal for approval', severity:'HIGH', riskLevel: warData?.riskLevel || 'RISK', source: window.location.pathname }) }); } catch(e) {}
+
+  // Real strategist-confirmed signal (Convention A shape) — read by the
+  // war room's chain-status-bar and core/tsm-enforcer.js health audit.
+  // Previously nothing ever wrote TSM_STRAT_CONFIRMED_bpo, so the chain
+  // bar could reach "Relay fired" but never "Strategist confirmed".
+  try {
+    localStorage.setItem('TSM_STRAT_CONFIRMED_bpo', JSON.stringify({
+      vertical: 'bpo',
+      timestamp: Date.now()
+    }));
+  } catch(e) { console.warn('[strat-confirmed] bpo write error:', e); }
+
   window.location.href = '/html/war-rooms/bpo-war/bpo-executive-portal.html';
 }
 

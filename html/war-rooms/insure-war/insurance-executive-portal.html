@@ -499,7 +499,7 @@ body::before{content:'';position:fixed;top:0;right:0;width:600px;height:400px;ba
     <div><div class="d-title" id="d1-title">Run War Room analysis to populate decisions</div><div class="d-sub" id="d1-sub">Load a claim/policy document in the Insurance War Room and fire 6-engine analysis</div></div>
     <div class="d-amount" id="d1-amount">—</div>
     <div class="d-urgency" id="d1-urgency">—</div>
-    <button class="d-action" onclick="nav('insurance-war-room.html')">WAR ROOM</button>
+    <button class="d-action" id="d1-action-btn" onclick="nav('insurance-war-room.html')">WAR ROOM</button>
   </div>
   <div class="decision-row">
     <div class="d-badge badge-esc">ESCALATE</div>
@@ -673,27 +673,6 @@ function populateFromRelay(d) {
     document.getElementById('relayAge').textContent = age < 1 ? 'Just synced' : `Synced ${age}m ago`;
   }
   if (n4) document.getElementById('relayContent').textContent = n4.slice(0, 420) + (n4.length > 420 ? '...' : '');
-    // ── TSM PATCH: wire stratJson KPIs into existing portal elements ──
-    (function wireInsuranceKPIs() {
-      try {
-        var raw = JSON.parse(localStorage.getItem('tsm_ins_strat_relay') || sessionStorage.getItem('TSM_INS_STRAT_RELAY') || '{}');
-        var sj = raw.stratJson || raw.json || raw;
-        var set = function(id, val) { var e = document.getElementById(id); if (e && val) e.textContent = val; };
-        set('kpiExposure',   sj.noActionRevLoss);
-        set('kpiRecovery',   sj.actionRevLoss);
-        set('kpiNetRisk',    sj.recoveryTime);
-        set('kpiConfidence', sj.confidence != null ? sj.confidence + '%' : null);
-        // Ticker dupes
-        set('tk1',  sj.noActionRevLoss); set('tk1b', sj.noActionRevLoss);
-        set('tk2',  sj.confidence != null ? sj.confidence + '%' : null);
-        set('tk2b', sj.confidence != null ? sj.confidence + '%' : null);
-        set('tk3',  sj.actionRevLoss);   set('tk3b', sj.actionRevLoss);
-        set('tk4',  sj.recoveryTime);    set('tk4b', sj.recoveryTime);
-        console.log('[TSM-INS-EXEC] KPIs wired from stratJson');
-      } catch(e) { console.warn('[TSM-INS-EXEC] KPI wire failed:', e); }
-    })();
-    // ── END TSM PATCH ────────────────────────────────────────────────
-
 
   // ── Parse Node 4 (Executive Package) ──
   const expM   = n4.match(/FINANCIAL IMPACT[:\s]+([^\n]+)/i);
@@ -714,10 +693,10 @@ function populateFromRelay(d) {
   const windowM = n1.match(/STRATEGIC WINDOW[:\s]+([^\n]+)/i);
   const topRisks = [...n1.matchAll(/^\d\.\s*([^—\n]+)—\s*(\$[^—\n]+)—\s*([^\n]+)/gm)].slice(0,3);
 
-  // ── Extract exposure figure (from Node 4, fallback strategist snapshot) ──
+  // ── Extract exposure figure (from Node 4 FINANCIAL IMPACT line, fallback strategist snapshot) ──
   let exposureVal = '—';
-  const expDirect = n4.match(/total exposure(?: is)?\s*\$?([\d,]+(?:\s*[–\-]\s*\$?[\d,]+)?)/i) || (d.warRoomSnapshot && d.warRoomSnapshot.exposure ? [null, d.warRoomSnapshot.exposure] : null);
-  if (expDirect) exposureVal = ('$'+expDirect[1].replace(/^\$/,'')).slice(0,22);
+  const impactAmt = expM ? expM[1].match(/\$[\d,]+(?:\s*[–\-]\s*\$?[\d,]+)?/) : null;
+  if (impactAmt) exposureVal = impactAmt[0].slice(0,22);
   else if (d.warRoomSnapshot && d.warRoomSnapshot.exposure) exposureVal = String(d.warRoomSnapshot.exposure).slice(0,22);
 
   const recoverableVal = recM ? ('$'+recM[1].replace(/^\$/,'')).slice(0,16) : '—';
@@ -814,6 +793,29 @@ function populateFromRelay(d) {
   document.getElementById('sbRelay').textContent = docType + ' · Relay active';
   document.getElementById('syncLabel').textContent = 'Synced ' + new Date().toLocaleTimeString('en-US',{hour12:false});
   document.getElementById('bncaStamp').textContent = 'Last run ' + new Date().toLocaleTimeString('en-US',{hour12:false});
+
+  // Real EXEC_CONFIRMED write (Convention A shape) — read by the war
+  // room's chain-status-bar and core/tsm-enforcer.js health audit.
+  // Previously the AUTHORIZE row's button always linked back to the war
+  // room; nothing ever set TSM_EXEC_CONFIRMED_tsm-insurance through any
+  // code path. Once a strategist relay lands, rewire it to a real
+  // authorization action instead.
+  const d1Btn = document.getElementById('d1-action-btn');
+  if (d1Btn && !d1Btn.disabled) {
+    d1Btn.textContent = 'AUTHORIZE';
+    d1Btn.onclick = tsmConfirmExec;
+  }
+}
+
+function tsmConfirmExec(){
+  try {
+    localStorage.setItem('TSM_EXEC_CONFIRMED_tsm-insurance', JSON.stringify({
+      vertical: 'tsm-insurance',
+      timestamp: Date.now()
+    }));
+  } catch(e) { console.warn('[exec-confirmed] insurance write error:', e); }
+  const btn = document.getElementById('d1-action-btn');
+  if (btn) { btn.textContent = 'AUTHORIZED \u2713'; btn.disabled = true; }
 }
 
 // ═══════════════════════════════════════════════════
