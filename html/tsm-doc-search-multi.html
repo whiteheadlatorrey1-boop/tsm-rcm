@@ -2500,9 +2500,23 @@ function tsmToggleAuto(on) {
     if (label)  label.style.color       = 'var(--dim)';
     if (knob)   { knob.style.left = '2px'; knob.style.background = '#888'; }
     if (slider) slider.style.background = 'rgba(255,255,255,.1)';
-    localStorage.removeItem('tsm_auto_mode');
+    localStorage.setItem('tsm_auto_mode', 'off');
   }
+  // Keep the header button (#auto-mode-toggle, a separate widget defined
+  // further down this file) in sync instead of drifting independently.
+  if (typeof window.tsmSyncHeaderAutoBtn === 'function') window.tsmSyncHeaderAutoBtn();
 }
+
+// Sync all three (window.TSM_AUTO_MODE, footer switch, header button) from
+// persisted state on load. Previously nothing did this, so the footer
+// switch always rendered MANUAL on page load regardless of what was
+// actually stored from a prior visit.
+document.addEventListener('DOMContentLoaded', function () {
+  const storedOn = localStorage.getItem('tsm_auto_mode') !== 'off';
+  const footerToggle = document.getElementById('tsm-auto-toggle');
+  if (footerToggle) footerToggle.checked = storedOn;
+  tsmToggleAuto(storedOn);
+});
 
 function openWarRoomPicker(id) {
   const doc = loadIndex().find(d => d.id === id || d.id.startsWith(id));
@@ -2570,7 +2584,7 @@ function launchWarRoom(id, roomKey) {
     if (window.TSM_AUTO_MODE) {
       localStorage.setItem('tsm_auto_mode', 'on');
     } else {
-      localStorage.removeItem('tsm_auto_mode');
+      localStorage.setItem('tsm_auto_mode', 'off');
     }
     try { TSM_KERNEL.setDoc(doc._ext?.docText || doc._ext?.summary || ''); } catch(e) {}
   } catch(e) {}
@@ -3880,10 +3894,21 @@ window.openGenNodeWithDoc = openGenNodeWithDoc;
     btn.title = on ? 'Auto mode: upload fires full chain automatically' : 'Manual mode: upload routes to war room, you control each step';
   }
   window.toggleAutoMode = function(){
-    localStorage.setItem(KEY, getMode() ? 'off' : 'on');
-    updateBtn();
+    const next = !getMode();
+    // Route through tsmToggleAuto (footer widget, defined earlier in this
+    // file) when it exists, so window.TSM_AUTO_MODE and the footer switch
+    // update too instead of this button silently drifting out of sync with
+    // it. tsmToggleAuto itself calls tsmSyncHeaderAutoBtn (below), so this
+    // button's own visuals still update either way.
+    if (typeof window.tsmToggleAuto === 'function') {
+      window.tsmToggleAuto(next);
+    } else {
+      localStorage.setItem(KEY, next ? 'on' : 'off');
+      updateBtn();
+    }
   };
   window.tsmIsAutoMode = getMode;
+  window.tsmSyncHeaderAutoBtn = updateBtn;
   document.addEventListener('DOMContentLoaded', updateBtn);
 })();
 </script>
