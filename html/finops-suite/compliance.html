@@ -7,6 +7,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="/shared/tsm-memory-engine.js?v=phase3"></script>
 <style>
 /* TSM_SCROLL_FIX */
 html, body {
@@ -1927,6 +1928,48 @@ window.addEventListener('load', () => {
   document.getElementById('chatInput')?.addEventListener('keydown', e => { if (e.key === 'Enter') sendChat(); });
 });
 
+// ===== TSM MEMORY: REGISTER PRIORITY ALERTS AS ANOMALIES =====
+// Mirrors the Priority Alerts panel above so RCM-OS (and any other reader
+// of TSMMemory) can see compliance risk without scraping the DOM. Guarded
+// against re-registering the same still-open anomaly on every page load.
+const COMPLIANCE_STATIC_ALERTS = [
+  { anomalyCode: 'SOX_ENDPOINT_FAILURE', severity: 'CRITICAL',
+    title: 'SOX Mapping Endpoint Failure — legacy interface in critical state',
+    meta: { exposure: '$240K penalty', framework: 'SOX' } },
+  { anomalyCode: 'KYC_AML_DEGRADATION', severity: 'HIGH',
+    title: 'KYC/AML Performance Degradation — 150ms latency, 3 verifications blocked',
+    meta: { exposure: 'BSA risk', framework: 'AML/KYC' } },
+  { anomalyCode: 'OIG_EXCLUSION_OVERDUE', severity: 'HIGH',
+    title: 'OIG Exclusion Screening Overdue — 47 staff since Jan 15',
+    meta: { exposure: '$1.9M risk', framework: 'OIG/CMS' } },
+  { anomalyCode: 'HIPAA_BAA_GAP', severity: 'MEDIUM',
+    title: 'HIPAA BAA Gap — 2 business associates missing signed agreements',
+    meta: { exposure: 'HIGH priority', framework: 'HIPAA' } }
+];
+
+function registerComplianceAnomaliesInMemory() {
+  if (!window.TSMMemory) return;
+  const existing = window.TSMMemory.get();
+  const openCodes = new Set(
+    (existing?.anomalies || [])
+      .filter(a => a.status === 'open' && a.entityType === 'compliance-flag')
+      .map(a => a.anomalyCode)
+  );
+  COMPLIANCE_STATIC_ALERTS.forEach(alert => {
+    if (openCodes.has(alert.anomalyCode)) return;
+    window.TSMMemory.registerAnomaly({
+      entityType: 'compliance-flag',
+      entityId: alert.anomalyCode,
+      anomalyCode: alert.anomalyCode,
+      title: alert.title,
+      severity: alert.severity,
+      source: 'compliance-dashboard',
+      meta: alert.meta
+    });
+  });
+}
+registerComplianceAnomaliesInMemory();
+
 async function quickAction(prompt) {
   addChatMsg('user', prompt);
   chatHistory.push({ role: 'user', content: prompt });
@@ -2021,6 +2064,17 @@ async function aiScanRisks() {
       div.style.padding = '8px 12px';
       div.innerHTML = `<span class="alert-badge ${r.severity}">${r.severity.toUpperCase()}</span><span class="alert-text" style="font-size:0.78rem">${r.text}</span>`;
       flagsEl.appendChild(div);
+      if (window.TSMMemory) {
+        window.TSMMemory.registerAnomaly({
+          entityType: 'compliance-flag',
+          entityId: 'ai_risk_' + r.text.slice(0,40).replace(/[^a-z0-9]+/gi,'_').toLowerCase(),
+          anomalyCode: 'AI_DETECTED_RISK',
+          title: r.text,
+          severity: (r.severity || 'medium').toUpperCase(),
+          source: 'compliance-ai-scan',
+          meta: {}
+        });
+      }
     });
   } catch(e) { alert(e.message); }
   finally { spinner.style.display = 'none'; }
