@@ -1072,8 +1072,20 @@ ${phaseSnapshotToText(getPhaseSnapshot())}
     const sub = document.getElementById('escalBarSub');
     if (sub) sub.textContent = 'BNCA synthesis complete — ready to escalate to Executive Portal.';
 
-    // Auto-escalate disabled by design: synthesis result stays on this page
-    // until the user manually clicks "→ ESCALATE TO EXECUTIVE".
+    // AUTO-ESCALATE ON THRESHOLD BREACH — explicit override, 2026-08-01.
+    // This reverses the prior human-in-the-loop default (see git history /
+    // construction-war-room.html for the same disabled-by-design comment).
+    // Fires only when BNCA's own risk score crosses the existing CRIT
+    // threshold used elsewhere in this file (riskToSeverity >= 75) — reusing
+    // the established scale rather than inventing a new dollar cutoff.
+    // Any lower severity still waits for the manual "→ ESCALATE TO
+    // EXECUTIVE" click as before.
+    const autoRiskNum = parseRiskToNumber(warRoomRelay?.snapshot?.risk);
+    if (riskToSeverity(autoRiskNum) === 'CRIT') {
+      if (sub) sub.textContent = `CRIT risk (${autoRiskNum}) — auto-escalating to Executive Portal…`;
+      nodeEl.textContent = `Threshold breach (CRIT, ${autoRiskNum}) — auto-escalating…`;
+      setTimeout(() => escalateToExecutive(), 1200);
+    }
  
   } catch(e) {
     out.textContent = '[Error] ' + e.message;
