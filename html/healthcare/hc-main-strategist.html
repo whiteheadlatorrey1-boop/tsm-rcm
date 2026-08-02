@@ -1012,6 +1012,7 @@ async function callClaudeWithExplain(userMsg, outEl, thinkEl, errEl){
           const jsonStr = jsonMatch[1].trim().replace(/```json|```/g,'').trim();
           const obj = JSON.parse(jsonStr);
           renderExplainPanel(obj);
+          try { if (window.TSMWorkflowStage) TSMWorkflowStage.write('escalate-exec', { confidence: obj.confidence }); } catch(e) {}
 
           // ── SENTINEL PUSH ────────────────────────────────────────
           // Real numbers only: reuses the same parsed obj the explainability
@@ -1497,11 +1498,13 @@ async function escalateToExecPortal(){
     } catch(cse) { console.warn('[collective-signal] healthcare strategist push error:', cse); }
     // ── END COLLECTIVE SIGNAL PUSH ───────────────────────────────────
 
+    try { if (window.TSMWorkflowStage) TSMWorkflowStage.write('exec-portal'); } catch(e) {}
     window.location.href = '/html/healthcare/executive-portal.html';
   } catch(e) {
     console.warn('Exec relay sync failed:', e);
     if (btn) { btn.classList.remove('running'); btn.innerHTML = btn.dataset.origLabel || '⇢ ESCALATE / RELAY TO EXEC'; }
     alert('Relay sync failed: ' + e.message + ' — navigating without fresh data.');
+    try { if (window.TSMWorkflowStage) TSMWorkflowStage.write('exec-portal', { degraded: true }); } catch(e2) {}
     window.location.href = '/html/healthcare/executive-portal.html';
   }
 }
@@ -1676,6 +1679,7 @@ function clearOut(){
     if (ctxEl) ctxEl.value = `[WAR ROOM BRIEF — Session ${brief.sessionId}]\n${brief.engine06?.narrative||''}\n\nKEY FINDINGS:\n${warRoomSummary.slice(0,800)}`;
     banner.style.borderColor = '#a855f7';
     document.getElementById('hcs-banner-chevron').textContent = '▼';
+    try { if (window.TSMWorkflowStage) TSMWorkflowStage.write('strategist-run', { sessionId: brief.sessionId }); } catch(e) {}
   };
 
   window.runWarRoomDenialPack = function() {
@@ -1955,6 +1959,7 @@ PATTERN MATCH: [does this match active HonorHealth denial patterns CO-4/CO-11/CO
 
 
 <script src="/shared/tsm-cure-cheatsheet.js"></script>
+<script src="/html/healthcare/js/tsm-workflow-stage.js"></script>
 <script src="/html/js/tsm-bnca-exposure-engine.js"></script>
 <script src="/js/core/tsm-event-bus.js"></script>
 <script src="/html/core/tsm-kernel.js"></script>

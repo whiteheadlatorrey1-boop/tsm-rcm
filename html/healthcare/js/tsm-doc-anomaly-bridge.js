@@ -319,6 +319,7 @@
             rec._nodeCompleted[nodeId] = { ts: new Date().toISOString(), pct: 100 };
             localStorage.setItem('tsm-doc-anomaly', JSON.stringify(rec));
           } catch(e) {}
+          try { if (window.TSMWorkflowStage) TSMWorkflowStage.write('node-checklist-complete', { nodeId: nodeId }); } catch(e) {}
         } else {
           document.getElementById('tsm-anb-complete').style.display = 'none';
         }
