@@ -5,7 +5,7 @@
 //
 // Two chain families are covered, because they don't share a URL pattern:
 //   1. SECTOR_IDS chain (war-room-prep.html) — hc, finops, ins, con, legal, re,
-//      plus the BPO "evolved demo chain" (bpo-situation-room.html entry, the
+//      plus the BPO "evolved demo chain" (bpo-war-room.html entry, the
 //      one doc-search-multi.html actually routes to).
 //   2. PHASE_IDS chain (architecture/kernel/phases.json) — the SAP-phase
 //      war rooms under /html/war-rooms/<domain>/, which use a consistent
@@ -54,33 +54,33 @@ const sectorChains = [
   },
   {
     name: 'Insurance',
-    warRoom: '/html/tsm-insurance/insurance-war-room.html',
-    strategist: '/html/tsm-insurance/insurance-strategist.html',
-    executive: '/html/tsm-insurance/insurance-executive-portal.html',
+    warRoom: '/html/war-rooms/insure-war/insurance-war-room.html',
+    strategist: '/html/war-rooms/insure-war/insurance-strategist.html',
+    executive: '/html/war-rooms/insure-war/insurance-executive-portal.html',
   },
   {
     name: 'Construction',
-    warRoom: '/html/construction-suite/construction-war-room.html',
-    strategist: '/html/construction-suite/construction-strategist.html',
-    executive: '/html/construction-suite/construction-executive-portal.html',
+    warRoom: '/html/war-rooms/construct-war/construction-war-room.html',
+    strategist: '/html/war-rooms/construct-war/construction-strategist.html',
+    executive: '/html/war-rooms/construct-war/construction-executive-portal.html',
   },
   {
     name: 'Legal',
-    warRoom: '/html/legal-pro/legal-war-room.html',
-    strategist: '/html/legal-pro/legal-main-strategist.html',
-    executive: '/html/legal-pro/legal-executive-portal.html',
+    warRoom: '/html/war-rooms/legal-war/legal-war-room.html',
+    strategist: '/html/war-rooms/legal-war/legal-main-strategist.html',
+    executive: '/html/war-rooms/legal-war/legal-executive-portal.html',
   },
   {
     name: 'Real Estate',
-    warRoom: '/html/reo-pro/re-war-room.html',
-    strategist: '/html/reo-pro/re-strategist.html',
-    executive: '/html/reo-pro/re-exec-portal.html',
+    warRoom: '/html/war-rooms/re-war/re-war-room.html',
+    strategist: '/html/war-rooms/re-war/re-strategist.html',
+    executive: '/html/war-rooms/re-war/re-exec-portal.html',
   },
   {
     name: 'BPO (demo chain)',
-    warRoom: '/html/bpo/bpo-situation-room.html',
-    strategist: '/html/bpo/bpo-strategist-v2.html',
-    executive: '/html/bpo/bpo-executive-portal.html',
+    warRoom: '/html/war-rooms/bpo-war/bpo-war-room.html',
+    strategist: '/html/war-rooms/bpo-war/bpo-strategist.html',
+    executive: '/html/war-rooms/bpo-war/bpo-executive-portal.html',
   },
 ];
 
@@ -94,8 +94,7 @@ const phaseChains = [
   { name: 'MDM', domain: 'mdm', dir: 'mdm' },
   { name: 'Governance', domain: 'governance', dir: 'governance' },
   { name: 'Digital Twin', domain: 'digital-twin', dir: 'digital-twin', warRoomFile: 'digital-twin.html' },
-  { name: 'BPO Services (SAP phase)', domain: 'bpo', dir: 'bpo', warRoomFile: 'bpo-war-room.html' },
-  { name: 'NOC', domain: 'noc', dir: 'noc' },
+  { name: 'BPO Services (SAP phase)', domain: 'bpo', dir: 'bpo' },
 ].map((p) => ({
   name: p.name,
   warRoom: `/html/war-rooms/${p.dir}/${p.warRoomFile || `${p.domain}-war-room.html`}`,
@@ -109,6 +108,12 @@ phaseChains.push({
   warRoom: '/html/war-rooms/integration-hub/integration-hub.html',
   strategist: '/html/war-rooms/integration-hub/integration-hub-strategist.html',
   executive: '/html/war-rooms/integration-hub/integration-hub-executive-portal.html',
+});
+phaseChains.push({
+  name: 'NOC',
+  warRoom: '/html/l1-copilot/noc/noc-war-room.html',
+  strategist: '/html/l1-copilot/noc/noc-strategist.html',
+  executive: '/html/l1-copilot/noc/noc-executive-portal.html',
 });
 
 // --- Honeywell scenario chain (nested under BPO in war-room-prep.html) ---

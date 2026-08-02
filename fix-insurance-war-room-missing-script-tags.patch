@@ -1,0 +1,83 @@
+From 1e25ab704ff8b3d2c19533e28d934b71dc0e36fe Mon Sep 17 00:00:00 2001
+From: "Claude (via Tron)" <tron@tsmconsultz.dev>
+Date: Fri, 31 Jul 2026 23:32:18 +0000
+Subject: [PATCH] Fix insurance-war-room.html: restore two missing opening
+ <script> tags
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Two large JS blocks were unwrapped due to the systemic injector bug
+(missing opening <script>, orphaned closing tag downstream):
+- 'CORE WAR ROOM LOGIC' block (doc relay, engine dispatch, tour engine,
+  speech control) — lines 647-1545, was not executing at all
+- INS_TOUR_STEPS block (insTourOpen/insTourClose/insTourNav) —
+  was not executing at all, meaning the tour button was dead
+
+Also promoted three script tags (tsm-autorun-engine.js,
+tsm-assistant-widget.js, tsm-runtime.js) that were trapped inside a
+dead HTML comment containing stray patch instructions instead of
+being live tags.
+
+Verified: <script>/</script> count now balanced (23/23), no negative
+depth at any point in the file, all 5 inline script blocks pass
+'node --check', <body>/<html> singular.
+
+Separately flagged (not fixed here, needs its own commit): both
+tsm-mission-guide.js script tags in this file (line 1717 and 2438)
+point to a file that does not exist anywhere in the repo.
+
+Also flagged: this same missing-opening-script-tag pattern was found
+via repo-wide scan in 15 other war-room/strategist/exec-portal files —
+tracked as a follow-up.
+---
+ html/war-rooms/insure-war/insurance-war-room.html | 11 ++++-------
+ 1 file changed, 4 insertions(+), 7 deletions(-)
+
+diff --git a/html/war-rooms/insure-war/insurance-war-room.html b/html/war-rooms/insure-war/insurance-war-room.html
+index 695ace16..40c0e423 100644
+--- a/html/war-rooms/insure-war/insurance-war-room.html
++++ b/html/war-rooms/insure-war/insurance-war-room.html
+@@ -644,6 +644,7 @@ body::before{content:'';position:fixed;top:0;right:0;width:600px;height:600px;ba
+   <span>TOKENS: <span id="sbTokens" style="color:var(--gold)">0</span> / <span id="sbCost" style="color:var(--green)">$0.0000</span></span>
+ </div>
+ 
++<script>
+ /* ════════════════════════════════════════
+    CORE WAR ROOM LOGIC (unchanged)
+ ════════════════════════════════════════ */
+@@ -1660,6 +1661,7 @@ endTour = function(){ speechStop(); _etOrig(); };
+ .manifest-close-btn:hover{background:#ef4444;color:#000}
+ </style>
+ 
++<script>
+ const INS_TOUR_STEPS = [
+   { title: 'INSURANCE WAR ROOM', body: 'This is the Insurance Operations command center. The AI pipeline processes claims documents, EOBs, policy filings, and compliance notices — delivering coverage analysis, financial impact, and a full recovery strategy.' },
+   { title: 'E1 · DOCUMENT INTEL', body: 'Extracts structured data: policy numbers, claim IDs, denial codes, coverage types, carrier info, and key dates. Feeds all downstream engines.' },
+@@ -1709,15 +1711,9 @@ window.addEventListener('DOMContentLoaded', () => {
+ window.insTourOpen = insTourOpen;
+ window.insHowtoOpen = () => document.getElementById('insHowtoOverlay').classList.add('active');
+ </script>
+-<!-- ============================================================
+-  TSM INSURANCE WAR ROOM — MISSION DISPATCH PATCH
+-  Add this block just before   <script src="/js/core/tsm-kernel-upgrade.js"></script>
+ <script src="/js/tsm-autorun-engine.js"></script>
+ <script src="/html/shared/js/tsm-assistant-widget.js"></script>
+-  <script src="/html/core/tsm-runtime.js"></script>
+-</body> in insurance-war-room.html
+-  Also add the mission guide script tag at the top of this block.
+-  ============================================================ -->
++<script src="/html/core/tsm-runtime.js"></script>
+ 
+ <script src="/js/tsm-mission-guide.js"></script>
+ 
+@@ -1958,6 +1954,7 @@ window.insHowtoOpen = () => document.getElementById('insHowtoOverlay').classList
+   </div>
+ </div>
+ 
++<script>
+ (function () {
+   'use strict';
+ 
+-- 
+2.43.0

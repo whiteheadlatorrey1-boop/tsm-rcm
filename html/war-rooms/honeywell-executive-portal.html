@@ -55,6 +55,13 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 .eng-mini-title{font-family:'Orbitron',sans-serif;font-size:.6rem;color:var(--amber);letter-spacing:.05em;margin-bottom:6px;}
 .eng-mini-body{font-family:'JetBrains Mono',monospace;font-size:.65rem;color:var(--muted);white-space:pre-wrap;line-height:1.6;}
 .no-items{font-family:'JetBrains Mono',monospace;font-size:.7rem;color:var(--muted);}
+.explain-panel{background:var(--bg2);border:1px solid var(--border);border-left:2px solid var(--amber);border-radius:6px;padding:14px 18px;margin-bottom:16px;}
+.explain-title{font-family:'Orbitron',sans-serif;font-size:.62rem;color:var(--amber);letter-spacing:.1em;margin-bottom:10px;}
+.explain-row{padding:6px 0;border-top:1px solid var(--border);}
+.explain-row:first-of-type{border-top:none;}
+.explain-node{font-family:'Orbitron',sans-serif;font-size:.6rem;color:var(--cyan);letter-spacing:.05em;margin-right:10px;}
+.explain-score{font-family:'JetBrains Mono',monospace;font-size:.65rem;color:var(--text);}
+.explain-text{font-family:'JetBrains Mono',monospace;font-size:.62rem;color:var(--muted);margin-top:3px;line-height:1.5;}
 .toast{position:fixed;bottom:20px;right:20px;background:var(--bg2);border:1px solid var(--gold);color:var(--gold);padding:10px 18px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:.65rem;opacity:0;pointer-events:none;transition:.3s;z-index:50;}
 .toast.show{opacity:1;transform:translateY(-4px);}
 .action-bar{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px;}
@@ -211,6 +218,68 @@ function tertiaryLabel(source){
   return 'RISK SCORE';
 }
 
+// Grounded in the actual relay payload shape (data.kpis.*, data.outputs) — this
+// payload carries no confidence/ML score field, so this cites which structured
+// field each KPI came from and which war room wrote it, rather than fabricating
+// a confidence number. Mirrors honeywell-strategist.html's version.
+function getExplainItems(data){
+  const items = [];
+  const k = data.kpis || {};
+  const src = data.source || 'unknown';
+  const srcLabel = SOURCE_META[src] ? SOURCE_META[src].label : src.toUpperCase();
+
+  const exposureVal = kpiExposure(k.exposure);
+  if (exposureVal !== '—') {
+    items.push({
+      label: 'FINANCIAL EXPOSURE',
+      value: exposureVal,
+      explain: `Read directly from kpis.exposure in the ${srcLabel} relay payload${data.docType ? ' (source doc type: ' + data.docType + ')' : ''} — not recomputed on this page.`
+    });
+  }
+
+  const secKpi = k.buffer || k.containment;
+  const secVal = kpiSecondary(secKpi);
+  if (secVal !== '—') {
+    items.push({
+      label: secondaryLabel(src),
+      value: secVal,
+      explain: `Read directly from kpis.${k.buffer ? 'buffer.bufferDays' : 'containment.containmentEta'} as written by the ${srcLabel} war room.`
+    });
+  }
+
+  const terKpi = k.orders || k.risk;
+  const terVal = kpiTertiary(terKpi);
+  if (terVal !== '—') {
+    items.push({
+      label: tertiaryLabel(src),
+      value: terVal,
+      explain: `Read directly from kpis.${k.orders ? 'orders.ordersAtRisk' : 'risk'} as written by the ${srcLabel} war room.`
+    });
+  }
+
+  if (data.outputs && data.outputs.length) {
+    items.push({
+      label: '6-ENGINE ANALYSIS',
+      value: data.outputs.length + ' engine output' + (data.outputs.length === 1 ? '' : 's'),
+      explain: `The KPI figures above are the war room's own computation across its 6-engine pipeline, escalated as-is by the strategist — this page displays them without re-scoring.`
+    });
+  }
+
+  return items;
+}
+
+function renderExplainItems(items){
+  if (!items.length) return '';
+  return `<div class="explain-panel">
+    <div class="explain-title">WHY THESE NUMBERS</div>
+    ${items.map(it => `<div class="explain-row">
+      <span class="explain-node">${escapeHtml(it.label)}</span>
+      <span class="explain-score">${escapeHtml(it.value)}</span>
+      <div class="explain-text">${escapeHtml(it.explain)}</div>
+    </div>`).join('')}
+  </div>`;
+}
+
 function renderEmpty(){
   document.getElementById('hdrBadge').style.display='none';
   document.getElementById('hdrSub').textContent='Awaiting escalation from the strategist…';
@@ -245,6 +314,8 @@ function render(){
     <div class="kpi"><div class="kpi-val amber">${kpiSecondary(k.buffer || k.containment)}</div><div class="kpi-lbl">${secondaryLabel(data.source)}</div></div>
     <div class="kpi"><div class="kpi-val cyan">${kpiTertiary(k.orders || k.risk)}</div><div class="kpi-lbl">${tertiaryLabel(data.source)}</div></div>
   </div>`;
+
+  html += renderExplainItems(getExplainItems(data));
 
   // The last of the 6 engines is always the "Executive Dispatch" summary —
   // that's the headline. Everything else is available below, collapsed.

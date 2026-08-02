@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TSM Enterprise Mission Dashboard</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+:root{
+  --ink:#0A0F1C;
+  --panel:#111A2C;
+  --panel-raised:#16223A;
+  --line:#243450;
+  --text:#EEF1F8;
+  --muted:#8A96B2;
+  --muted-dim:#5C6885;
+  --amber:#E8A33D;
+  --amber-dim:#8A6528;
+  --risk:#E5484D;
+  --risk-dim:#5C2528;
+  --good:#3DD68C;
+  --good-dim:#1F5A42;
+  --info:#5B8DEF;
+  --info-dim:#2A3E6B;
+}
+*{box-sizing:border-box;}
+body{margin:0; background:var(--ink); color:var(--text); font-family:'Inter',sans-serif; font-size:14px;}
+h1,h2,h3{font-family:'Space Grotesk',sans-serif; margin:0;}
+.wrap{max-width:1280px; margin:0 auto; padding:28px 24px 60px;}
+.topbar{display:flex; align-items:center; justify-content:space-between; margin-bottom:24px;}
+.topbar h1{font-size:22px;}
+.topbar .sub{color:var(--muted); font-size:12.5px; margin-top:4px;}
+.kpi-row{display:grid; grid-template-columns:repeat(5,1fr); gap:14px; margin-bottom:26px;}
+.kpi{background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:16px;}
+.kpi .val{font-family:'Space Grotesk',sans-serif; font-size:26px; font-weight:700;}
+.kpi .lbl{color:var(--muted); font-size:11.5px; text-transform:uppercase; letter-spacing:0.05em; margin-top:4px;}
+.card{background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:20px; margin-bottom:20px;}
+.card h2{font-size:15px; margin-bottom:4px;}
+.card .hint{color:var(--muted); font-size:12px; margin-bottom:14px;}
+table{width:100%; border-collapse:collapse; font-size:12.5px;}
+th{text-align:left; color:var(--muted); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:0.04em; padding:6px 10px; border-bottom:1px solid var(--line);}
+td{padding:8px 10px; border-bottom:1px solid var(--line);}
+tr:last-child td{border-bottom:none;}
+.sev-badge{font-size:10px; letter-spacing:0.06em; text-transform:uppercase; font-weight:700; padding:3px 9px; border-radius:20px; white-space:nowrap; display:inline-block;}
+.sev-badge.critical{background:var(--risk-dim); color:var(--risk); border:1px solid var(--risk);}
+.sev-badge.high{background:var(--amber-dim); color:var(--amber); border:1px solid var(--amber);}
+.sev-badge.medium{background:var(--info-dim); color:var(--info); border:1px solid var(--info);}
+.sev-badge.low{background:var(--good-dim); color:var(--good); border:1px solid var(--good);}
+.finding{border:1px solid var(--line); border-radius:8px; padding:12px 14px; margin-bottom:10px; background:var(--panel-raised);}
+.finding-top{display:flex; align-items:center; gap:10px; margin-bottom:6px;}
+.finding-title{font-weight:600; font-size:13px;}
+.finding-detail{color:var(--muted); font-size:12px; margin-bottom:6px;}
+.finding-next{font-size:12px;}
+.empty{color:var(--muted); font-style:italic; font-size:12.5px;}
+.chip{display:inline-block; font-size:10.5px; padding:2px 8px; border-radius:6px; background:var(--info-dim); color:var(--info); border:1px solid var(--info-dim); margin:1px 3px 1px 0;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <div>
+      <h1>Enterprise Mission Dashboard</h1>
+      <div class="sub">Phase 10 analytics · Phase 11 cross-mission intelligence · Phase 12 mission graph — live across all verticals with Mission Core wired</div>
+    </div>
+  </div>
+
+  <div class="kpi-row" id="kpiRow"></div>
+
+  <div class="card">
+    <h2>By Vertical</h2>
+    <div class="hint">Open/closed counts, SLA%, and review accuracy% per vertical — merges the runtime Mission Store and Construction's separate store.</div>
+    <table id="verticalTable"><thead><tr><th>Vertical</th><th>Total</th><th>Open</th><th>Closed</th><th>SLA %</th><th>Accuracy %</th></tr></thead><tbody></tbody></table>
+  </div>
+
+  <div class="card">
+    <h2>Cross-Mission Intelligence</h2>
+    <div class="hint">Patterns no single vertical's view can see — overloaded operators, stalled missions, verticals trending late on SLA.</div>
+    <div id="findingsList"></div>
+  </div>
+
+  <div class="card">
+    <h2>Multi-Vertical Clients</h2>
+    <div class="hint">Clients/tenants with real open or closed work in 2+ verticals right now.</div>
+    <div id="clientList"></div>
+  </div>
+
+  <div class="card">
+    <h2>Multi-Vertical Operators</h2>
+    <div class="hint">Operators carrying work across more than one vertical — cross-vertical staffing visibility.</div>
+    <div id="operatorList"></div>
+  </div>
+</div>
+
+<script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
+<script src="/html/shared/runtime/mission/mission-model.js"></script>
+<script src="/html/shared/runtime/mission/mission-store.js"></script>
+<script src="/html/shared/runtime/mission/mission-analytics.js"></script>
+<script src="/html/shared/runtime/mission/mission-intelligence.js"></script>
+<script src="/html/shared/runtime/mission/mission-graph.js"></script>
+<script>
+function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function fmtPct(n){ return n===null || n===undefined ? '—' : n+'%'; }
+
+function renderKpis(dash){
+  const items = [
+    { val: dash.total, lbl: 'Total Missions' },
+    { val: dash.open, lbl: 'Open' },
+    { val: dash.closed, lbl: 'Closed' },
+    { val: fmtPct(dash.slaPercent), lbl: 'SLA % (' + dash.slaEligible + ' eligible)' },
+    { val: fmtPct(dash.accuracyPercent), lbl: 'Accuracy % (' + dash.reviewedCount + ' reviewed)' }
+  ];
+  document.getElementById('kpiRow').innerHTML = items.map(it =>
+    `<div class="kpi"><div class="val">${esc(it.val)}</div><div class="lbl">${esc(it.lbl)}</div></div>`
+  ).join('');
+}
+
+function renderVerticalTable(dash){
+  const tbody = document.querySelector('#verticalTable tbody');
+  const verticals = Object.keys(dash.byVertical);
+  if(!verticals.length){
+    tbody.innerHTML = `<tr><td colspan="6" class="empty">No missions recorded yet.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = verticals.sort().map(v => {
+    const s = dash.byVertical[v];
+    return `<tr><td>${esc(v)}</td><td>${s.total}</td><td>${s.open}</td><td>${s.closed}</td><td>${fmtPct(s.slaPercent)}</td><td>${fmtPct(s.accuracyPercent)}</td></tr>`;
+  }).join('');
+}
+
+function renderFindings(findings){
+  const el = document.getElementById('findingsList');
+  if(!findings.length){
+    el.innerHTML = `<div class="empty">No cross-mission risk patterns detected right now.</div>`;
+    return;
+  }
+  el.innerHTML = findings.map(f => `
+    <div class="finding">
+      <div class="finding-top">
+        <span class="sev-badge ${esc(f.severity)}">${esc(f.severity)}</span>
+        <span class="finding-title">${esc(f.title)}</span>
+      </div>
+      <div class="finding-detail">${esc(f.detail)}</div>
+      <div class="finding-next"><strong>Next:</strong> ${esc(f.nextAction)}</div>
+    </div>`).join('');
+}
+
+function renderClients(clients){
+  const el = document.getElementById('clientList');
+  if(!clients.length){
+    el.innerHTML = `<div class="empty">No client currently has open/closed work spanning 2+ verticals.</div>`;
+    return;
+  }
+  el.innerHTML = clients.map(c => `
+    <div class="finding">
+      <div class="finding-top"><span class="finding-title">${esc(c.client)}</span></div>
+      <div class="finding-detail">${c.missionCount} mission(s) across: ${c.verticals.map(v => `<span class="chip">${esc(v)}</span>`).join('')}</div>
+    </div>`).join('');
+}
+
+function renderOperators(operators){
+  const el = document.getElementById('operatorList');
+  if(!operators.length){
+    el.innerHTML = `<div class="empty">No operator currently carries work across 2+ verticals.</div>`;
+    return;
+  }
+  el.innerHTML = operators.map(o => `
+    <div class="finding">
+      <div class="finding-top"><span class="finding-title">${esc(o.operator)}</span></div>
+      <div class="finding-detail">${o.verticals.map(v => `<span class="chip">${esc(v)}</span>`).join('')}</div>
+    </div>`).join('');
+}
+
+function renderAll(){
+  const dash = TSMMissionAnalytics.getDashboard();
+  renderKpis(dash);
+  renderVerticalTable(dash);
+  renderFindings(TSMMissionIntelligence.findings());
+  renderClients(TSMMissionGraph.multiVerticalClients());
+  renderOperators(TSMMissionGraph.multiVerticalOperators());
+}
+
+renderAll();
+// Live-refresh on any mission write from any tab/vertical currently open.
+if(window.TSMMissionStore && typeof window.TSMMissionStore.subscribe === 'function'){
+  window.TSMMissionStore.subscribe('*', () => renderAll());
+}
+window.addEventListener('storage', (e) => {
+  if(e.key === 'TSM_MISSION_STORE_V1' || e.key === 'TSM_MISSION_STORE') renderAll();
+});
+</script>
+</body>
+</html>

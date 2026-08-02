@@ -10,6 +10,119 @@ const router =
 const orchestrator =
     require('../enterprise-orchestrator');
 
+const demoFixtures =
+    require('../demo-fixtures');
+
+const domainMap =
+    require('../domain-map');
+
+
+
+// Capability modules (o2c.js, crm.js, governance.js, etc.) now self-fetch
+// the real, already-mounted endpoints for their data instead of returning
+// hardcoded stub values. They need to know what host to call — same
+// process, so this is just the incoming request's own origin.
+function baseUrlFrom(req) {
+    return req.protocol + '://' + req.get('host');
+}
+
+
+
+function resolveContext(body = {}, baseUrl) {
+
+    if (body.demo) {
+
+        const fixture =
+            demoFixtures[body.demo] ||
+            demoFixtures.healthcare;
+
+        return Object.assign(
+            {},
+            fixture,
+            body.context || {},
+            { baseUrl }
+        );
+
+    }
+
+    return Object.assign({}, body, { baseUrl });
+
+}
+
+
+
+function reshapeForClient(result, context) {
+
+    const vertical =
+        result.enrichment.vertical ||
+        "unknown";
+
+    const labels =
+        domainMap[vertical] || {};
+
+    const capabilities =
+        result.enrichment.capabilities.map(
+            c => Object.assign(
+                {},
+                c,
+                {
+                    domainLabel:
+                        labels[c.id] || c.title
+                }
+            )
+        );
+
+    return Object.assign(
+        {},
+        result,
+        {
+
+            sector:
+                vertical,
+
+            documentType:
+                context.documentType ||
+                null,
+
+            capabilityCount:
+                capabilities.length,
+
+            capabilities,
+
+            bnca:{
+
+                recommendedAction:
+                    result.decision.action,
+
+                priority:
+                    result.decision.priority ||
+                    null,
+
+                confidence:
+                    result.decision.confidence,
+
+                escalate:
+                    result.decision.priority === "HIGH",
+
+                evidence:
+                    result.explainability.evidence,
+
+                reasoning:
+                    result.explainability.reasoning,
+
+                exposure:
+                    undefined,
+
+                decisionWindow:
+                    undefined
+
+            }
+
+        }
+    );
+
+}
+
 
 
 router.get(
@@ -37,14 +150,17 @@ router.post(
 
         try {
 
+            const context =
+                resolveContext(req.body, baseUrlFrom(req));
 
             const result =
                 await orchestrator.execute(
-                    req.body || {}
+                    context
                 );
 
-
-            res.json(result);
+            res.json(
+                reshapeForClient(result, context)
+            );
 
 
         }
@@ -91,7 +207,7 @@ audit:{
  id:"AUDIT-2026-001"
 }
 
-},req.body || {});
+},req.body || {}, { baseUrl: baseUrlFrom(req) });
 
 }
 
@@ -187,4 +303,3 @@ c.recommendations
 });
 
 });
-

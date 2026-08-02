@@ -879,6 +879,7 @@ border-radius: 2px; flex-shrink: 0; white-space: nowrap;
 .sb-sep { color: var(--border2); }
 .sb-right { margin-left: auto; }
 </style>
+<script src="/html/healthcare/js/tsm-workflow-stage.js"></script>
 <script src="/js/tsm-runtime-lock.js"></script>
 <script src="/js/tsm-event-contract.js"></script>
 <script src="/js/tsm-autonomy-layer.js"></script>
@@ -919,6 +920,8 @@ border-radius: 2px; flex-shrink: 0; white-space: nowrap;
   <div style="padding:0 20px;">
     <div id="tsmk-wip-auto" style="margin:18px 0 10px;"></div>
     <div id="tsmk-exp-auto" style="margin:10px 0 24px;"></div>
+    <div id="tsmk-outcome-auto" style="margin:10px 0 24px;"></div>
+    <div id="tsmk-benchmark-auto" style="margin:10px 0 24px;"></div>
   </div>
   <!-- ▲ TSM EXEC KIT ▲ -->
 
@@ -1438,6 +1441,17 @@ border-radius: 2px; flex-shrink: 0; white-space: nowrap;
             </div>
             <div class="dl-exposure" style="color:var(--muted)">Ongoing</div>
           </div>
+          <div class="deadline-item">
+            <div class="dl-countdown dlc-ok">
+              <div class="dl-days">60</div>
+              <div class="dl-unit">days</div>
+            </div>
+            <div class="dl-info">
+              <div class="dl-title">HIPAA Security Risk Assessment — Annual Review</div>
+              <div class="dl-sub">Privacy Officer scheduling audit · Breach Notification Rule log clean</div>
+            </div>
+            <div class="dl-exposure" style="color:var(--muted)">Scheduled</div>
+          </div>
         </div>
       </div>
     </div>
@@ -1571,7 +1585,7 @@ function escRelay(s) {
 }
 function loadStratRelay() {
   try {
-    const raw = sessionStorage.getItem('TSM_EXEC_RELAY');
+    const raw = sessionStorage.getItem('TSM_EXEC_RELAY') || localStorage.getItem('TSM_EXEC_RELAY');
     if (!raw) return;
     const d = JSON.parse(raw);
     if (!d || !d.enriched) return;
@@ -1738,11 +1752,18 @@ function buildEscalationModal(d) {
           </div>
           <div style="font-size:8px;color:#5a6f90;">Session ${escRelay(sessionId)} · ${ts}</div>
         </div>
-        <button onclick="document.getElementById('esc-modal-overlay').remove()" style="
-          background:none;border:1px solid rgba(255,255,255,0.1);color:#5a6f90;
-          font-family:'JetBrains Mono',monospace;font-size:10px;
-          padding:4px 12px;cursor:pointer;letter-spacing:1px;
-        ">✕ DISMISS</button>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <button onclick="exportExecutiveReport()" id="esc-export-btn" style="
+            background:rgba(30,232,182,0.08);border:1px solid rgba(30,232,182,0.4);color:#1ee8b6;
+            font-family:'JetBrains Mono',monospace;font-size:10px;
+            padding:4px 12px;cursor:pointer;letter-spacing:1px;
+          ">📋 EXPORT REPORT</button>
+          <button onclick="document.getElementById('esc-modal-overlay').remove()" style="
+            background:none;border:1px solid rgba(255,255,255,0.1);color:#5a6f90;
+            font-family:'JetBrains Mono',monospace;font-size:10px;
+            padding:4px 12px;cursor:pointer;letter-spacing:1px;
+          ">✕ DISMISS</button>
+        </div>
       </div>
 
       <!-- TABS -->
@@ -2000,6 +2021,130 @@ function buildEscalationModal(d) {
   }
 }
 
+// ── EXPORT EXECUTIVE REPORT ──────────────────────────────────────────────
+// Two things happen here, both real: (1) a downloadable .txt report is
+// assembled from whatever actually made it through the relay this session
+// — no invented figures — and (2) a finalized signal is pushed to
+// /api/collective/signal, the same endpoint hc-main-strategist.html already
+// posts to on escalation, so Sentinel/Collective BNCA can fold the reviewed
+// exec-portal outcome into its cross-vertical synthesis (POST
+// /api/collective/bnca reads everything in that in-memory signal feed).
+async function exportExecutiveReport() {
+  const btn = document.getElementById('esc-export-btn');
+  const origLabel = btn ? btn.innerHTML : '';
+  if (btn) { btn.innerHTML = '⟳ EXPORTING...'; btn.style.pointerEvents = 'none'; }
+
+  try {
+    const raw = sessionStorage.getItem('TSM_EXEC_RELAY') || localStorage.getItem('TSM_EXEC_RELAY');
+    const d = raw ? JSON.parse(raw) : {};
+    const sessionId = d.sessionId || 'REL-' + Date.now().toString(36).toUpperCase();
+    const ts = new Date();
+
+    const warRoomBrief = d.warRoomBrief || d.enriched || 'No war room brief in relay.';
+    const stratAnalysis = d.stratAnalysis || d.bnca?.revenuePosition || '';
+    const denialIntel = d.bnca?.denialIntel || '';
+    const strategistSummary = d.bnca?.strategistSummary || '';
+    const kpi = d.kpi || {};
+    const decisions = d.alerts?.decisions || [];
+    const urgent = d.alerts?.urgent || [];
+    const engineOutputs = d.engineOutputs || {};
+
+    // Pull whatever denial pack text actually rendered, if any — this is
+    // real generated content sitting in the DOM, not re-fetched.
+    const dpEl = document.getElementById('dp-content');
+    const denialPackText = dpEl && !dpEl.querySelector('span[style*="blink"]')
+      ? dpEl.innerText.trim()
+      : '';
+
+    const lines = [
+      'TSM HC EXECUTIVE REPORT — SESSION EXPORT',
+      '==========================================',
+      `Session:    ${sessionId}`,
+      `Exported:   ${ts.toLocaleString()}`,
+      `At risk:    ${kpi.totalAtRisk || '—'}`,
+      `Denial rate: ${kpi.denialRate || '—'}`,
+      '',
+      'WAR ROOM / DISPATCH NARRATIVE',
+      '------------------------------',
+      warRoomBrief,
+      '',
+    ];
+    if (stratAnalysis) lines.push('REVENUE POSITION', '-----------------', stratAnalysis, '');
+    if (denialIntel) lines.push('DENIAL INTEL', '------------', denialIntel, '');
+    if (strategistSummary) lines.push('STRATEGIST SUMMARY', '------------------', strategistSummary, '');
+    if (urgent.length) {
+      lines.push('URGENT ALERTS', '-------------');
+      urgent.forEach(u => lines.push('! ' + u));
+      lines.push('');
+    }
+    if (decisions.length) {
+      lines.push('DECISION QUEUE', '--------------');
+      decisions.forEach(dec => lines.push(`[${dec.urgency || '—'}] ${dec.action || ''} — ${dec.value || ''} — due ${dec.deadline || '—'}`));
+      lines.push('');
+    }
+    const engineEntries = Object.entries(engineOutputs).filter(([, v]) => v && v.length > 10);
+    if (engineEntries.length) {
+      lines.push('ENGINE FINDINGS', '---------------');
+      engineEntries.forEach(([label, text]) => lines.push(`${label.toUpperCase()}:`, text.slice(0, 500), ''));
+    }
+    if (denialPackText) {
+      lines.push('DENIAL PACK OUTPUT', '-------------------', denialPackText, '');
+    }
+    lines.push('---', 'Generated by TSM HC Executive Portal. Figures above are pulled directly', 'from the session relay — nothing here is re-derived or estimated at export time.');
+
+    const reportText = lines.join('\n');
+
+    // 1) Real file download
+    const blob = new Blob([reportText], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `hc-executive-report-${sessionId}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+
+    // 2) Push a finalized signal to Sentinel / Collective BNCA — same
+    // schema hc-main-strategist.html already uses, so it merges cleanly
+    // with the earlier strategist-stage signal instead of creating a
+    // parallel shape for the synthesizer to reconcile.
+    const exposureNum = Number(String(kpi.totalAtRisk || '').replace(/[^0-9.]/g, '')) *
+      (/m\b/i.test(kpi.totalAtRisk || '') ? 1000000 : /k\b/i.test(kpi.totalAtRisk || '') ? 1000 : 1);
+    const riskLevel = exposureNum >= 100000 ? 'CRIT' : exposureNum >= 25000 ? 'HIGH' : exposureNum >= 5000 ? 'MED' : 'LOW';
+
+    try {
+      await fetch('/api/collective/signal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vertical: 'healthcare',
+          warRoom: 'HC Executive Portal',
+          bnca: (stratAnalysis || denialIntel || 'Executive report finalized and exported.').slice(0, 400),
+          confidence: 78,
+          riskLevel,
+          topIssue: urgent[0] || decisions[0]?.action || `Revenue at risk ${kpi.totalAtRisk || 'unspecified'}`,
+          ownerLanes: ['Executive Portal', 'HC-Billing'],
+          hitlRequired: riskLevel === 'CRIT' || riskLevel === 'HIGH',
+          actions: decisions.slice(0, 4).map(dec => dec.action).filter(Boolean),
+          kpi,
+          source: 'executive-portal-export'
+        })
+      });
+    } catch (signalErr) {
+      console.warn('[collective-signal] exec portal export push failed (report still downloaded):', signalErr);
+    }
+
+    // 3) Mark the workflow complete for the on-page guide widget
+    try { if (window.TSMWorkflowStage) TSMWorkflowStage.write('complete', { sessionId }); } catch (e) {}
+
+    if (btn) { btn.innerHTML = '✓ EXPORTED'; setTimeout(() => { btn.innerHTML = origLabel; btn.style.pointerEvents = 'auto'; }, 1800); }
+  } catch (e) {
+    console.error('[exportExecutiveReport] failed:', e);
+    if (btn) { btn.innerHTML = '✕ EXPORT FAILED'; setTimeout(() => { btn.innerHTML = origLabel; btn.style.pointerEvents = 'auto'; }, 2200); }
+  }
+}
+
 function buildLiveSignals(d) {
   const signals = d.liveSignals || [];
   if (!signals.length) {
@@ -2046,7 +2191,7 @@ async function generateDenialPack() {
   if (content) content.innerHTML = '<span style="color:#5a6f90;font-size:9px;animation:blink 1s infinite;">⚡ Generating denial pack via TSM Neural Core...</span>';
 
   try {
-    const raw = sessionStorage.getItem('TSM_EXEC_RELAY');
+    const raw = sessionStorage.getItem('TSM_EXEC_RELAY') || localStorage.getItem('TSM_EXEC_RELAY');
     const d = raw ? JSON.parse(raw) : {};
     const context = d.warRoomBrief || d.enriched || 'No war room data available';
 
@@ -2113,7 +2258,7 @@ async function runStratEngine() {
   };
 
   try {
-    const raw = sessionStorage.getItem('TSM_EXEC_RELAY');
+    const raw = sessionStorage.getItem('TSM_EXEC_RELAY') || localStorage.getItem('TSM_EXEC_RELAY');
     const d = raw ? JSON.parse(raw) : {};
     const context = d.warRoomBrief || d.enriched || '';
 
@@ -2889,12 +3034,23 @@ setInterval(buildStratBriefTab, 30000);
     // ── TSM PATCH: wire Strategist JSON fields into KPI tiles ──────────
     (function wireStratKPIs(relayJson) {
       try {
-        // relayJson may be the parsed JSON object from the ===JSON=== block
-        // or embedded in TSM_HC_RELAY / TSM_RELAY_DATA localStorage keys
-        var raw = relayJson
-          || JSON.parse(localStorage.getItem('TSM_HC_RELAY') || '{}')
-          || JSON.parse(localStorage.getItem('TSM_RELAY_DATA') || '{}');
-
+        function hasData(obj) {
+          return obj && typeof obj === 'object' && Object.keys(obj).length > 0;
+        }
+        // relayJson: parsed JSON from the ===JSON=== block, when present.
+        // Falls back to the keys that are actually written at runtime:
+        // TSM_HC_WAR_RELAY (generic room.autoKey writer in
+        // tsm-doc-search-multi.html) and TSM_HEALTHCARE_STRATEGIST_RELAY
+        // (written by hc-main-strategist.html). The previous fallback keys
+        // (TSM_HC_RELAY / TSM_RELAY_DATA) were never written by anything.
+        var raw = relayJson;
+        if (!hasData(raw)) {
+          raw = JSON.parse(localStorage.getItem('TSM_HC_WAR_RELAY') || 'null');
+        }
+        if (!hasData(raw)) {
+          raw = JSON.parse(localStorage.getItem('TSM_HEALTHCARE_STRATEGIST_RELAY') || 'null');
+        }
+        raw = raw || {};
         var stratJson = raw.stratJson || raw.json || raw;
 
         var noAction   = stratJson.noActionRevLoss  || '—';
@@ -3098,22 +3254,97 @@ setInterval(buildStratBriefTab, 30000);
     };
   }
 
+  /* Roadmap #7 — renders TSMExecutiveOutcome.build()'s four-question view.
+     Pure render layer, same as renderExplainability above: no scoring or
+     classification logic here, just display of what the engine computed. */
+  function renderOutcome(target, outcome) {
+    var el = typeof target === 'string' ? document.getElementById(target) : target;
+    if (!el) return;
+    if (!outcome) {
+      el.innerHTML = '<div class="tsmk-explain"><div class="tsmk-exp-empty">No executive outcome data yet.</div></div>';
+      return;
+    }
+    var wh = outcome.whatHappened || {};
+    var wim = outcome.whyItMatters || {};
+    var wsd = outcome.whatShouldWeDo || [];
+    var who = outcome.whoOwnsIt || {};
+
+    var actionsHtml = wsd.length
+      ? wsd.map(function (a) {
+          return '<div class="tsmk-exp-card" data-severity="' + esc(a.severity || '') + '">' +
+                   '<div class="tsmk-exp-row"><div class="tsmk-exp-claim">' + esc(a.action) + '</div>' +
+                   (a.confidence != null ? '<span class="tsmk-conf-badge">' + Math.round(a.confidence) + '% conf</span>' : '') +
+                   '</div></div>';
+        }).join('')
+      : '<div class="tsmk-exp-empty">No open action items.</div>';
+
+    el.innerHTML =
+      '<div class="tsmk-explain">' +
+        '<div class="tsmk-exp-why-label">WHAT HAPPENED</div>' +
+        '<div class="tsmk-exp-rationale">' + esc(wh.domain || '') + ' &mdash; ' +
+          esc(wh.documentsProcessed != null ? wh.documentsProcessed : '\u2014') + ' record(s), accuracy ' +
+          esc(wh.accuracy || '\u2014') + ' (' + esc(wh.band || '\u2014') + '), ' +
+          esc(wh.openFindings) + ' open finding(s).</div>' +
+        '<div class="tsmk-exp-why-label" style="margin-top:14px;">WHY IT MATTERS</div>' +
+        '<div class="tsmk-exp-rationale">' + esc(wim.highSeverityFindings) + ' high-severity finding(s).' +
+          (wim.financialExposure != null
+            ? ' Est. exposure: $' + esc(wim.financialExposure.toLocaleString()) +
+              (wim.financialExposureIsPartial ? ' (partial \u2014 not all items estimated)' : '')
+            : ' Exposure not estimated.') +
+          '</div>' +
+        '<div class="tsmk-exp-why-label" style="margin-top:14px;">WHAT TO DO</div>' +
+        actionsHtml +
+        '<div class="tsmk-exp-why-label" style="margin-top:14px;">WHO OWNS IT</div>' +
+        '<div class="tsmk-exp-rationale">' + esc(who.owner) + ' \u00b7 ' +
+          esc(who.claimedCount) + ' claimed, ' + esc(who.queuedCount) + ' queued</div>' +
+      '</div>';
+  }
+
+  /* Roadmap #8 — renders TSMBenchmarkIntelligence.compare()'s single-domain
+     result. Pure render layer, same as renderOutcome above: no scoring or
+     aggregation logic here, just display of what the engine computed. */
+  function renderBenchmark(target, benchmark) {
+    var el = typeof target === 'string' ? document.getElementById(target) : target;
+    if (!el) return;
+    if (!benchmark) {
+      el.innerHTML = '<div class="tsmk-explain"><div class="tsmk-exp-empty">No benchmark data available.</div></div>';
+      return;
+    }
+    var sourceLabel = benchmark.source === 'live'
+      ? ('Live \u00b7 n=' + benchmark.sampleSize)
+      : 'Reference figure \u2014 not yet sourced from your live data';
+    el.innerHTML =
+      '<div class="tsmk-explain">' +
+        '<div class="tsmk-exp-why-label">BENCHMARK \u00b7 ' + esc((benchmark.metric || '').toUpperCase()) + '</div>' +
+        '<div class="tsmk-exp-rationale">Your average: ' + esc(benchmark.avgDays) + ' day(s) &middot; Top performer: ' + esc(benchmark.topPerformerDays) + ' day(s)</div>' +
+        '<div class="tsmk-exp-rationale" style="opacity:.7;font-size:.85em;">' + esc(sourceLabel) + '</div>' +
+      '</div>';
+  }
+
   global.TSMExecKit = {
     renderWIP: renderWIP,
     renderExplainability: renderExplainability,
+    renderOutcome: renderOutcome,
+    renderBenchmark: renderBenchmark,
     fromRelay: fromRelay
   };
 
 })(window);
 </script>
 
+<script src="/html/shared/tsm-quality-score-engine.js"></script>
+<script src="/html/shared/tsm-executive-outcome.js"></script>
+<script src="/html/shared/tsm-benchmark-intelligence.js"></script>
+
 <script>
 /* TSM EXEC KIT — AUTO-INJECTED 2026-06-29 23:19 UTC */
 (function() {
-  var RELAY_KEYS = ["TSM_EXEC_RELAY", "TSM_WAR_ROOM_BRIEF", "TSM_HC_MEMORY"];
+  var RELAY_KEYS = ["TSM_EXEC_RELAY", "TSM_HEALTHCARE_STRATEGIST_RELAY", "TSM_WAR_ROOM_BRIEF", "TSM_HC_MEMORY"]; // TSM_EXEC_RELAY (real escalation payload w/ wip/explain) checked before the sentinel-push key, which shadowed it
   var WIP_TITLE  = "HC Pipeline Status";
   var WIP_ID     = 'tsmk-wip-auto';
   var EXP_ID     = 'tsmk-exp-auto';
+  var OUTCOME_ID = 'tsmk-outcome-auto';
+  var BENCHMARK_ID = 'tsmk-benchmark-auto';
 
   function readRelay() {
     for (var i = 0; i < RELAY_KEYS.length; i++) {
@@ -3143,6 +3374,28 @@ setInterval(buildStratBriefTab, 30000);
         ? new Date(relay.timestamp).toLocaleTimeString() : 'loaded')) : '' });
 
     TSMExecKit.renderExplainability(EXP_ID, items, { openFirst: true });
+
+    // Roadmap #7 — same items already flow through the explain widget above;
+    // reuse them rather than re-deriving anything.
+    if (window.TSMQualityScoreEngine && window.TSMExecutiveOutcome) {
+      var qualityScore = TSMQualityScoreEngine.fromExplainItems(items, { recordCount: items.length });
+      var outcome = TSMExecutiveOutcome.build({
+        domain: 'Healthcare',
+        explainItems: items,
+        qualityScore: qualityScore
+      });
+      TSMExecKit.renderOutcome(OUTCOME_ID, outcome);
+    }
+
+    // Roadmap #8 — no live TSMProcessMining data exists yet anywhere in
+    // this codebase, so this reads from TSMBenchmarkIntelligence's
+    // clearly-labeled reference table. Once a real Process Mining
+    // integration produces hopSummary data, pass it as { live: ... } here
+    // and this will prefer live figures automatically -- no other change needed.
+    if (window.TSMBenchmarkIntelligence) {
+      var benchmark = TSMBenchmarkIntelligence.compare('HEALTHCARE');
+      TSMExecKit.renderBenchmark(BENCHMARK_ID, benchmark);
+    }
   }
 
   if (document.readyState === 'loading') {
@@ -3165,7 +3418,7 @@ window.TSM_AUTONOMY_STANDARDIZED = true;
 </script>
 
 <!-- TSM ENFORCER BOOT -->
-<script src="../../core/tsm-enforcer.js"></script>
+<script src="/html/core/tsm-enforcer.js"></script>
 
 <script>
 // ===== TSM WAR ROOM SCOPED RELAY FIX =====
@@ -3194,11 +3447,10 @@ function tsmWriteScopedExec(vertical, missionId){
 <!-- TSM CONTROL PLANE -->
 <script src="/html/js/core/tsm-event-bus.js"></script>
 <script src="/html/js/core/tsm-state.js"></script>
-<script src="/html/js/core/tsm-mission-engine.js"></script>
 <script src="/shared/tsm-exec-portal-upgrade.js"></script>
 <!-- TSM EXCEPTION QUEUE — mounted after the final event-bus/mission-engine reload above,
      so it subscribes to the live TSMBus instance rather than one that gets discarded -->
-<script src="/html/js/core/tsm-exception-queue.js"></script>
+<script src="/html/shared/tsm-exceptions.js"></script>
 <script src="/html/js/widgets/tsm-exception-widget.js"></script>
 <script>
   TSMExceptionWidget.mount('tsm-exception-queue', { sector: 'healthcare' });

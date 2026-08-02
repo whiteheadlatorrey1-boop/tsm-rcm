@@ -33,7 +33,7 @@
       <a href="/construction-suite/compliance/">Compliance</a>
       <a href="/construction-suite/legal/">Legal</a>
       <a href="/construction-suite/document-showcase.html">Docs</a>
-      <a href="/construction-suite/construction-strategist.html">Strategist</a>
+      <a href="/war-rooms/construct-war/construction-strategist.html">Strategist</a>
       <a href="/construction-suite/presentation.html">Deck</a>
       <div class="live">TSM AI · CONSTRUCTION SUITE · LIVE</div>
     `;

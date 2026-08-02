@@ -1,0 +1,160 @@
+From 8ff5dc2c3208b164ba59004e9d365fa0770d8e1b Mon Sep 17 00:00:00 2001
+From: Tron <tron@tsmconsultz.dev>
+Date: Sat, 1 Aug 2026 05:17:56 +0000
+Subject: [PATCH] fix: chain-status-bar in 5 war rooms pointed at unused
+ TSM_RELAY_PAYLOAD key
+
+The chain-status-bar widget (copy-pasted across legal, RE, insurance,
+BPO, and construction war rooms) was reading a generic RELAY_KEY =
+'TSM_RELAY_PAYLOAD' localStorage key that none of the war rooms
+actually write to, so the bar always showed 'no relay yet' even after
+a real escalation fired.
+
+Fixed each war room to point at its real relay key:
+- legal: TSM_LEGAL_WAR_RELAY (storeSession)
+- RE: TSM_RE_WAR_RELAY (escalateToStrategist)
+- insurance: tsm_ins_war_relay (storeRelay, lowercase as written)
+- BPO: TSM_BPO_WAR_RELAY (storeWarRoomRelay)
+- construction: TSM_CONSTRUCTION_WAR_RELAY (storeSession)
+
+Also fixed a second bug in the same widget: all five payloads store
+timestamp as new Date().toISOString() (a string), but the widget did
+Date.now() - (d.timestamp || 0), which coerces the ISO string to NaN,
+so 'age' was always NaN and the bar fell through to the stale-relay
+branch even on a fresh relay. Now the timestamp is parsed to an epoch
+number before the subtraction regardless of whether it's a string or
+a number.
+
+Follow-up (not in this commit): insurance and BPO have no code path
+that ever writes TSM_STRAT_CONFIRMED_* / TSM_EXEC_CONFIRMED_* keys, so
+their chain bars can reach 'Strategist receiving' but never advance to
+'confirmed' state. That's a missing-feature gap, not a relay-key bug,
+and needs its own change in insurance-strategist.html /
+insurance-executive-portal.html and bpo-strategist.html /
+bpo-executive-portal.html.
+---
+ html/war-rooms/bpo-war/bpo-war-room.html                | 5 +++--
+ html/war-rooms/construct-war/construction-war-room.html | 5 +++--
+ html/war-rooms/insure-war/insurance-war-room.html       | 5 +++--
+ html/war-rooms/legal-war/legal-war-room.html            | 5 +++--
+ html/war-rooms/re-war/re-war-room.html                  | 5 +++--
+ 5 files changed, 15 insertions(+), 10 deletions(-)
+
+diff --git a/html/war-rooms/bpo-war/bpo-war-room.html b/html/war-rooms/bpo-war/bpo-war-room.html
+index 487bc256..7d29a791 100644
+--- a/html/war-rooms/bpo-war/bpo-war-room.html
++++ b/html/war-rooms/bpo-war/bpo-war-room.html
+@@ -249,7 +249,7 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
+ </div>
+ <script>
+ (function(){
+-  const RELAY_KEY = 'TSM_RELAY_PAYLOAD';
++  const RELAY_KEY = 'TSM_BPO_WAR_RELAY'; // real key written by storeWarRoomRelay()
+   const strat  = document.getElementById('tsm-chain-strat');
+   const exec   = document.getElementById('tsm-chain-exec');
+   const status = document.getElementById('tsm-chain-status');
+@@ -266,7 +266,8 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
+       const raw = localStorage.getItem(RELAY_KEY);
+       if (!raw) { status.textContent = 'War room active — no relay yet'; return; }
+       const d = JSON.parse(raw);
+-      const age = Date.now() - (d.timestamp || 0);
++      const relayTs = typeof d.timestamp === 'string' ? new Date(d.timestamp).getTime() : (d.timestamp || 0);
++      const age = Date.now() - relayTs;
+       const fresh = age < 5 * 60 * 1000; // 5 min
+ 
+       if (fresh) {
+diff --git a/html/war-rooms/construct-war/construction-war-room.html b/html/war-rooms/construct-war/construction-war-room.html
+index f240971a..608120ad 100644
+--- a/html/war-rooms/construct-war/construction-war-room.html
++++ b/html/war-rooms/construct-war/construction-war-room.html
+@@ -232,7 +232,7 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
+ </div>
+ <script>
+ (function(){
+-  const RELAY_KEY = 'TSM_RELAY_PAYLOAD';
++  const RELAY_KEY = 'TSM_CONSTRUCTION_WAR_RELAY'; // real key written by the war room's relay writer
+   const strat  = document.getElementById('tsm-chain-strat');
+   const exec   = document.getElementById('tsm-chain-exec');
+   const status = document.getElementById('tsm-chain-status');
+@@ -249,7 +249,8 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
+       const raw = localStorage.getItem(RELAY_KEY);
+       if (!raw) { status.textContent = 'War room active — no relay yet'; return; }
+       const d = JSON.parse(raw);
+-      const age = Date.now() - (d.timestamp || 0);
++      const relayTs = typeof d.timestamp === 'string' ? new Date(d.timestamp).getTime() : (d.timestamp || 0);
++      const age = Date.now() - relayTs;
+       const fresh = age < 5 * 60 * 1000; // 5 min
+ 
+       if (fresh) {
+diff --git a/html/war-rooms/insure-war/insurance-war-room.html b/html/war-rooms/insure-war/insurance-war-room.html
+index 40c0e423..e3529f59 100644
+--- a/html/war-rooms/insure-war/insurance-war-room.html
++++ b/html/war-rooms/insure-war/insurance-war-room.html
+@@ -329,7 +329,7 @@ body::before{content:'';position:fixed;top:0;right:0;width:600px;height:600px;ba
+ </div>
+ <script>
+ (function(){
+-  const RELAY_KEY = 'TSM_RELAY_PAYLOAD';
++  const RELAY_KEY = 'tsm_ins_war_relay'; // real key written by storeRelay()
+   const strat  = document.getElementById('tsm-chain-strat');
+   const exec   = document.getElementById('tsm-chain-exec');
+   const status = document.getElementById('tsm-chain-status');
+@@ -346,7 +346,8 @@ body::before{content:'';position:fixed;top:0;right:0;width:600px;height:600px;ba
+       const raw = localStorage.getItem(RELAY_KEY);
+       if (!raw) { status.textContent = 'War room active — no relay yet'; return; }
+       const d = JSON.parse(raw);
+-      const age = Date.now() - (d.timestamp || 0);
++      const relayTs = typeof d.timestamp === 'string' ? new Date(d.timestamp).getTime() : (d.timestamp || 0);
++      const age = Date.now() - relayTs;
+       const fresh = age < 5 * 60 * 1000; // 5 min
+ 
+       if (fresh) {
+diff --git a/html/war-rooms/legal-war/legal-war-room.html b/html/war-rooms/legal-war/legal-war-room.html
+index 5a14f8a6..4d09a9eb 100644
+--- a/html/war-rooms/legal-war/legal-war-room.html
++++ b/html/war-rooms/legal-war/legal-war-room.html
+@@ -324,7 +324,7 @@ main{padding:18px;display:flex;flex-direction:column;gap:14px}
+ </div>
+ <script>
+ (function(){
+-  const RELAY_KEY = 'TSM_RELAY_PAYLOAD';
++  const RELAY_KEY = 'TSM_LEGAL_WAR_RELAY'; // real key written by storeSession()
+   const strat  = document.getElementById('tsm-chain-strat');
+   const exec   = document.getElementById('tsm-chain-exec');
+   const status = document.getElementById('tsm-chain-status');
+@@ -341,7 +341,8 @@ main{padding:18px;display:flex;flex-direction:column;gap:14px}
+       const raw = localStorage.getItem(RELAY_KEY);
+       if (!raw) { status.textContent = 'War room active — no relay yet'; return; }
+       const d = JSON.parse(raw);
+-      const age = Date.now() - (d.timestamp || 0);
++      const relayTs = typeof d.timestamp === 'string' ? new Date(d.timestamp).getTime() : (d.timestamp || 0);
++      const age = Date.now() - relayTs;
+       const fresh = age < 5 * 60 * 1000; // 5 min
+ 
+       if (fresh) {
+diff --git a/html/war-rooms/re-war/re-war-room.html b/html/war-rooms/re-war/re-war-room.html
+index 38663cd4..91af1100 100644
+--- a/html/war-rooms/re-war/re-war-room.html
++++ b/html/war-rooms/re-war/re-war-room.html
+@@ -1490,7 +1490,7 @@
+ </div>
+ <script>
+ (function(){
+-  const RELAY_KEY = 'TSM_RELAY_PAYLOAD';
++  const RELAY_KEY = 'TSM_RE_WAR_RELAY'; // real key written by escalateToStrategist()
+   const strat  = document.getElementById('tsm-chain-strat');
+   const exec   = document.getElementById('tsm-chain-exec');
+   const status = document.getElementById('tsm-chain-status');
+@@ -1507,7 +1507,8 @@
+       const raw = localStorage.getItem(RELAY_KEY);
+       if (!raw) { status.textContent = 'War room active — no relay yet'; return; }
+       const d = JSON.parse(raw);
+-      const age = Date.now() - (d.timestamp || 0);
++      const relayTs = typeof d.timestamp === 'string' ? new Date(d.timestamp).getTime() : (d.timestamp || 0);
++      const age = Date.now() - relayTs;
+       const fresh = age < 5 * 60 * 1000; // 5 min
+ 
+       if (fresh) {
+-- 
+2.43.0
+

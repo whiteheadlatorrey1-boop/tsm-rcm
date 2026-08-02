@@ -95,17 +95,15 @@ summary::marker{content:''}
 </div>
 
 <script src="/js/core/tsm-auto-pipeline.js"></script>
-<script src="/config/tsm-client-key.js"></script>
 <script src="/html/shared/tsm-exec-framework.js"></script>
 <script>
 (function(){
   function authHeaders(){
-    const key = window.TSM_CLIENT_KEY;
-    if(!key) console.warn('[MDM Strategist] TSM_CLIENT_KEY is unset — merge calls will 401. See html/config/tsm-client-key.js');
-    return { 'Content-Type':'application/json', 'x-api-key': key || '' };
-  }
+  return { 'Content-Type':'application/json' };
+}
 
   let relay = null;
+  let lastLoggedCaseId = null;
 
   function loadRelay(){
     relay = (window.TSMAutoPipeline && window.TSMAutoPipeline.readRelay)
@@ -117,6 +115,10 @@ summary::marker{content:''}
         const raw = sessionStorage.getItem('TSM_MDM_RELAY') || localStorage.getItem('TSM_MDM_RELAY');
         relay = raw ? JSON.parse(raw) : null;
       }catch(e){ relay = null; }
+    }
+    if(relay && relay.caseId && relay.caseId !== lastLoggedCaseId){
+      try{ TSM.relay.write("MDM", relay, {caseId: relay.caseId, stage:'strategist'}); }catch(e){}
+      lastLoggedCaseId = relay.caseId;
     }
     render();
   }

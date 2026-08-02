@@ -113,7 +113,7 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
   </div>
 </div>
 <script src="/runtime/kernel/canonical-core.js"></script>
-<script src="/war-rooms/shared/tsm-live-data.js"></script>
+<script src="/war-rooms/tsm-live-data.js"></script>
 <script>
 (function(){
   function tick(){ document.getElementById('navClock').textContent=new Date().toLocaleTimeString(); }
@@ -132,47 +132,95 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
     {id:'it',name:'IT OPS',score:94,delta:+2,color:'#00dcb4'}
   ];
 
-  // ── LIVE BPO SIGNAL: reads real relay data written by bpo-war-room.html
-  // via TSM.relay.write("BPO", ...) -> canonical key TSM_BPO_RELAY, instead
-  // of a hardcoded line. First real (non-static) signal source in Digital
-  // Twin -- see phases.json Phase 10 note.
-  function getBpoLiveSignal(){
+
+  // ── Shared severity tally for the `explain` arrays most verticals write.
+  // Confirmed convention across O2C/CPQ/CRM/APPROVAL/GOVERNANCE/INTEGRATION:
+  // getExplainItems() tags each item severity: 'high'|'med'|'low'.
+  // BPO does NOT use this convention (see evaluateBpo below) -- it gets
+  // its own `evaluate` override instead of relying on this helper.
+  function countBySeverity(explain) {
+    const c = { high: 0, med: 0, low: 0 };
+    (explain || []).forEach(item => {
+      if (item && c.hasOwnProperty(item.severity)) c[item.severity]++;
+    });
+    return c;
+  }
+
+  // ── Storage-key fallback map, sourced from relay.core.js RELAY_REGISTRY.
+  // Kept as a local literal rather than importing RELAY_REGISTRY directly,
+  // since relay.core.js may not expose it globally -- update this map if
+  // RELAY_REGISTRY in relay.core.js ever changes.
+  const RELAY_STORAGE_KEYS = {
+    BPO: 'TSM_BPO_RELAY',
+    O2C: 'TSM_O2C_RELAY',
+    CPQ: 'TSM_CPQ_RELAY',
+    CRM: 'TSM_CRM_RELAY',
+    APPROVAL: 'TSM_APPROVAL_RELAY',
+    GOVERNANCE: 'TSM_GOVERNANCE_RELAY',
+    INTEGRATION: 'TSM_INTEGRATION_HUB_RELAY' // fixed: was 'TSM_INTEGRATION_RELAY'
+  };
+
+  // ── BPO's custom evaluator. BPO's payload has no `explain` array;
+  // instead extraction.risks[] carries level: 'CRITICAL'|'HIGH'|'MED',
+  // and extraction.severity carries an overall value (format not fully
+  // confirmed -- treated as an optional extra signal, not load-bearing).
+  // Returns the same {high,med,low} shape as countBySeverity() so
+  // buildLiveSignal()'s tiering logic doesn't need to know the
+  // difference between a default vertical and an override one.
+  function evaluateBpo(raw) {
+    const risks = (raw.extraction && raw.extraction.risks) || [];
+    const c = { high: 0, med: 0, low: 0 };
+    risks.forEach(rk => {
+      if (rk.level === 'CRITICAL' || rk.level === 'HIGH') c.high++;
+      else if (rk.level === 'MED') c.med++;
+      else c.low++;
+    });
+    return c;
+  }
+
+  // ── Config-driven signal list. To add a new live vertical:
+  //   - if its payload has explain[].severity (high/med/low), just add
+  //     { key, label, tsField, okText } -- no function needed.
+  //   - if it doesn't (like BPO), also supply evaluate(raw) returning
+  //     {high, med, low} counts.
+  const VERTICAL_SIGNAL_CONFIG = [
+    { key: 'BPO',         label: 'BPO',         tsField: 'timestamp',   okText: 'BPO: pipeline operational — no risk signals', evaluate: evaluateBpo },
+    { key: 'O2C',         label: 'O2C',         tsField: 'relayed_at',  okText: 'O2C: pipeline operational — no risk signals' },
+    { key: 'CPQ',         label: 'CPQ',         tsField: 'timestamp',   okText: 'CPQ: quote pipeline healthy — no SLA risk' },
+    { key: 'CRM',         label: 'CRM',         tsField: 'ts',          okText: 'CRM: cases and opportunities on track' },
+    { key: 'APPROVAL',    label: 'APPROVALS',   tsField: 'timestamp',   okText: 'Approvals: queue clear — no SLA breaches' },
+    { key: 'GOVERNANCE',  label: 'GOVERNANCE',  tsField: 'timestamp',   okText: 'Governance: controls passing — no open risks' },
+    { key: 'INTEGRATION', label: 'INTEGRATION', tsField: 'timestamp',   okText: 'Integration Hub: systems and queues nominal' }
+  ];
+
+  function buildLiveSignal(cfg){
     try {
       let raw = null;
       if (window.TSM && window.TSM.relay && window.TSM.relay.read) {
-        raw = window.TSM.relay.read('BPO');
+        raw = window.TSM.relay.read(cfg.key);
       } else {
-        const r = localStorage.getItem('TSM_BPO_RELAY') || sessionStorage.getItem('TSM_BPO_RELAY');
+        const storageKey = RELAY_STORAGE_KEYS[cfg.key];
+        const r = storageKey && (localStorage.getItem(storageKey) || sessionStorage.getItem(storageKey));
         raw = r ? JSON.parse(r) : null;
       }
       if (raw) {
-        const b = raw;
-        const t = new Date(b.relayed_at || b.timestamp);
+        const t = new Date(raw[cfg.tsField]);
         const time = isNaN(t) ? '—' : t.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
-        const slaCount = (b.sla_breaches || []).length;
-        const riskCount = (b.risk_flags || []).length;
-        if (riskCount > 0) {
-          return {type:'bad', text:`BPO: ${riskCount} risk signal${riskCount===1?'':'s'} flagged across engagements`, src:'BPO', time, live:true};
+        const { high, med, low } = cfg.evaluate ? cfg.evaluate(raw) : countBySeverity(raw.explain);
+        if (high > 0) {
+          return {type:'bad', text:`${cfg.label}: ${high} high-severity item${high===1?'':'s'} flagged`, src:cfg.label, time, live:true};
         }
-        if (slaCount > 0) {
-          return {type:'warn', text:`BPO: ${slaCount} SLA breach${slaCount===1?'':'es'} in pipeline`, src:'BPO', time, live:true};
+        if (med + low > 0) {
+          const n = med + low;
+          return {type:'warn', text:`${cfg.label}: ${n} item${n===1?'':'s'} needs attention`, src:cfg.label, time, live:true};
         }
-        return {type:'ok', text:'BPO: pipeline operational — no risk signals', src:'BPO', time, live:true};
+        return {type:'ok', text:cfg.okText, src:cfg.label, time, live:true};
       }
     } catch(e) {}
-    return {type:'warn', text:'BPO: no active case data — open bpo-war-room.html to generate live signal', src:'BPO', time:'—', live:false};
+    return {type:'warn', text:`${cfg.label}: no active data — open the ${cfg.label.toLowerCase()} war room to generate a live signal`, src:cfg.label, time:'—', live:false};
   }
 
-  const SIGNALS=[
-    getBpoLiveSignal(),
-    {type:'ok',text:'O2C pipeline: 5 orders active, $333K in flight','src':'O2C','time':'12:09'},
-    {type:'warn',text:'CPQ: Glendale Data Center credit hold — $97.5K at risk','src':'CPQ','time':'12:07'},
-    {type:'bad',text:'Procurement score dropped 8pts — supplier risk elevated','src':'SUPPLY CHAIN','time':'11:58'},
-    {type:'ok',text:'CRM: Honeywell proposal at $280K — health score 82','src':'CRM','time':'11:45'},
-    {type:'warn',text:'Approvals: 8 SLA breaches — Finance Review bottleneck','src':'APPROVALS','time':'11:32'},
-    {type:'ok',text:'Governance: SOX controls passing — ISO 27001 exception noted','src':'GOVERNANCE','time':'11:20'},
-    {type:'ok',text:'Integration Hub: 8 systems online, 16 errors/hr avg','src':'INTEGRATION','time':'11:15'}
-  ];
+  const SIGNALS = VERTICAL_SIGNAL_CONFIG.map(buildLiveSignal);
 
   const FORECASTS=[
     {label:'Revenue (30d)',value:'$2.4M',trend:'+12%',up:true},
@@ -270,7 +318,9 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
       items.push({
         id: 'domain-'+d.id,
         claim: `${d.name} health score ${d.score}/100, trending ${trend}`,
-        confidence: 82,
+        // Deterministic threshold check (score/delta), not a model guess --
+        // always true when it fires, so a flat high value is honest here.
+        confidence: 95,
         severity,
         impact: d.score<70 ? 'Domain health below acceptable range — investigate root cause' : 'Domain trending down — watch for continued decline',
         rationale: `${d.name} is currently scored ${d.score}/100 with a period-over-period change of ${d.delta>=0?'+':''}${d.delta}. ${d.score<75?'This is below the healthy-band threshold of 75.':'Score is in range but the negative trend is worth tracking.'}`,

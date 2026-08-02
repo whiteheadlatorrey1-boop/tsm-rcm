@@ -565,39 +565,13 @@ document.addEventListener('click', (e) => {
 });
 console.log("TSM_UI: Direct Neural Link Established.");
 </script>
-window.TSM_UI = {
-    runAudit: async (sector, factor) => {
-        const feed = document.querySelector('.intelligence-feed-output') || document.getElementById('intelligence-feed-output');
-        if (feed) feed.innerHTML = '<span style="color: #00ffff;">[STRATEGIST] Internal Link: Processing...</span>';
-        try {
-            const res = await fetch('/api/financial/query', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ query: `auditops "${sector}" --factor "${factor}" --logic strategist` })
-            });
-            const data = await res.json();
-            if (feed) feed.innerText = `[STRATEGIST] ${data.content || data.reply || data.output || "Analysis Complete."}`;
-        } catch (e) {
-            if (feed) feed.innerText = "[STRATEGIST] Local API Bridge Failed.";
-        }
-    }
-};
-// Wire the sector cards to the auto-fill search prompt logic
-document.addEventListener('click', (e) => {
-    const card = e.target.closest('.module-card');
-    if (card) {
-        const sector = card.dataset.sector || "Construction";
-        const factor = card.querySelector('h3')?.innerText || "General Audit";
-        TSM_UI.runAudit(sector, factor);
-    }
-});
-console.log("TSM_UI: Direct Neural Link Established.");
-</script>
   <link rel="stylesheet" href="/shared/tsm-shared.css">
   <script src="/shared/tsm-shared.js"></script>
-<script src="./html/js/tsm-runtime-lock.js"></script>
-<script src="./html/js/tsm-event-contract.js"></script>
-<script src="./html/js/tsm-autonomy-layer.js"></script>
+<script src="../shared/runtime/integrity/tsm-integrity.js"></script>
+<script src="js/rcm-relay-client.js"></script>
+<script src="/js/tsm-runtime-lock.js"></script>
+<script src="/js/tsm-event-contract.js"></script>
+<script src="/js/tsm-autonomy-layer.js"></script>
 </head>
 <body>
 
@@ -805,6 +779,7 @@ console.log("TSM_UI: Direct Neural Link Established.");
         <button class="bar-btn" data-tsm-action="saveReport" data-tsm-args="">💾 SAVE REPORT</button>
         <button class="bar-btn" data-tsm-action="managerExport" data-tsm-args="">📤 MANAGER EXPORT</button>
         <button class="bar-btn primary" data-tsm-action="pushToStrategist" data-tsm-args="">→ PUSH TO STRATEGIST</button>
+        <button class="bar-btn primary" data-tsm-action="relayToRCMOS" data-tsm-args="" onclick="relayToRCMOS()">⇄ SEND TO RCM OS</button>
         <button class="bar-btn" data-tsm-action="exportTxt" data-tsm-args="">↓ EXPORT TXT</button>
       </div>
     </div>
@@ -812,6 +787,7 @@ console.log("TSM_UI: Direct Neural Link Established.");
   </div>
 </div>
 
+<script>
 // ===== DOCUMENT DATA =====
 const docs = {
   'bank-recon': {
@@ -1242,9 +1218,51 @@ function pushToStrategist() {
   if (!msg) { alert('Run the engines first.'); return; }
   alert('✓ All engine outputs pushed to FinOps Strategist.\n\nIn production this would post to your strategist cross-app state.');
 }
+
+// ===== RELAY TO RCM OS =====
+// Packages the 4 engine outputs plus the source doc and hands it off to
+// tsm-rcm-os.html via RCMRelay (server-side staging, with a localStorage
+// fallback baked in). RCM OS surfaces a "relay received" notification and
+// auto-populates the Document Intake card + Executive tab with this analysis.
+async function relayToRCMOS() {
+  const hasOutputs = Object.values(engineOutputs).some(t => t && !t.startsWith('⚠'));
+  if (!hasOutputs) {
+    alert('Fire the engines first — there\'s no analysis to relay yet.');
+    return;
+  }
+
+  const payload = {
+    docName: currentDoc.name,
+    generatedAt: new Date().toISOString(),
+    engines: {
+      triage: engineOutputs[1] || '',
+      variance: engineOutputs[2] || '',
+      actionPlan: engineOutputs[3] || '',
+      executive: engineOutputs[4] || ''
+    }
+  };
+
+  setBottom(`FINOPS NEURAL BRIDGE · Relaying "${currentDoc.name}" to RCM OS...`);
+
+  if (typeof RCMRelay === 'undefined') {
+    // Shared client didn't load — fall back to a direct localStorage write
+    // so the handoff still works.
+    try {
+      localStorage.setItem('TSM_FINOPS_RCM_RELAY', JSON.stringify(payload));
+    } catch (err) {
+      alert('Relay failed: ' + err.message);
+      return;
+    }
+  } else {
+    await RCMRelay.send(payload);
+  }
+
+  setBottom(`FINOPS NEURAL BRIDGE · Relayed "${currentDoc.name}" to RCM OS · Opening RCM OS...`);
+  window.location.href = 'tsm-rcm-os.html';
+}
 </script>
 <script src="/tsm-bnca-bridge.js"></script>
-
+<script>
 (function(){
   function reportBNCA(){
     if(typeof TSM_BNCA==='undefined') return;
@@ -1291,20 +1309,3 @@ document.addEventListener('click', function(e){
   <script src="/js/core/tsm-kernel-upgrade.js"></script>
 </body>
 </html>
-
-// ===== TSM_AUTONOMY_STANDARDIZED =====
-window.TSM_AUTONOMY_STANDARDIZED = true;
-</script>
-
-// ===== TSM WAR ROOM SCOPED RELAY FIX =====
-window.tsmMission = window.tsmMission || {
-  id: "FINOPS-SUITE-" + Date.now().toString(36),
-  vertical: "finops-suite",
-  
-};
-
-function tsmWriteRelay(payload){
-  TSM_KERNEL.setRelay("finops-suite", JSON.stringify(payload));
-}
-</script>
-

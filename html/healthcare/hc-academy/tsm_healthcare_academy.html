@@ -1,0 +1,415 @@
+<h2 class="sr-only">TSM Healthcare Intelligence Academy — interactive learning platform with four stages: terminology, workflow, claims simulation, and certification exam</h2>
+
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--font-sans); }
+.academy { padding: 1.5rem 0; }
+.topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 0.5px solid var(--color-border-tertiary); }
+.topbar-left { display: flex; align-items: center; gap: 10px; }
+.badge { font-size: 11px; font-weight: 500; padding: 3px 10px; border-radius: 999px; background: var(--color-background-info); color: var(--color-text-info); }
+.xp-bar-wrap { display: flex; align-items: center; gap: 8px; }
+.xp-bar { width: 120px; height: 6px; background: var(--color-background-secondary); border-radius: 3px; overflow: hidden; }
+.xp-fill { height: 100%; background: #1D9E75; border-radius: 3px; transition: width 0.4s; }
+.stage-nav { display: flex; gap: 8px; margin-bottom: 1.5rem; flex-wrap: wrap; }
+.stage-btn { flex: 1; min-width: 120px; padding: 10px 8px; border: 0.5px solid var(--color-border-secondary); border-radius: var(--border-radius-md); background: var(--color-background-primary); color: var(--color-text-secondary); font-size: 13px; cursor: pointer; text-align: center; transition: all 0.2s; }
+.stage-btn:hover { background: var(--color-background-secondary); }
+.stage-btn.active { border-color: #1D9E75; color: #0F6E56; background: #E1F5EE; font-weight: 500; }
+.stage-btn .stage-num { font-size: 11px; display: block; margin-bottom: 2px; opacity: 0.7; }
+.stage-btn .locked { opacity: 0.4; pointer-events: none; }
+.panel { background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); padding: 1.25rem; }
+.section-title { font-size: 16px; font-weight: 500; color: var(--color-text-primary); margin-bottom: 4px; }
+.section-sub { font-size: 13px; color: var(--color-text-secondary); margin-bottom: 1.25rem; }
+.term-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 1.25rem; }
+.term-card { padding: 12px; border-radius: var(--border-radius-md); border: 0.5px solid var(--color-border-tertiary); background: var(--color-background-secondary); cursor: pointer; transition: all 0.2s; }
+.term-card:hover { border-color: #1D9E75; }
+.term-card.flipped { background: #E1F5EE; border-color: #1D9E75; }
+.term-abbr { font-size: 18px; font-weight: 500; color: #0F6E56; }
+.term-def { font-size: 12px; color: var(--color-text-secondary); margin-top: 4px; display: none; }
+.term-card.flipped .term-def { display: block; color: #0F6E56; }
+.term-card.flipped .term-abbr { font-size: 13px; }
+.btn { padding: 8px 18px; border-radius: var(--border-radius-md); border: 0.5px solid var(--color-border-secondary); background: var(--color-background-primary); color: var(--color-text-primary); font-size: 14px; cursor: pointer; transition: all 0.15s; }
+.btn:hover { background: var(--color-background-secondary); }
+.btn-primary { background: #1D9E75; border-color: #1D9E75; color: white; }
+.btn-primary:hover { background: #0F6E56; }
+.btn-sm { padding: 6px 14px; font-size: 13px; }
+.workflow-steps { display: flex; flex-direction: column; gap: 10px; margin-bottom: 1.25rem; }
+.wf-step { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: var(--border-radius-md); border: 0.5px solid var(--color-border-tertiary); cursor: pointer; transition: all 0.2s; }
+.wf-step:hover { border-color: #1D9E75; background: var(--color-background-secondary); }
+.wf-step.active-step { border-color: #1D9E75; background: #E1F5EE; }
+.wf-step.done { border-color: #639922; background: #EAF3DE; }
+.step-num { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 500; background: var(--color-background-secondary); color: var(--color-text-secondary); flex-shrink: 0; }
+.wf-step.active-step .step-num { background: #1D9E75; color: white; }
+.wf-step.done .step-num { background: #639922; color: white; }
+.step-info { flex: 1; }
+.step-name { font-size: 14px; font-weight: 500; color: var(--color-text-primary); }
+.step-desc { font-size: 12px; color: var(--color-text-secondary); margin-top: 2px; }
+.step-action { font-size: 12px; color: #0F6E56; opacity: 0; transition: opacity 0.2s; }
+.wf-step:hover .step-action, .wf-step.active-step .step-action { opacity: 1; }
+.claim-panel { display: flex; flex-direction: column; gap: 12px; }
+.claim-card { padding: 1rem; border-radius: var(--border-radius-md); border: 0.5px solid var(--color-border-secondary); background: var(--color-background-secondary); }
+.claim-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+.claim-id { font-size: 12px; color: var(--color-text-secondary); }
+.claim-status { font-size: 11px; padding: 2px 8px; border-radius: 999px; }
+.status-denied { background: #FCEBEB; color: #A32D2D; }
+.status-pending { background: #FAEEDA; color: #854F0B; }
+.status-resolved { background: #EAF3DE; color: #3B6D11; }
+.claim-detail { font-size: 13px; color: var(--color-text-primary); margin-bottom: 4px; }
+.claim-actions { display: flex; gap: 8px; margin-top: 10px; }
+.q-block { margin-bottom: 1.25rem; }
+.q-text { font-size: 14px; color: var(--color-text-primary); margin-bottom: 10px; line-height: 1.5; }
+.q-choices { display: flex; flex-direction: column; gap: 8px; }
+.q-choice { padding: 10px 14px; border-radius: var(--border-radius-md); border: 0.5px solid var(--color-border-secondary); background: var(--color-background-secondary); cursor: pointer; font-size: 13px; color: var(--color-text-primary); text-align: left; transition: all 0.2s; }
+.q-choice:hover { border-color: #1D9E75; background: var(--color-background-primary); }
+.q-choice.correct { background: #EAF3DE; border-color: #639922; color: #3B6D11; }
+.q-choice.wrong { background: #FCEBEB; border-color: #A32D2D; color: #A32D2D; }
+.q-choice.disabled { pointer-events: none; }
+.q-feedback { font-size: 13px; padding: 10px 14px; border-radius: var(--border-radius-md); margin-top: 8px; display: none; }
+.q-feedback.show { display: block; }
+.q-feedback.pass { background: #EAF3DE; color: #3B6D11; }
+.q-feedback.fail { background: #FCEBEB; color: #A32D2D; }
+.score-bar-wrap { display: flex; align-items: center; gap: 10px; margin-bottom: 1.25rem; }
+.score-bar { flex: 1; height: 8px; background: var(--color-background-secondary); border-radius: 4px; overflow: hidden; }
+.score-fill { height: 100%; background: #1D9E75; border-radius: 4px; transition: width 0.4s; }
+.metric-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 1.25rem; }
+.metric { padding: 12px; border-radius: var(--border-radius-md); background: var(--color-background-secondary); text-align: center; }
+.metric-val { font-size: 22px; font-weight: 500; color: var(--color-text-primary); }
+.metric-lbl { font-size: 11px; color: var(--color-text-secondary); margin-top: 2px; }
+.ai-bubble { padding: 12px 14px; background: #E1F5EE; border-radius: var(--border-radius-md); font-size: 13px; color: #0F6E56; margin-bottom: 1rem; border-left: 3px solid #1D9E75; }
+.progress-dots { display: flex; gap: 6px; justify-content: center; margin-top: 1rem; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--color-border-secondary); }
+.dot.done { background: #1D9E75; }
+.dot.active { background: #1D9E75; outline: 2px solid #9FE1CB; }
+</style>
+
+<div class="academy">
+  <div class="topbar">
+    <div class="topbar-left">
+      <i class="ti ti-building-hospital" style="font-size:20px; color:#1D9E75;" aria-hidden="true"></i>
+      <div>
+        <div style="font-size:15px; font-weight:500; color:var(--color-text-primary);">Healthcare Intelligence Academy</div>
+        <div style="font-size:12px; color:var(--color-text-secondary);">CRCR Certification Track</div>
+      </div>
+    </div>
+    <div class="xp-bar-wrap">
+      <span class="badge" id="level-badge">Bronze</span>
+      <div class="xp-bar"><div class="xp-fill" id="xp-fill" style="width:0%"></div></div>
+      <span style="font-size:12px; color:var(--color-text-secondary);" id="xp-label">0 XP</span>
+    </div>
+  </div>
+
+  <div class="stage-nav">
+    <button class="stage-btn active" id="btn-stage1" onclick="showStage(1)">
+      <span class="stage-num">Stage 1</span> Terminology
+    </button>
+    <button class="stage-btn" id="btn-stage2" onclick="showStage(2)">
+      <span class="stage-num">Stage 2</span> Workflow
+    </button>
+    <button class="stage-btn" id="btn-stage3" onclick="showStage(3)">
+      <span class="stage-num">Stage 3</span> Claims Lab
+    </button>
+    <button class="stage-btn" id="btn-stage4" onclick="showStage(4)">
+      <span class="stage-num">Stage 4</span> Certification
+    </button>
+  </div>
+
+  <div id="stage1" class="panel">
+    <div class="section-title">CRCR Terminology Bank</div>
+    <div class="section-sub">Tap any card to reveal the definition. Master all terms to unlock Stage 2.</div>
+    <div class="term-grid" id="term-grid"></div>
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <span style="font-size:13px; color:var(--color-text-secondary);" id="term-progress">0 / 12 mastered</span>
+      <button class="btn btn-primary btn-sm" onclick="sendPrompt('Give me a harder CRCR terminology drill — scenario-based questions on EFT, ERA, and DRG')">
+        AI Drill ↗
+      </button>
+    </div>
+  </div>
+
+  <div id="stage2" class="panel" style="display:none;">
+    <div class="section-title">Operational Workflow Simulation</div>
+    <div class="section-sub">Walk through the full Revenue Cycle workflow. Click each step to complete it.</div>
+    <div class="ai-bubble" id="wf-guidance">
+      <i class="ti ti-robot" aria-hidden="true"></i> Start with patient registration — this anchors the entire claim lifecycle.
+    </div>
+    <div class="workflow-steps" id="workflow-steps"></div>
+    <button class="btn btn-primary btn-sm" style="margin-top:4px;" onclick="sendPrompt('Walk me through what happens when eligibility verification fails and a patient is already registered — what are the downstream effects on claims?')">
+      Ask AI Coach ↗
+    </button>
+  </div>
+
+  <div id="stage3" class="panel" style="display:none;">
+    <div class="section-title">Live Claims Lab</div>
+    <div class="section-sub">Resolve the denial queue below. Each action you take is scored.</div>
+    <div class="metric-row">
+      <div class="metric"><div class="metric-val" id="claims-resolved">0</div><div class="metric-lbl">Resolved</div></div>
+      <div class="metric"><div class="metric-val" id="claims-accuracy">—</div><div class="metric-lbl">Accuracy</div></div>
+      <div class="metric"><div class="metric-val" id="claims-score">0</div><div class="metric-lbl">Lab Score</div></div>
+    </div>
+    <div class="claim-panel" id="claim-panel"></div>
+  </div>
+
+  <div id="stage4" class="panel" style="display:none;">
+    <div class="section-title">CRCR Certification Exam</div>
+    <div class="section-sub">Adaptive exam — difficulty adjusts to your performance. Passing score: 85%.</div>
+    <div class="score-bar-wrap">
+      <span style="font-size:12px; color:var(--color-text-secondary);" id="q-progress">Question 1 of 6</span>
+      <div class="score-bar"><div class="score-fill" id="q-bar" style="width:0%"></div></div>
+      <span style="font-size:12px; color:var(--color-text-secondary);" id="exam-score">0%</span>
+    </div>
+    <div id="exam-area"></div>
+    <div class="progress-dots" id="q-dots"></div>
+  </div>
+</div>
+
+<script>
+const terms = [
+  { abbr: 'EFT', def: 'Electronic Funds Transfer — direct payment from payer to provider' },
+  { abbr: 'ERA', def: 'Electronic Remittance Advice — digital EOB explaining claim payment' },
+  { abbr: 'APC', def: 'Ambulatory Payment Classification — outpatient prospective payment group' },
+  { abbr: 'DRG', def: 'Diagnosis Related Group — inpatient payment classification system' },
+  { abbr: 'SNF', def: 'Skilled Nursing Facility — post-acute inpatient care setting' },
+  { abbr: 'ABN', def: 'Advance Beneficiary Notice — Medicare non-coverage warning form' },
+  { abbr: 'EOB', def: 'Explanation of Benefits — payer summary of claim adjudication' },
+  { abbr: 'HCPCS', def: 'Healthcare Common Procedure Coding System — billing codes for services' },
+  { abbr: 'COB', def: 'Coordination of Benefits — dual-insurance payment sequencing rule' },
+  { abbr: 'PA', def: 'Prior Authorization — payer pre-approval before service delivery' },
+  { abbr: 'CDM', def: 'Charge Description Master — hospital master list of billable charges' },
+  { abbr: 'NPI', def: 'National Provider Identifier — unique 10-digit provider ID number' }
+];
+
+const workflowSteps = [
+  { name: 'Patient Registration', desc: 'Capture demographics, insurance, and consent', guidance: 'Accuracy here prevents downstream denials. Verify name, DOB, and insurance ID match payer records.' },
+  { name: 'Eligibility Verification', desc: 'Confirm coverage and benefits before service', guidance: 'Run eligibility 24–48 hrs before service. Check deductible, copay, and network status.' },
+  { name: 'Prior Authorization', desc: 'Obtain payer approval for covered services', guidance: 'PA failure is a top denial driver. Document auth number and expiration in the claim file.' },
+  { name: 'Charge Capture', desc: 'Record all services delivered using CDM codes', guidance: 'HCPCS and CPT codes must match the clinical documentation exactly. Mismatches = technical denials.' },
+  { name: 'Claim Routing', desc: 'Submit clean claim to payer via EDI 837', guidance: 'Validate NPI, billing address, and taxonomy code before submission. Use clearinghouse scrubbing.' },
+  { name: 'Denial Review', desc: 'Analyze EOB remark codes and route appeals', guidance: 'Check CO vs PR denial codes. CO = contractual; PR = patient responsibility. Route accordingly.' }
+];
+
+const claims = [
+  { id: 'CLM-8821', patient: 'M. Torres', payer: 'Medicare Part B', service: 'Oxygen Equipment (E0431)', code: 'HCPCS E0431', denial: 'Missing Certificate of Medical Necessity', status: 'denied', actions: ['Request CMN from physician', 'Correct HCPCS code', 'Submit duplicate'], correct: 0 },
+  { id: 'CLM-9043', patient: 'R. Johnson', payer: 'Blue Cross', service: 'SNF Day 22', code: 'DRG 945', denial: 'Exhausted Medicare SNF benefit', status: 'denied', actions: ['Appeal with clinical notes', 'Bill secondary payer', 'Write off balance'], correct: 0 },
+  { id: 'CLM-7712', patient: 'A. Patel', payer: 'Medicaid', service: 'ER Visit (99285)', code: 'CPT 99285', denial: 'Service requires prior authorization', status: 'pending', actions: ['Obtain retroactive PA', 'Submit with auth on file', 'Bill patient instead'], correct: 0 }
+];
+
+const examQs = [
+  { q: 'A claim was denied with remark code CO-97. What does this indicate?', choices: ['Payment is included in another service', 'Patient not eligible on date of service', 'Missing prior authorization', 'Duplicate claim on file'], ans: 0, explanation: 'CO-97 means the service or procedure is included in the payment/allowance for another service that was adjudicated.' },
+  { q: 'During month-end reconciliation, ERA deposits do not match EFT amounts. What is the first step?', choices: ['Post all ERA payments immediately', 'Pull the 835 transaction and compare line-level adjustments', 'Contact payer billing department', 'Write off the variance'], ans: 1, explanation: 'The 835 EDI transaction contains line-level adjustment codes that explain any difference between ERA and EFT amounts.' },
+  { q: 'What is the DRG window violation?', choices: ['Billing beyond 365 days of service', 'Submitting outpatient services within 3 days before an inpatient admission', 'Using an expired NPI number', 'Upcoding a procedure code'], ans: 1, explanation: 'The DRG 3-day window requires that outpatient services rendered within 3 days of inpatient admission must be bundled into the inpatient DRG claim.' },
+  { q: 'A patient has Medicare primary and a Medigap secondary. Which code on the 837 signals COB?', choices: ['Claim adjustment reason code', 'Loop 2320 with OI qualifier', 'Remark code N1', 'Taxonomy code 207Q00000X'], ans: 1, explanation: 'Loop 2320 on the 837 transaction carries the Other Insurance (OI) segment that coordinates benefits between primary and secondary payers.' },
+  { q: 'An ABN was not collected before a non-covered Medicare service was rendered. The patient was not informed. What is the result?', choices: ['The provider can still bill Medicare', 'The provider must waive the charge entirely', 'The payer applies CO-45 adjustment', 'Patient responsibility shifts to Medicaid'], ans: 1, explanation: 'Without a signed ABN, the provider cannot bill the patient for a service Medicare determines is not reasonable and necessary. The charge must be waived.' },
+  { q: 'What HCPCS modifier indicates a service was rendered in a SNF?', choices: ['Modifier -25', 'Modifier -GX', 'Modifier -GY', 'Modifier -TC'], ans: 1, explanation: 'Modifier -GX (notice of liability issued, voluntary under payer policy) is applied to SNF claims to signal proper ABN issuance and facility setting.' }
+];
+
+let xp = 0, termsFlipped = new Set(), wfStep = 0, claimsData = JSON.parse(JSON.stringify(claims));
+let examIdx = 0, examCorrect = 0, examAnswered = [];
+
+function addXP(amt) {
+  xp = Math.min(xp + amt, 500);
+  const pct = Math.round(xp / 500 * 100);
+  document.getElementById('xp-fill').style.width = pct + '%';
+  document.getElementById('xp-label').textContent = xp + ' XP';
+  if (xp >= 400) setLevel('Platinum');
+  else if (xp >= 250) setLevel('Gold');
+  else if (xp >= 100) setLevel('Silver');
+  else setLevel('Bronze');
+}
+
+function setLevel(lvl) {
+  const b = document.getElementById('level-badge');
+  b.textContent = lvl;
+  const colors = { Bronze: '#854F0B', Silver: '#5F5E5A', Gold: '#BA7517', Platinum: '#185FA5' };
+  b.style.background = 'none';
+  b.style.color = colors[lvl] || '#185FA5';
+  b.style.border = '0.5px solid currentColor';
+}
+
+function showStage(n) {
+  [1,2,3,4].forEach(i => {
+    document.getElementById('stage' + i).style.display = i === n ? '' : 'none';
+    const btn = document.getElementById('btn-stage' + i);
+    btn.classList.toggle('active', i === n);
+  });
+}
+
+function buildTerms() {
+  const g = document.getElementById('term-grid');
+  g.innerHTML = terms.map((t, i) => `
+    <div class="term-card" id="tc${i}" onclick="flipTerm(${i})">
+      <div class="term-abbr">${t.abbr}</div>
+      <div class="term-def">${t.def}</div>
+    </div>
+  `).join('');
+}
+
+function flipTerm(i) {
+  const c = document.getElementById('tc' + i);
+  const wasFlipped = c.classList.contains('flipped');
+  c.classList.toggle('flipped');
+  if (!wasFlipped) {
+    termsFlipped.add(i);
+    addXP(5);
+  }
+  document.getElementById('term-progress').textContent = termsFlipped.size + ' / 12 mastered';
+}
+
+function buildWorkflow() {
+  const c = document.getElementById('workflow-steps');
+  c.innerHTML = workflowSteps.map((s, i) => `
+    <div class="wf-step ${i === 0 ? 'active-step' : ''}" id="wf${i}" onclick="doWfStep(${i})">
+      <div class="step-num">${i < wfStep ? '<i class="ti ti-check" style="font-size:13px;" aria-hidden="true"></i>' : i + 1}</div>
+      <div class="step-info">
+        <div class="step-name">${s.name}</div>
+        <div class="step-desc">${s.desc}</div>
+      </div>
+      <div class="step-action">${i < wfStep ? '✓ Complete' : 'Click to complete →'}</div>
+    </div>
+  `).join('');
+}
+
+function doWfStep(i) {
+  if (i !== wfStep) return;
+  document.getElementById('wf' + i).classList.remove('active-step');
+  document.getElementById('wf' + i).classList.add('done');
+  document.getElementById('wf' + i).querySelector('.step-num').innerHTML = '<i class="ti ti-check" style="font-size:13px;" aria-hidden="true"></i>';
+  document.getElementById('wf' + i).querySelector('.step-action').textContent = '✓ Complete';
+  addXP(15);
+  wfStep++;
+  if (wfStep < workflowSteps.length) {
+    document.getElementById('wf' + wfStep).classList.add('active-step');
+    document.getElementById('wf-guidance').innerHTML = '<i class="ti ti-robot" aria-hidden="true"></i> ' + workflowSteps[wfStep].guidance;
+  } else {
+    document.getElementById('wf-guidance').innerHTML = '<i class="ti ti-circle-check" aria-hidden="true"></i> Full Revenue Cycle workflow complete! You\'ve mastered all 6 operational stages.';
+  }
+}
+
+function buildClaims() {
+  const p = document.getElementById('claim-panel');
+  p.innerHTML = claimsData.map((c, i) => `
+    <div class="claim-card" id="cl${i}">
+      <div class="claim-header">
+        <div>
+          <div style="font-size:14px; font-weight:500; color:var(--color-text-primary);">${c.id} — ${c.patient}</div>
+          <div class="claim-id">${c.payer} · ${c.code}</div>
+        </div>
+        <span class="claim-status ${c.status === 'denied' ? 'status-denied' : c.status === 'pending' ? 'status-pending' : 'status-resolved'}" id="cl-status${i}">${c.status.charAt(0).toUpperCase() + c.status.slice(1)}</span>
+      </div>
+      <div class="claim-detail"><strong>Service:</strong> ${c.service}</div>
+      <div class="claim-detail" style="color:var(--color-text-danger, #A32D2D);"><strong>Denial reason:</strong> ${c.denial}</div>
+      <div class="claim-actions">
+        ${c.actions.map((a, j) => `<button class="btn btn-sm" id="cl${i}a${j}" onclick="resolveAction(${i},${j})">${a}</button>`).join('')}
+      </div>
+    </div>
+  `).join('');
+}
+
+let claimScoreTotal = 0, claimAttempts = 0, claimResolved = 0;
+function resolveAction(ci, ai) {
+  const c = claimsData[ci];
+  const isCorrect = ai === c.correct;
+  claimAttempts++;
+  const buttons = [0,1,2].map(j => document.getElementById('cl' + ci + 'a' + j)).filter(Boolean);
+  buttons.forEach((b, j) => {
+    b.disabled = true;
+    if (j === c.correct) b.style.cssText += '; background:#EAF3DE; color:#3B6D11; border-color:#639922;';
+    else if (j === ai && !isCorrect) b.style.cssText += '; background:#FCEBEB; color:#A32D2D; border-color:#A32D2D;';
+  });
+  if (isCorrect) {
+    claimScoreTotal += 100;
+    claimResolved++;
+    document.getElementById('cl-status' + ci).textContent = 'Resolved';
+    document.getElementById('cl-status' + ci).className = 'claim-status status-resolved';
+    addXP(25);
+  }
+  document.getElementById('claims-resolved').textContent = claimResolved;
+  document.getElementById('claims-accuracy').textContent = Math.round(claimResolved / claimAttempts * 100) + '%';
+  document.getElementById('claims-score').textContent = Math.round(claimScoreTotal / claimsData.length);
+}
+
+function buildExam() {
+  renderExamQ();
+  buildDots();
+}
+
+function buildDots() {
+  const d = document.getElementById('q-dots');
+  d.innerHTML = examQs.map((_, i) => `<div class="dot ${i < examIdx ? 'done' : i === examIdx ? 'active' : ''}" id="dot${i}"></div>`).join('');
+}
+
+function renderExamQ() {
+  if (examIdx >= examQs.length) { showExamResult(); return; }
+  const q = examQs[examIdx];
+  const pct = Math.round(examIdx / examQs.length * 100);
+  document.getElementById('q-bar').style.width = pct + '%';
+  document.getElementById('q-progress').textContent = 'Question ' + (examIdx + 1) + ' of ' + examQs.length;
+  document.getElementById('exam-score').textContent = Math.round(examCorrect / Math.max(1, examIdx) * 100) + '%';
+  document.getElementById('exam-area').innerHTML = `
+    <div class="q-block">
+      <div class="q-text">${q.q}</div>
+      <div class="q-choices">
+        ${q.choices.map((c, i) => `<button class="q-choice" id="qc${i}" onclick="answerQ(${i})">${c}</button>`).join('')}
+      </div>
+      <div class="q-feedback" id="q-fb"></div>
+    </div>
+  `;
+  buildDots();
+}
+
+function answerQ(chosen) {
+  const q = examQs[examIdx];
+  const isCorrect = chosen === q.ans;
+  q.choices.forEach((_, i) => {
+    const el = document.getElementById('qc' + i);
+    el.classList.add('disabled');
+    if (i === q.ans) el.classList.add('correct');
+    else if (i === chosen && !isCorrect) el.classList.add('wrong');
+  });
+  if (isCorrect) { examCorrect++; addXP(30); }
+  examAnswered.push(isCorrect);
+  const fb = document.getElementById('q-fb');
+  fb.textContent = (isCorrect ? '✓ Correct — ' : '✗ Incorrect — ') + q.explanation;
+  fb.className = 'q-feedback show ' + (isCorrect ? 'pass' : 'fail');
+  examIdx++;
+  document.getElementById('exam-score').textContent = Math.round(examCorrect / examIdx * 100) + '%';
+  setTimeout(() => renderExamQ(), 2200);
+}
+
+function showExamResult() {
+  const pct = Math.round(examCorrect / examQs.length * 100);
+  const passed = pct >= 85;
+  document.getElementById('q-bar').style.width = '100%';
+  document.getElementById('q-progress').textContent = 'Exam complete';
+  document.getElementById('exam-score').textContent = pct + '%';
+  document.getElementById('exam-area').innerHTML = `
+    <div style="text-align:center; padding: 2rem 1rem;">
+      <div style="font-size:40px; margin-bottom:12px;">${passed ? '🏆' : '📋'}</div>
+      <div style="font-size:20px; font-weight:500; color:var(--color-text-primary); margin-bottom:6px;">${passed ? 'Certification Passed!' : 'Keep Practicing'}</div>
+      <div style="font-size:14px; color:var(--color-text-secondary); margin-bottom:16px;">Score: ${pct}% (${examCorrect}/${examQs.length} correct) · Passing: 85%</div>
+      ${passed ? '<div style="font-size:13px; padding:10px 18px; background:#E1F5EE; border-radius:var(--border-radius-md); color:#0F6E56; margin-bottom:16px;">CRCR Healthcare Intelligence — Bronze Certification Awarded</div>' : ''}
+      <button class="btn btn-primary" onclick="sendPrompt(\'I scored ' + pct + '% on the CRCR certification exam. Which topics should I review to improve — especially denial management and COB?\')">
+        Get AI Study Plan ↗
+      </button>
+    </div>
+  `;
+  buildDots();
+}
+
+buildTerms();
+buildWorkflow();
+buildClaims();
+buildExam();
+</script><script>
+// ===== TSM_AUTONOMY_STANDARDIZED =====
+window.TSM_AUTONOMY_STANDARDIZED = true;
+</script><script>
+// ===== TSM WAR ROOM SCOPED RELAY FIX =====
+window.tsmMission = window.tsmMission || {
+  id: "HEALTHCARE-" + Date.now().toString(36),
+  vertical: "healthcare",
+  
+};
+
+function tsmWriteRelay(payload){
+  TSM_KERNEL.setRelay("healthcare", JSON.stringify(payload));
+}
+</script>
+

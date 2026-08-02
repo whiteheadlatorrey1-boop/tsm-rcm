@@ -1,7 +1,6 @@
 <!DOCTYPE html><html lang="en"><head>
     <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
 <script src="/shared/tsm-cross-mesh.js"></script>
-<script src="/config/tsm-client-key.js"></script>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>TSM MDM War Room</title>
 <style>
@@ -164,7 +163,11 @@ td{padding:7px 8px;border-bottom:1px solid var(--border);color:var(--text)}
       items.push({
         id: 'quality-'+r.id,
         claim: `${r.id} ("${r.name}", ${r.domain}) is ${q}% data quality — status ${r.status}`,
-        confidence: 88,
+        // Deterministic status/score read, not a model guess -- flat high
+        // confidence. (The record's own quality score, q, is a separate
+        // metric already surfaced above; reusing it here would conflate
+        // "how sure is this claim" with "how good is this record.")
+        confidence: 95,
         severity,
         impact: 'Downstream reporting and merge decisions inherit this record\'s quality gaps',
         rationale: `${r.name} (${r.id}) is currently flagged ${r.status.toLowerCase()} at ${q}% quality, last validated ${r.last_validated}, owned by ${r.steward}.` +
@@ -247,8 +250,9 @@ td{padding:7px 8px;border-bottom:1px solid var(--border);color:var(--text)}
     const actor = window.prompt('Steward name for this decision:', 'R. Whitfield');
     if(actor===null) return; // cancelled
     try{
-      const res=await fetch('/api/mdm/merge',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':window.TSM_CLIENT_KEY||''},
+      const res=await fetch('/api/mdm/merge',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({domain, survivorId:survivor, mergedId:merged, actor, decision: action==='reject'?'REJECTED':'APPROVED'})});
+      if(res.status===401){ location.href='/login.html?next='+encodeURIComponent(location.pathname); return; }
       const d=await res.json();
       if(!d.ok) throw new Error(d.error||'Merge failed');
       await loadFromEngine();
@@ -268,7 +272,8 @@ td{padding:7px 8px;border-bottom:1px solid var(--border);color:var(--text)}
   document.getElementById('btnReset').addEventListener('click',async()=>{
     if(!confirm('Reset MDM data? This restores all domains to their original seeded state and clears the merge decision log. This cannot be undone.')) return;
     try{
-      const r=await fetch('/api/mdm/reset',{method:'POST',headers:{'x-api-key':window.TSM_CLIENT_KEY||''}});
+      const r=await fetch('/api/mdm/reset',{method:'POST'});
+      if(r.status===401){ location.href='/login.html?next='+encodeURIComponent(location.pathname); return; }
       const d=await r.json();
       if(!d.ok) throw new Error(d.error||'Reset failed');
       await loadFromEngine();
@@ -280,9 +285,10 @@ td{padding:7px 8px;border-bottom:1px solid var(--border);color:var(--text)}
     try {
       const r = await fetch('/api/mdm/cross-domain-scan', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': window.TSM_CLIENT_KEY || '' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({})
       });
+      if (r.status === 401) { location.href = '/login.html?next=' + encodeURIComponent(location.pathname); return; }
       const d = await r.json();
       if (!d.ok) throw new Error(d.error || 'Scan failed');
       const msg = d.created.length
@@ -319,7 +325,10 @@ td{padding:7px 8px;border-bottom:1px solid var(--border);color:var(--text)}
   });
   document.getElementById('btnAnalyze').addEventListener('click',runAnalysis);
   document.getElementById('btnRelay').addEventListener('click',()=>{
-    try{ TSM.relay.write("MDM",{vertical:'mdm',records,duplicates,kpis:computeKpis(),explain:getExplainItems(),ai_analysis:document.getElementById('aiOutput').textContent,timestamp:new Date().toISOString()}); } catch(e){}
+    try{
+      const caseId = 'MDM-' + new Date().toISOString().slice(0,10) + '-' + Math.random().toString(36).slice(2,8);
+      TSM.relay.write("MDM",{vertical:'mdm',records,duplicates,kpis:computeKpis(),explain:getExplainItems(),ai_analysis:document.getElementById('aiOutput').textContent,timestamp:new Date().toISOString(),caseId},{caseId, stage:'war-room'});
+    } catch(e){}
     document.getElementById('navStatus').textContent='ENGINE: RELAYED — opening Strategist…';
     setTimeout(()=>{ window.location.href = '/html/war-rooms/mdm/mdm-strategist.html'; }, 500);
   });

@@ -103,6 +103,7 @@
     constructor() {
       this.key = "TSM_EVENT_LOG_V2";
       this._cache = this.load();
+      this._replaying = false;
     }
 
     load() {
@@ -118,6 +119,13 @@
     }
 
     log(event) {
+      // Replaying history must never generate new history. Without this
+      // guard, apply()'s MISSION_UPDATED case calls bus.emit() again, the
+      // patched emit logs it here, and that new entry is picked up by the
+      // still-running replay() loop below (for...of is live over arrays) —
+      // an infinite, ever-growing loop that pegs the main thread and
+      // eventually crashes the tab.
+      if (this._replaying) return;
       this._cache.push(event);
       this.save();
     }
@@ -126,10 +134,26 @@
 
       console.log("[TSM-REPLAY] Rebuilding system from event log...");
 
-      const events = this._cache;
+      // Snapshot, not a live reference — defensive even with the log()
+      // guard above, so this loop always has a fixed length.
+      const events = [...this._cache];
 
       if (!store || !bus) {
         console.warn("[TSM-REPLAY] Missing store or bus");
+        return;
+      }
+
+      // Defensive: this replay logic assumes a store shaped like
+      // { state: { missions: [], history: [] } }. TSMMissionStore (the
+      // canonical Phase 1-9 mission module) doesn't expose .state at all —
+      // it manages missions via listMissions()/getMission()/saveMission()
+      // directly against localStorage. Rather than throw on that mismatch
+      // (which was happening as an uncaught page error on every page that
+      // loads both tsm-event-bus.js and TSMMissionStore together), skip
+      // replay gracefully until this is reconciled with TSMMissionStore's
+      // real API.
+      if (!store.state) {
+        console.warn("[TSM-REPLAY] Store has no .state property (likely TSMMissionStore, which uses a different API) — skipping replay.");
         return;
       }
 
@@ -137,8 +161,13 @@
       store.state.missions = [];
       store.state.history = [];
 
-      for (const e of events) {
-        this.apply(e, store, bus);
+      this._replaying = true;
+      try {
+        for (const e of events) {
+          this.apply(e, store, bus);
+        }
+      } finally {
+        this._replaying = false;
       }
 
       store.save();

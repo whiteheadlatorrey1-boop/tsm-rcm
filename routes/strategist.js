@@ -2,6 +2,16 @@
 const express = require('express');
 const router  = express.Router();
 
+const {
+  readJson, HC_NODE_STATE_FILE,
+  filterHCState, buildLayer2Summary, buildStrategistSystemPosture,
+  buildHCBrief, groqChat, SP
+} = require('./_shared');
+
+// In-memory store for the main-strategist hc-report endpoint below.
+// (Was referenced as a bare variable with no declaration anywhere.)
+let tsmHealthcareReport = { report: null, updated_at: null };
+
 
 router.post('/api/strategist/hc/system-posture', (req, res) => {
   try {

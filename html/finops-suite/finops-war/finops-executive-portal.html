@@ -1,0 +1,1071 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<style id="tsm-exec-kit-css">
+/* ==========================================================================
+   TSM Exec Kit — shared WIP tracker + explainability panel
+   Drop-in CSS for all 7 executive portals.
+
+   THEME MAPPING
+   --------------------------------------------------------------------------
+   Each portal already defines its own dark-theme tokens (seen in the audit:
+   --s2, --bg3, --border2, accent purples like rgba(181,108,255,.12) and
+   rgba(168,85,247,.2), JetBrains Mono for data/labels). Rather than guessing
+   exact hexes per portal, this file defines its OWN --tsmk-* tokens with
+   sane dark-theme defaults, and falls back to your existing tokens first if
+   they exist. Edit the :root block below once per portal (2 min) to make
+   the kit invisible — i.e. indistinguishable from native portal chrome.
+   ========================================================================== */
+
+:root {
+  --tsmk-bg:        var(--bg3, var(--s2, #12152a));
+  --tsmk-bg-raised:  var(--bg2, #181c34);
+  --tsmk-border:     var(--border2, var(--border, rgba(168, 85, 247, 0.18)));
+  --tsmk-accent:     var(--accent, #b56cff);
+  --tsmk-accent-dim: rgba(181, 108, 255, 0.14);
+  --tsmk-text:       var(--text, #e7e6f0);
+  --tsmk-text-dim:   var(--text-dim, #8d8aa3);
+  --tsmk-success:    var(--success, #34d399);
+  --tsmk-warning:    var(--warning, #fbbf24);
+  --tsmk-danger:     var(--danger, #f87171);
+  --tsmk-mono:       'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --tsmk-sans:       var(--font-sans, -apple-system, 'Inter', system-ui, sans-serif);
+  --tsmk-radius:     10px;
+}
+
+.tsmk-wip, .tsmk-explain { font-family: var(--tsmk-sans); color: var(--tsmk-text); }
+
+/* ---------------------------------------------------------------------- */
+/* WIP TRACKER                                                            */
+/* ---------------------------------------------------------------------- */
+
+.tsmk-wip {
+  background: var(--tsmk-bg);
+  border: 1px solid var(--tsmk-border);
+  border-radius: var(--tsmk-radius);
+  padding: 16px 18px;
+}
+
+.tsmk-wip-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.tsmk-wip-title {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--tsmk-text-dim);
+  font-weight: 600;
+}
+
+.tsmk-wip-eta {
+  font-family: var(--tsmk-mono);
+  font-size: 11px;
+  color: var(--tsmk-text-dim);
+}
+
+.tsmk-wip-track {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+}
+
+.tsmk-wip-step {
+  flex: 1;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 0 4px;
+}
+
+.tsmk-wip-step::before {
+  content: '';
+  position: absolute;
+  top: 9px;
+  left: -50%;
+  width: 100%;
+  height: 2px;
+  background: var(--tsmk-border);
+  z-index: 0;
+}
+.tsmk-wip-step:first-child::before { display: none; }
+
+.tsmk-wip-step.is-done::before,
+.tsmk-wip-step.is-active::before { background: var(--tsmk-accent); }
+
+.tsmk-wip-dot {
+  position: relative;
+  z-index: 1;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--tsmk-bg-raised);
+  border: 2px solid var(--tsmk-border);
+  color: var(--tsmk-text-dim);
+}
+
+.tsmk-wip-step.is-done .tsmk-wip-dot {
+  background: var(--tsmk-success);
+  border-color: var(--tsmk-success);
+  color: #06281c;
+}
+.tsmk-wip-step.is-active .tsmk-wip-dot {
+  background: var(--tsmk-accent);
+  border-color: var(--tsmk-accent);
+  color: #1a0a2e;
+  animation: tsmk-pulse 1.6s ease-in-out infinite;
+}
+.tsmk-wip-step.is-blocked .tsmk-wip-dot {
+  background: var(--tsmk-danger);
+  border-color: var(--tsmk-danger);
+  color: #2a0808;
+}
+
+@keyframes tsmk-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(181,108,255,.45); }
+  50% { box-shadow: 0 0 0 5px rgba(181,108,255,0); }
+}
+
+.tsmk-wip-label {
+  margin-top: 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--tsmk-text);
+}
+.tsmk-wip-step.is-pending .tsmk-wip-label,
+.tsmk-wip-step.is-pending .tsmk-wip-time { color: var(--tsmk-text-dim); }
+
+.tsmk-wip-time {
+  margin-top: 3px;
+  font-family: var(--tsmk-mono);
+  font-size: 10px;
+  color: var(--tsmk-text-dim);
+}
+
+.tsmk-wip-detail {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--tsmk-border);
+  font-size: 12px;
+  color: var(--tsmk-text-dim);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.tsmk-wip-detail .tsmk-spinner {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--tsmk-border);
+  border-top-color: var(--tsmk-accent);
+  animation: tsmk-spin .8s linear infinite;
+}
+@keyframes tsmk-spin { to { transform: rotate(360deg); } }
+
+/* compact variant for embedding in a header strip */
+.tsmk-wip.tsmk-compact { padding: 10px 14px; }
+.tsmk-wip.tsmk-compact .tsmk-wip-label { font-size: 10.5px; }
+.tsmk-wip.tsmk-compact .tsmk-wip-head { margin-bottom: 8px; }
+
+/* ---------------------------------------------------------------------- */
+/* EXPLAINABILITY PANEL                                                   */
+/* ---------------------------------------------------------------------- */
+
+.tsmk-explain { display: flex; flex-direction: column; gap: 10px; }
+
+.tsmk-exp-card {
+  background: var(--tsmk-bg);
+  border: 1px solid var(--tsmk-border);
+  border-left: 3px solid var(--tsmk-accent);
+  border-radius: var(--tsmk-radius);
+  overflow: hidden;
+  transition: border-color .15s ease;
+}
+.tsmk-exp-card[data-severity="high"]  { border-left-color: var(--tsmk-danger); }
+.tsmk-exp-card[data-severity="med"]   { border-left-color: var(--tsmk-warning); }
+.tsmk-exp-card[data-severity="low"]   { border-left-color: var(--tsmk-success); }
+
+.tsmk-exp-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 15px;
+  cursor: pointer;
+  user-select: none;
+}
+.tsmk-exp-row:hover { background: var(--tsmk-accent-dim); }
+
+.tsmk-exp-claim {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--tsmk-text);
+}
+.tsmk-exp-impact {
+  margin-top: 4px;
+  font-family: var(--tsmk-mono);
+  font-size: 11.5px;
+  color: var(--tsmk-text-dim);
+}
+
+.tsmk-exp-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.tsmk-conf-badge {
+  font-family: var(--tsmk-mono);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--tsmk-accent-dim);
+  color: var(--tsmk-accent);
+  white-space: nowrap;
+}
+
+.tsmk-exp-chevron {
+  width: 16px; height: 16px;
+  color: var(--tsmk-text-dim);
+  transition: transform .18s ease;
+  flex-shrink: 0;
+}
+.tsmk-exp-card.is-open .tsmk-exp-chevron { transform: rotate(90deg); color: var(--tsmk-accent); }
+
+.tsmk-exp-body {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height .2s ease;
+  border-top: 1px solid transparent;
+}
+.tsmk-exp-card.is-open .tsmk-exp-body {
+  border-top: 1px solid var(--tsmk-border);
+}
+
+.tsmk-exp-body-inner { padding: 13px 15px 15px; }
+
+.tsmk-exp-why-label {
+  font-size: 10px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--tsmk-text-dim);
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.tsmk-exp-rationale {
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--tsmk-text);
+  margin-bottom: 12px;
+}
+
+.tsmk-exp-data {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.tsmk-exp-datapoint {
+  background: var(--tsmk-bg-raised);
+  border: 1px solid var(--tsmk-border);
+  border-radius: 7px;
+  padding: 6px 10px;
+}
+.tsmk-exp-datapoint .l {
+  font-size: 9.5px;
+  color: var(--tsmk-text-dim);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.tsmk-exp-datapoint .v {
+  font-family: var(--tsmk-mono);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--tsmk-text);
+}
+
+.tsmk-exp-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tsmk-exp-source-tag {
+  font-family: var(--tsmk-mono);
+  font-size: 10.5px;
+  padding: 3px 8px;
+  border-radius: 5px;
+  background: transparent;
+  border: 1px solid var(--tsmk-border);
+  color: var(--tsmk-text-dim);
+}
+
+.tsmk-exp-empty {
+  text-align: center;
+  padding: 24px 12px;
+  color: var(--tsmk-text-dim);
+  font-size: 12.5px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tsmk-wip-step.is-active .tsmk-wip-dot { animation: none; }
+  .tsmk-spinner { animation: none; }
+  .tsmk-exp-body, .tsmk-exp-chevron { transition: none; }
+}
+
+@media (max-width: 640px) {
+  .tsmk-wip-track { flex-wrap: wrap; row-gap: 18px; }
+  .tsmk-wip-step { flex: 1 1 30%; }
+}
+</style>
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FinOps Executive Portal · TSM</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#03070b;--s2:#060e16;--s3:#08141f;--border:rgba(0,170,255,.1);
+  --green:#00ffc6;--blue:#00aaff;--gold:#ffc400;--red:#ff4d6d;
+  --amber:#ff9500;--cyan:#00e5ff;--purple:#b56cff;--orange:#ff7a00;
+  --text:#bdd8e8;--dim:#2a4a60;--mono:'IBM Plex Mono',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:12px}
+body::before{content:'';position:fixed;top:0;right:0;width:600px;height:400px;background:radial-gradient(circle,rgba(0,170,255,.04),transparent 70%);pointer-events:none}
+
+/* NAV */
+.nav{height:36px;background:rgba(6,14,22,.98);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 20px;position:sticky;top:0;z-index:90}
+.nav-brand{color:var(--blue);font-size:10px;font-weight:700;letter-spacing:2px;margin-right:24px}
+.nav-btn{background:none;border:none;color:var(--dim);font-family:var(--mono);font-size:8px;letter-spacing:1.5px;cursor:pointer;padding:0 12px;height:36px;border-bottom:2px solid transparent;transition:all .2s}
+.nav-btn:hover{color:var(--text)}.nav-btn.active{color:var(--blue);border-bottom-color:var(--blue)}
+.nav-right{margin-left:auto;display:flex;align-items:center;gap:16px;font-size:8px;color:var(--dim)}
+.nav-sync{color:rgba(0,255,198,.6)}
+
+/* TICKER */
+.ticker{background:#040a12;border-bottom:1px solid var(--border);padding:4px 20px;overflow:hidden;white-space:nowrap}
+.ticker-inner{display:inline-flex;gap:36px;animation:ticker 28s linear infinite}
+.ticker-item{font-size:8px;letter-spacing:1px;color:var(--dim)}
+.ticker-item span{color:var(--blue);margin-right:5px}
+@keyframes ticker{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
+
+/* ALERT BAR */
+.alert-bar{padding:5px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;font-size:8px;letter-spacing:1.5px}
+.a-dot{width:5px;height:5px;border-radius:50%;animation:blink 2s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* DECISIONS */
+.decisions{padding:16px 22px 0}
+.sec-lbl{font-size:8px;letter-spacing:2.5px;color:var(--dim);margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.sec-lbl::before{content:'';width:3px;height:3px;background:var(--blue);display:inline-block;border-radius:50%}
+
+.decision-row{display:grid;grid-template-columns:80px 1fr auto auto auto;align-items:center;gap:14px;padding:8px 14px;border:1px solid var(--border);background:var(--s2);margin-bottom:3px}
+.d-badge{font-size:7px;letter-spacing:1.5px;font-weight:700;padding:3px 7px;border:1px solid;text-align:center}
+.badge-auth{color:var(--red);border-color:var(--red)}
+.badge-esc{color:var(--amber);border-color:var(--amber)}
+.badge-rev{color:var(--gold);border-color:var(--gold)}
+.d-title{font-size:9px;color:var(--text)}
+.d-sub{font-size:8px;color:var(--dim);margin-top:1px}
+.d-amount{font-size:13px;font-weight:700;color:var(--red);white-space:nowrap}
+.d-urgency{font-size:8px;color:var(--dim);white-space:nowrap}
+.d-action{background:none;border:1px solid var(--border);color:var(--dim);font-family:var(--mono);font-size:7px;letter-spacing:1px;padding:3px 8px;cursor:pointer}
+.d-action:hover{border-color:var(--blue);color:var(--blue)}
+
+/* PORTFOLIO KPIs */
+.portfolio{display:grid;grid-template-columns:repeat(6,1fr);gap:1px;background:var(--border);margin:16px 22px 0}
+.port-cell{background:var(--s2);padding:12px 14px}
+.port-lbl{font-size:7px;letter-spacing:1.5px;color:var(--dim);margin-bottom:6px}
+.port-val{font-size:18px;font-weight:700}
+.port-val.blue{color:var(--blue)}.port-val.red{color:var(--red)}.port-val.gold{color:var(--gold)}.port-val.green{color:var(--green)}.port-val.amber{color:var(--amber)}.port-val.purple{color:var(--purple)}
+.port-sub{font-size:8px;color:var(--dim);margin-top:3px}
+
+/* MAIN GRID */
+.main-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1px;background:var(--border);margin:16px 22px 0}
+.m-cell{background:var(--s2);padding:16px}
+.cell-lbl{font-size:7px;letter-spacing:2px;color:var(--dim);margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:6px}
+
+/* RISK MATRIX */
+.risk-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid rgba(0,170,255,.05)}
+.risk-name{font-size:8px;color:var(--text)}
+.risk-badge{font-size:7px;letter-spacing:1px;padding:1px 6px;border:1px solid}
+.rb-low{color:var(--green);border-color:var(--green)}.rb-med{color:var(--gold);border-color:var(--gold)}.rb-high{color:var(--amber);border-color:var(--amber)}.rb-crit{color:var(--red);border-color:var(--red)}
+.risk-val{font-size:8px;color:var(--dim)}
+
+/* DEADLINES */
+.deadline-item{display:flex;gap:10px;align-items:flex-start;padding:6px 0;border-bottom:1px solid rgba(0,170,255,.05)}
+.d-days{font-weight:700;font-size:13px;padding:3px 7px;min-width:38px;text-align:center;line-height:1.2}
+.d-days.crit{background:var(--red);color:#fff}.d-days.warn{background:var(--amber);color:#000}.d-days.ok{background:var(--green);color:#000}
+.d-info-title{font-size:8px;color:var(--text);margin-bottom:1px}
+.d-info-sub{font-size:7px;color:var(--dim)}
+
+/* RELAY PANEL */
+.relay-panel{padding:0}
+.relay-hdr{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.relay-dot{width:7px;height:7px;border-radius:50%;background:var(--dim)}
+.relay-dot.live{background:var(--green);box-shadow:0 0 5px var(--green)}
+.relay-title{font-size:8px;letter-spacing:1.5px;color:var(--text)}
+.relay-age{font-size:7px;color:var(--dim);margin-left:auto}
+.relay-content{font-size:8px;color:var(--dim);line-height:1.8;min-height:80px}
+.relay-actions{display:flex;gap:6px;margin-top:10px}
+.r-btn{border:1px solid;font-family:var(--mono);font-size:7px;letter-spacing:1.5px;cursor:pointer;padding:4px 10px;background:transparent}
+.r-btn-blue{color:var(--blue);border-color:rgba(0,170,255,.3)}.r-btn-blue:hover{background:rgba(0,170,255,.06)}
+.r-btn-ghost{color:var(--dim);border-color:var(--border)}.r-btn-ghost:hover{color:var(--text);border-color:var(--dim)}
+
+/* BNCA */
+.bnca-wrap{background:var(--s2);border:1px solid rgba(0,170,255,.12);margin:16px 22px 0;padding:18px 22px}
+.bnca-hdr{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.bnca-title{font-size:8px;letter-spacing:2.5px;color:var(--blue)}
+.bnca-stamp{font-size:7px;color:var(--dim);margin-left:auto}
+.bnca-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+.bnca-col-lbl{font-size:7px;letter-spacing:1.5px;color:var(--dim);margin-bottom:7px;border-bottom:1px solid var(--border);padding-bottom:5px}
+.bnca-text{font-size:9px;color:var(--text);line-height:1.8}
+.bnca-text strong{color:var(--blue)}.bnca-text .r{color:var(--red)}.bnca-text .g{color:var(--gold)}
+
+/* STATUS BAR */
+.status-bar{position:fixed;bottom:0;left:0;right:0;background:#020609;border-top:1px solid var(--border);padding:3px 20px;display:flex;gap:14px;font-size:7px;color:var(--dim);align-items:center}
+.sb-dot{width:4px;height:4px;border-radius:50%;background:var(--blue);box-shadow:0 0 4px var(--blue)}
+.sb-sep{color:var(--border)}
+.spacer{height:28px}
+</style>
+<script src="/shared/tsm-memory-engine.js?v=phase3"></script>
+<script>
+  window.addEventListener("DOMContentLoaded", function(){
+    if (window.TSMMemory) TSMMemory.timeline("Executive Portal opened - reviewing escalation");
+  });
+</script>
+<script src="/html/js/tsm-runtime-lock.js"></script>
+<script src="/html/js/tsm-event-contract.js"></script>
+<script src="/html/js/tsm-autonomy-layer.js"></script>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-brand">TSM FINOPS</div>
+  <button class="nav-btn" onclick="nav('doc-analysis-tab.html')">DOC ANALYSIS</button>
+  <button class="nav-btn" onclick="nav('finops-war-room.html')">WAR ROOM</button>
+  <button class="nav-btn" onclick="nav('finops-main-strategist.html')">STRATEGIST</button>
+  <button class="nav-btn active">EXECUTIVE</button>
+  <button class="nav-btn" onclick="nav('finops-accounting.html')">ACCOUNTING</button>
+  <button class="nav-btn" onclick="nav('finops-operations.html')">OPERATIONS</button>
+  <div class="nav-right">
+    <span id="syncLabel" class="nav-sync">Checking relay...</span>
+    <span id="navClock">--:--:--</span>
+  </div>
+</nav>
+
+<div class="ticker">
+  <div class="ticker-inner" id="tickerInner">
+    <span class="ticker-item"><span>EXPOSURE</span><span id="tk1">—</span></span>
+    <span class="ticker-item"><span>RISK SCORE</span><span id="tk2">—</span></span>
+    <span class="ticker-item"><span>EXCEPTIONS</span><span id="tk3">—</span></span>
+    <span class="ticker-item"><span>COMPLIANCE</span><span id="tk4">—</span></span>
+    <span class="ticker-item"><span>CFO ITEMS</span><span id="tk5">—</span></span>
+    <span class="ticker-item"><span>RECOVERY</span><span id="tk6">—</span></span>
+    <span class="ticker-item"><span>EXPOSURE</span><span id="tk1b">—</span></span>
+    <span class="ticker-item"><span>RISK SCORE</span><span id="tk2b">—</span></span>
+    <span class="ticker-item"><span>EXCEPTIONS</span><span id="tk3b">—</span></span>
+    <span class="ticker-item"><span>COMPLIANCE</span><span id="tk4b">—</span></span>
+  </div>
+</div>
+
+<div class="alert-bar" id="alertBar" style="background:rgba(255,149,0,.04);border-bottom-color:rgba(255,149,0,.15)">
+  <div class="a-dot" style="background:var(--amber);box-shadow:0 0 5px var(--amber)"></div>
+  <span id="alertText" style="color:var(--amber)">EXECUTIVE PORTAL ACTIVE — AWAITING STRATEGIST RELAY — RUN WAR ROOM ANALYSIS FIRST</span>
+</div>
+
+<!-- DECISIONS -->
+<div class="decisions">
+  <div class="sec-lbl">DECISIONS REQUIRED · EXECUTIVE AUTHORIZATION</div>
+  <div class="decision-row">
+    <div class="d-badge badge-auth">AUTHORIZE</div>
+    <div><div class="d-title" id="d1-title">Run War Room analysis to populate decisions</div><div class="d-sub" id="d1-sub">Load a financial document in the War Room and fire 6-engine analysis</div></div>
+    <div class="d-amount" id="d1-amount">—</div>
+    <div class="d-urgency" id="d1-urgency">—</div>
+    <button class="d-action" onclick="nav('finops-war-room.html')">WAR ROOM</button>
+  </div>
+  <div class="decision-row">
+    <div class="d-badge badge-esc">ESCALATE</div>
+    <div><div class="d-title" id="d2-title">Escalate to Strategist for synthesis</div><div class="d-sub" id="d2-sub">FinOps Strategist will generate BNCA with app guidance</div></div>
+    <div class="d-amount" id="d2-amount">—</div>
+    <div class="d-urgency" id="d2-urgency">—</div>
+    <button class="d-action" onclick="nav('finops-main-strategist.html')">STRATEGIST</button>
+  </div>
+  <div class="decision-row">
+    <div class="d-badge badge-rev">REVIEW</div>
+    <div><div class="d-title" id="d3-title">Compliance review required</div><div class="d-sub" id="d3-sub">OIG risk, audit trail gaps, and 1099 compliance need executive sign-off</div></div>
+    <div class="d-amount" id="d3-amount">—</div>
+    <div class="d-urgency" id="d3-urgency">—</div>
+    <button class="d-action" onclick="nav('finops-operations.html')">COMPLIANCE</button>
+  </div>
+</div>
+
+<!-- PORTFOLIO KPIs -->
+<div class="portfolio">
+  <div class="port-cell"><div class="port-lbl">TOTAL EXPOSURE</div><div class="port-val red" id="kpiExposure">—</div>
+<!-- ▼ TSM EXEC KIT: WIP + EXPLAINABILITY ▼ -->
+<div style="padding:0 20px;">
+<div id="tsmk-wip-auto" style="margin:18px 0 10px;"></div>
+<div id="tsmk-exp-auto" style="margin:10px 0 24px;"></div>
+</div>
+<!-- ▲ TSM EXEC KIT ▲ -->
+<div class="port-sub">financial liability</div></div>
+  <div class="port-cell"><div class="port-lbl">RISK SCORE</div><div class="port-val amber" id="kpiRisk">—</div><div class="port-sub">war room analysis</div></div>
+  <div class="port-cell"><div class="port-lbl">EXCEPTIONS</div><div class="port-val gold" id="kpiExceptions">—</div><div class="port-sub">items flagged</div></div>
+  <div class="port-cell"><div class="port-lbl">COMPLIANCE</div><div class="port-val purple" id="kpiCompliance">—</div><div class="port-sub">regulatory posture</div></div>
+  <div class="port-cell"><div class="port-lbl">RECOVERY POTENTIAL</div><div class="port-val green" id="kpiRecovery">—</div><div class="port-sub">recoverable amount</div></div>
+  <div class="port-cell"><div class="port-lbl">CFO ITEMS</div><div class="port-val blue" id="kpiCFO">—</div><div class="port-sub">require memo / sign-off</div></div>
+</div>
+
+<!-- MAIN GRID -->
+<div class="main-grid">
+
+  <!-- RISK MATRIX -->
+  <div class="m-cell">
+    <div class="cell-lbl">RISK MATRIX · FINANCIAL INTELLIGENCE</div>
+    <div class="risk-row"><span class="risk-name">AP Aging Risk</span><span class="risk-badge rb-med" id="rm1">—</span><span class="risk-val" id="rm1v">—</span></div>
+    <div class="risk-row"><span class="risk-name">Duplicate Payments</span><span class="risk-badge rb-high" id="rm2">—</span><span class="risk-val" id="rm2v">—</span></div>
+    <div class="risk-row"><span class="risk-name">Vendor Compliance</span><span class="risk-badge rb-med" id="rm3">—</span><span class="risk-val" id="rm3v">—</span></div>
+    <div class="risk-row"><span class="risk-name">GL Variance</span><span class="risk-badge rb-low" id="rm4">—</span><span class="risk-val" id="rm4v">—</span></div>
+    <div class="risk-row"><span class="risk-name">OIG / Regulatory</span><span class="risk-badge rb-high" id="rm5">—</span><span class="risk-val" id="rm5v">—</span></div>
+    <div class="risk-row"><span class="risk-name">Cash Flow</span><span class="risk-badge rb-med" id="rm6">—</span><span class="risk-val" id="rm6v">—</span></div>
+    <div class="risk-row"><span class="risk-name">Month-End Close</span><span class="risk-badge rb-low" id="rm7">—</span><span class="risk-val" id="rm7v">—</span></div>
+  </div>
+
+  <!-- DEADLINES -->
+  <div class="m-cell">
+    <div class="cell-lbl">CRITICAL DEADLINES · ACTION REQUIRED</div>
+    <div id="deadlineList">
+      <div class="deadline-item">
+        <div class="d-days warn">—<br><span style="font-size:6px;font-weight:400">DAYS</span></div>
+        <div><div class="d-info-title">Run War Room analysis</div><div class="d-info-sub">Deadlines will populate from engine output</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RELAY PANEL -->
+  <div class="m-cell">
+    <div class="cell-lbl">STRATEGIST RELAY · AI SYNTHESIS</div>
+    <div class="relay-panel">
+      <div class="relay-hdr">
+        <div class="relay-dot" id="relayDot"></div>
+        <div class="relay-title" id="relayTitle">No relay received</div>
+        <div class="relay-age" id="relayAge">—</div>
+      </div>
+      <div class="relay-content" id="relayContent">Run the War Room 6-engine analysis, escalate through the FinOps Strategist to populate this panel with AI-synthesized financial intelligence.</div>
+      <div class="relay-actions">
+        <button class="r-btn r-btn-blue" onclick="nav('finops-war-room.html')">OPEN WAR ROOM</button>
+        <button class="r-btn r-btn-ghost" onclick="nav('finops-main-strategist.html')">OPEN STRATEGIST</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- BNCA INTELLIGENCE -->
+<div class="bnca-wrap">
+  <div class="bnca-hdr">
+    <div class="sec-lbl" style="margin:0">BNCA FINANCIAL INTELLIGENCE · AUTO-GENERATED</div>
+    <div class="bnca-stamp" id="bncaStamp">—</div>
+  </div>
+  <div class="bnca-grid">
+    <div>
+      <div class="bnca-col-lbl">FINANCIAL PORTFOLIO POSITION</div>
+      <div class="bnca-text" id="bncaPortfolio">Run War Room analysis and escalate to Strategist to generate executive financial intelligence briefing.</div>
+    </div>
+    <div>
+      <div class="bnca-col-lbl">FINOPS INTELLIGENCE</div>
+      <div class="bnca-text" id="bncaIntel">AP/AR, GL, Compliance, and Recovery engines will populate this column with cross-domain financial intelligence after analysis.</div>
+    </div>
+    <div>
+      <div class="bnca-col-lbl">EXECUTIVE ACTIONS REQUIRED</div>
+      <div class="bnca-text" id="bncaActions">Priority actions will be ranked by dollar impact and assigned to executive owners after 6-engine war room analysis.</div>
+    </div>
+  </div>
+</div>
+
+<div class="spacer"></div>
+
+<div class="status-bar">
+  <div class="sb-dot"></div>
+  <span>TSM · FinOps Executive Portal</span>
+  <span class="sb-sep">·</span>
+  <span id="sbRelay">No relay</span>
+  <span class="sb-sep">·</span>
+  <span id="sbDate">—</span>
+  <span class="sb-sep">·</span>
+  <span>FinOps Intelligence Engine Active</span>
+  <span class="sb-sep">·</span>
+  <span>TSM OS · Fly.io</span>
+</div>
+<script>
+function tick() {
+  const now = new Date();
+  document.getElementById('navClock').textContent = now.toLocaleTimeString('en-US',{hour12:false});
+  document.getElementById('sbDate').textContent = now.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'});
+}
+tick(); setInterval(tick, 1000);
+
+function nav(page) {
+  // finops-main-strategist.html, finops-war-room.html, and finops-executive-portal.html
+  // live under finops-suite/finops-war/, not finops-suite/ directly -- everything else
+  // (doc-analysis-tab, finops-accounting, finops-operations) is a level up. Prefixing
+  // all pages with finops-suite/ alone 404'd the WAR ROOM/STRATEGIST nav buttons.
+  var warRoomFiles = ['finops-main-strategist.html', 'finops-war-room.html', 'finops-executive-portal.html'];
+  var base = warRoomFiles.indexOf(page) !== -1 ? '/html/finops-suite/finops-war/' : '/html/finops-suite/';
+  window.location.href = base + page;
+}
+
+// ═══════════════════════════════════════════════════
+// LOAD RELAY
+// ═══════════════════════════════════════════════════
+function loadRelay() {
+  const raw = localStorage.getItem('tsm_strategist_relay') ||
+            sessionStorage.getItem('tsm_war_relay_finops-suite') ||
+            localStorage.getItem('tsm_war_relay_finops-suite');
+  if (!raw) return false;
+  try { populateFromRelay(JSON.parse(raw)); return true; } catch(e) { console.warn('Relay error:', e); return false; }
+}
+
+function populateFromRelay(d) {
+  if (window.TSMMemory) TSMMemory.relay('Received ' + (d.docType || d.scenario || 'matter') + ' brief from Strategist');
+  const snap = {
+  docType: d.selectedDocType || (d.source === 'warroom' ? 'War Room' : 'Strategist Report'),
+  risk: d.riskScore || null,
+  exposure: d.exposure || null,
+  exceptions: d.exceptions || null,
+  compliance: d.compliance || null,
+  recovery: d.missingPO || null,
+  cfo: d.unapprovedVendors || null
+};
+const eo = d.engineOutputs || [];
+const engines = { e1:eo[1]||'', e2:eo[2]||'', e3:eo[3]||'', e4:eo[4]||'', e5:eo[5]||'', e6:eo[6]||'' };
+const summary = d.summary || engines.e6 || '';
+
+  // Alert bar
+  document.getElementById('alertBar').style.background = 'rgba(0,255,198,.04)';
+  document.getElementById('alertBar').style.borderBottomColor = 'rgba(0,255,198,.12)';
+  document.getElementById('alertText').style.color = 'var(--green)';
+  document.getElementById('alertText').textContent = 'EXECUTIVE PORTAL — RELAY RECEIVED — ' + (snap.docType||'MATTER').toUpperCase() + ' — REVIEW & AUTHORIZE';
+
+  // Relay panel
+  document.getElementById('relayDot').classList.add('live');
+  document.getElementById('relayTitle').textContent = 'Strategist Relay Received';
+  if (d.timestamp) {
+    const age = Math.round((Date.now() - new Date(d.timestamp)) / 60000);
+    document.getElementById('relayAge').textContent = age < 1 ? 'Just synced' : `Synced ${age}m ago`;
+  }
+  if (summary) document.getElementById('relayContent').textContent = summary.slice(0, 420) + (summary.length > 420 ? '...' : '');
+
+  // KPIs
+  const e3 = engines.e3 || '';
+  const e4 = engines.e4 || '';
+  const e5 = engines.e5 || '';
+  const e2 = engines.e2 || '';
+
+  const riskM = (e3+e2).match(/(?:FINANCIAL RISK SCORE|DOCUMENT RISK SCORE|RISK SCORE)[:\s]+(\d+)/i);
+  const expM = e3.match(/TOTAL EXPOSURE[:\s]+([^\n]+)/i);
+  const excM = e2.match(/EXCEPTION COUNT[:\s]+([^\n]+)/i);
+  const compM = e4.match(/COMPLIANCE RISK LEVEL[:\s]+([^\n]+)/i);
+  const recM = e3.match(/RECOVERABLE AMOUNT[:\s]+([^\n]+)/i);
+  const cfoM = e5.match(/CFO MEMO REQUIRED[:\s]+([^\n]+)/i);
+
+  // Parse directly from summary text (most reliable source)
+    const _txt = d.summary || '';
+    const _expR  = _txt.match(/(?:TOTAL AMOUNT|TOTAL EXPOSURE)[:\s]+(\$[\d,]+(?:[–\-]\$[\d,]+)?)/i);
+    const _riskR = _txt.match(/(?:DOCUMENT RISK SCORE|RISK SCORE)[:\s]+([\d]+)/i);
+    const _dupR  = _txt.match(/Duplicate Payments?[:\s]+(\$[\d,]+)/i);
+    const _vendR = _txt.match(/Unapproved Vendors?[:\s]+(\$[\d,]+)/i);
+    const _poR   = _txt.match(/Missing PO[^:\n]*[:\s]+(\$[\d,]+)/i);
+    const _perR  = _txt.match(/PERIOD[:\s]+([^\n]+)/i);
+
+    // Direct relay fields take priority over regex
+    const _exp  = (_expR  && _expR[1])  || d.exposure    || (expM  && expM[1])  || '—';
+    const _risk = (_riskR && (_riskR[1].includes('/') ? _riskR[1] : _riskR[1]+'/100')) || d.riskScore || (riskM && riskM[1]) || '—';
+    const _exc  = (_dupR  && _dupR[1])  || d.exceptions  || (excM  && excM[1])  || '—';
+    const _comp = (_perR  && _perR[1].trim().slice(0,10)) || d.compliance || (compM && compM[1]) || '—';
+    const _rec  = (_poR   && _poR[1])   || d.missingPO   || (recM  && recM[1])  || '—';
+    const _cfo  = (_vendR && _vendR[1]) || d.unapprovedVendors || (cfoM && cfoM[1]) || '—';
+  document.getElementById('kpiRisk').textContent = _risk;
+  document.getElementById('kpiExposure').textContent = _exp.length > 12 ? _exp.slice(0,22) : _exp;
+  document.getElementById('kpiExceptions').textContent = _exc.slice(0,8);
+  document.getElementById('kpiCompliance').textContent = _comp.slice(0,10);
+  document.getElementById('kpiRecovery').textContent = _rec.slice(0,12);
+  document.getElementById('kpiCFO').textContent = _cfo.slice(0,12);
+
+  // Ticker
+  ['tk1','tk1b'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=_exp.slice(0,22);});
+  ['tk2','tk2b'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=_risk;});
+  ['tk3','tk3b'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=_exc.slice(0,8);});
+  ['tk4','tk4b'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=_comp.slice(0,8);});
+  ['tk5'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=_cfo.slice(0,10);});
+  ['tk6'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=_rec.slice(0,10);});
+
+  // Risk matrix from engines
+  populateRiskMatrix(engines);
+  populateDeadlines(engines.e5||'');
+  populateDecisions(engines.e5||'', engines.e3||'', d);
+  populateBNCA(summary, engines, snap);
+
+  document.getElementById('sbRelay').textContent = (snap.docType||'MATTER') + ' · Relay active';
+  document.getElementById('syncLabel').textContent = 'Synced ' + new Date().toLocaleTimeString('en-US',{hour12:false});
+  document.getElementById('bncaStamp').textContent = 'Last run ' + new Date().toLocaleTimeString('en-US',{hour12:false});
+}
+
+function populateRiskMatrix(engines) {
+  const e2 = engines.e2||''; const e3 = engines.e3||''; const e4 = engines.e4||'';
+
+  function setRM(id, vid, cls, val) {
+    const el=document.getElementById(id); const vel=document.getElementById(vid);
+    if(!el) return;
+    el.className = 'risk-badge rb-'+cls; el.textContent = cls.toUpperCase();
+    if(vel) vel.textContent = (val||'').slice(0,18);
+  }
+
+  const dupM = e2.match(/DUPLICATE RISK[:\s]+([^\n]+)/i);
+  const vendM = e2.match(/VENDOR FLAGS[:\s]+([^\n]+)/i);
+  const oigM = e4.match(/OIG EXPOSURE[:\s]+([^\n]+)/i);
+  const compM = e4.match(/COMPLIANCE RISK LEVEL[:\s]+([^\n]+)/i);
+  const cashM = e3.match(/CASH FLOW IMPACT[:\s]+([^\n]+)/i);
+  const riskLvl = e2.match(/RISK LEVEL[:\s]+([^\n]+)/i);
+
+  if (riskLvl) { const v=riskLvl[1].toLowerCase(); setRM('rm1','rm1v', v.includes('crit')?'crit':v.includes('high')?'high':v.includes('low')?'low':'med', riskLvl[1].slice(0,18)); }
+  if (dupM) { const v=dupM[1].toLowerCase(); setRM('rm2','rm2v', v.includes('yes')||v.includes('high')?'high':'low', dupM[1].slice(0,18)); }
+  if (vendM) setRM('rm3','rm3v','med', vendM[1].slice(0,18));
+  setRM('rm4','rm4v','med','Review GL extract');
+  if (oigM) { const v=oigM[1].toLowerCase(); setRM('rm5','rm5v', v.includes('high')||v.includes('crit')?'high':'med', oigM[1].slice(0,18)); }
+  if (cashM) setRM('rm6','rm6v','med', cashM[1].slice(0,18));
+  setRM('rm7','rm7v','low','Verify close checklist');
+}
+
+function populateDeadlines(e5text) {
+  if (!e5text) return;
+  const list = document.getElementById('deadlineList');
+  const matches = [...e5text.matchAll(/\d+\.\s*([^—\n]+)—[^—\n]*—[^—\n]*—\s*([^\n]+)/g)].slice(0,4);
+  if (!matches.length) return;
+  list.innerHTML = '';
+  const urgencies = ['crit','warn','ok','ok'];
+  const dayVals = [1,2,7,14];
+  matches.forEach((m,i) => {
+    const div = document.createElement('div'); div.className = 'deadline-item';
+    div.innerHTML = `<div class="d-days ${urgencies[i]}">${dayVals[i]}<br><span style="font-size:6px;font-weight:400">DAY${dayVals[i]>1?'S':''}</span></div><div><div class="d-info-title">${m[1].trim().slice(0,55)}</div><div class="d-info-sub">${m[2].trim().slice(0,40)} — Finance team</div></div>`;
+    list.appendChild(div);
+  });
+}
+
+function populateDecisions(e5, e3, d) {
+  const actions = [...e5.matchAll(/\d+\.\s*([^—\n]+)—\s*(\$[^—\n]+)—\s*([^—\n]+)—\s*([^\n]+)/g)].slice(0,3);
+  const ids = ['d1','d2','d3'];
+  actions.forEach((m,i) => {
+    const t=document.getElementById(ids[i]+'-title'); const s=document.getElementById(ids[i]+'-sub');
+    const a=document.getElementById(ids[i]+'-amount'); const u=document.getElementById(ids[i]+'-urgency');
+    if(t) t.textContent = m[1].trim().slice(0,55);
+    if(s) s.textContent = m[3].trim().slice(0,55) + ' · ' + m[4].trim().slice(0,25);
+    if(a) a.textContent = m[2].trim().slice(0,14);
+    if(u) u.textContent = m[4].trim().slice(0,18);
+  });
+}
+
+function populateBNCA(summary, engines, snap) {
+  const e3=engines.e3||''; const e5=engines.e5||'';
+
+  const expM = e3.match(/TOTAL EXPOSURE[:\s]+([^\n]+)/i);
+  const recM = e3.match(/RECOVERABLE AMOUNT[:\s]+([^\n]+)/i);
+  const actM = e5.match(/PRIORITY ACTIONS[\s\S]*?(?=RECOVERY TIMELINE|$)/i);
+
+  if (expM || snap.docType) {
+    document.getElementById('bncaPortfolio').innerHTML =
+      `<strong>${snap.docType||'Financial document'}</strong> loaded and analyzed. ` +
+      (expM ? `Total exposure: <span class="r">${expM[1].trim().slice(0,20)}</span>. ` : '') +
+      (recM ? `Recovery potential: <span class="g">${recM[1].trim().slice(0,20)}</span>.` : '');
+  }
+  if (actM) document.getElementById('bncaIntel').textContent = actM[0].trim().slice(0,350);
+  if (summary) document.getElementById('bncaActions').textContent = summary.slice(0,350);
+}
+
+// ═══════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════
+window.addEventListener('DOMContentLoaded', () => {
+  const found = loadRelay();
+  if (!found) document.getElementById('syncLabel').textContent = 'No relay data';
+});
+setInterval(loadRelay, 15000);
+</script>
+  <script src="/js/core/tsm-kernel-upgrade.js"></script>
+<div id="tsm-chain-bar" style="position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#040c12;border-top:1px solid #0d2233;display:flex;align-items:center;height:32px;padding:0 16px;font-family:'IBM Plex Mono',monospace;font-size:10px;"><span style="color:#3a5a70;margin-right:12px;font-size:9px;">TSM CHAIN</span><a href="/html/finops-suite/finops-war/finops-war-room.html" style="color:#94a3b8;border:1px solid #1a3a50;padding:3px 10px;border-radius:3px;text-decoration:none;margin-right:6px;font-size:9px;">&#9675; WAR ROOM</a><span style="color:#1a3a50;margin-right:6px;">--&gt;</span><a href="/html/finops-suite/finops-war/finops-main-strategist.html" style="color:#94a3b8;border:1px solid #1a3a50;padding:3px 10px;border-radius:3px;text-decoration:none;margin-right:6px;font-size:9px;">&#9675; STRATEGIST</a><span style="color:#1a3a50;margin-right:6px;">--&gt;</span><a href="#" style="color:var(--green, #00ff94);background:rgba(255,255,255,.05);border:1px solid var(--green, #00ff94)55;padding:3px 10px;border-radius:3px;text-decoration:none;margin-right:6px;font-size:9px;">&#9679; EXEC PORTAL</a><span style="color:#1a3a50;margin-left:auto;font-size:9px;">FINOPS</span></div>
+
+<script src="/js/core/tsm-event-bus.js"></script>
+
+<script id="tsm-exec-kit-js">
+
+
+(function (global) {
+  'use strict';
+
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function chevronSvg() {
+    return '<svg class="tsmk-exp-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">' +
+           '<path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* WIP TRACKER                                                       */
+  /* ---------------------------------------------------------------- */
+
+  
+  function renderWIP(target, stages, opts) {
+    opts = opts || {};
+    var el = typeof target === 'string' ? document.getElementById(target) : target;
+    if (!el) return;
+
+    if (!stages || !stages.length) {
+      el.innerHTML = '<div class="tsmk-wip"><div class="tsmk-exp-empty">No pipeline data yet.</div></div>';
+      return;
+    }
+
+    var activeStage = stages.find(function (s) { return s.status === 'active'; });
+
+    var stepsHtml = stages.map(function (s) {
+      var statusClass = 'is-' + (s.status || 'pending');
+      var dotContent = s.status === 'done' ? '&#10003;'
+                      : s.status === 'blocked' ? '!'
+                      : s.status === 'active' ? '' : '';
+      return (
+        '<div class="tsmk-wip-step ' + statusClass + '">' +
+          '<div class="tsmk-wip-dot">' + dotContent + '</div>' +
+          '<div class="tsmk-wip-label">' + esc(s.label) + '</div>' +
+          (s.time ? '<div class="tsmk-wip-time">' + esc(s.time) + '</div>' : '') +
+        '</div>'
+      );
+    }).join('');
+
+    var detailHtml = (activeStage && activeStage.detail)
+      ? '<div class="tsmk-wip-detail"><span class="tsmk-spinner"></span>' + esc(activeStage.detail) + '</div>'
+      : '';
+
+    el.innerHTML =
+      '<div class="tsmk-wip' + (opts.compact ? ' tsmk-compact' : '') + '">' +
+        '<div class="tsmk-wip-head">' +
+          '<div class="tsmk-wip-title">' + esc(opts.title || 'Pipeline Status') + '</div>' +
+          (opts.eta ? '<div class="tsmk-wip-eta">' + esc(opts.eta) + '</div>' : '') +
+        '</div>' +
+        '<div class="tsmk-wip-track">' + stepsHtml + '</div>' +
+        detailHtml +
+      '</div>';
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* EXPLAINABILITY PANEL                                              */
+  /* ---------------------------------------------------------------- */
+
+  
+  function renderExplainability(target, items, opts) {
+    opts = opts || {};
+    var el = typeof target === 'string' ? document.getElementById(target) : target;
+    if (!el) return;
+
+    if (!items || !items.length) {
+      el.innerHTML = '<div class="tsmk-explain"><div class="tsmk-exp-empty">No AI recommendations to explain yet.</div></div>';
+      return;
+    }
+
+    var cardsHtml = items.map(function (item, idx) {
+      var open = opts.openFirst && idx === 0;
+      var conf = (item.confidence != null) ? Math.round(item.confidence) + '%' : null;
+
+      var dataPointsHtml = (item.dataPoints && item.dataPoints.length)
+        ? '<div class="tsmk-exp-data">' + item.dataPoints.map(function (dp) {
+            return '<div class="tsmk-exp-datapoint"><div class="l">' + esc(dp.label) + '</div><div class="v">' + esc(dp.value) + '</div></div>';
+          }).join('') + '</div>'
+        : '';
+
+      var sourcesHtml = (item.sources && item.sources.length)
+        ? '<div class="tsmk-exp-sources">' + item.sources.map(function (src) {
+            return '<span class="tsmk-exp-source-tag">' + esc(src) + '</span>';
+          }).join('') + '</div>'
+        : '';
+
+      return (
+        '<div class="tsmk-exp-card' + (open ? ' is-open' : '') + '" data-severity="' + esc(item.severity || '') + '" data-id="' + esc(item.id || '') + '">' +
+          '<div class="tsmk-exp-row" data-toggle="' + esc(item.id || idx) + '">' +
+            '<div>' +
+              '<div class="tsmk-exp-claim">' + esc(item.claim) + '</div>' +
+              (item.impact ? '<div class="tsmk-exp-impact">' + esc(item.impact) + '</div>' : '') +
+            '</div>' +
+            '<div class="tsmk-exp-meta">' +
+              (conf ? '<span class="tsmk-conf-badge">' + conf + ' conf</span>' : '') +
+              chevronSvg() +
+            '</div>' +
+          '</div>' +
+          '<div class="tsmk-exp-body">' +
+            '<div class="tsmk-exp-body-inner">' +
+              '<div class="tsmk-exp-why-label">Why</div>' +
+              '<div class="tsmk-exp-rationale">' + esc(item.rationale || 'No rationale provided — flag this recommendation for review.') + '</div>' +
+              dataPointsHtml +
+              sourcesHtml +
+            '</div>' +
+          '</div>' +
+        '</div>'
+      );
+    }).join('');
+
+    el.innerHTML = '<div class="tsmk-explain">' + cardsHtml + '</div>';
+
+    // wire up toggle behavior + auto-set max-height for the open/close transition
+    var cards = el.querySelectorAll('.tsmk-exp-card');
+    cards.forEach(function (card) {
+      var body = card.querySelector('.tsmk-exp-body');
+      var inner = card.querySelector('.tsmk-exp-body-inner');
+      function sync() {
+        body.style.maxHeight = card.classList.contains('is-open') ? (inner.scrollHeight + 4) + 'px' : '0px';
+      }
+      sync();
+      card.querySelector('.tsmk-exp-row').addEventListener('click', function () {
+        card.classList.toggle('is-open');
+        sync();
+      });
+      // re-measure on window resize since text reflow changes height
+      window.addEventListener('resize', sync);
+    });
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* OPTIONAL: relay-aware convenience wiring                          */
+  /* ---------------------------------------------------------------- */
+
+  
+  function fromRelay(relayObj) {
+    relayObj = relayObj || {};
+    return {
+      wip: Array.isArray(relayObj.wip) ? relayObj.wip : [],
+      explain: Array.isArray(relayObj.explain) ? relayObj.explain : []
+    };
+  }
+
+  global.TSMExecKit = {
+    renderWIP: renderWIP,
+    renderExplainability: renderExplainability,
+    fromRelay: fromRelay
+  };
+
+})(window);
+</script>
+
+<script>
+/* TSM EXEC KIT — AUTO-INJECTED 2026-06-29 23:19 UTC */
+(function() {
+  var RELAY_KEYS = ["TSM_FINOPS_STRATEGIST_RELAY", "tsm_strategist_relay", "tsm_war_relay_finops-suite"]; // Sentinel-convention key added as primary source
+  var WIP_TITLE  = "FinOps Pipeline Status";
+  var WIP_ID     = 'tsmk-wip-auto';
+  var EXP_ID     = 'tsmk-exp-auto';
+
+  function readRelay() {
+    for (var i = 0; i < RELAY_KEYS.length; i++) {
+      var raw = localStorage.getItem(RELAY_KEYS[i]);
+      if (raw) {
+        try { return JSON.parse(raw); } catch(e) { return null; }
+      }
+    }
+    return null;
+  }
+
+  function mount() {
+    var relay  = readRelay();
+    var data   = TSMExecKit.fromRelay(relay);
+
+    /* If relay has no wip/explain yet, show a waiting state for WIP
+       and a placeholder for explain so the divs are never blank */
+    var stages = data.wip.length ? data.wip : [
+      { id:'waiting', label:'Awaiting relay data…', status:'active',
+         detail:'Open the war room to generate a relay.' }
+    ];
+
+    var items  = data.explain;
+
+    TSMExecKit.renderWIP(WIP_ID, stages, { title: WIP_TITLE,
+      eta: relay ? ('Relay: ' + (relay.timestamp
+        ? new Date(relay.timestamp).toLocaleTimeString() : 'loaded')) : '' });
+
+    TSMExecKit.renderExplainability(EXP_ID, items, { openFirst: true });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', mount);
+  } else {
+    mount();
+  }
+
+  /* Re-render if relay is updated while page is open */
+  window.addEventListener('storage', function(e) {
+    if (RELAY_KEYS.indexOf(e.key) !== -1) mount();
+  });
+})();
+</script>
+  <script src="/html/core/tsm-runtime.js"></script>
+<script>
+// ===== TSM EXEC CONFIRMATION (FINOPS) =====
+(function(){
+  const mission = window.tsmMission || {
+    id: "FIN-" + Date.now().toString(36),
+    vertical: "FINOPS"
+  };
+
+  localStorage.setItem("TSM_EXEC_CONFIRMED_finops-suite", JSON.stringify({
+    vertical: "FINOPS",
+    timestamp: Date.now(),
+    missionId: mission.id
+  }));
+
+  console.log("[TSM] FinOps Executive Confirmed");
+})();
+</script><script>
+// ===== TSM_AUTONOMY_STANDARDIZED =====
+window.TSM_AUTONOMY_STANDARDIZED = true;
+</script>
+
+<!-- TSM ENFORCER BOOT -->
+<script src="/html/core/tsm-enforcer.js"></script><script>
+// ===== TSM WAR ROOM SCOPED RELAY FIX =====
+window.tsmMission = window.tsmMission || {
+  id: "FINOPS-SUITE-" + Date.now().toString(36),
+  vertical: "finops-suite",
+  
+};
+
+function tsmWriteRelay(payload){
+  TSM_KERNEL.setRelay("finops-suite", JSON.stringify(payload));
+}
+</script><script>
+// ===== TSM EXEC BRIDGE LAYER =====
+
+function tsmWriteScopedExec(vertical, missionId){
+  localStorage.setItem("TSM_EXEC_CONFIRMED_finops-suite_" + vertical, JSON.stringify({
+    vertical,
+    missionId,
+    timestamp: Date.now()
+  }));
+}
+</script>
+<!-- TSM CONTROL PLANE -->
+<script src="/html/js/core/tsm-event-bus.js"></script>
+<script src="/html/js/core/tsm-state.js"></script>
+<script src="/shared/tsm-exec-portal-upgrade.js"></script>
+</body>
+</html>

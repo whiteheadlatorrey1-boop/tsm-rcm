@@ -52,19 +52,19 @@
       "Claims Review": {
         id: "ins-claims-review",
         label: "Claims Review",
-        url: "/html/tsm-insurance/insurance-war-room.html?mode=claims-review",
+        url: "/html/war-rooms/insure-war/insurance-war-room.html?mode=claims-review",
         type: "claims"
       },
       "Coverage Verification": {
         id: "ins-coverage-verification",
         label: "Coverage Verification",
-        url: "/html/tsm-insurance/insurance-war-room.html?mode=coverage",
+        url: "/html/war-rooms/insure-war/insurance-war-room.html?mode=coverage",
         type: "verification"
       },
       "Insurance Strategist": {
         id: "ins-strategist",
         label: "Insurance Strategist",
-        url: "/html/tsm-insurance/insurance-war-room.html?mode=strategist",
+        url: "/html/war-rooms/insure-war/insurance-war-room.html?mode=strategist",
         type: "strategist"
       }
     },
@@ -100,25 +100,25 @@
       "Title Review": {
         id: "reo-title-review",
         label: "Title Review",
-        url: "/html/reo-pro/re-war-room.html?mode=title",
+        url: "/html/war-rooms/re-war/re-war-room.html?mode=title",
         type: "title"
       },
       "Occupancy Verification": {
         id: "reo-occupancy",
         label: "Occupancy Verification",
-        url: "/html/reo-pro/re-war-room.html?mode=occupancy",
+        url: "/html/war-rooms/re-war/re-war-room.html?mode=occupancy",
         type: "occupancy"
       },
       "Valuation Review": {
         id: "reo-valuation",
         label: "Valuation Review",
-        url: "/html/reo-pro/re-war-room.html?mode=valuation",
+        url: "/html/war-rooms/re-war/re-war-room.html?mode=valuation",
         type: "valuation"
       },
       "REO Strategist": {
         id: "reo-strategist",
         label: "REO Strategist",
-        url: "/html/reo-pro/re-war-room.html?mode=strategist",
+        url: "/html/war-rooms/re-war/re-war-room.html?mode=strategist",
         type: "strategist"
       }
     },
@@ -127,19 +127,19 @@
       "BPO Operations": {
         id: "bpo-ops",
         label: "BPO Operations",
-        url: "/html/bpo/bpo-war-room.html?mode=operations",
+        url: "/html/war-rooms/bpo-war/bpo-war-room.html?mode=operations",
         type: "operations"
       },
       "Staffing Queue Manager": {
         id: "bpo-staffing",
         label: "Staffing Queue Manager",
-        url: "/html/bpo/bpo-war-room.html?mode=staffing",
+        url: "/html/war-rooms/bpo-war/bpo-war-room.html?mode=staffing",
         type: "staffing"
       },
       "BPO Strategist": {
         id: "bpo-strategist",
         label: "BPO Strategist",
-        url: "/html/bpo/bpo-war-room.html?mode=strategist",
+        url: "/html/war-rooms/bpo-war/bpo-war-room.html?mode=strategist",
         type: "strategist"
       }
     },
@@ -148,19 +148,19 @@
       "Legal Review": {
         id: "legal-review",
         label: "Legal Review",
-        url: "/html/legal-pro/legal-war-room.html?mode=review",
+        url: "/html/war-rooms/legal-war/legal-war-room.html?mode=review",
         type: "review"
       },
       "Contract Intake": {
         id: "legal-contract-intake",
         label: "Contract Intake",
-        url: "/html/legal-pro/legal-war-room.html?mode=contracts",
+        url: "/html/war-rooms/legal-war/legal-war-room.html?mode=contracts",
         type: "contracts"
       },
       "Legal Strategist": {
         id: "legal-strategist",
         label: "Legal Strategist",
-        url: "/html/legal-pro/legal-war-room.html?mode=strategist",
+        url: "/html/war-rooms/legal-war/legal-war-room.html?mode=strategist",
         type: "strategist"
       }
     },
@@ -190,19 +190,19 @@
       "Permit Review": {
         id: "construction-permit-review",
         label: "Permit Review",
-        url: "/html/construction/construction-war-room.html?mode=permit",
+        url: "/html/war-rooms/construct-war/construction-war-room.html?mode=permit",
         type: "permit"
       },
       "Project Recovery": {
         id: "construction-project-recovery",
         label: "Project Recovery",
-        url: "/html/construction/construction-war-room.html?mode=recovery",
+        url: "/html/war-rooms/construct-war/construction-war-room.html?mode=recovery",
         type: "recovery"
       },
       "Construction Strategist": {
         id: "construction-strategist",
         label: "Construction Strategist",
-        url: "/html/construction/construction-war-room.html?mode=strategist",
+        url: "/html/war-rooms/construct-war/construction-war-room.html?mode=strategist",
         type: "strategist"
       }
     }
@@ -322,7 +322,7 @@
     insurance: {
       __meta: {
         label: "Insurance",
-        warRoom: "/html/tsm-insurance/insurance-war-room.html",
+        warRoom: "/html/war-rooms/insure-war/insurance-war-room.html",
         defaultOwner: "Claims Ops",
         executiveAudience: ["strategist", "claims-director", "finance"],
         continuityNarrative:
@@ -523,7 +523,7 @@
     reo: {
       __meta: {
         label: "REO",
-        warRoom: "/html/reo-pro/re-war-room.html",
+        warRoom: "/html/war-rooms/re-war/re-war-room.html",
         defaultOwner: "Asset Operations",
         executiveAudience: ["strategist", "asset-manager", "finance"],
         continuityNarrative:
@@ -600,7 +600,7 @@
     bpo: {
       __meta: {
         label: "BPO",
-        warRoom: "/html/bpo/bpo-war-room.html",
+        warRoom: "/html/war-rooms/bpo-war/bpo-war-room.html",
         defaultOwner: "Operations Lead",
         executiveAudience: ["strategist", "ops-director", "executive"],
         continuityNarrative:
@@ -699,7 +699,7 @@
     legal: {
       __meta: {
         label: "Legal",
-        warRoom: "/html/legal-pro/legal-war-room.html",
+        warRoom: "/html/war-rooms/legal-war/legal-war-room.html",
         defaultOwner: "Legal Ops",
         executiveAudience: ["strategist", "general-counsel", "executive"],
         continuityNarrative:
@@ -809,7 +809,7 @@
     construction: {
       __meta: {
         label: "Construction",
-        warRoom: "/html/construction/construction-war-room.html",
+        warRoom: "/html/war-rooms/construct-war/construction-war-room.html",
         defaultOwner: "Project Engineering",
         executiveAudience: ["strategist", "project-exec", "finance"],
         continuityNarrative:

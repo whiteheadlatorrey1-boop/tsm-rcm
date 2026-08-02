@@ -167,5 +167,6 @@ if (typeof require !== 'undefined' && typeof module !== 'undefined' && require.m
     { ts: hrs(40), domain: 'MDM', key: 'TSM_MDM_RELAY', id: 'REC-9' } // 40h, over the 24h benchmark
   ];
 
+  
   console.log(JSON.stringify(Engine.analyze(sampleEvents), null, 2));
 }

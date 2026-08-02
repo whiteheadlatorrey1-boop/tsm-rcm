@@ -159,10 +159,18 @@ class TSMCPQEngine {
   getExplainItems() {
     const items = [];
     const policy = this.model.sample_data?.discount_policy || {};
+    const policyConfigured = policy.auto_approve_max_pct != null && policy.margin_floor_pct != null;
     const autoApproveMax = Number(policy.auto_approve_max_pct) || 15;
     const marginFloor = Number(policy.margin_floor_pct) || 28;
     const quoteIndex = {};
     this.quotes.forEach(q => { quoteIndex[q.quote_id] = q; });
+
+    // Confidence isn't a model guess -- the SLA/discount/margin checks are
+    // deterministic. It instead signals data completeness: whether the
+    // quote has its identifying name, or whether the discount policy is
+    // actually configured vs. silently running on the 15%/28% fallback
+    // defaults above.
+    const identConfidence = (base, ok) => ok ? base : Math.max(60, base - 25);
 
     this.getSlaBreaches().forEach(b => {
       const q = quoteIndex[b.quote_id] || {};
@@ -171,7 +179,7 @@ class TSMCPQEngine {
       items.push({
         id: 'sla-' + b.quote_id,
         claim: `${b.quote_id} (${q.name || 'quote'}) worth $${Number(q.net_value || 0).toLocaleString()} is stalled ${b.hours_over}h past its "${b.stage}" SLA`,
-        confidence: 90,
+        confidence: identConfidence(90, !!q.name),
         severity,
         impact: q.net_value ? ('$' + Number(q.net_value).toLocaleString() + ' quote value at risk of slipping') : '',
         rationale: `${q.name || b.quote_id} has been in the "${b.stage}" stage since ${q.stage_entered_at || 'an unrecorded time'}, ` +
@@ -190,7 +198,7 @@ class TSMCPQEngine {
       items.push({
         id: 'approval-' + q.quote_id,
         claim: `${q.quote_id} (${q.name}) needs approval — ${q.discount_pct}% discount exceeds the ${autoApproveMax}% auto-approve limit`,
-        confidence: 95,
+        confidence: identConfidence(95, policyConfigured),
         severity,
         impact: q.net_value ? ('$' + Number(q.net_value).toLocaleString() + ' quote blocked pending approval') : 'Quote blocked pending approval',
         rationale: `${q.name} carries a ${q.discount_pct}% discount off list ($${Number(q.list_value || 0).toLocaleString()} \u2192 $${Number(q.net_value || 0).toLocaleString()}), ` +
@@ -209,7 +217,7 @@ class TSMCPQEngine {
       items.push({
         id: 'margin-' + q.quote_id,
         claim: `${q.quote_id} (${q.name}) margin is ${q.margin_pct}% — below the ${marginFloor}% policy floor`,
-        confidence: 88,
+        confidence: identConfidence(88, policyConfigured),
         severity,
         impact: q.net_value ? ('$' + Number(q.net_value).toLocaleString() + ' quote running under margin floor') : 'Margin policy risk',
         rationale: `${q.name} is priced at ${q.margin_pct}% margin, below the ${marginFloor}% floor set by policy. ` +

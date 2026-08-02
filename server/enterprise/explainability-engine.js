@@ -38,31 +38,27 @@ class ExplainabilityEngine {
 
 
 
+            // FIX: was an array of objects — (data.bnca.evidence||[]).join(' · ')
+            // in war-room-prep.html was rendering "[object Object] · [object Object]".
+            // Now a flat array of readable strings, safe to join.
             evidence:
 
                 capabilities.map(
-                    capability => ({
+                    capability =>
 
-                        capability:
-                            capability.id,
+                        `${capability.id} (score ${capability.score}` +
+                        (capability.findings && capability.findings[0]
+                            ? `: ${capability.findings[0]}`
+                            : "") +
+                        `)`
 
-
-                        score:
-                            capability.score,
-
-
-                        confidence:
-                            capability.confidence,
-
-
-                        findings:
-                            capability.findings
-
-                    })
                 ),
 
 
 
+            // FIX: was returning an array — war-room-prep.html assigns this
+            // directly to textContent, which comma-joins arrays with no
+            // spacing. Now returns a single readable string.
             reasoning:
 
 
@@ -88,7 +84,8 @@ class ExplainabilityEngine {
 
                 `${c.title} contributed score ${c.score}`
 
-            );
+            )
+            .join(". ");
 
     }
 

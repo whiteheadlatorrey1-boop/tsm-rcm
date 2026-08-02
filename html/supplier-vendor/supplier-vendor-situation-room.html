@@ -1,0 +1,1162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TSM · Supplier/Vendor Management Situation Room</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#050a0f;--bg2:#0a1020;--bg3:#0d1528;
+  --cyan:#172020;--amber:#f5a623;--green:#22c55e;
+  --red:#ef4444;--purple:#a855f7;--blue:#3b82f6;
+  --gold:#c9a84c;--text:#e2e8f0;--muted:#64748b;--border:#1e293b;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;min-height:100vh;overflow-x:hidden;}
+
+/* ── SCANLINE OVERLAY ── */
+body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.08) 2px,rgba(0,0,0,.08) 4px);pointer-events:none;z-index:9999;}
+
+/* ── TOP BAR ── */
+.topbar{height:44px;background:#020810;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 20px;position:sticky;top:0;z-index:100;}
+.topbar-left{display:flex;align-items:center;gap:16px;}
+.tb-brand{font-family:'Orbitron',sans-serif;font-size:.72rem;color:var(--red);letter-spacing:.18em;display:flex;align-items:center;gap:8px;}
+.tb-brand-pulse{width:8px;height:8px;border-radius:50%;background:var(--red);animation:pulse 1.2s infinite;}
+.tb-stat{font-family:'JetBrains Mono',monospace;font-size:.65rem;color:var(--muted);}
+.tb-stat span{color:var(--green);}
+.tb-stat.warn span{color:var(--amber);}
+.tb-stat.crit span{color:var(--red);animation:pulse 1.5s infinite;}
+.topbar-right{display:flex;align-items:center;gap:16px;}
+.tb-time{font-family:'Orbitron',sans-serif;font-size:.78rem;color:var(--amber);}
+.tb-avatar{width:30px;height:30px;border-radius:50%;background:var(--red);display:flex;align-items:center;justify-content:center;font-family:'Orbitron',sans-serif;font-size:.6rem;color:#fff;font-weight:700;}
+.tb-user-info .tb-name{color:#fff;font-weight:600;font-size:.72rem;}
+.tb-user-info .tb-role{color:var(--muted);font-size:.62rem;}
+.tb-user{display:flex;align-items:center;gap:8px;}
+
+/* ── INCIDENT BANNER ── */
+.incident-banner{background:rgba(239,68,68,.06);border-bottom:2px solid rgba(239,68,68,.3);padding:10px 20px;display:flex;align-items:center;gap:20px;}
+.inc-sev{display:flex;align-items:center;gap:8px;}
+.inc-sev-badge{font-family:'Orbitron',sans-serif;font-size:.65rem;padding:4px 12px;border-radius:2px;background:rgba(239,68,68,.15);border:1px solid var(--red);color:var(--red);letter-spacing:.1em;}
+.inc-label{font-family:'Orbitron',sans-serif;font-size:.72rem;color:var(--text);letter-spacing:.08em;}
+.inc-meta{font-family:'JetBrains Mono',monospace;font-size:.65rem;color:var(--muted);}
+.inc-meta span{color:var(--amber);}
+.inc-window{margin-left:auto;display:flex;align-items:center;gap:10px;}
+.inc-window-label{font-family:'Orbitron',sans-serif;font-size:.6rem;color:var(--muted);letter-spacing:.08em;}
+.inc-window-val{font-family:'Orbitron',sans-serif;font-size:1.1rem;font-weight:700;color:var(--red);}
+.inc-window-sub{font-family:'JetBrains Mono',monospace;font-size:.6rem;color:var(--muted);}
+.inc-divider{width:1px;height:32px;background:rgba(239,68,68,.25);}
+
+/* ── CHAIN NAV ── */
+.chain-nav{height:38px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 20px;gap:0;}
+.chain-step{display:flex;align-items:center;gap:0;}
+.chain-node{font-family:'Orbitron',sans-serif;font-size:.58rem;padding:6px 16px;letter-spacing:.08em;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:.2s;white-space:nowrap;}
+.chain-node:hover{color:var(--text);}
+.chain-node.active{color:var(--red);border-bottom-color:var(--red);}
+.chain-node.done{color:var(--green);}
+.chain-node.done:hover{color:var(--green);}
+.chain-arrow{font-family:'JetBrains Mono',monospace;font-size:.65rem;color:var(--border);padding:0 2px;}
+.chain-right{margin-left:auto;display:flex;gap:8px;}
+.chain-btn{padding:5px 14px;border-radius:3px;border:1px solid var(--border);background:transparent;color:var(--muted);font-family:'Orbitron',sans-serif;font-size:.58rem;cursor:pointer;letter-spacing:.06em;transition:.2s;}
+.chain-btn:hover{border-color:var(--amber);color:var(--amber);}
+.chain-btn.primary{border-color:rgba(239,68,68,.4);color:var(--red);}
+.chain-btn.primary:hover{background:var(--red);color:#fff;}
+
+/* ── MAIN GRID ── */
+.main{display:grid;grid-template-columns:1fr 320px;grid-template-rows:auto 1fr;gap:1px;background:var(--border);min-height:calc(100vh - 126px);}
+
+/* ── LEFT COLUMN ── */
+.left-col{display:flex;flex-direction:column;gap:1px;background:var(--border);}
+
+/* ── IMPACT SNAPSHOT ── */
+.impact-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border);}
+.impact-tile{background:var(--bg2);padding:20px 18px;position:relative;overflow:hidden;}
+.impact-tile::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;}
+.impact-tile.critical::after{background:var(--red);}
+.impact-tile.high::after{background:var(--amber);}
+.impact-tile.med::after{background:var(--blue);}
+.impact-tile.ok::after{background:var(--green);}
+.impact-label{font-family:'Orbitron',sans-serif;font-size:.55rem;color:var(--muted);letter-spacing:.1em;margin-bottom:8px;}
+.impact-val{font-family:'Orbitron',sans-serif;font-size:1.6rem;font-weight:900;line-height:1;}
+.impact-val.critical{color:var(--red);}
+.impact-val.high{color:var(--amber);}
+.impact-val.med{color:var(--blue);}
+.impact-val.ok{color:var(--green);}
+.impact-sub{font-family:'JetBrains Mono',monospace;font-size:.62rem;color:var(--muted);margin-top:5px;}
+.impact-trend{position:absolute;top:12px;right:14px;font-family:'Orbitron',sans-serif;font-size:.6rem;}
+
+/* ── AI ENGINE PANEL ── */
+.engine-panel{background:var(--bg2);flex:1;display:flex;flex-direction:column;}
+.engine-header{padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;}
+.engine-pulse{width:8px;height:8px;border-radius:50%;background:var(--cyan);animation:pulse 2s infinite;}
+.engine-title{font-family:'Orbitron',sans-serif;font-size:.65rem;color:var(--cyan);letter-spacing:.1em;}
+.engine-count{margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:.62rem;color:var(--muted);}
+.engine-tabs{display:flex;border-bottom:1px solid var(--border);}
+.engine-tab{padding:8px 16px;font-family:'Orbitron',sans-serif;font-size:.58rem;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;letter-spacing:.06em;transition:.2s;}
+.engine-tab:hover{color:var(--text);}
+.engine-tab.active{color:var(--cyan);border-bottom-color:var(--cyan);}
+
+/* ENGINE OUTPUT AREA */
+.engine-body{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--border);flex:1;}
+.engine-col{background:var(--bg2);padding:18px;}
+.engine-col-title{font-family:'Orbitron',sans-serif;font-size:.6rem;color:var(--muted);letter-spacing:.1em;margin-bottom:14px;display:flex;align-items:center;gap:8px;}
+.engine-col-title .dot{width:6px;height:6px;border-radius:50%;}
+
+/* ROOT ISSUE */
+.root-issue-box{background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.2);border-left:3px solid var(--red);border-radius:4px;padding:14px;margin-bottom:14px;}
+.ri-label{font-family:'Orbitron',sans-serif;font-size:.55rem;color:var(--red);letter-spacing:.1em;margin-bottom:6px;}
+.ri-val{font-family:'Rajdhani',sans-serif;font-size:1rem;font-weight:700;color:#fff;line-height:1.3;}
+.ri-sub{font-family:'JetBrains Mono',monospace;font-size:.62rem;color:var(--muted);margin-top:5px;}
+
+/* RISK LIST */
+.risk-item{display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);}
+.risk-item:last-child{border-bottom:none;}
+.risk-icon{font-family:'Orbitron',sans-serif;font-size:.7rem;width:22px;flex-shrink:0;margin-top:2px;}
+.risk-text{font-size:.8rem;color:#ccc;line-height:1.4;flex:1;}
+.risk-badge{font-family:'Orbitron',sans-serif;font-size:.5rem;padding:2px 7px;border-radius:2px;flex-shrink:0;margin-top:2px;}
+.rb-crit{background:rgba(239,68,68,.15);border:1px solid var(--red);color:var(--red);}
+.rb-high{background:rgba(245,166,35,.15);border:1px solid var(--amber);color:var(--amber);}
+.rb-med{background:rgba(59,130,246,.15);border:1px solid var(--blue);color:var(--blue);}
+
+/* AI EXTRACTION STREAM */
+.extraction-stream{background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:14px;font-family:'JetBrains Mono',monospace;font-size:.72rem;color:#bbb;line-height:1.8;min-height:120px;position:relative;}
+.extraction-stream.loading{color:var(--muted);}
+.stream-cursor{display:inline-block;width:8px;height:13px;background:var(--cyan);animation:blink .7s infinite;vertical-align:middle;margin-left:2px;}
+.extraction-label{font-family:'Orbitron',sans-serif;font-size:.55rem;color:var(--muted);letter-spacing:.1em;margin-bottom:8px;}
+.ext-section{margin-bottom:10px;}
+.ext-key{color:var(--cyan);}
+.ext-val{color:#e2e8f0;}
+.ext-bullet{color:var(--amber);margin-right:6px;}
+
+/* ── RIGHT COLUMN ── */
+.right-col{background:var(--bg2);display:flex;flex-direction:column;gap:1px;}
+
+/* EVIDENCE PANEL */
+.evidence-panel{background:var(--bg2);padding:18px;border-bottom:1px solid var(--border);}
+.panel-title{font-family:'Orbitron',sans-serif;font-size:.6rem;color:var(--muted);letter-spacing:.1em;margin-bottom:14px;display:flex;align-items:center;gap:8px;}
+.panel-title .dot{width:6px;height:6px;border-radius:50%;background:var(--green);}
+.evidence-item{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);}
+.evidence-item:last-child{border-bottom:none;}
+.ev-check{font-family:'JetBrains Mono',monospace;font-size:.75rem;width:18px;flex-shrink:0;}
+.ev-check.ok{color:var(--green);}
+.ev-check.pending{color:var(--amber);}
+.ev-check.missing{color:var(--muted);}
+.ev-name{font-size:.8rem;flex:1;color:#ccc;}
+.ev-time{font-family:'JetBrains Mono',monospace;font-size:.6rem;color:var(--muted);}
+.ev-tag{font-family:'Orbitron',sans-serif;font-size:.5rem;padding:2px 6px;border-radius:2px;}
+.ev-analyzed{background:rgba(34,197,94,.1);border:1px solid var(--green);color:var(--green);}
+.ev-pending{background:rgba(245,166,35,.1);border:1px solid var(--amber);color:var(--amber);}
+
+/* MEMORY ENGINE PANEL */
+.memory-panel{background:var(--bg2);padding:18px;border-bottom:1px solid var(--border);}
+.memory-timeline{max-height:160px;overflow-y:auto;}
+.mem-item{display:flex;gap:8px;padding:6px 0;border-bottom:1px solid rgba(30,41,59,.5);}
+.mem-item:last-child{border-bottom:none;}
+.mem-dot{width:6px;height:6px;border-radius:50%;background:var(--cyan);flex-shrink:0;margin-top:4px;}
+.mem-msg{font-family:'JetBrains Mono',monospace;font-size:.62rem;color:#999;flex:1;line-height:1.4;}
+.mem-time{font-family:'JetBrains Mono',monospace;font-size:.58rem;color:var(--muted);flex-shrink:0;}
+
+/* DECISION WINDOW COUNTDOWN */
+.decision-window{background:rgba(239,68,68,.05);border:1px solid rgba(239,68,68,.2);border-radius:4px;padding:16px;margin-bottom:14px;}
+.dw-label{font-family:'Orbitron',sans-serif;font-size:.58rem;color:var(--red);letter-spacing:.1em;margin-bottom:10px;}
+.dw-clock{font-family:'Orbitron',sans-serif;font-size:1.8rem;font-weight:900;color:var(--red);letter-spacing:.06em;text-align:center;}
+.dw-sub{font-family:'JetBrains Mono',monospace;font-size:.62rem;color:var(--muted);text-align:center;margin-top:4px;}
+.dw-progress{height:3px;background:var(--border);border-radius:2px;margin-top:12px;overflow:hidden;}
+.dw-progress-fill{height:100%;background:var(--red);border-radius:2px;transition:width 1s linear;}
+
+/* BNCA PREVIEW */
+.bnca-panel{background:var(--bg2);padding:18px;flex:1;}
+.bnca-item{display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);}
+.bnca-item:last-child{border-bottom:none;}
+.bnca-num{font-family:'Orbitron',sans-serif;font-size:.65rem;color:var(--cyan);width:18px;flex-shrink:0;}
+.bnca-text{font-size:.78rem;color:#ccc;line-height:1.5;flex:1;}
+.bnca-text strong{color:var(--amber);}
+
+/* ── BOTTOM ACTION BAR ── */
+.action-bar{height:52px;background:#020810;border-top:2px solid var(--border);display:flex;align-items:center;padding:0 20px;gap:10px;position:sticky;bottom:32px;z-index:10;}
+.action-bar-label{font-family:'Orbitron',sans-serif;font-size:.58rem;color:var(--muted);margin-right:6px;}
+.act-btn{padding:8px 18px;border-radius:3px;font-family:'Orbitron',sans-serif;font-size:.6rem;cursor:pointer;letter-spacing:.08em;transition:.2s;border:1px solid;}
+.act-btn.primary{background:var(--red);border-color:var(--red);color:#fff;}
+.act-btn.primary:hover{opacity:.85;}
+.act-btn.secondary{background:transparent;border-color:var(--border);color:var(--muted);}
+.act-btn.secondary:hover{border-color:var(--cyan);color:var(--cyan);}
+.act-btn.amber{background:transparent;border-color:rgba(245,166,35,.4);color:var(--amber);}
+.act-btn.amber:hover{background:rgba(245,166,35,.1);}
+.act-spacer{flex:1;}
+.act-status{font-family:'JetBrains Mono',monospace;font-size:.62rem;color:var(--muted);}
+.act-status span{color:var(--green);}
+
+/* ── ENGINE FIRE ANIMATION ── */
+.engine-firing{animation:engineFire .4s ease-out;}
+@keyframes engineFire{0%{opacity:.3;transform:translateY(4px);}100%{opacity:1;transform:translateY(0);}}
+
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar{width:4px;height:4px;}
+::-webkit-scrollbar-track{background:var(--bg);}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
+
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.25;}}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:0;}}
+</style>
+<script src="/shared/tsm-memory-engine.js?v=phase3"></script>
+  <script src="/js/core/tsm-event-bus.js"></script>
+  <script src="/js/core/tsm-state.js"></script>
+  <script src="/js/core/tsm-mission-engine.js"></script>
+  <script src="/js/core/tsm-auto-pipeline.js"></script>
+</head>
+<body>
+
+<!-- ── TSM CHAIN STATUS BAR ──────────────────────────────────────────── -->
+<div id="tsm-chain-bar" style="
+  position:fixed;bottom:0;left:0;right:0;z-index:9999;
+  background:#040c12;border-top:1px solid #0d2233;
+  display:flex;align-items:center;gap:0;font-family:'IBM Plex Mono',monospace;
+  font-size:10px;letter-spacing:.5px;height:32px;padding:0 16px;
+">
+  <span style="color:#3a5a70;margin-right:12px;font-size:9px;">TSM CHAIN</span>
+
+  <a id="tsm-chain-wr" href="#" style="
+    color:#00ffc6;background:rgba(0,255,198,.08);border:1px solid #00ffc638;
+    padding:3px 10px;border-radius:3px;text-decoration:none;margin-right:6px;
+    font-size:9px;letter-spacing:1px;
+  ">● WAR ROOM</a>
+
+  <span style="color:#1a3a50;margin-right:6px;">──▶</span>
+
+  <span id="tsm-chain-strat" title="Not yet built" style="
+    color:#94a3b8;border:1px solid #1a3a50;
+    padding:3px 10px;border-radius:3px;text-decoration:none;margin-right:6px;
+    font-size:9px;letter-spacing:1px;transition:all .3s;
+  ;opacity:.4;cursor:not-allowed">○ STRATEGIST</span>
+
+  <span style="color:#1a3a50;margin-right:6px;">──▶</span>
+
+  <span id="tsm-chain-exec" title="Not yet built" style="
+    color:#94a3b8;border:1px solid #1a3a50;
+    padding:3px 10px;border-radius:3px;text-decoration:none;margin-right:6px;
+    font-size:9px;letter-spacing:1px;transition:all .3s;
+  ;opacity:.4;cursor:not-allowed">○ EXEC PORTAL</span>
+
+  <span style="color:#1a3a50;margin:0 12px;">|</span>
+
+  <span id="tsm-chain-status" style="color:#3a5a70;font-size:9px;">Monitoring relay...</span>
+
+  <div style="margin-left:auto;display:flex;gap:8px;align-items:center;">
+    <span id="tsm-chain-relay-ts" style="color:#1a3a50;font-size:8px;"></span>
+    <span style="color:#1a3a50;font-size:9px;">Supplier/Vendor Management</span>
+  </div>
+</div>
+<script>
+(function(){
+  const RELAY_KEY = 'TSM_RELAY_PAYLOAD';
+  const strat  = document.getElementById('tsm-chain-strat');
+  const exec   = document.getElementById('tsm-chain-exec');
+  const status = document.getElementById('tsm-chain-status');
+  const ts     = document.getElementById('tsm-chain-relay-ts');
+
+  function pulse(el, color) {
+    el.style.color  = color;
+    el.style.border = '1px solid ' + color + '66';
+    el.style.background = color + '10';
+  }
+
+  function check() {
+    try {
+      const raw = localStorage.getItem(RELAY_KEY);
+      if (!raw) { status.textContent = 'War room active — no relay yet'; return; }
+      const d = JSON.parse(raw);
+      const age = Date.now() - (d.timestamp || 0);
+      const fresh = age < 5 * 60 * 1000; // 5 min
+
+      if (fresh) {
+        pulse(strat, '#f5a623');
+        status.textContent = 'Relay fired → Strategist receiving';
+        ts.textContent = new Date(d.timestamp).toLocaleTimeString();
+
+        // If strategist confirmed
+        const stratRaw = localStorage.getItem('TSM_STRAT_CONFIRMED_vendor');
+        if (stratRaw) {
+          pulse(strat, '#00ffc6');
+          pulse(exec, '#f5a623');
+          status.textContent = 'Strategist confirmed → Exec Portal ready';
+        }
+        const execRaw = localStorage.getItem('TSM_EXEC_CONFIRMED_vendor');
+        if (execRaw) {
+          pulse(exec, '#00ffc6');
+          status.textContent = 'Chain complete ✓ All three tiers confirmed';
+        }
+      } else {
+        status.textContent = 'Last relay: ' + Math.round(age/60000) + 'm ago';
+        ts.textContent = new Date(d.timestamp).toLocaleTimeString();
+      }
+    } catch(e) {
+      status.textContent = 'Relay monitor error';
+    }
+  }
+
+  check();
+  setInterval(check, 5000);
+})();
+</script>
+<!-- ── END TSM CHAIN STATUS BAR ──────────────────────────────────────── -->
+
+
+<!-- ── TOP BAR ── -->
+<div class="topbar">
+  <div class="topbar-left">
+    <div class="tb-brand"><div class="tb-brand-pulse"></div>◈ Supplier/Vendor Management SITUATION ROOM</div>
+    <div class="tb-stat crit">INCIDENT: <span id="tbSeverity">DETECTED</span></div>
+    <div class="tb-stat warn">SECTOR: <span id="tbSector">—</span></div>
+    <div class="tb-stat">DOC TYPE: <span id="tbDocType">—</span></div>
+    <div class="tb-stat crit">DECISION WINDOW: <span id="tbWindow">—</span></div>
+  </div>
+  <div class="topbar-right">
+    <a href="../finops-suite/tsm-rcm-os.html" class="tb-stat" style="text-decoration:none; cursor:pointer;">↩ RCM OS</a>
+    <div class="tb-time" id="tbTime">--:--:--</div>
+    <div class="tb-user">
+      <div class="tb-avatar">SR</div>
+      <div class="tb-user-info">
+        <div class="tb-name">Situation Room</div>
+        <div class="tb-role">Supplier/Vendor Management Intelligence — Stage 02</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── INCIDENT BANNER ── -->
+<div class="incident-banner">
+  <div class="inc-sev">
+    <div class="inc-sev-badge" id="incSevBadge">■ CRITICAL</div>
+  </div>
+  <div class="inc-divider"></div>
+  <div>
+    <div class="inc-label" id="incLabel">INCIDENT DETECTED — ANALYZING</div>
+    <div class="inc-meta">Detected: <span id="incDetected">—</span> &nbsp;|&nbsp; Stage: <span id="incStage">SITUATION AWARENESS</span> &nbsp;|&nbsp; Chain: <span>UPLOADER → SITUATION ROOM ● → STRATEGIST → EXECUTIVE</span></div>
+  </div>
+  <div class="inc-window">
+    <div>
+      <div class="inc-window-label">DECISION WINDOW</div>
+      <div class="inc-window-val" id="decWindowVal">6:00:00</div>
+      <div class="inc-window-sub">Remaining to act</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── CROSS-UPLOAD MEMORY BANNER ── -->
+<div id="crossUploadBanner" style="display:none;align-items:center;gap:10px;margin:0 24px 14px;padding:10px 16px;background:rgba(0,255,198,.08);border:1px solid rgba(0,255,198,.25);border-radius:8px;color:#bdf7ec;font-family:'JetBrains Mono',monospace;font-size:.72rem;"></div>
+
+<!-- ── CHAIN NAVIGATION ── -->
+<div class="chain-nav">
+  <div class="chain-step">
+    <div class="chain-node done" onclick="nav('/html/tsm-doc-search-multi.html')">01 · INTAKE</div>
+    <div class="chain-arrow">→</div>
+    <div class="chain-node active">02 · UNDERSTAND</div>
+    <div class="chain-arrow">→</div>
+    <div class="chain-node" onclick="nav('/html/supplier-vendor/supplier-vendor-strategist-v2.html')">03 · DECIDE</div>
+    <div class="chain-arrow">→</div>
+    <div class="chain-node" onclick="nav('/html/supplier-vendor/supplier-vendor-executive-portal.html')">04 · EXECUTE</div>
+  </div>
+  <div class="chain-right">
+    <button class="chain-btn" onclick="nav('/html/tsm-doc-search-multi.html')">← BACK TO INTAKE</button>
+    <button class="chain-btn" onclick="exportBrief()">⬇ EXPORT BRIEF</button>
+    <button class="chain-btn primary" id="routeBtn" onclick="routeToStrategist()">ROUTE TO STRATEGIST →</button>
+  </div>
+</div>
+
+<!-- ── MAIN GRID ── -->
+<div class="main">
+
+  <!-- ── LEFT COLUMN ── -->
+  <div class="left-col">
+
+    <!-- IMPACT SNAPSHOT -->
+    <div class="impact-grid" id="impactGrid">
+      <div class="impact-tile critical">
+        <div class="impact-label">REVENUE AT RISK</div>
+        <div class="impact-val critical" id="impRevenue">—</div>
+        <div class="impact-sub" id="impRevenueSub">Calculating exposure...</div>
+        <div class="impact-trend" style="color:var(--red)">↑ CRITICAL</div>
+      </div>
+      <div class="impact-tile high">
+        <div class="impact-label">PRODUCTION LINES</div>
+        <div class="impact-val high" id="impLines">—</div>
+        <div class="impact-sub" id="impLinesSub">Affected workflows</div>
+        <div class="impact-trend" style="color:var(--amber)">↑ HIGH</div>
+      </div>
+      <div class="impact-tile med">
+        <div class="impact-label">CLIENTS IMPACTED</div>
+        <div class="impact-val med" id="impClients">—</div>
+        <div class="impact-sub" id="impClientsSub">Active accounts</div>
+        <div class="impact-trend" style="color:var(--blue)">● ACTIVE</div>
+      </div>
+      <div class="impact-tile high">
+        <div class="impact-label">INVENTORY / RUNWAY</div>
+        <div class="impact-val high" id="impInventory">—</div>
+        <div class="impact-sub" id="impInventorySub">Time to critical failure</div>
+        <div class="impact-trend" style="color:var(--amber)">↓ DEPLETING</div>
+      </div>
+    </div>
+
+    <!-- ENGINE OUTPUT PANEL -->
+    <div class="engine-panel">
+      <div class="engine-header">
+        <div class="engine-pulse" id="enginePulse"></div>
+        <div class="engine-title">AI EXTRACTION ENGINE · SITUATION ANALYSIS</div>
+        <div class="engine-count" id="engineCount">Awaiting document...</div>
+      </div>
+      <div class="engine-tabs">
+        <div class="engine-tab active" onclick="showEngineTab('extraction')">AI EXTRACTIONS</div>
+        <div class="engine-tab" onclick="showEngineTab('risks')">IMMEDIATE RISKS</div>
+        <div class="engine-tab" onclick="showEngineTab('raw')">RAW ENGINE OUTPUT</div>
+      </div>
+      <div class="engine-body">
+
+        <!-- LEFT: ROOT ISSUE + EXTRACTION -->
+        <div class="engine-col" id="tabExtraction">
+          <div class="engine-col-title"><div class="dot" style="background:var(--red)"></div>ROOT ISSUE IDENTIFICATION</div>
+          <div class="root-issue-box">
+            <div class="ri-label">■ IDENTIFIED ROOT CAUSE</div>
+            <div class="ri-val" id="rootIssuePrimary">Analyzing document...</div>
+            <div class="ri-sub" id="rootIssueSub">AI extraction in progress</div>
+          </div>
+          <div class="engine-col-title" style="margin-top:4px"><div class="dot" style="background:var(--cyan)"></div>AI SITUATION SUMMARY</div>
+          <div class="extraction-label">EXTRACTION OUTPUT</div>
+          <div class="extraction-stream" id="extractionStream">
+            <span style="color:var(--muted)">Load a document from Stage 01 to begin situation analysis. The AI engine will extract root causes, financial exposure, and operational impact automatically.</span>
+          </div>
+        </div>
+
+        <!-- RIGHT: RISKS + BNCA -->
+        <div class="engine-col" id="tabRisks" style="display:none">
+          <div class="engine-col-title"><div class="dot" style="background:var(--amber)"></div>IMMEDIATE RISK CASCADE</div>
+          <div id="riskList">
+            <div style="color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:.68rem">Awaiting AI extraction...</div>
+          </div>
+        </div>
+
+        <!-- RAW tab (hidden by default) -->
+        <div class="engine-col" id="tabRaw" style="display:none;grid-column:1/-1">
+          <div class="engine-col-title"><div class="dot" style="background:var(--purple)"></div>RAW DOCUMENT RELAY</div>
+          <div id="rawBody" style="font-family:'JetBrains Mono',monospace;font-size:.65rem;color:#888;line-height:1.7;max-height:320px;overflow-y:auto;white-space:pre-wrap;"></div>
+        </div>
+
+        <!-- Default: both cols visible for Extractions tab -->
+        <div class="engine-col" id="tabExtractionRight">
+          <div class="engine-col-title"><div class="dot" style="background:var(--amber)"></div>IMMEDIATE RISK CASCADE</div>
+          <div id="riskListMain">
+            <div style="color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:.68rem">Engine analyzing document for risk signals...</div>
+          </div>
+          <div class="engine-col-title" style="margin-top:16px"><div class="dot" style="background:var(--green)"></div>BNCA · NEXT COURSE OF ACTION</div>
+          <div id="bncaPreview">
+            <div style="color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:.68rem">BNCA will generate after extraction completes...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── RIGHT COLUMN ── -->
+  <div class="right-col">
+
+    <!-- DECISION WINDOW -->
+    <div class="evidence-panel">
+      <div class="dw-label">⏱ DECISION WINDOW REMAINING</div>
+      <div class="dw-clock" id="clockDisplay">05:59:47</div>
+      <div class="dw-sub">Time to irreversible impact</div>
+      <div class="dw-progress"><div class="dw-progress-fill" id="dwFill" style="width:100%"></div></div>
+    </div>
+
+    <!-- EVIDENCE PANEL -->
+    <div class="evidence-panel">
+      <div class="panel-title"><div class="dot"></div>EVIDENCE PANEL · DOCUMENT INTAKE</div>
+      <div id="evidenceList">
+        <div class="evidence-item">
+          <div class="ev-check missing">○</div>
+          <div class="ev-name" style="color:var(--muted)">No documents loaded</div>
+          <div class="ev-tag ev-pending">PENDING</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MEMORY ENGINE TIMELINE -->
+    <div class="memory-panel">
+      <div class="panel-title"><div class="dot" style="background:var(--cyan)"></div>MEMORY ENGINE · SESSION TIMELINE</div>
+      <div class="memory-timeline" id="memoryTimeline">
+        <div class="mem-item">
+          <div class="mem-dot" style="background:var(--muted)"></div>
+          <div class="mem-msg">Situation Room initialized — awaiting relay</div>
+          <div class="mem-time" id="initTime">--:--</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- BNCA QUICK ACTIONS -->
+    <div class="bnca-panel">
+      <div class="panel-title"><div class="dot" style="background:var(--amber)"></div>BNCA · STRATEGIC PREVIEW</div>
+      <div id="bncaRight">
+        <div style="color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:.65rem;line-height:1.7">BNCA will activate after AI extraction completes. Best Next Course of Action recommendations will appear here and relay automatically to the Strategist.</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── BOTTOM ACTION BAR ── -->
+<div class="action-bar">
+  <div class="action-bar-label">SITUATION ROOM ·</div>
+  <button class="act-btn secondary" onclick="nav('/html/tsm-doc-search-multi.html')">← INTAKE</button>
+  <button class="act-btn amber" id="fireEngineBtn" onclick="fireExtractionEngine()">⚡ FIRE EXTRACTION ENGINE</button>
+  <button class="act-btn secondary" onclick="exportBrief()">⬇ EXPORT</button>
+  <div class="act-spacer"></div>
+  <div class="act-status" id="actStatus">Status: <span>AWAITING DOCUMENT</span></div>
+  <button class="act-btn primary" id="stratBtn" disabled title="Strategist stage not yet built for this vertical" style="opacity:.4;cursor:not-allowed" onclick="return false;">STRATEGIST — COMING SOON</button>
+</div>
+<script>
+
+// ── GROQ CONFIG ──
+const GROQ_MODEL = 'openai/gpt-oss-120b';
+
+// ── STATE ──
+let relayData = null;
+let extractionResult = '';
+let engineFired = false;
+let lastVendorResult = null; // most recent parsed AI JSON (confidence/severity/etc) — kept so pushCollectiveSignal_VENDOR() can read real confidence instead of guessing from rendered text
+let decisionWindowSecs = 6 * 3600;
+let windowStart = Date.now();
+
+// ── CLOCK ──
+setInterval(()=>{
+  document.getElementById('tbTime').textContent = new Date().toLocaleTimeString('en-US',{hour12:false});
+  document.getElementById('initTime').textContent = new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false});
+}, 1000);
+
+// ── DECISION WINDOW COUNTDOWN ──
+function startDecisionCountdown(totalSecs) {
+  const end = Date.now() + totalSecs * 1000;
+  function tick() {
+    const remaining = Math.max(0, Math.floor((end - Date.now()) / 1000));
+    const h = Math.floor(remaining / 3600);
+    const m = Math.floor((remaining % 3600) / 60);
+    const s = remaining % 60;
+    const str = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+    document.getElementById('clockDisplay').textContent = str;
+    document.getElementById('decWindowVal').textContent = str;
+    document.getElementById('tbWindow').textContent = str;
+    const pct = (remaining / totalSecs) * 100;
+    document.getElementById('dwFill').style.width = pct + '%';
+    document.getElementById('dwFill').style.background = pct > 50 ? 'var(--amber)' : 'var(--red)';
+    if (remaining > 0) requestAnimationFrame(tick);
+  }
+  tick();
+}
+startDecisionCountdown(decisionWindowSecs);
+
+// ── LOAD RELAY FROM UPLOADER ──
+// ── TSM AUTO-PIPELINE: auto-run if arriving from doc-search upload ──
+document.addEventListener('DOMContentLoaded', async function tsmBpoAutoPipeline() {
+  const flagRaw = sessionStorage.getItem('TSM_AUTO_PIPELINE') || localStorage.getItem('TSM_AUTO_PIPELINE');
+  if (!flagRaw) return;
+  let flag;
+  try { flag = JSON.parse(flagRaw); } catch(e) { return; }
+  if (flag.vertical !== 'vendor') return;
+  if (Date.now() - flag.ts > 60000) return;
+
+  sessionStorage.removeItem('TSM_AUTO_PIPELINE');
+  localStorage.removeItem('TSM_AUTO_PIPELINE');
+
+  const banner = document.createElement('div');
+  banner.id = 'tsm-auto-pipeline-banner';
+  banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#0a2a1a;border-bottom:1px solid #34d399;padding:10px 20px;font-family:JetBrains Mono,monospace;font-size:11px;color:#34d399;display:flex;align-items:center;gap:12px;';
+  banner.innerHTML = `<span style="animation:blink 1s infinite">⚡</span> AUTO-PIPELINE ACTIVE — <span style="color:#fff">${flag.fileName}</span> — Supplier/Vendor Management Situation Room <span id="tsm-pipeline-status" style="color:#6b8fa0">Initializing</span>`;
+  document.body.prepend(banner);
+
+  const setStatus = (msg, color='#6b8fa0') => {
+    const el = document.getElementById('tsm-pipeline-status');
+    if (el) { el.textContent = msg; el.style.color = color; }
+  };
+
+  try {
+    setStatus('Running extraction engine...', '#fbbf24');
+    await new Promise(r => setTimeout(r, 1200)); // let loadRelay() fire first
+    await fireExtractionEngine();
+    setStatus('Extraction complete — routing to Strategist...', '#34d399');
+    await new Promise(r => setTimeout(r, 2000));
+    routeToStrategist();
+  } catch(e) {
+    setStatus('Pipeline error: ' + e.message, '#f87171');
+    console.error('TSM Supplier/Vendor Management Auto-Pipeline error:', e);
+  }
+});
+
+(function loadRelay() {
+  try {
+    const raw = sessionStorage.getItem('TSM_VENDOR_DOC') || sessionStorage.getItem('TSM_VENDOR_UPLOADER_RELAY');
+    if (!raw) {
+      setStatus('No relay data — paste a document below or navigate from Doc Search');
+      // Show manual paste fallback
+      const fb = document.getElementById('vendor-manual-paste');
+      if (fb) fb.style.display = 'block';
+      loadDemoMode();
+      return;
+    }
+    relayData = JSON.parse(raw);
+    const { docText, selectedSector, selectedDocType, timestamp } = relayData;
+
+    // Topbar
+    document.getElementById('tbSector').textContent = selectedSector || 'Supplier/Vendor Management';
+    document.getElementById('tbDocType').textContent = selectedDocType || '—';
+
+    // Incident banner
+    document.getElementById('incLabel').textContent =
+      (selectedDocType || 'DOCUMENT').toUpperCase() + ' · ' + (selectedSector || 'Supplier/Vendor Management').toUpperCase() + ' · SITUATION ANALYSIS ACTIVE';
+    document.getElementById('incDetected').textContent = timestamp ?
+      new Date(timestamp).toLocaleTimeString('en-US', {hour:'2-digit',minute:'2-digit'}) : 'NOW';
+
+    // Evidence panel
+    buildEvidencePanel(selectedDocType, docText);
+
+    // Impact defaults by doc type
+    buildImpactDefaults(selectedSector, selectedDocType);
+
+    // Raw doc
+    document.getElementById('rawBody').textContent = (docText || '').slice(0, 2000);
+
+    setStatus('Document relay loaded — fire extraction engine');
+    addMemoryEntry('Document relay received: ' + (selectedDocType || 'unknown'));
+
+    // Auto-fire if doc present
+    if (docText && docText.trim().length > 50) {
+      setTimeout(fireExtractionEngine, 800);
+    }
+
+  } catch(e) {
+    setStatus('Relay parse error — check sessionStorage');
+    loadDemoMode();
+  }
+})();
+
+// ── DEMO MODE (no relay) ──
+function loadDemoMode() {
+  relayData = {
+    docText: 'VENDOR RISK ALERT — Contracted supplier Ashgrove Components has missed two consecutive delivery windows and flagged a quality-hold on the current production batch. 2 downstream production lines depend on this single source. Estimated exposure: $145,000 in committed purchase orders plus potential line-stoppage cost. Recommend qualifying an alternate supplier and placing new POs on hold pending resolution.',
+    selectedSector: 'Supplier/Vendor Management',
+    selectedDocType: 'Vendor Risk Alert',
+    timestamp: new Date().toISOString()
+  };
+  document.getElementById('tbSector').textContent = 'Supplier/Vendor Management';
+  document.getElementById('tbDocType').textContent = 'Vendor Risk Alert';
+  document.getElementById('incLabel').textContent = 'VENDOR RISK ALERT · SUPPLIER/VENDOR MANAGEMENT · DEMO MODE ACTIVE';
+  document.getElementById('incDetected').textContent = '08:17 AM';
+  buildEvidencePanel('Supplier Notice', relayData.docText);
+  buildImpactDefaults('Supply Chain', 'Supplier Notice');
+  document.getElementById('rawBody').textContent = relayData.docText;
+  setStatus('DEMO MODE · Fire extraction engine to begin');
+  addMemoryEntry('Demo mode initialized — vendor risk alert scenario');
+  setTimeout(fireExtractionEngine, 1000);
+}
+
+// ── EVIDENCE PANEL ──
+function buildEvidencePanel(docType, docText) {
+  const wordCount = (docText || '').trim().split(/\s+/).filter(Boolean).length;
+  const docs = [
+    { name: docType || 'Primary Document', ok: true, time: 'NOW', tag: 'analyzed' },
+    { name: 'Sector Classification', ok: true, time: 'AUTO', tag: 'analyzed' },
+    { name: 'Risk Signals Detected', ok: wordCount > 20, time: wordCount > 20 ? 'LIVE' : '—', tag: wordCount > 20 ? 'analyzed' : 'pending' },
+    { name: 'Memory Engine Relay', ok: true, time: 'ACTIVE', tag: 'analyzed' },
+    { name: 'BNCA Pre-computation', ok: false, time: 'PENDING', tag: 'pending' },
+  ];
+  const el = document.getElementById('evidenceList');
+  el.innerHTML = docs.map(d => `
+    <div class="evidence-item">
+      <div class="ev-check ${d.ok ? 'ok' : 'pending'}">${d.ok ? '✓' : '○'}</div>
+      <div class="ev-name">${d.name}</div>
+      <div class="ev-time">${d.time}</div>
+      <div class="ev-tag ${d.tag === 'analyzed' ? 'ev-analyzed' : 'ev-pending'}">${d.tag.toUpperCase()}</div>
+    </div>
+  `).join('');
+}
+
+// ── IMPACT DEFAULTS ──
+function buildImpactDefaults(sector, docType) {
+  const defaults = {
+    'Supply Chain': { rev:'$8.2M', lines:'3', clients:'17', inv:'6 Days' },
+    'Healthcare': { rev:'$47K', lines:'2', clients:'4', inv:'24 Hrs' },
+    'Insurance': { rev:'$144K', lines:'1', clients:'6', inv:'48 Hrs' },
+    'Supplier/Vendor Management': { rev:'$58.2K', lines:'3', clients:'4', inv:'72 Hrs' },
+    'Construction': { rev:'$340K', lines:'1', clients:'1', inv:'14 Days' },
+  };
+  const d = defaults[sector] || { rev:'—', lines:'—', clients:'—', inv:'—' };
+  document.getElementById('impRevenue').textContent = d.rev;
+  document.getElementById('impLines').textContent = d.lines;
+  document.getElementById('impClients').textContent = d.clients;
+  document.getElementById('impInventory').textContent = d.inv;
+  document.getElementById('impRevenueSub').textContent = 'Direct financial exposure';
+  document.getElementById('impLinesSub').textContent = 'Operational impact';
+  document.getElementById('impClientsSub').textContent = sector + ' accounts';
+  document.getElementById('impInventorySub').textContent = 'Until critical threshold';
+}
+
+// ── FIRE EXTRACTION ENGINE ──
+async function fireExtractionEngine() {
+  if (!relayData) return;
+  if (engineFired) return;
+  engineFired = true;
+
+  document.getElementById('engineCount').textContent = 'Engine firing...';
+  document.getElementById('enginePulse').style.background = 'var(--amber)';
+  setStatus('AI extraction engine firing...');
+  addMemoryEntry('Extraction engine initiated');
+
+  const { docText, selectedSector, selectedDocType } = relayData;
+
+  const prompt = `You are the TSM Shell Situation Room AI. Analyze this Supplier/Vendor Management/operational document and produce a structured situation report.
+
+DOCUMENT:
+${(docText || '').slice(0, 3000)}
+
+SECTOR: ${selectedSector || 'Supplier/Vendor Management'}
+DOCUMENT TYPE: ${selectedDocType || 'operational'}
+
+Return a JSON object with these exact keys:
+{
+  "anomalyCode": "Pick the single best match: SLA_BREACH_RISK, CLIENT_BACKLOG_SPIKE, SUPPLIER_SHUTDOWN, or PLANT_FAILURE",
+  "anomalyEntity": "The specific named client, supplier, or facility this incident is about (e.g. 'Acme Logistics', 'Plant 4')",
+  "rootCause": "One sentence: the primary root cause",
+  "rootCauseSub": "One sentence: why this matters operationally",
+  "situationSummary": "2-3 sentence narrative: what happened, scope, and urgency",
+  "revenueAtRisk": "Dollar amount or metric (e.g. $8.2M)",
+  "linesImpacted": "Number (e.g. 3)",
+  "clientsImpacted": "Number (e.g. 17)",
+  "runway": "Time until critical failure (e.g. 6 Days)",
+  "incidentLabel": "Short incident title (e.g. Supplier Bankruptcy · Critical)",
+  "severity": "CRITICAL, HIGH, or MEDIUM",
+  "confidence": "Integer 0-100: your confidence in this analysis given the source document's completeness and specificity",
+  "risks": [
+    { "text": "Risk description", "level": "CRITICAL|HIGH|MED", "icon": "⚡" },
+    { "text": "Risk description", "level": "CRITICAL|HIGH|MED", "icon": "⚠" },
+    { "text": "Risk description", "level": "CRITICAL|HIGH|MED", "icon": "●" }
+  ],
+  "bnca": [
+    "Action 1 with specifics",
+    "Action 2 with specifics",
+    "Action 3 with specifics",
+    "Action 4 with specifics"
+  ]
+}
+
+Return ONLY the JSON object. No markdown, no explanation.`;
+
+  try {
+    const resp = await fetch('/api/war-room/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: GROQ_MODEL, max_tokens: 1200, stream: true, messages: [{ role: 'user', content: prompt }] })
+    });
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let raw = '';
+
+    document.getElementById('extractionStream').innerHTML = '<span class="stream-cursor"></span>';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = decoder.decode(value);
+      for (const line of chunk.split('\n')) {
+        if (line.startsWith('data: ') && line !== 'data: [DONE]') {
+          try {
+            const d = JSON.parse(line.slice(6)).choices[0].delta.content || '';
+            raw += d;
+          } catch {}
+        }
+      }
+    }
+
+    // Parse and render
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const result = JSON.parse(jsonMatch[0]);
+      renderExtraction(result);
+      registerIncidentInMemory(result);
+      storeWarRoomRelay(result);
+      addMemoryEntry('Extraction complete: ' + result.rootCause);
+    } else {
+      renderFallback(raw);
+    }
+
+    document.getElementById('engineCount').textContent = '6 engines complete';
+    document.getElementById('enginePulse').style.background = 'var(--green)';
+    setStatus('Extraction complete — route to Strategist to model outcomes');
+    document.getElementById('fireEngineBtn').textContent = '✓ ENGINE COMPLETE';
+    document.getElementById('fireEngineBtn').disabled = true;
+
+    // Update evidence panel
+    buildEvidencePanel(relayData.selectedDocType, relayData.docText);
+    document.getElementById('evidenceList').querySelector('.ev-tag.ev-pending') &&
+      (document.getElementById('evidenceList').querySelector('.ev-tag.ev-pending').className = 'ev-tag ev-analyzed');
+
+  } catch(e) {
+    document.getElementById('extractionStream').textContent = 'Engine error: ' + e.message + '\n\nCheck server connection.';
+    document.getElementById('enginePulse').style.background = 'var(--red)';
+    setStatus('Engine error — check server connection');
+    engineFired = false;
+  }
+}
+
+// ── MEMORY: REGISTER ANOMALY + SURFACE CROSS-UPLOAD INSIGHT ──
+function registerIncidentInMemory(result) {
+  if (!window.TSMMemory) return;
+
+  const entityId = result.anomalyEntity || result.incidentLabel || ('INCIDENT-' + Date.now());
+  const anomalyCode = result.anomalyCode || 'CLIENT_BACKLOG_SPIKE';
+
+  window.TSMMemory.registerAnomaly({
+    entityType: 'vendor-incident',
+    entityId,
+    anomalyCode,
+    title: result.incidentLabel || result.rootCause,
+    severity: result.severity,
+    source: 'situation-room',
+    detectedFrom: relayData?.selectedDocType || 'document',
+    meta: {
+      revenueAtRisk: result.revenueAtRisk,
+      runway: result.runway,
+      confidence: Number.isFinite(result.confidence) ? result.confidence : null,
+      confidenceDefaulted: !Number.isFinite(result.confidence)
+    }
+  });
+
+  ['revenueAtRisk', 'linesImpacted', 'clientsImpacted', 'runway', 'rootCause'].forEach(field => {
+    if (result[field]) {
+      window.TSMMemory.rememberField({
+        entityType: 'vendor-incident', entityId, field, value: result[field],
+        source: 'ai-extraction', anomalyCode
+      });
+    }
+  });
+
+  // Carry the classification forward so the Strategist can resolve against the same anomaly.
+  result.anomalyCode = anomalyCode;
+  result.anomalyEntity = entityId;
+
+  showCrossUploadInsight(anomalyCode, entityId);
+}
+
+function showCrossUploadInsight(anomalyCode, entityId) {
+  const el = document.getElementById('crossUploadBanner');
+  if (!el || !window.TSMMemory) return;
+
+  const insight = window.TSMMemory.getCrossUploadInsight({ anomalyCode, entityType: 'vendor-incident', entityId });
+  const priorCount = Math.max(0, (insight.priorOccurrences || 0) - 1); // exclude the one just registered
+
+  if (priorCount > 0) {
+    const fieldCount = Object.keys(insight.suggestedPrefill || {}).length;
+    el.style.display = 'flex';
+    el.innerHTML = `🧠 <span><b>Cross-Upload Memory:</b> this anomaly type has occurred <b>${priorCount}</b> time(s) before across previous uploads` +
+      (insight.lastResolvedBy ? ` &nbsp;·&nbsp; last resolved by <b>${insight.lastResolvedBy}</b>` : '') +
+      (fieldCount ? ` &nbsp;·&nbsp; <b>${fieldCount}</b> field(s) recoverable from memory` : '') +
+      `</span>`;
+  } else {
+    el.style.display = 'none';
+  }
+}
+
+// ── RENDER EXTRACTION ──
+function renderExtraction(r) {
+  lastVendorResult = r;
+  // Incident banner
+  document.getElementById('incLabel').textContent = r.incidentLabel || 'INCIDENT DETECTED';
+  const sevBadge = document.getElementById('incSevBadge');
+  sevBadge.textContent = '■ ' + (r.severity || 'CRITICAL');
+  if (r.severity === 'HIGH') { sevBadge.style.borderColor='var(--amber)';sevBadge.style.color='var(--amber)';sevBadge.style.background='rgba(245,166,35,.15)'; }
+  if (r.severity === 'MEDIUM') { sevBadge.style.borderColor='var(--blue)';sevBadge.style.color='var(--blue)';sevBadge.style.background='rgba(59,130,246,.15)'; }
+  document.getElementById('tbSeverity').textContent = r.severity || 'CRITICAL';
+
+  // Impact tiles
+  if (r.revenueAtRisk) { document.getElementById('impRevenue').textContent = r.revenueAtRisk; }
+  if (r.linesImpacted) { document.getElementById('impLines').textContent = r.linesImpacted; }
+  if (r.clientsImpacted) { document.getElementById('impClients').textContent = r.clientsImpacted; }
+  if (r.runway) { document.getElementById('impInventory').textContent = r.runway; }
+
+  // Root cause
+  document.getElementById('rootIssuePrimary').textContent = r.rootCause || '—';
+  document.getElementById('rootIssueSub').textContent = r.rootCauseSub || '';
+
+  // Situation summary
+  document.getElementById('extractionStream').innerHTML = `
+    <div class="ext-section">
+      <span class="ext-key">SITUATION SUMMARY:</span><br>
+      <span class="ext-val">${r.situationSummary || ''}</span>
+    </div>
+    <div class="ext-section" style="margin-top:12px">
+      <span class="ext-key">ROOT CAUSE:</span> <span class="ext-val">${r.rootCause || ''}</span><br>
+      <span class="ext-key">EXPOSURE:</span> <span class="ext-val">${r.revenueAtRisk || '—'}</span><br>
+      <span class="ext-key">RUNWAY:</span> <span class="ext-val">${r.runway || '—'}</span><br>
+      <span class="ext-key">SEVERITY:</span> <span class="ext-val">${r.severity || '—'}</span>
+    </div>
+  `;
+
+  // Risk cascade
+  const risks = r.risks || [];
+  const riskHtml = risks.map(rk => `
+    <div class="risk-item">
+      <div class="risk-icon">${rk.icon || '●'}</div>
+      <div class="risk-text">${rk.text}</div>
+      <div class="risk-badge ${rk.level === 'CRITICAL' ? 'rb-crit' : rk.level === 'HIGH' ? 'rb-high' : 'rb-med'}">${rk.level}</div>
+    </div>
+  `).join('');
+  document.getElementById('riskListMain').innerHTML = riskHtml || '<div style="color:var(--muted);font-size:.72rem">No risks extracted</div>';
+  document.getElementById('riskList').innerHTML = riskHtml;
+
+  // BNCA
+  const bnca = r.bnca || [];
+  const bncaHtml = bnca.map((b,i) => `
+    <div class="bnca-item">
+      <div class="bnca-num">0${i+1}</div>
+      <div class="bnca-text">${b}</div>
+    </div>
+  `).join('');
+  document.getElementById('bncaPreview').innerHTML = bncaHtml;
+  document.getElementById('bncaRight').innerHTML = bncaHtml;
+
+  pushCollectiveSignal_VENDOR();
+}
+
+function pushCollectiveSignal_VENDOR() {
+  try {
+    const bncaText = document.getElementById('bncaPreview')?.innerText || '';
+    const bncaRight = document.getElementById('bncaRight')?.innerText || '';
+    const fullBnca = bncaText || bncaRight;
+
+    // Parse revenue at risk from demo data or live text
+    const dollarMatch = fullBnca.match(/\$[\d,.]+[MK]?\s*(?:at risk|revenue|contracted|frozen)/i);
+    const impactDelta = dollarMatch ? dollarMatch[0] : '$0';
+
+    const riskMatch = fullBnca.match(/RISK[:\s]+(URGENT|HIGH|MEDIUM|LOW|CRITICAL)/i);
+    const riskMap = { CRITICAL:'URGENT', HIGH:'RISK', MEDIUM:'WATCH', LOW:'READY' };
+    const riskLevel = riskMap[(riskMatch?.[1]||'').toUpperCase()] || 'WATCH';
+
+    const vendConf = Number.isFinite(lastVendorResult?.confidence) ? lastVendorResult.confidence : null;
+    if (vendConf === null) {
+      console.warn('[collective-signal] vendor: live response omitted "confidence" field — defaulting to 70. Raw JSON:', lastVendorResult);
+    }
+
+    fetch('/api/collective/signal', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        vertical:     'vendor',
+        warRoom:      'Supplier/Vendor Management Situation Room',
+        bnca:         fullBnca.slice(0, 400) || 'Supplier/Vendor Management situation analysis complete.',
+        confidence:   vendConf !== null ? vendConf : 70,
+        confidenceDefaulted: vendConf === null,
+        riskLevel,
+        topIssue:     fullBnca.split('\n').find(l => l.trim().length > 20) || 'Supplier/Vendor Management operational risk detected',
+        ownerLanes:   ['Operations Manager', 'Supplier/Vendor Management Director', 'Account Lead'],
+        hitlRequired: true,
+        actions:      [
+          'Activate contingency supplier or staffing plan',
+          'Notify affected client accounts within 4 hours',
+          'Escalate to Supplier/Vendor Management Strategist for chain decision'
+        ],
+        impactDelta,
+        kpi: {
+          'Stage':         'Situation Room',
+          'Chain':         'Understand → Decide',
+          'Revenue Risk':  impactDelta,
+          'HITL':          'Required'
+        }
+      })
+    });
+  } catch(e) { console.warn('[Collective Signal Supplier/Vendor Management]', e.message); }
+}
+
+function renderFallback(raw) {
+  document.getElementById('extractionStream').textContent = raw.slice(0, 800);
+  document.getElementById('rootIssuePrimary').textContent = 'Extraction complete — see raw output';
+}
+
+// ── STORE WAR ROOM RELAY FOR STRATEGIST ──
+function storeWarRoomRelay(extracted) {
+  const payload = {
+    selectedSector: relayData?.selectedSector || 'Supplier/Vendor Management',
+    selectedDocType: relayData?.selectedDocType || '—',
+    docText: relayData?.docText || '',
+    timestamp: new Date().toISOString(),
+    extraction: extracted,
+    engines: {
+      engine1: extracted.situationSummary || '',
+      engine2: (extracted.risks || []).map(r => r.text).join(' | '),
+      engine3: (extracted.bnca || []).join(' | '),
+      engine4: extracted.rootCause || '',
+    }
+  };
+  try {
+    sessionStorage.setItem('TSM_VENDOR_WAR_RELAY', JSON.stringify(payload));
+    localStorage.setItem('TSM_VENDOR_WAR_RELAY', JSON.stringify(payload));
+    addMemoryEntry('War Room relay stored → Strategist ready');
+  } catch(e) {}
+}
+
+// ── NAVIGATION ──
+function routeToStrategist() {
+  if (!engineFired) {
+    fireExtractionEngine().then(() => {
+      setTimeout(() => nav('/html/supplier-vendor/supplier-vendor-strategist-v2.html'), 600);
+    });
+    return;
+  }
+  addMemoryEntry('Routing to Strategist — Decide stage');
+  setTimeout(() => nav('/html/supplier-vendor/supplier-vendor-strategist-v2.html'), 200);
+}
+
+function exportBrief() {
+  const content = [
+    'TSM SHELL · Supplier/Vendor Management SITUATION REPORT',
+    '================================',
+    'Generated: ' + new Date().toLocaleString(),
+    '',
+    'SECTOR: ' + (relayData?.selectedSector || '—'),
+    'DOC TYPE: ' + (relayData?.selectedDocType || '—'),
+    '',
+    'EXTRACTION OUTPUT:',
+    document.getElementById('extractionStream').innerText,
+    '',
+    'RISK CASCADE:',
+    document.getElementById('riskListMain').innerText,
+    '',
+    'BNCA:',
+    document.getElementById('bncaPreview').innerText,
+  ].join('\n');
+  const blob = new Blob([content], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'tsm-situation-report-' + Date.now() + '.txt';
+  a.click();
+}
+
+// ── ENGINE TABS ──
+function showEngineTab(tab) {
+  document.querySelectorAll('.engine-tab').forEach((el, i) => {
+    el.classList.toggle('active', ['extraction','risks','raw'][i] === tab);
+  });
+  document.getElementById('tabExtraction').style.display = tab === 'extraction' ? '' : 'none';
+  document.getElementById('tabExtractionRight').style.display = tab === 'extraction' ? '' : 'none';
+  document.getElementById('tabRisks').style.display = tab === 'risks' ? '' : 'none';
+  document.getElementById('tabRaw').style.display = tab === 'raw' ? '' : 'none';
+}
+
+// ── MEMORY ──
+function addMemoryEntry(msg) {
+  const el = document.getElementById('memoryTimeline');
+  const item = document.createElement('div');
+  item.className = 'mem-item engine-firing';
+  item.innerHTML = `<div class="mem-dot"></div><div class="mem-msg">${msg}</div><div class="mem-time">${new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false})}</div>`;
+  el.prepend(item);
+  if (window.TSMMemory) TSMMemory.timeline(msg);
+}
+
+// ── STATUS ──
+function setStatus(msg) {
+  document.getElementById('actStatus').innerHTML = 'Status: <span>' + msg + '</span>';
+}
+
+function nav(url) { window.location.href = url; }
+</script>
+<script>
+
+/* TSM AUTO-FIRE: read docsearch relay and fire engines */
+(function tsmAutoFire(){
+  try {
+    const raw = localStorage.getItem('tsm_vendor_docsearch_relay');
+    if (!raw) return;
+    const relay = JSON.parse(raw);
+    if (!relay.summary && !relay.doc) return;
+    localStorage.removeItem('tsm_vendor_docsearch_relay');
+    const summary = relay.summary || (relay.doc ? JSON.stringify(relay.doc).slice(0,800) : '');
+    const ta = document.getElementById('docPaste') || document.querySelector('textarea');
+    if (ta) {
+      ta.value = summary;
+      ta.dispatchEvent(new Event('input'));
+    }
+    if (localStorage.getItem('tsm_auto_mode') !== 'off') { setTimeout(() => { if (typeof fireEngines === 'function') fireEngines(); }, 900); }
+  } catch(e) { console.warn('[TSM AutoFire]', e); }
+})();
+</script>
+  <script src="/core/tsm-kernel.js"></script>
+  <script src="/core/tsm-enforcer.js"></script>
+<script src="/js/tsm-autorun-engine.js"></script>
+<script>
+/* TSM AUTO-RUN WAR ROOM */
+(function(){
+  try {
+    const raw = sessionStorage.getItem('TSM_VENDOR_WAR_RELAY') || localStorage.getItem('TSM_VENDOR_WAR_RELAY');
+    if (!raw) return;
+    if (localStorage.getItem('tsm_auto_mode') === 'off') return;
+    if (localStorage.getItem('TSM_AUTO_LAUNCH') === 'false') return;
+    setTimeout(() => { if (typeof runStrategist === 'function') runStrategist(); }, 1500);
+  } catch(e) { console.warn('[TSM AutoRun Supplier/Vendor Management]', e); }
+})();
+</script>
+
+<!-- MANUAL PASTE FALLBACK -->
+<div id="vendor-manual-paste" style="display:none;position:fixed;bottom:60px;right:20px;z-index:9999;background:#0a0f14;border:1px solid rgba(0,255,198,0.3);border-radius:4px;padding:14px;width:360px;box-shadow:0 4px 20px rgba(0,0,0,0.6);">
+  <div style="font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:1.5px;color:#00ffc6;margin-bottom:8px">◈ MANUAL DOCUMENT INPUT</div>
+  <textarea id="vendor-manual-doc" placeholder="Paste Supplier/Vendor Management document, SOP, escalation, or operational report..." 
+    style="width:100%;height:100px;background:#060c10;border:1px solid rgba(0,255,198,0.2);color:#c8d8c8;font-family:monospace;font-size:10px;padding:8px;resize:vertical;border-radius:3px;margin-bottom:8px"></textarea>
+  <div style="display:flex;gap:8px">
+    <label style="flex:1;cursor:pointer;background:rgba(0,255,198,0.06);border:1px dashed rgba(0,255,198,0.2);border-radius:3px;padding:6px 8px;font-size:9px;letter-spacing:1px;color:#3a8a70;display:flex;align-items:center;gap:6px">
+      <span>📄</span><span id="vendor-file-name">Upload File</span>
+      <input type="file" id="vendor-file-input" accept=".pdf,.docx,.xlsx,.csv,.txt" style="display:none" onchange="bpoLoadFile(this.files[0])">
+    </label>
+    <button onclick="bpoLaunchManual()" style="background:rgba(0,255,198,0.12);border:1px solid rgba(0,255,198,0.4);color:#00ffc6;font-family:monospace;font-size:9px;letter-spacing:1.5px;padding:6px 14px;cursor:pointer;border-radius:3px">⚡ LAUNCH</button>
+    <button onclick="document.getElementById('vendor-manual-paste').style.display='none'" style="background:transparent;border:1px solid #1a2a30;color:#3a5a70;font-family:monospace;font-size:9px;padding:6px 10px;cursor:pointer;border-radius:3px">✕</button>
+  </div>
+</div>
+
+<script>
+function bpoLoadFile(file) {
+  if (!file) return;
+  const nm = document.getElementById('vendor-file-name');
+  if (nm) nm.textContent = '⟳ ' + file.name;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const ta = document.getElementById('vendor-manual-doc');
+    if (ta) ta.value = e.target.result;
+    if (nm) nm.textContent = '✓ ' + file.name;
+  };
+  reader.readAsText(file);
+}
+function bpoLaunchManual() {
+  const ta = document.getElementById('vendor-manual-doc');
+  const text = ta ? ta.value.trim() : '';
+  if (!text) { alert('Paste or upload a document first.'); return; }
+  const payload = JSON.stringify({ docText: text, selectedSector: 'Supplier/Vendor Management', selectedDocType: 'Manual Input', timestamp: new Date().toISOString() });
+  try { sessionStorage.setItem('TSM_VENDOR_DOC', payload); } catch(e){}
+  try { localStorage.setItem('TSM_VENDOR_DOC', payload); } catch(e){}
+  document.getElementById('vendor-manual-paste').style.display = 'none';
+  location.reload();
+}
+</script>
+<script>
+
+// ===== TSM_AUTONOMY_STANDARDIZED =====
+window.TSM_AUTONOMY_STANDARDIZED = true;
+
+// ===== TSM WAR ROOM SCOPED RELAY FIX =====
+window.tsmMission = window.tsmMission || {
+  id: "Supplier/Vendor Management-" + Date.now().toString(36),
+  vertical: "vendor",
+  
+};
+
+function tsmWriteRelay(payload){
+  if (typeof TSM_KERNEL === 'undefined') { console.warn('[TSM] TSM_KERNEL not loaded; relay write skipped.'); return; }
+  TSM_KERNEL.setRelay("vendor", JSON.stringify(payload));
+}
+</script>
+
+  <script src="/html/core/tsm-runtime.js"></script>
+</body>
+</html>

@@ -1,0 +1,1769 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TSM RCM OS — Reconciliation Command Center</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+:root{
+  --ink:#0A0F1C;
+  --panel:#111A2C;
+  --panel-raised:#16223A;
+  --line:#243450;
+  --text:#EEF1F8;
+  --muted:#8A96B2;
+  --muted-dim:#5C6885;
+  --amber:#E8A33D;
+  --amber-dim:#8A6528;
+  --risk:#E5484D;
+  --risk-dim:#5C2528;
+  --good:#3DD68C;
+  --good-dim:#1F5A42;
+  --info:#5B8DEF;
+  --info-dim:#2A3E6B;
+  --purple:#8B7CF6;
+  --purple-dim:#3E3670;
+  --cyan:#3DC8D6;
+  --cyan-dim:#1E5A61;
+  --gold:#C9A84C;
+  --gold-dim:#5C4E24;
+}
+
+*{box-sizing:border-box; margin:0; padding:0;}
+
+body{
+  background:
+    radial-gradient(1200px 600px at 15% -10%, rgba(91,141,239,0.10), transparent 60%),
+    radial-gradient(1000px 500px at 110% 10%, rgba(232,163,61,0.08), transparent 60%),
+    var(--ink);
+  color:var(--text);
+  font-family:'Inter', sans-serif;
+  min-height:100vh;
+  padding-bottom:60px;
+}
+
+.mono{font-family:'IBM Plex Mono', monospace;}
+:focus-visible{outline:2px solid var(--amber); outline-offset:2px;}
+
+/* ===== TOP BAR ===== */
+.topbar{
+  display:flex; align-items:center; justify-content:space-between;
+  padding:18px 32px;
+  border-bottom:1px solid var(--line);
+  background:rgba(10,15,28,0.85);
+  backdrop-filter:blur(8px);
+  position:sticky; top:0; z-index:50;
+  flex-wrap:wrap; gap:14px;
+}
+.brand{display:flex; align-items:center; gap:12px;}
+.brand-mark{
+  width:34px; height:34px; border-radius:8px;
+  background:linear-gradient(135deg, var(--amber), #C87B1F);
+  display:flex; align-items:center; justify-content:center;
+  font-family:'Space Grotesk'; font-weight:700; color:#0A0F1C; font-size:14px;
+  flex-shrink:0;
+}
+.brand-text .name{font-family:'Space Grotesk'; font-weight:600; font-size:16px; letter-spacing:0.02em;}
+.brand-text .tag{font-size:11px; color:var(--muted); letter-spacing:0.08em; text-transform:uppercase; margin-top:1px;}
+
+.cadence-toggle{display:flex; gap:6px; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:4px; flex-wrap:wrap;}
+.cadence-btn{
+  padding:8px 15px; border-radius:7px; border:none; background:transparent;
+  color:var(--muted); font-size:12.5px; font-weight:600; letter-spacing:0.02em;
+  font-family:'Inter'; cursor:pointer; transition:all .15s ease;
+}
+.cadence-btn.active{background:var(--amber); color:#241705;}
+
+.clock{font-family:'IBM Plex Mono'; font-size:12px; color:var(--muted-dim); white-space:nowrap;}
+
+/* ===== LAYOUT ===== */
+.shell{
+  max-width:1440px; margin:0 auto; padding:28px 32px;
+  display:grid; grid-template-columns:280px 1fr; gap:22px;
+}
+@media (max-width:960px){ .shell{grid-template-columns:1fr; padding:20px 16px;} .topbar{padding:16px 18px;} }
+
+/* ===== MODULE RAIL ===== */
+.rail-label{
+  font-size:11px; letter-spacing:0.12em; text-transform:uppercase; color:var(--muted-dim);
+  margin-bottom:12px; font-weight:600;
+}
+.module-card{
+  background:var(--panel); border:1px solid var(--line); border-radius:12px;
+  padding:13px 14px; margin-bottom:9px; transition:all .18s ease; text-decoration:none; display:block;
+}
+.module-card:hover{border-color:var(--mc,var(--amber-dim)); transform:translateX(1px);}
+.module-card .mtop{display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;}
+.module-card .mname{font-family:'Space Grotesk'; font-weight:600; font-size:13px; color:var(--text);}
+.module-card .mdot{width:7px; height:7px; border-radius:50%; background:var(--mc,var(--amber)); flex-shrink:0; box-shadow:0 0 0 3px color-mix(in srgb, var(--mc,var(--amber)) 18%, transparent);}
+.module-card .mfile{font-size:10.5px; color:var(--muted-dim); font-family:'IBM Plex Mono'; word-break:break-all;}
+.module-card .mcat{font-size:10px; color:var(--mc,var(--amber)); text-transform:uppercase; letter-spacing:0.06em; margin-top:6px; font-weight:600;}
+
+.rail-footer{
+  margin-top:16px; padding:14px; border-radius:12px; border:1px dashed var(--line);
+  font-size:11.5px; color:var(--muted-dim); line-height:1.55;
+}
+
+/* ===== MAIN STAGE ===== */
+.stage{display:flex; flex-direction:column; gap:20px;}
+
+.card{
+  background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:24px;
+}
+.card-eyebrow{
+  font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:var(--muted-dim);
+  font-weight:600; margin-bottom:6px;
+}
+
+/* Overview header */
+.ov-head{display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px;}
+.ov-head h1{font-family:'Space Grotesk'; font-size:25px; font-weight:600; margin-bottom:6px;}
+.ov-head p{font-size:13px; color:var(--muted); max-width:600px; line-height:1.55;}
+.meta-chips{display:flex; gap:10px; flex-wrap:wrap; margin-top:14px;}
+.meta-chip{
+  font-size:11.5px; color:var(--muted); background:var(--panel-raised); border:1px solid var(--line);
+  padding:5px 10px; border-radius:20px; font-family:'IBM Plex Mono';
+}
+
+/* Score panel */
+.score-panel{display:flex; align-items:center; gap:36px; flex-wrap:wrap; margin-top:20px;}
+.gauge-block{display:flex; flex-direction:column; gap:6px; min-width:220px; flex:1;}
+.gauge-top{display:flex; justify-content:space-between; align-items:baseline;}
+.gauge-name{font-size:12.5px; color:var(--muted); font-weight:500;}
+.gauge-val{font-family:'IBM Plex Mono'; font-size:15px; font-weight:600;}
+.gauge-track{height:8px; background:var(--panel-raised); border-radius:5px; overflow:hidden; border:1px solid var(--line);}
+.gauge-fill{height:100%; border-radius:5px; transition:width .6s cubic-bezier(.4,0,.2,1), background .3s ease;}
+.hint{font-size:12px; color:var(--muted-dim); margin-top:4px; font-style:italic;}
+
+/* Cadence flow / causality-style board */
+.flow-wrap{overflow-x:auto; padding:26px 4px 6px;}
+.flow-chain{display:flex; align-items:center; min-width:max-content;}
+.fnode{display:flex; flex-direction:column; align-items:center; gap:10px; width:168px; flex-shrink:0; position:relative; cursor:pointer;}
+.fnode .dot{width:14px; height:14px; border-radius:50%; background:var(--line); border:2px solid var(--muted-dim); transition:all .25s ease;}
+.fnode.active .dot{background:var(--amber); border-color:var(--amber); box-shadow:0 0 0 6px rgba(232,163,61,0.15);}
+.fnode .flabel{font-size:11.5px; text-align:center; color:var(--muted); line-height:1.35; font-weight:500;}
+.fnode.active .flabel{color:var(--text); font-weight:600;}
+.fnode .fsub{font-size:10px; color:var(--muted-dim); text-align:center; font-family:'IBM Plex Mono';}
+.farrow{flex:1; min-width:34px; height:2px; background:var(--line); position:relative; margin-top:-26px;}
+.farrow::after{content:""; position:absolute; right:-1px; top:50%; transform:translateY(-50%); width:0; height:0; border-top:4px solid transparent; border-bottom:4px solid transparent; border-left:6px solid var(--line);}
+
+/* Cadence section header */
+.cadence-head{display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap; margin-bottom:4px;}
+.cadence-title{font-family:'Space Grotesk'; font-size:19px; font-weight:600; margin-bottom:6px;}
+.cadence-desc{font-size:13px; color:var(--muted); max-width:600px; line-height:1.55;}
+.cadence-window{font-family:'IBM Plex Mono'; font-size:11.5px; color:var(--amber); background:rgba(232,163,61,0.08); border:1px solid var(--amber-dim); padding:6px 12px; border-radius:8px; white-space:nowrap;}
+
+/* Phase cards */
+.phase-list{display:flex; flex-direction:column; gap:14px; margin-top:18px;}
+.phase-card{background:var(--panel-raised); border:1px solid var(--line); border-radius:12px; padding:16px 18px; border-left:3px solid var(--pc,var(--amber));}
+.phase-top{display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:4px;}
+.phase-name-row{display:flex; align-items:center; gap:10px;}
+.phase-idx{font-family:'IBM Plex Mono'; font-size:11px; color:var(--pc,var(--amber));}
+.phase-name{font-family:'Space Grotesk'; font-weight:600; font-size:14.5px;}
+.phase-tool{font-size:10.5px; font-family:'IBM Plex Mono'; color:var(--pc,var(--amber)); background:rgba(255,255,255,0.03); border:1px solid var(--line); padding:3px 9px; border-radius:20px; white-space:nowrap;}
+.phase-purpose{font-size:12.5px; color:var(--muted); line-height:1.55; margin:8px 0 12px;}
+.task-row{display:flex; align-items:flex-start; gap:10px; padding:6px 0; border-top:1px solid var(--line);}
+.task-row:first-of-type{border-top:none;}
+.task-check{
+  width:16px; height:16px; border-radius:4px; border:1.5px solid var(--muted-dim); background:transparent;
+  flex-shrink:0; margin-top:2px; cursor:pointer; display:flex; align-items:center; justify-content:center;
+  transition:all .15s ease; font-size:11px; color:transparent; padding:0;
+}
+.task-check.done{background:var(--good); border-color:var(--good); color:#0A0F1C;}
+.task-text{font-size:12.5px; color:var(--text); line-height:1.5; cursor:pointer; flex:1;}
+.task-row.done .task-text{color:var(--muted-dim); text-decoration:line-through;}
+.phase-progress{display:flex; align-items:center; gap:8px; margin-top:12px;}
+.phase-progress .track{flex:1; height:5px; background:var(--line); border-radius:3px; overflow:hidden;}
+.phase-progress .fill{height:100%; background:var(--pc,var(--amber)); border-radius:3px; transition:width .4s ease;}
+.phase-progress .pct{font-family:'IBM Plex Mono'; font-size:10.5px; color:var(--muted-dim); min-width:32px; text-align:right;}
+
+/* Data Requirements block (self-reported, per phase) */
+.req-block{margin-top:14px; padding-top:12px; border-top:1px dashed var(--line);}
+.req-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;}
+.req-label{font-size:10.5px; letter-spacing:0.08em; text-transform:uppercase; color:var(--muted-dim); font-weight:600;}
+.req-field{display:flex; flex-direction:column; gap:5px; padding:8px 0; border-top:1px solid var(--line);}
+.req-field:first-of-type{border-top:none;}
+.req-field-top{display:flex; align-items:baseline; justify-content:space-between; gap:8px; flex-wrap:wrap;}
+.req-field-name{font-size:12px; color:var(--text); font-weight:500;}
+.req-why{font-size:11px; color:var(--muted-dim); font-style:italic; line-height:1.4;}
+.req-row{display:flex; gap:6px; margin-top:4px; align-items:center;}
+.req-input{
+  flex:1; background:var(--panel); border:1px solid var(--line); border-radius:6px;
+  color:var(--text); font-family:'IBM Plex Mono'; font-size:11.5px; padding:6px 9px;
+}
+.req-input:focus-visible{outline:2px solid var(--amber); outline-offset:1px;}
+.req-save{
+  background:var(--panel); border:1px solid var(--line); border-radius:6px; color:var(--muted);
+  font-size:11px; font-weight:600; padding:6px 11px; cursor:pointer; white-space:nowrap; transition:all .15s ease;
+}
+.req-save:hover{border-color:var(--amber); color:var(--amber);}
+.req-badge{
+  font-size:9.5px; font-family:'IBM Plex Mono'; padding:2px 7px; border-radius:20px; white-space:nowrap;
+  background:var(--gold-dim); color:var(--gold); border:1px solid var(--gold);
+}
+.req-badge.empty{background:transparent; color:var(--muted-dim); border-color:var(--line);}
+
+/* Protocol pipeline (daily close steps) */
+.protocol-list{display:flex; flex-direction:column; gap:10px; margin-top:16px;}
+.protocol-step{display:flex; align-items:center; gap:14px; background:var(--panel-raised); border:1px solid var(--line); border-radius:10px; padding:12px 16px;}
+.protocol-num{width:26px; height:26px; border-radius:50%; background:var(--panel); border:1.5px solid var(--good-dim); color:var(--good); font-family:'IBM Plex Mono'; font-size:11px; display:flex; align-items:center; justify-content:center; flex-shrink:0;}
+.protocol-body{flex:1;}
+.protocol-title{font-family:'Space Grotesk'; font-size:13px; font-weight:600; margin-bottom:2px;}
+.protocol-desc{font-size:12px; color:var(--muted);}
+.protocol-tool{font-size:10.5px; font-family:'IBM Plex Mono'; color:var(--good); white-space:nowrap;}
+.protocol-arrow{color:var(--line); font-size:14px; text-align:center; margin-left:13px;}
+
+/* Framework pillars */
+.pillar-grid{display:grid; grid-template-columns:repeat(2,1fr); gap:16px; margin-top:16px;}
+@media (max-width:760px){ .pillar-grid{grid-template-columns:1fr;} }
+.pillar-card{background:var(--panel-raised); border:1px solid var(--line); border-radius:12px; padding:16px 18px;}
+.pillar-title{font-family:'Space Grotesk'; font-weight:600; font-size:14px; margin-bottom:8px; color:var(--amber);}
+.pillar-card ul{list-style:none;}
+.pillar-card li{font-size:12px; color:var(--muted); padding:4px 0; padding-left:14px; position:relative; line-height:1.5;}
+.pillar-card li::before{content:"–"; position:absolute; left:0; color:var(--muted-dim);}
+.pillar-card li strong{color:var(--text); font-weight:600;}
+
+/* Blueprint table */
+.bp-table{width:100%; border-collapse:collapse; margin-top:16px; font-size:12.5px;}
+.bp-table th{text-align:left; font-family:'Space Grotesk'; font-size:11px; letter-spacing:0.06em; text-transform:uppercase; color:var(--muted-dim); padding:8px 12px; border-bottom:1px solid var(--line);}
+.bp-table td{padding:12px; border-bottom:1px solid var(--line); color:var(--muted); vertical-align:top;}
+.bp-table td.focus-cell{color:var(--text);}
+.bp-table td.phase-cell{font-family:'Space Grotesk'; font-weight:600; color:var(--amber); white-space:nowrap;}
+.bp-table .tool-tag{display:inline-block; font-family:'IBM Plex Mono'; font-size:10.5px; color:var(--info); background:rgba(91,141,239,0.08); border:1px solid var(--info-dim); padding:2px 8px; border-radius:6px; margin:2px 4px 2px 0;}
+
+/* Close checklist */
+.mnemonic-band{display:flex; align-items:center; gap:14px; flex-wrap:wrap; background:rgba(232,163,61,0.06); border:1px solid var(--amber-dim); border-radius:10px; padding:12px 16px; margin:16px 0 4px;}
+.mnemonic-letter{font-family:'Space Grotesk'; font-weight:700; font-size:16px; color:var(--amber); background:var(--panel); border:1px solid var(--amber-dim); border-radius:8px; width:30px; height:30px; display:flex; align-items:center; justify-content:center; flex-shrink:0;}
+.mnemonic-item{display:flex; align-items:center; gap:8px; font-size:11.5px; color:var(--muted);}
+.checklist-list{display:flex; flex-direction:column; gap:2px; margin-top:16px;}
+.check-row{display:flex; align-items:flex-start; gap:10px; padding:9px 4px; border-top:1px solid var(--line);}
+.check-row:first-child{border-top:none;}
+.check-box{width:17px; height:17px; border-radius:5px; border:1.5px solid var(--muted-dim); background:transparent; flex-shrink:0; margin-top:1px; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:11px; color:transparent; padding:0;}
+.check-box.done{background:var(--good); border-color:var(--good); color:#0A0F1C;}
+.check-label{font-size:12.5px; color:var(--text); line-height:1.5; cursor:pointer; flex:1;}
+.check-row.done .check-label{color:var(--muted-dim); text-decoration:line-through;}
+.checklist-footer{display:flex; align-items:center; gap:10px; margin-top:14px;}
+.checklist-footer .track{flex:1; height:6px; background:var(--panel); border-radius:3px; overflow:hidden; border:1px solid var(--line);}
+.checklist-footer .fill{height:100%; background:var(--good); border-radius:3px; transition:width .4s ease;}
+.checklist-footer .pct{font-family:'IBM Plex Mono'; font-size:11px; color:var(--muted-dim); white-space:nowrap;}
+
+/* Controls matrix */
+.controls-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:16px;}
+@media (max-width:900px){ .controls-grid{grid-template-columns:repeat(2,1fr);} }
+@media (max-width:600px){ .controls-grid{grid-template-columns:1fr;} }
+.control-card{background:var(--panel-raised); border:1px solid var(--line); border-radius:10px; padding:14px;}
+.control-icon{font-size:18px; margin-bottom:6px;}
+.control-name{font-family:'Space Grotesk'; font-weight:600; font-size:12.5px; margin-bottom:5px;}
+.control-desc{font-size:11.5px; color:var(--muted); line-height:1.5;}
+
+/* Quick reference */
+.qr-card{background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px; margin-top:10px;}
+.qr-title{font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:var(--muted-dim); font-weight:600; margin-bottom:10px;}
+.qr-row{display:flex; justify-content:space-between; gap:8px; font-size:11px; color:var(--muted); padding:3px 0; line-height:1.6;}
+.qr-row .qr-k{color:var(--amber); font-family:'IBM Plex Mono'; flex-shrink:0;}
+.qr-note{font-size:10.5px; color:var(--muted-dim); margin-top:8px; line-height:1.5; padding-top:8px; border-top:1px dashed var(--line);}
+
+.footer-note{text-align:center; font-size:11.5px; color:var(--muted-dim); margin-top:30px; line-height:1.6;}
+
+/* ===== DOCUMENT INTAKE (relay from FinOps Doc Showcase) ===== */
+.intake-head{display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px;}
+.intake-doc{font-family:'Space Grotesk'; font-weight:600; font-size:16px; color:var(--text);}
+.intake-meta{font-size:11.5px; color:var(--muted-dim); font-family:'IBM Plex Mono'; margin-top:2px;}
+.intake-clear{font-size:11px; font-family:'Inter'; color:var(--muted); background:transparent; border:1px solid var(--line); border-radius:8px; padding:6px 12px; cursor:pointer;}
+.intake-clear:hover{color:var(--risk); border-color:var(--risk-dim);}
+.route-grid{display:grid; grid-template-columns:repeat(2,1fr); gap:12px; margin-top:16px;}
+@media (max-width:760px){ .route-grid{grid-template-columns:1fr;} }
+.route-card{background:var(--panel-raised); border:1px solid var(--line); border-radius:12px; padding:14px; border-left:3px solid var(--rc,var(--amber));}
+.route-top{display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:6px;}
+.route-name{font-family:'Space Grotesk'; font-weight:600; font-size:12.5px;}
+.route-dest{font-size:10.5px; font-family:'IBM Plex Mono'; color:var(--rc,var(--amber)); background:rgba(255,255,255,0.03); border:1px solid var(--line); padding:2px 8px; border-radius:20px; white-space:nowrap;}
+.route-excerpt{font-size:11.5px; color:var(--muted); line-height:1.5; max-height:110px; overflow-y:auto; font-family:'IBM Plex Mono'; white-space:pre-wrap;}
+.route-toggle{font-size:10.5px; color:var(--muted-dim); cursor:pointer; margin-top:6px; text-decoration:underline; text-underline-offset:2px;}
+
+/* ===== EXECUTIVE TAB ===== */
+.exec-stats{display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin:16px 0 20px;}
+@media (max-width:760px){ .exec-stats{grid-template-columns:1fr;} }
+.exec-stat{background:var(--panel-raised); border:1px solid var(--line); border-radius:12px; padding:14px;}
+.exec-stat .es-label{font-size:11px; color:var(--muted-dim); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:6px;}
+.exec-stat .es-val{font-family:'Space Grotesk'; font-size:22px; font-weight:600;}
+.exec-block{margin-top:18px;}
+.exec-block-title{font-family:'Space Grotesk'; font-weight:600; font-size:13.5px; margin-bottom:8px; color:var(--amber);}
+.exec-block-body{font-size:12.5px; color:var(--muted); line-height:1.6; font-family:'IBM Plex Mono'; white-space:pre-wrap; background:var(--panel-raised); border:1px solid var(--line); border-radius:10px; padding:14px; max-height:260px; overflow-y:auto;}
+.exec-empty{font-size:12.5px; color:var(--muted-dim); font-style:italic; padding:10px 0;}
+.exec-export-btn{margin-top:20px; font-family:'Inter'; font-weight:600; font-size:12.5px; color:#241705; background:var(--amber); border:none; border-radius:10px; padding:11px 18px; cursor:pointer;}
+.exec-export-btn:hover{background:#f0b755;}
+
+/* ===== AI ASSISTANT ===== */
+.assistant-fab{
+  position:fixed; right:26px; bottom:26px; z-index:100;
+  width:56px; height:56px; border-radius:50%;
+  background:linear-gradient(135deg, var(--amber), #C87B1F);
+  border:none; cursor:pointer; box-shadow:0 6px 20px rgba(0,0,0,0.4);
+  font-size:22px; display:flex; align-items:center; justify-content:center;
+  transition:transform .15s ease;
+}
+.assistant-fab:hover{transform:scale(1.06);}
+@keyframes slaPulseRed{
+  0%{ box-shadow:0 0 0 0 rgba(229,72,77,0.65); }
+  70%{ box-shadow:0 0 0 9px rgba(229,72,77,0); }
+  100%{ box-shadow:0 0 0 0 rgba(229,72,77,0); }
+}
+@keyframes slaPulseAmber{
+  0%{ box-shadow:0 0 0 0 rgba(232,163,61,0.6); }
+  70%{ box-shadow:0 0 0 8px rgba(232,163,61,0); }
+  100%{ box-shadow:0 0 0 0 rgba(232,163,61,0); }
+}
+.sla-dot{
+  display:inline-block; width:7px; height:7px; border-radius:50%;
+  margin-left:7px; vertical-align:middle; background:transparent;
+}
+.sla-dot.amber{ background:var(--amber); animation:slaPulseAmber 1.8s infinite; }
+.sla-dot.red{ background:var(--risk); animation:slaPulseRed 1.4s infinite; }
+.fab-sla-dot{
+  position:absolute; top:2px; right:2px; width:12px; height:12px; border-radius:50%;
+  border:2px solid var(--ink); display:none;
+}
+.fab-sla-dot.amber{ display:block; background:var(--amber); animation:slaPulseAmber 1.8s infinite; }
+.fab-sla-dot.red{ display:block; background:var(--risk); animation:slaPulseRed 1.4s infinite; }
+.gauge-val.sla-pulse{ animation:textFade 1.6s infinite; }
+@keyframes textFade{ 0%,100%{opacity:1;} 50%{opacity:.5;} }
+.assistant-panel{
+  position:fixed; right:26px; bottom:94px; z-index:100;
+  width:360px; max-width:calc(100vw - 40px); height:480px; max-height:calc(100vh - 140px);
+  background:var(--panel); border:1px solid var(--line); border-radius:16px;
+  display:none; flex-direction:column; overflow:hidden;
+  box-shadow:0 14px 40px rgba(0,0,0,0.5);
+}
+.assistant-panel.open{display:flex;}
+.assistant-header{padding:14px 16px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center;}
+.assistant-title{font-family:'Space Grotesk'; font-weight:600; font-size:13.5px;}
+.assistant-sub{font-size:10.5px; color:var(--muted-dim); margin-top:2px;}
+.assistant-close{background:transparent; border:none; color:var(--muted); cursor:pointer; font-size:16px;}
+.assistant-body{flex:1; overflow-y:auto; padding:14px 16px; display:flex; flex-direction:column; gap:10px;}
+.a-msg{font-size:12.5px; line-height:1.55; padding:9px 12px; border-radius:10px; max-width:88%; white-space:pre-wrap;}
+.a-msg.user{align-self:flex-end; background:var(--amber-dim); color:var(--text); border:1px solid var(--amber-dim);}
+.a-msg.bot{align-self:flex-start; background:var(--panel-raised); color:var(--text); border:1px solid var(--line);}
+.a-msg.pending{color:var(--muted-dim); font-style:italic;}
+.a-msg.briefing{max-width:100%; white-space:normal; padding:10px; display:flex; flex-direction:column; gap:8px;}
+.a-brief-head{font-weight:700; font-size:12px; color:var(--text); margin-bottom:2px;}
+.a-brief-empty{color:var(--muted);}
+.a-brief-item{border:1px solid var(--line); border-radius:8px; padding:8px 10px; background:var(--panel);}
+.a-brief-top{display:flex; align-items:center; gap:8px; margin-bottom:5px;}
+.a-brief-title{font-weight:600; font-size:12px;}
+.a-brief-next{font-size:12px; margin-bottom:3px;}
+.a-brief-why{font-size:11px; color:var(--muted); margin-bottom:6px;}
+.a-brief-open{font-size:11px; padding:4px 10px; border-radius:6px; border:1px solid var(--info-dim); background:var(--info-dim); color:var(--info); cursor:pointer;}
+.a-brief-open:hover{filter:brightness(1.15);}
+.assistant-quick{display:flex; gap:6px; flex-wrap:wrap; padding:0 16px 10px;}
+.qchip{font-size:10.5px; color:var(--muted); background:var(--panel-raised); border:1px solid var(--line); border-radius:20px; padding:5px 10px; cursor:pointer;}
+.qchip:hover{color:var(--amber); border-color:var(--amber-dim);}
+.assistant-input-row{display:flex; gap:8px; padding:12px 16px; border-top:1px solid var(--line);}
+.assistant-input-row input{flex:1; background:var(--panel-raised); border:1px solid var(--line); border-radius:8px; padding:9px 11px; color:var(--text); font-family:'Inter'; font-size:12.5px;}
+.assistant-input-row input:focus{outline:none; border-color:var(--amber-dim);}
+.assistant-send{background:var(--amber); color:#241705; border:none; border-radius:8px; padding:0 14px; font-weight:600; font-size:12px; cursor:pointer;}
+
+/* ===== RELAY RECEIVED MODAL ===== */
+.relay-modal-backdrop{
+  position:fixed; inset:0; z-index:400; background:rgba(6,9,17,0.72); backdrop-filter:blur(3px);
+  display:none; align-items:center; justify-content:center; padding:24px;
+}
+.relay-modal-backdrop.open{display:flex;}
+.relay-modal{
+  width:100%; max-width:560px; max-height:calc(100vh - 60px); overflow-y:auto;
+  background:var(--panel); border:1px solid var(--good-dim); border-radius:16px; padding:26px;
+  box-shadow:0 20px 60px rgba(0,0,0,0.55);
+}
+.relay-modal-head{display:flex; justify-content:space-between; align-items:center;}
+.relay-modal-badge{
+  font-family:'Space Grotesk'; font-weight:700; font-size:12px; letter-spacing:0.06em;
+  color:var(--good); background:var(--good-dim); border:1px solid var(--good); border-radius:20px; padding:5px 12px;
+}
+.relay-modal-close{background:transparent; border:none; color:var(--muted); cursor:pointer; font-size:18px;}
+.relay-modal-doc{font-family:'Space Grotesk'; font-size:21px; font-weight:600; margin-top:14px;}
+.relay-modal-meta{font-size:12px; color:var(--muted-dim); font-family:'IBM Plex Mono'; margin-top:4px;}
+.relay-modal-sub{font-size:12.5px; color:var(--muted); margin-top:16px;}
+.relay-modal-routes{display:flex; flex-direction:column; gap:8px; margin-top:12px;}
+.relay-modal-route{
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  background:var(--panel-raised); border:1px solid var(--line); border-left:3px solid var(--rc,var(--amber));
+  border-radius:10px; padding:10px 14px;
+}
+.relay-modal-route .rname{font-size:12.5px; font-weight:600; color:var(--text);}
+.relay-modal-route .rdest{font-size:10.5px; font-family:'IBM Plex Mono'; color:var(--rc,var(--amber)); white-space:nowrap;}
+.relay-modal-actions{display:flex; gap:10px; margin-top:22px; justify-content:flex-end;}
+.relay-modal-btn{font-family:'Inter'; font-size:12.5px; font-weight:600; border-radius:9px; padding:10px 16px; cursor:pointer;}
+.relay-modal-btn.ghost{background:transparent; border:1px solid var(--line); color:var(--muted);}
+.relay-modal-btn.ghost:hover{color:var(--text); border-color:var(--muted-dim);}
+.relay-modal-btn.primary{background:var(--amber); border:none; color:#241705;}
+.relay-modal-btn.primary:hover{background:#f0b755;}
+
+/* ===== PROACTIVE GUIDANCE ===== */
+.guidance-list{display:flex; flex-direction:column; gap:10px; margin-top:14px;}
+.guidance-item{background:var(--panel-raised); border:1px solid var(--line); border-left:4px solid var(--gc,var(--amber)); border-radius:12px; padding:14px 16px;}
+.guidance-top{display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;}
+.guidance-title{font-family:'Space Grotesk'; font-weight:600; font-size:13.5px;}
+.sev-badge{font-size:10px; letter-spacing:0.06em; text-transform:uppercase; font-weight:700; padding:3px 9px; border-radius:20px; white-space:nowrap;}
+.sev-badge.critical{background:var(--risk-dim); color:var(--risk); border:1px solid var(--risk);}
+.sev-badge.high{background:var(--amber-dim); color:var(--amber); border:1px solid var(--amber);}
+.sev-badge.medium{background:var(--info-dim); color:var(--info); border:1px solid var(--info);}
+.sev-badge.low{background:var(--good-dim); color:var(--good); border:1px solid var(--good);}
+.guidance-item{border:1px solid var(--line); border-radius:10px; padding:12px 14px; margin-bottom:10px; background:var(--panel-raised);}
+.guidance-top{display:flex; align-items:center; gap:10px; margin-bottom:6px;}
+.guidance-title{font-weight:600; font-size:13.5px;}
+.guidance-summary{font-size:12.5px; color:var(--muted); margin-bottom:8px;}
+.guidance-next{font-size:12.5px; margin-bottom:6px;}
+.guidance-explain{font-size:11.5px; color:var(--muted-dim); display:flex; flex-direction:column; gap:2px; margin-bottom:8px;}
+.guidance-open{font-size:11.5px; padding:5px 12px; border-radius:6px; border:1px solid var(--info-dim); background:var(--info-dim); color:var(--info); cursor:pointer; text-decoration:none; display:inline-block;}
+.guidance-open:hover{filter:brightness(1.15);}
+.guidance-row{font-size:12px; color:var(--muted); margin-top:7px; line-height:1.55;}
+.guidance-row strong{color:var(--text);}
+.guidance-tool{font-family:'IBM Plex Mono'; font-size:10.5px; color:var(--gc,var(--amber)); margin-top:9px;}
+</style>
+</head>
+<body>
+
+<!-- RELAY RECEIVED MODAL — pops up once per new relay from FinOps Doc Showcase -->
+<div class="relay-modal-backdrop" id="relayModalBackdrop">
+  <div class="relay-modal">
+    <div class="relay-modal-head">
+      <div class="relay-modal-badge">✓ RELAY RECEIVED</div>
+      <button class="relay-modal-close" id="relayModalClose">✕</button>
+    </div>
+    <div class="relay-modal-doc" id="relayModalDoc">—</div>
+    <div class="relay-modal-meta" id="relayModalMeta">—</div>
+    <div class="relay-modal-sub">This document's analysis has been staged and routed for processing:</div>
+    <div class="relay-modal-routes" id="relayModalRoutes"></div>
+    <div class="relay-modal-actions">
+      <button class="relay-modal-btn ghost" id="relayModalDismiss">Dismiss</button>
+      <button class="relay-modal-btn primary" id="relayModalView">View in Document Intake</button>
+    </div>
+  </div>
+</div>
+
+
+<div class="topbar">
+  <div class="brand">
+    <div class="brand-mark">RC</div>
+    <div class="brand-text">
+      <div class="name">TSM RCM OS</div>
+      <div class="tag">Reconciliation Command Center</div>
+    </div>
+  </div>
+  <div class="cadence-toggle" id="cadenceToggle"></div>
+  <div style="display:flex; align-items:center; gap:14px;">
+    <a class="back-link" href="tsm-rcm-os-howto.html" target="_blank" rel="noopener">📘 How-To Guide</a>
+    <div class="clock mono" id="clock">—</div>
+  </div>
+</div>
+
+<div class="shell">
+
+  <!-- MODULE RAIL -->
+  <div>
+    <div class="rail-label">Connected Modules</div>
+    <div id="moduleRail"></div>
+    <div class="rail-footer">
+      Each module owns one slice of the close. RCM OS sequences them into a single
+      <strong style="color:var(--muted)">daily → weekly → month-end</strong> cadence so nothing
+      gets reconciled twice and nothing gets missed.
+    </div>
+
+    <div class="qr-card">
+      <div class="qr-title">Quick Reference — Debit / Credit</div>
+      <div class="qr-row"><span class="qr-k">Assets</span><span>Debit ↑ · Credit ↓</span></div>
+      <div class="qr-row"><span class="qr-k">Liabilities</span><span>Credit ↑ · Debit ↓</span></div>
+      <div class="qr-row"><span class="qr-k">Revenue</span><span>Credit ↑ · Debit ↓</span></div>
+      <div class="qr-row"><span class="qr-k">Expenses</span><span>Debit ↑ · Credit ↓</span></div>
+      <div class="qr-note">Full GL account map lives in the <a href="tsm-rcm-os-howto.html" target="_blank" rel="noopener">How-To Guide</a> → Quick Reference tab.</div>
+    </div>
+  </div>
+
+  <!-- MAIN STAGE -->
+  <div class="stage">
+
+    <!-- Overview -->
+    <div class="card">
+      <div class="ov-head">
+        <div>
+          <div class="card-eyebrow">System Overview</div>
+          <h1>Reconciliation Management OS</h1>
+          <p>One cadence, three horizons. Daily entries feed the weekly variance sweep; the weekly sweep feeds the month-end close. Every step below names the action, the reason it matters, and the exact module that owns it.</p>
+        </div>
+      </div>
+      <div class="meta-chips">
+        <div class="meta-chip">8 modules connected</div>
+        <div class="meta-chip">Cadence: Daily · Weekly · Month-End</div>
+        <div class="meta-chip">Framework: Controller / GAAP-aligned</div>
+        <div class="meta-chip" id="todayChip">—</div>
+      </div>
+
+      <div class="score-panel">
+        <div class="gauge-block">
+          <div class="gauge-top"><span class="gauge-name">Current Cadence Completion</span><span class="gauge-val" id="scoreVal" style="color:var(--good)">0%</span></div>
+          <div class="gauge-track"><div class="gauge-fill" id="scoreFill" style="width:0%; background:var(--good);"></div></div>
+          <div class="hint" id="scoreHint">Check off tasks below to track this session's close progress.</div>
+        </div>
+        <div class="gauge-block">
+          <div class="gauge-top"><span class="gauge-name">Open Exceptions Requiring Sign-off</span><span class="gauge-val" id="excVal" style="color:var(--risk)">—</span><span class="sla-dot" id="excDot"></span></div>
+          <div class="gauge-track"><div class="gauge-fill" id="excFill" style="width:0%; background:var(--risk);"></div></div>
+          <div class="hint">Pulled from compliance.html flags and unmatched cash-to-ledger items.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Document Intake (populated from FinOps Doc Showcase relay) -->
+    <div class="card" id="intakeCard" style="display:none;">
+      <div class="card-eyebrow">Document Intake — Relayed Analysis</div>
+      <div class="intake-head">
+        <div>
+          <div class="intake-doc" id="intakeDocName">—</div>
+          <div class="intake-meta" id="intakeMeta">—</div>
+        </div>
+        <button class="intake-clear" id="intakeClearBtn">Clear intake</button>
+      </div>
+      <div class="hint" style="margin-top:10px;">Here's where each part of this analysis lives, and which module owns handling it from here.</div>
+      <div class="route-grid" id="routeGrid"></div>
+    </div>
+
+    <!-- Proactive Guidance — ranked severity + next-best-action, same engine that drives the AI Assistant's opening briefing -->
+    <div class="card" id="guidanceCard" style="display:none;">
+      <div class="card-eyebrow">Proactive Guidance</div>
+      <p class="hint" style="margin-bottom:12px;">Ranked by severity — what to do next, which module owns it, and why.</p>
+      <div id="guidanceList"></div>
+    </div>
+
+    <!-- Cadence flow -->
+    <div class="card">
+      <div class="card-eyebrow">Reconciliation Flow — Time Horizon</div>
+      <div class="hint">How the same underlying data tightens in scope as it moves from daily entry to annual audit.</div>
+      <div class="flow-wrap">
+        <div class="flow-chain" id="flowChain"></div>
+      </div>
+    </div>
+
+    <!-- Active cadence -->
+    <div class="card" id="cadenceCard">
+      <div class="card-eyebrow" id="cadenceEyebrow">Daily Rhythm</div>
+      <div class="cadence-head">
+        <div>
+          <div class="cadence-title" id="cadenceTitle">—</div>
+          <div class="cadence-desc" id="cadenceDesc">—</div>
+        </div>
+        <div class="cadence-window" id="cadenceWindow">—</div>
+      </div>
+      <div class="phase-list" id="phaseList"></div>
+    </div>
+
+    <!-- Protocol (daily/weekly/monthend closing steps, sequential) -->
+    <div class="card" id="protocolCard">
+      <div class="card-eyebrow" id="protocolEyebrow">Closing Protocol</div>
+      <div class="hint" id="protocolHint">The lock-step sequence that ends this cadence's cycle.</div>
+      <div class="protocol-list" id="protocolList"></div>
+    </div>
+
+    <!-- Month-End Close Checklist (shown only on Month-End cadence) -->
+    <div class="card" id="checklistCard" style="display:none;">
+      <div class="card-eyebrow">Month-End Close Checklist</div>
+      <div class="hint">The final sign-off list — nothing here should be a surprise if the daily and weekly cadences above were followed.</div>
+      <div class="mnemonic-band" id="mnemonicBand"></div>
+      <div class="checklist-list" id="checklistList"></div>
+      <div class="checklist-footer">
+        <div class="track"><div class="fill" id="checklistFill" style="width:0%;"></div></div>
+        <span class="pct mono" id="checklistPctLabel">0/12</span>
+      </div>
+    </div>
+
+    <!-- Controller Framework (static reference, shown on its own tab) -->
+    <div class="card" id="frameworkCard" style="display:none;">
+      <div class="card-eyebrow">Controller Workflow Blueprint</div>
+      <div class="hint">The four pillars every phase above ultimately rolls up into.</div>
+      <div class="pillar-grid" id="pillarGrid"></div>
+
+      <div class="card-eyebrow" style="margin-top:26px;">Phase → Tool Map</div>
+      <table class="bp-table">
+        <thead><tr><th>Phase</th><th>Operational Focus</th><th>Primary Modules</th></tr></thead>
+        <tbody id="bpTableBody"></tbody>
+      </table>
+
+      <div class="card-eyebrow" style="margin-top:26px;">Internal Controls Matrix</div>
+      <div class="hint">The controls that make the checklist above trustworthy — enforce these, don't just check the box.</div>
+      <div class="controls-grid" id="controlsGrid"></div>
+    </div>
+
+    <!-- Executive tab -->
+    <div class="card" id="executiveCard" style="display:none;">
+      <div class="card-eyebrow">Executive Overview</div>
+      <div class="ov-head">
+        <div>
+          <h1 style="font-size:21px;">Executive Summary</h1>
+          <p>Cross-cadence completion, open exceptions, and — when a document has been relayed from FinOps Doc Showcase — the Controller action plan and CFO briefing for it.</p>
+        </div>
+      </div>
+      <div class="exec-stats" id="execStats"></div>
+
+      <div class="exec-block">
+        <div class="exec-block-title">Self-Reported Data <span style="color:var(--muted-dim); font-weight:400; text-transform:none; letter-spacing:0; font-size:11.5px;">(EU-entered, not yet verified against a live source)</span></div>
+        <div id="execSelfReported"></div>
+      </div>
+
+      <div class="exec-block">
+        <div class="exec-block-title">Controller Action Plan</div>
+        <div id="execActionPlan"></div>
+      </div>
+      <div class="exec-block">
+        <div class="exec-block-title">CFO Executive Intelligence</div>
+        <div id="execCfo"></div>
+      </div>
+
+      <div class="exec-block">
+        <div class="exec-block-title">Cross-Module Exceptions <span style="color:var(--muted-dim); font-weight:400; text-transform:none; letter-spacing:0; font-size:11.5px;">(live from Compliance, Vendor, and Logistics situation rooms)</span></div>
+        <div id="execExceptions"></div>
+      </div>
+
+      <button class="exec-export-btn" id="execExportBtn">↓ Export Executive Report</button>
+    </div>
+
+  </div>
+</div>
+
+<div class="footer-note">
+  TSM RCM OS sequences finops-operations.html, finops-accounting.html, compliance.html,<br>
+  finops-scenarios.html, supplier-vendor-situation-room.html, logistics-situation-room.html<br>
+  and html/finops-suite/finops-showcase-v1.html into a single reconciliation cadence.
+</div>
+
+<script src="../shared/runtime/integrity/tsm-integrity.js"></script>
+<script src="js/rcm-relay-client.js"></script>
+<script src="js/rcm-assistant.js"></script>
+<script src="/shared/tsm-memory-engine.js?v=phase3"></script>
+<script src="/html/shared/runtime/mission/mission-model.js"></script>
+<script src="/html/shared/runtime/mission/mission-store.js"></script>
+<script>
+// ─────────────────────────────────────────────────────────────────────────
+// MODULES
+// ─────────────────────────────────────────────────────────────────────────
+const MODULES = [
+  {name:"Branch Operations", file:"finops-operations.html", cat:"Operations", color:"var(--amber)"},
+  {name:"Accounting Ledger", file:"finops-accounting.html", cat:"Accounting", color:"var(--info)"},
+  {name:"Compliance Desk", file:"compliance.html", cat:"Compliance", color:"var(--risk)"},
+  {name:"Scenario Modeling", file:"finops-scenarios.html", cat:"Forecasting", color:"var(--cyan)"},
+  {name:"Financial Intelligence", file:"finance-index.html", cat:"Accounts / Audit", color:"var(--gold)"},
+  {name:"Vendor Situation Room", file:"../supplier-vendor/supplier-vendor-situation-room.html", cat:"Vendor / AP", color:"var(--gold)"},
+  {name:"Logistics Situation Room", file:"../logistics/logistics-situation-room.html", cat:"Logistics", color:"var(--good)"},
+  {name:"Document Search", file:"../finops-suite/finops-showcase-v1.html", cat:"Search / Evidence", color:"var(--muted)"}
+];
+
+// ─────────────────────────────────────────────────────────────────────────
+// CADENCE DATA
+// ─────────────────────────────────────────────────────────────────────────
+const CADENCES = {
+  daily:{
+    label:"Daily", eyebrow:"Daily Rhythm", window:"6:00 AM – 6:00 PM",
+    title:"Daily Operational Workflow", color:"var(--amber)",
+    desc:"Establish the day's baseline, track live transactions, and clear exceptions before they compound.",
+    phases:[
+      {name:"Morning Kickoff & Branch Controls", tool:"finops-operations.html", color:"var(--amber)",
+        purpose:"Ensure incoming and outgoing cash flows are recorded correctly as they happen, preventing data-entry bottlenecks at end of day.",
+        tasks:["Pull overnight cash receipt batch","Verify AP invoices queued for payment","Confirm AR postings from the prior day","Flag any entry gaps before the 9 AM cutoff"]},
+      {name:"Ledger & Expenditure Tracking", tool:"finops-accounting.html", color:"var(--info)",
+        purpose:"Monitor burn rate against active department budgets and catch variances or unapproved spend immediately, not weeks later.",
+        tasks:["Post daily journal entries","Compare department burn rate to budget","Flag any variance greater than 5%","Tag unapproved expenditures for review"]},
+      {name:"Mid-Day Exception & Policy Review", tool:"compliance.html", color:"var(--risk)",
+        purpose:"Maintain continuous audit readiness so compliance is a daily habit, not a month-end scramble.",
+        tasks:["Review the compliance dashboard for flags","Confirm missing-documentation requests were sent","Log any potential regulatory deviations","Escalate high-severity flags to management"]}
+    ],
+    protocolTitle:"Daily Reconciliation Protocol",
+    protocolHint:"Small discrepancies caught here never compound into month-end nightmares.",
+    protocol:[
+      {title:"Cash-to-Ledger Matching", desc:"Reconcile day-end cash receipts and digital ledger entries against bank transaction feeds.", tool:"finops-operations.html"},
+      {title:"Exception Flagging", desc:"Instantly flag unmatched transactions or out-of-policy expenditures for managerial review.", tool:"compliance.html"},
+      {title:"Daily Log Closure", desc:"Lock the daily ledger entries to preserve an immutable audit trail.", tool:"finops-accounting.html"}
+    ]
+  },
+  weekly:{
+    label:"Weekly", eyebrow:"Weekly Rhythm", window:"Every Friday, 1:00 – 4:00 PM",
+    title:"Weekly Variance & Liability Review", color:"var(--info)",
+    desc:"Zoom out from single transactions to trends — budget drift, compliance posture, and everything owed to vendors and carriers.",
+    phases:[
+      {name:"Budget-to-Actual Variance Sweep", tool:"finops-accounting.html", color:"var(--info)",
+        purpose:"Roll up the week's daily entries and confirm no department has silently drifted past its budget threshold.",
+        tasks:["Aggregate the week's journal entries by department","Re-run budget-to-actual variance thresholds (>5%)","Review any unapplied cash or negative balances","Prepare a short variance summary for branch leads"]},
+      {name:"Compliance Checkpoint", tool:"compliance.html", color:"var(--risk)",
+        purpose:"Spot-check segregation-of-duties and policy adherence weekly so nothing new has drifted out of GAAP alignment.",
+        tasks:["Spot-check segregation-of-duties (SoD) matrix","Confirm all flagged items from the week were resolved","Verify documentation is complete for large transactions","Update the audit-readiness log"]},
+      {name:"Vendor & AP Liability Review", tool:"supplier-vendor-situation-room.html", color:"var(--gold)",
+        purpose:"Keep outstanding vendor liability visible weekly instead of discovering surprises at month-end close.",
+        tasks:["Review outstanding vendor invoices and due dates","Verify recurring subscription and contract costs","Check for duplicate or disputed vendor charges","Confirm upcoming contract renewals or expirations"]},
+      {name:"Logistics & Fulfillment Exception Sync", tool:"logistics-situation-room.html", color:"var(--good)",
+        purpose:"Tie operational exceptions — delayed shipments, damaged freight, carrier disputes — back to their financial impact before they hit the books.",
+        tasks:["Review open logistics exceptions and their status","Match freight/carrier disputes to pending AP holds","Confirm inventory receipts match vendor invoices","Flag any exception with unresolved financial exposure"]}
+    ],
+    protocolTitle:"Weekly Closing Protocol",
+    protocolHint:"The sign-off sequence that closes out the week before Monday's fresh cycle begins.",
+    protocol:[
+      {title:"Variance Sign-off", desc:"Branch lead reviews and signs off on the week's budget-to-actual summary.", tool:"finops-accounting.html"},
+      {title:"Compliance Attestation", desc:"Compliance officer attests the week is clear of unresolved flags.", tool:"compliance.html"},
+      {title:"Vendor Liability Snapshot", desc:"Lock the week's AP liability position as the baseline for next week.", tool:"supplier-vendor-situation-room.html"}
+    ]
+  },
+  monthend:{
+    label:"Month-End", eyebrow:"Monthly Close", window:"Last 3 business days of the month",
+    title:"Prior-to-End-of-Month Reconciliation Workflow", color:"var(--purple)",
+    desc:"Shift from daily data-entry maintenance to aggregate reporting, forecasting, and audit preparation.",
+    phases:[
+      {name:"Cross-Vertical Performance & Variance Analysis", tool:"Executive Tab", color:"var(--purple)",
+        purpose:"Review cross-vertical posture scores, aggregate department budgets, and compare actual expenditures against projected forecasts.",
+        tasks:["Pull cross-vertical posture scores for the month","Aggregate department budgets and actuals","Compare actuals against the month's forecast","Note any vertical trending materially over budget"]},
+      {name:"Scenario Modeling & Adjustment", tool:"finops-scenarios.html", color:"var(--cyan)",
+        purpose:"Run predictive financial scenarios for the upcoming month based on current variance data, adjusting operational levers where needed.",
+        tasks:["Run predictive scenarios using this month's variance data","Model adjustments for any branch trending over budget","Stress-test cash position against the coming month","Document recommended operational levers to pull"]},
+      {name:"Vendor & Accounts Ledger Audit", tool:"supplier-vendor-situation-room.html", color:"var(--gold)",
+        purpose:"Reconcile all outstanding vendor invoices, verify recurring costs, and ensure every vendor payment is fully accounted for before closing the books.",
+        tasks:["Reconcile all outstanding vendor invoices","Verify recurring subscription and contract costs","Confirm all vendor payments are fully accounted for","Resolve any remaining disputes before books close"]},
+      {name:"Final Compliance & Audit Packaging", tool:"compliance.html", color:"var(--risk)",
+        purpose:"Generate the month-end compliance and GAAP adherence reports so all documentation satisfies internal controls and external regulatory standards.",
+        tasks:["Generate the month-end GAAP adherence report","Assemble supporting documentation for auditors","Confirm append-only audit trail is intact","Sign off on internal-controls checklist"]},
+      {name:"Executive Reporting", tool:"finops-accounting.html + Executive Tab", color:"var(--info)",
+        purpose:"Compile the final monthly financial reports for branch leadership and the CFO, detailing cash flows, budget statuses, and analytical breakdowns.",
+        tasks:["Compile the income statement, balance sheet, cash flow","Draft the management discussion & analysis (MD&A) summary","Package the executive report for branch leadership","Deliver final report to the CFO"]}
+    ],
+    protocolTitle:"Month-End Closing Protocol",
+    protocolHint:"The final lock-step sequence before the books close for the month.",
+    protocol:[
+      {title:"Trial Balance Review", desc:"Automated anomaly check for unusual balance fluctuations or unapplied cash.", tool:"Executive Tab"},
+      {title:"Dual-Authorization Hard Close", desc:"Set the accounting period to hard-close status; no further entries without dual sign-off.", tool:"finops-accounting.html"},
+      {title:"Executive Sign-off", desc:"CFO and branch leadership formally sign off on the packaged month-end report.", tool:"compliance.html"}
+    ]
+  }
+};
+
+const PILLARS = [
+  {title:"General Ledger & Financial Close", items:[
+    "<strong>Automated subledger reconciliation</strong> — real-time bridge between A/R, A/P, and cash receipts into the general ledger",
+    "<strong>Strict period-end controls</strong> — hard-close and soft-close flags preventing retroactive entries without dual sign-off",
+    "<strong>Trial balance monitoring</strong> — anomaly detection for unusual fluctuations or negative balances"
+  ]},
+  {title:"Internal Controls & GAAP Compliance", items:[
+    "<strong>Segregation of duties</strong> — the person who initiates a payment can't approve or reconcile it",
+    "<strong>GAAP rule engine</strong> — centralized checks confirming reporting adheres to GAAP and covenants",
+    "<strong>Audit trail immutability</strong> — append-only logging for every entry, adjustment, and override"
+  ]},
+  {title:"Cash Flow & Working Capital", items:[
+    "<strong>Daily cash positioning</strong> — real-time visibility into operating accounts and available credit",
+    "<strong>DSO / DPO tracking</strong> — days sales outstanding vs. days payable outstanding, to protect liquidity"
+  ]},
+  {title:"Variance Analysis & Reporting", items:[
+    "<strong>Budget-to-actual thresholds</strong> — automatic flags on department spend exceeding ~5% variance",
+    "<strong>Executive pack generation</strong> — income statement, balance sheet, cash flow, and MD&A, compiled monthly"
+  ]}
+];
+
+const MNEMONIC = [
+  {letter:"A", label:"Accrue unbilled expenses"},
+  {letter:"B", label:"Bank recon cleared"},
+  {letter:"C", label:"Cut off transactions"},
+  {letter:"D", label:"Depreciation posted"},
+  {letter:"E", label:"Export close package"}
+];
+
+const CLOSE_CHECKLIST = [
+  "All invoices approved and posted (AP/AR cutoff confirmed)",
+  "Bank reconciliation complete — all items cleared or documented",
+  "Month-end accrual journal entries posted",
+  "Auto-reversals queued and verified for the 1st of next month",
+  "Depreciation roll-forward run and committed",
+  "Prepaid amortization schedule posted",
+  "Trial balance reviewed — total debits = total credits",
+  "Budget variance report reviewed — all items >5% investigated",
+  "Segregation-of-duties controls verified — no unauthorized single-approver transactions",
+  "Audit trail log exported and filed for compliance review",
+  "Financial close package (Balance Sheet + P&L) exported and delivered",
+  "Management summary memo drafted and distributed"
+];
+
+const CONTROLS = [
+  {icon:"⚖️", name:"Segregation of Duties", desc:"No single user approves and releases payments. Dollar threshold enforced in the operations UI.", tool:"finops-operations.html"},
+  {icon:"📝", name:"Audit Trail Logging", desc:"Every action is timestamped and immutable, and exportable for compliance review.", tool:"compliance.html"},
+  {icon:"🔁", name:"3-Way Match", desc:"PO → Invoice → Receipt verified before AP release. Discrepancies auto-flag.", tool:"supplier-vendor-situation-room.html"},
+  {icon:"🏦", name:"Bank Reconciliation", desc:"Monthly auto-match cycle; unreconciled items escalate above a small variance.", tool:"finops-operations.html"},
+  {icon:"📊", name:"Budget-to-Actual Review", desc:"Variance alerts trigger above a set deviation threshold, with drill-down to source transactions.", tool:"finops-accounting.html"},
+  {icon:"🔐", name:"Period Lock Controls", desc:"Prior periods lock post-close. Retroactive changes require Controller sign-off and an audit note.", tool:"finops-accounting.html"}
+];
+
+const BLUEPRINT = [
+  {phase:"Daily Rhythm", focus:"Cash positioning, invoice processing, exception logging, subledger matching.", tools:["finops-operations.html","finops-accounting.html"]},
+  {phase:"Weekly Rhythm", focus:"Expenditure tracking against budgets, compliance checks, vendor liability reviews.", tools:["compliance.html","supplier-vendor-situation-room.html","logistics-situation-room.html"]},
+  {phase:"Monthly Close", focus:"Accruals, prepaids, trial balance adjustments, reconciliation sign-offs, financial statement generation.", tools:["finops-accounting.html","finops-scenarios.html","Executive Tab"]},
+  {phase:"Annual Cycle", focus:"External audit coordination, non-discrimination testing prep, and internal policy tuning.", tools:["compliance.html","html/finops-suite/finops-showcase-v1.html"]}
+];
+
+// ─────────────────────────────────────────────────────────────────────────
+// STATE (persisted to localStorage per device — see loadState/saveState)
+// ─────────────────────────────────────────────────────────────────────────
+let currentCadence = "daily";
+
+// Task/checklist completion persists across reloads (was session-only before).
+const STATE_KEY = 'TSM_RCM_TASK_STATE';
+const CHECKLIST_STATE_KEY = 'TSM_RCM_CHECKLIST_STATE';
+
+function loadState(key){
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : {};
+  } catch(e) { return {}; }
+}
+function saveState(key, obj){
+  try { localStorage.setItem(key, JSON.stringify(obj)); } catch(e) { /* ignore */ }
+}
+
+const taskState = loadState(STATE_KEY); // key: `${cadence}-${phaseIdx}-${taskIdx}` -> bool
+const checklistState = loadState(CHECKLIST_STATE_KEY); // key: idx -> bool
+
+function taskKey(cad, p, t){ return `${cad}-${p}-${t}`; }
+
+// ─────────────────────────────────────────────────────────────────────────
+// TASK DATA REQUIREMENTS REGISTRY — what an EU needs to gather from each
+// phase's owning module, and their self-reported values until that module
+// exposes a real read endpoint. See routes/rcm-requirements.js.
+// Everything here is explicitly source: 'self-reported' — never presented
+// as verified/computed. That honesty is the whole point of this layer.
+// ─────────────────────────────────────────────────────────────────────────
+let REQUIREMENTS = {};   // { "daily-2": { phaseName, tool, requiredFields:[{id,field,type,why}] } }
+let selfReported = {};   // { "daily-2": { openFlagCount: {value, reportedAt, source} } }
+
+async function loadRequirements(){
+  try {
+    const [reqRes, srRes] = await Promise.all([
+      fetch('/api/rcm/requirements'),
+      fetch('/api/rcm/self-reported')
+    ]);
+    const reqData = await reqRes.json();
+    const srData = await srRes.json();
+    REQUIREMENTS = reqData.phases || {};
+    selfReported = srData.data || {};
+  } catch(e) {
+    REQUIREMENTS = {};
+    selfReported = {};
+  }
+  // Re-render whatever's currently on screen so the new data shows up.
+  if(currentCadence === 'executive') renderExecutive();
+  else renderCadenceBody();
+}
+
+function reqSummaryCount(){
+  let filled = 0, expected = 0;
+  Object.keys(REQUIREMENTS).forEach(key=>{
+    const fields = REQUIREMENTS[key].requiredFields || [];
+    expected += fields.length;
+    fields.forEach(f=>{ if(selfReported[key] && selfReported[key][f.id]) filled++; });
+  });
+  return { filled, expected };
+}
+
+function renderReqBlock(cadence, phaseIdx){
+  const key = `${cadence}-${phaseIdx}`;
+  const spec = REQUIREMENTS[key];
+  if(!spec || !spec.requiredFields || !spec.requiredFields.length) return '';
+  const filledForPhase = spec.requiredFields.filter(f=>selfReported[key] && selfReported[key][f.id]).length;
+
+  return `
+  <div class="req-block" data-req-key="${key}">
+    <div class="req-head">
+      <span class="req-label">Data to gather from ${escapeHtml(spec.tool)}</span>
+      <span class="req-label">${filledForPhase}/${spec.requiredFields.length} self-reported</span>
+    </div>
+    ${spec.requiredFields.map(f=>{
+      const entry = selfReported[key] && selfReported[key][f.id];
+      const badge = entry
+        ? `<span class="req-badge" title="Self-reported, not verified">✎ self-reported · ${new Date(entry.reportedAt).toLocaleDateString()}</span>`
+        : `<span class="req-badge empty">not yet gathered</span>`;
+      return `
+      <div class="req-field" data-field-id="${escapeHtml(f.id)}">
+        <div class="req-field-top">
+          <span class="req-field-name">${escapeHtml(f.field)}</span>
+          ${badge}
+        </div>
+        <div class="req-why">${escapeHtml(f.why)}</div>
+        <div class="req-row">
+          <input class="req-input" type="text" placeholder="Enter value from ${escapeHtml(spec.tool)}..." value="${escapeHtml(entry ? entry.value : '')}">
+          <button class="req-save">Save</button>
+        </div>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
+function wireReqBlocks(container){
+  container.querySelectorAll('.req-block').forEach(block=>{
+    const key = block.dataset.reqKey;
+    block.querySelectorAll('.req-field').forEach(fieldEl=>{
+      const fieldId = fieldEl.dataset.fieldId;
+      const input = fieldEl.querySelector('.req-input');
+      const btn = fieldEl.querySelector('.req-save');
+      const submit = () => saveSelfReport(key, fieldId, input.value);
+      btn.addEventListener('click', submit);
+      input.addEventListener('keydown', (e)=>{ if(e.key === 'Enter') submit(); });
+    });
+  });
+}
+
+async function saveSelfReport(key, fieldId, value){
+  if(!value || !value.trim()) return;
+  try {
+    const res = await fetch('/api/rcm/self-reported', {
+      method: 'POST', credentials: 'include', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ key, fieldId, value: value.trim() })
+    });
+    const data = await res.json();
+    if(data.ok){
+      if(!selfReported[key]) selfReported[key] = {};
+      selfReported[key][fieldId] = data.entry;
+      renderCadenceBody();
+      if(currentCadence === 'executive') renderExecutive();
+      fetchGuidance();
+    }
+  } catch(e) { /* silent — form just won't show as saved */ }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// RENDER: module rail
+// ─────────────────────────────────────────────────────────────────────────
+function renderRail(){
+  const rail = document.getElementById('moduleRail');
+  rail.innerHTML = MODULES.map(m => `
+    <a class="module-card" href="${m.file}" style="--mc:${m.color}; text-decoration:none; display:block;">
+      <div class="mtop">
+        <span class="mname">${m.name}</span>
+        <span class="mdot"></span>
+      </div>
+      <div class="mfile">${m.file}</div>
+      <div class="mcat">${m.cat}</div>
+    </a>
+  `).join('');
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// RENDER: cadence toggle
+// ─────────────────────────────────────────────────────────────────────────
+function renderToggle(){
+  const wrap = document.getElementById('cadenceToggle');
+  const order = ["daily","weekly","monthend","framework","executive"];
+  const labels = {daily:"Daily", weekly:"Weekly", monthend:"Month-End", framework:"Controller Framework", executive:"Executive"};
+  wrap.innerHTML = order.map(k => `<button class="cadence-btn ${k===currentCadence?'active':''}" data-k="${k}">${labels[k]}<span class="sla-dot" id="slaDot-${k}"></span></button>`).join('');
+  wrap.querySelectorAll('.cadence-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{ currentCadence = btn.dataset.k; renderAll(); });
+  });
+  updateSLAIndicators();
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// RENDER: flow board
+// ─────────────────────────────────────────────────────────────────────────
+function renderFlow(){
+  const chain = [
+    {k:"daily", label:"Daily Entry", sub:"Cash / AP / AR"},
+    {k:"weekly", label:"Weekly Sweep", sub:"Variance / Vendor"},
+    {k:"monthend", label:"Month-End Close", sub:"Statements / Audit Pack"},
+    {k:"framework", label:"Annual Cycle", sub:"External Audit"}
+  ];
+  const el = document.getElementById('flowChain');
+  el.innerHTML = '';
+  chain.forEach((c,i)=>{
+    const node = document.createElement('div');
+    node.className = 'fnode' + (c.k===currentCadence ? ' active' : '');
+    node.innerHTML = `<div class="dot"></div><div class="flabel">${c.label}</div><div class="fsub">${c.sub}</div>`;
+    node.addEventListener('click', ()=>{ currentCadence = c.k; renderAll(); });
+    el.appendChild(node);
+    if(i < chain.length-1){
+      const arrow = document.createElement('div');
+      arrow.className = 'farrow';
+      el.appendChild(arrow);
+    }
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// RENDER: active cadence phases + protocol, OR framework
+// ─────────────────────────────────────────────────────────────────────────
+function renderCadenceBody(){
+  const isFramework = currentCadence === "framework";
+  const isExecutive = currentCadence === "executive";
+  const isMonthEnd = currentCadence === "monthend";
+  document.getElementById('cadenceCard').style.display = (isFramework||isExecutive) ? 'none' : '';
+  document.getElementById('protocolCard').style.display = (isFramework||isExecutive) ? 'none' : '';
+  document.getElementById('frameworkCard').style.display = isFramework ? '' : 'none';
+  document.getElementById('executiveCard').style.display = isExecutive ? '' : 'none';
+  document.getElementById('checklistCard').style.display = (isMonthEnd && !isFramework && !isExecutive) ? '' : 'none';
+
+  if(isFramework){
+    renderFramework();
+    updateScore();
+    return;
+  }
+
+  if(isExecutive){
+    renderExecutive();
+    updateScore();
+    return;
+  }
+
+  if(isMonthEnd) renderChecklist();
+
+  const c = CADENCES[currentCadence];
+  document.getElementById('cadenceEyebrow').textContent = c.eyebrow;
+  document.getElementById('cadenceTitle').textContent = c.title;
+  document.getElementById('cadenceDesc').textContent = c.desc;
+  document.getElementById('cadenceWindow').textContent = c.window;
+
+  const phaseList = document.getElementById('phaseList');
+  phaseList.innerHTML = c.phases.map((p, pi) => {
+    const total = p.tasks.length;
+    const done = p.tasks.filter((_,ti)=>taskState[taskKey(currentCadence,pi,ti)]).length;
+    const pct = Math.round((done/total)*100);
+    return `
+    <div class="phase-card" style="--pc:${p.color}">
+      <div class="phase-top">
+        <div class="phase-name-row">
+          <span class="phase-idx">0${pi+1}</span>
+          <span class="phase-name">${p.name}</span>
+        </div>
+        <span class="phase-tool">${p.tool}</span>
+      </div>
+      <div class="phase-purpose">${p.purpose}</div>
+      <div class="tasks" data-phase="${pi}">
+        ${p.tasks.map((t,ti)=>{
+          const key = taskKey(currentCadence,pi,ti);
+          const isDone = !!taskState[key];
+          return `
+          <div class="task-row ${isDone?'done':''}" data-key="${key}">
+            <button class="task-check ${isDone?'done':''}" data-key="${key}">${isDone?'✓':''}</button>
+            <span class="task-text" data-key="${key}">${t}</span>
+          </div>`;
+        }).join('')}
+      </div>
+      <div class="phase-progress">
+        <div class="track"><div class="fill" style="width:${pct}%;"></div></div>
+        <span class="pct">${done}/${total}</span>
+      </div>
+      ${renderReqBlock(currentCadence, pi)}
+    </div>`;
+  }).join('');
+
+  // wire checkboxes
+  phaseList.querySelectorAll('.task-check, .task-text').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      const key = el.dataset.key;
+      taskState[key] = !taskState[key];
+      saveState(STATE_KEY, taskState);
+      renderCadenceBody();
+      updateScore();
+    });
+  });
+
+  wireReqBlocks(phaseList);
+
+  // protocol
+  document.getElementById('protocolEyebrow').textContent = c.protocolTitle;
+  document.getElementById('protocolHint').textContent = c.protocolHint;
+  const protocolList = document.getElementById('protocolList');
+  protocolList.innerHTML = c.protocol.map((s,i)=>`
+    <div class="protocol-step">
+      <div class="protocol-num">${i+1}</div>
+      <div class="protocol-body">
+        <div class="protocol-title">${s.title}</div>
+        <div class="protocol-desc">${s.desc}</div>
+      </div>
+      <div class="protocol-tool">${s.tool}</div>
+      ${i < c.protocol.length-1 ? '' : ''}
+    </div>
+  `).join('');
+
+  updateScore();
+}
+
+function renderFramework(){
+  document.getElementById('pillarGrid').innerHTML = PILLARS.map(p=>`
+    <div class="pillar-card">
+      <div class="pillar-title">${p.title}</div>
+      <ul>${p.items.map(i=>`<li>${i}</li>`).join('')}</ul>
+    </div>
+  `).join('');
+
+  document.getElementById('bpTableBody').innerHTML = BLUEPRINT.map(b=>`
+    <tr>
+      <td class="phase-cell">${b.phase}</td>
+      <td class="focus-cell">${b.focus}</td>
+      <td>${b.tools.map(t=>`<span class="tool-tag">${t}</span>`).join('')}</td>
+    </tr>
+  `).join('');
+
+  document.getElementById('controlsGrid').innerHTML = CONTROLS.map(c=>`
+    <div class="control-card">
+      <div class="control-icon">${c.icon}</div>
+      <div class="control-name">${c.name}</div>
+      <div class="control-desc">${c.desc}</div>
+    </div>
+  `).join('');
+}
+
+function renderChecklist(){
+  document.getElementById('mnemonicBand').innerHTML = MNEMONIC.map(m=>`
+    <div class="mnemonic-item"><span class="mnemonic-letter">${m.letter}</span>${m.label}</div>
+  `).join('');
+
+  const list = document.getElementById('checklistList');
+  list.innerHTML = CLOSE_CHECKLIST.map((item,i)=>{
+    const isDone = !!checklistState[i];
+    return `
+    <div class="check-row ${isDone?'done':''}" data-idx="${i}">
+      <button class="check-box ${isDone?'done':''}" data-idx="${i}">${isDone?'✓':''}</button>
+      <span class="check-label" data-idx="${i}">${item}</span>
+    </div>`;
+  }).join('');
+
+  list.querySelectorAll('.check-box, .check-label').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      const idx = el.dataset.idx;
+      checklistState[idx] = !checklistState[idx];
+      saveState(CHECKLIST_STATE_KEY, checklistState);
+      renderChecklist();
+    });
+  });
+
+  const done = CLOSE_CHECKLIST.filter((_,i)=>checklistState[i]).length;
+  const total = CLOSE_CHECKLIST.length;
+  const pct = Math.round((done/total)*100);
+  document.getElementById('checklistFill').style.width = pct + '%';
+  document.getElementById('checklistPctLabel').textContent = `${done}/${total}`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// RENDER: executive tab
+// ─────────────────────────────────────────────────────────────────────────
+function crossCadenceStats(){
+  let total = 0, done = 0;
+  ["daily","weekly","monthend"].forEach(cad=>{
+    CADENCES[cad].phases.forEach((p,pi)=>{
+      p.tasks.forEach((_,ti)=>{
+        total++;
+        if(taskState[taskKey(cad,pi,ti)]) done++;
+      });
+    });
+  });
+  const checklistDone = CLOSE_CHECKLIST.filter((_,i)=>checklistState[i]).length;
+  return { total, done, open: total-done, checklistDone, checklistTotal: CLOSE_CHECKLIST.length };
+}
+
+function renderExecutive(){
+  const s = crossCadenceStats();
+  const pct = s.total ? Math.round((s.done/s.total)*100) : 0;
+  document.getElementById('execStats').innerHTML = `
+    <div class="exec-stat"><div class="es-label">Cross-Cadence Completion</div><div class="es-val" style="color:var(--good)">${pct}%</div></div>
+    <div class="exec-stat"><div class="es-label">Open Exceptions</div><div class="es-val" style="color:var(--risk)">${s.open}</div></div>
+    <div class="exec-stat"><div class="es-label">Month-End Close Checklist</div><div class="es-val" style="color:var(--amber)">${s.checklistDone}/${s.checklistTotal}</div></div>
+  `;
+
+  const srCount = reqSummaryCount();
+  const srEl = document.getElementById('execSelfReported');
+  const srRows = [];
+  Object.keys(REQUIREMENTS).forEach(key=>{
+    const spec = REQUIREMENTS[key];
+    (spec.requiredFields||[]).forEach(f=>{
+      const entry = selfReported[key] && selfReported[key][f.id];
+      if(entry){
+        srRows.push(`<div class="req-field" style="border-top:1px solid var(--line); padding:8px 0;">
+          <div class="req-field-top">
+            <span class="req-field-name">${escapeHtml(spec.phaseName)} — ${escapeHtml(f.field)}</span>
+            <span class="req-badge" title="Self-reported, not verified">✎ self-reported · ${new Date(entry.reportedAt).toLocaleDateString()}</span>
+          </div>
+          <div class="req-why" style="font-style:normal; color:var(--text);">${escapeHtml(entry.value)}</div>
+        </div>`);
+      }
+    });
+  });
+  srEl.innerHTML = srRows.length
+    ? `<div class="exec-block-body" style="max-height:300px;">${srRows.join('')}<div style="margin-top:8px; color:var(--muted-dim); font-size:11px;">${srCount.filled}/${srCount.expected} required fields gathered across all cadences.</div></div>`
+    : `<div class="exec-empty">No self-reported data yet — fill in the "Data to gather" fields on any phase card in Daily / Weekly / Month-End to populate this.</div>`;
+
+  const ap = document.getElementById('execActionPlan');
+  const cfo = document.getElementById('execCfo');
+  if(relayData){
+    ap.innerHTML = `<div class="exec-block-body">${escapeHtml(relayData.engines.actionPlan || '(not generated)')}</div>`;
+    cfo.innerHTML = `<div class="exec-block-body">${escapeHtml(relayData.engines.executive || '(not generated)')}</div>`;
+  } else {
+    ap.innerHTML = `<div class="exec-empty">No document has been relayed from FinOps Doc Showcase yet — fire the engines there and send it over to see the Controller action plan here.</div>`;
+    cfo.innerHTML = `<div class="exec-empty">No CFO briefing available yet.</div>`;
+  }
+
+  renderExecExceptions();
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// CROSS-MODULE EXCEPTIONS — reads TSMMemory anomalies registered by
+// Compliance, Vendor Situation Room, and Logistics Situation Room; ranks
+// by severity; opens a mission for anything CRITICAL.
+// ─────────────────────────────────────────────────────────────────────────
+const EXC_SEV_RANK = { CRITICAL:4, HIGH:3, MEDIUM:2, LOW:1 };
+
+function renderExecExceptions(){
+  const el = document.getElementById('execExceptions');
+  if(!el) return;
+
+  if(!window.TSMMemory){
+    el.innerHTML = `<div class="exec-empty">Memory layer not loaded — no cross-module exceptions available.</div>`;
+    return;
+  }
+
+  const mem = window.TSMMemory.get();
+  const open = (mem?.anomalies || [])
+    .filter(a => a.status === 'open')
+    .sort((a,b) => (EXC_SEV_RANK[b.severity]||0) - (EXC_SEV_RANK[a.severity]||0));
+
+  if(!open.length){
+    el.innerHTML = `<div class="exec-empty">No open exceptions from Compliance, Vendor, or Logistics right now.</div>`;
+    return;
+  }
+
+  el.innerHTML = `<div class="exec-block-body" style="max-height:300px;">${open.map(a => `
+    <div class="req-field" style="border-top:1px solid var(--line); padding:8px 0;">
+      <div class="req-field-top">
+        <span class="req-field-name">${escapeHtml(a.title || a.anomalyCode)}</span>
+        <span class="req-badge" title="${escapeHtml(a.source||'')}">${escapeHtml(a.severity)} · ${escapeHtml(a.entityType||'')}</span>
+      </div>
+    </div>`).join('')}</div>`;
+
+  // ── SENTINEL PUSH ──────────────────────────────────────────────
+  // Closes the RCM-OS -> Sentinel gap: mirrors the same
+  // TSM_<VERTICAL>_STRATEGIST_RELAY convention the FinOps and BPO
+  // strategists already write to, so a CRITICAL exception opened here
+  // (Compliance/Vendor/Logistics via TSMMemory) shows up in Sentinel
+  // Center's cross-vertical posture score, not just in Mission Core.
+  // Merges rather than overwrites, so it doesn't clobber the FinOps
+  // strategist's own synthesis entry in the same relay key — each
+  // RCM-OS anomaly is tagged with an 'rcm-exc-' id prefix and only
+  // that slice is replaced/pruned on each render, independent of
+  // whether Mission Core is loaded.
+  try {
+    const sentKey = 'TSM_FINOPS_STRATEGIST_RELAY';
+    const sentExisting = JSON.parse(localStorage.getItem(sentKey) || 'null') || {};
+    const nonRcmExc = (sentExisting.anomalies || []).filter(x => !String(x.id || '').startsWith('rcm-exc-'));
+    function rcmExcExposureNum(a){
+      const raw = (a.meta && (a.meta.exposure || a.meta.revenueAtRisk)) || '';
+      const n = parseFloat(String(raw).replace(/[^0-9.]/g, ''));
+      if (!n) return 0;
+      return /m\b/i.test(raw) ? n * 1000000 : (/k\b/i.test(raw) ? n * 1000 : n);
+    }
+    // Prefer the confidence the source module (Vendor/Logistics AI extraction,
+    // or Compliance AI risk scan) already computed and stored in meta. Only
+    // fall back to a fixed number when a module genuinely didn't provide one
+    // (e.g. Compliance's static/demo alerts) — and even then, default lower
+    // for CRITICAL items than the rest of the platform's ~70 default, since
+    // an un-scored critical exception warrants more caution, not less.
+    function rcmExcConfidence(a){
+      const raw = a.meta && a.meta.confidence;
+      return Number.isFinite(raw) ? raw : 60;
+    }
+    const rcmExcAnomalies = open.filter(a => a.severity === 'CRITICAL').map(a => ({
+      id: 'rcm-exc-' + a.id,
+      title: a.title || a.anomalyCode,
+      severity: 'CRIT',
+      exposure: rcmExcExposureNum(a),
+      confidence: rcmExcConfidence(a),
+      confidenceDefaulted: !Number.isFinite(a.meta && a.meta.confidence),
+      rootCause: a.title || a.anomalyCode,
+      recommendedAction: 'Review in RCM-OS Cross-Module Exceptions — source: ' + (a.source || 'unknown') + '.'
+    }));
+    sentExisting.anomalies = nonRcmExc.concat(rcmExcAnomalies);
+    sentExisting.generatedAt = new Date().toISOString();
+    localStorage.setItem(sentKey, JSON.stringify(sentExisting));
+    window.dispatchEvent(new CustomEvent('TSM_SENTINEL_REFRESH'));
+  } catch (sentErr) {
+    console.warn('[sentinel-push] rcm-os cross-module exceptions error:', sentErr);
+  }
+  // ── END SENTINEL PUSH ─────────────────────────────────────────
+
+  if(!(window.TSMMissionModel && window.TSMMissionStore)){
+    console.warn('Mission Core not loaded — skipping mission creation for critical exceptions.');
+    return;
+  }
+
+  open.filter(a => a.severity === 'CRITICAL').forEach(a => {
+    try {
+      const mission = window.TSMMissionModel.createMission({
+        id: 'RCM-EXC-' + a.id,
+        vertical: 'finops',
+        tenantId: 'default',
+        client: a.entityId || null,
+        classification: {
+          summary: a.title || a.anomalyCode,
+          source: a.source || 'RCM-OS Cross-Module Exceptions'
+        },
+        workflow: { assignedTo: null, queue: null, priority: 'Critical', sla: null },
+        actor: 'rcm-os-executive-tab'
+      });
+      window.TSMMissionStore.saveMission(mission);
+    } catch(missionErr){
+      console.warn('Mission creation failed for exception', a.id, missionErr);
+    }
+  });
+}
+
+function exportExecutiveReport(){
+  const s = crossCadenceStats();
+  const pct = s.total ? Math.round((s.done/s.total)*100) : 0;
+  const lines = [
+    'TSM RCM OS — EXECUTIVE REPORT',
+    `Generated: ${new Date().toLocaleString()}`,
+    '',
+    '='.repeat(60),
+    'CROSS-CADENCE STATUS',
+    '='.repeat(60),
+    `Completion: ${pct}% (${s.done}/${s.total} tasks across Daily/Weekly/Month-End)`,
+    `Open Exceptions: ${s.open}`,
+    `Month-End Close Checklist: ${s.checklistDone}/${s.checklistTotal}`,
+    ''
+  ];
+  if(relayData){
+    lines.push('='.repeat(60), `RELAYED DOCUMENT: ${relayData.docName}`, '='.repeat(60), '');
+    lines.push('--- Controller Action Plan ---', relayData.engines.actionPlan || '(not generated)', '');
+    lines.push('--- CFO Executive Intelligence ---', relayData.engines.executive || '(not generated)', '');
+  } else {
+    lines.push('No document currently relayed from FinOps Doc Showcase.');
+  }
+  const blob = new Blob([lines.join('\n')], {type:'text/plain'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `rcm-executive-report-${Date.now()}.txt`;
+  a.click();
+}
+
+function escapeHtml(str){
+  return String(str).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// DOCUMENT INTAKE — reads the relay staged by finops-showcase-v1.html
+// (server-side via routes/rcm-relay.js, with a localStorage fallback —
+// see js/rcm-relay-client.js)
+// ─────────────────────────────────────────────────────────────────────────
+let relayData = null;
+
+const ROUTES = [
+  {key:'triage', name:'Document Triage & Flag Analysis', dest:'Compliance Desk', file:'compliance.html', color:'var(--risk)'},
+  {key:'variance', name:'Variance & Risk Intelligence', dest:'Accounting Ledger', file:'finops-accounting.html', color:'var(--info)'},
+  {key:'actionPlan', name:'Controller Action Plan', dest:"Today's Cadence Tasks", file:'Daily / Weekly cadence above', color:'var(--amber)'},
+  {key:'executive', name:'CFO Executive Intelligence', dest:'Executive Tab', file:'Executive tab (this workspace)', color:'var(--purple)'}
+];
+
+async function loadRelayData(){
+  if(typeof RCMRelay === 'undefined'){
+    // Shared client didn't load — fall back to a direct localStorage read.
+    try {
+      const raw = localStorage.getItem('TSM_FINOPS_RCM_RELAY');
+      relayData = raw ? JSON.parse(raw) : null;
+    } catch(e) { relayData = null; }
+    renderIntake();
+    fetchGuidance();
+    return;
+  }
+
+  const { data } = await RCMRelay.load();
+  const isNew = data && RCMRelay.isUnseen(data);
+  relayData = data;
+  renderIntake();
+  fetchGuidance();
+  if(isNew) renderRelayModal(data);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// PROACTIVE GUIDANCE — ranked severity + next-best-action, drives both the
+// Overview card and the AI Assistant's opening briefing (same data, same
+// engine — see routes/rcm-relay.js POST /api/rcm/guidance).
+// ─────────────────────────────────────────────────────────────────────────
+let guidanceItems = [];
+
+function selfReportedForGuidance(){
+  const out = [];
+  Object.keys(REQUIREMENTS).forEach(key=>{
+    const spec = REQUIREMENTS[key];
+    (spec.requiredFields||[]).forEach(f=>{
+      const entry = selfReported[key] && selfReported[key][f.id];
+      if(entry) out.push({ phase: spec.phaseName, tool: spec.tool, field: f.field, value: entry.value, reportedAt: entry.reportedAt });
+    });
+  });
+  return out;
+}
+
+async function fetchGuidance(){
+  const s = crossCadenceStats();
+  const body = {
+    engines: relayData ? relayData.engines : {},
+    stats: { openExceptions: s.open, pctComplete: s.total ? Math.round((s.done/s.total)*100) : 0, docName: relayData ? relayData.docName : null },
+    selfReported: selfReportedForGuidance()
+  };
+  try {
+    const res = await fetch('/api/rcm/guidance', {
+      method: 'POST', credentials: 'include', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    guidanceItems = data.items || [];
+  } catch(e) {
+    guidanceItems = [];
+  }
+  renderGuidance();
+}
+
+function renderGuidance(){
+  const card = document.getElementById('guidanceCard');
+  const list = document.getElementById('guidanceList');
+  if(!guidanceItems.length){
+    card.style.display = 'none';
+    return;
+  }
+  card.style.display = '';
+  list.innerHTML = guidanceItems.map(it => `
+    <div class="guidance-item">
+      <div class="guidance-top">
+        <span class="sev-badge ${escapeHtml(it.severity||'medium')}">${escapeHtml(it.severity||'medium')}</span>
+        <span class="guidance-title">${escapeHtml(it.title||'Untitled item')}</span>
+      </div>
+      ${it.summary ? `<div class="guidance-summary">${escapeHtml(it.summary)}</div>` : ''}
+      <div class="guidance-next"><strong>Next action:</strong> ${escapeHtml(it.nextAction||'—')}</div>
+      <div class="guidance-explain">
+        ${it.why ? `<span><strong>Why this route:</strong> ${escapeHtml(it.why)}</span>` : ''}
+        ${it.gain ? `<span><strong>Gain from acting now:</strong> ${escapeHtml(it.gain)}</span>` : ''}
+        ${it.riskOfInaction ? `<span><strong>Risk if left:</strong> ${escapeHtml(it.riskOfInaction)}</span>` : ''}
+      </div>
+      ${it.tool ? `<a class="guidance-open" href="${escapeHtml(it.tool)}" target="_blank">Open ${escapeHtml(it.tool.replace('.html',''))} ↗</a>` : ''}
+    </div>`).join('');
+}
+
+function renderIntake(){
+  const card = document.getElementById('intakeCard');
+  if(!relayData){
+    card.style.display = 'none';
+    return;
+  }
+  card.style.display = '';
+  document.getElementById('intakeDocName').textContent = relayData.docName || 'Relayed document';
+  document.getElementById('intakeMeta').textContent = relayData.generatedAt
+    ? `Received from FinOps Doc Showcase · ${new Date(relayData.generatedAt).toLocaleString()}`
+    : 'Received from FinOps Doc Showcase';
+
+  document.getElementById('routeGrid').innerHTML = ROUTES.map(r=>{
+    const text = (relayData.engines && relayData.engines[r.key]) || '(not generated for this document)';
+    const short = text.length > 220 ? text.slice(0,220) + '…' : text;
+    return `
+    <div class="route-card" style="--rc:${r.color}">
+      <div class="route-top">
+        <span class="route-name">${r.name}</span>
+        <span class="route-dest">→ ${r.dest}</span>
+      </div>
+      <div class="route-excerpt">${escapeHtml(short)}</div>
+    </div>`;
+  }).join('');
+}
+
+// Dedicated, prominent notification — this is the "did the relay actually
+// arrive, and where did it go" answer, front and center, not buried in a card.
+function renderRelayModal(data){
+  document.getElementById('relayModalDoc').textContent = data.docName || 'Relayed document';
+  document.getElementById('relayModalMeta').textContent = data.generatedAt
+    ? `Generated ${new Date(data.generatedAt).toLocaleString()} in FinOps Doc Showcase`
+    : 'Source timestamp unavailable';
+
+  document.getElementById('relayModalRoutes').innerHTML = ROUTES.map(r=>{
+    const has = !!(data.engines && data.engines[r.key]);
+    return `
+    <div class="relay-modal-route" style="--rc:${r.color}; opacity:${has ? 1 : 0.45}">
+      <span class="rname">${r.name}</span>
+      <span class="rdest">${has ? '→ ' + r.dest : 'not generated'}</span>
+    </div>`;
+  }).join('');
+
+  document.getElementById('relayModalBackdrop').classList.add('open');
+  RCMRelay.markSeen(data);
+}
+
+function closeRelayModal(){
+  document.getElementById('relayModalBackdrop').classList.remove('open');
+}
+
+function initRelayModal(){
+  document.getElementById('relayModalClose').addEventListener('click', closeRelayModal);
+  document.getElementById('relayModalDismiss').addEventListener('click', closeRelayModal);
+  document.getElementById('relayModalBackdrop').addEventListener('click', (e)=>{
+    if(e.target.id === 'relayModalBackdrop') closeRelayModal();
+  });
+  document.getElementById('relayModalView').addEventListener('click', ()=>{
+    closeRelayModal();
+    document.getElementById('intakeCard').scrollIntoView({behavior:'smooth', block:'start'});
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// RENDER: score gauges
+// ─────────────────────────────────────────────────────────────────────────
+function updateScore(){
+  if(currentCadence === "framework" || currentCadence === "executive"){
+    document.getElementById('scoreVal').textContent = '—';
+    document.getElementById('scoreFill').style.width = '0%';
+    document.getElementById('scoreHint').textContent = 'Reference view — no checklist on this tab.';
+    document.getElementById('excVal').textContent = '—';
+    document.getElementById('excFill').style.width = '0%';
+    updateSLAIndicators();
+    return;
+  }
+  const c = CADENCES[currentCadence];
+  let total = 0, done = 0;
+  c.phases.forEach((p,pi)=>{
+    p.tasks.forEach((_,ti)=>{
+      total++;
+      if(taskState[taskKey(currentCadence,pi,ti)]) done++;
+    });
+  });
+  const pct = total ? Math.round((done/total)*100) : 0;
+  const color = pct >= 80 ? 'var(--good)' : pct >= 40 ? 'var(--amber)' : 'var(--risk)';
+  document.getElementById('scoreVal').textContent = pct + '%';
+  document.getElementById('scoreVal').style.color = color;
+  document.getElementById('scoreFill').style.width = pct + '%';
+  document.getElementById('scoreFill').style.background = color;
+  document.getElementById('scoreHint').textContent = `${done} of ${total} tasks checked off for ${c.label.toLowerCase()} cadence — saved on this device.`;
+
+  const openExceptions = total - done;
+  const excPct = total ? Math.round((openExceptions/total)*100) : 0;
+  document.getElementById('excVal').textContent = openExceptions;
+  document.getElementById('excFill').style.width = excPct + '%';
+
+  updateSLAIndicators();
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// SLA / DEADLINE ALERTS — lightweight, client-side heuristic against each
+// cadence's stated window (CADENCES[k].window) plus real task-completion
+// state. Not a persisted deadline engine — just an honest "is this cadence's
+// window active/closing and still incomplete" read, refreshed on a timer.
+// ─────────────────────────────────────────────────────────────────────────
+function cadenceStats(key){
+  const c = CADENCES[key];
+  if(!c || !c.phases) return {total:0, done:0};
+  let total = 0, done = 0;
+  c.phases.forEach((p,pi)=>{
+    p.tasks.forEach((_,ti)=>{
+      total++;
+      if(taskState[taskKey(key,pi,ti)]) done++;
+    });
+  });
+  return {total, done};
+}
+
+// Parses strings like "6:00 AM – 6:00 PM" or "Every Friday, 1:00 – 4:00 PM"
+// into {startMin, endMin} minutes-since-midnight for *today*, or null if the
+// window doesn't apply today (e.g. a Friday-only window on a Tuesday).
+function parseWindowToday(windowStr, now){
+  const fridayOnly = /Friday/i.test(windowStr);
+  if(fridayOnly && now.getDay() !== 5) return null; // 5 = Friday
+  const times = windowStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/gi);
+  if(!times || times.length < 2) return null;
+  const parseOne = (t, fallbackMeridiem) => {
+    const m = t.match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+    let hr = parseInt(m[1],10);
+    const min = parseInt(m[2],10);
+    const mer = (m[3] || fallbackMeridiem || '').toUpperCase();
+    if(mer === 'PM' && hr !== 12) hr += 12;
+    if(mer === 'AM' && hr === 12) hr = 0;
+    return hr*60 + min;
+  };
+  const endMeridiem = (times[1].match(/AM|PM/i) || [''])[0];
+  const startMin = parseOne(times[0], endMeridiem);
+  const endMin = parseOne(times[1]);
+  return {startMin, endMin};
+}
+
+// Month-end: "urgent" once inside the last 3 calendar days of the month.
+function isMonthEndWindow(now){
+  const lastDay = new Date(now.getFullYear(), now.getMonth()+1, 0).getDate();
+  return (lastDay - now.getDate()) <= 2;
+}
+
+function computeCadenceSLA(key, now){
+  const {total, done} = cadenceStats(key);
+  if(total === 0 || done >= total) return 'ok'; // nothing to track, or already clear
+
+  if(key === 'monthend'){
+    if(!isMonthEndWindow(now)) return 'ok';
+    const lastDay = new Date(now.getFullYear(), now.getMonth()+1, 0).getDate();
+    return (lastDay - now.getDate()) === 0 ? 'red' : 'amber';
+  }
+
+  const c = CADENCES[key];
+  if(!c || !c.window) return 'ok';
+  const win = parseWindowToday(c.window, now);
+  if(!win) return 'ok'; // window doesn't apply today (e.g. weekly on a non-Friday)
+
+  const nowMin = now.getHours()*60 + now.getMinutes();
+  if(nowMin > win.endMin) return 'red';                 // window closed, still incomplete
+  if(nowMin < win.startMin) return 'ok';                 // window hasn't opened yet
+  const minsLeft = win.endMin - nowMin;
+  return minsLeft <= 60 ? 'red' : 'amber';               // inside window: amber, urgent in last hour
+}
+
+function updateSLAIndicators(){
+  const now = new Date();
+  const levels = {};
+  ['daily','weekly','monthend'].forEach(k => { levels[k] = computeCadenceSLA(k, now); });
+
+  ['daily','weekly','monthend'].forEach(k => {
+    const dot = document.getElementById('slaDot-'+k);
+    if(dot) dot.className = 'sla-dot' + (levels[k] !== 'ok' ? ' '+levels[k] : '');
+  });
+
+  const excDot = document.getElementById('excDot');
+  const excValEl = document.getElementById('excVal');
+  const openExceptions = excValEl ? (parseInt(excValEl.textContent, 10) || 0) : 0;
+  if(excDot){
+    excDot.className = 'sla-dot' + (openExceptions > 0 ? ' amber' : '');
+  }
+  if(excValEl) excValEl.classList.toggle('sla-pulse', openExceptions > 0);
+
+  const worst = Object.values(levels).includes('red') ? 'red'
+    : (Object.values(levels).includes('amber') || openExceptions > 0) ? 'amber' : 'none';
+  let fabDot = document.getElementById('fabSlaDot');
+  const fab = document.getElementById('assistantFab');
+  if(fab && !fabDot){
+    fabDot = document.createElement('span');
+    fabDot.id = 'fabSlaDot';
+    fabDot.className = 'fab-sla-dot';
+    fab.appendChild(fabDot);
+  }
+  if(fabDot) fabDot.className = 'fab-sla-dot' + (worst !== 'none' ? ' '+worst : '');
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// AI ASSISTANT
+// ─────────────────────────────────────────────────────────────────────────
+const QUICK_PROMPTS = [
+  "What's my SLA status right now?",
+  "What's still WIP for this cadence?",
+  "What should I do about the highest-severity item right now?",
+  "How do I use the Compliance Desk?"
+];
+
+function initAssistant(){
+  RCMAssistant.init({
+    getContext: () => buildAssistantContext(''),
+    quickPrompts: QUICK_PROMPTS,
+    getBriefing: async () => { await fetchGuidance(); return guidanceItems; }
+  });
+}
+
+// Grounds "how do I use X" / "what does this app do" questions in the
+// assistant's context so it can guide EUs through the app itself, not just
+// the workspace's live data.
+const APP_FEATURES_KB = `
+APP FEATURES & MODULES (for questions about how to use this app):
+- Branch Operations (finops-operations.html): morning cash/AP/AR checks, daily entry point.
+- Accounting Ledger (finops-accounting.html): journal entries, budget-to-actual variance, expenditure tracking.
+- Compliance Desk (compliance.html): exception flags, segregation-of-duties checks, audit-readiness log — this is where open exceptions get signed off.
+- Scenario Modeling (finops-scenarios.html): forecasting and what-if modeling.
+- Financial Intelligence (finance-index.html): account-level audit engine, reports, invoices, financial health scoring, and its own AI assistant tabs.
+- Vendor Situation Room / Logistics Situation Room: vendor liability and freight/fulfillment exception tracking.
+- Document Search: cross-vertical document/evidence search.
+- Document Intake: when the FinOps Doc Showcase relays an analyzed document here, its 4 engine outputs (Triage, Variance, Action Plan, CFO Brief) each route to a specific module above — that routing is shown in the Document Intake card.
+- Cadence tabs (Daily/Weekly/Month-End/Controller Framework/Executive): the reconciliation rhythm this whole app is built around; each phase lists its owning tool and concrete tasks.
+- Data Requirements ("Data to gather from [module]" on each phase card): tells an EU exactly which specific field(s) that phase needs from its owning module and why, with an input to self-report the value. Self-reported values are explicitly unverified — they show up flagged that way here, in the Executive tab, and in guidance — until the owning module exposes a real read endpoint.
+`;
+
+// buildAssistantContext still lives here since it needs direct access to
+// CADENCES/taskState/relayData/currentCadence. RCMAssistant just renders
+// the widget and calls this to get its grounding text.
+function buildAssistantContext(userQuestion){
+  const s = crossCadenceStats();
+  const pct = s.total ? Math.round((s.done/s.total)*100) : 0;
+  const c = CADENCES[currentCadence] || null;
+
+  let ctx = `You are the RCM Assistant embedded in TSM RCM OS, a reconciliation-management copilot for end users (EUs) working a Daily/Weekly/Month-End close cadence. You don't just answer questions — you proactively guide EUs through curing anomalies: what's wrong, what to do next, which tool owns it, and why. When asked about the app itself, use the APP FEATURES section below.\n\n`;
+  ctx += APP_FEATURES_KB;
+  ctx += `\nCURRENT TAB: ${currentCadence}\n`;
+  ctx += `CROSS-CADENCE COMPLETION: ${pct}% (${s.done}/${s.total} tasks done across Daily/Weekly/Month-End)\n`;
+  ctx += `OPEN EXCEPTIONS: ${s.open}\n`;
+  ctx += `MONTH-END CLOSE CHECKLIST: ${s.checklistDone}/${s.checklistTotal}\n`;
+  if(c){
+    ctx += `\nACTIVE CADENCE WINDOW (${c.label}): ${c.window}\n`;
+    c.phases.forEach((p,pi)=>{
+      const done = p.tasks.filter((_,ti)=>taskState[taskKey(currentCadence,pi,ti)]).length;
+      ctx += `- ${p.name} [${p.tool}]: ${done}/${p.tasks.length} tasks done\n`;
+    });
+  }
+  if(relayData){
+    ctx += `\nRELAYED DOCUMENT: ${relayData.docName}\n`;
+    ctx += `Triage/Flags: ${(relayData.engines.triage||'').slice(0,400)}\n`;
+    ctx += `Variance/Risk: ${(relayData.engines.variance||'').slice(0,400)}\n`;
+    ctx += `Controller Action Plan: ${(relayData.engines.actionPlan||'').slice(0,400)}\n`;
+  } else {
+    ctx += `\nNo document currently relayed from FinOps Doc Showcase.\n`;
+  }
+  const sr = selfReportedForGuidance();
+  if(sr.length){
+    ctx += `\nSELF-REPORTED DATA (EU-entered via the Data Requirements fields on each phase card — NOT verified against a live source, treat as unverified input, say "self-reported" when citing it):\n`;
+    sr.forEach(item => {
+      ctx += `- [${item.phase}] ${item.field}: ${item.value} (self-reported ${new Date(item.reportedAt).toLocaleDateString()}, owning tool: ${item.tool})\n`;
+    });
+  } else {
+    ctx += `\nNo self-reported data entered yet on any phase card.\n`;
+  }
+  if(guidanceItems && guidanceItems.length){
+    ctx += `\nCURRENT PROACTIVE GUIDANCE QUEUE (ranked, act on these):\n`;
+    guidanceItems.forEach(it => {
+      ctx += `- [${it.severity}] ${it.title} — Next: ${it.nextAction} (tool: ${it.tool})\n`;
+    });
+  }
+  return ctx;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// CLOCK
+// ─────────────────────────────────────────────────────────────────────────
+function tickClock(){
+  const now = new Date();
+  document.getElementById('clock').textContent = now.toLocaleString('en-US', {weekday:'short', hour:'2-digit', minute:'2-digit', second:'2-digit'});
+  document.getElementById('todayChip').textContent = now.toLocaleDateString('en-US', {month:'long', day:'numeric', year:'numeric'});
+}
+tickClock();
+setInterval(tickClock, 1000);
+
+// ─────────────────────────────────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────────────────────────────────
+function renderAll(){
+  renderToggle();
+  renderFlow();
+  renderCadenceBody();
+}
+renderRail();
+renderAll();
+initRelayModal();
+loadRelayData();
+loadRequirements();
+initAssistant();
+updateSLAIndicators(); // fab now exists — attach its dot immediately
+setInterval(updateSLAIndicators, 30000); // keep pulses honest as the clock moves
+
+document.getElementById('intakeClearBtn').addEventListener('click', async ()=>{
+  if(typeof RCMRelay !== 'undefined'){
+    await RCMRelay.clear();
+  } else {
+    localStorage.removeItem('TSM_FINOPS_RCM_RELAY');
+  }
+  relayData = null;
+  renderIntake();
+  fetchGuidance();
+  if(currentCadence === 'executive') renderExecutive();
+});
+document.getElementById('execExportBtn').addEventListener('click', exportExecutiveReport);
+</script>
+
+</body>
+</html>

@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sweet Music™ OS — TSM Music Command</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=IBM+Plex+Mono:wght@300;400;600&family=IBM+Plex+Sans:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0c;
+    --surface: #111118;
+    --border: #1e1e2e;
+    --green: #00ff88;
+    --cyan: #00e5ff;
+    --amber: #ffb300;
+    --red: #ff3b6b;
+    --purple: #b388ff;
+    --text: #e0e0e0;
+    --muted: #666680;
+    --card: #13131f;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Mono', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Scanline overlay */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px);
+    pointer-events: none; z-index: 999;
+  }
+
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 18px 32px;
+    display: flex; align-items: center; justify-content: space-between;
+    background: rgba(0,255,136,0.03);
+  }
+  .logo {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 1.1rem;
+    font-weight: 900;
+    color: var(--green);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+  }
+  .logo span { color: var(--cyan); }
+  .logo small {
+    display: block;
+    font-size: 0.55rem;
+    color: var(--muted);
+    letter-spacing: 0.25em;
+    margin-top: 2px;
+  }
+  .header-status {
+    font-size: 0.65rem;
+    color: var(--muted);
+    text-align: right;
+  }
+  .status-dot {
+    display: inline-block; width: 6px; height: 6px;
+    border-radius: 50%; background: var(--green);
+    margin-right: 6px;
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  /* Hero */
+  .hero {
+    text-align: center;
+    padding: 72px 32px 48px;
+    position: relative;
+  }
+  .hero-eyebrow {
+    font-size: 0.7rem;
+    letter-spacing: 0.3em;
+    color: var(--amber);
+    text-transform: uppercase;
+    margin-bottom: 16px;
+  }
+  .hero h1 {
+    font-family: 'Orbitron', sans-serif;
+    font-size: clamp(2rem, 5vw, 4rem);
+    font-weight: 900;
+    line-height: 1.1;
+    color: var(--green);
+    text-shadow: 0 0 40px rgba(0,255,136,0.3);
+    margin-bottom: 12px;
+  }
+  .hero h1 em {
+    font-style: normal;
+    color: var(--cyan);
+  }
+  .hero-sub {
+    font-size: 0.85rem;
+    color: var(--muted);
+    max-width: 560px;
+    margin: 0 auto 40px;
+    line-height: 1.7;
+  }
+
+  /* Pipeline */
+  .pipeline {
+    display: flex; align-items: center; justify-content: center;
+    gap: 0; flex-wrap: wrap;
+    padding: 0 32px 64px;
+    max-width: 900px; margin: 0 auto;
+  }
+  .pipeline-step {
+    display: flex; align-items: center; gap: 0;
+  }
+  .p-node {
+    font-size: 0.6rem;
+    color: var(--green);
+    letter-spacing: 0.1em;
+    border: 1px solid rgba(0,255,136,0.25);
+    border-radius: 4px;
+    padding: 4px 10px;
+    white-space: nowrap;
+    transition: all 0.2s;
+  }
+  .p-node:hover { border-color: var(--green); background: rgba(0,255,136,0.07); cursor: default; }
+  .p-arrow {
+    font-size: 0.65rem;
+    color: var(--muted);
+    padding: 0 6px;
+  }
+
+  /* Nav Grid */
+  .section-label {
+    font-size: 0.65rem;
+    letter-spacing: 0.25em;
+    color: var(--muted);
+    text-transform: uppercase;
+    text-align: center;
+    margin-bottom: 24px;
+  }
+  .nav-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 32px 80px;
+  }
+  .nav-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 24px;
+    display: flex; gap: 20px; align-items: flex-start;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-decoration: none; color: inherit;
+  }
+  .nav-card:hover {
+    border-color: var(--green);
+    background: rgba(0,255,136,0.04);
+    transform: translateY(-2px);
+  }
+  .nav-card.amber:hover { border-color: var(--amber); background: rgba(255,179,0,0.04); }
+  .nav-card.cyan:hover { border-color: var(--cyan); background: rgba(0,229,255,0.04); }
+  .nav-card.purple:hover { border-color: var(--purple); background: rgba(179,136,255,0.04); }
+  .nav-card.red:hover { border-color: var(--red); background: rgba(255,59,107,0.04); }
+  .nav-card.green:hover { border-color: var(--green); background: rgba(0,255,136,0.04); }
+
+  .nav-icon {
+    font-size: 1.8rem;
+    line-height: 1;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .nav-card-body h3 {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    color: var(--green);
+    margin-bottom: 6px;
+  }
+  .nav-card.amber .nav-card-body h3 { color: var(--amber); }
+  .nav-card.cyan .nav-card-body h3 { color: var(--cyan); }
+  .nav-card.purple .nav-card-body h3 { color: var(--purple); }
+  .nav-card.red .nav-card-body h3 { color: var(--red); }
+  .nav-card.green .nav-card-body h3 { color: var(--green); }
+
+  .nav-card-body p {
+    font-size: 0.72rem;
+    color: var(--muted);
+    line-height: 1.6;
+    margin-bottom: 12px;
+  }
+  .nav-modules {
+    display: flex; flex-wrap: wrap; gap: 4px;
+  }
+  .nav-tag {
+    font-size: 0.58rem;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 2px 6px;
+    color: var(--muted);
+    letter-spacing: 0.05em;
+  }
+
+  /* Stage strip */
+  .stage-strip {
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    padding: 16px 32px;
+    display: flex; align-items: center; justify-content: center;
+    gap: 0; flex-wrap: wrap;
+    margin-bottom: 64px;
+  }
+  .stage-item {
+    display: flex; align-items: center; gap: 0;
+  }
+  .stage-node {
+    font-size: 0.62rem;
+    letter-spacing: 0.12em;
+    padding: 6px 14px;
+    color: var(--text);
+    white-space: nowrap;
+  }
+  .stage-node.active {
+    color: var(--green);
+    border-bottom: 2px solid var(--green);
+  }
+  .stage-sep { color: var(--border); font-size: 0.8rem; padding: 0 4px; }
+
+  footer {
+    text-align: center;
+    padding: 32px;
+    border-top: 1px solid var(--border);
+    font-size: 0.62rem;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+  }
+  footer span { color: var(--green); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    Sweet Music<span>™</span>
+    <small>AI Music Production Operating System · TSM Shell</small>
+  </div>
+  <div class="header-status">
+    <span class="status-dot"></span>TSM Neural Core · ONLINE<br>
+    <span style="color:var(--green)">12</span> AI Agents Active
+  </div>
+</header>
+
+<!-- Hero -->
+<section class="hero">
+  <div class="hero-eyebrow">TSM Music Command · Sweet Music OS v2.0</div>
+  <h1>Idea → <em>Release</em>.<br>AI at every step.</h1>
+  <p class="hero-sub">Beat selection. Cadence. Lyrics. Recording coach. Mix notes. Mastering. Distribution. The full creative workflow — guided by AI from the first bar to the first stream.</p>
+</section>
+
+<!-- Pipeline -->
+<div class="pipeline">
+  <div class="pipeline-step"><div class="p-node">Idea</div><div class="p-arrow">→</div></div>
+  <div class="pipeline-step"><div class="p-node">Beat</div><div class="p-arrow">→</div></div>
+  <div class="pipeline-step"><div class="p-node">Cadence</div><div class="p-arrow">→</div></div>
+  <div class="pipeline-step"><div class="p-node">Producer</div><div class="p-arrow">→</div></div>
+  <div class="pipeline-step"><div class="p-node">Lyrics</div><div class="p-arrow">→</div></div>
+  <div class="pipeline-step"><div class="p-node">Arrangement</div><div class="p-arrow">→</div></div>
+  <div class="pipeline-step"><div class="p-node">Recording</div><div class="p-arrow">→</div></div>
+  <div class="pipeline-step"><div class="p-node">Mix</div><div class="p-arrow">→</div></div>
+  <div class="pipeline-step"><div class="p-node">Master</div><div class="p-arrow">→</div></div>
+  <div class="pipeline-step"><div class="p-node">Release</div><div class="p-arrow">→</div></div>
+  <div class="pipeline-step"><div class="p-node">Marketing</div><div class="p-arrow">→</div></div>
+  <div class="pipeline-step"><div class="p-node" style="color:var(--amber)"><a href="analytics.html" style="color:inherit;text-decoration:none;">Analytics</a></div></div>
+</div>
+
+<!-- Stage strip -->
+<div class="stage-strip">
+  <div class="stage-item"><div class="stage-node active">Song Builder</div><div class="stage-sep">|</div></div>
+  <div class="stage-item"><div class="stage-node">Beat Workbench</div><div class="stage-sep">|</div></div>
+  <div class="stage-item"><div class="stage-node">Cadence Studio</div><div class="stage-sep">|</div></div>
+  <div class="stage-item"><div class="stage-node">Producer AI</div><div class="stage-sep">|</div></div>
+  <div class="stage-item"><div class="stage-node">Mix Coach</div><div class="stage-sep">|</div></div>
+  <div class="stage-item"><div class="stage-node">Master Coach</div><div class="stage-sep">|</div></div>
+  <div class="stage-item"><div class="stage-node">Release Center</div><div class="stage-sep">|</div></div>
+  <div class="stage-item"><div class="stage-node">DAW Academy</div></div>
+</div>
+
+<!-- Nav Grid -->
+<div class="section-label">// LAUNCH MODULE</div>
+<div class="nav-grid">
+
+  <a class="nav-card" href="creation/song-builder.html">
+    <div class="nav-icon">🎼</div>
+    <div class="nav-card-body">
+      <h3>Song Builder</h3>
+      <p>Guided wizard: genre → mood → inspiration → hook → verse → bridge. AI writes the full song structure with producer notes.</p>
+      <div class="nav-modules">
+        <span class="nav-tag">Wizard</span>
+        <span class="nav-tag">Lyrics</span>
+        <span class="nav-tag">Structure</span>
+        <span class="nav-tag">Hook AI</span>
+      </div>
+    </div>
+  </a>
+
+  <a class="nav-card amber" href="creation/beat-workbench.html">
+    <div class="nav-icon">🥁</div>
+    <div class="nav-card-body">
+      <h3>Beat Workbench</h3>
+      <p>Upload MP3/WAV or paste BeatStars/SoundCloud link. AI detects BPM, key, genre, mood, energy, and recommends vocal style.</p>
+      <div class="nav-modules">
+        <span class="nav-tag">Beat Intel</span>
+        <span class="nav-tag">BPM</span>
+        <span class="nav-tag">Key</span>
+        <span class="nav-tag">Genre</span>
+      </div>
+    </div>
+  </a>
+
+  <a class="nav-card cyan" href="cadence-builder.html">
+    <div class="nav-icon">📐</div>
+    <div class="nav-card-body">
+      <h3>Cadence Studio</h3>
+      <p>Interactive syllable grid. Type your bars and AI highlights where syllables land on the beat, flags overcrowding, suggests adjustments.</p>
+      <div class="nav-modules">
+        <span class="nav-tag">Flow</span>
+        <span class="nav-tag">Syllables</span>
+        <span class="nav-tag">Cadence AI</span>
+      </div>
+    </div>
+  </a>
+
+  <a class="nav-card" href="producer/producer-ai.html">
+    <div class="nav-icon">🎛</div>
+    <div class="nav-card-body">
+      <h3>Producer AI</h3>
+      <p>Your AI collaborator. Analyzes song energy, recommends bar count, hook placement, doubles, adlib strategy, and arrangement logic.</p>
+      <div class="nav-modules">
+        <span class="nav-tag">Notes</span>
+        <span class="nav-tag">Score</span>
+        <span class="nav-tag">Arrangement</span>
+      </div>
+    </div>
+  </a>
+
+  <a class="nav-card amber" href="producer/recording-coach.html">
+    <div class="nav-icon">🎤</div>
+    <div class="nav-card-body">
+      <h3>Recording Coach</h3>
+      <p>Pre-session checklist + real-time vocal guidance. Mic setup, room treatment, headroom, take strategy, doubles workflow.</p>
+      <div class="nav-modules">
+        <span class="nav-tag">Checklist</span>
+        <span class="nav-tag">Vocal AI</span>
+        <span class="nav-tag">Mic</span>
+      </div>
+    </div>
+  </a>
+
+  <a class="nav-card cyan" href="producer/mixing-coach.html">
+    <div class="nav-icon">🎚</div>
+    <div class="nav-card-body">
+      <h3>Mix Coach</h3>
+      <p>EQ cut/boost targets, compression ratios, reverb/delay percentages, stereo width. Teaches what every setting does, not just what to set.</p>
+      <div class="nav-modules">
+        <span class="nav-tag">EQ</span>
+        <span class="nav-tag">Compression</span>
+        <span class="nav-tag">Reverb</span>
+        <span class="nav-tag">Width</span>
+      </div>
+    </div>
+  </a>
+
+  <a class="nav-card purple" href="producer/mastering-coach.html">
+    <div class="nav-icon">💿</div>
+    <div class="nav-card-body">
+      <h3>Master Coach</h3>
+      <p>LUFS targets, limiting, true peak, format export (WAV/MP3/FLAC). Streaming readiness check across Spotify, Apple Music, YouTube.</p>
+      <div class="nav-modules">
+        <span class="nav-tag">LUFS</span>
+        <span class="nav-tag">Limiting</span>
+        <span class="nav-tag">DSP Ready</span>
+      </div>
+    </div>
+  </a>
+
+  <a class="nav-card green" href="analytics.html">
+    <div class="nav-icon">📊</div>
+    <div class="nav-card-body">
+      <h3>Analytics</h3>
+      <p>Every AI pass gets scored on cadence, emotion, structure, and imagery. See your hit-potential %, iteration trend, and ZAY's read on what to fix next — a real number, not a vibe.</p>
+      <div class="nav-modules">
+        <span class="nav-tag">Hit Potential</span>
+        <span class="nav-tag">Evolution</span>
+        <span class="nav-tag">Score Breakdown</span>
+      </div>
+    </div>
+  </a>
+
+  <a class="nav-card" href="academy/daw-academy.html">
+    <div class="nav-icon">🎹</div>
+    <div class="nav-card-body">
+      <h3>DAW Academy</h3>
+      <p>What is a DAW? Compare FL Studio, Ableton, Logic, Reaper. Beginner tracks, plugin guides, stem export walkthroughs.</p>
+      <div class="nav-modules">
+        <span class="nav-tag">FL Studio</span>
+        <span class="nav-tag">Ableton</span>
+        <span class="nav-tag">Logic</span>
+        <span class="nav-tag">Plugins</span>
+      </div>
+    </div>
+  </a>
+
+  <a class="nav-card amber" href="release/release-center.html">
+    <div class="nav-icon">🚀</div>
+    <div class="nav-card-body">
+      <h3>Release Center</h3>
+      <p>Cover art, ISRC, UPC, metadata, explicit flag, distribution checklist. Push to Spotify, Apple Music, YouTube Music, TikTok, IG.</p>
+      <div class="nav-modules">
+        <span class="nav-tag">ISRC</span>
+        <span class="nav-tag">Distribution</span>
+        <span class="nav-tag">Metadata</span>
+      </div>
+    </div>
+  </a>
+
+  <a class="nav-card red" href="release/marketing.html">
+    <div class="nav-icon">📈</div>
+    <div class="nav-card-body">
+      <h3>Artist Growth</h3>
+      <p>Platform-specific rollout plans. Spotify pitching, YouTube strategy, TikTok hooks, IG content calendar, playlist placement tactics.</p>
+      <div class="nav-modules">
+        <span class="nav-tag">Spotify</span>
+        <span class="nav-tag">TikTok</span>
+        <span class="nav-tag">YouTube</span>
+        <span class="nav-tag">Playlisting</span>
+      </div>
+    </div>
+  </a>
+
+  <a class="nav-card cyan" href="academy/music-theory.html">
+    <div class="nav-icon">🎵</div>
+    <div class="nav-card-body">
+      <h3>Music Theory</h3>
+      <p>Keys, scales, chord progressions, intervals — tailored to your genre. No sheet music required. Applied directly to your song.</p>
+      <div class="nav-modules">
+        <span class="nav-tag">Keys</span>
+        <span class="nav-tag">Chords</span>
+        <span class="nav-tag">Scales</span>
+      </div>
+    </div>
+  </a>
+
+  <a class="nav-card purple" href="academy/music-business.html">
+    <div class="nav-icon">⚖️</div>
+    <div class="nav-card-body">
+      <h3>Music Business AI</h3>
+      <p>Publishing, royalties, PRO registration (BMI/ASCAP), master vs. composition rights, splits, SoundExchange, mechanical royalties.</p>
+      <div class="nav-modules">
+        <span class="nav-tag">BMI</span>
+        <span class="nav-tag">ASCAP</span>
+        <span class="nav-tag">Royalties</span>
+        <span class="nav-tag">Splits</span>
+      </div>
+    </div>
+  </a>
+
+</div>
+
+<footer>
+  <span>Sweet Music™ OS</span> · TSM Consultz LLC · AI Music Production Operating System<br>
+  Powered by TSM Neural Core · All agents online
+</footer>
+
+</body>
+</html>
+
+<script src="js/sweet-music-engine.js"></script>
+<script src="js/producer-ai-widget.js"></script>
+
+<!-- TSM ENFORCER BOOT -->
+<script src="/html/core/tsm-enforcer.js"></script>
+
+
+<!-- TSM KERNEL ENGINE -->
+<script src="/html/core/tsm-kernel.js"></script>
+

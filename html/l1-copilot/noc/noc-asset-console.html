@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TSM NOC Asset Console</title>
+<style>
+:root {
+  --bg:#070d0d;--bg2:#0a1212;--bg3:#0e1717;
+  --border:rgba(45,212,191,.14);
+  --teal:#2dd4bf;--teal-dim:rgba(45,212,191,.6);
+  --gold:#ffd700;--red:#ff3b3b;--amber:#ff9500;--cyan:#00e5ff;--purple:#c084fc;
+  --text:#c8dcd9;--text-dim:#5a7a76;--card:#0d1717;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;font-size:12px;min-height:100vh}
+
+.nav{display:flex;align-items:center;gap:0;background:#080f0f;border-bottom:1px solid var(--border);height:38px;padding:0 16px}
+.nav-brand{color:var(--teal);font-weight:700;font-size:11px;letter-spacing:2px;margin-right:24px}
+.nav-link{color:var(--text-dim);font-size:9px;letter-spacing:1px;text-decoration:none;margin-right:16px;border-bottom:1px solid transparent}
+.nav-link:hover{color:var(--teal);border-bottom-color:var(--teal)}
+.nav-right{margin-left:auto;display:flex;align-items:center;gap:16px;color:var(--text-dim);font-size:10px}
+.nav-clock{color:var(--teal-dim)}
+
+.layout{display:grid;grid-template-columns:1fr 320px;height:calc(100vh - 38px)}
+
+.main{overflow-y:auto;background:var(--bg);padding:18px 22px}
+.main-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.main-title{font-size:13px;letter-spacing:1px;color:var(--text)}
+.main-title b{color:var(--teal)}
+.main-sub{color:var(--text-dim);font-size:10px;margin-top:2px}
+
+.kpi-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px}
+.kpi-card{background:var(--card);border:1px solid var(--border);padding:12px 10px}
+.kpi-label{font-size:8px;letter-spacing:1px;color:var(--text-dim);margin-bottom:6px;text-transform:uppercase}
+.kpi-value{font-size:18px;font-weight:700;color:var(--teal)}
+.kpi-value.warn{color:var(--amber)}
+.kpi-value.bad{color:var(--red)}
+
+.section{background:var(--card);border:1px solid var(--border);margin-bottom:18px}
+.section-head{padding:10px 14px;border-bottom:1px solid var(--border);font-size:10px;letter-spacing:1.5px;color:var(--text-dim);display:flex;justify-content:space-between;align-items:center}
+.section-body{padding:14px}
+
+.asset-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
+.asset-card{background:var(--bg3);border:1px solid var(--border);padding:10px;cursor:pointer;transition:border-color .15s}
+.asset-card:hover{border-color:var(--teal-dim)}
+.asset-card.selected{border-color:var(--teal);box-shadow:0 0 0 1px var(--teal)}
+.asset-card.has-incident{border-color:var(--red)}
+.asset-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px}
+.asset-host{font-size:11px;color:var(--text);font-weight:700}
+.asset-ip{font-size:9px;color:var(--text-dim)}
+.asset-desc{font-size:9px;color:var(--text-dim);margin-bottom:8px;min-height:22px}
+.status-dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:5px}
+.status-online{background:var(--teal);box-shadow:0 0 5px var(--teal)}
+.status-degraded{background:var(--amber);box-shadow:0 0 5px var(--amber)}
+.status-down{background:var(--red);box-shadow:0 0 5px var(--red)}
+.status-maintenance{background:var(--purple);box-shadow:0 0 5px var(--purple)}
+.status-label{font-size:8px;letter-spacing:1px;color:var(--text-dim)}
+.meter-row{display:flex;align-items:center;gap:6px;font-size:8px;color:var(--text-dim);margin-top:4px}
+.meter{flex:1;height:5px;background:var(--bg2);border:1px solid var(--border);position:relative}
+.meter-fill{height:100%;background:var(--teal)}
+.meter-fill.warn{background:var(--amber)}
+.meter-fill.bad{background:var(--red)}
+.tag-row{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px}
+.mini-tag{font-size:7px;letter-spacing:.5px;color:var(--text-dim);border:1px solid var(--border);padding:2px 5px}
+.incident-flag{font-size:7px;letter-spacing:1px;color:var(--red);border:1px solid var(--red);padding:2px 5px;margin-top:6px;display:inline-block}
+
+.btn{border:1px solid;font-family:inherit;font-size:9px;letter-spacing:1.5px;cursor:pointer;padding:7px 12px;transition:all .2s}
+.btn-teal{background:var(--teal);border-color:var(--teal);color:#000;font-weight:700}
+.btn-teal:hover{background:#22b8a3}
+.btn-outline{background:transparent;border-color:var(--teal);color:var(--teal)}
+.btn-outline:hover{background:rgba(45,212,191,.08)}
+.btn-ghost{background:transparent;border-color:var(--border);color:var(--text-dim)}
+.btn-ghost:hover{border-color:var(--text-dim);color:var(--text)}
+.btn-gold{background:var(--gold);border-color:var(--gold);color:#000;font-weight:700}
+.btn-gold:hover{background:#e6c200}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn-row{display:flex;gap:6px;flex-wrap:wrap}
+.btn-full{width:100%}
+
+.console{background:var(--bg2);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto}
+.console-section{padding:14px 16px;border-bottom:1px solid var(--border)}
+.console-label{font-size:9px;letter-spacing:2px;color:var(--text-dim);margin-bottom:10px}
+.console-empty{color:var(--text-dim);font-size:10px;line-height:1.6}
+.console-field{margin-bottom:8px}
+.console-field-label{font-size:8px;color:var(--text-dim);letter-spacing:1px;margin-bottom:2px}
+.console-field-val{font-size:11px;color:var(--text)}
+.console-log{background:var(--bg3);border:1px solid var(--border);padding:8px;font-size:9px;line-height:1.6;color:var(--text-dim);max-height:220px;overflow-y:auto;white-space:pre-wrap}
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <div class="nav-brand">TSM SHELL // NOC ASSET CONSOLE</div>
+  <a class="nav-link" href="/html/l1-copilot/noc/noc-war-room.html">&larr; NOC WAR ROOM</a>
+  <a class="nav-link" href="/html/l1-copilot/l1-ticket-copilot.html">L1 COPILOT &rarr;</a>
+  <div class="nav-right">
+    <span id="navStatus">ENGINE: IDLE</span>
+    <span class="nav-clock" id="navClock">--:--:--</span>
+  </div>
+</div>
+
+<div class="layout">
+
+  <div class="main">
+    <div class="main-header">
+      <div>
+        <div class="main-title">MANAGED <b>ASSET INVENTORY</b></div>
+        <div class="main-sub">Fleet health &amp; per-device console, cross-referenced against live NOC incidents.</div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-ghost" id="btnResetFleet">RESET FLEET</button>
+      </div>
+    </div>
+
+    <div class="kpi-grid" id="kpiGrid"></div>
+
+    <div class="section">
+      <div class="section-head"><span>MANAGED ASSET INVENTORY</span><span id="assetMeta"></span></div>
+      <div class="section-body">
+        <div class="asset-grid" id="assetGrid"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="console">
+    <div class="console-section">
+      <div class="console-label">CONSOLE DIAGNOSTICS</div>
+      <div id="consoleBody"><div class="console-empty">Select a device from the inventory to open its console.</div></div>
+    </div>
+    <div class="console-section" style="margin-top:auto">
+      <div class="console-label">ACTION LOG</div>
+      <div class="console-log" id="consoleLog">No actions taken this session.</div>
+    </div>
+  </div>
+
+</div>
+
+<script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
+<script>
+(function () {
+  let devices = [];
+  let selectedId = null;
+  let activeNocIncidents = []; // affected_system values with an open incident, from the NOC relay
+
+  const STORAGE_KEY = 'TSM_NOC_ASSET_CONSOLE_FLEET';
+  const LOG_KEY = 'TSM_NOC_ASSET_CONSOLE_LOG';
+
+  function setClock() {
+    const el = document.getElementById('navClock');
+    if (el) el.textContent = new Date().toLocaleTimeString();
+  }
+  setInterval(setClock, 1000); setClock();
+
+  async function loadFleet() {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      try { devices = JSON.parse(saved); } catch (e) { devices = null; }
+    }
+    if (!devices || !devices.length) {
+      const res = await fetch('/l1-copilot/noc/data/noc-asset-console.json');
+      const model = await res.json();
+      devices = model.devices;
+    }
+    loadNocIncidentFlags();
+    renderAll();
+  }
+
+  function saveFleet() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(devices)); } catch (e) {}
+  }
+
+  // Cross-reference the live NOC relay payload (written by "RELAY TO STRATEGIST"
+  // in noc-war-room.html — see TSMNOCEngine.buildRelayPayload) so any device
+  // matching an open incident's affected system gets flagged here.
+  function loadNocIncidentFlags() {
+    activeNocIncidents = [];
+    try {
+      if (!window.TSM || !window.TSM.relay) return;
+      const nocPayload = window.TSM.relay.read('NOC');
+      const incidents = (nocPayload && nocPayload.records && nocPayload.records.incidents) || [];
+      activeNocIncidents = incidents
+        .filter(i => i.stage !== 'resolved' && i.stage !== 'closed')
+        .map(i => (i.affected_system || '').toLowerCase());
+    } catch (e) { console.warn('NOC relay read failed', e); }
+  }
+
+  function deviceHasIncident(d) {
+    const host = (d.hostname || '').toLowerCase();
+    const id = (d.device_id || '').toLowerCase();
+    return activeNocIncidents.some(a => a && (a === host || a === id || host.indexOf(a) !== -1));
+  }
+
+  function renderAll() {
+    renderKpis();
+    renderGrid();
+    renderConsole();
+  }
+
+  function renderKpis() {
+    const total = devices.length || 1;
+    const onlineCount = devices.filter(d => d.status === 'online').length;
+    const health = Math.round((onlineCount / total) * 100);
+    const avgCpu = Math.round(devices.reduce((s, d) => s + (d.cpu_pct || 0), 0) / total);
+    const avgRam = Math.round(devices.reduce((s, d) => s + (d.ram_pct || 0), 0) / total);
+
+    const grid = document.getElementById('kpiGrid');
+    grid.innerHTML = `
+      <div class="kpi-card">
+        <div class="kpi-label">Global Infrastructure Health</div>
+        <div class="kpi-value ${health < 70 ? 'bad' : health < 100 ? 'warn' : ''}">${health}%</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Infrastructure Workload (CPU)</div>
+        <div class="kpi-value ${avgCpu > 80 ? 'bad' : avgCpu > 60 ? 'warn' : ''}">${avgCpu}%</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Memory Commitment (RAM)</div>
+        <div class="kpi-value ${avgRam > 80 ? 'bad' : avgRam > 60 ? 'warn' : ''}">${avgRam}%</div>
+      </div>`;
+
+    document.getElementById('navStatus').textContent = `ENGINE: ${total} ASSETS LOADED`;
+  }
+
+  function renderGrid() {
+    const wrap = document.getElementById('assetGrid');
+    document.getElementById('assetMeta').textContent = devices.length + ' devices';
+    wrap.innerHTML = devices.map(d => {
+      const flagged = deviceHasIncident(d);
+      const cpuCls = d.cpu_pct > 80 ? 'bad' : d.cpu_pct > 60 ? 'warn' : '';
+      const ramCls = d.ram_pct > 80 ? 'bad' : d.ram_pct > 60 ? 'warn' : '';
+      return `<div class="asset-card ${d.device_id === selectedId ? 'selected' : ''} ${flagged ? 'has-incident' : ''}" data-id="${d.device_id}">
+        <div class="asset-top">
+          <div>
+            <div class="asset-host">${d.hostname}</div>
+            <div class="asset-ip">${d.ip}</div>
+          </div>
+          <div><span class="status-dot status-${d.status}"></span><span class="status-label">${d.status.toUpperCase()}</span></div>
+        </div>
+        <div class="asset-desc">${d.description || ''}</div>
+        <div class="meter-row"><span>CPU</span><div class="meter"><div class="meter-fill ${cpuCls}" style="width:${d.cpu_pct}%"></div></div><span>${d.cpu_pct}%</span></div>
+        <div class="meter-row"><span>RAM</span><div class="meter"><div class="meter-fill ${ramCls}" style="width:${d.ram_pct}%"></div></div><span>${d.ram_pct}%</span></div>
+        <div class="tag-row">${(d.tags || []).map(t => `<span class="mini-tag">${t}</span>`).join('')}</div>
+        ${flagged ? '<div class="incident-flag">ACTIVE INCIDENT</div>' : ''}
+      </div>`;
+    }).join('');
+
+    wrap.querySelectorAll('.asset-card').forEach(card => {
+      card.addEventListener('click', () => {
+        selectedId = card.dataset.id;
+        renderAll();
+      });
+    });
+  }
+
+  function renderConsole() {
+    const body = document.getElementById('consoleBody');
+    const device = devices.find(d => d.device_id === selectedId);
+    if (!device) {
+      body.innerHTML = '<div class="console-empty">Select a device from the inventory to open its console.</div>';
+      return;
+    }
+    const flagged = deviceHasIncident(device);
+    body.innerHTML = `
+      <div class="console-field"><div class="console-field-label">HOSTNAME</div><div class="console-field-val">${device.hostname}</div></div>
+      <div class="console-field"><div class="console-field-label">IP ADDRESS</div><div class="console-field-val">${device.ip}</div></div>
+      <div class="console-field"><div class="console-field-label">DESCRIPTION</div><div class="console-field-val">${device.description || '--'}</div></div>
+      <div class="console-field"><div class="console-field-label">SITE</div><div class="console-field-val">${device.site || '--'}</div></div>
+      <div class="console-field"><div class="console-field-label">STATUS</div><div class="console-field-val"><span class="status-dot status-${device.status}"></span>${device.status.toUpperCase()}</div></div>
+      ${flagged ? '<div class="incident-flag">LINKED TO ACTIVE NOC INCIDENT</div>' : ''}
+      <div class="btn-row" style="margin-top:12px">
+        <button class="btn btn-outline btn-full" data-action="override">OVERRIDE</button>
+        <button class="btn btn-outline btn-full" data-action="reboot">REBOOT</button>
+        <button class="btn btn-outline btn-full" data-action="restart_service">RESTART SERVICE</button>
+      </div>
+      <div class="btn-row" style="margin-top:6px">
+        <button class="btn btn-gold btn-full" id="btnEscalateAsset">ESCALATE TO L1 &rarr;</button>
+      </div>`;
+
+    body.querySelectorAll('[data-action]').forEach(btn => {
+      btn.addEventListener('click', () => runAction(device.device_id, btn.dataset.action));
+    });
+    document.getElementById('btnEscalateAsset').addEventListener('click', () => escalateAssetToL1(device.device_id));
+  }
+
+  // ── Simulated device actions (no real hardware access) ─────────────────
+  const ACTION_LABELS = { override: 'MANUAL OVERRIDE', reboot: 'REBOOT', restart_service: 'RESTART SERVICE' };
+
+  function runAction(deviceId, action) {
+    const device = devices.find(d => d.device_id === deviceId);
+    if (!device) return;
+
+    const prevStatus = device.status;
+    if (action === 'reboot' || action === 'restart_service') {
+      device.status = 'maintenance';
+      setTimeout(() => {
+        device.status = prevStatus === 'down' ? 'online' : prevStatus;
+        saveFleet();
+        renderAll();
+        appendLog(`${device.hostname}: ${ACTION_LABELS[action]} complete, status restored to ${device.status.toUpperCase()}.`);
+      }, 1500);
+    }
+
+    saveFleet();
+    appendLog(`${device.hostname}: ${ACTION_LABELS[action]} issued by operator.`);
+
+    try {
+      TSM.relay.write('NOC', {
+        source: 'asset-console', device_id: device.device_id, hostname: device.hostname,
+        action, previous_status: prevStatus
+      }, { caseId: device.device_id, stage: 'ASSET_ACTION' });
+    } catch (e) { console.warn('Relay write failed', e); }
+
+    if (window.TSMEventBus && window.TSMEventBus.emit) {
+      window.TSMEventBus.emit('WAR_ROOM_READY', { vertical: 'noc', payload: { device: device.device_id, action }, ts: Date.now() });
+    }
+
+    renderAll();
+  }
+
+  function appendLog(line) {
+    const el = document.getElementById('consoleLog');
+    const ts = new Date().toLocaleTimeString();
+    const entry = `[${ts}] ${line}`;
+    if (el.textContent === 'No actions taken this session.') el.textContent = '';
+    el.textContent = entry + '\n' + el.textContent;
+    let log = [];
+    try { log = JSON.parse(localStorage.getItem(LOG_KEY) || '[]'); } catch (e) {}
+    log.unshift(entry);
+    try { localStorage.setItem(LOG_KEY, JSON.stringify(log.slice(0, 100))); } catch (e) {}
+  }
+
+  function restoreLog() {
+    let log = [];
+    try { log = JSON.parse(localStorage.getItem(LOG_KEY) || '[]'); } catch (e) {}
+    if (log.length) document.getElementById('consoleLog').textContent = log.join('\n');
+  }
+
+  // ── Escalate a device directly into L1 Ticket Copilot ──────────────────
+  // Writes a payload the L1 copilot page reads on load (see the "Incoming
+  // escalation" block in l1-ticket-copilot.html) so the ticket form is
+  // actually pre-filled on arrival, not just a relay write with no reader.
+  function escalateAssetToL1(deviceId) {
+    const device = devices.find(d => d.device_id === deviceId);
+    if (!device) return;
+    const severity = device.status === 'down' ? 'P1' : device.status === 'degraded' ? 'P2' : 'P3';
+    const payload = {
+      incident: device.device_id,
+      priority: severity,
+      status: 'In Progress',
+      assignmentGroup: 'NOC L2',
+      asset: device.hostname,
+      description: `${device.description || ''}\n\nAsset console: ${device.status.toUpperCase()}, CPU ${device.cpu_pct}%, RAM ${device.ram_pct}%.`
+    };
+    try {
+      TSM.relay.write('L1COPILOT', payload, { caseId: device.device_id, stage: 'ESCALATED_TO_L1' });
+    } catch (e) { console.warn('Relay to L1 failed', e); return; }
+
+    if (window.TSMEventBus && window.TSMEventBus.emit) {
+      window.TSMEventBus.emit('WAR_ROOM_READY', { vertical: 'noc', payload, ts: Date.now() });
+    }
+    appendLog(`${device.hostname}: escalated to L1 Ticket Copilot.`);
+    document.getElementById('navStatus').textContent = `ENGINE: ESCALATED ${device.device_id} TO L1`;
+    setTimeout(() => { window.location.href = '/html/l1-copilot/l1-ticket-copilot.html'; }, 300);
+  }
+
+  document.getElementById('btnResetFleet').addEventListener('click', () => {
+    if (!confirm('Reset the fleet to sample data? This clears any simulated actions.')) return;
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(LOG_KEY);
+    selectedId = null;
+    document.getElementById('consoleLog').textContent = 'No actions taken this session.';
+    loadFleet();
+  });
+
+  restoreLog();
+  loadFleet();
+})();
+</script>
+</body>
+</html>

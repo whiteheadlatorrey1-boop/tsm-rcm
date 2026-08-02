@@ -1,0 +1,65 @@
+From 40834ef6a34384d4a3636aab099a826b17e1e841 Mon Sep 17 00:00:00 2001
+From: Tron <tron@tsmconsultz.dev>
+Date: Sat, 1 Aug 2026 05:33:06 +0000
+Subject: [PATCH] =?UTF-8?q?fix:=20insurance-strategist.html=20=E2=80=94=20?=
+ =?UTF-8?q?missing=20<script>=20tags=20leaked=20~300=20lines=20of=20JS=20a?=
+ =?UTF-8?q?s=20visible=20page=20text?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Script-tag balance was off (15 open vs 17 close). Two whole blocks had
+no opening <script> tag at all, so the browser rendered their raw
+source — CSS, HTML template strings, function bodies — as literal
+text on the page instead of executing it:
+
+1. The entire inlined 'TSM Mission Guide' widget (~293 lines: styles,
+   render(), renderMission(), bindEvents(), regenerateSteps(), init())
+   sat directly in the body between the previous </script> and its own
+   trailing </script>, unwrapped.
+2. The 'TSM AUTO-RUN STRATEGIST' IIFE right after it had the same
+   problem — no opening tag, closed by a stray </script> with nothing
+   to pair with.
+
+This is the same systemic 'script tag leak' pattern flagged before
+(automated patch injector omitting opening <script> tags) — this
+instance just hadn't been hit yet because nothing had broken loudly
+until the visible-text render made it obvious.
+
+Fix: inserted the two missing opening <script> tags so both blocks
+close against the </script> tags that were already there. Verified
+<script>/</script> count is now balanced (17/17) and every non-src
+script block in the file still passes node --check individually.
+
+Noted but not fixed here (separate, non-urgent issue): the page also
+loads /html/tsm-insurance/public/js/tsm-mission-guide.js, which does
+not exist anywhere in the repo — a dead 404'ing include, harmless
+since nothing depends on it, but worth cleaning up in the same pass
+as other dead-script sweeps.
+---
+ html/war-rooms/insure-war/insurance-strategist.html | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/html/war-rooms/insure-war/insurance-strategist.html b/html/war-rooms/insure-war/insurance-strategist.html
+index 1e12f420..3f73a079 100644
+--- a/html/war-rooms/insure-war/insurance-strategist.html
++++ b/html/war-rooms/insure-war/insurance-strategist.html
+@@ -945,6 +945,7 @@ PRINCIPAL ESCALATION: [Yes/No] — [reason]`;
+   } catch(e){ console.warn('Insurance issue pack error:',e); }
+ })();
+ </script>
++<script>
+ /**
+  * TSM MISSION GUIDE — Inlined
+  */// v3
+@@ -1241,6 +1242,7 @@ function insXPParseExplain(raw){
+ </script>
+ <script src="/html/tsm-insurance/public/js/tsm-mission-guide.js"></script>
+ 
++<script>
+ /* TSM AUTO-RUN STRATEGIST */
+ (function(){
+   try {
+-- 
+2.43.0
+

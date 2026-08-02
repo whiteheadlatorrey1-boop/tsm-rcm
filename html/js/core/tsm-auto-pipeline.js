@@ -22,13 +22,13 @@ window.TSMEventBus = window.TSMEventBus || {
   'use strict';
 
   const RELAY_REGISTRY = {
-    healthcare:   { keys: ['TSM_HC_WAR_RELAY','tsm_hc_war_relay','tsm_war_relay_healthcare'], entryFn: 'runPipeline',    strategistPath: '/healthcare/hc-main-strategist/' },
-    finops:       { keys: ['tsm_war_relay_finops-suite','TSM_FINOPS_WAR_RELAY'],         entryFn: 'generateReport', strategistPath: '/finops-suite/finops-main-strategist.html' },
-    insurance:    { keys: ['TSM_INS_WAR_RELAY','tsm_ins_war_relay'],                     entryFn: 'runStrategist',  strategistPath: '/tsm-insurance/insurance-strategist.html' },
-    construction: { keys: ['TSM_CONSTRUCTION_WAR_RELAY','tsm_construction_war_relay'],   entryFn: 'runBNCA',        strategistPath: '/construction-suite/construction-strategist.html' },
-    legal:        { keys: ['TSM_LEGAL_WAR_RELAY','tsm_legal_war_relay'],                 entryFn: 'runSynthesis',   strategistPath: '/legal-pro/legal-main-strategist.html' },
-    realestate:   { keys: ['TSM_RE_WAR_RELAY','tsm_re_war_relay'],                       entryFn: 'runStrategist',  strategistPath: '/reo-pro/re-strategist.html' },
-    bpo:          { keys: ['TSM_BPO_WAR_RELAY','tsm_bpo_war_relay','tsm_war_relay_bpo'], entryFn: 'runStrategist',  strategistPath: '/bpo/bpo-strategist-v2.html' },
+    healthcare:   { keys: ['TSM_HC_WAR_RELAY','tsm_hc_war_relay','tsm_war_relay_healthcare'], entryFn: 'runPipeline',    strategistPath: '/html/war-rooms/health-war/hc-main-strategist.html' },
+    finops:       { keys: ['tsm_war_relay_finops-suite','TSM_FINOPS_WAR_RELAY'],         entryFn: 'generateReport', strategistPath: '/html/finops-suite/finops-war/finops-main-strategist.html' },
+    insurance:    { keys: ['TSM_INS_WAR_RELAY','tsm_ins_war_relay'],                     entryFn: 'runStrategist',  strategistPath: '/html/war-rooms/insure-war/insurance-strategist.html' },
+    construction: { keys: ['TSM_CONSTRUCTION_WAR_RELAY','tsm_construction_war_relay'],   entryFn: 'runBNCA',        strategistPath: '/html/war-rooms/construct-war/construction-strategist.html' },
+    legal:        { keys: ['TSM_LEGAL_WAR_RELAY','tsm_legal_war_relay'],                 entryFn: 'runSynthesis',   strategistPath: '/html/war-rooms/legal-war/legal-main-strategist.html' },
+    realestate:   { keys: ['TSM_RE_WAR_RELAY','tsm_re_war_relay'],                       entryFn: 'runStrategist',  strategistPath: '/html/war-rooms/re-war/re-strategist.html' },
+    bpo:          { keys: ['TSM_BPO_WAR_RELAY','tsm_bpo_war_relay','tsm_war_relay_bpo'], entryFn: 'runStrategist',  strategistPath: '/html/war-rooms/bpo-war/bpo-strategist.html' },
 
     /* Added: verticals that exist in server.js (SP.cpq / SP.o2c / SP.crm / SP.approval /
        SP.mdm / SP.integration / SP.governance / SP.digital_twin) but were never wired
@@ -161,7 +161,15 @@ window.TSMEventBus = window.TSMEventBus || {
 
   async function init() {
     if (localStorage.getItem('tsm_auto_mode') === 'off') { log('Auto-mode OFF'); return; }
-    if (localStorage.getItem('TSM_AUTO_LAUNCH') === 'false') { log('TSM_AUTO_LAUNCH=false'); return; }
+    // Auto-launch is opt-in, not opt-out. Previously this only bailed when
+    // TSM_AUTO_LAUNCH was explicitly 'false', so every strategist page on
+    // every vertical auto-ran its full analysis chain by default, the
+    // instant it detected relay data in storage — with zero prompt, and the
+    // only opt-out being a toggle button that lives on an unrelated
+    // document-search page nobody visiting a strategist page directly would
+    // ever see. Now nothing auto-launches unless something has explicitly
+    // set TSM_AUTO_LAUNCH to 'true' (e.g. via TSMAutoPipeline.enable()).
+    if (localStorage.getItem('TSM_AUTO_LAUNCH') !== 'true') { log('Auto-launch not explicitly enabled — skipping'); return; }
 
     const vertical = detectVertical();
     if (!vertical) { log('Vertical not detected'); return; }

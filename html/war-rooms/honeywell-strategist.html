@@ -56,6 +56,13 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 .eng-card-body table.md-table th,.eng-card-body table.md-table td{border:1px solid var(--border);padding:4px 6px;text-align:left;vertical-align:top;}
 .eng-card-body table.md-table th{color:var(--muted);text-transform:uppercase;font-size:.6rem;}
 .no-items{font-family:'JetBrains Mono',monospace;font-size:.7rem;color:var(--muted);}
+.explain-panel{background:var(--bg2);border:1px solid var(--border);border-left:2px solid var(--amber);border-radius:6px;padding:14px 18px;margin-bottom:16px;}
+.explain-title{font-family:'Orbitron',sans-serif;font-size:.62rem;color:var(--amber);letter-spacing:.1em;margin-bottom:10px;}
+.explain-row{padding:6px 0;border-top:1px solid var(--border);}
+.explain-row:first-of-type{border-top:none;}
+.explain-node{font-family:'Orbitron',sans-serif;font-size:.6rem;color:var(--cyan);letter-spacing:.05em;margin-right:10px;}
+.explain-score{font-family:'JetBrains Mono',monospace;font-size:.65rem;color:var(--text);}
+.explain-text{font-family:'JetBrains Mono',monospace;font-size:.62rem;color:var(--muted);margin-top:3px;line-height:1.5;}
 .toast{position:fixed;bottom:20px;right:20px;background:var(--bg2);border:1px solid var(--amber);color:var(--amber);padding:10px 18px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:.65rem;opacity:0;pointer-events:none;transition:.3s;z-index:50;}
 .toast.show{opacity:1;transform:translateY(-4px);}
 .toast.err{border-color:var(--red);color:var(--red);}
@@ -97,11 +104,24 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 </div>
 <div class="wrap" id="wrap"><!-- populated by JS --></div>
 <div class="toast" id="toast"></div>
+<script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
+<script src="/html/shared/runtime/mission/mission-model.js"></script>
+<script src="/html/shared/runtime/mission/mission-store.js"></script>
 <script>
 function tick(){document.getElementById('clock').textContent=new Date().toLocaleTimeString();}
 setInterval(tick,1000);tick();
 
-const RELAY_KEY = 'TSM_HONEYWELL_RELAY';
+// Domain-specific relay keys (post-split) — plant/cyber/supplier each write
+// their own key now instead of colliding on one TSM_HONEYWELL_RELAY.
+const RELAY_KEYS = {
+  plant:    'TSM_HONEYWELL_PLANT_RELAY',
+  cyber:    'TSM_HONEYWELL_CYBER_RELAY',
+  supplier: 'TSM_HONEYWELL_SUPPLIER_RELAY'
+};
+// Legacy key, kept as a fallback read only — nothing writes to it anymore
+// post-split, but any old in-flight session data still sitting in a
+// browser's storage from before the split can still be picked up once.
+const LEGACY_RELAY_KEY = 'TSM_HONEYWELL_RELAY';
 
 const SOURCE_META = {
   plant:   { label: 'PLANT — OPERATIONS INCIDENT',     icon: '⚡', war: '/html/plant-incident.html',    color: 'var(--orange)' },
@@ -117,10 +137,24 @@ function showToast(msg, isErr){
 }
 
 function loadRelay(){
-  try{
-    const raw = localStorage.getItem(RELAY_KEY) || sessionStorage.getItem(RELAY_KEY);
+  let latest = null;
+  for (const key of Object.values(RELAY_KEYS)) {
+    try {
+      const raw = localStorage.getItem(key) || sessionStorage.getItem(key);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw);
+      if (!latest || (parsed.timestamp && (!latest.timestamp || parsed.timestamp > latest.timestamp))) {
+        latest = parsed;
+      }
+    } catch(e) { /* skip malformed entry, keep checking other domains */ }
+  }
+  if (latest) return latest;
+  // Nothing in any of the three split keys — fall back to the legacy
+  // unscoped key in case there's pre-split data still sitting around.
+  try {
+    const raw = localStorage.getItem(LEGACY_RELAY_KEY) || sessionStorage.getItem(LEGACY_RELAY_KEY);
     return raw ? JSON.parse(raw) : null;
-  }catch(e){ return null; }
+  } catch(e) { return null; }
 }
 
 function manualRefresh(){
@@ -216,6 +250,68 @@ function tertiaryLabel(source){
   return 'RISK SCORE';
 }
 
+// Grounded in the actual relay payload shape (data.kpis.*, data.outputs) — this
+// payload carries no confidence/ML score field, unlike legal/construction's
+// node-score model, so this cites which structured field each KPI came from
+// and which war room wrote it, rather than fabricating a confidence number.
+function getExplainItems(data){
+  const items = [];
+  const k = data.kpis || {};
+  const src = data.source || 'unknown';
+  const srcLabel = SOURCE_META[src] ? SOURCE_META[src].label : src.toUpperCase();
+
+  const exposureVal = kpiExposure(k.exposure);
+  if (exposureVal !== '—') {
+    items.push({
+      label: 'FINANCIAL EXPOSURE',
+      value: exposureVal,
+      explain: `Read directly from kpis.exposure in the ${srcLabel} relay payload${data.docType ? ' (source doc type: ' + data.docType + ')' : ''} — not recomputed on this page.`
+    });
+  }
+
+  const secKpi = k.buffer || k.containment;
+  const secVal = kpiSecondary(secKpi);
+  if (secVal !== '—') {
+    items.push({
+      label: secondaryLabel(src),
+      value: secVal,
+      explain: `Read directly from kpis.${k.buffer ? 'buffer.bufferDays' : 'containment.containmentEta'} as written by the ${srcLabel} war room.`
+    });
+  }
+
+  const terKpi = k.orders || k.risk;
+  const terVal = kpiTertiary(terKpi);
+  if (terVal !== '—') {
+    items.push({
+      label: tertiaryLabel(src),
+      value: terVal,
+      explain: `Read directly from kpis.${k.orders ? 'orders.ordersAtRisk' : 'risk'} as written by the ${srcLabel} war room.`
+    });
+  }
+
+  if (data.outputs && data.outputs.length) {
+    items.push({
+      label: '6-ENGINE ANALYSIS',
+      value: data.outputs.length + ' engine output' + (data.outputs.length === 1 ? '' : 's'),
+      explain: `The KPI figures above are the war room's own computation across its 6-engine pipeline — this page displays them, it does not independently re-score or re-weight them.`
+    });
+  }
+
+  return items;
+}
+
+function renderExplainItems(items){
+  if (!items.length) return '';
+  return `<div class="explain-panel">
+    <div class="explain-title">WHY THESE NUMBERS</div>
+    ${items.map(it => `<div class="explain-row">
+      <span class="explain-node">${escapeHtml(it.label)}</span>
+      <span class="explain-score">${escapeHtml(it.value)}</span>
+      <div class="explain-text">${escapeHtml(it.explain)}</div>
+    </div>`).join('')}
+  </div>`;
+}
+
 function renderEmpty(){
   document.getElementById('hdrBadge').style.display='none';
   document.getElementById('hdrSub').textContent='Awaiting relay from a war room…';
@@ -252,6 +348,8 @@ function render(){
     <div class="kpi"><div class="kpi-val amber">${kpiSecondary(k.buffer || k.containment)}</div><div class="kpi-lbl">${secondaryLabel(data.source)}</div></div>
     <div class="kpi"><div class="kpi-val cyan">${kpiTertiary(k.orders || k.risk)}</div><div class="kpi-lbl">${tertiaryLabel(data.source)}</div></div>
   </div>`;
+
+  html += renderExplainItems(getExplainItems(data));
 
   if(data.docText){
     html += `<div class="doc-box"><div class="sec-hdr">SOURCE DOCUMENT</div><div class="doc-text">${escapeHtml(data.docText)}</div></div>`;
@@ -291,12 +389,44 @@ function escalateExec(){
     localStorage.setItem('TSM_HONEYWELL_EXEC_RELAY', payload);
     sessionStorage.setItem('TSM_HONEYWELL_EXEC_RELAY', payload);
   }catch(e){}
+
+  // Phase 2: Mission Core creation
+  try {
+    if (window.TSMMissionModel && window.TSMMissionStore) {
+      const hwSourceMeta = SOURCE_META[data.source] || null;
+      const mission = window.TSMMissionModel.createMission({
+        vertical: 'honeywell',
+        tenantId: 'default',
+        client: hwSourceMeta ? hwSourceMeta.label : (data.source || 'Honeywell Incident'),
+        classification: {
+          summary: data.summary || data.narrative || '',
+          incidentSource: data.source || null,
+          source: 'Honeywell Strategist'
+        },
+        workflow: {
+          assignedTo: null,
+          queue: null,
+          priority: 'normal', // no exposure/risk/confidence signal identified in this payload yet
+          sla: null
+        },
+        actor: 'honeywell-strategist'
+      });
+      window.TSMMissionStore.saveMission(mission);
+    } else {
+      console.warn('Mission Core not loaded — skipping mission creation, Honeywell relay write already succeeded.');
+    }
+  } catch (missionErr) {
+    console.warn('Mission Core creation failed (non-fatal, Honeywell relay already written):', missionErr);
+  }
+
   showToast('Escalated to Executive — opening…');
   setTimeout(()=>{ window.location.href = '/html/war-rooms/honeywell-executive-portal.html'; }, 600);
 }
 
 render();
-window.addEventListener('storage', e => { if(e.key === RELAY_KEY) render(); });
+window.addEventListener('storage', e => {
+  if (Object.values(RELAY_KEYS).includes(e.key) || e.key === LEGACY_RELAY_KEY) render();
+});
 </script>
 </body>
 </html>
