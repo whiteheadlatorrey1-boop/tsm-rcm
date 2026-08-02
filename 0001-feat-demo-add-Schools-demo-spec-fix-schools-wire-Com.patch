@@ -1,0 +1,98 @@
+From d88ded359b2c0e4e00c610576b8abea4f8a43ff5 Mon Sep 17 00:00:00 2001
+From: Latorrey Whitehead <torreyw94@tsmatter.com>
+Date: Sun, 2 Aug 2026 18:25:04 +0000
+Subject: [PATCH] feat(demo): add Schools demo spec + fix(schools): wire
+ Command Center nav to Strategist/Executive Portal
+
+- schools-command.html had zero outbound nav links to its own
+  schools-strategist.html / schools-executive-portal.html, even though
+  both of those pages already fully cross-link back to Command and to
+  each other. Added real #tsm-chain-strat / #tsm-chain-exec links to
+  the TSM cross-links bar, matching the strategist/exec-portal chain
+  IDs used elsewhere in the codebase.
+- Added demo/schools-demo.json + tests/e2e/demo/schools-demo.spec.js,
+  source-verified against real ids/onclick handlers/functions:
+  AI tab -> prompt library -> RUN AI ANALYSIS -> relay -> Strategist
+  (auto-render #wrap/.kpi-row/.ai-box) -> Executive Portal.
+  Not yet live-Playwright-verified (sandbox hits the same
+  chrome-headless-shell 403 as Codespace).
+---
+ demo/schools-demo.json                        | 23 +++++++++++++++++++
+ .../schools-command/schools-command.html      |  3 +++
+ tests/e2e/demo/schools-demo.spec.js           | 20 ++++++++++++++++
+ 3 files changed, 46 insertions(+)
+ create mode 100644 demo/schools-demo.json
+ create mode 100644 tests/e2e/demo/schools-demo.spec.js
+
+diff --git a/demo/schools-demo.json b/demo/schools-demo.json
+new file mode 100644
+index 00000000..6f31ba15
+--- /dev/null
++++ b/demo/schools-demo.json
+@@ -0,0 +1,23 @@
++{
++  "vertical": "schools",
++  "note": "Source-verified 2026-08-02 against whiteheadlatorrey1-boop/tsm-rcm (html/war-rooms/schools-command/schools-command.html + schools-strategist.html + schools-executive-portal.html) by reading real ids/onclick handlers/functions directly -- NOT live-verified via Playwright (this sandbox hits the same chrome-headless-shell 403 as the Codespace). Command Center is a single-page tabbed app (switchTab('ai') opens the AI Analysis tab, panel id tab-ai) with a left-hand prompt library (loadPrompt(...) onclick handlers) feeding a shared #ai-input textarea; RUN AI ANALYSIS is button#schBtnRunAnalysis, output renders into #ai-output, and schRunAnalysis() internally calls schWriteRelay() to push to the relay control plane -- there is no separate manual relay button. Strategist and Executive Portal are both auto-rendering (render()/#wrap innerHTML from relay data on page load, storage + TSM_RELAY_EVENT listeners for live updates) and link to each other via plain <a class=hbtn> anchors, same as Mortgage. FIX INCLUDED: schools-command.html previously had zero outbound nav links to its own schools-strategist.html/schools-executive-portal.html (both of those pages already fully cross-linked back to Command and to each other -- only Command's outbound side was missing). Added real #tsm-chain-strat / #tsm-chain-exec links to the TSM cross-links bar; this spec exercises those new links instead of a goto workaround. Run once in Codespaces and correct any selector drift before treating as final.",
++  "steps": [
++    { "shot": "001-command-load", "goto": "/html/war-rooms/schools-command/schools-command.html", "waitMs": 1500 },
++
++    { "shot": "002-open-ai-tab", "click": "[data-tab=\"ai\"]", "waitFor": "#tab-ai", "waitMs": 800 },
++
++    { "shot": "003-load-prompt-from-library", "click": ".pr-item", "waitFor": "#ai-input", "waitMs": 500 },
++
++    { "shot": "004-run-ai-analysis", "click": "#schBtnRunAnalysis", "waitFor": "#ai-output", "waitMs": 4000 },
++
++    { "shot": "005-relayed-to-strategist", "click": "#tsm-chain-strat", "waitMs": 1500 },
++
++    { "shot": "006-strategist-load", "waitFor": "#wrap .kpi-row", "waitMs": 1000 },
++
++    { "shot": "007-strategist-ai-summary", "waitFor": ".ai-box", "waitMs": 600 },
++
++    { "shot": "008-executive-view", "click": "a.hbtn.primary[href=\"schools-executive-portal.html\"]", "waitMs": 1500 },
++
++    { "shot": "009-exec-portal-kpis", "waitFor": "#wrap", "waitMs": 800 }
++  ]
++}
+diff --git a/html/war-rooms/schools-command/schools-command.html b/html/war-rooms/schools-command/schools-command.html
+index 98a98479..b043bfda 100644
+--- a/html/war-rooms/schools-command/schools-command.html
++++ b/html/war-rooms/schools-command/schools-command.html
+@@ -445,6 +445,9 @@ console.log("TSM_UI: Direct Neural Link Established.");
+   <a href="#" style="color:var(--gold)" onclick="switchTab('compliance')">📊 Compliance</a>
+   <a href="#" style="color:var(--pink)">HC BizBox</a>
+   <a href="#" style="color:var(--gold)">PHX Demo</a>
++  <span style="margin-left:8px;border-left:1px solid #1e3f60;padding-left:10px;">War Room:</span>
++  <a href="schools-strategist.html" id="tsm-chain-strat" style="color:var(--teal)">🧠 Strategist &rarr;</a>
++  <a href="schools-executive-portal.html" id="tsm-chain-exec" style="color:var(--gold)">🏛 Executive &rarr;</a>
+ </div>
+ 
+ <!-- Sovereign Bar -->
+diff --git a/tests/e2e/demo/schools-demo.spec.js b/tests/e2e/demo/schools-demo.spec.js
+new file mode 100644
+index 00000000..2023a285
+--- /dev/null
++++ b/tests/e2e/demo/schools-demo.spec.js
+@@ -0,0 +1,20 @@
++const { test } = require('@playwright/test');
++const path = require('path');
++const { runStory, loadStory } = require('../../../demo/demo-engine');
++
++// Point this at your running TSM server (Codespace forwarded port or localhost).
++const BASE_URL = process.env.TSM_BASE_URL || 'http://localhost:8080';
++
++test('Schools executive demo', async ({ page }) => {
++  await page.setViewportSize({ width: 1920, height: 1080 });
++  test.setTimeout(120_000);
++
++  const story = loadStory(path.join(__dirname, '../../../demo/schools-demo.json'));
++  const outDir = path.join(__dirname, 'screenshots', 'schools');
++
++  await runStory(page, {
++    steps: story.steps,
++    outDir,
++    baseURL: BASE_URL,
++  });
++});
+-- 
+2.43.0
+

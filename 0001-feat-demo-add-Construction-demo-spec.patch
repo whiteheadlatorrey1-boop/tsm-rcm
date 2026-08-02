@@ -1,0 +1,90 @@
+From 8d381da02111c722d112231c81c6eba32d3968de Mon Sep 17 00:00:00 2001
+From: Latorrey Whitehead <torreyw94@tsmatter.com>
+Date: Sun, 2 Aug 2026 17:25:20 +0000
+Subject: [PATCH] feat(demo): add Construction demo spec
+
+Follows the healthcare-demo.json/spec.js pattern: war room load
+built-in demo anomaly (CO-114) -> fire 6 engines -> escalate to
+strategist -> run BNCA synthesis -> escalate to executive portal ->
+KPIs + explainability panel.
+
+escalateToExecutive() in construction-strategist.html hard-blocks
+with an alert() unless the BNCA output has 50+ chars, so the
+synthesis step must complete first -- mirrors the same run-before-
+escalate guard found in the Real Estate war room.
+
+Selectors read directly from construction-war-room.html /
+construction-strategist.html / construction-executive-portal.html
+(ids, onclick handlers, functions) -- NOT live-verified via
+Playwright, since this sandbox hits the same chrome-headless-shell
+403 as the Codespace. Flagged in the spec's own note field; should
+be run once in Codespaces to confirm before treating as final.
+---
+ demo/construction-demo.json              | 27 ++++++++++++++++++++++++
+ tests/e2e/demo/construction-demo.spec.js | 20 ++++++++++++++++++
+ 2 files changed, 47 insertions(+)
+ create mode 100644 demo/construction-demo.json
+ create mode 100644 tests/e2e/demo/construction-demo.spec.js
+
+diff --git a/demo/construction-demo.json b/demo/construction-demo.json
+new file mode 100644
+index 00000000..4bef6c99
+--- /dev/null
++++ b/demo/construction-demo.json
+@@ -0,0 +1,27 @@
++{
++  "vertical": "construction",
++  "note": "Source-verified 2026-08-02 against whiteheadlatorrey1-boop/tsm-rcm (html/war-rooms/construct-war/construction-war-room.html + construction-strategist.html + construction-executive-portal.html) by reading real ids/onclick handlers/functions directly -- NOT live-verified via Playwright (this sandbox hits the same chrome-headless-shell 403 as the Codespace). Uses the built-in 'LOAD DEMO ANOMALY -- CO-114' sample chip (id=smp-demo / loadDemoAnomaly()) as the most deterministic doc-load path. escalateToExecutive() in construction-strategist.html hard-blocks with an alert() unless #bncaOutput has 50+ chars, so the BNCA synthesis run must complete first. Run once in Codespaces and correct any selector drift before treating as final.",
++  "steps": [
++    { "shot": "001-war-room-load", "goto": "/html/war-rooms/construct-war/construction-war-room.html", "waitMs": 1500 },
++
++    { "shot": "002-load-demo-anomaly", "click": "#smp-demo", "waitFor": "#con-upload-name", "waitMs": 800 },
++
++    { "shot": "003-fire-engines", "click": "#fireBtn", "waitFor": "#kpiEngines", "waitMs": 5000 },
++
++    { "shot": "004-engines-complete", "waitFor": "#escalateBar", "waitMs": 800 },
++
++    { "shot": "005-escalate-to-strategist", "click": "button[onclick=\"escalateToStrategist()\"]", "waitMs": 2000 },
++
++    { "shot": "006-strategist-load", "waitFor": "#synthAllBtn", "waitMs": 800 },
++
++    { "shot": "007-run-bnca-synthesis", "click": "#synthAllBtn", "waitFor": "#bncaOutput", "waitMs": 4500 },
++
++    { "shot": "008-explainability", "waitFor": "#conXPReasoning", "waitMs": 600 },
++
++    { "shot": "009-escalate-to-exec", "click": "button[onclick=\"escalateToExecutive()\"]", "waitMs": 2000 },
++
++    { "shot": "010-exec-portal-kpis", "waitFor": "#kpiExposure", "waitMs": 800 },
++
++    { "shot": "011-exec-explainability", "waitFor": ".tsmk-explain", "waitMs": 600 }
++  ]
++}
+diff --git a/tests/e2e/demo/construction-demo.spec.js b/tests/e2e/demo/construction-demo.spec.js
+new file mode 100644
+index 00000000..25f0ec14
+--- /dev/null
++++ b/tests/e2e/demo/construction-demo.spec.js
+@@ -0,0 +1,20 @@
++const { test } = require('@playwright/test');
++const path = require('path');
++const { runStory, loadStory } = require('../../../demo/demo-engine');
++
++// Point this at your running TSM server (Codespace forwarded port or localhost).
++const BASE_URL = process.env.TSM_BASE_URL || 'http://localhost:8080';
++
++test('Construction executive demo', async ({ page }) => {
++  await page.setViewportSize({ width: 1920, height: 1080 });
++  test.setTimeout(120_000);
++
++  const story = loadStory(path.join(__dirname, '../../../demo/construction-demo.json'));
++  const outDir = path.join(__dirname, 'screenshots', 'construction');
++
++  await runStory(page, {
++    steps: story.steps,
++    outDir,
++    baseURL: BASE_URL,
++  });
++});
+-- 
+2.43.0
+

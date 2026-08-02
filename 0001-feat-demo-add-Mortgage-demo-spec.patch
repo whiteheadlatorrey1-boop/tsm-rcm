@@ -1,0 +1,83 @@
+From 34f091ff20971ca8ef7ea9caec42bbb8aedb7a00 Mon Sep 17 00:00:00 2001
+From: Latorrey Whitehead <torreyw94@tsmatter.com>
+Date: Sun, 2 Aug 2026 17:30:25 +0000
+Subject: [PATCH] feat(demo): add Mortgage demo spec
+
+Adapted for mortgage-war-room.html's actual structure, which differs
+from FinOps/Construction/Insurance: id + addEventListener wiring (not
+inline onclick), no 6-engine grid -- LOAD SAMPLE DATA -> RUN AI
+ANALYSIS -> RELAY TO STRATEGIST. Both mortgage-strategist.html and
+mortgage-executive-portal.html auto-render from relay data on page
+load (render()/#wrap innerHTML, no manual run button on either page)
+and use plain <a href> links for navigation rather than onclick
+handlers.
+
+Selectors read directly from mortgage-war-room.html /
+mortgage-strategist.html / mortgage-executive-portal.html -- NOT
+live-verified via Playwright, since this sandbox hits the same
+chrome-headless-shell 403 as the Codespace. Flagged in the spec's own
+note field; should be run once in Codespaces to confirm before
+treating as final.
+---
+ demo/mortgage-demo.json              | 21 +++++++++++++++++++++
+ tests/e2e/demo/mortgage-demo.spec.js | 20 ++++++++++++++++++++
+ 2 files changed, 41 insertions(+)
+ create mode 100644 demo/mortgage-demo.json
+ create mode 100644 tests/e2e/demo/mortgage-demo.spec.js
+
+diff --git a/demo/mortgage-demo.json b/demo/mortgage-demo.json
+new file mode 100644
+index 00000000..a1b2e4a0
+--- /dev/null
++++ b/demo/mortgage-demo.json
+@@ -0,0 +1,21 @@
++{
++  "vertical": "mortgage",
++  "note": "Source-verified 2026-08-02 against whiteheadlatorrey1-boop/tsm-rcm (html/war-rooms/mortgage/mortgage-war-room.html + mortgage-strategist.html + mortgage-executive-portal.html) by reading real ids/onclick handlers/functions directly -- NOT live-verified via Playwright (this sandbox hits the same chrome-headless-shell 403 as the Codespace). This vertical's structure differs from FinOps/Construction/Insurance: it's an id + addEventListener pattern (not inline onclick), no 6-engine grid -- just LOAD SAMPLE DATA -> RUN AI ANALYSIS -> RELAY TO STRATEGIST. The strategist and executive-portal pages are both auto-rendering (render()/#wrap innerHTML from relay data on page load, no manual run button on either page) and use plain <a href> links for navigation, not onclick handlers. Run once in Codespaces and correct any selector drift before treating as final.",
++  "steps": [
++    { "shot": "001-war-room-load", "goto": "/html/war-rooms/mortgage/mortgage-war-room.html", "waitMs": 1500 },
++
++    { "shot": "002-load-sample-data", "click": "#btnLoadSample", "waitMs": 1000 },
++
++    { "shot": "003-run-ai-analysis", "click": "#btnRunAnalysis", "waitFor": "#aiOutput", "waitMs": 4000 },
++
++    { "shot": "004-relay-to-strategist", "click": "#btnRelay", "waitMs": 1500 },
++
++    { "shot": "005-strategist-load", "waitFor": "#wrap .kpi-row", "waitMs": 1000 },
++
++    { "shot": "006-strategist-ai-summary", "waitFor": ".ai-box", "waitMs": 600 },
++
++    { "shot": "007-executive-view", "click": "a.hbtn.primary[href=\"mortgage-executive-portal.html\"]", "waitMs": 1500 },
++
++    { "shot": "008-exec-portal-kpis", "waitFor": "#wrap", "waitMs": 800 }
++  ]
++}
+diff --git a/tests/e2e/demo/mortgage-demo.spec.js b/tests/e2e/demo/mortgage-demo.spec.js
+new file mode 100644
+index 00000000..b8fefa1d
+--- /dev/null
++++ b/tests/e2e/demo/mortgage-demo.spec.js
+@@ -0,0 +1,20 @@
++const { test } = require('@playwright/test');
++const path = require('path');
++const { runStory, loadStory } = require('../../../demo/demo-engine');
++
++// Point this at your running TSM server (Codespace forwarded port or localhost).
++const BASE_URL = process.env.TSM_BASE_URL || 'http://localhost:8080';
++
++test('Mortgage executive demo', async ({ page }) => {
++  await page.setViewportSize({ width: 1920, height: 1080 });
++  test.setTimeout(120_000);
++
++  const story = loadStory(path.join(__dirname, '../../../demo/mortgage-demo.json'));
++  const outDir = path.join(__dirname, 'screenshots', 'mortgage');
++
++  await runStory(page, {
++    steps: story.steps,
++    outDir,
++    baseURL: BASE_URL,
++  });
++});
+-- 
+2.43.0
+
