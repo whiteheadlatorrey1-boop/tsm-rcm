@@ -190,19 +190,19 @@
       "Permit Review": {
         id: "construction-permit-review",
         label: "Permit Review",
-        url: "/html/construction/construction-war-room.html?mode=permit",
+        url: "/html/war-rooms/construct-war/construction-war-room.html?mode=permit",
         type: "permit"
       },
       "Project Recovery": {
         id: "construction-project-recovery",
         label: "Project Recovery",
-        url: "/html/construction/construction-war-room.html?mode=recovery",
+        url: "/html/war-rooms/construct-war/construction-war-room.html?mode=recovery",
         type: "recovery"
       },
       "Construction Strategist": {
         id: "construction-strategist",
         label: "Construction Strategist",
-        url: "/html/construction/construction-war-room.html?mode=strategist",
+        url: "/html/war-rooms/construct-war/construction-war-room.html?mode=strategist",
         type: "strategist"
       }
     }
@@ -809,7 +809,7 @@
     construction: {
       __meta: {
         label: "Construction",
-        warRoom: "/html/construction/construction-war-room.html",
+        warRoom: "/html/war-rooms/construct-war/construction-war-room.html",
         defaultOwner: "Project Engineering",
         executiveAudience: ["strategist", "project-exec", "finance"],
         continuityNarrative:
