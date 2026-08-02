@@ -1704,6 +1704,23 @@ app.post('/api/strategist/query', async (req, res) => {
 // ── MISC ROUTES ───────────────────────────────────────────────────────────────
 app.get(['/html/healthcare/poc-html', '/html/healthcare/poc-html/'], (req, res) => res.sendFile(path.join(dirPath, 'healthcare', 'poc-html', 'index.html')));
 app.get('/_debug', (_req, res) => res.json({ dirname: __dirname, dirPath, suitesConfigured: suites.length, cacheBust: 'v2-20260607' }));
+
+
+// ── BUSINESS DEVELOPMENT WAR ROOM ─────────────────────────────
+// TSM Outreach Command Center
+
+app.get('/war-room/outreach', (req, res) => {
+    res.sendFile(
+        path.join(
+            __dirname,
+            'html',
+            'war-rooms',
+            'business-development',
+            'tsm-outreach-command-center.html'
+        )
+    );
+});
+
 app.get('/', (_req, res) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
   res.sendFile(path.join(dirPath, 'tsm-platform-hub.html'), (err) => {
@@ -3518,9 +3535,16 @@ app.get('/api/mdm/trust-package', (req, res) => {
 // drift out of sync with what recommendations actually exist.
 const { buildQueue: mdmBuildQueue, summarize: mdmSummarizeQueue } = require('./html/mdm-suite/mdm-mission-queue.js');
 const MDM_MISSION_CLAIMS = new Map(); // recommendationId -> { actor, claimedAt }
+// Phase 7.1 -- Exception Intelligence. Optional per-domain dollar estimate
+// for a single duplicate/quality-review item at 100% confidence -- e.g.
+// { vendor: 50000 } if finance/ops has sourced "a bad vendor record costs
+// ~$50k to clean up/reconcile." Left empty until those figures are actually
+// supplied: mdm-mission-queue.js reports estimatedImpact: null for every
+// mission rather than a fabricated number when a domain has no weight here.
+const MDM_DOMAIN_IMPACT_WEIGHTS = {};
 
 app.get('/api/mdm/mission-queue', (req, res) => {
-  const queue = mdmBuildQueue(MDM_SEED_DATA, MDM_RESOLVED_RECS, MDM_MISSION_CLAIMS);
+  const queue = mdmBuildQueue(MDM_SEED_DATA, MDM_RESOLVED_RECS, MDM_MISSION_CLAIMS, { domainImpactWeights: MDM_DOMAIN_IMPACT_WEIGHTS });
   res.json({ ok: true, summary: mdmSummarizeQueue(queue), queue });
 });
 

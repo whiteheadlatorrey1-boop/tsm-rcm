@@ -3,7 +3,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>TSM Zero-Trust | Enterprise Access Command</title>
-<script>document.oncontextmenu=()=>false;document.onkeydown=e=>{if(e.keyCode==123||(e.ctrlKey&&e.shiftKey&&(e.keyCode==73||e.keyCode==74||e.keyCode==67))||(e.ctrlKey&&e.keyCode==85))return false;};</script>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Orbitron:wght@400;600;700;900&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#050a0e;--bg2:#080f14;--bg3:#0a1520;--bg4:#0d1a24;--c1:#00d4ff;--c2:#00ff9d;--c3:#f5c518;--c4:#ff4455;--c5:#a855f7;--c6:#ff8c00;--txt:#e2f4ff;--txt2:#7ba8c4;--txt3:#3d6b8a;--bdr:#1a3a52;--bdr2:#0a4a6e;}
@@ -559,9 +558,9 @@ console.log("TSM_UI: Direct Neural Link Established.");
       <div class="ph"><div class="pt"><span>Offboarding</span> Queue</div><span class="bdg b3">3 pending</span></div>
       <div class="pb">
         <div class="alrt wrn" style="margin-bottom:12px;"><span>⚠</span><span>3 terminated employees with active access tokens. Immediate revocation required.</span></div>
-        <div class="li"><div class="li-l"><div class="li-ico">👤</div><div><div class="li-t">Michael Torres — Engineering</div><div class="li-s">Terminated 2025-01-20 · 7 sessions active</div></div></div><button class="btn btn-d btn-sm" onclick="showToast('Revoked','All sessions terminated for M. Torres')">Revoke</button></div>
-        <div class="li"><div class="li-l"><div class="li-ico">👤</div><div><div class="li-t">Sarah Kim — Finance</div><div class="li-s">Terminated 2025-01-22 · GitHub access remains</div></div></div><button class="btn btn-d btn-sm" onclick="showToast('Revoked','GitHub access revoked for S. Kim')">Revoke</button></div>
-        <div class="li"><div class="li-l"><div class="li-ico">👤</div><div><div class="li-t">James Park — IT Admin</div><div class="li-s">Terminated 2025-01-24 · PAM vault access</div></div></div><button class="btn btn-d btn-sm" onclick="showToast('Revoked','PAM vault access revoked for J. Park')">Revoke All</button></div>
+        <div class="li"><div class="li-l"><div class="li-ico">👤</div><div><div class="li-t">Michael Torres — Engineering</div><div class="li-s">Terminated 2025-01-20 · 7 sessions active</div></div></div><button class="btn btn-d btn-sm" onclick="revokeUser('Michael Torres', this)">Revoke</button></div>
+        <div class="li"><div class="li-l"><div class="li-ico">👤</div><div><div class="li-t">Sarah Kim — Finance</div><div class="li-s">Terminated 2025-01-22 · GitHub access remains</div></div></div><button class="btn btn-d btn-sm" onclick="revokeUser('Sarah Kim', this)">Revoke</button></div>
+        <div class="li"><div class="li-l"><div class="li-ico">👤</div><div><div class="li-t">James Park — IT Admin</div><div class="li-s">Terminated 2025-01-24 · PAM vault access</div></div></div><button class="btn btn-d btn-sm" onclick="revokeUser('James Park', this)">Revoke All</button></div>
       </div>
     </div>
   </div>
@@ -650,6 +649,10 @@ console.log("TSM_UI: Direct Neural Link Established.");
 
 <!-- ══ COMPLIANCE ══ -->
 <div id="sec-compliance" class="sec">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+    <div style="font-size:10px;color:var(--txt3);" id="complianceFreshness">Showing cached/demo posture — click Refresh to pull live status.</div>
+    <button class="btn btn-c btn-sm" id="btnRefreshCompliance">↻ Refresh Live Status</button>
+  </div>
   <div class="g3">
     <div class="pnl"><div class="ph"><div class="pt"><span>SOC-2</span> Controls</div><span class="bdg b2">99.8%</span></div><div class="pb">
       <div class="li"><div class="li-l"><div class="li-ico">🔒</div><div><div class="li-t">CC6 — Logical Access</div><div class="li-s">RBAC + MFA enforced</div></div></div><span class="bdg b2">Pass</span></div>
@@ -827,8 +830,7 @@ console.log("TSM_UI: Direct Neural Link Established.");
 
 <div class="toast" id="toast"><div class="toast-t" id="toast-t"></div><div class="toast-m" id="toast-m"></div></div>
 
-setInterval(function(){debugger;},100);
-
+<script>
 const API='/api/chat';
 const SYS=`You are the TSM Zero-Trust Neural Processor, an elite enterprise security AI. You analyze identity risks, threat patterns, compliance posture (SOC-2, HIPAA, GDPR, NIST CSF), RBAC configurations, incident response, zero-trust architecture, legal contract risks, and DevOps/cloud security. Be concise, precise, and actionable. Never reference underlying AI models or vendors. 2-4 sentences max.`;
 
@@ -880,20 +882,59 @@ function editUser(id){
   sendAI();
   showSec('dashboard',document.querySelector('.ntab'));
 }
-function suspendUser(id){
+async function suspendUser(id){
   const u=users.find(x=>x.id===id);if(!u)return;
-  u.status='Suspended';renderUsers();
-  showToast('User Suspended',`${u.name} session terminated. Incident logged.`);
+  const btn = document.querySelector(`button[onclick="suspendUser('${id}')"]`);
+  if (btn) { btn.disabled = true; btn.textContent = '...'; }
+  try {
+    const res = await fetch('/api/l1-copilot/iam/users/'+encodeURIComponent(id)+'/suspend', { method:'POST' });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'suspend failed');
+    u.status='Suspended';renderUsers();
+    showToast('User Suspended',`${u.name} session terminated. Incident logged.`);
+  } catch(e) {
+    renderUsers();
+    showToast('Suspend Failed', `Could not suspend ${u.name}: ${e.message}. Confirm /api/l1-copilot/iam/users/:id/suspend is wired to your IdP server-side.`);
+  }
 }
-function createUser(){
+async function createUser(){
   const name=document.getElementById('nu-name').value.trim();
   const email=document.getElementById('nu-email').value.trim();
   const role=document.getElementById('nu-role').value;
   const dept=document.getElementById('nu-dept').value.trim();
   if(!name||!email){showToast('Error','Name and email are required.');return;}
-  users.unshift({id:'UID-'+String(users.length+1001).padStart(4,'0'),name,email,role,dept:dept||'Unassigned',status:'Pending',login:'Never',mfa:document.getElementById('nu-mfa').checked,risk:'Low'});
-  renderUsers();closeModal('createModal');
-  showToast('User Created',`${name} provisioned as ${role}. Onboarding email sent.`);
+  const res_el = document.getElementById('create-res');
+  res_el.style.display='block'; res_el.textContent='Provisioning...';
+  try {
+    const res = await fetch('/api/l1-copilot/iam/users', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ name, email, role, department: dept || 'Unassigned',
+        requireMfa: document.getElementById('nu-mfa').checked,
+        sendOnboardingEmail: document.getElementById('nu-onboard').checked })
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'user creation failed');
+    users.unshift({id:data.userId||('UID-'+String(users.length+1001).padStart(4,'0')),name,email,role,dept:dept||'Unassigned',status:'Pending',login:'Never',mfa:document.getElementById('nu-mfa').checked,risk:'Low'});
+    renderUsers();closeModal('createModal');
+    showToast('User Created',`${name} provisioned as ${role}.` + (data.mfaEnrollmentLink ? ' MFA enrollment link sent.' : ''));
+  } catch(e) {
+    res_el.innerHTML = `<span style="color:var(--c4)">Provisioning failed: ${e.message}. Confirm /api/l1-copilot/iam/users is wired to your identity provider (Entra ID/Okta/Workspace) server-side.</span>`;
+  }
+}
+async function revokeUser(name, btn){
+  if (btn) { btn.disabled = true; btn.textContent = '...'; }
+  try {
+    const res = await fetch('/api/l1-copilot/iam/users/revoke', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name })
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'revoke failed');
+    showToast('Revoked', `All sessions and access terminated for ${name}.`);
+    if (btn) { btn.textContent = 'Revoked'; }
+  } catch(e) {
+    if (btn) { btn.disabled = false; btn.textContent = 'Revoke'; }
+    showToast('Revoke Failed', `Could not revoke ${name}: ${e.message}. Confirm /api/l1-copilot/iam/users/revoke is wired to your IdP server-side.`);
+  }
 }
 
 const auditEvents=[
@@ -922,6 +963,27 @@ function renderAuditLog(){
       <td><span class="bdg b${resultColor[e.result]||'1'}">${e.result}</span></td>
     </tr>`).join('');
 }
+
+async function refreshComplianceStatus(){
+  const note = document.getElementById('complianceFreshness');
+  const btn = document.getElementById('btnRefreshCompliance');
+  btn.disabled = true; btn.textContent = 'Refreshing...';
+  note.textContent = 'Fetching live posture...';
+  try {
+    const res = await fetch('/api/l1-copilot/compliance/status');
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'compliance fetch failed');
+    note.textContent = 'Live — last updated ' + new Date().toLocaleTimeString('en-US',{hour12:false});
+    note.style.color = 'var(--c2)';
+    // Real implementation would re-render the SOC-2/GDPR/NIST panels from data.frameworks here.
+  } catch(e) {
+    note.textContent = `Live feed unavailable (${e.message}) — showing cached/demo posture below. Confirm /api/l1-copilot/compliance/status is wired to your GRC platform server-side.`;
+    note.style.color = 'var(--c4)';
+  } finally {
+    btn.disabled = false; btn.textContent = '↻ Refresh Live Status';
+  }
+}
+document.getElementById('btnRefreshCompliance').addEventListener('click', refreshComplianceStatus);
 
 function showSec(id,btn){
   document.querySelectorAll('.sec').forEach(s=>s.classList.remove('on'));
@@ -1069,6 +1131,7 @@ renderUsers();renderAuditLog();
 #tsm-ai-msgs::-webkit-scrollbar{width:2px}
 #tsm-ai-msgs::-webkit-scrollbar-thumb{background:rgba(0,229,255,0.15)}
 </style>
+<script>
 async function tsmAsk() {
   var input = document.getElementById('tsm-ai-input');
   var msgs = document.getElementById('tsm-ai-msgs');

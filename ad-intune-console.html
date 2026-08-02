@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AD & Intune Admin Console · TSM Career Training</title>
+<style>
+:root {
+  --bg: #0a0c10; --surface: #111318; --surface2: #181b22;
+  --border: #1e2230; --border2: #2a2f42;
+  --text: #e8eaf0; --text2: #8890a8; --text3: #4a5068;
+  --green: #00d4aa; --green-dim: rgba(0,212,170,0.08); --green-border: rgba(0,212,170,0.2);
+  --cyan: #00d4d4; --cyan-dim: rgba(0,212,212,0.07); --cyan-border: rgba(0,212,212,0.2);
+  --amber: #f59e0b; --amber-dim: rgba(245,158,11,0.08); --amber-border: rgba(245,158,11,0.2);
+  --red: #ef4444; --red-dim: rgba(239,68,68,0.08); --red-border: rgba(239,68,68,0.2);
+  --mono: 'Courier New', monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: var(--mono); min-height: 100vh; }
+header {
+  border-bottom: 1px solid var(--border); padding: 0 2rem; display: flex; align-items: center;
+  justify-content: space-between; height: 56px; position: sticky; top: 0; background: var(--bg); z-index: 200;
+}
+.logo { font-size: 11px; letter-spacing: .18em; color: var(--text2); }
+.logo span { color: var(--blue,#3b82f6); }
+.back-link { font-size: 10px; letter-spacing: .08em; color: var(--cyan); text-decoration: none; border: 1px solid var(--cyan-border); padding: 6px 12px; }
+.back-link:hover { background: var(--cyan-dim); }
+.wrap { max-width: 1040px; margin: 0 auto; padding: 2.5rem 1.5rem 4rem; }
+.eyebrow { font-size: 10px; letter-spacing: .14em; color: #3b82f6; margin-bottom: 8px; }
+.title { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+.sub { font-size: 12.5px; color: var(--text2); max-width: 720px; margin-bottom: 24px; line-height: 1.6; }
+
+.console-tabs { display: flex; gap: 6px; margin-bottom: 20px; }
+.console-tab { font-size: 10px; letter-spacing: .06em; padding: 8px 16px; background: var(--surface); border: 1px solid var(--border); color: var(--text2); cursor: pointer; }
+.console-tab.active { background: rgba(59,130,246,0.1); border-color: rgba(59,130,246,0.3); color: #3b82f6; }
+
+.grid { display: grid; grid-template-columns: 1fr 1.3fr; gap: 16px; }
+@media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+
+.panel-box { background: var(--surface); border: 1px solid var(--border); }
+.panel-head { font-size: 10px; letter-spacing: .08em; color: var(--text3); padding: 12px 16px; border-bottom: 1px solid var(--border); }
+
+.roster-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); cursor: pointer; font-size: 12px; }
+.roster-row:hover { background: var(--surface2); }
+.roster-row.active { background: rgba(59,130,246,0.08); border-left: 2px solid #3b82f6; }
+.roster-name { color: var(--text); }
+.roster-meta { color: var(--text3); font-size: 10px; }
+.status-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+.status-dot.ok { background: var(--green); }
+.status-dot.warn { background: var(--amber); }
+.status-dot.locked { background: var(--red); }
+
+.detail-body { padding: 18px; }
+.detail-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+.detail-label { color: var(--text3); }
+.detail-val { color: var(--text); }
+.detail-val.ok { color: var(--green); }
+.detail-val.warn { color: var(--amber); }
+.detail-val.locked { color: var(--red); }
+
+.action-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.action-btn { font-size: 10px; letter-spacing: .05em; padding: 9px 14px; background: var(--surface2); border: 1px solid var(--border2); color: var(--text2); cursor: pointer; }
+.action-btn:hover { border-color: var(--cyan-border); color: var(--cyan); }
+.action-btn.danger:hover { border-color: var(--red-border); color: var(--red); }
+.action-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+.log-box { margin-top: 16px; background: var(--bg); border: 1px solid var(--border); padding: 10px 14px; max-height: 160px; overflow-y: auto; }
+.log-line { font-size: 10.5px; color: var(--text3); padding: 3px 0; }
+.log-line .lt { color: var(--green); }
+
+.empty-state { padding: 40px; text-align: center; color: var(--text3); font-size: 12px; }
+
+.relay-banner {
+  background: rgba(59,130,246,0.07); border: 1px solid rgba(59,130,246,0.25); border-left: 3px solid #3b82f6;
+  padding: 10px 14px; font-size: 11px; color: var(--text2); margin-bottom: 18px; line-height: 1.6;
+}
+.relay-banner b { color: #3b82f6; }
+
+.footer-links { display: flex; gap: 10px; margin-top: 32px; padding-top: 20px; border-top: 1px solid var(--border); }
+.footer-links a { font-size: 10px; letter-spacing: .06em; color: var(--text2); text-decoration: none; border: 1px solid var(--border2); padding: 8px 14px; }
+.footer-links a:hover { color: var(--cyan); border-color: var(--cyan-border); }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">TSM <span>SHELL</span> · AD &amp; INTUNE ADMIN CONSOLE</div>
+  <a class="back-link" href="/html/tsm-career-training-platform.html">← BACK TO PLATFORM</a>
+</header>
+
+<div class="wrap">
+  <div class="eyebrow">IT · SERVICE DESK · PRACTICE LAB</div>
+  <div class="title">AD &amp; Intune Admin Console</div>
+  <div class="sub">A simulated directory and endpoint management console — the identity and device layer behind most L1 tickets. Practice account unlocks, group membership changes, and device compliance triage on a mock roster with no real systems touched.</div>
+  <div id="relay-banner"></div>
+
+  <div class="console-tabs">
+    <div class="console-tab active" data-tab="users" onclick="switchTab('users')">ACTIVE DIRECTORY · USERS</div>
+    <div class="console-tab" data-tab="devices" onclick="switchTab('devices')">INTUNE · DEVICES</div>
+  </div>
+
+  <div class="grid">
+    <div class="panel-box">
+      <div class="panel-head" id="roster-head">USER ROSTER</div>
+      <div id="roster-list"></div>
+    </div>
+    <div class="panel-box">
+      <div class="panel-head">RECORD DETAIL</div>
+      <div id="detail-panel"><div class="empty-state">Select a record from the roster to view details and available actions.</div></div>
+    </div>
+  </div>
+
+  <div class="panel-box" style="margin-top:16px;">
+    <div class="panel-head">SESSION ACTION LOG</div>
+    <div class="log-box" id="log-box"><div class="log-line">Session started. Actions you take will log here.</div></div>
+  </div>
+
+  <div class="footer-links">
+    <a href="/html/l1-copilot/l1-ticket-copilot.html">← L1 TICKET COPILOT</a>
+    <a href="/html/l1-copilot/servicenow-fundamentals.html">SERVICENOW FUNDAMENTALS →</a>
+  </div>
+</div>
+
+<script>
+let users = [
+  { id:'u1', name:'Dana Whitfield', title:'Staff Accountant', dept:'Finance', status:'locked', lastLogon:'3 days ago', groups:['AllStaff','FinanceTeam'], mfa:'Enrolled' },
+  { id:'u2', name:'Marcus Reyes', title:'Claims Adjuster', dept:'Insurance', status:'ok', lastLogon:'Today', groups:['AllStaff','InsuranceOps'], mfa:'Enrolled' },
+  { id:'u3', name:'Priya Nair', title:'Loan Officer', dept:'Mortgage', status:'warn', lastLogon:'11 days ago', groups:['AllStaff','MortgageTeam'], mfa:'Not Enrolled' },
+  { id:'u4', name:'Tyrell Banks', title:'RCM Specialist', dept:'Healthcare', status:'ok', lastLogon:'Today', groups:['AllStaff','HealthcareRCM'], mfa:'Enrolled' },
+  { id:'u5', name:'Elena Cruz', title:'BPO Analyst', dept:'Operations', status:'locked', lastLogon:'1 day ago', groups:['AllStaff','OpsTeam'], mfa:'Enrolled' }
+];
+let devices = [
+  { id:'d1', name:'DESKTOP-DW01', owner:'Dana Whitfield', os:'Windows 11', status:'ok', encryption:'On', lastCheckin:'2 hrs ago', compliance:'Compliant' },
+  { id:'d2', name:'LAPTOP-MR14', owner:'Marcus Reyes', os:'Windows 11', status:'warn', encryption:'Off', lastCheckin:'6 days ago', compliance:'Not Compliant' },
+  { id:'d3', name:'IPHONE-PN22', owner:'Priya Nair', os:'iOS 18', status:'ok', encryption:'On', lastCheckin:'Today', compliance:'Compliant' },
+  { id:'d4', name:'LAPTOP-TB09', owner:'Tyrell Banks', os:'Windows 10', status:'warn', encryption:'On', lastCheckin:'Today', compliance:'Update Required' },
+  { id:'d5', name:'DESKTOP-EC03', owner:'Elena Cruz', os:'Windows 11', status:'locked', encryption:'On', lastCheckin:'Today', compliance:'Compliant' }
+];
+
+let activeTab = 'users';
+let activeId = null;
+
+function switchTab(tab) {
+  activeTab = tab; activeId = null;
+  document.querySelectorAll('.console-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+  document.getElementById('roster-head').textContent = tab === 'users' ? 'USER ROSTER' : 'DEVICE ROSTER';
+  renderRoster();
+  document.getElementById('detail-panel').innerHTML = '<div class="empty-state">Select a record from the roster to view details and available actions.</div>';
+}
+
+function renderRoster() {
+  const list = activeTab === 'users' ? users : devices;
+  const el = document.getElementById('roster-list');
+  el.innerHTML = list.map(item => {
+    const label = activeTab === 'users' ? item.name : item.name;
+    const meta = activeTab === 'users' ? item.title + ' · ' + item.dept : item.owner + ' · ' + item.os;
+    return `<div class="roster-row ${activeId===item.id?'active':''}" onclick="selectItem('${item.id}')">
+      <span><span class="status-dot ${item.status}"></span><span class="roster-name">${label}</span></span>
+      <span class="roster-meta">${meta}</span>
+    </div>`;
+  }).join('');
+}
+
+function selectItem(id) {
+  activeId = id;
+  renderRoster();
+  renderDetail();
+}
+
+function renderDetail() {
+  const list = activeTab === 'users' ? users : devices;
+  const item = list.find(x => x.id === activeId);
+  if (!item) return;
+
+  if (activeTab === 'users') {
+    document.getElementById('detail-panel').innerHTML = `
+      <div class="detail-body">
+        <div class="detail-row"><span class="detail-label">NAME</span><span class="detail-val">${item.name}</span></div>
+        <div class="detail-row"><span class="detail-label">TITLE / DEPT</span><span class="detail-val">${item.title} · ${item.dept}</span></div>
+        <div class="detail-row"><span class="detail-label">ACCOUNT STATUS</span><span class="detail-val ${item.status}">${item.status==='locked'?'LOCKED OUT':item.status==='warn'?'PASSWORD EXPIRING':'ACTIVE'}</span></div>
+        <div class="detail-row"><span class="detail-label">LAST LOGON</span><span class="detail-val">${item.lastLogon}</span></div>
+        <div class="detail-row"><span class="detail-label">GROUP MEMBERSHIP</span><span class="detail-val">${item.groups.join(', ')}</span></div>
+        <div class="detail-row"><span class="detail-label">MFA STATUS</span><span class="detail-val ${item.mfa==='Enrolled'?'ok':'warn'}">${item.mfa}</span></div>
+        <div class="action-row">
+          <button class="action-btn" ${item.status!=='locked'?'disabled':''} onclick="doAction('user','unlock','${item.id}')">UNLOCK ACCOUNT</button>
+          <button class="action-btn" onclick="doAction('user','reset','${item.id}')">RESET PASSWORD</button>
+          <button class="action-btn" onclick="doAction('user','group','${item.id}')">ADD TO GROUP</button>
+          <button class="action-btn" ${item.mfa==='Enrolled'?'disabled':''} onclick="doAction('user','mfa','${item.id}')">ENROLL MFA</button>
+        </div>
+      </div>`;
+  } else {
+    document.getElementById('detail-panel').innerHTML = `
+      <div class="detail-body">
+        <div class="detail-row"><span class="detail-label">DEVICE NAME</span><span class="detail-val">${item.name}</span></div>
+        <div class="detail-row"><span class="detail-label">OWNER / OS</span><span class="detail-val">${item.owner} · ${item.os}</span></div>
+        <div class="detail-row"><span class="detail-label">COMPLIANCE</span><span class="detail-val ${item.status}">${item.compliance}</span></div>
+        <div class="detail-row"><span class="detail-label">ENCRYPTION</span><span class="detail-val ${item.encryption==='On'?'ok':'warn'}">${item.encryption}</span></div>
+        <div class="detail-row"><span class="detail-label">LAST CHECK-IN</span><span class="detail-val">${item.lastCheckin}</span></div>
+        <div class="action-row">
+          <button class="action-btn" onclick="doAction('device','sync','${item.id}')">FORCE SYNC</button>
+          <button class="action-btn" ${item.encryption==='On'?'disabled':''} onclick="doAction('device','encrypt','${item.id}')">ENFORCE ENCRYPTION</button>
+          <button class="action-btn" ${item.compliance==='Compliant'?'disabled':''} onclick="doAction('device','recheck','${item.id}')">RE-RUN COMPLIANCE CHECK</button>
+          <button class="action-btn danger" onclick="doAction('device','retire','${item.id}')">RETIRE DEVICE</button>
+        </div>
+      </div>`;
+  }
+}
+
+const actionLabels = {
+  unlock: 'Account unlocked', reset: 'Password reset — temporary password issued', group: 'Group membership updated',
+  mfa: 'MFA enrollment initiated', sync: 'Sync forced — device checking in', encrypt: 'Encryption policy enforced',
+  recheck: 'Compliance check re-run', retire: 'Device marked for retirement'
+};
+
+function doAction(type, action, id) {
+  const list = type === 'user' ? users : devices;
+  const item = list.find(x => x.id === id);
+
+  if (type === 'user') {
+    if (action === 'unlock') item.status = 'ok';
+    if (action === 'mfa') item.mfa = 'Enrolled';
+  } else {
+    if (action === 'sync') item.lastCheckin = 'Just now';
+    if (action === 'encrypt') { item.encryption = 'On'; }
+    if (action === 'recheck' || action === 'encrypt') { item.status = 'ok'; item.compliance = 'Compliant'; }
+    if (action === 'retire') { item.status = 'locked'; item.compliance = 'Retired'; }
+  }
+
+  log(item.name + ' — ' + actionLabels[action]);
+  renderRoster();
+  renderDetail();
+}
+
+function log(msg) {
+  const box = document.getElementById('log-box');
+  const time = new Date().toLocaleTimeString();
+  const line = document.createElement('div');
+  line.className = 'log-line';
+  line.innerHTML = '<span class="lt">[' + time + ']</span> ' + msg;
+  box.insertBefore(line, box.firstChild);
+}
+
+renderRoster();
+</script>
+</body>
+</html>
