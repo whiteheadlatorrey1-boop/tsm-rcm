@@ -327,7 +327,7 @@ app.post('/api/hc/query', async (req, res) => {
     var sys = body.system || SP.healthcare;
     var msg = body.message || body.question || body.query;
     if (!msg) return res.status(400).json({ ok: false, error: 'Query required' });
-    var a = await groqChat(sys, msg, body.maxTokens || 550);
+    var a = await groqChat(sys, msg, body.maxTokens || 1800);
     console.log('[HC QUERY DEBUG] a =', JSON.stringify(a));
     return res.json({ ok: true, output: a, answer: a, reply: a, content: a, createdAt: new Date().toISOString() });
   } catch (e) { console.log('[HC ERROR]', e.message); return res.status(500).json({ ok: false, error: e.message }); }
