@@ -105,7 +105,15 @@ async function groqChat(system, message, maxTokens, clientKey, jsonMode) {
           throw new Error('Groq API error ' + r.status + ': ' + err);
         }
         const data = await r.json();
-        return data?.choices?.[0]?.message?.content || '';
+        const content = data?.choices?.[0]?.message?.content || '';
+        if (!content.trim()) {
+          // 200 OK but empty content (e.g. filtered/refused/stopped immediately) —
+          // treat as a failure and try the next model rather than silently
+          // returning "" to the caller.
+          console.warn('[groqChat] empty completion from', model, '- finish_reason:', data?.choices?.[0]?.finish_reason);
+          continue;
+        }
+        return content;
       } catch (e) {
         if (e.message.includes('429') || e.message.includes('rate_limit')) continue;
         if (useJsonMode) continue; // try the same model again without json mode before moving on
@@ -113,7 +121,7 @@ async function groqChat(system, message, maxTokens, clientKey, jsonMode) {
       }
     }
   }
-  throw new Error('All Groq models rate limited. Try again later.');
+  throw new Error('All Groq models returned empty or rate-limited responses. Try again later.');
 }
 
 // JSON-returning variant for structured routes
