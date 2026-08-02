@@ -80,12 +80,32 @@
       label: 'Exec portal',
       page: 'executive-portal.html',
       action: 'Review signals, run the Denial Pack tab for the appeal letter',
-      detail: 'No export/download function exists here yet - screenshot or copy the denial pack output manually for now.',
+      detail: 'Exports a real .txt report (whatever made it through the relay this session) and pushes a finalized signal to Sentinel/Collective BNCA.',
       warn: true
+    },
+    {
+      id: 'complete',
+      label: 'Report exported',
+      page: 'executive-portal.html',
+      action: 'Session complete',
+      detail: 'Report downloaded and the finalized signal was pushed to /api/collective/signal for cross-vertical synthesis.'
     }
   ];
 
+  const STAGE_IDS = STAGES.map(function (s) { return s.id; });
+
   function resolveCurrentStage() {
+    // Prefer the precise signal written at each real transition point. Only
+    // fall back to the old "guess from which relay keys exist" heuristic
+    // when no precise signal has been recorded yet (e.g. this page load is
+    // the very first one, or the page isn't instrumented).
+    try {
+      if (window.TSMWorkflowStage) {
+        const rec = window.TSMWorkflowStage.read();
+        if (rec && rec.stage && STAGE_IDS.indexOf(rec.stage) !== -1) return rec.stage;
+      }
+    } catch (e) {}
+
     const path = window.location.pathname;
     let hasBrief = false, hasAnomaly = false, hasExecRelay = false;
     try { hasBrief = !!(sessionStorage.getItem('TSM_WAR_ROOM_BRIEF') || localStorage.getItem('TSM_WAR_ROOM_BRIEF')); } catch (e) {}
