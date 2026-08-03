@@ -333,6 +333,9 @@ body::before {
 }
 .vtab:last-child { border-right: none; }
 .vtab:hover { background: #0f1e28; color: var(--muted); }
+.vtab.locked { opacity: 0.4; cursor: not-allowed; filter: grayscale(1); }
+.vtab.locked:hover { background: #0f1e28; color: var(--muted); opacity: 0.6; }
+.vtab-lock { margin-left: 6px; font-size: 10px; }
 
 .vtab.active[data-v="fo"]  { background: rgba(56,189,248,0.08); color: var(--fo);  border-bottom: 2px solid var(--fo); }
 .vtab.active[data-v="ins"] { background: rgba(167,139,250,0.08); color: var(--ins); border-bottom: 2px solid var(--ins); }
@@ -1240,8 +1243,8 @@ const VERTICALS = {
     searchPlaceholder: "Search by policyholder, claim #, carrier, coverage code...",
     nodes: {
       "ins-war-room":   { label:"Insurance War Room", route:"/html/war-rooms/insure-war/insurance-war-room.html" },
-      "strategist":     { label:"Strategist",         route:null },
-      "bnca-engine":    { label:"BNCA Escalated",     route:null },
+      "strategist":     { label:"Strategist",         route:"/html/war-rooms/insure-war/insurance-strategist.html" },
+      "bnca-engine":    { label:"BNCA Escalated",     route:"/html/war-rooms/insure-war/insurance-executive-portal.html" },
     },
     seed: [
       { fileName:"CLM-INS-4412_Ramirez.record",    documentType:"CLAIM",           vendor:"State Farm",        invoiceNo:"CLM-INS-4412",exclusionCode:"CO-4",    amount:15400,  sourceNode:"ins-az",   routing:["ins-az","ins-hub","strategist"],            timestamp:Date.now()-2*3600000, _ext:{client:"Luis Ramirez",  ref:"POL-SF-9944"} },
@@ -1942,9 +1945,56 @@ function migrateToClientScoping() {
 }
 
 /* ═══════════════════════════════════════════════════
+   LICENSING / ENTITLEMENTS
+   window.__LICENSED_VERTICALS__ is injected server-side by the
+   Cloudflare Worker based on the requesting hostname (see worker.js).
+   If it's absent (e.g. local dev on the main hub domain), everything
+   is unlocked. A "?license=ins,fo" query param can simulate a
+   licensed subdomain for local testing without the Worker.
+═══════════════════════════════════════════════════ */
+const ALL_VERTICAL_KEYS = Object.keys(VERTICALS);
+
+function resolveLicensedVerticals() {
+  if (Array.isArray(window.__LICENSED_VERTICALS__) && window.__LICENSED_VERTICALS__.length) {
+    return window.__LICENSED_VERTICALS__.filter(v => ALL_VERTICAL_KEYS.includes(v));
+  }
+  const qp = new URLSearchParams(location.search).get("license");
+  if (qp) {
+    const list = qp.split(",").map(s => s.trim()).filter(v => ALL_VERTICAL_KEYS.includes(v));
+    if (list.length) return list;
+  }
+  return ALL_VERTICAL_KEYS.slice(); // unrestricted (hub / dev default)
+}
+
+const LICENSED_VERTICALS = resolveLicensedVerticals();
+const isLicensed = v => LICENSED_VERTICALS.includes(v);
+
+function applyVerticalLocks() {
+  document.querySelectorAll(".vtab").forEach(btn => {
+    const v = btn.dataset.v;
+    if (!v) return;
+    if (isLicensed(v)) {
+      btn.classList.remove("locked");
+      btn.removeAttribute("title");
+    } else {
+      btn.classList.add("locked");
+      btn.title = "Upgrade to unlock " + (VERTICALS[v] ? VERTICALS[v].label : v);
+      if (!btn.querySelector(".vtab-lock")) {
+        btn.insertAdjacentHTML("beforeend", '<span class="vtab-lock">🔒</span>');
+      }
+    }
+  });
+}
+
+function showUpgradePrompt(v) {
+  const label = VERTICALS[v] ? VERTICALS[v].label : v;
+  alert(label + " isn't included on your current plan.\n\nUpgrade at tsmatter.com/pricing to unlock this vertical.");
+}
+
+/* ═══════════════════════════════════════════════════
    STATE
 ═══════════════════════════════════════════════════ */
-let currentVertical = "fo";
+let currentVertical = LICENSED_VERTICALS[0] || "fo";
 let activeClientId = localStorage.getItem(ACTIVE_WORKSPACE_KEY) || ALL_CLIENTS_ID;
 
 function vDef() { return VERTICALS[currentVertical]; }
@@ -2129,6 +2179,7 @@ function printCrmReport() {
    VERTICAL SWITCHING
 ═══════════════════════════════════════════════════ */
 function switchVertical(v) {
+  if (!isLicensed(v)) { showUpgradePrompt(v); return; }
   currentVertical = v;
   document.querySelectorAll(".vtab").forEach(b => b.classList.toggle("active", b.dataset.v === v));
   document.getElementById("search-query").value = "";
@@ -3507,7 +3558,8 @@ if(dropZone){
 dropZone.addEventListener("drop", e => { handleFiles(e.dataTransfer.files); });
 }
  
-switchVertical("fo");
+applyVerticalLocks();
+switchVertical(LICENSED_VERTICALS[0] || "fo");
 // ── HC NODE ROUTING ───────────────────────────────────────────────────────
 const HC_CODE_NODE = [
   {p:'CO-197',n:'insurance'},{p:'CO-50',n:'billing'},{p:'CO-11',n:'medical'},
