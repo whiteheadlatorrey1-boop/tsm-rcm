@@ -1706,9 +1706,19 @@ function loadWarPayload() {
       const wp = state.warPayload;
       const k = wp.kpis || {};
       const ctxText = buildRelayContext(4000);
+      // Tracks which tiles already received an authoritative value this
+      // load (i.e. traced back to the Strategist's own reasoning-derived
+      // exposure math), so the later independent AI KPI-extraction pass
+      // in extractRelayIntelligence() doesn't clobber them with its own,
+      // differently-sourced estimate. See kpi-risk/kpi-revenue below —
+      // these previously disagreed with the Strategist's Business Impact
+      // Delta because two unrelated calculations were both allowed to
+      // write the same tile, with whichever resolved last silently
+      // winning.
+      state.relayAuthoritative = state.relayAuthoritative || {};
       const setKPI = (id, val, fallback) => {
         const el = document.getElementById(id);
-        if (el && val) el.textContent = val;
+        if (el && val) { el.textContent = val; state.relayAuthoritative[id] = true; }
         else if (el && fallback) el.textContent = fallback;
       };
       const revenueM  = ctxText.match(/(?:Est\.?\s*Revenue|Revenue)[:\s]+\$?([\d.,]+\s*[MKmk]?)/);
@@ -1734,20 +1744,6 @@ function loadWarPayload() {
 
       // ── Auto-surface proof of relay receipt — no manual click required ──
       extractRelayIntelligence();
-      // ── TSM PATCH: wire Strategist JSON KPIs (noActionRevLoss/actionRevLoss/recoveryTime/confidence) ──
-      (function wireStratKPIs() {
-        try {
-          var raw = JSON.parse(localStorage.getItem('TSM_RE_WAR_RELAY') || sessionStorage.getItem('TSM_RE_WAR_RELAY') || '{}');
-          var sj = raw.stratJson || raw.json || raw;
-          var setEl = function(id, val) { var e = document.getElementById(id); if (e && val) e.textContent = val; };
-          setEl('kpi-no-action-rev', sj.noActionRevLoss);
-          setEl('kpi-risk',           sj.noActionRevLoss);
-          setEl('kpi-pullthrough',    sj.confidence != null ? sj.confidence + '%' : null);
-          setEl('kpi-action-rev',    sj.actionRevLoss);
-          setEl('kpi-recovery-time', sj.recoveryTime);
-          setEl('kpi-confidence',    sj.confidence != null ? sj.confidence + '%' : null);
-        } catch(e) { console.warn('[TSM-RE-EXEC] KPI wire failed:', e); }
-      })();
       generateBrief();
     } else {
       // ── No relay — standalone mode. Don't show stale/fake demo numbers ──
@@ -2357,16 +2353,25 @@ function exportBoard() {
           }
         }
         raw = raw || {};
-        var stratJson = raw.stratJson || raw.json || raw;
+        // The Strategist writes these under payload.kpis (see
+        // buildStratPayload() in re-strategist.html) — it never produces
+        // a "stratJson" or top-level "json" field, so those fallbacks
+        // always missed and every value below silently defaulted to '—'.
+        var stratJson = raw.kpis || raw.stratJson || raw.json || raw;
 
-        var noAction   = stratJson.noActionRevLoss  || '—';
-        var withAction = stratJson.actionRevLoss     || '—';
-        var recovery   = stratJson.recoveryTime      || '—';
-        var confidence = stratJson.confidence != null ? stratJson.confidence + '%' : '—';
+        var noAction   = stratJson.noActionRevLoss  || null;
+        var withAction = stratJson.actionRevLoss     || null;
+        var recovery   = stratJson.recoveryTime      || null;
+        var confidence = stratJson.confidence != null ? stratJson.confidence + '%' : null;
 
         // Target KPI tile elements by data-kpi attribute (preferred)
-        // or fall back to id-based lookup used in older portals
+        // or fall back to id-based lookup used in older portals.
+        // Only write when we have a real value — never blank a tile back
+        // to '—' just because this particular relay key was absent; some
+        // other writer (e.g. the KPI-extraction AI call) may have already
+        // populated it correctly.
         function setKPI(selector, value) {
+          if (value === null || value === undefined || value === '') return;
           var el = document.querySelector(selector);
           if (el) el.textContent = value;
         }
@@ -2388,9 +2393,9 @@ function exportBoard() {
         setKPI('#exec-rev-protected',  withAction);
         setKPI('#exec-recovery-eta',   recovery);
 
-        console.log('[TSM-HC-EXEC] KPI tiles wired:', {noAction, withAction, recovery, confidence});
+        console.log('[TSM-RE-EXEC] KPI tiles wired:', {noAction, withAction, recovery, confidence});
       } catch(e) {
-        console.warn('[TSM-HC-EXEC] KPI wire failed:', e);
+        console.warn('[TSM-RE-EXEC] KPI wire failed:', e);
       }
     })(window.__TSM_STRAT_JSON__ || null);
     // ── END TSM PATCH ───────────────────────────────────────────────────
