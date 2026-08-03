@@ -324,8 +324,8 @@ app.get('/html/hc-strategist/index.html', (req, res) => res.redirect('/healthcar
 // ── SUITE ROUTES ──────────────────────────────────────────────────────────────
 suites.forEach(s => {
   if (!s.route || !s.index) return;
-  app.get(s.route, (req, res) => res.sendFile(path.join(dirPath, s.index)));
-  app.get(s.route + '/', (req, res) => res.sendFile(path.join(dirPath, s.index)));
+  app.get(s.route, (req, res) => res.sendFile(path.join(__dirname, s.dir, s.index)));
+  app.get(s.route + '/', (req, res) => res.sendFile(path.join(__dirname, s.dir, s.index)));
 });
 
 // ── HC API ROUTES ─────────────────────────────────────────────────────────────
