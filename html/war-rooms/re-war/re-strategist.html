@@ -1179,6 +1179,39 @@ function reXPParseExplain(raw){
 
 <div id="tsm-chain-bar" style="position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#040c12;border-top:1px solid #0d2233;display:flex;align-items:center;height:32px;padding:0 16px;font-family:'IBM Plex Mono',monospace;font-size:10px;"><span style="color:#3a5a70;margin-right:12px;font-size:9px;">TSM CHAIN</span><a href="/html/war-rooms/re-war/re-war-room.html" style="color:#94a3b8;border:1px solid #1a3a50;padding:3px 10px;border-radius:3px;text-decoration:none;margin-right:6px;font-size:9px;">&#9675; WAR ROOM</a><span style="color:#1a3a50;margin-right:6px;">--&gt;</span><a href="#" style="color:var(--amber, #ffab00);background:rgba(255,255,255,.05);border:1px solid var(--amber, #ffab00)55;padding:3px 10px;border-radius:3px;text-decoration:none;margin-right:6px;font-size:9px;">&#9679; STRATEGIST</a><span style="color:#1a3a50;margin-right:6px;">--&gt;</span><a href="/html/war-rooms/re-war/re-exec-portal.html" style="color:#94a3b8;border:1px solid #1a3a50;padding:3px 10px;border-radius:3px;text-decoration:none;margin-right:6px;font-size:9px;">&#9675; EXEC PORTAL</a><span style="color:#1a3a50;margin-left:auto;font-size:9px;">REAL ESTATE</span></div>
   <script src="/shared/tsm-exec-kit-producer.js"></script>
+  <script src="/html/shared/js/tsm-assistant-widget.js"></script>
+  <script>
+  function reStratAssistantContext() {
+    const parts = [];
+    if (stratPayload.brief) parts.push('Strategic Brief: ' + String(stratPayload.brief).slice(0, 2000));
+    if (stratPayload.execSummary) parts.push('Exec Summary: ' + stratPayload.execSummary);
+    if (stratSaved && stratSaved.length) {
+      parts.push('Strategy modules run: ' + stratSaved.map(o => o.title).join(', '));
+    }
+    if (stratCurrentOutput) parts.push('Latest module output: ' + String(stratCurrentOutput).slice(0, 1500));
+    return parts.join('\n\n') || 'No strategic brief or modules run yet in the RE Strategist.';
+  }
+  function reStratAssistantBriefing() {
+    const items = [];
+    (stratPayload.recommendedActions || []).slice(0, 5).forEach(a => {
+      items.push({
+        severity: 'medium',
+        title: a.text,
+        nextAction: 'Owner: ' + (a.owner || 'Unassigned'),
+        why: stratPayload.execSummary || 'See Strategic Brief tab for full reasoning.',
+        tool: 'RE Strategist'
+      });
+    });
+    return items;
+  }
+  TSMAssistant.init({
+    vertical: 'Real Estate Strategist',
+    app: 'mortgage',
+    getContext: reStratAssistantContext,
+    getBriefing: reStratAssistantBriefing,
+    quickPrompts: ['What is the single highest risk right now?', 'Summarize compliance exposure', 'What should I escalate to exec?']
+  });
+  </script>
   <script src="/html/core/tsm-runtime.js"></script>
 
 <script>

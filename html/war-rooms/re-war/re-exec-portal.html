@@ -2020,6 +2020,48 @@ function exportBoard() {
   });
 })();
 </script>
+<script src="/html/shared/js/tsm-assistant-widget.js"></script>
+<script>
+(function() {
+  var RELAY_KEYS = ["TSM_REALESTATE_STRATEGIST_RELAY", "TSM_RE_WAR_RELAY", "TSM_WAR_ROOM_RELAY"];
+  function readRelay() {
+    for (var i = 0; i < RELAY_KEYS.length; i++) {
+      var raw = localStorage.getItem(RELAY_KEYS[i]);
+      if (raw) { try { return JSON.parse(raw); } catch(e) { return null; } }
+    }
+    return null;
+  }
+  function execAssistantContext() {
+    var relay = readRelay();
+    if (!relay) return 'No relay data yet in the RE Exec Portal — awaiting Strategist escalation.';
+    var parts = [];
+    if (relay.reportTitle) parts.push('Report: ' + relay.reportTitle);
+    if (relay.reportContent) parts.push('Full Brief: ' + String(relay.reportContent).slice(0, 2000));
+    if (relay.stratPayload && relay.stratPayload.execSummary) parts.push('Exec Summary: ' + relay.stratPayload.execSummary);
+    return parts.join('\n\n') || 'Relay received but has no report content yet.';
+  }
+  function execAssistantBriefing() {
+    var relay = readRelay();
+    var explain = (relay && Array.isArray(relay.explain)) ? relay.explain : [];
+    return explain.map(function(it) {
+      return {
+        severity: it.severity || 'medium',
+        title: it.claim || 'Untitled item',
+        nextAction: it.impact || '—',
+        why: it.rationale || '',
+        tool: 'RE Strategist'
+      };
+    });
+  }
+  TSMAssistant.init({
+    vertical: 'Real Estate Executive',
+    app: 'mortgage',
+    getContext: execAssistantContext,
+    getBriefing: execAssistantBriefing,
+    quickPrompts: ['What needs my decision today?', 'What is the dollar exposure?', 'What did the Strategist recommend?']
+  });
+})();
+</script>
 <script>
     // ── TSM PATCH: wire Strategist JSON fields into KPI tiles ──────────
     (function wireStratKPIs(relayJson) {
