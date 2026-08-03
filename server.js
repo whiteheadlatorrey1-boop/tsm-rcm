@@ -1721,9 +1721,17 @@ app.get('/war-room/outreach', (req, res) => {
     );
 });
 
-app.get('/', (_req, res) => {
+// Hostname → default landing page when a subdomain requests "/".
+// Add one line per customer-facing subdomain that should skip the
+// doc-search default and land on the full platform hub instead.
+const HOSTNAME_LANDING = {
+  'insurance.tsmatter.com': 'tsm-platform-hub.html',
+};
+
+app.get('/', (req, res) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
-  res.sendFile(path.join(dirPath, 'tsm-platform-hub.html'), (err) => {
+  const landing = HOSTNAME_LANDING[req.hostname] || 'tsm-doc-search-multi.html';
+  res.sendFile(path.join(dirPath, landing), (err) => {
     if (err) res.sendFile(path.join(dirPath, 'war-rooms', 'bpo', 'bpo-command-center.html'));
   });
 });
