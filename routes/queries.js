@@ -169,7 +169,8 @@ router.post('/api/financial/query', async function(req, res) {
 
 router.post('/api/mortgage/query', async function(req, res) {
   var body = req.body || {};
-  try { var a = await groqChat(SP.mortgage, body.question||body.query||'', body.maxTokens||1024); return res.json({ ok:true, answer:a, createdAt:new Date().toISOString() }); }
+  var system = body.context || SP.mortgage;
+  try { var a = await groqChat(system, body.question||body.query||'', body.maxTokens||1024); return res.json({ ok:true, answer:a, createdAt:new Date().toISOString() }); }
   catch(e) { return res.status(500).json({ ok:false, error:e.message }); }
 });
 

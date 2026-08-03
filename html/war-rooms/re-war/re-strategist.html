@@ -594,7 +594,7 @@ async function callAI(userMessage, systemOverride) {
       question: userMessage,
       context: systemOverride || STRAT_SYSTEM,
       app: APP,
-      maxTokens: 1400
+      maxTokens: 2200
     })
   });
   const data = await res.json();
@@ -628,8 +628,10 @@ async function generateAutoBrief() {
   }
 
   const prompt = context
-    ? `Based on this war room intelligence:\n\n${context}\n\nGenerate a STRATEGIC BRIEF covering: (1) Portfolio Health, (2) Top 3 Critical Issues, (3) Immediate Actions This Week, (4) 30-Day Priorities, (5) Revenue Impact Analysis. Use ► headers.\n\nFormat your ENTIRE response exactly as follows: start with the literal line ===BRIEF=== followed by the full brief above, then a new line with the literal ===JSON=== followed by a single JSON object (no markdown fences) with this exact shape:\n{"confidence":0-100,"dataSources":[{"name":"...","weight":"HIGH|MED|LOW"}],"reasoning":[{"key":"...","val":"..."}],"recommendedActions":[{"text":"...","owner":"..."}]}`
-    : `Generate a COMPREHENSIVE STRATEGIC BRIEF for a real estate and mortgage operation. Current conditions: 22 loans, $18.4M pipeline, 68% pull-through, 2 TRID violations, $1,247 cure needed, 6 REO assets, Phoenix metro market. Cover: portfolio health, critical issues, immediate actions, 30-day priorities, revenue impact. Use ► headers.\n\nFormat your ENTIRE response exactly as follows: start with the literal line ===BRIEF=== followed by the full brief above, then a new line with the literal ===JSON=== followed by a single JSON object (no markdown fences) with this exact shape:\n{"confidence":0-100,"dataSources":[{"name":"...","weight":"HIGH|MED|LOW"}],"reasoning":[{"key":"...","val":"..."}],"recommendedActions":[{"text":"...","owner":"..."}]}`;
+    ? `Based on this war room intelligence:\n\n${context}\n\nGenerate a STRATEGIC BRIEF covering: (1) Portfolio Health, (2) Top 3 Critical Issues, (3) Immediate Actions This Week, (4) 30-Day Priorities, (5) Revenue Impact Analysis. Use ► headers.\n\nFormat your ENTIRE response exactly as follows: start with the literal line ===BRIEF=== followed by the full brief above, then a new line with the literal ===JSON=== followed by a single JSON object (no markdown fences) with this exact shape:\n{"confidence":0-100,"dataSources":[{"name":"...","weight":"HIGH|MED|LOW"}],"reasoning":[{"key":"...","val":"..."}],"recommendedActions":[{"text":"...","owner":"..."}]}
+The reasoning array is REQUIRED and must contain at least 3 entries explaining the confidence score. Do not return an empty reasoning array.`
+    : `Generate a COMPREHENSIVE STRATEGIC BRIEF for a real estate and mortgage operation. Current conditions: 22 loans, $18.4M pipeline, 68% pull-through, 2 TRID violations, $1,247 cure needed, 6 REO assets, Phoenix metro market. Cover: portfolio health, critical issues, immediate actions, 30-day priorities, revenue impact. Use ► headers.\n\nFormat your ENTIRE response exactly as follows: start with the literal line ===BRIEF=== followed by the full brief above, then a new line with the literal ===JSON=== followed by a single JSON object (no markdown fences) with this exact shape:\n{"confidence":0-100,"dataSources":[{"name":"...","weight":"HIGH|MED|LOW"}],"reasoning":[{"key":"...","val":"..."}],"recommendedActions":[{"text":"...","owner":"..."}]}
+The reasoning array is REQUIRED and must contain at least 3 entries explaining the confidence score. Do not return an empty reasoning array.`;
 
   reXPResetExplain();
   try {
@@ -637,7 +639,16 @@ async function generateAutoBrief() {
     const {brief: reBrief, obj: reObj, parseFailed: reParseFailed} = reXPParseExplain(text);
     brief.innerHTML = formatOutput(reBrief || text);
     stratPayload.brief = reBrief || text;
-    if(reObj) reXPRenderExplain(reObj);
+    if(reObj) {
+      reXPRenderExplain(reObj);
+      // Inherit the parsed explainability so escalateToExec() can carry
+      // the real confidence/reasoning/sources to the Exec Portal instead
+      // of re-deriving a blank one at escalation time.
+      stratPayload.confidence = reObj.confidence;
+      stratPayload.dataSources = reObj.dataSources || [];
+      stratPayload.reasoning = reObj.reasoning || [];
+      stratPayload.recommendedActions = reObj.recommendedActions || [];
+    }
     else if(reParseFailed) reXPRenderExplainFailed();
   } catch(e) {
     brief.innerHTML = `<span style="color:var(--red)">[ERROR] ${e.message}</span>`;
@@ -839,14 +850,24 @@ function escalateToExec(silent) {
         { id:'strategist', label:'Strategist Brief',  status:'done', time: new Date().toLocaleTimeString() },
         { id:'exec',       label:'Executive Portal',  status:'active' }
       ])) || [];
+      // Inherit the actual parsed reXP explainability (confidence,
+      // reasoning, sources, recommended actions) instead of re-deriving
+      // it from scratch — those fields were previously always undefined
+      // here because they were read off the wrong object (top-level
+      // payload.confidence/payload.exposure instead of
+      // payload.stratPayload.confidence/.reasoning/.dataSources).
+      const reXP = payload.stratPayload || {};
+      const reasoningPoints = (reXP.reasoning || []).map(r => ({ label: r.key, value: r.val }));
+      const topAction = (reXP.recommendedActions || [])[0];
       payload.explain = (window.TSMExecKitProducer && TSMExecKitProducer.buildExplain([
         {
           claim: payload.reportTitle || payload.docName || 'RE Strategist Brief',
-          confidence: payload.confidence || null,
+          confidence: reXP.confidence != null ? reXP.confidence : null,
           severity: 'med',
-          impact: payload.exposure || '',
+          impact: topAction ? `${topAction.text} (${topAction.owner})` : (payload.kpis && payload.kpis.dollarRisk) || '',
           rationale: payload.fullBrief || payload.narrative || payload.summary || payload.brief || 'See full strategist brief for detailed reasoning.',
-          sources: ['RE Strategist']
+          dataPoints: reasoningPoints,
+          sources: (reXP.dataSources || []).map(s => s.name).length ? reXP.dataSources.map(s => s.name) : ['RE Strategist']
         }
       ])) || [];
     } catch(e) { console.warn('[exec-kit] producer patch error:', e); }
