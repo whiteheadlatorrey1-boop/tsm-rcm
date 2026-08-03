@@ -1419,19 +1419,7 @@ function tsmWriteScopedStrat(vertical, missionId){
 <!-- TSM KERNEL ENGINE -->
 <script src="/html/core/tsm-kernel.js"></script>
 <!-- ═══ GUIDE WIDGET — STRATEGIST EDITION ═══ -->
-<div class="guide-widget" id="guideWidget">
-  <div class="gw-toggle" onclick="toggleGWPanel()">
-    <span style="width:5px;height:5px;border-radius:50%;background:var(--acc, #00e5cc);animation:pulse 2s infinite;flex-shrink:0"></span>
-    <span id="gwToggleText">GUIDE · INITIALIZING</span>
-  </div>
-  <div class="gw-panel" id="gwPanel">
-    <div class="gw-step" id="gwStep1"><span class="dot"></span><span>Verify Session Data or Paste Case Input</span></div>
-    <div class="gw-step" id="gwStep2"><span class="dot"></span><span>Configure Strategy & Risk Parameters</span></div>
-    <div class="gw-step" id="gwStep3"><span class="dot"></span><span>Generate Strategic Brief</span></div>
-    <div class="gw-step" id="gwStep4"><span class="dot"></span><span>Export Brief or Escalate to Exec Portal</span></div>
-    <div class="gw-next" id="gwNext">Next: loading...</div>
-  </div>
-</div>
+
 
 <script>
 (function () {
@@ -1674,6 +1662,104 @@ function tsmWriteScopedStrat(vertical, missionId){
       setStepComplete(4, "Workflow complete. Executive briefing active.");
     }
   });
+})();
+</script>
+
+
+<!-- DYNAMIC REACTIVE GUIDE PANEL (RE-STRATEGIST) -->
+<div id="re-live-guide-panel" style="position: fixed; bottom: 20px; right: 20px; z-index: 999999; width: 380px; background: #070d19; border: 1px solid #10b981; box-shadow: 0 10px 30px rgba(0,0,0,0.95); font-family: monospace; color: #e2e8f0; border-radius: 4px; overflow: hidden; pointer-events: auto;">
+  <div style="background: rgba(16, 185, 129, 0.18); padding: 8px 12px; border-bottom: 1px solid #10b981; display: flex; justify-content: space-between; align-items: center;">
+    <span style="font-size: 11px; font-weight: bold; letter-spacing: 1px; color: #10b981;">• GUIDE · STRATEGIST WORKFLOW</span>
+    <span style="font-size: 9px; color: #38bdf8; font-weight: bold;" id="strat-step-counter">STEP 1 OF 4</span>
+  </div>
+  <div style="padding: 12px; font-size: 11px; line-height: 1.6;">
+    <div id="sg-step-1" style="margin-bottom: 8px; color: #f59e0b; display: flex; align-items: flex-start; gap: 8px;">
+      <span class="sg-icon" style="font-weight: bold; width: 14px;">●</span>
+      <div>
+        <strong>1. Verify Intake & Session Data</strong>
+        <div style="font-size: 10px; color: #94a3b8;">Click <span style="color: #38bdf8;">MODULES</span> or left navigation item.</div>
+      </div>
+    </div>
+    <div id="sg-step-2" style="margin-bottom: 8px; color: #64748b; opacity: 0.6; display: flex; align-items: flex-start; gap: 8px;">
+      <span class="sg-icon" style="font-weight: bold; width: 14px;">○</span>
+      <div>
+        <strong>2. Configure Strategy & Risk Parameters</strong>
+        <div style="font-size: 10px; color: #94a3b8;">Click options under <span style="color: #38bdf8;">QUICK STRATEGY</span> (Top Risk, Action Plan).</div>
+      </div>
+    </div>
+    <div id="sg-step-3" style="margin-bottom: 8px; color: #64748b; opacity: 0.6; display: flex; align-items: flex-start; gap: 8px;">
+      <span class="sg-icon" style="font-weight: bold; width: 14px;">○</span>
+      <div>
+        <strong>3. Generate Strategic Brief</strong>
+        <div style="font-size: 10px; color: #94a3b8;">Click top button <span style="color: #10b981;">"⚡ FULL STRATEGIC BRIEF"</span>.</div>
+      </div>
+    </div>
+    <div id="sg-step-4" style="margin-bottom: 4px; color: #64748b; opacity: 0.6; display: flex; align-items: flex-start; gap: 8px;">
+      <span class="sg-icon" style="font-weight: bold; width: 14px;">○</span>
+      <div>
+        <strong>4. Escalate to Exec Portal</strong>
+        <div style="font-size: 10px; color: #94a3b8;">Click top right <span style="color: #f43f5e;">"↗ ESCALATE → EXEC PORTAL"</span>.</div>
+      </div>
+    </div>
+  </div>
+  <div style="background: #030712; padding: 8px 12px; border-top: 1px solid #1e293b; font-size: 10px; color: #f59e0b;" id="strat-guide-hint">
+    <strong>Next:</strong> Click any sidebar option or top action button to begin.
+  </div>
+</div>
+
+<script>
+(function() {
+  let step = 1;
+
+  function markComplete(sNum, hintText) {
+    if (sNum < step) return;
+    const el = document.getElementById("sg-step-" + sNum);
+    if (el) {
+      el.style.color = "#10b981";
+      el.style.opacity = "1";
+      el.querySelector(".sg-icon").innerText = "✓";
+    }
+    step = sNum + 1;
+    if (step <= 4) {
+      const nextEl = document.getElementById("sg-step-" + step);
+      if (nextEl) {
+        nextEl.style.color = "#f59e0b";
+        nextEl.style.opacity = "1";
+        nextEl.querySelector(".sg-icon").innerText = "●";
+      }
+      document.getElementById("strat-step-counter").innerText = "STEP " + step + " OF 4";
+    } else {
+      document.getElementById("strat-step-counter").innerText = "COMPLETE";
+    }
+    if (hintText) {
+      document.getElementById("strat-guide-hint").innerHTML = "<strong>Next:</strong> " + hintText;
+    }
+  }
+
+  // Intercept click actions across the entire document
+  document.addEventListener("click", function(e) {
+    const target = e.target.closest("a, button, li, div, span");
+    if (!target) return;
+    const txt = (target.innerText || "").toUpperCase();
+
+    // Step 1 Trigger
+    if (txt.includes("MODULES") || txt.includes("STRATEGIST ACTIVE") || txt.includes("WAR ROOM")) {
+      markComplete(1, "Select <strong>Top Risk</strong> or <strong>30-Day Action Plan</strong> under Quick Strategy.");
+    }
+    // Step 2 Trigger
+    else if (txt.includes("TOP RISK") || txt.includes("ACTION PLAN") || txt.includes("FALL-THROUGH") || txt.includes("COMPLIANCE EXPOSURE")) {
+      markComplete(2, "Click top button <strong>⚡ FULL STRATEGIC BRIEF</strong>.");
+    }
+    // Step 3 Trigger
+    else if (txt.includes("FULL STRATEGIC BRIEF") || txt.includes("STRATEGIC BRIEF") || txt.includes("SAVE OUTPUT")) {
+      markComplete(2, "Click top button <strong>⚡ FULL STRATEGIC BRIEF</strong>.");
+      markComplete(3, "Click top right button <strong>↗ ESCALATE → EXEC PORTAL</strong>.");
+    }
+    // Step 4 Trigger
+    else if (txt.includes("EXEC PORTAL") || txt.includes("ESCALATE")) {
+      markComplete(4, "Strategy successfully escalated to Executive Portal.");
+    }
+  }, true);
 })();
 </script>
 
