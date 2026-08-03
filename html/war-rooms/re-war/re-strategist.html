@@ -634,10 +634,11 @@ async function generateAutoBrief() {
   reXPResetExplain();
   try {
     const text = await callAI(prompt);
-    const {brief: reBrief, obj: reObj} = reXPParseExplain(text);
+    const {brief: reBrief, obj: reObj, parseFailed: reParseFailed} = reXPParseExplain(text);
     brief.innerHTML = formatOutput(reBrief || text);
     stratPayload.brief = reBrief || text;
     if(reObj) reXPRenderExplain(reObj);
+    else if(reParseFailed) reXPRenderExplainFailed();
   } catch(e) {
     brief.innerHTML = `<span style="color:var(--red)">[ERROR] ${e.message}</span>`;
   }
@@ -1051,18 +1052,59 @@ function reXPRenderExplain(obj){
     }
   } catch(dee) { console.warn('[bnca-exposure-engine] re render error:', dee); }
 }
+function reXPRenderExplainFailed(){
+  document.getElementById('reXPConfNum').textContent='—';
+  document.getElementById('reXPConfBar').style.width='0%';
+  document.getElementById('reXPSources').innerHTML='<div style="opacity:.5;font-family:var(--mono);font-size:.63rem;color:var(--red)">Explainability data unavailable — the AI response didn\'t include a parseable summary. The brief above is still valid.</div>';
+  document.getElementById('reXPReasoning').innerHTML='<div style="opacity:.5;color:var(--red)">No reasoning trace returned for this response.</div>';
+  document.getElementById('reXPActions').innerHTML='<div style="opacity:.5;font-family:var(--mono);font-size:.63rem;color:var(--red)">No action data returned.</div>';
+  document.getElementById('reXPDeltaNo').textContent='—';
+  document.getElementById('reXPDeltaAct').textContent='—';
+  document.getElementById('reXPRecovery').textContent='';
+}
 function reXPParseExplain(raw){
   const briefMatch = raw.match(/===BRIEF===\s*([\s\S]*?)(?:===JSON===|$)/);
-  const jsonMatch = raw.match(/===JSON===\s*([\s\S]*)/);
   const brief = briefMatch ? briefMatch[1].trim() : raw;
   let obj = null;
-  if(jsonMatch){
-    try{
-      const clean = jsonMatch[1].trim().replace(/```json|```/g,'').trim();
-      obj = JSON.parse(clean);
-    }catch(e){ console.warn('reXP explain JSON parse:',e); }
+  let parseFailed = false;
+
+  const jsonStart = raw.indexOf('===JSON===');
+  if (jsonStart !== -1) {
+    parseFailed = true; // stays true unless we successfully parse below
+    // Find the first '{' after the marker, then walk forward counting braces
+    // to find its true matching close — the old approach grabbed everything
+    // to end-of-string, which broke whenever the model added any trailing
+    // commentary after the JSON block.
+    const braceStart = raw.indexOf('{', jsonStart);
+    if (braceStart !== -1) {
+      let depth = 0, end = -1;
+      for (let i = braceStart; i < raw.length; i++) {
+        if (raw[i] === '{') depth++;
+        else if (raw[i] === '}') {
+          depth--;
+          if (depth === 0) { end = i; break; }
+        }
+      }
+      if (end !== -1) {
+        const candidate = raw.slice(braceStart, end + 1).replace(/```json|```/g, '').trim();
+        try {
+          obj = JSON.parse(candidate);
+          parseFailed = false;
+        } catch (e) {
+          console.warn('reXP explain JSON parse:', e, '\nCandidate was:', candidate);
+        }
+      } else {
+        console.warn('reXP explain JSON parse: no matching closing brace found after ===JSON=== marker');
+      }
+    } else {
+      console.warn('reXP explain JSON parse: ===JSON=== marker present but no { found after it');
+    }
   }
-  return {brief, obj};
+  // jsonStart === -1 (marker missing entirely) intentionally leaves
+  // parseFailed=false — that's a model-compliance gap, not a parse error,
+  // and generateAutoBrief() already no-ops the panel when obj is null.
+
+  return {brief, obj, parseFailed};
 }
   async function runStrategist() { await runFullBrief(); }
 </script>
