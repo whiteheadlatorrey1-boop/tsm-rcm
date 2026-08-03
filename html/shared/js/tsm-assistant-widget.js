@@ -103,9 +103,32 @@
       quickPrompts = [],
       endpoint = '/api/ai/query',
       buildRequestBody = null, // optional override for verticals with bespoke endpoint schemas
+      threadKey = null, // optional: e.g. 'TSM_RE_ASSISTANT_THREAD'. When set, conversation
+                         // history + open/closed state persist (sessionStorage) across full
+                         // page navigations, so the assistant "follows" the user through a
+                         // multi-page chain (War Room -> Strategist -> Exec Portal) instead
+                         // of resetting to empty every time. Omit to keep current per-page
+                         // behavior unchanged.
     } = opts || {};
 
     injectStyle();
+
+    const MSG_KEY = threadKey ? threadKey + ':messages' : null;
+    const OPEN_KEY = threadKey ? threadKey + ':open' : null;
+
+    function loadThread() {
+      if (!MSG_KEY) return [];
+      try { return JSON.parse(sessionStorage.getItem(MSG_KEY) || '[]'); } catch (e) { return []; }
+    }
+    function saveThread(list) {
+      if (!MSG_KEY) return;
+      try { sessionStorage.setItem(MSG_KEY, JSON.stringify(list.slice(-40))); } catch (e) {}
+    }
+    function setOpenState(isOpen) {
+      if (!OPEN_KEY) return;
+      try { sessionStorage.setItem(OPEN_KEY, isOpen ? '1' : '0'); } catch (e) {}
+    }
+    let thread = loadThread();
 
     document.body.appendChild(el(`<button class="tsm-asst-fab" id="tsmAsstFab" title="Ask the ${esc(vertical)} Assistant">🤖</button>`));
     document.body.appendChild(el(`
@@ -113,7 +136,7 @@
         <div class="tsm-asst-header">
           <div>
             <div class="tsm-asst-title">${esc(vertical)} Assistant</div>
-            <div class="tsm-asst-sub">WIP · Status · Ask about this workspace</div>
+            <div class="tsm-asst-sub">${thread.length ? 'Continued from your last step' : 'WIP · Status · Ask about this workspace'}</div>
           </div>
           <button class="tsm-asst-close" id="tsmAsstClose">✕</button>
         </div>
@@ -139,12 +162,31 @@
       chip.addEventListener('click', () => ask(quickPrompts[i]));
     });
 
-    function addMsg(text, cls) {
+    // Restore prior conversation, if any, before anything else can add a
+    // greeting/briefing message - this is what makes body.children.length
+    // already non-zero on a followed page, so the fab-click handler below
+    // naturally skips the greeting and just shows the continued thread.
+    thread.forEach(m => {
+      const div = document.createElement('div');
+      div.className = 'tsm-a-msg ' + m.cls;
+      div.textContent = m.text;
+      body.appendChild(div);
+    });
+    if (thread.length) body.scrollTop = body.scrollHeight;
+    if (OPEN_KEY) {
+      try { if (sessionStorage.getItem(OPEN_KEY) === '1') panel.classList.add('open'); } catch (e) {}
+    }
+
+    function addMsg(text, cls, persist) {
       const div = document.createElement('div');
       div.className = 'tsm-a-msg ' + cls;
       div.textContent = text;
       body.appendChild(div);
       body.scrollTop = body.scrollHeight;
+      if (persist !== false) {
+        thread.push({ text, cls });
+        saveThread(thread);
+      }
       return div;
     }
 
@@ -182,7 +224,7 @@
     async function ask(question) {
       if (!question || !question.trim()) return;
       addMsg(question, 'user');
-      const pending = addMsg('Thinking…', 'bot pending');
+      const pending = addMsg('Thinking…', 'bot pending', false);
 
       const ctx = getContext ? getContext() : '';
       const reqBody = buildRequestBody
@@ -200,17 +242,23 @@
           "I couldn't get an answer back from the assistant service just now.";
         pending.textContent = answer;
         pending.classList.remove('pending');
+        thread.push({ text: answer, cls: 'bot' });
+        saveThread(thread);
       } catch (err) {
-        pending.textContent = "I can't reach the assistant service right now, but here's what the workspace shows:\n\n" + ctx;
+        const fallback = "I can't reach the assistant service right now, but here's what the workspace shows:\n\n" + ctx;
+        pending.textContent = fallback;
         pending.classList.remove('pending');
+        thread.push({ text: fallback, cls: 'bot' });
+        saveThread(thread);
       }
     }
 
     fab.addEventListener('click', async () => {
       panel.classList.toggle('open');
+      setOpenState(panel.classList.contains('open'));
       if (panel.classList.contains('open') && !body.children.length) {
         if (getBriefing) {
-          const thinking = addMsg('Checking current status…', 'bot pending');
+          const thinking = addMsg('Checking current status…', 'bot pending', false);
           try {
             const items = await getBriefing();
             thinking.remove();
@@ -224,7 +272,7 @@
         }
       }
     });
-    closeBtn.addEventListener('click', () => panel.classList.remove('open'));
+    closeBtn.addEventListener('click', () => { panel.classList.remove('open'); setOpenState(false); });
     send.addEventListener('click', () => { const q = input.value; input.value = ''; ask(q); });
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { const q = input.value; input.value = ''; ask(q); }
