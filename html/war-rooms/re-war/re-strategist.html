@@ -1007,7 +1007,18 @@ function buildStratPayload() {
       issueCount: document.getElementById('issueCount') ? document.getElementById('issueCount').textContent : null,
       actionCount: document.getElementById('actionCount') ? document.getElementById('actionCount').textContent : null,
       pullThrough: document.getElementById('brief-pt') ? document.getElementById('brief-pt').textContent : null,
-      pipeline: document.getElementById('brief-pipeline') ? document.getElementById('brief-pipeline').textContent : null
+      pipeline: document.getElementById('brief-pipeline') ? document.getElementById('brief-pipeline').textContent : null,
+      // Business Impact Delta figures, relayed forward so the Exec Portal
+      // can show the same numbers instead of re-deriving its own separate
+      // (and inconsistent) estimate. These previously lived only as DOM
+      // text on this page (#reXPDeltaNo/#reXPDeltaAct/#reXPRecovery) and
+      // were never included in the relay payload, so every downstream
+      // reader of "noActionRevLoss"/"actionRevLoss"/"recoveryTime" always
+      // got undefined no matter what this page displayed.
+      noActionRevLoss: document.getElementById('reXPDeltaNo') ? document.getElementById('reXPDeltaNo').textContent : null,
+      actionRevLoss: document.getElementById('reXPDeltaAct') ? document.getElementById('reXPDeltaAct').textContent : null,
+      recoveryTime: document.getElementById('reXPRecovery') ? document.getElementById('reXPRecovery').textContent : null,
+      confidence: (stratPayload && stratPayload.confidence != null) ? stratPayload.confidence : null
     }
   };
 }
@@ -1621,53 +1632,6 @@ function toggleGuideBody() {
 })();
 </script>
 
-
-<script>
-function updateBusinessImpactDelta(payload) {
-  const noActionEl = document.querySelector("#impact-no-action, .impact-no-action, [data-impact="no-action"]");
-  const withActionEl = document.querySelector("#impact-with-action, .impact-with-action, [data-impact="with-action"]");
-
-  // Fallback selector by text if IDs are missing
-  let noBox = noActionEl, withBox = withActionEl;
-  if (!noBox || !withBox) {
-    const boxes = document.querySelectorAll(".business-impact-delta div, .impact-card, .delta-card");
-    boxes.forEach(b => {
-      const txt = (b.innerText || "").toUpperCase();
-      if (txt.includes("NO ACTION")) noBox = b.querySelector("span, h3, div:last-child") || b;
-      if (txt.includes("WITH ACTION")) withBox = b.querySelector("span, h3, div:last-child") || b;
-    });
-  }
-
-  // Calculate live risk exposure & mitigated value from session payload
-  let rawPipeline = 18400000; // $18.4M default
-  let units = 11;
-  let holdingCostRiskPerUnit = 15000;
-  let rehabCostSlippage = 28000;
-
-  // Exposure without intervention: Holding cost delay + Rehab cost overruns across active units
-  let totalNoActionExposure = (units * holdingCostRiskPerUnit) + (units * rehabCostSlippage); // -$473,000
-  
-  # Value preserved with strategy execution: $12k/unit cost reduction + $200k bridge capital protected
-  let totalWithActionValue = (units * 12000) + 200000; // +$332,000 net baseline recovery
-
-  if (noBox) {
-    noBox.innerHTML = "-$" + (totalNoActionExposure / 1000).toFixed(0) + "k";
-    noBox.style.color = "#f43f5e"; // Rose alert
-  }
-  if (withBox) {
-    withBox.innerHTML = "+$" + (totalWithActionValue / 1000).toFixed(0) + "k";
-    withBox.style.color = "#10b981"; // Emerald positive
-  }
-}
-
-// Auto-run on page load and trigger after module updates
-document.addEventListener("DOMContentLoaded", function() {
-  setTimeout(updateBusinessImpactDelta, 600);
-});
-document.addEventListener("click", function(e) {
-  setTimeout(updateBusinessImpactDelta, 300);
-});
-</script>
 
 </body>
 </html>
