@@ -2572,8 +2572,29 @@ document.addEventListener('DOMContentLoaded', function () {
 function openWarRoomPicker(id) {
   const doc = loadIndex().find(d => d.id === id || d.id.startsWith(id));
   if (!doc) return;
-  const warRooms = (doc.routing || []).filter(r => WAR_ROOM_ROUTES[r]);
+  const matched = (doc.routing || []).filter(r => WAR_ROOM_ROUTES[r]);
+
+  // Multiple routing codes can alias to the same destination war room
+  // (e.g. 're-war-room' / 're-exec' / 're-strategist' all point at
+  // re-war-room.html). Dedupe by destination URL so the picker only
+  // shows one option per actual war room, not one per alias.
+  const seenUrls = new Set();
+  const warRooms = [];
+  for (const r of matched) {
+    const url = WAR_ROOM_ROUTES[r].url;
+    if (seenUrls.has(url)) continue;
+    seenUrls.add(url);
+    warRooms.push(r);
+  }
+
   if (!warRooms.length) { alert('No war room routes found for this document.'); return; }
+
+  // Only one real destination after deduping aliases — no need to make
+  // the user pick from a list of one, just go straight there.
+  if (warRooms.length === 1) {
+    launchWarRoom(id, warRooms[0]);
+    return;
+  }
 
   const overlay = document.createElement('div');
   overlay.className = 'wr-modal-overlay';
