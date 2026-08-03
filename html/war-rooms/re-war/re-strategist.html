@@ -705,9 +705,10 @@ async function runStratModule(card) {
   // is currently on screen.
   enriched += `\n\nFormat your ENTIRE response exactly as follows: start with the literal line ===BRIEF=== followed by your full analysis above, then a new line with the literal ===JSON=== followed by a single JSON object (no markdown fences) with this exact shape:\n{"confidence":0-100,"execSummary":"...","reasoning":[{"key":"...","val":"..."}]}\nRules: reasoning is REQUIRED, at least 2 entries, each val one short sentence (under 20 words). execSummary is REQUIRED, one sentence (under 25 words) - the bottom-line takeaway for THIS module specifically.`;
 
+  reXPResetExplain();
   try {
     const text = await callAI(enriched);
-    const {brief: modBrief, obj: modObj} = reXPParseExplain(text);
+    const {brief: modBrief, obj: modObj, parseFailed: modParseFailed} = reXPParseExplain(text);
     const displayText = modBrief || text;
     stratCurrentOutput = displayText;
     feed.innerHTML = `<span style="color:var(--acc)">[STRATEGIST] ${title}</span>\n\n` + formatOutput(displayText);
@@ -716,13 +717,14 @@ async function runStratModule(card) {
     autoStratSave(title, displayText);
     updateStratScore();
     if (modObj) {
-      reXPResetExplain();
       reXPRenderExplain(modObj);
       stratPayload.confidence = modObj.confidence;
       stratPayload.execSummary = modObj.execSummary || '';
       stratPayload.reasoning = modObj.reasoning || [];
       // Quick modules don't ask for dataSources/recommendedActions - keep
       // whatever the last Full Brief produced rather than blanking them.
+    } else if (modParseFailed) {
+      reXPRenderExplainFailed();
     }
   } catch(e) {
     feed.innerHTML = `<span style="color:var(--red)">[ERROR] ${e.message}</span>`;
@@ -739,9 +741,10 @@ async function quickStrat(prompt) {
   localRun++;
   document.getElementById('localRun').textContent = localRun;
   const enriched = prompt + `\n\nFormat your ENTIRE response exactly as follows: start with the literal line ===BRIEF=== followed by your full analysis above, then a new line with the literal ===JSON=== followed by a single JSON object (no markdown fences) with this exact shape:\n{"confidence":0-100,"execSummary":"...","reasoning":[{"key":"...","val":"..."}]}\nRules: reasoning is REQUIRED, at least 2 entries, each val one short sentence (under 20 words). execSummary is REQUIRED, one sentence (under 25 words) - the bottom-line takeaway for THIS analysis specifically.`;
+  reXPResetExplain();
   try {
     const text = await callAI(enriched);
-    const {brief: qBrief, obj: qObj} = reXPParseExplain(text);
+    const {brief: qBrief, obj: qObj, parseFailed: qParseFailed} = reXPParseExplain(text);
     const displayText = qBrief || text;
     stratCurrentOutput = displayText;
     feed.innerHTML = '<span style="color:var(--acc)">[QUICK STRATEGY]</span>\n\n' + formatOutput(displayText);
@@ -749,11 +752,12 @@ async function quickStrat(prompt) {
     document.getElementById('stratFeedMeta').textContent = '✓ Complete';
     autoStratSave('Quick Strategy', displayText);
     if (qObj) {
-      reXPResetExplain();
       reXPRenderExplain(qObj);
       stratPayload.confidence = qObj.confidence;
       stratPayload.execSummary = qObj.execSummary || '';
       stratPayload.reasoning = qObj.reasoning || [];
+    } else if (qParseFailed) {
+      reXPRenderExplainFailed();
     }
   } catch(e) {
     feed.innerHTML = `<span style="color:var(--red)">[ERROR] ${e.message}</span>`;
