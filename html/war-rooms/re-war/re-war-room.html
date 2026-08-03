@@ -2,6 +2,30 @@
 <html lang="en">
 
 <head>
+
+<script>
+  // Neutralize TSM Mission Engine dynamic overlay injection
+  window.__TSM_DISABLE_MISSION_ASSISTANT__ = true;
+  window.tsmInitMissionGuide = function() { return false; };
+  
+  // Intercept and destroy the assistant DOM node as soon as it mounts
+  const killAssistantObserver = new MutationObserver((mutations) => {
+    const targets = [
+      'tsm-mission-guide-panel',
+      'mission-guide-panel',
+      'tsm-assistant-root',
+      'ai-assistant-container'
+    ];
+    targets.forEach(id => {
+      const el = document.getElementById(id) || document.querySelector('.' + id);
+      if (el) el.remove();
+    });
+    // Remove launcher buttons or avatars created by mission-engine
+    document.querySelectorAll('.bot-avatar-btn, [class*="assistant-launcher"], [id*="assistant-launcher"]').forEach(el => el.remove());
+  });
+  killAssistantObserver.observe(document.documentElement, { childList: true, subtree: true });
+</script>
+
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>TSM // RE WAR ROOM</title>
@@ -1503,6 +1527,9 @@
   <script src="/js/core/tsm-state.js"></script>
   <script src="/js/core/tsm-mission-engine.js"></script>
   <script src="/js/core/tsm-auto-pipeline.js"></script>
+
+/* Permanent killswitch for AI Chat Assistant overlay */
+#tsm-mission-guide-panel, .assistant-launcher, .chat-widget-container { display: none !important; visibility: hidden !important; pointer-events: none !important; }
 </head>
 
 <body>
@@ -3691,7 +3718,7 @@ function armTourWait(eventName) {
   <script src="/html/js/tsm-mission-conductor.js"></script>
   <script src="/html/tsm-mission-orchestrator.js"></script>
   <script src="/html/reo-pro/pack-configs.js"></script>
-  <style>#tsm-mission-guide-panel { display: none !important; }</style>
+  
 
   <script>
     // ——— RIGHT PANEL DOC UPLOAD

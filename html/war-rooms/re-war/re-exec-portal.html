@@ -1,6 +1,30 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+
+<script>
+  // Neutralize TSM Mission Engine dynamic overlay injection
+  window.__TSM_DISABLE_MISSION_ASSISTANT__ = true;
+  window.tsmInitMissionGuide = function() { return false; };
+  
+  // Intercept and destroy the assistant DOM node as soon as it mounts
+  const killAssistantObserver = new MutationObserver((mutations) => {
+    const targets = [
+      'tsm-mission-guide-panel',
+      'mission-guide-panel',
+      'tsm-assistant-root',
+      'ai-assistant-container'
+    ];
+    targets.forEach(id => {
+      const el = document.getElementById(id) || document.querySelector('.' + id);
+      if (el) el.remove();
+    });
+    // Remove launcher buttons or avatars created by mission-engine
+    document.querySelectorAll('.bot-avatar-btn, [class*="assistant-launcher"], [id*="assistant-launcher"]').forEach(el => el.remove());
+  });
+  killAssistantObserver.observe(document.documentElement, { childList: true, subtree: true });
+</script>
+
 <style id="tsm-exec-kit-css">
 /* ==========================================================================
    TSM Exec Kit — shared WIP tracker + explainability panel
@@ -836,6 +860,69 @@
   <script src="/js/core/tsm-state.js"></script>
   <script src="/js/core/tsm-mission-engine.js"></script>
   <script src="/js/core/tsm-auto-pipeline.js"></script>
+<style>
+    /* GUIDE WIDGET — rule-based "what to click next" hint */
+    .guide-widget {
+      position: fixed;
+      bottom: calc(32px + 1rem); /* Clears fixed 32px #tsm-chain-bar */
+      right: 1rem;
+      z-index: 9998;
+      width: 300px;
+      font-family: var(--mono, monospace);
+    }
+    .gw-toggle {
+      background: var(--s1, #0a1118);
+      border: 1px solid rgba(30, 232, 182, .35);
+      padding: .4rem .75rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+      font-size: .48rem;
+      color: var(--acc, #00e5cc);
+      letter-spacing: .1rem;
+    }
+    .gw-panel {
+      display: none;
+      flex-direction: column;
+      background: var(--s1, #0a1118);
+      border: 1px solid rgba(30, 232, 182, .2);
+      margin-top: 3px;
+      overflow: hidden;
+      padding: .65rem;
+      font-size: .5rem;
+      line-height: 1.6;
+      color: var(--text, #c0c0c0);
+    }
+    .gw-panel.open { display: flex; }
+    .gw-step {
+      display: flex;
+      gap: .45rem;
+      align-items: flex-start;
+      padding: .25rem 0;
+    }
+    .gw-step .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      margin-top: 3px;
+      background: rgba(255, 255, 255, .15);
+    }
+    .gw-step.done .dot { background: var(--green, #00ff88); }
+    .gw-step.done span:last-child { color: var(--muted, #666); text-decoration: line-through; }
+    .gw-step.active .dot { background: var(--acc, #00e5cc); animation: pulse 2s infinite; }
+    .gw-step.active span:last-child { color: var(--white, #fff); }
+    .gw-next {
+      margin-top: .5rem;
+      padding-top: .5rem;
+      border-top: 1px solid rgba(30, 232, 182, .15);
+      color: var(--acc, #00e5cc);
+    }
+</style>
+
+/* Permanent killswitch for AI Chat Assistant overlay */
+#tsm-mission-guide-panel, .assistant-launcher, .chat-widget-container { display: none !important; visibility: hidden !important; pointer-events: none !important; }
 </head>
 <body>
 
@@ -2146,5 +2233,90 @@ function tsmWriteRelay(payload){
 <script src="/html/js/core/tsm-event-bus.js"></script>
 <script src="/html/js/core/tsm-state.js"></script>
 <script src="/shared/tsm-exec-portal-upgrade.js"></script>
+<!-- ═══ GUIDE WIDGET — EXEC PORTAL EDITION ═══ -->
+<div class="guide-widget" id="guideWidget">
+  <div class="gw-toggle" onclick="toggleGWPanel()">
+    <span style="width:5px;height:5px;border-radius:50%;background:var(--acc, #00e5cc);animation:pulse 2s infinite;flex-shrink:0"></span>
+    <span id="gwToggleText">GUIDE · EXEC OVERVIEW</span>
+  </div>
+  <div class="gw-panel" id="gwPanel">
+    <div class="gw-step" id="gwStep1"><span class="dot"></span><span>Select Deal Portfolio or Active Case</span></div>
+    <div class="gw-step" id="gwStep2"><span class="dot"></span><span>Review Strategic Brief & Executive Metrics</span></div>
+    <div class="gw-step" id="gwStep3"><span class="dot"></span><span>Execute Sign-off, Action Override, or Delegation</span></div>
+    <div class="gw-next" id="gwNext">Next: loading...</div>
+  </div>
+</div>
+
+<script>
+(function () {
+  function computeState() {
+    var portfolioSelect = document.getElementById('portfolioSelect') || document.getElementById('caseSelector');
+    var activeDealLoaded = !!(
+      (portfolioSelect && portfolioSelect.value) ||
+      document.querySelector('.deal-card.active') ||
+      window.__activeExecDeal
+    );
+
+    var metricsViewed = !!(
+      document.querySelector('.exec-metric-card') || 
+      document.getElementById('execBriefView')
+    );
+
+    var actionTaken = !!(
+      window.__execApproved || 
+      document.querySelector('.action-executed')
+    );
+
+    return { activeDealLoaded: activeDealLoaded, metricsViewed: metricsViewed, actionTaken: actionTaken };
+  }
+
+  function render() {
+    var s = computeState();
+    var steps = [
+      { id: 'gwStep1', done: s.activeDealLoaded },
+      { id: 'gwStep2', done: s.activeDealLoaded && s.metricsViewed },
+      { id: 'gwStep3', done: s.actionTaken }
+    ];
+
+    var activeAssigned = false;
+    steps.forEach(function (st) {
+      var el = document.getElementById(st.id);
+      if (!el) return;
+      el.classList.remove('done', 'active');
+      if (st.done) {
+        el.classList.add('done');
+      } else if (!activeAssigned) {
+        el.classList.add('active');
+        activeAssigned = true;
+      }
+    });
+
+    var next = '';
+    if (!s.activeDealLoaded) {
+      next = 'Next: select a deal or session brief from the active queue.';
+    } else if (!s.actionTaken) {
+      next = 'Next: review risk matrices and authorize approval or escalation.';
+    } else {
+      next = 'Complete: decision recorded in TSM Chain ledger.';
+    }
+
+    var nextEl = document.getElementById('gwNext');
+    if (nextEl) nextEl.textContent = next;
+
+    var toggleText = document.getElementById('gwToggleText');
+    if (toggleText) {
+      toggleText.textContent = 'GUIDE · ' + (s.actionTaken ? 'DECISION RECORDED' : (s.activeDealLoaded ? 'REVIEWING DEAL' : 'SELECT DEAL'));
+    }
+  }
+
+  window.toggleGWPanel = function () {
+    var p = document.getElementById('gwPanel');
+    if (p) p.classList.toggle('open');
+  };
+
+  setInterval(render, 1000);
+  document.addEventListener('DOMContentLoaded', render);
+})();
+</script>
 </body>
 </html>

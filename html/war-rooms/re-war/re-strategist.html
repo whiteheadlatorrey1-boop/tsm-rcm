@@ -1,6 +1,30 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+
+<script>
+  // Neutralize TSM Mission Engine dynamic overlay injection
+  window.__TSM_DISABLE_MISSION_ASSISTANT__ = true;
+  window.tsmInitMissionGuide = function() { return false; };
+  
+  // Intercept and destroy the assistant DOM node as soon as it mounts
+  const killAssistantObserver = new MutationObserver((mutations) => {
+    const targets = [
+      'tsm-mission-guide-panel',
+      'mission-guide-panel',
+      'tsm-assistant-root',
+      'ai-assistant-container'
+    ];
+    targets.forEach(id => {
+      const el = document.getElementById(id) || document.querySelector('.' + id);
+      if (el) el.remove();
+    });
+    // Remove launcher buttons or avatars created by mission-engine
+    document.querySelectorAll('.bot-avatar-btn, [class*="assistant-launcher"], [id*="assistant-launcher"]').forEach(el => el.remove());
+  });
+  killAssistantObserver.observe(document.documentElement, { childList: true, subtree: true });
+</script>
+
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>TSM // RE STRATEGIST</title>
@@ -227,6 +251,69 @@ body::before{content:'';position:fixed;inset:0;
   <script src="/js/core/tsm-mission-engine.js"></script>
   <script src="/html/js/tsm-bnca-exposure-engine.js"></script>
   <script src="/js/core/tsm-auto-pipeline.js"></script>
+<style>
+    /* GUIDE WIDGET — rule-based "what to click next" hint */
+    .guide-widget {
+      position: fixed;
+      bottom: calc(32px + 1rem); /* Clears fixed 32px #tsm-chain-bar */
+      right: 1rem;
+      z-index: 9998;
+      width: 300px;
+      font-family: var(--mono, monospace);
+    }
+    .gw-toggle {
+      background: var(--s1, #0a1118);
+      border: 1px solid rgba(30, 232, 182, .35);
+      padding: .4rem .75rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+      font-size: .48rem;
+      color: var(--acc, #00e5cc);
+      letter-spacing: .1rem;
+    }
+    .gw-panel {
+      display: none;
+      flex-direction: column;
+      background: var(--s1, #0a1118);
+      border: 1px solid rgba(30, 232, 182, .2);
+      margin-top: 3px;
+      overflow: hidden;
+      padding: .65rem;
+      font-size: .5rem;
+      line-height: 1.6;
+      color: var(--text, #c0c0c0);
+    }
+    .gw-panel.open { display: flex; }
+    .gw-step {
+      display: flex;
+      gap: .45rem;
+      align-items: flex-start;
+      padding: .25rem 0;
+    }
+    .gw-step .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      margin-top: 3px;
+      background: rgba(255, 255, 255, .15);
+    }
+    .gw-step.done .dot { background: var(--green, #00ff88); }
+    .gw-step.done span:last-child { color: var(--muted, #666); text-decoration: line-through; }
+    .gw-step.active .dot { background: var(--acc, #00e5cc); animation: pulse 2s infinite; }
+    .gw-step.active span:last-child { color: var(--white, #fff); }
+    .gw-next {
+      margin-top: .5rem;
+      padding-top: .5rem;
+      border-top: 1px solid rgba(30, 232, 182, .15);
+      color: var(--acc, #00e5cc);
+    }
+</style>
+
+/* Permanent killswitch for AI Chat Assistant overlay */
+#tsm-mission-guide-panel, .assistant-launcher, .chat-widget-container { display: none !important; visibility: hidden !important; pointer-events: none !important; }
 </head>
 <body>
 
@@ -1281,5 +1368,90 @@ function tsmWriteScopedStrat(vertical, missionId){
 
 <!-- TSM KERNEL ENGINE -->
 <script src="/html/core/tsm-kernel.js"></script>
+<!-- ═══ GUIDE WIDGET — STRATEGIST EDITION ═══ -->
+<div class="guide-widget" id="guideWidget">
+  <div class="gw-toggle" onclick="toggleGWPanel()">
+    <span style="width:5px;height:5px;border-radius:50%;background:var(--acc, #00e5cc);animation:pulse 2s infinite;flex-shrink:0"></span>
+    <span id="gwToggleText">GUIDE · INITIALIZING</span>
+  </div>
+  <div class="gw-panel" id="gwPanel">
+    <div class="gw-step" id="gwStep1"><span class="dot"></span><span>Verify Session Data or Paste Case Input</span></div>
+    <div class="gw-step" id="gwStep2"><span class="dot"></span><span>Configure Strategy & Risk Parameters</span></div>
+    <div class="gw-step" id="gwStep3"><span class="dot"></span><span>Generate Strategic Brief</span></div>
+    <div class="gw-step" id="gwStep4"><span class="dot"></span><span>Export Brief or Escalate to Exec Portal</span></div>
+    <div class="gw-next" id="gwNext">Next: loading...</div>
+  </div>
+</div>
+
+<script>
+(function () {
+  function computeState() {
+    var rawInput = document.getElementById('stratInput') || document.getElementById('caseData') || document.getElementById('docPaste');
+    var inputLoaded = !!(
+      (window.__sessionData && Object.keys(window.__sessionData).length > 0) ||
+      (rawInput && rawInput.value.trim().length > 0)
+    );
+
+    var stratOutput = document.getElementById('stratOutput') || document.getElementById('briefResults');
+    var briefGenerated = !!(stratOutput && (stratOutput.textContent.trim().length > 100 || stratOutput.children.length > 0));
+
+    var paramsConfigured = !!(
+      document.querySelector('select.strat-param') || 
+      document.querySelector('input[type="checkbox"]:checked') || 
+      inputLoaded
+    );
+
+    return { inputLoaded: inputLoaded, paramsConfigured: paramsConfigured, briefGenerated: briefGenerated };
+  }
+
+  function render() {
+    var s = computeState();
+    var steps = [
+      { id: 'gwStep1', done: s.inputLoaded },
+      { id: 'gwStep2', done: s.paramsConfigured && s.inputLoaded },
+      { id: 'gwStep3', done: s.briefGenerated },
+      { id: 'gwStep4', done: false }
+    ];
+
+    var activeAssigned = false;
+    steps.forEach(function (st) {
+      var el = document.getElementById(st.id);
+      if (!el) return;
+      el.classList.remove('done', 'active');
+      if (st.done) {
+        el.classList.add('done');
+      } else if (!activeAssigned) {
+        el.classList.add('active');
+        activeAssigned = true;
+      }
+    });
+
+    var next = '';
+    if (!s.inputLoaded) {
+      next = 'Next: paste strategic input or load session data from the War Room.';
+    } else if (!s.briefGenerated) {
+      next = 'Next: review strategic options and click GENERATE BRIEF.';
+    } else {
+      next = 'Ready: export the strategic brief or escalate to Exec Portal.';
+    }
+
+    var nextEl = document.getElementById('gwNext');
+    if (nextEl) nextEl.textContent = next;
+
+    var toggleText = document.getElementById('gwToggleText');
+    if (toggleText) {
+      toggleText.textContent = 'GUIDE · ' + (s.briefGenerated ? 'BRIEF GENERATED' : (s.inputLoaded ? 'INPUT READY' : 'LOAD INPUT'));
+    }
+  }
+
+  window.toggleGWPanel = function () {
+    var p = document.getElementById('gwPanel');
+    if (p) p.classList.toggle('open');
+  };
+
+  setInterval(render, 1000);
+  document.addEventListener('DOMContentLoaded', render);
+})();
+</script>
 </body>
 </html>
