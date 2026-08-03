@@ -1088,22 +1088,31 @@ app.post('/api/noc/query', async (req, res) => {
 
 
 app.post('/api/mortgage/query', async (req, res) => {
-  const { kpis, loan_breaches, conditions, exceptions, context, maxTokens } = req.body || {};
-  const summary = JSON.stringify({
-    kpis,
-    loan_breaches,
-    conditions,
-    exceptions,
-    counts: {
-      conditions: Array.isArray(conditions) ? conditions.length : undefined,
-      exceptions: Array.isArray(exceptions) ? exceptions.length : undefined
-    }
-  }, null, 2);
-  const prompt = `Current Mortgage pipeline snapshot:\n${summary}\n\n` +
-    (context ? `Additional context: ${context}\n\n` : '') +
-    `Identify the highest-risk loan files, the root cause of any SLA breaches or stalled UW conditions, open compliance exceptions requiring escalation, and the single most important next action for each at-risk loan file. Reference loan/condition/exception IDs.`;
+  const { kpis, loan_breaches, conditions, exceptions, context, question, query, maxTokens } = req.body || {};
+  const userQuestion = question || query;
+  const system = context || SP.mortgage;
+  let prompt;
+  if (userQuestion) {
+    // Caller (e.g. re-strategist.html) is driving the conversation directly —
+    // use their question as the prompt and their context as the system role.
+    prompt = userQuestion;
+  } else {
+    // Legacy pipeline-snapshot mode (no explicit question supplied).
+    const summary = JSON.stringify({
+      kpis,
+      loan_breaches,
+      conditions,
+      exceptions,
+      counts: {
+        conditions: Array.isArray(conditions) ? conditions.length : undefined,
+        exceptions: Array.isArray(exceptions) ? exceptions.length : undefined
+      }
+    }, null, 2);
+    prompt = `Current Mortgage pipeline snapshot:\n${summary}\n\n` +
+      `Identify the highest-risk loan files, the root cause of any SLA breaches or stalled UW conditions, open compliance exceptions requiring escalation, and the single most important next action for each at-risk loan file. Reference loan/condition/exception IDs.`;
+  }
   try {
-    const answer = await groqChat(SP.mortgage, prompt, maxTokens || 1200);
+    const answer = await groqChat(system, prompt, maxTokens || 1200);
     return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
   } catch (e) {
     console.error('MORTGAGE GROQ ERROR:', e.message);
