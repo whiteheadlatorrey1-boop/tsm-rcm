@@ -1358,7 +1358,7 @@
     /* RESCUE INLINE WIDGET */
     .rescue-widget {
       position: fixed;
-      bottom: 1rem;
+      bottom: calc(32px + 1rem); /* clears the fixed 32px #tsm-chain-bar so they don't overlap */
       left: 1rem;
       z-index: 9999;
       width: 320px;
@@ -2730,8 +2730,15 @@ Dollar amounts and party names required.`;
       // Collect intelligence feed text for strategist context
       const feedEl = document.getElementById('intelligenceFeed') || document.getElementById('feed-body') || document.querySelector('.intelligence-feed');
       const feedText = feedEl ? feedEl.innerText.slice(0, 3000) : '';
-      const docInputEl = document.getElementById('docInput') || document.getElementById('docText') || document.querySelector('textarea');
-      const docText = docInputEl ? docInputEl.value.slice(0, 2000) : '';
+      // Was falling back to document.querySelector('textarea'), which silently grabbed
+      // the wrong box (#docPaste) since no #docInput/#docText element exists on this
+      // page. The real source is window.__pastedDocFull, set by loadPasteDoc() when the
+      // "LOAD DOC INTO SESSION" button fires. Fall back to the actual paste box (#rpPasteInput)
+      // or the older #docPaste box only if that's genuinely empty.
+      const docText = (window.__pastedDocFull
+        || document.getElementById('rpPasteInput')?.value
+        || document.getElementById('docPaste')?.value
+        || '').slice(0, 2000);
       return {
         timestamp: new Date().toISOString(),
         platform: 'RE War Room',
