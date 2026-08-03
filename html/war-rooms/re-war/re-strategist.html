@@ -699,15 +699,31 @@ async function runStratModule(card) {
       : ((warRoomPayload.feedText || '') + '\n' + (warRoomPayload.docText || '')).slice(0,600);
     enriched = `WAR ROOM CONTEXT:\n${ctx}\n\nSTRATEGY REQUEST:\n${prompt}`;
   }
+  // Lightweight explainability tail - quick modules get a smaller ask than
+  // Full Strategic Brief (no dataSources/recommendedActions noise), just
+  // enough for the Why panel to show something real for whatever module
+  // is currently on screen.
+  enriched += `\n\nFormat your ENTIRE response exactly as follows: start with the literal line ===BRIEF=== followed by your full analysis above, then a new line with the literal ===JSON=== followed by a single JSON object (no markdown fences) with this exact shape:\n{"confidence":0-100,"execSummary":"...","reasoning":[{"key":"...","val":"..."}]}\nRules: reasoning is REQUIRED, at least 2 entries, each val one short sentence (under 20 words). execSummary is REQUIRED, one sentence (under 25 words) - the bottom-line takeaway for THIS module specifically.`;
 
   try {
     const text = await callAI(enriched);
-    stratCurrentOutput = text;
-    feed.innerHTML = `<span style="color:var(--acc)">[STRATEGIST] ${title}</span>\n\n` + formatOutput(text);
+    const {brief: modBrief, obj: modObj} = reXPParseExplain(text);
+    const displayText = modBrief || text;
+    stratCurrentOutput = displayText;
+    feed.innerHTML = `<span style="color:var(--acc)">[STRATEGIST] ${title}</span>\n\n` + formatOutput(displayText);
     feed.scrollTop = 0;
     document.getElementById('stratFeedMeta').textContent = '✓ Complete — ' + title;
-    autoStratSave(title, text);
+    autoStratSave(title, displayText);
     updateStratScore();
+    if (modObj) {
+      reXPResetExplain();
+      reXPRenderExplain(modObj);
+      stratPayload.confidence = modObj.confidence;
+      stratPayload.execSummary = modObj.execSummary || '';
+      stratPayload.reasoning = modObj.reasoning || [];
+      // Quick modules don't ask for dataSources/recommendedActions - keep
+      // whatever the last Full Brief produced rather than blanking them.
+    }
   } catch(e) {
     feed.innerHTML = `<span style="color:var(--red)">[ERROR] ${e.message}</span>`;
     document.getElementById('stratFeedMeta').textContent = 'ERROR';
@@ -722,13 +738,23 @@ async function quickStrat(prompt) {
   feed.innerHTML = '<span style="color:var(--acc)">[QUICK STRATEGY]</span>\n\nAnalyzing...';
   localRun++;
   document.getElementById('localRun').textContent = localRun;
+  const enriched = prompt + `\n\nFormat your ENTIRE response exactly as follows: start with the literal line ===BRIEF=== followed by your full analysis above, then a new line with the literal ===JSON=== followed by a single JSON object (no markdown fences) with this exact shape:\n{"confidence":0-100,"execSummary":"...","reasoning":[{"key":"...","val":"..."}]}\nRules: reasoning is REQUIRED, at least 2 entries, each val one short sentence (under 20 words). execSummary is REQUIRED, one sentence (under 25 words) - the bottom-line takeaway for THIS analysis specifically.`;
   try {
-    const text = await callAI(prompt);
-    stratCurrentOutput = text;
-    feed.innerHTML = '<span style="color:var(--acc)">[QUICK STRATEGY]</span>\n\n' + formatOutput(text);
+    const text = await callAI(enriched);
+    const {brief: qBrief, obj: qObj} = reXPParseExplain(text);
+    const displayText = qBrief || text;
+    stratCurrentOutput = displayText;
+    feed.innerHTML = '<span style="color:var(--acc)">[QUICK STRATEGY]</span>\n\n' + formatOutput(displayText);
     feed.scrollTop = 0;
     document.getElementById('stratFeedMeta').textContent = '✓ Complete';
-    autoStratSave('Quick Strategy', text);
+    autoStratSave('Quick Strategy', displayText);
+    if (qObj) {
+      reXPResetExplain();
+      reXPRenderExplain(qObj);
+      stratPayload.confidence = qObj.confidence;
+      stratPayload.execSummary = qObj.execSummary || '';
+      stratPayload.reasoning = qObj.reasoning || [];
+    }
   } catch(e) {
     feed.innerHTML = `<span style="color:var(--red)">[ERROR] ${e.message}</span>`;
   }
