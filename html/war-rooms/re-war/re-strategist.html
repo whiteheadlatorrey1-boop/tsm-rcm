@@ -653,6 +653,7 @@ Rules: reasoning is REQUIRED, at least 3 entries, and must never be empty - each
     else if(reParseFailed) reXPRenderExplainFailed();
   } catch(e) {
     brief.innerHTML = `<span style="color:var(--red)">[ERROR] ${e.message}</span>`;
+    reXPRenderExplainFailed();
   }
 }
 
@@ -731,6 +732,7 @@ async function runStratModule(card) {
   } catch(e) {
     feed.innerHTML = `<span style="color:var(--red)">[ERROR] ${e.message}</span>`;
     document.getElementById('stratFeedMeta').textContent = 'ERROR';
+    reXPRenderExplainFailed();
   } finally {
     card.classList.remove('running');
   }
@@ -763,6 +765,8 @@ async function quickStrat(prompt) {
     }
   } catch(e) {
     feed.innerHTML = `<span style="color:var(--red)">[ERROR] ${e.message}</span>`;
+    document.getElementById('stratFeedMeta').textContent='ERROR';
+    reXPRenderExplainFailed();
   }
 }
 
@@ -1161,11 +1165,14 @@ function reXPParseExplain(raw){
       console.warn('reXP explain JSON parse: ===JSON=== marker present but no { found after it');
     }
   }
-  // jsonStart === -1 (marker missing entirely) intentionally leaves
-  // parseFailed=false — that's a model-compliance gap, not a parse error,
-  // and generateAutoBrief() already no-ops the panel when obj is null.
+  // Missing ===JSON=== marker is now treated as a failure.
+  // Otherwise the explainability panel silently stays on
+  // "Awaiting analysis..." forever.
+  if (jsonStart === -1) {
+    parseFailed = true;
+  }
 
-  return {brief, obj, parseFailed};
+return {brief, obj, parseFailed};
 }
   async function runStrategist() { await runFullBrief(); }
 </script>
