@@ -18,15 +18,70 @@ if [ ! -d "$REPO_DIR" ]; then
 fi
 cd "$REPO_DIR"
 
-# 1. Apply the fix (idempotent — no-op if already applied)
-if grep -q "^      '',$" html/war-rooms/re-war/re-exec-portal.html 2>/dev/null; then
-  echo "Applying nukeAssistant() empty-selector fix..."
-  git apply --check ../fix-nukeAssistant-empty-selector.patch 2>/dev/null \
-    && git apply ../fix-nukeAssistant-empty-selector.patch \
-    || sed -i "/^      '',$/d" html/war-rooms/re-war/re-exec-portal.html
+# 1. Apply fixes — each one is checked and applied independently, so an
+#    already-applied fix (e.g. from a previous run reusing this same folder)
+#    can never block the others from applying.
+
+EXEC_PORTAL="html/war-rooms/re-war/re-exec-portal.html"
+STORY_JSON="demo/realestate-demo.json"
+SPEC_JS="tests/e2e/demo/realestate-demo.spec.js"
+
+# Fix 1: empty-string selector breaking nukeAssistant()
+if grep -q "^      '',\$" "$EXEC_PORTAL"; then
+  echo "[fix 1/3] Removing empty selector from nukeAssistant() in $EXEC_PORTAL"
+  sed -i "\%^      '',\$%d" "$EXEC_PORTAL"
 else
-  echo "Fix already present, skipping."
+  echo "[fix 1/3] Already applied, skipping."
 fi
+
+# Fix 2: compliance-sweep selector was targeting a nonexistent <button>;
+# the real control is div.quick-link
+if grep -qF "button[onclick*=\\\"quickFire('Run a compliance sweep\\\"]" "$STORY_JSON"; then
+  echo "[fix 2/3] Fixing compliance-sweep selector in $STORY_JSON"
+  sed -i "s/button\[onclick\*=\\\\\"quickFire('Run a compliance sweep\\\\\"\]/div.quick-link[onclick*=\\\\\"quickFire('Run a compliance sweep\\\\\"]/" "$STORY_JSON"
+else
+  echo "[fix 2/3] Already applied, skipping."
+fi
+
+# Fix 3: disable the undocumented strategist auto-escalation timer that
+# races the manual "Full Strategic Brief" click
+if ! grep -q "tsm_auto_mode" "$SPEC_JS"; then
+  echo "[fix 3/3] Adding auto-chain guard to $SPEC_JS"
+  python3 - "$SPEC_JS" <<'PYEOF'
+import sys
+path = sys.argv[1]
+with open(path) as f:
+    content = f.read()
+marker = "  test.setTimeout(120_000);\n"
+guard = marker + (
+    "\n"
+    "  // The strategist page has an undocumented auto-escalation timer that fires\n"
+    "  // 1800ms after load and jumps straight to the Exec Portal unless this flag\n"
+    "  // is set. Without it, the manual \"Full Strategic Brief\" click races the\n"
+    "  // auto-chain and the recording skips the brief step entirely.\n"
+    "  await page.addInitScript(() => {\n"
+    "    localStorage.setItem('tsm_auto_mode', 'off');\n"
+    "  });\n"
+)
+if marker in content and "tsm_auto_mode" not in content:
+    content = content.replace(marker, guard, 1)
+    with open(path, "w") as f:
+        f.write(content)
+PYEOF
+else
+  echo "[fix 3/3] Already applied, skipping."
+fi
+
+echo
+echo "Verifying fixes actually landed..."
+grep -qF "div.quick-link[onclick*=" "$STORY_JSON" || { echo "FIX 2 FAILED TO APPLY — aborting."; exit 1; }
+grep -qF "tsm_auto_mode" "$SPEC_JS" || { echo "FIX 3 FAILED TO APPLY — aborting."; exit 1; }
+if grep -q "^      '',\$" "$EXEC_PORTAL"; then
+  echo "FIX 1 FAILED TO APPLY — aborting."
+  exit 1
+fi
+echo "All fixes confirmed present."
+echo
 
 # 2. Install deps + real browser binary
 npm install
