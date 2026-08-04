@@ -88,11 +88,19 @@ async function groqChat(system, message, maxTokens, clientKey, jsonMode) {
           messages: [{ role: 'system', content: system }, { role: 'user', content: message }]
         };
         if (useJsonMode) body.response_format = { type: 'json_object' };
-        const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-          method: 'POST',
-          headers: { 'Authorization': 'Bearer ' + groqKey, 'Content-Type': 'application/json' },
-          body: JSON.stringify(body)
-        });
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 20000); // fail fast on a hung/slow upstream response rather than blocking indefinitely
+        let r;
+        try {
+          r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + groqKey, 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+            signal: controller.signal
+          });
+        } finally {
+          clearTimeout(timeoutId);
+        }
         if (!r.ok) {
           const err = await r.text();
           if (r.status === 429 || r.status === 503 || r.status === 500 || r.status === 502) {
@@ -115,6 +123,10 @@ async function groqChat(system, message, maxTokens, clientKey, jsonMode) {
         }
         return content;
       } catch (e) {
+        if (e.name === 'AbortError' || e.message.includes('aborted')) {
+          console.warn('[groqChat] timed out after 20s on', model, '- trying next model');
+          continue;
+        }
         if (e.message.includes('429') || e.message.includes('rate_limit')) continue;
         if (useJsonMode) continue; // try the same model again without json mode before moving on
         throw e;

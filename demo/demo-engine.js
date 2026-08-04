@@ -14,15 +14,61 @@
  *   "fill":   { "#search": "denial 4471" },     // selector -> value map, filled before capture
  *   "waitFor": "#mission-queue .mission-row",   // selector to wait for before capture
  *   "waitMs": 1200,                             // flat delay before capture (animations, counters)
- *   "fullPage": true                            // default true; set false for viewport-only shot
+ *   "fullPage": true,                           // default true; set false for viewport-only shot
+ *   "timeout": 60000                            // overrides the default 15000ms for this step's
+ *                                                // click/waitFor/waitForFunction. Use on steps that
+ *                                                // wait on real (non-mocked) sequential API calls
+ *                                                // (e.g. multi-engine AI analysis), which can run
+ *                                                // long under third-party rate limits.
+ * }
+ *
+ * Story-level (top of the *-demo.json, alongside "steps"):
+ * {
+ *   "presetLocalStorage": { "finops_war_tour_done": "1" }
+ *   // Injected via page.addInitScript before any navigation, so it's present
+ *   // before the page's own scripts run on first load. Use this to skip
+ *   // auto-launching guided-tour overlays (or any other first-visit-gated
+ *   // UI) that would otherwise intercept pointer events and block clicks
+ *   // in a fresh, no-history Playwright context.
  * }
  */
 
 const fs = require('fs');
 const path = require('path');
 
-async function runStory(page, { steps, outDir, baseURL = '' }) {
+async function runStory(page, { steps, outDir, baseURL = '', presetLocalStorage = null }) {
   fs.mkdirSync(outDir, { recursive: true });
+
+  // Surface browser-side console errors and uncaught exceptions in the
+  // Playwright/terminal output — without this, a JS error mid-page-script
+  // (e.g. inside an async handler like fireEngines()) fails silently in
+  // the browser and only shows up here as a downstream "element not
+  // visible" timeout with no indication of the real cause.
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') {
+      console.log(`[page console error] ${msg.text()}`);
+    }
+  });
+  page.on('pageerror', (err) => {
+    console.log(`[page uncaught exception] ${err.message}`);
+  });
+  page.on('requestfailed', (req) => {
+    console.log(`[page request failed] ${req.method()} ${req.url()} -- ${req.failure()?.errorText}`);
+  });
+  page.on('response', (res) => {
+    if (res.status() >= 400) {
+      console.log(`[page response ${res.status()}] ${res.url()}`);
+    }
+  });
+
+  if (presetLocalStorage && Object.keys(presetLocalStorage).length) {
+    await page.addInitScript((entries) => {
+      for (const [key, value] of Object.entries(entries)) {
+        try { window.localStorage.setItem(key, value); } catch (e) { /* ignore */ }
+      }
+    }, presetLocalStorage);
+    console.log(`[demo-engine] presetLocalStorage applied: ${JSON.stringify(presetLocalStorage)}`);
+  }
 
   for (const step of steps) {
     if (step.goto) {
@@ -39,19 +85,29 @@ async function runStory(page, { steps, outDir, baseURL = '' }) {
 
     if (step.click) {
       console.log(`[demo-engine] step "${step.shot}" clicking "${step.click}" on ${page.url()}`);
-      await page.click(step.click, { timeout: 15000 });
+      await page.click(step.click, { timeout: step.timeout || 15000 });
       console.log(`[demo-engine] step "${step.shot}" click landed, page now ${page.url()}`);
     }
 
+    if (step.setLocalStorage) {
+      await page.evaluate((entries) => {
+        for (const [key, value] of Object.entries(entries)) {
+          try { window.localStorage.setItem(key, value); } catch (e) { /* ignore */ }
+        }
+      }, step.setLocalStorage);
+      console.log(`[demo-engine] step "${step.shot}" setLocalStorage applied: ${JSON.stringify(step.setLocalStorage)}`);
+    }
     if (step.waitFor) {
-      await page.waitForSelector(step.waitFor, { timeout: 15000 }).catch(() => {
-        console.warn(`[demo-engine] waitFor "${step.waitFor}" timed out on step "${step.shot}" (page: ${page.url()}) — capturing anyway`);
+      const t = step.timeout || 15000;
+      await page.waitForSelector(step.waitFor, { timeout: t }).catch(() => {
+        console.warn(`[demo-engine] waitFor "${step.waitFor}" timed out (${t}ms) on step "${step.shot}" (page: ${page.url()}) — capturing anyway`);
       });
     }
 
     if (step.waitForFunction) {
-      await page.waitForFunction(step.waitForFunction, { timeout: 15000 }).catch(() => {
-        console.warn(`[demo-engine] waitForFunction "${step.waitForFunction}" timed out on step "${step.shot}" (page: ${page.url()}) — capturing anyway`);
+      const t = step.timeout || 15000;
+      await page.waitForFunction(step.waitForFunction, { timeout: t }).catch(() => {
+        console.warn(`[demo-engine] waitForFunction "${step.waitForFunction}" timed out (${t}ms) on step "${step.shot}" (page: ${page.url()}) — capturing anyway`);
       });
     }
 

@@ -15,6 +15,7 @@ test('Construction executive demo', async ({ page }) => {
   await runStory(page, {
     steps: story.steps,
     outDir,
+    presetLocalStorage: story.presetLocalStorage,
     baseURL: BASE_URL,
   });
 });

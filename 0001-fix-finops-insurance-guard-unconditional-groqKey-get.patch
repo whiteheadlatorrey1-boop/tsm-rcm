@@ -1,0 +1,88 @@
+From ccff9817dd21a1a1bbf43031dcdcc1928f46996c Mon Sep 17 00:00:00 2001
+From: Latorrey Whitehead <torreyw94@tsmatter.com>
+Date: Tue, 4 Aug 2026 05:01:57 +0000
+Subject: [PATCH] fix(finops,insurance): guard unconditional #groqKey
+ getElementById calls
+
+fireEngines()/saveKey()/testKey() and key-init in finops-war-room.html
+and insurance-war-room.html called document.getElementById('groqKey')
+directly with no null check, but no #groqKey input element exists in
+either page's DOM. This crashed fireEngines() before the engine loop
+ever started (TypeError: Cannot read properties of null), which is
+why #escalateBar never appeared in the automated demo -- and would
+crash for any real user clicking FIRE ALL ENGINES too.
+
+Matches the defensive pattern already used in construction-war-room.html
+(if(!el) return / if(el) el.value=...) instead of inventing a new
+hidden input element. All inline script blocks in both files verified
+via node --check.
+---
+ html/finops-suite/finops-war/finops-war-room.html | 10 ++++++----
+ html/war-rooms/insure-war/insurance-war-room.html |  7 ++++---
+ 2 files changed, 10 insertions(+), 7 deletions(-)
+
+diff --git a/html/finops-suite/finops-war/finops-war-room.html b/html/finops-suite/finops-war/finops-war-room.html
+index 95bedeaf..959aa9bc 100644
+--- a/html/finops-suite/finops-war/finops-war-room.html
++++ b/html/finops-suite/finops-war/finops-war-room.html
+@@ -571,7 +571,7 @@ let selectedDocType = 'AP Aging';
+ let engOut = {};
+ let enginesComplete = 0;
+ let groqKey = localStorage.getItem('tsm_groq_key') || '';
+-if (groqKey) document.getElementById('groqKey').value = groqKey;
++if (groqKey) { const gkInit = document.getElementById('groqKey'); if (gkInit) gkInit.value = groqKey; }
+ let totalTokensIn = 0, totalTokensOut = 0;
+ 
+ function trackTokens(promptText, responseText){
+@@ -612,9 +612,10 @@ function setDocType(btn, type) {
+ // ═══════════════════════════════════════════════════
+ // KEY
+ // ═══════════════════════════════════════════════════
+-function saveKey() { groqKey = document.getElementById('groqKey').value.trim(); localStorage.setItem('tsm_groq_key', groqKey); }
++function saveKey() { const el = document.getElementById('groqKey'); if (!el) return; groqKey = el.value.trim(); localStorage.setItem('tsm_groq_key', groqKey); }
+ async function testKey() {
+-  groqKey = document.getElementById('groqKey').value.trim();
++  const el = document.getElementById('groqKey');
++  groqKey = el ? el.value.trim() : (groqKey || localStorage.getItem('tsm_groq_key') || '');
+   if (!groqKey) { alert('Enter Groq API key first.'); return; }
+   addLog('Testing API key...', '', 'a');
+   try {
+@@ -873,7 +874,8 @@ const FALLBACKS = [
+ // ═══════════════════════════════════════════════════
+ async function fireEngines() {
+   docText = document.getElementById('docPaste').value.trim();
+-  groqKey = document.getElementById('groqKey').value.trim();
++  const gkFire = document.getElementById('groqKey');
++  groqKey = gkFire ? gkFire.value.trim() : (groqKey || localStorage.getItem('tsm_groq_key') || '');
+   if (!docText) { alert('Paste or load a financial document first.'); return; }
+   if (!groqKey) { alert('Enter your Groq API key.'); return; }
+ 
+diff --git a/html/war-rooms/insure-war/insurance-war-room.html b/html/war-rooms/insure-war/insurance-war-room.html
+index 763c88d8..2c17b24b 100644
+--- a/html/war-rooms/insure-war/insurance-war-room.html
++++ b/html/war-rooms/insure-war/insurance-war-room.html
+@@ -672,7 +672,7 @@ let selectedDocType = 'Claims Report';
+ let engOut = {};
+ let enginesComplete = 0;
+ let groqKey = localStorage.getItem('tsm_groq_key') || '';
+-if (groqKey) document.getElementById('groqKey').value = groqKey;
++if (groqKey) { const gkInit = document.getElementById('groqKey'); if (gkInit) gkInit.value = groqKey; }
+ 
+ // Doc Search relay — populate from redispatch
+ (function(){
+@@ -714,9 +714,10 @@ function setDocType(btn,type){
+   selectedDocType = type;
+ }
+ 
+-function saveKey(){ groqKey=document.getElementById('groqKey').value.trim(); localStorage.setItem('tsm_groq_key',groqKey); }
++function saveKey(){ const el=document.getElementById('groqKey'); if(!el) return; groqKey=el.value.trim(); localStorage.setItem('tsm_groq_key',groqKey); }
+ async function testKey(){
+-  groqKey=document.getElementById('groqKey').value.trim();
++  const el=document.getElementById('groqKey');
++  groqKey = el ? el.value.trim() : (groqKey || localStorage.getItem('tsm_groq_key') || '');
+   if(!groqKey){alert('Enter your API key first.');return;}
+   addLog('Testing API key...','','a');
+   try{
+-- 
+2.43.0
+
