@@ -72,12 +72,106 @@ else
   echo "[fix 3/3] Already applied, skipping."
 fi
 
-echo
+# Fix 4: killswitch CSS pasted without <style> tags leaks as visible text
+# at the top of re-war-room.html and re-strategist.html
+WAR_ROOM="html/war-rooms/re-war/re-war-room.html"
+STRATEGIST="html/war-rooms/re-war/re-strategist.html"
+
+if python3 -c "
+import sys
+content = open('$WAR_ROOM', encoding='utf-8').read()
+old = '/* Permanent killswitch for AI Chat Assistant overlay */\n#tsm-mission-guide-panel, .assistant-launcher, .chat-widget-container { display: none !important; visibility: hidden !important; pointer-events: none !important; }\n</head>'
+sys.exit(0 if old in content else 1)
+"; then
+  echo "[fix 4a/5] Wrapping unwrapped killswitch CSS in <style> tag ($WAR_ROOM)"
+  python3 - "$WAR_ROOM" <<'PYEOF'
+import sys
+path = sys.argv[1]
+with open(path) as f:
+    content = f.read()
+old = "/* Permanent killswitch for AI Chat Assistant overlay */\n#tsm-mission-guide-panel, .assistant-launcher, .chat-widget-container { display: none !important; visibility: hidden !important; pointer-events: none !important; }\n</head>"
+new = "<style>\n/* Permanent killswitch for AI Chat Assistant overlay */\n#tsm-mission-guide-panel, .assistant-launcher, .chat-widget-container { display: none !important; visibility: hidden !important; pointer-events: none !important; }\n</style>\n</head>"
+if old in content:
+    content = content.replace(old, new, 1)
+    with open(path, "w") as f:
+        f.write(content)
+PYEOF
+else
+  echo "[fix 4a/5] Already applied, skipping."
+fi
+
+if python3 -c "
+import sys
+content = open('$STRATEGIST', encoding='utf-8').read()
+old = '/* Permanent killswitch for AI Chat Assistant overlay */\n.assistant-launcher, .chat-widget-container { display: none !important; visibility: hidden !important; pointer-events: none !important; }\n</head>'
+sys.exit(0 if old in content else 1)
+"; then
+  echo "[fix 4b/5] Wrapping unwrapped killswitch CSS in <style> tag ($STRATEGIST)"
+  python3 - "$STRATEGIST" <<'PYEOF'
+import sys
+path = sys.argv[1]
+with open(path) as f:
+    content = f.read()
+old = "/* Permanent killswitch for AI Chat Assistant overlay */\n.assistant-launcher, .chat-widget-container { display: none !important; visibility: hidden !important; pointer-events: none !important; }\n</head>"
+new = "<style>\n/* Permanent killswitch for AI Chat Assistant overlay */\n.assistant-launcher, .chat-widget-container { display: none !important; visibility: hidden !important; pointer-events: none !important; }\n</style>\n</head>"
+if old in content:
+    content = content.replace(old, new, 1)
+    with open(path, "w") as f:
+        f.write(content)
+PYEOF
+else
+  echo "[fix 4b/5] Already applied, skipping."
+fi
+
+# Fix 5: dead first-draft guide widget in re-exec-portal.html — no wrapper
+# container, no step-1, and its click handler references a nonexistent
+# element (throws at runtime). The real, working widget (#tsm-floating-guide)
+# already exists further down the file — this draft is pure dead code.
+if grep -q "DYNAMIC INTERACTIVE GUIDE FOR EU: RE-EXEC-PORTAL" "$EXEC_PORTAL"; then
+  echo "[fix 5/5] Removing dead orphaned guide-widget draft from $EXEC_PORTAL"
+  python3 - "$EXEC_PORTAL" <<'PYEOF'
+import sys, re
+path = sys.argv[1]
+with open(path) as f:
+    lines = f.readlines()
+start = end = None
+for i, line in enumerate(lines):
+    if "DYNAMIC INTERACTIVE GUIDE FOR EU: RE-EXEC-PORTAL" in line:
+        start = i
+        break
+if start is not None:
+    for j in range(start, len(lines)):
+        if lines[j].strip() == "</script>":
+            end = j
+            break
+if start is not None and end is not None:
+    del lines[start:end + 1]
+    with open(path, "w") as f:
+        f.writelines(lines)
+PYEOF
+else
+  echo "[fix 5/5] Already applied, skipping."
+fi
+
 echo "Verifying fixes actually landed..."
 grep -qF "div.quick-link[onclick*=" "$STORY_JSON" || { echo "FIX 2 FAILED TO APPLY — aborting."; exit 1; }
 grep -qF "tsm_auto_mode" "$SPEC_JS" || { echo "FIX 3 FAILED TO APPLY — aborting."; exit 1; }
 if grep -q "^      '',\$" "$EXEC_PORTAL"; then
   echo "FIX 1 FAILED TO APPLY — aborting."
+  exit 1
+fi
+if ! grep -qF "<style>
+/* Permanent killswitch for AI Chat Assistant overlay */" "$WAR_ROOM" 2>/dev/null; then
+  echo "FIX 4a FAILED TO APPLY — aborting."
+  exit 1
+fi
+if ! grep -qF "<style>
+/* Permanent killswitch for AI Chat Assistant overlay */" "$STRATEGIST" 2>/dev/null; then
+  echo "FIX 4b FAILED TO APPLY — aborting."
+  exit 1
+fi
+if grep -q "DYNAMIC INTERACTIVE GUIDE FOR EU: RE-EXEC-PORTAL" "$EXEC_PORTAL"; then
+  echo "FIX 5 FAILED TO APPLY — aborting."
   exit 1
 fi
 echo "All fixes confirmed present."
