@@ -1703,7 +1703,7 @@ function loadWarPayload() {
       state.warPayload = JSON.parse(relay);
       // ── Populate KPI tiles from relay ──────────────────────
       const wp = state.warPayload;
-      const k = wp.kpis || {};
+      const k = sanitizeAIKpi(wp.kpis || {});
       const ctxText = buildRelayContext(4000);
       // Tracks which tiles already received an authoritative value this
       // load (i.e. traced back to the Strategist's own reasoning-derived
@@ -1758,6 +1758,24 @@ function loadWarPayload() {
   } catch(e) {}
 }
 
+// AI JSON responses sometimes return the literal string "null" (or "n/a" /
+// "none" / "undefined") instead of a real JSON null when the model can't
+// derive a field — e.g. {"riskLevel":"null"} instead of {"riskLevel":null}.
+// That string is truthy and not === null/undefined, so every existing
+// falsy/nullish guard in this file let it straight through to the DOM,
+// producing literal "NULL RISK" badges and "null" KPI tiles. This
+// normalizes those stringified-nullish values back to real null right
+// after parsing, before anything reads them.
+function sanitizeAIKpi(obj) {
+  const NULLISH = new Set(['null', 'n/a', 'na', 'none', 'undefined', '--', '—']);
+  if (!obj || typeof obj !== 'object') return obj;
+  Object.keys(obj).forEach(k => {
+    const v = obj[k];
+    if (typeof v === 'string' && NULLISH.has(v.trim().toLowerCase())) obj[k] = null;
+  });
+  return obj;
+}
+
 async function extractRelayIntelligence() {
   const wp = state.warPayload;
   if (!wp) return;
@@ -1775,7 +1793,7 @@ async function extractRelayIntelligence() {
     if (!res.ok) return;
     const data = await res.json();
     const raw = (data.answer || data.response || '').replace(/```json|```/g, '').trim();
-    const kpi = JSON.parse(raw);
+    const kpi = sanitizeAIKpi(JSON.parse(raw));
     state.relayKPI = kpi;
 
     const setTxt = (id, val) => { const el = document.getElementById(id); if (el && val !== null && val !== undefined && val !== '') el.textContent = val; };
