@@ -6,7 +6,7 @@ const BASE_URL = process.env.TSM_BASE_URL || 'http://localhost:8080';
 
 test('FinOps executive demo', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1080 });
-  test.setTimeout(120_000);
+  test.setTimeout(180_000); // finops fires 6 sequential live Groq calls + a strategist report call; needs headroom under rate limits
 
   page.on('pageerror', (err) => console.log('[PAGE ERROR]', err.message));
   page.on('requestfailed', (req) => console.log('[REQUEST FAILED]', req.url(), req.failure()?.errorText));
@@ -27,6 +27,7 @@ test('FinOps executive demo', async ({ page }) => {
   await runStory(page, {
     steps: story.steps,
     outDir,
+    presetLocalStorage: story.presetLocalStorage,
     baseURL: BASE_URL,
   });
 });
