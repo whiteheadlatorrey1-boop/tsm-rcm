@@ -28,6 +28,7 @@ async function runStory(page, { steps, outDir, baseURL = '' }) {
     if (step.goto) {
       const url = step.goto.startsWith('http') ? step.goto : `${baseURL}${step.goto}`;
       await page.goto(url, { waitUntil: 'domcontentloaded' });
+      console.log(`[demo-engine] step "${step.shot}" goto -> ${page.url()}`);
     }
 
     if (step.fill) {
@@ -37,12 +38,20 @@ async function runStory(page, { steps, outDir, baseURL = '' }) {
     }
 
     if (step.click) {
-      await page.click(step.click);
+      console.log(`[demo-engine] step "${step.shot}" clicking "${step.click}" on ${page.url()}`);
+      await page.click(step.click, { timeout: 15000 });
+      console.log(`[demo-engine] step "${step.shot}" click landed, page now ${page.url()}`);
     }
 
     if (step.waitFor) {
       await page.waitForSelector(step.waitFor, { timeout: 15000 }).catch(() => {
-        console.warn(`[demo-engine] waitFor "${step.waitFor}" timed out on step "${step.shot}" — capturing anyway`);
+        console.warn(`[demo-engine] waitFor "${step.waitFor}" timed out on step "${step.shot}" (page: ${page.url()}) — capturing anyway`);
+      });
+    }
+
+    if (step.waitForFunction) {
+      await page.waitForFunction(step.waitForFunction, { timeout: 15000 }).catch(() => {
+        console.warn(`[demo-engine] waitForFunction "${step.waitForFunction}" timed out on step "${step.shot}" (page: ${page.url()}) — capturing anyway`);
       });
     }
 
