@@ -14,11 +14,10 @@ test('Real Estate executive demo', async ({ page }) => {
     await dialog.dismiss();
   });
 
-  // re-strategist.html auto-escalates to re-exec-portal.html 1800ms after
-  // loading a war-room payload (TSM AUTO-CHAIN), unless tsm_auto_mode='off'
-  // is set in localStorage. This story deliberately captures the strategist
-  // screen mid-flow (steps 006/007), so auto-chain must be disabled or the
-  // page navigates itself away before those clicks can land.
+  // The strategist page has an undocumented auto-escalation timer that fires
+  // 1800ms after load and jumps straight to the Exec Portal unless this flag
+  // is set. Without it, the manual "Full Strategic Brief" click races the
+  // auto-chain and the recording skips the brief step entirely.
   await page.addInitScript(() => {
     localStorage.setItem('tsm_auto_mode', 'off');
   });
