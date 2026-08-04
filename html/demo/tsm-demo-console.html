@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TSM Consultz — Live Relay Console</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+  :root{
+    --bg: #090c11;
+    --panel: #10151d;
+    --panel-2: #141b25;
+    --line: #212b38;
+    --line-bright: #2c3846;
+    --ink: #e7ecf3;
+    --ink-dim: #8b96a7;
+    --ink-faint: #556173;
+    --signal: #10b981;
+    --signal-dim: #0d7a5c;
+    --amber: #f2a340;
+    --mono: 'IBM Plex Mono', monospace;
+    --disp: 'Rajdhani', sans-serif;
+    --body: 'Inter', sans-serif;
+  }
+
+  *{ box-sizing: border-box; }
+  html{ scroll-behavior: smooth; }
+  body{
+    margin:0;
+    background: var(--bg);
+    background-image:
+      radial-gradient(ellipse 900px 500px at 15% -10%, rgba(16,185,129,0.06), transparent 60%),
+      radial-gradient(ellipse 700px 400px at 100% 20%, rgba(242,163,64,0.04), transparent 60%);
+    color: var(--ink);
+    font-family: var(--body);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  a{ color: inherit; }
+  :focus-visible{ outline: 2px solid var(--signal); outline-offset: 2px; }
+
+  ::selection{ background: var(--signal-dim); color: #fff; }
+
+  /* ---------- top status strip ---------- */
+  .statusbar{
+    display:flex; align-items:center; gap: 18px;
+    padding: 10px 28px;
+    border-bottom: 1px solid var(--line);
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: .04em;
+    color: var(--ink-faint);
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+  .statusbar .dot{
+    display:inline-block; width:6px; height:6px; border-radius:50%;
+    background: var(--signal); margin-right: 6px;
+    box-shadow: 0 0 6px var(--signal);
+  }
+  .statusbar .sep{ color: var(--line-bright); }
+  .statusbar b{ color: var(--ink-dim); font-weight: 600; }
+
+  /* ---------- hero ---------- */
+  .hero{
+    padding: 72px 28px 56px;
+    max-width: 1180px;
+    margin: 0 auto;
+  }
+  .eyebrow{
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: .16em;
+    color: var(--signal);
+    text-transform: uppercase;
+    margin: 0 0 18px;
+  }
+  .eyebrow::before{ content: "// "; color: var(--ink-faint); }
+  h1{
+    font-family: var(--disp);
+    font-weight: 700;
+    font-size: clamp(2.4rem, 5.4vw, 4.4rem);
+    line-height: 1.02;
+    letter-spacing: -0.01em;
+    margin: 0 0 22px;
+    max-width: 16ch;
+  }
+  h1 em{
+    font-style: normal;
+    color: var(--signal);
+  }
+  .hero p{
+    font-size: 1.08rem;
+    line-height: 1.6;
+    color: var(--ink-dim);
+    max-width: 62ch;
+    margin: 0 0 30px;
+  }
+  .hero-meta{
+    display:flex; flex-wrap: wrap; gap: 10px 28px;
+    font-family: var(--mono); font-size: 12.5px; color: var(--ink-faint);
+    border-top: 1px solid var(--line);
+    padding-top: 20px;
+  }
+  .hero-meta strong{ color: var(--ink-dim); font-weight: 600; }
+
+  /* ---------- console layout ---------- */
+  .console{
+    max-width: 1180px;
+    margin: 0 auto 100px;
+    padding: 0 28px;
+    display: grid;
+    grid-template-columns: 230px 1fr;
+    gap: 26px;
+  }
+  @media (max-width: 860px){
+    .console{ grid-template-columns: 1fr; }
+  }
+
+  /* ---- vertical rail ---- */
+  .rail{
+    display:flex; flex-direction:column; gap: 6px;
+    position: sticky; top: 20px; align-self: start;
+  }
+  .rail-label{
+    font-family: var(--mono); font-size: 10.5px; letter-spacing:.14em;
+    color: var(--ink-faint); text-transform: uppercase; margin: 0 0 8px 2px;
+  }
+  .vbtn{
+    display:flex; flex-direction: column; gap: 2px;
+    text-align:left;
+    background: transparent;
+    border: 1px solid transparent;
+    border-left: 2px solid var(--line);
+    padding: 10px 12px;
+    cursor: pointer;
+    color: var(--ink-faint);
+    font-family: var(--body);
+    border-radius: 0 6px 6px 0;
+    transition: all .15s ease;
+  }
+  .vbtn:hover{ color: var(--ink-dim); background: rgba(255,255,255,0.02); }
+  .vbtn .vname{ font-weight: 600; font-size: 14px; color: inherit; }
+  .vbtn .vtag{ font-family: var(--mono); font-size: 10.5px; color: var(--ink-faint); letter-spacing: .03em; }
+  .vbtn.active{
+    border-left-color: var(--signal);
+    background: rgba(16,185,129,0.07);
+    color: var(--ink);
+  }
+  .vbtn.active .vname{ color: var(--ink); }
+  .vbtn.active .vtag{ color: var(--signal); }
+
+  /* ---- main viewport ---- */
+  .viewport{ min-width: 0; }
+
+  .chapter-head{ margin-bottom: 16px; }
+  .chapter-head .vtag{
+    font-family: var(--mono); font-size: 11px; color: var(--signal);
+    letter-spacing:.08em; text-transform: uppercase;
+  }
+  .chapter-head h2{
+    font-family: var(--disp); font-weight: 700; font-size: 1.9rem;
+    margin: 4px 0 8px; letter-spacing: -0.005em;
+  }
+  .chapter-head .desc{ color: var(--ink-dim); font-size: .96rem; line-height: 1.55; max-width: 60ch; }
+
+  .screen{
+    background: #000;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 30px 60px -30px rgba(0,0,0,0.7);
+  }
+  .screen video{ display:block; width: 100%; height: auto; background:#000; }
+
+  .relaychain{
+    display:flex; align-items:center; gap: 0;
+    padding: 14px 18px;
+    background: var(--panel);
+    border: 1px solid var(--line); border-top: none;
+    border-radius: 0 0 10px 10px;
+    font-family: var(--mono); font-size: 11.5px;
+  }
+  .rc-node{
+    display:flex; align-items:center; gap: 7px;
+    color: var(--ink-faint);
+    padding: 5px 10px;
+    border-radius: 5px;
+    transition: color .3s ease;
+  }
+  .rc-node .rc-dot{
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--line-bright);
+    transition: all .3s ease;
+  }
+  .rc-node.lit{ color: var(--signal); }
+  .rc-node.lit .rc-dot{ background: var(--signal); box-shadow: 0 0 8px var(--signal); }
+  .rc-link{
+    flex: 1; height: 1px; background: var(--line-bright); margin: 0 4px;
+    position: relative; min-width: 16px;
+  }
+  .rc-link.lit{ background: var(--signal-dim); }
+
+  /* ---- narrative readout ---- */
+  .readout{
+    margin-top: 18px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 22px 24px;
+  }
+  .readout .stepline{
+    display:flex; align-items:baseline; gap: 10px;
+    font-family: var(--mono); font-size: 11.5px; color: var(--ink-faint);
+    margin-bottom: 10px;
+  }
+  .readout .stepline b{ color: var(--signal); font-weight: 600; }
+  .readout p{
+    margin: 0; font-size: 1.02rem; line-height: 1.6; color: var(--ink);
+    min-height: 3.2em;
+  }
+
+  /* ---- step ticks ---- */
+  .steps{
+    display:flex; flex-wrap: wrap; gap: 8px;
+    margin-top: 18px;
+  }
+  .step-btn{
+    font-family: var(--mono); font-size: 11px;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    color: var(--ink-faint);
+    padding: 7px 11px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all .15s ease;
+    min-width: 34px;
+    text-align: center;
+  }
+  .step-btn:hover{ border-color: var(--line-bright); color: var(--ink-dim); }
+  .step-btn.active{
+    background: rgba(16,185,129,0.12);
+    border-color: var(--signal-dim);
+    color: var(--signal);
+  }
+
+  .nav-row{
+    display:flex; justify-content: space-between; align-items:center;
+    margin-top: 18px;
+  }
+  .nav-btn{
+    font-family: var(--mono); font-size: 12px; letter-spacing:.04em;
+    background: transparent; border: 1px solid var(--line);
+    color: var(--ink-dim); padding: 9px 16px; border-radius: 6px; cursor: pointer;
+    transition: all .15s ease;
+  }
+  .nav-btn:hover:not(:disabled){ border-color: var(--signal-dim); color: var(--signal); }
+  .nav-btn:disabled{ opacity: .3; cursor: default; }
+  .nav-count{ font-family: var(--mono); font-size: 11.5px; color: var(--ink-faint); }
+
+  /* ---- footer cta ---- */
+  .cta{
+    max-width: 1180px; margin: 0 auto; padding: 40px 28px 90px;
+    border-top: 1px solid var(--line);
+    display:flex; flex-wrap: wrap; justify-content: space-between; align-items:center; gap: 20px;
+  }
+  .cta h3{ font-family: var(--disp); font-size: 1.5rem; margin: 0 0 6px; }
+  .cta p{ color: var(--ink-faint); margin: 0; font-size: .92rem; max-width: 46ch; }
+  .cta a.button{
+    font-family: var(--mono); font-size: 12.5px; letter-spacing:.03em;
+    background: var(--signal); color: #06120d; font-weight: 600;
+    padding: 13px 22px; border-radius: 6px; text-decoration: none;
+    white-space: nowrap;
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    html{ scroll-behavior: auto; }
+    *{ transition: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="statusbar" id="statusbar"><!-- populated by JS --></div>
+
+<header class="hero">
+  <p class="eyebrow">TSM Consultz — Multi-Vertical Relay Demonstration</p>
+  <h1>One relay chain. <em>Five industries.</em> Zero context lost in the handoff.</h1>
+  <p>Every vertical below runs the same architecture: a front-line War Room captures the signal, a Strategist layer reasons over it, and an Executive Portal turns it into a decision — with every hop hashed, explainable, and auditable. This is a recorded walkthrough of the live platform, not a mockup.</p>
+  <div class="hero-meta">
+    <span><strong>5</strong> verticals recorded</span>
+    <span><strong>Real Estate · HotelOps · Healthcare · L1 Support · RE Relay Chain</strong></span>
+    <span>Recorded against live build, <strong>Aug 2026</strong></span>
+  </div>
+</header>
+
+<main class="console">
+  <nav class="rail" id="rail" aria-label="Select vertical"></nav>
+
+  <section class="viewport">
+    <div class="chapter-head">
+      <p class="vtag" id="ch-tag"></p>
+      <h2 id="ch-title"></h2>
+      <p class="desc" id="ch-desc"></p>
+    </div>
+
+    <div class="screen">
+      <video id="video" muted playsinline preload="metadata"></video>
+    </div>
+    <div class="relaychain" id="relaychain" aria-hidden="true"></div>
+
+    <div class="readout">
+      <div class="stepline">
+        <span>STEP</span><b id="step-index">01</b><span>/ <span id="step-total">—</span></span>
+      </div>
+      <p id="step-text">Loading narrative…</p>
+    </div>
+
+    <div class="steps" id="steps" role="tablist" aria-label="Story steps"></div>
+
+    <div class="nav-row">
+      <button class="nav-btn" id="prevBtn">← PREV</button>
+      <span class="nav-count" id="nav-count"></span>
+      <button class="nav-btn" id="nextBtn">NEXT →</button>
+    </div>
+  </section>
+</main>
+
+<footer class="cta">
+  <div>
+    <h3>Same chain. Your vertical next.</h3>
+    <p>The War Room → Strategist → Executive Portal pattern is vertical-agnostic by design — every module above runs on the same relay core.</p>
+  </div>
+  <a class="button" href="https://tsm-consultz.fly.dev" target="_blank" rel="noopener">OPEN LIVE PLATFORM →</a>
+</footer>
+
+<script>
+const BASE = "https://demos.tsmatter.com";
+
+const DATA = [
+  {
+    id: "realestate",
+    name: "Real Estate",
+    tag: "RE-WAR",
+    title: "Compliance sweep to executive brief",
+    desc: "A broker-facing War Room runs a live AI compliance sweep, escalates to a Strategist for a full brief, then hands off to the Executive Portal — with the reasoning chain intact at every stop.",
+    video: `${BASE}/realestate-demo.mp4`,
+    chain: ["War Room", "Strategist", "Exec Portal"],
+    steps: [
+      { t: 0,  chain: 0, text: "The RE War Room is where a deal, listing, or compliance flag first lands — a live intake surface, not a static dashboard." },
+      { t: 3,  chain: 0, text: "One click on Quick-Fire Compliance triggers a live AI sweep against the active deal — no manual checklist, no waiting on legal." },
+      { t: 6,  chain: 0, text: "Results stream into the feed in real time — flagged risks and missing disclosures surfaced in seconds, not hours." },
+      { t: 9,  chain: 0.5, text: "Escalate to Strategist is one click. The case — and everything the sweep just found — travels with it." },
+      { t: 12, chain: 1, text: "The Strategist inherits full context automatically. Every relay hop here is hashed and tamper-evident, not just logged." },
+      { t: 15, chain: 1, text: "Run Full Brief turns raw findings into a synthesized strategic assessment — this is judgment, not just data retrieval." },
+      { t: 18, chain: 1, text: "Pipeline health, risk exposure, recommended action — quantified, and every figure traceable to its source." },
+      { t: 21, chain: 1.5, text: "Escalating to the Executive Portal carries the full brief forward. No re-entry, no lost thread." },
+      { t: 24, chain: 2, text: "Executives see portfolio-level KPIs the instant the case lands — pipeline, exposure, risk, at a glance." },
+      { t: 27, chain: 2, text: "And every number traces back to a visible reasoning chain. This is explainable by design, not a black box handed to leadership." },
+    ],
+  },
+  {
+    id: "hotelops",
+    name: "HotelOps",
+    tag: "HOTEL-WAR",
+    title: "Guest signal to regional visibility",
+    desc: "The Concierge War Room turns a property-level signal — a reservation risk, an IoT sensor alert — into portfolio-level visibility for a regional VP, in under a minute of platform time.",
+    video: `${BASE}/hotelops-demo.mp4`,
+    chain: ["War Room", "Strategist", "Exec Portal"],
+    steps: [
+      { t: 0,    chain: 0, text: "The Concierge War Room is the property-level command center — reservations, IoT sensor data, and guest-risk signals in one place." },
+      { t: 3.1,  chain: 0, text: "Loading live data updates the KPI bar instantly — no manual refresh, no second dashboard to check." },
+      { t: 6.25, chain: 0, text: "Every open issue becomes a tracked mission in the queue — nothing gets lost between shift changes." },
+      { t: 9.4,  chain: 0, text: "One click runs AI analysis against the active mission — reservation risk, booking anomalies, sensor alerts, synthesized." },
+      { t: 12.5, chain: 0.5, text: "Relay to Strategist happens instantly and silently. The next layer already has context before anyone picks up a phone." },
+      { t: 15.6, chain: 1, text: "The Strategist view aggregates across the whole portfolio — this is portfolio ops, not a single property's dashboard." },
+      { t: 18.75,chain: 2, text: "The Executive Portal rolls it up further — the view a regional VP or franchise owner actually wants to open first." },
+      { t: 21.9, chain: 2, text: "Guest-level signal to executive visibility, in under a minute of platform time. That's the whole pitch, in one run." },
+    ],
+  },
+  {
+    id: "healthcare",
+    name: "Healthcare RCM",
+    tag: "HC-STRAT",
+    title: "Denial to appeal package, on demand",
+    desc: "Built around real claims-denial workflows: the Strategist surfaces a denial, runs AI analysis with visible reasoning, and generates a complete appeal pack — the artifact that used to cost an analyst an hour.",
+    video: `${BASE}/healthcare-demo.mp4`,
+    chain: ["Strategist", "Exec Portal", "Denial Pack"],
+    steps: [
+      { t: 0,  chain: 0, text: "This is the healthcare RCM Strategist — built around real claims-denial workflows, not a generic case dashboard." },
+      { t: 5,  chain: 0, text: "Denial management gets its own dedicated tab, because that's where healthcare revenue actually leaks." },
+      { t: 10, chain: 0, text: "Navigation is tab-based and instant — no reloads breaking an analyst's train of thought mid-review." },
+      { t: 15, chain: 0, text: "One click runs the full Strategist analysis against the active claim." },
+      { t: 20, chain: 0.5, text: "Every recommendation ships with a reasoning box — the explainability layer compliance teams actually ask for." },
+      { t: 25, chain: 1, text: "Escalating to the Executive Portal is one click, carrying the full claim context forward with it." },
+      { t: 30, chain: 1, text: "Executive KPIs update immediately: denial rate, recovery pipeline, exposure — live, not batch-refreshed." },
+      { t: 35, chain: 1.5, text: "The escalation modal surfaces exactly what an executive needs to make the call, with no digging required." },
+      { t: 40, chain: 2, text: "A dedicated denial-pack tab assembles the appeal documentation automatically from the claim's own data." },
+      { t: 45, chain: 2, text: "One click generates a complete denial pack — the artifact that used to take an analyst an hour, produced in seconds." },
+      { t: 50, chain: 2, text: "Close the modal, and the KPI view is already current. Start to finish, without ever leaving the platform." },
+    ],
+  },
+  {
+    id: "l1platform",
+    name: "L1 Support Copilot",
+    tag: "L1-COPILOT",
+    title: "Command center to specialist module, in context",
+    desc: "An enterprise IT support flow: a ticket enters the Copilot, routes into a specialist domain (VMware infrastructure), and opens the full specialist module in a new tab — with context carried over, not re-typed.",
+    video: `${BASE}/l1-platform-demo.mp4`,
+    chain: ["Command Center", "Ticket Copilot", "VMware Copilot"],
+    steps: [
+      { t: 0,  chain: 0, text: "The Enterprise Command Center is the entry point for L1 support operations — a single home base, not a scatter of bookmarks." },
+      { t: 3,  chain: 0, text: "An embedded AI assistant is one click away on every page — contextual help without leaving the current workflow." },
+      { t: 6,  chain: 0.5, text: "The Ticket Copilot is where an L1 analyst actually works — structured and guided, not a blank ticket form." },
+      { t: 9,  chain: 1, text: "Entering an incident number pulls in relevant context immediately — no separate lookup step." },
+      { t: 12, chain: 1, text: "For specialized domains like VMware infrastructure, a dedicated SME section appears — guided fields in place of tribal knowledge." },
+      { t: 15, chain: 1, text: "Component, category, environment: structured inputs that route the ticket correctly the first time, every time." },
+      { t: 18, chain: 2, text: "One click opens the full VMware Operations module in a new tab — with the incident context carried over automatically." },
+      { t: 21, chain: 2, text: "Even inside the specialist module, the same AI assistant is right there — one consistent experience across the whole platform." },
+    ],
+  },
+  {
+    id: "rechain",
+    name: "RE Relay Chain",
+    tag: "TECH DEEP-DIVE",
+    title: "The handoff, unscripted",
+    desc: "Not a slideshow — a continuous screen recording of a live, unscripted button click carrying a case across three real pages. Zero JavaScript runtime errors across the full chain, confirmed by an independent Playwright run.",
+    video: `${BASE}/re-chain-demo.mp4`,
+    chain: ["War Room", "Strategist", "Exec Portal"],
+    continuous: true,
+    steps: [
+      { t: 0, chain: 0, text: "The War Room builds a real payload from live page state and writes it to the relay — the exact call the platform uses in production, not a stub." },
+      { t: 6, chain: 1, text: "The Strategist reads that same payload back. Every bridge function that carries it forward is confirmed present and callable — nothing stranded." },
+      { t: 12, chain: 2, text: "A live click on the real 'Escalate → Exec Portal' button — not a scripted navigation — hands the case off cleanly. Zero runtime exceptions across all three pages." },
+    ],
+  },
+];
+
+let activeVertical = 0;
+let activeStep = 0;
+const video = document.getElementById('video');
+
+function renderStatusbar(){
+  const bar = document.getElementById('statusbar');
+  bar.innerHTML = DATA.map((v,i) =>
+    `<span><span class="dot"></span><b>${v.name}</b> online</span>` + (i < DATA.length-1 ? '<span class="sep">/</span>' : '')
+  ).join('');
+}
+
+function renderRail(){
+  const rail = document.getElementById('rail');
+  rail.innerHTML = '<p class="rail-label">Select vertical</p>' + DATA.map((v,i) => `
+    <button class="vbtn${i===activeVertical?' active':''}" data-idx="${i}" role="tab" aria-selected="${i===activeVertical}">
+      <span class="vname">${v.name}</span>
+      <span class="vtag">${v.tag}</span>
+    </button>
+  `).join('');
+  rail.querySelectorAll('.vbtn').forEach(btn => {
+    btn.addEventListener('click', () => selectVertical(parseInt(btn.dataset.idx)));
+  });
+}
+
+function renderChapterHead(v){
+  document.getElementById('ch-tag').textContent = v.tag;
+  document.getElementById('ch-title').textContent = v.title;
+  document.getElementById('ch-desc').textContent = v.desc;
+}
+
+function renderRelayChain(v){
+  const wrap = document.getElementById('relaychain');
+  let html = '';
+  v.chain.forEach((node, i) => {
+    html += `<span class="rc-node" data-node="${i}"><span class="rc-dot"></span>${node}</span>`;
+    if (i < v.chain.length - 1) html += `<span class="rc-link" data-link="${i}"></span>`;
+  });
+  wrap.innerHTML = html;
+}
+
+function renderSteps(v){
+  const wrap = document.getElementById('steps');
+  wrap.innerHTML = v.steps.map((s,i) =>
+    `<button class="step-btn${i===activeStep?' active':''}" data-i="${i}" role="tab">${String(i+1).padStart(2,'0')}</button>`
+  ).join('');
+  wrap.querySelectorAll('.step-btn').forEach(btn => {
+    btn.addEventListener('click', () => selectStep(parseInt(btn.dataset.i), true));
+  });
+  document.getElementById('step-total').textContent = String(v.steps.length).padStart(2,'0');
+}
+
+function updateChainLighting(v, chainPos){
+  const nodes = document.querySelectorAll('.rc-node');
+  const links = document.querySelectorAll('.rc-link');
+  nodes.forEach(n => n.classList.toggle('lit', parseInt(n.dataset.node) <= Math.floor(chainPos + 0.001)));
+  links.forEach(l => l.classList.toggle('lit', parseInt(l.dataset.link) < chainPos));
+}
+
+function selectVertical(i){
+  activeVertical = i;
+  activeStep = 0;
+  const v = DATA[i];
+  renderRail();
+  renderChapterHead(v);
+  renderRelayChain(v);
+  renderSteps(v);
+  video.src = v.video;
+  video.load();
+  selectStep(0, true);
+}
+
+function selectStep(i, seek){
+  const v = DATA[activeVertical];
+  activeStep = i;
+  const s = v.steps[i];
+  document.getElementById('step-index').textContent = String(i+1).padStart(2,'0');
+  document.getElementById('step-text').textContent = s.text;
+  document.getElementById('nav-count').textContent = `${i+1} of ${v.steps.length}`;
+  document.querySelectorAll('.step-btn').forEach(btn => btn.classList.toggle('active', parseInt(btn.dataset.i) === i));
+  updateChainLighting(v, s.chain);
+  document.getElementById('prevBtn').disabled = i === 0;
+  document.getElementById('nextBtn').disabled = i === v.steps.length - 1;
+  if (seek){
+    const doSeek = () => { try { video.currentTime = s.t; } catch(e){} };
+    if (video.readyState >= 1) doSeek();
+    else video.addEventListener('loadedmetadata', doSeek, { once: true });
+    video.pause();
+  }
+}
+
+document.getElementById('prevBtn').addEventListener('click', () => {
+  if (activeStep > 0) selectStep(activeStep - 1, true);
+});
+document.getElementById('nextBtn').addEventListener('click', () => {
+  const v = DATA[activeVertical];
+  if (activeStep < v.steps.length - 1) selectStep(activeStep + 1, true);
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowRight') document.getElementById('nextBtn').click();
+  if (e.key === 'ArrowLeft') document.getElementById('prevBtn').click();
+});
+
+renderStatusbar();
+selectVertical(0);
+</script>
+
+</body>
+</html>

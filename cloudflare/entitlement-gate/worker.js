@@ -40,7 +40,7 @@ const ENTITLEMENTS = {
 const FULL_ACCESS_KEYS = [
   "hw","fo","ins","con","bpo","logistics","vendor","hotel","re",
   "mortgage","schools","leg","hc","o2c","crm","approval","cpq",
-  "catalog","mdm","governance",
+  "catalog","mdm","governance","democonsole",
 ];
 
 // ── Which file paths belong to which vertical ───────────────────────
@@ -48,6 +48,7 @@ const FULL_ACCESS_KEYS = [
 // tsm-doc-search-multi.html — keep these two in sync when a new
 // vertical or war-room file is added.
 const VERTICAL_PATHS = {
+  democonsole: ["/html/demo/"],
   hw:     ["/html/plant-incident.html", "/html/supplier-shutdown.html", "/html/cyber-incident.html"],
   fo:     ["/html/finops-suite/finops-war/finops-war-room.html"],
   ins:    ["/html/war-rooms/insure-war/"],
