@@ -367,7 +367,7 @@ router.post('/analytics/stop', (req, res) => {
 // No keyword-match fallback by design — if the AI call fails, the
 // widget reports that rather than silently guessing.
 
-const AI_WIDGET_MODELS = ['openai/gpt-oss-120b', 'llama-3.1-8b-instant'];
+const AI_WIDGET_MODELS = ['openai/gpt-oss-120b', 'openai/gpt-oss-20b'];
 
 async function matchScenarioToQuery(query, entries) {
   const groqKey = process.env.GROQ_KEY || process.env.GROQ_API_KEY;
