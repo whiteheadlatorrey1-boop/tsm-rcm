@@ -427,6 +427,44 @@
     }
   };
 
+  // 2b. Real-state checkers — verified against actual page code, not guessed.
+  // Each returns an array of booleans (one per config step, in order) computed
+  // from real DOM text/localStorage, never from "something got clicked".
+  // Only add an entry here after reading the real page. Everything without
+  // an entry falls back to the old click-text heuristic below (initEngineHeuristic),
+  // which can be advanced by clicking anything whose text happens to match —
+  // not verified, kept only so untouched pages still show *something*.
+  const STATE_CHECKERS = {
+    mortgage: {
+      // Verified against html/war-rooms/mortgage/mortgage-war-room.html.
+      // Real user actions on this page: LOAD SAMPLE DATA -> RUN ANALYSIS -> RELAY TO STRATEGIST.
+      // The config's 4 steps split "load" and "save" into two labels, but on
+      // this page they're the same click (loadSampleData() calls saveToStorage()
+      // internally) — so steps 1 and 3 are driven by the same real signal below,
+      // not faked as separately achievable.
+      warroom: function () {
+        const AI_PLACEHOLDER = 'Run analysis to get AI-generated pipeline risk, SLA-breach root cause, and closing-readiness guidance across the loan file portfolio.';
+        let loaded = false;
+        try {
+          const raw = localStorage.getItem('TSM_MORTGAGE_DATA');
+          if (raw) {
+            const data = JSON.parse(raw);
+            loaded = Object.keys(data || {}).some((k) => Array.isArray(data[k]) && data[k].length > 0);
+          }
+        } catch (e) { /* localStorage unavailable or corrupt — treat as not loaded */ }
+
+        const out = document.getElementById('aiOutput');
+        const analyzed = !!(out && out.textContent && out.textContent.trim() !== AI_PLACEHOLDER && !out.classList.contains('loading'));
+
+        let relayed = false;
+        try { relayed = !!localStorage.getItem('TSM_MORTGAGE_STRATEGIST_RELAY'); } catch (e) { /* noop */ }
+
+        // step1: Load, step2: Run analysis, step3: Save (same signal as step1 on this page), step4: Relay
+        return [loaded, analyzed, loaded, relayed];
+      }
+    }
+  };
+
   // 3. Inject Collapsible Widget HTML Into DOM
   function renderWidget(config) {
     if (document.getElementById("tsm-universal-guide")) return;
@@ -479,15 +517,68 @@
     });
   }
 
-  // 4. Attach Dynamic Listener Engine
-  function initEngine(config) {
+  // 4a. Shared step-painting — sets each step's done/active/pending style from
+  // an explicit array of booleans, rather than assuming steps complete in order.
+  function paintSteps(doneArray, totalSteps) {
+    let firstUndone = doneArray.findIndex((d) => !d);
+    if (firstUndone === -1) firstUndone = totalSteps; // all done
+
+    for (let i = 0; i < totalSteps; i++) {
+      const el = document.getElementById(`u-step-${i + 1}`);
+      if (!el) continue;
+      const icon = el.querySelector(".u-icon");
+      if (doneArray[i]) {
+        el.style.color = "#10b981"; el.style.opacity = "1";
+        if (icon) icon.innerText = "✓";
+      } else if (i === firstUndone) {
+        el.style.color = "#f59e0b"; el.style.opacity = "1";
+        if (icon) icon.innerText = "●";
+      } else {
+        el.style.color = "#64748b"; el.style.opacity = "0.6";
+        if (icon) icon.innerText = "○";
+      }
+    }
+    const counterEl = document.getElementById("guide-step-counter");
+    if (counterEl) {
+      const doneCount = doneArray.filter(Boolean).length;
+      counterEl.innerText = doneCount >= totalSteps ? "COMPLETE" : `STEP ${firstUndone + 1} OF ${totalSteps}`;
+    }
+    // guide-step-hint is set by the caller (it has the step labels in scope).
+  }
+
+  // 4b. Verified engine — polls a real STATE_CHECKERS function on an interval
+  // plus after every click (cheap, and catches async updates like AI output
+  // finishing). Never advances on click text alone.
+  function initEngineVerified(config, checkerFn) {
+    const totalSteps = config.steps.length;
+    function tick() {
+      let doneArray;
+      try { doneArray = checkerFn(); } catch (e) { doneArray = new Array(totalSteps).fill(false); }
+      paintSteps(doneArray, totalSteps);
+      const firstUndone = doneArray.findIndex((d) => !d);
+      const hintEl = document.getElementById("guide-step-hint");
+      if (hintEl) {
+        hintEl.innerHTML = firstUndone === -1
+          ? "Workflow complete."
+          : `<strong>${config.steps[firstUndone].label}</strong>`;
+      }
+    }
+    tick();
+    document.addEventListener("click", function () { setTimeout(tick, 150); }, true);
+    setInterval(tick, 800);
+  }
+
+  // 4c. Unverified fallback — original click-text heuristic, unchanged.
+  // Advances on ANY element whose visible text matches a trigger term, whether
+  // or not the underlying action actually happened. Only used for pages with
+  // no entry in STATE_CHECKERS above — treat its output as a rough hint, not
+  // a guarantee, until that vertical gets a real checker.
+  function initEngineHeuristic(config) {
     let activeStep = 1;
     const totalSteps = config.steps.length;
 
     function advanceTo(stepNum, hint) {
       if (stepNum <= activeStep) return;
-      
-      // Mark preceding steps done
       for (let i = 1; i < stepNum; i++) {
         const prevEl = document.getElementById(`u-step-${i}`);
         if (prevEl) {
@@ -497,8 +588,6 @@
           if (icon) icon.innerText = "✓";
         }
       }
-
-      // Mark current step active
       activeStep = stepNum;
       const currEl = document.getElementById(`u-step-${activeStep}`);
       if (currEl) {
@@ -507,23 +596,17 @@
         const icon = currEl.querySelector(".u-icon");
         if (icon) icon.innerText = "●";
       }
-
       const counterEl = document.getElementById("guide-step-counter");
       if (counterEl) {
         counterEl.innerText = activeStep > totalSteps ? "COMPLETE" : `STEP ${activeStep} OF ${totalSteps}`;
       }
-
-      if (hint) {
-        document.getElementById("guide-step-hint").innerHTML = hint;
-      }
+      if (hint) document.getElementById("guide-step-hint").innerHTML = hint;
     }
 
-    // Global Click Listener
     document.addEventListener("click", function (e) {
       const el = e.target.closest("*");
       if (!el) return;
       const txt = (el.innerText || "").toUpperCase();
-
       config.steps.forEach((step, idx) => {
         const stepNum = idx + 1;
         if (step.triggerText && step.triggerText.some((term) => txt.includes(term))) {
@@ -542,7 +625,12 @@
 
     if (pageConfig) {
       renderWidget(pageConfig);
-      initEngine(pageConfig);
+      const checkerFn = STATE_CHECKERS[context.vertical] && STATE_CHECKERS[context.vertical][context.role];
+      if (checkerFn) {
+        initEngineVerified(pageConfig, checkerFn);
+      } else {
+        initEngineHeuristic(pageConfig);
+      }
     }
   });
 })();
