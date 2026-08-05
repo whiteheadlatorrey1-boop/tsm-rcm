@@ -18,7 +18,7 @@
 <body>
 <form id="f">
   <h1>TSM ACCESS</h1>
-  <input type="password" id="pw" placeholder="Password" autofocus required>
+  <input type="password" id="pw" placeholder="Password or client access code" autofocus required>
   <button type="submit">Sign in</button>
   <div id="err"></div>
 </form>
@@ -35,7 +35,11 @@ document.getElementById('f').addEventListener('submit', async (e) => {
     });
     const data = await r.json();
     if (data.ok) {
-      const next = new URLSearchParams(location.search).get('next') || '/suite-hub.html';
+      // Clients land on their workspace by default; admin keeps the old
+      // default landing page. An explicit ?next= always wins (e.g. when
+      // the client-facing gate redirected here from a specific page).
+      const fallback = data.role === 'client' ? '/tsm-doc-search-multi.html' : '/suite-hub.html';
+      const next = new URLSearchParams(location.search).get('next') || fallback;
       location.href = next;
     } else {
       err.textContent = data.error || 'Login failed';

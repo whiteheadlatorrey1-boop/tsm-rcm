@@ -1008,7 +1008,7 @@ if (window.pdfjsLib) {
   <div class="workspace-bar" id="workspace-bar" style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin:0 0 .9rem;padding:.6rem .8rem;border:1px solid rgba(30,232,182,.18);border-radius:4px;background:#080c14;font-family:var(--mono);">
     <span style="color:#1ee8b6;font-size:.5rem;letter-spacing:.08em;font-weight:700;">🔒 CLIENT WORKSPACE</span>
     <select id="workspace-select" onchange="switchWorkspace(this.value)" style="background:#0a0f0a;color:#e2e8f0;border:1px solid rgba(255,255,255,.12);border-radius:3px;padding:.3rem .5rem;font-family:var(--mono);font-size:.5rem;"></select>
-    <button type="button" class="btn-ghost" onclick="promptNewWorkspace()" style="font-size:.48rem;">+ New Client</button>
+    <button type="button" class="btn-ghost" id="new-client-btn" onclick="promptNewWorkspace()" style="font-size:.48rem;">+ New Client</button>
     <button type="button" class="btn-ghost" id="isolation-toggle-btn" onclick="toggleIsolationDetail()" style="font-size:.48rem;">🔍 Inspect Storage Keys</button>
     <button type="button" class="btn-ghost" id="client-report-btn" onclick="openClientReportModal()" style="font-size:.48rem;">📤 Client Report</button>
     <span id="workspace-status" style="margin-left:auto;font-size:.48rem;color:#7a9a8a;"></span>
@@ -1654,6 +1654,23 @@ function ensureClientRegistered(label) {
   }
   return id;
 }
+// Registers (or relabels) a client under an EXACT id, rather than deriving
+// the id from the label via slugifyClient(). Used to line up this page's
+// local workspace with a server-authenticated client session, where the id
+// is whatever middleware/client-registry.js assigned at creation time —
+// which won't always match slugify(label) if the label was edited since.
+function ensureClientRegisteredWithId(id, label) {
+  const clean = (label || id).toString().trim() || id;
+  const reg = getClientRegistry();
+  const existing = reg.find(c => c.id === id);
+  if (existing) {
+    if (existing.label !== clean) { existing.label = clean; saveClientRegistry(reg); }
+  } else {
+    reg.push({ id, label: clean, createdAt: Date.now(), email: null });
+    saveClientRegistry(reg);
+  }
+  return id;
+}
 // Client contact info is captured separately from registration, since
 // intake often happens before anyone has an email on file for the client.
 function setClientEmail(clientId, email) {
@@ -2027,9 +2044,26 @@ function saveIndex(docs) {
 }
 
 /* ── Workspace selector UI ── */
+// window.TSM_SESSION is set by applySessionScope() before this first runs.
+// role === 'client' locks every client to exactly their own compartment —
+// no "All Clients" option, no other client's name ever rendered in the DOM,
+// regardless of what's sitting in this browser's localStorage.
 function refreshWorkspaceSelector() {
   const sel = document.getElementById("workspace-select");
   if (!sel) return;
+  const session = window.TSM_SESSION;
+
+  if (session && session.role === 'client') {
+    activeClientId = session.clientId;
+    sel.innerHTML = `<option value="${session.clientId}">${escapeHtml(session.label || session.clientId)}</option>`;
+    sel.value = session.clientId;
+    sel.disabled = true;
+    const newBtn = document.getElementById('new-client-btn');
+    if (newBtn) newBtn.style.display = 'none';
+    updateWorkspaceStatus();
+    return;
+  }
+
   const reg = getClientRegistry().slice().sort((a,b) => a.label.localeCompare(b.label));
   sel.innerHTML = `<option value="${ALL_CLIENTS_ID}">⬡ All Clients (admin rollup)</option>` +
     reg.map(c => `<option value="${c.id}">${escapeHtml(c.label)}</option>`).join("");
@@ -2057,14 +2091,30 @@ function switchWorkspace(clientId) {
   runSearch();
   refreshTotalCount();
 }
-function promptNewWorkspace() {
-  const label = prompt("New client workspace name:");
+// Admin-only (the button is hidden entirely for client sessions, and this
+// bails out too as defense in depth). Registering here now calls the real
+// server-side client registry so the new client actually gets a login
+// credential — not just a local-only label with nothing behind it.
+async function promptNewWorkspace() {
+  if (window.TSM_SESSION && window.TSM_SESSION.role === 'client') return;
+  const label = prompt("New client name:");
   if (!label || !label.trim()) return;
-  const cid = ensureClientRegistered(label.trim());
-  refreshWorkspaceSelector();
-  const sel = document.getElementById("workspace-select");
-  if (sel) sel.value = cid;
-  switchWorkspace(cid);
+  try {
+    const r = await fetch('/api/admin/clients', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ label: label.trim() })
+    });
+    const data = await r.json();
+    if (!data.ok) { alert('Could not create client: ' + (data.error || 'unknown error')); return; }
+    ensureClientRegisteredWithId(data.client.id, data.client.label);
+    refreshWorkspaceSelector();
+    const sel = document.getElementById("workspace-select");
+    if (sel) sel.value = data.client.id;
+    switchWorkspace(data.client.id);
+    alert(`Client "${data.client.label}" created.\n\nAccess code (shown once — give this to the client):\n${data.accessCode}`);
+  } catch (e) {
+    alert('Network error creating client: ' + e.message);
+  }
 }
 function toggleIsolationDetail() {
   const el = document.getElementById("isolation-detail");
@@ -2944,6 +2994,41 @@ function seedAllVerticals() {
   const btn = document.getElementById('seed-all-btn');
   if (btn) { btn.textContent = '✓ All Verticals Seeded'; btn.style.color = 'var(--accent)'; setTimeout(() => { btn.textContent = '⚡ Seed All Verticals'; btn.style.color = ''; }, 3000); }
 }
+
+/* ═══════════════════════════════════════════════════
+   SESSION SCOPE — must run before the workspace selector
+   first renders, since it decides whether this browser is
+   locked to one client or has full admin access.
+═══════════════════════════════════════════════════ */
+window.TSM_SESSION = { role: 'admin', clientId: null, label: null }; // safe default until status resolves
+async function applySessionScope() {
+  try {
+    const r = await fetch('/api/auth/status');
+    const data = await r.json();
+    if (!data.authenticated) {
+      // The server-side gate should already have redirected here before
+      // this page loaded; this is a defensive fallback for an expired
+      // session mid-use.
+      location.href = '/login?next=' + encodeURIComponent(location.pathname);
+      return;
+    }
+    window.TSM_SESSION = { role: data.role, clientId: data.clientId, label: data.label };
+    if (data.role === 'client') {
+      ensureClientRegisteredWithId(data.clientId, data.label);
+      activeClientId = data.clientId;
+      try { localStorage.setItem(ACTIVE_WORKSPACE_KEY, data.clientId); } catch(e) {}
+    }
+  } catch (e) {
+    // If the status check itself fails (network blip), don't lock the
+    // page into a broken state — fall back to the safe admin-shaped
+    // default already set above and let normal auth checks on each API
+    // call catch anything that actually matters.
+  }
+  refreshWorkspaceSelector();
+  runSearch();
+  refreshTotalCount();
+}
+applySessionScope();
 
 /* ═══════════════════════════════════════════════════
    EVENT LISTENERS
