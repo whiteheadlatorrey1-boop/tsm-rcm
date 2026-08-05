@@ -462,6 +462,82 @@
         // step1: Load, step2: Run analysis, step3: Save (same signal as step1 on this page), step4: Relay
         return [loaded, analyzed, loaded, relayed];
       }
+    },
+    // Verified against html/concierge/concierge-war-room.html (HotelOps engine
+    // mirrors mortgage-engine.js's shape/storage-key convention). Strategist
+    // and Exec Portal are intentionally NOT covered here: both are pure
+    // auto-render dashboards (loadRelay() renders every panel in one shot,
+    // there is no separate "generate" click), and the exec portal's
+    // ACKNOWLEDGE/ESCALATE buttons are decorative (toast only, no downstream
+    // write). Faking step-by-step granularity there would misrepresent state
+    // that doesn't exist — left on the heuristic fallback instead.
+    concierge: {
+      warroom: function () {
+        const AI_PLACEHOLDER = 'Run analysis to see AI output here.';
+        let loaded = false;
+        try {
+          const raw = localStorage.getItem('TSM_HOTELOPS_DATA');
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            const data = parsed && parsed.data;
+            loaded = !!(data && Object.keys(data).some((k) => Array.isArray(data[k]) && data[k].length > 0));
+          }
+        } catch (e) { /* localStorage unavailable or corrupt — treat as not loaded */ }
+
+        const out = document.getElementById('aiOutput');
+        const txt = out && out.textContent ? out.textContent.trim() : '';
+        const analyzed = !!(out && txt && txt !== AI_PLACEHOLDER && txt !== 'Running analysis...' && !out.innerHTML.includes('Analysis failed'));
+
+        let relayed = false;
+        try { relayed = !!(localStorage.getItem('TSM_HOTELOPS_STRATEGIST_RELAY') || sessionStorage.getItem('TSM_HOTELOPS_STRATEGIST_RELAY')); } catch (e) { /* noop */ }
+
+        // step1: Load PMS/BMS telemetry, step2: Parse OTA & maintenance alerts
+        // (RUN ANALYSIS click), step3: Review IoT & compliance exposure — same
+        // real signal as step2 on this page (renders together, no separate
+        // click), step4: Relay to strategist.
+        return [loaded, analyzed, analyzed, relayed];
+      }
+    },
+    // Verified against html/finops-suite/finops-war/finops-war-room.html and
+    // finops-main-strategist.html. Exec Portal intentionally excluded: its
+    // TSM_EXEC_CONFIRMED_finops-suite write fires unconditionally the moment
+    // the page loads (not gated on any click or real sign-off), so there is
+    // no genuine user action there to verify — left on the heuristic fallback
+    // rather than treating an auto-write as proof of review.
+    finops: {
+      warroom: function () {
+        const paste = document.getElementById('docPaste');
+        const loaded = !!(paste && paste.value && paste.value.trim().length > 20);
+
+        const bar = document.getElementById('escalateBar');
+        const analyzed = !!(bar && bar.classList.contains('visible'));
+
+        let relayed = false;
+        try { relayed = !!localStorage.getItem('TSM_STRAT_CONFIRMED_finops-suite'); } catch (e) { /* noop */ }
+
+        // step1: Load, step2: Run audit, step3: Save (same signal as step2 —
+        // storeRelay() fires at the same completion point as the escalate bar
+        // appearing), step4: Relay (confirmed by the strategist page reading
+        // it back, not a local write on this page).
+        return [loaded, analyzed, analyzed, relayed];
+      },
+      strategist: function () {
+        const runStatus = document.getElementById('runStatus');
+        const generated = !!(runStatus && runStatus.textContent.trim() === 'COMPLETE');
+
+        let escalated = false;
+        try { escalated = !!localStorage.getItem('TSM_EXEC_CONFIRMED_finops-suite'); } catch (e) { /* noop */ }
+        // TSM_EXEC_CONFIRMED_finops-suite fires unconditionally when the exec
+        // portal loads (not gated on a real sign-off there) — so "escalated"
+        // here really means "navigated to exec portal", same honesty caveat
+        // as the exec portal checker note above.
+
+        // This page's 4 config steps (audit / review / generate / escalate)
+        // don't map to 4 separately-clickable actions — GENERATE STRATEGIST
+        // REPORT produces the audit and review together as one report, so
+        // steps 1-3 share the same real signal; only "escalated" differs.
+        return [generated, generated, generated, escalated];
+      }
     }
   };
 
