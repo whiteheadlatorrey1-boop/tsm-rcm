@@ -1,4 +1,13 @@
 #!/bin/bash
+#
+# WARNING (2026-08-05): same issue as
+# apply-enterprise-sap-phase-intelligence.sh -- the generated report's
+# "STATUS: READY" / "CONNECTED:" text is hardcoded and prints
+# unconditionally, not a real check. This script had never actually
+# been run/committed in this repo as of this checkout (its target
+# dirs, html/shared/runtime/enterprise/ and data/enterprise-lab/,
+# don't exist here). See server/reports/enterprise-intelligence-
+# fusion-report.txt for the corrected, honest status.
 
 set -e
 
