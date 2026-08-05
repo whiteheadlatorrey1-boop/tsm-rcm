@@ -1122,25 +1122,19 @@ async function generateReport(){
         const finBaseExposure = finExpNums ? parseInt(finExpNums[0].replace(/,/g, ''), 10) : 0;
         const finRiskNum = _riskM ? parseInt(_riskM[1], 10) : null;
         const finSeverity = finRiskNum === null ? 'MED' : (finRiskNum >= 80 ? 'CRIT' : finRiskNum >= 60 ? 'HIGH' : finRiskNum >= 35 ? 'MED' : 'LOW');
+        const finImpact = window.TSMBNCAExposureEngine.project({
+          baseExposure: finBaseExposure,
+          severity: finSeverity,
+          confidence: finRiskNum !== null ? finRiskNum : 70,
+          daysUntilDeadline: 0 // no independent deadline signal parsed for this vertical yet
+        });
+        const finFmt = n => '$' + Math.round(n).toLocaleString('en-US');
         const finDeltaNoEl = document.getElementById('finXPDeltaNo');
         const finDeltaActEl = document.getElementById('finXPDeltaAct');
         const finRecoveryEl = document.getElementById('finXPRecovery');
-        if (finBaseExposure > 0) {
-          const finImpact = window.TSMBNCAExposureEngine.project({
-            baseExposure: finBaseExposure,
-            severity: finSeverity,
-            confidence: finRiskNum !== null ? finRiskNum : 70,
-            daysUntilDeadline: 0 // no independent deadline signal parsed for this vertical yet
-          });
-          const finFmt = n => '$' + Math.round(n).toLocaleString('en-US');
-          if (finDeltaNoEl) finDeltaNoEl.textContent = finFmt(finImpact.ifIgnored.exposure);
-          if (finDeltaActEl) finDeltaActEl.textContent = finFmt(finImpact.ifActed.exposure);
-          if (finRecoveryEl) finRecoveryEl.textContent = finImpact.urgencyWindow + ' · ' + finImpact.methodology;
-        } else {
-          if (finDeltaNoEl) finDeltaNoEl.textContent = '—';
-          if (finDeltaActEl) finDeltaActEl.textContent = '—';
-          if (finRecoveryEl) finRecoveryEl.textContent = 'No quantifiable exposure parsed from this relay.';
-        }
+        if (finDeltaNoEl) finDeltaNoEl.textContent = finFmt(finImpact.ifIgnored.exposure);
+        if (finDeltaActEl) finDeltaActEl.textContent = finFmt(finImpact.ifActed.exposure);
+        if (finRecoveryEl) finRecoveryEl.textContent = finImpact.urgencyWindow + ' · ' + finImpact.methodology;
       }
     } catch (finDeltaErr) { console.warn('[bnca-exposure-engine] finops render error:', finDeltaErr); }
     sessionStorage.setItem('tsm_strategist_relay', JSON.stringify({
