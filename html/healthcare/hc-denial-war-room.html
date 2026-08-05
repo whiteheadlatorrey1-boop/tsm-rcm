@@ -722,8 +722,7 @@ textarea::placeholder{color:var(--faint)}
 
 <script>
 // ── STATE ──────────────────────────────────────────────────────────────────
-const GROQ_KEY = ''; // client-side key removed — all calls proxied via /api/hc/stream
-let GROQ_MODEL = 'llama-3.3-70b-versatile';
+// Groq calls are fully server-proxied (/api/hc/stream, /api/hc/ocr) — no client-side key.
 let docText = '';
 let currentMode = 'denial';
 // Doc Search relay
@@ -771,13 +770,6 @@ let currentMode = 'denial';
 let completedCount = 0;
 let navRawText = '';
 let pipelineRunning = false;
-
-if(GROQ_KEY){
-  document.getElementById('api-key').value = GROQ_KEY;
-  document.getElementById('key-dot').classList.add('ok');
-  document.getElementById('model-txt').textContent = 'Groq: ' + GROQ_MODEL;
-  document.getElementById('model-txt').style.color = 'var(--green)';
-}
 
 setInterval(()=>{ document.getElementById('clock').textContent = new Date().toLocaleTimeString('en-US',{hour12:false}); }, 1000);
 document.getElementById('doc-text').addEventListener('input', function(){ docText = this.value.trim(); updateStatus(); });
@@ -1307,57 +1299,6 @@ function clearAll(){
   updateStatus();
 }
 
-// ── KEY ────────────────────────────────────────────────────────────────────
-function onKeyInput(v){
-  GROQ_KEY = v.trim();
-  // localStorage.setItem('groq_key', GROQ_KEY); // removed
-  const dot = document.getElementById('key-dot');
-  if (dot) dot.className = 'key-dot' + (GROQ_KEY.startsWith('gsk_') ? ' ok' : '');
-  const fireBtn = document.getElementById('fire-btn');
-  if (fireBtn) fireBtn.disabled = !GROQ_KEY || docText.length < 20;
-}
-
-async function testKey(){
-  const keyEl = document.getElementById('api-key');
-  if (!keyEl) return;
-  const key = keyEl.value.trim();
-  const statusTxt = document.getElementById('key-status');
-  if (statusTxt) {
-    statusTxt.textContent = 'testing...';
-    statusTxt.style.color = 'var(--amber)';
-  }
-  try {
-    const r = await fetch('https://api.groq.com/openai/v1/models', { headers: { 'Authorization': 'Bearer ' + key } });
-    const d = await r.json();
-    if(d.data){
-      GROQ_KEY = key; // localStorage.setItem('groq_key', key); // removed
-      const dot = document.getElementById('key-dot');
-      if (dot) dot.classList.add('ok');
-      if (statusTxt) {
-        statusTxt.textContent = '✓ connected';
-        statusTxt.style.color = 'var(--green)';
-      }
-      const modelTxt = document.getElementById('model-txt');
-      if (modelTxt) {
-        modelTxt.textContent = 'Groq: ' + GROQ_MODEL;
-        modelTxt.style.color = 'var(--green)';
-      }
-      const fireBtn = document.getElementById('fire-btn');
-      if (fireBtn) fireBtn.disabled = docText.length < 20;
-    } else {
-      if (statusTxt) {
-        statusTxt.textContent = '✗ ' + (d.error?.message || 'invalid');
-        statusTxt.style.color = 'var(--red)';
-      }
-    }
-  } catch(e){
-    if (statusTxt) {
-      statusTxt.textContent = '✗ network error';
-      statusTxt.style.color = 'var(--red)';
-    }
-  }
-}
-
 // ── GROQ STREAM ────────────────────────────────────────────────────────────
 async function groqStreamModel(model, sys, user, onChunk, onDone, onError, maxTok=700){
   try {
@@ -1375,31 +1316,6 @@ async function groqStreamModel(model, sys, user, onChunk, onDone, onError, maxTo
         const data=line.replace(/^data: /,'').trim(); if(data==='[DONE]'){onDone(total);return;}
         if(!data||data[0]===':') continue;
         try{const j=JSON.parse(data);const tok=j.choices?.[0]?.delta?.content;if(tok){total+=tok.length;onChunk(tok);}}catch{}
-      }
-    }
-  } catch(e){ onError(e.message); }
-}
-
-async function groqStream(sys, user, onChunk, onDone, onError, maxTok=700){
-  if(!GROQ_KEY){ onError('No API key configured.'); return; }
-  try {
-    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + GROQ_KEY },
-      body: JSON.stringify({
-        model: GROQ_MODEL, stream: true, max_tokens: maxTok,
-        messages: [{ role: 'system', content: sys }, { role: 'user', content: user }]
-      })
-    });
-    if(!res.ok){ const e = await res.json(); onError(e.error?.message || 'Groq error ' + res.status); return; }
-    const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = '', total = 0;
-    while(true){
-      const { done, value } = await reader.read(); if(done){ onDone(total); break; }
-      buf += dec.decode(value, { stream: true }); const lines = buf.split('\n'); buf = lines.pop();
-      for(const line of lines){
-        const data = line.replace(/^data: /,'').trim(); if(data === '[DONE]'){ onDone(total); return; }
-        if(!data || data[0] === ':') continue;
-        try { const j = JSON.parse(data); const tok = j.choices?.[0]?.delta?.content; if(tok){ total += tok.length; onChunk(tok); } } catch{}
       }
     }
   } catch(e){ onError(e.message); }
@@ -1833,18 +1749,7 @@ async function injectPriorAuthGeneratorWidget(engineSummary) {
       `${i+1}. ${a.appName} (${a.suite})`
     ).join('\n');
 
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${groqKey}`
-      },
-      body: JSON.stringify({
-        model: 'llama-3.1-8b-instant',
-        max_tokens: 400,
-        messages: [{
-          role: 'system',
-          content: `You are Engine 06, the BNCA (Best Next Course of Action) dispatcher for the TSM War Room. 
+    const e6Sys = `You are Engine 06, the BNCA (Best Next Course of Action) dispatcher for the TSM War Room. 
 Your job: read the 5-engine denial analysis below and write a 2-3 sentence executive narrative explaining:
 1. The primary issue identified
 2. Why the recommended apps below are the right tools to fix it
@@ -1855,16 +1760,20 @@ Be direct, clinical, and specific. Reference actual denial codes, dollar amounts
 Recommended apps:
 ${appListForPrompt}
 
-Keep response under 120 words. Plain text only, no markdown.`
-        }, {
-          role: 'user',
-          content: e6Summary.slice(0, 2000)
-        }]
-      })
-    });
+Keep response under 120 words. Plain text only, no markdown.`;
 
-    const data = await response.json();
-    const narrative = data?.choices?.[0]?.message?.content || 'Analysis complete. Route to recommended apps below to begin remediation.';
+    const narrative = await new Promise((resolve) => {
+      let acc = '';
+      groqStreamModel(
+        'openai/gpt-oss-20b',
+        e6Sys,
+        e6Summary.slice(0, 2000),
+        (chunk) => { acc += chunk; },
+        () => resolve(acc.trim() || 'Analysis complete. Route to recommended apps below to begin remediation.'),
+        () => resolve('Analysis complete. Route to recommended apps below to begin remediation.'),
+        400
+      );
+    });
 
     // Update narrative
     const narrativeEl = document.getElementById('e6-narrative');

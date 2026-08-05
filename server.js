@@ -564,6 +564,79 @@ app.post('/api/hc/stream', async (req, res) => {
   }
 });
 
+// Server-side proxy for Groq Vision OCR (scanned PDF pages + uploaded images).
+// Replaces the old direct browser->api.groq.com calls that shipped a client-side key.
+const GROQ_VISION_MODELS = [
+  'meta-llama/llama-4-scout-17b-16e-instruct',
+  'meta-llama/llama-4-maverick-17b-128e-instruct'
+];
+
+app.post('/api/hc/ocr', async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  const { imageBase64, mimeType, prompt } = req.body || {};
+  if (!imageBase64) return res.status(400).json({ error: 'Missing imageBase64' });
+
+  const clientId = req.ip;
+  const today = new Date().toDateString();
+  const key = clientId + '_' + today;
+  clientUsage[key] = (clientUsage[key] || 0) + 1;
+  if (clientUsage[key] > 20) {
+    return res.status(429).json({ error: 'Daily analysis limit reached. Contact TSM to upgrade.' });
+  }
+
+  const groqKey = process.env.GROQ_API_KEY || process.env.GROQ_KEY;
+  if (!groqKey) return res.status(500).json({ error: 'GROQ_KEY not configured on server.' });
+
+  const mt = mimeType || 'image/jpeg';
+  const dataUrl = `data:${mt};base64,${imageBase64}`;
+  const ocrPrompt = prompt || 'Extract ALL visible text from this image exactly as it appears. Preserve structure, codes, dates, and dollar amounts. Output plain text only.';
+
+  let lastErr;
+  for (const model of GROQ_VISION_MODELS) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 25000);
+      let groqRes;
+      try {
+        groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + groqKey },
+          body: JSON.stringify({
+            model,
+            max_tokens: 2000,
+            messages: [{
+              role: 'user',
+              content: [
+                { type: 'text', text: ocrPrompt },
+                { type: 'image_url', image_url: { url: dataUrl } }
+              ]
+            }]
+          }),
+          signal: controller.signal
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
+      if (!groqRes.ok) {
+        const err = await groqRes.text();
+        lastErr = err;
+        if ([429, 500, 502, 503].includes(groqRes.status)) continue;
+        return res.status(502).json({ error: 'Groq OCR error ' + groqRes.status + ': ' + err });
+      }
+      const data = await groqRes.json();
+      const text = data?.choices?.[0]?.message?.content || '';
+      return res.json({ ok: true, text });
+    } catch (e) {
+      lastErr = e.message;
+      if (e.name === 'AbortError') continue;
+      return res.status(500).json({ error: e.message });
+    }
+  }
+  return res.status(502).json({ error: 'All Groq vision models failed. ' + (lastErr || '') });
+});
+
 function debugLog(msg) {
   try {
     fs.appendFileSync('/app/data/debug.log', `[${new Date().toISOString()}] ${msg}\n`);
