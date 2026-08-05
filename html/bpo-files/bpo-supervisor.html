@@ -89,7 +89,7 @@ code{background:var(--bg4);padding:1px 6px;border-radius:4px;font-size:12px}
 .floor-map-wrap{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:10px}
 </style>
 </head>
-<body data-vertical="finops" data-page-role="warroom">
+<body>
 
 <div class="topbar">
   <div class="logo">TSM <span>· BPO Supervisor Roster</span></div>
@@ -155,8 +155,8 @@ code{background:var(--bg4);padding:1px 6px;border-radius:4px;font-size:12px}
 
   <div class="tab-panel" id="executivePanel">
     <div class="placeholder-banner">
-      <span class="placeholder-badge">Sample Data</span>
-      <span>Financials and AI Confidence below are still placeholders — see <code>SAMPLE_EXECUTIVE_DATA</code> at the top of this page's script for the one place to wire in real billing/AI data later. Operations status and floor-map sizing are computed live from <code>TSMMissionStore</code>.</span>
+      <span class="placeholder-badge">Live</span>
+      <span>Operations status, AI Confidence, and floor-map sizing are computed live from <code>TSMMissionStore</code>. Financials remain unconnected — no rate-card or invoicing source exists yet — and the panel below says so explicitly rather than showing a placeholder dollar figure.</span>
     </div>
 
     <div class="exec-banner-row" id="execBannerRow"></div>
@@ -193,25 +193,16 @@ let playbackPlaying = false;
 let playbackTimer = null;
 
 // ---------------------------------------------------------------------
-// PLACEHOLDER DATA -- Executive View tab only. Financials and AI
-// Confidence below are NOT derived from TSMMissionStore (no rate-card
-// or AI-confidence-scoring data exists yet -- see project notes on
-// what each needs before it can go live). Operations-health status and
-// floor-map node sizing are computed live in renderExecutive() from
-// real getAnalytics() data and do NOT read this object.
+// LIVE DATA -- Executive View tab. AI Confidence and Operations status
+// are computed live in renderExecutive() from real getAnalytics() data.
+// Financials remain genuinely unavailable: no rate-card or invoicing
+// system exists anywhere in this codebase yet (mission.billing.amount
+// is never populated by any current code path), so renderExecutive()
+// shows an explicit "not connected" state for that panel rather than a
+// number. FLOOR_MAP_SECTORS below is layout only -- node SIZE is real,
+// computed live from getAnalytics().byVertical.
 // ---------------------------------------------------------------------
-const SAMPLE_EXECUTIVE_DATA = {
-  aiConfidence: 97,
-  financials: {
-    revenueToday: 48290,
-    automationSavings: 12480,
-    laborCost: 19320,
-    profitMarginPct: 37,
-    forecast: 1440000
-  },
-  // Positions only -- layout is illustrative. Real per-sector node SIZE
-  // is computed live from getAnalytics().byVertical in renderExecutive().
-  floorMapSectors: [
+const FLOOR_MAP_SECTORS = [
     { key: 'healthcare', x: 260, y: 40 },
     { key: 'legal', x: 90, y: 120 },
     { key: 'insurance', x: 430, y: 120 },
@@ -219,8 +210,7 @@ const SAMPLE_EXECUTIVE_DATA = {
     { key: 'mortgage', x: 460, y: 230 },
     { key: 'finops', x: 190, y: 300 },
     { key: 'hotelops', x: 330, y: 300 }
-  ]
-};
+];
 
 function fmtPct(v) {
   if (v == null) return '<span class="stat-none">—</span>';
@@ -546,9 +536,7 @@ function fmtCurrency(n) {
 }
 
 function renderExecutive() {
-  const d = SAMPLE_EXECUTIVE_DATA;
-
-  // Real: computed live from actual mission data, not the sample config.
+  // Real: computed live from actual mission data.
   const analytics = window.TSMMissionStore.getAnalytics();
   const lateRatio = analytics.open > 0 ? analytics.late / analytics.open : 0;
   const opsHealthy = analytics.open === 0 || lateRatio < 0.15;
@@ -557,6 +545,18 @@ function renderExecutive() {
     : 'No open missions right now';
   document.getElementById('execOpsDetail').textContent = opsDetail;
 
+  // AI Confidence: real average of mission.confidence.score across missions
+  // that have one (set by the doc-router at classification time). Shown as
+  // "No data yet" rather than 0% when no scored missions exist -- 0% would
+  // misleadingly read as "confidence is bad" instead of "nothing to average".
+  const hasConfidence = analytics.avgConfidence != null;
+  const confidenceLabel = hasConfidence
+    ? `AI Confidence ${analytics.avgConfidence}%`
+    : 'AI Confidence — no scored missions yet';
+  const confidenceBadge = hasConfidence
+    ? `<span class="placeholder-badge" style="color:var(--green);border-color:var(--green)">Live · n=${analytics.confidenceSampleSize}</span>`
+    : `<span class="placeholder-badge">No data</span>`;
+
   document.getElementById('execBannerRow').innerHTML = `
     <div class="status-pill">
       <span class="status-dot" style="background:${opsHealthy ? 'var(--green)' : 'var(--red)'}"></span>
@@ -564,30 +564,38 @@ function renderExecutive() {
       <span class="placeholder-badge" style="color:var(--green);border-color:var(--green)">Live</span>
     </div>
     <div class="status-pill">
-      AI Confidence ${d.aiConfidence}%
-      <span class="placeholder-badge">Sample</span>
+      ${confidenceLabel}
+      ${confidenceBadge}
     </div>
   `;
 
-  const f = d.financials;
-  document.getElementById('execFinancialsRow').innerHTML = `
-    <div class="summary-card"><div class="val">${fmtCurrency(f.revenueToday)}</div><div class="lbl">Revenue Today</div></div>
-    <div class="summary-card"><div class="val">${fmtCurrency(f.automationSavings)}</div><div class="lbl">Automation Savings</div></div>
-    <div class="summary-card"><div class="val">${fmtCurrency(f.laborCost)}</div><div class="lbl">Labor Cost</div></div>
-    <div class="summary-card"><div class="val">${f.profitMarginPct}%</div><div class="lbl">Profit Margin</div></div>
-    <div class="summary-card"><div class="val">${fmtCurrency(f.forecast)}</div><div class="lbl">Forecast</div></div>
+  // Financials: genuinely not available. No rate-card or invoicing system
+  // exists in this codebase yet -- mission.billing.amount is never
+  // populated by any current code path. Showing an honest "not connected"
+  // state here instead of a number is deliberate: a real $0 would say
+  // "zero revenue", and a placeholder number would say something false.
+  // Wire this card to a real billing source before a pilot needs it.
+  const hasBilling = analytics.totalBilled != null;
+  document.getElementById('execFinancialsRow').innerHTML = hasBilling ? `
+    <div class="summary-card"><div class="val">${fmtCurrency(analytics.totalBilled)}</div><div class="lbl">Total Billed</div></div>
+    <div class="summary-card"><div class="val">${analytics.billedMissionCount}</div><div class="lbl">Billed Missions</div></div>
+  ` : `
+    <div class="summary-card" style="grid-column:1/-1;text-align:left">
+      <div class="lbl" style="margin-bottom:4px">Financials not connected</div>
+      <div style="font-size:11px;color:var(--text3)">No rate-card or invoicing source is wired to TSMMissionStore yet — mission.billing.amount is defined in the data model but nothing populates it today. Revenue, savings, and margin figures will appear here once that's built; showing placeholder dollar amounts in the meantime would be misleading in front of a client.</div>
+    </div>
   `;
 
   // Real: node radius reflects each sector's actual open-mission count
   // from getAnalytics().byVertical. Positions stay illustrative (no
   // real x/y meaning), but size is not made up.
   const byVertical = analytics.byVertical || {};
-  const maxCount = Math.max(1, ...d.floorMapSectors.map(s => byVertical[s.key] || 0));
+  const maxCount = Math.max(1, ...FLOOR_MAP_SECTORS.map(s => byVertical[s.key] || 0));
   const core = { x: 260, y: 170 };
-  const nodes = d.floorMapSectors.map(s => `
+  const nodes = FLOOR_MAP_SECTORS.map(s => `
     <line x1="${core.x}" y1="${core.y}" x2="${s.x}" y2="${s.y}" stroke="var(--border2)" stroke-width="1.5" stroke-dasharray="4 3" />
   `).join('');
-  const labels = d.floorMapSectors.map(s => {
+  const labels = FLOOR_MAP_SECTORS.map(s => {
     const count = byVertical[s.key] || 0;
     const r = 16 + (count / maxCount) * 22;
     return `
@@ -653,6 +661,5 @@ document.addEventListener('DOMContentLoaded', () => {
   if (window.TSMMissionStore) window.TSMMissionStore.subscribe('*', refreshActiveTab);
 });
 </script>
-  <script src="../../../js/tsm-guide-engine.js" defer></script>
 </body>
 </html>

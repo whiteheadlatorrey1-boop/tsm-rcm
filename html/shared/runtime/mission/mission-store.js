@@ -271,6 +271,33 @@
       return !!due && new Date(due) < now;
     }).length;
 
+    // Confidence: real, when present. Populated at mission-creation time by
+    // tsm-doc-search-multi.html's buildMissionFromClassification() as
+    // mission.confidence.score (0-100, from the doc-router's own
+    // classification). Missions created by other paths (e.g. manual intake)
+    // may not have this set -- those are excluded from the average rather
+    // than treated as 0, so a mix of scored/unscored missions doesn't drag
+    // the number down artificially.
+    var scored = missions.filter(function (m) {
+      return m.confidence && typeof m.confidence.score === 'number';
+    });
+    var avgConfidence = scored.length
+      ? Math.round(scored.reduce(function (sum, m) { return sum + m.confidence.score; }, 0) / scored.length)
+      : null;
+
+    // Billing: real, when present. As of this pass, nothing in the codebase
+    // populates mission.billing with an actual amount (no rate-card or
+    // invoicing system exists yet) -- so this will legitimately be null/0
+    // until that's built. Deliberately not backfilled with a placeholder
+    // number here; callers should render an explicit "not yet connected"
+    // state rather than a misleading $0.
+    var billed = missions.filter(function (m) {
+      return m.billing && typeof m.billing.amount === 'number';
+    });
+    var totalBilled = billed.length
+      ? billed.reduce(function (sum, m) { return sum + m.billing.amount; }, 0)
+      : null;
+
     return {
       total: missions.length,
       open: open,
@@ -279,7 +306,11 @@
       byVertical: missions.reduce(function (acc, m) {
         acc[m.vertical] = (acc[m.vertical] || 0) + 1;
         return acc;
-      }, {})
+      }, {}),
+      avgConfidence: avgConfidence,
+      confidenceSampleSize: scored.length,
+      totalBilled: totalBilled,
+      billedMissionCount: billed.length
     };
   }
 
