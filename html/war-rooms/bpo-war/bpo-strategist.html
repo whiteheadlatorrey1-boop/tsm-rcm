@@ -905,9 +905,7 @@ function parseAndRenderStrategy(raw) {
           document.getElementById('actRecov').textContent = bpoXPImpact.urgencyWindow;
         }
       } catch(dee) { console.warn('[bnca-exposure-engine] bpo render error:', dee); }
-      if (obj.confidence) {
-        document.getElementById('tbConf').textContent = obj.confidence + '%';
-      }
+      document.getElementById('tbConf').textContent = obj.confidenceDefaulted ? '—' : (obj.confidence ? obj.confidence + '%' : '—');
     } catch(e) {
       renderFallbackRec();
     }
@@ -921,10 +919,11 @@ function renderRecommendation(obj) {
     window.TSM.recordDecisionEvidence(obj, { domain: 'BPO' });
   }
 
+  const confDefaulted = !!obj.confidenceDefaulted;
   const conf = obj.confidence || 91;
-  document.getElementById('confScore').textContent = conf + '%';
-  document.getElementById('confFill').style.width = conf + '%';
-  document.getElementById('confFill').style.background = conf >= 85 ? 'var(--green)' : conf >= 70 ? 'var(--amber)' : 'var(--red)';
+  document.getElementById('confScore').textContent = confDefaulted ? '— (not scored)' : conf + '%';
+  document.getElementById('confFill').style.width = confDefaulted ? '0%' : conf + '%';
+  document.getElementById('confFill').style.background = confDefaulted ? 'var(--muted)' : (conf >= 85 ? 'var(--green)' : conf >= 70 ? 'var(--amber)' : 'var(--red)');
 
   const actions = obj.recommendedActions || [];
   document.getElementById('recActions').innerHTML = actions.map((a,i) => `
@@ -1228,7 +1227,8 @@ function storeStratRelay(){
     // ── END SENTINEL PUSH ─────────────────────────────────────────
     fireCapabilitySweep_BPO();
     document.getElementById('relayBar').style.display = 'flex';
-    document.getElementById('relayInfo').textContent = (warData?.selectedSector||'BPO') + ' · Scenario ' + (selectedScenario||'A') + ' · Confidence ' + (generatedRec?.confidence||91) + '%';
+    const relayConfText = generatedRec?.confidenceDefaulted ? 'not scored' : ((generatedRec?.confidence || '—') + '%');
+    document.getElementById('relayInfo').textContent = (warData?.selectedSector||'BPO') + ' · Scenario ' + (selectedScenario||'A') + ' · Confidence ' + relayConfText;
 
     // ── Mission runtime write-back (Phase 3, additive) ──
     try {
@@ -1236,7 +1236,7 @@ function storeStratRelay(){
         window.TSMMissionModel.transitionStage(window.tsmMission, window.TSMMissionModel.STAGES.IN_PROGRESS, 'strategist');
         window.TSMMissionModel.addAuditEvent(window.tsmMission, window.TSMMissionModel.EVENT_TYPES.MISSION_UPDATED, 'strategist', {
           selectedScenario,
-          confidence: generatedRec?.confidence || 91
+          confidence: generatedRec?.confidenceDefaulted ? null : (generatedRec?.confidence ?? null)
         });
         window.TSMMissionStore.saveMission(window.tsmMission);
       }
@@ -1310,7 +1310,7 @@ function exportBrief(){
     'Generated: ' + new Date().toLocaleString(),
     'Sector: ' + (warData?.selectedSector||'—'),
     'Scenario Selected: ' + (selectedScenario||'—'),
-    'Confidence: ' + (generatedRec?.confidence||'—') + '%',
+    'Confidence: ' + (generatedRec?.confidenceDefaulted ? 'not scored (model omitted this field)' : ((generatedRec?.confidence||'—') + '%')),
     '',
     'STRATEGY BRIEF:',
     stratBrief || '(Not yet generated)',
