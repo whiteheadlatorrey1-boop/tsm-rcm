@@ -9,7 +9,7 @@
 const MODELS = {
   'groq:llama-3.1-70b': {
     provider: 'groq',
-    modelId: 'llama-3.1-70b-versatile',
+    modelId: 'openai/gpt-oss-120b',
     approvedFor: ['general', 'strategist', 'situation-room', 'collective-bnca', 'wip-command-center'],
     costPer1kTokensUsd: 0.00059,
     avgLatencyMs: 700,
@@ -17,7 +17,7 @@ const MODELS = {
   },
   'groq:llama-3.1-8b': {
     provider: 'groq',
-    modelId: 'llama-3.1-8b-instant',
+    modelId: 'openai/gpt-oss-20b',
     approvedFor: ['general', 'quick-classification'],
     costPer1kTokensUsd: 0.00005,
     avgLatencyMs: 250,

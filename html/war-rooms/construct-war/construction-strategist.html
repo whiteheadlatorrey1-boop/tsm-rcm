@@ -1026,6 +1026,8 @@ ${phaseSnapshotToText(getPhaseSnapshot())}
   const sys = `You are a Construction Strategist AI. Synthesize war room engine data into a complete executive intelligence package. Be specific, dollar-quantified, and action-oriented.`;
   const usr = `War Room Data:\n${ctx}\n\nGenerate:\n\nCONTROLLER PRIORITY ACTIONS (4 actions, numbered, dollar-quantified, owner assigned, deadline):\n\nAPP ROUTING GUIDANCE (for each Construction Suite app — AuditOps, Financial, Legal, Compliance — give 2-3 sentences of specific step-by-step instruction on what tab to open, what data to enter, and what output to produce for THIS specific document and issue):\n\nBNCA — BEST NEXT COURSE OF ACTION (one paragraph, most important 72-hour action sequence):\n\nESCALATION TRIGGER (condition for immediate executive involvement):\n\nAfter the brief above, on a new line output exactly ===JSON=== followed by a single JSON object (no markdown fences) with this exact shape:\n{"confidence":0-100,"dataSources":[{"name":"...","weight":"HIGH|MED|LOW"}],"reasoning":[{"key":"...","val":"..."}],"recommendedActions":[{"text":"...","owner":"..."}],"noActionRevLoss":"$amount","actionRevLoss":"$amount","recoveryTime":"e.g. 30 Days"}`;
  
+  const ctrl = new AbortController();
+  const streamTimeoutId = setTimeout(() => ctrl.abort(), 30000); // hard ceiling so a hung connection degrades to the fallback brief instead of outliving the demo harness's step timeout
   try {
     const res = await fetch('/api/war-room/stream', {
       method: 'POST',
@@ -1036,14 +1038,13 @@ ${phaseSnapshotToText(getPhaseSnapshot())}
         temperature: 0.4,
         stream: true,
         messages: [{ role: 'system', content: sys }, { role: 'user', content: usr }]
-      })
+      }),
+      signal: ctrl.signal
     });
  
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      out.textContent = '[Groq Error] ' + (err.error?.message || res.statusText);
-      out.classList.remove('streaming');
-      return;
+      throw new Error(err.error?.message || res.statusText || ('API returned ' + res.status));
     }
  
     const reader = res.body.getReader();
@@ -1098,10 +1099,57 @@ ${phaseSnapshotToText(getPhaseSnapshot())}
     }
  
   } catch(e) {
-    out.textContent = '[Error] ' + e.message;
+    // Same graceful-degradation pattern as the BPO/insurance/mortgage
+    // strategists: a transient Groq failure (rate limit, timeout, aborted
+    // stream) should never dead-end the escalate path. Without this, a 429
+    // here writes a short "[Groq Error] ..." string into #bncaOutput, which
+    // trips escalateToExecutive()'s `bncaText.length < 50` guard — firing a
+    // blocking alert() and silently no-oping the click instead of navigating.
+    console.warn('[construction-strategist] BNCA synthesis failed, using fallback brief:', e.message);
+    const fallback = buildConstructionBNCAFallback(warRoomRelay, e.message);
+    out.textContent = fallback;
+    const {brief: conBrief, obj: conObj} = conXPParseExplain(fallback);
+    if (conBrief) out.textContent = conBrief;
+    conXPRenderExplain(conObj);
+    lastConObj = conObj;
     out.classList.remove('streaming');
+    nodeEl.textContent = `BNCA fallback — live synthesis unavailable · ${new Date().toLocaleTimeString()}`;
+    storeStrategistRelay(fallback, conObj);
+    const sub = document.getElementById('escalBarSub');
+    if (sub) sub.textContent = 'BNCA fallback generated — ready to escalate to Executive Portal.';
+  } finally {
+    clearTimeout(streamTimeoutId);
   }
 }
+
+// ── FALLBACK BNCA BRIEF ──
+// Used only when the live /api/war-room/stream call fails. Built from real
+// warRoomRelay fields (docType, risk, exposure) — never invents numbers —
+// same honesty convention as bpo's buildStrategyFallback / insurance's
+// NODE_FALLBACKS.
+function buildConstructionBNCAFallback(relay, errMsg) {
+  const snap = relay?.snapshot || {};
+  const docType = relay?.docType || 'Construction matter';
+  const risk = snap.risk || 'Unclassified';
+  const exposure = snap.exposure || 'Unconfirmed — see engine outputs';
+  return `CONTROLLER PRIORITY ACTIONS
+1. Live BNCA synthesis unavailable (${errMsg}) — re-run "Synthesize All" once the engine is available for a fully synthesized brief. Owner: Strategist
+2. Escalate now on the War Room engine findings already on record rather than waiting — exposure data is real, only this synthesis step degraded. Owner: Principal
+3. Flag this run as fallback-generated in any downstream reporting. Owner: Compliance Officer
+
+APP ROUTING GUIDANCE
+Route to the relevant Construction Suite app (AuditOps, Financial, Legal, or Compliance) based on the War Room's own engine flags for ${docType} — this fallback does not re-derive routing.
+
+BNCA — BEST NEXT COURSE OF ACTION
+Act on the War Room's already-captured risk (${risk}) and exposure (${exposure}) for ${docType} within the next 72 hours; regenerate this brief live once the engine is reachable.
+
+ESCALATION TRIGGER
+Live engine remains unavailable beyond this session.
+
+===JSON===
+{"confidence":50,"dataSources":[{"name":"War Room engine snapshot","weight":"HIGH"},{"name":"Live BNCA synthesis","weight":"LOW"}],"reasoning":[{"key":"Fallback reason","val":"${errMsg}"},{"key":"Data integrity","val":"Engine outputs are real and unaffected; only the synthesis step failed"}],"recommendedActions":[{"text":"Re-run synthesis once live engine available","owner":"Strategist"},{"text":"Escalate on engine findings now","owner":"Principal"}],"noActionRevLoss":"${exposure}","actionRevLoss":"Unconfirmed pending live synthesis","recoveryTime":"Unconfirmed pending live synthesis"}`;
+}
+ 
  
 // ═══════════════════════════════════════════════════
 // PROJECT PHASE SNAPSHOT
@@ -1473,6 +1521,18 @@ EXECUTIVE ESCALATION: [Yes/No] — [reason]`;
       localStorage.setItem('tsm_const_issue_queue',JSON.stringify(queue));
       const tag=document.getElementById('cip-assign-tag');
       if(tag){tag.style.display='block';tag.textContent='✓ ASSIGNED TO: '+role.toUpperCase()+' · '+new Date().toLocaleTimeString();}
+    };
+
+    // "◈ INJECT INTO STRATEGIST" button — was calling a function that was
+    // never defined anywhere in this file (dead onclick, guaranteed
+    // ReferenceError on click). This brief is already parsed in scope, so
+    // inject it as the active war room relay and immediately (re)run the
+    // main BNCA synthesis on it — same effect loadWarRoomRelay() has on
+    // page load, just explicit and on-demand instead of the 1000ms auto-timer.
+    window.injectWarRoomContext = function(){
+      warRoomRelay = brief;
+      populateFromWarRoom(brief);
+      if (typeof runConstructionBNCAFromRelay === 'function') runConstructionBNCAFromRelay();
     };
 
   } catch(e){ console.warn('Construction issue pack error:',e); }

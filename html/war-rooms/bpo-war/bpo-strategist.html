@@ -715,11 +715,14 @@ SUCCESS METRICS
   ]
 }`;
 
+  const ctrl = new AbortController();
+  const streamTimeoutId = setTimeout(() => ctrl.abort(), 30000); // hard ceiling so a hung connection degrades to the fallback brief instead of outliving even the demo harness's step timeout
   try {
     const resp = await fetch('/api/war-room/stream', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({model:GROQ_MODEL,max_tokens:1600,stream:true,messages:[{role:'user',content:prompt}]})
+      body:JSON.stringify({model:GROQ_MODEL,max_tokens:1600,stream:true,messages:[{role:'user',content:prompt}]}),
+      signal: ctrl.signal
     });
     if (!resp.ok) throw new Error(`API returned ${resp.status} ${resp.statusText}`);
     const reader = resp.body.getReader();
@@ -753,9 +756,75 @@ SUCCESS METRICS
     if (window.TSMMemory) TSMMemory.timeline('Strategy brief generated — ready for executive escalation');
 
   } catch(e) {
-    document.getElementById('briefBody').innerHTML = `<div style="color:var(--red);font-family:JetBrains Mono,monospace;font-size:.72rem">Error: ${e.message}</div>`;
-    btn.disabled = false; btn.textContent = '⚡ GENERATE STRATEGY BRIEF';
+    // Same graceful-degradation pattern as the insurance/mortgage/construction
+    // strategists: a transient Groq failure (rate limit, timeout) should never
+    // permanently strand the escalate path — render a clearly-labeled fallback
+    // brief built from the real extraction data instead of just showing an
+    // error and leaving escalateBtn disabled forever.
+    console.warn('[bpo-strategist] strategy stream failed, using fallback brief:', e.message);
+    stratBrief = buildStrategyFallback(selectedSector, selectedDocType, extraction, scenCtx, e.message);
+    parseAndRenderStrategy(stratBrief);
+    btn.disabled = false; btn.textContent = '✓ STRATEGY COMPLETE (fallback)';
+    document.getElementById('briefMeta').textContent = 'Generated ' + new Date().toLocaleTimeString() + ' — fallback (live engine unavailable)';
+    document.getElementById('actStatus').innerHTML = 'Status: <span>STRATEGY READY — ESCALATE TO EXECUTIVE</span>';
+    document.getElementById('escalateBtn').disabled = false;
+    document.getElementById('escalateBtnBar').disabled = false;
+    storeStratRelay();
+  } finally {
+    clearTimeout(streamTimeoutId);
   }
+}
+
+// ── FALLBACK STRATEGY BRIEF ──
+// Used only when the live /api/war-room/stream call fails (rate limit,
+// timeout, upstream error). Built from real warData/extraction fields —
+// never invents numbers — same honesty convention as insurance's
+// NODE_FALLBACKS and construction's fallback templates.
+function buildStrategyFallback(sector, docType, extraction, scenCtx, errMsg) {
+  const rootCause = extraction?.rootCause || 'Not yet identified from source data';
+  const exposure = extraction?.revenueAtRisk || 'Unconfirmed — see engine outputs';
+  const severity = extraction?.severity || 'Unclassified';
+  return `===BRIEF===
+EXECUTIVE SUMMARY
+Live strategy generation was unavailable (${errMsg}). This is a fallback brief assembled directly from the ${sector || 'operations'} ${docType || 'situation'} engine outputs already on record — treat it as directional pending a live re-run.
+
+CRITICAL FINDINGS
+Root cause: ${rootCause}
+Revenue exposure: ${exposure}
+Severity: ${severity}
+${scenCtx}
+
+RECOMMENDED STRATEGY
+1. Re-run "GENERATE STRATEGY BRIEF" once the live engine is available for a fully synthesized version. Owner: Strategist
+2. Escalate now on the engine findings above rather than waiting — exposure data is real, only the synthesis step degraded. Owner: Principal
+3. Flag this run as fallback-generated in any downstream reporting. Owner: Compliance Officer
+
+RISK ASSESSMENT
+Primary risk carried forward unchanged from engine analysis (${severity}). No new risk introduced by the fallback path itself — only the strategic synthesis layer is degraded, not the underlying data.
+
+SUCCESS METRICS
+Live strategy brief regenerated and reconciled against this fallback within one business day.
+
+===JSON===
+{
+  "confidence": 55,
+  "recommendedActions": [
+    {"text": "Re-run strategy brief once live engine available", "owner": "Strategist"},
+    {"text": "Escalate on engine findings now", "owner": "Principal"},
+    {"text": "Flag run as fallback-generated", "owner": "Compliance Officer"}
+  ],
+  "dataSources": [
+    {"name": "War room engine snapshot", "weight": "HIGH"},
+    {"name": "Live strategy synthesis", "weight": "LOW"}
+  ],
+  "reasoning": [
+    {"key": "Fallback reason", "val": "${errMsg}"},
+    {"key": "Data integrity", "val": "Engine outputs are real and unaffected; only the synthesis step failed"}
+  ],
+  "escalationTriggers": [
+    "Live engine remains unavailable beyond this session"
+  ]
+}`;
 }
 
 // ── PARSE STRATEGY RESPONSE ──

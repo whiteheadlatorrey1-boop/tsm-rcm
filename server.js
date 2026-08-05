@@ -1,3 +1,4 @@
+require('dotenv').config({ override: true });
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
@@ -70,11 +71,12 @@ app.use((req, res, next) => {
 // Primary: fetch-based (reliable on Railway)
 const GROQ_MODELS = [
   'openai/gpt-oss-120b',
-  'openai/gpt-oss-20b',
-  'llama-3.1-8b-instant',
-  'llama3-8b-8192',
-  'gemma2-9b-it'
+  'openai/gpt-oss-20b'
 ];
+// llama-3.1-8b-instant (deprecated, shuts down 08/16/26 per Groq's deprecation page),
+// llama3-8b-8192 (dead since 08/30/25), and gemma2-9b-it (dead since 10/08/25) removed —
+// all three were dead fallback rungs, not real options; gpt-oss-20b is Groq's own
+// recommended replacement for llama-3.1-8b-instant, so no coverage is lost.
 
 async function groqChat(system, message, maxTokens, clientKey, jsonMode) {
   const groqKey = process.env.GROQ_API_KEY || process.env.GROQ_KEY || clientKey;
