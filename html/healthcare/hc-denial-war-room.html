@@ -990,11 +990,8 @@ function loadLib(url, globalKey){
   });
 }
 
-// ── PDF IMAGE OCR (scanned / image-only PDFs) ────────────────────────────
+// ── PDF IMAGE OCR (scanned / image-only PDFs) — server-proxied ──────────
 async function pdfImageOCR(pdf, filename){
-  if(!GROQ_KEY){
-    return '[Scanned PDF detected — enter Groq API key to enable Vision OCR extraction]';
-  }
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
   const maxPages = Math.min(pdf.numPages, 6);
@@ -1007,24 +1004,18 @@ async function pdfImageOCR(pdf, filename){
     await page.render({ canvasContext: ctx, viewport: vp }).promise;
     const b64 = canvas.toDataURL('image/jpeg', 0.88).split(',')[1];
     try {
-      const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      const r = await fetch('/api/hc/ocr', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + GROQ_KEY },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'meta-llama/llama-4-scout-17b-16e-instruct',
-          max_tokens: 1200,
-          messages: [{
-            role: 'user',
-            content: [
-              { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + b64 } },
-              { type: 'text', text: 'Extract ALL text from this healthcare document image exactly as printed. Include all codes, dates, amounts, names, and labels. Output plain text only — preserve structure.' }
-            ]
-          }]
+          imageBase64: b64,
+          mimeType: 'image/jpeg',
+          prompt: 'Extract ALL text from this healthcare document image exactly as printed. Include all codes, dates, amounts, names, and labels. Output plain text only — preserve structure.'
         })
       });
       const d = await r.json();
-      const t = d.choices?.[0]?.message?.content || '';
-      pageTexts.push('[Page ' + i + ' — OCR]\n' + t);
+      if (d.error) throw new Error(d.error);
+      pageTexts.push('[Page ' + i + ' — OCR]\n' + (d.text || '[OCR: no text returned]'));
     } catch(e){
       pageTexts.push('[Page ' + i + ' — OCR failed: ' + e.message + ']');
     }
@@ -1037,11 +1028,8 @@ async function pdfImageOCR(pdf, filename){
   return result + extra;
 }
 
-// ── IMAGE OCR via Groq Vision ─────────────────────────────────────────────
+// ── IMAGE OCR via server-proxied Groq Vision ────────────────────────────
 async function imageOCR(file){
-  if(!GROQ_KEY){
-    return '[Image uploaded — enter Groq API key to enable Vision OCR extraction]';
-  }
   const b64 = await new Promise((res, rej) => {
     const r = new FileReader();
     r.onload = () => res(r.result.split(',')[1]);
@@ -1050,24 +1038,18 @@ async function imageOCR(file){
   });
   const ext = file.name.split('.').pop().toLowerCase();
   const mt = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
-  const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+  const resp = await fetch('/api/hc/ocr', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + GROQ_KEY },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: 'meta-llama/llama-4-scout-17b-16e-instruct',
-      max_tokens: 1800,
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'image_url', image_url: { url: 'data:' + mt + ';base64,' + b64 } },
-          { type: 'text', text: 'You are a healthcare document OCR engine. Extract ALL visible text from this image exactly as it appears. Preserve structure, columns, codes, dates, dollar amounts, and labels. Output plain text only — no commentary or explanation.' }
-        ]
-      }]
+      imageBase64: b64,
+      mimeType: mt,
+      prompt: 'You are a healthcare document OCR engine. Extract ALL visible text from this image exactly as it appears. Preserve structure, columns, codes, dates, dollar amounts, and labels. Output plain text only — no commentary or explanation.'
     })
   });
   const data = await resp.json();
-  if(data.error) throw new Error(data.error.message || 'Vision API error');
-  return data.choices?.[0]?.message?.content || '[OCR: no text returned]';
+  if(data.error) throw new Error(data.error || 'Vision API error');
+  return data.text || '[OCR: no text returned]';
 }
 
 // ── SAMPLES ────────────────────────────────────────────────────────────────
