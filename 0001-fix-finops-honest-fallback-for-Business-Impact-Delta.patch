@@ -1,0 +1,66 @@
+From 404cfafb829dd7fd3b85d3d481c2d8e6c6002630 Mon Sep 17 00:00:00 2001
+From: whiteheadlatorrey1-boop <whiteheadlatorrey1@gmail.com>
+Date: Wed, 5 Aug 2026 03:26:36 +0000
+Subject: [PATCH] fix(finops): honest fallback for Business Impact Delta
+ instead of fabricated $0
+
+When the exposure regex (_expM) fails to match anything in the strategist
+text, finBaseExposure silently defaulted to 0 and was passed straight into
+TSMBNCAExposureEngine.project() unconditionally -- rendering $0 in both the
+No Action / With Action boxes, indistinguishable from a genuine zero-exposure
+reading.
+
+Legal, Mortgage, Schools, and HotelOps/Concierge all already guard this case
+with an 'if (baseExposure > 0)' check and an honest fallback. FinOps was the
+one vertical in this batch missing that guard. Brought it in line with the
+same pattern.
+
+Verified: node --check passes on all 21 inline script blocks, <script> and
+<html> tags remain balanced.
+---
+ .../finops-war/finops-main-strategist.html    | 26 ++++++++++++-------
+ 1 file changed, 16 insertions(+), 10 deletions(-)
+
+diff --git a/html/finops-suite/finops-war/finops-main-strategist.html b/html/finops-suite/finops-war/finops-main-strategist.html
+index 37a1d9b6..e7de44b7 100644
+--- a/html/finops-suite/finops-war/finops-main-strategist.html
++++ b/html/finops-suite/finops-war/finops-main-strategist.html
+@@ -1122,19 +1122,25 @@ async function generateReport(){
+         const finBaseExposure = finExpNums ? parseInt(finExpNums[0].replace(/,/g, ''), 10) : 0;
+         const finRiskNum = _riskM ? parseInt(_riskM[1], 10) : null;
+         const finSeverity = finRiskNum === null ? 'MED' : (finRiskNum >= 80 ? 'CRIT' : finRiskNum >= 60 ? 'HIGH' : finRiskNum >= 35 ? 'MED' : 'LOW');
+-        const finImpact = window.TSMBNCAExposureEngine.project({
+-          baseExposure: finBaseExposure,
+-          severity: finSeverity,
+-          confidence: finRiskNum !== null ? finRiskNum : 70,
+-          daysUntilDeadline: 0 // no independent deadline signal parsed for this vertical yet
+-        });
+-        const finFmt = n => '$' + Math.round(n).toLocaleString('en-US');
+         const finDeltaNoEl = document.getElementById('finXPDeltaNo');
+         const finDeltaActEl = document.getElementById('finXPDeltaAct');
+         const finRecoveryEl = document.getElementById('finXPRecovery');
+-        if (finDeltaNoEl) finDeltaNoEl.textContent = finFmt(finImpact.ifIgnored.exposure);
+-        if (finDeltaActEl) finDeltaActEl.textContent = finFmt(finImpact.ifActed.exposure);
+-        if (finRecoveryEl) finRecoveryEl.textContent = finImpact.urgencyWindow + ' · ' + finImpact.methodology;
++        if (finBaseExposure > 0) {
++          const finImpact = window.TSMBNCAExposureEngine.project({
++            baseExposure: finBaseExposure,
++            severity: finSeverity,
++            confidence: finRiskNum !== null ? finRiskNum : 70,
++            daysUntilDeadline: 0 // no independent deadline signal parsed for this vertical yet
++          });
++          const finFmt = n => '$' + Math.round(n).toLocaleString('en-US');
++          if (finDeltaNoEl) finDeltaNoEl.textContent = finFmt(finImpact.ifIgnored.exposure);
++          if (finDeltaActEl) finDeltaActEl.textContent = finFmt(finImpact.ifActed.exposure);
++          if (finRecoveryEl) finRecoveryEl.textContent = finImpact.urgencyWindow + ' · ' + finImpact.methodology;
++        } else {
++          if (finDeltaNoEl) finDeltaNoEl.textContent = '—';
++          if (finDeltaActEl) finDeltaActEl.textContent = '—';
++          if (finRecoveryEl) finRecoveryEl.textContent = 'No quantifiable exposure parsed from this relay.';
++        }
+       }
+     } catch (finDeltaErr) { console.warn('[bnca-exposure-engine] finops render error:', finDeltaErr); }
+     sessionStorage.setItem('tsm_strategist_relay', JSON.stringify({
+-- 
+2.43.0
+

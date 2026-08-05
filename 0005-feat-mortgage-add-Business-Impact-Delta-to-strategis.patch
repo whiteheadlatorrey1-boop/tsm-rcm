@@ -1,0 +1,108 @@
+From b79fe0a73b43bf4b7cd563147f5742721c59616d Mon Sep 17 00:00:00 2001
+From: Tron <tron@tsmconsultz.com>
+Date: Wed, 5 Aug 2026 02:55:13 +0000
+Subject: [PATCH 5/6] feat(mortgage): add Business Impact Delta to strategist
+ page
+
+Adds a No-Action / With-Action exposure projection using the shared
+TSMBNCAExposureEngine (same engine as Insurance/RE/Healthcare/BPO/
+FinOps/Legal/HotelOps). Base exposure reuses financials.total_exposure
+-- a figure mortgage-engine.js already computes deterministically from
+the financial_model rate card (closing_delay_cost_per_day x SLA-breach
+hours, plus compliance_exposure_by_severity x open exceptions) and
+already includes in the relay payload; the strategist page just wasn't
+reading it. Severity is banded from the loans-over-SLA ratio using the
+same thresholds the war room's own mtgBreachSeverity() uses.
+
+Honesty pattern: if total_exposure is 0 -- which the engine itself
+documents can mean either 'no risk' or 'rate card incomplete' -- shows
+the engine's own financial_model.note (when present) instead of a
+misleadingly clean /bin/sh delta.
+---
+ .../mortgage/mortgage-strategist.html         | 49 +++++++++++++++++++
+ 1 file changed, 49 insertions(+)
+
+diff --git a/html/war-rooms/mortgage/mortgage-strategist.html b/html/war-rooms/mortgage/mortgage-strategist.html
+index 21afc1ef..bb51eb30 100644
+--- a/html/war-rooms/mortgage/mortgage-strategist.html
++++ b/html/war-rooms/mortgage/mortgage-strategist.html
+@@ -65,6 +65,15 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
+ .impact.low{background:rgba(122,111,82,.12);color:var(--muted);border:1px solid var(--muted);}
+ .time-hot{color:var(--red);font-weight:700;}
+ .action-hint{color:var(--text);}
++.tsm-delta-row{display:flex;gap:10px;}
++.tsm-delta-box{flex:1;padding:12px;border-radius:6px;text-align:center;border:1px solid var(--border);}
++.tsm-delta-no{background:rgba(239,68,68,.06);border-color:rgba(239,68,68,.25);}
++.tsm-delta-act{background:rgba(34,197,94,.06);border-color:rgba(34,197,94,.25);}
++.tsm-delta-lbl{font-family:'JetBrains Mono',monospace;font-size:.58rem;letter-spacing:.08em;text-transform:uppercase;opacity:.6;margin-bottom:5px;}
++.tsm-delta-val{font-family:'Orbitron',sans-serif;font-size:1.1rem;font-weight:700;}
++.tsm-delta-no .tsm-delta-val{color:var(--red);}
++.tsm-delta-act .tsm-delta-val{color:var(--green);}
++.tsm-recovery{font-family:'JetBrains Mono',monospace;font-size:.6rem;color:var(--muted);text-align:center;margin-top:8px;}
+ </style>
+ </head>
+ <body>
+@@ -85,6 +94,7 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
+ </div>
+ <div class="wrap" id="wrap"><!-- populated by JS --></div>
+ <div class="toast" id="toast"></div>
++<script src="/html/js/tsm-bnca-exposure-engine.js"></script>
+ <script>
+ function tick(){document.getElementById('clock').textContent=new Date().toLocaleTimeString();}
+ setInterval(tick,1000);tick();
+@@ -197,6 +207,44 @@ function impactFromSeverity(sev){
+   return { cls: 'low', label: 'LOW IMPACT' };
+ }
+ 
++// Business Impact Delta — deterministic, no LLM-guessed dollars. Reuses the
++// exact total_exposure figure the mortgage engine already computes from the
++// financial_model rate card (closing-delay + compliance exposure) and hands
++// it to the same shared TSMBNCAExposureEngine used by Insurance/RE/
++// Healthcare/BPO/FinOps/Legal/HotelOps -- nothing invented here.
++function severityFromSlaRatio(overSla, openLoans){
++  if (!openLoans) return overSla > 0 ? 'MED' : 'LOW';
++  const ratio = overSla / openLoans;
++  if (ratio >= 0.30) return 'CRIT';
++  if (ratio >= 0.15) return 'HIGH';
++  if (ratio > 0) return 'MED';
++  return 'LOW';
++}
++
++function renderBusinessImpactDelta(data){
++  const fin = data.financials || {};
++  const baseExposure = Number(fin.total_exposure) || 0;
++  if (!baseExposure || !window.TSMBNCAExposureEngine) {
++    return `<div class="sec"><div class="sec-hdr"><span class="lbl">BUSINESS IMPACT DELTA</span></div><div class="no-items">No quantifiable exposure reported${fin.note ? ' — ' + escapeHtml(fin.note) : ''}.</div></div>`;
++  }
++  const kpis = data.kpis || {};
++  const severity = severityFromSlaRatio(kpis.loans_over_sla || 0, kpis.open_loan_files || 0);
++  const impact = window.TSMBNCAExposureEngine.project({
++    baseExposure, severity,
++    confidence: 70, // no distinct AI-confidence signal for this vertical (rule-based engine, not an LLM call) -- engine's own documented neutral default
++    daysUntilDeadline: 0 // no per-loan deadline day-count surfaced to the strategist relay yet
++  });
++  const fmt = n => '$' + Math.round(n).toLocaleString('en-US');
++  return `<div class="sec">
++    <div class="sec-hdr"><span class="lbl">BUSINESS IMPACT DELTA</span><span class="sec-hdr-note">closing-delay + compliance exposure &middot; deterministic projection</span></div>
++    <div class="tsm-delta-row">
++      <div class="tsm-delta-box tsm-delta-no"><div class="tsm-delta-lbl">No Action</div><div class="tsm-delta-val">${fmt(impact.ifIgnored.exposure)}</div></div>
++      <div class="tsm-delta-box tsm-delta-act"><div class="tsm-delta-lbl">With Action</div><div class="tsm-delta-val">${fmt(impact.ifActed.exposure)}</div></div>
++    </div>
++    <div class="tsm-recovery">${escapeHtml(impact.urgencyWindow)} &middot; ${escapeHtml(impact.methodology)}</div>
++  </div>`;
++}
++
+ function renderWipBoard(wip){
+   if(!wip || !wip.length) return '';
+   const stages = wip.map(s => {
+@@ -279,6 +327,7 @@ function render(){
+   }
+ 
+   html += renderWipBoard(data.loan_wip);
++  html += renderBusinessImpactDelta(data);
+   html += renderActionQueue(data.records, breachIds);
+ 
+   document.getElementById('wrap').innerHTML = html;
+-- 
+2.43.0
+
