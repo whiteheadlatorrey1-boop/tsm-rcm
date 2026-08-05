@@ -85,8 +85,52 @@ async function runStory(page, { steps, outDir, baseURL = '', presetLocalStorage 
 
     if (step.click) {
       console.log(`[demo-engine] step "${step.shot}" clicking "${step.click}" on ${page.url()}`);
-      await page.click(step.click, { timeout: step.timeout || 15000 });
-      console.log(`[demo-engine] step "${step.shot}" click landed, page now ${page.url()}`);
+      try {
+        await page.click(step.click, { timeout: step.timeout || 15000 });
+        console.log(`[demo-engine] step "${step.shot}" click landed, page now ${page.url()}`);
+      } catch (err) {
+        console.error(`[demo-engine] click "${step.click}" FAILED on step "${step.shot}" (page: ${page.url()}) -- ${err.message}`);
+
+        // Diagnose *why* it failed before moving on -- was the element missing,
+        // hidden, disabled, zero-size, or just covered by something else?
+        const diag = await page.evaluate((sel) => {
+          const el = document.querySelector(sel);
+          if (!el) return { found: false };
+          const r = el.getBoundingClientRect();
+          const cs = getComputedStyle(el);
+          const centerX = r.left + r.width / 2;
+          const centerY = r.top + r.height / 2;
+          const topEl = document.elementFromPoint(centerX, centerY);
+          return {
+            found: true,
+            visible: r.width > 0 && r.height > 0 && cs.display !== 'none' && cs.visibility !== 'hidden',
+            disabled: !!el.disabled,
+            display: cs.display,
+            visibility: cs.visibility,
+            opacity: cs.opacity,
+            pointerEvents: cs.pointerEvents,
+            rect: { x: r.left, y: r.top, w: r.width, h: r.height },
+            coveredBy: (topEl && topEl !== el && !el.contains(topEl))
+              ? (topEl.id ? `#${topEl.id}` : topEl.className ? `.${String(topEl.className).split(' ')[0]}` : topEl.tagName)
+              : null,
+          };
+        }, step.click).catch((e) => ({ found: 'unknown', evalError: e.message }));
+
+        console.error(`[demo-engine] target diagnostics for "${step.click}":`, JSON.stringify(diag));
+
+        // Capture the page exactly as it was at the moment of failure -- this is
+        // the screenshot that's been missing; without it a click failure just
+        // looks like the run silently stopped one step early.
+        const failFile = path.join(outDir, `${step.shot}-CLICK-FAILED.png`);
+        await page.screenshot({ path: failFile, fullPage: true }).catch((e) =>
+          console.error(`[demo-engine] failure screenshot itself failed: ${e.message}`)
+        );
+        console.error(`[demo-engine] captured failure state -> ${failFile}`);
+
+        // Don't throw: continue the story so later steps (and their own
+        // waitFor/click diagnostics) still get a chance to report in, instead
+        // of one click swallowing all remaining visibility into the run.
+      }
     }
 
     if (step.setLocalStorage) {

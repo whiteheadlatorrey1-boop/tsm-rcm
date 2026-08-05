@@ -25,23 +25,41 @@ const HTML_ROOT = path.join(__dirname, "html");
 // AUTH REMOVED — in-house use only
 // const { tsmAuthMiddleware } = require('./html/tsm-auth');
 const { requireAuth, signSession, verifySession, getCookie, SESSION_TTL_MS } = require('./middleware/require-auth');
+const clientRegistry = require('./middleware/client-registry');
 
 app.use(express.json());
 app.use(require('express').urlencoded({ extended: false }));
 // tsmAuthMiddleware(app); // removed — war rooms are in-house
 
+// Login accepts EITHER the shared admin password OR a per-client access
+// code. We try admin first (cheap string compare against an env var), then
+// fall back to a client-code lookup. Either path produces the same kind of
+// signed session cookie; only the payload shape differs.
 app.post('/api/auth/login', (req, res) => {
-  const { password } = req.body || {};
+  const { password, accessCode } = req.body || {};
+  const credential = password || accessCode || '';
   if (!process.env.TSM_ADMIN_PASSWORD || !process.env.TSM_SESSION_SECRET) {
     return res.status(500).json({ ok: false, error: 'Auth not configured on server' });
   }
-  if (!password || password !== process.env.TSM_ADMIN_PASSWORD) {
-    return res.status(401).json({ ok: false, error: 'Invalid password' });
+  if (!credential) {
+    return res.status(401).json({ ok: false, error: 'Password or access code required' });
   }
-  const token = signSession({ exp: Date.now() + SESSION_TTL_MS });
+
+  let payload;
+  if (credential === process.env.TSM_ADMIN_PASSWORD) {
+    payload = { role: 'admin', exp: Date.now() + SESSION_TTL_MS };
+  } else {
+    const client = clientRegistry.findClientByCode(credential);
+    if (!client) {
+      return res.status(401).json({ ok: false, error: 'Invalid password or access code' });
+    }
+    payload = { role: 'client', clientId: client.id, label: client.label, exp: Date.now() + SESSION_TTL_MS };
+  }
+
+  const token = signSession(payload);
   res.setHeader('Set-Cookie',
     `tsm_session=${encodeURIComponent(token)}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${SESSION_TTL_MS / 1000}`);
-  res.json({ ok: true });
+  res.json({ ok: true, role: payload.role, clientId: payload.clientId || null, label: payload.label || null });
 });
 
 app.post('/api/auth/logout', (req, res) => {
@@ -50,7 +68,78 @@ app.post('/api/auth/logout', (req, res) => {
 });
 
 app.get('/api/auth/status', (req, res) => {
-  res.json({ ok: true, authenticated: !!verifySession(getCookie(req, 'tsm_session')) });
+  const session = verifySession(getCookie(req, 'tsm_session'));
+  if (!session) return res.json({ ok: true, authenticated: false });
+  res.json({
+    ok: true,
+    authenticated: true,
+    role: session.role || 'admin', // sessions signed before this change had no role — treat as admin
+    clientId: session.clientId || null,
+    label: session.label || null,
+  });
+});
+
+// Any authenticated session — admin or client. Attaches req.tsmSession.
+function requireAnyAuth(req, res, next) {
+  const session = verifySession(getCookie(req, 'tsm_session'));
+  if (!session) return res.status(401).json({ ok: false, error: 'Unauthorized' });
+  req.tsmSession = { role: session.role || 'admin', clientId: session.clientId || null, label: session.label || null };
+  next();
+}
+
+// Admin-only. Also attaches req.tsmSession for consistency with requireAnyAuth.
+function requireAdmin(req, res, next) {
+  const session = verifySession(getCookie(req, 'tsm_session'));
+  if (!session) return res.status(401).json({ ok: false, error: 'Unauthorized' });
+  const role = session.role || 'admin';
+  if (role !== 'admin') return res.status(403).json({ ok: false, error: 'Admin access required' });
+  req.tsmSession = { role: 'admin', clientId: null, label: null };
+  next();
+}
+
+// ── CLIENT MANAGEMENT (admin only) ──────────────────────────────────────────
+// List clients (no codes returned — codes are shown once, at creation/rotation).
+app.get('/api/admin/clients', requireAdmin, (req, res) => {
+  res.json({ ok: true, clients: clientRegistry.listClientsSafe() });
+});
+
+// Create a client + generate their access code. Returned ONCE — hand it to
+// the client now; if lost, rotate instead of trying to recover it.
+app.post('/api/admin/clients', requireAdmin, (req, res) => {
+  try {
+    const { label } = req.body || {};
+    const { client, accessCode } = clientRegistry.createClient(label);
+    res.json({ ok: true, client, accessCode });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/api/admin/clients/:id/rotate-code', requireAdmin, (req, res) => {
+  try {
+    const { client, accessCode } = clientRegistry.rotateCode(req.params.id);
+    res.json({ ok: true, client, accessCode });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/api/admin/clients/:id/deactivate', requireAdmin, (req, res) => {
+  try {
+    const client = clientRegistry.setActive(req.params.id, false);
+    res.json({ ok: true, client });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/api/admin/clients/:id/reactivate', requireAdmin, (req, res) => {
+  try {
+    const client = clientRegistry.setActive(req.params.id, true);
+    res.json({ ok: true, client });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message });
+  }
 });
 
 // ── GLOBAL NO-CACHE ───────────────────────────────────────────────────────────
@@ -307,6 +396,29 @@ app.get('/api/music/activity', (_req, res) => res.json({ ok: true, activity: glo
 app.get('/api/music/platform', (_req, res) => res.json({ ok: true, platform: global.MUSIC_PLATFORM }));
 app.get('/executive-portal', (req, res) => res.redirect('/html/executive-portal/index.html'));
 app.get('/healthcare/executive-portal', (req, res) => res.redirect('/html/executive-portal/index.html'));
+
+// ── LOGIN PAGE ────────────────────────────────────────────────────────────────
+// login.html already existed and already posts to /api/auth/login, but
+// nothing served it at a route — it was only reachable by guessing the exact
+// static path. Fixing that here since the client-facing gate below sends
+// people to /login.
+app.get('/login', (req, res) => {
+  res.sendFile(path.join(__dirname, 'html', 'login.html'));
+});
+
+// ── CLIENT-FACING SURFACE GATE ─────────────────────────────────────────────
+// tsm-doc-search-multi.html is the page clients actually use (per T-dawg).
+// This is intentionally narrow — it does NOT gate the rest of the site,
+// which stays in-house/ungated by design. Only the page where a client's
+// own data lives needs a login wall so one client can't just open it and
+// browse another client's workspace.
+app.get(['/tsm-doc-search-multi.html', '/html/tsm-doc-search-multi.html'], (req, res, next) => {
+  const session = verifySession(getCookie(req, 'tsm_session'));
+  if (!session) {
+    return res.redirect(`/login?next=${encodeURIComponent(req.originalUrl)}`);
+  }
+  next();
+});
 
 // ── STATIC MOUNTS ─────────────────────────────────────────────────────────────
 const dirPath = path.join(__dirname, 'html');// ── STATIC MOUNTS v2 ──
@@ -2470,15 +2582,22 @@ const COLLECTIVE_BNCA = [];   // synthesis results
 // Accepts both the legacy 3-field shape (vertical, signal, severity) and the
 // richer war-room payload (warRoom, bnca, confidence, riskLevel, topIssue,
 // ownerLanes, hitlRequired, actions, impactDelta, kpi).
-app.post('/api/collective/signal', (req, res) => {
+app.post('/api/collective/signal', requireAnyAuth, (req, res) => {
   const {
     vertical, signal, severity, source,
     warRoom, bnca, confidence, riskLevel, topIssue,
     ownerLanes, hitlRequired, actions, impactDelta, kpi
   } = req.body || {};
   if (!vertical) return res.status(400).json({ ok: false, error: 'vertical required' });
+  // Client sessions can only write under their own identity — the body
+  // can't override this. Admin sessions may tag a clientId explicitly
+  // (e.g. seeding demo data) or fall back to 'internal'.
+  const clientId = req.tsmSession.role === 'client'
+    ? req.tsmSession.clientId
+    : (req.body.clientId || 'internal');
   const entry = {
     vertical,
+    clientId,
     signal: signal || topIssue || (typeof bnca === 'string' ? bnca.slice(0, 200) : '') || 'War room signal received',
     severity: severity || riskLevel || 'MEDIUM',
     riskLevel: riskLevel || severity || 'WATCH',
@@ -2499,22 +2618,45 @@ app.post('/api/collective/signal', (req, res) => {
   res.json({ ok: true, entry });
 });
 
-// GET /api/collective/signals — fetch all pushed signals
-app.get('/api/collective/signals', (req, res) => {
-  res.json({ ok: true, signals: COLLECTIVE_SIGNALS });
+// GET /api/collective/signals — client sessions only ever see their own
+// entries; admin sessions see everything (optionally filtered via ?clientId=
+// for drill-down, since the "All Clients" rollup view is admin-only anyway).
+app.get('/api/collective/signals', requireAnyAuth, (req, res) => {
+  let signals = COLLECTIVE_SIGNALS;
+  if (req.tsmSession.role === 'client') {
+    signals = signals.filter(s => s.clientId === req.tsmSession.clientId);
+  } else if (req.query.clientId) {
+    signals = signals.filter(s => s.clientId === req.query.clientId);
+  }
+  res.json({ ok: true, signals });
 });
 
-// DELETE /api/collective/signals — clear all signals
-app.delete('/api/collective/signals', (req, res) => {
+// DELETE /api/collective/signals — admin only. Without ?clientId= this wipes
+// everything (kept for existing demo/reset scripts); pass ?clientId= to
+// clear just one client's entries instead of nuking shared state.
+app.delete('/api/collective/signals', requireAdmin, (req, res) => {
+  if (req.query.clientId) {
+    const before = COLLECTIVE_SIGNALS.length;
+    for (let i = COLLECTIVE_SIGNALS.length - 1; i >= 0; i--) {
+      if (COLLECTIVE_SIGNALS[i].clientId === req.query.clientId) COLLECTIVE_SIGNALS.splice(i, 1);
+    }
+    return res.json({ ok: true, removed: before - COLLECTIVE_SIGNALS.length });
+  }
   COLLECTIVE_SIGNALS.length = 0;
   res.json({ ok: true });
 });
 
 // POST /api/collective/bnca — run cross-vertical synthesis via Groq
-app.post('/api/collective/bnca', async (req, res) => {
+app.post('/api/collective/bnca', requireAnyAuth, async (req, res) => {
   try {
-    if (!COLLECTIVE_SIGNALS.length) return res.status(400).json({ ok: false, error: 'No signals to synthesize' });
-    const prompt = `You are TSM's cross-vertical BNCA synthesizer. Given the following signals from multiple verticals, identify: (1) conflicts between verticals, (2) synergies or compounding risks, (3) a ranked HITL decision queue. Respond ONLY in valid JSON with keys: conflicts (array), synergies (array), hitlQueue (array of {priority, vertical, action, rationale}), summary (string).\n\nSignals:\n${JSON.stringify(COLLECTIVE_SIGNALS.slice(0, 50), null, 2)}`;
+    // Client sessions synthesize only their own signals — the cross-client
+    // "admin rollup" synthesis stays admin-only, same boundary as the
+    // signals list itself.
+    const scopedSignals = req.tsmSession.role === 'client'
+      ? COLLECTIVE_SIGNALS.filter(s => s.clientId === req.tsmSession.clientId)
+      : COLLECTIVE_SIGNALS;
+    if (!scopedSignals.length) return res.status(400).json({ ok: false, error: 'No signals to synthesize' });
+    const prompt = `You are TSM's cross-vertical BNCA synthesizer. Given the following signals from multiple verticals, identify: (1) conflicts between verticals, (2) synergies or compounding risks, (3) a ranked HITL decision queue. Respond ONLY in valid JSON with keys: conflicts (array), synergies (array), hitlQueue (array of {priority, vertical, action, rationale}), summary (string).\n\nSignals:\n${JSON.stringify(scopedSignals.slice(0, 50), null, 2)}`;
     const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
@@ -2531,7 +2673,12 @@ app.post('/api/collective/bnca', async (req, res) => {
     if (!groqRes.ok) return res.status(502).json({ ok: false, error: 'Groq error' });
     const data = await groqRes.json();
     const parsed = JSON.parse(data.choices[0].message.content);
-    const result = { ...parsed, timestamp: Date.now(), signalCount: COLLECTIVE_SIGNALS.length };
+    const result = {
+      ...parsed,
+      timestamp: Date.now(),
+      signalCount: scopedSignals.length,
+      clientId: req.tsmSession.role === 'client' ? req.tsmSession.clientId : 'internal',
+    };
     COLLECTIVE_BNCA.unshift(result);
     if (COLLECTIVE_BNCA.length > 20) COLLECTIVE_BNCA.length = 20;
     res.json({ ok: true, bnca: result });
@@ -2541,9 +2688,14 @@ app.post('/api/collective/bnca', async (req, res) => {
   }
 });
 
-// GET /api/collective/bnca/latest — fetch most recent synthesis
-app.get('/api/collective/bnca/latest', (req, res) => {
-  res.json({ ok: true, bnca: COLLECTIVE_BNCA[0] || null });
+// GET /api/collective/bnca/latest — fetch most recent synthesis. Client
+// sessions get their own most recent scoped synthesis, not whatever any
+// other client (or the admin rollup) generated last.
+app.get('/api/collective/bnca/latest', requireAnyAuth, (req, res) => {
+  const latest = req.tsmSession.role === 'client'
+    ? COLLECTIVE_BNCA.find(b => b.clientId === req.tsmSession.clientId)
+    : COLLECTIVE_BNCA[0];
+  res.json({ ok: true, bnca: latest || null });
 });
 
 // ══════════════════════════════════════════════════════════════════════════════

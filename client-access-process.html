@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TSM Client Access — How It Works</title>
+<style>
+  :root{
+    --bg:#080c14; --bg2:#0a0e14; --panel:#0e1420; --line:rgba(30,232,182,.18);
+    --line-strong:rgba(30,232,182,.4); --accent:#1ee8b6; --accent-dim:#0f7a5f;
+    --text:#e6f1ff; --muted:#7a9a8a; --muted2:#4d6b62; --warn:#ff9c5c;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:'Share Tech Mono','SF Mono',Consolas,monospace;
+    padding:3.5rem 1.5rem 5rem; line-height:1.65;
+  }
+  .wrap{max-width:840px; margin:0 auto;}
+  .eyebrow{
+    color:var(--accent); font-size:.62rem; letter-spacing:.18em; font-weight:700;
+    text-transform:uppercase; margin:0 0 .5rem;
+  }
+  h1{
+    font-size:1.7rem; margin:0 0 .4rem; font-weight:700; letter-spacing:-.01em;
+    color:#f4faf8;
+  }
+  .sub{color:var(--muted); font-size:.82rem; margin:0 0 3rem; max-width:56ch;}
+  h2{
+    font-size:.92rem; letter-spacing:.04em; color:var(--accent);
+    text-transform:uppercase; margin:0 0 .3rem; display:flex; align-items:baseline; gap:.6rem;
+  }
+  h2 .n{color:var(--muted2); font-size:.8rem;}
+  .lede{color:var(--muted); font-size:.85rem; margin:0 0 1.6rem; max-width:60ch;}
+  section{margin:0 0 4.2rem;}
+  .diagram{
+    border:1px solid var(--line); border-radius:6px; background:var(--panel);
+    padding:1.2rem 1rem 1rem; margin:0 0 1.8rem;
+  }
+  .narrative{display:grid; gap:1.1rem;}
+  .step{
+    display:grid; grid-template-columns:1.6rem 1fr; gap:.8rem; align-items:start;
+  }
+  .step .mark{
+    width:1.6rem; height:1.6rem; border:1px solid var(--line-strong); border-radius:3px;
+    display:flex; align-items:center; justify-content:center; font-size:.66rem;
+    color:var(--accent); font-weight:700; flex-shrink:0;
+  }
+  .step .body{font-size:.82rem; color:#c8d8d0;}
+  .step .body b{color:var(--text); font-weight:700;}
+  .step .body code{
+    background:#050a08; border:1px solid var(--line); border-radius:3px;
+    padding:.05rem .35rem; font-size:.76rem; color:var(--accent);
+  }
+  .callout{
+    border-left:2px solid var(--warn); padding:.7rem 1rem; margin-top:1.6rem;
+    background:rgba(255,156,92,.06); font-size:.78rem; color:#e0c4a8;
+  }
+  .callout b{color:var(--warn);}
+  footer{
+    margin-top:3rem; padding-top:1.4rem; border-top:1px solid var(--line);
+    font-size:.68rem; color:var(--muted2);
+  }
+  svg text{font-family:'Share Tech Mono','SF Mono',Consolas,monospace;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <p class="eyebrow">TSM Consultz — internal reference</p>
+  <h1>Client Access, End to End</h1>
+  <p class="sub">How a client goes from "not on the platform" to logged into their own locked workspace, and why nothing they do can surface another client's data.</p>
+
+  <section>
+    <h2><span class="n">01</span> Issuing access</h2>
+    <p class="lede">You create the client and generate their code. The code is shown to you exactly once — the server only ever keeps a one-way hash of it.</p>
+
+    <div class="diagram">
+      <svg viewBox="0 0 760 190" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="arrow1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="#1ee8b6"/>
+          </marker>
+        </defs>
+        <!-- boxes -->
+        <g font-size="11" fill="#e6f1ff">
+          <rect x="10" y="60" width="130" height="60" rx="4" fill="#0a0f0a" stroke="#1ee8b6" stroke-opacity=".5"/>
+          <text x="75" y="86" text-anchor="middle" fill="#1ee8b6" font-size="9" letter-spacing="1">ADMIN</text>
+          <text x="75" y="102" text-anchor="middle">+ New Client</text>
+
+          <rect x="200" y="60" width="150" height="60" rx="4" fill="#0a0f0a" stroke="#1ee8b6" stroke-opacity=".5"/>
+          <text x="275" y="80" text-anchor="middle" fill="#1ee8b6" font-size="9" letter-spacing="1">SERVER</text>
+          <text x="275" y="96" text-anchor="middle" font-size="10">POST /api/admin/</text>
+          <text x="275" y="110" text-anchor="middle" font-size="10">clients</text>
+
+          <rect x="410" y="60" width="150" height="60" rx="4" fill="#0a0f0a" stroke="#1ee8b6" stroke-opacity=".5"/>
+          <text x="485" y="80" text-anchor="middle" fill="#1ee8b6" font-size="9" letter-spacing="1">REGISTRY</text>
+          <text x="485" y="96" text-anchor="middle" font-size="10">generate code</text>
+          <text x="485" y="110" text-anchor="middle" font-size="10">store HMAC only</text>
+
+          <rect x="620" y="60" width="130" height="60" rx="4" fill="#0a0f0a" stroke="#ff9c5c" stroke-opacity=".6"/>
+          <text x="685" y="80" text-anchor="middle" fill="#ff9c5c" font-size="9" letter-spacing="1">SHOWN ONCE</text>
+          <text x="685" y="98" text-anchor="middle" font-size="10">K7RM-QX2P-</text>
+          <text x="685" y="112" text-anchor="middle" font-size="10">9FHL</text>
+        </g>
+        <!-- arrows -->
+        <path d="M140,90 L198,90" stroke="#1ee8b6" stroke-width="1.4" marker-end="url(#arrow1)"/>
+        <path d="M350,90 L408,90" stroke="#1ee8b6" stroke-width="1.4" marker-end="url(#arrow1)"/>
+        <path d="M560,90 L618,90" stroke="#1ee8b6" stroke-width="1.4" marker-end="url(#arrow1)"/>
+        <!-- bottom label -->
+        <text x="75" y="150" text-anchor="middle" font-size="9" fill="#7a9a8a">you, logged in</text>
+        <text x="275" y="150" text-anchor="middle" font-size="9" fill="#7a9a8a">clientId: "honeywell"</text>
+        <text x="485" y="150" text-anchor="middle" font-size="9" fill="#7a9a8a">codeHash saved</text>
+        <text x="685" y="150" text-anchor="middle" font-size="9" fill="#7a9a8a">→ you hand this to client</text>
+      </svg>
+    </div>
+
+    <div class="narrative">
+      <div class="step"><div class="mark">1</div><div class="body">Log into <code>tsm-consultz.fly.dev/login</code> with <b>TSM_ADMIN_PASSWORD</b>, open <code>tsm-doc-search-multi.html</code>, click <b>+ New Client</b>.</div></div>
+      <div class="step"><div class="mark">2</div><div class="body">The server generates a readable code (e.g. <code>K7RM-QX2P-9FHL</code>) and registers the client under a slugified id, like <code>honeywell</code>.</div></div>
+      <div class="step"><div class="mark">3</div><div class="body">Only the code's <b>HMAC digest</b> is written to <code>data/clients.json</code> — the plaintext is never stored anywhere.</div></div>
+      <div class="step"><div class="mark">4</div><div class="body">A popup shows the code once. Copy it now — it can't be recovered later, only <b>rotated</b> if lost.</div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="n">02</span> Client logs in, gets locked to their own data</h2>
+    <p class="lede">Same login page, same field, for admin and clients alike. What differs is what the server decides to trust them with afterward.</p>
+
+    <div class="diagram">
+      <svg viewBox="0 0 760 260" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="arrow2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="#1ee8b6"/>
+          </marker>
+        </defs>
+        <g font-size="11" fill="#e6f1ff">
+          <rect x="10" y="30" width="140" height="56" rx="4" fill="#0a0f0a" stroke="#1ee8b6" stroke-opacity=".5"/>
+          <text x="80" y="52" text-anchor="middle" fill="#1ee8b6" font-size="9" letter-spacing="1">CLIENT</text>
+          <text x="80" y="68" text-anchor="middle" font-size="10">enters code at</text>
+          <text x="80" y="80" text-anchor="middle" font-size="10">/login</text>
+
+          <rect x="220" y="30" width="160" height="56" rx="4" fill="#0a0f0a" stroke="#1ee8b6" stroke-opacity=".5"/>
+          <text x="300" y="52" text-anchor="middle" fill="#1ee8b6" font-size="9" letter-spacing="1">SERVER</text>
+          <text x="300" y="68" text-anchor="middle" font-size="10">try admin password</text>
+          <text x="300" y="80" text-anchor="middle" font-size="10">→ no match</text>
+
+          <rect x="450" y="30" width="160" height="56" rx="4" fill="#0a0f0a" stroke="#1ee8b6" stroke-opacity=".5"/>
+          <text x="530" y="52" text-anchor="middle" fill="#1ee8b6" font-size="9" letter-spacing="1">REGISTRY</text>
+          <text x="530" y="68" text-anchor="middle" font-size="10">match code hash</text>
+          <text x="530" y="80" text-anchor="middle" font-size="10">→ honeywell</text>
+
+          <rect x="640" y="30" width="110" height="56" rx="4" fill="#0a0f0a" stroke="#1ee8b6" stroke-opacity=".5"/>
+          <text x="695" y="52" text-anchor="middle" fill="#1ee8b6" font-size="9" letter-spacing="1">SESSION</text>
+          <text x="695" y="68" text-anchor="middle" font-size="10">role: client</text>
+          <text x="695" y="80" text-anchor="middle" font-size="10">clientId set</text>
+
+          <rect x="220" y="150" width="360" height="70" rx="4" fill="#0a0f0a" stroke="#1ee8b6" stroke-opacity=".5"/>
+          <text x="400" y="172" text-anchor="middle" fill="#1ee8b6" font-size="9" letter-spacing="1">tsm-doc-search-multi.html</text>
+          <text x="400" y="190" text-anchor="middle" font-size="10">workspace locked to "honeywell"</text>
+          <text x="400" y="205" text-anchor="middle" font-size="10">no "All Clients", no other names, ever</text>
+
+          <rect x="620" y="150" width="130" height="70" rx="4" fill="#0a0f0a" stroke="#ff9c5c" stroke-opacity=".6"/>
+          <text x="685" y="172" text-anchor="middle" fill="#ff9c5c" font-size="9" letter-spacing="1">EVERY API CALL</text>
+          <text x="685" y="190" text-anchor="middle" font-size="10">filtered by</text>
+          <text x="685" y="205" text-anchor="middle" font-size="10">clientId, server-side</text>
+        </g>
+        <path d="M150,58 L218,58" stroke="#1ee8b6" stroke-width="1.4" marker-end="url(#arrow2)"/>
+        <path d="M380,58 L448,58" stroke="#1ee8b6" stroke-width="1.4" marker-end="url(#arrow2)"/>
+        <path d="M610,58 L638,58" stroke="#1ee8b6" stroke-width="1.4" marker-end="url(#arrow2)"/>
+        <path d="M695,86 L695,120 L400,120 L400,148" stroke="#1ee8b6" stroke-width="1.4" fill="none" marker-end="url(#arrow2)"/>
+        <path d="M580,185 L618,185" stroke="#1ee8b6" stroke-width="1.4" marker-end="url(#arrow2)"/>
+      </svg>
+    </div>
+
+    <div class="narrative">
+      <div class="step"><div class="mark">1</div><div class="body">Client goes to <code>tsm-consultz.fly.dev/login</code> and enters the code you gave them — same field admin uses.</div></div>
+      <div class="step"><div class="mark">2</div><div class="body">Server checks it against <b>TSM_ADMIN_PASSWORD</b> first (no match), then hashes it and compares against every active client's stored digest.</div></div>
+      <div class="step"><div class="mark">3</div><div class="body">On match, they get a signed session cookie carrying <code>role: 'client'</code> and <code>clientId: 'honeywell'</code> — not just a "logged in" flag.</div></div>
+      <div class="step"><div class="mark">4</div><div class="body">Redirected to <code>tsm-doc-search-multi.html</code>. The workspace selector shows <b>only their name</b>, disabled — no dropdown to switch, no rollup view, "+ New Client" hidden.</div></div>
+      <div class="step"><div class="mark">5</div><div class="body">Every relevant API call — collective signals, BNCA synthesis — filters by <code>clientId</code> <b>on the server</b>. Not a UI restriction someone could bypass from devtools.</div></div>
+    </div>
+
+    <div class="callout"><b>Scope note —</b> this login wall currently covers <code>tsm-doc-search-multi.html</code> and its APIs only. War room / strategist / exec-portal pages are still open, same as before. If clients start reaching those directly, that's separate follow-up work.</div>
+  </section>
+
+  <footer>Generated for TSM Consultz LLC · reflects the client-registry patch on <code>feat/mission-preview-phase4</code></footer>
+</div>
+</body>
+</html>
