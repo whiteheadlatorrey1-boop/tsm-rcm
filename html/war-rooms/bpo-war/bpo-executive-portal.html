@@ -1283,7 +1283,7 @@ async function exportBrief(){
           vertical: 'bpo',
           warRoom: 'BPO Executive Portal',
           signal: (d.stratBrief || 'Executive report finalized and exported.').slice(0, 400),
-          confidence: rec.confidence || 78,
+          confidence: rec.confidenceDefaulted ? null : (rec.confidence ?? null),
           riskLevel,
           topIssue: d.anomalyEntity || d.sector || 'BPO engagement',
           ownerLanes: ['Executive Portal', 'BPO Operations'],
@@ -1332,16 +1332,19 @@ function initThreeBlocks(data) {
 function buildExecTracker(data) {
   const rec = data.recommendation || {};
   const actions = rec.recommendedActions || [];
-  const items = actions.length ? actions.slice(0,4).map((a,i) => ({
+  if (!actions.length) {
+    document.getElementById('execTracker').innerHTML =
+      '<div style="opacity:.6;font-size:.72rem">No recommended actions reported by the strategist for this case yet.</div>';
+    return;
+  }
+  // Completion % isn't tracked per-action anywhere upstream yet, so each
+  // action starts at 0% (not-started) rather than a fabricated progress
+  // value — this reflects what's actually known, not a guess.
+  const items = actions.slice(0,4).map(a => ({
     label: (a.text || a).slice(0,42),
-    pct: [80,100,60,45][i] || 50,
-    color: [100,100,60,45][i] >= 75 ? 'var(--green)' : 'var(--amber)'
-  })) : [
-    {label:'Supplier Activated', pct:80, color:'var(--green)'},
-    {label:'Customer Notifications', pct:100, color:'var(--green)'},
-    {label:'Production Recovery', pct:60, color:'var(--amber)'},
-    {label:'Documentation', pct:45, color:'var(--amber)'}
-  ];
+    pct: 0,
+    color: 'var(--muted)'
+  }));
   document.getElementById('execTracker').innerHTML = items.map(it =>
     '<div class="et-item">' +
     '<div class="et-label"><span>' + it.label + '</span><span class="et-pct">' + it.pct + '%</span></div>' +
@@ -1352,31 +1355,27 @@ function buildExecTracker(data) {
 
 function buildExplainability(data) {
   const rec = data.recommendation || {};
-  const conf = rec.confidence || 91;
-  document.getElementById('expConf').textContent = conf + '%';
-  const sources = rec.dataSources || [
-    {name:'Situation Room Extraction', weight:'HIGH'},
-    {name:'Strategy Engine Brief', weight:'HIGH'},
-    {name:'Sector Intelligence', weight:'MED'},
-    {name:'Memory — Prior Cases', weight:'MED'}
-  ];
-  document.getElementById('expSources').innerHTML = sources.map(s =>
-    '<div class="exp-source">' +
-    '<div class="exp-src-check">✓</div>' +
-    '<div class="exp-src-name">' + s.name + '</div>' +
-    '<div class="exp-src-wt">' + s.weight + '</div>' +
-    '</div>'
-  ).join('');
-  const reasoning = rec.reasoning || [
-    {key:'Threshold', val:'Revenue exposure exceeds containment threshold'},
-    {key:'Evidence', val:'Alternative supplier confirmed available'},
-    {key:'History', val:'Prior similar incidents resolved via contingency activation'},
-    {key:'Risk', val:'Inaction probability of total loss: 94%'}
-  ];
-  document.getElementById('expReasoning').innerHTML =
-    '<div class="exp-reason-box">' +
-    reasoning.map(r => '<div><span class="er-key">' + r.key + ':</span> <span class="er-val">' + r.val + '</span></div>').join('') +
-    '</div>';
+  const confDefaulted = !!rec.confidenceDefaulted;
+  const conf = rec.confidence;
+  document.getElementById('expConf').textContent = (confDefaulted || !conf) ? '—' : conf + '%';
+
+  const sources = rec.dataSources;
+  document.getElementById('expSources').innerHTML = (sources && sources.length)
+    ? sources.map(s =>
+        '<div class="exp-source">' +
+        '<div class="exp-src-check">✓</div>' +
+        '<div class="exp-src-name">' + s.name + '</div>' +
+        '<div class="exp-src-wt">' + s.weight + '</div>' +
+        '</div>'
+      ).join('')
+    : '<div class="exp-source" style="opacity:.6"><div class="exp-src-name">No data sources reported by the strategist for this case</div></div>';
+
+  const reasoning = rec.reasoning;
+  document.getElementById('expReasoning').innerHTML = (reasoning && reasoning.length)
+    ? '<div class="exp-reason-box">' +
+      reasoning.map(r => '<div><span class="er-key">' + r.key + ':</span> <span class="er-val">' + r.val + '</span></div>').join('') +
+      '</div>'
+    : '<div class="exp-reason-box" style="opacity:.6">No reasoning breakdown reported by the strategist for this case.</div>';
 }
 
 </script>
