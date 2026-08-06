@@ -27,6 +27,18 @@ video:"retain-on-failure",
 
 trace:"retain-on-failure"
 
+},
+
+webServer:{
+
+command:"node server.js",
+
+url:"http://localhost:8080",
+
+reuseExistingServer:true,
+
+timeout:30000
+
 }
 
 });
