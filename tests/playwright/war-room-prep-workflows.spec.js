@@ -48,9 +48,9 @@ const sectorChains = [
   },
   {
     name: 'FinOps',
-    warRoom: '/html/finops-suite/finops-war-room.html',
-    strategist: '/html/finops-suite/finops-main-strategist.html',
-    executive: '/html/finops-suite/finops-executive-portal.html',
+    warRoom: '/html/finops-suite/finops-war/finops-war-room.html',
+    strategist: '/html/finops-suite/finops-war/finops-main-strategist.html',
+    executive: '/html/finops-suite/finops-war/finops-executive-portal.html',
   },
   {
     name: 'Insurance',
@@ -94,7 +94,7 @@ const phaseChains = [
   { name: 'MDM', domain: 'mdm', dir: 'mdm' },
   { name: 'Governance', domain: 'governance', dir: 'governance' },
   { name: 'Digital Twin', domain: 'digital-twin', dir: 'digital-twin', warRoomFile: 'digital-twin.html' },
-  { name: 'BPO Services (SAP phase)', domain: 'bpo', dir: 'bpo' },
+  { name: 'BPO Services (SAP phase)', domain: 'bpo', dir: 'bpo-war' },
 ].map((p) => ({
   name: p.name,
   warRoom: `/html/war-rooms/${p.dir}/${p.warRoomFile || `${p.domain}-war-room.html`}`,
