@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TSM Property Accountant Command</title>
+<style>
+body{margin:0;background:#07111f;color:#e8eef7;font-family:Inter,Arial,sans-serif}
+.wrap{max-width:1400px;margin:auto;padding:28px}
+h1{margin:0 0 6px;font-size:30px}
+.sub{color:#8fa3ba;margin-bottom:24px}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.card{background:#0d1b2d;border:1px solid #20344d;border-radius:12px;padding:18px}
+.kpi{font-size:28px;font-weight:800;margin:6px 0}
+.label{font-size:12px;color:#8fa3ba;text-transform:uppercase;letter-spacing:.08em}
+.bad{color:#ff9d9d}.good{color:#8de0ad}.warn{color:#ffd27d}
+.section{margin-top:20px}
+table{width:100%;border-collapse:collapse}
+th,td{padding:12px;border-bottom:1px solid #20344d;text-align:left}
+th{color:#8fa3ba;font-size:12px;text-transform:uppercase}
+button{background:#1d73ea;color:white;border:0;border-radius:8px;padding:10px 15px;font-weight:700;cursor:pointer}
+button.alt{background:#17283d}
+.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+#brief{white-space:pre-wrap;line-height:1.55;color:#cbd8e7}
+@media(max-width:900px){.grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:600px){.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Property Accountant Command</h1>
+<div class="sub">Month-End Property Close · Desert Ridge Commercial Center · July 2026</div>
+
+<div class="grid">
+  <div class="card">
+    <div class="label">Budget</div>
+    <div class="kpi">$482,000</div>
+    <div class="sub">July 2026</div>
+  </div>
+  <div class="card">
+    <div class="label">Actual</div>
+    <div class="kpi">$517,400</div>
+    <div class="sub bad">+$35,400 variance</div>
+  </div>
+  <div class="card">
+    <div class="label">Variance</div>
+    <div class="kpi bad">+7.3%</div>
+    <div class="sub">Above budget</div>
+  </div>
+  <div class="card">
+    <div class="label">Close Status</div>
+    <div class="kpi warn">EXCEPTIONS</div>
+    <div class="sub">Requires accountant review</div>
+  </div>
+</div>
+
+<div class="section card">
+<h2>Accounting Exception Queue</h2>
+<table>
+<thead><tr><th>Priority</th><th>Exception</th><th>Area</th><th>Status</th></tr></thead>
+<tbody>
+<tr><td>P1</td><td>Reconciliation out of balance</td><td>GL / Bank</td><td class="bad">OPEN</td></tr>
+<tr><td>P1</td><td>Duplicate vendor invoice detected</td><td>AP</td><td class="bad">OPEN</td></tr>
+<tr><td>P2</td><td>GL variance requires explanation</td><td>General Ledger</td><td class="warn">REVIEW</td></tr>
+<tr><td>P2</td><td>Property tax escrow deadline approaching</td><td>Escrow</td><td class="warn">DUE SOON</td></tr>
+<tr><td>P2</td><td>Insurance certificate missing / expired</td><td>Insurance</td><td class="bad">MISSING</td></tr>
+<tr><td>P3</td><td>3 AP invoices awaiting approval</td><td>Accounts Payable</td><td class="warn">PENDING</td></tr>
+<tr><td>P3</td><td>Mortgage payment scheduled</td><td>Debt Service</td><td class="good">SCHEDULED</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="grid section">
+<div class="card">
+<div class="label">AP</div>
+<div class="kpi">3</div>
+<div>Invoices awaiting approval</div>
+</div>
+<div class="card">
+<div class="label">AR / Deposits</div>
+<div class="kpi">100%</div>
+<div class="good">Reconciled</div>
+</div>
+<div class="card">
+<div class="label">GL</div>
+<div class="kpi">1</div>
+<div class="bad">Unexplained variance</div>
+</div>
+<div class="card">
+<div class="label">Escrow</div>
+<div class="kpi">2</div>
+<div>Tax / insurance actions</div>
+</div>
+</div>
+
+<div class="section card">
+<h2>Month-End Close Workflow</h2>
+<div class="actions">
+<button onclick="runClose()">RUN CLOSE ANALYSIS</button>
+<button class="alt" onclick="sendStrategist()">ESCALATE TO STRATEGIST</button>
+<button class="alt" onclick="sendExecutive()">BUILD EXECUTIVE CLOSE PACKAGE</button>
+</div>
+<div id="brief" style="margin-top:18px"></div>
+</div>
+
+</div>
+
+<script>
+const mission = {
+  missionId:"PA-MEC-001",
+  title:"Month-End Property Close Exception",
+  property:"Desert Ridge Commercial Center",
+  period:"July 2026",
+  budget:482000,
+  actual:517400,
+  variance:35400,
+  variancePct:7.3,
+  exceptions:[
+    {priority:"P1",area:"GL / Bank",issue:"Reconciliation out of balance"},
+    {priority:"P1",area:"AP",issue:"Duplicate vendor invoice detected"},
+    {priority:"P2",area:"General Ledger",issue:"Unexplained GL variance"},
+    {priority:"P2",area:"Escrow",issue:"Property tax deadline approaching"},
+    {priority:"P2",area:"Insurance",issue:"Insurance certificate missing / expired"},
+    {priority:"P3",area:"AP",issue:"3 invoices awaiting approval"},
+    {priority:"P3",area:"Debt Service",issue:"Mortgage payment scheduled"}
+  ],
+  timestamp:new Date().toISOString()
+};
+
+function persist(key,value){
+  localStorage.setItem(key,JSON.stringify(value));
+  sessionStorage.setItem(key,JSON.stringify(value));
+}
+
+function runClose(){
+  const text =
+`PROPERTY ACCOUNTANT CLOSE ANALYSIS
+
+Property: ${mission.property}
+Period: ${mission.period}
+
+Budget: $482,000
+Actual: $517,400
+Variance: +$35,400 (+7.3%)
+
+ACCOUNTING FINDINGS
+• 3 AP invoices awaiting approval
+• 1 duplicate vendor invoice
+• 1 unexplained GL variance
+• Property tax escrow deadline approaching
+• Insurance certificate missing/expired
+• Mortgage payment scheduled
+• Reconciliation is out of balance
+
+RECOMMENDED ACTION
+1. Resolve reconciliation before close certification.
+2. Hold duplicate invoice from payment.
+3. Obtain GL variance explanation.
+4. Verify tax escrow funding.
+5. Obtain current insurance certificate.
+6. Complete AP approval queue.
+7. Confirm mortgage payment schedule.
+
+CLOSE STATUS: EXCEPTIONS REQUIRE REVIEW`;
+
+  document.getElementById("brief").textContent=text;
+  persist("TSM_PROPERTY_ACCOUNTANT_CLOSE",mission);
+}
+
+function sendStrategist(){
+  runClose();
+  const payload={
+    ...mission,
+    source:"property-accountant-command",
+    type:"PROPERTY_ACCOUNTANT_CLOSE",
+    brief:document.getElementById("brief").textContent
+  };
+
+  persist("TSM_PROPERTY_ACCOUNTANT_STRATEGIST_RELAY",payload);
+  persist("tsm_property_accountant_strategist_output",payload);
+
+  document.getElementById("brief").textContent +=
+    "\n\n✓ RELAYED TO PROPERTY ACCOUNTANT STRATEGIST";
+}
+
+function sendExecutive(){
+  sendStrategist();
+
+  const payload={
+    ...mission,
+    source:"property-accountant-strategist",
+    type:"PROPERTY_ACCOUNTANT_EXECUTIVE_CLOSE_PACKAGE",
+    status:"EXCEPTIONS_REQUIRE_REVIEW",
+    brief:document.getElementById("brief").textContent
+  };
+
+  persist("TSM_PROPERTY_ACCOUNTANT_EXECUTIVE_RELAY",payload);
+  persist("TSM_PROPERTY_ACCOUNTANT_EXECUTIVE_PACKAGE",payload);
+
+  document.getElementById("brief").textContent +=
+    "\n✓ EXECUTIVE CLOSE PACKAGE STAGED";
+}
+</script>
+</body>
+</html>
