@@ -63,47 +63,99 @@ button.alt{background:#17283d;color:var(--text)}
 <div class="grid">
   <div class="card">
     <div class="label">Budget</div>
-    <div class="kpi">$482,000</div>
-    <div class="sub">July 2026</div>
+    <div class="kpi" id="kpiBudget">$482,000</div>
+    <div class="sub" id="kpiBudgetSub">July 2026</div>
   </div>
   <div class="card">
     <div class="label">Actual</div>
-    <div class="kpi">$517,400</div>
-    <div class="sub bad">+$35,400 variance</div>
+    <div class="kpi" id="kpiActual">$517,400</div>
+    <div class="sub bad" id="kpiActualSub">+$35,400 variance</div>
   </div>
   <div class="card">
     <div class="label">Variance</div>
-    <div class="kpi bad">+7.3%</div>
-    <div class="sub">Above budget</div>
+    <div class="kpi bad" id="kpiVariancePct">+7.3%</div>
+    <div class="sub" id="kpiVarianceSub">Above budget</div>
   </div>
   <div class="card">
     <div class="label">Close Status</div>
-    <div class="kpi warn">EXCEPTIONS</div>
-    <div class="sub">Requires accountant review</div>
+    <div class="kpi warn" id="kpiCloseStatus">EXCEPTIONS</div>
+    <div class="sub" id="kpiCloseStatusSub">Requires accountant review</div>
   </div>
+</div>
+
+<div class="section card">
+<h2>Update Property Budget</h2>
+<div class="sub">Editing this recalculates Actual variance and the KPI cards above live — real budget maintenance, not a static display.</div>
+<div class="actions">
+  <input id="budgetInput" type="number" step="100" value="482000" style="background:#0d1b2d;border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 12px;font-family:var(--font);width:180px">
+  <button onclick="updateBudget()">SAVE BUDGET</button>
+  <span class="sub" id="budgetSaveMsg" style="align-self:center"></span>
+</div>
 </div>
 
 <div class="section card">
 <h2>Accounting Exception Queue</h2>
 <table>
 <thead><tr><th>Priority</th><th>Exception</th><th>Area</th><th>Status</th></tr></thead>
-<tbody>
-<tr><td>P1</td><td>Reconciliation out of balance</td><td>GL / Bank</td><td class="bad">OPEN</td></tr>
+<tbody id="exceptionQueueBody">
+<tr id="exc-recon"><td>P1</td><td>Reconciliation out of balance</td><td>GL / Bank</td><td class="bad">OPEN</td></tr>
 <tr><td>P1</td><td>Duplicate vendor invoice detected</td><td>AP</td><td class="bad">OPEN</td></tr>
 <tr><td>P2</td><td>GL variance requires explanation</td><td>General Ledger</td><td class="warn">REVIEW</td></tr>
 <tr><td>P2</td><td>Property tax escrow deadline approaching</td><td>Escrow</td><td class="warn">DUE SOON</td></tr>
 <tr><td>P2</td><td>Insurance certificate missing / expired</td><td>Insurance</td><td class="bad">MISSING</td></tr>
-<tr><td>P3</td><td>3 AP invoices awaiting approval</td><td>Accounts Payable</td><td class="warn">PENDING</td></tr>
+<tr id="exc-ap-pending"><td>P3</td><td id="exc-ap-pending-text">3 AP invoices awaiting approval</td><td>Accounts Payable</td><td class="warn">PENDING</td></tr>
 <tr><td>P3</td><td>Retainage release pending owner sign-off</td><td>Revenue Cycle</td><td class="warn">PENDING</td></tr>
 </tbody>
 </table>
 </div>
 
 <div class="grid section">
-<div class="card"><div class="label">AP</div><div class="kpi">3</div><div>Invoices awaiting approval</div></div>
+<div class="card"><div class="label">AP</div><div class="kpi" id="kpiApPending">3</div><div>Invoices awaiting approval</div></div>
 <div class="card"><div class="label">AR / Pay Apps</div><div class="kpi">1</div><div class="warn">Awaiting owner certification</div></div>
 <div class="card"><div class="label">GL</div><div class="kpi">1</div><div class="bad">Unexplained variance</div></div>
 <div class="card"><div class="label">Retainage Held</div><div class="kpi">$24,100</div><div>10% of certified billing</div></div>
+</div>
+
+<div class="section card">
+<h2>AP Invoice Approval Queue</h2>
+<div class="sub">Approve posts a real offsetting journal entry (Debit AP Expense / Credit Cash) to the ledger below. Reject logs the decision without posting.</div>
+<table>
+<thead><tr><th>Vendor</th><th>Invoice #</th><th>Amount</th><th>Status</th><th>Action</th></tr></thead>
+<tbody id="apQueueBody"></tbody>
+</table>
+</div>
+
+<div class="section card">
+<h2>General Ledger — Post Journal Entry</h2>
+<div class="sub">Double-entry aware: each line is a debit or credit against a real account. Debit to an Expense account increases Actual spend; credit decreases it. Reconciliation status below reflects real running totals.</div>
+<div class="actions" style="align-items:center">
+  <select id="jeAccount" style="background:#0d1b2d;border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 12px;font-family:var(--font)">
+    <option value="Construction Expense">Construction Expense</option>
+    <option value="Accounts Payable">Accounts Payable</option>
+    <option value="Cash">Cash</option>
+    <option value="Retainage Payable">Retainage Payable</option>
+    <option value="Accounts Receivable">Accounts Receivable</option>
+  </select>
+  <select id="jeType" style="background:#0d1b2d;border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 12px;font-family:var(--font)">
+    <option value="debit">Debit</option>
+    <option value="credit">Credit</option>
+  </select>
+  <input id="jeAmount" type="number" step="0.01" placeholder="Amount" style="background:#0d1b2d;border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 12px;font-family:var(--font);width:140px">
+  <input id="jeDesc" type="text" placeholder="Description" style="background:#0d1b2d;border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 12px;font-family:var(--font);width:240px">
+  <button onclick="postJournalEntry()">POST ENTRY</button>
+</div>
+<table style="margin-top:16px">
+<thead><tr><th>Date</th><th>Account</th><th>Debit</th><th>Credit</th><th>Description</th></tr></thead>
+<tbody id="glLedgerBody"></tbody>
+</table>
+<div class="actions" style="margin-top:10px">
+  <div class="card" style="flex:1;min-width:220px">
+    <div class="label">Ledger Balance</div>
+    <div class="kpi" id="glBalanceStatus">$0.00 / $0.00</div>
+    <div class="sub" id="glBalanceSub">No entries posted yet</div>
+  </div>
+  <button class="alt" onclick="resolveReconciliation()" id="resolveReconBtn" disabled>MARK RECONCILIATION RESOLVED</button>
+</div>
 </div>
 
 <!-- REVENUE CYCLE — mirrors html/finops-suite/rcm-os-presentation.html flow pattern,
@@ -157,9 +209,19 @@ key the war-room/strategist chain already uses, so the Construction Executive Po
 picks up the property-accounting close package with no changes needed on its side. "Feed Exception Queue" calls
 the real <code>TSMExceptions.add()</code> engine with <code>sector:'construction'</code> — first real producer for
 this vertical's exception panel, which was previously mounted but unfed (see
-<code>construction-demo-presentation.html</code>). Double-entry ledger posting, 3-way PO/invoice match, and bank-feed
-reconciliation are not implemented — this demonstrates the workflow shape and real relay/exception wiring, not a
-production accounting engine.
+<code>construction-demo-presentation.html</code>).
+<br><br>
+<strong>Now real, this pass:</strong> journal entries actually post (debit/credit against named GL accounts), a
+running debit/credit total drives a live reconciliation-balanced check, editing the budget recalculates
+Actual/Variance/KPI cards live, and AP invoices can be individually approved (posts a real offsetting journal
+entry) or rejected (logged, not posted) instead of only being counted.
+<br><br>
+<strong>Still not implemented:</strong> none of this persists past the page session (no backend/database —
+everything lives in page-local JS state, same as the rest of this demo tier), so a reload resets the ledger.
+There's no 3-way PO/invoice match, no bank-feed reconciliation against a real bank statement, no cash-vs-accrual
+basis toggle, no compliance rule engine, no signed audit trail, no mortgage/draw payment processing, and no
+client-facing statement generator. This is a real double-entry <em>workflow</em> demonstration — not a production
+accounting system of record.
 </div>
 
 </div>
@@ -281,6 +343,190 @@ function feedExceptions(){
   document.getElementById("brief").textContent +=
     "\n\n\u2713 " + mission.exceptions.length + " EXCEPTIONS FED TO TSMExceptions (sector: construction)";
 }
+
+/* ========================================================================
+   GAP-CLOSING ADDITIONS: journal entry posting, AP approval workflow,
+   live budget editing. All state is page-local (see honest-status note) —
+   this closes the "workflow shape" gap, not the "system of record" gap.
+   ======================================================================== */
+
+const EXPENSE_ACCOUNTS = ['Construction Expense'];
+let glEntries = [];
+let apInvoices = [
+  { id: 'INV-4821', vendor: 'Summit Steel & Supply', amount: 18400, status: 'pending' },
+  { id: 'INV-4822', vendor: 'Desert Ridge Electrical', amount: 9250, status: 'pending' },
+  { id: 'INV-4823', vendor: 'Apex Concrete Co.', amount: 12600, status: 'pending' }
+];
+
+function fmtMoney(n){
+  const sign = n < 0 ? '-' : '';
+  return sign + '$' + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function refreshKpiCards(){
+  const variance = mission.actual - mission.budget;
+  const variancePct = mission.budget !== 0 ? (variance / mission.budget) * 100 : 0;
+  mission.variance = variance;
+  mission.variancePct = Math.round(variancePct * 10) / 10;
+
+  document.getElementById('kpiBudget').textContent = fmtMoney(mission.budget).replace('.00', '');
+  document.getElementById('kpiActual').textContent = fmtMoney(mission.actual).replace('.00', '');
+
+  const varEl = document.getElementById('kpiActualSub');
+  varEl.textContent = (variance >= 0 ? '+' : '-') + fmtMoney(Math.abs(variance)).replace('.00', '') + ' variance';
+  varEl.className = 'sub ' + (variance > 0 ? 'bad' : (variance < 0 ? 'good' : ''));
+
+  const pctEl = document.getElementById('kpiVariancePct');
+  pctEl.textContent = (mission.variancePct >= 0 ? '+' : '') + mission.variancePct + '%';
+  pctEl.className = 'kpi ' + (mission.variancePct > 0 ? 'bad' : (mission.variancePct < 0 ? 'good' : ''));
+  document.getElementById('kpiVarianceSub').textContent = mission.variancePct > 0 ? 'Above budget' : (mission.variancePct < 0 ? 'Under budget' : 'On budget');
+}
+
+function updateBudget(){
+  const raw = parseFloat(document.getElementById('budgetInput').value);
+  const msg = document.getElementById('budgetSaveMsg');
+  if (isNaN(raw) || raw <= 0) {
+    msg.textContent = '\u26a0 enter a valid budget amount';
+    msg.className = 'sub bad';
+    return;
+  }
+  mission.budget = raw;
+  refreshKpiCards();
+  msg.textContent = '\u2713 budget saved \u2014 KPIs recalculated';
+  msg.className = 'sub good';
+}
+
+function renderLedger(){
+  const body = document.getElementById('glLedgerBody');
+  body.innerHTML = '';
+  let totalDebit = 0, totalCredit = 0;
+  glEntries.forEach(function(e){
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td>' + e.date + '</td>' +
+      '<td>' + e.account + '</td>' +
+      '<td>' + (e.type === 'debit' ? fmtMoney(e.amount) : '') + '</td>' +
+      '<td>' + (e.type === 'credit' ? fmtMoney(e.amount) : '') + '</td>' +
+      '<td>' + e.description + '</td>';
+    body.appendChild(tr);
+    if (e.type === 'debit') totalDebit += e.amount; else totalCredit += e.amount;
+  });
+
+  const balanced = glEntries.length > 0 && Math.abs(totalDebit - totalCredit) < 0.005;
+  const statusEl = document.getElementById('glBalanceStatus');
+  const subEl = document.getElementById('glBalanceSub');
+  statusEl.textContent = fmtMoney(totalDebit) + ' / ' + fmtMoney(totalCredit);
+  statusEl.className = 'kpi ' + (glEntries.length === 0 ? '' : (balanced ? 'good' : 'bad'));
+  subEl.textContent = glEntries.length === 0
+    ? 'No entries posted yet'
+    : (balanced ? 'Debits = Credits \u2014 ledger balanced' : 'Debits \u2260 Credits \u2014 out of balance');
+
+  document.getElementById('resolveReconBtn').disabled = !balanced;
+}
+
+function postJournalEntry(){
+  const account = document.getElementById('jeAccount').value;
+  const type = document.getElementById('jeType').value;
+  const amount = parseFloat(document.getElementById('jeAmount').value);
+  const description = document.getElementById('jeDesc').value.trim();
+
+  if (isNaN(amount) || amount <= 0) { alert('Enter a valid entry amount.'); return; }
+  if (!description) { alert('Enter a description for this entry.'); return; }
+
+  const entry = {
+    date: new Date().toISOString().slice(0, 10),
+    account: account,
+    type: type,
+    amount: Math.round(amount * 100) / 100,
+    description: description
+  };
+  glEntries.push(entry);
+
+  // A debit to Construction Expense is real spend hitting Actual;
+  // a credit to Construction Expense reverses previously posted spend.
+  if (EXPENSE_ACCOUNTS.indexOf(account) !== -1) {
+    mission.actual += type === 'debit' ? entry.amount : -entry.amount;
+  }
+
+  renderLedger();
+  refreshKpiCards();
+  document.getElementById('jeAmount').value = '';
+  document.getElementById('jeDesc').value = '';
+}
+
+function resolveReconciliation(){
+  const row = document.getElementById('exc-recon');
+  if (row) row.remove();
+  runClose();
+  document.getElementById('brief').textContent += '\n\n\u2713 RECONCILIATION EXCEPTION RESOLVED \u2014 ledger debits = credits';
+}
+
+function renderApQueue(){
+  const body = document.getElementById('apQueueBody');
+  body.innerHTML = '';
+  apInvoices.forEach(function(inv){
+    const tr = document.createElement('tr');
+    const statusClass = inv.status === 'approved' ? 'good' : (inv.status === 'rejected' ? 'bad' : 'warn');
+    const actionsHtml = inv.status === 'pending'
+      ? '<button onclick="approveInvoice(\'' + inv.id + '\')">APPROVE</button> ' +
+        '<button class="alt" onclick="rejectInvoice(\'' + inv.id + '\')">REJECT</button>'
+      : '\u2014';
+    tr.innerHTML =
+      '<td>' + inv.vendor + '</td>' +
+      '<td>' + inv.id + '</td>' +
+      '<td>' + fmtMoney(inv.amount) + '</td>' +
+      '<td class="' + statusClass + '">' + inv.status.toUpperCase() + '</td>' +
+      '<td>' + actionsHtml + '</td>';
+    body.appendChild(tr);
+  });
+
+  const pending = apInvoices.filter(function(i){ return i.status === 'pending'; }).length;
+  document.getElementById('kpiApPending').textContent = pending;
+  const excCell = document.getElementById('exc-ap-pending-text');
+  const excRow = document.getElementById('exc-ap-pending');
+  if (excCell) excCell.textContent = pending + ' AP invoice' + (pending === 1 ? '' : 's') + ' awaiting approval';
+  if (excRow && pending === 0) excRow.remove();
+}
+
+function approveInvoice(id){
+  const inv = apInvoices.find(function(i){ return i.id === id; });
+  if (!inv || inv.status !== 'pending') return;
+  inv.status = 'approved';
+
+  // Real offsetting entry: approving payment is a debit to expense,
+  // credit to cash — this is what actually posts to the ledger/Actual.
+  glEntries.push({
+    date: new Date().toISOString().slice(0, 10),
+    account: 'Construction Expense',
+    type: 'debit',
+    amount: inv.amount,
+    description: 'AP approved: ' + inv.vendor + ' (' + inv.id + ')'
+  });
+  glEntries.push({
+    date: new Date().toISOString().slice(0, 10),
+    account: 'Cash',
+    type: 'credit',
+    amount: inv.amount,
+    description: 'AP approved: ' + inv.vendor + ' (' + inv.id + ')'
+  });
+  mission.actual += inv.amount;
+
+  renderApQueue();
+  renderLedger();
+  refreshKpiCards();
+}
+
+function rejectInvoice(id){
+  const inv = apInvoices.find(function(i){ return i.id === id; });
+  if (!inv || inv.status !== 'pending') return;
+  inv.status = 'rejected';
+  renderApQueue();
+}
+
+// Initial render on load.
+renderApQueue();
+renderLedger();
+refreshKpiCards();
 </script>
 </body>
 </html>
