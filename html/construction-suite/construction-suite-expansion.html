@@ -963,7 +963,7 @@ console.log("TSM_UI: Direct Neural Link Established.");
   <div style="display:flex;align-items:center;gap:12px;">
     <span class="status-dot"></span>
     <span class="status-txt">System ready &bull; Offline-capable &bull; 4 modules active</span>
-    <a class="back-link" href="https://tsm-shell.fly.dev/construction-suite/construction-hub.html?v=ameris">← Hub</a>
+    <a class="back-link" href="construction-hub.html?v=ameris">← Hub</a>
     <button id="strategist-sync-btn" data-tsm-action="tsmSyncNow" data-tsm-args="" style="background:var(--green);border:none;color:var(--bg);font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:1.5px;padding:6px 14px;cursor:pointer;text-transform:uppercase;transition:background .2s;" title="Push live state to Construction Strategist">↑ STRATEGIST SYNC</button>
     <span id="sync-ts" style="color:var(--text-mute);font-size:9px;letter-spacing:1px;">never synced</span>
   </div>
@@ -2940,6 +2940,30 @@ let groqContext = 'general';
 let groqHistory = [];
 let groqTokenTotal = 0;
 
+// Persist the Groq key/model across reloads (localStorage, this browser only)
+// so a demo doesn't cold-start on "NO KEY" every time the page loads.
+// Same tradeoff as pasting any credential client-side: fine for a controlled
+// demo machine, not something to do on a shared/public device.
+(function restoreGroqKey() {
+  try {
+    const savedKey = localStorage.getItem('tsm_groq_key');
+    const savedModel = localStorage.getItem('tsm_groq_model');
+    if (savedKey) {
+      groqKey = savedKey;
+      if (savedModel) groqModel = savedModel;
+      document.addEventListener('DOMContentLoaded', function () {
+        const badge = document.getElementById('groq-status-badge');
+        if (badge) {
+          badge.textContent = '● ACTIVE';
+          badge.style.color = 'var(--green)';
+          badge.style.borderColor = 'var(--green-lo)';
+          badge.style.background = 'var(--green-faint)';
+        }
+      });
+    }
+  } catch (e) { console.warn('[TSM] Groq key restore failed:', e.message); }
+})();
+
 const GROQ_SYSTEM_PROMPTS = {
   general: 'You are the TSM Construction Suite AI assistant — an expert in commercial construction project management, scheduling, procurement, RFI management, field operations, and construction document control. Respond concisely in plain text (no markdown headers). Be specific and actionable.',
   fieldops: 'You are a construction site management AI for the TSM FieldOps Daily module. You help superintendents and PMs with daily report analysis, safety compliance, crew management, and field documentation. Be concise and practical.',
@@ -2966,6 +2990,10 @@ function saveGroqKey() {
   if (!key) { showGroqTestResult('⚠ Please enter your Groq API key', 'var(--amber)'); return; }
   groqKey = key;
   groqModel = model;
+  try {
+    localStorage.setItem('tsm_groq_key', key);
+    localStorage.setItem('tsm_groq_model', model);
+  } catch (e) { console.warn('[TSM] Groq key save failed:', e.message); }
   const badge = document.getElementById('groq-status-badge');
   badge.textContent = '● ACTIVE';
   badge.style.color = 'var(--green)';
@@ -3306,6 +3334,14 @@ window.addEventListener('load', () => {
   window.runGeoRooftopFlyin = showGeoFlyin;
 
   function addButtons(){
+    // Dev/QA-only controls — hidden by default so a client-facing demo
+    // doesn't show a floating "OCR TEST" button with a canned, hardcoded
+    // readout. Enable deliberately with ?devtools=1 or by setting
+    // localStorage.tsm_devtools = '1' before loading the page.
+    const params = new URLSearchParams(window.location.search);
+    const devtoolsOn = params.get('devtools') === '1' ||
+      (function(){ try { return localStorage.getItem('tsm_devtools') === '1'; } catch(e){ return false; } })();
+    if (!devtoolsOn) return;
     if(document.getElementById("geoOcrControls")) return;
     const bar=document.createElement("div");
     bar.id="geoOcrControls";

@@ -1,0 +1,65 @@
+{
+    "vertical": "rcm-os",
+    "note": "Source-verified 2026-08-07 against whiteheadlatorrey1-boop/tsm-rcm (html/finops-suite/tsm-rcm-os.html) by reading real ids/data-k attributes/renderToggle()/renderCadenceBody() directly \u2014 NOT live-verified via Playwright. RCM-OS is a single-page cadence tool, not a War Room \u2192 Strategist \u2192 Exec relay chain \u2014 there is no escalation click here, only cadence-tab switches on one page. Run this once and correct any selector drift before treating it as final. Steps 001-relay-seed / apiLogin+apiPost require TSM_BASE_URL to point at the real https:// deployment (the session cookie is Secure-only) and TSM_ADMIN_PASSWORD to be set in the runner's env \u2014 against plain http://localhost the login silently no-ops and shots 005/008 will show the empty-intake state instead of the seeded relay.",
+    "presetLocalStorage": {},
+    "steps": [
+        {
+            "shot": "001-daily-load",
+            "apiLogin": { "url": "/api/auth/login", "password": "env:TSM_ADMIN_PASSWORD" },
+            "apiPost": {
+                "url": "/api/rcm/relay",
+                "body": {
+                    "docName": "AP_Batch_0729_VendorInvoices.pdf",
+                    "generatedAt": "2026-07-29T14:32:00.000Z",
+                    "engines": {
+                        "triage": "Flagged 3 of 41 line items for review: (1) Duplicate invoice number INV-88213 also present in the 07/22 batch, same vendor, same amount ($4,120.00) \u2014 likely double-entry, hold for confirmation before posting. (2) Vendor 'Meridian Fulfillment Co' bank routing number on file differs from the routing number printed on this invoice's remittance slip \u2014 possible payment-redirect risk, escalate to Compliance before release. (3) Invoice dated 06/14 but received 07/29 \u2014 45 days late, outside the standard 30-day intake window; confirm this wasn't sitting unprocessed.",
+                        "variance": "Total batch value $118,442.17 vs. prior 4-batch rolling average of $94,110.60 \u2014 25.8% above trend, driven primarily by a single $22,000 equipment-lease invoice from a vendor not seen in the prior 3 batches. Excluding that outlier, batch is within 2.1% of trend and does not itself warrant escalation.",
+                        "actionPlan": "1. Hold INV-88213 pending duplicate-payment confirmation \u2014 owner: AP lead, due before next release cycle. 2. Route Meridian Fulfillment Co routing-number mismatch to Compliance Desk for vendor-banking verification \u2014 do not release payment until cleared. 3. Verify the new equipment-lease vendor against the approved-vendor list before this becomes a recurring line item. 4. Log the 45-day-late invoice in the exception register with a note on intake-window drift for this vendor.",
+                        "executive": "This batch carries one payment-redirect risk flag (Meridian Fulfillment Co) that should not clear without Compliance sign-off, and one likely duplicate charge ($4,120.00) currently on hold. Aside from those two items, the batch is operationally clean \u2014 the headline variance against trend is fully explained by a single new equipment-lease vendor, not a systemic cost shift. Recommend releasing the batch once the two flagged items are resolved, rather than holding the full batch."
+                    }
+                }
+            },
+            "goto": "/html/finops-suite/tsm-rcm-os.html",
+            "waitFor": "#cadenceToggle",
+            "waitMs": 1200
+        },
+        {
+            "shot": "002-weekly-cadence",
+            "click": ".cadence-btn[data-k=\"weekly\"]",
+            "waitMs": 600
+        },
+        {
+            "shot": "003-monthend-cadence",
+            "click": ".cadence-btn[data-k=\"monthend\"]",
+            "waitFor": "#checklistCard",
+            "waitMs": 600
+        },
+        {
+            "shot": "004-framework-cadence",
+            "click": ".cadence-btn[data-k=\"framework\"]",
+            "waitFor": "#frameworkCard",
+            "waitMs": 600
+        },
+        {
+            "shot": "005-executive-cadence",
+            "click": ".cadence-btn[data-k=\"executive\"]",
+            "waitFor": "#executiveCard",
+            "waitMs": 600
+        },
+        {
+            "shot": "006-flow-chain",
+            "waitFor": "#flowChain",
+            "waitMs": 400
+        },
+        {
+            "shot": "007-sla-indicators",
+            "waitFor": "#slaDot-daily",
+            "waitMs": 400
+        },
+        {
+            "shot": "008-closing-executive",
+            "click": ".cadence-btn[data-k=\"executive\"]",
+            "waitMs": 600
+        }
+    ]
+}

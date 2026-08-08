@@ -20,6 +20,25 @@
  *                                                // wait on real (non-mocked) sequential API calls
  *                                                // (e.g. multi-engine AI analysis), which can run
  *                                                // long under third-party rate limits.
+ *   "apiLogin": { "url": "/api/auth/login", "password": "env:TSM_ADMIN_PASSWORD" }
+ *                                                // POSTs { password } to the login endpoint via
+ *                                                // page.request (shares the browser context's
+ *                                                // cookie jar, so the resulting Set-Cookie
+ *                                                // tsm_session is picked up automatically).
+ *                                                // "password" supports an "env:VAR_NAME" form to
+ *                                                // avoid hardcoding secrets into the story JSON.
+ *                                                // NOTE: the session cookie is set Secure —
+ *                                                // baseURL MUST be an https:// origin (e.g. the
+ *                                                // real Fly deployment) or the browser will
+ *                                                // silently refuse to store it and every
+ *                                                // subsequent authenticated request will 401.
+ *   "apiPost": { "url": "/api/rcm/relay", "body": { ...jsonPayload } }
+ *                                                // POSTs a JSON body via page.request (same
+ *                                                // shared cookie jar as apiLogin/the page). Use
+ *                                                // this to seed server-side state — e.g. staging
+ *                                                // a FinOps Doc Showcase -> RCM OS relay payload
+ *                                                // — before navigating so the shot reflects real
+ *                                                // populated data instead of the empty state.
  * }
  *
  * Story-level (top of the *-demo.json, alongside "steps"):
@@ -71,6 +90,52 @@ async function runStory(page, { steps, outDir, baseURL = '', presetLocalStorage 
   }
 
   for (const step of steps) {
+    if (step.apiLogin) {
+      const { url, password } = step.apiLogin;
+      const resolvedPassword = typeof password === 'string' && password.startsWith('env:')
+        ? process.env[password.slice(4)]
+        : password;
+      if (!resolvedPassword) {
+        console.warn(`[demo-engine] step "${step.shot}" apiLogin skipped — no password resolved (checked env var "${password}")`);
+      } else {
+        const target = url.startsWith('http') ? url : `${baseURL}${url}`;
+        if (!target.startsWith('https://')) {
+          console.warn(`[demo-engine] step "${step.shot}" apiLogin target "${target}" is not https:// — the server's Set-Cookie is Secure, so the browser will silently drop the session cookie and every later authenticated request will 401. Point baseURL at the real HTTPS deployment.`);
+        }
+        try {
+          const res = await page.request.post(target, {
+            data: { password: resolvedPassword },
+            headers: { 'Content-Type': 'application/json' },
+          });
+          if (!res.ok()) {
+            console.error(`[demo-engine] step "${step.shot}" apiLogin FAILED ${res.status()} at ${target} -- ${await res.text().catch(() => '')}`);
+          } else {
+            console.log(`[demo-engine] step "${step.shot}" apiLogin ok -> ${target}`);
+          }
+        } catch (err) {
+          console.error(`[demo-engine] step "${step.shot}" apiLogin threw: ${err.message}`);
+        }
+      }
+    }
+
+    if (step.apiPost) {
+      const { url, body } = step.apiPost;
+      const target = url.startsWith('http') ? url : `${baseURL}${url}`;
+      try {
+        const res = await page.request.post(target, {
+          data: body,
+          headers: { 'Content-Type': 'application/json' },
+        });
+        if (!res.ok()) {
+          console.error(`[demo-engine] step "${step.shot}" apiPost FAILED ${res.status()} at ${target} -- ${await res.text().catch(() => '')}`);
+        } else {
+          console.log(`[demo-engine] step "${step.shot}" apiPost ok -> ${target}`);
+        }
+      } catch (err) {
+        console.error(`[demo-engine] step "${step.shot}" apiPost threw: ${err.message}`);
+      }
+    }
+
     if (step.goto) {
       const url = step.goto.startsWith('http') ? step.goto : `${baseURL}${step.goto}`;
       await page.goto(url, { waitUntil: 'domcontentloaded' });

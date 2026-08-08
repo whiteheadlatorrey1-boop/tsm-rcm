@@ -993,7 +993,13 @@ async function callClaudeWithExplain(userMsg, outEl, thinkEl, errEl){
     const resp = await fetch('/api/hc/query',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({ system: HC_CONTEXT, message: userMsg })
+      // This prompt asks for a full BRIEF (exec summary, findings, strategy,
+      // risk assessment) PLUS a large ===JSON=== block (4 actions, 4 data
+      // sources, 4 reasoning entries, 3 escalation triggers). The server
+      // default of 1800 tokens routinely truncated the JSON mid-string,
+      // which is why the explainability panel and dollar-impact figures
+      // were coming back empty/"—". Request headroom explicitly.
+      body:JSON.stringify({ system: HC_CONTEXT, message: userMsg, maxTokens: 3000 })
     });
     const data = await resp.json();
     if(thinkInterval) clearInterval(thinkInterval);

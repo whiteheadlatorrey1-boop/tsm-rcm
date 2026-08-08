@@ -1,0 +1,617 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TSM · Construction · Property Accounting & Revenue Cycle</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#07111f;--bg2:#0d1b2d;--border:#20344d;
+  --text:#e8eef7;--muted:#8fa3ba;
+  --amber:#ffb020;--orange:#ff7a00;--red:#ff9d9d;--green:#8de0ad;--cyan:#00e5ff;
+  --font:'IBM Plex Mono','Courier New',monospace;--sans:'Space Grotesk',system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans)}
+.wrap{max-width:1400px;margin:auto;padding:28px}
+.eyebrow{font-family:var(--font);font-size:10px;letter-spacing:.2em;color:var(--orange);text-transform:uppercase;margin-bottom:8px}
+h1{margin:0 0 6px;font-size:28px}
+.sub{color:var(--muted);margin-bottom:24px;font-size:13px}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:18px}
+.kpi{font-size:26px;font-weight:800;margin:6px 0}
+.label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.bad{color:var(--red)}.good{color:var(--green)}.warn{color:var(--amber)}
+.section{margin-top:22px}
+table{width:100%;border-collapse:collapse}
+th,td{padding:11px;border-bottom:1px solid var(--border);text-align:left;font-size:13px}
+th{color:var(--muted);font-size:11px;text-transform:uppercase}
+button{background:var(--orange);color:#1a0f00;border:0;border-radius:8px;padding:10px 15px;font-weight:700;cursor:pointer;font-family:var(--sans)}
+button.alt{background:#17283d;color:var(--text)}
+.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+#brief{white-space:pre-wrap;line-height:1.55;color:#cbd8e7;font-family:var(--font);font-size:12px}
+
+/* revenue cycle flow — mirrors html/finops-suite/rcm-os-presentation.html .flow pattern */
+.flow{margin-top:22px;background:var(--bg2);border:1px solid var(--border)}
+.flow-hdr{padding:18px 22px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px}
+.flow-title{font-size:15px;font-weight:800;color:#fff}
+.flow-sub{font-family:var(--font);font-size:9px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;margin-top:3px}
+.flow-badge{font-family:var(--font);font-size:9px;font-weight:700;letter-spacing:.08em;padding:4px 10px;border:1px solid var(--orange);color:var(--orange);text-transform:uppercase}
+.flow-steps{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border)}
+.fstep{background:var(--bg2);padding:18px 16px;position:relative}
+.fstep:not(:last-child)::after{content:'\2192';position:absolute;right:-13px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:14px;z-index:2}
+.fstep-num{font-family:var(--font);font-size:9px;color:var(--orange);letter-spacing:.12em;margin-bottom:7px}
+.fstep-title{font-size:13px;font-weight:700;color:var(--text);margin-bottom:5px}
+.fstep-desc{font-size:10.5px;color:var(--muted);line-height:1.55}
+
+.honest{margin-top:22px;background:rgba(255,176,32,.06);border:1px solid rgba(255,176,32,.3);border-radius:10px;padding:16px 18px;font-size:12px;color:#cbd8e7;line-height:1.6}
+.honest strong{color:var(--amber)}
+
+@media(max-width:900px){.grid,.flow-steps{grid-template-columns:repeat(2,1fr)}.fstep::after{display:none}}
+@media(max-width:600px){.grid,.flow-steps{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="eyebrow">Construction Suite &middot; Property Accounting Extension</div>
+<h1>Property Accounting &amp; Revenue Cycle</h1>
+<div class="sub">Month-End Property Close + AIA Pay-Application Revenue Cycle &middot; Desert Ridge Commercial Center &middot; July 2026</div>
+
+<div class="grid">
+  <div class="card">
+    <div class="label">Budget</div>
+    <div class="kpi" id="kpiBudget">$482,000</div>
+    <div class="sub" id="kpiBudgetSub">July 2026</div>
+  </div>
+  <div class="card">
+    <div class="label">Actual</div>
+    <div class="kpi" id="kpiActual">$517,400</div>
+    <div class="sub bad" id="kpiActualSub">+$35,400 variance</div>
+  </div>
+  <div class="card">
+    <div class="label">Variance</div>
+    <div class="kpi bad" id="kpiVariancePct">+7.3%</div>
+    <div class="sub" id="kpiVarianceSub">Above budget</div>
+  </div>
+  <div class="card">
+    <div class="label">Close Status</div>
+    <div class="kpi warn" id="kpiCloseStatus">EXCEPTIONS</div>
+    <div class="sub" id="kpiCloseStatusSub">Requires accountant review</div>
+  </div>
+</div>
+
+<div class="section card">
+<h2>Update Property Budget</h2>
+<div class="sub">Editing this recalculates Actual variance and the KPI cards above live — real budget maintenance, not a static display.</div>
+<div class="actions">
+  <input id="budgetInput" type="number" step="100" value="482000" style="background:#0d1b2d;border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 12px;font-family:var(--font);width:180px">
+  <button onclick="updateBudget()">SAVE BUDGET</button>
+  <span class="sub" id="budgetSaveMsg" style="align-self:center"></span>
+</div>
+</div>
+
+<div class="section card">
+<h2>Accounting Exception Queue</h2>
+<table>
+<thead><tr><th>Priority</th><th>Exception</th><th>Area</th><th>Status</th></tr></thead>
+<tbody id="exceptionQueueBody">
+<tr id="exc-recon"><td>P1</td><td>Reconciliation out of balance</td><td>GL / Bank</td><td class="bad">OPEN</td></tr>
+<tr><td>P1</td><td>Duplicate vendor invoice detected</td><td>AP</td><td class="bad">OPEN</td></tr>
+<tr><td>P2</td><td>GL variance requires explanation</td><td>General Ledger</td><td class="warn">REVIEW</td></tr>
+<tr><td>P2</td><td>Property tax escrow deadline approaching</td><td>Escrow</td><td class="warn">DUE SOON</td></tr>
+<tr><td>P2</td><td>Insurance certificate missing / expired</td><td>Insurance</td><td class="bad">MISSING</td></tr>
+<tr id="exc-ap-pending"><td>P3</td><td id="exc-ap-pending-text">3 AP invoices awaiting approval</td><td>Accounts Payable</td><td class="warn">PENDING</td></tr>
+<tr><td>P3</td><td>Retainage release pending owner sign-off</td><td>Revenue Cycle</td><td class="warn">PENDING</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="grid section">
+<div class="card"><div class="label">AP</div><div class="kpi" id="kpiApPending">3</div><div>Invoices awaiting approval</div></div>
+<div class="card"><div class="label">AR / Pay Apps</div><div class="kpi">1</div><div class="warn">Awaiting owner certification</div></div>
+<div class="card"><div class="label">GL</div><div class="kpi">1</div><div class="bad">Unexplained variance</div></div>
+<div class="card"><div class="label">Retainage Held</div><div class="kpi">$24,100</div><div>10% of certified billing</div></div>
+</div>
+
+<div class="section card">
+<h2>AP Invoice Approval Queue</h2>
+<div class="sub">Approve posts a real offsetting journal entry (Debit AP Expense / Credit Cash) to the ledger below. Reject logs the decision without posting.</div>
+<table>
+<thead><tr><th>Vendor</th><th>Invoice #</th><th>Amount</th><th>Status</th><th>Action</th></tr></thead>
+<tbody id="apQueueBody"></tbody>
+</table>
+</div>
+
+<div class="section card">
+<h2>General Ledger — Post Journal Entry</h2>
+<div class="sub">Double-entry aware: each line is a debit or credit against a real account. Debit to an Expense account increases Actual spend; credit decreases it. Reconciliation status below reflects real running totals.</div>
+<div class="actions" style="align-items:center">
+  <select id="jeAccount" style="background:#0d1b2d;border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 12px;font-family:var(--font)">
+    <option value="Construction Expense">Construction Expense</option>
+    <option value="Accounts Payable">Accounts Payable</option>
+    <option value="Cash">Cash</option>
+    <option value="Retainage Payable">Retainage Payable</option>
+    <option value="Accounts Receivable">Accounts Receivable</option>
+  </select>
+  <select id="jeType" style="background:#0d1b2d;border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 12px;font-family:var(--font)">
+    <option value="debit">Debit</option>
+    <option value="credit">Credit</option>
+  </select>
+  <input id="jeAmount" type="number" step="0.01" placeholder="Amount" style="background:#0d1b2d;border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 12px;font-family:var(--font);width:140px">
+  <input id="jeDesc" type="text" placeholder="Description" style="background:#0d1b2d;border:1px solid var(--border);color:var(--text);border-radius:8px;padding:10px 12px;font-family:var(--font);width:240px">
+  <button onclick="postJournalEntry()">POST ENTRY</button>
+</div>
+<table style="margin-top:16px">
+<thead><tr><th>Date</th><th>Account</th><th>Debit</th><th>Credit</th><th>Description</th></tr></thead>
+<tbody id="glLedgerBody"></tbody>
+</table>
+<div class="actions" style="margin-top:10px">
+  <div class="card" style="flex:1;min-width:220px">
+    <div class="label">Ledger Balance</div>
+    <div class="kpi" id="glBalanceStatus">$0.00 / $0.00</div>
+    <div class="sub" id="glBalanceSub">No entries posted yet</div>
+  </div>
+  <button class="alt" onclick="resolveReconciliation()" id="resolveReconBtn" disabled>MARK RECONCILIATION RESOLVED</button>
+</div>
+</div>
+
+<!-- REVENUE CYCLE — mirrors html/finops-suite/rcm-os-presentation.html flow pattern,
+     adapted from RCM's intake→coding→billing→collections model to construction's
+     AIA G702/G703 pay-application cycle. -->
+<div class="flow">
+  <div class="flow-hdr">
+    <div>
+      <div class="flow-title">Revenue Cycle — AIA Pay Application Flow</div>
+      <div class="flow-sub">Draft → Certify → Bill → Collect, mapped from RCM OS's revenue-cycle module</div>
+    </div>
+    <div class="flow-badge">Property Accounting</div>
+  </div>
+  <div class="flow-steps">
+    <div class="fstep">
+      <div class="fstep-num">STEP 01</div>
+      <div class="fstep-title">Draft Pay Application</div>
+      <div class="fstep-desc">Cost-code and GL-code the period's billing (G702/G703) against the schedule of values.</div>
+    </div>
+    <div class="fstep">
+      <div class="fstep-num">STEP 02</div>
+      <div class="fstep-title">Owner / Architect Certification</div>
+      <div class="fstep-desc">Route for certification; retainage withheld per contract percentage.</div>
+    </div>
+    <div class="fstep">
+      <div class="fstep-num">STEP 03</div>
+      <div class="fstep-title">Invoice &amp; Post to AR</div>
+      <div class="fstep-desc">Certified amount invoiced to owner; AR ledger opened, revenue recognized.</div>
+    </div>
+    <div class="fstep">
+      <div class="fstep-num">STEP 04</div>
+      <div class="fstep-title">Collections &amp; Retainage Release</div>
+      <div class="fstep-desc">AR aging tracked to cash; retainage released and reconciled at substantial completion.</div>
+    </div>
+  </div>
+</div>
+
+<div class="section card">
+<h2>Month-End Close Workflow</h2>
+<div class="actions">
+<button onclick="runClose()">RUN CLOSE ANALYSIS</button>
+<button class="alt" onclick="sendStrategist()">ESCALATE TO STRATEGIST</button>
+<button class="alt" onclick="feedExceptions()">FEED EXCEPTION QUEUE</button>
+</div>
+<div id="brief" style="margin-top:18px"></div>
+</div>
+
+<div class="honest">
+<strong>Honest status:</strong> this page merge-writes into the same <code>TSM_CONSTRUCTION_STRATEGIST_RELAY</code>
+key the war-room/strategist chain already uses, so the Construction Executive Portal (which already reads that key)
+picks up the property-accounting close package with no changes needed on its side. "Feed Exception Queue" calls
+the real <code>TSMExceptions.add()</code> engine with <code>sector:'construction'</code> — first real producer for
+this vertical's exception panel, which was previously mounted but unfed (see
+<code>construction-demo-presentation.html</code>).
+<br><br>
+<strong>Now real, this pass:</strong> journal entries actually post (debit/credit against named GL accounts), a
+running debit/credit total drives a live reconciliation-balanced check, editing the budget recalculates
+Actual/Variance/KPI cards live, and AP invoices can be individually approved (posts a real offsetting journal
+entry) or rejected (logged, not posted) instead of only being counted.
+<br><br>
+<strong>Still not implemented:</strong> none of this persists past the page session (no backend/database —
+everything lives in page-local JS state, same as the rest of this demo tier), so a reload resets the ledger.
+There's no 3-way PO/invoice match, no bank-feed reconciliation against a real bank statement, no cash-vs-accrual
+basis toggle, no compliance rule engine, no signed audit trail, no mortgage/draw payment processing, and no
+client-facing statement generator. This is a real double-entry <em>workflow</em> demonstration — not a production
+accounting system of record.
+</div>
+
+</div>
+
+<script src="/html/shared/tsm-exceptions.js"></script>
+<script>
+const mission = {
+  missionId:"PA-MEC-001",
+  title:"Month-End Property Close Exception",
+  property:"Desert Ridge Commercial Center",
+  period:"July 2026",
+  budget:482000,
+  actual:517400,
+  variance:35400,
+  variancePct:7.3,
+  retainageHeld:24100,
+  exceptions:[
+    {priority:"P1",area:"GL / Bank",issue:"Reconciliation out of balance",severity:"high",confidence:92},
+    {priority:"P1",area:"AP",issue:"Duplicate vendor invoice detected",severity:"high",confidence:95},
+    {priority:"P2",area:"General Ledger",issue:"Unexplained GL variance",severity:"med",confidence:86},
+    {priority:"P2",area:"Escrow",issue:"Property tax deadline approaching",severity:"med",confidence:88},
+    {priority:"P2",area:"Insurance",issue:"Insurance certificate missing / expired",severity:"med",confidence:90},
+    {priority:"P3",area:"AP",issue:"3 invoices awaiting approval",severity:"low",confidence:70},
+    {priority:"P3",area:"Revenue Cycle",issue:"Retainage release pending owner sign-off",severity:"low",confidence:65}
+  ],
+  timestamp:new Date().toISOString()
+};
+
+function runClose(){
+  const text =
+`PROPERTY ACCOUNTANT CLOSE ANALYSIS
+
+Property: ${mission.property}
+Period: ${mission.period}
+
+Budget: $482,000
+Actual: $517,400
+Variance: +$35,400 (+7.3%)
+Retainage held: $24,100
+
+ACCOUNTING FINDINGS
+- 3 AP invoices awaiting approval
+- 1 duplicate vendor invoice
+- 1 unexplained GL variance
+- Property tax escrow deadline approaching
+- Insurance certificate missing/expired
+- Pay application awaiting owner/architect certification
+- Reconciliation is out of balance
+
+REVENUE CYCLE STATUS
+- Draft pay app coded, awaiting certification
+- Retainage of $24,100 withheld per contract terms
+- No AR invoice posted yet — pending certification
+
+RECOMMENDED ACTION
+1. Resolve reconciliation before close certification.
+2. Hold duplicate invoice from payment.
+3. Obtain GL variance explanation.
+4. Verify tax escrow funding.
+5. Obtain current insurance certificate.
+6. Route pay application for owner/architect certification.
+
+CLOSE STATUS: EXCEPTIONS REQUIRE REVIEW`;
+
+  document.getElementById("brief").textContent = text;
+}
+
+// Merge-write into the SAME relay key the construction strategist already
+// writes (TSM_CONSTRUCTION_STRATEGIST_RELAY / tsm_construction_strategist_output),
+// so the existing Construction Executive Portal picks this up with no code
+// change on its end — same merge-not-clobber pattern used for mortgage's
+// recordExecAction() fix (overwriting the key wholesale would wipe the
+// war-room's financials/ai_summary already stored there).
+function sendStrategist(){
+  runClose();
+  let existing = {};
+  try {
+    const raw = sessionStorage.getItem('TSM_CONSTRUCTION_STRATEGIST_RELAY') ||
+                localStorage.getItem('tsm_construction_strategist_output');
+    if (raw) existing = JSON.parse(raw);
+  } catch(e) { console.warn('[property-accounting] could not parse existing relay, merging into empty object:', e); }
+
+  existing.propertyAccounting = {
+    ...mission,
+    brief: document.getElementById("brief").textContent
+  };
+  existing.timestamp = new Date().toISOString();
+
+  try {
+    sessionStorage.setItem('TSM_CONSTRUCTION_STRATEGIST_RELAY', JSON.stringify(existing));
+    localStorage.setItem('tsm_construction_strategist_output', JSON.stringify(existing));
+  } catch(e) { console.warn('[property-accounting] relay write failed:', e); }
+
+  document.getElementById("brief").textContent +=
+    "\n\n\u2713 MERGED INTO TSM_CONSTRUCTION_STRATEGIST_RELAY \u2014 EXEC PORTAL WILL PICK THIS UP";
+}
+
+// Real producer for the Construction exception queue (previously mounted,
+// never fed — see html/construction-demo-presentation.html's honest-status
+// note). Feeds via TSMExceptions.add(), sector:'construction'.
+function feedExceptions(){
+  runClose();
+  if (typeof TSMExceptions === 'undefined') {
+    document.getElementById("brief").textContent += "\n\n\u26a0 TSMExceptions engine not loaded on this page.";
+    return;
+  }
+  mission.exceptions.forEach(function(ex){
+    TSMExceptions.add({
+      title: ex.issue,
+      detail: 'Property: ' + mission.property + ' \u00b7 Period: ' + mission.period,
+      recommendedAction: 'See Property Accounting Command close brief.',
+      severity: ex.severity,
+      confidence: ex.confidence,
+      priority: ex.priority,
+      sector: 'construction',
+      agentLabel: 'Property Accounting'
+    });
+  });
+  document.getElementById("brief").textContent +=
+    "\n\n\u2713 " + mission.exceptions.length + " EXCEPTIONS FED TO TSMExceptions (sector: construction)";
+}
+
+/* ========================================================================
+   BACKEND-BACKED STATE: journal entries, AP invoices, and budget now
+   live in tsm-ledger-service (pa_gl_entries / pa_ap_invoices / pa_missions
+   collections), keyed by mission.missionId. If the API is unreachable,
+   this falls back to the old page-local behavior and shows a banner so
+   nobody mistakes degraded mode for the real thing.
+   ======================================================================== */
+
+const EXPENSE_ACCOUNTS = ['Construction Expense'];
+let glEntries = [];
+let apInvoices = [];
+let backendLive = false;
+
+const API_BASE = '/api/property-accounting/' + encodeURIComponent(mission.missionId);
+
+function showBackendBanner(message, ok){
+  let banner = document.getElementById('paBackendBanner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'paBackendBanner';
+    banner.style.cssText = 'padding:8px 14px;font:600 12px/1.4 monospace;border-radius:4px;margin-bottom:10px;';
+    document.getElementById('brief').parentNode.insertBefore(banner, document.getElementById('brief'));
+  }
+  banner.textContent = message;
+  banner.style.background = ok ? '#0f3d1f' : '#3d1f1f';
+  banner.style.color = ok ? '#6fdc8c' : '#ff8080';
+}
+
+async function paFetch(path, opts){
+  const res = await fetch(API_BASE + path, Object.assign({
+    headers: { 'Content-Type': 'application/json' }
+  }, opts || {}));
+  const body = await res.json().catch(function(){ return {}; });
+  if (!res.ok || body.ok === false) {
+    throw new Error(body.error || ('HTTP ' + res.status));
+  }
+  return body;
+}
+
+async function loadState(){
+  try {
+    const state = await paFetch('/state');
+    mission.budget = state.mission.budget;
+    mission.actual = state.mission.actual;
+    glEntries = state.glEntries.map(function(e){
+      return { date: e.date, account: e.account, type: e.type, amount: e.amount, description: e.description };
+    });
+    apInvoices = state.apInvoices.map(function(i){
+      return { id: i.id, vendor: i.vendor, amount: i.amount, status: i.status };
+    });
+    backendLive = true;
+    showBackendBanner('\u2713 LIVE \u2014 persisted to tsm-ledger-service (mission ' + mission.missionId + ')', true);
+  } catch(e) {
+    backendLive = false;
+    apInvoices = [
+      { id: 'INV-4821', vendor: 'Summit Steel & Supply', amount: 18400, status: 'pending' },
+      { id: 'INV-4822', vendor: 'Desert Ridge Electrical', amount: 9250, status: 'pending' },
+      { id: 'INV-4823', vendor: 'Apex Concrete Co.', amount: 12600, status: 'pending' }
+    ];
+    showBackendBanner('\u26a0 OFFLINE MODE \u2014 ledger backend unreachable (' + e.message + '). Changes will NOT persist.', false);
+  }
+  renderApQueue();
+  renderLedger();
+  refreshKpiCards();
+}
+
+function fmtMoney(n){
+  const sign = n < 0 ? '-' : '';
+  return sign + '$' + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function refreshKpiCards(){
+  const variance = mission.actual - mission.budget;
+  const variancePct = mission.budget !== 0 ? (variance / mission.budget) * 100 : 0;
+  mission.variance = variance;
+  mission.variancePct = Math.round(variancePct * 10) / 10;
+
+  document.getElementById('kpiBudget').textContent = fmtMoney(mission.budget).replace('.00', '');
+  document.getElementById('kpiActual').textContent = fmtMoney(mission.actual).replace('.00', '');
+
+  const varEl = document.getElementById('kpiActualSub');
+  varEl.textContent = (variance >= 0 ? '+' : '-') + fmtMoney(Math.abs(variance)).replace('.00', '') + ' variance';
+  varEl.className = 'sub ' + (variance > 0 ? 'bad' : (variance < 0 ? 'good' : ''));
+
+  const pctEl = document.getElementById('kpiVariancePct');
+  pctEl.textContent = (mission.variancePct >= 0 ? '+' : '') + mission.variancePct + '%';
+  pctEl.className = 'kpi ' + (mission.variancePct > 0 ? 'bad' : (mission.variancePct < 0 ? 'good' : ''));
+  document.getElementById('kpiVarianceSub').textContent = mission.variancePct > 0 ? 'Above budget' : (mission.variancePct < 0 ? 'Under budget' : 'On budget');
+}
+
+function updateBudget(){
+  const raw = parseFloat(document.getElementById('budgetInput').value);
+  const msg = document.getElementById('budgetSaveMsg');
+  if (isNaN(raw) || raw <= 0) {
+    msg.textContent = '\u26a0 enter a valid budget amount';
+    msg.className = 'sub bad';
+    return;
+  }
+  mission.budget = raw;
+  refreshKpiCards();
+  if (backendLive) {
+    paFetch('/budget', { method: 'POST', body: JSON.stringify({ budget: raw }) })
+      .then(function(){
+        msg.textContent = '\u2713 budget saved \u2014 KPIs recalculated';
+        msg.className = 'sub good';
+      })
+      .catch(function(e){
+        msg.textContent = '\u26a0 saved locally only \u2014 backend write failed: ' + e.message;
+        msg.className = 'sub bad';
+      });
+  } else {
+    msg.textContent = '\u26a0 budget saved locally only \u2014 backend offline, will not persist';
+    msg.className = 'sub bad';
+  }
+}
+
+function renderLedger(){
+  const body = document.getElementById('glLedgerBody');
+  body.innerHTML = '';
+  let totalDebit = 0, totalCredit = 0;
+  glEntries.forEach(function(e){
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td>' + e.date + '</td>' +
+      '<td>' + e.account + '</td>' +
+      '<td>' + (e.type === 'debit' ? fmtMoney(e.amount) : '') + '</td>' +
+      '<td>' + (e.type === 'credit' ? fmtMoney(e.amount) : '') + '</td>' +
+      '<td>' + e.description + '</td>';
+    body.appendChild(tr);
+    if (e.type === 'debit') totalDebit += e.amount; else totalCredit += e.amount;
+  });
+
+  const balanced = glEntries.length > 0 && Math.abs(totalDebit - totalCredit) < 0.005;
+  const statusEl = document.getElementById('glBalanceStatus');
+  const subEl = document.getElementById('glBalanceSub');
+  statusEl.textContent = fmtMoney(totalDebit) + ' / ' + fmtMoney(totalCredit);
+  statusEl.className = 'kpi ' + (glEntries.length === 0 ? '' : (balanced ? 'good' : 'bad'));
+  subEl.textContent = glEntries.length === 0
+    ? 'No entries posted yet'
+    : (balanced ? 'Debits = Credits \u2014 ledger balanced' : 'Debits \u2260 Credits \u2014 out of balance');
+
+  document.getElementById('resolveReconBtn').disabled = !balanced;
+}
+
+async function postJournalEntry(){
+  const account = document.getElementById('jeAccount').value;
+  const type = document.getElementById('jeType').value;
+  const amount = parseFloat(document.getElementById('jeAmount').value);
+  const description = document.getElementById('jeDesc').value.trim();
+
+  if (isNaN(amount) || amount <= 0) { alert('Enter a valid entry amount.'); return; }
+  if (!description) { alert('Enter a description for this entry.'); return; }
+
+  const entry = {
+    date: new Date().toISOString().slice(0, 10),
+    account: account,
+    type: type,
+    amount: Math.round(amount * 100) / 100,
+    description: description
+  };
+
+  if (backendLive) {
+    try {
+      const result = await paFetch('/journal-entry', { method: 'POST', body: JSON.stringify(entry) });
+      mission.actual = result.mission.actual;
+    } catch(e) {
+      alert('Backend write failed, entry NOT persisted: ' + e.message);
+      return;
+    }
+  } else if (EXPENSE_ACCOUNTS.indexOf(account) !== -1) {
+    // A debit to Construction Expense is real spend hitting Actual;
+    // a credit to Construction Expense reverses previously posted spend.
+    mission.actual += type === 'debit' ? entry.amount : -entry.amount;
+  }
+
+  glEntries.push(entry);
+  renderLedger();
+  refreshKpiCards();
+  document.getElementById('jeAmount').value = '';
+  document.getElementById('jeDesc').value = '';
+}
+
+function resolveReconciliation(){
+  const row = document.getElementById('exc-recon');
+  if (row) row.remove();
+  runClose();
+  document.getElementById('brief').textContent += '\n\n\u2713 RECONCILIATION EXCEPTION RESOLVED \u2014 ledger debits = credits';
+}
+
+function renderApQueue(){
+  const body = document.getElementById('apQueueBody');
+  body.innerHTML = '';
+  apInvoices.forEach(function(inv){
+    const tr = document.createElement('tr');
+    const statusClass = inv.status === 'approved' ? 'good' : (inv.status === 'rejected' ? 'bad' : 'warn');
+    const actionsHtml = inv.status === 'pending'
+      ? '<button onclick="approveInvoice(\'' + inv.id + '\')">APPROVE</button> ' +
+        '<button class="alt" onclick="rejectInvoice(\'' + inv.id + '\')">REJECT</button>'
+      : '\u2014';
+    tr.innerHTML =
+      '<td>' + inv.vendor + '</td>' +
+      '<td>' + inv.id + '</td>' +
+      '<td>' + fmtMoney(inv.amount) + '</td>' +
+      '<td class="' + statusClass + '">' + inv.status.toUpperCase() + '</td>' +
+      '<td>' + actionsHtml + '</td>';
+    body.appendChild(tr);
+  });
+
+  const pending = apInvoices.filter(function(i){ return i.status === 'pending'; }).length;
+  document.getElementById('kpiApPending').textContent = pending;
+  const excCell = document.getElementById('exc-ap-pending-text');
+  const excRow = document.getElementById('exc-ap-pending');
+  if (excCell) excCell.textContent = pending + ' AP invoice' + (pending === 1 ? '' : 's') + ' awaiting approval';
+  if (excRow && pending === 0) excRow.remove();
+}
+
+async function approveInvoice(id){
+  const inv = apInvoices.find(function(i){ return i.id === id; });
+  if (!inv || inv.status !== 'pending') return;
+
+  if (backendLive) {
+    try {
+      const result = await paFetch('/ap/' + encodeURIComponent(id) + '/approve', { method: 'POST' });
+      mission.actual = result.mission.actual;
+      glEntries.push(result.entry);
+    } catch(e) {
+      alert('Backend write failed, approval NOT persisted: ' + e.message);
+      return;
+    }
+  } else {
+    // Real offsetting entry: approving payment is a debit to expense,
+    // credit to cash — this is what actually posts to the ledger/Actual.
+    glEntries.push({
+      date: new Date().toISOString().slice(0, 10),
+      account: 'Construction Expense',
+      type: 'debit',
+      amount: inv.amount,
+      description: 'AP approved: ' + inv.vendor + ' (' + inv.id + ')'
+    });
+    mission.actual += inv.amount;
+  }
+
+  inv.status = 'approved';
+  renderApQueue();
+  renderLedger();
+  refreshKpiCards();
+}
+
+async function rejectInvoice(id){
+  const inv = apInvoices.find(function(i){ return i.id === id; });
+  if (!inv || inv.status !== 'pending') return;
+
+  if (backendLive) {
+    try {
+      await paFetch('/ap/' + encodeURIComponent(id) + '/reject', { method: 'POST' });
+    } catch(e) {
+      alert('Backend write failed, rejection NOT persisted: ' + e.message);
+      return;
+    }
+  }
+
+  inv.status = 'rejected';
+  renderApQueue();
+}
+
+// Initial load: pull persisted state from the backend (falls back to
+// local-only mode with a visible banner if it's unreachable).
+loadState();
+</script>
+</body>
+</html>

@@ -1,0 +1,105 @@
+From d865fb9a32790bc402a417108f65e346fb96130d Mon Sep 17 00:00:00 2001
+From: Latorrey Whitehead <torreyw94@tsmatter.com>
+Date: Sun, 2 Aug 2026 17:15:59 +0000
+Subject: [PATCH] feat(demo): add FinOps demo spec + fix(finops): stale
+ chain-bar paths
+
+Demo spec (finops-demo.json + finops-demo.spec.js):
+- Follows the healthcare-demo.json/spec.js pattern: war room ->
+  load sample AP doc -> fire 6 engines -> escalate to strategist ->
+  run strategist report -> push to executive portal -> KPIs.
+- Selectors read directly from finops-war-room.html /
+  finops-main-strategist.html / finops-executive-portal.html
+  (ids, onclick handlers, functions) -- NOT live-verified via
+  Playwright, since this sandbox hits the same chrome-headless-shell
+  403 as the Codespace. Flagged in the spec's own note field; should
+  be run once in Codespaces to confirm before treating as final.
+
+Bug fix (finops-main-strategist.html):
+- tsm-chain-bar footer nav (WAR ROOM / EXEC PORTAL links) was
+  missing the finops-war/ subpath, 404ing both links. Corrected to
+  match the already-correct paths used in finops-executive-portal.html's
+  own chain bar.
+---
+ demo/finops-demo.json                         | 27 +++++++++++++++++++
+ .../finops-war/finops-main-strategist.html    |  2 +-
+ tests/e2e/demo/finops-demo.spec.js            | 20 ++++++++++++++
+ 3 files changed, 48 insertions(+), 1 deletion(-)
+ create mode 100644 demo/finops-demo.json
+ create mode 100644 tests/e2e/demo/finops-demo.spec.js
+
+diff --git a/demo/finops-demo.json b/demo/finops-demo.json
+new file mode 100644
+index 00000000..9dc1b5f8
+--- /dev/null
++++ b/demo/finops-demo.json
+@@ -0,0 +1,27 @@
++{
++  "vertical": "finops",
++  "note": "Source-verified 2026-08-02 against whiteheadlatorrey1-boop/tsm-rcm (html/finops-suite/finops-war/finops-war-room.html + finops-main-strategist.html + finops-executive-portal.html) by reading real ids/onclick handlers/functions directly — NOT live-verified via Playwright (sandbox has no path to download Chromium, same 403 as the Codespace). Run this once in Codespaces and correct any selector drift before treating it as final, same as the healthcare spec's original pass.",
++  "steps": [
++    { "shot": "001-war-room-load", "goto": "/html/finops-suite/finops-war/finops-war-room.html", "waitMs": 1500 },
++
++    { "shot": "002-load-sample-doc", "click": ".sample-chip[onclick=\"loadSample('ap')\"]", "waitFor": "#fo-upload-name", "waitMs": 800 },
++
++    { "shot": "003-fire-engines", "click": "#fireBtn", "waitFor": "#kpiEngines", "waitMs": 5000 },
++
++    { "shot": "004-engines-complete", "waitFor": "#escalateBar", "waitMs": 800 },
++
++    { "shot": "005-escalate-to-strategist", "click": "button[onclick=\"escalateToStrategist()\"]", "waitMs": 2000 },
++
++    { "shot": "006-strategist-load", "waitFor": "#genBtn", "waitMs": 800 },
++
++    { "shot": "007-run-strategist", "click": "#genBtn", "waitFor": "#stratOutput", "waitMs": 4000 },
++
++    { "shot": "008-relay-banner", "waitFor": "#relayBanner", "waitMs": 600 },
++
++    { "shot": "009-push-to-exec", "click": "#execRelayBtn", "waitMs": 2000 },
++
++    { "shot": "010-exec-portal-kpis", "waitFor": "#kpiExposure", "waitMs": 800 },
++
++    { "shot": "011-exec-relay-content", "waitFor": "#relayContent", "waitMs": 500 }
++  ]
++}
+diff --git a/html/finops-suite/finops-war/finops-main-strategist.html b/html/finops-suite/finops-war/finops-main-strategist.html
+index a4fd73fe..22e87226 100644
+--- a/html/finops-suite/finops-war/finops-main-strategist.html
++++ b/html/finops-suite/finops-war/finops-main-strategist.html
+@@ -1710,7 +1710,7 @@ function managerExport(){
+ 
+ 
+ <style>body{padding-bottom:40px!important}</style>
+-<div id="tsm-chain-bar" style="position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#040c12;border-top:1px solid #0d2233;display:flex;align-items:center;height:32px;padding:0 16px;font-family:'IBM Plex Mono',monospace;font-size:10px;"><span style="color:#3a5a70;margin-right:12px;font-size:9px;">TSM CHAIN</span><a href="/html/finops-suite/finops-war-room.html" style="color:#94a3b8;border:1px solid #1a3a50;padding:3px 10px;border-radius:3px;text-decoration:none;margin-right:6px;font-size:9px;">&#9675; WAR ROOM</a><span style="color:#1a3a50;margin-right:6px;">--&gt;</span><a href="#" style="color:var(--green, #00ff94);background:rgba(255,255,255,.05);border:1px solid var(--green, #00ff94)55;padding:3px 10px;border-radius:3px;text-decoration:none;margin-right:6px;font-size:9px;">&#9679; STRATEGIST</a><span style="color:#1a3a50;margin-right:6px;">--&gt;</span><a href="/html/finops-suite/finops-executive-portal.html" style="color:#94a3b8;border:1px solid #1a3a50;padding:3px 10px;border-radius:3px;text-decoration:none;margin-right:6px;font-size:9px;">&#9675; EXEC PORTAL</a><span style="color:#1a3a50;margin-left:auto;font-size:9px;">FINOPS</span></div>
++<div id="tsm-chain-bar" style="position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#040c12;border-top:1px solid #0d2233;display:flex;align-items:center;height:32px;padding:0 16px;font-family:'IBM Plex Mono',monospace;font-size:10px;"><span style="color:#3a5a70;margin-right:12px;font-size:9px;">TSM CHAIN</span><a href="/html/finops-suite/finops-war/finops-war-room.html" style="color:#94a3b8;border:1px solid #1a3a50;padding:3px 10px;border-radius:3px;text-decoration:none;margin-right:6px;font-size:9px;">&#9675; WAR ROOM</a><span style="color:#1a3a50;margin-right:6px;">--&gt;</span><a href="#" style="color:var(--green, #00ff94);background:rgba(255,255,255,.05);border:1px solid var(--green, #00ff94)55;padding:3px 10px;border-radius:3px;text-decoration:none;margin-right:6px;font-size:9px;">&#9679; STRATEGIST</a><span style="color:#1a3a50;margin-right:6px;">--&gt;</span><a href="/html/finops-suite/finops-war/finops-executive-portal.html" style="color:#94a3b8;border:1px solid #1a3a50;padding:3px 10px;border-radius:3px;text-decoration:none;margin-right:6px;font-size:9px;">&#9675; EXEC PORTAL</a><span style="color:#1a3a50;margin-left:auto;font-size:9px;">FINOPS</span></div>
+   <script src="/shared/tsm-exec-kit-producer.js"></script>
+   <script src="/html/core/tsm-runtime.js"></script>
+ </body>
+diff --git a/tests/e2e/demo/finops-demo.spec.js b/tests/e2e/demo/finops-demo.spec.js
+new file mode 100644
+index 00000000..e8cd786f
+--- /dev/null
++++ b/tests/e2e/demo/finops-demo.spec.js
+@@ -0,0 +1,20 @@
++const { test } = require('@playwright/test');
++const path = require('path');
++const { runStory, loadStory } = require('../../../demo/demo-engine');
++
++// Point this at your running TSM server (Codespace forwarded port or localhost).
++const BASE_URL = process.env.TSM_BASE_URL || 'http://localhost:8080';
++
++test('FinOps executive demo', async ({ page }) => {
++  await page.setViewportSize({ width: 1920, height: 1080 });
++  test.setTimeout(120_000);
++
++  const story = loadStory(path.join(__dirname, '../../../demo/finops-demo.json'));
++  const outDir = path.join(__dirname, 'screenshots', 'finops');
++
++  await runStory(page, {
++    steps: story.steps,
++    outDir,
++    baseURL: BASE_URL,
++  });
++});
+-- 
+2.43.0
+

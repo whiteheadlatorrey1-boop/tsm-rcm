@@ -158,6 +158,11 @@
       }
 
       // reset state
+      if (!store.state) {
+        console.warn("[TSM-REPLAY] Store has no .state property (likely TSMMissionStore, which uses a different API) — skipping replay.");
+        return;
+      }
+
       store.state.missions = [];
       store.state.history = [];
 
