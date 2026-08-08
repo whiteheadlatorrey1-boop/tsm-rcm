@@ -572,7 +572,13 @@ let selectedDocType = 'AP Aging';
 let engOut = {};
 let enginesComplete = 0;
 let groqKey = localStorage.getItem('tsm_groq_key') || '';
-if (groqKey) document.getElementById('groqKey').value = groqKey;
+// NOTE: the #groqKey input field was removed when this page moved to the
+// server-side Groq proxy (see "SERVER CONNECTED · PROXY ACTIVE" in the
+// sidebar) -- the server authenticates via its own GROQ_API_KEY env var,
+// so no client-side key is required for normal engine firing. This guard
+// stays defensive in case the input is ever reintroduced.
+const gkInit = document.getElementById('groqKey');
+if (groqKey && gkInit) gkInit.value = groqKey;
 let totalTokensIn = 0, totalTokensOut = 0;
 
 function trackTokens(promptText, responseText){
@@ -605,10 +611,16 @@ function setDocType(btn, type) {
 // ═══════════════════════════════════════════════════
 // KEY
 // ═══════════════════════════════════════════════════
-function saveKey() { groqKey = document.getElementById('groqKey').value.trim(); localStorage.setItem('tsm_groq_key', groqKey); }
+function saveKey() {
+  const gk = document.getElementById('groqKey');
+  if (!gk) { addLog('No personal key field', 'This build uses the server-side Groq proxy — a personal key is optional.', 'a'); return; }
+  groqKey = gk.value.trim();
+  localStorage.setItem('tsm_groq_key', groqKey);
+}
 async function testKey() {
-  groqKey = document.getElementById('groqKey').value.trim();
-  if (!groqKey) { alert('Enter Groq API key first.'); return; }
+  const gk = document.getElementById('groqKey');
+  groqKey = gk ? gk.value.trim() : '';
+  if (!groqKey) { addLog('No personal key entered', 'Server-side proxy key is active — engines will still run.', 'a'); return; }
   addLog('Testing API key...', '', 'a');
   try {
     const r = await fetch('/api/groq/validate-key', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ apiKey: groqKey }) });
@@ -866,9 +878,15 @@ const FALLBACKS = [
 // ═══════════════════════════════════════════════════
 async function fireEngines() {
   docText = document.getElementById('docPaste').value.trim();
-  groqKey = document.getElementById('groqKey').value.trim();
+  // #groqKey input was removed when this page moved to the server-side Groq
+  // proxy ("SERVER CONNECTED · PROXY ACTIVE") -- the server authenticates via
+  // its own GROQ_API_KEY env var, and this value is never actually sent in
+  // the /api/financial/query request body below. Requiring it here only
+  // blocked every real user from ever firing the engines. Kept as a
+  // best-effort read in case the field is reintroduced, but no longer gates.
+  const gkField = document.getElementById('groqKey');
+  groqKey = gkField ? gkField.value.trim() : '';
   if (!docText) { alert('Paste or load a financial document first.'); return; }
-  if (!groqKey) { alert('Enter your Groq API key.'); return; }
 
   const cacheKey = 'TSM_FINOPS_CACHE_' + selectedDocType + '_' + docText.length + '_' + docText.slice(0,80);
   try {
