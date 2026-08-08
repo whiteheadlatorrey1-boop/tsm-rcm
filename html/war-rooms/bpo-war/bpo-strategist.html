@@ -717,10 +717,14 @@ SUCCESS METRICS
   const ctrl = new AbortController();
   const streamTimeoutId = setTimeout(() => ctrl.abort(), 30000); // hard ceiling so a hung connection degrades to the fallback brief instead of outliving even the demo harness's step timeout
   try {
+    // max_tokens was 1600 — the prompt above asks for a 5-section BRIEF
+    // (executive summary, findings, strategy, risk assessment, success
+    // metrics) plus the same size JSON schema HC strategist uses, which was
+    // getting truncated at 1800. Matching HC's fix here.
     const resp = await fetch('/api/war-room/stream', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({model:GROQ_MODEL,max_tokens:1600,stream:true,messages:[{role:'user',content:prompt}]}),
+      body:JSON.stringify({model:GROQ_MODEL,max_tokens:3000,stream:true,messages:[{role:'user',content:prompt}]}),
       signal: ctrl.signal
     });
     if (!resp.ok) throw new Error(`API returned ${resp.status} ${resp.statusText}`);
