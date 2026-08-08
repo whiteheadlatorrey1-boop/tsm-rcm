@@ -1,4 +1,16 @@
 #!/bin/bash
+#
+# WARNING (2026-08-05): the "Generating report..." step near the bottom
+# of this script writes reports/sap-phase-intelligence-report.txt with
+# hardcoded "STATUS: READY" / "CONNECTED TO:" text that prints
+# unconditionally -- it does not actually check whether the files above
+# it were created successfully. If you run this script, verify the
+# real output files exist and are wired into the app before trusting
+# that report. See server/reports/sap-phase-intelligence-report.txt
+# for the corrected, honest version as of this checkout (this script
+# had never actually been run/committed here -- its target dirs,
+# html/shared/runtime/enterprise/ and data/enterprise-lab/, don't
+# exist in this repo).
 
 set -e
 

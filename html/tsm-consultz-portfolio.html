@@ -440,8 +440,8 @@
     <a href="#employers">Opportunities</a>
   </div>
   <div class="nav-actions">
-    <button class="btn-ghost" onclick="exportResumePDF()">↓ Resume PDF</button>
-    <button class="btn-primary" onclick="safesafeExportPortfolioPDF()">↓ Portfolio PDF</button>
+    <button class="btn-ghost" onclick="safeExportResumePDF()">↓ Resume PDF</button>
+    <button class="btn-primary" onclick="safeExportPortfolioPDF()">↓ Portfolio PDF</button>
   </div>
 </nav>
 
@@ -467,7 +467,7 @@
       <a href="#architect" class="cta-big secondary">Meet the Architect</a>
 
       <!-- FIXED: safe button wrapper -->
-      <button class="cta-big secondary" onclick="safesafeExportPortfolioPDF()">
+      <button class="cta-big secondary" onclick="safeExportPortfolioPDF()">
         ↓ Download Portfolio
       </button>
     </div>
@@ -1054,7 +1054,7 @@
     <p class="section-desc" style="font-family:'JetBrains Mono',monospace; font-size:.75rem; color:var(--dim);">Laveen, AZ · latorreyw99@gmail.com · torreyw94@tsmatter.com</p>
 
     <div style="display:flex; gap:10px; margin-top:1.2rem; flex-wrap:wrap;">
-      <button class="btn-primary" onclick="exportResumePDF()" style="font-size:10px;">↓ Download Resume PDF</button>
+      <button class="btn-primary" onclick="safeExportResumePDF()" style="font-size:10px;">↓ Download Resume PDF</button>
     </div>
 
     <div class="resume-grid" style="margin-top:2.5rem;">
@@ -1479,29 +1479,125 @@
 </footer>
 
 <!-- ═══════════════════════════════ SCRIPTS ═══════════════════════════════ -->
-
+<script>
   // ── RESUME PDF ──────────────────────────────────────
-  function safeExportResumePDF() {
-    const src = document.getElementById('resume-content');
+  
 
-    // Clone into a visible offscreen container so html2pdf can render it
-    const container = document.createElement('div');
-    container.style.cssText = 'position:fixed; left:-9999px; top:0; width:850px; background:#fff; color:#111; font-family:Inter,sans-serif; padding:2.5rem 2rem; z-index:-1;';
-    container.innerHTML = src.innerHTML;
-    document.body.appendChild(container);
+function safeExportResumePDF() {
 
-    const opt = {
-      margin: [0.5, 0.5, 0.5, 0.5],
-      filename: 'Latorrey-Whitehead-Resume-TSM-Consultz.pdf',
-      image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2, backgroundColor: '#ffffff', useCORS: true },
-      jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
-    };
+  const source = document.getElementById("resume-content");
 
-    html2pdf().set(opt).from(container).save().then(() => {
-      document.body.removeChild(container);
-    });
+  if (!source) {
+    console.error("❌ resume-content missing");
+    return;
   }
+
+
+  const render = source.cloneNode(true);
+
+  render.id = "resume-print-copy";
+
+
+  render.style.cssText = `
+    display:block !important;
+    visibility:visible !important;
+    opacity:1 !important;
+    position:static !important;
+    width:850px !important;
+    background:#ffffff !important;
+    color:#111111 !important;
+    padding:40px !important;
+    margin:0 !important;
+    font-family:Inter,Arial,sans-serif !important;
+  `;
+
+
+  render.querySelectorAll("*").forEach(el => {
+
+    el.style.display = "";
+
+    el.style.visibility = "visible";
+
+    el.style.opacity = "1";
+
+    el.style.color = "#111";
+
+    el.style.backgroundColor = "transparent";
+
+    el.style.fontFamily =
+      "Inter,Arial,sans-serif";
+
+  });
+
+
+  const holder = document.createElement("div");
+
+  holder.style.cssText = `
+    position:fixed;
+    left:-10000px;
+    top:0;
+    background:white;
+    z-index:999999;
+  `;
+
+  holder.appendChild(render);
+
+  document.body.appendChild(holder);
+
+
+  const opt = {
+
+    margin:[0.35,0.35,0.35,0.35],
+
+    filename:
+      "Latorrey-Whitehead-Resume-TSM-Consultz.pdf",
+
+    image:{
+      type:"jpeg",
+      quality:1
+    },
+
+    html2canvas:{
+      scale:3,
+      backgroundColor:"#ffffff",
+      useCORS:true
+    },
+
+    jsPDF:{
+      unit:"in",
+      format:"letter",
+      orientation:"portrait"
+    }
+
+  };
+
+
+  html2pdf()
+    .set(opt)
+    .from(render)
+    .save()
+    .then(()=>{
+
+      holder.remove();
+
+      console.log(
+        "✅ CLEAN RESUME PDF COMPLETE"
+      );
+
+    })
+    .catch(err=>{
+
+      holder.remove();
+
+      console.error(
+        "❌ PDF ERROR",
+        err
+      );
+
+    });
+
+}
+
 
   // ── FULL PORTFOLIO PDF ──────────────────────────────
   function safeExportPortfolioPDF() {
@@ -1525,6 +1621,9 @@
       if (sec) {
         const clone = sec.cloneNode(true);
         clone.style.pageBreakAfter = 'always';
+        clone.style.display = 'block';
+        clone.style.visibility = 'visible';
+        clone.style.opacity = '1';
         wrapper.appendChild(clone);
       }
     });
@@ -1533,11 +1632,24 @@
       margin: 0.4,
       filename: 'TSM-Consultz-Portfolio-Latorrey-Whitehead.pdf',
       image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 1.5, backgroundColor: '#020408', useCORS: true },
+      html2canvas: {
+        scale: 2,
+        backgroundColor: '#ffffff',
+        useCORS: true,
+        logging: false
+      },
       jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
     };
 
-    html2pdf().set(opt).from(wrapper).save();
+    document.body.appendChild(wrapper);
+
+    html2pdf()
+      .set(opt)
+      .from(wrapper)
+      .save()
+      .then(() => {
+        document.body.removeChild(wrapper);
+      });
   }
 
   // ── CONTACT FORM → FORMSPREE ────────────────────────────────────────────
@@ -1577,14 +1689,5 @@
     }
   }
 </script>
-function safeExportPortfolioPDF() {
-  if (typeof exportPortfolioPDF === "function") {
-    safeExportPortfolioPDF();
-  } else {
-    // fallback so nothing breaks
-    alert("PDF export is currently unavailable. System is running in manual mode.");
-  }
-}
-</script>  
 </body>
 </html>

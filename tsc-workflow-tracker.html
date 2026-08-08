@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Time Sensitive Claims Recovery — Case Workflow</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --navy-deep:#0a1626; --navy:#0e1e33; --navy-panel:#122844; --navy-line:#1e3654;
+    --copper:#c17a42; --copper-light:#e0a872; --copper-dim:#8a5a34;
+    --cream:#f3ece2; --text:#e6ecf3; --dim:#7f93ab;
+    --green:#5fbf8f; --red:#e3695f; --amber:#e0b84a;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{
+    background:var(--navy-deep); color:var(--text); font-family:'Inter',sans-serif;
+    min-height:100vh;
+  }
+  h1,h2,h3{ font-family:'Fraunces',serif; font-weight:500; color:var(--cream); }
+  .mono{ font-family:'JetBrains Mono',monospace; }
+
+  /* ---- header ---- */
+  header{ border-bottom:1px solid var(--navy-line); padding:22px 28px; }
+  header .row{ display:flex; align-items:center; justify-content:space-between; max-width:1400px; margin:0 auto; flex-wrap:wrap; gap:14px; }
+  .brand{ font-size:19px; }
+  .brand span{ color:var(--copper-light); }
+  .brand small{ display:block; font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--dim); letter-spacing:.05em; margin-top:2px; font-weight:400; }
+  .btn{
+    font-family:'JetBrains Mono',monospace; font-size:12.5px; border:none; cursor:pointer;
+    padding:11px 20px; border-radius:4px; letter-spacing:.02em;
+  }
+  .btn-add{ background:var(--copper); color:var(--navy-deep); font-weight:600; }
+  .btn-add:hover{ background:var(--copper-light); }
+
+  /* ---- summary strip ---- */
+  .summary{ border-bottom:1px solid var(--navy-line); background:var(--navy); }
+  .summary .row{
+    max-width:1400px; margin:0 auto; padding:18px 28px;
+    display:grid; grid-template-columns:repeat(5,1fr); gap:0;
+  }
+  .stat{ padding:0 20px; border-left:1px solid var(--navy-line); }
+  .stat:first-child{ border-left:none; padding-left:0; }
+  .stat .lbl{ font-size:11px; color:var(--dim); letter-spacing:.04em; text-transform:uppercase; }
+  .stat .val{ font-family:'JetBrains Mono',monospace; font-size:22px; color:var(--copper-light); margin-top:4px; }
+  .stat .val.dim{ color:var(--dim); font-size:13px; }
+
+  /* ---- board ---- */
+  main{ max-width:1400px; margin:0 auto; padding:24px 28px 60px; }
+  .board{ display:grid; grid-template-columns:repeat(6,1fr); gap:14px; align-items:start; }
+  .col{ background:var(--navy); border:1px solid var(--navy-line); border-radius:8px; min-height:200px; display:flex; flex-direction:column; }
+  .col-head{
+    padding:14px 14px 12px; border-bottom:1px solid var(--navy-line);
+    display:flex; align-items:center; justify-content:space-between;
+  }
+  .col-head .t{ font-size:12.5px; font-weight:600; color:var(--text); letter-spacing:.02em; }
+  .col-head .n{ font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--dim); background:var(--navy-panel); padding:2px 7px; border-radius:10px; }
+  .col-body{ padding:10px; display:flex; flex-direction:column; gap:9px; flex:1; }
+  .empty-hint{ font-size:11.5px; color:var(--dim); text-align:center; padding:20px 8px; font-style:italic; }
+
+  .card{
+    background:var(--navy-panel); border:1px solid var(--navy-line); border-radius:6px;
+    padding:12px; cursor:pointer; transition:border-color .12s;
+  }
+  .card:hover{ border-color:var(--copper-dim); }
+  .card .cname{ font-size:13.5px; font-weight:600; color:var(--cream); margin-bottom:3px; }
+  .card .cref{ font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--dim); margin-bottom:8px; }
+  .card .cmeta{ font-size:11.5px; color:var(--dim); display:flex; justify-content:space-between; }
+  .card .cmeta .amt{ font-family:'JetBrains Mono',monospace; color:var(--copper-light); }
+  .card .cmeta .amt.pending{ color:var(--dim); font-style:italic; }
+
+  /* ---- panel (add/edit) ---- */
+  .overlay{
+    position:fixed; inset:0; background:rgba(6,12,20,.7); display:none;
+    align-items:flex-start; justify-content:center; z-index:50; padding:40px 20px; overflow-y:auto;
+  }
+  .overlay.open{ display:flex; }
+  .panel{
+    background:var(--navy); border:1px solid var(--navy-line); border-radius:10px;
+    width:100%; max-width:560px; padding:28px;
+  }
+  .panel h2{ font-size:20px; margin-bottom:18px; }
+  .field{ margin-bottom:14px; }
+  .field label{ display:block; font-size:11.5px; color:var(--dim); text-transform:uppercase; letter-spacing:.04em; margin-bottom:6px; }
+  .field input, .field select, .field textarea{
+    width:100%; background:var(--navy-panel); border:1px solid var(--navy-line); color:var(--text);
+    padding:10px 12px; border-radius:4px; font-family:'Inter',sans-serif; font-size:13.5px;
+  }
+  .field input.mono, .field select.mono{ font-family:'JetBrains Mono',monospace; }
+  .field textarea{ resize:vertical; min-height:64px; font-family:'Inter',sans-serif; }
+  .field-row{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .panel-actions{ display:flex; justify-content:space-between; margin-top:22px; gap:10px; }
+  .btn-save{ background:var(--copper); color:var(--navy-deep); font-weight:600; }
+  .btn-cancel{ background:transparent; border:1px solid var(--navy-line); color:var(--dim); }
+  .btn-delete{ background:transparent; border:1px solid var(--red); color:var(--red); }
+  .hint{ font-size:11px; color:var(--dim); margin-top:4px; }
+
+  @media(max-width:1100px){
+    .board{ grid-template-columns:repeat(3,1fr); }
+    .summary .row{ grid-template-columns:repeat(2,1fr); gap:14px; }
+    .stat{ border-left:none; padding:0; }
+  }
+  @media(max-width:640px){
+    .board{ grid-template-columns:1fr; }
+    .field-row{ grid-template-columns:1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="row">
+    <div class="brand">Time Sensitive <span>Claims Recovery</span>
+      <small>Case workflow — intake through outcome</small>
+    </div>
+    <button class="btn btn-add" onclick="openPanel()">+ Add case</button>
+  </div>
+</header>
+
+<div class="summary">
+  <div class="row" id="summaryRow"></div>
+</div>
+
+<main>
+  <div class="board" id="board"></div>
+</main>
+
+<div class="overlay" id="overlay">
+  <div class="panel">
+    <h2 id="panelTitle">New case</h2>
+    <form id="caseForm">
+      <div class="field">
+        <label>Client name</label>
+        <input type="text" id="f_clientName" required>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Claim reference</label>
+          <input type="text" id="f_claimRef" class="mono" placeholder="e.g. internal ID or claim #">
+        </div>
+        <div class="field">
+          <label>Payer</label>
+          <input type="text" id="f_payer">
+        </div>
+      </div>
+      <div class="field">
+        <label>Denial / underpayment reason</label>
+        <input type="text" id="f_denialReason">
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Estimated exposure ($)</label>
+          <input type="number" id="f_exposure" class="mono" min="0" step="0.01" placeholder="leave blank if not yet assessed">
+        </div>
+        <div class="field">
+          <label>Fee rate (%)</label>
+          <input type="number" id="f_feeRate" class="mono" min="0" max="100" step="1" placeholder="e.g. 25">
+        </div>
+      </div>
+      <div class="field">
+        <label>Status</label>
+        <select id="f_status" class="mono">
+          <option value="intake">Intake</option>
+          <option value="review">Review</option>
+          <option value="qa">QA</option>
+          <option value="summary_sent">Summary sent</option>
+          <option value="client_action">Client action</option>
+          <option value="outcome_logged">Outcome logged</option>
+        </select>
+      </div>
+      <div class="field" id="recoveredField" style="display:none;">
+        <label>Recovered amount ($)</label>
+        <input type="number" id="f_recovered" class="mono" min="0" step="0.01" placeholder="0.00 if declined/not recovered">
+        <div class="hint">Only fill this in once the payer has actually paid. Leave 0 for a closed, unrecovered claim.</div>
+      </div>
+      <div class="field">
+        <label>Notes</label>
+        <textarea id="f_notes" placeholder="What happened, what's next"></textarea>
+      </div>
+      <div class="panel-actions">
+        <button type="button" class="btn btn-delete" id="deleteBtn" style="display:none;" onclick="deleteCase()">Delete case</button>
+        <div style="display:flex; gap:10px; margin-left:auto;">
+          <button type="button" class="btn btn-cancel" onclick="closePanel()">Cancel</button>
+          <button type="submit" class="btn btn-save">Save case</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+const STAGES = [
+  {key:'intake', label:'Intake'},
+  {key:'review', label:'Review'},
+  {key:'qa', label:'QA'},
+  {key:'summary_sent', label:'Summary sent'},
+  {key:'client_action', label:'Client action'},
+  {key:'outcome_logged', label:'Outcome logged'},
+];
+const STORAGE_KEY = 'tsc_cases_v1';
+let cases = [];
+let editingId = null;
+
+function loadCases(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    cases = raw ? JSON.parse(raw) : [];
+  }catch(e){
+    console.error('Could not load saved cases:', e);
+    cases = [];
+  }
+}
+function saveCases(){
+  try{
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(cases));
+  }catch(e){
+    console.error('Could not save cases:', e);
+    alert('Could not save — your browser storage may be full or blocked.');
+  }
+}
+
+function fmtMoney(n){
+  if(n === null || n === undefined || n === '' || isNaN(n)) return null;
+  return '$' + Number(n).toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits:0});
+}
+
+function render(){
+  renderSummary();
+  renderBoard();
+}
+
+function renderSummary(){
+  const total = cases.length;
+  const withExposure = cases.filter(c => c.exposure !== null && c.exposure !== undefined && c.exposure !== '');
+  const totalExposure = withExposure.reduce((s,c)=> s + Number(c.exposure), 0);
+  const logged = cases.filter(c => c.status === 'outcome_logged' && c.recovered !== null && c.recovered !== undefined && c.recovered !== '');
+  const totalRecovered = logged.reduce((s,c)=> s + Number(c.recovered), 0);
+  const feesEarned = logged.reduce((s,c)=>{
+    const rate = c.feeRate !== null && c.feeRate !== undefined && c.feeRate !== '' ? Number(c.feeRate)/100 : null;
+    if(rate === null) return s;
+    return s + Number(c.recovered) * rate;
+  }, 0);
+  const winCount = logged.filter(c => Number(c.recovered) > 0).length;
+  const winRate = logged.length > 0 ? Math.round((winCount/logged.length)*100) : null;
+
+  const stats = [
+    {lbl:'Total cases', val: total, isMoney:false},
+    {lbl:'Exposure under review', val: withExposure.length ? fmtMoney(totalExposure) : null, isMoney:true},
+    {lbl:'Recovered to date', val: logged.length ? fmtMoney(totalRecovered) : null, isMoney:true},
+    {lbl:'Fees earned (est.)', val: logged.length ? fmtMoney(feesEarned) : null, isMoney:true},
+    {lbl:'Win rate (logged cases)', val: winRate !== null ? winRate + '%' : null, isMoney:false},
+  ];
+
+  document.getElementById('summaryRow').innerHTML = stats.map(s => `
+    <div class="stat">
+      <div class="lbl">${s.lbl}</div>
+      <div class="val ${s.val === null ? 'dim' : ''}">${s.val === null ? 'No data yet' : s.val}</div>
+    </div>
+  `).join('');
+}
+
+function renderBoard(){
+  const board = document.getElementById('board');
+  board.innerHTML = STAGES.map(stage => {
+    const stageCases = cases.filter(c => c.status === stage.key);
+    return `
+      <div class="col">
+        <div class="col-head">
+          <div class="t">${stage.label}</div>
+          <div class="n mono">${stageCases.length}</div>
+        </div>
+        <div class="col-body">
+          ${stageCases.length === 0 ? '<div class="empty-hint">No cases here</div>' : stageCases.map(c => renderCard(c)).join('')}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderCard(c){
+  let amtLabel, amtVal, pendingClass = '';
+  if(c.status === 'outcome_logged' && c.recovered !== null && c.recovered !== undefined && c.recovered !== ''){
+    amtLabel = 'Recovered'; amtVal = fmtMoney(c.recovered);
+  } else if(c.exposure !== null && c.exposure !== undefined && c.exposure !== ''){
+    amtLabel = 'Exposure'; amtVal = fmtMoney(c.exposure);
+  } else {
+    amtLabel = 'Exposure'; amtVal = 'Not assessed'; pendingClass = 'pending';
+  }
+  return `
+    <div class="card" onclick="openPanel('${c.id}')">
+      <div class="cname">${escapeHtml(c.clientName || 'Unnamed client')}</div>
+      <div class="cref">${escapeHtml(c.claimRef || 'No ref')}${c.payer ? ' · ' + escapeHtml(c.payer) : ''}</div>
+      <div class="cmeta">
+        <span>${escapeHtml(c.denialReason || 'No reason logged')}</span>
+        <span class="amt ${pendingClass} mono">${amtVal}</span>
+      </div>
+    </div>
+  `;
+}
+
+function escapeHtml(str){
+  const d = document.createElement('div');
+  d.textContent = str;
+  return d.innerHTML;
+}
+
+function openPanel(id){
+  editingId = id || null;
+  const form = document.getElementById('caseForm');
+  form.reset();
+  document.getElementById('recoveredField').style.display = 'none';
+  document.getElementById('deleteBtn').style.display = 'none';
+
+  if(id){
+    const c = cases.find(x => x.id === id);
+    if(!c) return;
+    document.getElementById('panelTitle').textContent = 'Edit case';
+    document.getElementById('f_clientName').value = c.clientName || '';
+    document.getElementById('f_claimRef').value = c.claimRef || '';
+    document.getElementById('f_payer').value = c.payer || '';
+    document.getElementById('f_denialReason').value = c.denialReason || '';
+    document.getElementById('f_exposure').value = c.exposure ?? '';
+    document.getElementById('f_feeRate').value = c.feeRate ?? '';
+    document.getElementById('f_status').value = c.status;
+    document.getElementById('f_recovered').value = c.recovered ?? '';
+    document.getElementById('f_notes').value = c.notes || '';
+    document.getElementById('deleteBtn').style.display = 'block';
+  } else {
+    document.getElementById('panelTitle').textContent = 'New case';
+    document.getElementById('f_status').value = 'intake';
+  }
+  toggleRecoveredField();
+  document.getElementById('overlay').classList.add('open');
+}
+
+function closePanel(){
+  document.getElementById('overlay').classList.remove('open');
+  editingId = null;
+}
+
+document.getElementById('f_status').addEventListener('change', toggleRecoveredField);
+function toggleRecoveredField(){
+  const status = document.getElementById('f_status').value;
+  document.getElementById('recoveredField').style.display = status === 'outcome_logged' ? 'block' : 'none';
+}
+
+document.getElementById('caseForm').addEventListener('submit', function(e){
+  e.preventDefault();
+  const data = {
+    clientName: document.getElementById('f_clientName').value.trim(),
+    claimRef: document.getElementById('f_claimRef').value.trim(),
+    payer: document.getElementById('f_payer').value.trim(),
+    denialReason: document.getElementById('f_denialReason').value.trim(),
+    exposure: document.getElementById('f_exposure').value === '' ? null : Number(document.getElementById('f_exposure').value),
+    feeRate: document.getElementById('f_feeRate').value === '' ? null : Number(document.getElementById('f_feeRate').value),
+    status: document.getElementById('f_status').value,
+    recovered: document.getElementById('f_recovered').value === '' ? null : Number(document.getElementById('f_recovered').value),
+    notes: document.getElementById('f_notes').value.trim(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  if(editingId){
+    const idx = cases.findIndex(c => c.id === editingId);
+    if(idx !== -1) cases[idx] = {...cases[idx], ...data};
+  } else {
+    data.id = 'case_' + Date.now() + '_' + Math.random().toString(36).slice(2,7);
+    data.createdAt = new Date().toISOString();
+    cases.push(data);
+  }
+  saveCases();
+  render();
+  closePanel();
+});
+
+function deleteCase(){
+  if(!editingId) return;
+  if(!confirm('Delete this case? This cannot be undone.')) return;
+  cases = cases.filter(c => c.id !== editingId);
+  saveCases();
+  render();
+  closePanel();
+}
+
+document.getElementById('overlay').addEventListener('click', function(e){
+  if(e.target === this) closePanel();
+});
+
+loadCases();
+render();
+</script>
+
+</body>
+</html>

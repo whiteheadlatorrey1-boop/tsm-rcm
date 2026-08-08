@@ -120,7 +120,7 @@ def inject_app(rel_path, node):
 
 # ── Strategist: replace the bare textarea with full BNCA dashboard ────────────
 def patch_strategist():
-    path = os.path.join(BASE, 'construction-suite/construction-strategist.html')
+    path = os.path.join(BASE, 'war-rooms/construct-war/construction-strategist.html')
     if not os.path.exists(path):
         print(f'⚠️  MISSING: {path}')
         return

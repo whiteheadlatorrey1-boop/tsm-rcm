@@ -44,6 +44,9 @@ const CPQ_QUOTES = [];
 const CATALOG_ITEMS = [];
 const APPROVAL_REQUESTS = [];
 const APPROVAL_HITL_GATE = createGate('APR');
+const RECENT_SWEEPS = new Map();
+const RECENT_SWEEP_WINDOW_MS = 5 * 60 * 1000;
+function sweepDedupKey(vertical, caseId) { return vertical + '|' + caseId; }
 
 function ecbId(prefix) {
   return prefix + '-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7);
@@ -188,6 +191,11 @@ router.post('/api/enterprise/capability-sweep', async (req, res) => {
   if (!vertical || !title || !summary) {
     return res.status(400).json({ ok: false, error: 'vertical, title, and summary required' });
   }
+  const dedupKey = sweepDedupKey(vertical, caseId);
+  const recent = RECENT_SWEEPS.get(dedupKey);
+  if (recent && (Date.now() - recent.at) < RECENT_SWEEP_WINDOW_MS) {
+    return res.json(Object.assign({}, recent.result, { deduped: true }));
+  }
   const ent = entities || {};
   const baseUrl = req.protocol + '://' + req.get('host');
   const errors = [];
@@ -274,6 +282,7 @@ router.post('/api/enterprise/capability-sweep', async (req, res) => {
     phases,
     errors: errors.length ? errors : undefined
   };
+  RECENT_SWEEPS.set(dedupKey, { result: decisionPackage, at: Date.now() });
   res.json(decisionPackage);
 });
 

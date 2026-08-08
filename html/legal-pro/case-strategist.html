@@ -321,6 +321,16 @@ select option{background:#071220}
 .cb-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,var(--a2),var(--a));
   transition:width 1s ease;width:0%}
 
+/* EXPLAIN PANEL */
+#explain-panel:empty{display:none}
+.explain-panel{margin-top:14px;border:1px solid var(--b2);border-radius:10px;padding:12px 14px;background:rgba(255,255,255,.02)}
+.explain-title{font-size:10px;letter-spacing:.12em;color:var(--m);margin-bottom:8px;font-weight:700}
+.explain-row{display:flex;gap:8px;align-items:baseline;padding:4px 0;border-top:1px solid var(--b2)}
+.explain-row:first-of-type{border-top:none}
+.explain-node{font-size:10px;font-weight:900;color:var(--a);letter-spacing:.08em;min-width:74px}
+.explain-score{font-size:10px;color:var(--m);min-width:44px}
+.explain-text{font-size:11px;color:var(--t);line-height:1.5;opacity:.85}
+
 /* EP LINK */
 .ep-link{
   background:linear-gradient(135deg,rgba(61,155,233,.08),rgba(155,124,255,.05));
@@ -363,7 +373,7 @@ select option{background:#071220}
 }
 </style>
 </head>
-<body>
+<body data-vertical="legal" data-page-role="strategist">
 
 <!-- HEADER -->
 <header>
@@ -402,7 +412,7 @@ select option{background:#071220}
   <span class="chain-arrow">→</span>
   <div class="chain-node current">⬡ MAIN STRATEGIST</div>
   <span class="chain-arrow">→</span>
-  <div class="chain-node relay" onclick="window.location.href='/legal-pro/ep1.html'">▶ EXECUTIVE PORTAL</div>
+  <div class="chain-node relay" onclick="window.location.href='/war-rooms/legal-war/legal-executive-portal.html'">▶ EXECUTIVE PORTAL</div>
 </div>
 
 <!-- PAGE -->
@@ -647,6 +657,7 @@ Select a scenario above to pre-configure the intelligence context.</div>
       <div class="cb-label"><span>AI CONFIDENCE</span><span id="conf-pct">0%</span></div>
       <div class="cb-track"><div class="cb-fill" id="conf-fill"></div></div>
     </div>
+    <div id="explain-panel"></div>
     <div class="bnca-actions">
       <button class="act-btn" onclick="assignOwner()">ASSIGN OWNER</button>
       <button class="act-btn amber" onclick="escalateStrategist()">ESCALATE</button>
@@ -765,7 +776,7 @@ Select a scenario above to pre-configure the intelligence context.</div>
       <div class="panel-title" style="margin-bottom:0">EXECUTIVE PORTAL RELAY</div>
       <div class="relay-status" id="relay-status">AWAITING BNCA</div>
     </div>
-    <div class="relay-dest">→ DESTINATION: legal-pro/ep1.html</div>
+    <div class="relay-dest">→ DESTINATION: war-rooms/legal-war/legal-executive-portal.html</div>
     <div class="relay-report" id="relay-report">
 Executive relay package not yet generated.
 
@@ -785,7 +796,7 @@ The relay will include:
 <!-- EP LINK -->
 <div class="ep-link">
   <div class="ep-info">
-    <h3>EXECUTIVE PORTAL · ep1.html</h3>
+    <h3>EXECUTIVE PORTAL · legal-executive-portal.html</h3>
     <p>Send synthesized legal intelligence to leadership. Executive-ready risk summaries, financial exposure, board action items, and matter portfolio rollup — generated from this strategist session.</p>
   </div>
   <button class="ep-btn" onclick="launchEP()">OPEN EXECUTIVE PORTAL →</button>
@@ -849,6 +860,33 @@ const SCENARIOS = {
 
 let currentScenario = 'billing';
 let lastBNCA = '';
+let lastMatterMeta = null;
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// getExplainItems: surfaces the real node scores and intake fields that fed
+// this BNCA run, ranked by score — not narrative filler.
+function getExplainItems(scenario, meta, conf) {
+  const ranked = Object.entries(scenario.scores).sort((a, b) => b[1] - a[1]);
+  return ranked.slice(0, 3).map(([node, score]) => ({
+    node,
+    score,
+    explain: `${score}/100 in the ${scenario.name} scenario for ${meta.matterName} (${meta.matterType}, owner: ${meta.partner}, SLA pressure: ${meta.sla}, hours/financial at risk: ${meta.hoursRisk}) — factored into the ${conf}% confidence assessment.`
+  }));
+}
+
+function renderExplainItems(items) {
+  return `<div class="explain-panel">
+    <div class="explain-title">TOP RISK DRIVERS · WHY THIS ASSESSMENT</div>
+    ${items.map((it) => `<div class="explain-row">
+      <span class="explain-node">${escapeHtml(it.node.toUpperCase())}</span>
+      <span class="explain-score">${it.score}/100</span>
+      <div class="explain-text">${escapeHtml(it.explain)}</div>
+    </div>`).join('')}
+  </div>`;
+}
 
 // ============================================================
 // SCENARIO SELECTION
@@ -899,6 +937,7 @@ async function runBNCA() {
   const hoursRisk = document.getElementById('hours-risk').value || 'Not specified';
   const escalation = document.getElementById('escalation-priority').value;
   const scenario = SCENARIOS[currentScenario];
+  lastMatterMeta = { matterName, matterType, partner, sla, hoursRisk, escalation };
 
   // Update UI state
   const btn = document.getElementById('run-bnca');
@@ -1071,25 +1110,40 @@ async function streamText(text, el) {
 function finalizeBNCA(text) {
   lastBNCA = text;
 
-  // Extract confidence
+  // Extract confidence, risk level, and SLA pressure from the AI's own
+  // structured output — this is the actual assessment it produced, not a
+  // fixed placeholder.
   const confMatch = text.match(/CONFIDENCE:\s*(\d+)%/i);
   const conf = confMatch ? parseInt(confMatch[1]) : 89;
+  const riskMatch = text.match(/RISK LEVEL:\s*(CRITICAL|HIGH|MEDIUM|LOW)/i);
+  const riskLevel = riskMatch ? riskMatch[1].toUpperCase() : 'MEDIUM';
+  const slaMatch = text.match(/SLA PRESSURE:\s*(.+)/i);
+  const slaText = slaMatch ? slaMatch[1].trim().split(/\n|─/)[0].slice(0, 40) : 'MONITORING';
 
   // Update stats
   document.getElementById('stat-matters').textContent = '4';
-  document.getElementById('stat-risk').textContent = conf > 88 ? 'HIGH' : 'MED';
+  document.getElementById('stat-risk').textContent = riskLevel === 'CRITICAL' || riskLevel === 'HIGH' ? 'HIGH' : riskLevel === 'MEDIUM' ? 'MED' : 'LOW';
   document.getElementById('stat-conf').textContent = conf + '%';
   document.getElementById('conf-pct').textContent = conf + '%';
   document.getElementById('conf-fill').style.width = conf + '%';
 
-  // Risk badge
+  // Risk/SLA badges — now driven by the parsed AI assessment instead of a
+  // hardcoded value, so they actually vary with the scenario/matter run.
   const riskBadge = document.getElementById('risk-badge');
   const slaBadge = document.getElementById('sla-badge');
-  riskBadge.textContent = 'RISK: HIGH';
-  riskBadge.style.color = '#ff4d6a';
-  riskBadge.style.borderColor = 'rgba(255,77,106,.3)';
-  slaBadge.textContent = 'SLA: PRESSURED';
-  slaBadge.style.color = '#f5a623';
+  const riskColors = { CRITICAL: '#ff4d6a', HIGH: '#ff4d6a', MEDIUM: '#f5a623', LOW: '#00ffc6' };
+  riskBadge.textContent = 'RISK: ' + riskLevel;
+  riskBadge.style.color = riskColors[riskLevel] || '#f5a623';
+  riskBadge.style.borderColor = (riskColors[riskLevel] || '#f5a623') + '4d';
+  slaBadge.textContent = 'SLA: ' + slaText.toUpperCase();
+  slaBadge.style.color = riskLevel === 'CRITICAL' || riskLevel === 'HIGH' ? '#f5a623' : '#00ffc6';
+
+  // Explainability panel — real node scores + intake fields + parsed confidence
+  if (lastMatterMeta) {
+    const scenario = SCENARIOS[currentScenario];
+    const items = getExplainItems(scenario, lastMatterMeta, conf);
+    document.getElementById('explain-panel').innerHTML = renderExplainItems(items);
+  }
 
   document.getElementById('thinking-indicator').textContent = 'BNCA COMPLETE · ACTIONS READY';
   document.getElementById('relay-status').textContent = 'READY TO RELAY';
@@ -1172,23 +1226,28 @@ STRATEGIC RECOMMENDATIONS
 4. Schedule executive briefing within 48 hours
 
 STATUS: RELAY COMPLETE → EXECUTIVE PORTAL READY
-→ Open ep1.html to review full executive dashboard`;
+→ Open legal-executive-portal.html to review full executive dashboard`;
 
   document.getElementById('relay-report').textContent = relayText;
 }
 
 function launchEP() {
-  // Store relay data for EP
+  // Store relay data for EP — matches the shape legal-executive-portal.html's
+  // loadStrategistRelay() actually reads (TSM_STRATEGIST_RELAY). Fields we
+  // don't have real data for (exposure, winProb) are left unset rather than
+  // invented; the portal already handles missing fields gracefully.
   const scenario = SCENARIOS[currentScenario];
+  const riskScore = Math.max(...Object.values(scenario.scores));
   const payload = {
-    bnca: lastBNCA,
-    scenario: scenario.name,
-    risk: scenario.risk,
+    ts: Date.now(),
     matter: document.getElementById('matter-name').value || '',
-    relayTime: new Date().toISOString()
+    docType: scenario.name,
+    synthesisText: lastBNCA,
+    riskScore,
+    enginesCount: scenario.nodes.length
   };
-  try { sessionStorage.setItem('tsm_legal_relay', JSON.stringify(payload)); } catch(e){}
-  window.location.href = '/legal-pro/ep1.html';
+  try { sessionStorage.setItem('TSM_STRATEGIST_RELAY', JSON.stringify(payload)); } catch(e){}
+  window.location.href = '/war-rooms/legal-war/legal-executive-portal.html';
 }
 
 // ============================================================
@@ -1227,12 +1286,12 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 </script>
   <script src="/js/core/tsm-kernel-upgrade.js"></script>
+<script>
 // ===== TSM_AUTONOMY_STANDARDIZED =====
 window.TSM_AUTONOMY_STANDARDIZED = true;
 </script>
 <!-- TSM ENFORCER BOOT -->
-<script src="/html/core/tsm-enforcer.js">
-</script>
+<!-- stripped -->
 <script>
 
 
@@ -1272,5 +1331,6 @@ function tsmWriteScopedStrat(vertical, missionId){
 <!-- TSM KERNEL ENGINE -->
 <script src="/html/core/tsm-kernel.js">
 </script>
+  <script src="/js/tsm-guide-engine.js" defer></script>
 </body>
 </html>

@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Song Builder · Sweet Music™ OS</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=IBM+Plex+Mono:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+  :root{--bg:#0a0a0c;--surface:#111118;--border:#1e1e2e;--green:#00ff88;--cyan:#00e5ff;--amber:#ffb300;--red:#ff3b6b;--purple:#b388ff;--text:#e0e0e0;--muted:#666680;--card:#13131f;}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:'IBM Plex Mono',monospace;min-height:100vh;}
+  body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.03) 2px,rgba(0,0,0,0.03) 4px);pointer-events:none;z-index:999;}
+
+  header{border-bottom:1px solid var(--border);padding:14px 28px;display:flex;align-items:center;justify-content:space-between;background:rgba(0,255,136,0.03);}
+  .logo{font-family:'Orbitron',sans-serif;font-size:0.85rem;font-weight:900;color:var(--green);letter-spacing:0.15em;}
+  .logo small{display:block;font-size:0.55rem;color:var(--muted);margin-top:2px;}
+  .back{font-size:0.65rem;color:var(--muted);text-decoration:none;}
+  .back:hover{color:var(--green);}
+
+  .main{max-width:860px;margin:0 auto;padding:40px 28px;}
+  h1{font-family:'Orbitron',sans-serif;font-size:1.3rem;font-weight:900;color:var(--green);margin-bottom:8px;}
+  .sub{font-size:0.72rem;color:var(--muted);margin-bottom:40px;line-height:1.6;}
+
+  /* Progress bar */
+  .progress-track{display:flex;gap:4px;margin-bottom:40px;}
+  .progress-seg{flex:1;height:3px;background:var(--border);border-radius:2px;transition:background 0.3s;}
+  .progress-seg.done{background:var(--green);}
+  .progress-seg.active{background:rgba(0,255,136,0.5);}
+  .step-label{font-size:0.62rem;color:var(--muted);margin-bottom:24px;}
+  .step-label span{color:var(--green);}
+
+  /* Step panels */
+  .step{display:none;}
+  .step.active{display:block;animation:fadeIn 0.3s ease;}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+  .step h2{font-family:'Orbitron',sans-serif;font-size:0.9rem;font-weight:700;color:var(--green);margin-bottom:6px;letter-spacing:0.1em;}
+  .step .hint{font-size:0.68rem;color:var(--muted);margin-bottom:20px;line-height:1.6;}
+
+  /* Chip selectors */
+  .chip-grid{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:24px;}
+  .chip{
+    font-size:0.68rem;border:1px solid var(--border);border-radius:20px;
+    padding:7px 16px;cursor:pointer;color:var(--muted);background:var(--card);
+    transition:all 0.2s;
+  }
+  .chip:hover{border-color:var(--green);color:var(--green);}
+  .chip.selected{border-color:var(--green);color:var(--green);background:rgba(0,255,136,0.08);}
+
+  /* Text inputs */
+  .field-label{font-size:0.62rem;color:var(--muted);letter-spacing:0.12em;margin-bottom:8px;}
+  textarea,input[type=text]{
+    width:100%;background:var(--card);border:1px solid var(--border);border-radius:6px;
+    padding:12px 14px;color:var(--text);font-family:'IBM Plex Mono',monospace;
+    font-size:0.75rem;outline:none;transition:border 0.2s;resize:vertical;
+    margin-bottom:20px;
+  }
+  textarea:focus,input[type=text]:focus{border-color:var(--green);}
+  textarea::placeholder,input::placeholder{color:var(--muted);}
+
+  /* Inspire section */
+  .inspire-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;margin-bottom:24px;}
+  .inspire-chip{
+    background:var(--card);border:1px solid var(--border);border-radius:6px;
+    padding:12px;text-align:center;cursor:pointer;transition:all 0.2s;
+  }
+  .inspire-chip:hover{border-color:var(--cyan);background:rgba(0,229,255,0.04);}
+  .inspire-chip.selected{border-color:var(--cyan);background:rgba(0,229,255,0.08);}
+  .inspire-chip .name{font-size:0.7rem;color:var(--text);}
+  .inspire-chip .genre{font-size:0.58rem;color:var(--muted);margin-top:3px;}
+
+  /* Navigation */
+  .step-nav{display:flex;justify-content:space-between;align-items:center;margin-top:32px;}
+  .btn{background:var(--green);color:#000;border:none;border-radius:6px;padding:10px 22px;font-family:'Orbitron',sans-serif;font-size:0.65rem;font-weight:700;letter-spacing:0.1em;cursor:pointer;transition:opacity 0.2s;}
+  .btn:hover{opacity:0.85;}
+  .btn:disabled{opacity:0.3;cursor:not-allowed;}
+  .btn-back{background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:10px 22px;font-family:'Orbitron',sans-serif;font-size:0.65rem;cursor:pointer;transition:all 0.2s;}
+  .btn-back:hover{border-color:var(--muted);color:var(--text);}
+
+  /* Output */
+  .output-panel{background:var(--card);border:1px solid rgba(0,255,136,0.25);border-radius:10px;padding:28px;margin-top:32px;display:none;}
+  .output-panel.show{display:block;}
+  .output-section{margin-bottom:24px;}
+  .output-section h3{font-family:'Orbitron',sans-serif;font-size:0.65rem;color:var(--amber);letter-spacing:0.15em;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border);}
+  .output-section pre{font-size:0.72rem;color:var(--text);line-height:1.9;white-space:pre-wrap;word-break:break-word;}
+  .producer-note{background:rgba(0,255,136,0.05);border-left:3px solid var(--green);padding:12px 16px;font-size:0.7rem;color:var(--text);line-height:1.7;margin-top:12px;border-radius:0 4px 4px 0;}
+
+  .output-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:20px;}
+  .btn-outline{background:transparent;border:1px solid var(--green);color:var(--green);border-radius:6px;padding:8px 18px;font-family:'Orbitron',sans-serif;font-size:0.6rem;font-weight:700;cursor:pointer;transition:all 0.2s;}
+  .btn-outline:hover{background:rgba(0,255,136,0.1);}
+
+  .loading{text-align:center;padding:40px;display:none;}
+  .loading.show{display:block;}
+  .spinner{display:inline-block;width:32px;height:32px;border:2px solid var(--border);border-top-color:var(--green);border-radius:50%;animation:spin 0.8s linear infinite;margin-bottom:12px;}
+  @keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body data-vertical="construction" data-page-role="warroom">
+<header>
+  <div class="logo">🎼 Song Builder<small>Sweet Music™ OS · 8-Step Wizard</small></div>
+  <a class="back" href="../index.html">← Dashboard</a>
+</header>
+
+<div class="main">
+  <h1>Song Builder Wizard</h1>
+  <p class="sub">Answer 8 questions. TSM Neural Core generates your complete song structure: hook, verses, bridge, outro, cadence notes, and producer recommendations.</p>
+
+  <div class="progress-track" id="progressTrack">
+    <div class="progress-seg active" id="seg0"></div>
+    <div class="progress-seg" id="seg1"></div>
+    <div class="progress-seg" id="seg2"></div>
+    <div class="progress-seg" id="seg3"></div>
+    <div class="progress-seg" id="seg4"></div>
+    <div class="progress-seg" id="seg5"></div>
+    <div class="progress-seg" id="seg6"></div>
+    <div class="progress-seg" id="seg7"></div>
+  </div>
+  <div class="step-label">Step <span id="stepNum">1</span> of 8</div>
+
+  <!-- Step 1: Genre -->
+  <div class="step active" id="step0">
+    <h2>STEP 01 · Genre</h2>
+    <div class="hint">What genre best describes this song? Pick the primary vibe.</div>
+    <div class="chip-grid" id="genreChips">
+      <div class="chip" onclick="select(this,'genre')">Trap</div>
+      <div class="chip" onclick="select(this,'genre')">Drill</div>
+      <div class="chip" onclick="select(this,'genre')">Hip-Hop</div>
+      <div class="chip" onclick="select(this,'genre')">R&B</div>
+      <div class="chip" onclick="select(this,'genre')">Melodic Rap</div>
+      <div class="chip" onclick="select(this,'genre')">Pop</div>
+      <div class="chip" onclick="select(this,'genre')">Gospel</div>
+      <div class="chip" onclick="select(this,'genre')">Country</div>
+      <div class="chip" onclick="select(this,'genre')">Afrobeats</div>
+      <div class="chip" onclick="select(this,'genre')">Soul</div>
+      <div class="chip" onclick="select(this,'genre')">Reggaeton</div>
+      <div class="chip" onclick="select(this,'genre')">Worship</div>
+    </div>
+  </div>
+
+  <!-- Step 2: Mood -->
+  <div class="step" id="step1">
+    <h2>STEP 02 · Mood</h2>
+    <div class="hint">What's the emotional core of this song?</div>
+    <div class="chip-grid">
+      <div class="chip" onclick="select(this,'mood')">Dark / Introspective</div>
+      <div class="chip" onclick="select(this,'mood')">Hype / Aggressive</div>
+      <div class="chip" onclick="select(this,'mood')">Romantic / Love</div>
+      <div class="chip" onclick="select(this,'mood')">Pain / Heartbreak</div>
+      <div class="chip" onclick="select(this,'mood')">Triumph / Victory</div>
+      <div class="chip" onclick="select(this,'mood')">Spiritual / Uplifting</div>
+      <div class="chip" onclick="select(this,'mood')">Party / Turn Up</div>
+      <div class="chip" onclick="select(this,'mood')">Chill / Laid Back</div>
+      <div class="chip" onclick="select(this,'mood')">Sad / Reflective</div>
+      <div class="chip" onclick="select(this,'mood')">Angry / Frustrated</div>
+    </div>
+  </div>
+
+  <!-- Step 3: Inspiration -->
+  <div class="step" id="step2">
+    <h2>STEP 03 · Sound Inspiration</h2>
+    <div class="hint">Which artists inspire your sound? Pick up to 3. This calibrates the writing style — not to imitate, but to match the energy.</div>
+    <div class="inspire-grid">
+      <div class="inspire-chip" onclick="multiSelect(this,'inspire')"><div class="name">Rod Wave</div><div class="genre">Melodic / Pain</div></div>
+      <div class="inspire-chip" onclick="multiSelect(this,'inspire')"><div class="name">Future</div><div class="genre">Trap / Dark</div></div>
+      <div class="inspire-chip" onclick="multiSelect(this,'inspire')"><div class="name">Drake</div><div class="genre">Rap / R&B</div></div>
+      <div class="inspire-chip" onclick="multiSelect(this,'inspire')"><div class="name">Chris Brown</div><div class="genre">R&B / Dance</div></div>
+      <div class="inspire-chip" onclick="multiSelect(this,'inspire')"><div class="name">Brent Faiyaz</div><div class="genre">Alt R&B</div></div>
+      <div class="inspire-chip" onclick="multiSelect(this,'inspire')"><div class="name">The Weeknd</div><div class="genre">Dark Pop</div></div>
+      <div class="inspire-chip" onclick="multiSelect(this,'inspire')"><div class="name">Gunna</div><div class="genre">Trap / Slime</div></div>
+      <div class="inspire-chip" onclick="multiSelect(this,'inspire')"><div class="name">Lil Baby</div><div class="genre">Trap / Street</div></div>
+      <div class="inspire-chip" onclick="multiSelect(this,'inspire')"><div class="name">SZA</div><div class="genre">R&B / Soul</div></div>
+      <div class="inspire-chip" onclick="multiSelect(this,'inspire')"><div class="name">Kirk Franklin</div><div class="genre">Gospel</div></div>
+      <div class="inspire-chip" onclick="multiSelect(this,'inspire')"><div class="name">Morgan Wallen</div><div class="genre">Country</div></div>
+      <div class="inspire-chip" onclick="multiSelect(this,'inspire')"><div class="name">Burna Boy</div><div class="genre">Afrobeats</div></div>
+    </div>
+  </div>
+
+  <!-- Step 4: Message -->
+  <div class="step" id="step3">
+    <h2>STEP 04 · Song Message</h2>
+    <div class="hint">What is this song about? Describe the story, feeling, or message in a few sentences. Be specific — the AI writes better when you give it real details.</div>
+    <div class="field-label">// SONG CONCEPT</div>
+    <textarea id="messageInput" rows="5" placeholder="e.g. A song about finally breaking free from a toxic relationship. I want the verses to describe the pain I went through, and the hook to be about choosing myself and moving forward..."></textarea>
+  </div>
+
+  <!-- Step 5: Hook Idea -->
+  <div class="step" id="step4">
+    <h2>STEP 05 · Hook Concept</h2>
+    <div class="hint">What do you want the hook to feel like? Give a concept, keyword, or a rough first line. Leave blank to let the AI generate one from scratch.</div>
+    <div class="field-label">// HOOK DIRECTION</div>
+    <input type="text" id="hookInput" placeholder="e.g. 'I'm done losing sleep over someone who never cared' — something catchy, repeatable, 8 bars">
+  </div>
+
+  <!-- Step 6: Beat Info -->
+  <div class="step" id="step5">
+    <h2>STEP 06 · Beat Context</h2>
+    <div class="hint">Tell the AI about the beat — or pull from Beat Workbench if you already analyzed one.</div>
+    <div class="chip-grid">
+      <div class="chip" onclick="loadBeatIntel()">📥 Load from Beat Workbench</div>
+    </div>
+    <div class="field-label">// OR DESCRIBE YOUR BEAT</div>
+    <input type="text" id="bpmInput" placeholder="BPM (e.g. 148)" style="margin-bottom:10px">
+    <input type="text" id="keyInput" placeholder="Key (e.g. F Minor)">
+  </div>
+
+  <!-- Step 7: Structure -->
+  <div class="step" id="step6">
+    <h2>STEP 07 · Song Structure</h2>
+    <div class="hint">Choose your preferred structure. The AI will write full lyrics for each section.</div>
+    <div class="chip-grid">
+      <div class="chip selected" onclick="select(this,'structure')">Intro · Hook · Verse · Hook · Bridge · Hook</div>
+      <div class="chip" onclick="select(this,'structure')">Verse · Hook · Verse · Hook · Outro</div>
+      <div class="chip" onclick="select(this,'structure')">Hook · Verse · Hook · Verse · Hook</div>
+      <div class="chip" onclick="select(this,'structure')">Intro · Verse · Pre-Hook · Hook · Verse · Hook · Outro</div>
+    </div>
+  </div>
+
+  <!-- Step 8: Style notes -->
+  <div class="step" id="step7">
+    <h2>STEP 08 · Final Notes</h2>
+    <div class="hint">Any final requests? Rhyme scheme preferences, specific lines you want included, things to avoid, ad-lib style, delivery notes.</div>
+    <div class="field-label">// STYLE NOTES (optional)</div>
+    <textarea id="notesInput" rows="4" placeholder="e.g. I want internal rhymes, keep verse bars 16 each, avoid clichés, want some metaphors comparing freedom to a bird..."></textarea>
+
+    <div class="step-nav">
+      <button class="btn-back" onclick="prevStep()">← Back</button>
+      <button class="btn" onclick="generateSong()">⚡ Generate Song</button>
+    </div>
+  </div>
+
+  <!-- Nav (for steps 0-6) -->
+  <div id="mainNav" class="step-nav">
+    <button class="btn-back" id="backBtn" onclick="prevStep()" style="visibility:hidden">← Back</button>
+    <button class="btn" id="nextBtn" onclick="nextStep()">Next →</button>
+  </div>
+
+  <!-- Loading -->
+  <div class="loading" id="loading">
+    <div class="spinner"></div>
+    <div style="font-size:0.7rem;color:var(--muted);">TSM Neural Core generating your song...</div>
+  </div>
+
+  <!-- Output -->
+  <div class="output-panel" id="output"></div>
+</div>
+
+<script>
+let currentStep = 0;
+const totalSteps = 8;
+const selections = {genre:'',mood:'',inspire:[],structure:'Intro · Hook · Verse · Hook · Bridge · Hook'};
+
+function select(el, key) {
+  el.closest('.chip-grid').querySelectorAll('.chip').forEach(c=>c.classList.remove('selected'));
+  el.classList.add('selected');
+  selections[key] = el.textContent.trim();
+}
+
+function multiSelect(el, key) {
+  if (!selections[key]) selections[key] = [];
+  if (el.classList.contains('selected')) {
+    el.classList.remove('selected');
+    selections[key] = selections[key].filter(v=>v !== el.querySelector('.name').textContent);
+  } else if (selections[key].length < 3) {
+    el.classList.add('selected');
+    selections[key].push(el.querySelector('.name').textContent);
+  }
+}
+
+function updateProgress() {
+  document.getElementById('stepNum').textContent = currentStep + 1;
+  for(let i=0;i<totalSteps;i++){
+    const seg = document.getElementById('seg'+i);
+    seg.className = 'progress-seg' + (i<currentStep?' done':i===currentStep?' active':'');
+  }
+  document.getElementById('backBtn').style.visibility = currentStep > 0 ? 'visible' : 'hidden';
+  document.getElementById('mainNav').style.display = currentStep < 7 ? 'flex' : 'none';
+}
+
+function nextStep() {
+  if (currentStep >= 7) return;
+  document.getElementById('step'+currentStep).classList.remove('active');
+  currentStep++;
+  document.getElementById('step'+currentStep).classList.add('active');
+  updateProgress();
+}
+function prevStep() {
+  if (currentStep <= 0) return;
+  document.getElementById('step'+currentStep).classList.remove('active');
+  currentStep--;
+  document.getElementById('step'+currentStep).classList.add('active');
+  updateProgress();
+}
+
+function loadBeatIntel() {
+  const d = JSON.parse(localStorage.getItem('smos_beat_intel')||'{}');
+  if(d.bpm) document.getElementById('bpmInput').value = d.bpm;
+  if(d.key) document.getElementById('keyInput').value = d.key;
+}
+
+async function generateSong() {
+  document.getElementById('loading').classList.add('show');
+  document.getElementById('output').classList.remove('show');
+  document.getElementById('output').innerHTML = '';
+
+  const context = {
+    genre: selections.genre || 'Trap',
+    mood: selections.mood || 'Dark / Introspective',
+    inspiration: (selections.inspire||[]).join(', ') || 'General',
+    message: document.getElementById('messageInput').value || 'A story of struggle and triumph',
+    hookIdea: document.getElementById('hookInput').value || 'Let AI decide',
+    bpm: document.getElementById('bpmInput').value || 'Unknown',
+    key: document.getElementById('keyInput').value || 'Unknown',
+    structure: selections.structure,
+    notes: document.getElementById('notesInput').value || 'None'
+  };
+
+  const prompt = `You are a professional songwriter and music producer AI. Write a complete song based on:
+Genre: ${context.genre}
+Mood: ${context.mood}
+Artists for inspiration (not imitation): ${context.inspiration}
+Message/Concept: ${context.message}
+Hook direction: ${context.hookIdea}
+Beat: ${context.bpm} BPM, ${context.key} key
+Structure: ${context.structure}
+Style notes: ${context.notes}
+
+Return ONLY valid JSON with this exact structure:
+{
+  "hook": "full hook lyrics, 8 bars, each bar separated by a \\n newline character — do not run bars together with commas",
+  "verse1": "full verse 1 lyrics, 16 bars, each bar separated by a \\n newline character — do not run bars together with commas",
+  "bridge": "bridge section (4-8 bars)",
+  "verse2": "full verse 2 lyrics, 16 bars, each bar separated by a \\n newline character — do not run bars together with commas",
+  "outro": "outro lines (4 bars)",
+  "producerNotes": "practical producer advice specific to this song",
+  "cadenceNotes": "syllable and flow tips for this genre/BPM",
+  "commercialScore": "1-10 commercial potential with one-sentence reason"
+}`;
+
+  try {
+    const res = await fetch('/api/music/sweet/ai',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({system:'You are a professional songwriter AI. Respond ONLY with valid JSON, no markdown.',prompt})
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Backend error');
+    const d = JSON.parse((data.text||'{}').replace(/```json|```/g,'').trim());
+    renderOutput(d, context);
+  } catch(e) {
+    document.getElementById('output').innerHTML = `<div style="color:var(--red);font-size:0.75rem">Error generating song. Check your connection and try again.</div>`;
+    document.getElementById('output').classList.add('show');
+  }
+  document.getElementById('loading').classList.remove('show');
+}
+
+function renderOutput(d, ctx) {
+  const panel = document.getElementById('output');
+  panel.innerHTML = `
+    <div style="font-family:'Orbitron',sans-serif;font-size:0.7rem;color:var(--green);letter-spacing:0.2em;margin-bottom:24px;padding-bottom:12px;border-bottom:1px solid var(--border)">
+      // SONG COMPLETE · ${ctx.genre.toUpperCase()} · ${ctx.mood.toUpperCase()}
+    </div>
+    <div class="output-section"><h3>HOOK</h3><pre>${d.hook}</pre></div>
+    <div class="output-section"><h3>VERSE 1</h3><pre>${d.verse1}</pre></div>
+    <div class="output-section"><h3>BRIDGE</h3><pre>${d.bridge}</pre></div>
+    <div class="output-section"><h3>VERSE 2</h3><pre>${d.verse2}</pre></div>
+    <div class="output-section"><h3>OUTRO</h3><pre>${d.outro}</pre></div>
+    <div class="output-section">
+      <h3>PRODUCER NOTES</h3>
+      <div class="producer-note">${d.producerNotes}</div>
+    </div>
+    <div class="output-section">
+      <h3>CADENCE NOTES</h3>
+      <div class="producer-note" style="border-color:var(--cyan)">${d.cadenceNotes}</div>
+    </div>
+    <div class="output-section">
+      <h3>COMMERCIAL SCORE</h3>
+      <div class="producer-note" style="border-color:var(--amber)">${d.commercialScore}</div>
+    </div>
+    <div class="output-actions">
+      <button class="btn" onclick="copySong()">Copy Lyrics</button>
+      <button class="btn-outline" onclick="window.location.href='../cadence-builder.html'">→ Cadence Studio</button>
+      <button class="btn-outline" onclick="window.location.href='../producer/recording-coach.html'">→ Recording Coach</button>
+      <button class="btn-outline" onclick="location.reload()">Build New Song</button>
+    </div>
+  `;
+  SMOS.song.save(d);
+  panel.classList.add('show');
+}
+
+function copySong() {
+  const d = SMOS.song.load();
+  const text = `HOOK\n${d.hook}\n\nVERSE 1\n${d.verse1}\n\nBRIDGE\n${d.bridge}\n\nVERSE 2\n${d.verse2}\n\nOUTRO\n${d.outro}`;
+  navigator.clipboard.writeText(text).then(()=>alert('Lyrics copied to clipboard.'));
+}
+
+updateProgress();
+</script>
+<script src="../js/sweet-music-engine.js"></script>
+<script src="../js/producer-ai-widget.js"></script>
+  <script src="/js/tsm-guide-engine.js" defer></script>
+</body>
+</html>

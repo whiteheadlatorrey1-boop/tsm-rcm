@@ -1,7 +1,8 @@
-require('dotenv').config();
+require('dotenv').config({ override: true });
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 process.on('uncaughtException', (err) => {
   console.error('💥 UNCAUGHT EXCEPTION:', err.message, err.stack);
@@ -24,23 +25,41 @@ const HTML_ROOT = path.join(__dirname, "html");
 // AUTH REMOVED — in-house use only
 // const { tsmAuthMiddleware } = require('./html/tsm-auth');
 const { requireAuth, signSession, verifySession, getCookie, SESSION_TTL_MS } = require('./middleware/require-auth');
+const clientRegistry = require('./middleware/client-registry');
 
 app.use(express.json());
 app.use(require('express').urlencoded({ extended: false }));
 // tsmAuthMiddleware(app); // removed — war rooms are in-house
 
+// Login accepts EITHER the shared admin password OR a per-client access
+// code. We try admin first (cheap string compare against an env var), then
+// fall back to a client-code lookup. Either path produces the same kind of
+// signed session cookie; only the payload shape differs.
 app.post('/api/auth/login', (req, res) => {
-  const { password } = req.body || {};
+  const { password, accessCode } = req.body || {};
+  const credential = password || accessCode || '';
   if (!process.env.TSM_ADMIN_PASSWORD || !process.env.TSM_SESSION_SECRET) {
     return res.status(500).json({ ok: false, error: 'Auth not configured on server' });
   }
-  if (!password || password !== process.env.TSM_ADMIN_PASSWORD) {
-    return res.status(401).json({ ok: false, error: 'Invalid password' });
+  if (!credential) {
+    return res.status(401).json({ ok: false, error: 'Password or access code required' });
   }
-  const token = signSession({ exp: Date.now() + SESSION_TTL_MS });
+
+  let payload;
+  if (credential === process.env.TSM_ADMIN_PASSWORD) {
+    payload = { role: 'admin', exp: Date.now() + SESSION_TTL_MS };
+  } else {
+    const client = clientRegistry.findClientByCode(credential);
+    if (!client) {
+      return res.status(401).json({ ok: false, error: 'Invalid password or access code' });
+    }
+    payload = { role: 'client', clientId: client.id, label: client.label, exp: Date.now() + SESSION_TTL_MS };
+  }
+
+  const token = signSession(payload);
   res.setHeader('Set-Cookie',
     `tsm_session=${encodeURIComponent(token)}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${SESSION_TTL_MS / 1000}`);
-  res.json({ ok: true });
+  res.json({ ok: true, role: payload.role, clientId: payload.clientId || null, label: payload.label || null });
 });
 
 app.post('/api/auth/logout', (req, res) => {
@@ -49,7 +68,78 @@ app.post('/api/auth/logout', (req, res) => {
 });
 
 app.get('/api/auth/status', (req, res) => {
-  res.json({ ok: true, authenticated: !!verifySession(getCookie(req, 'tsm_session')) });
+  const session = verifySession(getCookie(req, 'tsm_session'));
+  if (!session) return res.json({ ok: true, authenticated: false });
+  res.json({
+    ok: true,
+    authenticated: true,
+    role: session.role || 'admin', // sessions signed before this change had no role — treat as admin
+    clientId: session.clientId || null,
+    label: session.label || null,
+  });
+});
+
+// Any authenticated session — admin or client. Attaches req.tsmSession.
+function requireAnyAuth(req, res, next) {
+  const session = verifySession(getCookie(req, 'tsm_session'));
+  if (!session) return res.status(401).json({ ok: false, error: 'Unauthorized' });
+  req.tsmSession = { role: session.role || 'admin', clientId: session.clientId || null, label: session.label || null };
+  next();
+}
+
+// Admin-only. Also attaches req.tsmSession for consistency with requireAnyAuth.
+function requireAdmin(req, res, next) {
+  const session = verifySession(getCookie(req, 'tsm_session'));
+  if (!session) return res.status(401).json({ ok: false, error: 'Unauthorized' });
+  const role = session.role || 'admin';
+  if (role !== 'admin') return res.status(403).json({ ok: false, error: 'Admin access required' });
+  req.tsmSession = { role: 'admin', clientId: null, label: null };
+  next();
+}
+
+// ── CLIENT MANAGEMENT (admin only) ──────────────────────────────────────────
+// List clients (no codes returned — codes are shown once, at creation/rotation).
+app.get('/api/admin/clients', requireAdmin, (req, res) => {
+  res.json({ ok: true, clients: clientRegistry.listClientsSafe() });
+});
+
+// Create a client + generate their access code. Returned ONCE — hand it to
+// the client now; if lost, rotate instead of trying to recover it.
+app.post('/api/admin/clients', requireAdmin, (req, res) => {
+  try {
+    const { label } = req.body || {};
+    const { client, accessCode } = clientRegistry.createClient(label);
+    res.json({ ok: true, client, accessCode });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/api/admin/clients/:id/rotate-code', requireAdmin, (req, res) => {
+  try {
+    const { client, accessCode } = clientRegistry.rotateCode(req.params.id);
+    res.json({ ok: true, client, accessCode });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/api/admin/clients/:id/deactivate', requireAdmin, (req, res) => {
+  try {
+    const client = clientRegistry.setActive(req.params.id, false);
+    res.json({ ok: true, client });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/api/admin/clients/:id/reactivate', requireAdmin, (req, res) => {
+  try {
+    const client = clientRegistry.setActive(req.params.id, true);
+    res.json({ ok: true, client });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message });
+  }
 });
 
 // ── GLOBAL NO-CACHE ───────────────────────────────────────────────────────────
@@ -70,10 +160,12 @@ app.use((req, res, next) => {
 // Primary: fetch-based (reliable on Railway)
 const GROQ_MODELS = [
   'openai/gpt-oss-120b',
-  'llama-3.1-8b-instant',
-  'llama3-8b-8192',
-  'gemma2-9b-it'
+  'openai/gpt-oss-20b'
 ];
+// llama-3.1-8b-instant (deprecated, shuts down 08/16/26 per Groq's deprecation page),
+// llama3-8b-8192 (dead since 08/30/25), and gemma2-9b-it (dead since 10/08/25) removed —
+// all three were dead fallback rungs, not real options; gpt-oss-20b is Groq's own
+// recommended replacement for llama-3.1-8b-instant, so no coverage is lost.
 
 async function groqChat(system, message, maxTokens, clientKey, jsonMode) {
   const groqKey = process.env.GROQ_API_KEY || process.env.GROQ_KEY || clientKey;
@@ -87,11 +179,19 @@ async function groqChat(system, message, maxTokens, clientKey, jsonMode) {
           messages: [{ role: 'system', content: system }, { role: 'user', content: message }]
         };
         if (useJsonMode) body.response_format = { type: 'json_object' };
-        const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-          method: 'POST',
-          headers: { 'Authorization': 'Bearer ' + groqKey, 'Content-Type': 'application/json' },
-          body: JSON.stringify(body)
-        });
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 20000); // fail fast on a hung/slow upstream response rather than blocking indefinitely
+        let r;
+        try {
+          r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + groqKey, 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+            signal: controller.signal
+          });
+        } finally {
+          clearTimeout(timeoutId);
+        }
         if (!r.ok) {
           const err = await r.text();
           if (r.status === 429 || r.status === 503 || r.status === 500 || r.status === 502) {
@@ -104,15 +204,27 @@ async function groqChat(system, message, maxTokens, clientKey, jsonMode) {
           throw new Error('Groq API error ' + r.status + ': ' + err);
         }
         const data = await r.json();
-        return data?.choices?.[0]?.message?.content || '';
+        const content = data?.choices?.[0]?.message?.content || '';
+        if (!content.trim()) {
+          // 200 OK but empty content (e.g. filtered/refused/stopped immediately) —
+          // treat as a failure and try the next model rather than silently
+          // returning "" to the caller.
+          console.warn('[groqChat] empty completion from', model, '- finish_reason:', data?.choices?.[0]?.finish_reason);
+          continue;
+        }
+        return content;
       } catch (e) {
+        if (e.name === 'AbortError' || e.message.includes('aborted')) {
+          console.warn('[groqChat] timed out after 20s on', model, '- trying next model');
+          continue;
+        }
         if (e.message.includes('429') || e.message.includes('rate_limit')) continue;
         if (useJsonMode) continue; // try the same model again without json mode before moving on
         throw e;
       }
     }
   }
-  throw new Error('All Groq models rate limited. Try again later.');
+  throw new Error('All Groq models returned empty or rate-limited responses. Try again later.');
 }
 
 // JSON-returning variant for structured routes
@@ -149,13 +261,14 @@ async function tsmAIJSON(prompt, fallback) {
 // ── SYSTEM PROMPTS ────────────────────────────────────────────────────────────
 var SP = {
   music: 'You are a professional music writing AI with three agent modes: ZAY (cadence/flow/bounce), RIYA (emotion/imagery/vulnerability), DJ (hook/structure/commercial). Write lyrics and hooks creatively and directly. No preamble.',
-  healthcare: 'You are a healthcare operations AI for TSM Command. Expert in claims adjudication, prior auth, denial management, HIPAA/CMS compliance, billing, staffing, throughput, revenue cycle. Be precise and data-driven.',
+  healthcare: 'You are a healthcare operations AI for TSM Command. Expert in claims adjudication, prior auth, denial management, HIPAA/CMS compliance, billing, staffing, throughput, revenue cycle. Be precise and data-driven. OUTPUT RULES (always follow): plain "LABEL: value" or short "- bullet" lines only — never markdown tables, never pipe characters, never bold-wrapped prose paragraphs. Max ~20 words per line — conclusion only. Every requested field must still be present, just terse.',
   financial: 'You are a financial intelligence AI for TSM Command. Expert in revenue cycle, P&L, cash flow, compliance, audit, tax strategy, investment analysis. Be analytical and strategic.',
   mortgage: 'You are a mortgage and real estate AI for TSM Command. Expert in mortgage origination, underwriting, REO, BPO realty, title, closing. Be precise and regulatory-aware.',
+  hotelops: 'You are a HotelOps operations AI for TSM Command. Expert in property maintenance, OTA (Expedia/Booking.com) commission audit, hospitality compliance (fire safety, health permits, elevator certs), and revenue KPIs (RevPAR, ADR, occupancy, GOP margin). Given structured maintenance ticket, OTA overcharge, and compliance data, identify the highest-severity SLA-breached tickets, the largest OTA overcharge exposure, and the most urgent compliance deadline. Recommend the single most important next action for each. Reference ticket/OTA/compliance IDs. Be precise and operational. No preamble.',
   construction: 'You are a construction operations AI for TSM Command. Expert in project management, bid analysis, cost control, contractor/vendor management, scheduling. Be direct and operational.',
-  legal: 'You are a legal intelligence AI for TSM Command. Expert in contract analysis, regulatory compliance, case strategy, risk assessment. Note: AI analysis only, not legal advice.',
-  insurance: 'You are an insurance intelligence AI for TSM Command. Expert in P&C, life, health insurance, claims, underwriting, AZ market, NPN licensing. Be precise.',
-  education: 'You are an education operations AI for TSM Command. Expert in school administration, compliance, staffing, student outcomes, budget, grants. Be strategic.',
+  legal: 'You are a legal intelligence AI for TSM Command. Expert in contract analysis, regulatory compliance, case strategy, risk assessment. Note: AI analysis only, not legal advice. OUTPUT RULES (always follow, even if the user prompt suggests otherwise): plain "LABEL: value" or short "- bullet" lines only — never markdown tables, never pipe characters, never bold-wrapped prose paragraphs. Each bullet or value is one line, max ~20 words — state the conclusion, not the reasoning chain. Do not restate the question, add preamble, or write multi-sentence rationale unless a field explicitly asks for a rationale, and even then cap it at one short clause. Every requested field must still be present — compress the writing, not the coverage.',
+  insurance: 'You are an insurance intelligence AI for TSM Command. Expert in P&C, life, health insurance, claims, underwriting, AZ market, NPN licensing. Be precise. OUTPUT RULES (always follow): plain "LABEL: value" or short "- bullet" lines only — never markdown tables, never pipe characters, never bold-wrapped prose paragraphs. Max ~20 words per line — conclusion only. Every requested field must still be present, just terse.',
+  education: 'You are an education operations AI for TSM Command. Expert in school administration, compliance, staffing, student outcomes, budget, grants. Be strategic. OUTPUT RULES (always follow): plain "LABEL: value" or short "- bullet" lines only — never markdown tables, never pipe characters, never bold-wrapped prose paragraphs. Max ~20 words per line — conclusion only. Every requested field must still be present, just terse.',
   hospitality: 'You are a hospitality operations AI for TSM Command. Expert in hotel ops, concierge, staffing, revenue management, guest experience. Be service-oriented.',
   enterprise: 'You are a senior business strategist AI for TSM Command. Expert in enterprise strategy, GTM, operations optimization, ROI analysis. Be executive-level and direct.',
   o2c: 'You are an Order-to-Cash operations AI for TSM Command. Expert in quote-to-order, credit management, ATP/inventory allocation, shipping, invoicing, AR, and cash application. Given structured order, KPI, and SLA-breach data, identify root causes of bottlenecks, flag financial/operational risk, and recommend the specific next action for each at-risk order. Be precise and operational. No preamble.',
@@ -166,7 +279,7 @@ var SP = {
   cpq: 'You are a CPQ (Configure-Price-Quote) operations AI for TSM Command. Expert in product configuration, compatibility rules, discount policy, margin management, quote lifecycle, and approval workflows. Given structured quote pipeline, KPI, and SLA-breach data, identify configuration conflicts, margin risks, stalled quotes, and the specific next action per at-risk quote. Reference quote IDs. Be precise and operational. No preamble.',
   catalog: 'You are a Product Catalog Management AI for TSM Command. Expert in product hierarchy, lifecycle management, SKU/variant management, bill of materials, compliance tracking, inventory linkage, and pricing synchronization. Given structured product catalog data, KPIs, and attention flags (low-stock, compliance, end-of-life), identify catalog data-quality risks, lifecycle bottlenecks, and the specific next action per flagged product. Reference SKUs/product IDs. Be precise and operational. No preamble.',
   governance: 'You are a Governance & Compliance AI for TSM Command. Expert in internal controls, risk management, regulatory compliance frameworks, and audit oversight. Given structured control status, open risks, and flagged audit events, identify the highest-priority failing or at-risk controls, the risks most likely to escalate, and any suspicious or flagged audit events requiring follow-up. Reference control IDs and risk IDs. Be precise and operational. No preamble.',
-  strategist: 'You are the TSM Sovereign Strategist — the ultimate business consultant AI. Deep expertise across healthcare, financial, legal, real estate, construction, insurance, education, hospitality, enterprise strategy, M&A, GTM. Be bold and transformative.',
+  strategist: 'You are the TSM Sovereign Strategist — the ultimate business consultant AI. Deep expertise across healthcare, financial, legal, real estate, construction, insurance, education, hospitality, enterprise strategy, M&A, GTM. Be bold and transformative. OUTPUT RULES (always follow): plain "LABEL: value" or short "- bullet" lines only — never markdown tables, never pipe characters, never bold-wrapped prose paragraphs. Max ~20 words per line — conclusion only, not the reasoning chain. Every requested field must still be present, just terse.',
   mdm: 'You are a Master Data Management AI for TSM Command. Expert in data stewardship, golden-record strategy, duplicate resolution, validation rule design, and data quality governance. Given structured master-record data, duplicate-match clusters, and quality scores across customer/vendor/GL domains, identify the highest-risk data anomalies, recommend which record in each duplicate cluster should survive a merge and why, and flag stewardship or validation-rule gaps. Reference record IDs. Be precise and operational. No preamble.',
   integration: 'You are an Enterprise Integration AI for TSM Command. Expert in API monitoring, event-driven architecture, ETL pipelines, message queue health, and data lineage across CRM/ERP/HR/Finance/Supply Chain/Manufacturing/BI/AI systems. Given system health, integration flow throughput/latency, message queue depth, ETL job status, and recent error events, identify the highest-risk integration failures or bottlenecks, trace root cause across the affected flow, and recommend specific remediation. Reference system and flow IDs. Be precise and operational. No preamble.',
   digitalTwin: 'You are the Enterprise Digital Twin AI for TSM Command. Expert in cross-domain business simulation across Sales, Finance, Operations, Manufacturing, Procurement, HR, Customer Service, Supply Chain, Logistics, and IT Ops. Given structured domain health scores, live signal feed, and 30-day forecast data, synthesize an executive brief: identify the domains driving the biggest swings in enterprise health, the highest-priority cross-domain risk, and the single most important executive action this week. Reference domain names and specific figures. Be precise and operational. No preamble.',
@@ -180,7 +293,32 @@ var SP = {
     'Dell hardware, factor in ProSupport vs Basic warranty guidance and what info ' +
     '(service tag / express service code) to have ready before contacting Dell. ' +
     'Be concise, no filler, no preamble, plain operational language a technician can ' +
-    'read in a few seconds mid-ticket.',
+    'read in a few seconds mid-ticket.\n\n' +
+    'You are ALSO the Cert Prep tutor for this app\'s Cert Prep tab, covering the standard ' +
+    'entry ladder: CompTIA A+ (220-1201/220-1202 — Core 1: hardware, networking fundamentals, ' +
+    'mobile devices, virtualization & cloud concepts; Core 2: OS, security basics, software ' +
+    'troubleshooting, operational procedures), CompTIA Network+ (N10-009 — networking technologies, ' +
+    'installation & configuration, media & topologies, network management, network security), ' +
+    'CompTIA Security+ (SY0-701 — General Security Concepts ~12%, Threats/Vulnerabilities/Mitigations ' +
+    '~22%, Security Architecture ~18%, Security Operations ~28% [largest domain], Security Program ' +
+    'Management & Oversight ~20%; 90 questions/90 min, 750/900 to pass), and Microsoft Azure ' +
+    'Fundamentals (AZ-900 — Cloud Concepts ~25-30%, Azure Architecture & Services ~35-40% [largest ' +
+    'domain], Azure Management & Governance ~30-35%; no expiration, free annual renewal via Microsoft ' +
+    'Learn, no retest). These map onto this app\'s own tabs: A+ -> Ticket/Troubleshooting/Imaging, ' +
+    'Network+ -> AD-Intune join/sync fields and SCCM content-distribution, Security+ -> AD-Intune\'s ' +
+    'BitLocker/compliance-drift fields and the Escalation tab\'s severity-and-evidence model, ' +
+    'AZ-900 -> Cloud Ops\' provider/service/environment picker and IAM-policy paste box. ' +
+    'When a question is clearly about exam material — a term, an acronym, "what\'s the difference ' +
+    'between X and Y", "quiz me on...", a practice question, "which domain is this" — and not a live ' +
+    'ticket, switch modes: drop the root-cause/next-steps/escalate structure and answer like a study ' +
+    'tutor instead. Give a direct, exam-accurate explanation, then in one line tie it back to the app ' +
+    'tab/workflow that exercises that concept, the same way the Cert Prep tab already does. If asked ' +
+    'to generate practice questions, write NEW original multiple-choice questions on the spot (one ' +
+    'correct answer, brief explanation) — never claim to reproduce real exam questions, and stay ' +
+    'strictly within these four certs\' actual objectives above; do not invent domains, exam codes, ' +
+    'or weightings that aren\'t listed here. If asked about a cert or exam version outside these four, ' +
+    'say this tutor is scoped to the A+/Network+/Security+/AZ-900 track and point them to the vendor\'s ' +
+    'own current objectives page instead of guessing.',
   l1support: 'You are a Senior Network and Systems Engineer acting as the decision-making core of TSM L1 Ticket Copilot, a desktop/network support triage tool. You have 15+ years of enterprise IT experience across Windows/macOS endpoint management, Active Directory/Entra ID, DNS/DHCP, VLAN and routing, firewall/ACL policy, VPN and SD-WAN, virtualization, Microsoft 365/Azure, and OEM hardware (Dell, HP, Lenovo, Cisco, Meraki, Fortinet). Triage every ticket in OSI-layer order — physical/hardware first, then link/network (VLAN, switchport, DHCP, DNS), then transport/session (VPN, firewall, auth/SSO/MFA), then application — and do not skip layers. Distinguish clearly between an L1-actionable fix, a fix that needs elevated/L2 access, and a fix that needs vendor hardware service, and say which one applies and why. When recommending escalation, name the correct team (Desktop, Network, Server, Azure, O365, Security, Application, or Vendor) based on where in the stack the root cause actually sits, not just ticket category. Be precise, operational, and quantify confidence and risk where you can. No filler, no preamble, no restating the question back.',
   vmware: 'You are a VMware Virtualization & Cloud Operations SME acting as the decision-making core of the TSM VMware Infrastructure Copilot. You have deep, current operational expertise across vCenter, vRealize Automation (vRA)/Aria Automation, vRealize Orchestrator (vRO), VMware Cloud Director (VCD), NSX, vSAN, and the surrounding IaC tooling (PowerCLI, Terraform vSphere/VCD providers, vRO scriptable tasks, REST APIs). Given pasted logs, config, Blueprint/vORG YAML, NSX errors, or a plain-English description of a failure, you: (1) identify what the artifact/error actually is, (2) state the most probable root cause ranked by likelihood, (3) give the safest remediation path with exact commands (PowerCLI cmdlets, REST calls, or CLI) where applicable, (4) flag operational risk (production impact, snapshot/rollback needs, downtime), and (5) state whether this is L1/L2-actionable or needs escalation to the VMware admin/platform team and why. When asked to generate a script (PowerCLI, Terraform, vRO scriptable task, REST call), produce complete, runnable code with brief inline comments — assume the operator understands VMware but wants to move fast, not a tutorial. No filler, no preamble, no restating the question back.',
   cloudops: 'You are a Multi-Cloud Operations SME (Azure, AWS, and Azure VMware Solution / VMware Cloud on AWS / Google Cloud VMware Engine) acting as the decision-making core of the TSM Cloud Operations Copilot. You have deep operational expertise across Azure (VMs, VNets, NSGs, Azure AD/Entra, ARM/Bicep, Azure NetApp Files), AWS (EC2, VPC, IAM, S3, FSx ONTAP), and hybrid VMware-on-cloud fabric (AVS, VMC on AWS, GCVE). Given pasted logs, error output, resource config, or a plain-English description, you: (1) identify the artifact/error, (2) rank probable root causes, (3) give the safest remediation with exact CLI/portal steps, (4) flag blast radius and rollback considerations, (5) state whether this is self-service-actionable or needs escalation and to which team (Cloud Platform, Networking, Security/IAM, or the vendor). When asked to generate infrastructure-as-code (Terraform, ARM, Bicep, Azure CLI, AWS CLI), produce complete, runnable code with brief inline comments. No filler, no preamble, no restating the question back.',
@@ -259,14 +397,38 @@ app.get('/api/music/platform', (_req, res) => res.json({ ok: true, platform: glo
 app.get('/executive-portal', (req, res) => res.redirect('/html/executive-portal/index.html'));
 app.get('/healthcare/executive-portal', (req, res) => res.redirect('/html/executive-portal/index.html'));
 
+// ── LOGIN PAGE ────────────────────────────────────────────────────────────────
+// login.html already existed and already posts to /api/auth/login, but
+// nothing served it at a route — it was only reachable by guessing the exact
+// static path. Fixing that here since the client-facing gate below sends
+// people to /login.
+app.get('/login', (req, res) => {
+  res.sendFile(path.join(__dirname, 'html', 'login.html'));
+});
+
+// ── CLIENT-FACING SURFACE GATE ─────────────────────────────────────────────
+// tsm-doc-search-multi.html is the page clients actually use (per T-dawg).
+// This is intentionally narrow — it does NOT gate the rest of the site,
+// which stays in-house/ungated by design. Only the page where a client's
+// own data lives needs a login wall so one client can't just open it and
+// browse another client's workspace.
+app.get(['/tsm-doc-search-multi.html', '/html/tsm-doc-search-multi.html'], (req, res, next) => {
+  const session = verifySession(getCookie(req, 'tsm_session'));
+  if (!session) {
+    return res.redirect(`/login?next=${encodeURIComponent(req.originalUrl)}`);
+  }
+  next();
+});
+
 // ── STATIC MOUNTS ─────────────────────────────────────────────────────────────
 const dirPath = path.join(__dirname, 'html');// ── STATIC MOUNTS v2 ──
 
 app.use('/html', express.static(path.join(__dirname, 'html'), { setHeaders: (res) => res.setHeader('Cache-Control', 'no-store') }));
 app.use('/js', express.static(path.join(__dirname, 'html/tsm-insurance/public/js')));
 app.use('/js', express.static(path.join(__dirname, 'html/js')));
+app.use('/js', express.static(path.join(__dirname, 'js')));
 app.use('/bpo', express.static(path.join(__dirname, 'html/bpo')));
-app.use('/shared', express.static(path.join(__dirname, 'html/bpo/shared')));
+app.use('/shared', express.static(path.join(__dirname, 'html/shared')));
 app.use('/insurance', express.static(path.join(__dirname, 'html/tsm-insurance')));
 app.use('/construction', express.static(path.join(__dirname, 'html/construction-suite')));
 // NOTE: /runtime and /architecture mounts now live earlier in this file
@@ -289,8 +451,8 @@ app.get('/html/hc-strategist/index.html', (req, res) => res.redirect('/healthcar
 // ── SUITE ROUTES ──────────────────────────────────────────────────────────────
 suites.forEach(s => {
   if (!s.route || !s.index) return;
-  app.get(s.route, (req, res) => res.sendFile(path.join(dirPath, s.index)));
-  app.get(s.route + '/', (req, res) => res.sendFile(path.join(dirPath, s.index)));
+  app.get(s.route, (req, res) => res.sendFile(path.join(__dirname, s.dir, s.index)));
+  app.get(s.route + '/', (req, res) => res.sendFile(path.join(__dirname, s.dir, s.index)));
 });
 
 // ── HC API ROUTES ─────────────────────────────────────────────────────────────
@@ -300,7 +462,7 @@ app.post('/api/hc/query', async (req, res) => {
     var sys = body.system || SP.healthcare;
     var msg = body.message || body.question || body.query;
     if (!msg) return res.status(400).json({ ok: false, error: 'Query required' });
-    var a = await groqChat(sys, msg, body.maxTokens || 2200);
+    var a = await groqChat(sys, msg, body.maxTokens || 1800);
     console.log('[HC QUERY DEBUG] a =', JSON.stringify(a));
     return res.json({ ok: true, output: a, answer: a, reply: a, content: a, createdAt: new Date().toISOString() });
   } catch (e) { console.log('[HC ERROR]', e.message); return res.status(500).json({ ok: false, error: e.message }); }
@@ -401,6 +563,79 @@ app.post('/api/hc/stream', async (req, res) => {
   } catch (e) {
     res.status(e.status || 500).json({ error: e.message });
   }
+});
+
+// Server-side proxy for Groq Vision OCR (scanned PDF pages + uploaded images).
+// Replaces the old direct browser->api.groq.com calls that shipped a client-side key.
+const GROQ_VISION_MODELS = [
+  'meta-llama/llama-4-scout-17b-16e-instruct',
+  'meta-llama/llama-4-maverick-17b-128e-instruct'
+];
+
+app.post('/api/hc/ocr', async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  const { imageBase64, mimeType, prompt } = req.body || {};
+  if (!imageBase64) return res.status(400).json({ error: 'Missing imageBase64' });
+
+  const clientId = req.ip;
+  const today = new Date().toDateString();
+  const key = clientId + '_' + today;
+  clientUsage[key] = (clientUsage[key] || 0) + 1;
+  if (clientUsage[key] > 20) {
+    return res.status(429).json({ error: 'Daily analysis limit reached. Contact TSM to upgrade.' });
+  }
+
+  const groqKey = process.env.GROQ_API_KEY || process.env.GROQ_KEY;
+  if (!groqKey) return res.status(500).json({ error: 'GROQ_KEY not configured on server.' });
+
+  const mt = mimeType || 'image/jpeg';
+  const dataUrl = `data:${mt};base64,${imageBase64}`;
+  const ocrPrompt = prompt || 'Extract ALL visible text from this image exactly as it appears. Preserve structure, codes, dates, and dollar amounts. Output plain text only.';
+
+  let lastErr;
+  for (const model of GROQ_VISION_MODELS) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 25000);
+      let groqRes;
+      try {
+        groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + groqKey },
+          body: JSON.stringify({
+            model,
+            max_tokens: 2000,
+            messages: [{
+              role: 'user',
+              content: [
+                { type: 'text', text: ocrPrompt },
+                { type: 'image_url', image_url: { url: dataUrl } }
+              ]
+            }]
+          }),
+          signal: controller.signal
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
+      if (!groqRes.ok) {
+        const err = await groqRes.text();
+        lastErr = err;
+        if ([429, 500, 502, 503].includes(groqRes.status)) continue;
+        return res.status(502).json({ error: 'Groq OCR error ' + groqRes.status + ': ' + err });
+      }
+      const data = await groqRes.json();
+      const text = data?.choices?.[0]?.message?.content || '';
+      return res.json({ ok: true, text });
+    } catch (e) {
+      lastErr = e.message;
+      if (e.name === 'AbortError') continue;
+      return res.status(500).json({ error: e.message });
+    }
+  }
+  return res.status(502).json({ error: 'All Groq vision models failed. ' + (lastErr || '') });
 });
 
 function debugLog(msg) {
@@ -884,6 +1119,16 @@ app.use(require('./routes/music'));
 // chain — see routes/enterprise-capability-bridge.js header for full design.
 app.use(require('./routes/enterprise-capability-bridge'));
 
+// ── ENTERPRISE ENRICHMENT ENGINE ────────────────────────────────────────────────
+// server/enterprise/api/enterprise-router.js (POST /enrich, /dashboard,
+// /decision, /missions, GET /health) was fully built and unit-tested
+// (scripts/test-enterprise-engine.js etc.) but never mounted here, so
+// POST /api/enterprise/enrich 404'd in production despite
+// html/war-rooms/mortgage/services/mortgage-engine.js and
+// html/war-rooms/schools/services/schools-engine.js both already calling
+// it directly. This is the missing mount.
+app.use('/api/enterprise', require('./server/enterprise/api/enterprise-router'));
+
 
 // ── FINOPS ────────────────────────────────────────────────────────────────────
 app.post('/api/finops/bnca/report', (req, res) => res.json({ ok: true }));
@@ -892,14 +1137,13 @@ app.use(require('./routes/hc'));
 app.use(require('./routes/strategist'));
 app.use(require('./routes/construction'));
 app.use(require('./routes/finops'));
+app.use(require('./routes/live-data'));
 
 // ── RCM RELAY ─────────────────────────────────────────────────────────────────
 // Server-side staging for the FinOps Doc Showcase -> TSM RCM OS handoff.
 // See routes/rcm-relay.js header for the full endpoint contract.
 app.use('/api/rcm', require('./routes/rcm-relay'));
 app.use('/api/rcm', require('./routes/rcm-requirements'));
-app.use(require('./routes/ledger'));
-app.use(require('./routes/property-accounting'));
 
 // ── FINANCIAL INTELLIGENCE (finance-index.html) ─────────────────────────────
 // Groq-backed chat (per-tab assistant) + audit engine with real persisted
@@ -967,7 +1211,7 @@ app.post('/api/financial/query', async (req, res) => {
 });
 
 app.post('/api/legal/query', async (req, res) => {
-  try { var a = await groqChat(SP.legal, req.body.question || req.body.query || '', req.body.maxTokens || 2200); return res.json({ ok: true, answer: a, createdAt: new Date().toISOString() }); }
+  try { var a = await groqChat(SP.legal, req.body.question || req.body.query || '', req.body.maxTokens || 550); return res.json({ ok: true, answer: a, createdAt: new Date().toISOString() }); }
   catch (e) { return res.status(500).json({ ok: false, error: e.message }); }
 });
 
@@ -1044,27 +1288,263 @@ app.post('/api/noc/query', async (req, res) => {
 
 
 app.post('/api/mortgage/query', async (req, res) => {
-  const { kpis, loan_breaches, conditions, exceptions, context, maxTokens } = req.body || {};
-  const summary = JSON.stringify({
-    kpis,
-    loan_breaches,
-    conditions,
-    exceptions,
-    counts: {
-      conditions: Array.isArray(conditions) ? conditions.length : undefined,
-      exceptions: Array.isArray(exceptions) ? exceptions.length : undefined
-    }
-  }, null, 2);
-  const prompt = `Current Mortgage pipeline snapshot:\n${summary}\n\n` +
-    (context ? `Additional context: ${context}\n\n` : '') +
-    `Identify the highest-risk loan files, the root cause of any SLA breaches or stalled UW conditions, open compliance exceptions requiring escalation, and the single most important next action for each at-risk loan file. Reference loan/condition/exception IDs.`;
+  const { kpis, loan_breaches, conditions, exceptions, context, question, query, maxTokens } = req.body || {};
+  const userQuestion = question || query;
+  const system = context || SP.mortgage;
+  let prompt;
+  if (userQuestion) {
+    // Caller (e.g. re-strategist.html) is driving the conversation directly —
+    // use their question as the prompt and their context as the system role.
+    prompt = userQuestion;
+  } else {
+    // Legacy pipeline-snapshot mode (no explicit question supplied).
+    const summary = JSON.stringify({
+      kpis,
+      loan_breaches,
+      conditions,
+      exceptions,
+      counts: {
+        conditions: Array.isArray(conditions) ? conditions.length : undefined,
+        exceptions: Array.isArray(exceptions) ? exceptions.length : undefined
+      }
+    }, null, 2);
+    prompt = `Current Mortgage pipeline snapshot:\n${summary}\n\n` +
+      `Identify the highest-risk loan files, the root cause of any SLA breaches or stalled UW conditions, open compliance exceptions requiring escalation, and the single most important next action for each at-risk loan file. Reference loan/condition/exception IDs.`;
+  }
   try {
-    const answer = await groqChat(SP.mortgage, prompt, maxTokens || 1200);
+    const answer = await groqChat(system, prompt, maxTokens || 1200);
     return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
   } catch (e) {
     console.error('MORTGAGE GROQ ERROR:', e.message);
     return res.status(500).json({ ok: false, error: e.message });
   }
+});
+
+// ── HOTELOPS: structured maintenance/OTA/compliance analysis ─────────────────
+// Mirrors /api/mortgage/query's shape.
+app.post('/api/hotelops/query', async (req, res) => {
+  const { kpis, maintenance_breaches, ota_exposure, compliance_risk, context, maxTokens } = req.body || {};
+  const summary = JSON.stringify({
+    kpis,
+    maintenance_breaches,
+    ota_exposure,
+    compliance_risk,
+    counts: {
+      maintenance_breaches: Array.isArray(maintenance_breaches) ? maintenance_breaches.length : undefined,
+      compliance_risk: Array.isArray(compliance_risk) ? compliance_risk.length : undefined
+    }
+  }, null, 2);
+  const prompt = `Current HotelOps property snapshot:\n${summary}\n\n` +
+    (context ? `Additional context: ${context}\n\n` : '') +
+    `Identify the highest-severity SLA-breached maintenance tickets, the largest OTA overcharge exposure, and the most urgent compliance deadline. Recommend the single most important next action for each. Reference ticket/OTA/compliance IDs.`;
+  try {
+    const answer = await groqChat(SP.hotelops, prompt, maxTokens || 1200);
+    return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
+  } catch (e) {
+    console.error('HOTELOPS GROQ ERROR:', e.message);
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+// ── HOTELOPS: online booking ingestion ────────────────────────────────────────
+// Live guests-book-online path. TSM.relay is a browser-only (localStorage/
+// sessionStorage) bus, so a server-side webhook cannot push into it directly.
+// This is the bridge: booking source -> server queue (file-persisted, mirrors
+// the WIP persistence pattern below) -> war-room client polls -> client commits
+// into the engine and does the actual TSM.relay.write() locally.
+// Self-contained data dir (not WIP_DATA_DIR -- that's declared further down
+// this file, in the WIP persistence section, and this route registers earlier
+// at module load time, so referencing it here would throw a TDZ ReferenceError
+// on server start).
+const HOTELOPS_DATA_DIR = fs.existsSync('/app/data') ? '/app/data' : path.join(__dirname, 'data');
+if (!fs.existsSync(HOTELOPS_DATA_DIR)) fs.mkdirSync(HOTELOPS_DATA_DIR, { recursive: true });
+const HOTELOPS_BOOKINGS_FILE = path.join(HOTELOPS_DATA_DIR, 'hotelops-bookings.json');
+
+function loadHotelopsBookingQueue() {
+  try {
+    if (fs.existsSync(HOTELOPS_BOOKINGS_FILE)) {
+      const raw = fs.readFileSync(HOTELOPS_BOOKINGS_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      return { seq: parsed.seq || 0, bookings: Array.isArray(parsed.bookings) ? parsed.bookings : [] };
+    }
+  } catch (err) {
+    console.error('[hotelops-bookings] load failed, starting empty:', err.message);
+  }
+  return { seq: 0, bookings: [] };
+}
+
+const HOTELOPS_BOOKING_QUEUE = loadHotelopsBookingQueue();
+const HOTELOPS_BOOKING_QUEUE_MAX = 500; // trim oldest once polled bookings pile up
+
+let hotelopsBookingSaveTimer = null;
+function saveHotelopsBookingQueue() {
+  if (hotelopsBookingSaveTimer) clearTimeout(hotelopsBookingSaveTimer);
+  hotelopsBookingSaveTimer = setTimeout(() => {
+    try {
+      fs.writeFileSync(HOTELOPS_BOOKINGS_FILE, JSON.stringify(HOTELOPS_BOOKING_QUEUE, null, 2));
+    } catch (err) {
+      console.error('[hotelops-bookings] save failed:', err.message);
+    }
+  }, 250);
+}
+
+// Best-effort field extraction so this works whether the caller is our own
+// future booking form, a channel manager (Cloudbeds/SiteMinder), or an OTA
+// webhook -- each names fields slightly differently.
+function pickField(obj, candidates) {
+  for (const c of candidates) {
+    if (obj[c] !== undefined && obj[c] !== null && obj[c] !== '') return obj[c];
+  }
+  return undefined;
+}
+
+function normalizeIncomingBooking(body) {
+  const guestName = pickField(body, ['guest', 'guest_name', 'guestName', 'name']) || 'Unknown guest';
+  const roomType = pickField(body, ['room_type', 'roomType', 'room', 'unit_type']) || 'Unspecified';
+  const amountRaw = pickField(body, ['amount', 'total_amount', 'totalAmount', 'total', 'price']);
+  const amount = amountRaw != null ? Number(amountRaw) : null;
+  const paymentStatusRaw = (pickField(body, ['payment_status', 'paymentStatus', 'payment']) || '').toString().toLowerCase();
+  const arrivalRaw = pickField(body, ['check_in', 'checkIn', 'arrival_date', 'arrivalDate', 'arrival']);
+
+  let hoursToArrival = null;
+  if (arrivalRaw) {
+    const arrivalMs = Date.parse(arrivalRaw);
+    if (!isNaN(arrivalMs)) hoursToArrival = Math.max(0, Math.round((arrivalMs - Date.now()) / 36e5));
+  }
+
+  return {
+    res_id: pickField(body, ['res_id', 'reservation_id', 'confirmation_number', 'confirmationNumber']) ||
+      `RES-WEB-${Date.now().toString(36).toUpperCase()}`,
+    guest: String(guestName),
+    room_type: String(roomType),
+    status: 'unconfirmed', // front desk / payment confirmation still required before this flips
+    payment_status: paymentStatusRaw === 'paid' || paymentStatusRaw === 'succeeded' ? 'paid' : 'pending',
+    hours_to_arrival: hoursToArrival,
+    amount: amount != null && !isNaN(amount) ? amount : null,
+    source: pickField(body, ['source', 'channel', 'platform']) || 'online_booking',
+    received_at: new Date().toISOString()
+  };
+}
+
+// Booking source calls this the moment a reservation is made (direct site
+// on successful payment, or the channel manager's webhook config once one
+// exists). Requires an X-Webhook-Secret header matching HOTELOPS_WEBHOOK_SECRET
+// (see hotelopsWebhookAuthorized() above) -- no real booking source connected yet.
+
+// Stopgap for the still-missing auth on the booking webhook (see comment
+// below) -- not a substitute for it, just a backstop against runaway/junk
+// traffic in the meantime. Hand-rolled, no new dependency -- consistent
+// with this file's existing style (e.g. the WIP save debounce).
+const HOTELOPS_WEBHOOK_RATE_LIMIT = { windowMs: 10 * 60 * 1000, maxRequests: 20 };
+const hotelopsWebhookHits = new Map(); // ip -> [timestamps]
+function hotelopsWebhookRateLimited(ip) {
+  const now = Date.now();
+  const windowStart = now - HOTELOPS_WEBHOOK_RATE_LIMIT.windowMs;
+  let hits = hotelopsWebhookHits.get(ip);
+  if (!hits) {
+    hits = [];
+    hotelopsWebhookHits.set(ip, hits);
+  }
+  // Drop hits outside the sliding window before counting/pushing.
+  while (hits.length && hits[0] < windowStart) hits.shift();
+  if (hits.length >= HOTELOPS_WEBHOOK_RATE_LIMIT.maxRequests) return true;
+  hits.push(now);
+  // Opportunistic cleanup sweep (~1% of calls) so the Map doesn't grow
+  // unbounded over a long server lifetime. IP-based only, so this is weak
+  // against shared NAT/proxy IPs or a spoofed header.
+  if (Math.random() < 0.01) {
+    for (const [key, arr] of hotelopsWebhookHits) {
+      const trimmed = arr.filter(t => t >= windowStart);
+      if (trimmed.length === 0) hotelopsWebhookHits.delete(key);
+      else hotelopsWebhookHits.set(key, trimmed);
+    }
+  }
+  return false;
+}
+
+function validateBookingPayload(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return { valid: false, error: 'Payload must be a JSON object' };
+  }
+  const guest = pickField(body, ['guest', 'guest_name', 'guestName', 'name']);
+  if (guest != null && String(guest).length > 200) {
+    return { valid: false, error: 'guest name exceeds 200 characters' };
+  }
+  const roomType = pickField(body, ['room_type', 'roomType', 'room', 'unit_type']);
+  if (roomType != null && String(roomType).length > 200) {
+    return { valid: false, error: 'room_type exceeds 200 characters' };
+  }
+  const amountRaw = pickField(body, ['amount', 'total_amount', 'totalAmount', 'total', 'price']);
+  if (amountRaw != null) {
+    const amount = Number(amountRaw);
+    if (!isFinite(amount) || amount < 0 || amount > 1000000) {
+      return { valid: false, error: 'amount must be a finite number between 0 and 1,000,000' };
+    }
+  }
+  const arrivalRaw = pickField(body, ['check_in', 'checkIn', 'arrival_date', 'arrivalDate', 'arrival']);
+  if (arrivalRaw != null && isNaN(Date.parse(arrivalRaw))) {
+    return { valid: false, error: 'check_in date could not be parsed' };
+  }
+  return { valid: true };
+}
+
+const HOTELOPS_WEBHOOK_SECRET = process.env.HOTELOPS_WEBHOOK_SECRET || '';
+
+function hotelopsWebhookAuthorized(req) {
+  // Fail closed: if no secret is configured, reject everything rather than
+  // silently allowing unauthenticated writes.
+  if (!HOTELOPS_WEBHOOK_SECRET) return false;
+
+  const provided = req.get('X-Webhook-Secret') || '';
+  const providedBuf = Buffer.from(provided);
+  const secretBuf = Buffer.from(HOTELOPS_WEBHOOK_SECRET);
+
+  if (providedBuf.length !== secretBuf.length) {
+    // timingSafeEqual throws on length mismatch. Do a same-length dummy
+    // compare so the length check itself doesn't leak timing info.
+    crypto.timingSafeEqual(secretBuf, secretBuf);
+    return false;
+  }
+  return crypto.timingSafeEqual(providedBuf, secretBuf);
+}
+
+app.post('/api/hotelops/booking-webhook', (req, res) => {
+  if (!hotelopsWebhookAuthorized(req)) {
+    return res.status(401).json({ ok: false, error: 'Unauthorized' });
+  }
+
+  const body = req.body || {};
+  if (!body || (Object.keys(body).length === 0)) {
+    return res.status(400).json({ ok: false, error: 'Empty booking payload' });
+  }
+  try {
+    const clientIp = req.ip || (req.connection && req.connection.remoteAddress) || 'unknown';
+    if (hotelopsWebhookRateLimited(clientIp)) {
+      return res.status(429).json({ ok: false, error: 'Rate limit exceeded, try again later' });
+    }
+    const validation = validateBookingPayload(body);
+    if (!validation.valid) {
+      return res.status(400).json({ ok: false, error: validation.error });
+    }
+    const record = normalizeIncomingBooking(body);
+    HOTELOPS_BOOKING_QUEUE.seq += 1;
+    record.seq = HOTELOPS_BOOKING_QUEUE.seq;
+    HOTELOPS_BOOKING_QUEUE.bookings.push(record);
+    if (HOTELOPS_BOOKING_QUEUE.bookings.length > HOTELOPS_BOOKING_QUEUE_MAX) {
+      HOTELOPS_BOOKING_QUEUE.bookings = HOTELOPS_BOOKING_QUEUE.bookings.slice(-HOTELOPS_BOOKING_QUEUE_MAX);
+    }
+    saveHotelopsBookingQueue();
+    return res.json({ ok: true, res_id: record.res_id, seq: record.seq });
+  } catch (e) {
+    console.error('[hotelops-booking-webhook] error:', e.message);
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// War-room client polls this; ?since=<lastSeenSeq> returns only newer bookings.
+app.get('/api/hotelops/bookings/pending', (req, res) => {
+  const since = Number(req.query.since) || 0;
+  const pending = HOTELOPS_BOOKING_QUEUE.bookings.filter(b => b.seq > since);
+  res.json({ ok: true, bookings: pending, latest_seq: HOTELOPS_BOOKING_QUEUE.seq });
 });
 
 // ── SCHOOLS: structured grant/monitoring/exception analysis ──────────────────
@@ -1181,7 +1661,7 @@ app.post('/api/insurance/query', async (req, res) => {
   const { system, message, maxTokens, question, query } = req.body || {};
   const msg = message || question || query || '';
   if (!msg) return res.status(400).json({ ok: false, error: 'message required' });
-  try { const answer = await groqChat(system || SP.insurance, msg, maxTokens || 1400); res.json({ ok: true, answer }); }
+  try { const answer = await groqChat(system || SP.insurance, msg, maxTokens || 600); res.json({ ok: true, answer }); }
   catch (e) { console.error('GROQ ERROR:', e.message); res.status(500).json({ ok: false, error: e.message, detail: e.stack }); }
 });
 
@@ -1421,21 +1901,46 @@ app.post('/api/l1-copilot/cloud-ops', async (req, res) => {
 });
 
 app.post('/api/schools/query', async (req, res) => {
-  try { var a = await groqChat(SP.education, req.body.question || req.body.query || '', req.body.maxTokens || 2200); return res.json({ ok: true, answer: a, createdAt: new Date().toISOString() }); }
+  try { var a = await groqChat(SP.education, req.body.question || req.body.query || '', req.body.maxTokens || 550); return res.json({ ok: true, answer: a, createdAt: new Date().toISOString() }); }
   catch (e) { return res.status(500).json({ ok: false, error: e.message }); }
 });
 
 app.post('/api/strategist/query', async (req, res) => {
-  try { var a = await groqChat(SP.strategist, req.body.question || req.body.query || '', req.body.maxTokens || 2048); return res.json({ ok: true, answer: a, createdAt: new Date().toISOString() }); }
+  try { var a = await groqChat(SP.strategist, req.body.question || req.body.query || '', req.body.maxTokens || 700); return res.json({ ok: true, answer: a, createdAt: new Date().toISOString() }); }
   catch (e) { return res.status(500).json({ ok: false, error: e.message }); }
 });
 
 // ── MISC ROUTES ───────────────────────────────────────────────────────────────
 app.get(['/html/healthcare/poc-html', '/html/healthcare/poc-html/'], (req, res) => res.sendFile(path.join(dirPath, 'healthcare', 'poc-html', 'index.html')));
 app.get('/_debug', (_req, res) => res.json({ dirname: __dirname, dirPath, suitesConfigured: suites.length, cacheBust: 'v2-20260607' }));
-app.get('/', (_req, res) => {
+
+
+// ── BUSINESS DEVELOPMENT WAR ROOM ─────────────────────────────
+// TSM Outreach Command Center
+
+app.get('/war-room/outreach', (req, res) => {
+    res.sendFile(
+        path.join(
+            __dirname,
+            'html',
+            'war-rooms',
+            'business-development',
+            'tsm-outreach-command-center.html'
+        )
+    );
+});
+
+// Hostname → default landing page when a subdomain requests "/".
+// Add one line per customer-facing subdomain that should skip the
+// doc-search default and land on the full platform hub instead.
+const HOSTNAME_LANDING = {
+  'insurance.tsmatter.com': 'tsm-platform-hub.html',
+};
+
+app.get('/', (req, res) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
-  res.sendFile(path.join(dirPath, 'tsm-platform-hub.html'), (err) => {
+  const landing = HOSTNAME_LANDING[req.hostname] || 'tsm-doc-search-multi.html';
+  res.sendFile(path.join(dirPath, landing), (err) => {
     if (err) res.sendFile(path.join(dirPath, 'war-rooms', 'bpo', 'bpo-command-center.html'));
   });
 });
@@ -1443,7 +1948,8 @@ app.get('/', (_req, res) => {
 /* ════════════════════════════════════════════════════════════════
    DOC ROUTER — paste this block into server.js
    Placement: anywhere after `const app = express()` and after
-   `app.use(express.json(...))`, before `app.listen(...)`.
+   `app.use(express.json(...))`, before `
+app.listen(...)`.
    Requires: process.env.GROQ_API_KEY already set (same as other nodes).
    Requires: Node 18+ for global fetch (already a project requirement).
 ════════════════════════════════════════════════════════════════ */
@@ -2141,7 +2647,7 @@ ${rawText ? '\nOriginal document text (truncated):\n' + String(rawText).slice(0,
 // ── COLLECTIVE BNCA ───────────────────────────────────────────────────────────
 // ══════════════════════════════════════════════════════════════════════════════
 
-const COLLECTIVE_VERTICALS = ['healthcare', 'finops', 'bpo', 'legal', 'real-estate', 'insurance', 'construction', 'o2c', 'crm', 'cpq', 'approval'];
+const COLLECTIVE_VERTICALS = ['healthcare', 'finops', 'bpo', 'legal', 'real-estate', 'insurance', 'construction', 'hotelops', 'o2c', 'crm', 'cpq', 'approval'];
 
 const COLLECTIVE_SIGNALS = []; // { vertical, signal, severity, riskLevel, confidence, topIssue, ownerLanes, hitlRequired, actions, impactDelta, kpi, warRoom, bnca, timestamp, source }
 const COLLECTIVE_BNCA = [];   // synthesis results
@@ -2150,15 +2656,22 @@ const COLLECTIVE_BNCA = [];   // synthesis results
 // Accepts both the legacy 3-field shape (vertical, signal, severity) and the
 // richer war-room payload (warRoom, bnca, confidence, riskLevel, topIssue,
 // ownerLanes, hitlRequired, actions, impactDelta, kpi).
-app.post('/api/collective/signal', (req, res) => {
+app.post('/api/collective/signal', requireAnyAuth, (req, res) => {
   const {
     vertical, signal, severity, source,
     warRoom, bnca, confidence, riskLevel, topIssue,
     ownerLanes, hitlRequired, actions, impactDelta, kpi
   } = req.body || {};
   if (!vertical) return res.status(400).json({ ok: false, error: 'vertical required' });
+  // Client sessions can only write under their own identity — the body
+  // can't override this. Admin sessions may tag a clientId explicitly
+  // (e.g. seeding demo data) or fall back to 'internal'.
+  const clientId = req.tsmSession.role === 'client'
+    ? req.tsmSession.clientId
+    : (req.body.clientId || 'internal');
   const entry = {
     vertical,
+    clientId,
     signal: signal || topIssue || (typeof bnca === 'string' ? bnca.slice(0, 200) : '') || 'War room signal received',
     severity: severity || riskLevel || 'MEDIUM',
     riskLevel: riskLevel || severity || 'WATCH',
@@ -2179,22 +2692,45 @@ app.post('/api/collective/signal', (req, res) => {
   res.json({ ok: true, entry });
 });
 
-// GET /api/collective/signals — fetch all pushed signals
-app.get('/api/collective/signals', (req, res) => {
-  res.json({ ok: true, signals: COLLECTIVE_SIGNALS });
+// GET /api/collective/signals — client sessions only ever see their own
+// entries; admin sessions see everything (optionally filtered via ?clientId=
+// for drill-down, since the "All Clients" rollup view is admin-only anyway).
+app.get('/api/collective/signals', requireAnyAuth, (req, res) => {
+  let signals = COLLECTIVE_SIGNALS;
+  if (req.tsmSession.role === 'client') {
+    signals = signals.filter(s => s.clientId === req.tsmSession.clientId);
+  } else if (req.query.clientId) {
+    signals = signals.filter(s => s.clientId === req.query.clientId);
+  }
+  res.json({ ok: true, signals });
 });
 
-// DELETE /api/collective/signals — clear all signals
-app.delete('/api/collective/signals', (req, res) => {
+// DELETE /api/collective/signals — admin only. Without ?clientId= this wipes
+// everything (kept for existing demo/reset scripts); pass ?clientId= to
+// clear just one client's entries instead of nuking shared state.
+app.delete('/api/collective/signals', requireAdmin, (req, res) => {
+  if (req.query.clientId) {
+    const before = COLLECTIVE_SIGNALS.length;
+    for (let i = COLLECTIVE_SIGNALS.length - 1; i >= 0; i--) {
+      if (COLLECTIVE_SIGNALS[i].clientId === req.query.clientId) COLLECTIVE_SIGNALS.splice(i, 1);
+    }
+    return res.json({ ok: true, removed: before - COLLECTIVE_SIGNALS.length });
+  }
   COLLECTIVE_SIGNALS.length = 0;
   res.json({ ok: true });
 });
 
 // POST /api/collective/bnca — run cross-vertical synthesis via Groq
-app.post('/api/collective/bnca', async (req, res) => {
+app.post('/api/collective/bnca', requireAnyAuth, async (req, res) => {
   try {
-    if (!COLLECTIVE_SIGNALS.length) return res.status(400).json({ ok: false, error: 'No signals to synthesize' });
-    const prompt = `You are TSM's cross-vertical BNCA synthesizer. Given the following signals from multiple verticals, identify: (1) conflicts between verticals, (2) synergies or compounding risks, (3) a ranked HITL decision queue. Respond ONLY in valid JSON with keys: conflicts (array), synergies (array), hitlQueue (array of {priority, vertical, action, rationale}), summary (string).\n\nSignals:\n${JSON.stringify(COLLECTIVE_SIGNALS.slice(0, 50), null, 2)}`;
+    // Client sessions synthesize only their own signals — the cross-client
+    // "admin rollup" synthesis stays admin-only, same boundary as the
+    // signals list itself.
+    const scopedSignals = req.tsmSession.role === 'client'
+      ? COLLECTIVE_SIGNALS.filter(s => s.clientId === req.tsmSession.clientId)
+      : COLLECTIVE_SIGNALS;
+    if (!scopedSignals.length) return res.status(400).json({ ok: false, error: 'No signals to synthesize' });
+    const prompt = `You are TSM's cross-vertical BNCA synthesizer. Given the following signals from multiple verticals, identify: (1) conflicts between verticals, (2) synergies or compounding risks, (3) a ranked HITL decision queue. Respond ONLY in valid JSON with keys: conflicts (array), synergies (array), hitlQueue (array of {priority, vertical, action, rationale}), summary (string).\n\nSignals:\n${JSON.stringify(scopedSignals.slice(0, 50), null, 2)}`;
     const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
@@ -2211,7 +2747,12 @@ app.post('/api/collective/bnca', async (req, res) => {
     if (!groqRes.ok) return res.status(502).json({ ok: false, error: 'Groq error' });
     const data = await groqRes.json();
     const parsed = JSON.parse(data.choices[0].message.content);
-    const result = { ...parsed, timestamp: Date.now(), signalCount: COLLECTIVE_SIGNALS.length };
+    const result = {
+      ...parsed,
+      timestamp: Date.now(),
+      signalCount: scopedSignals.length,
+      clientId: req.tsmSession.role === 'client' ? req.tsmSession.clientId : 'internal',
+    };
     COLLECTIVE_BNCA.unshift(result);
     if (COLLECTIVE_BNCA.length > 20) COLLECTIVE_BNCA.length = 20;
     res.json({ ok: true, bnca: result });
@@ -2221,9 +2762,14 @@ app.post('/api/collective/bnca', async (req, res) => {
   }
 });
 
-// GET /api/collective/bnca/latest — fetch most recent synthesis
-app.get('/api/collective/bnca/latest', (req, res) => {
-  res.json({ ok: true, bnca: COLLECTIVE_BNCA[0] || null });
+// GET /api/collective/bnca/latest — fetch most recent synthesis. Client
+// sessions get their own most recent scoped synthesis, not whatever any
+// other client (or the admin rollup) generated last.
+app.get('/api/collective/bnca/latest', requireAnyAuth, (req, res) => {
+  const latest = req.tsmSession.role === 'client'
+    ? COLLECTIVE_BNCA.find(b => b.clientId === req.tsmSession.clientId)
+    : COLLECTIVE_BNCA[0];
+  res.json({ ok: true, bnca: latest || null });
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -3246,9 +3792,16 @@ app.get('/api/mdm/trust-package', (req, res) => {
 // drift out of sync with what recommendations actually exist.
 const { buildQueue: mdmBuildQueue, summarize: mdmSummarizeQueue } = require('./html/mdm-suite/mdm-mission-queue.js');
 const MDM_MISSION_CLAIMS = new Map(); // recommendationId -> { actor, claimedAt }
+// Phase 7.1 -- Exception Intelligence. Optional per-domain dollar estimate
+// for a single duplicate/quality-review item at 100% confidence -- e.g.
+// { vendor: 50000 } if finance/ops has sourced "a bad vendor record costs
+// ~$50k to clean up/reconcile." Left empty until those figures are actually
+// supplied: mdm-mission-queue.js reports estimatedImpact: null for every
+// mission rather than a fabricated number when a domain has no weight here.
+const MDM_DOMAIN_IMPACT_WEIGHTS = {};
 
 app.get('/api/mdm/mission-queue', (req, res) => {
-  const queue = mdmBuildQueue(MDM_SEED_DATA, MDM_RESOLVED_RECS, MDM_MISSION_CLAIMS);
+  const queue = mdmBuildQueue(MDM_SEED_DATA, MDM_RESOLVED_RECS, MDM_MISSION_CLAIMS, { domainImpactWeights: MDM_DOMAIN_IMPACT_WEIGHTS });
   res.json({ ok: true, summary: mdmSummarizeQueue(queue), queue });
 });
 
@@ -3459,6 +4012,12 @@ app.use((err, req, res, next) => {
   if (res.headersSent) return next(err);
   res.status(500).json({ ok: false, error: err.message || 'Internal server error' });
 });
+
+// TSM Screenshot Assets
+app.use(
+  "/screenshots",
+  express.static(path.join(__dirname, "public/screenshots"))
+);
 
 // ── START ─────────────────────────────────────────────────────────────────────
 const server = app.listen(PORT, '0.0.0.0', () => {

@@ -8,7 +8,7 @@
 <style>
 :root{
   --bg:#050a0f;--bg2:#0a1020;--bg3:#0d1528;
-  --cyan:#00d4d4;--amber:#f5a623;--green:#22c55e;
+  --cyan:#172020;--amber:#f5a623;--green:#22c55e;
   --red:#ef4444;--purple:#a855f7;--blue:#3b82f6;
   --gold:#c9a84c;--text:#e2e8f0;--muted:#64748b;--border:#1e293b;
 }
@@ -198,7 +198,6 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
 @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.25;}}
 @keyframes blink{0%,100%{opacity:1;}50%{opacity:0;}}
 </style>
-<script src="/shared/tsm-memory-engine.js?v=phase3"></script>
   <script src="/js/core/tsm-event-bus.js"></script>
   <script src="/js/core/tsm-state.js"></script>
   <script src="/js/core/tsm-mission-engine.js"></script>
@@ -520,6 +519,7 @@ const GROQ_MODEL = 'openai/gpt-oss-120b';
 let relayData = null;
 let extractionResult = '';
 let engineFired = false;
+let lastVendorResult = null; // most recent parsed AI JSON (confidence/severity/etc) — kept so pushCollectiveSignal_VENDOR() can read real confidence instead of guessing from rendered text
 let decisionWindowSecs = 6 * 3600;
 let windowStart = Date.now();
 
@@ -729,6 +729,7 @@ Return a JSON object with these exact keys:
   "runway": "Time until critical failure (e.g. 6 Days)",
   "incidentLabel": "Short incident title (e.g. Supplier Bankruptcy · Critical)",
   "severity": "CRITICAL, HIGH, or MEDIUM",
+  "confidence": "Integer 0-100: your confidence in this analysis given the source document's completeness and specificity",
   "risks": [
     { "text": "Risk description", "level": "CRITICAL|HIGH|MED", "icon": "⚡" },
     { "text": "Risk description", "level": "CRITICAL|HIGH|MED", "icon": "⚠" },
@@ -817,7 +818,12 @@ function registerIncidentInMemory(result) {
     severity: result.severity,
     source: 'situation-room',
     detectedFrom: relayData?.selectedDocType || 'document',
-    meta: { revenueAtRisk: result.revenueAtRisk, runway: result.runway }
+    meta: {
+      revenueAtRisk: result.revenueAtRisk,
+      runway: result.runway,
+      confidence: Number.isFinite(result.confidence) ? result.confidence : null,
+      confidenceDefaulted: !Number.isFinite(result.confidence)
+    }
   });
 
   ['revenueAtRisk', 'linesImpacted', 'clientsImpacted', 'runway', 'rootCause'].forEach(field => {
@@ -857,6 +863,7 @@ function showCrossUploadInsight(anomalyCode, entityId) {
 
 // ── RENDER EXTRACTION ──
 function renderExtraction(r) {
+  lastVendorResult = r;
   // Incident banner
   document.getElementById('incLabel').textContent = r.incidentLabel || 'INCIDENT DETECTED';
   const sevBadge = document.getElementById('incSevBadge');
@@ -929,6 +936,11 @@ function pushCollectiveSignal_VENDOR() {
     const riskMap = { CRITICAL:'URGENT', HIGH:'RISK', MEDIUM:'WATCH', LOW:'READY' };
     const riskLevel = riskMap[(riskMatch?.[1]||'').toUpperCase()] || 'WATCH';
 
+    const vendConf = Number.isFinite(lastVendorResult?.confidence) ? lastVendorResult.confidence : null;
+    if (vendConf === null) {
+      console.warn('[collective-signal] vendor: live response omitted "confidence" field — defaulting to 70. Raw JSON:', lastVendorResult);
+    }
+
     fetch('/api/collective/signal', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -936,7 +948,8 @@ function pushCollectiveSignal_VENDOR() {
         vertical:     'vendor',
         warRoom:      'Supplier/Vendor Management Situation Room',
         bnca:         fullBnca.slice(0, 400) || 'Supplier/Vendor Management situation analysis complete.',
-        confidence:   80,
+        confidence:   vendConf !== null ? vendConf : 70,
+        confidenceDefaulted: vendConf === null,
         riskLevel,
         topIssue:     fullBnca.split('\n').find(l => l.trim().length > 20) || 'Supplier/Vendor Management operational risk detected',
         ownerLanes:   ['Operations Manager', 'Supplier/Vendor Management Director', 'Account Lead'],
@@ -1071,7 +1084,7 @@ function nav(url) { window.location.href = url; }
 })();
 </script>
   <script src="/core/tsm-kernel.js"></script>
-  <script src="/core/tsm-enforcer.js"></script>
+  <!-- stripped -->
 <script src="/js/tsm-autorun-engine.js"></script>
 <script>
 /* TSM AUTO-RUN WAR ROOM */

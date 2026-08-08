@@ -30,7 +30,7 @@ const router = express.Router();
 // Shared with server.js and routes/rcm-relay.js via middleware/require-api-key.js.
 const { requireAuth } = require('../middleware/require-auth');
 
-const REGISTRY_PATH = path.join(__dirname, '..', 'data', 'rcm', 'task-requirements.json');
+const REGISTRY_PATH = path.join(__dirname, '..', 'config', 'rcm', 'task-requirements.json');
 
 let REGISTRY = {};
 try {

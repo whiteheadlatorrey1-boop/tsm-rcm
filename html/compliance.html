@@ -4,8 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>TSM Compliance Command | AI-Powered Regulatory Intelligence</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600;700&family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
@@ -946,13 +945,15 @@ body::before {
 .key-status.ok { color: var(--green); }
 .key-status.err { color: var(--red); }
 </style>
+<script src="/tsm-bnca-bridge.js"></script>
+
 <script>
 window.TSM_UI = {
     runAudit: async (sector, factor) => {
         const feed = document.querySelector('.intelligence-feed-output') || document.getElementById('intelligence-feed-output');
         if (feed) feed.innerHTML = '<span style="color: #00ffff;">[STRATEGIST] Internal Link: Processing...</span>';
         try {
-            const res = await fetch('/api/audit', {
+            const res = await fetch('/api/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ query: `auditops "${sector}" --factor "${factor}" --logic strategist` })
@@ -975,34 +976,7 @@ document.addEventListener('click', (e) => {
 });
 console.log("TSM_UI: Direct Neural Link Established.");
 </script>
-window.TSM_UI = {
-    runAudit: async (sector, factor) => {
-        const feed = document.querySelector('.intelligence-feed-output') || document.getElementById('intelligence-feed-output');
-        if (feed) feed.innerHTML = '<span style="color: #00ffff;">[STRATEGIST] Internal Link: Processing...</span>';
-        try {
-            const res = await fetch('/api/audit', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ query: `auditops "${sector}" --factor "${factor}" --logic strategist` })
-            });
-            const data = await res.json();
-            if (feed) feed.innerText = `[STRATEGIST] ${data.output || "Analysis Complete."}`;
-        } catch (e) {
-            if (feed) feed.innerText = "[STRATEGIST] Local API Bridge Failed.";
-        }
-    }
-};
-// Wire the sector cards to the auto-fill search prompt logic
-document.addEventListener('click', (e) => {
-    const card = e.target.closest('.module-card');
-    if (card) {
-        const sector = card.dataset.sector || "Construction";
-        const factor = card.querySelector('h3')?.innerText || "General Audit";
-        TSM_UI.runAudit(sector, factor);
-    }
-});
-console.log("TSM_UI: Direct Neural Link Established.");
-</script>
+
 </head>
 <body>
 
@@ -1031,7 +1005,7 @@ console.log("TSM_UI: Direct Neural Link Established.");
 <!-- TSM NEURAL CORE KEY BAR -->
 <div class="key-bar">
   <span class="key-label">⚡ TSM NEURAL CORE API KEY:</span>
-  <input type="password" class="key-input" id="tsm-neural-coreKey" placeholder="gsk_...  (required for AI features)" />
+  <input type="password" class="key-input" id="tsmNeuralCoreKey" placeholder="gsk_...  (required for AI features)" />
   <button class="key-save" data-tsm-action="saveKey" data-tsm-args="">SET KEY</button>
   <span class="key-status" id="keyStatus"></span>
 </div>
@@ -1104,6 +1078,15 @@ console.log("TSM_UI: Direct Neural Link Established.");
     <div class="nav-item" data-tsm-action="showTab" data-tsm-args="'irs', this">
       <span class="nav-icon">💰</span> IRS / Tax
       <span class="nav-badge amber">1</span>
+    </div>
+    <div class="sidebar-section">FinOps Operations</div>
+    <div class="nav-item" data-tsm-action="showTab" data-tsm-args="'renewal', this">
+      <span class="nav-icon">🔖</span> License &amp; Renewals
+      <span class="nav-badge red">2</span>
+    </div>
+    <div class="nav-item" data-tsm-action="showTab" data-tsm-args="'auditprep', this">
+      <span class="nav-icon">📁</span> Audit &amp; Tax Prep
+      <span class="nav-badge amber">3</span>
     </div>
     <div class="sidebar-section">AI Tools</div>
     <div class="nav-item" data-tsm-action="showTab" data-tsm-args="'aiaudit', this">
@@ -1604,10 +1587,10 @@ console.log("TSM_UI: Direct Neural Link Established.");
     <div class="modal-body" id="modalBody"></div>
   </div>
 </div>
-
+<script>
 // ─── STATE ───────────────────────────────────────────────────────────────────
-let tsm-neural-coreKey = localStorage.getItem('tsm_tsm-neural-core_key') || '';
-const TSM NEURAL CORE_URL = 'https://api.tsm-neural-core.com/openai/v1/chat/completions';
+let tsmNeuralCoreKey = localStorage.getItem('tsm_tsm-neural-core_key') || '';
+const TSM_NEURAL_CORE_URL = 'https://api.tsm-neural-core.com/openai/v1/chat/completions';
 const MODEL = 'openai/gpt-oss-120b';
 const chatHistory = [];
 
@@ -1632,8 +1615,8 @@ Provide specific, actionable, expert-level compliance guidance. Reference specif
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 window.onload = () => {
-  if (tsm-neural-coreKey) {
-    document.getElementById('tsm-neural-coreKey').value = tsm-neural-coreKey;
+  if (tsmNeuralCoreKey) {
+    document.getElementById('tsmNeuralCoreKey').value = tsmNeuralCoreKey;
     document.getElementById('keyStatus').textContent = '✓ KEY SET';
     document.getElementById('keyStatus').className = 'key-status ok';
     document.getElementById('aiEngineStatus').textContent = 'LIVE';
@@ -1651,9 +1634,9 @@ function updateClock() {
 }
 
 function saveKey() {
-  tsm-neural-coreKey = document.getElementById('tsm-neural-coreKey').value.trim();
-  if (!tsm-neural-coreKey) { alert('Enter a TSM Neural Core API key'); return; }
-  localStorage.setItem('tsm_tsm-neural-core_key', tsm-neural-coreKey);
+  tsmNeuralCoreKey = document.getElementById('tsmNeuralCoreKey').value.trim();
+  if (!tsmNeuralCoreKey) { alert('Enter a TSM Neural Core API key'); return; }
+  localStorage.setItem('tsm_tsm-neural-core_key', tsmNeuralCoreKey);
   document.getElementById('keyStatus').textContent = '✓ KEY SET';
   document.getElementById('keyStatus').className = 'key-status ok';
   document.getElementById('aiEngineStatus').textContent = 'LIVE';
@@ -1745,19 +1728,19 @@ function renderMiniChart() {
 }
 
 // ─── TSM NEURAL CORE API ─────────────────────────────────────────────────────────────────
-async function tsm-neural-coreChat(messages, maxTokens = 2048) {
-  if (!tsm-neural-coreKey) {
+async function tsmNeuralCoreChat(messages, maxTokens = 2048) {
+  if (!tsmNeuralCoreKey) {
     alert('Set your TSM Neural Core API key first (top bar)');
     throw new Error('No API key');
   }
-  const res = await fetch(TSM NEURAL CORE_URL, {
+  const res = await fetch(TSM_NEURAL_CORE_URL, {
     method: 'POST',
-    headers: { 'Authorization': `Bearer ${tsm-neural-coreKey}`, 'Content-Type': 'application/json' },
+    headers: { 'Authorization': `Bearer ${tsmNeuralCoreKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ model: MODEL, messages, temperature: 0.4, max_tokens: maxTokens })
   });
   const data = await res.json();
   if (data.error) throw new Error(data.error.message);
-  return data.choices[0].message.content;
+  return data.content || data.answer || data.choices?.[0]?.message?.content || "";
 }
 
 // ─── CHAT ─────────────────────────────────────────────────────────────────────
@@ -1770,7 +1753,7 @@ async function sendChat() {
   chatHistory.push({ role: 'user', content: msg });
   const thinking = addChatMsg('thinking', '🧠 Analyzing...');
   try {
-    const reply = await tsm-neural-coreChat([{ role: 'system', content: SYSTEM }, ...chatHistory.slice(-10)]);
+    const reply = await tsmNeuralCoreChat([{ role: 'system', content: SYSTEM }, ...chatHistory.slice(-10)]);
     thinking.remove();
     addChatMsg('ai', reply);
     chatHistory.push({ role: 'assistant', content: reply });
@@ -1802,7 +1785,7 @@ async function quickAction(prompt) {
   chatHistory.push({ role: 'user', content: prompt });
   const thinking = addChatMsg('thinking', '🧠 Analyzing...');
   try {
-    const reply = await tsm-neural-coreChat([{ role: 'system', content: SYSTEM }, ...chatHistory.slice(-10)]);
+    const reply = await tsmNeuralCoreChat([{ role: 'system', content: SYSTEM }, ...chatHistory.slice(-10)]);
     thinking.remove();
     addChatMsg('ai', reply);
     chatHistory.push({ role: 'assistant', content: reply });
@@ -1816,7 +1799,7 @@ async function quickAction(prompt) {
 async function aiFrameworkAnalysis(fw) {
   showModal(`${fw} — AI Analysis`, '🧠 Generating analysis...');
   try {
-    const result = await tsm-neural-coreChat([
+    const result = await tsmNeuralCoreChat([
       { role: 'system', content: SYSTEM },
       { role: 'user', content: `Provide a comprehensive ${fw} compliance analysis for our organization. Include: current risk areas, specific regulatory requirements, gap assessment, and top 5 immediate action items. Be specific and cite regulation sections.` }
     ], 3000);
@@ -1832,7 +1815,7 @@ async function askFramework(fw, question) {
   outputEl.style.display = 'block';
   outputEl.textContent = '🧠 Analyzing...';
   try {
-    const result = await tsm-neural-coreChat([
+    const result = await tsmNeuralCoreChat([
       { role: 'system', content: SYSTEM },
       { role: 'user', content: question }
     ], 2048);
@@ -1857,7 +1840,7 @@ async function generateAuditReport() {
   output.textContent = '🧠 Generating audit report...';
 
   try {
-    const result = await tsm-neural-coreChat([
+    const result = await tsmNeuralCoreChat([
       { role: 'system', content: SYSTEM },
       { role: 'user', content: `Generate a professional ${type} for: ${org}\n\nContext: ${context}\n\nStructure the report with:\n1. EXECUTIVE SUMMARY\n2. SCOPE & METHODOLOGY\n3. KEY FINDINGS (with severity ratings)\n4. RISK MATRIX\n5. COMPLIANCE GAPS BY FRAMEWORK\n6. FINANCIAL EXPOSURE ANALYSIS\n7. REMEDIATION ROADMAP (prioritized)\n8. TIMELINE & RESOURCE REQUIREMENTS\n9. CONCLUSIONS\n\nBe specific, cite regulations, include dollar amounts where relevant.` }
     ], 4096);
@@ -1875,7 +1858,7 @@ async function aiScanRisks() {
   const spinner = document.getElementById('riskSpinner');
   spinner.style.display = 'inline-block';
   try {
-    const result = await tsm-neural-coreChat([
+    const result = await tsmNeuralCoreChat([
       { role: 'system', content: SYSTEM },
       { role: 'user', content: 'Based on current compliance status (94% overall, SOX critical, OIG overdue, ISO A.12.6 gap), identify any additional hidden risk flags that may not be immediately obvious. Return as JSON array with format: [{severity:"critical|high|medium", text:"description"}]' }
     ], 1024);
@@ -1911,7 +1894,7 @@ async function aiRemediate(issue) {
   showTab('remediation', document.querySelector('.nav-item:nth-child(15)'));
 
   try {
-    const result = await tsm-neural-coreChat([
+    const result = await tsmNeuralCoreChat([
       { role: 'system', content: SYSTEM },
       { role: 'user', content: `Generate a detailed remediation plan for this compliance issue: "${issue}"\n\nProvide:\n1. Immediate actions (24-48 hours)\n2. Short-term fixes (1-2 weeks)\n3. Long-term controls (30-90 days)\n4. Regulatory citations\n5. Resource requirements\n6. Success metrics\n\nBe specific and actionable.` }
     ], 2048);
@@ -1953,7 +1936,7 @@ async function aiAnalyzeAlerts() {
   const spinner = document.getElementById('alertSpinner');
   spinner.style.display = 'inline-block';
   try {
-    const result = await tsm-neural-coreChat([
+    const result = await tsmNeuralCoreChat([
       { role: 'system', content: SYSTEM },
       { role: 'user', content: 'Triage our 3 critical compliance alerts in priority order with immediate action steps:\n1. SOX Mapping Endpoint Failure ($240K)\n2. OIG Exclusion Screening overdue 47 staff ($1.9M)\n3. ISO A.12.6 patches >90 days\n4. HIPAA BAA gap 2 vendors\n\nProvide a clear action matrix with owner, timeline, and success criteria for each.' }
     ], 2048);
@@ -1965,7 +1948,7 @@ async function aiAnalyzeAlerts() {
 async function aiGenerateScorecard() {
   showModal('Compliance Scorecard Report', '🧠 Generating...');
   try {
-    const result = await tsm-neural-coreChat([
+    const result = await tsmNeuralCoreChat([
       { role: 'system', content: SYSTEM },
       { role: 'user', content: 'Generate a full executive compliance scorecard report covering all 11 active frameworks. Include overall score analysis, top risks, trending, and strategic recommendations for Q2 2026.' }
     ], 3000);
@@ -2008,6 +1991,319 @@ function refreshEndpoints() {
 }
 </script>
 
+<div onclick="window.open('/how-to','_blank')" style="position:fixed;right:20px;bottom:20px;background:#00FFC6;color:#001;padding:10px 14px;border-radius:20px;font-family:DM Mono,monospace;font-size:12px;cursor:pointer;z-index:9999;">HOW TO</div>
+<script src="/tsm-ai-client.js"></script>
+<script>
+// BNCA NODE REPORT — Compliance Shield
+(function(){
+  function reportBNCA(){
+    if(typeof TSM_BNCA === 'undefined') return;
+    TSM_BNCA.report('compliance_shield', {
+      name: 'Compliance Shield',
+      subtitle: 'Audit support · Approvals · Policy gaps',
+      status: 'WATCH',
+      metrics: {
+        missing_approvals: '3',
+        policy_gaps: '2',
+        audit_trail: 'INCOMPLETE'
+      },
+      flags: ['Missing approval signatures on 3 JEs', 'Policy documentation gaps found'],
+      priority: 'MEDIUM'
+    });
+  }
+  setInterval(reportBNCA, 5000);
+  setTimeout(reportBNCA, 1000);
+})();
+</script>
+
+<script>
+function showTab(name, el) {
+  document.querySelectorAll('.tab-content').forEach(t => t.style.display = 'none');
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  var tab = document.getElementById('tab-' + name) || document.getElementById(name);
+  if (tab) tab.style.display = 'block';
+  if (el) el.classList.add('active');
+}
+function aiAnalyzeAlerts() {
+  var out = document.querySelector('.ai-output, #ai-output, .synthesis-output');
+  if (out) out.textContent = 'Analyzing compliance alerts...';
+  fetch('/api/chat', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ messages: [{ role: 'user', content: 'Analyze the current compliance alerts and provide prioritized remediation steps for HIPAA, SOX, AML/KYC, and GDPR issues. Be specific and actionable.' }] })
+  }).then(r => r.json())
+    .then(d => { if (out) out.textContent = d.content || 'Analysis complete.'; })
+    .catch(e => { if (out) out.textContent = 'Error: ' + e.message; });
+}
+</script>
+
+<!-- ══════════════════════════════════════════════════
+     TAB: LICENSE & RENEWAL COMPLIANCE TRACKER
+     ══════════════════════════════════════════════════ -->
+<div id="tab-renewal" class="tab-pane">
+  <div style="padding:20px;overflow-y:auto">
+    <!-- Header + Add -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <div>
+        <div style="color:var(--green);font-size:16px;font-weight:700;letter-spacing:.04em">LICENSE & RENEWAL TRACKER</div>
+        <div style="color:var(--text-dim);font-size:11px;margin-top:2px">All licenses, permits, insurance, and contracts in one view</div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button data-tsm-action="renewalShowCalendar" data-tsm-args="" style="background:none;border:1px solid var(--border);color:var(--text-dim);padding:6px 14px;font-size:10px;cursor:pointer;letter-spacing:.08em;text-transform:uppercase;transition:all .15s">📅 CALENDAR VIEW</button>
+        <button data-tsm-action="renewalAddItem" data-tsm-args="" style="background:var(--green);border:none;color:#000;padding:6px 14px;font-size:10px;font-weight:700;cursor:pointer;letter-spacing:.08em;text-transform:uppercase">+ ADD LICENSE</button>
+      </div>
+    </div>
+
+    <!-- Summary Chips -->
+    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+      <div style="border:1px solid rgba(255,92,92,.4);background:rgba(255,92,92,.06);padding:6px 14px;font-size:11px;color:#ff5c5c">
+        <strong style="font-size:16px">2</strong> EXPIRED
+      </div>
+      <div style="border:1px solid rgba(245,166,35,.4);background:rgba(245,166,35,.06);padding:6px 14px;font-size:11px;color:var(--amber)">
+        <strong style="font-size:16px">3</strong> DUE &lt;30 DAYS
+      </div>
+      <div style="border:1px solid rgba(245,166,35,.3);background:rgba(245,166,35,.04);padding:6px 14px;font-size:11px;color:var(--amber)">
+        <strong style="font-size:16px">4</strong> DUE 30–60 DAYS
+      </div>
+      <div style="border:1px solid rgba(0,200,100,.3);background:rgba(0,200,100,.05);padding:6px 14px;font-size:11px;color:#00c864">
+        <strong style="font-size:16px">18</strong> CURRENT
+      </div>
+    </div>
+
+    <!-- Action Center: Critical -->
+    <div style="background:rgba(255,92,92,.05);border:1px solid rgba(255,92,92,.2);border-left:3px solid #ff5c5c;padding:12px 14px;margin-bottom:16px">
+      <div style="color:#ff5c5c;font-size:10px;letter-spacing:.14em;text-transform:uppercase;margin-bottom:8px">⚠ ACTION REQUIRED — EXPIRED / EXPIRING SOON</div>
+      <table style="width:100%;border-collapse:collapse;font-size:11px">
+        <thead><tr style="color:var(--text-mute);font-size:9px;text-transform:uppercase;letter-spacing:.1em">
+          <th style="text-align:left;padding:4px 8px">LICENSE TYPE</th>
+          <th style="text-align:left;padding:4px 8px">STORE / ENTITY</th>
+          <th style="text-align:left;padding:4px 8px">EXPIRY DATE</th>
+          <th style="text-align:left;padding:4px 8px">STATUS</th>
+          <th style="text-align:left;padding:4px 8px">OWNER</th>
+          <th style="text-align:left;padding:4px 8px">ACTION</th>
+        </tr></thead>
+        <tbody id="renewal-critical-body">
+          <tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+            <td style="padding:7px 8px;color:var(--text)">Food Handler Permit</td>
+            <td style="padding:7px 8px;color:var(--text-dim)">BK #1042</td>
+            <td style="padding:7px 8px;color:#ff5c5c">Apr 30, 2026 <strong>(EXPIRED)</strong></td>
+            <td style="padding:7px 8px"><span style="background:rgba(255,92,92,.12);border:1px solid rgba(255,92,92,.4);color:#ff5c5c;font-size:9px;padding:2px 7px">EXPIRED</span></td>
+            <td style="padding:7px 8px;color:var(--text-dim)">R.Whitehead</td>
+            <td style="padding:7px 8px"><button data-tsm-action="renewalRenew" data-tsm-args="this" style="background:#ff5c5c;border:none;color:#fff;font-size:9px;padding:3px 10px;cursor:pointer">RENEW NOW</button></td>
+          </tr>
+          <tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+            <td style="padding:7px 8px;color:var(--text)">General Liability Insurance</td>
+            <td style="padding:7px 8px;color:var(--text-dim)">All Entities</td>
+            <td style="padding:7px 8px;color:#ff5c5c">May 15, 2026</td>
+            <td style="padding:7px 8px"><span style="background:rgba(255,92,92,.12);border:1px solid rgba(255,92,92,.4);color:#ff5c5c;font-size:9px;padding:2px 7px">&lt;7 DAYS</span></td>
+            <td style="padding:7px 8px;color:var(--text-dim)">M.Torres</td>
+            <td style="padding:7px 8px"><button data-tsm-action="renewalRenew" data-tsm-args="this" style="background:#ff5c5c;border:none;color:#fff;font-size:9px;padding:3px 10px;cursor:pointer">RENEW NOW</button></td>
+          </tr>
+          <tr style="border-bottom:1px solid rgba(255,255,255,.04)">
+            <td style="padding:7px 8px;color:var(--text)">Health Department Permit</td>
+            <td style="padding:7px 8px;color:var(--text-dim)">BK #1087</td>
+            <td style="padding:7px 8px;color:var(--amber)">Jun 1, 2026</td>
+            <td style="padding:7px 8px"><span style="background:rgba(245,166,35,.1);border:1px solid rgba(245,166,35,.4);color:var(--amber);font-size:9px;padding:2px 7px">20 DAYS</span></td>
+            <td style="padding:7px 8px;color:var(--text-dim)">R.Whitehead</td>
+            <td style="padding:7px 8px"><button data-tsm-action="renewalRenew" data-tsm-args="this" style="background:rgba(245,166,35,.2);border:1px solid var(--amber);color:var(--amber);font-size:9px;padding:3px 10px;cursor:pointer">SCHEDULE</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Full Master List -->
+    <div style="margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">
+      <div style="color:var(--text-dim);font-size:10px;letter-spacing:.12em;text-transform:uppercase">RENEWAL MASTER LIST</div>
+      <input placeholder="Search licenses…" style="background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:10px;padding:5px 10px;outline:none;width:200px" oninput="renewalFilter(this.value)">
+    </div>
+    <table style="width:100%;border-collapse:collapse;font-size:11px" id="renewal-master">
+      <thead><tr style="background:var(--surface);color:var(--text-mute);font-size:9px;text-transform:uppercase;letter-spacing:.1em">
+        <th style="text-align:left;padding:8px">TYPE</th>
+        <th style="text-align:left;padding:8px">STORE</th>
+        <th style="text-align:left;padding:8px">RENEWAL DATE</th>
+        <th style="text-align:left;padding:8px">FREQUENCY</th>
+        <th style="text-align:left;padding:8px">STATUS</th>
+        <th style="text-align:left;padding:8px">OWNER</th>
+        <th style="text-align:left;padding:8px">ATTACHMENT</th>
+      </tr></thead>
+      <tbody>
+        <tr style="border-bottom:1px solid rgba(255,255,255,.04)"><td style="padding:7px 8px">Business License</td><td style="padding:7px 8px;color:var(--text-dim)">BK #1042</td><td style="padding:7px 8px">Jan 1, 2027</td><td style="padding:7px 8px;color:var(--text-mute)">Annual</td><td style="padding:7px 8px"><span style="background:rgba(0,200,100,.08);border:1px solid rgba(0,200,100,.3);color:#00c864;font-size:9px;padding:2px 7px">CURRENT</span></td><td style="padding:7px 8px;color:var(--text-dim)">M.Torres</td><td style="padding:7px 8px"><span style="color:var(--green);font-size:10px;cursor:pointer">📎 View</span></td></tr>
+        <tr style="border-bottom:1px solid rgba(255,255,255,.04)"><td style="padding:7px 8px">Fire Safety Cert</td><td style="padding:7px 8px;color:var(--text-dim)">BK #1087</td><td style="padding:7px 8px">Aug 15, 2026</td><td style="padding:7px 8px;color:var(--text-mute)">Annual</td><td style="padding:7px 8px"><span style="background:rgba(0,200,100,.08);border:1px solid rgba(0,200,100,.3);color:#00c864;font-size:9px;padding:2px 7px">CURRENT</span></td><td style="padding:7px 8px;color:var(--text-dim)">R.Whitehead</td><td style="padding:7px 8px"><span style="color:var(--text-mute);font-size:10px">No file</span></td></tr>
+        <tr style="border-bottom:1px solid rgba(255,255,255,.04)"><td style="padding:7px 8px">Workers Comp Policy</td><td style="padding:7px 8px;color:var(--text-dim)">All Entities</td><td style="padding:7px 8px">Jul 1, 2026</td><td style="padding:7px 8px;color:var(--text-mute)">Annual</td><td style="padding:7px 8px"><span style="background:rgba(0,200,100,.08);border:1px solid rgba(0,200,100,.3);color:#00c864;font-size:9px;padding:2px 7px">CURRENT</span></td><td style="padding:7px 8px;color:var(--text-dim)">Finance</td><td style="padding:7px 8px"><span style="color:var(--green);font-size:10px;cursor:pointer">📎 View</span></td></tr>
+        <tr style="border-bottom:1px solid rgba(255,255,255,.04)"><td style="padding:7px 8px">Lease — BK #1103</td><td style="padding:7px 8px;color:var(--text-dim)">BK #1103</td><td style="padding:7px 8px">Dec 31, 2026</td><td style="padding:7px 8px;color:var(--text-mute)">5-Year</td><td style="padding:7px 8px"><span style="background:rgba(0,200,100,.08);border:1px solid rgba(0,200,100,.3);color:#00c864;font-size:9px;padding:2px 7px">CURRENT</span></td><td style="padding:7px 8px;color:var(--text-dim)">Legal</td><td style="padding:7px 8px"><span style="color:var(--green);font-size:10px;cursor:pointer">📎 View</span></td></tr>
+        <tr style="border-bottom:1px solid rgba(255,255,255,.04)"><td style="padding:7px 8px">Sign Permit</td><td style="padding:7px 8px;color:var(--text-dim)">BK #1221</td><td style="padding:7px 8px">Jun 20, 2026</td><td style="padding:7px 8px;color:var(--text-mute)">3-Year</td><td style="padding:7px 8px"><span style="background:rgba(245,166,35,.1);border:1px solid rgba(245,166,35,.4);color:var(--amber);font-size:9px;padding:2px 7px">39 DAYS</span></td><td style="padding:7px 8px;color:var(--text-dim)">R.Whitehead</td><td style="padding:7px 8px"><span style="color:var(--text-mute);font-size:10px">No file</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     TAB: AUDIT & TAX PREP WORKSPACE
+     ══════════════════════════════════════════════════ -->
+<div id="tab-auditprep" class="tab-pane">
+  <div style="display:grid;grid-template-columns:260px 1fr;min-height:calc(100vh - 90px)">
+    <!-- Sidebar: Request List -->
+    <div style="background:var(--surface);border-right:1px solid var(--border);padding:16px;overflow-y:auto">
+      <div style="color:var(--green);font-size:12px;font-weight:700;margin-bottom:12px;letter-spacing:.06em">AUDIT REQUEST LIST</div>
+      <div style="font-size:10px;margin-bottom:12px" id="audit-checklist">
+        <div class="audit-req-item" style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer" data-tsm-action="auditToggle" data-tsm-args="this">
+          <span class="audit-box" style="width:14px;height:14px;border:1px solid rgba(255,255,255,.15);display:inline-flex;align-items:center;justify-content:center;font-size:9px;flex-shrink:0"></span>
+          <span style="color:var(--text-dim)">AP Aging Report</span>
+        </div>
+        <div class="audit-req-item" style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer" data-tsm-action="auditToggle" data-tsm-args="this">
+          <span class="audit-box" style="width:14px;height:14px;border:1px solid rgba(255,255,255,.15);display:inline-flex;align-items:center;justify-content:center;font-size:9px;flex-shrink:0"></span>
+          <span style="color:var(--text-dim)">Bank Reconciliations (3 months)</span>
+        </div>
+        <div class="audit-req-item" style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer" data-tsm-action="auditToggle" data-tsm-args="this">
+          <span class="audit-box" style="width:14px;height:14px;border:1px solid rgba(255,255,255,.15);display:inline-flex;align-items:center;justify-content:center;font-size:9px;flex-shrink:0"></span>
+          <span style="color:var(--text-dim)">Receipts — Capital Expenditures</span>
+        </div>
+        <div class="audit-req-item" style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer" data-tsm-action="auditToggle" data-tsm-args="this">
+          <span class="audit-box" style="width:14px;height:14px;border:1px solid rgba(255,255,255,.15);display:inline-flex;align-items:center;justify-content:center;font-size:9px;flex-shrink:0"></span>
+          <span style="color:var(--text-dim)">Fixed Asset Roster</span>
+        </div>
+        <div class="audit-req-item" style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer" data-tsm-action="auditToggle" data-tsm-args="this">
+          <span class="audit-box" style="width:14px;height:14px;border:1px solid rgba(255,255,255,.15);display:inline-flex;align-items:center;justify-content:center;font-size:9px;flex-shrink:0"></span>
+          <span style="color:var(--text-dim)">Lease Schedules</span>
+        </div>
+        <div class="audit-req-item" style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer" data-tsm-action="auditToggle" data-tsm-args="this">
+          <span class="audit-box" style="width:14px;height:14px;border:1px solid rgba(255,255,255,.15);display:inline-flex;align-items:center;justify-content:center;font-size:9px;flex-shrink:0"></span>
+          <span style="color:var(--text-dim)">Payroll Registers</span>
+        </div>
+        <div class="audit-req-item" style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer" data-tsm-action="auditToggle" data-tsm-args="this">
+          <span class="audit-box" style="width:14px;height:14px;border:1px solid rgba(255,255,255,.15);display:inline-flex;align-items:center;justify-content:center;font-size:9px;flex-shrink:0"></span>
+          <span style="color:var(--text-dim)">1099 / W-9 File</span>
+        </div>
+        <div class="audit-req-item" style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer" data-tsm-action="auditToggle" data-tsm-args="this">
+          <span class="audit-box" style="width:14px;height:14px;border:1px solid rgba(255,255,255,.15);display:inline-flex;align-items:center;justify-content:center;font-size:9px;flex-shrink:0"></span>
+          <span style="color:var(--text-dim)">Chart of Accounts Export</span>
+        </div>
+      </div>
+      <div style="background:var(--bg);border:1px solid var(--border);padding:8px;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px">
+          <span style="color:var(--text-mute)">Progress</span>
+          <span style="color:var(--green)" id="audit-progress-txt">0 / 8</span>
+        </div>
+        <div style="height:4px;background:rgba(255,255,255,.07);border-radius:2px;overflow:hidden">
+          <div id="audit-progress-bar" style="height:100%;background:var(--green);width:0%;transition:width .4s"></div>
+        </div>
+      </div>
+      <button data-tsm-action="auditExportChecklist" data-tsm-args="" style="width:100%;background:none;border:1px solid var(--border);color:var(--text-dim);font-size:10px;padding:7px;cursor:pointer;text-transform:uppercase;letter-spacing:.08em;transition:all .15s">↓ EXPORT CHECKLIST</button>
+    </div>
+
+    <!-- Main: Document Upload Center + Workflow Status -->
+    <div style="padding:20px;overflow-y:auto">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+        <div>
+          <div style="color:var(--green);font-size:16px;font-weight:700">AUDIT & TAX PREP WORKSPACE</div>
+          <div style="color:var(--text-dim);font-size:11px;margin-top:2px">Audit support · Tax prep · Document workflow</div>
+        </div>
+        <div style="background:rgba(0,200,100,.08);border:1px solid rgba(0,200,100,.25);padding:8px 16px;font-size:11px;color:#00c864">
+          Audit Period: <strong>FY 2025</strong>
+        </div>
+      </div>
+
+      <!-- Document Upload Center -->
+      <div style="background:var(--surface);border:1px solid var(--border);padding:14px;margin-bottom:16px">
+        <div style="color:var(--text-dim);font-size:10px;letter-spacing:.12em;text-transform:uppercase;margin-bottom:10px">DOCUMENT UPLOAD CENTER</div>
+        <div style="border:2px dashed rgba(0,200,100,.2);padding:24px;text-align:center;cursor:pointer;transition:all .2s;margin-bottom:10px" onclick="document.getElementById('audit-file').click()"
+          onmouseenter="this.style.borderColor='rgba(0,200,100,.5)'" onmouseleave="this.style.borderColor='rgba(0,200,100,.2)'">
+          <input type="file" id="audit-file" multiple accept=".pdf,.csv,.xlsx,.docx" style="display:none" onchange="auditHandleUpload(event)">
+          <div style="color:#00c864;font-size:24px;margin-bottom:6px">↑</div>
+          <div style="color:var(--text-dim);font-size:11px">Drag & drop or click to upload audit documents</div>
+          <div style="color:var(--text-mute);font-size:9px;margin-top:4px">PDF · XLSX · CSV · DOCX · Multiple files accepted</div>
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:11px" id="audit-doc-table">
+          <thead><tr style="background:rgba(255,255,255,.03);color:var(--text-mute);font-size:9px;text-transform:uppercase;letter-spacing:.08em">
+            <th style="text-align:left;padding:6px 8px">DOCUMENT</th>
+            <th style="text-align:left;padding:6px 8px">TYPE</th>
+            <th style="text-align:left;padding:6px 8px">UPLOADED</th>
+            <th style="text-align:left;padding:6px 8px">STATUS</th>
+            <th style="text-align:left;padding:6px 8px">ACTION</th>
+          </tr></thead>
+          <tbody id="audit-doc-body">
+            <tr><td style="padding:7px 8px;color:var(--text)">AP_Aging_FY2025.xlsx</td><td style="padding:7px 8px;color:var(--text-mute)">AP Aging</td><td style="padding:7px 8px;color:var(--text-mute)">May 10, 2026</td><td style="padding:7px 8px"><span style="background:rgba(0,200,100,.08);border:1px solid rgba(0,200,100,.3);color:#00c864;font-size:9px;padding:2px 7px">COMPLETE</span></td><td style="padding:7px 8px"><span style="color:var(--green);font-size:10px;cursor:pointer">View</span></td></tr>
+            <tr><td style="padding:7px 8px;color:var(--text)">BankRec_Q4_2025.pdf</td><td style="padding:7px 8px;color:var(--text-mute)">Bank Recon</td><td style="padding:7px 8px;color:var(--text-mute)">May 10, 2026</td><td style="padding:7px 8px"><span style="background:rgba(0,200,100,.08);border:1px solid rgba(0,200,100,.3);color:#00c864;font-size:9px;padding:2px 7px">COMPLETE</span></td><td style="padding:7px 8px"><span style="color:var(--green);font-size:10px;cursor:pointer">View</span></td></tr>
+            <tr><td style="padding:7px 8px;color:var(--text)">Fixed_Assets_2025.xlsx</td><td style="padding:7px 8px;color:var(--text-mute)">Fixed Assets</td><td style="padding:7px 8px;color:var(--text-mute)">—</td><td style="padding:7px 8px"><span style="background:rgba(245,166,35,.08);border:1px solid rgba(245,166,35,.3);color:var(--amber);font-size:9px;padding:2px 7px">WAITING</span></td><td style="padding:7px 8px"><span style="color:var(--text-mute);font-size:10px">Upload</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Workflow Status -->
+      <div style="background:var(--surface);border:1px solid var(--border);padding:14px">
+        <div style="color:var(--text-dim);font-size:10px;letter-spacing:.12em;text-transform:uppercase;margin-bottom:10px">WORKFLOW STATUS</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+          <div style="background:var(--bg);border:1px solid rgba(0,200,100,.3);padding:10px;text-align:center">
+            <div style="color:#00c864;font-size:20px;font-weight:700">3</div>
+            <div style="color:var(--text-mute);font-size:9px;text-transform:uppercase;margin-top:3px">COMPLETE</div>
+          </div>
+          <div style="background:var(--bg);border:1px solid rgba(245,166,35,.3);padding:10px;text-align:center">
+            <div style="color:var(--amber);font-size:20px;font-weight:700">2</div>
+            <div style="color:var(--text-mute);font-size:9px;text-transform:uppercase;margin-top:3px">IN PROGRESS</div>
+          </div>
+          <div style="background:var(--bg);border:1px solid rgba(255,255,255,.08);padding:10px;text-align:center">
+            <div style="color:var(--text-dim);font-size:20px;font-weight:700">3</div>
+            <div style="color:var(--text-mute);font-size:9px;text-transform:uppercase;margin-top:3px">WAITING</div>
+          </div>
+          <div style="background:var(--bg);border:1px solid rgba(255,255,255,.08);padding:10px;text-align:center">
+            <div style="color:var(--text-dim);font-size:20px;font-weight:700">8</div>
+            <div style="color:var(--text-mute);font-size:9px;text-transform:uppercase;margin-top:3px">TOTAL ITEMS</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<script>
+/* ── License & Renewal ── */
+function renewalRenew(btn) { btn.textContent = '✓ INITIATED'; btn.style.opacity = '.5'; }
+function renewalShowCalendar() { alert('Calendar view — coming soon'); }
+function renewalAddItem() { alert('Add license dialog — coming soon'); }
+function renewalFilter(q) {
+  const rows = document.querySelectorAll('#renewal-master tbody tr');
+  rows.forEach(r => {
+    r.style.display = r.textContent.toLowerCase().includes(q.toLowerCase()) ? '' : 'none';
+  });
+}
+
+/* ── Audit Workspace ── */
+let auditDone = 0;
+const auditTotal = 8;
+function auditToggle(item) {
+  const box = item.querySelector('.audit-box');
+  const label = item.querySelector('span:last-child');
+  const done = item.dataset.done === '1';
+  item.dataset.done = done ? '0' : '1';
+  box.textContent = done ? '' : '✓';
+  box.style.background = done ? '' : 'var(--green)';
+  box.style.borderColor = done ? '' : 'var(--green)';
+  box.style.color = done ? '' : '#000';
+  label.style.textDecoration = done ? '' : 'line-through';
+  label.style.color = done ? '' : 'var(--text-mute)';
+  auditDone = [...document.querySelectorAll('#audit-checklist [data-done="1"]')].length;
+  document.getElementById('audit-progress-txt').textContent = auditDone + ' / ' + auditTotal;
+  document.getElementById('audit-progress-bar').style.width = Math.round(auditDone/auditTotal*100) + '%';
+}
+function auditHandleUpload(e) {
+  const files = [...e.target.files];
+  const tbody = document.getElementById('audit-doc-body');
+  files.forEach(f => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td style="padding:7px 8px;color:var(--text)">${f.name}</td><td style="padding:7px 8px;color:var(--text-mute)">Uploaded</td><td style="padding:7px 8px;color:var(--text-mute)">${new Date().toLocaleDateString()}</td><td style="padding:7px 8px"><span style="background:rgba(0,200,100,.08);border:1px solid rgba(0,200,100,.3);color:#00c864;font-size:9px;padding:2px 7px">COMPLETE</span></td><td style="padding:7px 8px"><span style="color:var(--green);font-size:10px;cursor:pointer">View</span></td>`;
+    tbody.appendChild(tr);
+  });
+}
+function auditExportChecklist() { alert('Checklist exported'); }
+</script>
+
+<script src="/shared/tsm-operational-mesh.js?v=mesh1"></script>
+<script src="/shared/tsm-relay-bus.js?v=relay2"></script>
+<script src="/shared/tsm-global-command.js?v=phase4"></script>
+<script src="/shared/tsm-sector-intelligence.js?v=phase5si"></script>
+<script src="/shared/tsm-autonomous-execution.js?v=phase5"></script>
+
 <script>(function(){
 document.addEventListener('click', function(e){
 
@@ -2025,5 +2321,25 @@ document.addEventListener('click', function(e){
 
 });
 })();</script>
+<script src="/finops-suite/js/finops-mission-workflow.js"></script>
+<script src="/finops-suite/js/finops-node-mission.js"></script>
+  <script src="/core/tsm-kernel.js"></script>
+  <!-- stripped -->
+  <script src="./tsm-kernel-upgrade.js"></script>
+<script>
+// ===== TSM_AUTONOMY_STANDARDIZED =====
+window.TSM_AUTONOMY_STANDARDIZED = true;
+
+// ===== TSM WAR ROOM SCOPED RELAY FIX =====
+window.tsmMission = window.tsmMission || {
+  id: "FINOPS-SUITE-" + Date.now().toString(36),
+  vertical: "finops-suite",
+  
+};
+
+function tsmWriteRelay(payload){
+  TSM_KERNEL.setRelay("finops-suite", JSON.stringify(payload));
+}
+</script>
 </body>
 </html>

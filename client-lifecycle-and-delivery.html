@@ -1,0 +1,992 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Client Lifecycle &amp; Delivery Pipeline — TSM Consultz</title>
+<style>
+:root {
+  --bg: #05080d;
+  --panel: #0a1018;
+  --panel-2: #0d141d;
+  --line: #1a2530;
+  --text: #dfe7ef;
+  --muted: #7d8ba0;
+  --dim: #4c5867;
+  --accent: #00e5cc;
+  --warn: #f59e0b;
+  --mono: 'SF Mono', 'Cascadia Code', Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  background-image:
+    radial-gradient(circle at 15% 0%, rgba(0,229,204,0.06), transparent 40%),
+    radial-gradient(circle at 85% 15%, rgba(56,189,248,0.05), transparent 45%);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+code {
+  font-family: var(--mono);
+  background: rgba(255,255,255,0.06);
+  padding: 1px 5px;
+  border-radius: 2px;
+  font-size: 0.92em;
+  color: #b7f5ec;
+}
+
+/* ---------- Hero ---------- */
+.hero {
+  padding: 64px 40px 40px;
+  max-width: 980px;
+  margin: 0 auto;
+  border-bottom: 1px solid var(--line);
+}
+.hero-kicker {
+  font-size: 11px;
+  letter-spacing: 0.3em;
+  color: var(--accent);
+  margin-bottom: 18px;
+}
+.hero h1 {
+  font-size: 38px;
+  line-height: 1.15;
+  margin: 0 0 18px;
+  letter-spacing: -0.01em;
+  font-weight: 700;
+  color: #f3f8fc;
+}
+.hero-sub {
+  color: var(--muted);
+  max-width: 640px;
+  font-size: 14.5px;
+  margin-bottom: 32px;
+}
+.quicknav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.quicknav a {
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 11.5px;
+  letter-spacing: 0.05em;
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  transition: color .15s, border-color .15s;
+}
+.quicknav a:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+/* ---------- Sections ---------- */
+main {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 0 40px;
+}
+.block {
+  padding: 56px 0;
+  border-bottom: 1px solid var(--line);
+  scroll-margin-top: 24px;
+}
+.eyebrow {
+  font-size: 10.5px;
+  letter-spacing: 0.25em;
+  color: var(--dim);
+  margin-bottom: 10px;
+}
+.block h2 {
+  font-size: 22px;
+  color: #f3f8fc;
+  margin: 0 0 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.block p {
+  color: var(--text);
+  max-width: 780px;
+}
+.block p code { color: #b7f5ec; }
+
+/* ---------- Access split ---------- */
+.split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  margin: 28px 0;
+}
+.split-col {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  padding: 18px 20px;
+}
+.split-col.demo { border-top: 3px solid var(--dim); }
+.split-col.real { border-top: 3px solid var(--accent); }
+.split-label {
+  font-size: 12px;
+  color: #cfd8e2;
+  margin-bottom: 6px;
+}
+.split-verdict {
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  margin-bottom: 14px;
+}
+.split-col.demo .split-verdict { color: var(--dim); }
+.split-col.real .split-verdict { color: var(--accent); }
+.split-col ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.split-col li { margin-bottom: 7px; }
+
+.callout {
+  border-left: 3px solid var(--warn);
+  background: rgba(245,158,11,0.06);
+  padding: 14px 18px;
+  margin-top: 8px;
+}
+.callout-title {
+  font-size: 10.5px;
+  letter-spacing: 0.2em;
+  color: var(--warn);
+  margin-bottom: 8px;
+}
+.callout p { font-size: 13px; color: #dfe7ef; margin: 0; max-width: none; }
+
+/* ---------- Diagrams ---------- */
+.diagram-wrap {
+  margin: 22px 0 8px;
+  overflow-x: auto;
+}
+.diagram-wrap svg {
+  width: 100%;
+  height: auto;
+  min-width: 720px;
+  display: block;
+}
+.stage-svg text { font-family: var(--mono); }
+
+/* ---------- Vertical accordion ---------- */
+.vlegend {
+  display: flex;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+.vlegend a {
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 11.5px;
+  display: inline-flex;
+  align-items: center;
+  margin: 2px 16px 2px 0;
+}
+.vlegend a:hover { color: var(--text); }
+.vlegend .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+
+.vlist { display: flex; flex-direction: column; gap: 10px; }
+.vcard {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-left: 3px solid var(--vaccent, var(--accent));
+}
+.vcard summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 20px;
+  user-select: none;
+}
+.vcard summary::-webkit-details-marker { display: none; }
+.vcode {
+  font-size: 11px;
+  color: var(--vaccent, var(--accent));
+  letter-spacing: 0.1em;
+  width: 42px;
+  flex-shrink: 0;
+}
+.vname {
+  font-size: 14.5px;
+  color: #f3f8fc;
+  font-weight: 600;
+  width: 130px;
+  flex-shrink: 0;
+}
+.vsource {
+  font-size: 11.5px;
+  color: var(--dim);
+  flex: 1;
+}
+.vchevron {
+  color: var(--muted);
+  transition: transform .15s;
+  font-size: 11px;
+}
+.vcard[open] .vchevron { transform: rotate(180deg); }
+.vbody {
+  padding: 4px 20px 22px;
+  border-top: 1px solid var(--line);
+}
+.vbody p {
+  font-size: 13px;
+  color: var(--muted);
+  max-width: none;
+}
+.vbody p code { color: #b7f5ec; }
+.vbody strong { color: #dfe7ef; }
+
+/* ---------- Two-plane ---------- */
+.two-plane {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  margin: 24px 0;
+}
+.plane {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  padding: 18px 20px;
+}
+.plane-title {
+  font-size: 13px;
+  color: #f3f8fc;
+  margin-bottom: 10px;
+  font-weight: 600;
+}
+.plane-sub {
+  font-size: 10.5px;
+  color: var(--dim);
+  font-weight: 400;
+  margin-left: 4px;
+}
+.plane p { font-size: 12.5px; color: var(--muted); max-width: none; }
+.plane p code { color: #b7f5ec; }
+
+.sentinel-list {
+  color: var(--muted);
+  font-size: 13.5px;
+  padding-left: 20px;
+}
+.sentinel-list li { margin-bottom: 6px; }
+.sentinel-list strong { color: var(--text); }
+
+footer {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 30px 40px 60px;
+  color: var(--dim);
+  font-size: 11.5px;
+}
+
+@media (max-width: 720px) {
+  .hero, main, footer { padding-left: 20px; padding-right: 20px; }
+  .split, .two-plane { grid-template-columns: 1fr; }
+  .hero h1 { font-size: 28px; }
+  .vsource { display: none; }
+}
+
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="hero-kicker">TSM CONSULTZ &middot; INTERNAL REFERENCE</div>
+  <h1>Client Lifecycle &amp; Delivery Pipeline</h1>
+  <p class="hero-sub">How a client reaches their command center, and how the same six-stage pipeline plays out
+  differently across nine verticals — access issuance, login &amp; scoping, the universal pipeline shape, then
+  each vertical's real instantiation of it.</p>
+  <nav class="quicknav">
+    <a href="#access">01 Access</a>
+    <a href="#login">02 Login &amp; Scoping</a>
+    <a href="#pipeline">03 Universal Pipeline</a>
+    <a href="#verticals">04 Verticals</a>
+    <a href="#ops">05 Ops Layer</a>
+    <a href="#sentinel">06 Sentinel</a>
+  </nav>
+</header>
+
+<main>
+
+<section id="access" class="block">
+  <div class="eyebrow">01 &mdash; ACCESS ISSUANCE</div>
+  <h2>Two systems answer to the same name</h2>
+  <p><code>client-access.html</code> and the login gate inside <code>tsm-doc-search-multi.html</code> both present
+  a "client access" experience, and the two are easy to confuse from the outside — one is real, the other is a demo
+  prop that happens to look the part.</p>
+
+  <div class="split">
+    <div class="split-col demo">
+      <div class="split-label">client-access.html</div>
+      <div class="split-verdict">DECORATIVE DEMO PROTOTYPE</div>
+      <ul>
+        <li>Token map is hardcoded in the page's own JS (<code>CLIENTS</code>)</li>
+        <li>Session state lives in <code>sessionStorage</code> &mdash; client-side only</li>
+        <li>Demo tokens are click-to-load, no server round trip at all</li>
+        <li>No relationship to any real client record or credential</li>
+      </ul>
+    </div>
+    <div class="split-col real">
+      <div class="split-label">tsm-doc-search-multi.html login gate</div>
+      <div class="split-verdict">REAL SERVER-BACKED SESSION</div>
+      <ul>
+        <li>Calls <code>/api/auth/status</code> on load</li>
+        <li>Unauthenticated requests redirect to <code>/login?next=...</code></li>
+        <li>Authenticated state arrives as <code>window.TSM_SESSION</code></li>
+        <li>Session carries a real <code>role</code> and <code>clientId</code>, not a hardcoded map</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <div class="callout-title">Known gap</div>
+    <p><code>bpo-internal1.html</code>'s own nav links to <code>client-access.html</code> under "Client Access."
+    A supervisor clicking that expecting the real HMAC/session system lands on the decorative prototype instead.
+    Separately, that same nav's Tools section links to <code>sops.html</code> &mdash; which doesn't exist anywhere
+    in this repo. Neither has been fixed as of this doc.</p>
+  </div>
+</section>
+
+<section id="login" class="block">
+  <div class="eyebrow">02 &mdash; CLIENT LOGIN &amp; SCOPING</div>
+  <h2>What a client session actually restricts</h2>
+  <p>Once <code>TSM_SESSION</code> exists with <code>role: 'client'</code>, the document-search UI scopes itself
+  down automatically: the client selector is pre-filled and locked to that one <code>clientId</code>, rather than
+  offering the full client list an internal user would see. The admin-only "add client" control is hidden entirely
+  for client sessions — not just disabled — because it depends on a server-side client registry that a client session
+  has no reason to touch.</p>
+</section>
+
+<section id="pipeline" class="block">
+  <div class="eyebrow">03 &mdash; UNIVERSAL PIPELINE</div>
+  <h2>The same six stages, every vertical</h2>
+  <p>Every war-room/strategist/exec-portal trio &mdash; whatever it's ingesting, whoever signs off at the end &mdash;
+  collapses to the same six-stage shape. This is <code>js/tsm-guide-engine.js</code>'s own implicit structure
+  (each vertical's <code>warroom</code>/<code>strategist</code>/<code>exec</code> step config, condensed), not
+  something invented for this document.</p>
+  <div class="diagram-wrap"><svg viewBox="0 0 1180 190" xmlns="http://www.w3.org/2000/svg" class="stage-svg">
+<defs>
+      <marker id="arrow-universal" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+        <path d="M0,0 L6,3 L0,6 Z" fill="#00e5cc"/>
+      </marker>
+    </defs>
+<rect x="20.0" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#00e5cc" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="30.0" y="66" font-family="monospace" font-size="9" fill="#00e5cc" letter-spacing="1">STAGE 01</text>
+<text x="30.0" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Intake / Ingestion</text>
+<text x="30.0" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">load real records</text>
+<line x1="188.0" y1="92.0" x2="208.4" y2="92.0" stroke="#00e5cc" stroke-width="1.4" marker-end="url(#arrow-universal)" stroke-opacity="0.8"/>
+<rect x="214.4" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#00e5cc" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="224.4" y="66" font-family="monospace" font-size="9" fill="#00e5cc" letter-spacing="1">STAGE 02</text>
+<text x="224.4" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Engine Analysis /</text>
+<text x="224.4" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Audit</text>
+<text x="224.4" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">6-engine module run</text>
+<line x1="382.4" y1="92.0" x2="402.8" y2="92.0" stroke="#00e5cc" stroke-width="1.4" marker-end="url(#arrow-universal)" stroke-opacity="0.8"/>
+<rect x="408.8" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#00e5cc" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="418.8" y="66" font-family="monospace" font-size="9" fill="#00e5cc" letter-spacing="1">STAGE 03</text>
+<text x="418.8" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Save &amp; Relay</text>
+<text x="418.8" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">TSM_&lt;VERT&gt;_STRATEGIST_RELAY</text>
+<line x1="576.8" y1="92.0" x2="597.2" y2="92.0" stroke="#00e5cc" stroke-width="1.4" marker-end="url(#arrow-universal)" stroke-opacity="0.8"/>
+<rect x="603.2" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#00e5cc" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="613.2" y="66" font-family="monospace" font-size="9" fill="#00e5cc" letter-spacing="1">STAGE 04</text>
+<text x="613.2" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Strategist Analysis</text>
+<text x="613.2" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">&amp; Brief</text>
+<text x="613.2" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">risk params, generate brief</text>
+<line x1="771.2" y1="92.0" x2="791.6" y2="92.0" stroke="#00e5cc" stroke-width="1.4" marker-end="url(#arrow-universal)" stroke-opacity="0.8"/>
+<rect x="797.6" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#00e5cc" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="807.6" y="66" font-family="monospace" font-size="9" fill="#00e5cc" letter-spacing="1">STAGE 05</text>
+<text x="807.6" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Escalation</text>
+<text x="807.6" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">strategist -&gt; exec handoff</text>
+<line x1="965.6" y1="92.0" x2="986.0" y2="92.0" stroke="#00e5cc" stroke-width="1.4" marker-end="url(#arrow-universal)" stroke-opacity="0.8"/>
+<rect x="992.0" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#00e5cc" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="1002.0" y="66" font-family="monospace" font-size="9" fill="#00e5cc" letter-spacing="1">STAGE 06</text>
+<text x="1002.0" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Exec Sign-off /</text>
+<text x="1002.0" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Decision</text>
+<text x="1002.0" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">approve, authorize, override</text>
+</svg></div>
+</section>
+
+<section id="verticals" class="block">
+  <div class="eyebrow">04 &mdash; NINE VERTICAL INSTANTIATIONS</div>
+  <h2>Same shape, different vocabulary</h2>
+  <p>Click a vertical to see its own stage labels — pulled directly from <code>GUIDE_CONFIGS</code> in
+  <code>js/tsm-guide-engine.js</code>, which auto-mounts on every one of these pages already (see the earlier
+  note on mortgage). BPO is the exception, and is called out below.</p>
+  <div class="vlegend"><a href="#realestate"><span class="dot" style="background:#38bdf8"></span>Real Estate</a>
+<a href="#legal"><span class="dot" style="background:#a78bfa"></span>Legal</a>
+<a href="#construction"><span class="dot" style="background:#f59e0b"></span>Construction</a>
+<a href="#healthcare"><span class="dot" style="background:#f43f5e"></span>Healthcare</a>
+<a href="#mortgage"><span class="dot" style="background:#22d3ee"></span>Mortgage</a>
+<a href="#schools"><span class="dot" style="background:#facc15"></span>Schools</a>
+<a href="#finops"><span class="dot" style="background:#34d399"></span>FinOps</a>
+<a href="#insurance"><span class="dot" style="background:#fb923c"></span>Insurance</a>
+<a href="#bpo"><span class="dot" style="background:#94a3b8"></span>BPO</a></div>
+  <div class="vlist">
+    
+    <details class="vcard" style="--vaccent:#38bdf8">
+      <summary>
+        <span class="vcode">RE</span>
+        <span class="vname">Real Estate</span>
+        <span class="vsource">html/war-rooms/re-war/ (war room, re-strategist.html, re-exec-portal.html)</span>
+        <span class="vchevron">&#9662;</span>
+      </summary>
+      <div class="vbody">
+        <div class="diagram-wrap"><svg viewBox="0 0 1180 190" xmlns="http://www.w3.org/2000/svg" class="stage-svg">
+<defs>
+      <marker id="arrow-realestate" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+        <path d="M0,0 L6,3 L0,6 Z" fill="#38bdf8"/>
+      </marker>
+    </defs>
+<rect x="20.0" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#38bdf8" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="30.0" y="66" font-family="monospace" font-size="9" fill="#38bdf8" letter-spacing="1">STAGE 01</text>
+<text x="30.0" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Load Property / Loan</text>
+<text x="30.0" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Data</text>
+<text x="30.0" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">war room - doc search</text>
+<line x1="188.0" y1="92.0" x2="208.4" y2="92.0" stroke="#38bdf8" stroke-width="1.4" marker-end="url(#arrow-realestate)" stroke-opacity="0.8"/>
+<rect x="214.4" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#38bdf8" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="224.4" y="66" font-family="monospace" font-size="9" fill="#38bdf8" letter-spacing="1">STAGE 02</text>
+<text x="224.4" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Run Deal Rescue Pack</text>
+<text x="224.4" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">ingestion modules</text>
+<line x1="382.4" y1="92.0" x2="402.8" y2="92.0" stroke="#38bdf8" stroke-width="1.4" marker-end="url(#arrow-realestate)" stroke-opacity="0.8"/>
+<rect x="408.8" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#38bdf8" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="418.8" y="66" font-family="monospace" font-size="9" fill="#38bdf8" letter-spacing="1">STAGE 03</text>
+<text x="418.8" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Save + Relay to</text>
+<text x="418.8" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Strategist</text>
+<text x="418.8" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">TSM_RE_STRATEGIST_RELAY</text>
+<line x1="576.8" y1="92.0" x2="597.2" y2="92.0" stroke="#38bdf8" stroke-width="1.4" marker-end="url(#arrow-realestate)" stroke-opacity="0.8"/>
+<rect x="603.2" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#38bdf8" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="613.2" y="66" font-family="monospace" font-size="9" fill="#38bdf8" letter-spacing="1">STAGE 04</text>
+<text x="613.2" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Configure Strategy,</text>
+<text x="613.2" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Generate Brief</text>
+<text x="613.2" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">re-strategist.html</text>
+<line x1="771.2" y1="92.0" x2="791.6" y2="92.0" stroke="#38bdf8" stroke-width="1.4" marker-end="url(#arrow-realestate)" stroke-opacity="0.8"/>
+<rect x="797.6" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#38bdf8" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="807.6" y="66" font-family="monospace" font-size="9" fill="#38bdf8" letter-spacing="1">STAGE 05</text>
+<text x="807.6" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Escalate to Exec</text>
+<text x="807.6" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Portal</text>
+<text x="807.6" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">handoff</text>
+<line x1="965.6" y1="92.0" x2="986.0" y2="92.0" stroke="#38bdf8" stroke-width="1.4" marker-end="url(#arrow-realestate)" stroke-opacity="0.8"/>
+<rect x="992.0" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#38bdf8" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="1002.0" y="66" font-family="monospace" font-size="9" fill="#38bdf8" letter-spacing="1">STAGE 06</text>
+<text x="1002.0" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Sign-off / Override</text>
+<text x="1002.0" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">re-exec-portal.html</text>
+</svg></div>
+        <p>Runs entirely on the guide-engine's <code>re</code> config — the oldest of the nine, and the one that predates the universal engine. Its war-room/strategist/exec trio still carries an older, hand-built step panel alongside the newer auto-detecting one; the two haven't been reconciled yet.</p>
+        
+      </div>
+    </details>
+
+    <details class="vcard" style="--vaccent:#a78bfa">
+      <summary>
+        <span class="vcode">LGL</span>
+        <span class="vname">Legal</span>
+        <span class="vsource">html/legal-pro/ + legal-war/ (legal-main-strategist.html)</span>
+        <span class="vchevron">&#9662;</span>
+      </summary>
+      <div class="vbody">
+        <div class="diagram-wrap"><svg viewBox="0 0 1180 190" xmlns="http://www.w3.org/2000/svg" class="stage-svg">
+<defs>
+      <marker id="arrow-legal" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+        <path d="M0,0 L6,3 L0,6 Z" fill="#a78bfa"/>
+      </marker>
+    </defs>
+<rect x="20.0" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#a78bfa" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="30.0" y="66" font-family="monospace" font-size="9" fill="#a78bfa" letter-spacing="1">STAGE 01</text>
+<text x="30.0" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Load Case Files &amp;</text>
+<text x="30.0" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Filings</text>
+<text x="30.0" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">war room intake</text>
+<line x1="188.0" y1="92.0" x2="208.4" y2="92.0" stroke="#a78bfa" stroke-width="1.4" marker-end="url(#arrow-legal)" stroke-opacity="0.8"/>
+<rect x="214.4" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#a78bfa" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="224.4" y="66" font-family="monospace" font-size="9" fill="#a78bfa" letter-spacing="1">STAGE 02</text>
+<text x="224.4" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Run Residency /</text>
+<text x="224.4" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Factor Audit</text>
+<text x="224.4" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">ingestion modules</text>
+<line x1="382.4" y1="92.0" x2="402.8" y2="92.0" stroke="#a78bfa" stroke-width="1.4" marker-end="url(#arrow-legal)" stroke-opacity="0.8"/>
+<rect x="408.8" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#a78bfa" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="418.8" y="66" font-family="monospace" font-size="9" fill="#a78bfa" letter-spacing="1">STAGE 03</text>
+<text x="418.8" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Save + Relay to</text>
+<text x="418.8" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Strategist</text>
+<text x="418.8" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">TSM_LEGAL_STRATEGIST_RELAY</text>
+<line x1="576.8" y1="92.0" x2="597.2" y2="92.0" stroke="#a78bfa" stroke-width="1.4" marker-end="url(#arrow-legal)" stroke-opacity="0.8"/>
+<rect x="603.2" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#a78bfa" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="613.2" y="66" font-family="monospace" font-size="9" fill="#a78bfa" letter-spacing="1">STAGE 04</text>
+<text x="613.2" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Verify Precedent,</text>
+<text x="613.2" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Generate Brief</text>
+<text x="613.2" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">legal-main-strategist.html</text>
+<line x1="771.2" y1="92.0" x2="791.6" y2="92.0" stroke="#a78bfa" stroke-width="1.4" marker-end="url(#arrow-legal)" stroke-opacity="0.8"/>
+<rect x="797.6" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#a78bfa" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="807.6" y="66" font-family="monospace" font-size="9" fill="#a78bfa" letter-spacing="1">STAGE 05</text>
+<text x="807.6" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Escalate to Partner</text>
+<text x="807.6" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Portal</text>
+<text x="807.6" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">handoff</text>
+<line x1="965.6" y1="92.0" x2="986.0" y2="92.0" stroke="#a78bfa" stroke-width="1.4" marker-end="url(#arrow-legal)" stroke-opacity="0.8"/>
+<rect x="992.0" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#a78bfa" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="1002.0" y="66" font-family="monospace" font-size="9" fill="#a78bfa" letter-spacing="1">STAGE 06</text>
+<text x="1002.0" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Authorize Spend &amp;</text>
+<text x="1002.0" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Motions</text>
+<text x="1002.0" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">exec sign-off</text>
+</svg></div>
+        <p>Case citations and precedent audits feed a defense brief that escalates to a Senior Partner Portal rather than a generic "exec portal" — the guide-engine config uses the firm's own language throughout.</p>
+        
+      </div>
+    </details>
+
+    <details class="vcard" style="--vaccent:#f59e0b">
+      <summary>
+        <span class="vcode">CON</span>
+        <span class="vname">Construction</span>
+        <span class="vsource">html/war-rooms/construct-war/ (construction-war-room.html, construction-strategist.html)</span>
+        <span class="vchevron">&#9662;</span>
+      </summary>
+      <div class="vbody">
+        <div class="diagram-wrap"><svg viewBox="0 0 1180 190" xmlns="http://www.w3.org/2000/svg" class="stage-svg">
+<defs>
+      <marker id="arrow-construction" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+        <path d="M0,0 L6,3 L0,6 Z" fill="#f59e0b"/>
+      </marker>
+    </defs>
+<rect x="20.0" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#f59e0b" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="30.0" y="66" font-family="monospace" font-size="9" fill="#f59e0b" letter-spacing="1">STAGE 01</text>
+<text x="30.0" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Load Site /</text>
+<text x="30.0" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Subcontract Logs</text>
+<text x="30.0" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">war room intake</text>
+<line x1="188.0" y1="92.0" x2="208.4" y2="92.0" stroke="#f59e0b" stroke-width="1.4" marker-end="url(#arrow-construction)" stroke-opacity="0.8"/>
+<rect x="214.4" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#f59e0b" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="224.4" y="66" font-family="monospace" font-size="9" fill="#f59e0b" letter-spacing="1">STAGE 02</text>
+<text x="224.4" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Run Permitting &amp;</text>
+<text x="224.4" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Overrun Audit</text>
+<text x="224.4" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">ingestion modules</text>
+<line x1="382.4" y1="92.0" x2="402.8" y2="92.0" stroke="#f59e0b" stroke-width="1.4" marker-end="url(#arrow-construction)" stroke-opacity="0.8"/>
+<rect x="408.8" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#f59e0b" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="418.8" y="66" font-family="monospace" font-size="9" fill="#f59e0b" letter-spacing="1">STAGE 03</text>
+<text x="418.8" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Save + Relay to</text>
+<text x="418.8" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Strategist</text>
+<text x="418.8" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">TSM_CON_STRATEGIST_RELAY</text>
+<line x1="576.8" y1="92.0" x2="597.2" y2="92.0" stroke="#f59e0b" stroke-width="1.4" marker-end="url(#arrow-construction)" stroke-opacity="0.8"/>
+<rect x="603.2" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#f59e0b" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="613.2" y="66" font-family="monospace" font-size="9" fill="#f59e0b" letter-spacing="1">STAGE 04</text>
+<text x="613.2" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Audit Orders,</text>
+<text x="613.2" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Generate Directives</text>
+<text x="613.2" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">construction-strategist.html</text>
+<line x1="771.2" y1="92.0" x2="791.6" y2="92.0" stroke="#f59e0b" stroke-width="1.4" marker-end="url(#arrow-construction)" stroke-opacity="0.8"/>
+<rect x="797.6" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#f59e0b" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="807.6" y="66" font-family="monospace" font-size="9" fill="#f59e0b" letter-spacing="1">STAGE 05</text>
+<text x="807.6" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Escalate to</text>
+<text x="807.6" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Developer Portal</text>
+<text x="807.6" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">handoff</text>
+<line x1="965.6" y1="92.0" x2="986.0" y2="92.0" stroke="#f59e0b" stroke-width="1.4" marker-end="url(#arrow-construction)" stroke-opacity="0.8"/>
+<rect x="992.0" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#f59e0b" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="1002.0" y="66" font-family="monospace" font-size="9" fill="#f59e0b" letter-spacing="1">STAGE 06</text>
+<text x="1002.0" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Sign-off Funding &amp;</text>
+<text x="1002.0" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Overruns</text>
+<text x="1002.0" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">exec sign-off</text>
+</svg></div>
+        <p>Persona tabs (Command Hub / Field &amp; Doc Ops / Permits &amp; Proposals / Document Showcase) sit alongside this pipeline as a separate role-based view bar, not a replacement for it.</p>
+        
+      </div>
+    </details>
+
+    <details class="vcard" style="--vaccent:#f43f5e">
+      <summary>
+        <span class="vcode">HC</span>
+        <span class="vname">Healthcare</span>
+        <span class="vsource">html/healthcare/hc-denial-war-room.html + hc-main-strategist.html</span>
+        <span class="vchevron">&#9662;</span>
+      </summary>
+      <div class="vbody">
+        <div class="diagram-wrap"><svg viewBox="0 0 1180 190" xmlns="http://www.w3.org/2000/svg" class="stage-svg">
+<defs>
+      <marker id="arrow-healthcare" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+        <path d="M0,0 L6,3 L0,6 Z" fill="#f43f5e"/>
+      </marker>
+    </defs>
+<rect x="20.0" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#f43f5e" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="30.0" y="66" font-family="monospace" font-size="9" fill="#f43f5e" letter-spacing="1">STAGE 01</text>
+<text x="30.0" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Load EHR / Claims</text>
+<text x="30.0" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Telemetry</text>
+<text x="30.0" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">war room intake</text>
+<line x1="188.0" y1="92.0" x2="208.4" y2="92.0" stroke="#f43f5e" stroke-width="1.4" marker-end="url(#arrow-healthcare)" stroke-opacity="0.8"/>
+<rect x="214.4" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#f43f5e" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="224.4" y="66" font-family="monospace" font-size="9" fill="#f43f5e" letter-spacing="1">STAGE 02</text>
+<text x="224.4" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Parse Denial &amp; HIPAA</text>
+<text x="224.4" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Flags</text>
+<text x="224.4" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">ingestion modules</text>
+<line x1="382.4" y1="92.0" x2="402.8" y2="92.0" stroke="#f43f5e" stroke-width="1.4" marker-end="url(#arrow-healthcare)" stroke-opacity="0.8"/>
+<rect x="408.8" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#f43f5e" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="418.8" y="66" font-family="monospace" font-size="9" fill="#f43f5e" letter-spacing="1">STAGE 03</text>
+<text x="418.8" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Review SLA, Relay to</text>
+<text x="418.8" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Strategist</text>
+<text x="418.8" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">TSM_HC_STRATEGIST_RELAY</text>
+<line x1="576.8" y1="92.0" x2="597.2" y2="92.0" stroke="#f43f5e" stroke-width="1.4" marker-end="url(#arrow-healthcare)" stroke-opacity="0.8"/>
+<rect x="603.2" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#f43f5e" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="613.2" y="66" font-family="monospace" font-size="9" fill="#f43f5e" letter-spacing="1">STAGE 04</text>
+<text x="613.2" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Audit CPT Denials,</text>
+<text x="613.2" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Gen Appeals</text>
+<text x="613.2" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">hc-main-strategist.html</text>
+<line x1="771.2" y1="92.0" x2="791.6" y2="92.0" stroke="#f43f5e" stroke-width="1.4" marker-end="url(#arrow-healthcare)" stroke-opacity="0.8"/>
+<rect x="797.6" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#f43f5e" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="807.6" y="66" font-family="monospace" font-size="9" fill="#f43f5e" letter-spacing="1">STAGE 05</text>
+<text x="807.6" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Escalate to CMO View</text>
+<text x="807.6" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">handoff</text>
+<line x1="965.6" y1="92.0" x2="986.0" y2="92.0" stroke="#f43f5e" stroke-width="1.4" marker-end="url(#arrow-healthcare)" stroke-opacity="0.8"/>
+<rect x="992.0" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#f43f5e" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="1002.0" y="66" font-family="monospace" font-size="9" fill="#f43f5e" letter-spacing="1">STAGE 06</text>
+<text x="1002.0" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Authorize Appeals &amp;</text>
+<text x="1002.0" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Overrides</text>
+<text x="1002.0" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">exec sign-off</text>
+</svg></div>
+        <p>The only vertical whose war-room DOM required a bespoke persona-tab anchor point (<code>header.hdr</code>/<code>.main</code> instead of <code>.nav</code>/<code>.layout</code>) — the guide-engine's path-based detection doesn't care, but other tooling built for this repo does.</p>
+        
+      </div>
+    </details>
+
+    <details class="vcard" style="--vaccent:#22d3ee">
+      <summary>
+        <span class="vcode">MTG</span>
+        <span class="vname">Mortgage</span>
+        <span class="vsource">html/reo-pro/mortgage/index.html ("Mortgage Command") + html/war-rooms/mortgage/ trio</span>
+        <span class="vchevron">&#9662;</span>
+      </summary>
+      <div class="vbody">
+        <div class="diagram-wrap"><svg viewBox="0 0 1180 190" xmlns="http://www.w3.org/2000/svg" class="stage-svg">
+<defs>
+      <marker id="arrow-mortgage" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+        <path d="M0,0 L6,3 L0,6 Z" fill="#22d3ee"/>
+      </marker>
+    </defs>
+<rect x="20.0" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#22d3ee" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="30.0" y="66" font-family="monospace" font-size="9" fill="#22d3ee" letter-spacing="1">STAGE 01</text>
+<text x="30.0" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Load Loan / TRID</text>
+<text x="30.0" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Statements</text>
+<text x="30.0" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">war room intake</text>
+<line x1="188.0" y1="92.0" x2="208.4" y2="92.0" stroke="#22d3ee" stroke-width="1.4" marker-end="url(#arrow-mortgage)" stroke-opacity="0.8"/>
+<rect x="214.4" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#22d3ee" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="224.4" y="66" font-family="monospace" font-size="9" fill="#22d3ee" letter-spacing="1">STAGE 02</text>
+<text x="224.4" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Run Pull-Through &amp;</text>
+<text x="224.4" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Closing Audit</text>
+<text x="224.4" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">ingestion modules</text>
+<line x1="382.4" y1="92.0" x2="402.8" y2="92.0" stroke="#22d3ee" stroke-width="1.4" marker-end="url(#arrow-mortgage)" stroke-opacity="0.8"/>
+<rect x="408.8" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#22d3ee" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="418.8" y="66" font-family="monospace" font-size="9" fill="#22d3ee" letter-spacing="1">STAGE 03</text>
+<text x="418.8" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Save + Relay to</text>
+<text x="418.8" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Strategist</text>
+<text x="418.8" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">TSM_MTG_STRATEGIST_RELAY</text>
+<line x1="576.8" y1="92.0" x2="597.2" y2="92.0" stroke="#22d3ee" stroke-width="1.4" marker-end="url(#arrow-mortgage)" stroke-opacity="0.8"/>
+<rect x="603.2" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#22d3ee" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="613.2" y="66" font-family="monospace" font-size="9" fill="#22d3ee" letter-spacing="1">STAGE 04</text>
+<text x="613.2" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Audit TRID, Generate</text>
+<text x="613.2" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Rescue</text>
+<text x="613.2" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">mortgage-strategist.html</text>
+<line x1="771.2" y1="92.0" x2="791.6" y2="92.0" stroke="#22d3ee" stroke-width="1.4" marker-end="url(#arrow-mortgage)" stroke-opacity="0.8"/>
+<rect x="797.6" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#22d3ee" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="807.6" y="66" font-family="monospace" font-size="9" fill="#22d3ee" letter-spacing="1">STAGE 05</text>
+<text x="807.6" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Escalate to Lending</text>
+<text x="807.6" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Exec</text>
+<text x="807.6" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">handoff</text>
+<line x1="965.6" y1="92.0" x2="986.0" y2="92.0" stroke="#22d3ee" stroke-width="1.4" marker-end="url(#arrow-mortgage)" stroke-opacity="0.8"/>
+<rect x="992.0" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#22d3ee" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="1002.0" y="66" font-family="monospace" font-size="9" fill="#22d3ee" letter-spacing="1">STAGE 06</text>
+<text x="1002.0" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Sign-off Secondary</text>
+<text x="1002.0" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Offloads</text>
+<text x="1002.0" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">exec sign-off</text>
+</svg></div>
+        <p>Two independent mortgage implementations exist in this repo. Both are covered — the guide-engine's path detection matches on the word "mortgage" alone, so it fires on either one.</p>
+        
+      </div>
+    </details>
+
+    <details class="vcard" style="--vaccent:#facc15">
+      <summary>
+        <span class="vcode">SCH</span>
+        <span class="vname">Schools</span>
+        <span class="vsource">bpo-internal1.html's Schools sector (no unified war-room file)</span>
+        <span class="vchevron">&#9662;</span>
+      </summary>
+      <div class="vbody">
+        <div class="diagram-wrap"><svg viewBox="0 0 1180 190" xmlns="http://www.w3.org/2000/svg" class="stage-svg">
+<defs>
+      <marker id="arrow-schools" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+        <path d="M0,0 L6,3 L0,6 Z" fill="#facc15"/>
+      </marker>
+    </defs>
+<rect x="20.0" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#facc15" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="30.0" y="66" font-family="monospace" font-size="9" fill="#facc15" letter-spacing="1">STAGE 01</text>
+<text x="30.0" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Load ADA /</text>
+<text x="30.0" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Attendance Logs</text>
+<text x="30.0" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">war room intake</text>
+<line x1="188.0" y1="92.0" x2="208.4" y2="92.0" stroke="#facc15" stroke-width="1.4" marker-end="url(#arrow-schools)" stroke-opacity="0.8"/>
+<rect x="214.4" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#facc15" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="224.4" y="66" font-family="monospace" font-size="9" fill="#facc15" letter-spacing="1">STAGE 02</text>
+<text x="224.4" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Parse Title IX &amp;</text>
+<text x="224.4" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Safety Flags</text>
+<text x="224.4" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">ingestion modules</text>
+<line x1="382.4" y1="92.0" x2="402.8" y2="92.0" stroke="#facc15" stroke-width="1.4" marker-end="url(#arrow-schools)" stroke-opacity="0.8"/>
+<rect x="408.8" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#facc15" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="418.8" y="66" font-family="monospace" font-size="9" fill="#facc15" letter-spacing="1">STAGE 03</text>
+<text x="418.8" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Review Facilities,</text>
+<text x="418.8" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Relay</text>
+<text x="418.8" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">TSM_SCH_STRATEGIST_RELAY</text>
+<line x1="576.8" y1="92.0" x2="597.2" y2="92.0" stroke="#facc15" stroke-width="1.4" marker-end="url(#arrow-schools)" stroke-opacity="0.8"/>
+<rect x="603.2" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#facc15" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="613.2" y="66" font-family="monospace" font-size="9" fill="#facc15" letter-spacing="1">STAGE 04</text>
+<text x="613.2" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Audit ADA Funding,</text>
+<text x="613.2" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Gen Directives</text>
+<text x="613.2" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">strategist</text>
+<line x1="771.2" y1="92.0" x2="791.6" y2="92.0" stroke="#facc15" stroke-width="1.4" marker-end="url(#arrow-schools)" stroke-opacity="0.8"/>
+<rect x="797.6" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#facc15" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="807.6" y="66" font-family="monospace" font-size="9" fill="#facc15" letter-spacing="1">STAGE 05</text>
+<text x="807.6" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Escalate to Board</text>
+<text x="807.6" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Portal</text>
+<text x="807.6" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">handoff</text>
+<line x1="965.6" y1="92.0" x2="986.0" y2="92.0" stroke="#facc15" stroke-width="1.4" marker-end="url(#arrow-schools)" stroke-opacity="0.8"/>
+<rect x="992.0" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#facc15" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="1002.0" y="66" font-family="monospace" font-size="9" fill="#facc15" letter-spacing="1">STAGE 06</text>
+<text x="1002.0" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Approve Budget</text>
+<text x="1002.0" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Allocations</text>
+<text x="1002.0" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">exec sign-off</text>
+</svg></div>
+        <p>Schools never got its own war-room/strategist/exec-portal trio — it lives as one of bpo-internal1.html's seven internal sectors. The guide-engine config for it exists, but there's no single page today whose path would reliably trigger it.</p>
+        
+      </div>
+    </details>
+
+    <details class="vcard" style="--vaccent:#34d399">
+      <summary>
+        <span class="vcode">FO</span>
+        <span class="vname">FinOps</span>
+        <span class="vsource">finops-suite/finops-war/ (finops-war-room.html, finops-main-strategist.html)</span>
+        <span class="vchevron">&#9662;</span>
+      </summary>
+      <div class="vbody">
+        <div class="diagram-wrap"><svg viewBox="0 0 1180 190" xmlns="http://www.w3.org/2000/svg" class="stage-svg">
+<defs>
+      <marker id="arrow-finops" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+        <path d="M0,0 L6,3 L0,6 Z" fill="#34d399"/>
+      </marker>
+    </defs>
+<rect x="20.0" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#34d399" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="30.0" y="66" font-family="monospace" font-size="9" fill="#34d399" letter-spacing="1">STAGE 01</text>
+<text x="30.0" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Load Ledger /</text>
+<text x="30.0" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Transaction Logs</text>
+<text x="30.0" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">war room intake</text>
+<line x1="188.0" y1="92.0" x2="208.4" y2="92.0" stroke="#34d399" stroke-width="1.4" marker-end="url(#arrow-finops)" stroke-opacity="0.8"/>
+<rect x="214.4" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#34d399" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="224.4" y="66" font-family="monospace" font-size="9" fill="#34d399" letter-spacing="1">STAGE 02</text>
+<text x="224.4" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Run Revenue / Margin</text>
+<text x="224.4" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Audit</text>
+<text x="224.4" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">ingestion modules</text>
+<line x1="382.4" y1="92.0" x2="402.8" y2="92.0" stroke="#34d399" stroke-width="1.4" marker-end="url(#arrow-finops)" stroke-opacity="0.8"/>
+<rect x="408.8" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#34d399" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="418.8" y="66" font-family="monospace" font-size="9" fill="#34d399" letter-spacing="1">STAGE 03</text>
+<text x="418.8" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Save + Relay to</text>
+<text x="418.8" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Strategist</text>
+<text x="418.8" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">TSM_FO_STRATEGIST_RELAY</text>
+<line x1="576.8" y1="92.0" x2="597.2" y2="92.0" stroke="#34d399" stroke-width="1.4" marker-end="url(#arrow-finops)" stroke-opacity="0.8"/>
+<rect x="603.2" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#34d399" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="613.2" y="66" font-family="monospace" font-size="9" fill="#34d399" letter-spacing="1">STAGE 04</text>
+<text x="613.2" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Audit EBITDA, Gen</text>
+<text x="613.2" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Optimization</text>
+<text x="613.2" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">finops-main-strategist.html</text>
+<line x1="771.2" y1="92.0" x2="791.6" y2="92.0" stroke="#34d399" stroke-width="1.4" marker-end="url(#arrow-finops)" stroke-opacity="0.8"/>
+<rect x="797.6" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#34d399" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="807.6" y="66" font-family="monospace" font-size="9" fill="#34d399" letter-spacing="1">STAGE 05</text>
+<text x="807.6" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Escalate to CFO</text>
+<text x="807.6" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Portal</text>
+<text x="807.6" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">handoff</text>
+<line x1="965.6" y1="92.0" x2="986.0" y2="92.0" stroke="#34d399" stroke-width="1.4" marker-end="url(#arrow-finops)" stroke-opacity="0.8"/>
+<rect x="992.0" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#34d399" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="1002.0" y="66" font-family="monospace" font-size="9" fill="#34d399" letter-spacing="1">STAGE 06</text>
+<text x="1002.0" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Approve Capital</text>
+<text x="1002.0" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Allocations</text>
+<text x="1002.0" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">exec sign-off</text>
+</svg></div>
+        <p>The strategist page folds this pipeline's escalation step into its own pre-existing internal tab bar via a <code>switchTabPersona()</code> helper, rather than stacking a second bar on top.</p>
+        
+      </div>
+    </details>
+
+    <details class="vcard" style="--vaccent:#fb923c">
+      <summary>
+        <span class="vcode">INS</span>
+        <span class="vname">Insurance</span>
+        <span class="vsource">html/war-rooms/insure-war/ (insurance-war-room.html)</span>
+        <span class="vchevron">&#9662;</span>
+      </summary>
+      <div class="vbody">
+        <div class="diagram-wrap"><svg viewBox="0 0 1180 190" xmlns="http://www.w3.org/2000/svg" class="stage-svg">
+<defs>
+      <marker id="arrow-insurance" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+        <path d="M0,0 L6,3 L0,6 Z" fill="#fb923c"/>
+      </marker>
+    </defs>
+<rect x="20.0" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#fb923c" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="30.0" y="66" font-family="monospace" font-size="9" fill="#fb923c" letter-spacing="1">STAGE 01</text>
+<text x="30.0" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Load Policy / Claims</text>
+<text x="30.0" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Records</text>
+<text x="30.0" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">war room intake</text>
+<line x1="188.0" y1="92.0" x2="208.4" y2="92.0" stroke="#fb923c" stroke-width="1.4" marker-end="url(#arrow-insurance)" stroke-opacity="0.8"/>
+<rect x="214.4" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#fb923c" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="224.4" y="66" font-family="monospace" font-size="9" fill="#fb923c" letter-spacing="1">STAGE 02</text>
+<text x="224.4" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Run Loss Ratio Audit</text>
+<text x="224.4" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">ingestion modules</text>
+<line x1="382.4" y1="92.0" x2="402.8" y2="92.0" stroke="#fb923c" stroke-width="1.4" marker-end="url(#arrow-insurance)" stroke-opacity="0.8"/>
+<rect x="408.8" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#fb923c" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="418.8" y="66" font-family="monospace" font-size="9" fill="#fb923c" letter-spacing="1">STAGE 03</text>
+<text x="418.8" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Save + Relay to</text>
+<text x="418.8" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Strategist</text>
+<text x="418.8" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">TSM_INS_STRATEGIST_RELAY</text>
+<line x1="576.8" y1="92.0" x2="597.2" y2="92.0" stroke="#fb923c" stroke-width="1.4" marker-end="url(#arrow-insurance)" stroke-opacity="0.8"/>
+<rect x="603.2" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#fb923c" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="613.2" y="66" font-family="monospace" font-size="9" fill="#fb923c" letter-spacing="1">STAGE 04</text>
+<text x="613.2" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Audit Fraud, Gen</text>
+<text x="613.2" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Settlement</text>
+<text x="613.2" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">strategist</text>
+<line x1="771.2" y1="92.0" x2="791.6" y2="92.0" stroke="#fb923c" stroke-width="1.4" marker-end="url(#arrow-insurance)" stroke-opacity="0.8"/>
+<rect x="797.6" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#fb923c" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="807.6" y="66" font-family="monospace" font-size="9" fill="#fb923c" letter-spacing="1">STAGE 05</text>
+<text x="807.6" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Escalate to CRO View</text>
+<text x="807.6" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">handoff</text>
+<line x1="965.6" y1="92.0" x2="986.0" y2="92.0" stroke="#fb923c" stroke-width="1.4" marker-end="url(#arrow-insurance)" stroke-opacity="0.8"/>
+<rect x="992.0" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#fb923c" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="1002.0" y="66" font-family="monospace" font-size="9" fill="#fb923c" letter-spacing="1">STAGE 06</text>
+<text x="1002.0" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Sign-off Reinsurance</text>
+<text x="1002.0" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Directives</text>
+<text x="1002.0" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">exec sign-off</text>
+</svg></div>
+        <p>One of two verticals (with Legal) whose persona tabs were already wired before this pipeline's universal engine existed — built independently, on the same underlying pattern.</p>
+        
+      </div>
+    </details>
+
+    <details class="vcard" style="--vaccent:#94a3b8">
+      <summary>
+        <span class="vcode">BPO</span>
+        <span class="vname">BPO</span>
+        <span class="vsource">html/bpo-files/bpo-internal1.html + bpo-supervisor.html</span>
+        <span class="vchevron">&#9662;</span>
+      </summary>
+      <div class="vbody">
+        <div class="diagram-wrap"><svg viewBox="0 0 1180 190" xmlns="http://www.w3.org/2000/svg" class="stage-svg">
+<defs>
+      <marker id="arrow-bpo" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+        <path d="M0,0 L6,3 L0,6 Z" fill="#94a3b8"/>
+      </marker>
+    </defs>
+<rect x="20.0" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#94a3b8" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="30.0" y="66" font-family="monospace" font-size="9" fill="#94a3b8" letter-spacing="1">STAGE 01</text>
+<text x="30.0" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Upload / OCR /</text>
+<text x="30.0" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Classify</text>
+<text x="30.0" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">mission intake</text>
+<line x1="188.0" y1="92.0" x2="208.4" y2="92.0" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#arrow-bpo)" stroke-opacity="0.8"/>
+<rect x="214.4" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#94a3b8" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="224.4" y="66" font-family="monospace" font-size="9" fill="#94a3b8" letter-spacing="1">STAGE 02</text>
+<text x="224.4" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Extract &amp; Validate</text>
+<text x="224.4" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Fields</text>
+<text x="224.4" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">document-extraction fields</text>
+<line x1="382.4" y1="92.0" x2="402.8" y2="92.0" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#arrow-bpo)" stroke-opacity="0.8"/>
+<rect x="408.8" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#94a3b8" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="418.8" y="66" font-family="monospace" font-size="9" fill="#94a3b8" letter-spacing="1">STAGE 03</text>
+<text x="418.8" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Create Mission,</text>
+<text x="418.8" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Assign Operator</text>
+<text x="418.8" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">recommendAssignment()</text>
+<line x1="576.8" y1="92.0" x2="597.2" y2="92.0" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#arrow-bpo)" stroke-opacity="0.8"/>
+<rect x="603.2" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#94a3b8" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="613.2" y="66" font-family="monospace" font-size="9" fill="#94a3b8" letter-spacing="1">STAGE 04</text>
+<text x="613.2" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Work Case (In</text>
+<text x="613.2" y="97" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Progress)</text>
+<text x="613.2" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">bpo-internal1.html queue</text>
+<line x1="771.2" y1="92.0" x2="791.6" y2="92.0" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#arrow-bpo)" stroke-opacity="0.8"/>
+<rect x="797.6" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#94a3b8" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="807.6" y="66" font-family="monospace" font-size="9" fill="#94a3b8" letter-spacing="1">STAGE 05</text>
+<text x="807.6" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">QA Review</text>
+<text x="807.6" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">bpo-supervisor.html oversight</text>
+<line x1="965.6" y1="92.0" x2="986.0" y2="92.0" stroke="#94a3b8" stroke-width="1.4" marker-end="url(#arrow-bpo)" stroke-opacity="0.8"/>
+<rect x="992.0" y="46" width="168" height="92" rx="3" fill="#0a1018" stroke="#94a3b8" stroke-opacity="0.55" stroke-width="1.2"/>
+<text x="1002.0" y="66" font-family="monospace" font-size="9" fill="#94a3b8" letter-spacing="1">STAGE 06</text>
+<text x="1002.0" y="84" font-family="monospace" font-size="10.2" fill="#e5edf5" font-weight="600">Deliver, Bill, Close</text>
+<text x="1002.0" y="130" font-family="monospace" font-size="8" fill="#7d8ba0">mission closeout</text>
+</svg></div>
+        <p></p>
+        <p>BPO is deliberately <strong>not</strong> on the guide-engine at all — there's no <code>bpo</code> entry in its
+        vertical-detection logic, and no per-page step panel. It runs on a completely separate system:
+        <code>TSMMissionStore</code>/<code>TSMMissionModel</code>'s own mission queue, with a real 12-stage
+        <code>STAGE_ORDER</code> (uploaded &rarr; ocr &rarr; classified &rarr; extracted &rarr; validated &rarr; created &rarr; assigned &rarr;
+        in_progress &rarr; qa &rarr; delivered &rarr; billed &rarr; closed). The six stages below are this repo's own condensed
+        mapping of those twelve onto the same six-stage frame the other verticals use &mdash; for comparison only, not
+        something the codebase itself defines.</p>
+        <p><strong>Sentinel does not read this pipeline.</strong> BPO's row in the cross-vertical rollup below is fed by
+        <code>bpo-strategist.html</code>'s real document-extraction relay instead &mdash; a separate page from
+        <code>bpo-internal1.html</code>. There's an explicit comment in <code>bpo-internal1.html</code> explaining why: strategist
+        pages expect real document-extraction fields (<code>docType</code>, <code>scenario</code>, <code>confidence</code>) that a
+        hand-entered intake form can't legitimately supply, so intake never writes a
+        <code>TSM_BPO_WAR_RELAY</code> payload pretending otherwise.</p>
+      </div>
+    </details>
+  </div>
+</section>
+
+<section id="ops" class="block">
+  <div class="eyebrow">05 &mdash; THE OTHER DATA PLANE</div>
+  <h2>BPO's ops layer runs in parallel, not on top</h2>
+  <p>Two separate systems track work in this repo, and they are deliberately not wired together:</p>
+  <div class="two-plane">
+    <div class="plane">
+      <div class="plane-title">BNCA relay bus <span class="plane-sub">(per-vertical)</span></div>
+      <p>war-room &rarr; strategist &rarr; exec-portal write to <code>TSM_&lt;VERTICAL&gt;_STRATEGIST_RELAY</code> keys.
+      This is what the six-stage pipeline above describes, and what Sentinel (next section) reads.</p>
+    </div>
+    <div class="plane">
+      <div class="plane-title">Mission Control <span class="plane-sub">(BPO ops tracking)</span></div>
+      <p><code>bpo-internal1.html</code> is a "Sector Workflow Hub" running on <code>TSMMissionStore</code>/
+      <code>TSMMissionModel</code> &mdash; mission queue, kanban, operator assignment via a real
+      <code>recommendAssignment()</code>, activity feed. <code>bpo-supervisor.html</code> is a live read-only view
+      over that same store: operator workload vs. cross-sector average, audit feed, executive rollup, playback.
+      No separate data source, no setup needed.</p>
+    </div>
+  </div>
+  <p>The reason they're kept apart is explicit in <code>bpo-internal1.html</code>'s own source: strategist pages
+  expect real document-extraction fields (<code>docType</code>, <code>scenario</code>, <code>confidence</code>) that
+  a hand-entered intake form can't legitimately supply. So Sentinel's BPO row is fed by <code>bpo-strategist.html</code>'s
+  real document extraction, while the Mission Control layer stays a parallel human-case-queue system, linked only
+  loosely by a shared <code>caseId</code> naming convention.</p>
+</section>
+
+<section id="sentinel" class="block">
+  <div class="eyebrow">06 &mdash; CROSS-VERTICAL ROLLUP</div>
+  <h2>sentinel-center.html reads every vertical's relay, at once</h2>
+  <p>Sentinel subscribes to <code>TSM_&lt;VERTICAL_ID&gt;_STRATEGIST_RELAY</code> across all nine verticals in this
+  document plus a tenth (hotelops, tracked via the same convention but outside the exact map above), and rolls
+  the result into:</p>
+  <ul class="sentinel-list">
+    <li>A cross-vertical <strong>Business Posture Score</strong></li>
+    <li>An aggregate <strong>exposure</strong> figure, in dollars</li>
+    <li>A ranked <strong>anomaly list</strong></li>
+    <li>A <strong>causality board</strong> showing risk pressure flowing between subscribed verticals</li>
+  </ul>
+  <p>Only verticals an exec has explicitly checked feed the Business Posture Score, Enterprise Exposure, and
+  Causality Board — Sentinel also gives execs read-only jump links straight into each vertical's real Exec Portal
+  from this one screen.</p>
+</section>
+
+</main>
+
+<footer>
+  <p>Rebuilt from source — <code>bpo-internal1.html</code>, <code>bpo-supervisor.html</code>, <code>sentinel-center.html</code>,
+  <code>client-access.html</code>, <code>tsm-doc-search-multi.html</code>, and <code>js/tsm-guide-engine.js</code> — not
+  retyped from the original draft, to avoid transcription drift.</p>
+</footer>
+
+</body>
+</html>

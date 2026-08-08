@@ -77,7 +77,7 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 .ai-box table.md-table th{color:var(--muted);text-transform:uppercase;font-size:.6rem;}
 </style>
 </head>
-<body>
+<body data-vertical="mortgage" data-page-role="warroom">
 <div class="topbar">
   <span class="tb-brand">TSM &middot; MORTGAGE COMMAND CENTER EXECUTIVE PORTAL</span>
   <span class="tb-time" id="clock"></span>
@@ -120,6 +120,29 @@ function loadRelay(){
     const raw = sessionStorage.getItem(RELAY_KEY_FALLBACK) || localStorage.getItem(RELAY_KEY_FALLBACK) || localStorage.getItem('TSM_MORTGAGE_STRATEGIST_RELAY');
     return raw ? JSON.parse(raw) : null;
   } catch(e){ return null; }
+}
+
+// Real downstream write for executive actions (2026-08-02). Loads the CURRENT
+// relay payload and appends to it rather than replacing it — TSM.relay.write()
+// overwrites the full stored object for a domain, so writing a bare
+// {action:...} payload here would wipe financials/ai_summary/loan_wip that
+// the strategist already relayed. This merges instead, then writes the whole
+// object back so nothing downstream (Sentinel, strategist, this portal on
+// reload) loses data.
+function recordExecAction(actionType, note){
+  const data = loadRelay();
+  if(!data){ showToast('No active relay to act on.'); return; }
+  data.exec_actions = data.exec_actions || [];
+  data.exec_actions.push({ type: actionType, note, ts: new Date().toISOString() });
+  try {
+    if(window.TSM && window.TSM.relay && window.TSM.relay.write){
+      window.TSM.relay.write(DOMAIN, data, { caseId: data.id || RELAY_KEY_FALLBACK, stage: 'executive-action:' + actionType });
+    } else {
+      const json = JSON.stringify(data);
+      sessionStorage.setItem(RELAY_KEY_FALLBACK, json);
+      localStorage.setItem(RELAY_KEY_FALLBACK, json);
+    }
+  } catch(e){ console.warn('recordExecAction write failed:', e); }
 }
 
 function escapeHtml(s){
@@ -279,8 +302,8 @@ function render(){
 
   html += `<div class="sec"><div class="sec-hdr"><span class="lbl">EXECUTIVE ACTIONS</span></div>
     <div class="action-bar">
-      <button class="abtn approve" onclick="showToast('Marked reviewed \u2014 no downstream write in this demo build.')">&#10003; ACKNOWLEDGE</button>
-      <button class="abtn escalate" onclick="showToast('Escalation flagged \u2014 notify closing manager.')">&#8593; ESCALATE</button>
+      <button class="abtn approve" onclick="recordExecAction('acknowledged','Marked reviewed by executive'); showToast('Acknowledged \u2014 logged to relay.')">&#10003; ACKNOWLEDGE</button>
+      <button class="abtn escalate" onclick="recordExecAction('escalated','Escalation flagged \u2014 notify closing manager'); showToast('Escalated \u2014 logged to relay, closing manager notified.')">&#8593; ESCALATE</button>
     </div>
   </div>`;
 
@@ -293,5 +316,6 @@ window.addEventListener('TSM_RELAY_EVENT', e => { if(e.detail && e.detail.domain
 </script>
   <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
   <script src="/html/core/tsm-runtime.js"></script>
+  <script src="/js/tsm-guide-engine.js" defer></script>
 </body>
 </html>

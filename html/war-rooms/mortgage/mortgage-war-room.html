@@ -98,7 +98,7 @@ tr:hover td{background:rgba(212,175,55,.03)}
 .ai-output .err{color:var(--red)}
 </style>
 </head>
-<body>
+<body data-vertical="mortgage" data-page-role="warroom">
 
 <div class="nav">
   <div class="nav-brand">TSM SHELL // MORTGAGE COMMAND CENTER</div>
@@ -364,32 +364,60 @@ tr:hover td{background:rgba(212,175,55,.03)}
     if (ratio > 0) return 'MED';
     return 'LOW';
   }
+  // Confidence here is NOT a model guess (mortgage-engine.js makes no AI
+  // calls) — it's data completeness. Deterministic exposure numbers are
+  // only as good as the rate card (financial_model) they're computed
+  // from; if a required rate is missing, the engine silently defaults
+  // that exposure to $0, which would otherwise look like a real "no risk"
+  // reading. Confidence reflects whether the rate card actually has the
+  // field(s) this anomaly's exposure number depends on.
+  function mtgClosingDelayConfidence(fm) {
+    if (!fm || fm.closing_delay_cost_per_day == null) {
+      return { confidence: 30, note: ' Rate card is missing closing_delay_cost_per_day, so exposure defaulted to $0 — treat as unverified.' };
+    }
+    return { confidence: 95, note: '' };
+  }
+  function mtgComplianceConfidence(fm, breaches) {
+    if (!fm || !fm.compliance_exposure_by_severity) {
+      return { confidence: 30, note: ' Rate card is missing compliance_exposure_by_severity, so exposure defaulted to $0 — treat as unverified.' };
+    }
+    const rates = fm.compliance_exposure_by_severity;
+    const severities = [...new Set(breaches.map(b => b.severity).filter(Boolean))];
+    const missing = severities.filter(s => rates[s] == null);
+    if (missing.length) {
+      return { confidence: 65, note: ` Rate card has no entry for severity level(s) ${missing.join(', ')} — those items priced at $0.` };
+    }
+    return { confidence: 95, note: '' };
+  }
   function mtgBuildSentinelAnomalies() {
     const fin = engine.getFinancialSummary();
     const kpis = engine.computeKpis();
+    const fm = engine.getFinancialModel();
     const loanBreaches = engine.getSlaBreaches('loan_files') || [];
     const exceptionBreaches = engine.getSlaBreaches('exceptions') || [];
     const anomalies = [];
     if ((fin.closing_delay_exposure_total || 0) > 0 || loanBreaches.length > 0) {
+      const { confidence, note } = mtgClosingDelayConfidence(fm);
       anomalies.push({
         id: 'mtg-closing-delay',
         title: 'Loan Closing Delay — SLA Breaches',
         severity: mtgBreachSeverity(kpis.loans_over_sla || loanBreaches.length, kpis.open_loan_files || 1),
         exposure: fin.closing_delay_exposure_total || 0,
-        confidence: 90,
-        rootCause: `${kpis.loans_over_sla || loanBreaches.length} of ${kpis.open_loan_files || 0} open loan files are past their SLA clock.`,
+        confidence,
+        rootCause: `${kpis.loans_over_sla || loanBreaches.length} of ${kpis.open_loan_files || 0} open loan files are past their SLA clock.${note}`,
         recommendedAction: 'Prioritize processing effort on the stalled underwriting/closing stages.',
         impacts: {}
       });
     }
     if ((fin.compliance_exposure_total || 0) > 0 || exceptionBreaches.length > 0) {
+      const { confidence, note } = mtgComplianceConfidence(fm, exceptionBreaches);
       anomalies.push({
         id: 'mtg-compliance',
         title: 'Open Compliance Exceptions',
         severity: mtgBreachSeverity(kpis.open_exceptions || exceptionBreaches.length, kpis.open_loan_files || 1),
         exposure: fin.compliance_exposure_total || 0,
-        confidence: 90,
-        rootCause: `${kpis.open_exceptions || exceptionBreaches.length} open compliance exceptions across active loan files.`,
+        confidence,
+        rootCause: `${kpis.open_exceptions || exceptionBreaches.length} open compliance exceptions across active loan files.${note}`,
         recommendedAction: 'Clear flagged exceptions before rate-lock or closing deadlines.',
         impacts: {}
       });
@@ -485,5 +513,6 @@ tr:hover td{background:rgba(212,175,55,.03)}
 <script src="/js/core/tsm-auto-pipeline.js"></script>
 <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
 <script src="/html/core/tsm-runtime.js"></script>
+  <script src="/js/tsm-guide-engine.js" defer></script>
 </body>
 </html>

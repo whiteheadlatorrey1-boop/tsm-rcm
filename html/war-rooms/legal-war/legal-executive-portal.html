@@ -1,0 +1,1411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<style id="tsm-exec-kit-css">
+/* ==========================================================================
+   TSM Exec Kit — shared WIP tracker + explainability panel
+   Drop-in CSS for all 7 executive portals.
+
+   THEME MAPPING
+   --------------------------------------------------------------------------
+   Each portal already defines its own dark-theme tokens (seen in the audit:
+   --s2, --bg3, --border2, accent purples like rgba(181,108,255,.12) and
+   rgba(168,85,247,.2), JetBrains Mono for data/labels). Rather than guessing
+   exact hexes per portal, this file defines its OWN --tsmk-* tokens with
+   sane dark-theme defaults, and falls back to your existing tokens first if
+   they exist. Edit the :root block below once per portal (2 min) to make
+   the kit invisible — i.e. indistinguishable from native portal chrome.
+   ========================================================================== */
+
+:root {
+  --tsmk-bg:        var(--bg3, var(--s2, #12152a));
+  --tsmk-bg-raised:  var(--bg2, #181c34);
+  --tsmk-border:     var(--border2, var(--border, rgba(168, 85, 247, 0.18)));
+  --tsmk-accent:     var(--accent, #b56cff);
+  --tsmk-accent-dim: rgba(181, 108, 255, 0.14);
+  --tsmk-text:       var(--text, #e7e6f0);
+  --tsmk-text-dim:   var(--text-dim, #8d8aa3);
+  --tsmk-success:    var(--success, #34d399);
+  --tsmk-warning:    var(--warning, #fbbf24);
+  --tsmk-danger:     var(--danger, #f87171);
+  --tsmk-mono:       'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --tsmk-sans:       var(--font-sans, -apple-system, 'Inter', system-ui, sans-serif);
+  --tsmk-radius:     10px;
+}
+
+.tsmk-wip, .tsmk-explain { font-family: var(--tsmk-sans); color: var(--tsmk-text); }
+
+/* ---------------------------------------------------------------------- */
+/* WIP TRACKER                                                            */
+/* ---------------------------------------------------------------------- */
+
+.tsmk-wip {
+  background: var(--tsmk-bg);
+  border: 1px solid var(--tsmk-border);
+  border-radius: var(--tsmk-radius);
+  padding: 16px 18px;
+}
+
+.tsmk-wip-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.tsmk-wip-title {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--tsmk-text-dim);
+  font-weight: 600;
+}
+
+.tsmk-wip-eta {
+  font-family: var(--tsmk-mono);
+  font-size: 11px;
+  color: var(--tsmk-text-dim);
+}
+
+.tsmk-wip-track {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+}
+
+.tsmk-wip-step {
+  flex: 1;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 0 4px;
+}
+
+.tsmk-wip-step::before {
+  content: '';
+  position: absolute;
+  top: 9px;
+  left: -50%;
+  width: 100%;
+  height: 2px;
+  background: var(--tsmk-border);
+  z-index: 0;
+}
+.tsmk-wip-step:first-child::before { display: none; }
+
+.tsmk-wip-step.is-done::before,
+.tsmk-wip-step.is-active::before { background: var(--tsmk-accent); }
+
+.tsmk-wip-dot {
+  position: relative;
+  z-index: 1;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--tsmk-bg-raised);
+  border: 2px solid var(--tsmk-border);
+  color: var(--tsmk-text-dim);
+}
+
+.tsmk-wip-step.is-done .tsmk-wip-dot {
+  background: var(--tsmk-success);
+  border-color: var(--tsmk-success);
+  color: #06281c;
+}
+.tsmk-wip-step.is-active .tsmk-wip-dot {
+  background: var(--tsmk-accent);
+  border-color: var(--tsmk-accent);
+  color: #1a0a2e;
+  animation: tsmk-pulse 1.6s ease-in-out infinite;
+}
+.tsmk-wip-step.is-blocked .tsmk-wip-dot {
+  background: var(--tsmk-danger);
+  border-color: var(--tsmk-danger);
+  color: #2a0808;
+}
+
+@keyframes tsmk-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(181,108,255,.45); }
+  50% { box-shadow: 0 0 0 5px rgba(181,108,255,0); }
+}
+
+.tsmk-wip-label {
+  margin-top: 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--tsmk-text);
+}
+.tsmk-wip-step.is-pending .tsmk-wip-label,
+.tsmk-wip-step.is-pending .tsmk-wip-time { color: var(--tsmk-text-dim); }
+
+.tsmk-wip-time {
+  margin-top: 3px;
+  font-family: var(--tsmk-mono);
+  font-size: 10px;
+  color: var(--tsmk-text-dim);
+}
+
+.tsmk-wip-detail {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--tsmk-border);
+  font-size: 12px;
+  color: var(--tsmk-text-dim);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.tsmk-wip-detail .tsmk-spinner {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--tsmk-border);
+  border-top-color: var(--tsmk-accent);
+  animation: tsmk-spin .8s linear infinite;
+}
+@keyframes tsmk-spin { to { transform: rotate(360deg); } }
+
+/* compact variant for embedding in a header strip */
+.tsmk-wip.tsmk-compact { padding: 10px 14px; }
+.tsmk-wip.tsmk-compact .tsmk-wip-label { font-size: 10.5px; }
+.tsmk-wip.tsmk-compact .tsmk-wip-head { margin-bottom: 8px; }
+
+/* ---------------------------------------------------------------------- */
+/* EXPLAINABILITY PANEL                                                   */
+/* ---------------------------------------------------------------------- */
+
+.tsmk-explain { display: flex; flex-direction: column; gap: 10px; }
+
+.tsmk-exp-card {
+  background: var(--tsmk-bg);
+  border: 1px solid var(--tsmk-border);
+  border-left: 3px solid var(--tsmk-accent);
+  border-radius: var(--tsmk-radius);
+  overflow: hidden;
+  transition: border-color .15s ease;
+}
+.tsmk-exp-card[data-severity="high"]  { border-left-color: var(--tsmk-danger); }
+.tsmk-exp-card[data-severity="med"]   { border-left-color: var(--tsmk-warning); }
+.tsmk-exp-card[data-severity="low"]   { border-left-color: var(--tsmk-success); }
+
+.tsmk-exp-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 15px;
+  cursor: pointer;
+  user-select: none;
+}
+.tsmk-exp-row:hover { background: var(--tsmk-accent-dim); }
+
+.tsmk-exp-claim {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--tsmk-text);
+}
+.tsmk-exp-impact {
+  margin-top: 4px;
+  font-family: var(--tsmk-mono);
+  font-size: 11.5px;
+  color: var(--tsmk-text-dim);
+}
+
+.tsmk-exp-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.tsmk-conf-badge {
+  font-family: var(--tsmk-mono);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--tsmk-accent-dim);
+  color: var(--tsmk-accent);
+  white-space: nowrap;
+}
+
+.tsmk-exp-chevron {
+  width: 16px; height: 16px;
+  color: var(--tsmk-text-dim);
+  transition: transform .18s ease;
+  flex-shrink: 0;
+}
+.tsmk-exp-card.is-open .tsmk-exp-chevron { transform: rotate(90deg); color: var(--tsmk-accent); }
+
+.tsmk-exp-body {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height .2s ease;
+  border-top: 1px solid transparent;
+}
+.tsmk-exp-card.is-open .tsmk-exp-body {
+  border-top: 1px solid var(--tsmk-border);
+}
+
+.tsmk-exp-body-inner { padding: 13px 15px 15px; }
+
+.tsmk-exp-why-label {
+  font-size: 10px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--tsmk-text-dim);
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.tsmk-exp-rationale {
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--tsmk-text);
+  margin-bottom: 12px;
+}
+
+.tsmk-exp-data {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.tsmk-exp-datapoint {
+  background: var(--tsmk-bg-raised);
+  border: 1px solid var(--tsmk-border);
+  border-radius: 7px;
+  padding: 6px 10px;
+}
+.tsmk-exp-datapoint .l {
+  font-size: 9.5px;
+  color: var(--tsmk-text-dim);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.tsmk-exp-datapoint .v {
+  font-family: var(--tsmk-mono);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--tsmk-text);
+}
+
+.tsmk-exp-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.tsmk-exp-source-tag {
+  font-family: var(--tsmk-mono);
+  font-size: 10.5px;
+  padding: 3px 8px;
+  border-radius: 5px;
+  background: transparent;
+  border: 1px solid var(--tsmk-border);
+  color: var(--tsmk-text-dim);
+}
+
+.tsmk-exp-empty {
+  text-align: center;
+  padding: 24px 12px;
+  color: var(--tsmk-text-dim);
+  font-size: 12.5px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tsmk-wip-step.is-active .tsmk-wip-dot { animation: none; }
+  .tsmk-spinner { animation: none; }
+  .tsmk-exp-body, .tsmk-exp-chevron { transition: none; }
+}
+
+@media (max-width: 640px) {
+  .tsmk-wip-track { flex-wrap: wrap; row-gap: 18px; }
+  .tsmk-wip-step { flex: 1 1 30%; }
+}
+</style>
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TSM · Chief Strategist · Executive Portal</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#03060d; --bg2:#06091a; --bg3:#0a0f22; --bg4:#0e1530;
+  --border:rgba(255,255,255,0.055); --border2:rgba(255,255,255,0.10);
+  --text:#dde5f4; --muted:#5a6f90; --faint:#1e2d48;
+  --cyan:#00e5ff; --c2:rgba(0,229,255,0.07);
+  --green:#00e676; --g2:rgba(0,230,118,0.07);
+  --amber:#ffb300; --a2:rgba(255,179,0,0.07);
+  --red:#ff3d57; --r2:rgba(255,61,87,0.07);
+  --pink:#ff2d78; --p2:rgba(255,45,120,0.07);
+  --mono:'JetBrains Mono',monospace; --sans:'Syne',sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html,body{min-height:100%;background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13px;overflow-x:hidden;}
+body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:linear-gradient(rgba(255,179,0,0.006) 1px,transparent 1px),linear-gradient(90deg,rgba(255,179,0,0.006) 1px,transparent 1px);
+  background-size:52px 52px;}
+body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:1000;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.018) 2px,rgba(0,0,0,0.018) 4px);}
+
+/* ── TOP NAV ── */
+.topnav{position:sticky;top:0;z-index:200;display:flex;align-items:stretch;height:44px;
+  background:rgba(3,6,13,0.97);backdrop-filter:blur(12px);border-bottom:1px solid var(--border2);}
+.tn-brand{display:flex;align-items:center;padding:0 20px;border-right:1px solid var(--border2);
+  font-family:var(--sans);font-size:13px;font-weight:800;letter-spacing:2px;color:var(--amber);white-space:nowrap;text-decoration:none;}
+.tn-links{display:flex;align-items:stretch;}
+.tn-link{display:flex;align-items:center;gap:7px;padding:0 18px;font-size:7.5px;letter-spacing:1.5px;
+  text-transform:uppercase;color:var(--muted);text-decoration:none;border-right:1px solid var(--border);transition:color 0.15s;white-space:nowrap;}
+.tn-link:hover{color:var(--text);}
+.tn-link.active{color:var(--amber);border-bottom:2px solid var(--amber);}
+.tn-dot{width:5px;height:5px;border-radius:50%;background:currentColor;flex-shrink:0;}
+.tn-right{margin-left:auto;display:flex;align-items:center;gap:16px;padding:0 20px;}
+.tn-clock{font-size:10px;color:var(--text);letter-spacing:1px;}
+
+/* ── ALERT BANNER ── */
+.alert-bar{border-bottom:1px solid rgba(255,61,87,0.25);padding:6px 24px;font-size:7.5px;
+  letter-spacing:1.5px;text-transform:uppercase;background:rgba(255,61,87,0.06);
+  color:var(--red);display:flex;align-items:center;gap:10px;}
+.alert-bar .dot{width:5px;height:5px;border-radius:50%;background:var(--red);
+  box-shadow:0 0 6px var(--red);animation:glow 1.5s ease-in-out infinite;flex-shrink:0;}
+@keyframes glow{0%,100%{box-shadow:0 0 3px currentColor;}50%{box-shadow:0 0 10px currentColor;}}
+
+/* ── TICKER ── */
+.ticker{background:var(--bg2);border-bottom:1px solid var(--border);height:28px;
+  display:flex;align-items:center;overflow:hidden;}
+.ticker-label{font-size:7px;letter-spacing:2px;text-transform:uppercase;color:var(--amber);
+  padding:0 14px;border-right:1px solid var(--border2);white-space:nowrap;flex-shrink:0;}
+.ticker-scroll{flex:1;overflow:hidden;}
+.ticker-inner{display:inline-flex;white-space:nowrap;animation:scroll-left 60s linear infinite;}
+@keyframes scroll-left{0%{transform:translateX(0);}100%{transform:translateX(-50%);}}
+.t-item{display:inline-flex;align-items:center;gap:5px;font-size:8px;padding:0 22px;
+  color:var(--muted);border-right:1px solid var(--border);}
+.t-val{color:var(--text);font-weight:600;}
+.t-val.up{color:var(--green);}
+.t-val.down{color:var(--red);}
+.t-val.warn{color:var(--amber);}
+
+/* ── MAIN ── */
+.main{position:relative;z-index:10;padding:28px 32px 80px;max-width:1600px;margin:0 auto;}
+
+/* Sec label */
+.sec{display:flex;align-items:center;gap:10px;margin:28px 0 14px;}
+.sec::before{content:'';width:4px;height:4px;background:var(--amber);transform:rotate(45deg);flex-shrink:0;}
+.sec-label{font-size:7.5px;letter-spacing:2.5px;text-transform:uppercase;color:var(--amber);}
+.sec::after{content:'';flex:1;height:1px;background:var(--border);}
+.sec.red .sec-label{color:var(--red);}
+.sec.red::before{background:var(--red);}
+.sec.cyan .sec-label{color:var(--cyan);}
+.sec.cyan::before{background:var(--cyan);}
+.sec.green .sec-label{color:var(--green);}
+.sec.green::before{background:var(--green);}
+
+/* ── DECISION STRIP ── */
+.decisions{display:flex;flex-direction:column;gap:1px;border:1px solid var(--border2);background:var(--border2);}
+.decision-item{display:flex;align-items:center;gap:16px;background:var(--bg2);padding:13px 18px;transition:background 0.15s;}
+.decision-item:hover{background:var(--bg3);}
+.d-urgency{font-size:7px;letter-spacing:1.2px;text-transform:uppercase;padding:3px 8px;border:1px solid;flex-shrink:0;min-width:68px;text-align:center;}
+.d-u1{color:var(--red);border-color:var(--red);background:var(--r2);}
+.d-u2{color:var(--amber);border-color:var(--amber);background:var(--a2);}
+.d-u3{color:var(--cyan);border-color:var(--cyan);background:var(--c2);}
+.d-action{flex:1;font-size:10px;font-weight:600;color:var(--text);}
+.d-context{font-size:8px;color:var(--muted);margin-top:2px;}
+.d-value{font-family:var(--sans);font-size:20px;font-weight:800;flex-shrink:0;text-align:right;}
+.d-deadline{font-size:8px;color:var(--muted);text-align:right;flex-shrink:0;min-width:70px;}
+.d-deadline.hot{color:var(--red);font-weight:600;}
+.d-deadline.warn{color:var(--amber);font-weight:600;}
+.d-btn{flex-shrink:0;background:none;border:1px solid var(--border2);color:var(--muted);
+  font-family:var(--mono);font-size:7px;letter-spacing:1px;text-transform:uppercase;
+  padding:5px 10px;cursor:pointer;transition:all 0.15s;}
+.d-btn:hover{border-color:var(--green);color:var(--green);}
+.d-btn.authorized{border-color:var(--green);color:var(--green);background:var(--g2);}
+
+/* ── KPI ROW ── */
+.kpi-row{display:grid;grid-template-columns:repeat(6,1fr);gap:1px;
+  background:var(--border2);border:1px solid var(--border2);}
+.kpi{background:var(--bg2);padding:18px 20px;display:flex;flex-direction:column;gap:5px;}
+.kpi-label{font-size:7px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);}
+.kpi-val{font-family:var(--sans);font-size:28px;font-weight:800;letter-spacing:-1px;line-height:1;}
+.kpi-val.red{color:var(--red);}
+.kpi-val.amber{color:var(--amber);}
+.kpi-val.green{color:var(--green);}
+.kpi-val.cyan{color:var(--cyan);}
+.kpi-val.text{color:var(--text);}
+.kpi-sub{font-size:8px;color:var(--faint);}
+
+/* ── TWO / THREE COL ── */
+.three-col{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;}
+.two-col{display:grid;grid-template-columns:3fr 2fr;gap:16px;}
+
+/* ── PANEL ── */
+.panel{background:var(--bg2);border:1px solid var(--border2);}
+.panel-hdr{display:flex;align-items:center;justify-content:space-between;
+  padding:10px 16px;border-bottom:1px solid var(--border);}
+.panel-title{font-size:8.5px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--text);}
+.panel-tag{font-size:7px;letter-spacing:1px;text-transform:uppercase;padding:2px 8px;border:1px solid;}
+.tag-live{color:var(--red);border-color:var(--red);background:var(--r2);animation:blink 1.4s step-end infinite;}
+.tag-ready{color:var(--green);border-color:var(--green);background:var(--g2);}
+.tag-watch{color:var(--amber);border-color:var(--amber);background:var(--a2);}
+.tag-none{color:var(--faint);border-color:var(--faint);}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:0.35;}}
+.panel-body{padding:14px 16px;}
+
+/* ── MATTER RISK BREAKDOWN (replaces denial rows) ── */
+.denial-row{display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--border);}
+.denial-row:last-child{border-bottom:none;}
+.denial-cause{font-size:9px;color:var(--text);font-weight:600;min-width:180px;}
+.denial-bar-wrap{flex:1;height:5px;background:var(--bg);border-radius:2px;overflow:hidden;}
+.denial-bar-fill{height:100%;border-radius:2px;}
+.denial-rate{font-size:9px;font-weight:700;min-width:38px;text-align:right;}
+.denial-val{font-size:9px;color:var(--muted);min-width:56px;text-align:right;}
+.denial-trend{font-size:9px;min-width:16px;text-align:right;}
+
+/* ── PRACTICE GROUP (replaces payer scorecard) ── */
+.payer-table{width:100%;border-collapse:collapse;font-size:9px;}
+.payer-table th{text-align:left;color:var(--muted);padding:7px 10px;border-bottom:1px solid var(--border);font-size:7px;letter-spacing:1.5px;text-transform:uppercase;}
+.payer-table td{padding:9px 10px;border-bottom:1px solid var(--border);color:var(--muted);}
+.payer-table tr:last-child td{border-bottom:none;}
+.payer-table td:first-child{color:var(--text);font-weight:600;}
+.score-pill{display:inline-block;font-size:7px;letter-spacing:0.8px;text-transform:uppercase;padding:2px 7px;border:1px solid;}
+.sp-bad{color:var(--red);border-color:var(--red);background:var(--r2);}
+.sp-warn{color:var(--amber);border-color:var(--amber);background:var(--a2);}
+.sp-ok{color:var(--green);border-color:var(--green);background:var(--g2);}
+
+/* ── MATTER RESOLUTION VELOCITY (replaces cash velocity) ── */
+.vel-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.vel-cell{background:var(--bg3);border:1px solid var(--border);padding:12px 14px;}
+.vel-label{font-size:7.5px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:6px;}
+.vel-val{font-family:var(--sans);font-size:22px;font-weight:800;line-height:1;margin-bottom:3px;}
+.vel-bench{font-size:8px;color:var(--faint);}
+.vel-bench span{color:var(--muted);}
+
+/* ── DEADLINE CALENDAR ── */
+.deadline-list{display:flex;flex-direction:column;gap:0;}
+.deadline-item{display:flex;align-items:flex-start;gap:14px;padding:10px 0;border-bottom:1px solid var(--border);}
+.deadline-item:last-child{border-bottom:none;}
+.dl-countdown{min-width:52px;text-align:center;flex-shrink:0;padding:6px 4px;border:1px solid;border-radius:2px;}
+.dl-countdown .dl-days{font-family:var(--sans);font-size:18px;font-weight:800;line-height:1;}
+.dl-countdown .dl-unit{font-size:7px;letter-spacing:1px;text-transform:uppercase;margin-top:2px;}
+.dlc-critical{color:var(--red);border-color:var(--red);background:var(--r2);}
+.dlc-warn{color:var(--amber);border-color:var(--amber);background:var(--a2);}
+.dlc-ok{color:var(--green);border-color:var(--green);background:var(--g2);}
+.dl-info{flex:1;}
+.dl-title{font-size:9.5px;font-weight:600;color:var(--text);margin-bottom:2px;}
+.dl-sub{font-size:8px;color:var(--muted);line-height:1.4;}
+.dl-exposure{font-size:10px;font-weight:700;text-align:right;flex-shrink:0;}
+
+/* ── DSO / RESOLUTION TREND ── */
+.dso-trend{display:flex;align-items:flex-end;gap:4px;height:56px;margin:8px 0;}
+.dso-bar{flex:1;border-radius:1px 1px 0 0;background:var(--cyan);opacity:0.3;}
+.dso-bar.current{opacity:1;background:var(--amber);}
+.dso-labels{display:flex;gap:4px;margin-top:4px;}
+.dso-labels span{flex:1;font-size:6.5px;color:var(--faint);text-align:center;}
+.dso-labels span.current{color:var(--amber);}
+
+/* ── BNCA STRIP ── */
+.bnca-strip{background:var(--bg2);border:1px solid var(--border2);display:grid;grid-template-columns:1fr 1fr 1fr;gap:1px;background-color:var(--border2);}
+.bnca-cell{background:var(--bg2);padding:14px 18px;}
+.bnca-cell-label{font-size:7px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:8px;}
+.bnca-cell-content{font-size:9.5px;line-height:1.75;color:var(--muted);}
+.bnca-cell-content strong{color:var(--text);}
+.hl-r{color:var(--red);font-weight:700;}
+.hl-g{color:var(--green);font-weight:700;}
+.hl-a{color:var(--amber);font-weight:700;}
+.hl-c{color:var(--cyan);font-weight:700;}
+
+/* ── STRATEGIST PANEL ── */
+.strat-panel{background:var(--bg2);border:1px solid rgba(255,179,0,0.2);padding:18px 20px;margin-bottom:4px;}
+.strat-panel-title{font-size:8px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--amber);margin-bottom:10px;display:flex;align-items:center;gap:8px;}
+.strat-body{font-size:9.5px;line-height:1.8;color:var(--muted);white-space:pre-wrap;}
+.strat-body.populated{color:var(--text);}
+
+/* ── STATUS BAR ── */
+.statusbar{position:fixed;bottom:0;left:0;right:0;z-index:200;height:28px;
+  background:rgba(3,6,13,0.97);backdrop-filter:blur(8px);border-top:1px solid var(--border);
+  display:flex;align-items:center;gap:14px;padding:0 20px;font-size:7.5px;color:var(--faint);letter-spacing:1px;}
+.sb-sep{color:var(--border2);}
+.sb-right{margin-left:auto;}
+
+/* ── HITL AUTHORIZE MODAL ── */
+.modal-overlay{position:fixed;inset:0;background:rgba(3,6,13,0.85);z-index:500;display:none;align-items:center;justify-content:center;}
+.modal-overlay.open{display:flex;}
+.modal{background:var(--bg2);border:1px solid var(--border2);padding:24px;max-width:480px;width:100%;margin:20px;}
+.modal-title{font-family:var(--sans);font-size:18px;font-weight:800;color:var(--text);margin-bottom:6px;}
+.modal-sub{font-size:8.5px;color:var(--muted);line-height:1.6;margin-bottom:16px;}
+.modal-field{margin-bottom:12px;}
+.modal-label{font-size:7px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:4px;}
+.modal-input{width:100%;background:var(--bg3);border:1px solid var(--border2);color:var(--text);font-family:var(--mono);font-size:9.5px;padding:9px 12px;outline:none;}
+.modal-input:focus{border-color:var(--amber);}
+.modal-actions{display:flex;gap:8px;margin-top:16px;}
+.modal-confirm{flex:1;background:var(--amber);color:var(--bg);border:none;font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:2px;text-transform:uppercase;padding:12px;cursor:pointer;}
+.modal-cancel{background:var(--bg3);color:var(--muted);border:1px solid var(--border2);font-family:var(--mono);font-size:9px;letter-spacing:1px;text-transform:uppercase;padding:12px 16px;cursor:pointer;}
+
+@keyframes rise{from{opacity:0;transform:translateY(5px);}to{opacity:1;transform:translateY(0);}}
+.rise{animation:rise 0.35s ease both;}
+</style>
+<script>
+  window.addEventListener("DOMContentLoaded", function(){
+    if (window.TSMMemory) TSMMemory.timeline("Executive Portal opened - reviewing escalation");
+  });
+</script>
+<script src="/js/tsm-runtime-lock.js"></script>
+<script src="/js/tsm-event-contract.js"></script>
+<script src="/js/tsm-autonomy-layer.js"></script>
+</head>
+<body data-vertical="legal" data-page-role="warroom">
+
+<!-- TOP NAV -->
+<nav class="topnav">
+  <a class="tn-brand" href="legal-war-room.html">TSM LEGAL-PRO</a>
+  <div class="tn-links">
+    <a class="tn-link" href="legal-war-room.html"><span class="tn-dot" style="background:var(--green)"></span>WAR ROOM</a>
+    <a class="tn-link" href="/html/legal-pro/index.html"><span class="tn-dot" style="background:var(--cyan)"></span>LEGAL NODES</a>
+    <a class="tn-link" href="legal-main-strategist.html"><span class="tn-dot" style="background:var(--cyan)"></span>CASE STRATEGIST</a>
+    <a class="tn-link active" href="legal-executive-portal.html"><span class="tn-dot" style="background:var(--amber)"></span>CHIEF STRATEGIST</a>
+  </div>
+  <div class="tn-right">
+    <div style="font-size:8px;color:var(--muted)" id="relay-age">No relay data</div>
+<!-- ▼ TSM EXEC KIT: WIP + EXPLAINABILITY ▼ -->
+<div style="padding:0 20px;">
+<div id="tsmk-wip-auto" style="margin:18px 0 10px;"></div>
+<div id="tsmk-exp-auto" style="margin:10px 0 24px;"></div>
+</div>
+<!-- ▲ TSM EXEC KIT ▲ -->
+
+    <div class="tn-clock" id="clock">--:--:--</div>
+  </div>
+</nav>
+
+<!-- ALERT BANNER -->
+<div class="alert-bar" id="alert-bar">
+  <span class="dot"></span>
+  <span id="alert-text">CHIEF STRATEGIST · 7 ACTIONS REQUIRED — AWAITING CASE STRATEGIST RELAY</span>
+</div>
+
+<!-- TICKER -->
+<div class="ticker">
+  <div class="ticker-label">EXEC</div>
+  <div class="ticker-scroll"><div class="ticker-inner" id="ticker-inner"></div></div>
+</div>
+
+<div class="main">
+
+  <!-- DECISIONS -->
+  <div class="sec red" style="margin-top:0">
+    <div class="sec-label">Decisions Required · Executive Authorization</div>
+  </div>
+  <div class="decisions" id="decisions-container">
+    <div class="decision-item">
+      <div class="d-urgency d-u1">AUTHORIZE</div>
+      <div style="flex:1">
+        <div class="d-action">Settlement Authority — Employment Matter (EEOC)</div>
+        <div class="d-context">Counsel recommends $850K settlement vs $2.1M trial risk · Case Strategist synthesis confirmed</div>
+      </div>
+      <div class="d-value" style="color:var(--red)">$850K</div>
+      <div class="d-deadline hot">Today</div>
+      <button class="d-btn" onclick="authorizeAction(this,'Settlement — EEOC')">AUTHORIZE</button>
+    </div>
+    <div class="decision-item">
+      <div class="d-urgency d-u1">ESCALATE</div>
+      <div style="flex:1">
+        <div class="d-action">Regulatory Inquiry Response — State Agency</div>
+        <div class="d-context">Response package complete · Hard 48-hour window · $24K penalty exposure</div>
+      </div>
+      <div class="d-value" style="color:var(--red)">HIGH</div>
+      <div class="d-deadline hot">48 hrs</div>
+      <button class="d-btn" onclick="authorizeAction(this,'Regulatory Response')">SIGN</button>
+    </div>
+    <div class="decision-item">
+      <div class="d-urgency d-u2">REVIEW</div>
+      <div style="flex:1">
+        <div class="d-action">Discovery Staffing Expansion — 14 Matters Backlogged</div>
+        <div class="d-context">Outside counsel authorization or headcount expansion · Motion filing in 5 days</div>
+      </div>
+      <div class="d-value" style="color:var(--amber)">14 Matters</div>
+      <div class="d-deadline warn">This Week</div>
+      <button class="d-btn" onclick="authorizeAction(this,'Discovery Expansion')">APPROVE</button>
+    </div>
+  </div>
+
+  <!-- KPI ROW -->
+  <div class="sec" style="margin-top:24px"><div class="sec-label">Portfolio Command · Real-Time Legal Intelligence</div></div>
+  <div class="kpi-row rise">
+    <div class="kpi">
+      <div class="kpi-label">Active Matters</div>
+      <div class="kpi-val cyan" id="kpi-matters">412</div>
+      <div class="kpi-sub">Litigation · Employment · Regulatory</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Total Exposure</div>
+      <div class="kpi-val red" id="kpi-exposure">$28.4M</div>
+      <div class="kpi-sub">Current legal exposure</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Settlement Pipeline</div>
+      <div class="kpi-val green" id="kpi-settle">73</div>
+      <div class="kpi-sub">Active opportunities</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">High-Risk Matters</div>
+      <div class="kpi-val amber" id="kpi-highrisk">41</div>
+      <div class="kpi-sub">Executive visibility required</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Case Success Rate</div>
+      <div class="kpi-val green" id="kpi-success">78%</div>
+      <div class="kpi-sub">Portfolio weighted avg</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Regulatory Cases</div>
+      <div class="kpi-val red" id="kpi-regulatory">16</div>
+      <div class="kpi-sub">Active investigations</div>
+    </div>
+  </div>
+
+  <!-- STRATEGIST RELAY PANEL -->
+  <div class="sec cyan"><div class="sec-label">Case Strategist Relay · AI Synthesis</div></div>
+  <div class="strat-panel rise" id="strat-panel">
+    <div class="strat-panel-title">
+      <span style="width:6px;height:6px;border-radius:50%;background:var(--faint);display:inline-block" id="strat-dot"></span>
+      Unified Matter Strategy · <span id="strat-matter">No relay received</span>
+      <span style="margin-left:auto;font-size:7px;color:var(--faint)" id="strat-age"></span>
+    </div>
+    <div class="strat-body" id="strat-body">No Case Strategist relay received. Run the Legal War Room 6-engine analysis, then escalate through the Case Strategist to populate this panel with AI-synthesized matter intelligence.</div>
+  </div>
+
+  <!-- MATTER RISK + PRACTICE GROUP + RESOLUTION VELOCITY -->
+  <div class="sec amber"><div class="sec-label">Matter Risk Breakdown · Practice Group Performance · Resolution Velocity</div></div>
+  <div class="three-col">
+
+    <!-- MATTER RISK BREAKDOWN -->
+    <div class="panel rise">
+      <div class="panel-hdr">
+        <div class="panel-title">Matter Risk Breakdown</div>
+        <div class="panel-tag tag-watch">$28.4M EXPOSURE</div>
+      </div>
+      <div class="panel-body">
+        <div class="denial-row">
+          <div class="denial-cause">Employment Exposure</div>
+          <div class="denial-bar-wrap"><div class="denial-bar-fill" style="width:82%;background:var(--red)"></div></div>
+          <div class="denial-rate" style="color:var(--red)">38%</div>
+          <div class="denial-val">$8.4M</div>
+          <div class="denial-trend" style="color:var(--red)">↑</div>
+        </div>
+        <div class="denial-row">
+          <div class="denial-cause">Contract Liability</div>
+          <div class="denial-bar-wrap"><div class="denial-bar-fill" style="width:65%;background:var(--amber)"></div></div>
+          <div class="denial-rate" style="color:var(--amber)">31%</div>
+          <div class="denial-val">$6.1M</div>
+          <div class="denial-trend" style="color:var(--amber)">→</div>
+        </div>
+        <div class="denial-row">
+          <div class="denial-cause">Regulatory Investigation</div>
+          <div class="denial-bar-wrap"><div class="denial-bar-fill" style="width:42%;background:var(--cyan)"></div></div>
+          <div class="denial-rate" style="color:var(--cyan)">18%</div>
+          <div class="denial-val">$5.2M</div>
+          <div class="denial-trend" style="color:var(--red)">↑</div>
+        </div>
+        <div class="denial-row">
+          <div class="denial-cause">Compliance Violations</div>
+          <div class="denial-bar-wrap"><div class="denial-bar-fill" style="width:22%;background:var(--green)"></div></div>
+          <div class="denial-rate" style="color:var(--green)">9%</div>
+          <div class="denial-val">$2.0M</div>
+          <div class="denial-trend" style="color:var(--green)">↓</div>
+        </div>
+        <div class="denial-row">
+          <div class="denial-cause">Discovery Risk</div>
+          <div class="denial-bar-wrap"><div class="denial-bar-fill" style="width:10%;background:var(--muted)"></div></div>
+          <div class="denial-rate" style="color:var(--muted)">4%</div>
+          <div class="denial-val">$1.1M</div>
+          <div class="denial-trend" style="color:var(--amber)">→</div>
+        </div>
+        <!-- Resolution trend -->
+        <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px">
+          <div style="font-size:7px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:6px">Avg Resolution Trend — Last 8 Months</div>
+          <div class="dso-trend">
+            <div class="dso-bar" style="height:55%"></div>
+            <div class="dso-bar" style="height:60%"></div>
+            <div class="dso-bar" style="height:50%"></div>
+            <div class="dso-bar" style="height:65%"></div>
+            <div class="dso-bar" style="height:58%"></div>
+            <div class="dso-bar" style="height:70%"></div>
+            <div class="dso-bar" style="height:78%;background:var(--amber);opacity:0.5"></div>
+            <div class="dso-bar current" style="height:90%"></div>
+          </div>
+          <div class="dso-labels">
+            <span>Oct</span><span>Nov</span><span>Dec</span><span>Jan</span>
+            <span>Feb</span><span>Mar</span><span>Apr</span><span class="current">NOW 74d</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PRACTICE GROUP PERFORMANCE -->
+    <div class="panel rise">
+      <div class="panel-hdr">
+        <div class="panel-title">Practice Group Performance</div>
+        <div class="panel-tag tag-watch">2 GROUPS FLAGGED</div>
+      </div>
+      <div class="panel-body" style="padding:0">
+        <table class="payer-table">
+          <thead>
+            <tr>
+              <th>Practice Group</th>
+              <th>Win Rate</th>
+              <th>Avg Days</th>
+              <th>Score</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Employment</td>
+              <td style="color:var(--red)">62%</td>
+              <td style="color:var(--red)">94d</td>
+              <td><span class="score-pill sp-warn">WATCH</span></td>
+            </tr>
+            <tr>
+              <td>Contracts</td>
+              <td style="color:var(--amber)">74%</td>
+              <td style="color:var(--amber)">68d</td>
+              <td><span class="score-pill sp-warn">GOOD</span></td>
+            </tr>
+            <tr>
+              <td>Regulatory</td>
+              <td style="color:var(--amber)">68%</td>
+              <td style="color:var(--amber)">112d</td>
+              <td><span class="score-pill sp-bad">WATCH</span></td>
+            </tr>
+            <tr>
+              <td>Compliance</td>
+              <td style="color:var(--green)">88%</td>
+              <td style="color:var(--green)">41d</td>
+              <td><span class="score-pill sp-ok">STRONG</span></td>
+            </tr>
+            <tr>
+              <td>Litigation</td>
+              <td style="color:var(--green)">71%</td>
+              <td>74d</td>
+              <td><span class="score-pill sp-ok">GOOD</span></td>
+            </tr>
+          </tbody>
+        </table>
+        <div style="padding:10px 10px 8px;border-top:1px solid var(--border)">
+          <div style="font-size:8px;color:var(--muted);line-height:1.6">
+            Outside counsel spend: <span style="color:var(--amber);font-weight:600">$1.8M/mo</span> · Settlement ROI vs litigation: <span style="color:var(--green);font-weight:600">3.2×</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MATTER RESOLUTION VELOCITY -->
+    <div class="panel rise">
+      <div class="panel-hdr">
+        <div class="panel-title">Matter Resolution Velocity</div>
+        <div class="panel-tag tag-watch">ABOVE TARGET</div>
+      </div>
+      <div class="panel-body">
+        <div class="vel-grid">
+          <div class="vel-cell">
+            <div class="vel-label">Avg Resolution Time</div>
+            <div class="vel-val" style="color:var(--amber)">74 Days</div>
+            <div class="vel-bench">target: <span>60d</span></div>
+          </div>
+          <div class="vel-cell">
+            <div class="vel-label">Settlement Conversion</div>
+            <div class="vel-val" style="color:var(--green)">42%</div>
+            <div class="vel-bench">target: <span>50%+</span></div>
+          </div>
+          <div class="vel-cell">
+            <div class="vel-label">Case Success Rate</div>
+            <div class="vel-val" style="color:var(--green)">78%</div>
+            <div class="vel-bench">vs: <span>71% Q1</span></div>
+          </div>
+          <div class="vel-cell">
+            <div class="vel-label">Outside Counsel Spend</div>
+            <div class="vel-val" style="color:var(--amber)">$1.8M</div>
+            <div class="vel-bench">budget: <span>$2.0M</span></div>
+          </div>
+        </div>
+        <div style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
+          <div style="font-size:7.5px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);margin-bottom:8px">Early Settlement ROI Analysis</div>
+          <div class="denial-row" style="padding:6px 0">
+            <div class="denial-cause" style="min-width:130px">Employment</div>
+            <div class="denial-bar-wrap"><div class="denial-bar-fill" style="width:78%;background:var(--green)"></div></div>
+            <div class="denial-rate" style="color:var(--green)">3.4×</div>
+            <div class="denial-val">ROI</div>
+          </div>
+          <div class="denial-row" style="padding:6px 0">
+            <div class="denial-cause" style="min-width:130px">Contract</div>
+            <div class="denial-bar-wrap"><div class="denial-bar-fill" style="width:65%;background:var(--cyan)"></div></div>
+            <div class="denial-rate" style="color:var(--cyan)">2.8×</div>
+            <div class="denial-val">ROI</div>
+          </div>
+          <div class="denial-row" style="padding:6px 0;border-bottom:none">
+            <div class="denial-cause" style="min-width:130px">Regulatory</div>
+            <div class="denial-bar-wrap"><div class="denial-bar-fill" style="width:50%;background:var(--amber)"></div></div>
+            <div class="denial-rate" style="color:var(--amber)">2.1×</div>
+            <div class="denial-val">ROI</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- CRITICAL LEGAL DEADLINES -->
+  <div class="sec red" style="margin-top:24px"><div class="sec-label">Critical Legal Deadlines · Executive Calendar</div></div>
+  <div class="panel rise">
+    <div class="panel-hdr">
+      <div class="panel-title">Compliance &amp; Deadline Calendar</div>
+      <div class="panel-tag tag-live">3 CRITICAL</div>
+    </div>
+    <div class="panel-body" style="padding:10px 14px">
+      <div class="deadline-list">
+        <div class="deadline-item">
+          <div class="dl-countdown dlc-critical"><div class="dl-days">1</div><div class="dl-unit">day</div></div>
+          <div class="dl-info">
+            <div class="dl-title">EEOC Settlement Authority — Employment Matter</div>
+            <div class="dl-sub">Exec authorization required · $850K vs $2.1M trial exposure · Counsel standing by</div>
+          </div>
+          <div class="dl-exposure" style="color:var(--red)">$2.1M</div>
+        </div>
+        <div class="deadline-item">
+          <div class="dl-countdown dlc-critical"><div class="dl-days">2</div><div class="dl-unit">days</div></div>
+          <div class="dl-info">
+            <div class="dl-title">State Regulatory Response — Agency Filing Deadline</div>
+            <div class="dl-sub">Response package complete · Exec signature required · Hard legal deadline</div>
+          </div>
+          <div class="dl-exposure" style="color:var(--amber)">$24K</div>
+        </div>
+        <div class="deadline-item">
+          <div class="dl-countdown dlc-critical"><div class="dl-days">5</div><div class="dl-unit">days</div></div>
+          <div class="dl-info">
+            <div class="dl-title">Federal Motion Filing — Discovery Overflow</div>
+            <div class="dl-sub">14 matters in backlog · Extension motion or staffing authorization required</div>
+          </div>
+          <div class="dl-exposure" style="color:var(--amber)">$1.1M</div>
+        </div>
+        <div class="deadline-item">
+          <div class="dl-countdown dlc-warn"><div class="dl-days">12</div><div class="dl-unit">days</div></div>
+          <div class="dl-info">
+            <div class="dl-title">Discovery Cutoff — Employment Class Action</div>
+            <div class="dl-sub">Outside counsel briefing complete · Executive awareness required</div>
+          </div>
+          <div class="dl-exposure" style="color:var(--amber)">$8.4M</div>
+        </div>
+        <div class="deadline-item">
+          <div class="dl-countdown dlc-warn"><div class="dl-days">18</div><div class="dl-unit">days</div></div>
+          <div class="dl-info">
+            <div class="dl-title">Settlement Conference — Vendor Contract Dispute</div>
+            <div class="dl-sub">Mediation scheduled · Authority pre-approval recommended</div>
+          </div>
+          <div class="dl-exposure" style="color:var(--muted)">$6.1M</div>
+        </div>
+        <div class="deadline-item">
+          <div class="dl-countdown dlc-warn"><div class="dl-days">30</div><div class="dl-unit">days</div></div>
+          <div class="dl-info">
+            <div class="dl-title">Agency Response Deadline — Regulatory Investigation</div>
+            <div class="dl-sub">Legal team preparing · Partner sign-off needed</div>
+          </div>
+          <div class="dl-exposure" style="color:var(--muted)">$5.2M</div>
+        </div>
+        <div class="deadline-item">
+          <div class="dl-countdown dlc-ok"><div class="dl-days">45</div><div class="dl-unit">days</div></div>
+          <div class="dl-info">
+            <div class="dl-title">Contract Renewal Review — Vendor OIG Watchlist</div>
+            <div class="dl-sub">2 vendors flagged · Stark Law self-disclosure decision needed</div>
+          </div>
+          <div class="dl-exposure" style="color:var(--muted)">Ongoing</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BNCA STRIP -->
+  <div class="sec green" style="margin-top:24px">
+    <div class="sec-label">BNCA Strategic Intelligence · <span style="font-weight:400;color:var(--muted)">Auto-generated · Last run <span id="last-run">just now</span></span></div>
+  </div>
+  <div class="bnca-strip rise">
+    <div class="bnca-cell">
+      <div class="bnca-cell-label">Matter Portfolio Position</div>
+      <div class="bnca-cell-content" id="bnca-1">
+        <span class="hl-r">$28.4M total exposure</span> across 412 active matters. Employment litigation leads at <strong>38%</strong> of portfolio risk — <span class="hl-a">41 high-risk matters</span> require active executive oversight. Settlement pipeline at <span class="hl-g">73 opportunities</span> is the fastest path to exposure reduction. Resolution velocity at 74 days is above target — early settlement ROI averaging <strong>3.2×</strong> litigation cost.
+      </div>
+    </div>
+    <div class="bnca-cell">
+      <div class="bnca-cell-label">Legal Intelligence</div>
+      <div class="bnca-cell-content" id="bnca-2">
+        Employment claims up <span class="hl-r">18% YTD</span> — pattern is systemic, not isolated. Regulatory inquiry volume elevated across all verticals. <span class="hl-a">Discovery workloads growing</span> faster than internal capacity — 14 matters currently backlogged. Outside counsel spend at <span class="hl-a">$1.8M/mo</span> tracking within budget. Early settlement continues to show highest ROI at <span class="hl-g">3.2×</span> litigation cost avoidance.
+      </div>
+    </div>
+    <div class="bnca-cell">
+      <div class="bnca-cell-label">Executive Actions Required</div>
+      <div class="bnca-cell-content" id="bnca-3">
+        <span class="hl-r">Authorize EEOC settlement today</span> — $850K now vs $2.1M trial risk. <span class="hl-a">Sign regulatory response</span> within 48 hours or trigger contempt exposure. <span class="hl-a">Expand discovery staffing</span> before federal motion deadline in 5 days. <span class="hl-c">Prioritize all matters exceeding $1M exposure</span> for partner review this week. War Room relay available for deeper case-by-case analysis.
+      </div>
+    </div>
+  </div>
+
+</div><!-- /main -->
+
+<!-- STATUS BAR -->
+<div class="statusbar">
+  <div style="width:5px;height:5px;border-radius:50%;background:var(--amber);box-shadow:0 0 6px var(--amber);animation:glow 2s infinite"></div>
+  <span>TSM · Legal Executive Command</span>
+  <span class="sb-sep">·</span>
+  <span id="sb-nodes">9/9 Legal Nodes Online</span>
+  <span class="sb-sep">·</span>
+  <span id="sb-date">—</span>
+  <span class="sb-sep">·</span>
+  <span>Legal Intelligence Engine Active · BNCA Sync Live</span>
+  <div class="sb-right">TSM OS v4.1 · Railway</div>
+</div>
+
+<!-- HITL MODAL -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <div class="modal-title" id="modal-title">Authorize Action</div>
+    <div class="modal-sub" id="modal-sub">Confirm executive authorization for this action. This will be logged with timestamp and your identity.</div>
+    <div class="modal-field">
+      <div class="modal-label">Authorizing Executive</div>
+      <input type="text" class="modal-input" id="modal-exec" placeholder="Full name / title">
+    </div>
+    <div class="modal-field">
+      <div class="modal-label">Authorization Note</div>
+      <input type="text" class="modal-input" id="modal-note" placeholder="Optional — rationale or conditions">
+    </div>
+    <div class="modal-actions">
+      <button class="modal-cancel" onclick="closeModal()">Cancel</button>
+      <button class="modal-confirm" onclick="confirmAuthorization()">⚡ CONFIRM AUTHORIZATION</button>
+    </div>
+  </div>
+</div><script>
+
+// ── STATE ──────────────────────────────────────────────────────────────────
+let currentActionBtn = null;
+let currentActionName = '';
+let authorizations = [];
+
+// ── CLOCK ──────────────────────────────────────────────────────────────────
+function tick() {
+  const now = new Date();
+  document.getElementById('clock').textContent = now.toLocaleTimeString('en-US',{hour12:false});
+  document.getElementById('sb-date').textContent = now.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'});
+}
+setInterval(tick,1000); tick();
+document.getElementById('last-run').textContent = new Date().toLocaleTimeString('en-US',{hour12:false});
+
+// ── TICKER ──────────────────────────────────────────────────────────────────
+const TICKS = [
+  {l:'Total Exposure',v:'$28.4M',c:'down'},{l:'Active Matters',v:'412',c:''},
+  {l:'High-Risk',v:'41',c:'warn'},{l:'Case Success Rate',v:'78%',c:'up'},
+  {l:'Settlement Pipeline',v:'73',c:'up'},{l:'Avg Resolution',v:'74 Days',c:'warn'},
+  {l:'Settlement Conv.',v:'42%',c:'warn'},{l:'OC Spend',v:'$1.8M/mo',c:'warn'},
+  {l:'Employment Exposure',v:'$8.4M',c:'down'},{l:'Regulatory Cases',v:'16 active',c:'down'},
+  {l:'Settlement ROI',v:'3.2×',c:'up'},{l:'BNCA Confidence',v:'91%',c:'up'},
+  {l:'Nodes Online',v:'9/9',c:'up'},{l:'Discovery Backlog',v:'14 matters',c:'warn'},
+];
+const inner = document.getElementById('ticker-inner');
+const html = TICKS.map(t=>`<span class="t-item">${t.l}&nbsp;<span class="t-val ${t.c}">${t.v}</span></span>`).join('');
+inner.innerHTML = html + html;
+
+// ── HITL AUTHORIZATION ─────────────────────────────────────────────────────
+function authorizeAction(btn, name) {
+  currentActionBtn = btn;
+  currentActionName = name;
+  document.getElementById('modal-title').textContent = `Authorize: ${name}`;
+  document.getElementById('modal-sub').textContent = `This action will be logged with timestamp, executive name, and rationale. Confirm only if you have authority to approve this action.`;
+  document.getElementById('modal').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('modal').classList.remove('open');
+  currentActionBtn = null;
+}
+
+function confirmAuthorization() {
+  const exec = document.getElementById('modal-exec').value.trim();
+  const note = document.getElementById('modal-note').value.trim();
+  if (!exec) { document.getElementById('modal-exec').style.borderColor='var(--red)'; return; }
+
+  const record = {
+    action: currentActionName,
+    exec, note,
+    ts: new Date().toISOString(),
+    id: `AUTH-${Date.now()}`
+  };
+  authorizations.push(record);
+
+  if (currentActionBtn) {
+    currentActionBtn.textContent = '✓ AUTHORIZED';
+    currentActionBtn.className = 'd-btn authorized';
+    currentActionBtn.disabled = true;
+    currentActionBtn.closest('.decision-item').style.opacity = '0.6';
+  }
+
+  // Write to sessionStorage for audit trail
+  try { sessionStorage.setItem('TSM_AUTHORIZATIONS', JSON.stringify(authorizations)); } catch(e){}
+
+  closeModal();
+  showToast(`${currentActionName} authorized`, `By ${exec} · ${new Date().toLocaleTimeString()}`);
+}
+
+// ── TOAST ──────────────────────────────────────────────────────────────────
+function showToast(title, sub) {
+  let t = document.getElementById('_toast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = '_toast';
+    t.style.cssText = 'position:fixed;bottom:40px;right:24px;z-index:600;background:var(--bg2);border:1px solid var(--border2);padding:12px 16px;font-family:var(--mono);font-size:9px;color:var(--text);max-width:300px;display:none';
+    document.body.appendChild(t);
+  }
+  t.innerHTML = `<div style="font-weight:700;margin-bottom:2px">${title}</div><div style="color:var(--muted);font-size:8px">${sub}</div>`;
+  t.style.display = 'block';
+  setTimeout(()=>t.style.display='none', 3500);
+}
+
+// ── LOAD STRATEGIST RELAY ──────────────────────────────────────────────────
+function loadStrategistRelay() {
+  try {
+    const raw = sessionStorage.getItem('TSM_STRATEGIST_RELAY');
+    if (!raw) return;
+    const d = JSON.parse(raw);
+    if (!d) return;
+
+    // Update strategist panel
+    const age = Math.round((Date.now() - new Date(d.ts)) / 1000 / 60);
+    const ageLabel = age < 1 ? 'just now' : age < 60 ? `${age}m ago` : `${Math.floor(age/60)}h ago`;
+
+    document.getElementById('strat-dot').style.cssText = 'width:6px;height:6px;border-radius:50%;background:var(--green);display:inline-block;box-shadow:0 0 6px var(--green)';
+    document.getElementById('strat-matter').textContent = d.matter || d.docType || 'Matter';
+    document.getElementById('strat-age').textContent = `Synced ${ageLabel}`;
+    document.getElementById('relay-age').textContent = `Strategist sync ${ageLabel}`;
+
+    const body = document.getElementById('strat-body');
+    if (d.synthesisText) {
+      body.textContent = d.synthesisText;
+      body.className = 'strat-body populated';
+    }
+
+    // Update KPIs from relay
+    if (d.exposure) document.getElementById('kpi-exposure').textContent = d.exposure;
+    if (d.riskScore) document.getElementById('kpi-highrisk').textContent = d.riskScore;
+    if (d.winProb) document.getElementById('kpi-success').textContent = d.winProb;
+
+    // Update alert bar
+    document.getElementById('alert-bar').style.background = 'rgba(255,179,0,0.06)';
+    document.getElementById('alert-text').textContent = `CHIEF STRATEGIST · CASE STRATEGIST RELAY RECEIVED — ${d.matter || d.docType || 'MATTER'} · ${d.enginesCount || '—'} ENGINES SYNCED — REVIEW & AUTHORIZE`;
+
+    // Inject decisions from relay actions
+    if (d.actions?.length) {
+      const container = document.getElementById('decisions-container');
+      const urgencies = ['SIGN NOW','AUTHORIZE','REVIEW','MONITOR'];
+      const uClasses = ['d-u1','d-u1','d-u2','d-u3'];
+      const relayItems = d.actions.slice(0,3).map((a,i)=>`
+        <div class="decision-item">
+          <div class="d-urgency ${uClasses[Math.min(i,3)]}">${urgencies[Math.min(i,3)]}</div>
+          <div style="flex:1">
+            <div class="d-action">${typeof a === 'string' ? a.replace(/^\d+\.\s*/,'') : a}</div>
+            <div class="d-context">Relayed from Case Strategist · ${new Date(d.ts).toLocaleTimeString('en-US',{hour12:false})}</div>
+          </div>
+          <div class="d-value" style="color:${i===0?'var(--red)':'var(--amber)'}">REQUIRED</div>
+          <div class="d-deadline ${i===0?'hot':'warn'}">${i===0?'Today':'This week'}</div>
+          <button class="d-btn" onclick="authorizeAction(this,'Action ${i+1}')">AUTHORIZE</button>
+        </div>`).join('');
+      container.insertAdjacentHTML('afterbegin', relayItems);
+    }
+
+    // Update BNCA with synthesis context
+    if (d.synthesisText) {
+      const short = d.synthesisText.split('\n').slice(0,4).join(' ').slice(0,300);
+      document.getElementById('bnca-1').innerHTML = `<span class="hl-c">Strategist relay active</span> — ${d.matter || 'Matter'} · ${d.enginesCount || '6'} engines synced. ` + document.getElementById('bnca-1').innerHTML;
+    }
+
+  } catch(e) { console.warn('Exec relay error:', e); }
+}
+
+// ── INIT ───────────────────────────────────────────────────────────────────
+loadStrategistRelay();
+// Also try war room relay directly if strategist relay not present
+if (!sessionStorage.getItem('TSM_STRATEGIST_RELAY')) {
+  try {
+    const raw = sessionStorage.getItem('TSM_WAR_ROOM_RELAY');
+    if (raw) {
+      const d = JSON.parse(raw);
+      if (d?.matter || d?.docType) {
+        document.getElementById('strat-matter').textContent = `${d.matter||d.docType} (via War Room)`;
+        document.getElementById('relay-age').textContent = 'War Room relay';
+      }
+    }
+  } catch(e){}
+}
+setInterval(loadStrategistRelay, 15000);
+</script>
+  <script src="/js/core/tsm-kernel-upgrade.js"></script>
+<style>body{padding-bottom:40px!important}</style>
+<div id="tsm-chain-bar" style="position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#040c12;border-top:1px solid #0d2233;display:flex;align-items:center;height:32px;padding:0 16px;font-family:'IBM Plex Mono',monospace;font-size:10px;"><span style="color:#3a5a70;margin-right:12px;font-size:9px;">TSM CHAIN</span><a href="/html/war-rooms/legal-war/legal-war-room.html" style="color:#94a3b8;border:1px solid #1a3a50;padding:3px 10px;border-radius:3px;text-decoration:none;margin-right:6px;font-size:9px;">&#9675; WAR ROOM</a><span style="color:#1a3a50;margin-right:6px;">--&gt;</span><a href="/html/war-rooms/legal-war/legal-main-strategist.html" style="color:#94a3b8;border:1px solid #1a3a50;padding:3px 10px;border-radius:3px;text-decoration:none;margin-right:6px;font-size:9px;">&#9675; STRATEGIST</a><span style="color:#1a3a50;margin-right:6px;">--&gt;</span><a href="#" style="color:var(--purple, #b388ff);background:rgba(255,255,255,.05);border:1px solid var(--purple, #b388ff)55;padding:3px 10px;border-radius:3px;text-decoration:none;margin-right:6px;font-size:9px;">&#9679; EXEC PORTAL</a><span style="color:#1a3a50;margin-left:auto;font-size:9px;">LEGAL</span></div>
+
+<script src="/js/core/tsm-event-bus.js"></script>
+
+<script id="tsm-exec-kit-js">
+
+
+(function (global) {
+  'use strict';
+
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function chevronSvg() {
+    return '<svg class="tsmk-exp-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">' +
+           '<path d="M9 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* WIP TRACKER                                                       */
+  /* ---------------------------------------------------------------- */
+
+  
+  function renderWIP(target, stages, opts) {
+    opts = opts || {};
+    var el = typeof target === 'string' ? document.getElementById(target) : target;
+    if (!el) return;
+
+    if (!stages || !stages.length) {
+      el.innerHTML = '<div class="tsmk-wip"><div class="tsmk-exp-empty">No pipeline data yet.</div></div>';
+      return;
+    }
+
+    var activeStage = stages.find(function (s) { return s.status === 'active'; });
+
+    var stepsHtml = stages.map(function (s) {
+      var statusClass = 'is-' + (s.status || 'pending');
+      var dotContent = s.status === 'done' ? '&#10003;'
+                      : s.status === 'blocked' ? '!'
+                      : s.status === 'active' ? '' : '';
+      return (
+        '<div class="tsmk-wip-step ' + statusClass + '">' +
+          '<div class="tsmk-wip-dot">' + dotContent + '</div>' +
+          '<div class="tsmk-wip-label">' + esc(s.label) + '</div>' +
+          (s.time ? '<div class="tsmk-wip-time">' + esc(s.time) + '</div>' : '') +
+        '</div>'
+      );
+    }).join('');
+
+    var detailHtml = (activeStage && activeStage.detail)
+      ? '<div class="tsmk-wip-detail"><span class="tsmk-spinner"></span>' + esc(activeStage.detail) + '</div>'
+      : '';
+
+    el.innerHTML =
+      '<div class="tsmk-wip' + (opts.compact ? ' tsmk-compact' : '') + '">' +
+        '<div class="tsmk-wip-head">' +
+          '<div class="tsmk-wip-title">' + esc(opts.title || 'Pipeline Status') + '</div>' +
+          (opts.eta ? '<div class="tsmk-wip-eta">' + esc(opts.eta) + '</div>' : '') +
+        '</div>' +
+        '<div class="tsmk-wip-track">' + stepsHtml + '</div>' +
+        detailHtml +
+      '</div>';
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* EXPLAINABILITY PANEL                                              */
+  /* ---------------------------------------------------------------- */
+
+  
+  function renderExplainability(target, items, opts) {
+    opts = opts || {};
+    var el = typeof target === 'string' ? document.getElementById(target) : target;
+    if (!el) return;
+
+    if (!items || !items.length) {
+      el.innerHTML = '<div class="tsmk-explain"><div class="tsmk-exp-empty">No AI recommendations to explain yet.</div></div>';
+      return;
+    }
+
+    var cardsHtml = items.map(function (item, idx) {
+      var open = opts.openFirst && idx === 0;
+      var conf = (item.confidence != null) ? Math.round(item.confidence) + '%' : null;
+
+      var dataPointsHtml = (item.dataPoints && item.dataPoints.length)
+        ? '<div class="tsmk-exp-data">' + item.dataPoints.map(function (dp) {
+            return '<div class="tsmk-exp-datapoint"><div class="l">' + esc(dp.label) + '</div><div class="v">' + esc(dp.value) + '</div></div>';
+          }).join('') + '</div>'
+        : '';
+
+      var sourcesHtml = (item.sources && item.sources.length)
+        ? '<div class="tsmk-exp-sources">' + item.sources.map(function (src) {
+            return '<span class="tsmk-exp-source-tag">' + esc(src) + '</span>';
+          }).join('') + '</div>'
+        : '';
+
+      return (
+        '<div class="tsmk-exp-card' + (open ? ' is-open' : '') + '" data-severity="' + esc(item.severity || '') + '" data-id="' + esc(item.id || '') + '">' +
+          '<div class="tsmk-exp-row" data-toggle="' + esc(item.id || idx) + '">' +
+            '<div>' +
+              '<div class="tsmk-exp-claim">' + esc(item.claim) + '</div>' +
+              (item.impact ? '<div class="tsmk-exp-impact">' + esc(item.impact) + '</div>' : '') +
+            '</div>' +
+            '<div class="tsmk-exp-meta">' +
+              (conf ? '<span class="tsmk-conf-badge">' + conf + ' conf</span>' : '') +
+              chevronSvg() +
+            '</div>' +
+          '</div>' +
+          '<div class="tsmk-exp-body">' +
+            '<div class="tsmk-exp-body-inner">' +
+              '<div class="tsmk-exp-why-label">Why</div>' +
+              '<div class="tsmk-exp-rationale">' + esc(item.rationale || 'No rationale provided — flag this recommendation for review.') + '</div>' +
+              dataPointsHtml +
+              sourcesHtml +
+            '</div>' +
+          '</div>' +
+        '</div>'
+      );
+    }).join('');
+
+    el.innerHTML = '<div class="tsmk-explain">' + cardsHtml + '</div>';
+
+    // wire up toggle behavior + auto-set max-height for the open/close transition
+    var cards = el.querySelectorAll('.tsmk-exp-card');
+    cards.forEach(function (card) {
+      var body = card.querySelector('.tsmk-exp-body');
+      var inner = card.querySelector('.tsmk-exp-body-inner');
+      function sync() {
+        body.style.maxHeight = card.classList.contains('is-open') ? (inner.scrollHeight + 4) + 'px' : '0px';
+      }
+      sync();
+      card.querySelector('.tsmk-exp-row').addEventListener('click', function () {
+        card.classList.toggle('is-open');
+        sync();
+      });
+      // re-measure on window resize since text reflow changes height
+      window.addEventListener('resize', sync);
+    });
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* OPTIONAL: relay-aware convenience wiring                          */
+  /* ---------------------------------------------------------------- */
+
+  
+  function fromRelay(relayObj) {
+    relayObj = relayObj || {};
+    return {
+      wip: Array.isArray(relayObj.wip) ? relayObj.wip : [],
+      explain: Array.isArray(relayObj.explain) ? relayObj.explain : []
+    };
+  }
+
+  global.TSMExecKit = {
+    renderWIP: renderWIP,
+    renderExplainability: renderExplainability,
+    fromRelay: fromRelay
+  };
+
+})(window);
+</script>
+
+<script>
+/* TSM EXEC KIT — AUTO-INJECTED 2026-06-29 23:19 UTC */
+(function() {
+  var RELAY_KEYS = ["TSM_LEGAL_STRATEGIST_RELAY", "TSM_STRATEGIST_RELAY", "TSM_WAR_ROOM_RELAY"]; // Sentinel-convention key added as primary source
+  var WIP_TITLE  = "Legal Pipeline Status";
+  var WIP_ID     = 'tsmk-wip-auto';
+  var EXP_ID     = 'tsmk-exp-auto';
+
+  function readRelay() {
+    for (var i = 0; i < RELAY_KEYS.length; i++) {
+      var raw = localStorage.getItem(RELAY_KEYS[i]);
+      if (raw) {
+        try { return JSON.parse(raw); } catch(e) { return null; }
+      }
+    }
+    return null;
+  }
+
+  function mount() {
+    var relay  = readRelay();
+    var data   = TSMExecKit.fromRelay(relay);
+
+    /* If relay has no wip/explain yet, show a waiting state for WIP
+       and a placeholder for explain so the divs are never blank */
+    var stages = data.wip.length ? data.wip : [
+      { id:'waiting', label:'Awaiting relay data…', status:'active',
+         detail:'Open the war room to generate a relay.' }
+    ];
+
+    var items  = data.explain;
+
+    TSMExecKit.renderWIP(WIP_ID, stages, { title: WIP_TITLE,
+      eta: relay ? ('Relay: ' + (relay.timestamp
+        ? new Date(relay.timestamp).toLocaleTimeString() : 'loaded')) : '' });
+
+    TSMExecKit.renderExplainability(EXP_ID, items, { openFirst: true });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', mount);
+  } else {
+    mount();
+  }
+
+  /* Re-render if relay is updated while page is open */
+  window.addEventListener('storage', function(e) {
+    if (RELAY_KEYS.indexOf(e.key) !== -1) mount();
+  });
+})();
+</script>
+  <script src="/html/core/tsm-runtime.js"></script>
+<script>
+
+// ===== TSM_AUTONOMY_STANDARDIZED =====
+window.TSM_AUTONOMY_STANDARDIZED = true;
+</script>
+<!-- TSM ENFORCER BOOT -->
+<!-- stripped -->
+<script>
+
+
+// ===== TSM WAR ROOM SCOPED RELAY FIX =====
+window.tsmMission = window.tsmMission || {
+  id: "LEGAL-PRO-" + Date.now().toString(36),
+  vertical: "legal-pro",
+  
+};
+
+function tsmWriteRelay(payload){
+  TSM_KERNEL.setRelay("legal-pro", JSON.stringify(payload));
+}
+</script>
+<script>
+
+
+// ===== TSM EXEC BRIDGE LAYER =====
+
+function tsmWriteScopedExec(vertical, missionId){
+  localStorage.setItem("TSM_EXEC_CONFIRMED_legal-pro_" + vertical, JSON.stringify({
+    vertical,
+    missionId,
+    timestamp: Date.now()
+  }));
+}
+</script>
+<!-- TSM CONTROL PLANE -->
+<script src="/html/js/core/tsm-event-bus.js">
+</script>
+<script src="/html/js/core/tsm-state.js">
+</script>
+<script src="/shared/tsm-exec-portal-upgrade.js">
+</script>
+  <script src="/js/tsm-guide-engine.js" defer></script>
+</body>
+</html>

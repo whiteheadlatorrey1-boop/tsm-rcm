@@ -15,6 +15,29 @@
 
 const BASE = process.env.TSM_BASE_URL || 'http://localhost:8080';
 
+// /api/collective/signal* now requires an authenticated session (admin or
+// client) — log in as admin first and reuse the session cookie on every
+// subsequent request. Requires TSM_ADMIN_PASSWORD to be set in this shell,
+// same as the server needs it.
+let sessionCookie = '';
+async function login() {
+  const password = process.env.TSM_ADMIN_PASSWORD;
+  if (!password) {
+    throw new Error('TSM_ADMIN_PASSWORD not set in this shell — required to authenticate the smoke test.');
+  }
+  const res = await fetch(`${BASE}/api/auth/login`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password })
+  });
+  if (!res.ok) throw new Error(`Login failed: HTTP ${res.status}`);
+  const setCookie = res.headers.get('set-cookie');
+  if (!setCookie) throw new Error('Login succeeded but no session cookie was returned.');
+  sessionCookie = setCookie.split(';')[0]; // "tsm_session=..."
+}
+function authHeaders(extra = {}) {
+  return { ...extra, Cookie: sessionCookie };
+}
+
 // Representative sample signals across all 17 wired verticals.
 // Field shapes match what each war room actually sends -- same fields
 // verified against source during the wiring sweep.
@@ -118,14 +141,17 @@ const SIGNALS = [
 async function main() {
   console.log(`Target: ${BASE}\n`);
 
+  await login();
+  console.log('Authenticated as admin.\n');
+
   // 1. Clear stale signals
-  await fetch(`${BASE}/api/collective/signals`, { method: 'DELETE' });
+  await fetch(`${BASE}/api/collective/signals`, { method: 'DELETE', headers: authHeaders() });
   console.log('Cleared existing signals.\n');
 
   // 2. Push all 19 sample signals (17 verticals + BPO already counted, 19 rows above)
   for (const sig of SIGNALS) {
     const res = await fetch(`${BASE}/api/collective/signal`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(sig)
     });
     if (!res.ok) {
@@ -137,7 +163,7 @@ async function main() {
   console.log(`Pushed ${SIGNALS.length} vertical signals.\n`);
 
   // 3. Confirm accumulation
-  const listRes = await fetch(`${BASE}/api/collective/signals`);
+  const listRes = await fetch(`${BASE}/api/collective/signals`, { headers: authHeaders() });
   const listData = await listRes.json();
   console.log(`GET /api/collective/signals -> ${listData.signals.length} signals stored.`);
   const verticals = [...new Set(listData.signals.map(s => s.vertical))];
@@ -145,7 +171,7 @@ async function main() {
 
   // 4. Run real Groq synthesis
   console.log('Running cross-vertical synthesis (POST /api/collective/bnca)...\n');
-  const bncaRes = await fetch(`${BASE}/api/collective/bnca`, { method: 'POST' });
+  const bncaRes = await fetch(`${BASE}/api/collective/bnca`, { method: 'POST', headers: authHeaders() });
   if (!bncaRes.ok) {
     const errBody = await bncaRes.text();
     console.error(`FAIL synthesis: HTTP ${bncaRes.status} -- ${errBody}`);

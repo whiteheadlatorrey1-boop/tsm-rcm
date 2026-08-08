@@ -1,0 +1,1596 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Construction Strategist · TSM</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0a0e09;--surface:#10150e;--s2:#161c13;--s3:#1c2419;
+  --border:#243019;--gold:#f5a623;--gdim:rgba(245,166,35,.12);
+  --green:#5dba3b;--gdim2:rgba(93,186,59,.14);--gbright:#7de053;
+  --red:#e05c4a;--rdim:rgba(224,92,74,.14);--blue:#5b9fd4;
+  --cyan:#00e8d8;--amber:#f5a623;--text:#c4d0aa;--muted:#4d6040;
+  --white:#e4edcc;--mono:'IBM Plex Mono',ui-monospace,monospace;
+  --purple:#9b8fff;--yellow:#f5c842;--rose:#ff7b7b;
+}
+body{font-family:var(--mono);background:var(--bg);color:var(--text);font-size:12px;overflow-y:auto;min-height:100vh;display:flex;flex-direction:column}
+::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+
+/* ── TOP NAV ── */
+.topnav{height:44px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 12px;flex-shrink:0;gap:6px}
+.brand{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.live-dot{width:7px;height:7px;background:var(--green);border-radius:50%;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.brand-name{font-size:11px;font-weight:700;color:var(--gbright);letter-spacing:.14em;text-transform:uppercase;white-space:nowrap}
+.nav-links{display:flex;align-items:center;gap:1px;overflow-x:auto;scrollbar-width:none;flex:1;padding:0 4px}
+.nav-links::-webkit-scrollbar{display:none}
+.nl{font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);padding:4px 8px;border-radius:4px;cursor:pointer;border:1px solid transparent;white-space:nowrap;flex-shrink:0;transition:all .15s}
+.nl:hover{color:var(--text)}
+.nl.active{background:var(--s2);color:var(--white);border-color:var(--border)}
+.nl.c-exp{color:var(--cyan);border-color:rgba(0,232,216,.2)}.nl.c-exp.active{background:rgba(0,232,216,.07);border-color:rgba(0,232,216,.4)}
+.nl.c-zt{color:var(--rose);border-color:rgba(255,123,123,.2)}.nl.c-zt.active{background:rgba(255,123,123,.06);border-color:rgba(255,123,123,.4)}
+.nl.c-tax{color:var(--yellow);border-color:rgba(245,200,66,.2)}.nl.c-tax.active{background:rgba(245,200,66,.06);border-color:rgba(245,200,66,.4)}
+.nl.c-leg{color:var(--purple);border-color:rgba(155,143,255,.2)}.nl.c-leg.active{background:rgba(155,143,255,.06);border-color:rgba(155,143,255,.4)}
+.nav-badge{font-size:8px;background:var(--rdim);color:var(--rose);border:1px solid rgba(224,92,74,.3);padding:1px 4px;border-radius:2px;margin-left:2px}
+.nav-right{font-size:9px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;flex-shrink:0}
+
+/* ── LAYOUT ── */
+.app-body{display:grid;grid-template-columns:1fr 284px 248px;flex:1;overflow-y:auto;gap:1px;background:var(--border)}
+.vp{display:none;overflow-y:auto;background:var(--bg);padding:14px}
+.vp.active{display:block}
+
+/* ── PHASE CARDS ── */
+.phases-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:12px}
+.phase-card{background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:13px}
+.ph-tag{font-size:9px;letter-spacing:.12em;text-transform:uppercase;margin-bottom:5px;font-weight:700}
+.ph-tag.f{color:var(--gbright)}.ph-tag.s{color:var(--blue)}.ph-tag.e{color:var(--amber)}.ph-tag.m{color:var(--red)}
+.ph-name{font-size:12px;font-weight:700;color:var(--white);margin-bottom:5px;line-height:1.3}
+.ph-desc{font-size:10px;color:var(--muted);line-height:1.5;margin-bottom:10px}
+.pw{height:4px;background:var(--border);border-radius:2px;margin-bottom:5px;overflow:hidden}
+.pb{height:100%;border-radius:2px;transition:width .4s}
+.ph-meta{display:flex;justify-content:space-between;font-size:10px;color:var(--muted)}
+.ph-pct{color:var(--text)}
+
+/* ── TIMELINE ── */
+.sec-box{background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:13px;margin-bottom:12px}
+.sec-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:11px}
+.sec-title{font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:5px}
+.sec-title::before{content:'';display:inline-block;width:3px;height:10px;border-radius:2px;background:var(--gold)}
+.sec-title.t-cyan::before{background:var(--cyan)}.sec-title.t-red::before{background:var(--red)}
+.sec-title.t-yellow::before{background:var(--yellow)}.sec-title.t-purple::before{background:var(--purple)}
+.sec-link{font-size:9px;color:var(--gold);cursor:pointer}
+.tl-item{display:flex;gap:10px;margin-bottom:10px}
+.tl-item:last-child{margin:0}
+.tl-date{font-size:9px;color:var(--muted);width:36px;flex-shrink:0;padding-top:3px}
+.tl-col{display:flex;flex-direction:column;align-items:center;flex-shrink:0}
+.tl-dot{width:7px;height:7px;border-radius:50%;margin-top:4px;flex-shrink:0}
+.tl-line{width:1px;background:var(--border);flex:1;margin-top:2px}
+.tl-ev{font-size:10px;font-weight:600;color:var(--white);margin-bottom:2px}
+.tl-d{font-size:9px;color:var(--muted);line-height:1.45}
+
+/* ── EXPANSION GRID ── */
+.exp-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+.exp-card{background:var(--s2);border:1px solid var(--border);border-radius:6px;padding:11px;position:relative;transition:border-color .15s}
+.exp-card:hover{border-color:rgba(0,232,216,.3)}
+.exp-card.pushed{border-color:var(--cyan);background:rgba(0,232,216,.04)}
+.ec-mod{font-size:9px;color:var(--muted);margin-bottom:3px;letter-spacing:.07em;text-transform:uppercase}
+.ec-name{font-size:11px;font-weight:700;color:var(--white);margin-bottom:5px}
+.ec-stat{font-size:10px;color:var(--muted);line-height:1.5}
+.ec-stat strong{color:var(--text)}
+.push-btn{position:absolute;top:7px;right:7px;font-size:9px;border:1px solid rgba(0,232,216,.35);color:var(--cyan);background:transparent;padding:2px 6px;cursor:pointer;border-radius:3px;font-family:var(--mono);transition:all .15s}
+.push-btn:hover{background:rgba(0,232,216,.08)}
+.push-btn.pushed{background:rgba(0,232,216,.14);border-color:var(--cyan)}
+
+/* ── ALERT ROWS ── */
+.al-row{background:var(--s2);border:1px solid var(--border);border-left:3px solid var(--amber);border-radius:4px;padding:8px 11px;margin-bottom:6px;font-size:10px}
+.al-row.r{border-left-color:var(--red)}.al-row.g{border-left-color:var(--green)}
+.al-row.c{border-left-color:var(--cyan)}.al-row.y{border-left-color:var(--yellow)}.al-row.p{border-left-color:var(--purple)}
+.al-msg{color:var(--white);margin-bottom:2px}
+.al-src{font-size:9px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase}
+
+/* ── KPI GRID ── */
+.kpi4{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}
+.kpi3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}
+.kpi-card{background:var(--s2);border:1px solid var(--border);border-radius:7px;padding:11px;text-align:center}
+.kpi-val{font-size:20px;font-weight:900;margin-bottom:3px}
+.kpi-lbl{font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+
+/* ── DATA TABLE ── */
+.dtable{background:var(--s2);border:1px solid var(--border);border-radius:7px;overflow-y:auto;margin-bottom:12px}
+.dt-hdr{display:grid;padding:7px 11px;border-bottom:1px solid var(--border);font-size:9px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+.dt-row{padding:8px 11px;border-bottom:1px solid rgba(36,48,25,.6);font-size:11px;display:grid;align-items:center}
+.dt-row:last-child{border:none}.dt-row:hover{background:var(--s3)}
+.dt-name{color:var(--white);font-weight:600}.dt-sub{color:var(--text)}
+
+/* ── PILLS ── */
+.pill{font-size:9px;padding:2px 8px;border-radius:3px;font-weight:700;text-align:center;display:inline-block}
+.p-crit{background:rgba(224,92,74,.14);color:#f08070;border:1px solid rgba(224,92,74,.35)}
+.p-high{background:rgba(245,166,35,.11);color:var(--amber);border:1px solid rgba(245,166,35,.3)}
+.p-med{background:rgba(93,186,59,.11);color:var(--gbright);border:1px solid rgba(93,186,59,.3)}
+.p-miss{background:rgba(224,92,74,.12);color:#f08070;border:1px solid rgba(224,92,74,.3)}
+.p-pend{background:rgba(245,166,35,.1);color:var(--amber);border:1px solid rgba(245,166,35,.25)}
+.p-done{background:rgba(93,186,59,.11);color:var(--gbright);border:1px solid rgba(93,186,59,.3)}
+.p-thr{background:rgba(245,200,66,.1);color:var(--yellow);border:1px solid rgba(245,200,66,.3)}
+.p-act{background:rgba(93,186,59,.11);color:var(--gbright);border:1px solid rgba(93,186,59,.3)}
+.p-rev{background:rgba(245,166,35,.1);color:var(--amber);border:1px solid rgba(245,166,35,.25)}
+.p-exp{background:rgba(224,92,74,.12);color:#f08070;border:1px solid rgba(224,92,74,.3)}
+.p-prp{background:rgba(155,143,255,.11);color:var(--purple);border:1px solid rgba(155,143,255,.3)}
+
+/* ── ACTION BUTTONS ── */
+.act-btn{font-size:9px;padding:2px 7px;border:1px solid rgba(255,123,123,.4);color:var(--rose);background:transparent;cursor:pointer;border-radius:3px;font-family:var(--mono);transition:all .15s}
+.act-btn:hover{background:rgba(255,123,123,.09)}
+.act-btn.done{border-color:rgba(93,186,59,.3);color:var(--gbright);cursor:default}
+.tax-btn{font-size:9px;padding:2px 7px;border:1px solid rgba(245,200,66,.35);color:var(--yellow);background:transparent;cursor:pointer;border-radius:3px;font-family:var(--mono)}
+.leg-btn{font-size:9px;padding:2px 7px;border:1px solid rgba(155,143,255,.35);color:var(--purple);background:transparent;cursor:pointer;border-radius:3px;font-family:var(--mono)}
+
+/* ── ZT SCORE ── */
+.zt-score-row{display:flex;align-items:center;gap:14px;margin-bottom:12px;background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:14px}
+.zt-num{font-size:48px;font-weight:900;color:var(--rose);line-height:1}
+.zt-info{flex:1}
+.zt-lbl{font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--rose);margin-bottom:4px}
+.zt-bw{height:5px;background:var(--border);border-radius:3px;overflow-y:auto;margin-bottom:5px}
+.zt-bar{height:100%;width:67%;background:linear-gradient(90deg,#ff4444,#f5a623);border-radius:3px}
+.zt-sub{font-size:10px;color:var(--muted)}
+
+/* tax rows */
+.tax-row{display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid rgba(36,48,25,.5);font-size:11px}
+.tax-row:last-child{border:none}
+.tx-name{color:var(--white);font-weight:600}
+.tx-sub{font-size:10px;color:var(--muted)}
+.tx-acts{display:flex;align-items:center;gap:6px}
+
+/* ── MIDDLE PANEL ── */
+.mid-panel{background:var(--bg);overflow-y:auto;display:flex;flex-direction:column;gap:1px}
+.risk-block{background:var(--s2);border-bottom:1px solid var(--border);padding:14px;text-align:center}
+.risk-segs{display:flex;gap:3px;justify-content:center;margin-bottom:9px}
+.rs{width:23px;height:5px;border-radius:3px}
+.rs.g{background:var(--green)}.rs.a{background:var(--amber)}.rs.r{background:var(--red)}
+.rscore{font-size:46px;font-weight:900;color:var(--white);line-height:1}
+.rscore-lbl{font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--amber);margin-top:3px}
+.risk-rows{margin-top:10px}
+.risk-row{display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(36,48,25,.6)}
+.risk-row:last-child{border:none}
+.rr-name{font-size:10px;color:var(--text)}
+.rr-pill{font-size:9px;letter-spacing:.07em;text-transform:uppercase;border-radius:3px;padding:2px 8px;font-weight:700}
+.rl{background:var(--gdim2);color:var(--gbright);border:1px solid rgba(93,186,59,.3)}
+.rm{background:rgba(245,166,35,.11);color:var(--amber);border:1px solid rgba(245,166,35,.3)}
+.rh{background:var(--rdim);color:#f08070;border:1px solid rgba(224,92,74,.3)}
+
+.field-block{background:var(--s2);border-bottom:1px solid var(--border);padding:13px}
+.blk-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:9px}
+.blk-t{font-size:9px;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:5px}
+.blk-t::before{content:'';display:inline-block;width:3px;height:10px;background:var(--gold);border-radius:2px}
+.blk-a{font-size:9px;color:var(--gold);cursor:pointer;letter-spacing:.08em;text-transform:uppercase}
+.leader-item{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(36,48,25,.5)}
+.leader-item:last-child{border:none}
+.av{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0}
+.av.g{background:rgba(93,186,59,.18);color:var(--gbright)}
+.av.b{background:rgba(91,159,212,.18);color:#7bb8e8}
+.av.a{background:rgba(245,166,35,.14);color:var(--amber)}
+.av.m{background:rgba(90,107,72,.18);color:var(--muted)}
+.li-info{flex:1}
+.li-name{font-size:10px;font-weight:600;color:var(--white)}
+.li-role{font-size:9px;color:var(--muted)}
+.sdot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.sd-g{background:var(--green)}.sd-a{background:var(--amber)}.sd-m{background:var(--muted)}
+
+.alerts-block{background:var(--s2);padding:13px}
+.al-item{background:var(--s3);border:1px solid var(--border);border-left:3px solid var(--amber);border-radius:4px;padding:8px 11px;margin-bottom:5px;font-size:10px}
+.al-item:last-child{margin:0}
+.al-item.r{border-left-color:var(--red)}.al-item.c{border-left-color:var(--cyan)}
+.al-item.y{border-left-color:var(--yellow)}.al-item.p{border-left-color:var(--purple)}
+.al-msg{color:var(--white);margin-bottom:2px}
+.al-time{font-size:9px;color:var(--muted)}
+
+/* ── RIGHT SIDEBAR ── */
+.right-panel{background:var(--bg);overflow-y:auto;display:flex;flex-direction:column}
+.sb-hdr{background:var(--s2);border-bottom:1px solid var(--border);padding:13px;flex-shrink:0}
+.sb-title{font-size:13px;font-weight:700;color:var(--gbright);margin-bottom:2px}
+.sb-sub{font-size:9px;color:var(--muted);letter-spacing:.09em;text-transform:uppercase}
+.sb-metrics{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin-top:10px}
+.smc{background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:7px;text-align:center}
+.smc-val{font-size:14px;font-weight:900;color:var(--white);margin-bottom:2px}
+.smc-lbl{font-size:9px;color:var(--muted)}
+
+.groq-bar{display:flex;align-items:center;gap:6px;padding:8px 12px;border-bottom:1px solid var(--border);background:var(--s2);flex-shrink:0}
+.groq-lbl{font-size:9px;color:var(--muted);white-space:nowrap;letter-spacing:.08em;text-transform:uppercase}
+.groq-inp{flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:9px;padding:4px 7px;outline:none;border-radius:3px;min-width:0}
+.groq-inp:focus{border-color:rgba(0,232,216,.4)}
+.groq-save{font-size:9px;border:1px solid rgba(0,232,216,.35);color:var(--cyan);background:transparent;padding:3px 8px;cursor:pointer;border-radius:3px;font-family:var(--mono);white-space:nowrap}
+.groq-save:hover{background:rgba(0,232,216,.08)}
+
+.sb-btns{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:8px 12px;border-bottom:1px solid var(--border)}
+.sb-btn{background:var(--s2);border:1px solid var(--border);border-radius:4px;padding:7px 4px;font-family:var(--mono);font-size:9px;letter-spacing:.07em;text-transform:uppercase;color:var(--text);cursor:pointer;transition:all .15s;text-align:center}
+.sb-btn:hover{border-color:var(--gold);color:var(--gold);background:var(--gdim)}
+
+.bnca-sec{padding:11px 12px;border-bottom:1px solid var(--border)}
+.bnca-lbl{font-size:9px;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);margin-bottom:7px}
+.bnca-box{background:var(--s2);border:1px solid var(--border);border-radius:5px;padding:9px 11px;font-size:10px;color:var(--text);line-height:1.6;margin-bottom:9px;white-space:pre-wrap;word-break:break-word;max-height:220px;overflow-y:auto}
+.bnca-box:last-child{margin:0}
+.bnca-box.streaming{border-color:rgba(0,232,216,.3)}
+.cross-box{background:var(--s3);border:1px solid var(--border);border-radius:5px;padding:9px 11px;font-size:10px;color:var(--muted);line-height:1.6}
+.cross-box .hi{color:var(--gbright)}.cross-box .hc{color:var(--cyan)}
+.cross-box .hr{color:var(--rose)}.cross-box .hy{color:var(--yellow)}.cross-box .hp{color:var(--purple)}
+
+.feed-sec{padding:11px 12px;border-bottom:1px solid var(--border)}
+.feed-lbl{font-size:9px;letter-spacing:.13em;text-transform:uppercase;color:var(--cyan);margin-bottom:7px}
+.feed-item{background:var(--s2);border:1px solid var(--border);border-radius:4px;padding:7px 9px;margin-bottom:5px;font-size:10px}
+.feed-item:last-child{margin:0}
+.feed-mod{font-size:9px;letter-spacing:.09em;text-transform:uppercase;margin-bottom:2px}
+.feed-msg{color:var(--text);line-height:1.5}
+
+.run-btn{margin:10px 12px 14px;background:var(--gbright);color:#0a0e09;border:none;border-radius:5px;padding:10px;font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;cursor:pointer;transition:all .2s;display:block;width:calc(100% - 24px)}
+.run-btn:hover{background:#a8f070}
+.run-btn:disabled{opacity:.4;cursor:default}
+
+.big-synth{width:100%;border:none;border-radius:5px;padding:10px;font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;cursor:pointer;margin-top:10px;transition:all .2s;background:var(--gbright);color:#0a0e09}
+.big-synth:hover{filter:brightness(1.1)}
+.big-synth:disabled{opacity:.4;cursor:default}
+
+/* ── TSM EXPLAINABILITY PANEL — shared ── */
+.tsm-xp{display:flex;flex-direction:column;gap:10px;padding:12px 13px;border-radius:4px}
+.tsm-xp-title{font-family:'Orbitron',sans-serif;font-size:.58rem;letter-spacing:.12em;display:flex;align-items:center;gap:6px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,.06);text-transform:uppercase}
+.tsm-xp-pulse{width:6px;height:6px;border-radius:50%;animation:tsm-pulse 2s infinite}
+@keyframes tsm-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.8)}}
+.tsm-xp-lbl{font-family:'JetBrains Mono',monospace;font-size:.57rem;letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px;opacity:.5}
+.tsm-conf-row{display:flex;align-items:baseline;gap:8px;margin-bottom:4px}
+.tsm-conf-num{font-family:'Orbitron',sans-serif;font-size:1.6rem;line-height:1}
+.tsm-conf-sub{font-size:.6rem;font-family:'JetBrains Mono',monospace;opacity:.5}
+.tsm-conf-bar-wrap{height:5px;background:rgba(255,255,255,.06);border-radius:10px;overflow:hidden;margin:4px 0 10px}
+.tsm-conf-bar{height:100%;border-radius:10px;transition:width .8s cubic-bezier(.4,0,.2,1);width:0%}
+.tsm-src{display:flex;align-items:center;gap:6px;margin-bottom:5px;font-size:.63rem;font-family:'JetBrains Mono',monospace;opacity:.85}
+.tsm-src-badge{font-size:.54rem;padding:1px 5px;border-radius:2px;letter-spacing:.06em;flex-shrink:0;font-family:'JetBrains Mono',monospace}
+.tsm-src-high{background:rgba(0,229,100,.12);color:#00e564;border:1px solid rgba(0,229,100,.25)}
+.tsm-src-med{background:rgba(255,170,0,.1);color:#ffaa00;border:1px solid rgba(255,170,0,.2)}
+.tsm-src-low{background:rgba(168,85,247,.1);color:#a855f7;border:1px solid rgba(168,85,247,.2)}
+.tsm-reasoning{border-radius:3px;padding:10px;font-family:'JetBrains Mono',monospace;font-size:.62rem;line-height:1.7;border-left:3px solid}
+.tsm-action{display:flex;align-items:flex-start;gap:7px;padding:6px 8px;border-radius:3px;margin-bottom:5px;font-size:.63rem;font-family:'JetBrains Mono',monospace}
+.tsm-owner{font-weight:700;flex-shrink:0;font-size:.57rem;padding:1px 5px;border-radius:2px;margin-top:1px}
+.tsm-action-text{line-height:1.5;opacity:.8}
+.tsm-delta-row{display:flex;gap:8px;margin-top:4px}
+.tsm-delta-box{flex:1;padding:8px;border-radius:3px;text-align:center}
+.tsm-delta-no{background:rgba(255,68,85,.06);border:1px solid rgba(255,68,85,.18)}
+.tsm-delta-act{background:rgba(0,229,100,.06);border:1px solid rgba(0,229,100,.18)}
+.tsm-delta-lbl{font-size:.54rem;font-family:'JetBrains Mono',monospace;letter-spacing:.06em;margin-bottom:3px;opacity:.5}
+.tsm-delta-val{font-family:'Orbitron',sans-serif;font-size:.85rem}
+.tsm-delta-no .tsm-delta-val{color:#ff4455}
+.tsm-delta-act .tsm-delta-val{color:#00e564}
+.tsm-recovery{text-align:center;font-family:'JetBrains Mono',monospace;font-size:.59rem;margin-top:5px;opacity:.4}
+</style>
+  <link rel="stylesheet" href="/shared/tsm-shared.css">
+  <script src="/shared/tsm-shared.js"></script>
+<script src="/js/tsm-runtime-lock.js"></script>
+<script src="/js/tsm-event-contract.js"></script>
+<script src="/js/tsm-autonomy-layer.js"></script>
+</head>
+<body data-vertical="construction" data-page-role="warroom">
+
+<!-- TOP NAV -->
+<div class="topnav">
+  <div class="brand">
+    <div class="live-dot"></div>
+    <div class="brand-name">Construct Intelligence</div>
+  </div>
+  <div class="nav-links">
+    <div class="nl" data-tsm-action="navTo" data-tsm-args="'hub'">Hub</div>
+    <div class="nl" id="nl-warroom" onclick="window.location.href='/war-rooms/construct-war/construction-war-room.html'" style="color:#ffd700;border-color:rgba(255,215,0,0.2);">⚡ War Room</div>
+    <div class="nl" id="nl-executive" onclick="window.location.href='/html/war-rooms/construct-war/construction-executive-portal.html'" style="color:#00e5ff;border-color:rgba(0,229,255,0.2);">Executive</div>
+    <div class="nl" data-tsm-action="navTo" data-tsm-args="'auditops'">AuditOps</div>
+    <div class="nl" data-tsm-action="navTo" data-tsm-args="'financial'">Financial</div>
+    <div class="nl" data-tsm-action="navTo" data-tsm-args="'compliance'">Compliance</div>
+    <div class="nl c-leg" id="nl-legal" data-tsm-action="navTo" data-tsm-args="'legal'">Legal</div>
+    <div class="nl" data-tsm-action="navTo" data-tsm-args="'docs'">Docs</div>
+    <div class="nl active" id="nl-strategist" data-tsm-action="navTo" data-tsm-args="'strategist'">Strategist</div>
+    <div class="nl" data-tsm-action="navTo" data-tsm-args="'deck'">Deck</div>
+    <div class="nl c-exp" id="nl-expansion" data-tsm-action="navTo" data-tsm-args="'expansion'">⚡ Expansion<span class="nav-badge" id="exp-badge" style="display:none">0</span></div>
+    <div class="nl c-zt" id="nl-zerotrust" data-tsm-action="navTo" data-tsm-args="'zerotrust'">🔒 Zero Trust</div>
+    <div class="nl c-tax" id="nl-taxprep" data-tsm-action="navTo" data-tsm-args="'taxprep'">🧾 Tax Prep</div>
+  </div>
+  <div class="nav-right">TSM AI · CONSTRUCTION SUITE · LIVE</div>
+</div>
+
+<!-- APP BODY -->
+<div class="app-body">
+
+<!-- ═══════════════════════════════════
+     LEFT VIEWS
+════════════════════════════════════ -->
+
+<!-- VIEW: STRATEGIST -->
+<div class="vp active" id="vp-strategist">
+  <div class="phases-grid">
+    <div class="phase-card">
+      <div class="ph-tag f">Phase 1 · Foundation</div>
+      <div class="ph-name">Site Preparation &amp; Groundwork</div>
+      <div class="ph-desc">Clearing, grading, and soil testing complete. Concrete pour scheduled pending permit confirmation.</div>
+      <div class="pw"><div class="pb" style="width:72%;background:var(--gbright)"></div></div>
+      <div class="ph-meta"><span class="ph-pct">72% complete</span><span>Due Jun 15</span></div>
+    </div>
+    <div class="phase-card">
+      <div class="ph-tag s">Phase 2 · Structure</div>
+      <div class="ph-name">Steel Frame Erection</div>
+      <div class="ph-desc">Structural steel delivery confirmed. Crane crew mobilization scheduled for week of June 20.</div>
+      <div class="pw"><div class="pb" style="width:38%;background:var(--blue)"></div></div>
+      <div class="ph-meta"><span class="ph-pct">38% complete</span><span>Due Aug 30</span></div>
+    </div>
+    <div class="phase-card">
+      <div class="ph-tag e">Phase 3 · Envelope</div>
+      <div class="ph-name">Roofing &amp; Exterior Cladding</div>
+      <div class="ph-desc">Material procurement in progress. Subcontractor bids under review. Weather window analysis pending.</div>
+      <div class="pw"><div class="pb" style="width:12%;background:var(--amber)"></div></div>
+      <div class="ph-meta"><span class="ph-pct">12% complete</span><span>Due Nov 10</span></div>
+    </div>
+    <div class="phase-card">
+      <div class="ph-tag m">Phase 4 · Systems</div>
+      <div class="ph-name">MEP Rough-In &amp; Inspections</div>
+      <div class="ph-desc">Mechanical, electrical, and plumbing coordination required. Inspection scheduling delayed — action needed.</div>
+      <div class="pw"><div class="pb" style="width:5%;background:var(--red)"></div></div>
+      <div class="ph-meta"><span class="ph-pct" style="color:var(--red)">5% complete</span><span>Due Jan 20</span></div>
+    </div>
+  </div>
+  <div class="sec-box">
+    <div class="sec-hdr"><div class="sec-title">Project Timeline</div><div class="sec-link">Full View</div></div>
+    <div class="tl-item"><div class="tl-date">Apr 28</div><div class="tl-col"><div class="tl-dot" style="background:var(--green)"></div><div class="tl-line"></div></div><div><div class="tl-ev">Permit Approved — Block C</div><div class="tl-d">City planning approved Block C foundation permit. Work commences Monday morning.</div></div></div>
+    <div class="tl-item"><div class="tl-date">May 5</div><div class="tl-col"><div class="tl-dot" style="background:var(--amber)"></div><div class="tl-line"></div></div><div><div class="tl-ev">Concrete Pour — North Foundation</div><div class="tl-d">Weather hold lifted. Crew staged. Inspector on site 7AM.</div></div></div>
+    <div class="tl-item"><div class="tl-date">May 12</div><div class="tl-col"><div class="tl-dot" style="background:var(--blue)"></div><div class="tl-line"></div></div><div><div class="tl-ev">Steel Delivery — Main Structure</div><div class="tl-d">250 tons structural steel arriving. Staging at Gate 2 confirmed.</div></div></div>
+    <div class="tl-item"><div class="tl-date">May 20</div><div class="tl-col"><div class="tl-dot" style="background:var(--muted)"></div></div><div><div class="tl-ev">Subcontractor Bid Deadline</div><div class="tl-d">Final bids due for roofing and cladding. Review scheduled May 22.</div></div></div>
+  </div>
+</div>
+
+<!-- VIEW: EXPANSION -->
+<div class="vp" id="vp-expansion" style="padding:14px">
+  <div style="font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:var(--cyan);display:flex;align-items:center;gap:6px;margin-bottom:8px">
+    <span style="display:inline-block;width:3px;height:10px;background:var(--cyan);border-radius:2px;opacity:.6"></span>
+    Expansion Modules — Push to Strategist BNCA
+  </div>
+  <div style="font-size:10px;color:var(--muted);margin-bottom:12px;line-height:1.6">Push any module's live data to the right sidebar for Groq BNCA synthesis.</div>
+  <div class="exp-grid">
+    <div class="exp-card" id="ec-fieldops"><div class="ec-mod">Module 02 · FieldOps</div><div class="ec-name">FieldOps Daily</div><div class="ec-stat">Crew: <strong>24 on site</strong><br>Reports: <strong>3 pending</strong><br>Incidents: <strong>0 today</strong></div><button class="push-btn" data-tsm-action="pushMod" data-tsm-args="'fieldops'">→ Push</button></div>
+    <div class="exp-card" id="ec-planroom"><div class="ec-mod">Module 03 · PlanRoom</div><div class="ec-name">PlanRoom Pro</div><div class="ec-stat">Drawings: <strong>47 active</strong><br>RFIs: <strong>8 open</strong><br>Last upload: <strong>2h ago</strong></div><button class="push-btn" data-tsm-action="pushMod" data-tsm-args="'planroom'">→ Push</button></div>
+    <div class="exp-card" id="ec-procurement"><div class="ec-mod">Module 04 · Procurement</div><div class="ec-name">Procurement</div><div class="ec-stat">POs open: <strong>14</strong><br>Critical stock: <strong>3 items</strong><br>MTD spend: <strong>$284K</strong></div><button class="push-btn" data-tsm-action="pushMod" data-tsm-args="'procurement'">→ Push</button></div>
+    <div class="exp-card" id="ec-rfi"><div class="ec-mod">Module 05 · RFI/CO</div><div class="ec-name">RFI / Change Orders</div><div class="ec-stat">RFIs: <strong>8 open</strong><br>Change orders: <strong>$142K</strong><br>Avg response: <strong>4.2 days</strong></div><button class="push-btn" data-tsm-action="pushMod" data-tsm-args="'rfi'">→ Push</button></div>
+    <div class="exp-card" id="ec-gantt"><div class="ec-mod">Module 06 · Gantt</div><div class="ec-name">Scheduling / Gantt</div><div class="ec-stat">On schedule: <strong>18/24</strong><br>Critical slips: <strong>2</strong><br>Float left: <strong>9 days</strong></div><button class="push-btn" data-tsm-action="pushMod" data-tsm-args="'gantt'">→ Push</button></div>
+    <div class="exp-card" id="ec-zerotrust"><div class="ec-mod">Security · Zero Trust</div><div class="ec-name">Zero Trust</div><div class="ec-stat">Score: <strong style="color:var(--rose)">67/100</strong><br>Gaps: <strong>6 open</strong><br>Revocations: <strong style="color:var(--rose)">2 due today</strong></div><button class="push-btn" data-tsm-action="pushMod" data-tsm-args="'zerotrust'">→ Push</button></div>
+    <div class="exp-card" id="ec-taxprep"><div class="ec-mod">Finance · Tax Prep</div><div class="ec-name">Tax Prep</div><div class="ec-stat">Missing W-9s: <strong style="color:var(--rose)">3</strong><br>1099 readiness: <strong style="color:var(--amber)">74%</strong><br>Opportunity: <strong style="color:var(--yellow)">$34K</strong></div><button class="push-btn" data-tsm-action="pushMod" data-tsm-args="'taxprep'">→ Push</button></div>
+    <div class="exp-card" id="ec-legal"><div class="ec-mod">Compliance · Legal</div><div class="ec-name">Legal</div><div class="ec-stat">Contracts: <strong>18 active</strong><br>Expiring 30d: <strong style="color:var(--amber)">3</strong><br>Lien waivers: <strong style="color:var(--rose)">5 due</strong></div><button class="push-btn" data-tsm-action="pushMod" data-tsm-args="'legal'">→ Push</button></div>
+  </div>
+  <div style="font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:var(--amber);display:flex;align-items:center;gap:5px;margin-bottom:8px"><span style="display:inline-block;width:3px;height:10px;background:var(--amber);border-radius:2px"></span>Cross-Module Alerts</div>
+  <div class="al-row r"><div class="al-msg">Supply chain delay — structural fasteners ETA +9 days</div><div class="al-src">Procurement · Module 04 · 5h ago</div></div>
+  <div class="al-row"><div class="al-msg">MEP inspection overdue 3 days — RFI-2024-019 blocking Phase 4</div><div class="al-src">RFI/Change Orders · Module 05 · 2h ago</div></div>
+  <div class="al-row r"><div class="al-msg">Zero Trust: 2 QB Admin roles must be revoked before month-end</div><div class="al-src">Zero Trust · 1h ago</div></div>
+  <div class="al-row y"><div class="al-msg">3 vendors crossing $600 threshold — W-9 collection overdue</div><div class="al-src">Tax Prep · 3h ago</div></div>
+  <div class="al-row p"><div class="al-msg">GC Phase 2 contract renewal due in 18 days — 5 lien waivers outstanding</div><div class="al-src">Legal · 4h ago</div></div>
+  <div class="al-row g"><div class="al-msg">Block C concrete pour complete — QC sign-off received</div><div class="al-src">FieldOps · Module 02 · 4h ago</div></div>
+  <button class="big-synth" id="synthAllBtn" onclick="runConstructionBNCAFromRelay()">⚡ Synthesize All → Push to BNCA</button>
+</div>
+
+<!-- VIEW: ZERO TRUST -->
+<div class="vp" id="vp-zerotrust">
+  <div class="zt-score-row">
+    <div class="zt-num">67</div>
+    <div class="zt-info">
+      <div class="zt-lbl">Zero Trust Score · At Risk</div>
+      <div class="zt-bw"><div class="zt-bar"></div></div>
+      <div class="zt-sub">6 access gaps · 2 critical revocations overdue · MFA enforcement 78%</div>
+    </div>
+  </div>
+  <div class="kpi4">
+    <div class="kpi-card"><div class="kpi-val" style="color:var(--rose)">6</div><div class="kpi-lbl">Access Gaps</div></div>
+    <div class="kpi-card"><div class="kpi-val" style="color:var(--amber)">78%</div><div class="kpi-lbl">MFA Rate</div></div>
+    <div class="kpi-card"><div class="kpi-val" style="color:var(--rose)">11</div><div class="kpi-lbl">Priv Roles</div></div>
+    <div class="kpi-card"><div class="kpi-val" style="color:var(--text);font-size:14px">Apr 30</div><div class="kpi-lbl">Last Audit</div></div>
+  </div>
+  <div class="sec-box">
+    <div class="sec-hdr"><div class="sec-title t-red">Access Role Review — Immediate Action Required</div></div>
+    <div class="dtable">
+      <div class="dt-hdr" style="grid-template-columns:1fr 1fr 80px 90px"><span>Role</span><span>User</span><span>Risk</span><span>Action</span></div>
+      <div class="dt-row" style="grid-template-columns:1fr 1fr 80px 90px"><span class="dt-name">QB Admin</span><span>J. Martinez</span><span><div class="pill p-crit">CRITICAL</div></span><span><button class="act-btn" data-tsm-action="ztDone" data-tsm-args="this">Revoke</button></span></div>
+      <div class="dt-row" style="grid-template-columns:1fr 1fr 80px 90px"><span class="dt-name">QB Admin</span><span>T. Brooks</span><span><div class="pill p-crit">CRITICAL</div></span><span><button class="act-btn" data-tsm-action="ztDone" data-tsm-args="this">Revoke</button></span></div>
+      <div class="dt-row" style="grid-template-columns:1fr 1fr 80px 90px"><span class="dt-name">Finance Full</span><span>A. Chen</span><span><div class="pill p-high">HIGH</div></span><span><button class="act-btn" data-tsm-action="ztDone" data-tsm-args="this">Downgrade</button></span></div>
+      <div class="dt-row" style="grid-template-columns:1fr 1fr 80px 90px"><span class="dt-name">HR Payroll</span><span>R. Singh</span><span><div class="pill p-high">HIGH</div></span><span><button class="act-btn" data-tsm-action="ztDone" data-tsm-args="this">Audit</button></span></div>
+      <div class="dt-row" style="grid-template-columns:1fr 1fr 80px 90px"><span class="dt-name">Site Access</span><span>D. Lee (former)</span><span><div class="pill p-crit">CRITICAL</div></span><span><button class="act-btn" data-tsm-action="ztDone" data-tsm-args="this">Revoke</button></span></div>
+      <div class="dt-row" style="grid-template-columns:1fr 1fr 80px 90px"><span class="dt-name">Vendor Portal</span><span>BuildCo Ext.</span><span><div class="pill p-med">MEDIUM</div></span><span><button class="act-btn" data-tsm-action="ztDone" data-tsm-args="this">Review</button></span></div>
+    </div>
+  </div>
+  <button class="big-synth" style="background:var(--rose);color:#0a0e09" data-tsm-action="pushModAndExpand" data-tsm-args="'zerotrust'">→ Push Zero Trust to Strategist BNCA</button>
+</div>
+
+<!-- VIEW: TAX PREP -->
+<div class="vp" id="vp-taxprep">
+  <div class="kpi3">
+    <div class="kpi-card"><div class="kpi-val" style="color:var(--yellow)">$34K</div><div class="kpi-lbl">Tax Opportunity</div></div>
+    <div class="kpi-card"><div class="kpi-val" style="color:var(--rose)">3</div><div class="kpi-lbl">Missing W-9s</div></div>
+    <div class="kpi-card"><div class="kpi-val" style="color:var(--amber)">74%</div><div class="kpi-lbl">1099 Readiness</div></div>
+  </div>
+  <div class="sec-box">
+    <div class="sec-hdr"><div class="sec-title t-yellow">1099 Vendor Status</div></div>
+    <div class="tax-row"><div><div class="tx-name">BuildRight LLC</div><div class="tx-sub">YTD: $12,400 · Threshold exceeded</div></div><div class="tx-acts"><span class="pill p-miss">W-9 Missing</span><button class="tax-btn" data-tsm-action="taxSend" data-tsm-args="this">Send Request</button></div></div>
+    <div class="tax-row"><div><div class="tx-name">Apex Concrete Co.</div><div class="tx-sub">YTD: $8,750 · Threshold exceeded</div></div><div class="tx-acts"><span class="pill p-miss">W-9 Missing</span><button class="tax-btn" data-tsm-action="taxSend" data-tsm-args="this">Send Request</button></div></div>
+    <div class="tax-row"><div><div class="tx-name">Sierra Electrical</div><div class="tx-sub">YTD: $6,200 · Threshold exceeded</div></div><div class="tx-acts"><span class="pill p-miss">W-9 Missing</span><button class="tax-btn" data-tsm-action="taxSend" data-tsm-args="this">Send Request</button></div></div>
+    <div class="tax-row"><div><div class="tx-name">Ironworks Fabrication</div><div class="tx-sub">YTD: $4,900 · Near threshold</div></div><div class="tx-acts"><span class="pill p-thr">Near $600</span></div></div>
+    <div class="tax-row"><div><div class="tx-name">Metro Hauling Inc.</div><div class="tx-sub">YTD: $22,000</div></div><div class="tx-acts"><span class="pill p-done">W-9 On File</span></div></div>
+    <div class="tax-row"><div><div class="tx-name">Pacific Framing Co.</div><div class="tx-sub">YTD: $18,300</div></div><div class="tx-acts"><span class="pill p-done">W-9 On File</span></div></div>
+  </div>
+  <div class="sec-box">
+    <div class="sec-hdr"><div class="sec-title t-yellow">Deduction Opportunities — $34K Total</div></div>
+    <div class="tax-row"><div><div class="tx-name">Equipment Depreciation (Sec 179)</div><div class="tx-sub">2 assets eligible · Accelerated write-off</div></div><div class="tx-acts"><span class="pill p-pend">$18,200</span></div></div>
+    <div class="tax-row"><div><div class="tx-name">Vehicle Mileage (IRS Rate)</div><div class="tx-sub">14,200 miles @ $0.67/mi</div></div><div class="tx-acts"><span class="pill p-pend">$9,514</span></div></div>
+    <div class="tax-row"><div><div class="tx-name">Home / Site Office</div><div class="tx-sub">Qualifying sq footage documented</div></div><div class="tx-acts"><span class="pill p-pend">$4,800</span></div></div>
+    <div class="tax-row"><div><div class="tx-name">Professional Development</div><div class="tx-sub">Certifications + training expenses</div></div><div class="tx-acts"><span class="pill p-pend">$1,486</span></div></div>
+  </div>
+  <button class="big-synth" style="background:var(--yellow);color:#0a0e09" data-tsm-action="pushModAndExpand" data-tsm-args="'taxprep'">→ Push Tax Prep to Strategist BNCA</button>
+</div>
+
+<!-- VIEW: LEGAL -->
+<div class="vp" id="vp-legal">
+  <div class="kpi4">
+    <div class="kpi-card"><div class="kpi-val" style="color:var(--gbright)">18</div><div class="kpi-lbl">Active</div></div>
+    <div class="kpi-card"><div class="kpi-val" style="color:var(--amber)">3</div><div class="kpi-lbl">Expiring 30d</div></div>
+    <div class="kpi-card"><div class="kpi-val" style="color:var(--rose)">5</div><div class="kpi-lbl">Lien Waivers</div></div>
+    <div class="kpi-card"><div class="kpi-val" style="color:var(--purple)">2</div><div class="kpi-lbl">In Review</div></div>
+  </div>
+  <div class="sec-box">
+    <div class="sec-hdr"><div class="sec-title t-purple">Contract Register</div></div>
+    <div class="dtable">
+      <div class="dt-hdr" style="grid-template-columns:1fr 110px 80px 70px 80px"><span>Contract</span><span>Party</span><span>Status</span><span>Expires</span><span>Action</span></div>
+      <div class="dt-row" style="grid-template-columns:1fr 110px 80px 70px 80px"><span class="dt-name">GC Agreement — Phase 2</span><span>Apex Build Co.</span><span><div class="pill p-act">Active</div></span><span style="font-size:9px;color:var(--muted)">Aug 30</span><span><button class="leg-btn">View</button></span></div>
+      <div class="dt-row" style="grid-template-columns:1fr 110px 80px 70px 80px"><span class="dt-name">Roofing Subcontract</span><span>SkyLine Roofing</span><span><div class="pill p-rev">In Review</div></span><span style="font-size:9px;color:var(--muted)">Nov 10</span><span><button class="leg-btn">Approve</button></span></div>
+      <div class="dt-row" style="grid-template-columns:1fr 110px 80px 70px 80px"><span class="dt-name">MEP Services Agreement</span><span>Meridian MEP</span><span><div class="pill p-exp">Expired</div></span><span style="font-size:9px;color:var(--rose)">Apr 30</span><span><button class="leg-btn">Renew</button></span></div>
+      <div class="dt-row" style="grid-template-columns:1fr 110px 80px 70px 80px"><span class="dt-name">Site Lease — Block C</span><span>Ameris Properties</span><span><div class="pill p-act">Active</div></span><span style="font-size:9px;color:var(--muted)">Dec 31</span><span><button class="leg-btn">View</button></span></div>
+      <div class="dt-row" style="grid-template-columns:1fr 110px 80px 70px 80px"><span class="dt-name">Steel Supply Agreement</span><span>PacSteel Inc.</span><span><div class="pill p-act">Active</div></span><span style="font-size:9px;color:var(--muted)">Jun 15</span><span><button class="leg-btn">View</button></span></div>
+      <div class="dt-row" style="grid-template-columns:1fr 110px 80px 70px 80px"><span class="dt-name">Builder's Risk Insurance</span><span>Westfield Ins.</span><span><div class="pill p-prp">Pending</div></span><span style="font-size:9px;color:var(--amber)">May 31</span><span><button class="leg-btn">Renew</button></span></div>
+    </div>
+  </div>
+  <div class="sec-box">
+    <div class="sec-hdr"><div class="sec-title t-purple">Lien Waivers Outstanding — $165.5K Blocked</div></div>
+    <div class="tax-row"><div><div class="tx-name">Apex Build Co. — Draw #4</div><div class="tx-sub">$84,000 · Conditional waiver due before payment</div></div><div class="tx-acts"><span class="pill p-miss">Overdue</span></div></div>
+    <div class="tax-row"><div><div class="tx-name">SkyLine Roofing — Draw #1</div><div class="tx-sub">$22,000 · Awaiting countersignature</div></div><div class="tx-acts"><span class="pill p-pend">Pending</span></div></div>
+    <div class="tax-row"><div><div class="tx-name">Meridian MEP — Draw #2</div><div class="tx-sub">$31,500 · Blocked by expired contract</div></div><div class="tx-acts"><span class="pill p-miss">Blocked</span></div></div>
+    <div class="tax-row"><div><div class="tx-name">PacSteel Inc. — Delivery #3</div><div class="tx-sub">$18,200 · Unconditional waiver due</div></div><div class="tx-acts"><span class="pill p-pend">Pending</span></div></div>
+    <div class="tax-row"><div><div class="tx-name">Ironworks — PO-114</div><div class="tx-sub">$9,800 · First lien filing</div></div><div class="tx-acts"><span class="pill p-thr">Due May 20</span></div></div>
+  </div>
+  <button class="big-synth" style="background:var(--purple);color:#0a0e09" data-tsm-action="pushModAndExpand" data-tsm-args="'legal'">→ Push Legal to Strategist BNCA</button>
+</div>
+
+<!-- ═══════════════════════════════════
+     MIDDLE PANEL
+════════════════════════════════════ -->
+<div class="mid-panel">
+  <div class="risk-block">
+    <div class="risk-segs">
+      <div class="rs g"></div><div class="rs g"></div><div class="rs g"></div><div class="rs g"></div>
+      <div class="rs a"></div><div class="rs a"></div>
+      <div class="rs r"></div><div class="rs r" style="opacity:.3"></div>
+    </div>
+    <div class="rscore" id="riskScore">42</div>
+    <div class="rscore-lbl">Moderate Risk</div>
+    <div class="risk-rows">
+      <div class="risk-row"><span class="rr-name">Schedule Variance</span><span class="rr-pill rl">LOW</span></div>
+      <div class="risk-row"><span class="rr-name">Budget Overrun</span><span class="rr-pill rm">MEDIUM</span></div>
+      <div class="risk-row"><span class="rr-name">Permit Delays</span><span class="rr-pill rm">MEDIUM</span></div>
+      <div class="risk-row"><span class="rr-name">Safety Incidents</span><span class="rr-pill rl">LOW</span></div>
+      <div class="risk-row"><span class="rr-name">Supply Chain</span><span class="rr-pill rh">HIGH</span></div>
+      <div class="risk-row"><span class="rr-name">Zero Trust Score</span><span class="rr-pill rh">67/100</span></div>
+      <div class="risk-row"><span class="rr-name">1099 Readiness</span><span class="rr-pill rm">74%</span></div>
+      <div class="risk-row"><span class="rr-name">Legal Exposure</span><span class="rr-pill rh">$165.5K</span></div>
+    </div>
+  </div>
+  <div class="field-block">
+    <div class="blk-hdr"><div class="blk-t">Field Leadership</div><div class="blk-a">ALL</div></div>
+    <div class="leader-item"><div class="av g">RK</div><div class="li-info"><div class="li-name">R. Kowalski</div><div class="li-role">Project Superintendent</div></div><div class="sdot sd-g"></div></div>
+    <div class="leader-item"><div class="av b">MT</div><div class="li-info"><div class="li-name">M. Thorne</div><div class="li-role">Structural Engineer</div></div><div class="sdot sd-g"></div></div>
+    <div class="leader-item"><div class="av a">DL</div><div class="li-info"><div class="li-name">D. Lara</div><div class="li-role">Safety Officer</div></div><div class="sdot sd-a"></div></div>
+    <div class="leader-item"><div class="av m">JP</div><div class="li-info"><div class="li-name">J. Patterson</div><div class="li-role">MEP Coordinator</div></div><div class="sdot sd-m"></div></div>
+  </div>
+  <div class="alerts-block">
+    <div class="blk-hdr" style="margin-bottom:9px"><div class="blk-t">Active Alerts</div><div class="blk-a">CLEAR</div></div>
+    <div class="al-item"><div class="al-msg">⚠ MEP inspection scheduling overdue by 3 days</div><div class="al-time">2h ago</div></div>
+    <div class="al-item r"><div class="al-msg">⚠ Supply chain: fasteners ETA +9 days</div><div class="al-time">5h ago</div></div>
+    <div class="al-item r"><div class="al-msg">🔒 Zero Trust: 2 QB admin roles — revoke today</div><div class="al-time">1h ago</div></div>
+    <div class="al-item y"><div class="al-msg">🧾 Tax: 3 W-9s missing, 2 vendors near threshold</div><div class="al-time">3h ago</div></div>
+    <div class="al-item p"><div class="al-msg">⚖ Legal: MEP expired, $165.5K blocked in waivers</div><div class="al-time">4h ago</div></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════
+     RIGHT SIDEBAR
+════════════════════════════════════ -->
+<div class="right-panel">
+  <div class="sb-hdr">
+    <div class="sb-title">Construction Strategist</div>
+    <div class="sb-sub">BNCA · Cross-App Synthesis · Owner Lane S</div>
+    <div class="sb-metrics">
+      <div class="smc"><div class="smc-val" id="smExp" style="color:var(--gold)">$847K</div><div class="smc-lbl">Exposure</div></div>
+      <div class="smc"><div class="smc-val" id="smApps">9</div><div class="smc-lbl">Apps</div></div>
+      <div class="smc"><div class="smc-val" id="smConf" style="color:var(--gbright)">92%</div><div class="smc-lbl">Confidence</div></div>
+    </div>
+  </div>
+
+  <!-- Groq key -->
+  <div class="groq-bar">
+    <span class="groq-lbl">Groq Key</span>
+    <input class="groq-inp" type="password" id="groqKey" placeholder="gsk_••••••••••••••••••••" oninput="saveKey()">
+    <button class="groq-save" data-tsm-action="saveKey" data-tsm-args="">Save</button>
+  </div>
+
+  <!-- Quick nav buttons -->
+  <div class="sb-btns">
+    <div class="sb-btn" data-tsm-action="runBNCA" data-tsm-args="">▶ Run Node</div>
+<div class="sb-btn" data-tsm-action="navTo" data-tsm-args="'zerotrust'">🔒 Zero Trust</div>
+    <div class="sb-btn" data-tsm-action="navTo" data-tsm-args="'taxprep'">🧾 Tax Prep</div>
+    <div class="sb-btn" data-tsm-action="navTo" data-tsm-args="'legal'">⚖ Legal</div>
+    <div class="sb-btn" data-tsm-action="navTo" data-tsm-args="'expansion'">⚡ Expansion</div>
+  </div>
+
+  <!-- BNCA sections -->
+  <div class="bnca-sec">
+    <div class="bnca-lbl">Current Node</div>
+    <div class="bnca-box" id="currentNode">Operations ready. Enter Groq API key and run BNCA.</div>
+    <div class="bnca-lbl">BNCA Output</div>
+    <div class="bnca-box" id="bncaOutput" style="color:var(--muted);font-style:italic">Waiting for construction intelligence…</div>
+    <div class="tsm-xp" style="background:linear-gradient(135deg,rgba(255,215,0,.04),rgba(255,230,0,.02));border:1px solid rgba(255,215,0,.18)">
+      <div class="tsm-xp-title" style="color:#ffd700">
+        <div class="tsm-xp-pulse" style="background:#ffd700"></div>
+        WHY DOES THE AI BELIEVE THIS?
+      </div>
+      <div>
+        <div class="tsm-xp-lbl">AI Confidence Score</div>
+        <div class="tsm-conf-row">
+          <div class="tsm-conf-num" id="conXPConfNum" style="color:#ffd700">—</div>
+          <div class="tsm-conf-sub">confidence<br>probability</div>
+        </div>
+        <div class="tsm-conf-bar-wrap">
+          <div class="tsm-conf-bar" id="conXPConfBar" style="background:linear-gradient(90deg,#ffd700,rgba(255,230,100,.8))"></div>
+        </div>
+      </div>
+      <div>
+        <div class="tsm-xp-lbl">Data Sources Analyzed</div>
+        <div id="conXPSources"><div style="opacity:.4;font-family:'JetBrains Mono',monospace;font-size:.63rem">Awaiting analysis...</div></div>
+      </div>
+      <div>
+        <div class="tsm-xp-lbl">Reasoning Chain</div>
+        <div class="tsm-reasoning" id="conXPReasoning" style="background:rgba(0,0,0,.2);border-left-color:#ffd700">
+          <div style="opacity:.4">Reasoning trace appears after analysis completes.</div>
+        </div>
+      </div>
+      <div>
+        <div class="tsm-xp-lbl">Actions · Named Owners</div>
+        <div id="conXPActions"><div style="opacity:.4;font-family:'JetBrains Mono',monospace;font-size:.63rem">Run analysis to surface owners...</div></div>
+      </div>
+      <div>
+        <div class="tsm-xp-lbl">Business Impact Delta</div>
+        <div class="tsm-delta-row">
+          <div class="tsm-delta-box tsm-delta-no"><div class="tsm-delta-lbl">NO ACTION</div><div class="tsm-delta-val" id="conXPDeltaNo">—</div></div>
+          <div class="tsm-delta-box tsm-delta-act"><div class="tsm-delta-lbl">WITH ACTION</div><div class="tsm-delta-val" id="conXPDeltaAct">—</div></div>
+        </div>
+        <div class="tsm-recovery" id="conXPRecovery"></div>
+      </div>
+    </div>
+    <div class="bnca-lbl">Cross-App State</div>
+    <div class="cross-box" id="crossBox">
+      • Operations <span class="hi">[ready]</span> — Rebalance workload before backlog expands.<br>
+      • <span class="hr">Security</span>: ZT 67/100 — 6 gaps, 2 revocations overdue<br>
+      • <span class="hy">Tax</span>: 3 W-9s missing, $34K opportunity uncaptured<br>
+      • <span class="hp">Legal</span>: MEP expired, $165.5K in blocked draws
+    </div>
+  </div>
+
+  <!-- Pushed module feeds -->
+  <div class="feed-sec" id="feedSec" style="display:none">
+    <div class="feed-lbl">Pushed Module Feeds</div>
+    <div id="feedList"></div>
+  </div>
+
+  <button class="run-btn" id="runBtn" onclick="runConstructionBNCAFromRelay()">⚡ Synthesize All → Push to BNCA</button>
+<button class="run-btn" style="background:#a855f7;margin-top:6px;" onclick="pushConstructionToDocEngine()">📋 Push to Doc Engine</button>
+</div>
+
+</div><!-- /app-body -->
+
+<script>
+// ── MODULE DATA ──
+const MODS = {
+  fieldops:    {name:'FieldOps Daily',      color:'var(--cyan)',   msg:'24 crew on site. 3 daily reports pending sign-off. Block C pour complete — QC approved. 0 safety incidents today.',   node:'FieldOps: crew at 96% capacity, pour milestone closed, 3 supervisor reports need signature EOD.', exp:28000},
+  planroom:    {name:'PlanRoom Pro',         color:'var(--cyan)',   msg:'47 active drawings. 8 RFIs open — 2 blocking Phase 2 steel framing start. Last upload 2h ago by M. Thorne.',          node:'PlanRoom: 2 critical RFIs blocking Phase 2 framing — escalate to GC by EOD.',                    exp:142000},
+  procurement: {name:'Procurement',          color:'var(--cyan)',   msg:'14 open POs. Structural fasteners CRITICAL (+9d delay), rebar ties MEDIUM, concrete forms MEDIUM. MTD spend $284K.',  node:'Procurement: supply chain HIGH — source alternative fastener vendor immediately.',                exp:94000},
+  rfi:         {name:'RFI / Change Orders',  color:'var(--cyan)',   msg:'8 RFIs open. $142K change orders pending owner approval. MEP RFI-2024-019 overdue 3 days. Avg response 4.2 days.',   node:'RFI/CO: $142K needs owner approval. MEP RFI overdue — Phase 4 delay risk compounding.',          exp:142000},
+  gantt:       {name:'Scheduling / Gantt',   color:'var(--cyan)',   msg:'18/24 tasks on schedule. 2 critical-path slips: roofing -6 days, MEP inspection -3 days. Float remaining 9 days.',   node:'Gantt: 2 critical-path slips — roofing + MEP could compound to 14-day schedule impact.',         exp:320000},
+  zerotrust:   {name:'Zero Trust',           color:'var(--rose)',  msg:'Score 67/100. 6 access gaps: 2 QB Admin critical (J. Martinez, T. Brooks), former employee D. Lee still active. MFA 78%.', node:'ZeroTrust: CRITICAL — revoke 2 QB admin + former employee access today. MFA gap 22%.', exp:0},
+  taxprep:     {name:'Tax Prep',             color:'var(--yellow)', msg:'3 W-9s missing: BuildRight, Apex Concrete, Sierra Electrical (all >$600). $34K deductions uncaptured (Sec 179, mileage, office).', node:'TaxPrep: send 3 W-9 requests today. $34K in deductions (Sec 179 $18.2K, mileage $9.5K, office $4.8K) need filing.', exp:0},
+  legal:       {name:'Legal',                color:'var(--purple)', msg:'18 contracts active. MEP agreement expired Apr 30 — blocking $31.5K draw. 5 lien waivers = $165.5K blocked. Builder\'s risk renewal due May 31.', node:'Legal: renew MEP contract immediately ($31.5K blocked). 5 lien waivers = $165.5K in frozen draws. Insurance renewal 19 days.', exp:165500},
+};
+
+let pushed = new Set();
+let groqKey = '';
+let running = false;
+
+function saveKey() {
+  groqKey = document.getElementById('groqKey').value.trim();
+  if (groqKey) { const b = document.querySelector('.groq-save'); b.textContent = '✓'; setTimeout(()=>b.textContent='Save',1500); }
+}
+
+// ── NAVIGATION ──
+function navTo(view) {
+  document.querySelectorAll('.nl').forEach(l => l.classList.remove('active'));
+  document.querySelectorAll('.vp').forEach(p => p.classList.remove('active'));
+  const vp = document.getElementById('vp-' + view);
+  if (vp) vp.classList.add('active');
+  else document.getElementById('vp-strategist').classList.add('active');
+  const nl = document.getElementById('nl-' + view);
+  if (nl) nl.classList.add('active');
+  else document.getElementById('nl-strategist').classList.add('active');
+}
+
+// ── PUSH MODULE ──
+function pushMod(key) {
+  const mod = MODS[key];
+  if (!mod) return;
+  pushed.add(key);
+
+  // mark expansion card
+  const card = document.getElementById('ec-' + key);
+  if (card) {
+    card.classList.add('pushed');
+    const btn = card.querySelector('.push-btn');
+    if (btn) { btn.textContent = '✓ Pushed'; btn.classList.add('pushed'); }
+  }
+
+  // update feed in sidebar
+  const feedSec = document.getElementById('feedSec');
+  const feedList = document.getElementById('feedList');
+  feedSec.style.display = 'block';
+  let item = document.getElementById('fi-'+key);
+  if (!item) { item = document.createElement('div'); item.className = 'feed-item'; item.id = 'fi-'+key; feedList.appendChild(item); }
+  item.innerHTML = `<div class="feed-mod" style="color:${mod.color}">${mod.name}</div><div class="feed-msg">${mod.msg}</div>`;
+
+  updateCross();
+  updateMetrics();
+  updateExpBadge();
+}
+
+// Wrapper for buttons that need to push a module AND jump to the Expansion
+// view in one click. The data-tsm-action delegate only supports a single
+// action name + one eval'd args list, so this can't be done by chaining
+// two calls in data-tsm-args (that produced a silently-swallowed eval
+// syntax error — see fix note above the 3 callers below).
+function pushModAndExpand(key) {
+  pushMod(key);
+  navTo('expansion');
+}
+
+function updateExpBadge() {
+  const badge = document.getElementById('exp-badge');
+  if (pushed.size > 0) { badge.style.display = 'inline'; badge.textContent = pushed.size; }
+  else badge.style.display = 'none';
+}
+
+function updateCross() {
+  const now = new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  const names = [...pushed].map(k=>MODS[k].name).join(', ') || 'none';
+  document.getElementById('crossBox').innerHTML =
+    `• Operations <span class="hi">[${now}]</span> — Cross-module synthesis active.<br>` +
+    `• <span class="hr">Security</span>: ZT 67/100 — 6 gaps, 2 revocations overdue<br>` +
+    `• <span class="hy">Tax</span>: 3 W-9s missing, $34K opportunity uncaptured<br>` +
+    `• <span class="hp">Legal</span>: MEP expired, $165.5K in blocked draws<br>` +
+    `• <span class="hc">Pushed: ${names}</span> — run BNCA to synthesize`;
+}
+
+function updateMetrics() {
+  let exp = 847000;
+  pushed.forEach(k => exp += MODS[k].exp);
+  document.getElementById('smExp').textContent = '$' + Math.round(exp/1000) + 'K';
+  document.getElementById('smApps').textContent = 9 + pushed.size;
+  document.getElementById('smConf').textContent = Math.max(70, 92 - pushed.size) + '%';
+}
+
+function synthesizeAll() {
+  Object.keys(MODS).forEach(k => pushMod(k));
+  setTimeout(() => runBNCA(), 350);
+}
+
+// ── GROQ BNCA ──
+async function runBNCA() {
+  if (running) return;
+  if (!groqKey) {
+    document.getElementById('currentNode').textContent = '⚠ Enter your Groq API key to run BNCA.';
+    return;
+  }
+  running = true;
+  const btn = document.getElementById('runBtn');
+  btn.disabled = true; btn.textContent = '⟳ Running via Groq…';
+
+  const nodeEl = document.getElementById('currentNode');
+  const outEl  = document.getElementById('bncaOutput');
+  const mods   = pushed.size > 0 ? [...pushed].map(k=>MODS[k].node).join(' | ') :
+    'Core: 4 phases active, risk 42/100, supply chain HIGH, MEP delayed 3 days. ZeroTrust 67/100 — 2 critical revocations overdue. Tax: 3 W-9s missing, $34K opportunity. Legal: MEP contract expired, $165.5K blocked in lien waivers.';
+
+  nodeEl.textContent = `Synthesizing ${pushed.size || 'core'} modules via Groq llama-3.3-70b…`;
+  outEl.classList.add('streaming');
+  outEl.style.color = 'var(--text)';
+  outEl.style.fontStyle = 'normal';
+  outEl.textContent = '▌';
+
+  const sys = `You are a Construction Strategist AI (TSM Suite). You synthesize cross-app data into a BNCA (Bottom-Line Construction Analysis). Be direct and specific. Owner audience.`;
+  const usr = `Cross-app state:\n${mods}\n\nGenerate a BNCA with 4 bullet points. Format: bold action verb, specific metric or name, clear next step. Cover: (1) highest risk, (2) financial/legal exposure, (3) security/compliance, (4) schedule impact.`;
+
+  try {
+    const res = await fetch('/api/war-room/stream', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        model:'openai/gpt-oss-120b', max_tokens:600, temperature:0.4, stream:true,
+        messages:[{role:'system',content:sys},{role:'user',content:usr}]
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(()=>({error:{message:res.statusText}}));
+      outEl.textContent = '[Groq Error] ' + (err.error?.message || res.statusText);
+      outEl.classList.remove('streaming');
+      running=false; btn.disabled=false; btn.textContent='⚡ Run Full BNCA via Groq';
+      return;
+    }
+
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let full = '';
+    outEl.textContent = '';
+
+    while (true) {
+      const {done,value} = await reader.read();
+      if (done) break;
+      const chunk = dec.decode(value);
+      for (const line of chunk.split('\n')) {
+        if (!line.startsWith('data: ')) continue;
+        const data = line.slice(6).trim();
+        if (data === '[DONE]') break;
+        try {
+          const delta = JSON.parse(data).choices?.[0]?.delta?.content || '';
+          full += delta;
+          outEl.textContent = full + '▌';
+        } catch {}
+      }
+    }
+    outEl.textContent = full;
+    outEl.classList.remove('streaming');
+    nodeEl.textContent = `BNCA complete — ${pushed.size||'core'} modules via Groq.`;
+
+  } catch(e) {
+    outEl.textContent = '[Network Error] ' + e.message + '\n\nCheck Groq key and network.';
+    outEl.classList.remove('streaming');
+  }
+
+  running=false; btn.disabled=false; btn.textContent='⚡ Run Full BNCA via Groq';
+}
+
+// ── MISC UI ──
+function ztDone(btn) { btn.textContent='✓ Done'; btn.classList.add('done'); btn.disabled=true; }
+function taxSend(btn) {
+  const pill = btn.previousElementSibling;
+  pill.textContent='Sent'; pill.className='pill p-pend';
+  btn.textContent='Resend';
+}
+</script>
+
+<script src="/shared/tsm-sector-intelligence.js?v=phase5si"></script>
+
+
+<script>(function(){
+document.addEventListener('DOMContentLoaded',()=>{
+document.querySelectorAll('button').forEach(b=>{
+if(b.dataset.tsm) return;
+b.dataset.tsm=1;
+if(b.onclick) return;
+b.onclick=()=>console.log('[TSM]',b.innerText);
+});
+console.log('[TSM ENGINE ACTIVE]');
+});
+})();</script>
+
+<script>
+document.addEventListener('click', function(e){
+
+  const el = e.target.closest('[data-tsm-action]');
+  if(!el) return;
+
+  const action = el.getAttribute('data-tsm-action');
+  const args = el.getAttribute('data-tsm-args');
+
+  if(window.TSM && TSM.launcher && TSM.launcher.run){
+    TSM.launcher.run(action, args);
+  } else {
+    console.warn('[TSM] launcher missing:', action, args);
+  }
+
+});
+const CONSTRUCTION_SCENARIOS = {
+  scenario_1:'Permit Block — Foundation CO-7 Disputed · $340K at Risk. Permit hold + Change Order 7 dispute. 30-day cure window.',
+  scenario_2:'OSHA Incident Apr-14 — $180K Citation Exposure. Fall event. 15-day informal conference window.',
+  scenario_3:'Q1 Invoice Backlog + Roofing Sub — $520K AR Pressure. 60-day AR aging + 20% mobilization request.',
+  scenario_4:'Zoning Variance Delay — $85K/Week General Conditions. 6-week city hold. Owner claiming contractor delay.',
+  scenario_5:'MEP Coordination Conflict — 4 conduit routing conflicts vs mechanical ductwork. RFI required.',
+  scenario_6:'Monthly BNCA Executive Briefing — All 12 documents. $2.4M exposure. Board meeting in 5 days.'
+};
+function pushConstructionToDocEngine(){
+  const summary=document.getElementById('bncaOutput')?.textContent||'';
+  if(!summary||summary.length<50){alert('Generate BNCA first.');return;}
+  const mission=JSON.parse(localStorage.getItem('tsm_construction_mission')||'{}');
+  localStorage.setItem('tsm_construction_doc_payload',JSON.stringify({source:'construction-strategist',type:'CONSTRUCTION_BNCA_OUTPUT',content:summary,scenario:mission.scenarioId||'manual',timestamp:Date.now()}));
+  window.location.href='/construction-suite/document-showcase.html?source=strategist';
+}
+
+function pushConstructionToDocEngine(){
+  const summary=document.getElementById('bncaOutput')?.textContent||'';
+  if(!summary||summary.length<50){alert('Generate BNCA first.');return;}
+  const mission=JSON.parse(localStorage.getItem('tsm_construction_mission')||'{}');
+  localStorage.setItem('tsm_construction_doc_payload',JSON.stringify({source:'construction-strategist',type:'CONSTRUCTION_BNCA_OUTPUT',content:summary,scenario:mission.scenarioId||'manual',timestamp:Date.now()}));
+  window.location.href='/construction-suite/document-showcase.html?source=strategist';
+}
+
+function pushConstructionToDocEngine(){
+  const summary=document.getElementById('bncaOutput')?.textContent||'';
+  if(!summary||summary.length<50){alert('Generate BNCA first.');return;}
+  const mission=JSON.parse(localStorage.getItem('tsm_construction_mission')||'{}');
+  localStorage.setItem('tsm_construction_doc_payload',JSON.stringify({source:'construction-strategist',type:'CONSTRUCTION_BNCA_OUTPUT',content:summary,scenario:mission.scenarioId||'manual',timestamp:Date.now()}));
+  window.location.href='/construction-suite/document-showcase.html?source=strategist';
+}
+
+async function runConstructionBNCA(){
+  const out=document.getElementById('bncaOutput');
+  conXPResetExplain();
+  const mission=JSON.parse(localStorage.getItem('tsm_construction_mission')||'{}');
+  const ctx=CONSTRUCTION_SCENARIOS[mission.scenarioId]||'Full construction portfolio review';
+  out.textContent='Generating BNCA...';
+  try{
+    const r=await fetch('/api/war-room/stream',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'openai/gpt-oss-120b',max_tokens:1024,stream:true,messages:[{role:'user',content:'Construction strategist BNCA for: '+ctx+'\n\nFormat: CONTROLLER PRIORITY ACTIONS (numbered, dollar-quantified, owner assigned) then BNCA — BEST NEXT COURSE OF ACTION (one paragraph).\n\nAfter the brief above, on a new line output exactly ===JSON=== followed by a single JSON object (no markdown fences) with this exact shape: {"confidence":0-100,"dataSources":[{"name":"...","weight":"HIGH|MED|LOW"}],"reasoning":[{"key":"...","val":"..."}],"recommendedActions":[{"text":"...","owner":"..."}],"noActionRevLoss":"$amount","actionRevLoss":"$amount","recoveryTime":"e.g. 30 Days"}'}]})});
+    const reader=r.body.getReader();const dec=new TextDecoder();let full='';
+    out.style.whiteSpace='pre-wrap';
+    while(true){const{done,value}=await reader.read();if(done)break;
+      dec.decode(value).split('\n').forEach(line=>{if(line.startsWith('data: ')&&line!=='data: [DONE]'){
+        try{full+=(JSON.parse(line.slice(6)).choices?.[0]?.delta?.content||'');}catch(e){}
+      }});
+      out.textContent=full;
+    }
+    const {brief: conBrief2, obj: conObj2} = conXPParseExplain(full);
+    if(conBrief2) out.textContent = conBrief2;
+    conXPRenderExplain(conObj2);
+    lastConObj = conObj2;
+    localStorage.setItem('tsm_construction_strategist_output',JSON.stringify({summary:out.textContent,scenario:mission.scenarioId||'manual',timestamp:Date.now()}));
+  }catch(e){out.textContent='Error: '+e.message;}
+}
+// ═══════════════════════════════════════════════════
+// WAR ROOM RELAY RECEIVER
+// ═══════════════════════════════════════════════════
+let warRoomRelay = null;
+let lastConObj = null; // most recent parsed BNCA JSON (confidence/dataSources/recommendedActions/noActionRevLoss/etc) — kept so storeStrategistRelay() can build a Sentinel-shaped anomaly even when called from escalateToExecutive() without a fresh run
+ 
+function loadWarRoomRelay() {
+  try {
+    const raw = sessionStorage.getItem('TSM_CONSTRUCTION_WAR_RELAY') ||
+                localStorage.getItem('tsm_construction_war_relay');
+    if (!raw) return false;
+    warRoomRelay = JSON.parse(raw);
+    if (!warRoomRelay) return false;
+    populateFromWarRoom(warRoomRelay);
+    // TSM AUTO-CHAIN — synthesize BNCA automatically, but leave escalation to
+    // Executive Portal as a manual step (click "→ ESCALATE TO EXECUTIVE")
+    // so the user has time to review the synthesis before navigating away.
+    if (localStorage.getItem('tsm_auto_mode') !== 'off') {
+      setTimeout(async () => {
+        if (typeof runConstructionBNCAFromRelay === 'function') await runConstructionBNCAFromRelay();
+      }, 1000);
+    }
+    return true;
+  } catch(e) { console.warn('War Room relay error:', e); return false; }
+}
+ 
+function populateFromWarRoom(d) {
+  const snap = d.snapshot || {};
+  const engines = d.engines || {};
+ 
+  // Update cross-box with relay data
+  const crossBox = document.getElementById('crossBox');
+  if (crossBox) {
+    crossBox.innerHTML =
+      `• <span class="hi">War Room Relay Active</span> — ${d.docType||'Document'} loaded from 6-engine analysis<br>` +
+      `• <span class="hr">Risk Score</span>: ${snap.risk||'—'} · Exposure: ${snap.exposure||'—'}<br>` +
+      `• <span class="hy">Financial</span>: ${(engines.e3||'').slice(0,80)}...<br>` +
+      `• <span class="hp">Legal</span>: ${(engines.e4||'').slice(0,80)}...<br>` +
+      `• <span class="hc">Compliance</span>: ${(engines.e5||'').slice(0,60)}...`;
+  }
+ 
+  // Update current node
+  const nodeEl = document.getElementById('currentNode');
+  if (nodeEl) nodeEl.textContent = `War Room relay received — ${d.docType||'Document'} · ${d.timestamp ? new Date(d.timestamp).toLocaleTimeString() : ''} · Run BNCA to synthesize.`;
+ 
+  // Update metrics
+  const expM = (engines.e3||'').match(/EXPOSURE RANGE[:\s]+([^\n]+)/i);
+  const riskM = (engines.e3||'').match(/(?:FINANCIAL RISK SCORE|RISK SCORE)[:\s]+(\d+)/i);
+  if (expM) document.getElementById('smExp').textContent = expM[1].trim().slice(0,10);
+  if (riskM) document.getElementById('riskScore').textContent = riskM[1];
+ 
+  // Show escalate bar
+  showEscalateBar(d);
+}
+ 
+function showEscalateBar(d) {
+  // Remove existing if any
+  const existing = document.getElementById('escalateBar');
+  if (existing) existing.remove();
+ 
+  const bar = document.createElement('div');
+  bar.id = 'escalateBar';
+  bar.style.cssText = `
+    position:fixed;bottom:0;left:0;right:0;
+    background:#0a140a;border-top:1px solid rgba(255,215,0,0.3);
+    padding:12px 20px;display:flex;align-items:center;justify-content:space-between;
+    z-index:100;gap:16px;
+  `;
+  bar.innerHTML = `
+    <div>
+      <div style="font-size:11px;color:#ffd700;letter-spacing:1.5px;font-weight:700;margin-bottom:3px;">⚡ WAR ROOM RELAY ACTIVE — ${(d.docType||'DOCUMENT').toUpperCase()} · SYNTHESIZE AND ESCALATE TO EXECUTIVE PORTAL</div>
+      <div style="font-size:9px;color:#4a664a;" id="escalBarSub">Run BNCA synthesis to generate executive-ready intelligence package.</div>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button onclick="runConstructionBNCAFromRelay()" style="background:#ffd700;border:1px solid #ffd700;color:#000;font-family:inherit;font-size:9px;letter-spacing:1.5px;padding:8px 16px;cursor:pointer;font-weight:700;">⚡ SYNTHESIZE + PUSH TO BNCA</button>
+      <button onclick="escalateToExecutive()" style="background:transparent;border:1px solid #00e5ff;color:#00e5ff;font-family:inherit;font-size:9px;letter-spacing:1.5px;padding:8px 16px;cursor:pointer;">→ ESCALATE TO EXECUTIVE</button>
+      <button onclick="document.getElementById('escalateBar').style.display='none'" style="background:transparent;border:1px solid rgba(255,255,255,0.1);color:#4a664a;font-family:inherit;font-size:9px;padding:8px 12px;cursor:pointer;">DISMISS</button>
+    </div>
+  `;
+  document.body.appendChild(bar);
+}
+ 
+// ═══════════════════════════════════════════════════
+// BNCA FROM WAR ROOM RELAY — with app guidance
+// ═══════════════════════════════════════════════════
+// ── TSM EXPLAINABILITY PANEL — conXP ──
+function conXPResetExplain(){
+  document.getElementById('conXPConfNum').textContent='—';
+  document.getElementById('conXPConfBar').style.width='0%';
+  document.getElementById('conXPSources').innerHTML='<div style="opacity:.4;font-family:\'JetBrains Mono\',monospace;font-size:.63rem">Awaiting analysis...</div>';
+  document.getElementById('conXPReasoning').innerHTML='<div style="opacity:.4">Reasoning trace appears after analysis completes.</div>';
+  document.getElementById('conXPActions').innerHTML='<div style="opacity:.4;font-family:\'JetBrains Mono\',monospace;font-size:.63rem">Run analysis to surface action owners...</div>';
+  document.getElementById('conXPDeltaNo').textContent='—';
+  document.getElementById('conXPDeltaAct').textContent='—';
+  document.getElementById('conXPRecovery').textContent='';
+}
+function conXPRenderExplain(obj){
+  if(!obj) return;
+  const conf = obj.confidence||0;
+  document.getElementById('conXPConfNum').textContent=conf+'%';
+  setTimeout(()=>{document.getElementById('conXPConfBar').style.width=conf+'%';},100);
+  const wc = w=>w==='HIGH'?'tsm-src-high':w==='MED'?'tsm-src-med':'tsm-src-low';
+  const sources = obj.dataSources||[];
+  document.getElementById('conXPSources').innerHTML=sources.length
+    ?sources.map(s=>`<div class="tsm-src"><span class="tsm-src-badge ${wc(s.weight)}">${s.weight}</span>${s.name}</div>`).join('')
+    :'<div style="opacity:.4;font-size:.63rem">No source data.</div>';
+  const reasoning = obj.reasoning||[];
+  document.getElementById('conXPReasoning').innerHTML=reasoning.length
+    ?reasoning.map(r=>`<div><span style="color:#ffd700">${r.key}:</span> <span style="opacity:.7">${r.val}</span></div>`).join('')
+    :'<div style="opacity:.4">No reasoning chain.</div>';
+  const actions = obj.recommendedActions||[];
+  document.getElementById('conXPActions').innerHTML=actions.length
+    ?actions.map(a=>`<div class="tsm-action" style="background:rgba(255,215,0,.05);border:1px solid rgba(255,215,0,.2)"><span class="tsm-owner" style="background:rgba(255,215,0,.12);color:#ffd700">${a.owner}</span><span class="tsm-action-text">${a.text}</span></div>`).join('')
+    :'<div style="opacity:.4;font-size:.63rem">No actions returned.</div>';
+  if(obj.noActionRevLoss) document.getElementById('conXPDeltaNo').textContent=obj.noActionRevLoss;
+  if(obj.actionRevLoss) document.getElementById('conXPDeltaAct').textContent=obj.actionRevLoss;
+  if(obj.recoveryTime) document.getElementById('conXPRecovery').textContent='Est. recovery: '+obj.recoveryTime;
+}
+function conXPParseExplain(raw){
+  const briefMatch = raw.match(/===BRIEF===\s*([\s\S]*?)(?:===JSON===|$)/);
+  const jsonMatch = raw.match(/===JSON===\s*([\s\S]*)/);
+  const brief = briefMatch ? briefMatch[1].trim() : raw.replace(/===JSON===[\s\S]*/,'').trim();
+  let obj = null;
+  if(jsonMatch){
+    try{
+      const clean = jsonMatch[1].trim().replace(/```json|```/g,'').trim();
+      obj = JSON.parse(clean);
+    }catch(e){ console.warn('conXP explain JSON parse:',e); }
+  }
+  return {brief, obj};
+}
+
+async function runConstructionBNCAFromRelay() {
+  if (!warRoomRelay) { runConstructionBNCA(); return; }
+ 
+  const out = document.getElementById('bncaOutput');
+  const nodeEl = document.getElementById('currentNode');
+  const engines = warRoomRelay.engines || {};
+  const snap = warRoomRelay.snapshot || {};
+ 
+  conXPResetExplain();
+  nodeEl.textContent = 'Synthesizing War Room relay via Groq...';
+  out.classList.add('streaming');
+  out.style.color = 'var(--text)';
+  out.style.fontStyle = 'normal';
+  out.textContent = '▌';
+ 
+  const ctx = `
+DOCUMENT TYPE: ${warRoomRelay.docType||'Unknown'}
+RISK SCORE: ${snap.risk||'—'}
+FINANCIAL EXPOSURE: ${snap.exposure||'—'}
+ENGINE 01 — DOCUMENT INTEL: ${engines.e1||''}
+ENGINE 03 — FINANCIAL: ${engines.e3||''}
+ENGINE 04 — LEGAL: ${engines.e4||''}
+ENGINE 05 — COMPLIANCE: ${engines.e5||''}
+ENGINE 06 — BNCA EXEC: ${engines.e6||''}
+PROJECT PHASE STATUS:
+${phaseSnapshotToText(getPhaseSnapshot())}
+  `.trim();
+ 
+  const sys = `You are a Construction Strategist AI. Synthesize war room engine data into a complete executive intelligence package. Be specific, dollar-quantified, and action-oriented.`;
+  const usr = `War Room Data:\n${ctx}\n\nGenerate:\n\nCONTROLLER PRIORITY ACTIONS (4 actions, numbered, dollar-quantified, owner assigned, deadline):\n\nAPP ROUTING GUIDANCE (for each Construction Suite app — AuditOps, Financial, Legal, Compliance — give 2-3 sentences of specific step-by-step instruction on what tab to open, what data to enter, and what output to produce for THIS specific document and issue):\n\nBNCA — BEST NEXT COURSE OF ACTION (one paragraph, most important 72-hour action sequence):\n\nESCALATION TRIGGER (condition for immediate executive involvement):\n\nAfter the brief above, on a new line output exactly ===JSON=== followed by a single JSON object (no markdown fences) with this exact shape:\n{"confidence":0-100,"dataSources":[{"name":"...","weight":"HIGH|MED|LOW"}],"reasoning":[{"key":"...","val":"..."}],"recommendedActions":[{"text":"...","owner":"..."}],"noActionRevLoss":"$amount","actionRevLoss":"$amount","recoveryTime":"e.g. 30 Days"}`;
+ 
+  const ctrl = new AbortController();
+  const streamTimeoutId = setTimeout(() => ctrl.abort(), 30000); // hard ceiling so a hung connection degrades to the fallback brief instead of outliving the demo harness's step timeout
+  try {
+    const res = await fetch('/api/war-room/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'openai/gpt-oss-120b',
+        max_tokens: 1200,
+        temperature: 0.4,
+        stream: true,
+        messages: [{ role: 'system', content: sys }, { role: 'user', content: usr }]
+      }),
+      signal: ctrl.signal
+    });
+ 
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error?.message || res.statusText || ('API returned ' + res.status));
+    }
+ 
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let full = '';
+    out.textContent = '';
+ 
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = dec.decode(value);
+      for (const line of chunk.split('\n')) {
+        if (!line.startsWith('data: ')) continue;
+        const data = line.slice(6).trim();
+        if (data === '[DONE]') break;
+        try {
+          const delta = JSON.parse(data).choices?.[0]?.delta?.content || '';
+          full += delta;
+          out.textContent = full + '▌';
+        } catch {}
+      }
+    }
+ 
+    out.textContent = full;
+    const {brief: conBrief, obj: conObj} = conXPParseExplain(full);
+    if(conBrief) out.textContent = conBrief;
+    conXPRenderExplain(conObj);
+    lastConObj = conObj;
+    out.classList.remove('streaming');
+    nodeEl.textContent = `BNCA complete — War Room relay synthesized · ${new Date().toLocaleTimeString()}`;
+ 
+    // Store for executive portal (also escalates to Sentinel Center)
+    storeStrategistRelay(full, conObj);
+ 
+    // Update escalate bar
+    const sub = document.getElementById('escalBarSub');
+    if (sub) sub.textContent = 'BNCA synthesis complete — ready to escalate to Executive Portal.';
+
+    // AUTO-ESCALATE ON THRESHOLD BREACH — explicit override, 2026-08-01.
+    // This reverses the prior human-in-the-loop default (see git history /
+    // construction-war-room.html for the same disabled-by-design comment).
+    // Fires only when BNCA's own risk score crosses the existing CRIT
+    // threshold used elsewhere in this file (riskToSeverity >= 75) — reusing
+    // the established scale rather than inventing a new dollar cutoff.
+    // Any lower severity still waits for the manual "→ ESCALATE TO
+    // EXECUTIVE" click as before.
+    const autoRiskNum = parseRiskToNumber(warRoomRelay?.snapshot?.risk);
+    if (riskToSeverity(autoRiskNum) === 'CRIT') {
+      if (sub) sub.textContent = `CRIT risk (${autoRiskNum}) — auto-escalating to Executive Portal…`;
+      nodeEl.textContent = `Threshold breach (CRIT, ${autoRiskNum}) — auto-escalating…`;
+      setTimeout(() => escalateToExecutive(), 1200);
+    }
+ 
+  } catch(e) {
+    // Same graceful-degradation pattern as the BPO/insurance/mortgage
+    // strategists: a transient Groq failure (rate limit, timeout, aborted
+    // stream) should never dead-end the escalate path. Without this, a 429
+    // here writes a short "[Groq Error] ..." string into #bncaOutput, which
+    // trips escalateToExecutive()'s `bncaText.length < 50` guard — firing a
+    // blocking alert() and silently no-oping the click instead of navigating.
+    console.warn('[construction-strategist] BNCA synthesis failed, using fallback brief:', e.message);
+    const fallback = buildConstructionBNCAFallback(warRoomRelay, e.message);
+    out.textContent = fallback;
+    const {brief: conBrief, obj: conObj} = conXPParseExplain(fallback);
+    if (conBrief) out.textContent = conBrief;
+    conXPRenderExplain(conObj);
+    lastConObj = conObj;
+    out.classList.remove('streaming');
+    nodeEl.textContent = `BNCA fallback — live synthesis unavailable · ${new Date().toLocaleTimeString()}`;
+    storeStrategistRelay(fallback, conObj);
+    const sub = document.getElementById('escalBarSub');
+    if (sub) sub.textContent = 'BNCA fallback generated — ready to escalate to Executive Portal.';
+  } finally {
+    clearTimeout(streamTimeoutId);
+  }
+}
+
+// ── FALLBACK BNCA BRIEF ──
+// Used only when the live /api/war-room/stream call fails. Built from real
+// warRoomRelay fields (docType, risk, exposure) — never invents numbers —
+// same honesty convention as bpo's buildStrategyFallback / insurance's
+// NODE_FALLBACKS.
+function buildConstructionBNCAFallback(relay, errMsg) {
+  const snap = relay?.snapshot || {};
+  const docType = relay?.docType || 'Construction matter';
+  const risk = snap.risk || 'Unclassified';
+  const exposure = snap.exposure || 'Unconfirmed — see engine outputs';
+  return `CONTROLLER PRIORITY ACTIONS
+1. Live BNCA synthesis unavailable (${errMsg}) — re-run "Synthesize All" once the engine is available for a fully synthesized brief. Owner: Strategist
+2. Escalate now on the War Room engine findings already on record rather than waiting — exposure data is real, only this synthesis step degraded. Owner: Principal
+3. Flag this run as fallback-generated in any downstream reporting. Owner: Compliance Officer
+
+APP ROUTING GUIDANCE
+Route to the relevant Construction Suite app (AuditOps, Financial, Legal, or Compliance) based on the War Room's own engine flags for ${docType} — this fallback does not re-derive routing.
+
+BNCA — BEST NEXT COURSE OF ACTION
+Act on the War Room's already-captured risk (${risk}) and exposure (${exposure}) for ${docType} within the next 72 hours; regenerate this brief live once the engine is reachable.
+
+ESCALATION TRIGGER
+Live engine remains unavailable beyond this session.
+
+===JSON===
+{"confidence":50,"dataSources":[{"name":"War Room engine snapshot","weight":"HIGH"},{"name":"Live BNCA synthesis","weight":"LOW"}],"reasoning":[{"key":"Fallback reason","val":"${errMsg}"},{"key":"Data integrity","val":"Engine outputs are real and unaffected; only the synthesis step failed"}],"recommendedActions":[{"text":"Re-run synthesis once live engine available","owner":"Strategist"},{"text":"Escalate on engine findings now","owner":"Principal"}],"noActionRevLoss":"${exposure}","actionRevLoss":"Unconfirmed pending live synthesis","recoveryTime":"Unconfirmed pending live synthesis"}`;
+}
+ 
+ 
+// ═══════════════════════════════════════════════════
+// PROJECT PHASE SNAPSHOT
+// ═══════════════════════════════════════════════════
+// Reads the .phase-card blocks rendered in the Strategist view (currently
+// static markup) into a structured object, so the BNCA report and the
+// Sentinel/Executive relay payloads can carry real phase-level status
+// instead of only the war room's 6-engine risk/exposure summary.
+function getPhaseSnapshot() {
+  return Array.from(document.querySelectorAll('.phase-card')).map(card => {
+    const meta = card.querySelectorAll('.ph-meta span');
+    return {
+      phase: card.querySelector('.ph-tag')?.textContent?.trim() || '',
+      name: card.querySelector('.ph-name')?.textContent?.trim() || '',
+      pct: meta[0]?.textContent?.trim() || '',
+      due: meta[1]?.textContent?.trim() || '',
+      desc: card.querySelector('.ph-desc')?.textContent?.trim() || ''
+    };
+  });
+}
+function phaseSnapshotToText(phases) {
+  return phases.map(p => `${p.phase} -- ${p.name}: ${p.pct}, ${p.due}. ${p.desc}`).join('\n');
+}
+
+// ═══════════════════════════════════════════════════
+// SENTINEL RELAY HELPERS
+// ═══════════════════════════════════════════════════
+// Parses dollar strings into a single number. Handles plain amounts
+// ("$250,000"), K/M suffixes ("$250K", "$1.2M"), and ranges
+// ("$50K - $500K" / "$50,000-$500,000") by taking the midpoint of a range.
+function parseDollarToNumber(str) {
+  if (str == null) return null;
+  const s = String(str);
+  const nums = s.match(/[\d,.]+\s*[kKmM]?/g);
+  if (!nums || !nums.length) return null;
+  const toNum = t => {
+    const mult = /[mM]\s*$/.test(t) ? 1e6 : /[kK]\s*$/.test(t) ? 1e3 : 1;
+    const n = parseFloat(t.replace(/[^\d.]/g, ''));
+    return isNaN(n) ? null : n * mult;
+  };
+  const parsed = nums.map(toNum).filter(n => n !== null);
+  if (!parsed.length) return null;
+  return parsed.length > 1 ? (parsed[0] + parsed[parsed.length - 1]) / 2 : parsed[0];
+}
+// Parses a risk score that may arrive as "68/100", "68", or a bare number.
+function parseRiskToNumber(val) {
+  if (val == null) return null;
+  const m = String(val).match(/(\d+)/);
+  return m ? parseInt(m[1], 10) : null;
+}
+function riskToSeverity(riskNum) {
+  if (riskNum == null) return 'MED';
+  if (riskNum >= 75) return 'CRIT';
+  if (riskNum >= 55) return 'HIGH';
+  if (riskNum >= 30) return 'MED';
+  return 'LOW';
+}
+
+// ═══════════════════════════════════════════════════
+// PUSH TO SENTINEL CENTER
+// ═══════════════════════════════════════════════════
+// sentinel-center.html reads localStorage["TSM_CONSTRUCTION_STRATEGIST_RELAY"]
+// and requires { generatedAt, anomalies: [...] } — a flat summary object
+// does not satisfy its Array.isArray(live.anomalies) check and silently
+// falls back to sample data. This builds that shape from whatever the BNCA
+// run produced and writes it to the key/storage Sentinel actually reads
+// (localStorage, not sessionStorage), then fires the same-tab refresh event
+// Sentinel listens for.
+//
+// Exposure collapsing rule: prefer the model's own noActionRevLoss guess
+// (it's grounded in the specific document run) and fall back to the
+// midpoint of the war room's exposure range if that field is missing or
+// unparseable.
+function pushToSentinel(bncaText, conObj) {
+  if (!warRoomRelay) return;
+  const riskNum = parseRiskToNumber(warRoomRelay.snapshot?.risk);
+  const exposureNum = parseDollarToNumber(conObj?.noActionRevLoss) ??
+                       parseDollarToNumber(warRoomRelay.snapshot?.exposure) ?? 0;
+  const topAction = conObj?.recommendedActions?.[0];
+  if (conObj && conObj.confidence == null) {
+    console.warn('[sentinel-push] construction: live response omitted "confidence" field — defaulting to 70. Raw JSON:', conObj);
+    conObj.confidenceDefaulted = true;
+  }
+  const anomaly = {
+    id: 'con-' + Date.now(),
+    title: (warRoomRelay.docType || 'Construction') + ' — Strategist Synthesis',
+    severity: riskToSeverity(riskNum),
+    exposure: exposureNum,
+    confidence: conObj?.confidence ?? 70,
+    rootCause: (bncaText || '').slice(0, 240) || 'See BNCA synthesis for detail.',
+    recommendedAction: topAction ? `${topAction.text}${topAction.owner ? ' (Owner: ' + topAction.owner + ')' : ''}` : 'See strategist brief.',
+    impacts: { phases: getPhaseSnapshot() }
+  };
+  try {
+    localStorage.setItem('TSM_CONSTRUCTION_STRATEGIST_RELAY', JSON.stringify({
+      generatedAt: new Date().toISOString(),
+      anomalies: [anomaly]
+    }));
+    window.dispatchEvent(new CustomEvent('TSM_SENTINEL_REFRESH'));
+  } catch(e) { console.warn('[sentinel-relay] write failed:', e); }
+}
+
+// ═══════════════════════════════════════════════════
+// STORE RELAY FOR EXECUTIVE PORTAL
+// ═══════════════════════════════════════════════════
+function storeStrategistRelay(bncaText, conObj) {
+  if (!warRoomRelay) return;
+  const payload = {
+    summary: bncaText,
+    bncaText: bncaText,
+    docType: warRoomRelay.docType,
+    scenario: warRoomRelay.docType || 'manual',
+    engines: warRoomRelay.engines,
+    snapshot: warRoomRelay.snapshot,
+    timestamp: new Date().toISOString(),
+    chainStep: 'strategist',
+    phases: getPhaseSnapshot()
+  };
+  try {
+    // ── TSM EXEC KIT: WIP + explainability ──────────────────────────
+    try {
+      payload.wip = (window.TSMExecKitProducer && TSMExecKitProducer.buildWip([
+        { id:'engines',    label:'Engine Analysis',     status:'done' },
+        { id:'strategist', label:'Strategist Synth',    status:'done', time: new Date().toLocaleTimeString() },
+        { id:'relay',      label:'Relayed to Exec',     status:'active', detail:'Awaiting executive review' }
+      ])) || [];
+      payload.explain = (window.TSMExecKitProducer && TSMExecKitProducer.buildExplain([
+        {
+          claim: (payload.scenario || payload.docType || 'Construction') + ' — Strategist Synthesis',
+          confidence: payload.confidence || null,
+          severity: 'med',
+          rationale: payload.summary || payload.narrative || payload.briefText || payload.brief || 'See full strategist brief for detailed reasoning.',
+          sources: ['Construction Strategist']
+        }
+      ])) || [];
+    } catch(e) { console.warn('[exec-kit] producer patch error:', e); }
+    // ── END TSM EXEC KIT ─────────────────────────────────────────────
+
+    sessionStorage.setItem('TSM_CONSTRUCTION_STRATEGIST_RELAY', JSON.stringify(payload));
+    localStorage.setItem('tsm_construction_strategist_output', JSON.stringify(payload));
+    // Real strategist-confirmed signal (Convention A shape) — read by
+    // tsm-demo-runner.js AUTO-RUN and core/tsm-enforcer.js health audit.
+    localStorage.setItem('TSM_STRAT_CONFIRMED_construction-suite', JSON.stringify({
+      vertical: 'construction-suite',
+      timestamp: Date.now()
+    }));
+  } catch(e) { console.warn('Store error:', e); }
+
+  // ── Phase 2: Mission Core creation ──
+  // NOTE: Construction already has its own TSMMissionStore (html/js/tsm-mission-store.js,
+  // a class instance keyed to localStorage["TSM_MISSION_STORE"]) — a DIFFERENT system than
+  // the runtime/ scaffold's TSMMissionStore used by Healthcare/Legal. We use
+  // TSMMissionModel.createMission() for canonical schema, but push into the EXISTING store
+  // via addMission(), not the scaffold's store, to avoid a global-name collision.
+  try {
+    if (window.TSMMissionModel && window.TSMMissionStore && typeof window.TSMMissionStore.addMission === 'function') {
+      const mission = window.TSMMissionModel.createMission({
+        vertical: 'construction',
+        tenantId: 'default',
+        client: payload.docType ? ('Construction ' + payload.docType) : null,
+        classification: {
+          summary: payload.summary || payload.bncaText || '',
+          scenario: payload.scenario || null,
+          source: 'Construction Strategist'
+        },
+        workflow: {
+          assignedTo: null,
+          queue: null,
+          priority: 'normal', // no reliable risk/urgency signal available locally; see snapshot.risk (upstream, unverified)
+          sla: null
+        },
+        actor: 'construction-strategist'
+      });
+      mission.status = mission.stage; // existing store's getByStatus() filters on .status, not .stage
+      window.TSMMissionStore.addMission(mission);
+    } else {
+      console.warn('Mission Core (model) or existing TSMMissionStore not available — skipping mission creation, strategist relay write already succeeded.');
+    }
+  } catch (missionErr) {
+    console.warn('Mission Core creation failed (non-fatal, strategist relay already written):', missionErr);
+  }
+
+  // Also escalate to Sentinel Center in its own expected shape/storage.
+  pushToSentinel(bncaText, conObj || lastConObj);
+}
+ 
+// ═══════════════════════════════════════════════════
+// ESCALATE TO EXECUTIVE PORTAL
+// ═══════════════════════════════════════════════════
+function escalateToExecutive() {
+  const bncaText = document.getElementById('bncaOutput')?.textContent || '';
+  if (bncaText.length < 50) {
+    alert('Run BNCA synthesis first before escalating.');
+    return;
+  }
+  storeStrategistRelay(bncaText);
+  window.location.href = '/html/war-rooms/construct-war/construction-executive-portal.html';
+}
+ 
+// ═══════════════════════════════════════════════════
+// INIT — LOAD WAR ROOM RELAY ON PAGE LOAD
+// ═══════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', () => {
+  // Load saved Groq key
+  const savedKey = localStorage.getItem('tsm_groq_key');
+  if (savedKey) {
+    const inp = document.getElementById('groqKey');
+    if (inp) inp.value = savedKey;
+    groqKey = savedKey;
+  }
+  // Load war room relay
+  const found = loadWarRoomRelay();
+  if (!found) {
+    console.log('[TSM] No war room relay found.');
+  }
+});
+ 
+// Poll for relay every 15s
+setInterval(() => {
+  if (!warRoomRelay) loadWarRoomRelay();
+}, 15000);
+
+// ═══ CONSTRUCTION ISSUE PACK ═══
+(function(){
+  try {
+    const raw = sessionStorage.getItem('TSM_CONSTRUCTION_WAR_RELAY') || localStorage.getItem('tsm_construction_war_relay');
+    if (!raw) return;
+    const brief = JSON.parse(raw);
+    if (!brief) return;
+
+    const banner = document.createElement('div');
+    banner.id = 'tsm-const-war-banner';
+    banner.style.cssText = 'background:rgba(8,12,6,.97);border:1px solid rgba(255,215,0,.3);font-family:monospace;margin:10px 14px;box-shadow:0 0 20px rgba(255,215,0,.08);overflow:hidden;';
+    banner.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 16px;background:rgba(255,215,0,.05);border-bottom:1px solid rgba(255,215,0,.12);">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span style="background:#ffd700;color:#000;font-size:9px;font-weight:bold;padding:2px 7px;letter-spacing:1px;">⚡ WAR ROOM BRIEF</span>
+          <span style="color:#555;font-size:10px;">${brief.docType||'Document'} · ${brief.timestamp?new Date(brief.timestamp).toLocaleTimeString():''}</span>
+          <span style="background:rgba(255,215,0,.08);border:1px solid rgba(255,215,0,.3);color:#ffd700;font-size:9px;padding:2px 8px;">ESCALATED TO CONSTRUCTION STRATEGIST</span>
+        </div>
+        <span style="color:#ffd700;font-size:10px;">RISK: ${brief.snapshot?.risk||'—'} · EXP: ${brief.snapshot?.exposure||'—'}</span>
+      </div>
+      <div style="padding:10px 16px;border-bottom:1px solid rgba(255,215,0,.08);font-size:10px;color:#aaa;line-height:1.7;">${(brief.engines?.e5||'').slice(0,200)}...</div>
+      <div style="padding:8px 16px;display:flex;gap:8px;">
+        <button onclick="window.runConstIssuePack()" style="padding:6px 14px;background:rgba(255,215,0,.08);border:1px solid #ffd700;color:#ffd700;font-family:monospace;font-size:9px;cursor:pointer;"
+          onmouseover="this.style.background='#ffd700';this.style.color='#000'" onmouseout="this.style.background='rgba(255,215,0,.08)';this.style.color='#ffd700'">
+          ⚡ RUN ISSUE PACK ON WAR ROOM DATA
+        </button>
+        <button onclick="injectWarRoomContext()" style="padding:6px 14px;background:rgba(168,85,247,.1);border:1px solid rgba(168,85,247,.4);color:#a855f7;font-family:monospace;font-size:9px;cursor:pointer;">◈ INJECT INTO STRATEGIST</button>
+      </div>`;
+
+    const target = document.querySelector('.strategist-content') || document.querySelector('main') || document.querySelector('.content') || document.body;
+    target.insertBefore(banner, target.firstChild);
+
+    window.runConstIssuePack = function(){
+      const groqKeyVal = document.getElementById('groqKey')?.value || localStorage.getItem('tsm_groq_key') || '';
+      if(!groqKeyVal){ alert('Enter Groq API key first.'); return; }
+
+      let panel = document.getElementById('tsm-const-issue-panel');
+      if(!panel){
+        panel = document.createElement('div');
+        panel.id = 'tsm-const-issue-panel';
+        panel.style.cssText = 'background:rgba(8,12,6,.97);border:1px solid #ffd700;font-family:monospace;margin:10px 14px;box-shadow:0 0 24px rgba(255,215,0,.1);overflow:hidden;';
+        panel.innerHTML = `
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 16px;background:rgba(255,215,0,.06);border-bottom:1px solid rgba(255,215,0,.15);">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <span style="background:#ffd700;color:#000;font-size:9px;font-weight:bold;padding:2px 7px;letter-spacing:1px;">⚡ ISSUE PACK</span>
+              <span style="color:#555;font-size:10px;">${brief.docType} · War Room Escalation</span>
+            </div>
+            <div style="display:flex;gap:6px;">
+              <button onclick="navigator.clipboard.writeText(document.getElementById('cip-output').textContent)" style="background:none;border:1px solid #333;color:#666;font-family:monospace;font-size:8px;padding:2px 8px;cursor:pointer;">COPY</button>
+              <button onclick="document.getElementById('tsm-const-issue-panel').remove()" style="background:none;border:none;color:#444;font-size:14px;cursor:pointer;">✕</button>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;border-bottom:1px solid rgba(255,215,0,.1);">
+            <div style="padding:8px 14px;border-right:1px solid rgba(255,215,0,.08);">
+              <div style="font-size:7px;letter-spacing:1.5px;color:#444;margin-bottom:3px;">DOC TYPE</div>
+              <div style="font-size:11px;color:#ffd700;font-weight:700;">${brief.docType||'—'}</div>
+            </div>
+            <div style="padding:8px 14px;border-right:1px solid rgba(255,215,0,.08);">
+              <div style="font-size:7px;letter-spacing:1.5px;color:#444;margin-bottom:3px;">RISK SCORE</div>
+              <div style="font-size:11px;color:#ff9500;font-weight:700;">${brief.snapshot?.risk||'—'}</div>
+            </div>
+            <div style="padding:8px 14px;">
+              <div style="font-size:7px;letter-spacing:1.5px;color:#444;margin-bottom:3px;">EXPOSURE</div>
+              <div style="font-size:11px;color:#ff4d6d;font-weight:700;">${brief.snapshot?.exposure||'—'}</div>
+            </div>
+          </div>
+          <div style="padding:14px 16px;">
+            <div style="font-size:8px;letter-spacing:2px;color:#444;margin-bottom:8px;">ISSUE PACK OUTPUT</div>
+            <div id="cip-spinner" style="display:flex;align-items:center;gap:8px;color:#ffd700;font-size:10px;margin-bottom:8px;">
+              <div style="width:10px;height:10px;border:1px solid rgba(255,215,0,.3);border-top-color:#ffd700;border-radius:50%;animation:spin .7s linear infinite;"></div>
+              RUNNING ISSUE PACK...
+            </div>
+            <div id="cip-output" style="font-size:10px;color:#ccc;line-height:1.8;white-space:pre-wrap;min-height:80px;display:none;"></div>
+            <div id="cip-error" style="font-size:9px;color:#ff4d6d;display:none;margin-top:6px;"></div>
+          </div>
+          <div style="padding:8px 16px;border-top:1px solid rgba(255,215,0,.1);display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+            <span style="font-size:7px;letter-spacing:1.5px;color:#444;margin-right:4px;">ASSIGN TO →</span>
+            <button onclick="assignConstIssuePack('Project Manager')" style="background:rgba(255,215,0,.08);border:1px solid rgba(255,215,0,.3);color:#ffd700;font-family:monospace;font-size:8px;padding:4px 10px;cursor:pointer;">PROJECT MGR</button>
+            <button onclick="assignConstIssuePack('Site Supervisor')" style="background:rgba(255,149,0,.08);border:1px solid rgba(255,149,0,.3);color:#ff9500;font-family:monospace;font-size:8px;padding:4px 10px;cursor:pointer;">SITE SUPERVISOR</button>
+            <button onclick="assignConstIssuePack('Construction Executive')" style="background:rgba(0,255,157,.08);border:1px solid rgba(0,255,157,.3);color:#00ff9d;font-family:monospace;font-size:8px;padding:4px 10px;cursor:pointer;">EXEC</button>
+            <div style="margin-left:auto;">
+              <button onclick="window.runConstIssuePack()" style="background:rgba(255,215,0,.08);border:1px solid rgba(255,215,0,.3);color:#ffd700;font-family:monospace;font-size:8px;padding:4px 10px;cursor:pointer;">↺ RE-RUN</button>
+            </div>
+          </div>
+          <div id="cip-assign-tag" style="display:none;padding:6px 16px;background:rgba(0,255,100,.04);border-top:1px solid rgba(0,255,100,.12);font-size:9px;color:#00ffc6;letter-spacing:1px;"></div>`;
+        banner.insertAdjacentElement('afterend', panel);
+      }
+
+      document.getElementById('cip-spinner').style.display='flex';
+      document.getElementById('cip-output').style.display='none';
+      document.getElementById('cip-error').style.display='none';
+      panel.scrollIntoView({behavior:'smooth',block:'nearest'});
+
+      const warData = Object.entries(brief.engines||{}).map(([k,v])=>`${k}:\n${v.slice(0,400)}`).join('\n\n');
+      const prompt = `[CONSTRUCTION ISSUE PACK — ${brief.docType}]
+
+WAR ROOM DATA:
+${warData.slice(0,2000)}
+
+You are the TSM Construction Strategist Issue Pack engine. Produce a structured construction issue remediation package:
+
+ISSUE PACK FORMAT:
+PROJECT SUMMARY: [doc type, project/contract, total exposure, key parties]
+RISK FLAGS: [each flag with dollar amount]
+ROOT CAUSE: [specific construction/financial reason for each issue]
+COMPLIANCE EXPOSURE: [lien, bond, permit, OSHA items]
+RECOVERY STRATEGY: [contract-specific approach]
+DOCUMENTATION CHECKLIST:
+1. [required doc]
+2. [required doc]
+3. [required doc]
+PRIORITY ACTIONS:
+1. [Action] — [Owner] — [Deadline] — [$impact]
+2. [Action] — [Owner] — [Deadline] — [$impact]
+3. [Action] — [Owner] — [Deadline] — [$impact]
+RECOVERY PROBABILITY: [%] — [rationale]
+EXECUTIVE ESCALATION: [Yes/No] — [reason]`;
+
+      fetch('/api/war-room/stream',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({model:'openai/gpt-oss-120b',max_tokens:700,temperature:0.2,stream:true,messages:[{role:'user',content:prompt}]})
+      })
+      .then(async r=>{
+        const reader=r.body.getReader();const dec=new TextDecoder();let txt='';
+        document.getElementById('cip-spinner').style.display='none';
+        document.getElementById('cip-output').style.display='block';
+        while(true){const{done,value}=await reader.read();if(done)break;
+          dec.decode(value).split('\n').forEach(line=>{if(line.startsWith('data: ')&&line!=='data: [DONE]'){
+            try{const d=JSON.parse(line.slice(6));txt+=(d.choices?.[0]?.delta?.content||'');
+            document.getElementById('cip-output').textContent=txt;}catch(e){}}});
+        }
+        if(!txt) throw new Error('Empty response');
+      })
+      .catch(err=>{
+        document.getElementById('cip-spinner').style.display='none';
+        document.getElementById('cip-error').style.display='block';
+        document.getElementById('cip-error').textContent='✗ Issue pack failed: '+err.message;
+      });
+    };
+
+    window.assignConstIssuePack = function(role){
+      const content=document.getElementById('cip-output')?.textContent||'';
+      if(!content){alert('Run the issue pack first.');return;}
+      const queue=JSON.parse(localStorage.getItem('tsm_const_issue_queue')||'[]');
+      queue.push({role,assignedAt:new Date().toLocaleString(),docType:brief.docType,exposure:brief.snapshot?.exposure,packSnippet:content.slice(0,300)});
+      localStorage.setItem('tsm_const_issue_queue',JSON.stringify(queue));
+      const tag=document.getElementById('cip-assign-tag');
+      if(tag){tag.style.display='block';tag.textContent='✓ ASSIGNED TO: '+role.toUpperCase()+' · '+new Date().toLocaleTimeString();}
+    };
+
+    // "◈ INJECT INTO STRATEGIST" button — was calling a function that was
+    // never defined anywhere in this file (dead onclick, guaranteed
+    // ReferenceError on click). This brief is already parsed in scope, so
+    // inject it as the active war room relay and immediately (re)run the
+    // main BNCA synthesis on it — same effect loadWarRoomRelay() has on
+    // page load, just explicit and on-demand instead of the 1000ms auto-timer.
+    window.injectWarRoomContext = function(){
+      warRoomRelay = brief;
+      populateFromWarRoom(brief);
+      if (typeof runConstructionBNCAFromRelay === 'function') runConstructionBNCAFromRelay();
+    };
+
+  } catch(e){ console.warn('Construction issue pack error:',e); }
+})();
+
+/* TSM AUTO-RUN STRATEGIST */
+(function(){
+  try {
+    const raw = sessionStorage.getItem('TSM_CONSTRUCTION_WAR_RELAY') || localStorage.getItem('TSM_CONSTRUCTION_WAR_RELAY') || localStorage.getItem('tsm_construction_war_relay');
+    if (!raw) return;
+    if (localStorage.getItem('tsm_auto_mode') === 'off') return;
+    setTimeout(() => { if (typeof runBNCA === 'function') runBNCA(); }, 2500);
+  } catch(e) { console.warn('[TSM AutoRun Strategist]', e); }
+})();
+</script>
+  <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
+  <script src="/html/shared/runtime/mission/mission-model.js"></script>
+  <script src="/js/tsm-mission-store.js"></script>
+  <script src="/js/core/tsm-kernel-upgrade.js"></script>
+  <script src="/shared/tsm-exec-kit-producer.js"></script>
+
+<script>
+// ===== TSM_AUTONOMY_STANDARDIZED =====
+window.TSM_AUTONOMY_STANDARDIZED = true;
+
+<!-- TSM ENFORCER BOOT -->
+
+// ===== TSM WAR ROOM SCOPED RELAY FIX =====
+window.tsmMission = window.tsmMission || {
+  id: "CONSTRUCTION-SUITE-" + Date.now().toString(36),
+  vertical: "construction-suite",
+  
+};
+
+function tsmWriteRelay(payload){
+  TSM_KERNEL.setRelay("construction-suite", JSON.stringify(payload));
+}
+
+// ===== TSM STRATEGIST BRIDGE LAYER =====
+
+function tsmReadScopedRelay(vertical){
+  const key = "tsm_war_relay_" + vertical;
+  try {
+    return JSON.parse(localStorage.getItem(key));
+  } catch(e){
+    return null;
+  }
+}
+
+// tsmWriteScopedStrat() removed — dead code, never called anywhere in the
+// repo (Convention C). Real STRAT_CONFIRMED write now lives inline in
+// storeStrategistRelay() above.
+</script>
+
+<!-- TSM KERNEL ENGINE -->
+<script src="/js/core/tsm-event-bus.js"></script>
+<script src="/js/core/tsm-state.js"></script>
+<script src="/js/core/tsm-mission-engine.js"></script>
+<script src="/js/core/tsm-auto-pipeline.js"></script>
+<script src="/war-rooms/construct-war/tsm-construction-strategist-bridge.js"></script>
+<script src="/html/core/tsm-runtime.js"></script>
+  <script src="/js/tsm-guide-engine.js" defer></script>
+</body>
+</html>

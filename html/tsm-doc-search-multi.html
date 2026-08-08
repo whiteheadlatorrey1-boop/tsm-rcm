@@ -49,6 +49,7 @@
   --hw:   #ff6b4a;  /* Honeywell Industrial – ember */
   --log:  #5eead4;  /* Logistics – teal */
   --vnd:  #f87171;  /* Supplier/Vendor Management – red */
+  --hotel: #22d3ee;  /* HotelOps – cyan */
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -332,6 +333,9 @@ body::before {
 }
 .vtab:last-child { border-right: none; }
 .vtab:hover { background: #0f1e28; color: var(--muted); }
+.vtab.locked { opacity: 0.4; cursor: not-allowed; filter: grayscale(1); }
+.vtab.locked:hover { background: #0f1e28; color: var(--muted); opacity: 0.6; }
+.vtab-lock { margin-left: 6px; font-size: 10px; }
 
 .vtab.active[data-v="fo"]  { background: rgba(56,189,248,0.08); color: var(--fo);  border-bottom: 2px solid var(--fo); }
 .vtab.active[data-v="ins"] { background: rgba(167,139,250,0.08); color: var(--ins); border-bottom: 2px solid var(--ins); }
@@ -372,6 +376,8 @@ body::before {
 .vtab.active[data-v="vendor"] { background: rgba(248,113,113,0.08); color: var(--vnd); border-bottom: 2px solid var(--vnd); }
 .vtab[data-v="vendor"] .vtab-dot { background: var(--vnd); }
 .vtab[data-v="hw"]  .vtab-dot { background: var(--hw); }
+.vtab[data-v="hotel"] .vtab-dot { background: var(--hotel); }
+.vtab.active[data-v="hotel"] { background: rgba(34,211,238,0.08); color: var(--hotel); border-bottom: 2px solid var(--hotel); }
 
 /* ─── NODE QUICK LINKS ───────────────────────────── */
 .node-links {
@@ -921,8 +927,11 @@ if (window.pdfjsLib) {
 <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
 <script src="/html/shared/runtime/mission/mission-model.js"></script>
 <script src="/html/shared/runtime/mission/mission-store.js"></script>
+<script src="/html/shared/runtime/mission/mission-sentinel-bridge.js"></script>
 <!-- TSM Kernel (required for TSM_KERNEL.setRelay/getRelay used below) -->
 <script src="/core/tsm-kernel.js"></script>
+<!-- Event Bus (required by tsm-kernel-upgrade.js — was missing, upgrade script silently no-op'd without it) -->
+<script src="/js/core/tsm-event-bus.js"></script>
 <script src="/js/core/tsm-kernel-upgrade.js"></script>
 </head>
 <body>
@@ -990,7 +999,7 @@ if (window.pdfjsLib) {
       <a href="/html/war-rooms/tsm-wip-command-center.html" class="btn-nav">📋 WIP Command</a>
       <a href="/html/mission-executive-dashboard.html" class="btn-nav">🎯 Mission Dashboard</a>
       <a href="/html/war-rooms/war-room-prep.html" class="btn-nav">🛡 War Room Prep</a>
-      <a href="/html/war-rooms/bpo/suite-hub.html" class="btn-nav">← Suite Hub</a>
+      <a href="/html/bpo-files/suite-hub.html" class="btn-nav">← Suite Hub</a>
       <button id="auto-mode-toggle" onclick="toggleAutoMode()" style="font-family:var(--mono);font-size:.48rem;letter-spacing:.08em;padding:4px 10px;border-radius:3px;border:1px solid #1ee8b633;background:#080c14;color:#1ee8b6;cursor:pointer;">⚡ AUTO</button>
     </div>
   </div>
@@ -999,7 +1008,7 @@ if (window.pdfjsLib) {
   <div class="workspace-bar" id="workspace-bar" style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin:0 0 .9rem;padding:.6rem .8rem;border:1px solid rgba(30,232,182,.18);border-radius:4px;background:#080c14;font-family:var(--mono);">
     <span style="color:#1ee8b6;font-size:.5rem;letter-spacing:.08em;font-weight:700;">🔒 CLIENT WORKSPACE</span>
     <select id="workspace-select" onchange="switchWorkspace(this.value)" style="background:#0a0f0a;color:#e2e8f0;border:1px solid rgba(255,255,255,.12);border-radius:3px;padding:.3rem .5rem;font-family:var(--mono);font-size:.5rem;"></select>
-    <button type="button" class="btn-ghost" onclick="promptNewWorkspace()" style="font-size:.48rem;">+ New Client</button>
+    <button type="button" class="btn-ghost" id="new-client-btn" onclick="promptNewWorkspace()" style="font-size:.48rem;">+ New Client</button>
     <button type="button" class="btn-ghost" id="isolation-toggle-btn" onclick="toggleIsolationDetail()" style="font-size:.48rem;">🔍 Inspect Storage Keys</button>
     <button type="button" class="btn-ghost" id="client-report-btn" onclick="openClientReportModal()" style="font-size:.48rem;">📤 Client Report</button>
     <span id="workspace-status" style="margin-left:auto;font-size:.48rem;color:#7a9a8a;"></span>
@@ -1117,6 +1126,7 @@ if (window.pdfjsLib) {
     <button class="vtab"        data-v="hw" onclick="switchVertical('hw')"><span class="vtab-dot"></span>Honeywell Industrial</button>
     <button class="vtab"        data-v="logistics" onclick="switchVertical('logistics')"><span class="vtab-dot"></span>Logistics</button>
     <button class="vtab"        data-v="vendor" onclick="switchVertical('vendor')"><span class="vtab-dot"></span>Supplier/Vendor</button>
+    <button class="vtab"        data-v="hotel" onclick="switchVertical('hotel')"><span class="vtab-dot"></span>HotelOps</button>
 
   </div>
 
@@ -1213,9 +1223,9 @@ const VERTICALS = {
     storageKey: "tsm_doc_index_fo",
     searchPlaceholder: "Search by client, GL code, ledger, invoice, vendor...",
     nodes: {
-      "fo-war-room":    { label:"FinOps War Room", route:"/html/finops-suite/finops-war-room.html" },
-      "strategist":     { label:"Strategist",      route:null },
-      "bnca-engine":    { label:"BNCA Escalated",  route:null },
+      "fo-war-room":    { label:"FinOps War Room", route:"/html/finops-suite/finops-war/finops-war-room.html" },
+      "strategist":     { label:"Strategist",      route:"/html/finops-suite/finops-war/finops-main-strategist.html" },
+      "bnca-engine":    { label:"BNCA Escalated",  route:"/html/finops-suite/finops-war/finops-executive-portal.html" },
     },
     seed: [
       { fileName:"GL_Reconciliation_Q2.record",    documentType:"LEDGER",          vendor:"Internal",          invoiceNo:"GL-Q2-2024",  exclusionCode:"VAR-12",  amount:41200,  sourceNode:"fo-accounting", routing:["fo-accounting","strategist"],            timestamp:Date.now()-1*3600000, _ext:{client:"Apex Corp",     ref:"GLR-001"} },
@@ -1232,9 +1242,9 @@ const VERTICALS = {
     storageKey: "tsm_doc_index_ins",
     searchPlaceholder: "Search by policyholder, claim #, carrier, coverage code...",
     nodes: {
-      "ins-war-room":   { label:"Insurance War Room", route:"/html/tsm-insurance/insurance-war-room.html" },
-      "strategist":     { label:"Strategist",         route:null },
-      "bnca-engine":    { label:"BNCA Escalated",     route:null },
+      "ins-war-room":   { label:"Insurance War Room", route:"/html/war-rooms/insure-war/insurance-war-room.html" },
+      "strategist":     { label:"Strategist",         route:"/html/war-rooms/insure-war/insurance-strategist.html" },
+      "bnca-engine":    { label:"BNCA Escalated",     route:"/html/war-rooms/insure-war/insurance-executive-portal.html" },
     },
     seed: [
       { fileName:"CLM-INS-4412_Ramirez.record",    documentType:"CLAIM",           vendor:"State Farm",        invoiceNo:"CLM-INS-4412",exclusionCode:"CO-4",    amount:15400,  sourceNode:"ins-az",   routing:["ins-az","ins-hub","strategist"],            timestamp:Date.now()-2*3600000, _ext:{client:"Luis Ramirez",  ref:"POL-SF-9944"} },
@@ -1251,9 +1261,9 @@ const VERTICALS = {
     storageKey: "tsm_doc_index_con",
     searchPlaceholder: "Search by project, permit #, contractor, subcode...",
     nodes: {
-      "con-war-room":   { label:"Construction War Room", route:"/html/construction-suite/construction-war-room.html" },
-      "strategist":     { label:"Strategist",            route:"/html/construction-suite/construction-strategist.html" },
-      "bnca-engine":    { label:"BNCA Escalated",        route:"/html/construction-suite/construction-executive-portal.html" },
+      "con-war-room":   { label:"Construction War Room", route:"/html/war-rooms/construct-war/construction-war-room.html" },
+      "strategist":     { label:"Strategist",            route:"/html/war-rooms/construct-war/construction-strategist.html" },
+      "bnca-engine":    { label:"BNCA Escalated",        route:"/html/war-rooms/construct-war/construction-executive-portal.html" },
     },
     seed: [
       { fileName:"PERMIT_Mesa_88B.record",           documentType:"PERMIT",          vendor:"City of Mesa",     invoiceNo:"PMT-88B",     exclusionCode:"COD-14",  amount:4800,   sourceNode:"con-permits",routing:["con-permits","strategist"],              timestamp:Date.now()-1*3600000, _ext:{client:"Horizon Build Co",ref:"PMT-88B"} },
@@ -1270,15 +1280,15 @@ const VERTICALS = {
     storageKey: "tsm_doc_index_bpo",
     searchPlaceholder: "Search by client, SOP, team, ticket #, service line...",
     nodes: {
-      "bpo-war-room":   { label:"BPO War Room", route:"/html/war-rooms/bpo/bpo-war-room.html" },
+      "bpo-war-room":   { label:"BPO War Room", route:"/html/war-rooms/bpo-war/bpo-war-room.html" },
       "strategist":     { label:"Strategist",   route:null },
-      // TODO: /html/war-rooms/bpo/bpo-executive-portal.html does not exist yet in this
+      // TODO: /html/war-rooms/bpo-war/bpo-executive-portal.html does not exist yet in this
       // repo as far as I can tell — this matches the naming convention every
       // other vertical uses (legal/construction/healthcare/re all route
       // bnca-engine to a dedicated executive-portal page). Create that file,
       // or point this at bpo-war-room.html as an interim measure if
       // you'd rather not stand up a separate page yet.
-      "bnca-engine":    { label:"BNCA Escalated", route:"/html/war-rooms/bpo/bpo-executive-portal.html" },
+      "bnca-engine":    { label:"BNCA Escalated", route:"/html/war-rooms/bpo-war/bpo-executive-portal.html" },
     },
     seed: [
       { fileName:"SLA_Report_Acme_June.record",      documentType:"DOCUMENT REPORT", vendor:"Acme Corp",        invoiceNo:"SLA-06-24",   exclusionCode:"SLA-BRK", amount:0,      sourceNode:"bpo-cmd",  routing:["bpo-cmd","strategist"],                  timestamp:Date.now()-1*3600000, _ext:{client:"Acme Corp",      ref:"SLA-24-06"} },
@@ -1321,6 +1331,23 @@ const VERTICALS = {
       { fileName:"Vendor_Risk_Alert_Ashgrove.record", documentType:"DOCUMENT REPORT", vendor:"Ashgrove Components", invoiceNo:"VRA-ASH-01", exclusionCode:"QUAL-HOLD", amount:145000, sourceNode:"vendor-war-room", routing:["vendor-war-room","strategist"], timestamp:Date.now()-3*3600000, _ext:{client:"Ashgrove Components", ref:"VRA-001"} },
     ]
   },
+  hotel: {
+    label: "HotelOps",
+    color: "#22d3ee",
+    cls:   "hotel",
+    storageKey: "tsm_doc_index_hotel",
+    searchPlaceholder: "Search by folio, maintenance ticket, OTA ref, guest...",
+    nodes: {
+      "hotelops-war-room": { label:"HotelOps War Room",     route:"/html/concierge/concierge-war-room.html" },
+      "strategist":        { label:"Strategist",            route:"/html/concierge/concierge-strategist.html" },
+      "bnca-engine":       { label:"BNCA Escalated",        route:"/html/concierge/concierge-executive-portal.html" },
+    },
+    seed: [
+      { fileName:"OTA_Overcharge_Expedia_Q2.record",     documentType:"VENDOR INVOICE",  vendor:"Expedia",      invoiceNo:"OTA-EXP-Q2",  exclusionCode:"OTA-COMM", amount:8400,  sourceNode:"hotelops-war-room", routing:["hotelops-war-room","strategist"],            timestamp:Date.now()-2*3600000, _ext:{client:"Property Ops", ref:"OTA-EXP-Q2"} },
+      { fileName:"Maintenance_SLA_Breach_Rm412.record",  documentType:"INCIDENT",        vendor:"",             invoiceNo:"MNT-412",     exclusionCode:"SLA-BREACH", amount:0,   sourceNode:"hotelops-war-room", routing:["hotelops-war-room","strategist"],            timestamp:Date.now()-4*3600000, _ext:{client:"Property Ops", ref:"MNT-412"} },
+      { fileName:"Compliance_FireSafety_Renewal.record", documentType:"DOCUMENT REPORT", vendor:"",             invoiceNo:"CMP-FS-01",   exclusionCode:"COMPLY-DUE", amount:0,   sourceNode:"hotelops-war-room", routing:["hotelops-war-room","strategist","bnca-engine"], timestamp:Date.now()-6*3600000, _ext:{client:"Property Ops", ref:"CMP-FS-01"} },
+    ]
+  },
   re: {
     label: "Real Estate",
     color: "#fb7185",
@@ -1328,9 +1355,9 @@ const VERTICALS = {
     storageKey: "tsm_doc_index_re",
     searchPlaceholder: "Search by property, listing #, escrow, address, agent...",
     nodes: {
-      "re-war-room":    { label:"RE War Room", route:"/html/reo-pro/re-war-room.html" },
-      "strategist":     { label:"Strategist",  route:"/html/reo-pro/re-strategist.html" },
-      "bnca-engine":    { label:"BNCA Escalated", route:"/html/reo-pro/re-exec-portal.html" },
+      "re-war-room":    { label:"RE War Room", route:"/html/war-rooms/re-war/re-war-room.html" },
+      "strategist":     { label:"Strategist",  route:"/html/war-rooms/re-war/re-strategist.html" },
+      "bnca-engine":    { label:"BNCA Escalated", route:"/html/war-rooms/re-war/re-exec-portal.html" },
     },
     seed: [
       { fileName:"Listing_Agreement_123Maple.record",  documentType:"CONTRACT",       vendor:"Keller Williams",      invoiceNo:"LST-0091", exclusionCode:"",       amount:0,      sourceNode:"re-doc-command",routing:["re-doc-command","re-strategist","strategist"],       timestamp:Date.now()-1*3600000, _ext:{client:"Maple St Holdings", ref:"LST-0091", defectFlags:[]} },
@@ -1348,8 +1375,8 @@ const VERTICALS = {
     searchPlaceholder: "Search by borrower, loan #, lender, LTV, doc type...",
     nodes: {
       "mortgage-war-room": { label:"Mortgage Command", route:"/html/war-rooms/mortgage/mortgage-war-room.html" },
-      "strategist":        { label:"Strategist",       route:"/html/reo-pro/re-strategist.html" },
-      "bnca-engine":       { label:"BNCA Escalated",   route:"/html/reo-pro/re-exec-portal.html" },
+      "strategist":        { label:"Strategist",       route:"/html/war-rooms/mortgage/mortgage-strategist.html" },
+      "bnca-engine":       { label:"BNCA Escalated",   route:"/html/war-rooms/mortgage/mortgage-executive-portal.html" },
     },
     seed: []
   },
@@ -1360,9 +1387,9 @@ const VERTICALS = {
     storageKey: "tsm_doc_index_schools",
     searchPlaceholder: "Search by grantee, grant #, program, agency, doc type...",
     nodes: {
-      "schools-war-room": { label:"Schools Command", route:"/html/schools-command/schools-command.html" },
-      "strategist":        { label:"Strategist",      route:"/html/schools-command/schools-strategist.html" },
-      "bnca-engine":       { label:"BNCA Escalated",  route:"/html/schools-command/schools-executive-portal.html" },
+      "schools-war-room": { label:"Schools Command", route:"/html/war-rooms/schools-command/schools-command.html" },
+      "strategist":        { label:"Strategist",      route:"/html/war-rooms/schools-command/schools-strategist.html" },
+      "bnca-engine":       { label:"BNCA Escalated",  route:"/html/war-rooms/schools-command/schools-executive-portal.html" },
     },
     seed: []
   },
@@ -1373,9 +1400,9 @@ const VERTICALS = {
     storageKey: "tsm_doc_index_leg",
     searchPlaceholder: "Search by matter, case #, client, filing, exhibit...",
     nodes: {
-      "leg-war-room":   { label:"Legal War Room", route:"/html/legal-pro/legal-war-room.html" },
-      "strategist":     { label:"Strategist",     route:"/html/legal-pro/legal-main-strategist.html" },
-      "bnca-engine":    { label:"BNCA Escalated", route:"/html/legal-pro/legal-executive-portal.html" },
+      "leg-war-room":   { label:"Legal War Room", route:"/html/war-rooms/legal-war/legal-war-room.html" },
+      "strategist":     { label:"Strategist",     route:"/html/war-rooms/legal-war/legal-main-strategist.html" },
+      "bnca-engine":    { label:"BNCA Escalated", route:"/html/war-rooms/legal-war/legal-executive-portal.html" },
     },
     seed: [
       { fileName:"Complaint_Doe_v_Acme.record",        documentType:"FILING",         vendor:"Superior Court",   invoiceNo:"CV-2024-0091", exclusionCode:"",       amount:0,    sourceNode:"leg-index",      routing:["leg-index","leg-strategist","strategist"],                 timestamp:Date.now()-1*3600000, _ext:{client:"Jane Doe",   ref:"CV-2024-0091"} },
@@ -1542,7 +1569,7 @@ const VERTICALS = {
     storageKey: "tsm_doc_index_bpoops",
     searchPlaceholder: "Search by ticket, SLA, handoff, workflow phase...",
     nodes: {
-      "bpoops-war-room": { label:"BPO Ops War Room", route:"/html/war-rooms/bpo/bpo-war-room.html" },
+      "bpoops-war-room": { label:"BPO Ops War Room", route:"/html/war-rooms/bpo-war/bpo-war-room.html" },
       "strategist":      { label:"Strategist",        route:null },
       "bnca-engine":     { label:"BNCA Escalated",    route:null },
     },
@@ -1622,6 +1649,23 @@ function ensureClientRegistered(label) {
   const id = slugifyClient(clean);
   const reg = getClientRegistry();
   if (!reg.find(c => c.id === id)) {
+    reg.push({ id, label: clean, createdAt: Date.now(), email: null });
+    saveClientRegistry(reg);
+  }
+  return id;
+}
+// Registers (or relabels) a client under an EXACT id, rather than deriving
+// the id from the label via slugifyClient(). Used to line up this page's
+// local workspace with a server-authenticated client session, where the id
+// is whatever middleware/client-registry.js assigned at creation time —
+// which won't always match slugify(label) if the label was edited since.
+function ensureClientRegisteredWithId(id, label) {
+  const clean = (label || id).toString().trim() || id;
+  const reg = getClientRegistry();
+  const existing = reg.find(c => c.id === id);
+  if (existing) {
+    if (existing.label !== clean) { existing.label = clean; saveClientRegistry(reg); }
+  } else {
     reg.push({ id, label: clean, createdAt: Date.now(), email: null });
     saveClientRegistry(reg);
   }
@@ -1918,9 +1962,56 @@ function migrateToClientScoping() {
 }
 
 /* ═══════════════════════════════════════════════════
+   LICENSING / ENTITLEMENTS
+   window.__LICENSED_VERTICALS__ is injected server-side by the
+   Cloudflare Worker based on the requesting hostname (see worker.js).
+   If it's absent (e.g. local dev on the main hub domain), everything
+   is unlocked. A "?license=ins,fo" query param can simulate a
+   licensed subdomain for local testing without the Worker.
+═══════════════════════════════════════════════════ */
+const ALL_VERTICAL_KEYS = Object.keys(VERTICALS);
+
+function resolveLicensedVerticals() {
+  if (Array.isArray(window.__LICENSED_VERTICALS__) && window.__LICENSED_VERTICALS__.length) {
+    return window.__LICENSED_VERTICALS__.filter(v => ALL_VERTICAL_KEYS.includes(v));
+  }
+  const qp = new URLSearchParams(location.search).get("license");
+  if (qp) {
+    const list = qp.split(",").map(s => s.trim()).filter(v => ALL_VERTICAL_KEYS.includes(v));
+    if (list.length) return list;
+  }
+  return ALL_VERTICAL_KEYS.slice(); // unrestricted (hub / dev default)
+}
+
+const LICENSED_VERTICALS = resolveLicensedVerticals();
+const isLicensed = v => LICENSED_VERTICALS.includes(v);
+
+function applyVerticalLocks() {
+  document.querySelectorAll(".vtab").forEach(btn => {
+    const v = btn.dataset.v;
+    if (!v) return;
+    if (isLicensed(v)) {
+      btn.classList.remove("locked");
+      btn.removeAttribute("title");
+    } else {
+      btn.classList.add("locked");
+      btn.title = "Upgrade to unlock " + (VERTICALS[v] ? VERTICALS[v].label : v);
+      if (!btn.querySelector(".vtab-lock")) {
+        btn.insertAdjacentHTML("beforeend", '<span class="vtab-lock">🔒</span>');
+      }
+    }
+  });
+}
+
+function showUpgradePrompt(v) {
+  const label = VERTICALS[v] ? VERTICALS[v].label : v;
+  alert(label + " isn't included on your current plan.\n\nUpgrade at tsmatter.com/pricing to unlock this vertical.");
+}
+
+/* ═══════════════════════════════════════════════════
    STATE
 ═══════════════════════════════════════════════════ */
-let currentVertical = "fo";
+let currentVertical = LICENSED_VERTICALS[0] || "fo";
 let activeClientId = localStorage.getItem(ACTIVE_WORKSPACE_KEY) || ALL_CLIENTS_ID;
 
 function vDef() { return VERTICALS[currentVertical]; }
@@ -1953,9 +2044,26 @@ function saveIndex(docs) {
 }
 
 /* ── Workspace selector UI ── */
+// window.TSM_SESSION is set by applySessionScope() before this first runs.
+// role === 'client' locks every client to exactly their own compartment —
+// no "All Clients" option, no other client's name ever rendered in the DOM,
+// regardless of what's sitting in this browser's localStorage.
 function refreshWorkspaceSelector() {
   const sel = document.getElementById("workspace-select");
   if (!sel) return;
+  const session = window.TSM_SESSION;
+
+  if (session && session.role === 'client') {
+    activeClientId = session.clientId;
+    sel.innerHTML = `<option value="${session.clientId}">${escapeHtml(session.label || session.clientId)}</option>`;
+    sel.value = session.clientId;
+    sel.disabled = true;
+    const newBtn = document.getElementById('new-client-btn');
+    if (newBtn) newBtn.style.display = 'none';
+    updateWorkspaceStatus();
+    return;
+  }
+
   const reg = getClientRegistry().slice().sort((a,b) => a.label.localeCompare(b.label));
   sel.innerHTML = `<option value="${ALL_CLIENTS_ID}">⬡ All Clients (admin rollup)</option>` +
     reg.map(c => `<option value="${c.id}">${escapeHtml(c.label)}</option>`).join("");
@@ -1983,14 +2091,30 @@ function switchWorkspace(clientId) {
   runSearch();
   refreshTotalCount();
 }
-function promptNewWorkspace() {
-  const label = prompt("New client workspace name:");
+// Admin-only (the button is hidden entirely for client sessions, and this
+// bails out too as defense in depth). Registering here now calls the real
+// server-side client registry so the new client actually gets a login
+// credential — not just a local-only label with nothing behind it.
+async function promptNewWorkspace() {
+  if (window.TSM_SESSION && window.TSM_SESSION.role === 'client') return;
+  const label = prompt("New client name:");
   if (!label || !label.trim()) return;
-  const cid = ensureClientRegistered(label.trim());
-  refreshWorkspaceSelector();
-  const sel = document.getElementById("workspace-select");
-  if (sel) sel.value = cid;
-  switchWorkspace(cid);
+  try {
+    const r = await fetch('/api/admin/clients', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ label: label.trim() })
+    });
+    const data = await r.json();
+    if (!data.ok) { alert('Could not create client: ' + (data.error || 'unknown error')); return; }
+    ensureClientRegisteredWithId(data.client.id, data.client.label);
+    refreshWorkspaceSelector();
+    const sel = document.getElementById("workspace-select");
+    if (sel) sel.value = data.client.id;
+    switchWorkspace(data.client.id);
+    alert(`Client "${data.client.label}" created.\n\nAccess code (shown once — give this to the client):\n${data.accessCode}`);
+  } catch (e) {
+    alert('Network error creating client: ' + e.message);
+  }
 }
 function toggleIsolationDetail() {
   const el = document.getElementById("isolation-detail");
@@ -2105,6 +2229,7 @@ function printCrmReport() {
    VERTICAL SWITCHING
 ═══════════════════════════════════════════════════ */
 function switchVertical(v) {
+  if (!isLicensed(v)) { showUpgradePrompt(v); return; }
   currentVertical = v;
   document.querySelectorAll(".vtab").forEach(b => b.classList.toggle("active", b.dataset.v === v));
   document.getElementById("search-query").value = "";
@@ -2348,18 +2473,18 @@ function confirmClearAll() {
 }
 
 const WAR_ROOM_ROUTES = {
-  'fo-war-room':  { label:'FinOps War Room',       url:'/html/finops-suite/finops-war-room.html',            relay:'tsm_fin_docsearch_relay',    autoKey:'TSM_FIN_WAR_RELAY' },
-  'ins-war-room': { label:'Insurance War Room',     url:'/html/tsm-insurance/insurance-war-room.html',        relay:'tsm_ins_docsearch_relay',    autoKey:'TSM_INS_WAR_RELAY' },
-  'con-war-room': { label:'Construction War Room',  url:'/html/construction-suite/construction-war-room.html',relay:'tsm_con_docsearch_relay',    autoKey:'TSM_CONSTRUCTION_WAR_RELAY' },
-  'bpo-war-room': { label:'BPO War Room',           url:'/html/war-rooms/bpo/bpo-war-room.html',                  relay:'tsm_bpo_docsearch_relay',    autoKey:'TSM_BPO_WAR_RELAY' },
-  'bpoops-war-room': { label:'BPO Ops War Room',    url:'/html/war-rooms/bpo/bpo-war-room.html',              relay:'tsm_bpoops_docsearch_relay', autoKey:'TSM_BPOOPS_WAR_RELAY' },
-  'bpo-ops':      { label:'BPO Ops War Room',       url:'/html/war-rooms/bpo/bpo-war-room.html',              relay:'tsm_bpoops_docsearch_relay', autoKey:'TSM_BPOOPS_WAR_RELAY' },
-  're-war-room':  { label:'Real Estate War Room',   url:'/html/reo-pro/re-war-room.html',                     relay:'tsm_re_docsearch_relay',     autoKey:'TSM_RE_WAR_RELAY' },
+  'fo-war-room':  { label:'FinOps War Room',       url:'/html/finops-suite/finops-war/finops-war-room.html',            relay:'tsm_fo_docsearch_relay',    autoKey:'TSM_FIN_WAR_RELAY' },
+  'ins-war-room': { label:'Insurance War Room',     url:'/html/war-rooms/insure-war/insurance-war-room.html',        relay:'tsm_ins_docsearch_relay',    autoKey:'TSM_INS_WAR_RELAY' },
+  'con-war-room': { label:'Construction War Room',  url:'/html/war-rooms/construct-war/construction-war-room.html',relay:'tsm_con_docsearch_relay',    autoKey:'TSM_CONSTRUCTION_WAR_RELAY' },
+  'bpo-war-room': { label:'BPO War Room',           url:'/html/war-rooms/bpo-war/bpo-war-room.html',                  relay:'tsm_bpo_docsearch_relay',    autoKey:'TSM_BPO_WAR_RELAY' },
+  'bpoops-war-room': { label:'BPO Ops War Room',    url:'/html/war-rooms/bpo-war/bpo-war-room.html',              relay:'tsm_bpoops_docsearch_relay', autoKey:'TSM_BPOOPS_WAR_RELAY' },
+  'bpo-ops':      { label:'BPO Ops War Room',       url:'/html/war-rooms/bpo-war/bpo-war-room.html',              relay:'tsm_bpoops_docsearch_relay', autoKey:'TSM_BPOOPS_WAR_RELAY' },
+  're-war-room':  { label:'Real Estate War Room',   url:'/html/war-rooms/re-war/re-war-room.html',                     relay:'tsm_re_docsearch_relay',     autoKey:'TSM_RE_WAR_RELAY' },
   'logistics-war-room': { label:'Logistics War Room',        url:'/html/logistics/logistics-situation-room.html',        relay:'tsm_logistics_docsearch_relay', autoKey:'TSM_LOGISTICS_WAR_RELAY' },
   'vendor-war-room':    { label:'Supplier/Vendor War Room',  url:'/html/supplier-vendor/supplier-vendor-situation-room.html', relay:'tsm_vendor_docsearch_relay', autoKey:'TSM_VENDOR_WAR_RELAY' },
-  'mortgage-war-room': { label:'Mortgage Command',  url:'/html/war-rooms/mortgage/mortgage-war-room.html',                  relay:'tsm_mortgage_docsearch_relay',autoKey:'TSM_MORTGAGE_WAR_RELAY' },
-  'schools-war-room': { label:'Schools Command',    url:'/html/schools-command/schools-command.html',        relay:'tsm_schools_docsearch_relay', autoKey:'TSM_SCHOOLS_WAR_RELAY' },
-  'leg-war-room': { label:'Legal War Room',         url:'/html/legal-pro/legal-war-room.html',                relay:'tsm_leg_docsearch_relay',    autoKey:'TSM_LEG_WAR_RELAY' },
+  'mortgage-war-room': { label:'Mortgage Command',  url:'/html/war-rooms/mortgage/mortgage-war-room.html',                  relay:'tsm_mortgage_docsearch_relay',autoKey:'TSM_MORTGAGE_STRATEGIST_RELAY' },
+  'schools-war-room': { label:'Schools Command',    url:'/html/war-rooms/schools-command/schools-command.html',        relay:'tsm_schools_docsearch_relay', autoKey:'TSM_SCHOOLS_WAR_RELAY' },
+  'leg-war-room': { label:'Legal War Room',         url:'/html/war-rooms/legal-war/legal-war-room.html',                relay:'tsm_leg_docsearch_relay',    autoKey:'TSM_LEG_WAR_RELAY' },
   'hc-war-room':  { label:'HC Denial War Room',     url:'/html/healthcare/hc-denial-war-room.html',           relay:'tsm_hc_docsearch_relay',     autoKey:'TSM_HC_WAR_RELAY' },
   'cpq-war-room': { label:'CPQ War Room',           url:'/html/war-rooms/cpq/cpq-war-room.html',              relay:'tsm_cpq_docsearch_relay',    autoKey:'TSM_CPQ_WAR_RELAY' },
   'cpq':          { label:'CPQ War Room',           url:'/html/war-rooms/cpq/cpq-war-room.html',              relay:'tsm_cpq_docsearch_relay',    autoKey:'TSM_CPQ_WAR_RELAY' },
@@ -2392,6 +2517,8 @@ const WAR_ROOM_ROUTES = {
   'hw-supplier':          { label:'Honeywell Supplier Shutdown War Room',   url:'/html/supplier-shutdown.html',   relay:'tsm_hw_supplier_docsearch_relay', autoKey:'TSM_HW_SUPPLIER_WAR_RELAY' },
   'hw-cyber-war-room':    { label:'Honeywell Cyber Incident War Room',      url:'/html/cyber-incident.html',      relay:'tsm_hw_cyber_docsearch_relay',    autoKey:'TSM_HW_CYBER_WAR_RELAY' },
   'hw-cyber':             { label:'Honeywell Cyber Incident War Room',      url:'/html/cyber-incident.html',      relay:'tsm_hw_cyber_docsearch_relay',    autoKey:'TSM_HW_CYBER_WAR_RELAY' },
+  'hotelops-war-room':    { label:'HotelOps War Room',                      url:'/html/concierge/concierge-war-room.html', relay:'tsm_hotelops_docsearch_relay', autoKey:'TSM_HOTELOPS_WAR_RELAY' },
+  'hotel':                { label:'HotelOps War Room',                      url:'/html/concierge/concierge-war-room.html', relay:'tsm_hotelops_docsearch_relay', autoKey:'TSM_HOTELOPS_WAR_RELAY' },
 };
 
 TSMWarRoomRegistry.registerWarRooms(WAR_ROOM_ROUTES);
@@ -2431,24 +2558,24 @@ function getWarRoomEntryForVertical(vertical) {
 
 // Aliases for legacy node-specific routing keys in DEMO_DOCS
 Object.assign(WAR_ROOM_ROUTES, {
-  'ins-az':         { label:'Insurance War Room',    url:'/html/tsm-insurance/insurance-war-room.html',        relay:'tsm_ins_docsearch_relay',    autoKey:'TSM_INS_WAR_RELAY' },
-  'ins-hub':        { label:'Insurance War Room',    url:'/html/tsm-insurance/insurance-war-room.html',        relay:'tsm_ins_docsearch_relay',    autoKey:'TSM_INS_WAR_RELAY' },
-  'con-hub':        { label:'Construction War Room', url:'/html/construction-suite/construction-war-room.html',relay:'tsm_con_docsearch_relay',    autoKey:'TSM_CONSTRUCTION_WAR_RELAY' },
-  'con-permits':    { label:'Construction War Room', url:'/html/construction-suite/construction-war-room.html',relay:'tsm_con_docsearch_relay',    autoKey:'TSM_CONSTRUCTION_WAR_RELAY' },
-  'leg-index':      { label:'Legal War Room',        url:'/html/legal-pro/legal-war-room.html',                relay:'tsm_leg_docsearch_relay',    autoKey:'TSM_LEG_WAR_RELAY' },
-  'leg-ediscovery': { label:'Legal War Room',        url:'/html/legal-pro/legal-war-room.html',                relay:'tsm_leg_docsearch_relay',    autoKey:'TSM_LEG_WAR_RELAY' },
-  'leg-strategist': { label:'Legal War Room',        url:'/html/legal-pro/legal-war-room.html',                relay:'tsm_leg_docsearch_relay',    autoKey:'TSM_LEG_WAR_RELAY' },
+  'ins-az':         { label:'Insurance War Room',    url:'/html/war-rooms/insure-war/insurance-war-room.html',        relay:'tsm_ins_docsearch_relay',    autoKey:'TSM_INS_WAR_RELAY' },
+  'ins-hub':        { label:'Insurance War Room',    url:'/html/war-rooms/insure-war/insurance-war-room.html',        relay:'tsm_ins_docsearch_relay',    autoKey:'TSM_INS_WAR_RELAY' },
+  'con-hub':        { label:'Construction War Room', url:'/html/war-rooms/construct-war/construction-war-room.html',relay:'tsm_con_docsearch_relay',    autoKey:'TSM_CONSTRUCTION_WAR_RELAY' },
+  'con-permits':    { label:'Construction War Room', url:'/html/war-rooms/construct-war/construction-war-room.html',relay:'tsm_con_docsearch_relay',    autoKey:'TSM_CONSTRUCTION_WAR_RELAY' },
+  'leg-index':      { label:'Legal War Room',        url:'/html/war-rooms/legal-war/legal-war-room.html',                relay:'tsm_leg_docsearch_relay',    autoKey:'TSM_LEG_WAR_RELAY' },
+  'leg-ediscovery': { label:'Legal War Room',        url:'/html/war-rooms/legal-war/legal-war-room.html',                relay:'tsm_leg_docsearch_relay',    autoKey:'TSM_LEG_WAR_RELAY' },
+  'leg-strategist': { label:'Legal War Room',        url:'/html/war-rooms/legal-war/legal-war-room.html',                relay:'tsm_leg_docsearch_relay',    autoKey:'TSM_LEG_WAR_RELAY' },
   'hc-denial':      { label:'HC Denial War Room',    url:'/html/healthcare/hc-denial-war-room.html',           relay:'tsm_hc_docsearch_relay',     autoKey:'TSM_HC_WAR_RELAY' },
-  're-doc-command': { label:'Real Estate War Room',  url:'/html/reo-pro/re-war-room.html',                     relay:'tsm_re_docsearch_relay',     autoKey:'TSM_RE_WAR_RELAY' },
-  're-exec':        { label:'Real Estate War Room',  url:'/html/reo-pro/re-war-room.html',                     relay:'tsm_re_docsearch_relay',     autoKey:'TSM_RE_WAR_RELAY' },
-  're-strategist':  { label:'Real Estate War Room',  url:'/html/reo-pro/re-war-room.html',                     relay:'tsm_re_docsearch_relay',     autoKey:'TSM_RE_WAR_RELAY' },
-  'fo-accounting':  { label:'FinOps War Room',       url:'/html/finops-suite/finops-war-room.html',            relay:'tsm_fin_docsearch_relay',    autoKey:'TSM_FIN_WAR_RELAY' },
-  'fo-financial':   { label:'FinOps War Room',       url:'/html/finops-suite/finops-war-room.html',            relay:'tsm_fin_docsearch_relay',    autoKey:'TSM_FIN_WAR_RELAY' },
-  'bpo-sops':       { label:'BPO War Room',          url:'/html/war-rooms/bpo/bpo-war-room.html',                  relay:'tsm_bpo_docsearch_relay',    autoKey:'TSM_BPO_WAR_RELAY' },
-  'bpo-cmd':        { label:'BPO War Room',          url:'/html/war-rooms/bpo/bpo-war-room.html',                  relay:'tsm_bpo_docsearch_relay',    autoKey:'TSM_BPO_WAR_RELAY' },
-  'bpo-launch':     { label:'BPO War Room',          url:'/html/war-rooms/bpo/bpo-war-room.html',                  relay:'tsm_bpo_docsearch_relay',    autoKey:'TSM_BPO_WAR_RELAY' },
-  'ins-bpo':        { label:'Insurance War Room',    url:'/html/tsm-insurance/insurance-war-room.html',        relay:'tsm_ins_docsearch_relay',    autoKey:'TSM_INS_WAR_RELAY' },
-  'con-pitch':      { label:'Construction War Room', url:'/html/construction-suite/construction-war-room.html',relay:'tsm_con_docsearch_relay',    autoKey:'TSM_CONSTRUCTION_WAR_RELAY' },
+  're-doc-command': { label:'Real Estate War Room',  url:'/html/war-rooms/re-war/re-war-room.html',                     relay:'tsm_re_docsearch_relay',     autoKey:'TSM_RE_WAR_RELAY' },
+  're-exec':        { label:'Real Estate War Room',  url:'/html/war-rooms/re-war/re-war-room.html',                     relay:'tsm_re_docsearch_relay',     autoKey:'TSM_RE_WAR_RELAY' },
+  're-strategist':  { label:'Real Estate War Room',  url:'/html/war-rooms/re-war/re-war-room.html',                     relay:'tsm_re_docsearch_relay',     autoKey:'TSM_RE_WAR_RELAY' },
+  'fo-accounting':  { label:'FinOps War Room',       url:'/html/finops-suite/finops-war/finops-war-room.html',            relay:'tsm_fo_docsearch_relay',    autoKey:'TSM_FIN_WAR_RELAY' },
+  'fo-financial':   { label:'FinOps War Room',       url:'/html/finops-suite/finops-war/finops-war-room.html',            relay:'tsm_fo_docsearch_relay',    autoKey:'TSM_FIN_WAR_RELAY' },
+  'bpo-sops':       { label:'BPO War Room',          url:'/html/war-rooms/bpo-war/bpo-war-room.html',                  relay:'tsm_bpo_docsearch_relay',    autoKey:'TSM_BPO_WAR_RELAY' },
+  'bpo-cmd':        { label:'BPO War Room',          url:'/html/war-rooms/bpo-war/bpo-war-room.html',                  relay:'tsm_bpo_docsearch_relay',    autoKey:'TSM_BPO_WAR_RELAY' },
+  'bpo-launch':     { label:'BPO War Room',          url:'/html/war-rooms/bpo-war/bpo-war-room.html',                  relay:'tsm_bpo_docsearch_relay',    autoKey:'TSM_BPO_WAR_RELAY' },
+  'ins-bpo':        { label:'Insurance War Room',    url:'/html/war-rooms/insure-war/insurance-war-room.html',        relay:'tsm_ins_docsearch_relay',    autoKey:'TSM_INS_WAR_RELAY' },
+  'con-pitch':      { label:'Construction War Room', url:'/html/war-rooms/construct-war/construction-war-room.html',relay:'tsm_con_docsearch_relay',    autoKey:'TSM_CONSTRUCTION_WAR_RELAY' },
 });
 
 
@@ -2474,15 +2601,50 @@ function tsmToggleAuto(on) {
     if (label)  label.style.color       = 'var(--dim)';
     if (knob)   { knob.style.left = '2px'; knob.style.background = '#888'; }
     if (slider) slider.style.background = 'rgba(255,255,255,.1)';
-    localStorage.removeItem('tsm_auto_mode');
+    localStorage.setItem('tsm_auto_mode', 'off');
   }
+  // Keep the header button (#auto-mode-toggle, a separate widget defined
+  // further down this file) in sync instead of drifting independently.
+  if (typeof window.tsmSyncHeaderAutoBtn === 'function') window.tsmSyncHeaderAutoBtn();
 }
+
+// Sync all three (window.TSM_AUTO_MODE, footer switch, header button) from
+// persisted state on load. Previously nothing did this, so the footer
+// switch always rendered MANUAL on page load regardless of what was
+// actually stored from a prior visit.
+document.addEventListener('DOMContentLoaded', function () {
+  const storedOn = localStorage.getItem('tsm_auto_mode') !== 'off';
+  const footerToggle = document.getElementById('tsm-auto-toggle');
+  if (footerToggle) footerToggle.checked = storedOn;
+  tsmToggleAuto(storedOn);
+});
 
 function openWarRoomPicker(id) {
   const doc = loadIndex().find(d => d.id === id || d.id.startsWith(id));
   if (!doc) return;
-  const warRooms = (doc.routing || []).filter(r => WAR_ROOM_ROUTES[r]);
+  const matched = (doc.routing || []).filter(r => WAR_ROOM_ROUTES[r]);
+
+  // Multiple routing codes can alias to the same destination war room
+  // (e.g. 're-war-room' / 're-exec' / 're-strategist' all point at
+  // re-war-room.html). Dedupe by destination URL so the picker only
+  // shows one option per actual war room, not one per alias.
+  const seenUrls = new Set();
+  const warRooms = [];
+  for (const r of matched) {
+    const url = WAR_ROOM_ROUTES[r].url;
+    if (seenUrls.has(url)) continue;
+    seenUrls.add(url);
+    warRooms.push(r);
+  }
+
   if (!warRooms.length) { alert('No war room routes found for this document.'); return; }
+
+  // Only one real destination after deduping aliases — no need to make
+  // the user pick from a list of one, just go straight there.
+  if (warRooms.length === 1) {
+    launchWarRoom(id, warRooms[0]);
+    return;
+  }
 
   const overlay = document.createElement('div');
   overlay.className = 'wr-modal-overlay';
@@ -2544,7 +2706,7 @@ function launchWarRoom(id, roomKey) {
     if (window.TSM_AUTO_MODE) {
       localStorage.setItem('tsm_auto_mode', 'on');
     } else {
-      localStorage.removeItem('tsm_auto_mode');
+      localStorage.setItem('tsm_auto_mode', 'off');
     }
     try { TSM_KERNEL.setDoc(doc._ext?.docText || doc._ext?.summary || ''); } catch(e) {}
   } catch(e) {}
@@ -2578,13 +2740,13 @@ function redispatch(id) {
   }
 
   const DOCSEARCH_ROUTES = {
-    insurance:    { key: 'tsm_ins_docsearch_relay',    path: '/html/tsm-insurance/insurance-war-room.html' },
-    finops:       { key: 'tsm_fo_docsearch_relay',     path: '/html/finops-suite/finops-war-room.html' },
+    insurance:    { key: 'tsm_ins_docsearch_relay',    path: '/html/war-rooms/insure-war/insurance-war-room.html' },
+    finops:       { key: 'tsm_fo_docsearch_relay',     path: '/html/finops-suite/finops-war/finops-war-room.html' },
     healthcare:   { key: 'tsm_hc_docsearch_relay',     path: '/html/healthcare/hc-denial-war-room.html' },
-    legal:        { key: 'tsm_legal_docsearch_relay',  path: '/html/legal-pro/legal-war-room.html' },
-    construction: { key: 'tsm_con_docsearch_relay',    path: '/html/construction-suite/construction-war-room.html' },
-    realestate:   { key: 'tsm_re_docsearch_relay',     path: '/html/reo-pro/re-war-room.html' },
-    bpo:          { key: 'tsm_bpo_docsearch_relay',    path: '/html/war-rooms/bpo/bpo-war-room.html' }
+    legal:        { key: 'tsm_legal_docsearch_relay',  path: '/html/war-rooms/legal-war/legal-war-room.html' },
+    construction: { key: 'tsm_con_docsearch_relay',    path: '/html/war-rooms/construct-war/construction-war-room.html' },
+    realestate:   { key: 'tsm_re_docsearch_relay',     path: '/html/war-rooms/re-war/re-war-room.html' },
+    bpo:          { key: 'tsm_bpo_docsearch_relay',    path: '/html/war-rooms/bpo-war/bpo-war-room.html' }
   };
 
   const route = DOCSEARCH_ROUTES[currentVertical];
@@ -2749,6 +2911,12 @@ const DEMO_DOCS = [
   { id:'dd-mtg-cd-d',  verticals:['mortgage'], fileName:'Closing_Disclosure_Whitfield.pdf',      documentType:'CLOSING DISCLOSURE',vendor:'Premier Escrow Co',   invoiceNo:'CD-24-0132',   exclusionCode:'FEE-VAR', amount:452000, sourceNodes:{mortgage:'mortgage-war-room'}, routing:{mortgage:['mortgage-war-room','strategist','bnca-engine']},   _ext:{client:'Amanda Whitfield',  ref:'CD-24-0132',   defectFlags:['Closing Delay']},  tags:['closing disclosure','trid','escrow','mortgage','borrower','fee variance','tolerance cure'] },
   { id:'dd-mtg-appr-a',verticals:['mortgage'], fileName:'Appraisal_Report_88_Saguaro_Way.pdf',   documentType:'APPRAISAL REPORT',  vendor:'AZ Valuation Group',  invoiceNo:'APR-24-0091',  exclusionCode:'',        amount:398000, sourceNodes:{mortgage:'mortgage-war-room'}, routing:{mortgage:['mortgage-war-room','strategist']},                 _ext:{client:'Carlos Reyes',      ref:'APR-24-0091',  defectFlags:[]},                 tags:['appraisal','uad','comps','mortgage','borrower','ltv'] },
   { id:'dd-mtg-appr-e',verticals:['mortgage'], fileName:'Appraisal_Report_14_Cactus_Bloom_Ln.pdf',documentType:'APPRAISAL REPORT', vendor:'AZ Valuation Group',  invoiceNo:'APR-24-0132',  exclusionCode:'APPR-GAP',amount:452000, sourceNodes:{mortgage:'mortgage-war-room'}, routing:{mortgage:['mortgage-war-room','strategist','bnca-engine']},   _ext:{client:'Amanda Whitfield',  ref:'APR-24-0132',  defectFlags:['Appraisal Gap']},  tags:['appraisal','uad','comps','mortgage','borrower','ltv','value gap'] },
+
+  // ── HOTELOPS SAMPLE DOCS ────────────────────
+  { id:'dd-hotel-ota',    verticals:['hotel'], fileName:'OTA_Commission_Overcharge_Expedia_Q2.pdf', documentType:'VENDOR INVOICE',  vendor:'Expedia',  invoiceNo:'OTA-EXP-Q2',   exclusionCode:'OTA-COMM',   amount:8400, sourceNodes:{hotel:'hotelops-war-room'}, routing:{hotel:['hotelops-war-room','strategist']},               _ext:{client:'Property Ops', ref:'OTA-EXP-Q2',   defectFlags:[]}, tags:['ota','commission','expedia','overcharge','revenue'] },
+  { id:'dd-hotel-maint',  verticals:['hotel'], fileName:'Maintenance_SLA_Breach_Room412.pdf',        documentType:'INCIDENT',        vendor:'',         invoiceNo:'MNT-412',      exclusionCode:'SLA-BREACH', amount:0,    sourceNodes:{hotel:'hotelops-war-room'}, routing:{hotel:['hotelops-war-room','strategist']},               _ext:{client:'Property Ops', ref:'MNT-412',      defectFlags:['SLA Breach']}, tags:['maintenance','sla breach','ticket','hotelops'] },
+  { id:'dd-hotel-comply', verticals:['hotel'], fileName:'Fire_Safety_Permit_Renewal_Due.pdf',        documentType:'DOCUMENT REPORT', vendor:'',         invoiceNo:'CMP-FS-01',    exclusionCode:'COMPLY-DUE', amount:0,    sourceNodes:{hotel:'hotelops-war-room'}, routing:{hotel:['hotelops-war-room','strategist','bnca-engine']}, _ext:{client:'Property Ops', ref:'CMP-FS-01',    defectFlags:[]}, tags:['compliance','fire safety','permit','renewal','hotelops'] },
+  { id:'dd-hotel-iot',    verticals:['hotel'], fileName:'IoT_Leak_Sensor_Alert_Floor3.pdf',          documentType:'INCIDENT',        vendor:'',         invoiceNo:'IOT-LEAK-03',  exclusionCode:'',           amount:0,    sourceNodes:{hotel:'hotelops-war-room'}, routing:{hotel:['hotelops-war-room','strategist']},               _ext:{client:'Property Ops', ref:'IOT-LEAK-03',  defectFlags:[]}, tags:['iot','sensor','leak','smart systems','hotelops'] },
 ];
 
 function cleanRouting(doc, v) {
@@ -2826,6 +2994,41 @@ function seedAllVerticals() {
   const btn = document.getElementById('seed-all-btn');
   if (btn) { btn.textContent = '✓ All Verticals Seeded'; btn.style.color = 'var(--accent)'; setTimeout(() => { btn.textContent = '⚡ Seed All Verticals'; btn.style.color = ''; }, 3000); }
 }
+
+/* ═══════════════════════════════════════════════════
+   SESSION SCOPE — must run before the workspace selector
+   first renders, since it decides whether this browser is
+   locked to one client or has full admin access.
+═══════════════════════════════════════════════════ */
+window.TSM_SESSION = { role: 'admin', clientId: null, label: null }; // safe default until status resolves
+async function applySessionScope() {
+  try {
+    const r = await fetch('/api/auth/status');
+    const data = await r.json();
+    if (!data.authenticated) {
+      // The server-side gate should already have redirected here before
+      // this page loaded; this is a defensive fallback for an expired
+      // session mid-use.
+      location.href = '/login?next=' + encodeURIComponent(location.pathname);
+      return;
+    }
+    window.TSM_SESSION = { role: data.role, clientId: data.clientId, label: data.label };
+    if (data.role === 'client') {
+      ensureClientRegisteredWithId(data.clientId, data.label);
+      activeClientId = data.clientId;
+      try { localStorage.setItem(ACTIVE_WORKSPACE_KEY, data.clientId); } catch(e) {}
+    }
+  } catch (e) {
+    // If the status check itself fails (network blip), don't lock the
+    // page into a broken state — fall back to the safe admin-shaped
+    // default already set above and let normal auth checks on each API
+    // call catch anything that actually matters.
+  }
+  refreshWorkspaceSelector();
+  runSearch();
+  refreshTotalCount();
+}
+applySessionScope();
 
 /* ═══════════════════════════════════════════════════
    EVENT LISTENERS
@@ -3163,7 +3366,8 @@ const DOC_ROUTER_TO_MISSION_VERTICAL = {
   bpo: 'bpo',
   re:  'realestate',
   leg: 'legal',
-  hc:  'healthcare'
+  hc:  'healthcare',
+  hotel: 'hotelops'
 };
 
 // Below this confidence (or on any validation failure) the document pauses
@@ -3460,7 +3664,8 @@ if(dropZone){
 dropZone.addEventListener("drop", e => { handleFiles(e.dataTransfer.files); });
 }
  
-switchVertical("fo");
+applyVerticalLocks();
+switchVertical(LICENSED_VERTICALS[0] || "fo");
 // ── HC NODE ROUTING ───────────────────────────────────────────────────────
 const HC_CODE_NODE = [
   {p:'CO-197',n:'insurance'},{p:'CO-50',n:'billing'},{p:'CO-11',n:'medical'},
@@ -3785,6 +3990,34 @@ async function openGenNodeWithDoc(docId, vertical) {
     if (popup) popup.close();
     return;
   }
+  // GAP 2 fix: the BPO bnca-engine node links directly to
+  // bpo-executive-portal.html, skipping War Room + Strategist entirely.
+  // The exec portal only reads TSM_BPO_STRATEGIST_RELAY / TSM_BPO_STRAT_RELAY,
+  // which normally only bpo-strategist.html writes -- so this direct link
+  // used to always land on an empty/demo-mode portal even with real data in
+  // hand. Fix: synthesize a minimal real relay payload from the same fields
+  // already collected above (narr, findings, financialImpact, client, etc.)
+  // and write it before navigating, scoped to only the BPO exec portal route
+  // so no other vertical's behavior changes.
+  if (targetUrl === '/html/war-rooms/bpo-war/bpo-executive-portal.html') {
+    try {
+      const bncaCaseId = 'BPO-BNCA-' + Date.now();
+      const bncaRelay = {
+        sector: 'BPO',
+        docType: doc.documentType || 'ESCALATION',
+        stratBrief: narr || findings.join(' '),
+        engines: { engine1: narr || '', engine2: '', engine3: '', engine4: findings.join('\n') },
+        docText: (doc._ext && doc._ext.rawText) || narr || findings.join('\n'),
+        timestamp: new Date().toISOString(),
+        chainStep: 'strategist',
+        recommendation: { confidence: Number.isFinite(risk) ? String(risk) : '91' },
+        selectedScenario: 'A',
+        caseId: bncaCaseId,
+      };
+      localStorage.setItem('TSM_BPO_STRATEGIST_RELAY', JSON.stringify(bncaRelay));
+      localStorage.setItem('TSM_BPO_STRAT_RELAY', JSON.stringify(bncaRelay));
+    } catch(e) { console.warn('TSM: BNCA direct-relay write failed:', e); }
+  }
   if (popup) popup.location.href = targetUrl;
   else window.open(targetUrl, '_blank');
 }
@@ -3819,10 +4052,21 @@ window.openGenNodeWithDoc = openGenNodeWithDoc;
     btn.title = on ? 'Auto mode: upload fires full chain automatically' : 'Manual mode: upload routes to war room, you control each step';
   }
   window.toggleAutoMode = function(){
-    localStorage.setItem(KEY, getMode() ? 'off' : 'on');
-    updateBtn();
+    const next = !getMode();
+    // Route through tsmToggleAuto (footer widget, defined earlier in this
+    // file) when it exists, so window.TSM_AUTO_MODE and the footer switch
+    // update too instead of this button silently drifting out of sync with
+    // it. tsmToggleAuto itself calls tsmSyncHeaderAutoBtn (below), so this
+    // button's own visuals still update either way.
+    if (typeof window.tsmToggleAuto === 'function') {
+      window.tsmToggleAuto(next);
+    } else {
+      localStorage.setItem(KEY, next ? 'on' : 'off');
+      updateBtn();
+    }
   };
   window.tsmIsAutoMode = getMode;
+  window.tsmSyncHeaderAutoBtn = updateBtn;
   document.addEventListener('DOMContentLoaded', updateBtn);
 })();
 </script>
@@ -3830,7 +4074,7 @@ window.openGenNodeWithDoc = openGenNodeWithDoc;
 <script>
 /* TSM AUTO-LAUNCH TOGGLE */
 (function(){
-  const isOn = () => localStorage.getItem('TSM_AUTO_LAUNCH') !== 'false';
+  const isOn = () => localStorage.getItem('TSM_AUTO_LAUNCH') === 'true';
   const btn = document.createElement('button');
   btn.id = 'tsm-auto-launch-btn';
   btn.title = 'Toggle Auto-Launch Pipeline';

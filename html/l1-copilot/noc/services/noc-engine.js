@@ -334,9 +334,9 @@
       if (!cc) return this.data;
 
       const kindConfig = [
-        { key: 'incidents', type: 'noc_incident', idField: 'incident_id', ownerField: 'owner', statusField: 'stage', warRoom: '/war-rooms/noc/noc-war-room.html' },
-        { key: 'alerts',    type: 'noc_alert',    idField: 'alert_id',    ownerField: null,     statusField: 'stage', warRoom: '/war-rooms/noc/noc-war-room.html' },
-        { key: 'devices',   type: 'noc_device',   idField: 'device_id',   ownerField: null,     statusField: 'stage', warRoom: '/war-rooms/noc/noc-war-room.html' }
+        { key: 'incidents', type: 'noc_incident', idField: 'incident_id', ownerField: 'owner', statusField: 'stage', warRoom: '/l1-copilot/noc/noc-war-room.html' },
+        { key: 'alerts',    type: 'noc_alert',    idField: 'alert_id',    ownerField: null,     statusField: 'stage', warRoom: '/l1-copilot/noc/noc-war-room.html' },
+        { key: 'devices',   type: 'noc_device',   idField: 'device_id',   ownerField: null,     statusField: 'stage', warRoom: '/l1-copilot/noc/noc-war-room.html' }
       ];
 
       const out = {};

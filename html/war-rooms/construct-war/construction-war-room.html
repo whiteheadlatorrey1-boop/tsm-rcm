@@ -1,0 +1,2188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TSM Construction War Room</title>
+<style>
+:root {
+  --bg:#0a0f0a;--bg2:#0d130d;--bg3:#111811;
+  --border:rgba(0,255,80,.12);
+  --green:#00ff50;--green-dim:rgba(0,255,80,.6);
+  --gold:#ffd700;--red:#ff3b3b;--amber:#ff9500;--cyan:#00e5ff;--purple:#c084fc;
+  --text:#c8d8c8;--text-dim:#5a7a5a;--card:#0d160d;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;font-size:12px;min-height:100vh}
+
+/* NAV */
+.nav{display:flex;align-items:center;gap:0;background:#080d08;border-bottom:1px solid var(--border);height:38px;padding:0 16px}
+.nav-brand{color:var(--green);font-weight:700;font-size:11px;letter-spacing:2px;margin-right:24px}
+.nav-btn{background:none;border:none;color:var(--text-dim);font-family:inherit;font-size:10px;letter-spacing:1.5px;cursor:pointer;padding:0 14px;height:38px;border-bottom:2px solid transparent;transition:all .2s}
+.nav-btn:hover{color:var(--green)}
+.nav-btn.active{color:var(--green);border-bottom-color:var(--green)}
+.nav-right{margin-left:auto;display:flex;align-items:center;gap:16px;color:var(--text-dim);font-size:10px}
+.nav-clock{color:var(--green-dim)}
+
+/* ALERT BAR */
+.alert-bar{background:rgba(255,149,0,.06);border-bottom:1px solid rgba(255,149,0,.2);padding:6px 20px;display:flex;align-items:center;gap:8px;font-size:10px;letter-spacing:1.5px;color:var(--amber)}
+.alert-dot{width:6px;height:6px;border-radius:50%;background:var(--amber);box-shadow:0 0 6px var(--amber);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* LAYOUT */
+.layout{display:grid;grid-template-columns:290px 1fr;height:calc(100vh - 70px)}
+
+/* SIDEBAR */
+.sidebar{background:var(--bg2);border-right:1px solid var(--border);overflow-y:auto;display:flex;flex-direction:column}
+.sb-section{padding:14px 16px;border-bottom:1px solid var(--border)}
+.sb-label{font-size:9px;letter-spacing:2px;color:var(--text-dim);margin-bottom:8px}
+
+.doc-type-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+.dt-btn{background:var(--bg3);border:1px solid var(--border);color:var(--text-dim);font-family:inherit;font-size:9px;padding:6px 4px;cursor:pointer;letter-spacing:.5px;transition:all .2s;text-align:center}
+.dt-btn:hover{border-color:var(--green);color:var(--green)}
+.dt-btn.active{background:rgba(0,255,80,.08);border-color:var(--green);color:var(--green)}
+
+.paste-area{width:100%;background:var(--bg3);border:1px solid var(--border);color:var(--text);font-family:inherit;font-size:10px;padding:8px;resize:vertical;min-height:120px;outline:none}
+.paste-area:focus{border-color:var(--green)}
+
+.btn{border:1px solid;font-family:inherit;font-size:9px;letter-spacing:1.5px;cursor:pointer;padding:7px 12px;transition:all .2s}
+.btn-green{background:var(--green);border-color:var(--green);color:#000;font-weight:700}
+.btn-green:hover{background:#00cc40}
+.btn-outline{background:transparent;border-color:var(--green);color:var(--green)}
+.btn-outline:hover{background:rgba(0,255,80,.08)}
+.btn-ghost{background:transparent;border-color:var(--border);color:var(--text-dim)}
+.btn-ghost:hover{border-color:var(--text-dim);color:var(--text)}
+.btn-gold{background:var(--gold);border-color:var(--gold);color:#000;font-weight:700}
+.btn-gold:hover{background:#e6c200}
+.btn-purple{background:transparent;border-color:var(--purple);color:var(--purple)}
+.btn-purple:hover{background:rgba(192,132,252,.08)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn-row{display:flex;gap:6px;flex-wrap:wrap}
+
+.samples{display:flex;flex-direction:column;gap:4px}
+.sample-chip{background:var(--bg3);border:1px solid var(--border);color:var(--text-dim);font-family:inherit;font-size:9px;padding:4px 8px;cursor:pointer;letter-spacing:.5px;transition:all .2s;text-align:left;width:100%}
+.sample-chip:hover{border-color:var(--green);color:var(--green)}
+.sample-chip.loaded{border-color:var(--green);color:var(--green);background:rgba(0,255,80,.06)}
+
+/* ENGINE STATUS SIDEBAR */
+.engine-list{display:flex;flex-direction:column;gap:4px}
+.eng-item{display:flex;align-items:center;gap:8px;padding:5px 8px;background:var(--bg3);border:1px solid var(--border)}
+.eng-num{color:var(--text-dim);font-size:9px;width:16px}
+.eng-name{flex:1;font-size:9px;color:var(--text)}
+.eng-status{font-size:8px;letter-spacing:1px;padding:2px 6px;border:1px solid}
+.eng-status.idle{color:var(--text-dim);border-color:var(--border)}
+.eng-status.running{color:var(--amber);border-color:var(--amber);animation:pulse 1s infinite}
+.eng-status.done{color:var(--green);border-color:var(--green)}
+.eng-status.error{color:var(--red);border-color:var(--red)}
+
+/* SNAPSHOT */
+.snap-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.snap-item{background:var(--bg3);border:1px solid var(--border);padding:6px 8px}
+.snap-label{font-size:8px;color:var(--text-dim);letter-spacing:1px;margin-bottom:3px}
+.snap-val{font-size:11px;color:var(--green);font-weight:700}
+
+.groq-key-wrap{display:flex;gap:6px;align-items:center}
+.groq-key-input{flex:1;background:var(--bg3);border:1px solid var(--border);color:var(--green);font-family:inherit;font-size:9px;padding:4px 8px;outline:none;letter-spacing:1px}
+.groq-key-input:focus{border-color:var(--green)}
+
+/* MAIN */
+.main{overflow-y:auto;background:var(--bg);padding-bottom:80px}
+
+/* HERO */
+.hero{padding:24px 32px 16px;border-bottom:1px solid var(--border)}
+.hero-title{font-size:26px;color:var(--green);font-weight:700;letter-spacing:3px;margin-bottom:4px}
+.hero-sub{color:var(--text-dim);font-size:10px;letter-spacing:1px}
+
+/* KPI BAR */
+.kpi-bar{display:grid;grid-template-columns:repeat(5,1fr);border-bottom:1px solid var(--border)}
+.kpi-cell{padding:14px 20px;border-right:1px solid var(--border)}
+.kpi-cell:last-child{border-right:none}
+.kpi-label{font-size:8px;letter-spacing:1.5px;color:var(--text-dim);margin-bottom:8px}
+.kpi-val{font-size:22px;font-weight:700;color:var(--green)}
+.kpi-val.red{color:var(--red)}.kpi-val.gold{color:var(--gold)}.kpi-val.cyan{color:var(--cyan)}
+.kpi-bar-fill{height:3px;background:var(--border);margin-top:6px}
+.kpi-bar-inner{height:100%;background:var(--green);width:0%;transition:width .8s}
+.kpi-sub{font-size:9px;color:var(--text-dim);margin-top:4px}
+
+/* SECTIONS */
+.sec-header{padding:16px 32px 8px;display:flex;align-items:center;gap:10px}
+.sec-dot{width:6px;height:6px;background:var(--green);border-radius:50%}
+.sec-title{font-size:9px;letter-spacing:2.5px;color:var(--green)}
+
+/* ENGINE GRID */
+.engine-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--border);margin:0 32px 24px}
+.eng-card{background:var(--card);padding:20px;display:flex;flex-direction:column;gap:10px}
+.eng-card-header{display:flex;align-items:center;justify-content:space-between}
+.eng-card-num{font-size:11px;color:var(--green);font-weight:700}
+.eng-card-title{font-size:10px;letter-spacing:1.5px;color:var(--text);margin-left:8px}
+.eng-card-tag{font-size:8px;letter-spacing:1px;padding:2px 8px;border:1px solid var(--border);color:var(--text-dim)}
+.eng-card-tag.done{color:var(--green);border-color:var(--green)}
+.eng-card-tag.running{color:var(--amber);border-color:var(--amber)}
+.eng-card-body{font-size:10px;color:var(--text-dim);line-height:1.7;min-height:80px;white-space:pre-wrap}
+.eng-card-body.live{color:var(--text)}
+.eng-card-footer{display:flex;align-items:center;justify-content:space-between}
+.eng-chars{font-size:9px;color:var(--text-dim)}
+.copy-btn{background:none;border:1px solid var(--border);color:var(--text-dim);font-family:inherit;font-size:8px;letter-spacing:1px;padding:2px 8px;cursor:pointer}
+.copy-btn:hover{border-color:var(--green);color:var(--green)}
+
+/* APP DISPATCH SECTION */
+.dispatch-wrap{margin:0 32px 24px;background:var(--card);border:1px solid rgba(192,132,252,.2)}
+.dispatch-hdr{background:rgba(192,132,252,.06);border-bottom:1px solid rgba(192,132,252,.15);padding:14px 20px;display:flex;align-items:center;justify-content:space-between}
+.dispatch-title{font-size:10px;letter-spacing:2px;color:var(--purple);font-weight:700}
+.dispatch-count{font-size:9px;color:var(--green);letter-spacing:1px}
+.dispatch-intro{padding:12px 20px;border-bottom:1px solid var(--border);font-size:10px;color:var(--text-dim);line-height:1.6}
+.app-cards-list{display:flex;flex-direction:column}
+.app-row{padding:14px 20px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:6px}
+.app-row:last-child{border-bottom:none}
+.app-row.top-match{border-left:3px solid var(--green);background:rgba(0,255,80,.03)}
+.app-row-hdr{display:flex;align-items:center;justify-content:space-between}
+.app-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;margin-right:8px}
+.app-name-block{display:flex;align-items:center;flex:1}
+.app-name{font-size:11px;font-weight:700;color:var(--text);letter-spacing:.5px}
+.app-cat{font-size:8px;color:var(--text-dim);margin-top:2px}
+.top-badge{font-size:7px;font-weight:700;color:#000;background:var(--green);padding:2px 8px;letter-spacing:.8px}
+.app-rank-badge{font-size:8px;color:var(--text-dim);border:1px solid var(--border);padding:2px 7px;letter-spacing:.5px}
+.app-how-lbl{font-size:7.5px;letter-spacing:1.5px;color:var(--gold);margin-top:4px}
+.app-how-txt{font-size:9px;color:var(--text-dim);line-height:1.65;border-left:2px solid rgba(255,215,0,.2);padding-left:10px}
+.app-tags-row{display:flex;flex-wrap:wrap;gap:4px;margin-top:2px}
+.app-tag{font-size:7px;padding:2px 6px;border:1px solid var(--border);color:var(--text-dim)}
+.app-launch-btn{margin-top:6px;padding:6px 14px;background:transparent;border:1px solid var(--green);color:var(--green);font-family:inherit;font-size:8px;font-weight:700;letter-spacing:1.2px;cursor:pointer;transition:all .2s;display:inline-block}
+.app-launch-btn:hover{background:rgba(0,255,80,.08)}
+
+/* ESCALATE BAR */
+.escalate-bar{position:sticky;bottom:0;z-index:301;background:#0a140a;border-top:1px solid rgba(0,255,80,.25);padding:14px 32px;display:none;align-items:center;justify-content:space-between;gap:20px}
+.escalate-bar.visible{display:flex}
+.eb-left .eb-title{font-size:11px;color:var(--green);letter-spacing:1.5px;font-weight:700;margin-bottom:3px}
+.eb-left .eb-sub{font-size:9px;color:var(--text-dim)}
+.eb-btns{display:flex;gap:8px;flex-wrap:wrap}
+
+/* SPINNER */
+.spinner{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:100;align-items:center;justify-content:center;flex-direction:column;gap:16px}
+.spinner.active{display:flex}
+.spin-ring{width:48px;height:48px;border:2px solid var(--border);border-top-color:var(--green);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spin-label{color:var(--green);font-size:11px;letter-spacing:2px}
+.spin-engine{color:var(--text-dim);font-size:9px;letter-spacing:1px}
+
+/* LOG */
+.log-wrap{padding:0 32px 80px}
+.log-title{font-size:9px;letter-spacing:2px;color:var(--text-dim);margin-bottom:8px}
+.log-list{display:flex;flex-direction:column;gap:4px;max-height:150px;overflow-y:auto}
+.log-item{display:flex;gap:10px;font-size:9px}
+.log-dot{width:6px;height:6px;border-radius:50%;margin-top:3px;flex-shrink:0}
+.log-dot.g{background:var(--green)}.log-dot.a{background:var(--amber)}.log-dot.p{background:var(--purple)}.log-dot.f{background:var(--text-dim)}.log-dot.c{background:var(--cyan)}
+.log-text{color:var(--text)}
+.log-detail{color:var(--text-dim);margin-left:4px}
+
+/* STATUS BAR */
+.status-bar{position:fixed;bottom:0;left:0;right:0;background:#060b06;border-top:1px solid var(--border);padding:4px 16px;display:flex;align-items:center;gap:16px;font-size:9px;color:var(--text-dim);z-index:50}
+.sb-dot{width:5px;height:5px;border-radius:50%;background:var(--green);box-shadow:0 0 4px var(--green)}
+.sb-sep{color:var(--border)}
+</style>
+<script src="/html/js/tsm-runtime-lock.js"></script>
+<script src="/html/js/tsm-event-contract.js"></script>
+<script src="/html/js/tsm-autonomy-layer.js"></script>
+  <script src="/js/core/tsm-event-bus.js"></script>
+  <script src="/js/core/tsm-state.js"></script>
+  <script src="/js/core/tsm-mission-engine.js"></script>
+  <script src="/js/core/tsm-auto-pipeline.js"></script>
+  <script src="/shared/tsm-sector-intelligence.js?v=phase5si"></script>
+</head>
+<body data-vertical="construction" data-page-role="warroom">
+
+<!-- ── TSM CHAIN STATUS BAR ──────────────────────────────────────────── -->
+<div id="tsm-chain-bar" style="
+  position:fixed;bottom:0;left:0;right:0;z-index:9999;
+  background:#040c12;border-top:1px solid #0d2233;
+  display:flex;align-items:center;gap:0;font-family:'IBM Plex Mono',monospace;
+  font-size:10px;letter-spacing:.5px;height:32px;padding:0 16px;
+">
+  <span style="color:#3a5a70;margin-right:12px;font-size:9px;">TSM CHAIN</span>
+
+  <a id="tsm-chain-wr" href="#" style="
+    color:#00ffc6;background:rgba(0,255,198,.08);border:1px solid #00ffc638;
+    padding:3px 10px;border-radius:3px;text-decoration:none;margin-right:6px;
+    font-size:9px;letter-spacing:1px;
+  ">● WAR ROOM</a>
+
+  <span style="color:#1a3a50;margin-right:6px;">──▶</span>
+
+  <a id="tsm-chain-strat" href="/html/war-rooms/construct-war/construction-strategist.html" style="
+    color:#94a3b8;border:1px solid #1a3a50;
+    padding:3px 10px;border-radius:3px;text-decoration:none;margin-right:6px;
+    font-size:9px;letter-spacing:1px;transition:all .3s;
+  ">○ STRATEGIST</a>
+
+  <span style="color:#1a3a50;margin-right:6px;">──▶</span>
+
+  <a id="tsm-chain-exec" href="/html/war-rooms/construct-war/construction-executive-portal.html" style="
+    color:#94a3b8;border:1px solid #1a3a50;
+    padding:3px 10px;border-radius:3px;text-decoration:none;margin-right:6px;
+    font-size:9px;letter-spacing:1px;transition:all .3s;
+  ">○ EXEC PORTAL</a>
+
+  <span style="color:#1a3a50;margin:0 12px;">|</span>
+
+  <span id="tsm-chain-status" style="color:#3a5a70;font-size:9px;">Monitoring relay...</span>
+
+  <div style="margin-left:auto;display:flex;gap:8px;align-items:center;">
+    <span id="tsm-chain-relay-ts" style="color:#1a3a50;font-size:8px;"></span>
+    <span style="color:#1a3a50;font-size:9px;">CONSTRUCTION</span>
+  </div>
+</div>
+<script>
+(function(){
+  const RELAY_KEY = 'TSM_CONSTRUCTION_WAR_RELAY'; // real key written by the war room's relay writer
+  const strat  = document.getElementById('tsm-chain-strat');
+  const exec   = document.getElementById('tsm-chain-exec');
+  const status = document.getElementById('tsm-chain-status');
+  const ts     = document.getElementById('tsm-chain-relay-ts');
+
+  function pulse(el, color) {
+    el.style.color  = color;
+    el.style.border = '1px solid ' + color + '66';
+    el.style.background = color + '10';
+  }
+
+  function check() {
+    try {
+      const raw = localStorage.getItem(RELAY_KEY);
+      if (!raw) { status.textContent = 'War room active — no relay yet'; return; }
+      const d = JSON.parse(raw);
+      const relayTs = typeof d.timestamp === 'string' ? new Date(d.timestamp).getTime() : (d.timestamp || 0);
+      const age = Date.now() - relayTs;
+      const fresh = age < 5 * 60 * 1000; // 5 min
+
+      if (fresh) {
+        pulse(strat, '#f5a623');
+        status.textContent = 'Relay fired → Strategist receiving';
+        ts.textContent = new Date(d.timestamp).toLocaleTimeString();
+
+        // If strategist confirmed
+        const stratRaw = (function(){var __v = localStorage.getItem("TSM_STRAT_CONFIRMED_construction-suite"); if (__v !== null) return __v; var __prefixes = ["TSM_STRAT_CONFIRMED_construction-suite_"]; for (var __p = 0; __p < __prefixes.length; __p++) { for (var __i = 0; __i < localStorage.length; __i++) { var __k = localStorage.key(__i); if (__k && __k.indexOf(__prefixes[__p]) === 0) { return localStorage.getItem(__k); } } } return null; })();
+        if (stratRaw) {
+          pulse(strat, '#00ffc6');
+          pulse(exec, '#f5a623');
+          status.textContent = 'Strategist confirmed → Exec Portal ready';
+        }
+        const execRaw = (function(){var __v = localStorage.getItem("TSM_EXEC_CONFIRMED_construction-suite"); if (__v !== null) return __v; var __prefixes = ["TSM_EXEC_CONFIRMED_construction-suite_"]; for (var __p = 0; __p < __prefixes.length; __p++) { for (var __i = 0; __i < localStorage.length; __i++) { var __k = localStorage.key(__i); if (__k && __k.indexOf(__prefixes[__p]) === 0) { return localStorage.getItem(__k); } } } return null; })();
+        if (execRaw) {
+          pulse(exec, '#00ffc6');
+          status.textContent = 'Chain complete ✓ All three tiers confirmed';
+        }
+      } else {
+        status.textContent = 'Last relay: ' + Math.round(age/60000) + 'm ago';
+        ts.textContent = new Date(d.timestamp).toLocaleTimeString();
+      }
+    } catch(e) {
+      status.textContent = 'Relay monitor error';
+    }
+  }
+
+  check();
+  setInterval(check, 5000);
+})();
+</script>
+<!-- ── END TSM CHAIN STATUS BAR ──────────────────────────────────────── -->
+
+
+<nav class="nav">
+  <div class="nav-brand">⚡ TSM CONSTRUCTION</div>
+  <button class="nav-btn active">WAR ROOM</button>
+  <button class="nav-btn" onclick="goNav('construction-hub.html')">HUB</button>
+  <button class="nav-btn" id="tourLaunchBtn" onclick="startTour()">▶ GUIDED TOUR</button>
+  <button class="nav-btn" onclick="document.getElementById('howtoOverlay').style.display='block'">HOW-TO GUIDE</button><button class="nav-btn" onclick="goNav('construction-strategist.html')">STRATEGIST</button>
+  <button class="nav-btn" onclick="goNav('construction-executive-portal.html')">EXECUTIVE</button>
+  <button class="nav-btn" onclick="goNav('auditops-tax.html')">AUDITOPS</button>
+      <button class="nav-btn" onclick="goNav('permits-proposals.html')">PERMITS</button>
+  <div class="nav-right"><span id="navClock" class="nav-clock">--:--:--</span></div>
+</nav>
+
+<div class="alert-bar" id="alertBar">
+  <div class="alert-dot" id="alertDot"></div>
+  <span id="alertText">WAR ROOM ACTIVE — LOAD CONSTRUCTION DOCUMENT — FIRE 6-ENGINE ANALYSIS</span>
+</div>
+
+<div class="spinner" id="spinner">
+  <div class="spin-ring"></div>
+  <div class="spin-label">NEURAL PIPELINE RUNNING</div>
+  <div class="spin-engine" id="spinLabel">Initializing...</div>
+</div>
+
+<div class="layout">
+
+<!-- ══ SIDEBAR ══ -->
+<aside class="sidebar">
+
+  <div class="sb-section">
+    <div class="sb-label">DOCUMENT TYPE</div>
+    <div class="doc-type-grid">
+      <button class="dt-btn active" onclick="setDocType(this,'Change Order')">⚡ Change Order</button>
+      <button class="dt-btn" onclick="setDocType(this,'OSHA Citation')">🛡 OSHA Citation</button>
+      <button class="dt-btn" onclick="setDocType(this,'Lien Notice')">⚖ Lien Notice</button>
+      <button class="dt-btn" onclick="setDocType(this,'Subcontract')">📋 Subcontract</button>
+      <button class="dt-btn" onclick="setDocType(this,'RFI')">📐 RFI</button>
+      <button class="dt-btn" onclick="setDocType(this,'Draw Request')">💰 Draw Request</button>
+      <button class="dt-btn" onclick="setDocType(this,'Permit')">🏛 Permit</button>
+      <button class="dt-btn" onclick="setDocType(this,'Retainage')">🔒 Retainage</button>
+      <button class="dt-btn" onclick="setDocType(this,'Journal Entry')">📒 Journal Entry</button>
+      <button class="dt-btn" onclick="setDocType(this,'Job Cost Report')">📊 Job Cost</button>
+      <button class="dt-btn" onclick="setDocType(this,'Payroll / 1099')">👷 Payroll/1099</button>
+      <button class="dt-btn" onclick="setDocType(this,'Compliance')">✅ Compliance</button>
+    </div>
+  </div>
+
+  <div class="sb-section">
+    
+  <div style="padding:8px 14px;border-bottom:1px solid var(--border)">
+    <div style="font-size:8px;letter-spacing:1.5px;color:var(--dim);margin-bottom:6px">UPLOAD DOCUMENT</div>
+    <label id="con-upload-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;background:rgba(0,255,150,0.04);border:1px dashed rgba(0,255,150,0.2);border-radius:3px;padding:7px 10px;font-size:9px;letter-spacing:1px;color:var(--dim);">
+      <span>📄</span>
+      <span id="con-upload-name">DROP FILE OR CLICK TO UPLOAD</span>
+      <input type="file" id="con-file-input" accept=".pdf,.docx,.xlsx,.csv,.txt,.png,.jpg,.jpeg" style="display:none" onchange="conHandleFile(this.files[0])">
+    </label>
+    <!-- Hidden backing store: the upload widget above replaced the old visible
+         textarea, but loadDemoAnomaly(), loadSample(), fireEngines(), clearAll(),
+         and conHandleFile() all still read/write #docPaste. Keeping this element
+         (off-screen) restores that data path without touching the working JS. -->
+    <textarea id="docPaste" style="display:none"></textarea>
+  </div>
+<div style="padding:8px 14px;border-bottom:1px solid var(--border)">
+    <div style="font-size:8px;letter-spacing:1.5px;color:var(--dim);margin-bottom:4px">AI ENGINE</div>
+    <div style="color:var(--green);font-size:9px;letter-spacing:1px">● SERVER CONNECTED · PROXY ACTIVE</div>
+  </div>
+
+  <div class="sb-section">
+    <div class="btn-row">
+      <button class="btn btn-green" id="fireBtn" onclick="fireEngines()" style="flex:1">⚡ FIRE ALL 6 ENGINES</button>
+      <button class="btn btn-ghost" onclick="clearAll()">CLEAR</button>
+    </div>
+  </div>
+
+  <div class="sb-section">
+    <div class="sb-label">QUICK SCENARIOS</div>
+    <div class="samples">
+      <button class="sample-chip" id="smp-demo" onclick="loadDemoAnomaly()" style="border-color:var(--green);color:var(--green);font-weight:700;">🧪 LOAD DEMO ANOMALY — CO-114</button>
+      <button class="sample-chip" id="smp-co"        onclick="loadSample('co')">📋 Change Order — Unforeseen Soil</button>
+      <button class="sample-chip" id="smp-osha"      onclick="loadSample('osha')">🛡 OSHA Citation — Fall Protection</button>
+      <button class="sample-chip" id="smp-lien"      onclick="loadSample('lien')">⚖ Prelim Lien Notice — Steel Fab</button>
+      <button class="sample-chip" id="smp-retainage" onclick="loadSample('retainage')">🔒 Retainage Dispute — MEP Sub</button>
+      <button class="sample-chip" id="smp-draw"      onclick="loadSample('draw')">💰 Draw Request — Budget Variance</button>
+      <button class="sample-chip" id="smp-jcr"       onclick="loadSample('jcr')">📊 Job Cost Report — Overrun</button>
+      <button class="sample-chip" id="smp-payroll"   onclick="loadSample('payroll')">👷 Payroll / 1099 Discrepancy</button>
+      <button class="sample-chip" id="smp-je"        onclick="loadSample('je')">📒 Journal Entry — Loan Draw Error</button>
+      <button class="sample-chip" id="smp-interco"   onclick="loadSample('interco')">🔗 Intercompany Loan Variance</button>
+      <button class="sample-chip" id="smp-cashflow"  onclick="loadSample('cashflow')">📈 Cash Flow / Reconciliation Gap</button>
+    </div>
+  </div>
+
+  <div class="sb-section">
+    <div class="sb-label">ENGINE STATUS</div>
+    <div class="engine-list">
+      <div class="eng-item"><span class="eng-num">01</span><span class="eng-name">Document Intel</span><span class="eng-status idle" id="es1">IDLE</span></div>
+      <div class="eng-item"><span class="eng-num">02</span><span class="eng-name">FieldOps</span><span class="eng-status idle" id="es2">IDLE</span></div>
+      <div class="eng-item"><span class="eng-num">03</span><span class="eng-name">Financial</span><span class="eng-status idle" id="es3">IDLE</span></div>
+      <div class="eng-item"><span class="eng-num">04</span><span class="eng-name">Legal</span><span class="eng-status idle" id="es4">IDLE</span></div>
+      <div class="eng-item"><span class="eng-num">05</span><span class="eng-name">Compliance</span><span class="eng-status idle" id="es5">IDLE</span></div>
+      <div class="eng-item"><span class="eng-num">06</span><span class="eng-name">BNCA Exec</span><span class="eng-status idle" id="es6">IDLE</span></div>
+    </div>
+  </div>
+
+  <div class="sb-section">
+    <div class="sb-label">PROJECT SNAPSHOT</div>
+    <div class="snap-grid">
+      <div class="snap-item"><div class="snap-label">DOC TYPE</div><div class="snap-val" id="snapType">—</div></div>
+      <div class="snap-item"><div class="snap-label">RISK SCORE</div><div class="snap-val" id="snapRisk">—</div></div>
+      <div class="snap-item"><div class="snap-label">EXPOSURE</div><div class="snap-val" id="snapExposure">—</div></div>
+      <div class="snap-item"><div class="snap-label">DEADLINE</div><div class="snap-val" id="snapDeadline">—</div></div>
+    </div>
+  </div>
+
+</aside>
+
+<!-- ══ MAIN ══ -->
+<main class="main">
+
+  <div class="hero">
+    <div class="hero-title">Construction War Room</div>
+    <div class="hero-sub">6-Engine Document Analysis · Job Costing · GAAP · FieldOps · Legal · Compliance · BNCA Exec · Escalate to Strategist</div>
+  </div>
+
+  <div class="kpi-bar">
+    <div class="kpi-cell">
+      <div class="kpi-label">RISK SCORE</div>
+      <div class="kpi-val" id="kpiRisk">—</div>
+      <div class="kpi-bar-fill"><div class="kpi-bar-inner" id="riskFill"></div></div>
+      <div class="kpi-sub">/ 100</div>
+    </div>
+    <div class="kpi-cell">
+      <div class="kpi-label">FINANCIAL EXPOSURE</div>
+      <div class="kpi-val red" id="kpiExposure">—</div>
+      <div class="kpi-sub">estimated liability</div>
+    </div>
+    <div class="kpi-cell">
+      <div class="kpi-label">SAFETY RISK</div>
+      <div class="kpi-val gold" id="kpiSafety">—</div>
+      <div class="kpi-sub">osha / site risk</div>
+    </div>
+    <div class="kpi-cell">
+      <div class="kpi-label">COMPLIANCE STATUS</div>
+      <div class="kpi-val cyan" id="kpiCompliance">—</div>
+      <div class="kpi-sub">regulatory posture</div>
+    </div>
+    <div class="kpi-cell">
+      <div class="kpi-label">ENGINES COMPLETE</div>
+      <div class="kpi-val" id="kpiEngines">0/6</div>
+      <div class="kpi-sub">neural pipeline</div>
+    </div>
+  </div>
+
+  <div class="sec-header"><div class="sec-dot"></div><div class="sec-title">ENGINE OUTPUTS · NEURAL PIPELINE</div></div>
+
+  <div class="engine-grid">
+    <div class="eng-card">
+      <div class="eng-card-header"><div><span class="eng-card-num">01</span><span class="eng-card-title">DOCUMENT INTELLIGENCE</span></div><span class="eng-card-tag" id="tag-e1">IDLE</span></div>
+      <div class="eng-card-body" id="body-e1">// Waiting for construction document...
+// Extracts: parties, dates, amounts, deadlines, doc classification, GAAP impact</div>
+      <div class="eng-card-footer"><span class="eng-chars" id="chars-e1">0 chars</span><button class="copy-btn" onclick="copyField('body-e1')">COPY</button></div>
+    </div>
+    <div class="eng-card">
+      <div class="eng-card-header"><div><span class="eng-card-num">02</span><span class="eng-card-title">FIELDOPS ANALYSIS · PROJECT STATUS</span></div><span class="eng-card-tag" id="tag-e2">IDLE</span></div>
+      <div class="eng-card-body" id="body-e2">// Waiting for Engine 01...
+// Analyzes: schedule impact, site safety, crew risk, cost-to-budget variance</div>
+      <div class="eng-card-footer"><span class="eng-chars" id="chars-e2">0 chars</span><button class="copy-btn" onclick="copyField('body-e2')">COPY</button></div>
+    </div>
+    <div class="eng-card">
+      <div class="eng-card-header"><div><span class="eng-card-num">03</span><span class="eng-card-title">FINANCIAL IMPACT · GAAP · PORTFOLIO SIMULATION</span></div><span class="eng-card-tag" id="tag-e3">IDLE</span></div>
+      <div class="eng-card-body" id="body-e3">// Waiting for Engine 01 + 02...
+// Models: job cost variance, journal entries, draw reconciliation, cash flow, GAAP treatment</div>
+      <div class="eng-card-footer"><span class="eng-chars" id="chars-e3">0 chars</span><button class="copy-btn" onclick="copyField('body-e3')">COPY</button></div>
+    </div>
+    <div class="eng-card">
+      <div class="eng-card-header"><div><span class="eng-card-num">04</span><span class="eng-card-title">LEGAL COMMAND</span></div><span class="eng-card-tag" id="tag-e4">IDLE</span></div>
+      <div class="eng-card-body" id="body-e4">// Waiting for Engine 01 + 03...
+// Identifies: liens, bonds, disputes, defaults, contract gaps, filing deadlines</div>
+      <div class="eng-card-footer"><span class="eng-chars" id="chars-e4">0 chars</span><button class="copy-btn" onclick="copyField('body-e4')">COPY</button></div>
+    </div>
+    <div class="eng-card">
+      <div class="eng-card-header"><div><span class="eng-card-num">05</span><span class="eng-card-title">COMPLIANCE SHIELD</span></div><span class="eng-card-tag" id="tag-e5">IDLE</span></div>
+      <div class="eng-card-body" id="body-e5">// Waiting for Engine 01 + 02...
+// Checks: OSHA, Davis-Bacon, EPA/SWPPP, permit status, payroll compliance, 1099 readiness</div>
+      <div class="eng-card-footer"><span class="eng-chars" id="chars-e5">0 chars</span><button class="copy-btn" onclick="copyField('body-e5')">COPY</button></div>
+    </div>
+    <div class="eng-card">
+      <div class="eng-card-header"><div><span class="eng-card-num">06</span><span class="eng-card-title">BNCA EXECUTIVE DISPATCH</span></div><span class="eng-card-tag" id="tag-e6">IDLE</span></div>
+      <div class="eng-card-body" id="body-e6">// Waiting for all 5 engines...
+// Synthesizes: ranked app dispatch, executive summary, priority actions, owner lanes</div>
+      <div class="eng-card-footer"><span class="eng-chars" id="chars-e6">0 chars</span><button class="copy-btn" onclick="copyField('body-e6')">COPY</button></div>
+    </div>
+  </div>
+
+  <!-- APP DISPATCH — revealed after E6 -->
+  <div id="dispatchSection" style="display:none">
+    <div class="sec-header"><div class="sec-dot" style="background:var(--purple)"></div><div class="sec-title" style="color:var(--purple)">ENGINE 06 · BEST NEXT COURSE OF ACTION DISPATCH</div></div>
+    <div class="dispatch-wrap">
+      <div class="dispatch-hdr">
+        <div class="dispatch-title">RECOMMENDED APPS · RANKED BY ISSUE RELEVANCE</div>
+        <div class="dispatch-count" id="dispatchCount">✓ — APPS RECOMMENDED</div>
+      </div>
+      <div class="dispatch-intro" id="dispatchIntro">Routing analysis to highest-impact construction apps...</div>
+      <div class="app-cards-list" id="appCardsList"></div>
+    </div>
+  </div>
+
+  <div class="log-wrap">
+    <div class="log-title">WAR ROOM ACTIVITY LOG</div>
+    <div class="log-list" id="logList"></div>
+  </div>
+
+  <div class="escalate-bar" id="escalateBar">
+    <div class="eb-left">
+      <div class="eb-title">⚡ ESCALATE TO CONSTRUCTION STRATEGIST →</div>
+      <div class="eb-sub" id="escalSub">6-engine assessment complete. Package ready for strategist review.</div>
+    </div>
+    <div class="eb-btns">
+      <button class="btn btn-gold" onclick="escalateToStrategist()">⚡ ESCALATE TO STRATEGIST →</button>
+      <button class="btn btn-outline" onclick="exportFull()">EXPORT ANALYSIS</button>
+      <button class="btn btn-ghost" onclick="clearAll()">CLEAR &amp; RESET</button>
+    </div>
+  </div>
+
+</main>
+</div>
+
+<div class="status-bar">
+  <div class="sb-dot"></div>
+  <span>TSM · Construction War Room</span>
+  <span class="sb-sep">·</span>
+  <span id="sbEngines">0 / 6 Engines Complete</span>
+  <span class="sb-sep">·</span>
+  <span id="sbDoc">No document loaded</span>
+  <span class="sb-sep">·</span>
+  <span>Groq: openai/gpt-oss-120b</span>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded',function(){
+  const relayed=sessionStorage.getItem('constructionWarRoomDoc');
+  const src=sessionStorage.getItem('constructionWarRoomSource');
+  if(relayed){
+    const ta=document.getElementById('doc-text')||document.querySelector('textarea');
+    if(ta){ta.value=relayed;}
+    sessionStorage.removeItem('constructionWarRoomDoc');
+    sessionStorage.removeItem('constructionWarRoomSource');
+  }
+});
+// ═══════════════════════════════
+// STATE
+// ═══════════════════════════════
+let docText='', selectedDocType='Change Order', engOut={}, enginesComplete=0;
+// Doc Search relay
+(function(){
+  try {
+    const raw = sessionStorage.getItem('TSM_CONSTRUCTION_WAR_RELAY') || localStorage.getItem('tsm_construction_war_relay');
+    if (!raw) return;
+    const relay = JSON.parse(raw);
+    if (!relay.docText) return;
+    docText = relay.docText;
+    setTimeout(() => {
+      const el = document.getElementById('docPaste');
+      if (el) { el.value = docText; el.dispatchEvent(new Event('input')); }
+      const btn = document.getElementById('fireBtn') || document.getElementById('fireBtn');
+      if (btn) btn.disabled = false;
+      const banner = document.createElement('div');
+      banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:rgba(0,180,100,.12);border-bottom:1px solid rgba(0,180,100,.3);padding:7px 20px;font-family:"Share Tech Mono",monospace;font-size:10px;color:#00d4aa;letter-spacing:1px;display:flex;justify-content:space-between';
+      banner.innerHTML = `<span>⚡ DOC RELAY — ${relay.docType||'DOCUMENT'} · ${docText.length} chars · paste area loaded</span><button onclick="this.parentElement.remove()" style="background:none;border:none;color:#00d4aa;cursor:pointer">✕</button>`;
+      document.body.prepend(banner);
+      sessionStorage.removeItem('TSM_CONSTRUCTION_WAR_RELAY');
+      localStorage.removeItem('tsm_construction_war_relay');
+    }, 500);
+  } catch(e) {}
+})();
+// NOTE: this war room's engine pipeline (callGroq() -> /api/construction/query)
+// is fully backend-proxied and never needs a client-side Groq key — removed
+// the dead tsm_groq_key localStorage read/write that used to write here.
+
+// Doc Search relay — populate from redispatch
+(function(){
+  try {
+    const raw = localStorage.getItem('tsm_con_docsearch_relay');
+    if (!raw) return;
+    const relay = JSON.parse(raw);
+    const relayText = relay.docText || relay.summary || '';
+    if (!relayText) return;
+    localStorage.removeItem('tsm_con_docsearch_relay');
+    // TSM AUTO-FIRE
+    if (localStorage.getItem('tsm_auto_mode') !== 'off') {
+      setTimeout(async () => {
+        if (typeof fireEngines === 'function') await fireEngines();
+        // Auto-escalate to Strategist disabled here too, for the same reason
+        // as the main fireEngines() completion handler: it was cutting off
+        // the Anomaly Advisor / Build Remediation Mission flow before the
+        // user could interact with it. Escalation is manual only now.
+      }, 900);
+    }
+    const ta = document.getElementById('docPaste');
+    if (ta) ta.value = relayText;
+  } catch(e) { console.warn('Doc search relay error:', e); }
+})();
+let groqKey = localStorage.getItem('tsm_groq_key') || '';
+if(groqKey){ const gkInit=document.getElementById('groqKey'); if(gkInit) gkInit.value=groqKey; }
+
+setInterval(()=>{ document.getElementById('navClock').textContent=new Date().toLocaleTimeString('en-US',{hour12:false}); },1000);
+
+function goNav(p){ window.location.href='/construction-suite/'+p; }
+
+function setDocType(btn,type){
+  document.querySelectorAll('.dt-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active'); selectedDocType=type;
+}
+function saveKey(){ const el=document.getElementById('groqKey'); if(!el) return; groqKey=el.value.trim(); localStorage.setItem('tsm_groq_key',groqKey); }
+async function testKey(){
+  const el=document.getElementById('groqKey');
+  groqKey = el ? el.value.trim() : groqKey;
+  if(!groqKey){alert('Enter Groq API key first.');return;}
+  addLog('Testing API key...','','a');
+  try{
+    const r=await fetch('/api/groq/validate-key',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:groqKey})});
+    const d=await r.json();
+    d.ok?addLog('API key valid','Groq connection confirmed','g'):addLog('API key invalid','Check key and retry','f');
+  }catch(e){addLog('Connection error',e.message,'f');}
+}
+
+// ═══════════════════════════════
+// SCENARIOS — construction accounting + field ops
+// ═══════════════════════════════
+const SAMPLES={
+
+co:`CHANGE ORDER #7 — FOUNDATION SCOPE MODIFICATION
+Project: Riverside Tower Phase 2 · P-1003
+Owner: Pacific Development Group · Contractor: Meridian Construction LLC
+Original Contract: $2.4M · Change Amount: $340,000
+
+REASON: Unforeseen soil conditions during caisson drilling requiring additional depth and redesign per geotech report 03/15/2026. Owner disputes scope citing original soil report adequacy.
+
+SCOPE ITEMS:
+1. Additional caissons x14 (extra 12ft depth each) — $180,000
+2. Extended crane rental 3 weeks — $45,000
+3. Revised footing design — structural engineer supplement — $28,000
+4. Contractor delay costs 12 working days @ $7,250/day — $87,000
+
+SCHEDULE IMPACT: +18 working days · Phase 1 foundation
+PAYMENT STATUS: Owner withholding $340,000 pending dispute resolution
+LIEN WINDOW: Opens June 20, 2026 if unresolved`,
+
+osha:`OSHA CITATION AND NOTIFICATION OF PENALTY
+Citation Number: 312847 · Inspection Date: May 28, 2026
+Jobsite: Riverside Tower Phase 2 — Block C Foundation
+Employer: Meridian Construction LLC
+
+CITATION 1 — SERIOUS — 29 CFR 1926.502(d)(15):
+Fall protection system failure. Workers observed at 18ft elevation without proper guardrail system on open-sided floor. 4 workers affected.
+Proposed Penalty: $15,625
+Abatement Deadline: 15 calendar days from receipt
+
+CITATION 2 — WILLFUL — 29 CFR 1926.1053(b)(1):
+Portable extension ladder not extending minimum 3 feet above landing. Three separate instances observed. Prior citation on record for same violation (2024).
+Proposed Penalty: $145,027
+
+Contest Deadline: 15 working days from receipt
+Total Proposed Penalty: $160,652`,
+
+lien:`PRELIMINARY 20-DAY NOTICE AND MECHANICS LIEN NOTICE
+Claimant: Southwest Steel Fabricators Inc. · 3300 W Van Buren St, Phoenix AZ 85009
+Owner: Pacific Development Group · Property: Riverside Tower Phase 2, Phoenix AZ 85001
+General Contractor: Meridian Construction LLC
+
+AMOUNT CLAIMED: $284,500
+Services Rendered: Structural steel fabrication, delivery, and placement per PO #2024-881
+Contract Value: $284,500 · Payments Received: $0
+Last Date of Work: April 30, 2026 · Invoice Due: March 15, 2026
+
+GC has failed to remit payment despite demand letters dated April 2 and April 22, 2026.
+Lien Filing Deadline: June 20, 2026 (ARS §33-981 — 60 days from last furnishing)
+Bond Claim: Also being pursued under ARS §33-1003 payment bond`,
+
+retainage:`RETAINAGE RELEASE DEMAND — NOTICE OF DISPUTE
+Project: Riverside Tower Phase 2
+Prime Contractor: Meridian Construction LLC
+Subcontractor: Elite MEP Services LLC
+Subcontract Value: $1,560,000
+
+RETAINAGE STATUS:
+Held at 10%: $156,000
+Contractual maximum (per ARS 32-1129.02): 5% post-substantial completion = $78,000
+Excess retainage improperly held: $78,000
+
+SUBSTANTIAL COMPLETION: April 15, 2026 (certified by architect)
+Open Punch List: 3 items — estimated cure cost $4,200
+Owner stated reason for full retainage hold: "Commissioning docs incomplete"
+Subcontractor position: Commissioning docs submitted March 28, 2026 — confirmed received
+
+Interest accruing: 2% per month per ARS 32-1129.02 on excess amount
+Demand for release within 30 days or legal action will follow`,
+
+draw:`AIA G702 APPLICATION AND CERTIFICATE FOR PAYMENT — APPLICATION #8
+Project: Riverside Tower Phase 2 · P-1003
+Contractor: Meridian Construction LLC · Owner: Pacific Development Group
+Period: May 1 – May 31, 2026
+
+SCHEDULE OF VALUES SUMMARY:
+Original Contract Sum: $2,400,000
+Net Change by Change Orders (approved): +$212,000
+Revised Contract Sum: $2,612,000
+
+Work Completed This Period: $287,500
+Materials Stored (not yet installed): $44,200
+Less Retainage (10%): -$33,170
+Less Previous Payments: -$1,124,000
+CURRENT PAYMENT DUE: $174,530
+
+OWNER FLAG: Owner questioning $44,200 materials-stored line — claims materials not verified on site
+COST TO BUDGET VARIANCE: Phase 2 framing running $38,000 over budget — no approved change order on file
+SCHEDULE VARIANCE: Project 11 days behind baseline schedule per updated CPM`,
+
+jcr:`JOB COST REPORT — VARIANCE ANALYSIS
+Project: Riverside Tower Phase 2 · Report Date: May 31, 2026
+Prepared by: Project Accountant — Meridian Construction LLC
+
+BUDGET vs ACTUAL SUMMARY:
+Division 02 — Sitework: Budget $185,000 / Actual $231,400 / Variance -$46,400 (25% over)
+Division 03 — Concrete: Budget $420,000 / Actual $487,200 / Variance -$67,200 (16% over)
+Division 05 — Structural Steel: Budget $284,500 / Actual $284,500 / Variance $0
+Division 15 — Mechanical: Budget $390,000 / Actual $312,000 / Variance +$78,000 (20% under — work incomplete)
+Division 16 — Electrical: Budget $280,000 / Actual $198,400 / Variance +$81,600 (29% under — work incomplete)
+
+TOTAL OVERRUN TO DATE: $113,600
+UNAPPROVED CHANGE ORDERS DRIVING VARIANCE: $87,000 (Div 02) + $28,000 (Div 03) — pending owner approval
+COST CODES WITHOUT MATCHING AP INVOICES: 14 line items — AP reconciliation required
+NOTES: Cost-to-complete estimate not updated since March. Financial exposure unknown.`,
+
+payroll:`PAYROLL DISCREPANCY REPORT — CERTIFIED PAYROLL REVIEW
+Project: Riverside Tower Phase 2 · Reporting Week: May 19–25, 2026
+Contractor: Meridian Construction LLC · 28 workers on site
+
+DISCREPANCIES IDENTIFIED:
+1. Worker Class Mismatch: 6 laborers coded as "Unskilled General Labor" — prevailing wage rate for Phoenix metro requires $24.18/hr for concrete formwork. Rate paid: $18.50/hr. Underpayment: $224/worker/week × 6 workers = $1,344 this period.
+
+2. 1099 vs W-2 Classification: 3 subcontract laborers on recurring daily basis — exceeds IRS 20-factor threshold for employee classification. Potential misclassification exposure.
+
+3. Certified Payroll Not Filed: Week of May 12–18 submission missing from ADOT portal. Federal project — Davis-Bacon Act compliance required within 7 days.
+
+4. Overtime Calculation Error: 2 workers logged 52 hours. Overtime calculated at 1.25x instead of required 1.5x. Underpayment: $156 total.
+
+TOTAL PAYROLL EXPOSURE THIS PERIOD: $1,500+ plus back pay
+CUMULATIVE RISK IF PATTERN EXISTS: $18,000–$36,000 across project duration`,
+
+je:`JOURNAL ENTRY DISCREPANCY — LOAN DRAW RECONCILIATION
+Project: Riverside Tower Phase 2 · Period: Q1 2026
+Prepared for: Construction Accounting Review
+
+LOAN DRAW #4 — DISCREPANCY IDENTIFIED:
+Draw Requested: $487,200
+Draw Funded by Lender: $487,200
+Draw Recorded in GL (Account 1210 — Construction in Progress): $449,700
+Unrecorded Amount: $37,500
+
+INVESTIGATION NOTES:
+$37,500 was coded to Account 7420 (General & Administrative Expense) instead of Account 1210 (CIP). This misclassification understates capitalized costs and overstates G&A expense. Under GAAP ASC 835-20, interest and direct costs during construction period must be capitalized.
+
+INTERCOMPANY LOAN ENTRY ERROR:
+Meridian Construction LLC received $125,000 intercompany advance from Meridian Holdings LLC. Entry recorded as revenue (Cr. Account 4100) instead of liability (Cr. Account 2310 — Notes Payable — Related Party). Balance sheet materially misstated.
+
+IMPACT: Financial statements for Q1 2026 require restatement. Tax return preparation affected.`,
+
+interco:`INTERCOMPANY LOAN AND ACCOUNT RECONCILIATION — VARIANCE REPORT
+Entities: Meridian Construction LLC / Meridian Holdings LLC / Meridian Development Partners
+Reporting Period: Q1 2026 — March 31, 2026
+
+INTERCOMPANY BALANCES — UNRECONCILED:
+Meridian Construction → Meridian Holdings: GL shows $1,240,000 receivable
+Meridian Holdings → Meridian Construction: GL shows $980,000 payable
+NET VARIANCE: $260,000 unreconciled — likely timing difference + 2 unrecorded advances
+
+TRANSACTIONS NOT ELIMINATED IN CONSOLIDATION:
+1. $125,000 advance (Jan 15, 2026) — recorded in Construction LLC but not in Holdings LLC
+2. $135,000 management fee (Feb 28, 2026) — recorded as income in Holdings, not as expense in Construction
+
+GAAP REQUIREMENT: ASC 810 — intercompany transactions must be eliminated in consolidated financials
+RESTATEMENT RISK: Material misstatement in consolidated balance sheet
+AUDIT EXPOSURE: External auditor flagged in prior year. Repeat finding likely.`,
+
+cashflow:`CASH FLOW AND BANK RECONCILIATION DISCREPANCY REPORT
+Entity: Meridian Construction LLC
+Report Date: May 31, 2026 — Month-End Close
+
+BANK RECONCILIATION — Operating Account (Chase ****4821):
+Bank Statement Balance: $847,320
+GL Book Balance: $791,440
+Unreconciled Variance: $55,880
+
+ITEMS IDENTIFIED:
+1. Outstanding Check #4471 — $28,200 (issued May 28 — not cleared) — legitimate
+2. Deposit in Transit — $14,600 (May 31 wire — not posted) — legitimate
+3. Unexplained variance: $13,080 — no matching GL entry found
+
+CREDIT CARD RECONCILIATION:
+3 credit card accounts — $8,440 in charges posted to bank not yet recorded in GL
+Largest unrecorded item: $4,200 — vendor: unknown merchant, May 22, 2026
+
+WEEKLY CASH FLOW REPORT — VARIANCE:
+Projected outflows for week of June 2: $312,000 (payroll + sub payments)
+Available cash per GL: $791,440
+Available cash per bank: $847,320
+Cash shortfall risk if $487,200 draw not funded by June 3: CRITICAL`
+};
+
+SAMPLES.demo = `CHANGE ORDER #114 — DEEPENED CAISSON REVISION
+Project: Riverside Tower Phase 2 · P-1003
+Owner: Pacific Development Group · Contractor: Meridian Construction LLC
+Original Contract: $2.4M · Change Amount: $410,000
+
+REASON: Deepened caissons discovered mid-excavation — geotech re-inspection during drilling revealed the bearing stratum 14ft below the original geotech report depth. Structural revision drawing S-114R issued 06/28/2026. Crew has been working to the revised scope for 4 days under verbal PM direction, pending formal change order execution.
+
+SCOPE ITEMS:
+1. Caisson depth revision x22 (extra 14ft each) — $260,000
+2. Revised structural drawing S-114R — engineer of record supplement — $34,000
+3. Extended excavation equipment mobilization — $58,000
+4. Crew standby / re-sequencing during revision — $58,000
+
+SCHEDULE IMPACT: Crew proceeding on revised scope since 06/24/2026 — 4 working days ahead of formal CO execution
+PERMIT STATUS: Original excavation permit on file does not cover revised caisson depth — amendment required
+SAFETY STATUS: Site safety walk sign-offs pending for revised excavation depth
+PAYMENT STATUS: Not yet submitted for owner review`;
+
+// Seeds the same localStorage shapes getPermitsContext() and getFieldOpsContext()
+// already read (tsm_permits_custom_doc / tsm_construction_fieldops_context), so
+// the 6-engine sweep grounds Engine 02 + Engine 05 in real cross-tool context
+// instead of just the raw document, without needing the other two pages open.
+function loadDemoAnomaly(){
+  const doc = SAMPLES.demo;
+  document.getElementById('docPaste').value = doc;
+  docText = doc;
+  document.querySelectorAll('.sample-chip').forEach(b=>b.classList.remove('loaded'));
+  document.getElementById('smp-demo')?.classList.add('loaded');
+  document.getElementById('sbDoc').textContent = 'DEMO ANOMALY · ' + doc.length + ' chars loaded';
+  const lbl = document.getElementById('con-upload-name');
+  if (lbl) lbl.textContent = '✓ DEMO ANOMALY — CO-114 (' + doc.length + ' chars)';
+
+  const now = Date.now();
+  localStorage.setItem('tsm_permits_custom_doc', JSON.stringify({
+    ts: now,
+    result: 'Amended permit for the deepened caisson excavation (CO-114 revision) has not been filed with the City. The original excavation permit on file covers the prior depth only — working outside permitted scope creates stop-work exposure until the amendment is submitted.'
+  }));
+  localStorage.setItem('tsm_construction_fieldops_context', JSON.stringify({
+    ts: now,
+    scheduleRisk: 'Medium-High — crew has been working 4 days under revised scope ahead of formal CO execution; critical path exposure if the CO is rejected or delayed.',
+    summary: '3 safety walk sign-offs missed for the deepened excavation area (weeks of 06/22, 06/29, 07/06). OSHA excavation log last updated 06/20/2026 — predates the caisson depth revision; shoring/protective system entries do not reflect current excavation depth.'
+  }));
+
+  addLog('Demo anomaly loaded', 'CO-114 — deepened caissons · Permits & Field Ops context seeded', 'g');
+}
+
+function loadSample(k){
+  const s=SAMPLES[k];
+  if(!s) return;
+  document.getElementById('docPaste').value=s;
+  docText=s;
+  document.querySelectorAll('.sample-chip').forEach(b=>b.classList.remove('loaded'));
+  document.getElementById('smp-'+k)?.classList.add('loaded');
+  document.getElementById('sbDoc').textContent=k.toUpperCase()+' sample · '+s.length+' chars loaded';
+  const lbl = document.getElementById('con-upload-name');
+  if (lbl) lbl.textContent = '✓ ' + k.toUpperCase() + ' sample (' + s.length + ' chars)';
+  addLog('Sample loaded',k+' — '+s.length+' chars','g');
+}
+
+// ═══════════════════════════════
+// LOG
+// ═══════════════════════════════
+function addLog(text,detail,type){
+  const list=document.getElementById('logList');
+  const item=document.createElement('div');
+  item.className='log-item';
+  item.innerHTML=`<div class="log-dot ${type}"></div><div><span class="log-text">${text}</span>${detail?`<span class="log-detail">· ${detail}</span>`:''}</div>`;
+  list.insertBefore(item,list.firstChild);
+}
+
+// ═══════════════════════════════
+// ENGINE HELPERS
+// ═══════════════════════════════
+function setEngState(i,state){
+  const el=document.getElementById('es'+i);
+  const tag=document.getElementById('tag-e'+i);
+  el.className='eng-status '+state;
+  el.textContent=state.toUpperCase();
+  if(tag){ tag.className='eng-card-tag '+(state==='done'?'done':state==='running'?'running':''); tag.textContent=state==='done'?'COMPLETE ✓':state==='running'?'RUNNING...':'IDLE'; }
+}
+function setEngBody(i,text){
+  const body=document.getElementById('body-e'+i);
+  const chars=document.getElementById('chars-e'+i);
+  if(body){body.textContent=text;body.classList.add('live');}
+  if(chars) chars.textContent=text.length+' chars';
+  engOut[i]=text;
+}
+function copyField(id){ navigator.clipboard.writeText(document.getElementById(id).textContent).then(()=>addLog('Copied to clipboard',id,'f')); }
+
+// ═══════════════════════════════
+// PROMPTS — chained construction + accounting
+// ═══════════════════════════════
+// ═══════════════════════════════
+// CROSS-TOOL REASONING CONTEXT
+// Pulls in analysis already done in sibling construction-suite tools so the
+// 6-engine sweep isn't reasoning from the raw document alone.
+// ═══════════════════════════════
+let PERMITS_CONTEXT = '', FIELDOPS_CONTEXT = '';
+
+// Permits & Proposals writes tsm_permits_custom_doc whenever someone runs
+// "Analyze" on a document over there. We treat it as live grounding for the
+// Compliance (engine 5) and FieldOps (engine 2) engines if it's recent.
+function getPermitsContext(maxAgeMs = 60 * 60 * 1000) {
+  try {
+    const raw = localStorage.getItem('tsm_permits_custom_doc');
+    if (!raw) return '';
+    const data = JSON.parse(raw);
+    if (!data.ts || (Date.now() - data.ts) > maxAgeMs) return '';
+    return `PERMITS & PROPOSALS DESK — RECENT ANALYSIS (${Math.round((Date.now()-data.ts)/60000)}m ago):\n${(data.result||'').slice(0,400)}`;
+  } catch(e) { return ''; }
+}
+
+// Written by construction-suite-expansion.html's tsmSyncNow() — live FieldOps,
+// PlanRoom, Procurement, RFI/CO, and Gantt state, auto-synced every 90s and on
+// tab switches. Shape: { summary: string, scheduleRisk: string, ts: number }
+function getFieldOpsContext(maxAgeMs = 60 * 60 * 1000) {
+  try {
+    const raw = localStorage.getItem('tsm_construction_fieldops_context');
+    if (!raw) return '';
+    const data = JSON.parse(raw);
+    if (!data.ts || (Date.now() - data.ts) > maxAgeMs) return '';
+    return `FIELD OPS — LIVE CONTEXT (${Math.round((Date.now()-data.ts)/60000)}m ago):\nSCHEDULE: ${data.scheduleRisk||'Unknown'}\n${(data.summary||'').slice(0,500)}`;
+  } catch(e) { return ''; }
+}
+
+const PROMPTS=[
+(doc)=>`You are a Construction Intelligence + Accounting AI — first-pass document assessment.
+DOCUMENT TYPE: ${selectedDocType}
+DOCUMENT TEXT: ${doc}
+
+ENGINE 01 — DOCUMENT INTELLIGENCE
+Extract all key facts. Format exactly:
+DOC TYPE: [Change Order/OSHA Citation/Lien Notice/Draw Request/Job Cost Report/Payroll/Journal Entry/Intercompany/Cash Flow/Other]
+PARTIES: [Owner · GC · Sub · Claimant · Entity as applicable]
+PROJECT: [Project name and number]
+KEY AMOUNTS: [All dollar figures — contract value, change, penalty, claim, variance, balance]
+CRITICAL DEADLINES: [Response deadlines, filing deadlines, abatement dates, payment dates]
+GAAP IMPACT: [Yes/No — ASC section if applicable]
+DISPUTE STATUS: [Active/Pending/No dispute/Unknown]
+RISK SCORE: [1-100]
+MATERIAL FACTS:
+1. [Fact]
+2. [Fact]
+3. [Fact]
+4. [Fact]
+5. [Fact]`,
+
+(doc,e)=>`You are a Construction FieldOps + Job Cost Analyst. CRITICAL: Respond in structured key:value lines only. No prose. No explanations. Max 15 words per field.
+ENGINE 01: ${compressed[1]}
+${FIELDOPS_CONTEXT ? '\n'+FIELDOPS_CONTEXT+'\n' : ''}${PERMITS_CONTEXT ? '\n'+PERMITS_CONTEXT+'\n' : ''}
+ENGINE 02 — FIELDOPS ANALYSIS
+SCHEDULE IMPACT: [X days — reason]
+COST VARIANCE: [+/- $amount by division]
+LABOR RISK: [one line]
+AP GAPS: [$amount — reason]
+SUPER ACTION: [one action]
+CRITICAL PATH: [Yes/No — one reason]
+FIELDOPS RISK: [Low/Medium/High/Critical]`,
+
+(doc,e)=>`You are a Construction Financial Analyst with GAAP expertise. CRITICAL: Respond in structured key:value lines only. No prose. No explanations. Max 15 words per field.
+ENGINE 01: ${compressed[1]}
+ENGINE 02 FIELDOPS: ${compressed[2]}
+
+ENGINE 03 — FINANCIAL IMPACT · GAAP
+EXPOSURE: [$low-$high]
+JOURNAL ENTRY: [Yes/No — accounts if yes]
+GAAP: [ASC# one line]
+CASH IMPACT: [$amount]
+RETAINAGE AT RISK: [$amount]
+COST OVERRUN: [$amount]
+FINANCIAL RISK: [1-100]
+RESERVE: [$amount]
+RESTATEMENT: [Yes/No]`,
+
+(doc,e)=>`You are a Construction Legal Analyst. CRITICAL: Respond in structured key:value lines only. No prose. No explanations. Max 15 words per field.
+ENGINE 01: ${compressed[1]}
+ENGINE 03: ${compressed[3]}
+
+ENGINE 04 — LEGAL COMMAND
+LEGAL RISK: [one line]
+LIEN: [$amount — deadline]
+BOND: [Yes/No]
+BREACH: [Yes/No — provision]
+DEADLINE 1: [date — action]
+DEADLINE 2: [date — action]
+ACTION: [Respond/Contest/File/Negotiate/Cure/Restate]
+LEGAL RISK LEVEL: [Low/Medium/High/Critical]`,
+
+(doc,e)=>`You are a Construction Compliance + Payroll Officer. CRITICAL: Respond in structured key:value lines only. No prose. No explanations. Max 15 words per field.
+ENGINE 01: ${compressed[1]}
+ENGINE 02 FIELDOPS: ${compressed[2]}
+${PERMITS_CONTEXT ? '\n'+PERMITS_CONTEXT+'\n' : ''}
+ENGINE 05 — COMPLIANCE SHIELD
+OSHA: [$penalty estimate]
+DAVIS-BACON: [Compliant/At Risk]
+1099 RISK: [Yes/No]
+PAYROLL: [Compliant/Gaps — one line]
+PERMIT: [Compliant/Gaps]
+ABATEMENT: [Yes/No]
+COMPLIANCE RISK: [Low/Medium/High/Critical]
+ACTION 1: [action — owner — deadline]
+ACTION 2: [action — owner — deadline]`,
+
+(doc,e)=>`You are the TSM Construction BNCA Executive Engine.
+DEFECT MANIFEST — EXTRACTED FROM ENGINE ANALYSIS:
+${buildDefectManifest(e)}
+
+DOCUMENT-SPECIFIC CONTEXT:
+DOC TYPE: ${selectedDocType}
+KEY AMOUNTS: ${(e[1]||'').match(/KEY AMOUNTS[:\s]+([^\n]+)/)?.[1]||'See Engine 01'}
+FINANCIAL EXPOSURE: ${(e[3]||'').match(/EXPOSURE RANGE[:\s]+([^\n]+)/)?.[1]||'See Engine 03'}
+PRIMARY LEGAL RISK: ${(e[4]||'').match(/PRIMARY LEGAL RISK[:\s]+([^\n]+)/)?.[1]||'See Engine 04'}
+COMPLIANCE ACTIONS: ${(e[5]||'').match(/IMMEDIATE COMPLIANCE ACTIONS[:\s]+([\s\S]*?)(?=\n[A-Z]|$)/)?.[1]?.slice(0,300)||'See Engine 05'}
+
+CRITICAL INSTRUCTION: Every HOW_TO_USE field must reference the specific defects above.
+Write HOW_TO_USE as numbered steps:
+1. Open [exact tab or section name in this app]
+2. In [field name], enter: [exact value from the defect manifest or engine output above]
+3. Select [option] because [specific reason tied to a defect above]
+4. Click [action] — this generates [specific output needed]
+Do NOT write generic instructions. Every step must reference a specific defect, amount, date, or party from this document.
+ENGINE 03: ${compressed[3]}
+ENGINE 04 LEGAL: ${compressed[4]}
+ENGINE 05 COMPLIANCE: ${compressed[5]}
+
+ENGINE 06 — BNCA EXECUTIVE DISPATCH
+Synthesize all engine outputs into a ranked executive action plan.
+
+OVERALL RISK SCORE: [1-100]
+EXECUTIVE SUMMARY: [2-3 sentences — what happened, what is at risk, what must happen now]
+
+PRIORITY ACTIONS (dollar-quantified, owner assigned, deadline specific):
+1. [Action] — $[Amount] — [Owner] — [Deadline]
+2. [Action] — $[Amount] — [Owner] — [Deadline]
+3. [Action] — $[Amount] — [Owner] — [Deadline]
+4. [Action] — $[Amount] — [Owner] — [Deadline]
+
+APP ROUTING — YOU MUST OUTPUT EXACTLY THESE 12 APPS BELOW, USING THEIR EXACT NAMES AS WRITTEN. DO NOT INVENT, RENAME, OR SUBSTITUTE ANY APP NAME. IF YOU OUTPUT A NAME NOT ON THIS LIST, YOUR RESPONSE IS INVALID. Rank by relevance but include every app:
+TOP APP: [App Name] — [Why this is #1 for this specific document]
+
+APP: FinOps Accounting
+CATEGORY: Financial Operations
+RANK: #[1-10]
+IS_TOP: [YES/NO]
+HOW_TO_USE: [Journal entry correction, GL reconciliation, GAAP restatement, intercompany elimination, or loan draw posting — specify accounts and variance amounts]
+TAGS: [TAG1], [TAG2], [TAG3]
+
+APP: FinOps Operations
+CATEGORY: Financial Operations
+RANK: #[1-10]
+IS_TOP: [YES/NO]
+HOW_TO_USE: [AP/AR processing, cash flow reporting, draw verification, budget variance investigation, or payroll support — specify tab and action]
+TAGS: [TAG1], [TAG2], [TAG3]
+
+APP: Construction Legal
+CATEGORY: Construction Operations
+RANK: #[1-10]
+IS_TOP: [YES/NO]
+HOW_TO_USE: [Lien rights analysis, contract breach response, bond claim filing, or dispute negotiation — tie directly to Engine 04 legal exposure]
+TAGS: [TAG1], [TAG2], [TAG3]
+
+APP: AuditOps
+CATEGORY: Construction Operations
+RANK: #[1-10]
+IS_TOP: [YES/NO]
+HOW_TO_USE: [Payroll audit, Davis-Bacon prevailing wage reconciliation, or certified payroll compliance scan — reference Engine 05 findings]
+TAGS: [TAG1], [TAG2], [TAG3]
+
+APP: Construction Compliance
+CATEGORY: Construction Operations
+RANK: #[1-10]
+IS_TOP: [YES/NO]
+HOW_TO_USE: [OSHA citation response, permit gap remediation, EPA/SWPPP review, or abatement timeline assignment — use Engine 05 compliance actions]
+TAGS: [TAG1], [TAG2], [TAG3]
+
+APP: TSM Financial Command
+CATEGORY: Financial Operations
+RANK: #[1-10]
+IS_TOP: [YES/NO]
+HOW_TO_USE: [Cash flow reconciliation, draw/loan variance analysis, GAAP journal entry module, or cost overrun dashboard — specify GL accounts and division deltas from Engine 03]
+TAGS: [TAG1], [TAG2], [TAG3]
+
+APP: AuditOps Sovereign Core
+CATEGORY: Audit & Field Operations
+RANK: #[1-10]
+IS_TOP: [YES/NO]
+HOW_TO_USE: [Select playbook matching document risk — Safety/Finance/Compliance/Legal/Logistics — run specific module and chain output through Intelligence Feed]
+TAGS: [TAG1], [TAG2], [TAG3]
+
+APP: Legal Analyst Pro
+CATEGORY: Legal Operations
+RANK: #[1-10]
+IS_TOP: [YES/NO]
+HOW_TO_USE: [Lien analysis, contract breach review, bond claim assessment, or dispute response drafting — route from Engine 04 primary legal exposure]
+TAGS: [TAG1], [TAG2], [TAG3]
+
+APP: TSM Compliance Command
+CATEGORY: Regulatory Compliance
+RANK: #[1-10]
+IS_TOP: [YES/NO]
+HOW_TO_USE: [OSHA module for citation response, Davis-Bacon tab for prevailing wage audit, Permit Status Review for abatement — assign owners and deadlines from Engine 05]
+TAGS: [TAG1], [TAG2], [TAG3]
+
+APP: AuditOps Pro Tax Intelligence
+CATEGORY: Tax & Payroll Audit
+RANK: #[1-10]
+IS_TOP: [YES/NO]
+HOW_TO_USE: [Payroll compliance scan, 1099 misclassification analysis, or certified payroll reconciliation — cross-reference Engine 05 worker classification risk]
+TAGS: [TAG1], [TAG2], [TAG3]
+
+APP: TSM Construction Suite Field & Document Ops
+CATEGORY: Field Operations
+RANK: #[1-10]
+IS_TOP: [YES/NO]
+HOW_TO_USE: [Field crew dispatch, equipment tracking, subcontractor coordination, or on-site document processing — route schedule impact and critical path findings from Engine 02]
+TAGS: [TAG1], [TAG2], [TAG3]
+
+APP: TSM Zero-Trust Enterprise Access Command
+CATEGORY: Access & Security
+RANK: #[1-10]
+IS_TOP: [YES/NO]
+HOW_TO_USE: [Invoke when document reveals intercompany access risk, unauthorized draw approval, or credential gaps — lock down access roles for flagged entities immediately]
+TAGS: [TAG1], [TAG2], [TAG3]
+
+DISPATCH_INTRO: [1-2 sentences — why these top-ranked apps address the specific risks in this document]
+
+BNCA — BEST NEXT COURSE OF ACTION:
+[Single paragraph — most critical action sequence for the next 72 hours]
+
+ESCALATION TRIGGER: [Condition requiring immediate executive involvement]`
+];
+
+// ═══════════════════════════════
+// FALLBACKS
+// ═══════════════════════════════
+const FALLBACKS=[
+(doc)=>`DOC TYPE: ${selectedDocType}\nPARTIES: As identified in document\nKEY AMOUNTS: Per document — verify with project accountant\nCRITICAL DEADLINES: Active — review immediately\nGAAP IMPACT: Yes — accounting review required\nDISPUTE STATUS: Unknown — manual review required\nRISK SCORE: 65\nMATERIAL FACTS:\n1. Document loaded and classified as ${selectedDocType}\n2. Financial exposure present — quantification required\n3. Deadlines may be time-sensitive — calendar review required\n4. Consult construction attorney and project accountant\n5. Preserve all related documentation and correspondence`,
+(doc,e)=>`SCHEDULE IMPACT: Review required — potential delay identified\nCOST TO BUDGET VARIANCE: Investigate by cost division\nCREW AND LABOR RISK: Verify worker classifications and hours\nEQUIPMENT AND MATERIALS: Review POs and delivery logs\nAP VERIFICATION GAPS: Reconcile open invoices to cost codes\nSUPERINTENDENT ACTION REQUIRED: Review document and brief team\nCRITICAL PATH THREAT: Unknown — schedule review required\nFIELDOPS RISK LEVEL: Medium`,
+(doc,e)=>`EXPOSURE RANGE: $50K – $500K estimated\nJOURNAL ENTRY REQUIRED: Yes — verify account coding\nGAAP TREATMENT: Review ASC 835-20 (capitalization) and ASC 810 (consolidation) as applicable\nDRAW / LOAN RECONCILIATION: Reconcile GL to lender draw statements\nCASH FLOW IMPACT: Weekly cash report update required\nRETAINAGE AT RISK: Verify contract retainage terms\nCOST OVERRUN: Investigate unapproved variance\nFINANCIAL RISK SCORE: 62\nRECOMMENDED RESERVE: 10% of contract value\nRESTATEMENT RISK: Unknown — accounting review required`,
+(doc,e)=>`PRIMARY LEGAL RISK: Dispute exposure — consult counsel\nLIEN EXPOSURE: Review filing deadlines immediately\nBOND CLAIM STATUS: Verify bond coverage\nCONTRACT BREACH RISK: Unknown — review contract provisions\nINTERCOMPANY RISK: Review related-party transaction documentation\nFILING DEADLINES:\n1. Verify lien window with attorney immediately\n2. Preserve all demand letters and notices\nRECOMMENDED LEGAL ACTION: Consult construction attorney within 48 hours\nLEGAL RISK LEVEL: Medium-High`,
+(doc,e)=>`OSHA EXPOSURE: Review OSHA 300 log and site safety protocols\nDAVIS-BACON / PREVAILING WAGE: Verify certified payroll — underpayment risk identified\n1099 / WORKER CLASSIFICATION: Review IRS 20-factor test for recurring subcontract labor\nPAYROLL COMPLIANCE: File missing certified payroll submissions immediately\nEPA / SWPPP: Review stormwater plan for site condition changes\nPERMIT STATUS: Confirm all permits current and cover modified scope\nHR / DOCUMENTATION: Verify I-9 files and certifications are complete\nABATEMENT REQUIRED: Yes — review and document within 15 days\nCOMPLIANCE RISK LEVEL: Medium\nIMMEDIATE COMPLIANCE ACTIONS:\n1. File missing certified payroll — Safety/HR Officer — 48 hours\n2. Audit worker classifications — HR/Payroll — 72 hours\n3. Confirm all permits cover modified scope — PM — 1 week`,
+(doc,e)=>`OVERALL RISK SCORE: 68\nEXECUTIVE SUMMARY: Document requires immediate accounting and legal review. Financial exposure identified across multiple risk areas. Executive attention and owner-lane assignment required within 48 hours.\n\nPRIORITY ACTIONS:\n1. Accounting review and GL correction — $TBD — Project Accountant — 48 hours\n2. Legal review and filing rights preservation — $TBD — Construction Attorney — 48 hours\n3. Payroll compliance and certified payroll filing — $TBD — HR/Payroll — 72 hours\n4. Owner notification and dispute documentation — $0 — PM — 24 hours\n\nAPP ROUTING (ranked by relevance):\nTOP APP: FinOps Accounting — Journal entry correction and GL reconciliation\n\nAPP: FinOps Accounting\nCATEGORY: Financial Operations\nRANK: #1\nIS_TOP: YES\nHOW_TO_USE: Open the GL Reconciliation tab → enter the unrecorded amounts → correct journal entries for CIP capitalization and intercompany loans. Use the GAAP Treatment advisor to confirm ASC 835-20 and ASC 810 requirements.\nTAGS: JOURNAL ENTRY, GAAP, GL, RECONCILIATION\n\nAPP: FinOps Operations\nCATEGORY: Financial Operations\nRANK: #2\nIS_TOP: NO\nHOW_TO_USE: Open the Draw Verification tab → input lender draw amounts vs GL-posted amounts → generate variance report and corrective AP entries. Use Cash Flow module for weekly position update.\nTAGS: DRAW, AP, CASH FLOW, VARIANCE\n\nAPP: Construction Legal\nCATEGORY: Construction Operations\nRANK: #3\nIS_TOP: NO\nHOW_TO_USE: Open the Lien Protection tab → enter the claimant, amount, and filing deadline → generate preliminary notice response and bond claim analysis.\nTAGS: LIEN, CONTRACT, DISPUTE, LEGAL\n\nAPP: AuditOps\nCATEGORY: Construction Operations\nRANK: #4\nIS_TOP: NO\nHOW_TO_USE: Navigate to the Certified Payroll tab → enter project and week → surface Davis-Bacon underpayment calculations and corrective payroll journal entries.\nTAGS: PAYROLL, DAVIS-BACON, AUDIT, COMPLIANCE\n\nAPP: Construction Compliance\nCATEGORY: Construction Operations\nRANK: #5\nIS_TOP: NO\nHOW_TO_USE: Use the OSHA Response tab → enter citation number and violation → generate abatement plan and contest timeline.\nTAGS: OSHA, COMPLIANCE, SAFETY, ABATEMENT\n\nDISPATCH_INTRO: 5 remediation pathways identified from 6-engine analysis. Route to the highest-ranked app first — each contains step-by-step guidance specific to the accounting and operational issues detected in this document.\n\nBNCA — BEST NEXT COURSE OF ACTION:\nEngage project accountant to correct GL misclassifications and prepare restatement documentation within 48 hours. Simultaneously engage construction attorney to preserve all lien rights before the filing window closes. Financial reserve should be established at 10% of contract value pending resolution.\n\nESCALATION TRIGGER: Any combination of GAAP restatement risk + active lien window + unresolved draw variance requires immediate executive and CFO involvement.`
+];
+
+// ═══════════════════════════════
+// APP DISPATCH BUILDER
+// ═══════════════════════════════
+// Route map includes finops apps
+const ROUTE_MAP={
+  'finops accounting':                          '/finops-suite/finops-accounting.html',
+  'finops operations':                          '/finops-suite/finops-operations.html',
+  'construction legal':                         'legal.html',
+  'legal analyst pro':                          'legal.html',
+  'auditops':                                   'auditops-tax.html',
+  'auditops sovereign core':                    'construction-pro.html',
+  'auditops pro tax intelligence':              'auditops-tax.html',
+  'construction compliance':                    'compliance-hub.html',
+  'compliance hub':                             'compliance-hub.html',
+  'tsm compliance command':                     'compliance-hub.html',
+  'construction financial':                     'financial.html',
+  'tsm financial command':                      'financial.html',
+  'construction strategist':                    'construction-strategist.html',
+  'tax prep':                                   'tax-prep.html',
+  'tsm construction suite field & document ops':'construction-suite-expansion.html',
+  'tsm zero-trust enterprise access command':   'zero-trust.html',
+  'permits & proposals':                        'permits-proposals.html',
+  'permits proposals':                          'permits-proposals.html',
+};
+const DOT_COLORS=['#00ff50','#ffd700','#00e5ff','#c084fc','#ff9500'];
+
+function buildDispatch(raw){
+  const introM=raw.match(/DISPATCH_INTRO:\s*([^\n]+(?:\n(?!APP:)[^\n]+)*)/);
+  document.getElementById('dispatchIntro').textContent=introM?introM[1].trim():'5 remediation pathways identified from 6-engine analysis. Route to the highest-ranked app first.';
+
+  const blocks=raw.split(/\n(?=APP:)/);
+  let apps=[];
+  for(const b of blocks){
+    const name=(b.match(/APP:\s*(.+)/)||[])[1]?.trim();
+    const rank=(b.match(/RANK:\s*(.+)/)||[])[1]?.trim();
+    const isTop=/IS_TOP:\s*YES/i.test(b);
+    const how=(b.match(/HOW_TO_USE:\s*([\s\S]+?)(?=\nTAGS:|$)/)||[])[1]?.trim();
+    const tagsRaw=(b.match(/TAGS:\s*(.+)/)||[])[1]?.trim();
+    if(name) apps.push({name,rank,isTop,how,tagsRaw});
+  }
+
+  const DEFAULTS=[
+    {name:'FinOps Accounting',how:'GL reconciliation, journal entry correction, GAAP restatement — open GL tab and correct misclassified entries.',tagsRaw:'JOURNAL ENTRY, GAAP, GL'},
+    {name:'FinOps Operations',how:'Draw verification, AP/AR processing, cash flow update — open Draw Verification tab.',tagsRaw:'DRAW, AP, CASH FLOW'},
+    {name:'Legal Analyst Pro',how:'Lien response, contract breach, bond claim — open Lien Rights tab.',tagsRaw:'LIEN, CONTRACT, DISPUTE'},
+    {name:'AuditOps Sovereign Core',how:'Select Finance or Legal playbook — run module and chain through Intelligence Feed.',tagsRaw:'AUDIT, PLAYBOOK, COMPLIANCE'},
+    {name:'TSM Compliance Command',how:'OSHA response, Davis-Bacon audit, permit review — open relevant compliance module.',tagsRaw:'OSHA, DAVIS-BACON, PERMIT'},
+    {name:'AuditOps Pro Tax Intelligence',how:'Payroll scan, 1099 misclassification, certified payroll reconciliation.',tagsRaw:'PAYROLL, 1099, TAX'},
+    {name:'TSM Financial Command',how:'Cash flow reconciliation, draw variance, cost overrun dashboard.',tagsRaw:'CASH FLOW, DRAW, VARIANCE'},
+    {name:'TSM Construction Suite Field & Document Ops',how:'Field crew dispatch, equipment tracking, subcontractor coordination.',tagsRaw:'FIELDOPS, CREW, SCHEDULE'},
+    {name:'TSM Zero-Trust Enterprise Access Command',how:'Lock down unauthorized access roles, flag credential anomalies.',tagsRaw:'ACCESS, SECURITY, BREACH'},
+  ];
+  DEFAULTS.forEach((d,di)=>{
+    if(!apps.find(a=>a.name.toLowerCase().includes(d.name.toLowerCase().split(' ')[0]))){
+      apps.push({...d,rank:'#'+(apps.length+1),isTop:false});
+    }
+  });
+
+  const container=document.getElementById('appCardsList');
+  container.innerHTML='';
+  apps.slice(0,7).forEach((app,i)=>{
+    const key=app.name.toLowerCase();
+    let href=ROUTE_MAP[key];
+    if(!href){ for(const k in ROUTE_MAP){ if(key.includes(k.split(' ')[0])){ href=ROUTE_MAP[k]; break; } } }
+    if(!href) href='construction-hub.html';
+    const tags=(app.tagsRaw||'').split(',').map(t=>t.trim()).filter(Boolean);
+    const card=document.createElement('div');
+    card.className='app-row'+(app.isTop?' top-match':'');
+    // Mark FinOps apps with special color
+    const isFinOps=app.name.toLowerCase().includes('finops');
+    const dotColor=isFinOps?'#c084fc':DOT_COLORS[i]||'#5a7a5e';
+    card.innerHTML=`
+      <div class="app-row-hdr">
+        <div class="app-name-block">
+          <div class="app-dot" style="background:${dotColor}"></div>
+          <div>
+            <div class="app-name"${isFinOps?' style="color:var(--purple)"':''}>${esc(app.name)}</div>
+            <div class="app-cat">${isFinOps?'Financial Operations':'Construction Operations'}</div>
+          </div>
+        </div>
+        ${app.isTop?'<span class="top-badge">★ TOP MATCH</span>':`<span class="app-rank-badge">${esc(app.rank||'#'+(i+1))}</span>`}
+      </div>
+      <div class="app-how-lbl">HOW TO USE THIS APP FOR YOUR ISSUE</div>
+      <div class="app-how-txt">${esc(app.how||'Navigate to this app and use the intake form to begin analysis.')}</div>
+      <div class="app-tags-row">${tags.map(t=>`<span class="app-tag">${esc(t)}</span>`).join('')}</div>
+      <button class="app-launch-btn" onclick="launchApp('${href}', ${JSON.stringify({name:app.name,how:app.how||'',tags:tags})})">LAUNCH ${esc(app.name.toUpperCase())} →</button>
+    `;
+    container.appendChild(card);
+  });
+
+  document.getElementById('dispatchCount').textContent=`✓ ${Math.min(apps.length,7)} APPS RECOMMENDED`;
+  document.getElementById('dispatchSection').style.display='block';
+}
+
+function launchApp(href, appMeta){
+  storeSession();
+  if(appMeta && window.TSMCureConductor){
+    window.TSMCureConductor.launch(href, appMeta, {
+      docText: (document.getElementById('docPaste') && document.getElementById('docPaste').value) || '',
+      vertical: 'Construction'
+    });
+  } else {
+    try {
+      var _dp = document.getElementById('docPaste');
+      localStorage.setItem('TSM_CURE_RELAY', JSON.stringify({
+        docText: (_dp && _dp.value) || '',
+        vertical: 'Construction',
+        appName: (appMeta && appMeta.name) || '',
+        appHowTo: (appMeta && appMeta.how) || '',
+        anomalies: (appMeta && appMeta.tags) || [],
+        timestamp: Date.now()
+      }));
+    } catch(e) {}
+    if(href.startsWith('/')) window.open(href, '_blank');
+    else window.open('/construction-suite/'+href, '_blank');
+  }
+}
+
+const ENGINE_TOKENS=[0,400,200,200,180,180,600];
+function esc(s){ return String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+// ═══════════════════════════════
+// FIRE ALL 6 ENGINES
+// ═══════════════════════════════
+async function callGroq(prompt,engIdx){
+  const r=await fetch('/api/construction/query',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({question:prompt,maxTokens:ENGINE_TOKENS[engIdx]||350})
+  });
+  if(!r.ok) throw new Error('API '+r.status);
+  const d=await r.json();
+  return d.answer||d.response||'';
+}
+
+function buildDefectManifest(e) {
+  const lines = [];
+  const src = [e[2]||'', e[3]||'', e[4]||'', e[5]||''].join('\n');
+  const patterns = [
+    /DEFECT[:\s]+([^\n]+)/gi,
+    /OSHA[:\s]+([^\n]+)/gi,
+    /LIEN[:\s]+([^\n]+)/gi,
+    /BREACH[:\s]+([^\n]+)/gi,
+    /COST OVERRUN[:\s]+([^\n]+)/gi,
+    /AP GAPS[:\s]+([^\n]+)/gi,
+    /ABATEMENT[:\s]+([^\n]+)/gi,
+    /RESTATEMENT[:\s]+([^\n]+)/gi,
+    /CRITICAL PATH[:\s]+([^\n]+)/gi,
+    /DEADLINE 1[:\s]+([^\n]+)/i,
+    /ACTION 1[:\s]+([^\n]+)/i,
+    /LEGAL RISK[:\s]+([^\n]+)/gi,
+  ];
+  patterns.forEach(p => {
+    let m;
+    while ((m = p.exec(src)) !== null) {
+      const line = m[1].trim();
+      if (line.length > 10 && !lines.includes(line)) lines.push(line);
+    }
+  });
+  return lines.slice(0, 12).map((d, i) => `DEFECT ${i+1}: ${d}`).join('\n') || 'No structured defects extracted — use Engine 01-05 output directly.';
+}
+
+async function fireEngines() {
+  docText=document.getElementById('docPaste').value.trim();
+  if(!docText){alert('Load or paste a construction document first.');return;}
+
+  PERMITS_CONTEXT = getPermitsContext();
+  FIELDOPS_CONTEXT = getFieldOpsContext();
+  if (PERMITS_CONTEXT) addLog('Permits & Proposals context loaded','Grounding Engine 02 + Engine 05 with recent permits-desk analysis','g');
+  if (FIELDOPS_CONTEXT) addLog('Field Ops context loaded','Grounding Engine 02 with live field data','g');
+
+  document.getElementById('fireBtn').disabled=true;
+  document.getElementById('spinner').classList.add('active');
+  document.getElementById('escalateBar').classList.remove('visible');
+  document.getElementById('dispatchSection').style.display='none';
+
+  const labels=['Document Intelligence','FieldOps Analysis','Financial Impact · GAAP','Legal Command','Compliance Shield','BNCA Executive Dispatch'];
+  enginesComplete=0;
+  const e={};
+  const compressed={};
+
+  function compress(i,raw){
+    if(i===1){
+      const fields=['DOC TYPE','PARTIES','PROJECT','KEY AMOUNTS','CRITICAL DEADLINES','GAAP IMPACT','DISPUTE STATUS','RISK SCORE'];
+      return fields.map(f=>{
+        const m=raw.match(new RegExp(f+':[\\s]*([^\\n]+)'));
+        return m?f+': '+m[1].trim():'';
+      }).filter(Boolean).join('\n');
+    }
+    if(i===2){
+      const fields=['SCHEDULE IMPACT','COST VARIANCE','LABOR RISK','AP GAPS','CRITICAL PATH','FIELDOPS RISK'];
+      return fields.map(f=>{
+        const m=raw.match(new RegExp(f+':[\\s]*([^\\n]+)'));
+        return m?f+': '+m[1].trim():'';
+      }).filter(Boolean).join('\n');
+    }
+    if(i===3){
+      const fields=['EXPOSURE','JOURNAL ENTRY','GAAP','CASH IMPACT','RETAINAGE AT RISK','COST OVERRUN','FINANCIAL RISK','RESERVE','RESTATEMENT'];
+      return fields.map(f=>{
+        const m=raw.match(new RegExp(f+':[\\s]*([^\\n]+)'));
+        return m?f+': '+m[1].trim():'';
+      }).filter(Boolean).join('\n');
+    }
+    if(i===4){
+      const fields=['LEGAL RISK','LIEN','BOND','BREACH','DEADLINE 1','DEADLINE 2','ACTION','LEGAL RISK LEVEL'];
+      return fields.map(f=>{
+        const m=raw.match(new RegExp(f+':[\\s]*([^\\n]+)'));
+        return m?f+': '+m[1].trim():'';
+      }).filter(Boolean).join('\n');
+    }
+    if(i===5){
+      const fields=['OSHA','DAVIS-BACON','1099 RISK','PAYROLL','PERMIT','ABATEMENT','COMPLIANCE RISK'];
+      return fields.map(f=>{
+        const m=raw.match(new RegExp(f+':[\\s]*([^\\n]+)'));
+        return m?f+': '+m[1].trim():'';
+      }).filter(Boolean).join('\n');
+    }
+    return raw.slice(0,300);
+  }
+
+  for(let i=1;i<=6;i++){
+    setEngState(i,'running');
+    document.getElementById('spinLabel').textContent='Engine 0'+i+' — '+labels[i-1]+'...';
+    addLog('Engine 0'+i+' running',labels[i-1],'a');
+
+    let txt='';
+    try{
+      const prompt=i===1?PROMPTS[0](docText):PROMPTS[i-1](docText,compressed);
+      txt=await callGroq(prompt,i);
+      if(!txt.trim()) throw new Error('empty response');
+    }catch(err){
+      txt=FALLBACKS[i-1](docText,e);
+      addLog('Engine 0'+i+' used fallback',err.message,'f');
+    }
+
+    e[i]=txt;
+    compressed[i]=compress(i,txt);
+    setEngBody(i,txt);
+    setEngState(i,'done');
+    enginesComplete++;
+    document.getElementById('kpiEngines').textContent=enginesComplete+'/6';
+    document.getElementById('sbEngines').textContent=enginesComplete+' / 6 Engines Complete';
+    addLog('Engine 0'+i+' complete',labels[i-1]+' · '+new Date().toLocaleTimeString(),'g');
+    await new Promise(r=>setTimeout(r,250));
+  }
+
+  buildDispatch(e[6]||'');
+
+  const combined=(e[1]||'')+(e[3]||'')+(e[6]||'');
+  const riskM=combined.match(/(?:OVERALL RISK SCORE|RISK SCORE)[:\s*]+(\d+)/i);
+  const expM=combined.match(/EXPOSURE[:\s]+([^\n]+)/i);
+  const dlM=combined.match(/(?:CRITICAL DEADLINES?|DEADLINE 1)[\s\S]*?([^\n]+)/i);
+  const safetyM=combined.match(/FIELDOPS RISK[:\s]+([^\n]+)/i);
+  const compM=combined.match(/COMPLIANCE RISK[:\s]+([^\n]+)/i);
+
+  if(riskM){
+    const r=parseInt(riskM[1]);
+    document.getElementById('kpiRisk').textContent=r;
+    document.getElementById('snapRisk').textContent=r+'/100';
+    document.getElementById('riskFill').style.width=r+'%';
+    document.getElementById('riskFill').style.background=r>70?'var(--red)':r>40?'var(--gold)':'var(--green)';
+  }
+  if(expM){const x=expM[1].trim().slice(0,20);document.getElementById('kpiExposure').textContent=x;document.getElementById('snapExposure').textContent=x;}
+  if(dlM) document.getElementById('snapDeadline').textContent=dlM[1].trim().slice(0,16);
+  if(safetyM) document.getElementById('kpiSafety').textContent=safetyM[1].trim().slice(0,12);
+  if(compM) document.getElementById('kpiCompliance').textContent=compM[1].trim().slice(0,12);
+  document.getElementById('snapType').textContent=selectedDocType.slice(0,12);
+  document.getElementById('sbDoc').textContent=selectedDocType+' · '+docText.length+' chars loaded';
+
+  document.getElementById('alertText').textContent='6-ENGINE ANALYSIS COMPLETE — '+selectedDocType.toUpperCase()+' — ESCALATE TO STRATEGIST';
+  document.getElementById('alertDot').style.background='var(--green)';
+  document.getElementById('escalSub').textContent='6-engine assessment complete — '+selectedDocType+' · Route to top app or escalate to Construction Strategist.';
+  document.getElementById('escalateBar').classList.add('visible');
+  document.getElementById('spinner').classList.remove('active');
+  document.getElementById('fireBtn').disabled=false;
+  addLog('All 6 Engines Complete','App dispatch ready — escalate to Strategist','p');
+  storeSession(e);
+  fireCapabilitySweep(e);
+  showAnomalyAdvisorPanel(e, docText);
+  // Auto-escalate to Strategist disabled by design: this was firing 2s after
+  // engines complete regardless of tsm_auto_mode, cutting off the Anomaly
+  // Advisor reveal and the Build Remediation Mission / permits-routing flow
+  // before the user could interact with it. Escalation is now manual only
+  // via the "⚡ ESCALATE TO STRATEGIST →" button.
+}
+
+// ═══════════════════════════════
+// SESSION
+// ═══════════════════════════════
+function storeSession(e){
+  try{
+    const payload={
+      doc:docText,docType:selectedDocType,
+      engines:{e1:e?.[1]||'',e2:e?.[2]||'',e3:e?.[3]||'',e4:e?.[4]||'',e5:e?.[5]||'',e6:e?.[6]||''},
+      snapshot:{risk:document.getElementById('snapRisk').textContent,exposure:document.getElementById('snapExposure').textContent,deadline:document.getElementById('snapDeadline').textContent,docType:selectedDocType},
+      timestamp:new Date().toISOString(),chainStep:'war-room'
+    };
+    sessionStorage.setItem('TSM_CONSTRUCTION_WAR_RELAY',JSON.stringify(payload));
+    localStorage.setItem('tsm_construction_war_relay',JSON.stringify(payload));
+    localStorage.setItem('TSM_CONSTRUCTION_WAR_RELAY',JSON.stringify(payload));
+    if (window.TSM && window.TSM.relay && window.TSM.relay.write) {
+      try { window.TSM.relay.write('CONSTRUCTION', JSON.parse(JSON.stringify(payload))); } catch (e) { /* noop */ }
+    }
+  }catch(err){console.warn('Store error:',err);}
+}
+
+function fireCapabilitySweep(e) {
+  try {
+    const e1 = e?.[1] || '';
+    const combined = (e?.[1] || '') + (e?.[3] || '') + (e?.[6] || '');
+    const partiesM = e1.match(/PARTIES:[\s]*([^\n]+)/i);
+    const projectM = e1.match(/PROJECT:[\s]*([^\n]+)/i);
+    const expM = combined.match(/EXPOSURE[:\s]+([^\n]+)/i);
+    const parties = partiesM ? partiesM[1].trim() : '';
+    fetch('/api/enterprise/capability-sweep', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        vertical: 'construction',
+        title: (selectedDocType || 'Construction Document') + (projectM ? ' — ' + projectM[1].trim().slice(0, 60) : ''),
+        summary: docText.slice(0, 1500),
+        exposure: expM ? expM[1].trim().slice(0, 30) : null,
+        entities: {
+          customer: parties.split(/[·,]/)[0]?.trim() || projectM?.[1]?.trim() || 'Construction Project',
+          relationshipType: 'Contractor',
+          contingency: 'Reserve allocation / change-order resolution',
+          sku: selectedDocType || 'CHANGE-ORDER',
+          productName: projectM ? projectM[1].trim().slice(0, 60) : selectedDocType
+        }
+      })
+    }).catch(err => console.warn('[Capability Sweep Construction]', err.message));
+  } catch (err) { console.warn('[Capability Sweep Construction]', err.message); }
+}
+
+function pushCollectiveSignal_CON() {
+  try {
+    const e = engOut;
+    const bncaText = e[6] || e[5] || '';
+
+    // Parse risk score from Engine 06
+    const scoreM = bncaText.match(/OVERALL\s*RISK\s*SCORE[:\s]+(\d+)/i);
+    const score = scoreM ? parseInt(scoreM[1]) : 68;
+    const riskLevel = score >= 80 ? 'URGENT' : score >= 60 ? 'RISK' : score >= 40 ? 'WATCH' : 'READY';
+    // Confidence in the pushed signal isn't a flat number -- it depends on
+    // whether Engine 06 actually returned a parsable "OVERALL RISK SCORE"
+    // line. When the regex misses, score silently falls back to 68 and
+    // riskLevel is built on that guess, so the signal deserves a visibly
+    // lower confidence rather than the same number every time.
+    const pushConfidence = scoreM ? 90 : 55;
+
+    // Parse financial exposure
+    const dollarAmounts = [...(bncaText.matchAll(/\$[\d,.]+(?:\s*[MK])?(?:\s*(?:exposure|at risk|TBD|reserve))?/gi))];
+    const impactDelta = dollarAmounts.length ? dollarAmounts[0][0] : '$TBD';
+
+    // Parse top action from priority actions
+    const actionM = bncaText.match(/PRIORITY\s*ACTIONS[:\s]*\n?1\.\s*([^\n—]+)/i);
+    const topIssue = actionM ? actionM[1].trim() : 'Construction document requires accounting and legal review';
+
+    // Legal risk from Engine 04
+    const legalRiskM = (e[4] || '').match(/PRIMARY\s*LEGAL\s*RISK[:\s]+([^\n]+)/i);
+    const legalRisk = legalRiskM ? legalRiskM[1].trim() : '—';
+
+    fetch('/api/collective/signal', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        vertical:     'construction',
+        warRoom:      'Construction War Room',
+        bnca:         bncaText.slice(0, 400) || 'Construction 6-engine BNCA complete.',
+        confidence:   pushConfidence,
+        riskLevel,
+        topIssue,
+        ownerLanes:   ['Project Manager', 'Project Accountant', 'Construction Attorney'],
+        hitlRequired: riskLevel !== 'READY',
+        actions:      [
+          'Correct GL misclassifications within 48 hours',
+          'File lien preservation before window closes',
+          'Establish financial reserve at 10% of contract value'
+        ],
+        impactDelta,
+        kpi: {
+          'Risk Score':   score + '/100',
+          'Doc Type':     selectedDocType || '—',
+          'Legal Risk':   legalRisk.slice(0,30) || '—',
+          'Engines Run':  enginesComplete + '/6'
+        }
+      })
+    });
+  } catch(e) { console.warn('[Collective Signal Construction]', e.message); }
+}
+
+function escalateToStrategist(){ storeSession(); pushCollectiveSignal_CON(); setTimeout(()=>{ window.location.href='/html/war-rooms/construct-war/construction-strategist.html'; },400); addLog('Escalating to Construction Strategist','6-engine package dispatched','p'); setTimeout(()=>goNav('construction-strategist.html'),500); }
+
+function exportFull(){
+  let out=`TSM CONSTRUCTION WAR ROOM — FULL ANALYSIS\n${new Date().toLocaleString()}\nDocument Type: ${selectedDocType}\n\n`;
+  for(let i=1;i<=6;i++) out+=`\n${'='.repeat(60)}\nENGINE 0${i}\n${'='.repeat(60)}\n${engOut[i]||'No output'}\n`;
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([out],{type:'text/plain'}));
+  a.download='tsm-construction-war-room-'+Date.now()+'.txt';
+  a.click();
+}
+
+function clearAll(){
+  docText='';engOut={};enginesComplete=0;
+  document.getElementById('docPaste').value='';
+  document.getElementById('escalateBar').classList.remove('visible');
+  document.getElementById('dispatchSection').style.display='none';
+  ['kpiEngines','kpiRisk','kpiExposure','kpiSafety','kpiCompliance'].forEach(id=>document.getElementById(id).textContent=id==='kpiEngines'?'0/6':'—');
+  ['snapRisk','snapExposure','snapDeadline','snapType'].forEach(id=>document.getElementById(id).textContent='—');
+  for(let i=1;i<=6;i++){
+    setEngState(i,'idle');
+    const b=document.getElementById('body-e'+i); if(b){b.classList.remove('live');b.textContent='// Waiting...';}
+    const c=document.getElementById('chars-e'+i); if(c) c.textContent='0 chars';
+  }
+  document.getElementById('riskFill').style.width='0%';
+  document.querySelectorAll('.sample-chip').forEach(b=>b.classList.remove('loaded'));
+  document.getElementById('sbDoc').textContent='No document loaded';
+  const lbl=document.getElementById('con-upload-name'); if(lbl) lbl.textContent='DROP FILE OR CLICK TO UPLOAD';
+  addLog('War Room cleared','Ready for new document','f');
+}
+
+// ═══════════════════════════════
+// LOAD FROM PRESENTATION SESSION
+// ═══════════════════════════════
+(function(){
+  try{
+    const relay=sessionStorage.getItem('tsm_construction_relay');
+    if(relay){
+      const data=JSON.parse(relay);
+      if(data.doc){ document.getElementById('docPaste').value=data.doc; docText=data.doc; addLog('Session loaded from Construction Presentation','Document carried forward','g'); }
+    }
+  }catch(e){}
+})();
+
+addLog('Construction War Room initialized','6 engines standing by — load construction document to begin','g');
+</script>
+<script>
+// ── REMEDY APPS (recommended routes for the detected anomaly) ──────
+// Bridges the live defect scan above into TSMSectorIntelligence's
+// construction anomaly playbooks (PERMIT_DELAY / SUBCONTRACTOR_EXPOSURE),
+// registers the finding via TSMMemory so it shows up in sector memory
+// alongside every other sector's anomalies, and renders the resulting
+// recommendedApps (Permit Review / Project Recovery / Construction
+// Strategist / AuditOps Pro) as clickable chips — same pattern already
+// live in bpo-executive-portal.html's "Recommended Apps" panel.
+function detectConstructionAnomalyCode(outputs, docText) {
+  const t = ((outputs[1] || '') + ' ' + (outputs[2] || '') + ' ' + (docText || '')).toLowerCase();
+  if (t.includes('subcontractor') || t.includes('sub-contract') || t.includes('vendor dependency')) {
+    return 'SUBCONTRACTOR_EXPOSURE';
+  }
+  return 'PERMIT_DELAY';
+}
+
+function renderConstructionRemedyApps(outputs, docText) {
+  const body = document.getElementById('anomaly-panel-body');
+  if (!body || !window.TSMSectorIntelligence) return;
+
+  const anomalyCode = detectConstructionAnomalyCode(outputs, docText);
+  const entityId = 'scan-' + Date.now();
+
+  if (window.TSMMemory && typeof window.TSMMemory.registerAnomaly === 'function') {
+    try {
+      window.TSMMemory.registerAnomaly({
+        entityType: 'construction-project',
+        entityId,
+        anomalyCode,
+        title: anomalyCode === 'SUBCONTRACTOR_EXPOSURE' ? 'Subcontractor Exposure' : 'Permit Delay',
+        source: 'construction-war-room-anomaly-scan'
+      });
+    } catch (e) { console.warn('[TSM] registerAnomaly failed:', e); }
+  }
+
+  let apps = [];
+  if (window.TSMMemory && typeof window.TSMMemory.getSuggestedAppPayload === 'function') {
+    const payload = window.TSMMemory.getSuggestedAppPayload({
+      sectorName: 'construction', anomalyCode, entityType: 'construction-project', entityId
+    });
+    apps = (payload && payload.recommendedApps) || [];
+  } else if (typeof window.TSMSectorIntelligence.getApps === 'function') {
+    apps = window.TSMSectorIntelligence.getApps('construction', anomalyCode) || [];
+  }
+  if (!apps.length) return;
+
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'margin-top:14px;padding-top:12px;border-top:1px solid #1ee8b620;';
+  wrap.innerHTML = '<div style="color:#1ee8b6;font-size:9px;letter-spacing:1.5px;margin-bottom:8px;">⬡ RECOMMENDED REMEDY APPS</div>' +
+    apps.map((app, i) => `
+      <div class="tsm-remedy-chip" data-url="${app.url}" data-idx="${i}" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid #1ee8b633;border-radius:4px;margin-bottom:6px;cursor:pointer;transition:.2s;">
+        <div style="width:6px;height:6px;border-radius:50%;background:#1ee8b6;flex-shrink:0;"></div>
+        <div style="font-size:.72rem;color:#c8e0d0;flex:1;">${app.label}</div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:.65rem;color:#1ee8b680;">→</div>
+      </div>
+    `).join('');
+  body.appendChild(wrap);
+
+  wrap.querySelectorAll('.tsm-remedy-chip').forEach(chip => {
+    chip.addEventListener('click', () => window.open(chip.dataset.url, '_blank'));
+    chip.addEventListener('mouseenter', () => { chip.style.borderColor = '#1ee8b6'; chip.style.background = 'rgba(30,232,182,.05)'; });
+    chip.addEventListener('mouseleave', () => { chip.style.borderColor = '#1ee8b633'; chip.style.background = 'transparent'; });
+  });
+}
+
+function showAnomalyAdvisorPanel(outputs, docText) {
+  const existing = document.getElementById('anomaly-slide-panel');
+  if (existing) existing.remove();
+
+  const panel = document.createElement('div');
+  panel.id = 'anomaly-slide-panel';
+  panel.style.cssText = `
+    position:fixed; bottom:0; right:0; width:420px; max-height:60vh;
+    background:#0a0f0a; border-top:2px solid #1ee8b6; border-left:2px solid #1ee8b6;
+    z-index:300; display:flex; flex-direction:column;
+    transform:translateY(100%); transition:transform 0.4s cubic-bezier(0.16,1,0.3,1);
+    font-family:'JetBrains Mono',monospace;
+  `;
+
+  panel.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid #1ee8b633;background:#0d1a0d;">
+      <span style="color:#1ee8b6;font-size:11px;font-weight:700;letter-spacing:2px;">⬡ ANOMALY ADVISOR — CONSTRUCTION DEFECT SCAN</span>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button onclick="window.open('construction-anomaly-advisor.html','_blank')" style="background:#1ee8b620;border:1px solid #1ee8b6;color:#1ee8b6;font-size:9px;padding:3px 8px;cursor:pointer;font-family:inherit;letter-spacing:1px;">FULL REPORT ↗</button>
+        <button onclick="document.getElementById('anomaly-slide-panel').remove()" style="background:transparent;border:none;color:#666;font-size:16px;cursor:pointer;line-height:1;padding:0 2px;">✕</button>
+      </div>
+    </div>
+    <div id="anomaly-panel-body" style="flex:1;overflow-y:auto;padding:12px 14px;font-size:11px;line-height:1.8;color:#a0b8a0;">
+      <div id="anomaly-scan-msg" style="color:#1ee8b6;font-size:10px;letter-spacing:1px;">⬡ SCANNING PROJECT DOCUMENTS FOR DEFECTS...</div>
+    </div>
+    <div id="tsm-mission-panel" style="display:none;padding:0 14px 14px;"></div>
+    <button id="tsm-build-mission-btn" onclick="tsmLaunchMission()" style="display:none;margin:0 14px 14px;width:calc(100% - 28px);background:rgba(30,232,182,.1);border:1px solid rgba(30,232,182,.4);color:#1ee8b6;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:.12em;padding:10px;cursor:pointer;text-transform:uppercase;">⚡ BUILD REMEDIATION MISSION</button>
+  `;
+
+  document.body.appendChild(panel);
+  requestAnimationFrame(() => { panel.style.transform = 'translateY(0)'; });
+
+  const body = document.getElementById('anomaly-panel-body');
+  const context = `ENGINE 1 (DOCUMENT INTEL):\n${(outputs[1]||'').slice(0,400)}\n\nENGINE 2 (RISK & ANOMALY):\n${(outputs[2]||'').slice(0,400)}\n\nENGINE 3 (FINANCIAL IMPACT):\n${(outputs[3]||'').slice(0,300)}\n\nENGINE 4 (COMPLIANCE):\n${(outputs[4]||'').slice(0,300)}\n\nDOC SAMPLE:\n${(docText||'').slice(0,500)}`;
+
+  const sys = `You are TSM Anomaly Advisor, a field-level defect detection engine for construction project documents. Analyze the engine outputs and identify specific actionable defects. Output ONLY a numbered list. Each item must follow this exact format:
+⚠ [FIELD/SECTION] — what is wrong — exact fix instruction (which document, which line item, which spec section, what to correct or flag).
+Maximum 8 items. No preamble. No headers. No summary. Start immediately with item 1.`;
+
+  let firstChunk = true;
+  groqStreamModel(
+    'openai/gpt-oss-120b', sys, context,
+    (chunk) => {
+      if (firstChunk) {
+        firstChunk = false;
+        const scanMsg = document.getElementById('anomaly-scan-msg');
+        if (scanMsg) scanMsg.remove();
+      }
+      const span = document.createElement('span');
+      span.innerHTML = chunk
+        .replace(/⚠/g, '<span style="color:#f59e0b">⚠</span>')
+        .replace(/—/g, '<span style="color:#1ee8b660"> — </span>');
+      body.appendChild(span);
+      body.scrollTop = body.scrollHeight;
+    },
+    () => {
+      const footer = document.createElement('div');
+      footer.style.cssText = 'margin-top:14px;padding-top:10px;border-top:1px solid #1ee8b620;color:#1ee8b650;font-size:9px;letter-spacing:1px;';
+      footer.textContent = '⬡ SCAN COMPLETE — PROJECT DEFECTS PACKAGED FOR STRATEGIST RELAY';
+      body.appendChild(footer);
+      const btn = document.getElementById('tsm-build-mission-btn');
+      if (btn) { btn.dataset.anomaly = body.innerText || ''; btn.style.display = 'block'; }
+      renderConstructionRemedyApps(outputs, docText);
+    },
+    (err) => {
+      console.warn('[TSM] Anomaly Advisor live call failed, using local fallback:', err);
+      if (firstChunk) {
+        firstChunk = false;
+        const scanMsg = document.getElementById('anomaly-scan-msg');
+        if (scanMsg) scanMsg.remove();
+      }
+      const manifest = buildDefectManifest(outputs);
+      const synthesized = manifest.split('\n').filter(Boolean).map((line, i) => {
+        const clean = line.replace(/^DEFECT \d+:\s*/, '');
+        return `⚠ ITEM ${i + 1} — ${clean} — cross-reference with source engine output and flag for remediation.`;
+      }).join('\n');
+      const span = document.createElement('span');
+      span.innerHTML = synthesized
+        .replace(/⚠/g, '<span style="color:#f59e0b">⚠</span>')
+        .replace(/—/g, '<span style="color:#1ee8b660"> — </span>')
+        .replace(/\n/g, '<br>');
+      body.appendChild(span);
+      body.scrollTop = body.scrollHeight;
+      const footer = document.createElement('div');
+      footer.style.cssText = 'margin-top:14px;padding-top:10px;border-top:1px solid #1ee8b620;color:#1ee8b650;font-size:9px;letter-spacing:1px;';
+      footer.textContent = '⬡ LOCAL FALLBACK — SYNTHESIZED FROM ENGINE OUTPUT (LIVE API UNREACHABLE)';
+      body.appendChild(footer);
+      const btn = document.getElementById('tsm-build-mission-btn');
+      if (btn) { btn.dataset.anomaly = body.innerText || ''; btn.style.display = 'block'; }
+      renderConstructionRemedyApps(outputs, docText);
+    },
+    600
+  );
+}
+
+// Thin wrapper around the same /api/construction/query endpoint the 6 engines
+// use, with a typewriter-style reveal so the Anomaly Advisor panel streams
+// the same way it would with a true SSE endpoint. Calls onError (rather than
+// throwing) on any failure so callers can fall back to local synthesis.
+function groqStreamModel(model, sys, userContext, onChunk, onDone, onError, maxTokens) {
+  (async () => {
+    try {
+      const r = await fetch('/api/construction/query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: sys + '\n\n' + userContext, maxTokens: maxTokens || 400 })
+      });
+      if (!r.ok) throw new Error('API ' + r.status);
+      const d = await r.json();
+      const text = (d.answer || d.response || '').trim();
+      if (!text) throw new Error('empty response');
+      await tsmRevealText(text, onChunk);
+      onDone();
+    } catch (err) {
+      onError(err.message || String(err));
+    }
+  })();
+}
+
+function tsmRevealText(text, onChunk) {
+  return new Promise(resolve => {
+    let i = 0;
+    (function step() {
+      if (i >= text.length) { resolve(); return; }
+      const n = 3 + Math.floor(Math.random() * 4);
+      onChunk(text.slice(i, i + n));
+      i += n;
+      setTimeout(step, 12);
+    })();
+  });
+}
+</script>
+<!-- HOW-TO GUIDE MODAL -->
+<div id="howtoOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:10001;overflow-y:auto;padding:2rem 1rem">
+  <div style="max-width:760px;margin:0 auto;background:#061018;border:1px solid rgba(255,196,0,.25);padding:2rem">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem;border-bottom:1px solid rgba(255,196,0,.18);padding-bottom:1rem">
+      <div style="font-family:'Orbitron',monospace;font-size:.9rem;font-weight:700;color:#ffc400;letter-spacing:.15rem">LEGAL WAR ROOM · HOW-TO GUIDE</div>
+      <button onclick="document.getElementById('howtoOverlay').style.display='none'" style="background:transparent;border:1px solid rgba(255,255,255,.2);color:#8090a0;font-family:monospace;font-size:.7rem;padding:.3rem .7rem;cursor:pointer">✕ CLOSE</button>
+    </div>
+    <div style="font-family:'Share Tech Mono',monospace;font-size:.58rem;line-height:2;color:#8090a0">
+      <div style="color:#ffc400;font-size:.65rem;letter-spacing:.12rem;margin-bottom:.5rem">► WHAT IS THE LEGAL WAR ROOM?</div>
+      <p style="margin-bottom:1rem">Welcome to the Legal War Room — TSM's 6-engine legal document analysis pipeline. Processes <span style="color:#fff">Contracts, MSAs, NDAs, Litigation Filings, Demand Letters, Regulatory Notices, eDiscovery Packages, Settlement Agreements, Compliance Audits</span>.</p>
+      <div style="color:#ffc400;font-size:.65rem;letter-spacing:.12rem;margin-bottom:.5rem">► ENGINE PIPELINE</div>
+      <div style="margin-bottom:1rem">
+        <div style="padding:.35rem 0;border-bottom:1px solid rgba(255,255,255,.05)"><span style="color:#ffc400;font-size:.6rem">ENGINE 01</span><br>Extracts parties, effective dates, obligations, termination clauses, penalty triggers, and jurisdiction indicators from the raw legal document.</div>
+        <div style="padding:.35rem 0;border-bottom:1px solid rgba(255,255,255,.05)"><span style="color:#ffc400;font-size:.6rem">ENGINE 02</span><br>Identifies contract breaches, statute of limitations risks, unfavorable indemnification clauses, and litigation exposure flags.</div>
+        <div style="padding:.35rem 0;border-bottom:1px solid rgba(255,255,255,.05)"><span style="color:#ffc400;font-size:.6rem">ENGINE 03</span><br>Calculates total legal exposure, potential damages, penalty amounts, and settlement value range in dollars.</div>
+        <div style="padding:.35rem 0;border-bottom:1px solid rgba(255,255,255,.05)"><span style="color:#ffc400;font-size:.6rem">ENGINE 04</span><br>Audits regulatory compliance, GDPR/HIPAA/SOX obligations, filing deadlines, and jurisdictional exposure.</div>
+        <div style="padding:.35rem 0;border-bottom:1px solid rgba(255,255,255,.05)"><span style="color:#ffc400;font-size:.6rem">ENGINE 05</span><br>Synthesizes Engines 01–04 into a dollar-quantified risk mitigation plan with counsel assignments and response deadlines.</div>
+        <div style="padding:.35rem 0"><span style="color:#ffc400;font-size:.6rem">ENGINE 06 / NODES</span><br>Routes findings to the highest-priority TSM Legal apps with tailored how-to instructions for each node.</div>
+      </div>
+      <div style="color:#ffc400;font-size:.65rem;letter-spacing:.12rem;margin-bottom:.5rem">► ESCALATION CHAIN</div>
+      <p style="margin-bottom:1rem">After analysis, escalate to the <span style="color:#fff">Legal Strategist</span> via the escalation button. Use EXPORT to download a full plaintext report for counsel review.</p>
+      <div style="background:#081420;border:1px solid rgba(255,196,0,.15);padding:.75rem;margin-top:.5rem">
+        <div style="color:#ffc400;font-size:.55rem;letter-spacing:.1rem;margin-bottom:.3rem">PRO TIPS</div>
+        <div style="color:#607070">▸ Load an MSA sample → fire engines → read Engine 02 for unfavorable indemnification flags<br>▸ Engine 03 calculates settlement value range — use before entering mediation<br>▸ Engine 04 flags HIPAA/GDPR obligations before escalating to the Strategist<br>▸ Escalate after every major analysis to build a cumulative legal risk brief</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TOUR OVERLAY -->
+<div id="tourOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:9990;pointer-events:none"></div>
+<style>#tourOverlay.active,#tourHUD.active{display:block!important}</style>
+<div id="tourSpotlight" style="display:none;position:fixed;z-index:9992;border:2px solid rgba(255,196,0,.75);box-shadow:0 0 0 4px rgba(255,196,0,.12),0 0 30px rgba(255,196,0,.2);pointer-events:none;transition:all .25s ease"></div>
+
+<div id="tourHUD" style="display:none;position:fixed;bottom:1.2rem;right:1.2rem;width:360px;z-index:9995;font-family:'Share Tech Mono',monospace">
+  <style>
+    .hud-card{background:#081420;border:1px solid rgba(255,196,0,.3);overflow:hidden}
+    .hud-header{background:#061018;padding:.5rem .75rem;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,196,0,.15)}
+    .hud-badge{font-family:'Orbitron',monospace;font-size:.55rem;font-weight:700;color:#ffc400;letter-spacing:.1rem}
+    .hud-slide-type{font-size:.42rem;letter-spacing:.12rem;padding:.15rem .4rem;border:1px solid currentColor}
+    .hud-slide-type.info{color:#3b82f6;border-color:rgba(59,130,246,.4)}
+    .hud-slide-type.action{color:#ffc400;border-color:rgba(255,196,0,.4)}
+    .hud-slide-type.demo{color:#00ff80;border-color:rgba(0,255,80,.4)}
+    .hud-title{font-family:'Orbitron',monospace;font-size:.58rem;font-weight:700;color:#e4eaf4;letter-spacing:.08rem;padding:.45rem .75rem;border-bottom:1px solid rgba(255,196,0,.1)}
+    .hud-narration{padding:.55rem .75rem;font-size:.52rem;line-height:1.85;color:#7a8898;max-height:140px;overflow-y:auto}
+    .hud-narration::-webkit-scrollbar{width:2px}
+    .hud-narration::-webkit-scrollbar-thumb{background:rgba(255,196,0,.2)}
+    .hud-narration .hl{color:#ffc400}
+    .hud-narration .cmd{color:#e0e080}
+    .hud-narration .warn{color:#ff6060}
+    .hud-narration .ok{color:#00ff80}
+    .hud-hint{padding:.3rem .75rem;background:rgba(255,196,0,.06);border-top:1px solid rgba(255,196,0,.15);display:flex;align-items:flex-start;gap:.4rem;font-size:.48rem;color:rgba(255,196,0,.8)}
+    .hud-progress{display:flex;gap:3px;padding:.4rem .75rem;border-top:1px solid rgba(255,196,0,.1);flex-wrap:wrap}
+    .hud-pip{width:14px;height:3px;background:rgba(255,196,0,.12);border-radius:2px;transition:background .2s}
+    .hud-pip.active{background:#ffc400}
+    .hud-pip.done{background:rgba(255,196,0,.35)}
+    .hud-timer{height:2px;background:rgba(255,196,0,.1)}
+    #timerFill{height:100%;background:#ffc400;width:100%;transition:width 6s linear}
+    .hud-controls{display:flex;gap:.3rem;padding:.4rem .75rem;border-top:1px solid rgba(255,196,0,.1)}
+    .hud-btn{flex:1;background:transparent;border:1px solid rgba(255,196,0,.2);color:rgba(255,196,0,.5);font-family:'Share Tech Mono',monospace;font-size:.47rem;padding:.3rem;cursor:pointer;letter-spacing:.08rem;transition:all .12s}
+    .hud-btn:hover:not(:disabled){border-color:#ffc400;color:#ffc400}
+    .hud-btn:disabled{opacity:.35;cursor:not-allowed}
+    .hud-btn.primary{border-color:rgba(255,196,0,.5);color:#ffc400}
+    .hud-speech-row{display:flex;gap:.3rem;align-items:center;padding:.35rem .75rem;border-top:1px solid rgba(255,196,0,.1);flex-wrap:wrap}
+    .hud-speech-btn{background:transparent;border:1px solid rgba(255,196,0,.2);color:rgba(255,196,0,.5);font-family:'Share Tech Mono',monospace;font-size:.44rem;padding:.25rem .5rem;cursor:pointer;transition:all .12s;white-space:nowrap}
+    .hud-speech-btn:hover{border-color:#ffc400;color:#ffc400}
+    .hud-speech-btn.speaking{border-color:rgba(255,196,0,.7);color:#ffc400;animation:pulse 1.5s infinite}
+    .hud-speech-btn.paused{border-color:rgba(245,158,11,.5);color:#f59e0b}
+    .hud-speech-select{background:#081420;border:1px solid rgba(255,196,0,.15);color:rgba(255,196,0,.6);font-family:'Share Tech Mono',monospace;font-size:.43rem;padding:.2rem .3rem;flex:1;min-width:100px}
+    .hud-speech-input{background:#081420;border:1px solid rgba(255,196,0,.15);color:rgba(255,196,0,.6);font-family:'Share Tech Mono',monospace;font-size:.43rem;padding:.2rem .3rem;width:42px;text-align:center}
+    .hud-auto-row{display:flex;align-items:center;gap:.5rem;padding:.3rem .75rem .4rem;border-top:1px solid rgba(255,196,0,.08)}
+    .hud-auto-toggle{width:28px;height:14px;background:rgba(255,196,0,.1);border:1px solid rgba(255,196,0,.2);border-radius:7px;cursor:pointer;position:relative;transition:background .15s;flex-shrink:0}
+    .hud-auto-toggle .tog-knob{width:10px;height:10px;border-radius:50%;background:rgba(255,196,0,.3);position:absolute;top:1px;left:1px;transition:all .15s}
+    .hud-auto-toggle.on{background:rgba(255,196,0,.25);border-color:rgba(255,196,0,.5)}
+    .hud-auto-toggle.on .tog-knob{background:#ffc400;transform:translateX(14px)}
+    .hud-auto-lbl{font-size:.44rem;color:rgba(255,196,0,.4)}
+  </style>
+  <div class="hud-card">
+    <div class="hud-header">
+      <div class="hud-badge" id="hudBadge">01 / 10</div>
+      <div style="display:flex;align-items:center;gap:.4rem">
+        <span class="hud-slide-type info" id="hudSlideType">INFO</span>
+        <button onclick="endTour()" style="background:transparent;border:none;color:rgba(255,196,0,.3);font-size:.7rem;cursor:pointer">✕</button>
+      </div>
+    </div>
+    <div class="hud-title" id="hudTitle">LEGAL WAR ROOM</div>
+    <div class="hud-narration" id="hudNarration"></div>
+    <div class="hud-hint" id="hudActionHint" style="display:none">
+      <span style="flex-shrink:0;color:#ffc400">▶</span>
+      <span id="hudActionText"></span>
+    </div>
+    <div class="hud-progress" id="hudProgress"></div>
+    <div class="hud-timer"><div id="timerFill"></div></div>
+    <div class="hud-speech-row">
+      <button class="hud-speech-btn" id="speechPlayBtn" onclick="speechPlay()">🔊 SPEAK</button>
+      <button class="hud-speech-btn" id="speechPauseBtn" onclick="speechPause()" style="display:none">⏸ PAUSE</button>
+      <button class="hud-speech-btn" id="speechStopBtn" onclick="speechStop()" style="display:none">■ STOP</button>
+      <select class="hud-speech-select" id="speechVoiceSelect"></select>
+      <input class="hud-speech-input" id="speechRate" type="number" value="0.95" min="0.5" max="1.5" step="0.05" title="Rate">
+      <input class="hud-speech-input" id="speechVol" type="number" value="1" min="0" max="1" step="0.1" title="Volume">
+    </div>
+    <div class="hud-auto-row">
+      <div class="hud-auto-toggle" id="autoToggle" onclick="toggleAuto()"><div class="tog-knob"></div></div>
+      <span class="hud-auto-lbl">AUTO ADVANCE</span>
+      <span class="hud-auto-lbl" id="autoStepLbl" style="display:none;color:#ffc400">● RUNNING</span>
+    </div>
+    <div class="hud-controls">
+      <button class="hud-btn" id="hudPrevBtn" onclick="tourPrev()">◀ PREV</button>
+      <button class="hud-btn primary" id="hudNextBtn" onclick="tourNext()">NEXT ▶</button>
+      <button class="hud-btn" onclick="endTour()">✕ EXIT</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const TOUR_SLIDES = [
+  {
+    "id": "welcome",
+    "title": "LEGAL WAR ROOM OVERVIEW",
+    "type": "info",
+    "target": "alertBar",
+    "autoMs": 7000,
+    "narration": "Welcome to the <span class='hl'>Construction War Room</span> — TSM's 6-engine construction document analysis pipeline. This tour covers the complete workflow: classify your document, load content, fire the engines, review construction risk intelligence, and escalate to the Construction Strategist.",
+    "actionHint": null
+  },
+  {
+    "id": "doctype",
+    "title": "STEP 1 · SELECT DOCUMENT TYPE",
+    "type": "action",
+    "target": "docTypeGrid",
+    "autoMs": 6000,
+    "narration": "<span class='hl'>Select your document type</span> first. The war room handles: <span class='cmd'>Contracts, MSAs, NDAs, Litigation Filings, Demand Letters, Regulatory Notices, eDiscovery Packages, Settlement Agreements, Compliance Audits</span>. Correct classification primes Engine 01's extraction logic. <span class='warn'>Wrong type = wrong extraction frame</span> — always set this before loading content.",
+    "actionHint": "Select a document type to classify your analysis"
+  },
+  {
+    "id": "paste",
+    "title": "STEP 2 · LOAD DOCUMENT CONTENT",
+    "type": "action",
+    "target": "docPaste",
+    "autoMs": 8000,
+    "narration": "Paste raw document text — <span class='hl'>no formatting required</span>. Click one of the <span class='cmd'>sample chips</span> to load a realistic scenario: <span class='ok'>MSA (indemnification risk), NDA (breach scenario), Demand Letter (litigation exposure), eDiscovery Package</span>.",
+    "actionHint": "Paste document text OR click a sample chip to load a pre-built scenario"
+  },
+  {
+    "id": "fire",
+    "title": "STEP 3 · FIRE THE ENGINE PIPELINE",
+    "type": "action",
+    "target": "fireBtn",
+    "autoMs": 7000,
+    "narration": "Click <span class='hl'>⚡ FIRE ALL ENGINES</span>. Engines run in dependency order: <span class='cmd'>01</span> extracts facts → <span class='cmd'>02</span> flags risk → <span class='cmd'>03</span> models legal exposure → <span class='cmd'>04</span> audits compliance → <span class='cmd'>05</span> synthesizes the plan → <span class='cmd'>06</span> routes to apps. <span class='warn'>Do not navigate away</span> during the run.",
+    "actionHint": "Click ⚡ FIRE ALL ENGINES to launch the analysis pipeline"
+  },
+  {
+    "id": "status",
+    "title": "STEP 4 · MONITOR ENGINE STATUS",
+    "type": "demo",
+    "target": "fireBtn",
+    "autoMs": 6000,
+    "narration": "Watch the <span class='hl'>engine status badges</span>. Each cycles: <span class='warn'>IDLE → RUNNING → COMPLETE</span>. Amber pulsing = calling AI. Green COMPLETE = output locked. If an engine errors, the system falls back to heuristic output so the chain never fully breaks.",
+    "actionHint": null
+  },
+  {
+    "id": "kpis",
+    "title": "STEP 5 · READ THE KPI BAR",
+    "type": "demo",
+    "target": "kpiBar",
+    "autoMs": 7000,
+    "narration": "After engines complete, the <span class='hl'>KPI bar</span> populates with extracted metrics. <span class='cmd'>Risk Score</span> (1–100): red >70, amber 40–70, green <40. <span class='cmd'>Legal Exposure</span>: total dollars at risk across damages, penalties, and settlement value.",
+    "actionHint": null
+  },
+  {
+    "id": "engines",
+    "title": "STEP 6 · REVIEW ENGINE OUTPUT CARDS",
+    "type": "demo",
+    "target": "fireBtn",
+    "autoMs": 9000,
+    "narration": "The engine output cards hold the full analysis. Each has a <span class='cmd'>COPY</span> button. <span class='cmd'>E01</span>: Extracts parties, obligations, termination clauses, penalty triggers. <span class='cmd'>E02</span>: Flags contract breaches, SOL risks, unfavorable indemnification. <span class='cmd'>E05</span>: Synthesizes a dollar-quantified risk mitigation plan with counsel assignments and deadlines.",
+    "actionHint": "Click COPY on any engine card to copy output to clipboard"
+  },
+  {
+    "id": "dispatch",
+    "title": "STEP 7 · APP DISPATCH / BNCA",
+    "type": "demo",
+    "target": "appDispatch",
+    "autoMs": 7000,
+    "narration": "Engine 06 generates the <span class='hl'>App Dispatch</span> panel — ranked routing cards for which TSM module to open next. The <span class='cmd'>⭐ top recommendation</span> is highlighted. Each card has tailored how-to instructions specific to your document's findings.",
+    "actionHint": "Click any OPEN [APP] → button to route directly to that TSM module"
+  },
+  {
+    "id": "escalate",
+    "title": "STEP 8 · ESCALATE TO STRATEGIST",
+    "type": "action",
+    "target": "alertBar",
+    "autoMs": 8000,
+    "narration": "Final step: <span class='hl'>escalate the full engine package</span> to the <span class='cmd'>Legal Strategist</span>. Click the escalation button to relay all engine outputs via sessionStorage. The Strategist synthesizes the package into an executive legal brief. Use <span class='cmd'>EXPORT</span> to download a plaintext report for counsel review.",
+    "actionHint": "Click ESCALATE → LEGAL STRATEGIST to transfer the full analysis package"
+  },
+  {
+    "id": "done",
+    "title": "TOUR COMPLETE · WAR ROOM READY",
+    "type": "info",
+    "target": "alertBar",
+    "autoMs": 0,
+    "narration": "<span class='ok'>Tour complete.</span> You know the full LEGAL WAR ROOM workflow: <span class='cmd'>classify → load → connect → fire → review → route → escalate</span>. Click <span class='hl'>HOW-TO GUIDE</span> to reference this workflow anytime. <span class='hl'>Load a real document and fire the engines</span> to begin your first live analysis.",
+    "actionHint": null
+  }
+];
+let tourActive=false,tourStep=0,autoMode=false,autoTimer=null,autoMs=6000;
+function spotlightEl(id){const sp=document.getElementById('tourSpotlight');if(!id){sp.style.display='none';return;}const el=document.getElementById(id);if(!el){sp.style.display='none';return;}const r=el.getBoundingClientRect(),p=8;sp.style.display='block';sp.style.top=(r.top-p)+'px';sp.style.left=(r.left-p)+'px';sp.style.width=(r.width+p*2)+'px';sp.style.height=(r.height+p*2)+'px';el.scrollIntoView({behavior:'smooth',block:'nearest'});}
+function buildPips(){const prog=document.getElementById('hudProgress');prog.innerHTML='';TOUR_SLIDES.forEach((s,i)=>{const pip=document.createElement('div');pip.className='hud-pip'+(i<tourStep?' done':i===tourStep?' active':'');prog.appendChild(pip);});}
+function renderSlide(idx){speechStop();const s=TOUR_SLIDES[idx];document.getElementById('hudBadge').textContent=String(idx+1).padStart(2,'0')+' / '+TOUR_SLIDES.length;document.getElementById('hudTitle').textContent=s.title;document.getElementById('hudNarration').innerHTML=s.narration;const te=document.getElementById('hudSlideType');te.textContent=s.type.toUpperCase();te.className='hud-slide-type '+s.type;const hi=document.getElementById('hudActionHint');if(s.actionHint){hi.style.display='flex';document.getElementById('hudActionText').textContent=s.actionHint;}else hi.style.display='none';document.getElementById('hudPrevBtn').disabled=idx===0;const nb=document.getElementById('hudNextBtn');if(idx===TOUR_SLIDES.length-1){nb.textContent='END TOUR ✓';nb.onclick=endTour;}else{nb.textContent='NEXT ▶';nb.onclick=tourNext;}buildPips();spotlightEl(s.target);if(autoMode)startAutoTimer(s.autoMs||6000);}
+function startAutoTimer(ms){clearAutoTimer();if(!ms||ms===0){stopAuto();return;}const fill=document.getElementById('timerFill');fill.style.transition='none';fill.style.width='100%';requestAnimationFrame(()=>requestAnimationFrame(()=>{fill.style.transition=`width ${ms}ms linear`;fill.style.width='0%';}));autoTimer=setTimeout(()=>{if(tourStep<TOUR_SLIDES.length-1)tourNext();else endTour();},ms);}
+function clearAutoTimer(){if(autoTimer){clearTimeout(autoTimer);autoTimer=null;}const fill=document.getElementById('timerFill');if(fill){fill.style.transition='none';fill.style.width='100%';}}
+function toggleAuto(){autoMode=!autoMode;document.getElementById('autoToggle').classList.toggle('on',autoMode);document.getElementById('autoStepLbl').style.display=autoMode?'inline':'none';if(autoMode)startAutoTimer(TOUR_SLIDES[tourStep].autoMs||6000);else clearAutoTimer();}
+function stopAuto(){autoMode=false;const t=document.getElementById('autoToggle'),l=document.getElementById('autoStepLbl');if(t)t.classList.remove('on');if(l)l.style.display='none';clearAutoTimer();}
+function tourNext(){if(tourStep<TOUR_SLIDES.length-1){tourStep++;renderSlide(tourStep);}}
+function tourPrev(){if(tourStep>0){tourStep--;renderSlide(tourStep);}}
+function startTour(){tourActive=true;tourStep=0;document.getElementById('tourOverlay').classList.add('active');document.getElementById('tourHUD').classList.add('active');const lb=document.getElementById('tourLaunchBtn');if(lb)lb.textContent='■ TOUR ACTIVE';renderSlide(0);}
+function endTour(){tourActive=false;speechStop();stopAuto();document.getElementById('tourOverlay').classList.remove('active');document.getElementById('tourHUD').classList.remove('active');document.getElementById('tourSpotlight').style.display='none';const lb=document.getElementById('tourLaunchBtn');if(lb)lb.textContent='▶ GUIDED TOUR';}
+window.addEventListener('resize',()=>{if(tourActive)spotlightEl(TOUR_SLIDES[tourStep].target);});
+const _sp=document.querySelector('.main')||document.querySelector('main')||document.body;
+_sp.addEventListener('scroll',()=>{if(tourActive)spotlightEl(TOUR_SLIDES[tourStep].target);});
+const RV_VOICES=['US English Male','US English Female','UK English Male','UK English Female','Australian Female','Australian Male'];
+(function(){const s=document.getElementById('speechVoiceSelect');if(!s)return;s.innerHTML='';RV_VOICES.forEach((v,i)=>{const o=document.createElement('option');o.value=v;o.textContent=v;if(i===0)o.selected=true;s.appendChild(o);});})();
+function speechClean(h){const d=document.createElement('div');d.innerHTML=h;return(d.textContent||d.innerText||'').replace(/\s+/g,' ').trim();}
+function speechPlay(){if(typeof responsiveVoice==='undefined'){alert('ResponsiveVoice not loaded.');return;}responsiveVoice.cancel();responsiveVoice.speak(speechClean(TOUR_SLIDES[tourStep].narration),document.getElementById('speechVoiceSelect').value||'US English Male',{rate:parseFloat(document.getElementById('speechRate').value)||0.95,volume:parseFloat(document.getElementById('speechVol').value)||1,pitch:1,onstart:()=>speechSetState('speaking'),onend:()=>speechSetState('idle'),onerror:()=>speechSetState('idle')});}
+function speechPause(){if(typeof responsiveVoice!=='undefined')responsiveVoice.pause();speechSetState('paused');}
+function speechStop(){if(typeof responsiveVoice!=='undefined')responsiveVoice.cancel();speechSetState('idle');}
+function speechSetState(state){const pb=document.getElementById('speechPlayBtn'),ps=document.getElementById('speechPauseBtn'),st=document.getElementById('speechStopBtn');if(!pb)return;if(state==='speaking'){pb.style.display='none';ps.style.display='';st.style.display='';ps.className='hud-speech-btn speaking';}else if(state==='paused'){pb.style.display='';pb.textContent='▶ RESUME';pb.className='hud-speech-btn paused';ps.style.display='none';st.style.display='';}else{pb.style.display='';pb.textContent='🔊 SPEAK';pb.className='hud-speech-btn';ps.style.display='none';st.style.display='none';}}
+const TSM_MISSION_VERTICAL = 'construction';
+
+// Splits the Anomaly Advisor's numbered list into individual defect lines.
+function tsmSplitAnomalyItems(text) {
+  const numbered = String(text || '')
+    .split(/\n(?=\s*\d+[\.\)])/)
+    .map(s => s.trim())
+    .filter(Boolean);
+  if (numbered.length > 1) return numbered;
+  return String(text || '').split('\n').map(s => s.trim()).filter(Boolean);
+}
+
+// Classifies one defect line as PERMITS (city/zoning/permit filings) or
+// FIELDOPS (safety/schedule/crew/site coordination). Uses the same
+// /api/construction/query endpoint as the 6 engines; falls back to a
+// keyword heuristic if the call fails or comes back unclear.
+async function tsmClassifyDefectLine(line) {
+  try {
+    const prompt = `Classify this construction project defect into exactly one category. Respond with ONLY one word: PERMITS or FIELDOPS.
+PERMITS = permit filings, zoning, city/municipal approvals, licensing, entitlements.
+FIELDOPS = safety, OSHA, schedule, crew, RFI, site conditions, equipment, subcontractor field coordination.
+Item: "${String(line).replace(/"/g, "'")}"`;
+    const answer = await callGroq(prompt, 4);
+    const upper = (answer || '').toUpperCase();
+    if (upper.includes('PERMIT')) return { target: 'PERMITS', viaAI: true };
+    if (upper.includes('FIELD')) return { target: 'FIELDOPS', viaAI: true };
+  } catch (e) {
+    console.warn('[TSM] Classification call failed, using keyword fallback:', e);
+  }
+  return { target: /permit|zoning|\bcity\b|entitlement|licens/i.test(line) ? 'PERMITS' : 'FIELDOPS', viaAI: false };
+}
+
+function tsmRenderMissionCard(panel, mission, permitsItems, fieldOpsItems) {
+  const list = (arr) => arr.map(i => `<div style="margin-top:3px;color:#a0b8a0;">• ${esc(i)}</div>`).join('') || '<div style="color:#4a5a4a;">— none —</div>';
+  panel.innerHTML = `
+    <div style="border:1px solid rgba(30,232,182,.3);padding:10px;font-size:10px;">
+      <div style="color:#1ee8b6;font-weight:700;letter-spacing:1px;margin-bottom:8px;">⚡ MISSION ${esc(mission.id)} — READY</div>
+      <div style="color:#ffc400;font-size:9px;letter-spacing:1px;margin-bottom:2px;">PERMITS & PROPOSALS (${permitsItems.length})</div>
+      ${list(permitsItems)}
+      <div style="color:#ffc400;font-size:9px;letter-spacing:1px;margin:10px 0 2px;">FIELD & DOCUMENT OPS (${fieldOpsItems.length})</div>
+      ${list(fieldOpsItems)}
+      <div style="display:flex;gap:8px;margin-top:12px;">
+        <button onclick="tsmRouteToPermits()" style="flex:1;background:rgba(255,196,0,.1);border:1px solid rgba(255,196,0,.4);color:#ffc400;padding:8px;cursor:pointer;font-family:inherit;font-size:9px;letter-spacing:1px;">→ OPEN PERMITS & PROPOSALS</button>
+        <button onclick="tsmRouteToFieldOps()" style="flex:1;background:rgba(30,232,182,.1);border:1px solid rgba(30,232,182,.4);color:#1ee8b6;padding:8px;cursor:pointer;font-family:inherit;font-size:9px;letter-spacing:1px;">→ OPEN FIELD & DOCUMENT OPS</button>
+      </div>
+    </div>`;
+  panel._tsmMissionId = mission.id;
+  panel._tsmPermitsItems = permitsItems;
+  panel._tsmFieldOpsItems = fieldOpsItems;
+}
+
+function tsmRouteToPermits() {
+  const panel = document.getElementById('tsm-mission-panel');
+  const items = (panel && panel._tsmPermitsItems) || [];
+  const missionId = panel && panel._tsmMissionId;
+  localStorage.setItem('tsm_permits_remediation_task', JSON.stringify({ missionId, ts: Date.now(), items }));
+  goNav('permits-proposals.html');
+}
+
+// Confirmed against construction-suite-expansion.html's own reader block
+// ("WAR ROOM REMEDIATION TASK READER") — key name and {ts, missionId, items}
+// shape match exactly what that page expects for its yellow banner.
+function tsmRouteToFieldOps() {
+  const panel = document.getElementById('tsm-mission-panel');
+  const items = (panel && panel._tsmFieldOpsItems) || [];
+  const missionId = panel && panel._tsmMissionId;
+  localStorage.setItem('tsm_construction_fieldops_remediation_task', JSON.stringify({ missionId, ts: Date.now(), items }));
+  goNav('construction-suite-expansion.html');
+}
+
+async function tsmLaunchMission() {
+  const btn = document.getElementById('tsm-build-mission-btn');
+  const panel = document.getElementById('tsm-mission-panel');
+  if (!btn || !panel || !window.TSMMission) return;
+  btn.disabled = true;
+  btn.textContent = '⚡ CLASSIFYING DEFECTS...';
+  panel.style.display = 'block';
+  panel.innerHTML = '<div style="color:#1ee8b6;font-size:10px;letter-spacing:1px;padding:6px 0;">⬡ CLASSIFYING DEFECTS & ROUTING...</div>';
+
+  try {
+    const lines = tsmSplitAnomalyItems(btn.dataset.anomaly || '');
+    const mission = TSMMission.create({
+      sector: TSM_MISSION_VERTICAL,
+      priority: 'high',
+      source: 'anomaly-advisor',
+      meta: { itemCount: lines.length }
+    });
+
+    const permitsItems = [], fieldOpsItems = [], findings = [];
+    let aiClassifiedCount = 0;
+    for (const line of lines) {
+      const { target, viaAI } = await tsmClassifyDefectLine(line);
+      if (viaAI) aiClassifiedCount++;
+      (target === 'PERMITS' ? permitsItems : fieldOpsItems).push(line);
+      findings.push({ title: line.slice(0, 140), severity: 'high', detail: line });
+    }
+    // Confidence reflects how many lines the routing actually got from the
+    // AI classifier vs. the keyword fallback (used when the call fails) --
+    // real data completeness, not a flat guess every time.
+    const routingConfidence = lines.length
+      ? Math.round(55 + (aiClassifiedCount / lines.length) * 40)
+      : 55;
+
+    TSMMission.publishAnalysis(mission.id, {
+      findings,
+      actions: [
+        permitsItems.length ? `Route ${permitsItems.length} item(s) to Permits & Proposals` : null,
+        fieldOpsItems.length ? `Route ${fieldOpsItems.length} item(s) to Field & Document Ops` : null
+      ].filter(Boolean),
+      confidence: routingConfidence
+    });
+    TSMMission.addTimeline(mission.id, { event: 'mission_routed', data: { permits: permitsItems.length, fieldOps: fieldOpsItems.length } });
+    const completed = TSMMission.complete(mission.id, { outcome: 'routed', metrics: { permitsCount: permitsItems.length, fieldOpsCount: fieldOpsItems.length } });
+
+    tsmRenderMissionCard(panel, completed, permitsItems, fieldOpsItems);
+    btn.style.display = 'none';
+    sessionStorage.setItem('TSM_MISSION_COMPLETE_CONSTRUCTION', JSON.stringify({ missionId: mission.id, ts: Date.now() }));
+  } catch (e) {
+    console.error('[TSM] Mission build failed:', e);
+    panel.innerHTML = '<div style="color:#ef4444;font-size:10px;">Mission build failed: ' + esc(e.message || String(e)) + '</div>';
+    btn.disabled = false;
+    btn.textContent = '⚡ BUILD REMEDIATION MISSION';
+  }
+}
+</script>
+  <script src="/html/core/tsm-runtime.js"></script>
+<script>
+// ===== TSM_AUTONOMY_STANDARDIZED =====
+window.TSM_AUTONOMY_STANDARDIZED = true;
+</script>
+
+<!-- TSM ENFORCER BOOT -->
+
+<script>
+// ===== TSM WAR ROOM SCOPED RELAY FIX =====
+// NOTE: TSM_KERNEL is not loaded anywhere in this file (no /core/tsm-kernel.js
+// include here, unlike permits-proposals.html and construction-suite-expansion.html).
+// tsmWriteRelay() will throw a ReferenceError if it's ever actually called until
+// that script is included. It is not currently called from anywhere in this file.
+window.tsmMission = window.tsmMission || {
+  id: "CONSTRUCTION-SUITE-" + Date.now().toString(36),
+  vertical: "construction-suite",
+};
+
+function tsmWriteRelay(payload){
+  TSM_KERNEL.setRelay("construction-suite", JSON.stringify(payload));
+}
+</script>
+
+<script src="/construction-suite/tsm-construction-analyzer.js"></script>
+
+
+
+<script>
+function conHandleFile(file) {
+  if (!file) return;
+  const lbl = document.getElementById("con-upload-name");
+  if (lbl) lbl.textContent = "\u27f3 READING " + file.name + "...";
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const ta = document.getElementById("docPaste");
+    if (ta) { ta.value = e.target.result; ta.dispatchEvent(new Event("input")); }
+    if (lbl) lbl.textContent = "\u2713 " + file.name;
+  };
+  reader.onerror = function() { if(lbl) lbl.textContent = "\u2717 Read error"; };
+  reader.readAsText(file);
+}
+document.addEventListener("DOMContentLoaded", function() {
+  const lbl = document.getElementById("con-upload-label");
+  if (!lbl) return;
+  lbl.addEventListener("dragover", e => { e.preventDefault(); lbl.style.borderColor="var(--green)"; });
+  lbl.addEventListener("dragleave", () => { lbl.style.borderColor="rgba(0,255,150,0.2)"; });
+  lbl.addEventListener("drop", e => {
+    e.preventDefault(); lbl.style.borderColor="rgba(0,255,150,0.2)";
+    const f = e.dataTransfer.files[0];
+    if (f) { document.getElementById("con-file-input").files=e.dataTransfer.files; conHandleFile(f); }
+  });
+});
+</script>
+
+<script src="./construction-war-tabs.js"></script>
+  <script src="/js/tsm-guide-engine.js" defer></script>
+</body>
+</html>

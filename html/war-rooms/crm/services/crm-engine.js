@@ -187,6 +187,15 @@
        plus the stage's declared sla_hours -- no LLM call involved.
        Shape: { id, claim, confidence, severity, impact, rationale, sources, dataPoints } */
 
+    // Confidence here isn't a model guess -- the breach itself (hours_over
+    // an sla_hours threshold) is a deterministic fact, always true when the
+    // item fires. What varies is whether the record has the identifying
+    // field (subject/name) the claim names, vs. falling back to a generic
+    // placeholder -- that's a real completeness gap worth signaling.
+    _identConfidence(base, identifierPresent) {
+      return identifierPresent ? base : Math.max(60, base - 25);
+    }
+
     getExplainItems() {
       const items = [];
 
@@ -196,7 +205,7 @@
         items.push({
           id: 'case-' + b.id,
           claim: `${b.id} (${r.subject || 'case'}) is ${Math.round(b.hours_over)}h past its "${b.stage}" SLA`,
-          confidence: 95,
+          confidence: this._identConfidence(95, !!r.subject),
           severity,
           impact: r.owner === 'Unassigned' ? 'Unassigned \u2014 no one currently on point' : '',
           rationale: `"${r.subject || 'This case'}" entered the "${b.stage}" stage ${r.entered_stage_at_hours_ago != null ? r.entered_stage_at_hours_ago + 'h ago' : ''} ` +
@@ -217,7 +226,7 @@
         items.push({
           id: 'opp-' + b.id,
           claim: `${b.id} (${r.name || 'opportunity'}) worth $${value.toLocaleString()} is stalled ${Math.round(b.hours_over)}h past its "${b.stage}" SLA`,
-          confidence: 90,
+          confidence: this._identConfidence(90, !!r.name),
           severity,
           impact: value ? ('$' + value.toLocaleString() + ' pipeline at risk of slipping') : '',
           rationale: `"${r.name || 'This opportunity'}" has been in the "${b.stage}" stage ${r.entered_stage_at_hours_ago != null ? r.entered_stage_at_hours_ago + 'h' : ''}, ` +
@@ -237,7 +246,7 @@
         items.push({
           id: 'acct-' + a.account_id,
           claim: `${a.name || a.account_id} is flagged at-risk` + (value ? ` with $${value.toLocaleString()}/yr on the line` : ''),
-          confidence: 75,
+          confidence: this._identConfidence(75, !!a.name),
           severity: value >= 100000 ? 'high' : 'med',
           impact: value ? ('$' + value.toLocaleString() + '/yr churn exposure') : 'Relationship health risk',
           rationale: `${a.name || 'This account'} is marked "at_risk" in the account record` + (a.notes ? ` \u2014 ${a.notes}` : '') + '.',

@@ -1,0 +1,1648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+
+<script id="tsm-assistant-stub">
+  window.TSMAssistant = {
+    init: function() {},
+    render: function() {},
+    open: function() {},
+    close: function() {},
+    update: function() {}
+  };
+</script>
+
+<style id="tsm-killswitch-css">
+  .assistant-launcher,
+  .chat-widget-container,
+  .bot-avatar-btn,
+  #tsm-assistant-root,
+  div[class*="assistant"],
+  div[id*="assistant"],
+  iframe[src*="mission"],
+  .robot-icon,
+  img[src*="robot"] {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    position: absolute !important;
+    left: -9999px !important;
+  }
+</style>
+
+
+<script>
+(function() {
+  function nukeAssistant() {
+    const selectors = [
+      '.assistant-launcher',
+      '.chat-widget-container',
+      '.bot-avatar-btn',
+      '#tsm-assistant-root',
+      '[class*="assistant-panel"]',
+      '[id*="assistant-panel"]',
+      'iframe[src*="mission"]'
+    ];
+    selectors.forEach(sel => {
+      document.querySelectorAll(sel).forEach(el => el.remove());
+    });
+  }
+  
+  // Nuke immediately and on loop
+  nukeAssistant();
+  document.addEventListener('DOMContentLoaded', nukeAssistant);
+  window.addEventListener('load', nukeAssistant);
+  setInterval(nukeAssistant, 250);
+})();
+</script>
+
+
+<script>
+  // Neutralize TSM Mission Engine dynamic overlay injection
+  window.__TSM_DISABLE_MISSION_ASSISTANT__ = true;
+  window.tsmInitMissionGuide = function() { return false; };
+  
+  // Intercept and destroy the assistant DOM node as soon as it mounts
+  const killAssistantObserver = new MutationObserver((mutations) => {
+    const targets = [
+      'tsm-mission-guide-panel',
+      'mission-guide-panel',
+      'tsm-assistant-root',
+      'ai-assistant-container'
+    ];
+    targets.forEach(id => {
+      const el = document.getElementById(id) || document.querySelector('.' + id);
+      if (el) el.remove();
+    });
+    // Remove launcher buttons or avatars created by mission-engine
+    document.querySelectorAll('.bot-avatar-btn, [class*="assistant-launcher"], [id*="assistant-launcher"]').forEach(el => el.remove());
+  });
+  killAssistantObserver.observe(document.documentElement, { childList: true, subtree: true });
+</script>
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TSM // RE STRATEGIST</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#040710;--s1:#070b16;--s2:#090d1c;--s3:#0c1122;
+  --border:#1c2840;--border2:#26354d;
+  --acc:#a78bfa;--acc2:rgba(167,139,250,.25);--acc3:rgba(167,139,250,.08);
+  --gold:#f59e0b;--green:#00ff88;--red:#ef4444;--cyan:#00e5cc;--blue:#3b82f6;
+  --white:#e4eef8;--text:#8a9ab8;--muted:#445060;--dim:#283848;
+  --mono:'Share Tech Mono',monospace;--orb:'Orbitron',monospace;--raj:'Rajdhani',sans-serif
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden}
+body{background:var(--bg);color:var(--text);font-family:var(--raj);display:flex;flex-direction:column}
+body::before{content:'';position:fixed;inset:0;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(167,139,250,.007) 2px,rgba(167,139,250,.007) 4px);
+  pointer-events:none;z-index:9998}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+@keyframes glow{0%,100%{box-shadow:0 0 8px rgba(167,139,250,.2)}50%{box-shadow:0 0 20px rgba(167,139,250,.5)}}
+
+/* TOPBAR */
+.topbar{
+  background:linear-gradient(90deg,#020510,#060a18,#020510);
+  border-bottom:1px solid var(--border);height:46px;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 1rem;flex-shrink:0;position:relative;z-index:100
+}
+.topbar::after{content:'';position:absolute;bottom:-1px;left:0;width:100%;height:1px;
+  background:linear-gradient(90deg,transparent,var(--acc),transparent);opacity:.5}
+.logo{display:flex;align-items:center;gap:.6rem}
+.logo-mark{font-family:var(--orb);font-weight:900;font-size:.7rem;color:var(--bg);
+  background:linear-gradient(135deg,var(--acc),#8b5cf6);padding:.22rem .45rem;letter-spacing:.08rem}
+.logo-text{font-family:var(--orb);font-size:.7rem;font-weight:700;color:var(--acc);letter-spacing:.18rem}
+.logo-sub{font-family:var(--mono);font-size:.47rem;color:var(--muted);letter-spacing:.1rem;margin-left:.3rem}
+.tb-actions{display:flex;align-items:center;gap:.4rem}
+.tb-btn{background:transparent;border:1px solid var(--border2);color:var(--text);
+  padding:.3rem .7rem;font-family:var(--mono);font-size:.47rem;cursor:pointer;
+  letter-spacing:.1rem;text-transform:uppercase;transition:all .12s}
+.tb-btn:hover{border-color:var(--acc);color:var(--acc)}
+.tb-btn.primary{border-color:var(--acc2);color:var(--acc);background:var(--acc3)}
+.tb-btn.escalate{border-color:rgba(245,158,11,.4);color:var(--gold);background:rgba(245,158,11,.06)}
+.tb-btn.escalate:hover{background:rgba(245,158,11,.15)}
+.tb-btn.back{border-color:rgba(0,229,204,.3);color:var(--cyan)}
+
+/* MAIN LAYOUT */
+.main{display:flex;flex:1;overflow:hidden}
+
+/* SIDEBAR */
+.sidebar{width:200px;flex-shrink:0;background:var(--s1);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;overflow-y:auto}
+.sidebar::-webkit-scrollbar{width:2px}
+.sidebar::-webkit-scrollbar-thumb{background:var(--acc2)}
+.sb-hdr{font-family:var(--mono);font-size:.42rem;letter-spacing:.18rem;color:var(--dim);
+  padding:.55rem .8rem .25rem;border-top:1px solid var(--border);text-transform:uppercase}
+.sb-hdr:first-child{border-top:none}
+.strat-btn{display:flex;align-items:center;gap:.4rem;padding:.4rem .8rem;cursor:pointer;
+  font-size:.58rem;font-weight:600;color:var(--text);border-left:2px solid transparent;
+  transition:all .12s;text-decoration:none}
+.strat-btn:hover{background:rgba(255,255,255,.03);color:var(--white);border-left-color:var(--acc)}
+.strat-btn.active{background:rgba(255,255,255,.05);color:var(--white);border-left-color:var(--acc)}
+.sb-dot{width:5px;height:5px;border-radius:50%;background:var(--acc);flex-shrink:0;animation:pulse 2.5s infinite}
+.context-item{padding:.35rem .8rem;font-family:var(--mono);font-size:.48rem;
+  border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:.15rem}
+.ci-lbl{color:var(--muted);font-size:.4rem;letter-spacing:.1rem;text-transform:uppercase}
+.ci-val{color:var(--white);font-size:.5rem}
+
+/* CONTENT */
+.content{flex:1;display:flex;flex-direction:column;overflow:hidden}
+
+/* INTAKE BANNER */
+.intake-banner{
+  background:linear-gradient(90deg,rgba(167,139,250,.08),rgba(167,139,250,.03));
+  border-bottom:1px solid rgba(167,139,250,.2);
+  padding:.5rem 1rem;display:flex;align-items:center;justify-content:space-between;flex-shrink:0
+}
+.ib-left{display:flex;align-items:center;gap:.75rem}
+.ib-badge{font-family:var(--orb);font-size:.55rem;font-weight:700;color:var(--acc);
+  letter-spacing:.1rem;display:flex;align-items:center;gap:.4rem}
+.ib-badge::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--acc);animation:pulse 2s infinite}
+.ib-detail{font-family:var(--mono);font-size:.48rem;color:var(--muted)}
+.ib-right{display:flex;align-items:center;gap:.6rem;font-family:var(--mono);font-size:.48rem}
+.ib-stat{display:flex;gap:.3rem;align-items:center}
+.ib-stat-val{color:var(--acc)}
+.ib-stat-lbl{color:var(--muted)}
+
+/* STRATEGY WORKSPACE */
+.workspace{display:grid;grid-template-columns:1fr 260px;flex:1;overflow:hidden}
+
+/* STRATEGY PANELS */
+.strategy-panels{display:flex;flex-direction:column;overflow:hidden;border-right:1px solid var(--border)}
+.sp-tabs{background:var(--s1);border-bottom:1px solid var(--border);padding:.3rem .75rem;display:flex;gap:.3rem;flex-shrink:0}
+.sp-tab{font-family:var(--mono);font-size:.47rem;letter-spacing:.1rem;padding:.27rem .6rem;
+  border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;transition:all .12s;text-transform:uppercase}
+.sp-tab:hover{color:var(--text)}
+.sp-tab.active{color:var(--acc);border-color:var(--acc);background:var(--acc3)}
+
+/* PANEL VIEW */
+.panel-view{display:none;flex:1;overflow:hidden;flex-direction:column}
+.panel-view.active{display:flex}
+
+/* CONTEXT BRIEF */
+.context-brief{padding:.65rem .85rem;background:var(--s2);border-bottom:1px solid var(--border);flex-shrink:0}
+.cb-title{font-family:var(--orb);font-size:.58rem;font-weight:700;color:var(--white);letter-spacing:.1rem;margin-bottom:.4rem}
+.cb-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:.5rem}
+.cb-cell{background:var(--s1);border:1px solid var(--border);padding:.4rem .5rem}
+.cb-cell-lbl{font-family:var(--mono);font-size:.4rem;letter-spacing:.1rem;color:var(--muted);text-transform:uppercase;margin-bottom:.15rem}
+.cb-cell-val{font-family:var(--mono);font-size:.55rem;color:var(--white)}
+.cb-cell-val.warn{color:var(--red)}
+.cb-cell-val.ok{color:var(--green)}
+.cb-cell-val.caution{color:var(--gold)}
+.cb-cell-val.acc{color:var(--acc)}
+
+/* ANALYSIS OUTPUT */
+.analysis-body{flex:1;overflow-y:auto;padding:.65rem .85rem;font-family:var(--mono);font-size:.88rem;line-height:1.8;color:var(--text)}
+.analysis-body::-webkit-scrollbar{width:2px}
+.analysis-body::-webkit-scrollbar-thumb{background:var(--acc2)}
+
+/* STRATEGY GRID - modules */
+.strat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border);overflow-y:auto;flex:1}
+.strat-grid::-webkit-scrollbar{width:2px}
+.strat-grid::-webkit-scrollbar-thumb{background:var(--acc2)}
+.strat-card{background:var(--s1);padding:.65rem .7rem;cursor:pointer;transition:background .12s;
+  position:relative;display:flex;flex-direction:column;gap:.2rem;min-height:80px}
+.strat-card::before{content:'';position:absolute;top:0;left:0;width:100%;height:2px;
+  background:var(--acc);opacity:.2;transition:opacity .12s}
+.strat-card:hover{background:var(--s2)}
+.strat-card:hover::before{opacity:.9}
+.strat-card.running::before{opacity:1;animation:pulse 1.2s infinite}
+.sc-cat{font-family:var(--mono);font-size:.4rem;letter-spacing:.12rem;color:var(--acc);opacity:.75;text-transform:uppercase}
+.sc-title{font-size:.6rem;font-weight:700;color:var(--white);line-height:1.2}
+.sc-desc{font-size:.49rem;color:var(--muted);line-height:1.4;margin-top:auto}
+
+/* FEED */
+.strat-feed-hdr{background:var(--s1);border-top:1px solid var(--border);padding:.3rem .75rem;
+  display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.sfl{font-family:var(--mono);font-size:.43rem;letter-spacing:.15rem;color:var(--acc);text-transform:uppercase}
+.sfm{font-family:var(--mono);font-size:.43rem;color:var(--muted)}
+.strat-feed{height:140px;overflow-y:auto;padding:.45rem .75rem;font-family:var(--mono);font-size:.88rem;line-height:1.75;
+  color:var(--text);background:var(--bg);border-top:1px solid var(--border);flex-shrink:0}
+.strat-feed::-webkit-scrollbar{width:2px}
+.strat-feed::-webkit-scrollbar-thumb{background:var(--acc2)}
+
+/* RIGHT PANEL */
+.rpanel{background:var(--s1);display:flex;flex-direction:column;overflow-y:auto}
+.rpanel::-webkit-scrollbar{width:2px}
+.rpanel::-webkit-scrollbar-thumb{background:var(--acc2)}
+.rp-block{border-bottom:1px solid var(--border);padding:.55rem .7rem}
+.rp-hdr{font-family:var(--mono);font-size:.43rem;letter-spacing:.15rem;color:var(--acc);text-transform:uppercase;margin-bottom:.4rem}
+.kpi-r{display:flex;justify-content:space-between;padding:.2rem 0;font-size:.55rem}
+.kpi-l{color:var(--muted)}
+.kpi-v{font-family:var(--mono);color:var(--white)}
+.kpi-v.ok{color:var(--green)}
+.kpi-v.warn{color:var(--red)}
+.kpi-v.caution{color:var(--gold)}
+.rp-btn{width:100%;margin-top:.28rem;background:transparent;border:1px solid var(--border2);
+  color:var(--text);font-family:var(--mono);font-size:.47rem;padding:.33rem;cursor:pointer;
+  letter-spacing:.08rem;text-transform:uppercase;transition:all .12s}
+.rp-btn:hover{border-color:var(--acc);color:var(--acc)}
+.rp-btn.gold{border-color:rgba(245,158,11,.4);color:var(--gold)}
+.rp-btn.gold:hover{background:rgba(245,158,11,.08)}
+.rp-btn.p{border-color:rgba(167,139,250,.4);color:var(--acc)}
+.rp-btn.p:hover{background:var(--acc3)}
+.rp-btn.g{border-color:rgba(0,255,136,.3);color:var(--green)}
+.rp-btn.g:hover{background:rgba(0,255,136,.06)}
+.rp-textarea{width:100%;background:var(--s2);border:1px solid var(--border2);color:var(--text);
+  font-family:var(--mono);font-size:.48rem;padding:.38rem;outline:none;resize:none;height:80px;line-height:1.5}
+.rp-textarea:focus{border-color:var(--acc2)}
+.rp-input-sm{width:100%;background:var(--s2);border:1px solid var(--border2);color:var(--white);
+  font-family:var(--mono);font-size:.47rem;padding:.3rem .42rem;outline:none;margin-bottom:.2rem}
+.rp-input-sm:focus{border-color:var(--acc2)}
+.saved-item{padding:.28rem 0;border-bottom:1px solid rgba(255,255,255,.03);cursor:pointer;
+  font-size:.5rem;font-family:var(--mono);color:var(--text);transition:color .1s}
+.saved-item:hover{color:var(--acc)}
+
+/* RECOMMENDATION BLOCKS */
+.rec-block{border:1px solid var(--border2);background:var(--s2);padding:.55rem .65rem;margin-bottom:.5rem}
+.rb-priority{font-family:var(--mono);font-size:.4rem;letter-spacing:.12rem;text-transform:uppercase;margin-bottom:.15rem}
+.rb-title{font-size:.6rem;font-weight:700;color:var(--white);margin-bottom:.25rem}
+.rb-body{font-family:var(--mono);font-size:.5rem;color:var(--text);line-height:1.7}
+.rb-impact{font-family:var(--mono);font-size:.45rem;padding:.2rem .4rem;
+  border:1px solid currentColor;display:inline-flex;align-items:center;gap:.3rem;margin-top:.3rem}
+
+/* LOADER */
+.loader{display:flex;align-items:center;gap:.5rem;font-family:var(--mono);font-size:.52rem;color:var(--muted);
+  padding:1.5rem .85rem;animation:pulse 1.5s infinite}
+/* ── TSM EXPLAINABILITY PANEL ── */
+.tsm-xp{display:flex;flex-direction:column;gap:10px;padding:12px 13px;border-radius:4px;margin-top:12px}
+.tsm-xp-title{font-family:var(--orb);font-size:.58rem;letter-spacing:.12em;display:flex;align-items:center;gap:6px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,.06);text-transform:uppercase}
+.tsm-xp-pulse{width:6px;height:6px;border-radius:50%;animation:tsm-pulse 2s infinite}
+@keyframes tsm-pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.tsm-xp-lbl{font-family:var(--mono);font-size:.57rem;letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px;opacity:.5}
+.tsm-conf-row{display:flex;align-items:baseline;gap:8px;margin-bottom:4px}
+.tsm-conf-num{font-family:var(--orb);font-size:1.6rem;line-height:1}
+.tsm-conf-sub{font-size:.6rem;font-family:var(--mono);opacity:.5}
+.tsm-conf-bar-wrap{height:5px;background:rgba(255,255,255,.06);border-radius:10px;overflow:hidden;margin:4px 0 10px}
+.tsm-conf-bar{height:100%;border-radius:10px;transition:width .8s cubic-bezier(.4,0,.2,1);width:0%}
+.tsm-src{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:.6rem;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04)}
+.tsm-src-badge{font-size:.48rem;padding:1px 5px;border-radius:2px;letter-spacing:.06em;flex-shrink:0}
+.tsm-src-high{background:rgba(0,255,136,.12);color:var(--green)}
+.tsm-src-med{background:rgba(245,158,11,.12);color:var(--gold)}
+.tsm-src-low{background:rgba(239,68,68,.12);color:var(--red)}
+.tsm-reasoning{border-radius:3px;padding:10px;font-family:var(--mono);font-size:.62rem;line-height:1.7;border-left:3px solid}
+.tsm-rl-key{font-weight:600}
+.tsm-action{display:flex;align-items:flex-start;gap:8px;padding:6px 8px;border-radius:3px;margin-bottom:4px;font-size:.61rem;font-family:var(--mono)}
+.tsm-owner{font-size:.52rem;padding:2px 7px;border-radius:2px;letter-spacing:.08em;white-space:nowrap;flex-shrink:0}
+.tsm-action-text{line-height:1.5;opacity:.85}
+.tsm-delta-row{display:flex;gap:8px;margin-top:4px}
+.tsm-delta-box{flex:1;padding:8px;border-radius:3px;text-align:center}
+.tsm-delta-no{background:rgba(255,68,85,.06);border:1px solid rgba(255,68,85,.18)}
+.tsm-delta-act{background:rgba(0,229,100,.06);border:1px solid rgba(0,229,100,.18)}
+.tsm-delta-lbl{font-size:.54rem;font-family:var(--mono);letter-spacing:.06em;margin-bottom:3px;opacity:.5}
+.tsm-delta-val{font-family:var(--orb);font-size:.85rem}
+.tsm-delta-no .tsm-delta-val{color:#ff4455}
+.tsm-delta-act .tsm-delta-val{color:#00e564}
+.tsm-recovery{text-align:center;font-family:var(--mono);font-size:.59rem;margin-top:5px;opacity:.4}
+</style>
+  <script src="/js/core/tsm-event-bus.js"></script>
+  <script src="/js/core/tsm-state.js"></script>
+  <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
+  <script src="/html/shared/runtime/mission/mission-model.js"></script>
+  <script src="/html/shared/runtime/mission/mission-store.js"></script>
+  
+  <script src="/html/js/tsm-bnca-exposure-engine.js"></script>
+  <script src="/js/core/tsm-auto-pipeline.js"></script>
+<style>
+    /* GUIDE WIDGET — rule-based "what to click next" hint */
+    .guide-widget {
+      position: fixed;
+      bottom: calc(32px + 1rem); /* Clears fixed 32px #tsm-chain-bar */
+      right: 1rem;
+      z-index: 9998;
+      width: 300px;
+      font-family: var(--mono, monospace);
+    }
+    .gw-toggle {
+      background: var(--s1, #0a1118);
+      border: 1px solid rgba(30, 232, 182, .35);
+      padding: .4rem .75rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+      font-size: .48rem;
+      color: var(--acc, #00e5cc);
+      letter-spacing: .1rem;
+    }
+    .gw-panel {
+      display: none;
+      flex-direction: column;
+      background: var(--s1, #0a1118);
+      border: 1px solid rgba(30, 232, 182, .2);
+      margin-top: 3px;
+      overflow: hidden;
+      padding: .65rem;
+      font-size: .5rem;
+      line-height: 1.6;
+      color: var(--text, #c0c0c0);
+    }
+    .gw-panel.open { display: flex; }
+    .gw-step {
+      display: flex;
+      gap: .45rem;
+      align-items: flex-start;
+      padding: .25rem 0;
+    }
+    .gw-step .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      margin-top: 3px;
+      background: rgba(255, 255, 255, .15);
+    }
+    .gw-step.done .dot { background: var(--green, #00ff88); }
+    .gw-step.done span:last-child { color: var(--muted, #666); text-decoration: line-through; }
+    .gw-step.active .dot { background: var(--acc, #00e5cc); animation: pulse 2s infinite; }
+    .gw-step.active span:last-child { color: var(--white, #fff); }
+    .gw-next {
+      margin-top: .5rem;
+      padding-top: .5rem;
+      border-top: 1px solid rgba(30, 232, 182, .15);
+      color: var(--acc, #00e5cc);
+    }
+</style>
+
+<style>
+/* Permanent killswitch for AI Chat Assistant overlay */
+.assistant-launcher, .chat-widget-container { display: none !important; visibility: hidden !important; pointer-events: none !important; }
+</style>
+</head>
+<body data-vertical="re" data-page-role="strategist">
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <div class="logo">
+    <div class="logo-mark">RES</div>
+    <div class="logo-text">RE STRATEGIST</div>
+    <div class="logo-sub">// TRANSACTION STRATEGY INTELLIGENCE</div>
+  </div>
+  <div class="tb-actions">
+    <button class="tb-btn back" onclick="window.location.href='re-war-room.html'">&#8592; WAR ROOM</button>
+    <button class="tb-btn primary" onclick="runFullBrief()">&#9889; FULL STRATEGIC BRIEF</button>
+    <button class="tb-btn" onclick="runRescuePlan()">&#9881; RESCUE PLAN</button>
+    <button class="tb-btn escalate" onclick="escalateToExec()">&#8599; ESCALATE → EXEC PORTAL</button>
+    <button class="tb-btn" onclick="exportReport()">&#8595; EXPORT</button>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div class="sb-hdr">STRATEGY MODULES</div>
+    <div class="strat-btn active"><div class="sb-dot"></div>Modules</div>
+    <div class="sb-hdr">WAR ROOM INTAKE</div>
+    <div class="context-item">
+      <div class="ci-lbl">Modules Run</div>
+      <div class="ci-val" id="ctx-modules">—</div>
+    </div>
+    <div class="context-item">
+      <div class="ci-lbl">Outputs Received</div>
+      <div class="ci-val" id="ctx-outputs">—</div>
+    </div>
+    <div class="context-item">
+      <div class="ci-lbl">Rescue Pack</div>
+      <div class="ci-val" id="ctx-rescue">—</div>
+    </div>
+    <div class="context-item">
+      <div class="ci-lbl">Payload Time</div>
+      <div class="ci-val" id="ctx-time">—</div>
+    </div>
+    <div class="sb-hdr">QUICK STRATEGY</div>
+    <div class="strat-btn" onclick="quickStrat('Based on the current deal pipeline, what is the single highest-dollar risk that needs to be resolved in the next 24 hours? Provide a specific action plan.')">
+      <div class="sb-dot"></div>Top Risk (24hr)
+    </div>
+    <div class="strat-btn" onclick="quickStrat('Generate a 30-day transaction action plan prioritized by deal dollar value at risk. Include specific parties, documents, and deadlines.')">
+      <div class="sb-dot"></div>30-Day Action Plan
+    </div>
+    <div class="strat-btn" onclick="quickStrat('Identify the deals most likely to fall through in the next 30 days and provide a specific rescue strategy for each.')">
+      <div class="sb-dot"></div>Fall-Through Risk
+    </div>
+    <div class="strat-btn" onclick="quickStrat('Provide a compliance exposure summary: TRID violations dollar liability, HMDA LAR status, FinCEN RRE exposure, and the priority order to resolve each.')">
+      <div class="sb-dot"></div>Compliance Exposure
+    </div>
+    <div class="strat-btn" onclick="escalateToExec()">
+      <div class="sb-dot" style="background:var(--gold)"></div>→ Exec Portal
+    </div>
+    <div class="sb-hdr">CHAIN</div>
+    <div class="context-item">
+      <div class="ci-lbl">Previous</div>
+      <div class="ci-val" style="color:var(--cyan)">RE WAR ROOM</div>
+    </div>
+    <div class="context-item">
+      <div class="ci-lbl">Next</div>
+      <div class="ci-val" style="color:var(--gold)">RE EXEC PORTAL</div>
+    </div>
+  </div>
+
+  <!-- CONTENT -->
+  <div class="content">
+
+    <!-- INTAKE BANNER -->
+    <div class="intake-banner" id="intakeBanner">
+      <div class="ib-left">
+        <div class="ib-badge">STRATEGIST ACTIVE</div>
+        <div class="ib-detail" id="ib-detail">Loading war room payload...</div>
+      </div>
+      <div class="ib-right">
+        <div class="ib-stat"><span class="ib-stat-val" id="ib-modules">—</span><span class="ib-stat-lbl"> MODULES</span></div>
+        <div class="ib-stat"><span class="ib-stat-val" id="ib-saved">—</span><span class="ib-stat-lbl"> OUTPUTS</span></div>
+        <div class="ib-stat"><span class="ib-stat-val" id="ib-rescue" style="color:var(--red)">—</span><span class="ib-stat-lbl"> RESCUE</span></div>
+      </div>
+    </div>
+
+    <!-- WORKSPACE -->
+    <div class="workspace">
+
+      <!-- LEFT: PANELS -->
+      <div class="strategy-panels">
+        <div class="sp-tabs">
+          <button class="sp-tab active" onclick="switchPanel('modules',this)">MODULES</button>
+          <button class="sp-tab" onclick="switchPanel('brief',this)">STRATEGIC BRIEF</button>
+          <button class="sp-tab" onclick="switchPanel('rescue',this)">RESCUE PLAN</button>
+        </div>
+
+        <!-- MODULES PANEL -->
+        <div class="panel-view active" id="panel-modules">
+          <div class="strat-grid">
+
+            <div class="strat-card" onclick="runStratModule(this)"
+              data-title="Deal Rescue Strategy"
+              data-prompt="Based on all war room intelligence, generate a comprehensive DEAL RESCUE STRATEGY. Identify the top 3 deals most at risk of falling through, the dollar amount at stake in each, and a specific step-by-step rescue plan for each. Assign responsible parties and deadlines. Use ► section markers.">
+              <div class="sc-cat">RESCUE</div>
+              <div class="sc-title">Deal Rescue Strategy</div>
+              <div class="sc-desc">Top at-risk deals · rescue plans · ownership</div>
+            </div>
+
+            <div class="strat-card" onclick="runStratModule(this)"
+              data-title="Portfolio Risk Matrix"
+              data-prompt="Build a complete PORTFOLIO RISK MATRIX for the current transaction pipeline. Categorize all active deals by: financing risk, title risk, inspection risk, closing timeline risk, and compliance risk. Score each 1-10. Calculate the total dollar exposure. Identify the top 5 actions to reduce overall risk. Use ► section markers.">
+              <div class="sc-cat">RISK</div>
+              <div class="sc-title">Portfolio Risk Matrix</div>
+              <div class="sc-desc">Risk scoring · dollar exposure · mitigation</div>
+            </div>
+
+            <div class="strat-card" onclick="runStratModule(this)"
+              data-title="Compliance Priority Stack"
+              data-prompt="Generate a COMPLIANCE PRIORITY STACK. Rank all outstanding compliance issues (TRID violations, HMDA errors, FinCEN RRE, Fair Housing exposure) by dollar liability and exam risk. For each: describe the violation, calculate the maximum exposure, provide the specific cure procedure, and set a resolution deadline. Use ► section markers.">
+              <div class="sc-cat">COMPLIANCE</div>
+              <div class="sc-title">Compliance Priority Stack</div>
+              <div class="sc-desc">TRID · HMDA · FinCEN · ranked by exposure</div>
+            </div>
+
+            <div class="strat-card" onclick="runStratModule(this)"
+              data-title="30-Day Pipeline Optimization"
+              data-prompt="Generate a 30-DAY PIPELINE OPTIMIZATION PLAN. Current state: 22 loans, $18.4M, 68% pull-through. Target: 75% pull-through. For each week (weeks 1-4), provide specific actions to: rescue at-risk files, accelerate clear-to-close, reduce underwriting conditions, and improve pipeline velocity. Calculate the dollar impact of reaching 75% pull-through. Use ► section markers.">
+              <div class="sc-cat">OPERATIONS</div>
+              <div class="sc-title">30-Day Pipeline Optimization</div>
+              <div class="sc-desc">Pull-through · velocity · CTC acceleration</div>
+            </div>
+
+            <div class="strat-card" onclick="runStratModule(this)"
+              data-title="Appraisal Gap Playbook"
+              data-prompt="Build a comprehensive APPRAISAL GAP PLAYBOOK for the current transaction. Analyze: seller price reduction negotiation tactics (with templates), increased down payment scenarios (buyer cash needed at different gap amounts), second mortgage/piggyback options, seller concession structures, and appraisal challenge procedures. For a $24,000 gap on a $485,000 contract, calculate the exact terms for each resolution. Use ► section markers.">
+              <div class="sc-cat">TRANSACTION</div>
+              <div class="sc-title">Appraisal Gap Playbook</div>
+              <div class="sc-desc">Negotiation · down payment · seller concessions</div>
+            </div>
+
+            <div class="strat-card" onclick="runStratModule(this)"
+              data-title="Title Resolution Roadmap"
+              data-prompt="Generate a TITLE RESOLUTION ROADMAP for the outstanding lien ($12,400) on a current transaction. Cover: lien payoff request procedure and timing, how to coordinate payoff with escrow, lien release recording requirements, HOA super-lien priority in Arizona (ARS 33-1807 6-month priority amount), and the estimated days to clear each type of title defect. Provide a day-by-day timeline. Use ► section markers.">
+              <div class="sc-cat">TITLE</div>
+              <div class="sc-title">Title Resolution Roadmap</div>
+              <div class="sc-desc">Lien payoff · HOA super-lien · Arizona ARS</div>
+            </div>
+
+            <div class="strat-card" onclick="runStratModule(this)"
+              data-title="REO Disposition Strategy"
+              data-prompt="Generate a REO DISPOSITION STRATEGY for a 6-asset portfolio ($2.1M). For each disposition path (MLS retail, investor direct, auction, bulk sale), calculate: estimated net proceeds, days to cash, transaction costs, and tax implications. Recommend the optimal strategy for each asset based on property condition and market conditions. Include a timeline and carrying cost analysis. Use ► section markers.">
+              <div class="sc-cat">REO</div>
+              <div class="sc-title">REO Disposition Strategy</div>
+              <div class="sc-desc">6 assets · $2.1M · retail vs bulk vs auction</div>
+            </div>
+
+            <div class="strat-card" onclick="runStratModule(this)"
+              data-title="Market Position Analysis"
+              data-prompt="Generate a MARKET POSITION ANALYSIS for the Phoenix metro real estate market. Cover: current buyer vs seller market indicators, months of supply, median price trend (6-month), days on market trend, new construction vs resale competition, investment opportunity thesis, and the top 3 submarkets for acquisition in 2026. Include specific price per sqft benchmarks. Use ► section markers.">
+              <div class="sc-cat">MARKET</div>
+              <div class="sc-title">Market Position Analysis</div>
+              <div class="sc-desc">Phoenix metro · supply · demand · submarkets</div>
+            </div>
+
+            <div class="strat-card" onclick="runStratModule(this)"
+              data-title="Executive Action Summary"
+              data-prompt="Generate an EXECUTIVE ACTION SUMMARY synthesizing all transaction intelligence. Structure as: (1) Portfolio Health Overview with overall risk rating, (2) Critical Issues requiring action this week with dollar impact, (3) Wins/Completed items, (4) 30-day strategic priorities with assigned ownership, (5) Pipeline revenue forecast at current vs optimized pull-through. Use ► section markers.">
+              <div class="sc-cat">EXECUTIVE</div>
+              <div class="sc-title">Executive Action Summary</div>
+              <div class="sc-desc">Portfolio overview · critical actions · forecast</div>
+            </div>
+
+          </div>
+
+          <!-- FEED -->
+          <div class="strat-feed-hdr">
+            <span class="sfl">STRATEGY OUTPUT</span>
+            <span class="sfm" id="stratFeedMeta">SELECT A MODULE</span>
+          </div>
+          <div class="strat-feed" id="stratFeed">
+            <span style="color:var(--muted);font-style:italic">Select a strategy module. Output streams here.</span>
+          </div>
+        </div><!-- /panel-modules -->
+
+        <!-- STRATEGIC BRIEF PANEL -->
+        <div class="panel-view" id="panel-brief">
+          <div class="context-brief">
+            <div class="cb-title">WAR ROOM INTELLIGENCE BRIEF</div>
+            <div class="cb-grid" id="briefGrid">
+              <div class="cb-cell"><div class="cb-cell-lbl">Pipeline</div><div class="cb-cell-val caution" id="brief-pipeline">$18.4M</div></div>
+              <div class="cb-cell"><div class="cb-cell-lbl">Pull-Through</div><div class="cb-cell-val caution" id="brief-pt">68%</div></div>
+              <div class="cb-cell"><div class="cb-cell-lbl">TRID Violations</div><div class="cb-cell-val warn" id="brief-trid">2</div></div>
+              <div class="cb-cell"><div class="cb-cell-lbl">REO Assets</div><div class="cb-cell-val" id="brief-reo">6 · $2.1M</div></div>
+            </div>
+          </div>
+          <div class="analysis-body" id="briefBody">
+            <div class="loader">⟳ &nbsp;Loading war room intelligence...</div>
+          </div>
+        </div>
+
+        <!-- RESCUE PLAN PANEL -->
+        <div class="panel-view" id="panel-rescue">
+          <div class="analysis-body" id="rescueBody">
+            <div class="loader">⟳ &nbsp;Awaiting rescue pack data from war room...</div>
+          </div>
+        </div>
+
+      </div><!-- /strategy-panels -->
+
+      <!-- RIGHT PANEL -->
+      <div class="rpanel">
+        <div class="rp-block">
+          <div class="rp-hdr">STRATEGIC HEALTH</div>
+          <div style="display:flex;align-items:center;justify-content:center;padding:.5rem 0">
+            <div style="width:70px;height:70px;border-radius:50%;border:2px solid var(--acc2);
+              display:flex;align-items:center;justify-content:center;flex-direction:column;animation:glow 3s ease-in-out infinite">
+              <div style="font-family:var(--orb);font-size:1rem;font-weight:900;color:var(--acc)" id="stratScore">—</div>
+              <div style="font-family:var(--mono);font-size:.38rem;color:var(--muted)">SCORE</div>
+            </div>
+          </div>
+          <div class="kpi-r"><span class="kpi-l">Risk Level</span><span class="kpi-v caution" id="riskLevel">MEDIUM</span></div>
+          <div class="kpi-r"><span class="kpi-l">Issues Found</span><span class="kpi-v warn" id="issueCount">—</span></div>
+          <div class="kpi-r"><span class="kpi-l">Actions Req.</span><span class="kpi-v" id="actionCount">—</span></div>
+          <div class="kpi-r"><span class="kpi-l">Est. $ at Risk</span><span class="kpi-v warn" id="dollarRisk">—</span></div>
+        </div>
+
+        <div class="rp-block">
+          <div class="rp-hdr">SAVED OUTPUTS</div>
+          <div id="stratSavedList"><div style="font-size:.47rem;color:var(--muted);font-family:var(--mono)">No saves yet.</div></div>
+          <button class="rp-btn" onclick="saveFeedOutput()" style="margin-top:.3rem">+ SAVE OUTPUT</button>
+        </div>
+
+        <div class="rp-block" style="flex:1;display:flex;flex-direction:column;gap:.28rem">
+          <div class="rp-hdr">STRATEGY REPORT</div>
+          <input type="text" id="stratTitle" class="rp-input-sm" placeholder="RE Strategic Analysis">
+          <textarea class="rp-textarea" id="stratContent" placeholder="Save outputs to compile..."></textarea>
+          <button class="rp-btn p" onclick="buildFullBrief()">&#9889; BUILD FULL BRIEF</button>
+          <button class="rp-btn gold" onclick="escalateToExec()">&#8599; ESCALATE → EXEC PORTAL</button>
+          <button class="rp-btn g" onclick="exportReport()">&#8595; EXPORT (.TXT)</button>
+        </div>
+
+        <div class="rp-block">
+          <div class="rp-hdr">CHAIN STATUS</div>
+          <div class="kpi-r"><span class="kpi-l">From</span><span class="kpi-v" style="color:var(--cyan)">RE WAR ROOM ✓</span></div>
+          <div class="kpi-r"><span class="kpi-l">Current</span><span class="kpi-v acc">RE STRATEGIST</span></div>
+          <div class="kpi-r"><span class="kpi-l">Next</span><span class="kpi-v" style="color:var(--gold)">RE EXEC PORTAL</span></div>
+          <div class="kpi-r"><span class="kpi-l">Modules Run</span><span class="kpi-v" id="localRun">0</span></div>
+        </div>
+
+        <div class="tsm-xp" id="reXPPanel" style="background:linear-gradient(135deg,rgba(167,139,250,.04),rgba(196,181,253,.02));border:1px solid rgba(167,139,250,.18)">
+          <div class="tsm-xp-title" style="color:var(--acc)">
+            <div class="tsm-xp-pulse" style="background:var(--acc)"></div>
+            WHY DOES THE AI BELIEVE THIS?
+          </div>
+          <div>
+            <div class="tsm-xp-lbl">AI Confidence Score</div>
+            <div class="tsm-conf-row">
+              <div class="tsm-conf-num" id="reXPConfNum" style="color:var(--acc)">—</div>
+              <div class="tsm-conf-sub">confidence<br>probability</div>
+            </div>
+            <div class="tsm-conf-bar-wrap">
+              <div class="tsm-conf-bar" id="reXPConfBar" style="background:linear-gradient(90deg,var(--acc),rgba(196,181,253,.8))"></div>
+            </div>
+          </div>
+          <div>
+            <div class="tsm-xp-lbl">Data Sources Analyzed</div>
+            <div id="reXPSources"><div style="opacity:.4;font-family:var(--mono);font-size:.63rem">Awaiting analysis...</div></div>
+          </div>
+          <div>
+            <div class="tsm-xp-lbl">Reasoning Chain</div>
+            <div class="tsm-reasoning" id="reXPReasoning" style="background:rgba(0,0,0,.2);border-left-color:var(--acc)">
+              <div style="opacity:.4">Reasoning trace appears after analysis completes.</div>
+            </div>
+          </div>
+          <div>
+            <div class="tsm-xp-lbl">Actions · Named Owners</div>
+            <div id="reXPActions"><div style="opacity:.4;font-family:var(--mono);font-size:.63rem">Run analysis to surface owners...</div></div>
+          </div>
+          <div>
+            <div class="tsm-xp-lbl">Business Impact Delta</div>
+            <div class="tsm-delta-row">
+              <div class="tsm-delta-box tsm-delta-no"><div class="tsm-delta-lbl">NO ACTION</div><div class="tsm-delta-val" id="reXPDeltaNo">—</div></div>
+              <div class="tsm-delta-box tsm-delta-act"><div class="tsm-delta-lbl">WITH ACTION</div><div class="tsm-delta-val" id="reXPDeltaAct">—</div></div>
+            </div>
+            <div class="tsm-recovery" id="reXPRecovery"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '/api/mortgage/query';
+const APP = 'realestate';
+
+const STRAT_SYSTEM = `You are the TSM Real Estate Strategist — a senior AI strategist for real estate and mortgage operations. You receive intelligence from 7 specialized war room nodes and synthesize it into strategic recommendations. Your outputs are used by executives, brokers, lenders, and transaction coordinators.
+
+Expertise: transaction rescue, compliance risk quantification, pipeline optimization, REO disposition, investment underwriting, market analysis, Phoenix metro real estate.
+
+Always: Use ► section headers. Include dollar amounts and specific timelines. Assign ownership for every action item. Produce executive-grade output.`;
+
+// STATE
+let warRoomPayload = null;
+let stratSaved = [];
+let localRun = 0;
+let stratCurrentOutput = '';
+let stratPayload = {};
+
+// LOAD WAR ROOM PAYLOAD
+function loadPayload() {
+  try {
+    const raw = localStorage.getItem('TSM_RE_WAR_RELAY')
+             || sessionStorage.getItem('TSM_RE_WAR_RELAY')
+             || localStorage.getItem('tsm_re_warroom_payload');
+    if (raw) {
+      warRoomPayload = JSON.parse(raw);
+      applyPayload();
+      // TSM AUTO-CHAIN — finish the chain to Exec Portal without a manual click
+      if (localStorage.getItem('tsm_auto_mode') !== 'off') {
+        setTimeout(() => { escalateToExec(true); }, 1800);
+      }
+    } else {
+      document.getElementById('ib-detail').textContent = 'No war room payload — running in standalone mode';
+      document.getElementById('ctx-modules').textContent = 'Standalone';
+      generateAutoBrief();
+    }
+  } catch(e) {
+    document.getElementById('ib-detail').textContent = 'Payload parse error — standalone mode';
+    generateAutoBrief();
+  }
+}
+
+function applyPayload() {
+  const p = warRoomPayload;
+  const t = new Date(p.timestamp);
+
+  document.getElementById('ib-detail').textContent =
+    `War Room payload received · ${t.toLocaleTimeString()} · ${p.modulesRun || 0} modules run${p.docText ? ' · Doc loaded' : ''}${p.feedText ? ' · Feed captured' : ''}`;
+  document.getElementById('ib-modules').textContent = p.modulesRun || 0;
+  document.getElementById('ib-saved').textContent = p.savedOutputs || 0;
+  document.getElementById('ib-rescue').textContent = p.rescuePack ? '⚡ ACTIVE' : 'NONE';
+  document.getElementById('ctx-modules').textContent = p.modulesRun || 0;
+  document.getElementById('ctx-outputs').textContent = p.savedOutputs || 0;
+  document.getElementById('ctx-rescue').textContent = p.rescuePack ? p.rescuePack.address || 'Active' : 'None';
+  document.getElementById('ctx-time').textContent = t.toLocaleTimeString();
+
+  if (p.rescuePack) {
+    const rp = p.rescuePack;
+    document.getElementById('stratScore').textContent = rp.score || '—';
+    document.getElementById('riskLevel').textContent = rp.risk || 'MEDIUM';
+    document.getElementById('riskLevel').className = 'kpi-v ' + ({LOW:'ok',MEDIUM:'caution',HIGH:'warn',CRITICAL:'warn'}[rp.risk] || 'caution');
+  }
+
+  generateAutoBrief();
+  populateRescuePanel();
+}
+
+async function callAI(userMessage, systemOverride) {
+  const res = await fetch(API, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      question: userMessage,
+      context: systemOverride || STRAT_SYSTEM,
+      app: APP,
+      maxTokens: 2200
+    })
+  });
+  const data = await res.json();
+  return data.answer || data.response || data.reply || 'No response.';
+}
+
+function formatOutput(text) {
+  let out = text
+    .replace(/\n/g, '<br>')
+    .replace(/►\s*/g, `<br><br><span style="color:var(--acc);font-weight:700">►</span> `)
+    .replace(/\s(\d{1,2}\.\s+(?=[A-Z]))/g, '<br>$1')
+    .replace(/\*\*(.*?)\*\*/g, `<span style="color:var(--white);font-weight:700">$1</span>`)
+    .replace(/\*(.*?)\*/g, `<span style="color:var(--white)">$1</span>`);
+  return out.replace(/^(<br>\s*)+/, '');
+}
+async function generateAutoBrief() {
+  const brief = document.getElementById('briefBody');
+  brief.innerHTML = '<div class="loader">⟳ &nbsp;Generating strategic brief...</div>';
+
+  let context = '';
+  // Use outputs array if present, fall back to feedText/docText
+  const hasOutputs = warRoomPayload && Array.isArray(warRoomPayload.outputs) && warRoomPayload.outputs.length > 0;
+  const hasFeed = warRoomPayload && (warRoomPayload.feedText || warRoomPayload.docText);
+  if (hasOutputs) {
+    context = warRoomPayload.outputs.slice(0, 5)
+      .map(o => `=== ${o.title} ===\n${o.text.substring(0, 600)}`)
+      .join('\n\n');
+  }
+  if (warRoomPayload && warRoomPayload.rescuePack) {
+    context += `\n\n=== RESCUE PACK ===\n${JSON.stringify(warRoomPayload.rescuePack).substring(0,300)}`;
+  }
+
+  const prompt = context
+    ? `Based on this war room intelligence:\n\n${context}\n\nGenerate a STRATEGIC BRIEF covering: (1) Portfolio Health, (2) Top 3 Critical Issues, (3) Immediate Actions This Week, (4) 30-Day Priorities, (5) Revenue Impact Analysis. Use ► headers.\n\nFormat your ENTIRE response exactly as follows: start with the literal line ===BRIEF=== followed by the full brief above, then a new line with the literal ===JSON=== followed by a single JSON object (no markdown fences) with this exact shape:\n{"confidence":0-100,"execSummary":"...","dataSources":[{"name":"...","weight":"HIGH|MED|LOW"}],"reasoning":[{"key":"...","val":"..."}],"recommendedActions":[{"text":"...","owner":"..."}]}
+Rules: reasoning is REQUIRED, at least 3 entries, and must never be empty - each entry's "val" must be ONE short sentence (under 20 words), not a paragraph, written for an executive scanning a card, not reading a report. execSummary is REQUIRED - exactly one or two sentences (under 40 words total) giving the bottom-line takeaway an executive needs before they decide whether to read further.`
+    : `Generate a COMPREHENSIVE STRATEGIC BRIEF for a real estate and mortgage operation. Current conditions: 22 loans, $18.4M pipeline, 68% pull-through, 2 TRID violations, $1,247 cure needed, 6 REO assets, Phoenix metro market. Cover: portfolio health, critical issues, immediate actions, 30-day priorities, revenue impact. Use ► headers.\n\nFormat your ENTIRE response exactly as follows: start with the literal line ===BRIEF=== followed by the full brief above, then a new line with the literal ===JSON=== followed by a single JSON object (no markdown fences) with this exact shape:\n{"confidence":0-100,"execSummary":"...","dataSources":[{"name":"...","weight":"HIGH|MED|LOW"}],"reasoning":[{"key":"...","val":"..."}],"recommendedActions":[{"text":"...","owner":"..."}]}
+Rules: reasoning is REQUIRED, at least 3 entries, and must never be empty - each entry's "val" must be ONE short sentence (under 20 words), not a paragraph, written for an executive scanning a card, not reading a report. execSummary is REQUIRED - exactly one or two sentences (under 40 words total) giving the bottom-line takeaway an executive needs before they decide whether to read further.`;
+
+  reXPResetExplain();
+  try {
+    const text = await callAI(prompt);
+    const {brief: reBrief, obj: reObj, parseFailed: reParseFailed} = reXPParseExplain(text);
+    brief.innerHTML = formatOutput(reBrief || text);
+    stratPayload.brief = reBrief || text;
+    if(reObj) {
+      reXPRenderExplain(reObj);
+      // Inherit the parsed explainability so escalateToExec() can carry
+      // the real confidence/reasoning/sources to the Exec Portal instead
+      // of re-deriving a blank one at escalation time.
+      stratPayload.confidence = reObj.confidence;
+      stratPayload.execSummary = reObj.execSummary || '';
+      stratPayload.dataSources = reObj.dataSources || [];
+      stratPayload.reasoning = reObj.reasoning || [];
+      stratPayload.recommendedActions = reObj.recommendedActions || [];
+    }
+    else if(reParseFailed) reXPRenderExplainFailed();
+  } catch(e) {
+    brief.innerHTML = `<span style="color:var(--red)">[ERROR] ${e.message}</span>`;
+    reXPRenderExplainFailed();
+  }
+}
+
+async function populateRescuePanel() {
+  const rb = document.getElementById('rescueBody');
+  if (!warRoomPayload || !warRoomPayload.rescuePack) {
+    rb.innerHTML = `<div style="color:var(--muted);font-family:var(--mono);font-size:.52rem;line-height:2;padding:.5rem 0">
+      No rescue pack data from war room.<br>
+      <span style="color:var(--acc);cursor:pointer" onclick="window.location.href='re-war-room.html'">← Return to War Room to run Deal Rescue Pack</span>
+    </div>`;
+    return;
+  }
+  rb.innerHTML = '<div class="loader">⟳ &nbsp;Building rescue plan from war room data...</div>';
+  const rp = warRoomPayload.rescuePack;
+  const prompt = `Based on this Deal Rescue Pack data for ${rp.address || 'subject property'}:\n\nRisk Score: ${rp.score}/100\nOverall Risk: ${rp.risk}\nScenarios: ${(rp.scenarios || []).join(', ')}\nAnalysis: ${(rp.analysis || '').substring(0, 800)}\n\nGenerate a STRATEGIC RESCUE PLAN with: (1) Prioritized action list with deadlines, (2) Party responsibility matrix, (3) Dollar exposure by scenario, (4) Go/No-Go recommendation, (5) Escalation triggers. Use ► headers.`;
+  try {
+    const text = await callAI(prompt);
+    rb.innerHTML = formatOutput(text);
+    stratPayload.rescuePlan = text;
+  } catch(e) {
+    rb.innerHTML = `<span style="color:var(--red)">[ERROR] ${e.message}</span>`;
+  }
+}
+
+async function runStratModule(card) {
+  const prompt = card.dataset.prompt;
+  const title = card.dataset.title;
+  if (!prompt) return;
+
+  document.querySelectorAll('.strat-card').forEach(c => c.classList.remove('running'));
+  card.classList.add('running');
+
+  const feed = document.getElementById('stratFeed');
+  document.getElementById('stratFeedMeta').textContent = 'Running: ' + title;
+  feed.innerHTML = `<span style="color:var(--acc)">[STRATEGIST] ${title}</span>\n\nAnalyzing...`;
+  localRun++;
+  document.getElementById('localRun').textContent = localRun;
+
+  // enrich prompt with payload context
+  let enriched = prompt;
+  const hasOutputs = warRoomPayload && Array.isArray(warRoomPayload.outputs) && warRoomPayload.outputs.length > 0;
+  const hasFeed = warRoomPayload && (warRoomPayload.feedText || warRoomPayload.docText);
+  if (hasOutputs || hasFeed) {
+    const ctx = hasOutputs
+      ? warRoomPayload.outputs.slice(0,3).map(o => o.title + ': ' + o.text.substring(0,200)).join('\n')
+      : ((warRoomPayload.feedText || '') + '\n' + (warRoomPayload.docText || '')).slice(0,600);
+    enriched = `WAR ROOM CONTEXT:\n${ctx}\n\nSTRATEGY REQUEST:\n${prompt}`;
+  }
+  // Lightweight explainability tail - quick modules get a smaller ask than
+  // Full Strategic Brief (no dataSources/recommendedActions noise), just
+  // enough for the Why panel to show something real for whatever module
+  // is currently on screen.
+  enriched += `\n\nFormat your ENTIRE response exactly as follows: start with the literal line ===BRIEF=== followed by your full analysis above, then a new line with the literal ===JSON=== followed by a single JSON object (no markdown fences) with this exact shape:\n{"confidence":0-100,"execSummary":"...","reasoning":[{"key":"...","val":"..."}]}\nRules: reasoning is REQUIRED, at least 2 entries, each val one short sentence (under 20 words). execSummary is REQUIRED, one sentence (under 25 words) - the bottom-line takeaway for THIS module specifically.`;
+
+  reXPResetExplain();
+  try {
+    const text = await callAI(enriched);
+    const {brief: modBrief, obj: modObj, parseFailed: modParseFailed} = reXPParseExplain(text);
+    const displayText = modBrief || text;
+    stratCurrentOutput = displayText;
+    feed.innerHTML = `<span style="color:var(--acc)">[STRATEGIST] ${title}</span>\n\n` + formatOutput(displayText);
+    feed.scrollTop = 0;
+    document.getElementById('stratFeedMeta').textContent = '✓ Complete — ' + title;
+    autoStratSave(title, displayText);
+    updateStratScore();
+    if (modObj) {
+      reXPRenderExplain(modObj);
+      stratPayload.confidence = modObj.confidence;
+      stratPayload.execSummary = modObj.execSummary || '';
+      stratPayload.reasoning = modObj.reasoning || [];
+      // Quick modules don't ask for dataSources/recommendedActions - keep
+      // whatever the last Full Brief produced rather than blanking them.
+    } else if (modParseFailed) {
+      reXPRenderExplainFailed();
+    }
+  } catch(e) {
+    feed.innerHTML = `<span style="color:var(--red)">[ERROR] ${e.message}</span>`;
+    document.getElementById('stratFeedMeta').textContent = 'ERROR';
+    reXPRenderExplainFailed();
+  } finally {
+    card.classList.remove('running');
+  }
+}
+
+async function quickStrat(prompt) {
+  const feed = document.getElementById('stratFeed');
+  document.getElementById('stratFeedMeta').textContent = 'Running...';
+  feed.innerHTML = '<span style="color:var(--acc)">[QUICK STRATEGY]</span>\n\nAnalyzing...';
+  localRun++;
+  document.getElementById('localRun').textContent = localRun;
+  const enriched = prompt + `\n\nFormat your ENTIRE response exactly as follows: start with the literal line ===BRIEF=== followed by your full analysis above, then a new line with the literal ===JSON=== followed by a single JSON object (no markdown fences) with this exact shape:\n{"confidence":0-100,"execSummary":"...","reasoning":[{"key":"...","val":"..."}]}\nRules: reasoning is REQUIRED, at least 2 entries, each val one short sentence (under 20 words). execSummary is REQUIRED, one sentence (under 25 words) - the bottom-line takeaway for THIS analysis specifically.`;
+  reXPResetExplain();
+  try {
+    const text = await callAI(enriched);
+    const {brief: qBrief, obj: qObj, parseFailed: qParseFailed} = reXPParseExplain(text);
+    const displayText = qBrief || text;
+    stratCurrentOutput = displayText;
+    feed.innerHTML = '<span style="color:var(--acc)">[QUICK STRATEGY]</span>\n\n' + formatOutput(displayText);
+    feed.scrollTop = 0;
+    document.getElementById('stratFeedMeta').textContent = '✓ Complete';
+    autoStratSave('Quick Strategy', displayText);
+    if (qObj) {
+      reXPRenderExplain(qObj);
+      stratPayload.confidence = qObj.confidence;
+      stratPayload.execSummary = qObj.execSummary || '';
+      stratPayload.reasoning = qObj.reasoning || [];
+    } else if (qParseFailed) {
+      reXPRenderExplainFailed();
+    }
+  } catch(e) {
+    feed.innerHTML = `<span style="color:var(--red)">[ERROR] ${e.message}</span>`;
+    document.getElementById('stratFeedMeta').textContent='ERROR';
+    reXPRenderExplainFailed();
+  }
+}
+
+async function runFullBrief() {
+  switchPanel('brief', document.querySelector('.sp-tab'));
+  await generateAutoBrief();
+}
+
+async function runRescuePlan() {
+  switchPanel('rescue', document.querySelectorAll('.sp-tab')[2]);
+  await populateRescuePanel();
+}
+
+async function buildFullBrief(silent) {
+  // Build from stratSaved modules OR fall back to war room relay payload
+  const hasModules = stratSaved.length > 0;
+  const hasRelay = warRoomPayload && (
+    (Array.isArray(warRoomPayload.outputs) && warRoomPayload.outputs.length > 0) ||
+    warRoomPayload.feedText || warRoomPayload.docText || warRoomPayload.synthesis
+  );
+
+  if (!hasModules && !hasRelay) { alert('Run a strategy module first, or escalate from the War Room with analysis complete.'); return; }
+
+  let content = '';
+
+  // Include war room relay data first if present
+  if (hasRelay) {
+    const p = warRoomPayload;
+    content += '# WAR ROOM INTELLIGENCE\n\n';
+    if (p.synthesis) content += '## War Room Synthesis\n\n' + p.synthesis + '\n\n---\n\n';
+    if (Array.isArray(p.outputs) && p.outputs.length > 0) {
+      content += p.outputs.map(o => '## ' + (o.title||'Output') + '\n\n' + (o.text||'')).join('\n\n---\n\n') + '\n\n---\n\n';
+    }
+    if (p.feedText && !p.synthesis) content += '## Intelligence Feed\n\n' + p.feedText + '\n\n---\n\n';
+    if (p.docText) content += '## Source Document\n\n' + p.docText + '\n\n---\n\n';
+  }
+
+  // Include the generated Strategic Brief if it exists
+  if (stratPayload.brief) {
+    content += '# STRATEGIC BRIEF\n\n' + stratPayload.brief + '\n\n---\n\n';
+  }
+
+  // Append any strategy modules run locally
+  if (hasModules) {
+    content += '# STRATEGY MODULES\n\n';
+    content += stratSaved.map(o => '## ' + o.title + '\n\n' + o.text).join('\n\n---\n\n');
+  }
+
+  document.getElementById('stratContent').value = content;
+  stratPayload.fullBrief = content;
+  if (!silent) alert('Full brief compiled — ' + (hasRelay ? 'War Room relay included. ' : '') + (hasModules ? stratSaved.length + ' strategy modules included.' : 'Run strategy modules to add analysis.'));
+}
+
+function autoStratSave(title, text) {
+  stratSaved.push({title, text, time: new Date()});
+  renderStratSaved();
+}
+
+function saveFeedOutput() {
+  if (!stratCurrentOutput) { alert('Run a module first.'); return; }
+  const title = document.getElementById('stratFeedMeta').textContent.replace('✓ Complete — ', '') || 'Manual Save';
+  autoStratSave(title, stratCurrentOutput);
+}
+
+function renderStratSaved() {
+  const el = document.getElementById('stratSavedList');
+  el.innerHTML = '';
+  stratSaved.slice().reverse().forEach(o => {
+    const d = document.createElement('div');
+    d.className = 'saved-item';
+    d.textContent = o.title;
+    d.onclick = () => {
+      const cur = document.getElementById('stratContent').value;
+      document.getElementById('stratContent').value =
+        (cur ? cur + '\n\n---\n\n' : '') + '## ' + o.title + '\n\n' + o.text;
+    };
+    el.appendChild(d);
+  });
+}
+
+function updateStratScore() {
+  const score = Math.min(95, 55 + localRun * 5);
+  document.getElementById('stratScore').textContent = score;
+  document.getElementById('issueCount').textContent = Math.max(1, 8 - localRun);
+  document.getElementById('actionCount').textContent = localRun * 3;
+  document.getElementById('dollarRisk').textContent = '$' + (Math.round((2.1 + localRun * 0.3) * 10) / 10).toFixed(1) + 'M';
+}
+
+function buildStratPayload() {
+  return {
+    timestamp: new Date().toISOString(),
+    platform: 'RE Strategist',
+    warRoomPayload: warRoomPayload,
+    stratModulesRun: localRun,
+    stratSaved: stratSaved,
+    stratPayload: stratPayload,
+    reportTitle: document.getElementById('stratTitle').value || 'RE Strategic Analysis',
+    reportContent: document.getElementById('stratContent').value,
+    kpis: {
+      dollarRisk: document.getElementById('dollarRisk') ? document.getElementById('dollarRisk').textContent : null,
+      issueCount: document.getElementById('issueCount') ? document.getElementById('issueCount').textContent : null,
+      actionCount: document.getElementById('actionCount') ? document.getElementById('actionCount').textContent : null,
+      pullThrough: document.getElementById('brief-pt') ? document.getElementById('brief-pt').textContent : null,
+      pipeline: document.getElementById('brief-pipeline') ? document.getElementById('brief-pipeline').textContent : null,
+      // Business Impact Delta figures, relayed forward so the Exec Portal
+      // can show the same numbers instead of re-deriving its own separate
+      // (and inconsistent) estimate. These previously lived only as DOM
+      // text on this page (#reXPDeltaNo/#reXPDeltaAct/#reXPRecovery) and
+      // were never included in the relay payload, so every downstream
+      // reader of "noActionRevLoss"/"actionRevLoss"/"recoveryTime" always
+      // got undefined no matter what this page displayed.
+      noActionRevLoss: document.getElementById('reXPDeltaNo') ? document.getElementById('reXPDeltaNo').textContent : null,
+      actionRevLoss: document.getElementById('reXPDeltaAct') ? document.getElementById('reXPDeltaAct').textContent : null,
+      recoveryTime: document.getElementById('reXPRecovery') ? document.getElementById('reXPRecovery').textContent : null,
+      confidence: (stratPayload && stratPayload.confidence != null) ? stratPayload.confidence : null
+    }
+  };
+}
+
+function escalateToExec(silent) {
+  buildFullBrief(silent);
+  const payload = buildStratPayload();
+  try {
+    // ── TSM EXEC KIT: WIP + explainability ──────────────────────────
+    try {
+      payload.wip = (window.TSMExecKitProducer && TSMExecKitProducer.buildWip([
+        { id:'docsearch',  label:'Document Search',   status:'done' },
+        { id:'warroom',    label:'War Room Analysis', status:'done' },
+        { id:'strategist', label:'Strategist Brief',  status:'done', time: new Date().toLocaleTimeString() },
+        { id:'exec',       label:'Executive Portal',  status:'active' }
+      ])) || [];
+      // Inherit the actual parsed reXP explainability (confidence,
+      // reasoning, sources, recommended actions) instead of re-deriving
+      // it from scratch — those fields were previously always undefined
+      // here because they were read off the wrong object (top-level
+      // payload.confidence/payload.exposure instead of
+      // payload.stratPayload.confidence/.reasoning/.dataSources).
+      const reXP = payload.stratPayload || {};
+      const reasoningPoints = (reXP.reasoning || []).map(r => ({ label: r.key, value: r.val }));
+      const topAction = (reXP.recommendedActions || [])[0];
+      // Exec Portal "Why" card gets the short bottom-line summary, not the
+      // full multi-section brief - that stays available via dataPoints
+      // (itemized reasoning) and the Strategist tab for anyone who wants
+      // the full read.
+      const shortRationale = reXP.execSummary
+        || (reasoningPoints.length ? reasoningPoints.map(p => p.value).slice(0, 2).join(' ') : '')
+        || 'See Strategist tab for full brief.';
+      payload.explain = (window.TSMExecKitProducer && TSMExecKitProducer.buildExplain([
+        {
+          claim: payload.reportTitle || payload.docName || 'RE Strategist Brief',
+          confidence: reXP.confidence != null ? reXP.confidence : null,
+          severity: 'med',
+          impact: topAction ? `${topAction.text} (${topAction.owner})` : (payload.kpis && payload.kpis.dollarRisk) || '',
+          rationale: shortRationale,
+          dataPoints: reasoningPoints,
+          sources: (reXP.dataSources || []).map(s => s.name).length ? reXP.dataSources.map(s => s.name) : ['RE Strategist']
+        }
+      ])) || [];
+    } catch(e) { console.warn('[exec-kit] producer patch error:', e); }
+    // ── END TSM EXEC KIT ─────────────────────────────────────────────
+
+    localStorage.setItem('TSM_RE_WAR_RELAY', JSON.stringify(payload));
+    sessionStorage.setItem('TSM_RE_WAR_RELAY', JSON.stringify(payload));
+    localStorage.setItem('tsm_re_strat_payload', JSON.stringify(payload));
+
+    // ── Phase 2: Mission Core creation ──
+    try {
+      if (window.TSMMissionModel && window.TSMMissionStore) {
+        function reMissionParseExposure(str){
+          if (!str) return 0;
+          const nums = String(str).match(/[\d,]+(?:\.\d+)?/g);
+          if (!nums) return 0;
+          const mult = /m\b/i.test(str) ? 1000000 : (/k\b/i.test(str) ? 1000 : 1);
+          return Math.round(parseFloat(nums[0].replace(/,/g,'')) * mult);
+        }
+        const reMissionExposure = reMissionParseExposure(payload.kpis && payload.kpis.dollarRisk);
+        const reMissionPriority = reMissionExposure >= 2000000 ? 'Critical'
+          : reMissionExposure >= 500000 ? 'High'
+          : reMissionExposure >= 100000 ? 'Medium'
+          : 'normal';
+        const mission = window.TSMMissionModel.createMission({
+          vertical: 'realestate',
+          tenantId: 'default',
+          client: payload.reportTitle || payload.docName || null,
+          classification: {
+            summary: payload.fullBrief || payload.narrative || payload.summary || '',
+            source: 'RE Strategist'
+          },
+          workflow: {
+            assignedTo: null,
+            queue: null,
+            priority: reMissionPriority,
+            sla: null
+          },
+          actor: 're-strategist'
+        });
+        window.TSMMissionStore.saveMission(mission);
+      } else {
+        console.warn('Mission Core not loaded — skipping mission creation, RE relay writes already succeeded.');
+      }
+    } catch (missionErr) {
+      console.warn('Mission Core creation failed (non-fatal, RE relay already written):', missionErr);
+    }
+
+    // ── SENTINEL PUSH ────────────────────────────────────────────────
+    // Real numbers only: dollarRisk/issueCount/pullThrough/pipeline are
+    // the same KPIs already rendered on this page from real strategist
+    // runs, not invented for Sentinel.
+    try {
+      function reParseExposureNumber(str){
+        if (!str) return 0;
+        const nums = String(str).match(/[\d,]+(?:\.\d+)?/g);
+        if (!nums) return 0;
+        const mult = /m\b/i.test(str) ? 1000000 : (/k\b/i.test(str) ? 1000 : 1);
+        return Math.round(parseFloat(nums[0].replace(/,/g,'')) * mult);
+      }
+      function reSeverityForExposure(n){
+        if (n >= 2000000) return 'CRIT';
+        if (n >= 500000) return 'HIGH';
+        if (n >= 100000) return 'MED';
+        return 'LOW';
+      }
+      const reExposureNum = reParseExposureNumber(payload.kpis.dollarRisk);
+      const reIssueCount = parseInt(payload.kpis.issueCount) || 0;
+      const reAnomalies = [{
+        id: 're-strat-' + Date.now(),
+        title: (payload.reportTitle || 'RE Strategic Analysis'),
+        severity: reSeverityForExposure(reExposureNum),
+        exposure: reExposureNum,
+        confidence: Math.max(50, 95 - reIssueCount * 5),
+        rootCause: reIssueCount + ' open issue(s) flagged across the strategist run, pull-through ' + (payload.kpis.pullThrough || '\u2014') + '.',
+        recommendedAction: 'Review the ' + (payload.stratModulesRun || 0) + '-module strategist brief and route to re-exec-portal.html for executive sign-off.'
+      }];
+      const reSentinelKey = 'TSM_REALESTATE_STRATEGIST_RELAY';
+      const reSentinelExisting = JSON.parse(localStorage.getItem(reSentinelKey) || 'null') || {};
+      reSentinelExisting.anomalies = reAnomalies;
+      reSentinelExisting.generatedAt = new Date().toISOString();
+      localStorage.setItem(reSentinelKey, JSON.stringify(reSentinelExisting));
+      window.dispatchEvent(new CustomEvent('TSM_SENTINEL_REFRESH'));
+
+      // ── COLLECTIVE SIGNAL PUSH ────────────────────────────────────
+      // Same real signals the Sentinel push just used above: reExposureNum,
+      // reSeverityForExposure, reIssueCount — nothing new invented here.
+      try {
+        const reCsRisk = reSeverityForExposure(reExposureNum);
+        fetch('/api/collective/signal', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            vertical: 'realestate',
+            warRoom: 'RE Strategist',
+            bnca: (payload.reportContent || '').slice(0, 400) || 'RE strategist brief complete.',
+            confidence: Math.max(50, 95 - reIssueCount * 5),
+            riskLevel: reCsRisk,
+            topIssue: (payload.reportTitle || 'RE Strategic Analysis') + ' \u2014 ' + reIssueCount + ' open issue(s), pull-through ' + (payload.kpis.pullThrough || '\u2014'),
+            ownerLanes: ['RE Strategist', 'Executive Portal'],
+            hitlRequired: reCsRisk === 'CRIT' || reCsRisk === 'HIGH',
+            actions: ['Review ' + (payload.stratModulesRun || 0) + '-module strategist brief', 'Route to re-exec-portal.html for sign-off'],
+            source: window.location.pathname
+          })
+        }).catch(()=>{});
+      } catch(cse) { console.warn('[collective-signal] re strategist push error:', cse); }
+      // ── END COLLECTIVE SIGNAL PUSH ─────────────────────────────────
+    } catch(e) { console.warn('[sentinel-push] re error:', e); }
+    // ── END SENTINEL PUSH ───────────────────────────────────────────
+    window.location.href = 're-exec-portal.html';
+  } catch(e) {
+    alert('Payload saved. Open re-exec-portal.html to continue.');
+  }
+}
+
+function exportReport() {
+  const title = document.getElementById('stratTitle').value || 'RE Strategic Analysis';
+  const content = document.getElementById('stratContent').value ||
+    stratSaved.map(o => '## ' + o.title + '\n\n' + o.text).join('\n\n---\n\n');
+  if (!content.trim()) { alert('No content to export.'); return; }
+  const blob = new Blob(['# TSM RE STRATEGIST\n# ' + title + '\nGenerated: ' +
+    new Date().toLocaleString() + '\n\n' + content], {type:'text/plain'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 're-strategist-' + Date.now() + '.txt';
+  a.click();
+}
+
+function switchPanel(name, btn) {
+  document.querySelectorAll('.panel-view').forEach(v => v.classList.remove('active'));
+  document.getElementById('panel-' + name)?.classList.add('active');
+  document.querySelectorAll('.sp-tab').forEach(t => t.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+}
+
+// init
+loadPayload();
+
+// ── TSM EXPLAINABILITY PANEL — reXP ──
+function reXPResetExplain(){
+  document.getElementById('reXPConfNum').textContent='—';
+  document.getElementById('reXPConfBar').style.width='0%';
+  document.getElementById('reXPSources').innerHTML='<div style="opacity:.4;font-family:var(--mono);font-size:.63rem">Awaiting analysis...</div>';
+  document.getElementById('reXPReasoning').innerHTML='<div style="opacity:.4">Reasoning trace appears after analysis completes.</div>';
+  document.getElementById('reXPActions').innerHTML='<div style="opacity:.4;font-family:var(--mono);font-size:.63rem">Run analysis to surface action owners...</div>';
+  document.getElementById('reXPDeltaNo').textContent='—';
+  document.getElementById('reXPDeltaAct').textContent='—';
+  document.getElementById('reXPRecovery').textContent='';
+}
+function reXPRenderExplain(obj){
+  if(!obj) return;
+  const conf = obj.confidence||0;
+  document.getElementById('reXPConfNum').textContent=conf+'%';
+  setTimeout(()=>{document.getElementById('reXPConfBar').style.width=conf+'%';},100);
+  const wc = w=>w==='HIGH'?'tsm-src-high':w==='MED'?'tsm-src-med':'tsm-src-low';
+  const sources = obj.dataSources||[];
+  document.getElementById('reXPSources').innerHTML=sources.length
+    ?sources.map(s=>`<div class="tsm-src"><span class="tsm-src-badge ${wc(s.weight)}">${s.weight}</span>${s.name}</div>`).join('')
+    :'<div style="opacity:.4;font-size:.63rem">No source data.</div>';
+  const reasoning = obj.reasoning||[];
+  document.getElementById('reXPReasoning').innerHTML=reasoning.length
+    ?reasoning.map(r=>`<div><span class="tsm-rl-key" style="color:var(--acc)">${r.key}:</span> <span style="opacity:.7">${r.val}</span></div>`).join('')
+    :'<div style="opacity:.4">No reasoning chain.</div>';
+  const actions = obj.recommendedActions||[];
+  document.getElementById('reXPActions').innerHTML=actions.length
+    ?actions.map(a=>`<div class="tsm-action" style="background:rgba(167,139,250,.05);border:1px solid rgba(167,139,250,.2)"><span class="tsm-owner" style="background:rgba(167,139,250,.12);color:var(--acc)">${a.owner}</span><span class="tsm-action-text">${a.text}</span></div>`).join('')
+    :'<div style="opacity:.4;font-size:.63rem">No actions returned.</div>';
+  // Deterministic exposure impact — self-contained (no reliance on functions
+  // declared later in this file) to avoid unsafe hoisting.
+  try {
+    if (window.TSMBNCAExposureEngine) {
+      function reXPParseExposureLow(str){
+        if (!str) return 0;
+        const nums = String(str).match(/[\d,]+(?:\.\d+)?/g);
+        if (!nums || !nums.length) return 0;
+        const mult = /m\b/i.test(str) ? 1000000 : (/k\b/i.test(str) ? 1000 : 1);
+        return Math.round(parseFloat(nums[0].replace(/,/g,'')) * mult);
+      }
+      function reXPSeverityForExposure(n){
+        if (n >= 2000000) return 'CRIT';
+        if (n >= 500000) return 'HIGH';
+        if (n >= 100000) return 'MED';
+        return 'LOW';
+      }
+      const reXPDollarRisk = document.getElementById('dollarRisk') ? document.getElementById('dollarRisk').textContent : '';
+      const reXPBaseExposure = reXPParseExposureLow(reXPDollarRisk);
+      const reXPSeverity = reXPSeverityForExposure(reXPBaseExposure);
+      if (!Number.isFinite(obj.confidence)) {
+        console.warn('[bnca-exposure-engine] realestate: live response omitted "confidence" field — defaulting to 70. Raw JSON:', obj);
+        obj.confidenceDefaulted = true;
+      }
+      const reXPConf = Number.isFinite(obj.confidence) ? obj.confidence : 70;
+      const reXPImpact = window.TSMBNCAExposureEngine.project({
+        baseExposure: reXPBaseExposure,
+        severity: reXPSeverity,
+        confidence: reXPConf,
+        daysUntilDeadline: 0 // no independent deadline signal for this vertical yet
+      });
+      const fmt = n => '$' + Math.round(n).toLocaleString('en-US');
+      document.getElementById('reXPDeltaNo').textContent = fmt(reXPImpact.ifIgnored.exposure);
+      document.getElementById('reXPDeltaAct').textContent = fmt(reXPImpact.ifActed.exposure);
+      document.getElementById('reXPRecovery').textContent = reXPImpact.urgencyWindow + ' \u00b7 ' + reXPImpact.methodology;
+    }
+  } catch(dee) { console.warn('[bnca-exposure-engine] re render error:', dee); }
+}
+function reXPRenderExplainFailed(){
+  document.getElementById('reXPConfNum').textContent='—';
+  document.getElementById('reXPConfBar').style.width='0%';
+  document.getElementById('reXPSources').innerHTML='<div style="opacity:.5;font-family:var(--mono);font-size:.63rem;color:var(--red)">Explainability data unavailable — the AI response didn\'t include a parseable summary. The brief above is still valid.</div>';
+  document.getElementById('reXPReasoning').innerHTML='<div style="opacity:.5;color:var(--red)">No reasoning trace returned for this response.</div>';
+  document.getElementById('reXPActions').innerHTML='<div style="opacity:.5;font-family:var(--mono);font-size:.63rem;color:var(--red)">No action data returned.</div>';
+  document.getElementById('reXPDeltaNo').textContent='—';
+  document.getElementById('reXPDeltaAct').textContent='—';
+  document.getElementById('reXPRecovery').textContent='';
+}
+function reXPParseExplain(raw){
+  const briefMatch = raw.match(/===BRIEF===\s*([\s\S]*?)(?:===JSON===|$)/);
+  const brief = briefMatch ? briefMatch[1].trim() : raw;
+  let obj = null;
+  let parseFailed = false;
+
+  const jsonStart = raw.indexOf('===JSON===');
+  if (jsonStart !== -1) {
+    parseFailed = true; // stays true unless we successfully parse below
+    // Find the first '{' after the marker, then walk forward counting braces
+    // to find its true matching close — the old approach grabbed everything
+    // to end-of-string, which broke whenever the model added any trailing
+    // commentary after the JSON block.
+    const braceStart = raw.indexOf('{', jsonStart);
+    if (braceStart !== -1) {
+      let depth = 0, end = -1;
+      for (let i = braceStart; i < raw.length; i++) {
+        if (raw[i] === '{') depth++;
+        else if (raw[i] === '}') {
+          depth--;
+          if (depth === 0) { end = i; break; }
+        }
+      }
+      if (end !== -1) {
+        const candidate = raw.slice(braceStart, end + 1).replace(/```json|```/g, '').trim();
+        try {
+          obj = JSON.parse(candidate);
+          parseFailed = false;
+        } catch (e) {
+          console.warn('reXP explain JSON parse:', e, '\nCandidate was:', candidate);
+        }
+      } else {
+        console.warn('reXP explain JSON parse: no matching closing brace found after ===JSON=== marker');
+      }
+    } else {
+      console.warn('reXP explain JSON parse: ===JSON=== marker present but no { found after it');
+    }
+  }
+  // Missing ===JSON=== marker is now treated as a failure.
+  // Otherwise the explainability panel silently stays on
+  // "Awaiting analysis..." forever.
+  if (jsonStart === -1) {
+    parseFailed = true;
+  }
+
+return {brief, obj, parseFailed};
+}
+  async function runStrategist() { await runFullBrief(); }
+</script>
+
+<script>
+/* TSM AUTO-RUN STRATEGIST */
+(function(){
+  try {
+    const raw = sessionStorage.getItem('TSM_RE_WAR_RELAY') || localStorage.getItem('TSM_RE_WAR_RELAY') || localStorage.getItem('tsm_re_war_relay');
+    if (!raw) return;
+    if (localStorage.getItem('tsm_auto_mode') === 'off') return;
+    setTimeout(() => { if (typeof runStrategist === 'function') runStrategist(); }, 1500);
+  } catch(e) { console.warn('[TSM AutoRun Strategist]', e); }
+})();
+</script>
+  <script src="/js/core/tsm-kernel-upgrade.js"></script>
+
+<div id="tsm-chain-bar" style="position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#040c12;border-top:1px solid #0d2233;display:flex;align-items:center;height:32px;padding:0 16px;font-family:'IBM Plex Mono',monospace;font-size:10px;"><span style="color:#3a5a70;margin-right:12px;font-size:9px;">TSM CHAIN</span><a href="/html/war-rooms/re-war/re-war-room.html" style="color:#94a3b8;border:1px solid #1a3a50;padding:3px 10px;border-radius:3px;text-decoration:none;margin-right:6px;font-size:9px;">&#9675; WAR ROOM</a><span style="color:#1a3a50;margin-right:6px;">--&gt;</span><a href="#" style="color:var(--amber, #ffab00);background:rgba(255,255,255,.05);border:1px solid var(--amber, #ffab00)55;padding:3px 10px;border-radius:3px;text-decoration:none;margin-right:6px;font-size:9px;">&#9679; STRATEGIST</a><span style="color:#1a3a50;margin-right:6px;">--&gt;</span><a href="/html/war-rooms/re-war/re-exec-portal.html" style="color:#94a3b8;border:1px solid #1a3a50;padding:3px 10px;border-radius:3px;text-decoration:none;margin-right:6px;font-size:9px;">&#9675; EXEC PORTAL</a><span style="color:#1a3a50;margin-left:auto;font-size:9px;">REAL ESTATE</span></div>
+  <script src="/shared/tsm-exec-kit-producer.js"></script>
+  <script>
+  function reStratAssistantContext() {
+    const parts = [];
+    if (stratPayload.brief) parts.push('Strategic Brief: ' + String(stratPayload.brief).slice(0, 2000));
+    if (stratPayload.execSummary) parts.push('Exec Summary: ' + stratPayload.execSummary);
+    if (stratSaved && stratSaved.length) {
+      parts.push('Strategy modules run: ' + stratSaved.map(o => o.title).join(', '));
+    }
+    if (stratCurrentOutput) parts.push('Latest module output: ' + String(stratCurrentOutput).slice(0, 1500));
+    return parts.join('\n\n') || 'No strategic brief or modules run yet in the RE Strategist.';
+  }
+  function reStratAssistantBriefing() {
+    const items = [];
+    (stratPayload.recommendedActions || []).slice(0, 5).forEach(a => {
+      items.push({
+        severity: 'medium',
+        title: a.text,
+        nextAction: 'Owner: ' + (a.owner || 'Unassigned'),
+        why: stratPayload.execSummary || 'See Strategic Brief tab for full reasoning.',
+        tool: 'RE Strategist'
+      });
+    });
+    return items;
+  }
+  TSMAssistant.init({
+    vertical: 'Real Estate Strategist',
+    app: 'mortgage',
+    getContext: reStratAssistantContext,
+    getBriefing: reStratAssistantBriefing,
+    quickPrompts: ['What is the single highest risk right now?', 'Summarize compliance exposure', 'What should I escalate to exec?'],
+    threadKey: 'TSM_RE_ASSISTANT_THREAD'
+  });
+  </script>
+  <script src="/html/core/tsm-runtime.js"></script>
+
+<script>
+// ===== TSM_AUTONOMY_STANDARDIZED =====
+window.TSM_AUTONOMY_STANDARDIZED = true;
+</script>
+
+<!-- TSM ENFORCER BOOT -->
+<!-- stripped -->
+
+<script>
+// ===== TSM WAR ROOM SCOPED RELAY FIX =====
+window.tsmMission = window.tsmMission || {
+  id: "REO-PRO-" + Date.now().toString(36),
+  vertical: "reo-pro",
+  
+};
+
+function tsmWriteRelay(payload){
+     if (arguments[0] && typeof arguments[0] === 'object') {
+         if (arguments[0].docText) {
+             arguments[0].docTextPreview = arguments[0].docText.substring(0, 100) + '... [SANITIZED]';
+             delete arguments[0].docText;
+         }
+     }
+     try {
+         TSM_KERNEL.setRelay("reo-pro", JSON.stringify(payload));
+     } catch(e) {
+         // Suppress raw payload leakage in console
+     }
+ }
+</script>
+
+<script>
+// ===== TSM STRATEGIST BRIDGE LAYER =====
+
+function tsmReadScopedRelay(vertical){
+  const key = "tsm_war_relay_" + vertical;
+  try {
+    return JSON.parse(localStorage.getItem(key));
+  } catch(e){
+    return null;
+  }
+}
+
+function tsmWriteScopedStrat(vertical, missionId){
+  localStorage.setItem("TSM_STRAT_CONFIRMED_reo-pro_" + vertical, JSON.stringify({
+    vertical,
+    missionId,
+    timestamp: Date.now()
+  }));
+}
+</script>
+
+<!-- TSM KERNEL ENGINE -->
+<script src="/html/core/tsm-kernel.js"></script>
+<!-- ═══ GUIDE WIDGET — STRATEGIST EDITION ═══ -->
+
+
+<script>
+(function () {
+  function computeState() {
+    var rawInput = document.getElementById('stratInput') || document.getElementById('caseData') || document.getElementById('docPaste');
+    var inputLoaded = !!(
+      (window.__sessionData && Object.keys(window.__sessionData).length > 0) ||
+      (rawInput && rawInput.value.trim().length > 0)
+    );
+
+    var stratOutput = document.getElementById('stratOutput') || document.getElementById('briefResults');
+    var briefGenerated = !!(stratOutput && (stratOutput.textContent.trim().length > 100 || stratOutput.children.length > 0));
+
+    var paramsConfigured = !!(
+      document.querySelector('select.strat-param') || 
+      document.querySelector('input[type="checkbox"]:checked') || 
+      inputLoaded
+    );
+
+    return { inputLoaded: inputLoaded, paramsConfigured: paramsConfigured, briefGenerated: briefGenerated };
+  }
+
+  function render() {
+    var s = computeState();
+    var steps = [
+      { id: 'gwStep1', done: s.inputLoaded },
+      { id: 'gwStep2', done: s.paramsConfigured && s.inputLoaded },
+      { id: 'gwStep3', done: s.briefGenerated },
+      { id: 'gwStep4', done: false }
+    ];
+
+    var activeAssigned = false;
+    steps.forEach(function (st) {
+      var el = document.getElementById(st.id);
+      if (!el) return;
+      el.classList.remove('done', 'active');
+      if (st.done) {
+        el.classList.add('done');
+      } else if (!activeAssigned) {
+        el.classList.add('active');
+        activeAssigned = true;
+      }
+    });
+
+    var next = '';
+    if (!s.inputLoaded) {
+      next = 'Next: paste strategic input or load session data from the War Room.';
+    } else if (!s.briefGenerated) {
+      next = 'Next: review strategic options and click GENERATE BRIEF.';
+    } else {
+      next = 'Ready: export the strategic brief or escalate to Exec Portal.';
+    }
+
+    var nextEl = document.getElementById('gwNext');
+    if (nextEl) nextEl.textContent = next;
+
+    var toggleText = document.getElementById('gwToggleText');
+    if (toggleText) {
+      toggleText.textContent = 'GUIDE · ' + (s.briefGenerated ? 'BRIEF GENERATED' : (s.inputLoaded ? 'INPUT READY' : 'LOAD INPUT'));
+    }
+  }
+
+  window.toggleGWPanel = function () {
+    var p = document.getElementById('gwPanel');
+    if (p) p.classList.toggle('open');
+  };
+
+  setInterval(render, 1000);
+  document.addEventListener('DOMContentLoaded', render);
+})();
+</script>
+
+
+  <div style="background: #030712; padding: 8px 12px; border-top: 1px solid #1e293b; display: flex; justify-content: space-between; align-items: center;">
+    <span style="font-size: 10px; color: #10b981;">
+
+<!-- COMPACT COLLAPSIBLE GUIDE WIDGET -->
+<div id="tsm-floating-guide" style="position: fixed; bottom: 28px; right: 20px; z-index: 999999; width: 320px; background: #070d19; border: 1px solid #10b981; box-shadow: 0 10px 30px rgba(0,0,0,0.95); font-family: monospace; color: #e2e8f0; border-radius: 4px; overflow: hidden; pointer-events: auto;">
+  <div style="background: rgba(16, 185, 129, 0.18); padding: 6px 10px; border-bottom: 1px solid #10b981; display: flex; justify-content: space-between; align-items: center; user-select: none;">
+    <span style="font-size: 10px; font-weight: bold; letter-spacing: 1px; color: #10b981;">• GUIDE · STRATEGIST WORKFLOW</span>
+    <div style="display: flex; align-items: center; gap: 6px;">
+      <span style="font-size: 9px; color: #38bdf8; font-weight: bold;" id="guide-step-counter">STEP 4 OF 4</span>
+      <button onclick="toggleGuideBody()" id="guide-toggle-btn" style="background: #0f172a; border: 1px solid #10b981; color: #10b981; font-size: 10px; border-radius: 3px; cursor: pointer; padding: 0 5px; line-height: 14px; font-weight: bold;">_</button>
+    </div>
+  </div>
+  <div id="guide-card-body" style="padding: 10px; font-size: 10px; line-height: 1.5; display: none;">
+    
+    <div id="sg-step-1" class="guide-step" style="margin-bottom: 6px; color: #10b981; display: flex; align-items: flex-start; gap: 8px;">
+      <span class="sg-icon" style="font-weight: bold; width: 12px; text-align: center;">✓</span>
+      <div>
+        <strong>1. Verify Intake & Session Data</strong>
+        <div style="font-size: 10px; color: #94a3b8;">Click <span style="color: #38bdf8;">MODULES</span> or select a tile.</div>
+      </div>
+    </div>
+    <div id="sg-step-2" class="guide-step" style="margin-bottom: 6px; color: #10b981; display: flex; align-items: flex-start; gap: 8px;">
+      <span class="sg-icon" style="font-weight: bold; width: 12px; text-align: center;">✓</span>
+      <div>
+        <strong>2. Configure Strategy & Risk Parameters</strong>
+        <div style="font-size: 10px; color: #94a3b8;">Review parameters under <span style="color: #38bdf8;">QUICK STRATEGY</span>.</div>
+      </div>
+    </div>
+    <div id="sg-step-3" class="guide-step" style="margin-bottom: 6px; color: #10b981; display: flex; align-items: flex-start; gap: 8px;">
+      <span class="sg-icon" style="font-weight: bold; width: 12px; text-align: center;">✓</span>
+      <div>
+        <strong>3. Generate Strategic Brief</strong>
+        <div style="font-size: 10px; color: #94a3b8;">Click top button <span style="color: #10b981;">"⚡ FULL STRATEGIC BRIEF"</span>.</div>
+      </div>
+    </div>
+    <div id="sg-step-4" class="guide-step" style="margin-bottom: 4px; color: #f59e0b; display: flex; align-items: flex-start; gap: 8px;">
+      <span class="sg-icon" style="font-weight: bold; width: 12px; text-align: center;">●</span>
+      <div>
+        <strong>4. Escalate to Exec Portal</strong>
+        <div style="font-size: 10px; color: #94a3b8;">Click top right <span style="color: #f43f5e;">"↗ ESCALATE → EXEC PORTAL"</span>.</div>
+      </div>
+    </div>
+
+  </div>
+  <div id="guide-card-footer" style="background: #030712; padding: 6px 10px; border-top: 1px solid #1e293b; font-size: 9px; color: #f59e0b; display: none;">
+    <strong>Next:</strong> <span id="guide-step-hint">Click top right button <strong>↗ ESCALATE → EXEC PORTAL</strong>.</span>
+  </div>
+</div>
+
+<script>
+function toggleGuideBody() {
+  const body = document.getElementById("guide-card-body");
+  const footer = document.getElementById("guide-card-footer");
+  const btn = document.getElementById("guide-toggle-btn");
+  if (body.style.display === "none") {
+    body.style.display = "block";
+    footer.style.display = "block";
+    btn.innerText = "–";
+  } else {
+    body.style.display = "none";
+    footer.style.display = "none";
+    btn.innerText = "+";
+  }
+}
+
+(function() {
+  let activeStep = 1;
+  const maxSteps = 4;
+
+  function markComplete(sNum, hintText) {
+    const stepEl = document.getElementById("sg-step-" + sNum);
+    if (stepEl) {
+      stepEl.style.color = "#10b981";
+      stepEl.style.opacity = "1";
+      const icon = stepEl.querySelector(".sg-icon");
+      if (icon) icon.innerText = "✓";
+    }
+
+    if (sNum >= activeStep) {
+      activeStep = sNum + 1;
+      if (activeStep <= maxSteps) {
+        const nextEl = document.getElementById("sg-step-" + activeStep);
+        if (nextEl) {
+          nextEl.style.color = "#f59e0b";
+          nextEl.style.opacity = "1";
+          const nextIcon = nextEl.querySelector(".sg-icon");
+          if (nextIcon) nextIcon.innerText = "●";
+        }
+        document.getElementById("guide-step-counter").innerText = "STEP " + activeStep + " OF " + maxSteps;
+      } else {
+        document.getElementById("guide-step-counter").innerText = "COMPLETE";
+      }
+    }
+
+    if (hintText) {
+      document.getElementById("guide-step-hint").innerHTML = hintText;
+    }
+  }
+
+  
+    document.addEventListener("click", function(e) {
+      const el = e.target.closest("*");
+      if (!el) return;
+      const txt = (el.innerText || "").toUpperCase();
+
+      if (txt.includes("MODULES") || txt.includes("DEAL RESCUE") || txt.includes("PORTFOLIO RISK") || txt.includes("COMPLIANCE PRIORITY")) {
+        markComplete(1, "Select <strong>Top Risk</strong> or review parameters under Quick Strategy.");
+      }
+      if (txt.includes("TOP RISK") || txt.includes("30-DAY ACTION") || txt.includes("FALL-THROUGH") || txt.includes("COMPLIANCE EXPOSURE")) {
+        markComplete(1);
+        markComplete(2, "Click top bar button <strong>⚡ FULL STRATEGIC BRIEF</strong>.");
+      }
+      if (txt.includes("FULL STRATEGIC BRIEF") || txt.includes("STRATEGIC BRIEF") || txt.includes("SAVE OUTPUT")) {
+        markComplete(1);
+        markComplete(2);
+        markComplete(3, "Click top right button <strong>↗ ESCALATE → EXEC PORTAL</strong>.");
+      }
+      if (txt.includes("EXEC PORTAL") || txt.includes("ESCALATE")) {
+        markComplete(1);
+        markComplete(2);
+        markComplete(3);
+        markComplete(4, "Strategy successfully escalated to Executive Board.");
+      }
+    }, true);
+
+})();
+</script>
+
+
+  <script src="/js/tsm-guide-engine.js" defer></script>
+</body>
+</html>

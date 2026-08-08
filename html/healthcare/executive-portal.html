@@ -879,11 +879,12 @@ border-radius: 2px; flex-shrink: 0; white-space: nowrap;
 .sb-sep { color: var(--border2); }
 .sb-right { margin-left: auto; }
 </style>
+<script src="/html/healthcare/js/tsm-workflow-stage.js"></script>
 <script src="/js/tsm-runtime-lock.js"></script>
 <script src="/js/tsm-event-contract.js"></script>
 <script src="/js/tsm-autonomy-layer.js"></script>
 </head>
-<body>
+<body data-vertical="healthcare" data-page-role="exec">
 
 <!-- ── HEADER ─────────────────────────────────────────────────────────────── -->
 <header class="hdr">
@@ -1584,7 +1585,7 @@ function escRelay(s) {
 }
 function loadStratRelay() {
   try {
-    const raw = sessionStorage.getItem('TSM_EXEC_RELAY');
+    const raw = sessionStorage.getItem('TSM_EXEC_RELAY') || localStorage.getItem('TSM_EXEC_RELAY');
     if (!raw) return;
     const d = JSON.parse(raw);
     if (!d || !d.enriched) return;
@@ -1751,11 +1752,18 @@ function buildEscalationModal(d) {
           </div>
           <div style="font-size:8px;color:#5a6f90;">Session ${escRelay(sessionId)} · ${ts}</div>
         </div>
-        <button onclick="document.getElementById('esc-modal-overlay').remove()" style="
-          background:none;border:1px solid rgba(255,255,255,0.1);color:#5a6f90;
-          font-family:'JetBrains Mono',monospace;font-size:10px;
-          padding:4px 12px;cursor:pointer;letter-spacing:1px;
-        ">✕ DISMISS</button>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <button onclick="exportExecutiveReport()" id="esc-export-btn" style="
+            background:rgba(30,232,182,0.08);border:1px solid rgba(30,232,182,0.4);color:#1ee8b6;
+            font-family:'JetBrains Mono',monospace;font-size:10px;
+            padding:4px 12px;cursor:pointer;letter-spacing:1px;
+          ">📋 EXPORT REPORT</button>
+          <button onclick="document.getElementById('esc-modal-overlay').remove()" style="
+            background:none;border:1px solid rgba(255,255,255,0.1);color:#5a6f90;
+            font-family:'JetBrains Mono',monospace;font-size:10px;
+            padding:4px 12px;cursor:pointer;letter-spacing:1px;
+          ">✕ DISMISS</button>
+        </div>
       </div>
 
       <!-- TABS -->
@@ -2013,6 +2021,130 @@ function buildEscalationModal(d) {
   }
 }
 
+// ── EXPORT EXECUTIVE REPORT ──────────────────────────────────────────────
+// Two things happen here, both real: (1) a downloadable .txt report is
+// assembled from whatever actually made it through the relay this session
+// — no invented figures — and (2) a finalized signal is pushed to
+// /api/collective/signal, the same endpoint hc-main-strategist.html already
+// posts to on escalation, so Sentinel/Collective BNCA can fold the reviewed
+// exec-portal outcome into its cross-vertical synthesis (POST
+// /api/collective/bnca reads everything in that in-memory signal feed).
+async function exportExecutiveReport() {
+  const btn = document.getElementById('esc-export-btn');
+  const origLabel = btn ? btn.innerHTML : '';
+  if (btn) { btn.innerHTML = '⟳ EXPORTING...'; btn.style.pointerEvents = 'none'; }
+
+  try {
+    const raw = sessionStorage.getItem('TSM_EXEC_RELAY') || localStorage.getItem('TSM_EXEC_RELAY');
+    const d = raw ? JSON.parse(raw) : {};
+    const sessionId = d.sessionId || 'REL-' + Date.now().toString(36).toUpperCase();
+    const ts = new Date();
+
+    const warRoomBrief = d.warRoomBrief || d.enriched || 'No war room brief in relay.';
+    const stratAnalysis = d.stratAnalysis || d.bnca?.revenuePosition || '';
+    const denialIntel = d.bnca?.denialIntel || '';
+    const strategistSummary = d.bnca?.strategistSummary || '';
+    const kpi = d.kpi || {};
+    const decisions = d.alerts?.decisions || [];
+    const urgent = d.alerts?.urgent || [];
+    const engineOutputs = d.engineOutputs || {};
+
+    // Pull whatever denial pack text actually rendered, if any — this is
+    // real generated content sitting in the DOM, not re-fetched.
+    const dpEl = document.getElementById('dp-content');
+    const denialPackText = dpEl && !dpEl.querySelector('span[style*="blink"]')
+      ? dpEl.innerText.trim()
+      : '';
+
+    const lines = [
+      'TSM HC EXECUTIVE REPORT — SESSION EXPORT',
+      '==========================================',
+      `Session:    ${sessionId}`,
+      `Exported:   ${ts.toLocaleString()}`,
+      `At risk:    ${kpi.totalAtRisk || '—'}`,
+      `Denial rate: ${kpi.denialRate || '—'}`,
+      '',
+      'WAR ROOM / DISPATCH NARRATIVE',
+      '------------------------------',
+      warRoomBrief,
+      '',
+    ];
+    if (stratAnalysis) lines.push('REVENUE POSITION', '-----------------', stratAnalysis, '');
+    if (denialIntel) lines.push('DENIAL INTEL', '------------', denialIntel, '');
+    if (strategistSummary) lines.push('STRATEGIST SUMMARY', '------------------', strategistSummary, '');
+    if (urgent.length) {
+      lines.push('URGENT ALERTS', '-------------');
+      urgent.forEach(u => lines.push('! ' + u));
+      lines.push('');
+    }
+    if (decisions.length) {
+      lines.push('DECISION QUEUE', '--------------');
+      decisions.forEach(dec => lines.push(`[${dec.urgency || '—'}] ${dec.action || ''} — ${dec.value || ''} — due ${dec.deadline || '—'}`));
+      lines.push('');
+    }
+    const engineEntries = Object.entries(engineOutputs).filter(([, v]) => v && v.length > 10);
+    if (engineEntries.length) {
+      lines.push('ENGINE FINDINGS', '---------------');
+      engineEntries.forEach(([label, text]) => lines.push(`${label.toUpperCase()}:`, text.slice(0, 500), ''));
+    }
+    if (denialPackText) {
+      lines.push('DENIAL PACK OUTPUT', '-------------------', denialPackText, '');
+    }
+    lines.push('---', 'Generated by TSM HC Executive Portal. Figures above are pulled directly', 'from the session relay — nothing here is re-derived or estimated at export time.');
+
+    const reportText = lines.join('\n');
+
+    // 1) Real file download
+    const blob = new Blob([reportText], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `hc-executive-report-${sessionId}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+
+    // 2) Push a finalized signal to Sentinel / Collective BNCA — same
+    // schema hc-main-strategist.html already uses, so it merges cleanly
+    // with the earlier strategist-stage signal instead of creating a
+    // parallel shape for the synthesizer to reconcile.
+    const exposureNum = Number(String(kpi.totalAtRisk || '').replace(/[^0-9.]/g, '')) *
+      (/m\b/i.test(kpi.totalAtRisk || '') ? 1000000 : /k\b/i.test(kpi.totalAtRisk || '') ? 1000 : 1);
+    const riskLevel = exposureNum >= 100000 ? 'CRIT' : exposureNum >= 25000 ? 'HIGH' : exposureNum >= 5000 ? 'MED' : 'LOW';
+
+    try {
+      await fetch('/api/collective/signal', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vertical: 'healthcare',
+          warRoom: 'HC Executive Portal',
+          bnca: (stratAnalysis || denialIntel || 'Executive report finalized and exported.').slice(0, 400),
+          confidence: 78,
+          riskLevel,
+          topIssue: urgent[0] || decisions[0]?.action || `Revenue at risk ${kpi.totalAtRisk || 'unspecified'}`,
+          ownerLanes: ['Executive Portal', 'HC-Billing'],
+          hitlRequired: riskLevel === 'CRIT' || riskLevel === 'HIGH',
+          actions: decisions.slice(0, 4).map(dec => dec.action).filter(Boolean),
+          kpi,
+          source: 'executive-portal-export'
+        })
+      });
+    } catch (signalErr) {
+      console.warn('[collective-signal] exec portal export push failed (report still downloaded):', signalErr);
+    }
+
+    // 3) Mark the workflow complete for the on-page guide widget
+    try { if (window.TSMWorkflowStage) TSMWorkflowStage.write('complete', { sessionId }); } catch (e) {}
+
+    if (btn) { btn.innerHTML = '✓ EXPORTED'; setTimeout(() => { btn.innerHTML = origLabel; btn.style.pointerEvents = 'auto'; }, 1800); }
+  } catch (e) {
+    console.error('[exportExecutiveReport] failed:', e);
+    if (btn) { btn.innerHTML = '✕ EXPORT FAILED'; setTimeout(() => { btn.innerHTML = origLabel; btn.style.pointerEvents = 'auto'; }, 2200); }
+  }
+}
+
 function buildLiveSignals(d) {
   const signals = d.liveSignals || [];
   if (!signals.length) {
@@ -2059,7 +2191,7 @@ async function generateDenialPack() {
   if (content) content.innerHTML = '<span style="color:#5a6f90;font-size:9px;animation:blink 1s infinite;">⚡ Generating denial pack via TSM Neural Core...</span>';
 
   try {
-    const raw = sessionStorage.getItem('TSM_EXEC_RELAY');
+    const raw = sessionStorage.getItem('TSM_EXEC_RELAY') || localStorage.getItem('TSM_EXEC_RELAY');
     const d = raw ? JSON.parse(raw) : {};
     const context = d.warRoomBrief || d.enriched || 'No war room data available';
 
@@ -2126,7 +2258,7 @@ async function runStratEngine() {
   };
 
   try {
-    const raw = sessionStorage.getItem('TSM_EXEC_RELAY');
+    const raw = sessionStorage.getItem('TSM_EXEC_RELAY') || localStorage.getItem('TSM_EXEC_RELAY');
     const d = raw ? JSON.parse(raw) : {};
     const context = d.warRoomBrief || d.enriched || '';
 
@@ -3207,7 +3339,7 @@ setInterval(buildStratBriefTab, 30000);
 <script>
 /* TSM EXEC KIT — AUTO-INJECTED 2026-06-29 23:19 UTC */
 (function() {
-  var RELAY_KEYS = ["TSM_HEALTHCARE_STRATEGIST_RELAY", "TSM_EXEC_RELAY", "TSM_WAR_ROOM_BRIEF", "TSM_HC_MEMORY"]; // Sentinel-convention key added as primary source
+  var RELAY_KEYS = ["TSM_EXEC_RELAY", "TSM_HEALTHCARE_STRATEGIST_RELAY", "TSM_WAR_ROOM_BRIEF", "TSM_HC_MEMORY"]; // TSM_EXEC_RELAY (real escalation payload w/ wip/explain) checked before the sentinel-push key, which shadowed it
   var WIP_TITLE  = "HC Pipeline Status";
   var WIP_ID     = 'tsmk-wip-auto';
   var EXP_ID     = 'tsmk-exp-auto';
@@ -3286,7 +3418,7 @@ window.TSM_AUTONOMY_STANDARDIZED = true;
 </script>
 
 <!-- TSM ENFORCER BOOT -->
-<script src="/html/core/tsm-enforcer.js"></script>
+<!-- stripped -->
 
 <script>
 // ===== TSM WAR ROOM SCOPED RELAY FIX =====
@@ -3323,5 +3455,6 @@ function tsmWriteScopedExec(vertical, missionId){
 <script>
   TSMExceptionWidget.mount('tsm-exception-queue', { sector: 'healthcare' });
 </script>
+  <script src="/js/tsm-guide-engine.js" defer></script>
 </body>
 </html>

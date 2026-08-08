@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
+<script src="/html/shared/runtime/integrity/tsm-integrity.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GID | HotelOps War Room</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Share+Tech+Mono&family=Exo+2:ital,wght@0,300;0,400;0,600;1,300&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#060b14;--bg2:#070d1a;--bg3:#040810;--bg4:#0a0d1f;
+  --accent:#f59e0b;--accent2:#d97706;--accent3:rgba(245,158,11,.08);
+  --red:#ef4444;--yellow:#eab308;--green:#00ff88;--purple:#a855f7;--muted:#4a7a9b;
+  --white:#e8f0f8;--dim:#2a4a6a;--border:rgba(245,158,11,.12);--border2:rgba(245,158,11,.06);
+  --mono:'Share Tech Mono',monospace;--display:'Orbitron',monospace;--body:'Exo 2',sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:var(--body);background:var(--bg);color:var(--white);min-height:100vh;}
+#topnav{background:var(--bg3);border-bottom:1px solid var(--border);padding:0 16px;display:flex;align-items:center;gap:10px;height:44px;}
+#logo-mark{width:32px;height:32px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;font-family:var(--display);font-weight:900;font-size:.8rem;color:#000;flex-shrink:0;}
+#logo-text{font-family:var(--display);font-size:.75rem;font-weight:900;color:var(--accent);letter-spacing:.15em;}
+#logo-sub{font-family:var(--mono);font-size:.5rem;color:var(--muted);letter-spacing:.1em;}
+.nav-links{margin-left:20px;display:flex;gap:14px;font-family:var(--mono);font-size:.55rem;letter-spacing:.08em;}
+.nav-links a{color:var(--muted);text-decoration:none;}
+.nav-links a:hover{color:var(--accent);}
+#sys-status{margin-left:auto;display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:.5rem;color:var(--muted);}
+#sys-dot{width:5px;height:5px;border-radius:50%;background:var(--green);animation:pulse 2s ease-in-out infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+#kpi-bar{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;flex-wrap:wrap;}
+.kpi{padding:10px 16px;border-right:1px solid var(--border2);flex:1;min-width:120px;}
+.kpi-val{font-family:var(--display);font-size:.85rem;font-weight:700;color:var(--accent);}
+.kpi-lbl{font-family:var(--mono);font-size:.45rem;color:var(--muted);letter-spacing:.1em;margin-top:2px;}
+.kpi-delta{font-family:var(--mono);font-size:.45rem;color:var(--green);margin-top:2px;}
+.kpi-delta.neg{color:var(--red);}
+#layout{display:grid;grid-template-columns:220px 1fr 320px;gap:0;}
+#sidebar{background:var(--bg2);border-right:1px solid var(--border);padding:10px 0;}
+.sb-lbl{font-family:var(--mono);font-size:.45rem;color:var(--dim);letter-spacing:.15em;padding:10px 14px 4px;}
+.module{padding:7px 14px;cursor:pointer;font-family:var(--mono);font-size:.55rem;letter-spacing:.04em;color:var(--muted);border-left:2px solid transparent;}
+.module:hover{color:var(--white);background:rgba(255,255,255,.03);border-left-color:var(--accent);}
+.module.active{color:var(--accent);border-left-color:var(--accent);background:var(--accent3);}
+#main{padding:16px;overflow-y:auto;max-height:calc(100vh - 90px);}
+.panel{background:var(--bg2);border:1px solid var(--border);margin-bottom:14px;}
+.panel-hdr{padding:8px 12px;border-bottom:1px solid var(--border2);font-family:var(--display);font-size:.6rem;letter-spacing:.1em;color:var(--accent);display:flex;justify-content:space-between;align-items:center;}
+.panel-body{padding:12px;}
+textarea#docIntake{width:100%;min-height:80px;background:var(--bg3);border:1px solid var(--border);color:var(--white);font-family:var(--mono);font-size:.6rem;padding:8px;resize:vertical;}
+#tsm-toast{position:fixed;bottom:20px;right:20px;background:var(--bg2);border:1px solid var(--accent);color:var(--accent);padding:10px 18px;font-family:var(--mono);font-size:.65rem;letter-spacing:.04em;opacity:0;pointer-events:none;transition:opacity .25s,transform .25s;transform:translateY(6px);z-index:999;}
+#tsm-toast.show{opacity:1;transform:translateY(0);}
+.btn{font-family:var(--display);font-size:.55rem;font-weight:700;letter-spacing:.08em;padding:7px 16px;background:var(--accent);color:#000;border:none;cursor:pointer;}
+.btn:hover{opacity:.85;}
+.btn.ghost{background:transparent;color:var(--accent);border:1px solid var(--accent);}
+#aiOutput{margin-top:10px;font-family:var(--mono);font-size:.9rem;color:var(--muted);white-space:pre-wrap;line-height:1.5;}
+#navStatus{font-family:var(--mono);font-size:.45rem;color:var(--dim);}
+.mission-item{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border2);font-family:var(--mono);font-size:.55rem;}
+.mission-item:last-child{border-bottom:none;}
+.mtag{padding:1px 6px;font-size:.4rem;letter-spacing:.08em;border:1px solid;flex-shrink:0;}
+.mtag.urgent{color:var(--red);border-color:var(--red);}
+.mtag.high{color:var(--accent);border-color:var(--accent);}
+.mtag.medium{color:var(--yellow);border-color:var(--yellow);}
+.mtag.low{color:var(--muted);border-color:var(--muted);}
+.mtitle{flex:1;color:var(--white);}
+.mmeta{color:var(--dim);font-size:.45rem;}
+#rightrail{background:var(--bg2);border-left:1px solid var(--border);padding:12px;overflow-y:auto;max-height:calc(100vh - 90px);}
+.rr-lbl{font-family:var(--mono);font-size:.45rem;color:var(--dim);letter-spacing:.12em;margin:10px 0 6px;}
+.rr-lbl:first-child{margin-top:0;}
+</style>
+</head>
+<body data-vertical="concierge" data-page-role="warroom">
+
+<div id="topnav">
+  <div id="logo-mark">GID</div>
+  <div>
+    <div id="logo-text">HOTELOPS WAR ROOM</div>
+    <div id="logo-sub">DESERT RIDGE PROPERTY &middot; LIVE OPERATIONS</div>
+  </div>
+  <div class="nav-links">
+    <a href="concierge-strategist.html">Strategist &rarr;</a>
+    <a href="concierge-executive-portal.html">Exec Portal &rarr;</a>
+    <a href="../concierge-command.html">Concierge Command</a>
+    <a href="concierge-howto.html">How To &rarr;</a>
+  </div>
+  <div id="sys-status"><span id="sys-dot"></span><span id="navStatus">ENGINE: READY</span></div>
+</div>
+
+<div id="kpi-bar">
+  <div class="kpi"><div class="kpi-val" id="kRevpar">&mdash;</div><div class="kpi-lbl">REVPAR</div></div>
+  <div class="kpi"><div class="kpi-val" id="kAdr">&mdash;</div><div class="kpi-lbl">ADR</div></div>
+  <div class="kpi"><div class="kpi-val" id="kOcc">&mdash;</div><div class="kpi-lbl">OCCUPANCY</div></div>
+  <div class="kpi"><div class="kpi-val" id="kOta">&mdash;</div><div class="kpi-lbl">OTA COMMISSION</div><div class="kpi-delta neg" id="kOtaDelta"></div></div>
+  <div class="kpi"><div class="kpi-val" id="kGop">&mdash;</div><div class="kpi-lbl">GOP MARGIN</div></div>
+  <div class="kpi"><div class="kpi-val" id="kNps">&mdash;</div><div class="kpi-lbl">NPS SCORE</div></div>
+  <div class="kpi"><div class="kpi-val" id="kMaint">&mdash;</div><div class="kpi-lbl">OPEN MAINT TICKETS</div></div>
+  <div class="kpi"><div class="kpi-val" id="kCompliance">&mdash;</div><div class="kpi-lbl">COMPLIANCE AT RISK</div></div>
+  <div class="kpi"><div class="kpi-val" id="kIot">&mdash;</div><div class="kpi-lbl">ACTIVE IOT ALERTS</div></div>
+</div>
+
+<div id="layout">
+  <div id="sidebar">
+    <div class="sb-lbl">DATA</div>
+    <div style="padding:0 14px 10px">
+      <select id="sampleDataSelect" style="width:100%;margin-bottom:6px;background:var(--bg3);border:1px solid var(--border);color:var(--white);font-family:var(--mono);font-size:.55rem;padding:6px"></select>
+      <button class="btn ghost" style="width:100%;margin-bottom:6px" id="btnLoadSample">LOAD SAMPLE DATA</button>
+      <button class="btn ghost" style="width:100%" id="btnResetData">RESET SAVED DATA</button>
+    </div>
+    <div class="sb-lbl">IMPORT IOT SENSORS (PASTE)</div>
+    <div style="padding:0 14px 10px">
+      <textarea id="iotImportPaste" placeholder="Paste sensor export rows (including header row) from your BMS/IoT platform — tab or multi-space delimited." style="width:100%;min-height:70px;background:var(--bg3);border:1px solid var(--border);color:var(--white);font-family:var(--mono);font-size:.5rem;padding:6px;resize:vertical"></textarea>
+      <label style="display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:.45rem;color:var(--muted);margin:6px 0">
+        <input type="checkbox" id="iotImportReplace" checked> Replace existing sensors
+      </label>
+      <button class="btn ghost" style="width:100%;margin-bottom:6px" id="btnIotImportPreview">PARSE PREVIEW</button>
+      <button class="btn" style="width:100%" id="btnIotImportCommit" disabled>IMPORT TO WAR ROOM</button>
+      <div id="iotImportStatus" style="font-family:var(--mono);font-size:.45rem;color:var(--dim);margin-top:6px;white-space:pre-wrap"></div>
+    </div>
+    <div class="sb-lbl">GUEST &amp; FRONT OF HOUSE</div>
+    <div class="module active">Guest Intelligence</div>
+    <div class="module">Reservations</div>
+    <div class="module">Front Desk</div>
+    <div class="module">VIP Arrivals</div>
+    <div class="sb-lbl">OPERATIONS</div>
+    <div class="module">Housekeeping</div>
+    <div class="module">Maintenance</div>
+    <div class="module" id="navIotSensors">IoT / Smart Systems</div>
+    <div class="module">Staff Operations</div>
+    <div class="module">Incident Center</div>
+    <div class="sb-lbl">REVENUE &amp; COMPLIANCE</div>
+    <div class="module">OTA Intelligence</div>
+    <div class="module">Revenue Management</div>
+    <div class="module">Compliance</div>
+    <div class="module">Document Intake</div>
+    <div class="sb-lbl">SHORT-TERM RENTAL</div>
+    <div class="module">Airbnb / STR Operations</div>
+  </div>
+
+  <div id="main">
+    <div class="panel">
+      <div class="panel-hdr">DOCUMENT INTAKE &amp; AI ANALYSIS</div>
+      <div class="panel-body">
+        <textarea id="docIntake" placeholder="Paste an invoice, OTA statement, compliance notice, or guest complaint for analysis..."></textarea>
+        <div style="margin-top:8px;display:flex;gap:8px;">
+          <button class="btn" id="btnAnalyze">RUN ANALYSIS</button>
+          <button class="btn ghost" id="btnRelay">RELAY TO STRATEGIST &rarr;</button>
+        </div>
+        <div id="aiOutput">Run analysis to see AI output here.</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-hdr">LIVE MISSION QUEUE <span id="missionCount" style="color:var(--muted);font-family:var(--mono);"></span></div>
+      <div class="panel-body" style="padding:0;" id="missionQueue"></div>
+    </div>
+  </div>
+
+  <div id="rightrail">
+    <div class="rr-lbl">TODAY AT A GLANCE</div>
+    <div id="glance" style="font-family:var(--mono);font-size:.55rem;color:var(--muted);line-height:1.8;"></div>
+    <div class="rr-lbl">OTA EXPOSURE</div>
+    <div id="otaPanel" style="font-family:var(--mono);font-size:.55rem;color:var(--muted);line-height:1.8;"></div>
+    <div class="rr-lbl">COMPLIANCE RISK REGISTER</div>
+    <div id="compliancePanel" style="font-family:var(--mono);font-size:.55rem;color:var(--muted);line-height:1.8;"></div>
+    <div class="rr-lbl" id="iotSensorsAnchor">IOT SENSOR ALERTS</div>
+    <div id="iotPanel" style="font-family:var(--mono);font-size:.55rem;color:var(--muted);line-height:1.8;"></div>
+  </div>
+</div>
+
+<!-- Mission Store (hotelops wiring, mirrors bpo-internal1.html Phase 5) -->
+<script src="../shared/runtime/mission/mission-model.js"></script>
+<script src="../shared/runtime/mission/mission-store.js"></script>
+<script src="services/hotelops-engine.js"></script>
+<script src="missions/hotelops-mission-bridge.js"></script>
+<div id="tsm-toast"></div>
+<script>
+function showToast(msg){
+  const t = document.getElementById('tsm-toast');
+  if(!t) return;
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(showToast._h);
+  showToast._h = setTimeout(() => t.classList.remove('show'), 2600);
+}
+let model = null, engine = null;
+
+function showInitError(msg) {
+  const status = document.getElementById('navStatus');
+  if (status) { status.textContent = 'ENGINE: FAILED'; status.style.color = 'var(--red)'; }
+  const out = document.getElementById('aiOutput');
+  if (out) out.innerHTML = `<span style="color:var(--red)">War room failed to initialize: ${msg}. Check the Network tab for a 404 on data/hotelops-model.json or services/hotelops-engine.js.</span>`;
+  console.error('[HotelOps War Room init failed]', msg);
+}
+
+// Buttons attach their click listeners before init() finishes (init() is
+// called last, at the bottom of this script, and is async). Every handler
+// below previously called engine.* directly with no readiness check, so a
+// slow or failed init() (e.g. a 404 on data/hotelops-model.json or
+// services/hotelops-engine.js) left engine === null and each click threw an
+// uncaught TypeError with zero visible change on the page. requireEngine()
+// makes that failure visible instead of silent.
+function requireEngine() {
+  if (!engine) {
+    showInitError('engine not ready yet (still loading, or failed to load)');
+    return false;
+  }
+  return true;
+}
+
+async function init() {
+  try {
+    const res = await fetch('data/hotelops-model.json');
+    if (!res.ok) throw new Error(`data/hotelops-model.json returned ${res.status}`);
+    model = await res.json();
+    if (typeof TSMHotelOpsEngine === 'undefined') throw new Error('TSMHotelOpsEngine is undefined — services/hotelops-engine.js did not load');
+    engine = new TSMHotelOpsEngine(model);
+    populateSampleDataSelect();
+    if (!engine.loadFromStorage()) {
+      engine.loadSampleData();
+      engine.saveToStorage();
+    }
+    render();
+    pollOnlineBookings(); // engine is ready now -- safe to do the first live check
+    if (window.TSMMissionStore) {
+      window.TSMMissionStore.subscribe('*', () => render());
+    }
+    if (window.TSMHotelOpsMissionBridge) {
+      const syncResult = window.TSMHotelOpsMissionBridge.syncToMissionStore(engine, {
+        propertyName: model && model.property_name
+      });
+      console.info('hotelops-mission-bridge: synced', syncResult.synced, 'missions into TSMMissionStore');
+    }
+  } catch (e) {
+    showInitError(e.message);
+  }
+}
+
+// Real missions created elsewhere (currently: bpo-internal1.html's `hotel`
+// sector intake form) surface here as incidents/compliance items. Only
+// incidents and compliance are mission-shaped — revpar/ADR/occupancy are
+// operational metrics the mission object has no legitimate way to supply,
+// so this deliberately does NOT touch the revenue KPI tiles.
+function getLiveHotelopsMissions() {
+  if (!window.TSMMissionStore) return [];
+  return window.TSMMissionStore.listMissions({ vertical: 'hotelops' });
+}
+
+function renderLiveMissionOverlay() {
+  const missions = getLiveHotelopsMissions();
+  if (!missions.length) return; // no real missions yet — leave sample data as-is
+
+  const open = missions.filter(m => m.stage !== 'closed' && m.stage !== 'delivered');
+  const incidentsPanel = document.getElementById('panel-incident-center-body');
+  if (incidentsPanel) {
+    const liveHtml = open.map(m => `
+      <div class="mission-item">
+        <span class="mtag">LIVE MISSION</span>
+        <span class="mtitle">${m.client || m.missionNo || m.id}</span>
+        <span class="mmeta">stage: ${m.stage}${m.workflow && m.workflow.priority ? ' — priority: ' + m.workflow.priority : ''}</span>
+      </div>`).join('');
+    incidentsPanel.innerHTML += liveHtml;
+  }
+
+  const complianceMissions = open.filter(m => (m.classification && m.classification.type === 'compliance') || /compliance|license|permit/i.test(m.client || ''));
+  const compliancePanel = document.getElementById('compliancePanel');
+  if (compliancePanel && complianceMissions.length) {
+    const liveHtml = complianceMissions.map(m => `<br><span class="mtag">LIVE</span> ${m.client || m.id} — stage: ${m.stage}`).join('');
+    compliancePanel.innerHTML += liveHtml;
+  }
+}
+
+function fmtMoney(v){ return v==null ? '&mdash;' : '$' + Number(v).toLocaleString(); }
+
+function render(){
+  const kpis = engine.computeKpis();
+  document.getElementById('kRevpar').textContent = '$' + kpis.revpar;
+  document.getElementById('kAdr').textContent = '$' + kpis.adr;
+  document.getElementById('kOcc').textContent = kpis.occupancy_pct + '%';
+  const ota = engine.getOtaExposure();
+  const otaCharge = (model.sample_data.ota_charges[0] || {});
+  document.getElementById('kOta').textContent = (otaCharge.charged_pct || '—') + '%';
+  document.getElementById('kOtaDelta').textContent = 'Contract: ' + (otaCharge.contracted_pct || '—') + '% — ' + fmtMoney(ota.period_total).replace('&mdash;','—') + ' overcharge';
+  document.getElementById('kGop').textContent = kpis.gop_margin_pct + '%';
+  document.getElementById('kNps').textContent = kpis.nps_score;
+  document.getElementById('kMaint').textContent = kpis.open_maint_tickets;
+  document.getElementById('kCompliance').textContent = kpis.compliance_items_at_risk;
+  document.getElementById('kIot').textContent = kpis.active_iot_alerts;
+
+  document.getElementById('glance').innerHTML = `
+    Weekday occupancy: <span style="color:var(--yellow)">${kpis.weekday_occ_pct}%</span><br>
+    Weekend occupancy: <span style="color:var(--green)">${kpis.weekend_occ_pct}%</span><br>
+    §179 equipment eligible: <span style="color:var(--green)">${fmtMoney(kpis.section179_eligible)}</span><br>
+    GOP vs target: <span style="color:var(--green)">${kpis.gop_margin_pct}%</span> / ${kpis.gop_target_pct}% target<br>
+    NPS vs industry avg: <span style="color:var(--green)">${kpis.nps_score}</span> / ${kpis.nps_industry_avg} avg
+  `;
+
+  document.getElementById('otaPanel').innerHTML = ota.items.map(it => `
+    ${it.ota}: <span style="color:var(--red)">${it.charged_pct}%</span> vs ${it.contracted_pct}% contract<br>
+    &nbsp;&nbsp;Overcharge this period: <span style="color:var(--red)">${fmtMoney(it.overcharge_amount)}</span><br>
+    &nbsp;&nbsp;Annualized estimate: <span style="color:var(--red)">${fmtMoney(ota.annualized_estimate)}</span>
+  `).join('<br>') || 'No OTA overcharges detected.';
+
+  const compliance = engine.getComplianceRisk();
+  document.getElementById('compliancePanel').innerHTML = compliance.map(c => `
+    <span class="mtag ${c.severity.toLowerCase()}" style="display:inline-block;margin-bottom:2px;">${c.severity}</span> ${c.type}<br>
+    &nbsp;&nbsp;${c.detail} — due in ${c.due_in_days}d
+  `).join('<br>') || 'No open compliance items.';
+
+  const iotAlerts = engine.getIotAlerts();
+  document.getElementById('iotPanel').innerHTML = iotAlerts.map(a => `
+    <span class="mtag ${a.severity}" style="display:inline-block;margin-bottom:2px;">${a.severity.toUpperCase()}</span> ${a.room ? 'Room ' + a.room : (a.unit_name ? a.unit_name + ' (' + a.listing_id + ')' : 'Listing ' + a.listing_id)} — ${a.issue}<br>
+    &nbsp;&nbsp;${a.detail}
+  `).join('<br>') || 'No active IoT sensor alerts.';
+
+  renderMissionQueue();
+  if (typeof renderMaintenanceTab === 'function') renderMaintenanceTab();
+  if (typeof renderIotTab === 'function') renderIotTab();
+  if (typeof renderReservationsTab === 'function') renderReservationsTab();
+  if (typeof renderFrontDeskTab === 'function') renderFrontDeskTab();
+  if (typeof renderVipTab === 'function') renderVipTab();
+  if (typeof renderHousekeepingTab === 'function') renderHousekeepingTab();
+  if (typeof renderStaffOpsTab === 'function') renderStaffOpsTab();
+  if (typeof renderIncidentsTab === 'function') renderIncidentsTab();
+  renderLiveMissionOverlay();
+}
+
+function renderMissionQueue(){
+  const breaches = engine.getMaintenanceBreaches();
+  const allTickets = model.sample_data.maintenance_tickets.filter(t => t.stage !== 'resolved');
+  const compliance = engine.getComplianceRisk();
+  const ota = engine.getOtaExposure();
+  const iotAlerts = engine.getIotAlerts();
+  const reservationRisks = engine.getReservationRisks();
+  const frontDeskBreaches = engine.getFrontDeskBreaches();
+  const vipReadiness = engine.getVipReadiness();
+  const housekeepingBreaches = engine.getHousekeepingBreaches();
+  const staffingGaps = engine.getStaffingGaps();
+  const openIncidents = engine.getOpenIncidents();
+
+  const items = [];
+  iotAlerts.forEach(a => {
+    const loc = a.room ? `Room ${a.room}` : (a.unit_name ? `${a.unit_name} (${a.listing_id})` : `Listing ${a.listing_id}`);
+    items.push({ sev: a.severity, title: `IoT — ${loc}: ${a.issue}`, meta: a.detail });
+  });
+  allTickets.forEach(t => {
+    const isBreach = breaches.some(b => b.id === t.ticket_id);
+    items.push({ sev: t.severity, title: `Room ${t.room}: ${t.title}`, meta: isBreach ? 'SLA BREACHED' : `Opened ${t.opened_hours_ago}h ago` });
+  });
+  compliance.forEach(c => {
+    items.push({ sev: c.severity.toLowerCase(), title: `${c.type} — ${c.detail}`, meta: `Due in ${c.due_in_days}d` });
+  });
+  ota.items.forEach(it => {
+    items.push({ sev: 'high', title: `OTA Chargeback — ${it.ota}`, meta: fmtMoney(it.overcharge_amount).replace('&mdash;','—') + ' overcharge' });
+  });
+  reservationRisks.forEach(r => {
+    items.push({ sev: r.severity, title: `Reservation — ${r.guest}`, meta: r.detail });
+  });
+  frontDeskBreaches.forEach(b => {
+    items.push({ sev: 'urgent', title: `Front Desk — Room ${b.room}: ${b.guest}`, meta: `${b.minutes_over}m over SLA (waited ${b.waited_minutes}m)` });
+  });
+  vipReadiness.forEach(v => {
+    items.push({ sev: v.severity, title: `VIP — ${v.guest}, Room ${v.room}`, meta: `${v.gaps.join(', ')} — arriving in ${v.arrival_hours_away}h` });
+  });
+  housekeepingBreaches.forEach(h => {
+    items.push({ sev: 'high', title: `Housekeeping — Room ${h.room} (${h.type})`, meta: `${h.hours_over}h over SLA — ${h.assigned_to}` });
+  });
+  staffingGaps.forEach(s => {
+    items.push({ sev: s.severity, title: `Staffing — ${s.department} ${s.shift}`, meta: `${s.scheduled}/${s.required} scheduled — ${s.gap} short` });
+  });
+  openIncidents.filter(i => i.escalated).forEach(i => {
+    items.push({ sev: i.severity, title: `Incident — ${i.type}`, meta: `${i.area} — ${i.hours_over}h past response SLA` });
+  });
+
+  const sevOrder = { urgent: 0, high: 1, medium: 2, low: 3 };
+  items.sort((a, b) => (sevOrder[a.sev] ?? 4) - (sevOrder[b.sev] ?? 4));
+
+  document.getElementById('missionCount').textContent = '(' + items.length + ' open)';
+  document.getElementById('missionQueue').innerHTML = items.map(it => `
+    <div class="mission-item">
+      <span class="mtag ${it.sev}">${it.sev.toUpperCase()}</span>
+      <span class="mtitle">${it.title}</span>
+      <span class="mmeta">${it.meta}</span>
+    </div>
+  `).join('');
+}
+
+document.getElementById('btnAnalyze').addEventListener('click', async () => {
+  if (!requireEngine()) return;
+  const out = document.getElementById('aiOutput');
+  document.getElementById('navStatus').textContent = 'ENGINE: ANALYZING';
+  out.textContent = 'Running analysis...';
+  try {
+    const result = await engine.runAnalysis();
+    out.textContent = result.answer || result.output || JSON.stringify(result, null, 2);
+  } catch (e) {
+    out.innerHTML = `<span style="color:var(--red)">Analysis failed: ${e.message}</span>`;
+  }
+  document.getElementById('navStatus').textContent = 'ENGINE: READY';
+});
+
+// ── SENTINEL COMPATIBILITY ──────────────────────────────────────────────
+// Built with the Sentinel-convention key from day one (TSM_HOTELOPS_
+// STRATEGIST_RELAY), with a real anomalies array attached from the
+// engine's own numbers -- avoids the Healthcare/FinOps/Mortgage class
+// of bug where a second, unreachable file had the correct key.
+function buildSentinelAnomalies(){
+  const kpis = engine.computeKpis();
+  const ota = engine.getOtaExposure();
+  const anomalies = [];
+  // Most of these anomalies are plain count thresholds (kpis.X > 0) --
+  // deterministically true whenever they fire, with no rate card or
+  // optional field behind them, so there's no completeness gap to signal.
+  // A flat, high confidence here is honest; the varying 80/85/90 values
+  // this replaced were arbitrary flavor, not a real certainty signal.
+  const COUNT_ANOMALY_CONFIDENCE = 95;
+  if (kpis.maint_tickets_over_sla > 0) {
+    anomalies.push({
+      id: 'hotelops-maint-sla',
+      title: 'Maintenance Tickets Past SLA',
+      severity: kpis.urgent_maint_tickets > 0 ? 'CRIT' : 'HIGH',
+      exposure: 0,
+      confidence: COUNT_ANOMALY_CONFIDENCE,
+      rootCause: `${kpis.maint_tickets_over_sla} of ${kpis.open_maint_tickets} open tickets are past their SLA clock, ${kpis.urgent_maint_tickets} marked urgent.`,
+      recommendedAction: 'Prioritize urgent-severity rooms; confirm guest-impact rooms are relocated or comped.'
+    });
+  }
+  if (ota.period_total > 0) {
+    // Unlike the count-based anomalies above, this exposure is computed
+    // from a per-item rate (charged_pct vs contracted_pct). If any item
+    // behind the total is missing contracted_pct, that item's overcharge
+    // defaulted from a fallback rate of 0 rather than a disclosed contract
+    // term -- worth a lower confidence rather than treating it as solid.
+    const missingContractedRate = ota.items.some(it => it.contracted_pct == null);
+    anomalies.push({
+      id: 'hotelops-ota-overcharge',
+      title: 'OTA Commission Overcharge',
+      severity: ota.period_total > 1000 ? 'HIGH' : 'MED',
+      exposure: ota.annualized_estimate,
+      confidence: missingContractedRate ? 55 : 90,
+      rootCause: `Charged commission rate exceeds contracted rate, ${fmtMoney(ota.period_total).replace('&mdash;','—')} this period.` + (missingContractedRate ? ' One or more listings is missing its contracted rate — exposure may be understated.' : ''),
+      recommendedAction: 'Audit OTA contract terms and file a commission dispute for the variance.'
+    });
+  }
+  if (kpis.compliance_items_at_risk > 0) {
+    anomalies.push({
+      id: 'hotelops-compliance',
+      title: 'Compliance Items At Risk',
+      severity: 'HIGH',
+      exposure: 0,
+      confidence: COUNT_ANOMALY_CONFIDENCE,
+      rootCause: `${kpis.compliance_items_at_risk} compliance item(s) due within 30 days (I-9 re-verification, licensing).`,
+      recommendedAction: 'Assign HR/ops owner to clear before due date.'
+    });
+  }
+  if (kpis.active_iot_alerts > 0) {
+    anomalies.push({
+      id: 'hotelops-iot-alerts',
+      title: 'Active IoT Sensor Alerts',
+      severity: kpis.urgent_iot_alerts > 0 ? 'CRIT' : 'HIGH',
+      exposure: 0,
+      confidence: COUNT_ANOMALY_CONFIDENCE,
+      rootCause: `${kpis.active_iot_alerts} sensor alert(s) active, ${kpis.urgent_iot_alerts} marked urgent.`,
+      recommendedAction: 'Dispatch engineering to confirm sensor readings and open a maintenance ticket if unaddressed.'
+    });
+  }
+  if (kpis.reservation_risks > 0) {
+    anomalies.push({
+      id: 'hotelops-reservation-risks',
+      title: 'Reservation Risks — Payment / Unconfirmed / Waitlist',
+      severity: kpis.reservation_payment_failures > 0 ? 'CRIT' : 'HIGH',
+      exposure: 0,
+      confidence: COUNT_ANOMALY_CONFIDENCE,
+      rootCause: `${kpis.reservation_risks} reservation(s) at risk, ${kpis.reservation_payment_failures} with failed payment.`,
+      recommendedAction: 'Front desk/reservations to re-run failed cards and confirm unconfirmed bookings before arrival.'
+    });
+  }
+  if (kpis.front_desk_breaches > 0) {
+    anomalies.push({
+      id: 'hotelops-front-desk-sla',
+      title: 'Front Desk Wait-Time SLA Breaches',
+      severity: 'HIGH',
+      exposure: 0,
+      confidence: COUNT_ANOMALY_CONFIDENCE,
+      rootCause: `${kpis.front_desk_breaches} guest(s) in queue past check-in/check-out/request SLA.`,
+      recommendedAction: 'Pull additional front desk staff or open a secondary check-in line.'
+    });
+  }
+  if (kpis.vip_readiness_gaps > 0) {
+    anomalies.push({
+      id: 'hotelops-vip-readiness',
+      title: 'VIP Arrival Readiness Gaps',
+      severity: 'HIGH',
+      exposure: 0,
+      confidence: COUNT_ANOMALY_CONFIDENCE,
+      rootCause: `${kpis.vip_readiness_gaps} VIP arrival(s) missing amenities staging or an assigned host.`,
+      recommendedAction: 'Confirm amenities and host assignment for each VIP before arrival window.'
+    });
+  }
+  if (kpis.housekeeping_breaches > 0) {
+    anomalies.push({
+      id: 'hotelops-housekeeping-sla',
+      title: 'Housekeeping Task SLA Breaches',
+      severity: 'MED',
+      exposure: 0,
+      confidence: COUNT_ANOMALY_CONFIDENCE,
+      rootCause: `${kpis.housekeeping_breaches} task(s) past SLA across turnover/deep-clean/inspection/linen.`,
+      recommendedAction: 'Reassign or reprioritize overdue tasks; check room-ready status against arrivals.'
+    });
+  }
+  if (kpis.staffing_gaps > 0) {
+    anomalies.push({
+      id: 'hotelops-staffing-gaps',
+      title: 'Staffing Gaps vs Required Headcount',
+      severity: 'MED',
+      exposure: 0,
+      confidence: COUNT_ANOMALY_CONFIDENCE,
+      rootCause: `${kpis.staffing_gaps} shift(s) understaffed relative to required headcount.`,
+      recommendedAction: 'Call in on-call staff or approve overtime for the affected department/shift.'
+    });
+  }
+  if (kpis.open_incidents > 0) {
+    anomalies.push({
+      id: 'hotelops-open-incidents',
+      title: 'Open Incidents',
+      severity: kpis.escalated_incidents > 0 ? 'CRIT' : 'HIGH',
+      exposure: 0,
+      confidence: COUNT_ANOMALY_CONFIDENCE,
+      rootCause: `${kpis.open_incidents} open incident(s), ${kpis.escalated_incidents} past response-time SLA.`,
+      recommendedAction: 'Escalate past-SLA incidents to duty manager immediately.'
+    });
+  }
+  const airbnbRisks = engine.getAirbnbRisks();
+  if (airbnbRisks.at_risk > 0) {
+    // Qualitative "if unaddressed..." consequence per issue type -- no
+    // invented dollar figures, just the real operational chain of
+    // events each unresolved STR issue leads to.
+    const consequenceByIssue = (issue) => {
+      if (/turnover overdue/i.test(issue)) return 'the next guest\u2019s check-in may be delayed or cancelled, risking a refund and a platform penalty for late check-in';
+      if (/calendar not synced/i.test(issue)) return 'a double-booking becomes likely, typically forcing a same-day relocation or refund and a platform strike';
+      if (/lockbox|access code/i.test(issue)) return 'the previous guest retains access to the unit, creating a security and liability exposure until the code is rotated';
+      if (/host response time/i.test(issue)) return 'slow response time drags down the listing\u2019s response-rate metric, which OTAs use to suppress search ranking';
+      if (/water leak/i.test(issue)) return 'undetected water damage compounds the longer it runs, risking a larger repair bill and a disrupted future booking';
+      if (/sensor offline/i.test(issue)) return 'a real issue (leak, temperature, security) could be developing with no visibility until a guest reports it';
+      if (/temperature drift/i.test(issue)) return 'guest comfort complaints and a lower review score become more likely the longer it goes unaddressed';
+      return 'the issue compounds the longer it goes unaddressed';
+    };
+    const detailed = airbnbRisks.items.slice(0, 4).map(it =>
+      `${it.unit_name} (${it.listing_id}): ${it.issue} \u2014 if unaddressed, ${consequenceByIssue(it.issue)}.`
+    ).join(' ');
+    anomalies.push({
+      id: 'hotelops-airbnb-risks',
+      title: 'Airbnb/STR Listing Risks',
+      severity: airbnbRisks.items.some(it => it.severity === 'urgent') ? 'CRIT' : (airbnbRisks.items.some(it => it.severity === 'high') ? 'HIGH' : 'MED'),
+      exposure: 0,
+      confidence: COUNT_ANOMALY_CONFIDENCE,
+      rootCause: `${airbnbRisks.at_risk} of ${airbnbRisks.total_listings} STR listing(s) flagged. ${detailed}`,
+      recommendedAction: 'Review the Airbnb/STR Operations panel and clear each flagged item before the next guest interaction.'
+    });
+  }
+  return anomalies;
+}
+
+async function relayToStrategist(){
+  if (!requireEngine()) return;
+  const aiText = document.getElementById('aiOutput').textContent;
+  const payload = engine.buildRelayPayload(aiText.startsWith('Run analysis') ? null : aiText);
+  payload.anomalies = buildSentinelAnomalies();
+  engine.saveToStorage();
+
+  let finalPayload = payload;
+  let signedPayload = payload;
+  try {
+    // relay.core.js's write() mutates its payload in place (fills in
+    // .id/.timestamp if missing) before storing it. Call it FIRST so that
+    // mutation happens before we sign — otherwise it would land after
+    // signing and silently invalidate the seal the next time it re-writes
+    // the same storage key. finalPayload is that same object, post-mutation.
+    if (window.TSM && window.TSM.relay && window.TSM.relay.write) {
+      finalPayload = window.TSM.relay.write('HOTELOPS', payload);
+    }
+
+    // SHA-256 seal so Strategist/Executive Portal (and Sentinel) can detect
+    // if this payload was altered after leaving the War Room. Non-fatal if
+    // TSMIntegrity didn't load — relays unsigned rather than blocking.
+    signedPayload = finalPayload;
+    if (window.TSMIntegrity && typeof window.TSMIntegrity.sign === 'function') {
+      try { signedPayload = await window.TSMIntegrity.sign(finalPayload, { module: 'hotelops' }); }
+      catch (e) { console.warn('[hotelops] signing failed (relaying unsigned):', e.message); }
+    }
+
+    // Write the SIGNED version last (both storage locations relay.write
+    // uses) so it's what actually persists — nothing after this point
+    // touches the same key.
+    localStorage.setItem('TSM_HOTELOPS_STRATEGIST_RELAY', JSON.stringify(signedPayload));
+    sessionStorage.setItem('TSM_HOTELOPS_STRATEGIST_RELAY', JSON.stringify(signedPayload));
+
+    window.dispatchEvent(new CustomEvent('TSM_SENTINEL_REFRESH'));
+    showToast('Relayed to Strategist — click "Strategist →" above to view it.');
+  } catch (e) {
+    console.warn('Relay storage failed', e);
+    showToast('Relay failed — see console for details.');
+  }
+  if (window.TSMEventBus && window.TSMEventBus.emit) {
+    window.TSMEventBus.emit('WAR_ROOM_READY', { vertical: 'hotelops', payload: signedPayload, ts: Date.now() });
+  }
+}
+
+document.getElementById('btnRelay').addEventListener('click', relayToStrategist);
+
+// ── SIDEBAR NAV ─────────────────────────────────────────────────────────
+document.getElementById('navIotSensors').addEventListener('click', () => {
+  document.querySelectorAll('.module').forEach(m => m.classList.remove('active'));
+  document.getElementById('navIotSensors').classList.add('active');
+  const anchor = document.getElementById('iotSensorsAnchor');
+  if (anchor) anchor.scrollIntoView({ behavior: 'smooth', block: 'center' });
+});
+
+// ── DATA CONTROLS ────────────────────────────────────────────────────────
+// Multiple named sample properties (model.sample_data_sets) ship alongside
+// the original default. The dropdown picks one; loadSampleData() on the
+// engine has always read from model.sample_data, so switching scenarios
+// just means swapping that reference before calling it — every tab file
+// that reads model.sample_data.X directly (not through engine.data) picks
+// up the change for free since they all share this one model object.
+function populateSampleDataSelect() {
+  const sel = document.getElementById('sampleDataSelect');
+  if (!sel || !model || !Array.isArray(model.sample_data_sets)) return;
+  sel.innerHTML = model.sample_data_sets.map(s => `<option value="${s.id}">${s.label}</option>`).join('');
+  sel.value = model.sample_data_default_id || model.sample_data_sets[0].id;
+}
+
+function applySelectedSampleData() {
+  const sel = document.getElementById('sampleDataSelect');
+  const sets = (model && model.sample_data_sets) || [];
+  const chosen = sets.find(s => s.id === (sel && sel.value)) || sets[0];
+  if (chosen) model.sample_data = JSON.parse(JSON.stringify(chosen.data));
+  engine.loadSampleData();
+  return chosen;
+}
+
+document.getElementById('btnLoadSample').addEventListener('click', () => {
+  if (!requireEngine()) return;
+  const chosen = applySelectedSampleData();
+  engine.saveToStorage();
+  render();
+  showToast(chosen ? `Sample data loaded: ${chosen.label}` : 'Sample data loaded.');
+});
+
+document.getElementById('btnResetData').addEventListener('click', () => {
+  if (!requireEngine()) return;
+  engine.clearStorage();
+  const chosen = applySelectedSampleData();
+  engine.saveToStorage();
+  render();
+  showToast(chosen ? `Saved data cleared — reset to: ${chosen.label}` : 'Saved data cleared — reset to sample data.');
+});
+
+// ── IOT SENSOR IMPORT (PASTE) ─────────────────────────────────────────────
+// Mirrors NOC's parsePastedTable -> mapRows... -> preview -> commit flow
+// (html/war-rooms/noc/noc-war-room.html) so pasted exports from a BMS/IoT
+// platform land on the same iot_sensors shape sample_data already uses --
+// no engine changes needed to consume it once imported.
+
+function splitIotRow(line) {
+  if (line.indexOf('\t') !== -1) return line.split('\t').map(c => c.trim());
+  return line.split(/ {2,}/).map(c => c.trim()).filter(c => c.length);
+}
+
+function parseIotPastedTable(raw) {
+  const lines = raw.split(/\r?\n/).map(l => l.trim()).filter(l => l.length);
+  if (lines.length < 2) return { headers: [], rows: [] };
+  const headers = splitIotRow(lines[0]).map(h => h.toLowerCase());
+  const rows = lines.slice(1).map(line => {
+    const cells = splitIotRow(line);
+    const row = {};
+    headers.forEach((h, i) => { row[h] = cells[i] !== undefined ? cells[i] : ''; });
+    return row;
+  });
+  return { headers, rows };
+}
+
+function findIotField(row, candidates) {
+  const keys = Object.keys(row);
+  for (const key of keys) {
+    for (const c of candidates) { if (key === c) return row[key]; }
+  }
+  const tokenize = s => s.split(/[^a-z0-9]+/).filter(Boolean);
+  for (const key of keys) {
+    const keyTokens = tokenize(key);
+    for (const c of candidates) {
+      const cTokens = tokenize(c);
+      if (cTokens.length && cTokens.every(t => keyTokens.includes(t))) return row[key];
+    }
+  }
+  return '';
+}
+
+function parseIotValue(raw) {
+  if (raw === undefined || raw === '' || raw === null) return null;
+  const num = Number(raw);
+  return isNaN(num) ? raw : num;
+}
+
+function mapRowsToIotSensors(rows) {
+  const seen = new Set();
+  const sensors = [];
+  const skipped = [];
+  rows.forEach((row, i) => {
+    const rawId = findIotField(row, ['sensor id', 'sensor_id', 'device id', 'id']) || `IOT-IMPORT-${i + 1}`;
+    const room = findIotField(row, ['room', 'room number']);
+    const listingId = findIotField(row, ['listing id', 'listing_id', 'listing']);
+    const type = (findIotField(row, ['type', 'sensor type', 'category']) || '').toLowerCase().replace(/\s+/g, '_');
+    if (!room && !listingId && !type) { skipped.push(rawId || `row ${i + 1}`); return; }
+    let sensorId = rawId;
+    let n = 2;
+    while (seen.has(sensorId)) { sensorId = `${rawId}-${n++}`; }
+    seen.add(sensorId);
+    sensors.push({
+      sensor_id: sensorId,
+      room: room || '',
+      listing_id: listingId || '',
+      type: type || 'unknown',
+      status: (findIotField(row, ['status', 'state']) || 'online').toLowerCase(),
+      reading: parseIotValue(findIotField(row, ['reading', 'value'])),
+      unit: findIotField(row, ['unit', 'uom']) || null,
+      target: parseIotValue(findIotField(row, ['target', 'setpoint']))
+    });
+  });
+  return { sensors, skipped };
+}
+
+let _pendingIotImport = null;
+
+document.getElementById('btnIotImportPreview').addEventListener('click', () => {
+  const raw = document.getElementById('iotImportPaste').value;
+  const status = document.getElementById('iotImportStatus');
+  const commitBtn = document.getElementById('btnIotImportCommit');
+
+  const { headers, rows } = parseIotPastedTable(raw);
+  if (!rows.length) {
+    status.textContent = 'No rows detected. Paste table rows (including the header row) from your BMS/IoT platform.';
+    commitBtn.disabled = true;
+    _pendingIotImport = null;
+    return;
+  }
+  const { sensors, skipped } = mapRowsToIotSensors(rows);
+  _pendingIotImport = sensors;
+  status.textContent =
+    `Detected ${headers.length} column(s), ${rows.length} row(s).\n` +
+    `Parsed ${sensors.length} sensor record(s).` +
+    (skipped.length ? `\n${skipped.length} row(s) skipped (no reading/message found): ${skipped.join(', ')}` : '') +
+    (sensors.length ? `\nPreview: ${sensors.slice(0, 3).map(s => `${s.sensor_id} [${s.listing_id ? 'Listing ' + s.listing_id : 'Room ' + s.room}, ${s.type}, ${s.status}]`).join(', ')}${sensors.length > 3 ? '...' : ''}` : '');
+  commitBtn.disabled = sensors.length === 0;
+});
+
+document.getElementById('btnIotImportCommit').addEventListener('click', () => {
+  if (!requireEngine()) return;
+  if (!_pendingIotImport || !_pendingIotImport.length) return;
+  const replace = document.getElementById('iotImportReplace').checked;
+  if (replace) engine.data.iot_sensors = [];
+  engine.loadRecords('iot_sensors', _pendingIotImport);
+  engine.saveToStorage();
+  document.getElementById('iotImportStatus').textContent =
+    `Imported ${_pendingIotImport.length} sensor record(s) into the war room.`;
+  document.getElementById('btnIotImportCommit').disabled = true;
+  _pendingIotImport = null;
+  render();
+});
+
+/* ---------- Online booking sync ----------
+   Bridges the server-side booking-webhook queue (see POST
+   /api/hotelops/booking-webhook + GET /api/hotelops/bookings/pending in
+   server.js) into this war room. TSM.relay is browser-only storage, so the
+   server can't push into it directly -- this poll is what closes that gap:
+   fetch anything new since the last seq we've seen, commit it into the
+   engine as a reservation record (same shape/commit path as the manual IoT
+   importer -- loadRecords + saveToStorage + render), and remember the seq
+   so we don't re-import on the next poll or after a page reload. */
+const HOTELOPS_BOOKING_SEQ_KEY = 'TSM_HOTELOPS_BOOKING_LAST_SEQ';
+const HOTELOPS_BOOKING_POLL_MS = 20000;
+
+function getLastBookingSeq() {
+  const raw = localStorage.getItem(HOTELOPS_BOOKING_SEQ_KEY);
+  const n = Number(raw);
+  return isNaN(n) ? 0 : n;
+}
+
+function setLastBookingSeq(seq) {
+  try { localStorage.setItem(HOTELOPS_BOOKING_SEQ_KEY, String(seq)); } catch (e) {}
+}
+
+async function pollOnlineBookings() {
+  // Silent no-op (not requireEngine()) if the engine isn't ready yet --
+  // this is a background poll, not a user action, so it shouldn't surface
+  // an error toast just because it raced init()'s async load. The next
+  // interval tick will pick it up once init() finishes.
+  if (!engine) return;
+  const since = getLastBookingSeq();
+  let payload;
+  try {
+    const res = await fetch(`/api/hotelops/bookings/pending?since=${since}`);
+    if (!res.ok) return; // fail silent on poll -- don't spam toasts for a transient network blip
+    payload = await res.json();
+  } catch (e) {
+    return;
+  }
+  const bookings = (payload && payload.bookings) || [];
+  if (!bookings.length) {
+    if (payload && payload.latest_seq != null) setLastBookingSeq(payload.latest_seq);
+    return;
+  }
+
+  const newReservations = bookings.map(b => ({
+    res_id: b.res_id,
+    guest: b.guest,
+    room_type: b.room_type,
+    status: b.status,
+    payment_status: b.payment_status,
+    hours_to_arrival: b.hours_to_arrival,
+    amount: b.amount
+  }));
+
+  engine.loadRecords('reservations', newReservations);
+  engine.saveToStorage();
+  setLastBookingSeq(payload.latest_seq);
+  render();
+  showToast(
+    bookings.length === 1
+      ? `New online booking registered: ${bookings[0].res_id} (${bookings[0].guest})`
+      : `${bookings.length} new online bookings registered.`
+  );
+}
+
+setInterval(pollOnlineBookings, HOTELOPS_BOOKING_POLL_MS);
+
+init();
+</script>
+  <script src="hotelops/maintenance-tab.js"></script>
+  <script src="hotelops/iot-tab.js"></script>
+  <script src="hotelops/ota-tab.js"></script>
+  <script src="hotelops/revenue-tab.js"></script>
+  <script src="hotelops/compliance-tab.js"></script>
+  <script src="hotelops/reservations-tab.js"></script>
+  <script src="hotelops/frontdesk-tab.js"></script>
+  <script src="hotelops/vip-tab.js"></script>
+  <script src="hotelops/housekeeping-tab.js"></script>
+  <script src="hotelops/staffops-tab.js"></script>
+  <script src="hotelops/incidents-tab.js"></script>
+  <script src="hotelops/airbnb-tab.js"></script>
+  <script src="hotelops/hotelops-tabs.js"></script>
+  <script src="js/hotelops-doc-anomaly-bridge.js"></script>
+  <script src="/js/tsm-guide-engine.js" defer></script>
+</body>
+</html>

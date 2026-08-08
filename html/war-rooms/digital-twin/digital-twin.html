@@ -48,6 +48,9 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
 .forecast-label{font-size:8px;color:var(--text-dim);letter-spacing:1px;margin-bottom:6px}
 .forecast-val{font-size:15px;font-weight:700;color:var(--teal)}
 .forecast-trend{font-size:9px;margin-top:3px}
+.data-badge{font-size:8px;letter-spacing:1px;font-weight:700}
+.data-badge.live{color:var(--green)}
+.data-badge.sample{color:var(--amber)}
 .ai-output{background:var(--bg3);border:1px solid var(--border);padding:14px;font-size:10px;line-height:1.7;color:var(--text);white-space:pre-wrap;min-height:100px}
 .ai-output.loading{color:var(--text-dim)}
 .btn{border:1px solid;font-family:inherit;font-size:9px;letter-spacing:1.5px;cursor:pointer;padding:8px 18px;transition:.2s;margin-right:8px}
@@ -83,6 +86,7 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
     </div>
   </div>
 
+  <div class="section-head" style="border:none;padding:0 2px 6px"><span>DOMAIN HEALTH</span><span id="domainMeta"></span></div>
   <div class="domain-grid" id="domainGrid"></div>
 
   <div class="section" id="liveDataSection" style="margin-bottom:20px">
@@ -96,7 +100,7 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
       <div class="section-body"><div class="signal-list" id="signalList"></div></div>
     </div>
     <div class="section">
-      <div class="section-head"><span>30-DAY FORECAST</span></div>
+      <div class="section-head"><span>30-DAY FORECAST</span><span id="forecastMeta"></span></div>
       <div class="section-body"><div class="forecast-grid" id="forecastGrid"></div></div>
     </div>
   </div>
@@ -113,7 +117,7 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
   </div>
 </div>
 <script src="/runtime/kernel/canonical-core.js"></script>
-<script src="/war-rooms/shared/tsm-live-data.js"></script>
+<script src="/war-rooms/tsm-live-data.js"></script>
 <script>
 (function(){
   function tick(){ document.getElementById('navClock').textContent=new Date().toLocaleTimeString(); }
@@ -244,6 +248,11 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
   }
 
   function renderDomains(){
+    const meta=document.getElementById('domainMeta');
+    if (meta) {
+      meta.className='data-badge '+(usingLiveDomains?'live':'sample');
+      meta.textContent=usingLiveDomains?'● LIVE (UPLOADED)':'● SAMPLE DATA — upload real domain scores below';
+    }
     document.getElementById('domainGrid').innerHTML=DOMAINS.map(d=>{
       const cls=d.score>=85?'':d.score>=70?'warn':'bad';
       const deltaStr=d.delta===0?'—':d.delta>0?`↑ +${d.delta}`:`↓ ${d.delta}`;
@@ -258,7 +267,14 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
   }
 
   function renderSignals(){
-    document.getElementById('signalMeta').textContent=`${SIGNALS.length} signals`;
+    const meta=document.getElementById('signalMeta');
+    if (usingLiveSignals) {
+      meta.className='data-badge live';
+      meta.textContent=`● LIVE (UPLOADED) · ${SIGNALS.length} signals`;
+    } else {
+      meta.className='';
+      meta.textContent=`${SIGNALS.length} signals`;
+    }
     document.getElementById('signalList').innerHTML=SIGNALS.map(s=>`
       <div class="signal-item">
         <div class="signal-dot sig-${s.type}"></div>
@@ -269,6 +285,11 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
   }
 
   function renderForecasts(){
+    const meta=document.getElementById('forecastMeta');
+    if (meta) {
+      meta.className='data-badge '+(usingLiveForecasts?'live':'sample');
+      meta.textContent=usingLiveForecasts?'● LIVE (UPLOADED)':'● SAMPLE DATA';
+    }
     document.getElementById('forecastGrid').innerHTML=FORECASTS.map(f=>{
       const tc=f.up===true?'delta-up':f.up===false?'delta-down':'';
       return `<div class="forecast-card">
@@ -279,14 +300,14 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
     }).join('');
   }
 
-  let usingLiveData = false;
+  let usingLiveDomains = false, usingLiveSignals = false, usingLiveForecasts = false;
 
   // Simulate live domain score drift — only when we're on sample data.
   // Randomly perturbing someone's actual uploaded numbers to make the
   // dashboard "look live" would misrepresent real data as noisier than
   // it is, so this stops the moment real data is loaded.
   setInterval(()=>{
-    if (usingLiveData) return;
+    if (usingLiveDomains) return;
     DOMAINS.forEach(d=>{
       const drift=Math.round((Math.random()-0.5)*4);
       d.score=Math.max(30,Math.min(99,d.score+drift));
@@ -318,7 +339,9 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
       items.push({
         id: 'domain-'+d.id,
         claim: `${d.name} health score ${d.score}/100, trending ${trend}`,
-        confidence: 82,
+        // Deterministic threshold check (score/delta), not a model guess --
+        // always true when it fires, so a flat high value is honest here.
+        confidence: 95,
         severity,
         impact: d.score<70 ? 'Domain health below acceptable range — investigate root cause' : 'Domain trending down — watch for continued decline',
         rationale: `${d.name} is currently scored ${d.score}/100 with a period-over-period change of ${d.delta>=0?'+':''}${d.delta}. ${d.score<75?'This is below the healthy-band threshold of 75.':'Score is in range but the negative trend is worth tracking.'}`,
@@ -370,7 +393,9 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
 
   async function hydrateAndRender(){
     if (window.TSMLiveData) {
-      let usingLiveSignals = false, usingLiveForecasts = false;
+      // Reset each render pass -- these must reflect only what THIS pass
+      // actually found, not whatever the previous pass left behind.
+      usingLiveDomains = false; usingLiveSignals = false; usingLiveForecasts = false;
       try {
         const st = await window.TSMLiveData.status('digital-twin');
         if (st.ok && st.source === 'live' && st.record_count) {
@@ -386,8 +411,10 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
 
           if (combined && Array.isArray(combined.domains) && combined.domains.length) {
             DOMAINS = combined.domains.map(normalizeDomain);
+            usingLiveDomains = true;
           } else if (!combined && records.length) {
             DOMAINS = records.map(normalizeDomain);
+            usingLiveDomains = true;
           }
 
           if (combined && Array.isArray(combined.signals) && combined.signals.length) {
@@ -400,16 +427,15 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
             FORECASTS.push(...combined.forecasts.map(normalizeForecast));
             usingLiveForecasts = true;
           }
-
-          usingLiveData = true;
-        } else {
-          usingLiveData = false;
         }
-      } catch (e) { usingLiveData = false; }
+      } catch (e) { usingLiveDomains = false; usingLiveSignals = false; usingLiveForecasts = false; }
 
+      // NOTE: this label previously had the live/sample condition inverted --
+      // it displayed "LIVE DATA" precisely when no upload existed (i.e. on
+      // the hardcoded/drifting sample numbers). Fixed 2026-08-02.
       let label;
-      if (!usingLiveData) {
-        label = 'LIVE DATA (DOMAIN SCORES) — SIGNAL FEED & FORECAST REMAIN SAMPLE DATA UNLESS INCLUDED IN UPLOAD';
+      if (!usingLiveDomains) {
+        label = 'SAMPLE DATA (DOMAIN SCORES) — upload a file below to replace with real numbers; signal feed & forecast also remain sample data unless included in the upload';
       } else if (usingLiveSignals && usingLiveForecasts) {
         label = 'LIVE DATA — DOMAINS, SIGNALS & FORECASTS ALL FROM UPLOAD';
       } else {

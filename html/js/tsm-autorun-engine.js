@@ -92,12 +92,13 @@
   }
 
   function _shouldAutoRun() {
-    // Check URL param
+    // Check URL param only. This must be explicit per page-load — a
+    // persisted localStorage flag would silently auto-run analysis on
+    // every future visit to this war room with no click and no warning,
+    // which is not acceptable for real usage. Demo scripts should pass
+    // ?autorun=1 in the URL for the specific run they intend to automate.
     const params = new URLSearchParams(global.location?.search || '');
     if (params.get('autorun') === '1') return true;
-
-    // Check localStorage flag
-    if (localStorage.getItem('tsm_auto_mode') === 'on') return true;
 
     return false;
   }

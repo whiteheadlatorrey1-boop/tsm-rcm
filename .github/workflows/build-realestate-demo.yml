@@ -1,0 +1,77 @@
+name: Build Real Estate Demo Video
+
+# Run manually from the Actions tab, or automatically whenever
+# re-exec-portal.html / re-strategist.html / the demo story change.
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "html/war-rooms/re-war/**"
+      - "demo/realestate-demo.json"
+      - "demo/demo-engine.js"
+      - "tests/e2e/demo/**"
+
+jobs:
+  build-video:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Start TSM server
+        run: |
+          node server.js &
+          echo $! > server.pid
+          # Wait for the server to actually be up before the spec hits it
+          for i in {1..30}; do
+            curl -sf http://localhost:8080 >/dev/null && break
+            sleep 1
+          done
+
+      - name: Run real estate demo capture
+        env:
+          TSM_BASE_URL: http://localhost:8080
+        run: npx playwright test tests/e2e/demo/realestate-demo.spec.js
+
+      - name: Stop TSM server
+        if: always()
+        run: kill "$(cat server.pid)" || true
+
+      - name: Build mp4 / gif from captured frames
+        run: |
+          chmod +x tests/e2e/demo/build-video.sh
+          tests/e2e/demo/build-video.sh realestate 3
+
+      - name: Upload video artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: realestate-demo-video
+          path: |
+            tests/e2e/demo/realestate-demo.mp4
+            tests/e2e/demo/realestate-demo.gif
+          if-no-files-found: error
+
+      - name: Upload screenshots (debugging aid)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: realestate-demo-screenshots
+          path: tests/e2e/demo/screenshots/realestate/
+          if-no-files-found: warn

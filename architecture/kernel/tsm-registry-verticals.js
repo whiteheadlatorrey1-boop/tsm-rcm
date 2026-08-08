@@ -37,7 +37,7 @@
     color: "#c084fc",
     entities: ["patient", "authorization", "payer", "caseNumber"],
     weights: { patient: 7, authorization: 8, payer: 8, caseNumber: 9 },
-    route: "/html/tsm-insurance/insurance-war-room.html"
+    route: "/html/war-rooms/insure-war/insurance-war-room.html"
   });
 
   TSMRegistry.register({
@@ -46,7 +46,7 @@
     color: "#fbbf24",
     entities: ["project", "contract", "oshaFlag", "purchaseOrder"],
     weights: { project: 9, contract: 7, oshaFlag: 10, purchaseOrder: 6 },
-    route: "/html/construction-suite/construction-war-room.html"
+    route: "/html/war-rooms/construct-war/construction-war-room.html"
   });
 
   TSMRegistry.register({
@@ -55,7 +55,7 @@
     color: "#f87171",
     entities: ["vendor", "customer", "order", "workflow"],
     weights: { vendor: 7, customer: 7, order: 8 },
-    route: "/html/war-rooms/bpo/bpo-war-room.html"
+    route: "/html/war-rooms/bpo-war/bpo-war-room.html"
   });
 
   TSMRegistry.register({
@@ -64,7 +64,7 @@
     color: "#34d399",
     entities: ["propertyId", "lienRecord", "contract"],
     weights: { propertyId: 10, lienRecord: 9, contract: 6 },
-    route: "/html/reo-pro/re-war-room.html"
+    route: "/html/war-rooms/re-war/re-war-room.html"
   });
 
   TSMRegistry.register({
@@ -73,7 +73,7 @@
     color: "#a78bfa",
     entities: ["caseNumber", "contract", "approvals"],
     weights: { caseNumber: 9, contract: 8, approvals: 6 },
-    route: "/html/legal-pro/legal-war-room.html"
+    route: "/html/war-rooms/legal-war/legal-war-room.html"
   });
 
   // O2C — not yet in WAR_ROOM_ROUTES; registered here so it participates
