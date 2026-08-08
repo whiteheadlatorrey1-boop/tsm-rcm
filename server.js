@@ -897,6 +897,7 @@ app.use(require('./routes/finops'));
 // See routes/rcm-relay.js header for the full endpoint contract.
 app.use('/api/rcm', require('./routes/rcm-relay'));
 app.use('/api/rcm', require('./routes/rcm-requirements'));
+app.use(require('./routes/ledger'));
 
 // ── FINANCIAL INTELLIGENCE (finance-index.html) ─────────────────────────────
 // Groq-backed chat (per-tab assistant) + audit engine with real persisted
