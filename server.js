@@ -1136,6 +1136,7 @@ app.post('/api/finops/bnca/report', (req, res) => res.json({ ok: true }));
 app.use(require('./routes/hc'));
 app.use(require('./routes/strategist'));
 app.use(require('./routes/construction'));
+app.use(require('./routes/property-accounting'));
 app.use(require('./routes/finops'));
 app.use(require('./routes/live-data'));
 
