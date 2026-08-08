@@ -345,18 +345,70 @@ function feedExceptions(){
 }
 
 /* ========================================================================
-   GAP-CLOSING ADDITIONS: journal entry posting, AP approval workflow,
-   live budget editing. All state is page-local (see honest-status note) —
-   this closes the "workflow shape" gap, not the "system of record" gap.
+   BACKEND-BACKED STATE: journal entries, AP invoices, and budget now
+   live in tsm-ledger-service (pa_gl_entries / pa_ap_invoices / pa_missions
+   collections), keyed by mission.missionId. If the API is unreachable,
+   this falls back to the old page-local behavior and shows a banner so
+   nobody mistakes degraded mode for the real thing.
    ======================================================================== */
 
 const EXPENSE_ACCOUNTS = ['Construction Expense'];
 let glEntries = [];
-let apInvoices = [
-  { id: 'INV-4821', vendor: 'Summit Steel & Supply', amount: 18400, status: 'pending' },
-  { id: 'INV-4822', vendor: 'Desert Ridge Electrical', amount: 9250, status: 'pending' },
-  { id: 'INV-4823', vendor: 'Apex Concrete Co.', amount: 12600, status: 'pending' }
-];
+let apInvoices = [];
+let backendLive = false;
+
+const API_BASE = '/api/property-accounting/' + encodeURIComponent(mission.missionId);
+
+function showBackendBanner(message, ok){
+  let banner = document.getElementById('paBackendBanner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'paBackendBanner';
+    banner.style.cssText = 'padding:8px 14px;font:600 12px/1.4 monospace;border-radius:4px;margin-bottom:10px;';
+    document.getElementById('brief').parentNode.insertBefore(banner, document.getElementById('brief'));
+  }
+  banner.textContent = message;
+  banner.style.background = ok ? '#0f3d1f' : '#3d1f1f';
+  banner.style.color = ok ? '#6fdc8c' : '#ff8080';
+}
+
+async function paFetch(path, opts){
+  const res = await fetch(API_BASE + path, Object.assign({
+    headers: { 'Content-Type': 'application/json' }
+  }, opts || {}));
+  const body = await res.json().catch(function(){ return {}; });
+  if (!res.ok || body.ok === false) {
+    throw new Error(body.error || ('HTTP ' + res.status));
+  }
+  return body;
+}
+
+async function loadState(){
+  try {
+    const state = await paFetch('/state');
+    mission.budget = state.mission.budget;
+    mission.actual = state.mission.actual;
+    glEntries = state.glEntries.map(function(e){
+      return { date: e.date, account: e.account, type: e.type, amount: e.amount, description: e.description };
+    });
+    apInvoices = state.apInvoices.map(function(i){
+      return { id: i.id, vendor: i.vendor, amount: i.amount, status: i.status };
+    });
+    backendLive = true;
+    showBackendBanner('\u2713 LIVE \u2014 persisted to tsm-ledger-service (mission ' + mission.missionId + ')', true);
+  } catch(e) {
+    backendLive = false;
+    apInvoices = [
+      { id: 'INV-4821', vendor: 'Summit Steel & Supply', amount: 18400, status: 'pending' },
+      { id: 'INV-4822', vendor: 'Desert Ridge Electrical', amount: 9250, status: 'pending' },
+      { id: 'INV-4823', vendor: 'Apex Concrete Co.', amount: 12600, status: 'pending' }
+    ];
+    showBackendBanner('\u26a0 OFFLINE MODE \u2014 ledger backend unreachable (' + e.message + '). Changes will NOT persist.', false);
+  }
+  renderApQueue();
+  renderLedger();
+  refreshKpiCards();
+}
 
 function fmtMoney(n){
   const sign = n < 0 ? '-' : '';
@@ -392,8 +444,20 @@ function updateBudget(){
   }
   mission.budget = raw;
   refreshKpiCards();
-  msg.textContent = '\u2713 budget saved \u2014 KPIs recalculated';
-  msg.className = 'sub good';
+  if (backendLive) {
+    paFetch('/budget', { method: 'POST', body: JSON.stringify({ budget: raw }) })
+      .then(function(){
+        msg.textContent = '\u2713 budget saved \u2014 KPIs recalculated';
+        msg.className = 'sub good';
+      })
+      .catch(function(e){
+        msg.textContent = '\u26a0 saved locally only \u2014 backend write failed: ' + e.message;
+        msg.className = 'sub bad';
+      });
+  } else {
+    msg.textContent = '\u26a0 budget saved locally only \u2014 backend offline, will not persist';
+    msg.className = 'sub bad';
+  }
 }
 
 function renderLedger(){
@@ -424,7 +488,7 @@ function renderLedger(){
   document.getElementById('resolveReconBtn').disabled = !balanced;
 }
 
-function postJournalEntry(){
+async function postJournalEntry(){
   const account = document.getElementById('jeAccount').value;
   const type = document.getElementById('jeType').value;
   const amount = parseFloat(document.getElementById('jeAmount').value);
@@ -440,14 +504,22 @@ function postJournalEntry(){
     amount: Math.round(amount * 100) / 100,
     description: description
   };
-  glEntries.push(entry);
 
-  // A debit to Construction Expense is real spend hitting Actual;
-  // a credit to Construction Expense reverses previously posted spend.
-  if (EXPENSE_ACCOUNTS.indexOf(account) !== -1) {
+  if (backendLive) {
+    try {
+      const result = await paFetch('/journal-entry', { method: 'POST', body: JSON.stringify(entry) });
+      mission.actual = result.mission.actual;
+    } catch(e) {
+      alert('Backend write failed, entry NOT persisted: ' + e.message);
+      return;
+    }
+  } else if (EXPENSE_ACCOUNTS.indexOf(account) !== -1) {
+    // A debit to Construction Expense is real spend hitting Actual;
+    // a credit to Construction Expense reverses previously posted spend.
     mission.actual += type === 'debit' ? entry.amount : -entry.amount;
   }
 
+  glEntries.push(entry);
   renderLedger();
   refreshKpiCards();
   document.getElementById('jeAmount').value = '';
@@ -488,45 +560,58 @@ function renderApQueue(){
   if (excRow && pending === 0) excRow.remove();
 }
 
-function approveInvoice(id){
+async function approveInvoice(id){
   const inv = apInvoices.find(function(i){ return i.id === id; });
   if (!inv || inv.status !== 'pending') return;
+
+  if (backendLive) {
+    try {
+      const result = await paFetch('/ap/' + encodeURIComponent(id) + '/approve', { method: 'POST' });
+      mission.actual = result.mission.actual;
+      glEntries.push(result.entry);
+    } catch(e) {
+      alert('Backend write failed, approval NOT persisted: ' + e.message);
+      return;
+    }
+  } else {
+    // Real offsetting entry: approving payment is a debit to expense,
+    // credit to cash — this is what actually posts to the ledger/Actual.
+    glEntries.push({
+      date: new Date().toISOString().slice(0, 10),
+      account: 'Construction Expense',
+      type: 'debit',
+      amount: inv.amount,
+      description: 'AP approved: ' + inv.vendor + ' (' + inv.id + ')'
+    });
+    mission.actual += inv.amount;
+  }
+
   inv.status = 'approved';
-
-  // Real offsetting entry: approving payment is a debit to expense,
-  // credit to cash — this is what actually posts to the ledger/Actual.
-  glEntries.push({
-    date: new Date().toISOString().slice(0, 10),
-    account: 'Construction Expense',
-    type: 'debit',
-    amount: inv.amount,
-    description: 'AP approved: ' + inv.vendor + ' (' + inv.id + ')'
-  });
-  glEntries.push({
-    date: new Date().toISOString().slice(0, 10),
-    account: 'Cash',
-    type: 'credit',
-    amount: inv.amount,
-    description: 'AP approved: ' + inv.vendor + ' (' + inv.id + ')'
-  });
-  mission.actual += inv.amount;
-
   renderApQueue();
   renderLedger();
   refreshKpiCards();
 }
 
-function rejectInvoice(id){
+async function rejectInvoice(id){
   const inv = apInvoices.find(function(i){ return i.id === id; });
   if (!inv || inv.status !== 'pending') return;
+
+  if (backendLive) {
+    try {
+      await paFetch('/ap/' + encodeURIComponent(id) + '/reject', { method: 'POST' });
+    } catch(e) {
+      alert('Backend write failed, rejection NOT persisted: ' + e.message);
+      return;
+    }
+  }
+
   inv.status = 'rejected';
   renderApQueue();
 }
 
-// Initial render on load.
-renderApQueue();
-renderLedger();
-refreshKpiCards();
+// Initial load: pull persisted state from the backend (falls back to
+// local-only mode with a visible banner if it's unreachable).
+loadState();
 </script>
 </body>
 </html>

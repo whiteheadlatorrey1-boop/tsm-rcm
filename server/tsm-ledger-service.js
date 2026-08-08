@@ -15,6 +15,9 @@ const { MongoClient } = require('mongodb');
 
 const DEFAULT_DB_NAME = 'tsm-consultz';
 const LEDGER_COLLECTION = 'ledger_entries';
+const PA_GL_COLLECTION = 'pa_gl_entries';
+const PA_AP_COLLECTION = 'pa_ap_invoices';
+const PA_MISSION_COLLECTION = 'pa_missions';
 
 let client = null;
 let db = null;
@@ -87,6 +90,114 @@ async function close() {
   }
 }
 
+// =====================================================
+// PROPERTY ACCOUNTING & REVENUE CYCLE
+// Collections keyed by missionId (e.g. "PA-MEC-001" — one document
+// per property/close-period). Mirrors the in-page state shape that
+// html/construction-suite/property-accounting-revenue-cycle.html
+// used to keep purely client-side.
+// =====================================================
+
+async function paGlCollection() {
+  const database = await getDb();
+  return database.collection(PA_GL_COLLECTION);
+}
+
+async function paApCollection() {
+  const database = await getDb();
+  return database.collection(PA_AP_COLLECTION);
+}
+
+async function paMissionCollection() {
+  const database = await getDb();
+  return database.collection(PA_MISSION_COLLECTION);
+}
+
+/**
+ * Ensures a mission/budget doc exists for this missionId, seeding it
+ * with `seed` (budget, actual, property, period, etc.) only if absent.
+ * Never overwrites an existing doc — seeding is first-write-wins.
+ */
+async function paEnsureMission(missionId, seed) {
+  const col = await paMissionCollection();
+  await col.updateOne(
+    { missionId },
+    { $setOnInsert: { missionId, ...seed, createdAt: new Date().toISOString() } },
+    { upsert: true }
+  );
+  return col.findOne({ missionId });
+}
+
+async function paGetMission(missionId) {
+  const col = await paMissionCollection();
+  return col.findOne({ missionId });
+}
+
+async function paUpdateBudget(missionId, budget) {
+  const col = await paMissionCollection();
+  await col.updateOne(
+    { missionId },
+    { $set: { budget, updatedAt: new Date().toISOString() } }
+  );
+  return col.findOne({ missionId });
+}
+
+async function paAdjustActual(missionId, delta) {
+  const col = await paMissionCollection();
+  await col.updateOne(
+    { missionId },
+    { $inc: { actual: delta }, $set: { updatedAt: new Date().toISOString() } }
+  );
+  return col.findOne({ missionId });
+}
+
+async function paListGlEntries(missionId) {
+  const col = await paGlCollection();
+  return col.find({ missionId }).sort({ ts: 1 }).toArray();
+}
+
+async function paPostGlEntry(missionId, entry) {
+  const col = await paGlCollection();
+  const doc = {
+    missionId,
+    date: entry.date,
+    account: entry.account,
+    type: entry.type,
+    amount: entry.amount,
+    description: entry.description,
+    ts: new Date().toISOString(),
+  };
+  const result = await col.insertOne(doc);
+  return { _id: result.insertedId, ...doc };
+}
+
+async function paListApInvoices(missionId) {
+  const col = await paApCollection();
+  return col.find({ missionId }).sort({ id: 1 }).toArray();
+}
+
+/**
+ * Seeds AP invoices for a mission only if none exist yet for it
+ * (first-write-wins, same pattern as paEnsureMission).
+ */
+async function paEnsureApInvoices(missionId, invoices) {
+  const col = await paApCollection();
+  const existing = await col.countDocuments({ missionId });
+  if (existing > 0) return;
+  const docs = invoices.map((inv) => ({ missionId, ...inv }));
+  if (docs.length) await col.insertMany(docs);
+}
+
+async function paSetApInvoiceStatus(missionId, invoiceId, status) {
+  const col = await paApCollection();
+  const result = await col.findOneAndUpdate(
+    { missionId, id: invoiceId, status: 'pending' },
+    { $set: { status, decidedAt: new Date().toISOString() } },
+    { returnDocument: 'after' }
+  );
+  return result && result.value ? result.value : result;
+}
+
 module.exports = {
   connect,
   getDb,
@@ -94,4 +205,14 @@ module.exports = {
   writeEntry,
   readRecentEntries,
   close,
+  // property accounting
+  paEnsureMission,
+  paGetMission,
+  paUpdateBudget,
+  paAdjustActual,
+  paListGlEntries,
+  paPostGlEntry,
+  paListApInvoices,
+  paEnsureApInvoices,
+  paSetApInvoiceStatus,
 };
