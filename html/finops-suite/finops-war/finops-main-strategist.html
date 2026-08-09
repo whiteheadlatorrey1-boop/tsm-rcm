@@ -1115,12 +1115,20 @@ async function generateReport(){
     // Business Impact Delta — deterministic, no LLM-guessed dollars.
     // Uses the same shared engine as Insurance/RE/Healthcare/BPO so the
     // math is identical across verticals; only the inputs differ.
+    // NOTE: pulled from the deterministic relay context (relayContexts),
+    // not from the LLM's freeform report text — the prompt never asks the
+    // model to emit literal "TOTAL EXPOSURE:"/"RISK SCORE:" lines, so
+    // parsing _txt for them silently failed on every run (matches how
+    // Insurance reads warRoomData.snapshot.exposure instead of LLM prose).
     try {
       if (window.TSMBNCAExposureEngine) {
-        const finExpStr = _expM ? _expM[1] : null;
+        const finCtxStr = relayContexts[relaySource] || '';
+        const finCtxExpM = finCtxStr.match(/(?:Financial Exposure|Total Exposure tracked)[:\s]+(\$[\d,]+(?:\s*[–\-]\s*\$[\d,]+)?)/i);
+        const finCtxRiskM = finCtxStr.match(/Risk Score[:\s]+(\d+)/i);
+        const finExpStr = finCtxExpM ? finCtxExpM[1] : (_expM ? _expM[1] : null);
         const finExpNums = finExpStr ? finExpStr.match(/[\d,]+/g) : null;
         const finBaseExposure = finExpNums ? parseInt(finExpNums[0].replace(/,/g, ''), 10) : 0;
-        const finRiskNum = _riskM ? parseInt(_riskM[1], 10) : null;
+        const finRiskNum = finCtxRiskM ? parseInt(finCtxRiskM[1], 10) : (_riskM ? parseInt(_riskM[1], 10) : null);
         const finSeverity = finRiskNum === null ? 'MED' : (finRiskNum >= 80 ? 'CRIT' : finRiskNum >= 60 ? 'HIGH' : finRiskNum >= 35 ? 'MED' : 'LOW');
         const finDeltaNoEl = document.getElementById('finXPDeltaNo');
         const finDeltaActEl = document.getElementById('finXPDeltaAct');
