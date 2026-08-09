@@ -74,8 +74,14 @@
     "honeywell": {
       "status": "wired",
       "codePrefix": "HW",
-      "sources": ["html/war-rooms/honeywell-executive-portal.html"],
-      "notes": "Same gap as mortgage/schools -- honeywell-executive-portal.html did NOT load tsm-memory-engine.js at all, added the script include and a new 'honeywell' sector branch to detectSector()/DEFAULTS (path-matches on plant-incident/supplier-shutdown/cyber-incident too, in case those war rooms adopt registerAnomaly directly in a future pass). registerAnomaly() fires from render(), the real relay-parsing function, off the same data.kpis figures the KPI row just rendered: an exposure anomaly per source (CRITICAL for cyber, HIGH for plant, MEDIUM for supplier), a secondary buffer/containment anomaly when that KPI is present, and a supplier-only orders-at-risk anomaly. Not a static mirror -- this page shows 'no escalation received' until a strategist relay actually arrives. Self-dedupes by anomalyCode (keyed to incident source) against the shared store. The plant-incident/supplier-shutdown/cyber-incident war room pages themselves, and honeywell-strategist.html, still do not call registerAnomaly directly -- only the executive portal is wired, matching the mortgage/schools scope (exec portal only, not the source war rooms)."
+      "sources": [
+        "html/plant-incident.html",
+        "html/supplier-shutdown.html",
+        "html/cyber-incident.html",
+        "html/war-rooms/honeywell-strategist.html",
+        "html/war-rooms/honeywell-executive-portal.html"
+      ],
+      "notes": "Full chain wired, not just the exec portal (unlike the initial pass, which only wired the executive portal). None of these 5 pages loaded tsm-memory-engine.js before this change -- added the script include to all of them, plus a new 'honeywell' sector branch to detectSector()/DEFAULTS (path-matches on honeywell/plant-incident/supplier-shutdown/cyber-incident). Each of the 3 source war rooms (plant/supplier/cyber) now calls registerAnomaly() itself right after its own 6-engine run completes and saveRelay() fires -- reading the same KPI tile text its own extract*KPI() functions just wrote to the DOM, not a static mirror. honeywell-strategist.html and honeywell-executive-portal.html each also call registerAnomaly() from render() using the identical codes, off whatever relay payload they're currently displaying. All 5 pages use the SAME anomalyCode scheme (HW_PLANT_EXPOSURE, HW_PLANT_CONTAINMENT, HW_SUPPLIER_EXPOSURE, HW_SUPPLIER_BUFFER, HW_SUPPLIER_ORDERS_AT_RISK, HW_CYBER_EXPOSURE, HW_CYBER_CONTAINMENT) and self-dedupe by anomalyCode+status:'open' against the shared TSM_OPERATIONAL_MEMORY_V3 store -- so whichever page in the chain runs first for a given incident sets the anomaly, and every later page in the same chain (war room -> strategist -> exec) is a no-op dedupe rather than a duplicate. Severity: cyber exposure is CRITICAL, plant exposure is HIGH, supplier exposure/buffer/orders are MEDIUM, cyber containment is HIGH."
     }
   },
 

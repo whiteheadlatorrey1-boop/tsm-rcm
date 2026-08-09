@@ -424,6 +424,54 @@ async function fireAllEngines() {
   document.getElementById('escalateBtn').disabled = !sessionData.outputs.length;
 
   saveRelay();
+  registerPlantAnomalies();
+}
+
+// ===== TSM MEMORY: REGISTER CROSS-MODULE ANOMALIES =====
+// Fires after the 6-engine run completes, reading the same KPI tile text
+// extractFinancialKPI()/extractDowntimeKPI()/buildRiskKPI() just wrote to
+// the DOM -- not a static mirror, this is the war room's own live analysis.
+// Uses the same anomaly codes honeywell-executive-portal.html registers on
+// escalation, so whichever page runs first sets the anomaly and the other's
+// write is a no-op dedupe. Self-dedupes by anomalyCode against the shared
+// TSM_OPERATIONAL_MEMORY_V3 store, sector 'honeywell'.
+function registerPlantAnomalies() {
+  if (!window.TSMMemory || typeof window.TSMMemory.registerAnomaly !== 'function') return;
+
+  function alreadyOpen(code) {
+    try {
+      const all = JSON.parse(localStorage.getItem('TSM_OPERATIONAL_MEMORY_V3') || '{}');
+      const bucket = all.honeywell;
+      return !!(bucket && Array.isArray(bucket.anomalies) &&
+        bucket.anomalies.some(a => a.anomalyCode === code && a.status === 'open'));
+    } catch (e) { return false; }
+  }
+  function fire(a) {
+    if (alreadyOpen(a.anomalyCode)) return;
+    window.TSMMemory.registerAnomaly(a);
+  }
+
+  const exposureStr = document.getElementById('kpiExposure').textContent;
+  if (exposureStr && exposureStr !== '—' && exposureStr !== 'N/A') {
+    fire({
+      entityType: 'honeywell-incident', entityId: 'plant',
+      anomalyCode: 'HW_PLANT_EXPOSURE', severity: 'HIGH',
+      title: `PLANT — OPERATIONS INCIDENT — ${exposureStr} exposure`,
+      source: 'plant-incident',
+      meta: { exposure: sessionData.kpis.exposure }
+    });
+  }
+
+  const downtimeStr = document.getElementById('kpiDowntime').textContent;
+  if (downtimeStr && downtimeStr !== '—' && downtimeStr !== 'N/A') {
+    fire({
+      entityType: 'honeywell-incident', entityId: 'plant',
+      anomalyCode: 'HW_PLANT_CONTAINMENT', severity: 'MEDIUM',
+      title: `PLANT — OPERATIONS INCIDENT — downtime est. ${downtimeStr}`,
+      source: 'plant-incident',
+      meta: { value: sessionData.kpis.containment }
+    });
+  }
 }
 
 function saveRelay() {
@@ -631,6 +679,7 @@ function exportReport() {
   a.click();
 }
 </script>
+  <script src="/html/shared/tsm-memory-engine.js"></script>
   <script src="../js/tsm-guide-engine.js" defer></script>
 </body>
 </html>

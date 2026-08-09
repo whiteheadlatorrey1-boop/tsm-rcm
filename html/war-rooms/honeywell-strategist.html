@@ -312,6 +312,74 @@ function renderExplainItems(items){
   </div>`;
 }
 
+// ===== TSM MEMORY: REGISTER CROSS-MODULE ANOMALIES =====
+// This page did NOT load tsm-memory-engine.js at all before this change --
+// added the script include below (the 'honeywell' sector was already added
+// to tsm-memory-engine.js when the executive portal was wired). Mirrors
+// honeywell-executive-portal.html's registerHoneywellAnomalies() exactly,
+// using the same anomaly codes, so a user who reviews at the strategist but
+// never escalates to Executive still surfaces the anomaly in RCM OS -- and
+// whichever page (war room / strategist / exec portal) runs first sets the
+// anomaly, the rest are no-op dedupes. Fires from render() off the same
+// data.kpis figures the KPI row just rendered.
+function registerHoneywellAnomalies(data){
+  if(!window.TSMMemory || typeof window.TSMMemory.registerAnomaly !== 'function' || !data) return;
+
+  function alreadyOpen(code){
+    try{
+      const all = JSON.parse(localStorage.getItem('TSM_OPERATIONAL_MEMORY_V3') || '{}');
+      const bucket = all.honeywell;
+      return !!(bucket && Array.isArray(bucket.anomalies) &&
+        bucket.anomalies.some(a => a.anomalyCode === code && a.status === 'open'));
+    }catch(e){ return false; }
+  }
+  function fire(a){
+    if(alreadyOpen(a.anomalyCode)) return;
+    window.TSMMemory.registerAnomaly(a);
+  }
+
+  const src = data.source || 'unknown';
+  const meta = SOURCE_META[src] || { label: src.toUpperCase() };
+  const k = data.kpis || {};
+  const codeSrc = src.toUpperCase();
+
+  const exposureStr = kpiExposure(k.exposure);
+  if(exposureStr !== '—'){
+    const severity = src === 'cyber' ? 'CRITICAL' : (src === 'plant' ? 'HIGH' : 'MEDIUM');
+    fire({
+      entityType: 'honeywell-incident', entityId: src,
+      anomalyCode: 'HW_' + codeSrc + '_EXPOSURE', severity,
+      title: `${meta.label} — ${exposureStr} exposure`,
+      source: 'honeywell-strategist',
+      meta: { exposure: k.exposure, incidentSource: src }
+    });
+  }
+
+  const secKpi = k.buffer || k.containment;
+  const secVal = kpiSecondary(secKpi);
+  if(secVal !== '—'){
+    fire({
+      entityType: 'honeywell-incident', entityId: src,
+      anomalyCode: 'HW_' + codeSrc + '_' + (k.buffer ? 'BUFFER' : 'CONTAINMENT'), severity: src === 'cyber' ? 'HIGH' : 'MEDIUM',
+      title: `${meta.label} — ${secondaryLabel(src)} at ${secVal}`,
+      source: 'honeywell-strategist',
+      meta: { value: secKpi, incidentSource: src }
+    });
+  }
+
+  const terKpi = k.orders || k.risk;
+  const terVal = kpiTertiary(terKpi);
+  if(terVal !== '—' && src === 'supplier'){
+    fire({
+      entityType: 'honeywell-incident', entityId: src,
+      anomalyCode: 'HW_' + codeSrc + '_ORDERS_AT_RISK', severity: 'MEDIUM',
+      title: `${meta.label} — ${terVal} at risk`,
+      source: 'honeywell-strategist',
+      meta: { value: terKpi, incidentSource: src }
+    });
+  }
+}
+
 function renderEmpty(){
   document.getElementById('hdrBadge').style.display='none';
   document.getElementById('hdrSub').textContent='Awaiting relay from a war room…';
@@ -350,6 +418,8 @@ function render(){
   </div>`;
 
   html += renderExplainItems(getExplainItems(data));
+
+  registerHoneywellAnomalies(data);
 
   if(data.docText){
     html += `<div class="doc-box"><div class="sec-hdr">SOURCE DOCUMENT</div><div class="doc-text">${escapeHtml(data.docText)}</div></div>`;
@@ -428,6 +498,7 @@ window.addEventListener('storage', e => {
   if (Object.values(RELAY_KEYS).includes(e.key) || e.key === LEGACY_RELAY_KEY) render();
 });
 </script>
+  <script src="/html/shared/tsm-memory-engine.js"></script>
   <script src="../../js/tsm-guide-engine.js" defer></script>
 </body>
 </html>
