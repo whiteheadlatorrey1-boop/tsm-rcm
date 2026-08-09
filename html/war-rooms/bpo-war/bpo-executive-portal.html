@@ -716,6 +716,11 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
     </div>
 
     <div class="panel">
+      <div class="panel-title"><div class="dot" style="background:var(--red)"></div>EXCEPTION QUEUE · SECTOR: BPO</div>
+      <div id="tsm-exception-queue"></div>
+    </div>
+
+    <div class="panel">
       <div class="panel-title"><div class="dot" style="background:var(--green)"></div>SUPERVISOR ROLLUP · CROSS-MISSION</div>
       <div id="supervisorRollup">
         <div style="color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:.68rem">Mission Store not available.</div>
@@ -1178,6 +1183,8 @@ function markExecuted() {
     }));
   } catch(e) { console.warn('[exec-confirmed] bpo write error:', e); }
 
+  try { bpoFeedExceptions(stratData); } catch(e) { console.warn('[bpo-exceptions] feed error:', e); }
+
   if (window.TSMMemory) {
     // Stamp the final resolution so the next time this anomaly type arrives,
     // cross-upload insight can say "last time: X was chosen, outcome: executed"
@@ -1615,6 +1622,45 @@ function buildExplainability(data) {
 })();
 window.TSM_AUTONOMY_STANDARDIZED = true;
 </script>
+
+<!-- TSM EXCEPTION QUEUE — real producer + mount for BPO -->
+<script src="/html/shared/tsm-exceptions.js"></script>
+<script src="/html/js/widgets/tsm-exception-widget.js"></script>
+<script>
+(function(){
+  if (typeof TSMExceptionWidget !== 'undefined') {
+    TSMExceptionWidget.mount('tsm-exception-queue', { sector: 'bpo' });
+  }
+})();
+
+function bpoFeedExceptions(d) {
+  if (typeof TSMExceptions === 'undefined') {
+    console.warn('[bpo-exceptions] TSMExceptions engine not loaded on this page.');
+    return;
+  }
+  const rec = (d && d.recommendation) || {};
+  const triggers = Array.isArray(rec.escalationTriggers) ? rec.escalationTriggers : [];
+  if (!triggers.length) return;
+
+  const confidence = rec.confidence || null;
+  triggers.forEach(function(trigger, i){
+    TSMExceptions.add({
+      title: trigger,
+      detail: (d.anomalyEntity || d.sector || 'BPO') + ' \u00b7 ' + (d.selectedScenarioName || 'Strategy executed'),
+      recommendedAction: 'See BPO Executive Portal resolution brief.',
+      severity: i === 0 ? 'HIGH' : 'MED',
+      confidence: confidence,
+      priority: i === 0 ? 'P1' : 'P2',
+      sector: 'bpo',
+      agentLabel: 'BPO Strategist'
+    });
+  });
+  if (typeof TSMExceptionWidget !== 'undefined') {
+    TSMExceptionWidget.mount('tsm-exception-queue', { sector: 'bpo' });
+  }
+}
+</script>
+
   <script src="/html/core/tsm-runtime.js"></script>
   <!-- stripped -->
   <script src="/shared/tsm-exec-portal-upgrade.js"></script>
