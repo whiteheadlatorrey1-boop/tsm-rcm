@@ -2090,6 +2090,14 @@ function acCreateDraft() {
 
 function acFind(id) { return acAccruals.find(a => a.id === id); }
 
+function acDeleteDraft(id) {
+  const a = acFind(id); if (!a || a.state !== 'DRAFT') return;
+  if (!confirm('Delete draft ' + a.id + ' (' + a.vendor + ')? This cannot be undone.')) return;
+  acAccruals = acAccruals.filter(x => x.id !== id);
+  acRender();
+  if (window.toast) toast(a.id + ' deleted');
+}
+
 function acSubmitProposal(id) {
   const a = acFind(id); if (!a || a.state !== 'DRAFT') return;
   a.state = 'PROPOSED'; a.proposedBy = 'CAO'; a.proposedAt = new Date().toISOString();
@@ -2150,7 +2158,7 @@ const AC_STATE_PILL = {
 
 function acActionsFor(a) {
   switch (a.state) {
-    case 'DRAFT': return `<button class="ac-btn" onclick="acSubmitProposal('${a.id}')">Submit Proposal</button>`;
+    case 'DRAFT': return `<button class="ac-btn" onclick="acSubmitProposal('${a.id}')">Submit Proposal</button><button class="ac-btn ac-btn-danger" onclick="acDeleteDraft('${a.id}')">Delete</button>`;
     case 'PROPOSED': return `<button class="ac-btn" onclick="acApprove('${a.id}')">Approve</button><button class="ac-btn ac-btn-danger" onclick="acReject('${a.id}')">Reject</button>`;
     case 'APPROVED': return `<button class="ac-btn" onclick="acPostJE('${a.id}')">Post JE</button>`;
     case 'POSTED': return `<button class="ac-btn" onclick="acMatchInvoice('${a.id}')">Match Invoice</button>`;
