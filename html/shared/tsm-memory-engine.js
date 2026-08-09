@@ -23,6 +23,7 @@
     if(path.includes("music")) return "music";
     if(path.includes("mortgage")) return "mortgage";
     if(path.includes("schools")) return "schools";
+    if(path.includes("honeywell") || path.includes("plant-incident") || path.includes("supplier-shutdown") || path.includes("cyber-incident")) return "honeywell";
     return "executive";
   }
 
@@ -97,6 +98,11 @@
       exposure:"$95K",
       strategist:"MEDIUM",
       narrative:"Grant funding-delay and compliance exception exposure across the award portfolio are being monitored for deobligation risk."
+    },
+    honeywell:{
+      exposure:"$260K",
+      strategist:"HIGH",
+      narrative:"Plant incident, supplier shutdown, and cyber containment exposure across the operations mesh are driving escalation risk."
     }
   };
 
