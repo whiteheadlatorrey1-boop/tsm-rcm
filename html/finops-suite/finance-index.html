@@ -1137,5 +1137,68 @@ document.addEventListener('click', function(e){
   <!-- TSM KERNEL ENGINE -->
   <script src="/core/tsm-kernel.js"></script>
   <script src="../../js/tsm-guide-engine.js" defer></script>
+  <script src="/html/shared/tsm-memory-engine.js"></script>
+<script>
+// ===== TSM MEMORY: REGISTER CROSS-MODULE ANOMALIES =====
+// Mirrors the real figures already shown on this dashboard/audit tab
+// (Active Frameworks panel, Audit Reports table, Overdue Invoices table)
+// so RCM OS's Executive tab picks them up via getCrossModuleAnomalies().
+// Self-dedupes by anomalyCode (checked against the same shared
+// TSM_OPERATIONAL_MEMORY_V3 store tsm-memory-engine.js writes to) so
+// repeat page visits don't pile up duplicate open anomalies.
+(function registerFinanceIndexAnomalies(){
+  function alreadyOpen(code){
+    try{
+      const all = JSON.parse(localStorage.getItem('TSM_OPERATIONAL_MEMORY_V3') || '{}');
+      const bucket = all.finops;
+      return !!(bucket && Array.isArray(bucket.anomalies) &&
+        bucket.anomalies.some(a => a.anomalyCode === code && a.status === 'open'));
+    }catch(e){ return false; }
+  }
+  function fire(a){
+    if (alreadyOpen(a.anomalyCode)) return;
+    window.TSMMemory.registerAnomaly(a);
+  }
+  function register(){
+    if (!window.TSMMemory || typeof window.TSMMemory.registerAnomaly !== 'function') return;
+
+    fire({
+      entityType: 'compliance-framework', entityId: 'sox-302-404',
+      anomalyCode: 'FIN_SOX_FRAMEWORK_FLAGGED', severity: 'HIGH',
+      title: 'SOX 302/404 · SOX 2.0 — 78% — FLAGGED, remediation in progress',
+      source: 'finance-index', meta: { pct: '78%' }
+    });
+    fire({
+      entityType: 'audit-report', entityId: 'sox-302-mgmt-assessment-2026-01-22',
+      anomalyCode: 'FIN_AUDIT_SOX302_FLAGGED', severity: 'HIGH',
+      title: 'SOX 302 Management Assessment — FLAGGED',
+      source: 'finance-index', meta: { date: 'Jan 22, 2026' }
+    });
+    fire({
+      entityType: 'invoice', entityId: 'INV-2026-0038',
+      anomalyCode: 'FIN_INVOICE_OVERDUE_INV20260038', severity: 'HIGH',
+      title: 'Overdue Invoice — Sovereign Capital LLC — $410,000 — 12 days overdue',
+      source: 'finance-index', meta: { amount: '$410,000', overdue: '12d' }
+    });
+    fire({
+      entityType: 'invoice', entityId: 'INV-2026-0035',
+      anomalyCode: 'FIN_INVOICE_OVERDUE_INV20260035', severity: 'MEDIUM',
+      title: 'Overdue Invoice — TechSPV III Holdings — $128,500 — 20 days overdue',
+      source: 'finance-index', meta: { amount: '$128,500', overdue: '20d' }
+    });
+    fire({
+      entityType: 'audit-cycle', entityId: 'current-audit-cycle',
+      anomalyCode: 'FIN_AUDIT_OPEN_FINDINGS', severity: 'MEDIUM',
+      title: '7 Open Audit Findings (3 high, 4 medium) — 4 control exceptions of 142 tested',
+      source: 'finance-index', meta: { openFindings: 7, controlsTested: 142, exceptions: 4 }
+    });
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', register);
+  } else {
+    register();
+  }
+})();
+</script>
 </body>
 </html>

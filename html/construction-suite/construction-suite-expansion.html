@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script src="/html/shared/tsm-memory-engine.js"></script>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>TSM Construction Suite — Field & Document Ops</title>
@@ -3553,8 +3554,65 @@ function tsmSyncNow() {
       setTimeout(() => { btn.textContent = '↑ STRATEGIST SYNC'; }, 2000);
     }
     console.log('[TSM] Expansion state synced to Strategist:', snapshot.timestamp);
+    registerExpansionAnomalies(snapshot);
   } catch(e) {
     console.warn('[TSM] Sync failed:', e.message);
+  }
+}
+
+// ===== TSM MEMORY: REGISTER CROSS-MODULE ANOMALIES =====
+// Fires off the real live snapshot tsmCollectState() just built (procurement
+// stock alerts, change-order exposure, schedule slippage) -- not a static
+// mirror, since this page already computes real figures on every sync. Only
+// fires when a threshold is actually crossed, and self-dedupes by
+// anomalyCode against the shared TSM_OPERATIONAL_MEMORY_V3 store so the
+// 90s auto-sync / tab-switch syncs don't pile up duplicate open anomalies.
+function registerExpansionAnomalies(snapshot){
+  if (!window.TSMMemory || typeof window.TSMMemory.registerAnomaly !== 'function') return;
+
+  function alreadyOpen(code){
+    try{
+      const all = JSON.parse(localStorage.getItem('TSM_OPERATIONAL_MEMORY_V3') || '{}');
+      const bucket = all.construction;
+      return !!(bucket && Array.isArray(bucket.anomalies) &&
+        bucket.anomalies.some(a => a.anomalyCode === code && a.status === 'open'));
+    }catch(e){ return false; }
+  }
+  function fire(a){
+    if (alreadyOpen(a.anomalyCode)) return;
+    window.TSMMemory.registerAnomaly(a);
+  }
+
+  const critCount = snapshot.procurement.alerts.critical;
+  if (critCount > 0) {
+    const critItems = snapshot.procurement.stock.filter(s => /crit/i.test(s.status));
+    fire({
+      entityType: 'construction-project', entityId: 'expansion-procurement',
+      anomalyCode: 'CON_STOCK_CRITICAL', severity: 'CRITICAL',
+      title: `${critCount} material(s) below reorder point — ${critItems.map(c => c.item).join(', ')}`,
+      source: 'construction-suite-expansion',
+      meta: { critical: critCount, items: critItems }
+    });
+  }
+
+  if (snapshot.changeOrders.totalExposure > 0) {
+    fire({
+      entityType: 'construction-project', entityId: 'expansion-change-orders',
+      anomalyCode: 'CON_CO_EXPOSURE', severity: snapshot.changeOrders.totalExposure >= 100000 ? 'HIGH' : 'MEDIUM',
+      title: `Change order exposure — $${snapshot.changeOrders.totalExposure.toLocaleString()} across ${snapshot.changeOrders.list.length} CO(s)`,
+      source: 'construction-suite-expansion',
+      meta: { totalExposure: snapshot.changeOrders.totalExposure, count: snapshot.changeOrders.list.length }
+    });
+  }
+
+  if (snapshot.schedule.behindCount > 0) {
+    fire({
+      entityType: 'construction-project', entityId: 'expansion-schedule',
+      anomalyCode: 'CON_SCHEDULE_BEHIND', severity: 'HIGH',
+      title: `${snapshot.schedule.behindCount} task(s) behind schedule (<50% complete)`,
+      source: 'construction-suite-expansion',
+      meta: { behindCount: snapshot.schedule.behindCount }
+    });
   }
 }
 

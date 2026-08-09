@@ -2349,5 +2349,67 @@ function tsmWriteRelay(payload){
 
 </script>
   <script src="../../js/tsm-guide-engine.js" defer></script>
+  <script src="/html/shared/tsm-memory-engine.js"></script>
+<script>
+// ===== TSM MEMORY: REGISTER CROSS-MODULE ANOMALIES =====
+// Mirrors the real flags already shown in Module 06 Compliance (Policy
+// Validation Errors panel) and the Client Inbox SLA tracker so RCM OS's
+// Executive tab picks them up via getCrossModuleAnomalies(). Self-dedupes
+// by anomalyCode against the shared TSM_OPERATIONAL_MEMORY_V3 store so
+// repeat visits/tab switches don't pile up duplicate open anomalies.
+(function registerFinOpsOperationsAnomalies(){
+  function alreadyOpen(code){
+    try{
+      const all = JSON.parse(localStorage.getItem('TSM_OPERATIONAL_MEMORY_V3') || '{}');
+      const bucket = all.finops;
+      return !!(bucket && Array.isArray(bucket.anomalies) &&
+        bucket.anomalies.some(a => a.anomalyCode === code && a.status === 'open'));
+    }catch(e){ return false; }
+  }
+  function fire(a){
+    if (alreadyOpen(a.anomalyCode)) return;
+    window.TSMMemory.registerAnomaly(a);
+  }
+  function register(){
+    if (!window.TSMMemory || typeof window.TSMMemory.registerAnomaly !== 'function') return;
+
+    fire({
+      entityType: 'client-account', entityId: 'C-4421',
+      anomalyCode: 'FINOPS_AUTH_EXPIRED_WHITFIELD', severity: 'CRITICAL',
+      title: 'Whitfield, Robert — transfer auth expired 2026-04-07, $125K transfer blocked',
+      source: 'finops-operations', meta: { amount: '$125,000', expired: '2026-04-07' }
+    });
+    fire({
+      entityType: 'client-account', entityId: 'C-2201',
+      anomalyCode: 'FINOPS_MISSING_DOC_PARK', severity: 'HIGH',
+      title: 'Park, June — beneficiary designation missing (required for IRA, policy 4.2)',
+      source: 'finops-operations'
+    });
+    fire({
+      entityType: 'document-retention', entityId: 'wire-transfer-auth',
+      anomalyCode: 'FINOPS_DOC_GAP_WIRE_AUTH', severity: 'HIGH',
+      title: 'Document Retention — Wire Transfer Auth — Gap Found',
+      source: 'finops-operations'
+    });
+    fire({
+      entityType: 'client-account', entityId: 'C-4421',
+      anomalyCode: 'FINOPS_SLA_BREACH_WHITFIELD', severity: 'HIGH',
+      title: 'SLA breach — Whitfield, R. — Wire Transfer — 72+ hrs',
+      source: 'finops-operations', meta: { hrs: '72+' }
+    });
+    fire({
+      entityType: 'client-account', entityId: 'C-2201',
+      anomalyCode: 'FINOPS_SLA_BREACH_PARK', severity: 'HIGH',
+      title: 'SLA breach — Park, J. — Beneficiary Change — 48+ hrs',
+      source: 'finops-operations', meta: { hrs: '48+' }
+    });
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', register);
+  } else {
+    register();
+  }
+})();
+</script>
 </body>
 </html>
