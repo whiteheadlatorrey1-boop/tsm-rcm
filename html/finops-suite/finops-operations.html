@@ -896,6 +896,42 @@ function saveKey() {
 // ── AI PANEL ──
 function toggleAI() { document.getElementById('ai-panel').classList.toggle('open'); }
 
+// Builds a compact, real-signal context block from what's actually on
+// screen right now — the guide-engine's current step (if the widget has
+// rendered) plus live counts from this page's own app state (accrual
+// pipeline, compliance checklist). /api/chat's contract is fixed
+// ({message, conversationHistory} → {answer}; it does not accept a
+// caller-supplied system prompt), so this gets prepended onto the outgoing
+// message itself rather than passed as a system field — the only way it
+// can actually reach the model on the server path. The direct-Groq
+// fallback path (which does accept a system prompt) gets it appended there
+// too, so behavior stays consistent across both paths.
+function buildOpsAiContext() {
+  const parts = [];
+
+  const guideHint = document.getElementById('guide-step-hint')?.innerText?.trim();
+  const guideCounter = document.getElementById('guide-step-counter')?.innerText?.trim();
+  if (guideCounter || guideHint) {
+    parts.push(`[GUIDE] ${[guideCounter, guideHint].filter(Boolean).join(' — ')}`);
+  }
+
+  const appBits = [];
+  if (typeof CTX_LABELS !== 'undefined' && CTX_LABELS[aiCtx]) {
+    appBits.push(`Active module: ${CTX_LABELS[aiCtx]}`);
+  }
+  if (typeof acAccruals !== 'undefined' && acAccruals.length) {
+    const counts = acAccruals.reduce((m, a) => { m[a.state] = (m[a.state] || 0) + 1; return m; }, {});
+    appBits.push('Accrual pipeline: ' + Object.entries(counts).map(([k, v]) => `${v} ${k}`).join(', '));
+  }
+  if (typeof CHECKLIST !== 'undefined') {
+    const done = document.querySelectorAll('.comp-chk:checked').length;
+    appBits.push(`Compliance checklist: ${done}/${CHECKLIST.length} complete`);
+  }
+  if (appBits.length) parts.push(`[APP] ${appBits.join('. ')}`);
+
+  return parts.join('\n');
+}
+
 function updateAiStatus(mode) {
   const el = document.getElementById('ai-status');
   if (mode === 'server') { el.textContent = 'AI: CONNECTED'; el.style.color = 'var(--green)'; }
@@ -916,13 +952,15 @@ async function callFinOpsAI(history, sysprompt, onChunk) {
   const lastUser = [...withoutSystem].reverse().find(m => m.role === 'user');
   const msg = lastUser?.content || '';
   const conversationHistory = withoutSystem.slice(0, -1);
+  const ctx = buildOpsAiContext();
+  const msgWithCtx = ctx ? `${ctx}\n\n${msg}` : msg;
 
   let proxyReachable = true;
   try {
     const resp = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: msg, conversationHistory, stream: false })
+      body: JSON.stringify({ message: msgWithCtx, conversationHistory, stream: false })
     });
     if (!resp.ok) {
       if (resp.status !== 404) {
@@ -951,7 +989,7 @@ async function callFinOpsAI(history, sysprompt, onChunk) {
     const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + sessionAiKey },
-      body: JSON.stringify({ model: sessionAiModel, max_tokens: 700, messages: [{ role: 'system', content: sysprompt }, ...withoutSystem] })
+      body: JSON.stringify({ model: sessionAiModel, max_tokens: 700, messages: [{ role: 'system', content: ctx ? `${sysprompt}\n\n${ctx}` : sysprompt }, ...withoutSystem] })
     });
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({}));
