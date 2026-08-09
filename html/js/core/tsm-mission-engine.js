@@ -76,8 +76,27 @@
   }
 
   function _get(id) {
-    if (!_missions[id]) { console.warn('[TSMMission] Mission not found:', id); return null; }
-    return _missions[id];
+    if (_missions[id]) return _missions[id];
+
+    // Lazy self-heal: the one-time _rehydrateFromState() seed above only
+    // reflects whatever TSMState held at the instant this script executed.
+    // Pages like construction-strategist.html populate TSMState *after* that
+    // via hydratRelayFromMission() (a bridge script that intentionally loads
+    // last, at the end of the page) — so the mission genuinely lands in
+    // TSMState only after our one-shot seed already ran and found nothing.
+    // Check TSMState again on every miss rather than trusting the stale snapshot.
+    if (global.TSMState) {
+      try {
+        const persisted = global.TSMState.get('mission');
+        if (persisted && persisted.id === id) {
+          _missions[id] = persisted;
+          return _missions[id];
+        }
+      } catch (_) {}
+    }
+
+    console.warn('[TSMMission] Mission not found:', id);
+    return null;
   }
 
   function _clone(obj) {
