@@ -2,7 +2,7 @@
   const D = window.PRESENTATION_DATA;
   if(!D){ document.body.innerHTML = '<p style="color:#f87171;font-family:monospace;padding:40px">No PRESENTATION_DATA found.</p>'; return; }
 
-  const IMG_ROOT = D.imgRoot || ('../../tests/e2e/demo/screenshots/' + D.folder + '/');
+  const IMG_ROOT = D.imgRoot || ('/demo-screenshots/' + D.folder + '/');
   const steps = D.steps;
   let idx = 0;
 

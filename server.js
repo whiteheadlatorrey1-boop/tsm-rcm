@@ -4020,6 +4020,15 @@ app.use(
   express.static(path.join(__dirname, "public/screenshots"))
 );
 
+// TSM Demo Presentation Screenshots (per-vertical, numbered PNGs from
+// tests/e2e/demo/*.spec.js) -- served at a fixed absolute path so
+// presentations/assets/engine.js doesn't have to know how deep its own
+// HTML file lives on disk.
+app.use(
+  "/demo-screenshots",
+  express.static(path.join(__dirname, "tests/e2e/demo/screenshots"))
+);
+
 // ── START ─────────────────────────────────────────────────────────────────────
 const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`TSM Platform Core Engine listening on port ${PORT}`);
