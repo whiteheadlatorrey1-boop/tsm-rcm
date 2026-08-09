@@ -125,9 +125,13 @@ const SMOS = (() => {
   // ── Navigation helpers ────────────────────────────────────────
   const nav = {
     base: (() => {
+      // Real deployed pages live under .../war-rooms/music-war/ -- the
+      // engine previously string-matched a nonexistent '/music-command/'
+      // segment, so every nav.to*() call fell through to a hardcoded,
+      // never-deployed fallback path and 404'd.
       const p = window.location.pathname;
-      const idx = p.indexOf('/music-command/');
-      return idx >= 0 ? p.slice(0, idx + '/music-command/'.length) : '/html/music-command/';
+      const idx = p.indexOf('/music-war/');
+      return idx >= 0 ? p.slice(0, idx + '/music-war/'.length) : '/html/war-rooms/music-war/';
     })(),
     go(path) { window.location.href = this.base + path; },
     toSongBuilder()     { this.go('creation/song-builder.html'); },

@@ -357,7 +357,7 @@ const suites = [
   { route: '/finops', dir: 'html/finops-suite', index: 'finops-presentation/index.html' },
   { route: '/healthcare', dir: 'html/healthcare', index: 'index.html' },
   { route: '/insurance', dir: 'html/tsm-insurance', index: 'ins-presentation.html' },
-  { route: '/music', dir: 'html/music-command', index: 'index.html' },
+  { route: '/music', dir: 'html/war-rooms/music-war', index: 'index.html' },
 ];
 
 // ── HEALTH & STUB ROUTES ──────────────────────────────────────────────────────
