@@ -21,6 +21,8 @@
     if(path.includes("reo") || path.includes("realty") || path.includes("re-war") || path.includes("re-exec")) return "reo";
     if(path.includes("rrd")) return "rrd";
     if(path.includes("music")) return "music";
+    if(path.includes("mortgage")) return "mortgage";
+    if(path.includes("schools")) return "schools";
     return "executive";
   }
 
@@ -85,6 +87,16 @@
       exposure:"ACTIVE",
       strategist:"ACTIVE",
       narrative:"Cross-sector operational pressure is actively being coordinated through the strategist mesh."
+    },
+    mortgage:{
+      exposure:"$310K",
+      strategist:"HIGH",
+      narrative:"Closing-delay and compliance exception exposure across the loan pipeline are driving board-level escalation risk."
+    },
+    schools:{
+      exposure:"$95K",
+      strategist:"MEDIUM",
+      narrative:"Grant funding-delay and compliance exception exposure across the award portfolio are being monitored for deobligation risk."
     }
   };
 

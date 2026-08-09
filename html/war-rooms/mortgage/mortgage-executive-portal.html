@@ -284,6 +284,55 @@ function renderRiskRegister(fin){
   </div>`;
 }
 
+// ===== TSM MEMORY: REGISTER CROSS-MODULE ANOMALIES =====
+// Fires off the same real relay data renderRiskRegister()/renderFinancials()
+// just rendered -- not a static mirror, since this page shows "no active
+// relay" until real Strategist data arrives. Registers the #1 SLA-breaching
+// loan file (same one shown at rank 1 in the Top Risk Register) plus a
+// rollup if there are open compliance exceptions. Self-dedupes by
+// anomalyCode (keyed to the loan file's own id) against the shared
+// TSM_OPERATIONAL_MEMORY_V3 store so repeat renders (storage/relay events)
+// don't pile up duplicates.
+function registerMortgageAnomalies(fin){
+  if (!window.TSMMemory || typeof window.TSMMemory.registerAnomaly !== 'function' || !fin) return;
+
+  function alreadyOpen(code){
+    try{
+      const all = JSON.parse(localStorage.getItem('TSM_OPERATIONAL_MEMORY_V3') || '{}');
+      const bucket = all.mortgage;
+      return !!(bucket && Array.isArray(bucket.anomalies) &&
+        bucket.anomalies.some(a => a.anomalyCode === code && a.status === 'open'));
+    }catch(e){ return false; }
+  }
+  function fire(a){
+    if (alreadyOpen(a.anomalyCode)) return;
+    window.TSMMemory.registerAnomaly(a);
+  }
+
+  const items = fin.closing_delay_exposure_items || [];
+  if (items.length){
+    const top = items[0];
+    fire({
+      entityType: 'mortgage-loan', entityId: top.id,
+      anomalyCode: 'MTG_SLA_BREACH_' + top.id, severity: top.days_over > 3 ? 'HIGH' : 'MEDIUM',
+      title: `${top.stage} — Loan ${top.id} — ${top.borrower || 'borrower'} — ${top.days_over}d over SLA`,
+      source: 'mortgage-executive-portal',
+      meta: { exposure: top.exposure, currency: fin.currency, daysOver: top.days_over }
+    });
+  }
+
+  const compItems = fin.compliance_exposure_items || [];
+  if (compItems.length){
+    fire({
+      entityType: 'mortgage-pipeline', entityId: 'compliance-exceptions',
+      anomalyCode: 'MTG_COMPLIANCE_EXCEPTIONS', severity: 'HIGH',
+      title: `${compItems.length} open compliance exception(s) — ${money(fin.compliance_exposure_total, fin.currency)} exposure`,
+      source: 'mortgage-executive-portal',
+      meta: { count: compItems.length, total: fin.compliance_exposure_total }
+    });
+  }
+}
+
 function render(){
   const data = loadRelay();
   if(!data){ renderEmpty(); return; }
@@ -300,6 +349,8 @@ function render(){
   html += renderRiskRegister(data.financials);
   html += renderFunnel(data.loan_wip, data.financials);
 
+  registerMortgageAnomalies(data.financials);
+
   html += `<div class="sec"><div class="sec-hdr"><span class="lbl">EXECUTIVE ACTIONS</span></div>
     <div class="action-bar">
       <button class="abtn approve" onclick="recordExecAction('acknowledged','Marked reviewed by executive'); showToast('Acknowledged \u2014 logged to relay.')">&#10003; ACKNOWLEDGE</button>
@@ -315,6 +366,7 @@ window.addEventListener('storage', e => { if(e.key === RELAY_KEY_FALLBACK || e.k
 window.addEventListener('TSM_RELAY_EVENT', e => { if(e.detail && e.detail.domain === DOMAIN) render(); });
 </script>
   <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
+  <script src="/html/shared/tsm-memory-engine.js"></script>
   <script src="/html/core/tsm-runtime.js"></script>
   <script src="/js/tsm-guide-engine.js" defer></script>
 </body>

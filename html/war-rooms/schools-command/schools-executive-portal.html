@@ -260,6 +260,53 @@ function renderRiskRegister(fin){
   </div>`;
 }
 
+// ===== TSM MEMORY: REGISTER CROSS-MODULE ANOMALIES =====
+// Same approach as mortgage's executive portal (same template) -- fires off
+// the real relay data just rendered, not a static mirror, since this page
+// shows "no active relay" until real Command Center data arrives. Registers
+// the #1 SLA-breaching grant file plus a rollup if there are open compliance
+// exceptions. Self-dedupes by anomalyCode (keyed to the grant file's own id)
+// against the shared TSM_OPERATIONAL_MEMORY_V3 store.
+function registerSchoolsAnomalies(fin){
+  if (!window.TSMMemory || typeof window.TSMMemory.registerAnomaly !== 'function' || !fin) return;
+
+  function alreadyOpen(code){
+    try{
+      const all = JSON.parse(localStorage.getItem('TSM_OPERATIONAL_MEMORY_V3') || '{}');
+      const bucket = all.schools;
+      return !!(bucket && Array.isArray(bucket.anomalies) &&
+        bucket.anomalies.some(a => a.anomalyCode === code && a.status === 'open'));
+    }catch(e){ return false; }
+  }
+  function fire(a){
+    if (alreadyOpen(a.anomalyCode)) return;
+    window.TSMMemory.registerAnomaly(a);
+  }
+
+  const items = fin.funding_delay_exposure_items || [];
+  if (items.length){
+    const top = items[0];
+    fire({
+      entityType: 'grant-file', entityId: top.id,
+      anomalyCode: 'SCH_SLA_BREACH_' + top.id, severity: top.days_over > 3 ? 'HIGH' : 'MEDIUM',
+      title: `${top.stage} — Grant ${top.id} — ${top.grantee || 'grantee'} — ${top.days_over}d over SLA`,
+      source: 'schools-executive-portal',
+      meta: { exposure: top.exposure, currency: fin.currency, daysOver: top.days_over }
+    });
+  }
+
+  const compItems = fin.compliance_exposure_items || [];
+  if (compItems.length){
+    fire({
+      entityType: 'grant-portfolio', entityId: 'compliance-exceptions',
+      anomalyCode: 'SCH_COMPLIANCE_EXCEPTIONS', severity: 'HIGH',
+      title: `${compItems.length} open compliance exception(s) — ${money(fin.compliance_exposure_total, fin.currency)} exposure`,
+      source: 'schools-executive-portal',
+      meta: { count: compItems.length, total: fin.compliance_exposure_total }
+    });
+  }
+}
+
 function render(){
   const data = loadRelay();
   if(!data){ renderEmpty(); return; }
@@ -276,6 +323,8 @@ function render(){
   html += renderRiskRegister(data.financials);
   html += renderFunnel(data.grant_wip, data.financials);
 
+  registerSchoolsAnomalies(data.financials);
+
   html += `<div class="sec"><div class="sec-hdr"><span class="lbl">EXECUTIVE ACTIONS</span></div>
     <div class="action-bar">
       <button class="abtn approve" onclick="showToast('Marked reviewed \u2014 no downstream write in this demo build.')">&#10003; ACKNOWLEDGE</button>
@@ -291,6 +340,7 @@ window.addEventListener('storage', e => { if(e.key === RELAY_KEY_FALLBACK || e.k
 window.addEventListener('TSM_RELAY_EVENT', e => { if(e.detail && e.detail.domain === DOMAIN) render(); });
 </script>
   <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
+  <script src="/html/shared/tsm-memory-engine.js"></script>
   <script src="/html/core/tsm-runtime.js"></script>
   <script src="/js/tsm-guide-engine.js" defer></script>
 </body>
