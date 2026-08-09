@@ -1861,28 +1861,75 @@ function renderMiniChart() {
   });
 }
 
+// ─── GUIDE-STEP CONTEXT ───────────────────────────────────────────────────────
+// Reads the guide-engine widget's live DOM state (rendered by
+// js/tsm-guide-engine.js) so the assistant knows where the user actually is
+// in the workflow. Returns '' if the widget hasn't rendered yet.
+function buildGuideContext() {
+  const title = document.getElementById('guide-title')?.innerText?.trim();
+  const counter = document.getElementById('guide-step-counter')?.innerText?.trim();
+  const hint = document.getElementById('guide-step-hint')?.innerText?.trim();
+  const parts = [title, counter, hint].filter(Boolean);
+  if (!parts.length) return '';
+  return `[GUIDE CONTEXT] ${parts.join(' — ')}`;
+}
+
 // ─── TSM NEURAL CORE API ─────────────────────────────────────────────────────────────────
+// Tries the server-side proxy at /api/chat first — the key lives server-side
+// so no setup is required. Its contract is fixed ({message,
+// conversationHistory} → {answer}; it does not accept a caller-supplied
+// system prompt), so guide-step context is folded into the outgoing message
+// itself. Falls back to a direct Groq call using a session-only key from
+// Settings (top bar) only if the proxy is unreachable — there the full
+// SYSTEM prompt plus guide context is honored.
 async function tsmNeuralCoreChat(messages, maxTokens = 2048) {
+  const withoutSystem = messages.filter(m => m.role !== 'system');
+  const lastUser = [...withoutSystem].reverse().find(m => m.role === 'user');
+  const conversationHistory = withoutSystem.slice(0, -1);
+  const guideCtx = buildGuideContext();
+  const composedMsg = guideCtx ? `${guideCtx}\n\n${lastUser?.content || ''}` : (lastUser?.content || '');
+
+  let proxyReachable = true;
+  try {
+    const resp = await fetch(TSM_NEURAL_CORE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: composedMsg, conversationHistory })
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      if (data.answer && !data.degraded) return data.answer;
+      if (data.answer) proxyReachable = false; // degraded response — fall through to direct key if we have one
+    } else if (resp.status !== 404) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.error || `Server error ${resp.status}`);
+    } else {
+      proxyReachable = false;
+    }
+  } catch (e) {
+    if (e.message && !e.message.startsWith("Failed to fetch")) throw e;
+    proxyReachable = false;
+  }
+
   if (!tsmNeuralCoreKey) {
-    alert('Set your TSM Neural Core API key first (top bar)');
-    throw new Error('No API key');
+    throw new Error('Server AI proxy is not reachable here. Set a fallback TSM Neural Core API key (top bar) and try again.');
   }
   let res;
   try {
-    res = await fetch(TSM_NEURAL_CORE_URL, {
+    res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${tsmNeuralCoreKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: MODEL, messages, temperature: 0.4, max_tokens: maxTokens })
+      body: JSON.stringify({ model: MODEL, messages: [{ role: 'system', content: guideCtx ? `${SYSTEM}\n\n${guideCtx}` : SYSTEM }, ...withoutSystem], temperature: 0.4, max_tokens: maxTokens })
     });
   } catch (networkErr) {
-    throw new Error(`Can't reach the AI backend (${TSM_NEURAL_CORE_URL}) — check your connection or that the server is running.`);
+    throw new Error(`Can't reach the AI backend — check your connection or that the server is running.`);
   }
   const raw = await res.text();
   let data;
   try {
     data = raw ? JSON.parse(raw) : {};
   } catch (parseErr) {
-    throw new Error(`AI backend returned an unreadable response (status ${res.status})${raw ? ': ' + raw.slice(0, 120) : ' — empty body'}. Is ${TSM_NEURAL_CORE_URL} wired up on this server?`);
+    throw new Error(`AI backend returned an unreadable response (status ${res.status})${raw ? ': ' + raw.slice(0, 120) : ' — empty body'}.`);
   }
   if (!res.ok) throw new Error(data.error?.message || `Server error ${res.status}`);
   if (data.error) throw new Error(data.error.message || 'Unknown AI backend error');
