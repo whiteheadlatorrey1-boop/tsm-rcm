@@ -1238,5 +1238,54 @@ function tsmWriteRelay(payload){
 }
 </script>
   <script src="../../js/tsm-guide-engine.js" defer></script>
+
+<!-- RCM ASSISTANT — floating widget. This page had no assistant before;
+     finops-operations.html and compliance.html already have their own
+     purpose-built floating widgets, so this is not added there too
+     (avoids the overlapping-UI problem the Aug 5 widget cleanup fixed). -->
+<script src="js/rcm-assistant.js"></script>
+<script>
+const RCM_ASSISTANT_APP_KB = `
+APP FEATURES & MODULES (for questions about how to use this app, or where to go for something not on this page):
+- Branch Operations (finops-operations.html): daily cash/AP/AR checks, client cashiering, service requests, has its own floating "FinOps Ops Assistant" for that page's workflows.
+- Accounting Ledger (finops-accounting.html — THIS PAGE): journal entries, PO/expense/AR/bank-rec/balance sheet/P&L drafting, intercompany reconciliation, fixed-asset depreciation schedule, month-end close checklist.
+- Compliance Desk (compliance.html): exception flags, segregation-of-duties checks, audit-readiness log, license/renewal tracker — has its own floating "Compliance AI" for framework-specific questions (HIPAA, SOX, SOC-2, AML/KYC, GDPR, PCI-DSS, NIST/CMMC, ISO 27001, CCPA, OIG/CMS, IRS/Tax).
+- Scenario Modeling (finops-scenarios.html): forecasting and what-if modeling.
+- Financial Intelligence (finance-index.html): account-level audit engine, reports, invoices, financial health scoring.
+- RCM OS (tsm-rcm-os.html): the Daily/Weekly/Month-End reconciliation cadence tracker that ties all of the above together into a close checklist.
+`;
+
+function rcmAcctGetContext(){
+  const done = document.querySelectorAll('.chk:checked').length;
+  const total = CLOSE_TASKS.length;
+  let ctx = `You are the RCM Assistant embedded in the FinOps Accounting Ledger page. You help end users (EUs) draft accounting documents, reconcile intercompany balances, run depreciation, and work the month-end close checklist. When asked about the app itself or where to find something, use the APP FEATURES section below.\n\n`;
+  ctx += RCM_ASSISTANT_APP_KB;
+  ctx += `\nCURRENT DOCUMENT TYPE OPEN: ${currentDoc}\n`;
+  ctx += `MONTH-END CLOSE CHECKLIST: ${done}/${total} tasks marked complete\n`;
+  if (typeof INTERCO !== 'undefined' && INTERCO.length) {
+    const imbalanced = INTERCO.filter(r => r.aVal !== r.bVal);
+    ctx += `\nINTERCOMPANY RECONCILIATION: ${INTERCO.length} pairs tracked, ${imbalanced.length} imbalanced.\n`;
+    imbalanced.forEach(r => { ctx += `- ${r.a} vs ${r.b}: $${r.aVal.toLocaleString()} vs $${r.bVal.toLocaleString()} (diff $${Math.abs(r.aVal - r.bVal).toLocaleString()})\n`; });
+  }
+  if (typeof FA_ASSETS !== 'undefined' && FA_ASSETS.length) {
+    ctx += `\nFIXED ASSETS TRACKED: ${FA_ASSETS.length} (${FA_ASSETS.map(a => a.name).join(', ')})\n`;
+  }
+  const outs = (typeof outputs !== 'undefined') ? outputs : {};
+  const enginesRun = [1,2,3,4].filter(n => outs[n]).length;
+  ctx += `\nDOCUMENT ANALYSIS ENGINES RUN THIS SESSION: ${enginesRun}/4\n`;
+  return ctx;
+}
+
+RCMAssistant.init({
+  getContext: rcmAcctGetContext,
+  endpoint: '/api/financial/query',
+  quickPrompts: [
+    "What's still open on the close checklist?",
+    "Any intercompany accounts out of balance?",
+    "How do I run depreciation on a new asset?",
+    "Where do I go to check compliance flags?"
+  ]
+});
+</script>
 </body>
 </html>

@@ -21,8 +21,43 @@
     return t.content.firstChild;
   }
 
+  // Auto-inject rcm-assistant.css relative to THIS script's own location,
+  // so any page that adds one <script src=".../rcm-assistant.js"> tag gets
+  // working styles without also having to guess a relative CSS path.
+  // Resolved via document.currentScript rather than a hardcoded path so it
+  // still works if this file is ever moved or served from a different dir.
+  // No-ops on tsm-rcm-os.html, which already ships its own equivalent
+  // inline CSS block — a duplicate <link> there is harmless (same rules).
+  (function injectCss() {
+    if (document.getElementById('rcm-assistant-css')) return;
+    const thisScript = document.currentScript || (function () {
+      const scripts = document.getElementsByTagName('script');
+      return scripts[scripts.length - 1];
+    })();
+    if (!thisScript || !thisScript.src) return;
+    const cssHref = thisScript.src.replace(/rcm-assistant\.js(\?.*)?$/, 'rcm-assistant.css');
+    const link = document.createElement('link');
+    link.id = 'rcm-assistant-css';
+    link.rel = 'stylesheet';
+    link.href = cssHref;
+    document.head.appendChild(link);
+  })();
+
+  // Reads the universal guide engine's current-step text straight from the
+  // DOM it renders (#guide-title / #guide-step-counter) — read-only, no
+  // dependency on tsm-guide-engine.js internals or globals. Returns null if
+  // the guide widget isn't on this page (or hasn't rendered yet).
+  function readGuideStep() {
+    const title = document.getElementById('guide-title');
+    const counter = document.getElementById('guide-step-counter');
+    if (!title && !counter) return null;
+    const t = title ? title.textContent.replace(/^•\s*/, '').trim() : '';
+    const c = counter ? counter.textContent.trim() : '';
+    return [t, c].filter(Boolean).join(' — ');
+  }
+
   function init(opts) {
-    const { getContext, quickPrompts = [], endpoint = '/api/financial/query', getBriefing = null } = opts;
+    const { getContext, quickPrompts = [], endpoint = '/api/financial/query', getBriefing = null, includeGuideStep = true } = opts;
 
     document.body.appendChild(el(`
       <button class="assistant-fab" id="assistantFab" title="Ask the RCM Assistant">🤖</button>
@@ -109,7 +144,11 @@
       addMsg(question, 'user');
       const pending = addMsg('Thinking…', 'bot pending');
 
-      const ctx = getContext ? getContext() : '';
+      let ctx = getContext ? getContext() : '';
+      if (includeGuideStep) {
+        const step = readGuideStep();
+        if (step) ctx += `\n\nGUIDE ENGINE — CURRENT STEP ON THIS PAGE: ${step}\n`;
+      }
       const prompt = `${ctx}\n\nEU QUESTION: ${question}\n\nAnswer directly and concisely, grounded in the data above. If asked about SLAs and none are explicitly defined in the data, say so plainly rather than inventing figures.`;
 
       try {
