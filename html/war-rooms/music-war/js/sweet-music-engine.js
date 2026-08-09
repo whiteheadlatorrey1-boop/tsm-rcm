@@ -68,10 +68,58 @@ const SMOS = (() => {
     return data.text;
   }
 
-  async function askJSON(userPrompt, systemPrompt = '') {
+  // Best-effort repair for a JSON string cut off mid-token-budget: closes
+  // an unterminated string literal, then closes any still-open objects/
+  // arrays in the order they were opened. Bracket/brace tracking ignores
+  // characters inside string literals so it doesn't get confused by
+  // punctuation in the AI's own text content.
+  function repairTruncatedJSON(raw) {
+    let s = raw;
+    const stack = [];
+    let inStr = false, esc = false;
+    for (let i = 0; i < s.length; i++) {
+      const c = s[i];
+      if (inStr) {
+        if (esc) { esc = false; }
+        else if (c === '\\') { esc = true; }
+        else if (c === '"') { inStr = false; }
+        continue;
+      }
+      if (c === '"') { inStr = true; continue; }
+      if (c === '{' || c === '[') stack.push(c);
+      else if (c === '}' || c === ']') stack.pop();
+    }
+    if (inStr) s += '"';
+    while (stack.length) {
+      s += stack.pop() === '{' ? '}' : ']';
+    }
+    return s;
+  }
+
+  // maxTokens defaults to 1600 (above ask()'s plain-text default of 1000):
+  // structured JSON responses -- e.g. Cadence Studio's per-bar analysis --
+  // pad out with field names/punctuation on top of the actual content, so
+  // the 1000-token default was truncating mid-string on real multi-bar
+  // requests (compounding into a bare JSON.parse crash with no fallback).
+  // Server caps at 1500 regardless (routes/music.js /api/music/sweet/ai),
+  // so 1600 here just means "ask for the max the server will give."
+  async function askJSON(userPrompt, systemPrompt = '', maxTokens = 1600) {
     const sys = (systemPrompt || '') + '\nRespond ONLY with valid JSON. No markdown, no preamble.';
-    const text = await ask(userPrompt, sys);
-    return JSON.parse(text.replace(/```json|```/g, '').trim());
+    const text = await ask(userPrompt, sys, maxTokens);
+    const cleaned = text.replace(/```json|```/g, '').trim();
+    try {
+      return JSON.parse(cleaned);
+    } catch (e) {
+      // Response likely got cut off before a closing brace/bracket landed.
+      // Try a best-effort repair before giving up -- a coach page like
+      // Cadence Studio would rather render a slightly-short response than
+      // a hard "Unterminated string" error on a real user's bars.
+      try {
+        return JSON.parse(repairTruncatedJSON(cleaned));
+      } catch (e2) {
+        throw new Error(`AI response was not valid JSON, even after a truncation-repair attempt: ${e.message}`);
+      }
+    }
   }
 
   // ── Navigation helpers ────────────────────────────────────────
