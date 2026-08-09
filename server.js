@@ -1228,13 +1228,47 @@ app.post('/api/financial/query', async (req, res) => {
 });
 
 app.post('/api/legal/query', async (req, res) => {
-  try { var a = await groqChat(SP.legal, req.body.question || req.body.query || '', req.body.maxTokens || 550); return res.json({ ok: true, answer: a, createdAt: new Date().toISOString() }); }
-  catch (e) { return res.status(500).json({ ok: false, error: e.message }); }
+  try {
+    const msg = req.body.question || req.body.query || '';
+    const maxTokens = req.body.maxTokens || 550;
+    let a = '';
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        a = await groqChat(SP.legal, msg, maxTokens);
+        break;
+      } catch (retryErr) {
+        if (attempt === 2) throw retryErr;
+        await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
+      }
+    }
+    return res.json({ ok: true, answer: a, createdAt: new Date().toISOString() });
+  }
+  catch (e) {
+    console.error('LEGAL QUERY ERROR:', e.message);
+    return res.status(500).json({ ok: false, error: e.message, detail: e.stack?.slice(0,200) });
+  }
 });
 
 app.post('/api/construction/query', async (req, res) => {
-  try { var a = await groqChat(SP.construction, req.body.question || req.body.query || '', req.body.maxTokens || 400); return res.json({ ok: true, answer: a, createdAt: new Date().toISOString() }); }
-  catch (e) { return res.status(500).json({ ok: false, error: e.message }); }
+  try {
+    const msg = req.body.question || req.body.query || '';
+    const maxTokens = req.body.maxTokens || 400;
+    let a = '';
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        a = await groqChat(SP.construction, msg, maxTokens);
+        break;
+      } catch (retryErr) {
+        if (attempt === 2) throw retryErr;
+        await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
+      }
+    }
+    return res.json({ ok: true, answer: a, createdAt: new Date().toISOString() });
+  }
+  catch (e) {
+    console.error('CONSTRUCTION QUERY ERROR:', e.message);
+    return res.status(500).json({ ok: false, error: e.message, detail: e.stack?.slice(0,200) });
+  }
 });
 
 app.post('/api/o2c/query', async (req, res) => {
