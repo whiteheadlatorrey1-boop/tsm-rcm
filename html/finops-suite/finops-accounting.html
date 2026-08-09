@@ -1101,8 +1101,8 @@ function setEngine(num,state,text){
   }
 }
 
-// ── GROQ CALL (direct — uses the key saved in Settings) ──
-async function callGroq(system, userMsg, maxTokens){
+// ── GROQ CALL (direct — uses the key saved in Settings; fallback only) ──
+async function callGroqDirect(system, userMsg, maxTokens){
   if(!groqKey) throw new Error('No Groq key set — open Settings and add one');
   const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method:'POST',
@@ -1128,16 +1128,33 @@ async function callGroq(system, userMsg, maxTokens){
   return data.choices?.[0]?.message?.content || '';
 }
 
+// ── SERVER-FIRST AI CALL ──
+// Tries the local /api/chat proxy first (server-managed key, nothing for the
+// user to set up). Its contract is fixed ({message, conversationHistory} →
+// {answer}; no caller-supplied system prompt), so the engine-specific system
+// prompt is folded into the outgoing message itself. Falls back to a direct
+// Groq call using the key saved in Settings only if the proxy is unreachable
+// or returns a degraded response.
+async function callGroq(system, userMsg, maxTokens){
+  try {
+    const resp = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: `${system}\n\n${userMsg}`, conversationHistory: [] })
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      if (data.answer && !data.degraded) return data.answer;
+    }
+  } catch (e) { /* fall through to direct key */ }
+
+  return callGroqDirect(system, userMsg, maxTokens);
+}
+
 // ── FIRE ALL ──
 async function fireAll(){
   const docText=serializeDoc();
   outputs={1:'',2:'',3:'',4:''};
-
-  if(!groqKey){
-    toast('⚠ Add a Groq API key in Settings first');
-    document.getElementById('fire-status').textContent='NO GROQ KEY — OPEN SETTINGS';
-    return;
-  }
 
   document.getElementById('fire-status').textContent='RUNNING — 4 ENGINES ACTIVE';
   document.getElementById('sb-engines').textContent='4 / 4 engines active';
