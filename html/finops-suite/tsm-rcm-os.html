@@ -856,7 +856,21 @@ function acLiveStatusFor(idx){
   }
   if (idx === ACCRUAL_CHECKLIST_IDX.REVERSED) {
     const reversed = relay.accruals.filter(a => a.state === 'REVERSED').length;
-    return { cls: reversed === total ? 'ready' : 'pending', text: `● LIVE: ${reversed}/${total} accrual(s) reversed — finops-operations.html` };
+    let text = `● LIVE: ${reversed}/${total} accrual(s) reversed — finops-operations.html`;
+    const ready = reversed === total;
+    // Cross-check against the module's own checklistItemComplete flag
+    // (true when every accrual is MATCHED-or-REVERSED, a looser bar than
+    // "fully reversed" since a MATCHED-but-not-yet-reversed accrual still
+    // counts as closed from finops-operations.html's point of view). Never
+    // trust the flag on its own -- it's surfaced as a discrepancy note
+    // rather than a substitute for the reversed-count derived above, same
+    // honesty pattern as the rest of this checklist.
+    if (typeof relay.checklistItemComplete === 'boolean' && relay.checklistItemComplete !== ready) {
+      text += relay.checklistItemComplete
+        ? ' · module reports fully closed (some MATCHED, not yet auto-reversed)'
+        : ' · module reports still open';
+    }
+    return { cls: ready ? 'ready' : 'pending', text };
   }
   return null;
 }
