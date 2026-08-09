@@ -941,9 +941,12 @@ function updateAiStatus(mode) {
 }
 
 // Sole entry point for talking to the assistant. Tries the server-side
-// proxy at /api/chat first (the real, deployed contract: POST
-// { message, conversationHistory } → { answer }, no client key, no
-// streaming). Falls back to a direct Groq call only if that proxy is
+// proxy at /api/chat first ({ message, conversationHistory, context } →
+// { answer }, no client key, no streaming — the route now accepts an
+// optional `context` field carrying sysprompt/CTX_PROMPTS, added alongside
+// this fix so the per-module persona actually reaches the model instead of
+// only the guide-step/live-data context that was already being folded into
+// the message). Falls back to a direct Groq call only if that proxy is
 // unreachable AND a session-only fallback key has been set via
 // ⚙ AI Settings. Connection status updates dynamically based on what
 // actually happened on this call, not on a stored flag.
@@ -960,7 +963,7 @@ async function callFinOpsAI(history, sysprompt, onChunk) {
     const resp = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: msgWithCtx, conversationHistory, stream: false })
+      body: JSON.stringify({ message: msgWithCtx, conversationHistory, context: sysprompt || undefined, stream: false })
     });
     if (!resp.ok) {
       if (resp.status !== 404) {

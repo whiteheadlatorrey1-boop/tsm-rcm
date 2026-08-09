@@ -104,14 +104,18 @@ async function callGroq(systemPrompt, messages, { max_tokens = 900, temperature 
 
 // ── POST /api/chat ───────────────────────────────────────────────────────────
 chatRouter.post('/', express.json({ limit: '5mb' }), async (req, res) => {
-  const { message, conversationHistory } = req.body || {};
+  const { message, conversationHistory, context } = req.body || {};
   if (!message || typeof message !== 'string') {
     return res.status(400).json({ error: 'message is required' });
   }
   const history = Array.isArray(conversationHistory) ? conversationHistory.slice(-10) : [];
   const messages = [...history, { role: 'user', content: message }];
 
-  const { text, degraded, reason } = await callGroq(CHAT_SYSTEM_PROMPT, messages, { max_tokens: 1024, temperature: 0.3 });
+  const systemPrompt = (context && typeof context === 'string')
+    ? `${CHAT_SYSTEM_PROMPT}\n\n${context.slice(0, 4000)}`
+    : CHAT_SYSTEM_PROMPT;
+
+  const { text, degraded, reason } = await callGroq(systemPrompt, messages, { max_tokens: 1024, temperature: 0.3 });
 
   if (degraded) {
     return res.json({

@@ -1876,14 +1876,14 @@ function buildGuideContext() {
 
 // ─── TSM NEURAL CORE API ─────────────────────────────────────────────────────────────────
 // Tries the server-side proxy at /api/chat first — the key lives server-side
-// so no setup is required. Its contract is fixed ({message,
-// conversationHistory} → {answer}; it does not accept a caller-supplied
-// system prompt), so guide-step context is folded into the outgoing message
-// itself. Falls back to a direct Groq call using a session-only key from
-// Settings (top bar) only if the proxy is unreachable — there the full
-// SYSTEM prompt plus guide context is honored.
+// so no setup is required. The route now accepts an optional `context`
+// field (added alongside this fix) carrying the full SYSTEM persona, so it
+// reaches the model on the primary path too, not just guide-step context in
+// the message. Falls back to a direct Groq call using a session-only key
+// from Settings (top bar) only if the proxy is unreachable.
 async function tsmNeuralCoreChat(messages, maxTokens = 2048) {
   const withoutSystem = messages.filter(m => m.role !== 'system');
+  const systemMsg = messages.find(m => m.role === 'system');
   const lastUser = [...withoutSystem].reverse().find(m => m.role === 'user');
   const conversationHistory = withoutSystem.slice(0, -1);
   const guideCtx = buildGuideContext();
@@ -1894,7 +1894,7 @@ async function tsmNeuralCoreChat(messages, maxTokens = 2048) {
     const resp = await fetch(TSM_NEURAL_CORE_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: composedMsg, conversationHistory })
+      body: JSON.stringify({ message: composedMsg, conversationHistory, context: systemMsg?.content })
     });
     if (resp.ok) {
       const data = await resp.json();
