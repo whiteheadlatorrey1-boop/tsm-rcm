@@ -84,6 +84,21 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13
 .wc-sync-status{font-family:var(--wc-mono);font-size:10px;color:var(--wc-ink-soft)}
 .wc-sync-btn{font-family:var(--wc-mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;background:var(--wc-ink);color:var(--wc-paper);border:1px solid var(--wc-ink);padding:9px 16px;cursor:pointer;transition:opacity .15s}
 .wc-sync-btn:hover{opacity:.85}
+.ac-newrow{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px}
+@media(min-width:720px){.ac-newrow{grid-template-columns:1.4fr 1fr 1fr .8fr}}
+.ac-list{display:flex;flex-direction:column;gap:10px}
+.ac-card{border:1px solid var(--wc-line);background:var(--wc-paper-dark);padding:12px 14px;display:grid;grid-template-columns:1fr auto auto;gap:14px;align-items:center}
+.ac-card-main{display:flex;flex-direction:column;gap:3px}
+.ac-card-vendor{font-family:var(--wc-mono);font-size:13px;font-weight:700;color:var(--wc-ink)}
+.ac-card-meta{font-family:var(--wc-mono);font-size:10px;color:var(--wc-ink-soft)}
+.ac-card-amt{font-family:var(--wc-mono);font-size:14px;font-weight:700;color:var(--wc-ink);text-align:right;min-width:90px}
+.ac-card-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.ac-btn{font-family:var(--wc-mono);font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;font-weight:700;border:1px solid var(--wc-ink);background:transparent;color:var(--wc-ink);padding:6px 10px;cursor:pointer;white-space:nowrap}
+.ac-btn:hover{background:var(--wc-ink);color:var(--wc-paper)}
+.ac-btn-danger{border-color:var(--wc-red);color:var(--wc-red)}
+.ac-btn-danger:hover{background:var(--wc-red);color:var(--wc-paper)}
+.ac-empty{font-family:var(--wc-mono);font-size:11px;color:var(--wc-ink-soft);text-align:center;padding:24px;border:1px dashed var(--wc-line)}
+.ac-reject-note{font-family:var(--wc-mono);font-size:10px;color:var(--wc-red);grid-column:1/-1;margin-top:-2px}
 
 /* KPI BAR */
 .kpi-bar{background:var(--border);display:grid;gap:1px}
@@ -357,6 +372,7 @@ async function tsmAI(s,u,m){try{const r=await fetch('/api/chat',{method:'POST',h
     <button onclick="switchMod('ccrecon',this)" class="tnav-btn" >CC Recon <span class="tab-badge">08</span></button>
     <button onclick="switchMod('payroll',this)" class="tnav-btn" >Payroll <span class="tab-badge">09</span></button>
     <button onclick="switchMod('workingcap',this)" class="tnav-btn" >Working Capital <span class="tab-badge">10</span></button>
+    <button onclick="switchMod('accrual',this)" class="tnav-btn" >Month-End Accrual <span class="tab-badge">11</span></button>
   </nav>
   <div class="topbar-right">
     <span id="ai-status">AI: SERVER</span>
@@ -840,7 +856,7 @@ async function loadCtxPrompts(){
 }
 loadCtxPrompts();
 
-const CTX_LABELS = {cashiering:'Cashiering',requests:'Service Requests',inbox:'Client Inbox',clients:'Client Records',portfolio:'Portfolio Prep',compliance:'Compliance',workingcap:'Working Capital Worksheet'};
+const CTX_LABELS = {cashiering:'Cashiering',requests:'Service Requests',inbox:'Client Inbox',clients:'Client Records',portfolio:'Portfolio Prep',compliance:'Compliance',workingcap:'Working Capital Worksheet',accrual:'Month-End Accrual'};
 
 // ── INIT ──
 // Connection status is determined dynamically at call time (see
@@ -1801,6 +1817,50 @@ window.addEventListener('DOMContentLoaded', () => {
   </div>
 </div>
 
+<!-- ═══ MODULE 11 — MONTH-END ACCRUAL ═══ -->
+<div class="module" id="mod-accrual">
+  <div class="wc-wrap">
+    <div class="wc-inner">
+      <!-- Header -->
+      <div class="wc-header">
+        <div>
+          <div class="wc-eyebrow">WORKPAPER NO. AC-1</div>
+          <div class="wc-title">Month-End Accrual Workflow</div>
+        </div>
+        <div class="wc-prep">PREPARED BY: CAO<br/>REVIEWED BY: —</div>
+      </div>
+
+      <!-- New accrual -->
+      <div class="wc-section-lbl"><span>1 · Propose New Accrual</span><span class="wc-rule"></span></div>
+      <div class="ac-newrow">
+        <div class="wc-field"><label>Vendor</label><div class="wc-field-inputwrap"><input type="text" id="ac-new-vendor" placeholder="e.g. Regional Electric Co."></div></div>
+        <div class="wc-field"><label>GL Account</label><div class="wc-field-inputwrap"><input type="text" id="ac-new-gl" placeholder="6110 — Utilities Expense"></div></div>
+        <div class="wc-field"><label>Estimated Amount</label><div class="wc-field-inputwrap"><span class="wc-field-prefix">$</span><input type="number" id="ac-new-amount" placeholder="0"></div></div>
+        <div class="wc-field"><label>Reversal Date</label><div class="wc-field-inputwrap"><input type="date" id="ac-new-reversal"></div></div>
+      </div>
+      <div class="wc-field" style="margin-bottom:14px"><label>Reason / Basis for Estimate</label><div class="wc-field-inputwrap"><input type="text" id="ac-new-reason" placeholder="e.g. Service period Apr 1–30, invoice not yet received"></div></div>
+      <div style="margin-bottom:28px"><button class="wc-sync-btn" onclick="acCreateDraft()">+ Add Accrual (Draft)</button></div>
+
+      <!-- Pipeline -->
+      <div class="wc-section-lbl"><span>2 · Accrual Pipeline</span><span class="wc-rule"></span></div>
+      <div class="ac-list" id="ac-list"></div>
+
+      <!-- Summary / sync -->
+      <div class="wc-final" style="margin-top:24px">
+        <div>
+          <div class="wc-final-lbl">TOTAL OPEN ACCRUAL EXPOSURE</div>
+          <div class="wc-final-sub">Sum of DRAFT / PROPOSED / APPROVED / POSTED accruals not yet MATCHED or REVERSED</div>
+        </div>
+        <div class="wc-final-val" id="ac-total-open">—</div>
+      </div>
+      <div class="wc-sync-bar">
+        <span class="wc-sync-status" id="ac-sync-status">Not yet synced to RCM-OS</span>
+        <button class="wc-sync-btn" onclick="acPushToRcmOs()">↑ Push to RCM-OS &amp; Sentinel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 /* ── MODULE 07: Weekly Cash Recon ── */
 let crDeposits = [];
@@ -1991,6 +2051,186 @@ function wcPushToRcmOs() {
 }
 
 wcRender();
+
+/* ── MODULE 11: Month-End Accrual ── */
+// State machine: DRAFT -> PROPOSED -> APPROVED -> POSTED -> MATCHED -> REVERSED
+//                              \-> REJECTED -> (back to DRAFT)
+let acAccruals = [];
+let acNextId = 1;
+
+function acMoney(n) { return wcMoney(Number.isFinite(n) ? n : 0); }
+
+function acCreateDraft() {
+  const vendor = document.getElementById('ac-new-vendor').value.trim();
+  const glAccount = document.getElementById('ac-new-gl').value.trim();
+  const estimatedAmount = wcParseNum(document.getElementById('ac-new-amount').value);
+  const reversalDate = document.getElementById('ac-new-reversal').value;
+  const description = document.getElementById('ac-new-reason').value.trim();
+
+  if (!vendor || !estimatedAmount || !reversalDate) {
+    if (window.toast) toast('Vendor, amount, and reversal date are required');
+    return;
+  }
+
+  acAccruals.push({
+    id: 'AC-' + String(acNextId++).padStart(4, '0'),
+    vendor, glAccount: glAccount || '—', description: description || '—',
+    estimatedAmount, state: 'DRAFT',
+    proposedBy: null, proposedAt: null,
+    approvedBy: null, approvedAt: null, rejectionReason: null,
+    postedAt: null, journalEntryId: null,
+    matchedInvoiceId: null, actualAmount: null, variance: null,
+    reversalDate, reversedAt: null
+  });
+
+  ['ac-new-vendor','ac-new-gl','ac-new-amount','ac-new-reversal','ac-new-reason'].forEach(id => document.getElementById(id).value = '');
+  acRender();
+  if (window.toast) toast('Accrual drafted — ' + vendor);
+}
+
+function acFind(id) { return acAccruals.find(a => a.id === id); }
+
+function acSubmitProposal(id) {
+  const a = acFind(id); if (!a || a.state !== 'DRAFT') return;
+  a.state = 'PROPOSED'; a.proposedBy = 'CAO'; a.proposedAt = new Date().toISOString();
+  acRender();
+  if (window.toast) toast(a.id + ' proposed for approval — ' + acMoney(a.estimatedAmount));
+}
+
+function acApprove(id) {
+  const a = acFind(id); if (!a || a.state !== 'PROPOSED') return;
+  a.state = 'APPROVED'; a.approvedBy = 'Controller'; a.approvedAt = new Date().toISOString();
+  a.rejectionReason = null;
+  acRender();
+  if (window.toast) toast(a.id + ' approved');
+}
+
+function acReject(id) {
+  const a = acFind(id); if (!a || a.state !== 'PROPOSED') return;
+  const reason = prompt('Reason for rejecting ' + a.id + '?') || 'No reason given';
+  a.state = 'DRAFT'; a.rejectionReason = reason; a.proposedBy = null; a.proposedAt = null;
+  acRender();
+  if (window.toast) toast(a.id + ' rejected — back to draft');
+}
+
+function acPostJE(id) {
+  const a = acFind(id); if (!a || a.state !== 'APPROVED') return;
+  a.state = 'POSTED';
+  a.postedAt = new Date().toISOString();
+  a.journalEntryId = 'JE-' + Math.floor(10000 + Math.random() * 89999);
+  acRender();
+  if (window.toast) toast(a.id + ' posted as ' + a.journalEntryId + ' — Dr Expense / Cr Accrued Liability ' + acMoney(a.estimatedAmount));
+}
+
+function acMatchInvoice(id) {
+  const a = acFind(id); if (!a || a.state !== 'POSTED') return;
+  const raw = prompt('Actual invoice amount for ' + a.vendor + '?', a.estimatedAmount);
+  if (raw === null) return;
+  const actualAmount = wcParseNum(raw);
+  a.state = 'MATCHED';
+  a.matchedInvoiceId = 'INV-' + Math.floor(10000 + Math.random() * 89999);
+  a.actualAmount = actualAmount;
+  a.variance = actualAmount - a.estimatedAmount;
+  acRender();
+  if (window.toast) toast(a.id + ' matched to ' + a.matchedInvoiceId + ' — variance ' + acMoney(a.variance));
+}
+
+function acAutoReverse(id) {
+  const a = acFind(id); if (!a || a.state !== 'MATCHED') return;
+  a.state = 'REVERSED';
+  a.reversedAt = new Date().toISOString();
+  acRender();
+  if (window.toast) toast(a.id + ' auto-reversed on ' + a.reversalDate + ' — Cr Expense / Dr Accrued Liability ' + acMoney(a.estimatedAmount));
+}
+
+const AC_STATE_PILL = {
+  DRAFT: 'pill-mute', PROPOSED: 'pill-cyan', APPROVED: 'pill-amber',
+  POSTED: 'pill-green', MATCHED: 'pill-green', REVERSED: 'pill-mute'
+};
+
+function acActionsFor(a) {
+  switch (a.state) {
+    case 'DRAFT': return `<button class="ac-btn" onclick="acSubmitProposal('${a.id}')">Submit Proposal</button>`;
+    case 'PROPOSED': return `<button class="ac-btn" onclick="acApprove('${a.id}')">Approve</button><button class="ac-btn ac-btn-danger" onclick="acReject('${a.id}')">Reject</button>`;
+    case 'APPROVED': return `<button class="ac-btn" onclick="acPostJE('${a.id}')">Post JE</button>`;
+    case 'POSTED': return `<button class="ac-btn" onclick="acMatchInvoice('${a.id}')">Match Invoice</button>`;
+    case 'MATCHED': return `<button class="ac-btn" onclick="acAutoReverse('${a.id}')">Reverse Now (${a.reversalDate})</button>`;
+    case 'REVERSED': return `<span class="wc-sync-status">Closed ${new Date(a.reversedAt).toLocaleDateString()}</span>`;
+    default: return '';
+  }
+}
+
+function acMetaFor(a) {
+  const parts = [a.glAccount, a.description];
+  if (a.journalEntryId) parts.push(a.journalEntryId);
+  if (a.matchedInvoiceId) parts.push(a.matchedInvoiceId + ' · variance ' + acMoney(a.variance));
+  if (a.state === 'DRAFT' && a.rejectionReason) parts.push('rejected: ' + a.rejectionReason);
+  return parts.join(' · ');
+}
+
+function acRender() {
+  const list = document.getElementById('ac-list');
+  if (!acAccruals.length) {
+    list.innerHTML = '<div class="ac-empty">No accruals in the pipeline yet — propose one above.</div>';
+  } else {
+    list.innerHTML = acAccruals.map(a => `
+      <div class="ac-card">
+        <div class="ac-card-main">
+          <div class="ac-card-vendor">${a.id} · ${a.vendor} <span class="pill ${AC_STATE_PILL[a.state]}">${a.state}</span></div>
+          <div class="ac-card-meta">${acMetaFor(a)}</div>
+        </div>
+        <div class="ac-card-amt">${acMoney(a.estimatedAmount)}</div>
+        <div class="ac-card-actions">${acActionsFor(a)}</div>
+      </div>
+    `).join('');
+  }
+
+  const openTotal = acAccruals
+    .filter(a => ['DRAFT','PROPOSED','APPROVED','POSTED'].includes(a.state))
+    .reduce((s, a) => s + a.estimatedAmount, 0);
+  document.getElementById('ac-total-open').textContent = acMoney(openTotal);
+
+  const statusEl = document.getElementById('ac-sync-status');
+  if (statusEl && statusEl.dataset.synced === '1') {
+    statusEl.textContent = 'Pipeline changed since last sync — push again to update RCM-OS';
+    statusEl.style.color = 'var(--wc-red)';
+  }
+}
+
+function acPushToRcmOs() {
+  const openTotal = acAccruals
+    .filter(a => ['DRAFT','PROPOSED','APPROVED','POSTED'].includes(a.state))
+    .reduce((s, a) => s + a.estimatedAmount, 0);
+  const allClosed = acAccruals.length > 0 && acAccruals.every(a => a.state === 'MATCHED' || a.state === 'REVERSED');
+
+  const payload = {
+    source: 'finops-operations.html',
+    module: 'Month-End Accrual',
+    generatedAt: new Date().toISOString(),
+    totalOpenExposure: openTotal,
+    checklistItemComplete: allClosed,
+    accruals: acAccruals.map(a => ({ id: a.id, vendor: a.vendor, glAccount: a.glAccount, estimatedAmount: a.estimatedAmount, state: a.state, journalEntryId: a.journalEntryId, matchedInvoiceId: a.matchedInvoiceId, actualAmount: a.actualAmount, variance: a.variance, reversalDate: a.reversalDate }))
+  };
+
+  try {
+    localStorage.setItem('TSM_FINOPS_ACCRUAL_RELAY', JSON.stringify(payload));
+  } catch (e) { /* localStorage unavailable — relay skipped */ }
+
+  if (typeof tsmWriteRelay === 'function') {
+    try { tsmWriteRelay({ vertical: 'finops-suite', kind: 'month-end-accrual', ...payload }); } catch (e) {}
+  }
+  if (window.TSM && TSM.launcher && TSM.launcher.run) {
+    try { TSM.launcher.run('pushToCollectiveSignal', JSON.stringify({ vertical: 'finops', metric: 'accrual_exposure', value: openTotal, severity: openTotal > 0 && !allClosed ? 'INFO' : 'CRITICAL' })); } catch (e) {}
+  }
+
+  const statusEl = document.getElementById('ac-sync-status');
+  statusEl.textContent = 'Synced to RCM-OS · ' + new Date().toLocaleTimeString();
+  statusEl.style.color = 'var(--wc-ink-soft)';
+  statusEl.dataset.synced = '1';
+  if (window.toast) toast('✓ Accrual pipeline (' + acMoney(openTotal) + ' open) pushed to RCM-OS');
+}
+
+acRender();
 </script>
 
 <script src="/shared/tsm-operational-mesh.js?v=mesh1"></script>
