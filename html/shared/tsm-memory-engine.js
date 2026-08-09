@@ -177,6 +177,53 @@
       return ensureSector();
     },
 
+    /**
+     * Cross-module read: RCM OS's Executive tab (and any other rollup
+     * view) needs to see anomalies registered by EVERY vertical, not just
+     * whatever sector the current page happens to be on. get()/ensureSector()
+     * intentionally stay page-scoped for everything else in this engine —
+     * this is the one deliberately cross-sector read.
+     *
+     * Re-reads localStorage fresh (not the module-level `mem` cache) because
+     * each vertical runs in its own page/tab; another tab's writes since
+     * this page loaded would otherwise be invisible here.
+     *
+     * @param {Object} opts
+     * @param {string[]} [opts.sectors] - restrict to these sector keys (default: all)
+     * @param {string}   [opts.status]  - 'open' | 'resolved' | null for all (default: 'open')
+     * @returns {Array} anomaly records, each tagged with its source `sector`,
+     *                   sorted by severity (CRITICAL first) then recency.
+     */
+    getCrossModuleAnomalies({ sectors = null, status = "open" } = {}){
+      const SEV_RANK = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1 };
+      let all;
+      try {
+        all = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+      } catch(e) {
+        return [];
+      }
+
+      const out = [];
+      Object.keys(all).forEach(sectorKey => {
+        if(sectors && !sectors.includes(sectorKey)) return;
+        const sectorData = all[sectorKey];
+        if(!sectorData || !Array.isArray(sectorData.anomalies)) return;
+
+        sectorData.anomalies.forEach(a => {
+          if(status && a.status !== status) return;
+          out.push({ ...a, sector: sectorKey });
+        });
+      });
+
+      out.sort((a, b) => {
+        const sevDiff = (SEV_RANK[b.severity] || 0) - (SEV_RANK[a.severity] || 0);
+        if(sevDiff !== 0) return sevDiff;
+        return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+      });
+
+      return out;
+    },
+
     getCase(entityType, entityId){
       const s = ensureSector();
       return s.cases[getCaseKey(entityType, entityId)] || null;

@@ -1255,28 +1255,31 @@ function renderExecutive(){
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// CROSS-MODULE EXCEPTIONS — reads TSMMemory anomalies registered by
-// Compliance, Vendor Situation Room, and Logistics Situation Room; ranks
-// by severity; opens a mission for anything CRITICAL.
+// CROSS-MODULE EXCEPTIONS — reads TSMMemory anomalies registered by ANY
+// vertical's situation rooms (Compliance/Vendor/Logistics today; Healthcare/
+// Construction/Insurance/Legal/BPO/etc. the moment their rooms register the
+// same way — see registerAnomaly() in tsm-memory-engine.js). Ranks by
+// severity across the whole org, opens a mission for anything CRITICAL.
 // ─────────────────────────────────────────────────────────────────────────
-const EXC_SEV_RANK = { CRITICAL:4, HIGH:3, MEDIUM:2, LOW:1 };
+const EXC_SECTOR_LABELS = {
+  finops:'FinOps', healthcare:'Healthcare', construction:'Construction',
+  insurance:'Insurance', legal:'Legal', bpo:'BPO', reo:'REO', rrd:'RRD',
+  tax:'Tax', music:'Music', executive:'Executive'
+};
 
 function renderExecExceptions(){
   const el = document.getElementById('execExceptions');
   if(!el) return;
 
-  if(!window.TSMMemory){
+  if(!window.TSMMemory || typeof window.TSMMemory.getCrossModuleAnomalies !== 'function'){
     el.innerHTML = `<div class="exec-empty">Memory layer not loaded — no cross-module exceptions available.</div>`;
     return;
   }
 
-  const mem = window.TSMMemory.get();
-  const open = (mem?.anomalies || [])
-    .filter(a => a.status === 'open')
-    .sort((a,b) => (EXC_SEV_RANK[b.severity]||0) - (EXC_SEV_RANK[a.severity]||0));
+  const open = window.TSMMemory.getCrossModuleAnomalies({ status: 'open' });
 
   if(!open.length){
-    el.innerHTML = `<div class="exec-empty">No open exceptions from Compliance, Vendor, or Logistics right now.</div>`;
+    el.innerHTML = `<div class="exec-empty">No open exceptions across any vertical right now.</div>`;
     return;
   }
 
@@ -1284,7 +1287,7 @@ function renderExecExceptions(){
     <div class="req-field" style="border-top:1px solid var(--line); padding:8px 0;">
       <div class="req-field-top">
         <span class="req-field-name">${escapeHtml(a.title || a.anomalyCode)}</span>
-        <span class="req-badge" title="${escapeHtml(a.source||'')}">${escapeHtml(a.severity)} · ${escapeHtml(a.entityType||'')}</span>
+        <span class="req-badge" title="${escapeHtml(a.source||'')}">${escapeHtml(a.severity)} · ${escapeHtml(EXC_SECTOR_LABELS[a.sector] || a.sector)} · ${escapeHtml(a.entityType||'')}</span>
       </div>
     </div>`).join('')}</div>`;
 
@@ -1297,7 +1300,7 @@ function renderExecExceptions(){
     try {
       const mission = window.TSMMissionModel.createMission({
         id: 'RCM-EXC-' + a.id,
-        vertical: 'finops',
+        vertical: a.sector || 'finops',
         tenantId: 'default',
         client: a.entityId || null,
         classification: {

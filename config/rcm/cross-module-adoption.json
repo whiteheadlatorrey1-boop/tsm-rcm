@@ -1,0 +1,72 @@
+{
+  "_readme": "Tracks which verticals' situation rooms actually call TSMMemory.registerAnomaly() and therefore show up in RCM OS's Cross-Module Exceptions (Executive tab). 'wired' = confirmed registerAnomaly() call site exists. 'partial' = the page uses TSMMemory (exposure/narrative/timeline) but does not yet register anomalies. 'not_started' = no TSMMemory usage found. Update this file whenever a vertical's adoption status changes so it stays a source of truth instead of tribal knowledge.",
+
+  "sector_key_reference": "Sector is auto-detected from the page URL path in tsm-memory-engine.js's detectSector() — codes below must match those keys exactly (construction, healthcare, insurance, finops, legal, tax, bpo, reo, rrd, music, executive).",
+
+  "verticals": {
+    "finops": {
+      "status": "wired",
+      "codePrefix": "FIN",
+      "sources": [
+        "html/compliance.html",
+        "html/supplier-vendor/supplier-vendor-situation-room.html",
+        "html/logistics/logistics-situation-room.html",
+        "html/finops-suite/working-capital-calculator.html"
+      ],
+      "notes": "Original 3 rooms from the Cross-Module Exceptions launch (Compliance, Vendor, Logistics), plus working-capital-calculator now also registering."
+    },
+    "construction": {
+      "status": "wired",
+      "codePrefix": "CON",
+      "sources": ["html/war-rooms/construct-war/construction-war-room.html"],
+      "notes": "Executive/strategist portals not yet confirmed wired — only the war room."
+    },
+    "bpo": {
+      "status": "wired",
+      "codePrefix": "BPO",
+      "sources": ["html/war-rooms/bpo-war/bpo-war-room.html"],
+      "notes": "bpo-executive-portal.html and bpo-strategist.html use TSMMemory/TSMExceptions for the P1/P2/P3 exception queue (a separate, older mechanism) — not yet unified with registerAnomaly. Worth reconciling so BPO exceptions surface in RCM OS too, not just its own portal."
+    },
+    "healthcare": {
+      "status": "partial",
+      "codePrefix": "HC",
+      "sources": [],
+      "notes": "hc-main-strategist.html and memory-timeline/memory.engine components use TSMMemory for exposure/narrative/timeline. No registerAnomaly() call site found yet — denial/payer-delay detections don't currently reach Cross-Module Exceptions."
+    },
+    "insurance": {
+      "status": "partial",
+      "codePrefix": "INS",
+      "sources": [],
+      "notes": "insurance-executive-portal.html uses TSMMemory but no registerAnomaly() call site found yet."
+    },
+    "legal": {
+      "status": "partial",
+      "codePrefix": "LEG",
+      "sources": [],
+      "notes": "legal-executive-portal.html uses TSMMemory but no registerAnomaly() call site found yet."
+    },
+    "reo": {
+      "status": "partial",
+      "codePrefix": "REO",
+      "sources": [],
+      "notes": "re-exec-portal.html uses TSMMemory but no registerAnomaly() call site found yet."
+    },
+    "tax": { "status": "not_started", "codePrefix": "TAX", "sources": [], "notes": "" },
+    "rrd": { "status": "not_started", "codePrefix": "RRD", "sources": [], "notes": "" },
+    "music": { "status": "not_started", "codePrefix": "MUS", "sources": [], "notes": "" }
+  },
+
+  "onboarding_checklist": [
+    "1. Confirm the page's URL path matches an existing detectSector() branch in tsm-memory-engine.js (or add a new one) so anomalies land under the right sector key.",
+    "2. At the point a vertical's own detection logic finds something wrong (a threshold breach, a missing required field, a failed check), call window.TSMMemory.registerAnomaly({ entityType, entityId, anomalyCode, title, severity, source }). anomalyCode should use this vertical's codePrefix (e.g. HC-DENIAL-THRESHOLD) so codes never collide across verticals.",
+    "3. Severity must be one of CRITICAL/HIGH/MEDIUM/LOW — CRITICAL auto-opens a Mission Core mission from the RCM OS Executive tab, so reserve it for things that actually need someone paged, not just flagged.",
+    "4. No new relay domain or mission vertical needed — RCM OS's Cross-Module Exceptions block reads every sector automatically via TSMMemory.getCrossModuleAnomalies(). Once step 2 ships, the vertical shows up there with zero RCM OS-side changes.",
+    "5. Update this file's status for the vertical from partial/not_started to wired, and list the actual source file(s)."
+  ],
+
+  "known_gaps": [
+    "All of this still lives in browser localStorage (TSM_OPERATIONAL_MEMORY_V3) — per-machine, not server-synced. A fresh browser or different laptop won't see anomalies until it visits the source pages itself. Server-sync is tracked as future work, not done.",
+    "No resolution workflow yet: closing the underlying issue in a source room doesn't auto-clear the anomaly in RCM OS's Executive tab.",
+    "BPO runs a separate, older exception mechanism (TSMExceptions / bpoFeedExceptions) for its own P1/P2/P3 queue that predates registerAnomaly() and isn't unified with it yet."
+  ]
+}
