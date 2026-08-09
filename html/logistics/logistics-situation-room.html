@@ -696,6 +696,40 @@ function buildImpactDefaults(sector, docType) {
 }
 
 // ── FIRE EXTRACTION ENGINE ──
+// Extracts the JSON object from a raw LLM completion. Walks the string
+// tracking brace depth and string/escape state to find the object that
+// actually matches the first '{', rather than a greedy regex that can span
+// past the JSON blob into trailing text. Falls back to a light repair pass
+// (trailing commas, curly quotes) for the malformed-output cases Groq
+// occasionally produces even with json_mode on — this is what was surfacing
+// as "Unexpected token"/"Expected ',' or '}'" engine errors.
+function tsmExtractJSON(raw) {
+  const start = raw.indexOf('{');
+  if (start === -1) return null;
+  let depth = 0, inStr = false, esc = false, end = -1;
+  for (let i = start; i < raw.length; i++) {
+    const c = raw[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (c === '\\') esc = true;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') { inStr = true; continue; }
+    if (c === '{') depth++;
+    else if (c === '}') { depth--; if (depth === 0) { end = i; break; } }
+  }
+  if (end === -1) return null;
+  const candidate = raw.slice(start, end + 1);
+  try { return JSON.parse(candidate); } catch {}
+  const repaired = candidate
+    .replace(/,\s*([}\]])/g, '$1')
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[\u2018\u2019]/g, "'");
+  try { return JSON.parse(repaired); } catch {}
+  return null;
+}
+
 async function fireExtractionEngine() {
   if (!relayData) return;
   if (engineFired) return;
@@ -749,7 +783,7 @@ Return ONLY the JSON object. No markdown, no explanation.`;
     const resp = await fetch('/api/war-room/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: GROQ_MODEL, max_tokens: 1200, stream: true, messages: [{ role: 'user', content: prompt }] })
+      body: JSON.stringify({ model: GROQ_MODEL, max_tokens: 1200, stream: true, json_mode: true, messages: [{ role: 'user', content: prompt }] })
     });
 
     const reader = resp.body.getReader();
@@ -773,9 +807,8 @@ Return ONLY the JSON object. No markdown, no explanation.`;
     }
 
     // Parse and render
-    const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const result = JSON.parse(jsonMatch[0]);
+    const result = tsmExtractJSON(raw);
+    if (result) {
       renderExtraction(result);
       registerIncidentInMemory(result);
       storeWarRoomRelay(result);
