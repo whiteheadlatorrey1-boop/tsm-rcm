@@ -25,7 +25,13 @@
   }
 
   // ── Constants ─────────────────────────────────────────────────────────────
-  const SECTORS    = Object.freeze(['construction','healthcare','insurance','legal','finops','mortgage','bpo','realestate']);
+  // Extended 2026-08-09: added 'schools' and 'hotelops' (already live in
+  // bpo-internal1.html's sidebar/SECTOR_TO_VERTICAL but silently blocked
+  // from ever creating a real mission by this whitelist — pre-existing gap,
+  // same class of bug as the Honeywell relay dead-key issue) plus the 8
+  // newly-wired verticals: rcmos, propertyaccounting, noc, cyberincident,
+  // plantincident, suppliershutdown, l1platform.
+  const SECTORS    = Object.freeze(['construction','healthcare','insurance','legal','finops','mortgage','bpo','realestate','schools','hotelops','rcmos','propertyaccounting','noc','cyberincident','plantincident','suppliershutdown','l1platform']);
   const PRIORITY   = Object.freeze(['critical','high','medium','low']);
   const STATUS     = Object.freeze(['created','analyzing','ready','escalated','executing','complete','failed']);
 
