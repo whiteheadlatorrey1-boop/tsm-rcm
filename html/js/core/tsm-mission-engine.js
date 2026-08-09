@@ -38,6 +38,22 @@
   // ── In-memory registry ────────────────────────────────────────────────────
   const _missions = {};
 
+  // Rehydrate from TSMState's persisted mirror on a fresh page load. _syncState()
+  // below only ever mirrors the single latest mission into TSMState (that's the
+  // extent of what's persisted), but without this, every fresh page load starts
+  // with an empty _missions registry even though TSMState still has the mission
+  // from a prior page — so hydratRelayFromMission()-style helpers (which read
+  // straight from TSMState) succeed, but any subsequent TSMMission.update()/
+  // .addTimeline()/.get() call against that same ID silently fails "Mission not
+  // found" and drops the write. Seeding _missions here closes that gap.
+  (function _rehydrateFromState() {
+    if (!global.TSMState) return;
+    try {
+      const persisted = global.TSMState.get('mission');
+      if (persisted && persisted.id) _missions[persisted.id] = persisted;
+    } catch (_) {}
+  })();
+
   // ── Internal helpers ──────────────────────────────────────────────────────
   function _bus(event, payload) {
     // TSMBus is the Event Bus public name; TSMEventBus is the alternate export
