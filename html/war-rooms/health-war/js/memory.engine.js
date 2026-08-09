@@ -131,6 +131,75 @@
     }
   }
 
+  /**
+   * Register an anomaly into the SHARED cross-module store (RCM OS reads
+   * this, not TSM_HC_MEMORY). This is a deliberate interop write: HC's own
+   * event timeline above stays untouched and keeps using TSM_HC_MEMORY —
+   * this writes into the same TSM_OPERATIONAL_MEMORY_V3 schema that
+   * tsm-memory-engine.js (compliance.html, vendor/logistics rooms, etc.)
+   * already uses, under sector 'healthcare', so RCM OS's Executive tab
+   * picks it up via TSMMemory.getCrossModuleAnomalies() with zero
+   * RCM-OS-side changes. Self-dedupes by anomalyCode among open records
+   * so calling this on every page load doesn't create duplicates.
+   */
+  const SHARED_STORAGE_KEY = 'TSM_OPERATIONAL_MEMORY_V3';
+  const SHARED_SECTOR = 'healthcare';
+
+  function _loadShared() {
+    try { return JSON.parse(localStorage.getItem(SHARED_STORAGE_KEY) || '{}'); }
+    catch (_) { return {}; }
+  }
+
+  function _saveShared(all) {
+    try { localStorage.setItem(SHARED_STORAGE_KEY, JSON.stringify(all)); }
+    catch (_) {}
+  }
+
+  function registerAnomaly({
+    entityType = 'case',
+    entityId = 'UNKNOWN',
+    anomalyCode,
+    title,
+    severity = 'MEDIUM',
+    source = 'hc-main-strategist',
+    meta = {}
+  } = {}) {
+    if (!anomalyCode) return null;
+
+    const all = _loadShared();
+    if (!all[SHARED_SECTOR]) all[SHARED_SECTOR] = { anomalies: [] };
+    if (!Array.isArray(all[SHARED_SECTOR].anomalies)) all[SHARED_SECTOR].anomalies = [];
+    const bucket = all[SHARED_SECTOR];
+
+    const alreadyOpen = bucket.anomalies.some(a => a.anomalyCode === anomalyCode && a.status === 'open');
+    if (alreadyOpen) return null;
+
+    const record = {
+      id: `an_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      anomalyCode,
+      title: title || anomalyCode,
+      severity,
+      status: 'open',
+      source,
+      detectedFrom: null,
+      entityType,
+      entityId,
+      missingFields: [],
+      createdAt: new Date().toISOString(),
+      resolvedAt: null,
+      resolvedBy: null,
+      relayTargets: [],
+      recommendedApps: [],
+      meta
+    };
+
+    bucket.anomalies.unshift(record);
+    bucket.anomalies = bucket.anomalies.slice(0, 250);
+    _saveShared(all);
+
+    return record;
+  }
+
   // ── EXPOSE ────────────────────────────────────────────────────────────────
   window.TSMMemory = {
     EVENT_TYPES,
@@ -140,6 +209,7 @@
     toPromptContext,
     clearAll,
     autoRecord,
+    registerAnomaly,
   };
 
   // Auto-run on load

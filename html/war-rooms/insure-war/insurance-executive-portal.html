@@ -729,6 +729,23 @@ function populateFromRelay(d) {
     const rm3 = document.getElementById('rm3');
     rm3.className = 'risk-badge rb-'+cls;
     rm3.textContent = compM[1].trim().slice(0,14).toUpperCase();
+
+    // Register a cross-module anomaly off the actual escalation this portal
+    // just received — not synthesized, only fires when real relay data
+    // indicates executive-level exposure (compliance posture critical/high,
+    // board item, or approval required).
+    if (window.TSMMemory && typeof window.TSMMemory.registerAnomaly === 'function' &&
+        (cls === 'crit' || cls === 'high' || approvalVal === 'YES' || boardVal === 'YES')) {
+      window.TSMMemory.registerAnomaly({
+        entityType: 'insurance-escalation',
+        entityId: (d.docType || d.scenario || docType).slice(0, 60),
+        anomalyCode: 'INS_EXEC_ESCALATION',
+        title: (cfoSubjM ? cfoSubjM[1].trim() : docType) + ' — executive escalation',
+        severity: cls === 'crit' ? 'CRITICAL' : (cls === 'high' || approvalVal === 'YES') ? 'HIGH' : 'MEDIUM',
+        source: 'insurance-executive-portal',
+        meta: { exposure: exposureVal, netRisk: netRiskVal, boardItem: boardVal, approvalRequired: approvalVal }
+      });
+    }
   }
   if (appealM) document.getElementById('rm4v').textContent = appealM[1].trim().slice(0,28);
   if (windowM) document.getElementById('rm5v').textContent = windowM[1].trim().slice(0,28);
@@ -1042,6 +1059,7 @@ setInterval(loadRelay, 15000);
 })();
 </script>
   <script src="/html/core/tsm-runtime.js"></script>
+  <script src="/html/shared/tsm-memory-engine.js"></script>
   <script src="/js/tsm-guide-engine.js" defer></script>
 </body>
 </html>

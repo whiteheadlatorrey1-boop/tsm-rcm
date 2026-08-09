@@ -28,31 +28,31 @@
       "notes": "bpo-executive-portal.html and bpo-strategist.html use TSMMemory/TSMExceptions for the P1/P2/P3 exception queue (a separate, older mechanism) — not yet unified with registerAnomaly. Worth reconciling so BPO exceptions surface in RCM OS too, not just its own portal."
     },
     "healthcare": {
-      "status": "partial",
+      "status": "wired",
       "codePrefix": "HC",
-      "sources": [],
-      "notes": "hc-main-strategist.html and memory-timeline/memory.engine components use TSMMemory for exposure/narrative/timeline. No registerAnomaly() call site found yet — denial/payer-delay detections don't currently reach Cross-Module Exceptions."
+      "sources": ["html/healthcare/hc-main-strategist.html (+ war-rooms/health-war duplicate)", "html/healthcare/js/memory.engine.js (+ war-rooms/health-war duplicate)"],
+      "notes": "hc-main-strategist.html runs its OWN separate memory engine (TSM_HC_MEMORY, different API — push()/EVENT_TYPES, not registerAnomaly()). Rather than swap engines (risk of breaking its existing timeline calls), added a registerAnomaly() interop method directly to memory.engine.js that writes into the SAME shared TSM_OPERATIONAL_MEMORY_V3 schema under sector 'healthcare', self-deduping by anomalyCode. hc-main-strategist.html registers 5 static alerts mirroring its own denial-rate ticker/signal panels on load."
     },
     "insurance": {
-      "status": "partial",
+      "status": "wired",
       "codePrefix": "INS",
-      "sources": [],
-      "notes": "insurance-executive-portal.html uses TSMMemory but no registerAnomaly() call site found yet."
+      "sources": ["html/war-rooms/insure-war/insurance-executive-portal.html"],
+      "notes": "This page did NOT load tsm-memory-engine.js at all before this change (its `if(window.TSMMemory)` guards were silent no-ops) -- added the script include. registerAnomaly() now fires from inside populateFromRelay(), the real relay-parsing function, when parsed data shows compliance posture crit/high, a board item, or approval required -- not a static mirror, since this page has no fixed demo content (everything is '—' until real escalation data arrives)."
     },
     "legal": {
-      "status": "partial",
+      "status": "wired",
       "codePrefix": "LEG",
-      "sources": [],
-      "notes": "legal-executive-portal.html uses TSMMemory but no registerAnomaly() call site found yet."
+      "sources": ["html/war-rooms/legal-war/legal-executive-portal.html"],
+      "notes": "Same gap as insurance -- tsm-memory-engine.js was never included; added it. registerAnomaly() now fires from loadStrategistRelay() for the top ('SIGN NOW') relayed action whenever real Case Strategist relay data with d.actions arrives."
     },
     "reo": {
-      "status": "partial",
+      "status": "wired",
       "codePrefix": "REO",
-      "sources": [],
-      "notes": "re-exec-portal.html uses TSMMemory but no registerAnomaly() call site found yet."
+      "sources": ["html/war-rooms/re-war/re-exec-portal.html"],
+      "notes": "This page deliberately stubs out TSMMemory (window.TSMMemory={timeline:()=>{},...}) and kills the visual memory-layer widget via #kill-tsm-memory-layer CSS -- that suppression was intentional, so the real engine was NOT loaded here. Instead extended the existing stub with a headless registerAnomaly() that writes directly into the shared TSM_OPERATIONAL_MEMORY_V3 schema under sector 'reo' -- no widget, no visual change, same suppression as before. Registers the 2 static P1 Action Items (TRID Cure Loan #2847, Appraisal Gap 123 Maple St) already shown on the page."
     },
-    "tax": { "status": "not_started", "codePrefix": "TAX", "sources": [], "notes": "" },
-    "rrd": { "status": "not_started", "codePrefix": "RRD", "sources": [], "notes": "" },
+    "tax": { "status": "not_started", "codePrefix": "TAX", "sources": [], "notes": "Deprioritized -- not needed right now." },
+    "rrd": { "status": "not_started", "codePrefix": "RRD", "sources": [], "notes": "Deprioritized -- not needed right now." },
     "music": { "status": "not_started", "codePrefix": "MUS", "sources": [], "notes": "" }
   },
 

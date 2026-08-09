@@ -1,7 +1,35 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<script id="tsm-memory-stub">window.TSMMemory={timeline:()=>{},init:()=>{},render:()=>{}};</script>
+<script id="tsm-memory-stub">
+window.TSMMemory={timeline:()=>{},init:()=>{},render:()=>{},registerAnomaly:function({
+  entityType='case', entityId='UNKNOWN', anomalyCode, title, severity='MEDIUM',
+  source='re-exec-portal', meta={}
+}={}){
+  // Headless-only interop write: this page deliberately kills the visual
+  // TSM Memory widget (see #kill-tsm-memory-layer below) but still needs
+  // to feed RCM OS's Cross-Module Exceptions, so this writes directly into
+  // the same TSM_OPERATIONAL_MEMORY_V3 schema tsm-memory-engine.js uses,
+  // under sector 'reo', without loading the full engine/widget.
+  if(!anomalyCode) return null;
+  const KEY='TSM_OPERATIONAL_MEMORY_V3';
+  let all; try{ all=JSON.parse(localStorage.getItem(KEY)||'{}'); }catch(e){ all={}; }
+  if(!all.reo) all.reo={anomalies:[]};
+  if(!Array.isArray(all.reo.anomalies)) all.reo.anomalies=[];
+  if(all.reo.anomalies.some(a=>a.anomalyCode===anomalyCode && a.status==='open')) return null;
+  const record={
+    id:'an_'+Date.now()+'_'+Math.random().toString(36).slice(2,8),
+    anomalyCode, title: title||anomalyCode, severity, status:'open', source,
+    detectedFrom:null, entityType, entityId, missingFields:[],
+    createdAt:new Date().toISOString(), resolvedAt:null, resolvedBy:null,
+    relayTargets:[], recommendedApps:[], meta
+  };
+  all.reo.anomalies.unshift(record);
+  all.reo.anomalies=all.reo.anomalies.slice(0,250);
+  try{ localStorage.setItem(KEY, JSON.stringify(all)); }catch(e){}
+  return record;
+}};
+</script>
 
 <script id="tsm-assistant-stub">
   window.TSMAssistant = {
@@ -2769,5 +2797,29 @@ function toggleGuideBody() {
 </script>
 
   <script src="/js/tsm-guide-engine.js" defer></script>
+<script>
+// ===== TSM MEMORY: REGISTER PRIORITY ACTION ITEMS AS CROSS-MODULE ANOMALIES =====
+// Mirrors the static P1 Action Items panel already on this page (TRID Cure
+// Loan #2847, Appraisal Gap 123 Maple St) so RCM OS's Executive tab can see
+// them. Uses the headless registerAnomaly shim defined in the memory stub
+// above — no visual widget loads, same as the rest of this page.
+(function registerREOAnomaliesInMemory(){
+  if (!window.TSMMemory || typeof window.TSMMemory.registerAnomaly !== 'function') return;
+  window.TSMMemory.registerAnomaly({
+    entityType: 're-deal', entityId: '123-maple-st',
+    anomalyCode: 'REO_APPRAISAL_GAP_MAPLE_ST', severity: 'CRITICAL',
+    title: 'Appraisal Gap — 123 Maple St — Contract $460K, Appraised $434K, Gap $26K',
+    source: 're-exec-portal',
+    meta: { gap: '$26K', deadline: '48HR' }
+  });
+  window.TSMMemory.registerAnomaly({
+    entityType: 're-deal', entityId: 'loan-2847',
+    anomalyCode: 'REO_TRID_CURE_LOAN2847', severity: 'HIGH',
+    title: 'TRID Cure — Loan #2847 — CD delivery tolerance violation, $1,247 exposure',
+    source: 're-exec-portal',
+    meta: { exposure: '$1,247', deadline: '18hr' }
+  });
+})();
+</script>
 </body>
 </html>

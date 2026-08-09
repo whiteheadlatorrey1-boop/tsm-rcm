@@ -556,6 +556,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:1000;
     if (window.TSMMemory) TSMMemory.timeline("Executive Portal opened - reviewing escalation");
   });
 </script>
+<script src="/html/shared/tsm-memory-engine.js"></script>
 <script src="/js/tsm-runtime-lock.js"></script>
 <script src="/js/tsm-event-contract.js"></script>
 <script src="/js/tsm-autonomy-layer.js"></script>
@@ -1121,6 +1122,22 @@ function loadStrategistRelay() {
           <button class="d-btn" onclick="authorizeAction(this,'Action ${i+1}')">AUTHORIZE</button>
         </div>`).join('');
       container.insertAdjacentHTML('afterbegin', relayItems);
+
+      // Register the top relayed action as a cross-module anomaly — only
+      // the real action text/matter from this relay, not synthesized.
+      // Self-dedupes by anomalyCode in the shared engine.
+      if (window.TSMMemory && typeof window.TSMMemory.registerAnomaly === 'function') {
+        const topAction = typeof d.actions[0] === 'string' ? d.actions[0].replace(/^\d+\.\s*/, '') : String(d.actions[0]);
+        window.TSMMemory.registerAnomaly({
+          entityType: 'legal-matter',
+          entityId: (d.matter || d.docType || 'matter').slice(0, 60),
+          anomalyCode: 'LEG_STRATEGIST_ACTION_REQUIRED',
+          title: topAction.slice(0, 140),
+          severity: 'CRITICAL',
+          source: 'legal-executive-portal',
+          meta: { matter: d.matter || d.docType, exposure: d.exposure || null, actionsCount: d.actions.length }
+        });
+      }
     }
 
     // Update BNCA with synthesis context

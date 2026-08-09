@@ -1987,6 +1987,42 @@ PATTERN MATCH: [does this match active HonorHealth denial patterns CO-4/CO-11/CO
 <script src="/html/shared/runtime/mission/mission-store.js"></script>
 <script src="/html/healthcare/js/relay.engine.js"></script>
 <script src="/html/healthcare/js/memory.engine.js"></script>
+<script>
+// ===== TSM MEMORY: REGISTER PRIORITY SIGNALS AS CROSS-MODULE ANOMALIES =====
+// Mirrors the ticker/ signal-panel content already on this page (denial
+// ticker, Mesa spike sig block, compliance heat map) so RCM OS's Executive
+// tab can see it without scraping the DOM. registerAnomaly() self-dedupes
+// by anomalyCode, so this is safe to call on every page load.
+(function registerHCAnomaliesInMemory(){
+  if (!window.TSMMemory || typeof window.TSMMemory.registerAnomaly !== 'function') return;
+  const alerts = [
+    { anomalyCode: 'HC_DENIAL_RATE_CMS_BREACH', severity: 'CRITICAL',
+      title: 'Denial Rate 18.4% — CMS threshold (15%) breached, $48K at risk (231 claims)',
+      meta: { denialRate: '18.4%', threshold: '15%', atRisk: '$48K' } },
+    { anomalyCode: 'HC_CO29_TIMELY_FILING_CLM0334', severity: 'CRITICAL',
+      title: 'CLM-0334 CO-29 timely filing — 48hr write-off window, $3,800 Medicare claim',
+      meta: { claim: 'CLM-0334', cpt: '93454', deadline: '48hr' } },
+    { anomalyCode: 'HC_MESA_DENIAL_SPIKE', severity: 'HIGH',
+      title: 'Mesa Family Practice denial spike — 22.1% vs 18.4% portfolio average (PR-96)',
+      meta: { office: 'Mesa', denialRate: '22.1%', portfolioAvg: '18.4%' } },
+    { anomalyCode: 'HC_MODIFIER25_OVERUSE', severity: 'HIGH',
+      title: 'Modifier -25 overuse — 47 claims, $8,460 at risk, review before next submission cycle',
+      meta: { claims: 47, atRisk: '$8,460' } },
+    { anomalyCode: 'HC_CPT99215_UPCODING', severity: 'MEDIUM',
+      title: 'CPT 99215 upcoding — 23 claims, $12,040 audit exposure, coder education needed',
+      meta: { claims: 23, auditExposure: '$12,040' } }
+  ];
+  alerts.forEach(a => window.TSMMemory.registerAnomaly({
+    entityType: 'hc-signal',
+    entityId: a.anomalyCode,
+    anomalyCode: a.anomalyCode,
+    title: a.title,
+    severity: a.severity,
+    source: 'hc-main-strategist',
+    meta: a.meta
+  }));
+})();
+</script>
 <script src="/html/healthcare/js/relay-card.component.js"></script>
   <script src="/js/core/tsm-kernel-upgrade.js"></script>
 
