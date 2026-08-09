@@ -244,6 +244,10 @@ body{
 .check-box.done{background:var(--good); border-color:var(--good); color:#0A0F1C;}
 .check-label{font-size:12.5px; color:var(--text); line-height:1.5; cursor:pointer; flex:1;}
 .check-row.done .check-label{color:var(--muted-dim); text-decoration:line-through;}
+.check-live{font-family:'IBM Plex Mono'; font-size:10px; margin-top:4px; padding:2px 0; display:block;}
+.check-live.ready{color:var(--good);}
+.check-live.pending{color:var(--amber);}
+.check-live.none{color:var(--muted-dim); font-style:italic;}
 .checklist-footer{display:flex; align-items:center; gap:10px; margin-top:14px;}
 .checklist-footer .track{flex:1; height:6px; background:var(--panel); border-radius:3px; overflow:hidden; border:1px solid var(--line);}
 .checklist-footer .fill{height:100%; background:var(--good); border-radius:3px; transition:width .4s ease;}
@@ -825,6 +829,38 @@ const checklistState = loadState(CHECKLIST_STATE_KEY); // key: idx -> bool
 
 function taskKey(cad, p, t){ return `${cad}-${p}-${t}`; }
 
+// Live signal from finops-operations.html's Month-End Accrual module (Module 11).
+// This never auto-checks the box -- checking is still a human sign-off action --
+// it just surfaces the real pipeline state next to the two accrual-related
+// checklist items so the preparer isn't guessing.
+const ACCRUAL_RELAY_KEY = 'TSM_FINOPS_ACCRUAL_RELAY';
+const ACCRUAL_CHECKLIST_IDX = { POSTED: 2, REVERSED: 3 }; // indices into CLOSE_CHECKLIST
+function acLoadRelay(){
+  try {
+    const raw = localStorage.getItem(ACCRUAL_RELAY_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch(e) { return null; }
+}
+function acLiveStatusFor(idx){
+  const relay = acLoadRelay();
+  if (!relay || !Array.isArray(relay.accruals) || !relay.accruals.length) {
+    if (idx === ACCRUAL_CHECKLIST_IDX.POSTED || idx === ACCRUAL_CHECKLIST_IDX.REVERSED) {
+      return { cls:'none', text:'○ No live signal yet — awaiting sync from finops-operations.html Month-End Accrual' };
+    }
+    return null;
+  }
+  const total = relay.accruals.length;
+  if (idx === ACCRUAL_CHECKLIST_IDX.POSTED) {
+    const posted = relay.accruals.filter(a => ['POSTED','MATCHED','REVERSED'].includes(a.state)).length;
+    return { cls: posted === total ? 'ready' : 'pending', text: `● LIVE: ${posted}/${total} accrual JE(s) posted — finops-operations.html` };
+  }
+  if (idx === ACCRUAL_CHECKLIST_IDX.REVERSED) {
+    const reversed = relay.accruals.filter(a => a.state === 'REVERSED').length;
+    return { cls: reversed === total ? 'ready' : 'pending', text: `● LIVE: ${reversed}/${total} accrual(s) reversed — finops-operations.html` };
+  }
+  return null;
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // TASK DATA REQUIREMENTS REGISTRY — what an EU needs to gather from each
 // phase's owning module, and their self-reported values until that module
@@ -1118,10 +1154,12 @@ function renderChecklist(){
   const list = document.getElementById('checklistList');
   list.innerHTML = CLOSE_CHECKLIST.map((item,i)=>{
     const isDone = !!checklistState[i];
+    const live = acLiveStatusFor(i);
+    const liveHtml = live ? `<span class="check-live ${live.cls}">${live.text}</span>` : '';
     return `
     <div class="check-row ${isDone?'done':''}" data-idx="${i}">
       <button class="check-box ${isDone?'done':''}" data-idx="${i}">${isDone?'✓':''}</button>
-      <span class="check-label" data-idx="${i}">${item}</span>
+      <span class="check-label" data-idx="${i}">${item}${liveHtml}</span>
     </div>`;
   }).join('');
 

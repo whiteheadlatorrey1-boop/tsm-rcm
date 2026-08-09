@@ -2055,8 +2055,23 @@ wcRender();
 /* ── MODULE 11: Month-End Accrual ── */
 // State machine: DRAFT -> PROPOSED -> APPROVED -> POSTED -> MATCHED -> REVERSED
 //                              \-> REJECTED -> (back to DRAFT)
-let acAccruals = [];
-let acNextId = 1;
+// Pipeline persists to localStorage per device -- same pattern as
+// tsm-rcm-os.html's loadState/saveState -- so a page reload doesn't wipe
+// in-progress accruals. Persisted client-side only; not synced across users.
+const AC_STATE_KEY = 'TSM_FINOPS_ACCRUAL_PIPELINE_STATE';
+function acLoadState() {
+  try {
+    const raw = localStorage.getItem(AC_STATE_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return (parsed && Array.isArray(parsed.accruals)) ? parsed : { accruals: [], nextId: 1 };
+  } catch (e) { return { accruals: [], nextId: 1 }; }
+}
+function acSaveState() {
+  try { localStorage.setItem(AC_STATE_KEY, JSON.stringify({ accruals: acAccruals, nextId: acNextId })); } catch (e) { /* ignore */ }
+}
+const acInitialState = acLoadState();
+let acAccruals = acInitialState.accruals;
+let acNextId = acInitialState.nextId;
 
 function acMoney(n) { return wcMoney(Number.isFinite(n) ? n : 0); }
 
@@ -2177,6 +2192,8 @@ function acMetaFor(a) {
 }
 
 function acRender() {
+  acSaveState();
+
   const list = document.getElementById('ac-list');
   if (!acAccruals.length) {
     list.innerHTML = '<div class="ac-empty">No accruals in the pipeline yet — propose one above.</div>';
