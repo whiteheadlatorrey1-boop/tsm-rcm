@@ -708,27 +708,35 @@ app.post('/api/war-room/stream', async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  const { model, messages, max_tokens, temperature } = req.body;
+  const { model, messages, max_tokens, temperature, json_mode } = req.body;
   if (!Array.isArray(messages) || !messages.length) return res.status(400).json({ error: 'Missing messages' });
 
   const groqKey = process.env.GROQ_API_KEY || process.env.GROQ_KEY;
   if (!groqKey) return res.status(500).json({ error: 'GROQ_KEY not configured on server.' });
 
-  async function fetchGroqStream(retriesLeft = 3) {
+  async function fetchGroqStream(retriesLeft = 3, forceJsonMode = !!json_mode) {
+    const body = {
+      model: model || 'openai/gpt-oss-120b',
+      stream: true,
+      max_tokens: max_tokens || 600,
+      temperature: temperature ?? 0.4,
+      reasoning_effort: 'low',
+      messages
+    };
+    // Callers that need strict JSON out (situation-room extraction engines,
+    // etc.) can pass json_mode:true so Groq enforces valid JSON structurally
+    // instead of relying on prompt instructions alone — that's what was
+    // producing "Unexpected token"/"Expected ',' or '}'" parse errors on
+    // the client, since the model occasionally emitted a stray/unescaped
+    // character with no structural JSON guarantee in place.
+    if (forceJsonMode) body.response_format = { type: 'json_object' };
     const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer ' + groqKey
       },
-      body: JSON.stringify({
-        model: model || 'openai/gpt-oss-120b',
-        stream: true,
-        max_tokens: max_tokens || 600,
-        temperature: temperature ?? 0.4,
-        reasoning_effort: 'low',
-        messages
-      })
+      body: JSON.stringify(body)
     });
     if (!groqRes.ok) {
       const err = await groqRes.json().catch(() => ({}));
@@ -743,7 +751,15 @@ app.post('/api/war-room/stream', async (req, res) => {
         const waitMs = waitMatch ? Math.ceil(parseFloat(waitMatch[1]) * 1000) + 250 : 3000;
         console.warn(`[war-room/stream] Rate limited, retrying in ${waitMs}ms (${retriesLeft} retries left)`);
         await new Promise(r => setTimeout(r, waitMs));
-        return fetchGroqStream(retriesLeft - 1);
+        return fetchGroqStream(retriesLeft - 1, forceJsonMode);
+      }
+
+      // A 400 with json_mode on usually means this model doesn't support
+      // response_format — retry once immediately without it rather than
+      // failing the whole engine run.
+      if (groqRes.status === 400 && forceJsonMode) {
+        console.warn('[war-room/stream] response_format rejected by model, retrying without json_mode');
+        return fetchGroqStream(retriesLeft, false);
       }
 
       const e = new Error(err.error?.message || 'Groq error');
