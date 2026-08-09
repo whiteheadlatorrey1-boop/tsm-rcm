@@ -844,11 +844,16 @@ router.post('/api/music/demo/create', (req, res) => {
   return res.json({
     ok:true,
     demo:record,
+    // Real deployed pages live under html/war-rooms/music-war/ -- these
+    // previously pointed at html/music-command/, a directory that has
+    // never existed, so every prospect demo link 404'd. 'exec' dropped:
+    // it pointed at index2.html, which has no counterpart anywhere in
+    // music-war (this vertical has no separate exec-portal page), and
+    // nothing in the codebase reads links.exec anyway.
     links:{
-      app:`/html/music-command/index.html?demo_token=${record.token}`,
-      exec:`/html/music-command/index2.html?demo_token=${record.token}`,
-      presentation:`/html/music-command/presentation-live.html?demo_token=${record.token}`,
-      marketing:`/html/music-command/marketing.html?demo_token=${record.token}`
+      app:`/html/war-rooms/music-war/index.html?demo_token=${record.token}`,
+      presentation:`/html/war-rooms/music-war/presentation-live.html?demo_token=${record.token}`,
+      marketing:`/html/war-rooms/music-war/release/marketing.html?demo_token=${record.token}`
     }
   });
 });
