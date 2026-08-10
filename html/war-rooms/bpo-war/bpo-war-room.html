@@ -829,6 +829,16 @@ Return ONLY the JSON object. No markdown, no explanation.`;
       body: JSON.stringify({ model: GROQ_MODEL, max_tokens: 2000, stream: true, json_mode: true, messages: [{ role: 'user', content: prompt }] })
     });
 
+    // A non-2xx here (rate limit, model/service outage, auth failure) was
+    // previously falling through unchecked into resp.body.getReader(): the
+    // error body isn't SSE-shaped, so the parse loop below silently collects
+    // an empty `raw`, tsmExtractJSON() returns null, and the UI reported the
+    // ambiguous "parse issue" amber state -- identical to a real truncation
+    // bug, with the actual cause (e.g. a Groq 429) never shown anywhere.
+    // Fail fast and loud instead, same convention as this vertical's own
+    // strategist (bpo-strategist.html fireStrategy(): `if (!resp.ok) throw`).
+    if (!resp.ok) throw new Error(`API returned ${resp.status} ${resp.statusText}`);
+
     const reader = resp.body.getReader();
     const decoder = new TextDecoder();
     let raw = '';
@@ -890,9 +900,17 @@ Return ONLY the JSON object. No markdown, no explanation.`;
       (document.getElementById('evidenceList').querySelector('.ev-tag.ev-pending').className = 'ev-tag ev-analyzed');
 
   } catch(e) {
-    document.getElementById('extractionStream').textContent = 'Engine error: ' + e.message + '\n\nCheck server connection.';
+    // "API returned ..." means the engine actually heard back from Groq with
+    // a non-2xx (rate limit, auth, model outage) -- that's a live-service
+    // problem, not a local connectivity one, and "check server connection"
+    // was actively misleading in that case. Anything else (fetch threw
+    // before a response arrived) is genuinely a connection/network issue.
+    const isApiError = /^API returned/.test(e.message || '');
+    const hint = isApiError ? 'The extraction API rejected the request — see message above.' : 'Check server connection.';
+    document.getElementById('extractionStream').textContent = 'Engine error: ' + e.message + '\n\n' + hint;
+    document.getElementById('engineCount').textContent = 'Engine error';
     document.getElementById('enginePulse').style.background = 'var(--red)';
-    setStatus('Engine error — check server connection');
+    setStatus(isApiError ? 'Engine error — extraction API unavailable, retry shortly' : 'Engine error — check server connection');
     engineFired = false;
   }
 }
