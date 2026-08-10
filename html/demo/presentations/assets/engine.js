@@ -2,7 +2,7 @@
   const D = window.PRESENTATION_DATA;
   if(!D){ document.body.innerHTML = '<p style="color:#f87171;font-family:monospace;padding:40px">No PRESENTATION_DATA found.</p>'; return; }
 
-  const IMG_ROOT = D.imgRoot || ('/demo-screenshots/' + D.folder + '/');
+  const IMG_ROOT = '/demo-screenshots/' + D.folder + '/';
   const steps = D.steps;
   let idx = 0;
 
@@ -49,7 +49,7 @@
               Screenshot not found.<br>
               Run <b>npm run test:e2e -- ${D.folder}</b> in Codespaces first,<br>
               then reload this page.<br><br>
-              Expected: <b>tests/e2e/demo/screenshots/${D.folder}/${s.shot}.png</b>
+              Expected: <b>/demo-screenshots/${D.folder}/${s.shot}.png</b>
             </div>
           </div>
           <div class="talk-pane">
