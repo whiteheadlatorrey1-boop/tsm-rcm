@@ -58,6 +58,19 @@ const path = require('path');
 async function runStory(page, { steps, outDir, baseURL = '', presetLocalStorage = null }) {
   fs.mkdirSync(outDir, { recursive: true });
 
+  // Steps whose click failed. The engine deliberately does NOT throw
+  // mid-story on a click failure (see the try/catch below) so later
+  // steps still get a chance to run and report their own diagnostics
+  // instead of one click swallowing all remaining visibility into the
+  // run. But that means a spec that only does `await runStory(...)`
+  // with no return-value check would previously report PASS even when
+  // a step's click failed and its screenshot is a `-CLICK-FAILED.png`
+  // of a broken/pre-click page state. Collecting failures here and
+  // throwing once at the end (after every step has had its turn) keeps
+  // the full-story diagnostics while still making the test fail for
+  // real when a click didn't land.
+  const failures = [];
+
   // Surface browser-side console errors and uncaught exceptions in the
   // Playwright/terminal output — without this, a JS error mid-page-script
   // (e.g. inside an async handler like fireEngines()) fails silently in
@@ -192,9 +205,11 @@ async function runStory(page, { steps, outDir, baseURL = '', presetLocalStorage 
         );
         console.error(`[demo-engine] captured failure state -> ${failFile}`);
 
-        // Don't throw: continue the story so later steps (and their own
+        // Don't throw here: continue the story so later steps (and their own
         // waitFor/click diagnostics) still get a chance to report in, instead
         // of one click swallowing all remaining visibility into the run.
+        // Record it so the story-level throw below still fails the test.
+        failures.push({ shot: step.shot, selector: step.click, message: err.message, diag });
       }
     }
 
@@ -228,6 +243,19 @@ async function runStory(page, { steps, outDir, baseURL = '', presetLocalStorage 
     await page.screenshot({ path: file, fullPage: step.fullPage === true });
     console.log(`[demo-engine] captured ${file}`);
   }
+
+  if (failures.length) {
+    const summary = failures
+      .map((f) => `  - step "${f.shot}": click "${f.selector}" failed -- ${f.message}\n    diagnostics: ${JSON.stringify(f.diag)}`)
+      .join('\n');
+    throw new Error(
+      `[demo-engine] ${failures.length} click failure(s) during story run -- ` +
+      `screenshots were still captured (see *-CLICK-FAILED.png in ${outDir}) ` +
+      `but the story did not complete cleanly:\n${summary}`
+    );
+  }
+
+  return { failures };
 }
 
 function loadStory(jsonPath) {
