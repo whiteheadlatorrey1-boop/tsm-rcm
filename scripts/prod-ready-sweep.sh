@@ -49,6 +49,7 @@ SPECS=(
 
 PASS=()
 FAIL=()
+RATE_LIMITED=()
 
 for spec in "${SPECS[@]}"; do
   spec_file="tests/e2e/demo/${spec}.spec.js"
@@ -58,6 +59,30 @@ for spec in "${SPECS[@]}"; do
     continue
   fi
 
+  # Each demo-engine spec writes to its own screenshots/<name> dir, and that
+  # <name> is NOT a fixed transform of the spec filename (legal-demo ->
+  # 'legal', rcm-os-demo -> 'rcm-os', construction-cashflow-demo ->
+  # 'construction-cashflow', etc). Pull it straight from the spec file so
+  # CLICK-FAILED detection is scoped to THIS spec only — a prior version of
+  # this script searched the whole screenshots/ tree and double-counted
+  # earlier specs' failures onto every later spec in the run.
+  shot_subdir=$(grep -oE "screenshots'\s*,\s*'[^']+'" "$spec_file" | sed -E "s/screenshots'\s*,\s*'([^']+)'/\1/" | head -1)
+
+  # Some specs (e.g. property-accounting-revenue-cycle) are plain Playwright
+  # tests, not demo-engine/runStory-based — they have no outDir and no
+  # CLICK-FAILED concept. Skip that check for those, run everything else.
+  uses_demo_engine=0
+  grep -q "demo-engine" "$spec_file" && uses_demo_engine=1
+
+  # Snapshot screenshot count BEFORE this run, scoped to this spec's own dir,
+  # so we only count failures THIS run produced, not leftovers from earlier
+  # sweeps sitting in the same directory.
+  before_count=0
+  if [ $uses_demo_engine -eq 1 ] && [ -n "$shot_subdir" ]; then
+    shot_dir="tests/e2e/demo/screenshots/${shot_subdir}"
+    before_count=$(find "$shot_dir" -iname "*-CLICK-FAILED.png" 2>/dev/null | wc -l)
+  fi
+
   log_file="${LOG_DIR}/${spec}.log"
   echo "=== Running $spec ==="
   TSM_BASE_URL="$BASE_URL" npx playwright test "$spec_file" --reporter=list > "$log_file" 2>&1
@@ -65,13 +90,22 @@ for spec in "${SPECS[@]}"; do
 
   # Real failure signal, independent of Playwright's own exit code:
   bad=0
+  rate_limited=0
   reasons=()
+
+  # Check for Groq/server rate-limit responses FIRST and separately — this
+  # is expected, budget-driven noise (shared org account, TPM ~8000/min,
+  # TPD ~200000/day), not a real bug. Flag it distinctly so it doesn't get
+  # triaged like a genuine regression.
+  if grep -q "429\|Rate limit exceeded\|AI rate limit exceeded\|rate_limit_exceeded" "$log_file"; then
+    rate_limited=1
+    reasons+=("Groq/API rate limit hit — re-run later, not a code bug")
+  fi
 
   if [ $pw_exit -ne 0 ]; then
     bad=1
     reasons+=("playwright exit $pw_exit")
   fi
-
   if grep -q "\[demo-engine\] click .* FAILED" "$log_file"; then
     bad=1
     reasons+=("click failure")
@@ -97,16 +131,23 @@ for spec in "${SPECS[@]}"; do
     reasons+=("insecure baseURL — session cookie silently dropped")
   fi
 
-  # Any -CLICK-FAILED.png captured for this spec's screenshot dir
-  shot_hits=$(find tests/e2e/demo/screenshots -iname "*-CLICK-FAILED.png" -newer "$spec_file" 2>/dev/null | wc -l)
-  if [ "$shot_hits" -gt 0 ]; then
-    bad=1
-    reasons+=("$shot_hits CLICK-FAILED screenshot(s) captured")
+  # CLICK-FAILED screenshots newly created by THIS run, in THIS spec's own dir.
+  if [ $uses_demo_engine -eq 1 ] && [ -n "$shot_subdir" ]; then
+    shot_dir="tests/e2e/demo/screenshots/${shot_subdir}"
+    after_count=$(find "$shot_dir" -iname "*-CLICK-FAILED.png" 2>/dev/null | wc -l)
+    new_hits=$(( after_count - before_count ))
+    if [ "$new_hits" -gt 0 ]; then
+      bad=1
+      reasons+=("$new_hits new CLICK-FAILED screenshot(s) in $shot_dir")
+    fi
   fi
 
-  if [ $bad -eq 0 ]; then
+  if [ $bad -eq 0 ] && [ $rate_limited -eq 0 ]; then
     echo "CLEAN $spec"
     PASS+=("$spec")
+  elif [ $rate_limited -eq 1 ] && [ $bad -eq 0 ]; then
+    echo "RATE-LIMITED $spec :: re-run once token budget resets  (see $log_file)"
+    RATE_LIMITED+=("$spec")
   else
     echo "FAIL  $spec :: ${reasons[*]}  (see $log_file)"
     FAIL+=("$spec :: ${reasons[*]}")
@@ -119,6 +160,9 @@ echo "PROD-READY SWEEP RESULT"
 echo "=========================================="
 echo "Clean (${#PASS[@]}):"
 for s in "${PASS[@]}"; do echo "  OK    $s"; done
+echo
+echo "Rate-limited, not a bug — re-run later (${#RATE_LIMITED[@]}):"
+for s in "${RATE_LIMITED[@]}"; do echo "  RETRY $s"; done
 echo
 echo "Needs fixing (${#FAIL[@]}):"
 for s in "${FAIL[@]}"; do echo "  FAIL  $s"; done
