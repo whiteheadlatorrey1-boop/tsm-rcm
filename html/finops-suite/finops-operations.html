@@ -349,6 +349,7 @@ async function tsmAI(s,u,m){try{const r=await fetch('/api/chat',{method:'POST',h
 </script>
   <link rel="stylesheet" href="/shared/tsm-shared.css">
   <script src="/shared/tsm-shared.js"></script>
+<script src="/shared/tsm-memory-engine.js"></script>
 <script src="/js/tsm-runtime-lock.js"></script>
 <script src="/js/tsm-event-contract.js"></script>
 <script src="/js/tsm-autonomy-layer.js"></script>
@@ -1945,6 +1946,56 @@ function ccSeedDemo() {
   ];
 }
 
+// Mirrors the register/resolve-diff pattern in working-capital-calculator.html:
+// resolve codes that are open but no longer present in the current
+// transaction set, register codes that are newly present, leave everything
+// else alone (don't spam duplicate anomalies for an already-open exception).
+function ccSyncAnomalies() {
+  if (!window.TSMMemory) return;
+
+  const missing = ccTransactions.filter(t => t.receiptStatus === 'missing');
+  const flagged = ccTransactions.filter(t => t.flagged && !t.escalated);
+
+  const current = new Map();
+  missing.forEach(t => current.set(`CCRECON_MISSING_RECEIPT_${t.id}`, {
+    entityType: 'cc-transaction', entityId: String(t.id),
+    title: `Missing Receipt — ${t.merchant} ($${t.amount.toFixed(2)}, ${t.cardholder || 'cardholder unknown'})`,
+    severity: 'HIGH',
+    meta: { date: t.date, merchant: t.merchant, amount: t.amount, cardholder: t.cardholder }
+  }));
+  flagged.forEach(t => current.set(`CCRECON_FRAUD_FLAG_${t.id}`, {
+    entityType: 'cc-transaction', entityId: String(t.id),
+    title: `Unusual Spend — ${t.merchant} ($${t.amount.toFixed(2)}) — ${t.flagReason || 'flagged for review'}`,
+    severity: 'CRITICAL',
+    meta: { date: t.date, merchant: t.merchant, amount: t.amount, flagReason: t.flagReason }
+  }));
+
+  const existing = window.TSMMemory.get();
+  const openCodes = new Set(
+    (existing?.anomalies || [])
+      .filter(a => a.status === 'open' && a.entityType === 'cc-transaction' && a.anomalyCode.startsWith('CCRECON_'))
+      .map(a => a.anomalyCode)
+  );
+
+  openCodes.forEach(code => {
+    if (current.has(code)) return;
+    window.TSMMemory.resolveAnomaly({
+      anomalyCode: code, entityType: 'cc-transaction',
+      entityId: (existing.anomalies.find(a => a.anomalyCode === code) || {}).entityId || 'UNKNOWN',
+      resolvedBy: 'cc-recon', status: 'resolved'
+    });
+  });
+
+  current.forEach((a, code) => {
+    if (openCodes.has(code)) return;
+    window.TSMMemory.registerAnomaly({
+      entityType: a.entityType, entityId: a.entityId,
+      anomalyCode: code, title: a.title, severity: a.severity,
+      source: 'cc-recon', meta: a.meta
+    });
+  });
+}
+
 function ccRender() {
   const uncat = ccTransactions.filter(t => !t.category && !t.flagged);
   const missing = ccTransactions.filter(t => t.receiptStatus === 'missing');
@@ -1978,6 +2029,8 @@ function ccRender() {
 
   document.getElementById('cc-uncategorized-badge').textContent = uncat.length + ' Uncategorized';
   document.getElementById('cc-missing-badge').textContent = missing.length + ' Missing Receipts';
+
+  ccSyncAnomalies();
 }
 
 function ccHandleUpload(e) {
@@ -2140,22 +2193,75 @@ function prParseCsv(text) {
   return out;
 }
 
+// Same register/resolve-diff pattern as ccSyncAnomalies() / working-capital-calculator.html:
+// entityId is the employee name + store (payroll has no stable numeric id
+// like ccTransactions.id), so a name change or a corrected CSV re-import
+// naturally resolves the old code and registers a fresh one.
+function prSyncAnomalies(exceptions) {
+  if (!window.TSMMemory) return;
+
+  const current = new Map();
+  exceptions.forEach(x => {
+    // Code must be unique per employee, not just per store+type — two
+    // employees at the same store both tripping OT would otherwise collide
+    // on one Map key and silently drop one of the two anomalies.
+    const slug = `${x.type}_${x.employee}_${x.store}`.replace(/[^a-z0-9]+/gi, '_').toUpperCase();
+    const code = `PAYROLL_${slug}`;
+    current.set(code, {
+      entityType: 'payroll-employee', entityId: `${x.store}::${x.employee}`,
+      title: `${x.title} — ${x.detail}`,
+      severity: x.severity === 'high' ? 'HIGH' : 'MEDIUM',
+      meta: { store: x.store, employee: x.employee, detail: x.detail }
+    });
+  });
+
+  const existing = window.TSMMemory.get();
+  const openCodes = new Set(
+    (existing?.anomalies || [])
+      .filter(a => a.status === 'open' && a.entityType === 'payroll-employee' && a.anomalyCode.startsWith('PAYROLL_'))
+      .map(a => a.anomalyCode)
+  );
+
+  openCodes.forEach(code => {
+    if (current.has(code)) return;
+    window.TSMMemory.resolveAnomaly({
+      anomalyCode: code, entityType: 'payroll-employee',
+      entityId: (existing.anomalies.find(a => a.anomalyCode === code) || {}).entityId || 'UNKNOWN',
+      resolvedBy: 'payroll', status: 'resolved'
+    });
+  });
+
+  current.forEach((a, code) => {
+    if (openCodes.has(code)) return;
+    window.TSMMemory.registerAnomaly({
+      entityType: a.entityType, entityId: a.entityId,
+      anomalyCode: code, title: a.title, severity: a.severity,
+      source: 'payroll', meta: a.meta
+    });
+  });
+}
+
 function prCheckExceptions(silent) {
   const exceptions = [];
   prEmployees.forEach(e => {
     if (e.otHrs > PR_OT_THRESHOLD) {
-      exceptions.push({ severity: 'high', store: e.store, title: `Overtime Spike — ${e.store}`,
+      exceptions.push({ severity: 'high', store: e.store, employee: e.name, type: 'OT_SPIKE',
+        title: `Overtime Spike — ${e.store}`,
         detail: `${e.name}: ${e.otHrs} OT hrs (threshold: ${PR_OT_THRESHOLD}). Manager approval required before submission.` });
     }
     if (e.missingPunch) {
-      exceptions.push({ severity: 'amber', store: e.store, title: `Missing Punch — ${e.store}`,
+      exceptions.push({ severity: 'amber', store: e.store, employee: e.name, type: 'MISSING_PUNCH',
+        title: `Missing Punch — ${e.store}`,
         detail: `${e.name}: ${e.missingDate} clock-out missing. Estimated ${e.estHrs} hrs applied — verify with manager.` });
     }
     if (e.rateChange) {
-      exceptions.push({ severity: 'amber', store: e.store, title: `Rate Change — ${e.store}`,
+      exceptions.push({ severity: 'amber', store: e.store, employee: e.name, type: 'RATE_CHANGE',
+        title: `Rate Change — ${e.store}`,
         detail: `${e.name}: Pay rate updated mid-period ($${e.oldRate.toFixed(2)} → $${e.newRate.toFixed(2)}). Confirm effective date.` });
     }
   });
+
+  prSyncAnomalies(exceptions);
 
   const list = document.getElementById('pr-exceptions-list');
   list.innerHTML = exceptions.length ? exceptions.map(x => `
