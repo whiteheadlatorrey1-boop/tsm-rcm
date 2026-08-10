@@ -2074,6 +2074,37 @@ document.addEventListener('DOMContentLoaded',()=>{
       console.warn('Schools: sentinel push failed', e);
     }
   }
+  // Enterprise Capability Sweep — mirrors construction-war-room.html's
+  // fireCapabilitySweep() pattern. Vertical had zero coverage of the
+  // enterprise-capability sweep before this (confirmed via
+  // scripts/vertical-capability-coverage.js). Nothing invented: title/
+  // summary/exposure all come off the same engine.getFinancialSummary()
+  // / schPushToSentinel() anomaly data already computed for the relay.
+  function fireCapabilitySweep_SCH(anomalies) {
+    if (!engine) return;
+    try {
+      const fin = engine.getFinancialSummary();
+      const worst = (anomalies || []).reduce((w, a) => (!w || (a.exposure || 0) > (w.exposure || 0)) ? a : w, null);
+      fetch('/api/enterprise/capability-sweep', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vertical: 'schools',
+          title: worst ? worst.title : 'Grant Portfolio Review',
+          summary: worst ? worst.rootCause : `Total exposure ${fin.total_exposure || 0} across active grant portfolio.`,
+          exposure: fin.total_exposure ? '$' + Number(fin.total_exposure).toLocaleString() : null,
+          entities: {
+            customer: 'Grant Portfolio',
+            relationshipType: 'Grantee',
+            contingency: 'Reporting-deadline / compliance exposure',
+            sku: 'GRANT-FILE',
+            productName: 'Grant Funding & Compliance'
+          }
+        })
+      }).catch(err => console.warn('[Capability Sweep Schools]', err.message));
+    } catch (err) { console.warn('[Capability Sweep Schools]', err.message); }
+  }
+
   // Phase 2: Mission Core creation. Only called from schRunAnalysis() (explicit
   // user-triggered analysis run), NOT from schWriteRelay()'s other automatic
   // call sites (hydration on load, sample-data load) to avoid creating a
@@ -2087,6 +2118,7 @@ document.addEventListener('DOMContentLoaded',()=>{
       const raw = localStorage.getItem('TSM_SCHOOLS_STRATEGIST_RELAY');
       const sentinelPayload = raw ? JSON.parse(raw) : null;
       const anomalies = (sentinelPayload && sentinelPayload.anomalies) || [];
+      fireCapabilitySweep_SCH(anomalies);
       const schSeverityRank = { CRIT: 3, HIGH: 2, MED: 1, LOW: 0 };
       const worst = anomalies.reduce((w, a) => {
         if (!w) return a;

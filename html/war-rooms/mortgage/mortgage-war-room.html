@@ -425,12 +425,43 @@ tr:hover td{background:rgba(212,175,55,.03)}
     return anomalies;
   }
 
+  // Enterprise Capability Sweep — mirrors construction-war-room.html's
+  // fireCapabilitySweep() pattern. Vertical had zero coverage of the
+  // enterprise-capability sweep before this (confirmed via
+  // scripts/vertical-capability-coverage.js). Nothing invented: title/
+  // summary/exposure all come off the same engine.getFinancialSummary()
+  // / mtgBuildSentinelAnomalies() data the relay payload itself uses.
+  function fireCapabilitySweep_MTG(payload) {
+    try {
+      const fin = engine.getFinancialSummary();
+      const worst = (payload.anomalies || []).reduce((w, a) => (!w || (a.exposure || 0) > (w.exposure || 0)) ? a : w, null);
+      fetch('/api/enterprise/capability-sweep', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          vertical: 'mortgage',
+          title: worst ? worst.title : 'Mortgage Pipeline Review',
+          summary: worst ? worst.rootCause : `Total exposure ${fin.total_exposure || 0} across open loan pipeline.`,
+          exposure: fin.total_exposure ? '$' + Number(fin.total_exposure).toLocaleString() : null,
+          entities: {
+            customer: 'Mortgage Pipeline',
+            relationshipType: 'Borrower',
+            contingency: 'Rate-lock / closing deadline exposure',
+            sku: 'LOAN-FILE',
+            productName: 'Mortgage Loan Origination'
+          }
+        })
+      }).catch(err => console.warn('[Capability Sweep Mortgage]', err.message));
+    } catch (err) { console.warn('[Capability Sweep Mortgage]', err.message); }
+  }
+
   function relayToStrategist() {
     const aiText = document.getElementById('aiOutput').textContent;
     const payload = engine.buildRelayPayload(aiText.startsWith('Run analysis') ? null : aiText);
     payload.generatedAt = payload.generatedAt || new Date().toISOString();
     payload.anomalies = mtgBuildSentinelAnomalies();
     engine.saveToStorage();
+    fireCapabilitySweep_MTG(payload);
     try {
       localStorage.setItem('TSM_MORTGAGE_STRATEGIST_RELAY', JSON.stringify(payload));
       if (window.TSM && window.TSM.relay && window.TSM.relay.write) {
