@@ -3305,12 +3305,33 @@ async function extractPdf(file) {
   return { type: "image", value: canvas.toDataURL("image/png").split(",")[1], mime: "image/png" };
 }
  
+// .docx/.xlsx/.xls are binary (zip-based) formats -- reading them with
+// FileReader.readAsText() (what fileToText() does) silently produces
+// garbled/unusable text with no error, which then gets fed straight into
+// AI classification as if it were real document content. This routes
+// those extensions through real server-side extraction (mammoth/xlsx)
+// instead. See routes/doc-extract.js for the extraction logic.
+async function extractBinaryDoc(file) {
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await fetch("/api/doc-router/extract-file", { method: "POST", body: fd });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || ("extract_failed_" + res.status));
+  }
+  const data = await res.json();
+  return data.text || "";
+}
+
 async function extractFile(file) {
   const ext = (file.name.split(".").pop() || "").toLowerCase();
   if (["png","jpg","jpeg","webp"].includes(ext)) {
     return { type: "image", value: await fileToBase64(file), mime: file.type || "image/png" };
   }
   if (ext === "pdf") return await extractPdf(file);
+  if (["docx","xlsx","xls"].includes(ext)) {
+    return { type: "text", value: await extractBinaryDoc(file) };
+  }
   return { type: "text", value: await fileToText(file) };
 }
  
