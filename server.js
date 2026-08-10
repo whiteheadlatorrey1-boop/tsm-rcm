@@ -1175,6 +1175,7 @@ app.use(require('./routes/construction'));
 app.use(require('./routes/property-accounting'));
 app.use(require('./routes/finops'));
 app.use(require('./routes/live-data'));
+app.use(require('./routes/doc-router'));
 
 // ── RCM RELAY ─────────────────────────────────────────────────────────────────
 // Server-side staging for the FinOps Doc Showcase -> TSM RCM OS handoff.
