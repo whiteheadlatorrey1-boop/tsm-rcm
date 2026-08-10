@@ -820,7 +820,13 @@ Return ONLY the JSON object. No markdown, no explanation.`;
     const resp = await fetch('/api/war-room/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: GROQ_MODEL, max_tokens: 1200, stream: true, json_mode: true, messages: [{ role: 'user', content: prompt }] })
+      // max_tokens was 1200 -- too tight for this schema (11 scalar fields
+      // plus a 3-item risks[] array and a 4-item bnca[] array of JSON) and
+      // prone to mid-object truncation, which makes tsmExtractJSON() return
+      // null and silently drops into the fallback path below. Matches the
+      // same truncation fix already applied to this vertical's strategist
+      // (fireStrategy(): 1600 -> 3000) for a comparably-shaped schema.
+      body: JSON.stringify({ model: GROQ_MODEL, max_tokens: 2000, stream: true, json_mode: true, messages: [{ role: 'user', content: prompt }] })
     });
 
     const reader = resp.body.getReader();
@@ -852,12 +858,30 @@ Return ONLY the JSON object. No markdown, no explanation.`;
       addMemoryEntry('Extraction complete: ' + result.rootCause);
     } else {
       renderFallback(raw);
+      // Structured parse failed (truncation, malformed model output, etc.)
+      // -- previously this branch left TSM_BPO_WAR_RELAY unwritten while
+      // the UI below still unconditionally declared "ENGINE COMPLETE" in
+      // green. That silently broke everything downstream: the Strategist
+      // page's auto-run checks specifically for that relay key, found
+      // nothing, and never fired -- with no error shown anywhere and the
+      // Strategist quietly falling back to unrelated Supply Chain demo
+      // placeholder data instead of this case. Store an honest fallback
+      // extraction (raw text carried forward, never inventing structured
+      // fields we don't have) so the relay chain still works, same
+      // never-invent-data convention as buildStrategyFallback() downstream.
+      storeWarRoomRelay({
+        situationSummary: (raw || '').slice(0, 800) || 'Extraction engine returned no parsable output.',
+        rootCause: 'Structured parse failed — see raw engine output below for details',
+        risks: [],
+        bnca: [],
+      });
+      addMemoryEntry('Extraction complete (raw output — structured parse failed)');
     }
 
-    document.getElementById('engineCount').textContent = '6 engines complete';
-    document.getElementById('enginePulse').style.background = 'var(--green)';
-    setStatus('Extraction complete — route to Strategist to model outcomes');
-    document.getElementById('fireEngineBtn').textContent = '✓ ENGINE COMPLETE';
+    document.getElementById('engineCount').textContent = result ? '6 engines complete' : '6 engines complete (raw output — parse issue)';
+    document.getElementById('enginePulse').style.background = result ? 'var(--green)' : 'var(--amber)';
+    setStatus(result ? 'Extraction complete — route to Strategist to model outcomes' : 'Extraction complete with a parse issue — raw output available, route to Strategist to continue');
+    document.getElementById('fireEngineBtn').textContent = result ? '✓ ENGINE COMPLETE' : '⚠ ENGINE COMPLETE (raw output)';
     document.getElementById('fireEngineBtn').disabled = true;
 
     // Update evidence panel
