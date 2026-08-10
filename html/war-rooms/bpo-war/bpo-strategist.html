@@ -520,11 +520,21 @@ function selectScenario(id) {
 }
 
 // ── ADAPT HONEYWELL INCIDENT-TOOL RELAY INTO THIS PAGE'S SHAPE ──
-// The plant / supplier / cyber incident command centers write TSM_HONEYWELL_RELAY
-// in a different shape than TSM_BPO_WAR_RELAY. This maps one to the other so
-// escalating from any of the three incident tools actually populates this page.
+// The plant / supplier / cyber incident command centers each write their own
+// domain-scoped relay key now (TSM_HONEYWELL_PLANT_RELAY etc. -- see
+// loadRelay() below) in a different shape than TSM_BPO_WAR_RELAY. This maps
+// one to the other so escalating from any of the three incident tools
+// actually populates this page.
 function adaptHoneywellRelay(raw) {
-  const sectorMap = { plant: 'Plant Operations', supplier: 'Supply Chain', cyber: 'OT/ICS Security' };
+  // These must match the actual `source` values the three tools write
+  // (plant-incident.html / supplier-shutdown.html / cyber-incident.html all
+  // write the full 'plant-incident' / 'supplier-shutdown' / 'cyber-incident'
+  // string, not the short 'plant' / 'supplier' / 'cyber' this map previously
+  // used) -- with the old short keys, sectorMap[raw.source] always missed
+  // and silently fell through to the generic 'Operations' default, on top
+  // of the relay key itself being dead. Mirrors honeywell-strategist.html's
+  // SOURCE_META keys, which use the same full source strings.
+  const sectorMap = { 'plant-incident': 'Plant Operations', 'supplier-shutdown': 'Supply Chain', 'cyber-incident': 'OT/ICS Security' };
   const engines = {};
   (raw.outputs || []).forEach((o, i) => { engines['engine' + (i + 1)] = o.text; });
 
@@ -554,16 +564,50 @@ function adaptHoneywellRelay(raw) {
   };
 }
 
+// Domain-specific relay keys the three Honeywell incident tools actually
+// write to post-split. TSM_HONEYWELL_RELAY (singular, unscoped) is what this
+// page read for a long time, but none of the three tools have written to it
+// since the split -- the bridge was permanently dead. Mirrors
+// honeywell-strategist.html's own RELAY_KEYS / LEGACY_RELAY_KEY pattern.
+const HONEYWELL_RELAY_KEYS = {
+  plant: 'TSM_HONEYWELL_PLANT_RELAY',
+  cyber: 'TSM_HONEYWELL_CYBER_RELAY',
+  supplier: 'TSM_HONEYWELL_SUPPLIER_RELAY'
+};
+const HONEYWELL_LEGACY_RELAY_KEY = 'TSM_HONEYWELL_RELAY';
+
+// Reads whichever of the three domain-scoped keys was written most
+// recently (by timestamp), falling back to the legacy unscoped key only
+// for any pre-split data that might still be sitting in storage.
+function readLatestHoneywellRelay() {
+  let latest = null;
+  for (const key of Object.values(HONEYWELL_RELAY_KEYS)) {
+    try {
+      const raw = sessionStorage.getItem(key) || localStorage.getItem(key);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw);
+      if (!latest || (parsed.timestamp && (!latest.timestamp || parsed.timestamp > latest.timestamp))) {
+        latest = parsed;
+      }
+    } catch(e) { /* skip malformed entry, keep checking other domains */ }
+  }
+  if (latest) return latest;
+  try {
+    const raw = sessionStorage.getItem(HONEYWELL_LEGACY_RELAY_KEY) || localStorage.getItem(HONEYWELL_LEGACY_RELAY_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch(e) { return null; }
+}
+
 // ── LOAD RELAY ──
 (function loadRelay(){
   try {
     const bpoRaw = sessionStorage.getItem('TSM_BPO_WAR_RELAY') || localStorage.getItem('TSM_BPO_WAR_RELAY');
-    const honeywellRaw = sessionStorage.getItem('TSM_HONEYWELL_RELAY') || localStorage.getItem('TSM_HONEYWELL_RELAY');
+    const honeywellData = bpoRaw ? null : readLatestHoneywellRelay();
 
     if (bpoRaw) {
       warData = JSON.parse(bpoRaw);
-    } else if (honeywellRaw) {
-      warData = adaptHoneywellRelay(JSON.parse(honeywellRaw));
+    } else if (honeywellData) {
+      warData = adaptHoneywellRelay(honeywellData);
     } else {
       loadDemoMode();
       return;
@@ -1401,9 +1445,14 @@ async function runStrategist() {
 }
 (function(){
   try {
-    const raw = sessionStorage.getItem('TSM_BPO_WAR_RELAY') || localStorage.getItem('TSM_BPO_WAR_RELAY')
-             || sessionStorage.getItem('TSM_HONEYWELL_RELAY') || localStorage.getItem('TSM_HONEYWELL_RELAY');
-    if (!raw) return;
+    // Same dead-key bug as loadRelay() above: this used to only check the
+    // legacy TSM_HONEYWELL_RELAY, which none of the three incident tools
+    // write to anymore, so auto-run silently never fired for a Honeywell
+    // escalation. Checks the same domain-scoped keys loadRelay() now reads.
+    const bpoRaw = sessionStorage.getItem('TSM_BPO_WAR_RELAY') || localStorage.getItem('TSM_BPO_WAR_RELAY');
+    const hasHoneywellRelay = !bpoRaw && Object.values(HONEYWELL_RELAY_KEYS).concat(HONEYWELL_LEGACY_RELAY_KEY)
+      .some(key => sessionStorage.getItem(key) || localStorage.getItem(key));
+    if (!bpoRaw && !hasHoneywellRelay) return;
     if (localStorage.getItem('tsm_auto_mode') === 'off') return;
     if (localStorage.getItem('TSM_AUTO_LAUNCH') === 'false') return;
     setTimeout(() => { if (typeof runStrategist === 'function') runStrategist(); }, 1500);
