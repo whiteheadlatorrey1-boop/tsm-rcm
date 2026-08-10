@@ -92,19 +92,31 @@ router.post('/api/property-accounting/:missionId/ap/:invoiceId/approve', async (
       return res.status(409).json({ ok: false, error: 'invoice not found or not pending' });
     }
 
-    // Approving payment is a real offsetting entry: debit expense, credit cash.
-    const entry = {
+    // Approving payment is a real offsetting entry: debit expense, credit
+    // cash. Both legs must post or the ledger can never balance -- a
+    // debit-only entry (the previous bug here) silently left every
+    // AP-approved invoice permanently out of balance.
+    const description = 'AP approved — ' + updated.vendor + ' (' + updated.id + ')';
+    const debitEntry = {
       date: new Date().toISOString().slice(0, 10),
       account: 'Construction Expense',
       type: 'debit',
       amount: updated.amount,
-      description: 'AP approved — ' + updated.vendor + ' (' + updated.id + ')',
+      description,
     };
-    const posted = await ledger.paPostGlEntry(missionId, entry);
+    const creditEntry = {
+      date: new Date().toISOString().slice(0, 10),
+      account: 'Cash',
+      type: 'credit',
+      amount: updated.amount,
+      description,
+    };
+    const postedDebit = await ledger.paPostGlEntry(missionId, debitEntry);
+    const postedCredit = await ledger.paPostGlEntry(missionId, creditEntry);
     await ledger.paAdjustActual(missionId, updated.amount);
 
     const mission = await ledger.paGetMission(missionId);
-    res.json({ ok: true, invoice: updated, entry: posted, mission });
+    res.json({ ok: true, invoice: updated, entries: [postedDebit, postedCredit], mission });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
   }
@@ -134,6 +146,25 @@ router.post('/api/property-accounting/:missionId/budget', async (req, res) => {
       return res.status(400).json({ ok: false, error: 'budget must be a positive number' });
     }
     const mission = await ledger.paUpdateBudget(missionId, numBudget);
+    res.json({ ok: true, mission });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// POST /api/property-accounting/:missionId/reset
+// Test/demo-support only: wipes GL entries + AP invoice state for this
+// missionId and re-seeds the mission doc from DEFAULT_SEED/DEFAULT_AP_INVOICES.
+// paEnsureMission is first-write-wins (see tsm-ledger-service.js), so a real
+// persisted-backend e2e run against a fixed missionId (PA-MEC-001) otherwise
+// accumulates entries across every run forever -- this exists so
+// property-accounting-revenue-cycle.spec.js's stateful tests (journal entry
+// posting, AP approval) stay repeatable instead of only passing once.
+router.post('/api/property-accounting/:missionId/reset', async (req, res) => {
+  try {
+    const { missionId } = req.params;
+    const mission = await ledger.paResetMission(missionId, DEFAULT_SEED);
+    await ledger.paEnsureApInvoices(missionId, DEFAULT_AP_INVOICES);
     res.json({ ok: true, mission });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });

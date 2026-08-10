@@ -568,7 +568,10 @@ async function approveInvoice(id){
     try {
       const result = await paFetch('/ap/' + encodeURIComponent(id) + '/approve', { method: 'POST' });
       mission.actual = result.mission.actual;
-      glEntries.push(result.entry);
+      // Server now posts both offsetting legs (result.entries); fall back to
+      // the old singular result.entry shape in case an older backend deploy
+      // is still live somewhere.
+      (result.entries || [result.entry]).forEach(function(e){ if (e) glEntries.push(e); });
     } catch(e) {
       alert('Backend write failed, approval NOT persisted: ' + e.message);
       return;
@@ -576,12 +579,21 @@ async function approveInvoice(id){
   } else {
     // Real offsetting entry: approving payment is a debit to expense,
     // credit to cash — this is what actually posts to the ledger/Actual.
+    // Both legs must post or the ledger can never balance.
+    const description = 'AP approved: ' + inv.vendor + ' (' + inv.id + ')';
     glEntries.push({
       date: new Date().toISOString().slice(0, 10),
       account: 'Construction Expense',
       type: 'debit',
       amount: inv.amount,
-      description: 'AP approved: ' + inv.vendor + ' (' + inv.id + ')'
+      description: description
+    });
+    glEntries.push({
+      date: new Date().toISOString().slice(0, 10),
+      account: 'Cash',
+      type: 'credit',
+      amount: inv.amount,
+      description: description
     });
     mission.actual += inv.amount;
   }

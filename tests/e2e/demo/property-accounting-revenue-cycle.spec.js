@@ -10,6 +10,19 @@ const { test, expect } = require('@playwright/test');
 
 const BASE_URL = process.env.TSM_BASE_URL || 'http://localhost:8080';
 const PAGE_PATH = '/construction-suite/property-accounting-revenue-cycle.html';
+const MISSION_ID = 'PA-MEC-001';
+
+// The page's missionId is hardcoded (see html/.../property-accounting-revenue-cycle.html
+// const mission = { missionId: "PA-MEC-001", ... }), and paEnsureMission() on the
+// backend is first-write-wins -- it never re-seeds an existing mission doc. Against
+// a real persisted-Mongo backend that means every past e2e run's journal entries /
+// AP approvals stay in the database forever, so the stateful tests below (which
+// assert a pristine starting ledger/AP queue) only pass on the very first run ever
+// made against this missionId. Reset before each so repeat runs are deterministic.
+async function resetMission(request) {
+  const res = await request.post(BASE_URL + '/api/property-accounting/' + MISSION_ID + '/reset');
+  if (!res.ok()) throw new Error('Mission reset failed: ' + res.status() + ' ' + (await res.text()));
+}
 
 const EXISTING_STRATEGIST_PAYLOAD = {
   summary: 'Existing BNCA synthesis text',
@@ -22,6 +35,10 @@ const EXISTING_STRATEGIST_PAYLOAD = {
 };
 
 test.describe('Property Accounting & Revenue Cycle (construction-suite)', () => {
+  test.beforeEach(async ({ request }) => {
+    await resetMission(request);
+  });
+
   test('renders KPIs, revenue cycle steps, and exception queue', async ({ page }) => {
     page.on('pageerror', (err) => { throw new Error('[PAGE ERROR] ' + err.message); });
 

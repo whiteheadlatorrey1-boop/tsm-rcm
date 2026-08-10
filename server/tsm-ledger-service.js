@@ -198,6 +198,33 @@ async function paSetApInvoiceStatus(missionId, invoiceId, status) {
   return result && result.value ? result.value : result;
 }
 
+/**
+ * Test/demo-support only: wipes all GL entries and AP invoices for a
+ * missionId and resets its mission doc back to `seed`, so a repeatable
+ * e2e run (or a demo reset) starts from a pristine state instead of
+ * accumulating real persisted entries run over run. paEnsureMission is
+ * first-write-wins by design (never overwrites once seeded), so this is
+ * the only way to actually re-seed an existing missionId.
+ */
+async function paResetMission(missionId, seed) {
+  const [glCol, apCol, missionCol] = await Promise.all([
+    paGlCollection(),
+    paApCollection(),
+    paMissionCollection(),
+  ]);
+  await Promise.all([
+    glCol.deleteMany({ missionId }),
+    apCol.deleteMany({ missionId }),
+    missionCol.deleteOne({ missionId }),
+  ]);
+  await missionCol.updateOne(
+    { missionId },
+    { $setOnInsert: { missionId, ...seed, createdAt: new Date().toISOString() } },
+    { upsert: true }
+  );
+  return missionCol.findOne({ missionId });
+}
+
 module.exports = {
   connect,
   getDb,
@@ -215,4 +242,5 @@ module.exports = {
   paListApInvoices,
   paEnsureApInvoices,
   paSetApInvoiceStatus,
+  paResetMission,
 };
