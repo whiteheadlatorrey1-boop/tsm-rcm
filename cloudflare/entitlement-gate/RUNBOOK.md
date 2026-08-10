@@ -1,3 +1,28 @@
+# Runbook: Closing the fly.dev bypass + shared-engine-JS protection
+
+One-time setup (do this once, not per-subdomain):
+
+1. Generate a random secret, e.g. `openssl rand -hex 32`.
+2. Set it on Fly: `fly secrets set CF_GATE_SECRET=<value> -a tsm-consultz`
+3. Set the same value on the Worker:
+   `cd cloudflare/entitlement-gate && wrangler secret put TSM_GATE_SECRET`
+   (paste the same value when prompted)
+4. `wrangler deploy` to ship the Worker with the secret wired in.
+5. Verify: `curl -sI https://tsm-consultz.fly.dev/` directly should now
+   return `403 Forbidden` (bypass closed), while
+   `curl -sI https://app.tsmatter.com/` (routed through the Worker)
+   should still return `200 OK`.
+
+Until both secrets are set, this whole mechanism is a silent no-op —
+existing traffic (including local/Codespace dev) is unaffected.
+
+The same deploy also turns on the same-origin check for `/shared`,
+`/core`, `/architecture`, `/runtime` — direct curl/address-bar requests
+to those paths get a `404` on any `*.tsmatter.com` hostname; real
+`<script src>` loads from your own pages are unaffected.
+
+---
+
 # Runbook: Provisioning a new vertical subdomain
 
 Use this whenever you sell a new vertical and need to spin up its own
