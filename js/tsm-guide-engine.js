@@ -928,6 +928,73 @@
     }, true);
   }
 
+  // Allowlist — only the generic vertical/role fallback below (GUIDE_CONFIGS)
+  // gets gated by this. data-page-role="warroom" was stamped on ~185 pages
+  // that aren't real war-room pages (howto docs, showcases, tax-prep, suite
+  // indexes) by default, so that fallback showed a bogus tracker on all of
+  // them. APP_CONFIGS (hand-verified single pages) and the mission/relay
+  // continuity banner are separate, deliberate features and are NOT gated
+  // by this — only render-everywhere-by-default is the bug being fixed.
+  // Resolved duplicate/legacy copies (e.g. html/healthcare/* vs the orphaned
+  // html/war-rooms/health-war/* mirror) by link-reference count, not guessing.
+  const ALLOWED_PAGES = [
+    "/war-rooms/re-war/re-war-room.html",
+    "/war-rooms/re-war/re-strategist.html",
+    "/war-rooms/re-war/re-exec-portal.html",
+
+    "/concierge/concierge-war-room.html",
+    "/concierge/concierge-strategist.html",
+    "/concierge/concierge-executive-portal.html",
+
+    "/war-rooms/legal-war/legal-war-room.html",
+    "/war-rooms/legal-war/legal-main-strategist.html",
+    "/war-rooms/legal-war/legal-executive-portal.html",
+
+    "/war-rooms/construct-war/construction-war-room.html",
+    "/war-rooms/construct-war/construction-strategist.html",
+    "/war-rooms/construct-war/construction-executive-portal.html",
+
+    "/healthcare/hc-denial-war-room.html",
+    "/healthcare/hc-main-strategist.html",
+    "/healthcare/executive-portal.html",
+
+    "/war-rooms/mortgage/mortgage-war-room.html",
+    "/war-rooms/mortgage/mortgage-strategist.html",
+    "/war-rooms/mortgage/mortgage-executive-portal.html",
+
+    "/war-rooms/schools-command/schools-command.html",
+    "/war-rooms/schools-command/schools-strategist.html",
+    "/war-rooms/schools-command/schools-executive-portal.html",
+
+    "/finops-main-strategist.html",
+    "/finops-suite/finops-war/finops-executive-portal.html",
+
+    "/war-rooms/insure-war/insurance-war-room.html",
+    "/war-rooms/insure-war/insurance-strategist.html",
+    "/war-rooms/insure-war/insurance-executive-portal.html",
+
+    "/l1-copilot/noc/noc-war-room.html",
+    "/l1-copilot/noc/noc-strategist.html",
+    "/l1-copilot/noc/noc-executive-portal.html",
+
+    "/war-rooms/honeywell-strategist.html",
+    "/war-rooms/honeywell-executive-portal.html",
+
+    "/plant-incident.html",
+    "/cyber-incident.html",
+    "/supplier-shutdown.html"
+  ];
+
+  function isAllowedPage() {
+    let path = window.location.pathname.toLowerCase();
+    // server.js mounts both '/' and '/html' to html/, so normalize the
+    // '/html' prefix away before comparing — exact match only, no endsWith,
+    // so same-named files in different directories (e.g. the canonical
+    // finops-main-strategist.html vs the finops-war/ copy) can't collide.
+    if (path.indexOf("/html/") === 0) path = path.substring(5);
+    return ALLOWED_PAGES.indexOf(path) !== -1;
+  }
+
   // 5. Bootstrap Engine on DOM Load
   document.addEventListener("DOMContentLoaded", function () {
     // Always-on: capture "LAUNCH/OPEN another app" clicks so continuity
@@ -949,10 +1016,20 @@
       checkerFn = null; // dynamic AI steps — no generic DOM signal to verify against
     } else {
       const appConfig = context.app && APP_CONFIGS[context.app];
-      const vertConfig = GUIDE_CONFIGS[context.vertical] || GUIDE_CONFIGS.re;
-      pageConfig = appConfig || vertConfig[context.role] || vertConfig.warroom || vertConfig.strategist;
-      checkerFn = (context.app && APP_STATE_CHECKERS[context.app])
-        || (STATE_CHECKERS[context.vertical] && STATE_CHECKERS[context.vertical][context.role]);
+      if (appConfig) {
+        pageConfig = appConfig;
+        checkerFn = context.app && APP_STATE_CHECKERS[context.app];
+      } else if (isAllowedPage()) {
+        const vertConfig = GUIDE_CONFIGS[context.vertical] || GUIDE_CONFIGS.re;
+        pageConfig = vertConfig[context.role] || vertConfig.warroom || vertConfig.strategist;
+        checkerFn = STATE_CHECKERS[context.vertical] && STATE_CHECKERS[context.vertical][context.role];
+      } else {
+        console.warn(
+          "[tsm-guide-engine] Skipped generic vertical/role config: " + window.location.pathname +
+          " is not on the war-room/strategist/exec-portal allowlist. " +
+          "If this page IS a genuine war-room page, add its path to ALLOWED_PAGES in tsm-guide-engine.js."
+        );
+      }
     }
 
     if (pageConfig) {
