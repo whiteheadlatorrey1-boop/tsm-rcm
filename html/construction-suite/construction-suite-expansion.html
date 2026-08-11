@@ -918,35 +918,6 @@
   .groq-typing { animation:typing-blink .7s infinite; }
   @keyframes typing-blink { 0%,100%{opacity:1} 50%{opacity:0} }
 </style>
-<script>
-window.TSM_UI = {
-    runAudit: async (sector, factor) => {
-        const feed = document.querySelector('.intelligence-feed-output') || document.getElementById('intelligence-feed-output');
-        if (feed) feed.innerHTML = '<span style="color: #00ffff;">[STRATEGIST] Internal Link: Processing...</span>';
-        try {
-            const res = await fetch('/api/audit', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ query: `auditops "${sector}" --factor "${factor}" --logic strategist` })
-            });
-            const data = await res.json();
-            if (feed) feed.innerText = `[STRATEGIST] ${data.output || "Analysis Complete."}`;
-        } catch (e) {
-            if (feed) feed.innerText = "[STRATEGIST] Local API Bridge Failed.";
-        }
-    }
-};
-// Wire the sector cards to the auto-fill search prompt logic
-document.addEventListener('click', (e) => {
-    const card = e.target.closest('.module-card');
-    if (card) {
-        const sector = card.dataset.sector || "Construction";
-        const factor = card.querySelector('h3')?.innerText || "General Audit";
-        TSM_UI.runAudit(sector, factor);
-    }
-});
-console.log("TSM_UI: Direct Neural Link Established.");
-</script>
   <link rel="stylesheet" href="/shared/tsm-shared.css">
   <script src="/shared/tsm-shared.js"></script>
 <script src="/html/js/tsm-runtime-lock.js"></script>
@@ -3373,8 +3344,6 @@ window.addEventListener('load', () => {
    TSM STRATEGIST SYNC — Construction Suite Expansion
    Serialises live module state → localStorage → Strategist reads
    ═══════════════════════════════════════════════════════════════ */
-const TSM_SYNC_KEY = 'tsm_expansion_v1';
-const TSM_SYNC_CH  = new BroadcastChannel('tsm_strategist_feed');
 
 function tsmCollectState() {
   const ts = new Date().toISOString();
@@ -3534,8 +3503,6 @@ function buildDigest({ kpis, safetyDone, safetyTotal,
 function tsmSyncNow() {
   const snapshot = tsmCollectState();
   try {
-    localStorage.setItem(TSM_SYNC_KEY, JSON.stringify(snapshot));
-    TSM_SYNC_CH.postMessage({ type: 'expansion_update', snapshot });
     // Bridge to War Room's cross-tool reasoning context (getFieldOpsContext()).
     // Shape must match what construction-war-room.html expects.
     const scheduleRisk = snapshot.schedule.behindCount > 0
@@ -3634,29 +3601,11 @@ setInterval(tsmSyncNow, 90000);
 /* Initial sync on page load */
 window.addEventListener('load', () => setTimeout(tsmSyncNow, 800));
 
-console.log('[TSM] Strategist Sync active — key:', TSM_SYNC_KEY);
+console.log('[TSM] Strategist Sync active — key: tsm_construction_fieldops_context');
 </script>
 
 <script src="/shared/tsm-sector-intelligence.js?v=phase5si"></script>
 
-
-<script>(function(){
-document.addEventListener('click', function(e){
-
-  const el = e.target.closest('[data-tsm-action]');
-  if(!el) return;
-
-  const action = el.getAttribute('data-tsm-action');
-  const args = el.getAttribute('data-tsm-args');
-
-  if(window.TSM && TSM.launcher && TSM.launcher.run){
-    TSM.launcher.run(action, args);
-  } else {
-    console.warn('[TSM] launcher missing:', action, args);
-  }
-
-});
-})();</script>
   <script src="/core/tsm-kernel.js"></script>
   <!-- stripped -->
   <script src="/js/core/tsm-kernel-upgrade.js"></script>
@@ -3691,10 +3640,6 @@ window.tsmMission = window.tsmMission || {
   vertical: "construction-suite",
   
 };
-
-function tsmWriteRelay(payload){
-  TSM_KERNEL.setRelay("construction-suite", JSON.stringify(payload));
-}
 </script>
 
 <script>
