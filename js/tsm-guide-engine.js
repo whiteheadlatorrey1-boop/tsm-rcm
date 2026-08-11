@@ -10,6 +10,15 @@
     const body = document.body;
     const path = window.location.pathname.toLowerCase();
 
+    // Determine specific App (page-level override). When a page has been
+    // hand-verified (real DOM ids/functions read from source, not guessed),
+    // it gets its own entry in APP_CONFIGS/APP_STATE_CHECKERS and that takes
+    // priority over the generic vertical/role config below — those generic
+    // configs describe a DIFFERENT page's fields and won't match this one.
+    let app = null;
+    if (path.includes("finops-accounting")) app = "finops-accounting";
+    else if (path.includes("hc-denial-war-room")) app = "hc-denial-war-room";
+
     // Determine Vertical
     let vertical = body.getAttribute("data-vertical");
     if (!vertical) {
@@ -37,8 +46,169 @@
       else role = "warroom";
     }
 
-    return { vertical, role };
+    return { vertical, role, app };
   }
+
+  // 1a. Cross-page continuity — this is what lets the guide widget act as
+  // one continuous AI Guide instead of resetting every time the user is
+  // routed to a different vertical's app to cure an anomaly.
+  //
+  // Two sources, checked in priority order on every page load:
+  //   1. tsm_active_mission — written by TSMMissionConductor (js/tsm-mission-conductor.js)
+  //      when it's loaded and the user explicitly generates an AI mission plan.
+  //      Real AI-tailored steps (title/instruction/fieldHint) for THIS anomaly.
+  //   2. tsm_guide_relay — written by this file's own click-capture below,
+  //      unconditionally, on every page that loads tsm-guide-engine.js. This
+  //      is the fallback that guarantees continuity even on pages where
+  //      TSMMissionConductor isn't loaded (e.g. hc-denial-war-room.html today —
+  //      its LAUNCH links call window.TSMCureConductor, which is undefined
+  //      there, so nothing currently survives the navigation without this).
+  const RELAY_KEY = 'tsm_guide_relay';
+  const MISSION_KEY = 'tsm_active_mission';
+  const CONTINUITY_MAX_AGE_MS = 2 * 60 * 60 * 1000; // 2 hours
+
+  // Does a stored target URL correspond to the page we're on right now?
+  // Compares filenames rather than full paths since stored URLs are
+  // sometimes absolute, sometimes relative, sometimes with a query string.
+  function urlMatchesCurrentPage(url) {
+    if (!url) return false;
+    try {
+      const targetFile = url.split('/').pop().split('?')[0].split('#')[0].toLowerCase();
+      const currentFile = location.pathname.split('/').pop().toLowerCase();
+      return !!targetFile && targetFile === currentFile;
+    } catch (e) { return false; }
+  }
+
+  function readActiveMission() {
+    try {
+      const raw = localStorage.getItem(MISSION_KEY);
+      if (!raw) return null;
+      const m = JSON.parse(raw);
+      if (!m || !m.generatedAt || !Array.isArray(m.steps) || !m.steps.length) return null;
+      if (Date.now() - new Date(m.generatedAt).getTime() > CONTINUITY_MAX_AGE_MS) return null;
+      if (!urlMatchesCurrentPage(m.targetUrl)) return null;
+      return m;
+    } catch (e) { return null; }
+  }
+
+  function readRelay() {
+    try {
+      const raw = localStorage.getItem(RELAY_KEY);
+      if (!raw) return null;
+      const r = JSON.parse(raw);
+      if (!r || !r.ts) return null;
+      if (Date.now() - r.ts > CONTINUITY_MAX_AGE_MS) return null;
+      if (!urlMatchesCurrentPage(r.targetUrl)) return null;
+      return r;
+    } catch (e) { return null; }
+  }
+
+  function clearContinuity() {
+    try { localStorage.removeItem(RELAY_KEY); } catch (e) { /* noop */ }
+    try { localStorage.removeItem(MISSION_KEY); } catch (e) { /* noop */ }
+  }
+
+  // Fires on EVERY page that loads this script, regardless of vertical.
+  // Whenever the user clicks something that looks like "go cure this
+  // elsewhere" (a LAUNCH/OPEN link to another .html app), snapshot what we
+  // can see on screen right now — vertical, source app, whatever document
+  // text is loaded, and the specific howTo hint if the click came from a
+  // recommendation card — so the destination page's guide can pick it up.
+  function captureRelayOnClick() {
+    document.addEventListener('click', function (e) {
+      const el = e.target.closest('a, button');
+      if (!el) return;
+      const text = (el.textContent || '').toUpperCase();
+      if (!/\b(LAUNCH|OPEN)\b/.test(text)) return;
+
+      let url = el.getAttribute('href') || '';
+      if (!url || url === '#') {
+        const onclickAttr = el.getAttribute('onclick') || '';
+        const m = onclickAttr.match(/['"]([^'"]*\.html[^'"]*)['"]/);
+        if (m) url = m[1];
+      }
+      if (!url || url === '#' || !/\.html/i.test(url)) return;
+      if (urlMatchesCurrentPage(url)) return; // not actually leaving this app
+
+      const card = el.closest('[data-app-name], .app-card, .rec-card, [class*="app-card"]');
+      const appName = (card && card.dataset && card.dataset.appName) ||
+        text.replace(/LAUNCH|OPEN|→/gi, '').trim() || 'App';
+      const howTo = (card && card.dataset && card.dataset.appHowto) || '';
+
+      const ctx = detectContext();
+      const docEl = document.querySelector(
+        '#doc-text, #docPaste, textarea[id*="doc"], textarea[id*="paste"], textarea[id*="text"]'
+      );
+      const docSnippet = (docEl && docEl.value ? docEl.value.trim() : '').slice(0, 500);
+
+      const relay = {
+        sourceVertical: ctx.vertical,
+        sourceUrl: location.pathname,
+        targetApp: appName,
+        targetUrl: url,
+        howTo: howTo,
+        docSnippet: docSnippet,
+        ts: Date.now()
+      };
+      try { localStorage.setItem(RELAY_KEY, JSON.stringify(relay)); } catch (err) { /* noop */ }
+    }, true);
+  }
+
+  // Build the small "continuing from..." banner shown above the step list.
+  function buildContinuityBanner(mission, relay) {
+    if (mission) {
+      const summary = mission.anomalySummary ? ' — ' + mission.anomalySummary : '';
+      return {
+        label: 'REMEDIATING: ' + (mission.anomalyType || mission.targetApp || 'Issue'),
+        detail: summary.replace(/^ — /, '')
+      };
+    }
+    if (relay) {
+      return {
+        label: 'Continuing from ' + (relay.sourceVertical || 'another') + ' war room',
+        detail: relay.howTo || (relay.docSnippet ? relay.docSnippet.slice(0, 140) + '…' : '')
+      };
+    }
+    return null;
+  }
+
+  // When a fresh AI mission exists for this exact page, it becomes the
+  // config outright (real AI-tailored steps take priority over the generic
+  // template) and runs on the heuristic engine — these steps are dynamic
+  // free text, there's no generic DOM signal to verify them against.
+  function missionToConfig(mission) {
+    return {
+      title: 'GUIDE · ' + (mission.targetApp || 'MISSION').toUpperCase(),
+      steps: mission.steps.map(function (s, i) {
+        return { id: 'm' + i, label: s.title + (s.fieldHint ? ' — ' + s.fieldHint : '') };
+      })
+    };
+  }
+
+
+  // field-for-field, rather than the generic vertical template in
+  // GUIDE_CONFIGS (which was written for a different page and doesn't
+  // reflect what's actually on screen here).
+  const APP_CONFIGS = {
+    "finops-accounting": {
+      title: "GUIDE · FINOPS ACCOUNTING DOCUMENT ANALYSIS",
+      steps: [
+        { id: "s1", label: "Pick a doc type (left panel) & fill its fields — e.g. Invoice #, PO #, Vendor" },
+        { id: "s2", label: "Click FIRE ALL 4 ENGINES" },
+        { id: "s3", label: "Review Triage, Variance, Action Plan & CFO Report" },
+        { id: "s4", label: "Export the full report (⬇ Export All)" }
+      ]
+    },
+    "hc-denial-war-room": {
+      title: "GUIDE · HC DENIAL WAR ROOM",
+      steps: [
+        { id: "s1", label: "Paste or drop a denial letter, EOB, or clinical record on the left" },
+        { id: "s2", label: "Click FIRE ALL 5 ENGINES" },
+        { id: "s3", label: "Review the recommended app(s) to fix the issue" },
+        { id: "s4", label: "Escalate to HC Main Strategist" }
+      ]
+    }
+  };
 
   // 2. Comprehensive Multi-Vertical Workflow Matrix
   const GUIDE_CONFIGS = {
@@ -541,11 +711,64 @@
     }
   };
 
+  // 2c. Page-specific checkers — paired with APP_CONFIGS above, verified
+  // against the real ids/functions in each page's own source.
+  const APP_STATE_CHECKERS = {
+    // Verified against html/finops-suite/finops-accounting.html. Real user
+    // actions: pick a doc type + fill its form -> FIRE ALL 4 ENGINES ->
+    // (four panels populate) -> Export All. There's no separate DOM/storage
+    // signal for "reviewed the output" or "exported" — Export All just
+    // triggers a file download with no flag written — so steps 3 and 4
+    // share the "engines complete" signal from step 2, same honesty
+    // convention used elsewhere in this file.
+    "finops-accounting": function () {
+      const area = document.getElementById('form-area');
+      let filled = false;
+      if (area) {
+        filled = Array.prototype.some.call(area.querySelectorAll('input, textarea'), function (el) {
+          return el.value && el.value.trim().length > 0;
+        }) || Array.prototype.some.call(area.querySelectorAll('select'), function (el) {
+          return el.selectedIndex > 0;
+        });
+      }
+      const fs = document.getElementById('fire-status');
+      const complete = !!(fs && fs.textContent.trim() === 'ALL 4 ENGINES COMPLETE');
+      return [filled, complete, complete, complete];
+    },
+    // Verified against html/healthcare/hc-denial-war-room.html. Real user
+    // actions: paste/drop a document (updateStatus() writes doc-status) ->
+    // FIRE ALL 5 ENGINES (runPipeline() writes active-txt) -> Engine 6
+    // auto-renders #e6-dispatch-panel once the 5 engines finish -> clicking
+    // Escalate writes TSM_WAR_ROOM_BRIEF to sessionStorage.
+    "hc-denial-war-room": function () {
+      const statusEl = document.getElementById('doc-status');
+      const loaded = !!(statusEl && statusEl.textContent.trim() !== 'No document loaded');
+
+      const actTxt = document.getElementById('active-txt');
+      const enginesComplete = !!(actTxt && actTxt.textContent.trim() === '5 / 5 Engines Complete');
+
+      const dispatched = !!document.getElementById('e6-dispatch-panel');
+
+      let escalated = false;
+      try { escalated = !!sessionStorage.getItem('TSM_WAR_ROOM_BRIEF'); } catch (e) { /* noop */ }
+
+      return [loaded, enginesComplete, dispatched, escalated];
+    }
+  };
+
   // 3. Inject Collapsible Widget HTML Into DOM
-  function renderWidget(config) {
+  function renderWidget(config, banner) {
     if (document.getElementById("tsm-universal-guide")) return;
 
     const totalSteps = config.steps.length;
+    const bannerHtml = banner ? `
+        <div id="guide-continuity-banner" style="background: rgba(56,189,248,0.1); border-bottom: 1px solid rgba(56,189,248,0.3); padding: 6px 10px; font-size: 9px; color: #38bdf8; display: flex; justify-content: space-between; align-items: flex-start; gap: 6px;">
+          <div style="min-width:0;">
+            <div style="font-weight:bold; letter-spacing: 0.5px;">↳ ${banner.label}</div>
+            ${banner.detail ? `<div style="color:#7dd3fc; font-weight: normal; margin-top: 2px; line-height: 1.4;">${banner.detail}</div>` : ""}
+          </div>
+          <button id="guide-continuity-dismiss" title="Dismiss" style="background:none;border:none;color:#38bdf8;cursor:pointer;font-size:11px;flex-shrink:0;padding:0;">✕</button>
+        </div>` : "";
     const widgetHtml = `
       <div id="tsm-universal-guide" style="position: fixed; bottom: 20px; right: 20px; z-index: 999999; width: 330px; background: #070d19; border: 1px solid #10b981; box-shadow: 0 10px 30px rgba(0,0,0,0.95); font-family: monospace; color: #e2e8f0; border-radius: 4px; overflow: hidden; pointer-events: auto;">
         <div style="background: rgba(16, 185, 129, 0.18); padding: 6px 10px; border-bottom: 1px solid #10b981; display: flex; justify-content: space-between; align-items: center; user-select: none;">
@@ -555,6 +778,7 @@
             <button id="guide-toggle-btn" style="background: #0f172a; border: 1px solid #10b981; color: #10b981; font-size: 10px; border-radius: 3px; cursor: pointer; padding: 0 5px; line-height: 14px; font-weight: bold;">+</button>
           </div>
         </div>
+        ${bannerHtml}
         <div id="guide-card-body" style="padding: 10px; font-size: 10px; line-height: 1.5; display: none;">
           ${config.steps
             .map(
@@ -591,6 +815,17 @@
         this.innerText = "+";
       }
     });
+
+    // Dismiss continuity banner — clears the stored relay/mission so it
+    // doesn't keep resurfacing on this page (e.g. after a refresh).
+    const dismissBtn = document.getElementById("guide-continuity-dismiss");
+    if (dismissBtn) {
+      dismissBtn.addEventListener("click", function () {
+        clearContinuity();
+        const el = document.getElementById("guide-continuity-banner");
+        if (el) el.remove();
+      });
+    }
   }
 
   // 4a. Shared step-painting — sets each step's done/active/pending style from
@@ -695,13 +930,33 @@
 
   // 5. Bootstrap Engine on DOM Load
   document.addEventListener("DOMContentLoaded", function () {
+    // Always-on: capture "LAUNCH/OPEN another app" clicks so continuity
+    // survives even on pages with no other mission tooling loaded.
+    captureRelayOnClick();
+
     const context = detectContext();
-    const vertConfig = GUIDE_CONFIGS[context.vertical] || GUIDE_CONFIGS.re;
-    const pageConfig = vertConfig[context.role] || vertConfig.warroom || vertConfig.strategist;
+
+    // Cross-page continuity takes priority: a fresh AI mission generated
+    // for THIS exact page beats the generic template, since it's tailored
+    // to the specific anomaly that sent the user here.
+    const mission = readActiveMission();
+    const relay = !mission ? readRelay() : null; // mission already implies relay-level context
+    const banner = buildContinuityBanner(mission, relay);
+
+    let pageConfig, checkerFn;
+    if (mission) {
+      pageConfig = missionToConfig(mission);
+      checkerFn = null; // dynamic AI steps — no generic DOM signal to verify against
+    } else {
+      const appConfig = context.app && APP_CONFIGS[context.app];
+      const vertConfig = GUIDE_CONFIGS[context.vertical] || GUIDE_CONFIGS.re;
+      pageConfig = appConfig || vertConfig[context.role] || vertConfig.warroom || vertConfig.strategist;
+      checkerFn = (context.app && APP_STATE_CHECKERS[context.app])
+        || (STATE_CHECKERS[context.vertical] && STATE_CHECKERS[context.vertical][context.role]);
+    }
 
     if (pageConfig) {
-      renderWidget(pageConfig);
-      const checkerFn = STATE_CHECKERS[context.vertical] && STATE_CHECKERS[context.vertical][context.role];
+      renderWidget(pageConfig, banner);
       if (checkerFn) {
         initEngineVerified(pageConfig, checkerFn);
       } else {

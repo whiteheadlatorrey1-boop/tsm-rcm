@@ -1773,3 +1773,93 @@ document.getElementById('execExportBtn').addEventListener('click', exportExecuti
 
 </body>
 </html>
+
+<!-- TSM_RCM_OS_SIMULATION_BRIDGE -->
+<script>
+(function(){
+  const KEY="TSM_RCM_OS_SIMULATION";
+  const CHANNEL="tsm-rcm-os-simulation";
+
+  function money(n){
+    return new Intl.NumberFormat("en-US",{
+      style:"currency",
+      currency:"USD"
+    }).format(Number(n)||0);
+  }
+
+  function show(data){
+    if(!data || !data.scenario) return;
+
+    let box=document.getElementById("tsmSimulationOverlay");
+
+    if(!box){
+      box=document.createElement("div");
+      box.id="tsmSimulationOverlay";
+
+      Object.assign(box.style,{
+        position:"fixed",
+        right:"18px",
+        bottom:"18px",
+        width:"330px",
+        zIndex:"99999",
+        background:"#101b2d",
+        color:"#eef4ff",
+        border:"1px solid #f0a62b",
+        borderRadius:"12px",
+        padding:"16px",
+        boxShadow:"0 15px 40px rgba(0,0,0,.45)",
+        fontFamily:"Inter,system-ui,sans-serif"
+      });
+
+      document.body.appendChild(box);
+    }
+
+    const variance=Number(data.variance)||0;
+    const reconciled=Math.abs(variance)<0.01;
+
+    box.innerHTML=
+      "<div style='font-size:11px;color:#f0a62b;letter-spacing:.08em'>"+
+      "SIMULATION FEED</div>"+
+      "<strong style='display:block;margin:6px 0 10px'>"+
+      data.scenarioName+"</strong>"+
+      "<div style='font-size:12px;line-height:1.7'>"+
+      "Expected: "+money(data.expected)+"<br>"+
+      "Actual: "+money(data.actual)+"<br>"+
+      "Variance: <strong>"+money(variance)+"</strong><br>"+
+      "Status: <strong style='color:"+
+      (reconciled?"#31d09a":"#ff6577")+"'>"+
+      (reconciled?"RECONCILED":"ANOMALY DETECTED")+
+      "</strong></div>"+
+      "<div style='margin-top:10px;font-size:11px;color:#91a2bd'>"+
+      (data.reference||"Simulation evidence")+
+      "</div>";
+  }
+
+  function load(){
+    try{
+      const data=JSON.parse(localStorage.getItem(KEY)||"null");
+      if(data) show(data);
+    }catch(e){}
+  }
+
+  window.addEventListener("storage",function(e){
+    if(e.key===KEY) load();
+  });
+
+  try{
+    const bc=new BroadcastChannel(CHANNEL);
+    bc.onmessage=function(e){show(e.data)};
+  }catch(e){}
+
+  window.TSM_RCM_OS_SIMULATION={
+    load,
+    get:()=>JSON.parse(localStorage.getItem(KEY)||"null")
+  };
+
+  if(document.readyState==="loading"){
+    document.addEventListener("DOMContentLoaded",load);
+  }else{
+    load();
+  }
+})();
+</script>
