@@ -2138,96 +2138,6 @@ function hcResolveApp(docText) {
   return { app:'HC Denial War Room', url:'/html/healthcare/hc-denial-war-room.html', reason:'General RCM denial — re-run with full context' };
 }
  
-async function hcGenerateMissionSteps(anomalyText, docText) {
-  const route = hcResolveApp(docText);
-  const HC_APPS = [
-    'HC Billing Command | /html/healthcare/hc-billing/index.html',
-    'HC Insurance Node | /html/healthcare/hc-insurance/index.html',
-    'HC Financial Node | /html/healthcare/hc-financial/index.html',
-    'HC Compliance Node | /html/healthcare/hc-compliance/index.html',
-    'HC Vendor Node | /html/healthcare/hc-vendors/index.html',
-    'HC Strategist | /html/healthcare/hc-strategist.html',
-  ].join('\n');
- 
-  const sys = `You are TSM Neural Core. Generate a step-by-step RCM remediation mission for a healthcare denial anomaly. Respond ONLY with valid JSON. No markdown, no explanation.`;
-  const msg = `Anomaly detected:\n"${anomalyText.slice(0,600)}"\n\nDocument context:\n${(docText||'').slice(0,400)}\n\nAvailable apps:\n${HC_APPS}\n\nGenerate 4-6 steps. Return ONLY:\n{"missionTitle":"...","summary":"...","steps":[{"id":"step-1","title":"...","appName":"...","appUrl":"...","objective":"...","instructions":"...","expectedOutput":"...","completionCriteria":"..."}]}`;
- 
-  try {
-    const res = await fetch('/api/hc/query', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ system: sys, message: msg })
-    });
-    const data = await res.json();
-    const raw = (data.response||data.content||'').replace(/```json|```/g,'').trim();
-    const parsed = JSON.parse(raw);
-    return { missionId:'HC-'+Date.now(), ...parsed, steps:(parsed.steps||[]).map((s,i)=>({...s,status:i===0?'active':'pending'})) };
-  } catch(e) {
-    return {
-      missionId:'HC-'+Date.now(), missionTitle:'HC Denial Remediation',
-      summary:'Resolve the flagged healthcare denial using the recommended workflow.',
-      steps:[
-        { id:'step-1', title:route.app, appName:route.app, appUrl:route.url, objective:route.reason,
-          instructions:`Open ${route.app}. Load the denial document and review the flagged anomaly. Run the relevant engine or workflow for this denial type.`,
-          expectedOutput:'Denial root cause confirmed and appeal path identified', completionCriteria:'Root cause documented', status:'active' },
-        { id:'step-2', title:'HC Strategist Review', appName:'HC Strategist', appUrl:'/html/healthcare/hc-main-strategist.html',
-          objective:'Synthesize findings into appeal strategy',
-          instructions:'Open HC Strategist. Review the engine output from the previous step. Run the strategist chain to generate a complete appeal package with documentation checklist.',
-          expectedOutput:'Appeal strategy and documentation checklist', completionCriteria:'Appeal package ready for submission', status:'pending' }
-      ]
-    };
-  }
-}
- 
-function renderHCMissionGuide(mission, container) {
-  function completeStep(stepId) {
-    const idx = mission.steps.findIndex(s=>s.id===stepId);
-    if (idx<0) return;
-    mission.steps[idx].status='complete';
-    if (idx+1<mission.steps.length) mission.steps[idx+1].status='active';
-    renderGuide();
-    if (mission.steps.every(s=>s.status==='complete')) {
-      setTimeout(()=>{
-        const done=document.createElement('div');
-        done.style.cssText='margin-top:10px;padding:10px;background:rgba(30,232,182,.08);border:1px solid rgba(30,232,182,.3);color:#1ee8b6;font-size:9px;letter-spacing:1px;text-align:center;';
-        done.textContent='⬡ MISSION COMPLETE — ALL STEPS RESOLVED';
-        container.appendChild(done);
-      },300);
-    }
-  }
-  window._hcMissionComplete = completeStep;
- 
-  function renderGuide() {
-    const step = mission.steps.find(s=>s.status==='active');
-    const done = mission.steps.filter(s=>s.status==='complete').length;
-    const pct = Math.round((done/mission.steps.length)*100);
-    container.innerHTML = `
-      <div style="border-top:1px solid #1ee8b620;margin-top:10px;padding-top:10px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-          <span style="color:#1ee8b6;font-size:9px;letter-spacing:1px;font-weight:700;">⚡ REMEDIATION MISSION</span>
-          <span style="color:#1ee8b650;font-size:9px;">${done}/${mission.steps.length} · ${pct}%</span>
-        </div>
-        <div style="height:2px;background:#1ee8b615;margin-bottom:10px;"><div style="height:100%;width:${pct}%;background:#1ee8b6;transition:width .3s;"></div></div>
-        <div style="font-size:10px;color:#7a9a8a;margin-bottom:10px;line-height:1.5;">${mission.summary||''}</div>
-        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px;">
-          ${mission.steps.map((s,i)=>`<span style="font-size:8px;padding:2px 7px;border-radius:2px;background:${s.status==='complete'?'rgba(30,232,182,.15)':s.status==='active'?'rgba(30,232,182,.08)':'rgba(255,255,255,.03)'};border:1px solid ${s.status==='complete'?'rgba(30,232,182,.3)':s.status==='active'?'rgba(30,232,182,.2)':'rgba(255,255,255,.06)'};color:${s.status==='complete'?'#1ee8b6':s.status==='active'?'#c0e8d0':'#556655'};">${s.status==='complete'?'✓ ':s.status==='active'?'▶ ':`${i+1}. `}${s.appName}</span>`).join('')}
-        </div>
-        ${step ? `
-        <div style="background:#0d1a0d;border:1px solid #1ee8b620;border-radius:4px;padding:10px;margin-bottom:8px;">
-          <div style="font-size:8px;color:#1ee8b660;letter-spacing:1px;margin-bottom:4px;">STEP ${mission.steps.indexOf(step)+1} OF ${mission.steps.length}</div>
-          <div style="font-size:11px;color:#e0f0e0;font-weight:700;margin-bottom:8px;">${step.title}</div>
-          <div style="display:flex;align-items:center;justify-content:space-between;background:rgba(30,232,182,.05);border:1px solid rgba(30,232,182,.12);border-radius:3px;padding:7px 10px;margin-bottom:8px;">
-            <div><div style="font-size:8px;color:#1ee8b660;margin-bottom:2px;">APP</div><div style="font-size:10px;color:#1ee8b6;font-weight:700;">${step.appName}</div><div style="font-size:8px;color:#446644;">${step.appUrl}</div></div>
-            <a href="${step.appUrl}" target="_blank" style="background:#1ee8b6;color:#000;font-size:9px;font-weight:700;padding:6px 10px;text-decoration:none;letter-spacing:1px;border-radius:3px;white-space:nowrap;">OPEN ↗</a>
-          </div>
-          <div style="font-size:9px;color:#7a9a8a;margin-bottom:6px;line-height:1.6;"><span style="color:#1ee8b660;font-size:8px;display:block;margin-bottom:2px;">OBJECTIVE</span>${step.objective}</div>
-          <div style="background:#0a0f0a;border:1px solid rgba(255,255,255,.06);border-radius:3px;padding:8px;margin-bottom:8px;font-size:9px;color:#7a9a8a;line-height:1.7;white-space:pre-wrap;"><span style="color:#1ee8b660;font-size:8px;display:block;margin-bottom:3px;">ACTIONS</span>${step.instructions}</div>
-          <div style="border-left:2px solid rgba(30,232,182,.3);padding:5px 8px;margin-bottom:8px;font-size:9px;color:#7a9a8a;"><span style="color:#1ee8b660;font-size:8px;display:block;margin-bottom:2px;">EXPECTED OUTPUT</span>${step.expectedOutput}</div>
-          <button onclick="window._hcMissionComplete('${step.id}')" style="width:100%;background:rgba(30,232,182,.1);border:1px solid rgba(30,232,182,.25);color:#1ee8b6;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:700;letter-spacing:1px;padding:9px;cursor:pointer;text-transform:uppercase;" onmouseover="this.style.background='rgba(30,232,182,.2)'" onmouseout="this.style.background='rgba(30,232,182,.1)'">✓ COMPLETE STEP ${mission.steps.indexOf(step)+1}</button>
-        </div>` : ''}
-      </div>`;
-  }
-  renderGuide();
-}
  
 function showAnomalyAdvisorPanel(outputs, docText) {
   const existing = document.getElementById('anomaly-slide-panel');
@@ -2253,10 +2163,6 @@ function showAnomalyAdvisorPanel(outputs, docText) {
     </div>
     <div id="anomaly-panel-body" style="flex:1;overflow-y:auto;padding:12px 14px;font-size:11px;line-height:1.8;color:#a0b8a0;">
       <div id="anomaly-scan-msg" style="color:#1ee8b6;font-size:10px;letter-spacing:1px;">⬡ SCANNING ENGINE OUTPUTS FOR FIELD-LEVEL DEFECTS...</div>
-    </div>
-    <div id="hc-mission-container" style="padding:0 14px;"></div>
-    <div id="hc-mission-btn-wrap" style="display:none;padding:0 14px 14px;">
-      <button id="hc-build-mission-btn" onclick="hcLaunchMission()" style="width:100%;background:rgba(30,232,182,.1);border:1px solid rgba(30,232,182,.35);color:#1ee8b6;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;letter-spacing:1px;padding:10px;cursor:pointer;text-transform:uppercase;">⚡ BUILD REMEDIATION MISSION</button>
     </div>
   `;
  
@@ -2284,30 +2190,18 @@ Maximum 8 items. No preamble. No headers. No summary. Start immediately with ite
     () => {
       const footer = document.createElement('div');
       footer.style.cssText = 'margin-top:14px;padding-top:10px;border-top:1px solid #1ee8b620;color:#1ee8b650;font-size:9px;letter-spacing:1px;';
-      footer.textContent = '⬡ SCAN COMPLETE — ANOMALY REPORT PACKAGED FOR STRATEGIST RELAY';
+      footer.textContent = '⬡ SCAN COMPLETE — SEE ENGINE 6 BELOW FOR ROUTING';
       body.appendChild(footer);
-      document.getElementById('hc-mission-btn-wrap').style.display = 'block';
-      document.getElementById('hc-build-mission-btn').dataset.anomaly = anomalyFullText;
-      document.getElementById('hc-build-mission-btn').dataset.doc = (docText||'').slice(0,600);
+      // Diagnosis only — routing lives in Engine 6 (injectPriorAuthGeneratorWidget),
+      // which scores the full 10-app catalog. We still write the anomaly-bridge
+      // relay so the destination app's banner is pre-filled on arrival.
+      hcWriteAnomalyRelay(anomalyFullText, docText, { steps: [] });
     },
     (err) => { const e=document.createElement('div'); e.style.color='#ef4444'; e.textContent='[Advisor error: '+err+']'; body.appendChild(e); },
     600
   );
 }
  
-async function hcLaunchMission() {
-  const btn = document.getElementById('hc-build-mission-btn');
-  const container = document.getElementById('hc-mission-container');
-  if (!btn || !container) return;
-  document.getElementById('hc-mission-btn-wrap').style.display = 'none';
-  container.innerHTML = '<div style="padding:10px 0;color:#1ee8b660;font-size:9px;letter-spacing:1px;text-align:center;">⬡ BUILDING REMEDIATION MISSION...</div>';
-  const anomalyText = btn.dataset.anomaly || '';
-  const docCtx = btn.dataset.doc || '';
-  const mission = await hcGenerateMissionSteps(anomalyText, docCtx);
-  renderHCMissionGuide(mission, container);
-  hcWriteAnomalyRelay(anomalyText, docCtx, mission);
-}
-
 // Relay the war room's analysis to the recommended HC node so its
 // anomaly bridge banner lights up pre-filled when the user clicks through.
 function hcWriteAnomalyRelay(anomalyText, docCtx, mission) {
