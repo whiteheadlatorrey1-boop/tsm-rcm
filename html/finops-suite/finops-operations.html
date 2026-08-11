@@ -777,6 +777,27 @@ async function tsmAI(s,u,m){try{const r=await fetch('/api/chat',{method:'POST',h
   </div>
 </div>
 
+<!-- CC RECON — ADD CATEGORY RULE MODAL -->
+<div class="modal-overlay" id="cc-rule-modal-overlay" onclick="ccCloseRuleModal()">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-title">+ ADD AUTO-CATEGORIZE RULE</div>
+    <div style="color:var(--text-mute);font-size:10.5px;line-height:1.6;margin-bottom:10px">Transactions whose merchant text contains the match string below will be auto-assigned this category the next time Auto-Categorize runs.</div>
+    <div class="mb8"><div class="field-lbl">Merchant Match Text</div><input class="field-input" id="cc-rule-merchant" type="text" placeholder='e.g. "sysco"' style="width:100%"/></div>
+    <div class="mb8"><div class="field-lbl">Category</div>
+      <select class="field-input" id="cc-rule-category" style="width:100%">
+        <option value="">— Select —</option>
+        <option>Office Supplies</option><option>Equipment</option><option>Repairs & Maint.</option>
+        <option>COGS</option><option>Travel</option><option>Franchise Fees</option><option>Uniforms / Supplies</option><option>Other</option>
+      </select>
+    </div>
+    <div id="cc-rule-modal-error" style="color:#ff5c5c;font-size:10px;margin-bottom:6px;display:none">Enter merchant text and select a category.</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px">
+      <button class="btn btn-ghost" onclick="ccCloseRuleModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="ccSaveRule()">Add Rule</button>
+    </div>
+  </div>
+</div>
+
 <!-- AI MODAL -->
 <div class="modal-overlay" id="modal-overlay" data-tsm-action="closeModal" data-tsm-args="">
   <div class="modal" onclick="event.stopPropagation()">
@@ -1527,6 +1548,10 @@ window.addEventListener('DOMContentLoaded', () => {
             <div style="color:var(--text-mute);font-size:9px">TOTAL VARIANCE</div>
           </div>
         </div>
+        <div style="margin-top:10px">
+          <div class="field-lbl">Beginning Balance ($)</div>
+          <input class="field-input" type="number" id="cr-begin-input" placeholder="0.00" value="0" oninput="crUpdateSummary()">
+        </div>
         <button class="btn-secondary" data-tsm-action="crGenerateReport" data-tsm-args="" style="width:100%;margin-top:8px;font-size:10px">↓ GENERATE WEEKLY REPORT</button>
       </div>
     </div>
@@ -1913,11 +1938,119 @@ function crUpdateSummary() {
   document.getElementById('cr-week-total').textContent = '$' + total.toLocaleString('en',{minimumFractionDigits:2});
   document.getElementById('cr-week-var').textContent = '$' + Math.abs(totalVar).toFixed(2);
 }
-function crAutoMatch() { if(window.toast) toast('Auto-matching bank activity to deposits…'); }
-function crClearAll() { crDeposits=[]; crRenderLog(); crUpdateSummary(); }
-function crHandleFile(e) { if(window.toast) toast('Importing ' + e.target.files[0]?.name + '…'); }
-function crGenerateReport() { if(window.toast) toast('Weekly report generated — ready to export PDF'); }
-function crSendReport() { if(window.toast) toast('Report sent to management'); }
+
+// CR_VARIANCE_ALERT_THRESHOLD — deposits whose |variance| meets or exceeds
+// this dollar amount surface in the alerts panel as needing review, rather
+// than only showing a per-row MATCHED/VARIANCE pill in the log table.
+const CR_VARIANCE_ALERT_THRESHOLD = 5;
+
+// Real logic, not a stub: recomputes MATCHED/VARIANCE status against the
+// actual logged crDeposits (picks up any row edited after entry) and
+// surfaces material variances in the alerts panel. There is no separate
+// bank-feed dataset in this build to pair against, so "auto-match" means
+// re-scoring what's already been logged/imported — it does not invent a
+// second data source to reconcile against.
+function crAutoMatch() {
+  crRenderLog();
+  crUpdateSummary();
+  const flagged = crDeposits.filter(d => Math.abs(d.variance) >= CR_VARIANCE_ALERT_THRESHOLD);
+  const alertsEl = document.getElementById('cr-alerts');
+  alertsEl.innerHTML = flagged.length ? flagged.map(d => {
+    const dir = d.variance < 0 ? 'short' : 'over';
+    return `<div style="background:rgba(245,166,35,.06);border:1px solid rgba(245,166,35,.25);border-left:3px solid var(--amber);padding:8px 10px;margin-bottom:6px;font-size:10.5px">
+      <span style="color:var(--amber);font-weight:700">${d.store}</span> — ${d.date} · ${d.source}: $${Math.abs(d.variance).toFixed(2)} ${dir} (expected $${d.exp.toFixed(2)}, actual $${d.act.toFixed(2)})
+    </div>`;
+  }).join('') : '<div style="color:var(--text-mute);font-style:italic;font-size:10.5px">No variances ≥ $' + CR_VARIANCE_ALERT_THRESHOLD.toFixed(2) + ' — all logged deposits match</div>';
+  if (window.toast) toast(flagged.length ? `Auto-match complete — ${flagged.length} deposit(s) need review` : 'Auto-match complete — all deposits reconciled');
+}
+
+function crClearAll() { crDeposits=[]; crRenderLog(); crUpdateSummary(); document.getElementById('cr-alerts').innerHTML=''; }
+
+// Real CSV import (date,store,source,expected,actual[,notes]) — mirrors
+// ccParseCsv's constraints (no quoted-comma support). Appends to the
+// existing log rather than replacing it, since deposits also accrue via
+// the manual "+ LOG DEPOSIT" form and a CSV import represents one more
+// batch of the same feed, not a full-log replacement.
+function crParseCsv(text) {
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if (!lines.length) return [];
+  const startIdx = /date/i.test(lines[0]) && /store|expected|actual/i.test(lines[0]) ? 1 : 0;
+  const out = [];
+  for (let i = startIdx; i < lines.length; i++) {
+    const cols = lines[i].split(',').map(c => c.trim());
+    if (cols.length < 5) continue;
+    const exp = parseFloat(cols[3].replace(/[$,]/g, ''));
+    const act = parseFloat(cols[4].replace(/[$,]/g, ''));
+    if (!cols[0] || !cols[1] || isNaN(exp) || isNaN(act)) continue;
+    out.push({ date: cols[0], store: cols[1], source: cols[2] || 'Manual Entry', exp, act, variance: act - exp, notes: cols[5] || '' });
+  }
+  return out;
+}
+
+function crHandleFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(evt) {
+    try {
+      const rows = crParseCsv(String(evt.target.result || ''));
+      if (rows.length) {
+        crDeposits = crDeposits.concat(rows);
+        crRenderLog();
+        crUpdateSummary();
+        if (window.toast) toast(`Imported ${rows.length} deposit record(s) from ${file.name}`);
+      } else if (window.toast) {
+        toast('No records found — expected CSV columns: date,store,source,expected,actual[,notes]');
+      }
+    } catch (err) {
+      console.error('[Cash Recon] CSV parse failed:', err);
+      if (window.toast) toast('Could not parse file — check it is a plain CSV export');
+    }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+}
+
+// Computes the Weekly Report Preview panel from real crDeposits + the
+// user-entered beginning balance — these fields previously sat static
+// at "—" and were never wired to any data. Withdrawals is honestly $0
+// here: this log tracks deposits only, there is no withdrawal entry
+// path in this build, so 0 reflects "none logged," not a placeholder.
+function crComputeReport() {
+  const begin = parseFloat(document.getElementById('cr-begin-input')?.value) || 0;
+  const depTotal = crDeposits.reduce((s,d) => s + d.act, 0);
+  const wd = 0;
+  const varTotal = crDeposits.reduce((s,d) => s + d.variance, 0);
+  const end = begin + depTotal - wd;
+  return { begin, depTotal, wd, varTotal, end };
+}
+
+function crGenerateReport() {
+  const r = crComputeReport();
+  document.getElementById('cr-begin').textContent = '$' + r.begin.toLocaleString('en',{minimumFractionDigits:2});
+  document.getElementById('cr-dep-total').textContent = '$' + r.depTotal.toLocaleString('en',{minimumFractionDigits:2});
+  document.getElementById('cr-wd').textContent = '$' + r.wd.toLocaleString('en',{minimumFractionDigits:2});
+  document.getElementById('cr-var-total').textContent = (r.varTotal < 0 ? '−$' : '$') + Math.abs(r.varTotal).toFixed(2);
+  document.getElementById('cr-end').textContent = '$' + r.end.toLocaleString('en',{minimumFractionDigits:2});
+  if (!crDeposits.length) {
+    if (window.toast) toast('No deposits logged yet — report will show $0 until data is added');
+    return;
+  }
+  if (window.toast) toast(`Weekly report generated — ${crDeposits.length} deposit(s), ${Math.abs(r.varTotal) < 0.01 ? 'no variance' : '$' + Math.abs(r.varTotal).toFixed(2) + ' total variance'}`);
+}
+
+function crSendReport() {
+  if (!crDeposits.length) {
+    if (window.toast) toast('Nothing to send — log or import at least one deposit first');
+    return;
+  }
+  const r = crComputeReport();
+  crGenerateReport();
+  const flagged = crDeposits.filter(d => Math.abs(d.variance) >= CR_VARIANCE_ALERT_THRESHOLD).length;
+  if (window.toast) toast(flagged
+    ? `Report sent to management — ${flagged} unresolved variance(s) flagged for review`
+    : `Report sent to management — ending balance $${r.end.toLocaleString('en',{minimumFractionDigits:2})}`);
+}
 
 /* ── MODULE 08: CC Recon ── */
 /* ── MODULE 08: CC Recon — real state model ──
@@ -2108,15 +2241,30 @@ function ccEscalate(btn) {
 }
 
 function ccAddRule() {
-  const merchant = prompt('Merchant match text (e.g. "sysco"):');
-  if (!merchant) return;
-  const category = prompt('Category to apply:');
-  if (!category) return;
-  ccRules.push({ match: merchant.toLowerCase().trim(), category: category.trim() });
+  document.getElementById('cc-rule-merchant').value = '';
+  document.getElementById('cc-rule-category').value = '';
+  document.getElementById('cc-rule-modal-error').style.display = 'none';
+  document.getElementById('cc-rule-modal-overlay').classList.add('open');
+  setTimeout(() => document.getElementById('cc-rule-merchant').focus(), 0);
+}
+
+function ccCloseRuleModal() {
+  document.getElementById('cc-rule-modal-overlay').classList.remove('open');
+}
+
+function ccSaveRule() {
+  const merchant = document.getElementById('cc-rule-merchant').value.trim();
+  const category = document.getElementById('cc-rule-category').value.trim();
+  if (!merchant || !category) {
+    document.getElementById('cc-rule-modal-error').style.display = 'block';
+    return;
+  }
+  ccRules.push({ match: merchant.toLowerCase(), category });
   const row = document.createElement('div');
   row.style.cssText = 'border-bottom:1px solid var(--border);padding:5px 0;display:flex;justify-content:space-between';
   row.innerHTML = `<span style="color:var(--text-dim)">${merchant} →</span><span style="color:var(--cyan2)">${category}</span>`;
   document.getElementById('cc-rules').appendChild(row);
+  ccCloseRuleModal();
   if (window.toast) toast('Rule added — run Auto-Categorize to apply');
 }
 
