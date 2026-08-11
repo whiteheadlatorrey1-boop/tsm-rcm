@@ -3233,7 +3233,11 @@ app.post('/api/governance/risk/:id/reject', requireAuth, (req, res) => {
 
 app.get('/api/governance/risk/decisions', (req, res) => {
   const { limit } = req.query;
-  res.json({ ok: true, log: GOVERNANCE_HITL_GATE.getLog(parseInt(limit, 10) || 100) });
+  res.json({
+    ok: true,
+    log: GOVERNANCE_HITL_GATE.getLog(parseInt(limit, 10) || 100),
+    stats: GOVERNANCE_HITL_GATE.getStats()
+  });
 });
 
 app.post('/api/governance/query', async (req, res) => {
@@ -3430,7 +3434,11 @@ app.post('/api/integration/:id/remediate/reject', requireAuth, (req, res) => {
 
 app.get('/api/integration/decisions', (req, res) => {
   const { limit } = req.query;
-  res.json({ ok: true, log: INTEGRATION_HITL_GATE.getLog(parseInt(limit, 10) || 100) });
+  res.json({
+    ok: true,
+    log: INTEGRATION_HITL_GATE.getLog(parseInt(limit, 10) || 100),
+    stats: INTEGRATION_HITL_GATE.getStats()
+  });
 });
 
 // Point-to-point integration flows between systems — this IS the "integration catalog"

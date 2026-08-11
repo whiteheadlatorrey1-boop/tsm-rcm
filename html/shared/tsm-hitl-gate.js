@@ -96,10 +96,63 @@
       return decisionLog.some(function (d) { return d.entityId === entityId; });
     }
 
+    function approvalRateOf(entries) {
+      if (!entries.length) return null;
+      var approved = entries.filter(function (d) { return d.decision === 'APPROVED'; }).length;
+      return Math.round((approved / entries.length) * 1000) / 10;
+    }
+
+    /**
+     * getStats(opts): executive-facing rollup of the decision log, built for
+     * the exec-portal "improvement rate" tiles (approve vs. reject trend
+     * over time, not just a point-in-time count).
+     *
+     * windowSize: how many of the most recent decisions count as the
+     *   "recent" period, compared against the equal-size period immediately
+     *   before it. Defaults to half the log (min 1) so it self-scales with
+     *   however much history exists, rather than assuming a fixed lookback
+     *   that might be empty on a fresh log.
+     *
+     * improvementRate is the percentage-point delta between the recent
+     * period's approval rate and the prior period's (positive = approvals
+     * trending up, negative = trending down). null when there isn't a full
+     * prior period yet to compare against.
+     */
+    function getStats(opts) {
+      opts = opts || {};
+      var total = decisionLog.length;
+      var approved = decisionLog.filter(function (d) { return d.decision === 'APPROVED'; }).length;
+      var rejected = total - approved;
+      var approvalRate = approvalRateOf(decisionLog);
+
+      var windowSize = opts.windowSize || Math.max(1, Math.floor(total / 2));
+      var recent = decisionLog.slice(-windowSize);
+      var priorEnd = total - windowSize;
+      var prior = decisionLog.slice(Math.max(0, priorEnd - windowSize), priorEnd);
+
+      var recentRate = approvalRateOf(recent);
+      var priorRate = approvalRateOf(prior);
+      var improvementRate = (recentRate !== null && priorRate !== null)
+        ? Math.round((recentRate - priorRate) * 10) / 10
+        : null;
+
+      return {
+        total: total,
+        approved: approved,
+        rejected: rejected,
+        approvalRate: approvalRate,
+        recentRate: recentRate,
+        priorRate: priorRate,
+        improvementRate: improvementRate,
+        windowSize: windowSize
+      };
+    }
+
     return {
       recordDecision: recordDecision,
       getLog: getLog,
       hasDecision: hasDecision,
+      getStats: getStats,
       decisionLog: decisionLog
     };
   }
@@ -127,6 +180,7 @@ if (typeof require !== 'undefined' && typeof module !== 'undefined' && require.m
   console.log('[hasDecision risk-1]', g.hasDecision('risk-1'));
   console.log('[hasDecision risk-99]', g.hasDecision('risk-99'));
   console.log('[log]', JSON.stringify(g.getLog(10), null, 2));
+  console.log('[stats]', JSON.stringify(g.getStats(), null, 2));
 
   try {
     g.recordDecision({ entityId: 'risk-3', decision: 'MAYBE' });

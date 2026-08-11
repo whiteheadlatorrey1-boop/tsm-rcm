@@ -171,6 +171,18 @@ router.post('/api/approval/requests/:id/reject', (req, res) => {
   });
   res.json({ ok: true, request, decision });
 });
+// Mirrors the GET /api/governance/risk/decisions and /api/integration/decisions
+// pattern -- exec portal reads the shared HITL gate's log + stats rollup
+// (approval rate, trend vs. prior period) rather than re-deriving it
+// client-side from APPROVAL_REQUESTS.
+router.get('/api/approval/decisions', (req, res) => {
+  const { limit } = req.query;
+  res.json({
+    ok: true,
+    log: APPROVAL_HITL_GATE.getLog(parseInt(limit, 10) || 100),
+    stats: APPROVAL_HITL_GATE.getStats()
+  });
+});
 
 // ── CAPABILITY SWEEP ORCHESTRATOR ────────────────────────────────────────────
 async function foundationDecision(baseUrl, vertical, mode, snapshot, context) {

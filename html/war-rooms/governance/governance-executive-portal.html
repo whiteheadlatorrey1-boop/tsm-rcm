@@ -56,6 +56,10 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 .abtn.escalate{border-color:var(--red);color:var(--red);}
 .abtn:hover{opacity:.85;}
 .no-items{font-family:'JetBrains Mono',monospace;font-size:.7rem;color:var(--muted);}
+.delta{font-size:.85rem;font-weight:700;}
+.delta.up{color:var(--green);}
+.delta.down{color:var(--red);}
+.delta.flat{color:var(--muted);}
 </style>
 </head>
 <body>
@@ -77,6 +81,7 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 <div class="wrap" id="wrap"><!-- populated by JS --></div>
 <script src="/html/shared/tsm-exec-framework.js"></script>
 <div class="wrap" id="liveRiskWrap" style="padding-top:0;"></div>
+<div class="wrap" id="hitlStatsWrap" style="padding-top:0;"></div>
 <div class="toast" id="toast"></div>
 <script>
 function tick(){document.getElementById('clock').textContent=new Date().toLocaleTimeString();}
@@ -84,6 +89,46 @@ setInterval(tick,1000);tick();
 
 const CFG = {"domain": "GOVERNANCE", "kpiPath": "kpis", "kpis": [{"key": "controls_pass", "label": "CONTROLS PASSING", "fmt": "text", "cls": "green"}, {"key": "controls_fail", "label": "CONTROLS FAILING", "fmt": "num", "cls": "red"}, {"key": "open_risks", "label": "OPEN RISKS", "fmt": "num", "cls": "amber"}, {"key": "avg_risk_score", "label": "AVG RISK SCORE", "fmt": "num", "cls": "red"}, {"key": "audit_events", "label": "AUDIT EVENTS", "fmt": "num", "cls": "cyan"}], "lists": [{"path": "risks", "label": "RISK REGISTER"}], "aiPaths": ["ai_analysis"], "explainPath": "explain", "title": "Governance & Risk", "isExec": true};
 const RELAY_KEY_FALLBACK = 'TSM_' + CFG.domain + '_RELAY';
+const HITL_DECISIONS_ENDPOINT = '/api/governance/risk/decisions';
+
+// Renders the HITL approve/reject decision stats (approval rate + the
+// improvement-rate trend vs. the prior decision window) independently of
+// the war-room relay payload above, since this comes straight from the
+// server's decision log (GOVERNANCE_HITL_GATE) rather than a relayed
+// snapshot, and should show even before any relay has ever landed.
+function renderHitlStats(stats){
+  const mount = document.getElementById('hitlStatsWrap');
+  if(!mount) return;
+  if(!stats || !stats.total){
+    mount.innerHTML = `<div class="sec"><div class="sec-hdr">APPROVAL IMPROVEMENT RATE</div><div class="no-items">No HITL decisions recorded yet &mdash; approve or reject a risk to start tracking trend.</div></div>`;
+    return;
+  }
+  let deltaHtml = '<span class="delta flat">&mdash;</span>';
+  if(stats.improvementRate !== null && stats.improvementRate !== undefined){
+    const dir = stats.improvementRate > 0 ? 'up' : (stats.improvementRate < 0 ? 'down' : 'flat');
+    const arrow = dir === 'up' ? '&#9650;' : (dir === 'down' ? '&#9660;' : '&#9679;');
+    const sign = stats.improvementRate > 0 ? '+' : '';
+    deltaHtml = `<span class="delta ${dir}">${arrow} ${sign}${stats.improvementRate}pp</span>`;
+  }
+  mount.innerHTML = `<div class="sec">
+    <div class="sec-hdr">APPROVAL IMPROVEMENT RATE</div>
+    <div class="kpi-row">
+      <div class="kpi"><div class="kpi-val green">${stats.approvalRate}%</div><div class="kpi-lbl">APPROVAL RATE (ALL-TIME)</div></div>
+      <div class="kpi"><div class="kpi-val cyan">${deltaHtml}</div><div class="kpi-lbl">IMPROVEMENT vs PRIOR PERIOD</div></div>
+      <div class="kpi"><div class="kpi-val cyan">${stats.total}</div><div class="kpi-lbl">TOTAL DECISIONS</div></div>
+      <div class="kpi"><div class="kpi-val green">${stats.approved}</div><div class="kpi-lbl">APPROVED</div></div>
+      <div class="kpi"><div class="kpi-val red">${stats.rejected}</div><div class="kpi-lbl">REJECTED</div></div>
+    </div>
+  </div>`;
+}
+
+async function loadHitlStats(){
+  try {
+    const r = await fetch(HITL_DECISIONS_ENDPOINT);
+    const data = await r.json();
+    if(data && data.ok) renderHitlStats(data.stats);
+  } catch(e){ /* server not reachable in this session -- leave last render in place */ }
+}
 
 function showToast(msg){
   const t=document.getElementById('toast');
@@ -268,6 +313,8 @@ function renderEngineOutput(text) {
 }
 
 render();
+loadHitlStats();
+setInterval(loadHitlStats, 20000);
 window.addEventListener('storage', e => { if(e.key === RELAY_KEY_FALLBACK || e.key === 'TSM_EVENT_LOG') render(); });
 window.addEventListener('TSM_RELAY_EVENT', e => { if(e.detail && e.detail.domain === CFG.domain) render(); });
 </script>

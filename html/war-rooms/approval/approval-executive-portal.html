@@ -56,6 +56,10 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 .abtn.escalate{border-color:var(--red);color:var(--red);}
 .abtn:hover{opacity:.85;}
 .no-items{font-family:'JetBrains Mono',monospace;font-size:.7rem;color:var(--muted);}
+.delta{font-size:.85rem;font-weight:700;}
+.delta.up{color:var(--green);}
+.delta.down{color:var(--red);}
+.delta.flat{color:var(--muted);}
 </style>
 </head>
 <body>
@@ -75,6 +79,7 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
   </div>
 </div>
 <div class="wrap" id="wrap"><!-- populated by JS --></div>
+<div class="wrap" id="hitlStatsWrap" style="padding-top:0;"></div>
 <div class="toast" id="toast"></div>
 <script src="/html/shared/tsm-exec-framework.js"></script>
 <!-- canonical source: html/war-rooms/approval/approval-executive-portal.html -->
@@ -85,6 +90,46 @@ setInterval(tick,1000);tick();
 
 const CFG = {"domain": "APPROVAL", "kpiPath": "kpis", "kpis": [{"key": "total_requests", "label": "TOTAL REQUESTS", "fmt": "num", "cls": "cyan"}, {"key": "pending_requests", "label": "PENDING", "fmt": "num", "cls": "amber"}, {"key": "escalated_count", "label": "ESCALATED", "fmt": "num", "cls": "red"}, {"key": "sla_breach_count", "label": "SLA BREACHES", "fmt": "num", "cls": "red"}, {"key": "approval_rate_pct", "label": "APPROVAL RATE", "fmt": "pct", "cls": "green"}, {"key": "avg_cycle_hours", "label": "AVG CYCLE (HRS)", "fmt": "num", "cls": "cyan"}], "lists": [{"path": "attention_flags", "label": "ATTENTION FLAGS"}], "aiPaths": ["ai_analysis"], "explainPath": "explain", "title": "Approval Chain", "isExec": true};
 const RELAY_KEY_FALLBACK = 'TSM_' + CFG.domain + '_RELAY';
+const HITL_DECISIONS_ENDPOINT = '/api/approval/decisions';
+
+// Renders the HITL approve/reject decision stats (approval rate + the
+// improvement-rate trend vs. the prior decision window) independently of
+// the war-room relay payload above, since this comes straight from the
+// server's decision log (APPROVAL_HITL_GATE) rather than a relayed
+// snapshot, and should show even before any relay has ever landed.
+function renderHitlStats(stats){
+  const mount = document.getElementById('hitlStatsWrap');
+  if(!mount) return;
+  if(!stats || !stats.total){
+    mount.innerHTML = `<div class="sec"><div class="sec-hdr">APPROVAL IMPROVEMENT RATE</div><div class="no-items">No HITL decisions recorded yet &mdash; approve or reject a request to start tracking trend.</div></div>`;
+    return;
+  }
+  let deltaHtml = '<span class="delta flat">&mdash;</span>';
+  if(stats.improvementRate !== null && stats.improvementRate !== undefined){
+    const dir = stats.improvementRate > 0 ? 'up' : (stats.improvementRate < 0 ? 'down' : 'flat');
+    const arrow = dir === 'up' ? '&#9650;' : (dir === 'down' ? '&#9660;' : '&#9679;');
+    const sign = stats.improvementRate > 0 ? '+' : '';
+    deltaHtml = `<span class="delta ${dir}">${arrow} ${sign}${stats.improvementRate}pp</span>`;
+  }
+  mount.innerHTML = `<div class="sec">
+    <div class="sec-hdr">APPROVAL IMPROVEMENT RATE</div>
+    <div class="kpi-row">
+      <div class="kpi"><div class="kpi-val green">${stats.approvalRate}%</div><div class="kpi-lbl">APPROVAL RATE (ALL-TIME)</div></div>
+      <div class="kpi"><div class="kpi-val cyan">${deltaHtml}</div><div class="kpi-lbl">IMPROVEMENT vs PRIOR PERIOD</div></div>
+      <div class="kpi"><div class="kpi-val cyan">${stats.total}</div><div class="kpi-lbl">TOTAL DECISIONS</div></div>
+      <div class="kpi"><div class="kpi-val green">${stats.approved}</div><div class="kpi-lbl">APPROVED</div></div>
+      <div class="kpi"><div class="kpi-val red">${stats.rejected}</div><div class="kpi-lbl">REJECTED</div></div>
+    </div>
+  </div>`;
+}
+
+async function loadHitlStats(){
+  try {
+    const r = await fetch(HITL_DECISIONS_ENDPOINT);
+    const data = await r.json();
+    if(data && data.ok) renderHitlStats(data.stats);
+  } catch(e){ /* server not reachable in this session -- leave last render in place */ }
+}
 
 function showToast(msg){
   const t=document.getElementById('toast');
@@ -297,6 +342,8 @@ function renderEngineOutput(text) {
 }
 
 render();
+loadHitlStats();
+setInterval(loadHitlStats, 20000);
 window.addEventListener('storage', e => { if(e.key === RELAY_KEY_FALLBACK || e.key === 'TSM_EVENT_LOG') render(); });
 window.addEventListener('TSM_RELAY_EVENT', e => { if(e.detail && e.detail.domain === CFG.domain) render(); });
 </script>
