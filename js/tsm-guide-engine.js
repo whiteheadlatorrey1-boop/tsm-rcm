@@ -17,6 +17,7 @@
     // configs describe a DIFFERENT page's fields and won't match this one.
     let app = null;
     if (path.includes("finops-accounting")) app = "finops-accounting";
+    else if (path.includes("finops-operations")) app = "finops-operations";
     else if (path.includes("hc-denial-war-room")) app = "hc-denial-war-room";
 
     // Determine Vertical
@@ -206,6 +207,29 @@
         { id: "s2", label: "Click FIRE ALL 5 ENGINES" },
         { id: "s3", label: "Review the recommended app(s) to fix the issue" },
         { id: "s4", label: "Escalate to HC Main Strategist" }
+      ]
+    },
+    // Verified against html/finops-suite/finops-operations.html. This page is
+    // an 11-tab wealth-management back office (Cashiering, Service Requests,
+    // Compliance, etc.), not the "ledger ingestion -> margin audit -> relay
+    // to strategist" shape the generic finops.warroom fallback assumes — that
+    // generic config's trigger words (LEDGER/MARGIN/STRATEGIST/RELAY) don't
+    // match anything real on this page, so its step tracker never advanced.
+    // These 4 steps use real button label text pulled from the page's own
+    // Cashiering/Service Requests/Compliance tabs. Note: like most of this
+    // page's demo actions, the underlying buttons are toast-only (no
+    // persisted DOM/storage flag written on click) — so this uses the
+    // click-text heuristic tracker (no APP_STATE_CHECKERS entry), same
+    // honesty convention as the generic GUIDE_CONFIGS fallbacks elsewhere in
+    // this file. Treat step-completion here as a rough hint, not a
+    // guarantee, same as any other unverified page.
+    "finops-operations": {
+      title: "GUIDE · FINOPS OPERATIONS BACK OFFICE",
+      steps: [
+        { id: "s1", label: "Post or reconcile a transaction (Cashiering tab)", triggerText: ["POST TXN", "RECONCILE DAY"] },
+        { id: "s2", label: "Run an AI Exception, Compliance, or Audit review", triggerText: ["AI EXCEPTION ANALYSIS", "AI COMPLIANCE REVIEW", "AI AUDIT ANALYSIS"] },
+        { id: "s3", label: "Triage service requests or resolve a compliance flag", triggerText: ["ANALYZE", "PRIORITIZE", "MARK IN PROGRESS", "RESOLVE"] },
+        { id: "s4", label: "Generate & export a report", triggerText: ["GENERATE REPORT", "EXPORT"] }
       ]
     }
   };
