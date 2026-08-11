@@ -59,6 +59,32 @@
       return TAB_CONFIG[tab] || TAB_CONFIG['dash'] || {};
     }
 
+    // If the anomaly bridge (tsm-doc-anomaly-bridge.js) has landed a live
+    // remediation checklist that targets THIS node (config.vertical matches
+    // TSM_ANB.nodeId), return its steps array. Otherwise null, so callers
+    // fall back to the page's own generic TAB_CONFIG steps unchanged.
+    function liveAnomalySteps() {
+      var anb = global.TSM_ANB;
+      if (!anb || !anb.payload || !anb.nodeId) return null;
+      if (anb.nodeId !== config.vertical) return null;
+      var steps = anb.payload.steps;
+      if (!Array.isArray(steps) || steps.length < 2) return null;
+      return steps;
+    }
+
+    // Single place that decides "what are step 1 / step 2 right now" —
+    // used by updateGuide, guideAction, and submitStep so all three stay
+    // in sync whether or not a live checklist is active.
+    function resolveCfg(baseCfg) {
+      var liveSteps = liveAnomalySteps();
+      if (!liveSteps) return { cfg: baseCfg, live: false };
+      // Shallow-copy so we don't mutate the page's TAB_CONFIG entry.
+      var cfg = {};
+      for (var k in baseCfg) { if (Object.prototype.hasOwnProperty.call(baseCfg, k)) cfg[k] = baseCfg[k]; }
+      cfg.steps = [liveSteps[0], liveSteps[1]];
+      return { cfg: cfg, live: true };
+    }
+
     function renderMeta(cfg) {
       return metaFields
         .map(function (f) {
@@ -69,13 +95,15 @@
 
     function updateGuide(id) {
       var TAB_CONFIG = global.TAB_CONFIG || {};
-      var cfg = TAB_CONFIG[id] || TAB_CONFIG['dash'] || {};
+      var baseCfg = TAB_CONFIG[id] || TAB_CONFIG['dash'] || {};
+      var resolved = resolveCfg(baseCfg);
+      var cfg = resolved.cfg;
 
       var meta = document.getElementById('guide-meta');
       if (meta) meta.innerHTML = renderMeta(cfg);
 
       var label = document.getElementById('guide-step-label');
-      if (label) label.textContent = 'STEP 1 OF 2';
+      if (label) label.textContent = 'STEP 1 OF 2' + (resolved.live ? ' \u00b7 LIVE CHECKLIST' : '');
 
       var s1 = document.getElementById('guide-step-1-text');
       var s2 = document.getElementById('guide-step-2-text');
@@ -100,7 +128,7 @@
     }
 
     function guideAction(type, stepNum) {
-      var cfg = currentCfg();
+      var cfg = resolveCfg(currentCfg()).cfg;
       var stepText = cfg.steps ? cfg.steps[stepNum - 1] : '';
       var res = document.getElementById('guide-res-' + stepNum);
 
@@ -122,7 +150,8 @@
     }
 
     function submitStep(stepNum) {
-      var cfg = currentCfg();
+      var resolved = resolveCfg(currentCfg());
+      var cfg = resolved.cfg;
       var stepText = cfg.steps ? cfg.steps[stepNum - 1] : '';
       var res = document.getElementById('guide-res-' + stepNum);
 
@@ -138,8 +167,9 @@
       if (step1) step1.classList.toggle('active-step', stepNum === 1);
       if (step2) step2.classList.toggle('active-step', stepNum === 2);
 
+      var liveSuffix = resolved.live ? ' \u00b7 LIVE CHECKLIST' : '';
       var label = document.getElementById('guide-step-label');
-      if (label) label.textContent = 'STEP ' + stepNum + ' OF 2';
+      if (label) label.textContent = 'STEP ' + stepNum + ' OF 2' + liveSuffix;
 
       callAPI(prompt)
         .then(function (reply) {
@@ -148,7 +178,7 @@
           if (stepsCompleted[1] && stepsCompleted[2]) {
             var next = document.getElementById('guide-next-actions');
             if (next) next.style.display = 'block';
-            if (label) label.textContent = 'STEPS 1 & 2 COMPLETE';
+            if (label) label.textContent = 'STEPS 1 & 2 COMPLETE' + liveSuffix;
           }
         })
         .catch(function (err) {
@@ -194,7 +224,17 @@
     global.submitStep = submitStep;
     global.callAPI = callAPI;
 
-    return { updateGuide: updateGuide, guideAction: guideAction, submitStep: submitStep, callAPI: callAPI };
+    // The anomaly bridge (tsm-doc-anomaly-bridge.js) is loaded AFTER this
+    // engine and sets window.TSM_ANB from its own DOMContentLoaded handler,
+    // which can run after this page's own DOMContentLoaded already called
+    // updateGuide() once with generic fallback text. renderBanner() fires
+    // this event right after it sets TSM_ANB, so we self-correct the panel
+    // the moment the live checklist actually lands — no tab switch needed.
+    global.addEventListener('tsm-anomaly-ready', function () {
+      updateGuide(global.currentTab);
+    });
+
+    return { updateGuide: updateGuide, guideAction: guideAction, submitStep: submitStep, callAPI: callAPI, liveAnomalySteps: liveAnomalySteps };
   }
 
   global.HCGuidePanel = { init: init };

@@ -398,6 +398,13 @@
         a.click();
       }
     };
+
+    // Let guide-panel-engine.js (loaded earlier in page order, so it may
+    // already have run updateGuide() once with generic fallback text before
+    // this script's own init() got here) know a live checklist just landed.
+    try {
+      window.dispatchEvent(new CustomEvent('tsm-anomaly-ready', { detail: { payload, nodeId } }));
+    } catch (e) {}
   }
 
   // ── 7. MAIN INIT ────────────────────────────────────────────────────────
