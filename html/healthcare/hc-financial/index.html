@@ -1166,6 +1166,7 @@
     </div>
   </div>
 
+  <script src="../js/guide-panel-engine.js"></script>
   <script>
     // ── TAB CONFIG ──────────────────────────────────────────────────────────
     const TAB_CONFIG = {
@@ -1326,102 +1327,28 @@
       updateGuide(id);
     }
 
-    // ── UPDATE NODE GUIDE ───────────────────────────────────────────────────
-    function updateGuide(id) {
-      const cfg = TAB_CONFIG[id] || TAB_CONFIG['dash'];
-      document.getElementById('guide-meta').innerHTML =
-        'Portfolio: <span>' + cfg.unit + '</span> &nbsp;·&nbsp; Metric: <span>' + cfg.metric + '</span> &nbsp;·&nbsp; Payer: <span>' + cfg.payer + '</span>';
-      document.getElementById('guide-step-label').textContent = 'STEP 1 OF 2';
-      document.getElementById('guide-step-1-text').textContent = 'Step 1: `' + cfg.steps[0] + '`';
-      document.getElementById('guide-step-2-text').textContent = 'Step 2: `' + cfg.steps[1] + '`';
-      ['guide-res-1', 'guide-res-2'].forEach(function (id) {
-        var el = document.getElementById(id);
-        el.textContent = '';
-        el.classList.remove('visible');
-      });
-      document.getElementById('guide-step-1').classList.add('active-step');
-      document.getElementById('guide-step-2').classList.remove('active-step');
-    }
-
-    // ── GUIDE ACTION BUTTONS ────────────────────────────────────────────────
-    function guideAction(type, stepNum) {
-      const cfg = TAB_CONFIG[currentTab] || TAB_CONFIG['dash'];
-      const stepText = cfg.steps[stepNum - 1];
-      const resId = 'guide-res-' + stepNum;
-      const res = document.getElementById(resId);
-
-      let prompt = '';
-      if (type === 'explain') {
-        prompt = 'Explain the following financial issue in plain language for a presenter: "' + stepText + '". Context: Portfolio ' + cfg.unit + ', Metric ' + cfg.metric + ', Payer ' + cfg.payer + '. Include what the metric means, why it matters, and what action is required.';
-      } else if (type === 'risk') {
-        prompt = 'Identify the highest financial and compliance risk in this scenario: "' + stepText + '". Portfolio ' + cfg.unit + ', Metric ' + cfg.metric + ', Payer ' + cfg.payer + '. Quantify the risk, name the owner, and state the resolution deadline.';
-      } else if (type === 'talk') {
-        prompt = 'Write a 60-second presenter talk track for this financial scenario: "' + stepText + '". Portfolio ' + cfg.unit + ', Payer ' + cfg.payer + '. Use plain language, explain the problem, the financial impact, and the recommended next action.';
-      } else if (type === 'intel') {
-        prompt = 'Run Financial Intelligence analysis for: "' + stepText + '". Portfolio ' + cfg.unit + ', Payer ' + cfg.payer + '. Provide trend analysis, forecasting implications, and root cause detection.';
-      } else if (type === 'ops') {
-        prompt = 'Run Financial Operations analysis for: "' + stepText + '". Portfolio ' + cfg.unit + ', Payer ' + cfg.payer + '. Provide variance analysis, cost control recommendations, and recovery optimization steps.';
-      }
-
-      res.classList.add('visible');
-      res.innerHTML = '<span class="guide-spinner">⟳</span> Processing...';
-
-      callAPI(prompt).then(function (reply) {
-        res.textContent = reply;
-      }).catch(function (err) {
-        res.textContent = '> ERROR: ' + err.message;
-      });
-    }
-
-    // ── SUBMIT STEP ─────────────────────────────────────────────────────────
+    // ── NODE GUIDE (updateGuide / guideAction / submitStep / callAPI) ────────
+    // shared across billing, insurance, financial, compliance, legal —
+    // see ../js/guide-panel-engine.js
     const stepsCompleted = { 1: false, 2: false };
 
-    function submitStep(stepNum) {
-      const cfg = TAB_CONFIG[currentTab] || TAB_CONFIG['dash'];
-      const stepText = cfg.steps[stepNum - 1];
-      const resId = 'guide-res-' + stepNum;
-      const res = document.getElementById(resId);
-
-      const prompt = 'For financial step: "' + stepText + '" — Portfolio: ' + cfg.unit + ', Metric: ' + cfg.metric + ', Payer: ' + cfg.payer + '. Provide the complete resolution: bottleneck identification, payer actions, recovery steps, documentation requirements, and owner assignments.';
-
-      res.classList.add('visible');
-      res.innerHTML = '<span class="guide-spinner">⟳</span> Generating response...';
-
-      document.getElementById('guide-step-1').classList.toggle('active-step', stepNum === 1);
-      document.getElementById('guide-step-2').classList.toggle('active-step', stepNum === 2);
-      document.getElementById('guide-step-label').textContent = 'STEP ' + stepNum + ' OF 2';
-
-      callAPI(prompt).then(function (reply) {
-        res.textContent = reply;
-        stepsCompleted[stepNum] = true;
-        if (stepsCompleted[1] && stepsCompleted[2]) {
-          var na = document.getElementById('guide-next-actions');
-          if (na) na.style.display = 'block';
-          document.getElementById('guide-step-label').textContent = 'STEPS 1 & 2 COMPLETE';
-        }
-      }).catch(function (err) {
-        res.textContent = '> ERROR: ' + err.message;
-      });
-    }
-
-    // ── CORE API CALL ───────────────────────────────────────────────────────
-    async function callAPI(prompt) {
-      const r = await fetch('/api/hc/query', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          system: 'You are a healthcare financial operations expert specializing in AR management, revenue cycle, payer performance, denial trends, and cash flow recovery. Provide precise, actionable intelligence with specific financial and payer citations.',
-          message: prompt,
-          stream: false,
-          max_tokens: 1000
-        })
-      });
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      const d = await r.json();
-      const reply = d.response || d.content || (d.choices && d.choices[0]?.message?.content) || 'No response';
-      return '> TSM NEURAL [' + new Date().toLocaleTimeString() + ']\n\n' +
-        reply.replace(/\*\*(.+?)\*\*/g, '$1').replace(/\*(.+?)\*/g, '$1').replace(/#{1,3}\s*/g, '').trim();
-    }
+    HCGuidePanel.init({
+      vertical: 'financial',
+      metaFields: [
+        { key: 'unit', label: 'Portfolio' },
+        { key: 'metric', label: 'Metric' },
+        { key: 'payer', label: 'Payer' }
+      ],
+      systemPrompt: 'You are a healthcare financial operations expert specializing in AR management, revenue cycle, payer performance, denial trends, and cash flow recovery. Provide precise, actionable intelligence with specific financial and payer citations.',
+      actionPrompts: {
+        explain: (stepText, cfg) => 'Explain the following financial issue in plain language for a presenter: "' + stepText + '". Context: Portfolio ' + cfg.unit + ', Metric ' + cfg.metric + ', Payer ' + cfg.payer + '. Include what the metric means, why it matters, and what action is required.',
+        risk: (stepText, cfg) => 'Identify the highest financial and compliance risk in this scenario: "' + stepText + '". Portfolio ' + cfg.unit + ', Metric ' + cfg.metric + ', Payer ' + cfg.payer + '. Quantify the risk, name the owner, and state the resolution deadline.',
+        talk: (stepText, cfg) => 'Write a 60-second presenter talk track for this financial scenario: "' + stepText + '". Portfolio ' + cfg.unit + ', Payer ' + cfg.payer + '. Use plain language, explain the problem, the financial impact, and the recommended next action.',
+        intel: (stepText, cfg) => 'Run Financial Intelligence analysis for: "' + stepText + '". Portfolio ' + cfg.unit + ', Payer ' + cfg.payer + '. Provide trend analysis, forecasting implications, and root cause detection.',
+        ops: (stepText, cfg) => 'Run Financial Operations analysis for: "' + stepText + '". Portfolio ' + cfg.unit + ', Payer ' + cfg.payer + '. Provide variance analysis, cost control recommendations, and recovery optimization steps.'
+      },
+      submitPrompt: (stepText, cfg) => 'For financial step: "' + stepText + '" — Portfolio: ' + cfg.unit + ', Metric: ' + cfg.metric + ', Payer: ' + cfg.payer + '. Provide the complete resolution: bottleneck identification, payer actions, recovery steps, documentation requirements, and owner assignments.'
+    });
 
     // ── LEGACY HELPERS (for data-tsm-action wiring) ─────────────────────────
     async function runQ(prompt, btnId, resId) {

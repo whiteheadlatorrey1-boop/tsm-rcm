@@ -445,6 +445,7 @@ tr:hover td{background:#0f1f0f}
   <a href="https://buy.stripe.com/28EbJ1e9i0dV53p0qQ0gw01" target="_blank" style="font-family:inherit;font-size:7px;letter-spacing:2px;padding:5px 12px;border:1px solid #4ade80;color:#4ade80;text-decoration:none;white-space:nowrap;background:transparent;" onmouseover="this.style.background='#4ade80';this.style.color='#000'" onmouseout="this.style.background='transparent';this.style.color='#4ade80'">SUBSCRIBE — $399/MO</a>
 </div>
 
+<script src="../js/guide-panel-engine.js"></script>
 <script>
 // ─────────────────────────────────────────────
 //  TAB DEFINITIONS — drives Node Guide context
@@ -577,111 +578,27 @@ function switchTab(id, btn) {
 }
 
 // ─────────────────────────────────────────────
-//  UPDATE NODE GUIDE FOR CURRENT TAB
-// ─────────────────────────────────────────────
-function updateGuide(id) {
-  const cfg = TAB_CONFIG[id] || TAB_CONFIG['dash'];
-  // Meta
-  document.getElementById('guide-meta').innerHTML =
-    `Patient: <span>${cfg.patient}</span> &nbsp;·&nbsp; Claim: <span>${cfg.claim}</span> &nbsp;·&nbsp; Payer: <span>${cfg.payer}</span>`;
-  // Steps
-  document.getElementById('guide-step-label').textContent = 'STEP 1 OF 2';
-  document.getElementById('guide-step-1-text').textContent = 'Step 1: `' + cfg.steps[0] + '`';
-  document.getElementById('guide-step-2-text').textContent = 'Step 2: `' + cfg.steps[1] + '`';
-  // Reset results
-  ['guide-res-1','guide-res-2'].forEach(id => {
-    const el = document.getElementById(id);
-    el.textContent = '';
-    el.classList.remove('visible');
-  });
-  // Highlight step 1
-  document.getElementById('guide-step-1').classList.add('active-step');
-  document.getElementById('guide-step-2').classList.remove('active-step');
-}
-
-// ─────────────────────────────────────────────
-//  GUIDE ACTION BUTTONS (Explain / Risk / Talk)
-// ─────────────────────────────────────────────
-function guideAction(type, stepNum) {
-  const cfg = TAB_CONFIG[currentTab] || TAB_CONFIG['dash'];
-  const stepText = cfg.steps[stepNum - 1];
-  const resId = 'guide-res-' + stepNum;
-  const res = document.getElementById(resId);
-
-  let prompt = '';
-  if (type === 'explain') {
-    prompt = `Explain the following billing issue in plain language for a presenter: "${stepText}". Context: Patient ${cfg.patient}, Claim ${cfg.claim}, Payer ${cfg.payer}. Include what the code means, why it matters, and what action is required.`;
-  } else if (type === 'risk') {
-    prompt = `Identify the highest financial and compliance risk in this scenario: "${stepText}". Patient ${cfg.patient}, Claim ${cfg.claim}, Payer ${cfg.payer}. Quantify the risk, name the owner, and state the resolution deadline.`;
-  } else if (type === 'talk') {
-    prompt = `Write a 60-second presenter talk track for this billing scenario: "${stepText}". Patient ${cfg.patient}, Payer ${cfg.payer}. Use plain language, explain the problem, the financial impact, and the recommended next action.`;
-  }
-
-  res.classList.add('visible');
-  res.innerHTML = '<span class="guide-spinner">⟳</span> Processing...';
-
-  callAPI(prompt).then(reply => {
-    res.textContent = reply;
-  }).catch(err => {
-    res.textContent = '> ERROR: ' + err.message;
-  });
-}
-
-// ─────────────────────────────────────────────
-//  SUBMIT STEP
+//  NODE GUIDE (updateGuide / guideAction / submitStep / callAPI)
+//  — shared across billing, insurance, financial, compliance, legal —
+//  see ../js/guide-panel-engine.js
 // ─────────────────────────────────────────────
 const stepsCompleted = { 1: false, 2: false };
 
-function submitStep(stepNum) {
-  const cfg = TAB_CONFIG[currentTab] || TAB_CONFIG['dash'];
-  const stepText = cfg.steps[stepNum - 1];
-  const resId = 'guide-res-' + stepNum;
-  const res = document.getElementById(resId);
-
-  const prompt = `For billing step: "${stepText}" — Patient: ${cfg.patient}, Claim: ${cfg.claim}, Payer: ${cfg.payer}. Provide the complete resolution: correct codes, modifier corrections, documentation requirements, and submission instructions.`;
-
-  res.classList.add('visible');
-  res.innerHTML = '<span class="guide-spinner">⟳</span> Generating response...';
-
-  // Highlight current step
-  document.getElementById('guide-step-1').classList.toggle('active-step', stepNum === 1);
-  document.getElementById('guide-step-2').classList.toggle('active-step', stepNum === 2);
-  document.getElementById('guide-step-label').textContent = `STEP ${stepNum} OF 2`;
-
-  callAPI(prompt).then(reply => {
-    res.textContent = reply;
-    stepsCompleted[stepNum] = true;
-    // Reveal next actions block only after both steps have been submitted
-    if (stepsCompleted[1] && stepsCompleted[2]) {
-      const na = document.getElementById('guide-next-actions');
-      if (na) na.style.display = 'block';
-      document.getElementById('guide-step-label').textContent = 'STEPS 1 & 2 COMPLETE';
-    }
-  }).catch(err => {
-    res.textContent = '> ERROR: ' + err.message;
-  });
-}
-
-// ─────────────────────────────────────────────
-//  CORE API CALL → Railway /api/hc/query
-// ─────────────────────────────────────────────
-async function callAPI(prompt) {
-  const r = await fetch('/api/hc/query', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      system: 'You are a healthcare billing and claims expert specializing in CMS-1500, UB-04, CPT coding, denial management, and payer compliance. Provide precise, actionable intelligence with specific coding and regulatory citations.',
-      message: prompt,
-      stream: false,
-      max_tokens: 1000
-    })
-  });
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  const d = await r.json();
-  const reply = d.response || d.content || (d.choices && d.choices[0]?.message?.content) || 'No response';
-  return '> TSM NEURAL [' + new Date().toLocaleTimeString() + ']\n\n' +
-    reply.replace(/\*\*(.+?)\*\*/g,'$1').replace(/\*(.+?)\*/g,'$1').replace(/#{1,3}\s*/g,'').trim();
-}
+HCGuidePanel.init({
+  vertical: 'billing',
+  metaFields: [
+    { key: 'patient', label: 'Patient' },
+    { key: 'claim', label: 'Claim' },
+    { key: 'payer', label: 'Payer' }
+  ],
+  systemPrompt: 'You are a healthcare billing and claims expert specializing in CMS-1500, UB-04, CPT coding, denial management, and payer compliance. Provide precise, actionable intelligence with specific coding and regulatory citations.',
+  actionPrompts: {
+    explain: (stepText, cfg) => `Explain the following billing issue in plain language for a presenter: "${stepText}". Context: Patient ${cfg.patient}, Claim ${cfg.claim}, Payer ${cfg.payer}. Include what the code means, why it matters, and what action is required.`,
+    risk: (stepText, cfg) => `Identify the highest financial and compliance risk in this scenario: "${stepText}". Patient ${cfg.patient}, Claim ${cfg.claim}, Payer ${cfg.payer}. Quantify the risk, name the owner, and state the resolution deadline.`,
+    talk: (stepText, cfg) => `Write a 60-second presenter talk track for this billing scenario: "${stepText}". Patient ${cfg.patient}, Payer ${cfg.payer}. Use plain language, explain the problem, the financial impact, and the recommended next action.`
+  },
+  submitPrompt: (stepText, cfg) => `For billing step: "${stepText}" — Patient: ${cfg.patient}, Claim: ${cfg.claim}, Payer: ${cfg.payer}. Provide the complete resolution: correct codes, modifier corrections, documentation requirements, and submission instructions.`
+});
 
 // ─────────────────────────────────────────────
 //  Q — main AI query for tab panels
