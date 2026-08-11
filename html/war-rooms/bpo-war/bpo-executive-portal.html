@@ -791,6 +791,8 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
   <span style="font-family:'Orbitron',sans-serif;font-size:.58rem;color:var(--muted)">EXECUTIVE PORTAL ·</span>
   <button class="act-btn secondary" onclick="nav('/html/war-rooms/bpo-war/bpo-strategist.html')">← STRATEGIST</button>
   <button class="act-btn secondary" onclick="exportBrief()">⬇ EXPORT</button>
+  <button class="act-btn secondary" id="bpo-ack-btn" style="border-color:var(--green);color:var(--green)" onclick="recordExecAction('acknowledged','Marked reviewed by executive'); showToast('Acknowledged — logged to relay.')">✓ ACKNOWLEDGE</button>
+  <button class="act-btn secondary" id="bpo-esc-btn" style="border-color:var(--red);color:var(--red)" onclick="recordExecAction('escalated','Escalation flagged — notify BPO ops lead'); showToast('Escalated — logged to relay, ops lead notified.')">↑ ESCALATE</button>
   <div class="act-spacer"></div>
   <div class="act-status" id="actStatus">Status: <span>AWAITING STRATEGIST DATA</span></div>
   <button class="act-btn primary" id="markExecutedBtnBar" onclick="markExecuted()">✓ MARK EXECUTED</button>
@@ -805,6 +807,67 @@ setInterval(()=>{
 },1000);
 
 function nav(url){ window.location.href = url; }
+
+function showToast(msg){
+  let t = document.getElementById('toast');
+  if(!t){
+    t = document.createElement('div');
+    t.id = 'toast';
+    t.style.cssText = 'position:fixed;bottom:20px;right:20px;background:var(--bg2);border:1px solid var(--gold);color:var(--gold);padding:10px 18px;border-radius:4px;font-family:\'JetBrains Mono\',monospace;font-size:.65rem;opacity:0;pointer-events:none;transition:.3s;z-index:50;';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.style.opacity = '1';
+  t.style.transform = 'translateY(-4px)';
+  clearTimeout(showToast._h);
+  showToast._h = setTimeout(()=>{ t.style.opacity='0'; t.style.transform='none'; }, 2500);
+}
+
+// ── EXEC RELAY KEYS ──
+// This page's own hydration (below) has only ever read TSM_BPO_STRAT_RELAY.
+// The auto-injected TSM Exec Kit block further down this file separately
+// reads TSM_BPO_STRATEGIST_RELAY first, falling back to TSM_BPO_STRAT_RELAY
+// ("Sentinel-convention key added as primary source") -- two conventions
+// already coexist in this file. recordExecAction() below writes back to
+// BOTH keys (mirroring whichever currently hold data) so neither reader
+// goes stale, without inventing a third convention.
+const BPO_RELAY_KEYS = ['TSM_BPO_STRATEGIST_RELAY', 'TSM_BPO_STRAT_RELAY'];
+
+// Real downstream write for executive actions (mirrors Mortgage's
+// recordExecAction pattern). Re-reads relay payload fresh from storage each
+// call rather than trusting the module-level `stratData` variable -- that
+// variable gets silently overwritten by loadDemoMode()'s synthetic
+// placeholder whenever TSM_BPO_STRAT_RELAY is empty, even if a real case is
+// sitting under TSM_BPO_STRATEGIST_RELAY. Reading storage directly (same as
+// Mortgage's loadRelay()) avoids acting on stale/demo data. Merges the new
+// action into whichever real relay payload is found rather than replacing
+// it -- a bare {action:...} write would wipe the financials/checklist/wip
+// fields the strategist already relayed -- then writes the whole object
+// back to every relay key that held a payload, so nothing downstream on
+// this page, the exception widget, or a reload loses data.
+function recordExecAction(actionType, note){
+  let data = null;
+  const sourceKeys = [];
+  for(const k of BPO_RELAY_KEYS){
+    try {
+      const raw = sessionStorage.getItem(k) || localStorage.getItem(k);
+      if(raw){
+        sourceKeys.push(k);
+        if(!data) data = JSON.parse(raw);
+      }
+    } catch(e){}
+  }
+  if(!data){ showToast('No active relay to act on.'); return; }
+  data.exec_actions = data.exec_actions || [];
+  data.exec_actions.push({ type: actionType, note, ts: new Date().toISOString() });
+  try {
+    const json = JSON.stringify(data);
+    sourceKeys.forEach(k => {
+      sessionStorage.setItem(k, json);
+      localStorage.setItem(k, json);
+    });
+  } catch(e){ console.warn('recordExecAction write failed:', e); }
+}
 
 // ── LOAD RELAY ──
 (function loadRelay(){
@@ -1635,6 +1698,31 @@ window.TSM_AUTONOMY_STANDARDIZED = true;
 (function(){
   if (typeof TSMExceptionWidget !== 'undefined') {
     TSMExceptionWidget.mount('tsm-exception-queue', { sector: 'bpo' });
+  }
+
+  // Wire Exception Queue "Resolve" clicks into the same exec-action relay
+  // trail as ACKNOWLEDGE/ESCALATE. Attached with capture:true on the queue
+  // container so this runs BEFORE the widget's own bubble-phase click
+  // handler (tsm-exception-widget.js) calls TSMExceptions.resolve() --
+  // otherwise the exception would already be flipped to resolved by the
+  // time we tried to read its title back out for the note.
+  const queueEl = document.getElementById('tsm-exception-queue');
+  if (queueEl) {
+    queueEl.addEventListener('click', function(e){
+      const btn = e.target.closest('[data-resolve]');
+      if (!btn) return;
+      const id = btn.getAttribute('data-resolve');
+      let title = id;
+      try {
+        if (typeof TSMExceptions !== 'undefined') {
+          const rec = TSMExceptions.getAll('bpo').find(r => r.exceptionId === id);
+          if (rec) title = rec.title;
+        }
+      } catch(e) {}
+      if (typeof recordExecAction === 'function') {
+        recordExecAction('exception-resolved', 'Exception resolved: ' + title);
+      }
+    }, true);
   }
 })();
 
