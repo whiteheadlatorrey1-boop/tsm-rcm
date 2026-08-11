@@ -3441,6 +3441,69 @@ app.get('/api/integration/decisions', (req, res) => {
   });
 });
 
+// ── EXEC PORTAL DECISION CENTER (shared client-side driver: html/shared/
+// tsm-exec-portal-upgrade.js, injected into healthcare, finops, insurance,
+// construction, legal, realestate, and bpo executive portals) ─────────────
+// Previously decide() in that shared script only mutated the DOM (a fake
+// audit table + TSMState push) -- nothing was written to a server, so every
+// approve/reject/hold vanished on reload and there was no real decision log
+// to compute an approval/improvement rate from. One HITL gate per vertical,
+// same shared factory Governance/Integration Hub/Approval Chain already use,
+// so all four "Decision Center" implementations in the platform now share
+// one persistence pattern.
+const EXEC_PORTAL_VERTICALS = ['healthcare', 'finops', 'insurance', 'construction', 'legal', 'realestate', 'bpo'];
+const EXEC_PORTAL_GATE_PREFIX = { healthcare: 'HC', finops: 'FIN', insurance: 'INS', construction: 'CON', legal: 'LEG', realestate: 'RE', bpo: 'BPO' };
+const EXEC_PORTAL_HITL_GATES = {};
+EXEC_PORTAL_VERTICALS.forEach(v => { EXEC_PORTAL_HITL_GATES[v] = createHitlGate(EXEC_PORTAL_GATE_PREFIX[v] || 'EXEC'); });
+
+// index is the decision's position in that vertical's Decision Center list
+// (assigned client-side by tsm-exec-portal-upgrade.js) -- combined with
+// vertical it forms a stable entityId so re-deciding the same item (e.g. a
+// hold later upgraded to approve) is traceable to one entity across calls.
+app.post('/api/exec-portal/:vertical/decide', (req, res) => {
+  const vertical = req.params.vertical;
+  const gate = EXEC_PORTAL_HITL_GATES[vertical];
+  if (!gate) return res.status(404).json({ ok: false, error: `Unknown vertical: ${vertical}` });
+
+  const { index, verdict, text, actor, meta } = req.body || {};
+  if (index === undefined || index === null) return res.status(400).json({ ok: false, error: 'index required' });
+  if (!['approved', 'rejected', 'hold'].includes(verdict)) {
+    return res.status(400).json({ ok: false, error: "verdict must be 'approved', 'rejected', or 'hold'" });
+  }
+
+  const entityId = `exec-${vertical}-${index}`;
+
+  // 'hold' isn't a terminal decision -- the shared HITL gate's log/stats
+  // (and its approvalRate math) are for approve-vs-reject outcomes only, so
+  // holds are acknowledged here but not written to the gate. This keeps the
+  // improvement-rate stat meaningful (a pile of holds shouldn't dilute it)
+  // while still giving the frontend one endpoint for all three verdicts.
+  if (verdict === 'hold') {
+    return res.json({ ok: true, recorded: false, verdict, entityId });
+  }
+
+  const decision = gate.recordDecision({
+    entityId,
+    entityType: 'exec-decision',
+    decision: verdict === 'approved' ? 'APPROVED' : 'REJECTED',
+    actor: actor || 'Executive',
+    meta: Object.assign({ text: text || null, vertical, index }, meta || {})
+  });
+  res.json({ ok: true, recorded: true, decision });
+});
+
+app.get('/api/exec-portal/:vertical/decisions', (req, res) => {
+  const vertical = req.params.vertical;
+  const gate = EXEC_PORTAL_HITL_GATES[vertical];
+  if (!gate) return res.status(404).json({ ok: false, error: `Unknown vertical: ${vertical}` });
+  const { limit } = req.query;
+  res.json({
+    ok: true,
+    log: gate.getLog(parseInt(limit, 10) || 100),
+    stats: gate.getStats()
+  });
+});
+
 // Point-to-point integration flows between systems — this IS the "integration catalog"
 // and event bus visualization the doc calls for. INTEGRATION_CATALOG above is really a
 // systems list; this is the actual connections between them, which the war room UI

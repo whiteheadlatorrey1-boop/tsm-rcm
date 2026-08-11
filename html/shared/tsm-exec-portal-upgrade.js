@@ -297,6 +297,39 @@
         border-bottom: 1px solid #161616;
       }
       .tsm-audit-table tr:hover td { background: #151515; }
+
+      /* ── Improvement Rate ── */
+      .tsm-rate-panel {
+        background: var(--tsm-surface);
+        border: 1px solid var(--tsm-border);
+        border-radius: 6px;
+        padding: 18px;
+        margin-bottom: 28px;
+      }
+      .tsm-rate-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 12px;
+      }
+      .tsm-rate-card {
+        background: var(--tsm-bg);
+        border: 1px solid var(--tsm-border);
+        border-radius: 6px;
+        padding: 14px;
+        text-align: center;
+      }
+      .tsm-rate-val { font-size: 20px; font-weight: bold; }
+      .tsm-rate-val.green { color: var(--tsm-green); }
+      .tsm-rate-val.red   { color: var(--tsm-red); }
+      .tsm-rate-val.cyan  { color: var(--tsm-cyan); }
+      .tsm-rate-val.muted { color: var(--tsm-muted); }
+      .tsm-rate-lbl {
+        font-size: 9px; letter-spacing: 1px; text-transform: uppercase;
+        color: var(--tsm-muted); margin-top: 6px;
+      }
+      .tsm-rate-empty {
+        font-size: 11px; color: var(--tsm-muted); text-align: center; padding: 8px 0;
+      }
     `;
     document.head.appendChild(style);
   }
@@ -442,6 +475,62 @@
     container.appendChild(wrap);
   }
 
+  // ── Render Improvement Rate ─────────────────────────────────────────────────
+  // Independent of the relay-driven KPI cards above: reads straight from the
+  // server's HITL decision log for this vertical (POST /api/exec-portal/
+  // :vertical/decide writes it, this reads it back), so it reflects real
+  // approve/reject history rather than a relay snapshot.
+  function renderImprovementRate(container) {
+    const wrap = document.createElement('div');
+    wrap.innerHTML = `
+      <div class="tsm-sec-header">
+        <div class="tsm-dot" style="background:var(--tsm-green)"></div>
+        Approval Improvement Rate
+      </div>
+      <div class="tsm-rate-panel" id="tsm-rate-panel">
+        <div class="tsm-rate-empty">Loading decision history&hellip;</div>
+      </div>
+    `;
+    container.appendChild(wrap);
+  }
+
+  async function loadImprovementRate(vertical) {
+    const panel = document.getElementById('tsm-rate-panel');
+    if (!panel) return;
+    try {
+      const r = await fetch(`/api/exec-portal/${vertical}/decisions`);
+      const data = await r.json();
+      if (!data || !data.ok) throw new Error('bad response');
+      renderRateStats(data.stats, panel);
+    } catch (e) {
+      panel.innerHTML = `<div class="tsm-rate-empty">Decision history unavailable this session.</div>`;
+    }
+  }
+
+  function renderRateStats(stats, panel) {
+    if (!stats || !stats.total) {
+      panel.innerHTML = `<div class="tsm-rate-empty">No decisions recorded yet &mdash; approve or reject an item above to start tracking trend.</div>`;
+      return;
+    }
+    let deltaVal = '&mdash;', deltaCls = 'muted';
+    if (stats.improvementRate !== null && stats.improvementRate !== undefined) {
+      const dir = stats.improvementRate > 0 ? 'up' : (stats.improvementRate < 0 ? 'down' : 'flat');
+      const arrow = dir === 'up' ? '&#9650;' : (dir === 'down' ? '&#9660;' : '&#9679;');
+      const sign = stats.improvementRate > 0 ? '+' : '';
+      deltaCls = dir === 'up' ? 'green' : (dir === 'down' ? 'red' : 'muted');
+      deltaVal = `${arrow} ${sign}${stats.improvementRate}pp`;
+    }
+    panel.innerHTML = `
+      <div class="tsm-rate-grid">
+        <div class="tsm-rate-card"><div class="tsm-rate-val green">${stats.approvalRate}%</div><div class="tsm-rate-lbl">Approval Rate (All-Time)</div></div>
+        <div class="tsm-rate-card"><div class="tsm-rate-val ${deltaCls}">${deltaVal}</div><div class="tsm-rate-lbl">Improvement vs Prior Period</div></div>
+        <div class="tsm-rate-card"><div class="tsm-rate-val cyan">${stats.total}</div><div class="tsm-rate-lbl">Total Decisions</div></div>
+        <div class="tsm-rate-card"><div class="tsm-rate-val green">${stats.approved}</div><div class="tsm-rate-lbl">Approved</div></div>
+        <div class="tsm-rate-card"><div class="tsm-rate-val red">${stats.rejected}</div><div class="tsm-rate-lbl">Rejected</div></div>
+      </div>
+    `;
+  }
+
   // ── Decision handler ──────────────────────────────────────────────────────
   function decide(index, verdict) {
     const actionsEl = document.getElementById(`tsm-dec-actions-${index}`);
@@ -493,6 +582,21 @@
       });
       global.TSMState.push('audit', { event: 'EXECUTIVE_DECISION', verdict, index, ts: Date.now() });
     }
+
+    // Persist to the server-side HITL gate for this vertical (POST /api/
+    // exec-portal/:vertical/decide) so the decision survives a reload and
+    // feeds the Approval Improvement Rate panel. Fire-and-forget from the
+    // UI's perspective -- the status pill above already updated optimistically,
+    // this just makes sure the audit trail is real, not just DOM state.
+    const vertical = detectVertical();
+    const text = itemEl?.querySelector('.tsm-decision-text')?.firstChild?.textContent?.trim() || null;
+    fetch(`/api/exec-portal/${vertical}/decide`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ index, verdict, text, actor: 'Executive' })
+    }).then(r => r.json()).then(data => {
+      if (data && data.ok && data.recorded) loadImprovementRate(vertical);
+    }).catch(() => { /* offline/unreachable -- decision stays reflected in the DOM only */ });
   }
 
   function _startExecution() {
@@ -593,8 +697,10 @@
     renderKPIs(kpis, panel);
     renderDecisionCenter(decisions, panel);
     renderExecutionTracker(panel);
+    renderImprovementRate(panel);
     renderAuditTrail(panel);
     wireBus();
+    loadImprovementRate(vertical);
 
     // Update TSMState with vertical context
     if (global.TSMState) {
