@@ -22,7 +22,7 @@ window.TSMEventBus = window.TSMEventBus || {
   'use strict';
 
   const RELAY_REGISTRY = {
-    healthcare:   { keys: ['TSM_HC_WAR_RELAY','tsm_hc_war_relay','tsm_war_relay_healthcare'], entryFn: 'runPipeline',    strategistPath: '/html/war-rooms/health-war/hc-main-strategist.html' },
+    healthcare:   { keys: ['TSM_HC_WAR_RELAY','tsm_hc_war_relay','tsm_war_relay_healthcare'], entryFn: 'runPipeline',    strategistPath: '/html/healthcare/hc-main-strategist.html' },
     finops:       { keys: ['tsm_war_relay_finops-suite','TSM_FINOPS_WAR_RELAY'],         entryFn: 'generateReport', strategistPath: '/html/finops-suite/finops-war/finops-main-strategist.html' },
     insurance:    { keys: ['TSM_INS_WAR_RELAY','tsm_ins_war_relay'],                     entryFn: 'runStrategist',  strategistPath: '/html/war-rooms/insure-war/insurance-strategist.html' },
     construction: { keys: ['TSM_CONSTRUCTION_WAR_RELAY','tsm_construction_war_relay'],   entryFn: 'runBNCA',        strategistPath: '/html/war-rooms/construct-war/construction-strategist.html' },

@@ -935,8 +935,9 @@
   // them. APP_CONFIGS (hand-verified single pages) and the mission/relay
   // continuity banner are separate, deliberate features and are NOT gated
   // by this — only render-everywhere-by-default is the bug being fixed.
-  // Resolved duplicate/legacy copies (e.g. html/healthcare/* vs the orphaned
-  // html/war-rooms/health-war/* mirror) by link-reference count, not guessing.
+  // Historical note: html/healthcare/* previously had an orphaned duplicate
+  // at html/war-rooms/health-war/* (same 11 nodes + strategist + exec portal,
+  // stale fork). That mirror was deleted; html/healthcare/* is canonical.
   const ALLOWED_PAGES = [
     "/war-rooms/re-war/re-war-room.html",
     "/war-rooms/re-war/re-strategist.html",

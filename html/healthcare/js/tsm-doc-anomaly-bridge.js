@@ -131,6 +131,22 @@
     return    { label:'ACTIVE',  color:'#00e5ff', bg:'rgba(0,229,255,.08)',   glow:'0 0 12px rgba(0,229,255,.25)' };
   }
 
+  // ── 4b. STEP STRUCTURE PARSER ───────────────────────────────────────────
+  // The Anomaly Advisor prompt (hc-denial-war-room.html) guarantees each
+  // step string is formatted: "⚠ [FIELD NAME] — what is wrong — exact fix
+  // instruction (which tab, which field, what to enter or change)."
+  // Not every step source follows this (doc-search's generative playbook
+  // endpoint may return plain strings) — fall back to unstructured display
+  // when the split doesn't cleanly produce 3 parts.
+  function parseStep(raw) {
+    const s = String(raw || '').replace(/^\s*⚠\s*/, '').trim();
+    const parts = s.split(/\s+—\s+/).map(p => p.trim()).filter(Boolean);
+    if (parts.length >= 3) {
+      return { field: parts[0], issue: parts[1], fix: parts.slice(2).join(' — ') };
+    }
+    return null; // unstructured — caller renders as plain text
+  }
+
   // ── 5. RENDER BANNER ────────────────────────────────────────────────────
   function renderBanner(payload, nodeId) {
     const sev = severityMeta(payload.checkStatus);
@@ -144,17 +160,30 @@
         <span style="color:#cbd5e1;font-size:.72rem;line-height:1.5">${f.replace(/^[❌✓⚠️]\s*/,'')}</span>
       </li>`).join('');
 
-    const stepsHtml = steps.map((s, i) => `
+    const stepsHtml = steps.map((s, i) => {
+      const parsed = parseStep(s);
+      const body = parsed ? `
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
+            <strong style="color:${sev.color};font-variant-numeric:tabular-nums">${String(i+1).padStart(2,'0')}.</strong>
+            <span style="background:${sev.color}22;color:${sev.color};font-size:.62rem;font-weight:700;letter-spacing:.04em;padding:1px 6px;border-radius:2px">${parsed.field}</span>
+          </div>
+          <div style="color:#94a3b8;font-size:.68rem;line-height:1.5;margin:0 0 3px 20px"><span style="color:#64748b">ISSUE</span> ${parsed.issue}</div>
+          <div style="color:#e2e8f0;font-size:.72rem;line-height:1.55;margin:0 0 0 20px"><span style="color:#4ade80;font-weight:700">→ ENTER</span> ${parsed.fix}</div>
+        ` : `
+          <span class="tsm-anb-step-text" style="color:#e2e8f0;font-size:.72rem;line-height:1.6">
+            <strong style="color:${sev.color};font-variant-numeric:tabular-nums">${String(i+1).padStart(2,'0')}.</strong> ${s}
+          </span>
+        `;
+      return `
       <li class="tsm-anb-step" style="display:flex;align-items:flex-start;gap:10px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05)">
         <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;width:100%">
           <input type="checkbox" class="tsm-anb-check"
             style="margin-top:2px;accent-color:${sev.color};flex-shrink:0;width:14px;height:14px"
             onchange="TSM_ANB.stepToggle(this,${i})">
-          <span class="tsm-anb-step-text" style="color:#e2e8f0;font-size:.72rem;line-height:1.6">
-            <strong style="color:${sev.color};font-variant-numeric:tabular-nums">${String(i+1).padStart(2,'0')}.</strong> ${s}
-          </span>
+          <span class="tsm-anb-step-text" style="width:100%">${body}</span>
         </label>
-      </li>`).join('');
+      </li>`;
+    }).join('');
 
     const docInfo = [
       payload.fileName  ? `<span><span style="color:#64748b">FILE</span> ${payload.fileName}</span>` : '',
