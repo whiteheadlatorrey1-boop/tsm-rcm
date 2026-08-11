@@ -819,11 +819,27 @@
         } catch (e) { /* noop */ }
         const relayLoaded = !!(relay && relay.enriched);
 
-        let authorized = false;
+        // Primary authorize signal: decide() in tsm-exec-portal-upgrade.js
+        // (wired to this page as of the HITL-persistence commit) stamps a
+        // .tsm-status-approved/-rejected/-hold marker on a Decision Center
+        // item the moment an executive actually clicks Approve/Reject/Hold,
+        // backed by a server-side HITL gate. That's a closer match for
+        // "Authorize Clinical Appeals & Overrides" than the Respond-by-Notes
+        // panel below, so it's checked first.
+        const decided = !!document.querySelector(
+          '.tsm-status-approved, .tsm-status-rejected, .tsm-status-hold'
+        );
+
+        // Secondary: TSM_EXEC_FEEDBACK is a distinct, genuine action (a note
+        // submitted back to the strategist via submitExecNote()) — counts
+        // as authorization too if that's the path the executive took instead.
+        let feedbackSubmitted = false;
         try {
           const fb = JSON.parse(localStorage.getItem('TSM_EXEC_FEEDBACK') || '[]');
-          authorized = Array.isArray(fb) && fb.length > 0;
+          feedbackSubmitted = Array.isArray(fb) && fb.length > 0;
         } catch (e) { /* noop */ }
+
+        const authorized = decided || feedbackSubmitted;
 
         return [relayLoaded, relayLoaded, authorized];
       }
