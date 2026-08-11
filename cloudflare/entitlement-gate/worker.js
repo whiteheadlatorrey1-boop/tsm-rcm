@@ -1,7 +1,7 @@
 /**
  * TSM Vertical Entitlement Gate — Cloudflare Worker
  * ---------------------------------------------------
- * Sits in front of *.tsmatter.com. Two jobs:
+ * Sits in front of *.tsmatter.com. Four jobs:
  *
  *   1. When serving tsm-doc-search-multi.html, inject
  *      window.__LICENSED_VERTICALS__ into the page based on the
@@ -13,6 +13,25 @@
  *      is entitled to that vertical. This is the actual paywall —
  *      the client-side lock in step 1 is UX only and can't be trusted
  *      on its own, since those files have no auth of their own.
+ *
+ *   3. Reject direct/address-bar/curl requests for the shared engine
+ *      JS (/shared, /core, /architecture, /runtime). These files DO
+ *      need to stay fetchable by real browsers, on every entitled
+ *      hostname — the client-side product genuinely needs to execute
+ *      this code, so this can't be a hostname block without breaking
+ *      the product for real customers. Instead it's a same-origin
+ *      check: real <script src="..."> loads from our own pages carry
+ *      Sec-Fetch-Dest:script (or a matching Referer) automatically;
+ *      a plain curl or a browser address-bar visit doesn't. This
+ *      stops casual scraping/search indexing without touching real
+ *      traffic — it is a deterrent, not a hard guarantee.
+ *
+ *   4. Attach a shared-secret header to every request forwarded to
+ *      origin, so server.js (Fly) can refuse any request that didn't
+ *      come through this Worker — closing the tsm-consultz.fly.dev
+ *      direct-access bypass. Requires the TSM_GATE_SECRET Worker
+ *      secret and matching CF_GATE_SECRET Fly secret to be set (see
+ *      RUNBOOK.md). Until both are set this is a silent no-op.
  *
  * Deploy: wrangler deploy, with a Route of *.tsmatter.com/* pointing
  * at this Worker, and origin set to wherever /html is actually hosted
@@ -82,6 +101,32 @@ function verticalForPath(pathname) {
   return null; // shared/unscoped asset (css, js, doc-search page itself, etc.)
 }
 
+// ── Shared engine JS: same-origin check ─────────────────────────────
+// These need to stay fetchable by real browsers on every entitled
+// hostname (the product executes this code client-side) — so this is
+// NOT a hostname block. It only rejects requests that don't look like
+// a <script>/<link> load from one of our own pages: no legitimate
+// page load, no block.
+const PROTECTED_ASSET_PREFIXES = ["/shared/", "/core/", "/architecture/", "/runtime/"];
+
+function isProtectedAsset(pathname) {
+  return PROTECTED_ASSET_PREFIXES.some(p => pathname.startsWith(p));
+}
+
+function looksLikeSameOriginAssetLoad(request, hostname) {
+  const dest = request.headers.get("Sec-Fetch-Dest") || "";
+  if (dest === "script" || dest === "style" || dest === "empty") return true; // fetch()/XHR from our own JS also sends "empty"
+
+  const site = request.headers.get("Sec-Fetch-Site") || "";
+  if (site === "same-origin" || site === "same-site") return true;
+
+  // Fallback for older browsers/clients that omit Sec-Fetch-* entirely.
+  const referer = request.headers.get("Referer") || "";
+  if (referer.startsWith(`https://${hostname}/`)) return true;
+
+  return false;
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -96,8 +141,22 @@ export default {
       );
     }
 
-    // Fetch from origin as normal.
-    const originResponse = await fetch(request);
+    // ── Enforcement: reject non-same-origin requests for shared engine JS ──
+    if (isProtectedAsset(url.pathname) && !looksLikeSameOriginAssetLoad(request, url.hostname)) {
+      return new Response("Not found", { status: 404 });
+    }
+
+    // ── Attach origin shared-secret header, then fetch from origin ──
+    // No-ops silently if env.TSM_GATE_SECRET isn't configured yet, so
+    // this doesn't break anything ahead of the matching Fly-side change.
+    let originResponse;
+    if (env.TSM_GATE_SECRET) {
+      const originRequest = new Request(request, { headers: new Headers(request.headers) });
+      originRequest.headers.set("x-tsm-cf-gate", env.TSM_GATE_SECRET);
+      originResponse = await fetch(originRequest);
+    } else {
+      originResponse = await fetch(request);
+    }
 
     // ── Injection: tell the doc-search page what this host is licensed for ──
     if (url.pathname.endsWith("tsm-doc-search-multi.html")) {

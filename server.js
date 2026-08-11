@@ -31,6 +31,26 @@ app.use(express.json());
 app.use(require('express').urlencoded({ extended: false }));
 // tsmAuthMiddleware(app); // removed — war rooms are in-house
 
+// ── CLOUDFLARE-ORIGIN GATE ──────────────────────────────────────────────────
+// Rejects any request that didn't come through the tsm-entitlement-gate
+// Cloudflare Worker (cloudflare/entitlement-gate/worker.js), which is the
+// only thing enforcing per-vertical licensing and the shared-engine-JS
+// same-origin check. Without this, tsm-consultz.fly.dev is a direct side
+// door around all of that.
+//
+// Silent no-op until CF_GATE_SECRET is set as a Fly secret AND the matching
+// TSM_GATE_SECRET is set as a Worker secret — intentional, so this can't
+// accidentally lock out local/Codespace dev or a deploy that hasn't wired
+// the Worker side up yet. Set both, then this becomes live.
+//   fly secrets set CF_GATE_SECRET=<value> -a tsm-consultz
+//   cd cloudflare/entitlement-gate && wrangler secret put TSM_GATE_SECRET
+app.use((req, res, next) => {
+  if (!process.env.CF_GATE_SECRET) return next(); // not configured — no-op
+  if (req.path === '/health') return next(); // Fly's own healthcheck hits origin directly
+  if (req.get('x-tsm-cf-gate') === process.env.CF_GATE_SECRET) return next();
+  return res.status(403).send('Forbidden');
+});
+
 // Login accepts EITHER the shared admin password OR a per-client access
 // code. We try admin first (cheap string compare against an env var), then
 // fall back to a client-code lookup. Either path produces the same kind of
@@ -1155,6 +1175,7 @@ app.use(require('./routes/construction'));
 app.use(require('./routes/property-accounting'));
 app.use(require('./routes/finops'));
 app.use(require('./routes/live-data'));
+app.use(require('./routes/doc-router'));
 
 // ── RCM RELAY ─────────────────────────────────────────────────────────────────
 // Server-side staging for the FinOps Doc Showcase -> TSM RCM OS handoff.

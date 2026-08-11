@@ -1581,71 +1581,6 @@ function clearAll(){
 addLog('Construction War Room initialized','6 engines standing by — load construction document to begin','g');
 </script>
 <script>
-// ── REMEDY APPS (recommended routes for the detected anomaly) ──────
-// Bridges the live defect scan above into TSMSectorIntelligence's
-// construction anomaly playbooks (PERMIT_DELAY / SUBCONTRACTOR_EXPOSURE),
-// registers the finding via TSMMemory so it shows up in sector memory
-// alongside every other sector's anomalies, and renders the resulting
-// recommendedApps (Permit Review / Project Recovery / Construction
-// Strategist / AuditOps Pro) as clickable chips — same pattern already
-// live in bpo-executive-portal.html's "Recommended Apps" panel.
-function detectConstructionAnomalyCode(outputs, docText) {
-  const t = ((outputs[1] || '') + ' ' + (outputs[2] || '') + ' ' + (docText || '')).toLowerCase();
-  if (t.includes('subcontractor') || t.includes('sub-contract') || t.includes('vendor dependency')) {
-    return 'SUBCONTRACTOR_EXPOSURE';
-  }
-  return 'PERMIT_DELAY';
-}
-
-function renderConstructionRemedyApps(outputs, docText) {
-  const body = document.getElementById('anomaly-panel-body');
-  if (!body || !window.TSMSectorIntelligence) return;
-
-  const anomalyCode = detectConstructionAnomalyCode(outputs, docText);
-  const entityId = 'scan-' + Date.now();
-
-  if (window.TSMMemory && typeof window.TSMMemory.registerAnomaly === 'function') {
-    try {
-      window.TSMMemory.registerAnomaly({
-        entityType: 'construction-project',
-        entityId,
-        anomalyCode,
-        title: anomalyCode === 'SUBCONTRACTOR_EXPOSURE' ? 'Subcontractor Exposure' : 'Permit Delay',
-        source: 'construction-war-room-anomaly-scan'
-      });
-    } catch (e) { console.warn('[TSM] registerAnomaly failed:', e); }
-  }
-
-  let apps = [];
-  if (window.TSMMemory && typeof window.TSMMemory.getSuggestedAppPayload === 'function') {
-    const payload = window.TSMMemory.getSuggestedAppPayload({
-      sectorName: 'construction', anomalyCode, entityType: 'construction-project', entityId
-    });
-    apps = (payload && payload.recommendedApps) || [];
-  } else if (typeof window.TSMSectorIntelligence.getApps === 'function') {
-    apps = window.TSMSectorIntelligence.getApps('construction', anomalyCode) || [];
-  }
-  if (!apps.length) return;
-
-  const wrap = document.createElement('div');
-  wrap.style.cssText = 'margin-top:14px;padding-top:12px;border-top:1px solid #1ee8b620;';
-  wrap.innerHTML = '<div style="color:#1ee8b6;font-size:9px;letter-spacing:1.5px;margin-bottom:8px;">⬡ RECOMMENDED REMEDY APPS</div>' +
-    apps.map((app, i) => `
-      <div class="tsm-remedy-chip" data-url="${app.url}" data-idx="${i}" style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid #1ee8b633;border-radius:4px;margin-bottom:6px;cursor:pointer;transition:.2s;">
-        <div style="width:6px;height:6px;border-radius:50%;background:#1ee8b6;flex-shrink:0;"></div>
-        <div style="font-size:.72rem;color:#c8e0d0;flex:1;">${app.label}</div>
-        <div style="font-family:'JetBrains Mono',monospace;font-size:.65rem;color:#1ee8b680;">→</div>
-      </div>
-    `).join('');
-  body.appendChild(wrap);
-
-  wrap.querySelectorAll('.tsm-remedy-chip').forEach(chip => {
-    chip.addEventListener('click', () => window.open(chip.dataset.url, '_blank'));
-    chip.addEventListener('mouseenter', () => { chip.style.borderColor = '#1ee8b6'; chip.style.background = 'rgba(30,232,182,.05)'; });
-    chip.addEventListener('mouseleave', () => { chip.style.borderColor = '#1ee8b633'; chip.style.background = 'transparent'; });
-  });
-}
-
 function showAnomalyAdvisorPanel(outputs, docText) {
   const existing = document.getElementById('anomaly-slide-panel');
   if (existing) existing.remove();
@@ -1708,7 +1643,6 @@ Maximum 8 items. No preamble. No headers. No summary. Start immediately with ite
       body.appendChild(footer);
       const btn = document.getElementById('tsm-build-mission-btn');
       if (btn) { btn.dataset.anomaly = body.innerText || ''; btn.style.display = 'block'; }
-      renderConstructionRemedyApps(outputs, docText);
     },
     (err) => {
       console.warn('[TSM] Anomaly Advisor live call failed, using local fallback:', err);
@@ -1735,7 +1669,6 @@ Maximum 8 items. No preamble. No headers. No summary. Start immediately with ite
       body.appendChild(footer);
       const btn = document.getElementById('tsm-build-mission-btn');
       if (btn) { btn.dataset.anomaly = body.innerText || ''; btn.style.display = 'block'; }
-      renderConstructionRemedyApps(outputs, docText);
     },
     600
   );
