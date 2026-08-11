@@ -236,9 +236,13 @@
 
     <!-- Right: remediation checklist -->
     <div>
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px">
         <div style="color:#94a3b8;font-size:.6rem;letter-spacing:.1em">REMEDIATION CHECKLIST</div>
-        <span id="tsm-anb-counter" style="font-size:.6rem;color:${sev.color}">0 / ${steps.length} complete</span>
+        <span id="tsm-anb-counter" style="font-size:.6rem;color:${sev.color}">0 / ${steps.length} tracked</span>
+      </div>
+      <div style="color:#475569;font-size:.6rem;letter-spacing:.02em;margin-bottom:8px;display:flex;align-items:center;gap:5px">
+        <span style="flex-shrink:0">ℹ</span>
+        <span>Manual tracking only — checking a step confirms <em>you</em> made the correction in the source system. Nothing here submits or edits claims data automatically.</span>
       </div>
 
       <!-- Progress bar -->
@@ -269,7 +273,7 @@
 
       <!-- Completion flash -->
       <div id="tsm-anb-complete" style="display:none;margin-top:10px;padding:8px 10px;border-radius:3px;background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.3);color:#10b981;font-size:.68rem;font-weight:700;letter-spacing:.08em;text-align:center">
-        ✓ ALL STEPS COMPLETE — ESCALATE TO STRATEGIST
+        ✓ ALL STEPS TRACKED — ESCALATE TO STRATEGIST
       </div>
     </div>
   </div>
@@ -307,19 +311,23 @@
           completed--;
         }
         completed = Math.max(0, Math.min(total, completed));
-        document.getElementById('tsm-anb-counter').textContent = `${completed} / ${total} complete`;
+        document.getElementById('tsm-anb-counter').textContent = `${completed} / ${total} tracked`;
         const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
         document.getElementById('tsm-anb-progress-bar').style.width = pct + '%';
         if (completed === total && total > 0) {
           document.getElementById('tsm-anb-complete').style.display = 'block';
-          // Write completion back to localStorage for the HC hub to see
+          // Write self-reported tracking status back to localStorage for the HC hub to see.
+          // NOTE: this records that the operator manually checked every step in this UI —
+          // it is NOT confirmation that the underlying claim was actually corrected in the
+          // source system. Key/event names kept as-is (_nodeCompleted / node-checklist-complete)
+          // since tsm-hc-workflow-guide.js matches this exact stage id to advance the guided tour.
           try {
             const rec = JSON.parse(localStorage.getItem('tsm-doc-anomaly') || '{}');
             rec._nodeCompleted = rec._nodeCompleted || {};
-            rec._nodeCompleted[nodeId] = { ts: new Date().toISOString(), pct: 100 };
+            rec._nodeCompleted[nodeId] = { ts: new Date().toISOString(), pct: 100, source: 'manual-self-report' };
             localStorage.setItem('tsm-doc-anomaly', JSON.stringify(rec));
           } catch(e) {}
-          try { if (window.TSMWorkflowStage) TSMWorkflowStage.write('node-checklist-complete', { nodeId: nodeId }); } catch(e) {}
+          try { if (window.TSMWorkflowStage) TSMWorkflowStage.write('node-checklist-complete', { nodeId: nodeId, source: 'manual-self-report' }); } catch(e) {}
         } else {
           document.getElementById('tsm-anb-complete').style.display = 'none';
         }
