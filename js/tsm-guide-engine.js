@@ -173,6 +173,49 @@
     return null;
   }
 
+  // 1b. App-specific handoff banner — a second, independent continuity
+  // source alongside tsm_guide_relay/tsm_active_mission above. The
+  // click-capture in captureRelayOnClick() only fires on LAUNCH/OPEN link
+  // text, so it never sees the HC ESCALATE buttons (their text is
+  // "ESCALATE TO HC MAIN STRATEGIST" / "ESCALATE / RELAY TO EXEC"), even
+  // though those buttons DO ship a real payload (TSM_WAR_ROOM_BRIEF,
+  // TSM_EXEC_RELAY). Rather than teach the click-guess more trigger words
+  // (still a guess), this reads the actual payload the destination page's
+  // own code already depends on, so the banner only ever reflects a
+  // genuine handoff. Keep in sync with hc-denial-war-room.html's
+  // dispatchSessionPayload() and hc-main-strategist.html's
+  // escalateToExecPortal() if either payload shape changes.
+  function readVerifiedAppHandoff(context) {
+    try {
+      if (context.vertical === 'healthcare' && context.role === 'strategist') {
+        const raw = sessionStorage.getItem('TSM_WAR_ROOM_BRIEF');
+        if (!raw) return null;
+        const brief = JSON.parse(raw);
+        if (!brief || !brief.timestamp) return null;
+        if (Date.now() - new Date(brief.timestamp).getTime() > CONTINUITY_MAX_AGE_MS) return null;
+        return {
+          label: 'Continuing from HC Denial War Room',
+          detail: 'Session ' + (brief.sessionId || '—') +
+            (brief.documentMeta && brief.documentMeta.ingestType ? ' · ' + brief.documentMeta.ingestType : ''),
+          noClear: true // TSM_WAR_ROOM_BRIEF is live data this page's own readWarRoomBrief() renders from — dismissing the banner must not delete it
+        };
+      }
+      if (context.vertical === 'healthcare' && context.role === 'exec') {
+        const raw = sessionStorage.getItem('TSM_EXEC_RELAY') || localStorage.getItem('TSM_EXEC_RELAY');
+        if (!raw) return null;
+        const relay = JSON.parse(raw);
+        if (!relay || !relay.enriched || !relay.ts) return null;
+        if (Date.now() - relay.ts > CONTINUITY_MAX_AGE_MS) return null;
+        return {
+          label: 'Continuing from HC Main Strategist',
+          detail: relay.sessionId ? 'Session ' + relay.sessionId : '',
+          noClear: true // TSM_EXEC_RELAY drives loadStratRelay() on this page — dismissing the banner must not delete it
+        };
+      }
+    } catch (e) { /* noop */ }
+    return null;
+  }
+
   // When a fresh AI mission exists for this exact page, it becomes the
   // config outright (real AI-tailored steps take priority over the generic
   // template) and runs on the heuristic engine — these steps are dynamic
@@ -732,6 +775,58 @@
         // steps 1-3 share the same real signal; only "escalated" differs.
         return [generated, generated, generated, escalated];
       }
+    },
+    // Verified against html/healthcare/hc-main-strategist.html and
+    // html/healthcare/executive-portal.html. War Room is intentionally NOT
+    // covered here — it already has its own hand-verified entry in
+    // APP_STATE_CHECKERS below ("hc-denial-war-room"), which takes priority.
+    healthcare: {
+      // hc-main-strategist.html's 6 Pull Packs (revenue/variance/denial/auth/
+      // compliance/executive) all write to the same #strat-out panel — there
+      // is no separate DOM signal distinguishing "audited denials" from
+      // "reviewed compliance" from "generated packet", so steps 1-3 share
+      // the one real signal (a pack has actually been run), same honesty
+      // convention as the finops.strategist checker above. Step 4 is the
+      // real TSM_EXEC_RELAY write from escalateToExecPortal().
+      strategist: function () {
+        const out = document.getElementById('strat-out');
+        const packRun = !!(out && out.textContent && out.textContent.trim().length > 40);
+
+        let escalated = false;
+        try {
+          escalated = !!(sessionStorage.getItem('TSM_EXEC_RELAY') || localStorage.getItem('TSM_EXEC_RELAY'));
+        } catch (e) { /* noop */ }
+
+        return [packRun, packRun, packRun, escalated];
+      },
+      // executive-portal.html: step 1 (revenue/denial review) and step 2
+      // (HIPAA/regulatory audit) share the same real signal —
+      // loadStratRelay() populating the KPI tiles + BNCA strip from a
+      // genuine TSM_EXEC_RELAY write. The Compliance Calendar panel (HIPAA,
+      // Stark Law, CMS deadlines) is static reference content with no
+      // click/interaction to verify, so there is no second real signal to
+      // split step 2 off from step 1 — an unverifiable sub-step shares its
+      // parent's real signal rather than being faked as separately
+      // achievable, same convention used throughout this file. Step 3
+      // (authorize) is the real TSM_EXEC_FEEDBACK write from
+      // submitExecNote() — an executive actually submitting a decision/note
+      // back to the strategist, not just typing in a textarea.
+      exec: function () {
+        let relay = null;
+        try {
+          const raw = sessionStorage.getItem('TSM_EXEC_RELAY') || localStorage.getItem('TSM_EXEC_RELAY');
+          if (raw) relay = JSON.parse(raw);
+        } catch (e) { /* noop */ }
+        const relayLoaded = !!(relay && relay.enriched);
+
+        let authorized = false;
+        try {
+          const fb = JSON.parse(localStorage.getItem('TSM_EXEC_FEEDBACK') || '[]');
+          authorized = Array.isArray(fb) && fb.length > 0;
+        } catch (e) { /* noop */ }
+
+        return [relayLoaded, relayLoaded, authorized];
+      }
     }
   };
 
@@ -845,7 +940,11 @@
     const dismissBtn = document.getElementById("guide-continuity-dismiss");
     if (dismissBtn) {
       dismissBtn.addEventListener("click", function () {
-        clearContinuity();
+        // Only clear tsm_guide_relay/tsm_active_mission for the generic
+        // click-guessed banner. App-specific handoff banners (noClear) read
+        // real payloads other page code still depends on rendering — wiping
+        // them on dismiss would break that, so just hide the widget banner.
+        if (!banner || !banner.noClear) clearContinuity();
         const el = document.getElementById("guide-continuity-banner");
         if (el) el.remove();
       });
@@ -1033,7 +1132,7 @@
     // to the specific anomaly that sent the user here.
     const mission = readActiveMission();
     const relay = !mission ? readRelay() : null; // mission already implies relay-level context
-    const banner = buildContinuityBanner(mission, relay);
+    const banner = buildContinuityBanner(mission, relay) || readVerifiedAppHandoff(context);
 
     let pageConfig, checkerFn;
     if (mission) {
