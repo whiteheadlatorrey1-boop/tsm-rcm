@@ -32,6 +32,19 @@
  *   TSMExceptions.subscribe(callback) -> unsubscribe fn; callback fires on
  *     every add()/resolve()
  *   TSMExceptions.clear() -> wipes storage (testing/reset only)
+ *
+ * RCM OS interop (added): add()/resolve() also mirror into TSMMemory
+ * (html/shared/tsm-memory-engine.js) via registerAnomaly()/resolveAnomaly()
+ * when that engine is loaded on the page — same principle as the
+ * healthcare/REO/mortgage/schools/honeywell reconciliations documented in
+ * config/rcm/cross-module-adoption.json: one shared TSM_OPERATIONAL_MEMORY_V3
+ * store instead of a second, page-local exception list. This is additive
+ * and best-effort — if TSMMemory isn't loaded (most pages that already use
+ * TSMExceptions today don't load it), the calls are silent no-ops and
+ * TSMExceptions behaves exactly as before. Every exception gets a stable
+ * anomalyCode derived from its own exceptionId, so RCM OS's Cross-Module
+ * Exceptions view (TSMMemory.getCrossModuleAnomalies()) picks it up
+ * automatically with zero RCM OS-side changes.
  * ========================================================================== */
 
 (function (global) {
@@ -80,6 +93,51 @@
     return 'P3';
   }
 
+  /** Stable per-exception anomalyCode so add()/resolve() always target the same TSMMemory record. */
+  function anomalyCodeFor(entry) {
+    return 'EXC_' + String(entry.exceptionId).replace(/[^a-z0-9]+/gi, '_').toUpperCase();
+  }
+
+  function bridgeAdd(entry) {
+    var TM = global.TSMMemory;
+    if (!TM || typeof TM.registerAnomaly !== 'function') return;
+    try {
+      TM.registerAnomaly({
+        entityType: 'exception-queue',
+        entityId: entry.exceptionId,
+        anomalyCode: anomalyCodeFor(entry),
+        title: entry.title || 'Exception',
+        severity: entry.priority === 'P1' ? 'CRITICAL' : entry.priority === 'P2' ? 'HIGH' : 'MEDIUM',
+        source: entry.agentLabel || 'tsm-exceptions',
+        meta: {
+          detail: entry.detail || null,
+          recommendedAction: entry.recommendedAction || null,
+          sector: entry.sector || null,
+          exposure: typeof entry.exposure === 'number' ? entry.exposure : null,
+          priority: entry.priority
+        }
+      });
+    } catch (e) {
+      // interop is best-effort — never let a TSMMemory problem break the exception queue itself
+    }
+  }
+
+  function bridgeResolve(entry) {
+    var TM = global.TSMMemory;
+    if (!TM || typeof TM.resolveAnomaly !== 'function') return;
+    try {
+      TM.resolveAnomaly({
+        anomalyCode: anomalyCodeFor(entry),
+        entityType: 'exception-queue',
+        entityId: entry.exceptionId,
+        resolvedBy: 'tsm-exceptions',
+        status: 'resolved'
+      });
+    } catch (e) {
+      // best-effort, same as bridgeAdd
+    }
+  }
+
   function add(exception) {
     exception = exception || {};
     var priority = exception.priority || priorityFor(exception.severity, exception.confidence);
@@ -92,6 +150,7 @@
 
     _records.push(entry);
     persist(_records);
+    bridgeAdd(entry);
     notify();
     return entry;
   }
@@ -136,6 +195,7 @@
     rec.status = 'resolved';
     rec.resolvedAt = new Date().toISOString();
     persist(_records);
+    bridgeResolve(rec);
     notify();
     return rec;
   }
