@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TSM Mission Queue — Cross-Sector Exception Operations</title>
+<!--
+  TSM Mission Queue
+  ------------------------------------------------------------------------
+  The analyst-facing aggregator described in the BPO Managed Financial
+  Operations playbook: one operations desk across every sector already
+  wired into TSMExceptions, instead of N separate war-room exception
+  lists. This is a thin UI layer — it does NOT re-derive priority,
+  storage, or resolution logic. It reads/writes the same engine every
+  other page already uses (html/shared/tsm-exceptions.js), the same one
+  RCM-OS's Cross-Module Exceptions panel already picks up automatically
+  via the TSMMemory bridge documented in that file's own header comment.
+
+  What's new here (additive only, own storage key, never touches
+  tsm_exceptions_v1 records):
+    - a cross-sector view (TSMExceptions.getAll() with no sector filter)
+    - sector + priority filtering
+    - age-based SLA flagging (P1 > 24h, P2 > 72h, P3 > 5d — display only)
+    - a lightweight assignee tag per exception, stored under its own key
+      (tsm_mission_queue_assignments_v1) so this page can be deleted
+      without touching the real exception data
+
+  Honesty note carried over from the exception widget: "Resolve" here
+  calls the same TSMExceptions.resolve() every other page uses. For
+  Tier 2/3 sectors (see playbook) that is a status flip, not a
+  confirmed source-system correction — the UI says so per-row rather
+  than implying otherwise.
+-->
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+
+  :root{
+    --bg:#080b14; --panel:#0d1220; --panel-2:#111828; --line:#1c2436; --line-bright:#2a3550;
+    --ink:#e2e8f5; --ink-dim:#8a97b8; --ink-faint:#4d5876;
+    --cyan:#00e5ff; --red:#ff4d6d; --amber:#f2a340; --green:#22d38a;
+    --mono:'IBM Plex Mono',monospace; --disp:'Space Grotesk',sans-serif;
+  }
+  *{ box-sizing:border-box; }
+  body{
+    margin:0; background:var(--bg); color:var(--ink); font-family:var(--mono);
+    -webkit-font-smoothing:antialiased;
+  }
+  a{ color:inherit; }
+
+  header{
+    padding:22px 28px 18px; border-bottom:1px solid var(--line);
+    display:flex; align-items:flex-start; justify-content:space-between; gap:20px; flex-wrap:wrap;
+  }
+  header h1{
+    font-family:var(--disp); font-weight:700; font-size:1.5rem; margin:0 0 4px; letter-spacing:-.01em;
+  }
+  header p{ margin:0; color:var(--ink-dim); font-size:.78rem; max-width:60ch; line-height:1.5; }
+
+  .kpis{
+    display:grid; grid-template-columns:repeat(6,1fr); gap:10px;
+    padding:18px 28px; border-bottom:1px solid var(--line);
+  }
+  @media (max-width:900px){ .kpis{ grid-template-columns:repeat(3,1fr); } }
+  .kpi{
+    background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:12px 14px;
+  }
+  .kpi .n{ font-family:var(--disp); font-size:1.5rem; font-weight:700; }
+  .kpi .l{ font-size:.62rem; color:var(--ink-faint); letter-spacing:.08em; text-transform:uppercase; margin-top:2px; }
+  .kpi.p1 .n{ color:var(--red); }
+  .kpi.p2 .n{ color:var(--amber); }
+  .kpi.p3 .n{ color:var(--green); }
+
+  .controls{
+    display:flex; align-items:center; gap:10px; padding:14px 28px; flex-wrap:wrap;
+    border-bottom:1px solid var(--line);
+  }
+  .controls .grp{ display:flex; gap:6px; flex-wrap:wrap; }
+  .fbtn{
+    font-family:var(--mono); font-size:10.5px; letter-spacing:.04em; color:var(--ink-dim);
+    background:var(--panel); border:1px solid var(--line); border-radius:999px;
+    padding:5px 12px; cursor:pointer;
+  }
+  .fbtn.active{ color:#000; background:var(--cyan); border-color:var(--cyan); }
+  .spacer{ flex:1; }
+  .autoassign{
+    font-family:var(--mono); font-size:10.5px; color:var(--cyan);
+    background:rgba(0,229,255,.08); border:1px solid rgba(0,229,255,.35); border-radius:4px;
+    padding:6px 12px; cursor:pointer;
+  }
+
+  .queue{ padding:18px 28px 60px; max-width:1180px; margin:0 auto; }
+  .row{
+    display:grid; grid-template-columns:56px 90px 1fr 90px 110px 130px 90px;
+    align-items:flex-start; gap:12px;
+    background:var(--panel); border:1px solid var(--line); border-radius:6px;
+    padding:12px 14px; margin-bottom:8px;
+  }
+  .row.resolved{ opacity:.4; }
+  .row.overdue{ border-color:var(--red); }
+  @media (max-width:900px){ .row{ grid-template-columns:1fr; } }
+
+  .badge{
+    font-size:9px; font-weight:700; letter-spacing:.08em; text-align:center;
+    border:1px solid; border-radius:3px; padding:3px 0; height:fit-content;
+  }
+  .badge.P1{ color:var(--red); border-color:var(--red); }
+  .badge.P2{ color:var(--amber); border-color:var(--amber); }
+  .badge.P3{ color:var(--green); border-color:var(--green); }
+
+  .sector{ font-size:9.5px; color:var(--ink-faint); letter-spacing:.06em; text-transform:uppercase; padding-top:2px; }
+
+  .body .title{ font-size:.82rem; color:var(--ink); margin-bottom:3px; }
+  .body .detail{ font-size:.72rem; color:var(--ink-dim); line-height:1.5; margin-bottom:3px; }
+  .body .action{ font-size:.7rem; color:var(--cyan); }
+  .body .tier-note{ font-size:.62rem; color:var(--ink-faint); margin-top:4px; }
+
+  .exposure{ font-size:.85rem; font-weight:700; text-align:right; }
+  .age{ font-size:.68rem; color:var(--ink-dim); text-align:right; }
+  .age.overdue-tag{ color:var(--red); font-weight:700; }
+
+  select.assignee{
+    font-family:var(--mono); font-size:10px; background:var(--panel-2); color:var(--ink);
+    border:1px solid var(--line-bright); border-radius:4px; padding:5px 6px; width:100%;
+  }
+
+  .resolve-btn{
+    background:rgba(0,229,255,.08); border:1px solid rgba(0,229,255,.3); color:var(--cyan);
+    font-family:var(--mono); font-size:9.5px; letter-spacing:.06em; text-transform:uppercase;
+    padding:6px 8px; border-radius:4px; cursor:pointer; width:100%;
+  }
+  .resolved-tag{ font-size:9px; color:var(--ink-faint); letter-spacing:.06em; text-transform:uppercase; }
+
+  .empty{ color:var(--ink-faint); font-size:.8rem; padding:40px; text-align:center; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>TSM Mission Queue</h1>
+    <p>Every open exception across every wired sector, one desk. Priority = severity × confidence
+       (same rule as the exception engine everywhere else). Sort by age to work the oldest risk first.</p>
+  </div>
+</header>
+
+<div class="kpis" id="kpis"></div>
+
+<div class="controls">
+  <div class="grp" id="sector-filters"></div>
+  <div class="grp" id="priority-filters"></div>
+  <div class="spacer"></div>
+  <button class="autoassign" id="auto-assign-btn">Auto-assign unassigned</button>
+</div>
+
+<div class="queue" id="queue"></div>
+
+<script src="tsm-exceptions.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var ASSIGN_KEY = 'tsm_mission_queue_assignments_v1';
+  var ROSTER = ['Unassigned', 'Analyst A', 'Analyst B', 'Analyst C', 'Analyst D'];
+  // Sectors whose "Resolve" is a confirmed source-system correction today
+  // (see BPO playbook Tier 1). Everything else shows a self-report note.
+  var TIER1_SECTORS = ['mortgage', 'construction', 'healthcare', 'finops'];
+
+  var state = { sector: null, priority: null };
+
+  function loadAssignments() {
+    try { return JSON.parse(localStorage.getItem(ASSIGN_KEY) || '{}'); }
+    catch (e) { return {}; }
+  }
+  function saveAssignments(map) {
+    try { localStorage.setItem(ASSIGN_KEY, JSON.stringify(map)); } catch (e) {}
+  }
+  function assigneeFor(id, map) { return map[id] || 'Unassigned'; }
+
+  function fmtMoney(n) {
+    if (typeof n !== 'number') return '\u2014';
+    return '$' + n.toLocaleString('en-US');
+  }
+
+  function ageHours(createdAt) {
+    var t = Date.parse(createdAt);
+    if (isNaN(t)) return null;
+    return (Date.now() - t) / 3600000;
+  }
+  function fmtAge(hrs) {
+    if (hrs == null) return '\u2014';
+    if (hrs < 1) return Math.round(hrs * 60) + 'm';
+    if (hrs < 48) return Math.round(hrs) + 'h';
+    return Math.round(hrs / 24) + 'd';
+  }
+  function slaLimitHours(priority) {
+    if (priority === 'P1') return 24;
+    if (priority === 'P2') return 72;
+    return 120; // P3, 5 days
+  }
+  function isOverdue(rec) {
+    if (rec.status === 'resolved') return false;
+    var hrs = ageHours(rec.createdAt);
+    return hrs != null && hrs > slaLimitHours(rec.priority);
+  }
+
+  function escapeHtml(str) {
+    if (str == null) return '';
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  function allRecords() {
+    return window.TSMExceptions ? window.TSMExceptions.getAll() : [];
+  }
+
+  function sectorsPresent(records) {
+    var seen = {};
+    records.forEach(function (r) { if (r.sector) seen[r.sector] = true; });
+    return Object.keys(seen).sort();
+  }
+
+  function renderKpis(records) {
+    var open = records.filter(function (r) { return r.status !== 'resolved'; });
+    var resolved = records.filter(function (r) { return r.status === 'resolved'; });
+    var byP = { P1: 0, P2: 0, P3: 0 };
+    var expOpen = 0, expResolved = 0;
+    open.forEach(function (r) {
+      byP[r.priority] = (byP[r.priority] || 0) + 1;
+      if (typeof r.exposure === 'number') expOpen += r.exposure;
+    });
+    resolved.forEach(function (r) {
+      if (typeof r.exposure === 'number') expResolved += r.exposure;
+    });
+    var overdueCount = open.filter(isOverdue).length;
+
+    document.getElementById('kpis').innerHTML = [
+      tile('n', open.length, 'Open Exceptions'),
+      tile('p1', byP.P1, 'P1 Critical'),
+      tile('p2', byP.P2, 'P2 High'),
+      tile('p3', byP.P3, 'P3 / Info'),
+      tile('n', overdueCount, 'Past SLA'),
+      tile('n', fmtMoney(expOpen), 'Exposure Open')
+    ].join('');
+  }
+  function tile(cls, val, label) {
+    return '<div class="kpi ' + cls + '"><div class="n">' + val + '</div><div class="l">' + label + '</div></div>';
+  }
+
+  function renderFilters(records) {
+    var sectors = sectorsPresent(records);
+    var secHtml = '<button class="fbtn' + (state.sector === null ? ' active' : '') + '" data-sector="">All Sectors</button>' +
+      sectors.map(function (s) {
+        return '<button class="fbtn' + (state.sector === s ? ' active' : '') + '" data-sector="' + escapeHtml(s) + '">' + escapeHtml(s) + '</button>';
+      }).join('');
+    document.getElementById('sector-filters').innerHTML = secHtml;
+
+    var prios = ['P1', 'P2', 'P3'];
+    var prioHtml = '<button class="fbtn' + (state.priority === null ? ' active' : '') + '" data-priority="">All Priority</button>' +
+      prios.map(function (p) {
+        return '<button class="fbtn' + (state.priority === p ? ' active' : '') + '" data-priority="' + p + '">' + p + '</button>';
+      }).join('');
+    document.getElementById('priority-filters').innerHTML = prioHtml;
+
+    document.querySelectorAll('[data-sector]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        state.sector = btn.getAttribute('data-sector') || null;
+        render();
+      });
+    });
+    document.querySelectorAll('[data-priority]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        state.priority = btn.getAttribute('data-priority') || null;
+        render();
+      });
+    });
+  }
+
+  function rowHtml(rec, assignments) {
+    var resolved = rec.status === 'resolved';
+    var overdue = isOverdue(rec);
+    var hrs = ageHours(rec.createdAt);
+    var tier1 = TIER1_SECTORS.indexOf(rec.sector) !== -1;
+    var assignee = assigneeFor(rec.exceptionId, assignments);
+
+    var assigneeCell = resolved
+      ? '<span class="resolved-tag">Resolved</span>'
+      : '<select class="assignee" data-assign="' + escapeHtml(rec.exceptionId) + '">' +
+          ROSTER.map(function (name) {
+            return '<option value="' + escapeHtml(name) + '"' + (name === assignee ? ' selected' : '') + '>' + escapeHtml(name) + '</option>';
+          }).join('') +
+        '</select>';
+
+    var actionCell = resolved
+      ? ''
+      : '<button class="resolve-btn" data-resolve="' + escapeHtml(rec.exceptionId) + '">Resolve</button>';
+
+    return '' +
+      '<div class="row' + (resolved ? ' resolved' : '') + (overdue ? ' overdue' : '') + '" data-row="' + escapeHtml(rec.exceptionId) + '">' +
+        '<div class="badge ' + rec.priority + '">' + rec.priority + '</div>' +
+        '<div class="sector">' + escapeHtml(rec.sector || '\u2014') + '</div>' +
+        '<div class="body">' +
+          '<div class="title">' + escapeHtml(rec.title) + '</div>' +
+          (rec.detail ? '<div class="detail">' + escapeHtml(rec.detail) + '</div>' : '') +
+          (rec.recommendedAction ? '<div class="action">\u2192 ' + escapeHtml(rec.recommendedAction) + '</div>' : '') +
+          (!resolved ? '<div class="tier-note">' + (tier1
+            ? 'Resolve confirms a real source-system correction for this sector.'
+            : 'Resolve is a self-reported status flip for this sector \u2014 not yet a confirmed correction.') + '</div>' : '') +
+        '</div>' +
+        '<div class="exposure">' + fmtMoney(rec.exposure) + '</div>' +
+        '<div class="age' + (overdue ? ' overdue-tag' : '') + '">' + fmtAge(hrs) + (overdue ? ' OVERDUE' : '') + '</div>' +
+        '<div>' + assigneeCell + '</div>' +
+        '<div>' + actionCell + '</div>' +
+      '</div>';
+  }
+
+  function render() {
+    var all = allRecords();
+    renderKpis(all);
+    renderFilters(all);
+
+    var filtered = all.filter(function (r) {
+      if (state.sector && r.sector !== state.sector) return false;
+      if (state.priority && r.priority !== state.priority) return false;
+      return true;
+    }).sort(function (a, b) {
+      // open before resolved, then oldest-first within open (work the oldest risk first)
+      if ((a.status === 'resolved') !== (b.status === 'resolved')) return a.status === 'resolved' ? 1 : -1;
+      return Date.parse(a.createdAt) - Date.parse(b.createdAt);
+    });
+
+    var assignments = loadAssignments();
+    var q = document.getElementById('queue');
+    q.innerHTML = filtered.length
+      ? filtered.map(function (r) { return rowHtml(r, assignments); }).join('')
+      : '<div class="empty">No exceptions match this filter.</div>';
+
+    q.querySelectorAll('[data-resolve]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        if (window.TSMExceptions) window.TSMExceptions.resolve(btn.getAttribute('data-resolve'));
+        // re-render fires via TSMExceptions.subscribe() below
+      });
+    });
+    q.querySelectorAll('[data-assign]').forEach(function (sel) {
+      sel.addEventListener('change', function () {
+        var map = loadAssignments();
+        var id = sel.getAttribute('data-assign');
+        if (sel.value === 'Unassigned') delete map[id];
+        else map[id] = sel.value;
+        saveAssignments(map);
+      });
+    });
+  }
+
+  document.getElementById('auto-assign-btn').addEventListener('click', function () {
+    var map = loadAssignments();
+    var open = allRecords().filter(function (r) { return r.status !== 'resolved' && !map[r.exceptionId]; });
+    var analysts = ROSTER.slice(1); // exclude 'Unassigned'
+    if (!analysts.length) return;
+    open.forEach(function (r, i) { map[r.exceptionId] = analysts[i % analysts.length]; });
+    saveAssignments(map);
+    render();
+  });
+
+  render();
+  if (window.TSMExceptions) window.TSMExceptions.subscribe(render);
+})();
+</script>
+
+</body>
+</html>
