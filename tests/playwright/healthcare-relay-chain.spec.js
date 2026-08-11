@@ -34,7 +34,15 @@ const BASE_URL = process.env.BASE_URL || 'http://localhost:4173';
 
 test.describe('Healthcare relay chain (Phase 1)', () => {
 
-  test('[DOCUMENTED BROKEN] doc-search -> hc-denial-war-room: tsm_hc_docsearch_relay is never read', async ({ page }) => {
+  test('doc-search -> hc-denial-war-room: tsm_hc_docsearch_relay is now read and consumed', async ({ page }) => {
+    // FLIPPED from "[DOCUMENTED BROKEN] ... is never read": a real reader now
+    // exists at html/healthcare/hc-denial-war-room.html (the IIFE right after
+    // the TSM_HC_WAR_RELAY block) -- it reads tsm_hc_docsearch_relay,
+    // populates #doc-text from relay.summary via a dispatched 'input' event
+    // ~500ms after load, and deletes the key so a refresh can't replay it.
+    // Per this test's own prior instruction ("if this test ever starts
+    // FAILING ... flip this spec to assert the fix"), this now asserts the
+    // real, current behavior instead of the old bug.
     const docSearchPayload = {
       ts: Date.now(),
       summary: 'DOCUMENT: eob-mesa-0417.pdf\nTYPE: EOB\nREF/CLAIM #: CLM-0334\nEXPOSURE: $3,800',
@@ -46,14 +54,13 @@ test.describe('Healthcare relay chain (Phase 1)', () => {
 
     await page.goto(`${BASE_URL}/html/healthcare/hc-denial-war-room.html`);
 
-    // This assertion captures the CURRENT (broken) state on purpose: the page
-    // never reads tsm_hc_docsearch_relay, so the seeded doc never appears
-    // anywhere and the key is left sitting in localStorage, unconsumed.
-    // If this test ever starts FAILING, that means someone wired up a reader
-    // -- flip this spec to assert the fix instead of loosening it.
-    await expect(page.locator('body')).not.toContainText('eob-mesa-0417.pdf');
+    // updateStatus() (wired to #doc-text's 'input' listener) is the real
+    // signal that the reader's dispatched 'input' event actually fired and
+    // docText was populated from the relay -- not a guess at page text.
+    await expect(page.locator('#doc-status')).toContainText('chars loaded', { timeout: 3000 });
+
     const stillThere = await page.evaluate(() => localStorage.getItem('tsm_hc_docsearch_relay'));
-    expect(stillThere).not.toBeNull();
+    expect(stillThere).toBeNull();
   });
 
   test('node war room -> strategist: TSM_WAR_ROOM_BRIEF populates the war-room banner', async ({ page }) => {
@@ -94,6 +101,12 @@ test.describe('Healthcare relay chain (Phase 1)', () => {
     await page.addInitScript((payload) => {
       sessionStorage.setItem('TSM_EXEC_RELAY', JSON.stringify(payload));
       localStorage.setItem('TSM_EXEC_RELAY', JSON.stringify(payload));
+      // checkForFreshRelay() (executive-portal.html) auto-pops a full-screen
+      // #esc-modal-overlay (z-index 9999) whenever a TSM_EXEC_RELAY under 10
+      // minutes old hasn't been shown yet this session -- exactly what we
+      // just seeded. Mark it already-shown, same key/value the app's own
+      // dismiss/re-visit logic uses, so the tab underneath is clickable.
+      sessionStorage.setItem('TSM_EXEC_RELAY_SHOWN', String(payload.ts));
     }, strategistExecRelay);
 
     await page.goto(`${BASE_URL}/html/healthcare/executive-portal.html`);
@@ -132,7 +145,10 @@ test.describe('Healthcare relay chain (Phase 1)', () => {
     // if "Healthcare" appears elsewhere on the page (e.g. a locked-row teaser).
     const hcRow = page.locator('.vrow[data-vid="healthcare"]');
     await expect(hcRow).toBeVisible({ timeout: 5000 });
-    await expect(hcRow.locator('.exposure')).toContainText('48,000');
+    // Sentinel's own fmtMoney() (html/sentinel-center.html) abbreviates
+    // thousands as "$48K", not "$48,000" -- matching the real formatter,
+    // not the raw number.
+    await expect(hcRow.locator('.exposure')).toContainText('$48K');
 
     // Sentinel's own EXEC_PORTAL_PATHS.healthcare points at
     // /html/war-rooms/healthcare/executive-portal.html, which does not exist
@@ -142,6 +158,180 @@ test.describe('Healthcare relay chain (Phase 1)', () => {
     if (await execLink.count()) {
       await expect(execLink).toHaveAttribute('href', /\/html\/war-rooms\/healthcare\/executive-portal\.html/);
     }
+  });
+
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Guide Engine cross-page continuity (js/tsm-guide-engine.js) + Exec Portal
+// Decision Center (html/shared/tsm-exec-portal-upgrade.js), both loaded on
+// hc-main-strategist.html / executive-portal.html. DOM ids/classes and
+// payload shapes below were confirmed present in what server.js actually
+// serves, not guessed:
+//   #guide-continuity-banner / #guide-continuity-dismiss / #guide-step-counter
+//     <- js/tsm-guide-engine.js renderWidget()/readVerifiedAppHandoff()
+//   #escalate-strategist-btn -> escalateToStrategist()
+//     <- html/healthcare/hc-denial-war-room.html (window.location.href nav)
+//   #strat-out
+//     <- html/healthcare/hc-main-strategist.html (real pack-output panel;
+//        STATE_CHECKERS.healthcare.strategist reads its textContent length,
+//        NOT click text)
+//   .tsm-btn-approve / .tsm-status-approved
+//     <- html/shared/tsm-exec-portal-upgrade.js decide(), auto-mounted via
+//        TSMExecPortal.init() on DOMContentLoaded
+test.describe('Guide Engine continuity + Decision Center (Phase 1 fix verification)', () => {
+
+  test('hc-denial-war-room escalate: same-tab navigation, not a new tab', async ({ page, context }) => {
+    await page.goto(`${BASE_URL}/html/healthcare/hc-denial-war-room.html`);
+
+    // #escalate-strategist-btn doesn't exist in the static page -- it's
+    // injected by injectPriorAuthGeneratorWidget() only after the real
+    // 5-engine pipeline (fireAll -> API calls) finishes, which is too slow
+    // and network-dependent to drive through the UI here. Call the actual
+    // dispatcher function directly (same real code path, real markup) to
+    // produce the button without faking its HTML by hand.
+    await page.evaluate(() => window.injectPriorAuthGeneratorWidget(''));
+    await expect(page.locator('#escalate-strategist-btn')).toBeVisible({ timeout: 3000 });
+
+    // escalateToStrategist() runs a ~1.6s "packing" animation before
+    // navigating via window.location.href -- assert no second tab/page is
+    // ever opened during that window, then confirm the same tab lands on
+    // the strategist page.
+    let popupSeen = false;
+    context.on('page', () => { popupSeen = true; });
+
+    await page.locator('#escalate-strategist-btn').click();
+    await page.waitForURL('**/hc-main-strategist.html**', { timeout: 5000 });
+
+    expect(popupSeen).toBe(false);
+    expect(page.url()).toContain('hc-main-strategist.html');
+  });
+
+  test('strategist: guide-continuity-banner shows the real TSM_WAR_ROOM_BRIEF sessionId', async ({ page }) => {
+    const brief = {
+      sessionId: 'REL-CONT1',
+      timestamp: new Date().toISOString(),
+      engineOutputs: {},
+      engine06: { narrative: 'Mesa denial spike, CLM-0334 at risk.', recommendations: [] },
+      documentMeta: { ingestType: 'hc-billing' }
+    };
+    await page.addInitScript((payload) => {
+      sessionStorage.setItem('TSM_WAR_ROOM_BRIEF', JSON.stringify(payload));
+    }, brief);
+
+    await page.goto(`${BASE_URL}/html/healthcare/hc-main-strategist.html`);
+
+    const banner = page.locator('#guide-continuity-banner');
+    await expect(banner).toContainText('REL-CONT1', { timeout: 5000 });
+    await expect(banner).toContainText(/HC Denial War Room/i);
+  });
+
+  test('strategist: dismissing the continuity banner does not delete TSM_WAR_ROOM_BRIEF', async ({ page }) => {
+    const brief = {
+      sessionId: 'REL-CONT1B',
+      timestamp: new Date().toISOString(),
+      engineOutputs: {},
+      engine06: { narrative: 'Mesa denial spike, CLM-0334 at risk.', recommendations: [] },
+      documentMeta: { ingestType: 'hc-billing' }
+    };
+    await page.addInitScript((payload) => {
+      sessionStorage.setItem('TSM_WAR_ROOM_BRIEF', JSON.stringify(payload));
+    }, brief);
+
+    await page.goto(`${BASE_URL}/html/healthcare/hc-main-strategist.html`);
+    await expect(page.locator('#guide-continuity-banner')).toContainText('REL-CONT1B', { timeout: 5000 });
+
+    await page.locator('#guide-continuity-dismiss').click();
+    await expect(page.locator('#guide-continuity-banner')).toHaveCount(0);
+
+    // This banner is flagged noClear (it reads live data hc-main-strategist's
+    // OWN readWarRoomBrief() renders from via #tsm-war-room-banner) -- dismiss
+    // must only hide the guide widget's copy, never wipe the underlying key.
+    const stillThere = await page.evaluate(() => sessionStorage.getItem('TSM_WAR_ROOM_BRIEF'));
+    expect(stillThere).not.toBeNull();
+    expect(JSON.parse(stillThere).sessionId).toBe('REL-CONT1B');
+  });
+
+  test('strategist step tracker: a click-text decoy does not advance it, real #strat-out content does', async ({ page }) => {
+    await page.goto(`${BASE_URL}/html/healthcare/hc-main-strategist.html`);
+
+    const counter = page.locator('#guide-step-counter');
+    await expect(counter).toHaveText('STEP 1 OF 4', { timeout: 5000 });
+
+    // Decoy: ".tb-name" renders the static label "HC STRATEGIST" -- it
+    // contains the word "STRATEGIST" (one of the OLD click-text heuristic's
+    // trigger terms for this vertical) but is plain text, not a pack button.
+    // Healthcare/strategist now runs on the verified engine
+    // (STATE_CHECKERS.healthcare.strategist, keyed off #strat-out content),
+    // so this click must NOT advance the counter.
+    await page.locator('.tb-name').click();
+    await page.waitForTimeout(300);
+    await expect(counter).toHaveText('STEP 1 OF 4');
+
+    // Real signal: STATE_CHECKERS.healthcare.strategist treats any
+    // #strat-out textContent over 40 chars as "a pack has actually run",
+    // which satisfies steps 1-3 (step 4 stays open -- no TSM_EXEC_RELAY yet).
+    await page.evaluate(() => {
+      document.getElementById('strat-out').textContent =
+        'Denial Recovery Bundle generated: 47 claims, $38,000 recoverable, payer group A.';
+    });
+    await page.waitForTimeout(1000); // next 800ms verified-engine poll tick
+    await expect(counter).toHaveText('STEP 4 OF 4');
+  });
+
+  test('exec portal: guide-continuity-banner shows the real TSM_EXEC_RELAY sessionId', async ({ page }) => {
+    const relay = {
+      ts: Date.now(),
+      enriched: true,
+      sessionId: 'REL-CONT2',
+      sourceSnapshot: {}, kpi: {}, bnca: {},
+      alerts: { decisions: [], urgent: [] }
+    };
+    await page.addInitScript((payload) => {
+      sessionStorage.setItem('TSM_EXEC_RELAY', JSON.stringify(payload));
+      localStorage.setItem('TSM_EXEC_RELAY', JSON.stringify(payload));
+    }, relay);
+
+    await page.goto(`${BASE_URL}/html/healthcare/executive-portal.html`);
+
+    const banner = page.locator('#guide-continuity-banner');
+    await expect(banner).toContainText('REL-CONT2', { timeout: 5000 });
+    await expect(banner).toContainText(/HC Main Strategist/i);
+  });
+
+  test('exec portal authorize step: only flips to done on a real .tsm-btn-approve click, not on load', async ({ page }) => {
+    const relay = {
+      ts: Date.now(),
+      enriched: true,
+      sessionId: 'REL-CONT3',
+      sourceSnapshot: {}, kpi: {}, bnca: {},
+      alerts: { decisions: [], urgent: [] } // empty -> Decision Center falls back to its 3 built-in healthcare defaults
+    };
+    await page.addInitScript((payload) => {
+      sessionStorage.setItem('TSM_EXEC_RELAY', JSON.stringify(payload));
+      localStorage.setItem('TSM_EXEC_RELAY', JSON.stringify(payload));
+      // Suppress checkForFreshRelay()'s auto-popped #esc-modal-overlay (see
+      // note on the Strategist Reports test above) -- it would otherwise
+      // sit at z-index 9999 over the Decision Center and block the real
+      // .tsm-btn-approve click below.
+      sessionStorage.setItem('TSM_EXEC_RELAY_SHOWN', String(payload.ts));
+    }, relay);
+
+    await page.goto(`${BASE_URL}/html/healthcare/executive-portal.html`);
+
+    // relayLoaded is true from TSM_EXEC_RELAY alone -> steps 1-2 already
+    // done on load. Step 3 (authorize) must NOT be done yet -- no approve
+    // click has happened.
+    const counter = page.locator('#guide-step-counter');
+    await expect(counter).toHaveText('STEP 3 OF 3', { timeout: 5000 });
+    await expect(page.locator('.tsm-status-approved')).toHaveCount(0);
+
+    await page.locator('.tsm-btn-approve').first().click();
+
+    // decide() synchronously replaces the actions cell with .tsm-status-approved.
+    await expect(page.locator('.tsm-status-approved')).toHaveCount(1);
+    await page.waitForTimeout(1000); // next verified-engine poll tick
+    await expect(counter).toHaveText('COMPLETE');
   });
 
 });
