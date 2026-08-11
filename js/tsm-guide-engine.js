@@ -19,6 +19,7 @@
     if (path.includes("finops-accounting")) app = "finops-accounting";
     else if (path.includes("finops-operations")) app = "finops-operations";
     else if (path.includes("hc-denial-war-room")) app = "hc-denial-war-room";
+    else if (path.includes("l1-ticket-copilot")) app = "l1-ticket-copilot";
 
     // Determine Vertical
     let vertical = body.getAttribute("data-vertical");
@@ -273,6 +274,24 @@
         { id: "s2", label: "Run an AI Exception, Compliance, or Audit review", triggerText: ["AI EXCEPTION ANALYSIS", "AI COMPLIANCE REVIEW", "AI AUDIT ANALYSIS"] },
         { id: "s3", label: "Triage service requests or resolve a compliance flag", triggerText: ["ANALYZE", "PRIORITIZE", "MARK IN PROGRESS", "RESOLVE"] },
         { id: "s4", label: "Generate & export a report", triggerText: ["GENERATE REPORT", "EXPORT"] }
+      ]
+    },
+    // Verified against html/l1-copilot/l1-ticket-copilot.html. Condensed from
+    // the page's own "Working the Queue — Recommended Order" reference card
+    // (Ticket -> AI Analysis -> Troubleshooting -> ... -> Resolution/Escalation).
+    // Steps 3-9 in that card (Troubleshooting, the 5 specialist tabs, Vendor
+    // Support, SLA, Notes) all feed the same real signal below — the
+    // checklist being worked — since that's the one common, verifiable
+    // action across that whole middle stretch; the specialist tabs and SLA
+    // panel are reference/lookup surfaces with no single completion signal
+    // of their own.
+    "l1-ticket-copilot": {
+      title: "GUIDE · L1 TICKET COPILOT",
+      steps: [
+        { id: "s1", label: "Paste the raw ticket description (Ticket tab)" },
+        { id: "s2", label: "Run AI Analysis for confidence, severity & recommended path" },
+        { id: "s3", label: "Work the Troubleshooting checklist in order" },
+        { id: "s4", label: "Generate Resolution — or build an Escalation package" }
       ]
     }
   };
@@ -888,6 +907,42 @@
       try { escalated = !!sessionStorage.getItem('TSM_WAR_ROOM_BRIEF'); } catch (e) { /* noop */ }
 
       return [loaded, enginesComplete, dispatched, escalated];
+    },
+    // Verified against html/l1-copilot/l1-ticket-copilot.html. Real user
+    // actions: paste description (Ticket tab) -> RUN ANALYSIS (renderAnalysis
+    // replaces the #aiOutput placeholder) -> check items in the
+    // Troubleshooting checklist (renderChecklist adds a .done class to each
+    // completed .check-row) -> GENERATE RESOLUTION (#resolutionOutput) or
+    // BUILD ESCALATION PACKAGE (#escalationOutput), either of which is a
+    // genuine close-out action so both count for step 4.
+    "l1-ticket-copilot": function () {
+      const desc = document.getElementById('tkDescription');
+      const intake = !!(desc && desc.value && desc.value.trim().length > 0);
+
+      const aiOut = document.getElementById('aiOutput');
+      const aiTxt = aiOut && aiOut.textContent ? aiOut.textContent.trim() : '';
+      const analyzed = !!(aiOut && aiTxt &&
+        aiTxt !== 'Run AI analysis from the Ticket tab to populate this panel.' &&
+        aiTxt !== 'Running AI analysis on ticket...' &&
+        !aiOut.querySelector('.err'));
+
+      const checklistWorked = document.querySelectorAll('#checklistBody .check-row.done').length > 0;
+
+      const resOut = document.getElementById('resolutionOutput');
+      const resTxt = resOut && resOut.textContent ? resOut.textContent.trim() : '';
+      const resolved = !!(resOut && resTxt &&
+        resTxt !== 'Problem / Cause / Actions Taken / Resolution / Validation / Next Steps will be generated here from the ticket, checklist, and AI analysis.' &&
+        resTxt !== 'Generating resolution write-up...' &&
+        !resOut.querySelector('.err'));
+
+      const escOut = document.getElementById('escalationOutput');
+      const escTxt = escOut && escOut.textContent ? escOut.textContent.trim() : '';
+      const escalated = !!(escOut && escTxt &&
+        escTxt !== 'Escalation package will appear here.' &&
+        escTxt !== 'Building escalation package...' &&
+        !escOut.querySelector('.err'));
+
+      return [intake, analyzed, checklistWorked, resolved || escalated];
     }
   };
 
