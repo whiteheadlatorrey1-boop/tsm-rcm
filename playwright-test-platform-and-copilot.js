@@ -150,7 +150,7 @@ async function testCopilot(browser) {
 
   // Completeness sweep of all sidebar sections
   const sectionNames = await page.locator('.sb-item[data-section]').evaluateAll(els => els.map(e => e.getAttribute('data-section')));
-  check(section, 'found sidebar sections to sweep', sectionNames.length === 15, 'count=' + sectionNames.length);
+  check(section, 'found sidebar sections to sweep', sectionNames.length === 17, 'count=' + sectionNames.length);
 
   let sweepOk = true, sweepDetail = '';
   for (const name of sectionNames) {
