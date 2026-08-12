@@ -1165,6 +1165,15 @@ app.use(require('./routes/enterprise-capability-bridge'));
 // it directly. This is the missing mount.
 app.use('/api/enterprise', require('./server/enterprise/api/enterprise-router'));
 
+// ── ENTERPRISE LAB DIGITAL TWINS ─────────────────────────────────────────────
+// server/enterprise-lab/twins-router.js (VMware/Network/Device/AD/M365 twins,
+// chaos-fault injection, SLA/scoring/technician/analytics engines) was fully
+// built but never mounted here, so every /api/twins/* call from
+// html/l1-copilot/enterprise-command-center.html 404'd and every widget on
+// that page sat on "Twin backend not reachable yet — retrying...". This is
+// the missing mount.
+app.use('/api/twins', require('./server/enterprise-lab/twins-router'));
+
 
 // ── FINOPS ────────────────────────────────────────────────────────────────────
 app.post('/api/finops/bnca/report', (req, res) => res.json({ ok: true }));

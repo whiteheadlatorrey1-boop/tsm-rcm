@@ -228,22 +228,3 @@ engine.start();
 
 module.exports = { engine, IncidentEngine, CATEGORIES, SITES };
 
-
-// TSM Static Assets Mount
-const path = require("path");
-
-app.use(
-  "/images",
-  express.static(path.join(__dirname, "../public/images"))
-);
-
-
-
-// TSM Screenshot Preview Assets
-const path = require("path");
-
-app.use(
-  "/screenshots",
-  express.static(path.join(__dirname, "../public/screenshots"))
-);
-
