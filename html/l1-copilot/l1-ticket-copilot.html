@@ -3018,14 +3018,19 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
 
   // --- Quick 15 UI Infrastructure ---
   function ensureQ15DOMStructure() {
-    const main = document.querySelector(".main") || document.querySelector(".main-content") || document.body;
+    const main = document.querySelector(".main") || 
+                 document.querySelector(".main-content") || 
+                 document.querySelector(".content") || 
+                 document.querySelector("#app") || 
+                 document.body;
+
     let sec = document.getElementById("sec-quick15");
 
     if (!sec) {
       sec = document.createElement("div");
       sec.id = "sec-quick15";
       sec.className = "section";
-      sec.style.cssText = "padding:20px; width:100%; box-sizing:border-box;";
+      sec.style.cssText = "padding:20px; width:100%; box-sizing:border-box; color:#fff;";
       
       sec.innerHTML = `
         <div style="border:1px solid #00e5ff; background:rgba(0,229,255,0.05); padding:16px; margin-bottom:16px; border-radius:6px;">
@@ -3143,7 +3148,7 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
       const btnView = document.getElementById("btnViewAutoMatch");
       if (btnView) {
         btnView.onclick = () => {
-          const navItem = document.querySelector('[data-section="quick15"]') || Array.from(document.querySelectorAll('.sb-item')).find(el => el.textContent.includes("Quick 15"));
+          const navItem = document.querySelector('[data-section="quick15"]') || Array.from(document.querySelectorAll('.sb-item, li, a, div')).find(el => el.textContent.includes("Quick 15"));
           if (navItem) navItem.click();
           selectQ15Scenario(bestMatch.id);
         };
@@ -3189,10 +3194,11 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
   // Initializing lifecycle
   function init() {
     initAssistant();
+    ensureQ15DOMStructure();
     renderQ15Grid();
 
     document.addEventListener("click", (e) => {
-      const item = e.target.closest('.sb-item, [data-section]');
+      const item = e.target.closest('.sb-item, [data-section], li, div, button, a');
       if (!item) return;
 
       const isQ15 = item.getAttribute('data-section') === 'quick15' || item.textContent.includes("Quick 15");
@@ -3202,17 +3208,21 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
         item.classList.add('active');
 
         ensureQ15DOMStructure();
+        renderQ15Grid();
 
-        const main = document.querySelector(".main") || document.querySelector(".main-content") || document.body;
-        Array.from(main.children).forEach(child => {
-          if (child.id === "sec-quick15") {
-            child.style.display = "block";
-            child.classList.add("active");
-          } else {
-            child.style.display = "none";
-            child.classList.remove("active");
-          }
-        });
+        const q15Sec = document.getElementById("sec-quick15");
+        if (q15Sec && q15Sec.parentElement) {
+          Array.from(q15Sec.parentElement.children).forEach(child => {
+            if (child.nodeType !== 1) return;
+            if (child.id === "sec-quick15") {
+              child.style.display = "block";
+              child.classList.add("active");
+            } else if (child.tagName !== "SCRIPT" && child.tagName !== "STYLE") {
+              child.style.display = "none";
+              child.classList.remove("active");
+            }
+          });
+        }
       }
     });
 
