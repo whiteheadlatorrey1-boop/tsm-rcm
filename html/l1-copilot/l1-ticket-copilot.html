@@ -3015,7 +3015,85 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
     }
   }
 
-  // --- Quick 15 UI Infrastructure ---
+  // --- Q15 Scenario Selection ---
+window.selectQ15Scenario = function(id) {
+  if (typeof SCENARIO_LIBRARY === "undefined" || !Array.isArray(SCENARIO_LIBRARY)) {
+    console.warn("[Q15] SCENARIO_LIBRARY is unavailable.");
+    return;
+  }
+
+  const scenario = SCENARIO_LIBRARY.find(s => String(s.id) === String(id));
+
+  if (!scenario) {
+    console.warn("[Q15] Scenario not found:", id);
+    return;
+  }
+
+  // Preserve existing state if the variable exists in this runtime.
+  if (typeof activeSelectedScenario !== "undefined") {
+    activeSelectedScenario = scenario;
+  }
+
+  // Highlight the selected Q15 card.
+  document.querySelectorAll(".q15-card").forEach(card => {
+    card.classList.toggle(
+      "active",
+      String(card.getAttribute("data-id")) === String(id)
+    );
+  });
+
+  // Populate playbook header/details.
+  const title = document.getElementById("q15PlaybookTitle");
+  if (title) {
+    title.innerText = `${scenario.icon || ""} ${(scenario.name || "").toUpperCase()} PLAYBOOK`;
+  }
+
+  const sev = document.getElementById("q15PlaybookSev");
+  if (sev) {
+    sev.innerText = (scenario.severity || "").toUpperCase();
+  }
+
+  const sys = document.getElementById("q15PlaybookSystem");
+  if (sys) {
+    sys.innerText = scenario.system || "";
+  }
+
+  const kb = document.getElementById("q15PlaybookKb");
+  if (kb) {
+    kb.innerText = scenario.kb || "";
+  }
+
+  const team = document.getElementById("q15PlaybookTeam");
+  if (team) {
+    team.innerText = scenario.team || "";
+  }
+
+  // Populate remediation steps.
+  const steps = document.getElementById("q15PlaybookSteps");
+  if (steps) {
+    steps.innerHTML = Array.isArray(scenario.steps)
+      ? scenario.steps.map(st => `<li>${st}</li>`).join("")
+      : "";
+  }
+
+  // Populate escalation triggers.
+  const esc = document.getElementById("q15PlaybookEscalate");
+  if (esc) {
+    esc.innerHTML = Array.isArray(scenario.escalate)
+      ? scenario.escalate.map(e => `<li>${e}</li>`).join("")
+      : "";
+  }
+
+  // Show the playbook panel.
+  const panel = document.getElementById("q15PlaybookPanel");
+  if (panel) {
+    panel.style.display = "block";
+  }
+
+  console.debug("[Q15] Selected scenario:", scenario.id, scenario.name);
+};
+
+// --- Quick 15 UI Infrastructure ---
   function ensureQ15DOMStructure() {
     // Look for a specific container inside the Ticket tab if embedding, or fallback safely
     const targetContainer = document.getElementById("q15HostContainer") || 
@@ -3076,7 +3154,9 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
     `).join('');
 
     container.querySelectorAll('.q15-card').forEach(card => {
-      card.addEventListener('click', () => selectQ15Scenario(card.getAttribute('data-id')));
+      card.addEventListener('click', () => {
+    window.selectQ15Scenario(card.getAttribute('data-id'));
+  });
     });
 
     const applyBtn = document.getElementById("btnApplyQ15ToTicket");
