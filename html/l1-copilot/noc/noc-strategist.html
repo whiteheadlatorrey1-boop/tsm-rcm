@@ -67,6 +67,38 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 .impact.low{background:rgba(100,116,139,.12);color:var(--muted);border:1px solid var(--muted);}
 .time-hot{color:var(--red);font-weight:700;}
 .action-hint{color:var(--text);}
+
+/* Explainability ("Why These Numbers") */
+.why-details{border:1px solid var(--border);border-radius:6px;background:var(--bg3);margin-bottom:16px;}
+.why-details summary{cursor:pointer;padding:10px 14px;font-family:'JetBrains Mono',monospace;font-size:.62rem;color:var(--cyan);letter-spacing:.06em;list-style:none;display:flex;align-items:center;gap:8px;}
+.why-details summary::-webkit-details-marker{display:none;}
+.why-details summary::before{content:'\25B8';transition:transform .15s;}
+.why-details[open] summary::before{transform:rotate(90deg);}
+.why-body{padding:0 14px 14px;}
+.why-formula{font-family:'JetBrains Mono',monospace;font-size:.6rem;color:var(--muted);border-top:1px solid var(--border);padding-top:10px;margin-bottom:10px;}
+.why-formula b{color:var(--text);}
+.why-table{width:100%;border-collapse:collapse;font-size:.68rem;}
+.why-table th{text-align:left;font-family:'JetBrains Mono',monospace;font-size:.55rem;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;padding:5px 6px;border-bottom:1px solid var(--border);}
+.why-table td{padding:6px;border-bottom:1px solid #0f1a2e;font-family:'JetBrains Mono',monospace;}
+.why-table tr:last-child td{border-bottom:none;}
+.why-table td.excol{color:var(--red);font-weight:700;text-align:right;}
+
+/* Correlation graph */
+.corr-wrap{position:relative;display:grid;grid-template-columns:1fr 1.2fr 1fr;gap:20px;padding:6px 4px 4px;}
+.corr-svg{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:visible;}
+.corr-col{display:flex;flex-direction:column;gap:10px;position:relative;z-index:1;}
+.corr-col-hdr{font-family:'JetBrains Mono',monospace;font-size:.55rem;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;text-align:center;margin-bottom:2px;}
+.corr-node{background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-family:'JetBrains Mono',monospace;font-size:.62rem;text-align:center;}
+.corr-node .cn-id{color:var(--text);font-weight:700;}
+.corr-node .cn-title{color:var(--muted);font-size:.58rem;margin-top:3px;line-height:1.3;}
+.corr-node.incident{border-color:var(--cyan);}
+.corr-node.incident.breached{border-color:var(--red);background:rgba(239,68,68,.08);}
+.corr-node.alert{border-color:var(--purple);}
+.corr-node.device{border-color:var(--orange);}
+.corr-legend{display:flex;gap:16px;flex-wrap:wrap;font-family:'JetBrains Mono',monospace;font-size:.58rem;color:var(--muted);margin-top:12px;}
+.corr-legend span::before{content:'\2014';margin-right:5px;}
+.corr-legend .lg-affects::before{color:var(--orange);}
+.corr-legend .lg-correlates::before{color:var(--purple);}
 </style>
 </head>
 <body data-vertical="noc" data-page-role="strategist">
@@ -249,6 +281,105 @@ function renderActionQueue(records, breachIds){
   </div>`;
 }
 
+/* ---------- Explainability ("Why These Numbers") ----------
+   Ops-focused version of the exec portal's rate-card math, scoped to the
+   action queue: which open incidents are driving SLA penalty exposure,
+   and the exact formula behind each number. Nothing here is a model
+   confidence score -- it's the same getSlaExposure() items the relay
+   payload already carries, just surfaced next to the queue the ops team
+   actually works from. */
+
+function renderExplainability(fin){
+  const items = (fin && fin.sla_penalty_exposure_items) || [];
+  const rateNote = fin && fin.note;
+  if(!items.length){
+    return `<details class="why-details">
+      <summary>WHY THESE NUMBERS</summary>
+      <div class="why-body">
+        <div class="why-formula">No incidents are currently over SLA, so there's no penalty exposure to break down. Formula when breaches exist: <b>hours over SLA &times; $/hr rate for that severity = exposure</b>.</div>
+      </div>
+    </details>`;
+  }
+  const rows = items.slice(0, 8).map(it => `<tr>
+    <td>${escapeHtml(it.id)}</td>
+    <td>${escapeHtml(it.severity)}</td>
+    <td>${it.hours_over}h</td>
+    <td>$${Number(it.rate_per_hour).toLocaleString()}/hr</td>
+    <td class="excol">$${Number(it.exposure).toLocaleString()}</td>
+  </tr>`).join('');
+  return `<details class="why-details">
+    <summary>WHY THESE NUMBERS &mdash; ${items.length} incident(s) driving exposure</summary>
+    <div class="why-body">
+      <div class="why-formula"><b>Formula:</b> hours over SLA &times; $/hr rate for that severity = exposure. Rates are an editable planning assumption, not model output.${rateNote ? ' ' + escapeHtml(rateNote) : ''}</div>
+      <table class="why-table">
+        <thead><tr><th>Incident</th><th>Severity</th><th>Hours Over</th><th>Rate</th><th>Exposure</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  </details>`;
+}
+
+/* ---------- Correlation graph (incident <-> alert <-> device) ----------
+   Renders the real graph from noc-engine.js's getCorrelationGraph():
+   alert->incident via alert.incident_id, device->incident via
+   device.name === incident.affected_system. No synthetic/decorative
+   edges -- if a node has no real linked field, it just renders alone. */
+
+function renderCorrelation(graph){
+  if(!graph || !graph.nodes || !graph.nodes.length) return '';
+  return `<div class="sec">
+    <div class="sec-hdr"><span class="lbl">INCIDENT &harr; ALERT &harr; DEVICE CORRELATION</span><span class="sec-hdr-note">linked via alert.incident_id &amp; device.name = affected_system</span></div>
+    <div class="corr-wrap" id="corrWrap">
+      <svg class="corr-svg" id="corrSvg"></svg>
+      <div class="corr-col" id="corrDevices"><div class="corr-col-hdr">Devices</div></div>
+      <div class="corr-col" id="corrIncidents"><div class="corr-col-hdr">Incidents</div></div>
+      <div class="corr-col" id="corrAlerts"><div class="corr-col-hdr">Alerts</div></div>
+    </div>
+    <div class="corr-legend">
+      <span class="lg-affects">device affects incident</span>
+      <span class="lg-correlates">alert correlates to incident</span>
+    </div>
+  </div>`;
+}
+
+function drawCorrelationLines(graph){
+  const wrap = document.getElementById('corrWrap');
+  if(!wrap || !graph || !graph.nodes.length) return;
+  const devicesCol = document.getElementById('corrDevices');
+  const incidentsCol = document.getElementById('corrIncidents');
+  const alertsCol = document.getElementById('corrAlerts');
+  const svg = document.getElementById('corrSvg');
+  const byId = {};
+
+  graph.nodes.forEach(n => {
+    const el = document.createElement('div');
+    el.className = 'corr-node ' + n.type + (n.breached ? ' breached' : '');
+    el.innerHTML = `<div class="cn-id">${escapeHtml(n.label)}</div><div class="cn-title">${escapeHtml((n.title||'').slice(0,42))}</div>`;
+    if(n.type === 'device') devicesCol.appendChild(el);
+    else if(n.type === 'incident') incidentsCol.appendChild(el);
+    else if(n.type === 'alert') alertsCol.appendChild(el);
+    byId[n.id] = el;
+  });
+
+  requestAnimationFrame(() => {
+    const wrapRect = wrap.getBoundingClientRect();
+    svg.setAttribute('width', wrapRect.width);
+    svg.setAttribute('height', wrapRect.height);
+    svg.setAttribute('viewBox', `0 0 ${wrapRect.width} ${wrapRect.height}`);
+    let lines = '';
+    (graph.edges || []).forEach(e => {
+      const fromEl = byId[e.from], toEl = byId[e.to];
+      if(!fromEl || !toEl) return;
+      const fr = fromEl.getBoundingClientRect(), tr = toEl.getBoundingClientRect();
+      const x1 = fr.left + fr.width/2 - wrapRect.left, y1 = fr.top + fr.height/2 - wrapRect.top;
+      const x2 = tr.left + tr.width/2 - wrapRect.left, y2 = tr.top + tr.height/2 - wrapRect.top;
+      const color = e.kind === 'affects' ? '#f97316' : '#a855f7';
+      lines += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${color}" stroke-width="1.5" opacity="0.55"/>`;
+    });
+    svg.innerHTML = lines;
+  });
+}
+
 function render(){
   const data = loadRelay();
   if(!data){ renderEmpty(); return; }
@@ -279,9 +410,12 @@ function render(){
   }
 
   html += renderWipBoard(data.incident_wip);
+  html += renderExplainability(data.financials);
   html += renderActionQueue(data.records, breachIds);
+  html += renderCorrelation(data.correlation_graph);
 
   document.getElementById('wrap').innerHTML = html;
+  drawCorrelationLines(data.correlation_graph);
 }
 
 render();

@@ -26,6 +26,19 @@
   letter-spacing: .02em;
 }
 .fix-validated-banner.show { display: block; }
+.noc-routed-banner {
+  display: none;
+  margin: 0 0 14px;
+  padding: 10px 14px;
+  border: 1px solid var(--purple);
+  border-radius: 8px;
+  background: rgba(192,132,252,.08);
+  color: var(--purple);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: .02em;
+}
+.noc-routed-banner.show { display: block; }
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;font-size:12px;min-height:100vh}
 .nav{display:flex;align-items:center;gap:0;background:#080b0e;border-bottom:1px solid var(--border);height:38px;padding:0 16px}
@@ -226,6 +239,7 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
     <!-- TICKET -->
     <section class="section active" id="sec-ticket">
       <div id="fixValidatedBanner" class="fix-validated-banner"></div>
+      <div id="nocRoutedBanner" class="noc-routed-banner"></div>
       <div class="ticket-head-grid">
         <div class="field"><div class="field-label">Incident #</div><input id="tkIncident" placeholder="INC0012345"></div>
         <div class="field"><div class="field-label">Priority</div>
@@ -1442,6 +1456,49 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
   }
   document.addEventListener('DOMContentLoaded', initCertQuiz);
 
+  // ── Cert Prep — ServiceNow deep-practice cards ─────────────────────────
+  // These three files already exist and are fully built out, but were only
+  // reachable from the separate career-training platform -- never linked
+  // from L1 itself, even though L1 has its own Cert Prep tab. This wires
+  // them in as a fifth practice track alongside the vendor-cert ladder above.
+  function renderServiceNowCard(){
+    const body = document.querySelector('#sec-certprep .card:nth-of-type(2) .card-body');
+    if(!body) return;
+    const wrap = document.createElement('div');
+    wrap.className = 'card';
+    wrap.innerHTML = `
+      <div class="card-head">SERVICENOW ITSM — PLATFORM-SPECIFIC PRACTICE</div>
+      <div class="card-body">
+        <div class="ai-output" style="white-space:normal;line-height:1.7;margin-bottom:14px">
+          The vendor certs above cover the concepts; this covers the tool most L1 desks actually run tickets in.
+          None of these require a voucher or exam fee — they're self-contained practice, good preparation for a
+          ServiceNow Certified System Administrator (CSA) track or just for getting fluent in the platform fast.
+        </div>
+        <div class="feature-grid">
+          <div class="feature-card">
+            <div class="fc-num">FUNDAMENTALS</div>
+            <h4>ITSM Fundamentals</h4>
+            <p>Core ITSM concepts as ServiceNow implements them — incident/problem/change tables, states, and how they relate.</p>
+            <ul><li><a href="servicenow-fundamentals.html" style="color:var(--cyan)">Open practice module &rarr;</a></li></ul>
+          </div>
+          <div class="feature-card">
+            <div class="fc-num">TIMED SIM</div>
+            <h4>Exam Simulator</h4>
+            <p>Timed, scored practice run in the format of a real certification exam.</p>
+            <ul><li><a href="servicenow-exam-sim.html" style="color:var(--cyan)">Open practice module &rarr;</a></li></ul>
+          </div>
+          <div class="feature-card">
+            <div class="fc-num">SCENARIOS</div>
+            <h4>Scenario Engine</h4>
+            <p>Ticket-shaped scenarios that mirror the kind of decisions you're already making in the Ticket and Escalation tabs.</p>
+            <ul><li><a href="servicenow-scenarios.html" style="color:var(--cyan)">Open practice module &rarr;</a></li></ul>
+          </div>
+        </div>
+      </div>`;
+    body.closest('.card').after(wrap);
+  }
+  document.addEventListener('DOMContentLoaded', renderServiceNowCard);
+
   // ── Ticket sample / clear ───────────────────────────────────────────────
   document.getElementById('btnLoadSample').addEventListener('click', () => {
     document.getElementById('tkIncident').value = 'INC0012345';
@@ -2323,6 +2380,44 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
     banner.classList.add('show');
   }
 
+  // ── NOC routing (from NOC war room "Route to L1" action) ──────────────────
+  // Real cross-page context transfer: noc-war-room.html deep-links here with
+  // ?noc_incident=&noc_system=&noc_severity=. No relay/localStorage involved
+  // on this leg -- the URL itself is the handoff, so it survives even if the
+  // person opens the link in a new tab.
+  const NOC_SEVERITY_TO_PRIORITY = { SEV1: 'P1', SEV2: 'P2', SEV3: 'P3' };
+
+  function applyNocRouting(){
+    const params = new URLSearchParams(window.location.search);
+    const incident = params.get('noc_incident');
+    if(!incident) return;
+    const system = params.get('noc_system') || '';
+    const severity = params.get('noc_severity') || '';
+
+    document.getElementById('tkIncident').value = incident;
+    if(system) document.getElementById('tkAsset').value = system;
+    const prioritySel = document.getElementById('tkPriority');
+    const priority = NOC_SEVERITY_TO_PRIORITY[severity];
+    if(priority){
+      const match = Array.from(prioritySel.options).find(o => o.value === priority);
+      if(match) prioritySel.value = priority;
+    }
+    const descLines = [`Routed from NOC Command Center.`];
+    if(system) descLines.push(`Affected system: ${system}`);
+    if(severity) descLines.push(`NOC severity: ${severity}`);
+    descLines.push('', '[Add ticket details here]');
+    const descEl = document.getElementById('tkDescription');
+    if(!descEl.value.trim()) descEl.value = descLines.join('\n');
+
+    const banner = document.getElementById('nocRoutedBanner');
+    banner.textContent = `ROUTED FROM NOC \u2014 ${incident}${system ? ' \u00b7 ' + system : ''}${severity ? ' \u00b7 ' + severity : ''}`;
+    banner.classList.add('show');
+
+    refreshSlaDisplay();
+    saveCurrentTicket();
+    goToSection('ticket');
+  }
+
   // ── Init ─────────────────────────────────────────────────────────────────
   renderChecklist();
   renderObChecklist();
@@ -2332,6 +2427,7 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
   loadCurrentOnboarding();
   applyIncomingEscalation();
   applyFixValidatedNotification();
+  applyNocRouting();
 })();
 </script>
 

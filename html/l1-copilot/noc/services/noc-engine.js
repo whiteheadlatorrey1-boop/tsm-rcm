@@ -224,87 +224,47 @@
       };
     }
 
-    /* ---------- WIP (work-in-progress) by stage ---------- */
+    /* ---------- Correlation graph (incident <-> alert <-> device) ----------
+       No synthetic edges. Alerts already carry alert.incident_id (see
+       sample_data), so alert->incident is a direct id match. Devices have
+       no incident_id back-reference, but device.name matches
+       incident.affected_system in every sample record, so device->incident
+       is a name match against that field. Used by the strategist view to
+       render a real correlation graph instead of a decorative one. */
 
-    getStageWip(entityKey) {
-      const def = this._entityDef(entityKey);
-      const idField = this._idField(entityKey);
-      const records = this.data[entityKey] || [];
+    getCorrelationGraph() {
+      const breachIds = new Set(this.getSlaBreaches('incidents').map(b => b.id));
+      const nodes = [];
+      const edges = [];
 
-      return (def.stages || []).map(stage => {
-        const inStage = records.filter(r => r.stage === stage.id);
-        const withAge = inStage.filter(r => r.entered_stage_at_hours_ago !== undefined);
-        const avgHours = withAge.length
-          ? Math.round((withAge.reduce((s, r) => s + r.entered_stage_at_hours_ago, 0) / withAge.length) * 10) / 10
-          : null;
-        const stalled = stage.sla_hours != null
-          ? inStage.filter(r => (r.entered_stage_at_hours_ago || 0) > stage.sla_hours)
-          : [];
-        return {
-          stage: stage.id,
-          label: stage.label,
-          order: stage.order,
-          sla_hours: stage.sla_hours,
-          count: inStage.length,
-          avg_hours_in_stage: avgHours,
-          stalled_count: stalled.length,
-          stalled_ids: stalled.map(r => r[idField])
-        };
+      this.data.incidents.forEach(inc => {
+        nodes.push({
+          id: 'incident:' + inc.incident_id,
+          type: 'incident',
+          label: inc.incident_id,
+          title: inc.title,
+          severity: inc.severity,
+          breached: breachIds.has(inc.incident_id)
+        });
       });
-    }
 
-    /* ---------- Financial exposure (CFO / RCM view) ---------- */
+      this.data.alerts.forEach(a => {
+        nodes.push({ id: 'alert:' + a.alert_id, type: 'alert', label: a.alert_id, title: a.message, severity: a.severity });
+        if (a.incident_id && this.data.incidents.some(i => i.incident_id === a.incident_id)) {
+          edges.push({ from: 'alert:' + a.alert_id, to: 'incident:' + a.incident_id, kind: 'correlates_to' });
+        }
+      });
 
-    getFinancialModel() {
-      return this.model.financial_model || null;
-    }
+      this.data.devices.forEach(d => {
+        nodes.push({ id: 'device:' + d.device_id, type: 'device', label: d.device_id, title: d.name, stage: d.stage });
+        this.data.incidents
+          .filter(inc => inc.affected_system && inc.affected_system === d.name)
+          .forEach(inc => {
+            edges.push({ from: 'device:' + d.device_id, to: 'incident:' + inc.incident_id, kind: 'affects' });
+          });
+      });
 
-    getSlaExposure() {
-      const fm = this.getFinancialModel();
-      const breaches = this.getSlaBreaches('incidents');
-      if (!fm || !fm.sla_penalty_per_hour_by_severity) {
-        return { total: 0, currency: fm ? fm.currency : 'USD', items: [] };
-      }
-      const rates = fm.sla_penalty_per_hour_by_severity;
-      const items = breaches.map(b => {
-        const severity = (b.record && b.record.severity) || 'SEV3';
-        const rate = rates[severity] != null ? rates[severity] : 0;
-        const exposure = Math.round(b.hours_over * rate);
-        return { id: b.id, title: b.record && b.record.title, severity, stage: b.stage, hours_over: b.hours_over, rate_per_hour: rate, exposure };
-      }).sort((a, b) => b.exposure - a.exposure);
-      return {
-        total: items.reduce((s, it) => s + it.exposure, 0),
-        currency: fm.currency || 'USD',
-        items
-      };
-    }
-
-    getRevenueAtRisk() {
-      const fm = this.getFinancialModel();
-      if (!fm || fm.revenue_at_risk_per_uptime_point_per_hour == null) {
-        return { per_hour: 0, currency: fm ? fm.currency : 'USD', uptime_gap_pts: 0 };
-      }
-      const kpis = this.computeKpis();
-      const gap = Math.max(0, 100 - kpis.uptime_pct);
-      return {
-        per_hour: Math.round(gap * fm.revenue_at_risk_per_uptime_point_per_hour),
-        currency: fm.currency || 'USD',
-        uptime_gap_pts: Math.round(gap * 10) / 10
-      };
-    }
-
-    getFinancialSummary() {
-      const sla = this.getSlaExposure();
-      const revenue = this.getRevenueAtRisk();
-      return {
-        currency: sla.currency || revenue.currency || 'USD',
-        sla_penalty_exposure_total: sla.total,
-        sla_penalty_exposure_items: sla.items,
-        revenue_at_risk_per_hour: revenue.per_hour,
-        uptime_gap_pts: revenue.uptime_gap_pts,
-        total_hourly_exposure: sla.total > 0 ? sla.total + revenue.per_hour : revenue.per_hour,
-        note: this.model.financial_model ? this.model.financial_model.note : null
-      };
+      return { nodes, edges };
     }
 
     /* ---------- Canonical core wiring ---------- */
@@ -390,6 +350,7 @@
         incident_breaches: this.getSlaBreaches('incidents'),
         incident_wip: this.getStageWip('incidents'),
         financials: this.getFinancialSummary(),
+        correlation_graph: this.getCorrelationGraph(),
         records: {
           incidents: this.data.incidents,
           alerts: this.data.alerts,

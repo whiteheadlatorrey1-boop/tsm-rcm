@@ -110,6 +110,7 @@ tr:hover td{background:rgba(45,212,191,.03)}
 <div class="nav">
   <div class="nav-brand">TSM SHELL // NOC COMMAND CENTER</div>
   <a class="nav-link" href="/html/l1-copilot/noc/noc-asset-console.html">ASSET CONSOLE &rarr;</a>
+  <a class="nav-link" href="/html/l1-copilot/l1-ticket-copilot.html">L1 TICKET COPILOT &rarr;</a>
   <div class="nav-right">
     <span id="navStatus">ENGINE: IDLE</span>
     <span class="nav-clock" id="navClock">--:--:--</span>
@@ -338,9 +339,13 @@ tr:hover td{background:rgba(45,212,191,.03)}
     const nameField = { incidents: 'title', alerts: 'message', devices: 'name' }[activeEntity];
     const extraField = { incidents: 'affected_system', alerts: 'severity', devices: 'site' }[activeEntity];
 
+    const showRoute = activeEntity === 'incidents';
     let rows = records.map(r => {
       const breach = breachMap[r[idField]];
       const slaTag = breach ? `<span class="tag ${breach.hours_over > 2 ? 'tag-high' : 'tag-medium'}">+${breach.hours_over}H</span>` : '<span class="tag tag-ok">OK</span>';
+      const routeCell = showRoute
+        ? `<td><span class="row-action" data-route-incident="${escAttr(r.incident_id)}" data-route-system="${escAttr(r.affected_system || '')}" data-route-severity="${escAttr(r.severity || '')}">ROUTE TO L1 &rarr;</span></td>`
+        : '';
       return `<tr>
         <td>${r[idField]}</td>
         <td>${r[nameField] || ''}</td>
@@ -348,13 +353,38 @@ tr:hover td{background:rgba(45,212,191,.03)}
         <td>${slaTag}</td>
         <td>${r[extraField] || ''}</td>
         <td>${r.notes || ''}</td>
+        ${routeCell}
       </tr>`;
     }).join('');
 
     body.innerHTML = `<table>
-      <thead><tr><th>ID</th><th>${nameField.toUpperCase()}</th><th>STAGE</th><th>OVER SLA</th><th>${extraField.toUpperCase()}</th><th>DETAIL</th></tr></thead>
+      <thead><tr><th>ID</th><th>${nameField.toUpperCase()}</th><th>STAGE</th><th>OVER SLA</th><th>${extraField.toUpperCase()}</th><th>DETAIL</th>${showRoute ? '<th>HANDOFF</th>' : ''}</tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
+
+    if(showRoute){
+      body.querySelectorAll('[data-route-incident]').forEach(el => {
+        el.addEventListener('click', () => routeToL1(el.dataset.routeIncident, el.dataset.routeSystem, el.dataset.routeSeverity));
+      });
+    }
+  }
+
+  function escAttr(s){
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  /* ---------- Route to L1 ----------
+     Real cross-page context transfer via query params -- L1 Ticket
+     Copilot reads noc_incident/noc_system/noc_severity on load, pre-fills
+     the Incident # + description, and shows a "Routed from NOC" banner. */
+
+  function routeToL1(incidentId, system, severity){
+    const params = new URLSearchParams({
+      noc_incident: incidentId || '',
+      noc_system: system || '',
+      noc_severity: severity || ''
+    });
+    window.location.href = '/html/l1-copilot/l1-ticket-copilot.html?' + params.toString();
   }
 
   function renderSnapshot(kpis) {
