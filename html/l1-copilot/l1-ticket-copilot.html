@@ -3018,23 +3018,21 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
 
   // --- Quick 15 UI Infrastructure ---
   function ensureQ15DOMStructure() {
+    // Look for a specific container inside the Ticket tab if embedding, or fallback safely
+    const targetContainer = document.getElementById("q15HostContainer") || 
+                            document.querySelector(".main") || 
+                            document.querySelector(".main-content");
+
     let sec = document.getElementById("sec-quick15");
 
-    if (!sec) {
-      const main = document.querySelector(".main") || 
-                   document.querySelector(".main-content") || 
-                   document.querySelector(".content") || 
-                   document.querySelector("#app") || 
-                   document.body;
-
+    if (!sec && targetContainer) {
       sec = document.createElement("div");
       sec.id = "sec-quick15";
       sec.className = "section";
-      // Keep hidden by default on creation so default tabs (Ticket) remain visible
-      sec.style.cssText = "padding:20px; width:100%; box-sizing:border-box; color:#fff; display:none;";
+      sec.style.cssText = "padding:16px 0; width:100%; box-sizing:border-box; color:#fff;";
       
       sec.innerHTML = `
-        <div style="border:1px solid #00e5ff; background:rgba(0,229,255,0.05); padding:16px; margin-bottom:16px; border-radius:6px;">
+        <div style="border:1px solid #00e5ff33; background:rgba(0,229,255,0.03); padding:16px; margin-bottom:16px; border-radius:6px;">
           <div style="color:#00e5ff; font-weight:bold; font-size:12px; margin-bottom:12px; display:flex; justify-content:space-between;">
             <span>⚡ L1 QUICK REFERENCE — TOP 15 SCENARIOS</span>
             <span style="font-size:10px; color:#aaa;">INSTANT OPERATIONAL PLAYBOOKS</span>
@@ -3062,9 +3060,8 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
           <button id="btnApplyQ15ToTicket" style="margin-top:12px; background:#00e5ff; color:#000; border:none; padding:8px 16px; font-weight:bold; border-radius:4px; cursor:pointer;">Attach Playbook To Active Ticket</button>
         </div>
       `;
-      main.appendChild(sec);
+      targetContainer.prepend(sec);
     }
-    return sec;
   }
 
   function renderQ15Grid() {
@@ -3089,41 +3086,41 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
     }
   }
 
-  // --- Initializing & Navigation Event Handling ---
+  // --- Auto-Match Logic (Defined before init call) ---
+  function evaluateTicketAutoMatch() {
+    const desc = document.getElementById("tkDescription")?.value.toLowerCase() || "";
+    const card = document.getElementById("q15AutoMatchCard");
+
+    if (desc.length < 10) {
+      if (card) card.style.display = "none";
+      return;
+    }
+    let bestMatch = null, maxScore = 0;
+    SCENARIO_LIBRARY.forEach(s => {
+      let score = 0;
+      s.keywords.forEach(kw => { if (desc.includes(kw)) score += 1; });
+      if (score > maxScore) { maxScore = score; bestMatch = s; }
+    });
+
+    if (bestMatch && maxScore > 0 && card) {
+      const mTitle = document.getElementById("q15MatchTitle");
+      if (mTitle) mTitle.innerText = `${bestMatch.icon} ${bestMatch.name}`;
+
+      const mMeta = document.getElementById("q15MatchMeta");
+      if (mMeta) mMeta.innerText = `System: ${bestMatch.system} | Severity: ${bestMatch.severity} | Category: ${bestMatch.category}`;
+
+      card.style.display = "block";
+
+      const btnApply = document.getElementById("btnApplyAutoMatch");
+      if (btnApply) btnApply.onclick = () => applyScenarioToTicket(bestMatch);
+    } else if (card) {
+      card.style.display = "none";
+    }
+  }
+
   function init() {
     initAssistant();
-    ensureQ15DOMStructure();
     renderQ15Grid();
-
-    // Global navigation handler to toggle Quick 15 vs standard views
-    document.addEventListener("click", (e) => {
-      const item = e.target.closest('.sb-item, [data-section], li, div, button, a');
-      if (!item) return;
-
-      const isQ15 = item.getAttribute('data-section') === 'quick15' || item.textContent.includes("Quick 15");
-      const q15Sec = document.getElementById("sec-quick15");
-
-      if (isQ15) {
-        document.querySelectorAll('.sb-item').forEach(i => i.classList.remove('active'));
-        item.classList.add('active');
-
-        if (q15Sec && q15Sec.parentElement) {
-          Array.from(q15Sec.parentElement.children).forEach(child => {
-            if (child.nodeType !== 1) return;
-            if (child.id === "sec-quick15") {
-              child.style.display = "block";
-              child.classList.add("active");
-            } else if (child.tagName !== "SCRIPT" && child.tagName !== "STYLE") {
-              child.style.display = "none";
-              child.classList.remove("active");
-            }
-          });
-        }
-      } else if (item.closest('.sidebar, nav, #sidebar')) {
-        // Switching to any other sidebar tab (e.g. Ticket)
-        if (q15Sec) q15Sec.style.display = "none";
-      }
-    });
 
     const tkDesc = document.getElementById("tkDescription");
     if (tkDesc) tkDesc.addEventListener("input", evaluateTicketAutoMatch);
