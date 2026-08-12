@@ -983,6 +983,17 @@ setInterval(tick, 5000);
     return `<span class="twin-entity-status status-${status}"></span>`;
   }
 
+  // Used by renderExplainItems() below. A separate escapeHtml() already
+  // exists but is scoped inside the AI-widget IIFE further down the page,
+  // so it isn't visible here — renderExplainItems threw a ReferenceError on
+  // every pollRisk() tick (every 5s) with no working fallback. Local copy
+  // instead of hoisting a global, to avoid touching the other IIFE's scope.
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+    }[c]));
+  }
+
   // Tracks last-known online/offline state per twin so we only console.error
   // once per transition (not on every 5s poll while a backend is down), and
   // so the UI can show a clear "twin offline" badge instead of leaving stale
@@ -1170,39 +1181,65 @@ setInterval(tick, 5000);
     return safeFetchJSON('/api/twins/ad/state');
   }
 
+  // /api/twins/ad/fault validates targetId against a category-specific store
+  // (users for account-lockout/password-expired/mfa-failure, domain
+  // controllers for replication-failure, OUs for gpo-corruption) and 400s
+  // otherwise. The target dropdown used to list every id from every category
+  // in one flat list, so the default fault type ("account-lockout", which
+  // needs a user id) paired with the default target (a domain controller id,
+  // since DCs are pushed first) always 400'd on first click. Track the
+  // categories separately and filter the dropdown to match the selected
+  // fault type instead.
+  let adTargetsByCategory = { dc: [], ou: [], user: [] };
+
+  function adCategoryForFaultType(type) {
+    if (type === 'replication-failure') return 'dc';
+    if (type === 'gpo-corruption') return 'ou';
+    return 'user';
+  }
+
+  function refreshADTargetOptions() {
+    const targetSelect = document.getElementById('ad-fault-target');
+    const faultType = document.getElementById('ad-fault-type').value;
+    const ids = adTargetsByCategory[adCategoryForFaultType(faultType)];
+    const currentTarget = targetSelect.value;
+    targetSelect.innerHTML = ids.map((id) => `<option value="${id}">${id}</option>`).join('');
+    if (ids.includes(currentTarget)) targetSelect.value = currentTarget;
+  }
+
   function renderAD(state) {
     const container = document.getElementById('ad-entities');
-    const targetSelect = document.getElementById('ad-fault-target');
     const rows = [];
-    const targets = [];
+    const dcIds = [];
+    const ouIds = [];
+    const userIds = [];
 
     state.domainControllers.forEach((dc) => {
       rows.push(`<div class="twin-entity-row">
         <span>${statusDot(statusBucket(dc.replicationStatus))}${dc.name}</span>
         <span>${dc.role} · repl ${dc.replicationStatus}</span>
       </div>`);
-      targets.push(dc.id);
+      dcIds.push(dc.id);
     });
     state.organizationalUnits.forEach((ou) => {
       rows.push(`<div class="twin-entity-row">
         <span>${statusDot(statusBucket(ou.gpoStatus))}${ou.name} (OU)</span>
         <span>gpo ${ou.gpoStatus}</span>
       </div>`);
-      targets.push(ou.id);
+      ouIds.push(ou.id);
     });
     Object.values(state.users).forEach((user) => {
       rows.push(`<div class="twin-entity-row">
         <span>${statusDot(statusBucket(user.status))}${user.name} (${user.id})</span>
         <span>${user.status}${user.mfaEnrolled ? ' · mfa' : ''} · pwd ${user.passwordExpiresInDays}d</span>
       </div>`);
-      targets.push(user.id);
+      userIds.push(user.id);
     });
 
     container.innerHTML = rows.join('');
 
-    const currentTarget = targetSelect.value;
-    targetSelect.innerHTML = targets.map((id) => `<option value="${id}">${id}</option>`).join('');
-    if (targets.includes(currentTarget)) targetSelect.value = currentTarget;
+    adTargetsByCategory = { dc: dcIds, ou: ouIds, user: userIds };
+    refreshADTargetOptions();
 
     const eventsEl = document.getElementById('ad-events');
     eventsEl.innerHTML = state.events.slice(0, 5).map((e) => `<div>${e.ts.slice(11, 19)} — ${e.message}</div>`).join('');
@@ -1217,6 +1254,8 @@ setInterval(tick, 5000);
     setTwinStatus('ad', true);
     renderAD(state);
   }
+
+  document.getElementById('ad-fault-type').addEventListener('change', refreshADTargetOptions);
 
   document.getElementById('ad-fault-btn').addEventListener('click', async () => {
     const type = document.getElementById('ad-fault-type').value;
