@@ -95,6 +95,20 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
 .ai-output .err{color:var(--red)}
 #explainPanel:empty{display:none}
 .explain-panel{margin-top:10px;border:1px solid var(--border);border-radius:6px;padding:10px 12px;background:var(--bg3)}
+.kb-match-card{margin-top:14px;border:1px solid var(--border);border-radius:6px;padding:12px 14px;background:var(--bg3)}
+.kb-match-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}
+.kb-match-title{font-size:12px;font-weight:700;color:var(--text);letter-spacing:.03em}
+.kb-match-twin{font-size:9px;color:var(--text-dim);border:1px solid var(--border);border-radius:3px;padding:2px 6px}
+.kb-conf{font-size:9px;font-weight:700;letter-spacing:.04em;border-radius:3px;padding:2px 7px;text-transform:uppercase}
+.kb-conf.high{color:var(--green);border:1px solid rgba(0,255,80,.35);background:rgba(0,255,80,.08)}
+.kb-conf.medium{color:var(--amber);border:1px solid rgba(255,149,0,.35);background:rgba(255,149,0,.08)}
+.kb-conf.low{color:var(--text-dim);border:1px solid var(--border);background:rgba(255,255,255,.03)}
+.kb-match-reason{font-size:11px;color:var(--text-dim);margin-bottom:8px;line-height:1.5}
+.kb-match-steps{margin:0;padding-left:18px}
+.kb-match-steps li{font-size:11px;color:var(--text);line-height:1.7}
+.kb-match-empty{font-size:11px;color:var(--text-dim)}
+.kb-match-loading{font-size:11px;color:var(--cyan)}
+.kb-match-low-warn{font-size:10px;color:var(--amber);margin-top:8px;border-top:1px solid var(--border);padding-top:8px}
 .explain-title{font-size:9px;letter-spacing:1.2px;color:var(--text-dim);text-transform:uppercase;margin-bottom:8px}
 .explain-row{padding:5px 0;border-top:1px solid var(--border)}
 .explain-row:first-of-type{border-top:none}
@@ -359,6 +373,12 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
             </div>
           </div>
           <div id="explainPanel"></div>
+          <div class="kb-match-card" id="kbMatchCard" style="display:none">
+            <div class="kb-match-head">
+              <div class="kb-match-title">SUGGESTED PLAYBOOK — DOCUMENTED KB MATCH</div>
+            </div>
+            <div id="kbMatchBody"></div>
+          </div>
           <div class="btn-row">
             <button class="btn btn-outline" id="btnReanalyze">RE-RUN ANALYSIS</button>
             <button class="btn btn-ghost" id="btnSendToTroubleshoot">SEND TO GUIDED TROUBLESHOOTING →</button>
@@ -1551,6 +1571,7 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
     out.className = 'ai-output loading';
     out.textContent = 'Running AI analysis on ticket...';
     goToSection('ai');
+    fetchKbMatch(description);
     try {
       const res = await fetch('/api/l1-copilot/analyze', {
         method: 'POST', headers: { 'Content-Type':'application/json' },
@@ -1581,6 +1602,56 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
     } finally {
       document.getElementById('navStatus').textContent = 'ENGINE: IDLE';
     }
+  }
+
+  // ── KB Playbook Match ────────────────────────────────────────────────────
+  // Fires automatically alongside RUN AI ANALYSIS — no separate search step.
+  // Reuses the same Groq-backed matcher that powers Enterprise Command
+  // Center's "AI Widget — Describe the Issue, Get the Playbook" (/api/twins
+  // /knowledge/query), against the same documented AD/M365/Network/VMware/
+  // Device/Vendor playbook library. Runs independently of /analyze so a KB
+  // failure never blocks ticket analysis, and never blocks on it either.
+  const TWIN_LABELS_KB = { ad:'Active Directory', m365:'Microsoft 365', network:'Network', vmware:'VMware', device:'Device', vendor:'Vendor' };
+
+  async function fetchKbMatch(description){
+    const card = document.getElementById('kbMatchCard');
+    const body = document.getElementById('kbMatchBody');
+    card.style.display = '';
+    body.innerHTML = '<div class="kb-match-loading">Checking documented playbooks…</div>';
+    try {
+      const res = await fetch('/api/twins/knowledge/query', {
+        method: 'POST', headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({ query: description })
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data) throw new Error((data && data.error) || `request failed (${res.status})`);
+      renderKbMatch(data);
+    } catch (e) {
+      body.innerHTML = `<div class="kb-match-empty">No documented playbook match available (${escapeHtml(e.message)}). Proceed with standard troubleshooting — this isn't a blocker.</div>`;
+    }
+  }
+
+  function renderKbMatch(m){
+    const body = document.getElementById('kbMatchBody');
+    const twinLabel = TWIN_LABELS_KB[m.twinType] || m.twinType || '';
+    const conf = (m.confidence || '').toLowerCase();
+    const confBadge = conf ? `<span class="kb-conf ${conf}">${escapeHtml(conf)} confidence</span>` : '';
+    const steps = Array.isArray(m.steps) ? m.steps : [];
+    const lowWarn = conf === 'low'
+      ? `<div class="kb-match-low-warn">Low-confidence match — the AI couldn't find a close fit in the documented library. Treat this as a starting reference only, not a confirmed diagnosis.</div>`
+      : '';
+    body.innerHTML = `
+      <div class="kb-match-head" style="margin-bottom:6px">
+        <span class="kb-match-title" style="font-size:12px">${escapeHtml(m.title || 'Untitled scenario')}</span>
+        <span style="display:flex;gap:6px;align-items:center">
+          <span class="kb-match-twin">${escapeHtml(twinLabel)}</span>
+          ${confBadge}
+        </span>
+      </div>
+      ${m.reasoning ? `<div class="kb-match-reason">${escapeHtml(m.reasoning)}</div>` : ''}
+      <ol class="kb-match-steps">${steps.map(s => `<li>${escapeHtml(s)}</li>`).join('')}</ol>
+      ${lowWarn}
+    `;
   }
 
   function escapeHtml(s){
