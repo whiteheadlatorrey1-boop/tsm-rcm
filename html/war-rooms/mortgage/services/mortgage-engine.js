@@ -229,11 +229,23 @@
     }
 
     _riskLevelFor(entityKey, record) {
+      const RANK = { low: 0, medium: 1, high: 2 };
+
       const breaches = this.getSlaBreaches(entityKey);
       const idField = this._idField(entityKey);
       const breach = breaches.find(b => b.id === record[idField]);
-      if (!breach) return 'low';
-      return breach.hours_over > 24 ? 'high' : 'medium';
+      const slaLevel = !breach ? 'low' : (breach.hours_over > 24 ? 'high' : 'medium');
+
+      // Never report a risk level below the record's own business-assigned
+      // severity (e.g. loan_files.severity: 'HIGH'/'MEDIUM'/'LOW'). SLA hours
+      // alone under-tag files the ops team has already flagged HIGH -- which
+      // then silently downgrades in the canonical/Sentinel feed even though
+      // the war-room table itself shows HIGH.
+      const businessSeverity = record.severity ? String(record.severity).toLowerCase() : null;
+      const businessLevel = businessSeverity && RANK.hasOwnProperty(businessSeverity) ? businessSeverity : null;
+
+      if (!businessLevel) return slaLevel;
+      return RANK[businessLevel] > RANK[slaLevel] ? businessLevel : slaLevel;
     }
 
     async getCanonicalRecords() {
