@@ -1174,6 +1174,14 @@ app.use('/api/enterprise', require('./server/enterprise/api/enterprise-router'))
 // the missing mount.
 app.use('/api/twins', require('./server/enterprise-lab/twins-router'));
 
+// ── ENTERPRISE LAB CORE (missions / benchmark / incidents) ──────────────────
+// server/enterprise-lab/api.js (mission queue, chaos incident generator,
+// benchmark scorecard, /health, /reset) was also fully built but never
+// mounted, so every /api/enterprise-lab/* call from
+// html/l1-copilot/enterprise-command-center.html 404'd (Service Desk Wall,
+// Live Mission Queue, AI Chaos Engine). This is the missing mount.
+app.use('/api/enterprise-lab', require('./server/enterprise-lab/api'));
+
 
 // ── FINOPS ────────────────────────────────────────────────────────────────────
 app.post('/api/finops/bnca/report', (req, res) => res.json({ ok: true }));
