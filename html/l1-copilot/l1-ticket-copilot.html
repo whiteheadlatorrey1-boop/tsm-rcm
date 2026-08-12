@@ -3029,8 +3029,9 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
 
       sec = document.createElement("div");
       sec.id = "sec-quick15";
-      sec.className = "section active";
-      sec.style.cssText = "padding:20px; width:100%; box-sizing:border-box; color:#fff; display:block;";
+      sec.className = "section";
+      // Keep hidden by default on creation so default tabs (Ticket) remain visible
+      sec.style.cssText = "padding:20px; width:100%; box-sizing:border-box; color:#fff; display:none;";
       
       sec.innerHTML = `
         <div style="border:1px solid #00e5ff; background:rgba(0,229,255,0.05); padding:16px; margin-bottom:16px; border-radius:6px;">
@@ -3063,9 +3064,6 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
       `;
       main.appendChild(sec);
     }
-
-    // Force visibility flag
-    sec.style.display = "block";
     return sec;
   }
 
@@ -3091,130 +3089,24 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
     }
   }
 
-  window.selectQ15Scenario = function(id) {
-    const scenario = SCENARIO_LIBRARY.find(s => s.id === id);
-    if (!scenario) return;
-    activeSelectedScenario = scenario;
-    document.querySelectorAll('.q15-card').forEach(c => c.classList.toggle('active', c.getAttribute('data-id') === id));
-
-    const title = document.getElementById("q15PlaybookTitle");
-    if (title) title.innerText = `${scenario.icon} ${scenario.name.toUpperCase()} PLAYBOOK`;
-
-    const sev = document.getElementById("q15PlaybookSev");
-    if (sev) sev.innerText = scenario.severity.toUpperCase();
-
-    const sys = document.getElementById("q15PlaybookSystem");
-    if (sys) sys.innerText = scenario.system;
-
-    const kb = document.getElementById("q15PlaybookKb");
-    if (kb) kb.innerText = scenario.kb;
-
-    const team = document.getElementById("q15PlaybookTeam");
-    if (team) team.innerText = scenario.team;
-
-    const steps = document.getElementById("q15PlaybookSteps");
-    if (steps) steps.innerHTML = scenario.steps.map(st => `<li>${st}</li>`).join('');
-
-    const esc = document.getElementById("q15PlaybookEscalate");
-    if (esc) esc.innerHTML = scenario.escalate.map(e => `<li>${e}</li>`).join('');
-
-    const panel = document.getElementById("q15PlaybookPanel");
-    if (panel) panel.style.display = "block";
-  };
-
-  function evaluateTicketAutoMatch() {
-    const desc = document.getElementById("tkDescription")?.value.toLowerCase() || "";
-    const card = document.getElementById("q15AutoMatchCard");
-
-    if (desc.length < 10) {
-      if (card) card.style.display = "none";
-      return;
-    }
-    let bestMatch = null, maxScore = 0;
-    SCENARIO_LIBRARY.forEach(s => {
-      let score = 0;
-      s.keywords.forEach(kw => { if (desc.includes(kw)) score += 1; });
-      if (score > maxScore) { maxScore = score; bestMatch = s; }
-    });
-
-    if (bestMatch && maxScore > 0 && card) {
-      const mTitle = document.getElementById("q15MatchTitle");
-      if (mTitle) mTitle.innerText = `${bestMatch.icon} ${bestMatch.name}`;
-
-      const mMeta = document.getElementById("q15MatchMeta");
-      if (mMeta) mMeta.innerText = `System: ${bestMatch.system} | Severity: ${bestMatch.severity} | Category: ${bestMatch.category}`;
-
-      card.style.display = "block";
-
-      const btnApply = document.getElementById("btnApplyAutoMatch");
-      if (btnApply) btnApply.onclick = () => applyScenarioToTicket(bestMatch);
-
-      const btnView = document.getElementById("btnViewAutoMatch");
-      if (btnView) {
-        btnView.onclick = () => {
-          ensureQ15DOMStructure();
-          renderQ15Grid();
-          selectQ15Scenario(bestMatch.id);
-        };
-      }
-    } else if (card) {
-      card.style.display = "none";
-    }
-  }
-
-  function applyScenarioToTicket(scenario = activeSelectedScenario) {
-    if (!scenario) return;
-    const groupInput = document.getElementById("tkGroup");
-    if (groupInput) groupInput.value = scenario.team;
-
-    const fixBanner = document.getElementById("fixValidatedBanner");
-    if (fixBanner) {
-      fixBanner.innerHTML = `PLAYBOOK ATTACHED: [${scenario.kb}] ${scenario.name} — Recommended Team: ${scenario.team}`;
-      fixBanner.classList.add("show");
-    }
-
-    if (scenario.system.includes("VMware") || scenario.id === "scen-14" || scenario.id === "scen-15") {
-      const payload = {
-        type: 'VMWARE_SCENARIO_TRIGGER',
-        scenarioId: scenario.id,
-        name: scenario.name,
-        severity: scenario.severity,
-        kb: scenario.kb,
-        steps: scenario.steps,
-        escalate: scenario.escalate,
-        incidentId: document.getElementById("tkIncident")?.value || "INC-PENDING",
-        asset: document.getElementById("tkAsset")?.value || "ESXI-HOST-01"
-      };
-      if (copilotChannel) copilotChannel.postMessage(payload);
-
-      if (confirm(`VMware scenario '${scenario.name}' engaged. Switch to VMware SME view?`)) {
-        window.location.href = `/html/l1-copilot/vmware-copilot.html?scenario=${scenario.id}&inc=${encodeURIComponent(payload.incidentId)}`;
-      }
-    } else {
-      alert(`Applied '${scenario.name}' Playbook to ticket!`);
-    }
-  }
-
-  // Initializing lifecycle
+  // --- Initializing & Navigation Event Handling ---
   function init() {
     initAssistant();
     ensureQ15DOMStructure();
     renderQ15Grid();
 
+    // Global navigation handler to toggle Quick 15 vs standard views
     document.addEventListener("click", (e) => {
       const item = e.target.closest('.sb-item, [data-section], li, div, button, a');
       if (!item) return;
 
       const isQ15 = item.getAttribute('data-section') === 'quick15' || item.textContent.includes("Quick 15");
+      const q15Sec = document.getElementById("sec-quick15");
 
       if (isQ15) {
         document.querySelectorAll('.sb-item').forEach(i => i.classList.remove('active'));
         item.classList.add('active');
 
-        ensureQ15DOMStructure();
-        renderQ15Grid();
-
-        const q15Sec = document.getElementById("sec-quick15");
         if (q15Sec && q15Sec.parentElement) {
           Array.from(q15Sec.parentElement.children).forEach(child => {
             if (child.nodeType !== 1) return;
@@ -3227,6 +3119,9 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
             }
           });
         }
+      } else if (item.closest('.sidebar, nav, #sidebar')) {
+        // Switching to any other sidebar tab (e.g. Ticket)
+        if (q15Sec) q15Sec.style.display = "none";
       }
     });
 
