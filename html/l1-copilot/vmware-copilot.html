@@ -1133,5 +1133,78 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
   }
 })();
 </script>
+<!-- VMWARE COPILOT QUICK 15 OPERATIONAL BRIDGE -->
+<script>
+(function() {
+  const copilotChannel = new BroadcastChannel('tsm_copilot_relay');
+
+  const VMWARE_WORKFLOWS = {
+    'scen-14': {
+      title: 'VMware VM Down / Host Unresponsive',
+      kb: 'KB-VMW-010',
+      prefillNotes: 'Automated trigger: VM Down detected. Inspecting vCenter HA events and ESXi host heartbeats...',
+      kpis: { status: 'CRITICAL', haTriggered: 'YES', latency: '12ms' },
+      steps: ['Inspect vCenter HA Events', 'Verify ESXi Management Network', 'Check Guest OS Heartbeat', 'Restart Guest OS']
+    },
+    'scen-15': {
+      title: 'VMware Datastore Capacity Critical',
+      kb: 'KB-VMW-033',
+      prefillNotes: 'Automated trigger: Datastore capacity high. Scanning for stale snapshots...',
+      kpis: { status: 'WARNING', haTriggered: 'NO', latency: '148ms' },
+      steps: ['Scan for Orphaned Snapshots (>7 days)', 'Consolidate Stale Delta Disks', 'Storage vMotion Non-Critical VMs', 'Request SAN LUN Expansion']
+    }
+  };
+
+  function executeVmwareWorkflow(data) {
+    const wf = VMWARE_WORKFLOWS[data.scenarioId] || {
+      title: data.name,
+      kb: data.kb,
+      prefillNotes: `Triggered ${data.name} for ${data.incidentId}.`,
+      kpis: { status: 'EVALUATING', haTriggered: 'N/A', latency: '--' },
+      steps: data.steps || []
+    };
+
+    let banner = document.getElementById('vmwareAlertBanner');
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id = 'vmwareAlertBanner';
+      const main = document.querySelector('.main') || document.body;
+      main.insertBefore(banner, main.firstChild);
+    }
+    banner.style.display = 'block';
+    banner.innerHTML = `
+      <div style="padding:10px 14px; background:rgba(0,229,255,.08); border:1px solid var(--cyan); border-radius:6px; margin-bottom:16px; color:var(--cyan); font-size:11px;">
+        <strong>OPERATIONAL BRIDGE ACTIVE:</strong> Handled ${wf.title} [${wf.kb}] for Target Asset: <u>${data.asset || 'ESXI-CLUSTER-01'}</u>
+      </div>
+    `;
+
+    const notesBox = document.getElementById('vmwareDiagNotes') || document.querySelector('textarea');
+    if (notesBox) {
+      notesBox.value = `[${new Date().toISOString()}] TRIGGER: ${data.incidentId || 'INC-L1'}\n` +
+                       `Scenario: ${wf.title}\n` +
+                       `KB Reference: ${wf.kb}\n\n` +
+                       `EXECUTION STEPS:\n` +
+                       wf.steps.map((s, i) => ` [ ] Step ${i+1}: ${s}`).join('\n');
+    }
+  }
+
+  copilotChannel.onmessage = function(e) {
+    if (e.data && e.data.type === 'VMWARE_SCENARIO_TRIGGER') executeVmwareWorkflow(e.data);
+  };
+
+  document.addEventListener('DOMContentLoaded', () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const scen = urlParams.get('scenario');
+    if (scen) {
+      executeVmwareWorkflow({
+        scenarioId: scen,
+        incidentId: urlParams.get('inc') || 'INC-AUTO',
+        name: scen === 'scen-14' ? 'VMware VM Down' : 'VMware Datastore Full',
+        kb: scen === 'scen-14' ? 'KB-VMW-010' : 'KB-VMW-033'
+      });
+    }
+  });
+})();
+</script>
 </body>
 </html>
