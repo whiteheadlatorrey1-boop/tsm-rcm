@@ -32,6 +32,78 @@ app.use(express.json());
 app.use(require('express').urlencoded({ extended: false }));
 // tsmAuthMiddleware(app); // removed — war rooms are in-house
 
+// ── SECURITY HEADERS & RATE LIMITING ────────────────────────────────────────
+// Runs behind Fly's edge proxy — 'trust proxy' must be set before any
+// rate-limiter is defined, or express-rate-limit keys every request off
+// Fly's proxy IP instead of the real client IP (making the limit either
+// useless — everyone shares one bucket — or it throws on the
+// X-Forwarded-For header entirely depending on version).
+app.set('trust proxy', 1);
+
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+
+// contentSecurityPolicy/crossOriginEmbedderPolicy/crossOriginResourcePolicy
+// are OFF on purpose: this app is ~100+ largely-independent HTML pages that
+// all rely on inline <script> blocks and cross-origin assets (CDN scripts,
+// fonts, images) that have never been audited against a CSP or COEP. Turning
+// those on here would silently break pages until each one is individually
+// fixed — that's real work, not a one-line flip, and belongs in its own
+// pass. Everything else below (frameguard, nosniff, HSTS, etc.) has no such
+// site-wide dependency and is safe to turn on globally right now.
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: false,
+}));
+
+// General API limiter — generous ceiling, just stops scripted hammering.
+// /health is excluded so Fly's own healthcheck traffic never trips it.
+const apiLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { ok: false, error: 'Too many requests — please slow down.' },
+});
+app.use('/api/', (req, res, next) => (req.path === '/health' ? next() : apiLimiter(req, res, next)));
+
+// Tighter limiter specifically on login — brute-force protection on the one
+// endpoint where a stolen/guessed credential actually matters. Applied as
+// route-level middleware (not a path-prefix rule) so it stays attached to
+// this exact route regardless of how the file gets reorganized later.
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { ok: false, error: 'Too many login attempts — please try again later.' },
+});
+
+// Shared validator for the AI-query routes (/api/bpo/query and its sibling
+// verticals below). Rejects empty/missing prompts and caps prompt length +
+// maxTokens so a malformed or abusive request can't drive up Groq spend or
+// hang a request indefinitely. Previously these routes accepted anything,
+// including an empty string, and happily forwarded it to the model.
+const MAX_QUERY_LENGTH = 8000;
+const MAX_QUERY_TOKENS = 4096;
+function validateQueryBody(req, res, next) {
+  const msg = (req.body && (req.body.message || req.body.question || req.body.query)) || '';
+  if (typeof msg !== 'string' || !msg.trim()) {
+    return res.status(400).json({ ok: false, error: 'message/question/query is required' });
+  }
+  if (msg.length > MAX_QUERY_LENGTH) {
+    return res.status(400).json({ ok: false, error: `message exceeds ${MAX_QUERY_LENGTH} character limit` });
+  }
+  if (req.body && req.body.maxTokens !== undefined) {
+    const mt = Number(req.body.maxTokens);
+    if (!Number.isFinite(mt) || mt <= 0 || mt > MAX_QUERY_TOKENS) {
+      return res.status(400).json({ ok: false, error: `maxTokens must be a number between 1 and ${MAX_QUERY_TOKENS}` });
+    }
+  }
+  next();
+}
+
 // ── CLOUDFLARE-ORIGIN GATE ──────────────────────────────────────────────────
 // Rejects any request that didn't come through the tsm-entitlement-gate
 // Cloudflare Worker (cloudflare/entitlement-gate/worker.js), which is the
@@ -59,7 +131,7 @@ app.use((req, res, next) => {
 // client can never collide on the same code — each pool is checked
 // independently). All three paths produce the same kind of signed session
 // cookie; only the payload shape differs.
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', loginLimiter, (req, res) => {
   const { password, accessCode } = req.body || {};
   const credential = password || accessCode || '';
   if (!process.env.TSM_ADMIN_PASSWORD || !process.env.TSM_SESSION_SECRET) {
@@ -615,20 +687,20 @@ const suites = [
 ];
 
 // ── HEALTH & STUB ROUTES ──────────────────────────────────────────────────────
-app.post('/api/re/query', async (req, res) => {
+app.post('/api/re/query', validateQueryBody, async (req, res) => {
   try { const a = await groqChat(SP.mortgage, req.body.message||req.body.question||req.body.query||'', req.body.maxTokens||1024); return res.json({ ok:true, answer:a, output:a, reply:a }); }
   catch(e){ return res.status(500).json({ ok:false, error:e.message }); }
 });
-app.post('/api/education/query', async (req, res) => {
+app.post('/api/education/query', validateQueryBody, async (req, res) => {
   try { const a = await groqChat(SP.education, req.body.message||req.body.question||req.body.query||'', req.body.maxTokens||1024); return res.json({ ok:true, answer:a, output:a, reply:a }); }
   catch(e){ return res.status(500).json({ ok:false, error:e.message }); }
 });
-app.post('/api/enterprise/query', async (req, res) => {
+app.post('/api/enterprise/query', validateQueryBody, async (req, res) => {
   try { const a = await groqChat(SP.enterprise, req.body.message||req.body.question||req.body.query||'', req.body.maxTokens||1024); return res.json({ ok:true, answer:a, output:a, reply:a }); }
   catch(e){ return res.status(500).json({ ok:false, error:e.message }); }
 });
 app.get('/health', (req, res) => res.json({ status: 'ok', v: 3 }));
-app.post('/api/bpo/query', async (req, res) => {
+app.post('/api/bpo/query', validateQueryBody, async (req, res) => {
   try {
     const sys = 'You are a BPO operations intelligence AI for TSM Command. Expert in BPO, workforce management, SLA performance, staffing ops. Be direct.';
     const msg = req.body.message || req.body.question || req.body.query || '';
