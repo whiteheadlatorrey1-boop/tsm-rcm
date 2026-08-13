@@ -393,6 +393,59 @@ app.use('/html/runtime', express.static(path.join(__dirname, 'html', 'runtime'))
 app.use('/runtime', express.static(path.join(__dirname, 'runtime'), { setHeaders: (res) => res.setHeader('Cache-Control', 'no-store') }));
 app.use('/architecture', express.static(path.join(__dirname, 'architecture'), { setHeaders: (res) => res.setHeader('Cache-Control', 'no-store') }));
 app.use('/core', express.static(path.join(__dirname, 'core')));
+
+// ── LOGIN PAGE ────────────────────────────────────────────────────────────────
+// login.html already existed and already posts to /api/auth/login, but
+// nothing served it at a route — it was only reachable by guessing the exact
+// static path. Fixing that here since the client-facing gate below sends
+// people to /login.
+app.get('/login', (req, res) => {
+  res.sendFile(path.join(__dirname, 'html', 'login.html'));
+});
+
+// ── CLIENT-FACING SURFACE GATE ─────────────────────────────────────────────
+// tsm-doc-search-multi.html is the page clients actually use (per T-dawg).
+// This is intentionally narrow — it does NOT gate the rest of the site,
+// which stays in-house/ungated by design. Only the page where a client's
+// own data lives needs a login wall so one client can't just open it and
+// browse another client's workspace.
+//
+// MUST be registered before the '/' catch-all static mount directly below —
+// Express matches in registration order, and that catch-all serves any file
+// under html/ (including this one, at its un-prefixed path) before this gate
+// ever got a chance to run when the gate lived after it. Confirmed the hard
+// way: /html/tsm-doc-search-multi.html was gated (302) but the un-prefixed
+// /tsm-doc-search-multi.html was not (200) — same file, same page, no gate.
+app.get(['/tsm-doc-search-multi.html', '/html/tsm-doc-search-multi.html'], (req, res, next) => {
+  const session = verifySession(getCookie(req, 'tsm_session'));
+  if (!session) {
+    return res.redirect(`/login?next=${encodeURIComponent(req.originalUrl)}`);
+  }
+  next();
+});
+
+// ── BPO WAR ROOM GATE ───────────────────────────────────────────────────────
+// BPO_PRODUCTION_READINESS.md (Phase 1) calls for auth on the BPO operational
+// surface. Gated: the war room, strategist, and executive portal — where a
+// pilot's actual work-item/relay data lives. NOT gated: bpo-demo-presentation
+// .html, which is the sales-demo asset and needs to stay link-shareable per
+// that doc's own "use for: sales demos" guidance. Same narrow, page-level
+// pattern as the doc-search gate above (and same reason it must sit before
+// the catch-all static mount) — role-specific restriction (Phase 1 RBAC) is
+// a separate follow-up, this only requires *a* valid session.
+const BPO_GATED_PAGES = [
+  '/war-rooms/bpo-war/bpo-war-room.html', '/html/war-rooms/bpo-war/bpo-war-room.html',
+  '/war-rooms/bpo-war/bpo-strategist.html', '/html/war-rooms/bpo-war/bpo-strategist.html',
+  '/war-rooms/bpo-war/bpo-executive-portal.html', '/html/war-rooms/bpo-war/bpo-executive-portal.html',
+];
+app.get(BPO_GATED_PAGES, (req, res, next) => {
+  const session = verifySession(getCookie(req, 'tsm_session'));
+  if (!session) {
+    return res.redirect(`/login?next=${encodeURIComponent(req.originalUrl)}`);
+  }
+  next();
+});
+
 app.use('/', express.static(path.join(__dirname, 'html')));
 const suites = [
   { route: '/construction', dir: 'html/construction-suite', index: 'construction-hub.html' },
@@ -438,29 +491,6 @@ app.get('/api/music/activity', (_req, res) => res.json({ ok: true, activity: glo
 app.get('/api/music/platform', (_req, res) => res.json({ ok: true, platform: global.MUSIC_PLATFORM }));
 app.get('/executive-portal', (req, res) => res.redirect('/html/executive-portal/index.html'));
 app.get('/healthcare/executive-portal', (req, res) => res.redirect('/html/executive-portal/index.html'));
-
-// ── LOGIN PAGE ────────────────────────────────────────────────────────────────
-// login.html already existed and already posts to /api/auth/login, but
-// nothing served it at a route — it was only reachable by guessing the exact
-// static path. Fixing that here since the client-facing gate below sends
-// people to /login.
-app.get('/login', (req, res) => {
-  res.sendFile(path.join(__dirname, 'html', 'login.html'));
-});
-
-// ── CLIENT-FACING SURFACE GATE ─────────────────────────────────────────────
-// tsm-doc-search-multi.html is the page clients actually use (per T-dawg).
-// This is intentionally narrow — it does NOT gate the rest of the site,
-// which stays in-house/ungated by design. Only the page where a client's
-// own data lives needs a login wall so one client can't just open it and
-// browse another client's workspace.
-app.get(['/tsm-doc-search-multi.html', '/html/tsm-doc-search-multi.html'], (req, res, next) => {
-  const session = verifySession(getCookie(req, 'tsm_session'));
-  if (!session) {
-    return res.redirect(`/login?next=${encodeURIComponent(req.originalUrl)}`);
-  }
-  next();
-});
 
 // ── STATIC MOUNTS ─────────────────────────────────────────────────────────────
 const dirPath = path.join(__dirname, 'html');// ── STATIC MOUNTS v2 ──
