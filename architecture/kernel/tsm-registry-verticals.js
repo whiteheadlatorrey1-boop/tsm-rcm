@@ -28,7 +28,7 @@
     color: "#86efac",
     entities: ["invoice", "vendor", "purchaseOrder"],
     weights: { invoice: 9, vendor: 6, purchaseOrder: 7 },
-    route: "/html/finops-suite/finops-war-room.html"
+    route: "/html/finops-suite/finops-war/finops-war-room.html"
   });
 
   TSMRegistry.register({
@@ -76,15 +76,14 @@
     route: "/html/war-rooms/legal-war/legal-war-room.html"
   });
 
-  // O2C — not yet in WAR_ROOM_ROUTES; registered here so it participates
-  // in ranking as soon as a route is wired in tsm-doc-search-multi.html
+  // O2C — route confirmed live in WAR_ROOM_ROUTES (tsm-doc-search-multi.html)
   TSMRegistry.register({
     id: "o2c-war-room",
     title: "Order-to-Cash",
     color: "#38bdf8",
     entities: ["customer", "quote", "order", "shipment", "invoice"],
     weights: { customer: 7, quote: 6, order: 8, shipment: 6, invoice: 8 },
-    route: "/html/o2c/o2c-war-room.html"
+    route: "/html/war-rooms/o2c/o2c-war-room.html"
   });
 
   // ── SAP-centric verticals backfill ─────────────────────────────────
