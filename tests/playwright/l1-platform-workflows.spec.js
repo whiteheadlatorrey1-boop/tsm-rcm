@@ -30,12 +30,12 @@
 //           but absent from the registry.
 //
 // Run: npx playwright test tests/playwright/l1-platform-workflows.spec.js
-// Requires BASE_URL (default http://localhost:8080) pointing at a running
+// Requires BASE_URL (default http://localhost:4173) pointing at a running
 // `node server.js`. Needs a real browser context — run in Codespaces or CI.
 
 const { test, expect } = require('@playwright/test');
 
-const BASE_URL = process.env.BASE_URL || 'http://localhost:8080';
+const BASE_URL = process.env.BASE_URL || 'http://localhost:4173';
 
 const PAGES = {
   commandCenter: '/html/l1-copilot/enterprise-command-center.html',

@@ -29,13 +29,13 @@
 // reachability layer: every hop in the chain resolves to a real page.
 //
 // Run via: npx playwright test tests/playwright/war-room-prep-workflows.spec.js
-// Requires BASE_URL (default http://localhost:8080) pointing at a running
+// Requires BASE_URL (default http://localhost:4173) pointing at a running
 // `node server.js`. Browser execution needs a real browser context — run
 // this in Codespaces or CI, not a headless sandbox without a display/deps.
 
 const { test, expect } = require('@playwright/test');
 
-const BASE_URL = process.env.BASE_URL || 'http://localhost:8080';
+const BASE_URL = process.env.BASE_URL || 'http://localhost:4173';
 const DOC_SEARCH = '/html/tsm-doc-search-multi.html';
 
 // --- Chain 1: SECTOR_IDS (war-room-prep.html), including BPO demo chain ---

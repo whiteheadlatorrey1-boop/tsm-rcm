@@ -41,7 +41,7 @@
 //     (not a crash, just no real data) so a future fix can flip the
 //     assertion once it's actually wired.
 //
-// Requires BASE_URL (default http://localhost:8080) pointing at a running
+// Requires BASE_URL (default http://localhost:4173) pointing at a running
 // `node server.js`. No GROQ key / network calls needed -- this seeds relay
 // state directly instead of clicking through and waiting on live AI calls,
 // so it runs the same in CI as it does locally.
@@ -50,7 +50,7 @@
 
 const { test, expect } = require('@playwright/test');
 
-const BASE_URL = process.env.BASE_URL || 'http://localhost:8080';
+const BASE_URL = process.env.BASE_URL || 'http://localhost:4173';
 
 const DOC_SEARCH = '/html/tsm-doc-search-multi.html';
 const WAR_ROOM = '/html/war-rooms/bpo-war/bpo-war-room.html';
