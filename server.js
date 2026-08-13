@@ -3468,8 +3468,16 @@ app.get('/api/integration/decisions', (req, res) => {
 // same shared factory Governance/Integration Hub/Approval Chain already use,
 // so all four "Decision Center" implementations in the platform now share
 // one persistence pattern.
-const EXEC_PORTAL_VERTICALS = ['healthcare', 'finops', 'insurance', 'construction', 'legal', 'realestate', 'bpo'];
-const EXEC_PORTAL_GATE_PREFIX = { healthcare: 'HC', finops: 'FIN', insurance: 'INS', construction: 'CON', legal: 'LEG', realestate: 'RE', bpo: 'BPO' };
+// mortgage added 2026-08-12: its exec portal has its own real ACKNOWLEDGE/
+// ESCALATE actions (ExecPortal_recordExecAction() in mortgage-executive-
+// portal.html) rather than the shared tsm-exec-portal-upgrade.js Decision
+// Center used by the other seven verticals below -- so mortgage does NOT
+// get that shared script's fabricated KPI cards / placeholder decision
+// items injected. It reuses only this real server-side HITL gate + the
+// genuine Approval Improvement Rate panel, wired directly into its own
+// existing action buttons.
+const EXEC_PORTAL_VERTICALS = ['healthcare', 'finops', 'insurance', 'construction', 'legal', 'realestate', 'bpo', 'mortgage'];
+const EXEC_PORTAL_GATE_PREFIX = { healthcare: 'HC', finops: 'FIN', insurance: 'INS', construction: 'CON', legal: 'LEG', realestate: 'RE', bpo: 'BPO', mortgage: 'MTG' };
 const EXEC_PORTAL_HITL_GATES = {};
 EXEC_PORTAL_VERTICALS.forEach(v => { EXEC_PORTAL_HITL_GATES[v] = createHitlGate(EXEC_PORTAL_GATE_PREFIX[v] || 'EXEC'); });
 

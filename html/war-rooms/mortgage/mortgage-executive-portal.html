@@ -75,6 +75,12 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 .ai-box table.md-table{border-collapse:collapse;width:100%;margin:8px 0;white-space:normal;}
 .ai-box table.md-table th,.ai-box table.md-table td{border:1px solid var(--border);padding:4px 6px;text-align:left;vertical-align:top;}
 .ai-box table.md-table th{color:var(--muted);text-transform:uppercase;font-size:.6rem;}
+
+.rate-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;}
+.rate-card{background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:14px;text-align:center;}
+.rate-val{font-family:'Orbitron',sans-serif;font-size:1.2rem;font-weight:900;}
+.rate-val.gold{color:var(--gold);}.rate-val.green{color:var(--green);}.rate-val.red{color:var(--red);}.rate-val.muted{color:var(--muted);}
+.rate-lbl{font-size:.58rem;color:var(--muted);margin-top:6px;font-family:'JetBrains Mono',monospace;letter-spacing:.06em;text-transform:uppercase;}
 </style>
 </head>
 <body data-vertical="mortgage" data-page-role="warroom">
@@ -143,6 +149,71 @@ function recordExecAction(actionType, note){
       localStorage.setItem(RELAY_KEY_FALLBACK, json);
     }
   } catch(e){ console.warn('recordExecAction write failed:', e); }
+
+  // Also record to the real server-side HITL decision log (server.js:
+  // /api/exec-portal/mortgage/decide) so ACKNOWLEDGE/ESCALATE feed the
+  // Approval Improvement Rate panel below, same as the other seven
+  // verticals' Decision Centers -- mortgage just has one global action
+  // pair per snapshot rather than a per-item list, so there's no natural
+  // list "index"; Date.now() is used as a unique, order-preserving stand-in
+  // (the HITL gate's stats are computed over the whole log, not deduped by
+  // entityId, so this doesn't affect approval-rate math).
+  // Verdict mapping: ACKNOWLEDGE = executive signs off on the current state
+  // ("approved"); ESCALATE = executive does not accept it as-is and is
+  // pushing it up the chain ("rejected"). This is a deliberate mapping for
+  // a two-button UI onto the gate's approve/reject vocabulary, not a claim
+  // that an escalation was literally rejected.
+  const verdict = actionType === 'acknowledged' ? 'approved' : 'rejected';
+  fetch('/api/exec-portal/mortgage/decide', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ index: Date.now(), verdict, text: note, actor: 'Executive' })
+  }).then(r => r.json()).then(res => {
+    if (res && res.ok && res.recorded) loadApprovalRate();
+  }).catch(() => { /* offline/unreachable -- exec action still logged to relay above */ });
+}
+
+/* ---------- Approval Improvement Rate (real server-side HITL log) ---------- */
+// Independent of the relay payload above: reads straight from the decision
+// log server.js keeps for mortgage's HITL gate, so it reflects real
+// approve/reject history across sessions, not just this page load.
+function renderApprovalRatePanelShell(){
+  return `<div class="sec">
+    <div class="sec-hdr"><span class="lbl">APPROVAL IMPROVEMENT RATE</span><span class="sec-hdr-note">from ACKNOWLEDGE / ESCALATE decision history</span></div>
+    <div id="rateBody"><div class="no-items">Loading decision history&hellip;</div></div>
+  </div>`;
+}
+function loadApprovalRate(){
+  const body = document.getElementById('rateBody');
+  if(!body) return;
+  fetch('/api/exec-portal/mortgage/decisions')
+    .then(r => r.json())
+    .then(res => {
+      if(!res || !res.ok) throw new Error('bad response');
+      renderApprovalRateStats(res.stats, body);
+    })
+    .catch(() => { body.innerHTML = '<div class="no-items">Decision history unavailable this session.</div>'; });
+}
+function renderApprovalRateStats(stats, body){
+  if(!stats || !stats.total){
+    body.innerHTML = '<div class="no-items">No decisions recorded yet &mdash; ACKNOWLEDGE or ESCALATE above to start tracking trend.</div>';
+    return;
+  }
+  let deltaVal = '&mdash;', deltaCls = 'muted';
+  if(stats.improvementRate !== null && stats.improvementRate !== undefined){
+    const dir = stats.improvementRate > 0 ? 'up' : (stats.improvementRate < 0 ? 'down' : 'flat');
+    const arrow = dir === 'up' ? '&#9650;' : (dir === 'down' ? '&#9660;' : '&#9679;');
+    const sign = stats.improvementRate > 0 ? '+' : '';
+    deltaCls = dir === 'up' ? 'green' : (dir === 'down' ? 'red' : 'muted');
+    deltaVal = `${arrow} ${sign}${stats.improvementRate}pp`;
+  }
+  body.innerHTML = `<div class="rate-grid">
+    <div class="rate-card"><div class="rate-val gold">${stats.approvalRate}%</div><div class="rate-lbl">Acknowledge Rate (All-Time)</div></div>
+    <div class="rate-card"><div class="rate-val ${deltaCls}">${deltaVal}</div><div class="rate-lbl">Trend vs Prior Period</div></div>
+    <div class="rate-card"><div class="rate-val gold">${stats.total}</div><div class="rate-lbl">Total Decisions</div></div>
+    <div class="rate-card"><div class="rate-val green">${stats.approved}</div><div class="rate-lbl">Acknowledged</div></div>
+    <div class="rate-card"><div class="rate-val red">${stats.rejected}</div><div class="rate-lbl">Escalated</div></div>
+  </div>`;
 }
 
 function escapeHtml(s){
@@ -358,7 +429,10 @@ function render(){
     </div>
   </div>`;
 
+  html += renderApprovalRatePanelShell();
+
   document.getElementById('wrap').innerHTML = html;
+  loadApprovalRate();
 }
 
 render();
