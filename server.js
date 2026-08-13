@@ -354,7 +354,8 @@ global.MUSIC_SUITE_STATE = global.MUSIC_SUITE_STATE || {
 };
 const TSM_MEMORY = global.__TSM_MEMORY__ = global.__TSM_MEMORY__ || {
   healthcare: { nodes: {}, hcStrategist: null, mainStrategist: null, executive: null },
-  construction: { nodes: {}, strategist: null, bnca: null, executive: null }
+  construction: { nodes: {}, strategist: null, bnca: null, executive: null },
+  mortgage: { nodes: {}, strategist: null, bnca: null, executive: null }
 };
 // Generic per-vertical memory for verticals other than healthcare (which keeps its richer,
 // purpose-built shape above). Each entry is a small, real, capped log of what that vertical's
@@ -1537,6 +1538,107 @@ app.post('/api/mortgage/query', async (req, res) => {
     return res.status(500).json({ ok: false, error: e.message });
   }
 });
+
+// -- MORTGAGE NODE -> STRATEGIST -> EXECUTIVE CHAIN ------------------------------
+// Mirrors the healthcare/construction node -> strategist -> executive pattern,
+// scoped to mortgage's real three pipeline entities: loan_files, conditions,
+// exceptions. Today the war room's engine.runAnalysis() makes exactly one flat
+// AI call over the whole snapshot and everything downstream (strategist,
+// executive portal) is pure client-side relay rendering -- TSM_MEMORY.mortgage
+// only ever gets the flat recordVerticalMemory recent-query log. This chain
+// gives it the same real per-entity + BNCA + strategist + executive depth
+// healthcare and construction already have.
+const mortgageNodeReports = {}; // keyed by nodeId (loan_files/conditions/exceptions), raw ingestion
+
+app.post('/api/mortgage/node-report', (req, res) => {
+  try {
+    const { nodeId, nodeLabel, report, analysisText, exposure, breachCount, loanIds, severity, kpi, ts } = req.body || {};
+    if (!nodeId) return res.status(400).json({ ok: false, error: 'nodeId required' });
+    mortgageNodeReports[nodeId] = {
+      nodeId,
+      nodeLabel: nodeLabel || nodeId,
+      report: report || '',
+      analysisText: analysisText || '',
+      exposure: exposure || null,
+      breachCount: breachCount || 0,
+      loanIds: loanIds || [],
+      severity: severity || 'INFO',
+      kpi: kpi || {},
+      ts: ts || Date.now(),
+      receivedAt: Date.now()
+    };
+    console.log('[MORTGAGE NODE REPORT] stored:', nodeId, 'severity:', severity);
+    return res.json({ ok: true, nodeId, stored: true });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.get('/api/mortgage/node-reports', (req, res) => {
+  try {
+    const reports = Object.values(mortgageNodeReports).sort((a, b) => b.ts - a.ts);
+    return res.json({ ok: true, reports, count: reports.length });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.delete('/api/mortgage/node-reports', (req, res) => {
+  const { nodeId } = req.body || req.query || {};
+  if (nodeId) {
+    delete mortgageNodeReports[nodeId];
+    return res.json({ ok: true, cleared: nodeId });
+  }
+  Object.keys(mortgageNodeReports).forEach(k => delete mortgageNodeReports[k]);
+  return res.json({ ok: true, cleared: 'all' });
+});
+
+// AI-analyzed per-entity result, written into TSM_MEMORY.mortgage.nodes[node]
+// so downstream BNCA/strategist/executive synthesis has real per-entity state.
+app.post('/api/mortgage/node/:node', async (req, res) => {
+  const node = req.params.node;
+  const payload = req.body || {};
+  const result = await tsmAIJSON(
+    `Analyze mortgage pipeline entity ${node}. Payload: ${JSON.stringify(payload).slice(0, 4000)}. Return JSON: {"node":"${node}","status":"READY|WATCH|RISK","top_issue":"...","findings":[],"actions":[],"exposure":"...","confidence":0}`,
+    { node, status: 'WATCH', top_issue: 'Entity requires review', findings: [], actions: [], exposure: 'Unknown', confidence: 80 }
+  );
+  TSM_MEMORY.mortgage.nodes[node] = result;
+  res.json({ ok: true, node, result, ts: new Date().toISOString() });
+});
+
+// Command-level BNCA across all reporting entities (loan_files, conditions, exceptions).
+app.post('/api/mortgage/bnca', async (req, res) => {
+  const payload = req.body || {};
+  const result = await tsmAIJSON(
+    `Mortgage Command BNCA. Entities: ${JSON.stringify(TSM_MEMORY.mortgage.nodes).slice(0, 6000)}. Payload: ${JSON.stringify(payload).slice(0, 4000)}. Return JSON: {"suite":"mortgage-command","top_issue":"...","risk_level":"READY|WATCH|RISK|URGENT","node_summary":[],"bnca":"...","owner_lanes":[],"hitl_review_required":true,"confidence":0}`,
+    { suite: 'mortgage-command', top_issue: 'Review needed', risk_level: 'WATCH', node_summary: [], bnca: 'Prioritize SLA-breached loan files and open compliance exceptions.', owner_lanes: ['loan processor'], hitl_review_required: true, confidence: 82 }
+  );
+  TSM_MEMORY.mortgage.bnca = result;
+  res.json({ ok: true, result, ts: new Date().toISOString() });
+});
+
+// Mortgage Strategist synthesis -- mirrors /api/construction-strategist/bnca.
+app.post('/api/mortgage-strategist/bnca', async (req, res) => {
+  const payload = req.body || {};
+  const result = await tsmAIJSON(
+    `Mortgage Strategist synthesis. Memory: ${JSON.stringify(TSM_MEMORY.mortgage).slice(0, 8000)}. Payload: ${JSON.stringify(payload).slice(0, 4000)}. Return JSON: {"suite":"mortgage-strategist","strategic_summary":"...","priority_actions":[],"bnca":"...","relay_to_executive":true,"confidence":0}`,
+    { suite: 'mortgage-strategist', strategic_summary: 'Mortgage Strategist review needed.', priority_actions: [], bnca: 'Relay to Executive Portal.', relay_to_executive: true, confidence: 82 }
+  );
+  TSM_MEMORY.mortgage.strategist = result;
+  res.json({ ok: true, result, ts: new Date().toISOString() });
+});
+
+// Executive Portal synthesis -- CFO-ready decision summary scoped to mortgage memory.
+app.post('/api/mortgage/executive-portal', async (req, res) => {
+  const payload = req.body || {};
+  const result = await tsmAIJSON(
+    `Mortgage Executive Portal. Memory: ${JSON.stringify(TSM_MEMORY.mortgage).slice(0, 10000)}. Return JSON: {"portal":"executive","audience":"CFO / Decision Maker","decision_summary":"...","bnca_recommendation":"...","hitl_script":"...","approval_path":[],"next_step":"...","confidence":0}`,
+    { portal: 'executive', audience: 'CFO / Decision Maker', decision_summary: 'Mortgage BNCA ready.', bnca_recommendation: 'Approve pilot workflow.', hitl_script: 'Action-ready recommendation and owner lanes for approval.', approval_path: ['Loan Processor', 'CFO'], next_step: 'Book walkthrough or approve 30-day pilot.', confidence: 85 }
+  );
+  TSM_MEMORY.mortgage.executive = result;
+  res.json({ ok: true, result, ts: new Date().toISOString() });
+});
+// -- END MORTGAGE NODE -> STRATEGIST -> EXECUTIVE CHAIN ---------------------------
 
 // ── HOTELOPS: structured maintenance/OTA/compliance analysis ─────────────────
 // Mirrors /api/mortgage/query's shape.
