@@ -1123,6 +1123,28 @@ function storeWarRoomRelay(extracted) {
       window.TSMMissionStore.saveMission(mission);
     }
   } catch (e) { console.error('Mission write failed (non-fatal):', e); }
+
+  // ── Server-side persistence (Phase 1/2, additive — does not affect
+  // existing relay). Best-effort: the war-room -> strategist handoff
+  // still runs entirely on the localStorage relay above even if this
+  // fetch fails (offline, cold-started backend, etc). This just gives
+  // the case a durable record in bpo_work_items instead of living only
+  // in the browser. Requires a logged-in internal session — if that's
+  // missing this quietly no-ops (401), same "don't break the war room
+  // over persistence" intent as the Mission runtime block above. ──
+  try {
+    fetch(`/api/bpo/work-items/${encodeURIComponent(caseId)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({
+        vertical: 'bpo',
+        stage: 'war-room',
+        status: 'open',
+        payload
+      })
+    }).catch((e) => console.warn('BPO work-item persist failed (non-fatal):', e.message));
+  } catch (e) { console.warn('BPO work-item persist failed (non-fatal):', e.message); }
 }
 
 // ── NAVIGATION ──

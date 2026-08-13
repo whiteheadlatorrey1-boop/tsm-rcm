@@ -280,6 +280,206 @@ function hitlAdapter(gatePrefix) {
   };
 }
 
+// =====================================================
+// BPO OPERATIONAL PERSISTENCE
+// Three collections backing the BPO war room / strategist / executive
+// portal (html/war-rooms/bpo-war/*.html), replacing what was previously
+// only ever kept in the browser's localStorage:
+//
+//   bpo_clients     — actual BPO client accounts (name, contact, status).
+//                     Distinct from middleware/client-registry.js, which
+//                     is login-portal access codes, not business records.
+//   bpo_work_items  — the war-room → strategist → exec case pipeline
+//                     (one doc per caseId), upserted as a case advances
+//                     through stages. Mirrors the TSM_BPO_WAR_RELAY
+//                     payload shape from bpo-war-room.html.
+//   bpo_audit_logs  — append-only trail of who did what to a client or
+//                     work item. Written automatically by the functions
+//                     below, not called directly from routes.
+// =====================================================
+
+const BPO_CLIENTS_COLLECTION = 'bpo_clients';
+const BPO_WORK_ITEMS_COLLECTION = 'bpo_work_items';
+const BPO_AUDIT_LOGS_COLLECTION = 'bpo_audit_logs';
+
+async function bpoClientsCollection() {
+  const database = await getDb();
+  return database.collection(BPO_CLIENTS_COLLECTION);
+}
+
+async function bpoWorkItemsCollection() {
+  const database = await getDb();
+  return database.collection(BPO_WORK_ITEMS_COLLECTION);
+}
+
+async function bpoAuditLogsCollection() {
+  const database = await getDb();
+  return database.collection(BPO_AUDIT_LOGS_COLLECTION);
+}
+
+/**
+ * Appends one audit entry. Never throws to the caller — an audit-log
+ * write failure shouldn't roll back or block the client/work-item
+ * mutation it's describing, so callers fire-and-forget this.
+ */
+async function bpoWriteAudit(entry) {
+  try {
+    const col = await bpoAuditLogsCollection();
+    const doc = { ts: new Date().toISOString(), ...entry };
+    await col.insertOne(doc);
+  } catch (e) {
+    console.warn('[bpoWriteAudit] failed to write audit entry:', e.message);
+  }
+}
+
+async function bpoListAuditLogs({ entityType, entityId, limit = 100 } = {}) {
+  const col = await bpoAuditLogsCollection();
+  const query = {};
+  if (entityType) query.entityType = entityType;
+  if (entityId) query.entityId = entityId;
+  return col.find(query).sort({ ts: -1 }).limit(limit).toArray();
+}
+
+// ── Clients ──────────────────────────────────────────────────────────────
+
+function bpoSlugifyClientId(name) {
+  const s = (name || '').toString().trim().toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  return s || 'client';
+}
+
+async function bpoListClients({ status } = {}) {
+  const col = await bpoClientsCollection();
+  const query = {};
+  if (status) query.status = status;
+  return col.find(query).sort({ name: 1 }).toArray();
+}
+
+async function bpoGetClient(id) {
+  const col = await bpoClientsCollection();
+  return col.findOne({ id });
+}
+
+/**
+ * Creates a client. id is slugified from name, then de-duped by
+ * appending -2, -3, ... if it collides with an existing client.
+ */
+async function bpoCreateClient({ name, contactName, contactEmail, contactPhone, notes }, actor) {
+  const clean = (name || '').toString().trim();
+  if (!clean) throw new Error('name required');
+
+  const col = await bpoClientsCollection();
+  let id = bpoSlugifyClientId(clean);
+  let suffix = 2;
+  while (await col.findOne({ id })) {
+    id = `${bpoSlugifyClientId(clean)}-${suffix++}`;
+  }
+
+  const doc = {
+    id,
+    name: clean,
+    contactName: (contactName || '').toString().trim(),
+    contactEmail: (contactEmail || '').toString().trim(),
+    contactPhone: (contactPhone || '').toString().trim(),
+    notes: (notes || '').toString().trim(),
+    status: 'active',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  await col.insertOne(doc);
+  await bpoWriteAudit({
+    actor, action: 'client.create', entityType: 'client', entityId: id,
+    detail: { name: clean },
+  });
+  return doc;
+}
+
+async function bpoUpdateClient(id, fields, actor) {
+  const col = await bpoClientsCollection();
+  const allowed = ['name', 'contactName', 'contactEmail', 'contactPhone', 'notes'];
+  const $set = { updatedAt: new Date().toISOString() };
+  for (const key of allowed) {
+    if (fields[key] !== undefined) $set[key] = (fields[key] || '').toString().trim();
+  }
+  const result = await col.findOneAndUpdate(
+    { id },
+    { $set },
+    { returnDocument: 'after' }
+  );
+  const updated = result && result.value ? result.value : result;
+  if (updated) {
+    await bpoWriteAudit({
+      actor, action: 'client.update', entityType: 'client', entityId: id,
+      detail: $set,
+    });
+  }
+  return updated;
+}
+
+async function bpoSetClientStatus(id, status, actor) {
+  if (status !== 'active' && status !== 'inactive') {
+    throw new Error("status must be 'active' or 'inactive'");
+  }
+  const col = await bpoClientsCollection();
+  const result = await col.findOneAndUpdate(
+    { id },
+    { $set: { status, updatedAt: new Date().toISOString() } },
+    { returnDocument: 'after' }
+  );
+  const updated = result && result.value ? result.value : result;
+  if (updated) {
+    await bpoWriteAudit({
+      actor, action: status === 'active' ? 'client.reactivate' : 'client.deactivate',
+      entityType: 'client', entityId: id, detail: { status },
+    });
+  }
+  return updated;
+}
+
+// ── Work items ───────────────────────────────────────────────────────────
+// One doc per caseId, upserted as it moves war-room -> strategist -> exec.
+// stage/payload/clientId are replaced wholesale on each upsert; callers
+// pass the full current snapshot (same shape as the old localStorage
+// TSM_BPO_WAR_RELAY payload), not a partial patch.
+
+async function bpoListWorkItems({ clientId, stage, limit = 100 } = {}) {
+  const col = await bpoWorkItemsCollection();
+  const query = {};
+  if (clientId) query.clientId = clientId;
+  if (stage) query.stage = stage;
+  return col.find(query).sort({ updatedAt: -1 }).limit(limit).toArray();
+}
+
+async function bpoGetWorkItem(caseId) {
+  const col = await bpoWorkItemsCollection();
+  return col.findOne({ caseId });
+}
+
+async function bpoUpsertWorkItem(caseId, fields, actor) {
+  if (!caseId) throw new Error('caseId required');
+  const col = await bpoWorkItemsCollection();
+  const now = new Date().toISOString();
+  const { clientId = null, vertical = 'bpo', stage = 'war-room', payload = {}, status = 'open' } = fields || {};
+
+  const existing = await col.findOne({ caseId });
+  const $set = { caseId, clientId, vertical, stage, payload, status, updatedAt: now };
+  const $setOnInsert = existing ? undefined : { createdAt: now };
+
+  await col.updateOne(
+    { caseId },
+    $setOnInsert ? { $set, $setOnInsert } : { $set },
+    { upsert: true }
+  );
+  const doc = await col.findOne({ caseId });
+
+  await bpoWriteAudit({
+    actor, action: existing ? 'work_item.advance' : 'work_item.create',
+    entityType: 'work_item', entityId: caseId,
+    detail: { stage, clientId, previousStage: existing ? existing.stage : null },
+  });
+  return doc;
+}
+
 module.exports = {
   connect,
   getDb,
@@ -302,4 +502,15 @@ module.exports = {
   hitlWriteDecision,
   hitlReadDecisions,
   hitlAdapter,
+  // BPO operational persistence
+  bpoListClients,
+  bpoGetClient,
+  bpoCreateClient,
+  bpoUpdateClient,
+  bpoSetClientStatus,
+  bpoListWorkItems,
+  bpoGetWorkItem,
+  bpoUpsertWorkItem,
+  bpoListAuditLogs,
+  bpoWriteAudit,
 };

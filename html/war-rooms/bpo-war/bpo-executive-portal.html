@@ -1246,6 +1246,25 @@ function markExecuted() {
     }));
   } catch(e) { console.warn('[exec-confirmed] bpo write error:', e); }
 
+  // ── Server-side persistence (Phase 1/2, additive, non-fatal) ──
+  // Closes out the bpo_work_items doc: stage 'exec', status 'resolved'.
+  // Best-effort, same as the war-room/strategist persist calls.
+  try {
+    if (stratData?.caseId) {
+      fetch(`/api/bpo/work-items/${encodeURIComponent(stratData.caseId)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          vertical: 'bpo',
+          stage: 'exec',
+          status: 'resolved',
+          payload: stratData
+        })
+      }).catch((e) => console.warn('BPO work-item persist failed (non-fatal):', e.message));
+    }
+  } catch (e) { console.warn('BPO work-item persist failed (non-fatal):', e.message); }
+
   try { bpoFeedExceptions(stratData); } catch(e) { console.warn('[bpo-exceptions] feed error:', e); }
 
   if (window.TSMMemory) {

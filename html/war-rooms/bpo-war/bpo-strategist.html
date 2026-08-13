@@ -1347,6 +1347,27 @@ function escalateToExec(){
   } catch(e) { console.warn('[strat-confirmed] bpo write error:', e); }
 
   try { if (window.TSMWorkflowStage) TSMWorkflowStage.write('escalate-exec', { caseId: warData?.caseId }); } catch (e) {}
+
+  // ── Server-side persistence (Phase 1/2, additive, non-fatal) ──
+  // Advances the same bpo_work_items doc the war room created to
+  // stage: 'strategist'. Best-effort — the actual navigation to the
+  // exec portal below never waits on this.
+  try {
+    if (warData?.caseId) {
+      fetch(`/api/bpo/work-items/${encodeURIComponent(warData.caseId)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          vertical: 'bpo',
+          stage: 'strategist',
+          status: 'open',
+          payload: warData
+        })
+      }).catch((e) => console.warn('BPO work-item persist failed (non-fatal):', e.message));
+    }
+  } catch (e) { console.warn('BPO work-item persist failed (non-fatal):', e.message); }
+
   window.location.href = '/html/war-rooms/bpo-war/bpo-executive-portal.html';
 }
 

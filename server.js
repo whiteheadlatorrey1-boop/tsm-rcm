@@ -519,6 +519,92 @@ app.get(BPO_GATED_PAGES, (req, res, next) => {
   next();
 });
 
+// ── BPO OPERATIONAL DATA (clients / work items / audit log) ────────────────
+// Backed by server/tsm-ledger-service.js (bpo_clients / bpo_work_items /
+// bpo_audit_logs collections) — replaces what the war room previously kept
+// only in the browser's localStorage. Same BPO_INTERNAL_ROLES as the page
+// gate above: admin, manager, analyst. Creating/editing/deactivating a
+// client is restricted to admin+manager — analysts work the war room but
+// don't manage the client roster. Audit-log reads are admin+manager only,
+// same reasoning as restricting who can see who-did-what across accounts.
+const BPO_MANAGE_ROLES = ['admin', 'manager'];
+
+app.get('/api/bpo/clients', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const clients = await tsmLedger.bpoListClients({ status: req.query.status });
+    res.json({ ok: true, clients });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+app.post('/api/bpo/clients', requireRole(BPO_MANAGE_ROLES), async (req, res) => {
+  try {
+    const client = await tsmLedger.bpoCreateClient(req.body || {}, req.tsmSession.label || req.tsmSession.role);
+    res.json({ ok: true, client });
+  } catch (e) { res.status(400).json({ ok: false, error: e.message }); }
+});
+
+app.patch('/api/bpo/clients/:id', requireRole(BPO_MANAGE_ROLES), async (req, res) => {
+  try {
+    const client = await tsmLedger.bpoUpdateClient(req.params.id, req.body || {}, req.tsmSession.label || req.tsmSession.role);
+    if (!client) return res.status(404).json({ ok: false, error: 'Client not found' });
+    res.json({ ok: true, client });
+  } catch (e) { res.status(400).json({ ok: false, error: e.message }); }
+});
+
+app.post('/api/bpo/clients/:id/deactivate', requireRole(BPO_MANAGE_ROLES), async (req, res) => {
+  try {
+    const client = await tsmLedger.bpoSetClientStatus(req.params.id, 'inactive', req.tsmSession.label || req.tsmSession.role);
+    if (!client) return res.status(404).json({ ok: false, error: 'Client not found' });
+    res.json({ ok: true, client });
+  } catch (e) { res.status(400).json({ ok: false, error: e.message }); }
+});
+
+app.post('/api/bpo/clients/:id/reactivate', requireRole(BPO_MANAGE_ROLES), async (req, res) => {
+  try {
+    const client = await tsmLedger.bpoSetClientStatus(req.params.id, 'active', req.tsmSession.label || req.tsmSession.role);
+    if (!client) return res.status(404).json({ ok: false, error: 'Client not found' });
+    res.json({ ok: true, client });
+  } catch (e) { res.status(400).json({ ok: false, error: e.message }); }
+});
+
+// Work items: any internal role can create/advance one (that's the normal
+// flow of working a case through the war room), not just managers.
+app.get('/api/bpo/work-items', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const items = await tsmLedger.bpoListWorkItems({ clientId: req.query.clientId, stage: req.query.stage });
+    res.json({ ok: true, workItems: items });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+app.get('/api/bpo/work-items/:caseId', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const item = await tsmLedger.bpoGetWorkItem(req.params.caseId);
+    if (!item) return res.status(404).json({ ok: false, error: 'Work item not found' });
+    res.json({ ok: true, workItem: item });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// Upsert-by-caseId — the war room calls this with the full current
+// snapshot each time a case is stored/advanced (war-room -> strategist ->
+// exec), same as it already does for TSM_BPO_WAR_RELAY in localStorage.
+app.post('/api/bpo/work-items/:caseId', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const item = await tsmLedger.bpoUpsertWorkItem(req.params.caseId, req.body || {}, req.tsmSession.label || req.tsmSession.role);
+    res.json({ ok: true, workItem: item });
+  } catch (e) { res.status(400).json({ ok: false, error: e.message }); }
+});
+
+app.get('/api/bpo/audit-logs', requireRole(BPO_MANAGE_ROLES), async (req, res) => {
+  try {
+    const logs = await tsmLedger.bpoListAuditLogs({
+      entityType: req.query.entityType,
+      entityId: req.query.entityId,
+      limit: req.query.limit ? parseInt(req.query.limit, 10) : undefined,
+    });
+    res.json({ ok: true, auditLogs: logs });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 app.use('/', express.static(path.join(__dirname, 'html')));
 const suites = [
   { route: '/construction', dir: 'html/construction-suite', index: 'construction-hub.html' },
