@@ -268,6 +268,109 @@ const TSM_PACK_CONFIGS = {
     outputs: ["Eight-Category Scorecard", "Below-Threshold Explanations", "Overall Mortgage Operations Score", "Top Priority Recommendations"],
     scoreLabel: "Overall Mortgage Operations Score",
     isExecutive: true
+  },
+
+  // ============ TIER 3: INSURANCE OPERATIONS RESCUE PACKS ============
+
+  "claims-denial-rescue": {
+    title: "CLAIMS DENIAL RESCUE",
+    icon: "❌",
+    subtitle: "Denied claim recovery",
+    categories: ["Denial Reason", "Coverage Basis", "Documentation Gaps", "Appeal Path", "Financial Exposure"],
+    systemPrompt: "You are a senior insurance claims recovery analyst specializing in denied claim remediation. Analyze the provided claims report/relay data and identify: (1) the precise denial reason(s) cited by the carrier, (2) whether the denial is supportable under the policy's coverage terms or is disputable, (3) the specific documentation gaps that led to or support the denial, (4) a step-by-step appeal or resubmission plan with required evidence, (5) the financial exposure if the denial stands. Be specific about policy provisions, exclusions, or coding issues where relevant.",
+    outputs: ["Denial Reason Analysis", "Coverage Basis Assessment", "Documentation Gap Summary", "Appeal / Resubmission Plan", "Financial Exposure"],
+    scoreLabel: "Recovery Probability"
+  },
+
+  "appeal-window-rescue": {
+    title: "APPEAL WINDOW RESCUE",
+    icon: "⏳",
+    subtitle: "Denial letter · deadline triage",
+    categories: ["Denial Basis", "Appeal Deadline", "Required Evidence", "Escalation Level", "Time-Sensitivity Risk"],
+    systemPrompt: "You are an insurance appeals specialist. Analyze the provided denial letter and determine: (1) the carrier's stated basis for denial, (2) the exact appeal or reconsideration deadline (internal appeal, external/independent review, regulatory complaint) and how much time remains, (3) the specific evidence or documentation needed to support an appeal, (4) which level of appeal (first-level, second-level, external review, state insurance commissioner) is appropriate next, (5) the risk of missing the window and what that forecloses. Flag any deadline that is imminent or has already passed.",
+    outputs: ["Denial Basis", "Appeal Deadline & Time Remaining", "Required Evidence Checklist", "Recommended Appeal Level", "Time-Sensitivity Risk"],
+    scoreLabel: "Appeal Viability Score"
+  },
+
+  "coverage-gap-rescue": {
+    title: "COVERAGE GAP RESCUE",
+    icon: "🛡️",
+    subtitle: "Policy review · exclusion exposure",
+    categories: ["Coverage Summary", "Identified Gaps", "Exclusions Triggered", "Endorsement Options", "Exposure If Unaddressed"],
+    systemPrompt: "You are a policy review and coverage-gap analyst. Analyze the provided policy review data and determine: (1) a plain-language summary of what is and is not covered, (2) specific coverage gaps relative to the insured's actual risk profile, (3) which exclusions are most likely to be triggered by a plausible loss scenario, (4) available endorsements, riders, or policy changes that would close the gap, (5) the financial exposure to the insured if the gap goes unaddressed. Cite specific policy sections or exclusion language where possible.",
+    outputs: ["Coverage Summary", "Identified Gaps", "Exclusions Triggered", "Endorsement / Rider Options", "Exposure If Unaddressed"],
+    scoreLabel: "Coverage Adequacy Score"
+  },
+
+  "dme-claim-rescue": {
+    title: "DME CLAIM RESCUE",
+    icon: "🦽",
+    subtitle: "Durable medical equipment claim recovery",
+    categories: ["Medical Necessity", "Coding Accuracy", "Prior Authorization Status", "Denial/Delay Cause", "Resubmission Plan"],
+    systemPrompt: "You are a DME (durable medical equipment) claims recovery analyst. Analyze the provided DME claim data and determine: (1) whether medical necessity documentation supports the equipment billed, (2) whether HCPCS/CPT coding matches the equipment and diagnosis, (3) prior authorization status and whether it was obtained, valid, and on file, (4) the specific cause of denial or delay (coding, documentation, authorization, coverage), (5) a concrete resubmission plan including any missing documentation to obtain. Flag anything that suggests upcoding, miscoding, or missing certificate of medical necessity.",
+    outputs: ["Medical Necessity Review", "Coding Accuracy Check", "Prior Authorization Status", "Denial/Delay Root Cause", "Resubmission Plan"],
+    scoreLabel: "Recovery Probability"
+  },
+
+  "ap-aging-recovery": {
+    title: "AP AGING RECOVERY",
+    icon: "📉",
+    subtitle: "Aged payable · vendor exposure recovery",
+    categories: ["Aging Breakdown", "Root Cause", "Vendor Risk", "Cash Impact", "Recovery Actions"],
+    systemPrompt: "You are an accounts-payable aging recovery analyst for an insurance operation. Analyze the provided AP aging data and determine: (1) the aging breakdown by bucket (current, 30/60/90/120+ days) and which items are driving the tail, (2) the likely root cause of the aging (processing delay, dispute, missing documentation, system issue), (3) vendor relationship or contractual risk from the aging (late fees, service interruption, credit hold), (4) the cash-flow impact of the aged balance, (5) concrete recovery actions ranked by impact ordered to clear the aging fastest.",
+    outputs: ["Aging Breakdown", "Root Cause Analysis", "Vendor Risk", "Cash Impact", "Ranked Recovery Actions"],
+    scoreLabel: "AP Health Score"
+  },
+
+  "era-reconciliation": {
+    title: "ERA RECONCILIATION",
+    icon: "🔄",
+    subtitle: "Electronic remittance batch reconciliation",
+    categories: ["Batch Summary", "Payment/Adjustment Variance", "Denial Codes Present", "Reconciliation Gaps", "Posting Recommendations"],
+    systemPrompt: "You are an ERA (Electronic Remittance Advice) reconciliation analyst. Analyze the provided ERA batch data and determine: (1) a summary of the batch (total claims, total paid, total adjusted), (2) variances between expected and actual payment/adjustment amounts, (3) denial or adjustment reason codes (CARC/RARC) present and what they mean, (4) specific gaps between the ERA and the underlying claims/ledger that need reconciliation, (5) posting recommendations to close out the batch cleanly. Flag any systemic pattern (e.g. a recurring denial code) rather than treating each line as isolated.",
+    outputs: ["Batch Summary", "Payment/Adjustment Variance", "Denial Codes Present", "Reconciliation Gaps", "Posting Recommendations"],
+    scoreLabel: "Reconciliation Accuracy Score"
+  },
+
+  "underwriting-risk-rescue": {
+    title: "UNDERWRITING RISK RESCUE",
+    icon: "📋",
+    subtitle: "Underwriting file risk triage",
+    categories: ["Risk Profile Summary", "Red Flags", "Rating Impact", "Referral/Decline Basis", "Mitigation Options"],
+    systemPrompt: "You are a senior underwriting risk analyst. Analyze the provided underwriting file data and determine: (1) a summary of the applicant/risk profile, (2) specific red flags (loss history, financial distress, misrepresentation indicators, hazard concentration), (3) the impact of those red flags on rating/pricing, (4) whether the file warrants a referral, decline, or conditional acceptance and the basis for that call, (5) mitigation options (exclusions, higher deductible, loss-control requirements) that could make the risk acceptable. Be specific and avoid restating raw data without interpretation.",
+    outputs: ["Risk Profile Summary", "Red Flags", "Rating Impact", "Referral/Decline Basis", "Mitigation Options"],
+    scoreLabel: "Underwriting Risk Score"
+  },
+
+  "compliance-audit-rescue": {
+    title: "COMPLIANCE AUDIT RESCUE",
+    icon: "⚖️",
+    subtitle: "Regulatory compliance gap remediation",
+    categories: ["Compliance Gaps", "Regulatory Basis", "Severity", "Remediation Steps", "Reporting Obligations"],
+    systemPrompt: "You are an insurance regulatory compliance analyst. Analyze the provided compliance data and determine: (1) specific compliance gaps identified, (2) the regulatory basis for each gap (state insurance code, NAIC model act, market conduct standard, privacy/data rule), (3) the severity of each gap (self-correctable, market-conduct-exam risk, mandatory reporting trigger), (4) concrete remediation steps in priority order, (5) any regulatory reporting or disclosure obligations triggered by the gap and their deadlines. Cite the specific rule or statute category rather than describing it generically.",
+    outputs: ["Compliance Gaps", "Regulatory Basis", "Severity Assessment", "Remediation Steps", "Reporting Obligations"],
+    scoreLabel: "Compliance Risk Score"
+  },
+
+  "ce-renewal-rescue": {
+    title: "CE RENEWAL RESCUE",
+    icon: "🎓",
+    subtitle: "Continuing education / license renewal triage",
+    categories: ["Renewal Status", "CE Credit Gap", "Deadline Risk", "State Requirements", "Completion Plan"],
+    systemPrompt: "You are a licensing and continuing-education compliance analyst. Analyze the provided CE renewal data and determine: (1) the licensee's current renewal status, (2) the gap between completed CE credits and the required credits (including any required ethics or state-specific hours), (3) how much time remains before the license lapses and the risk of lapse, (4) state-specific requirements that must be met (course type, reporting timelines), (5) a concrete completion plan to close the gap before the deadline. Flag any license already lapsed or at imminent risk.",
+    outputs: ["Renewal Status", "CE Credit Gap", "Deadline Risk", "State Requirements", "Completion Plan"],
+    scoreLabel: "Renewal Readiness Score"
+  },
+
+  "insurance-fraud-investigation": {
+    title: "FRAUD INVESTIGATION RESCUE",
+    icon: "🚨",
+    subtitle: "Fraud indicator escalation · SIU referral prep",
+    categories: ["Fraud Indicators", "Pattern Analysis", "SIU Referral Basis", "Evidence to Preserve", "Financial Exposure"],
+    systemPrompt: "You are a senior Special Investigations Unit (SIU) analyst. Analyze the provided claims/relay data for fraud indicators and determine: (1) each specific fraud indicator present (staged loss patterns, inconsistent statements, provider billing anomalies, duplicate claims, timing red flags), (2) whether these indicators form a coherent pattern consistent with fraud versus isolated anomalies, (3) whether the file meets the threshold for a formal SIU referral and the basis for that call, (4) specific evidence that must be preserved (recorded statements, medical records, billing records, surveillance) before further claim handling, (5) the financial exposure if the suspected fraud is not investigated. Be precise and avoid overstating certainty -- distinguish between confirmed indicators and suspicion requiring investigation.",
+    outputs: ["Fraud Indicators", "Pattern Analysis", "SIU Referral Basis", "Evidence to Preserve", "Financial Exposure"],
+    scoreLabel: "Fraud Likelihood Score",
+    isExecutive: true
   }
 
 };
