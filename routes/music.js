@@ -25,25 +25,116 @@ router.get('/api/music/state', (_req, res) => {
 
 // ===== END MUSIC ROUTE =====
 
-// ===== MUSIC MULTI-AGENT ENGINE =====
-global.MUSIC_ENGINE = global.MUSIC_ENGINE || {
-  dna: {
-    artist: "Current Artist",
-    styleTerms: ["pain", "resilience", "late-night", "pressure", "bounce"],
-    weights: { cadence: 0.88, emotion: 0.91, structure: 0.76, imagery: 0.82 },
-    learnedSongs: []
-  },
-  runs: [],
-  activity: []
-};
+// ===== PER-VISITOR SESSION SCOPING =====
+// Previously every route here read/wrote ONE shared global object
+// (global.MUSIC_ENGINE, global.MUSIC_BILLING, global.MUSIC_REVISIONS,
+// global.MUSIC_PRODUCT, global.MUSIC_SESSIONS) with no per-user key at all.
+// That meant any two concurrent visitors — you testing while a prospect has
+// a live demo open, or two prospects with separate links — saw and
+// overwrote each other's Artist DNA, run history, and tier/billing usage.
+// This keys all of that per-visitor: the existing demo_token (shared,
+// watermarked prospect links) when present, otherwise a cookie-based
+// anonymous session id.
+const crypto = require('crypto');
+
+global.MUSIC_STATE_BY_SESSION = global.MUSIC_STATE_BY_SESSION || {};
+
+function newMusicState(){
+  return {
+    engine: {
+      dna: {
+        artist: "Current Artist",
+        styleTerms: ["pain", "resilience", "late-night", "pressure", "bounce"],
+        weights: { cadence: 0.88, emotion: 0.91, structure: 0.76, imagery: 0.82 },
+        learnedSongs: []
+      },
+      runs: [],
+      activity: []
+    },
+    revisions: { sessions: [], selected: null },
+    product: {
+      selectedHistory: [],
+      dashboard: { lastSelected: null, lastHitPotential: null, monetizationTier: "Tier 1 · $99/mo", status: "ready" }
+    },
+    sessions: {
+      artists: {},
+      exports: [],
+      upsells: [],
+      tiers: {
+        free: { name:"Free Trial", price:0, hooks:5, exports:false, sessions:1 },
+        tier1: { name:"Tier 1", price:99, hooks:25, exports:true, sessions:5 },
+        tier2: { name:"Tier 2", price:249, hooks:100, exports:true, sessions:25 },
+        tier3: { name:"Tier 3", price:499, hooks:500, exports:true, sessions:100 }
+      }
+    },
+    billing: {
+      currentTier: "free",
+      usage: { aiRuns: 0, exports: 0, hookPacks: 0, sessions: 0 },
+      tiers: {
+        free: { name:"Free Trial", price:0, aiRuns:5, sessions:1, exports:false, dna:"Preview only", label:"Test the system. See how it thinks.", bestFor:"Trying the engine before committing." },
+        tier1: { name:"Creator Mode", price:99, aiRuns:25, sessions:5, exports:true, dna:"Basic Artist DNA", label:"Turn rough ideas into structured, polished drafts fast.", bestFor:"Independent artists writing consistently." },
+        tier2: { name:"Studio Mode", price:249, aiRuns:100, sessions:25, exports:true, dna:"Advanced Artist DNA + evolution timeline", label:"Know which version is actually better. Stop guessing what works.", bestFor:"Artists serious about releasing music." },
+        tier3: { name:"Label Mode", price:499, aiRuns:500, sessions:100, exports:true, dna:"Deep catalog memory + release decision engine", label:"Build a catalog. Not just songs. Operate like a label.", bestFor:"Teams, producers, and catalog builders." }
+      },
+      upgradeEvents: []
+    },
+    createdAt: new Date().toISOString()
+  };
+}
+
+function parseMusicCookies(req){
+  const header = req.headers && req.headers.cookie;
+  const out = {};
+  if(!header) return out;
+  header.split(';').forEach(pair => {
+    const idx = pair.indexOf('=');
+    if(idx === -1) return;
+    const k = pair.slice(0, idx).trim();
+    const v = pair.slice(idx + 1).trim();
+    if(k) out[k] = decodeURIComponent(v);
+  });
+  return out;
+}
+
+function musicSessionMiddleware(req, res, next){
+  const demoToken = req.query.demo_token || req.headers['x-demo-token'] ||
+    (req.headers['authorization'] || '').replace(/^Bearer\s+/i, '') || null;
+
+  let sid = demoToken;
+  let isNewCookie = false;
+
+  if(!sid){
+    const cookies = parseMusicCookies(req);
+    sid = cookies.tsm_music_sid;
+    if(!sid){
+      sid = 'anon-' + crypto.randomBytes(16).toString('hex');
+      isNewCookie = true;
+    }
+  }
+
+  if(isNewCookie){
+    res.setHeader('Set-Cookie', `tsm_music_sid=${sid}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${60 * 60 * 24 * 30}`);
+  }
+
+  if(!global.MUSIC_STATE_BY_SESSION[sid]){
+    global.MUSIC_STATE_BY_SESSION[sid] = newMusicState();
+  }
+
+  req.musicSessionId = sid;
+  req.musicState = global.MUSIC_STATE_BY_SESSION[sid];
+  next();
+}
+
+router.use(musicSessionMiddleware);
+// ===== END PER-VISITOR SESSION SCOPING =====
 
 function musicNow(){ return new Date().toISOString(); }
 
-function scoreMusicDraft(text){
+function scoreMusicDraft(text, styleTerms){
   const body = String(text || "");
   const lines = body.split(/\n+/).filter(Boolean).length;
   const lower = body.toLowerCase();
-  const terms = global.MUSIC_ENGINE.dna.styleTerms || [];
+  const terms = styleTerms || [];
   const matches = terms.filter(t => lower.includes(String(t).toLowerCase())).length;
 
   const cadence = Math.min(.99, .72 + (lines >= 2 ? .08 : 0) + (body.length > 60 ? .06 : 0));
@@ -110,11 +201,10 @@ const MUSIC_AGENT_PROMPTS = {
   DJ: "You are DJ, a music producer AI focused on structure and hooks. Given a lyric draft, move the strongest repeatable phrase into hook position and clean up the transitions for commercial impact. Return ONLY the revised lyrics — no preamble, no labels, no explanation."
 };
 
-async function agentPass(agent, draft, request){
+async function agentPass(agent, draft, request, dna){
   const a = String(agent || "ZAY").toUpperCase();
   const base = cleanAgentText(draft || "");
-  const dna = global.MUSIC_ENGINE && global.MUSIC_ENGINE.dna ? global.MUSIC_ENGINE.dna : {};
-  const terms = (dna.styleTerms || []).join(", ");
+  const terms = ((dna && dna.styleTerms) || []).join(", ");
   const sys = MUSIC_AGENT_PROMPTS[a] || MUSIC_AGENT_PROMPTS.ZAY;
   const userPrompt = "Artist style terms: " + (terms || "none yet") +
     "\nRequest: " + (request || "Improve this draft") +
@@ -130,20 +220,22 @@ async function agentPass(agent, draft, request){
 }
 
 
-function musicActivity(type, title, detail){
+function musicActivity(engine, type, title, detail){
   const item = { id: Date.now(), type, title, detail, createdAt: musicNow() };
-  global.MUSIC_ENGINE.activity.unshift(item);
-  global.MUSIC_ENGINE.activity = global.MUSIC_ENGINE.activity.slice(0, 50);
+  engine.activity.unshift(item);
+  engine.activity = engine.activity.slice(0, 50);
   return item;
 }
 
 router.post('/api/music/agent/run', async (req, res) => {
   const body = req.body || {};
+  const engine = req.musicState.engine;
+  const billing = req.musicState.billing;
   const agent = String(body.agent || "ZAY").toUpperCase();
   const draft = body.draft || "";
   const request = body.request || "Improve draft";
-  const output = await agentPass(agent, draft, request);
-  const score = scoreMusicDraft(output);
+  const output = await agentPass(agent, draft, request, engine.dna);
+  const score = scoreMusicDraft(output, engine.dna.styleTerms);
 
   const run = {
     id: Date.now(),
@@ -156,24 +248,26 @@ router.post('/api/music/agent/run', async (req, res) => {
     createdAt: musicNow()
   };
 
-  global.MUSIC_ENGINE.runs.unshift(run);
-  global.MUSIC_ENGINE.runs = global.MUSIC_ENGINE.runs.slice(0, 25);
-  musicActivity("agent", agent + " pass complete", request);
+  engine.runs.unshift(run);
+  engine.runs = engine.runs.slice(0, 25);
+  musicActivity(engine, "agent", agent + " pass complete", request);
 
-  global.MUSIC_BILLING && (global.MUSIC_BILLING.usage.aiRuns += 1);
-  return res.json({ ok: true, run, engine: global.MUSIC_ENGINE, billing: global.MUSIC_BILLING || null });
+  billing.usage.aiRuns += 1;
+  return res.json({ ok: true, run, engine, billing });
 });
 
 router.post('/api/music/agent/chain', async (req, res) => {
   const body = req.body || {};
+  const engine = req.musicState.engine;
+  const billing = req.musicState.billing;
   const draft = body.draft || "";
   const request = body.request || "Run full ZAY → RIYA → DJ chain";
 
   const baseDraft = cleanAgentText(draft);
-  const zay = await agentPass("ZAY", baseDraft, request);
-  const riya = await agentPass("RIYA", cleanAgentText(zay), request);
-  const dj = await agentPass("DJ", cleanAgentText(riya), request);
-  const score = scoreMusicDraft(dj);
+  const zay = await agentPass("ZAY", baseDraft, request, engine.dna);
+  const riya = await agentPass("RIYA", cleanAgentText(zay), request, engine.dna);
+  const dj = await agentPass("DJ", cleanAgentText(riya), request, engine.dna);
+  const score = scoreMusicDraft(dj, engine.dna.styleTerms);
 
   const run = {
     id: Date.now(),
@@ -183,70 +277,73 @@ router.post('/api/music/agent/chain', async (req, res) => {
     input: draft,
     output: dj,
     pipeline: [
-      { agent: "ZAY", output: zay, score: scoreMusicDraft(zay) },
-      { agent: "RIYA", output: riya, score: scoreMusicDraft(riya) },
+      { agent: "ZAY", output: zay, score: scoreMusicDraft(zay, engine.dna.styleTerms) },
+      { agent: "RIYA", output: riya, score: scoreMusicDraft(riya, engine.dna.styleTerms) },
       { agent: "DJ", output: dj, score }
     ],
     score,
     createdAt: musicNow()
   };
 
-  global.MUSIC_ENGINE.runs.unshift(run);
-  global.MUSIC_ENGINE.runs = global.MUSIC_ENGINE.runs.slice(0, 25);
-  global.MUSIC_ENGINE.dna.learnedSongs.unshift({
+  engine.runs.unshift(run);
+  engine.runs = engine.runs.slice(0, 25);
+  engine.dna.learnedSongs.unshift({
     title: body.title || "Working Draft",
     draft,
     output: dj,
     score,
     learnedAt: musicNow()
   });
-  global.MUSIC_ENGINE.dna.learnedSongs = global.MUSIC_ENGINE.dna.learnedSongs.slice(0, 12);
+  engine.dna.learnedSongs = engine.dna.learnedSongs.slice(0, 12);
 
-  musicActivity("chain", "Multi-agent chain complete", "ZAY → RIYA → DJ score " + score.overall);
+  musicActivity(engine, "chain", "Multi-agent chain complete", "ZAY → RIYA → DJ score " + score.overall);
 
-  global.MUSIC_BILLING && (global.MUSIC_BILLING.usage.aiRuns += 1);
-  return res.json({ ok: true, run, engine: global.MUSIC_ENGINE, billing: global.MUSIC_BILLING || null });
+  billing.usage.aiRuns += 1;
+  return res.json({ ok: true, run, engine, billing });
 });
 
 router.post('/api/music/dna/learn', (req, res) => {
+  const engine = req.musicState.engine;
   const body = req.body || {};
   const draft = body.draft || body.lyrics || "";
-  const score = scoreMusicDraft(draft);
+  const score = scoreMusicDraft(draft, engine.dna.styleTerms);
 
-  global.MUSIC_ENGINE.dna.learnedSongs.unshift({
+  engine.dna.learnedSongs.unshift({
     id: Date.now(),
     title: body.title || "Learned Song",
     lyrics: draft,
     score,
     learnedAt: musicNow()
   });
-  global.MUSIC_ENGINE.dna.learnedSongs = global.MUSIC_ENGINE.dna.learnedSongs.slice(0, 12);
+  engine.dna.learnedSongs = engine.dna.learnedSongs.slice(0, 12);
 
-  musicActivity("dna", "Artist DNA learned new song", body.title || "Learned Song");
-  return res.json({ ok: true, dna: global.MUSIC_ENGINE.dna, score });
+  musicActivity(engine, "dna", "Artist DNA learned new song", body.title || "Learned Song");
+  return res.json({ ok: true, dna: engine.dna, score });
 });
 
-router.get('/api/music/engine', (_req, res) => {
-  return res.json({ ok: true, engine: global.MUSIC_ENGINE });
+router.get('/api/music/engine', (req, res) => {
+  return res.json({ ok: true, engine: req.musicState.engine });
 });
 // ===== END MUSIC MULTI-AGENT ENGINE =====
 
 // ===== MUSIC REVISION MODE =====
-global.MUSIC_REVISIONS = global.MUSIC_REVISIONS || { sessions: [], selected: null };
 
 router.post('/api/music/revision/generate', (req, res) => {
+  const engine = req.musicState.engine;
+  const revisions = req.musicState.revisions;
+  const billing = req.musicState.billing;
   const body = req.body || {};
   const draft = body.draft || "";
   const request = body.request || "Generate 3 revision options";
 
-  const a = agentPass("ZAY", draft, request);
-  const b = agentPass("RIYA", draft, request);
-  const c = agentPass("DJ", draft, request);
+  const a = agentPass("ZAY", draft, request, engine.dna);
+  const b = agentPass("RIYA", draft, request, engine.dna);
+  const c = agentPass("DJ", draft, request, engine.dna);
 
   const options = [
-    { id:"A", title:"Option A · Flow First", strategy:"Cadence and bounce", output:a, score:scoreMusicDraft(a) },
-    { id:"B", title:"Option B · Emotion First", strategy:"Imagery and vulnerability", output:b, score:scoreMusicDraft(b) },
-    { id:"C", title:"Option C · Hook First", strategy:"Structure and repeatability", output:c, score:scoreMusicDraft(c) }
+    { id:"A", title:"Option A · Flow First", strategy:"Cadence and bounce", output:a, score:scoreMusicDraft(a, engine.dna.styleTerms) },
+    { id:"B", title:"Option B · Emotion First", strategy:"Imagery and vulnerability", output:b, score:scoreMusicDraft(b, engine.dna.styleTerms) },
+    { id:"C", title:"Option C · Hook First", strategy:"Structure and repeatability", output:c, score:scoreMusicDraft(c, engine.dna.styleTerms) }
   ].sort((x,y) => y.score.overall - x.score.overall);
 
   const session = {
@@ -258,52 +355,43 @@ router.post('/api/music/revision/generate', (req, res) => {
     createdAt: new Date().toISOString()
   };
 
-  global.MUSIC_REVISIONS.sessions.unshift(session);
-  global.MUSIC_REVISIONS.sessions = global.MUSIC_REVISIONS.sessions.slice(0,20);
+  revisions.sessions.unshift(session);
+  revisions.sessions = revisions.sessions.slice(0,20);
 
-  global.MUSIC_BILLING && (global.MUSIC_BILLING.usage.aiRuns += 1);
-  return res.json({ ok:true, session, billing: global.MUSIC_BILLING || null });
+  billing.usage.aiRuns += 1;
+  return res.json({ ok:true, session, billing });
 });
 
 router.post('/api/music/revision/select', (req, res) => {
+  const engine = req.musicState.engine;
+  const revisions = req.musicState.revisions;
   const body = req.body || {};
-  const session = global.MUSIC_REVISIONS.sessions.find(s => String(s.id) === String(body.sessionId));
+  const session = revisions.sessions.find(s => String(s.id) === String(body.sessionId));
   if(!session) return res.status(404).json({ ok:false, error:"Revision session not found" });
 
   const option = session.options.find(o => o.id === body.optionId);
   if(!option) return res.status(404).json({ ok:false, error:"Revision option not found" });
 
-  global.MUSIC_REVISIONS.selected = { sessionId:body.sessionId, optionId:body.optionId, option, selectedAt:new Date().toISOString() };
+  revisions.selected = { sessionId:body.sessionId, optionId:body.optionId, option, selectedAt:new Date().toISOString() };
 
-  if(global.MUSIC_ENGINE && global.MUSIC_ENGINE.dna){
-    global.MUSIC_ENGINE.dna.learnedSongs.unshift({
-      title:"Selected Revision " + body.optionId,
-      draft:session.input,
-      output:option.output,
-      score:option.score,
-      learnedAt:new Date().toISOString()
-    });
-    global.MUSIC_ENGINE.dna.learnedSongs = global.MUSIC_ENGINE.dna.learnedSongs.slice(0,12);
-  }
+  engine.dna.learnedSongs.unshift({
+    title:"Selected Revision " + body.optionId,
+    draft:session.input,
+    output:option.output,
+    score:option.score,
+    learnedAt:new Date().toISOString()
+  });
+  engine.dna.learnedSongs = engine.dna.learnedSongs.slice(0,12);
 
-  return res.json({ ok:true, selected:global.MUSIC_REVISIONS.selected });
+  return res.json({ ok:true, selected:revisions.selected });
 });
 
-router.get('/api/music/revision/state', (_req, res) => {
-  return res.json({ ok:true, revisions:global.MUSIC_REVISIONS });
+router.get('/api/music/revision/state', (req, res) => {
+  return res.json({ ok:true, revisions:req.musicState.revisions });
 });
 // ===== END MUSIC REVISION MODE =====
 
 // ===== MUSIC PRODUCT LAYER =====
-global.MUSIC_PRODUCT = global.MUSIC_PRODUCT || {
-  selectedHistory: [],
-  dashboard: {
-    lastSelected: null,
-    lastHitPotential: null,
-    monetizationTier: "Tier 1 · $99/mo",
-    status: "ready"
-  }
-};
 
 function hitPotential(score){
   const s = score || {};
@@ -317,8 +405,12 @@ function hitPotential(score){
 }
 
 router.post('/api/music/revision/pick-rerun', async (req, res) => {
+  const engine = req.musicState.engine;
+  const revisions = req.musicState.revisions;
+  const product = req.musicState.product;
+  const billing = req.musicState.billing;
   const body = req.body || {};
-  const session = global.MUSIC_REVISIONS?.sessions?.find(s => String(s.id) === String(body.sessionId));
+  const session = revisions.sessions.find(s => String(s.id) === String(body.sessionId));
 
   if(!session) return res.status(404).json({ ok:false, error:"Revision session not found" });
 
@@ -326,10 +418,10 @@ router.post('/api/music/revision/pick-rerun', async (req, res) => {
   if(!option) return res.status(404).json({ ok:false, error:"Revision option not found" });
 
   const cleanSelected = cleanAgentText(option.output);
-  const rerunZay = await agentPass("ZAY", cleanSelected, "Pick + rerun");
-  const rerunRiya = await agentPass("RIYA", cleanAgentText(rerunZay), "Pick + rerun");
-  const rerunOutput = await agentPass("DJ", cleanAgentText(rerunRiya), "Pick + rerun");
-  const score = scoreMusicDraft(rerunOutput);
+  const rerunZay = await agentPass("ZAY", cleanSelected, "Pick + rerun", engine.dna);
+  const rerunRiya = await agentPass("RIYA", cleanAgentText(rerunZay), "Pick + rerun", engine.dna);
+  const rerunOutput = await agentPass("DJ", cleanAgentText(rerunRiya), "Pick + rerun", engine.dna);
+  const score = scoreMusicDraft(rerunOutput, engine.dna.styleTerms);
   const hit = hitPotential(score);
 
   const rerun = {
@@ -343,23 +435,19 @@ router.post('/api/music/revision/pick-rerun', async (req, res) => {
     createdAt: new Date().toISOString()
   };
 
-  if(global.MUSIC_ENGINE){
-    global.MUSIC_ENGINE.runs.unshift(rerun);
-    global.MUSIC_ENGINE.runs = global.MUSIC_ENGINE.runs.slice(0,25);
+  engine.runs.unshift(rerun);
+  engine.runs = engine.runs.slice(0,25);
 
-    if(global.MUSIC_ENGINE.dna){
-      global.MUSIC_ENGINE.dna.learnedSongs.unshift({
-        title: "Selected Revision " + option.id,
-        draft: session.input,
-        output: rerunOutput,
-        score,
-        learnedAt: new Date().toISOString()
-      });
-      global.MUSIC_ENGINE.dna.learnedSongs = global.MUSIC_ENGINE.dna.learnedSongs.slice(0,12);
-    }
-  }
+  engine.dna.learnedSongs.unshift({
+    title: "Selected Revision " + option.id,
+    draft: session.input,
+    output: rerunOutput,
+    score,
+    learnedAt: new Date().toISOString()
+  });
+  engine.dna.learnedSongs = engine.dna.learnedSongs.slice(0,12);
 
-  global.MUSIC_PRODUCT.selectedHistory.unshift({
+  product.selectedHistory.unshift({
     sessionId: session.id,
     optionId: option.id,
     score,
@@ -367,29 +455,29 @@ router.post('/api/music/revision/pick-rerun', async (req, res) => {
     createdAt: new Date().toISOString()
   });
 
-  global.MUSIC_PRODUCT.dashboard.lastSelected = option;
-  global.MUSIC_PRODUCT.dashboard.lastHitPotential = hit;
-  global.MUSIC_PRODUCT.dashboard.status = "iterated";
+  product.dashboard.lastSelected = option;
+  product.dashboard.lastHitPotential = hit;
+  product.dashboard.status = "iterated";
 
-  global.MUSIC_BILLING && (global.MUSIC_BILLING.usage.aiRuns += 1);
-  return res.json({ ok:true, selected:option, rerun, product:global.MUSIC_PRODUCT, engine:global.MUSIC_ENGINE, billing: global.MUSIC_BILLING || null });
+  billing.usage.aiRuns += 1;
+  return res.json({ ok:true, selected:option, rerun, product, engine, billing });
 });
 
-router.get('/api/music/dashboard-sync', (_req, res) => {
+router.get('/api/music/dashboard-sync', (req, res) => {
   return res.json({
     ok:true,
-    product:global.MUSIC_PRODUCT,
-    engine:global.MUSIC_ENGINE || null,
-    revisions:global.MUSIC_REVISIONS || null
+    product:req.musicState.product,
+    engine:req.musicState.engine,
+    revisions:req.musicState.revisions
   });
 });
 // ===== END MUSIC PRODUCT LAYER =====
 
 // ===== MUSIC EVOLUTION TIMELINE =====
-router.get('/api/music/evolution', (_req, res) => {
-  const runs = global.MUSIC_ENGINE && global.MUSIC_ENGINE.runs ? global.MUSIC_ENGINE.runs : [];
-  const product = global.MUSIC_PRODUCT || {};
-  const dna = global.MUSIC_ENGINE && global.MUSIC_ENGINE.dna ? global.MUSIC_ENGINE.dna : null;
+router.get('/api/music/evolution', (req, res) => {
+  const runs = req.musicState.engine.runs;
+  const product = req.musicState.product;
+  const dna = req.musicState.engine.dna;
 
   const timeline = runs.slice(0, 12).map((r, i) => ({
     index: i,
@@ -405,7 +493,7 @@ router.get('/api/music/evolution', (_req, res) => {
   const delta = latest && previous ? Number((latest.overall - previous.overall).toFixed(2)) : 0;
 
   let hit = latest && latest.hitPotential ? latest.hitPotential : null;
-  if(!hit && typeof hitPotential === "function"){
+  if(!hit){
     hit = hitPotential(latest ? latest.score : {});
   }
 
@@ -428,26 +516,15 @@ router.get('/api/music/evolution', (_req, res) => {
 // ===== END MUSIC EVOLUTION TIMELINE =====
 
 // ===== MUSIC MONETIZATION + EXPORT + SESSIONS =====
-global.MUSIC_SESSIONS = global.MUSIC_SESSIONS || {
-  artists: {},
-  exports: [],
-  upsells: [],
-  tiers: {
-    free: { name:"Free Trial", price:0, hooks:5, exports:false, sessions:1 },
-    tier1: { name:"Tier 1", price:99, hooks:25, exports:true, sessions:5 },
-    tier2: { name:"Tier 2", price:249, hooks:100, exports:true, sessions:25 },
-    tier3: { name:"Tier 3", price:499, hooks:500, exports:true, sessions:100 }
-  }
-};
 
 function musicArtistKey(name){
   return String(name || "Current Artist").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "current-artist";
 }
 
-function ensureMusicArtist(name){
+function ensureMusicArtist(sessionsState, name){
   const key = musicArtistKey(name);
-  if(!global.MUSIC_SESSIONS.artists[key]){
-    global.MUSIC_SESSIONS.artists[key] = {
+  if(!sessionsState.artists[key]){
+    sessionsState.artists[key] = {
       key,
       artist:name || "Current Artist",
       tier:"tier1",
@@ -456,7 +533,7 @@ function ensureMusicArtist(name){
       updatedAt:new Date().toISOString()
     };
   }
-  return global.MUSIC_SESSIONS.artists[key];
+  return sessionsState.artists[key];
 }
 
 function cleanCreativeOutput(text){
@@ -469,8 +546,10 @@ function cleanCreativeOutput(text){
 }
 
 router.post('/api/music/session/save', (req, res) => {
+  const sessionsState = req.musicState.sessions;
+  const billing = req.musicState.billing;
   const body = req.body || {};
-  const artist = ensureMusicArtist(body.artist || "Current Artist");
+  const artist = ensureMusicArtist(sessionsState, body.artist || "Current Artist");
 
   const session = {
     id:Date.now(),
@@ -483,22 +562,24 @@ router.post('/api/music/session/save', (req, res) => {
   };
 
   artist.sessions.unshift(session);
-  artist.sessions = artist.sessions.slice(0, global.MUSIC_SESSIONS.tiers[artist.tier].sessions);
+  artist.sessions = artist.sessions.slice(0, sessionsState.tiers[artist.tier].sessions);
   artist.updatedAt = new Date().toISOString();
 
-  global.MUSIC_BILLING && (global.MUSIC_BILLING.usage.sessions += 1);
-  return res.json({ ok:true, artist, session, billing: global.MUSIC_BILLING || null });
+  billing.usage.sessions += 1;
+  return res.json({ ok:true, artist, session, billing });
 });
 
 router.get('/api/music/session/:artist', (req, res) => {
-  const artist = ensureMusicArtist(req.params.artist || "Current Artist");
+  const artist = ensureMusicArtist(req.musicState.sessions, req.params.artist || "Current Artist");
   return res.json({ ok:true, artist });
 });
 
 router.post('/api/music/hooks/generate10', (req, res) => {
+  const sessionsState = req.musicState.sessions;
+  const billing = req.musicState.billing;
   const body = req.body || {};
   const draft = cleanCreativeOutput(body.draft || "");
-  const artist = ensureMusicArtist(body.artist || "Current Artist");
+  const artist = ensureMusicArtist(sessionsState, body.artist || "Current Artist");
 
   const hooks = Array.from({length:10}).map((_, i) => ({
     id:i+1,
@@ -513,7 +594,7 @@ router.post('/api/music/hooks/generate10', (req, res) => {
       "release"
   }));
 
-  global.MUSIC_SESSIONS.upsells.unshift({
+  sessionsState.upsells.unshift({
     id:Date.now(),
     artist:artist.artist,
     type:"generate10hooks",
@@ -521,7 +602,7 @@ router.post('/api/music/hooks/generate10', (req, res) => {
     createdAt:new Date().toISOString()
   });
 
-  global.MUSIC_BILLING && (global.MUSIC_BILLING.usage.hookPacks += 1);
+  billing.usage.hookPacks += 1;
   return res.json({
     ok:true,
     upsell:{ name:"Generate 10 Hooks", price:25 },
@@ -531,6 +612,8 @@ router.post('/api/music/hooks/generate10', (req, res) => {
 });
 
 router.post('/api/music/export', (req, res) => {
+  const sessionsState = req.musicState.sessions;
+  const billing = req.musicState.billing;
   const body = req.body || {};
   const artist = body.artist || "Current Artist";
   const title = body.title || "Music Export";
@@ -566,92 +649,41 @@ router.post('/api/music/export', (req, res) => {
     createdAt:new Date().toISOString()
   };
 
-  global.MUSIC_SESSIONS.exports.unshift(item);
-  global.MUSIC_SESSIONS.exports = global.MUSIC_SESSIONS.exports.slice(0,50);
+  sessionsState.exports.unshift(item);
+  sessionsState.exports = sessionsState.exports.slice(0,50);
 
-  global.MUSIC_BILLING && (global.MUSIC_BILLING.usage.exports += 1);
-  return res.json({ ok:true, export:item, billing: global.MUSIC_BILLING || null });
+  billing.usage.exports += 1;
+  return res.json({ ok:true, export:item, billing });
 });
 
-router.get('/api/music/monetization/state', (_req, res) => {
+router.get('/api/music/monetization/state', (req, res) => {
+  const sessionsState = req.musicState.sessions;
   return res.json({
     ok:true,
     monetization:{
-      tiers:global.MUSIC_SESSIONS.tiers,
+      tiers:sessionsState.tiers,
       upsells:[
         { name:"Generate 10 hooks", price:25 },
         { name:"Commercial rewrite pack", price:30 },
         { name:"Radio-ready polish", price:25 }
       ],
-      recentUpsells:global.MUSIC_SESSIONS.upsells,
-      exports:global.MUSIC_SESSIONS.exports.slice(0,10)
+      recentUpsells:sessionsState.upsells,
+      exports:sessionsState.exports.slice(0,10)
     },
-    sessions:global.MUSIC_SESSIONS
+    sessions:sessionsState
   });
 });
 // ===== END MUSIC MONETIZATION + EXPORT + SESSIONS =====
 
 // ===== MUSIC TIER + PAYWALL + USAGE LAYER =====
-global.MUSIC_BILLING = global.MUSIC_BILLING || {
-  currentTier: "free",
-  usage: {
-    aiRuns: 0,
-    exports: 0,
-    hookPacks: 0,
-    sessions: 0
-  },
-  tiers: {
-    free: {
-      name:"Free Trial",
-      price:0,
-      aiRuns:5,
-      sessions:1,
-      exports:false,
-      dna:"Preview only",
-      label:"Test the system. See how it thinks.",
-      bestFor:"Trying the engine before committing."
-    },
-    tier1: {
-      name:"Creator Mode",
-      price:99,
-      aiRuns:25,
-      sessions:5,
-      exports:true,
-      dna:"Basic Artist DNA",
-      label:"Turn rough ideas into structured, polished drafts fast.",
-      bestFor:"Independent artists writing consistently."
-    },
-    tier2: {
-      name:"Studio Mode",
-      price:249,
-      aiRuns:100,
-      sessions:25,
-      exports:true,
-      dna:"Advanced Artist DNA + evolution timeline",
-      label:"Know which version is actually better. Stop guessing what works.",
-      bestFor:"Artists serious about releasing music."
-    },
-    tier3: {
-      name:"Label Mode",
-      price:499,
-      aiRuns:500,
-      sessions:100,
-      exports:true,
-      dna:"Deep catalog memory + release decision engine",
-      label:"Build a catalog. Not just songs. Operate like a label.",
-      bestFor:"Teams, producers, and catalog builders."
-    }
-  },
-  upgradeEvents: []
-};
 
-function musicTier(){
-  return global.MUSIC_BILLING.tiers[global.MUSIC_BILLING.currentTier] || global.MUSIC_BILLING.tiers.free;
+function musicTier(billing){
+  return billing.tiers[billing.currentTier] || billing.tiers.free;
 }
 
-function musicCanUse(kind){
-  const tier = musicTier();
-  const usage = global.MUSIC_BILLING.usage;
+function musicCanUse(billing, kind){
+  const tier = musicTier(billing);
+  const usage = billing.usage;
 
   if(kind === "aiRuns" && usage.aiRuns >= tier.aiRuns){
     return { ok:false, reason:"AI run limit reached", upgrade:true, tier };
@@ -668,38 +700,40 @@ function musicCanUse(kind){
   return { ok:true, tier };
 }
 
-router.get('/api/music/billing/state', (_req, res) => {
-  const tier = musicTier();
+router.get('/api/music/billing/state', (req, res) => {
+  const billing = req.musicState.billing;
+  const tier = musicTier(billing);
   return res.json({
     ok:true,
-    billing:global.MUSIC_BILLING,
+    billing,
     current:tier,
     remaining:{
-      aiRuns:Math.max(0, tier.aiRuns - global.MUSIC_BILLING.usage.aiRuns),
-      sessions:Math.max(0, tier.sessions - global.MUSIC_BILLING.usage.sessions),
+      aiRuns:Math.max(0, tier.aiRuns - billing.usage.aiRuns),
+      sessions:Math.max(0, tier.sessions - billing.usage.sessions),
       exports:tier.exports
     }
   });
 });
 
 router.post('/api/music/billing/upgrade-intent', (req, res) => {
+  const billing = req.musicState.billing;
   const body = req.body || {};
   const targetTier = body.tier || "tier1";
 
-  if(!global.MUSIC_BILLING.tiers[targetTier]){
+  if(!billing.tiers[targetTier]){
     return res.status(400).json({ ok:false, error:"Invalid tier" });
   }
 
   const event = {
     id:Date.now(),
-    from:global.MUSIC_BILLING.currentTier,
+    from:billing.currentTier,
     to:targetTier,
     reason:body.reason || "manual upgrade intent",
     createdAt:new Date().toISOString(),
     stripeReady:true
   };
 
-  global.MUSIC_BILLING.upgradeEvents.unshift(event);
+  billing.upgradeEvents.unshift(event);
 
   return res.json({
     ok:true,
@@ -707,28 +741,27 @@ router.post('/api/music/billing/upgrade-intent', (req, res) => {
     checkout:{
       provider:"stripe-ready",
       tier:targetTier,
-      price:global.MUSIC_BILLING.tiers[targetTier].price,
+      price:billing.tiers[targetTier].price,
       note:"Connect Stripe checkout URL here."
     }
   });
 });
 
 router.post('/api/music/billing/set-tier-dev', (req, res) => {
+  const billing = req.musicState.billing;
   const body = req.body || {};
   const tier = body.tier || "free";
 
-  if(!global.MUSIC_BILLING.tiers[tier]){
+  if(!billing.tiers[tier]){
     return res.status(400).json({ ok:false, error:"Invalid tier" });
   }
 
-  global.MUSIC_BILLING.currentTier = tier;
-  return res.json({ ok:true, billing:global.MUSIC_BILLING });
+  billing.currentTier = tier;
+  return res.json({ ok:true, billing });
 });
 // ===== END MUSIC TIER + PAYWALL + USAGE LAYER =====
 
 // ===== MUSIC PROTECTION LAYER =====
-const crypto = require('crypto');
-
 global.MUSIC_DEMO_ACCESS = global.MUSIC_DEMO_ACCESS || {
   tokens: {},
   usage: {}
@@ -990,6 +1023,7 @@ router.get('/api/music/demo/deal-room', (req, res) => {
 
 // ===== MUSIC REVISION RUN COMPATIBILITY ROUTE =====
 router.post('/api/music/revision/run', (req, res) => {
+  const musicState = req.musicState;
   const body = req.body || {};
   const draft = body.draft || body.input || body.text || "";
   const request = body.request || "guided creation app";
@@ -1029,12 +1063,14 @@ router.post('/api/music/revision/run', (req, res) => {
     createdAt:new Date().toISOString()
   };
 
-  global.MUSIC_REVISION_SESSIONS = global.MUSIC_REVISION_SESSIONS || {};
-  global.MUSIC_REVISION_SESSIONS[String(session.id)] = session;
+  // Scoped to this visitor's own state — was previously written onto the
+  // shared global.MUSIC_SUITE_STATE.lastRevision/lastRun, which meant one
+  // visitor's "last run" would show up on every other visitor's dashboard.
+  musicState.legacyRevisionSessions = musicState.legacyRevisionSessions || {};
+  musicState.legacyRevisionSessions[String(session.id)] = session;
 
-  global.MUSIC_SUITE_STATE = global.MUSIC_SUITE_STATE || {};
-  global.MUSIC_SUITE_STATE.lastRevision = session;
-  global.MUSIC_SUITE_STATE.lastRun = {
+  musicState.lastRevision = session;
+  musicState.lastRun = {
     agents:["ZAY","RIYA","DJ"],
     output:flow,
     score,
@@ -1044,7 +1080,7 @@ router.post('/api/music/revision/run', (req, res) => {
   return res.json({
     ok:true,
     session,
-    run:global.MUSIC_SUITE_STATE.lastRun
+    run:musicState.lastRun
   });
 });
 // ===== END MUSIC REVISION RUN COMPATIBILITY ROUTE =====
