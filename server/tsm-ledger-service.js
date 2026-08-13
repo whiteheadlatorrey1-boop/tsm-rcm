@@ -225,6 +225,61 @@ async function paResetMission(missionId, seed) {
   return missionCol.findOne({ missionId });
 }
 
+// =====================================================
+// HITL APPROVAL GATE PERSISTENCE
+// Durable backing store for html/shared/tsm-hitl-gate.js, whose
+// decisionLog was previously an in-memory array only -- every
+// approve/reject decision (Governance, Integration Hub, the 8 exec-portal
+// Decision Centers, Approval Chain) was lost on every server restart.
+// One shared collection for all gates, distinguished by gatePrefix (the
+// same 'GOV' / 'IHUB' / 'HC' / 'APR' / etc. idPrefix each gate was
+// already created with) so this doesn't need one collection per vertical.
+// =====================================================
+
+const HITL_COLLECTION = 'hitl_decisions';
+
+async function hitlCollection() {
+  const database = await getDb();
+  return database.collection(HITL_COLLECTION);
+}
+
+/**
+ * Upserts a single HITL decision by its own id (already unique -- see
+ * decisionId() in tsm-hitl-gate.js). Upsert instead of plain insert so a
+ * retry or a hydrate/write race never produces a duplicate row.
+ */
+async function hitlWriteDecision(gatePrefix, entry) {
+  const col = await hitlCollection();
+  const doc = Object.assign({ gatePrefix }, entry);
+  await col.updateOne({ id: entry.id }, { $set: doc }, { upsert: true });
+  return doc;
+}
+
+/**
+ * Reads all persisted decisions for one gate, oldest first -- matching
+ * decisionLog's own push-append (oldest-first) ordering, so hydrate() in
+ * tsm-hitl-gate.js can splice these straight in without re-sorting logic
+ * living in two places.
+ */
+async function hitlReadDecisions(gatePrefix) {
+  const col = await hitlCollection();
+  return col.find({ gatePrefix }).sort({ ts: 1 }).toArray();
+}
+
+/**
+ * Builds the { write, readAll } adapter shape html/shared/tsm-hitl-gate.js's
+ * createGate(idPrefix, persistence) expects, bound to one gatePrefix. Every
+ * server.js / routes/*.js call site that creates a HITL gate can do
+ * `createGate('GOV', ledger.hitlAdapter('GOV'))` instead of hand-rolling the
+ * same two-function object, so there's exactly one place that shape lives.
+ */
+function hitlAdapter(gatePrefix) {
+  return {
+    write: (entry) => hitlWriteDecision(gatePrefix, entry),
+    readAll: () => hitlReadDecisions(gatePrefix),
+  };
+}
+
 module.exports = {
   connect,
   getDb,
@@ -243,4 +298,8 @@ module.exports = {
   paEnsureApInvoices,
   paSetApInvoiceStatus,
   paResetMission,
+  // HITL gate persistence
+  hitlWriteDecision,
+  hitlReadDecisions,
+  hitlAdapter,
 };

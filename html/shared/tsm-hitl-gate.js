@@ -31,19 +31,39 @@
   'use strict';
 
   /**
-   * createGate(idPrefix)
+   * createGate(idPrefix, persistence)
    * idPrefix: short domain tag used in generated decision ids, e.g. 'GOV',
-   * 'IHUB'. Purely cosmetic/traceability -- does not affect behavior.
+   * 'IHUB'. Purely cosmetic/traceability for the id, but also the key a
+   * persistence adapter (if supplied) partitions storage by, so it's not
+   * purely cosmetic once persistence is wired up.
+   *
+   * persistence (optional): { write(entry): Promise, readAll(): Promise<entry[]> }.
+   * Deliberately NOT baked into this file as a require('mongodb') or any
+   * other Node-only dependency -- this file is loaded directly in the
+   * browser too (client-side decision formatting), so the caller (e.g.
+   * server.js) builds a small adapter around whatever store it wants and
+   * passes it in. Omit it entirely to get the original in-memory-only
+   * behavior unchanged.
    *
    * Returns an independent gate instance with its own in-memory decision
-   * log. Each call to createGate() is a fresh log; callers that need a
+   * log, which remains the synchronous source of truth for getLog/
+   * getStats/hasDecision -- recordDecision still returns immediately, it
+   * does not wait on persistence. If a persistence adapter is supplied,
+   * writes are additionally fired at it in the background (errors are
+   * logged, not thrown, so a slow/down database never breaks a decision
+   * request), and hydrate() can be called once at startup to load prior
+   * history back into decisionLog before the process starts recording
+   * new decisions.
+   *
+   * Each call to createGate() is a fresh log; callers that need a
    * singleton (e.g. one governance-wide log for the life of the server
    * process) should create the gate once at module load and reuse it,
    * the same way MDM_RECOMMENDATION_DECISIONS is a single array in server.js.
    */
-  function createGate(idPrefix) {
+  function createGate(idPrefix, persistence) {
     var prefix = idPrefix || 'HITL';
     var decisionLog = [];
+    var persist = persistence || null;
 
     function decisionId() {
       return prefix + '-DEC-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
@@ -83,7 +103,45 @@
         meta: opts.meta || null
       };
       decisionLog.push(entry);
+      if (persist && typeof persist.write === 'function') {
+        // Fire-and-forget: the in-memory log (and therefore the response
+        // to the caller) is never blocked on the database. A write failure
+        // here means this decision is durable-in-process but not yet on
+        // disk -- logged so it's visible in server logs, not silently lost.
+        Promise.resolve(persist.write(entry)).catch(function (e) {
+          console.error('[TSMHitlGate:' + prefix + '] persist write failed for ' + entry.id + ':', e && e.message);
+        });
+      }
       return entry;
+    }
+
+    /**
+     * hydrate(): loads previously-persisted decisions back into
+     * decisionLog. Meant to be called once at process startup, before the
+     * gate starts taking new decisions, so a server restart doesn't present
+     * an empty audit trail for entities that were actually decided days
+     * ago. No-op (resolves to 0) if no persistence adapter was supplied.
+     * Safe to call more than once -- entries already present (matched by
+     * id) are not duplicated.
+     */
+    function hydrate() {
+      if (!persist || typeof persist.readAll !== 'function') return Promise.resolve(0);
+      return Promise.resolve(persist.readAll()).then(function (entries) {
+        var seen = {};
+        decisionLog.forEach(function (d) { seen[d.id] = true; });
+        var added = 0;
+        (entries || []).forEach(function (e) {
+          if (!seen[e.id]) { decisionLog.push(e); seen[e.id] = true; added++; }
+        });
+        // Persisted entries may interleave with anything recorded between
+        // process start and hydrate() resolving; keep decisionLog in the
+        // same oldest-first order getLog()/getStats() assume.
+        decisionLog.sort(function (a, b) { return new Date(a.ts) - new Date(b.ts); });
+        return added;
+      }).catch(function (e) {
+        console.error('[TSMHitlGate:' + prefix + '] hydrate failed:', e && e.message);
+        return 0;
+      });
     }
 
     /** getLog(limit): most-recent-first, capped at `limit` (default 200). */
@@ -153,6 +211,7 @@
       getLog: getLog,
       hasDecision: hasDecision,
       getStats: getStats,
+      hydrate: hydrate,
       decisionLog: decisionLog
     };
   }
@@ -188,4 +247,52 @@ if (typeof require !== 'undefined' && typeof module !== 'undefined' && require.m
   } catch (e) {
     console.log('[validation ok]', e.message);
   }
+
+  // ── Persistence adapter smoke test ──────────────────────────────────────
+  // Fakes what server/tsm-ledger-service.js + server.js's adapter wiring do,
+  // without needing a real MongoDB connection, to prove write-on-record and
+  // hydrate-on-restart both work end to end.
+  (async function () {
+    var fakeStore = []; // stand-in for the hitl_decisions collection
+    var writeCalls = 0;
+    var adapter = {
+      write: function (entry) {
+        writeCalls++;
+        fakeStore.push(entry);
+        return Promise.resolve();
+      },
+      readAll: function () {
+        return Promise.resolve(fakeStore.slice());
+      }
+    };
+
+    var gateA = Gate.createGate('PTEST', adapter);
+    gateA.recordDecision({ entityId: 'e-1', entityType: 'risk', decision: 'APPROVED', actor: 'Tester' });
+    gateA.recordDecision({ entityId: 'e-2', entityType: 'risk', decision: 'REJECTED', actor: 'Tester' });
+
+    // recordDecision's persist call is fire-and-forget; give the
+    // microtask queue a tick so writeCalls reflects both writes before
+    // asserting against it.
+    await new Promise(function (r) { setTimeout(r, 0); });
+    console.log('[persist write count]', writeCalls, writeCalls === 2 ? 'OK' : 'MISMATCH');
+    console.log('[fake store size]', fakeStore.length, fakeStore.length === 2 ? 'OK' : 'MISMATCH');
+
+    // Simulate a server restart: fresh gate, same underlying store, then
+    // hydrate() should repopulate decisionLog from what was "persisted".
+    var gateB = Gate.createGate('PTEST', adapter);
+    console.log('[pre-hydrate log length]', gateB.getLog(10).length, gateB.getLog(10).length === 0 ? 'OK' : 'MISMATCH');
+    var added = await gateB.hydrate();
+    console.log('[hydrate added]', added, added === 2 ? 'OK' : 'MISMATCH');
+    console.log('[post-hydrate log length]', gateB.getLog(10).length, gateB.getLog(10).length === 2 ? 'OK' : 'MISMATCH');
+
+    // hydrate() called twice must not duplicate entries.
+    var addedAgain = await gateB.hydrate();
+    console.log('[re-hydrate added]', addedAgain, addedAgain === 0 ? 'OK' : 'MISMATCH');
+    console.log('[log length after re-hydrate]', gateB.getLog(10).length, gateB.getLog(10).length === 2 ? 'OK' : 'MISMATCH');
+
+    // A gate created with no adapter at all must behave exactly as before.
+    var gateC = Gate.createGate('NOPERSIST');
+    gateC.recordDecision({ entityId: 'e-3', decision: 'APPROVED', actor: 'Tester' });
+    console.log('[no-adapter gate log length]', gateC.getLog(10).length, gateC.getLog(10).length === 1 ? 'OK' : 'MISMATCH');
+  })();
 }

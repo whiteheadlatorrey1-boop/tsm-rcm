@@ -36,6 +36,7 @@
 const express = require('express');
 const router = express.Router();
 const { createGate } = require('../html/shared/tsm-hitl-gate.js');
+const tsmLedger = require('../server/tsm-ledger-service.js');
 
 // ── STORES ──────────────────────────────────────────────────────────────────
 const O2C_ORDERS = [];
@@ -43,7 +44,12 @@ const CRM_RECORDS = [];
 const CPQ_QUOTES = [];
 const CATALOG_ITEMS = [];
 const APPROVAL_REQUESTS = [];
-const APPROVAL_HITL_GATE = createGate('APR');
+// Backed by MongoDB via the same hitl_decisions collection + adapter
+// Governance/Integration Hub/Exec Portal gates use in server.js -- see
+// server/tsm-ledger-service.js hitlAdapter(). Falls back to in-memory-only
+// (unchanged prior behavior) if MONGODB_URI isn't set.
+const APPROVAL_HITL_GATE = createGate('APR', tsmLedger.hitlAdapter('APR'));
+APPROVAL_HITL_GATE.hydrate().then(n => { if (n) console.log(`[HITL] APR gate hydrated ${n} prior decisions`); });
 const RECENT_SWEEPS = new Map();
 const RECENT_SWEEP_WINDOW_MS = 5 * 60 * 1000;
 function sweepDedupKey(vertical, caseId) { return vertical + '|' + caseId; }

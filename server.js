@@ -3174,12 +3174,20 @@ app.post('/api/digital-twin/query', async (req, res) => {
 
 // ── PHASE 8: GOVERNANCE & COMPLIANCE ───────────────────────────────────────────
 const { createGate: createHitlGate } = require('./html/shared/tsm-hitl-gate.js');
+const tsmLedger = require('./server/tsm-ledger-service.js');
 const GOVERNANCE_AUDIT_LOG = [];
 const GOVERNANCE_RISK_REGISTER = [];
 // Standardized HITL approval gate (BPO Enterprise Roadmap #4). Replaces the
 // prior one-step resolve with an explicit approve/reject decision + actor,
 // using the same pattern already proven in MDM's recommendation approvals.
-const GOVERNANCE_HITL_GATE = createHitlGate('GOV');
+// Backed by MongoDB (server/tsm-ledger-service.js, hitl_decisions collection)
+// via the adapter below -- previously decisionLog was in-memory only and
+// every decision was lost on restart. hydrate() below repopulates it from
+// prior history; if MONGODB_URI isn't set, both the write and the hydrate
+// fail closed (logged, not thrown) and the gate behaves exactly as it did
+// before -- in-memory only for the life of this process.
+const GOVERNANCE_HITL_GATE = createHitlGate('GOV', tsmLedger.hitlAdapter('GOV'));
+GOVERNANCE_HITL_GATE.hydrate().then(n => { if (n) console.log(`[HITL] GOV gate hydrated ${n} prior decisions`); });
 
 function governanceId(prefix) {
   return prefix + '-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7);
@@ -3283,7 +3291,8 @@ app.post('/api/governance/query', async (req, res) => {
 // before it's either remediated (approved) or escalated (rejected) --
 // previously /sync just silently reset status to 'healthy' with no record
 // of who decided that, or whether the underlying issue was actually fixed.
-const INTEGRATION_HITL_GATE = createHitlGate('IHUB');
+const INTEGRATION_HITL_GATE = createHitlGate('IHUB', tsmLedger.hitlAdapter('IHUB'));
+INTEGRATION_HITL_GATE.hydrate().then(n => { if (n) console.log(`[HITL] IHUB gate hydrated ${n} prior decisions`); });
 let INTEGRATION_CATALOG = [
   {
     "id": "int-01",
@@ -3479,7 +3488,12 @@ app.get('/api/integration/decisions', (req, res) => {
 const EXEC_PORTAL_VERTICALS = ['healthcare', 'finops', 'insurance', 'construction', 'legal', 'realestate', 'bpo', 'mortgage'];
 const EXEC_PORTAL_GATE_PREFIX = { healthcare: 'HC', finops: 'FIN', insurance: 'INS', construction: 'CON', legal: 'LEG', realestate: 'RE', bpo: 'BPO', mortgage: 'MTG' };
 const EXEC_PORTAL_HITL_GATES = {};
-EXEC_PORTAL_VERTICALS.forEach(v => { EXEC_PORTAL_HITL_GATES[v] = createHitlGate(EXEC_PORTAL_GATE_PREFIX[v] || 'EXEC'); });
+EXEC_PORTAL_VERTICALS.forEach(v => {
+  const gatePrefix = EXEC_PORTAL_GATE_PREFIX[v] || 'EXEC';
+  const gate = createHitlGate(gatePrefix, tsmLedger.hitlAdapter(gatePrefix));
+  gate.hydrate().then(n => { if (n) console.log(`[HITL] ${gatePrefix} gate hydrated ${n} prior decisions`); });
+  EXEC_PORTAL_HITL_GATES[v] = gate;
+});
 
 // index is the decision's position in that vertical's Decision Center list
 // (assigned client-side by tsm-exec-portal-upgrade.js) -- combined with
