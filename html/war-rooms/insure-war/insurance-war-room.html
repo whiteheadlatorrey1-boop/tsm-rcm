@@ -59,6 +59,10 @@ body::before{content:'';position:fixed;top:0;right:0;width:600px;height:600px;ba
 .btn-outline:hover{background:rgba(201,168,76,.08)}
 .btn-ghost{background:transparent;border-color:var(--border);color:var(--dim)}
 .btn-ghost:hover{border-color:var(--dim);color:var(--text)}
+.btn-rescue{background:rgba(255,90,90,.08);border-color:var(--red);color:var(--red)}
+.btn-rescue:hover{background:rgba(255,90,90,.16)}
+.btn-rescue.fraud{background:rgba(255,90,90,.18);animation:rescuePulse 1.4s infinite}
+@keyframes rescuePulse{0%,100%{box-shadow:0 0 0 rgba(255,90,90,.4)}50%{box-shadow:0 0 8px rgba(255,90,90,.6)}}
 .btn:disabled{opacity:.4;cursor:not-allowed}
 .btn-row{display:flex;gap:4px;flex-wrap:wrap}
 
@@ -620,6 +624,7 @@ body::before{content:'';position:fixed;top:0;right:0;width:600px;height:600px;ba
       </div>
       <div class="eb-btns" id="escalBtns">
         <button class="btn btn-gold" onclick="escalateToStrategist()">⚜ ESCALATE TO STRATEGIST →</button>
+        <button class="btn btn-rescue" id="rescuePackBtn" onclick="openRescuePack()">⚡ RESCUE PACK</button>
         <button class="btn btn-outline" onclick="exportFull()">EXPORT ANALYSIS</button>
         <button class="btn btn-ghost" onclick="clearAll()">CLEAR & RESET</button>
       </div>
@@ -869,6 +874,7 @@ async function fireEngines(){
 
   document.getElementById('escalSub').textContent='6-engine analysis complete — '+selectedDocType+' · Ready to escalate to Insurance Strategist.';
   document.getElementById('escalateBar').classList.add('visible');
+  refreshRescuePackButton();
   document.getElementById('sbDoc').textContent=selectedDocType+' · '+docText.length+' chars';
   document.getElementById('spinner').classList.remove('active');
   document.getElementById('fireBtn').disabled=false;
@@ -947,6 +953,49 @@ function buildAppDispatch(e6text){
   }
   hdr.style.display='flex';
   dispatch.classList.add('visible');
+}
+
+// ---- Rescue Pack: doc-type routing + Engine 02 fraud override ----
+const RESCUE_PACK_BY_DOC_TYPE = {
+  'Claims Report':  'claims-denial-rescue',
+  'Denial Letter':  'appeal-window-rescue',
+  'Policy Review':  'coverage-gap-rescue',
+  'DME Claim':      'dme-claim-rescue',
+  'AP Aging':       'ap-aging-recovery',
+  'ERA Batch':      'era-reconciliation',
+  'Underwriting':   'underwriting-risk-rescue',
+  'Compliance':     'compliance-audit-rescue',
+  'CE Renewal':     'ce-renewal-rescue',
+  'Other':          'insurance-fraud-investigation'
+};
+
+function fraudFlagged(engine2Text){
+  if(!engine2Text) return false;
+  const m = engine2Text.match(/FRAUD INDICATORS:\s*([^\n]+)/i);
+  if(!m) return false;
+  const val = m[1].trim();
+  if(!val) return false;
+  return !/^none\b/i.test(val);
+}
+
+function currentRescuePackKey(){
+  const e2 = (engOut && engOut[2]) ? engOut[2] : '';
+  if(fraudFlagged(e2)) return 'insurance-fraud-investigation';
+  return RESCUE_PACK_BY_DOC_TYPE[selectedDocType] || 'insurance-fraud-investigation';
+}
+
+function refreshRescuePackButton(){
+  const btn = document.getElementById('rescuePackBtn');
+  if(!btn) return;
+  const key = currentRescuePackKey();
+  const isFraud = key === 'insurance-fraud-investigation' && fraudFlagged((engOut && engOut[2]) ? engOut[2] : '');
+  btn.classList.toggle('fraud', isFraud);
+  btn.textContent = isFraud ? '🚨 FRAUD RESCUE PACK' : '⚡ RESCUE PACK';
+}
+
+function openRescuePack(){
+  const key = currentRescuePackKey();
+  window.open('/reo-pro/pack-engine.html?pack=' + key, '_blank');
 }
 
 function storeRelay(e){
@@ -1141,6 +1190,7 @@ addLog('Insurance War Room initialized','6 engines standing by — load insuranc
     if(s.e6text) buildAppDispatch(s.e6text);
     document.getElementById('escalSub').textContent='6-engine analysis complete — '+s.selectedDocType+' · Ready to escalate to Insurance Strategist.';
     document.getElementById('escalateBar').classList.add('visible');
+    refreshRescuePackButton();
     addLog('War Room state restored',s.selectedDocType+' analysis reloaded','p');
   }catch(err){console.warn('State restore error:',err);}
 })();
