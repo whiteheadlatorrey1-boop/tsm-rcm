@@ -355,6 +355,26 @@ global.MUSIC_SUITE_STATE = global.MUSIC_SUITE_STATE || {
 const TSM_MEMORY = global.__TSM_MEMORY__ = global.__TSM_MEMORY__ || {
   healthcare: { nodes: {}, hcStrategist: null, mainStrategist: null, executive: null }
 };
+// Generic per-vertical memory for verticals other than healthcare (which keeps its richer,
+// purpose-built shape above). Each entry is a small, real, capped log of what that vertical's
+// own query endpoint actually asked/answered — never synthesized or inferred, just recorded —
+// so the Sovereign Strategist can cite real recent activity across verticals instead of only
+// healthcare. Capped at 5 entries per vertical to bound memory growth.
+const TSM_VERTICAL_MEMORY_CAP = 5;
+function recordVerticalMemory(vertical, prompt, answer) {
+  if (!vertical || !answer) return;
+  if (!TSM_MEMORY[vertical]) TSM_MEMORY[vertical] = { recent: [] };
+  if (!Array.isArray(TSM_MEMORY[vertical].recent)) TSM_MEMORY[vertical].recent = [];
+  TSM_MEMORY[vertical].recent.push({
+    ts: new Date().toISOString(),
+    prompt: (prompt || '').toString().slice(0, 300),
+    answer: (answer || '').toString().slice(0, 500)
+  });
+  if (TSM_MEMORY[vertical].recent.length > TSM_VERTICAL_MEMORY_CAP) {
+    TSM_MEMORY[vertical].recent = TSM_MEMORY[vertical].recent.slice(-TSM_VERTICAL_MEMORY_CAP);
+  }
+  TSM_MEMORY[vertical].lastUpdated = new Date().toISOString();
+}
 const TSM_MESH = {
   HEALTHCARE: { owner: 'HC Strategist', controller: 'Healthcare Command', risks: ['Revenue leakage', 'Denial escalation', 'Patient throughput degradation', 'Compliance exposure'] },
   CONSTRUCTION: { owner: 'Construction Strategist', controller: 'Construction Command', risks: ['Permit delays', 'Schedule variance', 'Cost overrun', 'Supply chain disruption'] },
@@ -1257,6 +1277,7 @@ app.post('/api/financial/query', async (req, res) => {
         await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
       }
     }
+    recordVerticalMemory('financial', msg, a);
     return res.json({ ok: true, answer: a, createdAt: new Date().toISOString() });
   }
   catch (e) {
@@ -1279,6 +1300,7 @@ app.post('/api/legal/query', async (req, res) => {
         await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
       }
     }
+    recordVerticalMemory('legal', msg, a);
     return res.json({ ok: true, answer: a, createdAt: new Date().toISOString() });
   }
   catch (e) {
@@ -1301,6 +1323,7 @@ app.post('/api/construction/query', async (req, res) => {
         await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
       }
     }
+    recordVerticalMemory('construction', msg, a);
     return res.json({ ok: true, answer: a, createdAt: new Date().toISOString() });
   }
   catch (e) {
@@ -1318,6 +1341,7 @@ app.post('/api/o2c/query', async (req, res) => {
     `Identify the top risks, the root cause of any SLA breaches, and the single most important next action for each at-risk order. Be specific and reference order IDs.`;
   try {
     const answer = await groqChat(SP.o2c, prompt, maxTokens || 1200);
+    recordVerticalMemory('o2c', prompt, answer);
     return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
   } catch (e) {
     console.error('O2C GROQ ERROR:', e.message);
@@ -1343,6 +1367,7 @@ app.post('/api/crm/query', async (req, res) => {
     `Identify the highest-risk leads/opportunities/cases, the root cause of any SLA breaches or stalled pipeline stages, and the single most important next action for each at-risk record. Reference record IDs.`;
   try {
     const answer = await groqChat(SP.crm, prompt, maxTokens || 1200);
+    recordVerticalMemory('crm', prompt, answer);
     return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
   } catch (e) {
     console.error('CRM GROQ ERROR:', e.message);
@@ -1368,6 +1393,7 @@ app.post('/api/noc/query', async (req, res) => {
     `Identify the highest-severity incidents, correlate any related alerts to their root incident, flag devices contributing to fleet-uptime risk, and the single most important next action for each at-risk incident or device. Reference incident/alert/device IDs.`;
   try {
     const answer = await groqChat(SP.noc, prompt, maxTokens || 1200);
+    recordVerticalMemory('noc', prompt, answer);
     return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
   } catch (e) {
     console.error('NOC GROQ ERROR:', e.message);
@@ -1402,6 +1428,7 @@ app.post('/api/mortgage/query', async (req, res) => {
   }
   try {
     const answer = await groqChat(system, prompt, maxTokens || 1200);
+    recordVerticalMemory('mortgage', prompt, answer);
     return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
   } catch (e) {
     console.error('MORTGAGE GROQ ERROR:', e.message);
@@ -1428,6 +1455,7 @@ app.post('/api/hotelops/query', async (req, res) => {
     `Identify the highest-severity SLA-breached maintenance tickets, the largest OTA overcharge exposure, and the most urgent compliance deadline. Recommend the single most important next action for each. Reference ticket/OTA/compliance IDs.`;
   try {
     const answer = await groqChat(SP.hotelops, prompt, maxTokens || 1200);
+    recordVerticalMemory('hotelops', prompt, answer);
     return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
   } catch (e) {
     console.error('HOTELOPS GROQ ERROR:', e.message);
@@ -1656,6 +1684,7 @@ app.post('/api/schools/analysis', async (req, res) => {
     `Identify the highest-risk grant files, the root cause of any SLA breaches or stalled monitoring items, open compliance exceptions requiring escalation (FERPA/IDEA/NSLP/Title I/ESSER as applicable), and the single most important next action for each at-risk grant file. Reference grant/monitoring-item/exception IDs.`;
   try {
     const answer = await groqChat(SP.education, prompt, maxTokens || 1200);
+    recordVerticalMemory('schools', prompt, answer);
     return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
   } catch (e) {
     console.error('SCHOOLS ANALYSIS GROQ ERROR:', e.message);
@@ -1673,6 +1702,7 @@ app.post('/api/approval/query', async (req, res) => {
     `Identify the highest-risk approval requests, root causes of SLA breaches or escalations, delegation conflicts, and the single most important next action per at-risk request. Reference request IDs. Be specific and operational.`;
   try {
     const answer = await groqChat(SP.approval, prompt, maxTokens || 1200);
+    recordVerticalMemory('approval', prompt, answer);
     return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
   } catch (e) {
     console.error('APPROVAL GROQ ERROR:', e.message);
@@ -1706,6 +1736,7 @@ app.post('/api/foundation/decision', async (req, res) => {
     modeInstruction;
   try {
     const answer = await groqChat(SP[vertical], prompt, maxTokens || 1200);
+    recordVerticalMemory(vertical, prompt, answer);
     return res.json({ ok: true, vertical, mode: mode || 'recommendation', answer, createdAt: new Date().toISOString() });
   } catch (e) {
     console.error('FOUNDATION DECISION ERROR:', e.message);
@@ -1722,6 +1753,7 @@ app.post('/api/cpq/query', async (req, res) => {
     `Identify the top risks across the quote pipeline, root causes of any SLA breaches or margin violations, and the single most important next action for each at-risk quote. Reference quote IDs. Be specific and operational.`;
   try {
     const answer = await groqChat(SP.cpq, prompt, maxTokens || 1200);
+    recordVerticalMemory('cpq', prompt, answer);
     return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
   } catch (e) {
     console.error('CPQ GROQ ERROR:', e.message);
@@ -1738,6 +1770,7 @@ app.post('/api/catalog/query', async (req, res) => {
     `Identify the top catalog risks (low-stock, compliance, end-of-life, missing data), root causes, and the single most important next action for each flagged product. Reference SKUs/product IDs. Be specific and operational.`;
   try {
     const answer = await groqChat(SP.catalog, prompt, maxTokens || 1200);
+    recordVerticalMemory('catalog', prompt, answer);
     return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
   } catch (e) {
     console.error('CATALOG GROQ ERROR:', e.message);
@@ -1750,7 +1783,7 @@ app.post('/api/insurance/query', async (req, res) => {
   const { system, message, maxTokens, question, query } = req.body || {};
   const msg = message || question || query || '';
   if (!msg) return res.status(400).json({ ok: false, error: 'message required' });
-  try { const answer = await groqChat(system || SP.insurance, msg, maxTokens || 600); res.json({ ok: true, answer }); }
+  try { const answer = await groqChat(system || SP.insurance, msg, maxTokens || 600); recordVerticalMemory('insurance', msg, answer); res.json({ ok: true, answer }); }
   catch (e) { console.error('GROQ ERROR:', e.message); res.status(500).json({ ok: false, error: e.message, detail: e.stack }); }
 });
 
@@ -1995,12 +2028,17 @@ app.post('/api/schools/query', async (req, res) => {
 });
 
 // Sovereign Strategist cross-domain query.
-// Real per-vertical state is woven in from two honest sources — nothing here is invented:
-//   1) TSM_MEMORY — server-authoritative vertical memory (today: healthcare's node/strategist/exec chain)
-//   2) req.body.relayState — live browser-session relay reads the caller collected via TSM.relay.read()
+// Real per-vertical state is woven in from three honest sources — nothing here is invented:
+//   1) TSM_MEMORY.healthcare — server-authoritative, healthcare's richer node/strategist/exec chain
+//   2) TSM_MEMORY[vertical].recent — server-authoritative, a capped real log of what every other
+//      vertical's own query/analysis endpoint actually asked and answered (see recordVerticalMemory,
+//      wired into financial/legal/construction/o2c/crm/noc/mortgage/hotelops/schools/approval/cpq/
+//      catalog/insurance/digitalTwin/foundation-decision as of 2026-08-12) — process-wide, so it
+//      persists across browser sessions, unlike relayState below
+//   3) req.body.relayState — live browser-session relay reads the caller collected via TSM.relay.read()
 //      for whatever verticals that browser session has actually touched (see html/strategist-index.html)
-// Any vertical with no data in either source is left OUT of the state block rather than padded with
-// a placeholder, and the model is told explicitly not to invent state for verticals not listed.
+// Any vertical with no data in any source is left OUT of the state block rather than padded with a
+// placeholder, and the model is told explicitly not to invent state for verticals not listed.
 function buildCrossDomainStateBlock(relayState) {
   const lines = [];
   const hc = TSM_MEMORY.healthcare;
@@ -2014,6 +2052,15 @@ function buildCrossDomainStateBlock(relayState) {
         executive: hc.executive
       }).slice(0, 2000));
   }
+  for (const vertical of Object.keys(TSM_MEMORY)) {
+    if (vertical === 'healthcare') continue;
+    const mem = TSM_MEMORY[vertical];
+    if (!mem || !Array.isArray(mem.recent) || !mem.recent.length) continue;
+    const latest = mem.recent[mem.recent.length - 1];
+    lines.push(vertical.toUpperCase() + ' (server memory, ' + mem.recent.length + ' recent quer' +
+      (mem.recent.length === 1 ? 'y' : 'ies') + ' on file, last updated ' + mem.lastUpdated + '): ' +
+      'most recent — asked "' + latest.prompt.slice(0, 150) + '" -> "' + latest.answer.slice(0, 300) + '"');
+  }
   if (relayState && typeof relayState === 'object') {
     for (const domain of Object.keys(relayState)) {
       const payload = relayState[domain];
@@ -2026,8 +2073,8 @@ function buildCrossDomainStateBlock(relayState) {
       'relay or memory data yet. Answer from general expertise, and say so plainly if the question ' +
       'depends on figures that would need live data.';
   }
-  return '\n\nLIVE CROSS-DOMAIN STATE (real, session-sourced — verticals not listed here have no live ' +
-    'data this session; do not invent figures for them):\n' + lines.join('\n');
+  return '\n\nLIVE CROSS-DOMAIN STATE (real, server- and session-sourced — verticals not listed here ' +
+    'have no live data; do not invent figures for them):\n' + lines.join('\n');
 }
 
 app.post('/api/strategist/query', async (req, res) => {
@@ -3212,6 +3259,7 @@ app.post('/api/digital-twin/query', async (req, res) => {
   const prompt = `Current Enterprise Digital Twin snapshot:\n${summary}\n\nSynthesize an executive brief: identify the domains driving the biggest swings in enterprise health, the highest-priority cross-domain risk, and the single most important executive action this week. Reference domain names and specific figures. Be specific and operational.`;
   try {
     const answer = await groqChat(SP.digitalTwin, prompt, maxTokens || 1400);
+    recordVerticalMemory('digitalTwin', prompt, answer);
     return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
   } catch (e) {
     console.error('DIGITAL TWIN GROQ ERROR:', e.message);
