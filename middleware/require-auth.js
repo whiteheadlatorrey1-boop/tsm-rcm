@@ -42,4 +42,29 @@ function requireAuth(req, res, next) {
   next();
 }
 
-module.exports = { requireAuth, verifySession, getCookie, signSession, SESSION_TTL_MS };
+// Factory: requireRole(['admin','manager']) -> middleware that only lets
+// sessions with one of the listed roles through. Attaches req.tsmSession
+// (role/clientId/staffId/label) for downstream handlers, same shape as
+// server.js's requireAnyAuth/requireAdmin. Sessions signed before roles
+// existed have no `role` field — those are legacy admin sessions (the only
+// kind issued at the time), so they're treated as 'admin' here too, matching
+// the same fallback already used in server.js.
+function requireRole(allowedRoles) {
+  return function (req, res, next) {
+    const session = verifySession(getCookie(req, 'tsm_session'));
+    if (!session) return res.status(401).json({ ok: false, error: 'Unauthorized' });
+    const role = session.role || 'admin';
+    if (!allowedRoles.includes(role)) {
+      return res.status(403).json({ ok: false, error: `Requires role: ${allowedRoles.join(' or ')}` });
+    }
+    req.tsmSession = {
+      role,
+      clientId: session.clientId || null,
+      staffId: session.staffId || null,
+      label: session.label || null,
+    };
+    next();
+  };
+}
+
+module.exports = { requireAuth, requireRole, verifySession, getCookie, signSession, SESSION_TTL_MS };

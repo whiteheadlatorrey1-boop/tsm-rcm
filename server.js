@@ -24,8 +24,9 @@ const PORT = process.env.PORT || 8080;
 const HTML_ROOT = path.join(__dirname, "html");
 // AUTH REMOVED — in-house use only
 // const { tsmAuthMiddleware } = require('./html/tsm-auth');
-const { requireAuth, signSession, verifySession, getCookie, SESSION_TTL_MS } = require('./middleware/require-auth');
+const { requireAuth, requireRole, signSession, verifySession, getCookie, SESSION_TTL_MS } = require('./middleware/require-auth');
 const clientRegistry = require('./middleware/client-registry');
+const staffRegistry = require('./middleware/staff-registry');
 
 app.use(express.json());
 app.use(require('express').urlencoded({ extended: false }));
@@ -51,10 +52,13 @@ app.use((req, res, next) => {
   return res.status(403).send('Forbidden');
 });
 
-// Login accepts EITHER the shared admin password OR a per-client access
-// code. We try admin first (cheap string compare against an env var), then
-// fall back to a client-code lookup. Either path produces the same kind of
-// signed session cookie; only the payload shape differs.
+// Login accepts the shared admin password, a per-staff access code
+// (manager/analyst), or a per-client access code — tried in that order.
+// Admin is a cheap string compare against an env var; staff and client are
+// registry lookups against separate HMAC-hashed code stores (a staff and a
+// client can never collide on the same code — each pool is checked
+// independently). All three paths produce the same kind of signed session
+// cookie; only the payload shape differs.
 app.post('/api/auth/login', (req, res) => {
   const { password, accessCode } = req.body || {};
   const credential = password || accessCode || '';
@@ -69,17 +73,22 @@ app.post('/api/auth/login', (req, res) => {
   if (credential === process.env.TSM_ADMIN_PASSWORD) {
     payload = { role: 'admin', exp: Date.now() + SESSION_TTL_MS };
   } else {
-    const client = clientRegistry.findClientByCode(credential);
-    if (!client) {
-      return res.status(401).json({ ok: false, error: 'Invalid password or access code' });
+    const staff = staffRegistry.findStaffByCode(credential);
+    if (staff) {
+      payload = { role: staff.role, staffId: staff.id, label: staff.label, exp: Date.now() + SESSION_TTL_MS };
+    } else {
+      const client = clientRegistry.findClientByCode(credential);
+      if (!client) {
+        return res.status(401).json({ ok: false, error: 'Invalid password or access code' });
+      }
+      payload = { role: 'client', clientId: client.id, label: client.label, exp: Date.now() + SESSION_TTL_MS };
     }
-    payload = { role: 'client', clientId: client.id, label: client.label, exp: Date.now() + SESSION_TTL_MS };
   }
 
   const token = signSession(payload);
   res.setHeader('Set-Cookie',
     `tsm_session=${encodeURIComponent(token)}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${SESSION_TTL_MS / 1000}`);
-  res.json({ ok: true, role: payload.role, clientId: payload.clientId || null, label: payload.label || null });
+  res.json({ ok: true, role: payload.role, clientId: payload.clientId || null, staffId: payload.staffId || null, label: payload.label || null });
 });
 
 app.post('/api/auth/logout', (req, res) => {
@@ -95,15 +104,22 @@ app.get('/api/auth/status', (req, res) => {
     authenticated: true,
     role: session.role || 'admin', // sessions signed before this change had no role — treat as admin
     clientId: session.clientId || null,
+    staffId: session.staffId || null,
     label: session.label || null,
   });
 });
 
-// Any authenticated session — admin or client. Attaches req.tsmSession.
+// Any authenticated session — admin, staff (manager/analyst), or client.
+// Attaches req.tsmSession.
 function requireAnyAuth(req, res, next) {
   const session = verifySession(getCookie(req, 'tsm_session'));
   if (!session) return res.status(401).json({ ok: false, error: 'Unauthorized' });
-  req.tsmSession = { role: session.role || 'admin', clientId: session.clientId || null, label: session.label || null };
+  req.tsmSession = {
+    role: session.role || 'admin',
+    clientId: session.clientId || null,
+    staffId: session.staffId || null,
+    label: session.label || null,
+  };
   next();
 }
 
@@ -157,6 +173,54 @@ app.post('/api/admin/clients/:id/reactivate', requireAdmin, (req, res) => {
   try {
     const client = clientRegistry.setActive(req.params.id, true);
     res.json({ ok: true, client });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message });
+  }
+});
+
+// ── STAFF MANAGEMENT (admin only) ───────────────────────────────────────────
+// Internal manager/analyst accounts — separate pool from clients (see
+// middleware/staff-registry.js). Same admin-only, code-shown-once pattern as
+// client management above.
+app.get('/api/admin/staff', requireAdmin, (req, res) => {
+  res.json({ ok: true, staff: staffRegistry.listStaffSafe() });
+});
+
+// Create a staff account + generate their access code. role must be
+// 'manager' or 'analyst'. Code returned ONCE — hand it to the staff member
+// now; if lost, rotate instead of trying to recover it.
+app.post('/api/admin/staff', requireAdmin, (req, res) => {
+  try {
+    const { label, role } = req.body || {};
+    const { staff, accessCode } = staffRegistry.createStaff(label, role);
+    res.json({ ok: true, staff, accessCode });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/api/admin/staff/:id/rotate-code', requireAdmin, (req, res) => {
+  try {
+    const { staff, accessCode } = staffRegistry.rotateCode(req.params.id);
+    res.json({ ok: true, staff, accessCode });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/api/admin/staff/:id/deactivate', requireAdmin, (req, res) => {
+  try {
+    const staff = staffRegistry.setActive(req.params.id, false);
+    res.json({ ok: true, staff });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/api/admin/staff/:id/reactivate', requireAdmin, (req, res) => {
+  try {
+    const staff = staffRegistry.setActive(req.params.id, true);
+    res.json({ ok: true, staff });
   } catch (e) {
     res.status(400).json({ ok: false, error: e.message });
   }
@@ -425,22 +489,31 @@ app.get(['/tsm-doc-search-multi.html', '/html/tsm-doc-search-multi.html'], (req,
 });
 
 // ── BPO WAR ROOM GATE ───────────────────────────────────────────────────────
-// BPO_PRODUCTION_READINESS.md (Phase 1) calls for auth on the BPO operational
-// surface. Gated: the war room, strategist, and executive portal — where a
-// pilot's actual work-item/relay data lives. NOT gated: bpo-demo-presentation
-// .html, which is the sales-demo asset and needs to stay link-shareable per
-// that doc's own "use for: sales demos" guidance. Same narrow, page-level
-// pattern as the doc-search gate above (and same reason it must sit before
-// the catch-all static mount) — role-specific restriction (Phase 1 RBAC) is
-// a separate follow-up, this only requires *a* valid session.
+// BPO_PRODUCTION_READINESS.md (Phase 1) calls for auth + role-based views on
+// the BPO operational surface. Gated: the war room, strategist, and
+// executive portal — where a pilot's actual work-item/relay data lives. NOT
+// gated: bpo-demo-presentation.html, which is the sales-demo asset and needs
+// to stay link-shareable per that doc's own "use for: sales demos" guidance.
+//
+// Role-restricted to admin/manager/analyst — NOT client. These are internal
+// ops tools; a client session (scoped to tsm-doc-search-multi.html, their
+// own workspace) has no reason to be inside them. A valid-but-wrong-role
+// session gets bounced to /login same as no session at all, rather than a
+// bare 403, since the useful next step for a client hitting this by mistake
+// is "log in as the right kind of account", not a dead-end error page.
+//
+// Same registration-order requirement as the doc-search gate above — must
+// sit before the '/' catch-all static mount.
 const BPO_GATED_PAGES = [
   '/war-rooms/bpo-war/bpo-war-room.html', '/html/war-rooms/bpo-war/bpo-war-room.html',
   '/war-rooms/bpo-war/bpo-strategist.html', '/html/war-rooms/bpo-war/bpo-strategist.html',
   '/war-rooms/bpo-war/bpo-executive-portal.html', '/html/war-rooms/bpo-war/bpo-executive-portal.html',
 ];
+const BPO_INTERNAL_ROLES = ['admin', 'manager', 'analyst'];
 app.get(BPO_GATED_PAGES, (req, res, next) => {
   const session = verifySession(getCookie(req, 'tsm_session'));
-  if (!session) {
+  const role = session ? (session.role || 'admin') : null;
+  if (!session || !BPO_INTERNAL_ROLES.includes(role)) {
     return res.redirect(`/login?next=${encodeURIComponent(req.originalUrl)}`);
   }
   next();
