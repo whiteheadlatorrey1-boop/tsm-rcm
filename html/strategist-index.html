@@ -2250,7 +2250,24 @@ Your role is to provide strategic, board-level counsel that draws connections AC
 #tsm-ai-msgs::-webkit-scrollbar{width:2px}
 #tsm-ai-msgs::-webkit-scrollbar-thumb{background:rgba(0,229,255,0.15)}
 </style>
+<script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
 <script>
+// Collects real, already-fired relay state from this browser session — whatever verticals the
+// user has actually touched (same-origin localStorage/sessionStorage, populated by each war room
+// via TSM.relay.write()). Domains with no live payload are simply omitted, never padded.
+function tsmCollectRelayState() {
+  var state = {};
+  try {
+    if (!window.TSM || !window.TSM.relay) return state;
+    var domains = window.TSM.relay.domains || [];
+    domains.forEach(function (domain) {
+      var payload = window.TSM.relay.read(domain);
+      if (payload) state[domain] = payload;
+    });
+  } catch (e) { /* relay core not loaded on this page yet — send empty state, server handles it */ }
+  return state;
+}
+
 async function tsmAsk() {
   var input = document.getElementById('tsm-ai-input');
   var msgs = document.getElementById('tsm-ai-msgs');
@@ -2271,7 +2288,7 @@ async function tsmAsk() {
     var res = await fetch('/api/strategist/query', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ question: q, app: 'strategist', maxTokens: 1024 })
+      body: JSON.stringify({ question: q, app: 'strategist', maxTokens: 1024, relayState: tsmCollectRelayState() })
     });
     var data = await res.json();
     var text = data.answer || data.response || 'No response.';
@@ -2302,7 +2319,7 @@ if (typeof callAI === 'undefined') {
       var res = await fetch('/api/strategist/query', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ question: userMessage, context: systemPrompt, app: 'strategist', maxTokens: 1024 })
+        body: JSON.stringify({ question: userMessage, context: systemPrompt, app: 'strategist', maxTokens: 1024, relayState: tsmCollectRelayState() })
       });
       var data = await res.json();
       var text = data.answer || data.response || 'No response.';

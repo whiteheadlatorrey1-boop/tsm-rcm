@@ -393,6 +393,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--mono);min-height:1
   </div>
 </div>
 
+<script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
 <script>
 /* ══════════════════════════════════════════════
    DATA
@@ -856,12 +857,24 @@ function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 /* ══════════════════════════════════════════════
    AI CALL (live server)
 ══════════════════════════════════════════════ */
+function suiteBuilderRelayState(){
+  var state = {};
+  try {
+    if (!window.TSM || !window.TSM.relay) return state;
+    (window.TSM.relay.domains || []).forEach(function (domain) {
+      var payload = window.TSM.relay.read(domain);
+      if (payload) state[domain] = payload;
+    });
+  } catch (e) { /* relay core not loaded — server treats missing relayState as no live data */ }
+  return state;
+}
+
 async function callTSMAI(prompt, onToken){
   try{
     const res = await fetch('/api/strategist/query',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({question:prompt, maxTokens:1024})
+      body:JSON.stringify({question:prompt, maxTokens:1024, relayState: suiteBuilderRelayState()})
     });
     const data = await res.json();
     const text = data.answer||data.response||'No response.';

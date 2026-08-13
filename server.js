@@ -1994,9 +1994,57 @@ app.post('/api/schools/query', async (req, res) => {
   catch (e) { return res.status(500).json({ ok: false, error: e.message }); }
 });
 
+// Sovereign Strategist cross-domain query.
+// Real per-vertical state is woven in from two honest sources — nothing here is invented:
+//   1) TSM_MEMORY — server-authoritative vertical memory (today: healthcare's node/strategist/exec chain)
+//   2) req.body.relayState — live browser-session relay reads the caller collected via TSM.relay.read()
+//      for whatever verticals that browser session has actually touched (see html/strategist-index.html)
+// Any vertical with no data in either source is left OUT of the state block rather than padded with
+// a placeholder, and the model is told explicitly not to invent state for verticals not listed.
+function buildCrossDomainStateBlock(relayState) {
+  const lines = [];
+  const hc = TSM_MEMORY.healthcare;
+  const hcNodeCount = hc ? Object.keys(hc.nodes || {}).length : 0;
+  if (hc && (hcNodeCount || hc.hcStrategist || hc.mainStrategist || hc.executive)) {
+    lines.push('HEALTHCARE (server memory, ' + hcNodeCount + ' node report(s) on file): ' +
+      JSON.stringify({
+        nodeCount: hcNodeCount,
+        hcStrategist: hc.hcStrategist,
+        mainStrategist: hc.mainStrategist,
+        executive: hc.executive
+      }).slice(0, 2000));
+  }
+  if (relayState && typeof relayState === 'object') {
+    for (const domain of Object.keys(relayState)) {
+      const payload = relayState[domain];
+      if (!payload) continue; // no real data for this domain this session — omit, don't fabricate
+      lines.push(domain + ' (live relay, current browser session): ' + JSON.stringify(payload).slice(0, 800));
+    }
+  }
+  if (!lines.length) {
+    return '\n\nLIVE CROSS-DOMAIN STATE: none available this session — no vertical has produced live ' +
+      'relay or memory data yet. Answer from general expertise, and say so plainly if the question ' +
+      'depends on figures that would need live data.';
+  }
+  return '\n\nLIVE CROSS-DOMAIN STATE (real, session-sourced — verticals not listed here have no live ' +
+    'data this session; do not invent figures for them):\n' + lines.join('\n');
+}
+
 app.post('/api/strategist/query', async (req, res) => {
-  try { var a = await groqChat(SP.strategist, req.body.question || req.body.query || '', req.body.maxTokens || 700); return res.json({ ok: true, answer: a, createdAt: new Date().toISOString() }); }
-  catch (e) { return res.status(500).json({ ok: false, error: e.message }); }
+  try {
+    const question = (req.body.question || req.body.query || req.body.message || '').toString();
+    if (!question.trim()) return res.status(400).json({ ok: false, error: 'question required' });
+    const maxTokens = req.body.maxTokens || req.body.max_tokens || 700;
+    const appContext = (req.body.context || req.body.system || '').toString();
+    const systemPrompt = appContext ? SP.strategist + '\n\n' + appContext : SP.strategist;
+    const userMessage = question + buildCrossDomainStateBlock(req.body.relayState);
+
+    const a = await groqChat(systemPrompt, userMessage, maxTokens);
+    return res.json({ ok: true, answer: a, response: a, content: a, text: a, reply: a, output: a, createdAt: new Date().toISOString() });
+  } catch (e) {
+    console.error('STRATEGIST QUERY ERROR:', e.message);
+    return res.status(500).json({ ok: false, error: e.message });
+  }
 });
 
 // ── MISC ROUTES ───────────────────────────────────────────────────────────────
