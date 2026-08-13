@@ -350,21 +350,13 @@ async function runPack(){
   try{
     // Mortgage-only regulatory context (RESPA/TILA/ECOA/HMDA + AZ DIFI) must not
     // leak into non-mortgage packs (Insurance, Legal) — they run on their own
-    // domain-specific systemPrompt instead. Explicit list rather than a naming
-    // convention, since not every pack key is prefixed by vertical.
-    const NON_MORTGAGE_PACKS = new Set([
-      // Tier 3: Insurance Operations Rescue Packs
-      'claims-denial-rescue', 'appeal-window-rescue', 'coverage-gap-rescue',
-      'dme-claim-rescue', 'ap-aging-recovery', 'era-reconciliation',
-      'underwriting-risk-rescue', 'compliance-audit-rescue', 'ce-renewal-rescue',
-      'insurance-fraud-investigation',
-      // Legal Matter Rescue Packs
-      'legal-complaint-defense', 'legal-contract-breach-audit', 'legal-motion-response',
-      'legal-discovery-audit', 'legal-demand-letter-response', 'legal-med-records-review',
-      'legal-liability-incident-review', 'legal-employment-claim-defense',
-      'legal-sol-deadline-rescue', 'legal-ops-scorecard'
-    ]);
-    const usesMortgageRegContext = !NON_MORTGAGE_PACKS.has(packKey);
+    // domain-specific systemPrompt instead. Driven by each pack's own
+    // `vertical` field in pack-configs.js (self-maintaining: a new pack gets
+    // the correct behavior automatically from its vertical, no separate list
+    // to remember to update here) rather than a hand-maintained key list that
+    // silently goes stale — and defaults closed (no splice) if a pack is ever
+    // missing a vertical, so a forgotten field fails safe instead of leaking.
+    const usesMortgageRegContext = config.vertical === 'mortgage';
     const systemPrompt = usesMortgageRegContext
       ? config.systemPrompt + '\n\n' + getRegulatoryContext(packKey, { includeAZ: true })
       : config.systemPrompt;
