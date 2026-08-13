@@ -1474,7 +1474,31 @@ function launchWarRoom(vertical,docId){
     source:'client-access',timestamp:Date.now(),
     explainContract:doc._ext&&doc._ext.explainContract||{}
   });
-  try{;;TSM_KERNEL.setDoc(room.routeId,syntheticText);}catch(e){}
+  // Seed the war room being opened with this doc's context. Each war room's
+  // own "Doc Search relay — populate from redispatch" block reads its own
+  // localStorage key on load (mapped below to match each destination's
+  // actual read contract — most read `.summary`, RE reads `.docText` off a
+  // differently-named key). Previously this called TSM_KERNEL.setDoc(), but
+  // TSM_KERNEL was never loaded on this page AND never exposed a setDoc
+  // method in the first place (only setRelay/getRelay) — silently caught,
+  // so the opened war room always loaded cold with no doc pre-filled.
+  const DOCSEARCH_RELAY_KEYS={
+    fo:'tsm_fo_docsearch_relay', ins:'tsm_ins_docsearch_relay',
+    con:'tsm_con_docsearch_relay', bpo:'tsm_bpo_docsearch_relay',
+    leg:'tsm_legal_docsearch_relay', hc:'tsm_hc_docsearch_relay',
+    re:'TSM_RE_WAR_RELAY'
+  };
+  try{
+    const relayKey=DOCSEARCH_RELAY_KEYS[vertical];
+    if(relayKey){
+      const relayPayload=JSON.stringify({
+        summary:syntheticText,docText:syntheticText,
+        docType:doc.documentType,timestamp:new Date().toISOString()
+      });
+      localStorage.setItem(relayKey,relayPayload);
+      if(vertical==='re') sessionStorage.setItem(relayKey,relayPayload);
+    }
+  }catch(e){}
   emitEvent('STRATEGY_SELECTED',`War room opened: ${room.label} for ${doc.fileName}`,vertical);
   addTimelineEntry('STRATEGY_SELECTED',`Launched ${room.label} for ${doc.fileName}`,vertical,[VERTICALS[vertical]?.label||vertical],'gold');
   window.open(room.url,'_blank');
