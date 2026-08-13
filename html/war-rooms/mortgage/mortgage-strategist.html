@@ -326,11 +326,38 @@ function render(){
     html += `<div class="ai-box"><strong style="color:var(--gold);font-family:'Orbitron',sans-serif;font-size:.65rem;letter-spacing:.1em;display:block;margin-bottom:8px;">AI PIPELINE ANALYSIS</strong>${renderEngineOutput(data.ai_summary)}</div>`;
   }
 
+  html += `<div class="ai-box" id="strategistBncaBox" style="display:none;"></div>`;
+
   html += renderWipBoard(data.loan_wip);
   html += renderBusinessImpactDelta(data);
   html += renderActionQueue(data.records, breachIds);
 
   document.getElementById('wrap').innerHTML = html;
+  loadStrategistBnca();
+}
+
+// ── STRATEGIST BNCA SYNTHESIS (calls the new mortgage-strategist AI chain) ──
+function loadStrategistBnca(){
+  fetch('/api/mortgage-strategist/bnca', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({})
+  })
+    .then(r => r.json())
+    .then(res => {
+      if(!res || !res.ok || !res.result) return;
+      renderStrategistBnca(res.result);
+    })
+    .catch(err => console.warn('[Mortgage Strategist BNCA]', err.message));
+}
+
+function renderStrategistBnca(result){
+  const box = document.getElementById('strategistBncaBox');
+  if(!box) return;
+  box.innerHTML = `<strong style="color:var(--gold);font-family:'Orbitron',sans-serif;font-size:.65rem;letter-spacing:.1em;display:block;margin-bottom:8px;">STRATEGIST BNCA SYNTHESIS</strong>
+    <div>${escapeHtml(result.strategic_summary || '')}</div>
+    ${result.bnca ? `<div style="margin-top:10px;color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:.7rem;">${escapeHtml(result.bnca)}</div>` : ''}`;
+  box.style.display = 'block';
 }
 
 render();

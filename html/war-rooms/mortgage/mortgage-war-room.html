@@ -509,6 +509,39 @@ tr:hover td{background:rgba(212,175,55,.03)}
     } catch (err) { console.warn('[Capability Sweep Mortgage]', err.message); }
   }
 
+// ── MORTGAGE NODE → STRATEGIST → EXECUTIVE AI CHAIN (warm calls) ──────────
+  // Mirrors fireCapabilitySweep_MTG's non-blocking warm-call pattern. Fires
+  // the new node-report AI chain (loan_files/conditions/exceptions -> BNCA)
+  // so TSM_MEMORY.mortgage has real per-entity + BNCA depth before the
+  // Strategist/Executive Portal pages call their own synthesis endpoints.
+  async function fireMortgageNodeChain_MTG(payload) {
+    try {
+      const breaches = engine.getSlaBreaches('loan_files');
+      await Promise.all([
+        fetch('/api/mortgage/node/loan_files', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ records: engine.data.loan_files, breaches })
+        }).catch(err => console.warn('[Mortgage Node loan_files]', err.message)),
+        fetch('/api/mortgage/node/conditions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ records: engine.data.conditions })
+        }).catch(err => console.warn('[Mortgage Node conditions]', err.message)),
+        fetch('/api/mortgage/node/exceptions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ records: engine.data.exceptions.filter(e => e.stage !== 'remediated') })
+        }).catch(err => console.warn('[Mortgage Node exceptions]', err.message))
+      ]);
+      await fetch('/api/mortgage/bnca', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ financials: engine.getFinancialSummary(), kpis: payload.kpis })
+      }).catch(err => console.warn('[Mortgage BNCA]', err.message));
+    } catch (err) { console.warn('[Mortgage Node Chain]', err.message); }
+  }
+
   function relayToStrategist() {
     const aiText = document.getElementById('aiOutput').textContent;
     const payload = engine.buildRelayPayload(aiText.startsWith('Run analysis') ? null : aiText);
@@ -516,6 +549,7 @@ tr:hover td{background:rgba(212,175,55,.03)}
     payload.anomalies = mtgBuildSentinelAnomalies();
     engine.saveToStorage();
     fireCapabilitySweep_MTG(payload);
+    fireMortgageNodeChain_MTG(payload);
     try {
       localStorage.setItem('TSM_MORTGAGE_STRATEGIST_RELAY', JSON.stringify(payload));
       if (window.TSM && window.TSM.relay && window.TSM.relay.write) {

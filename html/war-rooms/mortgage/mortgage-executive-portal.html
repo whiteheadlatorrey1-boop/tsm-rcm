@@ -417,6 +417,8 @@ function render(){
     html += `<div class="ai-box"><strong style="color:var(--gold);font-family:'Orbitron',sans-serif;font-size:.65rem;letter-spacing:.1em;display:block;margin-bottom:8px;">EXECUTIVE RECOMMENDATION</strong>${renderEngineOutput(data.ai_summary)}</div>`;
   }
 
+  html += `<div class="ai-box" id="execSynthesisBox" style="display:none;"></div>`;
+
   html += renderRiskRegister(data.financials);
   html += renderFunnel(data.loan_wip, data.financials);
 
@@ -433,6 +435,32 @@ function render(){
 
   document.getElementById('wrap').innerHTML = html;
   loadApprovalRate();
+  loadExecutiveSynthesis();
+}
+
+// ── EXECUTIVE PORTAL AI SYNTHESIS (calls the new mortgage executive-portal chain) ──
+function loadExecutiveSynthesis(){
+  fetch('/api/mortgage/executive-portal', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({})
+  })
+    .then(r => r.json())
+    .then(res => {
+      if(!res || !res.ok || !res.result) return;
+      renderExecutiveSynthesis(res.result);
+    })
+    .catch(err => console.warn('[Mortgage Executive Portal Synthesis]', err.message));
+}
+
+function renderExecutiveSynthesis(result){
+  const box = document.getElementById('execSynthesisBox');
+  if(!box) return;
+  box.innerHTML = `<strong style="color:var(--gold);font-family:'Orbitron',sans-serif;font-size:.65rem;letter-spacing:.1em;display:block;margin-bottom:8px;">CFO DECISION SUMMARY</strong>
+    <div>${escapeHtml(result.decision_summary || '')}</div>
+    ${result.bnca_recommendation ? `<div style="margin-top:10px;">${escapeHtml(result.bnca_recommendation)}</div>` : ''}
+    ${result.next_step ? `<div style="margin-top:10px;color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:.7rem;">NEXT STEP: ${escapeHtml(result.next_step)}</div>` : ''}`;
+  box.style.display = 'block';
 }
 
 render();
