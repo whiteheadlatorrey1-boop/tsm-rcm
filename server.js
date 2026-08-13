@@ -353,7 +353,8 @@ global.MUSIC_SUITE_STATE = global.MUSIC_SUITE_STATE || {
   artistsOnline: 12, releasesDropping: 3, monthlyStreams: '84M', revenueMTD: 847400, pipelineValue: 2400000, aiStatus: 'online'
 };
 const TSM_MEMORY = global.__TSM_MEMORY__ = global.__TSM_MEMORY__ || {
-  healthcare: { nodes: {}, hcStrategist: null, mainStrategist: null, executive: null }
+  healthcare: { nodes: {}, hcStrategist: null, mainStrategist: null, executive: null },
+  construction: { nodes: {}, strategist: null, bnca: null, executive: null }
 };
 // Generic per-vertical memory for verticals other than healthcare (which keeps its richer,
 // purpose-built shape above). Each entry is a small, real, capped log of what that vertical's
@@ -1331,6 +1332,107 @@ app.post('/api/construction/query', async (req, res) => {
     return res.status(500).json({ ok: false, error: e.message, detail: e.stack?.slice(0,200) });
   }
 });
+
+// ── CONSTRUCTION NODE → STRATEGIST → EXECUTIVE CHAIN ──────────────────────────
+// Mirrors the healthcare hcNodeReports / TSM_MEMORY.healthcare.nodes pattern:
+// war-room nodes (CON-CORE, ZERO-TRUST, TAX-INTEL, COMPLIANCE) push raw findings,
+// an AI pass turns each into a structured node result, a command-level BNCA
+// synthesizes across nodes, the Construction Strategist adds strategic framing,
+// and the Executive Portal turns that into a CFO/decision-maker-ready summary.
+const constructionNodeReports = {}; // keyed by nodeId, raw ingestion (parallel to hcNodeReports)
+
+app.post('/api/construction/node-report', (req, res) => {
+  try {
+    const { nodeId, nodeLabel, report, analysisText, costImpact, scheduleImpact, permitIds, severity, kpi, ts } = req.body || {};
+    if (!nodeId) return res.status(400).json({ ok: false, error: 'nodeId required' });
+    constructionNodeReports[nodeId] = {
+      nodeId,
+      nodeLabel: nodeLabel || nodeId,
+      report: report || '',
+      analysisText: analysisText || '',
+      costImpact: costImpact || null,
+      scheduleImpact: scheduleImpact || null,
+      permitIds: permitIds || [],
+      severity: severity || 'INFO',
+      kpi: kpi || {},
+      ts: ts || Date.now(),
+      receivedAt: Date.now()
+    };
+    console.log('[CONSTRUCTION NODE REPORT] stored:', nodeId, 'severity:', severity);
+    return res.json({ ok: true, nodeId, stored: true });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.get('/api/construction/node-reports', (req, res) => {
+  try {
+    const reports = Object.values(constructionNodeReports).sort((a, b) => b.ts - a.ts);
+    return res.json({ ok: true, reports, count: reports.length });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.delete('/api/construction/node-reports', (req, res) => {
+  const { nodeId } = req.body || req.query || {};
+  if (nodeId) {
+    delete constructionNodeReports[nodeId];
+    return res.json({ ok: true, cleared: nodeId });
+  }
+  Object.keys(constructionNodeReports).forEach(k => delete constructionNodeReports[k]);
+  return res.json({ ok: true, cleared: 'all' });
+});
+
+// AI-analyzed per-node result, written into TSM_MEMORY.construction.nodes[node]
+// so downstream BNCA/strategist/executive synthesis has real per-node state to read.
+app.post('/api/construction/node/:node', async (req, res) => {
+  const node = req.params.node;
+  const payload = req.body || {};
+  const result = await tsmAIJSON(
+    `Analyze construction node ${node}. Payload: ${JSON.stringify(payload).slice(0, 4000)}. Return JSON: {"node":"${node}","status":"READY|WATCH|RISK","top_issue":"...","findings":[],"actions":[],"cost_impact":"...","schedule_impact":"...","bnca":"...","owner_lane":"...","confidence":0}`,
+    { node, status: 'WATCH', top_issue: 'Node requires review', findings: [], actions: [], cost_impact: 'Unknown', schedule_impact: 'Unknown', bnca: 'Review node output.', owner_lane: 'project manager', confidence: 80 }
+  );
+  TSM_MEMORY.construction.nodes[node] = result;
+  res.json({ ok: true, node, result, ts: new Date().toISOString() });
+});
+
+// Command-level BNCA across all reporting nodes (CON-CORE, ZERO-TRUST, TAX-INTEL, COMPLIANCE).
+app.post('/api/construction/bnca', async (req, res) => {
+  const payload = req.body || {};
+  const result = await tsmAIJSON(
+    `Construction Command BNCA. Nodes: ${JSON.stringify(TSM_MEMORY.construction.nodes).slice(0, 6000)}. Payload: ${JSON.stringify(payload).slice(0, 4000)}. Return JSON: {"suite":"construction-command","top_issue":"...","risk_level":"READY|WATCH|RISK|URGENT","node_summary":[],"bnca":"...","owner_lanes":[],"hitl_review_required":true,"confidence":0}`,
+    { suite: 'construction-command', top_issue: 'Review needed', risk_level: 'WATCH', node_summary: [], bnca: 'Prioritize schedule and cost-overrun risk nodes.', owner_lanes: ['project manager'], hitl_review_required: true, confidence: 82 }
+  );
+  TSM_MEMORY.construction.bnca = result;
+  res.json({ ok: true, result, ts: new Date().toISOString() });
+});
+
+// Construction Strategist synthesis — mirrors /api/hc-strategist/bnca. Reads the full
+// construction memory (nodes + command bnca) and produces strategic framing for relay
+// into the Construction Strategist page and, eventually, the Sovereign Strategist.
+app.post('/api/construction-strategist/bnca', async (req, res) => {
+  const payload = req.body || {};
+  const result = await tsmAIJSON(
+    `Construction Strategist synthesis. Memory: ${JSON.stringify(TSM_MEMORY.construction).slice(0, 8000)}. Payload: ${JSON.stringify(payload).slice(0, 4000)}. Return JSON: {"suite":"construction-strategist","strategic_summary":"...","priority_actions":[],"bnca":"...","relay_to_executive":true,"confidence":0}`,
+    { suite: 'construction-strategist', strategic_summary: 'Construction Strategist review needed.', priority_actions: [], bnca: 'Relay to Executive Portal.', relay_to_executive: true, confidence: 82 }
+  );
+  TSM_MEMORY.construction.strategist = result;
+  res.json({ ok: true, result, ts: new Date().toISOString() });
+});
+
+// Executive Portal synthesis — mirrors /api/executive/portal but scoped to construction
+// memory instead of healthcare, so the exec portal gets a real CFO-ready decision summary.
+app.post('/api/construction/executive-portal', async (req, res) => {
+  const payload = req.body || {};
+  const result = await tsmAIJSON(
+    `Construction Executive Portal. Memory: ${JSON.stringify(TSM_MEMORY.construction).slice(0, 10000)}. Return JSON: {"portal":"executive","audience":"CFO / Decision Maker","decision_summary":"...","bnca_recommendation":"...","hitl_script":"...","approval_path":[],"next_step":"...","confidence":0}`,
+    { portal: 'executive', audience: 'CFO / Decision Maker', decision_summary: 'Construction BNCA ready.', bnca_recommendation: 'Approve pilot workflow.', hitl_script: 'Action-ready recommendation and owner lanes for approval.', approval_path: ['Project Manager', 'CFO'], next_step: 'Book walkthrough or approve 30-day pilot.', confidence: 85 }
+  );
+  TSM_MEMORY.construction.executive = result;
+  res.json({ ok: true, result, ts: new Date().toISOString() });
+});
+// ── END CONSTRUCTION NODE → STRATEGIST → EXECUTIVE CHAIN ──────────────────────
 
 app.post('/api/o2c/query', async (req, res) => {
   const { orders, kpis, sla_breaches, stage_distribution, context, maxTokens } = req.body || {};
