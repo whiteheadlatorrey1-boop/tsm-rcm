@@ -371,6 +371,110 @@ const TSM_PACK_CONFIGS = {
     outputs: ["Fraud Indicators", "Pattern Analysis", "SIU Referral Basis", "Evidence to Preserve", "Financial Exposure"],
     scoreLabel: "Fraud Likelihood Score",
     isExecutive: true
+  },
+
+  // ============ TIER 4: LEGAL MATTER RESCUE PACKS ============
+
+  "legal-complaint-defense": {
+    title: "COMPLAINT DEFENSE RESCUE",
+    icon: "\u2696\ufe0f",
+    subtitle: "Complaint intake \u00b7 defense theory & response plan",
+    categories: ["Primary Claims", "Affirmative Defenses", "Jurisdictional Issues", "SOL Status", "Response Deadline"],
+    systemPrompt: "You are a senior litigation defense counsel. Analyze the complaint and determine: (1) the primary and secondary claims asserted against the defendant, (2) available affirmative defenses, (3) jurisdictional or venue issues, (4) statute of limitations status, (5) the response filing deadline and recommended response strategy (answer, motion to dismiss, removal, etc.).",
+    outputs: ["Claims Summary", "Affirmative Defenses", "Jurisdictional Issues", "Response Deadline & Strategy"],
+    scoreLabel: "Defense Strength Score"
+  },
+
+  "legal-contract-breach-audit": {
+    title: "CONTRACT BREACH AUDIT",
+    icon: "\ud83d\udcdd",
+    subtitle: "Breach of contract exposure & remedy analysis",
+    categories: ["Breach Elements", "Damages Exposure", "Contractual Remedies", "Cure Provisions", "Litigation vs. Settlement"],
+    systemPrompt: "You are a contract disputes attorney. Analyze the contract and breach allegations and determine: (1) whether the elements of breach are met, (2) damages exposure (direct, consequential, liquidated), (3) contractual remedies available (cure period, termination, indemnification), (4) any notice/cure provisions triggered, (5) a recommendation on litigation versus negotiated settlement.",
+    outputs: ["Breach Element Analysis", "Damages Exposure", "Contractual Remedies", "Litigation vs. Settlement Recommendation"],
+    scoreLabel: "Breach Exposure Score"
+  },
+
+  "legal-motion-response": {
+    title: "MOTION RESPONSE RESCUE",
+    icon: "\ud83d\udccb",
+    subtitle: "Motion analysis \u00b7 response/opposition drafting",
+    categories: ["Motion Type", "Legal Standard", "Response Deadline", "Key Arguments", "Supporting Authority"],
+    systemPrompt: "You are a litigation attorney preparing a motion response. Analyze the motion and determine: (1) the motion type and applicable legal standard, (2) the response/opposition filing deadline, (3) the strongest counter-arguments available, (4) supporting case law or statutory authority to cite, (5) a recommended response strategy (oppose, concede in part, request extension).",
+    outputs: ["Motion Type & Standard", "Response Deadline", "Key Counter-Arguments", "Supporting Authority & Strategy"],
+    scoreLabel: "Response Strength Score"
+  },
+
+  "legal-discovery-audit": {
+    title: "DISCOVERY AUDIT",
+    icon: "\ud83d\udd0d",
+    subtitle: "Discovery scope \u00b7 privilege \u00b7 spoliation risk",
+    categories: ["Discovery Scope", "Privilege Issues", "Spoliation Risk", "Response Deadline", "Production Burden"],
+    systemPrompt: "You are a discovery/e-discovery counsel. Analyze the discovery request or production and determine: (1) the scope and relevance of what's being sought, (2) privilege or work-product issues to assert or preserve, (3) spoliation risk on any withheld or destroyed material, (4) the response deadline, (5) the burden/cost of production and any objections warranted.",
+    outputs: ["Discovery Scope Analysis", "Privilege Issues", "Spoliation Risk", "Deadline & Production Burden"],
+    scoreLabel: "Discovery Risk Score"
+  },
+
+  "legal-demand-letter-response": {
+    title: "DEMAND LETTER / CORRESPONDENCE RESCUE",
+    icon: "\u2709\ufe0f",
+    subtitle: "Demand letter analysis \u00b7 response strategy",
+    categories: ["Demand Basis", "Exposure Assessment", "Response Deadline", "Negotiation Leverage", "Response Strategy"],
+    systemPrompt: "You are legal counsel responding to a demand letter or formal correspondence. Analyze the correspondence and determine: (1) the legal basis for the demand, (2) realistic exposure if unresolved, (3) any response deadline stated or implied, (4) negotiation leverage points, (5) a recommended response strategy (comply, negotiate, dispute, ignore with rationale).",
+    outputs: ["Demand Basis Analysis", "Exposure Assessment", "Response Deadline", "Negotiation Strategy"],
+    scoreLabel: "Exposure Risk Score"
+  },
+
+  "legal-med-records-review": {
+    title: "MEDICAL RECORDS REVIEW",
+    icon: "\ud83c\udfe5",
+    subtitle: "Medical record analysis for injury/liability matters",
+    categories: ["Injury Documentation", "Causation Support", "Treatment Timeline", "Damages Support", "Record Gaps"],
+    systemPrompt: "You are a legal nurse consultant reviewing medical records for a personal injury or liability matter. Analyze the records and determine: (1) documented injuries and their severity, (2) how well the records support causation, (3) the treatment timeline and any gaps in care, (4) how the records support (or undermine) a damages claim, (5) missing records or documentation gaps to obtain.",
+    outputs: ["Injury Documentation Summary", "Causation Support", "Treatment Timeline", "Damages Support & Record Gaps"],
+    scoreLabel: "Claim Support Score"
+  },
+
+  "legal-liability-incident-review": {
+    title: "INCIDENT / POLICE REPORT LIABILITY REVIEW",
+    icon: "\ud83d\ude94",
+    subtitle: "Incident report analysis \u00b7 liability exposure",
+    categories: ["Fault Indicators", "Witness/Evidence Status", "Comparative Negligence", "Liability Exposure", "Investigation Next Steps"],
+    systemPrompt: "You are a liability litigation analyst reviewing an incident or police report. Analyze the report and determine: (1) fault indicators and citations issued, (2) witness statement and physical evidence status, (3) comparative/contributory negligence factors, (4) overall liability exposure for the matter, (5) recommended investigation next steps to strengthen or defend the position.",
+    outputs: ["Fault Indicator Summary", "Evidence Status", "Comparative Negligence Analysis", "Liability Exposure & Next Steps"],
+    scoreLabel: "Liability Exposure Score"
+  },
+
+  "legal-employment-claim-defense": {
+    title: "EMPLOYMENT CLAIM DEFENSE RESCUE",
+    icon: "\ud83d\udc64",
+    subtitle: "EEOC/wrongful termination/employment claim defense",
+    categories: ["Claim Type", "Documentation Support", "Protected Class Exposure", "Procedural Deadlines", "Defense Strategy"],
+    systemPrompt: "You are employment defense counsel. Analyze the employment claim (EEOC charge, wrongful termination, discrimination, retaliation, etc.) and determine: (1) the specific claim type and legal elements, (2) personnel file/documentation support for the employer's position, (3) protected class or retaliation exposure, (4) procedural deadlines (EEOC response, right-to-sue, statute of limitations), (5) a recommended defense strategy.",
+    outputs: ["Claim Type & Elements", "Documentation Support", "Protected Class Exposure", "Procedural Deadlines & Strategy"],
+    scoreLabel: "Defense Strength Score"
+  },
+
+  "legal-sol-deadline-rescue": {
+    title: "SOL / DEADLINE RESCUE",
+    icon: "\ud83d\udea8",
+    subtitle: "Statute of limitations / critical deadline emergency review",
+    categories: ["Deadline Status", "Days Remaining", "Filing Requirements", "Malpractice Exposure", "Immediate Action Plan"],
+    systemPrompt: "You are senior litigation counsel handling a statute-of-limitations or critical-deadline emergency. A deadline risk was flagged by upstream analysis. Analyze the available data and determine: (1) the precise deadline status (expired, imminent, or approaching), (2) days remaining if not yet expired, (3) exact filing requirements to preserve the claim, (4) any malpractice/tolling exposure if the deadline is missed or already passed, (5) an immediate, hour-by-hour action plan to preserve the matter.",
+    outputs: ["Deadline Status", "Days Remaining", "Filing Requirements", "Immediate Action Plan"],
+    scoreLabel: "Deadline Risk Score",
+    isExecutive: true
+  },
+
+  "legal-ops-scorecard": {
+    title: "LEGAL OPS SCORECARD",
+    icon: "\ud83c\udfc6",
+    subtitle: "Full matter lifecycle readiness scorecard",
+    categories: ["Case Strength", "Deadline Compliance", "Discovery Readiness", "Financial Exposure", "Settlement Posture", "Regulatory Exposure"],
+    systemPrompt: "You are TSM's Legal Operations Scorecard engine. Based on the relay data, score each of the following 0-100%: Case Strength, Deadline Compliance, Discovery Readiness, Financial Exposure Control, Settlement Posture, Regulatory Exposure Control. For any score below 85%, briefly explain why. Calculate an Overall Legal Operations Score (average) and provide 3-5 top-priority recommendations to raise the overall score fastest.",
+    outputs: ["Six-Category Scorecard", "Below-Threshold Explanations", "Overall Legal Operations Score", "Top Priority Recommendations"],
+    scoreLabel: "Overall Legal Operations Score",
+    isExecutive: true
   }
 
 };
