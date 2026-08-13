@@ -863,7 +863,33 @@ async function runConstructionBNCA(){
     conXPRenderExplain(conObj2);
     lastConObj = conObj2;
     localStorage.setItem('tsm_construction_strategist_output',JSON.stringify({summary:out.textContent,scenario:mission.scenarioId||'manual',timestamp:Date.now()}));
+    reportStrategistToNodeChain(out.textContent, conObj2);
   }catch(e){out.textContent='Error: '+e.message;}
+}
+
+// Relay the strategist's finished BNCA output into the server-side node-report
+// chain (fire-and-forget) so /api/construction/executive-portal has real
+// strategist-level input, without touching the explainability panel above.
+function reportStrategistToNodeChain(summaryText, explainObj){
+  try{
+    fetch('/api/construction/node-report', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        nodeId: 'strategist',
+        nodeLabel: 'Construction Strategist',
+        report: summaryText || '',
+        severity: (explainObj && explainObj.recommendedActions && explainObj.recommendedActions.length) ? 'WATCH' : 'INFO',
+        kpi: {
+          confidence: explainObj?.confidence,
+          noActionRevLoss: explainObj?.noActionRevLoss,
+          actionRevLoss: explainObj?.actionRevLoss,
+          recoveryTime: explainObj?.recoveryTime
+        },
+        ts: Date.now()
+      })
+    }).catch(() => { /* fire-and-forget, non-blocking */ });
+  }catch(e){ /* noop */ }
 }
 // ═══════════════════════════════════════════════════
 // WAR ROOM RELAY RECEIVER

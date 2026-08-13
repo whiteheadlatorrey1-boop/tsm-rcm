@@ -1421,6 +1421,7 @@ async function fireEngines() {
   document.getElementById('fireBtn').disabled=false;
   addLog('All 6 Engines Complete','App dispatch ready — escalate to Strategist','p');
   storeSession(e);
+  reportConstructionNodes(e);
   fireCapabilitySweep(e);
   showAnomalyAdvisorPanel(e, docText);
   // Auto-escalate to Strategist disabled by design: this was firing 2s after
@@ -1428,6 +1429,57 @@ async function fireEngines() {
   // Advisor reveal and the Build Remediation Mission / permits-routing flow
   // before the user could interact with it. Escalation is now manual only
   // via the "⚡ ESCALATE TO STRATEGIST →" button.
+}
+
+// ═══════════════════════════════
+// NODE REPORTS → server-side construction chain
+// Fires each of the 6 engine outputs into /api/construction/node-report
+// (raw ingestion, parallel to the healthcare hcNodeReports pattern), then
+// warms the command-level BNCA so the Construction Strategist / Executive
+// Portal have real synthesized state to read instead of a flat query log.
+// Fire-and-forget: never blocks the UI, never throws into the caller.
+// ═══════════════════════════════
+const CONSTRUCTION_NODE_MAP = {
+  1: { nodeId: 'doc-intel',      nodeLabel: 'Document Intelligence' },
+  2: { nodeId: 'fieldops',       nodeLabel: 'FieldOps Analysis' },
+  3: { nodeId: 'financial-gaap', nodeLabel: 'Financial Impact · GAAP' },
+  4: { nodeId: 'legal',          nodeLabel: 'Legal Command' },
+  5: { nodeId: 'compliance',     nodeLabel: 'Compliance Shield' },
+  6: { nodeId: 'bnca-dispatch',  nodeLabel: 'BNCA Executive Dispatch' }
+};
+function reportConstructionNodes(e){
+  try{
+    const riskEl = document.getElementById('kpiRisk');
+    const riskScore = riskEl ? parseInt(riskEl.textContent) : NaN;
+    const severity = !isNaN(riskScore) ? (riskScore > 70 ? 'CRITICAL' : riskScore > 40 ? 'WATCH' : 'INFO') : 'INFO';
+    const exposure = document.getElementById('snapExposure')?.textContent || '';
+    const deadline = document.getElementById('snapDeadline')?.textContent || '';
+
+    Object.keys(CONSTRUCTION_NODE_MAP).forEach(i => {
+      const { nodeId, nodeLabel } = CONSTRUCTION_NODE_MAP[i];
+      const report = e?.[i] || '';
+      if (!report) return;
+      fetch('/api/construction/node-report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nodeId, nodeLabel, report,
+          costImpact: exposure || null,
+          scheduleImpact: deadline || null,
+          severity,
+          kpi: { docType: selectedDocType },
+          ts: Date.now()
+        })
+      }).catch(() => { /* fire-and-forget, non-blocking */ });
+    });
+
+    // Warm the command-level BNCA once raw reports are in flight.
+    fetch('/api/construction/bnca', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ docType: selectedDocType, exposure, deadline, severity })
+    }).catch(() => { /* fire-and-forget */ });
+  }catch(err){ console.warn('reportConstructionNodes error:', err); }
 }
 
 // ═══════════════════════════════
