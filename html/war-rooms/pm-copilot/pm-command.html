@@ -180,6 +180,65 @@ function fmtMoney(n){
 
 let model = null, engine = null, activeTab = 'workorders';
 
+// ── DOC SEARCH RELAY (inbound) ─────────────────────────────────────────────
+// Mirrors insurance-war-room.html's two-key pattern so PM Copilot behaves
+// the same as the fully-wired verticals in tsm-doc-search-multi.html, not
+// the dead-entry pattern Schools/HotelOps currently have there.
+//
+// Key 1 — TSM_PM_WAR_RELAY / tsm_pm_war_relay: set by launchWarRoom() when a
+// user clicks "Send to War Room" on a specific document card. Just pastes
+// the document text into #docIntake for manual review — no auto-fire.
+(function(){
+  try {
+    const raw = sessionStorage.getItem('TSM_PM_WAR_RELAY') || localStorage.getItem('tsm_pm_war_relay');
+    if (!raw) return;
+    const relay = JSON.parse(raw);
+    if (!relay.docText) return;
+    setTimeout(() => {
+      const el = document.getElementById('docIntake');
+      if (el) { el.value = relay.docText; el.dispatchEvent(new Event('input')); }
+      const banner = document.createElement('div');
+      banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:rgba(30,232,182,.12);border-bottom:1px solid rgba(30,232,182,.3);padding:7px 20px;font-family:var(--mono);font-size:10px;color:var(--accent);letter-spacing:1px;display:flex;justify-content:space-between';
+      banner.innerHTML = `<span>⚡ DOC RELAY — ${relay.docType||'DOCUMENT'} · ${relay.docText.length} chars · intake loaded</span><button onclick="this.parentElement.remove()" style="background:none;border:none;color:var(--accent);cursor:pointer">✕</button>`;
+      document.body.prepend(banner);
+      sessionStorage.removeItem('TSM_PM_WAR_RELAY');
+      localStorage.removeItem('tsm_pm_war_relay');
+    }, 300);
+  } catch(e) {}
+})();
+
+// Key 2 — tsm_pm_docsearch_relay: set by redispatch() / launchWarRoomDirect().
+// If tsm_auto_mode isn't explicitly 'off', auto-fires the same chain a user
+// would click manually: paste doc -> Run Analysis -> Relay to Strategist
+// (which itself calls pmPushToSentinel()). Waits for init()'s async engine
+// load to finish rather than assuming it's ready, since engine starts null.
+(function(){
+  try {
+    const raw = localStorage.getItem('tsm_pm_docsearch_relay');
+    if (!raw) return;
+    const relay = JSON.parse(raw);
+    if (!relay.docText) return;
+    localStorage.removeItem('tsm_pm_docsearch_relay');
+    const el = document.getElementById('docIntake');
+    if (el) el.value = relay.docText;
+    if (localStorage.getItem('tsm_auto_mode') === 'off') return;
+    let waited = 0;
+    const waitForEngine = setInterval(() => {
+      waited += 200;
+      if (engine) {
+        clearInterval(waitForEngine);
+        setTimeout(async () => {
+          if (typeof runAnalysis === 'function') await runAnalysis();
+          setTimeout(() => { if (typeof relayToStrategist === 'function') relayToStrategist(); }, 1500);
+        }, 300);
+      } else if (waited >= 10000) {
+        clearInterval(waitForEngine);
+        console.warn('[PM Copilot] doc search auto-fire gave up waiting for engine init');
+      }
+    }, 200);
+  } catch(e) { console.warn('[PM Copilot] doc search relay error:', e); }
+})();
+
 function showInitError(msg) {
   const status = document.getElementById('navStatus');
   if (status) { status.textContent = 'ENGINE: FAILED'; status.style.color = 'var(--red)'; }
