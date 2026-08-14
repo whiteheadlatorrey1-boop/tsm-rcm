@@ -426,6 +426,7 @@ var SP = {
   insurance: 'You are an insurance intelligence AI for TSM Command. Expert in P&C, life, health insurance, claims, underwriting, AZ market, NPN licensing. Be precise. OUTPUT RULES (always follow): plain "LABEL: value" or short "- bullet" lines only — never markdown tables, never pipe characters, never bold-wrapped prose paragraphs. Max ~20 words per line — conclusion only. Every requested field must still be present, just terse.',
   education: 'You are an education operations AI for TSM Command. Expert in school administration, compliance, staffing, student outcomes, budget, grants. Be strategic. OUTPUT RULES (always follow): plain "LABEL: value" or short "- bullet" lines only — never markdown tables, never pipe characters, never bold-wrapped prose paragraphs. Max ~20 words per line — conclusion only. Every requested field must still be present, just terse.',
   hospitality: 'You are a hospitality operations AI for TSM Command. Expert in hotel ops, concierge, staffing, revenue management, guest experience. Be service-oriented.',
+  pm: 'You are a Property Management AI for TSM PM Copilot. Expert in maintenance work-order triage, lease renewal strategy, vendor compliance (insurance/license lapses), and occupancy/vacancy cost analysis. Given structured unit, work-order, lease, and vendor data, KPIs, and SLA breaches, identify the highest-dollar-impact vacancies, the most urgent SLA-breached work orders, leases at risk of non-renewal, and vendor compliance gaps blocking dispatch. Recommend the specific next action per item, prioritized by dollar exposure. Reference unit/work-order/lease/vendor IDs. Be precise and operational. No preamble.',
   enterprise: 'You are a senior business strategist AI for TSM Command. Expert in enterprise strategy, GTM, operations optimization, ROI analysis. Be executive-level and direct.',
   o2c: 'You are an Order-to-Cash operations AI for TSM Command. Expert in quote-to-order, credit management, ATP/inventory allocation, shipping, invoicing, AR, and cash application. Given structured order, KPI, and SLA-breach data, identify root causes of bottlenecks, flag financial/operational risk, and recommend the specific next action for each at-risk order. Be precise and operational. No preamble.',
   crm: 'You are a CRM customer-lifecycle AI for TSM Command. Expert in lead qualification, account/opportunity management, pipeline health, case escalation, and churn risk. Given structured lead/contact/account/opportunity/case data, KPIs, and SLA-breach data, identify the highest-risk records, the root cause of stalled deals or breached cases, and the specific next action per record. Reference record IDs. Be precise and operational. No preamble.',
@@ -831,6 +832,143 @@ app.get('/api/concierge/missions/:bookingId/status-events', requireRole(BPO_INTE
     const events = await tsmLedger.conciergeListStatusEvents({ bookingId: req.params.bookingId });
     res.json({ ok: true, statusEvents: events });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// ── PM COPILOT (units / work orders / leases / vendor compliance) ──────────
+// Standalone vertical, own role gate -- not layered on BPO_INTERNAL_ROLES
+// since PM Copilot is a separate product line, not a BPO feature. Same
+// internal-ops-only reasoning as BPO/Concierge: units/leases/vendor data
+// isn't tenant- or guest-facing.
+const PM_INTERNAL_ROLES = ['admin', 'manager', 'analyst'];
+const PM_MANAGE_ROLES = ['admin', 'manager'];
+
+app.get('/api/pm/units', requireRole(PM_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const units = await tsmLedger.pmListUnits({ propertyId: req.query.propertyId, status: req.query.status });
+    res.json({ ok: true, units });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+app.get('/api/pm/units/:unitId', requireRole(PM_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const unit = await tsmLedger.pmGetUnit(req.params.unitId);
+    if (!unit) return res.status(404).json({ ok: false, error: 'Unit not found' });
+    res.json({ ok: true, unit });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// Unit roster (address, rent, occupancy status) is admin/manager territory,
+// same split BPO uses for clients vs. work items.
+app.post('/api/pm/units/:unitId', requireRole(PM_MANAGE_ROLES), async (req, res) => {
+  try {
+    const unit = await tsmLedger.pmUpsertUnit(req.params.unitId, req.body || {}, req.tsmSession.label || req.tsmSession.role);
+    res.json({ ok: true, unit });
+  } catch (e) { res.status(400).json({ ok: false, error: e.message }); }
+});
+
+// Work orders -- any internal role can create/advance one, same as BPO
+// work items; that's the normal flow of working a ticket through the
+// war room, not a manager-only action.
+app.get('/api/pm/work-orders', requireRole(PM_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const workOrders = await tsmLedger.pmListWorkOrders({ unitId: req.query.unitId, stage: req.query.stage });
+    res.json({ ok: true, workOrders });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+app.get('/api/pm/work-orders/:workOrderId', requireRole(PM_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const workOrder = await tsmLedger.pmGetWorkOrder(req.params.workOrderId);
+    if (!workOrder) return res.status(404).json({ ok: false, error: 'Work order not found' });
+    res.json({ ok: true, workOrder });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+app.post('/api/pm/work-orders/:workOrderId', requireRole(PM_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const workOrder = await tsmLedger.pmUpsertWorkOrder(req.params.workOrderId, req.body || {}, req.tsmSession.label || req.tsmSession.role);
+    res.json({ ok: true, workOrder });
+  } catch (e) { res.status(400).json({ ok: false, error: e.message }); }
+});
+
+app.get('/api/pm/work-orders/:workOrderId/status-events', requireRole(PM_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const statusEvents = await tsmLedger.pmListStatusEvents({ entityType: 'work_order', entityId: req.params.workOrderId });
+    res.json({ ok: true, statusEvents });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// Leases -- renewal decisions/notice handling are admin/manager, same as
+// BPO client management vs. general case work.
+app.get('/api/pm/leases', requireRole(PM_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const leases = await tsmLedger.pmListLeases({ unitId: req.query.unitId, stage: req.query.stage });
+    res.json({ ok: true, leases });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+app.get('/api/pm/leases/:leaseId', requireRole(PM_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const lease = await tsmLedger.pmGetLease(req.params.leaseId);
+    if (!lease) return res.status(404).json({ ok: false, error: 'Lease not found' });
+    res.json({ ok: true, lease });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+app.post('/api/pm/leases/:leaseId', requireRole(PM_MANAGE_ROLES), async (req, res) => {
+  try {
+    const lease = await tsmLedger.pmUpsertLease(req.params.leaseId, req.body || {}, req.tsmSession.label || req.tsmSession.role);
+    res.json({ ok: true, lease });
+  } catch (e) { res.status(400).json({ ok: false, error: e.message }); }
+});
+
+// Vendors -- compliance status (insurance/license) updates are
+// admin/manager, same reasoning as lease management above.
+app.get('/api/pm/vendors', requireRole(PM_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const vendors = await tsmLedger.pmListVendors({ trade: req.query.trade, stage: req.query.stage });
+    res.json({ ok: true, vendors });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+app.get('/api/pm/vendors/:vendorId', requireRole(PM_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const vendor = await tsmLedger.pmGetVendor(req.params.vendorId);
+    if (!vendor) return res.status(404).json({ ok: false, error: 'Vendor not found' });
+    res.json({ ok: true, vendor });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+app.post('/api/pm/vendors/:vendorId', requireRole(PM_MANAGE_ROLES), async (req, res) => {
+  try {
+    const vendor = await tsmLedger.pmUpsertVendor(req.params.vendorId, req.body || {}, req.tsmSession.label || req.tsmSession.role);
+    res.json({ ok: true, vendor });
+  } catch (e) { res.status(400).json({ ok: false, error: e.message }); }
+});
+
+// AI analysis endpoint -- same shape as /api/schools/analysis and
+// /api/bpo equivalents.
+app.post('/api/pm/analysis', requireRole(PM_INTERNAL_ROLES), async (req, res) => {
+  const { kpis, work_order_breaches, leases_expiring, vendor_flags, context, maxTokens } = req.body || {};
+  const summary = JSON.stringify({
+    kpis, work_order_breaches, leases_expiring, vendor_flags,
+    counts: {
+      work_order_breaches: Array.isArray(work_order_breaches) ? work_order_breaches.length : undefined,
+      leases_expiring: Array.isArray(leases_expiring) ? leases_expiring.length : undefined,
+      vendor_flags: Array.isArray(vendor_flags) ? vendor_flags.length : undefined,
+    }
+  }, null, 2);
+  const prompt = `Current PM Copilot portfolio snapshot:\n${summary}\n\n` +
+    (context ? `Additional context: ${context}\n\n` : '') +
+    `Identify the highest-dollar-impact vacancies, the most urgent SLA-breached work orders, leases at risk of non-renewal, and vendor compliance gaps blocking dispatch. Recommend the single most important next action per item, prioritized by dollar exposure. Reference unit/work-order/lease/vendor IDs.`;
+  try {
+    const answer = await groqChat(SP.pm, prompt, maxTokens || 1200);
+    recordVerticalMemory('pm', prompt, answer);
+    return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
+  } catch (e) {
+    console.error('PM ANALYSIS GROQ ERROR:', e.message);
+    return res.status(500).json({ ok: false, error: e.message });
+  }
 });
 
 app.use('/', express.static(path.join(__dirname, 'html')));
