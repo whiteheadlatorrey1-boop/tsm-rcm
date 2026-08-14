@@ -58,8 +58,9 @@ const ENTITLEMENTS = {
 
 const FULL_ACCESS_KEYS = [
   "hw","fo","ins","con","bpo","logistics","vendor","hotel","re",
-  "mortgage","schools","leg","hc","o2c","crm","approval","cpq",
-  "catalog","mdm","governance","democonsole",
+  "mortgage","pm","schools","leg","hc","o2c","crm","approval","cpq",
+  "catalog","mdm","governance","integration-hub","digital-twin",
+  "bpo-ops","democonsole",
 ];
 
 // ── Which file paths belong to which vertical ───────────────────────
@@ -78,6 +79,7 @@ const VERTICAL_PATHS = {
   hotel:  ["/html/concierge/"],
   re:     ["/html/war-rooms/re-war/"],
   mortgage: ["/html/war-rooms/mortgage/"],
+  pm:     ["/html/war-rooms/pm-copilot/"],
   schools: ["/html/war-rooms/schools-command/"],
   leg:    ["/html/war-rooms/legal-war/"],
   hc:     ["/html/healthcare/"],
