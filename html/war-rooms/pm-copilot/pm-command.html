@@ -141,12 +141,14 @@ select.stage-select{background:var(--bg3);border:1px solid var(--border);color:v
           <div class="tab" data-tab="vendors">Vendors</div>
           <div class="tab" data-tab="turnovers">Turnovers</div>
           <div class="tab" data-tab="units">Units</div>
+          <div class="tab" data-tab="iot">IoT</div>
         </div>
         <div class="tabpane active" id="pane-workorders"></div>
         <div class="tabpane" id="pane-leases"></div>
         <div class="tabpane" id="pane-vendors"></div>
         <div class="tabpane" id="pane-turnovers"></div>
         <div class="tabpane" id="pane-units"></div>
+        <div class="tabpane" id="pane-iot"></div>
       </div>
     </div>
   </div>
@@ -160,12 +162,15 @@ select.stage-select{background:var(--bg3);border:1px solid var(--border);color:v
     <div id="maintPanel" style="font-family:var(--mono);font-size:.55rem;color:var(--muted);line-height:1.8;"></div>
     <div class="rr-lbl">VENDOR COMPLIANCE EXPOSURE</div>
     <div id="vendorPanel" style="font-family:var(--mono);font-size:.55rem;color:var(--muted);line-height:1.8;"></div>
+    <div class="rr-lbl">IOT ALERTS</div>
+    <div id="iotPanel" style="font-family:var(--mono);font-size:.55rem;color:var(--muted);line-height:1.8;"></div>
     <div class="rr-lbl">TOTAL EXPOSURE</div>
     <div id="totalExposure" style="font-family:var(--display);font-size:.8rem;color:var(--accent);"></div>
   </div>
 </div>
 
 <script src="services/pm-engine.js"></script>
+<script src="services/pm-iot-engine.js"></script>
 <div id="tsm-toast"></div>
 <script>
 function showToast(msg){
@@ -182,7 +187,7 @@ function fmtMoney(n){
   return '$' + Number(n).toLocaleString('en-US', { maximumFractionDigits: 0 });
 }
 
-let model = null, engine = null, activeTab = 'workorders';
+let model = null, engine = null, iotEngine = null, activeTab = 'workorders';
 
 // ── DOC SEARCH RELAY (inbound) ─────────────────────────────────────────────
 // Mirrors insurance-war-room.html's two-key pattern so PM Copilot behaves
@@ -270,6 +275,13 @@ async function init() {
       engine.loadSampleData();
       engine.saveToStorage();
     }
+    if (typeof TSMPmIotEngine === 'undefined') throw new Error('TSMPmIotEngine is undefined — services/pm-iot-engine.js did not load');
+    iotEngine = new TSMPmIotEngine(model);
+    iotEngine.setUnits(engine.data.units);
+    if (!iotEngine.loadFromStorage()) {
+      iotEngine.loadSampleData();
+      iotEngine.saveToStorage();
+    }
     render();
   } catch (e) {
     showInitError(e.message);
@@ -280,6 +292,11 @@ document.getElementById('btnLoadSample').addEventListener('click', () => {
   if (!requireEngine()) return;
   engine.loadSampleData();
   engine.saveToStorage();
+  if (iotEngine) {
+    iotEngine.setUnits(engine.data.units);
+    iotEngine.loadSampleData();
+    iotEngine.saveToStorage();
+  }
   render();
   showToast('Sample data loaded.');
 });
@@ -289,6 +306,12 @@ document.getElementById('btnResetData').addEventListener('click', () => {
   engine.clearStorage();
   engine.loadSampleData();
   engine.saveToStorage();
+  if (iotEngine) {
+    iotEngine.clearStorage();
+    iotEngine.setUnits(engine.data.units);
+    iotEngine.loadSampleData();
+    iotEngine.saveToStorage();
+  }
   render();
   showToast('Saved data reset to sample defaults.');
 });
@@ -305,7 +328,7 @@ document.querySelectorAll('.module[data-tab], .tab[data-tab]').forEach(el => {
 });
 
 function renderCount(){
-  const counts = { workorders: engine.data.work_orders.length, leases: engine.data.leases.length, vendors: engine.data.vendors.length, turnovers: engine.data.turnovers.length, units: engine.data.units.length };
+  const counts = { workorders: engine.data.work_orders.length, leases: engine.data.leases.length, vendors: engine.data.vendors.length, turnovers: engine.data.turnovers.length, units: engine.data.units.length, iot: iotEngine ? iotEngine.data.iot_sensors.length : 0 };
   document.getElementById('tabCount').textContent = counts[activeTab] + ' RECORDS';
 }
 
@@ -428,6 +451,28 @@ function renderUnits(){
   }).join('') || '<div class="row-item"><span class="rtitle" style="color:var(--dim)">No units.</span></div>';
 }
 
+function renderIotAlerts(){
+  if (!iotEngine) return;
+  const alerts = iotEngine.getIotAlerts();
+  const sevClass = { urgent: 'high', high: 'high', medium: 'medium', low: 'low' };
+
+  const el = document.getElementById('pane-iot');
+  el.innerHTML = iotEngine.data.iot_sensors.map(s => {
+    const alert = alerts.find(a => a.id === s.sensor_id);
+    const tag = alert ? sevClass[alert.severity] || 'low' : 'low';
+    const label = alert ? alert.severity.toUpperCase() : 'OK';
+    return `<div class="row-item">
+      <span class="rtag ${tag}">${label}</span>
+      <span class="rtitle">${s.sensor_id} &middot; ${s.type.replace(/_/g,' ')} &middot; ${iotEngine._unitLabel(s.unit_id)}</span>
+      <span class="rmeta">${alert ? alert.detail : (s.status || 'ok')}</span>
+    </div>`;
+  }).join('') || '<div class="row-item"><span class="rtitle" style="color:var(--dim)">No sensors.</span></div>';
+
+  document.getElementById('iotPanel').innerHTML = alerts.map(a =>
+    `${a.id} (${a.unit_id || 'unassigned'}): <span style="color:${a.severity === 'urgent' || a.severity === 'high' ? 'var(--red)' : 'var(--muted)'}">${a.severity.toUpperCase()}</span><br>&nbsp;&nbsp;${a.detail}`
+  ).join('<br>') || 'No sensor alerts.';
+}
+
 function renderKpis(){
   const k = engine.computeKpis();
   document.getElementById('kOcc').textContent = (k.occupancy_rate != null ? k.occupancy_rate + '%' : '—');
@@ -473,6 +518,7 @@ function render(){
   renderVendors();
   renderTurnovers();
   renderUnits();
+  renderIotAlerts();
   renderExposure();
   renderTurnoverPanel();
   renderCount();
