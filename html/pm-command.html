@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
+<script src="/html/shared/runtime/integrity/tsm-integrity.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TSM | PM Copilot War Room</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Share+Tech+Mono&family=Exo+2:ital,wght@0,300;0,400;0,600;1,300&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#080b10;--bg2:#0a0f16;--bg3:#05070c;--bg4:#0d1119;
+  --accent:#1ee8b6;--accent2:#14b892;--accent3:rgba(30,232,182,.08);
+  --red:#ef4444;--yellow:#eab308;--green:#00ff88;--purple:#a855f7;--muted:#4a7a9b;
+  --white:#e8f0f8;--dim:#2a4a6a;--border:rgba(30,232,182,.12);--border2:rgba(30,232,182,.06);
+  --mono:'Share Tech Mono',monospace;--display:'Orbitron',monospace;--body:'Exo 2',sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:var(--body);background:var(--bg);color:var(--white);min-height:100vh;}
+#topnav{background:var(--bg3);border-bottom:1px solid var(--border);padding:0 16px;display:flex;align-items:center;gap:10px;height:44px;}
+#logo-mark{width:32px;height:32px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;font-family:var(--display);font-weight:900;font-size:.7rem;color:#000;flex-shrink:0;}
+#logo-text{font-family:var(--display);font-size:.75rem;font-weight:900;color:var(--accent);letter-spacing:.15em;}
+#logo-sub{font-family:var(--mono);font-size:.5rem;color:var(--muted);letter-spacing:.1em;}
+.nav-links{margin-left:20px;display:flex;gap:14px;font-family:var(--mono);font-size:.55rem;letter-spacing:.08em;}
+.nav-links a{color:var(--muted);text-decoration:none;}
+.nav-links a:hover{color:var(--accent);}
+#sys-status{margin-left:auto;display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:.5rem;color:var(--muted);}
+#sys-dot{width:5px;height:5px;border-radius:50%;background:var(--green);animation:pulse 2s ease-in-out infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+#kpi-bar{background:var(--bg2);border-bottom:1px solid var(--border);display:flex;flex-wrap:wrap;}
+.kpi{padding:10px 16px;border-right:1px solid var(--border2);flex:1;min-width:120px;}
+.kpi-val{font-family:var(--display);font-size:.85rem;font-weight:700;color:var(--accent);}
+.kpi-lbl{font-family:var(--mono);font-size:.45rem;color:var(--muted);letter-spacing:.1em;margin-top:2px;}
+.kpi-delta{font-family:var(--mono);font-size:.45rem;color:var(--green);margin-top:2px;}
+.kpi-delta.neg{color:var(--red);}
+#layout{display:grid;grid-template-columns:200px 1fr 320px;gap:0;}
+#sidebar{background:var(--bg2);border-right:1px solid var(--border);padding:10px 0;}
+.sb-lbl{font-family:var(--mono);font-size:.45rem;color:var(--dim);letter-spacing:.15em;padding:10px 14px 4px;}
+.module{padding:7px 14px;cursor:pointer;font-family:var(--mono);font-size:.55rem;letter-spacing:.04em;color:var(--muted);border-left:2px solid transparent;}
+.module:hover{color:var(--white);background:rgba(255,255,255,.03);border-left-color:var(--accent);}
+.module.active{color:var(--accent);border-left-color:var(--accent);background:var(--accent3);}
+#main{padding:16px;overflow-y:auto;max-height:calc(100vh - 90px);}
+.panel{background:var(--bg2);border:1px solid var(--border);margin-bottom:14px;}
+.panel-hdr{padding:8px 12px;border-bottom:1px solid var(--border2);font-family:var(--display);font-size:.6rem;letter-spacing:.1em;color:var(--accent);display:flex;justify-content:space-between;align-items:center;}
+.panel-body{padding:12px;}
+textarea#docIntake{width:100%;min-height:70px;background:var(--bg3);border:1px solid var(--border);color:var(--white);font-family:var(--mono);font-size:.6rem;padding:8px;resize:vertical;}
+#tsm-toast{position:fixed;bottom:20px;right:20px;background:var(--bg2);border:1px solid var(--accent);color:var(--accent);padding:10px 18px;font-family:var(--mono);font-size:.65rem;letter-spacing:.04em;opacity:0;pointer-events:none;transition:opacity .25s,transform .25s;transform:translateY(6px);z-index:999;}
+#tsm-toast.show{opacity:1;transform:translateY(0);}
+.btn{font-family:var(--display);font-size:.55rem;font-weight:700;letter-spacing:.08em;padding:7px 16px;background:var(--accent);color:#000;border:none;cursor:pointer;}
+.btn:hover{opacity:.85;}
+.btn.ghost{background:transparent;color:var(--accent);border:1px solid var(--accent);}
+#aiOutput{margin-top:10px;font-family:var(--mono);font-size:.9rem;color:var(--muted);white-space:pre-wrap;line-height:1.5;}
+#navStatus{font-family:var(--mono);font-size:.45rem;color:var(--dim);}
+.row-item{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border2);font-family:var(--mono);font-size:.55rem;}
+.row-item:last-child{border-bottom:none;}
+.rtag{padding:1px 6px;font-size:.4rem;letter-spacing:.08em;border:1px solid;flex-shrink:0;text-transform:uppercase;}
+.rtag.high,.rtag.HIGH{color:var(--red);border-color:var(--red);}
+.rtag.medium,.rtag.MEDIUM{color:var(--accent);border-color:var(--accent);}
+.rtag.low,.rtag.LOW{color:var(--muted);border-color:var(--muted);}
+.rtitle{flex:1;color:var(--white);}
+.rmeta{color:var(--dim);font-size:.45rem;}
+#rightrail{background:var(--bg2);border-left:1px solid var(--border);padding:12px;overflow-y:auto;max-height:calc(100vh - 90px);}
+.rr-lbl{font-family:var(--mono);font-size:.45rem;color:var(--dim);letter-spacing:.12em;margin:10px 0 6px;}
+.rr-lbl:first-child{margin-top:0;}
+.tabs{display:flex;gap:4px;margin-bottom:10px;}
+.tab{padding:5px 12px;font-family:var(--mono);font-size:.5rem;letter-spacing:.06em;color:var(--muted);background:var(--bg3);border:1px solid var(--border2);cursor:pointer;}
+.tab.active{color:#000;background:var(--accent);border-color:var(--accent);}
+.tabpane{display:none;}
+.tabpane.active{display:block;}
+select.stage-select{background:var(--bg3);border:1px solid var(--border);color:var(--white);font-family:var(--mono);font-size:.48rem;padding:3px 4px;}
+</style>
+</head>
+<body data-vertical="pm-copilot" data-page-role="warroom">
+
+<div id="topnav">
+  <div id="logo-mark">PM</div>
+  <div>
+    <div id="logo-text">PM COPILOT WAR ROOM</div>
+    <div id="logo-sub">MAPLE COURT &middot; SUNDOWN VILLAS &middot; DESERT PALM &middot; CANYON RIDGE</div>
+  </div>
+  <div class="nav-links">
+    <a href="pm-strategist.html">Strategist &rarr;</a>
+    <a href="pm-exec-portal.html">Exec Portal &rarr;</a>
+  </div>
+  <div id="sys-status"><span id="sys-dot"></span><span id="navStatus">ENGINE: READY</span></div>
+</div>
+
+<div id="kpi-bar">
+  <div class="kpi"><div class="kpi-val" id="kOcc">&mdash;</div><div class="kpi-lbl">OCCUPANCY RATE</div></div>
+  <div class="kpi"><div class="kpi-val" id="kVacant">&mdash;</div><div class="kpi-lbl">UNITS VACANT</div></div>
+  <div class="kpi"><div class="kpi-val" id="kWo">&mdash;</div><div class="kpi-lbl">OPEN WORK ORDERS</div></div>
+  <div class="kpi"><div class="kpi-val" id="kWoSla">&mdash;</div><div class="kpi-lbl">WORK ORDERS OVER SLA</div></div>
+  <div class="kpi"><div class="kpi-val" id="kLease">&mdash;</div><div class="kpi-lbl">LEASES EXPIRING &lt;60D</div></div>
+  <div class="kpi"><div class="kpi-val" id="kVendor">&mdash;</div><div class="kpi-lbl">VENDOR COMPLIANCE FLAGS</div></div>
+  <div class="kpi"><div class="kpi-val" id="kRent">&mdash;</div><div class="kpi-lbl">PORTFOLIO RENT VALUE</div></div>
+</div>
+
+<div id="layout">
+  <div id="sidebar">
+    <div class="sb-lbl">DATA</div>
+    <div style="padding:0 14px 10px">
+      <button class="btn ghost" style="width:100%;margin-bottom:6px" id="btnLoadSample">LOAD SAMPLE DATA</button>
+      <button class="btn ghost" style="width:100%" id="btnResetData">RESET SAVED DATA</button>
+    </div>
+    <div class="sb-lbl">OPERATIONS</div>
+    <div class="module active" data-tab="workorders">Work Orders</div>
+    <div class="module" data-tab="leases">Leases</div>
+    <div class="module" data-tab="vendors">Vendors</div>
+    <div class="module" data-tab="units">Units</div>
+  </div>
+
+  <div id="main">
+    <div class="panel">
+      <div class="panel-hdr">DOCUMENT INTAKE &amp; AI ANALYSIS</div>
+      <div class="panel-body">
+        <textarea id="docIntake" placeholder="Paste a lease, inspection report, vendor certificate, or maintenance invoice for analysis..."></textarea>
+        <div style="margin-top:8px;display:flex;gap:8px;">
+          <button class="btn" id="btnAnalyze">RUN ANALYSIS</button>
+          <button class="btn ghost" id="btnRelay">RELAY TO STRATEGIST &rarr;</button>
+        </div>
+        <div id="aiOutput">Run analysis to see AI output here.</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-hdr">
+        <span>OPERATIONS QUEUE</span>
+        <span id="tabCount" style="color:var(--muted);font-family:var(--mono);font-weight:400;"></span>
+      </div>
+      <div class="panel-body" style="padding:8px 0 0;">
+        <div class="tabs" style="padding:0 12px;">
+          <div class="tab active" data-tab="workorders">Work Orders</div>
+          <div class="tab" data-tab="leases">Leases</div>
+          <div class="tab" data-tab="vendors">Vendors</div>
+          <div class="tab" data-tab="units">Units</div>
+        </div>
+        <div class="tabpane active" id="pane-workorders"></div>
+        <div class="tabpane" id="pane-leases"></div>
+        <div class="tabpane" id="pane-vendors"></div>
+        <div class="tabpane" id="pane-units"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="rightrail">
+    <div class="rr-lbl">VACANCY EXPOSURE</div>
+    <div id="vacancyPanel" style="font-family:var(--mono);font-size:.55rem;color:var(--muted);line-height:1.8;"></div>
+    <div class="rr-lbl">MAINTENANCE DELAY EXPOSURE</div>
+    <div id="maintPanel" style="font-family:var(--mono);font-size:.55rem;color:var(--muted);line-height:1.8;"></div>
+    <div class="rr-lbl">VENDOR COMPLIANCE EXPOSURE</div>
+    <div id="vendorPanel" style="font-family:var(--mono);font-size:.55rem;color:var(--muted);line-height:1.8;"></div>
+    <div class="rr-lbl">TOTAL EXPOSURE</div>
+    <div id="totalExposure" style="font-family:var(--display);font-size:.8rem;color:var(--accent);"></div>
+  </div>
+</div>
+
+<script src="services/pm-engine.js"></script>
+<div id="tsm-toast"></div>
+<script>
+function showToast(msg){
+  const t = document.getElementById('tsm-toast');
+  if(!t) return;
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(showToast._h);
+  showToast._h = setTimeout(() => t.classList.remove('show'), 2600);
+}
+
+function fmtMoney(n){
+  if (n === null || n === undefined || isNaN(n)) return '&mdash;';
+  return '$' + Number(n).toLocaleString('en-US', { maximumFractionDigits: 0 });
+}
+
+let model = null, engine = null, activeTab = 'workorders';
+
+function showInitError(msg) {
+  const status = document.getElementById('navStatus');
+  if (status) { status.textContent = 'ENGINE: FAILED'; status.style.color = 'var(--red)'; }
+  const out = document.getElementById('aiOutput');
+  if (out) out.innerHTML = `<span style="color:var(--red)">War room failed to initialize: ${msg}. Check the Network tab for a 404 on data/pm-model.json or services/pm-engine.js.</span>`;
+  console.error('[PM Copilot War Room init failed]', msg);
+}
+
+function requireEngine() {
+  if (!engine) {
+    showInitError('engine not ready yet (still loading, or failed to load)');
+    return false;
+  }
+  return true;
+}
+
+async function init() {
+  try {
+    const res = await fetch('data/pm-model.json');
+    if (!res.ok) throw new Error(`data/pm-model.json returned ${res.status}`);
+    model = await res.json();
+    if (typeof TSMPmEngine === 'undefined') throw new Error('TSMPmEngine is undefined — services/pm-engine.js did not load');
+    engine = new TSMPmEngine(model);
+    if (!engine.loadFromStorage()) {
+      engine.loadSampleData();
+      engine.saveToStorage();
+    }
+    render();
+  } catch (e) {
+    showInitError(e.message);
+  }
+}
+
+document.getElementById('btnLoadSample').addEventListener('click', () => {
+  if (!requireEngine()) return;
+  engine.loadSampleData();
+  engine.saveToStorage();
+  render();
+  showToast('Sample data loaded.');
+});
+
+document.getElementById('btnResetData').addEventListener('click', () => {
+  if (!requireEngine()) return;
+  engine.clearStorage();
+  engine.loadSampleData();
+  engine.saveToStorage();
+  render();
+  showToast('Saved data reset to sample defaults.');
+});
+
+document.querySelectorAll('.module[data-tab], .tab[data-tab]').forEach(el => {
+  el.addEventListener('click', () => {
+    activeTab = el.getAttribute('data-tab');
+    document.querySelectorAll('.module[data-tab]').forEach(m => m.classList.toggle('active', m.getAttribute('data-tab') === activeTab));
+    document.querySelectorAll('.tab[data-tab]').forEach(t => t.classList.toggle('active', t.getAttribute('data-tab') === activeTab));
+    document.querySelectorAll('.tabpane').forEach(p => p.classList.remove('active'));
+    document.getElementById('pane-' + activeTab).classList.add('active');
+    renderCount();
+  });
+});
+
+function renderCount(){
+  const counts = { workorders: engine.data.work_orders.length, leases: engine.data.leases.length, vendors: engine.data.vendors.length, units: engine.data.units.length };
+  document.getElementById('tabCount').textContent = counts[activeTab] + ' RECORDS';
+}
+
+function stageColorClass(sev){
+  return (sev || '').toString().toLowerCase();
+}
+
+function renderWorkOrders(){
+  const el = document.getElementById('pane-workorders');
+  const units = engine.data.units;
+  el.innerHTML = engine.data.work_orders.map(w => {
+    const unit = units.find(u => u.unit_id === w.unit_id);
+    return `<div class="row-item">
+      <span class="rtag ${stageColorClass(w.severity)}">${w.severity || ''}</span>
+      <span class="rtitle">${w.work_order_id} &middot; ${w.category} &middot; ${unit ? unit.address : w.unit_id}</span>
+      <span class="rmeta">${w.stage.replace('_',' ')} &middot; ${w.entered_stage_at_hours_ago || 0}h</span>
+    </div>`;
+  }).join('') || '<div class="row-item"><span class="rtitle" style="color:var(--dim)">No work orders.</span></div>';
+}
+
+function renderLeases(){
+  const el = document.getElementById('pane-leases');
+  el.innerHTML = engine.data.leases.map(l => {
+    const flagged = ['notice_given','renewal_pending'].includes(l.stage);
+    return `<div class="row-item">
+      <span class="rtag ${flagged ? 'high' : 'low'}">${l.stage.replace('_',' ')}</span>
+      <span class="rtitle">${l.lease_id} &middot; ${l.tenant_name} &middot; ${l.unit_id}</span>
+      <span class="rmeta">ends ${l.end_date} &middot; $${l.rent}/mo</span>
+    </div>`;
+  }).join('') || '<div class="row-item"><span class="rtitle" style="color:var(--dim)">No leases.</span></div>';
+}
+
+function renderVendors(){
+  const el = document.getElementById('pane-vendors');
+  el.innerHTML = engine.data.vendors.map(v => {
+    const sev = v.stage === 'expired' ? 'HIGH' : v.stage === 'expiring_soon' ? 'MEDIUM' : 'LOW';
+    return `<div class="row-item">
+      <span class="rtag ${sev}">${sev}</span>
+      <span class="rtitle">${v.vendor_id} &middot; ${v.name} &middot; ${v.trade}</span>
+      <span class="rmeta">${v.stage.replace('_',' ')} &middot; ins. exp ${v.insurance_expiry}</span>
+    </div>`;
+  }).join('') || '<div class="row-item"><span class="rtitle" style="color:var(--dim)">No vendors.</span></div>';
+}
+
+function renderUnits(){
+  const el = document.getElementById('pane-units');
+  el.innerHTML = engine.data.units.map(u => {
+    return `<div class="row-item">
+      <span class="rtag ${u.status === 'vacant' ? 'high' : 'low'}">${u.status}</span>
+      <span class="rtitle">${u.unit_id} &middot; ${u.property} &middot; ${u.address}</span>
+      <span class="rmeta">${u.beds}bd/${u.baths}ba &middot; $${u.current_rent || u.market_rent}/mo</span>
+    </div>`;
+  }).join('') || '<div class="row-item"><span class="rtitle" style="color:var(--dim)">No units.</span></div>';
+}
+
+function renderKpis(){
+  const k = engine.computeKpis();
+  document.getElementById('kOcc').textContent = (k.occupancy_rate != null ? k.occupancy_rate + '%' : '—');
+  document.getElementById('kVacant').textContent = k.units_vacant;
+  document.getElementById('kWo').textContent = k.open_work_orders;
+  document.getElementById('kWoSla').textContent = k.work_orders_over_sla;
+  document.getElementById('kLease').textContent = k.leases_expiring_60d;
+  document.getElementById('kVendor').textContent = k.vendor_compliance_flags;
+  document.getElementById('kRent').innerHTML = fmtMoney(k.portfolio_rent_value);
+}
+
+function renderExposure(){
+  const fin = engine.getFinancialSummary();
+  document.getElementById('vacancyPanel').innerHTML = fin.vacancy_exposure_items.map(it =>
+    `${it.unit_id} (${it.property}): <span style="color:var(--red)">${fmtMoney(it.exposure)}</span><br>&nbsp;&nbsp;${it.days_vacant}d vacant &middot; ${fmtMoney(it.market_rent)}/mo lost`
+  ).join('<br>') || 'No vacancy exposure.';
+
+  document.getElementById('maintPanel').innerHTML = fin.maintenance_delay_exposure_items.map(it =>
+    `${it.id} (${it.unit_id}): <span style="color:var(--red)">${fmtMoney(it.exposure)}</span><br>&nbsp;&nbsp;${it.days_over}d over SLA &middot; ${it.stage}`
+  ).join('<br>') || 'No maintenance-delay exposure.';
+
+  document.getElementById('vendorPanel').innerHTML = fin.vendor_compliance_exposure_items.map(it =>
+    `${it.vendor_id} (${it.name}): <span style="color:var(--red)">${fmtMoney(it.exposure)}</span><br>&nbsp;&nbsp;${it.severity} &middot; ${it.trade}`
+  ).join('<br>') || 'No vendor compliance exposure.';
+
+  document.getElementById('totalExposure').innerHTML = fmtMoney(fin.total_exposure);
+}
+
+function render(){
+  if (!requireEngine()) return;
+  renderKpis();
+  renderWorkOrders();
+  renderLeases();
+  renderVendors();
+  renderUnits();
+  renderExposure();
+  renderCount();
+}
+
+async function runAnalysis(){
+  if (!requireEngine()) return;
+  const out = document.getElementById('aiOutput');
+  out.textContent = 'Analyzing...';
+  try {
+    const payload = {
+      kpis: engine.computeKpis(),
+      work_order_breaches: engine.getSlaBreaches('work_orders'),
+      leases_expiring: engine.getLeasesExpiring(60),
+      vendor_flags: engine.data.vendors.filter(v => ['expiring_soon','expired'].includes(v.stage)),
+      context: document.getElementById('docIntake').value || undefined
+    };
+    const res = await fetch('/api/pm/analysis', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'analysis failed');
+    out.textContent = data.answer;
+  } catch (e) {
+    out.textContent = 'Analysis failed: ' + e.message;
+    console.warn('[pm-copilot] analysis failed', e);
+  }
+}
+
+document.getElementById('btnAnalyze').addEventListener('click', runAnalysis);
+
+async function relayToStrategist(){
+  if (!requireEngine()) return;
+  const aiText = document.getElementById('aiOutput').textContent;
+  const payload = engine.buildRelayPayload(aiText.startsWith('Run analysis') ? null : aiText);
+  engine.saveToStorage();
+
+  let finalPayload = payload;
+  let signedPayload = payload;
+  try {
+    // relay.core.js's write() mutates its payload in place (fills in
+    // .id/.timestamp if missing) before storing it -- call it first so
+    // that mutation happens before signing, same order Concierge/HotelOps
+    // uses, so the seal isn't silently invalidated on the next write.
+    if (window.TSM && window.TSM.relay && window.TSM.relay.write) {
+      finalPayload = window.TSM.relay.write('PM', payload);
+    }
+
+    signedPayload = finalPayload;
+    if (window.TSMIntegrity && typeof window.TSMIntegrity.sign === 'function') {
+      try { signedPayload = await window.TSMIntegrity.sign(finalPayload, { module: 'pm-copilot' }); }
+      catch (e) { console.warn('[pm-copilot] signing failed (relaying unsigned):', e.message); }
+    }
+
+    localStorage.setItem('TSM_PM_STRATEGIST_RELAY', JSON.stringify(signedPayload));
+    sessionStorage.setItem('TSM_PM_STRATEGIST_RELAY', JSON.stringify(signedPayload));
+
+    window.dispatchEvent(new CustomEvent('TSM_SENTINEL_REFRESH'));
+    showToast('Relayed to Strategist — click "Strategist →" above to view it.');
+  } catch (e) {
+    console.warn('Relay storage failed', e);
+    showToast('Relay failed — see console for details.');
+  }
+  if (window.TSMEventBus && window.TSMEventBus.emit) {
+    window.TSMEventBus.emit('WAR_ROOM_READY', { vertical: 'pm', payload: signedPayload, ts: Date.now() });
+  }
+}
+
+document.getElementById('btnRelay').addEventListener('click', relayToStrategist);
+
+init();
+</script>
+</body>
+</html>
