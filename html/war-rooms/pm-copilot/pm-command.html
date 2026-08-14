@@ -121,6 +121,10 @@ select.stage-select{background:var(--bg3);border:1px solid var(--border);color:v
           <button class="btn" id="btnAnalyze">RUN ANALYSIS</button>
           <button class="btn ghost" id="btnRelay">RELAY TO STRATEGIST &rarr;</button>
         </div>
+        <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">
+          <button class="btn ghost" style="font-size:.62rem;padding:4px 10px" onclick="pmQuickFire('finance')">01 &middot; FINANCE</button>
+          <button class="btn ghost" style="font-size:.62rem;padding:4px 10px" onclick="pmQuickFire('compliance')">02 &middot; COMPLIANCE</button>
+          <button class="btn ghost" style="font-size:.62rem;padding:4px 10px" onclick="pmQuickFire('market')">03 &middot; MARKET</button>
         <div id="aiOutput">Run analysis to see AI output here.</div>
       </div>
     </div>
@@ -314,12 +318,67 @@ function renderWorkOrders(){
   const units = engine.data.units;
   el.innerHTML = engine.data.work_orders.map(w => {
     const unit = units.find(u => u.unit_id === w.unit_id);
+    const vendor = engine.data.vendors.find(v => v.vendor_id === w.vendor_id);
     return `<div class="row-item">
       <span class="rtag ${stageColorClass(w.severity)}">${w.severity || ''}</span>
       <span class="rtitle">${w.work_order_id} &middot; ${w.category} &middot; ${unit ? unit.address : w.unit_id}</span>
       <span class="rmeta">${w.stage.replace('_',' ')} &middot; ${w.entered_stage_at_hours_ago || 0}h</span>
+      ${vendor ? `<button class="btn ghost" style="font-size:.55rem;padding:2px 8px;margin-left:8px" onclick="dispatchVendorTransport('${w.work_order_id}','${vendor.vendor_id}')">DISPATCH VENDOR</button>` : ''}
+      <span id="dispatch-status-${w.work_order_id}" style="font-size:.55rem;color:var(--dim);margin-left:6px"></span>
     </div>`;
   }).join('') || '<div class="row-item"><span class="rtitle" style="color:var(--dim)">No work orders.</span></div>';
+}
+
+async function dispatchVendorTransport(workOrderId, vendorId){
+  const statusEl = document.getElementById(`dispatch-status-${workOrderId}`);
+  const wo = engine.data.work_orders.find(w => w.work_order_id === workOrderId);
+  const unit = engine.data.units.find(u => u.unit_id === wo.unit_id);
+  const vendor = engine.data.vendors.find(v => v.vendor_id === vendorId);
+  if (!wo || !unit || !vendor) return;
+
+  const now = new Date();
+  const quotePayload = {
+    service: 'point_to_point',
+    pickup: { address: `Vendor Dispatch — ${vendor.name}` },
+    destination: { address: unit.address },
+    passengers: 1,
+    date: now.toISOString().slice(0, 10),
+    time: now.toTimeString().slice(0, 5)
+  };
+
+  if (statusEl) statusEl.textContent = 'Requesting quote...';
+  try {
+    const quoteRes = await fetch('/api/concierge/quotes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(quotePayload)
+    });
+    const quoteData = await quoteRes.json();
+    if (!quoteData.ok || !quoteData.quotes || !quoteData.quotes.length) {
+      throw new Error(quoteData.error || (quoteData.errors && quoteData.errors[0]?.error) || 'no quotes returned');
+    }
+    const bestQuote = quoteData.quotes[0];
+
+    if (statusEl) statusEl.textContent = `Booking ${bestQuote.vehicleLabel} ($${bestQuote.priceEstimate.amount})...`;
+    const bookRes = await fetch('/api/concierge/bookings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        quoteId: bestQuote.quoteId,
+        guestName: vendor.name,
+        propertyId: wo.unit_id,
+        vertical: 'pm',
+        notes: `Dispatch for ${wo.work_order_id} — ${wo.category}`
+      })
+    });
+    const bookData = await bookRes.json();
+    if (!bookData.ok) throw new Error(bookData.error || 'booking failed');
+
+    if (statusEl) statusEl.textContent = `Confirmed — ${bookData.booking.confirmationCode} (${bookData.booking.status})`;
+  } catch (e) {
+    if (statusEl) statusEl.textContent = `Dispatch failed: ${e.message}`;
+    console.warn('[pm-copilot] dispatchVendorTransport failed', e);
+  }
 }
 
 function renderLeases(){
@@ -443,6 +502,19 @@ async function runAnalysis(){
     out.textContent = 'Analysis failed: ' + e.message;
     console.warn('[pm-copilot] analysis failed', e);
   }
+}
+
+const PM_QUICKFIRE_PROMPTS = {
+  finance: 'Portfolio finance analysis — identify units with the largest gap between current_rent and market_rent, delinquent or at-risk lease revenue, vendor cost overruns against cost_estimate on open work orders, and the single highest-dollar-impact action to close the gap this month.',
+  compliance: 'Compliance audit — flag vendors with insurance_expiry or license_expiry within 30 days who have open or upcoming work orders (compliance-blocked dispatch risk), leases missing required disclosures, and any unit/work-order combination with a safety-critical severity (HIGH/CRIT) unresolved past SLA.',
+  market: 'Market intelligence — compare current_rent vs market_rent across all occupied units to size total rent-gap exposure, flag units approaching lease renewal that are priced below market, and recommend renewal pricing per unit based on the gap.'
+};
+
+function pmQuickFire(kind){
+  const prompt = PM_QUICKFIRE_PROMPTS[kind];
+  if (!prompt) return;
+  document.getElementById('docIntake').value = prompt;
+  runAnalysis();
 }
 
 document.getElementById('btnAnalyze').addEventListener('click', runAnalysis);
