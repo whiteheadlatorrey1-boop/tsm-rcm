@@ -677,6 +677,65 @@ app.get('/api/bpo/audit-logs', requireRole(BPO_MANAGE_ROLES), async (req, res) =
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
+// Notes — append-only, any internal role can add one working a case;
+// same list-scoped-by-caseId pattern as audit logs above.
+app.get('/api/bpo/work-items/:caseId/notes', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const notes = await tsmLedger.bpoListNotes({ caseId: req.params.caseId });
+    res.json({ ok: true, notes });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+app.post('/api/bpo/work-items/:caseId/notes', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const note = await tsmLedger.bpoAddNote(
+      req.params.caseId,
+      req.body || {},
+      req.tsmSession.label || req.tsmSession.role
+    );
+    res.json({ ok: true, note });
+  } catch (e) { res.status(400).json({ ok: false, error: e.message }); }
+});
+
+// SLA events — read-only from routes; only bpoUpsertWorkItem writes these,
+// on every open/advance/resolve.
+app.get('/api/bpo/work-items/:caseId/sla-events', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const events = await tsmLedger.bpoListSlaEvents({ caseId: req.params.caseId });
+    res.json({ ok: true, slaEvents: events });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+app.get('/api/bpo/sla-events', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const events = await tsmLedger.bpoListSlaEvents({
+      clientId: req.query.clientId,
+      limit: req.query.limit ? parseInt(req.query.limit, 10) : undefined,
+    });
+    res.json({ ok: true, slaEvents: events });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// BNCA / AI-output reports — append-only capture of what the model
+// actually returned, not just the latest bpo_work_items.payload snapshot.
+app.get('/api/bpo/work-items/:caseId/bnca-reports', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const reports = await tsmLedger.bpoListBncaReports({ caseId: req.params.caseId });
+    res.json({ ok: true, bncaReports: reports });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+app.post('/api/bpo/work-items/:caseId/bnca-reports', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const report = await tsmLedger.bpoSaveBncaReport(
+      req.params.caseId,
+      req.body || {},
+      req.tsmSession.label || req.tsmSession.role
+    );
+    res.json({ ok: true, bncaReport: report });
+  } catch (e) { res.status(400).json({ ok: false, error: e.message }); }
+});
+
 app.use('/', express.static(path.join(__dirname, 'html')));
 const suites = [
   { route: '/construction', dir: 'html/construction-suite', index: 'construction-hub.html' },

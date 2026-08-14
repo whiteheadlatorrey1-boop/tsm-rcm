@@ -301,6 +301,15 @@ function hitlAdapter(gatePrefix) {
 const BPO_CLIENTS_COLLECTION = 'bpo_clients';
 const BPO_WORK_ITEMS_COLLECTION = 'bpo_work_items';
 const BPO_AUDIT_LOGS_COLLECTION = 'bpo_audit_logs';
+// Phase 2 (rest of): append-only collections. Unlike bpo_work_items (one
+// doc per caseId, replaced wholesale on each stage advance), these three
+// never overwrite — every note/SLA transition/AI output is its own doc,
+// so history isn't lost when a case moves war-room -> strategist -> exec.
+const BPO_NOTES_COLLECTION = 'bpo_notes';
+const BPO_SLA_EVENTS_COLLECTION = 'bpo_sla_events';
+const BPO_BNCA_REPORTS_COLLECTION = 'bpo_bnca_reports';
+
+const BPO_PRIORITIES = ['low', 'medium', 'high', 'critical'];
 
 async function bpoClientsCollection() {
   const database = await getDb();
@@ -315,6 +324,21 @@ async function bpoWorkItemsCollection() {
 async function bpoAuditLogsCollection() {
   const database = await getDb();
   return database.collection(BPO_AUDIT_LOGS_COLLECTION);
+}
+
+async function bpoNotesCollection() {
+  const database = await getDb();
+  return database.collection(BPO_NOTES_COLLECTION);
+}
+
+async function bpoSlaEventsCollection() {
+  const database = await getDb();
+  return database.collection(BPO_SLA_EVENTS_COLLECTION);
+}
+
+async function bpoBncaReportsCollection() {
+  const database = await getDb();
+  return database.collection(BPO_BNCA_REPORTS_COLLECTION);
 }
 
 /**
@@ -455,14 +479,50 @@ async function bpoGetWorkItem(caseId) {
   return col.findOne({ caseId });
 }
 
+/**
+ * Hours between two ISO timestamps (or now, if `to` omitted). Used for
+ * slaAgeHours — how long a case has been open, computed at read/write
+ * time from createdAt rather than stored as a value that would go stale.
+ */
+function bpoHoursBetween(fromIso, toIso) {
+  const from = new Date(fromIso).getTime();
+  const to = toIso ? new Date(toIso).getTime() : Date.now();
+  if (!Number.isFinite(from) || !Number.isFinite(to)) return null;
+  return Math.max(0, Math.round(((to - from) / 3600000) * 100) / 100);
+}
+
+function bpoNormalizePriority(priority) {
+  const p = (priority || '').toString().trim().toLowerCase();
+  return BPO_PRIORITIES.includes(p) ? p : 'medium';
+}
+
 async function bpoUpsertWorkItem(caseId, fields, actor) {
   if (!caseId) throw new Error('caseId required');
   const col = await bpoWorkItemsCollection();
   const now = new Date().toISOString();
-  const { clientId = null, vertical = 'bpo', stage = 'war-room', payload = {}, status = 'open' } = fields || {};
+  const {
+    clientId = null, vertical = 'bpo', stage = 'war-room', payload = {}, status = 'open',
+    owner, priority, dueDate,
+  } = fields || {};
 
   const existing = await col.findOne({ caseId });
-  const $set = { caseId, clientId, vertical, stage, payload, status, updatedAt: now };
+  const createdAt = existing ? existing.createdAt : now;
+
+  const $set = {
+    caseId, clientId, vertical, stage, payload, status, updatedAt: now,
+    slaAgeHours: bpoHoursBetween(createdAt, now),
+  };
+  // owner/priority/dueDate are optional and sticky — a later upsert that
+  // doesn't pass them (e.g. the exec-portal resolve call) shouldn't wipe
+  // out what the war room or strategist already set.
+  if (owner !== undefined) $set.owner = (owner || '').toString().trim();
+  else if (existing && existing.owner !== undefined) $set.owner = existing.owner;
+  if (priority !== undefined) $set.priority = bpoNormalizePriority(priority);
+  else if (existing && existing.priority !== undefined) $set.priority = existing.priority;
+  else $set.priority = 'medium';
+  if (dueDate !== undefined) $set.dueDate = dueDate || null;
+  else if (existing && existing.dueDate !== undefined) $set.dueDate = existing.dueDate;
+
   const $setOnInsert = existing ? undefined : { createdAt: now };
 
   await col.updateOne(
@@ -472,12 +532,115 @@ async function bpoUpsertWorkItem(caseId, fields, actor) {
   );
   const doc = await col.findOne({ caseId });
 
+  const previousStage = existing ? existing.stage : null;
   await bpoWriteAudit({
     actor, action: existing ? 'work_item.advance' : 'work_item.create',
     entityType: 'work_item', entityId: caseId,
-    detail: { stage, clientId, previousStage: existing ? existing.stage : null },
+    detail: { stage, clientId, previousStage },
+  });
+
+  // Auto-emit an SLA event for open/advance/resolve — separate from the
+  // audit log, which is a generic who-did-what trail. This is specifically
+  // the stage-timeline a reporting query can walk to compute time-in-stage
+  // and breach counts, without parsing audit-log detail blobs.
+  let slaEventType = 'advanced';
+  if (!existing) slaEventType = 'opened';
+  else if (status === 'resolved' && existing.status !== 'resolved') slaEventType = 'resolved';
+  try {
+    const slaCol = await bpoSlaEventsCollection();
+    await slaCol.insertOne({
+      caseId, clientId, vertical,
+      type: slaEventType,
+      fromStage: previousStage,
+      toStage: stage,
+      status,
+      ageHoursAtEvent: $set.slaAgeHours,
+      actor,
+      ts: now,
+    });
+  } catch (e) {
+    console.warn('[bpoUpsertWorkItem] failed to write SLA event:', e.message);
+  }
+
+  return doc;
+}
+
+// ── Notes ────────────────────────────────────────────────────────────────
+// Append-only — one doc per note, never edited/deleted in place, so a
+// case's note history can't be silently rewritten.
+
+async function bpoAddNote(caseId, { text, clientId } = {}, actor) {
+  if (!caseId) throw new Error('caseId required');
+  const clean = (text || '').toString().trim();
+  if (!clean) throw new Error('text required');
+
+  const col = await bpoNotesCollection();
+  const doc = { caseId, clientId: clientId || null, text: clean, actor, ts: new Date().toISOString() };
+  await col.insertOne(doc);
+  await bpoWriteAudit({
+    actor, action: 'work_item.note', entityType: 'work_item', entityId: caseId,
+    detail: { textPreview: clean.slice(0, 120) },
   });
   return doc;
+}
+
+async function bpoListNotes({ caseId, limit = 100 } = {}) {
+  const col = await bpoNotesCollection();
+  const query = {};
+  if (caseId) query.caseId = caseId;
+  return col.find(query).sort({ ts: -1 }).limit(limit).toArray();
+}
+
+// ── SLA events ───────────────────────────────────────────────────────────
+// Read-only from the outside — these are only ever written by
+// bpoUpsertWorkItem above, not accepted directly from a route body.
+
+async function bpoListSlaEvents({ caseId, clientId, limit = 200 } = {}) {
+  const col = await bpoSlaEventsCollection();
+  const query = {};
+  if (caseId) query.caseId = caseId;
+  if (clientId) query.clientId = clientId;
+  return col.find(query).sort({ ts: -1 }).limit(limit).toArray();
+}
+
+// ── BNCA / AI-output reports ────────────────────────────────────────────
+// Append-only — every AI/BNCA extraction+recommendation the strategist
+// screen renders gets its own doc here, not just whatever the current
+// bpo_work_items.payload snapshot happens to hold. Lets Phase 4 reporting
+// (and any future audit) see what the model actually said at each point,
+// not just the latest state.
+
+async function bpoSaveBncaReport(caseId, report, actor) {
+  if (!caseId) throw new Error('caseId required');
+  if (!report || typeof report !== 'object') throw new Error('report object required');
+
+  const col = await bpoBncaReportsCollection();
+  const doc = {
+    caseId,
+    clientId: report.clientId || null,
+    vertical: report.vertical || 'bpo',
+    confidence: Number.isFinite(report.confidence) ? report.confidence : null,
+    confidenceDefaulted: !!report.confidenceDefaulted,
+    recommendation: report.recommendation || null,
+    explainability: report.explainability || null,
+    exposure: report.exposure || null, // { ifIgnored, ifActed, urgencyWindow } from TSMBNCAExposureEngine
+    raw: report.raw !== undefined ? report.raw : report,
+    actor,
+    ts: new Date().toISOString(),
+  };
+  await col.insertOne(doc);
+  await bpoWriteAudit({
+    actor, action: 'work_item.bnca_report', entityType: 'work_item', entityId: caseId,
+    detail: { confidence: doc.confidence },
+  });
+  return doc;
+}
+
+async function bpoListBncaReports({ caseId, limit = 50 } = {}) {
+  const col = await bpoBncaReportsCollection();
+  const query = {};
+  if (caseId) query.caseId = caseId;
+  return col.find(query).sort({ ts: -1 }).limit(limit).toArray();
 }
 
 module.exports = {
@@ -513,4 +676,10 @@ module.exports = {
   bpoUpsertWorkItem,
   bpoListAuditLogs,
   bpoWriteAudit,
+  // BPO Phase 2 (rest of): notes / SLA events / BNCA reports
+  bpoAddNote,
+  bpoListNotes,
+  bpoListSlaEvents,
+  bpoSaveBncaReport,
+  bpoListBncaReports,
 };

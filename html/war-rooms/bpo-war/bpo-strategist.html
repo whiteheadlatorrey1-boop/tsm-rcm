@@ -926,6 +926,7 @@ function parseAndRenderStrategy(raw) {
       // signal that was already displayed on load (hydrateImpactModel),
       // not the LLM's JSON output. Previously obj.noActionRevLoss silently
       // overwrote the real value here.
+      let bpoXPImpactForSave = null;
       try {
         if (window.TSMBNCAExposureEngine) {
           function bpoXPParseExposureLow(str){
@@ -950,6 +951,7 @@ function parseAndRenderStrategy(raw) {
             confidence: bpoXPConf,
             daysUntilDeadline: 0 // no independent deadline signal for this vertical yet
           });
+          bpoXPImpactForSave = bpoXPImpact;
           const fmt = n => '$' + Math.round(n).toLocaleString('en-US');
           document.getElementById('noActRev').textContent = fmt(bpoXPImpact.ifIgnored.exposure);
           document.getElementById('actRev').textContent = fmt(bpoXPImpact.ifActed.exposure);
@@ -957,6 +959,31 @@ function parseAndRenderStrategy(raw) {
         }
       } catch(dee) { console.warn('[bnca-exposure-engine] bpo render error:', dee); }
       document.getElementById('tbConf').textContent = obj.confidenceDefaulted ? '—' : (obj.confidence ? obj.confidence + '%' : '—');
+
+      // ── Server-side persistence (Phase 2, additive, non-fatal) ──
+      // Saves this AI/BNCA output as its own append-only bpo_bnca_reports
+      // doc, distinct from the bpo_work_items snapshot — every extraction
+      // + recommendation the model produces is kept, not just whichever
+      // one was live when the case last advanced stage.
+      try {
+        if (warData?.caseId) {
+          fetch(`/api/bpo/work-items/${encodeURIComponent(warData.caseId)}/bnca-reports`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({
+              clientId: warData?.clientId || null,
+              vertical: 'bpo',
+              confidence: obj.confidence,
+              confidenceDefaulted: !!obj.confidenceDefaulted,
+              recommendation: obj.recommendation || obj.summary || null,
+              explainability: obj.explainability || obj.explainItems || null,
+              exposure: bpoXPImpactForSave,
+              raw: obj,
+            })
+          }).catch((e) => console.warn('BPO BNCA report persist failed (non-fatal):', e.message));
+        }
+      } catch (e) { console.warn('BPO BNCA report persist failed (non-fatal):', e.message); }
     } catch(e) {
       renderFallbackRec();
     }
