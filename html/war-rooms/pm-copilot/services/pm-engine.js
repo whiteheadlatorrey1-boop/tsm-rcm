@@ -12,12 +12,12 @@
 (function (global) {
   'use strict';
 
-  const ENTITY_KEYS = ['work_orders', 'leases', 'vendors'];
+  const ENTITY_KEYS = ['work_orders', 'leases', 'vendors', 'turnovers'];
 
   class TSMPmEngine {
     constructor(model) {
       this.model = model || { entities: {}, kpis: [], risk_signals: [] };
-      this.data = { work_orders: [], leases: [], vendors: [], units: [] };
+      this.data = { work_orders: [], leases: [], vendors: [], turnovers: [], units: [] };
       this._canonicalCore = null;
     }
 
@@ -68,11 +68,11 @@
     }
 
     _idField(entityKey) {
-      return { work_orders: 'work_order_id', leases: 'lease_id', vendors: 'vendor_id' }[entityKey];
+      return { work_orders: 'work_order_id', leases: 'lease_id', vendors: 'vendor_id', turnovers: 'turnover_id' }[entityKey];
     }
 
     _entityDef(entityKey) {
-      const singular = { work_orders: 'work_order', leases: 'lease', vendors: 'vendor_compliance' }[entityKey];
+      const singular = { work_orders: 'work_order', leases: 'lease', vendors: 'vendor_compliance', turnovers: 'make_ready' }[entityKey];
       return (this.model.entities || {})[singular] || { stages: [] };
     }
 
@@ -166,6 +166,10 @@
       const portfolioRentValue = (this.data.leases || [])
         .filter(l => ['active', 'renewed', 'notice_given', 'renewal_pending'].includes(l.stage))
         .reduce((sum, l) => sum + (l.rent || 0), 0);
+      const turnoversInProgress = (this.data.turnovers || []).filter(
+        t => t.stage !== 'leased'
+      ).length;
+      const turnoversOverSla = this.getSlaBreaches('turnovers').length;
 
       return {
         open_work_orders: workOrdersOpen,
@@ -174,8 +178,39 @@
         units_vacant: occ.vacant,
         leases_expiring_60d: leasesExpiring60d,
         vendor_compliance_flags: vendorFlags,
-        portfolio_rent_value: portfolioRentValue
+        portfolio_rent_value: portfolioRentValue,
+        turnovers_in_progress: turnoversInProgress,
+        turnovers_over_sla: turnoversOverSla
       };
+    }
+
+    /**
+     * Turnover / make-ready pipeline: joins each turnover record back to
+     * its unit (property, address, days_vacant, market_rent) and flags
+     * SLA breaches by stage, same breach math as getSlaBreaches().
+     */
+    getTurnoverPipeline() {
+      const breaches = this.getSlaBreaches('turnovers');
+      const breachMap = {};
+      breaches.forEach(b => { breachMap[b.id] = b; });
+
+      return (this.data.turnovers || []).map(t => {
+        const unit = (this.data.units || []).find(u => u.unit_id === t.unit_id);
+        const breach = breachMap[t.turnover_id];
+        return {
+          turnover_id: t.turnover_id,
+          unit_id: t.unit_id,
+          property: t.property || (unit && unit.property),
+          address: unit ? unit.address : null,
+          stage: t.stage,
+          entered_stage_at_hours_ago: t.entered_stage_at_hours_ago || 0,
+          days_vacant: unit ? unit.days_vacant : null,
+          market_rent: unit ? unit.market_rent : null,
+          over_sla: !!breach,
+          hours_over_sla: breach ? breach.hours_over : 0,
+          notes: t.notes || ''
+        };
+      }).sort((a, b) => (b.hours_over_sla || 0) - (a.hours_over_sla || 0));
     }
 
     getFinancialModel() {
@@ -280,7 +315,8 @@
       const kindConfig = [
         { key: 'work_orders', type: 'pm_work_order',        idField: 'work_order_id', ownerField: 'vendor_id', statusField: 'stage', warRoom: '/html/war-rooms/pm-copilot/pm-command.html' },
         { key: 'leases',      type: 'pm_lease',              idField: 'lease_id',      ownerField: null,        statusField: 'stage', warRoom: '/html/war-rooms/pm-copilot/pm-command.html' },
-        { key: 'vendors',     type: 'pm_vendor_compliance',  idField: 'vendor_id',     ownerField: null,        statusField: 'stage', warRoom: '/html/war-rooms/pm-copilot/pm-command.html' }
+        { key: 'vendors',     type: 'pm_vendor_compliance',  idField: 'vendor_id',     ownerField: null,        statusField: 'stage', warRoom: '/html/war-rooms/pm-copilot/pm-command.html' },
+        { key: 'turnovers',   type: 'pm_make_ready',         idField: 'turnover_id',   ownerField: null,        statusField: 'stage', warRoom: '/html/war-rooms/pm-copilot/pm-command.html' }
       ];
 
       const out = {};
@@ -353,7 +389,8 @@
           kpis: this.computeKpis(),
           work_order_breaches: this.getSlaBreaches('work_orders'),
           leases_expiring: this.getLeasesExpiring(60),
-          vendor_flags: this.data.vendors.filter(v => ['expiring_soon', 'expired'].includes(v.stage))
+          vendor_flags: this.data.vendors.filter(v => ['expiring_soon', 'expired'].includes(v.stage)),
+          turnover_pipeline: this.getTurnoverPipeline()
         })
       });
       if (!res.ok) throw new Error('PM analysis endpoint returned ' + res.status);
@@ -367,12 +404,15 @@
         kpis: this.computeKpis(),
         work_order_breaches: this.getSlaBreaches('work_orders'),
         work_order_wip: this.getStageWip('work_orders'),
+        turnover_pipeline: this.getTurnoverPipeline(),
+        turnover_wip: this.getStageWip('turnovers'),
         financials: this.getFinancialSummary(),
         records: {
           units: this.data.units,
           work_orders: this.data.work_orders,
           leases: this.data.leases,
-          vendors: this.data.vendors
+          vendors: this.data.vendors,
+          turnovers: this.data.turnovers
         },
         ai_summary: aiText || null,
         ts: Date.now()

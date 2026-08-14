@@ -93,6 +93,8 @@ select.stage-select{background:var(--bg3);border:1px solid var(--border);color:v
   <div class="kpi"><div class="kpi-val" id="kLease">&mdash;</div><div class="kpi-lbl">LEASES EXPIRING &lt;60D</div></div>
   <div class="kpi"><div class="kpi-val" id="kVendor">&mdash;</div><div class="kpi-lbl">VENDOR COMPLIANCE FLAGS</div></div>
   <div class="kpi"><div class="kpi-val" id="kRent">&mdash;</div><div class="kpi-lbl">PORTFOLIO RENT VALUE</div></div>
+  <div class="kpi"><div class="kpi-val" id="kTurnover">&mdash;</div><div class="kpi-lbl">TURNOVERS IN PROGRESS</div></div>
+  <div class="kpi"><div class="kpi-val" id="kTurnoverSla">&mdash;</div><div class="kpi-lbl">TURNOVERS OVER SLA</div></div>
 </div>
 
 <div id="layout">
@@ -106,6 +108,7 @@ select.stage-select{background:var(--bg3);border:1px solid var(--border);color:v
     <div class="module active" data-tab="workorders">Work Orders</div>
     <div class="module" data-tab="leases">Leases</div>
     <div class="module" data-tab="vendors">Vendors</div>
+    <div class="module" data-tab="turnovers">Turnovers</div>
     <div class="module" data-tab="units">Units</div>
   </div>
 
@@ -132,17 +135,21 @@ select.stage-select{background:var(--bg3);border:1px solid var(--border);color:v
           <div class="tab active" data-tab="workorders">Work Orders</div>
           <div class="tab" data-tab="leases">Leases</div>
           <div class="tab" data-tab="vendors">Vendors</div>
+          <div class="tab" data-tab="turnovers">Turnovers</div>
           <div class="tab" data-tab="units">Units</div>
         </div>
         <div class="tabpane active" id="pane-workorders"></div>
         <div class="tabpane" id="pane-leases"></div>
         <div class="tabpane" id="pane-vendors"></div>
+        <div class="tabpane" id="pane-turnovers"></div>
         <div class="tabpane" id="pane-units"></div>
       </div>
     </div>
   </div>
 
   <div id="rightrail">
+    <div class="rr-lbl">TURNOVER / MAKE-READY PIPELINE</div>
+    <div id="turnoverPanel" style="font-family:var(--mono);font-size:.55rem;color:var(--muted);line-height:1.8;"></div>
     <div class="rr-lbl">VACANCY EXPOSURE</div>
     <div id="vacancyPanel" style="font-family:var(--mono);font-size:.55rem;color:var(--muted);line-height:1.8;"></div>
     <div class="rr-lbl">MAINTENANCE DELAY EXPOSURE</div>
@@ -235,7 +242,7 @@ document.querySelectorAll('.module[data-tab], .tab[data-tab]').forEach(el => {
 });
 
 function renderCount(){
-  const counts = { workorders: engine.data.work_orders.length, leases: engine.data.leases.length, vendors: engine.data.vendors.length, units: engine.data.units.length };
+  const counts = { workorders: engine.data.work_orders.length, leases: engine.data.leases.length, vendors: engine.data.vendors.length, turnovers: engine.data.turnovers.length, units: engine.data.units.length };
   document.getElementById('tabCount').textContent = counts[activeTab] + ' RECORDS';
 }
 
@@ -280,6 +287,18 @@ function renderVendors(){
   }).join('') || '<div class="row-item"><span class="rtitle" style="color:var(--dim)">No vendors.</span></div>';
 }
 
+function renderTurnovers(){
+  const el = document.getElementById('pane-turnovers');
+  const pipeline = engine.getTurnoverPipeline();
+  el.innerHTML = pipeline.map(t => {
+    return `<div class="row-item">
+      <span class="rtag ${t.over_sla ? 'high' : 'low'}">${t.over_sla ? 'over sla' : 'on track'}</span>
+      <span class="rtitle">${t.turnover_id} &middot; ${t.unit_id} &middot; ${t.property || ''}</span>
+      <span class="rmeta">${t.stage.replace(/_/g,' ')} &middot; ${t.entered_stage_at_hours_ago}h in stage &middot; ${t.days_vacant != null ? t.days_vacant + 'd vacant' : ''}</span>
+    </div>`;
+  }).join('') || '<div class="row-item"><span class="rtitle" style="color:var(--dim)">No turnovers in progress.</span></div>';
+}
+
 function renderUnits(){
   const el = document.getElementById('pane-units');
   el.innerHTML = engine.data.units.map(u => {
@@ -300,6 +319,15 @@ function renderKpis(){
   document.getElementById('kLease').textContent = k.leases_expiring_60d;
   document.getElementById('kVendor').textContent = k.vendor_compliance_flags;
   document.getElementById('kRent').innerHTML = fmtMoney(k.portfolio_rent_value);
+  document.getElementById('kTurnover').textContent = k.turnovers_in_progress;
+  document.getElementById('kTurnoverSla').textContent = k.turnovers_over_sla;
+}
+
+function renderTurnoverPanel(){
+  const pipeline = engine.getTurnoverPipeline();
+  document.getElementById('turnoverPanel').innerHTML = pipeline.map(t =>
+    `${t.unit_id} (${t.property || ''}): <span style="color:${t.over_sla ? 'var(--red)' : 'var(--muted)'}">${t.stage.replace(/_/g,' ')}</span><br>&nbsp;&nbsp;${t.entered_stage_at_hours_ago}h in stage${t.over_sla ? ' &middot; ' + t.hours_over_sla + 'h over SLA' : ''}`
+  ).join('<br>') || 'No turnovers in progress.';
 }
 
 function renderExposure(){
@@ -325,8 +353,10 @@ function render(){
   renderWorkOrders();
   renderLeases();
   renderVendors();
+  renderTurnovers();
   renderUnits();
   renderExposure();
+  renderTurnoverPanel();
   renderCount();
 }
 

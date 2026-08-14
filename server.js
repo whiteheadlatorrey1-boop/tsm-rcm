@@ -949,18 +949,19 @@ app.post('/api/pm/vendors/:vendorId', requireRole(PM_MANAGE_ROLES), async (req, 
 // AI analysis endpoint -- same shape as /api/schools/analysis and
 // /api/bpo equivalents.
 app.post('/api/pm/analysis', requireRole(PM_INTERNAL_ROLES), async (req, res) => {
-  const { kpis, work_order_breaches, leases_expiring, vendor_flags, context, maxTokens } = req.body || {};
+  const { kpis, work_order_breaches, leases_expiring, vendor_flags, turnover_pipeline, context, maxTokens } = req.body || {};
   const summary = JSON.stringify({
-    kpis, work_order_breaches, leases_expiring, vendor_flags,
+    kpis, work_order_breaches, leases_expiring, vendor_flags, turnover_pipeline,
     counts: {
       work_order_breaches: Array.isArray(work_order_breaches) ? work_order_breaches.length : undefined,
       leases_expiring: Array.isArray(leases_expiring) ? leases_expiring.length : undefined,
       vendor_flags: Array.isArray(vendor_flags) ? vendor_flags.length : undefined,
+      turnover_pipeline: Array.isArray(turnover_pipeline) ? turnover_pipeline.length : undefined,
     }
   }, null, 2);
   const prompt = `Current PM Copilot portfolio snapshot:\n${summary}\n\n` +
     (context ? `Additional context: ${context}\n\n` : '') +
-    `Identify the highest-dollar-impact vacancies, the most urgent SLA-breached work orders, leases at risk of non-renewal, and vendor compliance gaps blocking dispatch. Recommend the single most important next action per item, prioritized by dollar exposure. Reference unit/work-order/lease/vendor IDs.`;
+    `Identify the highest-dollar-impact vacancies, the most urgent SLA-breached work orders, leases at risk of non-renewal, vendor compliance gaps blocking dispatch, and turnovers/make-ready jobs stuck past SLA. Recommend the single most important next action per item, prioritized by dollar exposure. Reference unit/work-order/lease/vendor/turnover IDs.`;
   try {
     const answer = await groqChat(SP.pm, prompt, maxTokens || 1200);
     recordVerticalMemory('pm', prompt, answer);
