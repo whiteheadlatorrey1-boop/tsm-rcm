@@ -4341,8 +4341,12 @@ app.get('/api/integration/decisions', (req, res) => {
 // items injected. It reuses only this real server-side HITL gate + the
 // genuine Approval Improvement Rate panel, wired directly into its own
 // existing action buttons.
-const EXEC_PORTAL_VERTICALS = ['healthcare', 'finops', 'insurance', 'construction', 'legal', 'realestate', 'bpo', 'mortgage'];
-const EXEC_PORTAL_GATE_PREFIX = { healthcare: 'HC', finops: 'FIN', insurance: 'INS', construction: 'CON', legal: 'LEG', realestate: 'RE', bpo: 'BPO', mortgage: 'MTG' };
+// pm added 2026-08-14: same "own real ACKNOWLEDGE/ESCALATE actions, not the
+// shared tsm-exec-portal-upgrade.js Decision Center" pattern as mortgage --
+// pm-exec-portal.html wires directly into this gate via its own action
+// buttons, not the shared script's fabricated placeholder items.
+const EXEC_PORTAL_VERTICALS = ['healthcare', 'finops', 'insurance', 'construction', 'legal', 'realestate', 'bpo', 'mortgage', 'pm'];
+const EXEC_PORTAL_GATE_PREFIX = { healthcare: 'HC', finops: 'FIN', insurance: 'INS', construction: 'CON', legal: 'LEG', realestate: 'RE', bpo: 'BPO', mortgage: 'MTG', pm: 'PM' };
 const EXEC_PORTAL_HITL_GATES = {};
 EXEC_PORTAL_VERTICALS.forEach(v => {
   const gatePrefix = EXEC_PORTAL_GATE_PREFIX[v] || 'EXEC';
