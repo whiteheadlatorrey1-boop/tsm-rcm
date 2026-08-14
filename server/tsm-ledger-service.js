@@ -643,6 +643,114 @@ async function bpoListBncaReports({ caseId, limit = 50 } = {}) {
   return col.find(query).sort({ ts: -1 }).limit(limit).toArray();
 }
 
+// =====================================================
+// CONCIERGE TRANSPORT PERSISTENCE
+// Same ledger-service-first, routes-second pattern as BPO above. Maps a
+// server/services/concierge-transport-adapter.js booking to a durable
+// mission record plus an append-only status timeline, replacing what the
+// adapter otherwise only holds in-memory:
+//
+//   concierge_missions      — one doc per bookingId, upserted as a
+//                              booking's status advances (mirrors
+//                              BOOKING_STATUSES: confirmed -> ... ->
+//                              completed/cancelled). Mirrors bpo_work_items.
+//   concierge_status_events — append-only status-transition trail, one doc
+//                              per transition, so history survives a
+//                              mission doc being overwritten on the next
+//                              upsert. Mirrors bpo_sla_events.
+// =====================================================
+
+const CONCIERGE_MISSIONS_COLLECTION = 'concierge_missions';
+const CONCIERGE_STATUS_EVENTS_COLLECTION = 'concierge_status_events';
+
+async function conciergeMissionsCollection() {
+  const database = await getDb();
+  return database.collection(CONCIERGE_MISSIONS_COLLECTION);
+}
+
+async function conciergeStatusEventsCollection() {
+  const database = await getDb();
+  return database.collection(CONCIERGE_STATUS_EVENTS_COLLECTION);
+}
+
+async function conciergeListMissions({ status, provider, propertyId, limit = 100 } = {}) {
+  const col = await conciergeMissionsCollection();
+  const query = {};
+  if (status) query.status = status;
+  if (provider) query.provider = provider;
+  if (propertyId) query.propertyId = propertyId;
+  return col.find(query).sort({ updatedAt: -1 }).limit(limit).toArray();
+}
+
+async function conciergeGetMission(bookingId) {
+  const col = await conciergeMissionsCollection();
+  return col.findOne({ bookingId });
+}
+
+/**
+ * Upserts a mission from a booking (as returned by the adapter's book(),
+ * status(), or simulateEvent()). Same slaAgeHours-at-write-time approach
+ * as bpoUpsertWorkItem, and same "optional fields are sticky" rule so a
+ * later status-only update doesn't wipe guestName/propertyId set earlier.
+ */
+async function conciergeUpsertMission(bookingId, fields, actor) {
+  if (!bookingId) throw new Error('bookingId required');
+  const col = await conciergeMissionsCollection();
+  const now = new Date().toISOString();
+  const {
+    provider = null, quoteId = null, status = 'confirmed', confirmationCode = null,
+    request = null, driver = null, guestName, propertyId, vertical = 'concierge', note,
+  } = fields || {};
+
+  const existing = await col.findOne({ bookingId });
+  const createdAt = existing ? existing.createdAt : now;
+
+  const $set = {
+    bookingId, provider, quoteId, status, confirmationCode, request, driver, vertical,
+    updatedAt: now,
+    ageHoursAtUpdate: bpoHoursBetween(createdAt, now),
+  };
+  if (guestName !== undefined) $set.guestName = (guestName || '').toString().trim();
+  else if (existing && existing.guestName !== undefined) $set.guestName = existing.guestName;
+  if (propertyId !== undefined) $set.propertyId = propertyId || null;
+  else if (existing && existing.propertyId !== undefined) $set.propertyId = existing.propertyId;
+
+  const $setOnInsert = existing ? undefined : { createdAt: now };
+
+  await col.updateOne(
+    { bookingId },
+    $setOnInsert ? { $set, $setOnInsert } : { $set },
+    { upsert: true }
+  );
+  const doc = await col.findOne({ bookingId });
+
+  const previousStatus = existing ? existing.status : null;
+  if (!existing || previousStatus !== status) {
+    try {
+      const evCol = await conciergeStatusEventsCollection();
+      await evCol.insertOne({
+        bookingId, provider, vertical,
+        fromStatus: previousStatus,
+        toStatus: status,
+        note: note || undefined,
+        actor,
+        ts: now,
+      });
+    } catch (e) {
+      console.warn('[conciergeUpsertMission] failed to write status event:', e.message);
+    }
+  }
+
+  return doc;
+}
+
+async function conciergeListStatusEvents({ bookingId, limit = 200 } = {}) {
+  const col = await conciergeStatusEventsCollection();
+  const query = {};
+  if (bookingId) query.bookingId = bookingId;
+  return col.find(query).sort({ ts: -1 }).limit(limit).toArray();
+}
+
 module.exports = {
   connect,
   getDb,
@@ -682,4 +790,9 @@ module.exports = {
   bpoListSlaEvents,
   bpoSaveBncaReport,
   bpoListBncaReports,
+  // Concierge transport persistence
+  conciergeListMissions,
+  conciergeGetMission,
+  conciergeUpsertMission,
+  conciergeListStatusEvents,
 };

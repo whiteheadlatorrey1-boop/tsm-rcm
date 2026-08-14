@@ -736,6 +736,103 @@ app.post('/api/bpo/work-items/:caseId/bnca-reports', requireRole(BPO_INTERNAL_RO
   } catch (e) { res.status(400).json({ ok: false, error: e.message }); }
 });
 
+// ── CONCIERGE TRANSPORT (quotes / bookings / missions) ──────────────────────
+// Routes sit on top of server/services/concierge-transport-adapter.js
+// (defaultRouter, provider-neutral) + server/tsm-ledger-service.js
+// (concierge_missions / concierge_status_events collections). Same
+// BPO_INTERNAL_ROLES gate as BPO above — these are internal ops endpoints,
+// not guest-facing. Quotes are stateless (no persistence, no auth beyond
+// internal-role since nothing is committed yet); booking/status/cancel all
+// write through to a mission record so the war room -> strategist -> exec
+// chain has a durable record instead of relying on the adapter's in-memory
+// booking map, which is lost on every server restart.
+
+app.post('/api/concierge/quotes', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const { quotes, errors } = await conciergeRouter.getQuotes(req.body || {});
+    res.json({ ok: true, quotes, errors });
+  } catch (e) { res.status(400).json({ ok: false, error: e.message }); }
+});
+
+// Books a quote, then immediately persists the resulting booking as a
+// concierge_missions doc (status: 'confirmed') so it survives a restart.
+app.post('/api/concierge/bookings', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const { quoteId, guestName, propertyId, vertical, ...bookingDetails } = req.body || {};
+    if (!quoteId) return res.status(400).json({ ok: false, error: 'quoteId required' });
+    const booking = await conciergeRouter.book(quoteId, bookingDetails);
+    const mission = await tsmLedger.conciergeUpsertMission(booking.bookingId, {
+      provider: booking.provider, quoteId: booking.quoteId, status: booking.status,
+      confirmationCode: booking.confirmationCode, request: booking.request, driver: booking.driver,
+      guestName, propertyId, vertical,
+    }, req.tsmSession.label || req.tsmSession.role);
+    res.json({ ok: true, booking, mission });
+  } catch (e) { res.status(400).json({ ok: false, error: e.message }); }
+});
+
+app.get('/api/concierge/missions', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const missions = await tsmLedger.conciergeListMissions({
+      status: req.query.status, provider: req.query.provider, propertyId: req.query.propertyId,
+    });
+    res.json({ ok: true, missions });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+app.get('/api/concierge/missions/:bookingId', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const mission = await tsmLedger.conciergeGetMission(req.params.bookingId);
+    if (!mission) return res.status(404).json({ ok: false, error: 'Mission not found' });
+    res.json({ ok: true, mission });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// Re-fetches live status from the provider (not just the last-persisted
+// mission doc), then re-upserts -- this is what a "refresh" click on the
+// war room should hit so status isn't stale between webhook/poll events.
+app.get('/api/concierge/missions/:bookingId/refresh', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const booking = await conciergeRouter.status(req.params.bookingId);
+    const mission = await tsmLedger.conciergeUpsertMission(booking.bookingId, {
+      provider: booking.provider, quoteId: booking.quoteId, status: booking.status,
+      confirmationCode: booking.confirmationCode, request: booking.request, driver: booking.driver,
+    }, req.tsmSession.label || req.tsmSession.role);
+    res.json({ ok: true, booking, mission });
+  } catch (e) { res.status(400).json({ ok: false, error: e.message }); }
+});
+
+app.post('/api/concierge/missions/:bookingId/cancel', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const result = await conciergeRouter.cancel(req.params.bookingId);
+    const mission = await tsmLedger.conciergeUpsertMission(req.params.bookingId, {
+      status: result.status, note: 'cancelled via exec/strategist action',
+    }, req.tsmSession.label || req.tsmSession.role);
+    res.json({ ok: true, result, mission });
+  } catch (e) { res.status(400).json({ ok: false, error: e.message }); }
+});
+
+// Mock-provider only -- lets the demo/war-room simulate a driver-assigned
+// / en_route / arrived / picked_up / completed timeline without a real
+// provider webhook. See MockTransportProvider.simulateEvent in the adapter.
+app.post('/api/concierge/missions/:bookingId/simulate-event', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const { status, note } = req.body || {};
+    if (!status) return res.status(400).json({ ok: false, error: 'status required' });
+    const result = await conciergeRouter.simulateEvent(req.params.bookingId, status, note);
+    const mission = await tsmLedger.conciergeUpsertMission(req.params.bookingId, {
+      status: result.status, note,
+    }, req.tsmSession.label || req.tsmSession.role);
+    res.json({ ok: true, result, mission });
+  } catch (e) { res.status(400).json({ ok: false, error: e.message }); }
+});
+
+app.get('/api/concierge/missions/:bookingId/status-events', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const events = await tsmLedger.conciergeListStatusEvents({ bookingId: req.params.bookingId });
+    res.json({ ok: true, statusEvents: events });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 app.use('/', express.static(path.join(__dirname, 'html')));
 const suites = [
   { route: '/construction', dir: 'html/construction-suite', index: 'construction-hub.html' },
@@ -3795,6 +3892,7 @@ app.post('/api/digital-twin/query', async (req, res) => {
 // ── PHASE 8: GOVERNANCE & COMPLIANCE ───────────────────────────────────────────
 const { createGate: createHitlGate } = require('./html/shared/tsm-hitl-gate.js');
 const tsmLedger = require('./server/tsm-ledger-service.js');
+const conciergeRouter = require('./server/services/concierge-transport-adapter.js').defaultRouter;
 const GOVERNANCE_AUDIT_LOG = [];
 const GOVERNANCE_RISK_REGISTER = [];
 // Standardized HITL approval gate (BPO Enterprise Roadmap #4). Replaces the
