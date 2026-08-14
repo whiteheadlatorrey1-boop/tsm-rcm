@@ -55,6 +55,29 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 .rate-val{font-family:'Orbitron',sans-serif;font-size:1.15rem;font-weight:700;}
 .rate-val.gold{color:#d4af37;}.rate-val.green{color:var(--green);}.rate-val.red{color:var(--red);}.rate-val.muted{color:var(--muted);}
 .rate-lbl{font-family:'JetBrains Mono',monospace;font-size:.55rem;color:var(--muted);margin-top:6px;letter-spacing:.05em;}
+.ai-box table.md-table{border-collapse:collapse;width:100%;margin:8px 0;white-space:normal;}
+.ai-box table.md-table th,.ai-box table.md-table td{border:1px solid var(--border);padding:4px 6px;text-align:left;vertical-align:top;}
+.ai-box table.md-table th{color:var(--muted);text-transform:uppercase;font-size:.6rem;}
+
+.risk-item{display:flex;gap:14px;align-items:flex-start;padding:12px 0;border-bottom:1px solid #0f1620;}
+.risk-item:last-child{border-bottom:none;}
+.risk-rank{font-family:'Orbitron',sans-serif;font-size:1.1rem;font-weight:900;color:var(--accent);width:28px;flex-shrink:0;}
+.risk-body{flex:1;}
+.risk-title{font-size:.85rem;color:var(--text);margin-bottom:4px;}
+.risk-title b{color:var(--red);}
+.risk-action{font-family:'JetBrains Mono',monospace;font-size:.65rem;color:var(--muted);}
+.risk-amount{font-family:'Orbitron',sans-serif;font-size:1rem;font-weight:700;color:var(--red);white-space:nowrap;}
+
+.funnel{display:flex;flex-direction:column;gap:6px;}
+.funnel-row{display:grid;grid-template-columns:130px 1fr 90px 110px;gap:10px;align-items:center;font-size:.75rem;}
+.funnel-row .fr-lbl{font-family:'JetBrains Mono',monospace;font-size:.62rem;color:var(--text);}
+.funnel-bar-wrap{background:var(--bg3);border-radius:4px;height:22px;overflow:hidden;position:relative;}
+.funnel-bar{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));display:flex;align-items:center;padding-left:8px;font-family:'JetBrains Mono',monospace;font-size:.6rem;color:#02120d;font-weight:700;white-space:nowrap;}
+.funnel-bar.empty-bar{background:var(--bg3);}
+.fr-hours{font-family:'JetBrains Mono',monospace;font-size:.62rem;color:var(--muted);text-align:right;}
+.fr-exposure{font-family:'JetBrains Mono',monospace;font-size:.65rem;text-align:right;color:var(--red);font-weight:700;}
+.funnel-hdr{display:grid;grid-template-columns:130px 1fr 90px 110px;gap:10px;font-family:'JetBrains Mono',monospace;font-size:.55rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;}
+.funnel-hdr .align-r{text-align:right;}
 </style>
 </head>
 <body data-vertical="pm" data-page-role="executive">
@@ -106,6 +129,168 @@ function escapeHtml(s){
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 function fmtMoney(n){ return '$' + Math.round(n||0).toLocaleString('en-US'); }
+
+function renderEngineOutput(text) {
+  if(!text) return '';
+  const clean = text.replace(/KPI_JSON:\s*\{[^}]*\}\n*/i, '').trim();
+  const lines = clean.split('\n');
+  const isTableSep = l => /^\s*\|?[\s:|-]+\|?\s*$/.test(l) && l.includes('-');
+  const inlineFmt = s => escapeHtml(s).replace(/&lt;br\s*\/?&gt;/gi, '<br>').replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  const tables = [];
+  const outLines = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (/^\s*\|.*\|\s*$/.test(line) && lines[i + 1] !== undefined && isTableSep(lines[i + 1])) {
+      const headers = line.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+      let t = '<table class="md-table"><thead><tr>' + headers.map(c => `<th>${inlineFmt(c)}</th>`).join('') + '</tr></thead><tbody>';
+      i += 2;
+      while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) {
+        const cells = lines[i].trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+        t += '<tr>' + cells.map(c => `<td>${inlineFmt(c)}</td>`).join('') + '</tr>';
+        i++;
+      }
+      t += '</tbody></table>';
+      outLines.push(`@@TABLE${tables.length}@@`);
+      tables.push(t);
+      continue;
+    }
+    outLines.push(line);
+    i++;
+  }
+  let html = escapeHtml(outLines.join('\n'));
+  html = html.replace(/&lt;br\s*\/?&gt;/gi, '<br>');
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/^▸\s*(.+)$/gm, '<div style="margin:4px 0">▸ $1</div>');
+  html = html.replace(/^(\d+)\.\s+(.+)$/gm, '<div style="margin:4px 0 4px 8px"><strong>$1.</strong> $2</div>');
+  html = html.replace(/\n{2,}/g, '<br><br>').replace(/\n/g, '<br>');
+  tables.forEach((t, idx) => { html = html.replace(`@@TABLE${idx}@@`, t); });
+  return html;
+}
+
+/* ---------- Regional PM Manager framing helpers ---------- */
+
+function pmExecAction(sev){
+  if(sev === 'HIGH') return 'Escalate to regional PM manager now \u2014 exposure compounding daily.';
+  if(sev === 'MEDIUM') return 'Confirm remediation ETA with property manager; escalate if unresolved this week.';
+  return 'Monitor \u2014 low board-level exposure at current pace.';
+}
+
+// Top Risk Register -- merges the three deterministic exposure item lists
+// the PM engine already computes (vacancy / maintenance-delay / vendor-
+// compliance) into a single board-ranked-by-$ list, same pattern as
+// mortgage-executive-portal.html's renderRiskRegister() over
+// closing_delay_exposure_items. Nothing invented here -- exposure, severity
+// basis, and IDs all come straight off data.financials.
+function renderRiskRegister(fin){
+  if(!fin) return '';
+  const items = [];
+  (fin.vacancy_exposure_items || []).forEach(it => items.push({
+    kind: 'Vacancy', id: it.unit_id, detail: `${it.property || ''} \u2014 ${it.days_vacant}d vacant`,
+    severity: it.days_vacant > 30 ? 'HIGH' : 'MEDIUM', exposure: it.exposure
+  }));
+  (fin.maintenance_delay_exposure_items || []).forEach(it => items.push({
+    kind: 'Maintenance Delay', id: it.id, detail: `${it.unit_id || ''} \u2014 ${it.stage} \u2014 ${it.days_over}d over SLA`,
+    severity: it.days_over > 3 ? 'HIGH' : 'MEDIUM', exposure: it.exposure
+  }));
+  (fin.vendor_compliance_exposure_items || []).forEach(it => items.push({
+    kind: 'Vendor Compliance', id: it.vendor_id, detail: `${it.name || ''} \u2014 ${it.trade || ''} \u2014 ${it.severity}`,
+    severity: it.severity, exposure: it.exposure
+  }));
+
+  if(!items.length){
+    return `<div class="sec"><div class="sec-hdr"><span class="lbl">TOP RISK REGISTER</span></div><div class="no-items">No $ exposure right now &mdash; nothing to escalate to the board.</div></div>`;
+  }
+  const top3 = items.slice().sort((a,b) => (b.exposure||0) - (a.exposure||0)).slice(0,3);
+  const rows = top3.map((it, idx) => `
+    <div class="risk-item">
+      <div class="risk-rank">${idx+1}</div>
+      <div class="risk-body">
+        <div class="risk-title"><b>${escapeHtml(it.kind)}</b> &middot; ${escapeHtml(it.id||'')} &mdash; ${escapeHtml(it.detail)}</div>
+        <div class="risk-action">${escapeHtml(pmExecAction(it.severity))}</div>
+      </div>
+      <div class="risk-amount">${fmtMoney(it.exposure)}</div>
+    </div>`).join('');
+  return `<div class="sec">
+    <div class="sec-hdr"><span class="lbl">TOP RISK REGISTER</span><span class="sec-hdr-note">ranked by $ exposure</span></div>
+    ${rows}
+  </div>`;
+}
+
+// Portfolio Lifecycle Funnel -- mirrors mortgage-executive-portal.html's
+// renderFunnel() over the loan pipeline: shows the work-order pipeline by
+// stage with volume, avg time in stage, and $ exposure per stage (matched
+// off maintenance_delay_exposure_items' .stage label, which pm-engine.js
+// sets to the same stage.label used in work_order_wip).
+function renderFunnel(wip, fin){
+  if(!wip || !wip.length) return '';
+  const expByStage = {};
+  (fin && fin.maintenance_delay_exposure_items || []).forEach(it => {
+    expByStage[it.stage] = (expByStage[it.stage] || 0) + it.exposure;
+  });
+  const maxCount = Math.max(1, ...wip.map(s => s.count));
+  const rows = wip.map(s => {
+    const pct = Math.round((s.count / maxCount) * 100);
+    const exposure = expByStage[s.label] || 0;
+    return `<div class="funnel-row">
+      <div class="fr-lbl">${escapeHtml(s.label)}</div>
+      <div class="funnel-bar-wrap"><div class="funnel-bar${s.count===0?' empty-bar':''}" style="width:${Math.max(pct,s.count?12:0)}%">${s.count} order${s.count===1?'':'s'}</div></div>
+      <div class="fr-hours">${s.avg_hours_in_stage!==null ? s.avg_hours_in_stage+'h avg' : '&mdash;'}</div>
+      <div class="fr-exposure">${exposure>0?fmtMoney(exposure):'&mdash;'}</div>
+    </div>`;
+  }).join('');
+  return `<div class="sec">
+    <div class="sec-hdr"><span class="lbl">WORK ORDER LIFECYCLE (PIPELINE VIEW)</span><span class="sec-hdr-note">Open &rarr; Assigned &rarr; In Progress &rarr; Verified/Cancelled</span></div>
+    <div class="funnel-hdr"><span>Stage</span><span>Volume</span><span class="align-r">Avg Time</span><span class="align-r">$ Exposure</span></div>
+    <div class="funnel">${rows}</div>
+  </div>`;
+}
+
+// ===== TSM MEMORY: REGISTER CROSS-MODULE ANOMALIES =====
+// Mirrors mortgage-executive-portal.html's registerMortgageAnomalies(): fires
+// the top-ranked risk (same one shown at rank 1 in the Top Risk Register)
+// plus a vendor-compliance rollup if there are open flags, into the shared
+// TSM_OPERATIONAL_MEMORY_V3 store. Self-dedupes by anomalyCode so repeat
+// renders (storage/relay events) don't pile up duplicates.
+function registerPmAnomalies(fin){
+  if (!window.TSMMemory || typeof window.TSMMemory.registerAnomaly !== 'function' || !fin) return;
+
+  function alreadyOpen(code){
+    try{
+      const all = JSON.parse(localStorage.getItem('TSM_OPERATIONAL_MEMORY_V3') || '{}');
+      const bucket = all.pm;
+      return !!(bucket && Array.isArray(bucket.anomalies) &&
+        bucket.anomalies.some(a => a.anomalyCode === code && a.status === 'open'));
+    }catch(e){ return false; }
+  }
+  function fire(a){
+    if (alreadyOpen(a.anomalyCode)) return;
+    window.TSMMemory.registerAnomaly(a);
+  }
+
+  const maintItems = fin.maintenance_delay_exposure_items || [];
+  if (maintItems.length){
+    const top = maintItems[0];
+    fire({
+      entityType: 'pm-work-order', entityId: top.id,
+      anomalyCode: 'PM_SLA_BREACH_' + top.id, severity: top.days_over > 3 ? 'HIGH' : 'MEDIUM',
+      title: `${top.stage} \u2014 Work Order ${top.id} \u2014 ${top.days_over}d over SLA`,
+      source: 'pm-executive-portal',
+      meta: { exposure: top.exposure, currency: fin.currency, daysOver: top.days_over }
+    });
+  }
+
+  const vendorItems = fin.vendor_compliance_exposure_items || [];
+  if (vendorItems.length){
+    fire({
+      entityType: 'pm-portfolio', entityId: 'vendor-compliance-flags',
+      anomalyCode: 'PM_VENDOR_COMPLIANCE_FLAGS', severity: 'HIGH',
+      title: `${vendorItems.length} vendor compliance flag(s) \u2014 ${fmtMoney(fin.vendor_compliance_exposure_total)} exposure`,
+      source: 'pm-executive-portal',
+      meta: { count: vendorItems.length, total: fin.vendor_compliance_exposure_total }
+    });
+  }
+}
 
 function renderEmpty(){
   document.getElementById('wrap').innerHTML = `
