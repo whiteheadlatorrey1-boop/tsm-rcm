@@ -388,6 +388,124 @@ async function runAnalysis(){
 
 document.getElementById('btnAnalyze').addEventListener('click', runAnalysis);
 
+const PM_SEV_THRESHOLDS = { crit: 0.30, high: 0.15 }; // breach ratio cutoffs, same convention as Schools
+function pmBreachSeverity(breachCount, totalCount) {
+  if (!totalCount) return breachCount > 0 ? 'MED' : 'LOW';
+  const ratio = breachCount / totalCount;
+  if (ratio >= PM_SEV_THRESHOLDS.crit) return 'CRIT';
+  if (ratio >= PM_SEV_THRESHOLDS.high) return 'HIGH';
+  if (ratio > 0) return 'MED';
+  return 'LOW';
+}
+function pmRateConfidence(fm, field) {
+  if (!fm || fm[field] == null) {
+    return { confidence: 30, note: ` Rate card is missing ${field}, so exposure defaulted to $0 — treat as unverified.` };
+  }
+  return { confidence: 95, note: '' };
+}
+function pmVendorConfidence(fm, flagged) {
+  if (!fm || !fm.insurance_lapse_exposure_by_severity) {
+    return { confidence: 30, note: ' Rate card is missing insurance_lapse_exposure_by_severity, so exposure defaulted to $0 — treat as unverified.' };
+  }
+  const rates = fm.insurance_lapse_exposure_by_severity;
+  const severities = [...new Set(flagged.map(v => v.stage === 'expired' ? 'HIGH' : 'MEDIUM'))];
+  const missing = severities.filter(s => rates[s] == null);
+  if (missing.length) {
+    return { confidence: 65, note: ` Rate card has no entry for severity level(s) ${missing.join(', ')} — those items priced at $0.` };
+  }
+  return { confidence: 95, note: '' };
+}
+
+// ── RELAY TO SENTINEL CENTER ──────────────────────────────────────────────
+// Sentinel reads TSM_PM_STRATEGIST_RELAY from localStorage as
+// { generatedAt, anomalies: [...] } — a different key AND a different shape
+// than TSM_PM_RELAY above (the rich payload PM's own strategist/exec-portal
+// use), mirroring schools-command.html's schPushToSentinel(). Nothing here
+// is LLM-invented: severity, exposure, and rootCause all come straight off
+// engine.getFinancialSummary() / engine.getSlaBreaches() / getTurnoverPipeline(),
+// the same deterministic model data the war room itself renders. Confidence
+// is data completeness (whether the rate card has the field an anomaly's
+// exposure depends on), not a model guess — pm-engine.js makes no AI calls
+// for this math. impacts left empty rather than fabricating cross-vertical
+// weights the way construction/bpo/mortgage's SAMPLE data does.
+function pmPushToSentinel() {
+  if (!engine) return;
+  try {
+    const fin = engine.getFinancialSummary();
+    const kpis = engine.computeKpis();
+    const fm = engine.getFinancialModel();
+    const workOrderBreaches = engine.getSlaBreaches('work_orders') || [];
+    const vendorFlagged = engine.data.vendors.filter(v => ['expiring_soon', 'expired'].includes(v.stage));
+    const turnoverPipeline = engine.getTurnoverPipeline();
+    const turnoverBreaches = turnoverPipeline.filter(t => t.over_sla);
+    const anomalies = [];
+
+    if ((fin.vacancy_exposure_total || 0) > 0) {
+      const { confidence, note } = pmRateConfidence(fm, 'vacancy_cost_per_day');
+      anomalies.push({
+        id: 'pm-vacancy-exposure',
+        title: 'Vacant Units Bleeding Market Rent',
+        severity: pmBreachSeverity(kpis.units_vacant, engine.data.units.length || 1),
+        exposure: fin.vacancy_exposure_total || 0,
+        confidence,
+        rootCause: `${kpis.units_vacant} of ${engine.data.units.length} units sit vacant, losing market rent every day they stay empty.${note}`,
+        recommendedAction: 'Prioritize the highest-exposure vacant units in the Turnover / Make-Ready pipeline.',
+        impacts: {}
+      });
+    }
+    if ((fin.maintenance_delay_exposure_total || 0) > 0 || workOrderBreaches.length > 0) {
+      const { confidence, note } = pmRateConfidence(fm, 'maintenance_delay_cost_per_day');
+      anomalies.push({
+        id: 'pm-maintenance-delay',
+        title: 'Work Orders Past SLA',
+        severity: pmBreachSeverity(workOrderBreaches.length, engine.data.work_orders.length || 1),
+        exposure: fin.maintenance_delay_exposure_total || 0,
+        confidence,
+        rootCause: `${workOrderBreaches.length} of ${engine.data.work_orders.length} work orders are past their SLA clock.${note}`,
+        recommendedAction: 'Escalate the oldest SLA-breached work orders to their assigned vendor.',
+        impacts: {}
+      });
+    }
+    if ((fin.vendor_compliance_exposure_total || 0) > 0 || vendorFlagged.length > 0) {
+      const { confidence, note } = pmVendorConfidence(fm, vendorFlagged);
+      anomalies.push({
+        id: 'pm-vendor-compliance',
+        title: 'Vendor Insurance / License Gaps',
+        severity: pmBreachSeverity(vendorFlagged.length, engine.data.vendors.length || 1),
+        exposure: fin.vendor_compliance_exposure_total || 0,
+        confidence,
+        rootCause: `${vendorFlagged.length} of ${engine.data.vendors.length} vendors have expired or soon-to-expire insurance/license coverage.${note}`,
+        recommendedAction: 'Request updated certificates before dispatching flagged vendors on new work orders.',
+        impacts: {}
+      });
+    }
+    if (turnoverBreaches.length > 0) {
+      const { confidence, note } = pmRateConfidence(fm, 'vacancy_cost_per_day');
+      const atRiskExposure = fin.vacancy_exposure_items
+        .filter(it => turnoverBreaches.some(t => t.unit_id === it.unit_id))
+        .reduce((s, it) => s + it.exposure, 0);
+      anomalies.push({
+        id: 'pm-turnover-stalled',
+        title: 'Make-Ready Turnovers Stalled Past SLA',
+        severity: pmBreachSeverity(turnoverBreaches.length, turnoverPipeline.length || 1),
+        exposure: atRiskExposure,
+        confidence,
+        rootCause: `${turnoverBreaches.length} of ${turnoverPipeline.length} in-progress turnovers are past the make-ready-work SLA, extending vacancy on units already bleeding market rent.${note}`,
+        recommendedAction: 'Clear the vendor/materials blocker on stalled make-ready jobs to get units back on market.',
+        impacts: {}
+      });
+    }
+
+    localStorage.setItem('TSM_PM_STRATEGIST_RELAY', JSON.stringify({
+      generatedAt: new Date().toISOString(),
+      anomalies
+    }));
+    window.dispatchEvent(new CustomEvent('TSM_SENTINEL_REFRESH'));
+  } catch (e) {
+    console.warn('PM Copilot: sentinel push failed', e);
+  }
+}
+
 async function relayToStrategist(){
   if (!requireEngine()) return;
   const aiText = document.getElementById('aiOutput').textContent;
@@ -411,8 +529,9 @@ async function relayToStrategist(){
       catch (e) { console.warn('[pm-copilot] signing failed (relaying unsigned):', e.message); }
     }
 
-    localStorage.setItem('TSM_PM_STRATEGIST_RELAY', JSON.stringify(signedPayload));
-    sessionStorage.setItem('TSM_PM_STRATEGIST_RELAY', JSON.stringify(signedPayload));
+    localStorage.setItem('TSM_PM_RELAY', JSON.stringify(signedPayload));
+    sessionStorage.setItem('TSM_PM_RELAY', JSON.stringify(signedPayload));
+    pmPushToSentinel();
 
     window.dispatchEvent(new CustomEvent('TSM_SENTINEL_REFRESH'));
     showToast('Relayed to Strategist — click "Strategist →" above to view it.');
