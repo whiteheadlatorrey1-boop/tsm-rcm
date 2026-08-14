@@ -62,7 +62,17 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 .impact.medium{background:rgba(234,179,8,.12);color:var(--amber);border:1px solid var(--amber);}
 .impact.low{background:rgba(74,122,155,.12);color:var(--muted);border:1px solid var(--muted);}
 .time-hot{color:var(--red);font-weight:700;}
+.tsm-delta-row{display:flex;gap:12px;flex-wrap:wrap;}
+.tsm-delta-box{flex:1;min-width:150px;padding:14px;border-radius:6px;text-align:center;border:1px solid var(--border);background:var(--bg3);}
+.tsm-delta-box.tsm-delta-no{border-color:var(--red);}
+.tsm-delta-box.tsm-delta-act{border-color:var(--green);}
+.tsm-delta-lbl{font-family:'JetBrains Mono',monospace;font-size:.58rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;}
+.tsm-delta-val{font-family:'Orbitron',sans-serif;font-size:1.2rem;font-weight:900;}
+.tsm-delta-no .tsm-delta-val{color:var(--red);}
+.tsm-delta-act .tsm-delta-val{color:var(--green);}
+.tsm-recovery{font-family:'JetBrains Mono',monospace;font-size:.62rem;color:var(--muted);margin-top:10px;}
 </style>
+<script src="/html/js/tsm-bnca-exposure-engine.js"></script>
 </head>
 <body data-vertical="pm" data-page-role="warroom">
 <div class="topbar">
@@ -158,6 +168,45 @@ function renderImpact(fin){
   </div>`;
 }
 
+// Business Impact Delta — deterministic, no LLM-guessed dollars. Reuses the
+// exact total_exposure figure the PM engine already computes from the
+// financial_model rate card (vacancy + maintenance-delay + vendor-compliance
+// exposure) and hands it to the same shared TSMBNCAExposureEngine used by
+// Mortgage/Insurance/RE/Healthcare/BPO/FinOps/Legal/HotelOps — nothing
+// invented here.
+function severityFromSlaRatio(overSla, openItems){
+  if (!openItems) return overSla > 0 ? 'MED' : 'LOW';
+  const ratio = overSla / openItems;
+  if (ratio >= 0.30) return 'CRIT';
+  if (ratio >= 0.15) return 'HIGH';
+  if (ratio > 0) return 'MED';
+  return 'LOW';
+}
+
+function renderBusinessImpactDelta(data){
+  const fin = data.financials || {};
+  const baseExposure = Number(fin.total_exposure) || 0;
+  if (!baseExposure || !window.TSMBNCAExposureEngine) {
+    return `<div class="sec"><div class="sec-hdr"><span class="lbl">BUSINESS IMPACT DELTA</span></div><div class="no-items">No quantifiable exposure reported${fin.note ? ' — ' + escapeHtml(fin.note) : ''}.</div></div>`;
+  }
+  const kpis = data.kpis || {};
+  const severity = severityFromSlaRatio(kpis.work_orders_over_sla || 0, kpis.open_work_orders || 0);
+  const impact = window.TSMBNCAExposureEngine.project({
+    baseExposure, severity,
+    confidence: 70, // no distinct AI-confidence signal for this vertical (rule-based engine, not an LLM call) -- engine's own documented neutral default
+    daysUntilDeadline: 0 // no per-item deadline day-count surfaced to the strategist relay yet
+  });
+  const fmt = n => '$' + Math.round(n).toLocaleString('en-US');
+  return `<div class="sec">
+    <div class="sec-hdr"><span class="lbl">BUSINESS IMPACT DELTA</span><span class="sec-hdr-note">vacancy + maintenance-delay + vendor-compliance exposure &middot; deterministic projection</span></div>
+    <div class="tsm-delta-row">
+      <div class="tsm-delta-box tsm-delta-no"><div class="tsm-delta-lbl">No Action</div><div class="tsm-delta-val">${fmt(impact.ifIgnored.exposure)}</div></div>
+      <div class="tsm-delta-box tsm-delta-act"><div class="tsm-delta-lbl">With Action</div><div class="tsm-delta-val">${fmt(impact.ifActed.exposure)}</div></div>
+    </div>
+    <div class="tsm-recovery">${escapeHtml(impact.urgencyWindow)} &middot; ${escapeHtml(impact.methodology)}</div>
+  </div>`;
+}
+
 function actionForWorkOrder(hoursOver){
   if(hoursOver > 24) return 'Escalate to vendor manager — SLA breach >24h';
   if(hoursOver > 0) return 'Dispatch vendor / confirm ETA today';
@@ -247,11 +296,39 @@ function render(){
     html += `<div class="ai-box"><strong style="color:var(--accent);font-family:'Orbitron',sans-serif;font-size:.65rem;letter-spacing:.1em;display:block;margin-bottom:8px;">AI PORTFOLIO ANALYSIS</strong>${escapeHtml(data.ai_summary)}</div>`;
   }
 
+  html += `<div class="ai-box" id="strategistBncaBox" style="display:none;"></div>`;
+
   html += renderWipBoard(data.work_order_wip);
+  html += renderBusinessImpactDelta(data);
   html += renderImpact(data.financials);
   html += renderActionQueue(data);
 
   document.getElementById('wrap').innerHTML = html;
+  loadStrategistBnca();
+}
+
+// ── STRATEGIST BNCA SYNTHESIS (calls the PM strategist AI chain) ──
+function loadStrategistBnca(){
+  fetch('/api/pm-strategist/bnca', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({})
+  })
+    .then(r => r.json())
+    .then(res => {
+      if(!res || !res.ok || !res.result) return;
+      renderStrategistBnca(res.result);
+    })
+    .catch(err => console.warn('[PM Strategist BNCA]', err.message));
+}
+
+function renderStrategistBnca(result){
+  const box = document.getElementById('strategistBncaBox');
+  if(!box) return;
+  box.innerHTML = `<strong style="color:var(--accent);font-family:'Orbitron',sans-serif;font-size:.65rem;letter-spacing:.1em;display:block;margin-bottom:8px;">STRATEGIST BNCA SYNTHESIS</strong>
+    <div>${escapeHtml(result.strategic_summary || '')}</div>
+    ${result.bnca ? `<div style="margin-top:10px;color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:.7rem;">${escapeHtml(result.bnca)}</div>` : ''}`;
+  box.style.display = 'block';
 }
 
 render();
