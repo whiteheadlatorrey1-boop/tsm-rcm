@@ -643,6 +643,338 @@ async function bpoListBncaReports({ caseId, limit = 50 } = {}) {
   return col.find(query).sort({ ts: -1 }).limit(limit).toArray();
 }
 
+// =====================================================
+// CONCIERGE TRANSPORT PERSISTENCE
+// Same ledger-service-first, routes-second pattern as BPO above. Maps a
+// server/services/concierge-transport-adapter.js booking to a durable
+// mission record plus an append-only status timeline, replacing what the
+// adapter otherwise only holds in-memory:
+//
+//   concierge_missions      — one doc per bookingId, upserted as a
+//                              booking's status advances (mirrors
+//                              BOOKING_STATUSES: confirmed -> ... ->
+//                              completed/cancelled). Mirrors bpo_work_items.
+//   concierge_status_events — append-only status-transition trail, one doc
+//                              per transition, so history survives a
+//                              mission doc being overwritten on the next
+//                              upsert. Mirrors bpo_sla_events.
+// =====================================================
+
+const CONCIERGE_MISSIONS_COLLECTION = 'concierge_missions';
+const CONCIERGE_STATUS_EVENTS_COLLECTION = 'concierge_status_events';
+
+async function conciergeMissionsCollection() {
+  const database = await getDb();
+  return database.collection(CONCIERGE_MISSIONS_COLLECTION);
+}
+
+async function conciergeStatusEventsCollection() {
+  const database = await getDb();
+  return database.collection(CONCIERGE_STATUS_EVENTS_COLLECTION);
+}
+
+async function conciergeListMissions({ status, provider, propertyId, limit = 100 } = {}) {
+  const col = await conciergeMissionsCollection();
+  const query = {};
+  if (status) query.status = status;
+  if (provider) query.provider = provider;
+  if (propertyId) query.propertyId = propertyId;
+  return col.find(query).sort({ updatedAt: -1 }).limit(limit).toArray();
+}
+
+async function conciergeGetMission(bookingId) {
+  const col = await conciergeMissionsCollection();
+  return col.findOne({ bookingId });
+}
+
+/**
+ * Upserts a mission from a booking (as returned by the adapter's book(),
+ * status(), or simulateEvent()). Same slaAgeHours-at-write-time approach
+ * as bpoUpsertWorkItem, and same "optional fields are sticky" rule so a
+ * later status-only update doesn't wipe guestName/propertyId set earlier.
+ */
+async function conciergeUpsertMission(bookingId, fields, actor) {
+  if (!bookingId) throw new Error('bookingId required');
+  const col = await conciergeMissionsCollection();
+  const now = new Date().toISOString();
+  const {
+    provider = null, quoteId = null, status = 'confirmed', confirmationCode = null,
+    request = null, driver = null, guestName, propertyId, vertical = 'concierge', note,
+  } = fields || {};
+
+  const existing = await col.findOne({ bookingId });
+  const createdAt = existing ? existing.createdAt : now;
+
+  const $set = {
+    bookingId, provider, quoteId, status, confirmationCode, request, driver, vertical,
+    updatedAt: now,
+    ageHoursAtUpdate: bpoHoursBetween(createdAt, now),
+  };
+  if (guestName !== undefined) $set.guestName = (guestName || '').toString().trim();
+  else if (existing && existing.guestName !== undefined) $set.guestName = existing.guestName;
+  if (propertyId !== undefined) $set.propertyId = propertyId || null;
+  else if (existing && existing.propertyId !== undefined) $set.propertyId = existing.propertyId;
+
+  const $setOnInsert = existing ? undefined : { createdAt: now };
+
+  await col.updateOne(
+    { bookingId },
+    $setOnInsert ? { $set, $setOnInsert } : { $set },
+    { upsert: true }
+  );
+  const doc = await col.findOne({ bookingId });
+
+  const previousStatus = existing ? existing.status : null;
+  if (!existing || previousStatus !== status) {
+    try {
+      const evCol = await conciergeStatusEventsCollection();
+      await evCol.insertOne({
+        bookingId, provider, vertical,
+        fromStatus: previousStatus,
+        toStatus: status,
+        note: note || undefined,
+        actor,
+        ts: now,
+      });
+    } catch (e) {
+      console.warn('[conciergeUpsertMission] failed to write status event:', e.message);
+    }
+  }
+
+  return doc;
+}
+
+async function conciergeListStatusEvents({ bookingId, limit = 200 } = {}) {
+  const col = await conciergeStatusEventsCollection();
+  const query = {};
+  if (bookingId) query.bookingId = bookingId;
+  return col.find(query).sort({ ts: -1 }).limit(limit).toArray();
+}
+
+// =====================================================
+// PM COPILOT PERSISTENCE
+// Standalone vertical -- not layered on BPO or Concierge/HotelOps.
+// Mirrors the same ledger-service-first pattern as both: one collection
+// per stage-tracked entity (work_order, lease, vendor_compliance) plus
+// units as a reference collection (no stage lifecycle), and a single
+// shared append-only status-event trail tagged by entityType so history
+// survives each entity's own upsert-in-place doc being overwritten.
+// See html/war-rooms/pm-copilot/services/pm-engine.js for the client-side
+// mirror of this same entity shape.
+// =====================================================
+
+const PM_UNITS_COLLECTION = 'pm_units';
+const PM_WORK_ORDERS_COLLECTION = 'pm_work_orders';
+const PM_LEASES_COLLECTION = 'pm_leases';
+const PM_VENDORS_COLLECTION = 'pm_vendors';
+const PM_STATUS_EVENTS_COLLECTION = 'pm_status_events';
+
+async function pmUnitsCollection() {
+  const database = await getDb();
+  return database.collection(PM_UNITS_COLLECTION);
+}
+async function pmWorkOrdersCollection() {
+  const database = await getDb();
+  return database.collection(PM_WORK_ORDERS_COLLECTION);
+}
+async function pmLeasesCollection() {
+  const database = await getDb();
+  return database.collection(PM_LEASES_COLLECTION);
+}
+async function pmVendorsCollection() {
+  const database = await getDb();
+  return database.collection(PM_VENDORS_COLLECTION);
+}
+async function pmStatusEventsCollection() {
+  const database = await getDb();
+  return database.collection(PM_STATUS_EVENTS_COLLECTION);
+}
+
+/**
+ * Shared by pmUpsertWorkOrder/pmUpsertLease/pmUpsertVendor -- writes one
+ * append-only status-event doc whenever an upsert changes `stage`
+ * (or creates the record). entityType distinguishes the three kinds in
+ * the shared pm_status_events collection.
+ */
+async function pmWriteStatusEvent({ entityType, entityId, fromStage, toStage, note, actor }) {
+  try {
+    const col = await pmStatusEventsCollection();
+    await col.insertOne({
+      entityType, entityId, fromStage, toStage,
+      note: note || undefined, actor, ts: new Date().toISOString(),
+    });
+  } catch (e) {
+    console.warn('[pmWriteStatusEvent] failed to write status event:', e.message);
+  }
+}
+
+async function pmListStatusEvents({ entityType, entityId, limit = 200 } = {}) {
+  const col = await pmStatusEventsCollection();
+  const query = {};
+  if (entityType) query.entityType = entityType;
+  if (entityId) query.entityId = entityId;
+  return col.find(query).sort({ ts: -1 }).limit(limit).toArray();
+}
+
+// ── Units (reference data, no stage lifecycle) ─────────────────────────────
+
+async function pmListUnits({ propertyId, status } = {}) {
+  const col = await pmUnitsCollection();
+  const query = {};
+  if (propertyId) query.property = propertyId;
+  if (status) query.status = status;
+  return col.find(query).sort({ unit_id: 1 }).toArray();
+}
+
+async function pmGetUnit(unitId) {
+  const col = await pmUnitsCollection();
+  return col.findOne({ unit_id: unitId });
+}
+
+async function pmUpsertUnit(unitId, fields, actor) {
+  if (!unitId) throw new Error('unitId required');
+  const col = await pmUnitsCollection();
+  const now = new Date().toISOString();
+  const existing = await col.findOne({ unit_id: unitId });
+  const createdAt = existing ? existing.createdAt : now;
+
+  const $set = { unit_id: unitId, ...fields, updatedAt: now };
+  const $setOnInsert = existing ? undefined : { createdAt: now };
+
+  await col.updateOne(
+    { unit_id: unitId },
+    $setOnInsert ? { $set, $setOnInsert } : { $set },
+    { upsert: true }
+  );
+  return col.findOne({ unit_id: unitId });
+}
+
+// ── Work orders ──────────────────────────────────────────────────────────
+
+async function pmListWorkOrders({ unitId, stage, limit = 100 } = {}) {
+  const col = await pmWorkOrdersCollection();
+  const query = {};
+  if (unitId) query.unit_id = unitId;
+  if (stage) query.stage = stage;
+  return col.find(query).sort({ updatedAt: -1 }).limit(limit).toArray();
+}
+
+async function pmGetWorkOrder(workOrderId) {
+  const col = await pmWorkOrdersCollection();
+  return col.findOne({ work_order_id: workOrderId });
+}
+
+async function pmUpsertWorkOrder(workOrderId, fields, actor) {
+  if (!workOrderId) throw new Error('workOrderId required');
+  const col = await pmWorkOrdersCollection();
+  const now = new Date().toISOString();
+  const { stage = 'submitted', note, ...rest } = fields || {};
+
+  const existing = await col.findOne({ work_order_id: workOrderId });
+  const createdAt = existing ? existing.createdAt : now;
+  const previousStage = existing ? existing.stage : null;
+
+  const $set = {
+    work_order_id: workOrderId, ...rest, stage, updatedAt: now,
+    ageHoursAtUpdate: bpoHoursBetween(createdAt, now),
+  };
+  const $setOnInsert = existing ? undefined : { createdAt: now };
+
+  await col.updateOne(
+    { work_order_id: workOrderId },
+    $setOnInsert ? { $set, $setOnInsert } : { $set },
+    { upsert: true }
+  );
+  const doc = await col.findOne({ work_order_id: workOrderId });
+
+  if (!existing || previousStage !== stage) {
+    await pmWriteStatusEvent({ entityType: 'work_order', entityId: workOrderId, fromStage: previousStage, toStage: stage, note, actor });
+  }
+  return doc;
+}
+
+// ── Leases ───────────────────────────────────────────────────────────────
+
+async function pmListLeases({ unitId, stage, limit = 100 } = {}) {
+  const col = await pmLeasesCollection();
+  const query = {};
+  if (unitId) query.unit_id = unitId;
+  if (stage) query.stage = stage;
+  return col.find(query).sort({ updatedAt: -1 }).limit(limit).toArray();
+}
+
+async function pmGetLease(leaseId) {
+  const col = await pmLeasesCollection();
+  return col.findOne({ lease_id: leaseId });
+}
+
+async function pmUpsertLease(leaseId, fields, actor) {
+  if (!leaseId) throw new Error('leaseId required');
+  const col = await pmLeasesCollection();
+  const now = new Date().toISOString();
+  const { stage = 'active', note, ...rest } = fields || {};
+
+  const existing = await col.findOne({ lease_id: leaseId });
+  const createdAt = existing ? existing.createdAt : now;
+  const previousStage = existing ? existing.stage : null;
+
+  const $set = { lease_id: leaseId, ...rest, stage, updatedAt: now };
+  const $setOnInsert = existing ? undefined : { createdAt: now };
+
+  await col.updateOne(
+    { lease_id: leaseId },
+    $setOnInsert ? { $set, $setOnInsert } : { $set },
+    { upsert: true }
+  );
+  const doc = await col.findOne({ lease_id: leaseId });
+
+  if (!existing || previousStage !== stage) {
+    await pmWriteStatusEvent({ entityType: 'lease', entityId: leaseId, fromStage: previousStage, toStage: stage, note, actor });
+  }
+  return doc;
+}
+
+// ── Vendors (compliance status: insurance/license) ─────────────────────────
+
+async function pmListVendors({ trade, stage, limit = 100 } = {}) {
+  const col = await pmVendorsCollection();
+  const query = {};
+  if (trade) query.trade = trade;
+  if (stage) query.stage = stage;
+  return col.find(query).sort({ updatedAt: -1 }).limit(limit).toArray();
+}
+
+async function pmGetVendor(vendorId) {
+  const col = await pmVendorsCollection();
+  return col.findOne({ vendor_id: vendorId });
+}
+
+async function pmUpsertVendor(vendorId, fields, actor) {
+  if (!vendorId) throw new Error('vendorId required');
+  const col = await pmVendorsCollection();
+  const now = new Date().toISOString();
+  const { stage = 'current', note, ...rest } = fields || {};
+
+  const existing = await col.findOne({ vendor_id: vendorId });
+  const createdAt = existing ? existing.createdAt : now;
+  const previousStage = existing ? existing.stage : null;
+
+  const $set = { vendor_id: vendorId, ...rest, stage, updatedAt: now };
+  const $setOnInsert = existing ? undefined : { createdAt: now };
+
+  await col.updateOne(
+    { vendor_id: vendorId },
+    $setOnInsert ? { $set, $setOnInsert } : { $set },
+    { upsert: true }
+  );
+  const doc = await col.findOne({ vendor_id: vendorId });
+
+  if (!existing || previousStage !== stage) {
+    await pmWriteStatusEvent({ entityType: 'vendor', entityId: vendorId, fromStage: previousStage, toStage: stage, note, actor });
+  }
+  return doc;
+}
+
 module.exports = {
   connect,
   getDb,
@@ -682,4 +1014,23 @@ module.exports = {
   bpoListSlaEvents,
   bpoSaveBncaReport,
   bpoListBncaReports,
+  // Concierge transport persistence
+  conciergeListMissions,
+  conciergeGetMission,
+  conciergeUpsertMission,
+  conciergeListStatusEvents,
+  // PM Copilot persistence
+  pmListUnits,
+  pmGetUnit,
+  pmUpsertUnit,
+  pmListWorkOrders,
+  pmGetWorkOrder,
+  pmUpsertWorkOrder,
+  pmListLeases,
+  pmGetLease,
+  pmUpsertLease,
+  pmListVendors,
+  pmGetVendor,
+  pmUpsertVendor,
+  pmListStatusEvents,
 };
