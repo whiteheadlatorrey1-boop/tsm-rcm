@@ -424,7 +424,7 @@ var SP = {
   construction: 'You are a construction operations AI for TSM Command. Expert in project management, bid analysis, cost control, contractor/vendor management, scheduling. Be direct and operational.',
   legal: 'You are a legal intelligence AI for TSM Command. Expert in contract analysis, regulatory compliance, case strategy, risk assessment. Note: AI analysis only, not legal advice. OUTPUT RULES (always follow, even if the user prompt suggests otherwise): plain "LABEL: value" or short "- bullet" lines only — never markdown tables, never pipe characters, never bold-wrapped prose paragraphs. Each bullet or value is one line, max ~20 words — state the conclusion, not the reasoning chain. Do not restate the question, add preamble, or write multi-sentence rationale unless a field explicitly asks for a rationale, and even then cap it at one short clause. Every requested field must still be present — compress the writing, not the coverage.',
   insurance: 'You are an insurance intelligence AI for TSM Command. Expert in P&C, life, health insurance, claims, underwriting, AZ market, NPN licensing. Be precise. OUTPUT RULES (always follow): plain "LABEL: value" or short "- bullet" lines only — never markdown tables, never pipe characters, never bold-wrapped prose paragraphs. Max ~20 words per line — conclusion only. Every requested field must still be present, just terse.',
-  education: 'You are an education operations AI for TSM Command. Expert in school administration, compliance, staffing, student outcomes, budget, grants. Be strategic. OUTPUT RULES (always follow): plain "LABEL: value" or short "- bullet" lines only — never markdown tables, never pipe characters, never bold-wrapped prose paragraphs. Max ~20 words per line — conclusion only. Every requested field must still be present, just terse.',
+  education: 'You are an education operations AI for TSM Command. Expert in school administration, compliance, staffing, student outcomes, budget, grants. Be strategic. OUTPUT RULES (always follow): plain "LABEL: value" or short "- bullet" lines only — never markdown tables, never pipe characters, never bold-wrapped prose paragraphs. Max ~20 words per line — conclusion only. Every requested field must still be present, just terse. For any deadline, obligation date, liquidation date, or compliance due date: use only a date explicitly stated in the source data provided — never calculate, estimate, or infer one from a "typical" grant cycle. If no specific date is given, describe the timing qualitatively as stated (e.g. "approaching," "imminent") without inventing a date, or write "NOT STATED IN SOURCE DATA." Only state that a corrective action, filing, or document has been completed if the source data confirms it — anything shown as open or pending must be listed as a still-needed action, not treated as resolved.',
   hospitality: 'You are a hospitality operations AI for TSM Command. Expert in hotel ops, concierge, staffing, revenue management, guest experience. Be service-oriented.',
   pm: 'You are a Property Management AI for TSM PM Copilot. Expert in maintenance work-order triage, lease renewal strategy, vendor compliance (insurance/license lapses), and occupancy/vacancy cost analysis. Given structured unit, work-order, lease, and vendor data, KPIs, and SLA breaches, identify the highest-dollar-impact vacancies, the most urgent SLA-breached work orders, leases at risk of non-renewal, and vendor compliance gaps blocking dispatch. Recommend the specific next action per item, prioritized by dollar exposure. Reference unit/work-order/lease/vendor IDs. Be precise and operational. No preamble.',
   enterprise: 'You are a senior business strategist AI for TSM Command. Expert in enterprise strategy, GTM, operations optimization, ROI analysis. Be executive-level and direct.',
@@ -2450,7 +2450,7 @@ app.get('/api/hotelops/bookings/pending', (req, res) => {
 // Mirrors /api/mortgage/query's shape. Kept separate from the pre-existing
 // generic /api/schools/query (plain question/answer) so nothing there breaks.
 app.post('/api/schools/analysis', async (req, res) => {
-  const { kpis, grant_breaches, monitoring_items, exceptions, context, maxTokens } = req.body || {};
+  const { kpis, grant_breaches, monitoring_items, exceptions, context, system, maxTokens } = req.body || {};
   const summary = JSON.stringify({
     kpis,
     grant_breaches,
@@ -2465,7 +2465,7 @@ app.post('/api/schools/analysis', async (req, res) => {
     (context ? `Additional context: ${context}\n\n` : '') +
     `Identify the highest-risk grant files, the root cause of any SLA breaches or stalled monitoring items, open compliance exceptions requiring escalation (FERPA/IDEA/NSLP/Title I/ESSER as applicable), and the single most important next action for each at-risk grant file. Reference grant/monitoring-item/exception IDs.`;
   try {
-    const answer = await groqChat(SP.education, prompt, maxTokens || 1200);
+    const answer = await groqChat(system || SP.education, prompt, maxTokens || 1200);
     recordVerticalMemory('schools', prompt, answer);
     return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
   } catch (e) {
@@ -2805,7 +2805,7 @@ app.post('/api/l1-copilot/cloud-ops', async (req, res) => {
 });
 
 app.post('/api/schools/query', async (req, res) => {
-  try { var a = await groqChat(SP.education, req.body.question || req.body.query || '', req.body.maxTokens || 550); return res.json({ ok: true, answer: a, createdAt: new Date().toISOString() }); }
+  try { var a = await groqChat(req.body.system || SP.education, req.body.message || req.body.question || req.body.query || '', req.body.maxTokens || 550); return res.json({ ok: true, answer: a, createdAt: new Date().toISOString() }); }
   catch (e) { return res.status(500).json({ ok: false, error: e.message }); }
 });
 
