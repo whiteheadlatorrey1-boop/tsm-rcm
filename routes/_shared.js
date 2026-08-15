@@ -10,6 +10,7 @@ if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
 const HC_NODE_STATE_FILE = path.join(DATA_DIR, 'hc-node-state.json');
 const HC_REPORTS_FILE    = path.join(DATA_DIR, 'hc-reports.json');
+const HC_PROFILES_FILE   = path.join(DATA_DIR, 'hc-profiles.json');
 
 // ═══════════════════════════════════════════════════════════════════════════
 // JSON I/O
@@ -415,6 +416,7 @@ module.exports = {
   writeJson,
   HC_NODE_STATE_FILE,
   HC_REPORTS_FILE,
+  HC_PROFILES_FILE,
   groqChat,
   callGroq,
   SP,

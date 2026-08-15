@@ -2,6 +2,12 @@
 const express = require('express');
 const router  = express.Router();
 const fs = require('fs');
+const {
+  readJson, writeJson,
+  HC_NODE_STATE_FILE, HC_REPORTS_FILE, HC_PROFILES_FILE,
+  aggregateLayer2, buildSystemRollup,
+  groqChat, SP
+} = require('./_shared');
 
 router.get('/api/hc/reports', (req, res) => {
   const reports = readJson(HC_REPORTS_FILE, []);

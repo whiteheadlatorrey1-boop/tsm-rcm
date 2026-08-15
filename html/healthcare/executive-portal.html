@@ -2926,6 +2926,15 @@ async function buildContinuityTab() {
       <span style="font-size:8px;color:#4a5a70;">${detail}</span>
     </div>`;
   }
+  function stageRow(stage) {
+    const blockColor = stage.is_blocking ? '#f59e0b' : '#2a3a52';
+    return `<div style="display:flex;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid #080d1c;">
+      <span style="font-size:8px;color:#4a5a70;min-width:14px;">${stage.order}</span>
+      <span style="font-size:8.5px;color:#8a9fc0;flex:1;">${stage.label}</span>
+      <span style="font-size:7px;color:#4a5a70;">SLA ${stage.sla_hours}h</span>
+      <span style="font-size:7px;color:${blockColor};border:1px solid ${blockColor}33;padding:1px 6px;border-radius:3px;">${stage.is_blocking ? 'BLOCKING' : 'non-blocking'}</span>
+    </div>`;
+  }
 
   // ── 1. Memory Timeline from localStorage ──
   let timelineRows = '';
@@ -2962,7 +2971,43 @@ async function buildContinuityTab() {
     }
   } catch (_) {}
 
-  // ── 3. Multi-sector context (static honest state) ──
+  // ── 3a. Live HC system posture (real /api/strategist/hc/system-posture call,
+  // pulling from actual posted office telemetry rather than a static array) ──
+  let systemPostureHtml = '<div style="font-size:8px;color:#2a3a52;padding:8px 0;">Unable to reach system-posture endpoint.</div>';
+  try {
+    const spRes = await fetch('/api/strategist/hc/system-posture', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    });
+    const sp = await spRes.json();
+    if (sp && sp.ok !== false && Array.isArray(sp.officeRanking)) {
+      const atRisk = sp.systemPosture?.totalRevenueAtRisk;
+      const hasData = typeof atRisk === 'number' && atRisk > 0;
+      systemPostureHtml = `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px;">
+          ${kpi('TOTAL REVENUE AT RISK', hasData ? ('$' + atRisk.toLocaleString()) : '$0 · no telemetry yet', '#f59e0b')}
+          ${kpi('BEST PERFORMING OFFICE', sp.systemPosture?.bestPerformingOffice || '—', '#00ffc6')}
+        </div>
+        ${sp.officeRanking.map(o => row('◈', '', `${o.office}: ${o.summary}`, o.status === 'stable' ? '#00ffc6' : '#f59e0b')).join('')}
+        ${!hasData ? '<div style="font-size:7.5px;color:#4a5a70;padding-top:6px;">No per-office telemetry has been posted to /api/hc/nodes yet — this is the honest $0 state, not a placeholder.</div>' : ''}
+      `;
+    }
+  } catch (_) { /* leave fallback message */ }
+
+  // ── 3b. Real healthcare O2C pipeline stages, loaded from
+  // config/o2c/healthcare.json (previously dead JSON, nothing read it) ──
+  let pipelineHtml = '<div style="font-size:8px;color:#2a3a52;padding:8px 0;">Pipeline config unavailable.</div>';
+  try {
+    const cfgRes = await fetch('/config/o2c/healthcare.json');
+    const cfg = await cfgRes.json();
+    if (Array.isArray(cfg.pipeline)) {
+      pipelineHtml = cfg.pipeline.slice().sort((a,b)=>a.order-b.order).map(stageRow).join('');
+    }
+  } catch (_) { /* leave fallback message */ }
+
+  // ── 3c. Sector status (mesh-wide build state; unchanged from prior honest
+  // static readout — no per-vertical live endpoint exists yet to replace it) ──
   const sectors = [
     { name:'HEALTHCARE', status:'ACTIVE', color:'#00ffc6', detail:'Denial war room + strategist chain live' },
     { name:'FINOPS',     status:'STANDBY', color:'#38bdf8', detail:'War room built · exec portal relay wired' },
@@ -3002,6 +3047,31 @@ async function buildContinuityTab() {
       </div>
       <div style="background:#03060d;border:1px solid rgba(255,255,255,0.05);border-radius:4px;padding:10px 14px;max-height:200px;overflow-y:auto;">
         ${timelineRows}
+      </div>
+    </div>
+
+    <!-- SECTION: LIVE HC SYSTEM POSTURE -->
+    <div style="margin-bottom:20px;">
+      <div style="font-size:7.5px;letter-spacing:2px;text-transform:uppercase;color:#5a6f90;margin-bottom:10px;">◈ LIVE SYSTEM POSTURE (real /api/strategist/hc endpoint)</div>
+      <div style="background:#03060d;border:1px solid rgba(255,255,255,0.05);border-radius:4px;padding:10px 14px;">
+        ${systemPostureHtml}
+      </div>
+    </div>
+
+    <!-- SECTION: O2C DENIAL PIPELINE (from config/o2c/healthcare.json) -->
+    <div style="margin-bottom:20px;">
+      <div style="font-size:7.5px;letter-spacing:2px;text-transform:uppercase;color:#5a6f90;margin-bottom:10px;">◈ HEALTHCARE O2C PIPELINE — STAGE SLAs</div>
+      <div style="background:#03060d;border:1px solid rgba(255,255,255,0.05);border-radius:4px;padding:10px 14px;">
+        ${pipelineHtml}
+      </div>
+    </div>
+
+    <!-- SECTION: SENTINEL CROSS-VERTICAL CORRELATION -->
+    <div style="margin-bottom:20px;">
+      <div style="font-size:7.5px;letter-spacing:2px;text-transform:uppercase;color:#5a6f90;margin-bottom:10px;">◈ SENTINEL CROSS-VERTICAL CORRELATION</div>
+      <div style="background:#03060d;border:1px solid rgba(255,255,255,0.05);border-radius:4px;padding:10px 14px;font-size:8.5px;color:#8a9fc0;line-height:1.6;">
+        Sentinel Center computes dollar-weighted correlations between anomalies in other verticals and Healthcare's revenue cycle — e.g. a denied DME claim in Insurance carries direct weight onto Healthcare's uncollected receivables until the appeal is won. That scoring lives in Sentinel's own board, not duplicated here, since this page has no server-side read path into it yet.
+        <a href="/sentinel-center.html" target="_blank" rel="noopener" style="color:#00ffc6;text-decoration:none;display:inline-block;margin-top:6px;">Open Sentinel Center for the live correlation board &#8599;</a>
       </div>
     </div>
 

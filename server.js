@@ -1023,6 +1023,11 @@ app.get('/healthcare/executive-portal', (req, res) => res.redirect('/html/execut
 const dirPath = path.join(__dirname, 'html');// ── STATIC MOUNTS v2 ──
 
 app.use('/html', express.static(path.join(__dirname, 'html'), { setHeaders: (res) => res.setHeader('Cache-Control', 'no-store') }));
+// Serves config/o2c/*.json (per-industry O2C pipeline overlays, e.g. healthcare.json)
+// so war rooms/exec portals can load real stage-level SLA/blocking config instead
+// of hardcoding it. Read-only, no-store since these are hand-authored config files
+// that may change between deploys.
+app.use('/config', express.static(path.join(__dirname, 'config'), { setHeaders: (res) => res.setHeader('Cache-Control', 'no-store') }));
 app.use('/js', express.static(path.join(__dirname, 'html/tsm-insurance/public/js')));
 app.use('/js', express.static(path.join(__dirname, 'html/js')));
 app.use('/js', express.static(path.join(__dirname, 'js')));
