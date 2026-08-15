@@ -260,6 +260,21 @@ console.log("TSM_UI: Direct Neural Link Established.");
     </table>
   </div>
   <div class="ai-box">
+    <div class="ai-hdr">📊 REPORT NODE TELEMETRY<br>DOLLAR &amp; RISK FIELDS</div>
+    <div class="ai-row">
+      <select id="tele-lane" class="ai-inp" style="max-width:180px" onchange="renderTelemetryFields()">
+        <option value="billing">Billing</option>
+        <option value="insurance">Insurance</option>
+        <option value="compliance">Compliance</option>
+        <option value="medical">Medical</option>
+        <option value="operations">Operations</option>
+      </select>
+      <button class="ai-btn" data-tsm-action="submitNodeTelemetry" data-tsm-args="">SUBMIT TELEMETRY</button>
+    </div>
+    <div id="tele-fields" class="ai-row"></div>
+    <div id="tele-res" class="ai-res">&gt; These are the exact fields aggregateLayer2()/_shared.js read for revenueAtRisk. Nothing here reaches the executive report until submitted.</div>
+  </div>
+  <div class="ai-box">
     <div class="ai-hdr">⚡ INTEL WORKBENCH<br>AI ANALYSIS</div>
     <div class="ai-row">
       <button class="ai-btn" data-tsm-action="loadAI" data-tsm-args="'Run diagnostics across all healthcare nodes and identify degraded lanes.'">Node Health Check</button>
@@ -607,8 +622,65 @@ async function postDemoNodeState(){
   }
 }
 
+// Real telemetry fields — these are the exact names aggregateLayer2()/nodeRiskScore()
+// in routes/_shared.js read. Nothing outside this form ever sends them, which is why
+// revenueAtRisk stays $0 through system-posture and the executive-portal rollup.
+const TELE_LANE_FIELDS = {
+  billing:     [{key:'arOver30', label:'AR > 30 Days ($)', type:'number'}, {key:'denialRate', label:'Denial Rate (%)', type:'number'}, {key:'claimLagDays', label:'Claim Lag (days)', type:'number'}],
+  insurance:   [{key:'pendingClaimsValue', label:'Pending Claims Value ($)', type:'number'}, {key:'authDelayHours', label:'Auth Delay (hours)', type:'number'}, {key:'authBacklog', label:'Auth Backlog (count)', type:'number'}],
+  compliance:  [{key:'auditExposure', label:'Audit Exposure ($)', type:'number'}, {key:'openFindings', label:'Open Findings (count)', type:'number'}],
+  medical:     [{key:'chartDefects', label:'Chart Defects (count)', type:'number'}],
+  operations:  [{key:'queueDepth', label:'Queue Depth', type:'number'}, {key:'noShowRate', label:'No-Show Rate (%)', type:'number'}, {key:'intakeBacklog', label:'Intake Backlog', type:'number'}, {key:'staffingCoverage', label:'Staffing Coverage (%)', type:'number'}]
+};
+
+function renderTelemetryFields(){
+  const lane = document.getElementById('tele-lane').value;
+  const fields = TELE_LANE_FIELDS[lane] || [];
+  const wrap = document.getElementById('tele-fields');
+  wrap.innerHTML = fields.map(f =>
+    `<input class="ai-inp" style="max-width:220px" type="${f.type}" step="any" id="tele-${f.key}" placeholder="${f.label}">`
+  ).join('');
+}
+
+async function submitNodeTelemetry(){
+  const out = document.getElementById('tele-res');
+  const lane = document.getElementById('tele-lane').value;
+  const fields = TELE_LANE_FIELDS[lane] || [];
+  // system/location are required by filterHCState() — without them the node
+  // is invisible to /api/strategist/hc/system-posture and the executive-portal
+  // rollup, even if the dollar fields below are populated correctly.
+  const system = document.getElementById('system-filter')?.value || 'HonorHealth';
+  const location = document.getElementById('location-filter')?.value || 'Scottsdale - Shea';
+  const payload = { status: 'ONLINE', reportedAt: new Date().toISOString(), system, location };
+  let anyValue = false;
+  for (const f of fields) {
+    const el = document.getElementById(`tele-${f.key}`);
+    if (el && el.value !== '') { payload[f.key] = Number(el.value); anyValue = true; }
+  }
+  if (!anyValue) { out.textContent = '> Enter at least one value before submitting.'; return; }
+  out.textContent = '⏳ Posting telemetry...';
+  try {
+    const res = await fetch(`${API.nodes}/${lane}`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.ok) {
+      out.textContent = `> ${lane} telemetry posted: ${Object.entries(payload).filter(([k])=>fields.some(f=>f.key===k)).map(([k,v])=>`${k}=${v}`).join(', ')}`;
+      fields.forEach(f => { const el = document.getElementById(`tele-${f.key}`); if (el) el.value = ''; });
+      await pollNodeState();
+    } else {
+      out.textContent = '> Post failed — server did not confirm.';
+    }
+  } catch(e) {
+    out.textContent = `> Post failed: ${e.message}`;
+  }
+}
+
 document.addEventListener('DOMContentLoaded', async function(){
   switchTab('dash', document.querySelector('.nav-btn'));
+  renderTelemetryFields();
   await postDemoNodeState();
   await pollNodeState();
   await refreshReports();
