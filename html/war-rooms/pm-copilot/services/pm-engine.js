@@ -397,7 +397,14 @@
       return res.json();
     }
 
-    buildRelayPayload(aiText) {
+    /**
+     * @param {string|null} aiText
+     * @param {Array} [iotAlerts] - output of TSMPmIotEngine#getIotAlerts(),
+     *   passed in by the caller (pm-command.html) since IoT sensors are
+     *   owned by the separate pm-iot-engine.js instance, not this engine.
+     *   Defaults to [] so callers that haven't wired IoT yet still work.
+     */
+    buildRelayPayload(aiText, iotAlerts) {
       return {
         vertical: 'pm',
         timestamp: Date.now(),
@@ -407,6 +414,7 @@
         turnover_pipeline: this.getTurnoverPipeline(),
         turnover_wip: this.getStageWip('turnovers'),
         financials: this.getFinancialSummary(),
+        iot_alerts: iotAlerts || [],
         records: {
           units: this.data.units,
           work_orders: this.data.work_orders,

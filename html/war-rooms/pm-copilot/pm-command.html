@@ -534,6 +534,7 @@ async function runAnalysis(){
       work_order_breaches: engine.getSlaBreaches('work_orders'),
       leases_expiring: engine.getLeasesExpiring(60),
       vendor_flags: engine.data.vendors.filter(v => ['expiring_soon','expired'].includes(v.stage)),
+      iot_alerts: iotEngine ? iotEngine.getIotAlerts() : [],
       context: document.getElementById('docIntake').value || undefined
     };
     const res = await fetch('/api/pm/analysis', {
@@ -673,6 +674,28 @@ function pmPushToSentinel() {
       });
     }
 
+    // IoT sensor alerts (offline device / water leak / thermostat drift) --
+    // urgent+high only, same as the other categories only pushing when
+    // there's something actionable. No dollar exposure invented here:
+    // financial_model has no rate card for sensor-driven risk (unlike
+    // vacancy/maintenance/vendor above), so exposure stays 0 rather than
+    // fabricating a per-alert cost. Confidence is high because these are
+    // real reported sensor states, not a derived/estimated figure.
+    const iotAlerts = iotEngine ? iotEngine.getIotAlerts() : [];
+    const iotActionable = iotAlerts.filter(a => a.severity === 'urgent' || a.severity === 'high');
+    if (iotActionable.length > 0) {
+      anomalies.push({
+        id: 'pm-iot-sensor-alerts',
+        title: 'IoT Sensor Alerts Requiring Dispatch',
+        severity: pmBreachSeverity(iotActionable.length, iotAlerts.length || 1),
+        exposure: 0,
+        confidence: 95,
+        rootCause: `${iotActionable.length} of ${iotAlerts.length} monitored sensors are reporting an urgent or high-severity condition (offline device, water leak, or major temperature drift). No dollar exposure model exists yet for sensor-driven risk, so exposure is not estimated.`,
+        recommendedAction: 'Dispatch the relevant vendor for each urgent/high sensor alert; prioritize water-leak and offline-device alerts first.',
+        impacts: {}
+      });
+    }
+
     localStorage.setItem('TSM_PM_STRATEGIST_RELAY', JSON.stringify({
       generatedAt: new Date().toISOString(),
       anomalies
@@ -686,7 +709,7 @@ function pmPushToSentinel() {
 async function relayToStrategist(){
   if (!requireEngine()) return;
   const aiText = document.getElementById('aiOutput').textContent;
-  const payload = engine.buildRelayPayload(aiText.startsWith('Run analysis') ? null : aiText);
+  const payload = engine.buildRelayPayload(aiText.startsWith('Run analysis') ? null : aiText, iotEngine ? iotEngine.getIotAlerts() : []);
   engine.saveToStorage();
 
   let finalPayload = payload;
