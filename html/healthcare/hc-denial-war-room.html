@@ -1495,6 +1495,27 @@ async function runPipeline() {
   if (actTxt) actTxt.textContent = '5 / 5 Engines Complete';
   relay();
   try { if (window.TSMWorkflowStage) TSMWorkflowStage.write('dispatch'); } catch (e) {}
+  // TSM FIX: firing the pipeline only ever wrote 'tsmHcWarRoom', a key
+  // nothing downstream reads — readWarRoomBrief() on the Strategist looks
+  // for 'TSM_WAR_ROOM_BRIEF', which was previously written ONLY by the
+  // separate "Escalate to Strategist" button (buildWarRoomPayload). That
+  // meant just firing the 5 engines silently dropped everything, deadline
+  // included, unless the user also clicked escalate. Now both keys get
+  // written on pipeline completion so the live findings (and the exact,
+  // non-recalculated appeal deadline from E1/E3/E4) are already in place
+  // the moment the user lands on the Strategist page.
+  try { sessionStorage.setItem('TSM_WAR_ROOM_BRIEF', JSON.stringify(buildWarRoomPayload())); } catch (e) {}
+  // TSM FIX: the "Appeal Deadline" wow-stat box (id="ws-deadline") was
+  // never written by any code path — always showed "—" regardless of
+  // what the engines actually extracted. Pull it straight out of E1's
+  // extraction output (the one instructed to state it exactly as written,
+  // not recalculate it) via a plain-text scan, same approach used
+  // elsewhere in this file for parsing engine output into UI fields.
+  try {
+    const dlMatch = (outputs[0] || '').match(/appeal deadline[:\s]+(.+)/i);
+    const dlEl = document.getElementById('ws-deadline');
+    if (dlEl) dlEl.textContent = dlMatch ? dlMatch[1].trim().slice(0, 60) : 'NOT STATED IN SOURCE';
+  } catch (e) {}
   setTimeout(() => {
     try {
       const docEl = document.getElementById('doc-input') || document.getElementById('docInput') || document.querySelector('textarea');
