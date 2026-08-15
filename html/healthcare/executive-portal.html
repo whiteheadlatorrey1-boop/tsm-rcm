@@ -1716,7 +1716,10 @@ function buildEscalationModal(d) {
   const ts = new Date(d.ts).toLocaleTimeString('en-US',{hour12:false});
   const sessionId = d.sessionId || 'REL-' + Math.random().toString(36).substr(2,8).toUpperCase();
 
-  const warRoomBrief = d.warRoomBrief || d.enriched || '';
+  // TSM FIX: d.enriched is a boolean flag ("was this payload enriched"), not
+  // text — it was leaking through as the literal string "true" whenever
+  // warRoomBrief was empty. Fall back to aiSummary (a real string field) instead.
+  const warRoomBrief = d.warRoomBrief || d.aiSummary || '';
   const denialPack = d.denialPack || '';
   const stratAnalysis = d.stratAnalysis || d.bnca?.revenuePosition || '';
   const claimId = d.claimId || d.kpi?.claimId || 'EOB0724';
@@ -1811,8 +1814,23 @@ function buildEscalationModal(d) {
           </div>
           <div id="esc-engine-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;">
             ${(()=>{
-              const outputs = d.engineOutputs || {};
-              const entries = Object.entries(outputs).filter(([,v]) => v && v.length > 10);
+              // TSM FIX: strategist writes engine findings under d.stratReports
+              // (executiveBrief/denialSweep/authFriction/codingDrift/siteVariance/
+              // complianceHeat) — this grid was reading d.engineOutputs, a key
+              // that's never written, so it always showed "no data captured"
+              // even on escalations with a full stratReports payload.
+              const ENGINE_LABELS = {
+                executiveBrief: 'EXECUTIVE BRIEF',
+                denialSweep: 'DENIAL SWEEP',
+                authFriction: 'AUTH FRICTION',
+                codingDrift: 'CODING DRIFT',
+                siteVariance: 'SITE VARIANCE',
+                complianceHeat: 'COMPLIANCE HEAT'
+              };
+              const outputs = d.stratReports || d.engineOutputs || {};
+              const entries = Object.entries(outputs)
+                .filter(([,v]) => v && v.length > 10)
+                .map(([key, text]) => [ENGINE_LABELS[key] || key, text]);
               if (!entries.length) {
                 return '<div style="color:#2a3a52;font-size:9px;padding:12px">No engine outputs captured — run a pack on the strategist before escalating.</div>';
               }
