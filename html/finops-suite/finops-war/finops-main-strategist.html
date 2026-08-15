@@ -1105,6 +1105,15 @@ async function generateReport(){
       document.getElementById('relayBanner').style.display = 'flex';
       // Save for executive portal relay
     const _txt = result.text;
+    // TSM FIX: exec portal's populateDeadlines/populateDecisions/populateRiskMatrix
+    // depend on d.engineOutputs (raw per-engine text with numbered action lists),
+    // but this payload never carried it forward - those panels were always empty.
+    // War room already wrote it to tsm_war_relay_finops-suite; pull it forward here.
+    let _warRoomEngineOutputs = {};
+    try {
+      const _wrRaw = sessionStorage.getItem('tsm_war_relay_finops-suite') || localStorage.getItem('tsm_war_relay_finops-suite');
+      _warRoomEngineOutputs = (_wrRaw && JSON.parse(_wrRaw).engineOutputs) || {};
+    } catch(e) {}
     const _expM = _txt.match(/(?:TOTAL AMOUNT|TOTAL EXPOSURE|TOTAL AT RISK)[:\s]+(\$[\d,]+(?:[–\-]\$[\d,]+)?)/i);
     const _riskM = _txt.match(/(?:RISK SCORE|OVERALL RISK)[:\s]+([\d]+(?:\/100)?)/i);
     const _dupM = _txt.match(/Duplicate Payments?[:\s]+(\$[\d,]+)/i);
@@ -1176,7 +1185,8 @@ async function generateReport(){
       unapprovedVendors: _vendM ? _vendM[1] : null,
       missingPO: _poM ? _poM[1] : null,
       exceptions: _excM ? _excM[1] : null,
-      compliance: _compM ? _compM[1].trim().slice(0,12) : null
+      compliance: _compM ? _compM[1].trim().slice(0,12) : null,
+      engineOutputs: _warRoomEngineOutputs
     }));
     localStorage.setItem('tsm_strategist_relay', JSON.stringify({
       wip: (window.TSMExecKitProducer && TSMExecKitProducer.buildWip([
@@ -1203,7 +1213,8 @@ async function generateReport(){
       unapprovedVendors: _vendM ? _vendM[1] : null,
       missingPO: _poM ? _poM[1] : null,
       exceptions: _excM ? _excM[1] : null,
-      compliance: _compM ? _compM[1].trim().slice(0,12) : null
+      compliance: _compM ? _compM[1].trim().slice(0,12) : null,
+      engineOutputs: _warRoomEngineOutputs
     }));
       animateFeed();
       showRelayToast('BNCA synthesis complete. Ready to relay to Executive Portal.');
@@ -1255,6 +1266,13 @@ function relayToExecutive(){
   const _excM = output.match(/(?:EXCEPTION COUNT|CRITICAL ITEMS)[:\s]+(\d+)/i);
   const _compM = output.match(/(?:COMPLIANCE|PERIOD)[:\s]+([^\n]+)/i);
   const existing = JSON.parse(localStorage.getItem('tsm_strategist_relay') || '{}');
+  // TSM FIX: carry engineOutputs forward the same way generateReport() does —
+  // prefer a fresh war-room pull, fall back to whatever was already relayed.
+  let _warRoomEngineOutputs = existing.engineOutputs || {};
+  try {
+    const _wrRaw = sessionStorage.getItem('tsm_war_relay_finops-suite') || localStorage.getItem('tsm_war_relay_finops-suite');
+    if (_wrRaw) _warRoomEngineOutputs = JSON.parse(_wrRaw).engineOutputs || _warRoomEngineOutputs;
+  } catch(e) {}
   localStorage.setItem('tsm_strategist_relay', JSON.stringify({
     wip: (window.TSMExecKitProducer && TSMExecKitProducer.buildWip([
       { id:'ingest',    label:'Document Ingestion', status:'done' },
@@ -1280,7 +1298,8 @@ function relayToExecutive(){
     unapprovedVendors: _vendM ? _vendM[1] : existing.unapprovedVendors || null,
     missingPO: _poM ? _poM[1] : existing.missingPO || null,
     exceptions: _excM ? _excM[1] : existing.exceptions || null,
-    compliance: _compM ? _compM[1].trim().slice(0,12) : existing.compliance || null
+    compliance: _compM ? _compM[1].trim().slice(0,12) : existing.compliance || null,
+    engineOutputs: _warRoomEngineOutputs
   }));
 
   // ── SENTINEL PUSH ──────────────────────────────────────────────
