@@ -1544,7 +1544,10 @@ const key  = item.dataset.noteKey;
 const open = wrap.classList.toggle('open');
 btn.textContent = open ? '− NOTE' : '+ NOTE';
 if (open) {
-const saved = sessionStorage.getItem(NOTE_NS + key);
+// TSM FIX: was reading sessionStorage only — if the note was saved in an
+// earlier browser session (saveNote below now dual-writes), it wouldn't
+// show up here. Fall back to localStorage so notes survive a reload.
+const saved = sessionStorage.getItem(NOTE_NS + key) || localStorage.getItem(NOTE_NS + key);
 if (saved) {
 const ta = wrap.querySelector('.d-note-textarea');
 if (ta && !ta.value) ta.value = saved;
@@ -1559,7 +1562,13 @@ const item = wrap.closest('.decision-item');
 const key  = item.dataset.noteKey;
 const ta   = wrap.querySelector('.d-note-textarea');
 const text = (ta?.value || '').trim();
+// TSM FIX: was sessionStorage-only, unlike every other persistence path in
+// this file (TSM_EXEC_RELAY, TSM_EXEC_FEEDBACK, relay.engine.js write()),
+// all of which dual-write session+local. An exec's follow-up note on a
+// decision — "Signed, forwarded to compliance, follow up Monday" — was
+// silently lost the moment the tab closed. Dual-write like everything else.
 sessionStorage.setItem(NOTE_NS + key, text);
+try { localStorage.setItem(NOTE_NS + key, text); } catch(_) {}
 const noteBtn = item.querySelector('.d-note-btn');
 if (noteBtn) noteBtn.classList.toggle('has-note', text.length > 0);
 noteBtn.textContent = text.length ? '✎ NOTE' : '+ NOTE';
@@ -1570,7 +1579,7 @@ if (tag) { tag.style.display = 'inline'; setTimeout(() => tag.style.display = 'n
 function loadSavedNotes() {
 document.querySelectorAll('.decision-item[data-note-key]').forEach(item => {
 const key  = item.dataset.noteKey;
-const text = sessionStorage.getItem(NOTE_NS + key) || '';
+const text = sessionStorage.getItem(NOTE_NS + key) || localStorage.getItem(NOTE_NS + key) || '';
 const btn  = item.querySelector('.d-note-btn');
 const ta   = item.querySelector('.d-note-textarea');
 if (text && btn) { btn.classList.add('has-note'); btn.textContent = '✎ NOTE'; }
@@ -2127,6 +2136,24 @@ async function exportExecutiveReport() {
       lines.push('DECISION QUEUE', '--------------');
       decisions.forEach(dec => lines.push(`[${dec.urgency || '—'}] ${dec.action || ''} — ${dec.value || ''} — due ${dec.deadline || '—'}`));
       lines.push('');
+    }
+    // TSM FIX: an exec's follow-up notes on each decision ("Signed — forwarded
+    // to compliance 14:22. Follow up Monday.") were captured and saved (see
+    // saveNote()) but never made it into the exported report — exactly the
+    // kind of action-taken record HonorHealth needs to see. Read whatever
+    // decision cards are actually rendered on the page right now, same
+    // live-DOM approach already used for denialPackText below.
+    const execNotes = [...document.querySelectorAll('.decision-item[data-note-key]')]
+      .map(item => {
+        const key = item.dataset.noteKey;
+        const action = item.querySelector('.d-action')?.textContent?.trim() || key;
+        const text = (sessionStorage.getItem(NOTE_NS + key) || localStorage.getItem(NOTE_NS + key) || '').trim();
+        return { action, text };
+      })
+      .filter(n => n.text);
+    if (execNotes.length) {
+      lines.push('EXECUTIVE NOTES', '---------------');
+      execNotes.forEach(n => lines.push(`${n.action}:`, n.text, ''));
     }
     const engineEntries = Object.entries(engineOutputs).filter(([, v]) => v && v.length > 10);
     if (engineEntries.length) {
