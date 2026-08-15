@@ -923,7 +923,7 @@ async function runStrategist(){
     forecast:'30-Day Revenue Cycle Forecast — project denial rate, revenue recovery, and clean claim rate improvements if recommended actions are taken.',
     board:'Board Talking Points — frame our current challenges as managed opportunities. Concise, confident executive language.'
   };
-  const prompt = `Mode: ${modeLabels[mode]}\n\nAdditional context: ${ctx||'None'}\n\nPull HonorHealth healthcare mesh. Compare satellite office summaries. Provide scoped HC-only analysis.\n\nReturn EXACTLY this format:\n\n===BRIEF===\nEXECUTIVE SUMMARY\n[2-3 sentences with dollar impact and recovery probability]\n\nCRITICAL FINDINGS\n[Top 3-5 findings with $ amounts and timeframes]\n\nRECOMMENDED STRATEGY\n[Numbered actions with owner roles and 24/48/72hr deadlines]\n\nRISK ASSESSMENT\n[High/Med/Low risks with exposure amounts]\n\n===JSON===\n{\n  "confidence": 88,\n  "recommendedActions": [\n    {"text": "Action description", "owner": "Billing Manager"},\n    {"text": "Action description", "owner": "Compliance Officer"},\n    {"text": "Action description", "owner": "Payer Relations"},\n    {"text": "Action description", "owner": "Office Manager"}\n  ],\n  "dataSources": [\n    {"name": "HC-Billing / EOB data", "weight": "HIGH"},\n    {"name": "Denial code registry (PR-96/CO-4)", "weight": "HIGH"},\n    {"name": "Payer policy database", "weight": "MED"},\n    {"name": "Satellite office summaries", "weight": "MED"}\n  ],\n  "reasoning": [\n    {"key": "Threshold", "val": "Denial rate 18.4% exceeds CMS 15% threshold — $48K at risk"},\n    {"key": "Evidence", "val": "PR-96 drives 45% of denials; Mesa at 22.1% is highest severity"},\n    {"key": "History", "val": "CO-29 timely filing denials recoverable within 48hr appeal window"},\n    {"key": "Risk", "val": "Inaction on CLM-0334 results in $3,800 permanent write-off"}\n  ],\n  "escalationTriggers": [\n    "CLM-0334 CO-29 deadline expires without appeal — $3,800 write-off",\n    "Mesa denial rate exceeds 25% without intervention",\n    "CPT 99215 audit exposure crosses $15K"\n  ]\n}`;
+  const prompt = `Mode: ${modeLabels[mode]}\n\nAdditional context: ${ctx||'None'}\n\nPull HonorHealth healthcare mesh. Compare satellite office summaries. Provide scoped HC-only analysis.\n\nIMPORTANT: the JSON schema below shows the REQUIRED FIELD NAMES AND SHAPE ONLY. Every value in it (numbers, source names, weights, reasoning text) is a placeholder — do not copy any of it into your answer. Populate every field from the actual context above (the live war room findings if present, otherwise the baseline mesh data). confidence must reflect how directly the context supports your specific findings, not a generic round number. dataSources and their HIGH/MED/LOW weights must reflect which inputs you actually used for THIS analysis, not a fixed list. If the context gives you nothing to ground a field in, omit that item rather than inventing one.\n\nReturn EXACTLY this format:\n\n===BRIEF===\nEXECUTIVE SUMMARY\n[2-3 sentences with dollar impact and recovery probability]\n\nCRITICAL FINDINGS\n[Top 3-5 findings with $ amounts and timeframes]\n\nRECOMMENDED STRATEGY\n[Numbered actions with owner roles and 24/48/72hr deadlines]\n\nRISK ASSESSMENT\n[High/Med/Low risks with exposure amounts]\n\n===JSON===\n{\n  "confidence": <0-100, your actual confidence in THIS analysis>,\n  "recommendedActions": [\n    {"text": "<action grounded in context above>", "owner": "<role>"}\n  ],\n  "dataSources": [\n    {"name": "<input you actually drew on>", "weight": "HIGH|MED|LOW"}\n  ],\n  "reasoning": [\n    {"key": "<short label>", "val": "<specific figure or fact from context above, with its source>"}\n  ],\n  "escalationTriggers": [\n    "<condition drawn from context above that would force escalation>"\n  ]\n}`;
   const outEl = document.getElementById('strat-out');
   const thinkEl = document.getElementById('thinking-bar');
   const errEl = document.getElementById('strat-err');
@@ -985,6 +985,27 @@ function renderExplainPanel(obj){
         if (n >= 5000) return 'MED';
         return 'LOW';
       }
+      // TSM FIX: daysUntilDeadline was hardcoded to 0 ("no independent
+      // deadline signal"), so the reasoning chain could narrate an urgent
+      // 48hr/60-day deadline while the exposure math right below it
+      // silently treated the case as having no deadline at all — the two
+      // panels visibly disagreed. Pull the real deadline out of the war
+      // room brief (E1/E3/E4 were already patched to state it exactly,
+      // never recalculate it) so the escalation curve reflects it.
+      function hcXPExtractDeadlineDays(){
+        try {
+          const brief = typeof readWarRoomBrief === 'function' ? readWarRoomBrief() : null;
+          if (!brief || !brief.engineOutputs) return 0;
+          const allText = Object.values(brief.engineOutputs).join('\n');
+          const m = allText.match(/appeal deadline[:\s]+([^\n(]+?)(?:\(([^)]+)\))?(?:\n|$)/i);
+          if (!m) return 0;
+          const dateStr = (m[2] || m[1] || '').trim();
+          const parsed = Date.parse(dateStr);
+          if (Number.isNaN(parsed)) return 0;
+          const days = Math.ceil((parsed - Date.now()) / 86400000);
+          return days > 0 ? days : 0;
+        } catch (e) { return 0; }
+      }
       const hcXPKpiTile = typeof getKpiByLabel === 'function' ? getKpiByLabel('Revenue at Risk') : null;
       const hcXPBaseExposure = hcXPParseExposureLow(hcXPKpiTile);
       const hcXPConf = Number.isFinite(obj.confidence) ? obj.confidence : null;
@@ -993,7 +1014,7 @@ function renderExplainPanel(obj){
         baseExposure: hcXPBaseExposure,
         severity: hcXPSeverity,
         confidence: hcXPConf !== null ? hcXPConf : 70,
-        daysUntilDeadline: 0 // no independent deadline signal for this vertical yet
+        daysUntilDeadline: hcXPExtractDeadlineDays()
       });
       const fmt = n => '$' + Math.round(n).toLocaleString('en-US');
       document.getElementById('hcDeltaNo').textContent = fmt(hcXPImpact.ifIgnored.exposure);
