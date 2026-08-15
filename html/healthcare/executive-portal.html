@@ -1990,7 +1990,7 @@ function buildEscalationModal(d) {
                   <div style="width:4px;height:4px;background:#00e5ff;transform:rotate(45deg);flex-shrink:0;"></div>
                   Live Signals
                 </div>
-                <button onclick="loadStratRelay()" style="
+                <button onclick="refreshLiveSignals()" style="
                   background:rgba(0,229,255,0.06);border:1px solid rgba(0,229,255,0.2);
                   color:#00e5ff;font-family:'JetBrains Mono',monospace;font-size:7px;
                   padding:3px 8px;cursor:pointer;letter-spacing:1px;
@@ -2008,8 +2008,18 @@ function buildEscalationModal(d) {
                 Quick Asks
               </div>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;" id="quick-asks-grid">
-                ${['Draft CO-29 Appeal','Mesa Denial Spike','Denial Reduction Plan','Board Brief','Payer Strategy','99215 Defense','Site Variance Analysis','Recovery Roadmap'].map(q =>
-                  `<button onclick="quickAsk('${q}')" style="
+                ${[
+                  { label:'Draft CO-29 Appeal', mode:'payer', ctx:'Draft a CO-29 timely-filing appeal for the highest-value affected claim in the relay data — include appeal letter opening, deadline, and required documentation checklist.' },
+                  { label:'Mesa Denial Spike', mode:'denial', ctx:'Focus specifically on the Mesa office denial spike — root cause and immediate fix.' },
+                  { label:'Denial Reduction Plan', mode:'denial', ctx:'' },
+                  { label:'Board Brief', mode:'board', ctx:'' },
+                  { label:'Payer Strategy', mode:'payer', ctx:'' },
+                  { label:'99215 Defense', mode:'denial', ctx:'Build a defense strategy for CPT 99215 (level-5 E/M) downcoding or denial challenges — cite the specific denial codes and documentation needed to defend the code level.' },
+                  { label:'Site Variance Analysis', mode:'revenue', ctx:'Analyze site-to-site variance in DSO, denial rate, and collections performance across HonorHealth locations.' },
+                  { label:'Recovery Roadmap', mode:'revenue', ctx:'' }
+                ].map(q => {
+                  const esc = s => s.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+                  return `<button onclick="quickAsk('${esc(q.label)}','${esc(q.mode)}','${esc(q.ctx)}')" style="
                     background:#03060d;border:1px solid rgba(255,255,255,0.07);
                     color:#8a9fc0;font-family:'JetBrains Mono',monospace;
                     font-size:7.5px;padding:7px 8px;cursor:pointer;
@@ -2017,8 +2027,8 @@ function buildEscalationModal(d) {
                     transition:border-color 0.15s,color 0.15s;
                   " onmouseover="this.style.borderColor='rgba(0,229,255,0.3)';this.style.color='#00e5ff'"
                      onmouseout="this.style.borderColor='rgba(255,255,255,0.07)';this.style.color='#8a9fc0'"
-                  ">${q}</button>`
-                ).join('')}
+                  ">${q.label}</button>`;
+                }).join('')}
               </div>
             </div>
           </div>
@@ -2210,6 +2220,23 @@ function buildLiveSignals(d) {
   `).join('');
 }
 
+// TSM FIX: the modal's Live Signals "↻ REFRESH" button called loadStratRelay(),
+// which resyncs the outer dashboard (KPI tiles/BNCA strip/decisions/ticker) but
+// never touches #live-signals-list — so the button visibly did something while
+// the actual signals panel the user is looking at never updated. This re-reads
+// the relay and re-renders just that panel.
+function refreshLiveSignals() {
+  const list = document.getElementById('live-signals-list');
+  if (!list) return;
+  try {
+    const raw = sessionStorage.getItem('TSM_EXEC_RELAY') || localStorage.getItem('TSM_EXEC_RELAY');
+    const d = raw ? JSON.parse(raw) : {};
+    list.innerHTML = buildLiveSignals(d);
+  } catch(e) {
+    console.warn('[refreshLiveSignals] relay read failed:', e);
+  }
+}
+
 function switchEscTab(tab) {
   document.querySelectorAll('.esc-tab-panel').forEach(p => p.style.display = 'none');
   document.getElementById('esc-tab-' + tab).style.display = 'block';
@@ -2319,9 +2346,17 @@ async function runStratEngine() {
   }
 }
 
-function quickAsk(question) {
-  const ctx = document.getElementById('strat-context');
-  if (ctx) ctx.value = question;
+// TSM FIX: quickAsk only ever set the context textarea — it never touched
+// the #strat-mode dropdown, so every Quick Ask button ran whatever mode was
+// currently selected (default: Priority Action Plan) regardless of label.
+// "Payer Strategy" and "Board Brief" were silently running the wrong
+// analysis. Now accepts an explicit mode per button and sets the dropdown
+// to match before running.
+function quickAsk(question, mode, ctx) {
+  const modeEl = document.getElementById('strat-mode');
+  if (modeEl && mode) modeEl.value = mode;
+  const ctxEl = document.getElementById('strat-context');
+  if (ctxEl) ctxEl.value = ctx || question;
   switchEscTab('stratengine');
   runStratEngine();
 }
@@ -2523,11 +2558,21 @@ function buildStratBriefTab() {
           <div style="background:#0a0f22;border:1px solid rgba(255,255,255,0.07);padding:12px;">
             <div style="font-size:7.5px;letter-spacing:1.5px;color:#dde5f4;text-transform:uppercase;margin-bottom:8px;">Quick Asks</div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;">
-              ${['Draft CO-29 Appeal','Mesa Denial Spike','Denial Reduction Plan','Board Brief','Payer Strategy','99215 Defense','Site Variance','Recovery Roadmap'].map(q =>
-                `<button onclick="sbQuickAsk('${q}')" style="background:#03060d;border:1px solid rgba(255,255,255,0.07);color:#8a9fc0;font-family:'JetBrains Mono',monospace;font-size:7px;padding:6px 7px;cursor:pointer;text-align:left;line-height:1.3;"
+              ${[
+                { label:'Draft CO-29 Appeal', mode:'payer', ctx:'Draft a CO-29 timely-filing appeal for the highest-value affected claim in the relay data — include appeal letter opening, deadline, and required documentation checklist.' },
+                { label:'Mesa Denial Spike', mode:'denial', ctx:'Focus specifically on the Mesa office denial spike — root cause and immediate fix.' },
+                { label:'Denial Reduction Plan', mode:'denial', ctx:'' },
+                { label:'Board Brief', mode:'board', ctx:'' },
+                { label:'Payer Strategy', mode:'payer', ctx:'' },
+                { label:'99215 Defense', mode:'denial', ctx:'Build a defense strategy for CPT 99215 (level-5 E/M) downcoding or denial challenges — cite the specific denial codes and documentation needed to defend the code level.' },
+                { label:'Site Variance', mode:'revenue', ctx:'Analyze site-to-site variance in DSO, denial rate, and collections performance across HonorHealth locations.' },
+                { label:'Recovery Roadmap', mode:'revenue', ctx:'' }
+              ].map(q => {
+                const esc = s => s.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+                return `<button onclick="sbQuickAsk('${esc(q.label)}','${esc(q.mode)}','${esc(q.ctx)}')" style="background:#03060d;border:1px solid rgba(255,255,255,0.07);color:#8a9fc0;font-family:'JetBrains Mono',monospace;font-size:7px;padding:6px 7px;cursor:pointer;text-align:left;line-height:1.3;"
                   onmouseover="this.style.borderColor='rgba(0,229,255,0.3)';this.style.color='#00e5ff'"
-                  onmouseout="this.style.borderColor='rgba(255,255,255,0.07)';this.style.color='#8a9fc0'">${q}</button>`
-              ).join('')}
+                  onmouseout="this.style.borderColor='rgba(255,255,255,0.07)';this.style.color='#8a9fc0'">${q.label}</button>`;
+              }).join('')}
             </div>
           </div>
         </div>
@@ -2913,9 +2958,11 @@ async function sbRunStratEngine() {
   }
 }
 
-function sbQuickAsk(question) {
-  const ctx = document.getElementById('sb-strat-context');
-  if (ctx) ctx.value = question;
+function sbQuickAsk(question, mode, ctx) {
+  const modeEl = document.getElementById('sb-strat-mode');
+  if (modeEl && mode) modeEl.value = mode;
+  const ctxEl = document.getElementById('sb-strat-context');
+  if (ctxEl) ctxEl.value = ctx || question;
   switchSbTab('stratengine');
   sbRunStratEngine();
 }
