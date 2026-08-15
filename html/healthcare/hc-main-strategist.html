@@ -1810,6 +1810,20 @@ function clearOut(){
           <div id="dp-output" style="font-size:10px;color:#ccc;line-height:1.8;white-space:pre-wrap;min-height:80px;display:none;"></div>
           <div id="dp-error" style="font-size:9px;color:#ff4d6d;display:none;margin-top:6px;"></div>
         </div>
+        <div style="padding:8px 16px 0 16px;">
+          <button onclick="wrGeneratePhysicianEMTemplate()" style="background:rgba(0,229,255,0.08);border:1px solid rgba(0,229,255,0.3);color:#00e5ff;font-family:monospace;font-size:8px;letter-spacing:1px;padding:6px 14px;cursor:pointer;text-transform:uppercase;">📋 GENERATE PHYSICIAN E/M TEMPLATE</button>
+        </div>
+        <!-- TSM ADD: same deterministic, template-only, no-model-call pattern as
+             sbGeneratePhysicianEMTemplate() in executive-portal.html. Clinical
+             content must come from the treating physician, never the AI —
+             this only auto-fills fields already verified elsewhere (claim id,
+             DOS, payer, CPT, denial codes) and leaves every clinical field
+             blank for physician completion. -->
+        <div id="wr-em-template" style="display:none;padding:14px 16px 4px 16px;">
+          <div style="font-size:7.5px;letter-spacing:2px;text-transform:uppercase;color:#5a6f90;margin-bottom:10px;">PHYSICIAN E/M DOCUMENTATION TEMPLATE — NOT AI-GENERATED, FOR PHYSICIAN COMPLETION</div>
+          <pre id="wr-em-template-text" style="font-size:9px;line-height:1.75;color:#ccc;white-space:pre-wrap;background:#0a0f22;border:1px solid rgba(245,158,11,0.15);padding:14px;margin:0;font-family:inherit;"></pre>
+          <button onclick="navigator.clipboard.writeText(document.getElementById('wr-em-template-text').textContent)" style="margin-top:10px;background:rgba(0,230,118,0.06);border:1px solid rgba(0,230,118,0.2);color:#00e676;font-family:monospace;font-size:8px;letter-spacing:1px;padding:6px 14px;cursor:pointer;text-transform:uppercase;">COPY TEMPLATE</button>
+        </div>
         <div style="padding:8px 16px;border-top:1px solid rgba(245,158,11,0.1);display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
           <span style="font-size:7px;letter-spacing:1.5px;color:#555;margin-right:4px;">ASSIGN TO →</span>
           <button onclick="assignDenialPack('Billing Coordinator')"
@@ -1888,7 +1902,7 @@ PATTERN MATCH: [does this match active HonorHealth denial patterns CO-4/CO-11/CO
       method: 'POST',
       headers: { 'Content-Type':'application/json' },
       body: JSON.stringify({
-        system: 'You are the HC Strategist Denial Pack engine for HonorHealth. Follow the requested output format exactly.',
+        system: 'You are the HC Strategist Denial Pack engine for HonorHealth. Follow the requested output format exactly. For APPEAL DEADLINE: use only a date or day-count that is explicitly stated in the escalated data provided — never calculate, estimate, or infer one. If no deadline is stated in the data, write "NOT STATED IN SOURCE DATA" for that field instead of guessing. For the appeal letter and strategy: only state as fact what the escalated data confirms exists (documents received, notes on file, attestations signed). Anything the data shows as missing, absent, or not yet submitted must be written as a still-needed action item, in future/conditional language ("will be enclosed," "to be obtained") — never as something already provided or completed. Do not resolve open documentation gaps by asserting they have been closed.',
         message: prompt,
         maxTokens: 3200
       })
@@ -1906,6 +1920,81 @@ PATTERN MATCH: [does this match active HonorHealth denial patterns CO-4/CO-11/CO
       document.getElementById('dp-error').style.display   = 'block';
       document.getElementById('dp-error').textContent     = '✗ Denial pack failed: ' + err.message;
     });
+  };
+
+  // TSM ADD: PHYSICIAN E/M DOCUMENTATION TEMPLATE (War Room panel)
+  // -----------------------------------------------------------------------
+  // Deliberately deterministic — no model call. Mirrors
+  // sbGeneratePhysicianEMTemplate() in executive-portal.html. Auto-fills
+  // only fields already verified elsewhere (claim id, DOS, payer, CPT,
+  // denial codes) from the war room brief; every clinical field is left
+  // blank for the treating physician to complete.
+  function wrExtractField(text, patterns) {
+    if (!text) return null;
+    for (const p of patterns) {
+      const m = text.match(p);
+      if (m && m[1]) return m[1].trim();
+    }
+    return null;
+  }
+
+  window.wrGeneratePhysicianEMTemplate = function() {
+    const searchText = Object.values(brief.engineOutputs||{}).join('\n');
+
+    const claimId = wrExtractField(searchText, [/claim\s*id[:\s]+([A-Z0-9\-]+)/i, /\b([A-Z]{2}-[A-Z]+-\d{4}-\d+)\b/]) || '[CLAIM ID — FILL IN FROM CHART]';
+    const dos      = wrExtractField(searchText, [/date of service[:\s]+([A-Za-z0-9,\s]+?)(?:\n|$|,\s*Denial|,\s*Provider)/i]) || '[DATE OF SERVICE — FILL IN FROM CHART]';
+    const payer    = wrExtractField(searchText, [/payer[:\s]+([A-Za-z\s]+?)(?:\n|$)/i]) || '[PAYER — FILL IN FROM CHART]';
+    const cpt      = wrExtractField(searchText, [/CPT\s*(?:code)?[:\s]+(\d{5})/i]) || '[CPT CODE — FILL IN FROM CHART]';
+    const denialCodes = wrExtractField(searchText, [/denial codes?[:\s]+([A-Z0-9,\-\s]+?)(?:\n|$)/i]) || '[DENIAL CODES — FILL IN FROM CHART]';
+
+    const template =
+`PHYSICIAN DOCUMENTATION REQUEST — MODIFIER 25 / SEPARATE E&M SUPPORT
+This is a fill-in template only. TSM does not generate clinical content.
+The treating physician must complete every bracketed field below with the
+actual facts of this encounter before it is used in an appeal.
+
+CLAIM: ${claimId}
+DATE OF SERVICE: ${dos}
+PAYER: ${payer}
+CPT UNDER REVIEW: ${cpt}
+DENIAL CODES: ${denialCodes}
+
+To support Modifier 25, the payer requires a separate E&M note documenting
+a distinct, separately identifiable service from the procedure performed
+on the same day. Complete each section with the real clinical facts.
+
+1. CHIEF COMPLAINT (distinct from the procedure)
+   [ Physician to complete ]
+
+2. HISTORY OF PRESENT ILLNESS
+   [ Physician to complete — onset, duration, severity, and symptoms
+     relevant to the E/M portion of the visit, separate from the
+     procedural indication ]
+
+3. EXAMINATION FINDINGS
+   [ Physician to complete — pertinent positive/negative findings
+     supporting the separately identifiable E/M service ]
+
+4. MEDICAL DECISION-MAKING
+   Problem(s) addressed: [ Physician to complete ]
+   Data reviewed/ordered: [ Physician to complete ]
+   Risk of complications/morbidity: [ Physician to complete ]
+
+5. TIME (only if using time-based leveling instead of MDM)
+   Total time on E/M service, excluding procedure time: [ ____ minutes ]
+
+6. ATTESTATION
+   "I attest that the above E/M service was medically necessary,
+   clinically distinct from the procedure performed, and personally
+   provided and documented by me on [DATE]."
+
+   Physician signature: _______________________________  Date: __________
+   Printed name: ______________________________________`;
+
+    const panel = document.getElementById('wr-em-template');
+    const textEl = document.getElementById('wr-em-template-text');
+    if (textEl) textEl.textContent = template;
+    if (panel) { panel.style.display = 'block'; panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
   };
 
 })(); // Cleans up the singular wrapper level completely

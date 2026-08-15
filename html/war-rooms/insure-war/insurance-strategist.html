@@ -422,6 +422,12 @@ ${(warRoomData.engines?.e5||'').slice(0,400)}`;
   return ctx;
 }
 
+// TSM ADD: same honesty guard as INS_ENGINE_SYSTEM_GUARD in insurance-war-room.html
+// and the healthcare Strategist/Denial Pack chain — STRATEGIC WINDOW (Node 1)
+// and KEY DECISION POINTS deadlines (Node 3) can otherwise invent a deadline
+// that was never in the escalated war room context.
+const INS_STRAT_SYSTEM_GUARD = 'You are the TSM Insurance Strategist. Follow the requested output format exactly. For any deadline, appeal window, or decision-point date: use only what is explicitly present in the context provided — never calculate, estimate, or infer one. If no deadline is present in the context, write "NOT STATED IN SOURCE DATA" for that field instead of guessing. Only state as fact that documentation has been obtained or a gap has been closed if the context confirms it — anything shown as missing must be listed as a pending action, not treated as resolved.';
+
 const NODE_PROMPTS=[
 (ctx,n)=>`You are the TSM Insurance Strategist — Node 1: Situation Assessment.
 
@@ -438,7 +444,7 @@ TOP 3 RISKS: [ranked by dollar impact]
 DENIAL PATTERN: [systemic issues identified]
 COMPLIANCE POSTURE: [LOW/MEDIUM/HIGH/CRITICAL risk]
 APPEAL OPPORTUNITY: [total recoverable and timeline]
-STRATEGIC WINDOW: [time-sensitive actions and deadlines]
+STRATEGIC WINDOW: [time-sensitive actions and deadlines EXACTLY as stated in context — "NOT STATED IN SOURCE DATA" if none given]
 DATA CONFIDENCE: [1-100]%`,
 
 (ctx,n)=>`You are the TSM Insurance Strategist — Node 2: Strategic Analysis.
@@ -474,9 +480,9 @@ HITL SCRIPT — What to say to leadership:
 "[2-3 sentence executive brief — situation, stakes, recommended action]"
 
 KEY DECISION POINTS:
-1. [Decision needed from leadership] — [deadline]
-2. [Decision needed from leadership] — [deadline]
-3. [Decision needed from leadership] — [deadline]
+1. [Decision needed from leadership] — [deadline stated in context, or "NOT STATED"]
+2. [Decision needed from leadership] — [deadline stated in context, or "NOT STATED"]
+3. [Decision needed from leadership] — [deadline stated in context, or "NOT STATED"]
 
 APPROVAL PATH: [who needs to approve what]
 CONFIDENCE RATIONALE: [why this score — data gaps if any]`,
@@ -583,6 +589,7 @@ async function runStrategist(){
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          system: INS_STRAT_SYSTEM_GUARD,
           message: NODE_PROMPTS[i-1](ctx,n),
           maxTokens: 700
         }),
