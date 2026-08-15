@@ -1398,6 +1398,68 @@ const VERTICALS = {
       { fileName:"Lease_Renewal_Unit112.record",         documentType:"CONTRACT",        vendor:"",                   invoiceNo:"LSE-112",    exclusionCode:"",           amount:1850,  sourceNode:"pm-war-room", routing:["pm-war-room","strategist"],            timestamp:Date.now()-1*86400000,_ext:{client:"Sundown Villas", ref:"LSE-112"} },
     ]
   },
+  noc: {
+    label: "Network Operations Center",
+    color: "#0ea5e9",
+    cls:   "noc",
+    storageKey: "tsm_doc_index_noc",
+    searchPlaceholder: "Search by incident, asset ID, ticket #, site...",
+    nodes: {
+      "noc-war-room": { label:"NOC Command Center", route:"/html/l1-copilot/noc/noc-war-room.html" },
+      "strategist":   { label:"Strategist",          route:"/html/l1-copilot/noc/noc-strategist.html" },
+      "bnca-engine":  { label:"BNCA Escalated",      route:"/html/l1-copilot/noc/noc-executive-portal.html" },
+    },
+    seed: [
+      { fileName:"Incident_Outage_CoreSwitch04.record", documentType:"INCIDENT", vendor:"", invoiceNo:"NOC-4471", exclusionCode:"SEV-2", amount:0, sourceNode:"noc-war-room", routing:["noc-war-room","strategist"], timestamp:Date.now()-2*3600000, _ext:{client:"Internal", ref:"NOC-4471"} },
+      { fileName:"SLA_Breach_UptimeReport_Q2.record",   documentType:"DOCUMENT REPORT", vendor:"", invoiceNo:"NOC-SLA-Q2", exclusionCode:"SLA-99.9", amount:0, sourceNode:"noc-war-room", routing:["noc-war-room","strategist","bnca-engine"], timestamp:Date.now()-6*3600000, _ext:{client:"Internal", ref:"SLA-Q2"} },
+    ]
+  },
+  // The three verticals below (rcm-os, property-revenue, l1) are registered
+  // for indexing/navigation ONLY -- unlike pm/noc above, their target pages
+  // do not yet have a doc-search relay receiver (no *_docsearch_relay
+  // listener exists in tsm-rcm-os.html / property-accounting-revenue-cycle.html
+  // / l1-ticket-copilot.html), and they are NOT in the server's
+  // DOC_ROUTER_NODES/DOC_ROUTER_PROMPT vertical list, so the AI classifier
+  // cannot route a document into them yet. A user can still open a doc from
+  // the doc-search index into these pages manually; it just won't auto-land
+  // there via classification like pm/noc/fo/ins/con/bpo/re/leg/hc do. Wiring
+  // the receivers + classifier is the natural next step, not done here.
+  "rcm-os": {
+    label: "RCM Operating System",
+    color: "#38bdf8",
+    cls:   "rcm-os",
+    storageKey: "tsm_doc_index_rcmos",
+    searchPlaceholder: "Search by cadence, GL code, ledger, escrow...",
+    nodes: {
+      "rcmos-war-room": { label:"RCM OS", route:"/html/finops-suite/tsm-rcm-os.html" },
+      "strategist":     { label:"Strategist", route:null },
+    },
+    seed: []
+  },
+  "property-revenue": {
+    label: "Property Accounting — Revenue Cycle",
+    color: "#f59e0b",
+    cls:   "property-revenue",
+    storageKey: "tsm_doc_index_propertyrevenue",
+    searchPlaceholder: "Search by pay app, lien release, AR, collections...",
+    nodes: {
+      "propertyrevenue-war-room": { label:"Property Accounting", route:"/html/construction-suite/property-accounting-revenue-cycle.html" },
+      "strategist":               { label:"Strategist", route:null },
+    },
+    seed: []
+  },
+  l1: {
+    label: "L1 Support Copilot",
+    color: "#c4b5fd",
+    cls:   "l1",
+    storageKey: "tsm_doc_index_l1",
+    searchPlaceholder: "Search by ticket #, incident, asset, VMware node...",
+    nodes: {
+      "l1-war-room": { label:"L1 Support Copilot", route:"/html/l1-copilot/l1-ticket-copilot.html" },
+      "strategist":  { label:"Strategist", route:null },
+    },
+    seed: []
+  },
   schools: {
     label: "Schools",
     color: "#fde047",
@@ -2538,6 +2600,16 @@ const WAR_ROOM_ROUTES = {
   'hw-cyber':             { label:'Honeywell Cyber Incident War Room',      url:'/html/cyber-incident.html',      relay:'tsm_hw_cyber_docsearch_relay',    autoKey:'TSM_HW_CYBER_WAR_RELAY' },
   'hotelops-war-room':    { label:'HotelOps War Room',                      url:'/html/concierge/concierge-war-room.html', relay:'tsm_hotelops_docsearch_relay', autoKey:'TSM_HOTELOPS_WAR_RELAY' },
   'hotel':                { label:'HotelOps War Room',                      url:'/html/concierge/concierge-war-room.html', relay:'tsm_hotelops_docsearch_relay', autoKey:'TSM_HOTELOPS_WAR_RELAY' },
+  // rcmos-war-room / propertyrevenue-war-room / l1-war-room: navigation-only
+  // (see the VERTICALS registry comment above these three entries) — the
+  // relay/autoKey below are written on launch same as every other vertical,
+  // but nothing on the target page reads them yet.
+  'rcmos-war-room':           { label:'RCM Operating System',            url:'/html/finops-suite/tsm-rcm-os.html',                        relay:'tsm_rcmos_docsearch_relay',           autoKey:'TSM_RCMOS_WAR_RELAY' },
+  'rcm-os':                   { label:'RCM Operating System',            url:'/html/finops-suite/tsm-rcm-os.html',                        relay:'tsm_rcmos_docsearch_relay',           autoKey:'TSM_RCMOS_WAR_RELAY' },
+  'propertyrevenue-war-room': { label:'Property Accounting',             url:'/html/construction-suite/property-accounting-revenue-cycle.html', relay:'tsm_propertyrevenue_docsearch_relay', autoKey:'TSM_PROPERTYREVENUE_WAR_RELAY' },
+  'property-revenue':         { label:'Property Accounting',             url:'/html/construction-suite/property-accounting-revenue-cycle.html', relay:'tsm_propertyrevenue_docsearch_relay', autoKey:'TSM_PROPERTYREVENUE_WAR_RELAY' },
+  'l1-war-room':              { label:'L1 Support Copilot',              url:'/html/l1-copilot/l1-ticket-copilot.html',                   relay:'tsm_l1_docsearch_relay',              autoKey:'TSM_L1_WAR_RELAY' },
+  'l1':                       { label:'L1 Support Copilot',              url:'/html/l1-copilot/l1-ticket-copilot.html',                   relay:'tsm_l1_docsearch_relay',              autoKey:'TSM_L1_WAR_RELAY' },
 };
 
 TSMWarRoomRegistry.registerWarRooms(WAR_ROOM_ROUTES);

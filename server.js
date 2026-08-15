@@ -2912,6 +2912,12 @@ const DOC_ROUTER_NODES = {
   re: ['re-finance', 're-market', 're-strategist', 're-exec', 're-doc-command', 'strategist'],
   leg: ['leg-index', 'leg-ediscovery', 'leg-strategist', 'leg-exec', 'strategist'],
   hc: ['hc-denial', 'strategist'],
+  // Single-intake-node verticals (same shape as hc above) — one real war
+  // room node, no sub-desks yet, so sourceNode is always the war-room node
+  // unless the doc is itself an escalation (falls to "strategist" per the
+  // "not strategist unless nothing else fits" rule below).
+  pm: ['pm-war-room', 'strategist'],
+  noc: ['noc-war-room', 'strategist'],
 };
 
 const DOC_ROUTER_DOC_TYPES = [
@@ -2925,7 +2931,7 @@ const DOC_ROUTER_PROMPT = `You are TSM's document routing classifier. Analyze th
 Return JSON matching exactly this schema:
 {
   "documentType": one of ${JSON.stringify(DOC_ROUTER_DOC_TYPES)},
-  "verticals": array, subset of ["fo","ins","con","bpo","re","leg","hc"] — include MULTIPLE verticals if the content is genuinely relevant to more than one (e.g. a vendor invoice tied to a construction project may be relevant to both "con" and "fo"; a property sale with a legal dispute may be relevant to both "re" and "leg"; a claim denial with financial exposure may be relevant to both "hc" and "fo"),
+  "verticals": array, subset of ["fo","ins","con","bpo","re","leg","hc","pm","noc"] — "pm" is property management (leases, work orders, vendor certificates, unit turnovers, occupancy); "noc" is network operations (incident reports, outages, asset/ticket data, uptime SLAs). Include MULTIPLE verticals if the content is genuinely relevant to more than one (e.g. a vendor invoice tied to a construction project may be relevant to both "con" and "fo"; a property sale with a legal dispute may be relevant to both "re" and "leg"; a claim denial with financial exposure may be relevant to both "hc" and "fo"; a PM vendor invoice may be relevant to both "pm" and "fo"),
   "primaryVertical": one value from "verticals",
   "routing": {
     "<vertical>": { "sourceNode": "<one valid node id for that vertical>", "nodes": ["<valid node ids...>"] }
@@ -2959,6 +2965,8 @@ bpo: ${DOC_ROUTER_NODES.bpo.join(', ')}
 re:  ${DOC_ROUTER_NODES.re.join(', ')}  — finance/dti/loan/mortgage->re-finance, appraisal/valuation/comps->re-market, title/lien/compliance/disclosure->re-strategist, closing/escrow/hoa/wire->re-exec, intake/upload/extract->re-doc-command
 leg: ${DOC_ROUTER_NODES.leg.join(', ')}
 hc:  ${DOC_ROUTER_NODES.hc.join(', ')}
+pm:  ${DOC_ROUTER_NODES.pm.join(', ')}
+noc: ${DOC_ROUTER_NODES.noc.join(', ')}
 
 Rules:
 - Always include "strategist" in routing.<vertical>.nodes for every vertical listed.
