@@ -1,0 +1,94 @@
+<!-- ═══════════════════════════════════════════════════════════════════
+     PATCH 2: TRANSPORT DISPATCH ON WORK ORDERS
+     File: html/war-rooms/pm-copilot/pm-command.html
+     Reuses /api/concierge/quotes + /api/concierge/bookings exactly as-is.
+     PM_INTERNAL_ROLES === BPO_INTERNAL_ROLES (both ['admin','manager',
+     'analyst']), so no server.js role changes are needed -- a logged-in
+     PM session already clears requireRole(BPO_INTERNAL_ROLES) on these
+     routes.
+
+     KNOWN GAP: vendor records have no address field (vendor_id, name,
+     trade, insurance_expiry, license_expiry, rating, stage only). The
+     pickup location below uses a placeholder ("Vendor Dispatch — <name>")
+     until a real vendor address is added to pm-model.json / your vendor
+     data source. Swap PLACEHOLDER_VENDOR_ADDR for a real field once that
+     exists.
+     ═══════════════════════════════════════════════════════════════════ -->
+
+<!-- STEP 1: Replace the existing renderWorkOrders() function (~line 312)
+     with this version, which adds a "DISPATCH VENDOR" button per row. -->
+<script>
+function renderWorkOrders(){
+  const el = document.getElementById('pane-workorders');
+  const units = engine.data.units;
+  el.innerHTML = engine.data.work_orders.map(w => {
+    const unit = units.find(u => u.unit_id === w.unit_id);
+    const vendor = engine.data.vendors.find(v => v.vendor_id === w.vendor_id);
+    return `<div class="row-item">
+      <span class="rtag ${stageColorClass(w.severity)}">${w.severity || ''}</span>
+      <span class="rtitle">${w.work_order_id} &middot; ${w.category} &middot; ${unit ? unit.address : w.unit_id}</span>
+      <span class="rmeta">${w.stage.replace('_',' ')} &middot; ${w.entered_stage_at_hours_ago || 0}h</span>
+      ${vendor ? `<button class="btn ghost" style="font-size:.55rem;padding:2px 8px;margin-left:8px" onclick="dispatchVendorTransport('${w.work_order_id}','${vendor.vendor_id}')">DISPATCH VENDOR</button>` : ''}
+      <span id="dispatch-status-${w.work_order_id}" style="font-size:.55rem;color:var(--dim);margin-left:6px"></span>
+    </div>`;
+  }).join('') || '<div class="row-item"><span class="rtitle" style="color:var(--dim)">No work orders.</span></div>';
+}
+</script>
+
+<!-- STEP 2: Add this new function anywhere in the <script> block (e.g.
+     right after renderWorkOrders()). -->
+<script>
+async function dispatchVendorTransport(workOrderId, vendorId){
+  const statusEl = document.getElementById(`dispatch-status-${workOrderId}`);
+  const wo = engine.data.work_orders.find(w => w.work_order_id === workOrderId);
+  const unit = engine.data.units.find(u => u.unit_id === wo.unit_id);
+  const vendor = engine.data.vendors.find(v => v.vendor_id === vendorId);
+  if (!wo || !unit || !vendor) return;
+
+  const now = new Date();
+  const quotePayload = {
+    service: 'point_to_point',
+    // PLACEHOLDER_VENDOR_ADDR -- vendor records have no address field yet.
+    // Swap this for the real field once vendor data includes one.
+    pickup: { address: `Vendor Dispatch — ${vendor.name}` },
+    destination: { address: unit.address },
+    passengers: 1,
+    date: now.toISOString().slice(0, 10),
+    time: now.toTimeString().slice(0, 5)
+  };
+
+  if (statusEl) statusEl.textContent = 'Requesting quote...';
+  try {
+    const quoteRes = await fetch('/api/concierge/quotes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(quotePayload)
+    });
+    const quoteData = await quoteRes.json();
+    if (!quoteData.ok || !quoteData.quotes || !quoteData.quotes.length) {
+      throw new Error(quoteData.error || (quoteData.errors && quoteData.errors[0]?.error) || 'no quotes returned');
+    }
+    const bestQuote = quoteData.quotes[0]; // already sorted cheapest-first by ProviderRouter
+
+    if (statusEl) statusEl.textContent = `Booking ${bestQuote.vehicleLabel} ($${bestQuote.priceEstimate.amount})...`;
+    const bookRes = await fetch('/api/concierge/bookings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        quoteId: bestQuote.quoteId,
+        guestName: vendor.name,
+        propertyId: wo.unit_id,
+        vertical: 'pm',
+        notes: `Dispatch for ${wo.work_order_id} — ${wo.category}`
+      })
+    });
+    const bookData = await bookRes.json();
+    if (!bookData.ok) throw new Error(bookData.error || 'booking failed');
+
+    if (statusEl) statusEl.textContent = `Confirmed — ${bookData.booking.confirmationCode} (${bookData.booking.status})`;
+  } catch (e) {
+    if (statusEl) statusEl.textContent = `Dispatch failed: ${e.message}`;
+    console.warn('[pm-copilot] dispatchVendorTransport failed', e);
+  }
+}
+</script>

@@ -1,0 +1,39 @@
+<!-- ═══════════════════════════════════════════════════════════════════
+     PATCH 1: PM QUICK-FIRE ANALYSIS BUTTONS (Finance / Compliance / Market)
+     File: html/war-rooms/pm-copilot/pm-command.html
+     Mirrors re-war-room.html's quickFire button pattern. No backend
+     changes -- reuses the existing /api/pm/analysis route + prompt engine
+     exactly as runAnalysis() already calls it; these buttons just preset
+     the docIntake context before firing that same call.
+     ═══════════════════════════════════════════════════════════════════ -->
+
+<!-- STEP 1: Insert these buttons right after btnAnalyze/btnRelay,
+     i.e. right after this existing line (~123):
+       <button class="btn ghost" id="btnRelay">RELAY TO STRATEGIST &rarr;</button>
+-->
+<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">
+  <button class="btn ghost" style="font-size:.62rem;padding:4px 10px" onclick="pmQuickFire('finance')">01 &middot; FINANCE</button>
+  <button class="btn ghost" style="font-size:.62rem;padding:4px 10px" onclick="pmQuickFire('compliance')">02 &middot; COMPLIANCE</button>
+  <button class="btn ghost" style="font-size:.62rem;padding:4px 10px" onclick="pmQuickFire('market')">03 &middot; MARKET</button>
+</div>
+
+<!-- STEP 2: Add this function block right after runAnalysis() (~line 446,
+     just before "document.getElementById('btnAnalyze').addEventListener..."),
+     and add the two new listener lines shown at the bottom. -->
+<script>
+const PM_QUICKFIRE_PROMPTS = {
+  finance: 'Portfolio finance analysis — identify units with the largest gap between current_rent and market_rent, delinquent or at-risk lease revenue, vendor cost overruns against cost_estimate on open work orders, and the single highest-dollar-impact action to close the gap this month.',
+  compliance: 'Compliance audit — flag vendors with insurance_expiry or license_expiry within 30 days who have open or upcoming work orders (compliance-blocked dispatch risk), leases missing required disclosures, and any unit/work-order combination with a safety-critical severity (HIGH/CRIT) unresolved past SLA.',
+  market: 'Market intelligence — compare current_rent vs market_rent across all occupied units to size total rent-gap exposure, flag units approaching lease renewal that are priced below market, and recommend renewal pricing per unit based on the gap.'
+};
+
+function pmQuickFire(kind){
+  const prompt = PM_QUICKFIRE_PROMPTS[kind];
+  if (!prompt) return;
+  document.getElementById('docIntake').value = prompt;
+  runAnalysis();
+}
+
+document.getElementById('btnAnalyze').addEventListener('click', runAnalysis);
+// (the line above already exists -- just adding these three below it)
+</script>

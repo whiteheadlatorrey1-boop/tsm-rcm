@@ -1,0 +1,225 @@
+/**
+ * TSM AUTO-PIPELINE v1.1
+ * Central orchestration spine — all verticals
+ * Correctly located at html/js/core/tsm-auto-pipeline.js (served as /js/core/tsm-auto-pipeline.js)
+ *
+ * FIX (2026-07-01): This file previously only contained a 6-line TSMEventBus stub.
+ * The real orchestration engine (RELAY_REGISTRY, relay detection, auto-launch) was
+ * sitting unreferenced at the repo root and was never actually served or executed
+ * by any of the 18+ war room / strategist / exec portal pages that <script> it.
+ * This merges the real engine into the path Express actually serves, and keeps
+ * the TSMEventBus definition CPQ and others already depend on.
+ */
+
+/* TSM Event Bus — preserved from prior stub, other pages depend on this existing */
+window.TSMEventBus = window.TSMEventBus || {
+  _handlers: {},
+  on: function(evt, fn) { (this._handlers[evt] = this._handlers[evt] || []).push(fn); },
+  emit: function(evt, data) { (this._handlers[evt] || []).forEach(fn => fn(data)); }
+};
+
+(function(global) {
+  'use strict';
+
+  const RELAY_REGISTRY = {
+    healthcare:   { keys: ['TSM_HC_WAR_RELAY','tsm_hc_war_relay','tsm_war_relay_healthcare'], entryFn: 'runPipeline',    strategistPath: '/html/healthcare/hc-main-strategist.html' },
+    finops:       { keys: ['tsm_war_relay_finops-suite','TSM_FINOPS_WAR_RELAY'],         entryFn: 'generateReport', strategistPath: '/html/finops-suite/finops-war/finops-main-strategist.html' },
+    insurance:    { keys: ['TSM_INS_WAR_RELAY','tsm_ins_war_relay'],                     entryFn: 'runStrategist',  strategistPath: '/html/war-rooms/insure-war/insurance-strategist.html' },
+    construction: { keys: ['TSM_CONSTRUCTION_WAR_RELAY','tsm_construction_war_relay'],   entryFn: 'runBNCA',        strategistPath: '/html/war-rooms/construct-war/construction-strategist.html' },
+    legal:        { keys: ['TSM_LEGAL_WAR_RELAY','tsm_legal_war_relay'],                 entryFn: 'runSynthesis',   strategistPath: '/html/war-rooms/legal-war/legal-main-strategist.html' },
+    realestate:   { keys: ['TSM_RE_WAR_RELAY','tsm_re_war_relay'],                       entryFn: 'runStrategist',  strategistPath: '/html/war-rooms/re-war/re-strategist.html' },
+    bpo:          { keys: ['TSM_BPO_WAR_RELAY','tsm_bpo_war_relay','tsm_war_relay_bpo'], entryFn: 'runStrategist',  strategistPath: '/html/war-rooms/bpo-war/bpo-strategist.html' },
+
+    /* Added: verticals that exist in server.js (SP.cpq / SP.o2c / SP.crm / SP.approval /
+       SP.mdm / SP.integration / SP.governance / SP.digital_twin) but were never wired
+       into the pipeline engine because it was never actually loading.
+       FIX (2026-07-04): keys updated to include the canonical relay.core.js key for each
+       vertical (the "Standardize all 10 verticals on canonical TSM.relay.write/read" pass
+       introduced relay.core.js as the single write path, but never updated this registry
+       to match, so auto-detection/auto-launch never fired). Legacy *_WAR_RELAY keys kept
+       for backward compatibility in case anything else still reads them.
+       strategistPath now points at the real standardized strategist pages built in that
+       same pass, instead of looping back to the war room. Note: strategistPath is not
+       currently read by anything else in the codebase, so this is a correctness fix with
+       no live behavioral effect yet — kept accurate for whenever it is wired up. */
+    cpq:          { keys: ['TSM_CPQ_RELAY','TSM_CPQ_WAR_RELAY','tsm_cpq_war_relay'],                     entryFn: 'runStrategist',  strategistPath: '/war-rooms/cpq/cpq-strategist.html' },
+    o2c:          { keys: ['TSM_O2C_RELAY','TSM_O2C_WAR_RELAY','tsm_o2c_war_relay'],                     entryFn: 'runStrategist',  strategistPath: '/war-rooms/o2c/o2c-strategist.html' },
+    crm:          { keys: ['TSM_CRM_RELAY','TSM_CRM_WAR_RELAY','tsm_crm_war_relay'],                     entryFn: 'runStrategist',  strategistPath: '/war-rooms/crm/crm-strategist.html' },
+    approval:     { keys: ['TSM_APPROVAL_RELAY','TSM_APPROVAL_WAR_RELAY','tsm_approval_war_relay'],      entryFn: 'runStrategist',  strategistPath: '/war-rooms/approval/approval-strategist.html' },
+    mdm:          { keys: ['TSM_MDM_RELAY','TSM_MDM_WAR_RELAY','tsm_mdm_war_relay'],                     entryFn: 'runStrategist',  strategistPath: '/war-rooms/mdm/mdm-strategist.html' },
+    integration:  { keys: ['TSM_INTEGRATION_HUB_RELAY','TSM_INTEGRATION_WAR_RELAY','tsm_integration_war_relay'], entryFn: 'runStrategist',  strategistPath: '/war-rooms/integration-hub/integration-hub-strategist.html' },
+    governance:   { keys: ['TSM_GOVERNANCE_RELAY','TSM_GOVERNANCE_WAR_RELAY','tsm_governance_war_relay'], entryFn: 'runStrategist',  strategistPath: '/war-rooms/governance/governance-strategist.html' },
+    digitaltwin:  { keys: ['TSM_DIGITAL_TWIN_RELAY','TSM_DIGITALTWIN_WAR_RELAY','tsm_digitaltwin_war_relay'], entryFn: 'runStrategist',  strategistPath: '/war-rooms/digital-twin/digital-twin-strategist.html' },
+    catalog:      { keys: ['TSM_CATALOG_RELAY'],                                                         entryFn: 'runStrategist',  strategistPath: '/war-rooms/catalog/catalog-strategist.html' },
+  };
+
+  const State = {
+    enabled: true,
+    currentVertical: null,
+    relay: null,
+    phase: 'IDLE',
+  };
+
+  function readRelay(keys) {
+    for (const k of keys) {
+      const v = sessionStorage.getItem(k) || localStorage.getItem(k);
+      if (v) {
+        try {
+          const parsed = JSON.parse(v);
+          /* TSM_KERNEL.setRelay(vertical, payload) stores { ts, v, p } where
+             p is itself a JSON string (the caller already stringified the
+             payload before handing it to the kernel). Unwrap that one level
+             so callers always get the real relay object, not the envelope. */
+          if (parsed && typeof parsed === 'object' && 'p' in parsed && typeof parsed.p === 'string') {
+            try { return JSON.parse(parsed.p); } catch { return parsed; }
+          }
+          return parsed;
+        } catch { return null; }
+      }
+    }
+    return null;
+  }
+
+  function writeRelay(keys, payload) {
+    const str = JSON.stringify(payload);
+    for (const k of keys) {
+      try { sessionStorage.setItem(k, str); localStorage.setItem(k, str); } catch {}
+    }
+  }
+
+  function isWarRoomPage() {
+    // FIX (2026-07-04): checking the full path against 'war-room' matched the
+    // /war-rooms/ folder itself (plural), which every strategist and executive-portal
+    // page also lives under — so auto-launch was being skipped on every consumer page
+    // for all verticals migrated to the canonical html/war-rooms/{vertical}/ layout,
+    // not just the actual war-room files. Check the filename segment only.
+    const path = window.location.pathname.toLowerCase();
+    const filename = path.substring(path.lastIndexOf('/') + 1);
+    return filename.includes('war-room') && !filename.includes('strategist') && !filename.includes('executive');
+  }
+
+  function detectVertical() {
+    const path = window.location.pathname.toLowerCase();
+    if (path.includes('healthcare') || path.includes('hc-'))   return 'healthcare';
+    if (path.includes('finops'))                                return 'finops';
+    if (path.includes('insurance'))                             return 'insurance';
+    if (path.includes('construction'))                          return 'construction';
+    if (path.includes('legal'))                                 return 'legal';
+    if (path.includes('reo') || path.includes('re-'))          return 'realestate';
+    if (path.includes('bpo'))                                   return 'bpo';
+    if (path.includes('cpq'))                                   return 'cpq';
+    if (path.includes('o2c') || path.includes('order-to-cash')) return 'o2c';
+    if (path.includes('crm'))                                   return 'crm';
+    if (path.includes('approval'))                              return 'approval';
+    if (path.includes('mdm'))                                   return 'mdm';
+    if (path.includes('catalog'))                               return 'catalog';
+    if (path.includes('integration'))                           return 'integration';
+    if (path.includes('governance'))                            return 'governance';
+    if (path.includes('digital-twin') || path.includes('digitaltwin')) return 'digitaltwin';
+    return null;
+  }
+
+  function log(msg, level) {
+    const prefix = '[TSM-PIPELINE]';
+    if (level === 'error') console.error(prefix, msg);
+    else if (level === 'warn') console.warn(prefix, msg);
+    else console.log(prefix, msg);
+    if (global.TSMEventBus && global.TSMEventBus.emit)
+      global.TSMEventBus.emit('PIPELINE_LOG', { msg, level, ts: Date.now() });
+  }
+
+  function emit(event, payload) {
+    if (global.TSMEventBus && global.TSMEventBus.emit)
+      global.TSMEventBus.emit(event, { ...payload, ts: Date.now() });
+  }
+
+  function setPhase(phase) {
+    State.phase = phase;
+    emit('PIPELINE_PHASE_CHANGED', { phase, vertical: State.currentVertical });
+    log('Phase → ' + phase);
+  }
+
+  async function runVerticalEntry(vertical, config) {
+    setPhase('RUNNING');
+    emit('WAR_ROOM_READY', { vertical, relay: State.relay });
+    const fn = global[config.entryFn];
+    if (typeof fn === 'function') {
+      log('Calling ' + config.entryFn + '() for ' + vertical);
+      try {
+        await fn();
+        setPhase('COMPLETE');
+        emit('AI_ANALYSIS_COMPLETE', { vertical, relay: State.relay });
+      } catch(e) {
+        setPhase('ERROR');
+        log(config.entryFn + '() threw: ' + e.message, 'error');
+      }
+    } else {
+      log('Entry function ' + config.entryFn + ' not found on this page', 'warn');
+      setPhase('IDLE');
+    }
+  }
+
+  async function init() {
+    if (localStorage.getItem('tsm_auto_mode') === 'off') { log('Auto-mode OFF'); return; }
+    // Auto-launch is opt-in, not opt-out. Previously this only bailed when
+    // TSM_AUTO_LAUNCH was explicitly 'false', so every strategist page on
+    // every vertical auto-ran its full analysis chain by default, the
+    // instant it detected relay data in storage — with zero prompt, and the
+    // only opt-out being a toggle button that lives on an unrelated
+    // document-search page nobody visiting a strategist page directly would
+    // ever see. Now nothing auto-launches unless something has explicitly
+    // set TSM_AUTO_LAUNCH to 'true' (e.g. via TSMAutoPipeline.enable()).
+    if (localStorage.getItem('TSM_AUTO_LAUNCH') !== 'true') { log('Auto-launch not explicitly enabled — skipping'); return; }
+
+    const vertical = detectVertical();
+    if (!vertical) { log('Vertical not detected'); return; }
+
+    const config = RELAY_REGISTRY[vertical];
+    State.currentVertical = vertical;
+
+    /* War-room pages are where a relay is CREATED (via the "RELAY TO STRATEGIST"
+       button), not where it's consumed. Their analysis functions live inside a
+       page-local IIFE and are never attached to window, so calling entryFn here
+       always fails with "not found on this page". Only strategist pages should
+       auto-launch entryFn on relay detection. */
+    if (isWarRoomPage()) {
+      log('War-room page for ' + vertical + ' — auto-launch skipped (relay source, not consumer)');
+      setPhase('IDLE');
+      return;
+    }
+
+    const relay = readRelay(config.keys);
+    if (!relay) {
+      log('No relay for ' + vertical + ' — listening for storage event');
+      window.addEventListener('storage', function onStorage(e) {
+        if (config.keys.includes(e.key) && e.newValue) {
+          window.removeEventListener('storage', onStorage);
+          State.relay = JSON.parse(e.newValue);
+          setPhase('RELAY_DETECTED');
+          emit('DOCUMENT_IMPORTED', { vertical, relay: State.relay });
+          setTimeout(() => runVerticalEntry(vertical, config), 800);
+        }
+      });
+      return;
+    }
+
+    State.relay = relay;
+    setPhase('RELAY_DETECTED');
+    emit('DOCUMENT_IMPORTED', { vertical, relay: State.relay });
+    setTimeout(() => runVerticalEntry(vertical, config), 1500);
+  }
+
+  global.TSMAutoPipeline = {
+    init,
+    getState:   () => ({ ...State }),
+    getRegistry:() => ({ ...RELAY_REGISTRY }),
+    readRelay:  (v) => { const c = RELAY_REGISTRY[v]; return c ? readRelay(c.keys) : null; },
+    writeRelay: (v, p) => { const c = RELAY_REGISTRY[v]; if (c) writeRelay(c.keys, p); },
+    enable:     () => { localStorage.setItem('TSM_AUTO_LAUNCH','true');  log('Pipeline ENABLED'); },
+    disable:    () => { localStorage.setItem('TSM_AUTO_LAUNCH','false'); log('Pipeline DISABLED'); },
+  };
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else setTimeout(init, 100);
+
+})(window);

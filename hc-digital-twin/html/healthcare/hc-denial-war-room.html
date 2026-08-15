@@ -1,0 +1,2430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TSM · Denial Recovery War Room</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+--bg:#03050b;--bg2:#070a12;--bg3:#0b1019;--bg4:#0f1522;
+--border:rgba(255,255,255,0.06);--border2:rgba(255,255,255,0.11);
+--text:#cdd5e0;--muted:#5e6e85;--faint:#2e3a4a;
+--cyan:#00e5ff;--cyan2:rgba(0,229,255,0.08);--cyan3:rgba(0,229,255,0.18);
+--green:#00e676;--green2:rgba(0,230,118,0.08);
+--amber:#ffb300;--amber2:rgba(255,179,0,0.10);
+--red:#ff3d57;--red2:rgba(255,61,87,0.10);
+--purple:#b060ff;--purple2:rgba(176,96,255,0.10);
+--gold:#ffd700;--gold2:rgba(255,215,0,0.08);
+--teal:#00ffd5;--teal2:rgba(0,255,213,0.08);
+--mono:'Courier New',monospace;
+}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13px;overflow-x:hidden}
+body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.03) 2px,rgba(0,0,0,0.03) 4px);pointer-events:none;z-index:1000}
+body::after{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(0,229,255,0.015) 1px,transparent 1px),linear-gradient(90deg,rgba(0,229,255,0.015) 1px,transparent 1px);background-size:48px 48px;pointer-events:none;z-index:0}
+
+/* HEADER */
+.hdr{position:relative;z-index:10;display:flex;align-items:center;justify-content:space-between;padding:12px 28px;border-bottom:1px solid var(--border2);background:linear-gradient(180deg,rgba(0,229,255,0.05) 0%,transparent 100%)}
+.hdr-left{display:flex;align-items:center;gap:14px}
+.hdr-logo{display:flex;align-items:center;gap:8px}
+.logo-hex{width:28px;height:28px;border:1px solid var(--red);display:flex;align-items:center;justify-content:center;transform:rotate(45deg)}
+.logo-hex-inner{width:10px;height:10px;background:var(--red);transform:rotate(-45deg)}
+.hdr-text .t1{font-size:14px;font-weight:700;letter-spacing:3px;color:var(--red)}
+.hdr-text .t2{font-size:8px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-top:2px}
+.hdr-mode{display:flex;gap:8px;margin-left:20px}
+.mode-btn{font-size:8px;letter-spacing:1.5px;text-transform:uppercase;padding:4px 14px;border:1px solid var(--border2);background:transparent;color:var(--muted);cursor:pointer;font-family:var(--mono);transition:all 0.15s}
+.mode-btn.active{color:var(--red);border-color:var(--red);background:var(--red2)}
+.hdr-right{display:flex;align-items:center;gap:10px}
+.pill{font-size:8px;letter-spacing:1.5px;text-transform:uppercase;padding:4px 12px;border:1px solid}
+.pill-red{color:var(--red);border-color:var(--red);background:var(--red2)}
+.pill-green{color:var(--green);border-color:var(--green);background:var(--green2)}
+.pill-amber{color:var(--amber);border-color:var(--amber);background:var(--amber2)}
+.pill-teal{color:var(--teal);border-color:var(--teal);background:var(--teal2)}
+.clock{font-size:9px;color:var(--muted);letter-spacing:1px}
+
+/* MAIN */
+.main{position:relative;z-index:10;padding:20px 28px 100px;max-width:1640px;margin:0 auto}
+
+/* SCENARIO BANNER */
+.scenario-banner{border:1px solid var(--red);background:linear-gradient(135deg,rgba(255,61,87,0.06) 0%,var(--bg2) 100%);padding:16px 20px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;gap:16px}
+.sb-left{display:flex;align-items:center;gap:14px}
+.sb-icon{font-size:22px}
+.sb-label{font-size:8px;letter-spacing:2px;text-transform:uppercase;color:var(--red);margin-bottom:3px}
+.sb-title{font-size:14px;font-weight:700;letter-spacing:2px;color:var(--text)}
+.sb-sub{font-size:9px;color:var(--muted);margin-top:2px}
+.sb-right{display:flex;align-items:center;gap:10px;flex-shrink:0}
+
+/* SECTION HEADER */
+.sec{display:flex;align-items:center;gap:10px;margin-bottom:14px;margin-top:20px}
+.sec::before{content:'';width:6px;height:6px;background:var(--red);transform:rotate(45deg);flex-shrink:0}
+.sec span{font-size:8px;letter-spacing:2.5px;text-transform:uppercase;color:var(--red)}
+.sec::after{content:'';flex:1;height:1px;background:var(--border)}
+.sec.teal-sec::before{background:var(--teal)}
+.sec.teal-sec span{color:var(--teal)}
+
+/* INPUT ZONE */
+.input-zone{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px}
+.drop-panel{border:1px solid var(--border2);background:var(--bg2);padding:20px;display:flex;flex-direction:column;gap:10px}
+.drop-area{border:1px dashed var(--border2);padding:24px;text-align:center;cursor:pointer;transition:all 0.2s;position:relative;background:var(--bg)}
+.drop-area:hover{border-color:var(--red);background:var(--red2)}
+.drop-area input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%}
+.drop-icon{font-size:22px;color:var(--faint);margin-bottom:8px}
+.drop-title{font-size:10px;color:var(--muted);letter-spacing:1px}
+.drop-sub{font-size:8px;color:var(--faint);margin-top:3px;line-height:1.6}
+.format-tags{display:flex;flex-wrap:wrap;gap:4px;justify-content:center;margin-top:8px}
+.fmt-tag{font-size:7px;letter-spacing:1px;padding:2px 6px;border:1px solid var(--faint);color:var(--faint)}
+.fmt-tag.primary{border-color:var(--cyan);color:var(--cyan)}
+.doc-preview{font-size:9px;color:var(--green);margin-top:6px;min-height:14px}
+.paste-panel{border:1px solid var(--border2);background:var(--bg2);padding:20px;display:flex;flex-direction:column;gap:8px}
+.paste-label{font-size:8px;letter-spacing:2px;text-transform:uppercase;color:var(--faint)}
+textarea{flex:1;min-height:130px;background:var(--bg);border:1px solid var(--border2);color:var(--text);font-family:var(--mono);font-size:10px;padding:10px;resize:vertical;outline:none;line-height:1.6}
+textarea:focus{border-color:var(--red)}
+textarea::placeholder{color:var(--faint)}
+
+/* INGEST PROGRESS BAR */
+.ingest-bar{display:none;height:2px;background:var(--bg3);margin-top:6px;overflow:hidden}
+.ingest-bar.active{display:block}
+.ingest-fill{height:100%;background:linear-gradient(90deg,var(--cyan),var(--teal));width:0%;transition:width 0.3s;animation:ingest-pulse 1.2s ease-in-out infinite}
+@keyframes ingest-pulse{0%,100%{opacity:0.6}50%{opacity:1}}
+
+/* SAMPLE BUTTONS */
+.sample-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.btn{padding:8px 18px;font-size:8px;letter-spacing:2px;text-transform:uppercase;border:1px solid;cursor:pointer;font-family:var(--mono);transition:all 0.15s;background:transparent;white-space:nowrap}
+.btn-fire{color:#fff;border-color:var(--red);background:var(--red);font-size:10px;padding:10px 28px;letter-spacing:2px}
+.btn-fire:hover{background:#d42040}
+.btn-fire:disabled{opacity:0.35;cursor:not-allowed}
+.btn-sample{color:var(--amber);border-color:var(--amber);background:var(--amber2);font-size:8px;padding:6px 12px}
+.btn-sample:hover{background:rgba(255,179,0,0.2)}
+.btn-ghost{color:var(--muted);border-color:var(--border2);font-size:8px;padding:6px 12px}
+.btn-ghost:hover{color:var(--text);background:var(--bg3)}
+.process-info{font-size:9px;color:var(--faint);letter-spacing:1px;margin-left:auto}
+
+/* KEY ROW */
+.key-row{display:flex;align-items:center;gap:8px;margin-top:10px;padding:10px 12px;border:1px solid var(--border);background:var(--bg)}
+.key-dot{width:6px;height:6px;border-radius:50%;background:var(--faint);flex-shrink:0;transition:all 0.3s}
+.key-dot.ok{background:var(--green);box-shadow:0 0 6px var(--green)}
+.key-label{font-size:8px;letter-spacing:1.5px;text-transform:uppercase;color:var(--faint);white-space:nowrap}
+.key-input{flex:1;background:transparent;border:none;color:var(--text);font-family:var(--mono);font-size:10px;padding:2px 6px;outline:none}
+.key-status{font-size:8px;color:var(--faint);letter-spacing:1px}
+
+/* PIPELINE FLOW */
+.pipeline{display:flex;align-items:center;justify-content:center;gap:0;margin-bottom:20px;padding:14px 0;border:1px solid var(--border);background:var(--bg2);overflow-x:auto}
+.pipe-node{display:flex;flex-direction:column;align-items:center;gap:6px;padding:0 10px;flex-shrink:0}
+.pipe-box{width:130px;padding:10px 12px;border:1px solid;text-align:center}
+.pipe-num{font-size:7px;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:3px;opacity:0.7}
+.pipe-name{font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase}
+.pipe-tag{font-size:7px;letter-spacing:0.5px;margin-top:2px;opacity:0.65}
+.pipe-status{font-size:7px;letter-spacing:1px;margin-top:4px;text-transform:uppercase}
+.pipe-arrow{display:flex;flex-direction:column;align-items:center;gap:3px;flex-shrink:0}
+.pipe-line{width:28px;height:1px;background:var(--border2);position:relative}
+.pipe-line::after{content:'▶';position:absolute;right:-7px;top:-6px;font-size:9px;color:var(--faint)}
+.pipe-arrow-label{font-size:6px;letter-spacing:1px;text-transform:uppercase;color:var(--faint);white-space:nowrap}
+.e1 .pipe-box{border-color:var(--cyan);color:var(--cyan);background:var(--cyan2)}
+.e2 .pipe-box{border-color:var(--amber);color:var(--amber);background:var(--amber2)}
+.e3 .pipe-box{border-color:var(--green);color:var(--green);background:var(--green2)}
+.e4 .pipe-box{border-color:var(--purple);color:var(--purple);background:var(--purple2)}
+.e5 .pipe-box{border-color:var(--teal);color:var(--teal);background:var(--teal2)}
+.pipe-line.live{background:var(--red);animation:pulse-line 0.7s linear infinite}
+.pipe-line.live::after{color:var(--red)}
+@keyframes pulse-line{0%,100%{opacity:0.4}50%{opacity:1}}
+
+/* RESULTS GRID */
+.results-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
+.eng-panel{border:1px solid var(--border);background:var(--bg2);display:flex;flex-direction:column;min-height:340px}
+.eng-hdr{display:flex;align-items:center;justify-content:space-between;padding:9px 14px;border-bottom:1px solid var(--border)}
+.eng-title{display:flex;align-items:center;gap:8px}
+.eng-num{font-size:8px;letter-spacing:1px;padding:2px 7px;border:1px solid;flex-shrink:0}
+.eng-name{font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase}
+.eng-badge{font-size:7px;letter-spacing:1px;text-transform:uppercase;padding:2px 8px;border:1px solid}
+.eng-body{flex:1;padding:12px 14px;overflow-y:auto;max-height:340px}
+.eng-out{font-size:10px;line-height:1.75;color:var(--muted);white-space:pre-wrap;word-break:break-word}
+.eng-out .sh{display:block;font-size:7px;letter-spacing:2px;text-transform:uppercase;margin:10px 0 3px;font-weight:700}
+.idle-state{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:8px;color:var(--faint)}
+.idle-icon{font-size:22px;opacity:0.35}
+.idle-txt{font-size:8px;letter-spacing:1.5px;text-transform:uppercase}
+.loading-row{display:flex;align-items:center;gap:8px;font-size:9px}
+.spin{width:11px;height:11px;border:1px solid var(--faint);border-top-color:currentColor;border-radius:50%;animation:spin 0.6s linear infinite;flex-shrink:0}
+@keyframes spin{to{transform:rotate(360deg)}}
+.eng-footer{display:flex;align-items:center;gap:6px;padding:7px 14px;border-top:1px solid var(--border);background:var(--bg)}
+.foot-btn{padding:3px 10px;font-size:7px;letter-spacing:1.5px;text-transform:uppercase;border:1px solid var(--border2);background:transparent;color:var(--muted);cursor:pointer;font-family:var(--mono);transition:all 0.12s}
+.foot-btn:hover{color:var(--text);background:var(--bg3)}
+.tok-count{margin-left:auto;font-size:7px;color:var(--faint);letter-spacing:1px}
+
+/* ENGINE COLOR THEMING */
+.e1 .eng-num{color:var(--cyan);border-color:var(--cyan)}
+.e1 .eng-name{color:var(--cyan)}
+.e1 .eng-badge{color:var(--cyan);border-color:var(--cyan);background:var(--cyan2)}
+.e1 .eng-out .sh{color:var(--cyan)}
+.e1 .spin{border-top-color:var(--cyan)}
+.e1 .loading-row{color:var(--cyan)}
+.e2 .eng-num{color:var(--amber);border-color:var(--amber)}
+.e2 .eng-name{color:var(--amber)}
+.e2 .eng-badge{color:var(--amber);border-color:var(--amber);background:var(--amber2)}
+.e2 .eng-out .sh{color:var(--amber)}
+.e2 .spin{border-top-color:var(--amber)}
+.e2 .loading-row{color:var(--amber)}
+.e3 .eng-num{color:var(--green);border-color:var(--green)}
+.e3 .eng-name{color:var(--green)}
+.e3 .eng-badge{color:var(--green);border-color:var(--green);background:var(--green2)}
+.e3 .eng-out .sh{color:var(--green)}
+.e3 .spin{border-top-color:var(--green)}
+.e3 .loading-row{color:var(--green)}
+.e4 .eng-num{color:var(--purple);border-color:var(--purple)}
+.e4 .eng-name{color:var(--purple)}
+.e4 .eng-badge{color:var(--purple);border-color:var(--purple);background:var(--purple2)}
+.e4 .eng-out .sh{color:var(--purple)}
+.e4 .spin{border-top-color:var(--purple)}
+.e4 .loading-row{color:var(--purple)}
+.e5 .eng-num{color:var(--teal);border-color:var(--teal)}
+.e5 .eng-name{color:var(--teal)}
+.e5 .eng-badge{color:var(--teal);border-color:var(--teal);background:var(--teal2)}
+.e5 .eng-out .sh{color:var(--teal)}
+.e5 .spin{border-top-color:var(--teal)}
+.e5 .loading-row{color:var(--teal)}
+
+.e5-full{grid-column:1 / -1;min-height:auto}
+.nav-panel{display:none;padding:0}
+.nav-panel.visible{display:block}
+
+/* PHASE TRACKER */
+.phase-tracker{display:flex;align-items:stretch;border-bottom:1px solid var(--border);overflow-x:auto}
+.phase-tab{flex:1;min-width:120px;padding:10px 14px;border-right:1px solid var(--border);cursor:pointer;transition:all 0.15s;position:relative}
+.phase-tab:last-child{border-right:none}
+.phase-tab:hover{background:var(--bg3)}
+.phase-tab.active{background:rgba(0,255,213,0.05);border-bottom:2px solid var(--teal)}
+.phase-num{font-size:7px;letter-spacing:1.5px;text-transform:uppercase;color:var(--faint);margin-bottom:3px}
+.phase-name{font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
+.phase-tab.active .phase-name{color:var(--teal)}
+.phase-tab.done .phase-name{color:var(--green)}
+.phase-tab.done::after{content:'✓';position:absolute;top:8px;right:10px;font-size:10px;color:var(--green)}
+.phase-window{font-size:7px;color:var(--faint);letter-spacing:1px;margin-top:3px}
+.phase-tab.active .phase-window{color:var(--amber)}
+.phase-urgency{display:inline-block;font-size:6px;letter-spacing:1px;text-transform:uppercase;padding:1px 5px;border:1px solid;margin-top:4px}
+.ph-critical{color:var(--red);border-color:var(--red)}
+.ph-high{color:var(--amber);border-color:var(--amber)}
+.ph-medium{color:var(--cyan);border-color:var(--cyan)}
+.ph-low{color:var(--green);border-color:var(--green)}
+
+.phase-content{padding:20px}
+.step-list{display:flex;flex-direction:column;gap:0}
+.step-item{display:flex;gap:0;position:relative}
+.step-item:not(:last-child) .step-line{position:absolute;left:19px;top:38px;bottom:-1px;width:1px;background:var(--border);z-index:0}
+.step-item.done .step-line{background:var(--green)}
+.step-left{display:flex;flex-direction:column;align-items:center;flex-shrink:0;width:40px;padding-top:8px;position:relative;z-index:1}
+.step-circle{width:24px;height:24px;border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;letter-spacing:0;background:var(--bg2);flex-shrink:0;transition:all 0.3s}
+.step-item.done .step-circle{background:var(--green);border-color:var(--green);color:#000}
+.step-item.active .step-circle{border-color:var(--teal);color:var(--teal);box-shadow:0 0 8px rgba(0,255,213,0.3)}
+.step-item.blocked .step-circle{border-color:var(--red);color:var(--red)}
+.step-right{flex:1;padding:8px 0 20px 14px}
+.step-hdr{display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap}
+.step-title{font-size:11px;font-weight:700;letter-spacing:1px;color:var(--text)}
+.step-item.done .step-title{color:var(--green)}
+.step-item.active .step-title{color:var(--teal)}
+.step-tag{font-size:7px;letter-spacing:1px;text-transform:uppercase;padding:2px 8px;border:1px solid}
+.step-tag-owner{color:var(--amber);border-color:var(--amber);background:var(--amber2)}
+.step-tag-deadline{color:var(--red);border-color:var(--red);background:var(--red2)}
+.step-tag-tool{color:var(--cyan);border-color:var(--cyan);background:var(--cyan2)}
+.step-tag-done{color:var(--green);border-color:var(--green);background:var(--green2)}
+.step-body{font-size:9px;line-height:1.7;color:var(--muted);margin-bottom:10px}
+.step-actions{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.step-checklist{display:flex;flex-direction:column;gap:4px;margin-bottom:10px}
+.step-check{display:flex;align-items:flex-start;gap:8px;font-size:9px;color:var(--muted);line-height:1.5}
+.check-box{width:12px;height:12px;border:1px solid var(--border2);flex-shrink:0;margin-top:1px;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all 0.15s}
+.check-box:hover{border-color:var(--teal)}
+.check-box.checked{background:var(--teal);border-color:var(--teal)}
+.check-box.checked::after{content:'✓';font-size:8px;color:#000;font-weight:700}
+
+.app-rec-section{margin-top:12px}
+.app-rec-label{font-size:7px;letter-spacing:2px;text-transform:uppercase;color:var(--teal);margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.app-rec-label::before{content:'▶';font-size:6px}
+.app-cards{display:flex;flex-wrap:wrap;gap:8px}
+.app-card{border:1px solid var(--border2);background:var(--bg);padding:10px 14px;cursor:pointer;transition:all 0.2s;text-decoration:none;display:flex;align-items:center;gap:10px;min-width:200px;flex:1;max-width:320px}
+.app-card:hover{border-color:var(--teal);background:var(--teal2);transform:translateY(-1px)}
+.app-card.primary{border-color:var(--teal);background:var(--teal2)}
+.app-card-icon{font-size:16px;flex-shrink:0}
+.app-card-body{flex:1;min-width:0}
+.app-card-name{font-size:9px;font-weight:700;letter-spacing:1px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.app-card:hover .app-card-name{color:var(--teal)}
+.app-card.primary .app-card-name{color:var(--teal)}
+.app-card-why{font-size:7px;color:var(--muted);letter-spacing:0.5px;margin-top:2px;line-height:1.4}
+.app-card-badge{font-size:6px;letter-spacing:1px;text-transform:uppercase;padding:2px 6px;border:1px solid var(--teal);color:var(--teal);margin-top:4px;display:inline-block}
+.app-card-arrow{font-size:10px;color:var(--faint);flex-shrink:0}
+.app-card:hover .app-card-arrow{color:var(--teal)}
+
+.bnca-alert{border:1px solid var(--teal);background:linear-gradient(135deg,rgba(0,255,213,0.06) 0%,var(--bg2) 100%);padding:16px 20px;margin-bottom:16px;animation:bnca-in 0.4s ease-out}
+@keyframes bnca-in{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:translateX(0)}}
+.bnca-hdr{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.bnca-icon{font-size:18px}
+.bnca-label{font-size:7px;letter-spacing:2px;text-transform:uppercase;color:var(--teal)}
+.bnca-title{font-size:12px;font-weight:700;letter-spacing:1.5px;color:var(--text)}
+.bnca-body{font-size:10px;line-height:1.7;color:var(--muted);margin-bottom:12px}
+.bnca-priority-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
+.bnca-priority{padding:5px 12px;font-size:8px;letter-spacing:1.5px;text-transform:uppercase;border:1px solid;cursor:pointer;transition:all 0.15s;font-family:var(--mono)}
+.bnca-p1{color:var(--red);border-color:var(--red);background:var(--red2)}
+.bnca-p2{color:var(--amber);border-color:var(--amber);background:var(--amber2)}
+.bnca-p3{color:var(--cyan);border-color:var(--cyan);background:var(--cyan2)}
+.bnca-p1:hover{background:rgba(255,61,87,0.2)}
+.bnca-p2:hover{background:rgba(255,179,0,0.2)}
+.bnca-p3:hover{background:rgba(0,229,255,0.2)}
+
+.timeline-ruler{display:flex;border:1px solid var(--border);background:var(--bg);margin:16px 0;overflow:hidden}
+.tl-seg{flex:1;padding:10px 12px;border-right:1px solid var(--border);position:relative}
+.tl-seg:last-child{border-right:none}
+.tl-seg.tl-critical{background:rgba(255,61,87,0.05)}
+.tl-seg.tl-high{background:rgba(255,179,0,0.04)}
+.tl-seg.tl-medium{background:rgba(0,229,255,0.03)}
+.tl-label{font-size:7px;letter-spacing:1.5px;text-transform:uppercase;color:var(--faint);margin-bottom:5px}
+.tl-window{font-size:10px;font-weight:700;letter-spacing:1px}
+.tl-critical .tl-window{color:var(--red)}
+.tl-high .tl-window{color:var(--amber)}
+.tl-medium .tl-window{color:var(--cyan)}
+.tl-items{font-size:8px;color:var(--muted);line-height:1.7;margin-top:4px}
+
+.escalation-path{display:flex;align-items:center;gap:0;margin:12px 0;overflow-x:auto;padding:2px 0}
+.esc-node{display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 16px;border:1px solid var(--border2);background:var(--bg);flex-shrink:0}
+.esc-node.active-esc{border-color:var(--teal);background:var(--teal2)}
+.esc-node.escalated{border-color:var(--amber);background:var(--amber2)}
+.esc-role{font-size:8px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
+.esc-node.active-esc .esc-role{color:var(--teal)}
+.esc-node.escalated .esc-role{color:var(--amber)}
+.esc-action{font-size:7px;color:var(--faint);letter-spacing:0.5px;text-align:center;max-width:100px}
+.esc-arrow{font-size:10px;color:var(--faint);padding:0 4px;flex-shrink:0}
+
+.doc-checklist{border:1px solid var(--border2);background:var(--bg);margin:12px 0}
+.dc-hdr{display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:1px solid var(--border)}
+.dc-title{font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--amber)}
+.dc-count{font-size:8px;color:var(--faint)}
+.dc-body{padding:12px 14px;display:flex;flex-direction:column;gap:6px}
+.dc-item{display:flex;align-items:center;gap:10px;font-size:9px;color:var(--muted)}
+.dc-status{width:18px;height:18px;border:1px solid var(--border2);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:9px}
+.dc-status.have{color:var(--green);border-color:var(--green);background:var(--green2)}
+.dc-status.missing{color:var(--red);border-color:var(--red);background:var(--red2)}
+.dc-status.obtain{color:var(--amber);border-color:var(--amber);background:var(--amber2)}
+.dc-doc-name{flex:1;font-weight:700;color:var(--text)}
+.dc-doc-why{font-size:8px;color:var(--faint)}
+.dc-source{font-size:7px;letter-spacing:1px;text-transform:uppercase;color:var(--cyan)}
+
+.wow-card{display:none;border:1px solid var(--gold);background:linear-gradient(135deg,rgba(255,215,0,0.06) 0%,rgba(0,230,118,0.04) 100%);padding:0;margin-top:16px;animation:wowIn 0.5s ease-out}
+@keyframes wowIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.wow-card.visible{display:block}
+.wow-hdr{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-bottom:1px solid rgba(255,215,0,0.2)}
+.wow-hdr-left{display:flex;align-items:center;gap:10px}
+.wow-star{font-size:18px}
+.wow-title{font-size:11px;font-weight:700;letter-spacing:2px;color:var(--gold)}
+.wow-sub{font-size:8px;color:var(--muted);letter-spacing:1px;margin-top:2px}
+.wow-body{display:grid;grid-template-columns:repeat(5,1fr);gap:0}
+.wow-stat{padding:16px 18px;border-right:1px solid rgba(255,215,0,0.1);text-align:center}
+.wow-stat:last-child{border-right:none}
+.wow-stat-val{font-size:18px;font-weight:700;letter-spacing:1px;margin-bottom:4px}
+.wow-stat-label{font-size:7px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted)}
+.wow-stat-sub{font-size:8px;color:var(--faint);margin-top:3px}
+.wow-action{padding:12px 20px;border-top:1px solid rgba(255,215,0,0.2);display:flex;align-items:center;justify-content:space-between}
+.wow-action-txt{font-size:9px;color:var(--text);letter-spacing:0.5px}
+.wow-action-txt strong{color:var(--gold)}
+
+.status-bar{position:fixed;bottom:0;left:0;right:0;border-top:1px solid var(--border);background:rgba(3,5,11,0.97);backdrop-filter:blur(8px);padding:8px 28px;display:flex;align-items:center;gap:16px;z-index:50;font-size:8px;letter-spacing:1px;color:var(--faint)}
+.s-dot{width:5px;height:5px;border-radius:50%;background:var(--green);box-shadow:0 0 4px var(--green);flex-shrink:0}
+.s-dot.red{background:var(--red);box-shadow:0 0 4px var(--red)}
+.s-dot.amber{background:var(--amber);box-shadow:0 0 4px var(--amber)}
+.s-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+#global-prog{color:var(--amber);letter-spacing:1px}
+.cursor{animation:blink 0.8s step-end infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+::-webkit-scrollbar{width:3px;height:3px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--faint)}
+
+.phase-pane{display:none}
+.phase-pane.active{display:block;animation:fadeIn 0.2s ease}
+@keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+/* ── GUIDED TOUR ─────────────────────────────────────────── */
+.tour-overlay{position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:9000;display:none;align-items:center;justify-content:center}
+.tour-overlay.active{display:flex}
+.tour-card{background:#0d1117;border:1px solid var(--cyan);border-radius:8px;padding:28px 32px;max-width:480px;width:90%;position:relative;box-shadow:0 0 40px rgba(0,212,212,.18)}
+.tour-step-label{font-family:'Orbitron',sans-serif;font-size:.65rem;color:var(--cyan);letter-spacing:.12em;margin-bottom:6px}
+.tour-title{font-family:'Orbitron',sans-serif;font-size:1.05rem;color:#fff;margin-bottom:12px}
+.tour-body{font-size:.88rem;color:#aaa;line-height:1.6;margin-bottom:20px}
+.tour-actions{display:flex;gap:10px;justify-content:flex-end}
+.tour-btn{padding:7px 18px;border-radius:4px;border:1px solid var(--cyan);background:transparent;color:var(--cyan);font-family:'Orbitron',sans-serif;font-size:.72rem;cursor:pointer;letter-spacing:.08em}
+.tour-btn.primary{background:var(--cyan);color:#000}
+.tour-btn:hover{opacity:.8}
+.tour-pip-row{display:flex;gap:6px;margin-bottom:18px}
+.tour-pip{width:28px;height:3px;border-radius:2px;background:#2a2a2a}
+.tour-pip.done{background:var(--cyan)}
+.tour-pip.active{background:var(--amber)}
+.tour-close{position:absolute;top:12px;right:14px;background:none;border:none;color:#555;font-size:1.1rem;cursor:pointer}
+/* ── HOW-TO MODAL ────────────────────────────────────────── */
+.howto-overlay{position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:8500;display:none;align-items:center;justify-content:center}
+.howto-overlay.active{display:flex}
+.howto-card{background:#0d1117;border:1px solid #333;border-radius:8px;padding:32px;max-width:560px;width:92%;max-height:80vh;overflow-y:auto}
+.howto-card h2{font-family:'Orbitron',sans-serif;font-size:.95rem;color:var(--cyan);margin-bottom:18px;letter-spacing:.1em}
+.howto-section{margin-bottom:16px}
+.howto-section h3{font-family:'Orbitron',sans-serif;font-size:.72rem;color:var(--amber);margin-bottom:6px;letter-spacing:.08em}
+.howto-section p,.howto-section li{font-size:.83rem;color:#aaa;line-height:1.55}
+.howto-section ul{padding-left:16px}
+.howto-close-btn{margin-top:20px;padding:8px 22px;background:transparent;border:1px solid var(--cyan);color:var(--cyan);font-family:'Orbitron',sans-serif;font-size:.72rem;border-radius:4px;cursor:pointer;letter-spacing:.08em}
+.howto-close-btn:hover{background:var(--cyan);color:#000}
+/* ── DEFECT MANIFEST ─────────────────────────────────────── */
+.manifest-btn{position:fixed;bottom:18px;left:18px;z-index:7000;background:#0d1117;border:1px solid #ef4444;color:#ef4444;font-family:'Orbitron',sans-serif;font-size:.62rem;padding:7px 14px;border-radius:4px;cursor:pointer;letter-spacing:.08em;opacity:.7}
+.manifest-btn:hover{opacity:1}
+.manifest-overlay{position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:9500;display:none;align-items:center;justify-content:center}
+.manifest-overlay.active{display:flex}
+.manifest-card{background:#0d1117;border:1px solid #ef4444;border-radius:8px;padding:28px 32px;max-width:600px;width:92%;max-height:78vh;overflow-y:auto}
+.manifest-card h2{font-family:'Orbitron',sans-serif;font-size:.9rem;color:#ef4444;margin-bottom:16px;letter-spacing:.1em}
+.manifest-table{width:100%;border-collapse:collapse;font-size:.8rem}
+.manifest-table th{text-align:left;color:#555;font-family:'Orbitron',sans-serif;font-size:.65rem;padding:6px 8px;border-bottom:1px solid #222;letter-spacing:.06em}
+.manifest-table td{padding:7px 8px;color:#aaa;border-bottom:1px solid #1a1a1a;vertical-align:top}
+.manifest-table tr:hover td{background:#111}
+.sev-crit{color:#ef4444;font-weight:700}
+.sev-med{color:var(--amber)}
+.sev-low{color:var(--cyan)}
+.manifest-close-btn{margin-top:18px;padding:7px 20px;background:transparent;border:1px solid #ef4444;color:#ef4444;font-family:'Orbitron',sans-serif;font-size:.7rem;border-radius:4px;cursor:pointer;letter-spacing:.08em}
+.manifest-close-btn:hover{background:#ef4444;color:#000}
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://code.responsivevoice.org/responsivevoice.js?key=FREE"></script>
+<script src="/html/healthcare/js/tsm-workflow-stage.js"></script>
+<script src="/js/tsm-runtime-lock.js"></script>
+<script src="/js/tsm-event-contract.js"></script>
+<script src="/js/tsm-autonomy-layer.js"></script>
+  <script src="/js/core/tsm-event-bus.js"></script>
+  <script src="/js/core/tsm-state.js"></script>
+  <script src="/js/core/tsm-mission-engine.js"></script>
+  <script src="/js/core/tsm-auto-pipeline.js"></script>
+</head>
+<body data-vertical="healthcare" data-page-role="warroom">
+<div id="tsm-chain-bar" style="position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#040c12;border-top:1px solid #0d2233;display:flex;align-items:center;height:32px;padding:0 16px;font-family:'IBM Plex Mono',monospace;font-size:10px;"><span style="color:#3a5a70;margin-right:12px;font-size:9px;">TSM CHAIN</span><a href="#" style="color:#00ffc6;background:rgba(0,255,198,.08);border:1px solid #00ffc638;padding:3px 10px;border-radius:3px;text-decoration:none;margin-right:6px;font-size:9px;">&#9679; WAR ROOM</a><span style="color:#1a3a50;margin-right:6px;">--&gt;</span><a href="/html/healthcare/hc-main-strategist.html" style="color:#94a3b8;border:1px solid #1a3a50;padding:3px 10px;border-radius:3px;text-decoration:none;margin-right:6px;font-size:9px;">&#9675; STRATEGIST</a><span style="color:#1a3a50;margin-right:6px;">--&gt;</span><a href="/html/healthcare/executive-portal.html" style="color:#94a3b8;border:1px solid #1a3a50;padding:3px 10px;border-radius:3px;text-decoration:none;font-size:9px;">&#9675; EXEC PORTAL</a><span style="color:#1a3a50;margin-left:auto;font-size:9px;">HEALTHCARE RCM</span></div>
+
+<!-- HEADER -->
+<div class="hdr">
+  <div class="hdr-left">
+    <div class="hdr-logo">
+      <div class="logo-hex"><div class="logo-hex-inner"></div></div>
+      <div class="hdr-text">
+        <div class="t1">TSM · DENIAL RECOVERY WAR ROOM</div>
+        <div class="t2">One Denied Claim · Five Engines · Five Minutes</div>
+      </div>
+    </div>
+    <div class="hdr-mode">
+      <button class="mode-btn active" id="mode-denial" onclick="setMode('denial')">⚡ Denial Recovery</button>
+      <button class="mode-btn" id="mode-prior" onclick="setMode('prior')">🔒 Prior Auth Rescue</button>
+    </div>
+  </div>
+  <div class="hdr-right">
+    <div class="pill pill-red" id="scenario-pill">DENIAL RECOVERY</div>
+    <div class="pill pill-green">5 ENGINES LIVE</div>
+    <div class="pill pill-teal">NAVIGATOR ACTIVE</div>
+    <div class="clock" id="clock">--:--:--</div>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- SCENARIO BANNER -->
+  <div class="scenario-banner" id="scenario-banner">
+    <div class="sb-left">
+      <div class="sb-icon">⚠</div>
+      <div>
+        <div class="sb-label" id="banner-label">Active Scenario</div>
+        <div class="sb-title" id="banner-title">DENIAL RECOVERY WAR ROOM</div>
+        <div class="sb-sub" id="banner-sub">Load a denied claim packet · EOB · clinical notes · prior auth records · or use a sample scenario below</div>
+      </div>
+    </div>
+    <div class="sb-right">
+      <div style="text-align:right">
+        <div style="font-size:8px;color:var(--muted);letter-spacing:1px">DEMO PITCH LINE</div>
+        <div style="font-size:10px;color:var(--text);margin-top:3px" id="pitch-line">"Watch me recover revenue faster than your current process."</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 1: INPUT -->
+  <div class="sec"><span>Step 1 · Load Denial Packet</span></div>
+  <div class="input-zone">
+    <div class="drop-panel">
+      <div class="drop-area" id="drop-area" ondragover="onDrag(event)" ondragleave="offDrag(event)" ondrop="onDrop(event)">
+        <input type="file" id="file-input"
+          accept=".txt,.pdf,.doc,.docx,.csv,.tsv,.md,.html,.htm,.json,.xml,.rtf,.xlsx,.xls,.jpg,.jpeg,.png,.webp,.gif,.bmp"
+          onchange="onFileSelect(event)">
+        <div class="drop-icon" id="drop-icon">⬆</div>
+        <div class="drop-title">Drop Any Document Here</div>
+        <div class="format-tags">
+          <span class="fmt-tag primary">PDF</span>
+          <span class="fmt-tag primary">DOCX</span>
+          <span class="fmt-tag primary">XLSX</span>
+          <span class="fmt-tag primary">CSV</span>
+          <span class="fmt-tag primary">TXT</span>
+          <span class="fmt-tag">MD</span>
+          <span class="fmt-tag">HTML</span>
+          <span class="fmt-tag">JSON</span>
+          <span class="fmt-tag">XML</span>
+          <span class="fmt-tag">JPG/PNG ✦OCR</span>
+          <span class="fmt-tag">RTF</span>
+        </div>
+        <div class="ingest-bar" id="ingest-bar"><div class="ingest-fill" id="ingest-fill"></div></div>
+        <div class="doc-preview" id="doc-preview"></div>
+      </div>
+      <div class="sample-row">
+        <button class="btn btn-sample" onclick="loadSample('denial')">⚡ Denial Sample</button>
+        <button class="btn btn-sample" onclick="loadSample('prior')">🔒 Prior Auth Sample</button>
+        <button class="btn btn-sample" onclick="loadSample('compliance')">📋 Compliance Sample</button>
+        <button class="btn btn-ghost" onclick="clearAll()">Clear</button>
+      </div>
+      <div class="key-row" style="gap:8px">
+        <div class="key-dot" id="key-dot" style="background:var(--green);box-shadow:0 0 6px var(--green)"></div>
+        <div class="key-label">AI Engine</div>
+        <span class="key-status" id="key-status" style="color:var(--green);font-size:9px">SERVER CONNECTED · PROXY ACTIVE</span>
+      </div>
+    </div>
+    <div class="paste-panel">
+      <div class="paste-label">Or Paste Denial / Document Text</div>
+      <textarea id="doc-text" placeholder="Paste claim denial letter, EOB, prior auth record, clinical notes, or compliance report here...&#10;&#10;Or drop a file on the left — PDF, DOCX, XLSX, CSV, images, and more are all supported."></textarea>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:8px">
+        <button class="btn btn-fire" id="fire-btn" onclick="fireAll()" disabled>⚡ FIRE ALL 5 ENGINES</button>
+        <div class="process-info" id="process-info">Load a document to begin</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PIPELINE -->
+  <div class="sec"><span>Five-Engine Revenue Recovery Pipeline</span></div>
+  <div class="pipeline">
+    <div class="pipe-node e1" id="pn1">
+      <div class="pipe-box">
+        <div class="pipe-num">Engine 01</div>
+        <div class="pipe-name">Document Intel</div>
+        <div class="pipe-tag">Extract · Parse · Classify</div>
+        <div class="pipe-status" id="ps1">STANDBY</div>
+      </div>
+    </div>
+    <div class="pipe-arrow">
+      <div class="pipe-line" id="pa1"></div>
+      <div class="pipe-arrow-label">Claim Data</div>
+    </div>
+    <div class="pipe-node e2" id="pn2">
+      <div class="pipe-box">
+        <div class="pipe-num">Engine 02</div>
+        <div class="pipe-name">Root Cause</div>
+        <div class="pipe-tag">Denial · Gap · Risk</div>
+        <div class="pipe-status" id="ps2">STANDBY</div>
+      </div>
+    </div>
+    <div class="pipe-arrow">
+      <div class="pipe-line" id="pa2"></div>
+      <div class="pipe-arrow-label">Risk Signal</div>
+    </div>
+    <div class="pipe-node e3" id="pn3">
+      <div class="pipe-box">
+        <div class="pipe-num">Engine 03</div>
+        <div class="pipe-name">Financial Impact</div>
+        <div class="pipe-tag">Revenue · Aging · Deadline</div>
+        <div class="pipe-status" id="ps3">STANDBY</div>
+      </div>
+    </div>
+    <div class="pipe-arrow">
+      <div class="pipe-line" id="pa3"></div>
+      <div class="pipe-arrow-label">CFO Feed</div>
+    </div>
+    <div class="pipe-node e4" id="pn4">
+      <div class="pipe-box">
+        <div class="pipe-num">Engine 04</div>
+        <div class="pipe-name">Recovery Plan</div>
+        <div class="pipe-tag">Appeal · Letter · Roadmap</div>
+        <div class="pipe-status" id="ps4">STANDBY</div>
+      </div>
+    </div>
+    <div class="pipe-arrow">
+      <div class="pipe-line" id="pa4"></div>
+      <div class="pipe-arrow-label">Navigator Feed</div>
+    </div>
+    <div class="pipe-node e5" id="pn5">
+      <div class="pipe-box">
+        <div class="pipe-num">Engine 05</div>
+        <div class="pipe-name">Recovery Navigator</div>
+        <div class="pipe-tag">Steps · Apps · BNCA</div>
+        <div class="pipe-status" id="ps5">STANDBY</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STEP 2: RESULTS -->
+  <div class="sec"><span>Step 2 · Live Engine Output</span></div>
+  <div class="results-grid">
+    <!-- ENGINE 1 -->
+    <div class="eng-panel e1">
+      <div class="eng-hdr">
+        <div class="eng-title">
+          <span class="eng-num">01</span>
+          <span class="eng-name">Document Intelligence</span>
+        </div>
+        <span class="eng-badge" id="badge1">STANDBY</span>
+      </div>
+      <div class="eng-body">
+        <div class="idle-state" id="idle1"><div class="idle-icon">◈</div><div class="idle-txt">Awaiting Document</div></div>
+        <div class="eng-out" id="out1" style="display:none"></div>
+      </div>
+      <div class="eng-footer">
+        <button class="foot-btn" onclick="copyOut('out1')">Copy</button>
+        <button class="foot-btn" onclick="relay(1,2)">→ Feed to Root Cause</button>
+        <span class="tok-count" id="tok1"></span>
+      </div>
+    </div>
+    <!-- ENGINE 2 -->
+    <div class="eng-panel e2">
+      <div class="eng-hdr">
+        <div class="eng-title">
+          <span class="eng-num">02</span>
+          <span class="eng-name">Root Cause Analysis</span>
+        </div>
+        <span class="eng-badge" id="badge2">STANDBY</span>
+      </div>
+      <div class="eng-body">
+        <div class="idle-state" id="idle2"><div class="idle-icon">◈</div><div class="idle-txt">Awaiting Document</div></div>
+        <div class="eng-out" id="out2" style="display:none"></div>
+      </div>
+      <div class="eng-footer">
+        <button class="foot-btn" onclick="copyOut('out2')">Copy</button>
+        <button class="foot-btn" onclick="relay(2,3)">→ Feed to Financial</button>
+        <span class="tok-count" id="tok2"></span>
+      </div>
+    </div>
+    <!-- ENGINE 3 -->
+    <div class="eng-panel e3">
+      <div class="eng-hdr">
+        <div class="eng-title">
+          <span class="eng-num">03</span>
+          <span class="eng-name">Financial Impact</span>
+        </div>
+        <span class="eng-badge" id="badge3">STANDBY</span>
+      </div>
+      <div class="eng-body">
+        <div class="idle-state" id="idle3"><div class="idle-icon">◈</div><div class="idle-txt">Awaiting Document</div></div>
+        <div class="eng-out" id="out3" style="display:none"></div>
+      </div>
+      <div class="eng-footer">
+        <button class="foot-btn" onclick="copyOut('out3')">Copy</button>
+        <button class="foot-btn" onclick="relayFinancialToRecovery()">
+        → Feed to Recovery
+        </button>
+          <span class="tok-count" id="tok3"></span>
+      </div>
+    </div>
+    <!-- ENGINE 4 -->
+    <div class="eng-panel e4">
+      <div class="eng-hdr">
+        <div class="eng-title">
+          <span class="eng-num">04</span>
+          <span class="eng-name">Recovery Plan + Appeal</span>
+        </div>
+        <span class="eng-badge" id="badge4">STANDBY</span>
+      </div>
+      <div class="eng-body">
+        <div class="idle-state" id="idle4"><div class="idle-icon">◈</div><div class="idle-txt">Awaiting Document</div></div>
+        <div class="eng-out" id="out4" style="display:none"></div>
+      </div>
+      <div class="eng-footer">
+        <button class="foot-btn" onclick="copyOut('out4')">Copy Appeal</button>
+        <button class="foot-btn" onclick="exportAll()">⬇ Export All</button>
+        <span class="tok-count" id="tok4"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ENGINE 5 — FULL WIDTH RECOVERY NAVIGATOR -->
+  <div class="sec teal-sec"><span>Step 3 · Engine 05 — Intelligent Recovery Navigator</span></div>
+  <div class="results-grid">
+    <div class="eng-panel e5 e5-full" id="e5-panel" style="grid-column:1/-1;min-height:600px">
+      <div class="eng-hdr">
+        <div class="eng-title">
+          <span class="eng-num">05</span>
+          <span class="eng-name">Recovery Navigator · Step-by-Step Progression + Best Next Course of Action</span>
+        </div>
+        <span class="eng-badge" id="badge5">STANDBY</span>
+      </div>
+      <div class="eng-body" style="max-height:none;overflow:visible;padding:0">
+        <div class="idle-state" id="idle5" style="min-height:200px"><div class="idle-icon">◈</div><div class="idle-txt">Awaiting Engines 1–4 Completion</div></div>
+        <div id="nav-container" style="display:none"></div>
+      </div>
+      <div class="eng-footer">
+        <button class="foot-btn" onclick="copyNavText()">Copy Navigator Report</button>
+        <button class="foot-btn" onclick="exportAll()">⬇ Export Full Report</button>
+        <span id="nav-progress" style="font-size:8px;color:var(--teal);letter-spacing:1px;margin-left:10px"></span>
+        <span class="tok-count" id="tok5"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- WOW CARD -->
+  <div class="wow-card" id="wow-card">
+    <div class="wow-hdr">
+      <div class="wow-hdr-left">
+        <div class="wow-star">⭐</div>
+        <div>
+          <div class="wow-title">EXECUTIVE RECOVERY SUMMARY</div>
+          <div class="wow-sub">Generated by TSM Denial Recovery War Room · All 5 Engines Complete</div>
+        </div>
+      </div>
+      <button class="foot-btn" onclick="exportAll()" style="font-size:8px;padding:5px 14px">⬇ Export Report</button>
+    </div>
+    <div class="wow-body">
+      <div class="wow-stat">
+        <div class="wow-stat-val" id="ws-claim" style="color:var(--red)">—</div>
+        <div class="wow-stat-label">Claim Value</div>
+        <div class="wow-stat-sub">Revenue at risk</div>
+      </div>
+      <div class="wow-stat">
+        <div class="wow-stat-val" id="ws-cause" style="color:var(--amber);font-size:11px">—</div>
+        <div class="wow-stat-label">Denial Cause</div>
+        <div class="wow-stat-sub">Root trigger</div>
+      </div>
+      <div class="wow-stat">
+        <div class="wow-stat-val" id="ws-prob" style="color:var(--green)">—</div>
+        <div class="wow-stat-label">Recovery Likelihood</div>
+        <div class="wow-stat-sub">Appeal probability</div>
+      </div>
+      <div class="wow-stat">
+        <div class="wow-stat-val" id="ws-action" style="color:var(--cyan);font-size:10px">—</div>
+        <div class="wow-stat-label">Recommended Action</div>
+        <div class="wow-stat-sub">Next step</div>
+      </div>
+      <div class="wow-stat">
+        <div class="wow-stat-val" id="ws-deadline" style="color:var(--purple)">—</div>
+        <div class="wow-stat-label">Appeal Deadline</div>
+        <div class="wow-stat-sub">Days remaining</div>
+      </div>
+    </div>
+    <div class="wow-action">
+      <div class="wow-action-txt" id="wow-pitch">TSM recovered this claim analysis in <strong>under 5 minutes</strong>. Traditional analyst time: <strong>2–5 days</strong>.</div>
+      <button class="btn btn-fire" style="padding:7px 20px;font-size:8px" onclick="fireAll()">⚡ Run New Scenario</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- STATUS BAR -->
+<div class="status-bar">
+  <div class="s-dot" id="sys-dot"></div>
+  <span>TSM DENIAL RECOVERY WAR ROOM v2</span>
+  <span style="color:var(--border2)">·</span>
+  <span id="active-txt">0 / 5 Engines Active</span>
+  <span style="color:var(--border2)">·</span>
+  <span id="doc-status">No document loaded</span>
+  <span style="color:var(--border2)">·</span>
+  <span id="ingest-type" style="color:var(--cyan)"></span>
+  <span style="color:var(--border2)" id="ingest-sep" style="display:none">·</span>
+  <span id="model-txt" style="color:var(--amber)">Groq: not connected</span>
+  <div class="s-right">
+    <span id="global-prog"></span>
+    <button class="btn" style="font-size:7px;padding:3px 12px;color:var(--red);border-color:var(--red);background:var(--red2)" onclick="fireAll()">⚡ FIRE ALL</button>
+  </div>
+</div>
+
+<script>
+// ── STATE ──────────────────────────────────────────────────────────────────
+// Groq calls are fully server-proxied (/api/hc/stream, /api/hc/ocr) — no client-side key.
+let docText = '';
+let currentMode = 'denial';
+// Doc Search relay
+(function(){
+  try {
+    const raw = sessionStorage.getItem('TSM_HC_WAR_RELAY') || localStorage.getItem('TSM_HC_WAR_RELAY');
+    if (!raw) return;
+    const relay = JSON.parse(raw);
+    if (!relay.docText) return;
+    docText = relay.docText;
+    setTimeout(() => {
+      const el = document.getElementById('doc-text');
+      if (el) { el.value = docText; el.dispatchEvent(new Event('input')); }
+      const btn = document.getElementById('fire-btn');
+      if (btn) btn.disabled = false;
+      const banner = document.createElement('div');
+      banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:rgba(0,180,100,.12);border-bottom:1px solid rgba(0,180,100,.3);padding:7px 20px;font-family:"Share Tech Mono",monospace;font-size:10px;color:#00d4aa;letter-spacing:1px;display:flex;justify-content:space-between';
+      banner.innerHTML = `<span>⚡ DOC RELAY — ${relay.docType||'DOCUMENT'} · ${docText.length} chars · paste area loaded</span><button onclick="this.parentElement.remove()" style="background:none;border:none;color:#00d4aa;cursor:pointer">✕</button>`;
+      document.body.prepend(banner);
+      sessionStorage.removeItem('TSM_HC_WAR_RELAY');
+      localStorage.removeItem('TSM_HC_WAR_RELAY');
+    }, 500);
+  } catch(e) {}
+})();
+// Doc Search relay — populate from redispatch (legal or HC docsearch handoff)
+(function(){
+  try {
+    const raw = localStorage.getItem('tsm_hc_docsearch_relay');
+    if (!raw) return;
+    const relay = JSON.parse(raw);
+    if (!relay.summary) return;
+    localStorage.removeItem('tsm_legal_docsearch_relay');
+    localStorage.removeItem('tsm_hc_docsearch_relay');
+    // TSM AUTO-FIRE
+    if (localStorage.getItem('tsm_auto_mode') !== 'off') { setTimeout(() => { if (typeof fireAll === 'function') fireAll(); }, 900); }
+    docText = relay.summary;
+    setTimeout(() => {
+      const ta = document.getElementById('doc-text');
+      if (ta) { ta.value = relay.summary; ta.dispatchEvent(new Event('input')); }
+      const btn = document.getElementById('fire-btn');
+      if (btn) btn.disabled = false;
+    }, 500);
+  } catch(e) { console.warn('Doc search relay error:', e); }
+})();
+let completedCount = 0;
+let navRawText = '';
+let pipelineRunning = false;
+
+setInterval(()=>{ document.getElementById('clock').textContent = new Date().toLocaleTimeString('en-US',{hour12:false}); }, 1000);
+document.getElementById('doc-text').addEventListener('input', function(){ docText = this.value.trim(); updateStatus(); });
+
+function updateStatus(){
+  const ok = docText.length > 20;
+  document.getElementById('fire-btn').disabled = !ok;
+  document.getElementById('doc-status').textContent = ok ? docText.length + ' chars loaded' : 'No document loaded';
+  document.getElementById('process-info').textContent = ok ? '✓ Ready · ' + docText.split(/\s+/).length + ' words' : 'Load a document to begin';
+}
+
+// ── MODE SWITCH ───────────────────────────────────────────────────────────
+function setMode(mode){
+  currentMode = mode;
+  document.getElementById('mode-denial').classList.toggle('active', mode === 'denial');
+  document.getElementById('mode-prior').classList.toggle('active', mode === 'prior');
+  if(mode === 'denial'){
+    document.getElementById('scenario-pill').textContent = 'DENIAL RECOVERY';
+    document.getElementById('banner-title').textContent = 'DENIAL RECOVERY WAR ROOM';
+    document.getElementById('banner-sub').textContent = 'Load a denied claim packet · EOB · clinical notes · or use the Denial Sample below';
+    document.getElementById('pitch-line').textContent = '"Watch me recover revenue faster than your current process."';
+    document.getElementById('banner-label').textContent = 'Active Scenario — Denial Recovery';
+  } else {
+    document.getElementById('scenario-pill').textContent = 'PRIOR AUTH RESCUE';
+    document.getElementById('banner-title').textContent = 'PRIOR AUTH RESCUE MISSION';
+    document.getElementById('banner-sub').textContent = 'Load a prior auth denial · payer friction log · or use the Prior Auth Sample below';
+    document.getElementById('pitch-line').textContent = '"What if every auth delay was caught before it cost you revenue?"';
+    document.getElementById('banner-label').textContent = 'Active Scenario — Prior Auth Rescue';
+  }
+}
+
+// ── DRAG / DROP ──────────────────────────────────────────────────────────
+function onDrag(e){ e.preventDefault(); document.getElementById('drop-area').style.borderColor = 'var(--cyan)'; }
+function offDrag(e){ document.getElementById('drop-area').style.borderColor = ''; }
+function onDrop(e){
+  e.preventDefault();
+  offDrag();
+  const f = e.dataTransfer.files[0];
+  if(f) readFile(f);
+}
+function onFileSelect(e){ if(e.target.files[0]) readFile(e.target.files[0]); }
+
+// ── INGEST PROGRESS UI ───────────────────────────────────────────────────
+function ingestStart(label){
+  document.getElementById('ingest-bar').classList.add('active');
+  document.getElementById('ingest-fill').style.width = '0%';
+  document.getElementById('ingest-type').textContent = label;
+  document.getElementById('ingest-sep').style.display = '';
+  setTimeout(()=>{ document.getElementById('ingest-fill').style.width = '60%'; }, 50);
+}
+function ingestDone(){
+  document.getElementById('ingest-fill').style.width = '100%';
+  setTimeout(()=>{ document.getElementById('ingest-bar').classList.remove('active'); }, 600);
+}
+
+// ── DOCUMENT INGESTION ENGINE ─────────────────────────────────────────────
+// Supported: PDF, DOCX, XLSX/XLS, CSV/TSV, TXT, MD, HTML, JSON, XML, RTF,
+//            JPG/PNG/WEBP images (Claude Vision OCR), scanned PDFs (OCR fallback)
+
+async function readFile(file){
+  const prev = document.getElementById('doc-preview');
+  const ext = file.name.split('.').pop().toLowerCase();
+  const mime = file.type || '';
+  prev.textContent = '⟳ Reading ' + file.name + '...';
+
+  try {
+    let text = '';
+
+    // ── PDF ────────────────────────────────────────────────────────────────
+    if(ext === 'pdf' || mime === 'application/pdf'){
+      ingestStart('PDF');
+      prev.textContent = '⟳ Extracting PDF text...';
+      const ab = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: ab }).promise;
+      const pages = [];
+      for(let i = 1; i <= pdf.numPages; i++){
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        const pageText = content.items.map(s => s.str).join(' ');
+        pages.push('[Page ' + i + ']\n' + pageText);
+      }
+      text = pages.join('\n\n');
+      if(!text.trim() || text.trim().length < 30){
+        prev.textContent = '⚠ Scanned PDF detected — running Vision OCR...';
+        text = await pdfImageOCR(pdf, file.name);
+      } else {
+        prev.textContent = '✓ ' + file.name + ' (' + pdf.numPages + ' pages, ' + text.length + ' chars)';
+      }
+    }
+
+    // ── DOCX ───────────────────────────────────────────────────────────────
+    else if(ext === 'docx' || mime.includes('wordprocessingml')){
+      ingestStart('DOCX');
+      prev.textContent = '⟳ Loading DOCX parser...';
+      await loadLib('https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js', 'mammoth');
+      const ab = await file.arrayBuffer();
+      const result = await mammoth.extractRawText({ arrayBuffer: ab });
+      text = result.value;
+      prev.textContent = '✓ ' + file.name + ' (DOCX, ' + text.length + ' chars)';
+    }
+
+    // ── XLSX / XLS ─────────────────────────────────────────────────────────
+    else if(['xlsx','xls'].includes(ext) || mime.includes('spreadsheetml') || mime.includes('ms-excel')){
+      ingestStart('XLSX');
+      prev.textContent = '⟳ Loading spreadsheet parser...';
+      await loadLib('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js', 'XLSX');
+      const ab = await file.arrayBuffer();
+      const wb = XLSX.read(ab, { type: 'array' });
+      const parts = [];
+      wb.SheetNames.forEach(name => {
+        const ws = wb.Sheets[name];
+        parts.push('=== Sheet: ' + name + ' ===\n' + XLSX.utils.sheet_to_csv(ws));
+      });
+      text = parts.join('\n\n');
+      prev.textContent = '✓ ' + file.name + ' (' + wb.SheetNames.length + ' sheets, ' + text.length + ' chars)';
+    }
+
+    // ── CSV / TSV ──────────────────────────────────────────────────────────
+    else if(['csv','tsv'].includes(ext) || mime === 'text/csv'){
+      ingestStart('CSV');
+      text = await file.text();
+      prev.textContent = '✓ ' + file.name + ' (' + ext.toUpperCase() + ', ' + text.length + ' chars)';
+    }
+
+    // ── IMAGES — Vision OCR ────────────────────────────────────────────────
+    else if(['jpg','jpeg','png','webp','gif','bmp'].includes(ext) || mime.startsWith('image/')){
+      ingestStart('IMAGE OCR');
+      prev.textContent = '⟳ Running Vision OCR...';
+      text = await imageOCR(file);
+      prev.textContent = '✓ ' + file.name + ' (image OCR, ' + text.length + ' chars)';
+    }
+
+    // ── HTML ───────────────────────────────────────────────────────────────
+    else if(['html','htm'].includes(ext) || mime === 'text/html'){
+      ingestStart('HTML');
+      const raw = await file.text();
+      const div = document.createElement('div');
+      div.innerHTML = raw;
+      div.querySelectorAll('script,style').forEach(el => el.remove());
+      text = (div.innerText || div.textContent || '').replace(/\n{3,}/g, '\n\n');
+      prev.textContent = '✓ ' + file.name + ' (HTML→text, ' + text.length + ' chars)';
+    }
+
+    // ── JSON ───────────────────────────────────────────────────────────────
+    else if(ext === 'json' || mime === 'application/json'){
+      ingestStart('JSON');
+      const raw = await file.text();
+      try {
+        const parsed = JSON.parse(raw);
+        text = JSON.stringify(parsed, null, 2);
+      } catch { text = raw; }
+      prev.textContent = '✓ ' + file.name + ' (JSON, ' + text.length + ' chars)';
+    }
+
+    // ── XML ────────────────────────────────────────────────────────────────
+    else if(['xml','xsl','hl7'].includes(ext) || mime.includes('xml')){
+      ingestStart('XML');
+      text = await file.text();
+      prev.textContent = '✓ ' + file.name + ' (XML, ' + text.length + ' chars)';
+    }
+
+    // ── RTF ────────────────────────────────────────────────────────────────
+    else if(ext === 'rtf' || mime === 'application/rtf'){
+      ingestStart('RTF');
+      const raw = await file.text();
+      // Strip RTF control words for basic text extraction
+      text = raw
+        .replace(/\\[a-z]+\d* ?/g, ' ')
+        .replace(/[{}\\]/g, ' ')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+      prev.textContent = '✓ ' + file.name + ' (RTF→text, ' + text.length + ' chars)';
+    }
+
+    // ── TXT / MD / ALL OTHER TEXT FORMATS ─────────────────────────────────
+    else {
+      ingestStart(ext.toUpperCase() || 'TXT');
+      text = await file.text();
+      prev.textContent = '✓ ' + file.name + ' (' + (ext || 'text').toUpperCase() + ', ' + text.length + ' chars)';
+    }
+
+    ingestDone();
+
+    if(!text || text.trim().length < 10){
+      prev.textContent = '⚠ Could not extract readable text from ' + file.name;
+      return;
+    }
+
+    docText = text.trim();
+    document.getElementById('doc-text').value = docText;
+    updateStatus();
+
+  } catch(err){
+    ingestDone();
+    console.error('readFile error:', err);
+    prev.textContent = '✗ Error reading ' + file.name + ': ' + err.message;
+  }
+}
+
+// ── LAZY-LOAD EXTERNAL LIB ────────────────────────────────────────────────
+const _libCache = {};
+function loadLib(url, globalKey){
+  if(_libCache[globalKey] || window[globalKey]) return Promise.resolve();
+  return new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = url;
+    s.onload = () => { _libCache[globalKey] = true; res(); };
+    s.onerror = () => rej(new Error('Failed to load: ' + url));
+    document.head.appendChild(s);
+  });
+}
+
+// ── PDF IMAGE OCR (scanned / image-only PDFs) — server-proxied ──────────
+async function pdfImageOCR(pdf, filename){
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  const maxPages = Math.min(pdf.numPages, 6);
+  const pageTexts = [];
+
+  for(let i = 1; i <= maxPages; i++){
+    const page = await pdf.getPage(i);
+    const vp = page.getViewport({ scale: 1.8 });
+    canvas.width = vp.width; canvas.height = vp.height;
+    await page.render({ canvasContext: ctx, viewport: vp }).promise;
+    const b64 = canvas.toDataURL('image/jpeg', 0.88).split(',')[1];
+    try {
+      const r = await fetch('/api/hc/ocr', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imageBase64: b64,
+          mimeType: 'image/jpeg',
+          prompt: 'Extract ALL text from this healthcare document image exactly as printed. Include all codes, dates, amounts, names, and labels. Output plain text only — preserve structure.'
+        })
+      });
+      const d = await r.json();
+      if (d.error) throw new Error(d.error);
+      pageTexts.push('[Page ' + i + ' — OCR]\n' + (d.text || '[OCR: no text returned]'));
+    } catch(e){
+      pageTexts.push('[Page ' + i + ' — OCR failed: ' + e.message + ']');
+    }
+    document.getElementById('doc-preview').textContent = '⟳ OCR page ' + i + ' / ' + maxPages + '...';
+  }
+
+  const result = pageTexts.join('\n\n');
+  const extra = pdf.numPages > maxPages ? '\n\n[Note: ' + (pdf.numPages - maxPages) + ' additional page(s) not OCR\'d — increase maxPages limit if needed]' : '';
+  document.getElementById('doc-preview').textContent = '✓ Scanned PDF OCR complete (' + maxPages + ' pages)';
+  return result + extra;
+}
+
+// ── IMAGE OCR via server-proxied Groq Vision ────────────────────────────
+async function imageOCR(file){
+  const b64 = await new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result.split(',')[1]);
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+  const ext = file.name.split('.').pop().toLowerCase();
+  const mt = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+  const resp = await fetch('/api/hc/ocr', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      imageBase64: b64,
+      mimeType: mt,
+      prompt: 'You are a healthcare document OCR engine. Extract ALL visible text from this image exactly as it appears. Preserve structure, columns, codes, dates, dollar amounts, and labels. Output plain text only — no commentary or explanation.'
+    })
+  });
+  const data = await resp.json();
+  if(data.error) throw new Error(data.error || 'Vision API error');
+  return data.text || '[OCR: no text returned]';
+}
+
+// ── SAMPLES ────────────────────────────────────────────────────────────────
+const SAMPLES = {
+  denial:`EXPLANATION OF BENEFITS — CLAIM DENIAL NOTICE
+
+Claim ID: AZ-BCBS-2026-88214
+Date of Service: April 14, 2026
+Provider: Desert Ridge Medical Group
+Patient: [Patient Name]
+CPT Code: 99213 (Office Visit, Established Patient, Moderate Complexity)
+Billed Amount: $4,850.00
+Payer Allowed: $0.00
+Patient Responsibility: $0.00
+Payer: Blue Cross Blue Shield of Arizona
+
+DENIAL REASON: Medical necessity not established. Documentation submitted does not support the level of service billed. Modifier 25 not accepted without separate E&M documentation. Physician attestation missing from submitted records.
+
+DENIAL CODE: CO-50 / CO-4
+APPEAL DEADLINE: 60 days from date of this notice (June 13, 2026)
+PRIOR AUTH STATUS: Not required for CPT 99213 per plan agreement.
+
+Additional context: This is the 3rd denial on this account. Total denials this billing cycle: 47 claims. Average denial rate this quarter: 18.4%. Total revenue at risk: $187,000 across 3 payers (BCBS AZ, Aetna, UHC). Staff hours lost to manual review: 312 hrs/month.`,
+
+  prior:`PRIOR AUTHORIZATION FRICTION LOG — OPERATIONS REPORT
+
+Period: April 1–30, 2026
+Prepared by: Revenue Cycle Management Team
+
+PRIOR AUTH QUEUE STATUS:
+Total auths pending: 89
+Average hold time: 24.3 hours (target: 4 hours)
+Auth denial rate: 22% (target: <8%)
+
+Top denial reasons:
+1. Missing clinical notes — 38%
+2. Non-preferred procedure — 31%
+3. Out-of-network — 19%
+4. Insufficient medical necessity documentation — 12%
+
+PAYER BREAKDOWN:
+- UnitedHealth Group: 34 pending, avg 31hr hold, 28% denial rate
+- Aetna: 27 pending, avg 18hr hold, 19% denial rate
+- BCBS AZ: 28 pending, avg 24hr hold, 20% denial rate
+
+FINANCIAL IMPACT:
+Revenue delayed by auth friction: $187,000
+Claims at risk of timely filing denial: $43,000 (>120 days)
+Staff hours lost to auth phone calls: 312 hrs/month
+Estimated labor cost: $9,360/month`,
+
+  compliance:`COMPLIANCE AUDIT FINDING — INTERNAL MEMO
+
+Date: April 30, 2026
+From: Compliance Department
+To: Executive Leadership
+
+SUBJECT: CMS Condition of Participation Deficiency — Immediate Response Required
+
+Finding 1 (Critical — §482.13): Patient Rights documentation incomplete in 14% of sampled records.
+CMS penalty exposure: $24,000. Response deadline: May 7, 2026.
+
+Finding 2 (Moderate — §482.24): Medical record completion rate below 90% threshold.
+Current rate: 84.1%. Documentation gaps in ER and Outpatient Surgery.
+
+Finding 3 (Moderate): HIPAA Notice of Privacy Practices not consistently provided at intake.
+Affects approximately 340 patient encounters over last 90 days.
+
+OIG Watchlist: 2 vendor relationships flagged for self-referral review under Stark Law.
+HRSA Reporting: 3 grant reports overdue. $2.9M in HRSA funding at risk. 72-hour window to submit.`
+};
+
+// ─── UPGRADED ECOSYSTEM NAVIGATION SCHEMA ──────────────────────
+const ECOSYSTEM_NAV = [
+  {
+    id: 'eco-01', num: '01', label: 'Executive Command', color: '#ff6b35',
+    summary: 'Run the entire TSM ecosystem. Executive oversight, cross-suite routing, business intelligence & workforce planning.',
+    apps: [
+      {name:'Executive Portal Live',url:'/html/executive-portal-live.html'},
+      {name:'Executive Portal v1',url:'/html/ep1.html'},
+      {name:'Strategist Command Center',url:'/html/strategist-index.html'},
+      {name:'Suite Builder',url:'/html/suite-builder.html'},
+      {name:'Client Access Portal',url:'/html/client-access.html'},
+      {name:'WIA Workforce Intelligence',url:'/html/wia.html'},
+      {name:'Enterprise WIP Dashboard',url:'/html/wip-dashboard.html'},
+      {name:'DOC1 Enterprise Search',url:'/html/doc1-search.html'},
+    ],
+    locked: [],
+  },
+  {
+    id: 'eco-02', num: '02', label: 'Workforce Intelligence', color: '#00b4b4',
+    summary: 'Candidate readiness, simulation-based eval, skill gap analysis, placement scoring & career pathways.',
+    apps: [
+      {name:'Healthcare Demo Trail',url:'/html/healthcare/tsm-hc-demo-trail.html'},
+      {name:'Healthcare Academy',url:'/html/healthcare/hc-academy.html'},
+      {name:'CRCR Scenario Simulator',url:'/html/healthcare/crcr-scenarios.html'},
+      {name:'Financial Scenarios',url:'/html/finops-suite/finops-scenarios.html'},
+      {name:'Insurance Portal',url:'/html/tsm-insurance/insurance-portal.html'},
+    ],
+    locked: [],
+  },
+  {
+    id: 'eco-03', num: '03', label: 'Healthcare Ops', color: '#22c55e',
+    summary: 'Revenue Cycle Management, Denials, Prior Authorization, Compliance, Patient Financial Services & BPO.',
+    apps: [
+      {name:'Healthcare Workbench',url:'/html/healthcare/healthcare-wip.html'},
+      {name:'Healthcare Academy',url:'/html/healthcare/hc-academy.html'},
+      {name:'Healthcare Academy Pro',url:'/html/healthcare/tsm_healthcare_academy.html'},
+      {name:'CRC Practice Lab',url:'/html/healthcare/crc-hc-practice.html'},
+      {name:'CRCR Scenario Simulator',url:'/html/healthcare/crcr-scenarios.html'},
+      {name:'Healthcare Demo Trail',url:'/html/healthcare/tsm-hc-demo-trail.html'},
+      {name:'Healthcare Demo Script',url:'/html/healthcare/healthcare-demo-script.html'},
+    ],
+    locked: [],
+  },
+  {
+    id: 'eco-04', num: '04', label: 'Insurance Ops', color: '#3b82f6',
+    summary: 'Claims, Benefits, Enrollment, Licensing, CE Compliance & Carrier Operations.',
+    apps: [
+      {name:'Insurance Portal',url:'/html/tsm-insurance/insurance-portal.html'},
+      {name:'Insurance Hub',url:'/html/tsm-insurance/ins-hub1.html'},
+      {name:'Claims Pro',url:'/html/tsm-insurance/insurance-claims-pro.html'},
+      {name:'Insurance CE Command',url:'/html/tsm-insurance/insurance-ce-command.html'},
+      {name:'CE Study Prep',url:'/html/tsm-insurance/ce-study-prep.html'},
+      {name:'AHIP Certification Prep',url:'/html/tsm-insurance/ahip.html'},
+      {name:'Insurance Presentation',url:'/html/tsm-insurance/ins-presentation.html'},
+      {name:'Insurance Demo Trail',url:'/html/tsm-insurance/tsm-ins-demo-trail.html'},
+    ],
+    locked: [],
+  },
+  {
+    id: 'eco-05', num: '05', label: 'Financial Ops', color: '#eab308',
+    summary: 'Accounting, Bookkeeping, Financial Analysis, AR/AP, Reporting & Audit Readiness.',
+    apps: [
+      {name:'FinOps Presentation',url:'/html/finops-suite/finops-presentation.html'},
+      {name:'TSM Financial Presentation',url:'/html/finops-suite/tsm-presentation.html'},
+      {name:'Financial Scenarios',url:'/html/finops-suite/finops-scenarios.html'},
+      {name:'Document Analysis',url:'/html/finops-suite/doc-analysis-tab.html'},
+      {name:'Accounting Study Guide',url:'/html/finops-suite/study-guide.html'},
+      {name:'Interview Prep',url:'/html/finops-suite/staff-accountant-interview.html'},
+      {name:'CRCR Study Mode',url:'/html/finops-suite/crcr-study-mode.html'},
+    ],
+    locked: [],
+  },
+  {
+    id: 'eco-06', num: '06', label: 'Legal Ops', color: '#a855f7',
+    summary: 'Legal BPO, Document Review, Contract Analysis, Case Preparation & Compliance.',
+    apps: [
+      {name:'Healthcare Workbench',url:'/html/healthcare/healthcare-wip.html'},
+      {name:'DOC1 Enterprise Search',url:'/html/doc1-search.html'},
+    ],
+    locked: [],
+  },
+  {
+    id: 'eco-07', num: '07', label: 'Construction Ops', color: '#ef4444',
+    summary: 'Project Documentation, Compliance, Contract Review & Construction Administration.',
+    apps: [
+      {name:'Construction Pitch',url:'/html/construction-suite/construct-pitch.html'},
+      {name:'Document Showcase',url:'/html/construction-suite/document-showcase.html'},
+      {name:'Construction Workbench',url:'/html/construction-suite/construction-wip.html'},
+    ],
+    locked: [],
+  },
+  {
+    id: 'eco-08', num: '08', label: 'BPO Delivery Network', color: '#6366f1',
+    summary: 'Client Delivery, Workflow Routing, Escalations, Service Monitoring & Quality Assurance.',
+    apps: [
+      {name:'BPO Suite Hub',url:'/html/bpo/suite-hub.html'},
+      {name:'BPO Command Center',url:'/html/bpo/bpo-command-center.html'},
+      {name:'Internal Operations',url:'/html/bpo/bpo-internal1.html'},
+      {name:'Healthcare Suite',url:'/html/bpo/tsm-bpo-personal-manual.html'},
+      {name:'Workforce Intelligence Ops',url:'/html/bpo/tsm-bpo-competitive-playbook'},
+      {name:'BPO Scenarios',url:'/html/bpo/html/bpo-scenarios-demo'},
+    ],
+    locked: [],
+  },
+  {
+    id: 'eco-09', num: '09', label: 'AI Intelligence Layer', color: '#ec4899',
+    summary: 'Document Intelligence, Workflow Automation, Enterprise Search, Knowledge Retrieval & Workforce Analytics.',
+    apps: [
+      {name:'DOC1 Enterprise Search',url:'/html/doc1-search.html'},
+      {name:'Financial Document Analysis',url:'/html/finops-suite/doc-analysis-tab.html'},
+      {name:'Construction Document Showcase',url:'/html/construction-suite/document-showcase.html'},
+      {name:'WIA Workforce Intelligence',url:'/html/wia.html'},
+    ],
+    locked: [],
+  },
+];
+
+function loadSample(type){
+  docText = SAMPLES[type] || SAMPLES.denial;
+  const txtArea = document.getElementById('doc-text');
+  if (txtArea) txtArea.value = docText;
+  
+  const prev = document.getElementById('doc-preview');
+  if (prev) prev.textContent = '✓ Sample loaded';
+  
+  const ingestType = document.getElementById('ingest-type');
+  if (ingestType) ingestType.textContent = 'SAMPLE · ' + type.toUpperCase();
+  
+  if(type === 'prior') setMode('prior'); else setMode('denial');
+  updateStatus();
+}
+
+function clearAll(){
+  docText = '';
+  const txtArea = document.getElementById('doc-text');
+  if (txtArea) txtArea.value = '';
+  
+  const prev = document.getElementById('doc-preview');
+  if (prev) prev.textContent = '';
+  
+  const ingestType = document.getElementById('ingest-type');
+  if (ingestType) ingestType.textContent = '';
+  
+  completedCount = 0;
+  navRawText = '';
+  pipelineRunning = false;
+  
+  for(let i = 1; i <= 6; i++){
+    const out = document.getElementById('out'+i);
+    if(out){ out.textContent = ''; out.style.display = 'none'; }
+    const idle = document.getElementById('idle'+i);
+    if(idle){ idle.innerHTML = '<div class="idle-icon">◈</div><div class="idle-txt">Awaiting Document</div>'; idle.style.display = 'flex'; }
+    const badge = document.getElementById('badge'+i) || document.getElementById('engine-'+i);
+    if(badge) {
+      badge.style.border = '';
+      badge.style.boxShadow = '';
+      badge.style.transform = '';
+      const sub = badge.querySelector('.status');
+      if (sub) sub.textContent = 'STANDBY';
+    }
+    const ps = document.getElementById('ps'+i);
+    if(ps){ ps.textContent = 'STANDBY'; ps.style.color = ''; }
+    const tok = document.getElementById('tok'+i);
+    if(tok) tok.textContent = '';
+  }
+  
+  const nc = document.getElementById('nav-container');
+  if(nc){ nc.style.display = 'none'; nc.innerHTML = ''; }
+  ['pa1','pa2','pa3','pa4'].forEach(id=>{ const el = document.getElementById(id); if(el) el.classList.remove('live'); });
+  
+  const actTxt = document.getElementById('active-txt');
+  if (actTxt) actTxt.textContent = '0 / 6 Engines Active';
+  
+  const globProg = document.getElementById('global-prog');
+  if (globProg) globProg.textContent = '';
+  
+  const wowCard = document.getElementById('wow-card');
+  if (wowCard) wowCard.classList.remove('visible');
+  
+  const navProg = document.getElementById('nav-progress');
+  if (navProg) navProg.textContent = '';
+  
+  updateStatus();
+}
+
+// ── GROQ STREAM ────────────────────────────────────────────────────────────
+async function groqStreamModel(model, sys, user, onChunk, onDone, onError, maxTok=700){
+  try {
+    const res = await fetch('/api/hc/stream', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ model, sys, user, maxTok })
+    });
+    if(!res.ok){ const e=await res.json(); onError(e.error?.message||'Server error '+res.status); return; }
+    const reader=res.body.getReader(); const dec=new TextDecoder(); let buf='',total=0;
+    while(true){
+      const {done,value}=await reader.read(); if(done){onDone(total);break;}
+      buf+=dec.decode(value,{stream:true}); const lines=buf.split('\n'); buf=lines.pop();
+      for(const line of lines){
+        const data=line.replace(/^data: /,'').trim(); if(data==='[DONE]'){onDone(total);return;}
+        if(!data||data[0]===':') continue;
+        try{const j=JSON.parse(data);const tok=j.choices?.[0]?.delta?.content;if(tok){total+=tok.length;onChunk(tok);}}catch{}
+      }
+    }
+  } catch(e){ onError(e.message); }
+}
+
+// ─── VISUAL DATA PACKET CONTROL ROOM PIPELINE ────────────────────────────────
+function relay() {
+  if (pipelineRunning) return;
+  pipelineRunning = true;
+
+  const engines = [
+    { id: 'pn1', name: 'DOCUMENT INTEL', targetColor: 'var(--cyan)', arrow: 'pa1' },
+    { id: 'pn2', name: 'ROOT CAUSE', targetColor: 'var(--amber)', arrow: 'pa2' },
+    { id: 'pn3', name: 'FINANCIAL IMPACT', targetColor: 'var(--green)', arrow: 'pa3' },
+    { id: 'pn4', name: 'RECOVERY PLAN', targetColor: 'var(--purple)', arrow: 'pa4' },
+    { id: 'pn5', name: 'RECOVERY NAVIGATOR', targetColor: 'var(--cyan)', arrow: null },
+  ];
+
+  // Dynamic injection of Engine 6 tracking node if missing from DOM markup
+  let pipelineContainer = document.querySelector('.five-engine-pipeline') || document.getElementById('pipeline-row');
+  if (pipelineContainer && !document.getElementById('engine-6')) {
+    const e6Node = document.createElement('div');
+    e6Node.id = 'engine-6';
+    e6Node.className = 'engine-block';
+    e6Node.style = 'border: 1px solid #333; padding: 12px; min-width: 140px; text-align: center; border-radius: 4px; background: rgba(0,0,0,0.3); font-family: monospace; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);';
+    e6Node.innerHTML = `
+      <div style="font-size: 9px; color: #666; letter-spacing: 0.5px;">ENGINE 06</div>
+      <div style="font-size: 11px; font-weight: bold; color: #fff; margin: 4px 0;">BNCA ROUTING</div>
+      <div class="status" style="font-size: 10px; color: #666;">STANDBY</div>
+    `;
+    pipelineContainer.appendChild(e6Node);
+  }
+
+  // Restore core baseline configuration states
+  engines.forEach(eng => {
+    const el = document.getElementById(eng.id) || document.querySelector(`[id*="${eng.id}"]`);
+    if (el) {
+      el.style.border = '1px solid #333';
+      el.style.boxShadow = 'none';
+      el.style.transform = 'scale(1)';
+      const statusText = el.querySelector('.status');
+      if (statusText) statusText.textContent = 'STANDBY';
+    }
+  });
+
+  const actTxt = document.getElementById('active-txt');
+  if (actTxt) actTxt.textContent = 'Pipeline Synchronized...';
+
+  function dispatchPacket(index) {
+    if (index >= engines.length) {
+      pipelineRunning = false;
+      const actTxt = document.getElementById('active-txt');
+      if (actTxt) actTxt.textContent = '6 / 6 Engines Synchronized';
+      injectPriorAuthGeneratorWidget();
+      return;
+    }
+
+    const current = engines[index];
+    const el = document.getElementById(current.id) || document.querySelector(`[id*="${current.id}"]`);
+
+    if (el) {
+      // Pulse animation logic simulating data payload traveling through core infrastructure
+      el.style.border = `1px solid ${current.targetColor}`;
+      el.style.boxShadow = `0 0 20px ${current.targetColor}`;
+      el.style.transform = 'scale(1.05)';
+      if (current.arrow) {
+        const arrowEl = document.getElementById(current.arrow);
+        if (arrowEl) { arrowEl.style.background = current.targetColor; arrowEl.style.boxShadow = `0 0 8px ${current.targetColor}`; }
+      }
+      const statusText = el.querySelector('.status');
+      if (statusText) {
+        statusText.innerHTML = `<span style="color: ${current.targetColor}; font-weight: bold;">PROCESSING...</span>`;
+      }
+      
+      const activeText = document.getElementById('active-txt');
+      if (activeText) activeText.textContent = `Engine ${index + 1} processing stream data...`;
+    }
+
+    setTimeout(() => {
+      if (el) {
+        el.style.border = '1px solid var(--green)';
+        el.style.boxShadow = 'none';
+        el.style.transform = 'scale(1)';
+        const statusText = el.querySelector('.status');
+        if (statusText) statusText.textContent = 'ACTIVE ✓';
+      }
+      dispatchPacket(index + 1);
+    }, 1000);
+  }
+
+  dispatchPacket(0);
+}
+
+async function runPipeline() {
+  if (!docText || docText.length < 20) { alert('Load a document first.'); return; }
+
+  const outputs = ['','','','',''];
+  const SMALL = 'llama-3.1-8b-instant';
+  const LARGE = 'llama-3.3-70b-versatile';
+
+  const engines = [
+    { outId: 'out1', badgeId: 'ps1', tokId: 'tok1', idleId: 'idle1', model: SMALL, maxTok: 400,
+      sys: 'You are a healthcare document extraction engine. Extract ONLY: claim ID, CPT codes, denial codes, dates, provider, payer, billed amount, denial reason. Bullet points only. Under 300 words.',
+      getUserMsg: () => 'DOCUMENT:\n' + docText.slice(0, 2000), label: 'DOCUMENT INTEL' },
+    { outId: 'out2', badgeId: 'ps2', tokId: 'tok2', idleId: 'idle2', model: SMALL, maxTok: 350,
+      sys: 'You are a denial root cause analyst. From the extraction below, identify: denial reason, payer policy violated, documentation gap, coding error. Under 250 words.',
+      getUserMsg: () => 'EXTRACTED DATA:\n' + outputs[0].slice(0, 800), label: 'ROOT CAUSE' },
+    { outId: 'out3', badgeId: 'ps3', tokId: 'tok3', idleId: 'idle3', model: LARGE, maxTok: 450,
+      sys: 'You are a healthcare financial analyst. Calculate: revenue at risk, timely filing risk, total financial exposure. Use dollar amounts and deadlines. Under 300 words.',
+      getUserMsg: () => 'KEY FINDINGS:\n' + outputs[0].slice(0, 400) + '\nDENIAL CAUSE:\n' + outputs[1].slice(0, 400), label: 'FINANCIAL IMPACT' },
+    { outId: 'out4', badgeId: 'ps4', tokId: 'tok4', idleId: 'idle4', model: LARGE, maxTok: 500,
+      sys: 'You are a denial recovery specialist. Write a step-by-step appeal plan: documents needed, appeal letter points, deadline, payer portal. Under 350 words.',
+      getUserMsg: () => 'DENIAL:\n' + outputs[1].slice(0, 300) + '\nFINANCIAL:\n' + outputs[2].slice(0, 300), label: 'RECOVERY PLAN' },
+    { outId: 'nav-container', badgeId: 'ps5', tokId: 'tok5', idleId: 'idle5', model: SMALL, maxTok: 350,
+      sys: 'You are a recovery navigator. List: immediate next steps, staff roles, escalation path. Be brief and actionable. Under 250 words.',
+      getUserMsg: () => 'SUMMARY:\nDenial: ' + outputs[1].slice(0, 200) + '\nRecovery: ' + outputs[3].slice(0, 200), label: 'RECOVERY NAVIGATOR' },
+  ];
+
+  completedCount = 0;
+  const actTxt = document.getElementById('active-txt');
+
+  for (let i = 0; i < engines.length; i++) {
+    const eng = engines[i];
+    const outEl = document.getElementById(eng.outId);
+    const idleEl = document.getElementById(eng.idleId);
+    const psEl = document.getElementById(eng.badgeId);
+    const tokEl = document.getElementById(eng.tokId);
+
+    if (outEl) { outEl.textContent = ''; outEl.style.display = 'block'; }
+    if (idleEl) idleEl.style.display = 'none';
+    if (i === 4) {
+      const wc = document.getElementById('wow-card');
+      if (wc) wc.classList.add('visible');
+      const nc = document.getElementById('nav-container');
+      if (nc) { nc.style.display = 'block'; nc.textContent = ''; }
+      const id5 = document.getElementById('idle5');
+      if (id5) id5.style.display = 'none';
+    }
+    if (psEl) { psEl.textContent = 'PROCESSING'; psEl.style.color = 'var(--amber)'; }
+    if (actTxt) actTxt.textContent = (i + 1) + ' / 5 Engines Active';
+
+    await new Promise((resolve) => {
+      groqStreamModel(
+        eng.model, eng.sys, eng.getUserMsg(),
+        (chunk) => { outputs[i] += chunk; if (outEl) outEl.textContent += chunk; },
+        (total) => {
+          outputs[i] = outEl ? outEl.textContent : outputs[i];
+          if (psEl) { psEl.textContent = 'COMPLETE ✓'; psEl.style.color = 'var(--green)'; }
+          if (tokEl) tokEl.textContent = total + ' chars';
+          const badge = document.getElementById('badge'+(i+1));
+          if (badge) { badge.textContent = 'COMPLETE ✓'; badge.style.color = 'var(--green)'; }
+          const pn = document.getElementById('pn'+(i+1));
+          if (pn) { pn.style.border='1px solid var(--green)'; pn.style.boxShadow='none'; }
+          completedCount++;
+          resolve();
+        },
+        (err) => {
+          if (outEl) outEl.textContent = '[Error: ' + err + ']';
+          if (psEl) { psEl.textContent = 'ERROR'; psEl.style.color = 'var(--red)'; }
+          resolve();
+        },
+        eng.maxTok
+      );
+    });
+  }
+
+  if (actTxt) actTxt.textContent = '5 / 5 Engines Complete';
+  relay();
+  try { if (window.TSMWorkflowStage) TSMWorkflowStage.write('dispatch'); } catch (e) {}
+  setTimeout(() => {
+    try {
+      const docEl = document.getElementById('doc-input') || document.getElementById('docInput') || document.querySelector('textarea');
+      const dt = docEl ? docEl.value : '';
+      sessionStorage.setItem('tsmHcWarRoom', JSON.stringify({ docText: dt, selectedDocType: 'HC Denial', engineOutputs: outputs, timestamp: Date.now() }));
+    } catch(e) {}
+    showAnomalyAdvisorPanel(outputs, docText);
+  }, 1200);
+
+  // Also fix output badge IDs
+  ['badge1','badge2','badge3','badge4','badge5'].forEach((id, i) => {
+    const el = document.getElementById(id);
+    if (el) { el.textContent = 'COMPLETE ✓'; el.style.color = 'var(--green)'; }
+  });
+
+  // Build BNCA with full engine output context
+  const engineSummary = ['out1','out2','out3','out4'].map((id,i) => {
+    const el = document.getElementById(id);
+    return el ? `ENGINE ${i+1}:\n${el.textContent.slice(0,400)}` : '';
+  }).join('\n\n');
+
+  injectPriorAuthGeneratorWidget(engineSummary);
+}
+
+function fireAllEngines() {
+  runPipeline();
+}
+function fireAll() {
+  runPipeline();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  ENGINE 06 — INTELLIGENT BNCA DISPATCHER & ECOSYSTEM ROUTER
+//  Drop-in replacement for injectPriorAuthGeneratorWidget() and
+//  executePacketCompilation() in your War Room HTML file.
+//  Paste this entire block over those two functions.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ─── APP RECOMMENDATION REGISTRY ────────────────────────────────────────────
+// Maps issue categories → specific apps + exactly HOW to use them to fix the issue.
+const E6_APP_REGISTRY = [
+  {
+    appName: 'HC Billing Node',
+    url: '/html/healthcare/hc-billing/index.html',
+    suite: 'Healthcare Ops',
+    color: '#22c55e',
+    triggers: ['denial','remark code','claim','cpt','billing','CO-','PR-','remark','adjustment','procedure','modifier','unbundling','upcoding','duplicate','timely filing','coordination','coverage'],
+    howTo: `Open the <strong>Billing Intelligence tab</strong> → paste your CPT/denial codes into the Code Analyzer → run the BNCA rule engine to get a code-level fix matrix. Use the Appeal Letter generator to produce a payer-ready rebuttal citing the exact policy violated.`
+  },
+  {
+    appName: 'HC Compliance Node',
+    url: '/html/healthcare/hc-compliance/index.html',
+    suite: 'Healthcare Ops',
+    color: '#22c55e',
+    triggers: ['stark','kickback','compliance','audit','hipaa','documentation','medical necessity','lcd','ncd','not medically necessary','experimental','investigational','coverage policy','criteria'],
+    howTo: `Navigate to the <strong>Compliance Audit tab</strong> → enter the denial reason and payer name → the node will surface the exact LCD/NCD policy number, documentation checklist, and corrective action steps needed before re-submission.`
+  },
+  {
+    appName: 'HC Insurance Node',
+    url: '/html/healthcare/hc-insurance/index.html',
+    suite: 'Healthcare Ops',
+    color: '#22c55e',
+    triggers: ['prior auth','authorization','preauthorization','payer','insurance','eligibility','benefit','out of network','non-covered','excluded','plan','policy','enrollment','coordination of benefits','cob'],
+    howTo: `Use the <strong>Payer Intelligence tab</strong> → input the payer + plan type → retrieve real-time prior auth requirements, appeal filing windows, and payer-specific escalation contacts. Use the COB resolver for dual-coverage denials.`
+  },
+  {
+    appName: 'HC Medical Node',
+    url: '/html/healthcare/hc-medical/index.html',
+    suite: 'Healthcare Ops',
+    color: '#22c55e',
+    triggers: ['diagnosis','icd','medical necessity','clinical','physician','provider','documentation','notes','records','operative','discharge','history','physical','orders'],
+    howTo: `Open the <strong>Clinical Documentation tab</strong> → run the Medical Necessity Validator against your diagnosis codes and clinical notes → get a gap analysis showing exactly which physician documentation is missing and what language to add for a successful appeal.`
+  },
+  {
+    appName: 'CRC Practice Lab',
+    url: '/html/healthcare/crc-hc-practice.html',
+    suite: 'Healthcare Ops',
+    color: '#06b6d4',
+    triggers: ['appeal','grievance','reconsideration','overturn','resubmit','corrected claim','redetermination','second level','peer to peer','p2p'],
+    howTo: `Load the detected denial scenario into the <strong>Appeal Simulation module</strong> → walk through the peer-to-peer request workflow step by step → export the completed appeal packet with supporting documentation checklist pre-populated from your denial data.`
+  },
+  {
+    appName: 'FinOps Accounting',
+    url: '/html/finops-suite/finops-accounting.html',
+    suite: 'Financial Ops',
+    color: '#eab308',
+    triggers: ['revenue','write-off','adjustment','contractual','financial','dollar','amount','balance','payment','remit','eob','era','posting','reconcil','ar','accounts receivable','collection','bad debt'],
+    howTo: `Upload the EOB/ERA into the <strong>Document Analysis tab</strong> → the engine will auto-classify each adjustment reason, calculate contractual vs. non-contractual write-offs, and flag any posting errors. Export the reconciliation report for your AR team.`
+  },
+  {
+    appName: 'FinOps Operations',
+    url: '/html/finops-suite/finops-operations.html',
+    suite: 'Financial Ops',
+    color: '#eab308',
+    triggers: ['kpi','metric','benchmark','productivity','workflow','operations','throughput','denial rate','clean claim','first pass','overturn rate','days in ar','cash flow','forecast'],
+    howTo: `Run the detected issue through the <strong>Financial Scenarios engine</strong> → model the downstream KPI impact of this denial class on your AR days and cash flow → use the benchmark comparison to build a CFO-ready remediation brief.`
+  },
+  {
+    appName: 'DOC1 Enterprise Search',
+    url: '/html/tsm-doc-search-multi.html',
+    suite: 'AI Intelligence Layer',
+    color: '#ec4899',
+    triggers: ['policy','contract','agreement','fee schedule','npi','taxonomy','credentialing','provider enrollment','payer contract','rate'],
+    howTo: `Search the detected payer name + denial code in <strong>DOC1</strong> → retrieve the active fee schedule, contract terms, and any policy bulletins relevant to this denial. Cross-reference the contract language against the denial reason to identify a breach of contract appeal path.`
+  },
+  {
+    appName: 'HC Operations Node',
+    url: '/html/healthcare/hc-operations/index.html',
+    suite: 'Healthcare Ops',
+    color: '#22c55e',
+    triggers: ['workflow','staffing','queue','backlog','productivity','task','assignment','escalation','work queue','follow up','aging','bucket','team'],
+    howTo: `Use the <strong>Work Queue Manager</strong> → assign the denial to the correct specialist bucket based on denial type → set follow-up SLA flags and escalation triggers so this account doesn't age past the timely filing window.`
+  },
+  {
+    appName: 'BPO Command Center',
+    url: '/html/bpo/bpo-command-center.html',
+    suite: 'BPO Delivery Network',
+    color: '#6366f1',
+    triggers: ['escalat','manager','supervisor','client','reporting','sla','service level','quality','audit','oversight','monitoring'],
+    howTo: `Route this case through the <strong>Escalation Bridge</strong> in BPO Command → log the denial event, assign oversight tier, and auto-notify the client with a status update. Use the SLA tracker to ensure appeal deadlines are captured in the delivery dashboard.`
+  },
+];
+
+// ─── ENGINE 6 CORE — AI-POWERED RECOMMENDATION DISPATCHER ──────────────────
+async function injectPriorAuthGeneratorWidget(engineSummary) {
+  const canvas = document.getElementById('wow-card') || document.getElementById('pitch-line');
+  if (!canvas) return;
+  canvas.classList.add('visible');
+
+  // Gather all engine output text for matching
+  const rawOutputs = ['out1','out2','out3','out4'].map(id => {
+    const el = document.getElementById(id);
+    return el ? el.textContent : '';
+  }).join(' ').toLowerCase();
+
+  const docInput = (document.getElementById('doc-text')?.value || '').toLowerCase();
+  const combinedText = rawOutputs + ' ' + docInput;
+
+  // Score every app against the combined analysis text
+  const scored = E6_APP_REGISTRY.map(app => {
+    let score = 0;
+    let matchedTerms = [];
+    app.triggers.forEach(term => {
+      if (combinedText.includes(term)) {
+        score++;
+        matchedTerms.push(term);
+      }
+    });
+    return { ...app, score, matchedTerms };
+  })
+  .filter(a => a.score > 0)
+  .sort((a, b) => b.score - a.score);
+
+  // Always include at least 3 recommendations; pad with top-scored if needed
+  const topApps = scored.length >= 3
+    ? scored.slice(0, Math.min(scored.length, 5))
+    : [...scored, ...E6_APP_REGISTRY.filter(a => !scored.find(s => s.appName === a.appName)).slice(0, 3 - scored.length)].slice(0,3);
+
+  // Render loading state immediately
+  canvas.innerHTML = `
+    <div id="e6-dispatch-panel" style="
+      margin-top: 25px; padding: 0;
+      background: rgba(10,14,22,0.97);
+      border: 1px solid #ec4899;
+      border-radius: 6px;
+      font-family: monospace;
+      box-shadow: 0 0 30px rgba(236,72,153,0.12);
+      animation: fadeIn 0.3s ease;
+      overflow: hidden;
+    ">
+      <!-- Header -->
+      <div style="
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 14px 20px;
+        background: rgba(236,72,153,0.08);
+        border-bottom: 1px solid #2a1a2a;
+      ">
+        <div>
+          <span style="color: #ec4899; font-weight: bold; font-size: 12px; letter-spacing: 1.5px;">ENGINE 06</span>
+          <span style="color: #444; margin: 0 8px;">·</span>
+          <span style="color: #888; font-size: 11px; letter-spacing: 1px;">BEST NEXT COURSE OF ACTION DISPATCH</span>
+        </div>
+        <span id="e6-status" style="color: #ec4899; font-size: 10px; letter-spacing: 1px; animation: pulse 1.5s infinite;">● ANALYZING...</span>
+      </div>
+
+      <!-- AI Narrative placeholder -->
+      <div id="e6-narrative" style="
+        padding: 16px 20px;
+        border-bottom: 1px solid #1a1a2a;
+        font-size: 12px; color: #666; line-height: 1.7;
+        border-left: 3px solid #ec4899;
+        margin: 16px 20px 0;
+        border-radius: 0 4px 4px 0;
+        background: rgba(236,72,153,0.04);
+      ">
+        <span style="color: #444;">⟳ Synthesizing 5-engine analysis... building recommendation matrix...</span>
+      </div>
+
+      <!-- App cards placeholder -->
+      <div id="e6-cards" style="padding: 20px; display: grid; gap: 12px;"></div>
+
+      <!-- Footer actions -->
+      <div style="padding: 16px 20px; border-top: 1px solid #1a1a2a; display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+        <button id="escalate-strategist-btn" onclick="escalateToStrategist()" style="
+          display: inline-flex; align-items: center; gap: 7px;
+          padding: 9px 16px;
+          background: rgba(236,72,153,0.12);
+          border: 1px solid #ec4899;
+          color: #ec4899;
+          font-family: monospace; font-size: 11px;
+          font-weight: bold; cursor: pointer;
+          border-radius: 3px; letter-spacing: 0.5px;
+          transition: all 0.2s;
+        "
+          onmouseover="this.style.background='#ec4899';this.style.color='#000'"
+          onmouseout="if(!this.disabled){this.style.background='rgba(236,72,153,0.12)';this.style.color='#ec4899'}"
+        >⚡ ESCALATE TO HC MAIN STRATEGIST →</button>
+        <button onclick="openAnomalyAdvisor()" style="
+          padding: 9px 16px; background: rgba(56,189,248,0.1);
+          border: 1px solid #38bdf8; color: #38bdf8;
+          font-family: monospace; font-size: 11px;
+          cursor: pointer; border-radius: 3px;
+          transition: all 0.2s; letter-spacing: 0.5px;
+        " onmouseover="this.style.background='#38bdf8';this.style.color='#000'"
+           onmouseout="this.style.background='rgba(56,189,248,0.1)';this.style.color='#38bdf8'">
+          ◈ ANOMALY ADVISOR
+        </button>
+        <button onclick="exportAll()" style="
+          padding: 9px 16px; background: transparent;
+          border: 1px solid #333; color: #888;
+          font-family: monospace; font-size: 11px;
+          cursor: pointer; border-radius: 3px;
+          transition: all 0.2s;
+          letter-spacing: 0.5px;
+        " onmouseover="this.style.borderColor='#ec4899';this.style.color='#ec4899'"
+           onmouseout="this.style.borderColor='#333';this.style.color='#888'">
+          EXPORT FULL ANALYSIS
+        </button>
+        <button onclick="clearAll()" style="
+          padding: 9px 16px; background: transparent;
+          border: 1px solid #333; color: #888;
+          font-family: monospace; font-size: 11px;
+          cursor: pointer; border-radius: 3px;
+          transition: all 0.2s;
+          letter-spacing: 0.5px;
+        " onmouseover="this.style.borderColor='#555';this.style.color='#aaa'"
+           onmouseout="this.style.borderColor='#333';this.style.color='#888'">
+          CLEAR & RESET
+        </button>
+      </div>
+    </div>
+  `;
+
+  // Now call AI to generate the narrative + validate recommendations
+  try {
+    const e6Summary = engineSummary || ['out1','out2','out3','out4'].map((id,i) => {
+      const el = document.getElementById(id);
+      return el ? `ENGINE ${i+1}:\n${el.textContent.slice(0,400)}` : '';
+    }).join('\n\n');
+
+    const appListForPrompt = topApps.map((a, i) =>
+      `${i+1}. ${a.appName} (${a.suite})`
+    ).join('\n');
+
+    const e6Sys = `You are Engine 06, the BNCA (Best Next Course of Action) dispatcher for the TSM War Room. 
+Your job: read the 5-engine denial analysis below and write a 2-3 sentence executive narrative explaining:
+1. The primary issue identified
+2. Why the recommended apps below are the right tools to fix it
+3. The single most urgent action the user should take RIGHT NOW
+
+Be direct, clinical, and specific. Reference actual denial codes, dollar amounts, or payer names from the analysis if present. No fluff.
+
+Recommended apps:
+${appListForPrompt}
+
+Keep response under 120 words. Plain text only, no markdown.`;
+
+    const narrative = await new Promise((resolve) => {
+      let acc = '';
+      groqStreamModel(
+        'openai/gpt-oss-20b',
+        e6Sys,
+        e6Summary.slice(0, 2000),
+        (chunk) => { acc += chunk; },
+        () => resolve(acc.trim() || 'Analysis complete. Route to recommended apps below to begin remediation.'),
+        () => resolve('Analysis complete. Route to recommended apps below to begin remediation.'),
+        400
+      );
+    });
+
+    // Update narrative
+    const narrativeEl = document.getElementById('e6-narrative');
+    if (narrativeEl) {
+      narrativeEl.innerHTML = `
+        <div style="font-size: 10px; color: #ec4899; letter-spacing: 1px; margin-bottom: 6px;">AI DISPATCH NARRATIVE</div>
+        <div style="color: #ccc; font-size: 12px; line-height: 1.7;">${narrative}</div>
+      `;
+    }
+
+  } catch (err) {
+    const narrativeEl = document.getElementById('e6-narrative');
+    if (narrativeEl) {
+      narrativeEl.innerHTML = `
+        <div style="font-size: 10px; color: #ec4899; letter-spacing: 1px; margin-bottom: 6px;">DISPATCH INTELLIGENCE</div>
+        <div style="color: #ccc; font-size: 12px; line-height: 1.7;">
+          ${topApps.length} remediation pathways identified from 5-engine analysis. 
+          Route to the highest-ranked app first — each contains step-by-step guidance specific to the issues detected in this document.
+        </div>
+      `;
+    }
+  }
+
+  // Render app recommendation cards
+  const cardsEl = document.getElementById('e6-cards');
+  if (cardsEl && topApps.length > 0) {
+    cardsEl.innerHTML = `
+      <div style="font-size: 10px; color: #666; letter-spacing: 1px; margin-bottom: 4px; text-transform: uppercase;">
+        Recommended Apps · Ranked by Issue Relevance
+      </div>
+      ${topApps.map((app, idx) => `
+        <div style="
+          border: 1px solid ${idx === 0 ? app.color : '#222'};
+          border-radius: 4px;
+          padding: 14px 16px;
+          background: ${idx === 0 ? `rgba(${hexToRgb(app.color)},0.06)` : 'rgba(0,0,0,0.2)'};
+          transition: all 0.2s;
+          position: relative;
+          overflow: hidden;
+        "
+          onmouseover="this.style.borderColor='${app.color}';this.style.background='rgba(${hexToRgb(app.color)},0.08)'"
+          onmouseout="this.style.borderColor='${idx === 0 ? app.color : '#222'}';this.style.background='${idx === 0 ? `rgba(${hexToRgb(app.color)},0.06)` : 'rgba(0,0,0,0.2)'}'"
+        >
+          <!-- Rank badge -->
+          <div style="
+            position: absolute; top: 0; right: 0;
+            background: ${idx === 0 ? app.color : '#1a1a1a'};
+            color: ${idx === 0 ? '#000' : '#444'};
+            font-size: 9px; font-weight: bold;
+            padding: 3px 8px;
+            border-radius: 0 4px 0 4px;
+            letter-spacing: 0.5px;
+          ">${idx === 0 ? '★ TOP MATCH' : `#${idx + 1}`}</div>
+
+          <!-- App header -->
+          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+            <div style="
+              width: 8px; height: 8px; border-radius: 50%;
+              background: ${app.color};
+              box-shadow: 0 0 6px ${app.color};
+              flex-shrink: 0;
+            "></div>
+            <div>
+              <div style="color: #fff; font-weight: bold; font-size: 12px; letter-spacing: 0.5px;">${app.appName}</div>
+              <div style="color: #555; font-size: 10px; margin-top: 1px;">${app.suite}</div>
+            </div>
+          </div>
+
+          <!-- How-to guidance -->
+          <div style="
+            background: rgba(0,0,0,0.3);
+            border-left: 2px solid ${app.color}40;
+            padding: 10px 12px;
+            border-radius: 0 3px 3px 0;
+            font-size: 11px;
+            color: #aaa;
+            line-height: 1.7;
+            margin-bottom: 12px;
+          ">
+            <span style="color: ${app.color}; font-size: 9px; letter-spacing: 1px; display: block; margin-bottom: 4px;">HOW TO USE THIS APP FOR YOUR ISSUE</span>
+            ${app.howTo}
+          </div>
+
+          ${app.matchedTerms && app.matchedTerms.length > 0 ? `
+          <!-- Match tags -->
+          <div style="display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 12px;">
+            ${app.matchedTerms.slice(0,6).map(t => `
+              <span style="
+                background: rgba(${hexToRgb(app.color)},0.1);
+                border: 1px solid rgba(${hexToRgb(app.color)},0.3);
+                color: ${app.color};
+                font-size: 9px; padding: 2px 7px;
+                border-radius: 2px; letter-spacing: 0.5px;
+                text-transform: uppercase;
+              ">${t}</span>
+            `).join('')}
+          </div>
+          ` : ''}
+
+          <!-- Launch button -->
+          <a href="${app.url}" target="_blank" onclick="if(window.TSMCureConductor){event.preventDefault();window.TSMCureConductor.launch(app.url,{name:app.appName,how:app.howTo||'',tags:[]},{docText:document.getElementById('doc-text')?.value||'',vertical:'Healthcare'});}" style="
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 8px 14px;
+            background: transparent;
+            border: 1px solid ${app.color};
+            color: ${app.color};
+            font-family: monospace; font-size: 11px;
+            font-weight: bold; text-decoration: none;
+            border-radius: 3px;
+            letter-spacing: 0.5px;
+            transition: all 0.2s;
+          "
+            onmouseover="this.style.background='${app.color}';this.style.color='#000'"
+            onmouseout="this.style.background='transparent';this.style.color='${app.color}'"
+          >
+            LAUNCH ${app.appName.toUpperCase()} →
+          </a>
+        </div>
+      `).join('')}
+    `;
+  } else if (cardsEl) {
+    cardsEl.innerHTML = `
+      <div style="color: #666; font-size: 12px; padding: 12px;">
+        No specific app match detected. Load a document and run the pipeline first.
+      </div>
+    `;
+  }
+
+  // Update status
+  const statusEl = document.getElementById('e6-status');
+  if (statusEl) {
+    statusEl.textContent = `✓ ${topApps.length} APPS RECOMMENDED`;
+    statusEl.style.color = 'var(--green)';
+    statusEl.style.animation = 'none';
+  }
+}
+
+// ─── UTILITY: hex color → "r,g,b" for rgba() usage ──────────────────────────
+function hexToRgb(hex) {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result
+    ? `${parseInt(result[1],16)},${parseInt(result[2],16)},${parseInt(result[3],16)}`
+    : '255,255,255';
+}
+
+// ─── executePacketCompilation is no longer needed — kept as no-op for safety ─
+function executePacketCompilation() {
+  // Engine 06 now auto-executes on pipeline completion. No manual trigger needed.
+  console.log('[Engine 06] Auto-dispatch complete.');
+}
+
+// ─── SESSION PAYLOAD BUILDER ─────────────────────────────────────────────────
+function buildWarRoomPayload() {
+  const engineOutputs = {};
+  const engineLabels = {
+    'out1': 'Document Intelligence',
+    'out2': 'Root Cause Analysis',
+    'out3': 'Financial Impact',
+    'out4': 'Recovery Plan + Appeal',
+    'nav-container': 'Recovery Navigator'
+  };
+  Object.entries(engineLabels).forEach(([id, label]) => {
+    const el = document.getElementById(id);
+    if (el && el.textContent.trim()) engineOutputs[label] = el.textContent.trim().slice(0, 800);
+  });
+  const appCards = document.querySelectorAll('#e6-cards [data-app-name]');
+  const recommendations = Array.from(appCards).map(card => ({
+    appName: card.dataset.appName,
+    suite: card.dataset.appSuite,
+    rank: card.dataset.appRank,
+    howTo: card.dataset.appHowto
+  }));
+  const narrativeEl = document.getElementById('e6-narrative');
+  const narrative = narrativeEl ? narrativeEl.innerText.replace('AI DISPATCH NARRATIVE','').trim() : '';
+  const docInput = document.getElementById('doc-text')?.value || '';
+  const ingestType = document.getElementById('ingest-type')?.textContent || '';
+  return {
+    source: 'TSM_DENIAL_WAR_ROOM',
+    version: '2.0',
+    timestamp: new Date().toISOString(),
+    sessionId: 'WR-' + Date.now(),
+    documentMeta: { ingestType, charCount: docInput.length, preview: docInput.slice(0, 300) },
+    engineOutputs,
+    engine06: { narrative, recommendations }
+  };
+}
+
+// ─── SESSION PAYLOAD DISPATCHER ──────────────────────────────────────────────
+function dispatchSessionPayload(payload, targetUrl) {
+  const key = 'TSM_WAR_ROOM_BRIEF';
+  const json = JSON.stringify(payload);
+  try {
+    sessionStorage.setItem(key, json);
+    return targetUrl;
+  } catch (e) {
+    try {
+      const b64 = btoa(unescape(encodeURIComponent(json.slice(0, 4000))));
+      const separator = targetUrl.includes('?') ? '&' : '?';
+      return `${targetUrl}${separator}tsm_brief=${b64}`;
+    } catch (e2) {
+      return targetUrl;
+    }
+  }
+}
+
+// ─── STRATEGIST BRIEFING AUTO-PACK ───────────────────────────────────────────
+function escalateToStrategist() {
+  const btn = document.getElementById('escalate-strategist-btn');
+  const targetUrl = '/html/healthcare/hc-main-strategist.html';
+  if (btn) {
+    btn.style.background = 'rgba(236,72,153,0.3)';
+    btn.innerHTML = '⟳ PACKING BRIEFING...';
+    btn.style.pointerEvents = 'none';
+  }
+  const payload = buildWarRoomPayload();
+  try { if (window.TSMWorkflowStage) TSMWorkflowStage.write('strategist-inject', { sessionId: payload.sessionId }); } catch (e) {}
+  const steps = [
+    { msg: '⟳ BUNDLING ENGINE OUTPUTS...', delay: 0 },
+    { msg: '⟳ ATTACHING BNCA RECOMMENDATIONS...', delay: 400 },
+    { msg: '⟳ SEALING STRATEGIST BRIEF...', delay: 850 },
+    { msg: '✓ BRIEF COMMITTED — ROUTING...', delay: 1250 },
+  ];
+  steps.forEach(({ msg, delay }) => {
+    setTimeout(() => { if (btn) btn.innerHTML = msg; }, delay);
+  });
+  setTimeout(() => {
+    const url = dispatchSessionPayload(payload, targetUrl);
+    // Same-tab navigation, matching the Strategist -> Exec Portal hop
+    // (escalateToExecPortal() below uses window.location.href, not a new
+    // tab). Also more reliable than window.open('_blank') here specifically:
+    // TSM_WAR_ROOM_BRIEF is sessionStorage-only (no localStorage fallback),
+    // and same-tab nav guarantees it survives, vs. relying on same-origin
+    // sessionStorage cloning into a new tab.
+    window.location.href = url;
+  }, 1600);
+}
+
+// ─── DOWNSTREAM RECEIVER (also used by HC Strategist + FinOps) ───────────────
+function readWarRoomBrief() {
+  const key = 'TSM_WAR_ROOM_BRIEF';
+  try {
+    const stored = sessionStorage.getItem(key);
+    if (stored) {
+      const payload = JSON.parse(stored);
+      const age = Date.now() - new Date(payload.timestamp).getTime();
+      if (age < 7200000) return payload;
+    }
+  } catch (e) {}
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const b64 = params.get('tsm_brief');
+    if (b64) return JSON.parse(decodeURIComponent(escape(atob(b64))));
+  } catch (e) {}
+  return null;
+}
+
+// ─── WAR ROOM BANNER INJECTOR (paste into downstream apps) ───────────────────
+function injectWarRoomBanner(payload, containerId) {
+  if (!payload) return;
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const topFindings = Object.entries(payload.engineOutputs || {}).slice(0, 3).map(([label, text]) => `
+    <div style="margin-bottom:8px;">
+      <div style="font-size:9px;color:#ec4899;letter-spacing:1px;margin-bottom:3px;">${label.toUpperCase()}</div>
+      <div style="font-size:11px;color:#aaa;line-height:1.6;">${text.slice(0,180)}...</div>
+    </div>`).join('');
+  const recList = (payload.engine06?.recommendations || []).slice(0,3).map(r => `
+    <span style="display:inline-flex;align-items:center;gap:5px;background:rgba(236,72,153,0.1);border:1px solid rgba(236,72,153,0.3);color:#ec4899;font-size:10px;padding:3px 8px;border-radius:2px;margin:3px;">
+      #${Number(r.rank)+1} ${r.appName}
+    </span>`).join('');
+  const banner = document.createElement('div');
+  banner.id = 'tsm-war-room-banner';
+  banner.style.cssText = 'background:rgba(10,14,22,0.97);border:1px solid #ec4899;border-radius:4px;font-family:monospace;margin-bottom:16px;box-shadow:0 0 20px rgba(236,72,153,0.1);overflow:hidden;animation:fadeIn 0.4s ease;';
+  banner.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 16px;background:rgba(236,72,153,0.08);border-bottom:1px solid #2a1a2a;cursor:pointer;"
+      onclick="const b=document.getElementById('tsm-banner-body');const c=document.getElementById('tsm-banner-chevron');b.style.display=b.style.display==='none'?'block':'none';c.textContent=b.style.display==='none'?'▶':'▼';">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="background:#ec4899;color:#000;font-size:9px;font-weight:bold;padding:2px 7px;border-radius:2px;letter-spacing:1px;">WAR ROOM BRIEF</span>
+        <span style="color:#888;font-size:10px;">Session ${payload.sessionId} · ${new Date(payload.timestamp).toLocaleTimeString()}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;">
+        <span style="color:#555;font-size:10px;">${payload.documentMeta?.ingestType||'DOCUMENT'} · ${payload.documentMeta?.charCount||0} chars</span>
+        <span id="tsm-banner-chevron" style="color:#ec4899;font-size:11px;">▼</span>
+      </div>
+    </div>
+    <div id="tsm-banner-body" style="padding:14px 16px;">
+      <div style="margin-bottom:12px;">
+        <div style="font-size:9px;color:#666;letter-spacing:1px;margin-bottom:6px;">DISPATCH NARRATIVE</div>
+        <div style="font-size:12px;color:#ccc;line-height:1.7;border-left:2px solid #ec4899;padding-left:10px;">${payload.engine06?.narrative||'No narrative captured.'}</div>
+      </div>
+      <div style="margin-bottom:12px;">
+        <div style="font-size:9px;color:#666;letter-spacing:1px;margin-bottom:6px;">ENGINE FINDINGS SUMMARY</div>
+        ${topFindings}
+      </div>
+      ${recList ? `<div><div style="font-size:9px;color:#666;letter-spacing:1px;margin-bottom:6px;">ENGINE 06 RECOMMENDED APPS</div><div>${recList}</div></div>` : ''}
+    </div>`;
+  container.insertBefore(banner, container.firstChild);
+}
+
+function relayFinancialToRecovery() {
+  const engines = document.querySelectorAll('.engine-block, [id^="engine-"]');
+  engines.forEach((el, i) => {
+    setTimeout(() => {
+      el.style.border = '1px solid var(--green)';
+      el.style.boxShadow = '0 0 12px var(--green)';
+      setTimeout(() => {
+        el.style.border = '1px solid #333';
+        el.style.boxShadow = 'none';
+      }, 600);
+    }, i * 200);
+  });
+  relay();
+}
+
+function exportAll() {
+  const output = [];
+  for (let i = 1; i <= 6; i++) {
+    const el = document.getElementById('out' + i);
+    if (el && el.textContent.trim()) {
+      output.push('=== ENGINE ' + i + ' ===\n' + el.textContent.trim());
+    }
+  }
+  if (!output.length) { alert('No engine output to export yet.'); return; }
+  const blob = new Blob([output.join('\n\n')], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'denial-war-room-export.txt';
+  a.click();
+}
+
+</script>
+<script>
+function openAnomalyAdvisor() {
+  try {
+    const docEl = document.getElementById('doc-text') || document.getElementById('doc-input') || document.getElementById('docInput') || document.querySelector('textarea');
+    const docText = docEl ? docEl.value : '';
+    sessionStorage.setItem('tsmHcWarRoom', JSON.stringify({ docText, selectedDocType: 'HC Denial', timestamp: Date.now() }));
+  } catch(e) {}
+  window.open('/html/healthcare/hc-academy/hc-anomaly-advisor.html', '_blank');
+}
+
+// ── HC DENIAL APP ROUTING ────────────────────────────────────
+const HC_APP_ROUTES = {
+  'CO-50': { app:'HC Insurance Node', url:'/html/healthcare/hc-insurance/index.html', reason:'Medical necessity denial requires insurance review' },
+  'CO-4':  { app:'HC Insurance Node', url:'/html/healthcare/hc-insurance/index.html', reason:'Medical necessity appeal' },
+  'CO-16': { app:'HC Billing Command', url:'/html/healthcare/hc-billing/index.html', reason:'Claim lacks info — billing correction needed' },
+  'CO-97': { app:'HC Billing Command', url:'/html/healthcare/hc-billing/index.html', reason:'Claim bundling/unbundling issue' },
+  'CO-22': { app:'HC Insurance Node', url:'/html/healthcare/hc-insurance/index.html', reason:'COB dispute — coordination of benefits review' },
+  'PR-96': { app:'HC Financial Node', url:'/html/healthcare/hc-financial/index.html', reason:'Patient liability — financial review needed' },
+};
+ 
+function hcResolveApp(docText) {
+  const t = (docText||'').toLowerCase();
+  const codeMatch = (docText||'').match(/\b(CO-\d+|PR-\d+|OA-\d+|PI-\d+)\b/i);
+  if (codeMatch) {
+    const route = HC_APP_ROUTES[codeMatch[1].toUpperCase()];
+    if (route) return route;
+  }
+  if (/prior auth|authorization/.test(t)) return { app:'HC Insurance Node', url:'/html/healthcare/hc-insurance/index.html', reason:'Prior auth issue requires insurance review' };
+  if (/hipaa|compliance|audit/.test(t)) return { app:'HC Compliance Node', url:'/html/healthcare/hc-compliance/index.html', reason:'Compliance flag detected' };
+  if (/vendor|clearinghouse/.test(t)) return { app:'HC Vendor Node', url:'/html/healthcare/hc-vendors/index.html', reason:'Vendor/clearinghouse issue' };
+  if (/ar aging|dso|collection|write.?off/.test(t)) return { app:'HC Financial Node', url:'/html/healthcare/hc-financial/index.html', reason:'Financial exposure requires review' };
+  return { app:'HC Denial War Room', url:'/html/healthcare/hc-denial-war-room.html', reason:'General RCM denial — re-run with full context' };
+}
+ 
+ 
+function showAnomalyAdvisorPanel(outputs, docText) {
+  const existing = document.getElementById('anomaly-slide-panel');
+  if (existing) existing.remove();
+ 
+  const panel = document.createElement('div');
+  panel.id = 'anomaly-slide-panel';
+  panel.style.cssText = `
+    position:fixed; bottom:0; right:0; width:420px; max-height:75vh;
+    background:#0a0f0a; border-top:2px solid #1ee8b6; border-left:2px solid #1ee8b6;
+    z-index:300; display:flex; flex-direction:column;
+    transform:translateY(100%); transition:transform 0.4s cubic-bezier(0.16,1,0.3,1);
+    font-family:'JetBrains Mono',monospace;
+  `;
+ 
+  panel.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid #1ee8b633;background:#0d1a0d;">
+      <span style="color:#1ee8b6;font-size:11px;font-weight:700;letter-spacing:2px;">⬡ ANOMALY ADVISOR — FIELD DEFECT SCAN</span>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button onclick="window.open('/html/healthcare/hc-academy/hc-anomaly-advisor.html','_blank')" style="background:#1ee8b620;border:1px solid #1ee8b6;color:#1ee8b6;font-size:9px;padding:3px 8px;cursor:pointer;font-family:inherit;letter-spacing:1px;">FULL REPORT ↗</button>
+        <button onclick="document.getElementById('anomaly-slide-panel').remove()" style="background:transparent;border:none;color:#666;font-size:16px;cursor:pointer;line-height:1;padding:0 2px;">✕</button>
+      </div>
+    </div>
+    <div id="anomaly-panel-body" style="flex:1;overflow-y:auto;padding:12px 14px;font-size:11px;line-height:1.8;color:#a0b8a0;">
+      <div id="anomaly-scan-msg" style="color:#1ee8b6;font-size:10px;letter-spacing:1px;">⬡ SCANNING ENGINE OUTPUTS FOR FIELD-LEVEL DEFECTS...</div>
+    </div>
+  `;
+ 
+  document.body.appendChild(panel);
+  requestAnimationFrame(() => { panel.style.transform = 'translateY(0)'; });
+ 
+  const body = document.getElementById('anomaly-panel-body');
+  const context = `ENGINE 1 (DOCUMENT INTEL):\n${(outputs[0]||'').slice(0,400)}\n\nENGINE 2 (ROOT CAUSE):\n${(outputs[1]||'').slice(0,400)}\n\nENGINE 3 (FINANCIAL):\n${(outputs[2]||'').slice(0,300)}\n\nENGINE 4 (RECOVERY):\n${(outputs[3]||'').slice(0,300)}\n\nDOC SAMPLE:\n${(docText||'').slice(0,500)}`;
+  const sys = `You are TSM Anomaly Advisor, a field-level defect detection engine for healthcare RCM documents. Analyze the engine outputs and identify specific actionable document defects. Output ONLY a numbered list. Each item must follow this exact format:
+⚠ [FIELD NAME] — what is wrong — exact fix instruction (which tab, which field, what to enter or change).
+Maximum 8 items. No preamble. No headers. No summary. Start immediately with item 1.`;
+ 
+  let anomalyFullText = '';
+  let firstChunk = true;
+  groqStreamModel(
+    'llama-3.3-70b-versatile', sys, context,
+    (chunk) => {
+      if (firstChunk) { firstChunk = false; const s=document.getElementById('anomaly-scan-msg'); if(s) s.remove(); }
+      anomalyFullText += chunk;
+      const span = document.createElement('span');
+      span.innerHTML = chunk.replace(/⚠/g,'<span style="color:#f59e0b">⚠</span>').replace(/—/g,'<span style="color:#1ee8b660"> — </span>');
+      body.appendChild(span);
+      body.scrollTop = body.scrollHeight;
+    },
+    () => {
+      const footer = document.createElement('div');
+      footer.style.cssText = 'margin-top:14px;padding-top:10px;border-top:1px solid #1ee8b620;color:#1ee8b650;font-size:9px;letter-spacing:1px;';
+      footer.textContent = '⬡ SCAN COMPLETE — SEE ENGINE 6 BELOW FOR ROUTING';
+      body.appendChild(footer);
+      // Diagnosis only — routing lives in Engine 6 (injectPriorAuthGeneratorWidget),
+      // which scores the full 10-app catalog. We still write the anomaly-bridge
+      // relay so the destination app's banner is pre-filled on arrival.
+      // Steps were previously hardcoded to [] — the destination page's
+      // Remediation Checklist always rendered "No remediation steps loaded"
+      // even though this exact text has the field-level fix instructions.
+      // Parse Anomaly Advisor's own numbered list into real checklist items.
+      hcWriteAnomalyRelay(anomalyFullText, docText, { steps: hcParseAdvisorSteps(anomalyFullText) });
+    },
+    (err) => { const e=document.createElement('div'); e.style.color='#ef4444'; e.textContent='[Advisor error: '+err+']'; body.appendChild(e); },
+    600
+  );
+}
+ 
+// Parse Anomaly Advisor's numbered "⚠ [FIELD] — what's wrong — fix" list into
+// plain checklist strings. Advisor output isn't guaranteed to number every
+// line identically, so split on the numbered-item boundary rather than
+// assuming a fixed format, and cap at 8 to match the Advisor's own limit.
+function hcParseAdvisorSteps(text) {
+  if (!text) return [];
+  return text
+    .split(/\n(?=\s*\d+\.\s)/)
+    .map(s => s.replace(/^\s*\d+\.\s*/, '').replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .slice(0, 8);
+}
+
+// Relay the war room's analysis to the recommended HC node so its
+// anomaly bridge banner lights up pre-filled when the user clicks through.
+function hcWriteAnomalyRelay(anomalyText, docCtx, mission) {
+  try {
+    const route = hcResolveApp(docCtx || anomalyText);
+    const nodeMatch = (route.url || '').match(/hc-([^\/]+)\//);
+    const nodeId = nodeMatch ? nodeMatch[1] : 'billing';
+    const codeMatch = (docCtx || anomalyText || '').match(/\b(CO-\d+|PR-\d+|OA-\d+|PI-\d+)\b/i);
+    const excCode = codeMatch ? codeMatch[1].toUpperCase() : '';
+    const amountMatch = (docCtx || anomalyText || '').match(/\$[\d,]+(\.\d{2})?/);
+    const amount = amountMatch ? Number(amountMatch[0].replace(/[$,]/g, '')) : undefined;
+    // mission.steps may be plain strings (Anomaly Advisor's parsed list) or,
+    // for any other future caller, {title, instructions} objects — handle both.
+    const steps = (mission.steps || []).map(s =>
+      typeof s === 'string' ? s : `${s.title}${s.instructions ? ' — ' + s.instructions : ''}`
+    );
+    const findings = [
+      excCode ? '❌ ' + excCode + ' — denial code detected on this record' : '⚠️ Denial anomaly flagged by War Room',
+      '❌ Routed from HC Denial War Room · Recommended: ' + route.app,
+    ];
+    const payload = {
+      checkStatus: 'DENIAL_RISK',
+      narrative: mission.summary || (anomalyText.slice(0, 300) || 'Denial anomaly detected — review required.'),
+      findings, steps,
+      financialImpact: amount, risk: amount > 50000 ? 82 : amount > 10000 ? 68 : 55,
+      fileName: '', documentType: excCode || 'DENIAL',
+      docType: excCode || 'DENIAL', ref: '', client: '', exclusionCode: excCode,
+      nodeId, targetNodeIds: [nodeId],
+      source: 'war-room', warRoomUrl: '/html/healthcare/hc-denial-war-room.html',
+      ts: Date.now(), timestamp: new Date().toISOString(),
+    };
+    localStorage.setItem('tsm-doc-anomaly', JSON.stringify(payload));
+    if (window.TSMWorkflowStage) TSMWorkflowStage.write('node-checklist', { nodeId: nodeId });
+  } catch (e) { console.warn('War room anomaly relay write failed:', e); }
+}
+</script>
+
+<!-- ── GUIDED TOUR ──────────────────────────────────────────────── -->
+<div class="tour-overlay" id="tourOverlay">
+  <div class="tour-card">
+    <button class="tour-close" onclick="tourClose()">✕</button>
+    <div class="tour-pip-row" id="tourPips"></div>
+    <div class="tour-step-label" id="tourStepLabel"></div>
+    <div class="tour-title" id="tourTitle"></div>
+    <div class="tour-body" id="tourBody"></div>
+    <div class="tour-actions">
+      <button class="tour-btn" id="tourBack" onclick="tourNav(-1)">← BACK</button>
+      <button class="tour-btn primary" id="tourNext" onclick="tourNav(1)">NEXT →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── HOW-TO MODAL ──────────────────────────────────────────────── -->
+<div class="howto-overlay" id="howtoOverlay">
+  <div class="howto-card">
+    <h2>⚡ HOW TO USE — HC DENIAL WAR ROOM</h2>
+    <div class="howto-section">
+      <h3>STEP 1 — LOAD YOUR DOCUMENT</h3>
+      <ul>
+        <li>Drop a PDF, DOCX, or image into the intake zone — or paste raw text into the text area.</li>
+        <li>Use a sample (Denial / Prior Auth / Compliance) to demo the system instantly.</li>
+      </ul>
+    </div>
+    <div class="howto-section">
+      <h3>STEP 2 — CONFIGURE API KEY</h3>
+      <ul>
+        <li>Enter your Groq API key in the key field and hit Test. A green dot = connected.</li>
+        <li>Key is saved to localStorage — you only need to do this once per browser.</li>
+      </ul>
+    </div>
+    <div class="howto-section">
+      <h3>STEP 3 — FIRE ALL 5 ENGINES</h3>
+      <ul>
+        <li><strong style="color:var(--cyan)">E1 · DOCUMENT INTEL</strong> — Extracts claim ID, CPT, denial codes, payer, amounts.</li>
+        <li><strong style="color:var(--cyan)">E2 · ROOT CAUSE</strong> — Identifies denial reason, policy violation, coding error.</li>
+        <li><strong style="color:var(--cyan)">E3 · FINANCIAL IMPACT</strong> — Calculates revenue at risk, timely filing exposure.</li>
+        <li><strong style="color:var(--cyan)">E4 · RECOVERY PLAN</strong> — Builds step-by-step appeal plan with deadlines.</li>
+        <li><strong style="color:var(--cyan)">E5 · RECOVERY NAVIGATOR</strong> — Routes next steps to the right staff roles.</li>
+      </ul>
+    </div>
+    <div class="howto-section">
+      <h3>STEP 4 — DOWNSTREAM WORKFLOW</h3>
+      <ul>
+        <li>Engine output feeds into the <strong style="color:var(--amber)">HC Strategist</strong> and <strong style="color:var(--amber)">Executive Portal</strong> via sessionStorage relay.</li>
+        <li>Navigate using the Ecosystem panel to route to other TSM suites.</li>
+      </ul>
+    </div>
+    <button class="howto-close-btn" onclick="document.getElementById('howtoOverlay').classList.remove('active')">CLOSE</button>
+  </div>
+</div>
+
+<!-- ── DEFECT MANIFEST ───────────────────────────────────────────── -->
+<button class="manifest-btn" onclick="document.getElementById('manifestOverlay').classList.add('active')">⚠ DEFECT MANIFEST</button>
+<div class="manifest-overlay" id="manifestOverlay">
+  <div class="manifest-card">
+    <h2>⚠ HC DENIAL WAR ROOM — DEFECT MANIFEST</h2>
+    <table class="manifest-table">
+      <thead><tr><th>#</th><th>COMPONENT</th><th>DEFECT</th><th>SEV</th><th>STATUS</th></tr></thead>
+      <tbody>
+        <tr><td>D-01</td><td>Engine E3</td><td>Financial calc uses LARGE model — may time out on slow Groq keys; no retry logic</td><td class="sev-crit">CRIT</td><td>OPEN</td></tr>
+        <tr><td>D-02</td><td>File Drop Zone</td><td>PDF/DOCX extraction dependent on browser FileReader; binary formats may silently fail</td><td class="sev-crit">CRIT</td><td>OPEN</td></tr>
+        <tr><td>D-03</td><td>Engine E5</td><td>Nav container used as outId — clear() wipes nav HTML on re-run</td><td class="sev-med">MED</td><td>OPEN</td></tr>
+        <tr><td>D-04</td><td>API Key</td><td>Key stored in localStorage plaintext; no expiry or rotation mechanism</td><td class="sev-med">MED</td><td>ACCEPTED</td></tr>
+        <tr><td>D-05</td><td>Timely Filing</td><td>Deadline calculation is narrative only — no date math against actual service date</td><td class="sev-med">MED</td><td>OPEN</td></tr>
+        <tr><td>D-06</td><td>clearAll()</td><td>Does not reset E5 nav-container output — stale nav persists on re-run</td><td class="sev-med">MED</td><td>OPEN</td></tr>
+        <tr><td>D-07</td><td>Mobile Layout</td><td>Engine output panels overflow viewport on screens &lt;768px</td><td class="sev-low">LOW</td><td>OPEN</td></tr>
+        <tr><td>D-08</td><td>Sample Data</td><td>BCBS AZ sample uses future date (Apr 2026) — may confuse timely filing engine</td><td class="sev-low">LOW</td><td>OPEN</td></tr>
+      </tbody>
+    </table>
+    <button class="manifest-close-btn" onclick="document.getElementById('manifestOverlay').classList.remove('active')">CLOSE</button>
+  </div>
+</div>
+
+<script>
+// ── GUIDED TOUR ENGINE ────────────────────────────────────────────
+const HC_TOUR_STEPS = [
+  { title: 'HC DENIAL WAR ROOM', body: 'This is the Healthcare Revenue Cycle command center. 5 AI engines process your denial documents in sequence — from raw extraction to a full recovery plan. This tour takes 60 seconds.' },
+  { title: 'E1 · DOCUMENT INTEL', body: 'The first engine ingests your claim document and extracts structured data: Claim ID, CPT codes, denial codes (CO-50, CO-4, PR-96), payer, billed amount, and denial reason — in under 10 seconds.' },
+  { title: 'E2 · ROOT CAUSE ANALYST', body: 'Feeds off E1 output. Identifies the exact denial root cause: payer policy violated, documentation gap, or coding error. This is what you\'d normally spend 2 hours researching manually.' },
+  { title: 'E3 · FINANCIAL IMPACT', body: 'Calculates total revenue at risk, timely filing deadline exposure, and dollar amounts per denial. Uses the LARGE model (llama-3.3-70b) for accuracy. Output feeds the HC Strategist.' },
+  { title: 'E4 · RECOVERY PLAN', body: 'Builds a step-by-step appeal plan: documents required, appeal letter talking points, payer portal instructions, and submission deadline. Ready to hand off to your billing team.' },
+  { title: 'E5 · RECOVERY NAVIGATOR', body: 'Final engine. Routes next actions to the correct staff roles — Billing Coordinator, Office Manager, or Appeals Specialist — with escalation path and priority order.' },
+  { title: 'DOWNSTREAM WORKFLOW', body: 'Engine output is relayed via sessionStorage to the HC Strategist and Executive Portal. Use the Ecosystem nav at the bottom of the page to route to other TSM suites or escalate to leadership.' },
+  { title: 'YOU\'RE READY', body: 'Load a denial document (or hit a sample), enter your Groq key, and fire all 5 engines. For a full walkthrough of controls, hit the HOW TO button in the toolbar.' },
+];
+
+let tourIdx = 0;
+function tourOpen() { tourIdx = 0; tourRender(); document.getElementById('tourOverlay').classList.add('active'); }
+function tourClose() { document.getElementById('tourOverlay').classList.remove('active'); }
+function tourNav(dir) {
+  const total = HC_TOUR_STEPS.length;
+  if (dir === 1 && tourIdx === total - 1) { tourClose(); return; }
+  tourIdx = Math.max(0, Math.min(total - 1, tourIdx + dir));
+  tourRender();
+}
+function tourRender() {
+  const s = HC_TOUR_STEPS[tourIdx];
+  const total = HC_TOUR_STEPS.length;
+  document.getElementById('tourStepLabel').textContent = 'STEP ' + (tourIdx + 1) + ' OF ' + total;
+  document.getElementById('tourTitle').textContent = s.title;
+  document.getElementById('tourBody').textContent = s.body;
+  document.getElementById('tourBack').style.display = tourIdx === 0 ? 'none' : '';
+  document.getElementById('tourNext').textContent = tourIdx === total - 1 ? 'FINISH' : 'NEXT →';
+  const pips = document.getElementById('tourPips');
+  pips.innerHTML = '';
+  for (let i = 0; i < total; i++) {
+    const d = document.createElement('div');
+    d.className = 'tour-pip' + (i < tourIdx ? ' done' : i === tourIdx ? ' active' : '');
+    pips.appendChild(d);
+  }
+}
+window.addEventListener('DOMContentLoaded', () => {
+  const tb = document.getElementById('tour-btn') || document.getElementById('tourBtn');
+  if (tb) tb.addEventListener('click', tourOpen);
+  const hb = document.getElementById('howto-btn') || document.getElementById('howtoBtn');
+  if (hb) hb.addEventListener('click', () => document.getElementById('howtoOverlay').classList.add('active'));
+  if (!localStorage.getItem('hc_denial_tour_done')) {
+    setTimeout(tourOpen, 800);
+    localStorage.setItem('hc_denial_tour_done', '1');
+  }
+});
+window.tourOpen = tourOpen;
+window.howtoOpen = () => document.getElementById('howtoOverlay').classList.add('active');
+</script>
+<script src="/html/tsm-mission-orchestrator.js"></script>
+  <script src="/js/core/tsm-kernel-upgrade.js"></script>
+<script src="/js/tsm-autorun-engine.js"></script>
+<script>
+/* TSM AUTO-RUN WAR ROOM */
+(function(){
+  try {
+    const raw = sessionStorage.getItem('TSM_HC_WAR_RELAY') || localStorage.getItem('TSM_HC_WAR_RELAY') || localStorage.getItem('tsm_hc_war_relay');
+    if (!raw) return;
+    if (localStorage.getItem('tsm_auto_mode') === 'off') return;
+    if (localStorage.getItem('TSM_AUTO_LAUNCH') === 'false') return;
+    setTimeout(() => { if (typeof runPipeline === 'function') runPipeline(); }, 1500);
+  } catch(e) { console.warn('[TSM AutoRun HC]', e); }
+})();
+</script>
+
+<script>
+// ===== TSM_AUTONOMY_STANDARDIZED =====
+window.TSM_AUTONOMY_STANDARDIZED = true;
+</script>
+
+<!-- TSM ENFORCER BOOT -->
+<!-- stripped -->
+
+
+<script>
+// ===== TSM WAR ROOM SCOPED RELAY FIX =====
+window.tsmMission = window.tsmMission || {
+  id: "HEALTHCARE-" + Date.now().toString(36),
+  vertical: "healthcare",
+  
+};
+
+function tsmWriteRelay(payload){
+  TSM_KERNEL.setRelay("healthcare", JSON.stringify(payload));
+}
+</script>
+
+
+<!-- TSM KERNEL ENGINE -->
+<script src="/html/core/tsm-kernel.js"></script>
+  <script src="/js/tsm-guide-engine.js" defer></script>
+</body>
+</html>
