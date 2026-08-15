@@ -811,6 +811,12 @@ LITIGATION RISK: High — strong paper trail, sympathetic plaintiff, documented 
 // AI PROMPTS (chained)
 // ═══════════════════════════════════════════════════
 const FORMAT_RULES = 'FORMAT: plain "LABEL: value" lines or short "-" bullets only. No markdown tables, no pipe characters, no bold-wrapped paragraphs. One line per item, ~20 words max — conclusion only, not the reasoning. Keep every field below, just terse.\n\n';
+// TSM ADD: same class of honesty guard as INS_ENGINE_SYSTEM_GUARD (insurance-war-room.html)
+// and the healthcare Denial Pack chain. Legal is the highest-stakes vertical for this
+// gap — an invented CRITICAL DEADLINES or Appeal Letter Points entry is a malpractice
+// exposure risk, not just an inconvenience. Applied as the system message on all 6
+// engine calls.
+const LEGAL_ENGINE_SYSTEM_GUARD = 'You are a TSM Legal Operations Intelligence engine. Follow the requested output format exactly. For any deadline, filing date, hearing date, or statute-of-limitations figure: use only a date explicitly stated in the matter document — never calculate, estimate, or infer one from a "standard" or "typical" window. If no deadline is stated in the source document, write "NOT STATED IN SOURCE DOCUMENT" for that field instead of guessing. Only state as fact that a document, filing, or piece of evidence has been obtained or filed if the source document confirms it — anything shown as missing or pending must be listed as a still-needed action, not treated as resolved.';
 const PROMPTS = [
 (doc, dtype) => FORMAT_RULES + `You are a Legal Operations AI — first-pass matter assessment for a law firm war room.
 DOCUMENT TYPE: ${dtype||'Unknown'}
@@ -825,7 +831,7 @@ JURISDICTION: [Court and venue]
 DATE FILED / INCIDENT: [Key dates]
 CAUSE OF ACTION: [Primary legal theory/claims]
 KEY AMOUNTS: [Damages sought, settlement figures, penalties]
-CRITICAL DEADLINES: [Filing deadlines, response dates, hearing dates]
+CRITICAL DEADLINES: [Filing deadlines, response dates, hearing dates — EXACTLY as stated in the document; "NOT STATED IN SOURCE DOCUMENT" if none given, never calculated]
 LITIGATION STAGE: [Pre-litigation/Complaint Filed/Discovery/Motion Practice/Trial Prep/Appeal]
 MATERIAL FACTS:
 1. [Fact]
@@ -862,9 +868,9 @@ SETTLEMENT RANGE: [Recommended settlement window]
 RISK SCORE: [1-100] — [Rationale]
 WIN PROBABILITY: [%] — [Based on facts and legal theory strength]
 CRITICAL DEADLINES:
-1. [Date — consequence of missing]
-2. [Date — consequence]
-3. [Date — consequence]
+1. [Date stated in document — consequence of missing; "NOT STATED" if no date given]
+2. [Date stated in document — consequence; "NOT STATED" if no date given]
+3. [Date stated in document — consequence; "NOT STATED" if no date given]
 REGULATORY EXPOSURE: [Any agency, bar, or compliance risk]
 EXECUTIVE FLAG: [Yes/No] — [Reason]`,
 
@@ -881,10 +887,10 @@ APPEAL PLAN:
    * [Document]
    * [Document]
 2. Appeal Letter Points:
+   * [Point — only assert a document/fact is on file if the matter document confirms it]
    * [Point]
    * [Point]
-   * [Point]
-3. Deadline: [Date and consequence]
+3. Deadline: [Date stated in matter document and consequence; "NOT STATED IN SOURCE DOCUMENT" if no date given — never calculated]
 4. Filing Method: [Portal / Mail / Fax — specific instructions]
 
 RECOMMENDED APPROACH: [Aggressive defense/Early settlement/Negotiate/Remediate/Counter-attack]
@@ -1447,7 +1453,7 @@ for (let i = 1; i <= 6; i++) {
     const res = await fetch(GROQ, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ question: prompt })
+      body: JSON.stringify({ system: LEGAL_ENGINE_SYSTEM_GUARD, question: prompt })
     });
     if (res.ok) { const d = await res.json(); txt = d.answer||d.response||d.text||''; }
     if (!txt.trim()) throw new Error('empty');

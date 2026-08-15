@@ -920,6 +920,12 @@ function getFieldOpsContext(maxAgeMs = 60 * 60 * 1000) {
   } catch(e) { return ''; }
 }
 
+// TSM ADD: same class of honesty guard as INS_ENGINE_SYSTEM_GUARD (insurance-war-room.html)
+// and LEGAL_ENGINE_SYSTEM_GUARD (legal-war-room.html). CRITICAL DEADLINES (Engine 01) and
+// DEADLINE 1/DEADLINE 2 (Engine 04 — LIEN filing windows) can otherwise invent or calculate
+// a date that isn't actually in the source document. Applied as the system message on all
+// 6 engine calls.
+const CON_ENGINE_SYSTEM_GUARD = 'You are a TSM Construction Intelligence engine. Follow the requested output format exactly. For any deadline, lien filing window, abatement date, or payment date: use only a date explicitly stated in the document provided — never calculate, estimate, or infer one from a "standard" or "typical" window. If no deadline is stated in the source document, write "NOT STATED IN SOURCE DOCUMENT" for that field instead of guessing. Only state as fact that a notice, filing, or document has been sent or obtained if the source document confirms it — anything shown as missing or pending must be listed as a still-needed action, not treated as resolved.';
 const PROMPTS=[
 (doc)=>`You are a Construction Intelligence + Accounting AI — first-pass document assessment.
 DOCUMENT TYPE: ${selectedDocType}
@@ -931,7 +937,7 @@ DOC TYPE: [Change Order/OSHA Citation/Lien Notice/Draw Request/Job Cost Report/P
 PARTIES: [Owner · GC · Sub · Claimant · Entity as applicable]
 PROJECT: [Project name and number]
 KEY AMOUNTS: [All dollar figures — contract value, change, penalty, claim, variance, balance]
-CRITICAL DEADLINES: [Response deadlines, filing deadlines, abatement dates, payment dates]
+CRITICAL DEADLINES: [Response deadlines, filing deadlines, abatement dates, payment dates — EXACTLY as stated in the document; "NOT STATED IN SOURCE DOCUMENT" if none given, never calculated]
 GAAP IMPACT: [Yes/No — ASC section if applicable]
 DISPUTE STATUS: [Active/Pending/No dispute/Unknown]
 RISK SCORE: [1-100]
@@ -975,11 +981,11 @@ ENGINE 03: ${compressed[3]}
 
 ENGINE 04 — LEGAL COMMAND
 LEGAL RISK: [one line]
-LIEN: [$amount — deadline]
+LIEN: [$amount — deadline stated in document, or "NOT STATED" — never calculated]
 BOND: [Yes/No]
 BREACH: [Yes/No — provision]
-DEADLINE 1: [date — action]
-DEADLINE 2: [date — action]
+DEADLINE 1: [date stated in document — action; "NOT STATED" if no date given]
+DEADLINE 2: [date stated in document — action; "NOT STATED" if no date given]
 ACTION: [Respond/Contest/File/Negotiate/Cure/Restate]
 LEGAL RISK LEVEL: [Low/Medium/High/Critical]`,
 
@@ -1272,7 +1278,7 @@ async function callGroq(prompt,engIdx){
   const r=await fetch('/api/construction/query',{
     method:'POST',
     headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({question:prompt,maxTokens:ENGINE_TOKENS[engIdx]||350})
+    body:JSON.stringify({system:CON_ENGINE_SYSTEM_GUARD,question:prompt,maxTokens:ENGINE_TOKENS[engIdx]||350})
   });
   if(!r.ok) throw new Error('API '+r.status);
   const d=await r.json();
@@ -1736,7 +1742,7 @@ function groqStreamModel(model, sys, userContext, onChunk, onDone, onError, maxT
       const r = await fetch('/api/construction/query', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: sys + '\n\n' + userContext, maxTokens: maxTokens || 400 })
+        body: JSON.stringify({ system: sys, question: userContext, maxTokens: maxTokens || 400 })
       });
       if (!r.ok) throw new Error('API ' + r.status);
       const d = await r.json();

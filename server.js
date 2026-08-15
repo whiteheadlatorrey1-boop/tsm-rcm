@@ -1852,12 +1852,13 @@ app.post('/api/financial/query', async (req, res) => {
 
 app.post('/api/legal/query', async (req, res) => {
   try {
-    const msg = req.body.question || req.body.query || '';
+    const msg = req.body.message || req.body.question || req.body.query || '';
+    const system = req.body.system || SP.legal;
     const maxTokens = req.body.maxTokens || 550;
     let a = '';
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        a = await groqChat(SP.legal, msg, maxTokens);
+        a = await groqChat(system, msg, maxTokens);
         break;
       } catch (retryErr) {
         if (attempt === 2) throw retryErr;
@@ -1875,12 +1876,13 @@ app.post('/api/legal/query', async (req, res) => {
 
 app.post('/api/construction/query', async (req, res) => {
   try {
-    const msg = req.body.question || req.body.query || '';
+    const msg = req.body.message || req.body.question || req.body.query || '';
+    const system = req.body.system || SP.construction;
     const maxTokens = req.body.maxTokens || 400;
     let a = '';
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        a = await groqChat(SP.construction, msg, maxTokens);
+        a = await groqChat(system, msg, maxTokens);
         break;
       } catch (retryErr) {
         if (attempt === 2) throw retryErr;
