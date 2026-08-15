@@ -421,6 +421,34 @@ const NODE_LABELS = {
   legal:'Legal', vendors:'Vendors', compliance:'Compliance', billing:'Billing', taxprep:'TaxPrep', grants:'Grants'
 };
 
+// Fields the telemetry form (submitNodeTelemetry) can post. Used only to
+// give office-qualified rows (billing-mesa, etc.) something useful to show
+// in FINDINGS when no narrative findings/bnca text exists — which is always,
+// since the telemetry form only ever sends numbers, not prose.
+const NUMERIC_TELE_KEYS = ['arOver30','denialRate','claimLagDays','pendingClaimsValue','authDelayHours','authBacklog','auditExposure','openFindings','chartDefects','queueDepth','noShowRate','intakeBacklog','staffingCoverage'];
+
+function summarizeTelemetry(node){
+  const parts = NUMERIC_TELE_KEYS.filter(k => node[k] != null).map(k => `${k}: ${node[k]}`);
+  return parts.length ? parts.join(', ') : null;
+}
+
+function officeLabelFromSlug(slug){
+  return slug.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+
+// Recognizes office-qualified node keys (billing-mesa) written by the
+// telemetry form's officeSlug() logic. NODE_KEYS only lists bare lane
+// keys, so without this, non-Scottsdale telemetry is invisible in this
+// table even though it's correctly flowing into system-posture.
+function parseQualifiedNodeKey(key){
+  for (const lane of Object.keys(NODE_LABELS)) {
+    if (key.startsWith(lane + '-')) {
+      return { lane, office: officeLabelFromSlug(key.slice(lane.length + 1)) };
+    }
+  }
+  return null;
+}
+
 const NODE_FALLBACKS = {
   operations:`Findings:\n• Intake handoff delays are extending claim cycle time\n• Scheduling pressure is building at the front desk\n• Throughput risk is rising on high-volume shifts\n\nActions:\n• Re-sequence intake coverage today\n• Escalate bottleneck queue older than 24 hours`,
   medical:`Findings:\n• 14 charts with documentation gaps flagged\n• E&M coding inconsistency on 23 accounts\n\nActions:\n• Route exceptions for rapid chart review\n• Lock rebills until documentation is clean`,
@@ -583,7 +611,24 @@ function renderNodeState(state){
       <td>${node.bnca || node.summary || 'Awaiting BNCA'}</td>
     </tr>`;
   }).join('');
-  tbody.innerHTML = rows;
+
+  // Office-qualified telemetry (billing-mesa, insurance-tempe, ...) isn't in
+  // NODE_KEYS — render it as extra rows so multi-office telemetry submitted
+  // via the office selector actually shows up here, not just in system-posture.
+  const extraKeys = Object.keys(state).filter(k => !NODE_KEYS.includes(k) && parseQualifiedNodeKey(k));
+  const extraRows = extraKeys.map(key => {
+    const node = state[key] || {};
+    const { lane, office } = parseQualifiedNodeKey(key);
+    return `<tr>
+      <td>${NODE_LABELS[lane]} — ${office}</td>
+      <td><span class="badge ${node.status === 'ONLINE' ? 'bg' : 'ba'}">${node.status || 'READY'}</span></td>
+      <td>${node.reportedAt ? new Date(node.reportedAt).toLocaleTimeString() : '—'}</td>
+      <td>${node.findings || summarizeTelemetry(node) || 'Awaiting findings'}</td>
+      <td>${node.bnca || node.summary || 'Awaiting BNCA'}</td>
+    </tr>`;
+  }).join('');
+
+  tbody.innerHTML = rows + extraRows;
 
   const online = NODE_KEYS.filter(k => (state[k]?.status || 'ONLINE') === 'ONLINE').length;
   document.getElementById('kpi-nodes').textContent = online;
