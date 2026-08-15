@@ -841,10 +841,10 @@ ENGINE 04 COMPLIANCE: ${e[4]}
 
 ENGINE 05 — RECOVERY PLAN
 PRIORITY ACTIONS (dollar-quantified, owner assigned):
-1. [Action] — $[amount] — [Owner] — [Deadline]
-2. [Action] — $[amount] — [Owner] — [Deadline]
-3. [Action] — $[amount] — [Owner] — [Deadline]
-4. [Action] — $[amount] — [Owner] — [Deadline]
+1. [Action] — $[amount] — [Owner] — [Deadline stated in source document, or "NOT STATED" — never calculated]
+2. [Action] — $[amount] — [Owner] — [Deadline stated in source document, or "NOT STATED" — never calculated]
+3. [Action] — $[amount] — [Owner] — [Deadline stated in source document, or "NOT STATED" — never calculated]
+4. [Action] — $[amount] — [Owner] — [Deadline stated in source document, or "NOT STATED" — never calculated]
 
 RECOVERY TIMELINE: [days to full resolution]
 QUICK WINS (48 hrs): [immediate actions]
@@ -934,6 +934,14 @@ async function fireEngines() {
   enginesComplete = 0;
   const e = {};
 
+  // TSM ADD: same class of honesty guard as INS_ENGINE_SYSTEM_GUARD (insurance),
+  // LEGAL_ENGINE_SYSTEM_GUARD, CON_ENGINE_SYSTEM_GUARD. Engine 05's dollar-quantified
+  // PRIORITY ACTIONS list can otherwise invent or calculate a [Deadline] that isn't
+  // actually in the source document. SP.financial now carries this guard as its
+  // default too, but sending it explicitly here keeps this call resilient to future
+  // changes to that shared default.
+  const FIN_ENGINE_SYSTEM_GUARD = 'You are a TSM FinOps Intelligence engine. Follow the requested output format exactly. For any deadline, payment due date, or filing date: use only a date explicitly stated in the document provided — never calculate, estimate, or infer one from a "standard" or "typical" window. If no deadline is stated in the source document, write "NOT STATED IN SOURCE DOCUMENT" for that field instead of guessing. Only state as fact that documentation, approvals, or filings have been obtained or completed if the source document confirms it — anything shown as missing or absent must be listed as a still-needed action, not treated as resolved.';
+
   for (let i = 1; i <= 6; i++) {
     setEngState(i, 'running');
     document.getElementById('spinLabel').textContent = 'Engine 0' + i + ' — ' + labels[i-1] + '...';
@@ -945,7 +953,7 @@ async function fireEngines() {
       const res = await fetch('/api/financial/query', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: PROMPTS[i-1](docText, e), maxTokens: MAXT[i-1] })
+        body: JSON.stringify({ system: FIN_ENGINE_SYSTEM_GUARD, question: PROMPTS[i-1](docText, e), maxTokens: MAXT[i-1] })
       });
       if (res.ok) { const d = await res.json(); txt = d.answer || d.response || ''; }
       if (!txt.trim()) throw new Error('empty');
