@@ -492,7 +492,8 @@ global.MUSIC_SUITE_STATE = global.MUSIC_SUITE_STATE || {
 const TSM_MEMORY = global.__TSM_MEMORY__ = global.__TSM_MEMORY__ || {
   healthcare: { nodes: {}, hcStrategist: null, mainStrategist: null, executive: null },
   construction: { nodes: {}, strategist: null, bnca: null, executive: null },
-  mortgage: { nodes: {}, strategist: null, bnca: null, executive: null }
+  mortgage: { nodes: {}, strategist: null, bnca: null, executive: null },
+  pm: { nodes: {}, strategist: null, bnca: null, executive: null }
 };
 // Generic per-vertical memory for verticals other than healthcare (which keeps its richer,
 // purpose-built shape above). Each entry is a small, real, capped log of what that vertical's
@@ -2170,6 +2171,20 @@ app.post('/api/mortgage/bnca', async (req, res) => {
     { suite: 'mortgage-command', top_issue: 'Review needed', risk_level: 'WATCH', node_summary: [], bnca: 'Prioritize SLA-breached loan files and open compliance exceptions.', owner_lanes: ['loan processor'], hitl_review_required: true, confidence: 82 }
   );
   TSM_MEMORY.mortgage.bnca = result;
+  res.json({ ok: true, result, ts: new Date().toISOString() });
+});
+
+// PM Copilot Strategist synthesis — mirrors /api/construction-strategist/bnca. PM has no
+// server-side node state (its relay payload lives client-side in TSM_PM_RELAY), so the real
+// portfolio data pm-strategist.html already loaded is passed straight through in req.body
+// instead of read back off TSM_MEMORY.pm; only the running strategist output is persisted here.
+app.post('/api/pm-strategist/bnca', async (req, res) => {
+  const payload = req.body || {};
+  const result = await tsmAIJSON(
+    `PM Copilot Strategist synthesis. Portfolio relay payload: ${JSON.stringify(payload).slice(0, 8000)}. Return JSON: {"suite":"pm-strategist","strategic_summary":"...","priority_actions":[],"bnca":"...","relay_to_executive":true,"confidence":0}`,
+    { suite: 'pm-strategist', strategic_summary: 'PM Strategist review needed.', priority_actions: [], bnca: 'Relay to Executive Portal.', relay_to_executive: true, confidence: 82 }
+  );
+  TSM_MEMORY.pm.strategist = result;
   res.json({ ok: true, result, ts: new Date().toISOString() });
 });
 
