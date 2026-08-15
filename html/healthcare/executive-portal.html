@@ -1853,7 +1853,7 @@ function buildEscalationModal(d) {
             color:#00e5ff;font-family:'JetBrains Mono',monospace;font-size:8px;
             letter-spacing:1px;padding:8px 18px;cursor:pointer;text-transform:uppercase;
           ">◈ INJECT INTO STRATEGIST CONTEXT</button>
-          <button onclick="switchEscTab('denialpack')" style="
+          <button onclick="switchEscTab('denialpack'); generateDenialPack();" style="
             background:rgba(255,179,0,0.08);border:1px solid rgba(255,179,0,0.3);
             color:#ffb300;font-family:'JetBrains Mono',monospace;font-size:8px;
             letter-spacing:1px;padding:8px 18px;cursor:pointer;text-transform:uppercase;
@@ -2065,7 +2065,21 @@ async function exportExecutiveReport() {
     const kpi = d.kpi || {};
     const decisions = d.alerts?.decisions || [];
     const urgent = d.alerts?.urgent || [];
-    const engineOutputs = d.engineOutputs || {};
+    // TSM FIX: strategist writes engine findings under d.stratReports
+    // (executiveBrief/denialSweep/authFriction/codingDrift/siteVariance/
+    // complianceHeat), not d.engineOutputs (never written on this relay
+    // shape). Same bug already fixed for the on-page ENGINE FINDINGS grid
+    // above — applying the identical fix here so the actual exported
+    // report HonorHealth receives isn't missing this section too.
+    const ENGINE_LABELS = {
+      executiveBrief: 'EXECUTIVE BRIEF',
+      denialSweep: 'DENIAL SWEEP',
+      authFriction: 'AUTH FRICTION',
+      codingDrift: 'CODING DRIFT',
+      siteVariance: 'SITE VARIANCE',
+      complianceHeat: 'COMPLIANCE HEAT'
+    };
+    const engineOutputs = d.stratReports || d.engineOutputs || {};
 
     // Pull whatever denial pack text actually rendered, if any — this is
     // real generated content sitting in the DOM, not re-fetched.
@@ -2103,7 +2117,7 @@ async function exportExecutiveReport() {
     const engineEntries = Object.entries(engineOutputs).filter(([, v]) => v && v.length > 10);
     if (engineEntries.length) {
       lines.push('ENGINE FINDINGS', '---------------');
-      engineEntries.forEach(([label, text]) => lines.push(`${label.toUpperCase()}:`, text.slice(0, 500), ''));
+      engineEntries.forEach(([label, text]) => lines.push(`${ENGINE_LABELS[label] || label.toUpperCase()}:`, text.slice(0, 500), ''));
     }
     if (denialPackText) {
       lines.push('DENIAL PACK OUTPUT', '-------------------', denialPackText, '');
