@@ -262,6 +262,12 @@ console.log("TSM_UI: Direct Neural Link Established.");
   <div class="ai-box">
     <div class="ai-hdr">📊 REPORT NODE TELEMETRY<br>DOLLAR &amp; RISK FIELDS</div>
     <div class="ai-row">
+      <select id="tele-office" class="ai-inp" style="max-width:180px">
+        <option value="Scottsdale - Shea">Scottsdale - Shea</option>
+        <option value="Mesa">Mesa</option>
+        <option value="Tempe">Tempe</option>
+        <option value="North Mountain">North Mountain</option>
+      </select>
       <select id="tele-lane" class="ai-inp" style="max-width:180px" onchange="renderTelemetryFields()">
         <option value="billing">Billing</option>
         <option value="insurance">Insurance</option>
@@ -272,7 +278,7 @@ console.log("TSM_UI: Direct Neural Link Established.");
       <button class="ai-btn" data-tsm-action="submitNodeTelemetry" data-tsm-args="">SUBMIT TELEMETRY</button>
     </div>
     <div id="tele-fields" class="ai-row"></div>
-    <div id="tele-res" class="ai-res">&gt; These are the exact fields aggregateLayer2()/_shared.js read for revenueAtRisk. Nothing here reaches the executive report until submitted.</div>
+    <div id="tele-res" class="ai-res">&gt; These are the exact fields aggregateLayer2()/_shared.js read for revenueAtRisk. Node key is office-qualified (e.g. billing-mesa) per laneFor()'s existing convention, so each office keeps its own numbers instead of overwriting Scottsdale's. Nothing here reaches the executive report until submitted.</div>
   </div>
   <div class="ai-box">
     <div class="ai-hdr">⚡ INTEL WORKBENCH<br>AI ANALYSIS</div>
@@ -642,16 +648,20 @@ function renderTelemetryFields(){
   ).join('');
 }
 
+function officeSlug(office){
+  return String(office || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+}
+
 async function submitNodeTelemetry(){
   const out = document.getElementById('tele-res');
   const lane = document.getElementById('tele-lane').value;
   const fields = TELE_LANE_FIELDS[lane] || [];
+  const office = document.getElementById('tele-office')?.value || 'Scottsdale - Shea';
   // system/location are required by filterHCState() — without them the node
   // is invisible to /api/strategist/hc/system-posture and the executive-portal
   // rollup, even if the dollar fields below are populated correctly.
-  const system = document.getElementById('system-filter')?.value || 'HonorHealth';
-  const location = document.getElementById('location-filter')?.value || 'Scottsdale - Shea';
-  const payload = { status: 'ONLINE', reportedAt: new Date().toISOString(), system, location };
+  const system = 'HonorHealth';
+  const payload = { status: 'ONLINE', reportedAt: new Date().toISOString(), system, location: office };
   let anyValue = false;
   for (const f of fields) {
     const el = document.getElementById(`tele-${f.key}`);
@@ -659,15 +669,19 @@ async function submitNodeTelemetry(){
   }
   if (!anyValue) { out.textContent = '> Enter at least one value before submitting.'; return; }
   out.textContent = '⏳ Posting telemetry...';
+  // Scottsdale - Shea keeps the bare lane key (matches postDemoNodeState() and
+  // the NODE_KEYS table render). Other offices use laneFor()'s office-qualified
+  // key convention (e.g. billing-mesa) so they don't overwrite Scottsdale's node.
+  const nodeKey = office === 'Scottsdale - Shea' ? lane : `${lane}-${officeSlug(office)}`;
   try {
-    const res = await fetch(`${API.nodes}/${lane}`, {
+    const res = await fetch(`${API.nodes}/${nodeKey}`, {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify(payload)
     });
     const data = await res.json();
     if (data.ok) {
-      out.textContent = `> ${lane} telemetry posted: ${Object.entries(payload).filter(([k])=>fields.some(f=>f.key===k)).map(([k,v])=>`${k}=${v}`).join(', ')}`;
+      out.textContent = `> ${nodeKey} telemetry posted (${office}): ${Object.entries(payload).filter(([k])=>fields.some(f=>f.key===k)).map(([k,v])=>`${k}=${v}`).join(', ')}`;
       fields.forEach(f => { const el = document.getElementById(`tele-${f.key}`); if (el) el.value = ''; });
       await pollNodeState();
     } else {
