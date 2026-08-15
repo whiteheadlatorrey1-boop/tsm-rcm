@@ -792,14 +792,14 @@ const PROFILE = {
   priorities:["denial_rate","payer_auths","claims_backlog","documentation_gaps","satellite_office_variance"]
 };
 
-const HC_CONTEXT = `
+const HC_CONTEXT_BASE = `
 You are HC-Strategist for HonorHealth.
 Persona: ${PROFILE.persona} (Dee Montee).
 Approved sources: HC-only nodes + HonorHealth satellite office summaries (Scottsdale, Mesa, Tempe, North Mountain).
 DO NOT reference non-healthcare sectors (legal, mortgage, schools, construction, REO, HotelOps).
 Prioritize: revenue cycle, denial prevention, payer authorization friction, coding documentation gaps, cross-office variance.
 
-Current HonorHealth data:
+Baseline HonorHealth benchmark data (illustrative — supersede with LIVE WAR ROOM FINDINGS below when present):
 - Denial rate: 18.4% (CMS threshold: 15%) → $48K at risk, 231 denied claims
 - Top denial codes: PR-96 (45%, $21.6K), CO-4 (28%, $13.4K), CO-11 (18%, $8.1K), CO-29 (5%, $5.7K)
 - Payers: Medicare 104 denials, Aetna 78, BCBS 32, UHC 17
@@ -816,6 +816,40 @@ Always return:
 3. 3 immediate actions
 4. Which office manager or node should act first
 `;
+
+// TSM FIX: the strategist's system prompt was a static string — a real war
+// room brief could be sitting in TSM_WAR_ROOM_BRIEF (a document actually run
+// through the 5-engine pipeline) and the LLM would never see it unless the
+// user manually clicked "INJECT INTO STRATEGIST CONTEXT" and pasted the
+// result into their own message. That meant every strategist output — the
+// thing meant to prove TSM finds real recoverable revenue — was generated
+// from the same baseline numbers above regardless of what was actually
+// extracted. buildHCContext() now appends live findings automatically,
+// every call, with no manual step required, while keeping the baseline as
+// a labeled fallback so the model still has grounding context when no war
+// room brief exists yet.
+function buildHCContext() {
+  let ctx = HC_CONTEXT_BASE;
+  try {
+    const brief = readWarRoomBrief();
+    if (brief && brief.engineOutputs) {
+      const findings = Object.entries(brief.engineOutputs)
+        .filter(([,v]) => v && v.trim())
+        .map(([label, text]) => `[${label.toUpperCase()}]\n${text.slice(0, 2000)}`)
+        .join('\n\n');
+      if (findings) {
+        ctx += `\n\nLIVE WAR ROOM FINDINGS — Session ${brief.sessionId || 'unknown'}, captured ${brief.timestamp ? new Date(brief.timestamp).toLocaleString() : 'recently'}.
+These come from a document actually run through the 5-engine denial recovery pipeline. Treat these as more current and more specific than the baseline numbers above — cite these dollar amounts, claim IDs, and deadlines instead of the baseline ones whenever they cover the same ground.
+
+${findings}`;
+        if (brief.engine06?.narrative) {
+          ctx += `\n\nWAR ROOM DISPATCH NARRATIVE:\n${brief.engine06.narrative.slice(0, 1000)}`;
+        }
+      }
+    }
+  } catch (e) { console.warn('[buildHCContext] war room merge failed:', e); }
+  return ctx;
+}
 
 // ── TAB SWITCHING ──
 const tabs=['exec','denial','auth','coding','variance','compliance','pharmacy','taxgrants'];
@@ -851,7 +885,7 @@ async function callClaude(userMsg, outEl, thinkEl, errEl){
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
-        system: HC_CONTEXT,
+        system: buildHCContext(),
         message: userMsg
       })
     });
@@ -999,7 +1033,7 @@ async function callClaudeWithExplain(userMsg, outEl, thinkEl, errEl){
       // default of 1800 tokens routinely truncated the JSON mid-string,
       // which is why the explainability panel and dollar-impact figures
       // were coming back empty/"—". Request headroom explicitly.
-      body:JSON.stringify({ system: HC_CONTEXT, message: userMsg, maxTokens: 3000 })
+      body:JSON.stringify({ system: buildHCContext(), message: userMsg, maxTokens: 3000 })
     });
     const data = await resp.json();
     if(thinkInterval) clearInterval(thinkInterval);
@@ -1535,7 +1569,7 @@ async function loadSignals(){
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        system: typeof HC_CONTEXT !== 'undefined' ? HC_CONTEXT : 'You are TSM Anomaly Advisor core engine.',
+        system: typeof buildHCContext !== 'undefined' ? buildHCContext() : 'You are TSM Anomaly Advisor core engine.',
         message: 'List the top 4 live strategic signals for HonorHealth right now. For each: signal title, source (which office/node), sub-detail, and urgency level (URGENT/HIGH/MED/INFRA). Focus on revenue cycle, denials, auth, and coding issues only. Return as a simple numbered list.'
       })
     });
@@ -1565,7 +1599,7 @@ async function loadSignals(){
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        system: typeof HC_CONTEXT !== 'undefined' ? HC_CONTEXT : 'You are TSM Anomaly Advisor core engine.',
+        system: typeof buildHCContext !== 'undefined' ? buildHCContext() : 'You are TSM Anomaly Advisor core engine.',
         message: 'List the top 4 live strategic signals for HonorHealth right now. For each: signal title, source (which office/node), sub-detail, and urgency level (URGENT/HIGH/MED/INFRA). Focus on revenue cycle, denials, auth, and coding issues only. Return as a simple numbered list.'
       })
     });
@@ -1689,9 +1723,11 @@ function clearOut(){
   else if (content) content.insertBefore(banner, content.firstChild);
 
   window.injectWarRoomContext = function() {
-    const warRoomSummary = Object.entries(brief.engineOutputs||{}).map(([k,v])=>`${k}: ${v.slice(0,300)}`).join('\n');
+    // TSM FIX: was double-truncated (300/engine, then 800 total) — the manual
+    // inject button showed almost nothing of what the war room actually found.
+    const warRoomSummary = Object.entries(brief.engineOutputs||{}).map(([k,v])=>`${k}: ${v.slice(0,1500)}`).join('\n');
     const ctxEl = document.getElementById('strat-context');
-    if (ctxEl) ctxEl.value = `[WAR ROOM BRIEF — Session ${brief.sessionId}]\n${brief.engine06?.narrative||''}\n\nKEY FINDINGS:\n${warRoomSummary.slice(0,800)}`;
+    if (ctxEl) ctxEl.value = `[WAR ROOM BRIEF — Session ${brief.sessionId}]\n${brief.engine06?.narrative||''}\n\nKEY FINDINGS:\n${warRoomSummary.slice(0,6000)}`;
     banner.style.borderColor = '#a855f7';
     document.getElementById('hcs-banner-chevron').textContent = '▼';
     try { if (window.TSMWorkflowStage) TSMWorkflowStage.write('strategist-run', { sessionId: brief.sessionId }); } catch(e) {}
