@@ -78,6 +78,13 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 .fr-exposure{font-family:'JetBrains Mono',monospace;font-size:.65rem;text-align:right;color:var(--red);font-weight:700;}
 .funnel-hdr{display:grid;grid-template-columns:130px 1fr 90px 110px;gap:10px;font-family:'JetBrains Mono',monospace;font-size:.55rem;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;}
 .funnel-hdr .align-r{text-align:right;}
+.explain-panel{background:var(--bg2);border:1px solid var(--border);border-left:2px solid var(--amber);border-radius:6px;padding:14px 18px;margin-bottom:16px;}
+.explain-title{font-family:'Orbitron',sans-serif;font-size:.62rem;color:var(--amber);letter-spacing:.1em;margin-bottom:10px;}
+.explain-row{padding:6px 0;border-top:1px solid var(--border);}
+.explain-row:first-of-type{border-top:none;}
+.explain-node{font-family:'Orbitron',sans-serif;font-size:.6rem;color:var(--accent);letter-spacing:.05em;margin-right:10px;}
+.explain-score{font-family:'JetBrains Mono',monospace;font-size:.65rem;color:var(--text);}
+.explain-text{font-family:'JetBrains Mono',monospace;font-size:.62rem;color:var(--muted);margin-top:3px;line-height:1.5;}
 </style>
 </head>
 <body data-vertical="pm" data-page-role="executive">
@@ -377,6 +384,60 @@ function renderApprovalRateStats(stats, body){
   </div>`;
 }
 
+// Grounded in the actual buildRelayPayload() shape from pm-engine.js
+// (data.kpis/financials) — mirrors honeywell-executive-portal.html's
+// getExplainItems(): cites the exact field + engine method behind each KPI
+// tile above, rather than a fabricated confidence score. The financial
+// exposure section already carries its own sec-hdr-note, so this covers the
+// top KPI row only.
+function getExplainItems(data){
+  const items = [];
+  const k = data.kpis || {};
+
+  if (k.occupancy_rate != null) {
+    items.push({
+      label: 'OCCUPANCY RATE',
+      value: k.occupancy_rate + '%',
+      explain: 'Read directly from kpis.occupancy_rate, computed by pm-engine.js\u2019s computeKpis() from the live units records \u2014 not recomputed on this page.'
+    });
+  }
+  if (k.portfolio_rent_value != null) {
+    items.push({
+      label: 'PORTFOLIO RENT VALUE',
+      value: fmtMoney(k.portfolio_rent_value),
+      explain: 'Read directly from kpis.portfolio_rent_value, summed by pm-engine.js from the live units/leases records.'
+    });
+  }
+  if (k.work_orders_over_sla != null) {
+    items.push({
+      label: 'WORK ORDERS OVER SLA',
+      value: String(k.work_orders_over_sla),
+      explain: 'Count of work orders returned by pm-engine.js\u2019s getSlaBreaches(\u2018work_orders\u2019) \u2014 the underlying items are in the war room\u2019s Action Queue.'
+    });
+  }
+  if (k.vendor_compliance_flags != null) {
+    items.push({
+      label: 'VENDOR COMPLIANCE FLAGS',
+      value: String(k.vendor_compliance_flags),
+      explain: 'Count of vendors in \u2018expiring_soon\u2019/\u2018expired\u2019 stages from the live vendors records, computed by pm-engine.js\u2019s computeKpis().'
+    });
+  }
+
+  return items;
+}
+
+function renderExplainItems(items){
+  if (!items.length) return '';
+  return `<div class="explain-panel">
+    <div class="explain-title">WHY THESE NUMBERS</div>
+    ${items.map(it => `<div class="explain-row">
+      <span class="explain-node">${escapeHtml(it.label)}</span>
+      <span class="explain-score">${escapeHtml(it.value)}</span>
+      <div class="explain-text">${escapeHtml(it.explain)}</div>
+    </div>`).join('')}
+  </div>`;
+}
+
 function render(){
   const data = loadRelay();
   if(!data){ renderEmpty(); return; }
@@ -393,6 +454,8 @@ function render(){
     <div class="kpi"><div class="kpi-val red">${kpis.work_orders_over_sla ?? '&mdash;'}</div><div class="kpi-lbl">WORK ORDERS OVER SLA</div></div>
     <div class="kpi"><div class="kpi-val red">${kpis.vendor_compliance_flags ?? '&mdash;'}</div><div class="kpi-lbl">VENDOR COMPLIANCE FLAGS</div></div>
   </div>`;
+
+  html += renderExplainItems(getExplainItems(data));
 
   html += `<div class="sec">
     <div class="sec-hdr"><span class="lbl">TOTAL FINANCIAL EXPOSURE</span><span class="sec-hdr-note">${escapeHtml(fin.note || 'vacancy + SLA delay + vendor compliance, deterministic')}</span></div>

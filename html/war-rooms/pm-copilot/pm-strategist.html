@@ -71,6 +71,13 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 .tsm-delta-no .tsm-delta-val{color:var(--red);}
 .tsm-delta-act .tsm-delta-val{color:var(--green);}
 .tsm-recovery{font-family:'JetBrains Mono',monospace;font-size:.62rem;color:var(--muted);margin-top:10px;}
+.explain-panel{background:var(--bg2);border:1px solid var(--border);border-left:2px solid var(--amber);border-radius:6px;padding:14px 18px;margin-bottom:16px;}
+.explain-title{font-family:'Orbitron',sans-serif;font-size:.62rem;color:var(--amber);letter-spacing:.1em;margin-bottom:10px;}
+.explain-row{padding:6px 0;border-top:1px solid var(--border);}
+.explain-row:first-of-type{border-top:none;}
+.explain-node{font-family:'Orbitron',sans-serif;font-size:.6rem;color:var(--accent);letter-spacing:.05em;margin-right:10px;}
+.explain-score{font-family:'JetBrains Mono',monospace;font-size:.65rem;color:var(--text);}
+.explain-text{font-family:'JetBrains Mono',monospace;font-size:.62rem;color:var(--muted);margin-top:3px;line-height:1.5;}
 </style>
 <script src="/html/js/tsm-bnca-exposure-engine.js"></script>
 </head>
@@ -274,6 +281,60 @@ function renderActionQueue(data){
   </div>`;
 }
 
+// Grounded in the actual buildRelayPayload() shape from pm-engine.js
+// (data.kpis/financials/work_order_breaches) — this page displays those
+// figures, it does not recompute or re-score them, so each item cites the
+// exact field and engine method that produced it rather than fabricating a
+// confidence score. Mirrors honeywell-strategist.html's getExplainItems().
+function getExplainItems(data){
+  const items = [];
+  const k = data.kpis || {};
+  const fin = data.financials || {};
+
+  if (k.open_work_orders != null) {
+    items.push({
+      label: 'OPEN WORK ORDERS',
+      value: String(k.open_work_orders),
+      explain: 'Read directly from kpis.open_work_orders, computed by pm-engine.js\u2019s computeKpis() from the live work_orders records \u2014 not recomputed on this page.'
+    });
+  }
+  if (k.work_orders_over_sla != null) {
+    items.push({
+      label: 'WORK ORDERS OVER SLA',
+      value: String(k.work_orders_over_sla),
+      explain: 'Count of work orders returned by pm-engine.js\u2019s getSlaBreaches(\u2018work_orders\u2019), listed in the Action Queue below with each item\u2019s hours-over-SLA.'
+    });
+  }
+  if (fin.total_exposure != null) {
+    items.push({
+      label: 'FINANCIAL EXPOSURE',
+      value: fmtMoney(fin.total_exposure),
+      explain: 'Sum of vacancy_exposure_total + maintenance_delay_exposure_total + vendor_compliance_exposure_total from pm-engine.js\u2019s getFinancialSummary() \u2014 each computed from real unit/work-order/vendor stage data, not an AI estimate.'
+    });
+  }
+  if (k.leases_expiring_60d != null) {
+    items.push({
+      label: 'LEASES EXPIRING <60D',
+      value: String(k.leases_expiring_60d),
+      explain: 'Count from pm-engine.js\u2019s getLeasesExpiring(60), filtering the live leases records by end_date \u2014 listed individually in the Action Queue.'
+    });
+  }
+
+  return items;
+}
+
+function renderExplainItems(items){
+  if (!items.length) return '';
+  return `<div class="explain-panel">
+    <div class="explain-title">WHY THESE NUMBERS</div>
+    ${items.map(it => `<div class="explain-row">
+      <span class="explain-node">${escapeHtml(it.label)}</span>
+      <span class="explain-score">${escapeHtml(it.value)}</span>
+      <div class="explain-text">${escapeHtml(it.explain)}</div>
+    </div>`).join('')}
+  </div>`;
+}
+
 function render(){
   const data = loadRelay();
   if(!data){ renderEmpty(); return; }
@@ -291,6 +352,8 @@ function render(){
     <div class="kpi"><div class="kpi-val amber">${kpis.leases_expiring_60d ?? '&mdash;'}</div><div class="kpi-lbl">LEASES EXPIRING &lt;60D</div></div>
     <div class="kpi"><div class="kpi-val red">${kpis.vendor_compliance_flags ?? '&mdash;'}</div><div class="kpi-lbl">VENDOR COMPLIANCE FLAGS</div></div>
   </div>`;
+
+  html += renderExplainItems(getExplainItems(data));
 
   if(data.ai_summary){
     html += `<div class="ai-box"><strong style="color:var(--accent);font-family:'Orbitron',sans-serif;font-size:.65rem;letter-spacing:.1em;display:block;margin-bottom:8px;">AI PORTFOLIO ANALYSIS</strong>${escapeHtml(data.ai_summary)}</div>`;
