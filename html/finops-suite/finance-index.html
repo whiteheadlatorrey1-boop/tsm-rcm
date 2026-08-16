@@ -147,6 +147,16 @@ main {
   /* METRICS / CARDS */
   .metrics-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:12px; margin-bottom:20px; }
   .metric-card { background:var(--bg2); border:1px solid var(--border2); padding:14px; }
+  .finding-card { background:var(--bg2); border:1px solid var(--border2); border-left:3px solid var(--text-dim); padding:10px 12px; font-size:11px; }
+  .finding-card.sev-high { border-left-color:var(--red,#ff3b3b); }
+  .finding-card.sev-medium { border-left-color:var(--amber,#ffb300); }
+  .finding-card.sev-low { border-left-color:var(--green,#00ff41); }
+  .finding-top { display:flex; align-items:center; gap:8px; }
+  .finding-sev { text-transform:uppercase; font-size:9px; letter-spacing:1px; padding:1px 6px; border:1px solid currentColor; }
+  .finding-area { color:var(--text-dim); font-size:10px; }
+  .finding-title { margin-top:4px; }
+  .finding-rec { margin-top:4px; color:var(--text-dim); font-size:10px; }
+  .finding-resolve { margin-left:auto; }
   .metric-label { color:var(--text-dim); font-size:10px; letter-spacing:1px; margin-bottom:6px; }
   .metric-value { color:var(--green); font-size:22px; font-weight:bold; text-shadow:0 0 10px var(--green2); }
   .metric-sub { color:var(--text-dim); font-size:10px; margin-top:4px; }
@@ -629,14 +639,19 @@ console.log("TSM_UI: Direct Neural Link Established.");
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
         <div class="metric-card">
           <div class="metric-label">OPEN FINDINGS</div>
-          <div class="metric-value" style="color:var(--amber)">7</div>
-          <div class="metric-sub">3 high · 4 medium</div>
+          <div class="metric-value" id="audit-open-findings" style="color:var(--amber)">—</div>
+          <div class="metric-sub" id="audit-open-findings-sub">no scans run yet</div>
         </div>
         <div class="metric-card">
-          <div class="metric-label">CONTROLS TESTED</div>
-          <div class="metric-value">142</div>
-          <div class="metric-sub">138 passed · 4 exceptions</div>
+          <div class="metric-label">AUDIT RUNS</div>
+          <div class="metric-value" id="audit-runs-count">—</div>
+          <div class="metric-sub" id="audit-runs-sub">no scans run yet</div>
         </div>
+      </div>
+
+      <div id="audit-findings-panel" style="margin-bottom:16px;display:none;">
+        <div class="section-title" style="font-size:11px;margin-bottom:8px;">OPEN FINDINGS</div>
+        <div id="audit-findings-list" style="display:flex;flex-direction:column;gap:8px;"></div>
       </div>
 
       <div id="audit-messages" class="ai-messages" style="min-height:200px;max-height:380px;background:var(--bg2);border:1px solid var(--border2);"></div>
@@ -946,6 +961,11 @@ async function sendTabMessage(tab) {
   const msg = inputEl.value.trim();
   if (!msg) return;
   inputEl.value = '';
+
+  // Audit tab is backed by the real, persisted /api/audit engine (findings +
+  // summary cards), not the generic chat proxy — keep it on that path.
+  if (tab === 'audit') { return runAuditQuery(msg); }
+
   const btn = inputEl.closest('.ai-input-bar').querySelector('.ai-send');
   btn.disabled = true;
 
@@ -1063,7 +1083,115 @@ async function runAutoQuery(tab, prompt) {
   if (btn) btn.disabled = false;
 }
 
-function runAudit() { runAutoQuery('audit', 'Run a comprehensive audit scan covering SOX 302/404 controls, PCAOB AS 2201 deficiencies, and IFRS 17 compliance gaps. Identify the top 3 risk areas and recommend immediate remediation steps.'); }
+// ── AUDIT ENGINE: real /api/audit wiring (findings + summary cards) ────────
+async function runAuditQuery(query, sector, factor) {
+  const convo = conversations.audit;
+  convo.push({ role: 'user', content: query });
+  renderMessages('audit-messages', convo, null);
+  const btn = document.getElementById('audit-input')?.closest('.ai-input-bar')?.querySelector('.ai-send');
+  if (btn) btn.disabled = true;
+
+  try {
+    const res = await fetch('/api/audit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, sector: sector || null, factor: factor || null })
+    });
+    const data = await res.json();
+    convo.push({ role: 'assistant', content: data.output || 'Audit scan returned no output.' });
+    renderMessages('audit-messages', convo, null);
+  } catch (e) {
+    convo.push({ role: 'assistant', content: `⚠ Error: ${e.message}` });
+    renderMessages('audit-messages', convo, null);
+  }
+  if (btn) btn.disabled = false;
+  loadAuditSummary();
+  loadOpenFindings();
+}
+
+function runAudit() {
+  runAuditQuery(
+    'Run a comprehensive audit scan covering SOX 302/404 controls, PCAOB AS 2201 deficiencies, and IFRS 17 compliance gaps. Identify the top risk areas and recommend immediate remediation steps.',
+    'General', 'Comprehensive Scan'
+  );
+}
+
+async function loadAuditSummary() {
+  const valEl = document.getElementById('audit-open-findings');
+  const subEl = document.getElementById('audit-open-findings-sub');
+  const runsEl = document.getElementById('audit-runs-count');
+  const runsSubEl = document.getElementById('audit-runs-sub');
+  if (!valEl) return;
+  try {
+    const res = await fetch('/api/audit/summary');
+    if (!res.ok) throw new Error('summary unavailable');
+    const s = await res.json();
+    valEl.textContent = s.openFindings.total;
+    subEl.textContent = s.openFindings.total
+      ? `${s.openFindings.high} high · ${s.openFindings.medium} medium · ${s.openFindings.low} low`
+      : (s.totalRuns ? 'no open findings' : 'no scans run yet');
+    runsEl.textContent = s.totalRuns;
+    runsSubEl.textContent = s.totalRuns
+      ? `${s.cleanRuns} clean · ${s.degradedRuns} degraded`
+      : 'no scans run yet';
+  } catch (e) {
+    valEl.textContent = '—';
+    subEl.textContent = 'summary unavailable';
+    runsEl.textContent = '—';
+    runsSubEl.textContent = 'summary unavailable';
+  }
+}
+
+function renderFindingCard(f) {
+  const div = document.createElement('div');
+  div.className = `finding-card sev-${f.severity}`;
+  div.innerHTML = `
+    <div class="finding-top">
+      <span class="finding-sev">${escHtml(f.severity)}</span>
+      ${f.area ? `<span class="finding-area">${escHtml(f.area)}</span>` : ''}
+      <button class="btn finding-resolve" data-finding-id="${f.id}">✓ RESOLVE</button>
+    </div>
+    <div class="finding-title">${escHtml(f.title)}</div>
+    ${f.recommendation ? `<div class="finding-rec">→ ${escHtml(f.recommendation)}</div>` : ''}
+  `;
+  div.querySelector('.finding-resolve').addEventListener('click', () => resolveFinding(f.id));
+  return div;
+}
+
+async function loadOpenFindings() {
+  const panel = document.getElementById('audit-findings-panel');
+  const list = document.getElementById('audit-findings-list');
+  if (!panel || !list) return;
+  try {
+    const res = await fetch('/api/audit/findings?status=open');
+    if (!res.ok) throw new Error('findings unavailable');
+    const data = await res.json();
+    list.innerHTML = '';
+    if (!data.findings.length) { panel.style.display = 'none'; return; }
+    data.findings.forEach(f => list.appendChild(renderFindingCard(f)));
+    panel.style.display = 'block';
+  } catch (e) {
+    panel.style.display = 'none';
+  }
+}
+
+async function resolveFinding(id) {
+  try {
+    const res = await fetch(`/api/audit/findings/${id}/resolve`, { method: 'POST' });
+    if (!res.ok) throw new Error('resolve failed');
+  } catch (e) {
+    console.warn('[TSM] resolveFinding failed:', e.message);
+  }
+  loadAuditSummary();
+  loadOpenFindings();
+}
+
+// Populate cards/findings on load, not just after a run
+document.addEventListener('DOMContentLoaded', () => {
+  loadAuditSummary();
+  loadOpenFindings();
+});
+
 function analyzeInvoices() { runAutoQuery('invoices', 'Analyze the current invoice aging: $2.4M outstanding, $640K overdue (INV-2026-0038 at 12 days, INV-2026-0035 at 20 days). Provide a collections strategy, cash flow impact assessment, and recommended escalation steps.'); }
 function runHealthDiag() { runAutoQuery('health', 'Run a full financial health diagnostic: Liquidity 2.4x, Debt/EBITDA 3.1x, EBITDA margin 28.4%, revenue growth 18.4%, operating cashflow $142M, covenant headroom 22%. Score each dimension, identify risks, and recommend improvements to raise the overall score from 87 to 95+.'); }
 function generateReport() { runAutoQuery('reports', 'Generate an executive financial report for Q1-2026 covering portfolio performance ($1.23B AUM, +18.4% YTD), compliance status (2 flagged items), audit readiness, and key risk indicators. Format as a board-ready summary.'); }

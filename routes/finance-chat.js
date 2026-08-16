@@ -63,7 +63,19 @@ const AUDIT_SYSTEM_PROMPT =
   'not invent specific dollar amounts, dates, account names, or deadlines as ' +
   'if they were observed — use those only if they were literally present in ' +
   'the query itself. Never mention your provider, model name, or ' +
-  'underlying infrastructure.';
+  'underlying infrastructure.\n\n' +
+  'After your narrative answer, append a fenced block of the individual risk ' +
+  'items you raised, formatted EXACTLY like this (no other text inside the ' +
+  'fence):\n' +
+  '```findings\n' +
+  '[{"severity":"high|medium|low","area":"short control area name","title":' +
+  '"one-line description of the gap","recommendation":"one-line remediation ' +
+  'step"}]\n' +
+  '```\n' +
+  'List at most 6 items, ordered by severity (high first). If your answer ' +
+  'raised no discrete risk items, emit an empty array []. Every item must be ' +
+  'derived from what you actually wrote above it — do not add items to the ' +
+  'JSON that weren\'t discussed in the narrative.';
 
 // ── In-memory audit log ─────────────────────────────────────────────────────
 // Append-only. Swap for Postgres/Mongo/etc when ready — keep the shape below
@@ -76,6 +88,60 @@ function appendAuditEntry(entry) {
   AUDIT_LOG.push(entry);
   if (AUDIT_LOG.length > MAX_LOG) AUDIT_LOG.shift();
   return entry;
+}
+
+// ── In-memory findings store ────────────────────────────────────────────────
+// Each finding is derived from a real audit run's own output (see
+// extractFindings below) and tracked open/resolved so the Audit Engine tab's
+// metric cards and findings panel reflect actual runs, never placeholder
+// numbers. Swap for a real table alongside AUDIT_LOG when persisting to a DB.
+const FINDINGS_LOG = [];
+const MAX_FINDINGS = 2000;
+const VALID_SEVERITIES = new Set(['high', 'medium', 'low']);
+
+function extractFindings(rawText, auditEntryId, sector, factor) {
+  if (!rawText) return { narrative: '', findings: [] };
+  const match = rawText.match(/```findings\s*([\s\S]*?)```/i);
+  const narrative = match ? rawText.slice(0, match.index).trim() : rawText.trim();
+  if (!match) return { narrative, findings: [] };
+
+  let parsed;
+  try {
+    parsed = JSON.parse(match[1].trim());
+  } catch (e) {
+    return { narrative, findings: [] }; // malformed block — log the run, zero findings, don't crash
+  }
+  if (!Array.isArray(parsed)) return { narrative, findings: [] };
+
+  const findings = parsed.slice(0, 6).map(item => {
+    if (!item || typeof item !== 'object') return null;
+    const severity = VALID_SEVERITIES.has(String(item.severity).toLowerCase())
+      ? String(item.severity).toLowerCase() : 'medium';
+    const title = typeof item.title === 'string' ? item.title.slice(0, 300) : '';
+    if (!title) return null; // no usable title — skip rather than store a blank finding
+    return {
+      id: crypto.randomUUID(),
+      auditEntryId,
+      sector: sector || null,
+      factor: factor || null,
+      severity,
+      area: typeof item.area === 'string' ? item.area.slice(0, 120) : null,
+      title,
+      recommendation: typeof item.recommendation === 'string' ? item.recommendation.slice(0, 300) : null,
+      status: 'open',
+      ts: new Date().toISOString(),
+      resolvedAt: null
+    };
+  }).filter(Boolean);
+
+  return { narrative, findings };
+}
+
+function appendFindings(findings) {
+  for (const f of findings) {
+    FINDINGS_LOG.push(f);
+    if (FINDINGS_LOG.length > MAX_FINDINGS) FINDINGS_LOG.shift();
+  }
 }
 
 async function callGroq(systemPrompt, messages, { max_tokens = 900, temperature = 0.25 } = {}) {
@@ -149,14 +215,25 @@ auditRouter.post('/', express.json({ limit: '5mb' }), async (req, res) => {
 
   const { text, degraded, reason } = await callGroq(AUDIT_SYSTEM_PROMPT, [{ role: 'user', content: query }]);
 
+  const entryId = crypto.randomUUID();
+  let narrative = null;
+  let findings = [];
+  if (!degraded) {
+    const extracted = extractFindings(text, entryId, sector, factor);
+    narrative = extracted.narrative;
+    findings = extracted.findings;
+    appendFindings(findings);
+  }
+
   const entry = {
-    id: crypto.randomUUID(),
+    id: entryId,
     ts: new Date().toISOString(),
     sector: sector || null,
     factor: factor || null,
     query,
     actor: actor || 'unknown',
-    output: degraded ? null : text,
+    output: degraded ? null : narrative,
+    findingCount: findings.length,
     degraded,
     degradedReason: degraded ? reason : undefined
   };
@@ -169,7 +246,46 @@ auditRouter.post('/', express.json({ limit: '5mb' }), async (req, res) => {
       degraded: true
     });
   }
-  return res.json({ output: text, id: entry.id, degraded: false });
+  return res.json({ output: narrative, id: entry.id, findings, degraded: false });
+});
+
+// ── GET /api/audit/summary ──────────────────────────────────────────────────
+// Real numbers only, computed live from AUDIT_LOG/FINDINGS_LOG. Zero runs so
+// far → zeroed-out cards, not a fabricated placeholder.
+auditRouter.get('/summary', (req, res) => {
+  const open = FINDINGS_LOG.filter(f => f.status === 'open');
+  const resolved = FINDINGS_LOG.filter(f => f.status === 'resolved');
+  const clean = AUDIT_LOG.filter(e => !e.degraded);
+  res.json({
+    totalRuns: AUDIT_LOG.length,
+    cleanRuns: clean.length,
+    degradedRuns: AUDIT_LOG.length - clean.length,
+    lastRunAt: AUDIT_LOG.length ? AUDIT_LOG[AUDIT_LOG.length - 1].ts : null,
+    openFindings: {
+      total: open.length,
+      high: open.filter(f => f.severity === 'high').length,
+      medium: open.filter(f => f.severity === 'medium').length,
+      low: open.filter(f => f.severity === 'low').length
+    },
+    resolvedFindings: resolved.length
+  });
+});
+
+// ── GET /api/audit/findings ─────────────────────────────────────────────────
+auditRouter.get('/findings', (req, res) => {
+  const status = ['open', 'resolved'].includes(req.query.status) ? req.query.status : 'open';
+  const limit = Math.min(parseInt(req.query.limit, 10) || 50, MAX_FINDINGS);
+  const list = FINDINGS_LOG.filter(f => f.status === status).slice(-limit).reverse();
+  res.json({ count: list.length, findings: list });
+});
+
+// ── POST /api/audit/findings/:id/resolve ────────────────────────────────────
+auditRouter.post('/findings/:id/resolve', express.json({ limit: '1mb' }), (req, res) => {
+  const finding = FINDINGS_LOG.find(f => f.id === req.params.id);
+  if (!finding) return res.status(404).json({ error: 'finding not found' });
+  finding.status = 'resolved';
+  finding.resolvedAt = new Date().toISOString();
+  res.json(finding);
 });
 
 // ── GET /api/audit/history ───────────────────────────────────────────────────
