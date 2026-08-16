@@ -1187,8 +1187,27 @@ app.post('/api/hc/stream', async (req, res) => {
     });
 
     if (!groqRes.ok) {
-      const err = await groqRes.json();
-      return res.status(502).json({ error: err.error?.message || 'Groq error' });
+      // Same class of bug as the client-side fix in poc-html's
+      // groqStreamModel: this always did `await groqRes.json()`, assuming
+      // Groq's error response is JSON. Groq (or anything between this
+      // server and Groq — a gateway timeout, a Cloudflare block page) can
+      // return non-JSON on failure, and that throws here uncaught by
+      // anything except the outer catch below, which reports a generic
+      // 500 with the JSON-parse error message instead of whatever Groq
+      // actually said. Now checks content-type first and falls back to
+      // raw text.
+      let msg = 'Groq error';
+      try {
+        const ct = groqRes.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
+          const err = await groqRes.json();
+          msg = err.error?.message || msg;
+        } else {
+          const txt = await groqRes.text();
+          if (txt) msg = txt.replace(/\s+/g, ' ').trim().slice(0, 300);
+        }
+      } catch (_) {}
+      return res.status(502).json({ error: msg });
     }
 
     res.setHeader('Content-Type', 'text/event-stream');

@@ -436,7 +436,29 @@ async function groqStreamModel(model, sys, user, onChunk, onDone, onError, maxTo
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ model, sys, user, maxTok })
     });
-    if(!res.ok){ const e=await res.json(); onError(e.error?.message||'Server error '+res.status); return; }
+    if(!res.ok){
+      // Previously this always did `await res.json()`, assuming the error
+      // body was JSON. If anything in front of the app (a proxy timeout, a
+      // WAF/CDN block page, a 502/504) returns HTML instead, res.json()
+      // itself throws "Unexpected token '<'..." — which is what actually
+      // surfaced to the user, completely masking whatever the real error
+      // was. Now it checks the content-type first and falls back to raw
+      // text so the real error (or at least the first 200 chars of
+      // whatever came back) makes it to onError instead.
+      let msg = 'Server error ' + res.status;
+      try {
+        const ct = res.headers.get('content-type') || '';
+        if(ct.includes('application/json')){
+          const e = await res.json();
+          msg = e.error?.message || e.error || msg;
+        } else {
+          const txt = await res.text();
+          if(txt) msg = txt.replace(/\s+/g,' ').trim().slice(0,200);
+        }
+      } catch(_){}
+      onError(msg);
+      return;
+    }
     const reader=res.body.getReader(); const dec=new TextDecoder(); let buf='',total=0;
     while(true){
       const {done,value}=await reader.read(); if(done){onDone(total);break;}
