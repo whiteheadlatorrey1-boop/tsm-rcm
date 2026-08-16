@@ -977,7 +977,19 @@ setInterval(tick, 5000);
 
 <script>
 (function () {
-  const POLL_MS = 5000;
+  const POLL_MS = 8000;
+  // Staggers a poller's recurring interval by `offsetMs` so the 8 twin
+  // pollers on this page don't all fire in the same tick. Previously all 8
+  // fired together every 5s (some issuing 2 requests each), producing
+  // bursts of ~10-14 simultaneous requests that could trip a rate limiter
+  // even when the sustained average was fine. Spreading them across the
+  // window smooths that burst into a steady trickle instead.
+  function staggerStart(fn, offsetMs) {
+    setTimeout(() => {
+      fn();
+      setInterval(fn, POLL_MS);
+    }, offsetMs);
+  }
 
   function statusDot(status) {
     return `<span class="twin-entity-status status-${status}"></span>`;
@@ -1330,14 +1342,10 @@ setInterval(tick, 5000);
     }
   });
 
-  pollVMware();
-  pollNetwork();
-  pollAD();
-  pollDevice();
-  setInterval(pollVMware, POLL_MS);
-  setInterval(pollNetwork, POLL_MS);
-  setInterval(pollAD, POLL_MS);
-  setInterval(pollDevice, POLL_MS);
+  staggerStart(pollVMware, 0);
+  staggerStart(pollNetwork, 1000);
+  staggerStart(pollAD, 2000);
+  staggerStart(pollDevice, 3000);
 
   // ---- SLA Summary ----
   // /api/twins/sla/summary -> { onTrack, atRisk, breached, total }
@@ -1476,14 +1484,10 @@ setInterval(tick, 5000);
     renderAnalytics(latest, snapshots);
   }
 
-  pollSLA();
-  pollRisk();
-  pollTech();
-  pollAnalytics();
-  setInterval(pollSLA, POLL_MS);
-  setInterval(pollRisk, POLL_MS);
-  setInterval(pollTech, POLL_MS);
-  setInterval(pollAnalytics, POLL_MS);
+  staggerStart(pollSLA, 4000);
+  staggerStart(pollRisk, 5000);
+  staggerStart(pollTech, 6000);
+  staggerStart(pollAnalytics, 7000);
 
   // ---- Scenario Library ----
   // Browsable, filterable list of every documented anomaly-response playbook

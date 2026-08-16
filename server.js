@@ -66,6 +66,27 @@ const apiLimiter = rateLimit({
   legacyHeaders: false,
   message: { ok: false, error: 'Too many requests — please slow down.' },
 });
+
+// Twins/enterprise-lab limiter — the L1 Copilot enterprise command center
+// (html/l1-copilot/enterprise-command-center.html) runs 8 independent 5s
+// pollers against /api/twins/* (VMware, Network, AD, Device, SLA, Risk,
+// Tech, Analytics), some issuing 2 requests per tick (summary + status).
+// That's ~2-3 req/sec sustained from a single open tab, which blew through
+// the general apiLimiter's ~1 req/sec average within a couple of minutes
+// and left every widget stuck on "unreachable, will keep retrying" even
+// though the backend was fine. This is legitimate background polling, not
+// abuse, so it gets its own higher ceiling instead of sharing the general
+// budget. Mounted ahead of apiLimiter below so it takes precedence for
+// these two path prefixes.
+const twinsLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 240, // ~4 req/sec sustained — comfortably above the page's real load
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { ok: false, error: 'Too many requests — please slow down.' },
+});
+app.use(['/api/twins', '/api/enterprise-lab'], twinsLimiter);
+
 app.use('/api/', (req, res, next) => (req.path === '/health' ? next() : apiLimiter(req, res, next)));
 
 // Tighter limiter specifically on login — brute-force protection on the one
