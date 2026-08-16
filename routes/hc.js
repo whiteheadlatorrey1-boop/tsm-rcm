@@ -9,6 +9,30 @@ const {
   groqChat, SP
 } = require('./_shared');
 
+// Canonical 11 HC nodes (mirrors NODES/NODE_KEYS in hc-academy poc-html and
+// the preferredOrder list used elsewhere in this file).
+const HC_NODE_KEYS = ['operations','medical','pharmacy','insurance','financial','legal','vendors','compliance','billing','taxprep','grants'];
+
+// TSM FIX: this used to be a hardcoded stub in server.js
+// (`nodes_online: 11, executive_escalations: 3` no matter what) that never
+// read HC_NODE_STATE_FILE at all. Moved here and wired to real state so the
+// numbers reflect what's actually been escalated.
+router.get('/api/hc/strategist-rollup', (req, res) => {
+  const state = readJson(HC_NODE_STATE_FILE, {});
+  const nodesOnline = HC_NODE_KEYS.filter(k => state[k]).length;
+  const executiveEscalations = HC_NODE_KEYS.filter(k => state[k] && String(state[k].status || '').toLowerCase() === 'critical').length;
+  res.json({
+    ok: true,
+    controller: 'HC STRATEGIST',
+    status: nodesOnline > 0 ? 'ROLLUP ACTIVE' : 'AWAITING FIRST ESCALATION',
+    nodes_online: nodesOnline,
+    executive_escalations: executiveEscalations,
+    bnca: nodesOnline > 0 ? 'Enterprise healthcare synthesis complete' : 'No node-level findings escalated yet',
+    mesh: true,
+    timestamp: new Date().toISOString()
+  });
+});
+
 router.get('/api/hc/reports', (req, res) => {
   const reports = readJson(HC_REPORTS_FILE, []);
   res.json({ ok: true, count: reports.length, reports });

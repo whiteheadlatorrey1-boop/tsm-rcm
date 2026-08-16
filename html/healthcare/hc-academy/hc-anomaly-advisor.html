@@ -1,21 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Anomaly Advisor · Full Report · TSM Healthcare</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+--bg:#04060c;--bg2:#080c16;--bg3:#0c1220;--bg4:#101828;
+--border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.13);
+--text:#d4dbe8;--muted:#6b7a94;--faint:#3a4456;
+--cyan:#00e5ff;--cyan2:rgba(0,229,255,0.12);
+--green:#1ee8b6;--green2:rgba(30,232,182,0.1);
+--amber:#ffb300;--amber2:rgba(255,179,0,0.12);
+--red:#ff4d6d;--red2:rgba(255,77,109,0.1);
+--purple:#b56cff;--purple2:rgba(181,108,255,0.1);
+--mono:'JetBrains Mono','Courier New',monospace;
+}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--mono);font-size:13px;overflow-x:hidden}
+body::after{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(30,232,182,0.018) 1px,transparent 1px),linear-gradient(90deg,rgba(30,232,182,0.018) 1px,transparent 1px);background-size:44px 44px;pointer-events:none;z-index:0}
+body{padding-bottom:60px}
+.hdr{position:relative;z-index:10;display:flex;align-items:center;justify-content:space-between;padding:14px 32px;border-bottom:1px solid var(--border2);background:linear-gradient(180deg,rgba(30,232,182,0.06) 0%,transparent 100%)}
+.hdr-left{display:flex;align-items:center;gap:16px}
+.hdr-mark{width:32px;height:32px;border:1px solid var(--green);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--green);font-size:13px}
+.hdr-title{font-size:15px;font-weight:700;color:var(--green);letter-spacing:3px;text-transform:uppercase;line-height:1}
+.hdr-sub{font-size:9px;color:var(--muted);letter-spacing:1.5px;margin-top:3px;text-transform:uppercase}
+.hdr-right{display:flex;align-items:center;gap:10px}
+.hdr-badge{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;padding:4px 12px;border:1px solid}
+.hdr-badge.live{color:var(--green);border-color:var(--green);background:var(--green2)}
+.hdr-clock{font-size:10px;color:var(--muted);letter-spacing:1px}
+.main{position:relative;z-index:10;padding:24px 32px 40px;max-width:1500px;margin:0 auto}
+.sec{display:flex;align-items:center;gap:10px;margin-bottom:16px;margin-top:32px}
+.sec:first-child{margin-top:0}
+.sec::before{content:'';width:7px;height:7px;background:var(--green);transform:rotate(45deg);flex-shrink:0}
+.sec span{font-size:9px;letter-spacing:2.5px;text-transform:uppercase;color:var(--green)}
+.sec::after{content:'';flex:1;height:1px;background:var(--border)}
+.btn{padding:8px 16px;font-size:9px;letter-spacing:1.5px;text-transform:uppercase;border:1px solid;cursor:pointer;font-family:var(--mono);transition:all 0.15s;background:transparent;white-space:nowrap}
+.btn-ghost{color:var(--muted);border-color:var(--border2)}
+.btn-ghost:hover{color:var(--text);background:var(--bg3)}
+.btn-green{color:var(--green);border-color:var(--green);background:var(--green2)}
+.btn-green:hover{background:rgba(30,232,182,0.22)}
+.btn-mini{padding:4px 10px;font-size:8px}
+a.btn{text-decoration:none;display:inline-block}
+
+/* classified finding panel */
+.finding-panel{border:1px solid var(--border2);background:var(--bg2)}
+.finding-empty{padding:28px;text-align:center;color:var(--faint);font-size:11px;letter-spacing:1px}
+.finding-hdr{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--border)}
+.sev-badge{font-size:9px;letter-spacing:2px;text-transform:uppercase;padding:4px 12px;border:1px solid;font-weight:700}
+.finding-meta{font-size:9px;color:var(--muted);letter-spacing:0.5px}
+.finding-body{padding:18px}
+.finding-narrative{font-size:12px;line-height:1.7;color:var(--text);margin-bottom:16px;padding-left:12px;border-left:2px solid var(--green)}
+.finding-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:16px}
+.finding-block-label{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--faint);margin-bottom:8px}
+.finding-list{list-style:none}
+.finding-list li{display:flex;gap:8px;padding:5px 0;border-bottom:1px solid var(--border);font-size:11px;color:var(--muted);line-height:1.5}
+.exposure-num{font-size:22px;font-weight:700;color:var(--amber)}
+.node-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.node-chip{font-size:9px;letter-spacing:1px;padding:3px 10px;border:1px solid;text-transform:uppercase}
+.step-item{display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)}
+.step-num{font-size:10px;color:var(--green);flex-shrink:0;padding-top:1px}
+.step-text{font-size:11px;line-height:1.6;color:var(--text)}
+
+/* node grid — live server state */
+.node-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
+.node-card{border:1px solid var(--border2);background:var(--bg2);padding:14px;cursor:pointer;transition:all 0.15s;border-left:3px solid var(--card-color,var(--border2))}
+.node-card:hover{background:var(--bg3);border-color:var(--card-color,var(--border2))}
+.node-card.selected{background:var(--bg3);box-shadow:0 0 0 1px var(--card-color)}
+.node-card.targeted{box-shadow:0 0 0 1px var(--amber)}
+.node-card-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.node-card-label{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--text)}
+.node-card-badge{font-size:8px;letter-spacing:1px;text-transform:uppercase;padding:2px 7px;border:1px solid}
+.node-card-badge.standby{color:var(--faint);border-color:var(--faint)}
+.node-card-badge.critical{color:var(--red);border-color:var(--red);background:var(--red2)}
+.node-card-badge.warn{color:var(--amber);border-color:var(--amber);background:var(--amber2)}
+.node-card-badge.ok{color:var(--green);border-color:var(--green);background:var(--green2)}
+.node-card-sub{font-size:9px;color:var(--faint);letter-spacing:0.5px}
+
+.node-detail{border:1px solid var(--border2);background:var(--bg2);margin-top:14px;display:none}
+.node-detail.visible{display:block}
+.node-detail-hdr{display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-bottom:1px solid var(--border);background:var(--bg3)}
+.node-detail-title{font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--green)}
+.node-detail-body{padding:16px 18px;font-size:11px;line-height:1.8;color:var(--muted);white-space:pre-wrap;word-break:break-word;max-height:340px;overflow-y:auto}
+.node-detail-meta{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px;font-size:9px;color:var(--faint);letter-spacing:0.5px}
+.node-detail-meta span b{color:var(--text);font-weight:400}
+.close-x{background:none;border:none;color:var(--faint);cursor:pointer;font-size:14px}
+.close-x:hover{color:var(--text)}
+
+.summary-strip{display:flex;gap:24px;padding:14px 18px;border:1px solid var(--border2);background:var(--bg2);margin-bottom:16px;flex-wrap:wrap}
+.summary-item{display:flex;flex-direction:column;gap:2px}
+.summary-num{font-size:20px;font-weight:700;color:var(--cyan)}
+.summary-num.red{color:var(--red)}
+.summary-label{font-size:8px;letter-spacing:1.5px;text-transform:uppercase;color:var(--faint)}
+</style>
+</head>
 <body data-vertical="healthcare" data-page-role="strategist">
+
+<div class="hdr">
+  <div class="hdr-left">
+    <div class="hdr-mark">⬡</div>
+    <div>
+      <div class="hdr-title">Anomaly Advisor — Full Report</div>
+      <div class="hdr-sub">Classified findings × live HC node state</div>
+    </div>
+  </div>
+  <div class="hdr-right">
+    <span class="hdr-badge live" id="hdr-live-badge">● LIVE</span>
+    <span class="hdr-clock" id="hdr-clock"></span>
+  </div>
+</div>
+
+<div class="main">
+
+  <div class="summary-strip" id="summary-strip"></div>
+
+  <div class="sec"><span>01 · Classified Finding</span></div>
+  <div class="finding-panel" id="finding-panel">
+    <div class="finding-empty">Loading...</div>
+  </div>
+
+  <div class="sec"><span>02 · HC Node Status — Live</span>
+  </div>
+  <div style="display:flex;justify-content:flex-end;gap:8px;margin:-8px 0 12px">
+    <button class="btn btn-ghost btn-mini" onclick="refreshNodes()">↻ Refresh</button>
+    <a class="btn btn-ghost btn-mini" href="/html/healthcare/hc-strategist/index.html">Open HC Strategist →</a>
+    <a class="btn btn-ghost btn-mini" href="/html/healthcare/hc-denial-war-room.html">← Back to War Room</a>
+  </div>
+  <div class="node-grid" id="node-grid"></div>
+
+  <div class="node-detail" id="node-detail">
+    <div class="node-detail-hdr">
+      <span class="node-detail-title" id="node-detail-title">NODE</span>
+      <button class="close-x" onclick="closeNodeDetail()">✕</button>
+    </div>
+    <div class="node-detail-body" id="node-detail-body"></div>
+  </div>
+
+  <div style="margin-top:24px;display:flex;gap:10px;justify-content:flex-end">
+    <button class="btn btn-green" onclick="exportReport()">📋 Export Full Report</button>
+  </div>
+
+</div>
 
 <script>
 // ===== TSM_AUTONOMY_STANDARDIZED =====
 window.TSM_AUTONOMY_STANDARDIZED = true;
-</script><script>
+</script>
+<script src="/html/core/tsm-kernel.js"></script>
+<script>
 // ===== TSM WAR ROOM SCOPED RELAY FIX =====
 window.tsmMission = window.tsmMission || {
   id: "HEALTHCARE-" + Date.now().toString(36),
   vertical: "healthcare",
-  
 };
-
 function tsmWriteRelay(payload){
-  TSM_KERNEL.setRelay("healthcare", JSON.stringify(payload));
+  try { if (window.TSM_KERNEL) TSM_KERNEL.setRelay("healthcare", JSON.stringify(payload)); } catch(e){}
 }
 </script>
 
+<script>
+// ── Same 11 HC nodes / colors as HC Academy PoC + hc-strategist ──────────
+const NODES = [
+  { key:'operations', label:'Operations',  color:'#00aaff' },
+  { key:'medical',     label:'Medical',     color:'#ff4d6d' },
+  { key:'pharmacy',    label:'Pharmacy',    color:'#b56cff' },
+  { key:'insurance',   label:'Insurance',   color:'#ff7a00' },
+  { key:'financial',   label:'Financial',   color:'#00ffc6' },
+  { key:'legal',       label:'Legal',       color:'#b56cff' },
+  { key:'vendors',     label:'Vendors',     color:'#ff7a00' },
+  { key:'compliance',  label:'Compliance',  color:'#00ffc6' },
+  { key:'billing',     label:'Billing',     color:'#ffc400' },
+  { key:'taxprep',     label:'Tax Prep',    color:'#ffc400' },
+  { key:'grants',      label:'Grants',      color:'#00aaff' }
+];
+const NODE_KEYS = NODES.map(n => n.key);
 
-  <script src="../../../js/tsm-guide-engine.js" defer></script>
+// tsm-doc-anomaly-bridge.js (the banner shown on individual node pages) uses
+// slightly different node ids than the 11 canonical NODE_KEYS above
+// ('vendor' not 'vendors', 'tax' not 'taxprep', plus a 'denial' pseudo-node
+// that maps onto billing). Normalize so targeted-node highlighting lines up.
+const NODE_ID_ALIASES = { vendor:'vendors', tax:'taxprep', denial:'billing' };
+function normalizeNodeKey(id){
+  const k = String(id || '').toLowerCase();
+  return NODE_ID_ALIASES[k] || k;
+}
+
+let liveState = {};
+let selectedNode = null;
+let classifiedPayload = null;
+let pollTimer = null;
+
+setInterval(() => {
+  document.getElementById('hdr-clock').textContent = new Date().toLocaleTimeString('en-US',{hour12:false});
+}, 1000);
+
+// ── 1. LOAD CLASSIFIED FINDING (written by hc-denial-war-room.html's
+//    Anomaly Advisor scan into localStorage 'tsm-doc-anomaly') ───────────
+function loadClassifiedFinding(){
+  try {
+    const raw = localStorage.getItem('tsm-doc-anomaly');
+    if (!raw) { classifiedPayload = null; renderFinding(); return; }
+    const payload = JSON.parse(raw);
+    // Stale check — same 4hr window the node-page banner uses.
+    if (payload.ts && (Date.now() - payload.ts) > 4 * 3600 * 1000) {
+      classifiedPayload = null; renderFinding(); return;
+    }
+    classifiedPayload = payload;
+  } catch(e) { classifiedPayload = null; }
+  renderFinding();
+}
+
+function severityMeta(checkStatus){
+  const s = (checkStatus || '').toUpperCase();
+  if (['DENIAL_RISK','COMPLIANCE_BLOCK','AUTH_BLOCK','PAYMENT_BLOCK','LEGAL_HOLD'].includes(s))
+    return { label:'CRITICAL', color:'var(--red)' };
+  if (['DOCUMENTATION_BLOCK','THROUGHPUT_BLOCK','DISPENSE_BLOCK','VENDOR_BLOCK','GRANT_HOLD'].includes(s))
+    return { label:'HIGH', color:'var(--amber)' };
+  if (['FILING_BLOCK'].includes(s))
+    return { label:'MEDIUM', color:'var(--purple)' };
+  return { label:'ACTIVE', color:'var(--cyan)' };
+}
+
+function escapeHtml(s){
+  return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function renderFinding(){
+  const panel = document.getElementById('finding-panel');
+  if (!classifiedPayload) {
+    panel.innerHTML = `<div class="finding-empty">
+      No document has been scanned by the Anomaly Advisor yet in this session.<br>
+      Open the <a href="/html/healthcare/hc-denial-war-room.html" style="color:var(--green)">HC Denial War Room</a>,
+      run a document through the Anomaly Advisor panel, then return here for the full report.<br><br>
+      The live HC Node Status grid below still reflects real server state.
+    </div>`;
+    renderSummaryStrip();
+    return;
+  }
+
+  const sev = severityMeta(classifiedPayload.checkStatus);
+  const findings = Array.isArray(classifiedPayload.findings) ? classifiedPayload.findings : [];
+  const steps = Array.isArray(classifiedPayload.steps) ? classifiedPayload.steps : [];
+  const targetNodes = Array.isArray(classifiedPayload.targetNodeIds) ? classifiedPayload.targetNodeIds : [];
+  const normTargets = targetNodes.map(normalizeNodeKey);
+
+  const chipsHtml = normTargets.map(k => {
+    const node = NODES.find(n => n.key === k);
+    const label = node ? node.label : k;
+    const color = node ? node.color : 'var(--faint)';
+    return `<span class="node-chip" style="color:${color};border-color:${color}">${escapeHtml(label)}</span>`;
+  }).join('') || '<span class="node-chip" style="color:var(--faint);border-color:var(--faint)">No node targeted</span>';
+
+  const findingsHtml = findings.length
+    ? findings.map(f => `<li><span>${f.startsWith('❌') ? '❌' : f.startsWith('✓') ? '✅' : '⚠️'}</span><span>${escapeHtml(f.replace(/^[❌✓⚠️]\s*/,''))}</span></li>`).join('')
+    : '<li style="color:var(--faint)">No findings recorded.</li>';
+
+  const stepsHtml = steps.length
+    ? steps.map((s,i) => `<div class="step-item"><span class="step-num">${String(i+1).padStart(2,'0')}.</span><span class="step-text">${escapeHtml(s)}</span></div>`).join('')
+    : '<div style="color:var(--faint);font-size:11px">No remediation steps recorded.</div>';
+
+  const exposure = Number(classifiedPayload.financialImpact || 0);
+
+  panel.innerHTML = `
+    <div class="finding-hdr">
+      <span class="sev-badge" style="color:${sev.color};border-color:${sev.color}">${sev.label} · ${escapeHtml(classifiedPayload.checkStatus || 'UNKNOWN')}</span>
+      <span class="finding-meta">${classifiedPayload.docType ? escapeHtml(classifiedPayload.docType) + ' · ' : ''}${classifiedPayload.timestamp ? new Date(classifiedPayload.timestamp).toLocaleString() : ''}</span>
+    </div>
+    <div class="finding-body">
+      <div class="finding-narrative">${escapeHtml(classifiedPayload.narrative || 'No narrative captured.')}</div>
+      <div class="finding-grid">
+        <div>
+          <div class="finding-block-label">Findings</div>
+          <ul class="finding-list">${findingsHtml}</ul>
+        </div>
+        <div>
+          <div class="finding-block-label">Financial Exposure</div>
+          <div class="exposure-num">$${exposure.toLocaleString()}</div>
+          <div class="finding-block-label" style="margin-top:14px">Targeted HC Nodes</div>
+          <div class="node-chips">${chipsHtml}</div>
+        </div>
+      </div>
+      <div class="finding-block-label">Remediation Steps</div>
+      ${stepsHtml}
+    </div>
+  `;
+
+  renderSummaryStrip();
+}
+
+// ── 2. LOAD LIVE NODE STATE FROM SERVER ───────────────────────────────────
+async function refreshNodes(){
+  try {
+    const res = await fetch('/api/hc/nodes');
+    const data = await res.json();
+    liveState = (data && data.state) || {};
+    document.getElementById('hdr-live-badge').textContent = '● LIVE';
+    document.getElementById('hdr-live-badge').style.color = 'var(--green)';
+  } catch(e) {
+    document.getElementById('hdr-live-badge').textContent = '● OFFLINE';
+    document.getElementById('hdr-live-badge').style.color = 'var(--red)';
+  }
+  renderNodeGrid();
+  renderSummaryStrip();
+  if (selectedNode) renderNodeDetail(selectedNode);
+}
+
+function nodeBadge(nodeState){
+  if (!nodeState) return { cls:'standby', text:'STANDBY' };
+  const s = String(nodeState.status || '').toLowerCase();
+  if (s === 'critical') return { cls:'critical', text:'CRITICAL' };
+  if (s === 'online' || s === 'ok' || s === 'cleared') return { cls:'ok', text:(nodeState.status || 'ONLINE').toUpperCase() };
+  return { cls:'warn', text:(nodeState.status || 'FLAGGED').toUpperCase() };
+}
+
+function renderNodeGrid(){
+  const targetSet = new Set(
+    (classifiedPayload && Array.isArray(classifiedPayload.targetNodeIds) ? classifiedPayload.targetNodeIds : [])
+      .map(normalizeNodeKey)
+  );
+  document.getElementById('node-grid').innerHTML = NODES.map(n => {
+    const ns = liveState[n.key];
+    const badge = nodeBadge(ns);
+    const targeted = targetSet.has(n.key);
+    const sub = ns ? (ns.system || ns.location || 'Live telemetry on file') : 'No findings escalated yet';
+    return `<div class="node-card${selectedNode===n.key?' selected':''}${targeted?' targeted':''}" style="--card-color:${n.color}" onclick="selectNode('${n.key}')">
+      <div class="node-card-top">
+        <span class="node-card-label">${n.label}${targeted ? ' ⚠' : ''}</span>
+        <span class="node-card-badge ${badge.cls}">${badge.text}</span>
+      </div>
+      <div class="node-card-sub">${escapeHtml(sub)}</div>
+    </div>`;
+  }).join('');
+}
+
+function selectNode(key){
+  selectedNode = key;
+  renderNodeGrid();
+  renderNodeDetail(key);
+}
+
+function renderNodeDetail(key){
+  const node = NODES.find(n => n.key === key);
+  const ns = liveState[key];
+  const detail = document.getElementById('node-detail');
+  document.getElementById('node-detail-title').textContent = node.label + ' — Live State';
+  const body = document.getElementById('node-detail-body');
+  if (!ns) {
+    body.innerHTML = '<div style="color:var(--faint)">No findings have been escalated to this node yet.</div>';
+  } else {
+    const meta = `<div class="node-detail-meta">
+      <span>Status: <b>${escapeHtml(ns.status || '—')}</b></span>
+      <span>System: <b>${escapeHtml(ns.system || '—')}</b></span>
+      <span>Location: <b>${escapeHtml(ns.location || '—')}</b></span>
+      <span>Updated: <b>${ns.updatedAt ? new Date(ns.updatedAt).toLocaleString() : '—'}</b></span>
+    </div>`;
+    const findings = ns.findings ? `<div style="margin-bottom:12px"><div class="finding-block-label">Findings</div>${escapeHtml(ns.findings)}</div>` : '';
+    const bnca = ns.bnca ? `<div><div class="finding-block-label">BNCA Analysis</div>${escapeHtml(ns.bnca)}</div>` : '';
+    body.innerHTML = meta + findings + bnca;
+  }
+  detail.classList.add('visible');
+  detail.scrollIntoView({ behavior:'smooth', block:'nearest' });
+}
+
+function closeNodeDetail(){
+  selectedNode = null;
+  document.getElementById('node-detail').classList.remove('visible');
+  renderNodeGrid();
+}
+
+function renderSummaryStrip(){
+  const total = NODE_KEYS.length;
+  const escalated = NODE_KEYS.filter(k => liveState[k]).length;
+  const critical = NODE_KEYS.filter(k => liveState[k] && String(liveState[k].status||'').toLowerCase()==='critical').length;
+  const targetCount = classifiedPayload && Array.isArray(classifiedPayload.targetNodeIds) ? classifiedPayload.targetNodeIds.length : 0;
+  const exposure = classifiedPayload ? Number(classifiedPayload.financialImpact || 0) : 0;
+  document.getElementById('summary-strip').innerHTML = `
+    <div class="summary-item"><span class="summary-num">${escalated} / ${total}</span><span class="summary-label">Nodes with live findings</span></div>
+    <div class="summary-item"><span class="summary-num red">${critical}</span><span class="summary-label">Critical nodes</span></div>
+    <div class="summary-item"><span class="summary-num">${targetCount}</span><span class="summary-label">Nodes targeted by this finding</span></div>
+    <div class="summary-item"><span class="summary-num">$${exposure.toLocaleString()}</span><span class="summary-label">Classified exposure</span></div>
+  `;
+}
+
+// ── 3. EXPORT ──────────────────────────────────────────────────────────
+function exportReport(){
+  const lines = ['TSM ANOMALY ADVISOR — FULL REPORT', '===================================', ''];
+  if (classifiedPayload) {
+    lines.push('CLASSIFIED FINDING', '------------------');
+    lines.push('Status:    ' + (classifiedPayload.checkStatus || '—'));
+    lines.push('Doc Type:  ' + (classifiedPayload.docType || '—'));
+    lines.push('Exposure:  $' + Number(classifiedPayload.financialImpact || 0).toLocaleString());
+    lines.push('Narrative: ' + (classifiedPayload.narrative || '—'));
+    lines.push('');
+    lines.push('Findings:');
+    (classifiedPayload.findings || []).forEach(f => lines.push('  ' + f));
+    lines.push('');
+    lines.push('Remediation Steps:');
+    (classifiedPayload.steps || []).forEach((s,i) => lines.push('  ' + (i+1) + '. ' + s));
+    lines.push('');
+  } else {
+    lines.push('No classified finding loaded this session.', '');
+  }
+  lines.push('LIVE HC NODE STATE', '------------------');
+  NODES.forEach(n => {
+    const ns = liveState[n.key];
+    if (ns) {
+      lines.push(n.label + ' — ' + (ns.status || 'ONLINE') + ' — ' + (ns.system || '') + ' — updated ' + (ns.updatedAt || ''));
+    } else {
+      lines.push(n.label + ' — no findings escalated');
+    }
+  });
+  lines.push('', 'Exported: ' + new Date().toLocaleString());
+
+  const blob = new Blob([lines.join('\n')], { type:'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'hc-anomaly-advisor-report-' + Date.now() + '.txt';
+  a.click();
+}
+
+// ── INIT ───────────────────────────────────────────────────────────────
+loadClassifiedFinding();
+refreshNodes();
+pollTimer = setInterval(refreshNodes, 15000);
+window.addEventListener('storage', (e) => { if (e.key === 'tsm-doc-anomaly') loadClassifiedFinding(); });
+</script>
+
 </body>
+</html>

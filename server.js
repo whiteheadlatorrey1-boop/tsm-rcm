@@ -1027,9 +1027,8 @@ app.post('/api/bpo/query', validateQueryBody, async (req, res) => {
 });
 app.post('/api/wip/sector-ai', (req, res) => res.json({ content: 'ok' }));
 
-app.get('/api/hc/strategist-rollup', (req, res) => {
-  res.json({ ok: true, controller: 'HC STRATEGIST', status: 'ROLLUP ACTIVE', nodes_online: 11, executive_escalations: 3, bnca: 'Enterprise healthcare synthesis complete', mesh: true, timestamp: new Date().toISOString() });
-});
+// TSM FIX: hardcoded stub removed — real handler now lives in routes/hc.js
+// (reads HC_NODE_STATE_FILE instead of always returning nodes_online:11).
 
 // TSM FIX: this used to be a hardcoded stub returning {status, nodes:[...]}
 // (no `state` field). It registered before `app.use(require('./routes/hc'))`
