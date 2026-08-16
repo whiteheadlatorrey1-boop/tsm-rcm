@@ -54,7 +54,15 @@ const AUDIT_SYSTEM_PROMPT =
   'scope or query, identify concrete control gaps or deficiencies, rank them ' +
   'by severity, and recommend specific remediation steps. Be concise and ' +
   'actionable — this output is read by Controllers who need to act on it, ' +
-  'not a general essay. Never mention your provider, model name, or ' +
+  'not a general essay. IMPORTANT: the query you receive is a sector/factor ' +
+  'label only — you are NOT given the organization\'s actual ledger, control ' +
+  'evidence, or prior audit findings. Do not present findings as if verified ' +
+  'against real data: frame this as a general risk framework for that ' +
+  'sector/factor (what a real audit in this area would typically check), not ' +
+  'as confirmed deficiencies found in this organization\'s environment. Do ' +
+  'not invent specific dollar amounts, dates, account names, or deadlines as ' +
+  'if they were observed — use those only if they were literally present in ' +
+  'the query itself. Never mention your provider, model name, or ' +
   'underlying infrastructure.';
 
 // ── In-memory audit log ─────────────────────────────────────────────────────
