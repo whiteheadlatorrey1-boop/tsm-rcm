@@ -178,6 +178,10 @@ tr:hover td{background:#0f1f0f}
         <div style="font-size:8px;color:#556655;margin-bottom:2px;letter-spacing:1px">PENALTY EXPOSURE</div>
         <input id="intake-amount" class="guide-field" type="text" placeholder="e.g. $42,000">
       </div>
+      <div>
+        <div style="font-size:8px;color:#556655;margin-bottom:2px;letter-spacing:1px">REMEDIATION DEADLINE</div>
+        <input id="intake-deadline" class="guide-field" type="date">
+      </div>
     </div>
     <div style="font-size:8px;color:#556655;margin-bottom:2px;letter-spacing:1px">ISSUE / REGULATORY GAP</div>
     <textarea id="intake-issue" class="guide-field" rows="2" placeholder="e.g. Prior Authorization SLA breaches and CPT 99215 upcoding pattern creating audit risk." style="resize:none;width:100%;margin-bottom:6px"></textarea>
@@ -515,7 +519,7 @@ const TAB_CONFIG = {
 
 let currentTab = 'dash';
 const stepsCompleted = { 1: false, 2: false };
-let clientData = { patient:'Maria Santos', claim:'27447', payer:'BlueCross BlueShield', denial:'CMS-Audit', cpt:'99215', amount:'$42,000', issue:'Prior Authorization SLA breaches and CPT 99215 upcoding pattern creating audit risk.' };
+let clientData = { patient:'Maria Santos', claim:'27447', payer:'BlueCross BlueShield', denial:'CMS-Audit', cpt:'99215', amount:'$42,000', issue:'Prior Authorization SLA breaches and CPT 99215 upcoding pattern creating audit risk.', deadline:'' };
 
 function v(id){ const el=document.getElementById(id); return el?el.value.trim():''; }
 
@@ -527,11 +531,16 @@ function applyIntake(){
   const cp=v('intake-cpt')||clientData.cpt;
   const am=v('intake-amount')||clientData.amount;
   const is=v('intake-issue')||clientData.issue;
-  clientData={patient:p,claim:cl,payer:py,denial:dn,cpt:cp,amount:am,issue:is};
+  const dl=v('intake-deadline')||clientData.deadline;
+  clientData={patient:p,claim:cl,payer:py,denial:dn,cpt:cp,amount:am,issue:is,deadline:dl};
+  const deadlineHtml = (window.TSMGenerators && window.TSMGenerators.deadlineBadgeHtml)
+    ? window.TSMGenerators.deadlineBadgeHtml(dl, 'No remediation deadline on file — add one in intake to track it.')
+    : '';
   document.getElementById('guide-urgent-task').innerHTML=
     '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><div style="width:18px;height:18px;border-radius:50%;background:var(--r);display:flex;align-items:center;justify-content:center;font-size:9px;color:#fff;font-weight:700;flex-shrink:0">!</div>'
     +'<span style="color:var(--r);font-size:10px;font-weight:700">'+dn+' — action required</span></div>'
     +'<div style="font-size:9px;color:#556655;padding-left:26px;margin-bottom:6px">'+cl+' · CPT '+cp+' · '+py+' · '+am+'</div>'
+    +deadlineHtml
     +'<div style="background:#0a0000;border:1px solid #3a0000;border-radius:3px;padding:5px 8px;margin-bottom:6px;font-size:9px;color:#cc9999;line-height:1.5">'+is+'</div>'
     +'<div style="font-size:9px;color:#99cc99;line-height:1.5;margin-bottom:6px">Include original submission date, proof of timely filing, and '+py+' appeal reference number.</div>'
     +'<button onclick="draftAppeal()" style="width:100%;padding:6px;background:var(--r);color:#fff;font-family:inherit;font-size:9px;font-weight:700;border:none;border-radius:3px;cursor:pointer;letter-spacing:1px;margin-bottom:4px">⚡ BUILD '+dn+' CORRECTIVE PLAN</button>'
@@ -648,7 +657,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 <script src="/healthcare/tsm-launcher.js"></script>
 <script src="/js/guided-mission-workflow.js"></script>
-<script src="../js/tsm-doc-anomaly-bridge.js"></script><script src="../js/tsm-node-relay-bridge.js"></script><script src="../js/tsm-hc-delegation.js"></script><script>
+<script src="../js/tsm-doc-anomaly-bridge.js"></script><script src="../js/tsm-node-relay-bridge.js"></script><script src="../js/tsm-hc-delegation.js"></script><script src="../js/tsm-hc-generators.js"></script><script>
 // ── TSM RELAY-TO-STRATEGIST (generic across HC nodes) ──
 
 function relayToStrategist(nodeLabel) {

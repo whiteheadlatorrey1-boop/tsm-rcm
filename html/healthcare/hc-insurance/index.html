@@ -191,6 +191,10 @@ tr:hover td{background:#0f1f0f}
         <div style="font-size:8px;color:#556655;margin-bottom:2px;letter-spacing:1px">AMOUNT AT RISK</div>
         <input id="intake-risk" class="guide-field" type="text" placeholder="e.g. $1,240">
       </div>
+      <div>
+        <div style="font-size:8px;color:#556655;margin-bottom:2px;letter-spacing:1px">APPEAL DEADLINE DATE</div>
+        <input id="intake-deadline" class="guide-field" type="date">
+      </div>
     </div>
     <div style="font-size:8px;color:#556655;margin-bottom:2px;letter-spacing:1px">ISSUE / DENIAL REASON</div>
     <textarea id="intake-issue" class="guide-field" rows="2" placeholder="e.g. Modifier conflict on same-day E&amp;M and procedure. Missing -25 on 99213." style="resize:none;width:100%;margin-bottom:6px"></textarea>
@@ -534,7 +538,7 @@ tr:hover td{background:#0f1f0f}
   };
 
   let currentTab = 'dash';
-  let clientData = { patient:'Maria Santos', claim:'CLM-0334', payer:'BlueCross BlueShield', denial:'CO-4', cpt:'99213', risk:'$1,240', issue:'Modifier conflict on same-day E&M and procedure.' };
+  let clientData = { patient:'Maria Santos', claim:'CLM-0334', payer:'BlueCross BlueShield', denial:'CO-4', cpt:'99213', risk:'$1,240', issue:'Modifier conflict on same-day E&M and procedure.', deadline:'' };
 
   function v(id){ const el=document.getElementById(id); return el?el.value.trim():''; }
 
@@ -546,13 +550,18 @@ tr:hover td{background:#0f1f0f}
     const cp = v('intake-cpt')     || clientData.cpt;
     const rk = v('intake-risk')    || clientData.risk;
     const is = v('intake-issue')   || clientData.issue;
-    clientData = {patient:p,claim:cl,payer:py,denial:dn,cpt:cp,risk:rk,issue:is};
+    const dl = v('intake-deadline')|| clientData.deadline;
+    clientData = {patient:p,claim:cl,payer:py,denial:dn,cpt:cp,risk:rk,issue:is,deadline:dl};
+    const deadlineHtml = (window.TSMGenerators && window.TSMGenerators.deadlineBadgeHtml)
+      ? window.TSMGenerators.deadlineBadgeHtml(dl, 'No appeal deadline date on file — add one in intake to track it.')
+      : '';
     document.getElementById('guide-meta').innerHTML = 'Patient: <span>'+p+'</span> &nbsp;·&nbsp; Claim: <span>'+cl+'</span> &nbsp;·&nbsp; Payer: <span>'+py+'</span>';
     document.getElementById('guide-urgent-task').innerHTML =
       '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">'
       +'<div style="width:18px;height:18px;border-radius:50%;background:var(--r);display:flex;align-items:center;justify-content:center;font-size:9px;color:#fff;font-weight:700;flex-shrink:0">!</div>'
       +'<span style="color:var(--r);font-size:10px;font-weight:700">File '+dn+' appeal — action required</span></div>'
       +'<div style="font-size:9px;color:#556655;padding-left:26px;margin-bottom:6px">'+cl+' · CPT '+cp+' · '+py+' · '+rk+'</div>'
+      +deadlineHtml
       +'<div style="background:#0a0000;border:1px solid #3a0000;border-radius:3px;padding:5px 8px;margin-bottom:6px;font-size:9px;color:#cc9999;line-height:1.5">'+is+'</div>'
       +'<div style="font-size:9px;color:#99cc99;line-height:1.5;margin-bottom:6px">Include original submission date, proof of timely filing, and '+py+' appeal reference number.</div>'
       +'<button onclick="draftAppeal()" style="width:100%;padding:6px;background:var(--r);color:#fff;font-family:inherit;font-size:9px;font-weight:700;border:none;border-radius:3px;cursor:pointer;letter-spacing:1px;margin-bottom:4px">⚡ DRAFT '+dn+' APPEAL</button>'

@@ -178,6 +178,10 @@ tr:hover td{background:#0f1f0f}
         <div style="font-size:8px;color:#556655;margin-bottom:2px;letter-spacing:1px">EXPOSURE AMOUNT</div>
         <input id="intake-exposure" class="guide-field" type="text" placeholder="e.g. $2,400,000">
       </div>
+      <div>
+        <div style="font-size:8px;color:#556655;margin-bottom:2px;letter-spacing:1px">RESPONSE DEADLINE DATE</div>
+        <input id="intake-deadline" class="guide-field" type="date">
+      </div>
     </div>
     <div style="font-size:8px;color:#556655;margin-bottom:2px;letter-spacing:1px">ISSUE / LEGAL RISK SUMMARY</div>
     <textarea id="intake-issue" class="guide-field" rows="2" placeholder="e.g. Indemnification clause ambiguity — deadline 14 days." style="resize:none;width:100%;margin-bottom:6px"></textarea>
@@ -520,7 +524,7 @@ const TAB_CONFIG = {
 
 let currentTab = 'dash';
 const stepsCompleted = { 1:false, 2:false };
-let clientData = { client:'Acme Corp', matter:'MTR-2204', opposing:'Delta Inc', claimtype:'Breach of Contract', statute:'UCC 2-207', exposure:'$2,400,000', issue:'Indemnification clause ambiguity — injunction response deadline 72 hours.' };
+let clientData = { client:'Acme Corp', matter:'MTR-2204', opposing:'Delta Inc', claimtype:'Breach of Contract', statute:'UCC 2-207', exposure:'$2,400,000', issue:'Indemnification clause ambiguity — injunction response deadline 72 hours.', deadline:'' };
 
 function v(id){ const el=document.getElementById(id); return el?el.value.trim():''; }
 
@@ -532,12 +536,17 @@ function applyLegalIntake(){
   const st=v('intake-statute')||clientData.statute;
   const ex=v('intake-exposure')||clientData.exposure;
   const is=v('intake-issue')||clientData.issue;
-  clientData={client:cl,matter:mt,opposing:op,claimtype:ct,statute:st,exposure:ex,issue:is};
+  const dl=v('intake-deadline')||clientData.deadline;
+  clientData={client:cl,matter:mt,opposing:op,claimtype:ct,statute:st,exposure:ex,issue:is,deadline:dl};
+  const deadlineHtml = (window.TSMGenerators && window.TSMGenerators.deadlineBadgeHtml)
+    ? window.TSMGenerators.deadlineBadgeHtml(dl, 'No response deadline date on file — add one in intake to track it.')
+    : '';
 
   document.getElementById('guide-urgent-task').innerHTML=
     '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><div style="width:18px;height:18px;border-radius:50%;background:var(--r);display:flex;align-items:center;justify-content:center;font-size:9px;color:#fff;font-weight:700;flex-shrink:0">!</div>'
     +'<span style="color:var(--r);font-size:10px;font-weight:700">'+ct+' — action required</span></div>'
     +'<div style="font-size:9px;color:#556655;padding-left:26px;margin-bottom:6px">'+mt+' · '+ct+' · '+op+' · '+ex+'</div>'
+    +deadlineHtml
     +'<div style="background:#0a0500;border:1px solid #3a1a00;border-radius:3px;padding:5px 8px;margin-bottom:6px;font-size:9px;color:#cc9999;line-height:1.5">'+is+'</div>'
     +'<div style="font-size:9px;color:#99cc99;line-height:1.5;margin-bottom:6px">Include executed contract, performance timeline, and opposing counsel correspondence.</div>'
     +'<button onclick="draftLegalResponse()" style="width:100%;padding:6px;background:var(--r);color:#fff;font-family:inherit;font-size:9px;font-weight:700;border:none;border-radius:3px;cursor:pointer;letter-spacing:1px;margin-bottom:4px">⚡ DRAFT LEGAL RESPONSE</button>'
@@ -656,7 +665,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
 <script src="/healthcare/tsm-launcher.js"></script>
 <script src="/js/guided-mission-workflow.js"></script>
-<script src="../js/tsm-doc-anomaly-bridge.js"></script><script src="../js/tsm-node-relay-bridge.js"></script><script src="../js/tsm-hc-delegation.js"></script><script>
+<script src="../js/tsm-doc-anomaly-bridge.js"></script><script src="../js/tsm-node-relay-bridge.js"></script><script src="../js/tsm-hc-delegation.js"></script><script src="../js/tsm-hc-generators.js"></script><script>
 function relayToStrategist(nodeLabel){try{var engineOutputs={};document.querySelectorAll('.ai-res, .guide-result').forEach(function(el){var text=(el.textContent||'').trim();if(!text)return;if(/^>?\s*(ai|intel workbench|enterprise bnca|leadership brief|report studio)\b.*ready\.?$/i.test(text))return;if(/processing\.\.\.$/i.test(text))return;var label=(el.id||'AI OUTPUT').replace(/-res$/i,'').replace(/[-_]/g,' ').toUpperCase();engineOutputs[label]=text;});var alerts=[];document.querySelectorAll('.alert-row').forEach(function(row){var pri=row.querySelector('.pri');var txt=row.querySelector('.alert-txt');var imp=row.querySelector('.alert-imp');if(txt)alerts.push('['+(pri?pri.textContent.trim():'—')+'] '+txt.textContent.trim()+(imp?' ('+imp.textContent.trim()+')':''));});var kpis=[];document.querySelectorAll('.kpi').forEach(function(k){var val=k.querySelector('.kpi-val');var lbl=k.querySelector('.kpi-lbl');var sub=k.querySelector('.kpi-sub');if(val&&lbl)kpis.push(lbl.textContent.trim()+': '+val.textContent.trim()+(sub?' — '+sub.textContent.trim():''));});var narrativeParts=[];if(kpis.length)narrativeParts.push('KPIs — '+kpis.join(' · '));if(alerts.length)narrativeParts.push('Active alerts — '+alerts.slice(0,5).join(' | '));var narrative=narrativeParts.join('\n\n')||(nodeLabel+' relay — no live findings captured.');if(!Object.keys(engineOutputs).length)engineOutputs[nodeLabel]=narrative;var payload={sessionId:'REL-'+Date.now().toString(36).toUpperCase(),timestamp:new Date().toISOString(),engineOutputs:engineOutputs,engine06:{narrative:narrative,recommendations:[]},documentMeta:{ingestType:nodeLabel,charCount:narrative.length}};sessionStorage.setItem('TSM_WAR_ROOM_BRIEF',JSON.stringify(payload));localStorage.setItem('TSM_WAR_ROOM_BRIEF',JSON.stringify(payload));}catch(e){console.error('['+nodeLabel+'] relayToStrategist failed:',e);}}
 </script>
 
