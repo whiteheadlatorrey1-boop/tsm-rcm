@@ -428,108 +428,19 @@ CONFIDENCE
   }catch(e){
     return res.status(500).json({ok:false,error:e.message});
   }
-
-
-
-function filterHCState(state = {}, system = '', location = '') {
-  const out = {};
-  for (const [nodeKey, node] of Object.entries(state || {})) {
-    if (!node || typeof node !== 'object') continue;
-
-    const nodeSystem = String(node.system || '').trim();
-    const nodeLocation = String(node.location || '').trim();
-
-    const systemOk = !system || nodeSystem === system;
-    const locationOk = !location || nodeLocation === location;
-
-    if (systemOk && locationOk) {
-      out[nodeKey] = node;
-    }
-  }
-  return out;
-}
-
-function normalizeOfficeState(state = {}) {
-  const ops = state.operations || {};
-  const billing = state.billing || {};
-  const insurance = state.insurance || {};
-
-  return {
-    queueDepth: Number(ops.queueDepth || 0),
-    intakeBacklog: Number(ops.intakeBacklog || 0),
-    staffingCoverage: Number(ops.staffingCoverage || 0),
-
-    denialRate: Number(billing.denialRate || 0),
-    claimLagDays: Number(billing.claimLagDays || 0),
-    arOver30: Number(billing.arOver30 || 0),
-
-    authBacklog: Number(insurance.authBacklog || 0),
-    authDelayHours: Number(insurance.authDelayHours || 0),
-    pendingClaimsValue: Number(insurance.pendingClaimsValue || 0)
-  };
-}
-
-function officeRiskModel(state = {}, layer2 = {}) {
-  const n = normalizeOfficeState(state);
-
-  const denialScore = Math.min(100, n.denialRate * 5.5);
-  const authScore = Math.min(100, (n.authDelayHours * 1.4) + (n.authBacklog * 1.2));
-  const opsScore = Math.min(100, (n.queueDepth * 1.5) + (n.intakeBacklog * 2));
-  const arScore = Math.min(100, n.arOver30 / 2500);
-  const staffingScore = Math.max(0, 100 - n.staffingCoverage);
-
-  const riskScore =
-    denialScore * 0.35 +
-    authScore * 0.25 +
-    opsScore * 0.20 +
-    arScore * 0.15 +
-    staffingScore * 0.05;
-
-  const componentMap = {
-    Billing: denialScore + arScore,
-    Insurance: authScore,
-    Operations: opsScore + staffingScore
-  };
-
-  const primaryDriver = Object.entries(componentMap).sort((a,b) => b[1] - a[1])[0]?.[0] || 'Billing';
-
-  let status = 'stable';
-  if (riskScore >= 85) status = 'critical';
-  else if (riskScore >= 65) status = 'high';
-  else if (riskScore >= 40) status = 'medium';
-
-  return {
-    riskScore: Math.round(riskScore),
-    status,
-    primaryDriver,
-    metrics: n,
-    layer2
-  };
-}
-
-function summarizeOfficeDriver(officeName, state = {}, officeEval = {}) {
-  const n = normalizeOfficeState(state);
-  if (officeEval.primaryDriver === 'Billing') {
-    return `${officeName}: denial ${n.denialRate}% and AR>30 ${n.arOver30.toLocaleString()}`;
-  }
-  if (officeEval.primaryDriver === 'Insurance') {
-    return `${officeName}: auth backlog ${n.authBacklog} and delay ${n.authDelayHours}h`;
-  }
-  return `${officeName}: queue ${n.queueDepth}, backlog ${n.intakeBacklog}, staffing ${n.staffingCoverage}%`;
-}
-
-
-
-// ── STATIC ────────────────────────────────────────────────────────────────────
-router.use('/html/suite', express.static(path.join(__dirname, 'html', 'suite')));
-router.use('/html/hub', express.static(path.join(__dirname, 'html', 'hub')));
-router.use('/html/shared', express.static(path.join(__dirname, 'html', 'shared')));
-router.use('/html/suite-builder', express.static(path.join(__dirname, 'html', 'suite-builder')));
-router.use('/', express.static(path.join(__dirname, 'html')));
-
-// catch-all LAST
-
 });
+
+// TSM FIX: this router.post('/api/hc/query', ...) handler was previously
+// missing its closing `});` right after the catch block above. Everything
+// between here and a stray `});` ~190 lines down — four helper functions
+// (filterHCState, normalizeOfficeState, officeRiskModel, summarizeOfficeDriver,
+// none of which are called anywhere else in this file or exported) plus five
+// router.use(...) static mounts — was being parsed as dead code inside this
+// handler's unreachable tail (every branch above already returns). None of
+// it ever ran. The static mounts duplicate what server.js already serves
+// for the same html/ directory, and this file never `require('path')`, so
+// naively closing the brace where it was written would crash on boot the
+// moment this route fired. Removed as dead/orphaned rather than reconnected.
 
 router.post('/api/hc/rollup/brief', (req, res) => {
   try {

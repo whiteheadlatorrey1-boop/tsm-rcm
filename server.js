@@ -1031,9 +1031,16 @@ app.get('/api/hc/strategist-rollup', (req, res) => {
   res.json({ ok: true, controller: 'HC STRATEGIST', status: 'ROLLUP ACTIVE', nodes_online: 11, executive_escalations: 3, bnca: 'Enterprise healthcare synthesis complete', mesh: true, timestamp: new Date().toISOString() });
 });
 
-app.get('/api/hc/nodes', (req, res) => {
-  res.json({ ok: true, status: 'HC node route online', nodes: ['operations', 'billing', 'medical', 'pharmacy', 'financial', 'legal', 'vendors', 'compliance', 'tax-prep', 'grants', 'insurance'] });
-});
+// TSM FIX: this used to be a hardcoded stub returning {status, nodes:[...]}
+// (no `state` field). It registered before `app.use(require('./routes/hc'))`
+// below, so Express always matched THIS handler first and the real one in
+// routes/hc.js — which reads HC_NODE_STATE_FILE and returns {ok, state,
+// generatedAt} — never ran. hc-strategist's pollNodeState() (15s interval,
+// plus on load) reads `data.state`, which was always undefined here, so
+// every node escalation POSTed via /api/hc/nodes/:key (from the HC Academy
+// PoC's "Escalate to Strategist" and elsewhere) was written to disk
+// correctly but never rendered on the Strategist dashboard. Removed so the
+// real handler in routes/hc.js (mounted below) is reachable.
 
 app.get('/api/music/activity', (_req, res) => res.json({ ok: true, activity: global.MUSIC_PLATFORM.activity || [], platform: global.MUSIC_PLATFORM }));
 app.get('/api/music/platform', (_req, res) => res.json({ ok: true, platform: global.MUSIC_PLATFORM }));
