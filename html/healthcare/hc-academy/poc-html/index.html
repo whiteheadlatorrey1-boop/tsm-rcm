@@ -64,13 +64,6 @@ textarea::placeholder{color:var(--faint)}
 .btn-sample:hover{background:rgba(0,229,255,0.2)}
 .btn-mini{padding:4px 10px;font-size:8px}
 .process-info{font-size:9px;color:var(--faint);letter-spacing:1px}
-.core-key-row{display:flex;align-items:center;gap:8px;margin-top:14px;padding-top:14px;border-top:1px solid var(--border)}
-.core-key-label{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--faint);white-space:nowrap}
-.core-key-input{flex:1;background:var(--bg);border:1px solid var(--border2);color:var(--text);font-family:var(--mono);font-size:11px;padding:6px 10px;outline:none}
-.core-key-input:focus{border-color:var(--amber)}
-.core-dot{width:7px;height:7px;border-radius:50%;background:var(--faint);flex-shrink:0}
-.core-dot.ok{background:var(--green);box-shadow:0 0 6px var(--green)}
-
 /* anomaly advisor panel */
 .advisor-panel{border:1px solid var(--border2);background:var(--bg2);padding:0;display:none}
 .advisor-panel.visible{display:block}
@@ -134,7 +127,6 @@ textarea::placeholder{color:var(--faint)}
   <div class="hdr-right">
     <span class="hdr-clock" id="hdr-clock"></span>
     <span class="hdr-badge live">LIVE</span>
-    <span class="hdr-badge core" id="core-model-txt">tsm-neural-core: not connected</span>
   </div>
 </div>
 
@@ -162,11 +154,6 @@ textarea::placeholder{color:var(--faint)}
       <button class="btn btn-sample" onclick="loadSample('prior_auth')">Sample: Prior Auth Log</button>
       <button class="btn btn-ghost" onclick="resetAll()">Reset</button>
       <span class="process-info" id="process-info">Enter or upload a document to begin</span>
-    </div>
-    <div class="core-key-row">
-      <span class="core-key-label">GROQ KEY</span>
-      <div class="core-dot" id="core-dot"></div>
-      <input type="password" class="core-key-input" id="core-key-input" placeholder="gsk_..." onchange="saveKey(this.value)">
     </div>
   </div>
 
@@ -202,7 +189,6 @@ textarea::placeholder{color:var(--faint)}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>
 // ── STATE ──────────────────────────────────────────────────────────────
-let GROQ_KEY = localStorage.getItem('groq_key') || '';
 let docText = '';
 
 // Node order/labels/colors mirror hc-strategist NODE_KEYS + hc-mission-relay.js
@@ -226,23 +212,7 @@ let nodeIssues = {};
 let selectedNode = null;
 let scanComplete = false;
 
-if(GROQ_KEY){
-  document.getElementById('core-key-input').value = GROQ_KEY;
-  document.getElementById('core-dot').classList.add('ok');
-  document.getElementById('core-model-txt').textContent = 'tsm-neural-core: connected';
-  document.getElementById('core-model-txt').style.color = 'var(--green)';
-}
-
 setInterval(()=>{ document.getElementById('hdr-clock').textContent = new Date().toLocaleTimeString('en-US',{hour12:false}); },1000);
-
-function saveKey(v){
-  GROQ_KEY = v.trim();
-  localStorage.setItem('groq_key', GROQ_KEY);
-  document.getElementById('core-dot').classList.toggle('ok', !!GROQ_KEY);
-  document.getElementById('core-model-txt').textContent = GROQ_KEY ? 'tsm-neural-core: connected' : 'tsm-neural-core: not connected';
-  document.getElementById('core-model-txt').style.color = GROQ_KEY ? 'var(--green)' : 'var(--amber)';
-  updateDocStatus();
-}
 
 document.getElementById('doc-text').addEventListener('input', function(){
   docText = this.value.trim();
@@ -251,10 +221,10 @@ document.getElementById('doc-text').addEventListener('input', function(){
 
 function updateDocStatus(){
   const hasDoc = docText.length > 20;
-  document.getElementById('fire-btn').disabled = !hasDoc || !GROQ_KEY;
+  document.getElementById('fire-btn').disabled = !hasDoc;
   document.getElementById('process-info').textContent = hasDoc
     ? '✓ Document ready · ' + docText.split(/\s+/).length + ' words'
-    : (GROQ_KEY ? 'Enter or upload a document to begin' : 'Enter your Groq key, then a document, to begin');
+    : 'Enter or upload a document to begin';
 }
 
 // ── SAMPLES ────────────────────────────────────────────────────────────
@@ -482,7 +452,7 @@ async function groqStreamModel(model, sys, user, onChunk, onDone, onError, maxTo
 
 // ── ANOMALY ADVISOR — scoped to the 11 HC nodes only ─────────────────────
 function runAnomalyAdvisor(){
-  if(!docText || !GROQ_KEY) return;
+  if(!docText) return;
   nodeIssues = {};
   selectedNode = null;
   closeNodeDetail();
