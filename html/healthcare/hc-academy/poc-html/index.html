@@ -187,6 +187,7 @@ textarea::placeholder{color:var(--faint)}
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="/healthcare/js/tsm-hc-handoff.js"></script>
 <script>
 // ── STATE ──────────────────────────────────────────────────────────────
 let docText = '';
@@ -603,6 +604,7 @@ function selectNode(key){
           <div class="check-text${item.resolved?' done':''}">${escapeHtml(item.text)}</div>
           <div class="check-actions">
             <button class="btn btn-ghost btn-mini" onclick="getGuidance('${key}',${idx},this)">Get Guidance</button>
+            <button class="btn btn-ghost btn-mini" onclick="openInNode('${key}',${idx})">Open in Node →</button>
           </div>
           <div class="guidance-out" id="guidance-${key}-${idx}"></div>
         </div>
@@ -644,6 +646,33 @@ function getGuidance(key, idx, btn){
 
 function escapeHtml(s){
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// Hands the operator off to the real hc-{key} node page, carrying the
+// finding text and whatever Guidance tip was already generated for this
+// checklist item (if the operator clicked "Get Guidance" first) so it
+// isn't lost -- see tsm-hc-handoff.js for the receiving side.
+function openInNode(key, idx){
+  const item = nodeIssues[key][idx];
+  const guidanceEl = document.getElementById('guidance-' + key + '-' + idx);
+  let guidance = '';
+  if (guidanceEl && guidanceEl.classList.contains('visible')) {
+    const text = guidanceEl.textContent.trim();
+    if (text && text !== '⟳ Requesting guidance...' && !text.startsWith('Guidance error:')) {
+      guidance = text;
+    }
+  }
+  if (window.TSMHCHandoff && window.TSMHCHandoff.redirectToNode) {
+    window.TSMHCHandoff.redirectToNode(key, {
+      finding: item.text,
+      guidance: guidance,
+      sourceDocument: docName || ''
+    });
+  } else {
+    // Fallback if the handoff module didn't load, so the button never
+    // dead-ends -- just navigate without carrying anything over.
+    window.location.href = '/healthcare/hc-' + key + '/index.html';
+  }
 }
 
 // ── GUIDE WIDGET — follows the EU end to end through the curing process ──
