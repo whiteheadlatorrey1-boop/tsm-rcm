@@ -493,15 +493,41 @@ Choose the single most relevant nodeKey for each item. Maximum 8 items. No pream
   );
 }
 
+// Highlights the nodeKey token per line so the routed node is visually
+// obvious, matching either the bracketed format the prompt asks for or the
+// plain "nodeKey — ..." format the model actually tends to produce (see
+// parseAdvisorOutput above for why both need support). Runs per-line and
+// only tags the first token so it can't misfire on a node name mentioned
+// later in the sentence.
 function renderAdvisorHTML(text){
-  return text.replace(/\[(\w+)\]/g, '<span class="node-tag">[$1]</span>');
+  return text.split('\n').map(line => {
+    const stripped = line.replace(/^(\d+\.\s*)/, '');
+    const numPrefix = line.slice(0, line.length - stripped.length);
+    const m = stripped.match(/^\[?(\w+)\]?(\s*[-–—]?\s*)(.*)$/);
+    if(m && NODE_KEYS.includes(m[1].toLowerCase())){
+      return numPrefix + '<span class="node-tag">[' + m[1].toLowerCase() + ']</span>' + m[2] + m[3];
+    }
+    return line;
+  }).join('\n');
 }
 
 // Parses "[nodeKey] Issue — what's wrong — fix" lines into per-node buckets.
+// The system prompt above asks for bracketed "[nodeKey]", but Llama 3.3
+// doesn't reliably keep the brackets — in practice it often writes plain
+// "nodeKey — Issue — fix" instead (confirmed live: a real scan produced 6
+// valid findings that the old bracket-only regex matched zero of, leaving
+// the guide widget stuck on "0/0 RESOLVED" and Escalate disabled even
+// though the advisor had genuinely found real issues). This version
+// accepts the nodeKey with or without brackets, and with or without a
+// dash separating it from the rest of the line, then relies on the
+// NODE_KEYS whitelist check below to reject anything that isn't really
+// one of the 11 valid keys — so loosening the format doesn't risk
+// matching junk.
 function parseAdvisorOutput(text){
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
   for(const line of lines){
-    const m = line.match(/^\d*\.?\s*\[(\w+)\]\s*(.+)$/);
+    const stripped = line.replace(/^\d+\.\s*/, '');
+    const m = stripped.match(/^\[?(\w+)\]?\s*[-–—]?\s*(.+)$/);
     if(!m) continue;
     const key = m[1].toLowerCase();
     if(!NODE_KEYS.includes(key)) continue;
