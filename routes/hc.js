@@ -70,12 +70,37 @@ router.get('/api/hc/nodes', (req, res) => {
 
 router.post('/api/hc/nodes/:nodeKey', (req, res) => {
   const state = readJson(HC_NODE_STATE_FILE, {});
+  const prior = state[req.params.nodeKey] || {};
   const merged = {
-    ...(state[req.params.nodeKey] || {}),
+    ...prior,
     ...req.body,
     nodeKey: req.params.nodeKey,
     updatedAt: new Date().toISOString()
   };
+
+  // ── ANOMALY HISTORY (append-only, never overwritten) ─────────────────────
+  // Prior to this, every relay push replaced `findings` wholesale — so an
+  // 'anomaly-resolved' push destroyed the record that an anomaly was ever
+  // detected in the first place, and there was no durable open/resolved
+  // status a dashboard or exec portal could actually query. This preserves
+  // prior.anomalyHistory (spread already carried it forward above) and only
+  // appends; it never truncates or rewrites past entries.
+  const trigger = req.body.relayTrigger;
+  if (trigger === 'anomaly-detected' || trigger === 'anomaly-resolved') {
+    const history = Array.isArray(prior.anomalyHistory) ? prior.anomalyHistory.slice() : [];
+    history.push({
+      trigger,
+      status: trigger === 'anomaly-resolved' ? 'resolved' : 'detected',
+      note: req.body.findings || null,
+      at: merged.updatedAt
+    });
+    merged.anomalyHistory = history;
+    // anomalyStatus reflects only the most recent anomaly event — it is
+    // deliberately separate from `status` (ONLINE/CRITICAL telemetry field,
+    // already in use elsewhere) to avoid colliding with existing consumers.
+    merged.anomalyStatus = trigger === 'anomaly-resolved' ? 'resolved' : 'open';
+    merged.anomalyResolvedAt = trigger === 'anomaly-resolved' ? merged.updatedAt : (prior.anomalyResolvedAt || null);
+  }
 
   // Generate live BNCA from actual node telemetry
   const n = merged;
@@ -104,6 +129,27 @@ CONFIDENCE
   state[req.params.nodeKey] = merged;
   writeJson(HC_NODE_STATE_FILE, state);
   res.json({ ok: true, node: state[req.params.nodeKey] });
+});
+
+// Real open-vs-resolved anomaly counts across all 11 nodes, sourced from
+// anomalyHistory/anomalyStatus (see POST /api/hc/nodes/:nodeKey above) —
+// not fabricated, not estimated. Nodes with no anomaly activity yet are
+// simply absent from `nodes` rather than padded with zeros.
+router.get('/api/hc/anomalies/summary', (req, res) => {
+  const state = readJson(HC_NODE_STATE_FILE, {});
+  const nodes = {};
+  let open = 0, resolved = 0;
+  HC_NODE_KEYS.forEach(key => {
+    const n = state[key];
+    if (!n || !Array.isArray(n.anomalyHistory) || !n.anomalyHistory.length) return;
+    nodes[key] = {
+      anomalyStatus: n.anomalyStatus || 'open',
+      events: n.anomalyHistory.length,
+      resolvedAt: n.anomalyResolvedAt || null
+    };
+    if (n.anomalyStatus === 'resolved') resolved++; else open++;
+  });
+  res.json({ ok: true, open, resolved, nodes, generatedAt: new Date().toISOString() });
 });
 
 router.get('/api/hc/profiles', (req, res) => {
