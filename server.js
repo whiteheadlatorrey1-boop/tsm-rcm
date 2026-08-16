@@ -2890,7 +2890,7 @@ app.post('/api/strategist/query', async (req, res) => {
 });
 
 // ── MISC ROUTES ───────────────────────────────────────────────────────────────
-app.get(['/html/healthcare/poc-html', '/html/healthcare/poc-html/'], (req, res) => res.sendFile(path.join(dirPath, 'healthcare', 'poc-html', 'index.html')));
+app.get(['/html/healthcare/poc-html', '/html/healthcare/poc-html/'], (req, res) => res.sendFile(path.join(dirPath, 'healthcare', 'hc-academy', 'poc-html', 'index.html')));
 app.get('/_debug', (_req, res) => res.json({ dirname: __dirname, dirPath, suitesConfigured: suites.length, cacheBust: 'v2-20260607' }));
 
 
