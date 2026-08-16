@@ -994,6 +994,18 @@ app.post('/api/pm/analysis', requireRole(PM_INTERNAL_ROLES), async (req, res) =>
   }
 });
 
+// This route must stay ABOVE the express.static('/', html) mount below —
+// static() is registered earlier in Express's original file order and
+// would otherwise match /healthcare/hc-academy/poc-html/index.html first
+// (the file exists on disk under html/) and serve it with no
+// Cache-Control override before this route is ever reached. Placing it
+// here, right before that mount, is what actually lets the no-store
+// header apply. See the comment further down by the /html/... shortcut
+// route (same underlying staleness issue, same fix) for the full context.
+app.get(['/healthcare/hc-academy/poc-html/index.html', '/healthcare/hc-academy/poc-html', '/healthcare/hc-academy/poc-html/'], (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  res.sendFile(path.join(dirPath, 'healthcare', 'hc-academy', 'poc-html', 'index.html'));
+});
 app.use('/', express.static(path.join(__dirname, 'html')));
 const suites = [
   { route: '/construction', dir: 'html/construction-suite', index: 'construction-hub.html' },
@@ -2890,7 +2902,17 @@ app.post('/api/strategist/query', async (req, res) => {
 });
 
 // ── MISC ROUTES ───────────────────────────────────────────────────────────────
-app.get(['/html/healthcare/poc-html', '/html/healthcare/poc-html/'], (req, res) => res.sendFile(path.join(dirPath, 'healthcare', 'hc-academy', 'poc-html', 'index.html')));
+// no-store here matches the pattern already used for /healthcare/<node>
+// routes (see the loop above that sets Cache-Control on each node page).
+// Without it this file was falling through to the plain express.static
+// mount for the whole html/ tree, which sends no Cache-Control override at
+// all — harmless most of the time, but it meant a real fix pushed and
+// deployed to this file could still be served stale from a browser's
+// cache with no way to force a revalidation short of a hard refresh.
+app.get(['/html/healthcare/poc-html', '/html/healthcare/poc-html/'], (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+  res.sendFile(path.join(dirPath, 'healthcare', 'hc-academy', 'poc-html', 'index.html'));
+});
 app.get('/_debug', (_req, res) => res.json({ dirname: __dirname, dirPath, suitesConfigured: suites.length, cacheBust: 'v2-20260607' }));
 
 
