@@ -708,6 +708,12 @@ async function escalateToStrategist(){
         text: i.text,
         resolved: !!i.resolved
       }));
+      // TSM ADD: feed the same durable anomalyHistory/anomalyStatus tracking
+      // that tsm-node-relay-bridge.js uses (routes/hc.js POST handler) —
+      // previously this push carried no relayTrigger at all, so escalations
+      // from this PoC were invisible to /api/hc/anomalies/summary and had no
+      // append-only history, unlike every other real anomaly path.
+      const allResolved = issues.length > 0 && issues.every(i => i.resolved);
       await fetch('/api/hc/nodes/' + key, {
         method: 'POST', headers: {'Content-Type':'application/json'},
         body: JSON.stringify({
@@ -718,6 +724,7 @@ async function escalateToStrategist(){
           sourceDocument: docName || 'Untitled document',
           findings,
           anomalies,
+          relayTrigger: allResolved ? 'anomaly-resolved' : 'anomaly-detected',
           bnca: 'Resolved via HC Academy guided PoC — ' + issues.filter(i=>i.resolved).length + '/' + issues.length + ' Anomaly Advisor item(s) cured before escalation.'
         })
       });

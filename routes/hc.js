@@ -102,6 +102,19 @@ router.post('/api/hc/nodes/:nodeKey', (req, res) => {
     merged.anomalyResolvedAt = trigger === 'anomaly-resolved' ? merged.updatedAt : (prior.anomalyResolvedAt || null);
   }
 
+  // ── ANOMALIES LIST (id-keyed merge, not overwrite) ────────────────────────
+  // The HC Academy PoC (html/healthcare/hc-academy/poc-html/index.html) posts
+  // a structured { id, text, resolved } array per node on escalation. Same
+  // overwrite bug as findings used to have: without this, re-escalating the
+  // same node after new findings appear would silently erase every
+  // previously-tracked item instead of updating/adding to them.
+  if (Array.isArray(req.body.anomalies)) {
+    const priorAnomalies = Array.isArray(prior.anomalies) ? prior.anomalies : [];
+    const byId = new Map(priorAnomalies.map(a => [a.id, a]));
+    req.body.anomalies.forEach(a => { if (a && a.id) byId.set(a.id, a); });
+    merged.anomalies = Array.from(byId.values());
+  }
+
   // Generate live BNCA from actual node telemetry
   const n = merged;
   merged.bnca = `TOP ISSUE
