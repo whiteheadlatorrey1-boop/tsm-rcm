@@ -1087,17 +1087,10 @@ suites.forEach(s => {
 });
 
 // ── HC API ROUTES ─────────────────────────────────────────────────────────────
-app.post('/api/hc/query', async (req, res) => {
-  try {
-    var body = req.body || {};
-    var sys = body.system || SP.healthcare;
-    var msg = body.message || body.question || body.query;
-    if (!msg) return res.status(400).json({ ok: false, error: 'Query required' });
-    var a = await groqChat(sys, msg, body.maxTokens || 1800);
-    console.log('[HC QUERY DEBUG] a =', JSON.stringify(a));
-    return res.json({ ok: true, output: a, answer: a, reply: a, content: a, createdAt: new Date().toISOString() });
-  } catch (e) { console.log('[HC ERROR]', e.message); return res.status(500).json({ ok: false, error: e.message }); }
-});
+// TSM FIX 2026-08-16: removed dead-weight /api/hc/query handler here — it
+// shadowed routes/hc.js's real nodeKey-grounded handler (mounted later via
+// app.use(require('./routes/hc'))), so every node page's real query/analysis
+// was silently discarded. routes/hc.js now handles this route for real.
 
 const clientUsage = {}; // v3
 
@@ -1491,14 +1484,9 @@ app.post('/api/hc/strategist', async (req, res) => {
   } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
 });
 
-app.post('/api/hc/layer2', async (req, res) => {
-  try {
-    const { system: org = 'TSM Healthcare', location = '' } = req.body || {};
-    const sp = `You are a senior Healthcare BPO enterprise strategist for ${org}${location ? ' · ' + location : ''}. Synthesize findings across ALL nodes. Return structured BNCA:\n\nENTERPRISE BNCA SUMMARY\n========================\nTOP RISKS (ranked by revenue impact):\n1. [Risk · Node · $ impact]\n2. [Risk · Node · $ impact]\n3. [Risk · Node · $ impact]\n\nIMMEDIATE ACTIONS (next 48 hours):\n1. [Action · Owner Lane · Expected outcome]\n2. [Action · Owner Lane · Expected outcome]\n3. [Action · Owner Lane · Expected outcome]\n\n30-DAY RECOVERY PLAN:\n[Concise cross-node plan with milestones]\n\nESCALATE_TO_EXECUTIVE: YES/NO\nESCALATE_REASON: [reason if YES]\nCONFIDENCE: [0-100]%`;
-    const result = await groqChat(sp, `Run full enterprise BNCA for ${org}${location ? ' at ' + location : ''}`, 1500);
-    res.json({ ok: true, output: result });
-  } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
-});
+// TSM FIX 2026-08-16: removed dead-weight /api/hc/layer2 handler here — it
+// shadowed routes/hc.js's real handler (aggregateLayer2, real revenue-at-risk
+// math from HC_NODE_STATE_FILE). routes/hc.js now handles this route for real.
 
 app.post('/api/hc/node/:node', async (req, res) => {
   const node = req.params.node;
@@ -1509,13 +1497,11 @@ app.post('/api/hc/node/:node', async (req, res) => {
   res.json({ ok: true, node, result, ts: new Date().toISOString() });
 });
 
-app.post('/api/hc/bnca', async (req, res) => {
-  const payload = req.body || {};
-  const result = await tsmAIJSON(`Healthcare Command BNCA. Nodes: ${JSON.stringify(TSM_MEMORY.healthcare.nodes).slice(0, 6000)}. Payload: ${JSON.stringify(payload).slice(0, 4000)}. Return JSON: {"suite":"healthcare-command","top_issue":"...","risk_level":"READY|WATCH|RISK|URGENT","node_summary":[],"bnca":"...","owner_lanes":[],"hitl_review_required":true,"confidence":0}`,
-    { suite: 'healthcare-command', top_issue: 'Review needed', risk_level: 'WATCH', node_summary: [], bnca: 'Prioritize billing/auth/compliance.', owner_lanes: ['office manager'], hitl_review_required: true, confidence: 82 });
-  TSM_MEMORY.healthcare.hcCommand = result;
-  res.json({ ok: true, result, ts: new Date().toISOString() });
-});
+// TSM FIX 2026-08-16: removed dead-weight /api/hc/bnca handler here — it
+// shadowed routes/hc.js's real handler, and it read TSM_MEMORY.healthcare.nodes
+// which is never populated by the real telemetry pipeline (/api/hc/nodes/:nodeKey
+// writes HC_NODE_STATE_FILE instead) — was ungrounded in practice either way.
+// routes/hc.js now handles this route for real, reading HC_NODE_STATE_FILE.
 
 app.post('/api/hc-strategist/bnca', async (req, res) => {
   const payload = req.body || {};

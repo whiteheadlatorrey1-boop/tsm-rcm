@@ -6,7 +6,7 @@ const {
   readJson, writeJson,
   HC_NODE_STATE_FILE, HC_REPORTS_FILE, HC_PROFILES_FILE,
   aggregateLayer2, buildSystemRollup,
-  groqChat, SP
+  groqChat, callGroq, SP
 } = require('./_shared');
 
 // Canonical 11 HC nodes (mirrors NODES/NODE_KEYS in hc-academy poc-html and
