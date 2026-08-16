@@ -190,6 +190,7 @@ textarea::placeholder{color:var(--faint)}
 <script>
 // ── STATE ──────────────────────────────────────────────────────────────
 let docText = '';
+let docName = '';
 
 // Node order/labels/colors mirror hc-strategist NODE_KEYS + hc-mission-relay.js
 const NODES = [
@@ -216,6 +217,7 @@ setInterval(()=>{ document.getElementById('hdr-clock').textContent = new Date().
 
 document.getElementById('doc-text').addEventListener('input', function(){
   docText = this.value.trim();
+  docName = docName || 'Pasted text';
   updateDocStatus();
 });
 
@@ -278,12 +280,14 @@ RECOMMENDED ACTIONS: Implement real-time auth check at scheduling. Escalate UHC 
 
 function loadSample(type){
   docText = SAMPLES[type];
+  docName = 'Sample: ' + type.replace(/_/g,' ');
   document.getElementById('doc-text').value = docText;
   updateDocStatus();
 }
 
 function resetAll(){
   docText = '';
+  docName = '';
   document.getElementById('doc-text').value = '';
   document.getElementById('doc-preview').textContent = '';
   document.getElementById('advisor-panel').classList.remove('visible');
@@ -364,6 +368,7 @@ async function readFile(file){
   const prev = document.getElementById('doc-preview');
   const ext = file.name.split('.').pop().toLowerCase();
   const mime = file.type || '';
+  docName = file.name;
   prev.textContent = '⟳ Reading ' + file.name + '...';
   try {
     let text = '';
@@ -693,6 +698,16 @@ async function escalateToStrategist(){
     for(const key of keys){
       const issues = nodeIssues[key];
       const findings = issues.map(i => '• ' + i.text).join(' ').slice(0, 900);
+      // TSM ADD: carry each Anomaly Advisor item over as a structured,
+      // individually-trackable anomaly (stable id + its resolved state from
+      // this PoC pass) instead of only a flattened findings string — this is
+      // what lets hc-strategist assign ownership and mark items cured after
+      // escalation instead of the finding sitting as inert text forever.
+      const anomalies = issues.map((i, idx) => ({
+        id: key + '-' + (idx + 1),
+        text: i.text,
+        resolved: !!i.resolved
+      }));
       await fetch('/api/hc/nodes/' + key, {
         method: 'POST', headers: {'Content-Type':'application/json'},
         body: JSON.stringify({
@@ -700,8 +715,10 @@ async function escalateToStrategist(){
           reportedAt: new Date().toISOString(),
           system: 'HonorHealth',
           location: 'Scottsdale - Shea',
+          sourceDocument: docName || 'Untitled document',
           findings,
-          bnca: 'Resolved via HC Academy guided PoC — ' + issues.length + ' Anomaly Advisor item(s) cured before escalation.'
+          anomalies,
+          bnca: 'Resolved via HC Academy guided PoC — ' + issues.filter(i=>i.resolved).length + '/' + issues.length + ' Anomaly Advisor item(s) cured before escalation.'
         })
       });
     }
