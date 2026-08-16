@@ -362,7 +362,22 @@ Write the ${formatLabel} for the ${audienceLabel} now. Sharp, specific, sendable
 
 router.post('/api/hc/query', async (req,res)=>{
   try{
-    const {query='',system='',location='',nodeKey=''} = req.body||{};
+    const {query='',system='',location='',nodeKey='',message='',maxTokens} = req.body||{};
+
+    // Full-context strategist analysis path. hc-strategist/index.html and
+    // hc-main-strategist.html (the "RUN HC STRATEGIST ANALYSIS" button) post
+    // a rich HC-mesh context in `system` plus a detailed BRIEF/JSON prompt in
+    // `message`, and read the answer back from `data.output`. That never
+    // matched anything below: this handler only ever read query/nodeKey and
+    // returned `content`, never `output`, so the strategist's `if(data.output)`
+    // check always failed and threw "AI returned an empty response. Try
+    // again." even on a healthy server. Route it to a real Groq call instead.
+    if (message) {
+      const systemPrompt = system ? SP.strategist + '\n\n' + system : SP.strategist;
+      const answer = await callGroq(systemPrompt, message, maxTokens || 1024);
+      return res.json({ ok: true, output: answer, content: answer, answer, reply: answer });
+    }
+
     const state = readJson(HC_NODE_STATE_FILE,{});
     // Groq persona analysis for specific node
     if(nodeKey && state[nodeKey]) {
