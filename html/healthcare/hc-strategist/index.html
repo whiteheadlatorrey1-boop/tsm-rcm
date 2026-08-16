@@ -976,7 +976,9 @@ async function pollNodeState(){
 }
 
 async function postDemoNodeState(){
-  // preview-safe seed if nothing has reported yet
+  // preview-safe seed — only fills nodes that have NEVER reported real data.
+  // Without this guard, every hc-strategist page load overwrites whatever a
+  // real POC run just posted with this canned demo payload.
   const demo = {
     operations: { status:'ONLINE', findings:'Intake delays + scheduling pressure are the main throughput blockers.', bnca:'Re-sequence intake coverage, escalate queues >24h, rebalance tomorrow’s first shift.', queueDepth:31, noShowRate:9.2, intakeBacklog:18, staffingCoverage:86 },
     billing: { status:'ONLINE', findings:'Denial pressure remains concentrated in auth-related claims.', bnca:'Work highest-value denial queue first and clear scrub blockers.' },
@@ -984,7 +986,17 @@ async function postDemoNodeState(){
     compliance: { status:'ONLINE', findings:'Documentation gaps continue to affect clean claims.', bnca:'Route top compliance exceptions before rebilling.' },
     medical: { status:'ONLINE', findings:'Chart exceptions remain manageable but active.', bnca:'Clear high-risk documentation gaps first.' }
   };
+  let liveState = {};
+  try {
+    const res = await fetch(API.nodes);
+    const data = await res.json();
+    liveState = data.state || {};
+  } catch(e) {
+    console.warn('postDemoNodeState: could not read live state, skipping demo seed', e);
+    return; // fail safe: never blindly overwrite if we can't confirm what's live
+  }
   for (const [key, payload] of Object.entries(demo)) {
+    if (liveState[key]) continue; // already reported — never clobber real data
     await fetch(`${API.nodes}/${key}`, {
       method:'POST',
       headers:{'Content-Type':'application/json'},
