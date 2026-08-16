@@ -255,16 +255,6 @@
         padding: 18px;
         margin-bottom: 28px;
       }
-      .tsm-progress-bar-wrap {
-        background: #1a1a1a; border-radius: 4px;
-        height: 8px; margin: 10px 0;
-        overflow: hidden;
-      }
-      .tsm-progress-bar {
-        height: 100%; border-radius: 4px;
-        background: linear-gradient(90deg, var(--tsm-cyan), var(--tsm-green));
-        transition: width .6s ease;
-      }
       .tsm-exec-log {
         font-size: 10px; color: var(--tsm-muted);
         max-height: 120px; overflow-y: auto;
@@ -277,9 +267,10 @@
         display: flex; gap: 10px;
       }
       .tsm-log-ts { color: #444; flex-shrink: 0; }
-      .tsm-log-ok   { color: var(--tsm-green); }
-      .tsm-log-warn { color: var(--tsm-amber); }
-      .tsm-log-err  { color: var(--tsm-red); }
+      .tsm-log-ok    { color: var(--tsm-green); }
+      .tsm-log-warn  { color: var(--tsm-amber); }
+      .tsm-log-err   { color: var(--tsm-red); }
+      .tsm-log-muted { color: var(--tsm-muted); }
 
       /* ── Audit Trail ── */
       .tsm-audit-table {
@@ -436,16 +427,7 @@
         Execution Tracker
       </div>
       <div class="tsm-exec-tracker">
-        <div style="display:flex;justify-content:space-between;font-size:11px;">
-          <span id="tsm-exec-phase">AWAITING DECISION</span>
-          <span id="tsm-exec-pct" style="color:var(--tsm-cyan)">0%</span>
-        </div>
-        <div class="tsm-progress-bar-wrap">
-          <div class="tsm-progress-bar" id="tsm-progress-bar" style="width:0%"></div>
-        </div>
         <div class="tsm-exec-log" id="tsm-exec-log">
-          <div class="tsm-log-entry"><span class="tsm-log-ts">${_ts()}</span><span class="tsm-log-ok">Control Plane connected</span></div>
-          <div class="tsm-log-entry"><span class="tsm-log-ts">${_ts()}</span><span class="tsm-log-ok">Relay data loaded</span></div>
           <div class="tsm-log-entry"><span class="tsm-log-ts">${_ts()}</span><span style="color:var(--tsm-muted)">Awaiting executive decision...</span></div>
         </div>
       </div>
@@ -559,11 +541,6 @@
       tbody.prepend(row);
     }
 
-    // Execution tracker
-    if (verdict === 'approved') {
-      _startExecution();
-    }
-
     // Emit to Control Plane
     const bus = global.TSMBus || global.TSMEventBus;
     if (bus) {
@@ -590,58 +567,39 @@
     // this just makes sure the audit trail is real, not just DOM state.
     const vertical = detectVertical();
     const text = itemEl?.querySelector('.tsm-decision-text')?.firstChild?.textContent?.trim() || null;
+
+    _logExec(`Persisting ${verdict} decision to server…`, 'tsm-log-muted');
+
     fetch(`/api/exec-portal/${vertical}/decide`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ index, verdict, text, actor: 'Executive' })
-    }).then(r => r.json()).then(data => {
-      if (data && data.ok && data.recorded) loadImprovementRate(vertical);
-    }).catch(() => { /* offline/unreachable -- decision stays reflected in the DOM only */ });
+    }).then(async r => {
+      const data = await r.json().catch(() => null);
+      if (!r.ok || !data || data.ok === false) {
+        _logExec(`Server rejected the decision${data && data.error ? ': ' + data.error : ` (HTTP ${r.status})`}`, 'tsm-log-err');
+        return;
+      }
+      if (data.recorded) {
+        _logExec(`Server confirmed — decision recorded (id: ${data.decision?.id || 'n/a'})`, 'tsm-log-ok');
+        loadImprovementRate(vertical);
+      } else {
+        _logExec(`Server acknowledged the ${verdict} verdict but did not log it (not a terminal decision)`, 'tsm-log-warn');
+      }
+    }).catch(err => {
+      _logExec(`Could not reach server — decision only reflected locally (${err.message || 'network error'})`, 'tsm-log-err');
+    });
   }
 
-  function _startExecution() {
-    let pct = 0;
-    const bar   = document.getElementById('tsm-progress-bar');
-    const pctEl = document.getElementById('tsm-exec-pct');
-    const phase = document.getElementById('tsm-exec-phase');
-    const log   = document.getElementById('tsm-exec-log');
-
-    const steps = [
-      { at: 15,  msg: 'Decision validated — routing to execution engine', cls: 'tsm-log-ok' },
-      { at: 30,  msg: 'Workflow tasks dispatched', cls: 'tsm-log-ok' },
-      { at: 50,  msg: 'Sub-systems notified', cls: 'tsm-log-ok' },
-      { at: 70,  msg: 'Confirmations received', cls: 'tsm-log-ok' },
-      { at: 90,  msg: 'Audit package assembled', cls: 'tsm-log-ok' },
-      { at: 100, msg: 'Execution complete ✓', cls: 'tsm-log-ok' },
-    ];
-    const phaseLabels = { 0:'EXECUTING', 50:'PROPAGATING', 90:'AUDITING', 100:'COMPLETE' };
-
-    if (phase) phase.textContent = 'EXECUTING';
-
-    const tick = setInterval(() => {
-      pct = Math.min(pct + 2, 100);
-      if (bar)   bar.style.width   = pct + '%';
-      if (pctEl) pctEl.textContent = pct + '%';
-
-      Object.entries(phaseLabels).forEach(([threshold, label]) => {
-        if (pct >= +threshold && phase) phase.textContent = label;
-      });
-
-      const step = steps.find(s => s.at === pct);
-      if (step && log) {
-        const entry = document.createElement('div');
-        entry.className = 'tsm-log-entry';
-        entry.innerHTML = `<span class="tsm-log-ts">${_ts()}</span><span class="${step.cls}">${step.msg}</span>`;
-        log.prepend(entry);
-      }
-
-      if (pct >= 100) {
-        clearInterval(tick);
-        const bus = global.TSMBus || global.TSMEventBus;
-        if (bus) bus.emit('EXECUTION_COMPLETE', { vertical: detectVertical(), ts: Date.now() });
-        if (global.TSMState) global.TSMState.update('execution', { status: 'complete', progress: 100, completedAt: Date.now() });
-      }
-    }, 60);
+  // Writes one real, timestamped line to the execution log — used for actual
+  // fetch outcomes only, never a simulated/canned sequence.
+  function _logExec(msg, cls) {
+    const log = document.getElementById('tsm-exec-log');
+    if (!log) return;
+    const entry = document.createElement('div');
+    entry.className = 'tsm-log-entry';
+    entry.innerHTML = `<span class="tsm-log-ts">${_ts()}</span><span class="${cls}">${msg}</span>`;
+    log.prepend(entry);
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
@@ -655,13 +613,6 @@
   function wireBus() {
     const bus = global.TSMBus || global.TSMEventBus;
     if (!bus) return;
-
-    bus.on('EXECUTION_PROGRESS', ({ progress, workerLog }) => {
-      const bar   = document.getElementById('tsm-progress-bar');
-      const pctEl = document.getElementById('tsm-exec-pct');
-      if (bar)   bar.style.width   = (progress || 0) + '%';
-      if (pctEl) pctEl.textContent = (progress || 0) + '%';
-    });
 
     bus.on('AUDIT_ENTRY', (entry) => {
       const tbody = document.getElementById('tsm-audit-tbody');
