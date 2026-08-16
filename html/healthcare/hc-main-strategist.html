@@ -605,6 +605,16 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
 
       <!-- ══ DENIAL SWEEP TAB ══ -->
       <div id="tab-denial" style="display:none">
+        <div class="strat-panel" style="margin-bottom:10px">
+          <div class="sh"><span class="st">⚡ Appeal Letter Generator — Live Case</span><button class="btn btn-strat" style="padding:2px 8px;font-size:8px" onclick="tsmLoadLiveCases()">🔄 LOAD LIVE CASES</button></div>
+          <div style="color:var(--text2);font-size:9px;line-height:1.5;margin-bottom:8px">
+            Pulls real cases relayed from the 11 HC nodes (via tsm-node-relay-bridge.js) — not the reference table below, which is static payer/denial-code benchmark data.
+          </div>
+          <select id="tsm-live-case-select" style="width:100%;background:#000;color:var(--text1);border:1px solid var(--border);padding:6px;font-family:inherit;font-size:9px;margin-bottom:8px">
+            <option value="">— click LOAD LIVE CASES —</option>
+          </select>
+          <button class="btn btn-strat" style="width:100%" onclick="tsmGenerateAppealFromSelectedCase()">⚡ GENERATE APPEAL FROM SELECTED CASE</button>
+        </div>
         <div class="dg2" style="margin-bottom:10px">
           <div class="strat-panel">
             <div class="sh"><span class="st">Denial Code Breakdown</span><button class="btn btn-strat" style="padding:2px 8px;font-size:8px" onclick="runDenialAnalysis()">◈ ANALYZE</button></div>
@@ -666,6 +676,9 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
             <div style="display:flex;gap:6px;margin-top:10px">
               <button class="btn btn-strat" style="flex:1" onclick="quickAsk('Generate CPT 99215 documentation requirements and coder education memo for HonorHealth. What must be in the note to support this E/M level? Also address modifier -25 overuse on 47 claims.')">◈ Coder Education Memo</button>
               <button class="btn btn-strat" style="flex:1" onclick="quickAsk('Generate physician query templates for ICD-10 specificity gaps on HonorHealth claims CLM-0290, CLM-0305, CLM-0312. What information is needed from the physician?')">◈ Physician Query</button>
+            </div>
+            <div style="margin-top:6px">
+              <button class="btn btn-strat" style="width:100%" onclick="if(window.TSMGenerators&&window.TSMGenerators.emDocumentation){window.TSMGenerators.emDocumentation();}">⚕ E/M DOCUMENTATION CHECK — GATED (scores entered visit facts against CMS MDM levels, no AI-written notes)</button>
             </div>
             <div class="ai-out" id="coding-out"></div>
           </div>
@@ -1153,6 +1166,40 @@ async function quickAsk(prompt){
   document.getElementById('strat-context').value='';
   resetExplainPanel();
   await callClaudeWithExplain(prompt, document.getElementById('strat-out'), document.getElementById('thinking-bar'), document.getElementById('strat-err'));
+}
+
+// ── LIVE CASE SELECTOR (feeds Appeal Letter Generator with real relayed
+// node data instead of the static denial-code reference table above) ──
+let tsmLiveCasesState = {};
+async function tsmLoadLiveCases(){
+  const sel = document.getElementById('tsm-live-case-select');
+  sel.innerHTML = '<option value="">Loading…</option>';
+  try {
+    const r = await fetch('/api/hc/nodes');
+    const d = await r.json();
+    tsmLiveCasesState = (d && d.state) || {};
+    const keys = Object.keys(tsmLiveCasesState).filter(k => tsmLiveCasesState[k] && tsmLiveCasesState[k].findings);
+    if (!keys.length) {
+      sel.innerHTML = '<option value="">No live cases relayed yet from any node</option>';
+      return;
+    }
+    sel.innerHTML = '<option value="">— select a live case —</option>' + keys.map(k => {
+      const n = tsmLiveCasesState[k];
+      const preview = (n.findings || '').slice(0, 70).replace(/</g,'&lt;');
+      return `<option value="${k}">${k.toUpperCase()} — ${preview}${(n.findings||'').length>70?'…':''}</option>`;
+    }).join('');
+  } catch(e) {
+    sel.innerHTML = '<option value="">Failed to load — try again</option>';
+    console.error('[hc-main-strategist] tsmLoadLiveCases failed:', e);
+  }
+}
+function tsmGenerateAppealFromSelectedCase(){
+  const sel = document.getElementById('tsm-live-case-select');
+  const nodeId = sel && sel.value;
+  if (!nodeId) { alert('Load and select a live case first.'); return; }
+  const node = tsmLiveCasesState[nodeId];
+  if (!window.TSMGenerators || !window.TSMGenerators.appealLetter) { alert('Generator module failed to load.'); return; }
+  window.TSMGenerators.appealLetter({ nodeId, findings: (node && node.findings) || '' });
 }
 
 // ── PULL PACKS ──
@@ -2133,6 +2180,7 @@ on the same day. Complete each section with the real clinical facts.
 
 <script src="/shared/tsm-cure-cheatsheet.js"></script>
 <script src="/html/healthcare/js/tsm-workflow-stage.js"></script>
+<script src="/html/healthcare/js/tsm-hc-generators.js"></script>
 <script src="/html/js/tsm-bnca-exposure-engine.js"></script>
 <script src="/js/core/tsm-event-bus.js"></script>
 <script src="/html/core/tsm-kernel.js"></script>

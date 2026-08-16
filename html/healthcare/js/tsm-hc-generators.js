@@ -70,21 +70,32 @@
   // ═══════════════════════════════════════════════════════════════════════
   // APPEAL LETTER GENERATOR
   // ═══════════════════════════════════════════════════════════════════════
-  function appealLetter() {
-    const cd = readClientData();
-    if (!cd || (!cd.claim && !cd.denial)) {
+  // context is optional: { nodeId, clientData, findings } — used by pages
+  // with no page-local `clientData` (e.g. hc-main-strategist, which is a
+  // cross-node rollup with no single active claim of its own). When
+  // supplied, its `clientData`/`findings` take priority over the page's own
+  // globals; when omitted, behavior is identical to before (reads
+  // window.clientData directly, refuses if there's nothing real to draft
+  // against).
+  function appealLetter(context) {
+    context = context || {};
+    const cd = context.clientData || readClientData();
+    const suppliedFindings = context.findings || null;
+
+    if ((!cd || (!cd.claim && !cd.denial)) && !suppliedFindings) {
       openPanel('⚡ APPEAL LETTER GENERATOR', `
         <p style="color:#f87171;font-size:.75rem;line-height:1.6">
-          No active claim/denial found on this page. This generator won't draft an appeal
-          against a claim that hasn't actually been entered — complete the intake form
-          (or select a real claim) first, then run this again.
+          No active claim/denial found. This generator won't draft an appeal against a
+          claim that hasn't actually been entered — complete the intake form (or select
+          a real live case) first, then run this again.
         </p>`);
       return;
     }
 
+    const summaryText = cd ? JSON.stringify(cd).slice(0, 200) : suppliedFindings.slice(0, 200);
     const body = openPanel('⚡ APPEAL LETTER GENERATOR', `
       <div style="color:#94a3b8;font-size:.68rem;margin-bottom:10px">
-        Drafting against: <span style="color:#e2e8f0">${JSON.stringify(cd).slice(0, 200)}</span>
+        Drafting against: <span style="color:#e2e8f0">${summaryText}</span>
       </div>
       <div id="tsm-gen-status" style="color:${COLORS.accent};font-size:.72rem;margin-bottom:10px">Pulling live node state…</div>
       <pre id="tsm-gen-output" style="white-space:pre-wrap;color:#e2e8f0;font-size:.72rem;line-height:1.6;background:#000;border:1px solid ${COLORS.border};border-radius:4px;padding:12px;min-height:80px"></pre>
@@ -96,14 +107,21 @@
     const statusEl = () => document.getElementById('tsm-gen-status');
     const outputEl = () => document.getElementById('tsm-gen-output');
 
-    const withState = window.TSMNodeRelay ? window.TSMNodeRelay.getState() : Promise.resolve(null);
+    // Prefer the page's own live TSMNodeRelay (node pages); fall back to a
+    // direct fetch keyed on context.nodeId (strategist page, which has no
+    // single-node relay of its own since it spans all 11).
+    const withState = window.TSMNodeRelay
+      ? window.TSMNodeRelay.getState()
+      : (context.nodeId
+          ? fetch('/api/hc/nodes').then(r => r.json()).then(d => (d && d.state && d.state[context.nodeId]) || null).catch(() => null)
+          : Promise.resolve(null));
 
     withState.then(liveState => {
       if (statusEl()) statusEl().textContent = 'Generating draft…';
 
       const contextLines = [
-        'Case data (from operator intake, use ONLY these facts — do not invent dates, names, or numbers not given here):',
-        JSON.stringify(cd)
+        'Case data (use ONLY these facts — do not invent dates, names, or numbers not given here):',
+        cd ? JSON.stringify(cd) : suppliedFindings
       ];
       if (liveState) contextLines.push('Live node state (for tone/urgency context only): ' + JSON.stringify(liveState).slice(0, 300));
 
@@ -132,8 +150,24 @@
       const exportBtn = document.getElementById('tsm-gen-export');
       if (exportBtn) exportBtn.onclick = () => exportText(`appeal-${(cd.claim || 'draft')}-${Date.now()}.txt`, text);
 
+      const claimRef = (cd && cd.claim) || '(unspecified)';
       if (window.TSMNodeRelay) {
-        window.TSMNodeRelay.push('appeal-drafted', { note: 'Appeal letter drafted for claim ' + (cd.claim || '(unspecified)') + ' — pending human review' });
+        window.TSMNodeRelay.push('appeal-drafted', { note: 'Appeal letter drafted for claim ' + claimRef + ' — pending human review' });
+      } else if (context.nodeId) {
+        // Strategist-page fallback: no page-local TSMNodeRelay exists here
+        // (this page spans all 11 nodes), so push directly to the same real
+        // endpoint, scoped to whichever node the operator actually selected.
+        fetch('/api/hc/nodes/' + encodeURIComponent(context.nodeId), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            status: 'ONLINE',
+            findings: 'Appeal letter drafted for claim ' + claimRef + ' — pending human review',
+            source: 'tsm-hc-generators (strategist)',
+            relayTrigger: 'appeal-drafted',
+            relayedAt: new Date().toISOString()
+          })
+        }).catch(e => console.error('[tsm-hc-generators] strategist relay push failed:', e));
       }
     }).catch(e => {
       console.error('[tsm-hc-generators] appealLetter failed:', e);
