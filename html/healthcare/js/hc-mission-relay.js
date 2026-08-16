@@ -114,7 +114,7 @@
       </div>
       <div style="background:#020913;border-left:3px solid #00ffc6;border-radius:4px;padding:12px;font-size:11px;color:#b0c4d8;line-height:1.6;margin-bottom:12px;max-height:120px;overflow-y:auto;">${data.bnca || 'Node analysis complete.'}</div>
       <div style="display:flex;gap:10px;">
-        <button onclick="window.location.href='/healthcare/hc-main-strategist/index.html?relay=${data.node || param}'" style="background:#00ffc6;color:#000;border:none;padding:8px 18px;font-family:monospace;font-size:11px;font-weight:700;border-radius:4px;cursor:pointer;letter-spacing:1px;">→ PUSH TO MAIN STRATEGIST</button>
+        <button onclick="window.location.href='/healthcare/hc-main-strategist.html?relay=${data.node || param}'" style="background:#00ffc6;color:#000;border:none;padding:8px 18px;font-family:monospace;font-size:11px;font-weight:700;border-radius:4px;cursor:pointer;letter-spacing:1px;">→ PUSH TO MAIN STRATEGIST</button>
         <button onclick="this.closest('[style*=rgba]').remove()" style="background:transparent;border:1px solid rgba(0,255,198,0.2);color:#4a8a6a;padding:8px 14px;font-family:monospace;font-size:11px;border-radius:4px;cursor:pointer;">DISMISS</button>
       </div>
     `;
