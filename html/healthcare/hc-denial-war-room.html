@@ -1522,7 +1522,6 @@ async function runPipeline() {
       const dt = docEl ? docEl.value : '';
       sessionStorage.setItem('tsmHcWarRoom', JSON.stringify({ docText: dt, selectedDocType: 'HC Denial', engineOutputs: outputs, timestamp: Date.now() }));
     } catch(e) {}
-    showAnomalyAdvisorPanel(outputs, docText);
   }, 1200);
 
   // Also fix output badge IDs
@@ -1733,16 +1732,6 @@ async function injectPriorAuthGeneratorWidget(engineSummary) {
           onmouseover="this.style.background='#ec4899';this.style.color='#000'"
           onmouseout="if(!this.disabled){this.style.background='rgba(236,72,153,0.12)';this.style.color='#ec4899'}"
         >⚡ ESCALATE TO HC MAIN STRATEGIST →</button>
-        <button onclick="openAnomalyAdvisor()" style="
-          padding: 9px 16px; background: rgba(56,189,248,0.1);
-          border: 1px solid #38bdf8; color: #38bdf8;
-          font-family: monospace; font-size: 11px;
-          cursor: pointer; border-radius: 3px;
-          transition: all 0.2s; letter-spacing: 0.5px;
-        " onmouseover="this.style.background='#38bdf8';this.style.color='#000'"
-           onmouseout="this.style.background='rgba(56,189,248,0.1)';this.style.color='#38bdf8'">
-          ◈ ANOMALY ADVISOR
-        </button>
         <button onclick="exportAll()" style="
           padding: 9px 16px; background: transparent;
           border: 1px solid #333; color: #888;
@@ -2140,158 +2129,6 @@ function exportAll() {
   a.click();
 }
 
-</script>
-<script>
-function openAnomalyAdvisor() {
-  try {
-    const docEl = document.getElementById('doc-text') || document.getElementById('doc-input') || document.getElementById('docInput') || document.querySelector('textarea');
-    const docText = docEl ? docEl.value : '';
-    sessionStorage.setItem('tsmHcWarRoom', JSON.stringify({ docText, selectedDocType: 'HC Denial', timestamp: Date.now() }));
-  } catch(e) {}
-  window.open('/html/healthcare/hc-academy/hc-anomaly-advisor.html', '_blank');
-}
-
-// ── HC DENIAL APP ROUTING ────────────────────────────────────
-const HC_APP_ROUTES = {
-  'CO-50': { app:'HC Insurance Node', url:'/html/healthcare/hc-insurance/index.html', reason:'Medical necessity denial requires insurance review' },
-  'CO-4':  { app:'HC Insurance Node', url:'/html/healthcare/hc-insurance/index.html', reason:'Medical necessity appeal' },
-  'CO-16': { app:'HC Billing Command', url:'/html/healthcare/hc-billing/index.html', reason:'Claim lacks info — billing correction needed' },
-  'CO-97': { app:'HC Billing Command', url:'/html/healthcare/hc-billing/index.html', reason:'Claim bundling/unbundling issue' },
-  'CO-22': { app:'HC Insurance Node', url:'/html/healthcare/hc-insurance/index.html', reason:'COB dispute — coordination of benefits review' },
-  'PR-96': { app:'HC Financial Node', url:'/html/healthcare/hc-financial/index.html', reason:'Patient liability — financial review needed' },
-};
- 
-function hcResolveApp(docText) {
-  const t = (docText||'').toLowerCase();
-  const codeMatch = (docText||'').match(/\b(CO-\d+|PR-\d+|OA-\d+|PI-\d+)\b/i);
-  if (codeMatch) {
-    const route = HC_APP_ROUTES[codeMatch[1].toUpperCase()];
-    if (route) return route;
-  }
-  if (/prior auth|authorization/.test(t)) return { app:'HC Insurance Node', url:'/html/healthcare/hc-insurance/index.html', reason:'Prior auth issue requires insurance review' };
-  if (/hipaa|compliance|audit/.test(t)) return { app:'HC Compliance Node', url:'/html/healthcare/hc-compliance/index.html', reason:'Compliance flag detected' };
-  if (/vendor|clearinghouse/.test(t)) return { app:'HC Vendor Node', url:'/html/healthcare/hc-vendors/index.html', reason:'Vendor/clearinghouse issue' };
-  if (/ar aging|dso|collection|write.?off/.test(t)) return { app:'HC Financial Node', url:'/html/healthcare/hc-financial/index.html', reason:'Financial exposure requires review' };
-  return { app:'HC Denial War Room', url:'/html/healthcare/hc-denial-war-room.html', reason:'General RCM denial — re-run with full context' };
-}
- 
- 
-function showAnomalyAdvisorPanel(outputs, docText) {
-  const existing = document.getElementById('anomaly-slide-panel');
-  if (existing) existing.remove();
- 
-  const panel = document.createElement('div');
-  panel.id = 'anomaly-slide-panel';
-  panel.style.cssText = `
-    position:fixed; bottom:0; right:0; width:420px; max-height:75vh;
-    background:#0a0f0a; border-top:2px solid #1ee8b6; border-left:2px solid #1ee8b6;
-    z-index:300; display:flex; flex-direction:column;
-    transform:translateY(100%); transition:transform 0.4s cubic-bezier(0.16,1,0.3,1);
-    font-family:'JetBrains Mono',monospace;
-  `;
- 
-  panel.innerHTML = `
-    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid #1ee8b633;background:#0d1a0d;">
-      <span style="color:#1ee8b6;font-size:11px;font-weight:700;letter-spacing:2px;">⬡ ANOMALY ADVISOR — FIELD DEFECT SCAN</span>
-      <div style="display:flex;gap:8px;align-items:center;">
-        <button onclick="window.open('/html/healthcare/hc-academy/hc-anomaly-advisor.html','_blank')" style="background:#1ee8b620;border:1px solid #1ee8b6;color:#1ee8b6;font-size:9px;padding:3px 8px;cursor:pointer;font-family:inherit;letter-spacing:1px;">FULL REPORT ↗</button>
-        <button onclick="document.getElementById('anomaly-slide-panel').remove()" style="background:transparent;border:none;color:#666;font-size:16px;cursor:pointer;line-height:1;padding:0 2px;">✕</button>
-      </div>
-    </div>
-    <div id="anomaly-panel-body" style="flex:1;overflow-y:auto;padding:12px 14px;font-size:11px;line-height:1.8;color:#a0b8a0;">
-      <div id="anomaly-scan-msg" style="color:#1ee8b6;font-size:10px;letter-spacing:1px;">⬡ SCANNING ENGINE OUTPUTS FOR FIELD-LEVEL DEFECTS...</div>
-    </div>
-  `;
- 
-  document.body.appendChild(panel);
-  requestAnimationFrame(() => { panel.style.transform = 'translateY(0)'; });
- 
-  const body = document.getElementById('anomaly-panel-body');
-  const context = `ENGINE 1 (DOCUMENT INTEL):\n${(outputs[0]||'').slice(0,400)}\n\nENGINE 2 (ROOT CAUSE):\n${(outputs[1]||'').slice(0,400)}\n\nENGINE 3 (FINANCIAL):\n${(outputs[2]||'').slice(0,300)}\n\nENGINE 4 (RECOVERY):\n${(outputs[3]||'').slice(0,300)}\n\nDOC SAMPLE:\n${(docText||'').slice(0,500)}`;
-  const sys = `You are TSM Anomaly Advisor, a document-quality reviewer for healthcare RCM claims. Analyze the engine outputs and identify the defects preventing a clean appeal. Output ONLY a numbered list, ordered by priority — most urgent or highest-dollar-impact issue first. Each item must follow this exact format:
-⚠ [Issue] — what's missing or incorrect — the specific correction needed and who on the team should make it (e.g. billing coordinator, provider, coder, RCM manager).
-Describe each fix in plain terms a revenue cycle team member would act on directly. Do not reference application tabs, fields, or menu names — those vary by system and this list should work no matter what software the reader uses.
-Maximum 6 items. No preamble. No headers. No summary. Start immediately with item 1.`;
- 
-  let anomalyFullText = '';
-  let firstChunk = true;
-  groqStreamModel(
-    'llama-3.3-70b-versatile', sys, context,
-    (chunk) => {
-      if (firstChunk) { firstChunk = false; const s=document.getElementById('anomaly-scan-msg'); if(s) s.remove(); }
-      anomalyFullText += chunk;
-      const span = document.createElement('span');
-      span.innerHTML = chunk.replace(/⚠/g,'<span style="color:#f59e0b">⚠</span>').replace(/—/g,'<span style="color:#1ee8b660"> — </span>');
-      body.appendChild(span);
-      body.scrollTop = body.scrollHeight;
-    },
-    () => {
-      const footer = document.createElement('div');
-      footer.style.cssText = 'margin-top:14px;padding-top:10px;border-top:1px solid #1ee8b620;color:#1ee8b650;font-size:9px;letter-spacing:1px;';
-      footer.textContent = '⬡ SCAN COMPLETE — SEE ENGINE 6 BELOW FOR ROUTING';
-      body.appendChild(footer);
-      // Diagnosis only — routing lives in Engine 6 (injectPriorAuthGeneratorWidget),
-      // which scores the full 10-app catalog. We still write the anomaly-bridge
-      // relay so the destination app's banner is pre-filled on arrival.
-      // Steps were previously hardcoded to [] — the destination page's
-      // Remediation Checklist always rendered "No remediation steps loaded"
-      // even though this exact text has the field-level fix instructions.
-      // Parse Anomaly Advisor's own numbered list into real checklist items.
-      hcWriteAnomalyRelay(anomalyFullText, docText, { steps: hcParseAdvisorSteps(anomalyFullText) });
-    },
-    (err) => { const e=document.createElement('div'); e.style.color='#ef4444'; e.textContent='[Advisor error: '+err+']'; body.appendChild(e); },
-    600
-  );
-}
- 
-// Parse Anomaly Advisor's numbered "⚠ [FIELD] — what's wrong — fix" list into
-// plain checklist strings. Advisor output isn't guaranteed to number every
-// line identically, so split on the numbered-item boundary rather than
-// assuming a fixed format, and cap at 8 to match the Advisor's own limit.
-function hcParseAdvisorSteps(text) {
-  if (!text) return [];
-  return text
-    .split(/\n(?=\s*\d+\.\s)/)
-    .map(s => s.replace(/^\s*\d+\.\s*/, '').replace(/\s+/g, ' ').trim())
-    .filter(Boolean)
-    .slice(0, 8);
-}
-
-// Relay the war room's analysis to the recommended HC node so its
-// anomaly bridge banner lights up pre-filled when the user clicks through.
-function hcWriteAnomalyRelay(anomalyText, docCtx, mission) {
-  try {
-    const route = hcResolveApp(docCtx || anomalyText);
-    const nodeMatch = (route.url || '').match(/hc-([^\/]+)\//);
-    const nodeId = nodeMatch ? nodeMatch[1] : 'billing';
-    const codeMatch = (docCtx || anomalyText || '').match(/\b(CO-\d+|PR-\d+|OA-\d+|PI-\d+)\b/i);
-    const excCode = codeMatch ? codeMatch[1].toUpperCase() : '';
-    const amountMatch = (docCtx || anomalyText || '').match(/\$[\d,]+(\.\d{2})?/);
-    const amount = amountMatch ? Number(amountMatch[0].replace(/[$,]/g, '')) : undefined;
-    // mission.steps may be plain strings (Anomaly Advisor's parsed list) or,
-    // for any other future caller, {title, instructions} objects — handle both.
-    const steps = (mission.steps || []).map(s =>
-      typeof s === 'string' ? s : `${s.title}${s.instructions ? ' — ' + s.instructions : ''}`
-    );
-    const findings = [
-      excCode ? '❌ ' + excCode + ' — denial code detected on this record' : '⚠️ Denial anomaly flagged by War Room',
-      '❌ Routed from HC Denial War Room · Recommended: ' + route.app,
-    ];
-    const payload = {
-      checkStatus: 'DENIAL_RISK',
-      narrative: mission.summary || (anomalyText.slice(0, 300) || 'Denial anomaly detected — review required.'),
-      findings, steps,
-      financialImpact: amount, risk: amount > 50000 ? 82 : amount > 10000 ? 68 : 55,
-      fileName: '', documentType: excCode || 'DENIAL',
-      docType: excCode || 'DENIAL', ref: '', client: '', exclusionCode: excCode,
-      nodeId, targetNodeIds: [nodeId],
-      source: 'war-room', warRoomUrl: '/html/healthcare/hc-denial-war-room.html',
-      ts: Date.now(), timestamp: new Date().toISOString(),
-    };
-    localStorage.setItem('tsm-doc-anomaly', JSON.stringify(payload));
-    if (window.TSMWorkflowStage) TSMWorkflowStage.write('node-checklist', { nodeId: nodeId });
-  } catch (e) { console.warn('War room anomaly relay write failed:', e); }
-}
 </script>
 
 <!-- ── GUIDED TOUR ──────────────────────────────────────────────── -->
