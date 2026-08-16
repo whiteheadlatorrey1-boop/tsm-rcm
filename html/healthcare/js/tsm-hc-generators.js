@@ -274,5 +274,68 @@
     };
   }
 
-  window.TSMGenerators = { appealLetter, emDocumentation };
+  // ── deadline countdown utility ───────────────────────────────────────────
+  // Computes real days-remaining from an actual date string, instead of the
+  // old pattern of dropping the countdown once real intake data replaced the
+  // hardcoded demo "48hr" widget. Pure date math — no AI, nothing fabricated.
+  //
+  //   deadlineInfo(dateStr) -> {
+  //     valid: boolean,
+  //     daysLeft: number,      // negative if overdue
+  //     label: string,         // e.g. "42 DAYS", "DUE TODAY", "3 DAYS OVERDUE"
+  //     severity: 'ok'|'warn'|'bad'|'overdue'
+  //   }
+  //   deadlineBadgeHtml(dateStr, fallbackText) -> ready-to-inject HTML string
+  //     matching the existing urgent-task countdown chip markup. If dateStr
+  //     is missing/invalid, falls back to fallbackText (or a neutral "action
+  //     required" chip) rather than fabricating a number.
+  function deadlineInfo(dateStr) {
+    if (!dateStr) return { valid: false, daysLeft: null, label: '', severity: 'ok' };
+    const target = new Date(dateStr + 'T00:00:00');
+    if (isNaN(target.getTime())) return { valid: false, daysLeft: null, label: '', severity: 'ok' };
+    const today = new Date();
+    const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const msPerDay = 24 * 60 * 60 * 1000;
+    const daysLeft = Math.round((target - todayMidnight) / msPerDay);
+
+    let label, severity;
+    if (daysLeft < 0) {
+      label = Math.abs(daysLeft) + (Math.abs(daysLeft) === 1 ? ' DAY OVERDUE' : ' DAYS OVERDUE');
+      severity = 'overdue';
+    } else if (daysLeft === 0) {
+      label = 'DUE TODAY';
+      severity = 'bad';
+    } else if (daysLeft === 1) {
+      label = '1 DAY';
+      severity = 'bad';
+    } else if (daysLeft <= 7) {
+      label = daysLeft + ' DAYS';
+      severity = 'bad';
+    } else if (daysLeft <= 14) {
+      label = daysLeft + ' DAYS';
+      severity = 'warn';
+    } else {
+      label = daysLeft + ' DAYS';
+      severity = 'ok';
+    }
+    return { valid: true, daysLeft, label, severity };
+  }
+
+  function deadlineBadgeHtml(dateStr, fallbackText) {
+    const info = deadlineInfo(dateStr);
+    const sevColor = { ok: COLORS.accent, warn: COLORS.warn, bad: COLORS.bad, overdue: COLORS.bad }[info.severity] || COLORS.warn;
+    if (!info.valid) {
+      return '<div style="font-size:9px;color:#556655;padding:5px 8px;margin-bottom:6px">'
+        + (fallbackText || 'No deadline date on file — enter one in intake to track it.') + '</div>';
+    }
+    const sub = info.severity === 'overdue'
+      ? 'past the appeal deadline — write-off risk'
+      : 'appeal deadline — act before it closes';
+    return '<div style="display:flex;align-items:center;gap:8px;background:#0a0000;border:1px solid #3a0000;border-radius:3px;padding:5px 8px;margin-bottom:6px">'
+      + '<span style="font-size:16px;font-weight:700;color:' + sevColor + '">' + info.label + '</span>'
+      + '<span style="font-size:9px;color:#cc9999">' + sub + '</span>'
+      + '</div>';
+  }
+
+  window.TSMGenerators = { appealLetter, emDocumentation, deadlineInfo, deadlineBadgeHtml };
 })();
