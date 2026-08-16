@@ -28,10 +28,20 @@
     }
 
     try{
-      const r=await fetch("/api/hc/strategist-memory",{
+      // TSM FIX: this used to POST to /api/hc/strategist-memory, a route
+      // that was never implemented server-side (grep confirms no handler
+      // ever existed) — every relay silently 404'd and nothing this
+      // function did ever reached the Strategist. /api/hc/nodes/:nodeKey
+      // is the real, working endpoint hc-strategist's own
+      // pollNodeState()/renderNodeState() already reads every 15s.
+      const r=await fetch(`/api/hc/nodes/${node.toLowerCase()}`,{
         method:"POST",
         headers:{"Content-Type":"application/json"},
-        body:JSON.stringify(payload)
+        body:JSON.stringify({
+          status:"ONLINE",
+          findings:`${action} (owner: ${node} Lead, risk: ${risk})`,
+          source:"hc-strategist-relay"
+        })
       });
       const d=await r.json();
 
@@ -51,13 +61,13 @@ STATUS
 Open
 
 NEXT
-Review in HC Strategist rollup.`;
+Review in HC Strategist → Node Status (updates within 15s).`;
       }
 
-      window.dispatchEvent(new CustomEvent("hc-strategist-relayed",{detail:d.item}));
+      window.dispatchEvent(new CustomEvent("hc-strategist-relayed",{detail:d.node}));
       return d;
     }catch(e){
-      if(out) out.textContent="Relay failed. Check /api/hc/strategist-memory.";
+      if(out) out.textContent="Relay failed. Check /api/hc/nodes/"+node.toLowerCase()+".";
     }
   }
 
