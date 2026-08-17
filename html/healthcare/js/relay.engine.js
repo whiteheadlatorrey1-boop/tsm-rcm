@@ -50,6 +50,24 @@
     if (!raw) return null;
     try {
       const d = JSON.parse(raw);
+      // TSM FIX: several writers of this key (hc-denial-war-room.html's
+      // dispatchSessionPayload, and every node-level relayToStrategist()
+      // in hc-billing/hc-medical/hc-insurance/etc.) write straight to
+      // storage and only set `timestamp` (ISO string) — they never go
+      // through TSMRelay.write(), so `_ts` (epoch ms) is missing. That
+      // broke two things: (1) `d._ts && ...` short-circuits to false when
+      // `_ts` is undefined, so the TTL check below was silently SKIPPED —
+      // stale sessions never expired; and (2) relay-card.component.js's
+      // age display computed `Date.now() - (data._ts||0)`, which with
+      // `_ts` missing is just `Date.now()`, rendering as "RECEIVED
+      // 1786926747s AGO" instead of a real age. Backfill `_ts` from
+      // `timestamp` here so both the TTL check and every downstream
+      // consumer of `_ts` get a real value regardless of which writer
+      // produced the payload.
+      if (d._ts == null && d.timestamp) {
+        const parsed = Date.parse(d.timestamp);
+        if (!Number.isNaN(parsed)) d._ts = parsed;
+      }
       if (ttlMs && d._ts && (Date.now() - d._ts) > ttlMs) return null;
       return d;
     } catch (_) { return null; }
