@@ -1553,125 +1553,11 @@ function fireAll() {
 //  Paste this entire block over those two functions.
 // ═══════════════════════════════════════════════════════════════════════════
 
-// ─── APP RECOMMENDATION REGISTRY ────────────────────────────────────────────
-// Maps issue categories → specific apps + exactly HOW to use them to fix the issue.
-const E6_APP_REGISTRY = [
-  {
-    appName: 'HC Billing Node',
-    url: '/html/healthcare/hc-billing/index.html',
-    suite: 'Healthcare Ops',
-    color: '#22c55e',
-    triggers: ['denial','remark code','claim','cpt','billing','CO-','PR-','remark','adjustment','procedure','modifier','unbundling','upcoding','duplicate','timely filing','coordination','coverage'],
-    howTo: `Open the <strong>Billing Intelligence tab</strong> → paste your CPT/denial codes into the Code Analyzer → run the BNCA rule engine to get a code-level fix matrix. Use the Appeal Letter generator to produce a payer-ready rebuttal citing the exact policy violated.`
-  },
-  {
-    appName: 'HC Compliance Node',
-    url: '/html/healthcare/hc-compliance/index.html',
-    suite: 'Healthcare Ops',
-    color: '#22c55e',
-    triggers: ['stark','kickback','compliance','audit','hipaa','documentation','medical necessity','lcd','ncd','not medically necessary','experimental','investigational','coverage policy','criteria'],
-    howTo: `Navigate to the <strong>Compliance Audit tab</strong> → enter the denial reason and payer name → the node will surface the exact LCD/NCD policy number, documentation checklist, and corrective action steps needed before re-submission.`
-  },
-  {
-    appName: 'HC Insurance Node',
-    url: '/html/healthcare/hc-insurance/index.html',
-    suite: 'Healthcare Ops',
-    color: '#22c55e',
-    triggers: ['prior auth','authorization','preauthorization','payer','insurance','eligibility','benefit','out of network','non-covered','excluded','plan','policy','enrollment','coordination of benefits','cob'],
-    howTo: `Use the <strong>Payer Intelligence tab</strong> → input the payer + plan type → retrieve real-time prior auth requirements, appeal filing windows, and payer-specific escalation contacts. Use the COB resolver for dual-coverage denials.`
-  },
-  {
-    appName: 'HC Medical Node',
-    url: '/html/healthcare/hc-medical/index.html',
-    suite: 'Healthcare Ops',
-    color: '#22c55e',
-    triggers: ['diagnosis','icd','medical necessity','clinical','physician','provider','documentation','notes','records','operative','discharge','history','physical','orders'],
-    howTo: `Open the <strong>Clinical Documentation tab</strong> → run the Medical Necessity Validator against your diagnosis codes and clinical notes → get a gap analysis showing exactly which physician documentation is missing and what language to add for a successful appeal.`
-  },
-  {
-    appName: 'CRC Practice Lab',
-    url: '/html/healthcare/hc-academy/crc-hc-practice.html',
-    suite: 'Healthcare Ops',
-    color: '#06b6d4',
-    triggers: ['appeal','grievance','reconsideration','overturn','resubmit','corrected claim','redetermination','second level','peer to peer','p2p'],
-    howTo: `Load the detected denial scenario into the <strong>Appeal Simulation module</strong> → walk through the peer-to-peer request workflow step by step → export the completed appeal packet with supporting documentation checklist pre-populated from your denial data.`
-  },
-  {
-    appName: 'FinOps Accounting',
-    url: '/html/finops-suite/finops-accounting.html',
-    suite: 'Financial Ops',
-    color: '#eab308',
-    triggers: ['revenue','write-off','adjustment','contractual','financial','dollar','amount','balance','payment','remit','eob','era','posting','reconcil','ar','accounts receivable','collection','bad debt'],
-    howTo: `Upload the EOB/ERA into the <strong>Document Analysis tab</strong> → the engine will auto-classify each adjustment reason, calculate contractual vs. non-contractual write-offs, and flag any posting errors. Export the reconciliation report for your AR team.`
-  },
-  {
-    appName: 'FinOps Operations',
-    url: '/html/finops-suite/finops-operations.html',
-    suite: 'Financial Ops',
-    color: '#eab308',
-    triggers: ['kpi','metric','benchmark','productivity','workflow','operations','throughput','denial rate','clean claim','first pass','overturn rate','days in ar','cash flow','forecast'],
-    howTo: `Run the detected issue through the <strong>Financial Scenarios engine</strong> → model the downstream KPI impact of this denial class on your AR days and cash flow → use the benchmark comparison to build a CFO-ready remediation brief.`
-  },
-  {
-    appName: 'DOC1 Enterprise Search',
-    url: '/html/tsm-doc-search-multi.html',
-    suite: 'AI Intelligence Layer',
-    color: '#ec4899',
-    triggers: ['policy','contract','agreement','fee schedule','npi','taxonomy','credentialing','provider enrollment','payer contract','rate'],
-    howTo: `Search the detected payer name + denial code in <strong>DOC1</strong> → retrieve the active fee schedule, contract terms, and any policy bulletins relevant to this denial. Cross-reference the contract language against the denial reason to identify a breach of contract appeal path.`
-  },
-  {
-    appName: 'HC Operations Node',
-    url: '/html/healthcare/hc-operations/index.html',
-    suite: 'Healthcare Ops',
-    color: '#22c55e',
-    triggers: ['workflow','staffing','queue','backlog','productivity','task','assignment','escalation','work queue','follow up','aging','bucket','team'],
-    howTo: `Use the <strong>Work Queue Manager</strong> → assign the denial to the correct specialist bucket based on denial type → set follow-up SLA flags and escalation triggers so this account doesn't age past the timely filing window.`
-  },
-  {
-    appName: 'BPO Command Center',
-    url: '/html/bpo/bpo-command-center.html',
-    suite: 'BPO Delivery Network',
-    color: '#6366f1',
-    triggers: ['escalat','manager','supervisor','client','reporting','sla','service level','quality','audit','oversight','monitoring'],
-    howTo: `Route this case through the <strong>Escalation Bridge</strong> in BPO Command → log the denial event, assign oversight tier, and auto-notify the client with a status update. Use the SLA tracker to ensure appeal deadlines are captured in the delivery dashboard.`
-  },
-];
-
-// ─── ENGINE 6 CORE — AI-POWERED RECOMMENDATION DISPATCHER ──────────────────
+// ─── ENGINE 6 CORE — AI DISPATCH SUMMARY ────────────────────────────────────
 async function injectPriorAuthGeneratorWidget(engineSummary) {
   const canvas = document.getElementById('wow-card') || document.getElementById('pitch-line');
   if (!canvas) return;
   canvas.classList.add('visible');
-
-  // Gather all engine output text for matching
-  const rawOutputs = ['out1','out2','out3','out4'].map(id => {
-    const el = document.getElementById(id);
-    return el ? el.textContent : '';
-  }).join(' ').toLowerCase();
-
-  const docInput = (document.getElementById('doc-text')?.value || '').toLowerCase();
-  const combinedText = rawOutputs + ' ' + docInput;
-
-  // Score every app against the combined analysis text
-  const scored = E6_APP_REGISTRY.map(app => {
-    let score = 0;
-    let matchedTerms = [];
-    app.triggers.forEach(term => {
-      if (combinedText.includes(term)) {
-        score++;
-        matchedTerms.push(term);
-      }
-    });
-    return { ...app, score, matchedTerms };
-  })
-  .filter(a => a.score > 0)
-  .sort((a, b) => b.score - a.score);
-
-  // Always include at least 3 recommendations; pad with top-scored if needed
-  const topApps = scored.length >= 3
-    ? scored.slice(0, Math.min(scored.length, 5))
-    : [...scored, ...E6_APP_REGISTRY.filter(a => !scored.find(s => s.appName === a.appName)).slice(0, 3 - scored.length)].slice(0,3);
 
   // Render loading state immediately
   canvas.innerHTML = `
@@ -1710,11 +1596,8 @@ async function injectPriorAuthGeneratorWidget(engineSummary) {
         border-radius: 0 4px 4px 0;
         background: rgba(236,72,153,0.04);
       ">
-        <span style="color: #444;">⟳ Synthesizing 5-engine analysis... building recommendation matrix...</span>
+        <span style="color: #444;">⟳ Synthesizing 5-engine analysis...</span>
       </div>
-
-      <!-- App cards placeholder -->
-      <div id="e6-cards" style="padding: 20px; display: grid; gap: 12px;"></div>
 
       <!-- Footer actions -->
       <div style="padding: 16px 20px; border-top: 1px solid #1a1a2a; display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
@@ -1758,27 +1641,20 @@ async function injectPriorAuthGeneratorWidget(engineSummary) {
     </div>
   `;
 
-  // Now call AI to generate the narrative + validate recommendations
+  // Now call AI to generate the dispatch narrative
   try {
     const e6Summary = engineSummary || ['out1','out2','out3','out4'].map((id,i) => {
       const el = document.getElementById(id);
       return el ? `ENGINE ${i+1}:\n${el.textContent.slice(0,400)}` : '';
     }).join('\n\n');
 
-    const appListForPrompt = topApps.map((a, i) =>
-      `${i+1}. ${a.appName} (${a.suite})`
-    ).join('\n');
-
     const e6Sys = `You are Engine 06, the BNCA (Best Next Course of Action) dispatcher for the TSM War Room. 
 Your job: read the 5-engine denial analysis below and write a 2-3 sentence executive narrative explaining:
 1. The primary issue identified
-2. Why the recommended apps below are the right tools to fix it
-3. The single most urgent action the user should take RIGHT NOW
+2. The financial/appeal-deadline urgency
+3. The single most urgent action the user should take RIGHT NOW, before escalating to the Strategist
 
 Be direct, clinical, and specific. Reference actual denial codes, dollar amounts, or payer names from the analysis if present. No fluff.
-
-Recommended apps:
-${appListForPrompt}
 
 Keep response under 120 words. Plain text only, no markdown.`;
 
@@ -1789,8 +1665,8 @@ Keep response under 120 words. Plain text only, no markdown.`;
         e6Sys,
         e6Summary.slice(0, 2000),
         (chunk) => { acc += chunk; },
-        () => resolve(acc.trim() || 'Analysis complete. Route to recommended apps below to begin remediation.'),
-        () => resolve('Analysis complete. Route to recommended apps below to begin remediation.'),
+        () => resolve(acc.trim() || 'Analysis complete. Escalate to the Strategist to continue.'),
+        () => resolve('Analysis complete. Escalate to the Strategist to continue.'),
         400
       );
     });
@@ -1810,133 +1686,19 @@ Keep response under 120 words. Plain text only, no markdown.`;
       narrativeEl.innerHTML = `
         <div style="font-size: 10px; color: #ec4899; letter-spacing: 1px; margin-bottom: 6px;">DISPATCH INTELLIGENCE</div>
         <div style="color: #ccc; font-size: 12px; line-height: 1.7;">
-          ${topApps.length} remediation pathways identified from 5-engine analysis. 
-          Route to the highest-ranked app first — each contains step-by-step guidance specific to the issues detected in this document.
+          5-engine analysis complete. Escalate to the Strategist to continue building the case.
         </div>
       `;
     }
   }
 
-  // Render app recommendation cards
-  const cardsEl = document.getElementById('e6-cards');
-  if (cardsEl && topApps.length > 0) {
-    cardsEl.innerHTML = `
-      <div style="font-size: 10px; color: #666; letter-spacing: 1px; margin-bottom: 4px; text-transform: uppercase;">
-        Recommended Apps · Ranked by Issue Relevance
-      </div>
-      ${topApps.map((app, idx) => `
-        <div style="
-          border: 1px solid ${idx === 0 ? app.color : '#222'};
-          border-radius: 4px;
-          padding: 14px 16px;
-          background: ${idx === 0 ? `rgba(${hexToRgb(app.color)},0.06)` : 'rgba(0,0,0,0.2)'};
-          transition: all 0.2s;
-          position: relative;
-          overflow: hidden;
-        "
-          onmouseover="this.style.borderColor='${app.color}';this.style.background='rgba(${hexToRgb(app.color)},0.08)'"
-          onmouseout="this.style.borderColor='${idx === 0 ? app.color : '#222'}';this.style.background='${idx === 0 ? `rgba(${hexToRgb(app.color)},0.06)` : 'rgba(0,0,0,0.2)'}'"
-        >
-          <!-- Rank badge -->
-          <div style="
-            position: absolute; top: 0; right: 0;
-            background: ${idx === 0 ? app.color : '#1a1a1a'};
-            color: ${idx === 0 ? '#000' : '#444'};
-            font-size: 9px; font-weight: bold;
-            padding: 3px 8px;
-            border-radius: 0 4px 0 4px;
-            letter-spacing: 0.5px;
-          ">${idx === 0 ? '★ TOP MATCH' : `#${idx + 1}`}</div>
-
-          <!-- App header -->
-          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
-            <div style="
-              width: 8px; height: 8px; border-radius: 50%;
-              background: ${app.color};
-              box-shadow: 0 0 6px ${app.color};
-              flex-shrink: 0;
-            "></div>
-            <div>
-              <div style="color: #fff; font-weight: bold; font-size: 12px; letter-spacing: 0.5px;">${app.appName}</div>
-              <div style="color: #555; font-size: 10px; margin-top: 1px;">${app.suite}</div>
-            </div>
-          </div>
-
-          <!-- How-to guidance -->
-          <div style="
-            background: rgba(0,0,0,0.3);
-            border-left: 2px solid ${app.color}40;
-            padding: 10px 12px;
-            border-radius: 0 3px 3px 0;
-            font-size: 11px;
-            color: #aaa;
-            line-height: 1.7;
-            margin-bottom: 12px;
-          ">
-            <span style="color: ${app.color}; font-size: 9px; letter-spacing: 1px; display: block; margin-bottom: 4px;">HOW TO USE THIS APP FOR YOUR ISSUE</span>
-            ${app.howTo}
-          </div>
-
-          ${app.matchedTerms && app.matchedTerms.length > 0 ? `
-          <!-- Match tags -->
-          <div style="display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 12px;">
-            ${app.matchedTerms.slice(0,6).map(t => `
-              <span style="
-                background: rgba(${hexToRgb(app.color)},0.1);
-                border: 1px solid rgba(${hexToRgb(app.color)},0.3);
-                color: ${app.color};
-                font-size: 9px; padding: 2px 7px;
-                border-radius: 2px; letter-spacing: 0.5px;
-                text-transform: uppercase;
-              ">${t}</span>
-            `).join('')}
-          </div>
-          ` : ''}
-
-          <!-- Launch button -->
-          <a href="${app.url}" target="_blank" onclick="if(window.TSMCureConductor){event.preventDefault();window.TSMCureConductor.launch(app.url,{name:app.appName,how:app.howTo||'',tags:[]},{docText:document.getElementById('doc-text')?.value||'',vertical:'Healthcare'});}" style="
-            display: inline-flex; align-items: center; gap: 6px;
-            padding: 8px 14px;
-            background: transparent;
-            border: 1px solid ${app.color};
-            color: ${app.color};
-            font-family: monospace; font-size: 11px;
-            font-weight: bold; text-decoration: none;
-            border-radius: 3px;
-            letter-spacing: 0.5px;
-            transition: all 0.2s;
-          "
-            onmouseover="this.style.background='${app.color}';this.style.color='#000'"
-            onmouseout="this.style.background='transparent';this.style.color='${app.color}'"
-          >
-            LAUNCH ${app.appName.toUpperCase()} →
-          </a>
-        </div>
-      `).join('')}
-    `;
-  } else if (cardsEl) {
-    cardsEl.innerHTML = `
-      <div style="color: #666; font-size: 12px; padding: 12px;">
-        No specific app match detected. Load a document and run the pipeline first.
-      </div>
-    `;
-  }
-
   // Update status
   const statusEl = document.getElementById('e6-status');
   if (statusEl) {
-    statusEl.textContent = `✓ ${topApps.length} APPS RECOMMENDED`;
+    statusEl.textContent = '✓ ANALYSIS COMPLETE';
     statusEl.style.color = 'var(--green)';
     statusEl.style.animation = 'none';
   }
-}
-
-// ─── UTILITY: hex color → "r,g,b" for rgba() usage ──────────────────────────
-function hexToRgb(hex) {
-  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-  return result
-    ? `${parseInt(result[1],16)},${parseInt(result[2],16)},${parseInt(result[3],16)}`
-    : '255,255,255';
 }
 
 // ─── executePacketCompilation is no longer needed — kept as no-op for safety ─
@@ -1964,13 +1726,11 @@ function buildWarRoomPayload() {
     // case — raised to 4000 so a full analysis survives into the relay.
     if (el && el.textContent.trim()) engineOutputs[label] = el.textContent.trim().slice(0, 4000);
   });
-  const appCards = document.querySelectorAll('#e6-cards [data-app-name]');
-  const recommendations = Array.from(appCards).map(card => ({
-    appName: card.dataset.appName,
-    suite: card.dataset.appSuite,
-    rank: card.dataset.appRank,
-    howTo: card.dataset.appHowto
-  }));
+  // App recommendation cards were removed (2026-08-16) — the war room now
+  // goes straight from engine run to Escalate to Strategist. recommendations
+  // stays [] for shape-compatibility with hc-main-strategist.html/hc-strategist,
+  // which both read brief.engine06?.recommendations.
+  const recommendations = [];
   const narrativeEl = document.getElementById('e6-narrative');
   const narrative = narrativeEl ? narrativeEl.innerText.replace('AI DISPATCH NARRATIVE','').trim() : '';
   const docInput = document.getElementById('doc-text')?.value || '';
