@@ -97,7 +97,7 @@
     wrap.style.cssText = `
       position:fixed; bottom:16px; left:16px; z-index:299;
       font-family:'JetBrains Mono',monospace; width:340px;
-      max-height:70vh; display:flex; flex-direction:column;
+      max-height:44vh; display:flex; flex-direction:column;
     `;
 
     const stepsHtml = STAGES.map(function (s) {
@@ -122,7 +122,7 @@
       <div id="tsm-bwg-panel" style="
         background:rgba(10,14,22,0.97); border:1px solid #f8717155;
         border-radius:6px; box-shadow:0 0 24px rgba(248,113,113,.1);
-        overflow:hidden; display:flex; flex-direction:column; max-height:70vh;
+        overflow:hidden; display:flex; flex-direction:column; max-height:44vh;
       ">
         <div id="tsm-bwg-header" style="
           display:flex; justify-content:space-between; align-items:center;
@@ -143,8 +143,22 @@
     const header = document.getElementById('tsm-bwg-header');
     const body = document.getElementById('tsm-bwg-body');
     const chevron = document.getElementById('tsm-bwg-chevron');
-    let collapsed = false;
-    try { collapsed = sessionStorage.getItem('tsm-bwg-collapsed') === '1'; } catch (e) {}
+    // Default to collapsed. This is documented as a "reference overlay
+    // only" cheat-sheet, but expanded it's a ~340x400+ fixed panel pinned
+    // to the bottom-left corner -- on normal laptop-height viewports that
+    // region overlaps the Decision Center's real action buttons (APPROVE
+    // STRATEGY / ASSIGN OWNERS / NOTIFY STAKEHOLDERS / EXPORT BRIEF on
+    // bpo-executive-portal.html), and since it's the topmost element there
+    // it silently swallows those clicks -- confirmed via elementFromPoint()
+    // and a real Puppeteer click that never reached dcAct()/exportBrief().
+    // Collapsing by default (still one click away, still remembers an
+    // explicit user choice via sessionStorage) keeps the header visible
+    // without blocking real controls underneath.
+    let collapsed = true;
+    try {
+      const stored = sessionStorage.getItem('tsm-bwg-collapsed');
+      if (stored !== null) collapsed = stored === '1';
+    } catch (e) {}
     if (collapsed) { body.style.display = 'none'; chevron.textContent = '▸'; }
 
     header.addEventListener('click', function () {
