@@ -1785,11 +1785,19 @@ function bpoFeedExceptions(d) {
     // list. createFromException() keeps the exception as the single
     // source of truth and links back to it by exceptionId.
     if (typeof TSMCaseManager !== 'undefined' && exceptionRecord) {
-      TSMCaseManager.createFromException(exceptionRecord, {
+      const newCase = TSMCaseManager.createFromException(exceptionRecord, {
         client: d.anomalyEntity || null,
         process: d.selectedScenarioName || 'bpo_case_resolution',
         source: 'BPO Strategist'
       });
+      // A case an exec can never act on isn't a queue, it's a dead end --
+      // without this call every case sits at approvalStatus
+      // 'NOT_REQUESTED' forever and the widget never renders Approve/
+      // Reject buttons for it. Every BPO-originated case is ready for
+      // sign-off the moment it's created, so request approval immediately.
+      if (newCase) {
+        TSMCaseManager.requestApproval(newCase.caseId, { note: 'Auto-requested on case creation from BPO exception feed.' });
+      }
     }
   });
   if (typeof TSMExceptionWidget !== 'undefined') {
