@@ -47,29 +47,89 @@ const SP = {
   construction: `You are a construction project cost/schedule/compliance analyst. Base every finding strictly on the document content provided in the user message. Never invent cost figures, risk levels, or findings that aren't supported by the actual content given. If the content is too thin to assess, say so plainly instead of guessing.`
 };
 
+// TSM FIX: any 429 from Groq (a normal, expected event under shared TPM
+// quotas -- see the "RUN HC STRATEGIST ANALYSIS" rate-limit screenshot) was
+// thrown straight through as-is: the raw Groq error text ("Rate limit
+// reached for model `openai/gpt-oss-120b`... Please try again in
+// 7.76...s") landed verbatim in the UI with no retry at all, even though
+// Groq tells us almost exactly how long to wait. Added a small
+// backoff-and-retry specifically for 429s, using Groq's own Retry-After
+// header (falling back to parsing the "try again in Ns" text it embeds)
+// capped to a sane wait so a single slow request can't hang the response
+// indefinitely. Every other caller (construction.js, queries.js, hc.js,
+// etc.) shares this same groqChat(), so they all get the same resilience
+// for free. Non-429 failures are unaffected and still throw immediately.
+const GROQ_MAX_RETRIES = 2;
+const GROQ_MAX_WAIT_MS = 12000;
+
+function parseGroqRetryAfterMs(res, errBody) {
+  const header = res.headers?.get?.('retry-after');
+  if (header) {
+    const secs = Number(header);
+    if (Number.isFinite(secs) && secs >= 0) return Math.min(secs * 1000, GROQ_MAX_WAIT_MS);
+  }
+  const msg = errBody?.error?.message || '';
+  const m = msg.match(/try again in ([\d.]+)s/i);
+  if (m) {
+    const secs = Number(m[1]);
+    if (Number.isFinite(secs) && secs >= 0) return Math.min(secs * 1000, GROQ_MAX_WAIT_MS);
+  }
+  return 2000; // sensible default if Groq gives us no hint at all
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 async function groqChat(systemPrompt, userMessage, maxTokens = 1024) {
   const key = process.env.GROQ_API_KEY;
   if (!key) throw new Error('GROQ_API_KEY not configured on server');
 
-  const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${key}`
-    },
-    body: JSON.stringify({
-      model: 'openai/gpt-oss-120b',
-      max_tokens: maxTokens,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userMessage }
-      ]
-    })
-  });
+  let lastErr = null;
 
-  const data = await r.json();
-  if (!r.ok) throw new Error(data.error?.message || 'Groq request failed');
-  return data.choices?.[0]?.message?.content || '';
+  for (let attempt = 0; attempt <= GROQ_MAX_RETRIES; attempt++) {
+    const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${key}`
+      },
+      body: JSON.stringify({
+        model: 'openai/gpt-oss-120b',
+        max_tokens: maxTokens,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userMessage }
+        ]
+      })
+    });
+
+    if (r.ok) {
+      const data = await r.json();
+      return data.choices?.[0]?.message?.content || '';
+    }
+
+    const data = await r.json().catch(() => ({}));
+
+    if (r.status === 429 && attempt < GROQ_MAX_RETRIES) {
+      const waitMs = parseGroqRetryAfterMs(r, data);
+      console.warn(`[groqChat] 429 rate limit, retrying in ${waitMs}ms (attempt ${attempt + 1}/${GROQ_MAX_RETRIES})`);
+      await sleep(waitMs);
+      lastErr = new Error(data.error?.message || 'Groq rate limit');
+      continue;
+    }
+
+    if (r.status === 429) {
+      // Retries exhausted -- surface something a user can act on instead of
+      // the raw quota/org-id blob Groq returns.
+      console.error('[groqChat] rate limit persisted after retries:', data.error?.message);
+      throw new Error('AI service is temporarily busy (rate limited). Please try again in a few seconds.');
+    }
+
+    throw new Error(data.error?.message || 'Groq request failed');
+  }
+
+  throw lastErr || new Error('Groq request failed');
 }
 
 // callGroq matches the (systemPrompt, userMessage) signature hc.js already calls.
