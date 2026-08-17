@@ -558,6 +558,22 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
   <script src="/js/core/tsm-auto-pipeline.js"></script>
   <script src="../../shared/runtime/mission/mission-model.js"></script>
   <script src="../../shared/runtime/mission/mission-store.js"></script>
+  <!-- Moved up from just before </body> (2026-08): hydratePage() runs
+       synchronously during initial page parse (via the loadRelay/loadDemoMode
+       IIFE below) and calls buildExecQueue(), buildResolutionAudit(), and
+       buildRecommendedApps() -- all of which check `window.TSMMemory` and
+       silently render "Memory engine unavailable" / empty-state placeholders
+       if it isn't defined yet. With this script tag at the bottom of the
+       document, TSMMemory was *always* undefined at that point -- these three
+       panels never once worked on initial load, on any page load, for any
+       case. Confirmed via a real (non-headless-equivalent) browser run:
+       execQueueList's rendered innerText was "Memory engine unavailable."
+       every time, even though window.TSMMemory existed by the time the
+       *page* finished loading -- just not by the time these functions ran.
+       tsm-memory-engine.js is self-contained (IIFE, no external deps, guards
+       against double-init, and defers its own DOMContentLoaded-dependent UI
+       build() call) so loading it this early is safe. -->
+  <script src="/html/shared/tsm-memory-engine.js"></script>
 </head>
 <body>
 
@@ -1724,7 +1740,6 @@ window.TSM_AUTONOMY_STANDARDIZED = true;
      registerAnomaly()/resolveAnomaly()) has an engine to talk to on this
      page — this page did not load it before. Sector auto-detects to 'bpo'
      from the URL path, same as every other reconciled vertical. -->
-<script src="/html/shared/tsm-memory-engine.js"></script>
 <script src="/html/shared/tsm-exceptions.js"></script>
 <script src="/html/js/widgets/tsm-exception-widget.js"></script>
 <!-- TSM CASE QUEUE — Roadmap #10 Case Engine + widget. tsm-hitl-gate.js is
