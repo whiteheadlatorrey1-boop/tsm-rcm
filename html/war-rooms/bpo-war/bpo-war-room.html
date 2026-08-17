@@ -768,6 +768,16 @@ function tsmExtractJSON(raw) {
   return null;
 }
 
+// TSM FIX (deadline-fidelity guard sweep, BPO — last vertical in the sweep
+// after healthcare, insurance, legal/construction/real estate): the engine
+// schema below asks for a "runway" field ("Time until critical failure")
+// and a "bnca" actions array with no constraint tying either to anything
+// actually in the source document, so the model was free to invent a
+// runway figure or assert an action/document as already handled. Same
+// fabricated-deadline / false-completion pattern already fixed elsewhere
+// via INS_ENGINE_SYSTEM_GUARD et al. — same fix here, BPO-worded.
+const BPO_ENGINE_SYSTEM_GUARD = 'You are the TSM Shell Situation Room AI. Follow the requested output format exactly. For "runway" or any other deadline, SLA window, or time-remaining figure: use only a duration or date explicitly stated in the document provided — never calculate, estimate, or infer one from a "typical" or "standard" window. If no such figure is stated in the source document, write "NOT STATED IN SOURCE DOCUMENT" for that field instead of guessing. Only state in "bnca" actions or "risks" that a step has been completed, a document obtained, or a party contacted if the source document confirms it — anything not confirmed as done must be phrased as a still-needed action, not treated as resolved.';
+
 async function fireExtractionEngine() {
   if (!relayData) return;
   if (engineFired) return;
@@ -826,7 +836,7 @@ Return ONLY the JSON object. No markdown, no explanation.`;
       // null and silently drops into the fallback path below. Matches the
       // same truncation fix already applied to this vertical's strategist
       // (fireStrategy(): 1600 -> 3000) for a comparably-shaped schema.
-      body: JSON.stringify({ model: GROQ_MODEL, max_tokens: 2000, stream: true, json_mode: true, messages: [{ role: 'user', content: prompt }] })
+      body: JSON.stringify({ model: GROQ_MODEL, max_tokens: 2000, stream: true, json_mode: true, messages: [{ role: 'system', content: BPO_ENGINE_SYSTEM_GUARD }, { role: 'user', content: prompt }] })
     });
 
     // A non-2xx here (rate limit, model/service outage, auth failure) was

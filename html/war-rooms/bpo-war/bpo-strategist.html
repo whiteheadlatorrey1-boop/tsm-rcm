@@ -693,6 +693,16 @@ function autoSelectRecommended() {
   setTimeout(() => selectScenario('A'), 400);
 }
 
+// TSM FIX (deadline-fidelity guard sweep, BPO — final vertical): same
+// pattern as INS_STRAT_SYSTEM_GUARD / INS_ENGINE_SYSTEM_GUARD elsewhere.
+// The prompt below also hardcoded "24/48/72hr deadlines" as the example
+// format for RECOMMENDED STRATEGY and baked a "without action in 2 hours"
+// style example into escalationTriggers -- those are illustrative shape
+// hints for the model, not real windows, but paired with no explicit
+// "don't invent one" instruction they were exactly what let deadlines get
+// fabricated wholesale when no real timeframe was in the source data.
+const BPO_STRAT_SYSTEM_GUARD = 'You are the TSM Shell BPO Decision Intelligence Engine. Follow the requested output format exactly. For any deadline, SLA window, or time-remaining figure (including in RECOMMENDED STRATEGY and escalationTriggers): use only a duration or date explicitly present in the engine analysis or document context provided -- the "24/48/72hr" and "2 hours" style figures in the requested format are illustrative of the SHAPE of an answer only, never the actual value to use. If no real timeframe is present in the context, write "NOT STATED IN SOURCE DATA" for that field instead of picking one of the example numbers. Only state that a document has been obtained, a step completed, or a gap closed if the context confirms it -- anything not confirmed as done must be phrased as a still-needed action, not treated as resolved.';
+
 // ── FIRE STRATEGY ──
 async function fireStrategy() {
   if (!warData) { alert('No situation data loaded.'); return; }
@@ -772,7 +782,7 @@ SUCCESS METRICS
     const resp = await fetch('/api/war-room/stream', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({model:GROQ_MODEL,max_tokens:3000,stream:true,messages:[{role:'user',content:prompt}]}),
+      body:JSON.stringify({model:GROQ_MODEL,max_tokens:3000,stream:true,messages:[{role:'system',content:BPO_STRAT_SYSTEM_GUARD},{role:'user',content:prompt}]}),
       signal: ctrl.signal
     });
     if (!resp.ok) throw new Error(`API returned ${resp.status} ${resp.statusText}`);
