@@ -1188,12 +1188,23 @@ function buildExecQueue(d) {
       </div>
       <div class="eq-summary">${(item.summary || '').slice(0, 140)}</div>
       <div class="eq-meta">Exposure: <span>${item.exposure || '—'}</span> &nbsp;·&nbsp; Owner: <span>${item.owner || '—'}</span></div>
-      <button class="eq-btn" id="eqBtn${i}" onclick="approveQueueItem(${i}, '${(item.title||'').replace(/'/g,"\\'")}')" ${item.status === 'approved' ? 'disabled' : ''}>${item.status === 'approved' ? '✓ APPROVED' : 'APPROVE & EXECUTE'}</button>
+      <button class="eq-btn" id="eqBtn${i}" onclick="approveQueueItem(${i}, '${item.id}', '${(item.title||'').replace(/'/g,"\\'")}')" ${item.status === 'approved' ? 'disabled' : ''}>${item.status === 'approved' ? '✓ APPROVED' : 'APPROVE & EXECUTE'}</button>
     </div>
   `).join('');
 }
 
-function approveQueueItem(i, title) {
+function approveQueueItem(i, id, title) {
+  // Persist first -- if this item's status never actually lands in
+  // TSMMemory, the next buildExecQueue() (or a reload) reverts it to
+  // "queued" even though the button already says APPROVED. Same bug shape
+  // as the BPO case-approval dead end: don't flip the UI ahead of the state
+  // it's supposed to reflect.
+  const updated = window.TSMMemory && window.TSMMemory.updateExecutiveQueueStatus(id, 'approved');
+  if (!updated) {
+    showToast('Could not record approval — memory engine unavailable.');
+    return;
+  }
+
   document.getElementById('eqStatus' + i).textContent = 'APPROVED';
   document.getElementById('eqStatus' + i).classList.add('approved');
   document.getElementById('eqStatus' + i).classList.remove('queued');
@@ -1201,10 +1212,8 @@ function approveQueueItem(i, title) {
   btn.textContent = '✓ APPROVED';
   btn.disabled = true;
 
-  if (window.TSMMemory) {
-    TSMMemory.timeline('Executive approved relay: ' + title);
-    TSMMemory.relay('Executive approval recorded: ' + title);
-  }
+  TSMMemory.timeline('Executive approved relay: ' + title);
+  TSMMemory.relay('Executive approval recorded: ' + title);
 }
 
 // ── RECOMMENDED APPS / ROUTE TO ──

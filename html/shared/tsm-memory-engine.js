@@ -603,6 +603,23 @@
       );
 
       return item;
+    },
+
+    // Portals were flipping the on-screen badge/button to "approved" without
+    // ever writing the status back here, so a reload (or any re-render off
+    // TSMMemory.get()) silently reverted the item to "queued" -- same dead-end
+    // shape as the BPO case-approval bug. Keyed by the item's stable `id`
+    // rather than array index, since callers usually render a sliced subset.
+    updateExecutiveQueueStatus(id, status){
+      const s = ensureSector();
+      const item = (s.executiveQueue || []).find(q => q.id === id);
+      if(!item) return null;
+
+      item.status = status;
+      item.statusUpdatedAt = nowISO();
+      saveMemory(mem);
+
+      return item;
     }
   };
 
