@@ -415,6 +415,7 @@ textarea::placeholder{color:var(--faint)}
     <div class="pill pill-green">5 ENGINES LIVE</div>
     <div class="pill pill-teal">NAVIGATOR ACTIVE</div>
     <div class="clock" id="clock">--:--:--</div>
+    <a href="mailto:tron@tsmconsultz.com?subject=TSM%20Denial%20Recovery%20Pilot&body=I'd%20like%20to%20talk%20about%20a%20pilot%20for%20our%20denial%20management%20workflow." class="btn btn-fire" style="text-decoration:none;padding:6px 16px;font-size:8px;margin-left:6px">⚡ START A PILOT</a>
   </div>
 </div>
 
@@ -475,6 +476,9 @@ textarea::placeholder{color:var(--faint)}
         <div class="key-dot" id="key-dot" style="background:var(--green);box-shadow:0 0 6px var(--green)"></div>
         <div class="key-label">AI Engine</div>
         <span class="key-status" id="key-status" style="color:var(--green);font-size:9px">SERVER CONNECTED · PROXY ACTIVE</span>
+      </div>
+      <div style="font-size:8px;color:var(--faint);letter-spacing:0.5px;margin-top:6px;line-height:1.6">
+        🔒 For this demo, use a de-identified or sample document. Uploaded content is sent to our AI provider for processing and is not stored on TSM servers.
       </div>
     </div>
     <div class="paste-panel">
@@ -1443,6 +1447,58 @@ function relay() {
   dispatchPacket(0);
 }
 
+// ── DETERMINISTIC APPEAL DEADLINE RESOLVER ─────────────────────────
+// Plain JS date math, NOT an LLM guess. Only ever produces a computed
+// date when it can confidently find BOTH a day-count window (e.g. "60
+// days") AND an explicit calendar base date to count from. If either
+// piece is missing or ambiguous, returns null and the caller falls
+// back to showing the source text verbatim (or NOT STATED IN SOURCE).
+// This never overrides or contradicts what the document actually says
+// — it only resolves relative language ("60 days from notice date,
+// March 1, 2026") into an absolute date when the math is unambiguous.
+function extractExplicitDate(text) {
+  if (!text) return null;
+  const months = 'January|February|March|April|May|June|July|August|September|October|November|December';
+  const monthDayYear = new RegExp('(' + months + ')\\s+(\\d{1,2}),?\\s+(\\d{4})', 'i');
+  const numeric = /\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/;
+  let m = text.match(monthDayYear);
+  if (m) {
+    const d = new Date(m[1] + ' ' + m[2] + ', ' + m[3]);
+    if (!isNaN(d.getTime())) return d;
+  }
+  m = text.match(numeric);
+  if (m) {
+    const d = new Date(parseInt(m[3], 10), parseInt(m[1], 10) - 1, parseInt(m[2], 10));
+    if (!isNaN(d.getTime())) return d;
+  }
+  return null;
+}
+function resolveAppealDeadline(deadlinePhrase, fullDocText) {
+  if (!deadlinePhrase) return null;
+  const dayMatch = deadlinePhrase.match(/\b(\d{1,3})\s*[- ]?(calendar\s+)?days?\b/i);
+  if (!dayMatch) return null; // not a relative window, nothing to compute
+  const dayCount = parseInt(dayMatch[1], 10);
+  if (!dayCount || dayCount > 365) return null; // sanity bound, refuse to guess on nonsense
+
+  // Prefer a date stated within the deadline phrase itself.
+  let baseDate = extractExplicitDate(deadlinePhrase);
+  // Otherwise look for a date near common anchor phrases in the source doc.
+  if (!baseDate && fullDocText) {
+    const anchors = /(date of this notice|notice date|date of denial|EOB date)[^.\n]{0,60}/i;
+    const anchorMatch = fullDocText.match(anchors);
+    if (anchorMatch) baseDate = extractExplicitDate(anchorMatch[0]);
+  }
+  if (!baseDate) return null; // can't confidently locate a base date — don't guess
+
+  const deadline = new Date(baseDate);
+  deadline.setDate(deadline.getDate() + dayCount);
+  const fmt = deadline.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  const today = new Date();
+  const daysLeft = Math.ceil((deadline - today) / 86400000);
+  const urgency = daysLeft < 0 ? ' (PAST DUE)' : daysLeft <= 14 ? ' (' + daysLeft + 'd left)' : '';
+  return { label: fmt + urgency, date: deadline };
+}
+
 async function runPipeline() {
   if (!docText || docText.length < 20) { alert('Load a document first.'); return; }
 
@@ -1460,8 +1516,8 @@ async function runPipeline() {
     { outId: 'out3', badgeId: 'ps3', tokId: 'tok3', idleId: 'idle3', model: LARGE, maxTok: 450,
       sys: 'You are a healthcare financial analyst. Calculate: revenue at risk, timely filing risk, total financial exposure. State the appeal deadline exactly as given in KEY FINDINGS below — do not recalculate or estimate a different number or timeframe. Under 300 words.',
       getUserMsg: () => 'KEY FINDINGS:\n' + outputs[0].slice(0, 700) + '\nDENIAL CAUSE:\n' + outputs[1].slice(0, 400), label: 'FINANCIAL IMPACT' },
-    { outId: 'out4', badgeId: 'ps4', tokId: 'tok4', idleId: 'idle4', model: LARGE, maxTok: 500,
-      sys: 'You are a denial recovery specialist. Write a step-by-step appeal plan: documents needed, appeal letter points, deadline, payer portal. Use the exact appeal deadline stated in the FINANCIAL input below — do not recalculate or estimate a different one. Under 350 words.',
+    { outId: 'out4', badgeId: 'ps4', tokId: 'tok4', idleId: 'idle4', model: LARGE, maxTok: 550,
+      sys: 'You are a denial recovery specialist. Write a step-by-step appeal plan: documents needed, appeal letter points, deadline, payer portal. Use the exact appeal deadline stated in the FINANCIAL input below — do not recalculate or estimate a different one. Also include a line starting exactly with "RECOVERY LIKELIHOOD:" followed by one word — STRONG, MODERATE, or WEAK — then a dash and a one-sentence justification grounded ONLY in the specific denial cause and documentation facts given below. Do not cite a generic industry average or invent a percentage. Under 350 words.',
       getUserMsg: () => 'DENIAL:\n' + outputs[1].slice(0, 300) + '\nFINANCIAL:\n' + outputs[2].slice(0, 300), label: 'RECOVERY PLAN' },
     { outId: 'nav-container', badgeId: 'ps5', tokId: 'tok5', idleId: 'idle5', model: SMALL, maxTok: 350,
       sys: 'You are a recovery navigator. List: immediate next steps, staff roles, escalation path. Be brief and actionable. Under 250 words.',
@@ -1538,7 +1594,69 @@ async function runPipeline() {
   try {
     const dlMatch = (outputs[0] || '').match(/appeal deadline[:\s]+(.+)/i);
     const dlEl = document.getElementById('ws-deadline');
-    if (dlEl) dlEl.textContent = dlMatch ? dlMatch[1].trim().slice(0, 60) : 'NOT STATED IN SOURCE';
+    const dlPhrase = dlMatch ? dlMatch[1].trim().slice(0, 120) : '';
+    if (dlEl) {
+      const resolved = resolveAppealDeadline(dlPhrase, docText);
+      if (resolved) {
+        dlEl.textContent = resolved.label;
+        dlEl.title = 'Source: "' + dlPhrase + '"';
+      } else if (dlPhrase) {
+        dlEl.textContent = dlPhrase.slice(0, 60);
+      } else {
+        dlEl.textContent = 'NOT STATED IN SOURCE';
+      }
+    }
+  } catch (e) {}
+  // TSM FIX: ws-claim, ws-cause, ws-prob, ws-action were referenced in the
+  // markup but never written by any code path — the "Executive Recovery
+  // Summary" wow card always showed 4 dashes regardless of what the 5
+  // engines actually found. Populate each from real engine text via plain
+  // regex extraction (same approach as the deadline field above). None of
+  // these invent data the engines didn't produce; if a pattern isn't found,
+  // the field stays "—" rather than guessing.
+  let claimDollar = null;
+  try {
+    const claimEl = document.getElementById('ws-claim');
+    const dollarMatches = (outputs[2] || '').match(/\$[\d,]+(?:\.\d{2})?/g);
+    if (claimEl && dollarMatches && dollarMatches.length) {
+      // Prefer the largest figure mentioned (revenue at risk / total exposure
+      // tends to be the biggest number in the financial-impact output).
+      const nums = dollarMatches.map(s => parseFloat(s.replace(/[$,]/g, '')));
+      const maxIdx = nums.indexOf(Math.max(...nums));
+      claimDollar = dollarMatches[maxIdx];
+      claimEl.textContent = claimDollar;
+    }
+  } catch (e) {}
+  try {
+    const causeEl = document.getElementById('ws-cause');
+    const causeMatch = (outputs[1] || '').match(/(?:denial reason|payer policy violated|root cause)[:\s]+(.+)/i);
+    if (causeEl) {
+      const line = causeMatch ? causeMatch[1] : (outputs[1] || '').split('\n').find(l => l.trim().length > 10);
+      if (line) causeEl.textContent = line.trim().replace(/^[-•*]\s*/, '').slice(0, 70);
+    }
+  } catch (e) {}
+  try {
+    const probEl = document.getElementById('ws-prob');
+    const probMatch = (outputs[3] || '').match(/RECOVERY LIKELIHOOD:\s*(STRONG|MODERATE|WEAK)/i);
+    if (probEl && probMatch) {
+      const level = probMatch[1].toUpperCase();
+      probEl.textContent = level;
+      probEl.style.color = level === 'STRONG' ? 'var(--green)' : level === 'MODERATE' ? 'var(--amber)' : 'var(--red)';
+      const justMatch = (outputs[3] || '').match(/RECOVERY LIKELIHOOD:\s*(?:STRONG|MODERATE|WEAK)\s*[-–—]\s*(.+)/i);
+      if (justMatch) probEl.title = justMatch[1].trim().slice(0, 200);
+    }
+  } catch (e) {}
+  try {
+    const actionEl = document.getElementById('ws-action');
+    const navText = (document.getElementById('nav-container') || {}).textContent || '';
+    const firstStep = navText.split('\n').map(l => l.trim()).find(l => l.length > 8 && /^[-•*\d]/.test(l));
+    if (actionEl && firstStep) actionEl.textContent = firstStep.replace(/^[-•*\d.]+\s*/, '').slice(0, 60);
+  } catch (e) {}
+  try {
+    const pitchEl = document.getElementById('wow-pitch');
+    if (pitchEl && claimDollar) {
+      pitchEl.innerHTML = 'TSM identified <strong>' + claimDollar + '</strong> in recoverable revenue and built a full appeal plan in <strong>under 5 minutes</strong>. Traditional analyst time: <strong>2–5 days</strong>.';
+    }
   } catch (e) {}
   setTimeout(() => {
     try {
@@ -1970,7 +2088,18 @@ function exportAll() {
 </div>
 
 <!-- ── DEFECT MANIFEST ───────────────────────────────────────────── -->
-<button class="manifest-btn" onclick="document.getElementById('manifestOverlay').classList.add('active')">⚠ DEFECT MANIFEST</button>
+<button class="manifest-btn" id="manifestBtn" style="display:none" onclick="document.getElementById('manifestOverlay').classList.add('active')">⚠ DEFECT MANIFEST</button>
+<script>
+// Internal-only: defect manifest is a dev/QA tool, never shown in a client-facing session
+// unless explicitly requested via ?debug=1 (or ?debug=true).
+(function(){
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const debugOn = params.get('debug') === '1' || params.get('debug') === 'true';
+    if (debugOn) document.getElementById('manifestBtn').style.display = '';
+  } catch(e) {}
+})();
+</script>
 <div class="manifest-overlay" id="manifestOverlay">
   <div class="manifest-card">
     <h2>⚠ HC DENIAL WAR ROOM — DEFECT MANIFEST</h2>
