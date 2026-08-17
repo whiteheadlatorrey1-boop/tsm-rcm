@@ -270,20 +270,47 @@
       return { total: items.reduce((s, it) => s + it.exposure, 0), currency: fm.currency || 'USD', items };
     }
 
-    getFinancialSummary() {
+    /**
+     * IoT sensor alert exposure. Sensors don't carry duration data (unlike
+     * vacancy/maintenance) -- same shape gap as vendor compliance -- so
+     * exposure is a flat per-incident dollar amount keyed off the alert's
+     * derived severity (urgent/high/medium), same pattern as
+     * getVendorComplianceExposure() above. Engine stays decoupled from
+     * pm-iot-engine.js (same convention as buildRelayPayload): caller
+     * passes the already-computed alert list in rather than this engine
+     * reaching into a separate TSMPmIotEngine instance.
+     */
+    getIotExposure(iotAlerts) {
+      const fm = this.getFinancialModel();
+      const alerts = iotAlerts || [];
+      if (!fm || !fm.iot_alert_exposure_by_severity) {
+        return { total: 0, currency: fm ? fm.currency : 'USD', items: [] };
+      }
+      const rates = fm.iot_alert_exposure_by_severity;
+      const items = alerts.map(a => {
+        const rate = rates[a.severity] != null ? rates[a.severity] : 0;
+        return { id: a.id, unit_id: a.unit_id, unit_label: a.unit_label, type: a.type, severity: a.severity, detail: a.detail, exposure: rate };
+      }).sort((a, b) => b.exposure - a.exposure);
+      return { total: items.reduce((s, it) => s + it.exposure, 0), currency: fm.currency || 'USD', items };
+    }
+
+    getFinancialSummary(iotAlerts) {
       const vacancy = this.getVacancyExposure();
       const maintenance = this.getMaintenanceDelayExposure();
       const vendorCompliance = this.getVendorComplianceExposure();
+      const iot = this.getIotExposure(iotAlerts);
       return {
-        currency: vacancy.currency || maintenance.currency || vendorCompliance.currency || 'USD',
+        currency: vacancy.currency || maintenance.currency || vendorCompliance.currency || iot.currency || 'USD',
         vacancy_exposure_total: vacancy.total,
         vacancy_exposure_items: vacancy.items,
         maintenance_delay_exposure_total: maintenance.total,
         maintenance_delay_exposure_items: maintenance.items,
         vendor_compliance_exposure_total: vendorCompliance.total,
         vendor_compliance_exposure_items: vendorCompliance.items,
+        iot_exposure_total: iot.total,
+        iot_exposure_items: iot.items,
         portfolio_rent_value: this.computeKpis().portfolio_rent_value,
-        total_exposure: vacancy.total + maintenance.total + vendorCompliance.total,
+        total_exposure: vacancy.total + maintenance.total + vendorCompliance.total + iot.total,
         note: this.model.financial_model ? this.model.financial_model.note : null
       };
     }
@@ -413,7 +440,7 @@
         work_order_wip: this.getStageWip('work_orders'),
         turnover_pipeline: this.getTurnoverPipeline(),
         turnover_wip: this.getStageWip('turnovers'),
-        financials: this.getFinancialSummary(),
+        financials: this.getFinancialSummary(iotAlerts),
         iot_alerts: iotAlerts || [],
         records: {
           units: this.data.units,

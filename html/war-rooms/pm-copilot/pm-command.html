@@ -467,10 +467,6 @@ function renderIotAlerts(){
       <span class="rmeta">${alert ? alert.detail : (s.status || 'ok')}</span>
     </div>`;
   }).join('') || '<div class="row-item"><span class="rtitle" style="color:var(--dim)">No sensors.</span></div>';
-
-  document.getElementById('iotPanel').innerHTML = alerts.map(a =>
-    `${a.id} (${a.unit_id || 'unassigned'}): <span style="color:${a.severity === 'urgent' || a.severity === 'high' ? 'var(--red)' : 'var(--muted)'}">${a.severity.toUpperCase()}</span><br>&nbsp;&nbsp;${a.detail}`
-  ).join('<br>') || 'No sensor alerts.';
 }
 
 function renderKpis(){
@@ -494,7 +490,8 @@ function renderTurnoverPanel(){
 }
 
 function renderExposure(){
-  const fin = engine.getFinancialSummary();
+  const iotAlerts = iotEngine ? iotEngine.getIotAlerts() : [];
+  const fin = engine.getFinancialSummary(iotAlerts);
   document.getElementById('vacancyPanel').innerHTML = fin.vacancy_exposure_items.map(it =>
     `${it.unit_id} (${it.property}): <span style="color:var(--red)">${fmtMoney(it.exposure)}</span><br>&nbsp;&nbsp;${it.days_vacant}d vacant &middot; ${fmtMoney(it.market_rent)}/mo lost`
   ).join('<br>') || 'No vacancy exposure.';
@@ -506,6 +503,10 @@ function renderExposure(){
   document.getElementById('vendorPanel').innerHTML = fin.vendor_compliance_exposure_items.map(it =>
     `${it.vendor_id} (${it.name}): <span style="color:var(--red)">${fmtMoney(it.exposure)}</span><br>&nbsp;&nbsp;${it.severity} &middot; ${it.trade}`
   ).join('<br>') || 'No vendor compliance exposure.';
+
+  document.getElementById('iotPanel').innerHTML = fin.iot_exposure_items.map(it =>
+    `${it.id} (${it.unit_id || 'unassigned'}): <span style="color:var(--red)">${fmtMoney(it.exposure)}</span><br>&nbsp;&nbsp;${it.severity.toUpperCase()} &middot; ${it.detail}`
+  ).join('<br>') || 'No sensor alerts.';
 
   document.getElementById('totalExposure').innerHTML = fmtMoney(fin.total_exposure);
 }
@@ -593,6 +594,18 @@ function pmVendorConfidence(fm, flagged) {
   }
   return { confidence: 95, note: '' };
 }
+function pmIotConfidence(fm, alerts) {
+  if (!fm || !fm.iot_alert_exposure_by_severity) {
+    return { confidence: 30, note: ' Rate card is missing iot_alert_exposure_by_severity, so exposure defaulted to $0 — treat as unverified.' };
+  }
+  const rates = fm.iot_alert_exposure_by_severity;
+  const severities = [...new Set(alerts.map(a => a.severity))];
+  const missing = severities.filter(s => rates[s] == null);
+  if (missing.length) {
+    return { confidence: 65, note: ` Rate card has no entry for severity level(s) ${missing.join(', ')} — those items priced at $0.` };
+  }
+  return { confidence: 95, note: '' };
+}
 
 // ── RELAY TO SENTINEL CENTER ──────────────────────────────────────────────
 // Sentinel reads TSM_PM_STRATEGIST_RELAY from localStorage as
@@ -609,7 +622,8 @@ function pmVendorConfidence(fm, flagged) {
 function pmPushToSentinel() {
   if (!engine) return;
   try {
-    const fin = engine.getFinancialSummary();
+    const iotAlerts = iotEngine ? iotEngine.getIotAlerts() : [];
+    const fin = engine.getFinancialSummary(iotAlerts);
     const kpis = engine.computeKpis();
     const fm = engine.getFinancialModel();
     const workOrderBreaches = engine.getSlaBreaches('work_orders') || [];
@@ -676,21 +690,23 @@ function pmPushToSentinel() {
 
     // IoT sensor alerts (offline device / water leak / thermostat drift) --
     // urgent+high only, same as the other categories only pushing when
-    // there's something actionable. No dollar exposure invented here:
-    // financial_model has no rate card for sensor-driven risk (unlike
-    // vacancy/maintenance/vendor above), so exposure stays 0 rather than
-    // fabricating a per-alert cost. Confidence is high because these are
-    // real reported sensor states, not a derived/estimated figure.
-    const iotAlerts = iotEngine ? iotEngine.getIotAlerts() : [];
+    // there's something actionable. Exposure now comes from a real
+    // severity-keyed rate card (iot_alert_exposure_by_severity, same
+    // per-incident-not-duration pattern as vendor compliance) rather than
+    // the earlier $0 placeholder.
     const iotActionable = iotAlerts.filter(a => a.severity === 'urgent' || a.severity === 'high');
     if (iotActionable.length > 0) {
+      const { confidence, note } = pmIotConfidence(fm, iotActionable);
+      const actionableExposure = fin.iot_exposure_items
+        .filter(it => it.severity === 'urgent' || it.severity === 'high')
+        .reduce((s, it) => s + it.exposure, 0);
       anomalies.push({
         id: 'pm-iot-sensor-alerts',
         title: 'IoT Sensor Alerts Requiring Dispatch',
         severity: pmBreachSeverity(iotActionable.length, iotAlerts.length || 1),
-        exposure: 0,
-        confidence: 95,
-        rootCause: `${iotActionable.length} of ${iotAlerts.length} monitored sensors are reporting an urgent or high-severity condition (offline device, water leak, or major temperature drift). No dollar exposure model exists yet for sensor-driven risk, so exposure is not estimated.`,
+        exposure: actionableExposure,
+        confidence,
+        rootCause: `${iotActionable.length} of ${iotAlerts.length} monitored sensors are reporting an urgent or high-severity condition (offline device, water leak, or major temperature drift).${note}`,
         recommendedAction: 'Dispatch the relevant vendor for each urgent/high sensor alert; prioritize water-leak and offline-device alerts first.',
         impacts: {}
       });
