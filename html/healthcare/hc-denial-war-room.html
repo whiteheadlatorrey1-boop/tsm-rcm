@@ -1317,7 +1317,31 @@ async function groqStreamModel(model, sys, user, onChunk, onDone, onError, maxTo
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({ model, sys, user, maxTok })
     });
-    if(!res.ok){ const e=await res.json(); onError(e.error?.message||'Server error '+res.status); return; }
+    if(!res.ok){
+      // TSM FIX: this always did `e.error?.message`, which assumes the
+      // server's error body looks like Groq's own shape ({error:{message}}).
+      // It doesn't, for either 429 source on /api/hc/stream: the general
+      // apiLimiter (server.js, 300 req/5min) sends {error: 'Too many
+      // requests...'}, and the route's own 20/day clientUsage cap sends
+      // {error: 'Daily analysis limit reached...'} -- both plain strings.
+      // A string has no .message, so e.error?.message was always undefined
+      // and every 429 (from either source, whichever actually fired)
+      // collapsed into the same generic "Server error 429" -- exactly what
+      // the "FIRE ALL 5 ENGINES" screenshot showed on all 5 engines at
+      // once, with no way to tell it apart from an actual Groq outage.
+      // Also guards res.json() itself: a non-JSON error body (a raw text
+      // response from something in front of this route) would otherwise
+      // throw here uncaught by anything but the outer catch below, again
+      // reporting a generic message instead of what actually happened.
+      let msg = 'Server error ' + res.status;
+      try {
+        const e = await res.json();
+        if (typeof e.error === 'string') msg = e.error;
+        else if (e.error?.message) msg = e.error.message;
+      } catch (_) {}
+      onError(msg);
+      return;
+    }
     const reader=res.body.getReader(); const dec=new TextDecoder(); let buf='',total=0;
     while(true){
       const {done,value}=await reader.read(); if(done){onDone(total);break;}
