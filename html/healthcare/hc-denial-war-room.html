@@ -1314,12 +1314,26 @@ function clearAll(){
 }
 
 // ── GROQ STREAM ────────────────────────────────────────────────────────────
-async function groqStreamModel(model, sys, user, onChunk, onDone, onError, maxTok=700){
+async function groqStreamModel(model, sys, user, onChunk, onDone, onError, maxTok=700, timeoutMs=30000){
+  // TSM FIX: no timeout existed on the client side either — a stalled
+  // connection OR a stream that stops sending chunks mid-way (server
+  // timeout races are still possible, and Groq can stall a stream without
+  // ever closing it) would hang this forever with the engine panel stuck
+  // on PROCESSING. This aborts both the initial connect AND any gap
+  // between chunks longer than timeoutMs, whichever comes first.
+  const controller = new AbortController();
+  let watchdog;
+  const resetWatchdog = () => {
+    clearTimeout(watchdog);
+    watchdog = setTimeout(() => controller.abort(), timeoutMs);
+  };
+  resetWatchdog();
   try {
     const res = await fetch('/api/hc/stream', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ model, sys, user, maxTok })
+      body: JSON.stringify({ model, sys, user, maxTok }),
+      signal: controller.signal
     });
     if(!res.ok){
       // TSM FIX: this always did `e.error?.message`, which assumes the
@@ -1348,7 +1362,8 @@ async function groqStreamModel(model, sys, user, onChunk, onDone, onError, maxTo
     }
     const reader=res.body.getReader(); const dec=new TextDecoder(); let buf='',total=0;
     while(true){
-      const {done,value}=await reader.read(); if(done){onDone(total);break;}
+      const {done,value}=await reader.read(); resetWatchdog();
+      if(done){onDone(total);break;}
       buf+=dec.decode(value,{stream:true}); const lines=buf.split('\n'); buf=lines.pop();
       for(const line of lines){
         const data=line.replace(/^data: /,'').trim(); if(data==='[DONE]'){onDone(total);return;}
@@ -1356,7 +1371,12 @@ async function groqStreamModel(model, sys, user, onChunk, onDone, onError, maxTo
         try{const j=JSON.parse(data);const tok=j.choices?.[0]?.delta?.content;if(tok){total+=tok.length;onChunk(tok);}}catch{}
       }
     }
-  } catch(e){ onError(e.message); }
+  } catch(e){
+    if (e.name === 'AbortError') onError('Timed out waiting on the AI engine (' + (timeoutMs/1000) + 's) — it may be under heavy load.');
+    else onError(e.message);
+  } finally {
+    clearTimeout(watchdog);
+  }
 }
 
 // ─── VISUAL DATA PACKET CONTROL ROOM PIPELINE ────────────────────────────────
@@ -1527,12 +1547,85 @@ async function runPipeline() {
   completedCount = 0;
   const actTxt = document.getElementById('active-txt');
 
+  // TSM FIX (D-01): engines had no retry logic at all — a single timeout
+  // or transient Groq error on any engine (most likely Engine 3, which
+  // runs the LARGE model) permanently killed that panel with no way to
+  // recover except reloading the whole page and re-running everything.
+  // Now: one automatic retry per engine on failure, then a manual "Retry
+  // Engine" button appears on that panel so a live demo can recover
+  // in place instead of restarting from scratch.
+  function runEngineOnce(eng, i, outputs, outEl) {
+    return new Promise((resolve) => {
+      groqStreamModel(
+        eng.model, eng.sys, eng.getUserMsg(),
+        (chunk) => { outputs[i] += chunk; if (outEl) outEl.textContent += chunk; },
+        (total) => { outputs[i] = outEl ? outEl.textContent : outputs[i]; resolve({ ok: true, total }); },
+        (err) => resolve({ ok: false, err }),
+        eng.maxTok
+      );
+    });
+  }
+
+  function addEngineRetryButton(eng, i, outputs) {
+    const outEl0 = document.getElementById(eng.outId);
+    const footer = outEl0 ? outEl0.closest('.eng-panel')?.querySelector('.eng-footer') : null;
+    if (!footer || footer.querySelector('.retry-btn')) return;
+    const btn = document.createElement('button');
+    btn.className = 'foot-btn retry-btn';
+    btn.style.color = 'var(--red)';
+    btn.textContent = '↻ Retry Engine';
+    btn.onclick = async () => {
+      btn.disabled = true; btn.textContent = '⟳ Retrying...';
+      const outEl = document.getElementById(eng.outId);
+      const psEl = document.getElementById(eng.badgeId);
+      const tokEl = document.getElementById(eng.tokId);
+      if (outEl) outEl.textContent = '';
+      outputs[i] = '';
+      if (psEl) { psEl.textContent = 'PROCESSING'; psEl.style.color = 'var(--amber)'; }
+      const ok = await runEngineWithRetry(eng, i, outputs, 0);
+      if (ok) btn.remove(); else { btn.disabled = false; btn.textContent = '↻ Retry Engine'; }
+    };
+    footer.appendChild(btn);
+  }
+
+  async function runEngineWithRetry(eng, i, outputs, maxRetries) {
+    const outEl = document.getElementById(eng.outId);
+    const psEl = document.getElementById(eng.badgeId);
+    const tokEl = document.getElementById(eng.tokId);
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      if (attempt > 0) {
+        if (outEl) outEl.textContent = '';
+        outputs[i] = '';
+        if (psEl) { psEl.textContent = 'RETRYING…'; psEl.style.color = 'var(--amber)'; }
+        await new Promise(r => setTimeout(r, 1200));
+      }
+      const result = await runEngineOnce(eng, i, outputs, outEl);
+      if (result.ok) {
+        if (psEl) { psEl.textContent = 'COMPLETE ✓'; psEl.style.color = 'var(--green)'; }
+        if (tokEl) tokEl.textContent = result.total + ' chars';
+        const badge = document.getElementById('badge'+(i+1));
+        if (badge) { badge.textContent = 'COMPLETE ✓'; badge.style.color = 'var(--green)'; }
+        const pn = document.getElementById('pn'+(i+1));
+        if (pn) { pn.style.border='1px solid var(--green)'; pn.style.boxShadow='none'; }
+        completedCount++;
+        return true;
+      }
+      if (attempt === maxRetries) {
+        if (outEl) outEl.textContent = '[Error after retry: ' + result.err + ']';
+        if (psEl) { psEl.textContent = 'ERROR'; psEl.style.color = 'var(--red)'; }
+        const badge = document.getElementById('badge'+(i+1));
+        if (badge) { badge.textContent = 'ERROR'; badge.style.color = 'var(--red)'; }
+        addEngineRetryButton(eng, i, outputs);
+        return false;
+      }
+    }
+  }
+
   for (let i = 0; i < engines.length; i++) {
     const eng = engines[i];
     const outEl = document.getElementById(eng.outId);
     const idleEl = document.getElementById(eng.idleId);
     const psEl = document.getElementById(eng.badgeId);
-    const tokEl = document.getElementById(eng.tokId);
 
     if (outEl) { outEl.textContent = ''; outEl.style.display = 'block'; }
     if (idleEl) idleEl.style.display = 'none';
@@ -1547,29 +1640,7 @@ async function runPipeline() {
     if (psEl) { psEl.textContent = 'PROCESSING'; psEl.style.color = 'var(--amber)'; }
     if (actTxt) actTxt.textContent = (i + 1) + ' / 5 Engines Active';
 
-    await new Promise((resolve) => {
-      groqStreamModel(
-        eng.model, eng.sys, eng.getUserMsg(),
-        (chunk) => { outputs[i] += chunk; if (outEl) outEl.textContent += chunk; },
-        (total) => {
-          outputs[i] = outEl ? outEl.textContent : outputs[i];
-          if (psEl) { psEl.textContent = 'COMPLETE ✓'; psEl.style.color = 'var(--green)'; }
-          if (tokEl) tokEl.textContent = total + ' chars';
-          const badge = document.getElementById('badge'+(i+1));
-          if (badge) { badge.textContent = 'COMPLETE ✓'; badge.style.color = 'var(--green)'; }
-          const pn = document.getElementById('pn'+(i+1));
-          if (pn) { pn.style.border='1px solid var(--green)'; pn.style.boxShadow='none'; }
-          completedCount++;
-          resolve();
-        },
-        (err) => {
-          if (outEl) outEl.textContent = '[Error: ' + err + ']';
-          if (psEl) { psEl.textContent = 'ERROR'; psEl.style.color = 'var(--red)'; }
-          resolve();
-        },
-        eng.maxTok
-      );
-    });
+    await runEngineWithRetry(eng, i, outputs, 1);
   }
 
   if (actTxt) actTxt.textContent = '5 / 5 Engines Complete';

@@ -1172,19 +1172,33 @@ app.post('/api/hc/stream', async (req, res) => {
   if (!groqKey) return res.status(500).json({ error: 'GROQ_KEY not configured on server.' });
 
   try {
-    const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + (process.env.GROQ_API_KEY || process.env.GROQ_KEY)
-      },
-      body: JSON.stringify({
-        model: model || 'openai/gpt-oss-120b',
-        stream: true,
-        max_tokens: maxTok || 500,
-        messages: [{ role: 'system', content: sys }, { role: 'user', content: user }]
-      })
-    });
+    // TSM FIX: no timeout existed anywhere in this chain (client or server).
+    // If Groq hung on a slow/overloaded model — most likely on Engine 3's
+    // LARGE model — this request would hang indefinitely with the client UI
+    // stuck on PROCESSING forever, no error, no way to recover short of a
+    // page refresh mid-demo. 25s covers normal completions on both SMALL and
+    // LARGE Groq models with margin; anything past that is treated as stuck.
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 25000);
+    let groqRes;
+    try {
+      groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + (process.env.GROQ_API_KEY || process.env.GROQ_KEY)
+        },
+        body: JSON.stringify({
+          model: model || 'openai/gpt-oss-120b',
+          stream: true,
+          max_tokens: maxTok || 500,
+          messages: [{ role: 'system', content: sys }, { role: 'user', content: user }]
+        }),
+        signal: controller.signal
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     if (!groqRes.ok) {
       // Same class of bug as the client-side fix in poc-html's
@@ -1216,6 +1230,9 @@ app.post('/api/hc/stream', async (req, res) => {
     const { Readable } = require('stream');
     Readable.fromWeb(groqRes.body).pipe(res);
   } catch (e) {
+    if (e.name === 'AbortError') {
+      return res.status(504).json({ error: 'Groq took too long to respond (25s timeout). This can happen when the model is under heavy load — try again.' });
+    }
     res.status(e.status || 500).json({ error: e.message });
   }
 });
