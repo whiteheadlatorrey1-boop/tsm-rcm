@@ -721,6 +721,11 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
     </div>
 
     <div class="panel">
+      <div class="panel-title"><div class="dot" style="background:var(--cyan)"></div>CASE QUEUE · SECTOR: BPO</div>
+      <div id="tsm-case-queue"></div>
+    </div>
+
+    <div class="panel">
       <div class="panel-title"><div class="dot" style="background:var(--green)"></div>SUPERVISOR ROLLUP · CROSS-MISSION</div>
       <div id="supervisorRollup">
         <div style="color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:.68rem">Mission Store not available.</div>
@@ -1713,10 +1718,19 @@ window.TSM_AUTONOMY_STANDARDIZED = true;
 <script src="/html/shared/tsm-memory-engine.js"></script>
 <script src="/html/shared/tsm-exceptions.js"></script>
 <script src="/html/js/widgets/tsm-exception-widget.js"></script>
+<!-- TSM CASE QUEUE — Roadmap #10 Case Engine + widget. tsm-hitl-gate.js is
+     loaded so recordApproval() has a standardized decision log to write
+     to; both are additive/best-effort if a load order ever shifts. -->
+<script src="/html/shared/tsm-hitl-gate.js"></script>
+<script src="/html/shared/tsm-case-manager.js"></script>
+<script src="/html/js/widgets/tsm-case-widget.js"></script>
 <script>
 (function(){
   if (typeof TSMExceptionWidget !== 'undefined') {
     TSMExceptionWidget.mount('tsm-exception-queue', { sector: 'bpo' });
+  }
+  if (typeof TSMCaseWidget !== 'undefined') {
+    TSMCaseWidget.mount('tsm-case-queue', { sector: 'bpo' });
   }
 
   // Wire Exception Queue "Resolve" clicks into the same exec-action relay
@@ -1756,7 +1770,7 @@ function bpoFeedExceptions(d) {
 
   const confidence = rec.confidence || null;
   triggers.forEach(function(trigger, i){
-    TSMExceptions.add({
+    const exceptionRecord = TSMExceptions.add({
       title: trigger,
       detail: (d.anomalyEntity || d.sector || 'BPO') + ' \u00b7 ' + (d.selectedScenarioName || 'Strategy executed'),
       recommendedAction: 'See BPO Executive Portal resolution brief.',
@@ -1766,9 +1780,23 @@ function bpoFeedExceptions(d) {
       sector: 'bpo',
       agentLabel: 'BPO Strategist'
     });
+    // Every BPO exception also becomes a real Case (Roadmap #10) with its
+    // own approval/execution/audit lifecycle -- not a second exception
+    // list. createFromException() keeps the exception as the single
+    // source of truth and links back to it by exceptionId.
+    if (typeof TSMCaseManager !== 'undefined' && exceptionRecord) {
+      TSMCaseManager.createFromException(exceptionRecord, {
+        client: d.anomalyEntity || null,
+        process: d.selectedScenarioName || 'bpo_case_resolution',
+        source: 'BPO Strategist'
+      });
+    }
   });
   if (typeof TSMExceptionWidget !== 'undefined') {
     TSMExceptionWidget.mount('tsm-exception-queue', { sector: 'bpo' });
+  }
+  if (typeof TSMCaseWidget !== 'undefined') {
+    TSMCaseWidget.mount('tsm-case-queue', { sector: 'bpo' });
   }
 }
 </script>

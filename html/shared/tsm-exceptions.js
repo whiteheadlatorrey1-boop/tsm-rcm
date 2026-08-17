@@ -182,11 +182,11 @@
   }
 
   function getAll(sector) {
-    var tierRank = { P1: 0, P2: 1, P3: 2 };
+    var tierRank = { P1: 1, P2: 2, P3: 3 };
     return _records
       .filter(function (r) { return !sector || r.sector === sector; })
       .slice()
-      .sort(function (a, b) { return (tierRank[a.priority] || 2) - (tierRank[b.priority] || 2); });
+      .sort(function (a, b) { return (tierRank[a.priority] || 4) - (tierRank[b.priority] || 4); });
   }
 
   function resolve(exceptionId) {
