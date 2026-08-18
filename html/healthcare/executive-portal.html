@@ -931,6 +931,12 @@ border-radius: 2px; flex-shrink: 0; white-space: nowrap;
   </div>
   <div id="tsm-exception-queue" style="margin-bottom:20px;"></div>
 
+  <!-- ── CASE QUEUE — Roadmap #10 Case Engine, one Case per exception ────── -->
+  <div class="sec red-sec" style="margin-top:0">
+    <div class="sec-label">Case Queue</div>
+  </div>
+  <div id="tsm-case-queue" style="margin-bottom:20px;"></div>
+
   <!-- ── DECISION TRIGGERS ──────────────────────────────────────────────── -->
   <div class="sec red-sec">
     <div class="sec-label">Decisions Required Today</div>
@@ -3674,6 +3680,17 @@ setInterval(buildStratBriefTab, 30000);
 
     TSMExecKit.renderExplainability(EXP_ID, items, { openFirst: true });
 
+    // Feed the same explain items into the Exception/Case Queues below.
+    // hcFeedExceptions is defined further down the page (after
+    // tsm-exceptions.js/tsm-case-manager.js load) and attached to
+    // window, so it's safe to call here even though mount() is defined
+    // earlier in the file -- by the time mount() actually *runs*
+    // (DOMContentLoaded or a storage event, both after full parse) the
+    // function is already attached.
+    try {
+      if (typeof window.hcFeedExceptions === 'function') window.hcFeedExceptions(items);
+    } catch (e) { console.warn('[hc-exceptions] feed error:', e); }
+
     // Roadmap #7 — same items already flow through the explain widget above;
     // reuse them rather than re-deriving anything.
     if (window.TSMQualityScoreEngine && window.TSMExecutiveOutcome) {
@@ -3748,8 +3765,84 @@ function tsmWriteScopedExec(vertical, missionId){
      so it subscribes to the live TSMBus instance rather than one that gets discarded -->
 <script src="/html/shared/tsm-exceptions.js"></script>
 <script src="/html/js/widgets/tsm-exception-widget.js"></script>
+<!-- TSM CASE QUEUE — Roadmap #10 Case Engine + widget, same load order as
+     the BPO Exec Portal. tsm-hitl-gate.js gives recordApproval() a
+     standardized decision log to write to; both are additive/best-effort. -->
+<script src="/html/shared/tsm-hitl-gate.js"></script>
+<script src="/html/shared/tsm-case-manager.js"></script>
+<script src="/html/js/widgets/tsm-case-widget.js"></script>
 <script>
   TSMExceptionWidget.mount('tsm-exception-queue', { sector: 'healthcare' });
+  if (typeof TSMCaseWidget !== 'undefined') {
+    TSMCaseWidget.mount('tsm-case-queue', { sector: 'healthcare' });
+  }
+</script>
+
+<script>
+/* HC EXCEPTION/CASE FEED — mirrors bpoFeedExceptions() in
+   bpo-executive-portal.html. The HC Exec Kit above already mounts
+   TSMExceptionWidget for sector 'healthcare', but until now nothing on
+   this page ever called TSMExceptions.add() — that queue was silently
+   empty. This feeds off payload.explain, the same normalized items
+   hc-main-strategist.html already builds via TSMExecKitProducer.buildExplain()
+   and TSMExecKit.renderExplainability() already renders on this page. */
+(function (global) {
+  // Tracks explain-item ids already fed into TSMExceptions/TSMCaseManager
+  // this pageload, so a storage-event re-render on an unchanged relay
+  // doesn't create duplicate exceptions/cases every time mount() re-runs.
+  var _fedIds = {};
+
+  function hcFeedExceptions(items) {
+    if (typeof TSMExceptions === 'undefined') {
+      console.warn('[hc-exceptions] TSMExceptions engine not loaded on this page.');
+      return;
+    }
+    var list = Array.isArray(items) ? items : [];
+    var fedAny = false;
+
+    list.forEach(function (it) {
+      if (!it || !it.claim) return;
+      var itemId = it.id || it.claim;
+      if (_fedIds[itemId]) return; // already fed this item this pageload
+      _fedIds[itemId] = true;
+      fedAny = true;
+
+      var exceptionRecord = TSMExceptions.add({
+        title: it.claim,
+        detail: it.rationale || null,
+        recommendedAction: 'See Healthcare Executive Portal resolution brief.',
+        severity: it.severity || 'med',
+        confidence: it.confidence != null ? it.confidence : null,
+        sector: 'healthcare',
+        agentLabel: 'HC Strategist'
+      });
+
+      // Every HC exception also becomes a real Case (Roadmap #10) with its
+      // own approval/execution/audit lifecycle, same as BPO — the exception
+      // stays the single source of truth, the case just links back to it.
+      if (typeof TSMCaseManager !== 'undefined' && exceptionRecord) {
+        var newCase = TSMCaseManager.createFromException(exceptionRecord, {
+          process: 'hc_case_resolution',
+          source: 'HC Strategist'
+        });
+        if (newCase) {
+          TSMCaseManager.requestApproval(newCase.caseId, { note: 'Auto-requested on case creation from HC exception feed.' });
+        }
+      }
+    });
+
+    if (!fedAny) return;
+
+    if (typeof TSMExceptionWidget !== 'undefined') {
+      TSMExceptionWidget.mount('tsm-exception-queue', { sector: 'healthcare' });
+    }
+    if (typeof TSMCaseWidget !== 'undefined') {
+      TSMCaseWidget.mount('tsm-case-queue', { sector: 'healthcare' });
+    }
+  }
+
+  global.hcFeedExceptions = hcFeedExceptions;
+})(window);
 </script>
   <script src="/js/tsm-guide-engine.js" defer></script>
 </body>
