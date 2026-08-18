@@ -648,10 +648,12 @@ router.post('/api/hc/alerts', (req, res) => {
   }
 });
 
-router.post('/api/hc/query', async function(req, res) {
-  var body = req.body || {};
-  try { var a = await groqChat(SP.healthcare, body.question||body.query||'', body.maxTokens||1024); return res.json({ ok:true, answer:a, createdAt:new Date().toISOString() }); }
-  catch(e) { return res.status(500).json({ ok:false, error:e.message }); }
-});
+// TSM FIX 2026-08-18: removed a second, dead router.post('/api/hc/query', ...)
+// handler that was previously here. Express matches routes in registration
+// order and the earlier /api/hc/query handler (above, nodeKey-grounded)
+// always returns a response on every branch, so this one never actually
+// ran — but its presence recreated the exact shadowing hazard the
+// 2026-08-16 fix in server.js was written to eliminate. Removed rather than
+// reconnected since the earlier handler already covers this route.
 
 module.exports = router;
