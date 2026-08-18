@@ -65,12 +65,28 @@
    * generatedArtifacts, approvalStatus, executionStatus, outcome.
    * `timeline` doubles as the audit history the framework calls for — every
    * lifecycle transition below pushes one entry to it.
+   *
+   * tenantId / confidenceTier / humanReviewRequired (added, additive —
+   * SOW Section 1/2 gap close):
+   *   - tenantId: structural client/tenant boundary. Distinct from `client`
+   *     (a free-text display name) — this is the field a multi-tenant query
+   *     filters on. Defaults to null so existing callers are unaffected;
+   *     bpo-internal1.html's DEFAULT_TENANT_ID should be passed in here.
+   *   - confidenceTier: 'HIGH' | 'MEDIUM' | 'LOW' | null, derived by
+   *     confidenceTierFor() from a 0-100 confidence score if the caller
+   *     doesn't supply one explicitly. Feeds the pilot's accuracy-grading
+   *     methodology (root cause / appealability / actionable, 0/1) instead
+   *     of that being a manual-only review.
+   *   - humanReviewRequired: boolean, defaults false only when tier is
+   *     HIGH; true for MEDIUM/LOW/unknown so the safe default is "a human
+   *     looks at it" rather than silent auto-approval.
    */
   function TSMCase(data) {
     data = data || {};
     this.caseId = data.caseId || makeId();
     this.sector = data.sector || 'general';
     this.vertical = data.vertical || data.sector || '';
+    this.tenantId = data.tenantId || null;
     this.client = data.client || '';
     this.process = data.process || '';
     this.source = data.source || '';
@@ -95,6 +111,11 @@
     this.approvalStatus = data.approvalStatus || 'NOT_REQUESTED';
     this.executionStatus = data.executionStatus || 'NOT_STARTED';
     this.outcome = data.outcome || null;
+
+    this.confidenceTier = data.confidenceTier || null;
+    this.humanReviewRequired = typeof data.humanReviewRequired === 'boolean'
+      ? data.humanReviewRequired
+      : null;
 
     this.detectedAt = data.detectedAt || new Date().toISOString();
     this.updatedAt = data.updatedAt || new Date().toISOString();
@@ -156,9 +177,34 @@
     return 'P3';
   }
 
+  /**
+   * confidenceTierFor(confidence) -> 'HIGH' | 'MEDIUM' | 'LOW' | null
+   * confidence is a 0-100 score (same scale TSMExceptions already uses).
+   * Thresholds intentionally conservative: MEDIUM starts at 70, HIGH at 90,
+   * so "unsure" defaults toward human review rather than away from it.
+   */
+  function confidenceTierFor(confidence) {
+    if (typeof confidence !== 'number' || isNaN(confidence)) return null;
+    if (confidence >= 90) return 'HIGH';
+    if (confidence >= 70) return 'MEDIUM';
+    return 'LOW';
+  }
+
+  /**
+   * humanReviewRequiredFor(tier) -> boolean
+   * Safe default: only a HIGH tier skips human review. LOW, MEDIUM, and
+   * unknown (null tier, e.g. no confidence score was ever supplied) all
+   * require review.
+   */
+  function humanReviewRequiredFor(tier) {
+    return tier !== 'HIGH';
+  }
+
   function create(data) {
     var rec = new TSMCase(data);
     if (!rec.priority) rec.priority = priorityFor((data && data.severity) || null, (data && data.confidence) || null);
+    if (!rec.confidenceTier) rec.confidenceTier = confidenceTierFor(data && data.confidence);
+    if (rec.humanReviewRequired === null) rec.humanReviewRequired = humanReviewRequiredFor(rec.confidenceTier);
     logAudit(rec, 'CREATED', rec.title || rec.caseId);
     _records.push(rec);
     persist(_records);
@@ -175,6 +221,7 @@
       title: exceptionRecord.title || 'Untitled case',
       description: exceptionRecord.detail || '',
       priority: exceptionRecord.priority || null,
+      confidence: typeof exceptionRecord.confidence === 'number' ? exceptionRecord.confidence : null,
       exposure: typeof exceptionRecord.exposure === 'number' ? exceptionRecord.exposure : null,
       recommendedActions: exceptionRecord.recommendedAction ? [exceptionRecord.recommendedAction] : [],
       detectedExceptions: [{
@@ -342,7 +389,9 @@
     markExecuted: markExecuted,
     subscribe: subscribe,
     clear: clear,
-    summarize: summarize
+    summarize: summarize,
+    confidenceTierFor: confidenceTierFor,
+    humanReviewRequiredFor: humanReviewRequiredFor
   };
 
   global.TSMCase = TSMCase;
@@ -367,8 +416,9 @@ if (typeof require !== 'undefined' && typeof module !== 'undefined' && require.m
     exposure: 1250
   };
 
-  var c = Cases.createFromException(exceptionRecord, { client: 'Acme Health System', process: 'denial_recovery', deadline: '2026-08-20' });
+  var c = Cases.createFromException(exceptionRecord, { tenantId: 'tenant_acme_health', client: 'Acme Health System', process: 'denial_recovery', deadline: '2026-08-20' });
   console.log('[createFromException]', JSON.stringify(c, null, 2));
+  console.log('[confidenceTier check]', c.confidenceTier, '| humanReviewRequired:', c.humanReviewRequired, '| tenantId:', c.tenantId);
 
   Cases.addArtifact(c.caseId, { type: 'appeal_letter', title: 'Payer Appeal — CLM-1001' });
   Cases.requestApproval(c.caseId, { note: 'Ready for supervisor sign-off' });
