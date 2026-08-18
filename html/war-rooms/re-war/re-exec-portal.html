@@ -1223,6 +1223,14 @@ window.tsmEnforcer = window.TSMEnforcer;
 </div>
 <!-- ▲ TSM EXEC KIT ▲ -->
 
+<!-- ── EXCEPTION QUEUE / CASE QUEUE — Roadmap #10 Case Engine ──────────── -->
+<div style="padding:0 20px;">
+  <div style="font-size:8px;letter-spacing:2.5px;color:var(--dim,#888);margin-bottom:8px;text-transform:uppercase;">Exception Queue</div>
+  <div id="tsm-exception-queue"></div>
+  <div style="font-size:8px;letter-spacing:2.5px;color:var(--dim,#888);margin:18px 0 8px;text-transform:uppercase;">Case Queue</div>
+  <div id="tsm-case-queue"></div>
+</div>
+
 <!-- LAYOUT -->
 <div id="layout">
 
@@ -2329,6 +2337,17 @@ function exportBoard() {
         ? new Date(relay.timestamp).toLocaleTimeString() : 'loaded')) : '' });
 
     TSMExecKit.renderExplainability(EXP_ID, items, { openFirst: true });
+
+    // Feed the same explain items into the Exception/Case Queues below.
+    // reFeedExceptions is defined further down the page (after
+    // tsm-exceptions.js/tsm-case-manager.js load) and attached to
+    // window, so it's safe to call here even though mount() is defined
+    // earlier in the file -- by the time mount() actually *runs*
+    // (DOMContentLoaded or a storage event, both after full parse) the
+    // function is already attached.
+    try {
+      if (typeof window.reFeedExceptions === 'function') window.reFeedExceptions(items);
+    } catch (e) { console.warn('[re-exceptions] feed error:', e); }
   }
 
   if (document.readyState === 'loading') {
@@ -2820,6 +2839,90 @@ function toggleGuideBody() {
     meta: { exposure: '$1,247', deadline: '18hr' }
   });
 })();
+</script>
+
+<!-- TSM EXCEPTION QUEUE — mounted after the final event-bus/mission-engine reload above -->
+<script src="/html/shared/tsm-exceptions.js"></script>
+<script src="/html/js/widgets/tsm-exception-widget.js"></script>
+<!-- TSM CASE QUEUE — Roadmap #10 Case Engine + widget, same load order as
+     the BPO/Healthcare/Construction/FinOps/Insurance/Legal Exec Portals.
+     tsm-hitl-gate.js gives recordApproval() a standardized decision log
+     to write to; both are additive/best-effort. -->
+<script src="/html/shared/tsm-hitl-gate.js"></script>
+<script src="/html/shared/tsm-case-manager.js"></script>
+<script src="/html/js/widgets/tsm-case-widget.js"></script>
+<script>
+  TSMExceptionWidget.mount('tsm-exception-queue', { sector: 're' });
+  if (typeof TSMCaseWidget !== 'undefined') {
+    TSMCaseWidget.mount('tsm-case-queue', { sector: 're' });
+  }
+</script>
+
+<script>
+/* RE EXCEPTION/CASE FEED — mirrors ctorFeedExceptions()/hcFeedExceptions()/
+   finopsFeedExceptions()/insuranceFeedExceptions()/legalFeedExceptions() in
+   the other Exec Portals. The RE Exec Kit above already builds explain
+   items via TSMExecKit.renderExplainability(), but until now nothing on
+   this page ever called TSMExceptions.add() — that queue was silently
+   empty. This feeds off the same normalized items. */
+(function (global) {
+  // Tracks explain-item ids already fed into TSMExceptions/TSMCaseManager
+  // this pageload, so a storage-event re-render on an unchanged relay
+  // doesn't create duplicate exceptions/cases every time mount() re-runs.
+  var _fedIds = {};
+
+  function reFeedExceptions(items) {
+    if (typeof TSMExceptions === 'undefined') {
+      console.warn('[re-exceptions] TSMExceptions engine not loaded on this page.');
+      return;
+    }
+    var list = Array.isArray(items) ? items : [];
+    var fedAny = false;
+
+    list.forEach(function (it) {
+      if (!it || !it.claim) return;
+      var itemId = it.id || it.claim;
+      if (_fedIds[itemId]) return; // already fed this item this pageload
+      _fedIds[itemId] = true;
+      fedAny = true;
+
+      var exceptionRecord = TSMExceptions.add({
+        title: it.claim,
+        detail: it.rationale || null,
+        recommendedAction: 'See Real Estate Executive Portal resolution brief.',
+        severity: it.severity || 'med',
+        confidence: it.confidence != null ? it.confidence : null,
+        sector: 're',
+        agentLabel: 'RE Strategist'
+      });
+
+      // Every RE exception also becomes a real Case (Roadmap #10) with its
+      // own approval/execution/audit lifecycle, same as
+      // BPO/Healthcare/Construction/FinOps/Insurance/Legal — the exception
+      // stays the single source of truth, the case just links back to it.
+      if (typeof TSMCaseManager !== 'undefined' && exceptionRecord) {
+        var newCase = TSMCaseManager.createFromException(exceptionRecord, {
+          process: 're_case_resolution',
+          source: 'RE Strategist'
+        });
+        if (newCase) {
+          TSMCaseManager.requestApproval(newCase.caseId, { note: 'Auto-requested on case creation from RE exception feed.' });
+        }
+      }
+    });
+
+    if (!fedAny) return;
+
+    if (typeof TSMExceptionWidget !== 'undefined') {
+      TSMExceptionWidget.mount('tsm-exception-queue', { sector: 're' });
+    }
+    if (typeof TSMCaseWidget !== 'undefined') {
+      TSMCaseWidget.mount('tsm-case-queue', { sector: 're' });
+    }
+  }
+
+  global.reFeedExceptions = reFeedExceptions;
+})(window);
 </script>
 </body>
 </html>

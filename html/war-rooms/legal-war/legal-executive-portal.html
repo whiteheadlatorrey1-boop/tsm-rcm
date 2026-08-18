@@ -581,6 +581,14 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:1000;
 </div>
 <!-- ▲ TSM EXEC KIT ▲ -->
 
+<!-- ── EXCEPTION QUEUE / CASE QUEUE — Roadmap #10 Case Engine ──────────── -->
+<div style="padding:0 20px;">
+  <div class="sec-label">Exception Queue</div>
+  <div id="tsm-exception-queue"></div>
+  <div class="sec-label" style="margin-top:18px">Case Queue</div>
+  <div id="tsm-case-queue"></div>
+</div>
+
     <div class="tn-clock" id="clock">--:--:--</div>
   </div>
 </nav>
@@ -1367,6 +1375,17 @@ setInterval(loadStrategistRelay, 15000);
         ? new Date(relay.timestamp).toLocaleTimeString() : 'loaded')) : '' });
 
     TSMExecKit.renderExplainability(EXP_ID, items, { openFirst: true });
+
+    // Feed the same explain items into the Exception/Case Queues below.
+    // legalFeedExceptions is defined further down the page (after
+    // tsm-exceptions.js/tsm-case-manager.js load) and attached to
+    // window, so it's safe to call here even though mount() is defined
+    // earlier in the file -- by the time mount() actually *runs*
+    // (DOMContentLoaded or a storage event, both after full parse) the
+    // function is already attached.
+    try {
+      if (typeof window.legalFeedExceptions === 'function') window.legalFeedExceptions(items);
+    } catch (e) { console.warn('[legal-exceptions] feed error:', e); }
   }
 
   if (document.readyState === 'loading') {
@@ -1419,6 +1438,90 @@ function tsmWriteScopedExec(vertical, missionId){
 <script src="/html/js/core/tsm-state.js">
 </script>
 <script src="/shared/tsm-exec-portal-upgrade.js">
+</script>
+
+<!-- TSM EXCEPTION QUEUE — mounted after the final event-bus/mission-engine reload above -->
+<script src="/html/shared/tsm-exceptions.js"></script>
+<script src="/html/js/widgets/tsm-exception-widget.js"></script>
+<!-- TSM CASE QUEUE — Roadmap #10 Case Engine + widget, same load order as
+     the BPO/Healthcare/Construction/FinOps/Insurance Exec Portals.
+     tsm-hitl-gate.js gives recordApproval() a standardized decision log
+     to write to; both are additive/best-effort. -->
+<script src="/html/shared/tsm-hitl-gate.js"></script>
+<script src="/html/shared/tsm-case-manager.js"></script>
+<script src="/html/js/widgets/tsm-case-widget.js"></script>
+<script>
+  TSMExceptionWidget.mount('tsm-exception-queue', { sector: 'legal' });
+  if (typeof TSMCaseWidget !== 'undefined') {
+    TSMCaseWidget.mount('tsm-case-queue', { sector: 'legal' });
+  }
+</script>
+
+<script>
+/* LEGAL EXCEPTION/CASE FEED — mirrors ctorFeedExceptions()/hcFeedExceptions()/
+   finopsFeedExceptions()/insuranceFeedExceptions() in the other Exec
+   Portals. The Legal Exec Kit above already builds explain items via
+   TSMExecKit.renderExplainability(), but until now nothing on this page
+   ever called TSMExceptions.add() — that queue was silently empty. This
+   feeds off the same normalized items. */
+(function (global) {
+  // Tracks explain-item ids already fed into TSMExceptions/TSMCaseManager
+  // this pageload, so a storage-event re-render on an unchanged relay
+  // doesn't create duplicate exceptions/cases every time mount() re-runs.
+  var _fedIds = {};
+
+  function legalFeedExceptions(items) {
+    if (typeof TSMExceptions === 'undefined') {
+      console.warn('[legal-exceptions] TSMExceptions engine not loaded on this page.');
+      return;
+    }
+    var list = Array.isArray(items) ? items : [];
+    var fedAny = false;
+
+    list.forEach(function (it) {
+      if (!it || !it.claim) return;
+      var itemId = it.id || it.claim;
+      if (_fedIds[itemId]) return; // already fed this item this pageload
+      _fedIds[itemId] = true;
+      fedAny = true;
+
+      var exceptionRecord = TSMExceptions.add({
+        title: it.claim,
+        detail: it.rationale || null,
+        recommendedAction: 'See Legal Executive Portal resolution brief.',
+        severity: it.severity || 'med',
+        confidence: it.confidence != null ? it.confidence : null,
+        sector: 'legal',
+        agentLabel: 'Legal Strategist'
+      });
+
+      // Every Legal exception also becomes a real Case (Roadmap #10) with
+      // its own approval/execution/audit lifecycle, same as
+      // BPO/Healthcare/Construction/FinOps/Insurance — the exception
+      // stays the single source of truth, the case just links back to it.
+      if (typeof TSMCaseManager !== 'undefined' && exceptionRecord) {
+        var newCase = TSMCaseManager.createFromException(exceptionRecord, {
+          process: 'legal_case_resolution',
+          source: 'Legal Strategist'
+        });
+        if (newCase) {
+          TSMCaseManager.requestApproval(newCase.caseId, { note: 'Auto-requested on case creation from Legal exception feed.' });
+        }
+      }
+    });
+
+    if (!fedAny) return;
+
+    if (typeof TSMExceptionWidget !== 'undefined') {
+      TSMExceptionWidget.mount('tsm-exception-queue', { sector: 'legal' });
+    }
+    if (typeof TSMCaseWidget !== 'undefined') {
+      TSMCaseWidget.mount('tsm-case-queue', { sector: 'legal' });
+    }
+  }
+
+  global.legalFeedExceptions = legalFeedExceptions;
+})(window);
 </script>
   <script src="/js/tsm-guide-engine.js" defer></script>
 </body>
