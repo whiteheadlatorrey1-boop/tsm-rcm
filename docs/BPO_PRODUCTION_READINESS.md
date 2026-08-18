@@ -1,9 +1,9 @@
 # TSM BPO Production Readiness
 
-_Last verified against a fresh clone of `origin/main` at `90eeeee26` (2026-08-18)._
+_Last verified against a fresh clone of `origin/main` at `3a9d1604` (2026-08-18)._
 
 ## Current Status
-The BPO apps are ready for an internal/supervised pilot (your own team running real cases, or a demo to a prospect). Not yet ready to hand a client a login for unsupervised live client records — see Phase 3–5 below.
+The BPO apps are ready for an internal/supervised pilot (your own team running real cases, or a demo to a prospect). The technical building blocks for handling regulated/client data now exist (client-scoped API access, document encryption at rest, structured audit/request logging) — but there's no client-facing UI wired to the `client` role yet, and HIPAA/PII handling requires organizational steps (BAA, risk assessment, breach procedures) beyond anything code can complete. Don't hand a client a login or route real PHI through this until both are addressed. See Phase 3–5 below.
 
 ## Production Requirements
 
@@ -30,20 +30,20 @@ The BPO apps are ready for an internal/supervised pilot (your own team running r
 - **Verified so far:** functional harness (mocked Mongo collections) confirms chunk/reassembly correctness byte-for-byte for both single- and multi-chunk files, oversize rejection, case-scoped listing, soft-delete behavior, and audit-log writes. `node --check` clean on both changed files.
 - **Not yet verified:** a real write/read against the actual Firestore-Mongo-compat backend. The chunking approach was deliberately chosen to avoid GridFS's untested `createIndex()` call, but the 1 MiB assumption itself hasn't been confirmed against this specific backend — run one real upload+download through a booted server with `MONGODB_URI` set before trusting this with real client documents.
 
-### Phase 4 — Reporting
-- WIP report export.
-- SLA report export.
-- Executive rollup.
-- Client-facing monthly report.
-- Recovery / leakage / risk metrics.
+### Phase 4 — Reporting — PARTIALLY DONE
+- ~~WIP report export.~~ Done — `GET /api/bpo/reports/wip`, JSON or `?format=csv`, internal roles only.
+- ~~SLA report export.~~ Done — `GET /api/bpo/reports/sla`, JSON or `?format=csv`. Reports the raw SLA event timeline (stage, type, `ageHoursAtEvent`) — no breach/pass flag, since no SLA threshold is defined anywhere in this codebase. Setting one (e.g. "48h = breach for Tier 1 clients") is a client-contract decision, not a code decision.
+- ~~Executive rollup.~~ Done — `GET /api/bpo/reports/executive-rollup`: counts by stage/status/priority, average open-item age, active client count, SLA event counts by type.
+- Client-facing monthly report template. — Not done. Needs a decision on what a client is contractually owed to see (which fields, what cadence, what it's called) before building the template — that's a client-relationship decision, not a code decision.
+- Recovery / leakage / risk metrics. — Not done, same reason as the SLA breach flag above: these require a defined formula (e.g. what counts as "recovered," what baseline "leakage" is measured against) that isn't in this codebase and isn't mine to invent.
 
-### Phase 5 — Production Security
-- Client data separation.
-- Audit trails.
-- Encryption at rest where applicable.
-- HIPAA/PII caution for healthcare lanes.
-- Admin controls for pricing/SLA plans.
-- Logging and monitoring.
+### Phase 5 — Production Security — PARTIALLY DONE
+- ~~Client data separation.~~ Done — added a `client` role to `BPO_CLIENT_VIEW_ROLES`. Previously a client-role session was 403'd from every BPO route outright; now work-items (list/get), SLA events, and documents (list/download) allow it, with every query forced to the session's own `clientId` and cross-client lookups returning 404 (not 403), so a client account can't distinguish "not yours" from "doesn't exist." Write/manage routes, the client roster, and audit-log reads remain internal-only. No client-facing UI/login page exists yet for this role — the API supports it, nothing in `html/` uses it yet.
+- ~~Audit trails.~~ Done — `bpo_audit_logs` (per-action, existing) plus structured JSON request logging added to stdout for every `/api/bpo/*` call (method, path, status, duration, role, actor, clientId).
+- ~~Encryption at rest where applicable.~~ Done for BPO document bytes specifically — `bpoStoreDocument`/`bpoGetDocumentBuffer` now encrypt/decrypt with AES-256-GCM (per-document random IV, auth tag verified on read) before/after chunking, keyed by `TSM_DOC_ENCRYPTION_KEY` (32-byte key, base64 — `openssl rand -base64 32`). Fails closed: uploads are rejected if the key isn't set, rather than silently falling back to plaintext. **Two things this does NOT cover, and neither is a code fix:** (1) documents uploaded *before* this change are still plaintext at rest — a one-time re-encryption pass would need to run against the real DB, which this sandbox has no access to; (2) `TSM_DOC_ENCRYPTION_KEY` itself needs to live in a real secrets store (Fly secrets, a KMS) with a real rotation owner — right now it's just an env var like everything else in `.env`/Fly secrets, no different in kind from `TSM_SESSION_SECRET`.
+- HIPAA/PII compliance program — **NOT something a code change can complete.** What's now true on the technical-safeguards side: encryption at rest (documents, above), encryption in transit (Fly TLS termination + `helmet`'s default HSTS), role-based access control, audit logging, session expiry (12h TTL), and minimum-necessary access (client-role scoping, above). What's still outside code entirely: a signed Business Associate Agreement with whoever hosts the DB (Firestore/Mongo-compat layer) if any PHI touches it, a documented risk assessment, breach-notification procedures, workforce training, and a named person responsible for the program. None of that can be "built" — it has to be decided and executed by whoever owns the business relationship with clients, which as of this doc's last edit hasn't happened.
+- Admin controls for pricing/SLA plans. — Not done.
+- ~~Logging and monitoring.~~ Done — see structured request logging above.
 
 ## Current Use Recommendation
 Use these pages for:

@@ -670,6 +670,57 @@ async function bpoListBncaReports({ caseId, limit = 50 } = {}) {
 const BPO_DOC_MAX_BYTES = 8 * 1024 * 1024; // matches routes/doc-router.js, routes/construction.js, routes/finops.js upload caps
 const BPO_DOC_CHUNK_SIZE_BYTES = 400 * 1024; // pre-base64 size; ~533KB post-encoding, safely under a 1 MiB document ceiling
 
+// ── Encryption at rest ──────────────────────────────────────────────────
+// Firestore's Mongo-compat layer gives no server-side encryption knob of
+// its own (unlike real MongoDB Atlas/self-hosted, which has an at-rest
+// encryption option in the deployment config), so "encryption at rest"
+// for this backend has to be done in the app layer: encrypt the file
+// bytes here, before they're base64-chunked and written, with a key that
+// only this server process holds. That's the part that's actually code —
+// which KMS/secrets-manager holds TSM_DOC_ENCRYPTION_KEY in production,
+// who's authorized to rotate it, and how a rotation/re-encryption run
+// gets scheduled are operational decisions for whoever owns infra, not
+// something this module decides on its own.
+//
+// AES-256-GCM, one random IV per document, key from
+// TSM_DOC_ENCRYPTION_KEY (32 raw bytes, base64-encoded — e.g.
+// `openssl rand -base64 32`). Fails closed: if the key isn't set or isn't
+// exactly 32 bytes once decoded, uploads are rejected rather than
+// silently falling back to storing plaintext.
+const crypto = require('crypto');
+const BPO_DOC_ENC_ALGO = 'aes-256-gcm';
+
+function bpoDocEncryptionKey() {
+  const raw = process.env.TSM_DOC_ENCRYPTION_KEY;
+  if (!raw) {
+    throw new Error(
+      'TSM_DOC_ENCRYPTION_KEY is not set. Generate one with `openssl rand -base64 32` ' +
+      'and add it to .env / Fly secrets before uploading documents.'
+    );
+  }
+  const key = Buffer.from(raw, 'base64');
+  if (key.length !== 32) {
+    throw new Error('TSM_DOC_ENCRYPTION_KEY must decode to exactly 32 bytes (base64 of a 256-bit key).');
+  }
+  return key;
+}
+
+function bpoEncryptBuffer(plaintext) {
+  const key = bpoDocEncryptionKey();
+  const iv = crypto.randomBytes(12); // 96-bit IV, GCM standard
+  const cipher = crypto.createCipheriv(BPO_DOC_ENC_ALGO, key, iv);
+  const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+  return { ciphertext, iv: iv.toString('base64'), authTag: authTag.toString('base64') };
+}
+
+function bpoDecryptBuffer(ciphertext, ivB64, authTagB64) {
+  const key = bpoDocEncryptionKey();
+  const decipher = crypto.createDecipheriv(BPO_DOC_ENC_ALGO, key, Buffer.from(ivB64, 'base64'));
+  decipher.setAuthTag(Buffer.from(authTagB64, 'base64'));
+  return Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+}
+
 async function bpoDocMetaCollection() {
   const database = await getDb();
   return database.collection(BPO_DOC_META_COLLECTION);
@@ -696,13 +747,19 @@ async function bpoStoreDocument({ caseId, clientId, filename, mimetype, buffer }
     throw new Error(`file exceeds ${BPO_DOC_MAX_BYTES} byte limit`);
   }
 
+  // Encrypt before chunking — chunks below hold ciphertext only, never
+  // the original bytes. bpoDocEncryptionKey() throws (upload rejected)
+  // if TSM_DOC_ENCRYPTION_KEY isn't configured, rather than silently
+  // storing plaintext.
+  const { ciphertext, iv, authTag } = bpoEncryptBuffer(buffer);
+
   const docId = bpoGenerateDocId();
   const chunksCol = await bpoDocChunksCollection();
-  const chunkCount = Math.ceil(buffer.length / BPO_DOC_CHUNK_SIZE_BYTES) || 1;
+  const chunkCount = Math.ceil(ciphertext.length / BPO_DOC_CHUNK_SIZE_BYTES) || 1;
 
   for (let i = 0; i < chunkCount; i++) {
     const start = i * BPO_DOC_CHUNK_SIZE_BYTES;
-    const slice = buffer.subarray(start, start + BPO_DOC_CHUNK_SIZE_BYTES);
+    const slice = ciphertext.subarray(start, start + BPO_DOC_CHUNK_SIZE_BYTES);
     await chunksCol.insertOne({ docId, index: i, data: slice.toString('base64') });
   }
 
@@ -711,11 +768,14 @@ async function bpoStoreDocument({ caseId, clientId, filename, mimetype, buffer }
     docId, caseId, clientId: clientId || null,
     filename: (filename || 'untitled').toString().slice(0, 255),
     mimetype: mimetype || 'application/octet-stream',
-    sizeBytes: buffer.length,
+    sizeBytes: buffer.length, // original plaintext size, for display — not the (slightly larger) ciphertext size
     chunkCount,
     uploadedBy: actor || 'unknown',
     uploadedAt: new Date().toISOString(),
     deleted: false,
+    encAlgo: BPO_DOC_ENC_ALGO,
+    encIv: iv,
+    encAuthTag: authTag,
   };
   await metaCol.insertOne(meta);
 
@@ -759,7 +819,14 @@ async function bpoGetDocumentBuffer(docId, actor) {
   if (chunks.length !== meta.chunkCount) {
     throw new Error(`document ${docId} is missing chunks (expected ${meta.chunkCount}, found ${chunks.length})`);
   }
-  const buffer = Buffer.concat(chunks.map(c => Buffer.from(c.data, 'base64')));
+  const stored = Buffer.concat(chunks.map(c => Buffer.from(c.data, 'base64')));
+  // encIv/encAuthTag only exist on documents uploaded after encryption at
+  // rest was added — anything uploaded before that migrates on next
+  // access would need a one-time re-encryption pass, not attempted here.
+  // Older, unencrypted docs are returned as-is rather than failing.
+  const buffer = (meta.encIv && meta.encAuthTag)
+    ? bpoDecryptBuffer(stored, meta.encIv, meta.encAuthTag)
+    : stored;
 
   await bpoWriteAudit({
     actor, action: 'document.download', entityType: 'work_item', entityId: meta.caseId,
