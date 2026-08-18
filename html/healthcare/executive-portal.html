@@ -3688,7 +3688,7 @@ setInterval(buildStratBriefTab, 30000);
     // (DOMContentLoaded or a storage event, both after full parse) the
     // function is already attached.
     try {
-      if (typeof window.hcFeedExceptions === 'function') window.hcFeedExceptions(items);
+      if (typeof window.hcFeedExceptions === 'function') window.hcFeedExceptions(items, relay);
     } catch (e) { console.warn('[hc-exceptions] feed error:', e); }
 
     // Roadmap #7 — same items already flow through the explain widget above;
@@ -3792,12 +3792,20 @@ function tsmWriteScopedExec(vertical, missionId){
   // doesn't create duplicate exceptions/cases every time mount() re-runs.
   var _fedIds = {};
 
-  function hcFeedExceptions(items) {
+  function hcFeedExceptions(items, relay) {
     if (typeof TSMExceptions === 'undefined') {
       console.warn('[hc-exceptions] TSMExceptions engine not loaded on this page.');
       return;
     }
     var list = Array.isArray(items) ? items : [];
+    // TSM FIX (SOW Section 1): the war room's 13-field structured denial
+    // contract (buildHCStructuredCase, hc-denial-war-room.html) now rides
+    // along on the relay payload as relay.structuredCase (threaded through
+    // hc-main-strategist.html's escalateToExecPortal). When present, it's
+    // strictly more specific per-claim data than the generic explain item
+    // — use it to enrich the case's `fields` bag and to prefer its
+    // financialExposure as the case's real `exposure` value.
+    var structuredCase = (relay && relay.structuredCase) || null;
     var fedAny = false;
 
     list.forEach(function (it) {
@@ -3821,10 +3829,30 @@ function tsmWriteScopedExec(vertical, missionId){
       // own approval/execution/audit lifecycle, same as BPO — the exception
       // stays the single source of truth, the case just links back to it.
       if (typeof TSMCaseManager !== 'undefined' && exceptionRecord) {
-        var newCase = TSMCaseManager.createFromException(exceptionRecord, {
+        var caseExtra = {
           process: 'hc_case_resolution',
           source: 'HC Strategist'
-        });
+        };
+        if (structuredCase) {
+          // Only set exposure/deadline when the structured contract actually
+          // found a value — createFromException's base data already derives
+          // both from exceptionRecord, and extra always wins via
+          // Object.assign, so setting these to null here when NOT_FOUND
+          // would silently clobber a perfectly valid exceptionRecord value.
+          if (typeof structuredCase.financialExposure === 'number') caseExtra.exposure = structuredCase.financialExposure;
+          if (structuredCase.appealDeadline) caseExtra.deadline = structuredCase.appealDeadline;
+          caseExtra.fields = {
+            claimId: structuredCase.claimId,
+            payer: structuredCase.payer,
+            denialReasonCode: structuredCase.denialReasonCode,
+            denialCategory: structuredCase.denialCategory,
+            rootCauseHypothesis: structuredCase.rootCauseHypothesis,
+            appealable: structuredCase.appealable,
+            recoveryLikelihood: structuredCase.recoveryLikelihood,
+            evidenceProvenance: structuredCase.evidenceProvenance
+          };
+        }
+        var newCase = TSMCaseManager.createFromException(exceptionRecord, caseExtra);
         if (newCase) {
           TSMCaseManager.requestApproval(newCase.caseId, { note: 'Auto-requested on case creation from HC exception feed.' });
         }

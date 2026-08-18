@@ -1729,6 +1729,17 @@ async function runPipeline() {
       pitchEl.innerHTML = 'TSM identified <strong>' + claimDollar + '</strong> in recoverable revenue and built a full appeal plan in <strong>under 5 minutes</strong>. Traditional analyst time: <strong>2–5 days</strong>.';
     }
   } catch (e) {}
+  // ── STRUCTURED DENIAL CASE CONTRACT (13-field) ─────────────────────
+  // TSM FIX (SOW Section 1 gap): the 5 engines above only ever produced
+  // free-text bullets. Nothing downstream — strategist, exec portal,
+  // TSMCase — ever got a structured, gradable object. This builds one,
+  // deterministically, from the SAME regex extractions already proven
+  // above (deadline, claim dollar, cause, recovery likelihood) plus a
+  // few new ones. Nothing here is invented: every field is either
+  // pulled verbatim from engine text, or a documented deterministic
+  // derivation of a value the engines already stated (see comments).
+  lastStructuredCase = buildHCStructuredCase(outputs, docText, claimDollar);
+
   setTimeout(() => {
     try {
       const docEl = document.getElementById('doc-input') || document.getElementById('docInput') || document.querySelector('textarea');
@@ -1921,6 +1932,132 @@ function executePacketCompilation() {
 }
 
 // ─── SESSION PAYLOAD BUILDER ─────────────────────────────────────────────────
+// ─── STRUCTURED DENIAL CASE CONTRACT (13-field, SOW Section 1) ─────────────
+// Holds the most recently built structured case so buildWarRoomPayload()
+// can attach it. Module-scoped like lastStrategistConfidence/Severity on
+// the strategist page — same pattern, same reason (bridge two functions
+// in the same script scope without threading params through everything
+// in between).
+let lastStructuredCase = null;
+
+/**
+ * buildHCStructuredCase(outputs, docText, claimDollar)
+ * Deterministic, non-LLM synthesis of the 13-field structured contract
+ * from engine output text that's already been generated and is already
+ * on screen. Every field's provenance is tagged in evidenceProvenance so
+ * a reviewer (or a grading script) can tell what's document-extracted,
+ * what's the LLM's own categorical judgment, and what's computed from
+ * those two. Nothing is invented: a field that can't be found in the
+ * source text is left null, never guessed.
+ *
+ * Fields:
+ *   claimId, payer, denialReasonCode   — document-extracted (Engine 01)
+ *   denialCategory                     — computed: keyword match against
+ *                                         Engine 02's own root-cause text
+ *   rootCauseHypothesis                — LLM inference (Engine 02), verbatim
+ *   appealable                         — computed: false only if an engine
+ *                                         explicitly used negative language
+ *                                         ("not appealable"/"write-off"/
+ *                                         "non-appealable"); true otherwise,
+ *                                         since Engine 04 always drafts an
+ *                                         appeal plan and the current
+ *                                         pipeline has no other appealability
+ *                                         signal to check against
+ *   appealDeadline                     — document-extracted + date-math
+ *                                         resolved (same resolveAppealDeadline
+ *                                         already used for the wow-stat tile)
+ *   recoveryLikelihood                 — LLM's own categorical judgment
+ *                                         (Engine 04's required "RECOVERY
+ *                                         LIKELIHOOD:" line), verbatim
+ *   confidence                         — computed: STRONG/MODERATE/WEAK
+ *                                         mapped to 85/65/35. This is a
+ *                                         deterministic mapping of the
+ *                                         LLM's own categorical call, not
+ *                                         an independent numeric estimate —
+ *                                         flagged as such in provenance.
+ *   confidenceTier, humanReviewRequired — computed from `confidence`,
+ *                                         same thresholds as
+ *                                         TSMCaseManager.confidenceTierFor()
+ *                                         (duplicated inline since this
+ *                                         page doesn't load that file —
+ *                                         kept in sync deliberately)
+ *   financialExposure                  — document-extracted (largest $
+ *                                         figure in Engine 03's output)
+ *   evidenceProvenance                 — array tagging every field above
+ */
+function buildHCStructuredCase(outputs, docText, claimDollar) {
+  const e1 = outputs[0] || '', e2 = outputs[1] || '', e3 = outputs[2] || '', e4 = outputs[3] || '';
+  const provenance = [];
+
+  function extractField(text, pattern, label, engineLabel) {
+    const m = text.match(pattern);
+    const val = m ? m[1].trim().replace(/^[-•*]\s*/, '').slice(0, 120) : null;
+    provenance.push({ field: label, source: val ? 'DOCUMENT_EXTRACTED' : 'NOT_FOUND', engine: engineLabel });
+    return val;
+  }
+
+  const claimId = extractField(e1, /claim\s*(?:id)?[:\s#]+([A-Za-z0-9-]+)/i, 'claimId', 'Engine 01');
+  const payer = extractField(e1, /payer[:\s]+([^\n,]+)/i, 'payer', 'Engine 01');
+  const denialReasonCode = extractField(e1, /denial\s*code[s]?[:\s]+([A-Za-z0-9\-,\s]+?)(?:\n|$)/i, 'denialReasonCode', 'Engine 01');
+
+  const dlMatch = e1.match(/appeal deadline[:\s]+(.+)/i);
+  const dlPhrase = dlMatch ? dlMatch[1].trim().slice(0, 120) : '';
+  const resolved = resolveAppealDeadline(dlPhrase, docText);
+  const appealDeadline = resolved ? resolved.date.toISOString().slice(0, 10) : (dlPhrase || null);
+  provenance.push({ field: 'appealDeadline', source: dlPhrase ? 'DOCUMENT_EXTRACTED' : 'NOT_FOUND', engine: 'Engine 01' });
+
+  const causeMatch = e2.match(/(?:denial reason|payer policy violated|root cause)[:\s]+(.+)/i);
+  const rootCauseHypothesis = causeMatch ? causeMatch[1].trim().slice(0, 300)
+    : (e2.split('\n').find(l => l.trim().length > 10) || null);
+  provenance.push({ field: 'rootCauseHypothesis', source: rootCauseHypothesis ? 'LLM_INFERENCE' : 'NOT_FOUND', engine: 'Engine 02' });
+
+  const CATEGORY_KEYWORDS = [
+    ['medical_necessity', /medical necessity/i],
+    ['authorization', /(?:prior )?auth(?:orization)?/i],
+    ['coding', /coding|cpt|modifier/i],
+    ['documentation', /documentation gap|missing (?:documentation|notes|records)/i],
+    ['eligibility', /eligibility/i],
+    ['timely_filing', /timely filing/i]
+  ];
+  let denialCategory = 'other';
+  for (const [cat, re] of CATEGORY_KEYWORDS) {
+    if (re.test(e2) || re.test(e1)) { denialCategory = cat; break; }
+  }
+  provenance.push({ field: 'denialCategory', source: 'COMPUTED', engine: 'derived from Engine 01/02 text' });
+
+  const negativeAppealSignal = /\bnot appealable\b|\bnon-appealable\b|\bwrite[- ]off\b/i.test(e1 + e2 + e3 + e4);
+  const appealable = !negativeAppealSignal;
+  provenance.push({ field: 'appealable', source: 'COMPUTED', engine: 'derived — negative-language scan across all 4 engines' });
+
+  const likelihoodMatch = e4.match(/RECOVERY LIKELIHOOD:\s*(STRONG|MODERATE|WEAK)/i);
+  const recoveryLikelihood = likelihoodMatch ? likelihoodMatch[1].toUpperCase() : null;
+  provenance.push({ field: 'recoveryLikelihood', source: recoveryLikelihood ? 'LLM_INFERENCE' : 'NOT_FOUND', engine: 'Engine 04' });
+
+  const CONF_MAP = { STRONG: 85, MODERATE: 65, WEAK: 35 };
+  const confidence = recoveryLikelihood ? CONF_MAP[recoveryLikelihood] : null;
+  provenance.push({ field: 'confidence', source: confidence !== null ? 'COMPUTED' : 'NOT_FOUND', engine: 'mapped from Engine 04 RECOVERY LIKELIHOOD' });
+
+  function confidenceTierFor(c) {
+    if (typeof c !== 'number') return null;
+    if (c >= 90) return 'HIGH';
+    if (c >= 70) return 'MEDIUM';
+    return 'LOW';
+  }
+  const confidenceTier = confidenceTierFor(confidence);
+  const humanReviewRequired = confidenceTier !== 'HIGH';
+  provenance.push({ field: 'confidenceTier', source: 'COMPUTED', engine: 'derived from confidence' });
+  provenance.push({ field: 'humanReviewRequired', source: 'COMPUTED', engine: 'derived from confidenceTier' });
+
+  const financialExposure = claimDollar ? parseFloat(claimDollar.replace(/[$,]/g, '')) : null;
+  provenance.push({ field: 'financialExposure', source: financialExposure !== null ? 'DOCUMENT_EXTRACTED' : 'NOT_FOUND', engine: 'Engine 03' });
+
+  return {
+    claimId, payer, denialReasonCode, denialCategory, rootCauseHypothesis,
+    appealable, appealDeadline, recoveryLikelihood, confidence, confidenceTier,
+    humanReviewRequired, financialExposure, evidenceProvenance: provenance
+  };
+}
+
 function buildWarRoomPayload() {
   const engineOutputs = {};
   const engineLabels = {
@@ -1955,7 +2092,10 @@ function buildWarRoomPayload() {
     sessionId: 'WR-' + Date.now(),
     documentMeta: { ingestType, charCount: docInput.length, preview: docInput.slice(0, 300) },
     engineOutputs,
-    engine06: { narrative, recommendations }
+    engine06: { narrative, recommendations },
+    // SOW Section 1 structured contract — see buildHCStructuredCase().
+    // null until runPipeline() has completed at least once this session.
+    structuredCase: lastStructuredCase
   };
 }
 

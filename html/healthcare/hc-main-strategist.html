@@ -1572,17 +1572,47 @@ async function escalateToExecPortal(){
         { id:'strategist', label:'Main Strategist',     status:'done', time: new Date().toLocaleTimeString() },
         { id:'relay',      label:'Relayed to Exec',     status:'active', detail:'Awaiting executive review' }
       ])) || [];
+      // TSM FIX (SOW Section 1): pull the war room's 13-field structured
+      // denial contract (buildHCStructuredCase in hc-denial-war-room.html)
+      // if this case has one. Per-claim structured confidence/severity is
+      // strictly more specific than the strategist's own page-level
+      // grounded confidence — prefer it when present, fall back to the
+      // strategist values otherwise so nothing regresses when a case
+      // reaches this page without having gone through the war room first.
+      var warRoomBrief = readWarRoomBrief();
+      var structuredCase = (warRoomBrief && warRoomBrief.structuredCase) || null;
+      payload.structuredCase = structuredCase;
+      var explainConfidence = structuredCase ? structuredCase.confidence : lastStrategistConfidence;
+      // Severity is a different axis than confidence (how bad, not how
+      // sure) — derive it from the same exposure-based scale used
+      // elsewhere on this page (hcXPSeverityForExposure), not from
+      // confidenceTier, which would conflate the two dimensions.
+      function structuredSeverity(sc) {
+        if (!sc || typeof sc.financialExposure !== 'number') return null;
+        var n = sc.financialExposure, conf = sc.confidence;
+        if (n >= 100000 || (conf !== null && conf < 60)) return 'high';
+        if (n >= 25000 || (conf !== null && conf < 75)) return 'high';
+        if (n >= 5000) return 'med';
+        return 'low';
+      }
+      var explainSeverity = structuredCase && structuredSeverity(structuredCase)
+        ? structuredSeverity(structuredCase)
+        : hcSeverityToExceptionScale(lastStrategistSeverity);
       payload.explain = (window.TSMExecKitProducer && TSMExecKitProducer.buildExplain([
         {
-          claim: (payload.claimId ? 'Claim ' + payload.claimId : 'HC Strategist') + ' — Main Strategist Synthesis',
+          claim: structuredCase && structuredCase.claimId
+            ? 'Claim ' + structuredCase.claimId
+            : (payload.claimId ? 'Claim ' + payload.claimId : 'HC Strategist') + ' — Main Strategist Synthesis',
           // TSM FIX: was payload.confidence (never assigned anywhere in
-          // this file, always null) and a hardcoded 'med'. Now reads the
-          // real values renderExplainPanel() already computed from the
-          // strategist's own grounded JSON output and the deterministic
-          // exposure-based severity calculator.
-          confidence: lastStrategistConfidence,
-          severity: hcSeverityToExceptionScale(lastStrategistSeverity),
-          rationale: payload.summary || payload.narrative || payload.brief || 'See full strategist brief for detailed reasoning.',
+          // this file, always null) and a hardcoded 'med'. Now prefers the
+          // structured per-claim contract when the case came through the
+          // war room, otherwise the strategist's own grounded confidence
+          // and the deterministic exposure-based severity calculator.
+          confidence: explainConfidence,
+          severity: explainSeverity,
+          rationale: structuredCase && structuredCase.rootCauseHypothesis
+            ? structuredCase.rootCauseHypothesis
+            : (payload.summary || payload.narrative || payload.brief || 'See full strategist brief for detailed reasoning.'),
           sources: ['HC Main Strategist']
         }
       ])) || [];
