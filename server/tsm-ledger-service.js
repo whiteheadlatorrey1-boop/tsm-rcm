@@ -308,6 +308,8 @@ const BPO_AUDIT_LOGS_COLLECTION = 'bpo_audit_logs';
 const BPO_NOTES_COLLECTION = 'bpo_notes';
 const BPO_SLA_EVENTS_COLLECTION = 'bpo_sla_events';
 const BPO_BNCA_REPORTS_COLLECTION = 'bpo_bnca_reports';
+const BPO_DOC_META_COLLECTION = 'bpo_documents_meta';
+const BPO_DOC_CHUNKS_COLLECTION = 'bpo_document_chunks';
 
 const BPO_PRIORITIES = ['low', 'medium', 'high', 'critical'];
 
@@ -641,6 +643,153 @@ async function bpoListBncaReports({ caseId, limit = 50 } = {}) {
   const query = {};
   if (caseId) query.caseId = caseId;
   return col.find(query).sort({ ts: -1 }).limit(limit).toArray();
+}
+
+// =====================================================
+// BPO DOCUMENT STORAGE (Phase 3)
+// This DB is Firestore's MongoDB-compatibility layer, not real MongoDB —
+// the driver's built-in GridFSBucket lazily calls createIndex() on first
+// use, which is unverified against this backend and not used anywhere
+// else in this codebase. To stay inside the exact insertOne/find pattern
+// already proven safe here (see rest of this file), documents are stored
+// manually as base64 chunks across two plain collections instead of real
+// GridFS:
+//   bpo_documents_meta   — one doc per uploaded file (filename, mimetype,
+//                          size, caseId, clientId, chunk count, uploader,
+//                          soft-delete flag)
+//   bpo_document_chunks  — ordered chunk docs, each a base64 slice under
+//                          CHUNK_SIZE_BYTES so a full chunk doc (with
+//                          ~33% base64 overhead + field overhead) stays
+//                          well under Firestore's native 1 MiB per-document
+//                          ceiling, in case this compat layer inherits it
+// No files are ever deleted from disk/S3 (there is none) — deactivation
+// is a soft-delete flag so the audit trail and chunk data stay intact,
+// consistent with bpoSetClientStatus's soft-delete pattern above.
+// =====================================================
+
+const BPO_DOC_MAX_BYTES = 8 * 1024 * 1024; // matches routes/doc-router.js, routes/construction.js, routes/finops.js upload caps
+const BPO_DOC_CHUNK_SIZE_BYTES = 400 * 1024; // pre-base64 size; ~533KB post-encoding, safely under a 1 MiB document ceiling
+
+async function bpoDocMetaCollection() {
+  const database = await getDb();
+  return database.collection(BPO_DOC_META_COLLECTION);
+}
+
+async function bpoDocChunksCollection() {
+  const database = await getDb();
+  return database.collection(BPO_DOC_CHUNKS_COLLECTION);
+}
+
+function bpoGenerateDocId() {
+  return 'doc_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
+}
+
+/**
+ * Stores an uploaded file's buffer as ordered base64 chunk documents plus
+ * one metadata document. Rejects anything over BPO_DOC_MAX_BYTES before
+ * writing anything. Writes a bpo.document_upload audit entry on success.
+ */
+async function bpoStoreDocument({ caseId, clientId, filename, mimetype, buffer }, actor) {
+  if (!caseId) throw new Error('caseId is required');
+  if (!buffer || !buffer.length) throw new Error('file buffer is required');
+  if (buffer.length > BPO_DOC_MAX_BYTES) {
+    throw new Error(`file exceeds ${BPO_DOC_MAX_BYTES} byte limit`);
+  }
+
+  const docId = bpoGenerateDocId();
+  const chunksCol = await bpoDocChunksCollection();
+  const chunkCount = Math.ceil(buffer.length / BPO_DOC_CHUNK_SIZE_BYTES) || 1;
+
+  for (let i = 0; i < chunkCount; i++) {
+    const start = i * BPO_DOC_CHUNK_SIZE_BYTES;
+    const slice = buffer.subarray(start, start + BPO_DOC_CHUNK_SIZE_BYTES);
+    await chunksCol.insertOne({ docId, index: i, data: slice.toString('base64') });
+  }
+
+  const metaCol = await bpoDocMetaCollection();
+  const meta = {
+    docId, caseId, clientId: clientId || null,
+    filename: (filename || 'untitled').toString().slice(0, 255),
+    mimetype: mimetype || 'application/octet-stream',
+    sizeBytes: buffer.length,
+    chunkCount,
+    uploadedBy: actor || 'unknown',
+    uploadedAt: new Date().toISOString(),
+    deleted: false,
+  };
+  await metaCol.insertOne(meta);
+
+  await bpoWriteAudit({
+    actor, action: 'document.upload', entityType: 'work_item', entityId: caseId,
+    detail: { docId, filename: meta.filename, sizeBytes: meta.sizeBytes },
+  });
+
+  return meta;
+}
+
+/**
+ * Lists non-deleted document metadata for a case (no file bytes — use
+ * bpoGetDocumentBuffer for that). Newest first.
+ */
+async function bpoListDocuments({ caseId, limit = 100 } = {}) {
+  const col = await bpoDocMetaCollection();
+  const query = { deleted: { $ne: true } };
+  if (caseId) query.caseId = caseId;
+  return col.find(query).sort({ uploadedAt: -1 }).limit(limit).toArray();
+}
+
+async function bpoGetDocumentMeta(docId) {
+  const col = await bpoDocMetaCollection();
+  return col.findOne({ docId, deleted: { $ne: true } });
+}
+
+/**
+ * Reassembles a stored document's full buffer from its ordered chunks.
+ * Returns null if the doc doesn't exist or was soft-deleted. Writes a
+ * bpo.document_download audit entry on every successful read, since a
+ * document download is itself a sensitive access event worth logging
+ * (same reasoning as gating audit-log reads to BPO_MANAGE_ROLES above).
+ */
+async function bpoGetDocumentBuffer(docId, actor) {
+  const meta = await bpoGetDocumentMeta(docId);
+  if (!meta) return null;
+
+  const chunksCol = await bpoDocChunksCollection();
+  const chunks = await chunksCol.find({ docId }).sort({ index: 1 }).toArray();
+  if (chunks.length !== meta.chunkCount) {
+    throw new Error(`document ${docId} is missing chunks (expected ${meta.chunkCount}, found ${chunks.length})`);
+  }
+  const buffer = Buffer.concat(chunks.map(c => Buffer.from(c.data, 'base64')));
+
+  await bpoWriteAudit({
+    actor, action: 'document.download', entityType: 'work_item', entityId: meta.caseId,
+    detail: { docId, filename: meta.filename },
+  });
+
+  return { meta, buffer };
+}
+
+/**
+ * Soft-deletes a document (flips deleted:true on the meta doc; chunk data
+ * and the meta record itself are left intact for audit purposes, same
+ * pattern as bpoSetClientStatus). Returns the updated meta, or null if
+ * the doc didn't exist / was already deleted.
+ */
+async function bpoDeleteDocument(docId, actor) {
+  const col = await bpoDocMetaCollection();
+  const result = await col.findOneAndUpdate(
+    { docId, deleted: { $ne: true } },
+    { $set: { deleted: true, deletedAt: new Date().toISOString(), deletedBy: actor || 'unknown' } },
+    { returnDocument: 'after' }
+  );
+  const updated = result && result.value ? result.value : null;
+  if (updated) {
+    await bpoWriteAudit({
+      actor, action: 'document.delete', entityType: 'work_item', entityId: updated.caseId,
+      detail: { docId, filename: updated.filename },
+    });
+  }
+  return updated;
 }
 
 // =====================================================
@@ -1014,6 +1163,12 @@ module.exports = {
   bpoListSlaEvents,
   bpoSaveBncaReport,
   bpoListBncaReports,
+  // BPO Phase 3: document storage
+  bpoStoreDocument,
+  bpoListDocuments,
+  bpoGetDocumentMeta,
+  bpoGetDocumentBuffer,
+  bpoDeleteDocument,
   // Concierge transport persistence
   conciergeListMissions,
   conciergeGetMission,

@@ -21,12 +21,14 @@ The BPO apps are ready for an internal/supervised pilot (your own team running r
 - ~~Save every AI/BNCA output.~~ Done — `bpoSaveBncaReport()`.
 - ~~Track owner, status, priority, due date, SLA age.~~ Done — work-item fields + `bpoListSlaEvents()`.
 
-### Phase 3 — Documents
-- Add file upload.
-- Store documents by client/account.
-- Add metadata extraction.
-- Add document evidence log.
-- Add secure download links.
+### Phase 3 — Documents — DONE (pending live verify)
+- ~~Add file upload.~~ Done — `POST /api/bpo/work-items/:caseId/documents`, multer memory storage, 8MB cap, any internal role.
+- ~~Store documents by client/account.~~ Done — `server/tsm-ledger-service.js` `bpoStoreDocument()`; manual chunked base64 storage across `bpo_documents_meta`/`bpo_document_chunks` (NOT the driver's GridFS — this DB is Firestore's Mongo-compatibility layer, and GridFSBucket's automatic index creation is unverified against it, so storage stays inside the plain insertOne/find pattern already proven elsewhere in this file). Chunked at 400KB pre-encoding to stay well under a possible 1 MiB per-document ceiling.
+- Add metadata extraction. — Not done. `routes/doc-router.js`'s `extractDocText()` (pdf/docx/xlsx text extraction) exists platform-wide but isn't yet wired to auto-run on a BPO document upload.
+- ~~Add document evidence log.~~ Done — every upload/download/delete writes a `bpo_audit_logs` entry (`document.upload`/`document.download`/`document.delete`) via the existing `bpoWriteAudit()`.
+- ~~Add secure download links.~~ Done — `GET /api/bpo/documents/:docId/download`, role-gated, logs the access. Delete is soft (manager+ only) — chunk data and the audit trail are preserved, never physically removed.
+- **Verified so far:** functional harness (mocked Mongo collections) confirms chunk/reassembly correctness byte-for-byte for both single- and multi-chunk files, oversize rejection, case-scoped listing, soft-delete behavior, and audit-log writes. `node --check` clean on both changed files.
+- **Not yet verified:** a real write/read against the actual Firestore-Mongo-compat backend. The chunking approach was deliberately chosen to avoid GridFS's untested `createIndex()` call, but the 1 MiB assumption itself hasn't been confirmed against this specific backend — run one real upload+download through a booted server with `MONGODB_URI` set before trusting this with real client documents.
 
 ### Phase 4 — Reporting
 - WIP report export.

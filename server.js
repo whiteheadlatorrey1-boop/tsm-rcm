@@ -759,6 +759,61 @@ app.post('/api/bpo/work-items/:caseId/bnca-reports', requireRole(BPO_INTERNAL_RO
   } catch (e) { res.status(400).json({ ok: false, error: e.message }); }
 });
 
+// Documents — Phase 3 of docs/BPO_PRODUCTION_READINESS.md. Same
+// BPO_INTERNAL_ROLES/BPO_MANAGE_ROLES split as the rest of BPO: any
+// internal role can upload/list/download while working a case, delete is
+// manager+ only (mirrors client management above). Backed by
+// tsm-ledger-service.js's manual chunked storage (see that file's header
+// comment for why this isn't the driver's built-in GridFS). 8MB cap
+// enforced by multer here AND re-checked in bpoStoreDocument.
+const bpoDocUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8 * 1024 * 1024 },
+});
+
+app.post('/api/bpo/work-items/:caseId/documents', requireRole(BPO_INTERNAL_ROLES), bpoDocUpload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ ok: false, error: 'No file uploaded' });
+    const meta = await tsmLedger.bpoStoreDocument({
+      caseId: req.params.caseId,
+      clientId: req.body && req.body.clientId,
+      filename: req.file.originalname,
+      mimetype: req.file.mimetype,
+      buffer: req.file.buffer,
+    }, req.tsmSession.label || req.tsmSession.role);
+    res.json({ ok: true, document: meta });
+  } catch (e) { res.status(400).json({ ok: false, error: e.message }); }
+});
+
+app.get('/api/bpo/work-items/:caseId/documents', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const documents = await tsmLedger.bpoListDocuments({ caseId: req.params.caseId });
+    res.json({ ok: true, documents });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// Download is deliberately its own top-level route (not nested under
+// work-items/:caseId) since a docId is already globally unique and the
+// client only needs to remember the docId from the list call above, not
+// re-thread caseId through every download link.
+app.get('/api/bpo/documents/:docId/download', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const result = await tsmLedger.bpoGetDocumentBuffer(req.params.docId, req.tsmSession.label || req.tsmSession.role);
+    if (!result) return res.status(404).json({ ok: false, error: 'Document not found' });
+    res.set('Content-Type', result.meta.mimetype || 'application/octet-stream');
+    res.set('Content-Disposition', `attachment; filename="${result.meta.filename.replace(/"/g, '')}"`);
+    res.send(result.buffer);
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+app.delete('/api/bpo/documents/:docId', requireRole(BPO_MANAGE_ROLES), async (req, res) => {
+  try {
+    const updated = await tsmLedger.bpoDeleteDocument(req.params.docId, req.tsmSession.label || req.tsmSession.role);
+    if (!updated) return res.status(404).json({ ok: false, error: 'Document not found' });
+    res.json({ ok: true, document: updated });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 // ── CONCIERGE TRANSPORT (quotes / bookings / missions) ──────────────────────
 // Routes sit on top of server/services/concierge-transport-adapter.js
 // (defaultRouter, provider-neutral) + server/tsm-ledger-service.js
