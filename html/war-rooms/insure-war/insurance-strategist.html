@@ -150,6 +150,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:500px;height:500px;bac
   <script src="/js/core/tsm-mission-engine.js"></script>
   <script src="/js/core/tsm-auto-pipeline.js"></script>
   <script src="/html/js/tsm-bnca-exposure-engine.js"></script>
+  <script src="/html/shared/tsm-sla-extractor.js"></script>
 </head>
 <body data-vertical="insurance" data-page-role="warroom">
 
@@ -625,8 +626,46 @@ async function runStrategist(){
   document.getElementById('conf-exec').textContent=(execR?execR[1]:'80')+'%';
   document.getElementById('confidenceBar').style.display='block';
 
+  // TSM SLA EXTRACTOR — deterministic (non-LLM) structured-case fields,
+  // same shared html/shared/tsm-sla-extractor.js utility as Legal/FinOps.
+  // Insurance's strategist doesn't see the raw war-room E1-E6 engine text
+  // (only warRoomData.snapshot's summary strings), so this parses the
+  // strategist's own Node 3 (KEY DECISION POINTS)/Node 1 (STRATEGIC WINDOW)
+  // for a deadline and Node 4's bulleted 30-DAY TARGETS as the nearest
+  // real action/evidence list, rather than fabricate a document checklist
+  // that was never part of this vertical's prompt chain.
+  function buildInsuranceStructuredCase(n1, n3, n4, exposureStr, bncaConfidence) {
+    if (typeof TSMSLAExtractor === 'undefined') return null;
+    const deadline =
+      TSMSLAExtractor.extractDeadline(n3, /KEY DECISION POINTS:[\s\S]*?\n\s*1\.[^\n—]*—\s*([^\n]+)/i) ||
+      TSMSLAExtractor.extractDeadline(n1, /STRATEGIC WINDOW:\s*([^\n]+)/i);
+    const requiredEvidence = TSMSLAExtractor.extractEvidenceList(n4, /30-DAY TARGETS:/i);
+    const financialExposure = TSMSLAExtractor.parseDollarAmount(exposureStr);
+    const confNum = parseInt(bncaConfidence, 10);
+    const confidence = TSMSLAExtractor.confidenceFromScore(confNum);
+    const confidenceTier = TSMSLAExtractor.confidenceTierFor(confidence);
+    const humanReviewRequired = confidenceTier !== 'HIGH';
+    return {
+      deadline: deadline || null,
+      requiredEvidence,
+      financialExposure,
+      confidence,
+      confidenceTier,
+      humanReviewRequired
+    };
+  }
+  let insStructuredCase = null;
+  try {
+    insStructuredCase = buildInsuranceStructuredCase(
+      n[1] || '', n[3] || '', n[4] || '',
+      warRoomData?.snapshot?.exposure || '',
+      overall ? overall[1] : '78'
+    );
+  } catch(e) { console.warn('[sla-extractor] insurance structured case error:', e); }
+
   // Store for executive portal
   const relay={
+    structuredCase: insStructuredCase,
     docType:warRoomData?.docType||'Insurance Document',
     warRoomSnapshot:warRoomData?.snapshot||{},
     nodes:{n1:n[1]||'',n2:n[2]||'',n3:n[3]||'',n4:n[4]||''},

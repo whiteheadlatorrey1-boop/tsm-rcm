@@ -1061,7 +1061,7 @@ setInterval(loadRelay, 15000);
     // (DOMContentLoaded or a storage event, both after full parse) the
     // function is already attached.
     try {
-      if (typeof window.insuranceFeedExceptions === 'function') window.insuranceFeedExceptions(items);
+      if (typeof window.insuranceFeedExceptions === 'function') window.insuranceFeedExceptions(items, relay && relay.structuredCase);
     } catch (e) { console.warn('[insurance-exceptions] feed error:', e); }
   }
 
@@ -1116,7 +1116,7 @@ setInterval(loadRelay, 15000);
   // doesn't create duplicate exceptions/cases every time mount() re-runs.
   var _fedIds = {};
 
-  function insuranceFeedExceptions(items) {
+  function insuranceFeedExceptions(items, structuredCase) {
     if (typeof TSMExceptions === 'undefined') {
       console.warn('[insurance-exceptions] TSMExceptions engine not loaded on this page.');
       return;
@@ -1146,10 +1146,20 @@ setInterval(loadRelay, 15000);
       // BPO/Healthcare/Construction/FinOps — the exception stays the
       // single source of truth, the case just links back to it.
       if (typeof TSMCaseManager !== 'undefined' && exceptionRecord) {
-        var newCase = TSMCaseManager.createFromException(exceptionRecord, {
-          process: 'insurance_case_resolution',
-          source: 'Insurance Strategist'
-        });
+        // Structured-case fields (deadline, requiredEvidence, exposure,
+        // confidenceTier) come from the strategist's shared SLA-extractor
+        // pass (tsm-sla-extractor.js) — real values parsed from the Node
+        // 1/3/4 strategist text, not fabricated here. Only attach a field
+        // when the extractor actually found one.
+        var caseExtra = { process: 'insurance_case_resolution', source: 'Insurance Strategist' };
+        if (structuredCase) {
+          if (typeof structuredCase.financialExposure === 'number') caseExtra.exposure = structuredCase.financialExposure;
+          if (structuredCase.deadline) caseExtra.deadline = structuredCase.deadline;
+          if (structuredCase.requiredEvidence && structuredCase.requiredEvidence.length) caseExtra.requiredEvidence = structuredCase.requiredEvidence;
+          if (structuredCase.confidenceTier) caseExtra.confidenceTier = structuredCase.confidenceTier;
+          if (typeof structuredCase.humanReviewRequired === 'boolean') caseExtra.humanReviewRequired = structuredCase.humanReviewRequired;
+        }
+        var newCase = TSMCaseManager.createFromException(exceptionRecord, caseExtra);
         if (newCase) {
           TSMCaseManager.requestApproval(newCase.caseId, { note: 'Auto-requested on case creation from Insurance exception feed.' });
         }

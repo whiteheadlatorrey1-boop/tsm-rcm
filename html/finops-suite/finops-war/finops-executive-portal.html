@@ -1013,7 +1013,7 @@ setInterval(loadRelay, 15000);
     // (DOMContentLoaded or a storage event, both after full parse) the
     // function is already attached.
     try {
-      if (typeof window.finopsFeedExceptions === 'function') window.finopsFeedExceptions(items);
+      if (typeof window.finopsFeedExceptions === 'function') window.finopsFeedExceptions(items, relay && relay.structuredCase);
     } catch (e) { console.warn('[finops-exceptions] feed error:', e); }
   }
 
@@ -1111,7 +1111,7 @@ setInterval(loadRelay, 15000);
   // doesn't create duplicate exceptions/cases every time mount() re-runs.
   var _fedIds = {};
 
-  function finopsFeedExceptions(items) {
+  function finopsFeedExceptions(items, structuredCase) {
     if (typeof TSMExceptions === 'undefined') {
       console.warn('[finops-exceptions] TSMExceptions engine not loaded on this page.');
       return;
@@ -1141,10 +1141,20 @@ setInterval(loadRelay, 15000);
       // BPO/Healthcare/Construction — the exception stays the single
       // source of truth, the case just links back to it.
       if (typeof TSMCaseManager !== 'undefined' && exceptionRecord) {
-        var newCase = TSMCaseManager.createFromException(exceptionRecord, {
-          process: 'finops_case_resolution',
-          source: 'FinOps Strategist'
-        });
+        // Structured-case fields (deadline, requiredEvidence, exposure,
+        // confidenceTier) come from the strategist's shared SLA-extractor
+        // pass (tsm-sla-extractor.js) — real values parsed from the E4/E5
+        // engine text, not fabricated here. Only attach a field when the
+        // extractor actually found one.
+        var caseExtra = { process: 'finops_case_resolution', source: 'FinOps Strategist' };
+        if (structuredCase) {
+          if (typeof structuredCase.financialExposure === 'number') caseExtra.exposure = structuredCase.financialExposure;
+          if (structuredCase.deadline) caseExtra.deadline = structuredCase.deadline;
+          if (structuredCase.requiredEvidence && structuredCase.requiredEvidence.length) caseExtra.requiredEvidence = structuredCase.requiredEvidence;
+          if (structuredCase.confidenceTier) caseExtra.confidenceTier = structuredCase.confidenceTier;
+          if (typeof structuredCase.humanReviewRequired === 'boolean') caseExtra.humanReviewRequired = structuredCase.humanReviewRequired;
+        }
+        var newCase = TSMCaseManager.createFromException(exceptionRecord, caseExtra);
         if (newCase) {
           TSMCaseManager.requestApproval(newCase.caseId, { note: 'Auto-requested on case creation from FinOps exception feed.' });
         }

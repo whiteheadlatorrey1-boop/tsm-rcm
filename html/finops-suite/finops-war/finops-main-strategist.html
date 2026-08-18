@@ -389,6 +389,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:13
   <script src="/html/js/tsm-bnca-exposure-engine.js"></script>
   <script src="/js/core/tsm-mission-engine.js"></script>
   <script src="/js/core/tsm-auto-pipeline.js"></script>
+  <script src="/html/shared/tsm-sla-extractor.js"></script>
 </head>
 <body data-vertical="finops" data-page-role="strategist">
 
@@ -1080,6 +1081,57 @@ EXECUTIVE PORTAL RELAY NOTE:
 Be specific, use exact figures from the relay data. Write for a financial controller or CFO.`;
 }
 
+// TSM SLA EXTRACTOR — deterministic (non-LLM) structured-case fields parsed
+// from the real E4 (compliance)/E5 (recovery plan) war-room engine text, via
+// the shared html/shared/tsm-sla-extractor.js utility (same pattern as
+// Legal's buildLegalStructuredCase). Used to attach real
+// deadline/requiredEvidence/financialExposure/confidenceTier to the Case
+// Queue record instead of leaving those fields empty.
+function buildFinOpsStructuredCase(engineOutputs, exposureStr, riskScoreStr) {
+  if (typeof TSMSLAExtractor === 'undefined') return null;
+  const e4 = (engineOutputs && engineOutputs[4]) || '';
+  const e5 = (engineOutputs && engineOutputs[5]) || '';
+
+  // E5's deadline lives inside the 3rd em-dash field of the first numbered
+  // PRIORITY ACTIONS line (e.g. "1. Action — $5,000 — Owner — Jun 30"),
+  // not on its own line like Legal's "3. Deadline: ..." — extractDeadline
+  // still applies once the regex captures that position, and still treats
+  // a literal "NOT STATED" as null rather than fabricating a date.
+  const deadline = TSMSLAExtractor.extractDeadline(
+    e5,
+    /PRIORITY ACTIONS[\s\S]*?\n\s*1\.[^\n—]*—[^\n—]*—[^\n—]*—\s*([^\n]+)/i
+  );
+
+  // E4's "IMMEDIATE COMPLIANCE ACTIONS" is a numbered (1. 2. 3.) list, not
+  // the bulleted (*/-/•) list the shared extractEvidenceList scans for, so
+  // parse its numbered items directly here rather than force a mismatched
+  // shared helper.
+  const requiredEvidence = [];
+  const evMatch = e4.match(/IMMEDIATE COMPLIANCE ACTIONS:([\s\S]*)/i);
+  if (evMatch) {
+    evMatch[1].split('\n').forEach(function (line) {
+      const m = line.match(/^\s*\d+\.\s*(.+)/);
+      if (m && m[1].trim()) requiredEvidence.push(m[1].trim());
+    });
+  }
+
+  const financialExposure = TSMSLAExtractor.parseDollarAmount(exposureStr);
+
+  const riskScore = parseInt(riskScoreStr, 10);
+  const confidence = TSMSLAExtractor.confidenceFromScore(riskScore, { invert: true });
+  const confidenceTier = TSMSLAExtractor.confidenceTierFor(confidence);
+  const humanReviewRequired = confidenceTier !== 'HIGH';
+
+  return {
+    deadline: deadline || null,
+    requiredEvidence,
+    financialExposure,
+    confidence,
+    confidenceTier,
+    humanReviewRequired
+  };
+}
+
 async function generateReport(){
   const btn = document.getElementById('genBtn');
   const out = document.getElementById('stratOutput');
@@ -1160,6 +1212,22 @@ async function generateReport(){
         }
       }
     } catch (finDeltaErr) { console.warn('[bnca-exposure-engine] finops render error:', finDeltaErr); }
+    // ── TSM SLA EXTRACTOR ────────────────────────────────────────────
+    let _finStructuredCase = null;
+    try {
+      _finStructuredCase = buildFinOpsStructuredCase(
+        _warRoomEngineOutputs,
+        _expM ? _expM[1] : '$91,800–$112,200',
+        _riskM ? _riskM[1] : '70/100'
+      );
+    } catch(e) { console.warn('[sla-extractor] finops structured case error:', e); }
+    // Real severity from confidenceTier, not the hardcoded 'med' this
+    // previously shipped with — mirrors Legal's fix (HIGH tier -> low
+    // severity concern, LOW tier -> high).
+    const _finTier = _finStructuredCase ? _finStructuredCase.confidenceTier : null;
+    const _finSeverity = _finTier === 'HIGH' ? 'low' : _finTier === 'MEDIUM' ? 'med' : _finTier === 'LOW' ? 'high' : 'med';
+    const _finConfidence = _finStructuredCase ? _finStructuredCase.confidence : ((typeof _riskM !== 'undefined' && _riskM) ? parseInt(_riskM[1]) : null);
+    // ── END TSM SLA EXTRACTOR ────────────────────────────────────────
     sessionStorage.setItem('tsm_strategist_relay', JSON.stringify({
       wip: (window.TSMExecKitProducer && TSMExecKitProducer.buildWip([
         { id:'ingest',    label:'Document Ingestion', status:'done' },
@@ -1170,8 +1238,8 @@ async function generateReport(){
       explain: (window.TSMExecKitProducer && TSMExecKitProducer.buildExplain([
         {
           claim: 'FinOps Exposure Analysis — ' + (typeof _expM !== 'undefined' && _expM ? _expM[1] : 'see brief'),
-          confidence: (typeof _riskM !== 'undefined' && _riskM) ? parseInt(_riskM[1]) : null,
-          severity: 'med',
+          confidence: _finConfidence,
+          severity: _finSeverity,
           rationale: _txt || 'See full strategist summary for detailed reasoning.',
           sources: ['FinOps Strategist']
         }
@@ -1186,7 +1254,8 @@ async function generateReport(){
       missingPO: _poM ? _poM[1] : null,
       exceptions: _excM ? _excM[1] : null,
       compliance: _compM ? _compM[1].trim().slice(0,12) : null,
-      engineOutputs: _warRoomEngineOutputs
+      engineOutputs: _warRoomEngineOutputs,
+      structuredCase: _finStructuredCase
     }));
     localStorage.setItem('tsm_strategist_relay', JSON.stringify({
       wip: (window.TSMExecKitProducer && TSMExecKitProducer.buildWip([
@@ -1198,8 +1267,8 @@ async function generateReport(){
       explain: (window.TSMExecKitProducer && TSMExecKitProducer.buildExplain([
         {
           claim: 'FinOps Exposure Analysis — ' + (typeof _expM !== 'undefined' && _expM ? _expM[1] : 'see brief'),
-          confidence: (typeof _riskM !== 'undefined' && _riskM) ? parseInt(_riskM[1]) : null,
-          severity: 'med',
+          confidence: _finConfidence,
+          severity: _finSeverity,
           rationale: _txt || 'See full strategist summary for detailed reasoning.',
           sources: ['FinOps Strategist']
         }
@@ -1214,7 +1283,8 @@ async function generateReport(){
       missingPO: _poM ? _poM[1] : null,
       exceptions: _excM ? _excM[1] : null,
       compliance: _compM ? _compM[1].trim().slice(0,12) : null,
-      engineOutputs: _warRoomEngineOutputs
+      engineOutputs: _warRoomEngineOutputs,
+      structuredCase: _finStructuredCase
     }));
       animateFeed();
       showRelayToast('BNCA synthesis complete. Ready to relay to Executive Portal.');
@@ -1273,6 +1343,19 @@ function relayToExecutive(){
     const _wrRaw = sessionStorage.getItem('tsm_war_relay_finops-suite') || localStorage.getItem('tsm_war_relay_finops-suite');
     if (_wrRaw) _warRoomEngineOutputs = JSON.parse(_wrRaw).engineOutputs || _warRoomEngineOutputs;
   } catch(e) {}
+  // ── TSM SLA EXTRACTOR ──────────────────────────────────────────────
+  let _finStructuredCase = null;
+  try {
+    _finStructuredCase = buildFinOpsStructuredCase(
+      _warRoomEngineOutputs,
+      _expM ? _expM[1] : (existing.exposure || '$91,800–$112,200'),
+      _riskM ? _riskM[1] : (existing.riskScore || '70/100')
+    );
+  } catch(e) { console.warn('[sla-extractor] finops structured case error:', e); }
+  const _finTier = _finStructuredCase ? _finStructuredCase.confidenceTier : null;
+  const _finSeverity = _finTier === 'HIGH' ? 'low' : _finTier === 'MEDIUM' ? 'med' : _finTier === 'LOW' ? 'high' : 'med';
+  const _finConfidence = _finStructuredCase ? _finStructuredCase.confidence : ((typeof _riskM !== 'undefined' && _riskM) ? parseInt(_riskM[1]) : null);
+  // ── END TSM SLA EXTRACTOR ────────────────────────────────────────────
   localStorage.setItem('tsm_strategist_relay', JSON.stringify({
     wip: (window.TSMExecKitProducer && TSMExecKitProducer.buildWip([
       { id:'ingest',    label:'Document Ingestion', status:'done' },
@@ -1283,8 +1366,8 @@ function relayToExecutive(){
     explain: (window.TSMExecKitProducer && TSMExecKitProducer.buildExplain([
       {
         claim: 'FinOps Exposure Analysis — ' + (typeof _expM !== 'undefined' && _expM ? _expM[1] : 'see brief'),
-        confidence: (typeof _riskM !== 'undefined' && _riskM) ? parseInt(_riskM[1]) : null,
-        severity: 'med',
+        confidence: _finConfidence,
+        severity: _finSeverity,
         rationale: output || 'See full strategist summary for detailed reasoning.',
         sources: ['FinOps Strategist']
       }
@@ -1299,7 +1382,8 @@ function relayToExecutive(){
     missingPO: _poM ? _poM[1] : existing.missingPO || null,
     exceptions: _excM ? _excM[1] : existing.exceptions || null,
     compliance: _compM ? _compM[1].trim().slice(0,12) : existing.compliance || null,
-    engineOutputs: _warRoomEngineOutputs
+    engineOutputs: _warRoomEngineOutputs,
+    structuredCase: _finStructuredCase
   }));
 
   // ── SENTINEL PUSH ──────────────────────────────────────────────
