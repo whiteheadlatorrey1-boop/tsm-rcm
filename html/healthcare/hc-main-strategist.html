@@ -922,6 +922,31 @@ async function callClaude(userMsg, outEl, thinkEl, errEl){
   }
 }
 
+// TSM FIX: renderExplainPanel(obj) computes a real, context-grounded
+// confidence (obj.confidence, 0-100 from the strategist's own JSON output)
+// and a real deterministic severity (hcXPSeverityForExposure — based on
+// actual dollar exposure + that confidence), but neither ever left that
+// function's local scope. escalateToExecPortal() — which is what actually
+// feeds TSMExceptions/TSMCaseManager via payload.explain — had no access
+// to either value, so every HC exception/case created from this page
+// silently got confidence: null and severity: 'med' regardless of what
+// the strategist actually found. These two module-scoped vars are the
+// bridge: renderExplainPanel sets them, escalateToExecPortal reads them.
+var lastStrategistConfidence = null;
+var lastStrategistSeverity = null;
+
+// hcXPSeverityForExposure() returns CRIT/HIGH/MED/LOW (this page's own
+// display scale). TSMExceptions.priorityFor()/TSMCaseManager.priorityFor()
+// expect lowercase 'high'/'med'/'low' — mapping here so P1/P2/P3
+// assignment downstream reflects the real computed severity instead of
+// silently falling through to the P3 default on an unrecognized string.
+function hcSeverityToExceptionScale(sev) {
+  if (sev === 'CRIT' || sev === 'HIGH') return 'high';
+  if (sev === 'MED') return 'med';
+  if (sev === 'LOW') return 'low';
+  return 'med';
+}
+
 // ── RUN STRATEGIST ──
 async function runStrategist(){
   const mode = document.getElementById('strat-mode').value;
@@ -1033,6 +1058,13 @@ function renderExplainPanel(obj){
       document.getElementById('hcDeltaNo').textContent = fmt(hcXPImpact.ifIgnored.exposure);
       document.getElementById('hcDeltaAct').textContent = fmt(hcXPImpact.ifActed.exposure);
       document.getElementById('hcRecoveryTime').textContent = hcXPImpact.urgencyWindow + ' \u00b7 ' + hcXPImpact.methodology;
+      // TSM FIX: capture the real confidence/severity this block just
+      // computed so escalateToExecPortal() can use them instead of
+      // null/'med'. hcXPConf/hcXPSeverity are the same values already
+      // driving the exposure delta shown on screen above — this doesn't
+      // compute anything new, it just stops throwing the numbers away.
+      lastStrategistConfidence = hcXPConf;
+      lastStrategistSeverity = hcXPSeverity;
     }
   } catch(dee) { console.warn('[bnca-exposure-engine] healthcare render error:', dee); }
 }
@@ -1543,8 +1575,13 @@ async function escalateToExecPortal(){
       payload.explain = (window.TSMExecKitProducer && TSMExecKitProducer.buildExplain([
         {
           claim: (payload.claimId ? 'Claim ' + payload.claimId : 'HC Strategist') + ' — Main Strategist Synthesis',
-          confidence: payload.confidence || null,
-          severity: 'med',
+          // TSM FIX: was payload.confidence (never assigned anywhere in
+          // this file, always null) and a hardcoded 'med'. Now reads the
+          // real values renderExplainPanel() already computed from the
+          // strategist's own grounded JSON output and the deterministic
+          // exposure-based severity calculator.
+          confidence: lastStrategistConfidence,
+          severity: hcSeverityToExceptionScale(lastStrategistSeverity),
           rationale: payload.summary || payload.narrative || payload.brief || 'See full strategist brief for detailed reasoning.',
           sources: ['HC Main Strategist']
         }
