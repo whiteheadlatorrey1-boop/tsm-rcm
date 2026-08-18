@@ -702,6 +702,40 @@ function extractLitCost(t='') { const m = t.match(/LITIGATION COST[:\s]+([^\n]+)
 function extractDeadline(t='') { const m = t.match(/1\.\s*([^\n]+)/); return m ? m[1].trim().slice(0,30) : null; }
 function countEngines(d) { return Object.keys(d.engines||{}).filter(k=>d.engines[k]).length; }
 
+// ── STRUCTURED CASE (SLA extractor, mirrors hc-denial's 13-field pattern) ──
+// Deterministic, non-LLM synthesis of exposure/deadline/requiredEvidence/
+// confidence from the real E3 (financial) and E4 (recovery plan) engine
+// text, via the shared html/shared/tsm-sla-extractor.js utility. Used to
+// feed the Exec Portal's Exception/Case Queues with real figures instead of
+// the hardcoded confidence:null the explain-item builder previously shipped.
+function buildLegalStructuredCase(payload) {
+  if (typeof TSMSLAExtractor === 'undefined') return null;
+  const e3 = (payload.engines && payload.engines.e3) || '';
+  const e4 = (payload.engines && payload.engines.e4) || '';
+
+  const deadline =
+    TSMSLAExtractor.extractDeadline(e4, /3\.\s*Deadline:\s*([^\n]+)/i) ||
+    TSMSLAExtractor.extractDeadline(e3, /CRITICAL DEADLINES?:?\s*\n?\s*1\.\s*([^\n]+)/i);
+
+  const requiredEvidence = TSMSLAExtractor.extractEvidenceList(e4, /1\.\s*Documents Needed:/i);
+
+  const financialExposure = TSMSLAExtractor.parseDollarAmount(payload.exposure);
+
+  const riskScore = parseInt(payload.riskScore, 10);
+  const confidence = TSMSLAExtractor.confidenceFromScore(riskScore, { invert: true });
+  const confidenceTier = TSMSLAExtractor.confidenceTierFor(confidence);
+  const humanReviewRequired = confidenceTier !== 'HIGH';
+
+  return {
+    deadline: deadline || null,
+    requiredEvidence,
+    financialExposure,
+    confidence,
+    confidenceTier,
+    humanReviewRequired
+  };
+}
+
 // ── GROQ SYNTHESIS ─────────────────────────────────────────────────────────
 async function runSynthesis() {
   if (!relayData) { showToast('No relay data','Run the War Room 6-engine analysis first.'); return; }
@@ -863,6 +897,15 @@ function writeExecRelay(e) {
       engines: relayData?.engines || {},
       enginesCount: document.getElementById('kpi-engines').textContent
     };
+    // ── TSM SLA EXTRACTOR: structured case ──────────────────────────
+    // Real exposure/deadline/requiredEvidence/confidence, parsed from the
+    // actual E3/E4 engine text — feeds both the explain-item confidence
+    // below and the Exec Portal's Case Queue (deadline, requiredEvidence).
+    try {
+      payload.structuredCase = buildLegalStructuredCase(payload);
+    } catch(e) { console.warn('[sla-extractor] legal structured case error:', e); payload.structuredCase = null; }
+    // ── END TSM SLA EXTRACTOR ────────────────────────────────────────
+
     // ── TSM EXEC KIT: WIP + explainability ──────────────────────────
     try {
       payload.wip = (window.TSMExecKitProducer && TSMExecKitProducer.buildWip([
@@ -871,11 +914,17 @@ function writeExecRelay(e) {
         { id:'strategist', label:'Strategist Synth', status:'done', time: new Date().toLocaleTimeString() },
         { id:'exec',       label:'Executive Review', status:'active' }
       ])) || [];
+      // Real confidence from structuredCase, not the hardcoded null this
+      // previously shipped with. Severity mirrors confidenceTier: HIGH tier
+      // (well-supported) -> low severity concern, LOW tier -> high.
+      const scConfidence = payload.structuredCase ? payload.structuredCase.confidence : null;
+      const scTier = payload.structuredCase ? payload.structuredCase.confidenceTier : null;
+      const scSeverity = scTier === 'HIGH' ? 'low' : scTier === 'MEDIUM' ? 'med' : scTier === 'LOW' ? 'high' : 'med';
       payload.explain = (window.TSMExecKitProducer && TSMExecKitProducer.buildExplain([
         {
           claim: (relayData?.matter || relayData?.docType || 'Matter') + ' — Strategist Synthesis',
-          confidence: null,
-          severity: 'med',
+          confidence: scConfidence,
+          severity: scSeverity,
           rationale: payload.summary || payload.narrative || relayData?.summary || relayData?.narrative || 'See strategist brief for full reasoning chain.',
           sources: ['Legal Strategist']
         }
@@ -1021,6 +1070,7 @@ setInterval(() => {
 
 <style>body{padding-bottom:40px!important}</style>
 <div id="tsm-chain-bar" style="position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#040c12;border-top:1px solid #0d2233;display:flex;align-items:center;height:32px;padding:0 16px;font-family:'IBM Plex Mono',monospace;font-size:10px;"><span style="color:#3a5a70;margin-right:12px;font-size:9px;">TSM CHAIN</span><a href="/html/war-rooms/legal-war/legal-war-room.html" style="color:#94a3b8;border:1px solid #1a3a50;padding:3px 10px;border-radius:3px;text-decoration:none;margin-right:6px;font-size:9px;">&#9675; WAR ROOM</a><span style="color:#1a3a50;margin-right:6px;">--&gt;</span><a href="#" style="color:var(--purple, #b388ff);background:rgba(255,255,255,.05);border:1px solid var(--purple, #b388ff)55;padding:3px 10px;border-radius:3px;text-decoration:none;margin-right:6px;font-size:9px;">&#9679; STRATEGIST</a><span style="color:#1a3a50;margin-right:6px;">--&gt;</span><a href="/html/war-rooms/legal-war/legal-executive-portal.html" style="color:#94a3b8;border:1px solid #1a3a50;padding:3px 10px;border-radius:3px;text-decoration:none;margin-right:6px;font-size:9px;">&#9675; EXEC PORTAL</a><span style="color:#1a3a50;margin-left:auto;font-size:9px;">LEGAL</span></div>
+  <script src="/html/shared/tsm-sla-extractor.js"></script>
   <script src="/shared/tsm-exec-kit-producer.js"></script>
   <script src="/html/core/tsm-runtime.js"></script>
 <script>
