@@ -89,6 +89,33 @@ app.use(['/api/twins', '/api/enterprise-lab'], twinsLimiter);
 
 app.use('/api/', (req, res, next) => (req.path === '/health' ? next() : apiLimiter(req, res, next)));
 
+// ── STRUCTURED REQUEST LOGGING — BPO (Phase 5, tractable subset) ───────────
+// One single-line JSON object per BPO API request to stdout (Fly captures
+// stdout as logs already — no new log-shipping infra invented here). Covers
+// what BPO actually needs for monitoring/incident review: who (role +
+// label, not raw session token), what, and the outcome — not a general
+// APM/tracing system, which would be its own infra decision.
+app.use('/api/bpo', (req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    const session = verifySession(getCookie(req, 'tsm_session'));
+    try {
+      console.log(JSON.stringify({
+        type: 'bpo_request',
+        ts: new Date().toISOString(),
+        method: req.method,
+        path: req.originalUrl,
+        status: res.statusCode,
+        durationMs: Date.now() - start,
+        role: session ? (session.role || 'admin') : null,
+        actor: session ? (session.label || session.role || null) : null,
+        clientId: session ? (session.clientId || null) : null,
+      }));
+    } catch (e) { console.warn('[bpo request log] failed to serialize:', e.message); }
+  });
+  next();
+});
+
 // Tighter limiter specifically on login — brute-force protection on the one
 // endpoint where a stolen/guessed credential actually matters. Applied as
 // route-level middleware (not a path-prefix rule) so it stays attached to
@@ -623,6 +650,13 @@ app.get(BPO_GATED_PAGES, (req, res, next) => {
 // don't manage the client roster. Audit-log reads are admin+manager only,
 // same reasoning as restricting who can see who-did-what across accounts.
 const BPO_MANAGE_ROLES = ['admin', 'manager'];
+// Client-role sessions get read-only visibility into their own data only —
+// never the client roster, audit logs, internal notes, or other clients'
+// records. Every route gated to this list MUST scope its query/result by
+// req.tsmSession.clientId when role === 'client', or a client account
+// could read across accounts. See the per-route comments below for how
+// each one enforces that.
+const BPO_CLIENT_VIEW_ROLES = [...BPO_INTERNAL_ROLES, 'client'];
 
 app.get('/api/bpo/clients', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
   try {
@@ -663,18 +697,29 @@ app.post('/api/bpo/clients/:id/reactivate', requireRole(BPO_MANAGE_ROLES), async
 });
 
 // Work items: any internal role can create/advance one (that's the normal
-// flow of working a case through the war room), not just managers.
-app.get('/api/bpo/work-items', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+// flow of working a case through the war room), not just managers. A
+// client-role session may only read — never create/advance (still gated
+// to BPO_INTERNAL_ROLES below) — and only its own clientId's items: a
+// client-supplied ?clientId= query is ignored in favor of the session's
+// own clientId, so a client account can't page through another account's
+// work items just by changing the query string.
+app.get('/api/bpo/work-items', requireRole(BPO_CLIENT_VIEW_ROLES), async (req, res) => {
   try {
-    const items = await tsmLedger.bpoListWorkItems({ clientId: req.query.clientId, stage: req.query.stage });
+    const clientId = req.tsmSession.role === 'client' ? req.tsmSession.clientId : req.query.clientId;
+    const items = await tsmLedger.bpoListWorkItems({ clientId, stage: req.query.stage });
     res.json({ ok: true, workItems: items });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
-app.get('/api/bpo/work-items/:caseId', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+app.get('/api/bpo/work-items/:caseId', requireRole(BPO_CLIENT_VIEW_ROLES), async (req, res) => {
   try {
     const item = await tsmLedger.bpoGetWorkItem(req.params.caseId);
     if (!item) return res.status(404).json({ ok: false, error: 'Work item not found' });
+    // 404 (not 403) on a cross-client lookup — same "don't confirm another
+    // account's caseId even exists" reasoning as the download route below.
+    if (req.tsmSession.role === 'client' && item.clientId !== req.tsmSession.clientId) {
+      return res.status(404).json({ ok: false, error: 'Work item not found' });
+    }
     res.json({ ok: true, workItem: item });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
@@ -721,18 +766,26 @@ app.post('/api/bpo/work-items/:caseId/notes', requireRole(BPO_INTERNAL_ROLES), a
 });
 
 // SLA events — read-only from routes; only bpoUpsertWorkItem writes these,
-// on every open/advance/resolve.
-app.get('/api/bpo/work-items/:caseId/sla-events', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+// on every open/advance/resolve. Client-role reads are scoped the same way
+// as work items above.
+app.get('/api/bpo/work-items/:caseId/sla-events', requireRole(BPO_CLIENT_VIEW_ROLES), async (req, res) => {
   try {
+    if (req.tsmSession.role === 'client') {
+      const item = await tsmLedger.bpoGetWorkItem(req.params.caseId);
+      if (!item || item.clientId !== req.tsmSession.clientId) {
+        return res.status(404).json({ ok: false, error: 'Work item not found' });
+      }
+    }
     const events = await tsmLedger.bpoListSlaEvents({ caseId: req.params.caseId });
     res.json({ ok: true, slaEvents: events });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
-app.get('/api/bpo/sla-events', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+app.get('/api/bpo/sla-events', requireRole(BPO_CLIENT_VIEW_ROLES), async (req, res) => {
   try {
+    const clientId = req.tsmSession.role === 'client' ? req.tsmSession.clientId : req.query.clientId;
     const events = await tsmLedger.bpoListSlaEvents({
-      clientId: req.query.clientId,
+      clientId,
       limit: req.query.limit ? parseInt(req.query.limit, 10) : undefined,
     });
     res.json({ ok: true, slaEvents: events });
@@ -785,8 +838,14 @@ app.post('/api/bpo/work-items/:caseId/documents', requireRole(BPO_INTERNAL_ROLES
   } catch (e) { res.status(400).json({ ok: false, error: e.message }); }
 });
 
-app.get('/api/bpo/work-items/:caseId/documents', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+app.get('/api/bpo/work-items/:caseId/documents', requireRole(BPO_CLIENT_VIEW_ROLES), async (req, res) => {
   try {
+    if (req.tsmSession.role === 'client') {
+      const item = await tsmLedger.bpoGetWorkItem(req.params.caseId);
+      if (!item || item.clientId !== req.tsmSession.clientId) {
+        return res.status(404).json({ ok: false, error: 'Work item not found' });
+      }
+    }
     const documents = await tsmLedger.bpoListDocuments({ caseId: req.params.caseId });
     res.json({ ok: true, documents });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
@@ -795,11 +854,18 @@ app.get('/api/bpo/work-items/:caseId/documents', requireRole(BPO_INTERNAL_ROLES)
 // Download is deliberately its own top-level route (not nested under
 // work-items/:caseId) since a docId is already globally unique and the
 // client only needs to remember the docId from the list call above, not
-// re-thread caseId through every download link.
-app.get('/api/bpo/documents/:docId/download', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+// re-thread caseId through every download link. That also means the
+// clientId check has to happen here, against the stored document meta,
+// rather than relying on a caseId param that this route doesn't have.
+app.get('/api/bpo/documents/:docId/download', requireRole(BPO_CLIENT_VIEW_ROLES), async (req, res) => {
   try {
     const result = await tsmLedger.bpoGetDocumentBuffer(req.params.docId, req.tsmSession.label || req.tsmSession.role);
     if (!result) return res.status(404).json({ ok: false, error: 'Document not found' });
+    // 404 rather than 403 — a client account shouldn't be able to tell a
+    // cross-client docId apart from one that simply doesn't exist.
+    if (req.tsmSession.role === 'client' && result.meta.clientId !== req.tsmSession.clientId) {
+      return res.status(404).json({ ok: false, error: 'Document not found' });
+    }
     res.set('Content-Type', result.meta.mimetype || 'application/octet-stream');
     res.set('Content-Disposition', `attachment; filename="${result.meta.filename.replace(/"/g, '')}"`);
     res.send(result.buffer);
@@ -811,6 +877,123 @@ app.delete('/api/bpo/documents/:docId', requireRole(BPO_MANAGE_ROLES), async (re
     const updated = await tsmLedger.bpoDeleteDocument(req.params.docId, req.tsmSession.label || req.tsmSession.role);
     if (!updated) return res.status(404).json({ ok: false, error: 'Document not found' });
     res.json({ ok: true, document: updated });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// ── BPO REPORTING (Phase 4) ─────────────────────────────────────────────────
+// Internal-only (BPO_MANAGE_ROLES would be too narrow — any internal role
+// working cases has a reason to pull these, same as the read routes above).
+// Deliberately limited to data the ledger already computes/stores:
+//   - WIP + SLA reports are a straight columnar dump of bpo_work_items /
+//     bpo_sla_events, not a new metric.
+//   - The executive rollup is counts/averages over that same data.
+// No breach/leakage/recovery figures here — there's no defined SLA
+// threshold anywhere in this codebase (checked: no slaDays/SLA_THRESHOLD
+// constant exists), so a "breached" flag would mean inventing a number
+// that isn't mine to set. ageHoursAtEvent/slaAgeHours are reported as-is;
+// what counts as a breach is a business decision for someone with
+// authority over client SLAs, not something to guess at here.
+
+const BPO_REPORT_ROLES = BPO_INTERNAL_ROLES;
+
+// Minimal CSV serializer — no new dependency for a handful of flat report
+// columns. Quotes any value containing a comma/quote/newline and doubles
+// embedded quotes, per RFC 4180.
+function bpoToCsv(rows, columns) {
+  const esc = (v) => {
+    const s = v === null || v === undefined ? '' : String(v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const lines = [columns.join(',')];
+  for (const row of rows) lines.push(columns.map(c => esc(row[c])).join(','));
+  return lines.join('\n');
+}
+
+function bpoSendReport(res, filenameBase, rows, columns, format) {
+  if (format === 'csv') {
+    res.set('Content-Type', 'text/csv');
+    res.set('Content-Disposition', `attachment; filename="${filenameBase}.csv"`);
+    return res.send(bpoToCsv(rows, columns));
+  }
+  res.json({ ok: true, rows });
+}
+
+const BPO_WIP_REPORT_COLUMNS = [
+  'caseId', 'clientId', 'vertical', 'stage', 'status', 'priority',
+  'owner', 'dueDate', 'slaAgeHours', 'createdAt', 'updatedAt',
+];
+
+app.get('/api/bpo/reports/wip', requireRole(BPO_REPORT_ROLES), async (req, res) => {
+  try {
+    const items = await tsmLedger.bpoListWorkItems({
+      clientId: req.query.clientId,
+      stage: req.query.stage,
+      limit: req.query.limit ? parseInt(req.query.limit, 10) : 2000,
+    });
+    bpoSendReport(res, 'bpo-wip-report', items, BPO_WIP_REPORT_COLUMNS, req.query.format);
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+const BPO_SLA_REPORT_COLUMNS = [
+  'caseId', 'clientId', 'vertical', 'type', 'fromStage', 'toStage',
+  'status', 'ageHoursAtEvent', 'actor', 'ts',
+];
+
+app.get('/api/bpo/reports/sla', requireRole(BPO_REPORT_ROLES), async (req, res) => {
+  try {
+    const events = await tsmLedger.bpoListSlaEvents({
+      caseId: req.query.caseId,
+      clientId: req.query.clientId,
+      limit: req.query.limit ? parseInt(req.query.limit, 10) : 5000,
+    });
+    bpoSendReport(res, 'bpo-sla-report', events, BPO_SLA_REPORT_COLUMNS, req.query.format);
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// Executive rollup — aggregate KPIs over current work items + recent SLA
+// events. JSON only (this feeds a dashboard, not a download). Counts and
+// an average are the full extent of the "math" here — nothing that
+// requires a policy decision to compute.
+app.get('/api/bpo/reports/executive-rollup', requireRole(BPO_REPORT_ROLES), async (req, res) => {
+  try {
+    const [items, clients, slaEvents] = await Promise.all([
+      tsmLedger.bpoListWorkItems({ clientId: req.query.clientId, limit: 5000 }),
+      tsmLedger.bpoListClients({}),
+      tsmLedger.bpoListSlaEvents({ clientId: req.query.clientId, limit: 5000 }),
+    ]);
+
+    const byStage = {};
+    const byStatus = {};
+    const byPriority = {};
+    let openAgeSum = 0;
+    let openCount = 0;
+    for (const item of items) {
+      byStage[item.stage] = (byStage[item.stage] || 0) + 1;
+      byStatus[item.status] = (byStatus[item.status] || 0) + 1;
+      byPriority[item.priority] = (byPriority[item.priority] || 0) + 1;
+      if (item.status !== 'resolved' && Number.isFinite(item.slaAgeHours)) {
+        openAgeSum += item.slaAgeHours;
+        openCount += 1;
+      }
+    }
+
+    const slaEventsByType = {};
+    for (const ev of slaEvents) slaEventsByType[ev.type] = (slaEventsByType[ev.type] || 0) + 1;
+
+    res.json({
+      ok: true,
+      rollup: {
+        totalWorkItems: items.length,
+        byStage,
+        byStatus,
+        byPriority,
+        avgOpenAgeHours: openCount ? Math.round((openAgeSum / openCount) * 100) / 100 : null,
+        activeClients: clients.filter(c => c.status === 'active').length,
+        totalClients: clients.length,
+        slaEventsByType,
+        generatedAt: new Date().toISOString(),
+      },
+    });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
