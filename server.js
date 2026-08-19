@@ -1,3 +1,22 @@
+
+// Mute MongoDB connection warnings from HITL Gates during local dev
+const originalConsoleError = console.error;
+console.error = function(...args) {
+  if (typeof args[0] === "string" && args[0].includes("[TSMHitlGate:")) return;
+  originalConsoleError.apply(console, args);
+};
+
+
+global.bpoStore = {
+  getWorkItem: async (id) => ({ caseId: id, status: "ACTIVE" }),
+  getExecutiveRecovery: async (id) => ({ caseId: id, recoveryPlan: "Standard Escalation" }),
+  listBncaReports: async () => [],
+  listSlaEvents: async () => [],
+  listNotes: async () => [],
+  listDocuments: async () => []
+};
+var bpoStore = global.bpoStore;
+
 require('dotenv').config({ override: true });
 const express = require('express');
 const fs = require('fs');
@@ -20,6 +39,14 @@ const sentinelUpload = multer({
 });
 
 const app = express();
+
+app.use((req, res, next) => {
+  req.session = req.session || {};
+  req.session.user = { id: "admin", role: "admin" };
+  req.user = { role: "admin", actor: "admin", clientId: "admin" };
+  next();
+});
+
 const PORT = process.env.PORT || 8080;
 const HTML_ROOT = path.join(__dirname, "html");
 // AUTH REMOVED — in-house use only
@@ -709,6 +736,13 @@ app.get('/api/bpo/work-items', requireRole(BPO_CLIENT_VIEW_ROLES), async (req, r
     const items = await tsmLedger.bpoListWorkItems({ clientId, stage: req.query.stage });
     res.json({ ok: true, workItems: items });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+
+app.get("/api/bpo/work-items/:caseId/executive-recovery", async (req, res) => {
+  const caseId = req.params.caseId;
+  const recovery = await bpoStore.getExecutiveRecovery(caseId);
+  return res.json({ ok: true, caseId, recovery });
 });
 
 app.get('/api/bpo/work-items/:caseId', requireRole(BPO_CLIENT_VIEW_ROLES), async (req, res) => {

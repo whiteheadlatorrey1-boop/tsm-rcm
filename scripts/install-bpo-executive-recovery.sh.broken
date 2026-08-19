@@ -1,0 +1,115 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+
+SERVER="server.js"
+STRAT="html/war-rooms/bpo-war/bpo-strategist.html"
+
+echo "============================================================"
+echo " TSM BPO EXECUTIVE RECOVERY INSTALLER"
+echo "============================================================"
+
+# ------------------------------------------------------------
+# 1. Validate targets
+# ------------------------------------------------------------
+echo "[1/5] Validating project..."
+
+[[ -f "$SERVER" ]] || {
+  echo "ERROR: $SERVER not found"
+  exit 1
+}
+
+[[ -f "$STRAT" ]] || {
+  echo "ERROR: $STRAT not found"
+  exit 1
+}
+
+mkdir -p backups
+
+STAMP="$(date +%Y%m%d-%H%M%S)"
+
+cp "$SERVER" "backups/server.js.bpo-executive-recovery-$STAMP.bak"
+cp "$STRAT" "backups/bpo-strategist.bpo-executive-recovery-$STAMP.bak"
+
+echo "  Backup created: $STAMP"
+
+# ------------------------------------------------------------
+# 2. Verify existing BPO executive recovery endpoint
+# ------------------------------------------------------------
+echo "[2/5] Checking existing BPO executive-recovery route..."
+
+if grep -q "/executive-recovery" "$SERVER"; then
+  echo "  Existing executive-recovery route detected."
+else
+  echo "  WARNING: No /executive-recovery route detected."
+  echo "  Existing BPO routes:"
+  grep -nE "app\.(get|post).*\/api\/bpo" "$SERVER" | head -80 || true
+fi
+
+# ------------------------------------------------------------
+# 3. Verify BNCA report infrastructure
+# ------------------------------------------------------------
+echo "[3/5] Checking BNCA report infrastructure..."
+
+grep -nE \
+  "/api/bpo/work-items/:caseId/bnca-reports|bnca-reports" \
+  "$SERVER" | head -40 || true
+
+echo
+
+# ------------------------------------------------------------
+# 4. Verify Strategist executive-routing hooks
+# ------------------------------------------------------------
+echo "[4/5] Checking Strategist executive-routing hooks..."
+
+grep -nE \
+  "EXECUTIVE|executive|recovery|decision|escalat|strategy|bnca" \
+  "$STRAT" | head -120 || true
+
+echo
+
+# ------------------------------------------------------------
+# 5. Produce diagnostic report
+# ------------------------------------------------------------
+echo "[5/5] Generating integration diagnostic..."
+
+REPORT="/tmp/tsm-bpo-executive-recovery-install-$STAMP.txt"
+
+{
+  echo "TSM BPO EXECUTIVE RECOVERY"
+  echo "Generated: $(date -Is)"
+  echo
+  echo "SERVER: $SERVER"
+  echo "STRATEGIST: $STRAT"
+  echo
+  echo "=== BPO ROUTES ==="
+  grep -nE "app\.(get|post|patch|put).*\/api\/bpo" "$SERVER" || true
+  echo
+  echo "=== BNCA ==="
+  grep -nE "bnca-reports|BNCA" "$SERVER" || true
+  echo
+  echo "=== EXECUTIVE RECOVERY ==="
+  grep -nE "executive-recovery|executive|recovery" "$SERVER" | head -100 || true
+  echo
+  echo "=== STRATEGIST ==="
+  grep -nE "executive|recovery|decision|escalat|strategy|bnca" "$STRAT" | head -150 || true
+} > "$REPORT"
+
+echo
+echo "============================================================"
+echo " INSTALLER COMPLETED"
+echo "============================================================"
+echo
+echo "Diagnostic:"
+echo "  $REPORT"
+echo
+echo "Backups:"
+echo "  backups/server.js.bpo-executive-recovery-$STAMP.bak"
+echo "  backups/bpo-strategist.bpo-executive-recovery-$STAMP.bak"
+echo
+echo "IMPORTANT:"
+echo "This pass intentionally does NOT modify server.js or the Strategist."
+echo "It validates the existing architecture before applying the final"
+echo "Executive Recovery wiring."
