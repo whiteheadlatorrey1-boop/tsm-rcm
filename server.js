@@ -769,6 +769,42 @@ app.post('/api/bpo/work-items/:caseId', requireRole(BPO_INTERNAL_ROLES), async (
   } catch (e) { res.status(400).json({ ok: false, error: e.message }); }
 });
 
+// Cases (Universal Case Engine, Roadmap #10) — server mirror of the
+// browser's TSMCaseManager (tsm_cases_v1 localStorage). Same read/write
+// role split as work items above: any internal role can create/sync a
+// case, client-role sessions get read-only access scoped to their own
+// tenantId (a client-supplied ?tenantId= is ignored in favor of the
+// session's own, same reasoning as the clientId scoping on work items).
+app.get('/api/bpo/cases', requireRole(BPO_CLIENT_VIEW_ROLES), async (req, res) => {
+  try {
+    const tenantId = req.tsmSession.role === 'client' ? req.tsmSession.clientId : req.query.tenantId;
+    const cases = await tsmLedger.bpoListCases({ vertical: req.query.vertical, tenantId, status: req.query.status });
+    res.json({ ok: true, cases });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+app.get('/api/bpo/cases/:caseId', requireRole(BPO_CLIENT_VIEW_ROLES), async (req, res) => {
+  try {
+    const item = await tsmLedger.bpoGetCase(req.params.caseId);
+    if (!item) return res.status(404).json({ ok: false, error: 'Case not found' });
+    if (req.tsmSession.role === 'client' && item.tenantId !== req.tsmSession.clientId) {
+      return res.status(404).json({ ok: false, error: 'Case not found' });
+    }
+    res.json({ ok: true, case: item });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// Upsert-by-caseId — TSMCaseManager.syncToServer() calls this with the
+// full current TSMCase object on every lifecycle mutation (create,
+// update, addArtifact, requestApproval, recordApproval, markExecuted),
+// same "send the full snapshot" contract as the work-items upsert route.
+app.post('/api/bpo/cases/:caseId', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const item = await tsmLedger.bpoUpsertCase(req.params.caseId, req.body || {}, req.tsmSession.label || req.tsmSession.role);
+    res.json({ ok: true, case: item });
+  } catch (e) { res.status(400).json({ ok: false, error: e.message }); }
+});
+
 app.get('/api/bpo/audit-logs', requireRole(BPO_MANAGE_ROLES), async (req, res) => {
   try {
     const logs = await tsmLedger.bpoListAuditLogs({

@@ -310,6 +310,14 @@ const BPO_SLA_EVENTS_COLLECTION = 'bpo_sla_events';
 const BPO_BNCA_REPORTS_COLLECTION = 'bpo_bnca_reports';
 const BPO_DOC_META_COLLECTION = 'bpo_documents_meta';
 const BPO_DOC_CHUNKS_COLLECTION = 'bpo_document_chunks';
+// Universal Case Engine (Roadmap #10) server-side mirror of the browser's
+// tsm_cases_v1 localStorage store (html/shared/tsm-case-manager.js). One
+// doc per caseId, upserted wholesale on every TSMCaseManager mutation via
+// syncToServer() — same "replace on advance" pattern as bpo_work_items,
+// not append-only like bpo_notes/bpo_sla_events (the case's own `timeline`
+// array already carries its audit history, so no separate log collection
+// is needed here).
+const BPO_CASES_COLLECTION = 'bpo_cases';
 
 const BPO_PRIORITIES = ['low', 'medium', 'high', 'critical'];
 
@@ -341,6 +349,11 @@ async function bpoSlaEventsCollection() {
 async function bpoBncaReportsCollection() {
   const database = await getDb();
   return database.collection(BPO_BNCA_REPORTS_COLLECTION);
+}
+
+async function bpoCasesCollection() {
+  const database = await getDb();
+  return database.collection(BPO_CASES_COLLECTION);
 }
 
 /**
@@ -563,6 +576,64 @@ async function bpoUpsertWorkItem(caseId, fields, actor) {
   } catch (e) {
     console.warn('[bpoUpsertWorkItem] failed to write SLA event:', e.message);
   }
+
+  return doc;
+}
+
+// ── Case Engine (Roadmap #10) ───────────────────────────────────────────
+// Server-side mirror of TSMCaseManager's tsm_cases_v1 localStorage store.
+// Whole-document upsert on caseId — same "replace on every mutation"
+// pattern as bpoUpsertWorkItem above, since a TSMCase's own `timeline`
+// array is already the audit history (no separate append-only log needed
+// here the way notes/sla-events have one). tenantId is a structural
+// filter distinct from clientId on work items — cases carry both since a
+// case can originate from a non-client-scoped exception feed.
+
+async function bpoListCases({ vertical, tenantId, status, limit = 200 } = {}) {
+  const col = await bpoCasesCollection();
+  const query = {};
+  if (vertical) query.vertical = vertical;
+  if (tenantId) query.tenantId = tenantId;
+  if (status) query.status = status;
+  return col.find(query).sort({ updatedAt: -1 }).limit(limit).toArray();
+}
+
+async function bpoGetCase(caseId) {
+  const col = await bpoCasesCollection();
+  return col.findOne({ caseId });
+}
+
+/**
+ * Upserts the full case document as sent by TSMCaseManager.syncToServer()
+ * — the browser is the source of truth for the case's shape (TSMCase in
+ * tsm-case-manager.js); this just persists whatever snapshot it sends,
+ * the same "caller sends the full current object" contract bpoUpsertWorkItem
+ * uses for work items. Doesn't reject on unknown/extra fields, since
+ * TSMCase's field set is intentionally wider than any one vertical needs.
+ */
+async function bpoUpsertCase(caseId, caseDoc, actor) {
+  if (!caseId) throw new Error('caseId required');
+  const col = await bpoCasesCollection();
+  const now = new Date().toISOString();
+
+  const existing = await col.findOne({ caseId });
+  const createdAt = existing ? existing.createdAt : (caseDoc && caseDoc.detectedAt) || now;
+
+  const $set = Object.assign({}, caseDoc || {}, {
+    caseId,
+    createdAt,
+    syncedAt: now,
+  });
+  delete $set._id;
+
+  await col.updateOne({ caseId }, { $set }, { upsert: true });
+  const doc = await col.findOne({ caseId });
+
+  await bpoWriteAudit({
+    actor, action: existing ? 'case.sync' : 'case.create',
+    entityType: 'case', entityId: caseId,
+    detail: { status: (caseDoc || {}).status, vertical: (caseDoc || {}).vertical },
+  });
 
   return doc;
 }
@@ -1224,6 +1295,10 @@ module.exports = {
   bpoUpsertWorkItem,
   bpoListAuditLogs,
   bpoWriteAudit,
+  // Case Engine (Roadmap #10)
+  bpoListCases,
+  bpoGetCase,
+  bpoUpsertCase,
   // BPO Phase 2 (rest of): notes / SLA events / BNCA reports
   bpoAddNote,
   bpoListNotes,

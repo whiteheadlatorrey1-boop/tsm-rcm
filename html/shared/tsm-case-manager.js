@@ -209,6 +209,7 @@
     _records.push(rec);
     persist(_records);
     notify();
+    syncToServer(rec);
     return rec;
   }
 
@@ -234,6 +235,7 @@
     var rec = create(data);
     logAudit(rec, 'LINKED_EXCEPTION', exceptionRecord.exceptionId);
     persist(_records);
+    syncToServer(rec);
     return rec;
   }
 
@@ -263,6 +265,7 @@
     logAudit(rec, 'UPDATED', changedKeys.join(', '));
     persist(_records);
     notify();
+    syncToServer(rec);
     return rec;
   }
 
@@ -275,6 +278,7 @@
     logAudit(rec, 'ARTIFACT_GENERATED', entry.title || entry.type || 'artifact');
     persist(_records);
     notify();
+    syncToServer(rec);
     return rec;
   }
 
@@ -288,6 +292,7 @@
     logAudit(rec, 'APPROVAL_REQUESTED', opts.note || null);
     persist(_records);
     notify();
+    syncToServer(rec);
     return rec;
   }
 
@@ -320,6 +325,7 @@
 
     persist(_records);
     notify();
+    syncToServer(rec);
     return rec;
   }
 
@@ -340,7 +346,32 @@
 
     persist(_records);
     notify();
+    syncToServer(rec);
     return rec;
+  }
+
+  /**
+   * syncToServer(rec) — best-effort, fire-and-forget mirror of a case to
+   * POST /api/bpo/cases/:caseId (server/tsm-ledger-service.js bpo_cases
+   * collection). Same "additive, silent no-op if unavailable" contract as
+   * the TSMHitlGate bridge above: no fetch() in this environment (e.g.
+   * the Node self-test at the bottom of this file), a network failure, or
+   * a non-2xx response never throws back into the caller — the
+   * localStorage record (`_records`/persist()) stays the source of truth
+   * for the page's own UI either way, this is purely a server mirror for
+   * cross-device/cross-session visibility and the exec-portal's own
+   * server-side reporting.
+   */
+  function syncToServer(rec) {
+    if (!rec || typeof global.fetch !== 'function') return;
+    try {
+      global.fetch('/api/bpo/cases/' + encodeURIComponent(rec.caseId), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(rec),
+        credentials: 'same-origin'
+      }).catch(function () {});
+    } catch (e) {}
   }
 
   function subscribe(callback) {
@@ -391,7 +422,8 @@
     clear: clear,
     summarize: summarize,
     confidenceTierFor: confidenceTierFor,
-    humanReviewRequiredFor: humanReviewRequiredFor
+    humanReviewRequiredFor: humanReviewRequiredFor,
+    syncToServer: syncToServer
   };
 
   global.TSMCase = TSMCase;
