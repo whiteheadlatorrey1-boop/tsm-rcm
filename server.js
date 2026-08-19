@@ -4055,76 +4055,83 @@ ${rawText ? '\nOriginal document text (truncated):\n' + String(rawText).slice(0,
 
 const COLLECTIVE_VERTICALS = ['healthcare', 'finops', 'bpo', 'legal', 'real-estate', 'insurance', 'construction', 'hotelops', 'o2c', 'crm', 'cpq', 'approval'];
 
-const COLLECTIVE_SIGNALS = []; // { vertical, signal, severity, riskLevel, confidence, topIssue, ownerLanes, hitlRequired, actions, impactDelta, kpi, warRoom, bnca, timestamp, source }
-const COLLECTIVE_BNCA = [];   // synthesis results
+// Persistence moved to Mongo (server/tsm-ledger-service.js — collective_signals
+// / collective_bnca collections), mirroring the bpo_notes / bpo_bnca_reports
+// pattern. The plain JS arrays this replaced didn't survive a dyno restart,
+// which meant every synthesis and signal vanished on every Fly.io deploy.
 
 // POST /api/collective/signal — war rooms push their BNCA signal here.
 // Accepts both the legacy 3-field shape (vertical, signal, severity) and the
 // richer war-room payload (warRoom, bnca, confidence, riskLevel, topIssue,
 // ownerLanes, hitlRequired, actions, impactDelta, kpi).
-app.post('/api/collective/signal', requireAnyAuth, (req, res) => {
-  const {
-    vertical, signal, severity, source,
-    warRoom, bnca, confidence, riskLevel, topIssue,
-    ownerLanes, hitlRequired, actions, impactDelta, kpi
-  } = req.body || {};
-  if (!vertical) return res.status(400).json({ ok: false, error: 'vertical required' });
-  // Client sessions can only write under their own identity — the body
-  // can't override this. Admin sessions may tag a clientId explicitly
-  // (e.g. seeding demo data) or fall back to 'internal'.
-  const clientId = req.tsmSession.role === 'client'
-    ? req.tsmSession.clientId
-    : (req.body.clientId || 'internal');
-  const entry = {
-    vertical,
-    clientId,
-    signal: signal || topIssue || (typeof bnca === 'string' ? bnca.slice(0, 200) : '') || 'War room signal received',
-    severity: severity || riskLevel || 'MEDIUM',
-    riskLevel: riskLevel || severity || 'WATCH',
-    confidence: confidence != null ? confidence : null,
-    topIssue: topIssue || '',
-    warRoom: warRoom || '',
-    bnca: bnca || '',
-    ownerLanes: ownerLanes || [],
-    hitlRequired: !!hitlRequired,
-    actions: actions || [],
-    impactDelta: impactDelta || '',
-    kpi: kpi || {},
-    source: source || '',
-    timestamp: Date.now(),
-    receivedAt: Date.now() // tsm-collective-bnca.html reads receivedAt, not timestamp — keep both to avoid breaking other callers
-  };
-  COLLECTIVE_SIGNALS.unshift(entry);
-  if (COLLECTIVE_SIGNALS.length > 200) COLLECTIVE_SIGNALS.length = 200;
-  res.json({ ok: true, entry });
+app.post('/api/collective/signal', requireAnyAuth, async (req, res) => {
+  try {
+    const {
+      vertical, signal, severity, source,
+      warRoom, bnca, confidence, riskLevel, topIssue,
+      ownerLanes, hitlRequired, actions, impactDelta, kpi
+    } = req.body || {};
+    if (!vertical) return res.status(400).json({ ok: false, error: 'vertical required' });
+    // Client sessions can only write under their own identity — the body
+    // can't override this. Admin sessions may tag a clientId explicitly
+    // (e.g. seeding demo data) or fall back to 'internal'.
+    const clientId = req.tsmSession.role === 'client'
+      ? req.tsmSession.clientId
+      : (req.body.clientId || 'internal');
+    const timestamp = Date.now();
+    const entry = await tsmLedger.collectiveAddSignal({
+      vertical,
+      clientId,
+      signal: signal || topIssue || (typeof bnca === 'string' ? bnca.slice(0, 200) : '') || 'War room signal received',
+      severity: severity || riskLevel || 'MEDIUM',
+      riskLevel: riskLevel || severity || 'WATCH',
+      confidence: confidence != null ? confidence : null,
+      topIssue: topIssue || '',
+      warRoom: warRoom || '',
+      bnca: bnca || '',
+      ownerLanes: ownerLanes || [],
+      hitlRequired: !!hitlRequired,
+      actions: actions || [],
+      impactDelta: impactDelta || '',
+      kpi: kpi || {},
+      source: source || '',
+      timestamp,
+      receivedAt: timestamp // tsm-collective-bnca.html reads receivedAt, not timestamp — keep both to avoid breaking other callers
+    });
+    res.json({ ok: true, entry });
+  } catch (err) {
+    console.error('[collective/signal] error:', err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
 });
 
 // GET /api/collective/signals — client sessions only ever see their own
 // entries; admin sessions see everything (optionally filtered via ?clientId=
 // for drill-down, since the "All Clients" rollup view is admin-only anyway).
-app.get('/api/collective/signals', requireAnyAuth, (req, res) => {
-  let signals = COLLECTIVE_SIGNALS;
-  if (req.tsmSession.role === 'client') {
-    signals = signals.filter(s => s.clientId === req.tsmSession.clientId);
-  } else if (req.query.clientId) {
-    signals = signals.filter(s => s.clientId === req.query.clientId);
+app.get('/api/collective/signals', requireAnyAuth, async (req, res) => {
+  try {
+    const clientId = req.tsmSession.role === 'client'
+      ? req.tsmSession.clientId
+      : (req.query.clientId || null);
+    const signals = await tsmLedger.collectiveListSignals({ clientId });
+    res.json({ ok: true, signals });
+  } catch (err) {
+    console.error('[collective/signals] error:', err);
+    res.status(500).json({ ok: false, error: err.message });
   }
-  res.json({ ok: true, signals });
 });
 
 // DELETE /api/collective/signals — admin only. Without ?clientId= this wipes
 // everything (kept for existing demo/reset scripts); pass ?clientId= to
 // clear just one client's entries instead of nuking shared state.
-app.delete('/api/collective/signals', requireAdmin, (req, res) => {
-  if (req.query.clientId) {
-    const before = COLLECTIVE_SIGNALS.length;
-    for (let i = COLLECTIVE_SIGNALS.length - 1; i >= 0; i--) {
-      if (COLLECTIVE_SIGNALS[i].clientId === req.query.clientId) COLLECTIVE_SIGNALS.splice(i, 1);
-    }
-    return res.json({ ok: true, removed: before - COLLECTIVE_SIGNALS.length });
+app.delete('/api/collective/signals', requireAdmin, async (req, res) => {
+  try {
+    const removed = await tsmLedger.collectiveDeleteSignals({ clientId: req.query.clientId || null });
+    res.json({ ok: true, removed });
+  } catch (err) {
+    console.error('[collective/signals delete] error:', err);
+    res.status(500).json({ ok: false, error: err.message });
   }
-  COLLECTIVE_SIGNALS.length = 0;
-  res.json({ ok: true });
 });
 
 // POST /api/collective/bnca — run cross-vertical synthesis via Groq
@@ -4133,9 +4140,9 @@ app.post('/api/collective/bnca', requireAnyAuth, async (req, res) => {
     // Client sessions synthesize only their own signals — the cross-client
     // "admin rollup" synthesis stays admin-only, same boundary as the
     // signals list itself.
-    const scopedSignals = req.tsmSession.role === 'client'
-      ? COLLECTIVE_SIGNALS.filter(s => s.clientId === req.tsmSession.clientId)
-      : COLLECTIVE_SIGNALS;
+    const scopedSignals = await tsmLedger.collectiveListSignals({
+      clientId: req.tsmSession.role === 'client' ? req.tsmSession.clientId : null
+    });
     if (!scopedSignals.length) return res.status(400).json({ ok: false, error: 'No signals to synthesize' });
     // Schema below must match what html/tsm-collective-bnca.html actually
     // reads (r.overallRisk, r.collectiveBNCA, r.confidence, r.verticalsActive,
@@ -4186,8 +4193,7 @@ ${JSON.stringify(scopedSignals.slice(0, 50), null, 2)}`;
       signalCount: scopedSignals.length,
       clientId: req.tsmSession.role === 'client' ? req.tsmSession.clientId : 'internal',
     };
-    COLLECTIVE_BNCA.unshift(result);
-    if (COLLECTIVE_BNCA.length > 20) COLLECTIVE_BNCA.length = 20;
+    await tsmLedger.collectiveAddBncaResult(result);
     res.json({ ok: true, result, signals: scopedSignals });
   } catch (err) {
     console.error('[collective/bnca] error:', err);
@@ -4198,11 +4204,16 @@ ${JSON.stringify(scopedSignals.slice(0, 50), null, 2)}`;
 // GET /api/collective/bnca/latest — fetch most recent synthesis. Client
 // sessions get their own most recent scoped synthesis, not whatever any
 // other client (or the admin rollup) generated last.
-app.get('/api/collective/bnca/latest', requireAnyAuth, (req, res) => {
-  const latest = req.tsmSession.role === 'client'
-    ? COLLECTIVE_BNCA.find(b => b.clientId === req.tsmSession.clientId)
-    : COLLECTIVE_BNCA[0];
-  res.json({ ok: true, result: latest || null });
+app.get('/api/collective/bnca/latest', requireAnyAuth, async (req, res) => {
+  try {
+    const latest = await tsmLedger.collectiveLatestBnca({
+      clientId: req.tsmSession.role === 'client' ? req.tsmSession.clientId : null
+    });
+    res.json({ ok: true, result: latest || null });
+  } catch (err) {
+    console.error('[collective/bnca/latest] error:', err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
 });
 
 // ══════════════════════════════════════════════════════════════════════════════

@@ -1262,6 +1262,75 @@ async function pmUpsertVendor(vendorId, fields, actor) {
   return doc;
 }
 
+// =====================================================
+// COLLECTIVE BNCA PERSISTENCE
+// Mongo-backed replacement for the COLLECTIVE_SIGNALS / COLLECTIVE_BNCA
+// in-memory arrays in server.js. Mirrors the bpo_notes / bpo_bnca_reports
+// pattern exactly: append-only collections, newest-first, capped by
+// limit on read rather than truncated on write, since Mongo has no
+// realistic size pressure the way a plain JS array kept in process
+// memory does (and this survives a dyno restart, which the array didn't).
+//
+//   collective_signals — one doc per war-room push (POST /api/collective/signal)
+//   collective_bnca     — one doc per synthesis run (POST /api/collective/bnca)
+// =====================================================
+
+const COLLECTIVE_SIGNALS_COLLECTION = 'collective_signals';
+const COLLECTIVE_BNCA_COLLECTION = 'collective_bnca';
+
+async function collectiveSignalsCollection() {
+  const database = await getDb();
+  return database.collection(COLLECTIVE_SIGNALS_COLLECTION);
+}
+
+async function collectiveBncaCollection() {
+  const database = await getDb();
+  return database.collection(COLLECTIVE_BNCA_COLLECTION);
+}
+
+async function collectiveAddSignal(entry) {
+  const col = await collectiveSignalsCollection();
+  const doc = { ...entry, ts: new Date().toISOString() };
+  await col.insertOne(doc);
+  return doc;
+}
+
+// clientId undefined/null = admin rollup (no scoping). Pass a real
+// clientId to scope to one client's signals, mirroring the role check
+// server.js already does before calling this.
+async function collectiveListSignals({ clientId, limit = 200 } = {}) {
+  const col = await collectiveSignalsCollection();
+  const query = {};
+  if (clientId) query.clientId = clientId;
+  return col.find(query).sort({ timestamp: -1 }).limit(limit).toArray();
+}
+
+async function collectiveDeleteSignals({ clientId } = {}) {
+  const col = await collectiveSignalsCollection();
+  const query = {};
+  if (clientId) query.clientId = clientId;
+  const result = await col.deleteMany(query);
+  return result.deletedCount || 0;
+}
+
+async function collectiveAddBncaResult(result) {
+  const col = await collectiveBncaCollection();
+  const doc = { ...result, ts: new Date().toISOString() };
+  await col.insertOne(doc);
+  return doc;
+}
+
+// Newest synthesis first, optionally scoped to one clientId — same
+// lookup server.js's GET /api/collective/bnca/latest needs (find the
+// first doc matching clientId in a newest-first sort, or the very
+// first doc for the admin rollup).
+async function collectiveLatestBnca({ clientId } = {}) {
+  const col = await collectiveBncaCollection();
+  const query = {};
+  if (clientId) query.clientId = clientId;
+  return col.find(query).sort({ timestamp: -1 }).limit(1).next();
+}
+
 module.exports = {
   connect,
   getDb,
@@ -1330,4 +1399,10 @@ module.exports = {
   pmGetVendor,
   pmUpsertVendor,
   pmListStatusEvents,
+  // Collective BNCA persistence
+  collectiveAddSignal,
+  collectiveListSignals,
+  collectiveDeleteSignals,
+  collectiveAddBncaResult,
+  collectiveLatestBnca,
 };
