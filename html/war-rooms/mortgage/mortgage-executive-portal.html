@@ -101,6 +101,28 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 </div>
 <div class="wrap" id="wrap"><!-- populated by JS --></div>
 <div class="toast" id="toast"></div>
+
+<!-- ── EXCEPTION QUEUE / CASE QUEUE — Roadmap #10 Case Engine ──────────── -->
+<div style="padding:0 20px;">
+  <div class="sec-hdr"><span class="lbl">EXCEPTION QUEUE</span></div>
+  <div id="tsm-exception-queue"></div>
+  <div class="sec-hdr" style="margin-top:18px"><span class="lbl">CASE QUEUE</span></div>
+  <div id="tsm-case-queue"></div>
+</div>
+
+<script src="/html/shared/tsm-exceptions.js"></script>
+<script src="/html/js/widgets/tsm-exception-widget.js"></script>
+<script src="/html/shared/tsm-hitl-gate.js"></script>
+<script src="/html/shared/tsm-case-manager.js"></script>
+<script src="/html/js/widgets/tsm-case-widget.js"></script>
+<script>
+  if (typeof TSMExceptionWidget !== 'undefined') {
+    TSMExceptionWidget.mount('tsm-exception-queue', { sector: 'mortgage' });
+  }
+  if (typeof TSMCaseWidget !== 'undefined') {
+    TSMCaseWidget.mount('tsm-case-queue', { sector: 'mortgage' });
+  }
+</script>
 <script>
 function tick(){document.getElementById('clock').textContent=new Date().toLocaleTimeString();}
 setInterval(tick,1000);tick();
@@ -404,6 +426,82 @@ function registerMortgageAnomalies(fin){
   }
 }
 
+// ===== EXCEPTION / CASE QUEUE FEED — Roadmap #10 Case Engine =====
+// Same pattern as Legal/BPO/Healthcare/Construction/FinOps/Insurance: turn
+// the real SLA-breaching loan files and open compliance items already
+// shown in the Top Risk Register into TSMExceptions.add() records, then
+// TSMCaseManager.createFromException() so each gets a real
+// approval/execution/audit lifecycle. No fabricated fields — everything
+// here mirrors fin.closing_delay_exposure_items / compliance_exposure_items,
+// the same real relay data renderRiskRegister() already renders.
+const _mtgFedIds = {};
+function mtgFeedExceptions(fin){
+  if (typeof TSMExceptions === 'undefined' || !fin) return;
+  const items = fin.closing_delay_exposure_items || [];
+  let fedAny = false;
+
+  items.forEach(it => {
+    if (!it || !it.id) return;
+    if (_mtgFedIds[it.id]) return; // already fed this loan file this pageload
+    _mtgFedIds[it.id] = true;
+    fedAny = true;
+
+    const exceptionRecord = TSMExceptions.add({
+      title: `${it.stage} \u2014 Loan ${it.id} \u2014 ${it.borrower || 'borrower'} (${it.days_over}d over SLA)`,
+      detail: `Closing-delay exposure of ${money(it.exposure, fin.currency)} at the ${it.stage} stage.`,
+      recommendedAction: 'See Mortgage Executive Portal risk register and CFO decision summary.',
+      severity: it.days_over > 3 ? 'high' : 'med',
+      confidence: null,
+      sector: 'mortgage',
+      agentLabel: 'Mortgage Strategist'
+    });
+
+    if (typeof TSMCaseManager !== 'undefined' && exceptionRecord) {
+      const newCase = TSMCaseManager.createFromException(exceptionRecord, {
+        process: 'mortgage_closing_delay_resolution',
+        source: 'Mortgage Strategist',
+        exposure: it.exposure
+      });
+      if (newCase) {
+        TSMCaseManager.requestApproval(newCase.caseId, { note: 'Auto-requested on case creation from Mortgage exception feed.' });
+      }
+    }
+  });
+
+  const compItems = fin.compliance_exposure_items || [];
+  if (compItems.length && !_mtgFedIds['compliance-exceptions']){
+    _mtgFedIds['compliance-exceptions'] = true;
+    fedAny = true;
+    const exceptionRecord = TSMExceptions.add({
+      title: `${compItems.length} open compliance exception(s) \u2014 ${money(fin.compliance_exposure_total, fin.currency)} exposure`,
+      detail: 'See Mortgage Executive Portal compliance exposure panel.',
+      recommendedAction: 'Route to compliance/closing manager for review.',
+      severity: 'high',
+      confidence: null,
+      sector: 'mortgage',
+      agentLabel: 'Mortgage Strategist'
+    });
+    if (typeof TSMCaseManager !== 'undefined' && exceptionRecord) {
+      const newCase = TSMCaseManager.createFromException(exceptionRecord, {
+        process: 'mortgage_compliance_exceptions',
+        source: 'Mortgage Strategist',
+        exposure: fin.compliance_exposure_total
+      });
+      if (newCase) {
+        TSMCaseManager.requestApproval(newCase.caseId, { note: 'Auto-requested on case creation from Mortgage exception feed.' });
+      }
+    }
+  }
+
+  if (!fedAny) return;
+  if (typeof TSMExceptionWidget !== 'undefined') {
+    TSMExceptionWidget.mount('tsm-exception-queue', { sector: 'mortgage' });
+  }
+  if (typeof TSMCaseWidget !== 'undefined') {
+    TSMCaseWidget.mount('tsm-case-queue', { sector: 'mortgage' });
+  }
+}
+
 function render(){
   const data = loadRelay();
   if(!data){ renderEmpty(); return; }
@@ -423,6 +521,7 @@ function render(){
   html += renderFunnel(data.loan_wip, data.financials);
 
   registerMortgageAnomalies(data.financials);
+  mtgFeedExceptions(data.financials);
 
   html += `<div class="sec"><div class="sec-hdr"><span class="lbl">EXECUTIVE ACTIONS</span></div>
     <div class="action-bar">
@@ -463,9 +562,21 @@ function renderExecutiveSynthesis(result){
   box.style.display = 'block';
 }
 
-render();
-window.addEventListener('storage', e => { if(e.key === RELAY_KEY_FALLBACK || e.key === 'TSM_EVENT_LOG') render(); });
-window.addEventListener('TSM_RELAY_EVENT', e => { if(e.detail && e.detail.domain === DOMAIN) render(); });
+// Deferred to DOMContentLoaded (not called synchronously here) so that
+// TSMExceptions/TSMCaseManager/TSMMemory -- all loaded via <script src>
+// tags earlier in the body -- are guaranteed available on the very first
+// render(), not just on a later storage/TSM_RELAY_EVENT re-render. Same
+// pattern already used by the Legal Executive Portal's mount().
+function initRender(){
+  render();
+  window.addEventListener('storage', e => { if(e.key === RELAY_KEY_FALLBACK || e.key === 'TSM_EVENT_LOG') render(); });
+  window.addEventListener('TSM_RELAY_EVENT', e => { if(e.detail && e.detail.domain === DOMAIN) render(); });
+}
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initRender);
+} else {
+  initRender();
+}
 </script>
   <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
   <script src="/html/shared/tsm-memory-engine.js"></script>
