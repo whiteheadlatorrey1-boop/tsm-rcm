@@ -523,6 +523,9 @@ body::before{content:'';position:fixed;top:0;right:0;width:600px;height:400px;ba
 <div style="padding:0 20px;">
 <div id="tsmk-wip-auto" style="margin:18px 0 10px;"></div>
 <div id="tsmk-exp-auto" style="margin:10px 0 24px;"></div>
+<div style="margin:10px 0 24px;">
+  <button onclick="exportClientPackage()" id="tsmk-delivery-btn" style="background:rgba(94,255,193,0.08);border:1px solid rgba(94,255,193,0.35);color:#5effc1;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:1px;padding:8px 16px;cursor:pointer;border-radius:4px;">⬇ EXPORT CLIENT PACKAGE</button>
+</div>
 </div>
 <!-- ▲ TSM EXEC KIT ▲ -->
 
@@ -1024,6 +1027,13 @@ setInterval(loadRelay, 15000);
   var WIP_ID     = 'tsmk-wip-auto';
   var EXP_ID     = 'tsmk-exp-auto';
 
+  // Roadmap #9 -- stashed here so exportClientPackage() (defined below,
+  // outside this IIFE) can reuse the exact same explain items mount()
+  // already computed, rather than re-deriving anything. This page doesn't
+  // compute a quality score today, so qualityScore stays null -- honest
+  // fallback the engine already documents, not a fabricated figure.
+  var lastExplainItems = [];
+
   function readRelay() {
     for (var i = 0; i < RELAY_KEYS.length; i++) {
       var raw = localStorage.getItem(RELAY_KEYS[i]);
@@ -1052,6 +1062,7 @@ setInterval(loadRelay, 15000);
         ? new Date(relay.timestamp).toLocaleTimeString() : 'loaded')) : '' });
 
     TSMExecKit.renderExplainability(EXP_ID, items, { openFirst: true });
+    lastExplainItems = items;
 
     // Feed the same explain items into the Exception/Case Queues below.
     // insuranceFeedExceptions is defined further down the page (after
@@ -1065,6 +1076,27 @@ setInterval(loadRelay, 15000);
     } catch (e) { console.warn('[insurance-exceptions] feed error:', e); }
   }
 
+  // Roadmap #9 -- pure assembly layer, same convention as TSMDeliveryPackage
+  // itself: nothing computed here, just reuses lastExplainItems already
+  // produced by mount() above and hands it to the engine. qualityScore and
+  // documentCount are left undefined (honest null in the package) since
+  // this page has no quality-score engine or document counter wired yet.
+  window.exportClientPackage = function () {
+    if (!window.TSMDeliveryPackage) {
+      alert('Delivery package engine not loaded.');
+      return;
+    }
+    var pkg = TSMDeliveryPackage.build({
+      domain: 'Insurance',
+      explainItems: lastExplainItems
+    });
+    var blob = new Blob([JSON.stringify(pkg, null, 2)], { type: 'application/json' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'tsm-client-package-' + Date.now() + '.json';
+    a.click();
+  };
+
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', mount);
   } else {
@@ -1077,6 +1109,7 @@ setInterval(loadRelay, 15000);
   });
 })();
 </script>
+  <script src="/html/shared/tsm-delivery-package.js"></script>
   <script src="/html/core/tsm-runtime.js"></script>
   <script src="/html/shared/tsm-memory-engine.js"></script>
   <!-- Adds the same Decision Center (approve/hold/reject with HITL persistence)

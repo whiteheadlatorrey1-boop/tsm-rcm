@@ -922,6 +922,9 @@ border-radius: 2px; flex-shrink: 0; white-space: nowrap;
     <div id="tsmk-exp-auto" style="margin:10px 0 24px;"></div>
     <div id="tsmk-outcome-auto" style="margin:10px 0 24px;"></div>
     <div id="tsmk-benchmark-auto" style="margin:10px 0 24px;"></div>
+    <div style="margin:10px 0 24px;">
+      <button onclick="exportClientPackage()" id="tsmk-delivery-btn" style="background:rgba(94,255,193,0.08);border:1px solid rgba(94,255,193,0.35);color:#5effc1;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:1px;padding:8px 16px;cursor:pointer;border-radius:4px;">⬇ EXPORT CLIENT PACKAGE</button>
+    </div>
   </div>
   <!-- ▲ TSM EXEC KIT ▲ -->
 
@@ -3640,6 +3643,7 @@ setInterval(buildStratBriefTab, 30000);
 <script src="/html/shared/tsm-quality-score-engine.js"></script>
 <script src="/html/shared/tsm-executive-outcome.js"></script>
 <script src="/html/shared/tsm-benchmark-intelligence.js"></script>
+<script src="/html/shared/tsm-delivery-package.js"></script>
 
 <script>
 /* TSM EXEC KIT — AUTO-INJECTED 2026-06-29 23:19 UTC */
@@ -3650,6 +3654,13 @@ setInterval(buildStratBriefTab, 30000);
   var EXP_ID     = 'tsmk-exp-auto';
   var OUTCOME_ID = 'tsmk-outcome-auto';
   var BENCHMARK_ID = 'tsmk-benchmark-auto';
+
+  // Roadmap #9 -- stashed here so exportClientPackage() (defined below,
+  // outside this IIFE) can reuse the exact same explain items + quality
+  // score mount() already computed, rather than re-deriving anything.
+  // Same convention as bpo-strategist.html's lastTaggedItems/lastQualityScore.
+  var lastExplainItems = [];
+  var lastQualityScore = null;
 
   function readRelay() {
     for (var i = 0; i < RELAY_KEYS.length; i++) {
@@ -3693,8 +3704,11 @@ setInterval(buildStratBriefTab, 30000);
 
     // Roadmap #7 — same items already flow through the explain widget above;
     // reuse them rather than re-deriving anything.
+    lastExplainItems = items;
+    lastQualityScore = null;
     if (window.TSMQualityScoreEngine && window.TSMExecutiveOutcome) {
       var qualityScore = TSMQualityScoreEngine.fromExplainItems(items, { recordCount: items.length });
+      lastQualityScore = qualityScore;
       var outcome = TSMExecutiveOutcome.build({
         domain: 'Healthcare',
         explainItems: items,
@@ -3713,6 +3727,29 @@ setInterval(buildStratBriefTab, 30000);
       TSMExecKit.renderBenchmark(BENCHMARK_ID, benchmark);
     }
   }
+
+  // Roadmap #9 -- pure assembly layer, same convention as TSMDeliveryPackage
+  // itself: nothing computed here, just reuses lastExplainItems/lastQualityScore
+  // already produced by mount() above and hands them to the engine.
+  // documentCount is left undefined (honest null in the package) since this
+  // page has no canonical "documents processed" counter, matching the
+  // engine's own documented fallback.
+  window.exportClientPackage = function () {
+    if (!window.TSMDeliveryPackage) {
+      alert('Delivery package engine not loaded.');
+      return;
+    }
+    var pkg = TSMDeliveryPackage.build({
+      domain: 'Healthcare',
+      explainItems: lastExplainItems,
+      qualityScore: lastQualityScore
+    });
+    var blob = new Blob([JSON.stringify(pkg, null, 2)], { type: 'application/json' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'tsm-client-package-' + Date.now() + '.json';
+    a.click();
+  };
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', mount);
