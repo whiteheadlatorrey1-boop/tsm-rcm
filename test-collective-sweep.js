@@ -179,28 +179,34 @@ async function main() {
     return;
   }
   const bncaData = await bncaRes.json();
+  const r = bncaData.result; // was bncaData.bnca — schema + key both changed to match tsm-collective-bnca.html
 
   // 5. Print exactly what a client would see
   console.log('═'.repeat(78));
   console.log('COLLECTIVE BNCA SYNTHESIS — CLIENT-FACING OUTPUT');
   console.log('═'.repeat(78));
-  console.log(`\nSummary:\n${bncaData.bnca.summary}\n`);
+  console.log(`\nOverall Risk: ${r.overallRisk}  (confidence ${r.confidence}%, ${r.verticalsActive} verticals active)`);
+  console.log(`\nSummary:\n${r.collectiveBNCA}\n`);
 
-  console.log('Cross-Vertical Conflicts:');
-  (bncaData.bnca.conflicts || []).forEach((c, i) => console.log(`  ${i+1}. ${c}`));
-  if (!bncaData.bnca.conflicts?.length) console.log('  (none identified)');
+  console.log('Priority Actions:');
+  (r.priorityActions || []).forEach(a => console.log(`  ${a.rank}. [${a.vertical}] ${a.action} — owner: ${a.owner}, deadline: ${a.deadline}`));
+  if (!r.priorityActions?.length) console.log('  (none identified)');
 
-  console.log('\nSynergies / Compounding Risks:');
-  (bncaData.bnca.synergies || []).forEach((s, i) => console.log(`  ${i+1}. ${s}`));
-  if (!bncaData.bnca.synergies?.length) console.log('  (none identified)');
+  console.log('\nCross-Vertical Risks:');
+  (r.crossVerticalRisks || []).forEach((c, i) => console.log(`  ${i+1}. [${c.urgency}] ${c.risk} — ${c.impact} (${(c.verticals||[]).join(', ')})`));
+  if (!r.crossVerticalRisks?.length) console.log('  (none identified)');
+
+  console.log('\nSynergy Opportunities:');
+  (r.synergyOpportunities || []).forEach((s, i) => console.log(`  ${i+1}. ${s.opportunity} — ${s.estimatedImpact} (${(s.verticals||[]).join(', ')})`));
+  if (!r.synergyOpportunities?.length) console.log('  (none identified)');
 
   console.log('\nRanked HITL Decision Queue:');
-  (bncaData.bnca.hitlQueue || []).forEach((h, i) =>
-    console.log(`  ${i+1}. [${h.priority}] ${h.vertical}: ${h.action}\n     Rationale: ${h.rationale}`));
-  if (!bncaData.bnca.hitlQueue?.length) console.log('  (none)');
+  (r.hitlQueue || []).forEach((h, i) =>
+    console.log(`  ${i+1}. ${h.decision}\n     Context: ${h.context}\n     Options: ${(h.options||[]).join(' | ')}\n     Recommended: ${h.recommendedOption}  Owner: ${h.owner}`));
+  if (!r.hitlQueue?.length) console.log('  (none)');
 
   console.log('\n' + '═'.repeat(78));
-  console.log(`Signal count fed into synthesis: ${bncaData.bnca.signalCount}`);
+  console.log(`Signal count fed into synthesis: ${r.signalCount}`);
   console.log('═'.repeat(78));
 }
 

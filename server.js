@@ -4091,7 +4091,8 @@ app.post('/api/collective/signal', requireAnyAuth, (req, res) => {
     impactDelta: impactDelta || '',
     kpi: kpi || {},
     source: source || '',
-    timestamp: Date.now()
+    timestamp: Date.now(),
+    receivedAt: Date.now() // tsm-collective-bnca.html reads receivedAt, not timestamp — keep both to avoid breaking other callers
   };
   COLLECTIVE_SIGNALS.unshift(entry);
   if (COLLECTIVE_SIGNALS.length > 200) COLLECTIVE_SIGNALS.length = 200;
@@ -4136,7 +4137,26 @@ app.post('/api/collective/bnca', requireAnyAuth, async (req, res) => {
       ? COLLECTIVE_SIGNALS.filter(s => s.clientId === req.tsmSession.clientId)
       : COLLECTIVE_SIGNALS;
     if (!scopedSignals.length) return res.status(400).json({ ok: false, error: 'No signals to synthesize' });
-    const prompt = `You are TSM's cross-vertical BNCA synthesizer. Given the following signals from multiple verticals, identify: (1) conflicts between verticals, (2) synergies or compounding risks, (3) a ranked HITL decision queue. Respond ONLY in valid JSON with keys: conflicts (array), synergies (array), hitlQueue (array of {priority, vertical, action, rationale}), summary (string).\n\nSignals:\n${JSON.stringify(scopedSignals.slice(0, 50), null, 2)}`;
+    // Schema below must match what html/tsm-collective-bnca.html actually
+    // reads (r.overallRisk, r.collectiveBNCA, r.confidence, r.verticalsActive,
+    // r.priorityActions[], r.hitlQueue[], r.crossVerticalRisks[],
+    // r.synergyOpportunities[]) — the old {conflicts,synergies,hitlQueue,summary}
+    // shape never matched the front end and every synthesis silently failed.
+    const prompt = `You are TSM's cross-vertical BNCA synthesizer. Given the following signals from multiple verticals, produce a synthesis. Respond ONLY in valid JSON with EXACTLY these keys:
+{
+  "overallRisk": "READY" | "WATCH" | "RISK" | "URGENT",
+  "collectiveBNCA": "2-4 sentence narrative summary of the overall cross-vertical picture",
+  "confidence": <integer 0-100>,
+  "verticalsActive": <integer, count of distinct verticals represented in the signals>,
+  "priorityActions": [ { "rank": <integer>, "action": "string", "owner": "string", "deadline": "string", "expectedOutcome": "string", "vertical": "string" } ],
+  "hitlQueue": [ { "decision": "string", "context": "string", "options": ["string", ...], "recommendedOption": "string (must match one entry in options)", "owner": "string" } ],
+  "crossVerticalRisks": [ { "risk": "string", "urgency": "HIGH" | "MEDIUM" | "LOW", "impact": "string", "verticals": ["string", ...] } ],
+  "synergyOpportunities": [ { "opportunity": "string", "verticals": ["string", ...], "estimatedImpact": "string" } ]
+}
+Do not include any other keys. Empty arrays are fine if nothing qualifies.
+
+Signals:
+${JSON.stringify(scopedSignals.slice(0, 50), null, 2)}`;
     const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
@@ -4154,14 +4174,21 @@ app.post('/api/collective/bnca', requireAnyAuth, async (req, res) => {
     const data = await groqRes.json();
     const parsed = JSON.parse(data.choices[0].message.content);
     const result = {
-      ...parsed,
+      overallRisk: parsed.overallRisk || 'WATCH',
+      collectiveBNCA: parsed.collectiveBNCA || '',
+      confidence: Number.isFinite(parsed.confidence) ? Math.max(0, Math.min(100, Math.round(parsed.confidence))) : 0,
+      verticalsActive: Number.isFinite(parsed.verticalsActive) ? parsed.verticalsActive : new Set(scopedSignals.map(s => s.vertical)).size,
+      priorityActions: Array.isArray(parsed.priorityActions) ? parsed.priorityActions : [],
+      hitlQueue: Array.isArray(parsed.hitlQueue) ? parsed.hitlQueue : [],
+      crossVerticalRisks: Array.isArray(parsed.crossVerticalRisks) ? parsed.crossVerticalRisks : [],
+      synergyOpportunities: Array.isArray(parsed.synergyOpportunities) ? parsed.synergyOpportunities : [],
       timestamp: Date.now(),
       signalCount: scopedSignals.length,
       clientId: req.tsmSession.role === 'client' ? req.tsmSession.clientId : 'internal',
     };
     COLLECTIVE_BNCA.unshift(result);
     if (COLLECTIVE_BNCA.length > 20) COLLECTIVE_BNCA.length = 20;
-    res.json({ ok: true, bnca: result });
+    res.json({ ok: true, result, signals: scopedSignals });
   } catch (err) {
     console.error('[collective/bnca] error:', err);
     res.status(500).json({ ok: false, error: err.message });
@@ -4175,7 +4202,7 @@ app.get('/api/collective/bnca/latest', requireAnyAuth, (req, res) => {
   const latest = req.tsmSession.role === 'client'
     ? COLLECTIVE_BNCA.find(b => b.clientId === req.tsmSession.clientId)
     : COLLECTIVE_BNCA[0];
-  res.json({ ok: true, bnca: latest || null });
+  res.json({ ok: true, result: latest || null });
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
