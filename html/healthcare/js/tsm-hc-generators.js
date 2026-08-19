@@ -62,6 +62,26 @@
     a.download = filename;
     a.click();
   }
+  // PDF export — same jsPDF CDN build + call pattern already used in
+  // construction-suite/compliance-hub.html (exportPDF()). Requires the host
+  // page to load https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js;
+  // if it isn't loaded, falls back to exportText so the button never dead-ends.
+  function exportPdf(filename, title, text) {
+    if (!window.jspdf || !window.jspdf.jsPDF) {
+      exportText(filename.replace(/\.pdf$/i, '.txt'), text);
+      return;
+    }
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    doc.setFontSize(14);
+    doc.text(title, 10, 15);
+    doc.setFontSize(9);
+    doc.text(`Generated: ${new Date().toISOString()}`, 10, 22);
+    doc.text('AI-drafted — a human must verify every date/fact and sign before submission to any payer.', 10, 28);
+    const lines = doc.splitTextToSize(text, 180);
+    doc.text(lines, 10, 36);
+    doc.save(filename);
+  }
   function readClientData() {
     try { return (typeof window.clientData !== 'undefined' && window.clientData) ? window.clientData : null; }
     catch (e) { return null; }
@@ -101,6 +121,7 @@
       <pre id="tsm-gen-output" style="white-space:pre-wrap;color:#e2e8f0;font-size:.72rem;line-height:1.6;background:#000;border:1px solid ${COLORS.border};border-radius:4px;padding:12px;min-height:80px"></pre>
       <div id="tsm-gen-actions" style="margin-top:12px;display:none">
         <button id="tsm-gen-export" class="tsm-gen-cta" style="padding:6px 14px;border-radius:3px;font-size:.65rem;font-weight:700;letter-spacing:.06em;cursor:pointer;border:1px solid ${COLORS.accent}55;color:${COLORS.accent};background:rgba(74,222,128,.08);margin-right:8px">📋 EXPORT .TXT</button>
+        <button id="tsm-gen-export-pdf" class="tsm-gen-cta" style="padding:6px 14px;border-radius:3px;font-size:.65rem;font-weight:700;letter-spacing:.06em;cursor:pointer;border:1px solid ${COLORS.accent}55;color:${COLORS.accent};background:rgba(74,222,128,.08);margin-right:8px">📄 EXPORT .PDF</button>
         <span style="color:${COLORS.warn};font-size:.62rem">⚠ AI-drafted — a human must verify every date/fact and sign before this is submitted to any payer.</span>
       </div>`);
 
@@ -149,6 +170,12 @@
       if (actions) actions.style.display = 'block';
       const exportBtn = document.getElementById('tsm-gen-export');
       if (exportBtn) exportBtn.onclick = () => exportText(`appeal-${(cd.claim || 'draft')}-${Date.now()}.txt`, text);
+      const exportPdfBtn = document.getElementById('tsm-gen-export-pdf');
+      if (exportPdfBtn) exportPdfBtn.onclick = () => exportPdf(
+        `appeal-${(cd.claim || 'draft')}-${Date.now()}.pdf`,
+        'TSM HEALTHCARE — PAYER APPEAL LETTER (DRAFT)',
+        text
+      );
 
       const claimRef = (cd && cd.claim) || '(unspecified)';
       if (window.TSMNodeRelay) {
