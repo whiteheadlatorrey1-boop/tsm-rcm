@@ -132,7 +132,16 @@
     _render(container, sector);
 
     if (global.TSMCaseManager) {
-      return global.TSMCaseManager.subscribe(() => _render(container, sector));
+      const unsubscribe = global.TSMCaseManager.subscribe(() => _render(container, sector));
+      // Pull server state (server/tsm-ledger-service.js bpo_cases) once on
+      // mount so this device/session sees cases created or synced
+      // elsewhere -- syncToServer() only pushes local->server; this is the
+      // pull side. Fire-and-forget: _render() already ran above with
+      // whatever localStorage had, hydrateFromServer's own notify() (if it
+      // finds anything newer) triggers the re-render via the subscription
+      // just set up.
+      global.TSMCaseManager.hydrateFromServer(sector).catch(() => {});
+      return unsubscribe;
     }
     console.warn('[TSMCaseWidget] TSMCaseManager not found — rendering static empty state only.');
     return () => {};

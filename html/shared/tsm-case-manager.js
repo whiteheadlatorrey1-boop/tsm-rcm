@@ -374,6 +374,56 @@
     } catch (e) {}
   }
 
+  /**
+   * hydrateFromServer(vertical, opts?) -> Promise<number> merged count
+   * Best-effort GET /api/bpo/cases?vertical=... (server/tsm-ledger-service.js
+   * bpo_cases collection) and merges results into the local _records array,
+   * so a case created/synced from a different browser or session becomes
+   * visible here too — syncToServer() alone only pushes local->server;
+   * this is the pull side that closes the loop into real cross-device
+   * visibility instead of a write-only mirror.
+   *
+   * Merge rule: a server record only replaces a local one if the server's
+   * updatedAt is strictly newer (or the local record doesn't exist yet).
+   * This protects an in-flight local edit that hasn't finished its own
+   * syncToServer() round-trip from being clobbered by a hydrate that
+   * landed in between. Same "additive, silent no-op if unavailable"
+   * contract as syncToServer — a missing fetch, a network failure, or a
+   * non-2xx response resolves to 0 rather than throwing, so callers can
+   * always safely fire this without their own try/catch.
+   */
+  function hydrateFromServer(vertical, opts) {
+    if (typeof global.fetch !== 'function') return Promise.resolve(0);
+    opts = opts || {};
+    var qs = vertical ? ('?vertical=' + encodeURIComponent(vertical)) : '';
+    return global.fetch('/api/bpo/cases' + qs, { credentials: 'same-origin' })
+      .then(function (res) { return res.ok ? res.json() : null; })
+      .then(function (body) {
+        var serverCases = (body && body.ok && Array.isArray(body.cases)) ? body.cases : [];
+        var merged = 0;
+        serverCases.forEach(function (doc) {
+          var local = getById(doc.caseId);
+          var serverTime = doc.updatedAt ? new Date(doc.updatedAt).getTime() : 0;
+          var localTime = local && local.updatedAt ? new Date(local.updatedAt).getTime() : -1;
+          if (local && serverTime <= localTime) return;
+          var rec = new TSMCase(doc);
+          if (local) {
+            var idx = _records.indexOf(local);
+            _records[idx] = rec;
+          } else {
+            _records.push(rec);
+          }
+          merged++;
+        });
+        if (merged > 0) {
+          persist(_records);
+          notify();
+        }
+        return merged;
+      })
+      .catch(function () { return 0; });
+  }
+
   function subscribe(callback) {
     if (typeof callback !== 'function') return function () {};
     listeners.push(callback);
@@ -423,7 +473,8 @@
     summarize: summarize,
     confidenceTierFor: confidenceTierFor,
     humanReviewRequiredFor: humanReviewRequiredFor,
-    syncToServer: syncToServer
+    syncToServer: syncToServer,
+    hydrateFromServer: hydrateFromServer
   };
 
   global.TSMCase = TSMCase;

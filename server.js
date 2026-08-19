@@ -1068,6 +1068,49 @@ app.get('/api/bpo/reports/executive-rollup', requireRole(BPO_REPORT_ROLES), asyn
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
+// Case Engine (Roadmap #10) summary — same shape family as the work-item
+// executive-rollup above, but scoped to bpo_cases so an exec portal can
+// show real case-queue numbers server-side instead of only whatever one
+// browser's localStorage happens to have. `vertical` isn't BPO-specific —
+// healthcare, and any future vertical wired the same way, all write into
+// this one collection, so ?vertical=healthcare works today with no
+// server-side change.
+app.get('/api/bpo/reports/case-summary', requireRole(BPO_REPORT_ROLES), async (req, res) => {
+  try {
+    const tenantId = req.tsmSession.role === 'client' ? req.tsmSession.clientId : req.query.tenantId;
+    const cases = await tsmLedger.bpoListCases({ vertical: req.query.vertical, tenantId, limit: 5000 });
+
+    const byStatus = {};
+    const byPriority = {};
+    const byApprovalStatus = {};
+    let exposureTotal = 0;
+    let exposureCount = 0;
+    let humanReviewRequiredCount = 0;
+    for (const c of cases) {
+      byStatus[c.status] = (byStatus[c.status] || 0) + 1;
+      byPriority[c.priority] = (byPriority[c.priority] || 0) + 1;
+      byApprovalStatus[c.approvalStatus] = (byApprovalStatus[c.approvalStatus] || 0) + 1;
+      if (typeof c.exposure === 'number') { exposureTotal += c.exposure; exposureCount += 1; }
+      if (c.humanReviewRequired) humanReviewRequiredCount += 1;
+    }
+
+    res.json({
+      ok: true,
+      summary: {
+        vertical: req.query.vertical || 'all',
+        totalCases: cases.length,
+        byStatus,
+        byPriority,
+        byApprovalStatus,
+        exposureTotal,
+        exposureCount,
+        humanReviewRequiredCount,
+        generatedAt: new Date().toISOString(),
+      },
+    });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 // ── CONCIERGE TRANSPORT (quotes / bookings / missions) ──────────────────────
 // Routes sit on top of server/services/concierge-transport-adapter.js
 // (defaultRouter, provider-neutral) + server/tsm-ledger-service.js
