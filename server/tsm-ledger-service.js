@@ -319,6 +319,16 @@ const BPO_DOC_CHUNKS_COLLECTION = 'bpo_document_chunks';
 // is needed here).
 const BPO_CASES_COLLECTION = 'bpo_cases';
 
+// SMB Member layer — a Member is a cross-vertical demo tenant (e.g. one
+// SMB using Construction + Healthcare + Mortgage under one roof), keyed
+// by the same tenantId that bpo_cases already carries. Deliberately a
+// separate collection from bpo_clients: bpo_clients is BPO's own
+// document-processing client list (a different concept — a BPO client
+// pays for case processing; a Member is the multi-vertical demo/tenant
+// entity whose cases roll up across verticals). Reusing bpo_clients
+// would collide two meanings of "client".
+const TSM_MEMBERS_COLLECTION = 'tsm_members';
+
 const BPO_PRIORITIES = ['low', 'medium', 'high', 'critical'];
 
 async function bpoClientsCollection() {
@@ -354,6 +364,11 @@ async function bpoBncaReportsCollection() {
 async function bpoCasesCollection() {
   const database = await getDb();
   return database.collection(BPO_CASES_COLLECTION);
+}
+
+async function tsmMembersCollection() {
+  const database = await getDb();
+  return database.collection(TSM_MEMBERS_COLLECTION);
 }
 
 /**
@@ -636,6 +651,128 @@ async function bpoUpsertCase(caseId, caseDoc, actor) {
   });
 
   return doc;
+}
+
+// ── SMB Member layer ────────────────────────────────────────────────────
+// A Member's id IS the tenantId used to tag cases (TSMCase.tenantId,
+// wired in at exception->case creation time in the Construction/
+// Healthcare/Mortgage exec portals). memberCaseSummary() is pure
+// aggregation over bpo_cases already filtered by that tenantId — no
+// numbers invented, nothing mocked; a member with zero tagged cases
+// just gets zeros back.
+
+function memberSlugifyId(name) {
+  const s = (name || '').toString().trim().toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  return s || 'member';
+}
+
+async function memberList() {
+  const col = await tsmMembersCollection();
+  return col.find({}).sort({ name: 1 }).toArray();
+}
+
+async function memberGet(id) {
+  const col = await tsmMembersCollection();
+  return col.findOne({ id });
+}
+
+/**
+ * Creates a Member. id is slugified from name (same de-dupe pattern as
+ * bpoCreateClient) and becomes the tenantId new cases get tagged with.
+ */
+async function memberCreate({ name, verticals, notes }, actor) {
+  const clean = (name || '').toString().trim();
+  if (!clean) throw new Error('name required');
+
+  const col = await tsmMembersCollection();
+  let id = memberSlugifyId(clean);
+  let suffix = 2;
+  while (await col.findOne({ id })) {
+    id = `${memberSlugifyId(clean)}-${suffix++}`;
+  }
+
+  const doc = {
+    id,
+    name: clean,
+    verticals: Array.isArray(verticals) ? verticals.filter(Boolean) : [],
+    notes: (notes || '').toString().trim(),
+    status: 'active',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  await col.insertOne(doc);
+  await bpoWriteAudit({
+    actor, action: 'member.create', entityType: 'member', entityId: id,
+    detail: { name: clean },
+  });
+  return doc;
+}
+
+/**
+ * Real cross-vertical rollup for one member, aggregated from bpo_cases
+ * filtered by tenantId === member id. No live-DB call in this codebase
+ * invents a number that isn't in the underlying case docs:
+ *   - exposureTotal sums only cases where `exposure` is an actual number
+ *     (typeof check) -- a case with no exposure figure is EXCLUDED from
+ *     the sum, not silently counted as $0, so the total never implies
+ *     precision the source data doesn't have. exposureCaseCount tracks
+ *     how many cases actually contributed, so a caller can tell a real
+ *     $0 total from "no case here has exposure data yet" -- both
+ *     isExposurePartial and exposureCaseCount are returned so a UI can
+ *     show that distinction instead of a bare, misleadingly-precise
+ *     dollar figure.
+ *   - slaAtRisk: cases with a deadline within the next 7 days that
+ *     aren't already CLOSED -- same "at risk" window used elsewhere in
+ *     the BPO reports; a case with no deadline can't be at risk, so it's
+ *     excluded rather than defaulted.
+ *   - byVertical / byStatus / bySeverity are plain counts, always exact.
+ */
+async function memberCaseSummary(memberId) {
+  const cases = await bpoListCases({ tenantId: memberId, limit: 5000 });
+
+  const summary = {
+    memberId,
+    totalCases: cases.length,
+    exposureTotal: 0,
+    exposureCaseCount: 0,
+    isExposurePartial: false,
+    slaAtRisk: 0,
+    byVertical: {},
+    byStatus: {},
+    bySeverity: {},
+  };
+
+  const now = Date.now();
+  const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+
+  for (const c of cases) {
+    const vertical = c.vertical || c.sector || 'unknown';
+    summary.byVertical[vertical] = (summary.byVertical[vertical] || 0) + 1;
+
+    const status = c.status || 'UNKNOWN';
+    summary.byStatus[status] = (summary.byStatus[status] || 0) + 1;
+
+    const detected = Array.isArray(c.detectedExceptions) ? c.detectedExceptions : [];
+    const severity = (detected[0] && detected[0].severity) || 'unknown';
+    summary.bySeverity[severity] = (summary.bySeverity[severity] || 0) + 1;
+
+    if (typeof c.exposure === 'number') {
+      summary.exposureTotal += c.exposure;
+      summary.exposureCaseCount += 1;
+    } else {
+      summary.isExposurePartial = true;
+    }
+
+    if (c.deadline && status !== 'CLOSED') {
+      const deadlineMs = Date.parse(c.deadline);
+      if (!Number.isNaN(deadlineMs) && deadlineMs - now <= SEVEN_DAYS_MS) {
+        summary.slaAtRisk += 1;
+      }
+    }
+  }
+
+  return summary;
 }
 
 // ── Notes ────────────────────────────────────────────────────────────────
@@ -1368,6 +1505,11 @@ module.exports = {
   bpoListCases,
   bpoGetCase,
   bpoUpsertCase,
+  // SMB Member layer
+  memberList,
+  memberGet,
+  memberCreate,
+  memberCaseSummary,
   // BPO Phase 2 (rest of): notes / SLA events / BNCA reports
   bpoAddNote,
   bpoListNotes,

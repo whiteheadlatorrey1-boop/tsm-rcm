@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TSM — Member Command Center</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=JetBrains+Mono:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --black:#020408; --deep:#060c14; --panel:#0a1220; --border:#1a2a3a; --border2:#243444;
+  --cyan:#00c8ff; --cyan2:#0096cc; --green:#00c896; --amber:#f5a623; --red:#ff4d4d;
+  --purple:#a855f7; --dim:#3a5068; --muted:#7a98b8; --text:#c8dff0;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--black);color:var(--text);font-family:'JetBrains Mono',monospace;min-height:100vh;}
+
+.header{background:var(--deep);border-bottom:1px solid var(--border);padding:1rem 2rem;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;}
+.logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:900;color:#fff;letter-spacing:.15em;}
+.logo span{color:var(--cyan);}
+.badge{font-size:.58rem;letter-spacing:.2em;color:var(--cyan);border:1px solid rgba(0,200,255,.3);padding:3px 8px;border-radius:3px;}
+
+.main{max-width:1200px;margin:0 auto;padding:2rem;}
+
+.picker-row{display:flex;gap:.75rem;align-items:center;margin-bottom:2rem;flex-wrap:wrap;}
+.picker-row select, .picker-row input{background:var(--panel);border:1px solid var(--border2);color:var(--text);font-family:inherit;font-size:.75rem;padding:.6rem .8rem;border-radius:5px;}
+.picker-row select{min-width:220px;}
+.btn{background:rgba(0,200,255,.08);border:1px solid var(--cyan);color:var(--cyan);font-family:inherit;font-size:.68rem;letter-spacing:.08em;padding:.6rem 1rem;border-radius:5px;cursor:pointer;text-transform:uppercase;}
+.btn:hover{background:rgba(0,200,255,.16);}
+.btn.secondary{border-color:var(--border2);color:var(--muted);}
+
+.add-member-form{display:none;gap:.75rem;align-items:center;margin-bottom:2rem;flex-wrap:wrap;background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:1rem;}
+.add-member-form.show{display:flex;}
+
+.section-head{font-size:.6rem;letter-spacing:.25em;text-transform:uppercase;color:var(--cyan);border-bottom:1px solid var(--border);padding-bottom:.5rem;margin-bottom:1.2rem;}
+
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem;margin-bottom:2rem;}
+.kpi-card{background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:1.2rem;}
+.kpi-value{font-family:'Orbitron',sans-serif;font-size:1.7rem;font-weight:900;color:var(--cyan);}
+.kpi-value.amber{color:var(--amber);}
+.kpi-label{font-size:.6rem;letter-spacing:.15em;color:var(--dim);margin-top:.3rem;text-transform:uppercase;}
+.kpi-note{font-size:.6rem;color:var(--muted);margin-top:.4rem;}
+
+.vertical-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:1rem;margin-bottom:2.5rem;}
+.vertical-card{background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:1.1rem;}
+.vertical-name{font-size:.75rem;color:#fff;font-weight:600;letter-spacing:.05em;text-transform:uppercase;margin-bottom:.6rem;}
+.vertical-count{font-family:'Orbitron',sans-serif;font-size:1.3rem;color:var(--cyan);}
+.vertical-count-label{font-size:.58rem;color:var(--dim);letter-spacing:.1em;}
+.vertical-link{display:inline-block;margin-top:.7rem;font-size:.65rem;color:var(--cyan);text-decoration:none;border:1px solid rgba(0,200,255,.25);padding:4px 10px;border-radius:4px;}
+.vertical-link:hover{background:rgba(0,200,255,.08);}
+
+.breakdown-row{display:flex;justify-content:space-between;font-size:.72rem;color:var(--text);padding:.5rem 0;border-bottom:1px solid var(--border);}
+.breakdown-row:last-child{border-bottom:none;}
+.breakdown-count{color:var(--cyan);font-weight:600;}
+
+.empty-state{text-align:center;padding:3rem;color:var(--dim);font-size:.75rem;letter-spacing:.1em;border:1px dashed var(--border);border-radius:6px;}
+.error-banner{background:rgba(255,77,77,.08);border:1px solid rgba(255,77,77,.3);color:var(--red);padding:.8rem 1rem;border-radius:6px;font-size:.72rem;margin-bottom:1.5rem;display:none;}
+.error-banner.show{display:block;}
+.loading{color:var(--dim);font-size:.72rem;padding:1rem 0;}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">TSM <span>MEMBER COMMAND CENTER</span></div>
+  <div class="badge">CROSS-VERTICAL ROLLUP</div>
+</div>
+
+<div class="main">
+
+  <div class="error-banner" id="errorBanner"></div>
+
+  <div class="picker-row">
+    <select id="memberSelect"><option value="">— Select a member —</option></select>
+    <button class="btn secondary" id="toggleAddBtn">+ Add Member</button>
+    <button class="btn" id="refreshBtn">Refresh</button>
+  </div>
+
+  <div class="add-member-form" id="addMemberForm">
+    <input type="text" id="newMemberName" placeholder="Member name (e.g. Acme Multi-Vertical)">
+    <button class="btn" id="createMemberBtn">Create</button>
+    <button class="btn secondary" id="cancelAddBtn">Cancel</button>
+  </div>
+
+  <div id="content">
+    <div class="empty-state">Select a member above to see their real cross-vertical rollup, or add a new one.</div>
+  </div>
+
+</div>
+
+<script src="/html/shared/tsm-active-member.js"></script>
+<script>
+// Real vertical portal paths this rollup deep-links into. Only verticals
+// with tenantId actually wired into case creation belong here — adding a
+// vertical to this map before its portal tags cases with tenantId would
+// produce a dead "0 cases" link, which is worse than not listing it.
+const VERTICAL_PORTALS = {
+  construction: '/html/war-rooms/construct-war/construction-executive-portal.html',
+  healthcare: '/html/healthcare/executive-portal.html',
+  mortgage: '/html/war-rooms/mortgage/mortgage-executive-portal.html',
+};
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function money(n) {
+  if (typeof n !== 'number') return '—';
+  return '$' + n.toLocaleString(undefined, { maximumFractionDigits: 0 });
+}
+
+async function apiFetch(url, opts) {
+  const res = await fetch(url, opts);
+  const ct = res.headers.get('content-type') || '';
+  if (!ct.includes('application/json')) {
+    if (res.status === 302 || res.redirected || ct.includes('text/html')) {
+      throw new Error('Session expired or not authenticated — please reload and log in.');
+    }
+    throw new Error(`Unexpected response (${res.status}) from ${url}`);
+  }
+  return res.json();
+}
+
+function setError(msg) {
+  const el = document.getElementById('errorBanner');
+  if (!msg) { el.classList.remove('show'); el.textContent = ''; return; }
+  el.textContent = msg;
+  el.classList.add('show');
+}
+
+async function loadMembers(selectId) {
+  const select = document.getElementById('memberSelect');
+  try {
+    const data = await apiFetch('/api/members', { credentials: 'same-origin' });
+    if (!data.ok) throw new Error(data.error || 'Failed to load members');
+    const members = data.members || [];
+    select.innerHTML = '<option value="">— Select a member —</option>' +
+      members.map(m => `<option value="${esc(m.id)}">${esc(m.name)}</option>`).join('');
+    if (selectId) select.value = selectId;
+  } catch (e) {
+    setError('Could not load members: ' + e.message);
+  }
+}
+
+async function loadSummary(memberId) {
+  const content = document.getElementById('content');
+  if (!memberId) {
+    content.innerHTML = '<div class="empty-state">Select a member above to see their real cross-vertical rollup, or add a new one.</div>';
+    return;
+  }
+  content.innerHTML = '<div class="loading">Loading rollup…</div>';
+  setError(null);
+  try {
+    const data = await apiFetch(`/api/members/${encodeURIComponent(memberId)}/summary`, { credentials: 'same-origin' });
+    if (!data.ok) throw new Error(data.error || 'Failed to load summary');
+    renderSummary(memberId, data.summary);
+    if (typeof TSMActiveMember !== 'undefined') TSMActiveMember.setActive(memberId);
+  } catch (e) {
+    content.innerHTML = '';
+    setError('Could not load rollup: ' + e.message);
+  }
+}
+
+function renderSummary(memberId, s) {
+  const content = document.getElementById('content');
+  if (!s || s.totalCases === 0) {
+    content.innerHTML = `
+      <div class="empty-state">
+        No cases tagged to this member yet. Cases get tagged automatically once you visit a wired
+        vertical portal (Construction, Healthcare, or Mortgage) with this member active and let a
+        new exception feed a case.
+      </div>
+      ${renderVerticalGrid(memberId, {})}
+    `;
+    return;
+  }
+
+  const exposureNote = s.isExposurePartial
+    ? `${s.exposureCaseCount} of ${s.totalCases} cases have exposure data`
+    : 'all cases have exposure data';
+
+  content.innerHTML = `
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-value">${s.totalCases}</div>
+        <div class="kpi-label">Total Cases</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-value">${money(s.exposureTotal)}</div>
+        <div class="kpi-label">Total Exposure</div>
+        <div class="kpi-note">${esc(exposureNote)}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-value ${s.slaAtRisk > 0 ? 'amber' : ''}">${s.slaAtRisk}</div>
+        <div class="kpi-label">SLA At Risk (7d)</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-value">${Object.keys(s.byVertical || {}).length}</div>
+        <div class="kpi-label">Active Verticals</div>
+      </div>
+    </div>
+
+    ${renderVerticalGrid(memberId, s.byVertical || {})}
+
+    <div class="section-head">By Status</div>
+    <div style="background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:.5rem 1rem;margin-bottom:2rem;">
+      ${Object.entries(s.byStatus || {}).map(([k, v]) => `
+        <div class="breakdown-row"><span>${esc(k)}</span><span class="breakdown-count">${v}</span></div>
+      `).join('') || '<div class="breakdown-row"><span>—</span></div>'}
+    </div>
+
+    <div class="section-head">By Severity</div>
+    <div style="background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:.5rem 1rem;">
+      ${Object.entries(s.bySeverity || {}).map(([k, v]) => `
+        <div class="breakdown-row"><span>${esc(k)}</span><span class="breakdown-count">${v}</span></div>
+      `).join('') || '<div class="breakdown-row"><span>—</span></div>'}
+    </div>
+  `;
+}
+
+function renderVerticalGrid(memberId, byVertical) {
+  const knownVerticals = Object.keys(VERTICAL_PORTALS);
+  return `
+    <div class="section-head">By Vertical — deep-link into that portal for this member</div>
+    <div class="vertical-grid">
+      ${knownVerticals.map(v => {
+        const count = byVertical[v] || 0;
+        const portal = VERTICAL_PORTALS[v];
+        return `
+          <div class="vertical-card">
+            <div class="vertical-name">${esc(v)}</div>
+            <div class="vertical-count">${count}</div>
+            <div class="vertical-count-label">CASES</div>
+            <a class="vertical-link" href="${portal}?memberId=${encodeURIComponent(memberId)}">Open portal →</a>
+          </div>`;
+      }).join('')}
+    </div>
+  `;
+}
+
+document.getElementById('memberSelect').addEventListener('change', (e) => {
+  loadSummary(e.target.value);
+});
+
+document.getElementById('refreshBtn').addEventListener('click', () => {
+  const id = document.getElementById('memberSelect').value;
+  loadMembers(id).then(() => loadSummary(id));
+});
+
+document.getElementById('toggleAddBtn').addEventListener('click', () => {
+  document.getElementById('addMemberForm').classList.toggle('show');
+});
+document.getElementById('cancelAddBtn').addEventListener('click', () => {
+  document.getElementById('addMemberForm').classList.remove('show');
+  document.getElementById('newMemberName').value = '';
+});
+
+document.getElementById('createMemberBtn').addEventListener('click', async () => {
+  const name = document.getElementById('newMemberName').value.trim();
+  if (!name) { setError('Member name is required.'); return; }
+  setError(null);
+  try {
+    const data = await apiFetch('/api/members', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name })
+    });
+    if (!data.ok) throw new Error(data.error || 'Failed to create member');
+    document.getElementById('addMemberForm').classList.remove('show');
+    document.getElementById('newMemberName').value = '';
+    await loadMembers(data.member.id);
+    await loadSummary(data.member.id);
+  } catch (e) {
+    setError('Could not create member: ' + e.message);
+  }
+});
+
+// Boot — if a member is already active (localStorage or ?memberId=), land
+// straight on their rollup instead of the empty picker state.
+(function boot() {
+  const preselect = (typeof TSMActiveMember !== 'undefined') ? TSMActiveMember.getId() : null;
+  loadMembers(preselect).then(() => {
+    if (preselect) loadSummary(preselect);
+  });
+})();
+</script>
+</body>
+</html>

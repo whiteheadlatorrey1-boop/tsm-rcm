@@ -805,6 +805,43 @@ app.post('/api/bpo/cases/:caseId', requireRole(BPO_INTERNAL_ROLES), async (req, 
   } catch (e) { res.status(400).json({ ok: false, error: e.message }); }
 });
 
+// ── SMB Member layer (Roadmap "3-member demo") ─────────────────────────
+// A Member is a cross-vertical demo tenant; its id doubles as the
+// tenantId the Construction/Healthcare/Mortgage exec portals tag new
+// cases with via html/shared/tsm-active-member.js. Same internal-role
+// gating as the rest of BPO/member-facing admin routes — this manages
+// tenants, not something a 'client' session should be listing/creating.
+app.get('/api/members', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const members = await tsmLedger.memberList();
+    res.json({ ok: true, members });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+app.post('/api/members', requireRole(BPO_MANAGE_ROLES), async (req, res) => {
+  try {
+    const member = await tsmLedger.memberCreate(req.body || {}, req.tsmSession.label || req.tsmSession.role);
+    res.json({ ok: true, member });
+  } catch (e) { res.status(400).json({ ok: false, error: e.message }); }
+});
+
+app.get('/api/members/:id', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const member = await tsmLedger.memberGet(req.params.id);
+    if (!member) return res.status(404).json({ ok: false, error: 'Member not found' });
+    res.json({ ok: true, member });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+app.get('/api/members/:id/summary', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const member = await tsmLedger.memberGet(req.params.id);
+    if (!member) return res.status(404).json({ ok: false, error: 'Member not found' });
+    const summary = await tsmLedger.memberCaseSummary(req.params.id);
+    res.json({ ok: true, summary });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 app.get('/api/bpo/audit-logs', requireRole(BPO_MANAGE_ROLES), async (req, res) => {
   try {
     const logs = await tsmLedger.bpoListAuditLogs({
