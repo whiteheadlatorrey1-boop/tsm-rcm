@@ -1,8 +1,8 @@
 /**
  * TSM Output Contract Engine
  * ---------------------------------------------------------------------
- * NOTE: mirrored at html/shared/tsm-output-contract.js so browser pages
- * can load it via <script> (this file itself isn't statically served).
+ * NOTE: mirrored at server/tsm-output-contract.js for server-side/Node
+ * use (this copy is the one actually served to browser pages).
  * Keep both copies identical -- update both on any change.
  * ---------------------------------------------------------------------
  * Validates that a vertical's "structured case" object (the analysis

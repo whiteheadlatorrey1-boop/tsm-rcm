@@ -384,6 +384,7 @@ textarea::placeholder{color:var(--faint)}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://code.responsivevoice.org/responsivevoice.js?key=FREE"></script>
 <script src="/html/healthcare/js/tsm-workflow-stage.js"></script>
+<script src="/html/shared/tsm-output-contract.js"></script>
 <script src="/js/tsm-runtime-lock.js"></script>
 <script src="/js/tsm-event-contract.js"></script>
 <script src="/js/tsm-autonomy-layer.js"></script>
@@ -2095,7 +2096,17 @@ function buildWarRoomPayload() {
     engine06: { narrative, recommendations },
     // SOW Section 1 structured contract — see buildHCStructuredCase().
     // null until runPipeline() has completed at least once this session.
-    structuredCase: lastStructuredCase
+    structuredCase: lastStructuredCase,
+    // Flags whether lastStructuredCase has every field Healthcare's
+    // contract requires, before it's treated as ready for human
+    // review / relay to the executive portal.
+    outputContract: (function () {
+      try {
+        return (window.TSMOutputContract && lastStructuredCase)
+          ? TSMOutputContract.enforceOutputContract('healthcare', lastStructuredCase)
+          : null;
+      } catch (e) { console.warn('[output-contract] healthcare contract check error:', e); return null; }
+    })()
   };
 }
 

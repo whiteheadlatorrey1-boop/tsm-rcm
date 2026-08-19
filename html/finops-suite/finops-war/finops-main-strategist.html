@@ -390,6 +390,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:13
   <script src="/js/core/tsm-mission-engine.js"></script>
   <script src="/js/core/tsm-auto-pipeline.js"></script>
   <script src="/html/shared/tsm-sla-extractor.js"></script>
+  <script src="/html/shared/tsm-output-contract.js"></script>
 </head>
 <body data-vertical="finops" data-page-role="strategist">
 
@@ -1228,6 +1229,16 @@ async function generateReport(){
     const _finSeverity = _finTier === 'HIGH' ? 'low' : _finTier === 'MEDIUM' ? 'med' : _finTier === 'LOW' ? 'high' : 'med';
     const _finConfidence = _finStructuredCase ? _finStructuredCase.confidence : ((typeof _riskM !== 'undefined' && _riskM) ? parseInt(_riskM[1]) : null);
     // ── END TSM SLA EXTRACTOR ────────────────────────────────────────
+    // ── TSM OUTPUT CONTRACT: flag whether this case has every field ──
+    // FinOps's structured-case contract before it's treated as ready
+    // for human review / relay to the executive portal.
+    let _finOutputContract = null;
+    try {
+      _finOutputContract = (window.TSMOutputContract && _finStructuredCase)
+        ? TSMOutputContract.enforceOutputContract('finops', _finStructuredCase)
+        : null;
+    } catch(e) { console.warn('[output-contract] finops contract check error:', e); }
+    // ── END TSM OUTPUT CONTRACT ───────────────────────────────────────
     sessionStorage.setItem('tsm_strategist_relay', JSON.stringify({
       wip: (window.TSMExecKitProducer && TSMExecKitProducer.buildWip([
         { id:'ingest',    label:'Document Ingestion', status:'done' },
@@ -1255,7 +1266,8 @@ async function generateReport(){
       exceptions: _excM ? _excM[1] : null,
       compliance: _compM ? _compM[1].trim().slice(0,12) : null,
       engineOutputs: _warRoomEngineOutputs,
-      structuredCase: _finStructuredCase
+      structuredCase: _finStructuredCase,
+      outputContract: _finOutputContract
     }));
     localStorage.setItem('tsm_strategist_relay', JSON.stringify({
       wip: (window.TSMExecKitProducer && TSMExecKitProducer.buildWip([
@@ -1284,7 +1296,8 @@ async function generateReport(){
       exceptions: _excM ? _excM[1] : null,
       compliance: _compM ? _compM[1].trim().slice(0,12) : null,
       engineOutputs: _warRoomEngineOutputs,
-      structuredCase: _finStructuredCase
+      structuredCase: _finStructuredCase,
+      outputContract: _finOutputContract
     }));
       animateFeed();
       showRelayToast('BNCA synthesis complete. Ready to relay to Executive Portal.');
@@ -1356,6 +1369,16 @@ function relayToExecutive(){
   const _finSeverity = _finTier === 'HIGH' ? 'low' : _finTier === 'MEDIUM' ? 'med' : _finTier === 'LOW' ? 'high' : 'med';
   const _finConfidence = _finStructuredCase ? _finStructuredCase.confidence : ((typeof _riskM !== 'undefined' && _riskM) ? parseInt(_riskM[1]) : null);
   // ── END TSM SLA EXTRACTOR ────────────────────────────────────────────
+  // ── TSM OUTPUT CONTRACT: flag whether this case has every field ──
+  // FinOps's structured-case contract before it's treated as ready
+  // for human review / relay to the executive portal.
+  let _finOutputContract = null;
+  try {
+    _finOutputContract = (window.TSMOutputContract && _finStructuredCase)
+      ? TSMOutputContract.enforceOutputContract('finops', _finStructuredCase)
+      : null;
+  } catch(e) { console.warn('[output-contract] finops contract check error:', e); }
+  // ── END TSM OUTPUT CONTRACT ───────────────────────────────────────
   localStorage.setItem('tsm_strategist_relay', JSON.stringify({
     wip: (window.TSMExecKitProducer && TSMExecKitProducer.buildWip([
       { id:'ingest',    label:'Document Ingestion', status:'done' },
@@ -1383,7 +1406,8 @@ function relayToExecutive(){
     exceptions: _excM ? _excM[1] : existing.exceptions || null,
     compliance: _compM ? _compM[1].trim().slice(0,12) : existing.compliance || null,
     engineOutputs: _warRoomEngineOutputs,
-    structuredCase: _finStructuredCase
+    structuredCase: _finStructuredCase,
+    outputContract: _finOutputContract
   }));
 
   // ── SENTINEL PUSH ──────────────────────────────────────────────

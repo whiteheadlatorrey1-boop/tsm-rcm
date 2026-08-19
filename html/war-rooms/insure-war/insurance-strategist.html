@@ -151,6 +151,7 @@ body::before{content:'';position:fixed;top:0;left:0;width:500px;height:500px;bac
   <script src="/js/core/tsm-auto-pipeline.js"></script>
   <script src="/html/js/tsm-bnca-exposure-engine.js"></script>
   <script src="/html/shared/tsm-sla-extractor.js"></script>
+  <script src="/html/shared/tsm-output-contract.js"></script>
 </head>
 <body data-vertical="insurance" data-page-role="warroom">
 
@@ -663,9 +664,21 @@ async function runStrategist(){
     );
   } catch(e) { console.warn('[sla-extractor] insurance structured case error:', e); }
 
+  // ── TSM OUTPUT CONTRACT: flag whether this case has every field ──
+  // Insurance's structured-case contract before it's treated as ready
+  // for human review / relay to the executive portal.
+  let insOutputContract = null;
+  try {
+    insOutputContract = (window.TSMOutputContract && insStructuredCase)
+      ? TSMOutputContract.enforceOutputContract('insurance', insStructuredCase)
+      : null;
+  } catch(e) { console.warn('[output-contract] insurance contract check error:', e); }
+  // ── END TSM OUTPUT CONTRACT ───────────────────────────────────────
+
   // Store for executive portal
   const relay={
     structuredCase: insStructuredCase,
+    outputContract: insOutputContract,
     docType:warRoomData?.docType||'Insurance Document',
     warRoomSnapshot:warRoomData?.snapshot||{},
     nodes:{n1:n[1]||'',n2:n[2]||'',n3:n[3]||'',n4:n[4]||''},
