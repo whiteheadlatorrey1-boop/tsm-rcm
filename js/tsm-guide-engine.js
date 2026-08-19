@@ -719,7 +719,7 @@
         return [loaded, analyzed, loaded, relayed];
       }
     },
-    // Verified against html/concierge/concierge-war-room.html (HotelOps engine
+    // Verified against html/hotelops/hotelops-war-room.html (HotelOps engine
     // mirrors mortgage-engine.js's shape/storage-key convention). Strategist
     // and Exec Portal are intentionally NOT covered here: both are pure
     // auto-render dashboards (loadRelay() renders every panel in one shot,
@@ -1137,9 +1137,9 @@
     "/war-rooms/re-war/re-strategist.html",
     "/war-rooms/re-war/re-exec-portal.html",
 
-    "/concierge/concierge-war-room.html",
-    "/concierge/concierge-strategist.html",
-    "/concierge/concierge-executive-portal.html",
+    "/hotelops/hotelops-war-room.html",
+    "/hotelops/hotelops-strategist.html",
+    "/hotelops/hotelops-executive-portal.html",
 
     "/war-rooms/legal-war/legal-war-room.html",
     "/war-rooms/legal-war/legal-main-strategist.html",

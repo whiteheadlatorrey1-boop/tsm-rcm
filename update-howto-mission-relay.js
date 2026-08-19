@@ -2,7 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const FILE = path.join(process.cwd(), 'html/concierge/concierge-howto.html');
+const FILE = path.join(process.cwd(), 'html/hotelops/hotelops-howto.html');
 
 if (!fs.existsSync(FILE)) {
   console.error(`ERROR: ${FILE} not found. Run this from the repo root.`);

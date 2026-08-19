@@ -20,7 +20,7 @@ const ok = (label, cond, extra) => {
   {
     const ctx = await browser.createBrowserContext();
     const warRoom = await ctx.newPage();
-    await warRoom.goto(`${BASE}/concierge/concierge-war-room.html`, { waitUntil: 'domcontentloaded' });
+    await warRoom.goto(`${BASE}/hotelops/hotelops-war-room.html`, { waitUntil: 'domcontentloaded' });
     await warRoom.click('#btnLoadSample');
     await new Promise(r => setTimeout(r, 500));
     await warRoom.click('#btnRelay');
@@ -38,7 +38,7 @@ const ok = (label, cond, extra) => {
     const strat = await ctx.newPage();
     const stratWarnings = [];
     strat.on('console', m => { if (/integrity mismatch/i.test(m.text())) stratWarnings.push(m.text()); });
-    await strat.goto(`${BASE}/concierge/concierge-strategist.html`, { waitUntil: 'domcontentloaded' });
+    await strat.goto(`${BASE}/hotelops/hotelops-strategist.html`, { waitUntil: 'domcontentloaded' });
     await new Promise(r => setTimeout(r, 1200));
     ok('hotelops strategist: no mismatch on valid relay', stratWarnings.length === 0, stratWarnings.join('; '));
 

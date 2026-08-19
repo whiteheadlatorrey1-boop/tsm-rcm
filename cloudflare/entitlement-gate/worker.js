@@ -76,7 +76,7 @@ const VERTICAL_PATHS = {
   bpo:    ["/html/war-rooms/bpo-war/"],
   logistics: ["/html/logistics/logistics-situation-room.html"],
   vendor: ["/html/supplier-vendor/supplier-vendor-situation-room.html"],
-  hotel:  ["/html/concierge/"],
+  hotel:  ["/html/hotelops/"],
   re:     ["/html/war-rooms/re-war/"],
   mortgage: ["/html/war-rooms/mortgage/"],
   pm:     ["/html/war-rooms/pm-copilot/"],
