@@ -101,6 +101,32 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 </div>
 <div class="wrap" id="wrap"><!-- populated by JS --></div>
 <div class="toast" id="toast"></div>
+
+<!-- ── EXCEPTION QUEUE / CASE QUEUE — Roadmap #10 Case Engine ──────────── -->
+<div style="padding:0 20px;">
+  <div class="sec-hdr" style="margin-top:14px"><span class="lbl">EXCEPTION QUEUE</span></div>
+  <div id="tsm-exception-queue"></div>
+  <div class="sec-hdr" style="margin-top:18px"><span class="lbl">CASE QUEUE</span></div>
+  <div id="tsm-case-queue"></div>
+</div>
+
+<!-- Loaded here, BEFORE the main inline script below, so TSMExceptions/
+     TSMCaseManager exist by the time render() -> hwFeedException() first
+     runs synchronously on page load (same reasoning as the HotelOps and
+     Mortgage Executive Portals). -->
+<script src="/html/shared/tsm-exceptions.js"></script>
+<script src="/html/js/widgets/tsm-exception-widget.js"></script>
+<script src="/html/shared/tsm-hitl-gate.js"></script>
+<script src="/html/shared/tsm-case-manager.js"></script>
+<script src="/html/js/widgets/tsm-case-widget.js"></script>
+<script>
+  if (typeof TSMExceptionWidget !== 'undefined') {
+    TSMExceptionWidget.mount('tsm-exception-queue', { sector: 'honeywell' });
+  }
+  if (typeof TSMCaseWidget !== 'undefined') {
+    TSMCaseWidget.mount('tsm-case-queue', { sector: 'honeywell' });
+  }
+</script>
 <script>
 function tick(){document.getElementById('clock').textContent=new Date().toLocaleTimeString();}
 setInterval(tick,1000);tick();
@@ -364,6 +390,61 @@ function renderEmpty(){
     </div>`;
 }
 
+// ===== EXCEPTION / CASE QUEUE FEED — Roadmap #10 Case Engine =====
+// Different shape than the other verticals: Honeywell escalates ONE
+// incident at a time (Plant / Cyber / Supplier), not a batch list of
+// many SLA-breaching items. So this feeds a single exception per
+// escalation rather than looping a fin.*_exposure_items array. Dedupe
+// key is source + escalation timestamp (a re-escalation of the same
+// incident type at a new time is a genuinely new exception). Severity
+// and fields mirror registerHoneywellAnomalies() above exactly -- no
+// new data invented, same k.exposure/buffer/containment/orders/risk
+// figures already rendered in the KPI row and Explain panel.
+const _hwFedIds = {};
+function hwFeedException(data){
+  if (typeof TSMExceptions === 'undefined' || !data) return;
+
+  const src = data.source || 'unknown';
+  const meta = SOURCE_META[src] || { label: src.toUpperCase() };
+  const k = data.kpis || {};
+  const escalatedAt = data.strategistReviewedAt || data.timestamp || 'unknown';
+  const fedKey = src + ':' + escalatedAt;
+  if (_hwFedIds[fedKey]) return;
+
+  const exposureStr = kpiExposure(k.exposure);
+  if (exposureStr === '\u2014') return; // nothing real to escalate as an exception
+  _hwFedIds[fedKey] = true;
+
+  const secVal = kpiSecondary(k.buffer || k.containment);
+  const severity = src === 'cyber' ? 'high' : (src === 'plant' ? 'high' : 'med');
+  const exposureNum = (k.exposure && (k.exposure.totalExposureHigh || k.exposure.totalExposureLow)) || null;
+
+  const exceptionRecord = TSMExceptions.add({
+    title: `${meta.label} \u2014 ${exposureStr} exposure escalated to executive`,
+    detail: secVal !== '\u2014' ? `${secondaryLabel(src)}: ${secVal}.` : null,
+    recommendedAction: 'See Honeywell Executive Portal for the escalated dispatch and full 6-engine analysis.',
+    severity, confidence: null, sector: 'honeywell', agentLabel: 'Honeywell Strategist'
+  });
+
+  if (typeof TSMCaseManager !== 'undefined' && exceptionRecord) {
+    const newCase = TSMCaseManager.createFromException(exceptionRecord, {
+      process: 'honeywell_' + src + '_incident_resolution',
+      source: 'Honeywell Strategist',
+      exposure: exposureNum
+    });
+    if (newCase) {
+      TSMCaseManager.requestApproval(newCase.caseId, { note: 'Auto-requested on case creation from Honeywell exception feed.' });
+    }
+  }
+
+  if (typeof TSMExceptionWidget !== 'undefined') {
+    TSMExceptionWidget.mount('tsm-exception-queue', { sector: 'honeywell' });
+  }
+  if (typeof TSMCaseWidget !== 'undefined') {
+    TSMCaseWidget.mount('tsm-case-queue', { sector: 'honeywell' });
+  }
+}
+
 function render(){
   const data = loadRelay();
   if(!data){ renderEmpty(); return; }
@@ -389,6 +470,7 @@ function render(){
   html += renderExplainItems(getExplainItems(data));
 
   registerHoneywellAnomalies(data);
+  hwFeedException(data);
 
   // The last of the 6 engines is always the "Executive Dispatch" summary —
   // that's the headline. Everything else is available below, collapsed.
