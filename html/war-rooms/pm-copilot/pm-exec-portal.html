@@ -105,6 +105,28 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 </div>
 <div class="wrap" id="wrap"><!-- populated by JS --></div>
 <div class="toast" id="toast"></div>
+
+<!-- ── EXCEPTION QUEUE / CASE QUEUE — Roadmap #10 Case Engine ──────────── -->
+<div style="padding:0 20px;">
+  <div class="sec-hdr"><span class="lbl">EXCEPTION QUEUE</span></div>
+  <div id="tsm-exception-queue"></div>
+  <div class="sec-hdr" style="margin-top:18px"><span class="lbl">CASE QUEUE</span></div>
+  <div id="tsm-case-queue"></div>
+</div>
+
+<script src="/html/shared/tsm-exceptions.js"></script>
+<script src="/html/js/widgets/tsm-exception-widget.js"></script>
+<script src="/html/shared/tsm-hitl-gate.js"></script>
+<script src="/html/shared/tsm-case-manager.js"></script>
+<script src="/html/js/widgets/tsm-case-widget.js"></script>
+<script>
+  if (typeof TSMExceptionWidget !== 'undefined') {
+    TSMExceptionWidget.mount('tsm-exception-queue', { sector: 'pm' });
+  }
+  if (typeof TSMCaseWidget !== 'undefined') {
+    TSMCaseWidget.mount('tsm-case-queue', { sector: 'pm' });
+  }
+</script>
 <script>
 function tick(){document.getElementById('clock').textContent=new Date().toLocaleTimeString();}
 setInterval(tick,1000);tick();
@@ -438,6 +460,74 @@ function renderExplainItems(items){
   </div>`;
 }
 
+// ===== EXCEPTION / CASE QUEUE FEED — Roadmap #10 Case Engine =====
+// Same pattern as Mortgage/Schools/Legal/BPO/Healthcare/Construction/
+// FinOps/Insurance: turn the three real exposure item lists already
+// merged into the Top Risk Register above (vacancy / maintenance-delay /
+// vendor-compliance) into TSMExceptions.add() records, then
+// TSMCaseManager.createFromException() so each gets a real
+// approval/execution/audit lifecycle. No fabricated fields -- everything
+// here mirrors fin.vacancy_exposure_items / maintenance_delay_exposure_items
+// / vendor_compliance_exposure_items, the same real relay data
+// renderRiskRegister() already renders.
+const _pmFedIds = {};
+function pmFeedExceptions(fin){
+  if (typeof TSMExceptions === 'undefined' || !fin) return;
+  let fedAny = false;
+
+  function feedOne(key, id, title, detail, severity, exposure, process){
+    if (!id) return;
+    const fedKey = key + ':' + id;
+    if (_pmFedIds[fedKey]) return;
+    _pmFedIds[fedKey] = true;
+    fedAny = true;
+
+    const exceptionRecord = TSMExceptions.add({
+      title, detail,
+      recommendedAction: 'See PM Copilot Executive Portal risk register.',
+      severity, confidence: null, sector: 'pm', agentLabel: 'PM Strategist'
+    });
+
+    if (typeof TSMCaseManager !== 'undefined' && exceptionRecord) {
+      const newCase = TSMCaseManager.createFromException(exceptionRecord, {
+        process, source: 'PM Strategist', exposure
+      });
+      if (newCase) {
+        TSMCaseManager.requestApproval(newCase.caseId, { note: 'Auto-requested on case creation from PM exception feed.' });
+      }
+    }
+  }
+
+  (fin.vacancy_exposure_items || []).forEach(it => {
+    feedOne('vacancy', it.unit_id,
+      `Vacancy \u2014 ${it.property || 'unit'} \u2014 ${it.unit_id} \u2014 ${it.days_vacant}d vacant`,
+      `Vacancy exposure of ${fmtMoney(it.exposure)} at ${it.property || 'this unit'}.`,
+      it.days_vacant > 30 ? 'high' : 'med', it.exposure, 'pm_vacancy_resolution');
+  });
+
+  (fin.maintenance_delay_exposure_items || []).forEach(it => {
+    feedOne('maint', it.id,
+      `Maintenance Delay \u2014 ${it.unit_id || ''} \u2014 ${it.stage} \u2014 ${it.days_over}d over SLA`,
+      `Maintenance-delay exposure of ${fmtMoney(it.exposure)} at the ${it.stage} stage.`,
+      it.days_over > 3 ? 'high' : 'med', it.exposure, 'pm_maintenance_delay_resolution');
+  });
+
+  (fin.vendor_compliance_exposure_items || []).forEach(it => {
+    feedOne('vendor', it.vendor_id,
+      `Vendor Compliance \u2014 ${it.name || it.vendor_id} \u2014 ${it.trade || ''} \u2014 ${it.severity}`,
+      `Vendor compliance exposure of ${fmtMoney(it.exposure)} for ${it.name || it.vendor_id}.`,
+      it.severity === 'HIGH' ? 'high' : 'med', it.exposure, 'pm_vendor_compliance_resolution');
+  });
+
+  if (!fedAny) return;
+  if (typeof TSMExceptionWidget !== 'undefined') {
+    TSMExceptionWidget.mount('tsm-exception-queue', { sector: 'pm' });
+  }
+  if (typeof TSMCaseWidget !== 'undefined') {
+    TSMCaseWidget.mount('tsm-case-queue', { sector: 'pm' });
+  }
+}
+
 function render(){
   const data = loadRelay();
   if(!data){ renderEmpty(); return; }
@@ -483,11 +573,24 @@ function render(){
 
   document.getElementById('wrap').innerHTML = html;
   loadApprovalRate();
+  pmFeedExceptions(fin);
 }
 
-render();
-window.addEventListener('storage', e => { if(e.key === RELAY_KEY_FALLBACK || e.key === 'TSM_PM_STRATEGIST_RELAY' || e.key === 'TSM_EVENT_LOG') render(); });
-window.addEventListener('TSM_RELAY_EVENT', e => { if(e.detail && e.detail.domain === DOMAIN) render(); });
+// Deferred to DOMContentLoaded (not called synchronously here) so that
+// TSMExceptions/TSMCaseManager -- both loaded via <script src> tags
+// earlier in the body -- are guaranteed available on the very first
+// render(), not just on a later storage/TSM_RELAY_EVENT re-render. Same
+// pattern used by Mortgage/Schools/Legal Executive Portals.
+function initRender(){
+  render();
+  window.addEventListener('storage', e => { if(e.key === RELAY_KEY_FALLBACK || e.key === 'TSM_PM_STRATEGIST_RELAY' || e.key === 'TSM_EVENT_LOG') render(); });
+  window.addEventListener('TSM_RELAY_EVENT', e => { if(e.detail && e.detail.domain === DOMAIN) render(); });
+}
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initRender);
+} else {
+  initRender();
+}
 </script>
   <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
   <script src="/html/core/tsm-runtime.js"></script>
