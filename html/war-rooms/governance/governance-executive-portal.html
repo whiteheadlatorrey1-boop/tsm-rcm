@@ -80,6 +80,7 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 </div>
 <div class="wrap" id="wrap"><!-- populated by JS --></div>
 <script src="/html/shared/tsm-exec-framework.js"></script>
+<script src="/html/shared/runtime/governance/audit-engine.js"></script>
 <div class="wrap" id="liveRiskWrap" style="padding-top:0;"></div>
 <div class="wrap" id="hitlStatsWrap" style="padding-top:0;"></div>
 <div class="toast" id="toast"></div>
@@ -135,6 +136,27 @@ function showToast(msg){
   t.textContent=msg; t.classList.add('show');
   clearTimeout(showToast._h);
   showToast._h=setTimeout(()=>t.classList.remove('show'),2500);
+}
+
+// Roadmap: was 'no downstream write in this demo build' -- now a real,
+// persisted audit entry via TSMAuditEngine -> POST /api/governance/audit
+// -> GOVERNANCE_AUDIT_LOG. No logged-in-user identity exists on this page
+// (no session/auth wired here), so actor is the page identity itself,
+// same convention already used by construction-strategist.html and
+// insurance-strategist.html for unauthenticated pages -- not a fabricated
+// person.
+function recordGovernanceAction(action){
+  if(window.TSMAuditEngine){
+    TSMAuditEngine.record({
+      actor: 'governance-executive-portal',
+      action: action,
+      resource: (CFG && CFG.domain) || 'GOVERNANCE',
+      vertical: 'governance'
+    });
+  }
+  showToast(action === 'ACKNOWLEDGED'
+    ? 'Marked reviewed \u2014 logged to audit trail.'
+    : 'Escalation flagged \u2014 notify ops lead. Logged to audit trail.');
 }
 
 function loadRelay(){
@@ -258,8 +280,8 @@ function render(){
   if(CFG.isExec){
     html += `<div class="sec"><div class="sec-hdr">ACTIONS</div>
       <div class="action-bar">
-        <button class="abtn approve" onclick="showToast('Marked reviewed &mdash; no downstream write in this demo build.')">&#10003; ACKNOWLEDGE</button>
-        <button class="abtn escalate" onclick="showToast('Escalation flagged &mdash; notify ops lead.')">&#8593; ESCALATE</button>
+        <button class="abtn approve" onclick="recordGovernanceAction('ACKNOWLEDGED')">&#10003; ACKNOWLEDGE</button>
+        <button class="abtn escalate" onclick="recordGovernanceAction('ESCALATED')">&#8593; ESCALATE</button>
       </div>
     </div>`;
   }
