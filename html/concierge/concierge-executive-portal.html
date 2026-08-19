@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TSM · Concierge Transport Executive Portal</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#050a0f;--bg2:#0a1020;--bg3:#0d1528;
+  --cyan:#00d4d4;--amber:#f5a623;--green:#22c55e;
+  --red:#ef4444;--purple:#a855f7;--blue:#3b82f6;--gold:#c9a84c;
+  --text:#e2e8f0;--muted:#64748b;--border:#1e293b;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;min-height:100vh;padding-bottom:60px;}
+.topbar{height:44px;background:#020810;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 20px;position:sticky;top:0;z-index:100;}
+.tb-brand{font-family:'Orbitron',sans-serif;font-size:.72rem;color:var(--gold);letter-spacing:.18em;display:flex;align-items:center;gap:8px;}
+.tb-brand-pulse{width:8px;height:8px;border-radius:50%;background:var(--gold);animation:pulse 1.2s infinite;}
+.tb-time{font-family:'Orbitron',sans-serif;font-size:.78rem;color:var(--amber);}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.35;}}
+
+.chain-nav{height:38px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 20px;gap:0;}
+.chain-node{font-family:'Orbitron',sans-serif;font-size:.58rem;padding:6px 16px;letter-spacing:.08em;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:.2s;white-space:nowrap;}
+.chain-node:hover{color:var(--text);}
+.chain-node.active{color:var(--gold);border-bottom-color:var(--gold);}
+.chain-node.done{color:var(--green);}
+.chain-arrow{font-family:'JetBrains Mono',monospace;font-size:.65rem;color:var(--border);padding:0 2px;}
+.chain-right{margin-left:auto;display:flex;gap:8px;}
+.chain-btn{padding:5px 14px;border-radius:3px;border:1px solid var(--border);background:transparent;color:var(--muted);font-family:'Orbitron',sans-serif;font-size:.58rem;cursor:pointer;letter-spacing:.06em;transition:.2s;}
+.chain-btn:hover{border-color:var(--amber);color:var(--amber);}
+.chain-btn.primary{border-color:rgba(201,168,76,.4);color:var(--gold);}
+.chain-btn.primary:hover{background:var(--gold);color:#001;}
+
+.wrap{padding:20px;max-width:1300px;margin:0 auto;}
+.panel-title{font-family:'Orbitron',sans-serif;font-size:.62rem;color:var(--muted);letter-spacing:.1em;margin-bottom:14px;display:flex;align-items:center;gap:8px;}
+.panel-title .dot{width:6px;height:6px;border-radius:50%;background:var(--gold);}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:18px;margin-bottom:16px;}
+
+.gate-box{text-align:center;padding:60px 20px;}
+.gate-box h2{font-family:'Orbitron',sans-serif;font-size:.9rem;color:var(--muted);letter-spacing:.08em;margin-bottom:12px;}
+.gate-box p{font-family:'JetBrains Mono',monospace;font-size:.72rem;color:var(--muted);margin-bottom:22px;}
+
+.kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px;}
+.kpi{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:16px;text-align:center;}
+.kpi-val{font-family:'Orbitron',sans-serif;font-size:1.4rem;font-weight:900;color:var(--gold);}
+.kpi-val.red{color:var(--red);}.kpi-val.green{color:var(--green);}.kpi-val.amber{color:var(--amber);}
+.kpi-lbl{font-size:.6rem;color:var(--muted);margin-top:6px;font-family:'JetBrains Mono',monospace;letter-spacing:.06em;}
+
+.summary-row{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border);font-size:.85rem;}
+.summary-row:last-child{border-bottom:none;}
+.summary-row .lbl{color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:.7rem;}
+.summary-row .val{color:#fff;font-weight:600;}
+
+.provider-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);}
+.provider-row:last-child{border-bottom:none;}
+.provider-name{font-family:'Orbitron',sans-serif;font-size:.68rem;color:var(--text);}
+.provider-bar-wrap{flex:1;margin:0 16px;height:6px;background:var(--bg3);border-radius:3px;overflow:hidden;}
+.provider-bar{height:100%;background:var(--gold);}
+.provider-count{font-family:'JetBrains Mono',monospace;font-size:.68rem;color:var(--muted);width:60px;text-align:right;}
+
+.empty-state{font-family:'JetBrains Mono',monospace;font-size:.72rem;color:var(--muted);text-align:center;padding:30px 10px;}
+
+.approve-bar{display:flex;justify-content:flex-end;gap:10px;}
+.btn{padding:12px 24px;border-radius:4px;border:1px solid var(--gold);background:rgba(201,168,76,.08);color:var(--gold);font-family:'Orbitron',sans-serif;font-size:.65rem;letter-spacing:.08em;cursor:pointer;transition:.2s;}
+.btn:hover{background:var(--gold);color:#001;}
+.btn.confirmed{border-color:var(--green);color:var(--green);background:rgba(34,197,94,.08);cursor:default;}
+.toast{position:fixed;bottom:20px;right:20px;background:var(--bg2);border:1px solid var(--gold);color:var(--gold);padding:10px 18px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:.65rem;opacity:0;pointer-events:none;transition:.3s;z-index:50;}
+.toast.show{opacity:1;transform:translateY(-4px);}
+</style>
+</head>
+<body data-vertical="concierge" data-page-role="exec">
+
+<div class="topbar">
+  <div class="tb-brand"><div class="tb-brand-pulse"></div>◈ CONCIERGE TRANSPORT · EXECUTIVE PORTAL</div>
+  <div class="tb-time" id="tbTime">--:--:--</div>
+</div>
+
+<div class="chain-nav">
+  <div class="chain-node done" onclick="nav('/html/concierge/concierge-war-room.html')">01 · REQUEST &amp; DISPATCH</div>
+  <div class="chain-arrow">→</div>
+  <div class="chain-node done" onclick="nav('/html/concierge/concierge-strategist.html')">02 · STRATEGIST</div>
+  <div class="chain-arrow">→</div>
+  <div class="chain-node active">03 · EXEC PORTAL</div>
+  <div class="chain-right">
+    <button class="chain-btn" onclick="nav('/html/concierge/concierge-strategist.html')">← STRATEGIST</button>
+    <button class="chain-btn primary" onclick="loadAll()">↻ REFRESH</button>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <div class="card" id="gateCard" style="display:none;">
+    <div class="gate-box">
+      <h2>AWAITING STRATEGIST CONFIRMATION</h2>
+      <p>The Strategist has not yet confirmed this case. Executive review becomes available once they route it forward.</p>
+      <button class="chain-btn primary" onclick="nav('/html/concierge/concierge-strategist.html')">GO TO STRATEGIST →</button>
+    </div>
+  </div>
+
+  <div id="execContent" style="display:none;">
+
+    <div class="kpi-row" id="kpiRow">
+      <div class="kpi"><div class="kpi-val" id="kTotal">—</div><div class="kpi-lbl">TOTAL MISSIONS</div></div>
+      <div class="kpi"><div class="kpi-val amber" id="kOpen">—</div><div class="kpi-lbl">OPEN / IN PROGRESS</div></div>
+      <div class="kpi"><div class="kpi-val green" id="kCompleted">—</div><div class="kpi-lbl">COMPLETED</div></div>
+      <div class="kpi"><div class="kpi-val red" id="kExceptions">—</div><div class="kpi-lbl">EXCEPTIONS</div></div>
+      <div class="kpi"><div class="kpi-val" id="kSpend">—</div><div class="kpi-lbl">TOTAL SPEND (BOOKED)</div></div>
+    </div>
+
+    <div class="card">
+      <div class="panel-title"><div class="dot"></div>PROVIDER MIX</div>
+      <div id="providerMix"><div class="empty-state">No missions booked yet.</div></div>
+    </div>
+
+    <div class="card">
+      <div class="panel-title"><div class="dot" style="background:var(--blue)"></div>CHAIN STATUS</div>
+      <div class="summary-row"><span class="lbl">STRATEGIST CONFIRMED</span><span class="val" id="sumStratConfirmed">—</span></div>
+      <div class="summary-row"><span class="lbl">DATA SOURCE</span><span class="val">/api/concierge/missions (live)</span></div>
+      <div class="summary-row"><span class="lbl">TRANSPORT PROVIDER</span><span class="val" id="sumProvider">mock-transport</span></div>
+    </div>
+
+    <div class="card">
+      <div class="approve-bar">
+        <button class="btn" id="approveBtn" onclick="approveChain()">✓ ACKNOWLEDGE &amp; CLOSE CHAIN</button>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const DOMAIN = 'concierge';
+
+function nav(url){ window.location.href = url; }
+
+(function clock(){
+  const el = document.getElementById('tbTime');
+  function tick(){ el.textContent = new Date().toLocaleTimeString(); }
+  tick(); setInterval(tick, 1000);
+})();
+
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2600);
+}
+
+function checkGate(){
+  let confirmed = null;
+  try { confirmed = localStorage.getItem('TSM_STRAT_CONFIRMED_' + DOMAIN); } catch(e) {}
+  const gate = document.getElementById('gateCard');
+  const content = document.getElementById('execContent');
+  if (confirmed) {
+    gate.style.display = 'none';
+    content.style.display = 'block';
+    try {
+      const parsed = JSON.parse(confirmed);
+      document.getElementById('sumStratConfirmed').textContent = new Date(parsed.confirmedAt).toLocaleString();
+    } catch(e) {
+      document.getElementById('sumStratConfirmed').textContent = 'Yes';
+    }
+    return true;
+  } else {
+    gate.style.display = 'block';
+    content.style.display = 'none';
+    return false;
+  }
+}
+
+async function apiCall(path){
+  const res = await fetch(path, { credentials: 'same-origin' });
+  let body = null;
+  try { body = await res.json(); } catch(e) {}
+  if (!res.ok || !body || body.ok === false) {
+    throw new Error((body && body.error) ? body.error : ('Request failed (' + res.status + ')'));
+  }
+  return body;
+}
+
+async function loadAll(){
+  if (!checkGate()) return;
+  try {
+    const data = await apiCall('/api/concierge/missions?limit=200');
+    const missions = data.missions || [];
+    renderKpis(missions);
+    renderProviderMix(missions);
+  } catch(e) {
+    document.getElementById('providerMix').innerHTML = '<div class="empty-state">Could not load missions: ' + e.message + '</div>';
+  }
+}
+
+function renderKpis(missions){
+  const total = missions.length;
+  const openStatuses = ['confirmed','driver_assigned','en_route','arrived','picked_up'];
+  const open = missions.filter(m => openStatuses.includes(m.status)).length;
+  const completed = missions.filter(m => m.status === 'completed').length;
+  const exceptions = missions.filter(m => m.status === 'cancelled_by_driver').length;
+  const spend = missions.reduce((sum, m) => sum + (m.priceEstimate ? m.priceEstimate.amount : 0), 0);
+
+  document.getElementById('kTotal').textContent = total;
+  document.getElementById('kOpen').textContent = open;
+  document.getElementById('kCompleted').textContent = completed;
+  document.getElementById('kExceptions').textContent = exceptions;
+  document.getElementById('kSpend').textContent = spend > 0 ? ('$' + spend.toFixed(2)) : '—';
+}
+
+function renderProviderMix(missions){
+  const el = document.getElementById('providerMix');
+  if (!missions.length) {
+    el.innerHTML = '<div class="empty-state">No missions booked yet.</div>';
+    return;
+  }
+  const counts = {};
+  missions.forEach(m => {
+    const p = m.provider || 'unknown';
+    counts[p] = (counts[p] || 0) + 1;
+  });
+  const max = Math.max(...Object.values(counts));
+  el.innerHTML = Object.entries(counts).map(([provider, count]) => `
+    <div class="provider-row">
+      <div class="provider-name">${provider}</div>
+      <div class="provider-bar-wrap"><div class="provider-bar" style="width:${(count/max*100).toFixed(0)}%"></div></div>
+      <div class="provider-count">${count} mission${count === 1 ? '' : 's'}</div>
+    </div>
+  `).join('');
+}
+
+function approveChain(){
+  const btn = document.getElementById('approveBtn');
+  try {
+    localStorage.setItem('TSM_EXEC_CONFIRMED_' + DOMAIN, JSON.stringify({
+      confirmedAt: new Date().toISOString(),
+      confirmedBy: 'executive',
+    }));
+    btn.textContent = '✓ CHAIN COMPLETE';
+    btn.classList.add('confirmed');
+    showToast('Chain complete — all three tiers confirmed.');
+  } catch(e) {
+    showToast('Could not write confirmation: ' + e.message);
+  }
+}
+
+(function checkExistingApproval(){
+  try {
+    const raw = localStorage.getItem('TSM_EXEC_CONFIRMED_' + DOMAIN);
+    if (raw) {
+      const btn = document.getElementById('approveBtn');
+      if (btn) {
+        btn.textContent = '✓ CHAIN COMPLETE';
+        btn.classList.add('confirmed');
+      }
+    }
+  } catch(e) {}
+})();
+
+loadAll();
+setInterval(loadAll, 20000);
+</script>
+
+</body>
+</html>

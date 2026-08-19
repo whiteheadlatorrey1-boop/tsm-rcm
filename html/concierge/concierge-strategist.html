@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TSM · Concierge Transport Strategist</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#050a0f;--bg2:#0a1020;--bg3:#0d1528;
+  --cyan:#00d4d4;--amber:#f5a623;--green:#22c55e;
+  --red:#ef4444;--purple:#a855f7;--blue:#3b82f6;
+  --text:#e2e8f0;--muted:#64748b;--border:#1e293b;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;min-height:100vh;padding-bottom:60px;}
+.topbar{height:44px;background:#020810;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 20px;position:sticky;top:0;z-index:100;}
+.tb-brand{font-family:'Orbitron',sans-serif;font-size:.72rem;color:var(--purple);letter-spacing:.18em;display:flex;align-items:center;gap:8px;}
+.tb-brand-pulse{width:8px;height:8px;border-radius:50%;background:var(--purple);animation:pulse 1.2s infinite;}
+.tb-time{font-family:'Orbitron',sans-serif;font-size:.78rem;color:var(--amber);}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.35;}}
+
+.chain-nav{height:38px;background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 20px;gap:0;}
+.chain-node{font-family:'Orbitron',sans-serif;font-size:.58rem;padding:6px 16px;letter-spacing:.08em;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:.2s;white-space:nowrap;}
+.chain-node:hover{color:var(--text);}
+.chain-node.active{color:var(--purple);border-bottom-color:var(--purple);}
+.chain-node.done{color:var(--green);}
+.chain-arrow{font-family:'JetBrains Mono',monospace;font-size:.65rem;color:var(--border);padding:0 2px;}
+.chain-right{margin-left:auto;display:flex;gap:8px;}
+.chain-btn{padding:5px 14px;border-radius:3px;border:1px solid var(--border);background:transparent;color:var(--muted);font-family:'Orbitron',sans-serif;font-size:.58rem;cursor:pointer;letter-spacing:.06em;transition:.2s;}
+.chain-btn:hover{border-color:var(--amber);color:var(--amber);}
+.chain-btn.primary{border-color:rgba(168,85,247,.4);color:var(--purple);}
+.chain-btn.primary:hover{background:var(--purple);color:#fff;}
+
+.wrap{padding:20px;max-width:1300px;margin:0 auto;}
+.panel-title{font-family:'Orbitron',sans-serif;font-size:.62rem;color:var(--muted);letter-spacing:.1em;margin-bottom:14px;display:flex;align-items:center;gap:8px;}
+.panel-title .dot{width:6px;height:6px;border-radius:50%;background:var(--purple);}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:18px;margin-bottom:16px;}
+
+.kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px;}
+.kpi{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:16px;text-align:center;}
+.kpi-val{font-family:'Orbitron',sans-serif;font-size:1.4rem;font-weight:900;color:var(--purple);}
+.kpi-val.red{color:var(--red);}.kpi-val.green{color:var(--green);}.kpi-val.amber{color:var(--amber);}
+.kpi-lbl{font-size:.6rem;color:var(--muted);margin-top:6px;font-family:'JetBrains Mono',monospace;letter-spacing:.06em;}
+
+.exception-box{background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.25);border-left:3px solid var(--red);border-radius:5px;padding:12px 14px;margin-bottom:10px;}
+.exception-box:last-child{margin-bottom:0;}
+.exc-id{font-family:'JetBrains Mono',monospace;font-size:.62rem;color:var(--muted);}
+.exc-msg{font-size:.85rem;color:#fff;margin-top:4px;}
+
+.mission-row{display:grid;grid-template-columns:1fr 1fr 100px 100px;gap:10px;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);font-size:.8rem;}
+.mission-row:last-child{border-bottom:none;}
+.mission-row .id{font-family:'JetBrains Mono',monospace;font-size:.68rem;color:var(--muted);}
+.mission-row .guest{color:#fff;}
+.status-badge{font-family:'Orbitron',sans-serif;font-size:.5rem;padding:3px 8px;border-radius:2px;letter-spacing:.05em;text-align:center;white-space:nowrap;}
+.sb-confirmed{background:rgba(59,130,246,.15);border:1px solid var(--blue);color:var(--blue);}
+.sb-driver_assigned,.sb-en_route,.sb-arrived,.sb-picked_up{background:rgba(245,166,35,.15);border:1px solid var(--amber);color:var(--amber);}
+.sb-completed{background:rgba(34,197,94,.15);border:1px solid var(--green);color:var(--green);}
+.sb-cancelled,.sb-cancelled_by_driver{background:rgba(239,68,68,.15);border:1px solid var(--red);color:var(--red);}
+.price{font-family:'JetBrains Mono',monospace;color:var(--green);text-align:right;}
+.empty-state{font-family:'JetBrains Mono',monospace;font-size:.72rem;color:var(--muted);text-align:center;padding:30px 10px;}
+
+.relay-log{font-family:'JetBrains Mono',monospace;font-size:.68rem;color:#999;line-height:1.9;max-height:220px;overflow-y:auto;}
+.relay-log .rl-item{border-bottom:1px solid rgba(30,41,59,.5);padding:6px 0;}
+.relay-log .rl-item:last-child{border-bottom:none;}
+.relay-log .rl-ts{color:var(--muted);margin-right:8px;}
+.relay-log .rl-stage{color:var(--purple);}
+
+.confirm-bar{display:flex;justify-content:flex-end;gap:10px;}
+.btn{padding:10px 20px;border-radius:4px;border:1px solid var(--purple);background:rgba(168,85,247,.08);color:var(--purple);font-family:'Orbitron',sans-serif;font-size:.62rem;letter-spacing:.08em;cursor:pointer;transition:.2s;}
+.btn:hover{background:var(--purple);color:#fff;}
+.btn.confirmed{border-color:var(--green);color:var(--green);background:rgba(34,197,94,.08);cursor:default;}
+.toast{position:fixed;bottom:20px;right:20px;background:var(--bg2);border:1px solid var(--purple);color:var(--purple);padding:10px 18px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:.65rem;opacity:0;pointer-events:none;transition:.3s;z-index:50;}
+.toast.show{opacity:1;transform:translateY(-4px);}
+</style>
+</head>
+<body data-vertical="concierge" data-page-role="strategist">
+
+<div class="topbar">
+  <div class="tb-brand"><div class="tb-brand-pulse"></div>◈ CONCIERGE TRANSPORT STRATEGIST</div>
+  <div class="tb-time" id="tbTime">--:--:--</div>
+</div>
+
+<div class="chain-nav">
+  <div class="chain-node done" onclick="nav('/html/concierge/concierge-war-room.html')">01 · REQUEST &amp; DISPATCH</div>
+  <div class="chain-arrow">→</div>
+  <div class="chain-node active">02 · STRATEGIST</div>
+  <div class="chain-arrow">→</div>
+  <div class="chain-node" onclick="nav('/html/concierge/concierge-executive-portal.html')">03 · EXEC PORTAL</div>
+  <div class="chain-right">
+    <button class="chain-btn" onclick="nav('/html/concierge/concierge-war-room.html')">← WAR ROOM</button>
+    <button class="chain-btn primary" onclick="loadAll()">↻ REFRESH</button>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <div class="kpi-row" id="kpiRow">
+    <div class="kpi"><div class="kpi-val" id="kTotal">—</div><div class="kpi-lbl">TOTAL MISSIONS</div></div>
+    <div class="kpi"><div class="kpi-val amber" id="kOpen">—</div><div class="kpi-lbl">OPEN / IN PROGRESS</div></div>
+    <div class="kpi"><div class="kpi-val green" id="kCompleted">—</div><div class="kpi-lbl">COMPLETED</div></div>
+    <div class="kpi"><div class="kpi-val red" id="kExceptions">—</div><div class="kpi-lbl">EXCEPTIONS</div></div>
+    <div class="kpi"><div class="kpi-val" id="kSpend">—</div><div class="kpi-lbl">TOTAL SPEND (BOOKED)</div></div>
+  </div>
+
+  <div class="card" id="excCard" style="display:none;">
+    <div class="panel-title"><div class="dot" style="background:var(--red)"></div>EXCEPTIONS NEEDING ATTENTION</div>
+    <div id="excList"></div>
+  </div>
+
+  <div class="card">
+    <div class="panel-title"><div class="dot"></div>MISSION QUEUE (LIVE)</div>
+    <div id="missionQueue"><div class="empty-state">Loading missions…</div></div>
+  </div>
+
+  <div class="card">
+    <div class="panel-title"><div class="dot" style="background:var(--amber)"></div>WAR ROOM RELAY ACTIVITY</div>
+    <div class="relay-log" id="relayLog"><div class="empty-state">No relay activity yet — nothing has come from the war room this session.</div></div>
+  </div>
+
+  <div class="card">
+    <div class="confirm-bar">
+      <button class="btn" id="confirmBtn" onclick="confirmToExec()">CONFIRM &amp; ROUTE TO EXEC →</button>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const DOMAIN = 'concierge';
+
+function nav(url){ window.location.href = url; }
+
+(function clock(){
+  const el = document.getElementById('tbTime');
+  function tick(){ el.textContent = new Date().toLocaleTimeString(); }
+  tick(); setInterval(tick, 1000);
+})();
+
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2600);
+}
+
+async function apiCall(path){
+  const res = await fetch(path, { credentials: 'same-origin' });
+  let body = null;
+  try { body = await res.json(); } catch(e) {}
+  if (!res.ok || !body || body.ok === false) {
+    throw new Error((body && body.error) ? body.error : ('Request failed (' + res.status + ')'));
+  }
+  return body;
+}
+
+async function loadAll(){
+  await Promise.all([loadMissions(), loadRelayLog()]);
+}
+
+async function loadMissions(){
+  const queueEl = document.getElementById('missionQueue');
+  try {
+    const data = await apiCall('/api/concierge/missions?limit=200');
+    const missions = data.missions || [];
+    renderKpis(missions);
+    renderExceptions(missions);
+    renderQueue(missions);
+  } catch(e) {
+    queueEl.innerHTML = '<div class="empty-state">Could not load missions: ' + e.message + '</div>';
+  }
+}
+
+function renderKpis(missions){
+  const total = missions.length;
+  const openStatuses = ['confirmed','driver_assigned','en_route','arrived','picked_up'];
+  const open = missions.filter(m => openStatuses.includes(m.status)).length;
+  const completed = missions.filter(m => m.status === 'completed').length;
+  const exceptions = missions.filter(m => m.status === 'cancelled_by_driver').length;
+  const spend = missions.reduce((sum, m) => {
+    const amt = m.priceEstimate ? m.priceEstimate.amount : null;
+    return sum + (typeof amt === 'number' ? amt : 0);
+  }, 0);
+
+  document.getElementById('kTotal').textContent = total;
+  document.getElementById('kOpen').textContent = open;
+  document.getElementById('kCompleted').textContent = completed;
+  document.getElementById('kExceptions').textContent = exceptions;
+  document.getElementById('kSpend').textContent = spend > 0 ? ('$' + spend.toFixed(2)) : '—';
+}
+
+function renderExceptions(missions){
+  const card = document.getElementById('excCard');
+  const list = document.getElementById('excList');
+  const exceptions = missions.filter(m => m.status === 'cancelled_by_driver');
+  if (!exceptions.length) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+  list.innerHTML = exceptions.map(m => `
+    <div class="exception-box">
+      <div class="exc-id">#${m.bookingId} · ${m.guestName || 'Unnamed guest'}</div>
+      <div class="exc-msg">Driver-side cancellation — needs re-booking. Provider: ${m.provider || '—'}</div>
+    </div>
+  `).join('');
+}
+
+function renderQueue(missions){
+  const el = document.getElementById('missionQueue');
+  if (!missions.length) {
+    el.innerHTML = '<div class="empty-state">No missions yet.</div>';
+    return;
+  }
+  el.innerHTML = missions.slice(0, 50).map(m => {
+    const amt = m.priceEstimate ? m.priceEstimate.amount : null;
+    return `
+    <div class="mission-row">
+      <div>
+        <div class="id">#${m.bookingId}</div>
+        <div class="guest">${m.guestName || 'Unnamed guest'}${m.propertyId ? ' · ' + m.propertyId : ''}</div>
+      </div>
+      <div style="color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:.68rem;">${m.provider || '—'}</div>
+      <div class="status-badge sb-${m.status}">${m.status.replace(/_/g,' ').toUpperCase()}</div>
+      <div class="price">${typeof amt === 'number' ? '$' + amt.toFixed(2) : '—'}</div>
+    </div>`;
+  }).join('');
+}
+
+async function loadRelayLog(){
+  const el = document.getElementById('relayLog');
+  try {
+    const log = (window.TSM && TSM.relay && TSM.relay.eventLog) ? TSM.relay.eventLog() : [];
+    const events = log.filter(e => e.domain === 'CONCIERGE').slice(-25).reverse();
+    if (!events.length) {
+      el.innerHTML = '<div class="empty-state">No relay activity yet — nothing has come from the war room this session.</div>';
+      return;
+    }
+    el.innerHTML = events.map(e => `
+      <div class="rl-item">
+        <span class="rl-ts">${new Date(e.ts).toLocaleTimeString()}</span>
+        <span class="rl-stage">${e.key || '—'}</span>
+        ${e.id ? ' · ' + e.id : ''}
+      </div>
+    `).join('');
+  } catch(err) {
+    el.innerHTML = '<div class="empty-state">Relay log unavailable.</div>';
+  }
+}
+
+function confirmToExec(){
+  const btn = document.getElementById('confirmBtn');
+  try {
+    localStorage.setItem('TSM_STRAT_CONFIRMED_' + DOMAIN, JSON.stringify({
+      confirmedAt: new Date().toISOString(),
+      confirmedBy: 'strategist',
+    }));
+    btn.textContent = '✓ CONFIRMED — VISIBLE TO EXEC';
+    btn.classList.add('confirmed');
+    showToast('Confirmed. Executive Portal can now proceed.');
+  } catch(e) {
+    showToast('Could not write confirmation: ' + e.message);
+  }
+}
+
+(function checkExistingConfirmation(){
+  try {
+    const raw = localStorage.getItem('TSM_STRAT_CONFIRMED_' + DOMAIN);
+    if (raw) {
+      const btn = document.getElementById('confirmBtn');
+      btn.textContent = '✓ CONFIRMED — VISIBLE TO EXEC';
+      btn.classList.add('confirmed');
+    }
+  } catch(e) {}
+})();
+
+loadAll();
+setInterval(loadAll, 20000);
+</script>
+
+</body>
+</html>

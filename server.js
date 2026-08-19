@@ -1176,6 +1176,7 @@ app.post('/api/concierge/bookings', requireRole(BPO_INTERNAL_ROLES), async (req,
     const mission = await tsmLedger.conciergeUpsertMission(booking.bookingId, {
       provider: booking.provider, quoteId: booking.quoteId, status: booking.status,
       confirmationCode: booking.confirmationCode, request: booking.request, driver: booking.driver,
+      priceEstimate: booking.quote ? booking.quote.priceEstimate : undefined,
       guestName, propertyId, vertical,
     }, req.tsmSession.label || req.tsmSession.role);
     res.json({ ok: true, booking, mission });

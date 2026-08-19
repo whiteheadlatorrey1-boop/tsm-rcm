@@ -1124,6 +1124,7 @@ async function conciergeUpsertMission(bookingId, fields, actor) {
   const {
     provider = null, quoteId = null, status = 'confirmed', confirmationCode = null,
     request = null, driver = null, guestName, propertyId, vertical = 'concierge', note,
+    priceEstimate,
   } = fields || {};
 
   const existing = await col.findOne({ bookingId });
@@ -1134,6 +1135,8 @@ async function conciergeUpsertMission(bookingId, fields, actor) {
     updatedAt: now,
     ageHoursAtUpdate: bpoHoursBetween(createdAt, now),
   };
+  if (priceEstimate !== undefined) $set.priceEstimate = priceEstimate;
+  else if (existing && existing.priceEstimate !== undefined) $set.priceEstimate = existing.priceEstimate;
   if (guestName !== undefined) $set.guestName = (guestName || '').toString().trim();
   else if (existing && existing.guestName !== undefined) $set.guestName = existing.guestName;
   if (propertyId !== undefined) $set.propertyId = propertyId || null;
