@@ -128,6 +128,7 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
      exists by the time render() -> loadRelay() first runs synchronously on
      page load. -->
 <script src="/html/shared/runtime/integrity/tsm-integrity.js"></script>
+<script src="/html/shared/runtime/governance/audit-engine.js"></script>
 <script>
 function tick(){document.getElementById('clock').textContent=new Date().toLocaleTimeString();}
 setInterval(tick,1000);tick();
@@ -140,6 +141,23 @@ function showToast(msg){
   t.textContent=msg; t.classList.add('show');
   clearTimeout(showToast._h);
   showToast._h=setTimeout(()=>t.classList.remove('show'),2500);
+}
+
+// Was 'no downstream write in this demo build' -- now a real, persisted
+// audit entry via TSMAuditEngine -> POST /api/governance/audit. No
+// logged-in-user identity on this page (no session/auth wired here), so
+// actor is the page identity itself, same convention used elsewhere for
+// unauthenticated pages -- not a fabricated person.
+function recordExecutiveAction(action, note){
+  if(window.TSMAuditEngine){
+    TSMAuditEngine.record({
+      actor: 'concierge-executive-portal',
+      action: action,
+      resource: DOMAIN,
+      vertical: 'hotelops'
+    });
+  }
+  showToast(note);
 }
 
 // Dedupe on the full raw string, not the claimed hash — see hotelops
@@ -504,8 +522,8 @@ function render(){
 
   html += `<div class="sec"><div class="sec-hdr"><span class="lbl">EXECUTIVE ACTIONS</span></div>
     <div class="action-bar">
-      <button class="abtn approve" onclick="showToast('Marked reviewed \u2014 no downstream write in this demo build.')">&#10003; ACKNOWLEDGE</button>
-      <button class="abtn escalate" onclick="showToast('Escalation flagged \u2014 notify GM / ops director.')">&#8593; ESCALATE</button>
+      <button class="abtn approve" onclick="recordExecutiveAction('ACKNOWLEDGED', 'Marked reviewed \u2014 logged to audit trail.')">&#10003; ACKNOWLEDGE</button>
+      <button class="abtn escalate" onclick="recordExecutiveAction('ESCALATED', 'Escalation flagged \u2014 notify GM / ops director. Logged to audit trail.')">&#8593; ESCALATE</button>
     </div>
   </div>`;
 

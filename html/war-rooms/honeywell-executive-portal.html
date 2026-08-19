@@ -119,6 +119,7 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 <script src="/html/shared/tsm-hitl-gate.js"></script>
 <script src="/html/shared/tsm-case-manager.js"></script>
 <script src="/html/js/widgets/tsm-case-widget.js"></script>
+<script src="/html/shared/runtime/governance/audit-engine.js"></script>
 <script>
   if (typeof TSMExceptionWidget !== 'undefined') {
     TSMExceptionWidget.mount('tsm-exception-queue', { sector: 'honeywell' });
@@ -144,6 +145,23 @@ function showToast(msg, isErr){
   t.textContent=msg; t.classList.toggle('err', !!isErr); t.classList.add('show');
   clearTimeout(showToast._h);
   showToast._h=setTimeout(()=>t.classList.remove('show'),2500);
+}
+
+// Was 'no downstream write in this demo build' -- now a real, persisted
+// audit entry via TSMAuditEngine -> POST /api/governance/audit. No
+// logged-in-user identity on this page (no session/auth wired here), so
+// actor is the page identity itself, same convention used elsewhere for
+// unauthenticated pages -- not a fabricated person.
+function recordExecutiveAction(action, note){
+  if(window.TSMAuditEngine){
+    TSMAuditEngine.record({
+      actor: 'honeywell-executive-portal',
+      action: action,
+      resource: 'HONEYWELL',
+      vertical: 'honeywell'
+    });
+  }
+  showToast(note);
 }
 
 function loadRelay(){
@@ -496,8 +514,8 @@ function render(){
 
   html += `<div class="sec"><div class="sec-hdr">EXECUTIVE ACTIONS</div>
     <div class="action-bar">
-      <button class="abtn approve" onclick="showToast('Authorized — no downstream write in this demo build.')">✓ AUTHORIZE RESPONSE</button>
-      <button class="abtn escalate" onclick="showToast('Board notification flagged.')">↑ NOTIFY BOARD</button>
+      <button class="abtn approve" onclick="recordExecutiveAction('AUTHORIZED', 'Authorized \u2014 logged to audit trail.')">✓ AUTHORIZE RESPONSE</button>
+      <button class="abtn escalate" onclick="recordExecutiveAction('BOARD_NOTIFIED', 'Board notification flagged \u2014 logged to audit trail.')">↑ NOTIFY BOARD</button>
       <button class="abtn" onclick="window.location='/html/war-rooms/honeywell-strategist.html'">← BACK TO STRATEGIST</button>
     </div>
   </div>`;
