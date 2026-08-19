@@ -200,11 +200,25 @@
     return tier !== 'HIGH';
   }
 
+  function tryRequireOutputContract() {
+    try { return require('./tsm-output-contract.js'); } catch (e) { return null; }
+  }
+
   function create(data) {
     var rec = new TSMCase(data);
     if (!rec.priority) rec.priority = priorityFor((data && data.severity) || null, (data && data.confidence) || null);
     if (!rec.confidenceTier) rec.confidenceTier = confidenceTierFor(data && data.confidence);
     if (rec.humanReviewRequired === null) rec.humanReviewRequired = humanReviewRequiredFor(rec.confidenceTier);
+    // Best-effort bridge to TSMOutputContract (Roadmap #10.1) -- same
+    // silent-no-op-if-not-loaded pattern as the TSMHitlGate/TSMExceptions
+    // bridges elsewhere in this file. Populates rec.missingFields, which
+    // was previously a dead field nothing ever computed.
+    try {
+      var OutputContract = global.TSMOutputContract || (typeof require !== 'undefined' ? tryRequireOutputContract() : null);
+      if (OutputContract && typeof OutputContract.enforceCaseReadiness === 'function') {
+        rec.missingFields = OutputContract.enforceCaseReadiness(rec).missing_fields;
+      }
+    } catch (e) {}
     logAudit(rec, 'CREATED', rec.title || rec.caseId);
     _records.push(rec);
     persist(_records);
@@ -262,6 +276,16 @@
     var changedKeys = Object.keys(patch);
     Object.assign(rec, patch);
     touch(rec);
+    // Recompute readiness -- a patch may have just supplied the title/
+    // detectedExceptions that were missing at creation time, so
+    // missingFields would otherwise go stale. Same best-effort bridge as
+    // create() above.
+    try {
+      var OutputContract = global.TSMOutputContract || (typeof require !== 'undefined' ? tryRequireOutputContract() : null);
+      if (OutputContract && typeof OutputContract.enforceCaseReadiness === 'function') {
+        rec.missingFields = OutputContract.enforceCaseReadiness(rec).missing_fields;
+      }
+    } catch (e) {}
     logAudit(rec, 'UPDATED', changedKeys.join(', '));
     persist(_records);
     notify();
