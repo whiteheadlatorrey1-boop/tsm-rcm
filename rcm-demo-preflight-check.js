@@ -21,7 +21,7 @@
 // pass an already-obtained cookie directly with --cookie "tsm_session=<value>"
 // (e.g. copied from browser dev tools after logging in through the UI).
 
-const BASE = process.env.TSM_BASE_URL || 'https://tsm-consultz.fly.dev';
+const BASE = process.env.TSM_BASE_URL || 'https://app.tsmatter.com';
 
 function parseFlagArg(name) {
   const idx = process.argv.indexOf(name);

@@ -25,7 +25,7 @@
 
 const puppeteer = require('puppeteer');
 
-const BASE = process.env.TSM_BASE_URL || 'https://tsm-consultz.fly.dev';
+const BASE = process.env.TSM_BASE_URL || 'https://app.tsmatter.com';
 
 const PAGES = [
   {

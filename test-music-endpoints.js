@@ -3,7 +3,7 @@
 // Run: node test-music-endpoints.js [base_url]
 // Exits non-zero on any failure, so it's CI-friendly.
 
-const BASE = process.argv[2] || 'https://tsm-consultz.fly.dev';
+const BASE = process.argv[2] || 'https://app.tsmatter.com';
 
 const cases = [
   {

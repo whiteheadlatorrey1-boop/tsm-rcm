@@ -12,9 +12,9 @@ set -euo pipefail
 #
 # Usage:
 #   ./test-insurance-chain.sh [base_url]
-#   (defaults to https://tsm-consultz.fly.dev)
+#   (defaults to https://app.tsmatter.com)
 
-BASE_URL="${1:-https://tsm-consultz.fly.dev}"
+BASE_URL="${1:-https://app.tsmatter.com}"
 ENDPOINT="$BASE_URL/api/insurance/query"
 WORKDIR="$(mktemp -d)"
 trap 'rm -rf "$WORKDIR"' EXIT

@@ -9,9 +9,9 @@ set -euo pipefail
 #
 # Usage:
 #   ./test-song-generation.sh [base_url]
-#   (defaults to https://tsm-consultz.fly.dev if no arg given)
+#   (defaults to https://app.tsmatter.com if no arg given)
 
-BASE_URL="${1:-https://tsm-consultz.fly.dev}"
+BASE_URL="${1:-https://app.tsmatter.com}"
 
 PROMPT_FILE="$(mktemp)"
 cat > "$PROMPT_FILE" <<'EOF'

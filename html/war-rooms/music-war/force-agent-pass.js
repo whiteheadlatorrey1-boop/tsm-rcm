@@ -93,7 +93,7 @@
     out.innerHTML = '<div style="color:#00ffc6;font-weight:900;">ZAY building full producer pass...</div>';
 
     try{
-      const res = await fetch('https://tsm-consultz.fly.dev/api/music/agent-pass', {
+      const res = await fetch('https://app.tsmatter.com/api/music/agent-pass', {
         method:'POST',
         headers:{'Content-Type':'application/json'},
         body:JSON.stringify({
