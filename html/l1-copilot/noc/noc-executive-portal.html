@@ -113,6 +113,28 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 </div>
 <div class="wrap" id="wrap"><!-- populated by JS --></div>
 <div class="toast" id="toast"></div>
+
+<!-- ── EXCEPTION QUEUE / CASE QUEUE — Roadmap #10 Case Engine ──────────── -->
+<div style="padding:0 20px;">
+  <div class="sec-hdr"><span class="lbl">EXCEPTION QUEUE</span></div>
+  <div id="tsm-exception-queue"></div>
+  <div class="sec-hdr" style="margin-top:18px"><span class="lbl">CASE QUEUE</span></div>
+  <div id="tsm-case-queue"></div>
+</div>
+
+<script src="/html/shared/tsm-exceptions.js"></script>
+<script src="/html/js/widgets/tsm-exception-widget.js"></script>
+<script src="/html/shared/tsm-hitl-gate.js"></script>
+<script src="/html/shared/tsm-case-manager.js"></script>
+<script src="/html/js/widgets/tsm-case-widget.js"></script>
+<script>
+  if (typeof TSMExceptionWidget !== 'undefined') {
+    TSMExceptionWidget.mount('tsm-exception-queue', { sector: 'noc' });
+  }
+  if (typeof TSMCaseWidget !== 'undefined') {
+    TSMCaseWidget.mount('tsm-case-queue', { sector: 'noc' });
+  }
+</script>
 <script>
 function tick(){document.getElementById('clock').textContent=new Date().toLocaleTimeString();}
 setInterval(tick,1000);tick();
@@ -305,6 +327,57 @@ function renderRiskRegister(fin){
   </div>`;
 }
 
+// ===== EXCEPTION / CASE QUEUE FEED — Roadmap #10 Case Engine =====
+// Same pattern as Mortgage/Schools/PM/Legal/BPO/Healthcare/Construction/
+// FinOps/Insurance: turn the real SLA-breaching incidents already shown
+// in the Top Risk Register into TSMExceptions.add() records, then
+// TSMCaseManager.createFromException() so each gets a real
+// approval/execution/audit lifecycle. No fabricated fields -- everything
+// here mirrors fin.sla_penalty_exposure_items, the same real relay data
+// renderRiskRegister() already renders.
+const _nocFedIds = {};
+function nocFeedExceptions(fin){
+  if (typeof TSMExceptions === 'undefined' || !fin) return;
+  const items = fin.sla_penalty_exposure_items || [];
+  let fedAny = false;
+
+  items.forEach(it => {
+    if (!it || !it.id) return;
+    if (_nocFedIds[it.id]) return; // already fed this incident this pageload
+    _nocFedIds[it.id] = true;
+    fedAny = true;
+
+    const exceptionRecord = TSMExceptions.add({
+      title: `${it.severity} \u2014 ${it.id} \u2014 ${it.title || ''} (${it.hours_over}h over SLA)`,
+      detail: `SLA-penalty exposure of ${money(it.exposure, fin.currency)} at ${it.severity} severity.`,
+      recommendedAction: 'See NOC Command Center Executive Portal risk register.',
+      severity: it.severity === 'SEV1' ? 'high' : (it.severity === 'SEV2' ? 'med' : 'low'),
+      confidence: null,
+      sector: 'noc',
+      agentLabel: 'NOC Strategist'
+    });
+
+    if (typeof TSMCaseManager !== 'undefined' && exceptionRecord) {
+      const newCase = TSMCaseManager.createFromException(exceptionRecord, {
+        process: 'noc_incident_sla_resolution',
+        source: 'NOC Strategist',
+        exposure: it.exposure
+      });
+      if (newCase) {
+        TSMCaseManager.requestApproval(newCase.caseId, { note: 'Auto-requested on case creation from NOC exception feed.' });
+      }
+    }
+  });
+
+  if (!fedAny) return;
+  if (typeof TSMExceptionWidget !== 'undefined') {
+    TSMExceptionWidget.mount('tsm-exception-queue', { sector: 'noc' });
+  }
+  if (typeof TSMCaseWidget !== 'undefined') {
+    TSMCaseWidget.mount('tsm-case-queue', { sector: 'noc' });
+  }
+}
+
 function render(){
   const data = loadRelay();
   if(!data){ renderEmpty(); return; }
@@ -322,6 +395,8 @@ function render(){
   html += renderRiskRegister(data.financials);
   html += renderFunnel(data.incident_wip, data.financials);
 
+  nocFeedExceptions(data.financials);
+
   html += `<div class="sec"><div class="sec-hdr"><span class="lbl">EXECUTIVE ACTIONS</span></div>
     <div class="action-bar">
       <button class="abtn approve" onclick="showToast('Marked reviewed \u2014 no downstream write in this demo build.')">&#10003; ACKNOWLEDGE</button>
@@ -332,9 +407,21 @@ function render(){
   document.getElementById('wrap').innerHTML = html;
 }
 
-render();
-window.addEventListener('storage', e => { if(e.key === RELAY_KEY_FALLBACK || e.key === 'TSM_EVENT_LOG') render(); });
-window.addEventListener('TSM_RELAY_EVENT', e => { if(e.detail && e.detail.domain === DOMAIN) render(); });
+// Deferred to DOMContentLoaded (not called synchronously here) so that
+// TSMExceptions/TSMCaseManager -- both loaded via <script src> tags
+// earlier in the body -- are guaranteed available on the very first
+// render(), not just on a later storage/TSM_RELAY_EVENT re-render. Same
+// pattern used by Mortgage/Schools/PM/Legal Executive Portals.
+function initRender(){
+  render();
+  window.addEventListener('storage', e => { if(e.key === RELAY_KEY_FALLBACK || e.key === 'TSM_EVENT_LOG') render(); });
+  window.addEventListener('TSM_RELAY_EVENT', e => { if(e.detail && e.detail.domain === DOMAIN) render(); });
+}
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initRender);
+} else {
+  initRender();
+}
 </script>
   <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
   <script src="/html/core/tsm-runtime.js"></script>
