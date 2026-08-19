@@ -95,6 +95,32 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 </div>
 <div class="wrap" id="wrap"><!-- populated by JS --></div>
 <div class="toast" id="toast"></div>
+
+<!-- ── EXCEPTION QUEUE / CASE QUEUE — Roadmap #10 Case Engine ──────────── -->
+<div style="padding:0 20px;">
+  <div class="sec-hdr"><span class="lbl">EXCEPTION QUEUE</span></div>
+  <div id="tsm-exception-queue"></div>
+  <div class="sec-hdr" style="margin-top:18px"><span class="lbl">CASE QUEUE</span></div>
+  <div id="tsm-case-queue"></div>
+</div>
+
+<!-- Loaded here, BEFORE the main inline script below, same reasoning as
+     tsm-integrity.js above: TSMExceptions/TSMCaseManager must exist by
+     the time render() -> hotelopsFeedExceptions() first runs
+     synchronously on page load. -->
+<script src="/html/shared/tsm-exceptions.js"></script>
+<script src="/html/js/widgets/tsm-exception-widget.js"></script>
+<script src="/html/shared/tsm-hitl-gate.js"></script>
+<script src="/html/shared/tsm-case-manager.js"></script>
+<script src="/html/js/widgets/tsm-case-widget.js"></script>
+<script>
+  if (typeof TSMExceptionWidget !== 'undefined') {
+    TSMExceptionWidget.mount('tsm-exception-queue', { sector: 'hotelops' });
+  }
+  if (typeof TSMCaseWidget !== 'undefined') {
+    TSMCaseWidget.mount('tsm-case-queue', { sector: 'hotelops' });
+  }
+</script>
 <!-- Mission Store (hotelops wiring, mirrors hotelops-war-room.html) -->
 <script src="../shared/runtime/mission/mission-model.js"></script>
 <script src="../shared/runtime/mission/mission-store.js"></script>
@@ -370,6 +396,88 @@ function renderPortfolio(portfolio){
   </div>`;
 }
 
+// ===== EXCEPTION / CASE QUEUE FEED — Roadmap #10 Case Engine =====
+// Same pattern as NOC/Mortgage/Schools/PM/Legal/BPO/Healthcare/
+// Construction/FinOps/Insurance, adapted for HotelOps' four real risk
+// sources (already rendered above by renderRiskRegister/renderAirbnbRisks/
+// renderFinancials' OTA card) rather than a single fin.*_exposure_items
+// list: maintenance breaches, compliance risk, OTA overcharges, and
+// Airbnb/STR flags. No fabricated fields -- everything mirrors
+// data.maintenance_breaches / data.compliance_risk / fin.ota_items /
+// data.airbnb_risks.items.
+const _hotelFedIds = {};
+function hotelopsFeedException(fedKey, title, detail, severity, exposure, process){
+  if (_hotelFedIds[fedKey]) return false;
+  _hotelFedIds[fedKey] = true;
+
+  const exceptionRecord = TSMExceptions.add({
+    title, detail,
+    recommendedAction: 'See HotelOps Executive Portal risk register.',
+    severity, confidence: null, sector: 'hotelops', agentLabel: 'HotelOps Strategist'
+  });
+
+  if (typeof TSMCaseManager !== 'undefined' && exceptionRecord) {
+    const newCase = TSMCaseManager.createFromException(exceptionRecord, {
+      process, source: 'HotelOps Strategist', exposure
+    });
+    if (newCase) {
+      TSMCaseManager.requestApproval(newCase.caseId, { note: 'Auto-requested on case creation from HotelOps exception feed.' });
+    }
+  }
+  return true;
+}
+
+function hotelopsFeedExceptions(data){
+  if (typeof TSMExceptions === 'undefined' || !data) return;
+  const fin = data.financials || {};
+  let fedAny = false;
+
+  (data.maintenance_breaches || []).forEach(b => {
+    if (!b || !b.room) return;
+    const fed = hotelopsFeedException('maint:' + b.room + ':' + (b.title || ''),
+      `Room ${b.room} \u2014 ${b.title || 'maintenance breach'} (${b.hours_over}h over SLA)`,
+      `Maintenance SLA breach, severity ${b.severity}.`,
+      b.severity === 'urgent' ? 'high' : 'med', null, 'hotelops_maintenance_resolution');
+    if (fed) fedAny = true;
+  });
+
+  (data.compliance_risk || []).forEach(c => {
+    if (!c || !c.type) return;
+    const fed = hotelopsFeedException('compliance:' + c.type + ':' + (c.detail || ''),
+      `${c.type} \u2014 ${c.detail || ''} (${c.due_in_days}d to deadline)`,
+      `Compliance deadline risk, severity ${c.severity}.`,
+      c.due_in_days <= 14 ? 'high' : 'med', null, 'hotelops_compliance_resolution');
+    if (fed) fedAny = true;
+  });
+
+  (fin.ota_items || []).forEach(it => {
+    if (!it || !it.ota) return;
+    const fed = hotelopsFeedException('ota:' + it.ota,
+      `OTA Overcharge \u2014 ${it.ota} \u2014 charged ${it.charged_pct}% vs contracted ${it.contracted_pct}%`,
+      `OTA commission overcharge of ${money(it.overcharge_amount, fin.currency)} on ${money(it.booking_amount, fin.currency)} in bookings.`,
+      'med', it.overcharge_amount, 'hotelops_ota_overcharge_resolution');
+    if (fed) fedAny = true;
+  });
+
+  ((data.airbnb_risks && data.airbnb_risks.items) || []).forEach(it => {
+    const id = it.listing_id || it.unit_name;
+    if (!it || !id) return;
+    const fed = hotelopsFeedException('airbnb:' + id,
+      `Airbnb/STR \u2014 ${it.unit_name || it.listing_id} \u2014 ${it.issue}`,
+      `Airbnb/STR listing flagged, severity ${it.severity}.`,
+      it.severity === 'high' ? 'high' : 'med', null, 'hotelops_airbnb_str_resolution');
+    if (fed) fedAny = true;
+  });
+
+  if (!fedAny) return;
+  if (typeof TSMExceptionWidget !== 'undefined') {
+    TSMExceptionWidget.mount('tsm-exception-queue', { sector: 'hotelops' });
+  }
+  if (typeof TSMCaseWidget !== 'undefined') {
+    TSMCaseWidget.mount('tsm-case-queue', { sector: 'hotelops' });
+  }
+}
+
 function render(){
   const data = loadRelay();
   if(!data){ renderEmpty(); return; }
@@ -391,6 +499,8 @@ function render(){
   html += renderExplainTop(data.explain_items);
   html += renderPortfolio(data.portfolio);
   html += renderLiveMissionsRegister();
+
+  hotelopsFeedExceptions(data);
 
   html += `<div class="sec"><div class="sec-hdr"><span class="lbl">EXECUTIVE ACTIONS</span></div>
     <div class="action-bar">
