@@ -69,6 +69,7 @@ app.set('trust proxy', 1);
 
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const { enforceBNCASchema } = require('./server/tsm-bnca-schema');
 
 // contentSecurityPolicy/crossOriginEmbedderPolicy/crossOriginResourcePolicy
 // are OFF on purpose: this app is ~100+ largely-independent HTML pages that
@@ -2292,7 +2293,8 @@ app.post('/api/construction/node/:node', async (req, res) => {
     { node, status: 'WATCH', top_issue: 'Node requires review', findings: [], actions: [], cost_impact: 'Unknown', schedule_impact: 'Unknown', bnca: 'Review node output.', owner_lane: 'project manager', confidence: 80 }
   );
   TSM_MEMORY.construction.nodes[node] = result;
-  res.json({ ok: true, node, result, ts: new Date().toISOString() });
+  const schema_check = enforceBNCASchema('node', 'construction', result);
+  res.json({ ok: true, node, result, schema_check, ts: new Date().toISOString() });
 });
 
 // Command-level BNCA across all reporting nodes (CON-CORE, ZERO-TRUST, TAX-INTEL, COMPLIANCE).
@@ -2303,7 +2305,8 @@ app.post('/api/construction/bnca', async (req, res) => {
     { suite: 'construction-command', top_issue: 'Review needed', risk_level: 'WATCH', node_summary: [], bnca: 'Prioritize schedule and cost-overrun risk nodes.', owner_lanes: ['project manager'], hitl_review_required: true, confidence: 82 }
   );
   TSM_MEMORY.construction.bnca = result;
-  res.json({ ok: true, result, ts: new Date().toISOString() });
+  const schema_check = enforceBNCASchema('bnca', 'construction', result);
+  res.json({ ok: true, result, schema_check, ts: new Date().toISOString() });
 });
 
 // Construction Strategist synthesis — mirrors /api/hc-strategist/bnca. Reads the full
@@ -2316,7 +2319,8 @@ app.post('/api/construction-strategist/bnca', async (req, res) => {
     { suite: 'construction-strategist', strategic_summary: 'Construction Strategist review needed.', priority_actions: [], bnca: 'Relay to Executive Portal.', relay_to_executive: true, confidence: 82 }
   );
   TSM_MEMORY.construction.strategist = result;
-  res.json({ ok: true, result, ts: new Date().toISOString() });
+  const schema_check = enforceBNCASchema('strategist', 'construction', result);
+  res.json({ ok: true, result, schema_check, ts: new Date().toISOString() });
 });
 
 // Executive Portal synthesis — mirrors /api/executive/portal but scoped to construction
@@ -2328,7 +2332,8 @@ app.post('/api/construction/executive-portal', async (req, res) => {
     { portal: 'executive', audience: 'CFO / Decision Maker', decision_summary: 'Construction BNCA ready.', bnca_recommendation: 'Approve pilot workflow.', hitl_script: 'Action-ready recommendation and owner lanes for approval.', approval_path: ['Project Manager', 'CFO'], next_step: 'Book walkthrough or approve 30-day pilot.', confidence: 85 }
   );
   TSM_MEMORY.construction.executive = result;
-  res.json({ ok: true, result, ts: new Date().toISOString() });
+  const schema_check = enforceBNCASchema('executive', 'construction', result);
+  res.json({ ok: true, result, schema_check, ts: new Date().toISOString() });
 });
 // ── END CONSTRUCTION NODE → STRATEGIST → EXECUTIVE CHAIN ──────────────────────
 
@@ -2500,7 +2505,8 @@ app.post('/api/mortgage/node/:node', async (req, res) => {
     { node, status: 'WATCH', top_issue: 'Entity requires review', findings: [], actions: [], exposure: 'Unknown', confidence: 80 }
   );
   TSM_MEMORY.mortgage.nodes[node] = result;
-  res.json({ ok: true, node, result, ts: new Date().toISOString() });
+  const schema_check = enforceBNCASchema('node', 'mortgage', result);
+  res.json({ ok: true, node, result, schema_check, ts: new Date().toISOString() });
 });
 
 // Command-level BNCA across all reporting entities (loan_files, conditions, exceptions).
@@ -2511,7 +2517,8 @@ app.post('/api/mortgage/bnca', async (req, res) => {
     { suite: 'mortgage-command', top_issue: 'Review needed', risk_level: 'WATCH', node_summary: [], bnca: 'Prioritize SLA-breached loan files and open compliance exceptions.', owner_lanes: ['loan processor'], hitl_review_required: true, confidence: 82 }
   );
   TSM_MEMORY.mortgage.bnca = result;
-  res.json({ ok: true, result, ts: new Date().toISOString() });
+  const schema_check = enforceBNCASchema('bnca', 'mortgage', result);
+  res.json({ ok: true, result, schema_check, ts: new Date().toISOString() });
 });
 
 // PM Copilot Strategist synthesis — mirrors /api/construction-strategist/bnca. PM has no
@@ -2525,7 +2532,8 @@ app.post('/api/pm-strategist/bnca', async (req, res) => {
     { suite: 'pm-strategist', strategic_summary: 'PM Strategist review needed.', priority_actions: [], bnca: 'Relay to Executive Portal.', relay_to_executive: true, confidence: 82 }
   );
   TSM_MEMORY.pm.strategist = result;
-  res.json({ ok: true, result, ts: new Date().toISOString() });
+  const schema_check = enforceBNCASchema('strategist', 'pm', result);
+  res.json({ ok: true, result, schema_check, ts: new Date().toISOString() });
 });
 
 // Mortgage Strategist synthesis -- mirrors /api/construction-strategist/bnca.
@@ -2536,7 +2544,8 @@ app.post('/api/mortgage-strategist/bnca', async (req, res) => {
     { suite: 'mortgage-strategist', strategic_summary: 'Mortgage Strategist review needed.', priority_actions: [], bnca: 'Relay to Executive Portal.', relay_to_executive: true, confidence: 82 }
   );
   TSM_MEMORY.mortgage.strategist = result;
-  res.json({ ok: true, result, ts: new Date().toISOString() });
+  const schema_check = enforceBNCASchema('strategist', 'mortgage', result);
+  res.json({ ok: true, result, schema_check, ts: new Date().toISOString() });
 });
 
 // Executive Portal synthesis -- CFO-ready decision summary scoped to mortgage memory.
@@ -2547,7 +2556,8 @@ app.post('/api/mortgage/executive-portal', async (req, res) => {
     { portal: 'executive', audience: 'CFO / Decision Maker', decision_summary: 'Mortgage BNCA ready.', bnca_recommendation: 'Approve pilot workflow.', hitl_script: 'Action-ready recommendation and owner lanes for approval.', approval_path: ['Loan Processor', 'CFO'], next_step: 'Book walkthrough or approve 30-day pilot.', confidence: 85 }
   );
   TSM_MEMORY.mortgage.executive = result;
-  res.json({ ok: true, result, ts: new Date().toISOString() });
+  const schema_check = enforceBNCASchema('executive', 'mortgage', result);
+  res.json({ ok: true, result, schema_check, ts: new Date().toISOString() });
 });
 // -- END MORTGAGE NODE -> STRATEGIST -> EXECUTIVE CHAIN ---------------------------
 
