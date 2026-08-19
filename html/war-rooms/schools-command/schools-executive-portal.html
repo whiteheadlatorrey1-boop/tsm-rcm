@@ -90,6 +90,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
     <a class="hbtn" href="schools-command.html">&larr; Command Center</a>
     <a class="hbtn primary" href="schools-strategist.html">Strategist View &rarr;</a>
     <button class="hbtn" id="printBtn" onclick="window.print()">&darr; Export</button>
+    <button class="hbtn" id="tsmk-delivery-btn" onclick="exportClientPackage()">&#8681; EXPORT CLIENT PACKAGE</button>
   </div>
 </div>
 <div class="wrap" id="wrap"><!-- populated by JS --></div>
@@ -301,6 +302,89 @@ function renderRiskRegister(fin){
   </div>`;
 }
 
+// Roadmap #9 (Delivery Package) — same template as mortgage-executive-
+// portal.html, same reused-not-invented severity rule: days_over > 3 =
+// 'high' / else 'medium', already grounded on this page in execAction(),
+// registerSchoolsAnomalies(), and schFeedExceptions() above. Compliance
+// exceptions are always 'high', matching schFeedExceptions()'s existing
+// severity: 'high'. active_award_value has no risk framing anywhere in
+// this codebase, so it stays honestly unclassified.
+function getExplainItems(data){
+  const items = [];
+  const fin = data.financials || {};
+
+  (fin.funding_delay_exposure_items || []).forEach(it => {
+    const sev = it.days_over > 3 ? 'high' : 'medium';
+    const explain = `${escapeHtml(it.stage)} \u2014 Grant ${escapeHtml(it.id)} \u2014 ${escapeHtml(it.grantee||'grantee')}, ${it.days_over}d over SLA, ${money(it.exposure, fin.currency)} funding-delay exposure. Read from financials.funding_delay_exposure_items as written by the Schools Command Center.`;
+    items.push({
+      label: 'FUNDING DELAY \u2014 ' + it.stage,
+      value: money(it.exposure, fin.currency),
+      explain: explain,
+      id: 'schools-funding-delay-' + it.id,
+      claim: it.stage + ': Grant ' + it.id + ' ' + it.days_over + 'd over SLA',
+      severity: sev,
+      rationale: explain,
+      dataPoints: [
+        { key: 'days_over', value: it.days_over },
+        { key: 'exposure', value: it.exposure },
+        { key: 'stage', value: it.stage }
+      ],
+      sources: ['Schools Command Center']
+    });
+  });
+
+  if ((fin.compliance_exposure_items || []).length) {
+    const compItems = fin.compliance_exposure_items;
+    const explain = `${compItems.length} open compliance exception(s), ${money(fin.compliance_exposure_total, fin.currency)} total exposure. Read from financials.compliance_exposure_items as written by the Schools Command Center \u2014 same severity convention as schFeedExceptions() below (compliance exceptions are always high).`;
+    items.push({
+      label: 'COMPLIANCE EXPOSURE',
+      value: money(fin.compliance_exposure_total, fin.currency),
+      explain: explain,
+      id: 'schools-compliance-exposure',
+      claim: compItems.length + ' open compliance exception(s)',
+      severity: 'high',
+      rationale: explain,
+      dataPoints: [
+        { key: 'count', value: compItems.length },
+        { key: 'total', value: fin.compliance_exposure_total }
+      ],
+      sources: ['Schools Command Center']
+    });
+  }
+
+  if (fin.active_award_value != null) {
+    const explain = 'Read directly from financials.active_award_value, the total open grant award value in the portfolio \u2014 not recomputed on this page.';
+    items.push({
+      label: 'ACTIVE AWARD VALUE',
+      value: money(fin.active_award_value, fin.currency),
+      explain: explain,
+      id: 'schools-active-award-value',
+      claim: 'ACTIVE AWARD VALUE: ' + money(fin.active_award_value, fin.currency),
+      // No severity: active_award_value has no risk framing anywhere in
+      // this codebase, so left honestly unclassified rather than guessed.
+      rationale: explain,
+      dataPoints: [{ key: 'active_award_value', value: fin.active_award_value }],
+      sources: ['Schools Command Center']
+    });
+  }
+
+  return items;
+}
+
+function renderExplainItems(items){
+  if (!items.length) return '';
+  return `<div class="sec">
+    <div class="sec-hdr"><span class="lbl">WHY THESE NUMBERS</span></div>
+    ${items.map(it => `<div class="risk-item">
+      <div class="risk-body">
+        <div class="risk-title">${escapeHtml(it.label)}</div>
+        <div class="risk-action">${escapeHtml(it.explain)}</div>
+      </div>
+      <div class="risk-amount">${escapeHtml(it.value)}</div>
+    </div>`).join('')}
+  </div>`;
+}
+
 // ===== TSM MEMORY: REGISTER CROSS-MODULE ANOMALIES =====
 // Same approach as mortgage's executive portal (same template) -- fires off
 // the real relay data just rendered, not a static mirror, since this page
@@ -424,6 +508,13 @@ function schFeedExceptions(fin){
   }
 }
 
+// Roadmap #9 -- stashed here so exportClientPackage() (defined below) can
+// reuse the exact same explain items render() already computed, rather than
+// re-deriving anything. This page has no quality-score engine or document
+// counter wired, so qualityScore/documentCount stay undefined -- honest
+// nulls in the built package, same convention as insurance-executive-portal.html.
+let lastExplainItems = [];
+
 function render(){
   const data = loadRelay();
   if(!data){ renderEmpty(); return; }
@@ -436,6 +527,10 @@ function render(){
   if(data.ai_summary){
     html += `<div class="ai-box"><strong style="color:var(--gold);font-size:.65rem;letter-spacing:.1em;display:block;margin-bottom:8px;">EXECUTIVE RECOMMENDATION</strong>${renderEngineOutput(data.ai_summary)}</div>`;
   }
+
+  const explainItems = getExplainItems(data);
+  lastExplainItems = explainItems;
+  html += renderExplainItems(explainItems);
 
   html += renderRiskRegister(data.financials);
   html += renderFunnel(data.grant_wip, data.financials);
@@ -468,7 +563,27 @@ if (document.readyState === 'loading') {
 } else {
   initRender();
 }
+
+// Roadmap #9 -- pure assembly layer, same convention as TSMDeliveryPackage
+// itself: nothing computed here, just reuses lastExplainItems already
+// produced by render() above and hands it to the engine.
+window.exportClientPackage = function () {
+  if (!window.TSMDeliveryPackage) {
+    showToast('Delivery package engine not loaded.');
+    return;
+  }
+  const pkg = TSMDeliveryPackage.build({
+    domain: 'Schools',
+    explainItems: lastExplainItems
+  });
+  const blob = new Blob([JSON.stringify(pkg, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'tsm-client-package-' + Date.now() + '.json';
+  a.click();
+};
 </script>
+  <script src="/html/shared/tsm-delivery-package.js"></script>
   <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
   <script src="/html/shared/tsm-memory-engine.js"></script>
   <script src="/html/core/tsm-runtime.js"></script>

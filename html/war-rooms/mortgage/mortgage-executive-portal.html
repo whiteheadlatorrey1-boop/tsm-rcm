@@ -97,6 +97,7 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
     <a class="hbtn" href="mortgage-war-room.html">&larr; War Room</a>
     <a class="hbtn primary" href="mortgage-strategist.html">Strategist View &rarr;</a>
     <button class="hbtn" id="printBtn" onclick="window.print()">&darr; Export</button>
+    <button class="hbtn" id="tsmk-delivery-btn" onclick="exportClientPackage()">&#8681; EXPORT CLIENT PACKAGE</button>
   </div>
 </div>
 <div class="wrap" id="wrap"><!-- populated by JS --></div>
@@ -379,6 +380,91 @@ function renderRiskRegister(fin){
   </div>`;
 }
 
+// Roadmap #9 (Delivery Package) — this page had no explainability layer at
+// all before this change (no getExplainItems() anywhere in the file), so
+// this is new, not extended. No invented severity rule needed: reuses the
+// exact days_over > 3 = 'high' / else 'medium' threshold already grounded
+// on this page in execAction(), registerMortgageAnomalies(), and
+// mtgFeedExceptions() above — same convention, not a new number. Compliance
+// exceptions are always 'high', matching mtgFeedExceptions()'s existing
+// severity: 'high'. pipeline_value has no risk framing anywhere in this
+// codebase, so it stays honestly unclassified.
+function getExplainItems(data){
+  const items = [];
+  const fin = data.financials || {};
+
+  (fin.closing_delay_exposure_items || []).forEach(it => {
+    const sev = it.days_over > 3 ? 'high' : 'medium';
+    const explain = `${escapeHtml(it.stage)} \u2014 Loan ${escapeHtml(it.id)} \u2014 ${escapeHtml(it.borrower||'borrower')}, ${it.days_over}d over SLA, ${money(it.exposure, fin.currency)} closing-delay exposure. Read from financials.closing_delay_exposure_items as written by the Mortgage war room.`;
+    items.push({
+      label: 'CLOSING DELAY \u2014 ' + it.stage,
+      value: money(it.exposure, fin.currency),
+      explain: explain,
+      id: 'mortgage-closing-delay-' + it.id,
+      claim: it.stage + ': Loan ' + it.id + ' ' + it.days_over + 'd over SLA',
+      severity: sev,
+      rationale: explain,
+      dataPoints: [
+        { key: 'days_over', value: it.days_over },
+        { key: 'exposure', value: it.exposure },
+        { key: 'stage', value: it.stage }
+      ],
+      sources: ['Mortgage war room']
+    });
+  });
+
+  if ((fin.compliance_exposure_items || []).length) {
+    const compItems = fin.compliance_exposure_items;
+    const explain = `${compItems.length} open compliance exception(s), ${money(fin.compliance_exposure_total, fin.currency)} total exposure. Read from financials.compliance_exposure_items as written by the Mortgage war room \u2014 same severity convention as mtgFeedExceptions() below (compliance exceptions are always high).`;
+    items.push({
+      label: 'COMPLIANCE EXPOSURE',
+      value: money(fin.compliance_exposure_total, fin.currency),
+      explain: explain,
+      id: 'mortgage-compliance-exposure',
+      claim: compItems.length + ' open compliance exception(s)',
+      severity: 'high',
+      rationale: explain,
+      dataPoints: [
+        { key: 'count', value: compItems.length },
+        { key: 'total', value: fin.compliance_exposure_total }
+      ],
+      sources: ['Mortgage war room']
+    });
+  }
+
+  if (fin.pipeline_value != null) {
+    const explain = 'Read directly from financials.pipeline_value, the total open loan amount in the pipeline \u2014 not recomputed on this page.';
+    items.push({
+      label: 'PIPELINE VALUE',
+      value: money(fin.pipeline_value, fin.currency),
+      explain: explain,
+      id: 'mortgage-pipeline-value',
+      claim: 'PIPELINE VALUE: ' + money(fin.pipeline_value, fin.currency),
+      // No severity: pipeline_value has no risk framing anywhere in this
+      // codebase, so left honestly unclassified rather than guessed.
+      rationale: explain,
+      dataPoints: [{ key: 'pipeline_value', value: fin.pipeline_value }],
+      sources: ['Mortgage war room']
+    });
+  }
+
+  return items;
+}
+
+function renderExplainItems(items){
+  if (!items.length) return '';
+  return `<div class="sec">
+    <div class="sec-hdr"><span class="lbl">WHY THESE NUMBERS</span></div>
+    ${items.map(it => `<div class="risk-item">
+      <div class="risk-body">
+        <div class="risk-title">${escapeHtml(it.label)}</div>
+        <div class="risk-action">${escapeHtml(it.explain)}</div>
+      </div>
+      <div class="risk-amount">${escapeHtml(it.value)}</div>
+    </div>`).join('')}
+  </div>`;
+}
+
 // ===== TSM MEMORY: REGISTER CROSS-MODULE ANOMALIES =====
 // Fires off the same real relay data renderRiskRegister()/renderFinancials()
 // just rendered -- not a static mirror, since this page shows "no active
@@ -506,6 +592,13 @@ function mtgFeedExceptions(fin){
   }
 }
 
+// Roadmap #9 -- stashed here so exportClientPackage() (defined below) can
+// reuse the exact same explain items render() already computed, rather than
+// re-deriving anything. This page has no quality-score engine or document
+// counter wired, so qualityScore/documentCount stay undefined -- honest
+// nulls in the built package, same convention as insurance-executive-portal.html.
+let lastExplainItems = [];
+
 function render(){
   const data = loadRelay();
   if(!data){ renderEmpty(); return; }
@@ -520,6 +613,10 @@ function render(){
   }
 
   html += `<div class="ai-box" id="execSynthesisBox" style="display:none;"></div>`;
+
+  const explainItems = getExplainItems(data);
+  lastExplainItems = explainItems;
+  html += renderExplainItems(explainItems);
 
   html += renderRiskRegister(data.financials);
   html += renderFunnel(data.loan_wip, data.financials);
@@ -581,7 +678,27 @@ if (document.readyState === 'loading') {
 } else {
   initRender();
 }
+
+// Roadmap #9 -- pure assembly layer, same convention as TSMDeliveryPackage
+// itself: nothing computed here, just reuses lastExplainItems already
+// produced by render() above and hands it to the engine.
+window.exportClientPackage = function () {
+  if (!window.TSMDeliveryPackage) {
+    showToast('Delivery package engine not loaded.');
+    return;
+  }
+  const pkg = TSMDeliveryPackage.build({
+    domain: 'Mortgage',
+    explainItems: lastExplainItems
+  });
+  const blob = new Blob([JSON.stringify(pkg, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'tsm-client-package-' + Date.now() + '.json';
+  a.click();
+};
 </script>
+  <script src="/html/shared/tsm-delivery-package.js"></script>
   <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
   <script src="/html/shared/tsm-memory-engine.js"></script>
   <script src="/html/core/tsm-runtime.js"></script>

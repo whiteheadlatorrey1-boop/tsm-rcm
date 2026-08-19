@@ -109,6 +109,7 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
     <a class="hbtn" href="noc-war-room.html">&larr; War Room</a>
     <a class="hbtn primary" href="noc-strategist.html">Strategist View &rarr;</a>
     <button class="hbtn" id="printBtn" onclick="window.print()">&darr; Export</button>
+    <button class="hbtn" id="tsmk-delivery-btn" onclick="exportClientPackage()">&#8681; EXPORT CLIENT PACKAGE</button>
   </div>
 </div>
 <div class="wrap" id="wrap"><!-- populated by JS --></div>
@@ -346,6 +347,61 @@ function renderRiskRegister(fin){
   </div>`;
 }
 
+// Roadmap #9 (Delivery Package) — distinct from renderExplainability()
+// above (that one renders the on-page "Why These Numbers" formula panel;
+// this one is the shared TSMDeliveryPackage contract, consumed only by
+// exportClientPackage()). No invented severity rule needed: reuses the
+// exact SEV1/SEV2/else severity tiering already grounded on this page in
+// nocFeedExceptions() above (SEV1 -> high, SEV2 -> medium, else low), not a
+// new mapping. revenue_at_risk_per_hour has no per-item severity anywhere
+// in this codebase (it's a single aggregate uptime-gap figure, not a list
+// of severities), so it stays honestly unclassified.
+function getExplainItems(data){
+  const items = [];
+  const fin = data.financials || {};
+
+  (fin.sla_penalty_exposure_items || []).forEach(it => {
+    const sev = it.severity === 'SEV1' ? 'high' : (it.severity === 'SEV2' ? 'medium' : 'low');
+    const explain = `${escapeHtml(it.severity)} \u2014 ${escapeHtml(it.id)} \u2014 ${escapeHtml(it.title||'')}, ${it.hours_over}h over SLA, ${money(it.exposure, fin.currency)} SLA-penalty exposure. Read from financials.sla_penalty_exposure_items as written by the NOC war room \u2014 same SEV1/SEV2 severity convention as nocFeedExceptions() below.`;
+    items.push({
+      label: it.severity + ' \u2014 ' + it.id,
+      value: money(it.exposure, fin.currency),
+      explain: explain,
+      id: 'noc-sla-' + it.id,
+      claim: it.severity + ': ' + it.id + ' ' + it.hours_over + 'h over SLA',
+      severity: sev,
+      rationale: explain,
+      dataPoints: [
+        { key: 'rawSeverity', value: it.severity },
+        { key: 'hours_over', value: it.hours_over },
+        { key: 'exposure', value: it.exposure }
+      ],
+      sources: ['NOC war room']
+    });
+  });
+
+  if (fin.revenue_at_risk_per_hour != null) {
+    const explain = `Read directly from financials.revenue_at_risk_per_hour \u2014 ${fin.uptime_gap_pts}pt uptime gap vs. 100% \u00d7 $/pt/hr, an editable planning assumption, not model output.`;
+    items.push({
+      label: 'REVENUE AT RISK',
+      value: money(fin.revenue_at_risk_per_hour, fin.currency) + '/hr',
+      explain: explain,
+      id: 'noc-revenue-at-risk',
+      claim: 'REVENUE AT RISK: ' + money(fin.revenue_at_risk_per_hour, fin.currency) + '/hr',
+      // No severity: this is a single aggregate figure with no per-item
+      // severity anywhere in this codebase, so left honestly unclassified.
+      rationale: explain,
+      dataPoints: [
+        { key: 'revenue_at_risk_per_hour', value: fin.revenue_at_risk_per_hour },
+        { key: 'uptime_gap_pts', value: fin.uptime_gap_pts }
+      ],
+      sources: ['NOC war room']
+    });
+  }
+
+  return items;
+}
+
 // ===== EXCEPTION / CASE QUEUE FEED — Roadmap #10 Case Engine =====
 // Same pattern as Mortgage/Schools/PM/Legal/BPO/Healthcare/Construction/
 // FinOps/Insurance: turn the real SLA-breaching incidents already shown
@@ -397,6 +453,13 @@ function nocFeedExceptions(fin){
   }
 }
 
+// Roadmap #9 -- stashed here so exportClientPackage() (defined below) can
+// reuse the exact same explain items render() already computed, rather than
+// re-deriving anything. This page has no quality-score engine or document
+// counter wired, so qualityScore/documentCount stay undefined -- honest
+// nulls in the built package, same convention as insurance-executive-portal.html.
+let lastExplainItems = [];
+
 function render(){
   const data = loadRelay();
   if(!data){ renderEmpty(); return; }
@@ -411,6 +474,7 @@ function render(){
   }
 
   html += renderExplainability(data.financials);
+  lastExplainItems = getExplainItems(data);
   html += renderRiskRegister(data.financials);
   html += renderFunnel(data.incident_wip, data.financials);
 
@@ -441,7 +505,27 @@ if (document.readyState === 'loading') {
 } else {
   initRender();
 }
+
+// Roadmap #9 -- pure assembly layer, same convention as TSMDeliveryPackage
+// itself: nothing computed here, just reuses lastExplainItems already
+// produced by render() above and hands it to the engine.
+window.exportClientPackage = function () {
+  if (!window.TSMDeliveryPackage) {
+    showToast('Delivery package engine not loaded.');
+    return;
+  }
+  const pkg = TSMDeliveryPackage.build({
+    domain: 'NOC',
+    explainItems: lastExplainItems
+  });
+  const blob = new Blob([JSON.stringify(pkg, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'tsm-client-package-' + Date.now() + '.json';
+  a.click();
+};
 </script>
+  <script src="/html/shared/tsm-delivery-package.js"></script>
   <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
   <script src="/html/core/tsm-runtime.js"></script>
   <script src="/js/tsm-guide-engine.js" defer></script>
