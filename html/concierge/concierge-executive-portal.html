@@ -91,6 +91,7 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
     <a class="hbtn" href="concierge-war-room.html">&larr; War Room</a>
     <a class="hbtn primary" href="concierge-strategist.html">Strategist View &rarr;</a>
     <button class="hbtn" id="printBtn" onclick="window.print()">&darr; Export</button>
+    <button class="hbtn" id="tsmk-delivery-btn" onclick="exportClientPackage()">&#8681; EXPORT CLIENT PACKAGE</button>
   </div>
 </div>
 <div class="wrap" id="wrap"><!-- populated by JS --></div>
@@ -159,6 +160,47 @@ function recordExecutiveAction(action, note){
     });
   }
   showToast(note);
+}
+
+// Roadmap #9 (Delivery Package) translator. Unlike Honeywell/PM Copilot,
+// this vertical needs no invented severity rule at all: hotelops-engine.js's
+// getExplainItems() already produces real per-record severity for every
+// category (maintenance ticket severity, compliance due-date thresholds,
+// IoT alert evaluation, front-desk SLA minutes, etc.), ranked by its own
+// SEV_ORDER (urgent < high < medium < low). This just translates that
+// existing shape {category, id, severity, explain} into the shared
+// Delivery Package contract {claim, severity, rationale, dataPoints,
+// sources, id} -- nothing computed here, only relabeled.
+//
+// Two normalizations, both preserving the original raw value in
+// dataPoints so nothing is lost:
+//   1. Case: compliance arrives as 'HIGH'/'MED'/'LOW' while every other
+//      category is already lowercase ('urgent'/'high'/'medium'/'low') --
+//      normalized to lowercase, with 'med' expanded to 'medium'.
+//   2. 'urgent' -> 'high' for the Delivery Package's severity field
+//      specifically, since the shared TSMDeliveryPackage risk report only
+//      recognizes the literal string 'high' and urgent items are strictly
+//      more severe -- they must not silently fall out of the risk report
+//      for want of an exact string match.
+function toDeliveryPackageItems(rawItems){
+  if (!Array.isArray(rawItems)) return [];
+  return rawItems.map(function (it, idx) {
+    var rawSeverity = it.severity;
+    var normSeverity = typeof rawSeverity === 'string' ? rawSeverity.toLowerCase() : rawSeverity;
+    if (normSeverity === 'med') normSeverity = 'medium';
+    var pkgSeverity = normSeverity === 'urgent' ? 'high' : normSeverity;
+    return {
+      id: 'hotelops-' + (it.category || 'item') + '-' + (it.id != null ? it.id : idx),
+      claim: it.explain,
+      severity: pkgSeverity,
+      rationale: it.explain,
+      dataPoints: [
+        { key: 'category', value: it.category },
+        { key: 'rawSeverity', value: rawSeverity }
+      ],
+      sources: ['hotelops-engine.js getExplainItems() \u2192 ' + it.category]
+    };
+  });
 }
 
 // Dedupe on the full raw string, not the claimed hash — see hotelops
@@ -497,6 +539,14 @@ function hotelopsFeedExceptions(data){
   }
 }
 
+// Roadmap #9 -- stashed here so exportClientPackage() (defined below) can
+// reuse the exact same raw explain items render() already read off the
+// relay, rather than re-deriving anything. This page has no quality-score
+// engine or document counter wired, so qualityScore/documentCount stay
+// undefined -- honest nulls in the built package, same convention as
+// insurance-executive-portal.html.
+let lastExplainItems = [];
+
 function render(){
   const data = loadRelay();
   if(!data){ renderEmpty(); return; }
@@ -515,6 +565,7 @@ function render(){
 
   html += renderRiskRegister(data.maintenance_breaches, data.compliance_risk);
   html += renderAirbnbRisks(data.airbnb_risks);
+  lastExplainItems = data.explain_items;
   html += renderExplainTop(data.explain_items);
   html += renderPortfolio(data.portfolio);
   html += renderLiveMissionsRegister();
@@ -531,6 +582,26 @@ function render(){
   document.getElementById('wrap').innerHTML = html;
 }
 
+// Roadmap #9 -- pure assembly layer, same convention as TSMDeliveryPackage
+// itself: nothing computed here, just translates lastExplainItems already
+// read by render() above via toDeliveryPackageItems() and hands it to the
+// engine.
+window.exportClientPackage = function () {
+  if (!window.TSMDeliveryPackage) {
+    showToast('Delivery package engine not loaded.');
+    return;
+  }
+  const pkg = TSMDeliveryPackage.build({
+    domain: 'Concierge',
+    explainItems: toDeliveryPackageItems(lastExplainItems)
+  });
+  const blob = new Blob([JSON.stringify(pkg, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'tsm-client-package-' + Date.now() + '.json';
+  a.click();
+};
+
 render();
 window.addEventListener('storage', e => { if(e.key === RELAY_KEY_FALLBACK || e.key === 'TSM_EVENT_LOG') render(); });
 window.addEventListener('TSM_RELAY_EVENT', e => { if(e.detail && e.detail.domain === DOMAIN) render(); });
@@ -538,6 +609,7 @@ if (window.TSMMissionStore) {
   window.TSMMissionStore.subscribe('*', () => render());
 }
 </script>
+  <script src="/html/shared/tsm-delivery-package.js"></script>
   <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
   <script src="/html/core/tsm-runtime.js"></script>
   <script src="/js/tsm-guide-engine.js" defer></script>

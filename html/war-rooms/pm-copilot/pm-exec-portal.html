@@ -101,6 +101,7 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
     <a class="hbtn" href="pm-strategist.html">&larr; Strategist</a>
     <a class="hbtn" href="pm-command.html">War Room</a>
     <button class="hbtn" id="printBtn" onclick="window.print()">&darr; Export</button>
+    <button class="hbtn" id="tsmk-delivery-btn" onclick="exportClientPackage()">&#8681; EXPORT CLIENT PACKAGE</button>
   </div>
 </div>
 <div class="wrap" id="wrap"><!-- populated by JS --></div>
@@ -413,37 +414,83 @@ function renderApprovalRateStats(stats, body){
 // tile above, rather than a fabricated confidence score. The financial
 // exposure section already carries its own sec-hdr-note, so this covers the
 // top KPI row only.
+//
+// Roadmap #9 (Delivery Package) — extended additively: each item now also
+// carries the shared {claim, severity, rationale, dataPoints, sources, id}
+// fields alongside the original {label, value, explain}. No invented
+// thresholds — severity reuses conventions already baked into this exact
+// page: occupancy_rate reuses the same >=90/>=75 color thresholds the KPI
+// tile itself renders with (red/<75 = high risk, amber/75-89 = medium, green
+// = healthy and left unclassified); work_orders_over_sla and
+// vendor_compliance_flags reuse "count > 0 = high", since this page already
+// colors both tiles red unconditionally whenever the count is nonzero.
+// portfolio_rent_value has no risk framing anywhere in this codebase, so it
+// stays honestly unclassified rather than assigned a made-up severity.
 function getExplainItems(data){
   const items = [];
   const k = data.kpis || {};
 
   if (k.occupancy_rate != null) {
-    items.push({
+    const rate = k.occupancy_rate;
+    const explain = 'Read directly from kpis.occupancy_rate, computed by pm-engine.js\u2019s computeKpis() from the live units records \u2014 not recomputed on this page.';
+    const sev = rate < 75 ? 'high' : (rate < 90 ? 'medium' : undefined);
+    const item = {
       label: 'OCCUPANCY RATE',
-      value: k.occupancy_rate + '%',
-      explain: 'Read directly from kpis.occupancy_rate, computed by pm-engine.js\u2019s computeKpis() from the live units records \u2014 not recomputed on this page.'
-    });
+      value: rate + '%',
+      explain: explain,
+      id: 'pm-occupancy-rate',
+      claim: 'OCCUPANCY RATE: ' + rate + '%',
+      rationale: explain,
+      dataPoints: [{ key: 'kpis.occupancy_rate', value: rate }],
+      sources: ['pm-engine.js computeKpis()']
+    };
+    if (sev) item.severity = sev;
+    items.push(item);
   }
   if (k.portfolio_rent_value != null) {
+    const explain = 'Read directly from kpis.portfolio_rent_value, summed by pm-engine.js from the live units/leases records.';
     items.push({
       label: 'PORTFOLIO RENT VALUE',
       value: fmtMoney(k.portfolio_rent_value),
-      explain: 'Read directly from kpis.portfolio_rent_value, summed by pm-engine.js from the live units/leases records.'
+      explain: explain,
+      id: 'pm-portfolio-rent-value',
+      claim: 'PORTFOLIO RENT VALUE: ' + fmtMoney(k.portfolio_rent_value),
+      // No severity: no risk framing exists anywhere in this codebase for
+      // portfolio rent value, so left honestly unclassified.
+      rationale: explain,
+      dataPoints: [{ key: 'kpis.portfolio_rent_value', value: k.portfolio_rent_value }],
+      sources: ['pm-engine.js']
     });
   }
   if (k.work_orders_over_sla != null) {
-    items.push({
+    const explain = 'Count of work orders returned by pm-engine.js\u2019s getSlaBreaches(\u2018work_orders\u2019) \u2014 the underlying items are in the war room\u2019s Action Queue.';
+    const item = {
       label: 'WORK ORDERS OVER SLA',
       value: String(k.work_orders_over_sla),
-      explain: 'Count of work orders returned by pm-engine.js\u2019s getSlaBreaches(\u2018work_orders\u2019) \u2014 the underlying items are in the war room\u2019s Action Queue.'
-    });
+      explain: explain,
+      id: 'pm-work-orders-over-sla',
+      claim: 'WORK ORDERS OVER SLA: ' + k.work_orders_over_sla,
+      rationale: explain,
+      dataPoints: [{ key: 'kpis.work_orders_over_sla', value: k.work_orders_over_sla }],
+      sources: ['pm-engine.js getSlaBreaches()']
+    };
+    if (k.work_orders_over_sla > 0) item.severity = 'high';
+    items.push(item);
   }
   if (k.vendor_compliance_flags != null) {
-    items.push({
+    const explain = 'Count of vendors in \u2018expiring_soon\u2019/\u2018expired\u2019 stages from the live vendors records, computed by pm-engine.js\u2019s computeKpis().';
+    const item = {
       label: 'VENDOR COMPLIANCE FLAGS',
       value: String(k.vendor_compliance_flags),
-      explain: 'Count of vendors in \u2018expiring_soon\u2019/\u2018expired\u2019 stages from the live vendors records, computed by pm-engine.js\u2019s computeKpis().'
-    });
+      explain: explain,
+      id: 'pm-vendor-compliance-flags',
+      claim: 'VENDOR COMPLIANCE FLAGS: ' + k.vendor_compliance_flags,
+      rationale: explain,
+      dataPoints: [{ key: 'kpis.vendor_compliance_flags', value: k.vendor_compliance_flags }],
+      sources: ['pm-engine.js computeKpis()']
+    };
+    if (k.vendor_compliance_flags > 0) item.severity = 'high';
+    items.push(item);
   }
 
   return items;
@@ -529,6 +576,13 @@ function pmFeedExceptions(fin){
   }
 }
 
+// Roadmap #9 -- stashed here so exportClientPackage() (defined below) can
+// reuse the exact same explain items render() already computed, rather than
+// re-deriving anything. This page has no quality-score engine or document
+// counter wired, so qualityScore/documentCount stay undefined -- honest
+// nulls in the built package, same convention as insurance-executive-portal.html.
+let lastExplainItems = [];
+
 function render(){
   const data = loadRelay();
   if(!data){ renderEmpty(); return; }
@@ -546,7 +600,9 @@ function render(){
     <div class="kpi"><div class="kpi-val red">${kpis.vendor_compliance_flags ?? '&mdash;'}</div><div class="kpi-lbl">VENDOR COMPLIANCE FLAGS</div></div>
   </div>`;
 
-  html += renderExplainItems(getExplainItems(data));
+  const explainItems = getExplainItems(data);
+  lastExplainItems = explainItems;
+  html += renderExplainItems(explainItems);
 
   html += `<div class="sec">
     <div class="sec-hdr"><span class="lbl">TOTAL FINANCIAL EXPOSURE</span><span class="sec-hdr-note">${escapeHtml(fin.note || 'vacancy + SLA delay + vendor compliance, deterministic')}</span></div>
@@ -592,7 +648,27 @@ if (document.readyState === 'loading') {
 } else {
   initRender();
 }
+
+// Roadmap #9 -- pure assembly layer, same convention as TSMDeliveryPackage
+// itself: nothing computed here, just reuses lastExplainItems already
+// produced by render() above and hands it to the engine.
+window.exportClientPackage = function () {
+  if (!window.TSMDeliveryPackage) {
+    showToast('Delivery package engine not loaded.');
+    return;
+  }
+  const pkg = TSMDeliveryPackage.build({
+    domain: 'PM Copilot',
+    explainItems: lastExplainItems
+  });
+  const blob = new Blob([JSON.stringify(pkg, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'tsm-client-package-' + Date.now() + '.json';
+  a.click();
+};
 </script>
+  <script src="/html/shared/tsm-delivery-package.js"></script>
   <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
   <script src="/html/core/tsm-runtime.js"></script>
   <script src="/js/tsm-guide-engine.js" defer></script>

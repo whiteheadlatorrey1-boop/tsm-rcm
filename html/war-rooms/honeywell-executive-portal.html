@@ -96,6 +96,7 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
     <div class="hdr-btns">
       <button class="hbtn" id="refreshBtn" onclick="manualRefresh()">↻ Pull Latest</button>
       <button class="hbtn" id="printBtn" onclick="window.print()">↓ Export</button>
+      <button class="hbtn" id="tsmk-delivery-btn" onclick="exportClientPackage()">⬇ EXPORT CLIENT PACKAGE</button>
     </div>
   </div>
 </div>
@@ -267,6 +268,16 @@ function tertiaryLabel(source){
 // payload carries no confidence/ML score field, so this cites which structured
 // field each KPI came from and which war room wrote it, rather than fabricating
 // a confidence number. Mirrors honeywell-strategist.html's version.
+//
+// Roadmap #9 (Delivery Package) — extended additively: each item now also
+// carries the shared {claim, severity, rationale, dataPoints, sources, id}
+// fields alongside the original {label, value, explain} this page's own
+// renderExplainItems() already reads. severity is always 'high' for every
+// item on this page — none of the source engines (plant/cyber/supplier)
+// emit a real severity field into the KPI payload, and these are executive-
+// escalated incidents by definition (that's the only reason they reached
+// this portal), so 'high' is grounded in what escalation to this page
+// already means rather than an invented dollar threshold.
 function getExplainItems(data){
   const items = [];
   const k = data.kpis || {};
@@ -275,38 +286,68 @@ function getExplainItems(data){
 
   const exposureVal = kpiExposure(k.exposure);
   if (exposureVal !== '—') {
+    const explain = `Read directly from kpis.exposure in the ${srcLabel} relay payload${data.docType ? ' (source doc type: ' + data.docType + ')' : ''} — not recomputed on this page.`;
     items.push({
       label: 'FINANCIAL EXPOSURE',
       value: exposureVal,
-      explain: `Read directly from kpis.exposure in the ${srcLabel} relay payload${data.docType ? ' (source doc type: ' + data.docType + ')' : ''} — not recomputed on this page.`
+      explain: explain,
+      id: 'honeywell-' + src + '-exposure',
+      claim: 'FINANCIAL EXPOSURE: ' + exposureVal,
+      severity: 'high',
+      rationale: explain,
+      dataPoints: [{ key: 'kpis.exposure', value: exposureVal }],
+      sources: [srcLabel]
     });
   }
 
   const secKpi = k.buffer || k.containment;
   const secVal = kpiSecondary(secKpi);
   if (secVal !== '—') {
+    const secField = k.buffer ? 'buffer.bufferDays' : 'containment.containmentEta';
+    const explain = `Read directly from kpis.${secField} as written by the ${srcLabel} war room.`;
     items.push({
       label: secondaryLabel(src),
       value: secVal,
-      explain: `Read directly from kpis.${k.buffer ? 'buffer.bufferDays' : 'containment.containmentEta'} as written by the ${srcLabel} war room.`
+      explain: explain,
+      id: 'honeywell-' + src + '-secondary',
+      claim: secondaryLabel(src) + ': ' + secVal,
+      severity: 'high',
+      rationale: explain,
+      dataPoints: [{ key: 'kpis.' + secField, value: secVal }],
+      sources: [srcLabel]
     });
   }
 
   const terKpi = k.orders || k.risk;
   const terVal = kpiTertiary(terKpi);
   if (terVal !== '—') {
+    const terField = k.orders ? 'orders.ordersAtRisk' : 'risk';
+    const explain = `Read directly from kpis.${terField} as written by the ${srcLabel} war room.`;
     items.push({
       label: tertiaryLabel(src),
       value: terVal,
-      explain: `Read directly from kpis.${k.orders ? 'orders.ordersAtRisk' : 'risk'} as written by the ${srcLabel} war room.`
+      explain: explain,
+      id: 'honeywell-' + src + '-tertiary',
+      claim: tertiaryLabel(src) + ': ' + terVal,
+      severity: 'high',
+      rationale: explain,
+      dataPoints: [{ key: 'kpis.' + terField, value: terVal }],
+      sources: [srcLabel]
     });
   }
 
   if (data.outputs && data.outputs.length) {
+    const explain = `The KPI figures above are the war room's own computation across its 6-engine pipeline, escalated as-is by the strategist — this page displays them without re-scoring.`;
     items.push({
       label: '6-ENGINE ANALYSIS',
       value: data.outputs.length + ' engine output' + (data.outputs.length === 1 ? '' : 's'),
-      explain: `The KPI figures above are the war room's own computation across its 6-engine pipeline, escalated as-is by the strategist — this page displays them without re-scoring.`
+      explain: explain,
+      id: 'honeywell-' + src + '-engine-analysis',
+      claim: '6-ENGINE ANALYSIS: ' + data.outputs.length + ' engine output' + (data.outputs.length === 1 ? '' : 's'),
+      severity: 'high',
+      rationale: explain,
+      dataPoints: [{ key: 'outputs.length', value: data.outputs.length }],
+      sources: [srcLabel]
     });
   }
 
@@ -464,6 +505,13 @@ function hwFeedException(data){
   }
 }
 
+// Roadmap #9 -- stashed here so exportClientPackage() (defined below) can
+// reuse the exact same explain items render() already computed, rather than
+// re-deriving anything. This page has no quality-score engine or document
+// counter wired, so qualityScore/documentCount stay undefined -- honest
+// nulls in the built package, same convention as insurance-executive-portal.html.
+let lastExplainItems = [];
+
 function render(){
   const data = loadRelay();
   if(!data){ renderEmpty(); return; }
@@ -486,7 +534,9 @@ function render(){
     <div class="kpi"><div class="kpi-val cyan">${kpiTertiary(k.orders || k.risk)}</div><div class="kpi-lbl">${tertiaryLabel(data.source)}</div></div>
   </div>`;
 
-  html += renderExplainItems(getExplainItems(data));
+  const explainItems = getExplainItems(data);
+  lastExplainItems = explainItems;
+  html += renderExplainItems(explainItems);
 
   registerHoneywellAnomalies(data);
   hwFeedException(data);
@@ -524,9 +574,29 @@ function render(){
   document.getElementById('wrap').innerHTML = html;
 }
 
+// Roadmap #9 -- pure assembly layer, same convention as TSMDeliveryPackage
+// itself: nothing computed here, just reuses lastExplainItems already
+// produced by render() above and hands it to the engine.
+window.exportClientPackage = function () {
+  if (!window.TSMDeliveryPackage) {
+    showToast('Delivery package engine not loaded.', true);
+    return;
+  }
+  const pkg = TSMDeliveryPackage.build({
+    domain: 'Honeywell',
+    explainItems: lastExplainItems
+  });
+  const blob = new Blob([JSON.stringify(pkg, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'tsm-client-package-' + Date.now() + '.json';
+  a.click();
+};
+
 render();
 window.addEventListener('storage', e => { if(e.key === RELAY_KEY) render(); });
 </script>
+  <script src="/html/shared/tsm-delivery-package.js"></script>
   <script src="/html/shared/tsm-memory-engine.js"></script>
   <script src="../../js/tsm-guide-engine.js" defer></script>
 </body>
