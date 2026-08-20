@@ -1153,6 +1153,96 @@ app.get('/api/bpo/reports/case-summary', requireRole(BPO_REPORT_ROLES), async (r
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
+// TSM Operational OS — universal cross-vertical executive recovery.
+// This is the vertical-dispatch entry point: today only 'bpo' has a real
+// adapter (below), pulling from the same tsmLedger.bpo* methods every
+// other BPO route already uses — not the global.bpoStore stub, which
+// returns hardcoded fake data and was the actual reason earlier runs of
+// this endpoint showed 0 exposure / 0 cases regardless of caseId. Every
+// other vertical returns 501 rather than a fabricated empty package,
+// pending its own real adapter.
+app.get('/api/operational-os', requireRole(BPO_REPORT_ROLES), async (req, res) => {
+  const { caseId, vertical, tenantId, clientId } = req.query;
+  const normalizedVertical = (vertical || '').toLowerCase();
+
+  if (!caseId) {
+    return res.status(400).json({
+      ok: false,
+      operationalOS: true,
+      error: 'caseId is required'
+    });
+  }
+
+  try {
+    if (normalizedVertical !== 'bpo') {
+      return res.status(501).json({
+        ok: false,
+        operationalOS: true,
+        error: 'Operational OS vertical adapter not implemented',
+        vertical: normalizedVertical,
+        caseId
+      });
+    }
+
+    const workItem = await tsmLedger.bpoGetWorkItem(caseId);
+    if (!workItem) {
+      return res.status(404).json({
+        ok: false,
+        operationalOS: true,
+        error: 'BPO work item not found',
+        caseId
+      });
+    }
+
+    if (req.tsmSession.role === 'client' && workItem.clientId !== req.tsmSession.clientId) {
+      return res.status(404).json({
+        ok: false,
+        operationalOS: true,
+        error: 'BPO work item not found',
+        caseId
+      });
+    }
+
+    const [bncaReports, slaEvents, notes, documents] = await Promise.all([
+      tsmLedger.bpoListBncaReports({ caseId }),
+      tsmLedger.bpoListSlaEvents({ caseId }),
+      tsmLedger.bpoListNotes({ caseId }),
+      tsmLedger.bpoListDocuments({ caseId })
+    ]);
+
+    const result = buildRecoveryPackage({
+      member: {
+        id: tenantId || clientId || workItem.tenantId || workItem.clientId || null,
+        name: workItem.clientName || workItem.tenantName || 'SMB Member'
+      },
+      cases: [workItem],
+      bncaReports,
+      slaEvents,
+      notes,
+      documents
+    });
+
+    return res.json({
+      ok: true,
+      operationalOS: true,
+      vertical: normalizedVertical,
+      caseId,
+      tenantId: tenantId || workItem.tenantId || null,
+      clientId: clientId || workItem.clientId || null,
+      package: result
+    });
+  } catch (error) {
+    console.error('[TSM Operational OS]', error);
+
+    return res.status(500).json({
+      ok: false,
+      operationalOS: true,
+      error: 'Operational OS recovery package failed',
+      message: error.message
+    });
+  }
+});
+
 // ── CONCIERGE TRANSPORT (quotes / bookings / missions) ──────────────────────
 // Routes sit on top of server/services/concierge-transport-adapter.js
 // (defaultRouter, provider-neutral) + server/tsm-ledger-service.js
@@ -5615,69 +5705,7 @@ app.use(
 );
 
 // ── START ─────────────────────────────────────────────────────────────────────
-const server = 
-// TSM Operational OS universal executive recovery endpoint.
-// Aggregates the existing BPO operational records without replacing
-// the existing BPO routes.
-app.get(
-  '/api/bpo/work-items/:caseId/executive-recovery',
-  requireRole(BPO_REPORT_ROLES),
-  async (req, res) => {
-    try {
-      const caseId = req.params.caseId;
-
-      const [
-        workItem,
-        bncaReports,
-        slaEvents,
-        notes,
-        documents
-      ] = await Promise.all([
-        bpoStore.getWorkItem(caseId),
-        bpoStore.listBncaReports(caseId),
-        bpoStore.listSlaEvents(caseId),
-        bpoStore.listNotes(caseId),
-        bpoStore.listDocuments(caseId)
-      ]);
-
-      if (!workItem) {
-        return res.status(404).json({
-          ok: false,
-          error: 'BPO work item not found',
-          caseId
-        });
-      }
-
-      const report = buildRecoveryPackage({
-        member: {
-          id: workItem.tenantId || workItem.clientId || null,
-          name: workItem.clientName || workItem.tenantName || null
-        },
-        cases: [workItem],
-        bncaReports,
-        slaEvents,
-        notes,
-        documents
-      });
-
-      return res.json({
-        ok: true,
-        caseId,
-        report
-      });
-    } catch (error) {
-      console.error('[TSM Operational OS] executive recovery failed:', error);
-
-      return res.status(500).json({
-        ok: false,
-        error: 'Executive Recovery aggregation failed',
-        message: error.message
-      });
-    }
-  }
-);
-
-app.listen(PORT, '0.0.0.0', () => {
+const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`TSM Platform Core Engine listening on port ${PORT}`);
 });
 
