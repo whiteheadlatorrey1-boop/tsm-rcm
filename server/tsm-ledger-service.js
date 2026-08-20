@@ -981,6 +981,32 @@ function bpoGenerateDocId() {
 }
 
 /**
+ * Truncates a UTF-8 byte buffer to at most maxBytes without splitting a
+ * multi-byte character at the cut point. A naive buf.subarray(0, maxBytes)
+ * can land inside a 2-4 byte UTF-8 sequence (e.g. mid-way through an emoji
+ * or CJK character), which Buffer#toString('utf8') then silently renders
+ * as a U+FFFD replacement character on read — not a crash, but a
+ * corrupted-looking tail on stored text. Walks back at most 3 bytes to
+ * find and drop an incomplete trailing sequence.
+ */
+function truncateUtf8Safe(buf, maxBytes) {
+  if (buf.length <= maxBytes) return buf;
+  let end = maxBytes;
+  for (let back = 1; back <= 3 && end - back >= 0; back++) {
+    const byte = buf[end - back];
+    if ((byte & 0xC0) === 0x80) continue; // continuation byte, keep walking back
+    if ((byte & 0xC0) === 0xC0) {
+      // lead byte of a multi-byte sequence — how many bytes does it need?
+      const seqLen = (byte & 0xF8) === 0xF0 ? 4 : (byte & 0xF0) === 0xE0 ? 3 : 2;
+      if (back < seqLen) end -= back; // sequence doesn't fully fit before maxBytes — drop it
+      break;
+    }
+    break; // plain ASCII byte — cut point is already safe
+  }
+  return buf.subarray(0, end);
+}
+
+/**
  * Stores an uploaded file's buffer as ordered base64 chunk documents plus
  * one metadata document. Rejects anything over BPO_DOC_MAX_BYTES before
  * writing anything. Writes a bpo.document_upload audit entry on success.
@@ -1027,7 +1053,7 @@ async function bpoStoreDocument({ caseId, clientId, filename, mimetype, buffer, 
   if (typeof extractedText === 'string' && extractedText.length > 0) {
     let textBuffer = Buffer.from(extractedText, 'utf8');
     if (textBuffer.length > BPO_DOC_TEXT_MAX_BYTES) {
-      textBuffer = textBuffer.subarray(0, BPO_DOC_TEXT_MAX_BYTES);
+      textBuffer = truncateUtf8Safe(textBuffer, BPO_DOC_TEXT_MAX_BYTES);
       textTruncated = true;
     }
     const textEnc = bpoEncryptBuffer(textBuffer);
@@ -1641,6 +1667,7 @@ module.exports = {
   bpoGetDocumentMeta,
   bpoGetDocumentBuffer,
   bpoGetDocumentText,
+  truncateUtf8Safe, // exported for testing only — internal helper, not part of the public ledger API
   bpoDeleteDocument,
   // Concierge transport persistence
   conciergeListMissions,
