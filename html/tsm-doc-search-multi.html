@@ -3230,11 +3230,12 @@ function zsSummary(batchId, html) {
    call itself fails (offline, auth hiccup), the existing upload/classify/
    route pipeline below is completely unaffected — batch tracking is a
    side channel on top of it, not a gate in front of it.
-   NOTE: caseId is only ever passed when the caller has a real linked
-   case; this file currently produces a Mission (buildMissionFromClassification)
-   rather than a Case Engine record, so batches populated purely from
-   this path will show 0 linked cases in their summary until a follow-up
-   wires this ingest flow into bpoUpsertCase / TSMCaseManager. */
+   NOTE: caseId comes from buildCaseFromClassification() (TSMCaseManager.create()),
+   called alongside the existing Mission bridge — see the comment above
+   that function for why both run. A case whose vertical doesn't map to
+   a known Case Engine vertical still gets recorded as a processed
+   document, just without a caseId, so batch counts stay accurate even
+   when linking isn't possible. */
 async function batchPersistCreate({ vertical, source, totalDocuments, tenantId }) {
   try {
     const body = { vertical, source, totalDocuments };
@@ -3591,6 +3592,74 @@ function buildMissionFromClassification(classification, fileName) {
   }
 }
 
+// -- Case Engine bridge (closes the "Documents feed Missions, not Cases"
+// gap flagged against this file's batch-intake analysis) --
+// Runs alongside buildMissionFromClassification() above, not instead of
+// it — the Mission model still drives the Mission Preview modal and the
+// auto-chain war-room launch elsewhere in this file, so removing it would
+// break those. This additionally creates a real bpo_cases record via
+// TSMCaseManager.create(), which is what gives a batch a caseId to link
+// (batchPersistRecordDocument) and a real exposure/severity rollup in
+// batchSummary() — until now that field was always empty for anything
+// uploaded through this screen. Same "unmapped vertical -> skip silently"
+// behavior as the Mission bridge, and same non-fatal try/catch (a case
+// write failure here must never block the existing routing/relay flow).
+const DOC_ROUTER_PRIORITY_TO_SEVERITY = {
+  'High': 'high',
+  'Medium': 'med',
+  'Low': 'low',
+  'Needs Review': 'low'
+};
+
+function buildCaseFromClassification(classification, fileName) {
+  try {
+    if (!window.TSMCaseManager) return null;
+    const primaryCode = classification.primaryVertical || (classification.verticals || [])[0];
+    const caseVertical = DOC_ROUTER_TO_MISSION_VERTICAL[primaryCode];
+    if (!caseVertical) return null; // unmapped/unknown vertical - skip silently, routing still proceeds
+
+    // amount is "0 if none applicable" per the doc-router prompt schema -
+    // treated as "no exposure figure", not a genuine $0, same discipline
+    // memberCaseSummary/batchSummary already apply server-side.
+    const amountNum = Number(classification.amount);
+    const exposure = amountNum > 0 ? amountNum : null;
+
+    // confidence arrives 0-1 from the classifier; TSMCase's
+    // confidenceTierFor()/priorityFor() expect a 0-100 score.
+    const confidence100 = typeof classification.confidence === 'number'
+      ? Math.round(classification.confidence * 100)
+      : null;
+
+    const rec = window.TSMCaseManager.create({
+      sector: caseVertical,
+      vertical: caseVertical,
+      tenantId: (typeof activeClientId !== 'undefined' && activeClientId !== ALL_CLIENTS_ID) ? activeClientId : null,
+      client: classification.client || '',
+      process: 'doc-search-multi:batch-intake',
+      source: 'doc-search-multi',
+      documentId: classification.fileName || fileName,
+      documentType: classification.documentType || '',
+      title: classification.summary || classification.documentType || fileName,
+      description: classification.summary || '',
+      exposure: exposure,
+      confidence: confidence100,
+      severity: DOC_ROUTER_PRIORITY_TO_SEVERITY[classification.priority] || 'low',
+      detectedExceptions: Array.isArray(classification.defectFlags)
+        ? classification.defectFlags.map(flag => ({
+            exceptionId: null,
+            title: flag,
+            severity: DOC_ROUTER_PRIORITY_TO_SEVERITY[classification.priority] || 'low',
+            confidence: confidence100
+          }))
+        : []
+    });
+    return rec;
+  } catch (e) {
+    console.error('Case write failed (non-fatal):', e);
+    return null;
+  }
+}
+
 // Shows the Mission Preview modal and resolves true/false with the user's
 // decision. Only invoked when classificationNeedsReview() is true.
 function showMissionPreview(classification, fileName) {
@@ -3772,6 +3841,7 @@ async function processFile(file, persistBatchId) {
       }
     }
     buildMissionFromClassification(classification, file.name);
+    const caseRec = buildCaseFromClassification(classification, file.name);
 
     const routed = routeDocument(file.name, classification, attachment, extraction);
  
@@ -3799,9 +3869,10 @@ async function processFile(file, persistBatchId) {
     const warRoomBtns = getWarRoomButtons(classification);
 
     uqStatus(qid, `${classification.documentType || "Routed"} → ${badges}${attNote}${warRoomBtns ? '<br><span style="font-size:8px;color:var(--dim);margin-right:4px;">OPEN IN:</span>' + warRoomBtns : ''}`, "ok");
-    // Successfully routed — no caseId yet (this path produces a Mission,
-    // not a Case Engine record; see note above batchPersistCreate).
-    batchPersistRecordDocument(persistBatchId, { ok: true });
+    // Successfully routed — caseId is real when buildCaseFromClassification()
+    // resolved a mapped vertical and TSMCaseManager was loaded; falls back
+    // to no-caseId (still counted as a processed document) otherwise.
+    batchPersistRecordDocument(persistBatchId, { ok: true, caseId: caseRec ? caseRec.caseId : undefined });
 
     // TSM AUTO-CHAIN — single-vertical match + AUTO mode: launch straight into the war room
     if (routed.length === 1 && localStorage.getItem('tsm_auto_mode') !== 'off') {
@@ -4232,6 +4303,7 @@ window.openGenNodeWithDoc = openGenNodeWithDoc;
   </div>
 </div>
 
+<script src="/html/shared/tsm-case-manager.js"></script>
 <script src="/html/tsm-mission-orchestrator.js"></script>
 <script src="/html/shared/tsm-cure-cheatsheet.js"></script>
 
