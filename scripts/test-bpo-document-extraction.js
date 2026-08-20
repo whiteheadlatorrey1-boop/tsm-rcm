@@ -106,6 +106,12 @@ check('module itself is still the router (app.use() contract)', typeof docRouter
         if (idx === -1) return { matchedCount: 0, modifiedCount: 0 };
         if (update.$set) Object.assign(rows[idx], update.$set);
         return { matchedCount: 1, modifiedCount: 1 };
+      },
+      async findOneAndUpdate(query, update, opts) {
+        const idx = rows.findIndex(d => matchesOr(d, query));
+        if (idx === -1) return { value: null };
+        if (update.$set) Object.assign(rows[idx], update.$set);
+        return { value: { ...rows[idx] } };
       }
     };
   }
@@ -209,6 +215,69 @@ check('module itself is still the router (app.use() contract)', typeof docRouter
     extractionError: null,
   }, 'tester');
   check('textTruncated is false for text under the cap', smallMeta.textTruncated === false);
+
+  // 2e. UTF-8-safe truncation: a multi-byte character sitting exactly on
+  // the truncation boundary must not be split into an invalid trailing
+  // byte sequence (which Buffer#toString('utf8') would otherwise render
+  // as U+FFFD). Uses truncateUtf8Safe() directly at a small synthetic cap
+  // rather than the real 5MB BPO_DOC_TEXT_MAX_BYTES, since the property
+  // under test — "don't cut mid-character" — doesn't depend on the cap's
+  // size, just on a multi-byte char landing on the cut line.
+  console.log('\n3. UTF-8-safe truncation (truncateUtf8Safe)');
+  check('truncateUtf8Safe exported', typeof ledger.truncateUtf8Safe === 'function');
+
+  const naiveCut = Buffer.from('aaaaaaaaa\u4e2d', 'utf8').subarray(0, 10); // 9 ascii + 3-byte CJK char, cut at byte 10 (mid-character)
+  check('sanity: naive subarray on this input does produce an invalid tail (confirms the test fixture actually exercises the bug)',
+    naiveCut.toString('utf8').includes('\uFFFD'));
+
+  const safe1 = ledger.truncateUtf8Safe(Buffer.from('aaaaaaaaa\u4e2d', 'utf8'), 10);
+  check('truncateUtf8Safe drops the incomplete multi-byte char instead of emitting U+FFFD',
+    !safe1.toString('utf8').includes('\uFFFD') && safe1.toString('utf8') === 'aaaaaaaaa');
+
+  const safe2 = ledger.truncateUtf8Safe(Buffer.from('hello world', 'utf8'), 5);
+  check('truncateUtf8Safe is a no-op cut for plain ASCII at the boundary', safe2.toString('utf8') === 'hello');
+
+  const safe3 = ledger.truncateUtf8Safe(Buffer.from('👍👍👍', 'utf8'), 4); // each 👍 is 4 bytes; cap mid-second emoji
+  check('truncateUtf8Safe handles a 4-byte emoji sequence at the boundary',
+    !safe3.toString('utf8').includes('\uFFFD') && safe3.toString('utf8') === '👍');
+
+  const safe4 = ledger.truncateUtf8Safe(Buffer.from('hello', 'utf8'), 100);
+  check('truncateUtf8Safe is a no-op when buffer is already under the cap', safe4.equals(Buffer.from('hello', 'utf8')));
+
+  // Full round trip through bpoStoreDocument with a multi-byte char
+  // sitting on the real truncation boundary isn't practical to drive at
+  // the real 5MB cap through the fake in-memory driver, but the unit
+  // coverage of truncateUtf8Safe() above is exactly the code path
+  // bpoStoreDocument calls it through.
+
+  // 2f. Deleted document: bpoGetDocumentText must behave the same as
+  // bpoGetDocumentBuffer for a soft-deleted doc — return null (not throw,
+  // not return stale text).
+  console.log('\n4. Soft-deleted document');
+  check('bpoDeleteDocument exported', typeof ledger.bpoDeleteDocument === 'function');
+  await ledger.bpoDeleteDocument(meta.docId, 'tester');
+  const afterDelete = await ledger.bpoGetDocumentText(meta.docId, 'tester');
+  check('bpoGetDocumentText returns null for a soft-deleted doc', afterDelete === null);
+  const afterDeleteBuf = await ledger.bpoGetDocumentBuffer(meta.docId, 'tester').catch(e => e);
+  check('bpoGetDocumentBuffer also returns null (not a thrown error) for the same soft-deleted doc',
+    afterDeleteBuf === null);
+
+  // 2g. Malformed / edge-case inputs to bpoStoreDocument itself.
+  console.log('\n5. Malformed extraction inputs to bpoStoreDocument');
+  const emptyStringMeta = await ledger.bpoStoreDocument({
+    caseId: 'case_003', clientId: 'client_9', filename: 'empty.txt', mimetype: 'text/plain',
+    buffer: Buffer.from('placeholder'), extractedText: '', extractionError: null,
+  }, 'tester');
+  check('empty-string extractedText ("" — falsy-length, not null) is treated as no text, not stored/chunked',
+    emptyStringMeta.hasExtractedText === false && emptyStringMeta.textChunkCount === 0);
+
+  const undefinedTextMeta = await ledger.bpoStoreDocument({
+    caseId: 'case_003', clientId: 'client_9', filename: 'no-field.txt', mimetype: 'text/plain',
+    buffer: Buffer.from('placeholder'),
+    // extractedText/extractionError omitted entirely
+  }, 'tester');
+  check('omitted extractedText/extractionError fields do not throw, default to no-text',
+    undefinedTextMeta.hasExtractedText === false && undefinedTextMeta.extractionError === null);
 
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed > 0 ? 1 : 0);
