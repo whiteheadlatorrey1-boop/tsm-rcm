@@ -1082,6 +1082,7 @@ async function bpoListBncaReports({ caseId, limit = 50 } = {}) {
 
 const BPO_DOC_MAX_BYTES = 8 * 1024 * 1024; // matches routes/doc-router.js, routes/construction.js, routes/finops.js upload caps
 const BPO_DOC_CHUNK_SIZE_BYTES = 400 * 1024; // pre-base64 size; ~533KB post-encoding, safely under a 1 MiB document ceiling
+const BPO_DOC_TEXT_MAX_BYTES = 5 * 1024 * 1024; // extracted text is truncated (not rejected) past this — the source file already passed BPO_DOC_MAX_BYTES, extraction shouldn't be able to fail the whole upload
 
 // ── Encryption at rest ──────────────────────────────────────────────────
 // Firestore's Mongo-compat layer gives no server-side encryption knob of
@@ -1153,7 +1154,7 @@ function bpoGenerateDocId() {
  * one metadata document. Rejects anything over BPO_DOC_MAX_BYTES before
  * writing anything. Writes a bpo.document_upload audit entry on success.
  */
-async function bpoStoreDocument({ caseId, clientId, filename, mimetype, buffer }, actor) {
+async function bpoStoreDocument({ caseId, clientId, filename, mimetype, buffer, extractedText, extractionError }, actor) {
   if (!caseId) throw new Error('caseId is required');
   if (!buffer || !buffer.length) throw new Error('file buffer is required');
   if (buffer.length > BPO_DOC_MAX_BYTES) {
@@ -1173,7 +1174,41 @@ async function bpoStoreDocument({ caseId, clientId, filename, mimetype, buffer }
   for (let i = 0; i < chunkCount; i++) {
     const start = i * BPO_DOC_CHUNK_SIZE_BYTES;
     const slice = ciphertext.subarray(start, start + BPO_DOC_CHUNK_SIZE_BYTES);
-    await chunksCol.insertOne({ docId, index: i, data: slice.toString('base64') });
+    // kind: 'file' explicitly tags these as raw-file chunks so they can
+    // share BPO_DOC_CHUNKS_COLLECTION with the extracted-text chunks below
+    // without index collisions. Pre-existing chunks written before this
+    // field existed have no `kind` at all — bpoGetDocumentBuffer treats
+    // "no kind" the same as kind:'file' for backward compatibility.
+    await chunksCol.insertOne({ docId, index: i, data: slice.toString('base64'), kind: 'file' });
+  }
+
+  // Extracted text (docs/BPO_PRODUCTION_READINESS.md Phase 3, "Add metadata
+  // extraction") gets the same at-rest encryption as the file bytes, its
+  // own IV/authTag, and its own chunk set in the same collection tagged
+  // kind:'text'. Best-effort and non-fatal: no text / an extraction error
+  // never blocks storing the document itself.
+  let hasExtractedText = false;
+  let textChunkCount = 0;
+  let textEncIv = null;
+  let textEncAuthTag = null;
+  let textTruncated = false;
+
+  if (typeof extractedText === 'string' && extractedText.length > 0) {
+    let textBuffer = Buffer.from(extractedText, 'utf8');
+    if (textBuffer.length > BPO_DOC_TEXT_MAX_BYTES) {
+      textBuffer = textBuffer.subarray(0, BPO_DOC_TEXT_MAX_BYTES);
+      textTruncated = true;
+    }
+    const textEnc = bpoEncryptBuffer(textBuffer);
+    textEncIv = textEnc.iv;
+    textEncAuthTag = textEnc.authTag;
+    textChunkCount = Math.ceil(textEnc.ciphertext.length / BPO_DOC_CHUNK_SIZE_BYTES) || 1;
+    for (let i = 0; i < textChunkCount; i++) {
+      const start = i * BPO_DOC_CHUNK_SIZE_BYTES;
+      const slice = textEnc.ciphertext.subarray(start, start + BPO_DOC_CHUNK_SIZE_BYTES);
+      await chunksCol.insertOne({ docId, index: i, data: slice.toString('base64'), kind: 'text' });
+    }
+    hasExtractedText = true;
   }
 
   const metaCol = await bpoDocMetaCollection();
@@ -1189,12 +1224,18 @@ async function bpoStoreDocument({ caseId, clientId, filename, mimetype, buffer }
     encAlgo: BPO_DOC_ENC_ALGO,
     encIv: iv,
     encAuthTag: authTag,
+    hasExtractedText,
+    textChunkCount,
+    textEncIv,
+    textEncAuthTag,
+    textTruncated,
+    extractionError: extractionError || null,
   };
   await metaCol.insertOne(meta);
 
   await bpoWriteAudit({
     actor, action: 'document.upload', entityType: 'work_item', entityId: caseId,
-    detail: { docId, filename: meta.filename, sizeBytes: meta.sizeBytes },
+    detail: { docId, filename: meta.filename, sizeBytes: meta.sizeBytes, hasExtractedText },
   });
 
   return meta;
@@ -1228,7 +1269,12 @@ async function bpoGetDocumentBuffer(docId, actor) {
   if (!meta) return null;
 
   const chunksCol = await bpoDocChunksCollection();
-  const chunks = await chunksCol.find({ docId }).sort({ index: 1 }).toArray();
+  // kind:'file' or missing kind (pre-dates the text-extraction feature,
+  // see bpoStoreDocument) — must exclude kind:'text' chunks that may
+  // share this docId in the same collection.
+  const chunks = await chunksCol
+    .find({ docId, $or: [{ kind: 'file' }, { kind: { $exists: false } }] })
+    .sort({ index: 1 }).toArray();
   if (chunks.length !== meta.chunkCount) {
     throw new Error(`document ${docId} is missing chunks (expected ${meta.chunkCount}, found ${chunks.length})`);
   }
@@ -1247,6 +1293,40 @@ async function bpoGetDocumentBuffer(docId, actor) {
   });
 
   return { meta, buffer };
+}
+
+/**
+ * Returns a document's extracted text (see bpoStoreDocument), decrypted,
+ * or null text if the doc had no supported/successful extraction. Returns
+ * null overall (not just null text) if the doc doesn't exist or was
+ * soft-deleted, same as bpoGetDocumentBuffer. Writes a lighter-weight
+ * audit entry than a full binary download, since reading extracted text
+ * is still an access to the document's content.
+ */
+async function bpoGetDocumentText(docId, actor) {
+  const meta = await bpoGetDocumentMeta(docId);
+  if (!meta) return null;
+
+  if (!meta.hasExtractedText) {
+    return { meta, text: null };
+  }
+
+  const chunksCol = await bpoDocChunksCollection();
+  const chunks = await chunksCol
+    .find({ docId, kind: 'text' })
+    .sort({ index: 1 }).toArray();
+  if (chunks.length !== meta.textChunkCount) {
+    throw new Error(`document ${docId} is missing text chunks (expected ${meta.textChunkCount}, found ${chunks.length})`);
+  }
+  const stored = Buffer.concat(chunks.map(c => Buffer.from(c.data, 'base64')));
+  const buffer = bpoDecryptBuffer(stored, meta.textEncIv, meta.textEncAuthTag);
+
+  await bpoWriteAudit({
+    actor, action: 'document.text_access', entityType: 'work_item', entityId: meta.caseId,
+    detail: { docId, filename: meta.filename },
+  });
+
+  return { meta, text: buffer.toString('utf8') };
 }
 
 /**
@@ -1735,6 +1815,7 @@ module.exports = {
   bpoListDocuments,
   bpoGetDocumentMeta,
   bpoGetDocumentBuffer,
+  bpoGetDocumentText,
   bpoDeleteDocument,
   // Concierge transport persistence
   conciergeListMissions,

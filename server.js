@@ -28,6 +28,10 @@ process.on('unhandledRejection', (reason, promise) => {
 
 const https = require('https');
 const multer = require('multer');
+// Required once here (not just at the app.use() mount point below) so the
+// BPO document-upload route can reuse its extractDocText()/isSupported()
+// helpers instead of duplicating the pdf/docx/xlsx extraction logic.
+const docRouter = require('./routes/doc-router');
 const sentinelUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 } // 10MB per file, plenty for contracts/claims docs
@@ -1039,12 +1043,33 @@ const bpoDocUpload = multer({
 app.post('/api/bpo/work-items/:caseId/documents', requireRole(BPO_INTERNAL_ROLES), bpoDocUpload.single('file'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ ok: false, error: 'No file uploaded' });
+
+    // Metadata extraction (docs/BPO_PRODUCTION_READINESS.md Phase 3, "Add
+    // metadata extraction" — was previously not wired). Reuses the same
+    // extractDocText()/isSupported() helpers routes/doc-router.js already
+    // exposes at POST /api/doc-router/extract-file, so pdf/docx/xlsx
+    // parsing logic lives in exactly one place. Best-effort: an unsupported
+    // file type or an extraction failure must never block the upload
+    // itself — the document is still stored, just without extracted text.
+    let extractedText = null;
+    let extractionError = null;
+    if (docRouter.isSupported(req.file.originalname)) {
+      try {
+        extractedText = await docRouter.extractDocText(req.file);
+      } catch (extractErr) {
+        extractionError = extractErr.message || 'extraction_failed';
+        console.error(`[bpo documents] extraction failed for ${req.file.originalname}:`, extractionError);
+      }
+    }
+
     const meta = await tsmLedger.bpoStoreDocument({
       caseId: req.params.caseId,
       clientId: req.body && req.body.clientId,
       filename: req.file.originalname,
       mimetype: req.file.mimetype,
       buffer: req.file.buffer,
+      extractedText,
+      extractionError,
     }, req.tsmSession.label || req.tsmSession.role);
     res.json({ ok: true, document: meta });
   } catch (e) { res.status(400).json({ ok: false, error: e.message }); }
@@ -1081,6 +1106,21 @@ app.get('/api/bpo/documents/:docId/download', requireRole(BPO_CLIENT_VIEW_ROLES)
     res.set('Content-Type', result.meta.mimetype || 'application/octet-stream');
     res.set('Content-Disposition', `attachment; filename="${result.meta.filename.replace(/"/g, '')}"`);
     res.send(result.buffer);
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// Extracted text, separate from the raw-bytes download above, so callers
+// that just want searchable/summarizable text (e.g. a future case-analysis
+// step) don't have to pull the full binary and re-run extraction
+// client-side. Same client/cross-client 404-not-403 rule as download.
+app.get('/api/bpo/documents/:docId/text', requireRole(BPO_CLIENT_VIEW_ROLES), async (req, res) => {
+  try {
+    const result = await tsmLedger.bpoGetDocumentText(req.params.docId, req.tsmSession.label || req.tsmSession.role);
+    if (!result) return res.status(404).json({ ok: false, error: 'Document not found' });
+    if (req.tsmSession.role === 'client' && result.meta.clientId !== req.tsmSession.clientId) {
+      return res.status(404).json({ ok: false, error: 'Document not found' });
+    }
+    res.json({ ok: true, text: result.text, extractionError: result.meta.extractionError || null });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
@@ -2423,7 +2463,7 @@ app.use(require('./routes/construction'));
 app.use(require('./routes/property-accounting'));
 app.use(require('./routes/finops'));
 app.use(require('./routes/live-data'));
-app.use(require('./routes/doc-router'));
+app.use(docRouter);
 
 // ── RCM RELAY ─────────────────────────────────────────────────────────────────
 // Server-side staging for the FinOps Doc Showcase -> TSM RCM OS handoff.
