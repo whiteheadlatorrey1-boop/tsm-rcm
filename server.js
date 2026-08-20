@@ -7,16 +7,6 @@ console.error = function(...args) {
 };
 
 
-global.bpoStore = {
-  getWorkItem: async (id) => ({ caseId: id, status: "ACTIVE" }),
-  getExecutiveRecovery: async (id) => ({ caseId: id, recoveryPlan: "Standard Escalation" }),
-  listBncaReports: async () => [],
-  listSlaEvents: async () => [],
-  listNotes: async () => [],
-  listDocuments: async () => []
-};
-var bpoStore = global.bpoStore;
-
 require('dotenv').config({ override: true });
 const express = require('express');
 // ============================================================
@@ -745,10 +735,65 @@ app.get('/api/bpo/work-items', requireRole(BPO_CLIENT_VIEW_ROLES), async (req, r
 });
 
 
-app.get("/api/bpo/work-items/:caseId/executive-recovery", async (req, res) => {
-  const caseId = req.params.caseId;
-  const recovery = await bpoStore.getExecutiveRecovery(caseId);
-  return res.json({ ok: true, caseId, recovery });
+// Executive Recovery — GET returns the computed analytics package for
+// this one case (same buildRecoveryPackage() engine /api/operational-os
+// uses, scoped to a single caseId instead of a vertical sweep), keyed as
+// `report` to match html/tsm-operational-os-executive.html's contract.
+// Was previously wired to global.bpoStore.getExecutiveRecovery, a dev
+// stub that always returned the same hardcoded { recoveryPlan: "Standard
+// Escalation" } regardless of caseId — the same class of bug the
+// /api/operational-os comment above already documents having fixed once.
+app.get('/api/bpo/work-items/:caseId/executive-recovery', requireRole(BPO_CLIENT_VIEW_ROLES), async (req, res) => {
+  try {
+    const caseId = req.params.caseId;
+    const workItem = await tsmLedger.bpoGetWorkItem(caseId);
+    if (!workItem) return res.status(404).json({ ok: false, error: 'Work item not found' });
+
+    if (req.tsmSession.role === 'client' && workItem.clientId !== req.tsmSession.clientId) {
+      return res.status(404).json({ ok: false, error: 'Work item not found' });
+    }
+
+    const [bncaReports, slaEvents, notes, documents] = await Promise.all([
+      tsmLedger.bpoListBncaReports({ caseId }),
+      tsmLedger.bpoListSlaEvents({ caseId }),
+      tsmLedger.bpoListNotes({ caseId }),
+      tsmLedger.bpoListDocuments({ caseId })
+    ]);
+
+    const report = buildRecoveryPackage({
+      member: {
+        id: workItem.tenantId || workItem.clientId || null,
+        name: workItem.clientName || workItem.tenantName || 'SMB Member'
+      },
+      cases: [workItem],
+      bncaReports,
+      slaEvents,
+      notes,
+      documents
+    });
+
+    res.json({ ok: true, caseId, report });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// Executive Recovery — POST persists the war room's assembled package
+// (situation/strategy/tabs/recovery — see bpo-executive-recovery.js) as
+// a saved snapshot, distinct from the computed `report` above. Previously
+// this route didn't exist at all under POST, so the war room's "save"
+// action 404'd silently every time (fetchJSON only surfaces errors via
+// try/catch around the whole build flow, so this failed without a
+// visible error to the user).
+app.post('/api/bpo/work-items/:caseId/executive-recovery', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const caseId = req.params.caseId;
+    const workItem = await tsmLedger.bpoGetWorkItem(caseId);
+    if (!workItem) return res.status(404).json({ ok: false, error: 'Work item not found' });
+
+    const saved = await tsmLedger.bpoSaveExecutiveRecovery(
+      caseId, req.body || {}, req.tsmSession.label || req.tsmSession.role
+    );
+    res.json({ ok: true, caseId, executiveRecoveryPackage: saved });
+  } catch (e) { res.status(400).json({ ok: false, error: e.message }); }
 });
 
 app.get('/api/bpo/work-items/:caseId', requireRole(BPO_CLIENT_VIEW_ROLES), async (req, res) => {
@@ -1156,11 +1201,13 @@ app.get('/api/bpo/reports/case-summary', requireRole(BPO_REPORT_ROLES), async (r
 // TSM Operational OS — universal cross-vertical executive recovery.
 // This is the vertical-dispatch entry point: today only 'bpo' has a real
 // adapter (below), pulling from the same tsmLedger.bpo* methods every
-// other BPO route already uses — not the global.bpoStore stub, which
-// returns hardcoded fake data and was the actual reason earlier runs of
-// this endpoint showed 0 exposure / 0 cases regardless of caseId. Every
-// other vertical returns 501 rather than a fabricated empty package,
-// pending its own real adapter.
+// other BPO route already uses. (Earlier runs of this endpoint showed 0
+// exposure / 0 cases regardless of caseId because it was wired to a dev
+// stub returning hardcoded fake data — fixed; the stub itself, and the
+// /api/bpo/work-items/:caseId/executive-recovery route that had the same
+// problem, have both since been removed/rewired.) Every other vertical
+// returns 501 rather than a fabricated empty package, pending its own
+// real adapter.
 app.get('/api/operational-os', requireRole(BPO_REPORT_ROLES), async (req, res) => {
   const { caseId, vertical, tenantId, clientId } = req.query;
   const normalizedVertical = (vertical || '').toLowerCase();
