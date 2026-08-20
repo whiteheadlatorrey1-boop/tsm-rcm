@@ -77,6 +77,40 @@ function caseExposure(c) {
   );
 }
 
+// Most cases don't carry their own exposure field — the dollar estimate
+// instead lives on the case's BNCA report(s), under exposure.ifIgnored /
+// exposure.ifActed (written by TSMBNCAExposureEngine, see
+// tsm-ledger-service.js#bpoSaveBncaReport). This is real, previously
+// computed data — not a fabricated fallback — so it's fair game once a
+// case has no exposure field of its own.
+function bncaExposureForCase(bncaReports, caseId) {
+  if (!caseId || !Array.isArray(bncaReports) || !bncaReports.length) return null;
+
+  const reports = bncaReports.filter(r => r && r.caseId === caseId);
+  if (!reports.length) return null;
+
+  // Most recent report wins. bpoListBncaReports already sorts desc by ts,
+  // but don't assume caller order — sort defensively.
+  const latest = reports.slice().sort(
+    (a, b) => new Date(b.ts || 0) - new Date(a.ts || 0)
+  )[0];
+
+  const exposure = latest && latest.exposure;
+  if (!exposure || typeof exposure !== 'object') return null;
+
+  return num(exposure.ifIgnored, exposure.ifActed);
+}
+
+// The value actually used everywhere in the package: the case's own
+// exposure field if it has one, else the latest BNCA-derived estimate
+// for that case. Still never fabricated — either a real stored case
+// field or a real stored BNCA exposure figure, never a guess.
+function resolvedExposure(c, bncaReports) {
+  const direct = caseExposure(c);
+  if (direct !== null) return direct;
+  return bncaExposureForCase(bncaReports, first(c.caseId, c.id));
+}
+
 function caseRecovered(c) {
   return num(
     c.recoveredAmount,
@@ -147,9 +181,16 @@ function buildRecoveryPackage(input = {}) {
   const documents = Array.isArray(input.documents) ? input.documents : [];
 
   const exposure = cases.reduce((sum, c) => {
-    const value = caseExposure(c);
+    const value = resolvedExposure(c, bnca);
     return sum + (value === null ? 0 : value);
   }, 0);
+
+  // Track whether any case's exposure figure actually came from a BNCA
+  // report rather than the case record itself, so the package can be
+  // honest about where the number came from (methodology, below).
+  const exposureFromBnca = cases.some(
+    c => caseExposure(c) === null && bncaExposureForCase(bnca, first(c.caseId, c.id)) !== null
+  );
 
   const recovered = cases.reduce((sum, c) => sum + caseRecovered(c), 0);
   const prevented = cases.reduce((sum, c) => sum + casePrevented(c), 0);
@@ -174,7 +215,7 @@ function buildRecoveryPackage(input = {}) {
     const row = verticalMap[vertical];
     row.cases++;
 
-    const e = caseExposure(c);
+    const e = resolvedExposure(c, bnca);
     if (e !== null) row.exposure += e;
 
     row.recovered += caseRecovered(c);
@@ -279,7 +320,7 @@ function buildRecoveryPackage(input = {}) {
         c.action,
         'Review and resolve operational exception'
       ),
-      exposure: caseExposure(c)
+      exposure: resolvedExposure(c, bnca)
     })),
 
     escalationTriggers,
@@ -304,7 +345,8 @@ function buildRecoveryPackage(input = {}) {
       verticalsSupported: VERTICALS,
       financialValuesOnlyFromStructuredData: true,
       fabricatedExposure: false,
-      fabricatedRecoveryRate: false
+      fabricatedRecoveryRate: false,
+      exposureIncludesBncaDerivedFigures: exposureFromBnca
     }
   };
 }
