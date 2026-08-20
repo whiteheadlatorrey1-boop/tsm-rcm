@@ -329,6 +329,19 @@ const BPO_CASES_COLLECTION = 'bpo_cases';
 // would collide two meanings of "client".
 const TSM_MEMBERS_COLLECTION = 'tsm_members';
 
+// Batch intake layer (doc-search-multi ZIP/multi-file ingest). A Batch is
+// the persisted counterpart to the DOM-only progress card zsNewBatch()
+// creates client-side today — it survives a refresh and gives the
+// per-file fault-isolated loop in tsm-doc-search-multi.html something to
+// stamp results onto instead of 250 unconnected processFile() calls.
+// caseIds accumulates as each file's classification is wired into the
+// universal Case Engine (bpo_cases) via bpoUpsertCase, so a batch's
+// rollup (batchSummary) is real aggregation over those linked cases —
+// same "don't invent a number" discipline as memberCaseSummary, not a
+// separately-tracked exposure total that could drift from the cases
+// themselves.
+const TSM_BATCHES_COLLECTION = 'tsm_batches';
+
 const BPO_PRIORITIES = ['low', 'medium', 'high', 'critical'];
 
 async function bpoClientsCollection() {
@@ -369,6 +382,11 @@ async function bpoCasesCollection() {
 async function tsmMembersCollection() {
   const database = await getDb();
   return database.collection(TSM_MEMBERS_COLLECTION);
+}
+
+async function tsmBatchesCollection() {
+  const database = await getDb();
+  return database.collection(TSM_BATCHES_COLLECTION);
 }
 
 /**
@@ -805,6 +823,157 @@ async function memberCaseSummary(memberId) {
       if (!Number.isNaN(deadlineMs) && deadlineMs - now <= SEVEN_DAYS_MS) {
         summary.slaAtRisk += 1;
       }
+    }
+  }
+
+  return summary;
+}
+
+// ── Batch intake layer ──────────────────────────────────────────────────
+// Closes the gap flagged against tsm-doc-search-multi.html: no persisted
+// TSMBatch entity, no batchId on the resulting case records, no batch-
+// level exposure rollup, and non-ZIP multi-select uploads had zero shared
+// context linking them. This gives the ingest UI a real record to create
+// up front and update as its existing fault-isolated per-file loop runs.
+
+function batchGenerateId() {
+  return `batch-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/**
+ * Creates a persisted batch. Call this once, before the per-file loop
+ * starts (ZIP-expanded or plain multi-select — both cases now get a
+ * shared batchId to stamp onto their resulting cases, closing the
+ * "250 independent processFile() calls" gap for non-ZIP uploads too).
+ */
+async function batchCreate({ vertical, source, totalDocuments, tenantId } = {}, actor) {
+  const total = Number.isFinite(Number(totalDocuments)) ? Number(totalDocuments) : 0;
+  if (total <= 0) throw new Error('totalDocuments required');
+
+  const col = await tsmBatchesCollection();
+  const now = new Date().toISOString();
+  const doc = {
+    batchId: batchGenerateId(),
+    vertical: vertical || 'unknown',
+    source: source || 'upload',
+    tenantId: tenantId || null,
+    totalDocuments: total,
+    processedDocuments: 0,
+    failedDocuments: 0,
+    caseIds: [],
+    status: 'processing',
+    createdAt: now,
+    updatedAt: now,
+    completedAt: null,
+  };
+  await col.insertOne(doc);
+  await bpoWriteAudit({
+    actor, action: 'batch.create', entityType: 'batch', entityId: doc.batchId,
+    detail: { vertical: doc.vertical, totalDocuments: total },
+  });
+  return doc;
+}
+
+async function batchGet(batchId) {
+  const col = await tsmBatchesCollection();
+  return col.findOne({ batchId });
+}
+
+async function batchList({ vertical, tenantId, status, limit = 200 } = {}) {
+  const col = await tsmBatchesCollection();
+  const query = {};
+  if (vertical) query.vertical = vertical;
+  if (tenantId) query.tenantId = tenantId;
+  if (status) query.status = status;
+  return col.find(query).sort({ createdAt: -1 }).limit(limit).toArray();
+}
+
+/**
+ * Records the outcome of one file in the batch's existing per-file
+ * fault-isolated loop (the loop itself is unchanged — this just gives it
+ * somewhere to report to instead of nowhere). Pass caseId when the file
+ * was successfully classified and linked into the Case Engine via
+ * bpoUpsertCase; pass ok:false with no caseId when the file was skipped
+ * (the loop's existing `continue` path). Flips status to 'complete' once
+ * processed+failed reaches totalDocuments -- never fabricates completion
+ * early, and is safe to call out of order/concurrently since counters
+ * are incremented with $inc rather than read-modify-write.
+ */
+async function batchRecordDocument(batchId, { caseId, ok = true } = {}, actor) {
+  if (!batchId) throw new Error('batchId required');
+  const col = await tsmBatchesCollection();
+  const existing = await col.findOne({ batchId });
+  if (!existing) throw new Error(`batch not found: ${batchId}`);
+
+  const inc = ok ? { processedDocuments: 1 } : { failedDocuments: 1 };
+  const update = { $inc: inc, $set: { updatedAt: new Date().toISOString() } };
+  if (caseId && !existing.caseIds.includes(caseId)) {
+    update.$addToSet = { caseIds: caseId };
+  }
+  await col.updateOne({ batchId }, update);
+
+  const refreshed = await col.findOne({ batchId });
+  const done = refreshed.processedDocuments + refreshed.failedDocuments >= refreshed.totalDocuments;
+  if (done && refreshed.status !== 'complete') {
+    const now = new Date().toISOString();
+    await col.updateOne({ batchId }, { $set: { status: 'complete', completedAt: now, updatedAt: now } });
+    await bpoWriteAudit({
+      actor, action: 'batch.complete', entityType: 'batch', entityId: batchId,
+      detail: { totalDocuments: refreshed.totalDocuments, caseCount: refreshed.caseIds.length },
+    });
+  }
+
+  return col.findOne({ batchId });
+}
+
+/**
+ * Real cross-case rollup for one batch, aggregated from the actual
+ * bpo_cases docs the batch's caseIds point to -- same "no invented
+ * numbers" discipline as memberCaseSummary: exposureTotal only sums
+ * cases with a numeric exposure field (exposureCaseCount + isExposurePartial
+ * mark when some linked cases don't have one yet), and a caseId that no
+ * longer resolves to a case (deleted, or bpoUpsertCase hasn't landed yet)
+ * is skipped rather than counted as zero.
+ */
+async function batchSummary(batchId) {
+  const batch = await batchGet(batchId);
+  if (!batch) throw new Error(`batch not found: ${batchId}`);
+
+  const summary = {
+    batchId,
+    vertical: batch.vertical,
+    status: batch.status,
+    totalDocuments: batch.totalDocuments,
+    processedDocuments: batch.processedDocuments,
+    failedDocuments: batch.failedDocuments,
+    linkedCaseCount: batch.caseIds.length,
+    exposureTotal: 0,
+    exposureCaseCount: 0,
+    isExposurePartial: false,
+    requiringReview: 0,
+    byStatus: {},
+    bySeverity: {},
+  };
+
+  for (const caseId of batch.caseIds) {
+    const c = await bpoGetCase(caseId);
+    if (!c) continue;
+
+    const status = c.status || 'UNKNOWN';
+    summary.byStatus[status] = (summary.byStatus[status] || 0) + 1;
+    if (status !== 'CLOSED' && status !== 'AUTO_APPROVED') {
+      summary.requiringReview += 1;
+    }
+
+    const detected = Array.isArray(c.detectedExceptions) ? c.detectedExceptions : [];
+    const severity = (detected[0] && detected[0].severity) || 'unknown';
+    summary.bySeverity[severity] = (summary.bySeverity[severity] || 0) + 1;
+
+    if (typeof c.exposure === 'number') {
+      summary.exposureTotal += c.exposure;
+      summary.exposureCaseCount += 1;
+    } else {
+      summary.isExposurePartial = true;
     }
   }
 
@@ -1549,6 +1718,12 @@ module.exports = {
   memberGet,
   memberCreate,
   memberCaseSummary,
+  // Batch intake layer
+  batchCreate,
+  batchGet,
+  batchList,
+  batchRecordDocument,
+  batchSummary,
   // BPO Phase 2 (rest of): notes / SLA events / BNCA reports
   bpoAddNote,
   bpoListNotes,
