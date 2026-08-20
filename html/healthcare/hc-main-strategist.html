@@ -934,6 +934,16 @@ async function callClaude(userMsg, outEl, thinkEl, errEl){
 // bridge: renderExplainPanel sets them, escalateToExecPortal reads them.
 var lastStrategistConfidence = null;
 var lastStrategistSeverity = null;
+// TSM FIX: the deterministic Business Impact Delta computed below via
+// TSMBNCAExposureEngine.project() was rendered correctly on THIS page
+// (#hcDeltaNo/#hcDeltaAct) but never cached anywhere escalateToExecPortal()
+// could read it from -- so the exec portal's noActionRevLoss/actionRevLoss
+// KPI tiles always fell back to '\u2014', even though the real numbers were
+// computed one function call earlier. These two hold the same dollar
+// figures already on screen, formatted, so the relay can carry them over.
+var lastStrategistNoActionExposure = null;
+var lastStrategistWithActionExposure = null;
+var lastStrategistRecoveryTime = null;
 
 // hcXPSeverityForExposure() returns CRIT/HIGH/MED/LOW (this page's own
 // display scale). TSMExceptions.priorityFor()/TSMCaseManager.priorityFor()
@@ -1065,6 +1075,9 @@ function renderExplainPanel(obj){
       // compute anything new, it just stops throwing the numbers away.
       lastStrategistConfidence = hcXPConf;
       lastStrategistSeverity = hcXPSeverity;
+      lastStrategistNoActionExposure = fmt(hcXPImpact.ifIgnored.exposure);
+      lastStrategistWithActionExposure = fmt(hcXPImpact.ifActed.exposure);
+      lastStrategistRecoveryTime = hcXPImpact.urgencyWindow + ' \u00b7 ' + hcXPImpact.methodology;
     }
   } catch(dee) { console.warn('[bnca-exposure-engine] healthcare render error:', dee); }
 }
@@ -1511,6 +1524,16 @@ async function escalateToExecPortal(){
     // ── Hard overwrite: guarantee KPI numbers match the DOM exactly, no drift ──
     if (live.revenueAtRisk) kpi.totalAtRisk = live.revenueAtRisk;
     if (live.denialRate) kpi.denialRate = live.denialRate;
+    // TSM FIX: carry the deterministic Business Impact Delta (computed via
+    // TSMBNCAExposureEngine.project(), same shared engine as PM Copilot/
+    // Mortgage/Insurance/etc.) over to the exec portal under the exact key
+    // names its KPI-wiring code already looks for. Before this, the exec
+    // portal's noActionRevLoss/actionRevLoss tiles always read undefined
+    // from this payload and rendered '\u2014', even on a fully analyzed case.
+    if (lastStrategistNoActionExposure) kpi.noActionRevLoss = lastStrategistNoActionExposure;
+    if (lastStrategistWithActionExposure) kpi.actionRevLoss = lastStrategistWithActionExposure;
+    if (lastStrategistRecoveryTime) kpi.recoveryTime = lastStrategistRecoveryTime;
+    if (lastStrategistConfidence !== null) kpi.confidence = lastStrategistConfidence;
 
     const verifiedFields = [];
     if (live.revenueAtRisk) verifiedFields.push('totalAtRisk');

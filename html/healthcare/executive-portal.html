@@ -3340,13 +3340,24 @@ setInterval(buildStratBriefTab, 30000);
         function hasData(obj) {
           return obj && typeof obj === 'object' && Object.keys(obj).length > 0;
         }
-        // relayJson: parsed JSON from the ===JSON=== block, when present.
-        // Falls back to the keys that are actually written at runtime:
-        // TSM_HC_WAR_RELAY (generic room.autoKey writer in
-        // tsm-doc-search-multi.html) and TSM_HEALTHCARE_STRATEGIST_RELAY
-        // (written by hc-main-strategist.html). The previous fallback keys
-        // (TSM_HC_RELAY / TSM_RELAY_DATA) were never written by anything.
+        // TSM FIX: this function's whole fallback chain was reading dead
+        // sources -- window.__TSM_STRAT_JSON__ is never assigned anywhere
+        // in the codebase (confirmed by grep across every .html file), and
+        // TSM_HC_WAR_RELAY / TSM_HEALTHCARE_STRATEGIST_RELAY are either
+        // never written or written by an unrelated Sentinel-push block
+        // with a completely different {generatedAt, anomalies} shape that
+        // never carried kpi/noActionRevLoss data. Net effect: the Business
+        // Impact Delta tiles below have never populated for any case.
+        // TSM_EXEC_RELAY is the real, actively-written escalation payload
+        // -- everything else on this page already reads it (see RELAY_KEYS
+        // below, and d.kpi.totalAtRisk a few hundred lines up) -- so check
+        // that first, matching the rest of the file's convention, and read
+        // the fields from kpi.* (where escalateToExecPortal() now writes
+        // them), not a nonexistent stratJson/json wrapper.
         var raw = relayJson;
+        if (!hasData(raw)) {
+          raw = JSON.parse(sessionStorage.getItem('TSM_EXEC_RELAY') || localStorage.getItem('TSM_EXEC_RELAY') || 'null');
+        }
         if (!hasData(raw)) {
           raw = JSON.parse(localStorage.getItem('TSM_HC_WAR_RELAY') || 'null');
         }
@@ -3354,7 +3365,7 @@ setInterval(buildStratBriefTab, 30000);
           raw = JSON.parse(localStorage.getItem('TSM_HEALTHCARE_STRATEGIST_RELAY') || 'null');
         }
         raw = raw || {};
-        var stratJson = raw.stratJson || raw.json || raw;
+        var stratJson = raw.kpi || raw.stratJson || raw.json || raw;
 
         var noAction   = stratJson.noActionRevLoss  || '—';
         var withAction = stratJson.actionRevLoss     || '—';
