@@ -78,11 +78,18 @@ function caseExposure(c) {
 }
 
 // Most cases don't carry their own exposure field — the dollar estimate
-// instead lives on the case's BNCA report(s), under exposure.ifIgnored /
-// exposure.ifActed (written by TSMBNCAExposureEngine, see
-// tsm-ledger-service.js#bpoSaveBncaReport). This is real, previously
-// computed data — not a fabricated fallback — so it's fair game once a
-// case has no exposure field of its own.
+// instead lives on the case's BNCA report(s), under a nested exposure
+// object written by TSMBNCAExposureEngine (see
+// tsm-ledger-service.js#bpoSaveBncaReport). Confirmed real shape (checked
+// against BPO-2026-08-18-ueqqtb's actual stored reports):
+//   exposure.currentExposure   -> flat number, the engine's own headline figure
+//   exposure.ifIgnored.exposure -> nested number (ifIgnored itself is an
+//                                   object with {exposure, basis}, not a number)
+//   exposure.ifActed.exposure   -> same nested shape
+// currentExposure is preferred as the "current state" figure; the nested
+// ifIgnored/ifActed numbers are fallbacks for any report shape that omits
+// it. This is real, previously computed data — not a fabricated fallback —
+// so it's fair game once a case has no exposure field of its own.
 function bncaExposureForCase(bncaReports, caseId) {
   if (!caseId || !Array.isArray(bncaReports) || !bncaReports.length) return null;
 
@@ -98,7 +105,15 @@ function bncaExposureForCase(bncaReports, caseId) {
   const exposure = latest && latest.exposure;
   if (!exposure || typeof exposure !== 'object') return null;
 
-  return num(exposure.ifIgnored, exposure.ifActed);
+  return num(
+    exposure.currentExposure,
+    exposure.ifIgnored && typeof exposure.ifIgnored === 'object'
+      ? exposure.ifIgnored.exposure
+      : exposure.ifIgnored,
+    exposure.ifActed && typeof exposure.ifActed === 'object'
+      ? exposure.ifActed.exposure
+      : exposure.ifActed
+  );
 }
 
 // The value actually used everywhere in the package: the case's own
