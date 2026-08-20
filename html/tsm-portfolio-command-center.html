@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TSM — Portfolio Command Center</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=JetBrains+Mono:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --black:#020408; --deep:#060c14; --panel:#0a1220; --border:#1a2a3a; --border2:#243444;
+  --cyan:#00c8ff; --cyan2:#0096cc; --green:#00c896; --amber:#f5a623; --red:#ff4d4d;
+  --purple:#a855f7; --dim:#3a5068; --muted:#7a98b8; --text:#c8dff0;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--black);color:var(--text);font-family:'JetBrains Mono',monospace;min-height:100vh;}
+
+.header{background:var(--deep);border-bottom:1px solid var(--border);padding:1rem 2rem;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;flex-wrap:wrap;gap:.75rem;}
+.logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:900;color:#fff;letter-spacing:.15em;}
+.logo span{color:var(--cyan);}
+.badge{font-size:.58rem;letter-spacing:.2em;color:var(--cyan);border:1px solid rgba(0,200,255,.3);padding:3px 8px;border-radius:3px;}
+.header-nav{display:flex;gap:.6rem;}
+.nav-link{font-size:.62rem;letter-spacing:.1em;color:var(--muted);text-decoration:none;border:1px solid var(--border2);padding:5px 10px;border-radius:4px;text-transform:uppercase;}
+.nav-link:hover{color:var(--cyan);border-color:var(--cyan);}
+
+.main{max-width:1280px;margin:0 auto;padding:2rem;}
+
+.section-head{font-size:.6rem;letter-spacing:.25em;text-transform:uppercase;color:var(--cyan);border-bottom:1px solid var(--border);padding-bottom:.5rem;margin-bottom:1.2rem;margin-top:2.5rem;}
+.section-head:first-of-type{margin-top:0;}
+
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1rem;}
+.kpi-card{background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:1.2rem;}
+.kpi-value{font-family:'Orbitron',sans-serif;font-size:1.6rem;font-weight:900;color:var(--cyan);}
+.kpi-value.amber{color:var(--amber);}
+.kpi-value.red{color:var(--red);}
+.kpi-label{font-size:.58rem;letter-spacing:.15em;color:var(--dim);margin-top:.3rem;text-transform:uppercase;}
+.kpi-note{font-size:.6rem;color:var(--muted);margin-top:.4rem;}
+
+.vertical-bar-row{display:flex;align-items:center;gap:.8rem;padding:.55rem 0;border-bottom:1px solid var(--border);}
+.vertical-bar-row:last-child{border-bottom:none;}
+.vertical-bar-name{width:150px;font-size:.68rem;color:var(--text);text-transform:uppercase;letter-spacing:.05em;flex-shrink:0;}
+.vertical-bar-track{flex:1;background:var(--deep);border-radius:3px;height:8px;overflow:hidden;}
+.vertical-bar-fill{background:linear-gradient(90deg,var(--cyan2),var(--cyan));height:100%;border-radius:3px;}
+.vertical-bar-count{width:48px;text-align:right;font-size:.7rem;color:var(--cyan);font-weight:600;flex-shrink:0;}
+
+.risk-table{width:100%;border-collapse:collapse;}
+.risk-table th{text-align:left;font-size:.58rem;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);padding:.5rem .8rem;border-bottom:1px solid var(--border);}
+.risk-table td{padding:.7rem .8rem;font-size:.72rem;border-bottom:1px solid var(--border);vertical-align:middle;}
+.risk-table tr:last-child td{border-bottom:none;}
+.risk-table tr:hover td{background:rgba(0,200,255,.04);}
+.risk-rank{color:var(--dim);font-family:'Orbitron',sans-serif;}
+.risk-name{color:#fff;font-weight:600;}
+.risk-exposure{color:var(--cyan);font-family:'Orbitron',sans-serif;}
+.risk-badge{display:inline-block;font-size:.6rem;letter-spacing:.08em;padding:2px 8px;border-radius:3px;text-transform:uppercase;}
+.risk-badge.high{background:rgba(255,77,77,.12);color:var(--red);border:1px solid rgba(255,77,77,.3);}
+.risk-badge.medium{background:rgba(245,166,35,.12);color:var(--amber);border:1px solid rgba(245,166,35,.3);}
+.risk-badge.low{background:rgba(0,200,150,.12);color:var(--green);border:1px solid rgba(0,200,150,.3);}
+.risk-link{color:var(--cyan);text-decoration:none;font-size:.65rem;border:1px solid rgba(0,200,255,.25);padding:3px 8px;border-radius:4px;white-space:nowrap;}
+.risk-link:hover{background:rgba(0,200,255,.08);}
+
+.empty-state{text-align:center;padding:3rem;color:var(--dim);font-size:.75rem;letter-spacing:.1em;border:1px dashed var(--border);border-radius:6px;}
+.error-banner{background:rgba(255,77,77,.08);border:1px solid rgba(255,77,77,.3);color:var(--red);padding:.8rem 1rem;border-radius:6px;font-size:.72rem;margin-bottom:1.5rem;display:none;}
+.error-banner.show{display:block;}
+.loading{color:var(--dim);font-size:.72rem;padding:2rem 0;text-align:center;}
+.partial-note{font-size:.62rem;color:var(--dim);margin-top:.6rem;}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">TSM <span>PORTFOLIO COMMAND CENTER</span></div>
+  <div class="header-nav">
+    <a class="nav-link" href="/html/tsm-member-command-center.html">Member Rollup</a>
+    <a class="nav-link" href="/html/hub-index.html">Command Hub</a>
+  </div>
+  <div class="badge">ALL-MEMBER ROLLUP</div>
+</div>
+
+<div class="main">
+  <div class="error-banner" id="errorBanner"></div>
+  <div id="content">
+    <div class="loading">Loading portfolio…</div>
+  </div>
+</div>
+
+<script>
+const VERTICAL_PORTALS = {
+  construction: '/html/war-rooms/construct-war/construction-executive-portal.html',
+  healthcare: '/html/healthcare/executive-portal.html',
+  mortgage: '/html/war-rooms/mortgage/mortgage-executive-portal.html',
+};
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function money(n) {
+  if (typeof n !== 'number') return '—';
+  return '$' + n.toLocaleString(undefined, { maximumFractionDigits: 0 });
+}
+
+function setError(msg) {
+  const el = document.getElementById('errorBanner');
+  if (!msg) { el.classList.remove('show'); el.textContent = ''; return; }
+  el.textContent = msg;
+  el.classList.add('show');
+}
+
+async function apiFetch(url) {
+  const res = await fetch(url, { credentials: 'same-origin' });
+  const ct = res.headers.get('content-type') || '';
+  if (!ct.includes('application/json')) {
+    if (res.status === 302 || res.redirected || ct.includes('text/html')) {
+      throw new Error('Session expired or not authenticated — please reload and log in.');
+    }
+    throw new Error(`Unexpected response (${res.status}) from ${url}`);
+  }
+  return res.json();
+}
+
+// Exposure-based risk tier for the badge in the top-risks table. These are
+// display-only thresholds (not a stored severity field) — purely to give a
+// quick visual read on which members carry the largest exposure, same
+// spirit as the pitch's HIGH/MEDIUM labels on "Top Member Risks".
+function riskTier(exposureTotal) {
+  if (exposureTotal >= 100000) return 'high';
+  if (exposureTotal >= 25000) return 'medium';
+  return 'low';
+}
+
+function renderVerticalBars(byVertical) {
+  const entries = Object.entries(byVertical || {}).sort((a, b) => b[1] - a[1]);
+  if (!entries.length) {
+    return '<div class="empty-state">No cases tagged to any member yet.</div>';
+  }
+  const max = Math.max(...entries.map(([, c]) => c));
+  return entries.map(([vertical, count]) => `
+    <div class="vertical-bar-row">
+      <div class="vertical-bar-name">${esc(vertical)}</div>
+      <div class="vertical-bar-track"><div class="vertical-bar-fill" style="width:${Math.round((count / max) * 100)}%"></div></div>
+      <div class="vertical-bar-count">${count}</div>
+    </div>
+  `).join('');
+}
+
+function renderTopMembers(topMembers) {
+  if (!topMembers.length) {
+    return '<div class="empty-state">No member has any tagged cases yet.</div>';
+  }
+  return `
+    <table class="risk-table">
+      <thead>
+        <tr><th>#</th><th>Member</th><th>Exposure</th><th>Risk</th><th>Cases</th><th>SLA At Risk</th><th>Top Vertical</th><th></th></tr>
+      </thead>
+      <tbody>
+        ${topMembers.map((m, i) => {
+          const tier = riskTier(m.exposureTotal);
+          const portal = m.topVertical && VERTICAL_PORTALS[m.topVertical];
+          return `
+            <tr>
+              <td class="risk-rank">${i + 1}</td>
+              <td class="risk-name">${esc(m.memberName)}</td>
+              <td class="risk-exposure">${money(m.exposureTotal)}${m.isExposurePartial ? ' *' : ''}</td>
+              <td><span class="risk-badge ${tier}">${tier}</span></td>
+              <td>${m.totalCases}</td>
+              <td>${m.slaAtRisk}</td>
+              <td>${esc(m.topVertical || '—')}</td>
+              <td>${portal ? `<a class="risk-link" href="${portal}?memberId=${encodeURIComponent(m.memberId)}">Open →</a>` : ''}</td>
+            </tr>
+          `;
+        }).join('')}
+      </tbody>
+    </table>
+    ${topMembers.some(m => m.isExposurePartial) ? '<div class="partial-note">* not every case for this member has exposure data — its total may understate real exposure</div>' : ''}
+  `;
+}
+
+function render(p) {
+  const content = document.getElementById('content');
+
+  if (p.totalMembers === 0) {
+    content.innerHTML = `
+      <div class="empty-state">
+        No members exist yet. Create one from the Member Rollup screen to start tracking a
+        cross-vertical portfolio.
+      </div>
+    `;
+    return;
+  }
+
+  const exposureNote = p.isExposurePartial
+    ? `${p.exposureCaseCount} of ${p.totalCases} cases have exposure data`
+    : 'all cases have exposure data';
+
+  content.innerHTML = `
+    <div class="section-head">Portfolio Snapshot</div>
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-value">${p.totalMembers}</div>
+        <div class="kpi-label">Members</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-value">${p.totalCases}</div>
+        <div class="kpi-label">Active Cases</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-value">${money(p.exposureTotal)}</div>
+        <div class="kpi-label">Total Exposure</div>
+        <div class="kpi-note">${esc(exposureNote)}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-value ${p.criticalCases > 0 ? 'red' : ''}">${p.criticalCases}</div>
+        <div class="kpi-label">Critical Cases</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-value ${p.slaAtRisk > 0 ? 'amber' : ''}">${p.slaAtRisk}</div>
+        <div class="kpi-label">SLA At Risk (7d)</div>
+      </div>
+    </div>
+
+    <div class="section-head">Exposure By Vertical (case count)</div>
+    <div style="background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:1rem 1.2rem;">
+      ${renderVerticalBars(p.byVertical)}
+    </div>
+
+    <div class="section-head">Top Member Risks</div>
+    <div style="background:var(--panel);border:1px solid var(--border);border-radius:6px;overflow-x:auto;">
+      ${renderTopMembers(p.topMembers)}
+    </div>
+  `;
+}
+
+async function boot() {
+  try {
+    const data = await apiFetch('/api/members/portfolio-summary');
+    if (!data.ok) throw new Error(data.error || 'Failed to load portfolio summary');
+    render(data.portfolio);
+  } catch (e) {
+    document.getElementById('content').innerHTML = '';
+    setError('Could not load portfolio: ' + e.message);
+  }
+}
+boot();
+</script>
+</body>
+</html>
