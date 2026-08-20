@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TSM Operational OS · Executive Command Center</title>
+<style>
+:root{
+  --bg:#090b12;
+  --panel:#111521;
+  --panel2:#171c29;
+  --line:#283044;
+  --text:#eef2f7;
+  --muted:#8993a7;
+  --good:#38d39f;
+  --warn:#f5bd45;
+  --bad:#ff6b78;
+  --accent:#8b7cff;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  font:14px system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+}
+header{
+  padding:28px 34px;
+  border-bottom:1px solid var(--line);
+  background:linear-gradient(180deg,#101522,#0b0e16);
+}
+.brand{font-size:11px;letter-spacing:.16em;color:var(--accent);font-weight:700}
+h1{margin:8px 0 4px;font-size:28px}
+.sub{color:var(--muted)}
+main{padding:28px 34px;max-width:1500px;margin:auto}
+.grid{display:grid;grid-template-columns:repeat(5,1fr);gap:14px}
+.card{
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:12px;
+  padding:18px;
+}
+.label{font-size:11px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase}
+.value{font-size:28px;font-weight:750;margin-top:8px}
+.good{color:var(--good)}
+.warn{color:var(--warn)}
+.bad{color:var(--bad)}
+.section{margin-top:26px}
+.section h2{font-size:15px;letter-spacing:.08em;text-transform:uppercase}
+table{width:100%;border-collapse:collapse;background:var(--panel)}
+th,td{text-align:left;padding:12px;border-bottom:1px solid var(--line)}
+th{font-size:11px;color:var(--muted);text-transform:uppercase}
+.pill{padding:4px 8px;border-radius:999px;background:var(--panel2)}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+ul{line-height:1.8}
+button{
+  background:var(--accent);
+  border:0;
+  border-radius:8px;
+  color:white;
+  padding:10px 14px;
+  cursor:pointer;
+}
+input{
+  background:var(--panel2);
+  border:1px solid var(--line);
+  color:white;
+  padding:10px;
+  border-radius:8px;
+  width:340px;
+}
+pre{
+  white-space:pre-wrap;
+  background:#070910;
+  border:1px solid var(--line);
+  padding:14px;
+  border-radius:8px;
+  color:#b9c3d5;
+}
+@media(max-width:900px){
+ .grid{grid-template-columns:repeat(2,1fr)}
+ .cols{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">TSM · OPERATIONAL OS</div>
+  <h1>Executive Recovery Command Center</h1>
+  <div class="sub">
+    One operating system · multiple verticals · one executive view
+  </div>
+</header>
+
+<main>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px">
+    <input id="caseId"
+      placeholder="BPO case ID, e.g. BPO-2026-08-18-ueqqtb">
+    <button onclick="loadRecovery()">Load Recovery Package</button>
+  </div>
+
+  <div id="status" class="sub">
+    Enter a case ID to load the live executive package.
+  </div>
+
+  <div id="dashboard" style="display:none">
+    <section class="grid">
+      <div class="card">
+        <div class="label">Financial Exposure</div>
+        <div class="value bad" id="exposure">$0</div>
+      </div>
+      <div class="card">
+        <div class="label">Recovered</div>
+        <div class="value good" id="recovered">$0</div>
+      </div>
+      <div class="card">
+        <div class="label">Prevented Loss</div>
+        <div class="value good" id="prevented">$0</div>
+      </div>
+      <div class="card">
+        <div class="label">Cases</div>
+        <div class="value" id="cases">0</div>
+      </div>
+      <div class="card">
+        <div class="label">Verticals</div>
+        <div class="value" id="verticals">0</div>
+      </div>
+    </section>
+
+    <section class="section card">
+      <div class="label">Executive Summary</div>
+      <p id="summary"></p>
+    </section>
+
+    <section class="section cols">
+      <div class="card">
+        <h2>Vertical Recovery</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Vertical</th>
+              <th>Cases</th>
+              <th>Exposure</th>
+              <th>Recovered</th>
+            </tr>
+          </thead>
+          <tbody id="verticalTable"></tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <h2>Escalations</h2>
+        <ul id="escalations"></ul>
+      </div>
+    </section>
+
+    <section class="section cols">
+      <div class="card">
+        <h2>Recommended Actions</h2>
+        <div id="actions"></div>
+      </div>
+
+      <div class="card">
+        <h2>Evidence Coverage</h2>
+        <div id="evidence"></div>
+      </div>
+    </section>
+
+    <section class="section card">
+      <h2>Recovery Package JSON</h2>
+      <pre id="json"></pre>
+    </section>
+  </div>
+</main>
+
+<script>
+const money = v =>
+  v === null || v === undefined
+    ? '—'
+    : new Intl.NumberFormat('en-US',{
+        style:'currency',
+        currency:'USD',
+        maximumFractionDigits:0
+      }).format(v);
+
+async function loadRecovery(){
+  const id = document.getElementById('caseId').value.trim();
+
+  if(!id){
+    document.getElementById('status').textContent =
+      'Enter a case ID.';
+    return;
+  }
+
+  document.getElementById('status').textContent =
+    'Loading executive recovery package…';
+
+  try{
+    const r = await fetch(
+      '/api/bpo/work-items/' +
+      encodeURIComponent(id) +
+      '/executive-recovery'
+    );
+
+    const data = await r.json();
+
+    if(!r.ok || !data.ok){
+      throw new Error(data.error || 'Request failed');
+    }
+
+    render(data.report);
+
+    document.getElementById('status').textContent =
+      'EXECUTIVE PACKAGE READY · ' +
+      new Date(data.report.generatedAt).toLocaleString();
+  }catch(e){
+    document.getElementById('status').textContent =
+      'ERROR · ' + e.message;
+  }
+}
+
+function render(r){
+  document.getElementById('dashboard').style.display='block';
+
+  document.getElementById('exposure').textContent =
+    money(r.financials.exposure);
+
+  document.getElementById('recovered').textContent =
+    money(r.financials.recovered);
+
+  document.getElementById('prevented').textContent =
+    money(r.financials.prevented);
+
+  document.getElementById('cases').textContent =
+    r.portfolio.totalCases;
+
+  document.getElementById('verticals').textContent =
+    r.portfolio.verticalCount;
+
+  document.getElementById('summary').textContent =
+    r.executiveSummary;
+
+  document.getElementById('verticalTable').innerHTML =
+    r.verticals.length
+      ? r.verticals.map(v => `
+        <tr>
+          <td><span class="pill">${escapeHtml(v.vertical)}</span></td>
+          <td>${v.cases}</td>
+          <td>${money(v.exposure)}</td>
+          <td>${money(v.recovered)}</td>
+        </tr>
+      `).join('')
+      : '<tr><td colspan="4">No vertical data.</td></tr>';
+
+  document.getElementById('escalations').innerHTML =
+    r.escalationTriggers.length
+      ? r.escalationTriggers.map(x => `<li>${escapeHtml(x)}</li>`).join('')
+      : '<li>No automatic escalation trigger detected.</li>';
+
+  document.getElementById('actions').innerHTML =
+    r.recommendedActions.length
+      ? r.recommendedActions.map(a => `
+        <div style="padding:12px 0;border-bottom:1px solid var(--line)">
+          <strong>${escapeHtml(a.caseId || 'Case')}</strong>
+          · ${escapeHtml(a.vertical)}
+          <br>
+          ${escapeHtml(a.action)}
+          <br>
+          <span class="sub">
+            Owner: ${escapeHtml(a.owner)}
+            · Exposure: ${money(a.exposure)}
+          </span>
+        </div>
+      `).join('')
+      : '<p class="sub">No recommended actions.</p>';
+
+  const e = r.evidence;
+
+  document.getElementById('evidence').innerHTML = `
+    <p>${e.cases ? '✓' : '○'} Cases</p>
+    <p>${e.bncaReports ? '✓' : '○'} BNCA Reports</p>
+    <p>${e.slaEvents ? '✓' : '○'} SLA Events</p>
+    <p>${e.notes ? '✓' : '○'} Notes</p>
+    <p>${e.documents ? '✓' : '○'} Documents</p>
+  `;
+
+  document.getElementById('json').textContent =
+    JSON.stringify(r,null,2);
+}
+
+function escapeHtml(v){
+  return String(v ?? '')
+    .replaceAll('&','&amp;')
+    .replaceAll('<','&lt;')
+    .replaceAll('>','&gt;')
+    .replaceAll('"','&quot;')
+    .replaceAll("'","&#039;");
+}
+</script>
+</body>
+</html>

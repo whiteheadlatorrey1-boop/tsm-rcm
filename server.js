@@ -19,6 +19,11 @@ var bpoStore = global.bpoStore;
 
 require('dotenv').config({ override: true });
 const express = require('express');
+// ============================================================
+// TSM OPERATIONAL OS — UNIVERSAL EXECUTIVE RECOVERY
+// ============================================================
+const { buildRecoveryPackage } = require('./server/tsm-operational-os');
+
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -5610,7 +5615,69 @@ app.use(
 );
 
 // ── START ─────────────────────────────────────────────────────────────────────
-const server = app.listen(PORT, '0.0.0.0', () => {
+const server = 
+// TSM Operational OS universal executive recovery endpoint.
+// Aggregates the existing BPO operational records without replacing
+// the existing BPO routes.
+app.get(
+  '/api/bpo/work-items/:caseId/executive-recovery',
+  requireRole(BPO_REPORT_ROLES),
+  async (req, res) => {
+    try {
+      const caseId = req.params.caseId;
+
+      const [
+        workItem,
+        bncaReports,
+        slaEvents,
+        notes,
+        documents
+      ] = await Promise.all([
+        bpoStore.getWorkItem(caseId),
+        bpoStore.listBncaReports(caseId),
+        bpoStore.listSlaEvents(caseId),
+        bpoStore.listNotes(caseId),
+        bpoStore.listDocuments(caseId)
+      ]);
+
+      if (!workItem) {
+        return res.status(404).json({
+          ok: false,
+          error: 'BPO work item not found',
+          caseId
+        });
+      }
+
+      const report = buildRecoveryPackage({
+        member: {
+          id: workItem.tenantId || workItem.clientId || null,
+          name: workItem.clientName || workItem.tenantName || null
+        },
+        cases: [workItem],
+        bncaReports,
+        slaEvents,
+        notes,
+        documents
+      });
+
+      return res.json({
+        ok: true,
+        caseId,
+        report
+      });
+    } catch (error) {
+      console.error('[TSM Operational OS] executive recovery failed:', error);
+
+      return res.status(500).json({
+        ok: false,
+        error: 'Executive Recovery aggregation failed',
+        message: error.message
+      });
+    }
+  }
+);
+
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`TSM Platform Core Engine listening on port ${PORT}`);
 });
 
