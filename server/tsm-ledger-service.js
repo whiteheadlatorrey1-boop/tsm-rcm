@@ -550,7 +550,7 @@ async function bpoUpsertWorkItem(caseId, fields, actor) {
   const col = await bpoWorkItemsCollection();
   const now = new Date().toISOString();
   const {
-    clientId = null, vertical = 'bpo', stage = 'war-room', payload = {}, status = 'open',
+    clientId = null, vertical = 'bpo', stage = 'war-room', payload, status = 'open',
     owner, priority, dueDate,
   } = fields || {};
 
@@ -558,25 +558,34 @@ async function bpoUpsertWorkItem(caseId, fields, actor) {
   const createdAt = existing ? existing.createdAt : now;
 
   const $set = {
-    caseId, clientId, vertical, stage, payload, status, updatedAt: now,
+    caseId, clientId, vertical, stage, status, updatedAt: now,
     slaAgeHours: bpoHoursBetween(createdAt, now),
   };
-  // owner/priority/dueDate are optional and sticky — a later upsert that
-  // doesn't pass them (e.g. the exec-portal resolve call) shouldn't wipe
-  // out what the war room or strategist already set. priority has one
-  // extra rule: on first creation only (no existing doc yet), fall back
-  // to the extraction's own severity classification instead of jumping
-  // straight to 'medium' — real computed data (e.g. severity: 'CRITICAL')
-  // was being silently discarded here otherwise. Once a doc exists,
-  // stored priority stays sticky same as before, even across later
-  // resyncs that re-send the same extraction payload — so a human's
-  // manual priority edit is never quietly clobbered by a later stage
-  // advance.
+  // payload/owner/priority/dueDate are all optional and sticky — a later
+  // upsert that doesn't pass one of them (e.g. the exec-portal resolve
+  // call, or a bare priority-only edit) must not wipe out what a prior
+  // sync or a human already set. payload defaults to {} only on genuine
+  // first creation; any existing doc's payload is preserved verbatim
+  // when the caller omits the field, same contract as owner/priority/
+  // dueDate below. (Previously payload defaulted to {} unconditionally
+  // and was NOT sticky, so a priority-only PATCH silently deleted the
+  // stored extraction record — fixed here.)
+  if (payload !== undefined) $set.payload = payload;
+  else if (existing && existing.payload !== undefined) $set.payload = existing.payload;
+  else $set.payload = {};
+  // priority has one extra rule: on first creation only (no existing doc
+  // yet), fall back to the extraction's own severity classification
+  // instead of jumping straight to 'medium' — real computed data (e.g.
+  // severity: 'CRITICAL') was being silently discarded here otherwise.
+  // Once a doc exists, stored priority stays sticky same as before, even
+  // across later resyncs that re-send the same extraction payload — so a
+  // human's manual priority edit is never quietly clobbered by a later
+  // stage advance.
   if (owner !== undefined) $set.owner = (owner || '').toString().trim();
   else if (existing && existing.owner !== undefined) $set.owner = existing.owner;
   if (priority !== undefined) $set.priority = bpoNormalizePriority(priority);
   else if (existing && existing.priority !== undefined) $set.priority = existing.priority;
-  else $set.priority = bpoSeverityToPriority(payload && payload.extraction && payload.extraction.severity) || 'medium';
+  else $set.priority = bpoSeverityToPriority($set.payload && $set.payload.extraction && $set.payload.extraction.severity) || 'medium';
   if (dueDate !== undefined) $set.dueDate = dueDate || null;
   else if (existing && existing.dueDate !== undefined) $set.dueDate = existing.dueDate;
 
