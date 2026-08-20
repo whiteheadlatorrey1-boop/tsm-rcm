@@ -811,7 +811,91 @@ async function memberCaseSummary(memberId) {
   return summary;
 }
 
-// ── Notes ────────────────────────────────────────────────────────────────
+/**
+ * Portfolio-wide rollup across every Member — the "credit union / SMB
+ * ecosystem" view, aggregating what memberCaseSummary() already computes
+ * honestly per-member rather than recomputing anything from scratch.
+ * Same "don't invent what isn't in the data" rule applies here:
+ *   - exposureTotal/exposureCaseCount/isExposurePartial sum straight from
+ *     each member's own (already-partial-aware) summary.
+ *   - criticalCases counts cases whose top detected-exception severity is
+ *     "critical" case-insensitively (severity values are written
+ *     inconsistently across verticals — 'CRITICAL' in some places,
+ *     'critical' in others — see bySeverity keys memberCaseSummary
+ *     already buckets by, unchanged, case-sensitive there).
+ *   - topMembers ranks members by exposureTotal descending (ties broken
+ *     by totalCases) — this is the pitch's "Top Member Risks" list. Each
+ *     entry also carries its single largest-count vertical as
+ *     `topVertical`, not a dollar breakdown by vertical (memberCaseSummary
+ *     doesn't track exposure per-vertical, only case counts per-vertical
+ *     — attaching a specific dollar figure to a vertical without that
+ *     data existing would be exactly the kind of invented precision the
+ *     rest of this file avoids).
+ *   - There is deliberately no "exposure mitigated" / "recovery
+ *     opportunities" figure here: nothing in bpo_cases currently tracks a
+ *     resolved/recovered dollar amount distinct from open exposure, so a
+ *     number here would be fabricated. Add it once that data exists.
+ */
+async function memberPortfolioSummary() {
+  const members = await memberList();
+
+  const perMember = [];
+  for (const m of members) {
+    const s = await memberCaseSummary(m.id);
+    perMember.push({ memberId: m.id, memberName: m.name, ...s });
+  }
+
+  const portfolio = {
+    totalMembers: members.length,
+    totalCases: 0,
+    exposureTotal: 0,
+    exposureCaseCount: 0,
+    isExposurePartial: false,
+    slaAtRisk: 0,
+    criticalCases: 0,
+    byVertical: {},
+    topMembers: [],
+  };
+
+  for (const s of perMember) {
+    portfolio.totalCases += s.totalCases;
+    portfolio.exposureTotal += s.exposureTotal;
+    portfolio.exposureCaseCount += s.exposureCaseCount;
+    if (s.isExposurePartial) portfolio.isExposurePartial = true;
+    portfolio.slaAtRisk += s.slaAtRisk;
+
+    for (const [severity, count] of Object.entries(s.bySeverity || {})) {
+      if (/^critical$/i.test(severity)) portfolio.criticalCases += count;
+    }
+    for (const [vertical, count] of Object.entries(s.byVertical || {})) {
+      portfolio.byVertical[vertical] = (portfolio.byVertical[vertical] || 0) + count;
+    }
+  }
+
+  portfolio.topMembers = perMember
+    .filter(s => s.totalCases > 0)
+    .sort((a, b) => (b.exposureTotal - a.exposureTotal) || (b.totalCases - a.totalCases))
+    .slice(0, 10)
+    .map(s => {
+      const verticalEntries = Object.entries(s.byVertical || {});
+      const topVertical = verticalEntries.length
+        ? verticalEntries.sort((a, b) => b[1] - a[1])[0][0]
+        : null;
+      return {
+        memberId: s.memberId,
+        memberName: s.memberName,
+        totalCases: s.totalCases,
+        exposureTotal: s.exposureTotal,
+        isExposurePartial: s.isExposurePartial,
+        slaAtRisk: s.slaAtRisk,
+        topVertical,
+      };
+    });
+
+  return portfolio;
+}
+
+
 // Append-only — one doc per note, never edited/deleted in place, so a
 // case's note history can't be silently rewritten.
 
@@ -1549,6 +1633,7 @@ module.exports = {
   memberGet,
   memberCreate,
   memberCaseSummary,
+  memberPortfolioSummary,
   // BPO Phase 2 (rest of): notes / SLA events / BNCA reports
   bpoAddNote,
   bpoListNotes,

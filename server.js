@@ -868,6 +868,15 @@ app.get('/api/members', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
+// Registered before GET /api/members/:id below so 'portfolio-summary'
+// is matched as a literal path segment here, not swallowed as an :id.
+app.get('/api/members/portfolio-summary', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const portfolio = await tsmLedger.memberPortfolioSummary();
+    res.json({ ok: true, portfolio });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 app.post('/api/members', requireRole(BPO_MANAGE_ROLES), async (req, res) => {
   try {
     const member = await tsmLedger.memberCreate(req.body || {}, req.tsmSession.label || req.tsmSession.role);
