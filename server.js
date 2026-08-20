@@ -855,6 +855,60 @@ app.post('/api/bpo/cases/:caseId', requireRole(BPO_INTERNAL_ROLES), async (req, 
   } catch (e) { res.status(400).json({ ok: false, error: e.message }); }
 });
 
+// ── Batch intake layer ──────────────────────────────────────────────────
+// Persisted counterpart to the doc-search-multi ZIP/multi-file ingest
+// flow. A batch is created once, before the client's existing per-file
+// fault-isolated loop starts, then each file reports its outcome back
+// via the /documents route — same internal-role gating as the case
+// routes above, since this is ingest-pipeline bookkeeping, not something
+// a 'client' session creates or reads directly.
+app.post('/api/bpo/batches', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const batch = await tsmLedger.batchCreate(req.body || {}, req.tsmSession.label || req.tsmSession.role);
+    res.json({ ok: true, batch });
+  } catch (e) { res.status(400).json({ ok: false, error: e.message }); }
+});
+
+app.get('/api/bpo/batches', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const batches = await tsmLedger.batchList({
+      vertical: req.query.vertical, tenantId: req.query.tenantId, status: req.query.status,
+      limit: req.query.limit ? parseInt(req.query.limit, 10) : undefined,
+    });
+    res.json({ ok: true, batches });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+app.get('/api/bpo/batches/:batchId', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const batch = await tsmLedger.batchGet(req.params.batchId);
+    if (!batch) return res.status(404).json({ ok: false, error: 'Batch not found' });
+    res.json({ ok: true, batch });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// Called once per file from the existing fault-isolated loop — ok:true
+// with a caseId when the file was classified and linked into the Case
+// Engine, ok:false with no caseId for the loop's existing skip/`continue`
+// path. Whichever finishes last flips the batch to 'complete' server-side.
+app.post('/api/bpo/batches/:batchId/documents', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const batch = await tsmLedger.batchRecordDocument(
+      req.params.batchId,
+      { caseId: req.body && req.body.caseId, ok: !(req.body && req.body.ok === false) },
+      req.tsmSession.label || req.tsmSession.role
+    );
+    res.json({ ok: true, batch });
+  } catch (e) { res.status(400).json({ ok: false, error: e.message }); }
+});
+
+app.get('/api/bpo/batches/:batchId/summary', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const summary = await tsmLedger.batchSummary(req.params.batchId);
+    res.json({ ok: true, summary });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 // ── SMB Member layer (Roadmap "3-member demo") ─────────────────────────
 // A Member is a cross-vertical demo tenant; its id doubles as the
 // tenantId the Construction/Healthcare/Mortgage exec portals tag new

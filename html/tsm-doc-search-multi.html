@@ -3221,6 +3221,51 @@ function zsSummary(batchId, html) {
   if (s) s.innerHTML = html;
 }
 
+/* ── Batch persistence ──────────────────────────────────────────────────
+   The zs-* helpers above are purely the DOM security-log card — they
+   never survived a refresh and carried no shared context across files.
+   These wrap the new /api/bpo/batches routes so a real batchId exists
+   before the per-file loop starts, and each file's outcome is recorded
+   server-side as it finishes. Non-fatal by design: if the persistence
+   call itself fails (offline, auth hiccup), the existing upload/classify/
+   route pipeline below is completely unaffected — batch tracking is a
+   side channel on top of it, not a gate in front of it.
+   NOTE: caseId is only ever passed when the caller has a real linked
+   case; this file currently produces a Mission (buildMissionFromClassification)
+   rather than a Case Engine record, so batches populated purely from
+   this path will show 0 linked cases in their summary until a follow-up
+   wires this ingest flow into bpoUpsertCase / TSMCaseManager. */
+async function batchPersistCreate({ vertical, source, totalDocuments, tenantId }) {
+  try {
+    const body = { vertical, source, totalDocuments };
+    if (tenantId && tenantId !== ALL_CLIENTS_ID) body.tenantId = tenantId;
+    const res = await fetch('/api/bpo/batches', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.ok ? data.batch.batchId : null;
+  } catch (e) {
+    console.warn('Batch create failed (non-fatal):', e);
+    return null;
+  }
+}
+async function batchPersistRecordDocument(batchId, { caseId, ok } = {}) {
+  if (!batchId) return;
+  try {
+    await fetch(`/api/bpo/batches/${encodeURIComponent(batchId)}/documents`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ caseId: caseId || undefined, ok: ok !== false })
+    });
+  } catch (e) {
+    console.warn('Batch document record failed (non-fatal):', e);
+  }
+}
+
+
 function loadJSZip() {
   return new Promise((resolve, reject) => {
     if (typeof JSZip !== "undefined") return resolve();
@@ -3312,24 +3357,36 @@ async function handleZipFile(file) {
     ? `Per-file size check passed — max ${fmtBytes(ZIP_SECURITY.maxPerFileUncompressedBytes)}`
     : `Per-file size check blocked ${sizeFails} oversized file(s)`);
 
+  // Real per-archive batch, created now that security filtering has
+  // settled on the actual file count this archive will attempt to
+  // process (cleared.length) — this is the batchId threaded into each
+  // processFile() call below, not the "zs-N" DOM card id above.
+  const persistBatchId = cleared.length
+    ? await batchPersistCreate({ vertical: currentVertical, source: 'zip-upload', totalDocuments: cleared.length, tenantId: activeClientId })
+    : null;
+
   let extractedTotal = 0, verifyFails = 0;
   let processed = 0;
   for (const { entry, leaf } of cleared) {
     let blob;
     try {
       blob = await entry.async("blob");
-    } catch (e) { continue; }
+    } catch (e) {
+      batchPersistRecordDocument(persistBatchId, { ok: false });
+      continue;
+    }
 
     // Defense in depth: re-check the ACTUAL decompressed size against the
     // running budget — never trust the zip header alone.
     extractedTotal += blob.size;
     if (blob.size > ZIP_SECURITY.maxPerFileUncompressedBytes || extractedTotal > ZIP_SECURITY.maxTotalUncompressedBytes) {
       verifyFails++;
+      batchPersistRecordDocument(persistBatchId, { ok: false });
       continue;
     }
 
     const f = new File([blob], leaf, { type: blob.type || "application/octet-stream" });
-    processFile(f);
+    processFile(f, persistBatchId);
     processed++;
   }
 
@@ -3690,7 +3747,7 @@ function uqStatus(id, html, cls) {
   status.innerHTML  = html;
 }
  
-async function processFile(file) {
+async function processFile(file, persistBatchId) {
   const qid = uqAdd(file);
   try {
     const extraction = await extractFile(file);
@@ -3710,6 +3767,7 @@ async function processFile(file) {
       const confirmed = await showMissionPreview(classification, file.name);
       if (!confirmed) {
         uqStatus(qid, "Discarded by reviewer", "err");
+        batchPersistRecordDocument(persistBatchId, { ok: false });
         return;
       }
     }
@@ -3719,6 +3777,7 @@ async function processFile(file) {
  
     if (routed.length === 0) {
       uqStatus(qid, "No vertical matched — not routed", "err");
+      batchPersistRecordDocument(persistBatchId, { ok: false });
       return;
     }
  
@@ -3740,6 +3799,9 @@ async function processFile(file) {
     const warRoomBtns = getWarRoomButtons(classification);
 
     uqStatus(qid, `${classification.documentType || "Routed"} → ${badges}${attNote}${warRoomBtns ? '<br><span style="font-size:8px;color:var(--dim);margin-right:4px;">OPEN IN:</span>' + warRoomBtns : ''}`, "ok");
+    // Successfully routed — no caseId yet (this path produces a Mission,
+    // not a Case Engine record; see note above batchPersistCreate).
+    batchPersistRecordDocument(persistBatchId, { ok: true });
 
     // TSM AUTO-CHAIN — single-vertical match + AUTO mode: launch straight into the war room
     if (routed.length === 1 && localStorage.getItem('tsm_auto_mode') !== 'off') {
@@ -3759,16 +3821,35 @@ async function processFile(file) {
   } catch (err) {
     console.error("Doc router error:", err);
     uqStatus(qid, "Failed: " + err.message, "err");
+    batchPersistRecordDocument(persistBatchId, { ok: false });
   }
 }
  
 function handleFiles(fileList) {
-  Array.from(fileList).forEach(file => {
+  const files = Array.from(fileList);
+  const plainFiles = files.filter(file => {
+    const isZip = file.name.toLowerCase().endsWith(".zip") ||
+                  file.type === "application/zip" ||
+                  file.type === "application/x-zip-compressed";
+    return !isZip;
+  });
+
+  // One shared batch across every non-zip file in this drop/selection —
+  // closes the "250 independent processFile() calls with zero shared
+  // context" gap for plain multi-select uploads. ZIP files still get
+  // their own per-archive batch inside handleZipFile, since the real
+  // file count there is only known after security filtering removes
+  // path-traversal/oversized/disallowed-extension entries.
+  let plainBatchPromise = plainFiles.length
+    ? batchPersistCreate({ vertical: currentVertical, source: 'multi-select', totalDocuments: plainFiles.length, tenantId: activeClientId })
+    : Promise.resolve(null);
+
+  files.forEach(file => {
     const isZip = file.name.toLowerCase().endsWith(".zip") ||
                   file.type === "application/zip" ||
                   file.type === "application/x-zip-compressed";
     if (isZip) handleZipFile(file);
-    else processFile(file);
+    else plainBatchPromise.then(batchId => processFile(file, batchId));
   });
 }
  
