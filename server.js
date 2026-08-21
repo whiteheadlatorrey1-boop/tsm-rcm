@@ -71,6 +71,7 @@ const rateLimit = require('express-rate-limit');
 const { enforceBNCASchema } = require('./server/tsm-bnca-schema');
 const snAdapter = require('./server/l1-copilot/servicenow-adapter');
 const cloudOpsAdapter = require('./server/l1-copilot/cloud-ops-adapter');
+const graphAdapter = require('./server/l1-copilot/graph-intune-adapter');
 
 // contentSecurityPolicy/crossOriginEmbedderPolicy/crossOriginResourcePolicy
 // are OFF on purpose: this app is ~100+ largely-independent HTML pages that
@@ -3615,6 +3616,30 @@ app.get('/api/l1-copilot/cloud-ops/instance/:identifier', async (req, res) => {
     res.json({ ok: true, instance });
   } catch (e) {
     const status = e.code === 'CLOUD_OPS_NOT_CONFIGURED' ? 503 : 502;
+    res.status(status).json({ ok: false, error: e.message });
+  }
+});
+
+// --- Graph/Intune real connector -----------------------------------------
+// Real read-only lookup via Microsoft Graph (server/l1-copilot/graph-intune-adapter.js)
+// — no-ops honestly (503 + ok:false) rather than pretending to work when
+// AZURE_TENANT_ID/AZURE_CLIENT_ID/AZURE_CLIENT_SECRET aren't configured, or
+// when the app registration hasn't been granted admin consent yet (surfaces
+// as a 502 with Graph's own permission-denied message). Device compliance
+// and encryption status only in this pass — BitLocker recovery-key
+// retrieval is intentionally not wired up (see adapter file header).
+
+app.get('/api/l1-copilot/graph-intune/status', (req, res) => {
+  res.json({ ok: true, configured: graphAdapter.isConfigured() });
+});
+
+app.get('/api/l1-copilot/graph-intune/device/:identifier', async (req, res) => {
+  try {
+    const device = await graphAdapter.getDevice(req.params.identifier);
+    if (!device) return res.status(404).json({ ok: false, error: `No managed device found for "${req.params.identifier}".` });
+    res.json({ ok: true, device });
+  } catch (e) {
+    const status = e.code === 'GRAPH_NOT_CONFIGURED' ? 503 : 502;
     res.status(status).json({ ok: false, error: e.message });
   }
 });
