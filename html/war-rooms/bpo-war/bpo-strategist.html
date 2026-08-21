@@ -375,6 +375,15 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
       <div id="briefBody" class="brief-idle">Load situation room data and fire strategy engine — AI will model outcomes and generate the recommended plan.</div>
     </div>
 
+    <!-- SOURCE DOCUMENTS -->
+    <div class="brief-panel">
+      <div class="panel-header">
+        <div class="panel-pulse" style="background:var(--cyan)"></div>
+        <div class="panel-title" style="color:var(--cyan)">SOURCE DOCUMENTS</div>
+      </div>
+      <div id="strategistDocList" class="brief-idle">No case loaded yet.</div>
+    </div>
+
   </div>
 
   <!-- ── RIGHT ── -->
@@ -604,6 +613,56 @@ function readLatestHoneywellRelay() {
   } catch(e) { return null; }
 }
 
+// ── SOURCE DOCUMENTS ──
+// Best-effort fetch of the documents actually stored for this case
+// (GET /api/bpo/work-items/:caseId/documents, server.js), with a working
+// download link per document (GET /api/bpo/documents/:docId/download).
+// Mirrors the war room's buildEvidencePanel document-list wiring so the
+// strategist view can also list/retrieve documents uploaded upstream.
+function buildStrategistDocList(caseId) {
+  const el = document.getElementById('strategistDocList');
+  if (!el) return;
+  if (!caseId) {
+    el.innerHTML = 'No case loaded yet.';
+    return;
+  }
+  el.innerHTML = 'Loading documents…';
+  fetch(`/api/bpo/work-items/${encodeURIComponent(caseId)}/documents`, { credentials: 'same-origin' })
+    .then(r => r.ok ? r.json() : null)
+    .then(data => {
+      if (!data || !data.ok || !Array.isArray(data.documents)) {
+        el.innerHTML = 'Documents unavailable.';
+        return;
+      }
+      if (!data.documents.length) {
+        el.innerHTML = 'No documents on this case.';
+        return;
+      }
+      el.innerHTML = data.documents.map(doc => {
+        const sizeKb = doc.sizeBytes ? Math.max(1, Math.round(doc.sizeBytes / 1024)) + ' KB' : '';
+        const status = doc.hasExtractedText ? (doc.textTruncated ? 'TEXT (TRUNC.)' : 'TEXT OK') : 'NO TEXT';
+        return `
+        <div class="evidence-item">
+          <div class="ev-name">${escapeHtmlBpoStrat(doc.filename)} ${sizeKb ? '· ' + sizeKb : ''}</div>
+          <div class="ev-time"><a href="/api/bpo/documents/${encodeURIComponent(doc.docId)}/download" style="color:inherit;text-decoration:underline" download>⬇ download</a></div>
+          <div class="ev-tag ev-analyzed">${status}</div>
+        </div>`;
+      }).join('');
+    })
+    .catch(e => {
+      console.warn('[BPO strategist doc list] fetch failed (non-fatal):', e.message);
+      el.innerHTML = 'Documents unavailable.';
+    });
+}
+
+// Same escaper pattern the war room uses for filenames (escapeHtmlBpo in
+// bpo-war-room.html) — kept local here since each page loads independently.
+function escapeHtmlBpoStrat(s) {
+  return (s || '').toString().replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
+}
+
 // ── LOAD RELAY ──
 (function loadRelay(){
   try {
@@ -630,6 +689,7 @@ function readLatestHoneywellRelay() {
       document.getElementById('tbCaseWrap').style.display = '';
     }
     document.getElementById('actStatus').innerHTML = 'Status: <span>SITUATION DATA LOADED</span>';
+    buildStrategistDocList(caseId);
 
     // Hydrate impact model from extraction if available
     if (extraction) {
