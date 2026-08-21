@@ -73,6 +73,7 @@ const snAdapter = require('./server/l1-copilot/servicenow-adapter');
 const cloudOpsAdapter = require('./server/l1-copilot/cloud-ops-adapter');
 const graphAdapter = require('./server/l1-copilot/graph-intune-adapter');
 const gcpAdapter = require('./server/l1-copilot/gcp-adapter');
+const demoData = require('./server/l1-copilot/demo-data');
 
 // contentSecurityPolicy/crossOriginEmbedderPolicy/crossOriginResourcePolicy
 // are OFF on purpose: this app is ~100+ largely-independent HTML pages that
@@ -3322,7 +3323,8 @@ app.post('/api/l1-copilot/assistant', async (req, res) => {
 // the full contract this satisfies.
 
 app.get('/api/l1-copilot/servicenow/status', (req, res) => {
-  res.json({ ok: true, configured: snAdapter.isConfigured() });
+  const configured = snAdapter.isConfigured();
+  res.json({ ok: true, configured, demoMode: (!configured) && demoData.isDemoModeEnabled() });
 });
 
 app.get('/api/l1-copilot/servicenow/asset/:tag', async (req, res) => {
@@ -3331,6 +3333,9 @@ app.get('/api/l1-copilot/servicenow/asset/:tag', async (req, res) => {
     if (!asset) return res.status(404).json({ ok: false, error: `No asset found for tag "${req.params.tag}".` });
     res.json({ ok: true, asset });
   } catch (e) {
+    if (e.code === 'SERVICENOW_NOT_CONFIGURED' && demoData.isDemoModeEnabled()) {
+      return res.json({ ok: true, asset: demoData.demoAsset(req.params.tag), demoMode: true });
+    }
     const status = e.code === 'SERVICENOW_NOT_CONFIGURED' ? 503 : 502;
     res.status(status).json({ ok: false, error: e.message });
   }
@@ -3342,6 +3347,9 @@ app.get('/api/l1-copilot/servicenow/ticket/:incident', async (req, res) => {
     if (!ticket) return res.status(404).json({ ok: false, error: `No incident found for "${req.params.incident}".` });
     res.json({ ok: true, ticket });
   } catch (e) {
+    if (e.code === 'SERVICENOW_NOT_CONFIGURED' && demoData.isDemoModeEnabled()) {
+      return res.json({ ok: true, ticket: demoData.demoTicket(req.params.incident), demoMode: true });
+    }
     const status = e.code === 'SERVICENOW_NOT_CONFIGURED' ? 503 : 502;
     res.status(status).json({ ok: false, error: e.message });
   }
@@ -3607,7 +3615,8 @@ app.post('/api/l1-copilot/cloud-ops', async (req, res) => {
 // rather than querying a live account.
 
 app.get('/api/l1-copilot/cloud-ops/status', (req, res) => {
-  res.json({ ok: true, configured: cloudOpsAdapter.isConfigured() });
+  const configured = cloudOpsAdapter.isConfigured();
+  res.json({ ok: true, configured, demoMode: (!configured) && demoData.isDemoModeEnabled() });
 });
 
 app.get('/api/l1-copilot/cloud-ops/instance/:identifier', async (req, res) => {
@@ -3616,6 +3625,9 @@ app.get('/api/l1-copilot/cloud-ops/instance/:identifier', async (req, res) => {
     if (!instance) return res.status(404).json({ ok: false, error: `No EC2 instance found for "${req.params.identifier}".` });
     res.json({ ok: true, instance });
   } catch (e) {
+    if (e.code === 'CLOUD_OPS_NOT_CONFIGURED' && demoData.isDemoModeEnabled()) {
+      return res.json({ ok: true, instance: demoData.demoAwsInstance(req.params.identifier), demoMode: true });
+    }
     const status = e.code === 'CLOUD_OPS_NOT_CONFIGURED' ? 503 : 502;
     res.status(status).json({ ok: false, error: e.message });
   }
@@ -3631,7 +3643,8 @@ app.get('/api/l1-copilot/cloud-ops/instance/:identifier', async (req, res) => {
 // retrieval is intentionally not wired up (see adapter file header).
 
 app.get('/api/l1-copilot/graph-intune/status', (req, res) => {
-  res.json({ ok: true, configured: graphAdapter.isConfigured() });
+  const configured = graphAdapter.isConfigured();
+  res.json({ ok: true, configured, demoMode: (!configured) && demoData.isDemoModeEnabled() });
 });
 
 app.get('/api/l1-copilot/graph-intune/device/:identifier', async (req, res) => {
@@ -3640,6 +3653,9 @@ app.get('/api/l1-copilot/graph-intune/device/:identifier', async (req, res) => {
     if (!device) return res.status(404).json({ ok: false, error: `No managed device found for "${req.params.identifier}".` });
     res.json({ ok: true, device });
   } catch (e) {
+    if (e.code === 'GRAPH_NOT_CONFIGURED' && demoData.isDemoModeEnabled()) {
+      return res.json({ ok: true, device: demoData.demoDevice(req.params.identifier), demoMode: true });
+    }
     const status = e.code === 'GRAPH_NOT_CONFIGURED' ? 503 : 502;
     res.status(status).json({ ok: false, error: e.message });
   }
@@ -3652,7 +3668,8 @@ app.get('/api/l1-copilot/graph-intune/device/:identifier', async (req, res) => {
 // credentials aren't configured. Diagnostic read access only.
 
 app.get('/api/l1-copilot/gcp/status', (req, res) => {
-  res.json({ ok: true, configured: gcpAdapter.isConfigured() });
+  const configured = gcpAdapter.isConfigured();
+  res.json({ ok: true, configured, demoMode: (!configured) && demoData.isDemoModeEnabled() });
 });
 
 app.get('/api/l1-copilot/gcp/instance/:identifier', async (req, res) => {
@@ -3661,6 +3678,9 @@ app.get('/api/l1-copilot/gcp/instance/:identifier', async (req, res) => {
     if (!instance) return res.status(404).json({ ok: false, error: `No Compute Engine instance found for "${req.params.identifier}".` });
     res.json({ ok: true, instance });
   } catch (e) {
+    if (e.code === 'GCP_NOT_CONFIGURED' && demoData.isDemoModeEnabled()) {
+      return res.json({ ok: true, instance: demoData.demoGcpInstance(req.params.identifier), demoMode: true });
+    }
     const status = e.code === 'GCP_NOT_CONFIGURED' ? 503 : 502;
     res.status(status).json({ ok: false, error: e.message });
   }
