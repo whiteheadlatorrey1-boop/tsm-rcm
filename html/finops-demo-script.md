@@ -1,4 +1,4 @@
-# TSM FinOps Demo — War Room → Strategist → Executive → Sentinel Center
+# TSM FinOps Demo — UNDERSTAND → DECIDE → EXECUTE → TRUST
 
 **Duration:** ~10–12 minutes
 **Chain:** `finops-war-room.html` → `finops-main-strategist.html` → `finops-executive-portal.html` → `sentinel-center.html`
@@ -104,7 +104,7 @@
 > "So to recap the chain: one document, dropped in the War Room. Six engines triage it. The Strategist synthesizes it into a Controller Action Plan and automatically relays it two places at once — the Executive Portal for decision-making, and Sentinel for enterprise-wide risk visibility. No copy-paste, no manual export, no stale dashboard. That's the whole platform in one document's lifecycle."
 
 **If asked "does this work for other business units?":**
-> "Yes — this exact chain (War Room → Strategist → Executive) exists per-vertical: Healthcare, Legal, Insurance, Real Estate, BPO, and others all follow the same pattern and all report into this same Sentinel Center."
+> "Yes — this exact chain (UNDERSTAND → DECIDE → EXECUTE → TRUST) exists per-vertical: Healthcare, Legal, Insurance, Real Estate, BPO, and others all follow the same pattern and all report into this same Sentinel Center."
 
 ---
 

@@ -1,5 +1,5 @@
 # TSM Consultz — Real Estate (RE) Vertical
-## Live Demo Script: War Room → Strategist → Executive Portal
+## Live Demo Script: UNDERSTAND → DECIDE → EXECUTE → TRUST
 
 **Audience:** Prospective partners / buyers (e.g. credit union partnership pitch)
 **Runtime:** ~10–12 minutes
