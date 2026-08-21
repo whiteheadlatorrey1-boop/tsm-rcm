@@ -693,7 +693,17 @@ function loadDemoMode() {
 }
 
 // ── EVIDENCE PANEL ──
-function buildEvidencePanel(docType, docText) {
+// Renders the fixed pipeline-status rows synchronously (unchanged
+// behavior — still correct as an immediate render), then, when a real
+// caseId is available, best-effort fetches the actual stored documents
+// for that case (GET /api/bpo/work-items/:caseId/documents, server.js)
+// and replaces the single static "Primary Document" placeholder row with
+// one real row per uploaded document, each with a working download link
+// (GET /api/bpo/documents/:docId/download). This is the read-back half of
+// the upload wiring above — without it, a document uploaded through
+// bpoLoadFile() was stored server-side but nothing in any war room,
+// strategist, or executive-portal UI could ever list or retrieve it again.
+function buildEvidencePanel(docType, docText, caseId) {
   const wordCount = (docText || '').trim().split(/\s+/).filter(Boolean).length;
   const docs = [
     { name: docType || 'Primary Document', ok: true, time: 'NOW', tag: 'analyzed' },
@@ -711,6 +721,38 @@ function buildEvidencePanel(docType, docText) {
       <div class="ev-tag ${d.tag === 'analyzed' ? 'ev-analyzed' : 'ev-pending'}">${d.tag.toUpperCase()}</div>
     </div>
   `).join('');
+
+  if (!caseId) return;
+  fetch(`/api/bpo/work-items/${encodeURIComponent(caseId)}/documents`, { credentials: 'same-origin' })
+    .then(r => r.ok ? r.json() : null)
+    .then(data => {
+      if (!data || !data.ok || !Array.isArray(data.documents) || !data.documents.length) return;
+      const rows = data.documents.map(doc => {
+        const sizeKb = doc.sizeBytes ? Math.max(1, Math.round(doc.sizeBytes / 1024)) + ' KB' : '';
+        const status = doc.hasExtractedText ? (doc.textTruncated ? 'TEXT (TRUNC.)' : 'TEXT OK') : 'NO TEXT';
+        return `
+        <div class="evidence-item">
+          <div class="ev-check ok">✓</div>
+          <div class="ev-name">${escapeHtmlBpo(doc.filename)} ${sizeKb ? '· ' + sizeKb : ''}</div>
+          <div class="ev-time"><a href="/api/bpo/documents/${encodeURIComponent(doc.docId)}/download" style="color:inherit;text-decoration:underline" download>⬇ download</a></div>
+          <div class="ev-tag ev-analyzed">${status}</div>
+        </div>`;
+      }).join('');
+      // Replace only the first (placeholder "Primary Document") row —
+      // the pipeline-status rows below it stay exactly as rendered above.
+      const items = el.querySelectorAll('.evidence-item');
+      if (items[0]) items[0].outerHTML = rows;
+    })
+    .catch(e => console.warn('[BPO evidence panel] document list fetch failed (non-fatal):', e.message));
+}
+
+// Minimal escaper for filenames rendered into the evidence panel above —
+// same pattern the codebase already uses elsewhere for member-name escaping
+// (see docs/BPO_PRODUCTION_READINESS.md's XSS note on the portfolio page).
+function escapeHtmlBpo(s) {
+  return (s || '').toString().replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
 }
 
 // ── IMPACT DEFAULTS ──
@@ -871,10 +913,11 @@ Return ONLY the JSON object. No markdown, no explanation.`;
 
     // Parse and render
     const result = tsmExtractJSON(raw);
+    let extractionCaseId = null;
     if (result) {
       renderExtraction(result);
       registerIncidentInMemory(result);
-      storeWarRoomRelay(result);
+      extractionCaseId = storeWarRoomRelay(result);
       addMemoryEntry('Extraction complete: ' + result.rootCause);
     } else {
       renderFallback(raw);
@@ -889,7 +932,7 @@ Return ONLY the JSON object. No markdown, no explanation.`;
       // extraction (raw text carried forward, never inventing structured
       // fields we don't have) so the relay chain still works, same
       // never-invent-data convention as buildStrategyFallback() downstream.
-      storeWarRoomRelay({
+      extractionCaseId = storeWarRoomRelay({
         situationSummary: (raw || '').slice(0, 800) || 'Extraction engine returned no parsable output.',
         rootCause: 'Structured parse failed — see raw engine output below for details',
         risks: [],
@@ -904,8 +947,10 @@ Return ONLY the JSON object. No markdown, no explanation.`;
     document.getElementById('fireEngineBtn').textContent = result ? '✓ ENGINE COMPLETE' : '⚠ ENGINE COMPLETE (raw output)';
     document.getElementById('fireEngineBtn').disabled = true;
 
-    // Update evidence panel
-    buildEvidencePanel(relayData.selectedDocType, relayData.docText);
+    // Update evidence panel — pass the real caseId through so it can
+    // fetch and list any documents actually stored against this case
+    // (see buildEvidencePanel's fetch of .../documents above).
+    buildEvidencePanel(relayData.selectedDocType, relayData.docText, extractionCaseId);
     document.getElementById('evidenceList').querySelector('.ev-tag.ev-pending') &&
       (document.getElementById('evidenceList').querySelector('.ev-tag.ev-pending').className = 'ev-tag ev-analyzed');
 
@@ -1170,6 +1215,8 @@ function storeWarRoomRelay(extracted) {
       })
     }).catch((e) => console.warn('BPO work-item persist failed (non-fatal):', e.message));
   } catch (e) { console.warn('BPO work-item persist failed (non-fatal):', e.message); }
+
+  return caseId;
 }
 
 // ── NAVIGATION ──
