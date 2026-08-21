@@ -36,6 +36,13 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 .no-items{font-family:'JetBrains Mono',monospace;font-size:.7rem;color:var(--muted);}
 .toast{position:fixed;bottom:20px;right:20px;background:var(--bg2);border:1px solid var(--gold);color:var(--gold);padding:10px 18px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:.65rem;opacity:0;pointer-events:none;transition:.3s;z-index:50;}
 .toast.show{opacity:1;transform:translateY(-4px);}
+.kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px;}
+.kpi{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:16px;text-align:center;}
+.kpi-val{font-family:'Orbitron',sans-serif;font-size:1.3rem;font-weight:700;color:var(--gold);}
+.kpi-val.red{color:var(--red);}.kpi-val.green{color:var(--green);}.kpi-val.cyan{color:var(--cyan);}
+.kpi-lbl{font-size:.6rem;color:var(--muted);margin-top:6px;font-family:'JetBrains Mono',monospace;letter-spacing:.08em;}
+.meta-row{display:flex;gap:18px;flex-wrap:wrap;font-family:'JetBrains Mono',monospace;font-size:.6rem;color:var(--muted);margin-top:10px;}
+.meta-row span{color:var(--text);}
 
 .fin-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:16px;}
 .fin-card{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:18px;text-align:center;}
@@ -84,7 +91,10 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
   </div>
 </div>
 <div class="wrap" id="wrap"><!-- populated by JS --></div>
+<div class="wrap" id="excWrap" style="padding-top:0;"><div id="tsm-exception-queue"></div></div>
 <div class="toast" id="toast"></div>
+<script src="/html/js/tsm-bnca-exposure-engine.js"></script>
+<script src="/html/shared/tsm-exec-framework.js"></script>
 <script>
 function tick(){document.getElementById('clock').textContent=new Date().toLocaleTimeString();}
 setInterval(tick,1000);tick();
@@ -101,9 +111,73 @@ function showToast(msg){
 
 function loadRelay(){
   try {
+    if(window.TSM && window.TSM.relay && window.TSM.relay.read){
+      const d = window.TSM.relay.read(DOMAIN);
+      if(d) return d;
+    }
+  } catch(e){}
+  try {
     const raw = sessionStorage.getItem(RELAY_KEY_FALLBACK) || localStorage.getItem(RELAY_KEY_FALLBACK);
     return raw ? JSON.parse(raw) : null;
   } catch(e){ return null; }
+}
+
+// Parses a strict money literal ($8.2M, $450K, $1,200,000) out of the AI's
+// free-text revenueAtRisk field. Returns null on anything that doesn't
+// cleanly match — never guesses a number out of ambiguous text.
+function parseMoneyLoose(s){
+  if(!s) return null;
+  const m = String(s).trim().match(/^\$?([\d,]+(?:\.\d+)?)\s*(K|M|B)?$/i);
+  if(!m) return null;
+  const n = parseFloat(m[1].replace(/,/g,''));
+  if(!isFinite(n)) return null;
+  const mult = {K:1e3, M:1e6, B:1e9}[(m[2]||'').toUpperCase()] || 1;
+  return n * mult;
+}
+
+// BNCA exposure projection — deterministic, sourced only from this
+// incident's own revenueAtRisk figure (same calculation the strategist
+// page runs). Honestly reports "unavailable" when that figure isn't in a
+// fixed money format, rather than fabricating a number from ambiguous text.
+function computeExposureBNCA(ex){
+  if(!window.TSMBNCAExposureEngine) return null;
+  const base = parseMoneyLoose(ex.revenueAtRisk);
+  if(base === null || base <= 0){
+    return { unavailable: true, reason: 'revenue at risk is not in a fixed money format' };
+  }
+  const sevMap = { CRITICAL:'CRIT', HIGH:'HIGH', MEDIUM:'MED' };
+  return window.TSMBNCAExposureEngine.project({
+    baseExposure: base,
+    severity: sevMap[ex.severity] || 'MED',
+    confidence: Number.isFinite(ex.confidence) ? ex.confidence : 70,
+    daysUntilDeadline: 0
+  });
+}
+
+// Generic exception feeder for this vertical's own risks list — no
+// fabricated fields, same convention as the rest of the platform.
+// Self-dedupes per page load.
+var _exceptionsSeen = {};
+function feedVendorExceptions(ex){
+  if(!window.TSMExceptions || !ex || !Array.isArray(ex.risks)) return;
+  ex.risks.forEach(function(r){
+    if(!r || !r.text) return;
+    const key = 'vendor:' + r.text.slice(0,60);
+    if(_exceptionsSeen[key]) return;
+    _exceptionsSeen[key] = true;
+    const lvl = String(r.level||'MED').toUpperCase();
+    const severity = (lvl === 'CRITICAL' || lvl === 'HIGH') ? 'high' : (lvl === 'MED' ? 'med' : 'low');
+    try {
+      window.TSMExceptions.add({
+        sector: 'vendor',
+        entityType: 'vendor-risk',
+        entityId: key,
+        title: r.text,
+        severity: severity,
+        source: 'Supplier/Vendor Strategist'
+      });
+    } catch(e){}
+  });
 }
 
 // Write back an exec action without clobbering the rest of the relay payload
@@ -206,6 +280,14 @@ function render(){
 
   html += renderRiskRegister(ex.risks);
 
+  // Strategist-reviewed badge + exposure projection, so this page reflects
+  // the strategist's actual second hop instead of just war room's raw
+  // broadcast.
+  if(window.TSMExecFramework){
+    html += window.TSMExecFramework.renderReviewBadge(data);
+    html += window.TSMExecFramework.renderBNCA(computeExposureBNCA(ex));
+  }
+
   html += `<div class="sec"><div class="sec-hdr"><span class="lbl">EXECUTIVE ACTIONS</span></div>
     <div class="action-bar">
       <button class="abtn approve" onclick="recordExecAction('ACKNOWLEDGE'); showToast('Marked reviewed.')">&#10003; ACKNOWLEDGE</button>
@@ -215,6 +297,13 @@ function render(){
   </div>`;
 
   document.getElementById('wrap').innerHTML = html;
+
+  // Feed the exception queue from this vertical's own risks data — no
+  // fabricated fields, same convention as the rest of the platform.
+  if(window.TSMExceptions && window.TSMExceptionWidget){
+    feedVendorExceptions(ex);
+    window.TSMExceptionWidget.mount('tsm-exception-queue', { sector: 'vendor' });
+  }
 }
 
 render();
@@ -222,6 +311,8 @@ window.addEventListener('storage', e => { if(e.key === RELAY_KEY_FALLBACK || e.k
 window.addEventListener('TSM_RELAY_EVENT', e => { if(e.detail && e.detail.domain === DOMAIN) render(); });
 </script>
   <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
+  <script src="/html/shared/tsm-exceptions.js"></script>
+  <script src="/html/js/widgets/tsm-exception-widget.js"></script>
   <script src="/html/core/tsm-runtime.js"></script>
 </body>
 </html>
