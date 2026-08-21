@@ -70,6 +70,7 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const { enforceBNCASchema } = require('./server/tsm-bnca-schema');
 const snAdapter = require('./server/l1-copilot/servicenow-adapter');
+const cloudOpsAdapter = require('./server/l1-copilot/cloud-ops-adapter');
 
 // contentSecurityPolicy/crossOriginEmbedderPolicy/crossOriginResourcePolicy
 // are OFF on purpose: this app is ~100+ largely-independent HTML pages that
@@ -3592,6 +3593,29 @@ app.post('/api/l1-copilot/cloud-ops', async (req, res) => {
   } catch (e) {
     console.error('L1 COPILOT CLOUD OPS ERROR:', e.message);
     return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// --- Cloud Ops real connector (AWS EC2) ---------------------------------
+// Real read-only lookup via AWS SDK v3 (server/l1-copilot/cloud-ops-adapter.js)
+// — no-ops honestly (503 + ok:false) rather than pretending to work when
+// AWS credentials aren't configured. Diagnostic read access only: no
+// start/stop/terminate actions are exposed. Distinct from the AI-advisory
+// /api/l1-copilot/cloud-ops route above, which reasons over pasted context
+// rather than querying a live account.
+
+app.get('/api/l1-copilot/cloud-ops/status', (req, res) => {
+  res.json({ ok: true, configured: cloudOpsAdapter.isConfigured() });
+});
+
+app.get('/api/l1-copilot/cloud-ops/instance/:identifier', async (req, res) => {
+  try {
+    const instance = await cloudOpsAdapter.getInstance(req.params.identifier);
+    if (!instance) return res.status(404).json({ ok: false, error: `No EC2 instance found for "${req.params.identifier}".` });
+    res.json({ ok: true, instance });
+  } catch (e) {
+    const status = e.code === 'CLOUD_OPS_NOT_CONFIGURED' ? 503 : 502;
+    res.status(status).json({ ok: false, error: e.message });
   }
 });
 
