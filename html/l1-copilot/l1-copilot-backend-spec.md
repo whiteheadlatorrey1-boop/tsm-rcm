@@ -2,6 +2,8 @@
 
 This covers what needs to exist behind the current front-end so a company can point it at their real CMDB and roll it out to a team. The front-end (`l1-ticket-copilot.html`) is already built and expects these contracts — nothing here requires changing its UI logic.
 
+**Status (2026-08-20): the ServiceNow adapter in §3 is now real, not just designed.** `server/l1-copilot/servicenow-adapter.js` implements `getAsset`/`getTicket`/`searchAssetsByUser`/`writeWorkNote`/`updateTicketStatus` against the actual ServiceNow Table API, wired into `/api/l1-copilot/servicenow/*` routes and into `analyze`/`resolution` for CMDB-enriched analysis and work-note writeback. It's config-driven (`SERVICENOW_INSTANCE_URL`, `SERVICENOW_USERNAME`/`SERVICENOW_PASSWORD` or `SERVICENOW_OAUTH_TOKEN`) — no per-customer code changes needed, per-customer field-name overrides supported via a `fieldMap`. 22/22 unit tests pass against a mock Table API server (`tests/unit/l1-copilot/servicenow-adapter.test.js`); **not yet smoke-tested against a real ServiceNow instance** — do that before rollout to a live customer. Everything else below (auth/multi-tenancy, other CMDB platforms, the assistant endpoint's own writeback) is unchanged from the original design.
+
 ---
 
 ## 1. Scope of the gap

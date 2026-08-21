@@ -69,6 +69,7 @@ app.set('trust proxy', 1);
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const { enforceBNCASchema } = require('./server/tsm-bnca-schema');
+const snAdapter = require('./server/l1-copilot/servicenow-adapter');
 
 // contentSecurityPolicy/crossOriginEmbedderPolicy/crossOriginResourcePolicy
 // are OFF on purpose: this app is ~100+ largely-independent HTML pages that
@@ -3311,15 +3312,91 @@ app.post('/api/l1-copilot/assistant', async (req, res) => {
   }
 });
 
+// --- ServiceNow CMDB/ITSM integration ---------------------------------
+// Real Table API connector (server/l1-copilot/servicenow-adapter.js) — no-ops
+// honestly (503 + ok:false) rather than pretending to work when a customer
+// hasn't configured SERVICENOW_INSTANCE_URL yet. See the backend spec for
+// the full contract this satisfies.
+
+app.get('/api/l1-copilot/servicenow/status', (req, res) => {
+  res.json({ ok: true, configured: snAdapter.isConfigured() });
+});
+
+app.get('/api/l1-copilot/servicenow/asset/:tag', async (req, res) => {
+  try {
+    const asset = await snAdapter.getAsset(req.params.tag);
+    if (!asset) return res.status(404).json({ ok: false, error: `No asset found for tag "${req.params.tag}".` });
+    res.json({ ok: true, asset });
+  } catch (e) {
+    const status = e.code === 'SERVICENOW_NOT_CONFIGURED' ? 503 : 502;
+    res.status(status).json({ ok: false, error: e.message });
+  }
+});
+
+app.get('/api/l1-copilot/servicenow/ticket/:incident', async (req, res) => {
+  try {
+    const ticket = await snAdapter.getTicket(req.params.incident);
+    if (!ticket) return res.status(404).json({ ok: false, error: `No incident found for "${req.params.incident}".` });
+    res.json({ ok: true, ticket });
+  } catch (e) {
+    const status = e.code === 'SERVICENOW_NOT_CONFIGURED' ? 503 : 502;
+    res.status(status).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/api/l1-copilot/servicenow/work-note', async (req, res) => {
+  const { incident, note } = req.body || {};
+  if (!incident || !note) return res.status(400).json({ ok: false, error: 'incident and note are required' });
+  try {
+    const result = await snAdapter.writeWorkNote(incident, note);
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    const status = e.code === 'SERVICENOW_NOT_CONFIGURED' ? 503 : 502;
+    res.status(status).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/api/l1-copilot/servicenow/status-update', async (req, res) => {
+  const { incident, state } = req.body || {};
+  if (!incident || !state) return res.status(400).json({ ok: false, error: 'incident and state are required' });
+  try {
+    const result = await snAdapter.updateTicketStatus(incident, state);
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    const status = e.code === 'SERVICENOW_NOT_CONFIGURED' ? 503 : 502;
+    res.status(status).json({ ok: false, error: e.message });
+  }
+});
+
 app.post('/api/l1-copilot/analyze', async (req, res) => {
   const { ticket, maxTokens } = req.body || {};
   if (!ticket || !ticket.description) return res.status(400).json({ ok: false, error: 'ticket.description required' });
+
+  // If ServiceNow is configured and the agent gave us an asset tag or
+  // incident number, pull real CMDB/incident history so "likely cause"
+  // reasoning has actual warranty/asset context instead of just the typed
+  // fields. Best-effort only — a lookup miss or an unconfigured instance
+  // never blocks analysis, it just falls back to metadata-only, same as before.
+  let cmdbContext = null;
+  if (snAdapter.isConfigured()) {
+    try {
+      const [assetRec, ticketRec] = await Promise.all([
+        ticket.asset ? snAdapter.getAsset(ticket.asset).catch(() => null) : null,
+        ticket.incident ? snAdapter.getTicket(ticket.incident).catch(() => null) : null
+      ]);
+      if (assetRec || ticketRec) cmdbContext = { asset: assetRec, ticket: ticketRec };
+    } catch (e) { /* best-effort — analysis proceeds without it */ }
+  }
+
   const summary = JSON.stringify({
     incident: ticket.incident, priority: ticket.priority, requester: ticket.requester,
     department: ticket.department, asset: ticket.asset, manufacturer: ticket.manufacturer,
     model: ticket.model, warranty: ticket.warranty
   }, null, 2);
-  const prompt = `Ticket metadata (may be incomplete — fields left blank were not provided):\n${summary}\n\n` +
+  const cmdbBlock = cmdbContext
+    ? `\nReal CMDB/ServiceNow data for this asset/incident (trust this over the agent-typed fields above if they conflict):\n${JSON.stringify(cmdbContext, null, 2)}\n`
+    : '';
+  const prompt = `Ticket metadata (may be incomplete — fields left blank were not provided):\n${summary}\n${cmdbBlock}\n` +
     `Ticket description (raw, as pasted by the agent):\n${ticket.description}\n\n` +
     `Do two things and return ONLY valid JSON, no markdown, no backticks, in exactly this shape:\n\n` +
     `1) Analyze the ticket:\n` +
@@ -3336,7 +3413,7 @@ app.post('/api/l1-copilot/analyze', async (req, res) => {
   try {
     const raw = await groqChat(SP.l1support, prompt, maxTokens || 1000);
     const analysis = JSON.parse(raw.replace(/```json|```/g, '').trim());
-    return res.json({ ok: true, analysis, createdAt: new Date().toISOString() });
+    return res.json({ ok: true, analysis, cmdbSourced: !!cmdbContext, createdAt: new Date().toISOString() });
   } catch (e) {
     console.error('L1 COPILOT ANALYZE ERROR:', e.message);
     return res.status(500).json({ ok: false, error: e.message });
@@ -3361,7 +3438,7 @@ app.post('/api/l1-copilot/vendor', async (req, res) => {
 });
 
 app.post('/api/l1-copilot/resolution', async (req, res) => {
-  const { ticket, analysis, notes, maxTokens } = req.body || {};
+  const { ticket, analysis, notes, incident, writeToServicenow, maxTokens } = req.body || {};
   if (!ticket) return res.status(400).json({ ok: false, error: 'ticket required' });
   const prompt = `Ticket description:\n${ticket}\n\n` +
     (analysis ? `AI analysis on file:\n${JSON.stringify(analysis, null, 2)}\n\n` : '') +
@@ -3371,7 +3448,25 @@ app.post('/api/l1-copilot/resolution', async (req, res) => {
     `reflected in the notes above; do not invent steps that weren't performed.`;
   try {
     const answer = await groqChat(SP.l1support, prompt, maxTokens || 900);
-    return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
+
+    // Optional real writeback: only attempted if the caller explicitly asks
+    // for it AND passes an incident number AND ServiceNow is configured —
+    // never silent, never assumed.
+    let servicenow = null;
+    if (writeToServicenow && incident) {
+      if (!snAdapter.isConfigured()) {
+        servicenow = { attempted: true, success: false, error: 'ServiceNow is not configured for this environment.' };
+      } else {
+        try {
+          await snAdapter.writeWorkNote(incident, answer);
+          servicenow = { attempted: true, success: true };
+        } catch (e) {
+          servicenow = { attempted: true, success: false, error: e.message };
+        }
+      }
+    }
+
+    return res.json({ ok: true, answer, servicenow, createdAt: new Date().toISOString() });
   } catch (e) {
     console.error('L1 COPILOT RESOLUTION ERROR:', e.message);
     return res.status(500).json({ ok: false, error: e.message });

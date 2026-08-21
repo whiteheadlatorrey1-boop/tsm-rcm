@@ -362,6 +362,13 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
         <div class="field"><div class="field-label">Time Open</div><input id="tkTimeOpen" placeholder="3h 12m" readonly></div>
       </div>
 
+      <div class="btn-row" style="margin-top:8px; align-items:center">
+        <button class="btn btn-outline" id="btnSnPull">PULL FROM SERVICENOW</button>
+        <button class="btn btn-outline" id="btnSnPullByIncident">LOAD INCIDENT FROM SERVICENOW</button>
+        <span id="snStatusBadge" style="font-size:11px; padding:4px 10px; border-radius:12px; border:1px solid var(--border); color:var(--muted)">CHECKING SERVICENOW…</span>
+      </div>
+      <div id="snPullOut" style="font-size:12px; margin-top:4px"></div>
+
       <div class="card">
         <div class="card-head">TICKET DESCRIPTION</div>
         <div class="card-body">
@@ -758,8 +765,10 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
           <div class="btn-row" style="margin-top:0;margin-bottom:10px">
             <button class="btn btn-cyan" id="btnBuildResolution">GENERATE RESOLUTION</button>
             <button class="btn btn-gold" id="btnCopyResolution">COPY TO CLIPBOARD</button>
+            <button class="btn btn-outline" id="btnSyncResolution">SYNC TO SERVICENOW</button>
           </div>
           <div class="ai-output" id="resolutionOutput">Problem / Cause / Actions Taken / Resolution / Validation / Next Steps will be generated here from the ticket, checklist, and AI analysis.</div>
+          <div id="resolutionSyncOut" style="font-size:12px; margin-top:6px"></div>
         </div>
       </div>
     </section>
@@ -1651,6 +1660,66 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
     clearCurrentTicket();
   });
 
+  // ── ServiceNow CMDB/ITSM lookups ─────────────────────────────────────────
+  (async function checkSnStatus(){
+    const badge = document.getElementById('snStatusBadge');
+    try {
+      const res = await fetch('/api/l1-copilot/servicenow/status');
+      const data = await res.json();
+      if (data.ok && data.configured) {
+        badge.textContent = 'SERVICENOW: CONNECTED';
+        badge.style.color = 'var(--cyan)'; badge.style.borderColor = 'var(--cyan)';
+      } else {
+        badge.textContent = 'SERVICENOW: NOT CONFIGURED';
+      }
+    } catch (e) {
+      badge.textContent = 'SERVICENOW: UNAVAILABLE';
+    }
+  })();
+
+  document.getElementById('btnSnPull').addEventListener('click', async () => {
+    const tag = document.getElementById('tkAsset').value.trim();
+    const out = document.getElementById('snPullOut');
+    if (!tag) { alert('Enter an asset tag first.'); return; }
+    out.textContent = 'Looking up asset in ServiceNow...';
+    try {
+      const res = await fetch('/api/l1-copilot/servicenow/asset/' + encodeURIComponent(tag));
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'lookup failed');
+      const a = data.asset;
+      if (a.manufacturer) document.getElementById('tkMfr').value = a.manufacturer;
+      if (a.model) document.getElementById('tkModel').value = a.model;
+      if (a.warrantyStatus) document.getElementById('tkWarranty').value = a.warrantyStatus;
+      if (a.department) document.getElementById('tkDept').value = a.department;
+      if (a.owner && !document.getElementById('tkRequester').value) document.getElementById('tkRequester').value = a.owner;
+      out.innerHTML = `<span style="color:var(--cyan)">Pulled from CMDB: ${a.manufacturer || ''} ${a.model || ''}, warranty ${a.warrantyStatus || 'unknown'}.</span>`;
+      saveCurrentTicket();
+    } catch (e) {
+      out.innerHTML = `<span class="err">${e.message}</span>`;
+    }
+  });
+
+  document.getElementById('btnSnPullByIncident').addEventListener('click', async () => {
+    const inc = document.getElementById('tkIncident').value.trim();
+    const out = document.getElementById('snPullOut');
+    if (!inc) { alert('Enter an incident number first.'); return; }
+    out.textContent = 'Loading incident from ServiceNow...';
+    try {
+      const res = await fetch('/api/l1-copilot/servicenow/ticket/' + encodeURIComponent(inc));
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'lookup failed');
+      const t = data.ticket;
+      if (t.requester) document.getElementById('tkRequester').value = t.requester;
+      if (t.assignmentGroup) document.getElementById('tkGroup').value = t.assignmentGroup;
+      if (t.asset) document.getElementById('tkAsset').value = t.asset;
+      if (t.description && !document.getElementById('tkDescription').value.trim()) document.getElementById('tkDescription').value = t.description;
+      out.innerHTML = `<span style="color:var(--cyan)">Loaded ${t.number} from ServiceNow — ${t.assignmentGroup || 'unassigned'}.</span>`;
+      saveCurrentTicket();
+    } catch (e) {
+      out.innerHTML = `<span class="err">${e.message}</span>`;
+    }
+  });
+
   // ── AI Analysis ──────────────────────────────────────────────────────────
   async function runAnalysis(){
     const description = document.getElementById('tkDescription').value.trim();
@@ -2397,6 +2466,35 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
       document.getElementById('navStatus').textContent = 'ENGINE: COPIED TO CLIPBOARD';
       setTimeout(() => document.getElementById('navStatus').textContent = 'ENGINE: IDLE', 1500);
     });
+  });
+
+  document.getElementById('btnSyncResolution').addEventListener('click', async () => {
+    const syncOut = document.getElementById('resolutionSyncOut');
+    const incident = document.getElementById('tkIncident').value.trim();
+    const text = document.getElementById('resolutionOutput').textContent.trim();
+    if (!incident) { alert('Enter an incident number first — the work note needs somewhere to attach.'); return; }
+    if (!text || text.startsWith('Problem / Cause')) { alert('Generate a resolution first.'); return; }
+    syncOut.textContent = 'Writing work note to ServiceNow...';
+    try {
+      const res = await fetch('/api/l1-copilot/resolution', {
+        method: 'POST', headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({
+          ticket: document.getElementById('tkDescription').value,
+          analysis: currentAnalysis,
+          notes: document.getElementById('notesArea').value,
+          incident, writeToServicenow: true
+        })
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'sync failed');
+      if (data.servicenow && data.servicenow.success) {
+        syncOut.innerHTML = `<span style="color:var(--cyan)">Work note written to ${incident} in ServiceNow.</span>`;
+      } else {
+        syncOut.innerHTML = `<span class="err">${(data.servicenow && data.servicenow.error) || 'ServiceNow write did not confirm success.'}</span>`;
+      }
+    } catch (e) {
+      syncOut.innerHTML = `<span class="err">${e.message}</span>`;
+    }
   });
 
   // ── Escalation ───────────────────────────────────────────────────────────
