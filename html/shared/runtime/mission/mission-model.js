@@ -30,7 +30,9 @@
     'noc',
     'mdm',
     'governance',
-    'pm']);
+    'pm',
+    'logistics',
+    'vendor']);
 
   var STAGES = Object.freeze({
     UPLOADED: 'uploaded',
@@ -74,7 +76,7 @@
   var VERT_CODES = {
     healthcare: 'HC', finops: 'FO', insurance: 'INS', construction: 'CON',
     legal: 'LGL', realestate: 'RE', bpo: 'BPO', mortgage: 'MTG', schools: 'SCH',
-    honeywell: 'HWL', hotelops: 'HTL', crm: 'CRM', approval: 'APR', catalog: 'CAT', cpq: 'CPQ', o2c: 'O2C', noc: 'NOC', mdm: 'MDM', governance: 'GOV', pm: 'PM'
+    honeywell: 'HWL', hotelops: 'HTL', crm: 'CRM', approval: 'APR', catalog: 'CAT', cpq: 'CPQ', o2c: 'O2C', noc: 'NOC', mdm: 'MDM', governance: 'GOV', pm: 'PM', logistics: 'LOG', vendor: 'VEN'
   };
 
   var _seqCounters = {};

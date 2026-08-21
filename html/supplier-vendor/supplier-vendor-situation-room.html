@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>TSM · Supplier/Vendor Management Situation Room</title>
@@ -1011,12 +1012,14 @@ function renderFallback(raw) {
 
 // ── STORE WAR ROOM RELAY FOR STRATEGIST ──
 function storeWarRoomRelay(extracted) {
+  const caseId = 'VENDOR-' + new Date().toISOString().slice(0,10) + '-' + Math.random().toString(36).slice(2,8);
   const payload = {
     selectedSector: relayData?.selectedSector || 'Supplier/Vendor Management',
     selectedDocType: relayData?.selectedDocType || '—',
     docText: relayData?.docText || '',
     timestamp: new Date().toISOString(),
     extraction: extracted,
+    caseId,
     engines: {
       engine1: extracted.situationSummary || '',
       engine2: (extracted.risks || []).map(r => r.text).join(' | '),
@@ -1027,8 +1030,26 @@ function storeWarRoomRelay(extracted) {
   try {
     sessionStorage.setItem('TSM_VENDOR_WAR_RELAY', JSON.stringify(payload));
     localStorage.setItem('TSM_VENDOR_WAR_RELAY', JSON.stringify(payload));
+    if (window.TSM && window.TSM.relay && window.TSM.relay.write) {
+      window.TSM.relay.write("VENDOR", payload, {caseId, stage: 'war-room'});
+    }
     addMemoryEntry('War Room relay stored → Strategist ready');
   } catch(e) {}
+
+  // ── Mission runtime (additive — does not affect existing relay) ──
+  try {
+    if (window.TSMMissionModel && window.TSMMissionStore) {
+      const mission = window.TSMMissionModel.createMission({
+        id: caseId,
+        tenantId: (window.TSMActiveMember && window.TSMActiveMember.getId()) || 'default',
+        vertical: 'vendor',
+        client: null,
+        extraction: extracted,
+        classification: { docType: payload.selectedDocType, sector: payload.selectedSector }
+      });
+      window.TSMMissionStore.saveMission(mission);
+    }
+  } catch (e) { console.error('Mission write failed (non-fatal):', e); }
 }
 
 // ── NAVIGATION ──
@@ -1190,5 +1211,7 @@ function tsmWriteRelay(payload){
 </script>
 
   <script src="/html/core/tsm-runtime.js"></script>
+  <script src="/html/shared/runtime/mission/mission-model.js"></script>
+  <script src="/html/shared/runtime/mission/mission-store.js"></script>
 </body>
 </html>
