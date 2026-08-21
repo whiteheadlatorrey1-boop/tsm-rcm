@@ -93,7 +93,7 @@ declare -A WARROOM=(
 # Verticals currently reachable from DOC_ROUTER_TO_MISSION_VERTICAL in
 # tsm-doc-search-multi.html. Keep this in sync manually, or replace with a
 # live grep against that object if you want it self-updating.
-ROUTED="fo ins con bpo re leg hc hotel"
+ROUTED="fo ins con bpo re leg hc hotel hw mortgage schools"
 
 check_mark() { [ -n "$1" ] && [ -f "$1" ] && echo "YES" || echo "NO"; }
 
