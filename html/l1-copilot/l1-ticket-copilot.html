@@ -3287,6 +3287,7 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
 </script>
 
 
+<script src="/l1-copilot/l1-human-decision-wiring.js"></script>
 <script id="tsm-decision-journey-js">
 (function () {
   "use strict";
@@ -3527,42 +3528,28 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
         ${pa.requires_human_review ? "REQUIRED" : "Not required"}
       </div>
 
-      <div class="tsm-dj-decision">
-        <button type="button" data-dj-decision="accept">
-          Accept Recommendation
-        </button>
-        <button type="button" data-dj-decision="keep">
-          Keep Existing Priority
-        </button>
-        <button type="button" data-dj-decision="review">
-          Escalate for Review
-        </button>
-      </div>
+      <div class="tsm-dj-decision" id="tsm-dj-decision-buttons"></div>
     `;
 
-    container
-      .querySelectorAll("[data-dj-decision]")
-      .forEach((button) => {
-        button.addEventListener("click", () => {
-          const action = button.dataset.djDecision;
-
-          /*
-           * Presentation-only for now.
-           * We deliberately do NOT mutate ServiceNow or ticket state.
-           */
-          container.insertAdjacentHTML(
-            "beforeend",
-            `<div class="tsm-dj-final">
-              <strong>Decision recorded for demo:</strong>
-              ${action === "accept"
-                ? "Recommendation accepted by human reviewer."
-                : action === "keep"
-                  ? "Existing priority retained by human reviewer."
-                  : "Escalation requested for human review."}
-            </div>`
-          );
-        });
-      });
+    // Delegates to the real, server-persisted HITL gate
+    // (l1-human-decision-wiring.js) instead of a presentation-only stub.
+    // Falls back to a plain notice if that module failed to load.
+    const buttonsHost = $("tsm-dj-decision-buttons");
+    if (buttonsHost && typeof window.renderHumanDecisionStep === "function") {
+      window.renderHumanDecisionStep(
+        buttonsHost,
+        {
+          incident: ticket.incident,
+          ticketPriority: pa.ticket_priority || ticket.priority,
+          aiSeverity: pa.ai_severity || a.severity,
+          recommendedPriority: pa.recommended_priority
+        },
+        { requiresHumanReview: !!pa.requires_human_review }
+      );
+    } else if (buttonsHost) {
+      buttonsHost.innerHTML =
+        '<div class="tsm-dj-brief">Human decision recording unavailable this session.</div>';
+    }
   }
 
   function nextStep() {
