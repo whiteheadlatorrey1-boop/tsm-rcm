@@ -1445,7 +1445,18 @@ function escalateToExec(){
     }));
   } catch(e) { console.warn('[strat-confirmed] bpo write error:', e); }
 
-  try { if (window.TSMWorkflowStage) TSMWorkflowStage.write('escalate-exec', { caseId: warData?.caseId }); } catch (e) {}
+  try {
+    if (window.TSMWorkflowStage) {
+      TSMWorkflowStage.write('escalate-exec', {
+        caseId: warData?.caseId || null,
+        source: 'BPO Strategist',
+        relay: 'TSM_BPO_STRAT_RELAY',
+        selectedScenario: scenario?.name || warData?.selectedScenarioName || null
+      });
+    }
+  } catch (e) {
+    console.warn('[TSMWorkflowStage] escalate-exec write failed:', e);
+  }
 
   // ── Server-side persistence (Phase 1/2, additive, non-fatal) ──
   // Advances the same bpo_work_items doc the war room created to

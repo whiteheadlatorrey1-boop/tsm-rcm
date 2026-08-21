@@ -17,6 +17,11 @@ const domainMap =
     require('../domain-map');
 
 
+const {
+    groundEnterpriseResult
+} = require('../vertical-decision-grounding');
+
+
 
 // Capability modules (o2c.js, crm.js, governance.js, etc.) now self-fetch
 // the real, already-mounted endpoints for their data instead of returning
@@ -52,6 +57,19 @@ function resolveContext(body = {}, baseUrl) {
 
 
 function reshapeForClient(result, context) {
+
+      /*
+       * Vertical grounding runs AFTER the Enterprise/BNCA
+       * decision has been calculated.
+       *
+       * It augments the response without replacing BNCA.
+       */
+      result =
+          groundEnterpriseResult(
+              result,
+              context
+          );
+
 
     const vertical =
         result.enrichment.vertical ||
@@ -89,7 +107,13 @@ function reshapeForClient(result, context) {
 
             capabilities,
 
-            bnca:{
+            verticalFinding:
+                  result.verticalFinding || null,
+
+              decisionContext:
+                  result.decisionContext || null,
+
+              bnca:{
 
                 recommendedAction:
                     result.decision.action,

@@ -92,7 +92,7 @@ This is your Copper Star pitch — test it as if Copper Star is watching:
 
 Pick **one** full chain and walk it end to end to confirm sessionStorage relay still works after all your recent edits:
 
-- [ ] BPO Uploader → War Room → Strategist → Executive Portal (or Insurance/Healthcare equivalent)
+- [ ] BPO Intake → UNDERSTAND → DECIDE → EXECUTE → TRUST (or Insurance/Healthcare equivalent)
 - [ ] At each hop, confirm the receiving page shows data from the previous page (sector, exposure, KPIs) — not blank/dash placeholders
 
 ---
