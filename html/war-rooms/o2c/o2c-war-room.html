@@ -430,13 +430,35 @@ const O2C_MODEL_FALLBACK = {
   function relayToStrategist() {
     const aiText = document.getElementById('aiOutput').textContent;
     const payload = engine.buildRelayPayload(aiText);
+    const caseId = (function(){
+      try { return sessionStorage.getItem('TSM_O2C_PENDING_CASEID'); } catch(e) { return null; }
+    })() || ('O2C-' + new Date().toISOString().slice(0,10) + '-' + Math.random().toString(36).slice(2,8));
+    try { sessionStorage.removeItem('TSM_O2C_PENDING_CASEID'); } catch(e) {}
+    payload.caseId = caseId;
+
     try {
-      TSM.relay.write("O2C", payload);
+      TSM.relay.write("O2C", payload, {caseId, stage: 'war-room'});
     } catch (e) { console.warn('Relay storage failed', e); }
 
     if (window.TSMEventBus && window.TSMEventBus.emit) {
       window.TSMEventBus.emit('WAR_ROOM_READY', { vertical: 'o2c', payload, ts: Date.now() });
     }
+
+    // ── Mission runtime (additive — does not affect existing relay) ──
+    try {
+      if (window.TSMMissionModel && window.TSMMissionStore) {
+        const mission = window.TSMMissionModel.createMission({
+          id: caseId,
+          tenantId: (window.TSMActiveMember && window.TSMActiveMember.getId()) || 'default',
+          vertical: 'o2c',
+          client: null,
+          extraction: payload,
+          classification: { docType: 'o2c', sector: 'O2C' }
+        });
+        window.TSMMissionStore.saveMission(mission);
+      }
+    } catch (e) { console.error('Mission write failed (non-fatal):', e); }
+
     document.getElementById('navStatus').textContent = 'ENGINE: RELAYED TO STRATEGIST';
     setTimeout(() => { window.location.href = '/html/war-rooms/o2c/o2c-strategist.html'; }, 500);
   }
@@ -465,5 +487,7 @@ const O2C_MODEL_FALLBACK = {
 })();
 </script>
   <script src="/html/core/tsm-runtime.js"></script>
+  <script src="/html/shared/runtime/mission/mission-model.js"></script>
+  <script src="/html/shared/runtime/mission/mission-store.js"></script>
 </body>
 </html>
