@@ -34,6 +34,7 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 .sec-hdr .lbl::before{content:'\25C6';font-size:.55rem;margin-right:8px;}
 .sec-hdr-note{font-family:'JetBrains Mono',monospace;font-size:.58rem;color:var(--muted);text-transform:none;letter-spacing:0;}
 .no-items{font-family:'JetBrains Mono',monospace;font-size:.7rem;color:var(--muted);}
+.meta-row{font-family:'JetBrains Mono',monospace;font-size:.65rem;color:var(--muted);margin-bottom:12px;}
 .toast{position:fixed;bottom:20px;right:20px;background:var(--bg2);border:1px solid var(--gold);color:var(--gold);padding:10px 18px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:.65rem;opacity:0;pointer-events:none;transition:.3s;z-index:50;}
 .toast.show{opacity:1;transform:translateY(-4px);}
 
@@ -467,7 +468,26 @@ function render(){
   document.getElementById('hdrSub').textContent = `Relayed ${data.timestamp ? new Date(data.timestamp).toLocaleString() : '&mdash;'}`;
 
   let html = '';
+
+  // Strategist-reviewed badge, confirming the strategist hop actually
+  // happened (see noc-strategist.html's relay re-stamp).
+  html += data.reviewedAt
+    ? `<div class="meta-row">Strategist reviewed <span style="color:var(--green)">${escapeHtml(new Date(data.reviewedAt).toLocaleTimeString())}</span></div>`
+    : `<div class="meta-row"><span style="color:var(--muted)">Awaiting strategist review</span></div>`;
+
   html += renderFinancials(data.financials);
+
+  // BNCA exposure projection, forwarded from the strategist page via the
+  // same relay stamp.
+  if(data.bnca_exposure){
+    const b = data.bnca_exposure;
+    html += `<div class="sec"><div class="sec-hdr">BNCA EXPOSURE PROJECTION</div>
+      <div class="kpi-row">
+        <div class="kpi"><div class="kpi-val cyan">$${Math.round(b.currentExposure).toLocaleString()}</div><div class="kpi-lbl">CURRENT EXPOSURE</div></div>
+        <div class="kpi"><div class="kpi-val green">$${Math.round(b.ifActed.exposure).toLocaleString()}</div><div class="kpi-lbl">IF ACTED</div></div>
+        <div class="kpi"><div class="kpi-val red">$${Math.round(b.ifIgnored.exposure).toLocaleString()}</div><div class="kpi-lbl">IF IGNORED</div></div>
+      </div><div class="no-items" style="margin-top:8px">${escapeHtml(b.urgencyWindow||'')}</div></div>`;
+  }
 
   if(data.ai_summary){
     html += `<div class="ai-box"><strong style="color:var(--gold);font-family:'Orbitron',sans-serif;font-size:.65rem;letter-spacing:.1em;display:block;margin-bottom:8px;">EXECUTIVE RECOMMENDATION</strong>${renderEngineOutput(data.ai_summary)}</div>`;

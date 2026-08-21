@@ -90,9 +90,130 @@
     return '<div class="sec"><div class="sec-hdr">' + label + ' &middot; ' + norm.length + '</div><div class="risk-register">' + rows + '</div></div>';
   }
 
+  /**
+   * stampStrategistReview(domain, data)
+   * Fixes the "exec bypasses strategist" gap found across the generic
+   * CFG-driven template verticals: strategist pages were reading the war
+   * room's raw relay broadcast but never writing anything back, so exec
+   * portals (reading that same relay key) had no way to tell a strategist
+   * had actually reviewed the payload — they just displayed war room's
+   * first hop directly. This re-stamps the same payload with a
+   * stage:'strategist' hop + reviewedAt timestamp so a genuine second hop
+   * exists in the relay event log, and exec can show a review badge.
+   * Guarded by __strategistReviewed so it fires once per payload, not on
+   * every render() re-run.
+   */
+  function stampStrategistReview(domain, data) {
+    if (!data || data.__strategistReviewed) return data;
+    data.reviewedAt = new Date().toISOString();
+    data.__strategistReviewed = true;
+    try {
+      if (global.TSM && global.TSM.relay && global.TSM.relay.write) {
+        global.TSM.relay.write(domain, data, { caseId: data.id, stage: 'strategist' });
+      }
+    } catch (e) {}
+    return data;
+  }
+
+  /** renderReviewBadge(data) — shown on exec portals to confirm the strategist hop. */
+  function renderReviewBadge(data) {
+    if (!data || !data.reviewedAt) {
+      return '<div class="meta-row"><span style="color:var(--muted)">Awaiting strategist review</span></div>';
+    }
+    var t;
+    try { t = new Date(data.reviewedAt).toLocaleTimeString(); } catch (e) { t = data.reviewedAt; }
+    return '<div class="meta-row">Strategist reviewed <span style="color:var(--green)">' + escapeHtml(String(t)) + '</span></div>';
+  }
+
+  function getPathLocal(obj, path) {
+    if (!path) return obj;
+    return path.split('.').reduce(function (o, k) { return (o && o[k] !== undefined) ? o[k] : undefined; }, obj);
+  }
+
+  /**
+   * computeBNCA(cfg, kpiBase, explainItems)
+   * Deterministic exposure projection via TSMBNCAExposureEngine, sourced
+   * only from a real money-typed KPI already on the page (fmt:'money').
+   * Verticals with no monetary KPI (e.g. approval, catalog, governance)
+   * honestly report "unavailable" instead of fabricating a dollar figure —
+   * matches the repo's anti-fabrication convention used elsewhere.
+   */
+  function computeBNCA(cfg, kpiBase) {
+    if (!global.TSMBNCAExposureEngine) return null;
+    var moneyKpi = (cfg.kpis || []).filter(function (k) { return k.fmt === 'money'; })[0];
+    if (!moneyKpi) return { unavailable: true, reason: 'no monetary KPI on this vertical' };
+    var baseExposure = Number(kpiBase[moneyKpi.key]);
+    if (!isFinite(baseExposure) || baseExposure <= 0) {
+      return { unavailable: true, reason: 'no exposure value present in this relay payload' };
+    }
+    var severity = 'MED', confidence = 70;
+    return global.TSMBNCAExposureEngine.project({
+      baseExposure: baseExposure, severity: severity, confidence: confidence, daysUntilDeadline: 0
+    });
+  }
+
+  function money(n) { return '$' + Math.round(Number(n) || 0).toLocaleString(); }
+
+  /** renderBNCA(bnca) — exposure panel, or an honest fallback message. */
+  function renderBNCA(bnca) {
+    if (!bnca) return '';
+    if (bnca.unavailable) {
+      return '<div class="sec"><div class="sec-hdr">BNCA EXPOSURE PROJECTION</div>' +
+        '<div class="no-items">No monetary KPI &mdash; exposure projection unavailable.</div></div>';
+    }
+    return '<div class="sec"><div class="sec-hdr">BNCA EXPOSURE PROJECTION</div>' +
+      '<div class="kpi-row">' +
+        '<div class="kpi"><div class="kpi-val cyan">' + money(bnca.currentExposure) + '</div><div class="kpi-lbl">CURRENT EXPOSURE</div></div>' +
+        '<div class="kpi"><div class="kpi-val green">' + money(bnca.ifActed.exposure) + '</div><div class="kpi-lbl">IF ACTED</div></div>' +
+        '<div class="kpi"><div class="kpi-val red">' + money(bnca.ifIgnored.exposure) + '</div><div class="kpi-lbl">IF IGNORED</div></div>' +
+      '</div><div class="no-items" style="margin-top:8px">' + escapeHtml(bnca.urgencyWindow || '') + '</div></div>';
+  }
+
+  /**
+   * feedExceptions(sector, cfg, data)
+   * Generic exception feeder for the exec portals that never pulled in
+   * tsm-exceptions.js. Driven entirely by each vertical's own CFG.lists
+   * data (already relayed, no fabricated fields), so it works identically
+   * across every generic-template vertical without per-file wiring.
+   * Self-dedupes per page load via a module-level seen-set.
+   */
+  var _exceptionsSeen = {};
+  function feedExceptions(sector, cfg, data) {
+    if (!global.TSMExceptions || !data) return;
+    (cfg.lists || []).forEach(function (l) {
+      var items = getPathLocal(data, l.path);
+      if (!Array.isArray(items)) return;
+      items.forEach(function (it) {
+        var text = (typeof it === 'string') ? it :
+          (it && (it.message || it.description || it.reason || it.title || it.name));
+        if (!text) return;
+        var rawSeverity = String((it && (it.severity || it.priority || it.status)) || 'med');
+        var key = sector + ':' + l.path + ':' + text.slice(0, 60);
+        if (_exceptionsSeen[key]) return;
+        _exceptionsSeen[key] = true;
+        var severity = /high|crit|breach/i.test(rawSeverity) ? 'high' : (/med/i.test(rawSeverity) ? 'med' : 'low');
+        try {
+          global.TSMExceptions.add({
+            sector: sector,
+            entityType: (cfg.domain || sector).toLowerCase() + '-item',
+            entityId: key,
+            title: text.slice(0, 140),
+            severity: severity,
+            source: cfg.title || cfg.domain
+          });
+        } catch (e) {}
+      });
+    });
+  }
+
   global.TSMExecFramework = {
     renderRiskRegister: renderRiskRegister,
-    normalizeItems: normalizeItems
+    normalizeItems: normalizeItems,
+    stampStrategistReview: stampStrategistReview,
+    renderReviewBadge: renderReviewBadge,
+    computeBNCA: computeBNCA,
+    renderBNCA: renderBNCA,
+    feedExceptions: feedExceptions
   };
 
 })(typeof window !== 'undefined' ? window : this);

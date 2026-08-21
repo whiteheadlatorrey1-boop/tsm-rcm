@@ -1078,6 +1078,10 @@ function escalateToExec(silent) {
     } catch(e) { console.warn('[exec-kit] producer patch error:', e); }
     // ── END TSM EXEC KIT ─────────────────────────────────────────────
 
+    // Forward the BNCA exposure projection computed above (previously
+    // stayed on this page only — exec portal never received it).
+    if (window.__reXPLastImpact) payload.bnca_exposure = window.__reXPLastImpact;
+
     localStorage.setItem('TSM_RE_WAR_RELAY', JSON.stringify(payload));
     sessionStorage.setItem('TSM_RE_WAR_RELAY', JSON.stringify(payload));
     localStorage.setItem('tsm_re_strat_payload', JSON.stringify(payload));
@@ -1275,6 +1279,10 @@ function reXPRenderExplain(obj){
       document.getElementById('reXPDeltaNo').textContent = fmt(reXPImpact.ifIgnored.exposure);
       document.getElementById('reXPDeltaAct').textContent = fmt(reXPImpact.ifActed.exposure);
       document.getElementById('reXPRecovery').textContent = reXPImpact.urgencyWindow + ' \u00b7 ' + reXPImpact.methodology;
+      // Stash so escalateToExec() can forward this through the relay
+      // payload to the exec portal — previously this only ever updated
+      // DOM text on this page and was never relayed anywhere.
+      window.__reXPLastImpact = reXPImpact;
     }
   } catch(dee) { console.warn('[bnca-exposure-engine] re render error:', dee); }
 }

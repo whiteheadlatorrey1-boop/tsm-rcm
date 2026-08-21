@@ -1697,6 +1697,14 @@ window.tsmEnforcer = window.TSMEnforcer;
       <button class="gen-btn" onclick="saveBrief()" style="margin-top:8px;padding:7px 14px;font-size:8px;width:100%;">+ SAVE CURRENT OUTPUT</button>
     </div>
 
+    <!-- BNCA EXPOSURE PROJECTION (forwarded from RE Strategist) -->
+    <div class="rp-section" id="bncaExposureSection" style="display:none;">
+      <div class="rp-label">BNCA EXPOSURE PROJECTION</div>
+      <div class="rp-stat"><span class="rp-stat-label" style="font-size:11px;">If Ignored</span><span class="rp-stat-val red" style="font-size:9px;" id="bncaIfIgnored">&mdash;</span></div>
+      <div class="rp-stat"><span class="rp-stat-label" style="font-size:11px;">If Acted</span><span class="rp-stat-val green" style="font-size:9px;" id="bncaIfActed">&mdash;</span></div>
+      <div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--text3);margin-top:6px;" id="bncaUrgency"></div>
+    </div>
+
     <!-- STRATEGY REPORT -->
     <div class="rp-section">
       <div class="rp-label">STRATEGY REPORT</div>
@@ -1779,6 +1787,11 @@ function loadWarPayload() {
       const closingsSub = document.getElementById('kpi-closings-sub');
       if (closingsSub) closingsSub.textContent = k.actionCount ? k.actionCount + ' actions queued' : 'live relay data';
 
+      // ── BNCA exposure projection, forwarded from the strategist page ──
+      // (previously computed there but never relayed — this vertical had
+      // no exec-side BNCA rendering at all until now).
+      renderBncaExposure(wp.bnca_exposure);
+
       // ── Auto-surface proof of relay receipt — no manual click required ──
       extractRelayIntelligence();
       generateBrief();
@@ -1804,6 +1817,20 @@ function loadWarPayload() {
 // producing literal "NULL RISK" badges and "null" KPI tiles. This
 // normalizes those stringified-nullish values back to real null right
 // after parsing, before anything reads them.
+function renderBncaExposure(bnca) {
+  const sec = document.getElementById('bncaExposureSection');
+  if (!sec) return;
+  if (!bnca || !bnca.ifIgnored || !bnca.ifActed) { sec.style.display = 'none'; return; }
+  const fmt = n => '$' + Math.round(n).toLocaleString('en-US');
+  const ignored = document.getElementById('bncaIfIgnored');
+  const acted = document.getElementById('bncaIfActed');
+  const urgency = document.getElementById('bncaUrgency');
+  if (ignored) ignored.textContent = fmt(bnca.ifIgnored.exposure);
+  if (acted) acted.textContent = fmt(bnca.ifActed.exposure);
+  if (urgency) urgency.textContent = bnca.urgencyWindow || '';
+  sec.style.display = '';
+}
+
 function sanitizeAIKpi(obj) {
   const NULLISH = new Set(['null', 'n/a', 'na', 'none', 'undefined', '--', '—']);
   if (!obj || typeof obj !== 'object') return obj;
@@ -2618,7 +2645,11 @@ function tsmWriteRelay(payload){
     if (!root) return;
     
     // 1. Remove parent injection containers directly
-    const directContainers = root.querySelectorAll('#tsm-bnca-exposure-engine, [id*="bnca"], .bnca-container, #opMemoryPanel');
+    // NOTE: 'bnca' selectors were intentionally removed from this list —
+    // they were catching the real BNCA Exposure Projection widget (a
+    // legit strategist-forwarded panel, not leftover memory-widget
+    // clutter) and silently deleting it on every 100ms sweep.
+    const directContainers = root.querySelectorAll('#opMemoryPanel');
     directContainers.forEach(el => el.remove());
 
     // 2. Scan all elements for matching memory text
@@ -2642,7 +2673,6 @@ function tsmWriteRelay(payload){
             if (
               target.classList.contains('memory-card') ||
               target.id.includes('memory') ||
-              target.id.includes('bnca') ||
               window.getComputedStyle(target).position === 'fixed' ||
               window.getComputedStyle(target).position === 'absolute'
             ) {
