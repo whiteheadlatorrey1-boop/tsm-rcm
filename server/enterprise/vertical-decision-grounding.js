@@ -384,5 +384,8 @@ module.exports = {
   VERTICAL_RULES,
   collectVerticalFacts,
   deriveVerticalFinding,
-  groundEnterpriseResult
+  groundEnterpriseResult,
+  // Public enterprise decision-grounding contract.
+  // Keep the existing implementation name for backward compatibility.
+  groundEnterpriseDecision: groundEnterpriseResult
 };
