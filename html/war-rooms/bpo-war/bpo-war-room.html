@@ -1096,7 +1096,21 @@ function renderFallback(raw) {
 
 // ── STORE WAR ROOM RELAY FOR STRATEGIST ──
 function storeWarRoomRelay(extracted) {
-  const caseId = 'BPO-' + new Date().toISOString().slice(0,10) + '-' + Math.random().toString(36).slice(2,8);
+  // Reuse the caseId minted at upload time (bpoLoadFile, above) when this
+  // relay came from a real file upload, so the work item persisted below
+  // and the document already stored in bpo_documents_meta share one
+  // caseId instead of the document being orphaned under a caseId nobody
+  // else knows about.
+  const caseId = relayData?.pendingCaseId
+    || (function(){ try { return sessionStorage.getItem('TSM_BPO_PENDING_CASEID'); } catch(e){ return null; } })()
+    || ('BPO-' + new Date().toISOString().slice(0,10) + '-' + Math.random().toString(36).slice(2,8));
+  const pendingDocId = relayData?.pendingDocId
+    || (function(){ try { return sessionStorage.getItem('TSM_BPO_PENDING_DOCID'); } catch(e){ return null; } })()
+    || null;
+  try {
+    sessionStorage.removeItem('TSM_BPO_PENDING_CASEID');
+    sessionStorage.removeItem('TSM_BPO_PENDING_DOCID');
+  } catch(e){}
   const payload = {
     selectedSector: relayData?.selectedSector || 'BPO',
     selectedDocType: relayData?.selectedDocType || '—',
@@ -1104,6 +1118,7 @@ function storeWarRoomRelay(extracted) {
     timestamp: new Date().toISOString(),
     extraction: extracted,
     caseId,
+    documentId: pendingDocId,
     engines: {
       engine1: extracted.situationSummary || '',
       engine2: (extracted.risks || []).map(r => r.text).join(' | '),
@@ -1293,23 +1308,101 @@ function nav(url) { window.location.href = url; }
 </div>
 
 <script>
-function bpoLoadFile(file) {
+// ── REAL DOCUMENT UPLOAD ──────────────────────────────────────────────
+// Wires the "Upload File" control to the actual BPO document-storage API
+// (POST /api/bpo/work-items/:caseId/documents, server.js) instead of just
+// reading the raw file client-side. That real route runs real pdf/docx/
+// xlsx/csv text extraction server-side (routes/doc-router.js) and stores
+// the encrypted document against a caseId in bpo_documents_meta — this is
+// the API docs/BPO_PRODUCTION_READINESS.md Phase 3 already flagged as
+// built but "nothing wires it into a war room" for.
+//
+// A caseId is minted at file-select time (not at Launch time, as before)
+// so the uploaded document and the eventual work item share one caseId —
+// bpoLaunchManual/storeWarRoomRelay below read it back out of
+// sessionStorage instead of generating a fresh one.
+//
+// Best-effort by design, matching the rest of this page's persistence
+// calls: no logged-in internal session (401), an offline/cold backend, or
+// an unsupported/failed extraction never blocks the demo — it just falls
+// back to the previous client-side FileReader behavior (still correct for
+// plain .txt/.csv, the only types that ever worked that way).
+async function bpoLoadFile(file) {
   if (!file) return;
   const nm = document.getElementById('bpo-file-name');
   if (nm) nm.textContent = '⟳ ' + file.name;
-  const reader = new FileReader();
-  reader.onload = e => {
+
+  let caseId = null;
+  try { caseId = sessionStorage.getItem('TSM_BPO_PENDING_CASEID'); } catch(e){}
+  if (!caseId) {
+    caseId = 'BPO-' + new Date().toISOString().slice(0,10) + '-' + Math.random().toString(36).slice(2,8);
+    try { sessionStorage.setItem('TSM_BPO_PENDING_CASEID', caseId); } catch(e){}
+  }
+
+  function fallbackToClientRead(reason) {
+    if (reason) console.warn('[BPO upload] falling back to client-side read:', reason);
+    const reader = new FileReader();
+    reader.onload = e => {
+      const ta = document.getElementById('bpo-manual-doc');
+      if (ta) ta.value = e.target.result;
+      if (nm) nm.textContent = '✓ ' + file.name;
+    };
+    reader.readAsText(file);
+  }
+
+  try {
+    const fd = new FormData();
+    fd.append('file', file);
+    const res = await fetch(`/api/bpo/work-items/${encodeURIComponent(caseId)}/documents`, {
+      method: 'POST',
+      credentials: 'same-origin',
+      body: fd,
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data || !data.ok) {
+      return fallbackToClientRead(data && data.error ? data.error : `HTTP ${res.status}`);
+    }
+
+    const doc = data.document;
+    try { sessionStorage.setItem('TSM_BPO_PENDING_DOCID', doc.docId); } catch(e){}
+
+    if (!doc.hasExtractedText) {
+      // Stored fine (so it's already a real, audited, encrypted document
+      // against this case) but the server found no text to extract —
+      // e.g. a scanned image PDF, or a type outside doc-router's
+      // supported list. Client-side text reading only makes sense for
+      // actual text files, not binary formats.
+      const ta = document.getElementById('bpo-manual-doc');
+      if (/\.(txt|csv)$/i.test(file.name)) return fallbackToClientRead('no extracted text, retrying as plain text');
+      if (ta) ta.value = '';
+      if (nm) nm.textContent = '✓ ' + file.name + ' (stored — no text extracted)';
+      return;
+    }
+
+    const textRes = await fetch(`/api/bpo/documents/${encodeURIComponent(doc.docId)}/text`, { credentials: 'same-origin' });
+    const textData = await textRes.json().catch(() => null);
+    if (!textRes.ok || !textData || !textData.ok) {
+      return fallbackToClientRead('document stored but /text fetch failed');
+    }
+
     const ta = document.getElementById('bpo-manual-doc');
-    if (ta) ta.value = e.target.result;
-    if (nm) nm.textContent = '✓ ' + file.name;
-  };
-  reader.readAsText(file);
+    if (ta) ta.value = textData.text || '';
+    if (nm) nm.textContent = '✓ ' + file.name + (doc.textTruncated ? ' (truncated)' : '');
+  } catch (e) {
+    fallbackToClientRead(e.message);
+  }
 }
 function bpoLaunchManual() {
   const ta = document.getElementById('bpo-manual-doc');
   const text = ta ? ta.value.trim() : '';
   if (!text) { alert('Paste or upload a document first.'); return; }
-  const payload = JSON.stringify({ docText: text, selectedSector: 'BPO', selectedDocType: 'Manual Input', timestamp: new Date().toISOString() });
+  let pendingCaseId = null, pendingDocId = null;
+  try { pendingCaseId = sessionStorage.getItem('TSM_BPO_PENDING_CASEID'); } catch(e){}
+  try { pendingDocId = sessionStorage.getItem('TSM_BPO_PENDING_DOCID'); } catch(e){}
+  const payload = JSON.stringify({
+    docText: text, selectedSector: 'BPO', selectedDocType: 'Manual Input', timestamp: new Date().toISOString(),
+    pendingCaseId: pendingCaseId || null, pendingDocId: pendingDocId || null,
+  });
   try { sessionStorage.setItem('TSM_BPO_DOC', payload); } catch(e){}
   try { localStorage.setItem('TSM_BPO_DOC', payload); } catch(e){}
   document.getElementById('bpo-manual-paste').style.display = 'none';
