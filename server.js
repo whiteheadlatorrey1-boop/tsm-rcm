@@ -3379,6 +3379,314 @@ app.post('/api/l1-copilot/servicenow/status-update', async (req, res) => {
   }
 });
 
+
+// --- L1 Copilot Pilot E2E orchestration ----------------------------------
+// Controlled pilot workflow:
+// ticket -> enterprise context -> decision -> resolution/escalation.
+// Read operations may use configured connectors or explicitly labeled demo
+// fallback data. Any ServiceNow writeback remains human-approved.
+
+app.post('/api/l1-copilot/pilot/resolve', async (req, res) => {
+  const {
+    incident,
+    asset,
+    device,
+    cloudProvider,
+    cloudInstance,
+    maxTokens
+  } = req.body || {};
+
+  if (!incident) {
+    return res.status(400).json({
+      ok: false,
+      error: 'incident is required'
+    });
+  }
+
+  const provenance = {
+    servicenow: 'unavailable',
+    intune: 'unavailable',
+    cloud: 'not_requested'
+  };
+
+  try {
+    // ---------------------------------------------------------------
+    // 1. ServiceNow ticket
+    // ---------------------------------------------------------------
+    let ticket = null;
+
+    // Explicit pilot fixture:
+    // DEMO-* identifiers always use the labeled demo dataset.
+    // This prevents an accidentally configured developer environment
+    // from reaching a customer's ServiceNow instance during the pilot demo.
+    const explicitDemoTicket =
+      /^DEMO-|^INC-DEMO-/i.test(incident);
+
+    if (explicitDemoTicket) {
+      ticket = demoData.demoTicket(incident);
+      provenance.servicenow = 'demo';
+    } else {
+      try {
+        ticket = await snAdapter.getTicket(incident);
+
+        if (ticket) {
+          provenance.servicenow = 'live';
+        }
+      } catch (e) {
+        if (
+          e.code === 'SERVICENOW_NOT_CONFIGURED' &&
+          demoData.isDemoModeEnabled()
+        ) {
+          ticket = demoData.demoTicket(incident);
+          provenance.servicenow = 'demo';
+        } else {
+          throw e;
+        }
+      }
+    }
+
+    if (!ticket) {
+      return res.status(404).json({
+        ok: false,
+        error: 'Ticket not found',
+        incident
+      });
+    }
+
+    // ---------------------------------------------------------------
+    // 2. ServiceNow asset / CMDB context
+    // ---------------------------------------------------------------
+    let assetContext = null;
+    const assetIdentifier = asset || ticket.asset;
+
+    if (assetIdentifier) {
+      try {
+        assetContext = await snAdapter.getAsset(assetIdentifier);
+        if (assetContext) provenance.servicenow = 'live';
+      } catch (e) {
+        if (e.code === 'SERVICENOW_NOT_CONFIGURED' &&
+            demoData.isDemoModeEnabled()) {
+          assetContext = demoData.demoAsset(assetIdentifier);
+          provenance.servicenow = provenance.servicenow === 'live'
+            ? 'live'
+            : 'demo';
+        }
+      }
+    }
+
+    // ---------------------------------------------------------------
+    // 3. Microsoft Graph / Intune context
+    // ---------------------------------------------------------------
+    let deviceContext = null;
+    const deviceIdentifier = device || assetContext?.deviceName;
+
+    if (deviceIdentifier) {
+      try {
+        deviceContext = await graphAdapter.getDevice(deviceIdentifier);
+        if (deviceContext) provenance.intune = 'live';
+      } catch (e) {
+        if (e.code === 'GRAPH_NOT_CONFIGURED' &&
+            demoData.isDemoModeEnabled()) {
+          deviceContext = demoData.demoDevice(deviceIdentifier);
+          provenance.intune = 'demo';
+        }
+      }
+    }
+
+    // ---------------------------------------------------------------
+    // 4. Cloud context
+    // ---------------------------------------------------------------
+    let cloudContext = null;
+
+    if (cloudInstance) {
+      if ((cloudProvider || 'aws').toLowerCase() === 'gcp') {
+        try {
+          cloudContext = await gcpAdapter.getInstance(cloudInstance);
+          if (cloudContext) provenance.cloud = 'live';
+        } catch (e) {
+          if (e.code === 'GCP_NOT_CONFIGURED' &&
+              demoData.isDemoModeEnabled()) {
+            cloudContext = demoData.demoGcpInstance(cloudInstance);
+            provenance.cloud = 'demo';
+          }
+        }
+      } else {
+        try {
+          cloudContext = await cloudOpsAdapter.getInstance(cloudInstance);
+          if (cloudContext) provenance.cloud = 'live';
+        } catch (e) {
+          if (e.code === 'CLOUD_OPS_NOT_CONFIGURED' &&
+              demoData.isDemoModeEnabled()) {
+            cloudContext = demoData.demoAwsInstance(cloudInstance);
+            provenance.cloud = 'demo';
+          }
+        }
+      }
+    }
+
+    // ---------------------------------------------------------------
+    // 5. Build unified enterprise context
+    // ---------------------------------------------------------------
+    const context = {
+      ticket,
+      asset: assetContext,
+      device: deviceContext,
+      cloud: cloudContext
+    };
+
+    // ---------------------------------------------------------------
+    // 6. L1 decision
+    // ---------------------------------------------------------------
+    const prompt = `You are the TSM L1 Copilot decision engine.
+
+Use ONLY the enterprise context supplied below. Do not invent facts.
+
+ENTERPRISE CONTEXT:
+${JSON.stringify(context, null, 2)}
+
+Determine the safest operational path for the L1 technician.
+
+IMPORTANT EVIDENCE RULES:
+- Treat ticket/context statements as OBSERVED facts only.
+- Treat diagnoses and root causes as INFERRED unless explicitly documented.
+- Never say troubleshooting was completed merely because the device exhibits a symptom.
+- Never claim a power cycle, hardware check, reboot, diagnostic, repair, policy sync, remediation, or escalation was performed unless the supplied context explicitly documents that action.
+- If troubleshooting history is absent, say that it is not documented.
+- Do not convert a recommendation into a completed action.
+- Evidence must identify whether it is observed or inferred.
+- If the ticket only establishes that a device reaches a particular screen/state, do not infer that unrelated L1 checks were completed.
+
+Return ONLY valid JSON in exactly this shape:
+{
+  "issue_summary": "one sentence",
+  "likely_causes": ["cause 1", "cause 2"],
+  "confidence": 0,
+  "severity": "Low|Medium|High|Critical",
+  "business_impact": "short label",
+  "recommended_path": "L1_REMEDIATION|ESCALATE_L2|VENDOR_ESCALATION",
+  "recommended_action": "single next action",
+  "reason": "short explanation",
+  "evidence": [
+    {
+      "type": "observed|inferred",
+      "statement": "specific evidence"
+    }
+  ],
+  "completed_actions": [],
+  "missing_information": ["important troubleshooting or context not documented"]
+}
+
+The "completed_actions" array MUST contain only actions explicitly documented as already performed.
+If no completed troubleshooting is documented, return an empty array.
+
+The "missing_information" array should identify important information that would materially affect the decision.
+
+Do not claim an action has already been performed unless the context explicitly says so.`;
+
+    const rawDecision = await groqChat(
+      SP.l1support,
+      prompt,
+      maxTokens || 1000
+    );
+
+    const decision = JSON.parse(
+      rawDecision.replace(/\`\`\`json|\`\`\`/g, '').trim()
+    );
+
+    // ---------------------------------------------------------------
+    // 7. Prepare operational package
+    // ---------------------------------------------------------------
+    let resolution = null;
+    let escalation = null;
+
+    if (decision.recommended_path === 'L1_REMEDIATION') {
+      const resolutionPrompt = `Prepare a technician-ready L1 action package.
+
+Ticket:
+${JSON.stringify(ticket, null, 2)}
+
+Decision:
+${JSON.stringify(decision, null, 2)}
+
+Return ONLY valid JSON:
+{
+  "problem": "short statement",
+  "cause": "supported likely cause",
+  "actions": ["specific next action"],
+  "validation": "how technician verifies success",
+  "next_steps": "what happens after validation"
+}
+
+Do not claim that any action was already performed.`;
+
+      const rawResolution = await groqChat(
+        SP.l1support,
+        resolutionPrompt,
+        maxTokens || 800
+      );
+
+      resolution = JSON.parse(
+        rawResolution.replace(/\`\`\`json|\`\`\`/g, '').trim()
+      );
+    } else {
+      const escalationPrompt = `Prepare a concise L2/vendor escalation package.
+
+Ticket:
+${JSON.stringify(ticket, null, 2)}
+
+Enterprise context:
+${JSON.stringify(context, null, 2)}
+
+Decision:
+${JSON.stringify(decision, null, 2)}
+
+Return ONLY valid JSON:
+{
+  "receiving_team": "team",
+  "reason": "why escalation is required",
+  "ruled_out": ["what L1 can reasonably rule out"],
+  "evidence": ["relevant evidence"],
+  "handoff": "what the receiving team needs to do next"
+}
+
+Do not invent completed troubleshooting.`;
+
+      const rawEscalation = await groqChat(
+        SP.l1support,
+        escalationPrompt,
+        maxTokens || 900
+      );
+
+      escalation = JSON.parse(
+        rawEscalation.replace(/\`\`\`json|\`\`\`/g, '').trim()
+      );
+    }
+
+    return res.json({
+      ok: true,
+      pilot: true,
+      humanApprovalRequired: true,
+      incident,
+      context,
+      decision,
+      resolution,
+      escalation,
+      provenance,
+      createdAt: new Date().toISOString()
+    });
+
+  } catch (e) {
+    console.error('L1 COPILOT PILOT E2E ERROR:', e.message);
+
+    return res.status(500).json({
+      ok: false,
+      pilot: true,
+      error: e.message,
+      provenance
+    });
+  }
+});
+
 app.post('/api/l1-copilot/analyze', async (req, res) => {
   const { ticket, maxTokens } = req.body || {};
   if (!ticket || !ticket.description) return res.status(400).json({ ok: false, error: 'ticket.description required' });
@@ -3424,7 +3732,131 @@ app.post('/api/l1-copilot/analyze', async (req, res) => {
   try {
     const raw = await groqChat(SP.l1support, prompt, maxTokens || 1000);
     const analysis = JSON.parse(raw.replace(/```json|```/g, '').trim());
-    return res.json({ ok: true, analysis, cmdbSourced: !!cmdbContext, createdAt: new Date().toISOString() });
+
+    // ── Deterministic severity guardrail ──────────────────────────────────
+    // The LLM provides the initial severity assessment, but obvious hard
+    // outage indicators must not be downgraded to Medium/Low solely because
+    // the model under-estimated impact.
+    //
+    // This is intentionally narrow: it only raises severity for strong,
+    // explicit outage/access-blocking language. It never lowers severity.
+    const descriptionText = String(ticket.description || '').toLowerCase();
+    const combinedTicketText = [
+      descriptionText,
+      String(ticket.department || '').toLowerCase(),
+      String(ticket.assignmentGroup || '').toLowerCase()
+    ].join(' ');
+
+    const hardOutageSignals = [
+      /\bwill not boot\b/,
+      /\bwon['’]?t boot\b/,
+      /\bdoes not boot\b/,
+      /\bcannot boot\b/,
+      /\bcan't boot\b/,
+      /\bcannot access windows\b/,
+      /\bcan't access windows\b/,
+      /\bunable to access windows\b/,
+      /\bsystem unavailable\b/,
+      /\bcompletely unavailable\b/,
+      /\bproduction (?:system|server|workstation|application) (?:is )?down\b/,
+      /\boperations? (?:are )?blocked\b/,
+      /\bbusiness (?:operations|work) (?:are )?blocked\b/
+    ];
+
+    const hardOutageDetected = hardOutageSignals.some((rx) => rx.test(combinedTicketText));
+
+    const originalAiSeverity = analysis.severity || null;
+
+    if (
+      hardOutageDetected &&
+      ['low', 'medium'].includes(String(analysis.severity || '').toLowerCase())
+    ) {
+      analysis.severity = 'High';
+      analysis.severity_guardrail = {
+        applied: true,
+        original_ai_severity: originalAiSeverity,
+        final_severity: 'High',
+        reason: 'Deterministic hard-outage signal detected in the ticket; severity was raised to High for human review.'
+      };
+    } else {
+      analysis.severity_guardrail = {
+        applied: false,
+        original_ai_severity: originalAiSeverity,
+        final_severity: analysis.severity || null
+      };
+    }
+
+    // ── Priority / severity alignment ────────────────────────────────────
+    // The AI may identify a higher operational severity than the ticket's
+    // original priority. Do not silently change the ticket priority; surface
+    // the discrepancy for human review.
+    const priorityText = String(ticket.priority || '').toLowerCase();
+    const severityText = String(analysis.severity || '').toLowerCase();
+
+    const priorityRank =
+      priorityText.includes('1') || priorityText.includes('critical') ? 1 :
+      priorityText.includes('2') || priorityText.includes('high') ? 2 :
+      priorityText.includes('3') || priorityText.includes('medium') ? 3 :
+      priorityText.includes('4') || priorityText.includes('low') ? 4 :
+      null;
+
+    const severityRank =
+      severityText.includes('critical') ? 1 :
+      severityText.includes('high') ? 2 :
+      severityText.includes('medium') ? 3 :
+      severityText.includes('low') ? 4 :
+      null;
+
+    if (priorityRank && severityRank) {
+      const mismatch = severityRank < priorityRank;
+
+      analysis.priority_alignment = {
+        ticket_priority: ticket.priority,
+        ai_severity: analysis.severity,
+        status: mismatch ? 'MISMATCH' : 'ALIGNED',
+        recommended_priority: mismatch
+          ? `${severityRank} - ${analysis.severity.charAt(0).toUpperCase()}${analysis.severity.slice(1)}`
+          : ticket.priority,
+        requires_human_review: mismatch,
+        reason: mismatch
+          ? `AI assessed the incident as ${analysis.severity} while the ticket is currently ${ticket.priority}.`
+          : 'Ticket priority is consistent with the AI-assessed severity.'
+      };
+    } else {
+      analysis.priority_alignment = {
+        ticket_priority: ticket.priority || null,
+        ai_severity: analysis.severity || null,
+        status: 'UNABLE_TO_COMPARE',
+        requires_human_review: false
+      };
+    }
+
+    // Preserve explicitly supplied structured ticket fields.
+    // AI interprets the ticket; it should not be allowed to lose
+    // fields that were already provided by the caller.
+    const aiFields = analysis.extracted_fields || {};
+
+    analysis.extracted_fields = {
+      incident: ticket.incident ?? aiFields.incident ?? null,
+      priority: ticket.priority ?? aiFields.priority ?? null,
+      requester: ticket.requester ?? aiFields.requester ?? null,
+      department: ticket.department ?? aiFields.department ?? null,
+      assignmentGroup:
+        ticket.assignmentGroup ??
+        aiFields.assignmentGroup ??
+        null,
+      asset: ticket.asset ?? aiFields.asset ?? null,
+      manufacturer: ticket.manufacturer ?? aiFields.manufacturer ?? null,
+      model: ticket.model ?? aiFields.model ?? null,
+      warranty: ticket.warranty ?? aiFields.warranty ?? null
+    };
+
+    return res.json({
+      ok: true,
+      analysis,
+      cmdbSourced: !!cmdbContext,
+      createdAt: new Date().toISOString()
+    });
   } catch (e) {
     console.error('L1 COPILOT ANALYZE ERROR:', e.message);
     return res.status(500).json({ ok: false, error: e.message });
@@ -5306,8 +5738,12 @@ app.get('/api/integration/decisions', (req, res) => {
 // shared tsm-exec-portal-upgrade.js Decision Center" pattern as mortgage --
 // pm-exec-portal.html wires directly into this gate via its own action
 // buttons, not the shared script's fabricated placeholder items.
-const EXEC_PORTAL_VERTICALS = ['healthcare', 'finops', 'insurance', 'construction', 'legal', 'realestate', 'bpo', 'mortgage', 'pm'];
-const EXEC_PORTAL_GATE_PREFIX = { healthcare: 'HC', finops: 'FIN', insurance: 'INS', construction: 'CON', legal: 'LEG', realestate: 'RE', bpo: 'BPO', mortgage: 'MTG', pm: 'PM' };
+// l1-copilot added 2026-08-21: same "own real action buttons, not the shared
+// tsm-exec-portal-upgrade.js Decision Center" pattern as Mortgage/PM -- the
+// L1 Ticket Copilot's Human Decision step wires ACCEPT / KEEP CURRENT
+// PRIORITY / SEND FOR REVIEW directly into this gate.
+const EXEC_PORTAL_VERTICALS = ['healthcare', 'finops', 'insurance', 'construction', 'legal', 'realestate', 'bpo', 'mortgage', 'pm', 'l1-copilot'];
+const EXEC_PORTAL_GATE_PREFIX = { healthcare: 'HC', finops: 'FIN', insurance: 'INS', construction: 'CON', legal: 'LEG', realestate: 'RE', bpo: 'BPO', mortgage: 'MTG', pm: 'PM', 'l1-copilot': 'L1' };
 const EXEC_PORTAL_HITL_GATES = {};
 EXEC_PORTAL_VERTICALS.forEach(v => {
   const gatePrefix = EXEC_PORTAL_GATE_PREFIX[v] || 'EXEC';
