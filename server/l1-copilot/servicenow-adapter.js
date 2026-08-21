@@ -52,8 +52,20 @@ class ServiceNowNotConfiguredError extends Error {
   }
 }
 
-/** Reads config from env vars unless an explicit config object is passed (multi-tenant callers pass their own). */
+/**
+ * Reads config from env vars unless an explicit config object is passed
+ * (multi-tenant callers pass their own).
+ *
+ * Deliberately separate from "are credentials present": a customer's
+ * SERVICENOW_INSTANCE_URL/USERNAME/PASSWORD/OAUTH_TOKEN can be set as real
+ * Fly secrets ahead of time without the integration actually going live —
+ * SERVICENOW_INTEGRATION_ENABLED is the single on/off switch a customer
+ * flips when they actually want it running. Until then this returns null
+ * (same as "not configured"), regardless of what credentials exist.
+ */
 function loadConfigFromEnv() {
+  if (process.env.SERVICENOW_INTEGRATION_ENABLED !== 'true') return null;
+
   const instanceUrl = process.env.SERVICENOW_INSTANCE_URL || '';
   if (!instanceUrl) return null;
   return {
