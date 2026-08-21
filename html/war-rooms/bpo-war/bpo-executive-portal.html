@@ -712,6 +712,13 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
       <div class="panel-title"><div class="dot" style="background:var(--cyan)"></div>FULL STRATEGY BRIEF</div>
       <div class="extraction-stream" id="briefStream">No strategist brief loaded.</div>
     </div>
+
+    <div class="panel">
+      <div class="panel-title"><div class="dot" style="background:var(--cyan)"></div>SOURCE DOCUMENTS</div>
+      <div id="execDocList">
+        <div style="color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:.68rem">No case loaded yet.</div>
+      </div>
+    </div>
   </div>
 
   <!-- RIGHT COLUMN -->
@@ -909,6 +916,7 @@ function recordExecAction(actionType, note){
     hydratePage(stratData);
     initThreeBlocks(stratData);
     try { if (window.TSMWorkflowStage) TSMWorkflowStage.write('exec-portal', { caseId: stratData?.caseId }); } catch (e) {}
+    buildExecDocList(stratData?.caseId);
 
   } catch(e) {
     loadDemoMode();
@@ -916,6 +924,56 @@ function recordExecAction(actionType, note){
 })();
 
 renderSupervisorRollup();
+
+// ── SOURCE DOCUMENTS ──
+// Best-effort fetch of the documents actually stored for this case
+// (GET /api/bpo/work-items/:caseId/documents, server.js), with a working
+// download link per document (GET /api/bpo/documents/:docId/download).
+// Mirrors the war room's buildEvidencePanel document-list wiring so the
+// executive portal can also list/retrieve documents uploaded upstream.
+function buildExecDocList(caseId) {
+  const el = document.getElementById('execDocList');
+  if (!el) return;
+  if (!caseId) {
+    el.innerHTML = '<div style="color:var(--muted);font-family:\'JetBrains Mono\',monospace;font-size:.68rem">No case loaded yet.</div>';
+    return;
+  }
+  el.innerHTML = '<div style="color:var(--muted);font-family:\'JetBrains Mono\',monospace;font-size:.68rem">Loading documents…</div>';
+  fetch(`/api/bpo/work-items/${encodeURIComponent(caseId)}/documents`, { credentials: 'same-origin' })
+    .then(r => r.ok ? r.json() : null)
+    .then(data => {
+      if (!data || !data.ok || !Array.isArray(data.documents)) {
+        el.innerHTML = '<div style="color:var(--muted);font-family:\'JetBrains Mono\',monospace;font-size:.68rem">Documents unavailable.</div>';
+        return;
+      }
+      if (!data.documents.length) {
+        el.innerHTML = '<div style="color:var(--muted);font-family:\'JetBrains Mono\',monospace;font-size:.68rem">No documents on this case.</div>';
+        return;
+      }
+      el.innerHTML = data.documents.map(doc => {
+        const sizeKb = doc.sizeBytes ? Math.max(1, Math.round(doc.sizeBytes / 1024)) + ' KB' : '';
+        const status = doc.hasExtractedText ? (doc.textTruncated ? 'TEXT (TRUNC.)' : 'TEXT OK') : 'NO TEXT';
+        return `
+        <div class="evidence-item">
+          <div class="ev-name">${escapeHtmlBpoExec(doc.filename)} ${sizeKb ? '· ' + sizeKb : ''}</div>
+          <div class="ev-time"><a href="/api/bpo/documents/${encodeURIComponent(doc.docId)}/download" style="color:inherit;text-decoration:underline" download>⬇ download</a></div>
+          <div class="ev-tag ev-analyzed">${status}</div>
+        </div>`;
+      }).join('');
+    })
+    .catch(e => {
+      console.warn('[BPO exec doc list] fetch failed (non-fatal):', e.message);
+      el.innerHTML = '<div style="color:var(--muted);font-family:\'JetBrains Mono\',monospace;font-size:.68rem">Documents unavailable.</div>';
+    });
+}
+
+// Same escaper pattern the war room uses for filenames (escapeHtmlBpo in
+// bpo-war-room.html) — kept local here since each page loads independently.
+function escapeHtmlBpoExec(s) {
+  return (s || '').toString().replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
+}
 
 function renderSupervisorRollup(){
   const el = document.getElementById('supervisorRollup');
