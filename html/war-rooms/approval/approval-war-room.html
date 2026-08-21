@@ -509,12 +509,34 @@ tr:hover td{background:rgba(0,255,80,.03)}
     const outEl = document.getElementById('aiOutput');
     const aiText = outEl.dataset.raw || outEl.textContent;
     const payload = engine.buildRelayPayload(aiText);
+    const caseId = (function(){
+      try { return sessionStorage.getItem('TSM_APPROVAL_PENDING_CASEID'); } catch(e) { return null; }
+    })() || ('APPROVAL-' + new Date().toISOString().slice(0,10) + '-' + Math.random().toString(36).slice(2,8));
+    try { sessionStorage.removeItem('TSM_APPROVAL_PENDING_CASEID'); } catch(e) {}
+    payload.caseId = caseId;
+
     try {
-      TSM.relay.write("APPROVAL", payload);
+      TSM.relay.write("APPROVAL", payload, {caseId, stage: 'war-room'});
     } catch (e) { console.warn('Relay storage failed', e); }
     if (window.TSMEventBus && window.TSMEventBus.emit) {
       window.TSMEventBus.emit('WAR_ROOM_READY', { vertical: 'approval', payload, ts: Date.now() });
     }
+
+    // ── Mission runtime (additive — does not affect existing relay) ──
+    try {
+      if (window.TSMMissionModel && window.TSMMissionStore) {
+        const mission = window.TSMMissionModel.createMission({
+          id: caseId,
+          tenantId: (window.TSMActiveMember && window.TSMActiveMember.getId()) || 'default',
+          vertical: 'approval',
+          client: null,
+          extraction: payload,
+          classification: { docType: 'approval', sector: 'APPROVAL' }
+        });
+        window.TSMMissionStore.saveMission(mission);
+      }
+    } catch (e) { console.error('Mission write failed (non-fatal):', e); }
+
     document.getElementById('navStatus').textContent = 'ENGINE: RELAYED TO STRATEGIST';
     setTimeout(() => { window.location.href = '/html/war-rooms/approval/approval-strategist.html'; }, 500);
   }
@@ -544,5 +566,7 @@ tr:hover td{background:rgba(0,255,80,.03)}
 })();
 </script>
   <script src="/html/core/tsm-runtime.js"></script>
+  <script src="/html/shared/runtime/mission/mission-model.js"></script>
+  <script src="/html/shared/runtime/mission/mission-store.js"></script>
 </body>
 </html>
