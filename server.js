@@ -72,6 +72,7 @@ const { enforceBNCASchema } = require('./server/tsm-bnca-schema');
 const snAdapter = require('./server/l1-copilot/servicenow-adapter');
 const cloudOpsAdapter = require('./server/l1-copilot/cloud-ops-adapter');
 const graphAdapter = require('./server/l1-copilot/graph-intune-adapter');
+const gcpAdapter = require('./server/l1-copilot/gcp-adapter');
 
 // contentSecurityPolicy/crossOriginEmbedderPolicy/crossOriginResourcePolicy
 // are OFF on purpose: this app is ~100+ largely-independent HTML pages that
@@ -3640,6 +3641,27 @@ app.get('/api/l1-copilot/graph-intune/device/:identifier', async (req, res) => {
     res.json({ ok: true, device });
   } catch (e) {
     const status = e.code === 'GRAPH_NOT_CONFIGURED' ? 503 : 502;
+    res.status(status).json({ ok: false, error: e.message });
+  }
+});
+
+// --- Cloud Ops real connector (GCP Compute Engine) ------------------------
+// Real read-only lookup via the official Google Cloud SDK
+// (server/l1-copilot/gcp-adapter.js) — no-ops honestly (503 + ok:false)
+// rather than pretending to work when GCP_PROJECT_ID / service-account
+// credentials aren't configured. Diagnostic read access only.
+
+app.get('/api/l1-copilot/gcp/status', (req, res) => {
+  res.json({ ok: true, configured: gcpAdapter.isConfigured() });
+});
+
+app.get('/api/l1-copilot/gcp/instance/:identifier', async (req, res) => {
+  try {
+    const instance = await gcpAdapter.getInstance(req.params.identifier);
+    if (!instance) return res.status(404).json({ ok: false, error: `No Compute Engine instance found for "${req.params.identifier}".` });
+    res.json({ ok: true, instance });
+  } catch (e) {
+    const status = e.code === 'GCP_NOT_CONFIGURED' ? 503 : 502;
     res.status(status).json({ ok: false, error: e.message });
   }
 });
