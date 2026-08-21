@@ -424,13 +424,35 @@ tr:hover td{background:rgba(0,255,80,.03)}
   function relayToStrategist() {
     const aiText = document.getElementById('aiOutput').textContent;
     const payload = engine.buildRelayPayload(aiText);
+    const caseId = (function(){
+      try { return sessionStorage.getItem('TSM_CRM_PENDING_CASEID'); } catch(e) { return null; }
+    })() || ('CRM-' + new Date().toISOString().slice(0,10) + '-' + Math.random().toString(36).slice(2,8));
+    try { sessionStorage.removeItem('TSM_CRM_PENDING_CASEID'); } catch(e) {}
+    payload.caseId = caseId;
+
     try {
-      TSM.relay.write("CRM", payload);
+      TSM.relay.write("CRM", payload, {caseId, stage: 'war-room'});
     } catch (e) { console.warn('Relay storage failed', e); }
 
     if (window.TSMEventBus && window.TSMEventBus.emit) {
       window.TSMEventBus.emit('WAR_ROOM_READY', { vertical: 'crm', payload, ts: Date.now() });
     }
+
+    // ── Mission runtime (additive — does not affect existing relay) ──
+    try {
+      if (window.TSMMissionModel && window.TSMMissionStore) {
+        const mission = window.TSMMissionModel.createMission({
+          id: caseId,
+          tenantId: (window.TSMActiveMember && window.TSMActiveMember.getId()) || 'default',
+          vertical: 'crm',
+          client: null,
+          extraction: payload,
+          classification: { docType: 'crm', sector: 'CRM' }
+        });
+        window.TSMMissionStore.saveMission(mission);
+      }
+    } catch (e) { console.error('Mission write failed (non-fatal):', e); }
+
     document.getElementById('navStatus').textContent = 'ENGINE: RELAYED TO STRATEGIST';
     setTimeout(() => { window.location.href = '/html/war-rooms/crm/crm-strategist.html'; }, 500);
   }
@@ -461,5 +483,7 @@ tr:hover td{background:rgba(0,255,80,.03)}
 <script src="/js/core/tsm-mission-engine.js"></script>
 <script src="/js/core/tsm-auto-pipeline.js"></script>
   <script src="/html/core/tsm-runtime.js"></script>
+  <script src="/html/shared/runtime/mission/mission-model.js"></script>
+  <script src="/html/shared/runtime/mission/mission-store.js"></script>
 </body>
 </html>
