@@ -81,4 +81,13 @@ router.post('/api/doc-router/extract-file', upload.single('file'), async (req, r
   }
 });
 
+// Export the router as the default (Express expects app.use(require(...)) to
+// get a router/middleware function), while also attaching the extraction
+// helpers as properties on it so other modules (e.g. the BPO upload route in
+// server.js) can reuse the same isSupported()/extractDocText() logic instead
+// of duplicating it. `require('./routes/doc-router')` still works exactly as
+// before for `app.use(...)`; callers that want the helpers do
+// `require('./routes/doc-router').extractDocText` etc.
 module.exports = router;
+module.exports.isSupported = isSupported;
+module.exports.extractDocText = extractDocText;
