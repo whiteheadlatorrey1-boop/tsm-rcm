@@ -543,9 +543,12 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
               <div class="field" style="margin-bottom:8px"><div class="field-label">BitLocker / Escrow Status</div>
                 <select id="adBitlocker"><option>Encrypted — Key Escrowed to Entra/AD</option><option>Encrypted — Key NOT Escrowed</option><option>Not Encrypted</option><option>Suspended</option></select>
               </div>
-              <div class="btn-row">
+              <div class="btn-row" style="align-items:center">
                 <button class="btn btn-cyan" id="btnAdGuidance">GET AD / INTUNE GUIDANCE</button>
+                <button class="btn btn-outline" id="btnAdLivePull">PULL LIVE FROM INTUNE</button>
+                <span id="graphStatusBadge" style="font-size:11px; padding:4px 10px; border-radius:12px; border:1px solid var(--border); color:var(--muted)">GRAPH/INTUNE: CHECKING…</span>
               </div>
+              <div id="adLiveOut" style="font-size:12px; margin-top:4px"></div>
             </div>
             <div>
               <div class="status-row"><span>Autopilot Enrollment</span><span class="tag tag-ok" id="adAutopilotTag">Registered</span></div>
@@ -675,13 +678,14 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
     <!-- CLOUD OPS -->
     <section class="section" id="sec-cloudops">
       <div class="card">
-        <div class="card-head">CLOUD OPERATIONS SME<span style="font-weight:400">Azure · AWS · AVS / VMC on AWS · GCVE</span></div>
+        <div class="card-head">CLOUD OPERATIONS SME<span style="font-weight:400">Azure · AWS · GCP · AVS / VMC on AWS / GCVE</span></div>
         <div class="card-body">
           <div class="ticket-head-grid" style="grid-template-columns:repeat(3,1fr)">
             <div class="field"><div class="field-label">Provider</div>
               <select id="cloudProvider">
                 <option>Azure</option>
                 <option>AWS</option>
+                <option>GCP (Compute Engine)</option>
                 <option>Azure VMware Solution</option>
                 <option>VMware Cloud on AWS</option>
                 <option>Google Cloud VMware Engine</option>
@@ -699,8 +703,27 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
             </div>
           </div>
 
-          <div class="card-head" style="border:none;padding:0 0 6px">PASTE LOGS / CONFIG / ERROR</div>
-          <textarea id="cloudInput" rows="8" placeholder="Paste Azure/AWS error output, resource config, IAM policy, or describe the issue..."></textarea>
+          <div class="card-head" style="border:none;padding:0 0 6px">LIVE INSTANCE LOOKUP<span style="font-weight:400">Real account query — not AI guidance</span></div>
+          <div class="ticket-head-grid" style="grid-template-columns:2fr 1fr">
+            <div class="field"><div class="field-label">Instance Name / ID</div>
+              <input type="text" id="cloudLiveIdentifier" placeholder="e.g. l1-test-vm or i-0abc123def456789">
+            </div>
+            <div class="field"><div class="field-label">Backend</div>
+              <select id="cloudLiveProvider">
+                <option value="aws">AWS (EC2)</option>
+                <option value="gcp">GCP (Compute Engine)</option>
+              </select>
+            </div>
+          </div>
+          <div class="btn-row" style="align-items:center">
+            <button class="btn btn-cyan" id="btnCloudLiveLookup">LOOK UP LIVE STATUS</button>
+            <span id="awsStatusBadge" style="font-size:11px; padding:4px 10px; border-radius:12px; border:1px solid var(--border); color:var(--muted)">AWS: CHECKING…</span>
+            <span id="gcpStatusBadge" style="font-size:11px; padding:4px 10px; border-radius:12px; border:1px solid var(--border); color:var(--muted)">GCP: CHECKING…</span>
+          </div>
+          <div class="ai-output" id="cloudLiveOut" style="margin-top:8px">Real instance state, IPs, and metadata pulled live from the account will appear here.</div>
+
+          <div class="card-head" style="border:none;padding:16px 0 6px">PASTE LOGS / CONFIG / ERROR</div>
+          <textarea id="cloudInput" rows="8" placeholder="Paste Azure/AWS/GCP error output, resource config, IAM policy, or describe the issue..."></textarea>
 
           <div class="btn-row">
             <button class="btn btn-cyan" id="btnCloudGuidance">GET SME GUIDANCE</button>
@@ -1720,6 +1743,57 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
     }
   });
 
+  // ── AD/Intune: real live device lookup via Microsoft Graph ─────────────────
+  (async function checkGraphStatus(){
+    const badge = document.getElementById('graphStatusBadge');
+    try {
+      const res = await fetch('/api/l1-copilot/graph-intune/status');
+      const data = await res.json();
+      if (data.ok && data.configured) {
+        badge.textContent = 'GRAPH/INTUNE: CONNECTED';
+        badge.style.color = 'var(--cyan)'; badge.style.borderColor = 'var(--cyan)';
+      } else {
+        badge.textContent = 'GRAPH/INTUNE: NOT CONFIGURED';
+      }
+    } catch (e) {
+      badge.textContent = 'GRAPH/INTUNE: UNAVAILABLE';
+    }
+  })();
+
+  /** Selects the <option> whose text best matches candidateText (case-insensitive substring match); leaves selection unchanged if nothing matches. */
+  function selectOptionByText(selectEl, candidateText) {
+    if (!candidateText) return;
+    const target = String(candidateText).toLowerCase();
+    const opts = Array.from(selectEl.options);
+    const match = opts.find(o => o.text.toLowerCase().includes(target)) ||
+                  opts.find(o => target.includes(o.text.toLowerCase()));
+    if (match) selectEl.value = match.value;
+  }
+
+  document.getElementById('btnAdLivePull').addEventListener('click', async () => {
+    const identifier = document.getElementById('adDeviceName').value.trim();
+    const out = document.getElementById('adLiveOut');
+    if (!identifier) { alert('Enter a device name first.'); return; }
+    out.textContent = 'Pulling live device record from Intune...';
+    try {
+      const res = await fetch('/api/l1-copilot/graph-intune/device/' + encodeURIComponent(identifier));
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'Lookup failed');
+      const d = data.device;
+      selectOptionByText(document.getElementById('adCompliance'), d.complianceState);
+      selectOptionByText(document.getElementById('adBitlocker'), d.isEncrypted === true ? 'Encrypted — Key Escrowed' : d.isEncrypted === false ? 'Not Encrypted' : '');
+      if (d.autopilotEnrolled != null) {
+        const tag = document.getElementById('adAutopilotTag');
+        tag.textContent = d.autopilotEnrolled ? 'Registered' : 'Not Registered';
+        tag.className = d.autopilotEnrolled ? 'tag tag-ok' : 'tag';
+      }
+      if (d.lastSyncDateTime) document.getElementById('adLastCheckin').textContent = new Date(d.lastSyncDateTime).toLocaleString();
+      out.innerHTML = `<span style="color:var(--cyan)">Loaded ${d.deviceName} from Intune</span> — ${d.complianceState || 'unknown'} · ${d.operatingSystem || ''} ${d.osVersion || ''} · encrypted: ${d.isEncrypted === true ? 'yes' : d.isEncrypted === false ? 'no' : 'unknown'}`;
+    } catch (e) {
+      out.innerHTML = `<span class="err">${e.message}</span>`;
+    }
+  });
+
   // ── AI Analysis ──────────────────────────────────────────────────────────
   async function runAnalysis(){
     const description = document.getElementById('tkDescription').value.trim();
@@ -2389,6 +2463,67 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
       }
     } catch (e) { /* relay is best-effort, don't block navigation */ }
     window.open('/html/l1-copilot/vmware-copilot.html', '_blank');
+  });
+
+  // ── Cloud Ops: real live instance lookup (AWS EC2 / GCP Compute Engine) ────
+  (async function checkCloudLiveStatus(){
+    const awsBadge = document.getElementById('awsStatusBadge');
+    const gcpBadge = document.getElementById('gcpStatusBadge');
+    try {
+      const res = await fetch('/api/l1-copilot/cloud-ops/status');
+      const data = await res.json();
+      if (data.ok && data.configured) {
+        awsBadge.textContent = 'AWS: CONNECTED';
+        awsBadge.style.color = 'var(--cyan)'; awsBadge.style.borderColor = 'var(--cyan)';
+      } else {
+        awsBadge.textContent = 'AWS: NOT CONFIGURED';
+      }
+    } catch (e) {
+      awsBadge.textContent = 'AWS: UNAVAILABLE';
+    }
+    try {
+      const res = await fetch('/api/l1-copilot/gcp/status');
+      const data = await res.json();
+      if (data.ok && data.configured) {
+        gcpBadge.textContent = 'GCP: CONNECTED';
+        gcpBadge.style.color = 'var(--cyan)'; gcpBadge.style.borderColor = 'var(--cyan)';
+      } else {
+        gcpBadge.textContent = 'GCP: NOT CONFIGURED';
+      }
+    } catch (e) {
+      gcpBadge.textContent = 'GCP: UNAVAILABLE';
+    }
+  })();
+
+  document.getElementById('btnCloudLiveLookup').addEventListener('click', async () => {
+    const identifier = document.getElementById('cloudLiveIdentifier').value.trim();
+    const backend = document.getElementById('cloudLiveProvider').value; // 'aws' | 'gcp'
+    const out = document.getElementById('cloudLiveOut');
+    if (!identifier) { alert('Enter an instance name or ID first.'); return; }
+    out.className = 'ai-output loading';
+    out.textContent = `Looking up live status on ${backend.toUpperCase()}...`;
+    const endpoint = backend === 'gcp'
+      ? '/api/l1-copilot/gcp/instance/' + encodeURIComponent(identifier)
+      : '/api/l1-copilot/cloud-ops/instance/' + encodeURIComponent(identifier);
+    try {
+      const res = await fetch(endpoint);
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'Lookup failed');
+      const i = data.instance;
+      out.className = 'ai-output';
+      if (backend === 'gcp') {
+        out.innerHTML = `<span style="color:var(--cyan)">${i.name}</span> — ${i.status} · zone ${i.zone} · ${i.machineType || 'unknown type'}<br>` +
+          `Private IP: ${i.privateIp || 'none'} &nbsp; Public IP: ${i.publicIp || 'none'} &nbsp; Instance ID: ${i.instanceId}`;
+      } else {
+        out.innerHTML = `<span style="color:var(--cyan)">${i.name || i.instanceId}</span> — ${i.state} · ${i.availabilityZone} · ${i.instanceType || 'unknown type'}<br>` +
+          `Private IP: ${i.privateIp || 'none'} &nbsp; Public IP: ${i.publicIp || 'none'} &nbsp; Instance ID: ${i.instanceId}` +
+          (i.systemStatus ? `<br>System status: ${i.systemStatus} &nbsp; Instance status: ${i.instanceStatus}` : '');
+      }
+      document.getElementById('cloudService').value = backend === 'gcp' ? (i.name || '') : (i.instanceId || '');
+    } catch (e) {
+      out.className = 'ai-output';
+      out.innerHTML = `<span class="err">${e.message}</span>`;
+    }
   });
 
   // ── Cloud Ops ───────────────────────────────────────────────────────────────
