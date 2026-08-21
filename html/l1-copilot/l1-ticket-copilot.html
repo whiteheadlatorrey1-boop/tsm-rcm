@@ -72,6 +72,7 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
 .section.active{display:block}
 
 .ticket-head-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:16px}
+.field-group-cmdb{grid-column:span 4;display:grid;grid-template-columns:repeat(4,1fr);gap:10px;border-radius:10px;transition:box-shadow .3s ease}
 .field{background:var(--card);border:1px solid var(--border);padding:8px 10px}
 .field-label{font-size:8px;letter-spacing:1px;color:var(--text-dim);text-transform:uppercase;margin-bottom:4px}
 .field input,.field select{background:transparent;border:none;color:var(--text);font-family:inherit;font-size:11px;width:100%;outline:none}
@@ -256,11 +257,12 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
 
 #tsm-decision-journey .tsm-dj-steps {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(8, minmax(0, 1fr));
   gap: 8px;
 }
 
-#tsm-decision-journey .tsm-dj-step {
+#tsm-decision-journey .tsm-dj-step,
+#tsm-decision-journey .tsm-dj-anchor {
   appearance: none;
   border: 1px solid rgba(140,160,190,.24);
   background: rgba(255,255,255,.035);
@@ -273,9 +275,21 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
               background .18s ease, box-shadow .18s ease;
 }
 
-#tsm-decision-journey .tsm-dj-step:hover {
+#tsm-decision-journey .tsm-dj-step:hover,
+#tsm-decision-journey .tsm-dj-anchor:hover {
   transform: translateY(-1px);
   border-color: rgba(130,180,255,.55);
+}
+
+/*
+ * .tsm-dj-anchor buttons (Ticket / Context-CMDB / Escalate) are
+ * real, always-clickable scroll targets. Unlike .tsm-dj-step they
+ * are intentionally NOT part of the 5-step analysis state machine
+ * (state.step), so they never block on state.analysis and never
+ * get swept up by renderStep()'s .tsm-dj-step queries.
+ */
+#tsm-decision-journey .tsm-dj-anchor {
+  border-style: dashed;
 }
 
 #tsm-decision-journey .tsm-dj-step.active {
@@ -389,6 +403,10 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
     grid-template-columns: 1fr 1fr;
   }
 
+  #tsm-decision-journey .tsm-dj-steps > * {
+    grid-column: span 1;
+  }
+
   #tsm-decision-journey .tsm-dj-decision {
     grid-template-columns: 1fr;
   }
@@ -413,6 +431,22 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
   </div>
 
   <div class="tsm-dj-steps">
+
+    <button type="button"
+            class="tsm-dj-anchor"
+            data-dj-anchor="ticket">
+      <span class="tsm-dj-num">•</span>
+      <span class="tsm-dj-label">TICKET</span>
+      <span class="tsm-dj-sub">Open the ticket</span>
+    </button>
+
+    <button type="button"
+            class="tsm-dj-anchor"
+            data-dj-anchor="context">
+      <span class="tsm-dj-num">•</span>
+      <span class="tsm-dj-label">CONTEXT / CMDB</span>
+      <span class="tsm-dj-sub">Asset &amp; warranty data</span>
+    </button>
 
     <button type="button"
             class="tsm-dj-step active"
@@ -452,6 +486,14 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
       <span class="tsm-dj-num">05</span>
       <span class="tsm-dj-label">HUMAN DECISION</span>
       <span class="tsm-dj-sub">Human stays in control</span>
+    </button>
+
+    <button type="button"
+            class="tsm-dj-anchor"
+            data-dj-anchor="escalate">
+      <span class="tsm-dj-num">•</span>
+      <span class="tsm-dj-label">ESCALATE</span>
+      <span class="tsm-dj-sub">Send for review</span>
     </button>
 
   </div>
@@ -611,10 +653,12 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
         <div class="field"><div class="field-label">Requester</div><input id="tkRequester" placeholder="Jane Doe"></div>
         <div class="field"><div class="field-label">Department</div><input id="tkDept" placeholder="Finance"></div>
         <div class="field"><div class="field-label">Assignment Group</div><input id="tkGroup" placeholder="Desktop Support L1"></div>
-        <div class="field"><div class="field-label">Asset</div><input id="tkAsset" placeholder="Hostname / Tag"></div>
-        <div class="field"><div class="field-label">Manufacturer</div><input id="tkMfr" placeholder="Dell"></div>
-        <div class="field"><div class="field-label">Model</div><input id="tkModel" placeholder="Latitude 7440"></div>
-        <div class="field"><div class="field-label">Warranty</div><input id="tkWarranty" placeholder="ProSupport Plus"></div>
+        <div id="assetContextCard" class="field-group-cmdb">
+          <div class="field"><div class="field-label">Asset</div><input id="tkAsset" placeholder="Hostname / Tag"></div>
+          <div class="field"><div class="field-label">Manufacturer</div><input id="tkMfr" placeholder="Dell"></div>
+          <div class="field"><div class="field-label">Model</div><input id="tkModel" placeholder="Latitude 7440"></div>
+          <div class="field"><div class="field-label">Warranty</div><input id="tkWarranty" placeholder="ProSupport Plus"></div>
+        </div>
         <div class="field"><div class="field-label">SLA Remaining</div><input id="tkSlaRemaining" placeholder="00:38" readonly></div>
         <div class="field"><div class="field-label">Time Open</div><input id="tkTimeOpen" placeholder="3h 12m" readonly></div>
       </div>
@@ -3404,6 +3448,61 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
     }
   }
 
+  /*
+   * Real scroll/highlight targets for the .tsm-dj-anchor buttons.
+   * These are always clickable — they don't gate on state.analysis
+   * the way the numbered .tsm-dj-step buttons do, since Ticket and
+   * Context/CMDB are things a technician looks at before analysis
+   * even runs, and Escalate needs to be reachable regardless of
+   * which numbered step is currently active.
+   */
+  function highlightElement(target) {
+    if (!target) return;
+
+    target.scrollIntoView({
+      behavior: "smooth",
+      block: "center"
+    });
+
+    target.style.transition = "box-shadow .3s ease";
+    target.style.boxShadow = "0 0 0 3px rgba(90,160,255,.28)";
+
+    setTimeout(() => {
+      target.style.boxShadow = "";
+    }, 1300);
+  }
+
+  function scrollToAnchor(name) {
+    if (name === "ticket") {
+      highlightElement($("sec-ticket"));
+      return;
+    }
+
+    if (name === "context") {
+      highlightElement($("assetContextCard"));
+      return;
+    }
+
+    if (name === "escalate") {
+      // Make sure the Human Decision panel (and its three real
+      // outcome buttons) actually exists before trying to point at
+      // SEND FOR REVIEW inside it.
+      if (state.analysis && !$("tsm-dj-decision-buttons")) {
+        renderHumanDecision();
+      }
+
+      const reviewButton = document.querySelector(
+        '#tsm-dj-decision-buttons [data-choice="review"]'
+      );
+
+      if (reviewButton) {
+        highlightElement(reviewButton);
+      } else {
+        highlightElement($("tsm-decision-journey"));
+      }
+    }
+  }
+
   function renderStep() {
     const steps = document.querySelectorAll(
       "#tsm-decision-journey .tsm-dj-step"
@@ -3662,6 +3761,14 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
 
           state.step = step;
           renderStep();
+        });
+      });
+
+    journey
+      .querySelectorAll(".tsm-dj-anchor")
+      .forEach((button) => {
+        button.addEventListener("click", () => {
+          scrollToAnchor(button.dataset.djAnchor);
         });
       });
 
