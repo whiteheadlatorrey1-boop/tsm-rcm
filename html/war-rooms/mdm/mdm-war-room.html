@@ -325,10 +325,27 @@ td{padding:7px 8px;border-bottom:1px solid var(--border);color:var(--text)}
   });
   document.getElementById('btnAnalyze').addEventListener('click',runAnalysis);
   document.getElementById('btnRelay').addEventListener('click',()=>{
+    const caseId = 'MDM-' + new Date().toISOString().slice(0,10) + '-' + Math.random().toString(36).slice(2,8);
+    const payload = {vertical:'mdm',records,duplicates,kpis:computeKpis(),explain:getExplainItems(),ai_analysis:document.getElementById('aiOutput').textContent,timestamp:new Date().toISOString(),caseId};
     try{
-      const caseId = 'MDM-' + new Date().toISOString().slice(0,10) + '-' + Math.random().toString(36).slice(2,8);
-      TSM.relay.write("MDM",{vertical:'mdm',records,duplicates,kpis:computeKpis(),explain:getExplainItems(),ai_analysis:document.getElementById('aiOutput').textContent,timestamp:new Date().toISOString(),caseId},{caseId, stage:'war-room'});
+      TSM.relay.write("MDM",payload,{caseId, stage:'war-room'});
     } catch(e){}
+
+    // ── Mission runtime (additive — does not affect existing relay) ──
+    try {
+      if (window.TSMMissionModel && window.TSMMissionStore) {
+        const mission = window.TSMMissionModel.createMission({
+          id: caseId,
+          tenantId: (window.TSMActiveMember && window.TSMActiveMember.getId()) || 'default',
+          vertical: 'mdm',
+          client: null,
+          extraction: payload,
+          classification: { docType: 'mdm', sector: 'MDM' }
+        });
+        window.TSMMissionStore.saveMission(mission);
+      }
+    } catch (e) { console.error('Mission write failed (non-fatal):', e); }
+
     document.getElementById('navStatus').textContent='ENGINE: RELAYED — opening Strategist…';
     setTimeout(()=>{ window.location.href = '/html/war-rooms/mdm/mdm-strategist.html'; }, 500);
   });
@@ -336,4 +353,6 @@ td{padding:7px 8px;border-bottom:1px solid var(--border);color:var(--text)}
 })();
 </script>
   <script src="/html/core/tsm-runtime.js"></script>
+  <script src="/html/shared/runtime/mission/mission-model.js"></script>
+  <script src="/html/shared/runtime/mission/mission-store.js"></script>
 </body></html>

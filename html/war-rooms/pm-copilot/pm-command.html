@@ -749,6 +749,22 @@ async function relayToStrategist(){
     sessionStorage.setItem('TSM_PM_RELAY', JSON.stringify(signedPayload));
     pmPushToSentinel();
 
+    // ── Mission runtime (additive — does not affect existing relay) ──
+    try {
+      if (window.TSMMissionModel && window.TSMMissionStore) {
+        const caseId = finalPayload.id || finalPayload.caseId;
+        const mission = window.TSMMissionModel.createMission({
+          id: caseId,
+          tenantId: (window.TSMActiveMember && window.TSMActiveMember.getId()) || 'default',
+          vertical: 'pm',
+          client: null,
+          extraction: finalPayload,
+          classification: { docType: 'pm', sector: 'PM' }
+        });
+        window.TSMMissionStore.saveMission(mission);
+      }
+    } catch (e) { console.error('Mission write failed (non-fatal):', e); }
+
     window.dispatchEvent(new CustomEvent('TSM_SENTINEL_REFRESH'));
     showToast('Relayed to Strategist — click "Strategist →" above to view it.');
   } catch (e) {
@@ -764,5 +780,7 @@ document.getElementById('btnRelay').addEventListener('click', relayToStrategist)
 
 init();
 </script>
+<script src="/html/shared/runtime/mission/mission-model.js"></script>
+<script src="/html/shared/runtime/mission/mission-store.js"></script>
 </body>
 </html>
