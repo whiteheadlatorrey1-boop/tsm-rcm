@@ -122,6 +122,7 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 <script src="/html/shared/tsm-case-manager.js"></script>
 <script src="/html/js/widgets/tsm-case-widget.js"></script>
 <script src="/html/shared/runtime/governance/audit-engine.js"></script>
+<script src="/html/js/tsm-bnca-exposure-engine.js"></script>
 <script>
   if (typeof TSMExceptionWidget !== 'undefined') {
     TSMExceptionWidget.mount('tsm-exception-queue', { sector: 'honeywell' });
@@ -262,6 +263,23 @@ function secondaryLabel(source){
 function tertiaryLabel(source){
   if(source==='supplier') return 'ORDERS AT RISK';
   return 'RISK SCORE';
+}
+
+// Renders the BNCA exposure projection the strategist computed and forwarded
+// via payload.bnca_exposure — this page never recomputes it, only displays
+// what was relayed. Mirrors honeywell-strategist.html's renderHoneywellBNCA().
+function hwMoney(n){ return '$' + Math.round(Number(n) || 0).toLocaleString(); }
+function renderHoneywellBNCA(bnca){
+  if(!bnca) return '';
+  if(bnca.unavailable){
+    return `<div class="sec"><div class="sec-hdr">BNCA EXPOSURE PROJECTION</div><div class="no-items">${escapeHtml(bnca.reason || 'Exposure projection unavailable.')}</div></div>`;
+  }
+  return `<div class="sec"><div class="sec-hdr">BNCA EXPOSURE PROJECTION</div>
+    <div class="kpi-row">
+      <div class="kpi"><div class="kpi-val cyan">${hwMoney(bnca.currentExposure)}</div><div class="kpi-lbl">CURRENT EXPOSURE</div></div>
+      <div class="kpi"><div class="kpi-val green">${hwMoney(bnca.ifActed.exposure)}</div><div class="kpi-lbl">IF ACTED</div></div>
+      <div class="kpi"><div class="kpi-val red">${hwMoney(bnca.ifIgnored.exposure)}</div><div class="kpi-lbl">IF IGNORED</div></div>
+    </div><div class="no-items" style="margin-top:8px">${escapeHtml(bnca.urgencyWindow || '')}</div></div>`;
 }
 
 // Grounded in the actual relay payload shape (data.kpis.*, data.outputs) — this
@@ -537,6 +555,7 @@ function render(){
   const explainItems = getExplainItems(data);
   lastExplainItems = explainItems;
   html += renderExplainItems(explainItems);
+  html += renderHoneywellBNCA(data.bnca_exposure);
 
   registerHoneywellAnomalies(data);
   hwFeedException(data);

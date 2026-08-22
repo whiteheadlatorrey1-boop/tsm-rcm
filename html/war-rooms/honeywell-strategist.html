@@ -105,6 +105,7 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 <div class="wrap" id="wrap"><!-- populated by JS --></div>
 <div class="toast" id="toast"></div>
 <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
+<script src="/html/js/tsm-bnca-exposure-engine.js"></script>
 <script src="/html/shared/runtime/mission/mission-model.js"></script>
 <script src="/html/shared/runtime/mission/mission-store.js"></script>
 <script>
@@ -248,6 +249,54 @@ function secondaryLabel(source){
 function tertiaryLabel(source){
   if(source==='supplier') return 'ORDERS AT RISK';
   return 'RISK SCORE';
+}
+
+// BNCA exposure projection — deterministic, via TSMBNCAExposureEngine.
+// baseExposure comes straight from kpis.exposure (conservative/low end when
+// a range is reported, matching the engine's own doc convention), same
+// number already shown in the FINANCIAL EXPOSURE tile above — nothing new
+// invented. Severity reuses the same source->severity mapping this file
+// already applies to anomaly registration below (cyber/plant/supplier),
+// remapped to the engine's CRIT/HIGH/MED vocabulary. This payload carries
+// no real confidence/deadline signal (see comment on getExplainItems), so
+// confidence defaults to the engine's own neutral 70 and daysUntilDeadline
+// to 0 — except supplier incidents, which do report a real buffer-days
+// figure that doubles as the deadline signal.
+function hwBncaSeverity(src){
+  if(src === 'cyber') return 'CRIT';
+  if(src === 'plant') return 'HIGH';
+  return 'MED';
+}
+function computeHoneywellBNCA(data){
+  if(!window.TSMBNCAExposureEngine) return null;
+  const k = data.kpis || {};
+  const exp = k.exposure || {};
+  const baseExposure = Number(exp.totalExposureLow || exp.totalExposureHigh);
+  if(!Number.isFinite(baseExposure) || baseExposure <= 0){
+    return { unavailable: true, reason: 'no structured exposure figure present in this relay payload' };
+  }
+  const src = data.source || 'unknown';
+  const buffer = k.buffer || {};
+  const daysUntilDeadline = (src === 'supplier' && typeof buffer.bufferDays === 'number') ? buffer.bufferDays : 0;
+  return window.TSMBNCAExposureEngine.project({
+    baseExposure: baseExposure,
+    severity: hwBncaSeverity(src),
+    confidence: 70, // no confidence signal in this payload — engine's own neutral default
+    daysUntilDeadline: daysUntilDeadline
+  });
+}
+function hwMoney(n){ return '$' + Math.round(Number(n) || 0).toLocaleString(); }
+function renderHoneywellBNCA(bnca){
+  if(!bnca) return '';
+  if(bnca.unavailable){
+    return `<div class="sec"><div class="sec-hdr">BNCA EXPOSURE PROJECTION</div><div class="no-items">${escapeHtml(bnca.reason || 'Exposure projection unavailable.')}</div></div>`;
+  }
+  return `<div class="sec"><div class="sec-hdr">BNCA EXPOSURE PROJECTION</div>
+    <div class="kpi-row">
+      <div class="kpi"><div class="kpi-val cyan">${hwMoney(bnca.currentExposure)}</div><div class="kpi-lbl">CURRENT EXPOSURE</div></div>
+      <div class="kpi"><div class="kpi-val green">${hwMoney(bnca.ifActed.exposure)}</div><div class="kpi-lbl">IF ACTED</div></div>
+      <div class="kpi"><div class="kpi-val red">${hwMoney(bnca.ifIgnored.exposure)}</div><div class="kpi-lbl">IF IGNORED</div></div>
+    </div><div class="no-items" style="margin-top:8px">${escapeHtml(bnca.urgencyWindow || '')}</div></div>`;
 }
 
 // Grounded in the actual relay payload shape (data.kpis.*, data.outputs) — this
@@ -418,6 +467,7 @@ function render(){
   </div>`;
 
   html += renderExplainItems(getExplainItems(data));
+  html += renderHoneywellBNCA(computeHoneywellBNCA(data));
 
   registerHoneywellAnomalies(data);
 
@@ -454,7 +504,10 @@ function render(){
 function escalateExec(){
   const data = loadRelay();
   if(!data){ showToast('No analysis to escalate.', true); return; }
-  const payload = JSON.stringify(Object.assign({}, data, { strategistReviewedAt: new Date().toISOString() }));
+  // Forward the BNCA exposure projection computed above (previously this
+  // only ever rendered to this page's own DOM and was never relayed, so
+  // the executive portal had no way to show it).
+  const payload = JSON.stringify(Object.assign({}, data, { strategistReviewedAt: new Date().toISOString(), bnca_exposure: computeHoneywellBNCA(data) }));
   try{
     localStorage.setItem('TSM_HONEYWELL_EXEC_RELAY', payload);
     sessionStorage.setItem('TSM_HONEYWELL_EXEC_RELAY', payload);
