@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TSM Deck Archive</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800&family=Share+Tech+Mono&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#070C10; --bg2:#05080A; --bg3:#0A0F0A; --border:#182430;
+    --text:#DCE9F0; --muted:#9AB4C4; --faint:#5A7A8A;
+    --teal:#00D4B8; --green:#00E87A; --orange:#F07030; --red:#F03A3A;
+    --gold:#F4A800; --purple:#9A70F0;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:var(--bg);color:var(--text);min-height:100%;}
+  body{
+    font-family:'Barlow',sans-serif;
+    background:
+      radial-gradient(ellipse 900px 500px at 12% -10%, rgba(0,212,184,.08), transparent 60%),
+      radial-gradient(ellipse 900px 500px at 100% 0%, rgba(240,58,58,.06), transparent 55%),
+      var(--bg);
+    padding: 56px 6vw 90px;
+  }
+  .mono{font-family:'Share Tech Mono',monospace;}
+  .display{font-family:'Orbitron',sans-serif;}
+
+  /* ---------- header / status console ---------- */
+  header{max-width:1280px;margin:0 auto 40px;}
+  .eyebrow{
+    display:flex;align-items:center;gap:10px;
+    font-family:'Share Tech Mono',monospace;font-size:12px;letter-spacing:3px;
+    color:var(--teal);text-transform:uppercase;margin-bottom:18px;
+  }
+  .eyebrow .dot{width:7px;height:7px;border-radius:50%;background:var(--teal);box-shadow:0 0 8px var(--teal);animation:pulse 2.2s ease-in-out infinite;}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  h1{
+    font-family:'Orbitron',sans-serif;font-weight:800;
+    font-size:clamp(30px,4.4vw,52px);line-height:1.08;color:var(--text);
+    letter-spacing:.5px;max-width:14ch;
+  }
+  header p{color:var(--muted);font-size:15px;max-width:56ch;margin-top:16px;line-height:1.6;}
+
+  .console{
+    margin-top:34px;
+    display:grid;grid-template-columns:repeat(4,1fr);
+    border:1px solid var(--border);border-radius:8px;overflow:hidden;
+    background:var(--bg2);
+  }
+  .console .cell{padding:16px 20px;border-right:1px solid var(--border);}
+  .console .cell:last-child{border-right:none;}
+  .console .cell .k{font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:2px;color:var(--faint);text-transform:uppercase;}
+  .console .cell .v{font-family:'Orbitron',sans-serif;font-size:20px;font-weight:700;color:var(--text);margin-top:6px;}
+
+  /* ---------- filters ---------- */
+  .filters{
+    max-width:1280px;margin:34px auto 0;display:flex;gap:8px;flex-wrap:wrap;
+  }
+  .filters button{
+    font-family:'Share Tech Mono',monospace;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;
+    padding:8px 14px;border-radius:20px;border:1px solid var(--border);
+    background:transparent;color:var(--muted);cursor:pointer;transition:all .15s;
+  }
+  .filters button:hover{border-color:var(--faint);color:var(--text);}
+  .filters button.active{background:var(--text);color:var(--bg);border-color:var(--text);}
+
+  /* ---------- grid ---------- */
+  .grid{
+    max-width:1280px;margin:26px auto 0;
+    display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:20px;
+  }
+  .card{
+    --accent: var(--teal);
+    position:relative;background:var(--bg2);border:1px solid var(--border);
+    border-left:3px solid var(--accent);border-radius:8px;padding:26px 24px 22px;
+    overflow:hidden;transition:transform .2s ease, box-shadow .2s ease;
+  }
+  .card::before{
+    content:"";position:absolute;inset:-40% -40% auto auto;width:220px;height:220px;
+    background:radial-gradient(circle, var(--accent) 0%, transparent 70%);
+    opacity:0;transition:opacity .3s ease;pointer-events:none;
+  }
+  .card:hover{transform:translateY(-4px);box-shadow:0 14px 34px rgba(0,0,0,.45), 0 0 0 1px var(--accent);}
+  .card:hover::before{opacity:.08;}
+
+  .card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;}
+  .icon-wrap{
+    width:42px;height:42px;border-radius:8px;display:flex;align-items:center;justify-content:center;
+    background:var(--bg3);border:1px solid var(--border);flex-shrink:0;
+  }
+  .icon-wrap svg{width:22px;height:22px;}
+  .case-no{font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:1.5px;color:var(--faint);text-align:right;padding-top:4px;}
+
+  .sector{
+    font-family:'Share Tech Mono',monospace;font-size:10.5px;letter-spacing:2px;text-transform:uppercase;
+    color:var(--accent);margin-top:18px;
+  }
+  .card h3{font-family:'Orbitron',sans-serif;font-size:17px;font-weight:700;color:var(--text);margin-top:8px;line-height:1.35;}
+  .card p{color:var(--muted);font-size:12.5px;line-height:1.55;margin-top:10px;min-height:52px;}
+
+  .card-foot{
+    margin-top:20px;display:flex;align-items:center;justify-content:space-between;gap:10px;
+    padding-top:16px;border-top:1px solid var(--border);
+  }
+  .filesize{font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--faint);}
+  .dl{
+    font-family:'Share Tech Mono',monospace;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;
+    color:var(--bg);background:var(--accent);border-radius:5px;padding:9px 14px;text-decoration:none;
+    display:inline-flex;align-items:center;gap:6px;transition:filter .15s, transform .15s;
+  }
+  .dl:hover{filter:brightness(1.12);transform:translateX(1px);}
+  .dl svg{width:12px;height:12px;}
+
+  footer{max-width:1280px;margin:56px auto 0;color:var(--faint);font-family:'Share Tech Mono',monospace;font-size:11px;letter-spacing:1px;border-top:1px solid var(--border);padding-top:20px;}
+
+  @media (max-width:760px){
+    .console{grid-template-columns:repeat(2,1fr);}
+    .console .cell:nth-child(2){border-right:none;}
+  }
+  @media (prefers-reduced-motion: reduce){
+    *{animation:none !important;transition:none !important;}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="eyebrow"><span class="dot"></span> TSM Intelligence &mdash; Deck Archive</div>
+  <h1>Presentation<br>War Room</h1>
+  <p>Every walkthrough deck built to demonstrate TSM's vertical intelligence engines &mdash; one archive, one download away. Filter by sector or grab the full set below.</p>
+
+  <div class="console">
+    <div class="cell"><div class="k">Decks on file</div><div class="v" id="stat-count">7</div></div>
+    <div class="cell"><div class="k">Sectors covered</div><div class="v">6</div></div>
+    <div class="cell"><div class="k">Archive size</div><div class="v">2.6 MB</div></div>
+    <div class="cell"><div class="k">Last sync</div><div class="v" style="font-size:15px;">Aug 22, 2026</div></div>
+  </div>
+</header>
+
+<div class="filters" id="filters">
+  <button class="active" data-filter="all">All Sectors</button>
+  <button data-filter="healthcare">Healthcare</button>
+  <button data-filter="insurance">Insurance</button>
+  <button data-filter="legal">Legal</button>
+  <button data-filter="mortgage">Mortgage</button>
+  <button data-filter="realestate">Real Estate</button>
+  <button data-filter="bpo">BPO</button>
+</div>
+
+<main class="grid" id="grid">
+
+  <!-- Healthcare -->
+  <div class="card" style="--accent:var(--green)" data-sector="healthcare">
+    <div class="card-top">
+      <div class="icon-wrap">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 3v7M8.5 6.5h7" stroke="var(--green)" stroke-width="2" stroke-linecap="round"/><rect x="4" y="10" width="16" height="10" rx="2" stroke="var(--green)" stroke-width="1.6"/></svg>
+      </div>
+      <div class="case-no">DECK&nbsp;01</div>
+    </div>
+    <div class="sector">Healthcare</div>
+    <h3>TSM Healthcare Demo</h3>
+    <p>Denial recovery and revenue-cycle intelligence walkthrough for hospital finance and RCM teams.</p>
+    <div class="card-foot">
+      <span class="filesize">PPTX &middot; 396 KB</span>
+      <a class="dl" href="./TSM_Healthcare_Demo.pptx" download>
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Get
+      </a>
+    </div>
+  </div>
+
+  <!-- Insurance -->
+  <div class="card" style="--accent:var(--gold)" data-sector="insurance">
+    <div class="card-top">
+      <div class="icon-wrap">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z" stroke="var(--gold)" stroke-width="1.6" stroke-linejoin="round"/></svg>
+      </div>
+      <div class="case-no">DECK&nbsp;02</div>
+    </div>
+    <div class="sector">Insurance</div>
+    <h3>TSM Insurance Demo</h3>
+    <p>Claims exception detection and carrier compliance intelligence for insurance operations teams.</p>
+    <div class="card-foot">
+      <span class="filesize">PPTX &middot; 464 KB</span>
+      <a class="dl" href="./TSM_Insurance_Demo.pptx" download>
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Get
+      </a>
+    </div>
+  </div>
+
+  <!-- Legal -->
+  <div class="card" style="--accent:var(--purple)" data-sector="legal">
+    <div class="card-top">
+      <div class="icon-wrap">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 3v18M6 7l-3 5a3 3 0 006 0l-3-5zm12 0l-3 5a3 3 0 006 0l-3-5zM5 7h14" stroke="var(--purple)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div class="case-no">DECK&nbsp;03</div>
+    </div>
+    <div class="sector">Legal</div>
+    <h3>TSM Legal Demo</h3>
+    <p>Contract review and case-file compliance monitoring built for legal operations teams.</p>
+    <div class="card-foot">
+      <span class="filesize">PPTX &middot; 288 KB</span>
+      <a class="dl" href="./TSM_Legal_Demo.pptx" download>
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Get
+      </a>
+    </div>
+  </div>
+
+  <!-- Mortgage -->
+  <div class="card" style="--accent:var(--teal)" data-sector="mortgage">
+    <div class="card-top">
+      <div class="icon-wrap">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M3 10l9-6 9 6M4 10v9h16v-9M8 13v4M12 13v4M16 13v4M3 21h18" stroke="var(--teal)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div class="case-no">DECK&nbsp;04</div>
+    </div>
+    <div class="sector">Mortgage</div>
+    <h3>TSM Mortgage Demo</h3>
+    <p>Loan-file exception detection and investor compliance intelligence for mortgage servicing.</p>
+    <div class="card-foot">
+      <span class="filesize">PPTX &middot; 288 KB</span>
+      <a class="dl" href="./TSM_Mortgage_Demo.pptx" download>
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Get
+      </a>
+    </div>
+  </div>
+
+  <!-- Real Estate -->
+  <div class="card" style="--accent:var(--orange)" data-sector="realestate">
+    <div class="card-top">
+      <div class="icon-wrap">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M3 12l9-8 9 8M5 10v10h14V10" stroke="var(--orange)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div class="case-no">DECK&nbsp;05</div>
+    </div>
+    <div class="sector">Real Estate</div>
+    <h3>TSM Real Estate Demo</h3>
+    <p>Transaction and closing-file exception intelligence for real estate brokerage operations.</p>
+    <div class="card-foot">
+      <span class="filesize">PPTX &middot; 456 KB</span>
+      <a class="dl" href="./TSM_RealEstate_Demo.pptx" download>
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Get
+      </a>
+    </div>
+  </div>
+
+  <!-- BPO Executive Portal Pitch -->
+  <div class="card" style="--accent:var(--red)" data-sector="bpo">
+    <div class="card-top">
+      <div class="icon-wrap">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 2l2.6 6.6L21 9.5l-5 4.6L17.4 21 12 17.3 6.6 21 8 14.1 3 9.5l6.4-.9L12 2z" stroke="var(--red)" stroke-width="1.4" stroke-linejoin="round"/></svg>
+      </div>
+      <div class="case-no">DECK&nbsp;06</div>
+    </div>
+    <div class="sector">BPO</div>
+    <h3>TSM-BPO Executive Portal Pitch</h3>
+    <p>Executive-facing recovery dashboard and dispatch console built for BPO leadership review.</p>
+    <div class="card-foot">
+      <span class="filesize">PPTX &middot; 440 KB</span>
+      <a class="dl" href="./TSM-BPO-Executive-Portal-Pitch.pptx" download>
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Get
+      </a>
+    </div>
+  </div>
+
+  <!-- BPO Services Demo -->
+  <div class="card" style="--accent:var(--red)" data-sector="bpo">
+    <div class="card-top">
+      <div class="icon-wrap">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h16M4 17h10" stroke="var(--red)" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </div>
+      <div class="case-no">DECK&nbsp;07</div>
+    </div>
+    <div class="sector">BPO</div>
+    <h3>TSM BPO Services Demo</h3>
+    <p>End-to-end BPO service delivery walkthrough &mdash; intake, triage, and resolution in one pass.</p>
+    <div class="card-foot">
+      <span class="filesize">PPTX &middot; 344 KB</span>
+      <a class="dl" href="./TSM_BPO_Services_Demo%20(2).pptx" download>
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Get
+      </a>
+    </div>
+  </div>
+
+</main>
+
+<footer>
+  TSM INTELLIGENCE &nbsp;/&nbsp; ARCHIVE INDEX v1 &nbsp;/&nbsp; 7 FILES INDEXED
+</footer>
+
+<script>
+  const buttons = document.querySelectorAll('#filters button');
+  const cards = document.querySelectorAll('.card');
+  buttons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      buttons.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const f = btn.dataset.filter;
+      cards.forEach(c => {
+        c.style.display = (f === 'all' || c.dataset.sector === f) ? '' : 'none';
+      });
+    });
+  });
+</script>
+
+</body>
+</html>
