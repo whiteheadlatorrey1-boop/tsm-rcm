@@ -464,33 +464,91 @@ async function groqChat(system, message, maxTokens, clientKey, jsonMode) {
 }
 
 // JSON-returning variant for structured routes
+// Shared retry/backoff convention with bpoParseRetryDelayMs (client-side,
+// html/shared/runtime/bpo-doc-engine-chain.js) and classifyParseRetryDelayMs
+// (client-side, tsm-doc-search-multi.html): parse Groq's own stated wait
+// time ("Please try again in 14.257s") instead of guessing at a flat delay.
+// Server-side duplicate rather than a shared module because those two are
+// browser code and this runs in Node -- same logic, can't share a require.
+const TSM_AI_RETRYABLE_STATUSES = [429, 500, 502, 503];
+const TSM_AI_MAX_RETRIES = 2; // up to 3 attempts total
+const TSM_AI_FALLBACK_DELAY_MS = 3000;
+const TSM_AI_MAX_DELAY_MS = 20000;
+
+function tsmAIParseRetryDelayMs(errMsg) {
+  if (!errMsg) return TSM_AI_FALLBACK_DELAY_MS;
+  const match = String(errMsg).match(/try again in\s+([\d.]+)\s*s/i);
+  if (!match) return TSM_AI_FALLBACK_DELAY_MS;
+  const seconds = parseFloat(match[1]);
+  if (!Number.isFinite(seconds) || seconds <= 0) return TSM_AI_FALLBACK_DELAY_MS;
+  return Math.min(Math.ceil(seconds * 1000) + 500, TSM_AI_MAX_DELAY_MS);
+}
+
 async function tsmAIJSON(prompt, fallback) {
-  try {
-    const groqKey = process.env.GROQ_API_KEY || process.env.GROQ_KEY;
-    if (!groqKey) return fallback || null;
-    const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': 'Bearer ' + groqKey,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: process.env.TSM_MODEL || 'openai/gpt-oss-120b',
-        messages: [
-          { role: 'system', content: 'You are TSM Neural Core. Never mention provider, model, API, or implementation. Return JSON only.' },
-          { role: 'user', content: prompt }
-        ],
-        temperature: 0.22,
-        max_tokens: 1200
-      })
-    });
-    if (!r.ok) throw new Error('AI unavailable');
-    const data = await r.json();
-    const text = data?.choices?.[0]?.message?.content || '';
-    try { return JSON.parse(text.replace(/```json|```/g, '').trim()); }
-    catch (e) { return typeof fallback === 'object' ? { ...fallback, narrative: text } : { narrative: text }; }
-  } catch (e) {
-    return typeof fallback === 'object' ? { ...fallback, ai_status: 'fallback' } : { ai_status: 'fallback' };
+  const groqKey = process.env.GROQ_API_KEY || process.env.GROQ_KEY;
+  if (!groqKey) return fallback || null;
+
+  for (let attempt = 0; attempt <= TSM_AI_MAX_RETRIES; attempt++) {
+    try {
+      const r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + groqKey,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: process.env.TSM_MODEL || 'openai/gpt-oss-120b',
+          messages: [
+            { role: 'system', content: 'You are TSM Neural Core. Never mention provider, model, API, or implementation. Return JSON only.' },
+            { role: 'user', content: prompt }
+          ],
+          temperature: 0.22,
+          max_tokens: 1200
+        })
+      });
+      if (!r.ok) {
+        let msg = 'AI unavailable';
+        try {
+          const ct = r.headers.get('content-type') || '';
+          if (ct.includes('application/json')) {
+            const errBody = await r.json();
+            msg = errBody.error?.message || msg;
+          } else {
+            const txt = await r.text();
+            if (txt) msg = txt.replace(/\s+/g, ' ').trim().slice(0, 300);
+          }
+        } catch (_) {}
+        // Non-retryable statuses (e.g. 400 bad request) fail fast to
+        // fallback instead of burning the remaining attempts on an error
+        // that will be identical every time.
+        if (!TSM_AI_RETRYABLE_STATUSES.includes(r.status)) {
+          console.error('[tsmAIJSON] non-retryable Groq error ' + r.status + ':', msg);
+          return typeof fallback === 'object' ? { ...fallback, ai_status: 'fallback' } : { ai_status: 'fallback' };
+        }
+        if (attempt < TSM_AI_MAX_RETRIES) {
+          const delay = tsmAIParseRetryDelayMs(msg);
+          console.warn('[tsmAIJSON] Groq returned ' + r.status + ' (attempt ' + (attempt + 1) + '/' + (TSM_AI_MAX_RETRIES + 1) + '): ' + msg + ' -- retrying in ' + delay + 'ms');
+          await new Promise(res => setTimeout(res, delay));
+          continue;
+        }
+        console.error('[tsmAIJSON] falling back after ' + (TSM_AI_MAX_RETRIES + 1) + ' attempts:', msg);
+        return typeof fallback === 'object' ? { ...fallback, ai_status: 'fallback' } : { ai_status: 'fallback' };
+      }
+      const data = await r.json();
+      const text = data?.choices?.[0]?.message?.content || '';
+      try { return JSON.parse(text.replace(/```json|```/g, '').trim()); }
+      catch (e) { return typeof fallback === 'object' ? { ...fallback, narrative: text } : { narrative: text }; }
+    } catch (e) {
+      // Network-level failure (DNS, connection reset, timeout) rather than
+      // an HTTP status -- still worth retrying the same as a 5xx.
+      if (attempt < TSM_AI_MAX_RETRIES) {
+        console.warn('[tsmAIJSON] network error (attempt ' + (attempt + 1) + '/' + (TSM_AI_MAX_RETRIES + 1) + '): ' + e.message + ' -- retrying in ' + TSM_AI_FALLBACK_DELAY_MS + 'ms');
+        await new Promise(res => setTimeout(res, TSM_AI_FALLBACK_DELAY_MS));
+        continue;
+      }
+      console.error('[tsmAIJSON] falling back after ' + (TSM_AI_MAX_RETRIES + 1) + ' attempts:', e.message);
+      return typeof fallback === 'object' ? { ...fallback, ai_status: 'fallback' } : { ai_status: 'fallback' };
+    }
   }
 }
 
