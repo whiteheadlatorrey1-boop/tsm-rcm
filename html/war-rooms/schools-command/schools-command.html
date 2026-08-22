@@ -397,17 +397,24 @@ header { background: linear-gradient(135deg,#080f1c 0%,#0d1e35 50%,#080f1c 100%)
 </style>
 <script>
 window.TSM_UI = {
+    // Was posting to /api/audit — the finance-suite's SOX/PCAOB audit engine,
+    // copy-pasted in from a different vertical (note the stale "Construction"
+    // sector default below). That endpoint runs a finance-controls persona
+    // against whatever sector/factor string it's given, so schools queries
+    // were silently getting finance-audit-flavored output mislabeled as
+    // "STRATEGIST" analysis. Routed to the real schools-aware endpoint
+    // instead (education system prompt, groqChat retry-with-backoff).
     runAudit: async (sector, factor) => {
         const feed = document.querySelector('.intelligence-feed-output') || document.getElementById('intelligence-feed-output');
         if (feed) feed.innerHTML = '<span style="color: #00ffff;">[STRATEGIST] Internal Link: Processing...</span>';
         try {
-            const res = await fetch('/api/audit', {
+            const res = await fetch('/api/schools/analysis', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ query: `auditops "${sector}" --factor "${factor}" --logic strategist` })
+                body: JSON.stringify({ context: `Sector: "${sector}" | Focus area: "${factor}"` })
             });
             const data = await res.json();
-            if (feed) feed.innerText = `[STRATEGIST] ${data.output || "Analysis Complete."}`;
+            if (feed) feed.innerText = `[STRATEGIST] ${data.answer || "Analysis Complete."}`;
         } catch (e) {
             if (feed) feed.innerText = "[STRATEGIST] Local API Bridge Failed.";
         }
@@ -417,7 +424,7 @@ window.TSM_UI = {
 document.addEventListener('click', (e) => {
     const card = e.target.closest('.module-card');
     if (card) {
-        const sector = card.dataset.sector || "Construction";
+        const sector = card.dataset.sector || "Schools";
         const factor = card.querySelector('h3')?.innerText || "General Audit";
         TSM_UI.runAudit(sector, factor);
     }
