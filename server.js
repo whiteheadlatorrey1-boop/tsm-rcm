@@ -637,11 +637,19 @@ app.get('/login', (req, res) => {
 // ── BPO OPERATIONAL DATA (clients / work items / audit log) ────────────────
 // Backed by server/tsm-ledger-service.js (bpo_clients / bpo_work_items /
 // bpo_audit_logs collections) — replaces what the war room previously kept
-// only in the browser's localStorage. Same BPO_INTERNAL_ROLES as the page
-// gate above: admin, manager, analyst. Creating/editing/deactivating a
-// client is restricted to admin+manager — analysts work the war room but
-// don't manage the client roster. Audit-log reads are admin+manager only,
-// same reasoning as restricting who can see who-did-what across accounts.
+// only in the browser's localStorage. BPO_INTERNAL_ROLES: admin, manager,
+// analyst. Creating/editing/deactivating a client is restricted to
+// admin+manager — analysts work the war room but don't manage the client
+// roster. Audit-log reads are admin+manager only, same reasoning as
+// restricting who can see who-did-what across accounts.
+//
+// NOTE: this constant used to also gate away the BPO war-room/strategist/
+// exec-portal *pages* (redirecting to /login) — that page-level gate was
+// removed at Latorrey's request (2026-08-21). BPO_INTERNAL_ROLES itself is
+// still very much live and required — it's the requireRole() check on
+// every /api/bpo/*, /api/concierge/*, and /api/members/* route below, which
+// has nothing to do with the removed page gate. Restoring only the constant.
+const BPO_INTERNAL_ROLES = ['admin', 'manager', 'analyst'];
 const BPO_MANAGE_ROLES = ['admin', 'manager'];
 // Client-role sessions get read-only visibility into their own data only —
 // never the client roster, audit logs, internal notes, or other clients'
