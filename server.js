@@ -4450,9 +4450,27 @@ app.post('/api/doc-router/classify', async (req, res) => {
     });
 
     if (!groqRes.ok) {
-      const errText = await groqRes.text();
-      console.error('[doc-router] Groq error:', groqRes.status, errText);
-      return res.status(502).json({ error: 'Classification service error.' });
+      // Match /api/hc/stream's convention: forward Groq's actual message
+      // instead of swallowing it into a generic string. Without this, a
+      // rate-limit error (which includes the exact wait time, e.g. "try
+      // again in 14.257s") and an unrelated 500 both surfaced to the
+      // browser as the identical "Classification service error." string,
+      // making it impossible to tell them apart without server console
+      // access. Same content-type guard as /api/hc/stream: Groq's error
+      // body isn't guaranteed to be JSON.
+      let msg = 'Classification service error.';
+      try {
+        const ct = groqRes.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
+          const errBody = await groqRes.json();
+          msg = errBody.error?.message || msg;
+        } else {
+          const txt = await groqRes.text();
+          if (txt) msg = txt.replace(/\s+/g, ' ').trim().slice(0, 300);
+        }
+      } catch (_) {}
+      console.error('[doc-router] Groq error:', groqRes.status, msg);
+      return res.status(502).json({ error: msg });
     }
 
     const data = await groqRes.json();

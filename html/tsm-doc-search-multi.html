@@ -3569,6 +3569,28 @@ async function extractFile(file) {
   return { type: "text", value: await fileToText(file) };
 }
  
+// Retryable statuses + backoff match bpo-doc-engine-chain.js's bpoEngineCall
+// convention. This endpoint hits the same Groq rate limits as the BPO chain
+// (confirmed failures on 05_HotelOps / 02_Mortgage), so it needs the same
+// fix: parse Groq's own stated wait time ("try again in 14.257s") instead of
+// a flat delay that's too short for that case. Defined with a typeof guard
+// rather than assuming load order, since this file and bpo-doc-engine-chain.js
+// are independent script blocks.
+const CLASSIFY_RETRYABLE_STATUSES = [429, 500, 502, 503];
+const CLASSIFY_MAX_RETRIES = 2; // up to 3 attempts total
+const CLASSIFY_FALLBACK_DELAY_MS = 3000;
+const CLASSIFY_MAX_DELAY_MS = 20000;
+
+function classifyParseRetryDelayMs(errMsg) {
+  if (typeof bpoParseRetryDelayMs === "function") return bpoParseRetryDelayMs(errMsg);
+  if (!errMsg) return CLASSIFY_FALLBACK_DELAY_MS;
+  const match = String(errMsg).match(/try again in\s+([\d.]+)\s*s/i);
+  if (!match) return CLASSIFY_FALLBACK_DELAY_MS;
+  const seconds = parseFloat(match[1]);
+  if (!Number.isFinite(seconds) || seconds <= 0) return CLASSIFY_FALLBACK_DELAY_MS;
+  return Math.min(Math.ceil(seconds * 1000) + 500, CLASSIFY_MAX_DELAY_MS);
+}
+
 async function classifyExtraction(fileName, extraction) {
   const body = { fileName };
   if (extraction.type === "image") {
@@ -3577,16 +3599,23 @@ async function classifyExtraction(fileName, extraction) {
   } else {
     body.textContent = extraction.value;
   }
-  const res = await fetch(DOC_ROUTER_ENDPOINT, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body)
-  });
-  if (!res.ok) {
+  for (let attempt = 0; attempt <= CLASSIFY_MAX_RETRIES; attempt++) {
+    const res = await fetch(DOC_ROUTER_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    if (res.ok) return res.json();
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || ("classify_failed_" + res.status));
+    const msg = err.error || ("classify_failed_" + res.status);
+    if (CLASSIFY_RETRYABLE_STATUSES.includes(res.status) && attempt < CLASSIFY_MAX_RETRIES) {
+      const delay = classifyParseRetryDelayMs(msg);
+      console.warn("[doc-router] classify returned " + res.status + " (attempt " + (attempt + 1) + "/" + (CLASSIFY_MAX_RETRIES + 1) + "): " + msg + " -- retrying in " + delay + "ms");
+      await new Promise(r => setTimeout(r, delay));
+      continue;
+    }
+    throw new Error(msg);
   }
-  return res.json();
 }
  
 // Original file bytes are capped hard before ever touching localStorage.
