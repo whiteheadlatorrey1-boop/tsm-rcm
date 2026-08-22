@@ -4231,7 +4231,7 @@ app.get('/', (req, res) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
   const landing = HOSTNAME_LANDING[req.hostname] || 'tsm-doc-search-multi.html';
   res.sendFile(path.join(dirPath, landing), (err) => {
-    if (err) res.sendFile(path.join(dirPath, 'war-rooms', 'bpo', 'bpo-command-center.html'));
+    if (err) res.sendFile(path.join(dirPath, 'war-rooms', 'bpo-war', 'bpo-war-room.html'));
   });
 });
 
