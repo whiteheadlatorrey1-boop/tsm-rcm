@@ -5106,21 +5106,50 @@ Do not include any other keys. Empty arrays are fine if nothing qualifies.
 
 Signals:
 ${JSON.stringify(scopedSignals.slice(0, 50), null, 2)}`;
-    const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
-      body: JSON.stringify({
-        model: 'openai/gpt-oss-120b',
-        messages: [
-          { role: 'system', content: 'Respond with ONLY valid JSON. No markdown fences, no preamble.' },
-          { role: 'user', content: prompt }
-        ],
-        temperature: 0.2,
-        response_format: { type: 'json_object' }
-      })
-    });
-    if (!groqRes.ok) return res.status(502).json({ ok: false, error: 'Groq error' });
-    const data = await groqRes.json();
+    // Retry transient Groq failures instead of a single-shot 502 — same
+    // retryable-status set, backoff, and Retry-After parsing as tsmAIJSON(),
+    // since this was the last strategist-adjacent AI call still failing on
+    // the first rate-limit or momentary 5xx with no retry at all.
+    let data, lastErrMsg = 'Groq error';
+    for (let attempt = 0; attempt <= TSM_AI_MAX_RETRIES; attempt++) {
+      const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.GROQ_API_KEY}` },
+        body: JSON.stringify({
+          model: 'openai/gpt-oss-120b',
+          messages: [
+            { role: 'system', content: 'Respond with ONLY valid JSON. No markdown fences, no preamble.' },
+            { role: 'user', content: prompt }
+          ],
+          temperature: 0.2,
+          response_format: { type: 'json_object' }
+        })
+      });
+      if (groqRes.ok) { data = await groqRes.json(); break; }
+      try {
+        const ct = groqRes.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
+          const errBody = await groqRes.json();
+          lastErrMsg = errBody.error?.message || lastErrMsg;
+        } else {
+          const txt = await groqRes.text();
+          if (txt) lastErrMsg = txt.replace(/\s+/g, ' ').trim().slice(0, 300);
+        }
+      } catch (_) {}
+      if (!TSM_AI_RETRYABLE_STATUSES.includes(groqRes.status)) {
+        console.error('[collective/bnca] non-retryable Groq error ' + groqRes.status + ':', lastErrMsg);
+        return res.status(502).json({ ok: false, error: lastErrMsg });
+      }
+      if (attempt < TSM_AI_MAX_RETRIES) {
+        const delay = tsmAIParseRetryDelayMs(lastErrMsg);
+        console.warn('[collective/bnca] Groq returned ' + groqRes.status + ' (attempt ' + (attempt + 1) + '/' + (TSM_AI_MAX_RETRIES + 1) + '): ' + lastErrMsg + ' -- retrying in ' + delay + 'ms');
+        await new Promise(r => setTimeout(r, delay));
+      }
+    }
+    if (!data) {
+      console.error('[collective/bnca] falling back after ' + (TSM_AI_MAX_RETRIES + 1) + ' attempts:', lastErrMsg);
+      return res.status(502).json({ ok: false, error: lastErrMsg });
+    }
     const parsed = JSON.parse(data.choices[0].message.content);
     const result = {
       overallRisk: parsed.overallRisk || 'WATCH',
