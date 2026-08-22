@@ -116,49 +116,71 @@ exact shape (used directly by the BPO Strategist UI):
    one string rather than wiring up onChunk -- same endpoint, simpler
    consumption. If a token-by-token UI is wanted later for this chain too,
    swap this for the existing groqStreamModel() unmodified. */
+const BPO_RETRYABLE_STATUSES = [429, 500, 502, 503];
+const BPO_MAX_RETRIES = 2; // total up to 3 attempts, matching groqChat's retry count in server.js
+const BPO_RETRY_DELAY_MS = 3000; // same 3s backoff server.js's groqChat() already uses for the identical status set
+
 async function bpoEngineCall(sys, user, { maxTok = 700, timeoutMs = 30000 } = {}) {
-  const controller = new AbortController();
-  const watchdog = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetch('/api/hc/stream', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sys, user, maxTok }),
-      signal: controller.signal
-    });
-    if (!res.ok) {
-      let msg = 'Server error ' + res.status;
-      try {
-        const e = await res.json();
-        if (typeof e.error === 'string') msg = e.error;
-        else if (e.error && e.error.message) msg = e.error.message;
-      } catch (_) {}
-      throw new Error(msg);
-    }
-    const reader = res.body.getReader();
-    const dec = new TextDecoder();
-    let buf = '', full = '';
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buf += dec.decode(value, { stream: true });
-      const lines = buf.split('\n');
-      buf = lines.pop();
-      for (const line of lines) {
-        const data = line.replace(/^data: /, '').trim();
-        if (data === '[DONE]') return full;
-        if (!data || data[0] === ':') continue;
+  for (let attempt = 0; attempt <= BPO_MAX_RETRIES; attempt++) {
+    const controller = new AbortController();
+    const watchdog = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch('/api/hc/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sys, user, maxTok }),
+        signal: controller.signal
+      });
+      if (!res.ok) {
+        let msg = 'Server error ' + res.status;
         try {
-          const j = JSON.parse(data);
-          const tok = j.choices && j.choices[0] && j.choices[0].delta && j.choices[0].delta.content;
-          if (tok) full += tok;
+          const e = await res.json();
+          if (typeof e.error === 'string') msg = e.error;
+          else if (e.error && e.error.message) msg = e.error.message;
         } catch (_) {}
+        // Same retryable-status set and backoff as server.js's groqChat().
+        // This is the fix for the burst-upload 502s seen during BPO batch
+        // testing: multiple documents firing classify + this chain's 3
+        // stages concurrently can transiently exhaust Groq's per-minute
+        // rate limit. A single retry after a short wait clears most of
+        // these without the person having to re-upload manually.
+        if (BPO_RETRYABLE_STATUSES.includes(res.status) && attempt < BPO_MAX_RETRIES) {
+          clearTimeout(watchdog);
+          console.warn('[bpo-doc-engine] /api/hc/stream returned ' + res.status + ' (attempt ' + (attempt + 1) + '/' + (BPO_MAX_RETRIES + 1) + '): ' + msg + ' -- retrying in ' + BPO_RETRY_DELAY_MS + 'ms');
+          await new Promise(r => setTimeout(r, BPO_RETRY_DELAY_MS));
+          continue;
+        }
+        throw new Error(msg);
       }
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let buf = '', full = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop();
+        for (const line of lines) {
+          const data = line.replace(/^data: /, '').trim();
+          if (data === '[DONE]') return full;
+          if (!data || data[0] === ':') continue;
+          try {
+            const j = JSON.parse(data);
+            const tok = j.choices && j.choices[0] && j.choices[0].delta && j.choices[0].delta.content;
+            if (tok) full += tok;
+          } catch (_) {}
+        }
+      }
+      return full;
+    } finally {
+      clearTimeout(watchdog);
     }
-    return full;
-  } finally {
-    clearTimeout(watchdog);
   }
+  // Unreachable in practice: the loop above either returns on success or
+  // throws on a non-retryable/exhausted-retries failure. Present only to
+  // satisfy control-flow analysis.
+  throw new Error('bpoEngineCall: retry loop exited without result');
 }
 
 function bpoParseJsonBlock(raw, stageName) {
