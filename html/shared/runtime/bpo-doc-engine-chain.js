@@ -118,7 +118,28 @@ exact shape (used directly by the BPO Strategist UI):
    swap this for the existing groqStreamModel() unmodified. */
 const BPO_RETRYABLE_STATUSES = [429, 500, 502, 503];
 const BPO_MAX_RETRIES = 2; // total up to 3 attempts, matching groqChat's retry count in server.js
-const BPO_RETRY_DELAY_MS = 3000; // same 3s backoff server.js's groqChat() already uses for the identical status set
+const BPO_RETRY_DELAY_MS = 3000; // fallback backoff for non-rate-limit transient errors (500/502/503 without a stated wait time)
+const BPO_MAX_RETRY_DELAY_MS = 20000; // safety cap so a malformed/huge stated wait can't hang the chain indefinitely
+
+// Groq's TPM (tokens-per-minute) rate-limit errors include the exact wait
+// time needed, e.g.: "Please try again in 14.257s." A flat 3s backoff (fine
+// for ordinary 502/503 blips) is NOT long enough for this specific error --
+// confirmed live: Groq returned "Limit 8000, Used 7987 ... try again in
+// 14.257s" and the flat-3s retry still failed on all 3 attempts because
+// 2 retries x 3s = 6s < the 14.257s Groq actually required. Parsing Groq's
+// own number and waiting that long (plus a small buffer) fixes this
+// specific, confirmed failure mode instead of guessing at a bigger flat
+// delay that would also slow down retries for OTHER transient errors that
+// don't need nearly that long.
+function bpoParseRetryDelayMs(errMsg) {
+  if (!errMsg) return BPO_RETRY_DELAY_MS;
+  const match = String(errMsg).match(/try again in\s+([\d.]+)\s*s/i);
+  if (!match) return BPO_RETRY_DELAY_MS;
+  const seconds = parseFloat(match[1]);
+  if (!Number.isFinite(seconds) || seconds <= 0) return BPO_RETRY_DELAY_MS;
+  const bufferedMs = Math.ceil(seconds * 1000) + 500; // +500ms buffer past Groq's own stated minimum
+  return Math.min(bufferedMs, BPO_MAX_RETRY_DELAY_MS);
+}
 
 async function bpoEngineCall(sys, user, { maxTok = 700, timeoutMs = 30000 } = {}) {
   for (let attempt = 0; attempt <= BPO_MAX_RETRIES; attempt++) {
@@ -138,16 +159,11 @@ async function bpoEngineCall(sys, user, { maxTok = 700, timeoutMs = 30000 } = {}
           if (typeof e.error === 'string') msg = e.error;
           else if (e.error && e.error.message) msg = e.error.message;
         } catch (_) {}
-        // Same retryable-status set and backoff as server.js's groqChat().
-        // This is the fix for the burst-upload 502s seen during BPO batch
-        // testing: multiple documents firing classify + this chain's 3
-        // stages concurrently can transiently exhaust Groq's per-minute
-        // rate limit. A single retry after a short wait clears most of
-        // these without the person having to re-upload manually.
         if (BPO_RETRYABLE_STATUSES.includes(res.status) && attempt < BPO_MAX_RETRIES) {
           clearTimeout(watchdog);
-          console.warn('[bpo-doc-engine] /api/hc/stream returned ' + res.status + ' (attempt ' + (attempt + 1) + '/' + (BPO_MAX_RETRIES + 1) + '): ' + msg + ' -- retrying in ' + BPO_RETRY_DELAY_MS + 'ms');
-          await new Promise(r => setTimeout(r, BPO_RETRY_DELAY_MS));
+          const delay = bpoParseRetryDelayMs(msg);
+          console.warn('[bpo-doc-engine] /api/hc/stream returned ' + res.status + ' (attempt ' + (attempt + 1) + '/' + (BPO_MAX_RETRIES + 1) + '): ' + msg + ' -- retrying in ' + delay + 'ms');
+          await new Promise(r => setTimeout(r, delay));
           continue;
         }
         throw new Error(msg);
