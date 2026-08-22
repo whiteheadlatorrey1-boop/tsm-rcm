@@ -3101,14 +3101,39 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
   }
   function recordHistoryEntry(){
     const list = loadHistory();
-    list.push({
-      incident: document.getElementById('tkIncident').value || '(no incident #)',
-      manufacturer: document.getElementById('tkMfr').value,
-      priority: document.getElementById('tkPriority').value,
-      severity: currentAnalysis && currentAnalysis.severity,
-      ts: Date.now()
-    });
+    const incident = document.getElementById('tkIncident').value || '(no incident #)';
+    const manufacturer = document.getElementById('tkMfr').value;
+    const priority = document.getElementById('tkPriority').value;
+    const severity = currentAnalysis && currentAnalysis.severity;
+    list.push({ incident, manufacturer, priority, severity, ts: Date.now() });
     saveHistory(list);
+
+    // ── Mission runtime (additive — does not affect existing history/localStorage) ──
+    // One Mission per resolved ticket, created here at GENERATE RESOLUTION —
+    // the same deliberate "committed" moment every other vertical uses
+    // (NOC/CRM/etc. create theirs on relay-to-strategist), not on every
+    // Run Analysis click, which a tech may hit repeatedly while still
+    // troubleshooting the same ticket.
+    try {
+      if (window.TSMMissionModel && window.TSMMissionStore) {
+        const mission = window.TSMMissionModel.createMission({
+          tenantId: (window.TSMActiveMember && window.TSMActiveMember.getId()) || 'default',
+          vertical: 'l1',
+          client: null,
+          extraction: {
+            incident,
+            manufacturer,
+            priority,
+            severity,
+            description: document.getElementById('tkDescription').value,
+            resolution: document.getElementById('resolutionOutput').textContent
+          },
+          classification: { docType: 'l1-ticket', sector: 'L1' }
+        });
+        window.TSMMissionStore.saveMission(mission);
+      }
+    } catch (e) { console.error('Mission write failed (non-fatal):', e); }
+
     renderHistory();
     renderExecStrip();
     clearCurrentTicket();
@@ -3251,6 +3276,8 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
 <script src="/js/core/tsm-mission-engine.js"></script>
 <script src="/js/core/tsm-auto-pipeline.js"></script>
 <script src="/html/core/tsm-runtime.js"></script>
+<script src="/html/shared/runtime/mission/mission-model.js"></script>
+<script src="/html/shared/runtime/mission/mission-store.js"></script>
 <!--
   L1 Ticket Copilot — Floating AI Assistant
   ------------------------------------------
