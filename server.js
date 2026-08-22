@@ -613,65 +613,26 @@ app.use('/architecture', express.static(path.join(__dirname, 'architecture'), { 
 app.use('/core', express.static(path.join(__dirname, 'core')));
 
 // ── LOGIN PAGE ────────────────────────────────────────────────────────────────
-// login.html already existed and already posts to /api/auth/login, but
-// nothing served it at a route — it was only reachable by guessing the exact
-// static path. Fixing that here since the client-facing gate below sends
-// people to /login.
+// Kept reachable at /login in case it's wanted again later, but nothing
+// redirects here anymore — see removed gates below (Latorrey, 2026-08-21).
 app.get('/login', (req, res) => {
   res.sendFile(path.join(__dirname, 'html', 'login.html'));
 });
 
-// ── CLIENT-FACING SURFACE GATE ─────────────────────────────────────────────
-// tsm-doc-search-multi.html is the page clients actually use (per T-dawg).
-// This is intentionally narrow — it does NOT gate the rest of the site,
-// which stays in-house/ungated by design. Only the page where a client's
-// own data lives needs a login wall so one client can't just open it and
-// browse another client's workspace.
-//
-// MUST be registered before the '/' catch-all static mount directly below —
-// Express matches in registration order, and that catch-all serves any file
-// under html/ (including this one, at its un-prefixed path) before this gate
-// ever got a chance to run when the gate lived after it. Confirmed the hard
-// way: /html/tsm-doc-search-multi.html was gated (302) but the un-prefixed
-// /tsm-doc-search-multi.html was not (200) — same file, same page, no gate.
-app.get(['/tsm-doc-search-multi.html', '/html/tsm-doc-search-multi.html'], (req, res, next) => {
-  const session = verifySession(getCookie(req, 'tsm_session'));
-  if (!session) {
-    return res.redirect(`/login?next=${encodeURIComponent(req.originalUrl)}`);
-  }
-  next();
-});
+// ── CLIENT-FACING SURFACE GATE — REMOVED (Latorrey, 2026-08-21) ───────────
+// Previously redirected unauthenticated requests to /tsm-doc-search-multi.html
+// (and /html/tsm-doc-search-multi.html) to /login. Removed at Latorrey's
+// request. NOTE: this page's own client-side JS (applySessionScope() in the
+// file itself) also had a same-purpose redirect fallback — removed there too.
+// Losing this gate means tsm-doc-search-multi.html (which is also what '/'
+// serves by default) is now reachable by anyone with the URL, with no
+// per-client data isolation at the page level.
 
-// ── BPO WAR ROOM GATE ───────────────────────────────────────────────────────
-// BPO_PRODUCTION_READINESS.md (Phase 1) calls for auth + role-based views on
-// the BPO operational surface. Gated: the war room, strategist, and
-// executive portal — where a pilot's actual work-item/relay data lives. NOT
-// gated: bpo-demo-presentation.html, which is the sales-demo asset and needs
-// to stay link-shareable per that doc's own "use for: sales demos" guidance.
-//
-// Role-restricted to admin/manager/analyst — NOT client. These are internal
-// ops tools; a client session (scoped to tsm-doc-search-multi.html, their
-// own workspace) has no reason to be inside them. A valid-but-wrong-role
-// session gets bounced to /login same as no session at all, rather than a
-// bare 403, since the useful next step for a client hitting this by mistake
-// is "log in as the right kind of account", not a dead-end error page.
-//
-// Same registration-order requirement as the doc-search gate above — must
-// sit before the '/' catch-all static mount.
-const BPO_GATED_PAGES = [
-  '/war-rooms/bpo-war/bpo-war-room.html', '/html/war-rooms/bpo-war/bpo-war-room.html',
-  '/war-rooms/bpo-war/bpo-strategist.html', '/html/war-rooms/bpo-war/bpo-strategist.html',
-  '/war-rooms/bpo-war/bpo-executive-portal.html', '/html/war-rooms/bpo-war/bpo-executive-portal.html',
-];
-const BPO_INTERNAL_ROLES = ['admin', 'manager', 'analyst'];
-app.get(BPO_GATED_PAGES, (req, res, next) => {
-  const session = verifySession(getCookie(req, 'tsm_session'));
-  const role = session ? (session.role || 'admin') : null;
-  if (!session || !BPO_INTERNAL_ROLES.includes(role)) {
-    return res.redirect(`/login?next=${encodeURIComponent(req.originalUrl)}`);
-  }
-  next();
-});
+// ── BPO WAR ROOM GATE — REMOVED (Latorrey, 2026-08-21) ────────────────────
+// Previously restricted /war-rooms/bpo-war/{bpo-war-room,bpo-strategist,
+// bpo-executive-portal}.html to admin/manager/analyst sessions, redirecting
+// everyone else to /login. Removed at Latorrey's request. These BPO pages
+// are now reachable without any session/role check.
 
 // ── BPO OPERATIONAL DATA (clients / work items / audit log) ────────────────
 // Backed by server/tsm-ledger-service.js (bpo_clients / bpo_work_items /
