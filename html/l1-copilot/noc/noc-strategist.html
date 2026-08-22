@@ -414,6 +414,35 @@ function render(){
   html += renderActionQueue(data.records, breachIds);
   html += renderCorrelation(data.correlation_graph);
 
+  // BNCA exposure projection — NOC already computes real per-incident SLA
+  // penalty exposure (financials.sla_penalty_exposure_total), so use that
+  // as the base instead of a generic KPI lookup. Top breached item's
+  // severity drives the escalation rate; SLA compliance % feeds confidence.
+  if(window.TSMBNCAExposureEngine && data.financials && data.financials.sla_penalty_exposure_total > 0){
+    const topItem = (data.financials.sla_penalty_exposure_items || [])[0];
+    const sevMap = { SEV1: 'CRIT', SEV2: 'HIGH', SEV3: 'MED' };
+    const severity = sevMap[topItem && topItem.severity] || 'MED';
+    data.bnca_exposure = window.TSMBNCAExposureEngine.project({
+      baseExposure: data.financials.sla_penalty_exposure_total,
+      severity: severity,
+      confidence: compliancePct,
+      daysUntilDeadline: 0
+    });
+  }
+
+  // Re-stamp the payload back through relay so the exec portal can tell a
+  // strategist actually reviewed it (same "exec bypasses strategist" fix
+  // applied across every other vertical).
+  if(!data.__strategistReviewed){
+    data.reviewedAt = new Date().toISOString();
+    data.__strategistReviewed = true;
+    try {
+      if(window.TSM && window.TSM.relay && window.TSM.relay.write){
+        window.TSM.relay.write(DOMAIN, data, { caseId: data.id, stage: 'strategist' });
+      }
+    } catch(e){}
+  }
+
   document.getElementById('wrap').innerHTML = html;
   drawCorrelationLines(data.correlation_graph);
 }
@@ -423,6 +452,7 @@ window.addEventListener('storage', e => { if(e.key === RELAY_KEY_FALLBACK || e.k
 window.addEventListener('TSM_RELAY_EVENT', e => { if(e.detail && e.detail.domain === DOMAIN) render(); });
 </script>
   <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
+  <script src="/html/js/tsm-bnca-exposure-engine.js"></script>
   <script src="/html/core/tsm-runtime.js"></script>
   <script src="/js/tsm-guide-engine.js" defer></script>
   <script src="/html/shared/tsm-exceptions.js"></script>

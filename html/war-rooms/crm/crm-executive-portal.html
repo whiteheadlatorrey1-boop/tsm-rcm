@@ -75,6 +75,7 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
   </div>
 </div>
 <div class="wrap" id="wrap"><!-- populated by JS --></div>
+<div class="wrap" id="excWrap" style="padding-top:0;"><div id="tsm-exception-queue"></div></div>
 <div class="toast" id="toast"></div>
 <script src="/html/shared/tsm-exec-framework.js"></script>
 <!-- canonical source: html/war-rooms/crm/crm-executive-portal.html -->
@@ -254,6 +255,13 @@ function render(){
     html += renderList(items, l.label, l);
   }
 
+  // Strategist-reviewed badge + forwarded BNCA exposure (computed on the
+  // strategist page, travels here via the same relay stamp).
+  if(window.TSMExecFramework){
+    html += window.TSMExecFramework.renderReviewBadge(data);
+    if(data.bnca_exposure) html += window.TSMExecFramework.renderBNCA(data.bnca_exposure);
+  }
+
   if(CFG.explainPath){
     const explainItems = getPath(data, CFG.explainPath);
     html += renderQualityScore(explainItems, kpiBase.record_count);
@@ -272,6 +280,13 @@ function render(){
   }
 
   document.getElementById('wrap').innerHTML = html;
+
+  // Feed the exception queue from this vertical's own CFG.lists data —
+  // no fabricated fields, same convention as the rest of the platform.
+  if(window.TSMExceptions && window.TSMExceptionWidget){
+    window.TSMExecFramework && window.TSMExecFramework.feedExceptions(CFG.domain.toLowerCase(), CFG, data);
+    window.TSMExceptionWidget.mount('tsm-exception-queue', { sector: CFG.domain.toLowerCase() });
+  }
 }
 
 function escapeHtml(s){
@@ -323,6 +338,8 @@ render();
 window.addEventListener('storage', e => { if(e.key === RELAY_KEY_FALLBACK || e.key === 'TSM_EVENT_LOG') render(); });
 window.addEventListener('TSM_RELAY_EVENT', e => { if(e.detail && e.detail.domain === CFG.domain) render(); });
 </script>
+  <script src="/html/shared/tsm-exceptions.js"></script>
+  <script src="/html/js/widgets/tsm-exception-widget.js"></script>
   <script src="/html/core/tsm-runtime.js"></script>
 </body>
 </html>

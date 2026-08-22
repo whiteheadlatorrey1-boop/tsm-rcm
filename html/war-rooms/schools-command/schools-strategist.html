@@ -126,6 +126,25 @@ function escapeHtml(s){
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
+// Re-stamps the relay payload with a strategist review timestamp so the
+// executive portal can tell a strategist actually reviewed it, instead of
+// reading the command center's raw broadcast directly (the "exec bypasses
+// strategist" gap fixed elsewhere in the platform). Written directly to
+// storage (not just via TSM.relay.write) since this vertical's exec portal
+// falls back to sessionStorage/localStorage when TSM.relay isn't present.
+// Guarded so it fires once per fresh payload, not on every render() re-run.
+function stampStrategistReview(data){
+  if(!data || data.reviewedAt) return;
+  data.reviewedAt = new Date().toISOString();
+  try {
+    sessionStorage.setItem(RELAY_KEY_FALLBACK, JSON.stringify(data));
+    localStorage.setItem(RELAY_KEY_FALLBACK, JSON.stringify(data));
+    if(window.TSM && window.TSM.relay && window.TSM.relay.write){
+      window.TSM.relay.write(DOMAIN, data);
+    }
+  } catch(e){}
+}
+
 function fmtVal(v, fmt){
   if(v===undefined || v===null || v==='') return '&mdash;';
   if(fmt==='money') return '$' + Number(v).toLocaleString();
@@ -332,6 +351,11 @@ function render(){
   html += renderActionQueue(data.records, breachIds);
 
   document.getElementById('wrap').innerHTML = html;
+
+  // Strategist re-stamps the relay payload so the executive portal can
+  // show a "strategist reviewed" badge instead of just the command
+  // center's raw hop.
+  stampStrategistReview(data);
 }
 
 render();

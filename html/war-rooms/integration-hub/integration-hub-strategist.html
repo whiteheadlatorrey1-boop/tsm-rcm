@@ -204,6 +204,21 @@ function render(){
     html += renderList(items, l.label, l);
   }
 
+  // Strategist re-stamps the relay payload so exec portals can tell a
+  // strategist actually reviewed it, instead of reading war room's raw
+  // broadcast directly (the "exec bypasses strategist" gap).
+  if(window.TSMExecFramework && !CFG.isExec){
+    window.TSMExecFramework.stampStrategistReview(CFG.domain, data);
+  }
+
+  // BNCA exposure projection — deterministic, sourced only from a real
+  // money-typed KPI already on this page. Honestly reports "unavailable"
+  // when the vertical has no monetary KPI, rather than fabricating one.
+  if(window.TSMExecFramework){
+    const bnca = window.TSMExecFramework.computeBNCA(CFG, kpiBase);
+    if(bnca){ data.bnca_exposure = bnca; html += window.TSMExecFramework.renderBNCA(bnca); }
+  }
+
   if(CFG.explainPath && window.TSMExecFramework){
     const explainItems = getPath(data, CFG.explainPath);
     html += TSMExecFramework.renderRiskRegister(explainItems, { isExec: CFG.isExec });
@@ -270,6 +285,7 @@ render();
 window.addEventListener('storage', e => { if(e.key === RELAY_KEY_FALLBACK || e.key === 'TSM_EVENT_LOG') render(); });
 window.addEventListener('TSM_RELAY_EVENT', e => { if(e.detail && e.detail.domain === CFG.domain) render(); });
 </script>
+  <script src="/html/js/tsm-bnca-exposure-engine.js"></script>
   <script src="/html/core/tsm-runtime.js"></script>
 </body>
 </html>

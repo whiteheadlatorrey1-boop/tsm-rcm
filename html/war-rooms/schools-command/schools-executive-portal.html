@@ -44,6 +44,8 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 .fin-lbl{font-size:.62rem;color:var(--muted);margin-top:8px;font-family:var(--mono);letter-spacing:.08em;}
 .fin-sub{font-size:.58rem;color:var(--muted);margin-top:4px;font-family:var(--mono);}
 .model-note{font-family:var(--mono);font-size:.6rem;color:var(--muted);border-top:1px solid var(--border);padding-top:10px;margin-top:6px;}
+.meta-row{display:flex;gap:18px;flex-wrap:wrap;font-family:var(--mono);font-size:.6rem;color:var(--muted);margin-top:10px;}
+.meta-row span{color:var(--text);}
 
 .funnel{display:flex;flex-direction:column;gap:6px;}
 .funnel-row{display:grid;grid-template-columns:150px 1fr 90px 110px;gap:10px;align-items:center;font-size:.75rem;}
@@ -227,6 +229,18 @@ function execAction(sev){
   if(sev === 'HIGH') return 'Escalate to program officer now \u2014 deobligation and audit-finding exposure compounding daily.';
   if(sev === 'MEDIUM') return 'Confirm remediation ETA with grants team; escalate if unresolved this week.';
   return 'Monitor \u2014 low board-level exposure at current pace.';
+}
+
+// "Strategist reviewed" badge — confirms this payload actually passed
+// through schools-strategist.html's stampStrategistReview() rather than
+// being read straight off the command center's raw broadcast.
+function renderReviewBadge(data){
+  if(!data || !data.reviewedAt){
+    return '<div class="meta-row"><span style="color:var(--muted)">Awaiting strategist review</span></div>';
+  }
+  let t;
+  try { t = new Date(data.reviewedAt).toLocaleTimeString(); } catch(e){ t = data.reviewedAt; }
+  return '<div class="meta-row">Strategist reviewed <span style="color:var(--green)">' + escapeHtml(String(t)) + '</span></div>';
 }
 
 function renderFinancials(fin){
@@ -523,6 +537,7 @@ function render(){
 
   let html = '';
   html += renderFinancials(data.financials);
+  html += renderReviewBadge(data);
 
   if(data.ai_summary){
     html += `<div class="ai-box"><strong style="color:var(--gold);font-size:.65rem;letter-spacing:.1em;display:block;margin-bottom:8px;">EXECUTIVE RECOMMENDATION</strong>${renderEngineOutput(data.ai_summary)}</div>`;
