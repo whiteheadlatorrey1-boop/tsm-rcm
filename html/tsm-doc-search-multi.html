@@ -937,6 +937,9 @@ if (window.pdfjsLib) {
 <script src="/html/shared/runtime/mission/mission-model.js"></script>
 <script src="/html/shared/runtime/mission/mission-store.js"></script>
 <script src="/html/shared/runtime/mission/mission-sentinel-bridge.js"></script>
+<!-- BPO doc-analysis engine chain (additive - only invoked for BPO-routed
+     documents in processFile() below; no effect on any other vertical) -->
+<script src="/html/shared/runtime/bpo-doc-engine-chain.js"></script>
 <!-- TSM Kernel (required for TSM_KERNEL.setRelay/getRelay used below) -->
 <script src="/core/tsm-kernel.js"></script>
 <!-- Event Bus (required by tsm-kernel-upgrade.js — was missing, upgrade script silently no-op'd without it) -->
@@ -3964,6 +3967,26 @@ async function processFile(file, persistBatchId) {
     // resolved a mapped vertical and TSMCaseManager was loaded; falls back
     // to no-caseId (still counted as a processed document) otherwise.
     batchPersistRecordDocument(persistBatchId, { ok: true, caseId: caseRec ? caseRec.caseId : undefined });
+
+    // BPO DOC ENGINE CHAIN — fire-and-forget, BPO-routed documents only.
+    // Deliberately not awaited: this runs 3 sequential AI calls (Root Cause,
+    // Impact/Recovery, Handoff) which can take a while, and nothing else in
+    // processFile() should wait on it. Failures are caught and logged inside
+    // runBpoDocEngineChain() itself (each stage returns failedStage rather
+    // than throwing past this call), so a chain failure can never surface as
+    // an uncaught rejection here or affect the routing/status flow above,
+    // which has already completed successfully by this point.
+    if (routed.some(r => r.vertical === 'bpo') && typeof runBpoDocEngineChain === 'function') {
+      runBpoDocEngineChain({
+        fileName: file.name,
+        docText: extraction.type === 'text' ? extraction.value : '',
+        classification
+      }).then(chainResult => {
+        writeBpoChainRelay(chainResult, classification, file.name);
+      }).catch(err => {
+        console.warn('[bpo-doc-engine] Chain failed (non-fatal, routing already completed):', err.message);
+      });
+    }
 
     // TSM AUTO-CHAIN — single-vertical match + AUTO mode: launch straight into the war room
     if (routed.length === 1 && localStorage.getItem('tsm_auto_mode') !== 'off') {
