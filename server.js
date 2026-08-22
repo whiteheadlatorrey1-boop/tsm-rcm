@@ -1697,6 +1697,11 @@ suites.forEach(s => {
 // was silently discarded. routes/hc.js now handles this route for real.
 
 const clientUsage = {}; // v3
+// Daily per-IP cap shared by /api/hc/stream and /api/hc/ocr. Was hardcoded
+// at 20 (too low — got hit during normal same-day testing/demo use).
+// Configurable via env so it can be tuned without a redeploy-requiring
+// code change; default raised to 200 (Latorrey, 2026-08-21).
+const DAILY_ANALYSIS_LIMIT = parseInt(process.env.DAILY_ANALYSIS_LIMIT, 10) || 200;
 
 // ── HC NODE REPORT STORE ──────────────────────────────────────────────────────
 // In-memory store for node reports relayed from war rooms → strategist → exec
@@ -1756,7 +1761,7 @@ app.post('/api/hc/stream', async (req, res) => {
   const today = new Date().toDateString();
   const key = clientId + '_' + today;
   clientUsage[key] = (clientUsage[key] || 0) + 1;
-  if (clientUsage[key] > 20) {
+  if (clientUsage[key] > DAILY_ANALYSIS_LIMIT) {
     return res.status(429).json({ error: 'Daily analysis limit reached. Contact TSM to upgrade.' });
   }
 
@@ -1847,7 +1852,7 @@ app.post('/api/hc/ocr', async (req, res) => {
   const today = new Date().toDateString();
   const key = clientId + '_' + today;
   clientUsage[key] = (clientUsage[key] || 0) + 1;
-  if (clientUsage[key] > 20) {
+  if (clientUsage[key] > DAILY_ANALYSIS_LIMIT) {
     return res.status(429).json({ error: 'Daily analysis limit reached. Contact TSM to upgrade.' });
   }
 
