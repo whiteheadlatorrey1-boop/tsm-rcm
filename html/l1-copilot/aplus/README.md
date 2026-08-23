@@ -76,7 +76,33 @@ current official exam objectives if CompTIA revises them; only
   Seeded with 3 original scenarios (startup I/O bottleneck, DHCP lease
   failure, driver-conflict blue screen) across
   troubleshooting/networking/operating-systems.
-- PBQ / performance-based simulated tasks — not started
+- PBQ / performance-based simulated tasks — ✅ (`aplus-pbq.html`, data
+  in `data/aplus-pbq-tasks.js`) — two task types, both scored
+  all-or-nothing per attempt (matches how real A+ PBQs grade): `type:
+  'sequence'` tasks where the student clicks shuffled procedure steps
+  into the order they'd actually perform them (click a placed step to
+  remove and redo it), and `type: 'match'` tasks where the student
+  assigns shuffled items to categories via click-to-select chips.
+  Review afterward shows every step's correct position (or every
+  item's correct category) with a `why` explanation, right or wrong —
+  same "explain every outcome" principle as the rest of the engine.
+  Each task calls `recordAttempt()` once, keyed by the task's
+  objective + `concept` tag, isCorrect true only if every
+  step/item was placed correctly — proves the shared mastery
+  interface works for procedural/sorting tasks, not just multiple
+  choice or the Lab's evidence-based diagnosis. Linked from Question
+  Coach, Learn Mode, Troubleshooting Lab, Timed Assessment, Readiness
+  Dashboard, L1 Ticket Copilot, and the career training platform's A+
+  app cards (now 8 tools on that panel). Seeded with 4 original tasks:
+  2 sequencing (safe hard-drive replacement, malware remediation
+  procedure) and 2 matching (connector/cable identification, security
+  control categories) across hardware/security. Verified via jsdom:
+  picker renders all 4 tasks, sequence placement/unplacement, submit
+  gating until complete, correct-order pass path (score line, mastery
+  1/1, no incorrect review rows), incorrect-order fail path (mastery
+  correctly incremented to 1/2, incorrect rows flagged), match
+  assignment via chip selection, correct-match pass path (score line,
+  mastery recorded), and selected-chip styling.
 - Tie into real L1 ticket scenarios for cross-over practice — not started
 
 **Phase 4 — Certification readiness**
@@ -112,11 +138,14 @@ current official exam objectives if CompTIA revises them; only
   troubleshooting walkthrough)
 - A+ → Network+ → Security+ → Cloud pathway
 
-Phase 4 is complete. Phase 3's Troubleshooting Lab is done; PBQ
-simulation and the real-ticket cross-over are still open, along with
-all of Phase 5. The engine (`TSMAplusEngine`) was built so these can
-hook into it rather than each needing their own data/scoring model —
-`evaluateAnswer`, `recordAttempt`, `getMasteryReport`/`getWeakConcepts`,
-and `getReadinessReport` are the stable interface; the Troubleshooting
-Lab proved that `recordAttempt` works fine for non-multiple-choice
-diagnosis flows too, not just quiz questions.
+Phase 4 is complete. Phase 3's Troubleshooting Lab and PBQ Simulation
+are both done; only the real-ticket cross-over (tying A+ scenarios
+into actual L1 Ticket Copilot tickets) is still open in Phase 3, along
+with all of Phase 5. The engine (`TSMAplusEngine`) was built so these
+can hook into it rather than each needing their own data/scoring
+model — `evaluateAnswer`, `recordAttempt`,
+`getMasteryReport`/`getWeakConcepts`, and `getReadinessReport` are the
+stable interface; the Lab and PBQ Simulation both proved `recordAttempt`
+generalizes cleanly beyond quiz questions — evidence-based diagnosis
+and sequencing/matching tasks both feed the same mastery store without
+any changes to the engine itself.

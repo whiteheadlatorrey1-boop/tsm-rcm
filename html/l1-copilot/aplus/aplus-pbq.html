@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A+ PBQ Simulation · TSM Career Training</title>
+<style>
+:root {
+  --bg: #0a0c10; --surface: #111318; --surface2: #181b22;
+  --border: #1e2230; --border2: #2a2f42;
+  --text: #e8eaf0; --text2: #8890a8; --text3: #4a5068;
+  --green: #00d4aa; --green-dim: rgba(0,212,170,0.08); --green-border: rgba(0,212,170,0.2);
+  --cyan: #00d4d4; --cyan-dim: rgba(0,212,212,0.07); --cyan-border: rgba(0,212,212,0.2);
+  --amber: #f59e0b; --amber-dim: rgba(245,158,11,0.08); --amber-border: rgba(245,158,11,0.2);
+  --red: #ef4444; --red-dim: rgba(239,68,68,0.08); --red-border: rgba(239,68,68,0.2);
+  --purple: #a78bfa; --purple-dim: rgba(167,139,250,0.08); --purple-border: rgba(167,139,250,0.2);
+  --mono: 'Courier New', monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: var(--mono); min-height: 100vh; }
+header {
+  border-bottom: 1px solid var(--border); padding: 0 2rem; display: flex; align-items: center;
+  justify-content: space-between; height: 56px; position: sticky; top: 0; background: var(--bg); z-index: 200;
+}
+.logo { font-size: 11px; letter-spacing: .18em; color: var(--text2); }
+.logo span { color: var(--purple); }
+.back-link { font-size: 10px; letter-spacing: .08em; color: var(--cyan); text-decoration: none; border: 1px solid var(--cyan-border); padding: 6px 12px; }
+.back-link:hover { background: var(--cyan-dim); }
+.wrap { max-width: 860px; margin: 0 auto; padding: 2.5rem 1.5rem 4rem; }
+.eyebrow { font-size: 10px; letter-spacing: .14em; color: var(--purple); margin-bottom: 8px; }
+.title { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+.sub { font-size: 12.5px; color: var(--text2); max-width: 680px; margin-bottom: 20px; line-height: 1.6; }
+
+/* ---- Picker screen ---- */
+.picker-grid { display: flex; flex-direction: column; gap: 12px; }
+.picker-card {
+  background: var(--surface); border: 1px solid var(--border); padding: 1.4rem 1.6rem;
+  text-align: left; cursor: pointer; font-family: var(--mono); color: var(--text);
+}
+.picker-card:hover { border-color: var(--cyan-border); }
+.picker-tag { display: inline-block; font-size: 9px; letter-spacing: .08em; padding: 3px 8px; background: var(--purple-dim); border: 1px solid var(--purple-border); color: var(--purple); margin-bottom: 10px; }
+.picker-type { display: inline-block; font-size: 9px; letter-spacing: .08em; padding: 3px 8px; background: var(--cyan-dim); border: 1px solid var(--cyan-border); color: var(--cyan); margin-bottom: 10px; margin-left: 6px; }
+.picker-title { font-size: 14px; font-weight: 600; color: var(--text); margin-top: 4px; }
+.picker-scenario { font-size: 12px; line-height: 1.6; color: var(--text2); margin-top: 6px; }
+.picker-meta { font-size: 10px; color: var(--text3); margin-top: 10px; letter-spacing: .04em; }
+
+/* ---- Task screen ---- */
+.task-topbar { display: flex; gap: 14px; margin-bottom: 18px; flex-wrap: wrap; }
+.task-stage {
+  background: var(--surface); border: 1px solid var(--border); padding: 10px 16px; flex: 1; min-width: 140px; text-align: center;
+}
+.task-stage-val { font-size: 16px; font-weight: 700; color: var(--cyan); }
+.task-stage-lbl { font-size: 9px; letter-spacing: .08em; color: var(--text3); margin-top: 4px; }
+
+.task-card { background: var(--surface); border: 1px solid var(--border); padding: 1.6rem; margin-bottom: 18px; }
+.task-tag { display: inline-block; font-size: 9px; letter-spacing: .08em; padding: 3px 8px; background: var(--purple-dim); border: 1px solid var(--purple-border); color: var(--purple); margin-bottom: 10px; }
+.task-title { font-size: 15px; font-weight: 700; color: var(--text); margin-bottom: 10px; }
+.task-scenario { font-size: 13px; line-height: 1.7; color: var(--text2); font-style: italic; margin-bottom: 8px; }
+.task-instructions { font-size: 12px; line-height: 1.6; color: var(--cyan); }
+
+.section-lbl { font-size: 10px; letter-spacing: .1em; color: var(--text2); margin: 22px 0 10px; }
+
+/* Sequence UI */
+.seq-pool { display: flex; flex-direction: column; gap: 8px; margin-bottom: 20px; }
+.seq-item-btn {
+  text-align: left; background: var(--surface2); border: 1px solid var(--border2); color: var(--text2);
+  padding: 12px 16px; font-size: 12.5px; font-family: var(--mono); cursor: pointer; line-height: 1.5;
+}
+.seq-item-btn:hover { border-color: var(--cyan-border); color: var(--text); }
+.seq-item-btn:disabled { opacity: .3; cursor: default; }
+.seq-answer-list { display: flex; flex-direction: column; gap: 6px; }
+.seq-answer-row {
+  display: flex; align-items: center; gap: 10px; background: var(--surface2); border: 1px solid var(--border2);
+  padding: 10px 14px; font-size: 12.5px; cursor: pointer;
+}
+.seq-answer-row:hover { border-color: var(--red-border); }
+.seq-answer-num { font-size: 12px; font-weight: 700; color: var(--cyan); min-width: 18px; }
+.seq-answer-remove { margin-left: auto; font-size: 9px; color: var(--text3); letter-spacing: .04em; }
+.seq-answer-row:hover .seq-answer-remove { color: var(--red); }
+.seq-empty-note { font-size: 11.5px; color: var(--text3); padding: 10px 0; }
+
+/* Match UI */
+.match-item { background: var(--surface2); border: 1px solid var(--border2); padding: 12px 16px; margin-bottom: 8px; }
+.match-item-text { font-size: 12.5px; color: var(--text); margin-bottom: 10px; }
+.match-cats { display: flex; flex-wrap: wrap; gap: 6px; }
+.match-cat-btn {
+  font-size: 10.5px; letter-spacing: .03em; padding: 7px 12px; background: var(--surface);
+  border: 1px solid var(--border2); color: var(--text2); cursor: pointer; font-family: var(--mono);
+}
+.match-cat-btn:hover { border-color: var(--cyan-border); color: var(--text); }
+.match-cat-btn.selected { background: var(--cyan-dim); border-color: var(--cyan-border); color: var(--cyan); }
+
+.task-nav-row { display: flex; justify-content: space-between; margin-top: 20px; gap: 10px; }
+.nav-btn {
+  font-size: 10px; letter-spacing: .06em; padding: 10px 18px; background: var(--surface);
+  border: 1px solid var(--border2); color: var(--text); cursor: pointer; font-family: var(--mono);
+}
+.nav-btn:hover { border-color: var(--cyan-border); color: var(--cyan); }
+.nav-btn:disabled { opacity: .35; cursor: default; }
+.nav-btn.primary { background: var(--green-dim); border-color: var(--green-border); color: var(--green); }
+
+/* ---- Results ---- */
+.result-banner { text-align: center; padding: 2rem 1rem; background: var(--surface); border: 1px solid var(--border); margin-bottom: 20px; }
+.result-banner.pass { border-color: var(--green-border); }
+.result-banner.fail { border-color: var(--red-border); }
+.result-banner .rb-status { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+.result-banner.pass .rb-status { color: var(--green); }
+.result-banner.fail .rb-status { color: var(--red); }
+.result-banner .rb-score { font-size: 13px; color: var(--text2); }
+
+.readiness-note {
+  background: var(--cyan-dim); border: 1px solid var(--cyan-border); color: var(--cyan);
+  padding: 12px 16px; font-size: 11.5px; line-height: 1.7; margin-bottom: 20px;
+}
+.readiness-note a { color: var(--cyan); }
+
+.review-row {
+  background: var(--surface); border: 1px solid var(--border); padding: 1rem 1.2rem; margin-bottom: 10px;
+}
+.review-row.is-correct { border-color: var(--green-border); }
+.review-row.is-incorrect { border-color: var(--red-border); }
+.rr-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 8px; }
+.rr-label { font-size: 12.5px; font-weight: 600; color: var(--text); }
+.rr-badge { font-size: 9px; letter-spacing: .06em; padding: 2px 8px; white-space: nowrap; }
+.rr-badge.correct { background: var(--green-dim); border: 1px solid var(--green-border); color: var(--green); }
+.rr-badge.incorrect { background: var(--red-dim); border: 1px solid var(--red-border); color: var(--red); }
+.rr-detail { font-size: 11px; color: var(--text3); margin-bottom: 6px; }
+.rr-why { font-size: 11.5px; line-height: 1.7; color: var(--text2); }
+
+.retake-row { text-align: center; margin: 24px 0; }
+.start-btn {
+  font-size: 11px; letter-spacing: .06em; padding: 12px 24px; background: var(--green-dim);
+  border: 1px solid var(--green-border); color: var(--green); cursor: pointer; font-family: var(--mono);
+}
+.start-btn:hover { background: var(--green-border); }
+
+.footer-links { display: flex; gap: 10px; margin-top: 32px; padding-top: 20px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+.footer-links a {
+  font-size: 10px; letter-spacing: .06em; color: var(--text2); text-decoration: none;
+  border: 1px solid var(--border2); padding: 8px 14px;
+}
+.footer-links a:hover { color: var(--cyan); border-color: var(--cyan-border); }
+
+@media (max-width: 560px) {
+  .task-topbar { flex-direction: column; }
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">TSM <span>SHELL</span> · A+ PBQ SIMULATION</div>
+  <a class="back-link" href="/html/tsm-career-training-platform.html">← BACK TO PLATFORM</a>
+</header>
+
+<div class="wrap">
+  <div class="eyebrow">IT SUPPORT · COMPTIA A+ · PERFORMANCE-BASED SIMULATION</div>
+  <div class="title">A+ PBQ Simulation</div>
+  <div class="sub">Hands-on tasks instead of multiple choice: put procedure steps in the order you'd actually perform them, or sort items into the categories they belong to. Scored all-or-nothing per attempt, same as the real exam's PBQs, with every step or item explained afterward — and every attempt feeds the same domain and concept mastery data behind Question Coach, the Troubleshooting Lab, the Timed Assessment, and the Readiness Dashboard.</div>
+
+  <div id="pbq-root"></div>
+
+  <div class="footer-links">
+    <a href="/html/l1-copilot/l1-ticket-copilot.html">← L1 TICKET COPILOT</a>
+    <a href="aplus-practice.html">A+ QUESTION COACH →</a>
+    <a href="aplus-learn.html">A+ LEARN MODE →</a>
+    <a href="aplus-lab.html">A+ TROUBLESHOOTING LAB →</a>
+    <a href="aplus-assessment.html">A+ TIMED ASSESSMENT →</a>
+    <a href="aplus-readiness.html">A+ READINESS DASHBOARD →</a>
+  </div>
+</div>
+
+<script src="data/aplus-pbq-tasks.js"></script>
+<script src="js/aplus-engine.js"></script>
+<script>
+/* PBQ Simulation: task picker -> task (sequence or match) -> results.
+   Sequence tasks: click shuffled steps into order (click again in the
+   "your sequence" list to remove/redo). Match tasks: click a category
+   chip under each item to assign it. Both types check all-or-nothing
+   on submit and call TSMAplusEngine.recordAttempt() once per task
+   against the task's objective + concept, same interface as every
+   other A+ tool. */
+
+let task = null;
+let stage = 'picker';   // picker | task | resolved
+let seqPool = [];       // shuffled step ids not yet placed
+let seqAnswer = [];     // step ids placed, in order
+let matchAssignments = {}; // itemId -> categoryId
+
+function bank() {
+  return (typeof APLUS_PBQ_TASKS !== 'undefined') ? APLUS_PBQ_TASKS : [];
+}
+
+function shuffle(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function openTask(id) {
+  task = bank().find(t => t.id === id);
+  if (task.type === 'sequence') {
+    seqPool = shuffle(task.steps.map(s => s.id));
+    seqAnswer = [];
+  } else {
+    matchAssignments = {};
+  }
+  stage = 'task';
+  render();
+  try { window.scrollTo(0, 0); } catch (e) { /* not critical */ }
+}
+
+function placeStep(stepId) {
+  const i = seqPool.indexOf(stepId);
+  if (i === -1) return;
+  seqPool.splice(i, 1);
+  seqAnswer.push(stepId);
+  render();
+}
+
+function unplaceStep(index) {
+  const [stepId] = seqAnswer.splice(index, 1);
+  seqPool.push(stepId);
+  render();
+}
+
+function assignItem(itemId, categoryId) {
+  matchAssignments[itemId] = categoryId;
+  render();
+}
+
+function canSubmit() {
+  if (!task) return false;
+  if (task.type === 'sequence') return seqAnswer.length === task.steps.length;
+  return task.items.every(i => !!matchAssignments[i.id]);
+}
+
+function submitTask() {
+  if (!canSubmit()) return;
+  let allCorrect;
+  if (task.type === 'sequence') {
+    allCorrect = task.correctOrder.every((id, i) => seqAnswer[i] === id);
+  } else {
+    allCorrect = task.items.every(i => matchAssignments[i.id] === i.categoryId);
+  }
+  TSMAplusEngine.recordAttempt(task.objective, task.concept, allCorrect);
+  stage = 'resolved';
+  render();
+  try { window.scrollTo(0, 0); } catch (e) { /* not critical */ }
+}
+
+function restartPicker() {
+  task = null;
+  stage = 'picker';
+  render();
+}
+
+function retrySameTask() {
+  openTask(task.id);
+}
+
+function render() {
+  const root = document.getElementById('pbq-root');
+  if (stage === 'picker') { root.innerHTML = renderPicker(); return; }
+  if (stage === 'task') { root.innerHTML = renderTask(); bindTaskEvents(); return; }
+  root.innerHTML = renderResolved();
+}
+
+function typeLabel(t) {
+  return t === 'sequence' ? 'ORDER THE STEPS' : 'MATCH TO CATEGORY';
+}
+
+function renderPicker() {
+  const list = bank();
+  if (!list.length) {
+    return `<div class="picker-card"><div class="picker-scenario">No PBQ tasks available yet.</div></div>`;
+  }
+  return `<div class="picker-grid">${list.map(t => `
+    <button class="picker-card" onclick="openTask('${t.id}')">
+      <div class="picker-tag">${t.objective.toUpperCase().replace(/-/g, ' ')}</div>
+      <span class="picker-type">${typeLabel(t.type)}</span>
+      <div class="picker-title">${t.title}</div>
+      <div class="picker-scenario">${t.scenario}</div>
+      <div class="picker-meta">${t.type === 'sequence' ? t.steps.length + ' steps to order' : t.items.length + ' items to sort into ' + t.categories.length + ' categories'}</div>
+    </button>`).join('')}</div>`;
+}
+
+function renderTask() {
+  const header = `
+    <div class="task-topbar">
+      <div class="task-stage"><div class="task-stage-val">${typeLabel(task.type)}</div><div class="task-stage-lbl">PERFORMANCE-BASED TASK</div></div>
+    </div>
+    <div class="task-card">
+      <div class="task-tag">${task.objective.toUpperCase().replace(/-/g, ' ')}</div>
+      <div class="task-title">${task.title}</div>
+      <div class="task-scenario">"${task.scenario}"</div>
+      <div class="task-instructions">${task.instructions}</div>
+    </div>`;
+
+  let body = '';
+  if (task.type === 'sequence') {
+    const poolHtml = seqPool.length
+      ? seqPool.map(id => {
+          const step = task.steps.find(s => s.id === id);
+          return `<button class="seq-item-btn" data-place="${id}">${step.text}</button>`;
+        }).join('')
+      : '<div class="seq-empty-note">All steps placed — review your order below, or submit.</div>';
+
+    const answerHtml = seqAnswer.length
+      ? seqAnswer.map((id, i) => {
+          const step = task.steps.find(s => s.id === id);
+          return `<div class="seq-answer-row" data-unplace="${i}"><span class="seq-answer-num">${i + 1}.</span><span>${step.text}</span><span class="seq-answer-remove">CLICK TO REMOVE</span></div>`;
+        }).join('')
+      : '<div class="seq-empty-note">Click steps below to add them here, in order.</div>';
+
+    body = `
+      <div class="section-lbl">YOUR SEQUENCE</div>
+      <div class="seq-answer-list">${answerHtml}</div>
+      <div class="section-lbl">REMAINING STEPS</div>
+      <div class="seq-pool">${poolHtml}</div>`;
+  } else {
+    const itemsHtml = task.items.map(item => {
+      const picked = matchAssignments[item.id];
+      const catsHtml = task.categories.map(c => `
+        <button class="match-cat-btn ${picked === c.id ? 'selected' : ''}" data-assign-item="${item.id}" data-assign-cat="${c.id}">${c.label}</button>`).join('');
+      return `
+        <div class="match-item">
+          <div class="match-item-text">${item.text}</div>
+          <div class="match-cats">${catsHtml}</div>
+        </div>`;
+    }).join('');
+
+    body = `
+      <div class="section-lbl">ITEMS TO SORT</div>
+      ${itemsHtml}`;
+  }
+
+  return `${header}${body}
+    <div class="task-nav-row">
+      <button class="nav-btn" id="pbq-back-btn">← CHOOSE A DIFFERENT TASK</button>
+      <button class="nav-btn primary" id="pbq-submit-btn" ${canSubmit() ? '' : 'disabled'}>SUBMIT →</button>
+    </div>`;
+}
+
+function bindTaskEvents() {
+  const root = document.getElementById('pbq-root');
+  root.querySelectorAll('[data-place]').forEach(btn => {
+    btn.addEventListener('click', () => placeStep(btn.getAttribute('data-place')));
+  });
+  root.querySelectorAll('[data-unplace]').forEach(row => {
+    row.addEventListener('click', () => unplaceStep(parseInt(row.getAttribute('data-unplace'), 10)));
+  });
+  root.querySelectorAll('[data-assign-item]').forEach(btn => {
+    btn.addEventListener('click', () => assignItem(btn.getAttribute('data-assign-item'), btn.getAttribute('data-assign-cat')));
+  });
+  const backBtn = document.getElementById('pbq-back-btn');
+  if (backBtn) backBtn.addEventListener('click', restartPicker);
+  const submitBtn = document.getElementById('pbq-submit-btn');
+  if (submitBtn) submitBtn.addEventListener('click', submitTask);
+}
+
+function renderResolved() {
+  let allCorrect, reviewHtml, scoreLine;
+
+  if (task.type === 'sequence') {
+    const correctCount = task.correctOrder.filter((id, i) => seqAnswer[i] === id).length;
+    allCorrect = correctCount === task.correctOrder.length;
+    scoreLine = `${correctCount} / ${task.correctOrder.length} steps in the correct position`;
+    reviewHtml = task.correctOrder.map((correctId, i) => {
+      const placedId = seqAnswer[i];
+      const isRight = placedId === correctId;
+      const placedStep = task.steps.find(s => s.id === placedId);
+      const correctStep = task.steps.find(s => s.id === correctId);
+      return `
+        <div class="review-row ${isRight ? 'is-correct' : 'is-incorrect'}">
+          <div class="rr-head">
+            <span class="rr-label">Position ${i + 1}: ${placedStep ? placedStep.text : '(unplaced)'}</span>
+            <span class="rr-badge ${isRight ? 'correct' : 'incorrect'}">${isRight ? '✓ CORRECT' : '✗ SHOULD BE'}</span>
+          </div>
+          ${!isRight ? `<div class="rr-detail">Correct step here: ${correctStep.text}</div>` : ''}
+          <div class="rr-why">${correctStep.why}</div>
+        </div>`;
+    }).join('');
+  } else {
+    const correctCount = task.items.filter(i => matchAssignments[i.id] === i.categoryId).length;
+    allCorrect = correctCount === task.items.length;
+    scoreLine = `${correctCount} / ${task.items.length} items sorted correctly`;
+    reviewHtml = task.items.map(item => {
+      const pickedCatId = matchAssignments[item.id];
+      const isRight = pickedCatId === item.categoryId;
+      const pickedCat = task.categories.find(c => c.id === pickedCatId);
+      const correctCat = task.categories.find(c => c.id === item.categoryId);
+      return `
+        <div class="review-row ${isRight ? 'is-correct' : 'is-incorrect'}">
+          <div class="rr-head">
+            <span class="rr-label">${item.text}</span>
+            <span class="rr-badge ${isRight ? 'correct' : 'incorrect'}">${isRight ? '✓ CORRECT' : '✗ INCORRECT'}</span>
+          </div>
+          ${!isRight ? `<div class="rr-detail">You picked: ${pickedCat ? pickedCat.label : '(none)'} — correct: ${correctCat.label}</div>` : ''}
+          <div class="rr-why">${item.why}</div>
+        </div>`;
+    }).join('');
+  }
+
+  return `
+    <div class="result-banner ${allCorrect ? 'pass' : 'fail'}">
+      <div class="rb-status">${allCorrect ? '✓ TASK COMPLETE' : '✗ NOT QUITE'}</div>
+      <div class="rb-score">${scoreLine}</div>
+    </div>
+
+    <div class="readiness-note">This result has been recorded into your domain and concept mastery. <a href="aplus-readiness.html">Check your updated Readiness Dashboard →</a></div>
+
+    <div class="section-lbl">FULL REVIEW</div>
+    ${reviewHtml}
+
+    <div class="retake-row">
+      <button class="start-btn" id="pbq-retry-btn">RETRY THIS TASK →</button>
+      <button class="nav-btn" id="pbq-picker-btn" style="margin-left:10px;">CHOOSE ANOTHER TASK →</button>
+    </div>`;
+}
+
+document.addEventListener('click', function (e) {
+  if (e.target && e.target.id === 'pbq-retry-btn') retrySameTask();
+  if (e.target && e.target.id === 'pbq-picker-btn') restartPicker();
+});
+
+render();
+</script>
+</body>
+</html>
