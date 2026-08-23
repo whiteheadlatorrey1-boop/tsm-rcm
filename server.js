@@ -119,6 +119,22 @@ const twinsLimiter = rateLimit({
 });
 app.use(['/api/twins', '/api/enterprise-lab'], twinsLimiter);
 
+// BPO limiter — bulk document intake (batches of dozens-to-hundreds of
+// files, e.g. a client's onboarding upload or a pilot stress test) is
+// legitimate expected load, not abuse — same rationale as twinsLimiter
+// above. Confirmed via scripts/stress-test/run-stress-test.js: a 200-doc
+// batch at realistic concurrency blew through the general apiLimiter's
+// ~1 req/sec average and got legitimate uploads rejected with 429s.
+// Mounted ahead of apiLimiter so it takes precedence for this prefix.
+const bpoLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 300, // ~5 req/sec sustained — covers realistic batch upload concurrency
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { ok: false, error: 'Too many requests — please slow down.' },
+});
+app.use('/api/bpo', bpoLimiter);
+
 app.use('/api/', (req, res, next) => (req.path === '/health' ? next() : apiLimiter(req, res, next)));
 
 // ── STRUCTURED REQUEST LOGGING — BPO (Phase 5, tractable subset) ───────────
