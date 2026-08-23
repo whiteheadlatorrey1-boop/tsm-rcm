@@ -443,6 +443,98 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
 }
 </style>
 
+
+<script>
+const INPHUSION_PAYLOADS = {
+  "CONSTRUCTION": `[INPHUSIONSYS ANOMALY DETECTED - CONSTRUCTION]
+Vendor: Apex Drywall Corp
+Change Order: CO #088
+Budget Variance: +18.4% (Threshold: 10.0%)
+PO Number: PO-88492
+Status: Certificate of Insurance Expired on 2026-07-15
+Audit Note: Variance exceeds manager approval limit without CFO sign-off.`,
+
+  "HEALTHCARE": `[INPHUSIONSYS ANOMALY DETECTED - HEALTHCARE]
+Claim ID: CLM-88201
+Payer: Horizon Mutual
+Denial Code: CO-197 (Pre-certification / Authorization Missing)
+Patient ID: PT-99021
+Service Date: 2026-08-10
+Audit Note: Prior auth required for procedure CPT-74177. Urgent escalation needed.`,
+
+  "FINOPS": `[INPHUSIONSYS ANOMALY DETECTED - FINOPS]
+Vendor: Apex Tech Supplies
+Transaction ID: TXN-44910
+Pattern: Split Purchase Order Fraud (3x $4,950 transactions in 12 hours)
+Approval Limit: $5,000 per PO
+Audit Note: Evasion of secondary approval threshold detected.`,
+
+  "REAL_ESTATE": `[INPHUSIONSYS ANOMALY DETECTED - REAL ESTATE]
+Property Unit: U-103
+Vacant Duration: 22 Days (Target: < 7 Days)
+Maintenance Request: HVAC Repair SLA Breach (+8 hours over 24h limit)
+Tenant Status: Lease Signed, Unit Uninhabitable
+Audit Note: Revenue loss warning triggered ($2,400/mo impact).`,
+
+  "LEGAL": `[INPHUSIONSYS ANOMALY DETECTED - LEGAL]
+Document: Master Services Agreement (MSA_Review_v2.pdf)
+Clause Flaw: Unlimited Indemnity Clause (Section 14.2)
+Governing Law: Foreign Venue (Cayman Islands Jurisdiction)
+Audit Note: High risk rating. Standard clause requires liability cap at 1x contract value.`
+};
+
+const INPHUSION_VERTICAL_PROMPTS = {
+  "CONSTRUCTION": 'auditops "InphusionSys Construction - Drywall CO #088: 18% Overrun & Expired COI" --logic=strategist',
+  "HEALTHCARE": 'auditops "InphusionSys Healthcare - Claim CLM-88201 Denial: CO-197 Missing Auth" --logic=strategist',
+  "FINOPS": 'auditops "InphusionSys FinOps - Vendor V-9082: Split PO Threshold Evasion Fraud" --logic=strategist',
+  "REAL_ESTATE": 'auditops "InphusionSys Real Estate - Unit U-103: 22d Vacancy & HVAC SLA Breach" --logic=strategist',
+  "LEGAL": 'auditops "InphusionSys Legal - MSA Vendor Contract: Unlimited Liability & Cayman Jurisdiction" --logic=strategist'
+};
+
+window.loadInphusionAnomaly = function() {
+  const sel = document.getElementById("inphusion-select");
+  if (!sel || !sel.value) {
+    alert("Please select an InphusionSys anomaly scenario first.");
+    return;
+  }
+  const [file, vert] = sel.value.split("|");
+  const targetBox = document.querySelector("textarea") || document.getElementById("ticket_desc") || document.getElementById("ticketDescription");
+
+  const populateFields = (payloadText) => {
+    if (targetBox) {
+      targetBox.value = payloadText;
+      targetBox.dispatchEvent(new Event("input", { bubbles: true }));
+      targetBox.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    const searchBar = document.getElementById("globalSearch") || document.querySelector("input[type=search]");
+    if (searchBar && INPHUSION_VERTICAL_PROMPTS[vert]) {
+      searchBar.value = INPHUSION_VERTICAL_PROMPTS[vert];
+      searchBar.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+  };
+
+  fetch("/api/inphusionsys/run-live", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ relativePath: file, vertical: vert })
+  })
+  .then(r => {
+    if (!r.ok) throw new Error("Backend route returned " + r.status);
+    return r.json();
+  })
+  .then(data => {
+    populateFields(data.raw_payload || INPHUSION_PAYLOADS[vert]);
+    alert("✓ Loaded [" + vert + "] Anomaly Payload via Backend API!\nAudit Hash: " + (data.audit_hash || "AUD-INPH-8892"));
+  })
+  .catch(err => {
+    console.warn("Backend API offline, using fallback payload:", err);
+    if (INPHUSION_PAYLOADS[vert]) {
+      populateFields(INPHUSION_PAYLOADS[vert]);
+      alert("✓ Loaded [" + vert + "] Vertical Anomaly Payload!\nAudit Hash: AUD-INPH-LOCAL-" + Math.floor(Math.random()*90000 + 10000));
+    }
+  });
+};
+</script>
 </head>
 <body>
 
@@ -709,7 +801,22 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
       <div id="snPullOut" style="font-size:12px; margin-top:4px"></div>
 
       <div class="card">
-        <div class="card-head">TICKET DESCRIPTION</div>
+<button id="inphusion-load-btn" type="button" onclick="window.loadInphusionAnomaly()" style="background:#00ffcc; color:#000; border:none; padding:6px 14px; font-weight:bold; font-size:11px; border-radius:3px; cursor:pointer; font-family:monospace;">LOAD ANOMALY INTO TICKET</button></div>
+        <div class="card-head"><div id="inphusionsys-bar" style="margin: 12px 0; padding: 10px 14px; background: rgba(0, 255, 204, 0.08); border: 1px solid #00ffcc; border-radius: 4px; display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+  <div style="display:flex; align-items:center; gap:8px;">
+    <span style="color:#00ffcc; font-weight:bold; font-size:12px; letter-spacing:1px; font-family:monospace;">⚡ INPHUSIONSYS ANOMALY SUITE:</span>
+    <select id="inphusion-select" style="background:#0d1117; color:#00ffcc; border:1px solid #00ffcc; padding:4px 8px; border-radius:3px; font-size:12px; font-family:monospace;">
+      <option value="">-- Select InphusionSys Vertical Test Anomaly --</option>
+      <option value="construction/CN_CO_Poisoned_Variance.txt|CONSTRUCTION">Construction: Drywall CO #088 (18% Overrun & Expired COI)</option>
+      <option value="healthcare/HC_Claim_Denial_CO197.txt|HEALTHCARE">Healthcare: Claim CLM-88201 (CO-197 Missing Auth)</option>
+      <option value="finops/FO_Split_PO_Fraud.txt|FINOPS">FinOps: Split PO Fraud (Threshold Evasion)</option>
+      <option value="real-estate/RE_SLA_Breach_U103.txt|REAL_ESTATE">Real Estate: Unit U-103 (22d Vacant & SLA Breach)</option>
+      <option value="legal/LG_MSA_Poisoned_Indemnity.txt|LEGAL">Legal: MSA Review (Unlimited Liability & Foreign Venue)</option>
+    </select>
+  </div>
+  <button id="inphusion-load-btn" type="button" onclick="window.loadInphusionAnomaly()" style="background:#00ffcc; color:#000; border:none; padding:6px 14px; font-weight:bold; font-size:11px; border-radius:3px; cursor:pointer; font-family:monospace;">LOAD ANOMALY INTO TICKET</button>
+</div>
+TICKET DESCRIPTION</div>
         <div class="card-body">
           <textarea id="tkDescription" rows="10" placeholder="Paste the full ticket text here — symptoms, error messages, what the user has already tried..."></textarea>
           <div class="btn-row">
@@ -1202,6 +1309,35 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
       </div>
 
       <div class="card">
+        <div class="card-head">THE STRIP AT THE VERY TOP — DECISION JOURNEY</div>
+        <div class="card-body">
+          <div class="ai-output" style="white-space:normal;line-height:1.8">
+            Above the tabs sits a second, thinner bar — <b>TSM Copilot Decision Journey</b> — which is not another
+            tab, it's a guided overlay on top of the same ticket. It's the app coaching you through the mental
+            sequence a strong L1 tech already runs unconsciously, broken into five checkpoints: <b>UNDERSTAND</b>
+            (read the ticket before touching anything else), <b>ASSESS</b> (don't take the submitted priority at
+            face value — challenge it against what the ticket actually describes), <b>EXPLAIN</b> (be able to state
+            the evidence for your read, not just the conclusion), <b>ACT</b> (commit to a next best action), and
+            <b>HUMAN DECISION</b> (the AI's suggestion is a draft, not an instruction — you decide). Two extra
+            anchor buttons, <b>TICKET</b> and <b>CONTEXT / CMDB</b>, jump straight to the asset/warranty fields
+            without advancing the sequence, and an <b>ESCALATE</b> anchor jumps to the Escalation tab the same way.
+            <br><br>
+            Think of the tab sidebar as <i>where</i> the work happens and the Decision Journey strip as <i>the
+            order of thinking</i> that should be behind it, regardless of which tabs you actually open. If the
+            strip's current step doesn't match what you're doing — e.g. it's still on UNDERSTAND but you're already
+            deep in Troubleshooting — that's usually a sign you skipped the reasoning step, not just the UI step.
+            <br><br>
+            The <b>A+ LEARN / PRACTICE / READINESS / TIMED EXAM / TROUBLESHOOTING LAB / PBQ SIM</b> links in that
+            same bar open the separate A+ certification training suite in a new tab. They're not required to work
+            a ticket — they exist so that when something in a real ticket exposes a gap (an unfamiliar RAID level,
+            an APIPA address you had to look up), you can jump straight into deliberate practice on that exact
+            topic instead of just moving on. See <b>Cert Prep</b> in this sidebar for how the whole training suite
+            maps onto the A+ → Network+ → Security+ → Azure Fundamentals ladder.
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
         <div class="card-head">FEATURE GUIDE — WHAT EACH TAB DOES</div>
         <div class="card-body">
           <div class="feature-grid">
@@ -1361,6 +1497,28 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
                 <li>Drives the Exec Strip counters at the top of the app</li>
                 <li>Logged automatically when you GENERATE RESOLUTION, which also clears the autosaved in-progress ticket</li>
                 <li>CLEAR wipes local history — this cannot be undone</li>
+              </ul>
+            </div>
+
+            <div class="feature-card">
+              <div class="fc-num">15 · REFERENCE</div>
+              <h4>How To</h4>
+              <p>This page — the guide you're reading right now.</p>
+              <ul>
+                <li>What the app does, what each tab is for, and the reasoning behind the recommended order</li>
+                <li>SLA color logic and the queue-level anomaly patterns worth flagging</li>
+                <li>Not ticket-specific — safe to leave open in a second window while you work</li>
+              </ul>
+            </div>
+
+            <div class="feature-card">
+              <div class="fc-num">16 · GROWTH</div>
+              <h4>Cert Prep</h4>
+              <p>Maps this app's tabs onto the A+ → Network+ → Security+ → Azure Fundamentals ladder.</p>
+              <ul>
+                <li>Which exam each tab's real-world work practices, and why the order matters</li>
+                <li>Key-term glossary and scored practice questions for A+ specifically</li>
+                <li>Deep-dive training (Learn/Practice/Readiness/Timed Exam/Lab/PBQ/Interview Mode) lives in the linked A+ suite, reachable from the Decision Journey strip at the top of the app</li>
               </ul>
             </div>
 
