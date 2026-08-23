@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>InphusionSys — Multi-Vertical Demo Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800&family=Share+Tech+Mono&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#070C10; --bg2:#05080A; --bg3:#0A0F0A; --border:#182430;
+    --text:#DCE9F0; --muted:#9AB4C4; --faint:#5A7A8A;
+    --teal:#00D4B8; --green:#00E87A; --orange:#F07030; --red:#F03A3A;
+    --gold:#F4A800; --purple:#9A70F0;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:var(--bg);color:var(--text);min-height:100%;}
+  body{
+    font-family:'Barlow',sans-serif;
+    background:
+      radial-gradient(ellipse 900px 500px at 12% -10%, rgba(0,212,184,.08), transparent 60%),
+      radial-gradient(ellipse 900px 500px at 100% 0%, rgba(240,58,58,.06), transparent 55%),
+      var(--bg);
+    padding: 56px 6vw 90px;
+  }
+  .mono{font-family:'Share Tech Mono',monospace;}
+  .display{font-family:'Orbitron',sans-serif;}
+  a{color:inherit;}
+
+  /* ---------- header / status console ---------- */
+  header{max-width:1280px;margin:0 auto 40px;}
+  .eyebrow{
+    display:flex;align-items:center;gap:10px;
+    font-family:'Share Tech Mono',monospace;font-size:12px;letter-spacing:3px;
+    color:var(--teal);text-transform:uppercase;margin-bottom:18px;
+  }
+  .eyebrow .dot{width:7px;height:7px;border-radius:50%;background:var(--teal);box-shadow:0 0 8px var(--teal);animation:pulse 2.2s ease-in-out infinite;}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  h1{
+    font-family:'Orbitron',sans-serif;font-weight:800;
+    font-size:clamp(30px,4.4vw,52px);line-height:1.08;color:var(--text);
+    letter-spacing:.5px;max-width:18ch;
+  }
+  header p{color:var(--muted);font-size:15px;max-width:62ch;margin-top:16px;line-height:1.6;}
+
+  .console{
+    margin-top:34px;
+    display:grid;grid-template-columns:repeat(4,1fr);
+    border:1px solid var(--border);border-radius:8px;overflow:hidden;
+    background:var(--bg2);
+  }
+  .console .cell{padding:16px 20px;border-right:1px solid var(--border);}
+  .console .cell:last-child{border-right:none;}
+  .console .cell .k{font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:2px;color:var(--faint);text-transform:uppercase;}
+  .console .cell .v{font-family:'Orbitron',sans-serif;font-size:20px;font-weight:700;color:var(--text);margin-top:6px;}
+
+  /* ---------- crumbs ---------- */
+  .crumbs{
+    max-width:1280px;margin:26px auto 0;display:flex;align-items:center;gap:8px;
+    font-family:'Share Tech Mono',monospace;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:var(--faint);
+  }
+  .crumbs button{
+    background:none;border:none;color:var(--faint);font:inherit;letter-spacing:inherit;cursor:pointer;padding:0;
+  }
+  .crumbs button:hover{color:var(--teal);}
+  .crumbs .current{color:var(--text);}
+  .crumbs .sep{color:var(--border);}
+
+  /* ---------- division grid ---------- */
+  .grid{
+    max-width:1280px;margin:26px auto 0;
+    display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:20px;
+  }
+  .card{
+    --accent: var(--teal);
+    position:relative;background:var(--bg2);border:1px solid var(--border);
+    border-left:3px solid var(--accent);border-radius:8px;padding:26px 24px 22px;
+    overflow:hidden;transition:transform .2s ease, box-shadow .2s ease;cursor:pointer;
+  }
+  .card::before{
+    content:"";position:absolute;inset:-40% -40% auto auto;width:220px;height:220px;
+    background:radial-gradient(circle, var(--accent) 0%, transparent 70%);
+    opacity:0;transition:opacity .3s ease;pointer-events:none;
+  }
+  .card:hover{transform:translateY(-4px);box-shadow:0 14px 34px rgba(0,0,0,.45), 0 0 0 1px var(--accent);}
+  .card:hover::before{opacity:.08;}
+
+  .card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;}
+  .icon-wrap{
+    width:42px;height:42px;border-radius:8px;display:flex;align-items:center;justify-content:center;
+    background:var(--bg3);border:1px solid var(--border);flex-shrink:0;
+  }
+  .icon-wrap svg{width:22px;height:22px;stroke:var(--accent);}
+  .case-no{font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:1.5px;color:var(--faint);text-align:right;padding-top:4px;}
+
+  .sector{
+    font-family:'Share Tech Mono',monospace;font-size:10.5px;letter-spacing:2px;text-transform:uppercase;
+    color:var(--accent);margin-top:18px;
+  }
+  .card h3{font-family:'Orbitron',sans-serif;font-size:17px;font-weight:700;color:var(--text);margin-top:8px;line-height:1.35;}
+  .card p{color:var(--muted);font-size:12.5px;line-height:1.55;margin-top:10px;}
+
+  .card-foot{
+    margin-top:20px;display:flex;align-items:center;justify-content:space-between;gap:10px;
+    padding-top:16px;border-top:1px solid var(--border);
+    font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--faint);
+  }
+  .card-foot b{color:var(--text);font-weight:700;}
+  .go{
+    font-family:'Share Tech Mono',monospace;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;
+    color:var(--bg);background:var(--accent);border-radius:5px;padding:9px 14px;
+    display:inline-flex;align-items:center;gap:6px;transition:filter .15s, transform .15s;
+  }
+  .card:hover .go{filter:brightness(1.12);transform:translateX(1px);}
+
+  /* ---------- division detail ---------- */
+  .detail-head{
+    max-width:1280px;margin:26px auto 0;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;
+  }
+  .detail-head h2{font-family:'Orbitron',sans-serif;font-size:24px;font-weight:700;}
+  .detail-actions{display:flex;gap:10px;flex-wrap:wrap;}
+  .btn{
+    font-family:'Share Tech Mono',monospace;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;
+    border-radius:5px;padding:9px 14px;display:inline-flex;align-items:center;gap:6px;cursor:pointer;
+    border:1px solid var(--border);background:var(--bg2);color:var(--muted);transition:all .15s;text-decoration:none;
+  }
+  .btn:hover{border-color:var(--faint);color:var(--text);}
+  .btn.primary{background:var(--accent-d, var(--teal));color:var(--bg);border-color:transparent;}
+  .btn.primary:hover{filter:brightness(1.12);}
+
+  .panes{max-width:1280px;margin:26px auto 0;display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media (max-width:900px){.panes{grid-template-columns:1fr;}}
+  .pane{background:var(--bg2);border:1px solid var(--border);border-radius:8px;overflow:hidden;}
+  .pane-head{
+    padding:14px 18px;border-bottom:1px solid var(--border);
+    font-family:'Share Tech Mono',monospace;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);
+    display:flex;align-items:center;justify-content:space-between;
+  }
+  .pane-head .count{color:var(--faint);}
+  .item-row{
+    padding:14px 18px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s;
+    display:flex;align-items:center;justify-content:space-between;gap:12px;
+  }
+  .item-row:last-child{border-bottom:none;}
+  .item-row:hover{background:var(--bg3);}
+  .item-row.selected{background:var(--bg3);box-shadow:inset 3px 0 0 var(--accent-d, var(--teal));}
+  .item-main{min-width:0;}
+  .item-title{font-size:13px;color:var(--text);line-height:1.4;}
+  .item-sub{font-family:'Share Tech Mono',monospace;font-size:10px;color:var(--faint);margin-top:4px;letter-spacing:.5px;}
+  .sev{
+    flex-shrink:0;font-family:'Share Tech Mono',monospace;font-size:9.5px;letter-spacing:1px;text-transform:uppercase;
+    padding:3px 8px;border-radius:20px;border:1px solid;
+  }
+  .sev.High{color:var(--red);border-color:rgba(240,58,58,.4);background:rgba(240,58,58,.08);}
+  .sev.Medium{color:var(--gold);border-color:rgba(244,168,0,.4);background:rgba(244,168,0,.08);}
+  .sev.Low{color:var(--teal);border-color:rgba(0,212,184,.4);background:rgba(0,212,184,.08);}
+
+  .employees-strip{
+    max-width:1280px;margin:20px auto 0;display:flex;gap:10px;flex-wrap:wrap;
+  }
+  .emp-chip{
+    font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--muted);
+    border:1px solid var(--border);border-radius:20px;padding:7px 12px 7px 8px;display:flex;align-items:center;gap:8px;
+  }
+  .emp-avatar{
+    width:20px;height:20px;border-radius:50%;background:var(--bg3);border:1px solid var(--border);
+    display:flex;align-items:center;justify-content:center;font-size:9px;color:var(--text);font-weight:700;
+  }
+
+  /* ---------- routing result panel ---------- */
+  .route-panel{
+    max-width:1280px;margin:26px auto 0;background:var(--bg2);border:1px solid var(--border);
+    border-top:3px solid var(--accent-d, var(--teal));border-radius:10px;overflow:hidden;display:none;
+  }
+  .route-panel.open{display:block;}
+  .route-head{
+    padding:16px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;
+  }
+  .route-head .title{font-family:'Orbitron',sans-serif;font-size:15px;color:var(--text);}
+  .route-head .hash{font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--teal);}
+  .route-body{padding:18px 22px;display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media (max-width:900px){.route-body{grid-template-columns:1fr;}}
+  .route-block .k{font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--faint);margin-bottom:8px;}
+  .route-block .v{font-size:13px;color:var(--text);line-height:1.6;}
+  .payload{
+    font-family:'Share Tech Mono',monospace;font-size:11.5px;color:var(--muted);line-height:1.7;
+    background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:14px 16px;white-space:pre-wrap;
+    max-height:220px;overflow-y:auto;
+  }
+  .route-foot{padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:10px;}
+
+  .state-msg{max-width:1280px;margin:60px auto;text-align:center;color:var(--faint);font-family:'Share Tech Mono',monospace;font-size:12px;letter-spacing:1px;}
+
+  footer{max-width:1280px;margin:56px auto 0;color:var(--faint);font-family:'Share Tech Mono',monospace;font-size:11px;letter-spacing:1px;border-top:1px solid var(--border);padding-top:20px;}
+
+  @media (max-width:760px){
+    .console{grid-template-columns:repeat(2,1fr);}
+    .console .cell:nth-child(2){border-right:none;}
+  }
+  @media (prefers-reduced-motion: reduce){
+    *{animation:none !important;transition:none !important;}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="eyebrow"><span class="dot"></span> TSM Intelligence &mdash; InphusionSys Console</div>
+  <h1>InphusionSys<br>Multi-Vertical Console</h1>
+  <p>One interface for every InphusionSys division &mdash; pick a vertical, drill into a document anomaly or IT ticket, and see exactly where TSM routes it. Replaces the scattered dropdown injections across construction, legal, finops, healthcare, and the L1 Ticket Copilot.</p>
+
+  <div class="console">
+    <div class="cell"><div class="k">Divisions</div><div class="v" id="stat-divisions">&mdash;</div></div>
+    <div class="cell"><div class="k">Employees on file</div><div class="v" id="stat-employees">&mdash;</div></div>
+    <div class="cell"><div class="k">Anomalies</div><div class="v" id="stat-anomalies">&mdash;</div></div>
+    <div class="cell"><div class="k">IT tickets</div><div class="v" id="stat-tickets">&mdash;</div></div>
+  </div>
+</header>
+
+<div class="crumbs" id="crumbs">
+  <button id="crumb-home" class="current">All Divisions</button>
+</div>
+
+<main id="main">
+  <div class="state-msg">Loading divisions&hellip;</div>
+</main>
+
+<div class="route-panel" id="route-panel">
+  <div class="route-head">
+    <div>
+      <div class="title" id="route-title">&mdash;</div>
+    </div>
+    <div class="hash" id="route-hash"></div>
+  </div>
+  <div class="route-body">
+    <div class="route-block">
+      <div class="k">Assigned To</div>
+      <div class="v" id="route-assignee">&mdash;</div>
+      <div class="k" style="margin-top:16px;">Routed To</div>
+      <div class="v" id="route-target">&mdash;</div>
+    </div>
+    <div class="route-block">
+      <div class="k">Payload / Definition</div>
+      <div class="payload" id="route-payload">No linked file for this item.</div>
+    </div>
+  </div>
+  <div class="route-foot">
+    <a class="btn primary" id="route-open" href="#" target="_blank" rel="noopener">Open in real app →</a>
+    <button class="btn" id="route-close">Close</button>
+  </div>
+</div>
+
+<footer id="footer">InphusionSys · sourced live from /api/inphusionsys</footer>
+
+<script>
+const ACCENT_VARS = { orange:'--orange', green:'--green', purple:'--purple', teal:'--teal', gold:'--gold', red:'--red', faint:'--faint' };
+const ICONS = {
+  construction: '<path d="M4 21V9l8-6 8 6v12M9 21v-6h6v6" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>',
+  healthcare: '<path d="M12 3v7M8.5 6.5h7" stroke-width="2" stroke-linecap="round"/><rect x="4" y="10" width="16" height="10" rx="2" stroke-width="1.6"/>',
+  finops: '<circle cx="12" cy="12" r="8.5" stroke-width="1.6"/><path d="M9.5 15c0 1.1 1.1 2 2.5 2s2.5-.7 2.5-1.8c0-2.6-5-1.4-5-4C9.5 9.9 10.6 9 12 9s2.5.9 2.5 2" stroke-width="1.5" stroke-linecap="round"/><path d="M12 7v1.5M12 15.5V17" stroke-width="1.5" stroke-linecap="round"/>',
+  realestate: '<path d="M3 12l9-8 9 8M5 10v10h14V10" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>',
+  legal: '<path d="M12 3v18M6 7l-3 5a3 3 0 006 0l-3-5zm12 0l-3 5a3 3 0 006 0l-3-5zM5 7h14" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>',
+  insurance: '<path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z" stroke-width="1.6" stroke-linejoin="round"/>',
+  mortgage: '<path d="M3 10l9-6 9 6M4 10v9h16v-9M8 13v4M12 13v4M16 13v4M3 21h18" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>',
+  hotelops: '<path d="M3 21h18M4 21V7l8-4 8 4v14M9 21v-5h6v5" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>',
+  bpo: '<path d="M4 7h16M4 12h16M4 17h10" stroke-width="1.8" stroke-linecap="round"/>',
+  career: '<path d="M12 2l2.6 6.6L21 9.5l-5 4.6L17.4 21 12 17.3 6.6 21 8 14.1 3 9.5l6.4-.9L12 2z" stroke-width="1.4" stroke-linejoin="round"/>',
+  core: '<circle cx="12" cy="12" r="3" stroke-width="1.6"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1" stroke-width="1.4" stroke-linecap="round"/>'
+};
+
+let divisionsIndex = [];
+let currentDivision = null;   // full division detail object once loaded
+let currentSector = null;
+let selectedItem = null;      // { type: 'anomaly'|'it', id }
+
+const $main = document.getElementById('main');
+const $crumbs = document.getElementById('crumbs');
+const $routePanel = document.getElementById('route-panel');
+
+function accentVar(accentName){ return `var(${ACCENT_VARS[accentName] || '--teal'})`; }
+
+function esc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+async function loadIndex(){
+  try {
+    const res = await fetch('/api/inphusionsys/divisions');
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || 'Failed to load divisions');
+    divisionsIndex = data.divisions;
+    renderStats();
+    renderGrid();
+  } catch (err) {
+    $main.innerHTML = `<div class="state-msg">Could not load InphusionSys divisions &mdash; ${esc(err.message)}</div>`;
+  }
+}
+
+function renderStats(){
+  const totalEmp = divisionsIndex.reduce((a,d)=>a+(d.employeeCount||0),0);
+  const totalAnom = divisionsIndex.reduce((a,d)=>a+(d.anomalyCount||0),0);
+  const totalTix = divisionsIndex.reduce((a,d)=>a+(d.itTicketCount||0),0);
+  document.getElementById('stat-divisions').textContent = divisionsIndex.length;
+  document.getElementById('stat-employees').textContent = totalEmp;
+  document.getElementById('stat-anomalies').textContent = totalAnom;
+  document.getElementById('stat-tickets').textContent = totalTix;
+}
+
+function renderCrumbs(divisionName){
+  if (!divisionName) {
+    $crumbs.innerHTML = `<button id="crumb-home" class="current">All Divisions</button>`;
+  } else {
+    $crumbs.innerHTML = `<button id="crumb-home">All Divisions</button><span class="sep">/</span><span class="current">${esc(divisionName)}</span>`;
+    document.getElementById('crumb-home').addEventListener('click', showGrid);
+  }
+}
+
+function renderGrid(){
+  renderCrumbs(null);
+  closeRoutePanel();
+  const cards = divisionsIndex.map(d => {
+    const icon = ICONS[d.sector] || ICONS.core;
+    const accent = accentVar(d.accent);
+    return `
+      <div class="card" style="--accent:${accent}" data-sector="${esc(d.sector)}">
+        <div class="card-top">
+          <div class="icon-wrap"><svg viewBox="0 0 24 24" fill="none" stroke="${accent}">${icon}</svg></div>
+          <div class="case-no">SECTOR-${esc(d.sector.toUpperCase())}</div>
+        </div>
+        <div class="sector">${esc(d.sector)}</div>
+        <h3>${esc(d.displayName)}</h3>
+        <p>${d.employeeCount} employees on file · ${d.anomalyCount} anomalies · ${d.itTicketCount} IT tickets</p>
+        <div class="card-foot">
+          <span><b>${d.anomalyCount + d.itTicketCount}</b> open items</span>
+          <span class="go">View division →</span>
+        </div>
+      </div>`;
+  }).join('');
+
+  $main.innerHTML = `<div class="grid">${cards}</div><div class="employees-strip" id="emp-strip" style="display:none;"></div>`;
+  $main.querySelectorAll('.card').forEach(card => {
+    card.addEventListener('click', () => showDivision(card.dataset.sector));
+  });
+}
+
+function showGrid(){
+  currentDivision = null;
+  currentSector = null;
+  selectedItem = null;
+  renderGrid();
+}
+
+async function showDivision(sector){
+  currentSector = sector;
+  $main.innerHTML = `<div class="state-msg">Loading ${esc(sector)}&hellip;</div>`;
+  renderCrumbs(sector);
+  closeRoutePanel();
+  try {
+    const res = await fetch(`/api/inphusionsys/divisions/${encodeURIComponent(sector)}`);
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || 'Failed to load division');
+    currentDivision = data.division;
+    selectedItem = null;
+    renderDivision();
+  } catch (err) {
+    $main.innerHTML = `<div class="state-msg">Could not load ${esc(sector)} &mdash; ${esc(err.message)}</div>`;
+  }
+}
+
+function renderDivision(){
+  const d = currentDivision;
+  const meta = divisionsIndex.find(x => x.sector === d.sector) || {};
+  const accent = accentVar(meta.accent);
+  renderCrumbs(d.displayName || d.sector);
+
+  const empChips = (d.employees||[]).map(e => {
+    const initials = e.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+    return `<div class="emp-chip"><span class="emp-avatar">${esc(initials)}</span>${esc(e.name)} — ${esc(e.role)}</div>`;
+  }).join('');
+
+  const anomalyRows = (d.anomalies||[]).map(a => {
+    const assignee = (d.employees||[]).find(e=>e.id===a.assigneeId);
+    return `
+      <div class="item-row" data-type="anomaly" data-id="${esc(a.id)}">
+        <div class="item-main">
+          <div class="item-title">${esc(a.title)}</div>
+          <div class="item-sub">${esc(a.id)} · ${assignee ? esc(assignee.name) : esc(a.assigneeId)}</div>
+        </div>
+        <span class="sev ${esc(a.severity)}">${esc(a.severity)}</span>
+      </div>`;
+  }).join('') || `<div class="item-row"><div class="item-main"><div class="item-title" style="color:var(--faint)">No anomalies on file</div></div></div>`;
+
+  const ticketRows = (d.itTickets||[]).map(t => {
+    const assignee = (d.employees||[]).find(e=>e.id===t.assigneeId);
+    return `
+      <div class="item-row" data-type="it" data-id="${esc(t.id)}">
+        <div class="item-main">
+          <div class="item-title">${esc(t.note)}</div>
+          <div class="item-sub">${esc(t.id)} · ${esc(t.scenarioRef)} · ${assignee ? esc(assignee.name) : esc(t.assigneeId)}</div>
+        </div>
+      </div>`;
+  }).join('') || `<div class="item-row"><div class="item-main"><div class="item-title" style="color:var(--faint)">No IT tickets on file</div></div></div>`;
+
+  $main.innerHTML = `
+    <div class="detail-head" style="--accent-d:${accent}">
+      <h2 style="color:${accent}">${esc(d.displayName)}</h2>
+      <div class="detail-actions">
+        <a class="btn" href="${esc(d.warRoom||'#')}" target="_blank" rel="noopener">War Room ↗</a>
+        <a class="btn primary" style="--accent-d:${accent}" href="${esc(d.realApp||'#')}" target="_blank" rel="noopener">Real App ↗</a>
+      </div>
+    </div>
+    <div class="employees-strip">${empChips}</div>
+    <div class="panes">
+      <div class="pane">
+        <div class="pane-head"><span>⚠ Document Anomalies</span><span class="count">${(d.anomalies||[]).length}</span></div>
+        ${anomalyRows}
+      </div>
+      <div class="pane">
+        <div class="pane-head"><span>🎫 IT Tickets</span><span class="count">${(d.itTickets||[]).length}</span></div>
+        ${ticketRows}
+      </div>
+    </div>
+  `;
+
+  $main.querySelectorAll('.item-row[data-id]').forEach(row => {
+    row.addEventListener('click', () => routeItem(row.dataset.type, row.dataset.id, row));
+  });
+}
+
+async function routeItem(type, itemId, rowEl){
+  document.querySelectorAll('.item-row').forEach(r => r.classList.remove('selected'));
+  if (rowEl) rowEl.classList.add('selected');
+
+  const meta = divisionsIndex.find(x => x.sector === currentSector) || {};
+  const accent = accentVar(meta.accent);
+
+  document.getElementById('route-title').textContent = 'Routing…';
+  document.getElementById('route-hash').textContent = '';
+  document.getElementById('route-assignee').textContent = '—';
+  document.getElementById('route-target').textContent = '—';
+  document.getElementById('route-payload').textContent = 'Loading…';
+  $routePanel.style.setProperty('--accent-d', accent);
+  $routePanel.classList.add('open');
+  $routePanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+  try {
+    const res = await fetch('/api/inphusionsys/route', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sector: currentSector, type, itemId })
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || 'Routing failed');
+
+    const title = type === 'it'
+      ? (data.it_definition ? `${data.it_definition.icon || ''} ${data.it_definition.name}`.trim() : data.item.note)
+      : data.item.title;
+    document.getElementById('route-title').textContent = title;
+    document.getElementById('route-hash').textContent = data.audit_hash;
+    document.getElementById('route-assignee').textContent = data.assignee
+      ? `${data.assignee.name} — ${data.assignee.role}`
+      : '(unassigned)';
+    document.getElementById('route-target').textContent = data.routed_to;
+    document.getElementById('route-open').href = data.routed_to;
+
+    let payloadText;
+    if (data.raw_payload) {
+      payloadText = data.raw_payload;
+    } else if (data.it_definition) {
+      payloadText = `Category: ${data.it_definition.category}\nSeverity: ${data.it_definition.severity}\nScenario: ${data.it_definition.id}`;
+    } else {
+      payloadText = 'No linked file for this item.';
+    }
+    document.getElementById('route-payload').textContent = payloadText;
+  } catch (err) {
+    document.getElementById('route-title').textContent = 'Routing failed';
+    document.getElementById('route-payload').textContent = err.message;
+  }
+}
+
+function closeRoutePanel(){
+  $routePanel.classList.remove('open');
+}
+
+document.getElementById('crumb-home').addEventListener('click', showGrid);
+document.getElementById('route-close').addEventListener('click', closeRoutePanel);
+
+loadIndex();
+</script>
+</body>
+</html>
