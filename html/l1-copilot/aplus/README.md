@@ -70,17 +70,30 @@ current official exam objectives if CompTIA revises them; only
   a weak one). Linked from Learn Mode, Question Coach, L1 Ticket
   Copilot, and the career training platform's A+ app cards. Verified
   via jsdom across three states (empty, mixed, all-strong).
-- Timed assessment mode (same shape as `servicenow-exam-sim.html`,
-  A+-scoped) — not started
+- ✅ Timed assessment mode (`aplus-assessment.html`) — same shape as
+  `servicenow-exam-sim.html` (countdown timer, jump-to-any-question
+  grid, locked answers until submit) but A+-scoped and drawing the
+  FULL question bank rather than a fixed-size subset, at ~80
+  sec/question. No feedback during the exam; the post-submit review
+  reuses the Answer Intelligence panel from Question Coach on every
+  question, right or wrong. Every question (answered or skipped)
+  calls `recordAttempt()` on submit, so an assessment run updates the
+  same shared mastery data the Readiness Dashboard reads from — not a
+  separate score silo. Linked from Question Coach, Learn Mode,
+  Readiness Dashboard, L1 Ticket Copilot, and the career training
+  platform's A+ app cards. Verified via jsdom: full-bank question
+  count, timer, qgrid nav, correct/incorrect/unanswered scoring,
+  review panel rendering, mastery persisted to `localStorage`, and
+  the readiness report reflecting results, plus reshuffled retake.
 
 **Phase 5 — Career bridge**
 - Interview Mode (technical + communication scoring on a
   troubleshooting walkthrough)
 - A+ → Network+ → Security+ → Cloud pathway
 
-Phase 3 (Troubleshooting Lab, PBQ simulation), the rest of Phase 4
-(timed assessment), and Phase 5 are not started. The engine
-(`TSMAplusEngine`) was built so these can hook into it rather than
-each needing their own data/scoring model — `evaluateAnswer`,
-`recordAttempt`, `getMasteryReport`/`getWeakConcepts`, and now
-`getReadinessReport` are the stable interface.
+Phase 3 (Troubleshooting Lab, PBQ simulation) and Phase 5 are not
+started. Phase 4 is now complete. The engine (`TSMAplusEngine`) was
+built so these can hook into it rather than each needing their own
+data/scoring model — `evaluateAnswer`, `recordAttempt`,
+`getMasteryReport`/`getWeakConcepts`, and `getReadinessReport` are the
+stable interface.
