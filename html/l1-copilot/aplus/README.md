@@ -53,10 +53,31 @@ current official exam objectives if CompTIA revises them; only
   (engine hook exists; no lesson content or UI yet)
 
 **Phase 3 — Technician simulation**
-- Troubleshooting Lab (progressive-evidence tickets, à la the existing
-  L1 ticket flow but gated: student chooses what to investigate next)
-- PBQ / performance-based simulated tasks
-- Tie into real L1 ticket scenarios for cross-over practice
+- ✅ Troubleshooting Lab (`aplus-lab.html`, data in
+  `data/aplus-lab-scenarios.js`) — progressive-evidence tickets, not
+  multiple choice. Student picks WHAT to check from a list of evidence
+  sources, in any order, before diagnosing; each source reveals a
+  finding plus a note on what it does/doesn't point toward. Checking
+  an irrelevant source isn't penalized (real L1 work involves ruling
+  things out) but is logged for an after-action "investigation
+  efficiency" note. Every hypothesis — right or wrong — carries an
+  explanation tied back to the evidence, same "don't waste a wrong
+  answer" principle as the Question Coach's Answer Intelligence layer.
+  Diagnosis calls `recordAttempt()` against the scenario's objective +
+  the picked hypothesis's `concept` tag, so lab results feed the same
+  shared mastery store as every other A+ tool. Linked from Question
+  Coach, Learn Mode, Readiness Dashboard, Timed Assessment, L1 Ticket
+  Copilot, and the career training platform's A+ app cards. Verified
+  via jsdom: scenario picker, evidence check/uncheck toggling and
+  reveal rendering, diagnose-stage lock, correct-diagnosis path
+  (remediation card shown, mastery recorded 1/1), incorrect-diagnosis
+  path (fail styling, no remediation card, mastery recorded 0/1), full
+  per-hypothesis review rendering, investigation log, and retake flow.
+  Seeded with 3 original scenarios (startup I/O bottleneck, DHCP lease
+  failure, driver-conflict blue screen) across
+  troubleshooting/networking/operating-systems.
+- PBQ / performance-based simulated tasks — not started
+- Tie into real L1 ticket scenarios for cross-over practice — not started
 
 **Phase 4 — Certification readiness**
 - ✅ A+ Readiness dashboard (`aplus-readiness.html`) — Core 1 / Core 2
@@ -91,9 +112,11 @@ current official exam objectives if CompTIA revises them; only
   troubleshooting walkthrough)
 - A+ → Network+ → Security+ → Cloud pathway
 
-Phase 3 (Troubleshooting Lab, PBQ simulation) and Phase 5 are not
-started. Phase 4 is now complete. The engine (`TSMAplusEngine`) was
-built so these can hook into it rather than each needing their own
-data/scoring model — `evaluateAnswer`, `recordAttempt`,
-`getMasteryReport`/`getWeakConcepts`, and `getReadinessReport` are the
-stable interface.
+Phase 4 is complete. Phase 3's Troubleshooting Lab is done; PBQ
+simulation and the real-ticket cross-over are still open, along with
+all of Phase 5. The engine (`TSMAplusEngine`) was built so these can
+hook into it rather than each needing their own data/scoring model —
+`evaluateAnswer`, `recordAttempt`, `getMasteryReport`/`getWeakConcepts`,
+and `getReadinessReport` are the stable interface; the Troubleshooting
+Lab proved that `recordAttempt` works fine for non-multiple-choice
+diagnosis flows too, not just quiz questions.

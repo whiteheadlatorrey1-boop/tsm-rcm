@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A+ Troubleshooting Lab · TSM Career Training</title>
+<style>
+:root {
+  --bg: #0a0c10; --surface: #111318; --surface2: #181b22;
+  --border: #1e2230; --border2: #2a2f42;
+  --text: #e8eaf0; --text2: #8890a8; --text3: #4a5068;
+  --green: #00d4aa; --green-dim: rgba(0,212,170,0.08); --green-border: rgba(0,212,170,0.2);
+  --cyan: #00d4d4; --cyan-dim: rgba(0,212,212,0.07); --cyan-border: rgba(0,212,212,0.2);
+  --amber: #f59e0b; --amber-dim: rgba(245,158,11,0.08); --amber-border: rgba(245,158,11,0.2);
+  --red: #ef4444; --red-dim: rgba(239,68,68,0.08); --red-border: rgba(239,68,68,0.2);
+  --purple: #a78bfa; --purple-dim: rgba(167,139,250,0.08); --purple-border: rgba(167,139,250,0.2);
+  --mono: 'Courier New', monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: var(--mono); min-height: 100vh; }
+header {
+  border-bottom: 1px solid var(--border); padding: 0 2rem; display: flex; align-items: center;
+  justify-content: space-between; height: 56px; position: sticky; top: 0; background: var(--bg); z-index: 200;
+}
+.logo { font-size: 11px; letter-spacing: .18em; color: var(--text2); }
+.logo span { color: var(--purple); }
+.back-link { font-size: 10px; letter-spacing: .08em; color: var(--cyan); text-decoration: none; border: 1px solid var(--cyan-border); padding: 6px 12px; }
+.back-link:hover { background: var(--cyan-dim); }
+.wrap { max-width: 860px; margin: 0 auto; padding: 2.5rem 1.5rem 4rem; }
+.eyebrow { font-size: 10px; letter-spacing: .14em; color: var(--purple); margin-bottom: 8px; }
+.title { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+.sub { font-size: 12.5px; color: var(--text2); max-width: 680px; margin-bottom: 20px; line-height: 1.6; }
+
+/* ---- Picker screen ---- */
+.picker-grid { display: flex; flex-direction: column; gap: 12px; }
+.picker-card {
+  background: var(--surface); border: 1px solid var(--border); padding: 1.4rem 1.6rem;
+  text-align: left; cursor: pointer; font-family: var(--mono); color: var(--text);
+}
+.picker-card:hover { border-color: var(--cyan-border); }
+.picker-tag { display: inline-block; font-size: 9px; letter-spacing: .08em; padding: 3px 8px; background: var(--purple-dim); border: 1px solid var(--purple-border); color: var(--purple); margin-bottom: 10px; }
+.picker-ticket { font-size: 10px; letter-spacing: .06em; color: var(--text3); float: right; }
+.picker-report { font-size: 13px; line-height: 1.6; color: var(--text2); margin-top: 4px; }
+.picker-meta { font-size: 10px; color: var(--text3); margin-top: 10px; letter-spacing: .04em; }
+
+/* ---- Investigation screen ---- */
+.lab-topbar { display: flex; gap: 14px; margin-bottom: 18px; flex-wrap: wrap; }
+.lab-stage {
+  background: var(--surface); border: 1px solid var(--border); padding: 10px 16px; flex: 1; min-width: 140px; text-align: center;
+}
+.lab-stage-val { font-size: 16px; font-weight: 700; color: var(--cyan); }
+.lab-stage-lbl { font-size: 9px; letter-spacing: .08em; color: var(--text3); margin-top: 4px; }
+
+.ticket-card { background: var(--surface); border: 1px solid var(--border); padding: 1.6rem; margin-bottom: 18px; }
+.ticket-tag { display: inline-block; font-size: 9px; letter-spacing: .08em; padding: 3px 8px; background: var(--purple-dim); border: 1px solid var(--purple-border); color: var(--purple); margin-bottom: 10px; }
+.ticket-num { float: right; font-size: 10px; color: var(--text3); letter-spacing: .04em; }
+.ticket-report { font-size: 14px; line-height: 1.7; color: var(--text); font-style: italic; }
+
+.section-lbl { font-size: 10px; letter-spacing: .1em; color: var(--text2); margin: 22px 0 10px; }
+
+.evidence-grid { display: flex; flex-direction: column; gap: 8px; }
+.evidence-btn {
+  text-align: left; background: var(--surface2); border: 1px solid var(--border2); color: var(--text2);
+  padding: 12px 16px; font-size: 12.5px; font-family: var(--mono); cursor: pointer; line-height: 1.5;
+}
+.evidence-btn:hover { border-color: var(--cyan-border); color: var(--text); }
+.evidence-btn.checked { background: var(--cyan-dim); border-color: var(--cyan-border); color: var(--cyan); }
+.evidence-btn .eb-check { float: right; font-size: 10px; }
+
+.evidence-result {
+  background: var(--surface2); border: 1px solid var(--border2); border-left: 2px solid var(--cyan-border);
+  padding: 12px 16px; margin-top: 6px; margin-bottom: 4px; font-size: 12px; line-height: 1.7;
+}
+.evidence-result .er-reveal { color: var(--text); font-weight: 600; margin-bottom: 6px; }
+.evidence-result .er-note { color: var(--text2); }
+
+.hyp-options { display: flex; flex-direction: column; gap: 8px; }
+.hyp-option {
+  text-align: left; background: var(--surface2); border: 1px solid var(--border2); color: var(--text2);
+  padding: 12px 16px; font-size: 12.5px; font-family: var(--mono); cursor: pointer; line-height: 1.5;
+}
+.hyp-option:hover { border-color: var(--cyan-border); color: var(--text); }
+.hyp-option[disabled] { cursor: default; }
+
+.lab-nav-row { display: flex; justify-content: space-between; margin-top: 20px; gap: 10px; }
+.nav-btn {
+  font-size: 10px; letter-spacing: .06em; padding: 10px 18px; background: var(--surface);
+  border: 1px solid var(--border2); color: var(--text); cursor: pointer; font-family: var(--mono);
+}
+.nav-btn:hover { border-color: var(--cyan-border); color: var(--cyan); }
+.nav-btn:disabled { opacity: .35; cursor: default; }
+.nav-btn.primary { background: var(--green-dim); border-color: var(--green-border); color: var(--green); }
+
+/* ---- Resolution screen ---- */
+.result-banner { text-align: center; padding: 2rem 1rem; background: var(--surface); border: 1px solid var(--border); margin-bottom: 20px; }
+.result-banner.pass { border-color: var(--green-border); }
+.result-banner.fail { border-color: var(--red-border); }
+.result-banner .rb-status { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+.result-banner.pass .rb-status { color: var(--green); }
+.result-banner.fail .rb-status { color: var(--red); }
+.result-banner .rb-diag { font-size: 13px; color: var(--text2); margin-bottom: 4px; }
+
+.efficiency-note {
+  background: var(--cyan-dim); border: 1px solid var(--cyan-border); color: var(--cyan);
+  padding: 12px 16px; font-size: 11.5px; line-height: 1.7; margin-bottom: 20px;
+}
+.readiness-note {
+  background: var(--cyan-dim); border: 1px solid var(--cyan-border); color: var(--cyan);
+  padding: 12px 16px; font-size: 11.5px; line-height: 1.7; margin-bottom: 20px;
+}
+.readiness-note a { color: var(--cyan); }
+
+.hyp-review { background: var(--surface); border: 1px solid var(--border); padding: 1.4rem; margin-bottom: 12px; }
+.hyp-review.is-correct { border-color: var(--green-border); }
+.hyp-review.is-picked-wrong { border-color: var(--red-border); }
+.hr-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.hr-label { font-size: 12.5px; font-weight: 600; color: var(--text); }
+.hyp-review.is-correct .hr-label { color: var(--green); }
+.hyp-review.is-picked-wrong .hr-label { color: var(--red); }
+.hr-badge { font-size: 9px; letter-spacing: .06em; padding: 2px 8px; white-space: nowrap; margin-left: 10px; }
+.hr-badge.correct { background: var(--green-dim); border: 1px solid var(--green-border); color: var(--green); }
+.hr-badge.picked { background: var(--red-dim); border: 1px solid var(--red-border); color: var(--red); }
+.hr-exp { font-size: 11.5px; line-height: 1.7; color: var(--text2); }
+
+.remediation-card { background: var(--surface); border: 1px solid var(--green-border); padding: 1.4rem; margin-bottom: 20px; }
+.remediation-card .rc-lbl { font-size: 10px; letter-spacing: .08em; color: var(--green); margin-bottom: 8px; }
+.remediation-card .rc-text { font-size: 12.5px; line-height: 1.7; color: var(--text); }
+
+.investigation-log { background: var(--surface); border: 1px solid var(--border); padding: 1.4rem; margin-bottom: 20px; }
+.investigation-log .il-lbl { font-size: 10px; letter-spacing: .08em; color: var(--text2); margin-bottom: 10px; }
+.il-row { font-size: 11.5px; line-height: 1.7; color: var(--text2); padding: 4px 0; border-bottom: 1px solid var(--border); }
+.il-row:last-child { border-bottom: none; }
+.il-row .il-relevant { color: var(--cyan); }
+.il-row .il-irrelevant { color: var(--text3); }
+
+.retake-row { text-align: center; margin: 24px 0; }
+.start-btn {
+  font-size: 11px; letter-spacing: .06em; padding: 12px 24px; background: var(--green-dim);
+  border: 1px solid var(--green-border); color: var(--green); cursor: pointer; font-family: var(--mono);
+}
+.start-btn:hover { background: var(--green-border); }
+
+.footer-links { display: flex; gap: 10px; margin-top: 32px; padding-top: 20px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+.footer-links a {
+  font-size: 10px; letter-spacing: .06em; color: var(--text2); text-decoration: none;
+  border: 1px solid var(--border2); padding: 8px 14px;
+}
+.footer-links a:hover { color: var(--cyan); border-color: var(--cyan-border); }
+
+@media (max-width: 560px) {
+  .lab-topbar { flex-direction: column; }
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">TSM <span>SHELL</span> · A+ TROUBLESHOOTING LAB</div>
+  <a class="back-link" href="/html/tsm-career-training-platform.html">← BACK TO PLATFORM</a>
+</header>
+
+<div class="wrap">
+  <div class="eyebrow">IT SUPPORT · COMPTIA A+ · TROUBLESHOOTING LAB</div>
+  <div class="title">A+ Troubleshooting Lab</div>
+  <div class="sub">Progressive-evidence tickets, not multiple choice. Investigate whatever you want, in whatever order — then diagnose. Every source you check (relevant or not) is tracked for an after-action investigation-efficiency note, and every diagnosis feeds the same domain and concept mastery data behind Question Coach, the Timed Assessment, and the Readiness Dashboard.</div>
+
+  <div id="lab-root"></div>
+
+  <div class="footer-links">
+    <a href="/html/l1-copilot/l1-ticket-copilot.html">← L1 TICKET COPILOT</a>
+    <a href="aplus-practice.html">A+ QUESTION COACH →</a>
+    <a href="aplus-learn.html">A+ LEARN MODE →</a>
+    <a href="aplus-assessment.html">A+ TIMED ASSESSMENT →</a>
+    <a href="aplus-readiness.html">A+ READINESS DASHBOARD →</a>
+  </div>
+</div>
+
+<script src="data/aplus-lab-scenarios.js"></script>
+<script src="js/aplus-engine.js"></script>
+<script>
+/* Troubleshooting Lab: Scenario → Investigate → Hypothesis → Test →
+   Evidence → Resolution → Explain. One scenario at a time from
+   APLUS_LAB_SCENARIOS. Checking evidence never blocks or scores —
+   real L1 work involves ruling things out — but is logged for the
+   after-action "investigation efficiency" note. Diagnosis feeds
+   TSMAplusEngine.recordAttempt() same as every other A+ tool, keyed
+   by objective + the hypothesis's concept tag. */
+
+let scenario = null;
+let checked = [];      // ids of evidence checked, in click order
+let diagnosisId = null;
+let stage = 'picker';  // picker | investigate | diagnose | resolved
+
+function bank() {
+  return (typeof APLUS_LAB_SCENARIOS !== 'undefined') ? APLUS_LAB_SCENARIOS : [];
+}
+
+function findEvidence(id) {
+  return scenario.evidence.find(e => e.id === id);
+}
+
+function openScenario(id) {
+  scenario = bank().find(s => s.id === id);
+  checked = [];
+  diagnosisId = null;
+  stage = 'investigate';
+  render();
+  try { window.scrollTo(0, 0); } catch (e) { /* not critical */ }
+}
+
+function toggleEvidence(id) {
+  const i = checked.indexOf(id);
+  if (i === -1) checked.push(id);
+  else checked.splice(i, 1);
+  render();
+}
+
+function goToDiagnose() {
+  stage = 'diagnose';
+  render();
+}
+
+function backToInvestigate() {
+  stage = 'investigate';
+  render();
+}
+
+function pickHypothesis(id) {
+  if (diagnosisId !== null) return; // locked once submitted
+  diagnosisId = id;
+  const h = scenario.hypotheses.find(x => x.id === id);
+
+  // Feed the shared mastery store — same interface every other A+ tool
+  // uses, keyed by this scenario's objective + the hypothesis's concept.
+  TSMAplusEngine.recordAttempt(scenario.objective, h.concept, !!h.correct);
+
+  stage = 'resolved';
+  render();
+  try { window.scrollTo(0, 0); } catch (e) { /* not critical */ }
+}
+
+function restartLab() {
+  scenario = null;
+  checked = [];
+  diagnosisId = null;
+  stage = 'picker';
+  render();
+}
+
+function render() {
+  const root = document.getElementById('lab-root');
+  if (stage === 'picker') { root.innerHTML = renderPicker(); return; }
+  if (stage === 'investigate') { root.innerHTML = renderInvestigate(); return; }
+  if (stage === 'diagnose') { root.innerHTML = renderDiagnose(); return; }
+  root.innerHTML = renderResolved();
+}
+
+function renderPicker() {
+  const list = bank();
+  if (!list.length) {
+    return `<div class="picker-card"><div class="picker-report">No scenarios available yet.</div></div>`;
+  }
+  return `<div class="picker-grid">${list.map(s => `
+    <button class="picker-card" onclick="openScenario('${s.id}')">
+      <span class="picker-ticket">${s.ticketNumber}</span>
+      <div class="picker-tag">${s.objective.toUpperCase().replace(/-/g, ' ')}</div>
+      <div class="picker-report">${s.userReport}</div>
+      <div class="picker-meta">${s.evidence.length} evidence sources · ${s.hypotheses.length} possible diagnoses</div>
+    </button>`).join('')}</div>`;
+}
+
+function renderInvestigate() {
+  const evHtml = scenario.evidence.map(e => {
+    const isChecked = checked.includes(e.id);
+    let resultHtml = '';
+    if (isChecked) {
+      resultHtml = `<div class="evidence-result"><div class="er-reveal">${e.reveal}</div><div class="er-note">${e.note}</div></div>`;
+    }
+    return `
+      <button class="evidence-btn ${isChecked ? 'checked' : ''}" onclick="toggleEvidence('${e.id}')">
+        ${e.label}<span class="eb-check">${isChecked ? '✓ CHECKED' : 'CHECK →'}</span>
+      </button>
+      ${resultHtml}`;
+  }).join('');
+
+  return `
+    <div class="lab-topbar">
+      <div class="lab-stage"><div class="lab-stage-val">INVESTIGATE</div><div class="lab-stage-lbl">STAGE 1 OF 2</div></div>
+      <div class="lab-stage"><div class="lab-stage-val">${checked.length} / ${scenario.evidence.length}</div><div class="lab-stage-lbl">SOURCES CHECKED</div></div>
+    </div>
+
+    <div class="ticket-card">
+      <span class="ticket-num">${scenario.ticketNumber}</span>
+      <div class="ticket-tag">${scenario.objective.toUpperCase().replace(/-/g, ' ')}</div>
+      <div class="ticket-report">"${scenario.userReport}"</div>
+    </div>
+
+    <div class="section-lbl">EVIDENCE — CHECK WHATEVER YOU WANT, IN ANY ORDER</div>
+    <div class="evidence-grid">${evHtml}</div>
+
+    <div class="lab-nav-row">
+      <button class="nav-btn" onclick="restartLab()">← CHOOSE A DIFFERENT TICKET</button>
+      <button class="nav-btn primary" onclick="goToDiagnose()">READY TO DIAGNOSE →</button>
+    </div>`;
+}
+
+function renderDiagnose() {
+  const hypHtml = scenario.hypotheses.map(h => `
+    <button class="hyp-option" onclick="pickHypothesis('${h.id}')">${h.label}</button>`).join('');
+
+  return `
+    <div class="lab-topbar">
+      <div class="lab-stage"><div class="lab-stage-val">DIAGNOSE</div><div class="lab-stage-lbl">STAGE 2 OF 2</div></div>
+      <div class="lab-stage"><div class="lab-stage-val">${checked.length} / ${scenario.evidence.length}</div><div class="lab-stage-lbl">SOURCES CHECKED</div></div>
+    </div>
+
+    <div class="ticket-card">
+      <span class="ticket-num">${scenario.ticketNumber}</span>
+      <div class="ticket-tag">${scenario.objective.toUpperCase().replace(/-/g, ' ')}</div>
+      <div class="ticket-report">"${scenario.userReport}"</div>
+    </div>
+
+    <div class="section-lbl">WHAT'S THE DIAGNOSIS? (LOCKS ON SUBMIT)</div>
+    <div class="hyp-options">${hypHtml}</div>
+
+    <div class="lab-nav-row">
+      <button class="nav-btn" onclick="backToInvestigate()">← BACK TO EVIDENCE</button>
+      <div></div>
+    </div>`;
+}
+
+function renderResolved() {
+  const picked = scenario.hypotheses.find(h => h.id === diagnosisId);
+  const isCorrect = !!picked.correct;
+
+  const relevantTotal = scenario.evidence.filter(e => e.relevant).length;
+  const relevantChecked = scenario.evidence.filter(e => e.relevant && checked.includes(e.id)).length;
+  const irrelevantChecked = scenario.evidence.filter(e => !e.relevant && checked.includes(e.id)).length;
+
+  let efficiencyMsg;
+  if (relevantChecked === relevantTotal && irrelevantChecked === 0) {
+    efficiencyMsg = `Efficient investigation — you checked all ${relevantTotal} relevant source${relevantTotal === 1 ? '' : 's'} and nothing else.`;
+  } else if (relevantChecked === relevantTotal) {
+    efficiencyMsg = `You checked all ${relevantTotal} relevant source${relevantTotal === 1 ? '' : 's'}, plus ${irrelevantChecked} that didn't bear on the diagnosis — realistic (ruling things out is real L1 work), just noting it.`;
+  } else {
+    efficiencyMsg = `You diagnosed on ${relevantChecked} of ${relevantTotal} relevant sources${irrelevantChecked ? ` (plus ${irrelevantChecked} that didn't bear on it)` : ''} — worth checking the rest next time before committing to a diagnosis.`;
+  }
+
+  const logHtml = scenario.evidence.map(e => {
+    const wasChecked = checked.includes(e.id);
+    if (!wasChecked) return '';
+    return `<div class="il-row"><span class="${e.relevant ? 'il-relevant' : 'il-irrelevant'}">${e.relevant ? '● RELEVANT' : '○ RULED OUT'}</span> — ${e.label}</div>`;
+  }).join('') || '<div class="il-row">No evidence checked before diagnosing.</div>';
+
+  const hypHtml = scenario.hypotheses.map(h => {
+    const isPicked = h.id === diagnosisId;
+    const cls = h.correct ? 'is-correct' : (isPicked ? 'is-picked-wrong' : '');
+    let badge = '';
+    if (h.correct) badge = '<span class="hr-badge correct">CORRECT DIAGNOSIS</span>';
+    else if (isPicked) badge = '<span class="hr-badge picked">YOUR DIAGNOSIS</span>';
+    return `
+      <div class="hyp-review ${cls}">
+        <div class="hr-head"><span class="hr-label">${h.label}</span>${badge}</div>
+        <div class="hr-exp">${h.explanation}</div>
+      </div>`;
+  }).join('');
+
+  return `
+    <div class="result-banner ${isCorrect ? 'pass' : 'fail'}">
+      <div class="rb-status">${isCorrect ? '✓ CORRECT DIAGNOSIS' : '✗ NOT QUITE'}</div>
+      <div class="rb-diag">You diagnosed: ${picked.label}</div>
+    </div>
+
+    <div class="efficiency-note">${efficiencyMsg}</div>
+
+    ${isCorrect ? `
+    <div class="remediation-card">
+      <div class="rc-lbl">REMEDIATION</div>
+      <div class="rc-text">${scenario.remediation}</div>
+    </div>` : ''}
+
+    <div class="readiness-note">This result has been recorded into your domain and concept mastery. <a href="aplus-readiness.html">Check your updated Readiness Dashboard →</a></div>
+
+    <div class="section-lbl">EVERY DIAGNOSIS, EXPLAINED</div>
+    ${hypHtml}
+
+    <div class="investigation-log">
+      <div class="il-lbl">INVESTIGATION LOG</div>
+      ${logHtml}
+    </div>
+
+    <div class="retake-row">
+      <button class="start-btn" onclick="restartLab()">TRY ANOTHER TICKET →</button>
+    </div>`;
+}
+
+render();
+</script>
+</body>
+</html>
