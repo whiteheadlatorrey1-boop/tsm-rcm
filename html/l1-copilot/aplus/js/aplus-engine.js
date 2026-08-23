@@ -130,6 +130,69 @@ const TSMAplusEngine = (function () {
     saveMastery({});
   }
 
+  /* ---------- Readiness Dashboard (Phase 4 rollup) ---------- */
+  // Reports on the FULL domain set (all 9 Core 1 / Core 2 objectives),
+  // including ones with zero attempts — getMasteryReport() only reports
+  // domains that already have data, which hides the "haven't touched
+  // this yet" signal that matters most for exam readiness.
+
+  const STRONG_THRESHOLD = 85;
+  const DEVELOPING_THRESHOLD = 60;
+
+  function statusFor(pct, attempted) {
+    if (!attempted) return 'not-started';
+    if (pct >= STRONG_THRESHOLD) return 'strong';
+    if (pct >= DEVELOPING_THRESHOLD) return 'developing';
+    return 'needs-work';
+  }
+
+  function buildRecommendation(domains, overallPct, untouchedCount) {
+    if (untouchedCount > 0) {
+      return `${untouchedCount} domain${untouchedCount === 1 ? '' : 's'} not started yet — coverage is dragging readiness down as much as accuracy is. Practice every domain at least once before trusting this score.`;
+    }
+    const needsWork = Object.values(domains).filter(d => d.status === 'needs-work');
+    if (needsWork.length) {
+      const names = needsWork.map(d => d.label).join(', ');
+      return `${needsWork.length} domain${needsWork.length === 1 ? '' : 's'} still need${needsWork.length === 1 ? 's' : ''} work: ${names}. Focus practice there before your next assessment.`;
+    }
+    const developing = Object.values(domains).filter(d => d.status === 'developing');
+    if (developing.length) {
+      const names = developing.map(d => d.label).join(', ');
+      return `Solid coverage overall — ${developing.length} domain${developing.length === 1 ? '' : 's'} still developing: ${names}. A bit more practice there and you're exam-ready.`;
+    }
+    return `All domains are strong (${overallPct}% overall). You're tracking exam-ready — consider a timed assessment to confirm.`;
+  }
+
+  function getReadinessReport() {
+    const data = loadMastery();
+    const objectives = data.objectives || {};
+    const domains = {};
+    let untouchedCount = 0;
+    let pctSum = 0;
+    let domainCount = 0;
+
+    ['core1', 'core2'].forEach(coreKey => {
+      const list = (typeof APLUS_OBJECTIVES !== 'undefined' && APLUS_OBJECTIVES[coreKey]) ? APLUS_OBJECTIVES[coreKey] : [];
+      list.forEach(o => {
+        domainCount++;
+        const rec = objectives[o.id];
+        const attempted = !!(rec && rec.total > 0);
+        const correct = rec ? rec.correct : 0;
+        const total = rec ? rec.total : 0;
+        const pct = attempted ? Math.round((correct / total) * 100) : null;
+        const status = statusFor(pct, attempted);
+        if (!attempted) untouchedCount++;
+        pctSum += attempted ? pct : 0;
+        domains[o.id] = { label: o.label, core: coreKey, attempted, correct, total, pct, status };
+      });
+    });
+
+    const overallPct = domainCount ? Math.round(pctSum / domainCount) : 0;
+    const recommendation = buildRecommendation(domains, overallPct, untouchedCount);
+
+    return { domains, overallPct, untouchedCount, recommendation };
+  }
+
   /* ---------- Learn Mode progress ---------- */
   // Separate from mastery (which tracks quiz accuracy). This just tracks
   // which concept lessons a student has opened, keyed the same way
@@ -191,6 +254,7 @@ const TSMAplusEngine = (function () {
     getMasteryReport,
     getWeakConcepts,
     resetMastery,
+    getReadinessReport,
     markLessonRead,
     isLessonRead,
     getLearnProgressByObjective

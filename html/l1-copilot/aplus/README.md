@@ -59,18 +59,28 @@ current official exam objectives if CompTIA revises them; only
 - Tie into real L1 ticket scenarios for cross-over practice
 
 **Phase 4 — Certification readiness**
+- ✅ A+ Readiness dashboard (`aplus-readiness.html`) — Core 1 / Core 2
+  rollup across ALL 9 domains, including ones with zero attempts
+  (`getReadinessReport()` on the engine reports the full domain set,
+  not just ones with data, unlike `getMasteryReport()`). Shows an
+  overall readiness ring, per-domain status
+  (not-started/needs-work/developing/strong) with a progress bar, and
+  a plain-language recommendation that prioritizes coverage gaps over
+  accuracy gaps (an untouched domain drags the score down as much as
+  a weak one). Linked from Learn Mode, Question Coach, L1 Ticket
+  Copilot, and the career training platform's A+ app cards. Verified
+  via jsdom across three states (empty, mixed, all-strong).
 - Timed assessment mode (same shape as `servicenow-exam-sim.html`,
-  A+-scoped)
-- A+ Readiness dashboard (Core 1 / Core 2 domain mastery rollup,
-  overall readiness score — `getMasteryReport()` already returns the
-  per-domain numbers this would render)
+  A+-scoped) — not started
 
 **Phase 5 — Career bridge**
 - Interview Mode (technical + communication scoring on a
   troubleshooting walkthrough)
 - A+ → Network+ → Security+ → Cloud pathway
 
-None of Phase 2–5 is started. The engine (`TSMAplusEngine`) was built
-so these can hook into it rather than each needing their own
-data/scoring model — `evaluateAnswer`, `recordAttempt`, and
-`getMasteryReport`/`getWeakConcepts` are the stable interface.
+Phase 3 (Troubleshooting Lab, PBQ simulation), the rest of Phase 4
+(timed assessment), and Phase 5 are not started. The engine
+(`TSMAplusEngine`) was built so these can hook into it rather than
+each needing their own data/scoring model — `evaluateAnswer`,
+`recordAttempt`, `getMasteryReport`/`getWeakConcepts`, and now
+`getReadinessReport` are the stable interface.

@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A+ Readiness Dashboard · TSM Career Training</title>
+<style>
+:root {
+  --bg: #0a0c10; --surface: #111318; --surface2: #181b22;
+  --border: #1e2230; --border2: #2a2f42;
+  --text: #e8eaf0; --text2: #8890a8; --text3: #4a5068;
+  --green: #00d4aa; --green-dim: rgba(0,212,170,0.08); --green-border: rgba(0,212,170,0.2);
+  --cyan: #00d4d4; --cyan-dim: rgba(0,212,212,0.07); --cyan-border: rgba(0,212,212,0.2);
+  --amber: #f59e0b; --amber-dim: rgba(245,158,11,0.08); --amber-border: rgba(245,158,11,0.2);
+  --red: #ef4444; --red-dim: rgba(239,68,68,0.08); --red-border: rgba(239,68,68,0.2);
+  --purple: #a78bfa; --purple-dim: rgba(167,139,250,0.08); --purple-border: rgba(167,139,250,0.2);
+  --mono: 'Courier New', monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: var(--mono); min-height: 100vh; }
+header {
+  border-bottom: 1px solid var(--border); padding: 0 2rem; display: flex; align-items: center;
+  justify-content: space-between; height: 56px; position: sticky; top: 0; background: var(--bg); z-index: 200;
+}
+.logo { font-size: 11px; letter-spacing: .18em; color: var(--text2); }
+.logo span { color: var(--purple); }
+.back-link { font-size: 10px; letter-spacing: .08em; color: var(--cyan); text-decoration: none; border: 1px solid var(--cyan-border); padding: 6px 12px; }
+.back-link:hover { background: var(--cyan-dim); }
+.wrap { max-width: 900px; margin: 0 auto; padding: 2.5rem 1.5rem 4rem; }
+.eyebrow { font-size: 10px; letter-spacing: .14em; color: var(--purple); margin-bottom: 8px; }
+.title { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+.sub { font-size: 12.5px; color: var(--text2); max-width: 680px; margin-bottom: 20px; line-height: 1.6; }
+
+.score-cell {
+  background: var(--surface); border: 1px solid var(--border); padding: 1.8rem;
+  display: flex; align-items: center; gap: 28px; margin-bottom: 16px; flex-wrap: wrap;
+}
+.ring-wrap { position: relative; width: 108px; height: 108px; flex-shrink: 0; }
+.ring-wrap svg { transform: rotate(-90deg); }
+.ring-track { fill: none; stroke: var(--border2); stroke-width: 8; }
+.ring-fill { fill: none; stroke-width: 8; stroke-linecap: round; transition: stroke-dashoffset .4s; }
+.ring-label { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.ring-pct { font-size: 22px; font-weight: 700; color: var(--text); }
+.ring-tag { font-size: 8px; letter-spacing: .08em; color: var(--text2); }
+.score-meta { flex: 1; min-width: 220px; }
+.score-meta .sm-label { font-size: 10px; letter-spacing: .08em; color: var(--text2); margin-bottom: 6px; }
+.score-meta .sm-value { font-size: 15px; color: var(--text); margin-bottom: 4px; }
+.score-meta .sm-count { font-size: 11.5px; color: var(--text2); }
+
+.rec-banner {
+  padding: 12px 16px; font-size: 11.5px; line-height: 1.7; margin-bottom: 22px; border: 1px solid;
+}
+.rec-banner.rec-warn { background: var(--amber-dim); border-color: var(--amber-border); color: var(--amber); }
+.rec-banner.rec-info { background: var(--cyan-dim); border-color: var(--cyan-border); color: var(--cyan); }
+.rec-banner.rec-good { background: var(--green-dim); border-color: var(--green-border); color: var(--green); }
+
+.core-label { font-size: 10px; letter-spacing: .1em; color: var(--purple); margin: 22px 0 10px; }
+.domain-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; margin-bottom: 6px; }
+.d-card { background: var(--surface); border: 1px solid var(--border); padding: 14px 16px; border-left-width: 3px; }
+.d-card.st-not-started { border-left-color: var(--text3); }
+.d-card.st-needs-work { border-left-color: var(--red); }
+.d-card.st-developing { border-left-color: var(--amber); }
+.d-card.st-strong { border-left-color: var(--green); }
+.d-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; gap: 8px; }
+.d-name { font-size: 11.5px; color: var(--text); line-height: 1.4; }
+.d-pct { font-size: 15px; font-weight: 700; color: var(--text2); flex-shrink: 0; }
+.d-card.st-strong .d-pct { color: var(--green); }
+.d-card.st-developing .d-pct { color: var(--amber); }
+.d-card.st-needs-work .d-pct { color: var(--red); }
+.d-bar-outer { height: 4px; background: var(--border2); overflow: hidden; margin: 8px 0 8px; }
+.d-bar-inner { height: 100%; }
+.st-strong .d-bar-inner { background: var(--green); }
+.st-developing .d-bar-inner { background: var(--amber); }
+.st-needs-work .d-bar-inner { background: var(--red); }
+.st-not-started .d-bar-inner { background: var(--text3); }
+.d-bottom { display: flex; justify-content: space-between; align-items: center; }
+.d-status { font-size: 9px; letter-spacing: .07em; padding: 2px 7px; }
+.st-strong .d-status { background: var(--green-dim); border: 1px solid var(--green-border); color: var(--green); }
+.st-developing .d-status { background: var(--amber-dim); border: 1px solid var(--amber-border); color: var(--amber); }
+.st-needs-work .d-status { background: var(--red-dim); border: 1px solid var(--red-border); color: var(--red); }
+.st-not-started .d-status { background: var(--surface2); border: 1px solid var(--border2); color: var(--text2); }
+.d-action { font-size: 10px; color: var(--cyan); text-decoration: none; }
+.d-action:hover { text-decoration: underline; }
+
+.footer-links { display: flex; gap: 10px; margin-top: 32px; padding-top: 20px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+.footer-links a {
+  font-size: 10px; letter-spacing: .06em; color: var(--text2); text-decoration: none;
+  border: 1px solid var(--border2); padding: 8px 14px;
+}
+.footer-links a:hover { color: var(--cyan); border-color: var(--cyan-border); }
+
+@media (max-width: 560px) {
+  .score-cell { flex-direction: column; text-align: center; }
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">TSM <span>SHELL</span> · A+ READINESS DASHBOARD</div>
+  <a class="back-link" href="/html/tsm-career-training-platform.html">← BACK TO PLATFORM</a>
+</header>
+
+<div class="wrap">
+  <div class="eyebrow">IT SUPPORT · COMPTIA A+ · READINESS DASHBOARD</div>
+  <div class="title">A+ Readiness Dashboard</div>
+  <div class="sub">Every Core 1 / Core 2 domain, rolled up into one score — including domains you haven't touched yet. Coverage counts as much as accuracy: a domain with zero attempts drags the score down the same as a weak one.</div>
+
+  <div id="app-root"></div>
+
+  <div class="footer-links">
+    <a href="/html/l1-copilot/l1-ticket-copilot.html">← L1 TICKET COPILOT</a>
+    <a href="aplus-practice.html">A+ QUESTION COACH →</a>
+    <a href="aplus-learn.html">A+ LEARN MODE →</a>
+  </div>
+</div>
+
+<script src="data/aplus-question-bank.js"></script>
+<script src="js/aplus-engine.js"></script>
+<script>
+function statusColorVar(status) {
+  if (status === 'strong') return '#00d4aa';
+  if (status === 'developing') return '#f59e0b';
+  if (status === 'needs-work') return '#ef4444';
+  return '#4a5068';
+}
+
+function recBannerClass(report) {
+  if (report.untouchedCount > 0) return 'rec-warn';
+  const hasNeedsWork = Object.values(report.domains).some(d => d.status === 'needs-work');
+  if (hasNeedsWork) return 'rec-warn';
+  const hasDeveloping = Object.values(report.domains).some(d => d.status === 'developing');
+  if (hasDeveloping) return 'rec-info';
+  return 'rec-good';
+}
+
+function ringSvg(pct) {
+  const r = 46;
+  const c = 2 * Math.PI * r;
+  const offset = c - (Math.min(Math.max(pct, 0), 100) / 100) * c;
+  const color = pct >= 85 ? '#00d4aa' : pct >= 60 ? '#f59e0b' : pct > 0 ? '#ef4444' : '#4a5068';
+  return `
+    <div class="ring-wrap">
+      <svg width="108" height="108" viewBox="0 0 108 108">
+        <circle class="ring-track" cx="54" cy="54" r="${r}"></circle>
+        <circle class="ring-fill" cx="54" cy="54" r="${r}"
+          stroke="${color}"
+          stroke-dasharray="${c}"
+          stroke-dashoffset="${offset}"></circle>
+      </svg>
+      <div class="ring-label">
+        <div class="ring-pct">${pct}%</div>
+        <div class="ring-tag">READY</div>
+      </div>
+    </div>`;
+}
+
+function domainCardHtml(id, d) {
+  const pctDisplay = d.attempted ? `${d.pct}%` : '—';
+  const barWidth = d.attempted ? d.pct : 0;
+  const statusLabel = d.status.replace(/-/g, ' ').toUpperCase();
+  const detail = d.attempted ? `${d.correct}/${d.total} correct` : 'not started';
+  return `
+    <div class="d-card st-${d.status}">
+      <div class="d-top">
+        <div class="d-name">${d.label}</div>
+        <div class="d-pct">${pctDisplay}</div>
+      </div>
+      <div class="d-bar-outer"><div class="d-bar-inner" style="width:${barWidth}%"></div></div>
+      <div class="d-bottom">
+        <span class="d-status">${statusLabel} · ${detail}</span>
+        <a class="d-action" href="aplus-practice.html?objective=${id}">PRACTICE →</a>
+      </div>
+    </div>`;
+}
+
+function renderDashboard() {
+  const report = TSMAplusEngine.getReadinessReport();
+  const root = document.getElementById('app-root');
+
+  const core1Html = Object.keys(report.domains)
+    .filter(id => report.domains[id].core === 'core1')
+    .map(id => domainCardHtml(id, report.domains[id]))
+    .join('');
+  const core2Html = Object.keys(report.domains)
+    .filter(id => report.domains[id].core === 'core2')
+    .map(id => domainCardHtml(id, report.domains[id]))
+    .join('');
+
+  const attemptedCount = Object.keys(report.domains).length - report.untouchedCount;
+  const totalCount = Object.keys(report.domains).length;
+
+  root.innerHTML = `
+    <div class="score-cell">
+      ${ringSvg(report.overallPct)}
+      <div class="score-meta">
+        <div class="sm-label">OVERALL READINESS</div>
+        <div class="sm-value">${report.overallPct}% across all ${totalCount} domains</div>
+        <div class="sm-count">${attemptedCount} of ${totalCount} domains attempted · ${report.untouchedCount} not started</div>
+      </div>
+    </div>
+    <div class="rec-banner ${recBannerClass(report)}">${report.recommendation}</div>
+    <div class="core-label">CORE 1</div>
+    <div class="domain-grid">${core1Html}</div>
+    <div class="core-label">CORE 2</div>
+    <div class="domain-grid">${core2Html}</div>
+  `;
+}
+
+renderDashboard();
+</script>
+</body>
+</html>
