@@ -14,6 +14,7 @@
 
 const TSMAplusEngine = (function () {
   const MASTERY_KEY = 'tsm_aplus_mastery_v1';
+  const LEARN_KEY = 'tsm_aplus_learn_v1';
   const WEAK_THRESHOLD = 0.6;   // below this accuracy (with enough attempts) = weak area
   const MIN_ATTEMPTS_FOR_SIGNAL = 3;
 
@@ -129,6 +130,59 @@ const TSMAplusEngine = (function () {
     saveMastery({});
   }
 
+  /* ---------- Learn Mode progress ---------- */
+  // Separate from mastery (which tracks quiz accuracy). This just tracks
+  // which concept lessons a student has opened, keyed the same way
+  // (`concept` id) so Learn Mode and the practice/weak-concept engine
+  // are always talking about the same thing.
+
+  function getLessonBank() {
+    return (typeof APLUS_LESSONS !== 'undefined') ? APLUS_LESSONS : {};
+  }
+
+  function loadLearnProgress() {
+    try {
+      const raw = localStorage.getItem(LEARN_KEY);
+      return raw ? JSON.parse(raw) : {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function saveLearnProgress(data) {
+    try {
+      localStorage.setItem(LEARN_KEY, JSON.stringify(data));
+    } catch (e) { /* storage unavailable — progress just won't persist */ }
+  }
+
+  function markLessonRead(conceptId) {
+    if (!conceptId) return;
+    const data = loadLearnProgress();
+    data[conceptId] = { readAt: Date.now() };
+    saveLearnProgress(data);
+    return data;
+  }
+
+  function isLessonRead(conceptId) {
+    const data = loadLearnProgress();
+    return !!data[conceptId];
+  }
+
+  // Per-objective read count vs. total concepts available, so Learn Mode
+  // can show "2 of 2 read" style progress in the domain picker.
+  function getLearnProgressByObjective() {
+    const lessons = getLessonBank();
+    const progress = loadLearnProgress();
+    const report = {};
+    Object.keys(lessons).forEach(conceptId => {
+      const obj = lessons[conceptId].objective;
+      if (!report[obj]) report[obj] = { read: 0, total: 0 };
+      report[obj].total++;
+      if (progress[conceptId]) report[obj].read++;
+    });
+    return report;
+  }
+
   return {
     buildSession,
     getQuestionById,
@@ -136,7 +190,10 @@ const TSMAplusEngine = (function () {
     recordAttempt,
     getMasteryReport,
     getWeakConcepts,
-    resetMastery
+    resetMastery,
+    markLessonRead,
+    isLessonRead,
+    getLearnProgressByObjective
   };
 })();
 
