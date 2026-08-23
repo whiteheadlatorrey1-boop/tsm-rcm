@@ -2508,6 +2508,13 @@ app.use(docRouter);
 app.use('/api/rcm', require('./routes/rcm-relay'));
 app.use('/api/rcm', require('./routes/rcm-requirements'));
 
+// ── INPHUSIONSYS (multi-vertical demo data: employees, anomalies, IT tickets) ──
+// See server/routes/inphusionsys.js header for the full endpoint contract.
+// Covers all 11 verticals; /scenarios and /run-live are legacy aliases kept
+// for the 5 original front-end injections (construction.html, legal.html,
+// finops-command-suite-v2.html, hc-denial-war-room.html, l1-ticket-copilot.html).
+app.use('/api/inphusionsys', require('./server/routes/inphusionsys'));
+
 // ── FINANCIAL INTELLIGENCE (finance-index.html) ─────────────────────────────
 // Groq-backed chat (per-tab assistant) + audit engine with real persisted
 // audit-log entries. See routes/finance-chat.js header for the full contract.
