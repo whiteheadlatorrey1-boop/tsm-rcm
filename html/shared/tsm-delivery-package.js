@@ -19,7 +19,7 @@
  *   Exception Report       <- opts.explainItems filtered to open findings,
  *                            same list Quality Report scored
  *   Risk Report            <- high-severity subset of the same findings
- *   Audit Trail            <- TSM.evidenceLedger.forDomain(domain), if the
+ *   Audit Trail            <- TSM.evidenceLedger.getByDomain(domain), if the
  *                            evidence ledger is loaded — this is real,
  *                            already-recorded provenance, not synthesized
  *   Recommended Actions   <- TSMExecutiveOutcome.build()'s whatShouldWeDo
@@ -43,8 +43,11 @@
   'use strict';
 
   function getAuditTrail(domain) {
-    if (global.TSM && global.TSM.evidenceLedger && typeof global.TSM.evidenceLedger.forDomain === 'function') {
-      return global.TSM.evidenceLedger.forDomain(domain);
+    // getByDomain() -- this previously called .forDomain(), a method that
+    // never existed on EvidenceLedger, so auditTrail was always [] even
+    // when evidence-ledger.js was loaded and populated.
+    if (global.TSM && global.TSM.evidenceLedger && typeof global.TSM.evidenceLedger.getByDomain === 'function') {
+      return global.TSM.evidenceLedger.getByDomain(domain);
     }
     return []; // evidence-ledger.js not loaded in this context — honest empty, not fabricated
   }

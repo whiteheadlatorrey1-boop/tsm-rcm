@@ -3709,6 +3709,30 @@ setInterval(buildStratBriefTab, 30000);
 
     TSMExecKit.renderExplainability(EXP_ID, items, { openFirst: true });
 
+    // Record each decision shown above into the evidence ledger -- this is
+    // exactly the trigger evidence-ledger.js's own header comment documents
+    // ("A record is written any time BNCA... emits a decision that gets
+    // shown to a human -- i.e. anything that lands on an executive portal").
+    // Best-effort/additive, same fail-soft convention as the rest of this
+    // page (hcFeedExceptions below, HITL gate writes, etc.) -- an item
+    // missing a field just yields a sparser record, never a thrown error.
+    try {
+      if (window.TSM && window.TSM.evidenceLedger && Array.isArray(items)) {
+        items.forEach(function (item, i) {
+          if (!item || !item.claim) return;
+          window.TSM.evidenceLedger.record({
+            domain: 'Healthcare',
+            decisionId: item.id || ('hc-' + i + '-' + item.claim.slice(0, 40)),
+            summary: item.claim,
+            ruleIds: item.sources || [],
+            confidence: (item.confidence != null) ? item.confidence : null,
+            severity: item.severity || null,
+            dataPoints: item.dataPoints || []
+          });
+        });
+      }
+    } catch (e) { console.warn('[hc-evidence-ledger] record error:', e); }
+
     // Feed the same explain items into the Exception/Case Queues below.
     // hcFeedExceptions is defined further down the page (after
     // tsm-exceptions.js/tsm-case-manager.js load) and attached to
@@ -3828,6 +3852,10 @@ function tsmWriteScopedExec(vertical, missionId){
 <script src="/html/shared/tsm-active-member.js"></script>
 <script src="/html/shared/tsm-case-manager.js"></script>
 <script src="/html/js/widgets/tsm-case-widget.js"></script>
+<!-- TSM TRUST EVIDENCE LEDGER — Roadmap #9 Client Trust Package needs a real
+     audit trail (TSMDeliveryPackage.getAuditTrail()) to read from; same
+     script already loaded by the BPO strategist. Additive/best-effort. -->
+<script src="/html/shared/runtime/trust-evidence/evidence-ledger.js"></script>
 <script>
   TSMExceptionWidget.mount('tsm-exception-queue', { sector: 'healthcare' });
   if (typeof TSMCaseWidget !== 'undefined') {
