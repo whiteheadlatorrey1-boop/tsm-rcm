@@ -4,18 +4,16 @@
  *
  * For each node card with data-vertical, injects:
  *   ⚡ BNCA AI SYNTHESIS panel (right column)
- *   GENERATE FULL NARRATIVE button → Groq AI → localStorage
+ *   GENERATE FULL NARRATIVE button → server-proxied AI → localStorage
  *   OPEN NODE ↗ button → window.open node URL
  *
  * Requires: tsm-mission-system.js loaded first
- * API key: localStorage tsm_groq_key
+ * AI calls route through the server-side /api/chat proxy — no client-side
+ * API key needed.
  */
 
 (function() {
   'use strict';
-
-  const GROQ_MODEL = 'openai/gpt-oss-120b';
-  const GROQ_URL   = 'https://api.groq.com/openai/v1/chat/completions';
 
   /* ── NODE CONFIG ───────────────────────────────── */
   const NODE_MAP = {
@@ -170,13 +168,6 @@
       const box = document.getElementById(`bnca-box-${vertical}`);
       const tag = document.getElementById(`bnca-tag-${vertical}`);
 
-      const apiKey = localStorage.getItem('tsm_groq_key');
-      if (!apiKey) {
-        box.className = 'tsm-bnca-box error';
-        box.textContent = 'ERROR: No API key. Set tsm_groq_key in localStorage.';
-        return;
-      }
-
       btn.disabled = true;
       btn.textContent = '⏳ GENERATING...';
       box.className = 'tsm-bnca-box loading';
@@ -199,23 +190,15 @@ Schema:
 }`;
 
       try {
-        const res = await fetch(GROQ_URL, {
+        const res = await fetch('/api/chat', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`
-          },
-          body: JSON.stringify({
-            model: GROQ_MODEL,
-            max_tokens: 600,
-            temperature: 0.4,
-            messages: [{ role: 'user', content: systemPrompt }]
-          })
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: systemPrompt, conversationHistory: [] })
         });
 
-        if (!res.ok) throw new Error(`Groq ${res.status}`);
+        if (!res.ok) throw new Error(`AI backend ${res.status}`);
         const data = await res.json();
-        let raw = data.choices?.[0]?.message?.content || '';
+        let raw = data.answer || data.choices?.[0]?.message?.content || '';
         raw = raw.replace(/```json|```/g, '').trim();
 
         const parsed = JSON.parse(raw);

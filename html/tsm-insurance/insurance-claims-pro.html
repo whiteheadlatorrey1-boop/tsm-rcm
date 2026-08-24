@@ -2715,16 +2715,6 @@ Example: DENIAL NOTICE — Claim #12847. CPT 27447 Total Knee Replacement denied
                         <div class="dp-info" id="dp-proc-info">Load or paste an insurance document to begin neural
                             processing</div>
                     </div>
-                    <div class="dp-key-row">
-                        <div class="dp-key-dot" id="dp-key-dot"></div>
-                        <div class="dp-key-lbl">TSM Neural Core Key (Groq)</div>
-                        <input class="dp-key-input" id="dp-api-key" type="password" placeholder="gsk_..."
-                            oninput="dpOnKeyInput(this.value)">
-                        <button class="dp-btn dp-btn-ghost" style="font-size:8px;padding:5px 10px"
-                            onclick="dpTestKey()">Test</button>
-                        <span id="dp-key-status"
-                            style="font-size:9px;color:#3a4456;font-family:'Courier New',monospace"></span>
-                    </div>
                 </div>
 
                 <!-- PIPELINE FLOW -->
@@ -2912,48 +2902,12 @@ Example: DENIAL NOTICE — Claim #12847. CPT 27447 Total Knee Replacement denied
             <script>
                 // ══════════════════════════════════════════════
                 // DOC PROCESSOR — CONSTRUCTION-STYLE ENGINE
+                // Routes through the server-side /api/chat proxy
+                // (routes/finance-chat.js) — no client-side key needed.
                 // ══════════════════════════════════════════════
-                let DP_KEY = localStorage.getItem('tsm_groq_key') || '';
-                let DP_MODEL = 'openai/gpt-oss-120b';
                 let dpDocText = '';
                 let dpActiveEngines = 0;
                 let dpDocsProcessed = parseInt(localStorage.getItem('tsm_ins_docs') || '0');
-
-                // Init key
-                if (DP_KEY) {
-                    document.getElementById('dp-api-key').value = DP_KEY;
-                    document.getElementById('dp-key-dot').classList.add('ok');
-                }
-
-                function dpOnKeyInput(v) {
-                    DP_KEY = v.trim();
-                    localStorage.setItem('tsm_groq_key', DP_KEY);
-                    document.getElementById('dp-key-dot').className = DP_KEY.startsWith('gsk_') ? 'dp-key-dot ok' : 'dp-key-dot';
-                    dpUpdateStatus();
-                }
-
-                async function dpTestKey() {
-                    const key = document.getElementById('dp-api-key').value.trim();
-                    document.getElementById('dp-key-status').textContent = 'testing...';
-                    document.getElementById('dp-key-status').style.color = '#ffb300';
-                    try {
-                        const r = await fetch('https://api.groq.com/openai/v1/models', { headers: { 'Authorization': 'Bearer ' + key } });
-                        const d = await r.json();
-                        if (d.data) {
-                            DP_KEY = key; localStorage.setItem('tsm_groq_key', key);
-                            document.getElementById('dp-key-dot').classList.add('ok');
-                            document.getElementById('dp-key-status').textContent = '✓ connected';
-                            document.getElementById('dp-key-status').style.color = '#00e676';
-                            dpUpdateStatus();
-                        } else {
-                            document.getElementById('dp-key-status').textContent = '✗ ' + (d.error?.message || 'invalid');
-                            document.getElementById('dp-key-status').style.color = '#ff3d57';
-                        }
-                    } catch (e) {
-                        document.getElementById('dp-key-status').textContent = '✗ network error';
-                        document.getElementById('dp-key-status').style.color = '#ff3d57';
-                    }
-                }
 
                 document.getElementById('dp-doc-text').addEventListener('input', function () {
                     dpDocText = this.value.trim();
@@ -2962,7 +2916,7 @@ Example: DENIAL NOTICE — Claim #12847. CPT 27447 Total Knee Replacement denied
 
                 function dpUpdateStatus() {
                     const ok = dpDocText.length > 20;
-                    document.getElementById('dp-fire-btn').disabled = !ok || !DP_KEY;
+                    document.getElementById('dp-fire-btn').disabled = !ok;
                     document.getElementById('dp-doc-txt').textContent = ok ? dpDocText.length + ' chars loaded' : 'No document loaded';
                     document.getElementById('dp-proc-info').textContent = ok
                         ? '✓ Document ready · ' + dpDocText.split(/\s+/).length + ' words'
@@ -3353,32 +3307,19 @@ Max 280 words.`,
                 }
 
                 async function dpGroqStream(sys, usr, onChunk, onDone, onError, maxTok = 700) {
-                    if (!DP_KEY) { onError('No Groq API key. Enter your gsk_ key above.'); return; }
                     try {
-                        const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+                        const res = await fetch('/api/chat', {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + DP_KEY },
-                            body: JSON.stringify({
-                                model: DP_MODEL, stream: true, max_tokens: maxTok,
-                                messages: [{ role: 'system', content: sys }, { role: 'user', content: usr }]
-                            })
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ message: usr, conversationHistory: [], context: sys })
                         });
-                        if (!res.ok) { const e = await res.json(); onError(e.error?.message || 'API error ' + res.status); return; }
-                        const reader = res.body.getReader();
-                        const dec = new TextDecoder();
-                        let buf = '', total = 0;
-                        while (true) {
-                            const { done, value } = await reader.read();
-                            if (done) { onDone(total); break; }
-                            buf += dec.decode(value, { stream: true });
-                            const lines = buf.split('\n'); buf = lines.pop();
-                            for (const line of lines) {
-                                const data = line.replace(/^data: /, '').trim();
-                                if (data === '[DONE]') { onDone(total); return; }
-                                if (!data || data[0] === ':') continue;
-                                try { const j = JSON.parse(data); const tok = j.choices?.[0]?.delta?.content; if (tok) { total += tok.length; onChunk(tok); } } catch { }
-                            }
-                        }
+                        const raw = await res.text();
+                        let d;
+                        try { d = raw ? JSON.parse(raw) : {}; } catch (e) { d = {}; }
+                        if (!res.ok || d.error) { onError((d.error && (d.error.message || d.error)) || 'API error ' + res.status); return; }
+                        const text = d.answer || d.choices?.[0]?.message?.content || '';
+                        onChunk(text);
+                        onDone(text.length);
                     } catch (e) { onError(e.message); }
                 }
 
@@ -3418,7 +3359,6 @@ Max 280 words.`,
                 }
 
                 async function dpFireAll() {
-                    if (!DP_KEY) { toast('⚠ Enter your Groq API key (gsk_...) to fire engines', 'error'); return; }
                     if (!dpDocText || dpDocText.trim().length < 20) { toast('⚠ Load or paste a document first', 'error'); return; }
                     const saved = dpDocText;
                     dpClearAll();
@@ -4490,35 +4430,19 @@ function getOfflineRouting(denial, payer) {
 }
  
 // ═══════════════════════════════════════════════════════════════
-// GROQ API — openai/gpt-oss-120b
+// AI — routes through the server-side /api/chat proxy
+// (routes/finance-chat.js) — no client-side key needed.
 // ═══════════════════════════════════════════════════════════════
 async function callGroq(content, context) {
-  // In production, replace with actual Groq API key or use a backend proxy
-  const apiKey = window.GROQ_API_KEY || '';
-  
-  if (!apiKey || apiKey === 'YOUR_GROQ_API_KEY') {
-    throw new Error('Groq API key not configured');
-  }
- 
-  const response = await fetch(GROQ_API, {
+  const response = await fetch('/api/chat', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`
-    },
-    body: JSON.stringify({
-      model: GROQ_MODEL,
-      max_tokens: 1024,
-      messages: [
-        {role: 'system', content: CLAIMS_SYSTEM},
-        {role: 'user', content}
-      ]
-    })
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: content, conversationHistory: [], context: CLAIMS_SYSTEM })
   });
  
-  if (!response.ok) throw new Error(`Groq API error: ${response.status}`);
+  if (!response.ok) throw new Error(`AI backend error: ${response.status}`);
   const data = await response.json();
-  return data.choices?.[0]?.message?.content || 'No response generated.';
+  return data.answer || data.choices?.[0]?.message?.content || 'No response generated.';
 }
  
 // GROQ CHAT
@@ -4568,28 +4492,19 @@ async function sendGroqPrompt(msg) {
  
   let reply = '';
   try {
-    const apiKey = window.GROQ_API_KEY || '';
-    if (!apiKey || apiKey === 'YOUR_GROQ_API_KEY') throw new Error('no key');
- 
-    const response = await fetch(GROQ_API, {
+    const response = await fetch('/api/chat', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: GROQ_MODEL,
-        max_tokens: 1024,
-        messages: [
-          {role: 'system', content: CLAIMS_SYSTEM},
-          ...groqConvHistory
-        ]
+        message: msg,
+        conversationHistory: groqConvHistory.slice(0, -1).slice(-10),
+        context: CLAIMS_SYSTEM
       })
     });
  
     if (!response.ok) throw new Error(`${response.status}`);
     const data = await response.json();
-    reply = data.choices?.[0]?.message?.content || 'No response.';
+    reply = data.answer || data.choices?.[0]?.message?.content || 'No response.';
     groqConvHistory.push({role: 'assistant', content: reply});
   } catch(e) {
     reply = getOfflineGroqReply(msg);
@@ -4634,7 +4549,7 @@ When authorization was obtained but omitted from the claim:
  
 Timeline: Most commercial payers allow corrected claims within 90-180 days. Medicare allows up to 365 days from date of service.
  
-⚡ Connect your Groq API key (window.GROQ_API_KEY) for live AI responses.`;
+⚡ Connected to TSM Neural Core for live AI responses.`;
   }
   if (m.includes('grace period') || m.includes('retro') || m.includes('termination') || m.includes('co-27')) {
     return `ACA GRACE PERIOD — CO-27 Denial Analysis
@@ -4656,7 +4571,7 @@ KEY REGULATORY CITE: 45 CFR 156.270 | 45 CFR 155.430 (termination notices)
  
 ⚡ Connect Groq API for live personalized analysis.`;
   }
-  return `TSM CLAIMS INTELLIGENCE (Offline Mode)\n\nYour question has been received. To get live AI-powered responses using Groq's openai/gpt-oss-120b model:\n\n1. Set window.GROQ_API_KEY = 'your-groq-api-key' in your browser console\n2. Get a free API key at console.groq.com\n3. Groq is free and extremely fast — typical response time < 1 second\n\nIn the meantime, use the Live Missions and Flashcard modules for comprehensive claims training content.\n\nYour question: "${msg.substring(0,100)}..."\n\nThis would be answered with detailed revenue cycle intelligence including denial codes, payer-specific rules, appeal timelines, and documentation requirements.`;
+  return `TSM CLAIMS INTELLIGENCE (Offline Mode)\n\nThe AI backend could not be reached for this question.\n\nIn the meantime, use the Live Missions and Flashcard modules for comprehensive claims training content.\n\nYour question: "${msg.substring(0,100)}..."\n\nThis would be answered with detailed revenue cycle intelligence including denial codes, payer-specific rules, appeal timelines, and documentation requirements.`;
 }
 </script><script>
 // NULL-SAFE TOAST — fixes Cannot set properties of null crash

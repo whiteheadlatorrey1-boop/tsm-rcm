@@ -1034,14 +1034,6 @@ async function tsmAI(s,u,m){try{const r=await fetch('/api/chat',{method:'POST',h
   </div>
 </div>
 
-<!-- TSM NEURAL CORE KEY BAR -->
-<div class="key-bar">
-  <span class="key-label">⚡ TSM NEURAL CORE API KEY:</span>
-  <input type="password" class="key-input" id="tsmNeuralCoreKey" placeholder="gsk_...  (required for AI features)" />
-  <button class="key-save" data-tsm-action="saveKey" data-tsm-args="">SET KEY</button>
-  <span class="key-status" id="keyStatus"></span>
-</div>
-
 <!-- HEADER -->
 <div class="header">
   <div class="header-brand">
@@ -1715,7 +1707,6 @@ async function tsmAI(s,u,m){try{const r=await fetch('/api/chat',{method:'POST',h
 
 <script>
 // ─── STATE ───────────────────────────────────────────────────────────────────
-let tsmNeuralCoreKey = localStorage.getItem('tsm_tsm-neural-core_key') || '';
 const TSM_NEURAL_CORE_URL = '/api/chat';
 const MODEL = 'openai/gpt-oss-120b';
 const chatHistory = [];
@@ -1741,12 +1732,7 @@ Provide specific, actionable, expert-level compliance guidance. Reference specif
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 window.onload = () => {
-  if (tsmNeuralCoreKey) {
-    document.getElementById('tsmNeuralCoreKey').value = tsmNeuralCoreKey;
-    document.getElementById('keyStatus').textContent = '✓ KEY SET';
-    document.getElementById('keyStatus').className = 'key-status ok';
-    document.getElementById('aiEngineStatus').textContent = 'LIVE';
-  }
+  document.getElementById('aiEngineStatus').textContent = 'LIVE';
   updateClock();
   setInterval(updateClock, 1000);
   renderFrameworkCards();
@@ -1757,15 +1743,6 @@ window.onload = () => {
 function updateClock() {
   const now = new Date();
   document.getElementById('clock').textContent = now.toISOString().replace('T',' ').slice(0,19) + ' UTC';
-}
-
-function saveKey() {
-  tsmNeuralCoreKey = document.getElementById('tsmNeuralCoreKey').value.trim();
-  if (!tsmNeuralCoreKey) { alert('Enter a TSM Neural Core API key'); return; }
-  localStorage.setItem('tsm_tsm-neural-core_key', tsmNeuralCoreKey);
-  document.getElementById('keyStatus').textContent = '✓ KEY SET';
-  document.getElementById('keyStatus').className = 'key-status ok';
-  document.getElementById('aiEngineStatus').textContent = 'LIVE';
 }
 
 // ─── NAVIGATION ───────────────────────────────────────────────────────────────
@@ -1875,12 +1852,10 @@ function buildGuideContext() {
 }
 
 // ─── TSM NEURAL CORE API ─────────────────────────────────────────────────────────────────
-// Tries the server-side proxy at /api/chat first — the key lives server-side
-// so no setup is required. The route now accepts an optional `context`
-// field (added alongside this fix) carrying the full SYSTEM persona, so it
-// reaches the model on the primary path too, not just guide-step context in
-// the message. Falls back to a direct Groq call using a session-only key
-// from Settings (top bar) only if the proxy is unreachable.
+// Routes through the real server-side proxy (routes/finance-chat.js POST
+// /api/chat) — the key lives server-side, no client-side key needed. The
+// route accepts an optional `context` field carrying the full SYSTEM
+// persona, folded in alongside any live guide-step context.
 async function tsmNeuralCoreChat(messages, maxTokens = 2048) {
   const withoutSystem = messages.filter(m => m.role !== 'system');
   const systemMsg = messages.find(m => m.role === 'system');
@@ -1889,51 +1864,26 @@ async function tsmNeuralCoreChat(messages, maxTokens = 2048) {
   const guideCtx = buildGuideContext();
   const composedMsg = guideCtx ? `${guideCtx}\n\n${lastUser?.content || ''}` : (lastUser?.content || '');
 
-  let proxyReachable = true;
+  let resp;
   try {
-    const resp = await fetch(TSM_NEURAL_CORE_URL, {
+    resp = await fetch(TSM_NEURAL_CORE_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message: composedMsg, conversationHistory, context: systemMsg?.content })
     });
-    if (resp.ok) {
-      const data = await resp.json();
-      if (data.answer && !data.degraded) return data.answer;
-      if (data.answer) proxyReachable = false; // degraded response — fall through to direct key if we have one
-    } else if (resp.status !== 404) {
-      const err = await resp.json().catch(() => ({}));
-      throw new Error(err.error || `Server error ${resp.status}`);
-    } else {
-      proxyReachable = false;
-    }
-  } catch (e) {
-    if (e.message && !e.message.startsWith("Failed to fetch")) throw e;
-    proxyReachable = false;
-  }
-
-  if (!tsmNeuralCoreKey) {
-    throw new Error('Server AI proxy is not reachable here. Set a fallback TSM Neural Core API key (top bar) and try again.');
-  }
-  let res;
-  try {
-    res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${tsmNeuralCoreKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: MODEL, messages: [{ role: 'system', content: guideCtx ? `${SYSTEM}\n\n${guideCtx}` : SYSTEM }, ...withoutSystem], temperature: 0.4, max_tokens: maxTokens })
-    });
   } catch (networkErr) {
     throw new Error(`Can't reach the AI backend — check your connection or that the server is running.`);
   }
-  const raw = await res.text();
+  const raw = await resp.text();
   let data;
   try {
     data = raw ? JSON.parse(raw) : {};
   } catch (parseErr) {
-    throw new Error(`AI backend returned an unreadable response (status ${res.status})${raw ? ': ' + raw.slice(0, 120) : ' — empty body'}.`);
+    throw new Error(`AI backend returned an unreadable response (status ${resp.status})${raw ? ': ' + raw.slice(0, 120) : ' — empty body'}.`);
   }
-  if (!res.ok) throw new Error(data.error?.message || `Server error ${res.status}`);
+  if (!resp.ok) throw new Error(data.error?.message || `Server error ${resp.status}`);
   if (data.error) throw new Error(data.error.message || 'Unknown AI backend error');
-  return data.content || data.answer || data.choices?.[0]?.message?.content || "";
+  return data.answer || data.content || data.choices?.[0]?.message?.content || "";
 }
 
 // ─── CHAT ─────────────────────────────────────────────────────────────────────

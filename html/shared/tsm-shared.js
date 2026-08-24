@@ -21,31 +21,37 @@ window.TSM = {
   }
 };
 
-// Global Groq caller
-window.callGroq = async function(messages, onStream, model='openai/gpt-oss-120b'){
-  const key = document.querySelector('[id*=groq],[id*=api-key]')?.value
-    || localStorage.getItem('tsm_groq_key') || '';
-  if(!key) throw new Error('No Groq API key');
-  const r = await fetch('https://api.groq.com/openai/v1/chat/completions',{
-    method:'POST',
-    headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
-    body:JSON.stringify({model, max_tokens:1024, messages})
-  });
-  const d = await r.json();
-  const text = d.choices?.[0]?.message?.content || '';
+// Global AI caller — routes through the real server-side proxy
+// (routes/finance-chat.js POST /api/chat, contract: {message,
+// conversationHistory, context} -> {answer}) instead of calling
+// api.groq.com directly from the browser with a key read out of
+// localStorage. No client-side key needed anymore.
+window.callGroq = async function(messages, onStream){
+  const withoutSystem = messages.filter(m => m.role !== 'system');
+  const systemMsg = messages.find(m => m.role === 'system');
+  const lastUser = [...withoutSystem].reverse().find(m => m.role === 'user');
+  const msg = lastUser?.content || '';
+  const conversationHistory = withoutSystem.slice(0, -1);
+
+  let r;
+  try {
+    r = await fetch('/api/chat', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ message: msg, conversationHistory, context: systemMsg?.content })
+    });
+  } catch (networkErr) {
+    throw new Error("Can't reach the AI backend — check your connection or that the server is running.");
+  }
+  const raw = await r.text();
+  let d;
+  try { d = raw ? JSON.parse(raw) : {}; } catch (parseErr) { d = {}; }
+  const text = d.answer || d.text || d.response || '';
   const tok = d.usage?.completion_tokens || 0;
   const spd = Math.round(tok / ((d.usage?.total_time||1)));
   if(onStream) onStream(text, tok, spd);
   return {text, tokens:tok, speed:spd};
 };
-
-// Save groq key to localStorage on input
-document.addEventListener('change', e=>{
-  if(e.target.id?.includes('groq') || e.target.id?.includes('Key')){
-    const v = e.target.value?.trim();
-    if(v) localStorage.setItem('tsm_groq_key', v);
-  }
-});
 
 // TSM click dispatcher
 document.addEventListener('click', e=>{
