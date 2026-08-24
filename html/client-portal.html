@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TSM Client Portal</title>
+<style>
+  :root{
+    --bg:#0a0e14; --panel:#111826; --border:#1f2937; --border-soft:#1a2332;
+    --text:#e6f1ff; --text-dim:#7c8a9e; --accent:#00e5c7; --warn:#ffb454; --danger:#ff5c6c;
+    --mono:'Share Tech Mono', 'SF Mono', Consolas, monospace;
+  }
+  *{box-sizing:border-box}
+  body{
+    background:var(--bg); color:var(--text); font-family:var(--mono);
+    margin:0; min-height:100vh;
+  }
+  header{
+    border-bottom:1px solid var(--border); padding:1.1rem 1.5rem;
+    display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:.5rem;
+  }
+  header h1{font-size:.95rem; color:var(--accent); margin:0; letter-spacing:.06em; text-transform:uppercase}
+  header .who{font-size:.75rem; color:var(--text-dim)}
+  header .who b{color:var(--text)}
+  #logout-btn{
+    background:transparent; border:1px solid var(--border); color:var(--text-dim);
+    font-family:inherit; font-size:.7rem; padding:.4rem .8rem; cursor:pointer; border-radius:4px;
+  }
+  #logout-btn:hover{border-color:var(--danger); color:var(--danger)}
+  main{max-width:1080px; margin:0 auto; padding:1.5rem}
+  .cards{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:.75rem; margin-bottom:1.5rem}
+  .card{background:var(--panel); border:1px solid var(--border); border-radius:6px; padding:.9rem 1rem}
+  .card .label{font-size:.65rem; color:var(--text-dim); text-transform:uppercase; letter-spacing:.05em}
+  .card .value{font-size:1.5rem; color:var(--accent); margin-top:.25rem}
+  .card .sub{font-size:.65rem; color:var(--text-dim); margin-top:.35rem; line-height:1.5}
+  section{margin-bottom:2rem}
+  section h2{font-size:.8rem; color:var(--text-dim); text-transform:uppercase; letter-spacing:.06em; margin:0 0 .75rem; font-weight:normal}
+  table{width:100%; border-collapse:collapse; font-size:.78rem}
+  th{
+    text-align:left; color:var(--text-dim); font-weight:normal; text-transform:uppercase;
+    font-size:.65rem; letter-spacing:.04em; padding:.5rem .6rem; border-bottom:1px solid var(--border);
+  }
+  td{padding:.55rem .6rem; border-bottom:1px solid var(--border-soft)}
+  tbody tr{cursor:pointer}
+  tbody tr:hover{background:#0f1622}
+  .pill{
+    display:inline-block; padding:.15rem .5rem; border-radius:3px; font-size:.65rem;
+    text-transform:uppercase; letter-spacing:.03em; border:1px solid;
+  }
+  .pill.p1{color:var(--danger); border-color:var(--danger)}
+  .pill.p2{color:var(--warn); border-color:var(--warn)}
+  .pill.p3{color:var(--text-dim); border-color:var(--border)}
+  .pill.status{color:var(--accent); border-color:var(--accent)}
+  .doc-row{background:#0d131c; display:none}
+  .doc-row.open{display:table-row}
+  .doc-list{padding:.75rem .6rem; font-size:.75rem; color:var(--text-dim)}
+  .doc-list a{color:var(--accent); text-decoration:none; display:block; padding:.3rem 0}
+  .doc-list a:hover{text-decoration:underline}
+  .empty{color:var(--text-dim); font-size:.8rem; padding:1rem 0}
+  .loading{color:var(--text-dim); font-size:.8rem}
+  #gate{
+    display:flex; align-items:center; justify-content:center; height:100vh; text-align:center;
+    flex-direction:column; gap:.5rem;
+  }
+  #gate a{color:var(--accent)}
+</style>
+</head>
+<body>
+
+<div id="gate" style="display:none">
+  <div style="color:var(--text-dim); font-size:.85rem">Sign in to view your workspace.</div>
+  <a href="/login.html">Go to login →</a>
+</div>
+
+<div id="app" style="display:none">
+  <header>
+    <h1>TSM Client Portal</h1>
+    <div style="display:flex; align-items:center; gap:1rem">
+      <span class="who">Signed in as <b id="client-label">—</b></span>
+      <button id="logout-btn">Sign out</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="cards" id="summary-cards">
+      <div class="loading">Loading summary…</div>
+    </div>
+
+    <section>
+      <h2>Open Work</h2>
+      <div id="cases-wrap"><div class="loading">Loading cases…</div></div>
+    </section>
+
+    <section>
+      <h2>SLA Events</h2>
+      <div id="sla-wrap"><div class="loading">Loading SLA data…</div></div>
+    </section>
+  </main>
+</div>
+
+<script>
+const state = { rollup: null, openDocsFor: null, docsCache: {} };
+
+function escapeHtml(s){
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function fmtDate(iso){
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d)) return '—';
+  return d.toLocaleDateString(undefined, { year:'numeric', month:'short', day:'numeric' });
+}
+function priorityPillClass(p){
+  const key = String(p||'').toUpperCase();
+  if (key === 'P1') return 'p1';
+  if (key === 'P2') return 'p2';
+  return 'p3';
+}
+
+async function boot(){
+  let session;
+  try {
+    const r = await fetch('/api/auth/status');
+    session = await r.json();
+  } catch (e) {
+    document.getElementById('gate').style.display = 'flex';
+    return;
+  }
+
+  if (!session.authenticated || session.role !== 'client') {
+    document.getElementById('gate').style.display = 'flex';
+    return;
+  }
+
+  document.getElementById('app').style.display = 'block';
+  document.getElementById('client-label').textContent = session.label || session.clientId;
+
+  document.getElementById('logout-btn').addEventListener('click', async () => {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    location.href = '/login.html';
+  });
+
+  await loadRollup();
+}
+
+async function loadRollup(){
+  try {
+    const r = await fetch('/api/bpo/reports/client-rollup');
+    const data = await r.json();
+    if (!data.ok) throw new Error(data.error || 'Failed to load workspace data');
+    state.rollup = data.rollup;
+    renderSummary(data.rollup);
+    renderCases(data.rollup.cases || []);
+    renderSla(data.rollup.slaEventsByType || {});
+  } catch (e) {
+    document.getElementById('summary-cards').innerHTML =
+      `<div class="empty">Couldn't load your workspace right now. ${escapeHtml(e.message)}</div>`;
+    document.getElementById('cases-wrap').innerHTML = '';
+    document.getElementById('sla-wrap').innerHTML = '';
+  }
+}
+
+function renderSummary(rollup){
+  const statusEntries = Object.entries(rollup.byStatus || {});
+  const priorityEntries = Object.entries(rollup.byPriority || {});
+  const statusLine = statusEntries.length
+    ? statusEntries.map(([k,v]) => `${escapeHtml(k)}: ${v}`).join(' · ')
+    : 'No status data yet';
+  const priorityLine = priorityEntries.length
+    ? priorityEntries.map(([k,v]) => `${escapeHtml(k)}: ${v}`).join(' · ')
+    : 'No priority data yet';
+
+  document.getElementById('summary-cards').innerHTML = `
+    <div class="card">
+      <div class="label">Total Work Items</div>
+      <div class="value">${rollup.totalWorkItems ?? 0}</div>
+    </div>
+    <div class="card">
+      <div class="label">Avg Open Age</div>
+      <div class="value">${rollup.avgOpenAgeHours != null ? rollup.avgOpenAgeHours + 'h' : '—'}</div>
+    </div>
+    <div class="card">
+      <div class="label">By Status</div>
+      <div class="sub">${statusLine}</div>
+    </div>
+    <div class="card">
+      <div class="label">By Priority</div>
+      <div class="sub">${priorityLine}</div>
+    </div>
+  `;
+}
+
+function renderCases(cases){
+  const wrap = document.getElementById('cases-wrap');
+  if (!cases.length) {
+    wrap.innerHTML = '<div class="empty">No open work items yet.</div>';
+    return;
+  }
+  const rows = cases.map(c => `
+    <tr class="case-row" data-case-id="${escapeHtml(c.caseId)}">
+      <td>${escapeHtml(c.caseId)}</td>
+      <td>${escapeHtml(c.vertical || '—')}</td>
+      <td>${escapeHtml(c.stage || '—')}</td>
+      <td><span class="pill status">${escapeHtml(c.status || '—')}</span></td>
+      <td><span class="pill ${priorityPillClass(c.priority)}">${escapeHtml(c.priority || '—')}</span></td>
+      <td>${fmtDate(c.dueDate)}</td>
+      <td>${c.slaAgeHours != null ? c.slaAgeHours + 'h' : '—'}</td>
+      <td>${fmtDate(c.updatedAt)}</td>
+    </tr>
+    <tr class="doc-row" data-doc-for="${escapeHtml(c.caseId)}">
+      <td colspan="8"><div class="doc-list">Click again to load documents…</div></td>
+    </tr>
+  `).join('');
+
+  wrap.innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th>Case ID</th><th>Vertical</th><th>Stage</th><th>Status</th>
+          <th>Priority</th><th>Due</th><th>SLA Age</th><th>Updated</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+
+  wrap.querySelectorAll('.case-row').forEach(row => {
+    row.addEventListener('click', () => toggleDocs(row.dataset.caseId));
+  });
+}
+
+async function toggleDocs(caseId){
+  const docRow = document.querySelector(`.doc-row[data-doc-for="${CSS.escape(caseId)}"]`);
+  if (!docRow) return;
+
+  const isOpen = docRow.classList.contains('open');
+  document.querySelectorAll('.doc-row.open').forEach(r => r.classList.remove('open'));
+
+  if (isOpen) return;
+  docRow.classList.add('open');
+
+  if (state.docsCache[caseId]) {
+    renderDocs(docRow, state.docsCache[caseId]);
+    return;
+  }
+
+  const cell = docRow.querySelector('.doc-list');
+  cell.textContent = 'Loading documents…';
+  try {
+    const r = await fetch(`/api/bpo/work-items/${encodeURIComponent(caseId)}/documents`);
+    const data = await r.json();
+    if (!data.ok) throw new Error(data.error || 'Failed to load documents');
+    state.docsCache[caseId] = data.documents || [];
+    renderDocs(docRow, state.docsCache[caseId]);
+  } catch (e) {
+    cell.textContent = `Couldn't load documents. ${e.message}`;
+  }
+}
+
+function renderDocs(docRow, documents){
+  const cell = docRow.querySelector('.doc-list');
+  if (!documents.length) {
+    cell.textContent = 'No documents on this case.';
+    return;
+  }
+  cell.innerHTML = documents.map(d => `
+    <a href="/api/bpo/documents/${encodeURIComponent(d.docId || d.id)}/download" target="_blank" rel="noopener">
+      ↓ ${escapeHtml(d.filename || d.docId || d.id)}
+    </a>
+  `).join('');
+}
+
+function renderSla(slaEventsByType){
+  const wrap = document.getElementById('sla-wrap');
+  const entries = Object.entries(slaEventsByType || {});
+  if (!entries.length) {
+    wrap.innerHTML = '<div class="empty">No SLA events recorded yet.</div>';
+    return;
+  }
+  wrap.innerHTML = `
+    <table>
+      <thead><tr><th>Event Type</th><th>Count</th></tr></thead>
+      <tbody>
+        ${entries.map(([type, count]) => `
+          <tr><td>${escapeHtml(type)}</td><td>${count}</td></tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+boot();
+</script>
+</body>
+</html>
