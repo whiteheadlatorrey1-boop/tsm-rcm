@@ -436,6 +436,14 @@ async function bpoGetClient(id) {
  * Creates a client. id is slugified from name, then de-duped by
  * appending -2, -3, ... if it collides with an existing client.
  */
+// Admin controls for pricing/SLA plans (Phase 5). Deliberately minimal:
+// a threshold hour count for SLA breach detection, and a coarse pricing
+// tier + free-text billing note — not a rate table or contract engine.
+// Both are per-client only; no vertical-level default layer yet (nothing
+// in bpo_clients is vertical-scoped today, so a defaults-then-override
+// system would be speculative complexity ahead of a second real use case).
+const BPO_PRICING_TIERS = ['standard', 'premium', 'custom'];
+
 async function bpoCreateClient({ name, contactName, contactEmail, contactPhone, notes }, actor) {
   const clean = (name || '').toString().trim();
   if (!clean) throw new Error('name required');
@@ -455,6 +463,12 @@ async function bpoCreateClient({ name, contactName, contactEmail, contactPhone, 
     contactPhone: (contactPhone || '').toString().trim(),
     notes: (notes || '').toString().trim(),
     status: 'active',
+    // Plan fields default unset — a client with no threshold/tier assigned
+    // behaves exactly as every client did before this existed (SLA report
+    // emits no breach flag, pricing UI has nothing to show).
+    slaThresholdHours: null,
+    pricingTier: null,
+    billingRate: '',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   };
@@ -468,11 +482,40 @@ async function bpoCreateClient({ name, contactName, contactEmail, contactPhone, 
 
 async function bpoUpdateClient(id, fields, actor) {
   const col = await bpoClientsCollection();
-  const allowed = ['name', 'contactName', 'contactEmail', 'contactPhone', 'notes'];
+  const allowedText = ['name', 'contactName', 'contactEmail', 'contactPhone', 'notes', 'billingRate'];
   const $set = { updatedAt: new Date().toISOString() };
-  for (const key of allowed) {
+  for (const key of allowedText) {
     if (fields[key] !== undefined) $set[key] = (fields[key] || '').toString().trim();
   }
+
+  // slaThresholdHours: nullable positive number. null/'' explicitly clears
+  // it (removes SLA breach tracking for this client); anything else must
+  // parse to a finite number > 0.
+  if (fields.slaThresholdHours !== undefined) {
+    const raw = fields.slaThresholdHours;
+    if (raw === null || raw === '') {
+      $set.slaThresholdHours = null;
+    } else {
+      const n = Number(raw);
+      if (!Number.isFinite(n) || n <= 0) {
+        throw new Error('slaThresholdHours must be a positive number, or null to clear it');
+      }
+      $set.slaThresholdHours = n;
+    }
+  }
+
+  // pricingTier: nullable enum. null/'' clears it.
+  if (fields.pricingTier !== undefined) {
+    const raw = fields.pricingTier;
+    if (raw === null || raw === '') {
+      $set.pricingTier = null;
+    } else if (!BPO_PRICING_TIERS.includes(raw)) {
+      throw new Error(`pricingTier must be one of: ${BPO_PRICING_TIERS.join(', ')}, or null to clear it`);
+    } else {
+      $set.pricingTier = raw;
+    }
+  }
+
   const result = await col.findOneAndUpdate(
     { id },
     { $set },
@@ -1929,6 +1972,7 @@ module.exports = {
   bpoGetClient,
   bpoCreateClient,
   bpoUpdateClient,
+  BPO_PRICING_TIERS,
   bpoSetClientStatus,
   bpoListWorkItems,
   bpoGetWorkItem,

@@ -1286,9 +1286,15 @@ app.get('/api/bpo/reports/wip', requireRole(BPO_REPORT_ROLES), async (req, res) 
 
 const BPO_SLA_REPORT_COLUMNS = [
   'caseId', 'clientId', 'vertical', 'type', 'fromStage', 'toStage',
-  'status', 'ageHoursAtEvent', 'actor', 'ts',
+  'status', 'ageHoursAtEvent', 'slaThresholdHours', 'breached', 'actor', 'ts',
 ];
 
+// slaThresholdHours/breached are joined in from bpo_clients.slaThresholdHours
+// (Phase 5 admin controls), not stored on the event itself — a client's
+// threshold can change after the event was recorded, and the report should
+// always reflect the client's current plan, not a snapshot from event time.
+// Both columns come back null/empty for any client with no threshold set,
+// same as before this existed.
 app.get('/api/bpo/reports/sla', requireRole(BPO_REPORT_ROLES), async (req, res) => {
   try {
     const events = await tsmLedger.bpoListSlaEvents({
@@ -1296,7 +1302,25 @@ app.get('/api/bpo/reports/sla', requireRole(BPO_REPORT_ROLES), async (req, res) 
       clientId: req.query.clientId,
       limit: req.query.limit ? parseInt(req.query.limit, 10) : 5000,
     });
-    bpoSendReport(res, 'bpo-sla-report', events, BPO_SLA_REPORT_COLUMNS, req.query.format);
+
+    const clientIds = [...new Set(events.map(e => e.clientId).filter(Boolean))];
+    const thresholdByClient = {};
+    await Promise.all(clientIds.map(async (id) => {
+      const c = await tsmLedger.bpoGetClient(id);
+      thresholdByClient[id] = c && Number.isFinite(c.slaThresholdHours) ? c.slaThresholdHours : null;
+    }));
+
+    const rows = events.map(ev => {
+      const threshold = ev.clientId ? thresholdByClient[ev.clientId] : null;
+      const hasAge = Number.isFinite(ev.ageHoursAtEvent);
+      return {
+        ...ev,
+        slaThresholdHours: threshold,
+        breached: threshold != null && hasAge ? ev.ageHoursAtEvent > threshold : null,
+      };
+    });
+
+    bpoSendReport(res, 'bpo-sla-report', rows, BPO_SLA_REPORT_COLUMNS, req.query.format);
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
