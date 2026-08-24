@@ -36,6 +36,12 @@
  *   TSMCaseManager.createFromException(exceptionRecord, extra?) -> TSMCase
  *     built from a real TSMExceptions record (see field mapping below)
  *   TSMCaseManager.getAll(vertical?) -> TSMCase[] sorted P1..P3
+ *   TSMCaseManager.getAll({ vertical?, tenantId? }) -> TSMCase[], same
+ *     sort, additionally scoped to tenantId when supplied (pilot-readiness
+ *     fix: getAll() previously only filtered by vertical/sector, so every
+ *     client's cases rendered together in one exec portal's Case widget --
+ *     the object form is additive, the plain-string form above still works
+ *     unchanged for any caller that only ever needed vertical scoping)
  *   TSMCaseManager.getById(caseId) -> TSMCase | null
  *   TSMCaseManager.update(caseId, patch) -> TSMCase | null, logs an audit entry
  *   TSMCaseManager.addArtifact(caseId, artifact) -> TSMCase | null
@@ -253,10 +259,27 @@
     return rec;
   }
 
-  function getAll(vertical) {
+  // Accepts either the original plain-string vertical filter, or
+  // { vertical, tenantId } for the pilot-readiness tenant-isolation fix.
+  // A missing/null tenantId matches everything, same "no filter = no
+  // restriction" convention listMissions()/TSMMissionStore already uses --
+  // this only restricts results when a caller actually supplies a tenantId,
+  // it never silently hides cases that predate this fix and have no
+  // tenantId set on them (those still show up for every caller, which is
+  // the safest default until every case-creation call site is confirmed
+  // to always stamp tenantId).
+  function getAll(filter) {
+    var vertical = null, tenantId = null;
+    if (typeof filter === 'string') {
+      vertical = filter;
+    } else if (filter && typeof filter === 'object') {
+      vertical = filter.vertical || null;
+      tenantId = filter.tenantId || null;
+    }
     var tierRank = { P1: 1, P2: 2, P3: 3 };
     return _records
       .filter(function (r) { return !vertical || r.sector === vertical || r.vertical === vertical; })
+      .filter(function (r) { return !tenantId || r.tenantId === tenantId; })
       .slice()
       .sort(function (a, b) { return (tierRank[a.priority] || 4) - (tierRank[b.priority] || 4); });
   }
@@ -419,7 +442,16 @@
   function hydrateFromServer(vertical, opts) {
     if (typeof global.fetch !== 'function') return Promise.resolve(0);
     opts = opts || {};
-    var qs = vertical ? ('?vertical=' + encodeURIComponent(vertical)) : '';
+    // GET /api/bpo/cases (server.js) already accepts ?tenantId= and already
+    // enforces it server-side for client-role sessions -- this was simply
+    // never being sent from the browser, so an internal-role operator's
+    // hydrate pulled every tenant's cases for the vertical. Additive: a
+    // caller that doesn't pass opts.tenantId gets the exact same request
+    // as before.
+    var params = [];
+    if (vertical) params.push('vertical=' + encodeURIComponent(vertical));
+    if (opts.tenantId) params.push('tenantId=' + encodeURIComponent(opts.tenantId));
+    var qs = params.length ? ('?' + params.join('&')) : '';
     return global.fetch('/api/bpo/cases' + qs, { credentials: 'same-origin' })
       .then(function (res) { return res.ok ? res.json() : null; })
       .then(function (body) {

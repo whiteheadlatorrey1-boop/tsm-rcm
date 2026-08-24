@@ -9,6 +9,11 @@
  *   <div id="tsm-case-queue"></div>
  *   <script>TSMCaseWidget.mount('tsm-case-queue', { sector: 'bpo' });</script>
  *
+ *   Pilot-readiness tenant-isolation fix: pass tenantId to scope the queue
+ *   to one client instead of pooling every client's cases together --
+ *   <script>TSMCaseWidget.mount('tsm-case-queue', { sector: 'bpo', tenantId: TSMActiveMember.getId() });</script>
+ *   Omitting tenantId keeps the prior (unscoped) behavior unchanged.
+ *
  * Depends on: tsm-case-manager.js (must load first)
  */
 (function (global) {
@@ -100,8 +105,8 @@
       </style>`;
   }
 
-  function _render(container, sector) {
-    const cases = global.TSMCaseManager ? global.TSMCaseManager.getAll(sector) : [];
+  function _render(container, sector, tenantId) {
+    const cases = global.TSMCaseManager ? global.TSMCaseManager.getAll({ vertical: sector, tenantId: tenantId || null }) : [];
     const rows = cases.length
       ? cases.map(_rowHtml).join('')
       : '<div class="tsm-caseq-empty">No open cases — queue is clear.</div>';
@@ -128,11 +133,12 @@
       return null;
     }
     const sector = opts.sector || null;
+    const tenantId = opts.tenantId || null;
 
-    _render(container, sector);
+    _render(container, sector, tenantId);
 
     if (global.TSMCaseManager) {
-      const unsubscribe = global.TSMCaseManager.subscribe(() => _render(container, sector));
+      const unsubscribe = global.TSMCaseManager.subscribe(() => _render(container, sector, tenantId));
       // Pull server state (server/tsm-ledger-service.js bpo_cases) once on
       // mount so this device/session sees cases created or synced
       // elsewhere -- syncToServer() only pushes local->server; this is the
@@ -140,7 +146,7 @@
       // whatever localStorage had, hydrateFromServer's own notify() (if it
       // finds anything newer) triggers the re-render via the subscription
       // just set up.
-      global.TSMCaseManager.hydrateFromServer(sector).catch(() => {});
+      global.TSMCaseManager.hydrateFromServer(sector, { tenantId }).catch(() => {});
       return unsubscribe;
     }
     console.warn('[TSMCaseWidget] TSMCaseManager not found — rendering static empty state only.');
