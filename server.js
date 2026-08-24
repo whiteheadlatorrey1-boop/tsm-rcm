@@ -2654,6 +2654,13 @@ app.use(docRouter);
 app.use('/api/rcm', require('./routes/rcm-relay'));
 app.use('/api/rcm', require('./routes/rcm-requirements'));
 
+// ── SCHOOLS FINANCIAL EXPOSURE ──────────────────────────────────────────────
+// Server-side rate-card math for the Schools war room. The rate card
+// previously shipped inside the publicly-fetchable schools-model.json; it
+// now lives only in server/private-config/schools/financial-model.json.
+// See routes/schools-financial.js header for the full endpoint contract.
+app.use('/api/schools', require('./routes/schools-financial'));
+
 // ── INPHUSIONSYS (multi-vertical demo data: employees, anomalies, IT tickets) ──
 // See server/routes/inphusionsys.js header for the full endpoint contract.
 // Covers all 11 verticals; /scenarios and /run-live are legacy aliases kept

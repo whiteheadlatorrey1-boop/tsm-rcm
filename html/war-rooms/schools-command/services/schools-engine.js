@@ -146,53 +146,42 @@
       });
     }
 
-    getFinancialModel() {
-      return this.model.financial_model || null;
-    }
-
-    getFundingDelayExposure() {
-      const fm = this.getFinancialModel();
-      const breaches = this.getSlaBreaches('grant_files');
-      if (!fm || fm.funding_delay_cost_per_day == null) {
-        return { total: 0, currency: fm ? fm.currency : 'USD', items: [] };
+    // Financial exposure is now computed server-side against a private rate
+    // card (server/private-config/schools/financial-model.json) that is
+    // never shipped to the browser -- see routes/schools-financial.js.
+    // getFinancialSummary() therefore became async; buildRelayPayload() and
+    // every caller (schools-command.html) await it.
+    async getFinancialSummary() {
+      try {
+        const res = await fetch('/api/schools/financial-summary', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            kpis: this.computeKpis(),
+            grant_breaches: this.getSlaBreaches('grant_files'),
+            exceptions: this.data.exceptions.filter(e => e.stage !== 'remediated')
+          })
+        });
+        if (!res.ok) throw new Error('financial-summary endpoint returned ' + res.status);
+        return res.json();
+      } catch (e) {
+        console.warn('TSMSchoolsEngine: getFinancialSummary failed, falling back to zeroed totals', e);
+        return {
+          currency: 'USD',
+          funding_delay_exposure_total: 0,
+          funding_delay_exposure_items: [],
+          compliance_exposure_total: 0,
+          compliance_exposure_items: [],
+          active_award_value: this.computeKpis().active_award_value,
+          total_exposure: 0,
+          note: 'Financial summary unavailable.',
+          funding_delay_confidence: { confidence: 0, note: ' Financial summary endpoint unreachable.' },
+          compliance_confidence: { confidence: 0, note: ' Financial summary endpoint unreachable.' }
+        };
       }
-      const rate = fm.funding_delay_cost_per_day;
-      const items = breaches.map(b => {
-        const days = Math.max(1, Math.round((b.hours_over / 24) * 10) / 10);
-        const exposure = Math.round(days * rate);
-        return { id: b.id, grantee: b.record && b.record.grantee, stage: b.stage, hours_over: b.hours_over, days_over: days, exposure };
-      }).sort((a, b) => b.exposure - a.exposure);
-      return { total: items.reduce((s, it) => s + it.exposure, 0), currency: fm.currency || 'USD', items };
     }
 
-    getComplianceExposure() {
-      const fm = this.getFinancialModel();
-      const open = this.data.exceptions.filter(e => e.stage !== 'remediated');
-      if (!fm || !fm.compliance_exposure_by_severity) {
-        return { total: 0, currency: fm ? fm.currency : 'USD', items: [] };
-      }
-      const rates = fm.compliance_exposure_by_severity;
-      const items = open.map(e => {
-        const rate = rates[e.severity] != null ? rates[e.severity] : 0;
-        return { id: e.exception_id, grant_id: e.grant_id, type: e.type, severity: e.severity, exposure: rate };
-      }).sort((a, b) => b.exposure - a.exposure);
-      return { total: items.reduce((s, it) => s + it.exposure, 0), currency: fm.currency || 'USD', items };
-    }
 
-    getFinancialSummary() {
-      const delay = this.getFundingDelayExposure();
-      const compliance = this.getComplianceExposure();
-      return {
-        currency: delay.currency || compliance.currency || 'USD',
-        funding_delay_exposure_total: delay.total,
-        funding_delay_exposure_items: delay.items,
-        compliance_exposure_total: compliance.total,
-        compliance_exposure_items: compliance.items,
-        active_award_value: this.computeKpis().active_award_value,
-        total_exposure: delay.total + compliance.total,
-        note: this.model.financial_model ? this.model.financial_model.note : null
-      };
-    }
 
     async _canonical() {
       if (this._canonicalCore) return this._canonicalCore;
@@ -311,14 +300,14 @@
       return res.json();
     }
 
-    buildRelayPayload(aiText) {
+    async buildRelayPayload(aiText) {
       return {
         vertical: 'sch',
         timestamp: Date.now(),
         kpis: this.computeKpis(),
         grant_breaches: this.getSlaBreaches('grant_files'),
         grant_wip: this.getStageWip('grant_files'),
-        financials: this.getFinancialSummary(),
+        financials: await this.getFinancialSummary(),
         records: {
           grant_files: this.data.grant_files,
           monitoring_items: this.data.monitoring_items,

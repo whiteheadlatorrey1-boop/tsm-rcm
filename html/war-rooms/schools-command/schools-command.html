@@ -1969,10 +1969,10 @@ document.addEventListener('DOMContentLoaded',()=>{
   const SCH_DOMAIN = 'SCHOOLS';
   const SCH_RELAY_KEY = 'TSM_' + SCH_DOMAIN + '_RELAY';
 
-  function schWriteRelay(aiText) {
+  async function schWriteRelay(aiText) {
     if (!engine) return;
     try {
-      const payload = engine.buildRelayPayload(aiText || null);
+      const payload = await engine.buildRelayPayload(aiText || null);
       const json = JSON.stringify(payload);
       try { sessionStorage.setItem(SCH_RELAY_KEY, json); } catch (e) { /* noop */ }
       try { localStorage.setItem(SCH_RELAY_KEY, json); } catch (e) { /* noop */ }
@@ -1980,7 +1980,7 @@ document.addEventListener('DOMContentLoaded',()=>{
         try { window.TSM.relay.write(SCH_DOMAIN, payload); } catch (e) { /* noop */ }
       }
       window.dispatchEvent(new CustomEvent('TSM_RELAY_EVENT', { detail: { domain: SCH_DOMAIN, data: payload } }));
-      schPushToSentinel();
+      await schPushToSentinel();
     } catch (e) {
       console.warn('Schools: relay write failed', e);
     }
@@ -2019,36 +2019,23 @@ document.addEventListener('DOMContentLoaded',()=>{
     if (ratio > 0) return 'MED';
     return 'LOW';
   }
-  function schFundingDelayConfidence(fm) {
-    if (!fm || fm.funding_delay_cost_per_day == null) {
-      return { confidence: 30, note: ' Rate card is missing funding_delay_cost_per_day, so exposure defaulted to $0 — treat as unverified.' };
-    }
-    return { confidence: 95, note: '' };
-  }
-  function schComplianceConfidence(fm, breaches) {
-    if (!fm || !fm.compliance_exposure_by_severity) {
-      return { confidence: 30, note: ' Rate card is missing compliance_exposure_by_severity, so exposure defaulted to $0 — treat as unverified.' };
-    }
-    const rates = fm.compliance_exposure_by_severity;
-    const severities = [...new Set(breaches.map(b => b.severity).filter(Boolean))];
-    const missing = severities.filter(s => rates[s] == null);
-    if (missing.length) {
-      return { confidence: 65, note: ` Rate card has no entry for severity level(s) ${missing.join(', ')} — those items priced at $0.` };
-    }
-    return { confidence: 95, note: '' };
-  }
-  function schPushToSentinel() {
+  // Confidence notes (whether the private rate card had a rate for a given
+  // severity/breach type) are now computed server-side alongside the
+  // exposure totals themselves -- see fin.funding_delay_confidence /
+  // fin.compliance_confidence from getFinancialSummary(). The client no
+  // longer has the rate card to reason about, so there's nothing left to
+  // compute here.
+  async function schPushToSentinel() {
     if (!engine) return;
     try {
-      const fin = engine.getFinancialSummary();
+      const fin = await engine.getFinancialSummary();
       const kpis = engine.computeKpis();
-      const fm = engine.getFinancialModel();
       const grantBreaches = engine.getSlaBreaches('grant_files') || [];
       const exceptionBreaches = engine.getSlaBreaches('exceptions') || [];
       const anomalies = [];
 
       if ((fin.funding_delay_exposure_total || 0) > 0 || grantBreaches.length > 0) {
-        const { confidence, note } = schFundingDelayConfidence(fm);
+        const { confidence, note } = fin.funding_delay_confidence || { confidence: 0, note: '' };
         anomalies.push({
           id: 'sch-funding-delay',
           title: 'Grant Funding Delay — SLA Breaches',
@@ -2061,7 +2048,7 @@ document.addEventListener('DOMContentLoaded',()=>{
         });
       }
       if ((fin.compliance_exposure_total || 0) > 0 || exceptionBreaches.length > 0) {
-        const { confidence, note } = schComplianceConfidence(fm, exceptionBreaches);
+        const { confidence, note } = fin.compliance_confidence || { confidence: 0, note: '' };
         anomalies.push({
           id: 'sch-compliance',
           title: 'Open Compliance Exceptions',
@@ -2089,10 +2076,10 @@ document.addEventListener('DOMContentLoaded',()=>{
   // scripts/vertical-capability-coverage.js). Nothing invented: title/
   // summary/exposure all come off the same engine.getFinancialSummary()
   // / schPushToSentinel() anomaly data already computed for the relay.
-  function fireCapabilitySweep_SCH(anomalies) {
+  async function fireCapabilitySweep_SCH(anomalies) {
     if (!engine) return;
     try {
-      const fin = engine.getFinancialSummary();
+      const fin = await engine.getFinancialSummary();
       const worst = (anomalies || []).reduce((w, a) => (!w || (a.exposure || 0) > (w.exposure || 0)) ? a : w, null);
       fetch('/api/enterprise/capability-sweep', {
         method: 'POST',
@@ -2118,7 +2105,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   // user-triggered analysis run), NOT from schWriteRelay()'s other automatic
   // call sites (hydration on load, sample-data load) to avoid creating a
   // mission on every passive page visit.
-  function schCreateMissionFromRelay() {
+  async function schCreateMissionFromRelay() {
     try {
       if (!(window.TSMMissionModel && window.TSMMissionStore)) {
         console.warn('Mission Core not loaded — skipping mission creation, Schools relay write already succeeded.');
@@ -2127,8 +2114,8 @@ document.addEventListener('DOMContentLoaded',()=>{
       const raw = localStorage.getItem('TSM_SCHOOLS_STRATEGIST_RELAY');
       const sentinelPayload = raw ? JSON.parse(raw) : null;
       const anomalies = (sentinelPayload && sentinelPayload.anomalies) || [];
-      const financials = engine.getFinancialSummary();
-      fireCapabilitySweep_SCH(anomalies);
+      const financials = await engine.getFinancialSummary();
+      await fireCapabilitySweep_SCH(anomalies);
       const schSeverityRank = { CRIT: 3, HIGH: 2, MED: 1, LOW: 0 };
       const worst = anomalies.reduce((w, a) => {
         if (!w) return a;
@@ -2266,8 +2253,8 @@ document.addEventListener('DOMContentLoaded',()=>{
     </tbody></table>`;
   }
 
-  function schRenderSnapshot() {
-    const fin = engine.getFinancialSummary();
+  async function schRenderSnapshot() {
+    const fin = await engine.getFinancialSummary();
     const grid = document.getElementById('schSnapGrid');
     grid.innerHTML = `
       <div class="sch-snap-item"><div class="sch-snap-label">FUNDING DELAY EXPOSURE</div><div class="sch-snap-val ${fin.funding_delay_exposure_total > 0 ? 'warn' : ''}">${schFmtMoney(fin.funding_delay_exposure_total)}</div></div>
@@ -2291,14 +2278,14 @@ document.addEventListener('DOMContentLoaded',()=>{
       const result = await engine.runAnalysis();
       const text = result.answer || result.output || JSON.stringify(result, null, 2);
       out.textContent = text;
-      schWriteRelay(text);
-      schCreateMissionFromRelay();
+      await schWriteRelay(text);
+      await schCreateMissionFromRelay();
     } catch (e) {
       out.innerHTML = `<span style="color:var(--red)">Analysis failed: ${e.message}</span>`;
       // Still relay KPI/financial data even when the AI call itself fails --
       // Strategist/Exec Portal shouldn't go dark just because the AI endpoint did.
-      schWriteRelay(null);
-      schCreateMissionFromRelay();
+      await schWriteRelay(null);
+      await schCreateMissionFromRelay();
     }
   }
 
