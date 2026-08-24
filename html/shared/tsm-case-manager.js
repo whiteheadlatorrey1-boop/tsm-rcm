@@ -90,6 +90,13 @@
   function TSMCase(data) {
     data = data || {};
     this.caseId = data.caseId || makeId();
+    // Links this case back to the Mission it was derived from, when the
+    // caller has one (e.g. doc-search-multi's buildCaseFromClassification()
+    // is called right after buildMissionFromClassification() for the same
+    // classification). Additive/optional -- null for any case created
+    // without a mission, same honest-missing-value convention as the rest
+    // of this file (missingFields, priority fallback, etc.).
+    this.missionId = data.missionId || null;
     this.sector = data.sector || 'general';
     this.vertical = data.vertical || data.sector || '';
     this.tenantId = data.tenantId || null;
