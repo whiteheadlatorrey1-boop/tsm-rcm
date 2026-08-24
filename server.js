@@ -119,7 +119,50 @@ const twinsLimiter = rateLimit({
 });
 app.use(['/api/twins', '/api/enterprise-lab'], twinsLimiter);
 
-app.use('/api/', (req, res, next) => (req.path === '/health' ? next() : apiLimiter(req, res, next)));
+// BPO limiter — bulk document intake (batches of dozens-to-hundreds of
+// files, e.g. a client's onboarding upload or a pilot stress test) is
+// legitimate expected load, not abuse — same rationale as twinsLimiter
+// above. Confirmed via scripts/stress-test/run-stress-test.js: a 200-doc
+// batch at realistic concurrency blew through the general apiLimiter's
+// ~1 req/sec average and got legitimate uploads rejected with 429s.
+// Mounted ahead of apiLimiter so it takes precedence for this prefix.
+//
+// The first version of this limiter (300/min, ~5 req/sec) was itself
+// still too low: a re-run of the same stress test against concurrency-10
+// batch uploads sustained ~31 req/sec (200 docs in ~6.4s) and kept
+// hitting 429s on ordinary, non-edge-case documents. Raised to 2000/min
+// (~33 req/sec) to clear that observed real throughput with some
+// headroom — this is a capacity/abuse-tradeoff number, not a hard
+// technical limit, so revisit it if actual client onboarding batches
+// turn out to need more (or you'd rather throttle harder and accept
+// slower batch intake).
+const bpoLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 2000, // ~33 req/sec sustained — covers observed stress-test throughput at concurrency 10
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { ok: false, error: 'Too many requests — please slow down.' },
+});
+app.use('/api/bpo', bpoLimiter);
+
+// General apiLimiter below is mounted on '/api/' as a whole, so without
+// this exclusion list it silently double-applies on top of every
+// path-specific limiter above (twinsLimiter, bpoLimiter) — a request
+// only needs to fail EITHER limiter's budget to get 429'd, and the
+// general one (300 req/5min, ~1 req/sec) is far stricter than the
+// per-prefix ceilings meant to replace it for these paths. Confirmed via
+// scripts/stress-test/run-stress-test.js: raising bpoLimiter to 2000/min
+// alone did not clear the 429s during a batch upload, because every
+// request was still separately being checked against apiLimiter's much
+// lower shared budget underneath. req.path here is relative to the
+// '/api/' mount point (e.g. '/bpo/work-items/123/documents'), matching
+// the same style as the pre-existing '/health' check.
+const API_LIMITER_EXCLUDED_PREFIXES = ['/health', '/bpo', '/twins', '/enterprise-lab'];
+app.use('/api/', (req, res, next) => (
+  API_LIMITER_EXCLUDED_PREFIXES.some(prefix => req.path.startsWith(prefix))
+    ? next()
+    : apiLimiter(req, res, next)
+));
 
 // ── STRUCTURED REQUEST LOGGING — BPO (Phase 5, tractable subset) ───────────
 // One single-line JSON object per BPO API request to stdout (Fly captures
@@ -1072,7 +1115,30 @@ const bpoDocUpload = multer({
   limits: { fileSize: 8 * 1024 * 1024 },
 });
 
-app.post('/api/bpo/work-items/:caseId/documents', requireRole(BPO_INTERNAL_ROLES), bpoDocUpload.single('file'), async (req, res) => {
+// multer's own limit/parsing errors (e.g. LIMIT_FILE_SIZE for an
+// over-8MB file) call next(err) rather than reaching the async route
+// handler below, which otherwise means they fall all the way through to
+// the generic [TSM GLOBAL ERROR] handler and come back as an opaque 500
+// — confirmed via scripts/stress-test/run-stress-test.js, which expects
+// an oversize upload to be a clean 4xx, not a 500. Wrapping multer here
+// catches its MulterError specifically and responds the same shape
+// (`{ ok: false, error }`) as every other error path on this route,
+// with a 413 (Payload Too Large) instead of a generic 400 so clients can
+// tell "too big" apart from a validation problem.
+function bpoDocUploadHandled(req, res, next) {
+  bpoDocUpload.single('file')(req, res, (err) => {
+    if (!err) return next();
+    if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({ ok: false, error: 'file exceeds 8MB upload limit' });
+    }
+    if (err instanceof multer.MulterError) {
+      return res.status(400).json({ ok: false, error: err.message });
+    }
+    return next(err);
+  });
+}
+
+app.post('/api/bpo/work-items/:caseId/documents', requireRole(BPO_INTERNAL_ROLES), bpoDocUploadHandled, async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ ok: false, error: 'No file uploaded' });
 

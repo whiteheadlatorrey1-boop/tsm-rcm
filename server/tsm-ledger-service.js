@@ -1182,7 +1182,14 @@ function truncateUtf8Safe(buf, maxBytes) {
  */
 async function bpoStoreDocument({ caseId, clientId, filename, mimetype, buffer, extractedText, extractionError }, actor) {
   if (!caseId) throw new Error('caseId is required');
-  if (!buffer || !buffer.length) throw new Error('file buffer is required');
+  // Zero-byte uploads are legitimate (e.g. a placeholder file a client
+  // drops before the real one, or an intentionally empty attachment) —
+  // stress-tested via scripts/stress-test/run-stress-test.js, which
+  // flagged the old `!buffer.length` check as wrongly rejecting these
+  // with a 400. Only a genuinely missing buffer (null/undefined, i.e.
+  // multer never attached a file) is an error; an empty-but-present
+  // Buffer is stored as a zero-length document with no extracted text.
+  if (!buffer) throw new Error('file buffer is required');
   if (buffer.length > BPO_DOC_MAX_BYTES) {
     throw new Error(`file exceeds ${BPO_DOC_MAX_BYTES} byte limit`);
   }
