@@ -145,6 +145,14 @@ const bpoLimiter = rateLimit({
 });
 app.use('/api/bpo', bpoLimiter);
 
+// NoSQL operator injection guard — these four route groups build Mongo
+// filters directly from req.query/req.body/req.params (see
+// server/security/mongo-sanitize.js for the exact mechanism). Mounted here,
+// before any route body, so every handler downstream already sees clean
+// input regardless of which ledger function it calls.
+const { mongoSanitize } = require('./server/security/mongo-sanitize');
+app.use(['/api/bpo', '/api/pm', '/api/concierge', '/api/hotelops'], mongoSanitize());
+
 // General apiLimiter below is mounted on '/api/' as a whole, so without
 // this exclusion list it silently double-applies on top of every
 // path-specific limiter above (twinsLimiter, bpoLimiter) — a request
@@ -1249,9 +1257,23 @@ const BPO_REPORT_ROLES = BPO_INTERNAL_ROLES;
 // Minimal CSV serializer — no new dependency for a handful of flat report
 // columns. Quotes any value containing a comma/quote/newline and doubles
 // embedded quotes, per RFC 4180.
+//
+// Columns like caseId/clientId/owner ultimately trace back to free-text
+// fields the war-room UI lets internal staff type (bpoUpsertWorkItem's
+// `owner`, bpoCreateClient's `name`/`contactName`, etc.) — not just IDs the
+// server generated. A value starting with =, +, -, @, or a tab/CR is a
+// formula prefix in Excel/Sheets/LibreOffice; opening a report where a case
+// owner is literally named `=HYPERLINK("http://evil","click")` or
+// `=cmd|'/C calc'!A1` hands that formula execution to whoever opens the
+// download. Prefixing with a leading apostrophe is the standard mitigation
+// (OWASP CSV Injection) — spreadsheet apps render the cell as literal text
+// instead of evaluating it, and the escaped quoting above still applies on
+// top since the apostrophe doesn't change whether the value needs quoting.
 function bpoToCsv(rows, columns) {
+  const FORMULA_PREFIX = /^[=+\-@\t\r]/;
   const esc = (v) => {
-    const s = v === null || v === undefined ? '' : String(v);
+    let s = v === null || v === undefined ? '' : String(v);
+    if (FORMULA_PREFIX.test(s)) s = `'${s}`;
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
   const lines = [columns.join(',')];
