@@ -596,6 +596,12 @@ body::before {
   letter-spacing: .05em; text-transform: uppercase;
 }
 
+.doc-status-pill {
+  font-family: var(--mono); font-size: 9px; padding: 3px 8px;
+  border-radius: 4px; white-space: nowrap; flex-shrink: 0;
+  letter-spacing: .05em; text-transform: uppercase; font-weight: 600;
+}
+
 .doc-filename {
   font-size: 13px; font-weight: 600; color: var(--text);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -1685,6 +1691,96 @@ const DOC_TYPE_COLORS = {
 };
 
 function dtColor(t) { return DOC_TYPE_COLORS[t] || { bg:"rgba(148,163,184,0.12)", text:"#94a3b8" }; }
+
+/* ═══════════════════════════════════════════════════
+   DOC-TYPE ACTIONS — Healthcare + Construction BPO workflow
+   Every doc that lands "Ready" in the index is one of a small set of
+   known documentType values per vertical (see the hc/con seed arrays
+   above and the classifier's DOC_ROUTER_PROMPT). Each type implies a
+   DIFFERENT next action for the person working the queue — an EOB isn't
+   worked the same way as a denial letter. This map is what renderCard()
+   reads to swap the generic "Open Node" button for a type-specific one
+   with a narrative (shown as a tooltip) explaining what the reviewer is
+   actually being asked to do, plus which existing nav function it fires.
+   Scoped to hc/con for now per the BPO build-out priority; other
+   verticals fall back to the generic buttons in renderCard() untouched.
+═══════════════════════════════════════════════════ */
+const DOC_TYPE_ACTIONS = {
+  hc: {
+    "DENIAL": {
+      label: "Start Appeal Review",
+      narrative: "Payer denied this claim. Open the Billing Node to check the denial reason against CPT/ICD coding, confirm timely-filing deadline, and decide appeal vs. write-off.",
+      fn: (id) => openHcNodeWithDoc(id)
+    },
+    "CLAIM APPEAL": {
+      label: "Track Appeal",
+      narrative: "An appeal has already been drafted or filed for this claim. Open the Billing Node to log the payer's response deadline and follow up if it lapses.",
+      fn: (id) => openHcNodeWithDoc(id)
+    },
+    "REMITTANCE": {
+      label: "Reconcile Remittance",
+      narrative: "Payer remittance (835/EOB) batch. Open the Billing Node to match each line against the expected allowed amount and flag underpayments for appeal.",
+      fn: (id) => openHcNodeWithDoc(id)
+    },
+    "DOCUMENT REPORT": {
+      label: "Review Prior Auth",
+      narrative: "Typically a prior-authorization request in this vertical. Open the HC Node to confirm medical-necessity documentation is attached before the submission deadline.",
+      fn: (id) => openHcNodeWithDoc(id)
+    },
+    "ESCALATION": {
+      label: "Open Escalation",
+      narrative: "Flagged by BNCA for high dollar exposure or aging beyond threshold. Needs a reviewer with executive visibility, not routine queue handling.",
+      fn: (id) => openHcNodeWithDoc(id)
+    }
+  },
+  con: {
+    "PERMIT": {
+      label: "Review Permit",
+      narrative: "Permit issued or pending with the municipality. Open the Construction War Room to confirm inspection milestones tied to this permit before work proceeds on site.",
+      fn: (id) => openGenNodeWithDoc(id, "con")
+    },
+    "DOCUMENT REPORT": {
+      label: "Review Change Order",
+      narrative: "Typically a change order or field report in this vertical. Open the Construction War Room to verify cost/schedule impact and get owner sign-off before subs are paid against it.",
+      fn: (id) => openGenNodeWithDoc(id, "con")
+    },
+    "VENDOR INVOICE": {
+      label: "Match Invoice",
+      narrative: "Subcontractor or vendor invoice. Open the Construction War Room to match it against the PO/contract value and confirm lien-waiver status before approving payment.",
+      fn: (id) => openGenNodeWithDoc(id, "con")
+    },
+    "FILING": {
+      label: "Review Filing",
+      narrative: "Incident, OSHA, or zoning filing. Open the Construction War Room to confirm regulatory notification timelines are being met.",
+      fn: (id) => openGenNodeWithDoc(id, "con")
+    },
+    "CONTRACT": {
+      label: "Verify Contract",
+      narrative: "Lien waiver or agreement (e.g. owner-architect). Open the Construction War Room to confirm signature and date validity before payment is released against it.",
+      fn: (id) => openGenNodeWithDoc(id, "con")
+    },
+    "ESCALATION": {
+      label: "Open Escalation",
+      narrative: "Flagged by BNCA for cost/schedule exposure beyond threshold. Needs a reviewer with executive visibility, not routine queue handling.",
+      fn: (id) => openGenNodeWithDoc(id, "con")
+    }
+  }
+};
+function docTypeAction(vertical, documentType) {
+  return (DOC_TYPE_ACTIONS[vertical] && DOC_TYPE_ACTIONS[vertical][documentType]) || null;
+}
+// Single onclick entry point for every type-specific button renderCard()
+// emits. Looked up by (vertical, documentType) at click time rather than
+// having renderCard() inline the action's fn — keeps the button markup to
+// plain string args (safe inside an HTML attribute) instead of serializing
+// a closure, which broke on any action whose body contains a quote (e.g.
+// the con actions passing "con" to openGenNodeWithDoc).
+function runDocTypeAction(vertical, documentType, docId) {
+  const action = docTypeAction(vertical, documentType);
+  if (!action) return;
+  setDocStatus(docId, "in_review");
+  action.fn(docId);
+}
  
 const DEFECT_FLAG_ICONS = {
   "Financing Failure": "💰",
@@ -2419,16 +2515,41 @@ function renderCard(doc, query) {
   const amountCls = isBnca ? "danger" : "hi";
   const openNodeRoute = def.nodes[doc.sourceNode] && def.nodes[doc.sourceNode].route;
 
+  // Status pill: every doc lands "ready" the moment routeDocument() writes
+  // it (see the status: "ready" comment there) and only moves to
+  // in_review/closed via setDocStatus(), called from the type-specific
+  // action button below. Older records saved before this field existed
+  // fall back to "ready" too, since that's what they always implicitly were.
+  const status = doc.status || "ready";
+  const statusPill = {
+    ready:     { text: "● Ready",      bg: "rgba(34,211,160,0.14)",  fg: "#22d3a0" },
+    in_review: { text: "● In Review",  bg: "rgba(251,191,36,0.14)",  fg: "#fbbf24" },
+    closed:    { text: "● Closed",     bg: "rgba(148,163,184,0.14)", fg: "#94a3b8" },
+  }[status] || { text: "● Ready", bg: "rgba(34,211,160,0.14)", fg: "#22d3a0" };
+
+  // hc/con get a type-specific primary action (narrative in the title
+  // tooltip) instead of the generic "Open Node" button; clicking it also
+  // advances the doc to in_review via setDocStatus(). Every other
+  // vertical, and any hc/con documentType not yet mapped in
+  // DOC_TYPE_ACTIONS, falls through to the original generic buttons
+  // unchanged.
+  const typeAction = docTypeAction(currentVertical, doc.documentType);
+  const primaryActionHtml = typeAction
+    ? `<button class="btn-open-node" title="${escapeHtml(typeAction.narrative)}"
+         onclick="runDocTypeAction('${currentVertical}','${escapeHtml(doc.documentType)}','${doc.id}')">↗ ${typeAction.label}</button>`
+    : (openNodeRoute === '__HC_NODE__' ? `<button class="btn-open-node" onclick="openHcNodeWithDoc('${doc.id}')">↗ Open HC Node</button>`
+        : GEN_PLAYBOOK_VERTICALS.has(currentVertical) ? `<button class="btn-open-node" onclick="openGenNodeWithDoc('${doc.id}','${currentVertical}')">↗ Open Node</button>`
+        : openNodeRoute ? `<a class="btn-open-node" href="${openNodeRoute}" target="_blank">↗ Open Node</a>` : "");
+
   return `<div class="doc-card ${isBnca ? "bnca-flag" : ""}" data-id="${doc.id}">
     <div class="doc-card-top">
       <div class="doc-card-title">
         <span class="doc-type-badge" style="background:${dtc.bg};color:${dtc.text};">${hl(doc.documentType, query)}</span>
+        <span class="doc-status-pill" style="background:${statusPill.bg};color:${statusPill.fg};" title="Processing status">${statusPill.text}</span>
         <span class="doc-filename" title="${doc.fileName}">${hl(doc.fileName, query)}</span>
       </div>
       <div class="doc-card-actions">
-      ${openNodeRoute === '__HC_NODE__' ? `<button class="btn-open-node" onclick="openHcNodeWithDoc('${doc.id}')">↗ Open HC Node</button>`
-        : GEN_PLAYBOOK_VERTICALS.has(currentVertical) ? `<button class="btn-open-node" onclick="openGenNodeWithDoc('${doc.id}','${currentVertical}')">↗ Open Node</button>`
-        : openNodeRoute ? `<a class="btn-open-node" href="${openNodeRoute}" target="_blank">↗ Open Node</a>` : ""}
+      ${primaryActionHtml}
       <button class="btn-view" onclick="viewDocument('${doc.id}')">👁 View</button>
       <button class="btn-warroom" onclick="openWarRoomPicker('${doc.id}')">⚡ Send to War Room</button>
       <button class="btn-remove" onclick="removeDoc('${doc.id}')">✕ Remove</button>
@@ -2544,6 +2665,26 @@ function removeDoc(id) {
   saveIndex(loadIndex().filter(d => d.id !== id));
   runSearch();
   refreshTotalCount();
+}
+
+// Status lifecycle for an indexed doc, past its initial "ready" state.
+// "ready"       — set once in routeDocument(); doc is fully processed and
+//                 waiting for a reviewer to act on it (the state most cards
+//                 sit in).
+// "in_review"   — a BPO reviewer opened the doc's node/war room and is
+//                 actively working the case; set by setDocStatus() below,
+//                 called from the doc-type action buttons in renderCard().
+// "closed"      — reviewer marked the case resolved from inside the node
+//                 (appeal filed, invoice matched, permit confirmed, etc).
+// Doesn't touch classification/routing — only this one field — so it's
+// safe to call from any node without re-running the pipeline.
+function setDocStatus(id, status) {
+  const docs = loadIndex();
+  const doc = docs.find(d => d.id === id);
+  if (!doc) return;
+  doc.status = status;
+  saveIndex(docs);
+  runSearch();
 }
 
 function confirmClearAll() {
@@ -3854,6 +3995,15 @@ function routeDocument(fileName, classification, attachment, extraction) {
       sourceNode:    r.sourceNode || nodes[0] || "strategist",
       routing:       nodes,
       timestamp:     Date.now(),
+      // A doc only ever reaches routeDocument() after extraction +
+      // classification + (if flagged) reviewer confirmation have already
+      // completed in processFile() — see the pipeline comment above
+      // processFile(). So the moment it's written to the index it IS the
+      // "processed" terminal state: status stays 'ready' until a BPO
+      // reviewer changes it (claimDoc()/resolveDoc() below), it is never
+      // set anywhere else, and it's what the "Ready" pill in renderCard()
+      // and the batch-upload rollup summary count against.
+      status:        "ready",
      _ext: {
         client:      classification.client  || "",
         ref:         classification.ref     || "",
