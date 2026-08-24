@@ -145,7 +145,24 @@ const bpoLimiter = rateLimit({
 });
 app.use('/api/bpo', bpoLimiter);
 
-app.use('/api/', (req, res, next) => (req.path === '/health' ? next() : apiLimiter(req, res, next)));
+// General apiLimiter below is mounted on '/api/' as a whole, so without
+// this exclusion list it silently double-applies on top of every
+// path-specific limiter above (twinsLimiter, bpoLimiter) — a request
+// only needs to fail EITHER limiter's budget to get 429'd, and the
+// general one (300 req/5min, ~1 req/sec) is far stricter than the
+// per-prefix ceilings meant to replace it for these paths. Confirmed via
+// scripts/stress-test/run-stress-test.js: raising bpoLimiter to 2000/min
+// alone did not clear the 429s during a batch upload, because every
+// request was still separately being checked against apiLimiter's much
+// lower shared budget underneath. req.path here is relative to the
+// '/api/' mount point (e.g. '/bpo/work-items/123/documents'), matching
+// the same style as the pre-existing '/health' check.
+const API_LIMITER_EXCLUDED_PREFIXES = ['/health', '/bpo', '/twins', '/enterprise-lab'];
+app.use('/api/', (req, res, next) => (
+  API_LIMITER_EXCLUDED_PREFIXES.some(prefix => req.path.startsWith(prefix))
+    ? next()
+    : apiLimiter(req, res, next)
+));
 
 // ── STRUCTURED REQUEST LOGGING — BPO (Phase 5, tractable subset) ───────────
 // One single-line JSON object per BPO API request to stdout (Fly captures
