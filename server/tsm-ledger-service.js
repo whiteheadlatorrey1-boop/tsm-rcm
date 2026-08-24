@@ -1058,6 +1058,119 @@ async function bpoListBncaReports({ caseId, limit = 50 } = {}) {
   return col.find(query).sort({ ts: -1 }).limit(limit).toArray();
 }
 
+// ── Client-facing rollup + monthly snapshots (Phase 4) ──────────────────
+// Latorrey's call on scope (2026-08-24): full rollup (WIP + SLA +
+// case-level summaries, same shape family as the internal
+// executive-rollup) rather than a flat WIP/SLA dump, available both
+// on-demand and as a generated monthly snapshot. Deliberately excludes
+// anything the internal executive-rollup also excludes (no SLA
+// breach/leakage/recovery figures — no threshold is defined anywhere in
+// this codebase, and setting one is a client-contract decision per
+// docs/BPO_PRODUCTION_READINESS.md, not something to invent here) and
+// additionally excludes internal-only work-item fields (payload/owner)
+// that have no reason to leave the building.
+const BPO_CLIENT_MONTHLY_REPORTS_COLLECTION = 'bpo_client_monthly_reports';
+
+async function bpoClientMonthlyReportsCollection() {
+  const database = await getDb();
+  return database.collection(BPO_CLIENT_MONTHLY_REPORTS_COLLECTION);
+}
+
+/**
+ * Builds the full client-facing rollup for one clientId: the same
+ * counts/average shape as bpoBuildRollup below (reused, not
+ * reimplemented) plus a case-level summary list stripped to
+ * client-safe fields. Shared by the on-demand report route and the
+ * monthly-snapshot generator so both always agree.
+ */
+async function bpoBuildClientRollup(clientId) {
+  if (!clientId) throw new Error('clientId is required');
+  const [items, slaEvents] = await Promise.all([
+    bpoListWorkItems({ clientId, limit: 5000 }),
+    bpoListSlaEvents({ clientId, limit: 5000 }),
+  ]);
+
+  const byStage = {};
+  const byStatus = {};
+  const byPriority = {};
+  let openAgeSum = 0;
+  let openCount = 0;
+  for (const item of items) {
+    byStage[item.stage] = (byStage[item.stage] || 0) + 1;
+    byStatus[item.status] = (byStatus[item.status] || 0) + 1;
+    byPriority[item.priority] = (byPriority[item.priority] || 0) + 1;
+    if (item.status !== 'resolved' && Number.isFinite(item.slaAgeHours)) {
+      openAgeSum += item.slaAgeHours;
+      openCount += 1;
+    }
+  }
+
+  const slaEventsByType = {};
+  for (const ev of slaEvents) slaEventsByType[ev.type] = (slaEventsByType[ev.type] || 0) + 1;
+
+  // Client-safe case-level summary: no `payload` (raw war-room
+  // extraction detail is internal), no `owner` (internal staff
+  // assignment isn't a client's concern) — just the fields a client
+  // already sees one-at-a-time via GET /api/bpo/work-items/:caseId.
+  const cases = items
+    .sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''))
+    .map(item => ({
+      caseId: item.caseId,
+      vertical: item.vertical,
+      stage: item.stage,
+      status: item.status,
+      priority: item.priority,
+      dueDate: item.dueDate || null,
+      slaAgeHours: item.slaAgeHours,
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt,
+    }));
+
+  return {
+    clientId,
+    totalWorkItems: items.length,
+    byStage,
+    byStatus,
+    byPriority,
+    avgOpenAgeHours: openCount ? Math.round((openAgeSum / openCount) * 100) / 100 : null,
+    slaEventsByType,
+    cases,
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+function bpoCurrentPeriodLabel(date = new Date()) {
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+/**
+ * Persists a point-in-time rollup as that client's snapshot for a given
+ * period (default: current UTC year-month, e.g. "2026-08"). Upsert on
+ * {clientId, periodLabel} so re-running the generator mid-month (or
+ * after a fix) replaces that period's snapshot rather than duplicating
+ * it -- a monthly report is meant to be one canonical artifact per
+ * client per period, not an append-only log.
+ */
+async function bpoSaveClientMonthlyReport(clientId, rollup, periodLabel = bpoCurrentPeriodLabel()) {
+  const col = await bpoClientMonthlyReportsCollection();
+  const now = new Date().toISOString();
+  const doc = { clientId, periodLabel, rollup, generatedAt: now };
+  await col.updateOne({ clientId, periodLabel }, { $set: doc }, { upsert: true });
+  return doc;
+}
+
+async function bpoListClientMonthlyReports({ clientId, limit = 24 } = {}) {
+  const col = await bpoClientMonthlyReportsCollection();
+  const query = {};
+  if (clientId) query.clientId = clientId;
+  return col.find(query).sort({ periodLabel: -1 }).limit(limit).toArray();
+}
+
+async function bpoGetClientMonthlyReport(clientId, periodLabel) {
+  const col = await bpoClientMonthlyReportsCollection();
+  return col.findOne({ clientId, periodLabel });
+}
+
 // =====================================================
 // BPO DOCUMENT STORAGE (Phase 3)
 // This DB is Firestore's MongoDB-compatibility layer, not real MongoDB —
@@ -1843,6 +1956,10 @@ module.exports = {
   bpoListSlaEvents,
   bpoSaveBncaReport,
   bpoListBncaReports,
+  bpoBuildClientRollup,
+  bpoSaveClientMonthlyReport,
+  bpoListClientMonthlyReports,
+  bpoGetClientMonthlyReport,
   // BPO Phase 3: document storage
   bpoStoreDocument,
   bpoListDocuments,

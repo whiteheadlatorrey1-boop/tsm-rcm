@@ -30,11 +30,17 @@ The BPO apps are ready for an internal/supervised pilot (your own team running r
 - **Verified so far:** functional harness (mocked Mongo collections) confirms chunk/reassembly correctness byte-for-byte for both single- and multi-chunk files, oversize rejection, case-scoped listing, soft-delete behavior, and audit-log writes. `node --check` clean on both changed files.
 - **Not yet verified:** a real write/read against the actual Firestore-Mongo-compat backend. The chunking approach was deliberately chosen to avoid GridFS's untested `createIndex()` call, but the 1 MiB assumption itself hasn't been confirmed against this specific backend — run one real upload+download through a booted server with `MONGODB_URI` set before trusting this with real client documents.
 
-### Phase 4 — Reporting — PARTIALLY DONE
-- ~~WIP report export.~~ Done — `GET /api/bpo/reports/wip`, JSON or `?format=csv`, internal roles only.
-- ~~SLA report export.~~ Done — `GET /api/bpo/reports/sla`, JSON or `?format=csv`. Reports the raw SLA event timeline (stage, type, `ageHoursAtEvent`) — no breach/pass flag, since no SLA threshold is defined anywhere in this codebase. Setting one (e.g. "48h = breach for Tier 1 clients") is a client-contract decision, not a code decision.
-- ~~Executive rollup.~~ Done — `GET /api/bpo/reports/executive-rollup`: counts by stage/status/priority, average open-item age, active client count, SLA event counts by type.
-- Client-facing monthly report template. — Not done. Needs a decision on what a client is contractually owed to see (which fields, what cadence, what it's called) before building the template — that's a client-relationship decision, not a code decision.
+### Phase 4 — Reporting — DONE
+- WIP report export. `GET /api/bpo/reports/wip`, JSON or `?format=csv`, internal roles only.
+- SLA report export. `GET /api/bpo/reports/sla`, JSON or `?format=csv`. Reports the raw SLA event timeline (stage, type, `ageHoursAtEvent`) — no breach/pass flag, since no SLA threshold is defined anywhere in this codebase. Setting one (e.g. "48h = breach for Tier 1 clients") is a client-contract decision, not a code decision.
+- Executive rollup. `GET /api/bpo/reports/executive-rollup`: counts by stage/status/priority, average open-item age, active client count, SLA event counts by type.
+- Client-facing report. Scope decided by Latorrey (2026-08-24): full rollup (WIP + SLA counts + case-level summaries), available both on-demand and as a generated monthly snapshot.
+  - `GET /api/bpo/reports/client-rollup` — always-current, client-role scoped to their own `clientId` (staff can pass `?clientId=`).
+  - `GET /api/bpo/reports/client-monthly` — the persisted snapshot for a period (`?period=YYYY-MM`, or most recent if omitted).
+  - `GET /api/bpo/reports/client-monthly/history` — internal-role only, lists which periods exist for a client (period labels + generation timestamps, not full report bodies).
+  - `scripts/generate-bpo-client-monthly-reports.js` — generates + saves the current month's snapshot for every active client (or `--client-id=`/`--period=` for one client/a backfill). Not scheduled by this script — no cron infra exists in this repo; wire it into a Fly Machines scheduled run or GitHub Actions cron when ready.
+  - Case-level summary deliberately strips internal-only fields (`owner`, raw `payload`) — same fields a client already can't see via the existing per-case client-scoped route.
+  - Still explicitly out of scope, same reasoning as the SLA report above: recovery/leakage/risk metrics need a defined formula that isn't in this codebase and isn't a code decision to invent.
 - Recovery / leakage / risk metrics. — Not done, same reason as the SLA breach flag above: these require a defined formula (e.g. what counts as "recovered," what baseline "leakage" is measured against) that isn't in this codebase and isn't mine to invent.
 
 ### Phase 5 — Production Security — PARTIALLY DONE
