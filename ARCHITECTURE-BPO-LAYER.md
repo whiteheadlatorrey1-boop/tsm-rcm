@@ -1,133 +1,178 @@
-# TSM Platform — Vertical Apps / Case Engine / BPO Operations Layer
-## Architecture checkpoint — 2026-08-25
+# TSM Platform — BPO Client Layer & Cross-Vertical Case Rollup
+## Architecture checkpoint — 2026-08-25 (corrected)
 
-Status: proposal, not yet implemented. Written as a checkpoint before designing
-the GCU-style client engagement model, so that model gets built against a named
-architecture instead of an ad-hoc one.
+**Correction notice:** an earlier version of this doc, committed the same
+day, proposed building a Case Engine and a client-facing BPO shell from
+scratch. That was wrong — both already exist, live, wired end to end. This
+version replaces that one. It documents what's actually there (verified
+against `server.js`, `server/tsm-ledger-service.js`,
+`html/shared/tsm-case-manager.js`, `middleware/client-registry.js`, and
+`html/client-portal.html`), and scopes the one real gap found in the process.
 
 ---
 
-## 0. Why this checkpoint exists
-
-Every client engagement to date has meant handing over (or demoing) a specific
-vertical's full three-screen chain — War Room, Strategist, Executive Portal.
-That's fine for a sales demo. It's the wrong shape for a service engagement
-where the client should be submitting and authorizing work, not operating
-inside the platform's own UI.
-
-The fix isn't a new build. It's naming a layer that already exists in embryonic
-form and finishing it:
+## 1. What already exists, end to end (verified)
 
 ```
-                      TSM PLATFORM
-                            │
-              ┌─────────────┴─────────────┐
-              │                           │
-        VERTICAL APPS               BPO OPERATIONS
-     (War Room → Strategist            (client-facing
-        → Exec Portal,                  submit/authorize
-        per §1-8 of                     surface — no
-        MASTER_VERTICAL_                platform access)
-        WALKTHROUGH.md)
-              │                           │
-              └──────────► CASE ENGINE ◄──┘
-                                │
-                                ▼
-                        BPO CASE QUEUE
-                                │
-                    ┌───────────┼───────────┐
-                    ▼           ▼           ▼
-                 Review      Execute      Report
+ VERTICAL EXEC PORTALS                    CLIENT-FACING SIDE
+ (HC, Construction, FinOps,
+  Insurance, Legal, RE,
+  Mortgage, Schools, PM-Copilot,
+  HotelOps, NOC, BPO)
+         │  loads
+         ▼
+ tsm-case-manager.js  ───────sync────►  POST/GET /api/bpo/cases
+ (localStorage: tsm_cases_v1)               │
+                                             ▼
+                                    bpo_cases  (MongoDB, one doc per
+                                     caseId, vertical-scoped field)
+                                             │
+                        ┌────────────────────┼────────────────────┐
+                        ▼                                         ▼
+              bpoBuildClientRollup(clientId)          memberCaseSummary(tenantId)
+              → GET /api/bpo/reports/client-rollup    → GET /api/members/:id/summary
+              (BPO_CLIENT_VIEW_ROLES: admin/           (BPO_INTERNAL_ROLES only —
+               manager/analyst/**client**)              no client-role access)
+                        │
+                        ▼
+              html/client-portal.html
+              (its own auth: /api/auth/status,
+               session { role:'client', clientId, label })
 ```
 
-The client relationship point is the BPO Operations layer, not the vertical
-UI. The vertical apps keep doing exactly what they do today — they become
-internal tooling that TSM operators use to work the queue, not something a
-client ever sees directly.
+**Case creation and sync is real, not a stub.** Every vertical's executive
+portal loads `html/shared/tsm-case-manager.js`, which keeps a local
+(`localStorage`) case store and best-effort syncs it to
+`POST /api/bpo/cases/:caseId` and `GET /api/bpo/cases`, both backed by the
+`bpo_cases` MongoDB collection via `tsmLedger.bpoUpsertCase` /
+`tsmLedger.bpoListCases`. This is called the "Universal Case Engine
+(Roadmap #10)" in the ledger service's own comments — it's a named,
+deliberate piece of work, already shipped.
+
+**The client-facing shell already exists.** `html/client-portal.html` is a
+working page with its own session check (`/api/auth/status`), an "Open
+Work" and "SLA Events" view, and document download links — all driven by
+`GET /api/bpo/reports/client-rollup`, which is role-gated so a `'client'`
+session can only ever see `req.tsmSession.clientId`'s own rollup (server.js
+enforces this server-side, not just hidden client-side).
+
+**Internal data doesn't leak to clients by accident.** `client-package-generator.js`
+maintains an explicit field policy — `SAFE` (passes through), `TRANSLATE`
+(internal shorthand like exclusion codes get a human-readable label before
+a client sees them), `INTERNAL` (never leaves the building — e.g.
+`sourceNode`/`routing`, which "reveals your internal routing architecture").
+This is the actual redaction boundary between operator data and client data.
+
+**Cross-vertical rollup already exists as a named concept: the Member.**
+`tsm_members` is a separate collection (deliberately distinct from
+`bpo_clients` — see §2) keyed by `tenantId`, the same field `bpo_cases`
+already carries. `memberCaseSummary(memberId)` aggregates real `bpo_cases`
+documents filtered by `tenantId`, and returns exact counts broken out
+`byVertical`, `byStatus`, `bySeverity`, plus a carefully-partial-aware
+exposure total (a case with no `exposure` field is excluded from the sum,
+not counted as `$0` — the summary also reports `isExposurePartial` so a UI
+can show the difference between "$0 across N cases" and "no exposure data
+yet"). This is exactly the aggregation a GCU-style engagement needs.
 
 ---
 
-## 1. What already exists (confirmed against source)
+## 2. The actual gap — and why it isn't an oversight
 
-**Every vertical already normalizes into the same three-layer chain** — this
-is the entire premise of `MASTER_VERTICAL_WALKTHROUGH.md` and it holds for all
-8 verticals (HC, Construction, FinOps, Insurance, Legal, RE, Mortgage,
-Schools). That's most of the hard part of a Case Engine already done: there's
-one consistent internal shape to route work through, not eight bespoke ones.
+`bpo_clients` (what `client-portal.html` and the `'client'` role are built
+on) and `tsm_members` (the cross-vertical `tenantId` entity) are two
+separate collections **by deliberate design**, per the comment in
+`tsm-ledger-service.js`:
 
-**A vertical-agnostic event taxonomy is already declared**, in
-`html/shared/runtime/adapters/bpo-runtime-adapter.js`:
+> "A Member is a cross-vertical demo tenant... Reusing `bpo_clients` would
+> collide two meanings of 'client'" — a BPO client pays for document
+> processing; a Member is the multi-vertical tenant whose cases roll up
+> across verticals.
 
-```
-client.intake → document.received → processing.started → processing.completed
-              → quality.exception → sla.breach → delivery.completed → invoice.ready
-```
+That's a sound distinction. The gap isn't the separation — it's that
+**nothing bridges them for a client login.** Concretely:
 
-This is, functionally, the Case Engine's state machine — it's just not wired
-to anything yet. `html/shared/runtime/rules/bpo.js` is registered against the
-`"BPO"` domain but is currently a no-op pass-through (`return input`), i.e. a
-placeholder waiting for real routing logic.
+- `middleware/client-registry.js` issues a session payload of exactly
+  `{ role: 'client', clientId, label }` — no `tenantId` field, ever.
+- `/api/members/:id/summary` (the route that actually returns
+  `memberCaseSummary`, the cross-vertical rollup) is gated
+  `requireRole(BPO_INTERNAL_ROLES)` — `'client'` is not in that list, by
+  design, since `/api/members` is documented as tenant *administration*,
+  "not something a `'client'` session should be listing/creating."
+- So today: a GCU-style engagement spanning Mortgage + FinOps would exist
+  correctly as a `Member` with a real cross-vertical `memberCaseSummary`
+  rollup — but there is no client-facing route or session shape that
+  surfaces it. A GCU contact logging into `client-portal.html` would see,
+  at best, one vertical's `bpo_clients`-scoped rollup, or nothing, not the
+  Member-level view the architecture already supports internally.
 
-**Two relay mechanisms already move state between screens** (per the
-walkthrough's cross-vertical patterns section): legacy verticals use
-per-action JS functions (`escalateToStrategist()`, `writeExecRelay()`),
-newer ones use a standardized `sessionStorage` + `localStorage` +
-`TSM_RELAY_EVENT` pattern (Mortgage, Schools). The newer pattern is the one
-worth extending to feed the Case Engine, since it's already decoupled from any
-single vertical's DOM.
-
-**Known landmine, flagged in `ARCHITECTURE-NOTES.md`:** there have historically
-been duplicate/non-equivalent kernel and enforcer files (`/core/tsm-kernel.js`
-vs `/html/core/tsm-kernel.js`, differing payload shapes) and a duplicate `bpo`
-vertical directory. Those notes say the duplicates were resolved as of
-2026-07-04, but a fresh grep today shows the specific paths named in that
-note no longer exist — worth a quick re-audit before building the Case Engine
-on top of the kernel, so we're wiring to the currently-canonical file, not a
-stale reference from a resolved-but-since-moved duplication.
+This is a small, well-bounded gap — reading data that already exists
+correctly, not building new aggregation.
 
 ---
 
-## 2. What "BPO Operations" needs to be, concretely
+## 3. Scoped reconciliation — minimal-change plan
 
-Not a ninth vertical. A **client-facing shell** that:
+Goal: a client login can be *optionally* linked to a Member, and when it
+is, the client-facing rollup widens from single-vertical to cross-vertical
+automatically. Clients with no Member link keep exactly today's behavior —
+this is additive, not a migration.
 
-- Lets a client submit/authorize work (documents, decisions, approvals)
-  without ever loading `hc-denial-war-room.html` or any other operator screen.
-- Writes into the same Case Engine event taxonomy above — a client submission
-  is a `client.intake` event regardless of which vertical it's ultimately
-  routed to.
-- Surfaces status back to the client (`processing.started` →
-  `delivery.completed`) without exposing *how* the work got done — the
-  vertical apps, engines, and Strategist reports stay internal.
-- Lets a TSM operator work the underlying case through the existing vertical
-  chain (War Room → Strategist → Exec Portal) exactly as today. Nothing about
-  the operator experience needs to change.
+1. **Add an optional `tenantId` field to the `bpo_clients` document**
+   (set at client creation or via a follow-up admin action — mirrors how
+   `slaThresholdHours`/`pricingTier` already default unset and are safe to
+   backfill later). No schema change needed elsewhere; `bpo_clients`
+   already tolerates unset optional fields per its own comments.
+2. **Carry `tenantId` in the client session payload** in
+   `middleware/client-registry.js`, alongside the existing
+   `{ role, clientId, label }` shape, populated from the client doc's
+   `tenantId` if present.
+3. **Branch the rollup route on that field.** In
+   `GET /api/bpo/reports/client-rollup`: if `req.tsmSession.tenantId` is
+   set, call `tsmLedger.memberCaseSummary(tenantId)` instead of
+   `bpoBuildClientRollup(clientId)`; otherwise, unchanged. Keeps one route
+   and one frontend fetch call in `client-portal.html` — the shape returned
+   just gets richer (adds `byVertical`) when a Member link exists.
+4. **Run the Member-scoped result through the same redaction boundary**
+   `client-package-generator.js` already enforces for single-client
+   rollups — the field policy shouldn't have a hole just because the data
+   came from a different collection.
+5. **Render the `byVertical` breakdown in `client-portal.html`** only when
+   present in the response, so single-vertical clients see no UI change.
 
-This is what makes the "don't hand GCU your platform" model work mechanically,
-not just contractually: the client's access surface is architecturally
-separate from the vertical apps, not just role-gated within them.
-
----
-
-## 3. Open questions before implementation
-
-1. **Which relay pattern does the Case Engine standardize on?** Recommend the
-   Mortgage/Schools pattern (`sessionStorage`+`localStorage`+custom event)
-   since it's already vertical-agnostic; the legacy per-function relays would
-   need individual adapters.
-2. **Kernel/enforcer re-audit** — confirm current canonical paths before the
-   Case Engine reads/writes through them (see landmine note above).
-3. **Case Queue ownership** — does a case get assigned to an operator, or
-   pulled? Affects whether the BPO layer needs its own queue UI or just a
-   client-status view.
-4. **Multi-vertical cases** — a single client (e.g. GCU) will likely generate
-   cases across more than one vertical (say, Mortgage + FinOps). Does the
-   Case Engine need a case ever to fan out to multiple vertical chains, or is
-   one case always single-vertical with cross-vertical rollup happening only
-   at the BPO reporting layer?
+No change needed to `/api/members/*` (internal-role administration stays
+internal-role), to `bpo_cases` (already vertical + tenantId scoped
+correctly), or to `tsm-case-manager.js` (already syncing correctly).
 
 ---
 
-*This doc is a checkpoint, not a spec. Next step: answer §3, then scope the
-BPO shell as its own build against the existing event taxonomy rather than
-against any single vertical's UI.*
+## 4. Answering the open question from the original checkpoint
+
+The original doc asked whether a single case can span multiple verticals.
+Verified answer: **no, and it shouldn't** — a `bpo_cases` document is
+always single-vertical (`vertical` is a scalar field, not an array), and
+cross-vertical visibility is handled correctly one level up, at the
+rollup/summary layer (`memberCaseSummary`), not by making an individual
+case multi-vertical. GCU's Mortgage case and FinOps case stay two separate
+case records; the Member rollup is what shows them together. No change
+needed here — this was already solved correctly before this doc existed.
+
+---
+
+## 5. Remaining open questions
+
+1. **Onboarding flow** — when a new multi-vertical client (e.g. GCU) signs
+   on, does the admin flow create the `Member` first and the `bpo_clients`
+   record second (with `tenantId` set at creation), or is linking always a
+   follow-up step? Affects whether step 1 above needs its own admin UI or
+   just a field on the existing client-creation form.
+2. **Existing clients that should retroactively become Members** — is
+   there a current `bpo_clients` record that's secretly already
+   multi-vertical in practice (cases landing under its `clientId` from more
+   than one vertical) that this reconciliation should backfill, or is this
+   purely forward-looking for new engagements like GCU?
+
+---
+
+*This is a checkpoint, not a spec. Next step: confirm §5, then implement
+§3 as a small, additive change — no new collections, no new Case Engine,
+no new client shell.*
