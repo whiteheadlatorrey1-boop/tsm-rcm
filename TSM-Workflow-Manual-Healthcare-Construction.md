@@ -7,6 +7,12 @@ from memory). `presentation-hub.html` is referenced only for vertical naming
 ("Healthcare" / "Construction") — nothing in that file is touched by this
 manual.
 
+_Re-audited 2026-08-24 against the current `deriveCheckStatus` source: the
+"Known risk" section's decision-tree diagram was missing the `documentType`
+conditions on the first two branches — corrected below. Everything else
+checked (schema fields, thresholds, retry counts, `DOC_TYPE_ACTIONS`
+content, status-transition call sites) matched the source exactly._
+
 Scope: this covers **upload → the document landing "● Ready"** — the
 ingestion pipeline every document goes through before a human ever opens it.
 It does not re-cover the specialist war-room step lists (steps 3-5 of the
@@ -153,7 +159,13 @@ For each vertical the classifier assigned, this:
 4. Separately builds a **Mission** record (`buildMissionFromClassification`)
    and a **Case** record (`buildCaseFromClassification`) if the vertical
    maps to the Mission/Case engine — both non-fatal, best-effort writes
-   that don't block routing if they fail.
+   that don't block routing if they fail. The two are now cross-linked:
+   the Case record's `missionId` field is populated from the real
+   `mission.id` `buildMissionFromClassification` returns, when a mission
+   was actually created (`missionId: null` if the mission bridge itself
+   returned null — unmapped vertical, or the mission model/store not
+   loaded). Before this, both writes ran independently with no shared
+   key, so a Mission and its Case looked like two unrelated records.
 
 **Why it matters for revenue recovery:** the client-compartment isolation
 is what makes per-client reporting and the BPO client-scoped access model
@@ -216,11 +228,16 @@ possible to route and to measure.
 ## Known risk, both verticals: exclusion-code prefix collisions
 
 This was verified against the real routing function (`deriveCheckStatus`),
-not theoretical:
+not theoretical. The function checks `exclusionCode` **and** `documentType`
+at each step — an earlier draft of this manual showed only the
+`exclusionCode` side and missed the `documentType` conditions layered onto
+the first two branches:
 
 ```
-excCode.startsWith('PA-')              → AUTH_BLOCK      (checked first)
-excCode.startsWith('CO-')              → DENIAL_RISK
+excCode.startsWith('PA-') OR docType includes 'PRIOR AUTH'
+                                        → AUTH_BLOCK      (checked first)
+excCode.startsWith('CO-') OR docType includes 'DENIAL'/'CLAIM APPEAL'
+                                        → DENIAL_RISK
 excCode.startsWith('OA-')/('PR-')      → PAYMENT_BLOCK
 docType includes AUDIT/POLICY          → COMPLIANCE_BLOCK
 docType includes FILING/CONTRACT       → LEGAL_HOLD
@@ -231,13 +248,25 @@ otherwise                              → ACTIVE
 Because the classifier (Stage 3) has no instruction to use these prefixes
 deliberately, a document whose own text happens to contain something like
 "Denial code: PA-17" can have that string echoed back as the
-`exclusionCode` — and `PA-` routes to `AUTH_BLOCK` regardless of whether
-the document is actually about prior authorization. A healthcare denial
-whose real story is "authorization was already approved, payer didn't
-match it" can land on prior-auth verification steps instead of appeal
-steps. Construction's equivalent case (a change order literally labeled
-`CO-017`) happens to land on `DENIAL_RISK`, which is a reasonable fit for a
-dispute/variance document — a lower-stakes coincidence, not a fix.
+`exclusionCode` — and because the `excCode.startsWith('PA-')` check is
+first in the chain, it short-circuits `AUTH_BLOCK` before the function
+ever reaches the `documentType` check, **even for a document correctly
+classified as `DENIAL`.** A healthcare denial whose real story is
+"authorization was already approved, payer didn't match it" can land on
+prior-auth verification steps instead of appeal steps.
+
+The `documentType` fallback conditions mean this collision is narrower
+than it looks in isolation: a document the classifier correctly tags
+`DENIAL` (or `CLAIM APPEAL`) reaches `DENIAL_RISK` through a *second,
+independent* path even when `exclusionCode` is empty or doesn't start
+with `CO-`. The exclusion-code prefix isn't the only route to the right
+outcome — it's only the wrong outcome (via a `PA-`/`CO-` collision) that
+requires the prefix specifically, and only when that prefix happens to be
+checked before the matching `documentType` branch would have been
+reached. Construction's equivalent case (a change order literally
+labeled `CO-017`) happens to land on `DENIAL_RISK`, which is a reasonable
+fit for a dispute/variance document — a lower-stakes coincidence, not a
+fix.
 
 There is no in-UI way to edit `exclusionCode` after a document routes. For
 any document where this collision is plausible, the safe move is a
