@@ -130,6 +130,7 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 
     <div class="card">
       <div class="approve-bar">
+        <button class="btn" id="tsmk-delivery-btn" onclick="exportClientPackage()">⬇ EXPORT CLIENT PACKAGE</button>
         <button class="btn" id="approveBtn" onclick="approveChain()">✓ ACKNOWLEDGE &amp; CLOSE CHAIN</button>
       </div>
     </div>
@@ -142,6 +143,14 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 
 <script>
 const DOMAIN = 'concierge';
+
+// Roadmap #9 -- stashed here so exportClientPackage() (defined below) can
+// reuse the exact same mission list loadAll() already fetched from
+// /api/concierge/missions, rather than issuing a second request. Concierge
+// has no AI-engine explain-item output (unlike the war-room verticals) --
+// missions are the only real data this vertical produces, so they're
+// mapped into the shared explainItems shape at export time instead.
+let lastMissions = [];
 
 function nav(url){ window.location.href = url; }
 
@@ -194,6 +203,7 @@ async function loadAll(){
   try {
     const data = await apiCall('/api/concierge/missions?limit=200');
     const missions = data.missions || [];
+    lastMissions = missions;
     renderKpis(missions);
     renderProviderMix(missions);
   } catch(e) {
@@ -237,6 +247,35 @@ function renderProviderMix(missions){
   `).join('');
 }
 
+// Roadmap #9 -- pure assembly layer, same convention as the other verticals'
+// exportClientPackage(): nothing computed here, just translates the mission
+// list render() already fetched into the shared explainItems shape
+// (claim + severity) and hands it to TSMDeliveryPackage. documentCount stays
+// null (honest) -- Concierge has no document-processing concept, only
+// dispatched transport missions.
+function toDeliveryPackageItems(missions){
+  return (missions || []).map(m => ({
+    claim: (m.provider || 'unknown') + ' mission ' + (m.id || '') + ' — status: ' + (m.status || 'unknown'),
+    severity: m.status === 'cancelled_by_driver' ? 'high' : 'normal'
+  }));
+}
+
+window.exportClientPackage = function () {
+  if (!window.TSMDeliveryPackage) {
+    showToast('Delivery package engine not loaded.');
+    return;
+  }
+  const pkg = TSMDeliveryPackage.build({
+    domain: 'Concierge',
+    explainItems: toDeliveryPackageItems(lastMissions)
+  });
+  const blob = new Blob([JSON.stringify(pkg, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'tsm-client-package-' + Date.now() + '.json';
+  a.click();
+};
+
 function approveChain(){
   const btn = document.getElementById('approveBtn');
   try {
@@ -269,6 +308,7 @@ loadAll();
 setInterval(loadAll, 20000);
 </script>
 
+  <script src="/html/shared/tsm-delivery-package.js"></script>
   <script src="/shared/tsm-guided-how-to.js" defer></script>
 </body>
 </html>
