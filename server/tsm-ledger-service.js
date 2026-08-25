@@ -12,6 +12,7 @@
 // =====================================================
 
 const { MongoClient } = require('mongodb');
+const clientRegistry = require('../middleware/client-registry');
 
 const DEFAULT_DB_NAME = 'tsm-consultz';
 const LEDGER_COLLECTION = 'ledger_entries';
@@ -424,12 +425,15 @@ async function bpoListClients({ status } = {}) {
   const col = await bpoClientsCollection();
   const query = {};
   if (status) query.status = status;
-  return col.find(query).sort({ name: 1 }).toArray();
+  const list = await col.find(query).sort({ name: 1 }).toArray();
+  return list.map(c => ({ ...c, hasLogin: clientRegistry.idExists(c.id) }));
 }
 
 async function bpoGetClient(id) {
   const col = await bpoClientsCollection();
-  return col.findOne({ id });
+  const doc = await col.findOne({ id });
+  if (!doc) return doc;
+  return { ...doc, hasLogin: clientRegistry.idExists(id) };
 }
 
 /**
@@ -451,7 +455,9 @@ async function bpoCreateClient({ name, contactName, contactEmail, contactPhone, 
   const col = await bpoClientsCollection();
   let id = bpoSlugifyClientId(clean);
   let suffix = 2;
-  while (await col.findOne({ id })) {
+  // Dedupe against both the ledger collection and the login registry so a
+  // client's id always lines up 1:1 with its login record (or lack of one).
+  while ((await col.findOne({ id })) || clientRegistry.idExists(id)) {
     id = `${bpoSlugifyClientId(clean)}-${suffix++}`;
   }
 
@@ -477,7 +483,25 @@ async function bpoCreateClient({ name, contactName, contactEmail, contactPhone, 
     actor, action: 'client.create', entityType: 'client', entityId: id,
     detail: { name: clean },
   });
-  return doc;
+
+  // Create the matching portal login in the same call. If this fails, the
+  // ledger client still exists — just without a login yet — and can be
+  // covered later via bpoBackfillClientLogin(). Log it rather than silently
+  // swallowing the error so it's visible in the audit trail.
+  let hasLogin = false;
+  let accessCode = null;
+  try {
+    const created = clientRegistry.createClientWithId(id, clean);
+    accessCode = created.accessCode;
+    hasLogin = true;
+  } catch (e) {
+    await bpoWriteAudit({
+      actor, action: 'client.login_create_failed', entityType: 'client', entityId: id,
+      detail: { error: e.message },
+    });
+  }
+
+  return { ...doc, hasLogin, accessCode };
 }
 
 async function bpoUpdateClient(id, fields, actor) {
@@ -547,8 +571,45 @@ async function bpoSetClientStatus(id, status, actor) {
       actor, action: status === 'active' ? 'client.reactivate' : 'client.deactivate',
       entityType: 'client', entityId: id, detail: { status },
     });
+    // Mirror the status into the login registry so a deactivated client is
+    // also locked out of portal login, not just hidden from active views.
+    // Login records aren't guaranteed to exist (pre-registry clients, or a
+    // failed create-time login), so this is best-effort.
+    try {
+      if (clientRegistry.idExists(id)) {
+        clientRegistry.setActive(id, status === 'active');
+      }
+    } catch (e) {
+      await bpoWriteAudit({
+        actor, action: 'client.login_status_sync_failed', entityType: 'client', entityId: id,
+        detail: { error: e.message, status },
+      });
+    }
   }
-  return updated;
+  return updated ? { ...updated, hasLogin: clientRegistry.idExists(id) } : updated;
+}
+
+// Creates a login record for a client that doesn't have one yet — either
+// because it predates the login registry, or because login creation failed
+// at create-time. No-op (returns existing state) if a login already exists.
+async function bpoBackfillClientLogin(id, actor) {
+  const col = await bpoClientsCollection();
+  const client = await col.findOne({ id });
+  if (!client) throw new Error('Client not found');
+
+  if (clientRegistry.idExists(id)) {
+    return { hasLogin: true, accessCode: null, alreadyExisted: true };
+  }
+
+  const { accessCode } = clientRegistry.createClientWithId(id, client.name);
+  // New logins default active; align with the client's current ledger status.
+  if (client.status === 'inactive') {
+    clientRegistry.setActive(id, false);
+  }
+  await bpoWriteAudit({
+    actor, action: 'client.login_backfill', entityType: 'client', entityId: id, detail: {},
+  });
+  return { hasLogin: true, accessCode, alreadyExisted: false };
 }
 
 // ── Work items ───────────────────────────────────────────────────────────
@@ -1974,6 +2035,7 @@ module.exports = {
   bpoUpdateClient,
   BPO_PRICING_TIERS,
   bpoSetClientStatus,
+  bpoBackfillClientLogin,
   bpoListWorkItems,
   bpoGetWorkItem,
   bpoUpsertWorkItem,

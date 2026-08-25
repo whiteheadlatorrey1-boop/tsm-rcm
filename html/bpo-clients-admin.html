@@ -69,6 +69,13 @@ body{background:var(--black);color:var(--text);font-family:'JetBrains Mono',mono
 .tenant-link select{background:var(--panel);border:1px solid var(--border2);color:var(--text);font-family:inherit;font-size:.7rem;padding:.4rem .6rem;border-radius:4px;min-width:200px;}
 
 .client-actions{display:flex;gap:.5rem;flex-wrap:wrap;}
+
+.login-badge{font-size:.58rem;letter-spacing:.08em;text-transform:uppercase;padding:2px 8px;border-radius:3px;border:1px solid;}
+.login-badge.has{color:var(--cyan);border-color:rgba(0,200,255,.35);}
+.login-badge.none{color:var(--amber);border-color:rgba(245,166,35,.35);}
+.access-code-banner{background:rgba(0,200,255,.08);border:1px solid rgba(0,200,255,.3);color:var(--cyan);padding:.8rem 1rem;border-radius:6px;font-size:.72rem;margin-bottom:1.5rem;display:none;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap;}
+.access-code-banner.show{display:flex;}
+.access-code-banner code{font-size:.9rem;letter-spacing:.05em;color:#fff;}
 </style>
   <link rel="stylesheet" href="/shared/tsm-guided-how-to.css">
 </head>
@@ -89,6 +96,7 @@ body{background:var(--black);color:var(--text);font-family:'JetBrains Mono',mono
 
   <div class="error-banner" id="errorBanner"></div>
   <div class="toast-banner" id="toastBanner"></div>
+  <div class="access-code-banner" id="accessCodeBanner"></div>
 
   <div class="toolbar">
     <button class="btn" id="toggleAddBtn">+ New Client</button>
@@ -167,6 +175,17 @@ function setToast(msg) {
   setTimeout(() => el.classList.remove('show'), 3500);
 }
 
+// Shown once, on creation/backfill only — the code can't be recovered
+// later (only rotated), so this is the one chance to hand it to the client.
+function setAccessCodeBanner(clientName, code) {
+  const el = document.getElementById('accessCodeBanner');
+  if (!code) { el.classList.remove('show'); el.innerHTML = ''; return; }
+  el.innerHTML = `<span>Access code for <strong>${esc(clientName)}</strong>: <code>${esc(code)}</code> — copy it now, it can\u2019t be shown again.</span>
+    <button class="btn small secondary" id="dismissAccessCodeBtn">Dismiss</button>`;
+  el.classList.add('show');
+  document.getElementById('dismissAccessCodeBtn').addEventListener('click', () => setAccessCodeBanner(null, null));
+}
+
 let _members = [];
 
 async function loadMembers() {
@@ -216,6 +235,8 @@ function renderClients(clients) {
     if (unlinkBtn) unlinkBtn.addEventListener('click', () => clearTenantLink(c.id));
     const toggleBtn = document.getElementById(`toggle-status-${c.id}`);
     if (toggleBtn) toggleBtn.addEventListener('click', () => toggleStatus(c));
+    const createLoginBtn = document.getElementById(`create-login-${c.id}`);
+    if (createLoginBtn) createLoginBtn.addEventListener('click', () => createLogin(c));
   });
 }
 
@@ -232,7 +253,10 @@ function clientCardHtml(c) {
           <div class="client-name">${esc(c.name)}</div>
           <div class="client-id">${esc(c.id)}</div>
         </div>
-        <div class="client-status ${isActive ? 'active' : 'inactive'}">${isActive ? 'Active' : 'Inactive'}</div>
+        <div style="display:flex;gap:.4rem;align-items:flex-start;">
+          <div class="login-badge ${c.hasLogin ? 'has' : 'none'}">${c.hasLogin ? 'Has Login' : 'No Login'}</div>
+          <div class="client-status ${isActive ? 'active' : 'inactive'}">${isActive ? 'Active' : 'Inactive'}</div>
+        </div>
       </div>
 
       <div class="client-meta">
@@ -253,6 +277,7 @@ function clientCardHtml(c) {
 
       <div class="client-actions">
         <button class="btn small secondary" id="toggle-status-${esc(c.id)}">${isActive ? 'Deactivate' : 'Reactivate'}</button>
+        ${c.hasLogin ? '' : `<button class="btn small" id="create-login-${esc(c.id)}">Create Login</button>`}
       </div>
     </div>`;
 }
@@ -311,6 +336,26 @@ async function toggleStatus(client) {
   }
 }
 
+async function createLogin(client) {
+  setError(null);
+  try {
+    const data = await apiFetch(`/api/bpo/clients/${encodeURIComponent(client.id)}/backfill-login`, {
+      method: 'POST',
+      credentials: 'same-origin'
+    });
+    if (!data.ok) throw new Error(data.error || 'Failed to create login');
+    if (data.alreadyExisted) {
+      setToast(`${client.name} already has a login.`);
+    } else {
+      setAccessCodeBanner(client.name, data.accessCode);
+      setToast(`Login created for ${client.name}.`);
+    }
+    await loadClients();
+  } catch (e) {
+    setError('Could not create login: ' + e.message);
+  }
+}
+
 document.getElementById('refreshBtn').addEventListener('click', loadClients);
 
 document.getElementById('toggleAddBtn').addEventListener('click', () => {
@@ -344,6 +389,9 @@ document.getElementById('createClientBtn').addEventListener('click', async () =>
     ['newName','newContactName','newContactEmail','newContactPhone'].forEach(id => {
       document.getElementById(id).value = '';
     });
+    if (data.client.hasLogin && data.client.accessCode) {
+      setAccessCodeBanner(data.client.name, data.client.accessCode);
+    }
     setToast(`${data.client.name} created.`);
     await loadClients();
   } catch (e) {
