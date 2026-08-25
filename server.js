@@ -806,6 +806,16 @@ app.post('/api/bpo/clients/:id/reactivate', requireRole(BPO_MANAGE_ROLES), async
   } catch (e) { res.status(400).json({ ok: false, error: e.message }); }
 });
 
+// For clients that predate the login registry, or whose login creation
+// failed at create-time (see bpoCreateClient). No-op if a login already
+// exists — returns { alreadyExisted: true } rather than erroring.
+app.post('/api/bpo/clients/:id/backfill-login', requireRole(BPO_MANAGE_ROLES), async (req, res) => {
+  try {
+    const result = await tsmLedger.bpoBackfillClientLogin(req.params.id, req.tsmSession.label || req.tsmSession.role);
+    res.json({ ok: true, ...result });
+  } catch (e) { res.status(400).json({ ok: false, error: e.message }); }
+});
+
 // Work items: any internal role can create/advance one (that's the normal
 // flow of working a case through the war room), not just managers. A
 // client-role session may only read — never create/advance (still gated
