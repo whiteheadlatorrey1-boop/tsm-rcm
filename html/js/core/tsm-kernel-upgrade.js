@@ -153,14 +153,28 @@
       // replay gracefully until this is reconciled with TSMMissionStore's
       // real API.
       if (!store.state) {
+      if (typeof store.getState === "function") store.state = store.getState();
+
+      if (!store.state) {
+
         console.warn("[TSM-REPLAY] Store has no .state property (likely TSMMissionStore, which uses a different API) — skipping replay.");
+
         return;
+
+      }
       }
 
       // reset state
       if (!store.state) {
+      if (typeof store.getState === "function") store.state = store.getState();
+
+      if (!store.state) {
+
         console.warn("[TSM-REPLAY] Store has no .state property (likely TSMMissionStore, which uses a different API) — skipping replay.");
+
         return;
+
+      }
       }
 
       store.state.missions = [];

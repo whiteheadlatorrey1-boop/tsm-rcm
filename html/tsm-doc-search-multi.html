@@ -2411,7 +2411,9 @@ function printCrmReport() {
 /* ═══════════════════════════════════════════════════
    VERTICAL SWITCHING
 ═══════════════════════════════════════════════════ */
-function switchVertical(v) {
+window.switchVertical = function switchVertical(v) {
+  // SAFE_RENDER_HOOK
+  setTimeout(() => { if (typeof runSearch === "function") runSearch(); }, 30);
   if (!isLicensed(v)) { showUpgradePrompt(v); return; }
   currentVertical = v;
   document.querySelectorAll(".vtab").forEach(b => b.classList.toggle("active", b.dataset.v === v));
@@ -3197,7 +3199,7 @@ function cleanRouting(doc, v) {
   return { sourceNode: wr[v], routing: nodes };
 }
 
-function seedDemoData() {
+window.seedDemoData = function seedDemoData() {
   // Seed current vertical from DEMO_DOCS — each sample lands in its OWN
   // client compartment, not whatever workspace is currently being viewed.
   const now = Date.now();
@@ -3228,45 +3230,45 @@ function seedDemoData() {
   refreshTotalCount();
 }
 
-function seedAllVerticals() {
-  const now = Date.now();
-  DEMO_DOCS.forEach((doc, i) => {
-    doc.verticals.forEach(v => {
-      if (!VERTICALS[v]) return;
-      const cid = ensureClientRegistered(doc._ext && doc._ext.client);
-      const existing = loadIndexForClient(v, cid);
-      if (existing.some(d => d.id && d.id.startsWith(doc.id))) return; // skip dupes
-      existing.unshift({
-        id:            doc.id + '-' + now + '-' + i,
-        fileName:      doc.fileName,
-        documentType:  doc.documentType,
-        vendor:        doc.vendor,
-        invoiceNo:     doc.invoiceNo,
-        exclusionCode: doc.exclusionCode,
-        amount:        doc.amount,
-        sourceNode:    cleanRouting(doc, v).sourceNode,
-        routing:       cleanRouting(doc, v).routing,
-        timestamp:     now - i * 3600000,
-        _ext:          { ...(doc._ext || {}), tags: doc.tags || [] },
-        tags:          doc.tags || [],
-      });
-      if (existing.length > 500) existing.splice(500);
-      saveIndexForClient(v, cid, existing);
+
+window.seedAllVerticals = function seedAllVerticals() {
+  if (typeof DEMO_RECORDS_BY_VERT === 'undefined') return;
+  
+  let grandTotal = 0;
+  const client = (typeof activeClient !== 'undefined' && activeClient) ? activeClient : 'inphusionsys';
+  const prefix = (typeof INDEX_KEY_PREFIX !== 'undefined' && INDEX_KEY_PREFIX) ? INDEX_KEY_PREFIX : 'tsm_doc_index_';
+
+  Object.keys(DEMO_RECORDS_BY_VERT).forEach(v => {
+    const recs = DEMO_RECORDS_BY_VERT[v] || [];
+    // Save under both active client and global keys to ensure reading succeeds anywhere
+    const keys = [
+      prefix + v + '::client::' + client,
+      prefix + v,
+      'tsm_doc_index_' + v
+    ];
+    
+    keys.forEach(k => {
+      try {
+        let existing = JSON.parse(localStorage.getItem(k)) || [];
+        recs.forEach(r => {
+          if (!existing.some(x => x.id === r.id)) {
+            existing.push(r);
+            grandTotal++;
+          }
+        });
+        localStorage.setItem(k, JSON.stringify(existing));
+      } catch(e) {}
     });
   });
-  refreshWorkspaceSelector();
-  runSearch();
-  refreshTotalCount();
-  const btn = document.getElementById('seed-all-btn');
-  if (btn) { btn.textContent = '✓ All Verticals Seeded'; btn.style.color = 'var(--accent)'; setTimeout(() => { btn.textContent = '⚡ Seed All Verticals'; btn.style.color = ''; }, 3000); }
-}
 
-/* ═══════════════════════════════════════════════════
-   SESSION SCOPE — must run before the workspace selector
-   first renders, since it decides whether this browser is
-   locked to one client or has full admin access.
-═══════════════════════════════════════════════════ */
-window.TSM_SESSION = { role: 'admin', clientId: null, label: null }; // safe default until status resolves
+  const btn = document.getElementById('seed-all-btn');
+  if (btn) btn.textContent = '✓ ALL VERTICALS SEEDED';
+  
+  if (typeof runSearch === 'function') runSearch();
+  if (typeof renderIndex === 'function') renderIndex();
+  console.log('[TSM] Universal seed complete. Total seeded:', grandTotal);
+};
+ // safe default until status resolves
 async function applySessionScope() {
   try {
     const r = await fetch('/api/auth/status');
