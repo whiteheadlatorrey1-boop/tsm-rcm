@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TSM — BPO Clients Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=JetBrains+Mono:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --black:#020408; --deep:#060c14; --panel:#0a1220; --border:#1a2a3a; --border2:#243444;
+  --cyan:#00c8ff; --cyan2:#0096cc; --green:#00c896; --amber:#f5a623; --red:#ff4d4d;
+  --purple:#a855f7; --dim:#3a5068; --muted:#7a98b8; --text:#c8dff0;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--black);color:var(--text);font-family:'JetBrains Mono',monospace;min-height:100vh;}
+
+.header{background:var(--deep);border-bottom:1px solid var(--border);padding:1rem 2rem;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;}
+.logo{font-family:'Orbitron',sans-serif;font-size:.9rem;font-weight:900;color:#fff;letter-spacing:.15em;}
+.logo span{color:var(--cyan);}
+.badge{font-size:.58rem;letter-spacing:.2em;color:var(--cyan);border:1px solid rgba(0,200,255,.3);padding:3px 8px;border-radius:3px;}
+
+.main{max-width:1200px;margin:0 auto;padding:2rem;}
+
+.toolbar{display:flex;gap:.75rem;align-items:center;margin-bottom:1.5rem;flex-wrap:wrap;}
+.btn{background:rgba(0,200,255,.08);border:1px solid var(--cyan);color:var(--cyan);font-family:inherit;font-size:.68rem;letter-spacing:.08em;padding:.6rem 1rem;border-radius:5px;cursor:pointer;text-transform:uppercase;}
+.btn:hover{background:rgba(0,200,255,.16);}
+.btn.secondary{border-color:var(--border2);color:var(--muted);}
+.btn.danger{border-color:rgba(255,77,77,.4);color:var(--red);}
+.btn.danger:hover{background:rgba(255,77,77,.08);}
+.btn.small{font-size:.6rem;padding:.4rem .7rem;}
+.btn:disabled{opacity:.4;cursor:not-allowed;}
+
+.section-head{font-size:.6rem;letter-spacing:.25em;text-transform:uppercase;color:var(--cyan);border-bottom:1px solid var(--border);padding-bottom:.5rem;margin-bottom:1.2rem;}
+
+.error-banner{background:rgba(255,77,77,.08);border:1px solid rgba(255,77,77,.3);color:var(--red);padding:.8rem 1rem;border-radius:6px;font-size:.72rem;margin-bottom:1.5rem;display:none;}
+.error-banner.show{display:block;}
+.toast-banner{background:rgba(0,200,150,.08);border:1px solid rgba(0,200,150,.3);color:var(--green);padding:.8rem 1rem;border-radius:6px;font-size:.72rem;margin-bottom:1.5rem;display:none;}
+.toast-banner.show{display:block;}
+.loading{color:var(--dim);font-size:.72rem;padding:1rem 0;}
+.empty-state{text-align:center;padding:3rem;color:var(--dim);font-size:.75rem;letter-spacing:.1em;border:1px dashed var(--border);border-radius:6px;}
+
+.form-panel{display:none;background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:1.2rem;margin-bottom:1.5rem;}
+.form-panel.show{display:block;}
+.form-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:.8rem;margin-bottom:1rem;}
+.form-field label{display:block;font-size:.58rem;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:.3rem;}
+.form-field input, .form-field select{width:100%;background:var(--black);border:1px solid var(--border2);color:var(--text);font-family:inherit;font-size:.75rem;padding:.55rem .7rem;border-radius:5px;}
+.form-field .hint{font-size:.6rem;color:var(--muted);margin-top:.3rem;line-height:1.4;}
+.form-actions{display:flex;gap:.6rem;}
+
+.client-card{background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:1.1rem 1.3rem;margin-bottom:.9rem;}
+.client-card.inactive{opacity:.5;}
+.client-top{display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap;margin-bottom:.6rem;}
+.client-name{font-size:.85rem;color:#fff;font-weight:600;}
+.client-id{font-size:.6rem;color:var(--dim);margin-top:.15rem;}
+.client-status{font-size:.58rem;letter-spacing:.1em;text-transform:uppercase;padding:2px 8px;border-radius:3px;border:1px solid;}
+.client-status.active{color:var(--green);border-color:rgba(0,200,150,.4);}
+.client-status.inactive{color:var(--dim);border-color:var(--border2);}
+
+.client-meta{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:.5rem;margin-bottom:.8rem;}
+.meta-item{font-size:.68rem;}
+.meta-label{color:var(--dim);font-size:.58rem;letter-spacing:.08em;text-transform:uppercase;margin-bottom:.15rem;}
+.meta-value{color:var(--text);}
+
+.tenant-link{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;background:var(--black);border:1px solid var(--border2);border-radius:5px;padding:.6rem .8rem;margin-bottom:.8rem;}
+.tenant-link.linked{border-color:rgba(0,200,150,.35);}
+.tenant-link-label{font-size:.6rem;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);}
+.tenant-link-value{font-size:.72rem;color:var(--cyan);flex:1;min-width:120px;}
+.tenant-link select{background:var(--panel);border:1px solid var(--border2);color:var(--text);font-family:inherit;font-size:.7rem;padding:.4rem .6rem;border-radius:4px;min-width:200px;}
+
+.client-actions{display:flex;gap:.5rem;flex-wrap:wrap;}
+</style>
+  <link rel="stylesheet" href="/shared/tsm-guided-how-to.css">
+</head>
+<body>
+<section
+  id="tsm-guided-how-to-root"
+  data-tsm-guided-how-to="true"
+  aria-label="TSM Guided How-To"
+></section>
+
+<div class="header">
+  <div class="logo">TSM <span>BPO CLIENTS ADMIN</span></div>
+  <a href="/html/tsm-member-command-center.html" style="font-family:'JetBrains Mono',monospace;font-size:.6rem;letter-spacing:.08em;color:var(--cyan);border:1px solid rgba(0,200,255,.3);padding:4px 9px;border-radius:3px;text-decoration:none;text-transform:uppercase;margin-left:auto;margin-right:.75rem;">← Member Command Center</a>
+  <div class="badge">CLIENT ↔ MEMBER LINKING</div>
+</div>
+
+<div class="main">
+
+  <div class="error-banner" id="errorBanner"></div>
+  <div class="toast-banner" id="toastBanner"></div>
+
+  <div class="toolbar">
+    <button class="btn" id="toggleAddBtn">+ New Client</button>
+    <button class="btn secondary" id="refreshBtn">Refresh</button>
+  </div>
+
+  <div class="form-panel" id="addClientForm">
+    <div class="section-head">New Client</div>
+    <div class="form-grid">
+      <div class="form-field">
+        <label>Name *</label>
+        <input type="text" id="newName" placeholder="Acme Multi-Vertical">
+      </div>
+      <div class="form-field">
+        <label>Contact Name</label>
+        <input type="text" id="newContactName" placeholder="Jane Doe">
+      </div>
+      <div class="form-field">
+        <label>Contact Email</label>
+        <input type="text" id="newContactEmail" placeholder="jane@acme.com">
+      </div>
+      <div class="form-field">
+        <label>Contact Phone</label>
+        <input type="text" id="newContactPhone" placeholder="(555) 555-1234">
+      </div>
+    </div>
+    <div class="form-actions">
+      <button class="btn" id="createClientBtn">Create Client</button>
+      <button class="btn secondary" id="cancelAddBtn">Cancel</button>
+    </div>
+  </div>
+
+  <div class="section-head">Clients</div>
+  <div id="clientList"><div class="loading">Loading clients…</div></div>
+
+</div>
+
+<script>
+const VERTICAL_LABELS = {
+  bpo: 'BPO', healthcare: 'Healthcare', hc: 'Healthcare', construction: 'Construction',
+  finops: 'FinOps', insurance: 'Insurance', legal: 'Legal', re: 'Real Estate',
+  mortgage: 'Mortgage', schools: 'Schools'
+};
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+async function apiFetch(url, opts) {
+  const res = await fetch(url, opts);
+  const ct = res.headers.get('content-type') || '';
+  let data = null;
+  if (ct.includes('application/json')) data = await res.json();
+  if (!res.ok || !data) {
+    if (res.status === 302 || res.redirected || ct.includes('text/html')) {
+      throw new Error('Session expired or not authenticated — please reload and log in.');
+    }
+    throw new Error((data && data.error) || `Unexpected response (${res.status}) from ${url}`);
+  }
+  return data;
+}
+
+function setError(msg) {
+  const el = document.getElementById('errorBanner');
+  if (!msg) { el.classList.remove('show'); el.textContent = ''; return; }
+  el.textContent = msg;
+  el.classList.add('show');
+  document.getElementById('toastBanner').classList.remove('show');
+}
+
+function setToast(msg) {
+  const el = document.getElementById('toastBanner');
+  if (!msg) { el.classList.remove('show'); el.textContent = ''; return; }
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 3500);
+}
+
+let _members = [];
+
+async function loadMembers() {
+  try {
+    const data = await apiFetch('/api/members', { credentials: 'same-origin' });
+    _members = data.members || [];
+  } catch (e) {
+    // Non-fatal for this page — client management still works without
+    // the Member picker resolving names; the raw tenantId link is still
+    // shown either way.
+    _members = [];
+  }
+}
+
+function memberNameFor(tenantId) {
+  const m = _members.find(mm => mm.id === tenantId);
+  return m ? m.name : tenantId;
+}
+
+async function loadClients() {
+  const list = document.getElementById('clientList');
+  list.innerHTML = '<div class="loading">Loading clients…</div>';
+  setError(null);
+  try {
+    await loadMembers();
+    const data = await apiFetch('/api/bpo/clients', { credentials: 'same-origin' });
+    if (!data.ok) throw new Error(data.error || 'Failed to load clients');
+    renderClients(data.clients || []);
+  } catch (e) {
+    list.innerHTML = '';
+    setError('Could not load clients: ' + e.message);
+  }
+}
+
+function renderClients(clients) {
+  const list = document.getElementById('clientList');
+  if (!clients.length) {
+    list.innerHTML = '<div class="empty-state">No clients yet — create one above.</div>';
+    return;
+  }
+  list.innerHTML = clients.map(clientCardHtml).join('');
+
+  clients.forEach(c => {
+    const linkBtn = document.getElementById(`link-btn-${c.id}`);
+    if (linkBtn) linkBtn.addEventListener('click', () => saveTenantLink(c.id));
+    const unlinkBtn = document.getElementById(`unlink-btn-${c.id}`);
+    if (unlinkBtn) unlinkBtn.addEventListener('click', () => clearTenantLink(c.id));
+    const toggleBtn = document.getElementById(`toggle-status-${c.id}`);
+    if (toggleBtn) toggleBtn.addEventListener('click', () => toggleStatus(c));
+  });
+}
+
+function clientCardHtml(c) {
+  const isActive = c.status !== 'inactive';
+  const memberOptions = ['<option value="">— link to a Member —</option>']
+    .concat(_members.map(m => `<option value="${esc(m.id)}"${m.id === c.tenantId ? ' selected' : ''}>${esc(m.name)}</option>`))
+    .join('');
+
+  return `
+    <div class="client-card${isActive ? '' : ' inactive'}" data-client-id="${esc(c.id)}">
+      <div class="client-top">
+        <div>
+          <div class="client-name">${esc(c.name)}</div>
+          <div class="client-id">${esc(c.id)}</div>
+        </div>
+        <div class="client-status ${isActive ? 'active' : 'inactive'}">${isActive ? 'Active' : 'Inactive'}</div>
+      </div>
+
+      <div class="client-meta">
+        <div class="meta-item"><div class="meta-label">Contact</div><div class="meta-value">${esc(c.contactName || '—')}</div></div>
+        <div class="meta-item"><div class="meta-label">Email</div><div class="meta-value">${esc(c.contactEmail || '—')}</div></div>
+        <div class="meta-item"><div class="meta-label">Phone</div><div class="meta-value">${esc(c.contactPhone || '—')}</div></div>
+        <div class="meta-item"><div class="meta-label">Pricing Tier</div><div class="meta-value">${esc(c.pricingTier || '—')}</div></div>
+      </div>
+
+      <div class="tenant-link${c.tenantId ? ' linked' : ''}">
+        <span class="tenant-link-label">Member link</span>
+        ${c.tenantId
+          ? `<span class="tenant-link-value">${esc(memberNameFor(c.tenantId))} — cross-vertical cases now flow into this client's rollup</span>
+             <button class="btn small danger" id="unlink-btn-${esc(c.id)}">Unlink</button>`
+          : `<select id="member-select-${esc(c.id)}">${memberOptions}</select>
+             <button class="btn small" id="link-btn-${esc(c.id)}">Link</button>`}
+      </div>
+
+      <div class="client-actions">
+        <button class="btn small secondary" id="toggle-status-${esc(c.id)}">${isActive ? 'Deactivate' : 'Reactivate'}</button>
+      </div>
+    </div>`;
+}
+
+async function saveTenantLink(clientId) {
+  const select = document.getElementById(`member-select-${clientId}`);
+  const tenantId = select ? select.value : '';
+  if (!tenantId) { setError('Pick a Member to link first.'); return; }
+  setError(null);
+  try {
+    const data = await apiFetch(`/api/bpo/clients/${encodeURIComponent(clientId)}`, {
+      method: 'PATCH',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tenantId })
+    });
+    if (!data.ok) throw new Error(data.error || 'Failed to link member');
+    setToast('Linked — this client\u2019s rollup will now include their cross-vertical cases.');
+    await loadClients();
+  } catch (e) {
+    setError('Could not link member: ' + e.message);
+  }
+}
+
+async function clearTenantLink(clientId) {
+  setError(null);
+  try {
+    const data = await apiFetch(`/api/bpo/clients/${encodeURIComponent(clientId)}`, {
+      method: 'PATCH',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tenantId: null })
+    });
+    if (!data.ok) throw new Error(data.error || 'Failed to unlink member');
+    setToast('Unlinked — rollup reverts to work items only for this client.');
+    await loadClients();
+  } catch (e) {
+    setError('Could not unlink member: ' + e.message);
+  }
+}
+
+async function toggleStatus(client) {
+  const goingActive = client.status === 'inactive';
+  const endpoint = goingActive ? 'reactivate' : 'deactivate';
+  setError(null);
+  try {
+    const data = await apiFetch(`/api/bpo/clients/${encodeURIComponent(client.id)}/${endpoint}`, {
+      method: 'POST',
+      credentials: 'same-origin'
+    });
+    if (!data.ok) throw new Error(data.error || `Failed to ${endpoint} client`);
+    setToast(`${client.name} ${goingActive ? 'reactivated' : 'deactivated'}.`);
+    await loadClients();
+  } catch (e) {
+    setError(`Could not ${endpoint} client: ` + e.message);
+  }
+}
+
+document.getElementById('refreshBtn').addEventListener('click', loadClients);
+
+document.getElementById('toggleAddBtn').addEventListener('click', () => {
+  document.getElementById('addClientForm').classList.toggle('show');
+});
+document.getElementById('cancelAddBtn').addEventListener('click', () => {
+  document.getElementById('addClientForm').classList.remove('show');
+  ['newName','newContactName','newContactEmail','newContactPhone'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+});
+
+document.getElementById('createClientBtn').addEventListener('click', async () => {
+  const name = document.getElementById('newName').value.trim();
+  if (!name) { setError('Client name is required.'); return; }
+  setError(null);
+  try {
+    const data = await apiFetch('/api/bpo/clients', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name,
+        contactName: document.getElementById('newContactName').value.trim(),
+        contactEmail: document.getElementById('newContactEmail').value.trim(),
+        contactPhone: document.getElementById('newContactPhone').value.trim()
+      })
+    });
+    if (!data.ok) throw new Error(data.error || 'Failed to create client');
+    document.getElementById('addClientForm').classList.remove('show');
+    ['newName','newContactName','newContactEmail','newContactPhone'].forEach(id => {
+      document.getElementById(id).value = '';
+    });
+    setToast(`${data.client.name} created.`);
+    await loadClients();
+  } catch (e) {
+    setError('Could not create client: ' + e.message);
+  }
+});
+
+loadClients();
+</script>
+  <script src="/shared/tsm-guided-how-to.js" defer></script>
+</body>
+</html>
