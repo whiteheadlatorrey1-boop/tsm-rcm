@@ -284,14 +284,14 @@ app.post('/api/auth/login', loginLimiter, (req, res) => {
       if (!client) {
         return res.status(401).json({ ok: false, error: 'Invalid password or access code' });
       }
-      payload = { role: 'client', clientId: client.id, label: client.label, exp: Date.now() + SESSION_TTL_MS };
+      payload = { role: 'client', clientId: client.id, label: client.label, tenantId: client.tenantId || null, exp: Date.now() + SESSION_TTL_MS };
     }
   }
 
   const token = signSession(payload);
   res.setHeader('Set-Cookie',
     `tsm_session=${encodeURIComponent(token)}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${SESSION_TTL_MS / 1000}`);
-  res.json({ ok: true, role: payload.role, clientId: payload.clientId || null, staffId: payload.staffId || null, label: payload.label || null });
+  res.json({ ok: true, role: payload.role, clientId: payload.clientId || null, staffId: payload.staffId || null, label: payload.label || null, tenantId: payload.tenantId || null });
 });
 
 app.post('/api/auth/logout', (req, res) => {
@@ -309,6 +309,7 @@ app.get('/api/auth/status', (req, res) => {
     clientId: session.clientId || null,
     staffId: session.staffId || null,
     label: session.label || null,
+    tenantId: session.tenantId || null,
   });
 });
 
@@ -322,6 +323,7 @@ function requireAnyAuth(req, res, next) {
     clientId: session.clientId || null,
     staffId: session.staffId || null,
     label: session.label || null,
+    tenantId: session.tenantId || null,
   };
   next();
 }
@@ -375,6 +377,26 @@ app.post('/api/admin/clients/:id/deactivate', requireAdmin, (req, res) => {
 app.post('/api/admin/clients/:id/reactivate', requireAdmin, (req, res) => {
   try {
     const client = clientRegistry.setActive(req.params.id, true);
+    res.json({ ok: true, client });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message });
+  }
+});
+
+// Links (or, with tenantId omitted/empty, unlinks) a client login to a
+// cross-vertical Member. Once linked, that client's next login carries
+// tenantId in its session, and /api/bpo/reports/client-rollup switches
+// that client from its single-clientId BPO rollup to the Member's real
+// cross-vertical case rollup (see bpoBuildMemberClientRollup). Doesn't
+// validate tenantId against /api/members — an admin linking a client to a
+// Member that doesn't exist yet just gets an empty rollup (memberCaseSummary
+// returns zeros for cases via zero cases, not an error) rather than a hard
+// failure, same "no invented numbers, no invented errors" pattern the rest
+// of this file uses.
+app.post('/api/admin/clients/:id/link-member', requireAdmin, (req, res) => {
+  try {
+    const { tenantId } = req.body || {};
+    const client = clientRegistry.setTenantId(req.params.id, tenantId);
     res.json({ ok: true, client });
   } catch (e) {
     res.status(400).json({ ok: false, error: e.message });
@@ -1411,8 +1433,20 @@ app.get('/api/bpo/reports/executive-rollup', requireRole(BPO_REPORT_ROLES), asyn
 // clientId is locked to the session for a client-role caller, same
 // pattern as every other client-scoped route in this file -- a client
 // account cannot pass ?clientId= to see another client's numbers.
+// A client session linked to a cross-vertical Member (tenantId set via
+// POST /api/admin/clients/:id/link-member below) gets the Member-scoped
+// rollup — real cases across every vertical that tenantId is tagged on,
+// not just this one clientId's BPO work-item pipeline. Every client
+// without a tenantId link (the default, unchanged for all existing
+// clients) gets exactly the same single-clientId rollup as before. Staff/
+// admin querying by ?clientId= are unaffected either way — this branch
+// only applies to an actual 'client' session.
 app.get('/api/bpo/reports/client-rollup', requireRole(BPO_CLIENT_VIEW_ROLES), async (req, res) => {
   try {
+    if (req.tsmSession.role === 'client' && req.tsmSession.tenantId) {
+      const rollup = await tsmLedger.bpoBuildMemberClientRollup(req.tsmSession.tenantId);
+      return res.json({ ok: true, rollup });
+    }
     const clientId = req.tsmSession.role === 'client' ? req.tsmSession.clientId : req.query.clientId;
     if (!clientId) return res.status(400).json({ ok: false, error: 'clientId is required' });
     const rollup = await tsmLedger.bpoBuildClientRollup(clientId);

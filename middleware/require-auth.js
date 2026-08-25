@@ -44,8 +44,10 @@ function requireAuth(req, res, next) {
 
 // Factory: requireRole(['admin','manager']) -> middleware that only lets
 // sessions with one of the listed roles through. Attaches req.tsmSession
-// (role/clientId/staffId/label) for downstream handlers, same shape as
-// server.js's requireAnyAuth/requireAdmin. Sessions signed before roles
+// (role/clientId/staffId/label/tenantId) for downstream handlers, same
+// shape as server.js's requireAnyAuth/requireAdmin. tenantId is null
+// unless this is a client session linked to a cross-vertical Member (see
+// middleware/client-registry.js setTenantId). Sessions signed before roles
 // existed have no `role` field — those are legacy admin sessions (the only
 // kind issued at the time), so they're treated as 'admin' here too, matching
 // the same fallback already used in server.js.
@@ -62,6 +64,7 @@ function requireRole(allowedRoles) {
       clientId: session.clientId || null,
       staffId: session.staffId || null,
       label: session.label || null,
+      tenantId: session.tenantId || null,
     };
     next();
   };

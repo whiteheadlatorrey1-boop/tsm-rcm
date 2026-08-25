@@ -170,6 +170,30 @@ function renderSummary(rollup){
     ? priorityEntries.map(([k,v]) => `${escapeHtml(k)}: ${v}`).join(' · ')
     : 'No priority data yet';
 
+  // byVertical is only present on a Member-linked (cross-vertical) rollup
+  // — bpoBuildMemberClientRollup adds it, bpoBuildClientRollup doesn't.
+  // Absent for every single-vertical client, so this card just doesn't
+  // render for them — no layout or behavior change.
+  const verticalEntries = Object.entries(rollup.byVertical || {});
+  const verticalCard = verticalEntries.length ? `
+    <div class="card">
+      <div class="label">Across Verticals</div>
+      <div class="sub">${verticalEntries.map(([k,v]) => `${escapeHtml(k)}: ${v}`).join(' · ')}</div>
+    </div>
+  ` : '';
+
+  // exposureTotal/isExposurePartial are also Member-rollup-only. Shown
+  // only when at least one case actually carried an exposure figure —
+  // isExposurePartial distinguishes "$0 across N cases" from "no exposure
+  // data yet", same distinction memberCaseSummary is careful to preserve.
+  const exposureCard = (verticalEntries.length && rollup.exposureCaseCount) ? `
+    <div class="card">
+      <div class="label">Exposure${rollup.isExposurePartial ? ' (partial)' : ''}</div>
+      <div class="value">$${Math.round(rollup.exposureTotal || 0).toLocaleString()}</div>
+      <div class="sub">across ${rollup.exposureCaseCount} case${rollup.exposureCaseCount === 1 ? '' : 's'}</div>
+    </div>
+  ` : '';
+
   document.getElementById('summary-cards').innerHTML = `
     <div class="card">
       <div class="label">Total Work Items</div>
@@ -187,6 +211,8 @@ function renderSummary(rollup){
       <div class="label">By Priority</div>
       <div class="sub">${priorityLine}</div>
     </div>
+    ${verticalCard}
+    ${exposureCard}
   `;
 }
 

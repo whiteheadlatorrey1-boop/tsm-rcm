@@ -2,9 +2,12 @@
 // Each client gets one admin-assigned access code. The code itself is never
 // stored in plaintext — only its HMAC digest (keyed by TSM_SESSION_SECRET,
 // same secret already used to sign session cookies). On successful login the
-// client's session payload carries { role: 'client', clientId, label } so
-// every downstream route can scope data without trusting anything the
-// browser sends.
+// client's session payload carries { role: 'client', clientId, label,
+// tenantId } so every downstream route can scope data without trusting
+// anything the browser sends. tenantId is null unless this client login has
+// been linked to a cross-vertical Member (see setTenantId below and
+// server/tsm-ledger-service.js) — every existing single-vertical client is
+// unaffected.
 //
 // clientId format matches slugifyClient() in html/tsm-doc-search-multi.html
 // so a client's server-side identity lines up with their local workspace key.
@@ -61,10 +64,14 @@ function generateCode() {
   return groups.join('-');
 }
 
-// Returns { id, label, createdAt, active } — never the plaintext code.
+// Returns { id, label, createdAt, active, tenantId } — never the plaintext
+// code. tenantId links this client login to a cross-vertical Member
+// (tsm_members, see server/tsm-ledger-service.js) — null for any client
+// not linked to one, which is the default and unchanged behavior for
+// every existing single-vertical client.
 function toSafe(client) {
-  const { id, label, createdAt, active } = client;
-  return { id, label, createdAt, active };
+  const { id, label, createdAt, active, tenantId } = client;
+  return { id, label, createdAt, active, tenantId: tenantId || null };
 }
 
 function listClientsSafe() {
@@ -97,7 +104,7 @@ function createClient(label) {
 // Same as createClient, but the id is supplied by the caller instead of
 // being derived from the label — used when the login record needs to line
 // up with an id that already exists elsewhere (e.g. a ledger client id).
-function createClientWithId(id, label) {
+function createClientWithId(id, label, tenantId) {
   const cleanId = (id || '').toString().trim();
   if (!cleanId) throw new Error('id required');
   const clean = (label || '').toString().trim() || cleanId;
@@ -112,9 +119,22 @@ function createClientWithId(id, label) {
     codeHash: hashCode(code),
     createdAt: Date.now(),
     active: true,
+    tenantId: (tenantId || '').toString().trim() || null,
   });
   saveClients(list);
   return { client: toSafe(list[list.length - 1]), accessCode: code };
+}
+
+// Links (or clears, if tenantId is falsy) this client login to a Member's
+// tenantId, retroactively or at any point after creation. Doesn't touch
+// the code/active state — purely the Member link.
+function setTenantId(clientId, tenantId) {
+  const list = loadClients();
+  const client = list.find(c => c.id === clientId);
+  if (!client) throw new Error('Client not found');
+  client.tenantId = (tenantId || '').toString().trim() || null;
+  saveClients(list);
+  return toSafe(client);
 }
 
 function rotateCode(clientId) {
@@ -167,6 +187,7 @@ module.exports = {
   getSafe,
   createClient,
   createClientWithId,
+  setTenantId,
   rotateCode,
   setActive,
   findClientByCode,

@@ -448,7 +448,7 @@ async function bpoGetClient(id) {
 // system would be speculative complexity ahead of a second real use case).
 const BPO_PRICING_TIERS = ['standard', 'premium', 'custom'];
 
-async function bpoCreateClient({ name, contactName, contactEmail, contactPhone, notes }, actor) {
+async function bpoCreateClient({ name, contactName, contactEmail, contactPhone, notes, tenantId }, actor) {
   const clean = (name || '').toString().trim();
   if (!clean) throw new Error('name required');
 
@@ -461,6 +461,13 @@ async function bpoCreateClient({ name, contactName, contactEmail, contactPhone, 
     id = `${bpoSlugifyClientId(clean)}-${suffix++}`;
   }
 
+  // Optional from day one — for a multi-vertical engagement (e.g. GCU)
+  // where the Member (tsm_members) is created first, pass its id here so
+  // the client login is born already linked, instead of requiring the
+  // separate POST /api/admin/clients/:id/link-member retrofit step. Every
+  // single-vertical client omits this and is completely unaffected.
+  const cleanTenantId = (tenantId || '').toString().trim() || null;
+
   const doc = {
     id,
     name: clean,
@@ -469,6 +476,7 @@ async function bpoCreateClient({ name, contactName, contactEmail, contactPhone, 
     contactPhone: (contactPhone || '').toString().trim(),
     notes: (notes || '').toString().trim(),
     status: 'active',
+    tenantId: cleanTenantId,
     // Plan fields default unset — a client with no threshold/tier assigned
     // behaves exactly as every client did before this existed (SLA report
     // emits no breach flag, pricing UI has nothing to show).
@@ -481,7 +489,7 @@ async function bpoCreateClient({ name, contactName, contactEmail, contactPhone, 
   await col.insertOne(doc);
   await bpoWriteAudit({
     actor, action: 'client.create', entityType: 'client', entityId: id,
-    detail: { name: clean },
+    detail: { name: clean, tenantId: cleanTenantId },
   });
 
   // Create the matching portal login in the same call. If this fails, the
@@ -491,7 +499,7 @@ async function bpoCreateClient({ name, contactName, contactEmail, contactPhone, 
   let hasLogin = false;
   let accessCode = null;
   try {
-    const created = clientRegistry.createClientWithId(id, clean);
+    const created = clientRegistry.createClientWithId(id, clean, cleanTenantId);
     accessCode = created.accessCode;
     hasLogin = true;
   } catch (e) {
@@ -537,6 +545,28 @@ async function bpoUpdateClient(id, fields, actor) {
       throw new Error(`pricingTier must be one of: ${BPO_PRICING_TIERS.join(', ')}, or null to clear it`);
     } else {
       $set.pricingTier = raw;
+    }
+  }
+
+  // tenantId: nullable string. null/'' clears the Member link. Keeps
+  // bpo_clients and the login registry (middleware/client-registry.js) in
+  // sync so a client's next-login session tenantId always matches what
+  // this document shows — this is the retrofit path for a client created
+  // before its Member existed; bpoCreateClient's tenantId param above is
+  // the day-one path.
+  if (fields.tenantId !== undefined) {
+    const raw = (fields.tenantId || '').toString().trim() || null;
+    $set.tenantId = raw;
+    try {
+      clientRegistry.setTenantId(id, raw);
+    } catch (e) {
+      // Ledger update still proceeds — same "log, don't fail the whole
+      // request" pattern bpoCreateClient's login-creation step already
+      // uses. Most likely cause: this client has no login record yet.
+      await bpoWriteAudit({
+        actor, action: 'client.tenant_link_sync_failed', entityType: 'client', entityId: id,
+        detail: { error: e.message, tenantId: raw },
+      });
     }
   }
 
@@ -601,7 +631,7 @@ async function bpoBackfillClientLogin(id, actor) {
     return { hasLogin: true, accessCode: null, alreadyExisted: true };
   }
 
-  const { accessCode } = clientRegistry.createClientWithId(id, client.name);
+  const { accessCode } = clientRegistry.createClientWithId(id, client.name, client.tenantId || null);
   // New logins default active; align with the client's current ledger status.
   if (client.status === 'inactive') {
     clientRegistry.setActive(id, false);
@@ -1239,6 +1269,84 @@ async function bpoBuildClientRollup(clientId) {
     avgOpenAgeHours: openCount ? Math.round((openAgeSum / openCount) * 100) / 100 : null,
     slaEventsByType,
     cases,
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Cross-vertical counterpart to bpoBuildClientRollup, for a client session
+ * linked to a Member (tenantId) rather than (or in addition to) a single
+ * bpo_clients clientId. Reads bpo_cases (the universal Case Engine every
+ * vertical exec portal syncs into via tsm-case-manager.js) filtered by
+ * tenantId, instead of bpo_work_items (the legacy BPO-only pipeline
+ * bpoBuildClientRollup reads). Returns the SAME top-level shape as
+ * bpoBuildClientRollup (totalWorkItems/byStatus/byPriority/
+ * avgOpenAgeHours/slaEventsByType/cases/generatedAt) so client-portal.html
+ * renders it with zero changes, plus additive fields (byVertical,
+ * exposureTotal, isExposurePartial, slaAtRisk) a UI can opt into showing.
+ *
+ * Client-safe by construction: only pulls fields a client should see
+ * (caseId, vertical, status, priority, deadline, timestamps) — never
+ * `owner`, `fields`, `timeline`, or any of TSMCase's internal-only
+ * properties, mirroring the same allowlist-not-blocklist approach
+ * bpoBuildClientRollup already uses for bpo_work_items.
+ *
+ * `stage` has no TSMCase equivalent (that's a bpo_work_items-only concept)
+ * so it's set equal to `status` here — same information, just no separate
+ * pipeline-stage label exists for a universal case yet.
+ */
+async function bpoBuildMemberClientRollup(tenantId) {
+  if (!tenantId) throw new Error('tenantId is required');
+
+  const [cases, summary] = await Promise.all([
+    bpoListCases({ tenantId, limit: 5000 }),
+    memberCaseSummary(tenantId),
+  ]);
+
+  const byPriority = {};
+  let openAgeSum = 0;
+  let openCount = 0;
+  const now = new Date().toISOString();
+
+  const safeCases = cases
+    .sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''))
+    .map(c => {
+      const priority = c.priority || 'unknown';
+      byPriority[priority] = (byPriority[priority] || 0) + 1;
+
+      const ageHours = bpoHoursBetween(c.detectedAt || c.createdAt, now);
+      if (c.status !== 'CLOSED' && Number.isFinite(ageHours)) {
+        openAgeSum += ageHours;
+        openCount += 1;
+      }
+
+      return {
+        caseId: c.caseId,
+        vertical: c.vertical || c.sector || 'unknown',
+        stage: c.status || null,
+        status: c.status || null,
+        priority,
+        dueDate: c.deadline || null,
+        slaAgeHours: Number.isFinite(ageHours) ? ageHours : null,
+        createdAt: c.detectedAt || c.createdAt || null,
+        updatedAt: c.updatedAt || null,
+      };
+    });
+
+  return {
+    memberId: tenantId,
+    totalWorkItems: safeCases.length,
+    byStage: summary.byStatus,
+    byStatus: summary.byStatus,
+    byPriority,
+    byVertical: summary.byVertical,
+    exposureTotal: summary.exposureTotal,
+    exposureCaseCount: summary.exposureCaseCount,
+    isExposurePartial: summary.isExposurePartial,
+    slaAtRisk: summary.slaAtRisk,
+    avgOpenAgeHours: openCount ? Math.round((openAgeSum / openCount) * 100) / 100 : null,
+    slaEventsByType: {}, // bpo_cases has no SLA-event stream today (that's a bpo_work_items/bpo_sla_events concept) — empty, not fabricated
+    cases: safeCases,
     generatedAt: new Date().toISOString(),
   };
 }
@@ -2063,6 +2171,7 @@ module.exports = {
   bpoSaveBncaReport,
   bpoListBncaReports,
   bpoBuildClientRollup,
+  bpoBuildMemberClientRollup,
   bpoSaveClientMonthlyReport,
   bpoListClientMonthlyReports,
   bpoGetClientMonthlyReport,
