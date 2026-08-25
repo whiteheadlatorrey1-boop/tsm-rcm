@@ -595,6 +595,7 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
     <div class="tb-stat crit">EXPOSURE CONTAINED: <span id="tbExposure">—</span></div>
   </div>
   <div class="topbar-right">
+    <a href="/html/bpo-clients-admin.html" style="font-family:'JetBrains Mono',monospace;font-size:.62rem;letter-spacing:.08em;color:var(--cyan);border:1px solid rgba(0,212,212,.35);padding:5px 10px;border-radius:4px;text-decoration:none;text-transform:uppercase;white-space:nowrap;">⚙ Manage Clients</a>
     <div class="tb-time" id="tbTime">--:--:--</div>
     <div class="tb-user">
       <div class="tb-avatar">EX</div>
@@ -752,7 +753,7 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
     </div>
 
     <div class="panel">
-      <div class="panel-title"><div class="dot" style="background:var(--cyan)"></div>CASE QUEUE · SECTOR: BPO</div>
+      <div class="panel-title"><div class="dot" style="background:var(--cyan)"></div>CASE QUEUE · ALL VERTICALS</div>
       <div id="tsm-case-queue"></div>
     </div>
 
@@ -1821,7 +1822,16 @@ window.TSM_AUTONOMY_STANDARDIZED = true;
     TSMExceptionWidget.mount('tsm-exception-queue', { sector: 'bpo' });
   }
   if (typeof TSMCaseWidget !== 'undefined') {
-    TSMCaseWidget.mount('tsm-case-queue', { sector: 'bpo' });
+    // Unscoped (no sector filter) on purpose: this is BPO's internal
+    // exec-portal ops view, and every vertical's exec portal already
+    // syncs its exception-derived cases to the same server-side
+    // bpo_cases collection (server/tsm-ledger-service.js) via
+    // TSMCaseManager.createFromException() + syncToServer(). Filtering
+    // to sector:'bpo' here silently hid every Construction/Healthcare/
+    // Insurance/Legal/RE/Mortgage/Schools/FinOps case that had already
+    // made it to the server — this is the single read point meant to
+    // aggregate all of them for BPO ops.
+    TSMCaseWidget.mount('tsm-case-queue', {});
   }
 
   // Wire Exception Queue "Resolve" clicks into the same exec-action relay
@@ -1895,7 +1905,10 @@ function bpoFeedExceptions(d) {
     TSMExceptionWidget.mount('tsm-exception-queue', { sector: 'bpo' });
   }
   if (typeof TSMCaseWidget !== 'undefined') {
-    TSMCaseWidget.mount('tsm-case-queue', { sector: 'bpo' });
+    // Same unscoped re-mount as the initial mount above, so a freshly
+    // fired BPO case re-renders alongside the other verticals' cases
+    // instead of narrowing the view back down to sector:'bpo'.
+    TSMCaseWidget.mount('tsm-case-queue', {});
   }
 }
 </script>
