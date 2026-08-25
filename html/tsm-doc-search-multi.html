@@ -3900,7 +3900,7 @@ const DOC_ROUTER_PRIORITY_TO_SEVERITY = {
   'Needs Review': 'low'
 };
 
-function buildCaseFromClassification(classification, fileName) {
+function buildCaseFromClassification(classification, fileName, missionId) {
   try {
     if (!window.TSMCaseManager) return null;
     const primaryCode = classification.primaryVertical || (classification.verticals || [])[0];
@@ -3926,6 +3926,12 @@ function buildCaseFromClassification(classification, fileName) {
       client: classification.client || '',
       process: 'doc-search-multi:batch-intake',
       source: 'doc-search-multi',
+      // Links this case back to the Mission built from the same
+      // classification just above it in processFile() -- null when the
+      // Mission bridge itself returned null (unmapped vertical or
+      // TSMMissionModel/TSMMissionStore not loaded), same honest-missing
+      // convention as everything else in this bridge.
+      missionId: missionId || null,
       documentId: classification.fileName || fileName,
       documentType: classification.documentType || '',
       title: classification.summary || classification.documentType || fileName,
@@ -4138,8 +4144,8 @@ async function processFile(file, persistBatchId) {
         return;
       }
     }
-    buildMissionFromClassification(classification, file.name);
-    const caseRec = buildCaseFromClassification(classification, file.name);
+    const missionRec = buildMissionFromClassification(classification, file.name);
+    const caseRec = buildCaseFromClassification(classification, file.name, missionRec ? missionRec.id : null);
 
     const routed = routeDocument(file.name, classification, attachment, extraction);
  
