@@ -536,6 +536,12 @@
     summarize: summarize,
     confidenceTierFor: confidenceTierFor,
     humanReviewRequiredFor: humanReviewRequiredFor,
+    // Was internal-only. hc-denial-war-room.html's syncStructuredCaseToEngine()
+    // needs the same severity+confidence -> P1/P2/P3 mapping create() already
+    // uses internally, rather than re-implementing it — exporting it is
+    // strictly additive (create()/createFromException() still call the
+    // local closure directly, unaffected).
+    priorityFor: priorityFor,
     syncToServer: syncToServer,
     hydrateFromServer: hydrateFromServer
   };

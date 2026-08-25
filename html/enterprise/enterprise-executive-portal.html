@@ -63,6 +63,8 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 .cap-domain{font-family:'JetBrains Mono',monospace;font-size:.58rem;color:var(--cyan);margin-top:3px;}
 .cap-score{font-family:'Orbitron',sans-serif;font-size:1rem;font-weight:700;flex-shrink:0;}
 .cap-finding{font-size:.7rem;color:var(--muted);margin-top:8px;line-height:1.4;}
+.cap-link{display:inline-block;font-size:.7rem;color:var(--cyan);margin-top:8px;text-decoration:none;border-bottom:1px solid rgba(6,182,212,.35);}
+.cap-link:hover{border-bottom-color:var(--cyan);}
 .cap-none{grid-column:1/-1;text-align:center;color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:.7rem;padding:20px;}
 
 .ai-box{background:rgba(0,212,212,.06);border:1px solid var(--cyan);border-radius:6px;padding:22px;margin-bottom:16px;white-space:pre-wrap;font-size:.95rem;line-height:1.55;}
@@ -149,6 +151,17 @@ function renderVsel(){
 }
 renderVsel();
 
+// Deep-link support: ?vertical=healthcare auto-runs that vertical's demo
+// on load, so BPO Internal1 / HC Denial can link straight into their own
+// vertical here instead of landing on the generic selector.
+(function(){
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const v = params.get('vertical');
+    if (v && VERTICALS.some(x => x.key === v)) runDecision(v);
+  } catch (e) {}
+})();
+
 function scoreColor(score){
   if(score>=80) return 'red';
   if(score>=50) return 'amber';
@@ -179,16 +192,25 @@ function renderResult(data){
   const content = document.getElementById('content');
   const caps = data.capabilities || [];
   const relevant = caps.length;
+  const totalCaps = data.totalCapabilities || 10;
   const highScore = caps.reduce((m,c)=>Math.max(m, c.score||0), 0);
   const bnca = data.bnca || {};
 
   const kpiRow = `
     <div class="kpi-row">
       <div class="kpi"><div class="kpi-val cyan">${(data.sector||'—').toUpperCase()}</div><div class="kpi-lbl">VERTICAL</div></div>
-      <div class="kpi"><div class="kpi-val">${relevant}/10</div><div class="kpi-lbl">CAPABILITIES RELEVANT</div></div>
+      <div class="kpi"><div class="kpi-val">${relevant}/${totalCaps}</div><div class="kpi-lbl">CAPABILITIES RELEVANT</div></div>
       <div class="kpi"><div class="kpi-val ${scoreColor(highScore)}">${highScore}%</div><div class="kpi-lbl">HIGHEST SIGNAL SCORE</div></div>
       <div class="kpi"><div class="kpi-val ${bnca.priority==='HIGH'?'red':'green'}">${bnca.confidence!=null?bnca.confidence+'%':'—'}</div><div class="kpi-lbl">BNCA CONFIDENCE</div></div>
     </div>`;
+
+  // case-engine is the one capability backed by a real, browsable queue
+  // (TSMCaseWidget on the BPO exec portal) rather than a self-contained
+  // score — so its card gets a real link into that queue, filtered to
+  // this vertical, instead of just a finding string.
+  const caseQueueLink = c => c.id === 'case-engine'
+    ? `<a class="cap-link" href="/html/war-rooms/bpo-war/bpo-executive-portal.html?vertical=${encodeURIComponent(data.sector||'')}" target="_blank" rel="noopener">View live case queue &rarr;</a>`
+    : '';
 
   const capGrid = caps.length
     ? caps.map(c => `
@@ -201,6 +223,7 @@ function renderResult(data){
             <div class="cap-score" style="color:var(--${scoreColor(c.score||0)})">${c.score}%</div>
           </div>
           <div class="cap-finding">${(c.findings&&c.findings[0])||'No specific finding surfaced.'}</div>
+          ${caseQueueLink(c)}
         </div>`).join('')
     : '<div class="cap-none">No capabilities were relevant to this document context.</div>';
 
@@ -219,7 +242,7 @@ function renderResult(data){
     </div>` : '';
 
   content.innerHTML = `
-    <div class="status-line">${(data.sector||'').toUpperCase()} &middot; ${data.documentType||''} &mdash; ${relevant} of 10 capabilities relevant.</div>
+    <div class="status-line">${(data.sector||'').toUpperCase()} &middot; ${data.documentType||''} &mdash; ${relevant} of ${totalCaps} capabilities relevant.</div>
     ${kpiRow}
     <div class="sec">
       <div class="sec-hdr">CAPABILITY SIGNAL GRID</div>

@@ -28,6 +28,7 @@
  * Governance
  * WIP
  * Digital Twin
+ * Case Engine
  *
  *          ↓
  *
@@ -52,7 +53,8 @@ const MODULES = [
     "integration",
     "governance",
     "wip",
-    "digital-twin"
+    "digital-twin",
+    "case-engine"
 
 ];
 
@@ -229,6 +231,13 @@ class EnterpriseEngine {
 
             capabilities:
                 results,
+
+            // Was hardcoded to 10 on the client ("X of 10 capabilities
+            // relevant") — broke the moment case-engine.js became the 11th
+            // module. Threading the real loaded-module count through here
+            // instead so the client never has to hardcode it again.
+            totalCapabilities:
+                capabilities.length,
 
 
             summary:{

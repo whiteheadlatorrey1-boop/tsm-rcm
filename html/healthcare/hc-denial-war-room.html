@@ -367,6 +367,9 @@ textarea::placeholder{color:var(--faint)}
 /* ── DEFECT MANIFEST ─────────────────────────────────────── */
 .manifest-btn{position:fixed;bottom:18px;left:18px;z-index:7000;background:#0d1117;border:1px solid #ef4444;color:#ef4444;font-family:'Orbitron',sans-serif;font-size:.62rem;padding:7px 14px;border-radius:4px;cursor:pointer;letter-spacing:.08em;opacity:.7}
 .manifest-btn:hover{opacity:1}
+.pipeline-links{position:fixed;bottom:18px;right:18px;z-index:7000;display:flex;gap:8px}
+.pipeline-links a{background:#0d1117;border:1px solid var(--cyan3);color:var(--cyan);font-family:'Orbitron',sans-serif;font-size:.62rem;padding:7px 14px;border-radius:4px;text-decoration:none;letter-spacing:.06em;opacity:.75;transition:opacity .15s}
+.pipeline-links a:hover{opacity:1}
 .manifest-overlay{position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:9500;display:none;align-items:center;justify-content:center}
 .manifest-overlay.active{display:flex}
 .manifest-card{background:#0d1117;border:1px solid #ef4444;border-radius:8px;padding:28px 32px;max-width:600px;width:92%;max-height:78vh;overflow-y:auto}
@@ -385,6 +388,13 @@ textarea::placeholder{color:var(--faint)}
 <script src="https://code.responsivevoice.org/responsivevoice.js?key=FREE"></script>
 <script src="/html/healthcare/js/tsm-workflow-stage.js"></script>
 <script src="/html/shared/tsm-output-contract.js"></script>
+<!-- Case Engine — see syncStructuredCaseToEngine() below. Was previously
+     not loaded on this page at all: the 5-engine pipeline built a full
+     13-field structured case object (buildHCStructuredCase) and then just
+     held it in a page-local variable, so no denial worked here ever
+     reached the same case-queue/executive-rollup pipeline BPO Internal1
+     and the BPO exec portal use. -->
+<script src="/html/shared/tsm-case-manager.js"></script>
 <script src="/js/tsm-runtime-lock.js"></script>
 <script src="/js/tsm-event-contract.js"></script>
 <script src="/js/tsm-autonomy-layer.js"></script>
@@ -1810,6 +1820,7 @@ async function runPipeline() {
   // pulled verbatim from engine text, or a documented deterministic
   // derivation of a value the engines already stated (see comments).
   lastStructuredCase = buildHCStructuredCase(outputs, docText, claimDollar);
+  syncStructuredCaseToEngine(lastStructuredCase);
 
   setTimeout(() => {
     try {
@@ -2010,6 +2021,60 @@ function executePacketCompilation() {
 // in the same script scope without threading params through everything
 // in between).
 let lastStructuredCase = null;
+// caseId of the Case Engine record mirroring lastStructuredCase, once
+// syncStructuredCaseToEngine() has run at least once this session. Kept so
+// a re-run of the pipeline (retry, re-upload) updates the same case
+// instead of creating a duplicate every time.
+let syncedCaseId = null;
+
+/**
+ * syncStructuredCaseToEngine(sc) -> TSMCase | null
+ *
+ * Mirrors the 13-field structured case contract (buildHCStructuredCase)
+ * into the Case Engine (TSMCaseManager), the same server-synced system
+ * (bpo_cases, /api/bpo/reports/*) BPO Internal1 intakes now reach via
+ * mission-case-bridge.js and the BPO exec portal writes to directly. This
+ * is what makes a denial actually worked in this war room show up in the
+ * live case queue and the Enterprise Portal's case-engine capability —
+ * before this, lastStructuredCase never left the page.
+ *
+ * No tenant/session context exists on this standalone tool page, so
+ * tenantId is left null (case-manager's documented default — same as
+ * omitting tenantId anywhere else in this codebase: unscoped, not broken).
+ */
+function syncStructuredCaseToEngine(sc) {
+  if (!sc || typeof TSMCaseManager === 'undefined') return null;
+  const severity = (!sc.appealable || sc.recoveryLikelihood === 'WEAK') ? 'high'
+    : (sc.recoveryLikelihood === 'MODERATE' ? 'med' : 'low');
+  const patch = {
+    sector: 'healthcare',
+    vertical: 'healthcare',
+    client: sc.payer || '',
+    process: 'denial_recovery',
+    source: 'hc_denial_war_room',
+    title: (sc.claimId ? sc.claimId + ' — ' : '') + (sc.denialReasonCode || 'Denial'),
+    description: sc.rootCauseHypothesis || '',
+    priority: TSMCaseManager.priorityFor(severity, sc.confidence),
+    exposure: typeof sc.financialExposure === 'number' ? sc.financialExposure : null,
+    deadline: sc.appealDeadline || null,
+    confidence: typeof sc.confidence === 'number' ? sc.confidence : null,
+    confidenceTier: sc.confidenceTier || null,
+    humanReviewRequired: sc.humanReviewRequired,
+    recommendedActions: sc.recoveryLikelihood ? ['Recovery likelihood: ' + sc.recoveryLikelihood] : [],
+    fields: { claimId: sc.claimId, denialCategory: sc.denialCategory, appealable: sc.appealable }
+  };
+  try {
+    if (syncedCaseId && TSMCaseManager.getById(syncedCaseId)) {
+      return TSMCaseManager.update(syncedCaseId, patch);
+    }
+    const rec = TSMCaseManager.create(patch);
+    syncedCaseId = rec.caseId;
+    return rec;
+  } catch (e) {
+    console.error('[case-engine] sync failed', e);
+    return null;
+  }
+}
 
 /**
  * buildHCStructuredCase(outputs, docText, claimDollar)
@@ -2381,6 +2446,13 @@ function exportAll() {
 
 <!-- ── DEFECT MANIFEST ───────────────────────────────────────────── -->
 <button class="manifest-btn" id="manifestBtn" style="display:none" onclick="document.getElementById('manifestOverlay').classList.add('active')">⚠ DEFECT MANIFEST</button>
+<!-- Cases created in this war room sync to the Case Engine (tsm-case-manager.js,
+     server-persisted in bpo_cases) — these jump to the same live views BPO
+     Internal1 and the Enterprise Portal use, filtered to this vertical. -->
+<div class="pipeline-links">
+  <a href="/html/war-rooms/bpo-war/bpo-executive-portal.html?vertical=healthcare" target="_blank" rel="noopener">CASE QUEUE →</a>
+  <a href="/html/enterprise/enterprise-executive-portal.html?vertical=healthcare" target="_blank" rel="noopener">ENTERPRISE PORTAL →</a>
+</div>
 <script>
 // Internal-only: defect manifest is a dev/QA tool, never shown in a client-facing session
 // unless explicitly requested via ?debug=1 (or ?debug=true).

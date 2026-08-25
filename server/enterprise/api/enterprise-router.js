@@ -31,9 +31,16 @@ function baseUrlFrom(req) {
     return req.protocol + '://' + req.get('host');
 }
 
+// case-engine.js (and any future module hitting a requireRole-gated
+// /api/bpo/* route) self-fetches with plain fetch(), which sends no
+// cookies of its own. Forwarding the caller's own session cookie means
+// the internal call runs with the same permissions as the logged-in
+// portal user — no new auth surface, no service account to manage.
+function cookieFrom(req) {
+    return req.headers.cookie || '';
+}
 
-
-function resolveContext(body = {}, baseUrl) {
+function resolveContext(body = {}, baseUrl, cookie) {
 
     if (body.demo) {
 
@@ -45,12 +52,12 @@ function resolveContext(body = {}, baseUrl) {
             {},
             fixture,
             body.context || {},
-            { baseUrl }
+            { baseUrl, cookie }
         );
 
     }
 
-    return Object.assign({}, body, { baseUrl });
+    return Object.assign({}, body, { baseUrl, cookie });
 
 }
 
@@ -104,6 +111,9 @@ function reshapeForClient(result, context) {
 
             capabilityCount:
                 capabilities.length,
+
+            totalCapabilities:
+                result.enrichment.totalCapabilities || capabilities.length,
 
             capabilities,
 
@@ -175,7 +185,7 @@ router.post(
         try {
 
             const context =
-                resolveContext(req.body, baseUrlFrom(req));
+                resolveContext(req.body, baseUrlFrom(req), cookieFrom(req));
 
             const result =
                 await orchestrator.execute(
@@ -231,7 +241,7 @@ audit:{
  id:"AUDIT-2026-001"
 }
 
-},req.body || {}, { baseUrl: baseUrlFrom(req) });
+},req.body || {}, { baseUrl: baseUrlFrom(req), cookie: cookieFrom(req) });
 
 }
 

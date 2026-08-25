@@ -17,11 +17,17 @@
  * environment without hardcoding a port.
  */
 
-async function getJSON(baseUrl, path) {
+async function getJSON(baseUrl, path, cookie) {
   if (!baseUrl) {
     throw new Error(`baseUrl missing from context — cannot reach live endpoint ${path}`);
   }
-  const res = await fetch(baseUrl + path);
+  // Some already-mounted endpoints (e.g. /api/bpo/reports/*) sit behind
+  // requireRole() and read the session from the request cookie. A bare
+  // fetch() carries none, so any caller targeting one of those routes
+  // must pass the original request's cookie header through here — same
+  // session, same permissions as the logged-in user, no service account.
+  const headers = cookie ? { cookie } : undefined;
+  const res = await fetch(baseUrl + path, headers ? { headers } : undefined);
   const data = await res.json();
   if (!res.ok || data.ok === false) {
     throw new Error(`${path} returned ${res.status}: ${data.error || 'unknown error'}`);
