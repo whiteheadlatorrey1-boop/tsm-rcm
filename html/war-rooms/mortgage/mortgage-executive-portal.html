@@ -605,12 +605,22 @@ function mtgFeedExceptions(fin){
 // counter wired, so qualityScore/documentCount stay undefined -- honest
 // nulls in the built package, same convention as insurance-executive-portal.html.
 let lastExplainItems = [];
+// Hoisted alongside lastExplainItems, same convention, so
+// exportClientPackage() can include the real financials/funnel/risk-register
+// data render() already computed from the relay -- this pilot (First
+// American) has real shared-savings pricing riding on these figures, and
+// they previously never left the screen.
+let lastFinancials = null;
+let lastLoanWip = null;
 
 function render(){
   const data = loadRelay();
   if(!data){ renderEmpty(); return; }
 
   document.getElementById('hdrSub').textContent = `Relayed ${data.timestamp ? new Date(data.timestamp).toLocaleString() : '&mdash;'}`;
+
+  lastFinancials = data.financials || null;
+  lastLoanWip = data.loan_wip || null;
 
   let html = '';
   html += renderFinancials(data.financials);
@@ -694,9 +704,13 @@ window.exportClientPackage = function () {
     showToast('Delivery package engine not loaded.');
     return;
   }
+  const sections = {};
+  if (lastFinancials) sections.financials = lastFinancials;
+  if (lastLoanWip) sections.loanPipeline = lastLoanWip;
   const pkg = TSMDeliveryPackage.build({
     domain: 'Mortgage',
-    explainItems: lastExplainItems
+    explainItems: lastExplainItems,
+    sections: sections
   });
   const blob = new Blob([JSON.stringify(pkg, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
