@@ -1218,6 +1218,16 @@ app.get('/api/bpo/work-items/:caseId/documents', requireRole(BPO_CLIENT_VIEW_ROL
     if (req.tsmSession.role === 'client') {
       const item = await tsmLedger.bpoGetWorkItem(req.params.caseId);
       if (!item || item.clientId !== req.tsmSession.clientId) {
+        // Server-side-only diagnosis of which of the two 404 causes this
+        // was -- a missing record vs. a clientId mismatch -- without
+        // changing the client-facing response. Deliberately still a bare
+        // 404 either way (same don't-let-a-client-distinguish-cross-tenant-
+        // from-missing reasoning as the neighboring download route).
+        if (!item) {
+          console.warn(`[bpo-documents-404] caseId=${req.params.caseId} not found`);
+        } else {
+          console.warn(`[bpo-documents-404] caseId=${req.params.caseId} clientId mismatch: item.clientId=${item.clientId} session.clientId=${req.tsmSession.clientId}`);
+        }
         return res.status(404).json({ ok: false, error: 'Work item not found' });
       }
     }
