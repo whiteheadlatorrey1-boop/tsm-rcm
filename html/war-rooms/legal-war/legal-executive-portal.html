@@ -1073,6 +1073,16 @@ function confirmAuthorization() {
   // Write to sessionStorage for audit trail
   try { sessionStorage.setItem('TSM_AUTHORIZATIONS', JSON.stringify(authorizations)); } catch(e){}
 
+  // Also record to the real server-side HITL decision log (server.js:
+  // /api/exec-portal/legal/decide), same pattern as Mortgage/PM Copilot.
+  // Every legal authorization is an approval by definition (there is no
+  // reject/escalate button on this UI), so verdict is always 'approved'.
+  fetch('/api/exec-portal/legal/decide', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ index: Date.now(), verdict: 'approved', text: `${currentActionName} — ${note}`, actor: exec })
+  }).catch(() => { /* offline/unreachable -- action still logged to sessionStorage above */ });
+
   closeModal();
   showToast(`${currentActionName} authorized`, `By ${exec} · ${new Date().toLocaleTimeString()}`);
 }
