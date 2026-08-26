@@ -181,6 +181,9 @@
   .ip-actions{ display:flex; gap:10px; margin-top:22px; }
   .ip-actions .btn{ flex:1; }
 
+  #bncaSynthesisPanel .lbl{ font-size:10px; letter-spacing:1.5px; color:var(--dim); text-transform:uppercase; margin-bottom:6px; }
+  #bncaSynthesisPanel .txt{ font-size:12.5px; color:var(--text); line-height:1.6; }
+
   /* ---------- Cross-Vertical Causality Board ---------- */
   .causal-row{
     display:grid; grid-template-columns:1.6fr 1.8fr 2.2fr auto;
@@ -342,6 +345,21 @@
       <div class="label">Top Cross-Vertical Threat</div>
       <div class="value bad" id="kpiTopThreat" style="font-size:15px;">--</div>
       <div class="sub" id="kpiTopThreatSub">by total ripple relief</div>
+    </div>
+  </div>
+
+  <div class="panel" id="bncaSynthesisPanel" style="display:none;">
+    <div class="panel-head">
+      <div class="h">Enterprise BNCA Synthesis</div>
+      <div class="count" id="bncaSynthesisMeta"></div>
+    </div>
+    <div style="padding:6px 18px 16px;">
+      <div class="lbl">Overall Risk</div>
+      <div class="txt" id="bncaOverallRisk">--</div>
+      <div class="lbl" style="margin-top:14px;">Collective BNCA Narrative</div>
+      <div class="txt" id="bncaNarrative">--</div>
+      <div class="lbl" style="margin-top:14px;">Priority Actions</div>
+      <div class="txt" id="bncaPriorityActions">--</div>
     </div>
   </div>
 
@@ -1746,6 +1764,24 @@ function aiVerticalReport(v){
   return lines.join('\n');
 }
 
+const HOWTO_GUIDE = {
+  verticals: { keys: /configure|subscri|which verticals|scope|add a vertical|remove a vertical/, text: 'Click "Configure Verticals" (top right) to choose which verticals this business is subscribed to. Only checked verticals count toward BPS, Enterprise Exposure, and the Causality Board \u2014 unchecked ones are hidden everywhere on this page.' },
+  liveVsSample: { keys: /live vs sample|sample data|is this real|live data|how do i know.*(real|live)/, text: 'A vertical shows LIVE once its own Strategist writes real anomalies to this browser (via TSM_<VERTICAL>_STRATEGIST_RELAY). Until then it shows SAMPLE data drawn from that vertical\'s real War Room vocabulary \u2014 clearly labeled, never presented as real. Only LIVE verticals link out to their full Executive Portal.' },
+  causality: { keys: /causality board|cross.vertical|ripple|cascad|spillover/, text: 'The Cross-Vertical Causality Board shows risk pressure flowing between your subscribed verticals \u2014 e.g. a Legal delay pushing cost into Construction. Each row is either "verified" (grounded in real relay data) or "modeled" (a plausible mapped relationship). Click any anomaly to see its full ripple analysis.' },
+  bps: { keys: /\bbps\b|posture score|how is.*score calculated|business posture/, text: 'Business Posture Score (0\u2013100) is a weighted rollup of severity, exposure, and confidence across every subscribed vertical\'s active anomalies. Click the (i) next to the score for a full vertical-by-vertical breakdown \u2014 nothing is a black box.' },
+  bnca: { keys: /enterprise bnca|collective bnca|what is bnca|synthesis panel/, text: 'The Enterprise BNCA Synthesis panel (when visible) shows the platform\'s real cross-vertical synthesis from every signal pushed via the Collective BNCA engine \u2014 separate from the per-anomaly "Collective Strategist Recommendation" inside an anomaly\'s detail panel. It only appears once a real synthesis exists; never faked or placeholder.' },
+  impactPanel: { keys: /impact panel|impact analysis|clearing this|what happens if i clear/, text: 'Click any anomaly row to open BNCA Impact Analysis \u2014 it projects what happens across the rest of the enterprise if that specific anomaly is cleared, based on its own impacts map.' },
+  exportAudit: { keys: /export|snapshot|download|audit log/, text: '"Export Snapshot" downloads the current board state as JSON. "Audit Log" shows an append-only local record of subscription changes, alert crossings, and exports \u2014 kept in this browser only.' },
+  aboutMe: { keys: /ask sentinel|are you an ai|are you gpt|what can you answer/, text: 'I only answer from the numbers already computed on this page \u2014 Business Posture Score, exposure, the Causality Board, and (when present) Enterprise BNCA Synthesis. I don\'t call out to a general model or guess at anything not already on this board.' }
+};
+
+function matchHowTo(q){
+  for (const key in HOWTO_GUIDE) {
+    if (HOWTO_GUIDE[key].keys.test(q)) return HOWTO_GUIDE[key].text;
+  }
+  return null;
+}
+
 function answerAiQuery(raw){
   const q = raw.toLowerCase().trim();
   const active = activeVerticals();
@@ -1753,6 +1789,9 @@ function answerAiQuery(raw){
   if (!active.length){
     return { text: 'No verticals are currently subscribed — open Configure Verticals to bring data into scope.', src: null };
   }
+
+  const howto = matchHowTo(q);
+  if (howto) return { text: howto, src: 'Sentinel How-To Guide' };
 
   if (/^(hi|hello|hey)\b|help|what can you|what do you/.test(q)){
     return {
@@ -1837,7 +1876,54 @@ document.getElementById('aiInput').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') sendAiQuery();
 });
 
+// ── ENTERPRISE BNCA SYNTHESIS ──────────────────────────────────────────
+// Real cross-vertical synthesis from /api/collective/bnca/latest — distinct
+// from the per-anomaly "Collective Strategist Recommendation" panel above,
+// which is scoped to one anomaly's local impacts. This one is whatever the
+// server last synthesized across every signal pushed via /api/collective/
+// signal, regardless of which anomaly (if any) is open. Shown only when a
+// real synthesis exists — no placeholder text, matching the SAMPLE/live:false
+// convention used for per-vertical anomaly data elsewhere on this page.
+const BNCA_RISK_COLOR = { URGENT:'#ff4d4d', RISK:'#f5a623', WATCH:'#00c8ff', READY:'#00c896' };
+
+async function apiFetch(url, opts) {
+  const res = await fetch(url, opts);
+  const ct = res.headers.get('content-type') || '';
+  if (!ct.includes('application/json')) {
+    if (res.status === 302 || res.redirected || ct.includes('text/html')) {
+      throw new Error('Session expired or not authenticated — please reload and log in.');
+    }
+    throw new Error(`Unexpected response (${res.status}) from ${url}`);
+  }
+  return res.json();
+}
+
+async function loadCollectiveBnca(){
+  const panel = document.getElementById('bncaSynthesisPanel');
+  try {
+    const data = await apiFetch('/api/collective/bnca/latest');
+    if (!data.ok || !data.result) { panel.style.display = 'none'; return; }
+    const r = data.result;
+    panel.style.display = '';
+    document.getElementById('bncaSynthesisMeta').textContent =
+      (r.signalCount ?? 0) + ' signal' + (r.signalCount === 1 ? '' : 's') + ' · ' +
+      (r.verticalsActive ?? 0) + ' vertical' + (r.verticalsActive === 1 ? '' : 's') + ' · confidence ' + (r.confidence ?? 0) + '%';
+    const color = BNCA_RISK_COLOR[r.overallRisk] || '#7a98b8';
+    document.getElementById('bncaOverallRisk').innerHTML =
+      `<span style="color:${color};font-weight:600;">${escapeHtml(r.overallRisk || 'UNKNOWN')}</span>`;
+    document.getElementById('bncaNarrative').textContent = r.collectiveBNCA || 'No narrative returned.';
+    const actions = Array.isArray(r.priorityActions) ? r.priorityActions.slice(0, 5) : [];
+    document.getElementById('bncaPriorityActions').innerHTML = actions.length
+      ? actions.map(a => `<div style="margin-bottom:6px;">#${a.rank ?? '—'} <b>${escapeHtml(a.action || '')}</b>${a.owner ? ' — ' + escapeHtml(a.owner) : ''}${a.deadline ? ' (' + escapeHtml(a.deadline) + ')' : ''}</div>`).join('')
+      : '<span style="color:var(--dim)">No priority actions returned.</span>';
+  } catch (e) {
+    panel.style.display = 'none';
+    console.warn('[bnca-synthesis]', e.message);
+  }
+}
+
 render();
+loadCollectiveBnca();
 </script>
 </body>
 </html>
