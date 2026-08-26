@@ -69,7 +69,7 @@ const STATIC_ALIASES = [
   ['/bpo', 'html/bpo'],
   ['/shared', 'html/shared'],
   ['/insurance', 'html/tsm-insurance'],
-  ['/construction', 'html/construction-suite'],
+  ['/construction-suite', 'html/construction-suite'],
   ['/runtime', 'runtime'],
   ['/architecture', 'architecture'],
   ['/core', 'core'],

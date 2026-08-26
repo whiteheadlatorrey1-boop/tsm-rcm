@@ -1878,7 +1878,7 @@ app.get(['/healthcare/hc-academy/poc-html/index.html', '/healthcare/hc-academy/p
 });
 app.use('/', express.static(path.join(__dirname, 'html')));
 const suites = [
-  { route: '/construction', dir: 'html/construction-suite', index: 'construction-hub.html' },
+  { route: '/construction-suite', dir: 'html/construction-suite', index: 'construction-hub.html' },
   { route: '/finops', dir: 'html/finops-suite', index: 'finops-presentation/index.html' },
   { route: '/healthcare', dir: 'html/healthcare', index: 'index.html' },
   { route: '/insurance', dir: 'html/tsm-insurance', index: 'ins-presentation.html' },
@@ -1943,7 +1943,7 @@ app.use('/js', express.static(path.join(__dirname, 'js')));
 app.use('/bpo', express.static(path.join(__dirname, 'html/bpo')));
 app.use('/shared', express.static(path.join(__dirname, 'html/shared')));
 app.use('/insurance', express.static(path.join(__dirname, 'html/tsm-insurance')));
-app.use('/construction', express.static(path.join(__dirname, 'html/construction-suite')));
+app.use('/construction-suite', express.static(path.join(__dirname, 'html/construction-suite')));
 // NOTE: /runtime and /architecture mounts now live earlier in this file
 // (right after the '/html/runtime' mount, before the '/' catch-all) so they
 // can't be shadowed by stale files inside html/. See fix note there.

@@ -217,7 +217,7 @@ function tsmAuthMiddleware(app) {
       req.path.startsWith('/finops/') ||
       req.path.startsWith('/bpo/') ||
       req.path.startsWith('/insurance/') ||
-      req.path.startsWith('/construction/') ||
+      req.path.startsWith('/construction-suite/') ||
       req.path.startsWith('/legal-pro/') ||
       req.path.startsWith('/reo-pro/') ||
       req.path.startsWith('/music/');
