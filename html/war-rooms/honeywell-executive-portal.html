@@ -172,6 +172,25 @@ function recordExecutiveAction(action, note){
     });
   }
   showToast(note);
+
+  // Also record to the real server-side HITL decision log (server.js:
+  // /api/exec-portal/honeywell/decide), same pattern as Mortgage/PM
+  // Copilot/Legal/Construction. Plant/Supplier/Cyber-OT share this one
+  // portal, so the incident type (data.source, set by the war room that
+  // relayed here) is folded into the decision text rather than the
+  // vertical key -- the gate itself has no per-incident-type slot.
+  // Verdict mapping: AUTHORIZED = executive signs off ('approved');
+  // BOARD_NOTIFIED = escalated up rather than accepted as-is ('rejected')
+  // -- a deliberate two-button-to-gate-vocabulary mapping, not a literal
+  // rejection claim.
+  const relay = loadRelay();
+  const incidentType = (relay && relay.source) ? relay.source : 'UNKNOWN';
+  const verdict = action === 'AUTHORIZED' ? 'approved' : 'rejected';
+  fetch('/api/exec-portal/honeywell/decide', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ index: Date.now(), verdict, text: `[${incidentType}] ${note}`, actor: 'Executive' })
+  }).catch(() => { /* offline/unreachable -- action still logged to audit trail above */ });
 }
 
 function loadRelay(){

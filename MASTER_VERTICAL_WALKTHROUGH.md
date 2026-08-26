@@ -1,7 +1,7 @@
 # TSM Consultz — Master Vertical Walkthrough
-## War Room → Strategist → Executive Portal (8 Core Verticals)
+## War Room → Strategist → Executive Portal (13 Chained Verticals + 1 Standalone)
 
-**Verticals covered:** Healthcare, Construction, FinOps, Insurance, Legal, Real Estate, Mortgage, Schools
+**Verticals covered:** Healthcare, Construction, FinOps, Insurance, Legal, Real Estate, Mortgage, Schools, PM Copilot, BPO, HotelOps, Concierge, Honeywell (Plant/Supplier/Cyber-OT). RCM-OS is documented separately at the end — it's a standalone reconciliation tool, not a War Room → Strategist → Executive Portal chain.
 **Pattern:** every vertical runs the same three-layer chain — operator desk (War Room) → analytical handoff (Strategist) → leadership decision surface (Executive Portal). All onClick chains below are verified against the live HTML/JS, not assumed.
 
 ---
@@ -146,9 +146,10 @@
 ## 5. Legal
 
 **Path:** `html/war-rooms/legal-war/legal-war-room.html` → `legal-main-strategist.html` (chief) — with `case-strategist.html` as a case-level intermediate layer → `legal-executive-portal.html`
+**Correction (verified 2026-08-26):** the case-level `case-strategist.html` does NOT live in `html/war-rooms/legal-war/` alongside the other Legal files — it's actually at **`html/legal-pro/case-strategist.html`**. The nav links from `legal-war-room.html` (`nav('case-strategist.html')`, relative) still resolve correctly at runtime, but anyone navigating to the file directly needs the real path above.
 
 ### War Room
-- Nav: **STRATEGIST** (case-level, `case-strategist.html`), **CHIEF STRATEGIST** (`legal-main-strategist.html`), **EXECUTIVE PORTAL** (`legal-executive-portal.html`) — three-deep chain, unique to Legal.
+- Nav: **STRATEGIST** (case-level, `html/legal-pro/case-strategist.html`), **CHIEF STRATEGIST** (`legal-main-strategist.html`), **EXECUTIVE PORTAL** (`legal-executive-portal.html`) — three-deep chain, unique to Legal.
 - **⚡ FIRE ALL 6 ENGINES** (`#fireBtn`) — `fireEngines()`.
 - **⬇ EXPORT FULL REPORT** — `exportFull()`.
 - **⚡ ESCALATE TO LEGAL CHIEF STRATEGIST →** — `escalateToChief()`.
@@ -254,14 +255,142 @@
 
 ---
 
-## Cross-Vertical Patterns Worth Naming in a Demo
+## 9. PM Copilot
 
-1. **Escalation is state, not just navigation.** Most "Escalate" buttons (`escalateToStrategist`, `escalateToExec`, `writeExecRelay`, `schWriteRelay`) write a payload to storage *before* moving screens — the receiving screen reads real data, it isn't just a link.
-2. **Two relay mechanisms coexist.** Legacy verticals (Legal, Construction, FinOps, Insurance) use dedicated JS functions per action. Newer ones (Mortgage, Schools) standardized on a shared relay pattern: `sessionStorage` + `localStorage` + a custom `TSM_RELAY_EVENT` for same-tab updates.
-3. **`exportClientPackage()` is the common exec-portal export**, present on HC, Construction, FinOps, Insurance, Legal, Mortgage, and Schools. **Real Estate is the one exception** — it uses `exportSession()` / `exportBoard()` instead. Don't promise "Export Client Package" language on the RE exec portal.
-4. **ACKNOWLEDGE / ESCALATE with logged messages** (Mortgage, Schools) is the most audit-trail-forward pattern — worth showing to a compliance-sensitive buyer.
-5. **Legal is the only three-tier chain** (case strategist → chief strategist → executive) — call this out explicitly since every other vertical is a flat three-screen chain.
+**Path:** `html/war-rooms/pm-copilot/pm-command.html` → `pm-strategist.html` → `pm-exec-portal.html`
+**Relay key:** `TSM_PM_COPILOT_RELAY` (`RELAY_KEY_FALLBACK`) / `TSM_PM_STRATEGIST_RELAY`
+
+### War Room — `pm-command.html`
+- **Vendor dispatch** — `dispatchVendorTransport(workOrderId, vendorId)` — assigns a vendor to a specific work order, not a generic action.
+- **Quick-fire presets** — `pmQuickFire('compliance')` / `pmQuickFire('finance')` / `pmQuickFire('market')`.
+- **RUN AI ANALYSIS** (`#btnAnalyze`) — event-listener bound, not inline onclick.
+- **LOAD SAMPLE DATA / RESET SAVED DATA** (`#btnLoadSample` / `#btnResetData`) — event-listener bound.
+- **RELAY TO STRATEGIST** (`#btnRelay`) — `relayToStrategist()`, event-listener bound — same Mortgage/Schools/HotelOps relay convention (sessionStorage + localStorage + `TSM_RELAY_EVENT`).
+
+### Strategist — `pm-strategist.html`
+- **Export** — `window.print()` (print-to-PDF, same as Mortgage/Schools, not a custom export function).
+- `window.runInphusionWarRoomScenario()` — demo-scenario trigger.
+- Executive View — plain link, no relay-write on click.
+
+### Executive Portal — `pm-exec-portal.html`
+- **⬇ EXPORT CLIENT PACKAGE** (`#tsmk-delivery-btn`) — `exportClientPackage()`.
+- **✓ ACKNOWLEDGE** — `recordExecAction('acknowledged', 'Portfolio snapshot reviewed and signed off by executive')`.
+- **↑ ESCALATE** — `recordExecAction('escalated', 'Escalation flagged — notify regional PM manager')`.
+- **Export** (`#printBtn`) — `window.print()`.
+
+**Talk points:**
+- "PM Copilot follows the newer Mortgage-style relay convention — event-listener bound buttons, dual-storage relay — not the legacy inline-onclick pattern Legal/Construction/FinOps/Insurance use."
+- "Vendor dispatch is a real state change tied to a specific work order and vendor ID, not a generic demo button."
 
 ---
 
-*Verified against live source in `tsm-rcm` repo. All onClick/event-listener bindings above were confirmed by direct grep against the HTML files, not inferred from naming conventions.*
+## 10. BPO
+
+**Path:** `html/war-rooms/bpo-war/bpo-war-room.html` → `bpo-strategist.html` → `bpo-executive-portal.html`
+
+### War Room — `bpo-war-room.html`
+- Document intake and classification, feeding the strategist's structured extraction.
+
+### Strategist — `bpo-strategist.html`
+- Strategy brief generation from the intake document; escalates to the exec portal with a `caseId`.
+
+### Executive Portal — `bpo-executive-portal.html`
+- **⬇ EXPORT EXEC BRIEF** / **EXPORT BRIEF** / **⬇ EXPORT** (three separate buttons, `#dc-export-btn` among them) — all call `exportBrief()`.
+- **Note: BPO does NOT use `exportClientPackage()` / `tsmk-delivery-btn`** — it's the second exception on the platform (after Real Estate). `exportBrief()` builds a plain-text session report instead of the JSON delivery package, pulling `stratData`, the resolution audit (`lastResolutionAudit` — anomaly, status, detected/resolved timestamps), and the cross-vertical supervisor rollup (`lastSupervisorRollup` — total/open/closed/late mission counts by vertical), each only included when that panel actually loaded real data.
+- Decision Center action toggles (approve / assign owners / notify stakeholders) get folded into the exported brief as a "DECISION CENTER ACTIONS TAKEN" section.
+
+**Talk points:**
+- "BPO's export is a real text-file executive brief, not the JSON package the other verticals use — and it explicitly says so in its own footer: 'nothing here is re-derived or estimated at export time.'"
+- "It's also the only exec portal on the platform that pulls in the cross-vertical supervisor rollup — mission counts across every other domain, not just BPO's own."
+
+---
+
+## 11. HotelOps
+
+**Path:** `html/hotelops/hotelops-war-room.html` → `hotelops-strategist.html` → `hotelops-executive-portal.html`
+
+### War Room — `hotelops-war-room.html`
+- **RUN AI ANALYSIS** (`#btnAnalyze`), **RELAY TO STRATEGIST** (`#btnRelay` → `relayToStrategist()`), **LOAD SAMPLE DATA / RESET SAVED DATA** — all event-listener bound, same Mortgage-style relay convention.
+- **IoT sensor import** — `#navIotSensors`, `#btnIotImportPreview` / `#btnIotImportCommit` — a preview-then-commit two-step flow unique to this vertical, for importing IoT maintenance-sensor data.
+
+### Strategist — `hotelops-strategist.html`
+- **Export** — `window.print()`.
+
+### Executive Portal — `hotelops-executive-portal.html`
+- **⬇ EXPORT CLIENT PACKAGE** — `exportClientPackage()`, now wired with real `financials`, maintenance/compliance/Airbnb risk data, and portfolio data as a sections passthrough (fixed 2026-08-26).
+- **✓ ACKNOWLEDGE / ↑ ESCALATE** — `recordExecutiveAction(...)`.
+
+**Talk points:**
+- "The IoT import is a genuine preview-then-commit flow — you see exactly what's about to be imported before it commits, not a one-click black box."
+
+---
+
+## 12. Concierge
+
+**Path:** `html/concierge/concierge-war-room.html` → `concierge-strategist.html` → `concierge-executive-portal.html`
+
+### War Room — `concierge-war-room.html`
+- **Live mission actions** — `bookQuote(quoteId)`, `cancelMission(bookingId)`, `refreshMission(bookingId)`, `simulateEvent(bookingId, nextStatus)` — all tied to a specific booking, not generic buttons.
+- **Status filters** — `setFilter('confirmed' | 'en_route' | 'completed' | 'cancelled' | '')`.
+- `loadMissions()` — refreshes the live mission list.
+
+### Strategist — `concierge-strategist.html`
+- **confirmToExec()** — the strategist-confirmation gate that unlocks the exec portal's content (same `TSM_STRAT_CONFIRMED_<DOMAIN>` gate pattern used elsewhere).
+- `loadAll()` — pulls the live mission set into the strategist view.
+
+### Executive Portal — `concierge-executive-portal.html`
+- **⬇ EXPORT CLIENT PACKAGE** (`#tsmk-delivery-btn`) — `exportClientPackage()`, now wired with real KPI totals (total/open/completed/exceptions/spend) as a sections passthrough (fixed 2026-08-26) — previously the actual dollar spend figure never reached the export.
+
+**Talk points:**
+- "Concierge is the one vertical built around live dispatched transport missions rather than document-driven case work — bookQuote/cancelMission/simulateEvent are all real state transitions on a specific booking ID."
+
+---
+
+## 13. Honeywell (Plant / Supplier / Cyber-OT)
+
+**Path:** three parallel scenario-specific entry points — `html/plant-incident.html`, `html/supplier-shutdown.html`, `html/cyber-incident.html` — each escalating into one shared `html/war-rooms/honeywell-strategist.html` → `html/war-rooms/honeywell-executive-portal.html`.
+**Structural note:** unlike every other vertical in this manual, Honeywell has **no single "war room" file** — it has three, one per incident type, all funneling into the same strategist/exec-portal pair.
+
+### War Room (one of three, by scenario)
+- **plant-incident.html** — `⚡ ESCALATE TO OPERATIONS STRATEGIST →` (`#escalateBtn`, disabled until conditions are met) — `escalateToStrategist()`.
+- **supplier-shutdown.html** — `⚡ ESCALATE TO SUPPLY CHAIN STRATEGIST →` — `escalateToStrategist()`.
+- **cyber-incident.html** — `🛡 ESCALATE TO OPERATIONS STRATEGIST →` — `escalateToStrategist()`.
+- All three target the same `STRATEGIST_URL = '/html/war-rooms/honeywell-strategist.html'`.
+
+### Strategist — `honeywell-strategist.html`
+- **→ Escalate** — `escalateExec()`.
+- Scenario shortcuts back to any of the three war rooms (`window.location='/html/plant-incident.html'` etc.) and forward to the exec portal.
+- `manualRefresh()`, **Export** — `window.print()`.
+
+### Executive Portal — `honeywell-executive-portal.html`
+- **⬇ EXPORT CLIENT PACKAGE** — `exportClientPackage()`.
+- **AUTHORIZE** — `recordExecutiveAction('AUTHORIZED', ...)`.
+- **BOARD NOTIFIED** — `recordExecutiveAction('BOARD_NOTIFIED', ...)` — a named action distinct from the generic ESCALATE seen elsewhere.
+- Same scenario shortcuts back to all three war rooms.
+
+**Talk points:**
+- "Honeywell is the only vertical with three front doors instead of one — plant incident, supplier shutdown, cyber-OT breach — because those are genuinely different first-responders with different data, but they converge on one strategist and one executive view. That's deliberate: leadership sees one unified risk picture regardless of which team is closest to the fire."
+- "BOARD NOTIFIED is a named, distinct action from AUTHORIZE — worth calling out to a compliance-minded buyer the same way Legal's 'Discovery Expansion' is."
+
+---
+
+## RCM-OS (standalone — not part of the War Room chain)
+
+**Path:** `html/finops-suite/tsm-rcm-os.html` (single self-contained page), with `tsm-rcm-os-howto.html` and `rcm-os-presentation.html` as companion docs/demo.
+
+RCM-OS ("Reconciliation Command Center") does not follow the War Room → Strategist → Executive Portal pattern at all — there's no escalation chain, no relay, and no `exportClientPackage()`. It's a standalone GL-reconciliation simulation tool that lives under the FinOps suite. Don't describe it in three-tier-chain language in a demo; it's a different kind of artifact.
+
+---
+
+## Cross-Vertical Patterns Worth Naming in a Demo
+
+1. **Escalation is state, not just navigation.** Most "Escalate" buttons (`escalateToStrategist`, `escalateToExec`, `writeExecRelay`, `schWriteRelay`, `escalateExec`) write a payload to storage *before* moving screens — the receiving screen reads real data, it isn't just a link.
+2. **Two relay mechanisms coexist.** Legacy verticals (Legal, Construction, FinOps, Insurance, Concierge, BPO, Honeywell) use dedicated JS functions per action, mostly inline `onclick`. Newer ones (Mortgage, Schools, PM Copilot, HotelOps) standardized on a shared relay pattern: event-listener-bound buttons, `sessionStorage` + `localStorage`, and a custom `TSM_RELAY_EVENT` for same-tab updates.
+3. **`exportClientPackage()` is the common exec-portal export**, present on HC, Construction, FinOps, Insurance, Legal, Mortgage, Schools, PM Copilot, HotelOps, Concierge, and Honeywell — 11 of the 13 chained verticals. **Two exceptions:** Real Estate uses `exportSession()` / `exportBoard()`, and BPO uses `exportBrief()` (a plain-text session report, not the JSON package). Don't promise "Export Client Package" language on either of those two exec portals.
+4. **ACKNOWLEDGE / ESCALATE with logged messages** (Mortgage, Schools, PM Copilot, HotelOps, Honeywell's AUTHORIZE/BOARD_NOTIFIED) is the most audit-trail-forward pattern — worth showing to a compliance-sensitive buyer.
+5. **Legal is the only three-tier vertical chain** (case strategist → chief strategist → executive) — call this out explicitly since every other chained vertical is a flat three-screen chain. **Honeywell is structurally unique in the other direction** — one strategist/exec-portal pair fed by three separate scenario-specific war rooms (plant / supplier / cyber-OT), rather than one war room per chain.
+6. **RCM-OS sits outside this pattern entirely** — a standalone reconciliation tool with no War Room / Strategist / Executive Portal chain. Don't describe it in three-tier-chain language in a demo.
+
+---
+
+*Verified against live source in `tsm-rcm` repo. All onClick/event-listener bindings above were confirmed by direct grep against the HTML files, not inferred from naming conventions. §1–8 verified 2026-08-19; §9–13 and RCM-OS added and verified 2026-08-26, alongside a path correction to Legal's case-strategist location.*

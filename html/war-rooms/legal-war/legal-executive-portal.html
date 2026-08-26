@@ -655,36 +655,43 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:1000;
   </div>
 
   <!-- KPI ROW -->
+  <!-- Bug fix: kpi-matters/kpi-settle/kpi-regulatory were hardcoded to static
+       demo numbers (412/73/16) that no relay or engine ever writes to --
+       only kpi-exposure/kpi-highrisk/kpi-success get updated by
+       loadStrategistRelay() below. No wired data source exists yet for
+       active-matter count, settlement pipeline, or regulatory case count,
+       so these now render an honest "—" instead of a permanently-stale
+       fabricated figure, same convention as the rest of this codebase. -->
   <div class="sec" style="margin-top:24px"><div class="sec-label">Portfolio Command · Real-Time Legal Intelligence</div></div>
   <div class="kpi-row rise">
     <div class="kpi">
       <div class="kpi-label">Active Matters</div>
-      <div class="kpi-val cyan" id="kpi-matters">412</div>
+      <div class="kpi-val cyan" id="kpi-matters">&mdash;</div>
       <div class="kpi-sub">Litigation · Employment · Regulatory</div>
     </div>
     <div class="kpi">
       <div class="kpi-label">Total Exposure</div>
-      <div class="kpi-val red" id="kpi-exposure">$28.4M</div>
+      <div class="kpi-val red" id="kpi-exposure">&mdash;</div>
       <div class="kpi-sub">Current legal exposure</div>
     </div>
     <div class="kpi">
       <div class="kpi-label">Settlement Pipeline</div>
-      <div class="kpi-val green" id="kpi-settle">73</div>
+      <div class="kpi-val green" id="kpi-settle">&mdash;</div>
       <div class="kpi-sub">Active opportunities</div>
     </div>
     <div class="kpi">
       <div class="kpi-label">High-Risk Matters</div>
-      <div class="kpi-val amber" id="kpi-highrisk">41</div>
+      <div class="kpi-val amber" id="kpi-highrisk">&mdash;</div>
       <div class="kpi-sub">Executive visibility required</div>
     </div>
     <div class="kpi">
       <div class="kpi-label">Case Success Rate</div>
-      <div class="kpi-val green" id="kpi-success">78%</div>
+      <div class="kpi-val green" id="kpi-success">&mdash;</div>
       <div class="kpi-sub">Portfolio weighted avg</div>
     </div>
     <div class="kpi">
       <div class="kpi-label">Regulatory Cases</div>
-      <div class="kpi-val red" id="kpi-regulatory">16</div>
+      <div class="kpi-val red" id="kpi-regulatory">&mdash;</div>
       <div class="kpi-sub">Active investigations</div>
     </div>
   </div>
@@ -1073,6 +1080,16 @@ function confirmAuthorization() {
   // Write to sessionStorage for audit trail
   try { sessionStorage.setItem('TSM_AUTHORIZATIONS', JSON.stringify(authorizations)); } catch(e){}
 
+  // Also record to the real server-side HITL decision log (server.js:
+  // /api/exec-portal/legal/decide), same pattern as Mortgage/PM Copilot.
+  // Every legal authorization is an approval by definition (there is no
+  // reject/escalate button on this UI), so verdict is always 'approved'.
+  fetch('/api/exec-portal/legal/decide', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ index: Date.now(), verdict: 'approved', text: `${currentActionName} — ${note}`, actor: exec })
+  }).catch(() => { /* offline/unreachable -- action still logged to sessionStorage above */ });
+
   closeModal();
   showToast(`${currentActionName} authorized`, `By ${exec} · ${new Date().toLocaleTimeString()}`);
 }
@@ -1092,12 +1109,21 @@ function showToast(title, sub) {
 }
 
 // ── LOAD STRATEGIST RELAY ──────────────────────────────────────────────────
+// Roadmap #9 -- loadStrategistRelay() below already parses the real
+// strategist relay payload (exposure, riskScore, winProb, matter, etc.),
+// but exportClientPackage() (in a separate IIFE further down) only ever
+// forwarded lastExplainItems. Window-scoped bridge var, since the two live
+// in different IIFEs, so the export can pass the real relay data through
+// as a sections passthrough, same convention as Mortgage/Healthcare/BPO.
+window.tsmLastLegalRelay = null;
+
 function loadStrategistRelay() {
   try {
     const raw = sessionStorage.getItem('TSM_STRATEGIST_RELAY');
     if (!raw) return;
     const d = JSON.parse(raw);
     if (!d) return;
+    window.tsmLastLegalRelay = d;
 
     // Update strategist panel
     const age = Math.round((Date.now() - new Date(d.ts)) / 1000 / 60);
@@ -1418,7 +1444,8 @@ setInterval(loadStrategistRelay, 15000);
     }
     var pkg = TSMDeliveryPackage.build({
       domain: 'Legal',
-      explainItems: lastExplainItems
+      explainItems: lastExplainItems,
+      sections: { strategistRelay: window.tsmLastLegalRelay }
     });
     var blob = new Blob([JSON.stringify(pkg, null, 2)], { type: 'application/json' });
     var a = document.createElement('a');

@@ -152,6 +152,14 @@ const DOMAIN = 'concierge';
 // mapped into the shared explainItems shape at export time instead.
 let lastMissions = [];
 
+// Roadmap #9 -- renderKpis() already computes real totals (spend, open,
+// completed, exceptions) from the mission list, but exportClientPackage()
+// only ever passed status strings through toDeliveryPackageItems(), so the
+// actual spend figure and mission counts never made it into the client
+// package. Hoisted here so exportClientPackage() can pass it as a
+// sections.kpis passthrough, same convention as Mortgage/Healthcare/BPO.
+let lastKpis = null;
+
 function nav(url){ window.location.href = url; }
 
 (function clock(){
@@ -224,6 +232,8 @@ function renderKpis(missions){
   document.getElementById('kCompleted').textContent = completed;
   document.getElementById('kExceptions').textContent = exceptions;
   document.getElementById('kSpend').textContent = spend > 0 ? ('$' + spend.toFixed(2)) : '—';
+
+  lastKpis = { totalMissions: total, open: open, completed: completed, exceptions: exceptions, totalSpend: spend };
 }
 
 function renderProviderMix(missions){
@@ -267,7 +277,8 @@ window.exportClientPackage = function () {
   }
   const pkg = TSMDeliveryPackage.build({
     domain: 'Concierge',
-    explainItems: toDeliveryPackageItems(lastMissions)
+    explainItems: toDeliveryPackageItems(lastMissions),
+    sections: { kpis: lastKpis }
   });
   const blob = new Blob([JSON.stringify(pkg, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
