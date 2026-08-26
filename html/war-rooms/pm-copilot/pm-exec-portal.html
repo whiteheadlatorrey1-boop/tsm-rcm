@@ -590,6 +590,14 @@ function pmFeedExceptions(fin){
 // nulls in the built package, same convention as insurance-executive-portal.html.
 let lastExplainItems = [];
 
+// Roadmap #9 -- render() already reads real kpis (occupancy, portfolio rent
+// value, SLA/vendor flags) and financials (vacancy/maintenance/vendor
+// exposure) off the relay, but exportClientPackage() only ever forwarded
+// lastExplainItems. Hoisted here so the export can pass them through as
+// sections, same convention as Mortgage/Healthcare/BPO.
+let lastKpis = null;
+let lastFinancials = null;
+
 function render(){
   const data = loadRelay();
   if(!data){ renderEmpty(); return; }
@@ -598,6 +606,8 @@ function render(){
 
   const kpis = data.kpis || {};
   const fin = data.financials || {};
+  lastKpis = kpis;
+  lastFinancials = fin;
   let html = '';
 
   html += `<div class="kpi-row">
@@ -666,7 +676,8 @@ window.exportClientPackage = function () {
   }
   const pkg = TSMDeliveryPackage.build({
     domain: 'PM Copilot',
-    explainItems: lastExplainItems
+    explainItems: lastExplainItems,
+    sections: { kpis: lastKpis, financials: lastFinancials }
   });
   const blob = new Blob([JSON.stringify(pkg, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');

@@ -548,11 +548,21 @@ function schFeedExceptions(fin){
 // nulls in the built package, same convention as insurance-executive-portal.html.
 let lastExplainItems = [];
 
+// Roadmap #9 -- render() already reads real financials and grant WIP off
+// the relay, but exportClientPackage() only ever forwarded lastExplainItems.
+// Hoisted here so the export can pass them through as sections, same
+// convention as Mortgage/Healthcare/BPO.
+let lastFinancials = null;
+let lastGrantWip = null;
+
 function render(){
   const data = loadRelay();
   if(!data){ renderEmpty(); return; }
 
   document.getElementById('hdrSub').textContent = `Relayed ${data.timestamp ? new Date(data.timestamp).toLocaleString() : '\u2014'}`;
+
+  lastFinancials = data.financials || null;
+  lastGrantWip = data.grant_wip || null;
 
   let html = '';
   html += renderFinancials(data.financials);
@@ -608,7 +618,8 @@ window.exportClientPackage = function () {
   }
   const pkg = TSMDeliveryPackage.build({
     domain: 'Schools',
-    explainItems: lastExplainItems
+    explainItems: lastExplainItems,
+    sections: { financials: lastFinancials, grantWip: lastGrantWip }
   });
   const blob = new Blob([JSON.stringify(pkg, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');

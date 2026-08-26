@@ -468,11 +468,23 @@ function nocFeedExceptions(fin){
 // nulls in the built package, same convention as insurance-executive-portal.html.
 let lastExplainItems = [];
 
+// Roadmap #9 -- render() already reads real financials, BNCA exposure
+// projection, and incident WIP off the relay, but exportClientPackage()
+// only ever forwarded lastExplainItems. Hoisted here so the export can
+// pass them through as sections, same convention as Mortgage/Healthcare/BPO.
+let lastFinancials = null;
+let lastBncaExposure = null;
+let lastIncidentWip = null;
+
 function render(){
   const data = loadRelay();
   if(!data){ renderEmpty(); return; }
 
   document.getElementById('hdrSub').textContent = `Relayed ${data.timestamp ? new Date(data.timestamp).toLocaleString() : '&mdash;'}`;
+
+  lastFinancials = data.financials || null;
+  lastBncaExposure = data.bnca_exposure || null;
+  lastIncidentWip = data.incident_wip || null;
 
   let html = '';
 
@@ -543,7 +555,8 @@ window.exportClientPackage = function () {
   }
   const pkg = TSMDeliveryPackage.build({
     domain: 'NOC',
-    explainItems: lastExplainItems
+    explainItems: lastExplainItems,
+    sections: { financials: lastFinancials, bncaExposure: lastBncaExposure, incidentWip: lastIncidentWip }
   });
   const blob = new Blob([JSON.stringify(pkg, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');

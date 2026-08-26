@@ -1467,6 +1467,12 @@ document.getElementById("execCompliance").textContent=compliance;
   // Same convention as bpo-strategist.html's lastTaggedItems/lastQualityScore.
   var lastExplainItems = [];
   var lastQualityScore = null;
+  // Roadmap #9 -- mount() already computes a real benchmark comparison and
+  // WIP stage list, but exportClientPackage() below only ever forwarded
+  // explainItems/qualityScore. Hoisted so the export can pass them through
+  // as sections, same convention as Mortgage/Healthcare/BPO.
+  var lastBenchmark = null;
+  var lastWip = null;
 
   function readRelay() {
     // Checks the fully-synthesized strategist output first (has summary/
@@ -1497,6 +1503,7 @@ document.getElementById("execCompliance").textContent=compliance;
     ];
 
     var items  = data.explain;
+    lastWip = stages;
 
     TSMExecKit.renderWIP(WIP_ID, stages, { title: WIP_TITLE,
       eta: relay ? ('Relay: ' + (relay.timestamp
@@ -1557,6 +1564,7 @@ document.getElementById("execCompliance").textContent=compliance;
     // REFERENCE_BENCHMARKS.CONSTRUCTION automatically when no opts.live is passed.
     if (window.TSMBenchmarkIntelligence) {
       var benchmark = TSMBenchmarkIntelligence.compare('CONSTRUCTION');
+      lastBenchmark = benchmark;
       TSMExecKit.renderBenchmark(BENCHMARK_ID, benchmark);
     }
     // Warm the server-side executive synthesis (TSM_MEMORY.construction.executive)
@@ -1584,7 +1592,8 @@ document.getElementById("execCompliance").textContent=compliance;
     var pkg = TSMDeliveryPackage.build({
       domain: 'Construction',
       explainItems: lastExplainItems,
-      qualityScore: lastQualityScore
+      qualityScore: lastQualityScore,
+      sections: { benchmark: lastBenchmark, wip: lastWip }
     });
     var blob = new Blob([JSON.stringify(pkg, null, 2)], { type: 'application/json' });
     var a = document.createElement('a');
