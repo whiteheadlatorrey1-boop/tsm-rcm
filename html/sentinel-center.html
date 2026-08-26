@@ -181,6 +181,9 @@
   .ip-actions{ display:flex; gap:10px; margin-top:22px; }
   .ip-actions .btn{ flex:1; }
 
+  #bncaSynthesisPanel .lbl{ font-size:10px; letter-spacing:1.5px; color:var(--dim); text-transform:uppercase; margin-bottom:6px; }
+  #bncaSynthesisPanel .txt{ font-size:12.5px; color:var(--text); line-height:1.6; }
+
   /* ---------- Cross-Vertical Causality Board ---------- */
   .causal-row{
     display:grid; grid-template-columns:1.6fr 1.8fr 2.2fr auto;
@@ -342,6 +345,21 @@
       <div class="label">Top Cross-Vertical Threat</div>
       <div class="value bad" id="kpiTopThreat" style="font-size:15px;">--</div>
       <div class="sub" id="kpiTopThreatSub">by total ripple relief</div>
+    </div>
+  </div>
+
+  <div class="panel" id="bncaSynthesisPanel" style="display:none;">
+    <div class="panel-head">
+      <div class="h">Enterprise BNCA Synthesis</div>
+      <div class="count" id="bncaSynthesisMeta"></div>
+    </div>
+    <div style="padding:6px 18px 16px;">
+      <div class="lbl">Overall Risk</div>
+      <div class="txt" id="bncaOverallRisk">--</div>
+      <div class="lbl" style="margin-top:14px;">Collective BNCA Narrative</div>
+      <div class="txt" id="bncaNarrative">--</div>
+      <div class="lbl" style="margin-top:14px;">Priority Actions</div>
+      <div class="txt" id="bncaPriorityActions">--</div>
     </div>
   </div>
 
@@ -1837,7 +1855,54 @@ document.getElementById('aiInput').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') sendAiQuery();
 });
 
+// ── ENTERPRISE BNCA SYNTHESIS ──────────────────────────────────────────
+// Real cross-vertical synthesis from /api/collective/bnca/latest — distinct
+// from the per-anomaly "Collective Strategist Recommendation" panel above,
+// which is scoped to one anomaly's local impacts. This one is whatever the
+// server last synthesized across every signal pushed via /api/collective/
+// signal, regardless of which anomaly (if any) is open. Shown only when a
+// real synthesis exists — no placeholder text, matching the SAMPLE/live:false
+// convention used for per-vertical anomaly data elsewhere on this page.
+const BNCA_RISK_COLOR = { URGENT:'#ff4d4d', RISK:'#f5a623', WATCH:'#00c8ff', READY:'#00c896' };
+
+async function apiFetch(url, opts) {
+  const res = await fetch(url, opts);
+  const ct = res.headers.get('content-type') || '';
+  if (!ct.includes('application/json')) {
+    if (res.status === 302 || res.redirected || ct.includes('text/html')) {
+      throw new Error('Session expired or not authenticated — please reload and log in.');
+    }
+    throw new Error(`Unexpected response (${res.status}) from ${url}`);
+  }
+  return res.json();
+}
+
+async function loadCollectiveBnca(){
+  const panel = document.getElementById('bncaSynthesisPanel');
+  try {
+    const data = await apiFetch('/api/collective/bnca/latest');
+    if (!data.ok || !data.result) { panel.style.display = 'none'; return; }
+    const r = data.result;
+    panel.style.display = '';
+    document.getElementById('bncaSynthesisMeta').textContent =
+      (r.signalCount ?? 0) + ' signal' + (r.signalCount === 1 ? '' : 's') + ' · ' +
+      (r.verticalsActive ?? 0) + ' vertical' + (r.verticalsActive === 1 ? '' : 's') + ' · confidence ' + (r.confidence ?? 0) + '%';
+    const color = BNCA_RISK_COLOR[r.overallRisk] || '#7a98b8';
+    document.getElementById('bncaOverallRisk').innerHTML =
+      `<span style="color:${color};font-weight:600;">${escapeHtml(r.overallRisk || 'UNKNOWN')}</span>`;
+    document.getElementById('bncaNarrative').textContent = r.collectiveBNCA || 'No narrative returned.';
+    const actions = Array.isArray(r.priorityActions) ? r.priorityActions.slice(0, 5) : [];
+    document.getElementById('bncaPriorityActions').innerHTML = actions.length
+      ? actions.map(a => `<div style="margin-bottom:6px;">#${a.rank ?? '—'} <b>${escapeHtml(a.action || '')}</b>${a.owner ? ' — ' + escapeHtml(a.owner) : ''}${a.deadline ? ' (' + escapeHtml(a.deadline) + ')' : ''}</div>`).join('')
+      : '<span style="color:var(--dim)">No priority actions returned.</span>';
+  } catch (e) {
+    panel.style.display = 'none';
+    console.warn('[bnca-synthesis]', e.message);
+  }
+}
+
 render();
+loadCollectiveBnca();
 </script>
 </body>
 </html>
