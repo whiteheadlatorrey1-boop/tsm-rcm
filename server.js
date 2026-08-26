@@ -1218,6 +1218,16 @@ app.get('/api/bpo/work-items/:caseId/documents', requireRole(BPO_CLIENT_VIEW_ROL
     if (req.tsmSession.role === 'client') {
       const item = await tsmLedger.bpoGetWorkItem(req.params.caseId);
       if (!item || item.clientId !== req.tsmSession.clientId) {
+        // Server-side-only diagnosis of which of the two 404 causes this
+        // was -- a missing record vs. a clientId mismatch -- without
+        // changing the client-facing response. Deliberately still a bare
+        // 404 either way (same don't-let-a-client-distinguish-cross-tenant-
+        // from-missing reasoning as the neighboring download route).
+        if (!item) {
+          console.warn(`[bpo-documents-404] caseId=${req.params.caseId} not found`);
+        } else {
+          console.warn(`[bpo-documents-404] caseId=${req.params.caseId} clientId mismatch: item.clientId=${item.clientId} session.clientId=${req.tsmSession.clientId}`);
+        }
         return res.status(404).json({ ok: false, error: 'Work item not found' });
       }
     }
@@ -6090,6 +6100,33 @@ app.post('/api/exec-portal/:vertical/decide', (req, res) => {
     actor: actor || 'Executive',
     meta: Object.assign({ text: text || null, vertical, index }, meta || {})
   });
+
+  // Auto-relay into the BPO ledger (manual's Section 9, Step 2->3): an
+  // approved exec decision on a non-BPO vertical now creates/updates a BPO
+  // work item automatically, instead of requiring an analyst to re-key it
+  // from the exported Client Package JSON. BPO's own vertical is excluded
+  // -- it already writes its own work items directly via its dedicated
+  // endpoint (bpo-executive-portal.html's markExecuted()), so relaying here
+  // too would double-write the same case.
+  //
+  // clientId is deliberately left null here -- see commit message for why
+  // -- and is safe to leave null on repeat calls too, since PR #119 made
+  // clientId sticky in bpoUpsertWorkItem: a later upsert that omits it
+  // will no longer overwrite a clientId a BPO analyst has since set.
+  if (verdict === 'approved' && vertical !== 'bpo') {
+    tsmLedger.bpoUpsertWorkItem(
+      `${vertical.toUpperCase()}-${index}`,
+      {
+        clientId: null,
+        vertical,
+        stage: 'exec-approved',
+        status: 'open',
+        payload: { text: text || null, sourceVertical: vertical, sourceIndex: index, meta: meta || {} },
+      },
+      actor || 'Executive'
+    ).catch(err => console.warn(`[bpo-relay] failed to relay ${vertical} decision ${index} into BPO ledger:`, err.message));
+  }
+
   res.json({ ok: true, recorded: true, decision });
 });
 
