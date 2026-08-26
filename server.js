@@ -6090,6 +6090,33 @@ app.post('/api/exec-portal/:vertical/decide', (req, res) => {
     actor: actor || 'Executive',
     meta: Object.assign({ text: text || null, vertical, index }, meta || {})
   });
+
+  // Auto-relay into the BPO ledger (manual's Section 9, Step 2->3): an
+  // approved exec decision on a non-BPO vertical now creates/updates a BPO
+  // work item automatically, instead of requiring an analyst to re-key it
+  // from the exported Client Package JSON. BPO's own vertical is excluded
+  // -- it already writes its own work items directly via its dedicated
+  // endpoint (bpo-executive-portal.html's markExecuted()), so relaying here
+  // too would double-write the same case.
+  //
+  // clientId is deliberately left null here -- see commit message for why
+  // -- and is safe to leave null on repeat calls too, since PR #119 made
+  // clientId sticky in bpoUpsertWorkItem: a later upsert that omits it
+  // will no longer overwrite a clientId a BPO analyst has since set.
+  if (verdict === 'approved' && vertical !== 'bpo') {
+    tsmLedger.bpoUpsertWorkItem(
+      `${vertical.toUpperCase()}-${index}`,
+      {
+        clientId: null,
+        vertical,
+        stage: 'exec-approved',
+        status: 'open',
+        payload: { text: text || null, sourceVertical: vertical, sourceIndex: index, meta: meta || {} },
+      },
+      actor || 'Executive'
+    ).catch(err => console.warn(`[bpo-relay] failed to relay ${vertical} decision ${index} into BPO ledger:`, err.message));
+  }
+
   res.json({ ok: true, recorded: true, decision });
 });
 
