@@ -25,6 +25,21 @@
  *   Recommended Actions   <- TSMExecutiveOutcome.build()'s whatShouldWeDo
  *   Executive Summary      <- TSMExecutiveOutcome.build()'s full four-question
  *                            view (#7), reused rather than re-derived
+ *   Sections (opts.sections) <- generic, vertical-defined passthrough for
+ *                            whatever real data a page already renders on
+ *                            its exec portal but isn't one of the shared
+ *                            contracts above -- e.g. a Mortgage exec portal
+ *                            passes { financials, funnel, riskRegister },
+ *                            BPO passes { missionTimeline, resolutionAudit,
+ *                            supervisorRollup }, Healthcare passes
+ *                            { benchmark }. Each vertical's caller is
+ *                            responsible for hoisting whatever it already
+ *                            computed into a module-scope var so the export
+ *                            function can reach it -- same convention this
+ *                            file already uses for lastExplainItems/
+ *                            lastQualityScore. Omitted keys just don't
+ *                            appear; this function never fabricates a
+ *                            section a caller didn't supply.
  *
  * Usage:
  *   const pkg = TSMDeliveryPackage.build({
@@ -32,8 +47,7 @@
  *     documentCount: 9842,
  *     qualityScore: qs,
  *     explainItems: items,
- *     missionQueueSummary: summary,
- *     missionQueue: queue
+ *     sections: { benchmark: lastBenchmark }
  *   });
  *   // pkg.auditTrail is [] if evidence-ledger.js isn't loaded — honestly
  *   // empty, not fabricated, same convention as the rest of this codebase.
@@ -86,7 +100,10 @@
       },
       auditTrail: getAuditTrail(opts.domain),
       recommendedActions: outcome ? outcome.whatShouldWeDo : [],
-      executiveSummary: outcome
+      executiveSummary: outcome,
+      // Honest passthrough -- {} if a caller doesn't pass sections at all,
+      // never fabricated. See file header for the per-vertical convention.
+      sections: (opts.sections && typeof opts.sections === 'object') ? opts.sections : {}
     };
   }
 
@@ -114,7 +131,8 @@ if (typeof require !== 'undefined' && typeof module !== 'undefined' && require.m
     domain: 'Healthcare',
     documentCount: 9842,
     qualityScore: sampleQualityScore,
-    explainItems: sampleItems
+    explainItems: sampleItems,
+    sections: { benchmark: { metric: 'denial-rate', portfolioAvg: 6.1, clientValue: 4.8 } }
   });
 
   console.log(JSON.stringify(pkg, null, 2));

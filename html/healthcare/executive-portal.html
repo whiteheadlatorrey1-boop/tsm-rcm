@@ -2753,6 +2753,15 @@ function buildStratReportsTab() {
 
   // ── KPI row ──
   const kpi = d.kpi || {};
+  // Hoisted to module scope (declared near lastExplainItems above) so
+  // exportClientPackage() can include these real relay-sourced figures --
+  // this was previously rendered here and nowhere else.
+  lastStratReportKPI = {
+    totalAtRisk: kpi.totalAtRisk || d.sourceSnapshot?.revenueAtRisk || null,
+    denialRate: kpi.denialRate || d.sourceSnapshot?.denialRate || null,
+    dso: kpi.dso || null,
+    appealWinRate: kpi.appealWinRate || null
+  };
   const kpiItems = [
     { label:'AT RISK', val: kpi.totalAtRisk || d.sourceSnapshot?.revenueAtRisk, color:'#ff3d57' },
     { label:'DENIAL RATE', val: kpi.denialRate || d.sourceSnapshot?.denialRate, color:'#ff8c00' },
@@ -3679,6 +3688,12 @@ setInterval(buildStratBriefTab, 30000);
   // Same convention as bpo-strategist.html's lastTaggedItems/lastQualityScore.
   var lastExplainItems = [];
   var lastQualityScore = null;
+  // Hoisted so exportClientPackage() can include real revenue/quality
+  // evidence that's already computed and rendered on-screen elsewhere on
+  // this page, instead of the export staying silent about it. Both stay
+  // null until their source actually runs with real data.
+  var lastBenchmark = null;
+  var lastStratReportKPI = null;
 
   function readRelay() {
     for (var i = 0; i < RELAY_KEYS.length; i++) {
@@ -3766,6 +3781,7 @@ setInterval(buildStratBriefTab, 30000);
     // and this will prefer live figures automatically -- no other change needed.
     if (window.TSMBenchmarkIntelligence) {
       var benchmark = TSMBenchmarkIntelligence.compare('HEALTHCARE');
+      lastBenchmark = benchmark;
       TSMExecKit.renderBenchmark(BENCHMARK_ID, benchmark);
     }
   }
@@ -3781,10 +3797,14 @@ setInterval(buildStratBriefTab, 30000);
       alert('Delivery package engine not loaded.');
       return;
     }
+    var sections = {};
+    if (lastBenchmark) sections.benchmark = lastBenchmark;
+    if (lastStratReportKPI) sections.revenueKPI = lastStratReportKPI;
     var pkg = TSMDeliveryPackage.build({
       domain: 'Healthcare',
       explainItems: lastExplainItems,
-      qualityScore: lastQualityScore
+      qualityScore: lastQualityScore,
+      sections: sections
     });
     var blob = new Blob([JSON.stringify(pkg, null, 2)], { type: 'application/json' });
     var a = document.createElement('a');
