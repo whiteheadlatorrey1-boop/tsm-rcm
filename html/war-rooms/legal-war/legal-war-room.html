@@ -384,7 +384,7 @@ main{padding:18px;display:flex;flex-direction:column;gap:14px}
   <div class="fn-brand">TSM LEGAL-PRO</div>
   <button class="fn-step active" onclick="nav('legal-war-room.html')"><div class="fn-dot"></div>WAR ROOM</button>
   <span class="fn-arrow">›</span>
-  <button class="fn-step" onclick="nav('legal-nodes.html')"><div class="fn-dot"></div>LEGAL NODES</button>
+  <button class="fn-step" disabled title="Not built yet" style="opacity:.4;cursor:not-allowed"><div class="fn-dot"></div>LEGAL NODES</button>
   <span class="fn-arrow">›</span>
   <button class="nav-btn" onclick="nav('case-strategist.html')">STRATEGIST</button>
   <span class="fn-arrow">›</span>
@@ -663,7 +663,7 @@ main{padding:18px;display:flex;flex-direction:column;gap:14px}
   <div class="sr-card">
     <div class="sr-label">CHAIN NAVIGATION</div>
     <div style="display:flex;flex-direction:column;gap:5px">
-      <button class="btn btn-outline" style="width:100%;text-align:center" onclick="nav('legal-nodes.html')">Legal Nodes →</button>
+      <button class="btn btn-outline" style="width:100%;text-align:center;opacity:.4;cursor:not-allowed" disabled title="Not built yet">Legal Nodes →</button>
       <button class="btn btn-outline" style="width:100%;text-align:center" onclick="nav('case-strategist.html')">Case Strategist →</button>
       <button class="btn btn-outline" style="width:100%;text-align:center" onclick="location.href='/html/war-rooms/legal-war/legal-main-strategist.html'">Chief Strategist →</button>
       <button class="btn btn-outline" style="width:100%;text-align:center" onclick="location.href='/html/war-rooms/legal-war/legal-executive-portal.html'">Executive Portal →</button>
@@ -1191,18 +1191,21 @@ function buildAppDispatch(raw, defectManifest) {
   });
 
   // Route map — legal-pro app URLs
+  // 'legal nodes' and the per-node anchors below have no real destination
+  // anywhere in the repo (legal-nodes.html was never built) — mapped to
+  // null so the card renders as "Not built yet" instead of a dead link.
   const routeMap = {
-    'legal nodes':       'legal-nodes.html',
+    'legal nodes':       null,
     'case strategist':   'legal-main-strategist.html',
     'case strategist pro': 'case-strategist.html',
     'chief strategist':  'legal-main-strategist.html',
-    'contracts node':    'legal-nodes.html#contracts',
-    'litigation node':   'legal-nodes.html#litigation',
-    'compliance node':   'legal-nodes.html#compliance',
-    'discovery node':    'legal-nodes.html#discovery',
-    'billing node':      'legal-nodes.html#billing',
-    'employment node':   'legal-nodes.html#employment',
-    'settlement node':   'legal-nodes.html#settlement',
+    'contracts node':    null,
+    'litigation node':   null,
+    'compliance node':   null,
+    'discovery node':    null,
+    'billing node':      null,
+    'employment node':   null,
+    'settlement node':   null,
     'bpo legal':         '/html/war-rooms/bpo/bpo-legal.html',
     'bpo legal ops':     '/html/war-rooms/bpo/bpo-legal.html',
   };
@@ -1213,7 +1216,8 @@ function buildAppDispatch(raw, defectManifest) {
 
   apps.forEach((app, i) => {
     const key = app.name.toLowerCase();
-    const href = routeMap[key] || 'legal-nodes.html';
+    const href = routeMap[key];
+    const notBuilt = !href;
     const tags = (app.tagsRaw||'').split(',').map(t=>t.trim()).filter(Boolean);
     const tagHTML = tags.map(t=>`<span class="app-tag">${t}</span>`).join('');
 
@@ -1235,15 +1239,19 @@ function buildAppDispatch(raw, defectManifest) {
       <div class="app-how-label">HOW TO USE THIS APP FOR YOUR ISSUE</div>
       <div class="app-how-text">${esc(app.how||'Navigate to this app and use the intake form to begin analysis.')}${defectManifest?`\n\nKEY DEFECTS TO RESOLVE:\n${defectManifest}`:''}</div>
       <div class="app-tags">${tagHTML}</div>
-      <button class="app-launch" type="button">LAUNCH ${esc(app.name.toUpperCase())} →</button>
+      ${notBuilt
+        ? `<button class="app-launch" type="button" disabled style="opacity:.4;cursor:not-allowed">NOT BUILT YET</button>`
+        : `<button class="app-launch" type="button">LAUNCH ${esc(app.name.toUpperCase())} →</button>`}
     `;
     // Attach the click handler directly instead of inline onclick: the previous
     // version referenced `app.name`/`app.how` as bare identifiers in the HTML
     // attribute, which don't exist in scope at click time and threw a
     // ReferenceError, silently killing the button.
-    card.querySelector('.app-launch').addEventListener('click', () => {
-      launchApp(href, { name: app.name, how: app.how || '', tags: [] });
-    });
+    if (!notBuilt) {
+      card.querySelector('.app-launch').addEventListener('click', () => {
+        launchApp(href, { name: app.name, how: app.how || '', tags: [] });
+      });
+    }
     container.appendChild(card);
   });
 
