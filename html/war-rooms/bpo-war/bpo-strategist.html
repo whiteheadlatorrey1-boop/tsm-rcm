@@ -1562,10 +1562,25 @@ function exportClientPackage(){
     alert('Delivery package engine not loaded.');
     return;
   }
+  // Mission Timeline is the one real (non-demo) data source this page has
+  // beyond the AI recommendation itself -- window.tsmMission.audit is the
+  // actual relay/decision history for the case, same data showMissionTimeline()
+  // renders on-screen. Left out entirely (not an empty array) when no
+  // mission is loaded, so the package honestly omits the section rather
+  // than claiming an empty timeline. The SLA/Client Impact/Escalations
+  // tabs are deliberately NOT included here -- they're hardcoded [DEMO
+  // DATA] on this page (see pullSLAReport/pullClientBrief/pullEscalations)
+  // and shipping placeholder figures in a client-facing export would be
+  // worse than omitting them.
+  const sections = {};
+  if (window.tsmMission && Array.isArray(window.tsmMission.audit)) {
+    sections.missionTimeline = window.tsmMission.audit;
+  }
   const pkg = TSMDeliveryPackage.build({
     domain: warData?.selectedSector || 'BPO',
     explainItems: lastTaggedItems,
-    qualityScore: lastQualityScore
+    qualityScore: lastQualityScore,
+    sections
   });
   const blob = new Blob([JSON.stringify(pkg, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
