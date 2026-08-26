@@ -6047,8 +6047,8 @@ app.get('/api/integration/decisions', (req, res) => {
 // tsm-exec-portal-upgrade.js Decision Center" pattern as Mortgage/PM -- the
 // L1 Ticket Copilot's Human Decision step wires ACCEPT / KEEP CURRENT
 // PRIORITY / SEND FOR REVIEW directly into this gate.
-const EXEC_PORTAL_VERTICALS = ['healthcare', 'finops', 'insurance', 'construction', 'legal', 'realestate', 'bpo', 'mortgage', 'pm', 'l1-copilot', 'schools', 'hotelops'];
-const EXEC_PORTAL_GATE_PREFIX = { healthcare: 'HC', finops: 'FIN', insurance: 'INS', construction: 'CON', legal: 'LEG', realestate: 'RE', bpo: 'BPO', mortgage: 'MTG', pm: 'PM', 'l1-copilot': 'L1', schools: 'SCH', hotelops: 'HTL' };
+const EXEC_PORTAL_VERTICALS = ['healthcare', 'finops', 'insurance', 'construction', 'legal', 'realestate', 'bpo', 'mortgage', 'pm', 'l1-copilot', 'schools', 'hotelops', 'honeywell'];
+const EXEC_PORTAL_GATE_PREFIX = { healthcare: 'HC', finops: 'FIN', insurance: 'INS', construction: 'CON', legal: 'LEG', realestate: 'RE', bpo: 'BPO', mortgage: 'MTG', pm: 'PM', 'l1-copilot': 'L1', schools: 'SCH', hotelops: 'HTL', honeywell: 'HW' };
 const EXEC_PORTAL_HITL_GATES = {};
 EXEC_PORTAL_VERTICALS.forEach(v => {
   const gatePrefix = EXEC_PORTAL_GATE_PREFIX[v] || 'EXEC';
