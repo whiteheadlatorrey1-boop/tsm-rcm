@@ -167,6 +167,18 @@ function recordExecutiveAction(action, note){
     });
   }
   showToast(note);
+
+  // Also record to the real server-side HITL decision log (server.js:
+  // /api/exec-portal/hotelops/decide), same pattern as Mortgage/PM Copilot.
+  // Verdict mapping: ACKNOWLEDGED = executive signs off ('approved');
+  // ESCALATED = executive pushes it up the chain ('rejected') -- a deliberate
+  // two-button-to-gate-vocabulary mapping, not a literal rejection claim.
+  const verdict = action === 'ACKNOWLEDGED' ? 'approved' : 'rejected';
+  fetch('/api/exec-portal/hotelops/decide', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ index: Date.now(), verdict, text: note, actor: 'Executive' })
+  }).catch(() => { /* offline/unreachable -- action still logged to audit trail above */ });
 }
 
 // Roadmap #9 (Delivery Package) translator. Unlike Honeywell/PM Copilot,
