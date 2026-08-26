@@ -702,7 +702,7 @@ async function bpoUpsertWorkItem(caseId, fields, actor) {
   const col = await bpoWorkItemsCollection();
   const now = new Date().toISOString();
   const {
-    clientId = null, vertical = 'bpo', stage = 'war-room', payload, status = 'open',
+    clientId, vertical = 'bpo', stage = 'war-room', payload, status = 'open',
     owner, priority, dueDate,
   } = fields || {};
 
@@ -710,9 +710,19 @@ async function bpoUpsertWorkItem(caseId, fields, actor) {
   const createdAt = existing ? existing.createdAt : now;
 
   const $set = {
-    caseId, clientId, vertical, stage, status, updatedAt: now,
+    caseId, vertical, stage, status, updatedAt: now,
     slaAgeHours: bpoHoursBetween(createdAt, now),
   };
+  // clientId is sticky, same contract as owner/priority/dueDate below: a
+  // later upsert that omits it (e.g. the exec-portal's markExecuted() call,
+  // which never sends clientId) must not erase the link a prior stage
+  // already established. Previously this defaulted to null on every call
+  // and overwrote whatever was stored, which silently unlinked a case from
+  // its client the moment it was marked executed — the exact point the
+  // client's rollup is supposed to reflect it as closed.
+  if (clientId !== undefined) $set.clientId = clientId;
+  else if (existing && existing.clientId !== undefined) $set.clientId = existing.clientId;
+  else $set.clientId = null;
   // payload/owner/priority/dueDate are all optional and sticky — a later
   // upsert that doesn't pass one of them (e.g. the exec-portal resolve
   // call, or a bare priority-only edit) must not wipe out what a prior
