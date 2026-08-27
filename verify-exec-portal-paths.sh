@@ -28,7 +28,14 @@ if [ ! -f "server.js" ]; then
   exit 1
 fi
 
-PORT="${PORT:-8080}"
+# Use APP_PORT (not PORT) for the script's own default, so an ambient PORT
+# already exported by the shell environment (Codespaces commonly sets one
+# for its port-forwarding) can't silently override the 8080 we want here.
+# We still hand it to node as PORT below, since that's what server.js reads.
+APP_PORT="${APP_PORT:-8080}"
+PORT="$APP_PORT"
+
+LOG_FILE="/tmp/tsm-server-verify.log"
 
 # Known-good relative paths (confirmed via curl earlier in this project).
 declare -a PATHS=(
@@ -46,12 +53,25 @@ declare -a PATHS=(
 STARTED_SERVER=0
 if ! curl -sf "http://localhost:$PORT/api/enterprise/health" > /dev/null 2>&1; then
   echo "Booting server on port $PORT..."
-  (PORT="$PORT" node server.js > /tmp/tsm-server-verify.log 2>&1 &)
+  # stdbuf forces line-buffered stdout/stderr so the log file is actually
+  # readable while the process is still running, instead of sitting empty
+  # in a full-buffered pipe until the process exits or the buffer fills.
+  (PORT="$PORT" stdbuf -oL -eL node server.js > "$LOG_FILE" 2>&1 &)
   STARTED_SERVER=1
-  sleep 3
-  if ! curl -sf "http://localhost:$PORT/api/enterprise/health" > /dev/null 2>&1; then
-    echo "❌ Server didn't come up cleanly. Log:"
-    cat /tmp/tsm-server-verify.log
+
+  echo "Waiting for server to respond on port $PORT..."
+  UP=0
+  for i in $(seq 1 15); do
+    if curl -sf "http://localhost:$PORT/api/enterprise/health" > /dev/null 2>&1; then
+      UP=1
+      break
+    fi
+    sleep 1
+  done
+
+  if [ "$UP" -ne 1 ]; then
+    echo "❌ Server didn't come up cleanly after 15s. Log:"
+    cat "$LOG_FILE"
     exit 1
   fi
 fi
