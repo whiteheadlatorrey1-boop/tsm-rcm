@@ -58,7 +58,7 @@
 **Path:** `html/war-rooms/construct-war/construction-war-room.html` → `construction-strategist.html` → `construction-executive-portal.html`
 
 ### War Room
-- Nav bar: **STRATEGIST** / **EXECUTIVE** — `goNav('construction-strategist.html')`, `goNav('construction-executive-portal.html')`.
+- Nav bar: **STRATEGIST** / **EXECUTIVE** / **AUDITOPS** / **AUDITOPS PRO** — `goNav('construction-strategist.html')`, `goNav('construction-executive-portal.html')`, `goNav('auditops-tax.html')`, `goNav('construction-pro.html')`. AUDITOPS and AUDITOPS PRO are two separate apps sharing a name: AUDITOPS is the tax-intelligence tool (`auditops-tax.html`); AUDITOPS PRO is the construction BNCA app (`construction-pro.html`, titled "AuditOps // Sovereign Core" in-page). Don't conflate them in a demo.
 - **⚡ FIRE ALL 6 ENGINES** (`#fireBtn`) — `fireEngines()`.
 - **⚡ ESCALATE TO STRATEGIST →** — `escalateToStrategist()`.
 - **EXPORT ANALYSIS** — `exportFull()`.
@@ -72,9 +72,13 @@
 - **→ ESCALATE TO EXECUTIVE** — `escalateToExecutive()`.
 - **◈ INJECT INTO STRATEGIST** — `injectWarRoomContext()` — pulls war-room findings into the active strategist session.
 - **EXEC** issue-pack assignment — `assignConstIssuePack('Construction Executive')`.
+- Top nav **AuditOps / Financial / Compliance** — these aren't inline Strategist panels (there's no `vp-auditops`/`vp-financial`/`vp-compliance` view), they're full standalone apps. `navTo()` now special-cases them via an `EXTERNAL_NAV_TARGETS` map and does a real `window.location.href` to `construction-pro.html`, `financial.html`, and `compliance-hub.html` respectively. Before this fix, clicking any of the three silently no-opped back to the Strategist view — worth knowing if you're comparing behavior against an older build or another vertical's Strategist.
+- **AuditOps Pro anomaly feed** — `construction-pro.html` now loads `tsm-memory-engine.js` and calls `TSMMemory.registerAnomaly()` after each completed BNCA run (dedup'd by `CON_AUDITOPS_<CATEGORY>`, source `construction-pro`), so its findings land in the same cross-module `TSM_OPERATIONAL_MEMORY_V3` store that `construction-suite-expansion.html` (FieldOps) already wrote to — not a separate, siloed anomaly list.
+- **Strategist → Sentinel relay** — `pushToSentinel()` writes `{ generatedAt, anomalies:[...] }` to `localStorage["TSM_CONSTRUCTION_STRATEGIST_RELAY"]`; `sentinel-center.html` reads that exact key (`'TSM_' + vId.toUpperCase() + '_STRATEGIST_RELAY'`) and its severity codes (`CRIT/HIGH/MED/LOW`) match `riskToSeverity()`'s output one-for-one — verified end-to-end by replaying both functions against a shared localStorage mock. **Caveat:** this only fires from `runConstructionBNCAFromRelay()` when `warRoomRelay` is populated — i.e., the Strategist was reached via a War Room hand-off (or a stored `tsm_construction_war_relay` relay). A cold Strategist session with a manual BNCA run never calls `pushToSentinel()`, so Sentinel keeps showing sample data for Construction until a real War Room hand-off happens.
 
 ### Executive Portal
 - **STRATEGIST** nav — `nav('construction-strategist.html')`.
+- **AUDITOPS** / **AUDITOPS PRO** nav — `nav('auditops-tax.html')` / `nav('construction-pro.html')` — same tax-vs-construction distinction as the War Room nav above.
 - **AUTHORIZE** (`#d1-authorize-btn`, `data-action="approve"`) — `tsmConfirmExec()`.
 - **OPEN** — routes back to strategist for a specific decision item.
 - **⬇ EXPORT CLIENT PACKAGE** (`#tsmk-delivery-btn`) — `exportClientPackage()`.
@@ -371,6 +375,38 @@
 **Talk points:**
 - "Honeywell is the only vertical with three front doors instead of one — plant incident, supplier shutdown, cyber-OT breach — because those are genuinely different first-responders with different data, but they converge on one strategist and one executive view. That's deliberate: leadership sees one unified risk picture regardless of which team is closest to the fire."
 - "BOARD NOTIFIED is a named, distinct action from AUTHORIZE — worth calling out to a compliance-minded buyer the same way Legal's 'Discovery Expansion' is."
+
+---
+
+## 14. L1 Ticket Copilot (IT Ops)
+
+**Path:** does not follow the War Room → Strategist → Executive Portal pattern. It's four peer apps under `html/l1-copilot/`, linked hub-style and connected by a lightweight relay, not an escalation chain: `enterprise-command-center.html` (hub) → `l1-ticket-copilot.html` → `vmware-copilot.html`, plus `topology.html` (digital twin view) reachable from the hub independently.
+
+### Enterprise Command Center — `enterprise-command-center.html`
+- Hub page — links out to Ticket Copilot, VMware Copilot, and NOC Command.
+- **Assistant bubble** (`#l1a-fab`) — opens a chat panel wired to a real backend, `POST /api/l1-copilot/assistant` (confirmed live in `server.js`), not a canned response. The same bubble/backend is present on all four pages in this folder.
+
+### L1 Ticket Copilot — `l1-ticket-copilot.html`
+- **Ticket** tab active by default; incident number field is `#tkIncident`.
+- **VMware SME** sidebar item (`data-section="vmware"`) — switches to VMware troubleshooting fields (Component/Category/Environment).
+- **"OPEN FULL VMWARE OPERATIONS MODULE →"** (`#btnOpenVmwModule`) — writes ticket ID, issue summary, component, category, and environment to `window.TSM.relay.write('VMWARE_COPILOT', {...})` before opening `vmware-copilot.html` in a new tab. Confirmed the relay domain is registered (`VMWARE_COPILOT: "TSM_VMWARE_COPILOT_RELAY"` in `relay.core.js`) — this hop is real, not a dead write.
+
+### VMware Copilot — `vmware-copilot.html`
+- **Context banner** (`#ctxBanner`) — populated from `window.TSM.relay.read('VMWARE_COPILOT')`, showing the ticket ID/summary carried over from Ticket Copilot.
+- Component/Category/Environment dropdowns pre-fill from that same relay read — not re-entered by hand.
+
+### Topology (Digital Twin) — `topology.html`
+- Live digital twin view, reachable from the hub.
+- Also carries the `#l1a-fab` assistant bubble.
+
+**Talk points:**
+- "Every page in this platform has the same assistant one click away — you're never more than a chat bubble from help, no matter which tool you're in."
+- "That VMware module click just fired a real relay write — ticket ID, component, category, and environment currently on screen get handed off behind the scenes. Nothing here is a canned demo payload."
+- "This is the same relay pipeline the platform uses everywhere — write once on one page, read on the next. No copy-pasting ticket details between tools."
+
+**Known-fixed issue (worth knowing if comparing against an older build):** the VMware Copilot context banner and pre-filled dropdowns didn't work in an earlier pass — the `VMWARE_COPILOT` relay domain was missing from the registry. That's fixed; the hop is verified end to end now.
+
+**Supporting materials:** `tests/playwright/l1-platform-workflows.spec.js` (automated reachability/nav-link/relay-round-trip coverage for all four pages); `tests/e2e/demo/screenshots/l1-platform-demo.mp4` (screenshot-driven walkthrough video); `html/l1-copilot/L1-Ticket-Copilot-Demo-Narrative.md` (source narrative this section is based on).
 
 ---
 

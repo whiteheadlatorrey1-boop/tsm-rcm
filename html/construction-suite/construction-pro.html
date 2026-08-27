@@ -900,9 +900,51 @@ async function runBNCA() {
     document.getElementById('saveOutputBtn').disabled = false;
     console.log('[TSM_BNCA] Direct Inject: SUCCESS');
     console.log('[TSM_BNCA] reported: auditops_pro');
+    registerAuditOpsAnomaly(currentModule, currentCat || 'operations', outputs[1] || '');
   } else {
     document.getElementById('ooStatus').textContent = 'BNCA pipeline error — please try again';
   }
+}
+
+// ===== TSM MEMORY: REGISTER AUDITOPS ANOMALIES =====
+// Mirrors construction-suite-expansion.html's registerExpansionAnomalies:
+// fires a real anomaly into the shared TSM_OPERATIONAL_MEMORY_V3 store off
+// the BNCA report AuditOps just generated, tagged with financial exposure
+// pulled from the model's own "FINANCIAL EXPOSURE" line when present.
+// Self-dedupes by anomalyCode so re-running the same module/category
+// doesn't pile up duplicate open anomalies.
+function registerAuditOpsAnomaly(mod, cat, reportText) {
+  if (!window.TSMMemory || typeof window.TSMMemory.registerAnomaly !== 'function') return;
+  if (!reportText) return;
+
+  const code = 'CON_AUDITOPS_' + String(cat || 'operations').toUpperCase();
+
+  try {
+    const all = JSON.parse(localStorage.getItem('TSM_OPERATIONAL_MEMORY_V3') || '{}');
+    const bucket = all.construction;
+    const alreadyOpen = !!(bucket && Array.isArray(bucket.anomalies) &&
+      bucket.anomalies.some(a => a.anomalyCode === code && a.status === 'open'));
+    if (alreadyOpen) return;
+  } catch (e) { /* fall through and try to register anyway */ }
+
+  const critFlags = (reportText.match(/critical/gi) || []).length;
+  const exposureMatch = reportText.match(/FINANCIAL EXPOSURE[^$]*\$[\d,]+(\.\d+)?/i) ||
+    reportText.match(/\$[\d,]{4,}/);
+  const exposureStr = exposureMatch ? exposureMatch[0].match(/\$[\d,]+(\.\d+)?/)?.[0] : null;
+
+  let severity = 'MEDIUM';
+  if (critFlags >= 2) severity = 'CRITICAL';
+  else if (critFlags === 1 || exposureStr) severity = 'HIGH';
+
+  window.TSMMemory.registerAnomaly({
+    entityType: 'construction-project',
+    entityId: 'auditops-' + String(mod || cat || 'module').toLowerCase().replace(/\s+/g, '-'),
+    anomalyCode: code,
+    severity,
+    title: `AuditOps flagged ${cat} risk on ${mod}` + (exposureStr ? ` — ${exposureStr} exposure` : ''),
+    source: 'construction-pro',
+    meta: { module: mod, category: cat, exposure: exposureStr, criticalFlagCount: critFlags }
+  });
 }
 
 async function runApp(app) {
@@ -1070,6 +1112,7 @@ async function widgetAsk() {
 </script>
 
 
+<script src="/html/shared/tsm-memory-engine.js"></script>
 <script src="/shared/tsm-sector-intelligence.js?v=phase5si"></script>
 
 
