@@ -302,10 +302,20 @@
 - **⬇ EXPORT EXEC BRIEF** / **EXPORT BRIEF** / **⬇ EXPORT** (three separate buttons, `#dc-export-btn` among them) — all call `exportBrief()`.
 - **Note: BPO does NOT use `exportClientPackage()` / `tsmk-delivery-btn`** — it's the second exception on the platform (after Real Estate). `exportBrief()` builds a plain-text session report instead of the JSON delivery package, pulling `stratData`, the resolution audit (`lastResolutionAudit` — anomaly, status, detected/resolved timestamps), and the cross-vertical supervisor rollup (`lastSupervisorRollup` — total/open/closed/late mission counts by vertical), each only included when that panel actually loaded real data.
 - Decision Center action toggles (approve / assign owners / notify stakeholders) get folded into the exported brief as a "DECISION CENTER ACTIONS TAKEN" section.
+- **⚙ Manage Clients** (top bar) — links to `/html/bpo-clients-admin.html`. This is the actual on-ramp to the client-facing portal (below), not a dead-end admin screen.
+
+### Client Admin → Client Portal (the real external client-facing chain)
+This is a separate hop from the internal War Room → Strategist → Executive Portal chain above, and it's the part that actually reaches real clients, not TSM staff:
+
+- **`bpo-clients-admin.html`** (reached via Executive Portal's "⚙ Manage Clients") — creates client logins and shows a one-time **access code** (`setAccessCodeBanner()` — the code can't be recovered later, only rotated, so this is the one chance to hand it to the client). Also links a client login to a cross-vertical **Member** (`saveTenantLink()` → `PATCH /api/bpo/clients/:id` with `{tenantId}`). Linking switches that client's rollup from a single-`clientId` BPO-only view to the Member's full cross-vertical case rollup (`bpoBuildMemberClientRollup`, per the comment at `server.js:385-392`). Unlinking (`clearTenantLink()`) reverts it to work-items-only.
+- **`login.html`** — on successful auth, role-routes: `data.role === 'client' ? '/client-portal.html' : '/suite-hub.html'`. This is the only place `client-portal.html` is linked from — it isn't reachable via any button inside the internal BPO chain, only via the client's own login.
+- **`html/client-portal.html`** ("TSM Client Portal") — the actual page a real client sees. Confirmed it's backed by live BPO endpoints, not sample data: `GET /api/bpo/reports/client-rollup` (summary cards + SLA events), `GET /api/bpo/work-items/:caseId/documents` (expand-a-case-row to list docs), `GET /api/bpo/documents/:docId/download`. All gated by `BPO_CLIENT_VIEW_ROLES = [...BPO_INTERNAL_ROLES, 'client']` in `server.js`, so a client-role session sees only its own rollup.
 
 **Talk points:**
 - "BPO's export is a real text-file executive brief, not the JSON package the other verticals use — and it explicitly says so in its own footer: 'nothing here is re-derived or estimated at export time.'"
 - "It's also the only exec portal on the platform that pulls in the cross-vertical supervisor rollup — mission counts across every other domain, not just BPO's own."
+- "BPO is the only vertical with a genuine external client-facing app in this repo. Everything else we've walked through today is internal tooling — this is the one page an actual client logs into and sees their own case rollup and documents, nothing more."
+- "Linking a client to a Member is what turns their view from 'just their BPO work items' into 'everything that Member has going on across verticals' — that's a real behavior change in the rollup query, not a cosmetic label."
 
 ---
 
