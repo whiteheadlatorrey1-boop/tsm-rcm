@@ -33,7 +33,7 @@
     finops: { relay: 'tsm_fin_docsearch_relay', autoKey: 'TSM_FIN_WAR_RELAY',           url: '/html/tsm-doc-search-multi.html?sector=finops&autorun=1',             completionKey: 'tsm_fin_strategist_output' },
     ins:    { relay: 'tsm_ins_docsearch_relay', autoKey: 'TSM_INS_WAR_RELAY',           url: '/html/tsm-doc-search-multi.html?sector=ins&autorun=1',         completionKey: 'tsm_ins_strategist_output' },
     con:    { relay: 'tsm_con_docsearch_relay', autoKey: 'TSM_CONSTRUCTION_WAR_RELAY',  url: '/html/tsm-doc-search-multi.html?sector=con&autorun=1', completionKey: 'TSM_CONSTRUCTION_STRATEGIST_RELAY' },
-    legal:  { relay: 'tsm_leg_docsearch_relay', autoKey: 'TSM_LEG_WAR_RELAY',           url: '/html/tsm-doc-search-multi.html?sector=legal&autorun=1',                 completionKey: 'tsm_leg_strategist_output' },
+    legal:  { relay: 'tsm_legal_docsearch_relay', autoKey: 'TSM_LEGAL_WAR_RELAY',           url: '/html/tsm-doc-search-multi.html?sector=legal&autorun=1',                 completionKey: 'tsm_leg_strategist_output' },
     re:     { relay: 'tsm_re_docsearch_relay',  autoKey: 'TSM_RE_WAR_RELAY',            url: '/html/tsm-doc-search-multi.html?sector=re&autorun=1',                      completionKey: 'tsm_re_strategist_output' },
     bpo:    { relay: 'tsm_bpo_docsearch_relay', autoKey: 'TSM_BPO_WAR_RELAY',           url: '/html/tsm-doc-search-multi.html?sector=bpo&autorun=1',                   completionKey: 'TSM_BPO_STRAT_RELAY' },
   };
