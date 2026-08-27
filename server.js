@@ -2393,7 +2393,10 @@ app.post('/api/war-room/stream', requireAnyAuth, async (req, res) => {
   }
 });
 
-app.post('/api/hc/ask', async (req, res) => {
+// TSM FIX 2026-08-27: PHI-adjacent HC handlers left out of the 2026-08-26
+// GCU pilot auth sweep (47aea602) — that pass gated node-report/stream/OCR
+// and the routes/hc.js mount, but missed these 4 same-file handlers.
+app.post('/api/hc/ask', requireAnyAuth, async (req, res) => {
   try {
     var body = req.body || {};
     if (!body.message || !body.message.trim()) return res.status(400).json({ ok: false, error: 'Message is required' });
@@ -2402,7 +2405,7 @@ app.post('/api/hc/ask', async (req, res) => {
   } catch (e) { return res.status(500).json({ ok: false, error: e.message }); }
 });
 
-app.post('/api/hc/triage', async (req, res) => {
+app.post('/api/hc/triage', requireAnyAuth, async (req, res) => {
   try {
     const { client = '', taskType = '', department = '', priority = 'P3', deadline = '', description = '', notes = '' } = req.body || {};
     if (!description) return res.status(400).json({ ok: false, error: 'Description is required' });
@@ -2412,7 +2415,7 @@ app.post('/api/hc/triage', async (req, res) => {
   } catch (err) { res.status(500).json({ ok: false, error: err.message }); }
 });
 
-app.post('/api/hc/strategist', async (req, res) => {
+app.post('/api/hc/strategist', requireAnyAuth, async (req, res) => {
   try {
     const { task = {}, aiTriage = '', query = '' } = req.body || {};
     const sp = `You are the TSM Healthcare BPO Strategist. Produce executive-grade strategy in this EXACT format:\nSTRATEGIC_SUMMARY: [2-3 sentences]\nROOT_CAUSE: [1 sentence]\nIMPACT_LEVEL: [HIGH / MEDIUM / LOW] — [impact in 1 sentence]\nRECOMMENDED_STRATEGY:\n• [Action 1]\n• [Action 2]\n• [Action 3]\nOWNER_LANES: [departments]\nTIMELINE: [Day 1-2: ... / Week 1: ...]\nESCALATE_TO_EXECUTIVE: [YES / NO]\nESCALATE_REASON: [1 sentence, or N/A]\nCONFIDENCE: [percentage]`;
@@ -2425,7 +2428,7 @@ app.post('/api/hc/strategist', async (req, res) => {
 // shadowed routes/hc.js's real handler (aggregateLayer2, real revenue-at-risk
 // math from HC_NODE_STATE_FILE). routes/hc.js now handles this route for real.
 
-app.post('/api/hc/node/:node', async (req, res) => {
+app.post('/api/hc/node/:node', requireAnyAuth, async (req, res) => {
   const node = req.params.node;
   const payload = req.body || {};
   const result = await tsmAIJSON(`Analyze healthcare node ${node}. Payload: ${JSON.stringify(payload).slice(0, 4000)}. Return JSON: {"node":"${node}","status":"READY|WATCH|RISK","top_issue":"...","findings":[],"actions":[],"bnca":"...","owner_lane":"...","confidence":0}`,
@@ -6141,7 +6144,10 @@ app.post('/api/exec-portal/:vertical/decide', requireAnyAuth, (req, res) => {
   res.json({ ok: true, recorded: true, decision });
 });
 
-app.get('/api/exec-portal/:vertical/decisions', (req, res) => {
+// TSM FIX 2026-08-27: decision log + approval stats (all verticals incl.
+// honeywell) had no auth, even though the paired POST .../decide was gated
+// in the 2026-08-26 GCU pilot sweep (47aea602). Closing the read-side gap.
+app.get('/api/exec-portal/:vertical/decisions', requireAnyAuth, (req, res) => {
   const vertical = req.params.vertical;
   const gate = EXEC_PORTAL_HITL_GATES[vertical];
   if (!gate) return res.status(404).json({ ok: false, error: `Unknown vertical: ${vertical}` });
