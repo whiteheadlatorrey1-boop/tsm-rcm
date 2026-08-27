@@ -13,6 +13,7 @@
 
 const { MongoClient } = require('mongodb');
 const clientRegistry = require('../middleware/client-registry');
+const slackNotifier = require('./integrations/slack-notifier');
 
 const DEFAULT_DB_NAME = 'tsm-consultz';
 const LEDGER_COLLECTION = 'ledger_entries';
@@ -788,6 +789,18 @@ async function bpoUpsertWorkItem(caseId, fields, actor) {
     });
   } catch (e) {
     console.warn('[bpoUpsertWorkItem] failed to write SLA event:', e.message);
+  }
+
+  // Slack notification is opt-in (SLACK_BPO_NOTIFY_ENABLED) and a silent
+  // no-op when unconfigured — see server/integrations/slack-notifier.js.
+  // Never let a Slack delivery failure fail the upsert itself.
+  try {
+    await slackNotifier.notify({
+      caseId, clientId: $set.clientId, vertical, stage, status,
+      slaEventType, actor,
+    });
+  } catch (e) {
+    console.warn('[bpoUpsertWorkItem] failed to send Slack notification:', e.message);
   }
 
   return doc;
