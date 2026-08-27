@@ -2834,29 +2834,16 @@ app.post('/api/legal/query', async (req, res) => {
   }
 });
 
-app.post('/api/construction/query', async (req, res) => {
-  try {
-    const msg = req.body.message || req.body.question || req.body.query || '';
-    const system = req.body.system || SP.construction;
-    const maxTokens = req.body.maxTokens || 400;
-    let a = '';
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        a = await groqChat(system, msg, maxTokens);
-        break;
-      } catch (retryErr) {
-        if (attempt === 2) throw retryErr;
-        await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
-      }
-    }
-    recordVerticalMemory('construction', msg, a);
-    return res.json({ ok: true, answer: a, createdAt: new Date().toISOString() });
-  }
-  catch (e) {
-    console.error('CONSTRUCTION QUERY ERROR:', e.message);
-    return res.status(500).json({ ok: false, error: e.message, detail: e.stack?.slice(0,200) });
-  }
-});
+// TSM FIX 2026-08-27: removed a dead, permanently-unreachable duplicate of
+// POST /api/construction/query that used to live here. routes/construction.js
+// is mounted earlier (app.use(require('./routes/construction')) above) and
+// its handler always terminates the response without calling next(), so this
+// block never ran on any real request — see the Phase 1 Construction
+// chain-audit doc (docs/audit/phase1-construction-chain-audit.md) for the
+// full trace. Its two real improvements over the router's old version
+// (system-prompt passthrough, recordVerticalMemory logging) have been merged
+// into the live handler in routes/construction.js instead of left stranded
+// here a second time.
 
 // ── CONSTRUCTION NODE → STRATEGIST → EXECUTIVE CHAIN ──────────────────────────
 // Mirrors the healthcare hcNodeReports / TSM_MEMORY.healthcare.nodes pattern:

@@ -78,9 +78,50 @@ function classifyConstructionDoc(text) {
 }
 
 
+// TSM FIX 2026-08-27: this handler is the one that actually runs on every
+// real request (it's mounted via app.use(require('./routes/construction'))
+// in server.js *before* server.js's own inline app.post('/api/construction/
+// query', ...), and this handler always terminates the response without
+// calling next() — so Express never reaches that later, more complete
+// definition; it's dead code). This version was silently dropping
+// `req.body.system` and hardcoding SP.construction instead, which meant
+// CON_ENGINE_SYSTEM_GUARD — the deadline/date-honesty guard
+// construction-war-room.html sends on every one of its 6 engine calls
+// (never infer a lien-filing/abatement date not stated in the source doc;
+// never claim a notice was sent unless the document confirms it) — never
+// reached the model. Restored the system-passthrough the dead code already
+// had, and added the same recent-activity memory logging every other live
+// vertical query endpoint does (see recordVerticalMemory in server.js;
+// mirrored here directly against global.__TSM_MEMORY__ since routers don't
+// have access to server.js's module-scope function).
+const TSM_VERTICAL_MEMORY_CAP = 5;
+function recordConstructionMemory(prompt, answer) {
+  try {
+    const mem = global.__TSM_MEMORY__;
+    if (!mem || !answer) return;
+    if (!mem.construction) mem.construction = { recent: [] };
+    if (!Array.isArray(mem.construction.recent)) mem.construction.recent = [];
+    mem.construction.recent.push({
+      ts: new Date().toISOString(),
+      prompt: (prompt || '').toString().slice(0, 300),
+      answer: (answer || '').toString().slice(0, 500)
+    });
+    if (mem.construction.recent.length > TSM_VERTICAL_MEMORY_CAP) {
+      mem.construction.recent = mem.construction.recent.slice(-TSM_VERTICAL_MEMORY_CAP);
+    }
+    mem.construction.lastUpdated = new Date().toISOString();
+  } catch (e) { /* non-fatal — memory logging must never break the response */ }
+}
+
 router.post('/api/construction/query', async function(req, res) {
   var body = req.body || {};
-  try { var a = await groqChat(SP.construction, body.question||body.query||'', body.maxTokens||1024); return res.json({ ok:true, answer:a, createdAt:new Date().toISOString() }); }
+  var question = body.question || body.query || '';
+  var systemPrompt = body.system || SP.construction;
+  try {
+    var a = await groqChat(systemPrompt, question, body.maxTokens || 1024);
+    recordConstructionMemory(question, a);
+    return res.json({ ok:true, answer:a, createdAt:new Date().toISOString() });
+  }
   catch(e) { return res.status(500).json({ ok:false, error:e.message }); }
 });
 
