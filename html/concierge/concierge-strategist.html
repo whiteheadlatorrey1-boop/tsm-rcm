@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
+<script src="/html/shared/tsm-sentinel-push.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>TSM · Concierge Transport Strategist</title>
@@ -175,6 +176,7 @@ async function loadMissions(){
     renderKpis(missions);
     renderExceptions(missions);
     renderQueue(missions);
+    concPushToSentinel(missions);
   } catch(e) {
     queueEl.innerHTML = '<div class="empty-state">Could not load missions: ' + e.message + '</div>';
   }
@@ -210,6 +212,44 @@ function renderExceptions(missions){
       <div class="exc-msg">Driver-side cancellation — needs re-booking. Provider: ${m.provider || '—'}</div>
     </div>
   `).join('');
+}
+
+function concPushToSentinel(missions){
+  try {
+    const total = missions.length;
+    const exceptions = missions.filter(m => m.status === 'cancelled_by_driver');
+    const anomalies = [];
+    if (exceptions.length) {
+      const withPrice = exceptions.filter(m => m.priceEstimate && typeof m.priceEstimate.amount === 'number');
+      const exposure = withPrice.reduce((sum, m) => sum + m.priceEstimate.amount, 0);
+      const confidence = Math.round((withPrice.length / exceptions.length) * 100);
+      const severity = (window.TSMSentinelPush && window.TSMSentinelPush.breachSeverity)
+        ? window.TSMSentinelPush.breachSeverity(exceptions.length, total)
+        : (exceptions.length / (total || 1) >= 0.3 ? 'CRIT' : exceptions.length / (total || 1) >= 0.15 ? 'HIGH' : 'MED');
+      anomalies.push({
+        id: 'conc-driver-cancel',
+        title: 'Driver-Side Cancellations — Re-booking Needed',
+        severity,
+        exposure,
+        confidence,
+        rootCause: `${exceptions.length} of ${total} missions were cancelled by the driver and need re-booking.`,
+        recommendedAction: "Re-dispatch affected bookings to an alternate provider before the guest's scheduled pickup window.",
+        impacts: {}
+      });
+    }
+    if (window.TSMSentinelPush && window.TSMSentinelPush.push) {
+      window.TSMSentinelPush.push('CONCIERGE', anomalies);
+    } else {
+      // Fallback if the shared utility didn't load, so a push still happens.
+      localStorage.setItem('TSM_CONCIERGE_STRATEGIST_RELAY', JSON.stringify({
+        generatedAt: new Date().toISOString(),
+        anomalies
+      }));
+      window.dispatchEvent(new CustomEvent('TSM_SENTINEL_REFRESH'));
+    }
+  } catch(e) {
+    console.warn('Concierge: sentinel push failed', e);
+  }
 }
 
 function renderQueue(missions){
