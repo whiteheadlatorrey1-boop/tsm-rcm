@@ -43,11 +43,22 @@ const HC_PROFILES_FILE   = hcProfilesFile('default');
 // - admin/staff sessions default to 'default' (today's legacy single bucket)
 //   but may pass ?clientId=... or body.clientId to work inside a specific
 //   client's data, e.g. an admin preparing GCU's node state.
+// Only [a-zA-Z0-9_-], 1-64 chars -- this string is interpolated directly
+// into a filesystem path (hc-node-state.${clientId}.json), so it must
+// never contain '/', '..', null bytes, or anything path-traversal-shaped.
+// Rejects anything else and falls back to null rather than throwing, since
+// resolveHcClientId is called from GET routes too and should not 500 on a
+// malformed query param.
+function sanitizeClientId(id) {
+  const s = String(id || '').trim();
+  return /^[a-zA-Z0-9_-]{1,64}$/.test(s) ? s : null;
+}
+
 function resolveHcClientId(req) {
   const session = req.tsmSession || {};
   if (session.role === 'client') return session.clientId || 'default';
   const requested = (req.query && req.query.clientId) || (req.body && req.body.clientId);
-  return (requested && String(requested).trim()) || 'default';
+  return sanitizeClientId(requested) || 'default';
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -519,6 +530,7 @@ module.exports = {
   hcReportsFile,
   hcProfilesFile,
   resolveHcClientId,
+  sanitizeClientId,
   groqChat,
   callGroq,
   SP,
