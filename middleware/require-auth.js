@@ -70,4 +70,21 @@ function requireRole(allowedRoles) {
   };
 }
 
-module.exports = { requireAuth, requireRole, verifySession, getCookie, signSession, SESSION_TTL_MS };
+// Any authenticated session — admin, staff (manager/analyst), or client.
+// Attaches req.tsmSession. Same logic as the local requireAnyAuth already
+// defined in server.js — duplicated here (not imported from server.js) to
+// avoid a circular require, same reasoning as requireAuth/requireRole above.
+function requireAnyAuth(req, res, next) {
+  const session = verifySession(getCookie(req, 'tsm_session'));
+  if (!session) return res.status(401).json({ ok: false, error: 'Unauthorized' });
+  req.tsmSession = {
+    role: session.role || 'admin',
+    clientId: session.clientId || null,
+    staffId: session.staffId || null,
+    label: session.label || null,
+    tenantId: session.tenantId || null,
+  };
+  next();
+}
+
+module.exports = { requireAuth, requireRole, requireAnyAuth, verifySession, getCookie, signSession, SESSION_TTL_MS };

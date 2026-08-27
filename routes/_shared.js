@@ -8,9 +8,47 @@ const path = require('path');
 const DATA_DIR = path.join(__dirname, '..', 'data');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
-const HC_NODE_STATE_FILE = path.join(DATA_DIR, 'hc-node-state.json');
-const HC_REPORTS_FILE    = path.join(DATA_DIR, 'hc-reports.json');
-const HC_PROFILES_FILE   = path.join(DATA_DIR, 'hc-profiles.json');
+// TSM FIX (data isolation): these used to be single global files shared by
+// every client — GCU's session and every other client's session read/wrote
+// the exact same hc-node-state.json, hc-reports.json, hc-profiles.json.
+// There was no clientId field anywhere in the schema, so "scoping" wasn't
+// partial, it was absent. Each client now gets its own file, keyed by the
+// clientId attached to req.tsmSession by requireAnyAuth/requireRole
+// (middleware/require-auth.js). Pre-existing data (from before multi-tenancy
+// existed) lives under the 'default' clientId so nothing is silently
+// dropped — an admin session with no clientId reads/writes 'default' unless
+// it explicitly requests another client's id (see resolveHcClientId below).
+//
+// Old constants (HC_NODE_STATE_FILE etc.) are kept as the literal 'default'
+// path so any caller not yet updated still resolves to the same file it
+// always did, rather than throwing.
+function hcNodeStateFile(clientId) {
+  return path.join(DATA_DIR, `hc-node-state.${clientId || 'default'}.json`);
+}
+function hcReportsFile(clientId) {
+  return path.join(DATA_DIR, `hc-reports.${clientId || 'default'}.json`);
+}
+function hcProfilesFile(clientId) {
+  return path.join(DATA_DIR, `hc-profiles.${clientId || 'default'}.json`);
+}
+
+const HC_NODE_STATE_FILE = hcNodeStateFile('default');
+const HC_REPORTS_FILE    = hcReportsFile('default');
+const HC_PROFILES_FILE   = hcProfilesFile('default');
+
+// Resolve which client's data bucket a request should read/write.
+// - client-role sessions ALWAYS use their own session clientId — the body/
+//   query is never trusted for this, so one client can't address another
+//   client's bucket by passing a different id.
+// - admin/staff sessions default to 'default' (today's legacy single bucket)
+//   but may pass ?clientId=... or body.clientId to work inside a specific
+//   client's data, e.g. an admin preparing GCU's node state.
+function resolveHcClientId(req) {
+  const session = req.tsmSession || {};
+  if (session.role === 'client') return session.clientId || 'default';
+  const requested = (req.query && req.query.clientId) || (req.body && req.body.clientId);
+  return (requested && String(requested).trim()) || 'default';
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // JSON I/O
@@ -477,6 +515,10 @@ module.exports = {
   HC_NODE_STATE_FILE,
   HC_REPORTS_FILE,
   HC_PROFILES_FILE,
+  hcNodeStateFile,
+  hcReportsFile,
+  hcProfilesFile,
+  resolveHcClientId,
   groqChat,
   callGroq,
   SP,

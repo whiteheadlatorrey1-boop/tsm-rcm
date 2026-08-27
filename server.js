@@ -1995,7 +1995,8 @@ const DAILY_ANALYSIS_LIMIT = parseInt(process.env.DAILY_ANALYSIS_LIMIT, 10) || 2
 // In-memory store for node reports relayed from war rooms → strategist → exec
 const hcNodeReports = {}; // keyed by node id
 
-app.post('/api/hc/node-report', (req, res) => {
+// GCU PILOT FIX 2026-08-26: PHI-bearing node reports, no auth check.
+app.post('/api/hc/node-report', requireAnyAuth, (req, res) => {
   try {
     const { nodeId, nodeLabel, report, analysisText, denialCodes, claimIds, severity, kpi, ts } = req.body || {};
     if (!nodeId) return res.status(400).json({ ok: false, error: 'nodeId required' });
@@ -2018,7 +2019,7 @@ app.post('/api/hc/node-report', (req, res) => {
   }
 });
 
-app.get('/api/hc/node-reports', (req, res) => {
+app.get('/api/hc/node-reports', requireAnyAuth, (req, res) => {
   try {
     const reports = Object.values(hcNodeReports).sort((a, b) => b.ts - a.ts);
     return res.json({ ok: true, reports, count: reports.length });
@@ -2027,7 +2028,7 @@ app.get('/api/hc/node-reports', (req, res) => {
   }
 });
 
-app.delete('/api/hc/node-reports', (req, res) => {
+app.delete('/api/hc/node-reports', requireAnyAuth, (req, res) => {
   const { nodeId } = req.body || req.query || {};
   if (nodeId) {
     delete hcNodeReports[nodeId];
@@ -2038,7 +2039,8 @@ app.delete('/api/hc/node-reports', (req, res) => {
 });
 
 
-app.post('/api/hc/stream', async (req, res) => {
+// GCU PILOT FIX 2026-08-26: fetched by Healthcare pages, no auth check.
+app.post('/api/hc/stream', requireAnyAuth, async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
@@ -2129,7 +2131,8 @@ const GROQ_VISION_MODELS = [
   'meta-llama/llama-4-maverick-17b-128e-instruct'
 ];
 
-app.post('/api/hc/ocr', async (req, res) => {
+// GCU PILOT FIX 2026-08-26: OCR on uploaded medical docs, no auth check.
+app.post('/api/hc/ocr', requireAnyAuth, async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
@@ -2261,7 +2264,8 @@ app.get('/api/war-room/stream', (req,res)=>{
   });
 });
 
-app.post('/api/war-room/stream', async (req, res) => {
+// GCU PILOT FIX 2026-08-26: fetched by Legal war room, no auth check.
+app.post('/api/war-room/stream', requireAnyAuth, async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
@@ -2716,7 +2720,14 @@ app.use('/api/enterprise-lab', require('./server/enterprise-lab/api'));
 // ── FINOPS ────────────────────────────────────────────────────────────────────
 app.post('/api/finops/bnca/report', (req, res) => res.json({ ok: true }));
 // routes/finops.js implements the fuller finops API (docs, decision-service bridge, etc.)
-app.use(require('./routes/hc'));
+// TSM FIX (data isolation): hc.js was mounted with no auth middleware at
+// all — any request, session or not, could read/write every client's
+// healthcare node data because there was also no clientId in the data
+// schema. requireAnyAuth now gates entry and attaches req.tsmSession
+// (role/clientId/tenantId); hc.js's own handlers use resolveHcClientId(req)
+// to route each read/write to that session's own data file. See
+// routes/_shared.js for the per-client file resolution.
+app.use(requireAnyAuth, require('./routes/hc'));
 app.use(require('./routes/strategist'));
 app.use(require('./routes/construction'));
 app.use(require('./routes/property-accounting'));
@@ -2735,7 +2746,12 @@ app.use('/api/rcm', require('./routes/rcm-requirements'));
 // previously shipped inside the publicly-fetchable schools-model.json; it
 // now lives only in server/private-config/schools/financial-model.json.
 // See routes/schools-financial.js header for the full endpoint contract.
-app.use('/api/schools', require('./routes/schools-financial'));
+// TSM FIX (data isolation): this stateless calculator wasn't gated by any
+// auth either — anyone could POST to it and get computed output from the
+// proprietary rate card. It doesn't store per-client data (caller supplies
+// kpis/breaches/exceptions in the body each time), so requireAnyAuth alone
+// closes the gap here — there's no per-client bucket to scope.
+app.use('/api/schools', requireAnyAuth, require('./routes/schools-financial'));
 
 // ── INPHUSIONSYS (multi-vertical demo data: employees, anomalies, IT tickets) ──
 // See server/routes/inphusionsys.js header for the full endpoint contract.
@@ -2748,8 +2764,9 @@ app.use('/api/inphusionsys', require('./server/routes/inphusionsys'));
 // Groq-backed chat (per-tab assistant) + audit engine with real persisted
 // audit-log entries. See routes/finance-chat.js header for the full contract.
 const { chatRouter: financeChatRouter, auditRouter: financeAuditRouter } = require('./routes/finance-chat');
-app.use('/api/chat', financeChatRouter);
-app.use('/api/audit', financeAuditRouter);
+// GCU PILOT FIX 2026-08-26: fetched by Legal and Healthcare with no auth check.
+app.use('/api/chat', requireAnyAuth, financeChatRouter);
+app.use('/api/audit', requireAnyAuth, financeAuditRouter);
 
 // ── AI QUERY ROUTES ───────────────────────────────────────────────────────────
 app.post('/api/ai/query', async (req, res) => {
@@ -2764,7 +2781,8 @@ app.post('/api/ai/query', async (req, res) => {
   } catch (e) { return res.status(500).json({ ok: false, error: e.message }); }
 });
 
-app.post('/api/prompt', async (req, res) => {
+// GCU PILOT FIX 2026-08-26: fetched by Legal war room with no auth check.
+app.post('/api/prompt', requireAnyAuth, async (req, res) => {
   try {
     const { key, context } = req.body || {};
     const prompts = {
@@ -2778,7 +2796,8 @@ app.post('/api/prompt', async (req, res) => {
   } catch (e) { return res.status(500).json({ ok: false, error: e.message }); }
 });
 
-app.post('/api/financial/query', async (req, res) => {
+// GCU PILOT FIX 2026-08-26: fetched by Legal war room with no auth check.
+app.post('/api/financial/query', requireAnyAuth, async (req, res) => {
   try {
     const { system, message, question, query, maxTokens, messages } = req.body || {};
     let msg, sys;
@@ -2810,7 +2829,9 @@ app.post('/api/financial/query', async (req, res) => {
   }
 });
 
-app.post('/api/legal/query', async (req, res) => {
+// GCU PILOT FIX 2026-08-26: core Legal endpoint, handles privileged case
+// data, previously had no auth check.
+app.post('/api/legal/query', requireAnyAuth, async (req, res) => {
   try {
     const msg = req.body.message || req.body.question || req.body.query || '';
     const system = req.body.system || SP.legal;
@@ -3405,7 +3426,8 @@ app.get('/api/hotelops/bookings/pending', (req, res) => {
 // ── SCHOOLS: structured grant/monitoring/exception analysis ──────────────────
 // Mirrors /api/mortgage/query's shape. Kept separate from the pre-existing
 // generic /api/schools/query (plain question/answer) so nothing there breaks.
-app.post('/api/schools/analysis', async (req, res) => {
+// GCU PILOT FIX 2026-08-26: core Schools endpoint, no auth check.
+app.post('/api/schools/analysis', requireAnyAuth, async (req, res) => {
   const { kpis, grant_breaches, monitoring_items, exceptions, context, system, maxTokens } = req.body || {};
   const summary = JSON.stringify({
     kpis,
@@ -4373,7 +4395,8 @@ app.get('/api/l1-copilot/gcp/instance/:identifier', async (req, res) => {
   }
 });
 
-app.post('/api/schools/query', async (req, res) => {
+// GCU PILOT FIX 2026-08-26: core Schools endpoint, no auth check.
+app.post('/api/schools/query', requireAnyAuth, async (req, res) => {
   try { var a = await groqChat(req.body.system || SP.education, req.body.message || req.body.question || req.body.query || '', req.body.maxTokens || 550); return res.json({ ok: true, answer: a, createdAt: new Date().toISOString() }); }
   catch (e) { return res.status(500).json({ ok: false, error: e.message }); }
 });
@@ -6058,7 +6081,8 @@ EXEC_PORTAL_VERTICALS.forEach(v => {
 // (assigned client-side by tsm-exec-portal-upgrade.js) -- combined with
 // vertical it forms a stable entityId so re-deciding the same item (e.g. a
 // hold later upgraded to approve) is traceable to one entity across calls.
-app.post('/api/exec-portal/:vertical/decide', (req, res) => {
+// GCU PILOT FIX 2026-08-26: exec decisions across all verticals, no auth check.
+app.post('/api/exec-portal/:vertical/decide', requireAnyAuth, (req, res) => {
   const vertical = req.params.vertical;
   const gate = EXEC_PORTAL_HITL_GATES[vertical];
   if (!gate) return res.status(404).json({ ok: false, error: `Unknown vertical: ${vertical}` });

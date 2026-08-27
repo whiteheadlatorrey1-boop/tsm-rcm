@@ -4,10 +4,18 @@ const router  = express.Router();
 const fs = require('fs');
 const {
   readJson, writeJson,
-  HC_NODE_STATE_FILE, HC_REPORTS_FILE, HC_PROFILES_FILE,
+  hcNodeStateFile, hcReportsFile, hcProfilesFile, resolveHcClientId,
   aggregateLayer2, buildSystemRollup,
   groqChat, callGroq, SP
 } = require('./_shared');
+const { requireAnyAuth } = require('../middleware/require-auth');
+
+// GCU PILOT FIX 2026-08-26: every /api/hc/* route below handled PHI with no
+// auth check at all. Gate the whole router behind a valid tsm_session cookie
+// (same signed-cookie check BPO's routes already use). Sample-mode pages
+// don't hit these endpoints — they read local sample data client-side — so
+// this only blocks unauthenticated access to live data.
+router.use(requireAnyAuth);
 
 // Canonical 11 HC nodes (mirrors NODES/NODE_KEYS in hc-academy poc-html and
 // the preferredOrder list used elsewhere in this file).
@@ -18,7 +26,7 @@ const HC_NODE_KEYS = ['operations','medical','pharmacy','insurance','financial',
 // read HC_NODE_STATE_FILE at all. Moved here and wired to real state so the
 // numbers reflect what's actually been escalated.
 router.get('/api/hc/strategist-rollup', (req, res) => {
-  const state = readJson(HC_NODE_STATE_FILE, {});
+  const state = readJson(hcNodeStateFile(resolveHcClientId(req)), {});
   const nodesOnline = HC_NODE_KEYS.filter(k => state[k]).length;
   const executiveEscalations = HC_NODE_KEYS.filter(k => state[k] && String(state[k].status || '').toLowerCase() === 'critical').length;
   res.json({
@@ -34,12 +42,12 @@ router.get('/api/hc/strategist-rollup', (req, res) => {
 });
 
 router.get('/api/hc/reports', (req, res) => {
-  const reports = readJson(HC_REPORTS_FILE, []);
+  const reports = readJson(hcReportsFile(resolveHcClientId(req)), []);
   res.json({ ok: true, count: reports.length, reports });
 });
 
 router.post('/api/hc/reports', (req, res) => {
-  const reports = readJson(HC_REPORTS_FILE, []);
+  const reports = readJson(hcReportsFile(resolveHcClientId(req)), []);
   const now = new Date().toISOString();
   const report = {
     id: `rpt_${Date.now()}`,
@@ -52,24 +60,24 @@ router.post('/api/hc/reports', (req, res) => {
     updatedAt: now
   };
   reports.unshift(report);
-  writeJson(HC_REPORTS_FILE, reports.slice(0, 300));
+  writeJson(hcReportsFile(resolveHcClientId(req)), reports.slice(0, 300));
   res.json({ ok: true, report });
 });
 
 router.delete('/api/hc/reports/:id', (req, res) => {
-  const reports = readJson(HC_REPORTS_FILE, []);
+  const reports = readJson(hcReportsFile(resolveHcClientId(req)), []);
   const next = reports.filter(r => r.id !== req.params.id);
-  writeJson(HC_REPORTS_FILE, next);
+  writeJson(hcReportsFile(resolveHcClientId(req)), next);
   res.json({ ok: true });
 });
 
 router.get('/api/hc/nodes', (req, res) => {
-  const state = readJson(HC_NODE_STATE_FILE, {});
+  const state = readJson(hcNodeStateFile(resolveHcClientId(req)), {});
   res.json({ ok: true, state, generatedAt: new Date().toISOString() });
 });
 
 router.post('/api/hc/nodes/:nodeKey', (req, res) => {
-  const state = readJson(HC_NODE_STATE_FILE, {});
+  const state = readJson(hcNodeStateFile(resolveHcClientId(req)), {});
   const prior = state[req.params.nodeKey] || {};
   const merged = {
     ...prior,
@@ -140,7 +148,7 @@ CONFIDENCE
 92%`;
 
   state[req.params.nodeKey] = merged;
-  writeJson(HC_NODE_STATE_FILE, state);
+  writeJson(hcNodeStateFile(resolveHcClientId(req)), state);
   res.json({ ok: true, node: state[req.params.nodeKey] });
 });
 
@@ -149,7 +157,7 @@ CONFIDENCE
 // not fabricated, not estimated. Nodes with no anomaly activity yet are
 // simply absent from `nodes` rather than padded with zeros.
 router.get('/api/hc/anomalies/summary', (req, res) => {
-  const state = readJson(HC_NODE_STATE_FILE, {});
+  const state = readJson(hcNodeStateFile(resolveHcClientId(req)), {});
   const nodes = {};
   let open = 0, resolved = 0;
   HC_NODE_KEYS.forEach(key => {
@@ -166,12 +174,12 @@ router.get('/api/hc/anomalies/summary', (req, res) => {
 });
 
 router.get('/api/hc/profiles', (req, res) => {
-  res.json({ ok: true, profiles: readJson(HC_PROFILES_FILE, []) });
+  res.json({ ok: true, profiles: readJson(hcProfilesFile(resolveHcClientId(req)), []) });
 });
 
 router.get('/api/hc/nodes/filter', (req, res) => {
   const { system = '', location = '' } = req.query;
-  const state = readJson(HC_NODE_STATE_FILE, {});
+  const state = readJson(hcNodeStateFile(resolveHcClientId(req)), {});
   const filtered = Object.fromEntries(
     Object.entries(state).filter(([_, v]) => {
       return (!system || v.system === system) &&
@@ -183,7 +191,7 @@ router.get('/api/hc/nodes/filter', (req, res) => {
 
 router.post('/api/hc/bnca', (req, res) => {
   const { system = '', location = '' } = req.body || {};
-  const state = readJson(HC_NODE_STATE_FILE, {});
+  const state = readJson(hcNodeStateFile(resolveHcClientId(req)), {});
 
   const nodes = Object.values(state).filter(v =>
     (!system || v.system === system) &&
@@ -213,7 +221,7 @@ router.post('/api/hc/bnca', (req, res) => {
 router.post('/api/hc/layer2', (req, res) => {
   try {
     const { system = '', location = '' } = req.body || {};
-    const state = readJson(HC_NODE_STATE_FILE, {});
+    const state = readJson(hcNodeStateFile(resolveHcClientId(req)), {});
 
     const filtered = Object.fromEntries(
       Object.entries(state).filter(([_, n]) =>
@@ -308,7 +316,7 @@ CONFIDENCE
 router.post('/api/hc/rollup', (req, res) => {
   try {
     const { system = '', top_n = 3 } = req.body || {};
-    const state = readJson(HC_NODE_STATE_FILE, {});
+    const state = readJson(hcNodeStateFile(resolveHcClientId(req)), {});
     const rollup = buildSystemRollup(state, system, Number(top_n || 3));
 
     res.json({
@@ -331,7 +339,7 @@ router.post('/api/hc/brief', async (req, res) => {
       question = ''
     } = req.body || {};
 
-    const state = readJson(HC_NODE_STATE_FILE, {});
+    const state = readJson(hcNodeStateFile(resolveHcClientId(req)), {});
     const filtered = Object.fromEntries(
       Object.entries(state).filter(([_, n]) =>
         (!system || (n.system || '') === system) &&
@@ -437,7 +445,7 @@ router.post('/api/hc/query', async (req,res)=>{
       return res.json({ ok: true, output: answer, content: answer, answer, reply: answer });
     }
 
-    const state = readJson(HC_NODE_STATE_FILE,{});
+    const state = readJson(hcNodeStateFile(resolveHcClientId(req)), {});
     // Groq persona analysis for specific node
     if(nodeKey && state[nodeKey]) {
       const n = state[nodeKey];
@@ -543,7 +551,7 @@ CONFIDENCE
 router.post('/api/hc/rollup/brief', (req, res) => {
   try {
     const { system = '', audience = 'cfo', format = 'email', top_n = 3 } = req.body || {};
-    const state = readJson(HC_NODE_STATE_FILE, {});
+    const state = readJson(hcNodeStateFile(resolveHcClientId(req)), {});
     const rollup = buildSystemRollup(state, system, Number(top_n || 3));
     const top = rollup.topOffices?.[0] || null;
 
@@ -586,7 +594,7 @@ We will continue monitoring and provide updates as recovery progresses.
 router.post('/api/hc/alerts', (req, res) => {
   try {
     const { system = '' } = req.body || {};
-    const state = readJson(HC_NODE_STATE_FILE, {});
+    const state = readJson(hcNodeStateFile(resolveHcClientId(req)), {});
     const alerts = [];
 
     Object.entries(state || {}).forEach(([nodeKey, n]) => {

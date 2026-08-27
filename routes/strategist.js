@@ -7,13 +7,15 @@ const {
   filterHCState, buildLayer2Summary, buildStrategistSystemPosture,
   buildHCBrief, groqChat, SP
 } = require('./_shared');
+const { requireAnyAuth } = require('../middleware/require-auth');
 
 // In-memory store for the main-strategist hc-report endpoint below.
 // (Was referenced as a bare variable with no declaration anywhere.)
 let tsmHealthcareReport = { report: null, updated_at: null };
 
 
-router.post('/api/strategist/hc/system-posture', (req, res) => {
+// GCU PILOT FIX 2026-08-26: HC-specific route, no auth check previously.
+router.post('/api/strategist/hc/system-posture', requireAnyAuth, (req, res) => {
   try {
     const {
       system = 'HonorHealth',

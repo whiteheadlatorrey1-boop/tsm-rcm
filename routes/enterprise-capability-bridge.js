@@ -37,6 +37,7 @@ const express = require('express');
 const router = express.Router();
 const { createGate } = require('../html/shared/tsm-hitl-gate.js');
 const tsmLedger = require('../server/tsm-ledger-service.js');
+const { requireAnyAuth } = require('../middleware/require-auth');
 
 // ── STORES ──────────────────────────────────────────────────────────────────
 const O2C_ORDERS = [];
@@ -202,7 +203,9 @@ async function foundationDecision(baseUrl, vertical, mode, snapshot, context) {
   return data.answer;
 }
 
-router.post('/api/enterprise/capability-sweep', async (req, res) => {
+// GCU PILOT FIX 2026-08-26: fetched by Schools, Legal, and Healthcare war
+// rooms with no auth check; writes real case records + triggers AI analysis.
+router.post('/api/enterprise/capability-sweep', requireAnyAuth, async (req, res) => {
   const body = req.body || {};
   const { vertical, title, summary, exposure, entities } = body;
   const caseId = body.caseId || ecbId('case');

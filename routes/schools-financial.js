@@ -30,6 +30,13 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const router = express.Router();
+const { requireAnyAuth } = require('../middleware/require-auth');
+
+// GCU PILOT FIX 2026-08-26: financial-summary returns computed grant/funding
+// dollar exposure with no auth check. Gate behind a valid tsm_session cookie,
+// same pattern as BPO's routes. Sample mode is unaffected — it computes
+// client-side and never calls this endpoint.
+router.use(requireAnyAuth);
 
 const RATE_CARD_PATH = path.join(__dirname, '..', 'server', 'private-config', 'schools', 'financial-model.json');
 
