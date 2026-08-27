@@ -1952,6 +1952,7 @@ document.addEventListener('DOMContentLoaded',()=>{
 <script src="/html/shared/runtime/mission/mission-store.js"></script>
 <script src="/html/shared/runtime/mission/mission-sentinel-bridge.js"></script>
 <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
+<script src="/html/shared/tsm-sentinel-push.js"></script>
 <script src="/html/core/tsm-runtime.js"></script>
 <script src="/runtime/kernel/canonical-core.js"></script>
 <script src="/html/war-rooms/schools-command/services/schools-engine.js"></script>
@@ -2061,11 +2062,16 @@ document.addEventListener('DOMContentLoaded',()=>{
         });
       }
 
-      localStorage.setItem('TSM_SCHOOLS_STRATEGIST_RELAY', JSON.stringify({
-        generatedAt: new Date().toISOString(),
-        anomalies
-      }));
-      window.dispatchEvent(new CustomEvent('TSM_SENTINEL_REFRESH'));
+      if (window.TSMSentinelPush && window.TSMSentinelPush.push) {
+        window.TSMSentinelPush.push('SCHOOLS', anomalies);
+      } else {
+        // Fallback if the shared utility didn't load, so a push still happens.
+        localStorage.setItem('TSM_SCHOOLS_STRATEGIST_RELAY', JSON.stringify({
+          generatedAt: new Date().toISOString(),
+          anomalies
+        }));
+        window.dispatchEvent(new CustomEvent('TSM_SENTINEL_REFRESH'));
+      }
     } catch (e) {
       console.warn('Schools: sentinel push failed', e);
     }

@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
+<script src="/html/shared/tsm-sentinel-push.js"></script>
 <script src="/html/shared/runtime/integrity/tsm-integrity.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -594,10 +595,14 @@ async function relayToStrategist(){
     // Write the SIGNED version last (both storage locations relay.write
     // uses) so it's what actually persists — nothing after this point
     // touches the same key.
-    localStorage.setItem('TSM_HOTELOPS_STRATEGIST_RELAY', JSON.stringify(signedPayload));
-    sessionStorage.setItem('TSM_HOTELOPS_STRATEGIST_RELAY', JSON.stringify(signedPayload));
-
-    window.dispatchEvent(new CustomEvent('TSM_SENTINEL_REFRESH'));
+    if (window.TSMSentinelPush && window.TSMSentinelPush.push) {
+      window.TSMSentinelPush.push('HOTELOPS', signedPayload, { alsoSession: true });
+    } else {
+      // Fallback if the shared utility didn't load, so a relay still happens.
+      localStorage.setItem('TSM_HOTELOPS_STRATEGIST_RELAY', JSON.stringify(signedPayload));
+      sessionStorage.setItem('TSM_HOTELOPS_STRATEGIST_RELAY', JSON.stringify(signedPayload));
+      window.dispatchEvent(new CustomEvent('TSM_SENTINEL_REFRESH'));
+    }
     showToast('Relayed to Strategist — click "Strategist →" above to view it.');
   } catch (e) {
     console.warn('Relay storage failed', e);

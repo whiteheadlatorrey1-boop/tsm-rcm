@@ -559,11 +559,20 @@ tr:hover td{background:rgba(212,175,55,.03)}
     fireCapabilitySweep_MTG(payload);
     await fireMortgageNodeChain_MTG(payload);
     try {
-      localStorage.setItem('TSM_MORTGAGE_STRATEGIST_RELAY', JSON.stringify(payload));
+      // Order preserved exactly as before: the Sentinel-facing write happens
+      // BEFORE window.TSM.relay.write() below mutates payload in place
+      // (fills in .id/.timestamp) -- not touching that pre-existing ordering
+      // as part of this consolidation.
+      if (window.TSMSentinelPush && window.TSMSentinelPush.push) {
+        window.TSMSentinelPush.push('MORTGAGE', payload);
+      } else {
+        // Fallback if the shared utility didn't load, so a relay still happens.
+        localStorage.setItem('TSM_MORTGAGE_STRATEGIST_RELAY', JSON.stringify(payload));
+        window.dispatchEvent(new CustomEvent('TSM_SENTINEL_REFRESH'));
+      }
       if (window.TSM && window.TSM.relay && window.TSM.relay.write) {
         window.TSM.relay.write('MORTGAGE', payload);
       }
-      window.dispatchEvent(new CustomEvent('TSM_SENTINEL_REFRESH'));
     } catch (e) { console.warn('Relay storage failed', e); }
 
     if (window.TSMEventBus && window.TSMEventBus.emit) {
@@ -639,6 +648,7 @@ tr:hover td{background:rgba(212,175,55,.03)}
 <script src="/js/core/tsm-mission-engine.js"></script>
 <script src="/js/core/tsm-auto-pipeline.js"></script>
 <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
+<script src="/html/shared/tsm-sentinel-push.js"></script>
 <script src="/html/core/tsm-runtime.js"></script>
   <script src="/js/tsm-guide-engine.js" defer></script>
   <script src="/shared/tsm-guided-how-to.js" defer></script>
