@@ -2554,6 +2554,7 @@ function renderCard(doc, query) {
       ${primaryActionHtml}
       <button class="btn-view" onclick="viewDocument('${doc.id}')">👁 View</button>
       <button class="btn-warroom" onclick="openWarRoomPicker('${doc.id}')">⚡ Send to War Room</button>
+      ${DOCSEARCH_ROOM_KEYS[currentVertical] ? `<button class="btn-redispatch" onclick="redispatch('${doc.id}')">↻ Redispatch</button>` : ""}
       <button class="btn-remove" onclick="removeDoc('${doc.id}')">✕ Remove</button>
     </div>
     </div>
@@ -2701,6 +2702,18 @@ function confirmClearAll() {
     refreshTotalCount();
   }
 }
+
+// Maps currentVertical's real short codes to a WAR_ROOM_ROUTES key, for redispatch().
+// redispatch() previously kept its own DOCSEARCH_ROUTES map keyed by full-word vertical
+// names ('realestate', 'legal', etc.) which never matched currentVertical's actual short
+// codes (fo/ins/hc/leg/con/re/bpo) - only 'bpo' happened to coincide, so the lookup
+// silently no-op'd for every other vertical. Also, that old path wrote only a raw
+// 'docsearch_relay' key which most war rooms (e.g. re-war-room.html) never actually
+// read on load - only finops-war-room.html has that population script. redispatch()
+// now delegates to launchWarRoom(), the same already-working relay mechanism the
+// "Send to War Room" picker uses (writes both the manual and autorun keys, which every
+// war room's own load handler does read).
+const DOCSEARCH_ROOM_KEYS = { fo:'fo-war-room', ins:'ins-war-room', con:'con-war-room', bpo:'bpo-war-room', re:'re-war-room', leg:'leg-war-room', hc:'hc-war-room' };
 
 const WAR_ROOM_ROUTES = {
   'fo-war-room':  { label:'FinOps War Room',       url:'/html/finops-suite/finops-war/finops-war-room.html',            relay:'tsm_fo_docsearch_relay',    autoKey:'TSM_FIN_WAR_RELAY' },
@@ -2982,30 +2995,12 @@ function redispatch(id) {
     setTimeout(() => { btn.textContent = orig; btn.style.color = ""; }, 2000);
   }
 
-  const DOCSEARCH_ROUTES = {
-    insurance:    { key: 'tsm_ins_docsearch_relay',    path: '/html/war-rooms/insure-war/insurance-war-room.html' },
-    finops:       { key: 'tsm_fo_docsearch_relay',     path: '/html/finops-suite/finops-war/finops-war-room.html' },
-    healthcare:   { key: 'tsm_hc_docsearch_relay',     path: '/html/healthcare/hc-denial-war-room.html' },
-    legal:        { key: 'tsm_legal_docsearch_relay',  path: '/html/war-rooms/legal-war/legal-war-room.html' },
-    construction: { key: 'tsm_con_docsearch_relay',    path: '/html/war-rooms/construct-war/construction-war-room.html' },
-    realestate:   { key: 'tsm_re_docsearch_relay',     path: '/html/war-rooms/re-war/re-war-room.html' },
-    bpo:          { key: 'tsm_bpo_docsearch_relay',    path: '/html/war-rooms/bpo-war/bpo-war-room.html' }
-  };
-
-  const route = DOCSEARCH_ROUTES[currentVertical];
-  if (route) {
-    const lines = [`DOCUMENT: ${doc.fileName || 'Unknown'}`, `TYPE: ${doc.documentType || 'Unknown'}`];
-    if (doc._ext?.client) lines.push(`CLIENT: ${doc._ext.client}`);
-    if (doc.invoiceNo) lines.push(`REF/CLAIM #: ${doc.invoiceNo}`);
-    if (doc.vendor) lines.push(`CARRIER/VENDOR: ${doc.vendor}`);
-    if (doc.exclusionCode) lines.push(`CODE: ${doc.exclusionCode}`);
-    if (doc.amount) lines.push(`EXPOSURE: $${doc.amount.toLocaleString()}`);
-    if (doc._ext?.ref) lines.push(`REF: ${doc._ext.ref}`);
-    const summary = lines.join('\n');
-    try {
-      localStorage.setItem(route.key, JSON.stringify({ ts: Date.now(), summary, doc }));
-    } catch(e) {}
-    setTimeout(() => { window.location.href = route.path; }, 600);
+  // Route via the same relay mechanism as "Send to War Room" (launchWarRoom) -
+  // see the DOCSEARCH_ROOM_KEYS comment above for why this replaced the old
+  // DOCSEARCH_ROUTES/raw-key approach.
+  const roomKey = DOCSEARCH_ROOM_KEYS[currentVertical];
+  if (roomKey) {
+    setTimeout(() => launchWarRoom(id, roomKey), 600);
   }
 }
 
