@@ -476,6 +476,32 @@ const GROQ_MODELS = [
 // all three were dead fallback rungs, not real options; gpt-oss-20b is Groq's own
 // recommended replacement for llama-3.1-8b-instant, so no coverage is lost.
 
+// TSM FIX 2026-08-27: /api/war-room/stream and /api/hc/stream both did
+// `model: model || 'openai/gpt-oss-120b'` — that only catches an *empty*
+// model, not a dead one. Several client dropdowns (FinOps strategist,
+// finance-index.html, legal-account.html, etc.) still ship options like
+// llama-3.1-8b-instant / llama-3.3-70b-versatile / mixtral-8x7b-32768 /
+// gemma2-9b-it / llama3-70b-8192, all of which are shut down on Groq's
+// side. Any request carrying one of those would 4xx straight through to
+// the end user instead of degrading. This maps known-dead/unknown model
+// strings to a safe live default instead of trusting client input verbatim.
+const GROQ_DEPRECATED_MODEL_MAP = {
+  'llama-3.1-8b-instant': 'openai/gpt-oss-20b',
+  'llama-3.3-70b-versatile': 'openai/gpt-oss-120b',
+  'llama3-70b-8192': 'openai/gpt-oss-120b',
+  'llama3-8b-8192': 'openai/gpt-oss-20b',
+  'mixtral-8x7b-32768': 'openai/gpt-oss-120b',
+  'gemma2-9b-it': 'openai/gpt-oss-20b'
+};
+function resolveGroqModel(requested) {
+  if (!requested) return 'openai/gpt-oss-120b';
+  if (GROQ_MODELS.includes(requested)) return requested;
+  if (GROQ_DEPRECATED_MODEL_MAP[requested]) return GROQ_DEPRECATED_MODEL_MAP[requested];
+  // Unrecognized string (typo, future/unknown model) — don't blindly forward
+  // it to Groq and let the user hit a raw API error; fall back safely.
+  return 'openai/gpt-oss-120b';
+}
+
 async function groqChat(system, message, maxTokens, clientKey, jsonMode) {
   const groqKey = process.env.GROQ_API_KEY || process.env.GROQ_KEY || clientKey;
   if (!groqKey) throw new Error('No Groq API key configured (server env missing and no client key provided)');
@@ -2076,7 +2102,7 @@ app.post('/api/hc/stream', requireAnyAuth, async (req, res) => {
           'Authorization': 'Bearer ' + (process.env.GROQ_API_KEY || process.env.GROQ_KEY)
         },
         body: JSON.stringify({
-          model: model || 'openai/gpt-oss-120b',
+          model: resolveGroqModel(model),
           stream: true,
           max_tokens: maxTok || 500,
           messages: [{ role: 'system', content: sys }, { role: 'user', content: user }]
@@ -2277,7 +2303,7 @@ app.post('/api/war-room/stream', requireAnyAuth, async (req, res) => {
 
   async function fetchGroqStream(retriesLeft = 3, forceJsonMode = !!json_mode) {
     const body = {
-      model: model || 'openai/gpt-oss-120b',
+      model: resolveGroqModel(model),
       stream: true,
       max_tokens: max_tokens || 600,
       temperature: temperature ?? 0.4,

@@ -5,7 +5,7 @@
 // something is anomalous — that already happened before this file runs.
 
 const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
-const MODEL = 'llama-3.3-70b-versatile';
+const MODEL = 'openai/gpt-oss-120b';
 
 const SYSTEM_PROMPT = `You are a decision-explanation service inside an enterprise audit system.
 You will be given a rule that fired and the specific events that triggered it.
