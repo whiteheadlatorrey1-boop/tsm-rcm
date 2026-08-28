@@ -4627,7 +4627,7 @@ function buildPmIntelligenceSnapshot(payload) {
   };
 }
 
-app.post('/api/pm/portfolio-intelligence', (req, res) => {
+app.post('/api/pm/portfolio-intelligence', requireRole(PM_INTERNAL_ROLES), (req, res) => {
   try {
     res.json(buildPmIntelligenceSnapshot(req.body || {}));
   } catch (err) {
@@ -4639,7 +4639,7 @@ app.post('/api/pm/portfolio-intelligence', (req, res) => {
   }
 });
 
-app.post('/api/pm/risk', (req, res) => {
+app.post('/api/pm/risk', requireRole(PM_INTERNAL_ROLES), (req, res) => {
   try {
     const payload = req.body || {};
     const twin = buildPortfolioTwin(payload);
@@ -4657,7 +4657,7 @@ app.post('/api/pm/risk', (req, res) => {
   }
 });
 
-app.post('/api/pm/forecast', (req, res) => {
+app.post('/api/pm/forecast', requireRole(PM_INTERNAL_ROLES), (req, res) => {
   try {
     const payload = req.body || {};
     const twin = buildPortfolioTwin(payload);
@@ -4680,7 +4680,7 @@ app.post('/api/pm/forecast', (req, res) => {
 /* ── END PM INTELLIGENCE V2 ───────────────────────────────────────────────── */
 
 /* ── PM EXECUTIVE DECISION ENGINE ─────────────────────────────────────────── */
-app.post('/api/pm/executive-decisions', (req, res) => {
+app.post('/api/pm/executive-decisions', requireRole(PM_INTERNAL_ROLES), (req, res) => {
   try {
     const payload = req.body || {};
     const result = buildDecisionPackage(payload);
@@ -4698,7 +4698,7 @@ app.post('/api/pm/executive-decisions', (req, res) => {
 /* ── PM INTELLIGENCE V3 ACTION/VERIFICATION ──────────────────────────────── */
 
 /* ── PM PREDICTIVE PORTFOLIO CONTROL ─────────────────────────────────────── */
-app.post('/api/pm/predictive-control', (req, res) => {
+app.post('/api/pm/predictive-control', requireRole(PM_INTERNAL_ROLES), (req, res) => {
   try {
     res.json(buildPmPredictiveControl(req.body || {}));
   } catch (err) {
@@ -4711,7 +4711,7 @@ app.post('/api/pm/predictive-control', (req, res) => {
 });
 /* ── END PM PREDICTIVE PORTFOLIO CONTROL ──────────────────────────────────── */
 
-app.post('/api/pm/intelligence-v3', (req, res) => {
+app.post('/api/pm/intelligence-v3', requireRole(PM_INTERNAL_ROLES), (req, res) => {
   try {
     const payload = req.body || {};
 
@@ -4738,7 +4738,7 @@ app.post('/api/pm/intelligence-v3', (req, res) => {
   }
 });
 
-app.post('/api/pm/actions/verify', (req, res) => {
+app.post('/api/pm/actions/verify', requireRole(PM_INTERNAL_ROLES), (req, res) => {
   try {
     const body = req.body || {};
 
