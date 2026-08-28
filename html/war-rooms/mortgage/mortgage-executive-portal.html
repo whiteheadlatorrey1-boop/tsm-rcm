@@ -725,5 +725,291 @@ window.exportClientPackage = function () {
   <script src="/html/core/tsm-runtime.js"></script>
   <script src="/js/tsm-guide-engine.js" defer></script>
   <script src="/shared/tsm-guided-how-to.js" defer></script>
+
+<div id="tsm-mtg-intelligence-v3"></div>
+
+<style id="tsm-mtg-intelligence-v3-css">
+/* TSM MORTGAGE INTELLIGENCE V3 · ACTION CENTER -- same class names/rules as
+   PM Copilot's exec-portal panel (html/war-rooms/pm-copilot/pm-exec-portal.html)
+   so this inherits the same look with a different id prefix, not a fork. */
+.tsm-mtg-v3-shell { margin-top: 18px; }
+.tsm-mtg-v3-header { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:10px; }
+.tsm-mtg-v3-title { font-family:'Orbitron',sans-serif; font-size:.75rem; letter-spacing:.1em; color:var(--gold); }
+.tsm-mtg-v3-subtitle { font-family:'JetBrains Mono',monospace; font-size:.68rem; color:var(--muted); }
+.tsm-mtg-v3-metrics { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:14px; }
+.tsm-mtg-v3-metric { border:1px solid rgba(127,127,127,.25); border-radius:8px; padding:8px 10px; }
+.tsm-mtg-v3-metric-label { font-size:.65rem; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; }
+.tsm-mtg-v3-metric-value { font-size:1.05rem; font-weight:700; margin-top:2px; }
+.tsm-mtg-v3-action { display:grid; grid-template-columns:90px 1fr 110px 110px auto; gap:10px; align-items:center;
+  padding:8px 6px; border-bottom:1px solid rgba(127,127,127,.15); font-size:.82rem; }
+.tsm-mtg-v3-priority { font-weight:700; font-size:.72rem; }
+.tsm-mtg-v3-finding { line-height:1.3; }
+.tsm-mtg-v3-entity { color:var(--muted); font-size:.72rem; margin-top:2px; }
+.tsm-mtg-v3-status { font-size:.72rem; opacity:.85; }
+.tsm-mtg-v3-actions-cell { display:flex; gap:6px; flex-wrap:wrap; }
+.tsm-mtg-v3-btn { font-size:.78rem; font-weight:600; padding:6px 12px; border-radius:8px;
+  border:1px solid rgba(127,127,127,.35); background:rgba(127,127,127,.08); color:inherit; cursor:pointer; }
+.tsm-mtg-v3-btn:hover { background:rgba(127,127,127,.18); }
+.tsm-mtg-v3-btn-reject { border-color:rgba(220,60,60,.5); color:#dc3c3c; }
+.tsm-mtg-v3-btn-verify { border-color:rgba(60,160,90,.5); color:#2f9e5c; }
+.tsm-mtg-v3-verified-badge { font-size:.82rem; font-weight:700; color:#2f9e5c; }
+.tsm-mtg-v3-empty { color:var(--muted); font-size:.8rem; padding:10px 0; }
+</style>
+
+<script id="tsm-mtg-intelligence-v3-script">
+(function () {
+  'use strict';
+
+  // Mirrors html/war-rooms/pm-copilot/pm-exec-portal.html's V3 panel script
+  // 1:1 in structure. The only real difference from PM is buildPayload():
+  // Mortgage has no persisted structured portfolio data yet (see
+  // docs/MORTGAGE_CONSTRUCTION_MAPPING_SPEC.md section 2), so findings are
+  // assembled from /api/mortgage/node-reports (structured fields: exposure,
+  // breachCount, severity, kpi, loanIds -- NOT the free-text analysisText)
+  // plus whatever the War Room -> Strategist relay already has, and handed
+  // to the deterministic decision engine server-side via
+  // POST /api/mortgage/intelligence-v3. No LLM call happens in this file.
+  const API = '/api/mortgage/intelligence-v3';
+  const NODE_REPORTS_API = '/api/mortgage/node-reports';
+
+  async function postJson(url, body) {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body || {})
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const err = new Error(data.error || ('HTTP ' + response.status));
+      err.data = data;
+      throw err;
+    }
+    return data;
+  }
+
+  async function advanceAction(actionId, nextStatus) {
+    try {
+      await postJson('/api/pm/actions/' + encodeURIComponent(actionId) + '/transition', { nextStatus });
+      showToast('Action advanced to ' + nextStatus);
+      await load();
+    } catch (err) {
+      showToast('Transition failed: ' + (err.message || 'error'));
+    }
+  }
+
+  async function approveAction(actionId) {
+    try {
+      await postJson('/api/pm/actions/' + encodeURIComponent(actionId) + '/approve', {});
+      showToast('Action approved');
+      await load();
+    } catch (err) {
+      showToast('Approval failed: ' + (err.message || 'error'));
+    }
+  }
+
+  async function rejectAction(actionId) {
+    try {
+      await postJson('/api/pm/actions/' + encodeURIComponent(actionId) + '/reject', {});
+      showToast('Action rejected');
+      await load();
+    } catch (err) {
+      showToast('Rejection failed: ' + (err.message || 'error'));
+    }
+  }
+
+  async function verifyAction(actionId) {
+    const exposureAfterRaw = window.prompt('Exposure after remediation ($, 0 if fully cleared):', '0');
+    if (exposureAfterRaw === null) return;
+    const exposureAfter = Number(exposureAfterRaw);
+    if (!Number.isFinite(exposureAfter) || exposureAfter < 0) {
+      showToast('Verification cancelled: exposure must be a non-negative number');
+      return;
+    }
+    const notes = window.prompt('Verification notes (optional):', '') || '';
+
+    try {
+      const result = await postJson('/api/pm/actions/verify', {
+        actionId,
+        verification: { verified: true, exposureAfter, notes }
+      });
+      if (!result.ok) {
+        showToast(result.error || 'Verification blocked — action must be approved first');
+        return;
+      }
+      showToast('Action verified');
+      await load();
+    } catch (err) {
+      showToast('Verification failed: ' + (err.message || 'error'));
+    }
+  }
+
+  function actionButtons(action) {
+    const id = esc(action.id);
+    switch (action.status) {
+      case 'OPEN':
+        return '<button type="button" class="tsm-mtg-v3-btn" data-act="advance" data-id="' + id + '" data-next="ACKNOWLEDGED">Acknowledge</button>';
+      case 'ACKNOWLEDGED':
+        return '<button type="button" class="tsm-mtg-v3-btn" data-act="advance" data-id="' + id + '" data-next="IN_PROGRESS">Start Work</button>';
+      case 'IN_PROGRESS':
+        return '<button type="button" class="tsm-mtg-v3-btn" data-act="advance" data-id="' + id + '" data-next="RESOLVED">Mark Resolved</button>';
+      case 'RESOLVED':
+        return (
+          '<button type="button" class="tsm-mtg-v3-btn" data-act="approve" data-id="' + id + '">Approve</button>' +
+          '<button type="button" class="tsm-mtg-v3-btn tsm-mtg-v3-btn-reject" data-act="reject" data-id="' + id + '">Reject</button>' +
+          '<button type="button" class="tsm-mtg-v3-btn tsm-mtg-v3-btn-verify" data-act="verify" data-id="' + id + '">Verify</button>'
+        );
+      case 'VERIFIED':
+        return '<span class="tsm-mtg-v3-verified-badge">✓ Verified</span>';
+      default:
+        return '';
+    }
+  }
+
+  function wireActionButtons(root) {
+    if (root._tsmMtgV3Wired) return;
+    root._tsmMtgV3Wired = true;
+    root.addEventListener('click', function (evt) {
+      const btn = evt.target.closest('[data-act]');
+      if (!btn || !root.contains(btn)) return;
+      const act = btn.getAttribute('data-act');
+      const id = btn.getAttribute('data-id');
+      if (!id) return;
+      if (act === 'advance') advanceAction(id, btn.getAttribute('data-next'));
+      else if (act === 'approve') approveAction(id);
+      else if (act === 'reject') rejectAction(id);
+      else if (act === 'verify') verifyAction(id);
+    });
+  }
+
+  function esc(v) {
+    return String(v == null ? '' : v)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function money(v) {
+    return '$' + Number(v || 0).toLocaleString();
+  }
+
+  // Structured-fields-only mapping from a raw node report into a decision-
+  // engine finding. Deliberately ignores report.analysisText (LLM free
+  // text) -- only fields that were already numbers/enums when captured
+  // by POST /api/mortgage/node-report feed the deterministic engine.
+  function nodeReportToFinding(report) {
+    const ids = Array.isArray(report.loanIds) ? report.loanIds : [];
+    return {
+      id: ids[0] || report.nodeId,
+      claim: report.nodeLabel || report.nodeId,
+      rationale: 'Node report severity ' + (report.severity || 'INFO') +
+        (report.breachCount ? ', ' + report.breachCount + ' breach(es) flagged.' : '.'),
+      severity: report.severity || 'medium',
+      exposure: report.exposure || 0,
+      sources: [report.nodeId]
+    };
+  }
+
+  async function buildPayload() {
+    const relay = loadRelay() || {};
+
+    let findings = [];
+    try {
+      const res = await fetch(NODE_REPORTS_API);
+      const reportData = await res.json();
+      if (reportData && Array.isArray(reportData.reports)) {
+        findings = reportData.reports.map(nodeReportToFinding);
+      }
+    } catch (err) {
+      console.warn('[TSM Mortgage V3] node-reports fetch failed', err);
+    }
+
+    return {
+      ...relay,
+      findings,
+      decisions: Array.isArray(relay.decisions) ? relay.decisions : []
+    };
+  }
+
+  async function load() {
+    const payload = await buildPayload();
+    const data = await postJson(API, payload);
+    window.TSM_MORTGAGE_INTELLIGENCE_V3 = data;
+    render(data);
+  }
+
+  function render(data) {
+    const root = document.getElementById('tsm-mtg-intelligence-v3');
+    if (!root) return;
+    wireActionButtons(root);
+
+    const p = data.portfolio || {};
+    const actions = data.actions || [];
+
+    root.innerHTML = `
+      <section class="tsm-mtg-v3-shell">
+        <div class="tsm-mtg-v3-header">
+          <div>
+            <div class="tsm-mtg-v3-title">MORTGAGE INTELLIGENCE V3 · ACTION CENTER</div>
+            <div class="tsm-mtg-v3-subtitle">Decide → Execute → Verify → Explain</div>
+          </div>
+        </div>
+        <div class="tsm-mtg-v3-metrics">
+          <div class="tsm-mtg-v3-metric">
+            <div class="tsm-mtg-v3-metric-label">Modeled Exposure</div>
+            <div class="tsm-mtg-v3-metric-value">${money(p.modeledExposure)}</div>
+          </div>
+          <div class="tsm-mtg-v3-metric">
+            <div class="tsm-mtg-v3-metric-label">Critical Open</div>
+            <div class="tsm-mtg-v3-metric-value">${esc(p.criticalOpen || 0)}</div>
+          </div>
+          <div class="tsm-mtg-v3-metric">
+            <div class="tsm-mtg-v3-metric-label">High Open</div>
+            <div class="tsm-mtg-v3-metric-value">${esc(p.highOpen || 0)}</div>
+          </div>
+          <div class="tsm-mtg-v3-metric">
+            <div class="tsm-mtg-v3-metric-label">Verified Reduction</div>
+            <div class="tsm-mtg-v3-metric-value">${money(p.verifiedExposureReduction)}</div>
+          </div>
+        </div>
+        <div class="tsm-mtg-v3-actions">
+          ${
+            actions.length
+              ? actions.map(action => `
+                <div class="tsm-mtg-v3-action" data-action-id="${esc(action.id)}">
+                  <div class="tsm-mtg-v3-priority">${esc(action.priority)}</div>
+                  <div>
+                    <div class="tsm-mtg-v3-finding">${esc(action.finding)}</div>
+                    <div class="tsm-mtg-v3-entity">${esc(action.entityId)} · ${esc(action.owner)}</div>
+                  </div>
+                  <div class="tsm-mtg-v3-status">${esc(action.status)}</div>
+                  <div>${money(action.exposure)}</div>
+                  <div class="tsm-mtg-v3-actions-cell">${actionButtons(action)}</div>
+                </div>
+              `).join('')
+              : '<div class="tsm-mtg-v3-empty">No open decisions. Ingest node reports from the Mortgage War Room to populate this queue.</div>'
+          }
+        </div>
+      </section>
+    `;
+  }
+
+  function init() {
+    load().catch(err => console.warn('[TSM Mortgage V3]', err.message));
+    window.addEventListener('TSM_RELAY_EVENT', e => {
+      if (e.detail && e.detail.domain === DOMAIN) {
+        load().catch(err => console.warn('[TSM Mortgage V3]', err.message));
+      }
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+</script>
 </body>
 </html>
