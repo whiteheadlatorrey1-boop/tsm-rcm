@@ -317,6 +317,16 @@ This is a separate hop from the internal War Room → Strategist → Executive P
 - "BPO is the only vertical with a genuine external client-facing app in this repo. Everything else we've walked through today is internal tooling — this is the one page an actual client logs into and sees their own case rollup and documents, nothing more."
 - "Linking a client to a Member is what turns their view from 'just their BPO work items' into 'everything that Member has going on across verticals' — that's a real behavior change in the rollup query, not a cosmetic label."
 
+### Slack Notifications on Case Resolution (new)
+- `server/integrations/slack-notifier.js` — a one-way Incoming Webhook POST (no OAuth, no bot token, no Slack App) wired non-fatally into `bpoUpsertWorkItem()`, the same function every War Room → Strategist → **✓ MARK EXECUTED** transition already runs through.
+- Off by default: requires `SLACK_BPO_NOTIFY_ENABLED=true` and a real `SLACK_BPO_WEBHOOK_URL` (same on/off-switch pattern as `SERVICENOW_INTEGRATION_ENABLED` on the L1 Copilot ServiceNow adapter). Credentials can be staged as Fly secrets ahead of time without anything going live.
+- Notifies only on the client-visible **resolved** transition by default — War Room create and Strategist advance stay silent so a real channel doesn't flood with every internal hop. `SLACK_BPO_NOTIFY_EVENTS=opened,advanced,resolved` opts into full-lifecycle noise if wanted.
+- A Slack delivery failure is deliberately non-fatal (try/catch, same pattern as the existing SLA-event write) — a case can never fail to resolve because Slack is down or misconfigured.
+- Full detail and demo steps: `BPO_CLIENT_WALKTHROUGH.md` §7.
+
+**Talk point:**
+- "A client's team doesn't have to be logged into their portal to know a case closed — Slack tells them the moment MARK EXECUTED fires, and it can't take down the actual case update if Slack itself is down."
+
 ---
 
 ## 11. HotelOps
