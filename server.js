@@ -305,13 +305,20 @@ app.post('/api/auth/login', loginLimiter, (req, res) => {
   }
 
   const token = signSession(payload);
+  // Secure requires HTTPS. Prod (Fly.io) is always HTTPS, but local dev is
+  // plain http://localhost -- curl and browsers both refuse to send a
+  // Secure-flagged cookie back over http, which silently breaks every
+  // authenticated request in local testing (401s, or hangs waiting on
+  // server-side calls gated behind a session that never arrives).
+  const cookieSecureFlag = process.env.NODE_ENV === 'production' ? '; Secure' : '';
   res.setHeader('Set-Cookie',
-    `tsm_session=${encodeURIComponent(token)}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${SESSION_TTL_MS / 1000}`);
+    `tsm_session=${encodeURIComponent(token)}; HttpOnly${cookieSecureFlag}; SameSite=Lax; Path=/; Max-Age=${SESSION_TTL_MS / 1000}`);
   res.json({ ok: true, role: payload.role, clientId: payload.clientId || null, staffId: payload.staffId || null, label: payload.label || null, tenantId: payload.tenantId || null });
 });
 
 app.post('/api/auth/logout', (req, res) => {
-  res.setHeader('Set-Cookie', 'tsm_session=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0');
+  const cookieSecureFlag = process.env.NODE_ENV === 'production' ? '; Secure' : '';
+  res.setHeader('Set-Cookie', `tsm_session=${cookieSecureFlag}; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`);
   res.json({ ok: true });
 });
 
