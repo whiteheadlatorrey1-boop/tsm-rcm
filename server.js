@@ -2765,7 +2765,10 @@ app.post('/api/finops/bnca/report', (req, res) => res.json({ ok: true }));
 // (role/clientId/tenantId); hc.js's own handlers use resolveHcClientId(req)
 // to route each read/write to that session's own data file. See
 // routes/_shared.js for the per-client file resolution.
-app.use(requireAnyAuth, require('./routes/hc'));
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api/hc')) return requireAnyAuth(req, res, next);
+  next();
+}, require('./routes/hc'));
 app.use(require('./routes/strategist'));
 app.use(require('./routes/construction'));
 app.use(require('./routes/property-accounting'));

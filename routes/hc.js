@@ -15,7 +15,7 @@ const { requireAnyAuth } = require('../middleware/require-auth');
 // (same signed-cookie check BPO's routes already use). Sample-mode pages
 // don't hit these endpoints — they read local sample data client-side — so
 // this only blocks unauthenticated access to live data.
-router.use(requireAnyAuth);
+router.use('/api/hc', requireAnyAuth);
 
 // Canonical 11 HC nodes (mirrors NODES/NODE_KEYS in hc-academy poc-html and
 // the preferredOrder list used elsewhere in this file).
