@@ -138,8 +138,38 @@
     }
   }
 
+  /**
+   * findOpenBySourceKey(sourceKey, sector) — reload-safe dedup lookup.
+   * Callers that re-derive the same exception on every page load/render
+   * (e.g. a war-room's feed-from-explain-items pass) previously had no
+   * way to ask "has this already been recorded?" other than an in-memory
+   * set that resets on refresh, so a reload silently created a fresh
+   * duplicate exception every time. This checks the persisted store
+   * itself, so the dedup survives a reload. sourceKey is caller-supplied
+   * and should be a stable id for the underlying finding (e.g. the
+   * upstream item's own id/claim), not the generated exceptionId.
+   */
+  function findOpenBySourceKey(sourceKey, sector) {
+    if (!sourceKey) return null;
+    return _records.filter(function (r) {
+      return r.sourceKey === sourceKey &&
+        (!sector || r.sector === sector) &&
+        r.status === 'open';
+    })[0] || null;
+  }
+
   function add(exception) {
     exception = exception || {};
+    // Reload-safe dedup: if the caller passes a sourceKey and an open
+    // exception with that same sourceKey (in the same sector) already
+    // exists, return it unchanged instead of pushing a duplicate. This is
+    // opt-in — callers that don't pass sourceKey keep today's behavior
+    // exactly (always creates a new record), so nothing already relying
+    // on add() always returning a fresh record is affected.
+    if (exception.sourceKey) {
+      var existing = findOpenBySourceKey(exception.sourceKey, exception.sector);
+      if (existing) return existing;
+    }
     var priority = exception.priority || priorityFor(exception.severity, exception.confidence);
     var entry = Object.assign({
       exceptionId: makeId(),
@@ -242,7 +272,8 @@
     subscribe: subscribe,
     clear: clear,
     summarize: summarize,
-    priorityFor: priorityFor
+    priorityFor: priorityFor,
+    findOpenBySourceKey: findOpenBySourceKey
   };
 
   global.TSMExceptions = TSMExceptions;

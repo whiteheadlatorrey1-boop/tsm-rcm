@@ -240,8 +240,32 @@
     return rec;
   }
 
+  /**
+   * findByExceptionId(exceptionId) — reload-safe dedup lookup, same
+   * motivation as TSMExceptions.findOpenBySourceKey(): createFromException
+   * previously had no way to check "does a case already exist for this
+   * exception?", so a page reload that re-feeds the same exception (or a
+   * caller invoking createFromException twice for any other reason) spun
+   * up a second case pointed at the same underlying exceptionId, each
+   * with its own independent approval/execution lifecycle.
+   */
+  function findByExceptionId(exceptionId) {
+    if (!exceptionId) return null;
+    return _records.filter(function (r) {
+      return Array.isArray(r.detectedExceptions) && r.detectedExceptions.some(function (d) {
+        return d && d.exceptionId === exceptionId;
+      });
+    })[0] || null;
+  }
+
   function createFromException(exceptionRecord, extra) {
     if (!exceptionRecord) return null;
+    // Dedup: if a case already exists for this exceptionId, return it
+    // unchanged rather than creating a duplicate. Additive/opt-in in the
+    // sense that it only short-circuits when a real prior case is found;
+    // every other call path below is unchanged.
+    var already = findByExceptionId(exceptionRecord.exceptionId);
+    if (already) return already;
     extra = extra || {};
     var data = Object.assign({
       sector: exceptionRecord.sector || 'general',
@@ -340,6 +364,18 @@
     var rec = getById(caseId);
     if (!rec) return null;
     opts = opts || {};
+    // Idempotency guard: a case that's already been decided (APPROVED/
+    // REJECTED) or executed must not be silently reset back to PENDING.
+    // Before this guard, any caller that re-ran requestApproval() on a
+    // case it already held a reference to -- e.g. a war-room re-feeding
+    // the same exception on page reload via createFromException(), which
+    // now returns the existing case instead of a duplicate -- would
+    // revert an approved/executed case to AWAITING_APPROVAL and append a
+    // misleading APPROVAL_REQUESTED entry to its audit timeline. No-op
+    // (returns the case unchanged) once a real decision/execution exists.
+    if (rec.approvalStatus === 'APPROVED' || rec.approvalStatus === 'REJECTED' || rec.executionStatus === 'EXECUTED') {
+      return rec;
+    }
     rec.approvalStatus = 'PENDING';
     rec.status = 'AWAITING_APPROVAL';
     touch(rec);
@@ -543,7 +579,8 @@
     // local closure directly, unaffected).
     priorityFor: priorityFor,
     syncToServer: syncToServer,
-    hydrateFromServer: hydrateFromServer
+    hydrateFromServer: hydrateFromServer,
+    findByExceptionId: findByExceptionId
   };
 
   global.TSMCase = TSMCase;

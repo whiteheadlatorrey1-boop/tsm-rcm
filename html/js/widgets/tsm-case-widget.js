@@ -44,6 +44,13 @@
     const exCount = Array.isArray(c.detectedExceptions) ? c.detectedExceptions.length : 0;
     const artCount = Array.isArray(c.generatedArtifacts) ? c.generatedArtifacts.length : 0;
     const canDecide = c.approvalStatus === 'PENDING';
+    // Approved-but-not-yet-executed cases previously had no action at
+    // all -- once approved, the row just showed a static "APPROVED" tag
+    // forever, with nothing in this widget (or anywhere else, for most
+    // verticals) ever calling TSMCaseManager.markExecuted(). That left
+    // every approved case permanently open/unclosed in its own lifecycle
+    // even after the real-world work was done.
+    const canExecute = c.approvalStatus === 'APPROVED' && c.executionStatus !== 'EXECUTED';
     return `
       <div class="tsm-caseq-row${closed ? ' tsm-caseq-row--closed' : ''}" data-case-id="${_escapeHtml(c.caseId)}">
         <div class="tsm-caseq-badge" style="color:${color};border-color:${color};">${_escapeHtml(c.priority || 'P3')}</div>
@@ -61,7 +68,9 @@
           ${canDecide
             ? `<button class="tsm-caseq-btn tsm-caseq-btn--approve" data-approve="${_escapeHtml(c.caseId)}">Approve</button>
                <button class="tsm-caseq-btn tsm-caseq-btn--reject" data-reject="${_escapeHtml(c.caseId)}">Reject</button>`
-            : `<span class="tsm-caseq-status-tag">${_escapeHtml(c.approvalStatus)}</span>`}
+            : canExecute
+              ? `<button class="tsm-caseq-btn tsm-caseq-btn--execute" data-execute="${_escapeHtml(c.caseId)}">Mark Executed</button>`
+              : `<span class="tsm-caseq-status-tag">${_escapeHtml(c.executionStatus === 'EXECUTED' ? 'EXECUTED' : c.approvalStatus)}</span>`}
         </div>
       </div>`;
   }
@@ -101,6 +110,7 @@
           padding: 5px 10px; cursor: pointer; text-transform: uppercase;
         }
         .tsm-caseq-btn--reject { border-color: rgba(255,61,87,0.3); color: #ff3d57; background: rgba(255,61,87,0.08); }
+        .tsm-caseq-btn--execute { border-color: rgba(0,230,118,0.3); color: #00e676; background: rgba(0,230,118,0.08); }
         .tsm-caseq-status-tag { font-size: 7.5px; color: #5a6f90; letter-spacing: 1px; text-transform: uppercase; }
       </style>`;
   }
@@ -122,6 +132,12 @@
       btn.addEventListener('click', () => {
         const id = btn.getAttribute('data-reject');
         if (global.TSMCaseManager) global.TSMCaseManager.recordApproval(id, 'REJECTED', 'Portal User', {});
+      });
+    });
+    container.querySelectorAll('[data-execute]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-execute');
+        if (global.TSMCaseManager) global.TSMCaseManager.markExecuted(id, 'Marked executed from case queue.');
       });
     });
   }

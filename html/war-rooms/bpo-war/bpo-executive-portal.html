@@ -1379,7 +1379,28 @@ function markExecuted() {
     }
   } catch (e) { console.warn('BPO work-item persist failed (non-fatal):', e.message); }
 
-  try { bpoFeedExceptions(stratData); } catch(e) { console.warn('[bpo-exceptions] feed error:', e); }
+  try {
+    const touchedCases = bpoFeedExceptions(stratData) || [];
+    // Close the loop through the case manager itself, not just the
+    // page-local badge/localStorage writes above. Before this, clicking
+    // MARK EXECUTED created cases (via bpoFeedExceptions -> requestApproval)
+    // that then sat at approvalStatus 'PENDING' forever -- the exec's real
+    // sign-off action never touched the case object at all. Clicking this
+    // button *is* the exec confirming the work is done, so it stands in
+    // for both the approval decision and the execution confirmation for
+    // any case this trigger set just created or matched.
+    if (typeof TSMCaseManager !== 'undefined') {
+      touchedCases.forEach(function (c) {
+        if (!c) return;
+        if (c.approvalStatus !== 'APPROVED') {
+          TSMCaseManager.recordApproval(c.caseId, 'APPROVED', 'Portal User', { reason: 'Confirmed via BPO Mark Executed control.' });
+        }
+        if (c.executionStatus !== 'EXECUTED') {
+          TSMCaseManager.markExecuted(c.caseId, 'Marked executed via BPO Mark Executed control.');
+        }
+      });
+    }
+  } catch(e) { console.warn('[bpo-exceptions] feed error:', e); }
 
   if (window.TSMMemory) {
     // Stamp the final resolution so the next time this anomaly type arrives,
@@ -1909,15 +1930,26 @@ window.TSM_AUTONOMY_STANDARDIZED = true;
 function bpoFeedExceptions(d) {
   if (typeof TSMExceptions === 'undefined') {
     console.warn('[bpo-exceptions] TSMExceptions engine not loaded on this page.');
-    return;
+    return [];
   }
   const rec = (d && d.recommendation) || {};
   const triggers = Array.isArray(rec.escalationTriggers) ? rec.escalationTriggers : [];
-  if (!triggers.length) return;
+  if (!triggers.length) return [];
 
+  const touchedCases = [];
   const confidence = rec.confidence || null;
   triggers.forEach(function(trigger, i){
+    // sourceKey lets TSMExceptions dedup across reloads. Unlike Legal/RE
+    // this feed isn't guarded by a pageload-only _fedIds set at all --
+    // it fires from markExecuted(), and while the button disables itself
+    // after one click, that's UI-only state that resets on reload, so a
+    // second "mark executed" pass (or a reload + re-click) previously
+    // added a fresh duplicate exception+case per trigger every time.
+    // d.caseId ties this to the work-item the trigger came from; index
+    // keeps multiple triggers off the same work-item distinct.
+    const sourceKey = (d && d.caseId ? d.caseId : 'bpo') + ':' + i + ':' + trigger;
     const exceptionRecord = TSMExceptions.add({
+      sourceKey: sourceKey,
       title: trigger,
       detail: (d.anomalyEntity || d.sector || 'BPO') + ' \u00b7 ' + (d.selectedScenarioName || 'Strategy executed'),
       recommendedAction: 'See BPO Executive Portal resolution brief.',
@@ -1944,6 +1976,7 @@ function bpoFeedExceptions(d) {
       // sign-off the moment it's created, so request approval immediately.
       if (newCase) {
         TSMCaseManager.requestApproval(newCase.caseId, { note: 'Auto-requested on case creation from BPO exception feed.' });
+        touchedCases.push(newCase);
       }
     }
   });
@@ -1956,6 +1989,7 @@ function bpoFeedExceptions(d) {
     // instead of narrowing the view back down to sector:'bpo'.
     TSMCaseWidget.mount('tsm-case-queue', {});
   }
+  return touchedCases;
 }
 </script>
 
