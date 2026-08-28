@@ -4749,10 +4749,12 @@ app.post('/api/pm/actions/verify', (req, res) => {
       });
     }
 
-    res.json({
-      ok: true,
-      ...verifyPmAction(body.action, body.verification || {})
-    });
+    const result = verifyPmAction(
+      body.action,
+      body.verification || {}
+    );
+
+    res.json(result);
   } catch (err) {
     console.error('[PM Action Verification]', err);
     res.status(400).json({
