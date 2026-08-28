@@ -2779,6 +2779,12 @@ app.use(docRouter);
 // verified against Intuit's live API.
 app.use(require('./routes/integrations-quickbooks'));
 
+// ── EMAIL INTEGRATIONS ──────────────────────────────────────────────────────
+// Gmail (read-only, gmail.readonly scope only). See routes/integrations-
+// gmail.js header for scope boundaries and what has/hasn't been verified
+// against Google's live API.
+app.use(require('./routes/integrations-gmail'));
+
 // ── RCM RELAY ─────────────────────────────────────────────────────────────────
 // Server-side staging for the FinOps Doc Showcase -> TSM RCM OS handoff.
 // See routes/rcm-relay.js header for the full endpoint contract.

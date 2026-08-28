@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TSM // Inbox — Gmail</title>
+<script src="/html/shared/tsm-memory-engine.js"></script>
+<style>
+  :root{
+    --bg:#0a0e14; --panel:#111826; --border:#1f2937; --border-soft:#1a2332;
+    --text:#e6f1ff; --text-dim:#7c8a9e; --accent:#00e5c7; --warn:#ffb454; --danger:#ff5c6c;
+    --mono:'Share Tech Mono', 'SF Mono', Consolas, monospace;
+  }
+  *{box-sizing:border-box}
+  body{ background:var(--bg); color:var(--text); font-family:var(--mono); margin:0; min-height:100vh; }
+  header{
+    border-bottom:1px solid var(--border); padding:1.1rem 1.5rem;
+    display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:.5rem;
+  }
+  header h1{font-size:.95rem; color:var(--accent); margin:0; letter-spacing:.06em; text-transform:uppercase}
+  header .sub{font-size:.7rem; color:var(--text-dim)}
+  main{max-width:1080px; margin:0 auto; padding:1.5rem}
+  .card{background:var(--panel); border:1px solid var(--border); border-radius:6px; padding:1rem; margin-bottom:1.25rem}
+  .btn{
+    background:var(--accent); color:#04201c; border:none; font-family:inherit; font-weight:600;
+    font-size:.75rem; padding:.55rem 1rem; border-radius:4px; cursor:pointer; text-transform:uppercase;
+    letter-spacing:.04em;
+  }
+  .btn.secondary{ background:transparent; color:var(--text-dim); border:1px solid var(--border); }
+  .btn.danger{ background:transparent; color:var(--danger); border:1px solid var(--danger); }
+  .status-row{display:flex; align-items:center; gap:.75rem; flex-wrap:wrap}
+  .dot{width:8px; height:8px; border-radius:50%; display:inline-block}
+  .dot.on{background:var(--accent)} .dot.off{background:var(--text-dim)}
+  table{width:100%; border-collapse:collapse; font-size:.78rem; margin-top:.5rem}
+  th{ text-align:left; color:var(--text-dim); font-weight:normal; text-transform:uppercase;
+      font-size:.65rem; letter-spacing:.04em; padding:.5rem .6rem; border-bottom:1px solid var(--border); }
+  td{padding:.55rem .6rem; border-bottom:1px solid var(--border-soft); vertical-align:top}
+  .pill{ display:inline-block; padding:.15rem .5rem; border-radius:3px; font-size:.65rem;
+         text-transform:uppercase; letter-spacing:.03em; border:1px solid; }
+  .pill.flagged{color:var(--danger); border-color:var(--danger)}
+  .pill.normal{color:var(--text-dim); border-color:var(--border)}
+  .snippet{color:var(--text-dim); font-size:.7rem; margin-top:.2rem}
+  .empty, .loading, .err{color:var(--text-dim); font-size:.8rem; padding:1rem 0}
+  .err{color:var(--danger)}
+  .note{font-size:.68rem; color:var(--text-dim); line-height:1.6; margin-top:.75rem}
+  .note code{color:var(--accent)}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Inbox — Gmail</h1>
+  <div class="sub" id="queryLabel">—</div>
+</header>
+
+<main>
+
+  <div class="card">
+    <div class="status-row">
+      <span class="dot off" id="statusDot"></span>
+      <span id="statusText">Checking connection…</span>
+      <span style="flex:1"></span>
+      <button class="btn" id="connectBtn" style="display:none">Connect Gmail</button>
+      <button class="btn danger" id="disconnectBtn" style="display:none">Disconnect</button>
+    </div>
+    <div class="note">
+      Read-only — <code>gmail.readonly</code> scope only. Pulls message
+      <b>metadata</b> (subject/from/date/snippet), never full bodies, and never
+      sends, drafts, labels, or deletes anything. Messages whose subject or
+      snippet mentions overdue/urgent financial language are flagged and
+      registered as anomalies into the same shared <code>TSMMemory</code> store
+      the rest of the platform uses — the same pattern as the QuickBooks
+      integration's overdue-invoice flags.
+    </div>
+  </div>
+
+  <div class="card" id="messagesCard" style="display:none">
+    <div style="display:flex; align-items:center; justify-content:space-between">
+      <h2 style="font-size:.8rem; color:var(--text-dim); text-transform:uppercase; letter-spacing:.06em; margin:0">Messages</h2>
+      <button class="btn secondary" id="refreshBtn">Refresh</button>
+    </div>
+    <div id="messagesWrap"><div class="loading">Loading messages…</div></div>
+  </div>
+
+</main>
+
+<script>
+function escapeHtml(s){
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// Deliberately simple, visible keyword list rather than an opaque model —
+// easy to see exactly why a message got flagged, easy to extend.
+const FLAG_KEYWORDS = ['overdue', 'past due', 'final notice', 'urgent', 'delinquent', 'collections'];
+function isFlagged(msg){
+  const haystack = `${msg.subject} ${msg.snippet}`.toLowerCase();
+  return FLAG_KEYWORDS.some(k => haystack.includes(k));
+}
+
+async function loadStatus(){
+  try {
+    const r = await fetch('/api/integrations/gmail/status');
+    const data = await r.json();
+    if (!data.ok) throw new Error(data.error || 'Status check failed');
+
+    if (data.connected){
+      document.getElementById('statusDot').className = 'dot on';
+      document.getElementById('statusText').textContent =
+        `Connected — ${data.email || 'unknown address'}` + (data.connectedAt ? ` (since ${new Date(data.connectedAt).toLocaleDateString()})` : '');
+      document.getElementById('disconnectBtn').style.display = 'inline-block';
+      document.getElementById('connectBtn').style.display = 'none';
+      document.getElementById('messagesCard').style.display = 'block';
+      await loadMessages();
+    } else {
+      document.getElementById('statusDot').className = 'dot off';
+      document.getElementById('statusText').textContent = 'Not connected';
+      document.getElementById('connectBtn').style.display = 'inline-block';
+      document.getElementById('disconnectBtn').style.display = 'none';
+      document.getElementById('messagesCard').style.display = 'none';
+    }
+  } catch (e) {
+    document.getElementById('statusText').textContent = 'Could not reach the server: ' + e.message;
+  }
+}
+
+async function loadMessages(){
+  const wrap = document.getElementById('messagesWrap');
+  wrap.innerHTML = '<div class="loading">Loading messages…</div>';
+  try {
+    const r = await fetch('/api/integrations/gmail/messages');
+    const data = await r.json();
+    if (!data.ok) throw new Error((data.error || 'Failed to load messages') + (data.detail ? ' — ' + JSON.stringify(data.detail) : ''));
+
+    document.getElementById('queryLabel').textContent = 'Query: ' + data.query;
+    renderMessages(data.messages || []);
+    registerFlaggedAnomalies(data.messages || []);
+  } catch (e) {
+    wrap.innerHTML = `<div class="err">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function renderMessages(messages){
+  const wrap = document.getElementById('messagesWrap');
+  if (!messages.length){
+    wrap.innerHTML = '<div class="empty">No messages match the current query.</div>';
+    return;
+  }
+  const rows = messages.map(m => {
+    const flagged = isFlagged(m);
+    return `
+    <tr>
+      <td>
+        ${escapeHtml(m.subject)}
+        <div class="snippet">${escapeHtml(m.snippet)}</div>
+      </td>
+      <td>${escapeHtml(m.from)}</td>
+      <td>${m.date ? escapeHtml(new Date(m.date).toLocaleDateString()) : '—'}</td>
+      <td>${flagged ? '<span class="pill flagged">Flagged</span>' : '<span class="pill normal">Normal</span>'}</td>
+    </tr>`;
+  }).join('');
+  wrap.innerHTML = `
+    <table>
+      <thead><tr><th>Subject</th><th>From</th><th>Date</th><th>Status</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+// Same dedup pattern as the QuickBooks integration and the Construction
+// anomaly writers: only fires once per message ID, so re-loading this page
+// doesn't pile up duplicate open anomalies for the same email.
+function registerFlaggedAnomalies(messages){
+  if (!window.TSMMemory || typeof window.TSMMemory.registerAnomaly !== 'function') return;
+
+  messages.filter(isFlagged).forEach(msg => {
+    const code = 'GMAIL_FLAGGED_MSG_' + msg.id;
+    let alreadyOpen = false;
+    try {
+      const all = JSON.parse(localStorage.getItem('TSM_OPERATIONAL_MEMORY_V3') || '{}');
+      // This page's URL path contains "financial", which maps to the
+      // existing "finops" bucket in tsm-memory-engine.js's detectSector() —
+      // verify that mapping hasn't changed if you move/rename this file.
+      const bucket = all.finops;
+      alreadyOpen = !!(bucket && Array.isArray(bucket.anomalies) &&
+        bucket.anomalies.some(a => a.anomalyCode === code && a.status === 'open'));
+    } catch (e) { /* fall through and try to register anyway */ }
+    if (alreadyOpen) return;
+
+    window.TSMMemory.registerAnomaly({
+      entityType: 'inbox-message',
+      entityId: 'gmail-msg-' + msg.id,
+      anomalyCode: code,
+      severity: 'MEDIUM',
+      title: `Flagged email from ${msg.from}: "${msg.subject}"`,
+      source: 'gmail-inbox',
+      meta: { messageId: msg.id, threadId: msg.threadId, from: msg.from, subject: msg.subject },
+    });
+  });
+}
+
+document.getElementById('connectBtn').addEventListener('click', () => {
+  window.location.href = '/api/integrations/gmail/connect';
+});
+document.getElementById('disconnectBtn').addEventListener('click', async () => {
+  if (!confirm('Disconnect Gmail? You will need to reconnect to see messages again.')) return;
+  await fetch('/api/integrations/gmail/disconnect', { method: 'POST' });
+  await loadStatus();
+});
+document.getElementById('refreshBtn').addEventListener('click', loadMessages);
+
+loadStatus();
+</script>
+</body>
+</html>
