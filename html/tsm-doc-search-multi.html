@@ -1540,7 +1540,8 @@ const VERTICALS = {
       "bnca-engine":     { label:"BNCA Escalated",    route:null },
     },
     seed: []
-  },};
+  },
+};
 
 const DOC_TYPE_COLORS = {
   "CLAIM":            { bg:"rgba(56,189,248,0.12)",  text:"#38bdf8" },
@@ -3134,6 +3135,15 @@ window.seedDemoData = function seedDemoData() {
     if (bucket.length > 500) bucket.splice(500);
     saveIndexForClient(currentVertical, cid, bucket);
   });
+  // Each sample lands in its own baked-in client compartment (not
+  // necessarily the one currently selected in the workspace dropdown),
+  // so switch to the All Clients rollup afterward -- otherwise seeding
+  // looks like a silent no-op if a different, unrelated workspace was
+  // active when the button was clicked. Skipped for a locked client-role
+  // session, which has no All Clients option at all.
+  if (!(window.TSM_SESSION && window.TSM_SESSION.role === 'client')) {
+    switchWorkspace(ALL_CLIENTS_ID);
+  }
   refreshWorkspaceSelector();
   runSearch();
   refreshTotalCount();
@@ -3190,6 +3200,12 @@ window.seedAllVerticals = function seedAllVerticals() {
   const btn = document.getElementById('seed-all-btn');
   if (btn) btn.textContent = '✓ ALL VERTICALS SEEDED';
 
+  // Same visibility fix as seedDemoData(): land on the All Clients rollup
+  // so the freshly seeded records for the current vertical are actually
+  // visible instead of sitting in compartments the dropdown isn't on.
+  if (!(window.TSM_SESSION && window.TSM_SESSION.role === 'client')) {
+    switchWorkspace(ALL_CLIENTS_ID);
+  }
   refreshWorkspaceSelector();
   refreshTotalCount();
   if (typeof runSearch === 'function') runSearch();
