@@ -2152,9 +2152,18 @@ app.post('/api/hc/stream', requireAnyAuth, async (req, res) => {
 
 // Server-side proxy for Groq Vision OCR (scanned PDF pages + uploaded images).
 // Replaces the old direct browser->api.groq.com calls that shipped a client-side key.
+// TSM FIX 2026-08-27: BOTH models in this fallback list were dead —
+// meta-llama/llama-4-scout-17b-16e-instruct shut down 07/17/26 and
+// meta-llama/llama-4-maverick-17b-128e-instruct shut down 03/09/26 (see
+// https://console.groq.com/docs/deprecations). A model_decommissioned
+// error comes back as a 400, which the retry loop below does NOT retry
+// on — so this endpoint has been failing on the very first attempt for
+// every OCR request since 07/17/26. Per Groq's current vision docs
+// (console.groq.com/docs/vision), the only supported vision models are
+// qwen/qwen3.6-27b and qwen/qwen3.8-27b.
 const GROQ_VISION_MODELS = [
-  'meta-llama/llama-4-scout-17b-16e-instruct',
-  'meta-llama/llama-4-maverick-17b-128e-instruct'
+  'qwen/qwen3.6-27b',
+  'qwen/qwen3.8-27b'
 ];
 
 // GCU PILOT FIX 2026-08-26: OCR on uploaded medical docs, no auth check.
@@ -4553,7 +4562,17 @@ app.listen(...)`.
 
 // Models — verify current availability in Groq console if these change
 const GROQ_TEXT_MODEL = 'openai/gpt-oss-120b';
-const GROQ_VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
+// TSM FIX 2026-08-27: meta-llama/llama-4-scout-17b-16e-instruct was shut
+// down by Groq on 07/17/26 (see https://console.groq.com/docs/deprecations).
+// This model powers every image upload (png/jpg/webp) through
+// /api/doc-router/classify — the primary path for
+// html/tsm-doc-search-multi.html — so every image classification has been
+// failing since mid-July, not just hypothetically. openai/gpt-oss-120b is
+// NOT a vision model on Groq (text-only) — per Groq's current vision docs
+// (console.groq.com/docs/vision), the supported vision models are
+// qwen/qwen3.6-27b and qwen/qwen3.8-27b. Using qwen3.6-27b, Groq's
+// documented replacement recommendation for Llama 4 Scout.
+const GROQ_VISION_MODEL = 'qwen/qwen3.6-27b';
 
 // Valid node IDs per vertical — keep in sync with VERTICALS in
 // tsm-document-search.html if you add/rename nodes.
