@@ -1347,11 +1347,162 @@ window.exportClientPackage = function () {
 })();
 </script>
 
+<style id="tsm-pm-intelligence-v3-css">
+/* TSM PM INTELLIGENCE V3 · ACTION CENTER */
+
+.tsm-pm-v3-actions-cell {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.tsm-pm-v3-btn {
+  font-size: .78rem;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(127,127,127,.35);
+  background: rgba(127,127,127,.08);
+  color: inherit;
+  cursor: pointer;
+}
+
+.tsm-pm-v3-btn:hover {
+  background: rgba(127,127,127,.18);
+}
+
+.tsm-pm-v3-btn-reject {
+  border-color: rgba(220,60,60,.5);
+  color: #dc3c3c;
+}
+
+.tsm-pm-v3-btn-verify {
+  border-color: rgba(60,160,90,.5);
+  color: #2f9e5c;
+}
+
+.tsm-pm-v3-verified-badge {
+  font-size: .82rem;
+  font-weight: 700;
+  color: #2f9e5c;
+}
+</style>
+
 <script id="tsm-pm-intelligence-v3-script">
 (function () {
   'use strict';
 
   const API = '/api/pm/intelligence-v3';
+
+  async function postJson(url, body) {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body || {})
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const err = new Error(data.error || ('HTTP ' + response.status));
+      err.data = data;
+      throw err;
+    }
+    return data;
+  }
+
+  async function advanceAction(actionId, nextStatus) {
+    try {
+      await postJson('/api/pm/actions/' + encodeURIComponent(actionId) + '/transition', { nextStatus });
+      showToast('Action advanced to ' + nextStatus);
+      await load();
+    } catch (err) {
+      showToast('Transition failed: ' + (err.message || 'error'));
+    }
+  }
+
+  async function approveAction(actionId) {
+    try {
+      await postJson('/api/pm/actions/' + encodeURIComponent(actionId) + '/approve', {});
+      showToast('Action approved');
+      await load();
+    } catch (err) {
+      showToast('Approval failed: ' + (err.message || 'error'));
+    }
+  }
+
+  async function rejectAction(actionId) {
+    try {
+      await postJson('/api/pm/actions/' + encodeURIComponent(actionId) + '/reject', {});
+      showToast('Action rejected');
+      await load();
+    } catch (err) {
+      showToast('Rejection failed: ' + (err.message || 'error'));
+    }
+  }
+
+  async function verifyAction(actionId) {
+    const exposureAfterRaw = window.prompt('Exposure after remediation ($, 0 if fully cleared):', '0');
+    if (exposureAfterRaw === null) return;
+    const exposureAfter = Number(exposureAfterRaw);
+    if (!Number.isFinite(exposureAfter) || exposureAfter < 0) {
+      showToast('Verification cancelled: exposure must be a non-negative number');
+      return;
+    }
+    const notes = window.prompt('Verification notes (optional):', '') || '';
+
+    try {
+      const result = await postJson('/api/pm/actions/verify', {
+        actionId,
+        verification: { verified: true, exposureAfter, notes }
+      });
+      if (!result.ok) {
+        showToast(result.error || 'Verification blocked — action must be approved first');
+        return;
+      }
+      showToast('Action verified');
+      await load();
+    } catch (err) {
+      showToast('Verification failed: ' + (err.message || 'error'));
+    }
+  }
+
+  function actionButtons(action) {
+    const id = esc(action.id);
+    switch (action.status) {
+      case 'OPEN':
+        return '<button type="button" class="tsm-pm-v3-btn" data-act="advance" data-id="' + id + '" data-next="ACKNOWLEDGED">Acknowledge</button>';
+      case 'ACKNOWLEDGED':
+        return '<button type="button" class="tsm-pm-v3-btn" data-act="advance" data-id="' + id + '" data-next="IN_PROGRESS">Start Work</button>';
+      case 'IN_PROGRESS':
+        return '<button type="button" class="tsm-pm-v3-btn" data-act="advance" data-id="' + id + '" data-next="RESOLVED">Mark Resolved</button>';
+      case 'RESOLVED':
+        return (
+          '<button type="button" class="tsm-pm-v3-btn" data-act="approve" data-id="' + id + '">Approve</button>' +
+          '<button type="button" class="tsm-pm-v3-btn tsm-pm-v3-btn-reject" data-act="reject" data-id="' + id + '">Reject</button>' +
+          '<button type="button" class="tsm-pm-v3-btn tsm-pm-v3-btn-verify" data-act="verify" data-id="' + id + '">Verify</button>'
+        );
+      case 'VERIFIED':
+        return '<span class="tsm-pm-v3-verified-badge">✓ Verified</span>';
+      default:
+        return '';
+    }
+  }
+
+  function wireActionButtons(root) {
+    if (root._tsmPmV3Wired) return;
+    root._tsmPmV3Wired = true;
+    root.addEventListener('click', function (evt) {
+      const btn = evt.target.closest('[data-act]');
+      if (!btn || !root.contains(btn)) return;
+      const act = btn.getAttribute('data-act');
+      const id = btn.getAttribute('data-id');
+      if (!id) return;
+      if (act === 'advance') advanceAction(id, btn.getAttribute('data-next'));
+      else if (act === 'approve') approveAction(id);
+      else if (act === 'reject') rejectAction(id);
+      else if (act === 'verify') verifyAction(id);
+    });
+  }
 
   function esc(v) {
     return String(v == null ? '' : v)
@@ -1417,6 +1568,7 @@ window.exportClientPackage = function () {
   function render(data) {
     const root = document.getElementById('tsm-pm-intelligence-v3');
     if (!root) return;
+    wireActionButtons(root);
 
     const p = data.portfolio || {};
     const a = data.actionSummary || {};
@@ -1490,6 +1642,10 @@ window.exportClientPackage = function () {
 
                   <div>
                     ${money(action.exposure)}
+                  </div>
+
+                  <div class="tsm-pm-v3-actions-cell">
+                    ${actionButtons(action)}
                   </div>
                 </div>
               `).join('')

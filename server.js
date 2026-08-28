@@ -12,6 +12,7 @@ const express = require('express');
 const { buildDecisionPackage } = require('./server/pm/decision-engine');
 const { buildPmPredictiveControl } = require('./server/pm/predictive-control');
 const { buildPmIntelligenceV3, verifyPmAction } = require('./server/pm/intelligence-v3');
+const pmActionEngine = require('./server/pm/action-engine');
 const { buildPortfolioTwin } = require('./server/pm/portfolio-intelligence');
 const { calculateRisk } = require('./server/pm/risk-engine');
 const { forecast } = require('./server/pm/forecast-engine');
@@ -1783,6 +1784,27 @@ app.get('/api/concierge/missions/:bookingId/status-events', requireRole(BPO_INTE
 // internal-ops-only reasoning as BPO/Concierge: units/leases/vendor data
 // isn't tenant- or guest-facing.
 const PM_INTERNAL_ROLES = ['admin', 'manager', 'analyst'];
+
+// Overlays persisted lifecycle status (pm_action_status, keyed by action.id)
+// onto a freshly-built action-engine action. buildActionQueue() always seeds
+// a fresh queue at status: OPEN with no memory of prior transitions -- this
+// is what lets a reload of /api/pm/intelligence-v3 show ACKNOWLEDGED/
+// IN_PROGRESS/RESOLVED/VERIFIED instead of resetting every action to OPEN.
+async function resolvePmAction(action) {
+  try {
+    const persisted = await tsmLedger.pmGetActionStatus(action.id);
+    if (!persisted) return action;
+    return {
+      ...action,
+      status: persisted.status || action.status,
+      updatedAt: persisted.updatedAt || action.updatedAt,
+      verification: persisted.verification || action.verification,
+    };
+  } catch (err) {
+    console.warn('[PM Action Overlay] failed to resolve', action.id, err.message);
+    return action;
+  }
+}
 const PM_MANAGE_ROLES = ['admin', 'manager'];
 
 app.get('/api/pm/units', requireRole(PM_INTERNAL_ROLES), async (req, res) => {
@@ -4711,7 +4733,7 @@ app.post('/api/pm/predictive-control', requireRole(PM_INTERNAL_ROLES), (req, res
 });
 /* ── END PM PREDICTIVE PORTFOLIO CONTROL ──────────────────────────────────── */
 
-app.post('/api/pm/intelligence-v3', requireRole(PM_INTERNAL_ROLES), (req, res) => {
+app.post('/api/pm/intelligence-v3', requireRole(PM_INTERNAL_ROLES), async (req, res) => {
   try {
     const payload = req.body || {};
 
@@ -4728,13 +4750,69 @@ app.post('/api/pm/intelligence-v3', requireRole(PM_INTERNAL_ROLES), (req, res) =
       ? payload
       : buildDecisionPackage(payload);
 
-    res.json(buildPmIntelligenceV3(decisionPackage));
+    const decisions =
+      (decisionPackage.intelligence && decisionPackage.intelligence.decisions) ||
+      decisionPackage.decisions ||
+      [];
+
+    // Build the queue fresh (deterministic from decisions[]), then overlay
+    // any persisted lifecycle status per action id so a reload reflects
+    // real progress instead of resetting everything to OPEN.
+    const freshActions = pmActionEngine.buildActionQueue(decisions);
+    const overlaidActions = await Promise.all(freshActions.map(resolvePmAction));
+
+    res.json(buildPmIntelligenceV3({ ...decisionPackage, actions: overlaidActions }));
   } catch (err) {
     console.error('[PM Intelligence V3]', err);
     res.status(500).json({
       ok: false,
       error: 'PM intelligence v3 generation failed'
     });
+  }
+});
+
+// Advances one action through OPEN -> ACKNOWLEDGED -> IN_PROGRESS -> RESOLVED.
+// VERIFIED is deliberately NOT reachable here -- it requires a recorded
+// APPROVED decision from PM_APPROVAL_GATE and only /api/pm/actions/verify
+// can set it. Resolves current status from pm_action_status (defaulting to
+// OPEN for an action never touched before); does not require or trust a
+// client-supplied action body, only the id in the URL and the target status.
+app.post('/api/pm/actions/:id/transition', requireRole(PM_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const actionId = req.params.id;
+    const body = req.body || {};
+    const nextStatus = body.nextStatus;
+
+    if (!nextStatus) {
+      return res.status(400).json({ ok: false, error: 'nextStatus is required' });
+    }
+    if (nextStatus === 'VERIFIED') {
+      return res.status(400).json({
+        ok: false,
+        error: 'VERIFIED cannot be set via /transition -- approve the action, then call /api/pm/actions/verify'
+      });
+    }
+
+    const actor = (req.tsmSession && (req.tsmSession.label || req.tsmSession.staffId)) || req.tsmSession.role;
+
+    const persisted = await tsmLedger.pmGetActionStatus(actionId);
+    const currentStatus = (persisted && persisted.status) || 'OPEN';
+
+    // Throws on an invalid transition (e.g. OPEN -> RESOLVED) -- action-engine's
+    // own VALID_TRANSITIONS map is the single source of truth here, same as
+    // every other call site in this codebase.
+    const updated = pmActionEngine.transition({ status: currentStatus }, nextStatus, {});
+
+    const doc = await tsmLedger.pmUpsertActionStatus(actionId, {
+      status: updated.status,
+      verification: (persisted && persisted.verification) || null,
+      note: body.note || null,
+    }, actor);
+
+    res.json({ ok: true, action: doc });
+  } catch (err) {
+    console.error('[PM Action Transition]', err);
+    res.status(400).json({ ok: false, error: err.message || 'PM action transition failed' });
   }
 });
 
@@ -4789,18 +4867,18 @@ app.get('/api/pm/actions/decisions', requireRole(PM_INTERNAL_ROLES), (req, res) 
   res.json({ ok: true, log: PM_APPROVAL_GATE.getLog(limit), stats: PM_APPROVAL_GATE.getStats() });
 });
 
-app.post('/api/pm/actions/verify', requireRole(PM_INTERNAL_ROLES), (req, res) => {
+app.post('/api/pm/actions/verify', requireRole(PM_INTERNAL_ROLES), async (req, res) => {
   try {
     const body = req.body || {};
 
-    if (!body.action) {
+    const actionId = (body.action && body.action.id) || body.actionId;
+    if (!actionId) {
       return res.status(400).json({
         ok: false,
-        error: 'action is required'
+        error: 'action id is required'
       });
     }
 
-    const actionId = body.action.id;
     // Enforcement point: the latest recorded PM_APPROVAL_GATE decision for
     // this action id must be APPROVED. Previously this route trusted
     // whatever `status` the client put on body.action (verifyPmAction only
@@ -4818,10 +4896,29 @@ app.post('/api/pm/actions/verify', requireRole(PM_INTERNAL_ROLES), (req, res) =>
       });
     }
 
+    // Resolve the action's authoritative status from pm_action_status, not
+    // from body.action.status -- a client that sent a stale/forged body
+    // claiming RESOLVED can no longer bypass the real lifecycle here.
+    const persisted = await tsmLedger.pmGetActionStatus(actionId);
+    const authoritativeAction = {
+      ...(body.action || {}),
+      id: actionId,
+      status: (persisted && persisted.status) || (body.action && body.action.status) || 'OPEN',
+    };
+
     const result = verifyPmAction(
-      body.action,
+      authoritativeAction,
       Object.assign({}, body.verification, { verifiedBy: latest.actor })
     );
+
+    if (result.ok) {
+      // Persist so a reload of /api/pm/intelligence-v3 shows VERIFIED
+      // instead of resetting to whatever buildActionQueue() seeds fresh.
+      await tsmLedger.pmUpsertActionStatus(actionId, {
+        status: 'VERIFIED',
+        verification: result.verification,
+      }, latest.actor);
+    }
 
     res.json(result);
   } catch (err) {

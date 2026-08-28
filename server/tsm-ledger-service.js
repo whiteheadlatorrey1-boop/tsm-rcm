@@ -1909,6 +1909,54 @@ async function pmListStatusEvents({ entityType, entityId, limit = 200 } = {}) {
   return col.find(query).sort({ ts: -1 }).limit(limit).toArray();
 }
 
+// ── PM Intelligence V3 action status (lifecycle persistence) ───────────────
+// Actions themselves are ephemeral -- rebuilt on every POST /api/pm/intelligence-v3
+// from whatever decisions[] the caller sends. This collection is the only
+// thing that survives a reload: it stores the current lifecycle status
+// (OPEN/ACKNOWLEDGED/IN_PROGRESS/RESOLVED/VERIFIED) and verification result
+// per action_id, keyed off action-engine.js's deterministic `ACT-<decisionId>`
+// id scheme, so the same action always overlays the same persisted state.
+const PM_ACTION_STATUS_COLLECTION = 'pm_action_status';
+
+async function pmActionStatusCollection() {
+  const database = await getDb();
+  return database.collection(PM_ACTION_STATUS_COLLECTION);
+}
+
+async function pmGetActionStatus(actionId) {
+  if (!actionId) return null;
+  const col = await pmActionStatusCollection();
+  return col.findOne({ action_id: actionId });
+}
+
+async function pmUpsertActionStatus(actionId, fields, actor) {
+  if (!actionId) throw new Error('actionId required');
+  const col = await pmActionStatusCollection();
+  const now = new Date().toISOString();
+  const { status, note, ...rest } = fields || {};
+
+  const existing = await col.findOne({ action_id: actionId });
+  const createdAt = existing ? existing.createdAt : now;
+  const previousStatus = existing ? existing.status : null;
+
+  const $set = {
+    action_id: actionId, ...rest, status, updatedAt: now,
+  };
+  const $setOnInsert = existing ? undefined : { createdAt: now };
+
+  await col.updateOne(
+    { action_id: actionId },
+    $setOnInsert ? { $set, $setOnInsert } : { $set },
+    { upsert: true }
+  );
+  const doc = await col.findOne({ action_id: actionId });
+
+  if (!existing || previousStatus !== status) {
+    await pmWriteStatusEvent({ entityType: 'pm_action', entityId: actionId, fromStage: previousStatus, toStage: status, note, actor });
+  }
+  return doc;
+}
+
 // ── Units (reference data, no stage lifecycle) ─────────────────────────────
 
 async function pmListUnits({ propertyId, status } = {}) {
@@ -2225,6 +2273,8 @@ module.exports = {
   pmGetVendor,
   pmUpsertVendor,
   pmListStatusEvents,
+  pmGetActionStatus,
+  pmUpsertActionStatus,
   // Collective BNCA persistence
   collectiveAddSignal,
   collectiveListSignals,
