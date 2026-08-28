@@ -2983,13 +2983,13 @@ app.post('/api/legal/query', requireAnyAuth, async (req, res) => {
 // an AI pass turns each into a structured node result, a command-level BNCA
 // synthesizes across nodes, the Construction Strategist adds strategic framing,
 // and the Executive Portal turns that into a CFO/decision-maker-ready summary.
-const constructionNodeReports = {}; // keyed by nodeId, raw ingestion (parallel to hcNodeReports)
+const constructionNodeReports = {}; // in-memory hot cache, keyed by nodeId; write-through to tsmLedger below
 
-app.post('/api/construction/node-report', (req, res) => {
+app.post('/api/construction/node-report', async (req, res) => {
   try {
     const { nodeId, nodeLabel, report, analysisText, costImpact, scheduleImpact, permitIds, severity, kpi, ts } = req.body || {};
     if (!nodeId) return res.status(400).json({ ok: false, error: 'nodeId required' });
-    constructionNodeReports[nodeId] = {
+    const doc = {
       nodeId,
       nodeLabel: nodeLabel || nodeId,
       report: report || '',
@@ -2999,33 +2999,51 @@ app.post('/api/construction/node-report', (req, res) => {
       permitIds: permitIds || [],
       severity: severity || 'INFO',
       kpi: kpi || {},
-      ts: ts || Date.now(),
-      receivedAt: Date.now()
+      ts: ts || Date.now()
     };
+    constructionNodeReports[nodeId] = { ...doc, receivedAt: Date.now() };
     console.log('[CONSTRUCTION NODE REPORT] stored:', nodeId, 'severity:', severity);
+
+    try {
+      await tsmLedger.verticalUpsertNodeReport('construction', nodeId, doc);
+    } catch (ledgerErr) {
+      console.warn('[CONSTRUCTION NODE REPORT] ledger write-through failed (in-memory copy still stored):', ledgerErr.message);
+    }
+
     return res.json({ ok: true, nodeId, stored: true });
   } catch (e) {
     return res.status(500).json({ ok: false, error: e.message });
   }
 });
 
-app.get('/api/construction/node-reports', (req, res) => {
+app.get('/api/construction/node-reports', async (req, res) => {
   try {
-    const reports = Object.values(constructionNodeReports).sort((a, b) => b.ts - a.ts);
-    return res.json({ ok: true, reports, count: reports.length });
+    const memReports = Object.values(constructionNodeReports);
+    if (memReports.length) {
+      const reports = memReports.sort((a, b) => b.ts - a.ts);
+      return res.json({ ok: true, reports, count: reports.length, source: 'memory' });
+    }
+    const persisted = await tsmLedger.verticalListNodeReports('construction');
+    return res.json({ ok: true, reports: persisted, count: persisted.length, source: 'ledger' });
   } catch (e) {
     return res.status(500).json({ ok: false, error: e.message });
   }
 });
 
-app.delete('/api/construction/node-reports', (req, res) => {
+app.delete('/api/construction/node-reports', async (req, res) => {
   const { nodeId } = req.body || req.query || {};
-  if (nodeId) {
-    delete constructionNodeReports[nodeId];
-    return res.json({ ok: true, cleared: nodeId });
+  try {
+    if (nodeId) {
+      delete constructionNodeReports[nodeId];
+      await tsmLedger.verticalDeleteNodeReport('construction', nodeId);
+      return res.json({ ok: true, cleared: nodeId });
+    }
+    Object.keys(constructionNodeReports).forEach(k => delete constructionNodeReports[k]);
+    await tsmLedger.verticalDeleteNodeReport('construction', null);
+    return res.json({ ok: true, cleared: 'all' });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: e.message });
   }
-  Object.keys(constructionNodeReports).forEach(k => delete constructionNodeReports[k]);
-  return res.json({ ok: true, cleared: 'all' });
 });
 
 // AI-analyzed per-node result, written into TSM_MEMORY.construction.nodes[node]
@@ -3195,13 +3213,13 @@ app.post('/api/mortgage/query', async (req, res) => {
 // only ever gets the flat recordVerticalMemory recent-query log. This chain
 // gives it the same real per-entity + BNCA + strategist + executive depth
 // healthcare and construction already have.
-const mortgageNodeReports = {}; // keyed by nodeId (loan_files/conditions/exceptions), raw ingestion
+const mortgageNodeReports = {}; // in-memory hot cache, keyed by nodeId; write-through to tsmLedger below
 
-app.post('/api/mortgage/node-report', (req, res) => {
+app.post('/api/mortgage/node-report', async (req, res) => {
   try {
     const { nodeId, nodeLabel, report, analysisText, exposure, breachCount, loanIds, severity, kpi, ts } = req.body || {};
     if (!nodeId) return res.status(400).json({ ok: false, error: 'nodeId required' });
-    mortgageNodeReports[nodeId] = {
+    const doc = {
       nodeId,
       nodeLabel: nodeLabel || nodeId,
       report: report || '',
@@ -3211,33 +3229,58 @@ app.post('/api/mortgage/node-report', (req, res) => {
       loanIds: loanIds || [],
       severity: severity || 'INFO',
       kpi: kpi || {},
-      ts: ts || Date.now(),
-      receivedAt: Date.now()
+      ts: ts || Date.now()
     };
+    mortgageNodeReports[nodeId] = { ...doc, receivedAt: Date.now() };
     console.log('[MORTGAGE NODE REPORT] stored:', nodeId, 'severity:', severity);
+
+    // Write-through to durable storage so a restart doesn't silently empty
+    // the Intelligence V3 queue. Best-effort: in-memory write above already
+    // succeeded, so a ledger failure here degrades to "survives until next
+    // restart" rather than failing the request.
+    try {
+      await tsmLedger.verticalUpsertNodeReport('mortgage', nodeId, doc);
+    } catch (ledgerErr) {
+      console.warn('[MORTGAGE NODE REPORT] ledger write-through failed (in-memory copy still stored):', ledgerErr.message);
+    }
+
     return res.json({ ok: true, nodeId, stored: true });
   } catch (e) {
     return res.status(500).json({ ok: false, error: e.message });
   }
 });
 
-app.get('/api/mortgage/node-reports', (req, res) => {
+app.get('/api/mortgage/node-reports', async (req, res) => {
   try {
-    const reports = Object.values(mortgageNodeReports).sort((a, b) => b.ts - a.ts);
-    return res.json({ ok: true, reports, count: reports.length });
+    const memReports = Object.values(mortgageNodeReports);
+    if (memReports.length) {
+      const reports = memReports.sort((a, b) => b.ts - a.ts);
+      return res.json({ ok: true, reports, count: reports.length, source: 'memory' });
+    }
+    // In-memory cache is empty -- most likely a fresh process since the
+    // last restart. Fall back to durable storage rather than returning an
+    // empty queue that looks identical to "no findings exist."
+    const persisted = await tsmLedger.verticalListNodeReports('mortgage');
+    return res.json({ ok: true, reports: persisted, count: persisted.length, source: 'ledger' });
   } catch (e) {
     return res.status(500).json({ ok: false, error: e.message });
   }
 });
 
-app.delete('/api/mortgage/node-reports', (req, res) => {
+app.delete('/api/mortgage/node-reports', async (req, res) => {
   const { nodeId } = req.body || req.query || {};
-  if (nodeId) {
-    delete mortgageNodeReports[nodeId];
-    return res.json({ ok: true, cleared: nodeId });
+  try {
+    if (nodeId) {
+      delete mortgageNodeReports[nodeId];
+      await tsmLedger.verticalDeleteNodeReport('mortgage', nodeId);
+      return res.json({ ok: true, cleared: nodeId });
+    }
+    Object.keys(mortgageNodeReports).forEach(k => delete mortgageNodeReports[k]);
+    await tsmLedger.verticalDeleteNodeReport('mortgage', null);
+    return res.json({ ok: true, cleared: 'all' });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: e.message });
   }
-  Object.keys(mortgageNodeReports).forEach(k => delete mortgageNodeReports[k]);
-  return res.json({ ok: true, cleared: 'all' });
 });
 
 // AI-analyzed per-entity result, written into TSM_MEMORY.mortgage.nodes[node]

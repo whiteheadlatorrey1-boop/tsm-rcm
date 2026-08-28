@@ -2185,6 +2185,62 @@ async function collectiveLatestBnca({ clientId } = {}) {
   return col.find(query).sort({ timestamp: -1 }).limit(1).next();
 }
 
+// ── Vertical node-report persistence (Mortgage/Construction/future) ────────
+// Node reports were previously kept only in server.js's in-memory
+// mortgageNodeReports/constructionNodeReports objects, which reset on every
+// deploy/restart. That silently empties the Intelligence V3 decision queue
+// with no error -- the panel just renders "no open decisions." This is a
+// generic, vertical-keyed collection so any vertical's node-report route
+// can persist through restarts without a new collection per vertical.
+// Mirrors the pm_action_status get/upsert pattern above.
+const VERTICAL_NODE_REPORTS_COLLECTION = 'vertical_node_reports';
+
+async function verticalNodeReportsCollection() {
+  const database = await getDb();
+  return database.collection(VERTICAL_NODE_REPORTS_COLLECTION);
+}
+
+async function verticalGetNodeReport(vertical, nodeId) {
+  if (!vertical || !nodeId) return null;
+  const col = await verticalNodeReportsCollection();
+  return col.findOne({ vertical, nodeId });
+}
+
+async function verticalListNodeReports(vertical) {
+  if (!vertical) return [];
+  const col = await verticalNodeReportsCollection();
+  return col.find({ vertical }).sort({ ts: -1 }).toArray();
+}
+
+async function verticalUpsertNodeReport(vertical, nodeId, fields) {
+  if (!vertical) throw new Error('vertical required');
+  if (!nodeId) throw new Error('nodeId required');
+  const col = await verticalNodeReportsCollection();
+  const now = Date.now();
+
+  const $set = { vertical, nodeId, ...fields, receivedAt: now };
+  const existing = await col.findOne({ vertical, nodeId });
+  const $setOnInsert = existing ? undefined : { firstReceivedAt: now };
+
+  await col.updateOne(
+    { vertical, nodeId },
+    $setOnInsert ? { $set, $setOnInsert } : { $set },
+    { upsert: true }
+  );
+  return col.findOne({ vertical, nodeId });
+}
+
+async function verticalDeleteNodeReport(vertical, nodeId) {
+  if (!vertical) throw new Error('vertical required');
+  const col = await verticalNodeReportsCollection();
+  if (nodeId) {
+    await col.deleteOne({ vertical, nodeId });
+    return { vertical, nodeId };
+  }
+  await col.deleteMany({ vertical });
+  return { vertical, nodeId: 'all' };
+}
+
 module.exports = {
   connect,
   getDb,
@@ -2275,6 +2331,11 @@ module.exports = {
   pmListStatusEvents,
   pmGetActionStatus,
   pmUpsertActionStatus,
+  // Vertical node-report persistence
+  verticalGetNodeReport,
+  verticalListNodeReports,
+  verticalUpsertNodeReport,
+  verticalDeleteNodeReport,
   // Collective BNCA persistence
   collectiveAddSignal,
   collectiveListSignals,

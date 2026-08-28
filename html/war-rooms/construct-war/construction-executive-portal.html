@@ -1963,15 +1963,19 @@ function tsmConfirmExec(){
   }
 
   // Structured-fields-only mapping -- ignores report.analysisText, same
-  // rule as the Mortgage panel.
+  // rule as the Mortgage panel. Construction node-reports use costImpact/
+  // scheduleImpact/permitIds, NOT exposure/loanIds like Mortgage -- these
+  // are different schemas (see /api/construction/node-report body).
   function nodeReportToFinding(report) {
+    const ids = Array.isArray(report.permitIds) ? report.permitIds : [];
+    const scheduleNote = report.scheduleImpact ? ' Schedule impact: ' + report.scheduleImpact + '.' : '';
     return {
-      id: report.nodeId,
+      id: ids[0] || report.nodeId,
       claim: report.nodeLabel || report.nodeId,
       rationale: 'Node report severity ' + (report.severity || 'INFO') +
-        (report.breachCount ? ', ' + report.breachCount + ' breach(es) flagged.' : '.'),
+        (report.breachCount ? ', ' + report.breachCount + ' breach(es) flagged.' : '.') + scheduleNote,
       severity: report.severity || 'medium',
-      exposure: report.exposure || 0,
+      exposure: report.costImpact || 0,
       sources: [report.nodeId]
     };
   }
