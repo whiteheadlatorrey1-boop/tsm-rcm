@@ -20,6 +20,8 @@ const pmActionEngine = require('./server/pm/action-engine');
 // itself is per-vertical, via each vertical's own domain-config module.
 const { buildDecisionPackage: buildMortgageDecisionPackage } = require('./server/mortgage/decision-engine');
 const { buildDecisionPackage: buildConstructionDecisionPackage } = require('./server/construction/decision-engine');
+const { buildPortfolioTwin: buildMortgagePortfolioTwin } = require('./server/mortgage/portfolio-intelligence');
+const { buildPortfolioTwin: buildConstructionPortfolioTwin } = require('./server/construction/portfolio-intelligence');
 const { buildPortfolioTwin } = require('./server/pm/portfolio-intelligence');
 const { calculateRisk } = require('./server/pm/risk-engine');
 const { forecast } = require('./server/pm/forecast-engine');
@@ -4869,6 +4871,40 @@ app.post('/api/mortgage/intelligence-v3', requireRole(PM_INTERNAL_ROLES), async 
 });
 // ── END MORTGAGE INTELLIGENCE V3 ────────────────────────────────────────────
 
+// ── MORTGAGE PORTFOLIO INTELLIGENCE (2026-08-28) ────────────────────────────
+// Read-only dashboard, same role as /api/pm/portfolio-intelligence. Does
+// NOT feed the intelligence-v3 decision path above (PM's own twin/risk/
+// forecast stack doesn't either -- V3 goes payload -> decision engine
+// directly, confirmed by reading server.js's /api/pm/intelligence-v3
+// handler). This is a visibility layer: what does the pipeline look like
+// right now, normalized from whatever's actually available (currently
+// just persisted node-reports; ready for loanFiles/conditions/etc. once
+// a real LOS/servicing-system feed exists -- see
+// docs/MORTGAGE_CONSTRUCTION_MAPPING_SPEC.md section 2).
+app.post('/api/mortgage/portfolio-intelligence', requireRole(PM_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const payload = req.body || {};
+    let nodeReports = [];
+    try {
+      nodeReports = await tsmLedger.verticalListNodeReports('mortgage');
+    } catch (ledgerErr) {
+      console.warn('[Mortgage Portfolio Intelligence] ledger read failed, falling back to payload only:', ledgerErr.message);
+    }
+    const twin = buildMortgagePortfolioTwin(payload, nodeReports);
+    res.json({
+      ok: true,
+      engine: 'mortgage-portfolio-intelligence-v1',
+      generatedAt: new Date().toISOString(),
+      twin,
+      governance: { mode: 'DETERMINISTIC', llmRequired: false, humanApprovalRequired: true, writeBackToSourceSystems: false }
+    });
+  } catch (err) {
+    console.error('[Mortgage Portfolio Intelligence]', err);
+    res.status(500).json({ ok: false, error: 'Mortgage portfolio intelligence generation failed' });
+  }
+});
+// ── END MORTGAGE PORTFOLIO INTELLIGENCE ─────────────────────────────────────
+
 // ── CONSTRUCTION INTELLIGENCE V3 (2026-08-28) ───────────────────────────────
 // Same pattern as Mortgage Intelligence V3 above, using Construction's own
 // domain config (server/construction/construction-domain-config.js). Action
@@ -4903,6 +4939,32 @@ app.post('/api/construction/intelligence-v3', requireRole(PM_INTERNAL_ROLES), as
   }
 });
 // ── END CONSTRUCTION INTELLIGENCE V3 ────────────────────────────────────────
+
+// ── CONSTRUCTION PORTFOLIO INTELLIGENCE (2026-08-28) ────────────────────────
+// Same role as the Mortgage version above.
+app.post('/api/construction/portfolio-intelligence', requireRole(PM_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const payload = req.body || {};
+    let nodeReports = [];
+    try {
+      nodeReports = await tsmLedger.verticalListNodeReports('construction');
+    } catch (ledgerErr) {
+      console.warn('[Construction Portfolio Intelligence] ledger read failed, falling back to payload only:', ledgerErr.message);
+    }
+    const twin = buildConstructionPortfolioTwin(payload, nodeReports);
+    res.json({
+      ok: true,
+      engine: 'construction-portfolio-intelligence-v1',
+      generatedAt: new Date().toISOString(),
+      twin,
+      governance: { mode: 'DETERMINISTIC', llmRequired: false, humanApprovalRequired: true, writeBackToSourceSystems: false }
+    });
+  } catch (err) {
+    console.error('[Construction Portfolio Intelligence]', err);
+    res.status(500).json({ ok: false, error: 'Construction portfolio intelligence generation failed' });
+  }
+});
+// ── END CONSTRUCTION PORTFOLIO INTELLIGENCE ─────────────────────────────────
 
 // Advances one action through OPEN -> ACKNOWLEDGED -> IN_PROGRESS -> RESOLVED.
 // VERIFIED is deliberately NOT reachable here -- it requires a recorded
