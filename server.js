@@ -10,6 +10,12 @@ console.error = function(...args) {
 require('dotenv').config({ override: true });
 const express = require('express');
 const { buildDecisionPackage } = require('./server/pm/decision-engine');
+const { buildPmPredictiveControl } = require('./server/pm/predictive-control');
+const { buildPmIntelligenceV3, verifyPmAction } = require('./server/pm/intelligence-v3');
+const { buildPortfolioTwin } = require('./server/pm/portfolio-intelligence');
+const { calculateRisk } = require('./server/pm/risk-engine');
+const { forecast } = require('./server/pm/forecast-engine');
+
 
 // ============================================================
 // TSM OPERATIONAL OS — UNIVERSAL EXECUTIVE RECOVERY
@@ -4586,6 +4592,93 @@ app.get('/', (req, res) => {
    DOC ROUTER — implementation
    ════════════════════════════════════════════════════════════════ */
 
+
+/* ── PM INTELLIGENCE V2 ───────────────────────────────────────────────────── */
+
+/**
+ * Build one canonical PM intelligence snapshot.
+ *
+ * The snapshot intentionally feeds the same normalized payload into:
+ *   1. Portfolio Digital Twin
+ *   2. Risk Engine
+ *   3. Forecast Engine
+ *
+ * No LLM is required for these calculations.
+ */
+function buildPmIntelligenceSnapshot(payload) {
+  const input = payload || {};
+  const twin = buildPortfolioTwin(input);
+  const risk = calculateRisk(twin, input);
+  const projection = forecast(input, twin, risk);
+
+  return {
+    ok: true,
+    generatedAt: new Date().toISOString(),
+    engine: 'pm-intelligence-v2',
+    twin,
+    risk,
+    forecast: projection,
+    governance: {
+      mode: 'DETERMINISTIC',
+      llmRequired: false,
+      humanApprovalRequired: true,
+      writeBackToSourceSystems: false
+    }
+  };
+}
+
+app.post('/api/pm/portfolio-intelligence', (req, res) => {
+  try {
+    res.json(buildPmIntelligenceSnapshot(req.body || {}));
+  } catch (err) {
+    console.error('[PM Portfolio Intelligence]', err);
+    res.status(500).json({
+      ok: false,
+      error: 'PM portfolio intelligence generation failed'
+    });
+  }
+});
+
+app.post('/api/pm/risk', (req, res) => {
+  try {
+    const payload = req.body || {};
+    const twin = buildPortfolioTwin(payload);
+    res.json({
+      ok: true,
+      engine: 'pm-risk-engine-v2',
+      risk: calculateRisk(twin, payload)
+    });
+  } catch (err) {
+    console.error('[PM Risk Engine]', err);
+    res.status(500).json({
+      ok: false,
+      error: 'PM risk generation failed'
+    });
+  }
+});
+
+app.post('/api/pm/forecast', (req, res) => {
+  try {
+    const payload = req.body || {};
+    const twin = buildPortfolioTwin(payload);
+    const risk = calculateRisk(twin, payload);
+
+    res.json({
+      ok: true,
+      engine: 'pm-forecast-engine-v2',
+      forecast: forecast(payload, twin, risk)
+    });
+  } catch (err) {
+    console.error('[PM Forecast Engine]', err);
+    res.status(500).json({
+      ok: false,
+      error: 'PM forecast generation failed'
+    });
+  }
+});
+
+/* ── END PM INTELLIGENCE V2 ───────────────────────────────────────────────── */
+
 /* ── PM EXECUTIVE DECISION ENGINE ─────────────────────────────────────────── */
 app.post('/api/pm/executive-decisions', (req, res) => {
   try {
@@ -4601,6 +4694,75 @@ app.post('/api/pm/executive-decisions', (req, res) => {
   }
 });
 /* ── END PM EXECUTIVE DECISION ENGINE ─────────────────────────────────────── */
+
+/* ── PM INTELLIGENCE V3 ACTION/VERIFICATION ──────────────────────────────── */
+
+/* ── PM PREDICTIVE PORTFOLIO CONTROL ─────────────────────────────────────── */
+app.post('/api/pm/predictive-control', (req, res) => {
+  try {
+    res.json(buildPmPredictiveControl(req.body || {}));
+  } catch (err) {
+    console.error('[PM Predictive Portfolio Control]', err);
+    res.status(500).json({
+      ok: false,
+      error: 'PM predictive portfolio control generation failed'
+    });
+  }
+});
+/* ── END PM PREDICTIVE PORTFOLIO CONTROL ──────────────────────────────────── */
+
+app.post('/api/pm/intelligence-v3', (req, res) => {
+  try {
+    const payload = req.body || {};
+
+    // Canonical PM intelligence path:
+    // findings[] → deterministic PM Decision Engine → V3 action/verification layer.
+    //
+    // If the caller already provides a canonical decision package, preserve it.
+    // Otherwise normalize raw PM findings through V1 before V3 consumes them.
+    const hasCanonicalDecisions =
+      Array.isArray(payload.decisions) &&
+      payload.decisions.length > 0;
+
+    const decisionPackage = hasCanonicalDecisions
+      ? payload
+      : buildDecisionPackage(payload);
+
+    res.json(buildPmIntelligenceV3(decisionPackage));
+  } catch (err) {
+    console.error('[PM Intelligence V3]', err);
+    res.status(500).json({
+      ok: false,
+      error: 'PM intelligence v3 generation failed'
+    });
+  }
+});
+
+app.post('/api/pm/actions/verify', (req, res) => {
+  try {
+    const body = req.body || {};
+
+    if (!body.action) {
+      return res.status(400).json({
+        ok: false,
+        error: 'action is required'
+      });
+    }
+
+    res.json({
+      ok: true,
+      ...verifyPmAction(body.action, body.verification || {})
+    });
+  } catch (err) {
+    console.error('[PM Action Verification]', err);
+    res.status(400).json({
+      ok: false,
+      error: err.message || 'PM action verification failed'
+    });
+  }
+});
+/* ── END PM INTELLIGENCE V3 ACTION/VERIFICATION ───────────────────────────── */
+
 
 
 // Models — verify current availability in Groq console if these change
