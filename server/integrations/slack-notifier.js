@@ -32,16 +32,35 @@ class SlackNotConfiguredError extends Error {
  * Reads config from env vars unless an explicit config object is passed
  * (multi-tenant callers, or tests, pass their own).
  */
+// Default: only the client-visible "resolved" transition notifies.
+// War Room create / Strategist advance are high-frequency internal-only
+// hops (every case passes through them) and would flood a real channel
+// if included by default — an operator who wants full-lifecycle noise
+// can opt in explicitly via SLACK_BPO_NOTIFY_EVENTS.
+const DEFAULT_NOTIFY_EVENTS = ['resolved'];
+
 function loadConfigFromEnv() {
   if (process.env.SLACK_BPO_NOTIFY_ENABLED !== 'true') return null;
   const webhookUrl = process.env.SLACK_BPO_WEBHOOK_URL || '';
   if (!webhookUrl) return null;
-  return { webhookUrl };
+  const eventsEnv = (process.env.SLACK_BPO_NOTIFY_EVENTS || '').trim();
+  const notifyEvents = eventsEnv
+    ? eventsEnv.split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
+    : DEFAULT_NOTIFY_EVENTS.slice();
+  return { webhookUrl, notifyEvents };
 }
 
 function isConfigured(config) {
   const cfg = config || loadConfigFromEnv();
   return !!(cfg && cfg.webhookUrl);
+}
+
+/** Whether this specific event type should notify under the given config. */
+function shouldNotify(event, config) {
+  const cfg = config || loadConfigFromEnv();
+  if (!isConfigured(cfg)) return false;
+  const notifyEvents = cfg.notifyEvents || DEFAULT_NOTIFY_EVENTS;
+  return notifyEvents.includes((event && event.slaEventType || '').toLowerCase());
 }
 
 /**
@@ -85,7 +104,7 @@ function buildMessage(event) {
  */
 async function notify(event, config) {
   const cfg = config || loadConfigFromEnv();
-  if (!isConfigured(cfg)) return false;
+  if (!shouldNotify(event, cfg)) return false;
 
   const payload = buildMessage(event);
   const res = await fetch(cfg.webhookUrl, {
@@ -107,6 +126,8 @@ module.exports = {
   notify,
   buildMessage,
   isConfigured,
+  shouldNotify,
   loadConfigFromEnv,
+  DEFAULT_NOTIFY_EVENTS,
   SlackNotConfiguredError,
 };

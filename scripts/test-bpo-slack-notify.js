@@ -62,6 +62,26 @@ function assert(cond, msg) {
   assert(Array.isArray(capturedBody.blocks) && capturedBody.blocks.length > 0,
     'posted payload includes Block Kit blocks, not just plain text');
 
+  // 1b-ii. Default event filter: 'opened'/'advanced' do NOT notify unless
+  // explicitly opted into via SLACK_BPO_NOTIFY_EVENTS — only 'resolved'
+  // does, by default.
+  let fetchCalledForNonResolved = false;
+  global.fetch = async () => { fetchCalledForNonResolved = true; return { ok: true, status: 200 }; };
+  const openedResult = await notifier.notify({ caseId: 'X-3', slaEventType: 'opened' });
+  const advancedResult = await notifier.notify({ caseId: 'X-4', slaEventType: 'advanced' });
+  assert(openedResult === false, 'notify() skips an "opened" event by default');
+  assert(advancedResult === false, 'notify() skips an "advanced" event by default');
+  assert(!fetchCalledForNonResolved, 'fetch is never called for filtered-out event types');
+
+  // 1b-iii. Explicit opt-in via SLACK_BPO_NOTIFY_EVENTS re-enables them.
+  process.env.SLACK_BPO_NOTIFY_EVENTS = 'opened,resolved';
+  let optInFetchCalled = false;
+  global.fetch = async () => { optInFetchCalled = true; return { ok: true, status: 200 }; };
+  const openedAfterOptIn = await notifier.notify({ caseId: 'X-5', slaEventType: 'opened' });
+  assert(openedAfterOptIn === true, 'notify() sends an "opened" event once opted in via SLACK_BPO_NOTIFY_EVENTS');
+  assert(optInFetchCalled, 'fetch is called once opted into "opened"');
+  delete process.env.SLACK_BPO_NOTIFY_EVENTS; // restore default for the rest of this test
+
   // 1c. A non-2xx response is a real thrown error (caller's job to catch).
   global.fetch = async () => ({ ok: false, status: 500, text: async () => 'server error' });
   let threw = false;

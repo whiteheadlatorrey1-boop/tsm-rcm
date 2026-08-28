@@ -180,10 +180,57 @@ pre-existing client) are completely unaffected.
 
 ---
 
+## 7. NEW: Opt-in Slack Notifications on Work-Item Upsert (this session)
+
+**What it is:** `bpoUpsertWorkItem()` — the single real function every BPO
+stage transition already goes through (War Room create → Strategist
+advance → **✓ MARK EXECUTED**) — now also fires a Slack message on that
+same transition, via `server/integrations/slack-notifier.js`. It's a
+one-way Incoming Webhook POST, not a Slack App: no OAuth, no bot token,
+scoped to a single channel.
+
+**Off by default, everywhere, until explicitly turned on:** requires both
+`SLACK_BPO_NOTIFY_ENABLED=true` and a real `SLACK_BPO_WEBHOOK_URL` set as
+env vars/Fly secrets. Same on/off-switch pattern already used for
+`SERVICENOW_INTEGRATION_ENABLED` on the L1 Copilot ServiceNow adapter —
+credentials can be staged ahead of time without anything actually going
+live.
+
+**How to demo it, live:**
+1. Set `SLACK_BPO_NOTIFY_ENABLED=true` and `SLACK_BPO_WEBHOOK_URL` to a
+   real Incoming Webhook URL for a demo channel.
+2. Walk a case through the real chain — War Room create → Strategist →
+   **✓ MARK EXECUTED** on the Executive Portal.
+3. The demo channel gets a real message the moment `MARK EXECUTED` fires:
+   case ID, client, vertical, status, who did it.
+
+**Talk points:**
+- "The client doesn't have to be logged into their portal to know a case
+  closed — their team's Slack channel just gets told."
+- "This is the same relay point (`bpoUpsertWorkItem`) the client rollup
+  and the SLA-event log already run through — one more consumer of an
+  event that already exists, not a new parallel system."
+
+**Honest caveats, said out loud rather than glossed over:**
+- No real Slack workspace has been hit yet in this repo — verified with a
+  19-assertion regression test (`scripts/test-bpo-slack-notify.js`) using
+  a mocked `fetch`, not a live webhook. First real send will be whatever
+  webhook URL gets configured for the demo.
+- A Slack delivery failure is deliberately non-fatal (try/catch around the
+  notify call, same as the existing SLA-event write) — a case can never
+  fail to resolve because Slack is down or misconfigured.
+- Fires only on the `resolved` transition by default — War Room create and
+  Strategist advance stay silent so a real channel doesn't flood with
+  every internal hop. Full-lifecycle notifications (`opened`/`advanced`
+  too) are an explicit opt-in via `SLACK_BPO_NOTIFY_EVENTS=opened,advanced,resolved`.
+
+---
+
 *Verified against live source in `tsm-rcm` repo (post-`0001-feat-bpo-link-
-client-registry-logins-to-cross-vertic.patch`). onClick/route bindings
-confirmed by direct grep against the HTML/JS/server files, not inferred
-from naming conventions or from prior session notes — several of which
-(the BPO client-selector wiring, the BPO exec-portal Delivery Package
-wiring) turned out not to have actually landed on `main` despite being
-described elsewhere as shipped.*
+client-registry-logins-to-cross-vertic.patch`, then post-`0002-bpo-slack-
+notify-event-filtering.patch`). onClick/route bindings confirmed by direct
+grep against the HTML/JS/server files, not inferred from naming
+conventions or from prior session notes — several of which (the BPO
+client-selector wiring, the BPO exec-portal Delivery Package wiring)
+turned out not to have actually landed on `main` despite being described
+elsewhere as shipped.*
