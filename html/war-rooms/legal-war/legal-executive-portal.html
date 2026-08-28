@@ -1378,7 +1378,20 @@ setInterval(loadStrategistRelay, 15000);
 <script>
 /* TSM EXEC KIT — AUTO-INJECTED 2026-06-29 23:19 UTC */
 (function() {
-  var RELAY_KEYS = ["TSM_LEGAL_STRATEGIST_RELAY", "TSM_STRATEGIST_RELAY", "TSM_WAR_ROOM_RELAY"]; // Sentinel-convention key added as primary source
+  // TSM FIX (two bugs, same root cause as the Healthcare exec portal's
+  // already-fixed shadowing issue):
+  //  1) Ordering: TSM_LEGAL_STRATEGIST_RELAY (Sentinel-push key,
+  //     anomalies-only, no wip/explain) was checked first, so it always
+  //     shadowed real data below.
+  //  2) Storage type: TSM_STRATEGIST_RELAY (legal-main-strategist.html /
+  //     legal-pro/case-strategist.html) and TSM_WAR_ROOM_RELAY
+  //     (legal-war-room.html) are BOTH only ever written to
+  //     sessionStorage, never localStorage -- so readRelay() below
+  //     (localStorage-only) could never have found either one regardless
+  //     of ordering. Now checks sessionStorage first per key, matching
+  //     the RELAY_KEY_FALLBACK convention already used on the
+  //     Mortgage/HotelOps/PM/Schools exec portals.
+  var RELAY_KEYS = ["TSM_STRATEGIST_RELAY", "TSM_WAR_ROOM_RELAY", "TSM_LEGAL_STRATEGIST_RELAY"];
   var WIP_TITLE  = "Legal Pipeline Status";
   var WIP_ID     = 'tsmk-wip-auto';
   var EXP_ID     = 'tsmk-exp-auto';
@@ -1392,7 +1405,7 @@ setInterval(loadStrategistRelay, 15000);
 
   function readRelay() {
     for (var i = 0; i < RELAY_KEYS.length; i++) {
-      var raw = localStorage.getItem(RELAY_KEYS[i]);
+      var raw = sessionStorage.getItem(RELAY_KEYS[i]) || localStorage.getItem(RELAY_KEYS[i]);
       if (raw) {
         try { return JSON.parse(raw); } catch(e) { return null; }
       }

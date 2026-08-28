@@ -2331,7 +2331,15 @@ function exportBoard() {
 <script>
 /* TSM EXEC KIT — AUTO-INJECTED 2026-06-29 23:19 UTC */
 (function() {
-  var RELAY_KEYS = ["TSM_REALESTATE_STRATEGIST_RELAY", "TSM_RE_WAR_RELAY", "TSM_WAR_ROOM_RELAY"]; // Sentinel-convention key added as primary source
+  // TSM FIX: TSM_RE_WAR_RELAY (real payload w/ wip/explain, written by
+  // re-strategist.html) checked before TSM_REALESTATE_STRATEGIST_RELAY
+  // (Sentinel-push key, anomalies-only, no wip/explain) -- same fix
+  // already applied on the Healthcare exec portal. The Sentinel key is
+  // written on every real strategist run, so with it first this page's
+  // WIP/Explainability panes -- and exportClientPackage(), which reuses
+  // mount()'s lastExplainItems -- silently fell back to the empty
+  // "Awaiting relay data..." state even right after a real relay.
+  var RELAY_KEYS = ["TSM_RE_WAR_RELAY", "TSM_REALESTATE_STRATEGIST_RELAY", "TSM_WAR_ROOM_RELAY"];
   var WIP_TITLE  = "RE Pipeline Status";
   var WIP_ID     = 'tsmk-wip-auto';
   var EXP_ID     = 'tsmk-exp-auto';
@@ -2397,7 +2405,12 @@ function exportBoard() {
 </script>
 <script>
 (function() {
-  var RELAY_KEYS = ["TSM_REALESTATE_STRATEGIST_RELAY", "TSM_RE_WAR_RELAY", "TSM_WAR_ROOM_RELAY"];
+  // TSM FIX: same shadowing bug as the main RELAY_KEYS above -- the
+  // Sentinel-push key (anomalies-only) was checked first, so
+  // execAssistantBriefing()'s .explain read below (and execAssistantContext's
+  // reportContent/execSummary read) came back empty right after a real
+  // strategist relay. TSM_RE_WAR_RELAY (the real payload) now checked first.
+  var RELAY_KEYS = ["TSM_RE_WAR_RELAY", "TSM_REALESTATE_STRATEGIST_RELAY", "TSM_WAR_ROOM_RELAY"];
   function readRelay() {
     for (var i = 0; i < RELAY_KEYS.length; i++) {
       var raw = localStorage.getItem(RELAY_KEYS[i]);
@@ -2444,7 +2457,12 @@ function exportBoard() {
         // tag's scope and isn't reachable from this one). The previous
         // fallback keys (TSM_HC_RELAY / TSM_RELAY_DATA) were copy-pasted
         // from the healthcare portal and never written by anything here.
-        var RE_RELAY_KEYS = ["TSM_REALESTATE_STRATEGIST_RELAY", "TSM_RE_WAR_RELAY", "TSM_WAR_ROOM_RELAY"];
+        // TSM FIX: same shadowing bug as the two RELAY_KEYS arrays above --
+        // TSM_RE_WAR_RELAY (real payload, carries .kpis) checked first so
+        // hasData() doesn't lock onto the Sentinel key's {anomalies,
+        // generatedAt} shape, which has keys but no .kpis, leaving every
+        // KPI tile stuck on its '—' default right after a real relay.
+        var RE_RELAY_KEYS = ["TSM_RE_WAR_RELAY", "TSM_REALESTATE_STRATEGIST_RELAY", "TSM_WAR_ROOM_RELAY"];
         var raw = relayJson;
         if (!hasData(raw)) {
           for (var __i = 0; __i < RE_RELAY_KEYS.length && !hasData(raw); __i++) {
