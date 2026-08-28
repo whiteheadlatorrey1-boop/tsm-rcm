@@ -300,6 +300,13 @@ PM Copilot's Executive Portal is no longer just the sign-off panel above — it 
 - "Watch the Executive Portal load four panels, not one — sign-off, then a ranked decision queue with real dollar exposure, then a portfolio risk twin, then a predictive outlook. Each one is a separate governed engine, not four views of the same JSON."
 - "Every one of these calls is deterministic and role-gated — no LLM guessing the priority ranking, and no PM API route left open to an unauthenticated session."
 
+**Local dev / curl testing note (fixed 2026-08-28, `98acb70e`):** `/api/auth/login` used to set `tsm_session` with `Secure` hardcoded, which browsers and `curl` both refuse to send back over plain `http://localhost` — every role-gated `/api/pm/*` call would silently 401 in local dev even with a correct password. `Secure` is now conditional on `NODE_ENV === 'production'`. To smoke-test any of the four panels above locally:
+```
+curl -sc /tmp/j.txt -H "Content-Type: application/json" -X POST http://localhost:8080/api/auth/login -d "{\"password\":\"$TSM_ADMIN_PASSWORD\"}" >/dev/null
+curl -b /tmp/j.txt -H "Content-Type: application/json" -X POST http://localhost:8080/api/pm/intelligence-v3 -d '{"decisions":[...]}'
+```
+`intelligence-v3` verified live end-to-end this way on 2026-08-28: `200 OK`, correctly built `ACT-*` action from a synthetic `decisions[]` payload, correct `actionSummary` rollup, `verification.required: true` / `verified: false` as expected pre-approval.
+
 ---
 
 ## 10. BPO
