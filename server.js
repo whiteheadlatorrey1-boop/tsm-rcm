@@ -2773,6 +2773,12 @@ app.use(require('./routes/finops'));
 app.use(require('./routes/live-data'));
 app.use(docRouter);
 
+// ── ERP INTEGRATIONS ────────────────────────────────────────────────────────
+// QuickBooks Online (sandbox-first, read-only). See routes/integrations-
+// quickbooks.js header for scope boundaries and what has/hasn't been
+// verified against Intuit's live API.
+app.use(require('./routes/integrations-quickbooks'));
+
 // ── RCM RELAY ─────────────────────────────────────────────────────────────────
 // Server-side staging for the FinOps Doc Showcase -> TSM RCM OS handoff.
 // See routes/rcm-relay.js header for the full endpoint contract.
