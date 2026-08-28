@@ -288,6 +288,18 @@
 - "PM Copilot follows the newer Mortgage-style relay convention — event-listener bound buttons, dual-storage relay — not the legacy inline-onclick pattern Legal/Construction/FinOps/Insurance use."
 - "Vendor dispatch is a real state change tied to a specific work order and vendor ID, not a generic demo button."
 
+### Executive Portal — decision/intelligence stack (verified live 2026-08-28)
+PM Copilot's Executive Portal is no longer just the sign-off panel above — it now stacks four generated panels underneath it, each backed by its own server engine and its own `requireRole(['admin','manager','analyst'])`-gated POST route (Phase 5 "governed control plane" — every `/api/pm/*` route, not just these four, now requires an authenticated internal role; there is no anonymous PM API access left):
+
+- **Executive Decision Queue** (`pm-decision-bridge.js` → `POST /api/pm/executive-decisions` → `server/pm/decision-engine.js`) — deterministic (`"confidence":"DETERMINISTIC"`, no LLM) priority ranking across IoT, vendor-compliance, and maintenance-SLA findings, each with a dollar exposure, an owner, and an action. Was previously reading the wrong relay shape and always rendering zero decisions; fixed (`7a436c67`) by pointing `findRelayPayload()` at the canonical `TSM.relay.read('PM')` / `TSM_PM_RELAY` payload instead of a stale key. Explicit governance flags on the response: `humanApprovalRequired: true`, `writeBackToSourceSystems: false`.
+- **Portfolio Intelligence** (`#tsm-pm-intelligence-v2` → `POST /api/pm/portfolio-intelligence` → `server/pm/portfolio-intelligence.js`) — builds a "portfolio twin" (unit/lease/work-order counts) and layers `risk-engine.js` (Portfolio Risk score /100) and `forecast-engine.js` (forward exposure) on top of it.
+- **PM Intelligence V3 · Action Center** (`#tsm-pm-intelligence-v3` → `POST /api/pm/intelligence-v3` → `server/pm/intelligence-v3.js`) — turns the V1 decisions into a Decide → Execute → Verify → Explain action queue (`action-engine.js` builds it, `verification-engine.js` closes it: `POST /api/pm/actions/verify` marks an action `verified`/`NOT_VERIFIED` and records exposure before/after).
+- **Portfolio Risk Outlook** (`#tsm-pm-intelligence-v4` → `POST /api/pm/predictive-control` → `server/pm/predictive-control.js`, engine id `pm-predictive-control-v1`) — the forward-looking layer: "V1 Decision Engine = what is known now, V3 Intelligence = what action should be governed, V4 Predictive = what is likely to happen next," per the file's own header comment. Explicitly deterministic — no LLM in the predicted-exposure calculation.
+
+**Talk points:**
+- "Watch the Executive Portal load four panels, not one — sign-off, then a ranked decision queue with real dollar exposure, then a portfolio risk twin, then a predictive outlook. Each one is a separate governed engine, not four views of the same JSON."
+- "Every one of these calls is deterministic and role-gated — no LLM guessing the priority ranking, and no PM API route left open to an unauthenticated session."
+
 ---
 
 ## 10. BPO

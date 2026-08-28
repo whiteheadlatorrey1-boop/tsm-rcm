@@ -4738,6 +4738,57 @@ app.post('/api/pm/intelligence-v3', requireRole(PM_INTERNAL_ROLES), (req, res) =
   }
 });
 
+// Records an APPROVED/REJECTED decision against one V3 action id, using the
+// authenticated caller's own identity (req.tsmSession, set by requireRole)
+// as actor -- not a client-supplied name -- so the audit trail can't be
+// spoofed by whoever is holding the fetch call. Idempotent to call more
+// than once; /api/pm/actions/verify below only checks that the *latest*
+// decision for the action id is APPROVED, so a REJECTED action can be
+// re-approved after remediation without any special-case code here.
+app.post('/api/pm/actions/:id/approve', requireRole(PM_INTERNAL_ROLES), (req, res) => {
+  try {
+    const actionId = req.params.id;
+    const actor = (req.tsmSession && (req.tsmSession.label || req.tsmSession.staffId)) || req.tsmSession.role;
+    const decision = PM_APPROVAL_GATE.recordDecision({
+      entityId: actionId,
+      entityType: 'pm-action',
+      decision: 'APPROVED',
+      actor,
+      meta: req.body && req.body.meta ? req.body.meta : null
+    });
+    res.json({ ok: true, decision });
+  } catch (err) {
+    console.error('[PM Action Approval]', err);
+    res.status(400).json({ ok: false, error: err.message || 'PM action approval failed' });
+  }
+});
+
+app.post('/api/pm/actions/:id/reject', requireRole(PM_INTERNAL_ROLES), (req, res) => {
+  try {
+    const actionId = req.params.id;
+    const actor = (req.tsmSession && (req.tsmSession.label || req.tsmSession.staffId)) || req.tsmSession.role;
+    const decision = PM_APPROVAL_GATE.recordDecision({
+      entityId: actionId,
+      entityType: 'pm-action',
+      decision: 'REJECTED',
+      actor,
+      meta: req.body && req.body.meta ? req.body.meta : null
+    });
+    res.json({ ok: true, decision });
+  } catch (err) {
+    console.error('[PM Action Rejection]', err);
+    res.status(400).json({ ok: false, error: err.message || 'PM action rejection failed' });
+  }
+});
+
+// Mirrors GET /api/approval/decisions / /api/governance/risk/decisions --
+// exec portal can read the log + stats rollup instead of re-deriving an
+// approval rate client-side.
+app.get('/api/pm/actions/decisions', requireRole(PM_INTERNAL_ROLES), (req, res) => {
+  const limit = parseInt(req.query.limit, 10) || 100;
+  res.json({ ok: true, log: PM_APPROVAL_GATE.getLog(limit), stats: PM_APPROVAL_GATE.getStats() });
+});
+
 app.post('/api/pm/actions/verify', requireRole(PM_INTERNAL_ROLES), (req, res) => {
   try {
     const body = req.body || {};
@@ -4749,9 +4800,27 @@ app.post('/api/pm/actions/verify', requireRole(PM_INTERNAL_ROLES), (req, res) =>
       });
     }
 
+    const actionId = body.action.id;
+    // Enforcement point: the latest recorded PM_APPROVAL_GATE decision for
+    // this action id must be APPROVED. Previously this route trusted
+    // whatever `status` the client put on body.action (verifyPmAction only
+    // checked status === 'RESOLVED', a field the caller controls), so
+    // "human approval required" was never actually required. This looks up
+    // the real decision log instead of the request body.
+    const priorDecisions = PM_APPROVAL_GATE.getLog(500).filter(d => d.entityId === actionId);
+    const latest = priorDecisions[0]; // getLog() is most-recent-first
+    if (!latest || latest.decision !== 'APPROVED') {
+      return res.status(409).json({
+        ok: false,
+        error: 'Action requires a recorded APPROVED decision before verification',
+        actionId,
+        latestDecision: latest || null
+      });
+    }
+
     const result = verifyPmAction(
       body.action,
-      body.verification || {}
+      Object.assign({}, body.verification, { verifiedBy: latest.actor })
     );
 
     res.json(result);
@@ -6017,6 +6086,21 @@ const GOVERNANCE_RISK_REGISTER = [];
 // before -- in-memory only for the life of this process.
 const GOVERNANCE_HITL_GATE = createHitlGate('GOV', tsmLedger.hitlAdapter('GOV'));
 GOVERNANCE_HITL_GATE.hydrate().then(n => { if (n) console.log(`[HITL] GOV gate hydrated ${n} prior decisions`); });
+
+// PM Intelligence V3 per-action approval gate. Distinct from the portfolio-
+// level ACKNOWLEDGE/ESCALATE sign-off already recorded by
+// /api/exec-portal/pm/decide (see pm-exec-portal.html's recordExecAction) --
+// that gate approves/rejects the *snapshot as a whole*; this one approves/
+// rejects one specific PM_INTELLIGENCE_V3 action (ACT-PM-DEC-...) before it
+// may be marked VERIFIED. Without this, /api/pm/actions/verify accepted
+// whatever `status` the caller put in the request body, so a client could
+// claim an action was RESOLVED and skip straight to VERIFIED -- the
+// `humanApprovalRequired: true` field on decision/action/predictive-control
+// responses was a label with nothing behind it. Same createHitlGate +
+// tsmLedger.hitlAdapter pattern as GOV, so it persists to Mongo (hitl_decisions,
+// partitioned by gatePrefix 'PM') and survives a restart via hydrate().
+const PM_APPROVAL_GATE = createHitlGate('PM', tsmLedger.hitlAdapter('PM'));
+PM_APPROVAL_GATE.hydrate().then(n => { if (n) console.log(`[HITL] PM gate hydrated ${n} prior decisions`); });
 
 function governanceId(prefix) {
   return prefix + '-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7);
