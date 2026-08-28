@@ -2785,6 +2785,13 @@ app.use(require('./routes/integrations-quickbooks'));
 // against Google's live API.
 app.use(require('./routes/integrations-gmail'));
 
+// ── EHR INTEGRATIONS ─────────────────────────────────────────────────────────
+// FHIR (public synthetic sandbox by default, read-only). See routes/
+// integrations-fhir.js header -- this is NOT wired to a real EHR and
+// should not be pointed at one without a BAA and real SMART-on-FHIR auth,
+// neither of which this file implements.
+app.use(require('./routes/integrations-fhir'));
+
 // ── RCM RELAY ─────────────────────────────────────────────────────────────────
 // Server-side staging for the FinOps Doc Showcase -> TSM RCM OS handoff.
 // See routes/rcm-relay.js header for the full endpoint contract.

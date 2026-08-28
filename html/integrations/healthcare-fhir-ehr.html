@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TSM // EHR — FHIR Sandbox</title>
+<script src="/html/shared/tsm-memory-engine.js"></script>
+<style>
+  :root{
+    --bg:#0a0e14; --panel:#111826; --border:#1f2937; --border-soft:#1a2332;
+    --text:#e6f1ff; --text-dim:#7c8a9e; --accent:#00e5c7; --warn:#ffb454; --danger:#ff5c6c;
+    --mono:'Share Tech Mono', 'SF Mono', Consolas, monospace;
+  }
+  *{box-sizing:border-box}
+  body{ background:var(--bg); color:var(--text); font-family:var(--mono); margin:0; min-height:100vh; }
+  header{
+    border-bottom:1px solid var(--border); padding:1.1rem 1.5rem;
+    display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:.5rem;
+  }
+  header h1{font-size:.95rem; color:var(--accent); margin:0; letter-spacing:.06em; text-transform:uppercase}
+  header .sub{font-size:.7rem; color:var(--text-dim)}
+  main{max-width:1080px; margin:0 auto; padding:1.5rem}
+  .card{background:var(--panel); border:1px solid var(--border); border-radius:6px; padding:1rem; margin-bottom:1.25rem}
+  .warning-banner{
+    background:rgba(255,180,84,.08); border:1px solid rgba(255,180,84,.35); color:var(--warn);
+    padding:.8rem 1rem; border-radius:6px; font-size:.72rem; margin-bottom:1.25rem; line-height:1.6;
+  }
+  .warning-banner.danger{ background:rgba(255,92,108,.08); border-color:rgba(255,92,108,.35); color:var(--danger); }
+  .btn{
+    background:var(--accent); color:#04201c; border:none; font-family:inherit; font-weight:600;
+    font-size:.75rem; padding:.4rem .9rem; border-radius:4px; cursor:pointer; text-transform:uppercase;
+    letter-spacing:.04em;
+  }
+  .btn.secondary{ background:transparent; color:var(--text-dim); border:1px solid var(--border); }
+  table{width:100%; border-collapse:collapse; font-size:.78rem; margin-top:.5rem}
+  th{ text-align:left; color:var(--text-dim); font-weight:normal; text-transform:uppercase;
+      font-size:.65rem; letter-spacing:.04em; padding:.5rem .6rem; border-bottom:1px solid var(--border); }
+  td{padding:.55rem .6rem; border-bottom:1px solid var(--border-soft)}
+  tbody tr{cursor:pointer}
+  tbody tr:hover{background:#0f1622}
+  .cond-row{background:#0d131c; display:none}
+  .cond-row.open{display:table-row}
+  .cond-list{padding:.75rem .6rem; font-size:.75rem}
+  .pill{ display:inline-block; padding:.15rem .5rem; border-radius:3px; font-size:.65rem;
+         text-transform:uppercase; letter-spacing:.03em; border:1px solid; }
+  .pill.severe{color:var(--danger); border-color:var(--danger)}
+  .pill.mild{color:var(--text-dim); border-color:var(--border)}
+  .empty, .loading, .err{color:var(--text-dim); font-size:.8rem; padding:1rem 0}
+  .err{color:var(--danger)}
+  .note{font-size:.68rem; color:var(--text-dim); line-height:1.6; margin-top:.75rem}
+  .note code{color:var(--accent)}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>EHR — FHIR Sandbox</h1>
+  <div class="sub" id="baseUrlLabel">—</div>
+</header>
+
+<main>
+
+  <div id="statusBanner"></div>
+
+  <div class="card">
+    <div class="note">
+      Read-only. Queries a FHIR R4 server for Patient and Condition resources —
+      no data is ever written back. Active conditions matching a small,
+      visible severity keyword list get flagged and registered into the same
+      shared <code>TSMMemory</code> store the rest of the platform uses,
+      under the <code>healthcare</code> bucket. Click a patient row to load
+      their active conditions.
+    </div>
+  </div>
+
+  <div class="card" id="patientsCard">
+    <div style="display:flex; align-items:center; justify-content:space-between">
+      <h2 style="font-size:.8rem; color:var(--text-dim); text-transform:uppercase; letter-spacing:.06em; margin:0">Patients</h2>
+      <button class="btn secondary" id="refreshBtn">Refresh</button>
+    </div>
+    <div id="patientsWrap"><div class="loading">Loading patients…</div></div>
+  </div>
+
+</main>
+
+<script>
+function escapeHtml(s){
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function fmtDate(iso){
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d)) return '—';
+  return d.toLocaleDateString(undefined, { year:'numeric', month:'short', day:'numeric' });
+}
+
+const SEVERE_KEYWORDS = ['severe', 'critical', 'acute', 'emergency'];
+function isSevere(cond){
+  const haystack = `${cond.text} ${cond.severity || ''}`.toLowerCase();
+  return SEVERE_KEYWORDS.some(k => haystack.includes(k));
+}
+
+const openConditionRows = {};
+
+async function loadStatus(){
+  try {
+    const r = await fetch('/api/integrations/fhir/status');
+    const data = await r.json();
+    if (!data.ok) throw new Error(data.error || 'Status check failed');
+
+    document.getElementById('baseUrlLabel').textContent = data.baseUrl;
+    const banner = document.getElementById('statusBanner');
+    banner.innerHTML = `<div class="warning-banner${data.isPublicSandbox ? '' : ' danger'}">${escapeHtml(data.warning)}</div>`;
+  } catch (e) {
+    document.getElementById('statusBanner').innerHTML =
+      `<div class="warning-banner danger">Could not reach the server: ${escapeHtml(e.message)}</div>`;
+  }
+}
+
+async function loadPatients(){
+  const wrap = document.getElementById('patientsWrap');
+  wrap.innerHTML = '<div class="loading">Loading patients…</div>';
+  try {
+    const r = await fetch('/api/integrations/fhir/patients');
+    const data = await r.json();
+    if (!data.ok) throw new Error((data.error || 'Failed to load patients') + (data.detail ? ' — ' + JSON.stringify(data.detail) : ''));
+
+    renderPatients(data.patients || []);
+  } catch (e) {
+    wrap.innerHTML = `<div class="err">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function renderPatients(patients){
+  const wrap = document.getElementById('patientsWrap');
+  if (!patients.length){
+    wrap.innerHTML = '<div class="empty">No patients returned.</div>';
+    return;
+  }
+  const rows = patients.map(p => `
+    <tr class="patient-row" data-patient-id="${escapeHtml(p.id)}">
+      <td>${escapeHtml(p.name)}</td>
+      <td>${escapeHtml(p.gender || '—')}</td>
+      <td>${fmtDate(p.birthDate)}</td>
+      <td>${escapeHtml(p.id)}</td>
+    </tr>
+    <tr class="cond-row" data-cond-for="${escapeHtml(p.id)}">
+      <td colspan="4" class="cond-list">
+        <div class="loading" style="display:none">Loading conditions…</div>
+      </td>
+    </tr>`).join('');
+  wrap.innerHTML = `
+    <table>
+      <thead><tr><th>Name</th><th>Gender</th><th>Birth Date</th><th>Patient ID</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+
+  wrap.querySelectorAll('.patient-row').forEach(row => {
+    row.addEventListener('click', () => toggleConditions(row.dataset.patientId));
+  });
+}
+
+async function toggleConditions(patientId){
+  const condRow = document.querySelector(`.cond-row[data-cond-for="${CSS.escape(patientId)}"]`);
+  if (!condRow) return;
+
+  if (condRow.classList.contains('open')){
+    condRow.classList.remove('open');
+    return;
+  }
+  document.querySelectorAll('.cond-row.open').forEach(r => r.classList.remove('open'));
+  condRow.classList.add('open');
+
+  if (openConditionRows[patientId]){
+    renderConditions(condRow, openConditionRows[patientId]);
+    return;
+  }
+
+  const cell = condRow.querySelector('td');
+  cell.innerHTML = '<div class="loading">Loading conditions…</div>';
+  try {
+    const r = await fetch(`/api/integrations/fhir/patients/${encodeURIComponent(patientId)}/conditions`);
+    const data = await r.json();
+    if (!data.ok) throw new Error((data.error || 'Failed to load conditions') + (data.detail ? ' — ' + JSON.stringify(data.detail) : ''));
+
+    openConditionRows[patientId] = data.conditions || [];
+    renderConditions(condRow, openConditionRows[patientId]);
+    registerConditionAnomalies(patientId, openConditionRows[patientId]);
+  } catch (e) {
+    cell.innerHTML = `<div class="err">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function renderConditions(condRow, conditions){
+  const cell = condRow.querySelector('td');
+  if (!conditions.length){
+    cell.innerHTML = '<div class="empty">No active conditions on file.</div>';
+    return;
+  }
+  cell.innerHTML = conditions.map(c => `
+    <div style="margin-bottom:.4rem">
+      ${isSevere(c) ? '<span class="pill severe">Flagged</span>' : '<span class="pill mild">Active</span>'}
+      ${escapeHtml(c.text)}${c.severity ? ' — ' + escapeHtml(c.severity) : ''}
+      ${c.onsetDateTime ? ' <span style="color:var(--text-dim)">(onset ' + fmtDate(c.onsetDateTime) + ')</span>' : ''}
+    </div>`).join('');
+}
+
+// Same dedup pattern as the QuickBooks and Gmail integrations: only fires
+// once per condition ID, so re-opening a patient row repeatedly doesn't
+// pile up duplicate open anomalies.
+function registerConditionAnomalies(patientId, conditions){
+  if (!window.TSMMemory || typeof window.TSMMemory.registerAnomaly !== 'function') return;
+
+  conditions.filter(isSevere).forEach(c => {
+    const code = 'EHR_FHIR_SEVERE_CONDITION_' + c.id;
+    let alreadyOpen = false;
+    try {
+      const all = JSON.parse(localStorage.getItem('TSM_OPERATIONAL_MEMORY_V3') || '{}');
+      // This page's URL path contains "healthcare", which
+      // tsm-memory-engine.js's detectSector() maps to the "healthcare"
+      // bucket directly — verify that mapping hasn't changed if you
+      // move/rename this file.
+      const bucket = all.healthcare;
+      alreadyOpen = !!(bucket && Array.isArray(bucket.anomalies) &&
+        bucket.anomalies.some(a => a.anomalyCode === code && a.status === 'open'));
+    } catch (e) { /* fall through and try to register anyway */ }
+    if (alreadyOpen) return;
+
+    window.TSMMemory.registerAnomaly({
+      entityType: 'ehr-condition',
+      entityId: 'fhir-condition-' + c.id,
+      anomalyCode: code,
+      severity: 'HIGH',
+      title: `Flagged condition for patient ${patientId}: ${c.text}${c.severity ? ' (' + c.severity + ')' : ''}`,
+      source: 'fhir-ehr-sandbox',
+      meta: { patientId, conditionId: c.id, text: c.text, severity: c.severity },
+    });
+  });
+}
+
+document.getElementById('refreshBtn').addEventListener('click', loadPatients);
+
+loadStatus();
+loadPatients();
+</script>
+</body>
+</html>
