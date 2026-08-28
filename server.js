@@ -9,6 +9,8 @@ console.error = function(...args) {
 
 require('dotenv').config({ override: true });
 const express = require('express');
+const { buildDecisionPackage } = require('./server/pm/decision-engine');
+
 // ============================================================
 // TSM OPERATIONAL OS — UNIVERSAL EXECUTIVE RECOVERY
 // ============================================================
@@ -39,10 +41,17 @@ const sentinelUpload = multer({
 
 const app = express();
 
+const { verifySession: __verifySessionForUser, getCookie: __getCookieForUser } = require('./middleware/require-auth');
 app.use((req, res, next) => {
+  const __session = __verifySessionForUser(__getCookieForUser(req, 'tsm_session'));
   req.session = req.session || {};
-  req.session.user = { id: "admin", role: "admin" };
-  req.user = { role: "admin", actor: "admin", clientId: "admin" };
+  if (__session) {
+    req.session.user = { id: __session.staffId || __session.clientId || 'admin', role: __session.role || 'admin' };
+    req.user = { role: __session.role || 'admin', actor: __session.staffId || __session.clientId || 'admin', clientId: __session.clientId || null };
+  } else {
+    req.session.user = null;
+    req.user = null;
+  }
   next();
 });
 
@@ -4574,13 +4583,25 @@ app.get('/', (req, res) => {
 });
 
 /* ════════════════════════════════════════════════════════════════
-   DOC ROUTER — paste this block into server.js
-   Placement: anywhere after `const app = express()` and after
-   `app.use(express.json(...))`, before `
-app.listen(...)`.
-   Requires: process.env.GROQ_API_KEY already set (same as other nodes).
-   Requires: Node 18+ for global fetch (already a project requirement).
-════════════════════════════════════════════════════════════════ */
+   DOC ROUTER — implementation
+   ════════════════════════════════════════════════════════════════ */
+
+/* ── PM EXECUTIVE DECISION ENGINE ─────────────────────────────────────────── */
+app.post('/api/pm/executive-decisions', (req, res) => {
+  try {
+    const payload = req.body || {};
+    const result = buildDecisionPackage(payload);
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    console.error('[PM Executive Decision Engine]', err);
+    res.status(500).json({
+      ok: false,
+      error: 'PM executive decision generation failed'
+    });
+  }
+});
+/* ── END PM EXECUTIVE DECISION ENGINE ─────────────────────────────────────── */
+
 
 // Models — verify current availability in Groq console if these change
 const GROQ_TEXT_MODEL = 'openai/gpt-oss-120b';
