@@ -152,6 +152,12 @@ function extractItems(payload) {
     });
   };
 
+  // Canonical PM relay compatibility:
+  // PM Executive Portal may deliver normalized findings directly at
+  // payload.findings. These are decision-engine inputs, not a separate
+  // Sentinel/anomaly channel.
+  pushMany(payload.findings, null);
+
   const exceptionReport = sections.exceptionReport || payload.exceptionReport;
   const riskReport = sections.riskReport || payload.riskReport;
 
