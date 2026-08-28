@@ -13,6 +13,13 @@ const { buildDecisionPackage } = require('./server/pm/decision-engine');
 const { buildPmPredictiveControl } = require('./server/pm/predictive-control');
 const { buildPmIntelligenceV3, verifyPmAction } = require('./server/pm/intelligence-v3');
 const pmActionEngine = require('./server/pm/action-engine');
+// Mortgage/Construction intelligence-v3: reuse the same generic action-engine
+// and intelligence-v3 modules PM uses (server/pm/action-engine.js and
+// server/pm/intelligence-v3.js are vertical-agnostic already -- see the
+// 2026-08-28 shared decision-engine-core refactor). Only the decision engine
+// itself is per-vertical, via each vertical's own domain-config module.
+const { buildDecisionPackage: buildMortgageDecisionPackage } = require('./server/mortgage/decision-engine');
+const { buildDecisionPackage: buildConstructionDecisionPackage } = require('./server/construction/decision-engine');
 const { buildPortfolioTwin } = require('./server/pm/portfolio-intelligence');
 const { calculateRisk } = require('./server/pm/risk-engine');
 const { forecast } = require('./server/pm/forecast-engine');
@@ -4777,6 +4784,82 @@ app.post('/api/pm/intelligence-v3', requireRole(PM_INTERNAL_ROLES), async (req, 
     });
   }
 });
+
+// ── MORTGAGE INTELLIGENCE V3 (2026-08-28) ───────────────────────────────────
+// Same governed decision/action pattern as PM Copilot above, ported via the
+// shared decision-engine core (server/shared/decision-engine-core.js) with
+// Mortgage's own domain config (server/mortgage/mortgage-domain-config.js).
+// Reuses PM's action-engine.js, intelligence-v3.js, and resolvePmAction as-is
+// -- none of those three are PM-specific; only the decision engine itself
+// varies per vertical. Action ids are prefixed MTG-DEC/ACT-MTG-DEC so they
+// cannot collide with PM's PM-DEC ids in the shared pm_action_status
+// collection. Reuses PM_INTERNAL_ROLES (admin/manager/analyst) -- there is
+// no separate Mortgage-specific internal role set defined in this codebase.
+app.post('/api/mortgage/intelligence-v3', requireRole(PM_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const payload = req.body || {};
+
+    const hasCanonicalDecisions =
+      Array.isArray(payload.decisions) &&
+      payload.decisions.length > 0;
+
+    const decisionPackage = hasCanonicalDecisions
+      ? payload
+      : buildMortgageDecisionPackage(payload);
+
+    const decisions =
+      (decisionPackage.intelligence && decisionPackage.intelligence.decisions) ||
+      decisionPackage.decisions ||
+      [];
+
+    const freshActions = pmActionEngine.buildActionQueue(decisions);
+    const overlaidActions = await Promise.all(freshActions.map(resolvePmAction));
+
+    res.json(buildPmIntelligenceV3({ ...decisionPackage, actions: overlaidActions }));
+  } catch (err) {
+    console.error('[Mortgage Intelligence V3]', err);
+    res.status(500).json({
+      ok: false,
+      error: 'Mortgage intelligence v3 generation failed'
+    });
+  }
+});
+// ── END MORTGAGE INTELLIGENCE V3 ────────────────────────────────────────────
+
+// ── CONSTRUCTION INTELLIGENCE V3 (2026-08-28) ───────────────────────────────
+// Same pattern as Mortgage Intelligence V3 above, using Construction's own
+// domain config (server/construction/construction-domain-config.js). Action
+// ids prefixed CON-DEC/ACT-CON-DEC.
+app.post('/api/construction/intelligence-v3', requireRole(PM_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const payload = req.body || {};
+
+    const hasCanonicalDecisions =
+      Array.isArray(payload.decisions) &&
+      payload.decisions.length > 0;
+
+    const decisionPackage = hasCanonicalDecisions
+      ? payload
+      : buildConstructionDecisionPackage(payload);
+
+    const decisions =
+      (decisionPackage.intelligence && decisionPackage.intelligence.decisions) ||
+      decisionPackage.decisions ||
+      [];
+
+    const freshActions = pmActionEngine.buildActionQueue(decisions);
+    const overlaidActions = await Promise.all(freshActions.map(resolvePmAction));
+
+    res.json(buildPmIntelligenceV3({ ...decisionPackage, actions: overlaidActions }));
+  } catch (err) {
+    console.error('[Construction Intelligence V3]', err);
+    res.status(500).json({
+      ok: false,
+      error: 'Construction intelligence v3 generation failed'
+    });
+  }
+});
+// ── END CONSTRUCTION INTELLIGENCE V3 ────────────────────────────────────────
 
 // Advances one action through OPEN -> ACKNOWLEDGED -> IN_PROGRESS -> RESOLVED.
 // VERIFIED is deliberately NOT reachable here -- it requires a recorded
