@@ -1,4 +1,6 @@
 
+const { runRealEstateControlPlane } = require('./server/real-estate/real-estate-control-plane');
+
 // Mute MongoDB connection warnings from HITL Gates during local dev
 const originalConsoleError = console.error;
 console.error = function(...args) {
@@ -4782,6 +4784,56 @@ app.get('/', (req, res) => {
     if (err) res.sendFile(path.join(dirPath, 'war-rooms', 'bpo-war', 'bpo-war-room.html'));
   });
 });
+
+
+/* ── REAL ESTATE CANONICAL CONTROL PLANE ─────────────────────────────────── */
+
+/**
+ * Canonical Real Estate execution path.
+ *
+ * Request:
+ *   Real Estate / property-management facts
+ *
+ * Flow:
+ *   real-estate-engine
+ *       → real-estate-control-plane
+ *       → canonical vertical-control-plane
+ *
+ * This route does not mutate source systems.
+ * Any executable action remains behind canonical governance.
+ */
+app.post('/api/real-estate/control-plane', requireAnyAuth, (req, res) => {
+  try {
+    const input = req.body || {};
+
+    const result = runRealEstateControlPlane({
+      ...input,
+      actor:
+        input.actor ||
+        req.tsmSession?.userId ||
+        req.tsmSession?.email ||
+        'real-estate-api'
+    });
+
+    res.json({
+      ok: true,
+      vertical: 'real_estate',
+      engine: 'real-estate-control-plane',
+      result
+    });
+  } catch (err) {
+    console.error('[Real Estate Control Plane]', err);
+
+    res.status(500).json({
+      ok: false,
+      vertical: 'real_estate',
+      error: 'Real Estate control-plane execution failed',
+      detail: err.message
+    });
+  }
+});
+
+/* ── END REAL ESTATE CANONICAL CONTROL PLANE ─────────────────────────────── */
 
 /* ════════════════════════════════════════════════════════════════
    DOC ROUTER — implementation
