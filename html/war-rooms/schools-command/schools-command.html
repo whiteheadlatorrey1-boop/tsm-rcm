@@ -2026,6 +2026,47 @@ document.addEventListener('DOMContentLoaded',()=>{
   // fin.compliance_confidence from getFinancialSummary(). The client no
   // longer has the rate card to reason about, so there's nothing left to
   // compute here.
+  // ── NODE REPORTS → server-side Schools chain (2026-08-29) ────────────────
+  // Fires each Sentinel anomaly into /api/schools/node-report (raw ingestion,
+  // parallel to the Construction/HC node-report pattern -- see
+  // reportConstructionNodes() in construction-war-room.html), so
+  // /api/schools/intelligence-v3 and /api/schools/portfolio-intelligence have
+  // real durable data to read instead of an empty queue. Schools previously
+  // had no node-report endpoint or sender at all.
+  //
+  // Nothing invented here either: reuses the exact anomaly objects
+  // schPushToSentinel() already built (id/title/severity/exposure/
+  // rootCause), plus the grantBreaches/exceptionBreaches id lists it already
+  // computed. Fire-and-forget: never blocks the UI, never throws into the
+  // caller.
+  const SCH_SEV_TO_NODE = { CRIT: 'CRITICAL', HIGH: 'HIGH', MED: 'MEDIUM', LOW: 'LOW' };
+  function schReportNodes(anomalies, grantBreaches, exceptionBreaches) {
+    try {
+      const idsFor = (anomalyId) => {
+        if (anomalyId === 'sch-funding-delay') return (grantBreaches || []).map(b => b.id).filter(Boolean);
+        if (anomalyId === 'sch-compliance') return (exceptionBreaches || []).map(b => b.id).filter(Boolean);
+        return [];
+      };
+      (anomalies || []).forEach(a => {
+        fetch('/api/schools/node-report', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            nodeId: a.id,
+            nodeLabel: a.title,
+            report: a.rootCause,
+            analysisText: a.recommendedAction || '',
+            exposure: a.exposure || 0,
+            grantIds: idsFor(a.id),
+            severity: SCH_SEV_TO_NODE[a.severity] || 'INFO',
+            kpi: { confidence: a.confidence || 0 },
+            ts: Date.now()
+          })
+        }).catch(() => { /* fire-and-forget, non-blocking */ });
+      });
+    } catch (err) { console.warn('schReportNodes error:', err); }
+  }
+
   async function schPushToSentinel() {
     if (!engine) return;
     try {
@@ -2061,6 +2102,8 @@ document.addEventListener('DOMContentLoaded',()=>{
           impacts: {}
         });
       }
+
+      schReportNodes(anomalies, grantBreaches, exceptionBreaches);
 
       if (window.TSMSentinelPush && window.TSMSentinelPush.push) {
         window.TSMSentinelPush.push('SCHOOLS', anomalies);

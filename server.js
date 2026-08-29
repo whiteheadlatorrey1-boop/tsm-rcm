@@ -2168,13 +2168,19 @@ const schoolsNodeReports = {}; // keyed by node id
 
 app.post('/api/schools/node-report', requireAnyAuth, async (req, res) => {
   try {
-    const { nodeId, nodeLabel, report, analysisText, grantIds, severity, kpi, ts } = req.body || {};
+    const { nodeId, nodeLabel, report, analysisText, exposure, grantIds, severity, kpi, ts } = req.body || {};
     if (!nodeId) return res.status(400).json({ ok: false, error: 'nodeId required' });
     const doc = {
       nodeId,
       nodeLabel: nodeLabel || nodeId,
       report: report || '',
       analysisText: analysisText || '',
+      // Unlike HC, Schools has real deterministic exposure figures already
+      // computed client-side (engine.getFinancialSummary()), so this route
+      // takes a top-level exposure field -- same convention as Mortgage's
+      // /api/mortgage/node-report, not HC's (HC's node-report body genuinely
+      // has no exposure source to report).
+      exposure: exposure == null ? null : Number(exposure) || 0,
       grantIds: grantIds || [],
       severity: severity || 'INFO',
       kpi: kpi || {},

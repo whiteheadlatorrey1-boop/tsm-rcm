@@ -148,6 +148,15 @@ function makeDecision(item, index, config) {
     item.loan_id,
     item.permit_id,
     item.case_id,
+    // HC (claim_id/account_id) and Schools (grant_id/monitoring_id/
+    // exception_id) added 2026-08-29 -- additive only, no existing
+    // vertical's items carry these field names so this cannot change
+    // Mortgage/Construction/PM output.
+    item.claim_id,
+    item.account_id,
+    item.grant_id,
+    item.monitoring_id,
+    item.exception_id,
     `finding-${index + 1}`
   );
 

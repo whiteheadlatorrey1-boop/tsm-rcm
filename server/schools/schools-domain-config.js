@@ -74,7 +74,17 @@ module.exports = {
   ownerFor,
   urgencyFor,
   actionFor,
+  // Keyed to match the field names schools-engine.js's runAnalysis() /
+  // buildRelayPayload() already send to /api/schools/analysis
+  // (grant_breaches/monitoring_items/exceptions) -- NOT the *_items naming
+  // convention Mortgage/HC use, so the exact same payload the UI already
+  // builds can be posted straight to /api/schools/intelligence-v3 with no
+  // new client-side shaping. *_items aliases kept too, for callers that
+  // send canonical decision-engine-core payloads directly.
   namedExposureBuckets: {
+    grant_breaches: 'grant_breach',
+    monitoring_items: 'monitoring_stall',
+    exceptions: 'compliance_exception',
     grant_breach_items: 'grant_breach',
     monitoring_stall_items: 'monitoring_stall',
     compliance_exception_items: 'compliance_exception'
