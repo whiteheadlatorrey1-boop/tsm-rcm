@@ -22,6 +22,18 @@ const { buildDecisionPackage: buildMortgageDecisionPackage } = require('./server
 const { buildDecisionPackage: buildConstructionDecisionPackage } = require('./server/construction/decision-engine');
 const { buildPortfolioTwin: buildMortgagePortfolioTwin } = require('./server/mortgage/portfolio-intelligence');
 const { buildPortfolioTwin: buildConstructionPortfolioTwin } = require('./server/construction/portfolio-intelligence');
+// Healthcare/Schools intelligence-v3 (2026-08-29): same port as Mortgage/
+// Construction above -- these are the two remaining verticals confirmed to
+// have real structured input data (HC's /api/hc/node-report; Schools'
+// /api/schools/analysis grant_breaches/monitoring_items/exceptions body)
+// rather than a free-text-only query endpoint. RE, Legal, NOC, and
+// HotelOps's query endpoints were checked and have no structured findings
+// shape to normalize -- see server.js comments at their intelligence-v3
+// insertion point for why they were not built out.
+const { buildDecisionPackage: buildHcDecisionPackage } = require('./server/healthcare/decision-engine');
+const { buildPortfolioTwin: buildHcPortfolioTwin } = require('./server/healthcare/portfolio-intelligence');
+const { buildDecisionPackage: buildSchoolsDecisionPackage } = require('./server/schools/decision-engine');
+const { buildPortfolioTwin: buildSchoolsPortfolioTwin } = require('./server/schools/portfolio-intelligence');
 const { buildPortfolioTwin } = require('./server/pm/portfolio-intelligence');
 const { calculateRisk } = require('./server/pm/risk-engine');
 const { forecast } = require('./server/pm/forecast-engine');
@@ -2071,15 +2083,19 @@ const clientUsage = {}; // v3
 const DAILY_ANALYSIS_LIMIT = parseInt(process.env.DAILY_ANALYSIS_LIMIT, 10) || 200;
 
 // ── HC NODE REPORT STORE ──────────────────────────────────────────────────────
-// In-memory store for node reports relayed from war rooms → strategist → exec
+// In-memory store for node reports relayed from war rooms → strategist → exec,
+// with a durable write-through to the ledger (2026-08-29) so a restart
+// doesn't silently empty the queue -- same fix Mortgage/Construction already
+// have (see /api/mortgage/node-report below). Also now feeds the HC
+// portfolio-intelligence twin (server/healthcare/portfolio-intelligence.js).
 const hcNodeReports = {}; // keyed by node id
 
 // GCU PILOT FIX 2026-08-26: PHI-bearing node reports, no auth check.
-app.post('/api/hc/node-report', requireAnyAuth, (req, res) => {
+app.post('/api/hc/node-report', requireAnyAuth, async (req, res) => {
   try {
     const { nodeId, nodeLabel, report, analysisText, denialCodes, claimIds, severity, kpi, ts } = req.body || {};
     if (!nodeId) return res.status(400).json({ ok: false, error: 'nodeId required' });
-    hcNodeReports[nodeId] = {
+    const doc = {
       nodeId,
       nodeLabel: nodeLabel || nodeId,
       report: report || '',
@@ -2088,33 +2104,125 @@ app.post('/api/hc/node-report', requireAnyAuth, (req, res) => {
       claimIds: claimIds || [],
       severity: severity || 'INFO',
       kpi: kpi || {},
-      ts: ts || Date.now(),
-      receivedAt: Date.now()
+      ts: ts || Date.now()
     };
+    hcNodeReports[nodeId] = { ...doc, receivedAt: Date.now() };
     console.log('[HC NODE REPORT] stored:', nodeId, 'severity:', severity);
+
+    // Write-through to durable storage, same pattern as Mortgage/Construction:
+    // best-effort, in-memory copy above already succeeded, so a ledger
+    // failure here degrades to "survives until next restart" rather than
+    // failing the request.
+    try {
+      await tsmLedger.verticalUpsertNodeReport('hc', nodeId, doc);
+    } catch (ledgerErr) {
+      console.warn('[HC NODE REPORT] ledger write-through failed (in-memory copy still stored):', ledgerErr.message);
+    }
+
     return res.json({ ok: true, nodeId, stored: true });
   } catch (e) {
     return res.status(500).json({ ok: false, error: e.message });
   }
 });
 
-app.get('/api/hc/node-reports', requireAnyAuth, (req, res) => {
+app.get('/api/hc/node-reports', requireAnyAuth, async (req, res) => {
   try {
-    const reports = Object.values(hcNodeReports).sort((a, b) => b.ts - a.ts);
-    return res.json({ ok: true, reports, count: reports.length });
+    const memReports = Object.values(hcNodeReports);
+    if (memReports.length) {
+      const reports = memReports.sort((a, b) => b.ts - a.ts);
+      return res.json({ ok: true, reports, count: reports.length, source: 'memory' });
+    }
+    // In-memory cache is empty -- most likely a fresh process since the
+    // last restart. Fall back to durable storage rather than returning an
+    // empty queue that looks identical to "no findings exist."
+    const persisted = await tsmLedger.verticalListNodeReports('hc');
+    return res.json({ ok: true, reports: persisted, count: persisted.length, source: 'ledger' });
   } catch (e) {
     return res.status(500).json({ ok: false, error: e.message });
   }
 });
 
-app.delete('/api/hc/node-reports', requireAnyAuth, (req, res) => {
+app.delete('/api/hc/node-reports', requireAnyAuth, async (req, res) => {
   const { nodeId } = req.body || req.query || {};
-  if (nodeId) {
-    delete hcNodeReports[nodeId];
-    return res.json({ ok: true, cleared: nodeId });
+  try {
+    if (nodeId) {
+      delete hcNodeReports[nodeId];
+      await tsmLedger.verticalDeleteNodeReport('hc', nodeId);
+      return res.json({ ok: true, cleared: nodeId });
+    }
+    Object.keys(hcNodeReports).forEach(k => delete hcNodeReports[k]);
+    await tsmLedger.verticalDeleteNodeReport('hc', null);
+    return res.json({ ok: true, cleared: 'all' });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: e.message });
   }
-  Object.keys(hcNodeReports).forEach(k => delete hcNodeReports[k]);
-  return res.json({ ok: true, cleared: 'all' });
+});
+
+// ── SCHOOLS NODE REPORT STORE (2026-08-29) ──────────────────────────────────
+// New: Schools had no node-report ingestion endpoint at all before this --
+// only the free-text /api/schools/analysis route existed. Added so
+// war-room-level grant/monitoring/compliance findings have somewhere durable
+// to land, same pattern as HC/Mortgage/Construction above (in-memory +
+// ledger write-through from the start, not retrofitted).
+const schoolsNodeReports = {}; // keyed by node id
+
+app.post('/api/schools/node-report', requireAnyAuth, async (req, res) => {
+  try {
+    const { nodeId, nodeLabel, report, analysisText, grantIds, severity, kpi, ts } = req.body || {};
+    if (!nodeId) return res.status(400).json({ ok: false, error: 'nodeId required' });
+    const doc = {
+      nodeId,
+      nodeLabel: nodeLabel || nodeId,
+      report: report || '',
+      analysisText: analysisText || '',
+      grantIds: grantIds || [],
+      severity: severity || 'INFO',
+      kpi: kpi || {},
+      ts: ts || Date.now()
+    };
+    schoolsNodeReports[nodeId] = { ...doc, receivedAt: Date.now() };
+    console.log('[SCHOOLS NODE REPORT] stored:', nodeId, 'severity:', severity);
+
+    try {
+      await tsmLedger.verticalUpsertNodeReport('schools', nodeId, doc);
+    } catch (ledgerErr) {
+      console.warn('[SCHOOLS NODE REPORT] ledger write-through failed (in-memory copy still stored):', ledgerErr.message);
+    }
+
+    return res.json({ ok: true, nodeId, stored: true });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.get('/api/schools/node-reports', requireAnyAuth, async (req, res) => {
+  try {
+    const memReports = Object.values(schoolsNodeReports);
+    if (memReports.length) {
+      const reports = memReports.sort((a, b) => b.ts - a.ts);
+      return res.json({ ok: true, reports, count: reports.length, source: 'memory' });
+    }
+    const persisted = await tsmLedger.verticalListNodeReports('schools');
+    return res.json({ ok: true, reports: persisted, count: persisted.length, source: 'ledger' });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+app.delete('/api/schools/node-reports', requireAnyAuth, async (req, res) => {
+  const { nodeId } = req.body || req.query || {};
+  try {
+    if (nodeId) {
+      delete schoolsNodeReports[nodeId];
+      await tsmLedger.verticalDeleteNodeReport('schools', nodeId);
+      return res.json({ ok: true, cleared: nodeId });
+    }
+    Object.keys(schoolsNodeReports).forEach(k => delete schoolsNodeReports[k]);
+    await tsmLedger.verticalDeleteNodeReport('schools', null);
+    return res.json({ ok: true, cleared: 'all' });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: e.message });
+  }
 });
 
 
@@ -4965,6 +5073,132 @@ app.post('/api/construction/portfolio-intelligence', requireRole(PM_INTERNAL_ROL
   }
 });
 // ── END CONSTRUCTION PORTFOLIO INTELLIGENCE ─────────────────────────────────
+
+// ── HEALTHCARE INTELLIGENCE V3 (2026-08-29) ─────────────────────────────────
+// Same governed decision/action pattern as Mortgage/Construction above, ported
+// via the shared decision-engine core with HC's own domain config
+// (server/healthcare/hc-domain-config.js). Reuses PM's action-engine.js,
+// intelligence-v3.js, and resolvePmAction as-is. Action ids prefixed
+// HC-DEC/ACT-HC-DEC so they cannot collide with MTG-DEC/CON-DEC in the
+// shared pm_action_status collection. Reuses PM_INTERNAL_ROLES -- there is
+// no separate HC-specific internal role set defined in this codebase.
+app.post('/api/hc/intelligence-v3', requireRole(PM_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const payload = req.body || {};
+
+    const hasCanonicalDecisions =
+      Array.isArray(payload.decisions) &&
+      payload.decisions.length > 0;
+
+    const decisionPackage = hasCanonicalDecisions
+      ? payload
+      : buildHcDecisionPackage(payload);
+
+    const decisions =
+      (decisionPackage.intelligence && decisionPackage.intelligence.decisions) ||
+      decisionPackage.decisions ||
+      [];
+
+    const freshActions = pmActionEngine.buildActionQueue(decisions);
+    const overlaidActions = await Promise.all(freshActions.map(resolvePmAction));
+
+    res.json(buildPmIntelligenceV3({ ...decisionPackage, actions: overlaidActions }));
+  } catch (err) {
+    console.error('[Healthcare Intelligence V3]', err);
+    res.status(500).json({
+      ok: false,
+      error: 'Healthcare intelligence v3 generation failed'
+    });
+  }
+});
+// ── END HEALTHCARE INTELLIGENCE V3 ──────────────────────────────────────────
+
+// ── HEALTHCARE PORTFOLIO INTELLIGENCE (2026-08-29) ──────────────────────────
+// Same role as the Mortgage/Construction versions above.
+app.post('/api/hc/portfolio-intelligence', requireRole(PM_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const payload = req.body || {};
+    let nodeReports = [];
+    try {
+      nodeReports = await tsmLedger.verticalListNodeReports('hc');
+    } catch (ledgerErr) {
+      console.warn('[Healthcare Portfolio Intelligence] ledger read failed, falling back to payload only:', ledgerErr.message);
+    }
+    const twin = buildHcPortfolioTwin(payload, nodeReports);
+    res.json({
+      ok: true,
+      engine: 'hc-portfolio-intelligence-v1',
+      generatedAt: new Date().toISOString(),
+      twin,
+      governance: { mode: 'DETERMINISTIC', llmRequired: false, humanApprovalRequired: true, writeBackToSourceSystems: false }
+    });
+  } catch (err) {
+    console.error('[Healthcare Portfolio Intelligence]', err);
+    res.status(500).json({ ok: false, error: 'Healthcare portfolio intelligence generation failed' });
+  }
+});
+// ── END HEALTHCARE PORTFOLIO INTELLIGENCE ───────────────────────────────────
+
+// ── SCHOOLS INTELLIGENCE V3 (2026-08-29) ────────────────────────────────────
+// Same pattern as Healthcare above, using Schools' own domain config
+// (server/schools/schools-domain-config.js). Action ids prefixed
+// SCH-DEC/ACT-SCH-DEC.
+app.post('/api/schools/intelligence-v3', requireRole(PM_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const payload = req.body || {};
+
+    const hasCanonicalDecisions =
+      Array.isArray(payload.decisions) &&
+      payload.decisions.length > 0;
+
+    const decisionPackage = hasCanonicalDecisions
+      ? payload
+      : buildSchoolsDecisionPackage(payload);
+
+    const decisions =
+      (decisionPackage.intelligence && decisionPackage.intelligence.decisions) ||
+      decisionPackage.decisions ||
+      [];
+
+    const freshActions = pmActionEngine.buildActionQueue(decisions);
+    const overlaidActions = await Promise.all(freshActions.map(resolvePmAction));
+
+    res.json(buildPmIntelligenceV3({ ...decisionPackage, actions: overlaidActions }));
+  } catch (err) {
+    console.error('[Schools Intelligence V3]', err);
+    res.status(500).json({
+      ok: false,
+      error: 'Schools intelligence v3 generation failed'
+    });
+  }
+});
+// ── END SCHOOLS INTELLIGENCE V3 ─────────────────────────────────────────────
+
+// ── SCHOOLS PORTFOLIO INTELLIGENCE (2026-08-29) ─────────────────────────────
+// Same role as the Healthcare version above.
+app.post('/api/schools/portfolio-intelligence', requireRole(PM_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const payload = req.body || {};
+    let nodeReports = [];
+    try {
+      nodeReports = await tsmLedger.verticalListNodeReports('schools');
+    } catch (ledgerErr) {
+      console.warn('[Schools Portfolio Intelligence] ledger read failed, falling back to payload only:', ledgerErr.message);
+    }
+    const twin = buildSchoolsPortfolioTwin(payload, nodeReports);
+    res.json({
+      ok: true,
+      engine: 'schools-portfolio-intelligence-v1',
+      generatedAt: new Date().toISOString(),
+      twin,
+      governance: { mode: 'DETERMINISTIC', llmRequired: false, humanApprovalRequired: true, writeBackToSourceSystems: false }
+    });
+  } catch (err) {
+    console.error('[Schools Portfolio Intelligence]', err);
+    res.status(500).json({ ok: false, error: 'Schools portfolio intelligence generation failed' });
+  }
+});
+// ── END SCHOOLS PORTFOLIO INTELLIGENCE ──────────────────────────────────────
 
 // Advances one action through OPEN -> ACKNOWLEDGED -> IN_PROGRESS -> RESOLVED.
 // VERIFIED is deliberately NOT reachable here -- it requires a recorded
