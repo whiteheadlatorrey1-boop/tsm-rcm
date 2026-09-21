@@ -2514,6 +2514,7 @@ const BPO_PROVIDER_SECTION_KEYS = {
   'appeal-evidence': 'appealEffectiveness',
 };
 const BPO_PROVIDER_SNAPSHOTS_COLLECTION = 'bpo_provider_report_snapshots';
+const BPO_PROVIDER_READ_LIMIT = 5000; // work items read per report; hitting it sets report.truncated
 
 function bpoProviderValidationError(message) {
   const e = new Error(message);
@@ -2638,7 +2639,8 @@ async function bpoBuildProviderReport({ clientId, vertical, period, sections, vi
   const query = {};
   if (clientId) query.clientId = clientId;
   if (vertical) query.vertical = vertical;
-  const items = await col.find(query).limit(5000).toArray();
+  const items = await col.find(query).limit(BPO_PROVIDER_READ_LIMIT).toArray();
+  const truncated = items.length >= BPO_PROVIDER_READ_LIMIT; // more work items may exist than were read
 
   const cur = bpoProviderMetrics(items, bounds);
   const scored = cur._scored;
@@ -2778,6 +2780,7 @@ async function bpoBuildProviderReport({ clientId, vertical, period, sections, vi
     vertical: vertical || 'all',
     period: bounds ? bounds.label : 'all',
     sections: wanted,
+    truncated,
     periodOverPeriod,
   };
   for (const s of wanted) report[BPO_PROVIDER_SECTION_KEYS[s]] = full[BPO_PROVIDER_SECTION_KEYS[s]];
@@ -2839,10 +2842,33 @@ async function bpoBuildProviderReport({ clientId, vertical, period, sections, vi
       };
     } catch (e) { calibrationSignals = null; }
 
-    const caseIds = new Set(items.map(i => i.caseId));
-    const auditAll = await bpoListAuditLogs({ limit: 500 });
-    const recentAudit = auditAll
-      .filter(a => !clientId || caseIds.has(a.entityId))
+    // Recent audit. All-clients: newest rows overall. Client-scoped: query that
+    // client's own cases (90 most recently active, in chunks of 30) so another
+    // client's newer activity can never crowd this client's history out.
+    let auditRows;
+    if (clientId) {
+      const recentIds = items.slice()
+        .sort((x, y) => String(y.outcomeRecordedAt || y.updatedAt || y.createdAt || '').localeCompare(String(x.outcomeRecordedAt || x.updatedAt || x.createdAt || '')))
+        .slice(0, 90).map(i => i.caseId).filter(Boolean);
+      try {
+        const auditCol = await bpoAuditLogsCollection();
+        auditRows = [];
+        for (let n = 0; n < recentIds.length; n += 30) {
+          const chunk = recentIds.slice(n, n + 30);
+          const rows = await auditCol.find({ entityId: { $in: chunk } }).sort({ ts: -1 }).limit(25).toArray();
+          auditRows.push(...rows);
+        }
+      } catch (e) {
+        // $in is unverified on this Firestore compat layer: fall back to the old
+        // global-newest-500 filter rather than failing the whole internal report.
+        const caseIds = new Set(items.map(i => i.caseId));
+        auditRows = (await bpoListAuditLogs({ limit: 500 })).filter(a => caseIds.has(a.entityId));
+      }
+      auditRows.sort((x, y) => String(y.ts || '').localeCompare(String(x.ts || '')));
+    } else {
+      auditRows = await bpoListAuditLogs({ limit: 25 });
+    }
+    const recentAudit = auditRows
       .slice(0, 25)
       .map(a => ({ ts: a.ts, actor: a.actor || null, action: a.action, entityType: a.entityType, entityId: a.entityId }));
     const cfg = await bpoGetCalibrationConfig();

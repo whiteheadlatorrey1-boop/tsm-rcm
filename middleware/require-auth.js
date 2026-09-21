@@ -25,11 +25,25 @@ function verifySession(token) {
   
   try {
     const payload = JSON.parse(Buffer.from(body, "base64url").toString());
-    if (payload.exp && Date.now() > payload.exp) return null;
+    // Fail closed: every session this app signs carries a role and a numeric exp.
+    // A signed payload without them is malformed -- never default it to admin
+    // or let it live forever.
+    if (!payload || typeof payload.role !== "string" || !payload.role) return null;
+    if (typeof payload.exp !== "number" || Date.now() > payload.exp) return null;
     return payload;
   } catch {
     return null;
   }
+}
+
+// Constant-time string compare for secrets (admin password, gate header).
+// Hashing first makes both buffers equal length so length is not leaked;
+// empty or non-string input never matches.
+function safeEqual(a, b) {
+  if (typeof a !== "string" || typeof b !== "string" || !a || !b) return false;
+  const ha = crypto.createHash("sha256").update(a).digest();
+  const hb = crypto.createHash("sha256").update(b).digest();
+  return crypto.timingSafeEqual(ha, hb);
 }
 
 function getCookie(req, name) {
@@ -49,7 +63,7 @@ function requireRole(allowedRoles) {
   return function (req, res, next) {
     const session = verifySession(getCookie(req, "tsm_session"));
     if (!session) return res.status(401).json({ ok: false, error: "Unauthorized" });
-    const role = session.role || "admin";
+    const role = session.role;
     if (!allowedRoles.includes(role)) {
       return res.status(403).json({ ok: false, error: `Requires role: ${allowedRoles.join(" or ")}` });
     }
@@ -61,8 +75,8 @@ function requireRole(allowedRoles) {
 function requireAnyAuth(req, res, next) {
   const session = verifySession(getCookie(req, "tsm_session"));
   if (!session) return res.status(401).json({ ok: false, error: "Unauthorized" });
-  req.tsmSession = { role: session.role || "admin", clientId: session.clientId || null, staffId: session.staffId || null, label: session.label || null, tenantId: session.tenantId || null };
+  req.tsmSession = { role: session.role, clientId: session.clientId || null, staffId: session.staffId || null, label: session.label || null, tenantId: session.tenantId || null };
   next();
 }
 
-module.exports = { requireAuth, requireRole, requireAnyAuth, verifySession, getCookie, signSession, SESSION_TTL_MS };
+module.exports = { requireAuth, requireRole, requireAnyAuth, verifySession, getCookie, signSession, safeEqual, SESSION_TTL_MS };

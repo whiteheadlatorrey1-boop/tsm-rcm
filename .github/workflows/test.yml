@@ -1,0 +1,30 @@
+name: Tests
+
+# Runs every offline regression suite (scripts/test-bpo-*.js and
+# scripts/test-auth-*.js) on push to main and on pull requests. Pushes to
+# main cannot be blocked from here -- a red run is the signal to fix forward.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci --ignore-scripts
+
+      - run: node --check server.js
+
+      - run: npm test
+        env:
+          TSM_SESSION_SECRET: ci-test-secret

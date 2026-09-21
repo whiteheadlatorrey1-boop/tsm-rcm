@@ -176,6 +176,23 @@ function seed(caseId, f) {
   const list = await ledger.bpoListProviderSnapshots({ clientId: 'prov-a' });
   ok(list.length === 1, 'snapshot history lists periods');
 
+  // ── Hardening: truncation flag + client-scoped audit ──
+  ok(c.truncated === false && i.truncated === false, 'small scope is not flagged truncated');
+  for (let n = 0; n < 5000; n++) {
+    getCollection('bpo_work_items')._docs.push({ caseId: 'BIG' + n, clientId: 'prov-big', vertical: 'healthcare', stage: 'exec-approved', status: 'open', createdAt: '2026-09-01T00:00:00.000Z' });
+  }
+  const big = await ledger.bpoBuildProviderReport({ clientId: 'prov-big', period: '2026-09', view: 'client' });
+  ok(big.truncated === true, 'report at the 5,000 work-item read limit is flagged truncated');
+
+  const auditDocs = getCollection('bpo_audit_logs')._docs;
+  auditDocs.push({ ts: '2026-09-01T00:00:00.000Z', actor: 'ann', action: 'stage_change', entityType: 'work_item', entityId: 'A1' });
+  auditDocs.push({ ts: '2026-09-02T00:00:00.000Z', actor: 'bob', action: 'stage_change', entityType: 'work_item', entityId: 'A2' });
+  for (let n = 0; n < 600; n++) auditDocs.push({ ts: '2026-09-10T00:00:00.000Z', actor: 'zed', action: 'note', entityType: 'work_item', entityId: 'B1' });
+  const ia = await ledger.bpoBuildProviderReport({ clientId: 'prov-a', period: '2026-09', view: 'internal' });
+  const ra = ia.internal.governance.recentAudit;
+  ok(ra.length === 2 && ra.every(x => x.entityId === 'A1' || x.entityId === 'A2'), 'client-scoped audit ignores another client even when its activity is far newer');
+  ok(ra[0].entityId === 'A2', 'recent audit is newest first');
+
   console.log('\n' + passed + ' passed, ' + failed + ' failed');
   process.exit(failed ? 1 : 0);
 })().catch((e) => { console.error(e); process.exit(1); });

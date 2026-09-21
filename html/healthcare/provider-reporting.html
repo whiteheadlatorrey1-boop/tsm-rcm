@@ -273,8 +273,8 @@ function renderAppeals(r){
 function renderInternal(r){
   const n = r.internal;
   if (!n) return '<div class="empty">Internal view is not available for this session.</div>';
-  const tiers = Object.entries(n.predictionVsActual.byPredictedLikelihood).map(([t, v]) => [t, v.predicted, pct(v.calibrationRate), v.avgVariance ?? '—']);
-  const flagged = n.calibrationSignals ? n.calibrationSignals.flagged.map(f => [escapeHtml(f.vertical + ' / ' + f.payer + ' / ' + f.denialCategory + ' / ' + f.action), f.predictedLikelihood, f.sampleSize, pct(f.observedRecoveryRate), f.signal]) : [];
+  const tiers = Object.entries(n.predictionVsActual.byPredictedLikelihood).map(([t, v]) => [escapeHtml(t), v.predicted, pct(v.calibrationRate), v.avgVariance ?? '—']);
+  const flagged = n.calibrationSignals ? n.calibrationSignals.flagged.map(f => [escapeHtml(f.vertical + ' / ' + f.payer + ' / ' + f.denialCategory + ' / ' + f.action), escapeHtml(f.predictedLikelihood), f.sampleSize, pct(f.observedRecoveryRate), escapeHtml(f.signal)]) : [];
   return '<div class="kpi-row">' +
     kpi('Likely bottleneck', escapeHtml(n.pipeline.likelyBottleneckStage || 'none')) +
     kpi('Overdue open', n.slaFailures.overdueOpen) +
@@ -349,7 +349,7 @@ async function load(){
     const j = await r.json();
     if (!j.ok) throw new Error(j.error || 'request failed');
     LAST = j.report;
-    document.getElementById('generated-at').textContent = (snapshot ? 'Snapshot ' + j.periodLabel + ' · ' : '') + 'Generated ' + new Date(snapshot ? j.generatedAt : LAST.generatedAt).toLocaleString();
+    document.getElementById('generated-at').textContent = (snapshot ? 'Snapshot ' + j.periodLabel + ' · ' : '') + 'Generated ' + new Date(snapshot ? j.generatedAt : LAST.generatedAt).toLocaleString() + (LAST.truncated ? ' · WARNING: truncated at 5,000 work items' : '');
     paintTabs();
     paint();
   } catch (e) {

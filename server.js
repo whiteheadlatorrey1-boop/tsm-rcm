@@ -77,8 +77,8 @@ app.use((req, res, next) => {
   const __session = __verifySessionForUser(__getCookieForUser(req, 'tsm_session'));
   req.session = req.session || {};
   if (__session) {
-    req.session.user = { id: __session.staffId || __session.clientId || 'admin', role: __session.role || 'admin' };
-    req.user = { role: __session.role || 'admin', actor: __session.staffId || __session.clientId || 'admin', clientId: __session.clientId || null };
+    req.session.user = { id: __session.staffId || __session.clientId || 'admin', role: __session.role };
+    req.user = { role: __session.role, actor: __session.staffId || __session.clientId || 'admin', clientId: __session.clientId || null };
   } else {
     req.session.user = null;
     req.user = null;
@@ -90,7 +90,7 @@ const PORT = process.env.PORT || 8080;
 const HTML_ROOT = path.join(__dirname, "html");
 // AUTH REMOVED — in-house use only
 // const { tsmAuthMiddleware } = require('./html/tsm-auth');
-const { requireAuth, requireRole, requireAnyAuth, signSession, verifySession, getCookie, SESSION_TTL_MS } = require('./middleware/require-auth');
+const { requireAuth, requireRole, requireAnyAuth, signSession, verifySession, getCookie, safeEqual, SESSION_TTL_MS } = require('./middleware/require-auth');
 const clientRegistry = require('./middleware/client-registry');
 const staffRegistry = require('./middleware/staff-registry');
 
@@ -251,7 +251,7 @@ app.use('/api/bpo', (req, res, next) => {
         path: req.originalUrl,
         status: res.statusCode,
         durationMs: Date.now() - start,
-        role: session ? (session.role || 'admin') : null,
+        role: session ? session.role : null,
         actor: session ? (session.label || session.role || null) : null,
         clientId: session ? (session.clientId || null) : null,
       }));
@@ -312,7 +312,7 @@ function validateQueryBody(req, res, next) {
 app.use((req, res, next) => {
   if (!process.env.CF_GATE_SECRET) return next(); // not configured — no-op
   if (req.path === '/health') return next(); // Fly's own healthcheck hits origin directly
-  if (req.get('x-tsm-cf-gate') === process.env.CF_GATE_SECRET) return next();
+  if (safeEqual(req.get('x-tsm-cf-gate') || '', process.env.CF_GATE_SECRET)) return next();
   return res.status(403).send('Forbidden');
 });
 
@@ -334,7 +334,7 @@ app.post('/api/auth/login', loginLimiter, (req, res) => {
   }
 
   let payload;
-  if (credential === process.env.TSM_ADMIN_PASSWORD) {
+  if (safeEqual(credential, process.env.TSM_ADMIN_PASSWORD)) {
     payload = { role: 'admin', exp: Date.now() + SESSION_TTL_MS };
   } else {
     const staff = staffRegistry.findStaffByCode(credential);
@@ -373,7 +373,7 @@ app.get('/api/auth/status', (req, res) => {
   res.json({
     ok: true,
     authenticated: true,
-    role: session.role || 'admin', // sessions signed before this change had no role — treat as admin
+    role: session.role,
     clientId: session.clientId || null,
     staffId: session.staffId || null,
     label: session.label || null,
@@ -397,7 +397,7 @@ app.get('/api/auth/status', (req, res) => {
 function requireAdmin(req, res, next) {
   const session = verifySession(getCookie(req, 'tsm_session'));
   if (!session) return res.status(401).json({ ok: false, error: 'Unauthorized' });
-  const role = session.role || 'admin';
+  const role = session.role;
   if (role !== 'admin') return res.status(403).json({ ok: false, error: 'Admin access required' });
   req.tsmSession = { role: 'admin', clientId: null, label: null };
   next();
@@ -411,7 +411,7 @@ function requireAdmin(req, res, next) {
 function requireStaffAuth(req, res, next) {
   const session = verifySession(getCookie(req, 'tsm_session'));
   if (!session) return res.status(401).json({ ok: false, error: 'Unauthorized' });
-  const role = session.role || 'admin';
+  const role = session.role;
   if (!['admin', 'manager', 'analyst'].includes(role)) {
     return res.status(403).json({ ok: false, error: 'Staff access required' });
   }
@@ -2009,6 +2009,7 @@ function bpoRenderProviderReportPdf(doc, report) {
     .text(`Provider: ${report.clientId || 'All providers'}   Period: ${report.period}   View: ${report.view}`)
     .text(`Generated ${report.generatedAt}`);
   doc.fillColor('#000');
+  if (report.truncated) doc.fillColor('#b00').text('WARNING: this report reached the 5,000 work-item read limit and may be incomplete.').fillColor('#000');
 
   if (report.executiveSummary) {
     const e = report.executiveSummary;
