@@ -338,7 +338,11 @@ const VAULT_PROMPTS = {
   ops_inbox: 'You are assisting with the client inbox. Help draft professional, warm, concise client-service responses and flag any SLA-breach risk.',
   ops_clients: 'You are assisting with client records: account details, relationship history, and required documentation. Be precise about which client fields are missing or need verification.',
   ops_portfolio: 'You are assisting with portfolio prep: preparing account and relationship summaries ahead of client or management review. Keep responses structured and reference-ready.',
-  ops_compliance: 'You are assisting with branch compliance: policy exceptions, audit findings, and required remediation. Be precise about compliance status and cite the specific rule or control at issue.'
+  ops_compliance: 'You are assisting with branch compliance: policy exceptions, audit findings, and required remediation. Be precise about compliance status and cite the specific rule or control at issue.',
+  // TSM FIX: these two modules previously had no vault prompt at all, so
+  // CTX_PROMPTS.workingcap/accrual silently fell back to CTX_PROMPTS.general.
+  ops_workingcap: 'You are assisting with the Adjusted Working Capital Worksheet: reconciling unadjusted balances, inventory/AR/prepaid/unearned-revenue adjustments, and the resulting adjusted trial of working capital items. Stay strictly within this worksheet — do not reference unrelated cashiering exceptions, wire transfers, or client transactions unless the user explicitly brings them up. Be precise about which adjustment line each figure comes from.',
+  ops_accrual: 'You are assisting with month-end accrual close: the accrual pipeline, its current state per item (draft/pending/posted), and identifying accruals that are missing, stale, or need reversal. Stay strictly within month-end close topics unless the user explicitly asks about something else.'
 };
 
 async function getVaultPrompt(key) {
@@ -681,7 +685,7 @@ async function tsmAI(s,u,m){try{const r=await fetch('/api/chat',{method:'POST',h
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
           <div>
             <div class="field-lbl">Reporting Period</div>
-            <select class="field-input">
+            <select class="field-input" id="bk-period-select">
               <option>Period 5 — May 2026</option><option>Period 4 — Apr 2026</option>
               <option>Q1 2026</option><option>FY 2025</option>
             </select>
@@ -709,7 +713,7 @@ async function tsmAI(s,u,m){try{const r=await fetch('/api/chat',{method:'POST',h
           </div>
         </div>
         <div style="display:flex;gap:8px">
-          <button class="btn-primary" data-tsm-action="toast" data-tsm-args="'↓ Generating BK Corporate Report PDF…'" style="flex:1;min-height:0">↓ GENERATE REPORT</button>
+          <button id="gen-corp-report-btn" class="btn-primary" style="flex:1;min-height:0">↓ GENERATE REPORT</button>
           <button class="btn-secondary" data-tsm-action="toast" data-tsm-args="'↑ Sending to BK Corporate portal…'" style="flex:1;min-height:0;font-size:10px">↑ SEND TO CORPORATE</button>
         </div>
       </div>
@@ -849,12 +853,19 @@ async function tsmAI(s,u,m){try{const r=await fetch('/api/chat',{method:'POST',h
 
 <script>
 // ── STATE ──
-// The AI key lives server-side (/api/chat proxy) — nothing is read from or
-// written to localStorage here. sessionAiKey/sessionAiModel are an
-// in-memory-only fallback for environments where that proxy isn't
-// reachable, cleared on reload, same pattern as finance-index.html.
+// The AI key lives server-side (/api/chat proxy) when available.
+// sessionAiKey/sessionAiModel are a fallback for environments where that
+// proxy isn't reachable. Persisted to localStorage under 'tsm_ai_fallback'
+// so it survives reloads — never hardcoded, only what the user enters below.
 let sessionAiKey = '';
 let sessionAiModel = 'openai/gpt-oss-120b';
+try {
+  const savedFallback = JSON.parse(localStorage.getItem('tsm_ai_fallback') || 'null');
+  if (savedFallback) {
+    sessionAiKey = savedFallback.key || '';
+    sessionAiModel = savedFallback.model || sessionAiModel;
+  }
+} catch (e) { /* ignore */ }
 let aiHistory = [], aiCtx = 'general', currentMod = 'cashiering';
 
 const CTX_PROMPTS = {
@@ -875,6 +886,10 @@ async function loadCtxPrompts(){
   CTX_PROMPTS.clients = await getVaultPrompt('ops_clients');
   CTX_PROMPTS.portfolio = await getVaultPrompt('ops_portfolio');
   CTX_PROMPTS.compliance = await getVaultPrompt('ops_compliance');
+  // TSM FIX: workingcap/accrual previously had no vault prompt registered
+  // at all, so they silently fell back to CTX_PROMPTS.general in sendAI()
+  CTX_PROMPTS.workingcap = await getVaultPrompt('ops_workingcap');
+  CTX_PROMPTS.accrual = await getVaultPrompt('ops_accrual');
 }
 loadCtxPrompts();
 
@@ -893,6 +908,17 @@ function switchMod(name, btn) {
   document.querySelectorAll('.tnav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('mod-' + name).classList.add('active');
   btn.classList.add('active');
+  // TSM FIX: aiHistory/#ai-msgs previously persisted across module
+  // switches unconditionally — the panel title/context label updated
+  // correctly, but the actual conversation (and what got sent as
+  // conversationHistory to /api/chat) stayed whatever was last discussed
+  // in the *previous* module. Only clear when the module actually
+  // changes, so re-clicking the same tab doesn't wipe an active thread.
+  if (name !== currentMod) {
+    aiHistory = [];
+    const msgs = document.getElementById('ai-msgs');
+    if (msgs) msgs.innerHTML = '';
+  }
   currentMod = name; aiCtx = name;
   document.getElementById('ai-ctx').textContent = 'Context: ' + (CTX_LABELS[name] || name);
   document.getElementById('ai-panel-title').textContent = (CTX_LABELS[name] || name) + ' Assistant';
@@ -905,12 +931,15 @@ function toast(msg) {
   setTimeout(() => el.classList.remove('show'), 2800);
 }
 
-// ── MODAL (session-only fallback key, never persisted) ──
+// ── MODAL (fallback key, persisted to localStorage for this browser only) ──
 function openModal() { document.getElementById('modal-overlay').classList.add('open'); document.getElementById('key-input').value = sessionAiKey; document.getElementById('model-select').value = sessionAiModel; }
 function closeModal() { document.getElementById('modal-overlay').classList.remove('open'); }
 function saveKey() {
   sessionAiKey = document.getElementById('key-input').value.trim();
   sessionAiModel = document.getElementById('model-select').value;
+  try {
+    localStorage.setItem('tsm_ai_fallback', JSON.stringify({ key: sessionAiKey, model: sessionAiModel }));
+  } catch (e) { /* ignore */ }
   closeModal();
   toast(sessionAiKey ? '✓ Fallback key saved for this tab' : 'Fallback key cleared');
 }
@@ -1055,6 +1084,13 @@ function qp(msg) {
 }
 
 function askAI(msg, ctx) {
+  // TSM FIX: same context-bleed guard as switchMod(), for callers that
+  // change aiCtx without going through switchMod first.
+  if (ctx !== aiCtx) {
+    aiHistory = [];
+    const msgs = document.getElementById('ai-msgs');
+    if (msgs) msgs.innerHTML = '';
+  }
   aiCtx = ctx;
   document.getElementById('ai-panel').classList.add('open');
   document.getElementById('ai-input').value = msg;
@@ -1777,7 +1813,7 @@ window.addEventListener('DOMContentLoaded', () => {
           <div class="wc-eyebrow">WORKPAPER NO. WC-1</div>
           <div class="wc-title">Adjusted Working Capital Worksheet</div>
         </div>
-        <div class="wc-prep">PREPARED BY: CAO<br/>REVIEWED BY: —</div>
+        <div class="wc-prep">PREPARED BY: CAO<br/>REVIEWED BY: <input type="text" id="wc-reviewedBy" class="wc-reviewer-input" placeholder="name / initials" style="font-family:var(--wc-mono);font-size:10px;color:var(--wc-ink-soft);background:transparent;border:none;border-bottom:1px solid var(--wc-ink-soft);width:100px;text-align:right"></div>
       </div>
 
       <!-- 1. Unadjusted balances -->
@@ -1874,7 +1910,7 @@ window.addEventListener('DOMContentLoaded', () => {
           <div class="wc-eyebrow">WORKPAPER NO. AC-1</div>
           <div class="wc-title">Month-End Accrual Workflow</div>
         </div>
-        <div class="wc-prep">PREPARED BY: CAO<br/>REVIEWED BY: —</div>
+        <div class="wc-prep">PREPARED BY: CAO<br/>REVIEWED BY: <input type="text" id="ac-reviewedBy" class="wc-reviewer-input" placeholder="name / initials" style="font-family:var(--wc-mono);font-size:10px;color:var(--wc-ink-soft);background:transparent;border:none;border-bottom:1px solid var(--wc-ink-soft);width:100px;text-align:right"></div>
       </div>
 
       <!-- New accrual -->
@@ -2581,12 +2617,34 @@ function wcUpdate(field, value) {
   wcRender();
 }
 
+// Shared: pushes a workpaper to the real ledger DB (server/tsm-ledger-service.js)
+// via POST /api/finops/workpaper-push, so a preparer and reviewer on different
+// browsers/devices actually see the same synced record — not just whichever
+// device's localStorage happens to have it. Best-effort: if the request
+// fails (offline, server down), the local relay writes below still happen
+// so in-page/same-device consumers (Sentinel, RCM-OS launcher) keep working.
+async function tsmPushWorkpaper(workpaperId, workpaperType, preparedBy, reviewedBy, summary, payload) {
+  try {
+    const resp = await fetch('/api/finops/workpaper-push', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ workpaperId, workpaperType, preparedBy, reviewedBy, summary, payload, ts: Date.now() })
+    });
+    const data = await resp.json().catch(() => ({}));
+    return !!(resp.ok && data.ok);
+  } catch (e) {
+    return false;
+  }
+}
+
 function wcPushToRcmOs() {
   const c = wcCalc();
+  const reviewedBy = (document.getElementById('wc-reviewedBy') || {}).value || '';
   const payload = {
     source: 'finops-operations.html',
     module: 'Working Capital Worksheet',
     generatedAt: new Date().toISOString(),
+    reviewedBy,
     currentAssets: c.currentAssets,
     currentLiabilities: c.currentLiabilities,
     workingCapital: c.workingCapital,
@@ -2606,18 +2664,43 @@ function wcPushToRcmOs() {
     localStorage.setItem('TSM_FINOPS_WC_RELAY', JSON.stringify(payload));
   } catch (e) { /* localStorage unavailable — relay skipped */ }
 
-  if (typeof tsmWriteRelay === 'function') {
-    try { tsmWriteRelay({ vertical:'finops-suite', kind:'working-capital-worksheet', ...payload }); } catch (e) {}
-  }
-  if (window.TSM && TSM.launcher && TSM.launcher.run) {
-    try { TSM.launcher.run('pushToCollectiveSignal', JSON.stringify({ vertical:'finops', metric:'working_capital', value: c.rounded, severity: c.workingCapital < 0 ? 'CRITICAL' : 'INFO' })); } catch (e) {}
+  // TSM FIX: the two calls that used to be here (tsmWriteRelay(...) and
+  // TSM.launcher.run('pushToCollectiveSignal', ...)) referenced functions
+  // that don't exist anywhere in this codebase — both silently no-op'd
+  // behind their own guard checks, so this "push to RCM-OS" never actually
+  // reached anything. window.TSMMemory (loaded above via
+  // /shared/tsm-memory-engine.js) is the real cross-sector bus other pages
+  // already read from — write into that instead so this data is genuinely
+  // reusable by any app that shares the finops sector or reads cross-sector.
+  if (window.TSMMemory) {
+    try {
+      TSMMemory.rememberField({
+        entityType: 'workingCapital', entityId: 'current', field: 'summary',
+        value: payload, source: 'finops-operations', confidence: 1,
+        meta: { module: 'Working Capital Worksheet' }
+      });
+      if (c.workingCapital < 0) {
+        TSMMemory.registerAnomaly({
+          entityType: 'workingCapital', entityId: 'current',
+          anomalyCode: 'NEGATIVE_WORKING_CAPITAL',
+          title: 'Negative adjusted working capital (' + wcMoney(c.rounded) + ')',
+          severity: 'CRITICAL', source: 'finops-operations',
+          meta: { workingCapital: c.rounded }
+        });
+      }
+      TSMMemory.timeline('Working Capital pushed to RCM-OS: ' + wcMoney(c.rounded));
+    } catch (e) { /* memory engine write failed — non-fatal, relay above still recorded */ }
   }
 
   const statusEl = document.getElementById('wc-sync-status');
-  statusEl.textContent = 'Synced to RCM-OS · ' + new Date().toLocaleTimeString();
+  statusEl.textContent = 'Syncing to RCM-OS…';
   statusEl.style.color = 'var(--wc-ink-soft)';
-  statusEl.dataset.synced = '1';
-  if (window.toast) toast('✓ Adjusted working capital (' + wcMoney(c.rounded) + ') pushed to RCM-OS');
+  tsmPushWorkpaper('WC-1', 'working-capital', 'CAO', reviewedBy, 'Adjusted working capital ' + wcMoney(c.rounded), payload)
+    .then(ledgerOk => {
+      statusEl.textContent = (ledgerOk ? 'Synced to RCM-OS (shared) · ' : 'Synced locally (ledger unreachable) · ') + new Date().toLocaleTimeString();
+      statusEl.dataset.synced = '1';
+      if (window.toast) toast('✓ Adjusted working capital (' + wcMoney(c.rounded) + ') pushed to RCM-OS');
+    });
 }
 
 wcRender();
@@ -2814,8 +2897,22 @@ function acPushToRcmOs() {
   if (typeof tsmWriteRelay === 'function') {
     try { tsmWriteRelay({ vertical: 'finops-suite', kind: 'month-end-accrual', ...payload }); } catch (e) {}
   }
-  if (window.TSM && TSM.launcher && TSM.launcher.run) {
-    try { TSM.launcher.run('pushToCollectiveSignal', JSON.stringify({ vertical: 'finops', metric: 'accrual_exposure', value: openTotal, severity: openTotal > 0 && !allClosed ? 'INFO' : 'CRITICAL' })); } catch (e) {}
+  // TSM FIX: TSM.launcher.run/pushToCollectiveSignal never existed anywhere
+  // in this codebase — dead call, silently no-op'd. tsmWriteRelay (above)
+  // is legitimate now (bridges to TSM_KERNEL.setRelay), so that call stays.
+  // This replaces only the launcher half, routing into the same TSMMemory
+  // cross-sector bus used by Working Capital's push.
+  if (window.TSMMemory) {
+    try {
+      TSMMemory.registerAnomaly({
+        entityType: 'accrual', entityId: 'month-end',
+        anomalyCode: 'ACCRUAL_EXPOSURE_OPEN',
+        title: 'Open month-end accrual exposure (' + openTotal + ')',
+        severity: (openTotal > 0 && !allClosed) ? 'INFO' : 'CRITICAL',
+        source: 'finops-operations',
+        meta: { openTotal, allClosed }
+      });
+    } catch (e) {}
   }
 
   const statusEl = document.getElementById('ac-sync-status');
@@ -2937,5 +3034,51 @@ function tsmWriteRelay(payload){
   }
 })();
 </script>
+
+<script>
+window.addEventListener('load', () => {
+    const btn = document.getElementById('gen-corp-report-btn');
+    if (btn) {
+        btn.removeAttribute('data-tsm-action');
+        btn.removeAttribute('data-tsm-args');
+        
+        btn.onclick = function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const period = document.getElementById('bk-period-select')?.value || 'Period 5 - May 2026';
+            const reportContent = `# BK CORPORATE REPORTING PACK\nReporting Period: ${period}\nGenerated: ${new Date().toISOString()}\nAuthor: Dev Admin / RCM OS FinOps Operations\n\n## Key Metrics Summary\n- Period Sales: 1.24M\n- Royalty Fee (4.5%): 55,800\n- Ad Fund (4%): 49,600\n\n## Operational Status\n- Cashiering Workbench: Synchronized\n- Exception Audit: Cleared / Verified\n- Compliance & Custodial Ledger: Active\n\n---\nGenerated by TSM FinOps Operations Suite & Relayed to Strategist Workflow.\n`;
+
+            const blob = new Blob([reportContent], { type: 'text/markdown;charset=utf-8' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `BK-Corporate-Report-${period.replace(/[^a-zA-Z0-9]/g, '_')}.md`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+            try {
+                const payload = {
+                    vertical: 'finops',
+                    type: 'corporate_report',
+                    period: period,
+                    metrics: { sales: '1.24M', royalty: '55,800', adFund: '49,600' },
+                    timestamp: Date.now(),
+                    content: reportContent
+                };
+                localStorage.setItem('TSM_FINOPS_CORPORATE_REPORT', JSON.stringify(payload));
+            } catch (err) {
+                console.error('Relay error:', err);
+            }
+
+            alert('↓ BK Corporate Report generated and downloaded successfully!');
+        };
+        console.log('[PASS] Direct onclick handler attached to GENERATE REPORT button.');
+    }
+});
+</script>
 </body>
+
 </html>

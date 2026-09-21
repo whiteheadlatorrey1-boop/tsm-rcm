@@ -48,6 +48,10 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
 .nav-links a:hover{color:var(--cyan)}
 .nav-right{margin-left:auto;display:flex;align-items:center;gap:16px;color:var(--text-dim);font-size:10px}
 .nav-clock{color:var(--cyan-dim)}
+.training-mode-bar{display:flex;align-items:center;gap:10px;padding:6px 16px;background:var(--bg3);border-bottom:1px solid var(--border);font-size:11px}
+.training-mode-bar .tm-toggle{display:flex;align-items:center;gap:6px;color:var(--purple);font-weight:700;letter-spacing:1px;cursor:pointer}
+.training-mode-bar .tm-field{background:var(--bg);border:1px solid var(--border);color:var(--text);font-size:11px;padding:4px 8px;border-radius:4px;width:150px}
+.training-mode-bar .tm-status{color:var(--text-dim);font-size:10px}
 
 .exec-strip{display:flex;gap:0;background:var(--bg2);border-bottom:1px solid var(--border);overflow-x:auto}
 .exec-item{padding:8px 16px;border-right:1px solid var(--border);white-space:nowrap;min-width:110px}
@@ -66,6 +70,15 @@ body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;
 .sb-item.active{color:var(--cyan);border-left-color:var(--cyan);background:rgba(0,229,255,.06)}
 .sb-dot{width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.5}
 .sb-item.active .sb-dot{opacity:1;box-shadow:0 0 6px var(--cyan)}
+
+.sb-group-head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 18px;font-size:10px;letter-spacing:1.5px;color:var(--text-dim);cursor:pointer;border-left:2px solid transparent}
+.sb-group-head:hover{color:var(--text);background:rgba(0,229,255,.03)}
+.sb-group-head .sb-caret{font-size:9px;transition:transform .2s ease;opacity:.6}
+.sb-group.open .sb-group-head .sb-caret{transform:rotate(90deg)}
+.sb-group-body{max-height:0;overflow:hidden;transition:max-height .2s ease}
+.sb-group.open .sb-group-body{max-height:200px}
+.sb-sublink{display:block;padding:8px 18px 8px 34px;font-size:10px;letter-spacing:1.2px;color:var(--text-dim);text-decoration:none;border-left:2px solid transparent}
+.sb-sublink:hover{color:var(--cyan);background:rgba(0,229,255,.03);border-left-color:var(--cyan)}
 
 .main{overflow-y:auto;background:var(--bg);padding:18px 22px}
 .section{display:none}
@@ -106,7 +119,11 @@ textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);
 .kb-conf.low{color:var(--text-dim);border:1px solid var(--border);background:rgba(255,255,255,.03)}
 .kb-match-reason{font-size:11px;color:var(--text-dim);margin-bottom:8px;line-height:1.5}
 .kb-match-steps{margin:0;padding-left:18px}
-.kb-match-steps li{font-size:11px;color:var(--text);line-height:1.7}
+.kb-match-steps li{font-size:11px;color:var(--text);line-height:1.7;display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.kb-step-text{flex:1}
+.kb-step-copy{flex:0 0 auto;font-size:9px;letter-spacing:.03em;text-transform:uppercase;color:var(--text-dim);background:var(--bg3);border:1px solid var(--border);border-radius:3px;padding:2px 7px;cursor:pointer;white-space:nowrap}
+.kb-step-copy:hover{color:var(--text);border-color:var(--cyan)}
+.kb-step-copy.copied{color:var(--green);border-color:rgba(0,255,80,.35)}
 .kb-match-empty{font-size:11px;color:var(--text-dim)}
 .kb-match-loading{font-size:11px;color:var(--cyan)}
 .kb-match-low-warn{font-size:10px;color:var(--amber);margin-top:8px;border-top:1px solid var(--border);padding-top:8px}
@@ -551,6 +568,7 @@ window.loadInphusionAnomaly = function() {
       Ready for analysis
     </span>
     <div class="tsm-dj-aplus-group">
+      <a class="tsm-dj-aplus-link learn" href="/html/l1-copilot/l1-exec-portal.html" target="_blank">EXEC SUMMARY →</a>
       <a class="tsm-dj-aplus-link learn" href="/html/l1-copilot/aplus/aplus-learn.html" target="_blank">A+ LEARN →</a>
       <a class="tsm-dj-aplus-link" href="/html/l1-copilot/aplus/aplus-practice.html" target="_blank">A+ PRACTICE →</a>
       <a class="tsm-dj-aplus-link" href="/html/l1-copilot/aplus/aplus-readiness.html" target="_blank">A+ READINESS →</a>
@@ -655,11 +673,23 @@ window.loadInphusionAnomaly = function() {
     <a href="/l1-copilot/enterprise-command-center.html">Command Center</a>
     <a href="/l1-copilot/vmware-copilot.html">VMware SME</a>
     <a href="/l1-copilot/noc/noc-war-room.html">NOC Command</a>
+    <a href="/l1-copilot/l1-exec-portal.html">Exec Summary</a>
   </div>
   <div class="nav-right">
     <span id="navStatus">ENGINE: IDLE</span>
     <span class="nav-clock" id="navClock">--:--:--</span>
   </div>
+</div>
+
+<!-- TRAINING MODE — when enabled, generated resolutions/escalations are
+     recorded as training events on this trainee's Candidate Registry
+     record (same registry the Career Training Platform reads from). -->
+<div class="training-mode-bar" id="trainingModeBar">
+  <label class="tm-toggle"><input type="checkbox" id="tmEnabled"> TRAINING MODE</label>
+  <input id="tmFname" class="tm-field" placeholder="Trainee first name" style="display:none">
+  <input id="tmLname" class="tm-field" placeholder="Trainee last name" style="display:none">
+  <input id="tmEmail" class="tm-field" placeholder="Email (optional)" style="display:none">
+  <span id="tmStatus" class="tm-status"></span>
 </div>
 
 <div class="exec-strip">
@@ -696,6 +726,15 @@ window.loadInphusionAnomaly = function() {
     <div class="sb-item" data-section="history"><span class="sb-dot"></span>History</div>
     <div class="sb-item" data-section="howto"><span class="sb-dot"></span>How To</div>
     <div class="sb-item" data-section="certprep"><span class="sb-dot"></span>Cert Prep</div>
+
+    <div class="sb-group" id="sbTrainingGroup">
+      <div class="sb-group-head" id="sbTrainingHead"><span><span class="sb-dot"></span>ServiceNow Training</span><span class="sb-caret">▸</span></div>
+      <div class="sb-group-body">
+        <a class="sb-sublink" href="/html/l1-copilot/servicenow-fundamentals.html">Fundamentals</a>
+        <a class="sb-sublink" href="/html/l1-copilot/servicenow-scenarios.html">Scenario Engine</a>
+        <a class="sb-sublink" href="/html/l1-copilot/servicenow-exam-sim.html">Timed Exam Sim</a>
+      </div>
+    </div>
   </div>
 
   <div class="main">
@@ -818,7 +857,11 @@ window.loadInphusionAnomaly = function() {
 </div>
 TICKET DESCRIPTION</div>
         <div class="card-body">
-          <textarea id="tkDescription" rows="10" placeholder="Paste the full ticket text here — symptoms, error messages, what the user has already tried..."></textarea>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+  <input id="tkFile" type="file" accept=".txt,.csv,.md,.json,.pdf,.docx,.xlsx,.xls,.eml,.log" style="font-size:11px;max-width:100%">
+  <button class="btn btn-outline" id="btnIngestTicketFile" type="button">INGEST TICKET FILE</button>
+  <span id="tkFileStatus" style="font-size:10px;color:var(--text-dim)">TXT / CSV / MD / JSON / PDF / DOCX / XLSX / XLS / EML / LOG</span></div>
+  <textarea id="tkDescription" rows="10" placeholder="Paste the full ticket text here — symptoms, error messages, what the user has already tried..."></textarea>
           <div class="btn-row">
             <button class="btn btn-cyan" id="btnAnalyze">RUN AI ANALYSIS</button>
             <button class="btn btn-ghost" id="btnLoadSample">LOAD SAMPLE TICKET</button>
@@ -2033,6 +2076,141 @@ TICKET DESCRIPTION</div>
     'tkAsset','tkMfr','tkModel','tkWarranty','tkDescription','vManufacturer','vServiceTag','vWarranty',
     'escReason','escEvidence'];
   let currentAnalysis = null;
+
+  // ── Training Mode / Candidate Registry sync ──────────────────────────────
+  // Mirrors the candidateInfo pattern in html/reo-pro/mlo-exam-prep.html and
+  // servicenow-exam-sim.html. Registry is the source of truth for readiness;
+  // this page does not keep a competing local record. Fire-and-forget: a
+  // registry failure never blocks the resolution/escalation output from
+  // rendering.
+  //
+  // NOTE on scoring: unlike the MLO/ServiceNow quizzes, resolution and
+  // escalation generation here have no inherent right/wrong grade. Each
+  // event is recorded as score:100 (task completed) rather than a fabricated
+  // quality score — do not read readinessScore from this source as a
+  // correctness measure, only as a completion/volume signal, until a real
+  // grading rubric exists.
+  let candidateInfo = { fname: '', lname: '', email: '' };
+  let trainingModeEnabled = false;
+
+  // /api/candidates always mints a NEW candidateId unless one is passed
+  // back in — there's no server-side find-or-create by name/email. A
+  // trainee can generate many resolutions/escalations in one session, so
+  // without caching, each generate would spawn a separate candidate row
+  // instead of accumulating training events (and readiness) on one record.
+  // Cache the created candidateId per trainee (keyed on name+email) and
+  // reuse it for the rest of the session; only re-create if the trainee
+  // fields change (i.e. a different person typed in).
+  let registryCandidateId = null;
+  let registryCandidateKey = null;
+  let registryCandidatePromise = null;
+
+  function candidateKey(){
+    return candidateInfo.fname + '|' + candidateInfo.lname + '|' + candidateInfo.email;
+  }
+
+  function getOrCreateCandidateId(){
+    const key = candidateKey();
+    if (registryCandidateId && registryCandidateKey === key) {
+      return Promise.resolve(registryCandidateId);
+    }
+    if (registryCandidatePromise && registryCandidateKey === key) {
+      return registryCandidatePromise;
+    }
+    registryCandidateKey = key;
+    registryCandidatePromise = fetch('/api/candidates', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: (candidateInfo.fname + ' ' + candidateInfo.lname).trim(),
+        role: 'IT / L1 Help Desk',
+        email: candidateInfo.email || null,
+        status: 'in_training',
+        source: 'l1_ticket_copilot',
+        isSampleData: false
+      })
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error('Candidate Registry create failed (' + res.status + ')');
+        return res.json();
+      })
+      .then((data) => {
+        const candidateId = data && data.candidate && data.candidate.candidateId;
+        if (!candidateId) throw new Error('Candidate Registry response missing candidateId');
+        registryCandidateId = candidateId;
+        return candidateId;
+      })
+      .catch((e) => {
+        // Don't leave a failed lookup cached — let the next sync retry.
+        registryCandidatePromise = null;
+        registryCandidateId = null;
+        throw e;
+      });
+    return registryCandidatePromise;
+  }
+
+  function initTrainingMode(){
+    const enabledEl = document.getElementById('tmEnabled');
+    const fnameEl = document.getElementById('tmFname');
+    const lnameEl = document.getElementById('tmLname');
+    const emailEl = document.getElementById('tmEmail');
+    const statusEl = document.getElementById('tmStatus');
+
+    function updateVisibility(){
+      const show = enabledEl.checked ? 'inline-block' : 'none';
+      fnameEl.style.display = show; lnameEl.style.display = show; emailEl.style.display = show;
+    }
+    function updateCandidateInfo(){
+      candidateInfo = { fname: fnameEl.value.trim(), lname: lnameEl.value.trim(), email: emailEl.value.trim() };
+      trainingModeEnabled = enabledEl.checked && !!(candidateInfo.fname && candidateInfo.lname);
+      statusEl.textContent = !enabledEl.checked ? ''
+        : trainingModeEnabled
+          ? `Recording resolutions/escalations to Candidate Registry for ${candidateInfo.fname} ${candidateInfo.lname}.`
+          : 'Enter trainee first & last name to record results.';
+    }
+    enabledEl.addEventListener('change', () => { updateVisibility(); updateCandidateInfo(); });
+    [fnameEl, lnameEl, emailEl].forEach(el => el.addEventListener('input', updateCandidateInfo));
+    updateVisibility();
+  }
+  initTrainingMode();
+
+  function syncL1ResultToRegistry(type, meta){
+    const statusEl = document.getElementById('tmStatus');
+    if (!trainingModeEnabled) {
+      const label = type === 'l1_resolution' ? 'resolution' : 'escalation';
+      console.warn('L1 Copilot Registry sync skipped (Training Mode is off):', { type });
+      if (statusEl) statusEl.textContent = `Not recorded: enable Training Mode with a trainee name before generating ${label}s.`;
+      return;
+    }
+    getOrCreateCandidateId()
+      .then((candidateId) => {
+        return fetch('/api/candidates/' + encodeURIComponent(candidateId) + '/training-events', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type,
+            score: 100,
+            weight: 1,
+            meta: Object.assign({ source: 'l1_ticket_copilot' }, meta || {})
+          })
+        }).then((res) => {
+          if (!res.ok) throw new Error('Candidate Registry training event failed (' + res.status + ')');
+          return res.json();
+        });
+      })
+      .then((eventData) => {
+        const readiness = eventData && eventData.candidate && eventData.candidate.readinessScore;
+        console.log('L1 Copilot Registry sync PASS:', { type, readinessScore: readiness });
+        if (statusEl) {
+          const label = type === 'l1_resolution' ? 'resolution' : 'escalation';
+          statusEl.textContent = `Recorded ${label} to Candidate Registry (readiness: ${readiness}).`;
+        }
+      })
+      .catch((e) => {
+        console.error('L1 Copilot Registry sync failed:', e);
+        if (statusEl) statusEl.textContent = 'Candidate Registry sync failed: ' + e.message;
+      });
+  }
   let checklistState = {};
   let selectedTeam = null;
 
@@ -2075,6 +2253,11 @@ TICKET DESCRIPTION</div>
   function goToSection(name){
     document.querySelector(`.sb-item[data-section="${name}"]`).click();
   }
+
+  // ── Sidebar accordion — ServiceNow Training group ──────────────────────
+  document.getElementById('sbTrainingHead').addEventListener('click', () => {
+    document.getElementById('sbTrainingGroup').classList.toggle('open');
+  });
 
   // ── Cert Prep — practice question reveal ───────────────────────────────
   function initCertQuiz(){
@@ -2335,6 +2518,13 @@ TICKET DESCRIPTION</div>
       applyExtractedFields(currentAnalysis.extracted_fields);
       saveCurrentTicket();
       try { TSM.relay.write('L1COPILOT', { ticket: document.getElementById('tkIncident').value, analysis: currentAnalysis, ts: Date.now() }); } catch(e){ console.warn('Relay write failed', e); }
+      // Feed the Decision Journey overlay via its documented public hook
+      // (see window.tsmDecisionJourney.setAnalysis below) instead of
+      // relying on window.currentAnalysis, which nothing in this file
+      // ever actually sets — getAnalysisObject() checks window-scoped
+      // names, but `currentAnalysis` above is a local closure variable,
+      // so the overlay never saw real data through that path.
+      try { window.tsmDecisionJourney && window.tsmDecisionJourney.setAnalysis(currentAnalysis); } catch(e){ console.warn('Decision Journey setAnalysis failed', e); }
     } catch (e) {
       out.className = 'ai-output';
       out.innerHTML = `<span class="err">Analysis failed: ${e.message}. Confirm /api/l1-copilot/analyze is wired server-side.</span>`;
@@ -2388,10 +2578,40 @@ TICKET DESCRIPTION</div>
         </span>
       </div>
       ${m.reasoning ? `<div class="kb-match-reason">${escapeHtml(m.reasoning)}</div>` : ''}
-      <ol class="kb-match-steps">${steps.map(s => `<li>${escapeHtml(s)}</li>`).join('')}</ol>
+      <ol class="kb-match-steps">${steps.map((s, i) => `<li><span class="kb-step-text">${escapeHtml(s)}</span><button type="button" class="kb-step-copy" data-step-index="${i}">Copy as Work Note</button></li>`).join('')}</ol>
       ${lowWarn}
     `;
+    body.dataset.steps = JSON.stringify(steps);
   }
+
+  function copyStepAsWorkNote(btn){
+    const container = btn.closest('[data-steps]');
+    if (!container) return;
+    let steps = [];
+    try { steps = JSON.parse(container.dataset.steps || '[]'); } catch (e) { steps = []; }
+    const idx = Number(btn.dataset.stepIndex);
+    const text = steps[idx];
+    if (text === undefined) return;
+    navigator.clipboard.writeText(text).then(() => {
+      const original = btn.textContent;
+      btn.textContent = 'Copied ✓';
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = original; btn.classList.remove('copied'); }, 1200);
+      const status = document.getElementById('navStatus');
+      if (status) {
+        status.textContent = 'ENGINE: STEP COPIED TO CLIPBOARD';
+        setTimeout(() => status.textContent = 'ENGINE: IDLE', 1500);
+      }
+    });
+  }
+
+  // Delegated on document so it covers both the KB-match panel (#kbMatchBody)
+  // and the Top-15 quick reference panel (#q15PlaybookSteps), including the
+  // fallback-built version of the latter that may not exist at parse time.
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.kb-step-copy');
+    if (btn) copyStepAsWorkNote(btn);
+  });
 
   function escapeHtml(s){
     return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -2414,12 +2634,32 @@ TICKET DESCRIPTION</div>
     };
     const provided = Object.entries(ticket).filter(([,v]) => v && String(v).trim()).map(([k]) => k);
     const causes = Array.isArray(a.likely_causes) ? a.likely_causes.join('; ') : (a.likely_causes || 'none identified');
-    return [
+    const description = document.getElementById('tkDescription') ? document.getElementById('tkDescription').value : '';
+    const notProvided = '(not provided)';
+    const truncate = (s, n) => s.length > n ? s.slice(0, n) + '…' : s;
+
+    // Summary rows: what the model concluded and why.
+    const summaryItems = [
       { label: 'Confidence', detail: `${a.confidence != null ? a.confidence + '%' : 'unscored'} — self-reported by the model, based on the description text and the ${provided.length} ticket field(s) that were filled in.` },
       { label: 'Severity driver', detail: `${a.severity || 'unscored'} severity, driven by: ${causes}.` },
       { label: 'Affected system', detail: `${a.affected_system || 'unspecified'}${ticket.asset ? ' — asset ' + ticket.asset : ''}${ticket.manufacturer ? ' (' + ticket.manufacturer + (ticket.model ? ' ' + ticket.model : '') + ')' : ''}.` },
       { label: 'Grounded on', detail: provided.length ? `${provided.length} ticket field(s) provided: ${provided.join(', ')}.` : 'No structured ticket fields were filled in — analysis is based on the pasted description text only.' }
     ];
+
+    // Itemized rows: the actual ticket field values the analysis was grounded on.
+    const fieldItems = [
+      { label: 'Priority', detail: ticket.priority || notProvided },
+      { label: 'Department', detail: ticket.department || notProvided },
+      { label: 'Assignment Group', detail: ticket.assignmentGroup || notProvided },
+      { label: 'Asset', detail: ticket.asset || notProvided },
+      { label: 'Manufacturer', detail: ticket.manufacturer || notProvided },
+      { label: 'Model', detail: ticket.model || notProvided },
+      { label: 'Warranty', detail: ticket.warranty || notProvided },
+      { label: 'Description', detail: description && description.trim() ? truncate(description.trim(), 160) : notProvided },
+      { label: 'AI Severity', detail: a.severity || 'unscored' }
+    ];
+
+    return summaryItems.concat(fieldItems);
   }
 
   function renderExplainItems(items){
@@ -2496,7 +2736,11 @@ TICKET DESCRIPTION</div>
         const el = document.getElementById(id);
         if (el) el.value = state.values[id];
       });
-      if (state.currentAnalysis) { currentAnalysis = state.currentAnalysis; renderAnalysis(currentAnalysis); }
+      if (state.currentAnalysis) {
+        currentAnalysis = state.currentAnalysis;
+        renderAnalysis(currentAnalysis);
+        try { window.tsmDecisionJourney && window.tsmDecisionJourney.setAnalysis(currentAnalysis); } catch(e){ console.warn('Decision Journey setAnalysis failed', e); }
+      }
       if (state.checklistState) { checklistState = state.checklistState; renderChecklist(); }
       if (state.selectedTeam) {
         selectedTeam = state.selectedTeam;
@@ -2544,12 +2788,71 @@ TICKET DESCRIPTION</div>
     });
   }
 
+  // ── Onboarding Preflight ────────────────────────────────────────────────
+  // Reads state already on the page (security-context KPIs from
+  // checkSecurityContext(), the onboarding checklist, the asset field) --
+  // no new network calls. Returns { ready, blockers: [string, ...] }.
+  // Kept deliberately separate from the imaging/provisioning fetches below
+  // so it can gate BOTH actions with one shared source of truth.
+  function computeOnboardingReadiness(kind){
+    const blockers = [];
+    const assetTag = (document.getElementById('obAsset').value || '').trim();
+    const name = (document.getElementById('obName').value || '').trim();
+    const email = (document.getElementById('obEmail').value || '').trim();
+
+    const acctEl = document.getElementById('kpiAccountStatus');
+    const mfaEl = document.getElementById('kpiMfaStatus');
+    const devEl = document.getElementById('kpiDeviceCompliance');
+    const riskEl = document.getElementById('kpiRiskLevel');
+    const securityChecked = acctEl && acctEl.textContent && acctEl.textContent !== '--' && acctEl.textContent !== '...';
+
+    if (kind === 'imaging' || kind === 'both') {
+      if (!assetTag) blockers.push('Asset tag has not been entered/assigned.');
+      if (!securityChecked) blockers.push('Device has not been checked via Security Context (run CHECK USER & DEVICE STATUS first).');
+      if (securityChecked && devEl && devEl.textContent === 'Non-Compliant') blockers.push('Device is reporting Non-Compliant in endpoint management — resolve before imaging.');
+    }
+    if (kind === 'provision' || kind === 'both') {
+      if (!name || !email) blockers.push('New hire name and work email are required.');
+      if (!securityChecked) blockers.push('Identity has not been checked via Security Context (run CHECK USER & DEVICE STATUS first).');
+      if (securityChecked && acctEl && acctEl.textContent === 'Suspended') blockers.push('Requester/manager account is Suspended in the identity provider — resolve before provisioning a new account under it.');
+      if (securityChecked && riskEl && (riskEl.textContent === 'High' || riskEl.textContent === 'Critical')) blockers.push(`Identity risk level is ${riskEl.textContent} — send for review before provisioning.`);
+    }
+    return { ready: blockers.length === 0, blockers };
+  }
+
+  // Logs a blocked attempt to the same HITL gate l1-human-decision-wiring.js
+  // uses, so a technician bypassing (or being stopped by) preflight shows up
+  // in the L1 decision audit trail instead of only ever existing client-side.
+  function logBlockedOnboardingAttempt(kind, blockers){
+    if (typeof recordHumanDecision !== 'function') return;
+    const incident = (document.getElementById('tkIncident') || {}).value || ('onboarding-' + Date.now());
+    recordHumanDecision('keep', {
+      incident,
+      ticketPriority: kind,
+      aiSeverity: 'preflight-blocked',
+      recommendedPriority: blockers.join('; ')
+    }).catch(() => { /* best-effort; onboarding flow shouldn't hang on this */ });
+  }
+
+  function renderPreflightBlock(outEl, blockers){
+    outEl.innerHTML = `<div class="err"><b>BLOCKED</b><ul style="margin:4px 0 0 18px;padding:0">` +
+      blockers.map(b => `<li>${b}</li>`).join('') + `</ul></div>`;
+  }
+
   async function startImaging(){
     const badge = document.getElementById('obImagingStatusBadge');
     const out = document.getElementById('obImagingOutput');
     const fill = document.getElementById('obImagingFill');
     const assetTag = document.getElementById('obAsset').value.trim();
     if (!assetTag) { alert('Enter/assign an asset tag first.'); return; }
+
+    const readiness = computeOnboardingReadiness('imaging');
+    if (!readiness.ready) {
+      renderPreflightBlock(out, readiness.blockers);
+      logBlockedOnboardingAttempt('imaging', readiness.blockers);
+      return;
+    }
+
     obImagingStatus = 'Running';
     badge.textContent = 'RUNNING'; badge.className = 'kpi-value warn';
     fill.style.width = '10%';
@@ -2559,7 +2862,10 @@ TICKET DESCRIPTION</div>
         body: JSON.stringify({ assetTag, profileId: document.getElementById('obImagingProfile').value })
       });
       const data = await res.json();
-      if (!data.ok) throw new Error(data.error || 'imaging request failed');
+      if (!data.ok) {
+        if (data.blocked && Array.isArray(data.blockers)) { renderPreflightBlock(out, data.blockers); obImagingStatus = 'Not Started'; badge.textContent = 'NOT STARTED'; badge.className = 'kpi-value'; fill.style.width = '0%'; return; }
+        throw new Error(data.error || 'imaging request failed');
+      }
       obImagingStatus = data.status || 'Running';
       fill.style.width = (data.percent || 10) + '%';
       out.innerHTML = `Imaging job <b>${data.jobId || ''}</b> started against the imaging platform.`;
@@ -2578,17 +2884,30 @@ TICKET DESCRIPTION</div>
     const name = document.getElementById('obName').value.trim();
     const email = document.getElementById('obEmail').value.trim();
     if (!name || !email) { alert('Enter the new hire\'s name and work email first.'); return; }
+
+    const readiness = computeOnboardingReadiness('provision');
+    if (!readiness.ready) {
+      renderPreflightBlock(out, readiness.blockers);
+      logBlockedOnboardingAttempt('provision', readiness.blockers);
+      return;
+    }
+
     try {
       const res = await fetch('/api/l1-copilot/onboarding/provision', {
         method: 'POST', headers: { 'Content-Type':'application/json' },
         body: JSON.stringify({
           name, email,
           department: document.getElementById('obDept').value,
-          role: document.getElementById('obRole').value
+          role: document.getElementById('obRole').value,
+          requester: (document.getElementById('tkRequester') || {}).value || null,
+          incident: (document.getElementById('tkIncident') || {}).value || null
         })
       });
       const data = await res.json();
-      if (!data.ok) throw new Error(data.error || 'provisioning failed');
+      if (!data.ok) {
+        if (data.blocked && Array.isArray(data.blockers)) { renderPreflightBlock(out, data.blockers); return; }
+        throw new Error(data.error || 'provisioning failed');
+      }
       obAccountStatus = 'Provisioned';
       badge.textContent = 'PROVISIONED'; badge.className = 'kpi-value good';
       out.innerHTML = `Account <b>${data.userId || ''}</b> created.` + (data.mfaEnrollmentLink ? ` MFA enrollment link sent.` : '');
@@ -3207,6 +3526,11 @@ TICKET DESCRIPTION</div>
       out.className = 'ai-output';
       out.textContent = data.answer || 'No resolution returned.';
       recordHistoryEntry();
+      syncL1ResultToRegistry('l1_resolution', {
+        incident: document.getElementById('tkIncident').value || null,
+        severity: (currentAnalysis && currentAnalysis.severity) || null,
+        requiresHumanReview: !!(currentAnalysis && currentAnalysis.priority_alignment && currentAnalysis.priority_alignment.requires_human_review)
+      });
     } catch (e) {
       out.className = 'ai-output';
       out.innerHTML = `<span class="err">Build failed: ${e.message}. Confirm /api/l1-copilot/resolution is wired server-side.</span>`;
@@ -3279,6 +3603,11 @@ TICKET DESCRIPTION</div>
       if (!data.ok) throw new Error(data.error || 'escalation build failed');
       out.className = 'ai-output';
       out.textContent = data.answer || 'No escalation package returned.';
+      syncL1ResultToRegistry('l1_escalation', {
+        incident: document.getElementById('tkIncident').value || null,
+        severity: (currentAnalysis && currentAnalysis.severity) || null,
+        recommendedTeam: selectedTeam || null
+      });
     } catch (e) {
       out.className = 'ai-output';
       out.innerHTML = `<span class="err">Build failed: ${e.message}. Confirm /api/l1-copilot/escalation is wired server-side.</span>`;
@@ -3554,6 +3883,7 @@ TICKET DESCRIPTION</div>
 </script>
 
 
+<script src="/html/shared/tsm-active-member.js"></script>
 <script src="/l1-copilot/l1-human-decision-wiring.js"></script>
 <script id="tsm-decision-journey-js">
 (function () {
@@ -4260,7 +4590,12 @@ TICKET DESCRIPTION</div>
     { id: "scen-12", name: "Application Crash", icon: "🪟", system: "Device Software", category: "Software", severity: "Low", kb: "KB-SW-044", team: "Desktop Support L1", keywords: ["app crash", "stopped working", "event id 1000"], steps: ["Inspect Event Viewer Application log.", "Repair app binaries.", "Clear `%localappdata%` cache.", "Check .NET runtimes."], escalate: ["App bug.", "Database server drop."] },
     { id: "scen-13", name: "Patch Failure", icon: "🔄", system: "SCCM / Intune", category: "Patching", severity: "Medium", kb: "KB-SEC-019", team: "Endpoint Engineering", keywords: ["patch fail", "update error", "0x80070002"], steps: ["Run Windows Update Troubleshooter.", "Reset WU components.", "Force SCCM cycle.", "Check `WUAHandler.log`."], escalate: ["Distribution Point down.", "WMI corruption."] },
     { id: "scen-14", name: "VMware VM Down", icon: "☁️", system: "VMware Infrastructure", category: "Virtualization", severity: "High", kb: "KB-VMW-010", team: "VMware SME", keywords: ["vm down", "vcenter", "esxi", "unresponsive vm"], steps: ["Check vCenter power state.", "Check ESXi host heartbeats.", "Restart VM via vSphere.", "Inspect HA logs."], escalate: ["Host PSOD.", "Storage APD condition."] },
-    { id: "scen-15", name: "VMware Datastore Full", icon: "🗄", system: "VMware Infrastructure", category: "Storage", severity: "High", kb: "KB-VMW-033", team: "VMware SME", keywords: ["datastore full", "vmfs full", "snapshot storage"], steps: ["Locate open VM snapshots.", "Consolidate stale delta disks.", "Storage vMotion non-critical VMs.", "Audit vDK growth."], escalate: ["Capacity >98%.", "SAN LUN expansion required."] }
+    { id: "scen-15", name: "VMware Datastore Full", icon: "🗄", system: "VMware Infrastructure", category: "Storage", severity: "High", kb: "KB-VMW-033", team: "VMware SME", keywords: ["datastore full", "vmfs full", "snapshot storage"], steps: ["Locate open VM snapshots.", "Consolidate stale delta disks.", "Storage vMotion non-critical VMs.", "Audit vDK growth."], escalate: ["Capacity >98%.", "SAN LUN expansion required."] },
+    { id: "scen-16", name: "Onboarding: New Hire Provisioning", icon: "🧑‍💻", system: "Active Directory / M365 / Endpoint Mgmt", category: "Onboarding", severity: "Medium", kb: "KB-ONB-001", team: "Service Desk / Identity", keywords: ["onboarding", "new hire", "new employee", "provisioning", "start date"], steps: ["Create AD account per naming convention.", "Provision M365 license; test email send/receive.", "Image and assign laptop; record asset tag.", "Configure VPN access; test connection.", "Add to required distribution/security groups."], escalate: ["Naming convention conflict.", "License pool exhausted.", "Hardware unavailable before start date."] },
+    { id: "scen-17", name: "Offboarding: Urgent / Involuntary Termination", icon: "🚨", system: "Active Directory / Identity Platform", category: "Offboarding", severity: "High", kb: "KB-OFB-001", team: "Security / IAM SME", keywords: ["offboarding", "termination", "terminated", "involuntary", "immediate disable"], steps: ["Disable AD account immediately.", "Revoke VPN certificate and force logout of active sessions.", "Disable email access.", "Remove from all security/distribution groups.", "Timestamp each action in work notes as it happens."], escalate: ["Access still active after disable action.", "Shared/service account entanglement.", "Legal hold on mailbox."] },
+    { id: "scen-18", name: "Offboarding: Standard 2-Week Notice", icon: "📋", system: "Active Directory / Asset Mgmt", category: "Offboarding", severity: "Low", kb: "KB-OFB-002", team: "Service Desk", keywords: ["offboarding", "resignation", "last day", "two weeks notice", "standard departure"], steps: ["Confirm last working day with manager.", "Disable access on last day, not before.", "Collect and wipe laptop/hardware.", "Archive mailbox per retention policy."], escalate: ["Last day changes unexpectedly.", "Hardware not returned on schedule."] },
+    { id: "scen-19", name: "Offboarding: Scoped Access Revocation", icon: "🎯", system: "Network / VPN", category: "Offboarding", severity: "Medium", kb: "KB-OFB-003", team: "Network / Security Team", keywords: ["contractor offboarding", "vpn revoke", "remote access removal", "scoped offboarding"], steps: ["Confirm exact scope requested (e.g. VPN + remote desktop only).", "Revoke VPN certificate.", "Remove remote desktop access.", "Document explicitly what was NOT touched, to prevent scope assumptions."], escalate: ["Scope unclear or conflicts with a parent case.", "Contractor has additional undocumented access."] },
+    { id: "scen-20", name: "Offboarding: Exception Request", icon: "⚠️", system: "Email / Messaging", category: "Offboarding", severity: "Low", kb: "KB-OFB-004", team: "Service Desk", keywords: ["email forwarding", "offboarding exception", "manager approval", "auto-forward"], steps: ["Verify manager approval BEFORE any action.", "Configure auto-forward per the approved duration.", "Document the approval reference in resolution notes.", "Set a reminder to disable the forward after the approved window."], escalate: ["No documented approval provided.", "Requested duration exceeds policy."] }
   ];
 
   let copilotChannel = null;
@@ -4308,6 +4643,35 @@ TICKET DESCRIPTION</div>
       if (loadingEl) loadingEl.classList.toggle('l1a-show', isLoading);
     }
 
+    // TSM FIX: the ticket-field values (asset/manufacturer/model/warranty/
+    // etc.) are collected by getCurrentTicket() elsewhere in this file, but
+    // that function lives inside a different IIFE and is never exposed on
+    // window -- unreachable from here. The assistant was sending the raw
+    // scenario text with zero ticket context even though the tech is
+    // usually asking about the exact ticket already open on screen, and the
+    // backend's own system prompt explicitly expects warranty/model info
+    // ("If the scenario mentions Dell hardware, factor in ProSupport vs
+    // Basic warranty guidance..."). Read the same field IDs directly here
+    // (they're plain global DOM ids, no scoping issue) rather than relying
+    // on the tech to retype what's already on the ticket.
+    function getAssistantTicketContext() {
+      const value = (id) => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+      const ticket = {
+        incident: value('tkIncident'),
+        priority: value('tkPriority'),
+        requester: value('tkRequester'),
+        department: value('tkDept'),
+        assignmentGroup: value('tkGroup'),
+        asset: value('tkAsset'),
+        manufacturer: value('tkMfr'),
+        model: value('tkModel'),
+        warranty: value('tkWarranty'),
+        description: value('tkDescription')
+      };
+      const hasAny = Object.values(ticket).some(v => v);
+      return hasAny ? ticket : null;
+    }
+
     async function submitScenario() {
       const scenario = input ? input.value.trim() : '';
       if (!scenario) return;
@@ -4320,7 +4684,7 @@ TICKET DESCRIPTION</div>
         const res = await fetch('/api/l1-copilot/assistant', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ scenario: scenario })
+          body: JSON.stringify({ scenario: scenario, ticket: getAssistantTicketContext() })
         });
         const data = await res.json();
 
@@ -4400,9 +4764,11 @@ window.selectQ15Scenario = function(id) {
   // Populate remediation steps.
   const steps = document.getElementById("q15PlaybookSteps");
   if (steps) {
-    steps.innerHTML = Array.isArray(scenario.steps)
-      ? scenario.steps.map(st => `<li>${st}</li>`).join("")
-      : "";
+    const stepList = Array.isArray(scenario.steps) ? scenario.steps : [];
+    steps.innerHTML = stepList
+      .map((st, i) => `<li><span class="kb-step-text">${st}</span><button type="button" class="kb-step-copy" data-step-index="${i}">Copy as Work Note</button></li>`)
+      .join("");
+    steps.dataset.steps = JSON.stringify(stepList);
   }
 
   // Populate escalation triggers.
@@ -4421,6 +4787,65 @@ window.selectQ15Scenario = function(id) {
 
   console.debug("[Q15] Selected scenario:", scenario.id, scenario.name);
 };
+
+// --- Apply a Q15 scenario's playbook onto the active ticket ---
+  // BUG FIX: this was called from two places (manual "APPLY TO TICKET
+  // WORKFLOW" button + auto-match "Attach Playbook" button) but never
+  // defined anywhere -- every click threw ReferenceError and silently
+  // did nothing. Mirrors the existing applyNocRouting/applyIncomingEscalation
+  // convention: populate ticket fields from the payload, then save + jump
+  // to the Ticket tab.
+  // NOTE: refreshSlaDisplay/saveCurrentTicket/goToSection all live inside a
+  // *different* IIFE (~line 2048) that never exposes them on window -- same
+  // cross-scope trap this file already hit once (see getAssistantTicketContext's
+  // comment above). Fix is the same: don't reach into that closure. The other
+  // IIFE already has document-level delegated 'input'/'change' listeners on
+  // every TICKET_FIELD_IDS element that call saveCurrentTicket(), plus a
+  // dedicated 'change' listener on tkPriority that calls refreshSlaDisplay().
+  // Setting .value directly and dispatching the matching native event gets
+  // both side effects for free with zero cross-IIFE coupling. Section
+  // switching is just the existing sidebar click-to-activate mechanism.
+  const SCENARIO_SEVERITY_TO_PRIORITY = { High: 'P2', Medium: 'P3', Low: 'P4' };
+  window.applyScenarioToTicket = function applyScenarioToTicket(scenario) {
+    const s = scenario || activeSelectedScenario;
+    if (!s) {
+      console.warn('[Q15] No scenario selected to apply.');
+      return;
+    }
+
+    const setField = (id, val, eventType) => {
+      const el = document.getElementById(id);
+      if (!el || !val) return;
+      el.value = val;
+      el.dispatchEvent(new Event(eventType, { bubbles: true }));
+    };
+
+    setField('tkAsset', s.system, 'change');
+    setField('tkGroup', s.team, 'change');
+
+    const priority = SCENARIO_SEVERITY_TO_PRIORITY[s.severity];
+    if (priority) {
+      const prioritySel = document.getElementById('tkPriority');
+      const match = Array.from(prioritySel.options).find(o => o.value === priority);
+      if (match) setField('tkPriority', priority, 'change');
+    }
+
+    const descEl = document.getElementById('tkDescription');
+    const kbTag = `[Playbook: ${s.name}${s.kb ? ' — ' + s.kb : ''}]`;
+    if (!descEl.value.includes(kbTag)) {
+      const lines = [kbTag];
+      if (Array.isArray(s.steps) && s.steps.length) {
+        lines.push('First response checklist:');
+        s.steps.forEach((st, i) => lines.push(`${i + 1}. ${st}`));
+      }
+      const block = lines.join('\n');
+      descEl.value = descEl.value.trim() ? descEl.value.trim() + '\n\n' + block : block;
+      descEl.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    const ticketTab = document.querySelector('.sb-item[data-section="ticket"]');
+    if (ticketTab) ticketTab.click();
+  };
 
 // --- Quick 15 UI Infrastructure ---
   function ensureQ15DOMStructure() {
@@ -4542,5 +4967,625 @@ window.selectQ15Scenario = function(id) {
 })();
 </script>
 <script src="/js/tsm-guide-engine.js" defer></script>
+<script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const btnIngest = document.getElementById("btnIngestTicketFile");
+      if (!btnIngest) return;
+
+      btnIngest.addEventListener("click", async () => {
+        const fileInput = document.getElementById("tkFile");
+        const statusSpan = document.getElementById("tkFileStatus");
+        const descriptionBox = document.getElementById("tkDescription");
+        
+        if (!fileInput.files.length) {
+          statusSpan.textContent = "Select a file to ingest.";
+          return;
+        }
+        
+        const file = fileInput.files[0];
+        const formData = new FormData();
+        formData.append("file", file);
+        
+        statusSpan.textContent = "Extracting file content...";
+        
+        try {
+          const response = await fetch("/api/doc-router/extract-file", {
+            method: "POST",
+            body: formData
+          });
+          
+          if (!response.ok) throw new Error("Extraction endpoint error");
+          
+          const result = await response.json();
+          const extractedText = result.text || result.content || "";
+          
+          if (extractedText) {
+            descriptionBox.value = extractedText;
+            statusSpan.textContent = "Ingested successfully!";
+          } else {
+            statusSpan.textContent = "No text content extracted.";
+          }
+        } catch (error) {
+          console.error("File ingestion error:", error);
+          statusSpan.textContent = "Ingestion failed.";
+        }
+      });
+    });
+
+</script>
+  <script src="/shared/tsm-generic-relay-loader.js" data-relay-key="tsm_l1_docsearch_relay" data-auto-key="TSM_L1_WAR_RELAY"></script>
+
+<!-- L1QR-PANEL-START -->
+<!--
+  L1 QUICK REFERENCE PANEL — embeddable, dependency-free
+  =======================================================
+  WHAT THIS IS:
+  A slide-out reference panel for closing tickets correctly — universal
+  flow + category-specific checklists (standard incident / onboarding /
+  offboarding), searchable, collapsible sections. Content mirrors
+  l1-copilot-quick-reference-content.md — edit REFERENCE_DATA below to
+  update what's shown; the .md file is the source of truth to edit from.
+
+  HOW TO INTEGRATE INTO l1-ticket-copilot.html:
+  1. Paste the <style> block into your existing <head> or stylesheet.
+  2. Paste the <div id="l1qr-root">...</div> block just before </body>,
+     alongside wherever #l1a-fab (the assistant bubble) already lives.
+  3. Paste the <script> block after that div, or into your existing
+     bundle — it's vanilla JS, no imports, no build step required.
+  4. Optional: place the toggle button (#l1qr-toggle) next to your
+     existing #l1a-fab bubble instead of using the default fixed
+     position — just move the button element in the HTML, the JS
+     doesn't care where it lives in the DOM.
+
+  TRIGGERING A SPECIFIC SECTION FROM YOUR OWN CODE:
+  Once this script has run, window.L1QR is available globally:
+    L1QR.open('offboarding-urgent')  // opens panel, expands just that
+                                      // section, collapses the rest,
+                                      // scrolls it into view
+    L1QR.open()                      // opens panel, all sections visible
+    L1QR.close()
+    L1QR.toggle()
+    L1QR.sections()                  // -> [{id, title, tag}, ...] — use
+                                      // this to build your own mapping
+                                      // from a loaded ticket's
+                                      // Category/Subcategory to a
+                                      // section id, e.g.:
+                                      //   var map = {
+                                      //     'Onboarding': 'onboarding',
+                                      //     'Offboarding-Urgent': 'offboarding-urgent',
+                                      //     'Offboarding-Standard': 'offboarding-standard',
+                                      //     'Offboarding-Scoped': 'offboarding-scoped',
+                                      //     'Offboarding-Exception': 'offboarding-exception'
+                                      //   };
+                                      //   L1QR.open(map[ticket.category] || 'standard');
+  An unrecognized id logs a console warning and falls back to opening
+  the panel with every section visible — it never throws or renders
+  blank, so a bad mapping can't break your host page.
+
+  THEMING:
+  Uses CSS custom properties with fallbacks (var(--x, fallback)), so if
+  l1-ticket-copilot.html already defines --l1-bg / --l1-accent / etc.
+  on :root, this panel inherits them automatically. If not, the
+  fallbacks render a self-consistent dark ops theme on their own.
+-->
+
+<style>
+  #l1qr-root {
+    --qr-bg: var(--l1-panel-bg, #14181f);
+    --qr-bg-elevated: var(--l1-elevated-bg, #1b212c);
+    --qr-border: var(--l1-border, #2a3140);
+    --qr-text: var(--l1-text, #dfe4ee);
+    --qr-text-dim: var(--l1-text-dim, #8b93a6);
+    --qr-accent: var(--l1-accent, #4fa3ff);
+    --qr-warn: var(--l1-warn, #e8a33d);
+    --qr-danger: var(--l1-danger, #e05a5a);
+    --qr-mono: ui-monospace, "SF Mono", Consolas, monospace;
+    --qr-sans: -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-family: var(--qr-sans);
+    color: var(--qr-text);
+  }
+
+  #l1qr-toggle {
+    position: fixed;
+    right: 24px;
+    bottom: 92px; /* sits above a typical fab bubble at bottom:24px */
+    z-index: 9998;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    border-radius: 999px;
+    border: 1px solid var(--qr-border);
+    background: var(--qr-bg-elevated);
+    color: var(--qr-text);
+    font-family: var(--qr-sans);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.35);
+    transition: transform 0.15s ease, border-color 0.15s ease;
+  }
+  #l1qr-toggle:hover { border-color: var(--qr-accent); }
+  #l1qr-toggle:active { transform: scale(0.97); }
+  #l1qr-toggle svg { width: 16px; height: 16px; flex: none; }
+
+  #l1qr-panel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    height: 100%;
+    width: min(420px, 100vw);
+    background: var(--qr-bg);
+    border-left: 1px solid var(--qr-border);
+    box-shadow: -8px 0 32px rgba(0,0,0,0.4);
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    transform: translateX(100%);
+    transition: transform 0.22s ease;
+  }
+  #l1qr-panel.l1qr-open { transform: translateX(0); }
+
+  #l1qr-header {
+    padding: 16px 18px 12px;
+    border-bottom: 1px solid var(--qr-border);
+    flex: none;
+  }
+  #l1qr-header h2 {
+    margin: 0 0 2px;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.2px;
+  }
+  #l1qr-header p {
+    margin: 0;
+    font-size: 12px;
+    color: var(--qr-text-dim);
+  }
+  #l1qr-close {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    border: 1px solid var(--qr-border);
+    background: transparent;
+    color: var(--qr-text-dim);
+    cursor: pointer;
+    font-size: 15px;
+    line-height: 1;
+  }
+  #l1qr-close:hover { color: var(--qr-text); border-color: var(--qr-accent); }
+
+  #l1qr-search-wrap {
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--qr-border);
+    flex: none;
+  }
+  #l1qr-search {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--qr-border);
+    background: var(--qr-bg-elevated);
+    color: var(--qr-text);
+    font-size: 13px;
+    font-family: var(--qr-sans);
+  }
+  #l1qr-search::placeholder { color: var(--qr-text-dim); }
+  #l1qr-search:focus {
+    outline: none;
+    border-color: var(--qr-accent);
+  }
+
+  #l1qr-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 0 24px;
+  }
+
+  .l1qr-section {
+    border-bottom: 1px solid var(--qr-border);
+  }
+  .l1qr-section-head {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 12px 18px;
+    background: transparent;
+    border: none;
+    color: var(--qr-text);
+    font-size: 13px;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+    font-family: var(--qr-sans);
+  }
+  .l1qr-section-head:hover { background: var(--qr-bg-elevated); }
+  .l1qr-section-head .l1qr-chev {
+    color: var(--qr-text-dim);
+    transition: transform 0.15s ease;
+    flex: none;
+  }
+  .l1qr-section.l1qr-expanded .l1qr-chev { transform: rotate(90deg); }
+  .l1qr-section-tag {
+    font-size: 10px;
+    font-family: var(--qr-mono);
+    color: var(--qr-text-dim);
+    border: 1px solid var(--qr-border);
+    border-radius: 4px;
+    padding: 1px 6px;
+    margin-left: 8px;
+  }
+
+  .l1qr-section-body {
+    display: none;
+    padding: 0 18px 16px;
+  }
+  .l1qr-section.l1qr-expanded .l1qr-section-body { display: block; }
+
+  .l1qr-section-body ul {
+    margin: 0;
+    padding-left: 18px;
+  }
+  .l1qr-section-body li {
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: var(--qr-text);
+    margin-bottom: 6px;
+  }
+  .l1qr-section-body li::marker { color: var(--qr-text-dim); }
+
+  .l1qr-note {
+    margin-top: 8px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--qr-border);
+    background: var(--qr-bg-elevated);
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--qr-text-dim);
+  }
+  .l1qr-note strong { color: var(--qr-warn); }
+  .l1qr-note.l1qr-danger strong { color: var(--qr-danger); }
+
+  .l1qr-checklist li {
+    list-style: none;
+    padding-left: 22px;
+    position: relative;
+  }
+  .l1qr-checklist li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 3px;
+    width: 13px;
+    height: 13px;
+    border: 1px solid var(--qr-text-dim);
+    border-radius: 3px;
+  }
+
+  #l1qr-empty {
+    padding: 24px 18px;
+    color: var(--qr-text-dim);
+    font-size: 12.5px;
+    text-align: center;
+    display: none;
+  }
+
+  #l1qr-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.35);
+    z-index: 9998;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+  }
+  #l1qr-overlay.l1qr-open {
+    opacity: 1;
+    pointer-events: auto;
+  }
+</style>
+
+<div id="l1qr-root">
+  <button id="l1qr-toggle" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="l1qr-panel">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+    </svg>
+    Quick Reference
+  </button>
+
+  <div id="l1qr-overlay"></div>
+
+  <aside id="l1qr-panel" role="dialog" aria-label="Ticket closure quick reference">
+    <div id="l1qr-header">
+      <h2>Ticket Closure Reference</h2>
+      <p>Universal flow + category checklists — search or expand a section.</p>
+      <button id="l1qr-close" type="button" aria-label="Close">&times;</button>
+    </div>
+    <div id="l1qr-search-wrap">
+      <input id="l1qr-search" type="text" placeholder="Search e.g. 'offboarding', 'work note', 'onboarding'…" autocomplete="off">
+    </div>
+    <div id="l1qr-body"></div>
+    <div id="l1qr-empty">No matches. Try a different term.</div>
+  </aside>
+</div>
+
+<script>
+(function () {
+  // ---- Content source: mirrors l1-copilot-quick-reference-content.md ----
+  // Edit this array to change what the panel shows.
+  var REFERENCE_DATA = [
+    {
+      id: 'universal',
+      tag: 'ALL TICKETS',
+      title: 'Universal Flow',
+      items: [
+        'Caller \u2192 Category/Subcategory \u2192 Configuration Item (only if known)',
+        'Short description + Description filled in',
+        'Impact + Urgency set \u2192 Priority auto-calculates',
+        'Assignment group + Assigned to',
+        'Submit \u2192 reopen by number if the form clears',
+        'State: New \u2192 In Progress the moment real work starts',
+        'Work notes: log every meaningful action as you take it, not one note at the end',
+        'Comments (Customer visible): only for user-facing updates, plain language',
+        'Resolution Information tab: Resolution code + specific Resolution notes',
+        'Resolve \u2192 Closed (manual or automatic per instance)'
+      ],
+      checklist: false,
+      note: { text: 'Before closing, ask: would a stranger reading only the resolution note understand what was wrong and what fixed it?', danger: false }
+    },
+    {
+      id: 'standard',
+      tag: 'HW / SW / ACCESS / NETWORK',
+      title: 'Standard Incident',
+      items: [
+        'No variation from Universal Flow \u2014 this is the baseline',
+        'First work note = your actual diagnostic reasoning, not "looking into it"',
+        'Don\u2019t re-check something the user already confirmed \u2014 note it\u2019s ruled out and move on',
+        'Multiple users affected \u2192 bump Impact, even for something that feels minor',
+        'Time-boxed requests \u2192 Urgency 1-High, move fast \u2014 but never skip identity verification under pressure'
+      ],
+      checklist: false,
+      note: null
+    },
+    {
+      id: 'onboarding',
+      tag: 'ONBOARDING',
+      title: 'Onboarding',
+      items: [
+        'Itemize every system touched: AD account, email, license type, VPN, distribution list, asset tag, image/build version',
+        'Resolution note confirms each item was tested, not just provisioned',
+        'Belongs to another team (e.g. Facilities badge printing)? Reassign cleanly with a note explaining why \u2014 don\u2019t force-work it'
+      ],
+      checklist: true,
+      note: { text: 'Never resolve with a vague note like "Completed setup." List every item individually \u2014 these records get audited.', danger: false }
+    },
+    {
+      id: 'offboarding-urgent',
+      tag: 'OFFBOARDING \u2014 URGENT',
+      title: 'Offboarding: Involuntary / Immediate',
+      items: [
+        'Impact + Urgency \u2192 1-High immediately',
+        'Perform the action, THEN write the note \u2014 never the reverse',
+        'Sequence: AD disable \u2192 VPN cert revoke + force logout \u2192 email disable \u2192 remove from groups',
+        'Resolution note states total elapsed time from ticket receipt to full lockout'
+      ],
+      checklist: true,
+      note: { text: 'Sequencing and timestamps matter more here than anywhere else. Prove WHEN access was cut, not just that it was.', danger: true }
+    },
+    {
+      id: 'offboarding-standard',
+      tag: 'OFFBOARDING \u2014 STANDARD',
+      title: 'Offboarding: 2-Week Notice',
+      items: [
+        'Leave Impact/Urgency low until the last day approaches',
+        'Don\u2019t close early \u2014 only after last-day actions are actually done'
+      ],
+      checklist: false,
+      note: null
+    },
+    {
+      id: 'offboarding-scoped',
+      tag: 'OFFBOARDING \u2014 SCOPED',
+      title: 'Offboarding: Scoped Request (e.g. contractor VPN-only)',
+      items: [
+        'Resolution note states exactly what was revoked',
+        'Resolution note also states what was explicitly left untouched \u2014 don\u2019t let scope get assumed'
+      ],
+      checklist: false,
+      note: null
+    },
+    {
+      id: 'offboarding-exception',
+      tag: 'OFFBOARDING \u2014 EXCEPTION',
+      title: 'Offboarding: Exception (e.g. forwarding instead of deletion)',
+      items: [
+        'REQUIRED FIRST STEP: write a note confirming the approval BEFORE taking any action',
+        'Resolution note references that approval explicitly \u2014 it\u2019s what justifies deviating from standard pattern'
+      ],
+      checklist: true,
+      note: { text: 'Verify approval before acting. Approval-after-the-fact does not count.', danger: true }
+    },
+    {
+      id: 'selfcheck',
+      tag: 'BEFORE YOU CLOSE',
+      title: 'Final Self-Check',
+      items: [
+        'State moved to In Progress before real work began',
+        'At least one Work note shows real reasoning, not just an outcome',
+        'Comments used only for genuine user-facing updates',
+        'Resolution code actually matches what happened',
+        'Resolution notes are specific enough for a stranger to understand the fix',
+        '(Offboarding) timestamps/sequence show exactly when access was cut'
+      ],
+      checklist: true,
+      note: null
+    }
+  ];
+
+  var root = document.getElementById('l1qr-root');
+  var toggle = document.getElementById('l1qr-toggle');
+  var panel = document.getElementById('l1qr-panel');
+  var overlay = document.getElementById('l1qr-overlay');
+  var closeBtn = document.getElementById('l1qr-close');
+  var body = document.getElementById('l1qr-body');
+  var empty = document.getElementById('l1qr-empty');
+  var search = document.getElementById('l1qr-search');
+
+  function escapeHtml(s) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function renderSections(filterText) {
+    body.innerHTML = '';
+    var q = (filterText || '').trim().toLowerCase();
+    var anyVisible = false;
+
+    REFERENCE_DATA.forEach(function (section, idx) {
+      var haystack = (section.title + ' ' + section.tag + ' ' + section.items.join(' ')).toLowerCase();
+      var matches = !q || haystack.indexOf(q) !== -1;
+      if (!matches) return;
+      anyVisible = true;
+
+      var wrap = document.createElement('div');
+      wrap.className = 'l1qr-section' + (q || idx === 0 ? ' l1qr-expanded' : '');
+      wrap.dataset.id = section.id;
+
+      var head = document.createElement('button');
+      head.type = 'button';
+      head.className = 'l1qr-section-head';
+      head.innerHTML =
+        '<span>' + escapeHtml(section.title) +
+        '<span class="l1qr-section-tag">' + escapeHtml(section.tag) + '</span></span>' +
+        '<span class="l1qr-chev">\u203A</span>';
+      head.addEventListener('click', function () {
+        wrap.classList.toggle('l1qr-expanded');
+      });
+
+      var bodyEl = document.createElement('div');
+      bodyEl.className = 'l1qr-section-body';
+
+      var ul = document.createElement('ul');
+      ul.className = section.checklist ? 'l1qr-checklist' : '';
+      section.items.forEach(function (item) {
+        var li = document.createElement('li');
+        li.textContent = item;
+        ul.appendChild(li);
+      });
+      bodyEl.appendChild(ul);
+
+      if (section.note) {
+        var note = document.createElement('div');
+        note.className = 'l1qr-note' + (section.note.danger ? ' l1qr-danger' : '');
+        note.innerHTML = '<strong>Note: </strong>' + escapeHtml(section.note.text);
+        bodyEl.appendChild(note);
+      }
+
+      wrap.appendChild(head);
+      wrap.appendChild(bodyEl);
+      body.appendChild(wrap);
+    });
+
+    empty.style.display = anyVisible ? 'none' : 'block';
+  }
+
+  function openPanel() {
+    panel.classList.add('l1qr-open');
+    overlay.classList.add('l1qr-open');
+    toggle.setAttribute('aria-expanded', 'true');
+  }
+  function closePanel() {
+    panel.classList.remove('l1qr-open');
+    overlay.classList.remove('l1qr-open');
+    toggle.setAttribute('aria-expanded', 'false');
+  }
+
+  // Collapse every section except the one matching `keepId` (if given).
+  function collapseAllExcept(keepId) {
+    Array.prototype.forEach.call(body.querySelectorAll('.l1qr-section'), function (el) {
+      if (keepId && el.dataset.id === keepId) {
+        el.classList.add('l1qr-expanded');
+      } else {
+        el.classList.remove('l1qr-expanded');
+      }
+    });
+  }
+
+  // Briefly outline a section so a jump-to feels intentional, not silent.
+  function flashSection(el) {
+    el.style.transition = 'background 0.15s ease';
+    el.style.background = 'var(--qr-bg-elevated)';
+    setTimeout(function () { el.style.background = ''; }, 600);
+  }
+
+  /**
+   * Jump straight to one section by id, expand it, collapse the rest,
+   * and scroll it into view. Falls back to just opening the panel with
+   * everything visible if the id isn't found (e.g. a typo, or content
+   * was renamed) — never throws, never leaves the panel blank.
+   */
+  function openSection(sectionId) {
+    search.value = '';
+    renderSections('');
+    openPanel();
+
+    if (!sectionId) return; // plain open, no target section
+
+    var target = body.querySelector('.l1qr-section[data-id="' + sectionId + '"]');
+    if (!target) {
+      console.warn('[L1QR] No quick-reference section found for id "' + sectionId + '". ' +
+        'Valid ids: ' + REFERENCE_DATA.map(function (s) { return s.id; }).join(', '));
+      return; // panel stays open with everything visible — a safe fallback
+    }
+
+    collapseAllExcept(sectionId);
+    // rAF so layout settles (section just expanded) before scrolling
+    requestAnimationFrame(function () {
+      target.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      flashSection(target);
+    });
+  }
+
+  toggle.addEventListener('click', function () {
+    panel.classList.contains('l1qr-open') ? closePanel() : openPanel();
+  });
+  closeBtn.addEventListener('click', closePanel);
+  overlay.addEventListener('click', closePanel);
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && panel.classList.contains('l1qr-open')) closePanel();
+  });
+  search.addEventListener('input', function () {
+    renderSections(search.value);
+  });
+  renderSections('');
+
+  // ---- Public API ----
+  // Call from your existing ticket-copilot code, e.g.:
+  //   L1QR.open('offboarding-urgent')   // jump to a specific section
+  //   L1QR.open()                       // just open the panel, all sections visible
+  //   L1QR.close()
+  //   L1QR.toggle()
+  //   L1QR.sections()                   // list valid ids, useful for mapping ticket
+  //                                      // Category/Subcategory values to a section id
+  window.L1QR = {
+    open: openSection,
+    close: closePanel,
+    toggle: function () {
+      panel.classList.contains('l1qr-open') ? closePanel() : openPanel();
+    },
+    sections: function () {
+      return REFERENCE_DATA.map(function (s) { return { id: s.id, title: s.title, tag: s.tag }; });
+    }
+  };
+})();
+</script>
+<!-- L1QR-PANEL-END -->
 </body>
 </html>

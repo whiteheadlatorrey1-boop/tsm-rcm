@@ -1199,15 +1199,11 @@ document.getElementById("execCompliance").textContent=compliance;
       bus.emit('EXECUTIVE_APPROVED', { vertical, decision, ts: Date.now() });
     }
   }
-  // Hook into any approve button
-  document.addEventListener('DOMContentLoaded', function() {
-    document.querySelectorAll('[id*="approve"],[class*="approve"],[data-action="approve"]').forEach(btn => {
-      btn.addEventListener('click', function() {
-        _emitApproval({ approved: true, approvedBy: 'executive', ts: Date.now() });
-      });
-    });
-  });
-  // Expose globally so manual calls work too
+  // No automatic click-binding here — that previously matched ANY element
+  // with "approve" in its id/class/data-action, which is how this ended up
+  // hardcoding approvedBy: 'executive' with no real identity check. The
+  // real approve action (tsmConfirmExec, below) now calls window.TSMApprove
+  // directly with identity fetched from /api/auth/status instead.
   window.TSMApprove = _emitApproval;
 })();
 </script>
@@ -1393,7 +1389,7 @@ document.getElementById("execCompliance").textContent=compliance;
       '<div class="tsmk-explain">' +
         '<div class="tsmk-exp-why-label">WHAT HAPPENED</div>' +
         '<div class="tsmk-exp-rationale">' + esc(wh.domain || '') + ' &mdash; ' +
-          esc(wh.documentsProcessed != null ? wh.documentsProcessed : '\u2014') + ' record(s), accuracy ' +
+          esc(wh.recordsProcessed != null ? wh.recordsProcessed : '\u2014') + ' record(s), accuracy ' +
           esc(wh.accuracy || '\u2014') + ' (' + esc(wh.band || '\u2014') + '), ' +
           esc(wh.openFindings) + ' open finding(s).</div>' +
         '<div class="tsmk-exp-why-label" style="margin-top:14px;">WHY IT MATTERS</div>' +
@@ -1450,7 +1446,7 @@ document.getElementById("execCompliance").textContent=compliance;
 <script src="/html/shared/tsm-quality-score-engine.js"></script>
 <script src="/html/shared/tsm-executive-outcome.js"></script>
 <script src="/html/shared/tsm-benchmark-intelligence.js"></script>
-<script src="/html/shared/tsm-delivery-package.js"></script>
+<script src="/html/shared/tsm-delivery-package-deps.js"></script>
 
 <script>
 /* TSM EXEC KIT — AUTO-INJECTED 2026-06-29 23:19 UTC */
@@ -1652,24 +1648,36 @@ function tsmConfirmExec(){
   // Also record to the real server-side HITL decision log (server.js:
   // /api/exec-portal/construction/decide), same pattern as Mortgage/PM
   // Copilot. This button has no reject/escalate counterpart, so an
-  // AUTHORIZE click is always an approval.
+  // AUTHORIZE click is always an approval. server.js's /decide handler now
+  // derives the real actor from the authenticated session (req.tsmSession)
+  // instead of trusting a client-supplied actor field, so we no longer
+  // send one here.
   fetch('/api/exec-portal/construction/decide', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ index: Date.now(), verdict: 'approved', text: 'Executive authorization', actor: 'Executive' })
+    body: JSON.stringify({ index: Date.now(), verdict: 'approved', text: 'Executive authorization', tenantId: (typeof TSMActiveMember !== 'undefined' && TSMActiveMember) ? TSMActiveMember.getId() : null })
   }).catch(function(){ /* offline/unreachable -- localStorage marker above still set */ });
+
+  // Also emit to the client-side event bus (best-effort, non-blocking) so
+  // the in-page audit log / TSMState update carries real identity. This is
+  // a separate channel from the server-side decide call above, consumed by
+  // core/tsm-event-bus.js's EXECUTIVE_APPROVED listener.
+  fetch('/api/auth/status').then(function(r){ return r.ok ? r.json() : null; }).then(function(me){
+    if (me && me.authenticated && window.TSMApprove) {
+      window.TSMApprove({
+        approved: true,
+        approvedBy: me.staffId || me.clientId || 'unknown',
+        approvedByName: me.label || null,
+        approvedByRole: me.role,
+        ts: Date.now()
+      });
+    }
+  }).catch(function(){ /* best-effort, non-fatal */ });
 }
 </script>
 <!-- TSM KERNEL ENGINE -->
 
 
-<!-- TSM EXECUTIVE BRIEFING LIVE FIX -->
-<div id="tsm-executive-briefing-root"></div>
-<script src="/core/tsm-executive-briefing.js"></script>
-
-
-<!-- TSM BNCA AUTONOMOUS ENGINE -->
-<script defer src="/core/tsm-bnca-autonomous.js"></script>
 <!-- TSM CONTROL PLANE -->
 <script src="/html/js/core/tsm-event-bus.js"></script>
 <script src="/html/js/core/tsm-state.js"></script>
@@ -1728,6 +1736,11 @@ function tsmConfirmExec(){
       fedAny = true;
 
       var exceptionRecord = TSMExceptions.add({
+        // sourceKey lets TSMExceptions dedup across reloads -- _fedIds
+        // above only guards this pageload's render loop, so without this
+        // a refresh created a brand-new exception (and downstream case)
+        // from the same underlying item every time.
+        sourceKey: itemId,
         title: it.claim,
         detail: it.rationale || null,
         recommendedAction: 'See Construction Executive Portal resolution brief.',

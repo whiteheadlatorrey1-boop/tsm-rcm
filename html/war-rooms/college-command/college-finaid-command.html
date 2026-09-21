@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>College Financial Aid — Title IV War Room</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #0b0f14; --panel: #121821; --border: #223042; --text: #e6edf3;
+    --muted: #8ea0b5; --accent: #4da3ff; --high: #ff5d5d; --med: #ffb547; --low: #4caf6f;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: -apple-system, Segoe UI, Roboto, sans-serif; }
+  header { padding: 20px 28px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+  header h1 { font-size: 18px; margin: 0; }
+  header .sub { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  main { padding: 24px 28px; max-width: 1200px; margin: 0 auto; }
+  .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-bottom: 24px; }
+  .kpi { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .kpi .val { font-size: 24px; font-weight: 700; }
+  .kpi .lbl { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  section { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 20px; overflow: hidden; }
+  section h2 { font-size: 14px; margin: 0; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 10px 16px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; }
+  .sev-HIGH { color: var(--high); font-weight: 600; }
+  .sev-MEDIUM { color: var(--med); font-weight: 600; }
+  .sev-LOW { color: var(--low); font-weight: 600; }
+  .exposure-box { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 20px; }
+  .exposure-total { font-size: 28px; font-weight: 700; color: var(--high); }
+  .exposure-note { color: var(--muted); font-size: 12px; margin-top: 6px; }
+  .actions { display: flex; gap: 10px; margin-top: 20px; }
+  button { background: var(--accent); border: none; color: #fff; padding: 10px 18px; border-radius: 8px; font-size: 13px; cursor: pointer; font-weight: 600; }
+  button.secondary { background: transparent; border: 1px solid var(--border); color: var(--text); }
+  #toast { position: fixed; bottom: 20px; right: 20px; background: var(--panel); border: 1px solid var(--border); padding: 12px 18px; border-radius: 8px; opacity: 0; transition: opacity .2s; font-size: 13px; }
+  #toast.show { opacity: 1; }
+</style>
+</head>
+<body data-vertical="college" data-page-role="warroom">
+<header>
+  <div>
+    <h1>College Financial Aid — Title IV War Room</h1>
+    <div class="sub">R2T4 · Verification · Cohort Default — priority domain, real backend exposure math</div>
+  </div>
+  <div class="sub" id="clock"></div>
+</header>
+<main>
+  <div class="kpi-row" id="kpiRow"></div>
+
+  <div class="exposure-box" id="exposureBox">Loading financial exposure…</div>
+
+  <section>
+    <h2>R2T4 Cases (Return to Title IV Funds)</h2>
+    <table id="r2t4Table"><thead><tr><th>Case</th><th>Student</th><th>Program</th><th>Stage</th><th>Severity</th><th>Days Late</th></tr></thead><tbody></tbody></table>
+  </section>
+
+  <section>
+    <h2>Verification Cases</h2>
+    <table id="verTable"><thead><tr><th>Case</th><th>Student</th><th>Stage</th><th>Severity</th><th>Days Open</th><th>Pell Held</th></tr></thead><tbody></tbody></table>
+  </section>
+
+  <section>
+    <h2>Cohort Default Rate Flags</h2>
+    <table id="cdrTable"><thead><tr><th>Flag</th><th>Program</th><th>Band</th><th>Trend</th></tr></thead><tbody></tbody></table>
+  </section>
+
+  <section id="aiSection">
+    <h2>AI Compliance Analysis</h2>
+    <div style="padding:16px;">
+      <div class="actions" style="margin-top:0;">
+        <button id="runAiBtn">Run AI Analysis</button>
+      </div>
+      <div id="aiOut" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:12.5px;line-height:1.6;white-space:pre-wrap;margin-top:14px;min-height:60px;">Not run yet — click "Run AI Analysis".</div>
+    </div>
+  </section>
+
+  <div class="actions">
+    <button id="relayBtn">Relay to College Strategist</button>
+    <button class="secondary" id="refreshBtn">Refresh Exposure</button>
+  </div>
+</main>
+<div id="toast"></div>
+
+<script src="/html/shared/tsm-sentinel-push.js"></script>
+<script src="/runtime/kernel/canonical-core.js"></script>
+<script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
+<script src="/html/war-rooms/college-command/shared/college-relay-loader.js"></script>
+<script src="/html/war-rooms/college-command/services/college-finaid-engine.js"></script>
+<script>
+(function () {
+  let MODEL = null;
+  let engine = null;
+  let lastAiText = null;
+
+  const DOMAIN = 'COLLEGE_FINAID';
+  const RELAY_KEY_FALLBACK = 'TSM_' + DOMAIN + '_RELAY';
+
+  function tick() { document.getElementById('clock').textContent = new Date().toLocaleTimeString(); }
+  setInterval(tick, 1000); tick();
+
+  function showToast(msg, isErr) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.style.color = isErr ? 'var(--high)' : 'var(--text)';
+    t.classList.add('show');
+    clearTimeout(showToast._h);
+    showToast._h = setTimeout(() => t.classList.remove('show'), 2500);
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  function renderKpis(kpis) {
+    const defs = [
+      ['open_r2t4_cases', 'Open R2T4 Cases'],
+      ['r2t4_over_sla', 'R2T4 Over 45-Day SLA'],
+      ['open_verification_cases', 'Open Verification Cases'],
+      ['verification_over_sla', 'Verification Backlog Over SLA'],
+      ['active_pell_disbursed', 'Active Pell Disbursed'],
+      ['cohort_default_flags_open', 'Cohort Default Flags Open']
+    ];
+    const row = document.getElementById('kpiRow');
+    row.innerHTML = defs.map(([key, label]) => {
+      const val = kpis[key];
+      const display = key === 'active_pell_disbursed' ? '$' + Number(val || 0).toLocaleString() : val;
+      return `<div class="kpi"><div class="val">${display}</div><div class="lbl">${label}</div></div>`;
+    }).join('');
+  }
+
+  function renderR2t4() {
+    const tbody = document.querySelector('#r2t4Table tbody');
+    tbody.innerHTML = engine.data.r2t4_cases.map(r => `
+      <tr>
+        <td>${escapeHtml(r.case_id)}</td>
+        <td>${escapeHtml(r.student_ref)}</td>
+        <td>${escapeHtml(r.program)}</td>
+        <td>${escapeHtml(r.stage)}</td>
+        <td class="sev-${escapeHtml(r.severity)}">${escapeHtml(r.severity)}</td>
+        <td>${r.days_late || 0}</td>
+      </tr>
+    `).join('');
+  }
+
+  function renderVerification() {
+    const tbody = document.querySelector('#verTable tbody');
+    tbody.innerHTML = engine.data.verification_cases.map(v => `
+      <tr>
+        <td>${escapeHtml(v.case_id)}</td>
+        <td>${escapeHtml(v.student_ref)}</td>
+        <td>${escapeHtml(v.stage)}</td>
+        <td class="sev-${escapeHtml(v.severity)}">${escapeHtml(v.severity)}</td>
+        <td>${v.days_open || 0}</td>
+        <td>$${Number(v.pell_amount_held || 0).toLocaleString()}</td>
+      </tr>
+    `).join('');
+  }
+
+  function renderCohortDefault() {
+    const tbody = document.querySelector('#cdrTable tbody');
+    tbody.innerHTML = engine.data.cohort_default_flags.map(f => `
+      <tr>
+        <td>${escapeHtml(f.flag_id)}</td>
+        <td>${escapeHtml(f.program)}</td>
+        <td class="sev-${f.band === 'SANCTION' ? 'HIGH' : f.band === 'WARNING' ? 'MEDIUM' : 'LOW'}">${escapeHtml(f.band)}</td>
+        <td>${escapeHtml(f.trend || '—')}</td>
+      </tr>
+    `).join('');
+  }
+
+  async function renderExposure() {
+    const box = document.getElementById('exposureBox');
+    box.textContent = 'Computing exposure…';
+    try {
+      const summary = await engine.getFinancialSummary();
+      box.innerHTML = `
+        <div class="exposure-total">$${Number(summary.total_exposure || 0).toLocaleString()} total exposure</div>
+        <div class="exposure-note">
+          R2T4: $${Number(summary.r2t4_exposure_total || 0).toLocaleString()} ·
+          Verification backlog: $${Number(summary.verification_exposure_total || 0).toLocaleString()} ·
+          Cohort default: $${Number(summary.cohort_default_exposure_total || 0).toLocaleString()}
+          ${summary.note ? '<br>' + escapeHtml(summary.note) : ''}
+        </div>
+      `;
+    } catch (e) {
+      box.textContent = 'Exposure computation failed — see console.';
+      console.warn('renderExposure failed', e);
+    }
+  }
+
+  async function runAiAnalysis() {
+    if (!engine) return;
+    const btn = document.getElementById('runAiBtn');
+    const out = document.getElementById('aiOut');
+    btn.disabled = true;
+    btn.textContent = 'Running…';
+    out.textContent = 'Generating…';
+    try {
+      const { answer, degraded } = await engine.getAiAnalysis();
+      lastAiText = degraded ? null : answer;
+      out.textContent = answer;
+    } catch (e) {
+      out.textContent = 'Error: ' + e.message;
+      lastAiText = null;
+    }
+    btn.disabled = false;
+    btn.textContent = 'Run AI Analysis';
+  }
+
+  // ── SENTINEL PUSH ────────────────────────────────────────────────────
+  // Mirrors schools-command.html's schPushToSentinel() exactly: anomalies
+  // built from real computed data (financial summary + SLA breaches), then
+  // handed to the shared TSMSentinelPush.push() utility (which wraps them
+  // in {generatedAt, anomalies} under TSM_COLLEGE_FINAID_STRATEGIST_RELAY —
+  // Sentinel Center's own naming convention, distinct from relay.core.js's
+  // TSM_COLLEGE_FINAID_RELAY key used for the college-strategist.html hop).
+  const FINAID_SEV_THRESHOLDS = { crit: 0.30, high: 0.15 };
+  function finaidBreachSeverity(breachCount, totalCount) {
+    if (!totalCount) return breachCount > 0 ? 'MED' : 'LOW';
+    const ratio = breachCount / totalCount;
+    if (ratio >= FINAID_SEV_THRESHOLDS.crit) return 'CRIT';
+    if (ratio >= FINAID_SEV_THRESHOLDS.high) return 'HIGH';
+    if (ratio > 0) return 'MED';
+    return 'LOW';
+  }
+
+  async function pushToSentinel() {
+    if (!engine) return;
+    try {
+      const fin = await engine.getFinancialSummary();
+      const kpis = engine.computeKpis();
+      const r2t4Breaches = engine.getSlaBreaches('r2t4_cases') || [];
+      const verificationBreaches = engine.getSlaBreaches('verification_cases') || [];
+      const anomalies = [];
+
+      if ((fin.r2t4_exposure_total || 0) > 0 || r2t4Breaches.length > 0) {
+        const { confidence, note } = fin.r2t4_confidence || { confidence: 0, note: '' };
+        anomalies.push({
+          id: 'college-finaid-r2t4',
+          title: 'R2T4 — Late Return of Title IV Funds',
+          severity: finaidBreachSeverity(kpis.r2t4_over_sla || r2t4Breaches.length, kpis.open_r2t4_cases || 1),
+          exposure: fin.r2t4_exposure_total || 0,
+          confidence,
+          rootCause: `${kpis.r2t4_over_sla || r2t4Breaches.length} of ${kpis.open_r2t4_cases || 0} open R2T4 cases are past the 45-day federal return deadline.${note}`,
+          recommendedAction: 'Escalate overdue R2T4 calculations to the Returns Team lead before further penalty accrual.',
+          impacts: {}
+        });
+      }
+      if ((fin.verification_exposure_total || 0) > 0 || verificationBreaches.length > 0) {
+        const { confidence, note } = fin.verification_confidence || { confidence: 0, note: '' };
+        anomalies.push({
+          id: 'college-finaid-verification',
+          title: 'Verification Backlog Over SLA',
+          severity: finaidBreachSeverity(kpis.verification_over_sla || verificationBreaches.length, kpis.open_verification_cases || 1),
+          exposure: fin.verification_exposure_total || 0,
+          confidence,
+          rootCause: `${kpis.verification_over_sla || verificationBreaches.length} of ${kpis.open_verification_cases || 0} open verification cases are past SLA, holding Pell disbursement.${note}`,
+          recommendedAction: 'Prioritize aged verification cases, especially conflicting-information flags, ahead of the next disbursement cycle.',
+          impacts: {}
+        });
+      }
+      if ((fin.cohort_default_exposure_total || 0) > 0) {
+        const { confidence, note } = fin.cohort_default_confidence || { confidence: 0, note: '' };
+        anomalies.push({
+          id: 'college-finaid-cohort-default',
+          title: 'Cohort Default Rate Flag',
+          severity: kpis.cohort_default_flags_open > 0 ? 'HIGH' : 'LOW',
+          exposure: fin.cohort_default_exposure_total || 0,
+          confidence,
+          rootCause: `${kpis.cohort_default_flags_open || 0} cohort default rate flag(s) open.${note}`,
+          recommendedAction: 'Review default-prevention outreach and counseling coverage for the affected program(s).',
+          impacts: {}
+        });
+      }
+
+      if (window.TSMSentinelPush && window.TSMSentinelPush.push) {
+        window.TSMSentinelPush.push('COLLEGE_FINAID', anomalies);
+      } else {
+        // Fallback if the shared utility didn't load, so a push still happens.
+        localStorage.setItem('TSM_COLLEGE_FINAID_STRATEGIST_RELAY', JSON.stringify({
+          generatedAt: new Date().toISOString(),
+          anomalies
+        }));
+        window.dispatchEvent(new CustomEvent('TSM_SENTINEL_REFRESH'));
+      }
+    } catch (e) {
+      console.warn('College Finaid: sentinel push failed', e);
+    }
+  }
+
+  async function relayToStrategist() {
+    if (!engine) return;
+    try {
+      const payload = await engine.buildRelayPayload(lastAiText);
+      const json = JSON.stringify(payload);
+      try { sessionStorage.setItem(RELAY_KEY_FALLBACK, json); } catch (e) { /* noop */ }
+      try { localStorage.setItem(RELAY_KEY_FALLBACK, json); } catch (e) { /* noop */ }
+      if (window.TSM && window.TSM.relay && window.TSM.relay.write) {
+        try { window.TSM.relay.write('COLLEGE_FINAID', payload); } catch (e) { /* noop */ }
+      }
+      window.dispatchEvent(new CustomEvent('TSM_RELAY_EVENT', { detail: { domain: DOMAIN, data: payload } }));
+      await pushToSentinel();
+      showToast('Relayed to College Strategist.');
+    } catch (e) {
+      console.warn('relayToStrategist failed', e);
+      showToast('Relay failed — see console.', true);
+    }
+  }
+
+  async function init() {
+    const res = await fetch('/html/war-rooms/college-command/data/college-finaid-model.json');
+    MODEL = await res.json();
+    engine = new window.TSMCollegeFinaidEngine(MODEL);
+    engine.loadSampleData();
+
+    renderKpis(engine.computeKpis());
+    renderR2t4();
+    renderVerification();
+    renderCohortDefault();
+    await renderExposure();
+
+    // Exercise the CanonicalCore wiring so it's not dead code — logs a
+    // warning if any record fails schema validation (should be none, since
+    // 'college_finaid' is registered in architecture/canonical/entities.json,
+    // unlike Schools' unregistered 'sch' value).
+    try {
+      const cc = new window.CanonicalCore();
+      await cc.load();
+      const canonical = await engine.getCanonicalRecords();
+      Object.entries(canonical).forEach(([entityKey, records]) => {
+        records.forEach(r => {
+          const { valid, errors } = cc.validate(r);
+          if (!valid) console.warn('CanonicalCore validation failed for', entityKey, r.id, errors);
+        });
+      });
+    } catch (e) {
+      console.warn('CanonicalCore wiring check failed', e);
+    }
+  }
+
+  document.getElementById('relayBtn').addEventListener('click', relayToStrategist);
+  document.getElementById('refreshBtn').addEventListener('click', renderExposure);
+  document.getElementById('runAiBtn').addEventListener('click', runAiAnalysis);
+
+  init();
+})();
+</script>
+  <script src="/js/tsm-guide-engine.js" defer></script>
+  <!-- TSM Guided How-To -->
+  <link rel="stylesheet" href="/shared/tsm-guided-how-to.css">
+  <script src="/shared/tsm-guided-how-to.js" defer></script>
+  <script>
+  document.addEventListener('DOMContentLoaded', function () {
+    if (window.TSMGuidedHowTo) {
+      window.TSMGuidedHowTo.inject('college');
+    }
+  });
+  </script>
+</body>
+</html>

@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>College Accreditation — War Room</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #0b0f14; --panel: #121821; --border: #223042; --text: #e6edf3;
+    --muted: #8ea0b5; --accent: #4da3ff; --high: #ff5d5d; --med: #ffb547; --low: #4caf6f;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: -apple-system, Segoe UI, Roboto, sans-serif; }
+  header { padding: 20px 28px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+  header h1 { font-size: 18px; margin: 0; }
+  header .sub { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  main { padding: 24px 28px; max-width: 1200px; margin: 0 auto; }
+  .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-bottom: 24px; }
+  .kpi { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .kpi .val { font-size: 24px; font-weight: 700; }
+  .kpi .lbl { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  section { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 20px; overflow: hidden; }
+  section h2 { font-size: 14px; margin: 0; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 10px 16px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; }
+  .sev-HIGH { color: var(--high); font-weight: 600; }
+  .sev-MEDIUM { color: var(--med); font-weight: 600; }
+  .sev-LOW { color: var(--low); font-weight: 600; }
+  .exposure-box { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 20px; }
+  .exposure-total { font-size: 28px; font-weight: 700; color: var(--high); }
+  .exposure-note { color: var(--muted); font-size: 12px; margin-top: 6px; }
+  .actions { display: flex; gap: 10px; margin-top: 20px; }
+  button { background: var(--accent); border: none; color: #fff; padding: 10px 18px; border-radius: 8px; font-size: 13px; cursor: pointer; font-weight: 600; }
+  button.secondary { background: transparent; border: 1px solid var(--border); color: var(--text); }
+  #toast { position: fixed; bottom: 20px; right: 20px; background: var(--panel); border: 1px solid var(--border); padding: 12px 18px; border-radius: 8px; opacity: 0; transition: opacity .2s; font-size: 13px; }
+  #toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>College Accreditation — War Room</h1>
+    <div class="sub">Findings · Standards at risk · Self-study &amp; site-visit timeline — real backend, private readiness model</div>
+  </div>
+  <div class="sub" id="clock"></div>
+</header>
+<main>
+  <div class="kpi-row" id="kpiRow"></div>
+
+  <div class="exposure-box" id="exposureBox">Loading readiness risk…</div>
+
+  <section>
+    <h2>Open Findings</h2>
+    <table id="findingTable"><thead><tr><th>Finding</th><th>Standard</th><th>Severity</th><th>Days Open</th><th>Owner</th></tr></thead><tbody></tbody></table>
+  </section>
+
+  <section>
+    <h2>Standards At Risk</h2>
+    <table id="standardTable"><thead><tr><th>Standard</th><th>Description</th><th>Severity</th></tr></thead><tbody></tbody></table>
+  </section>
+
+  <section id="aiSection">
+    <h2>
+      AI Accreditation Readiness Intelligence
+      <span id="aiStatus" style="float:right;font-size:11px;font-weight:400;color:var(--muted)">AI: SERVER</span>
+    </h2>
+    <div style="padding:16px;">
+      <div class="actions" style="margin-top:0;">
+        <button id="runAiBtn">Run AI Analysis</button>
+      </div>
+      <div id="aiEngineGrid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;margin-top:16px;">
+        <div>
+          <div style="color:var(--muted);font-size:11px;text-transform:uppercase;font-weight:600;margin-bottom:6px;">Readiness Risk</div>
+          <div id="aiRiskOut" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:12.5px;line-height:1.6;white-space:pre-wrap;min-height:60px;">Not run yet — click "Run AI Analysis".</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="actions">
+    <button id="relayBtn">Relay to College Strategist</button>
+    <button class="secondary" id="refreshBtn">Refresh Status</button>
+  </div>
+</main>
+<div id="toast"></div>
+
+<script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
+<script src="/html/war-rooms/college-command/shared/college-relay-loader.js"></script>
+<script src="/html/war-rooms/college-command/services/college-accred-engine.js"></script>
+<script>
+(function () {
+  const DOMAIN = 'COLLEGE_ACCRED';
+  const RELAY_KEY_FALLBACK = 'TSM_' + DOMAIN + '_RELAY';
+
+  const engine = new TSMCollegeAccredEngine();
+  if (!engine.loadFromStorage()) {
+    engine.loadSampleData();
+  }
+
+  function tick() { document.getElementById('clock').textContent = new Date().toLocaleTimeString(); }
+  setInterval(tick, 1000); tick();
+
+  function showToast(msg, isErr) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.style.color = isErr ? 'var(--high)' : 'var(--text)';
+    t.classList.add('show');
+    clearTimeout(showToast._h);
+    showToast._h = setTimeout(() => t.classList.remove('show'), 2500);
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  function renderKpis(kpis) {
+    const defs = [
+      ['open_findings', 'Open Findings'],
+      ['findings_past_due', 'Findings Past 45-Day Mark'],
+      ['standards_at_risk', 'Standards At Risk'],
+      ['days_to_next_site_visit', 'Days to Next Site Visit']
+    ];
+    const row = document.getElementById('kpiRow');
+    row.innerHTML = defs.map(([key, label]) => {
+      const val = kpis[key];
+      return '<div class="kpi"><div class="val">' + val + '</div><div class="lbl">' + label + '</div></div>';
+    }).join('');
+  }
+
+  function renderFindings() {
+    const tbody = document.querySelector('#findingTable tbody');
+    tbody.innerHTML = engine.data.findings.map(f =>
+      '<tr>' +
+        '<td>' + escapeHtml(f.finding_id) + '</td>' +
+        '<td>' + escapeHtml(f.standard) + '</td>' +
+        '<td class="sev-' + escapeHtml(f.severity) + '">' + escapeHtml(f.severity) + '</td>' +
+        '<td>' + f.days_open + '</td>' +
+        '<td>' + escapeHtml(f.owner) + '</td>' +
+      '</tr>'
+    ).join('');
+  }
+
+  function renderStandards() {
+    const tbody = document.querySelector('#standardTable tbody');
+    tbody.innerHTML = engine.data.standards_at_risk.map(s =>
+      '<tr>' +
+        '<td>' + escapeHtml(s.standard_id) + '</td>' +
+        '<td>' + escapeHtml(s.description) + '</td>' +
+        '<td class="sev-' + escapeHtml(s.severity) + '">' + escapeHtml(s.severity) + '</td>' +
+      '</tr>'
+    ).join('');
+  }
+
+  async function renderExposure() {
+    const box = document.getElementById('exposureBox');
+    box.textContent = 'Loading readiness risk…';
+    const summary = await engine.getReadinessSummary();
+    box.innerHTML =
+      '<div class="exposure-total">' + Number(summary.total_readiness_risk_score || 0) + ' readiness risk score</div>' +
+      '<div class="exposure-note">' +
+        'Findings risk: ' + Number(summary.findings_risk_total || 0) + ' pts · ' +
+        'Standards risk: ' + Number(summary.standards_risk_total || 0) + ' pts · ' +
+        'Site-visit proximity bonus: ' + Number(summary.site_visit_proximity_bonus || 0) + ' pts' +
+        ' (' + (summary.days_to_site_visit != null ? summary.days_to_site_visit : '—') + ' days out)' +
+        (summary.note ? '<br>' + escapeHtml(summary.note) : '') +
+      '</div>';
+  }
+
+  function updateAiStatus(mode) {
+    const el = document.getElementById('aiStatus');
+    if (!el) return;
+    if (mode === 'ok') { el.textContent = 'AI: CONNECTED'; el.style.color = 'var(--low)'; }
+    else if (mode === 'degraded') { el.textContent = 'AI: DEGRADED'; el.style.color = 'var(--med)'; }
+    else { el.textContent = 'AI: SERVER'; el.style.color = 'var(--muted)'; }
+  }
+
+  async function runAiAnalysis() {
+    const btn = document.getElementById('runAiBtn');
+    const riskOut = document.getElementById('aiRiskOut');
+    btn.disabled = true;
+    btn.textContent = 'Running…';
+    riskOut.textContent = 'Generating…';
+
+    const result = await engine.getAiAnalysis();
+    riskOut.textContent = result.answer;
+    updateAiStatus(result.degraded ? 'degraded' : 'ok');
+
+    btn.disabled = false;
+    btn.textContent = 'Run AI Analysis';
+  }
+
+  async function relayToStrategist() {
+    try {
+      const riskEl = document.getElementById('aiRiskOut');
+      const aiRan = riskEl && !/^(Not run yet|Generating…)/.test(riskEl.textContent);
+      const payload = await engine.buildRelayPayload(aiRan ? riskEl.textContent : null);
+      const json = JSON.stringify(payload);
+      try { sessionStorage.setItem(RELAY_KEY_FALLBACK, json); } catch (e) { /* noop */ }
+      try { localStorage.setItem(RELAY_KEY_FALLBACK, json); } catch (e) { /* noop */ }
+      if (window.TSM && window.TSM.relay && window.TSM.relay.write) {
+        try { window.TSM.relay.write('COLLEGE_ACCRED', payload); } catch (e) { /* noop */ }
+      }
+      window.dispatchEvent(new CustomEvent('TSM_RELAY_EVENT', { detail: { domain: DOMAIN, data: payload } }));
+      showToast('Relayed to College Strategist.');
+    } catch (e) {
+      console.warn('relayToStrategist failed', e);
+      showToast('Relay failed — see console.', true);
+    }
+  }
+
+  function init() {
+    renderKpis(engine.computeKpis());
+    renderFindings();
+    renderStandards();
+    renderExposure();
+  }
+
+  document.getElementById('relayBtn').addEventListener('click', relayToStrategist);
+  document.getElementById('refreshBtn').addEventListener('click', renderExposure);
+  document.getElementById('runAiBtn').addEventListener('click', runAiAnalysis);
+
+  init();
+})();
+</script>
+</body>
+</html>

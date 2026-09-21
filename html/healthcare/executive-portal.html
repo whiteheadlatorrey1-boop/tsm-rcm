@@ -886,6 +886,15 @@ border-radius: 2px; flex-shrink: 0; white-space: nowrap;
   <link rel="stylesheet" href="/shared/tsm-guided-how-to.css">
 </head>
 <body data-vertical="healthcare" data-page-role="exec">
+<style>
+.tsm-hc-crossnav{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:6px 14px;background:#0a0f0a;border-bottom:1px solid #1e3a1e;font-family:'Courier New',monospace;font-size:10px;letter-spacing:.5px;position:sticky;top:0;z-index:200}
+.tsm-hc-crossnav-lbl{color:#556655;margin-right:4px;text-transform:uppercase}
+.tsm-hc-crossnav a{color:#00ff88;text-decoration:none;padding:3px 9px;border:1px solid #1e3a1e;border-radius:10px;white-space:nowrap}
+.tsm-hc-crossnav a:hover{border-color:#00ff88;background:#003322}
+.tsm-hc-crossnav span.tsm-hc-crossnav-active{color:#0a0f0a;background:#00ff88;padding:3px 9px;border-radius:10px;font-weight:700;white-space:nowrap}
+</style>
+<div class="tsm-hc-crossnav"><span class="tsm-hc-crossnav-lbl">HC suite:</span><a href="/html/healthcare/hc-denial-war-room.html">Denial War Room</a><a href="/html/healthcare/hc-main-strategist.html">Strategist</a><a href="/html/healthcare/hc-office-manager-doc-intake.html">Doc Intake</a><span class="tsm-hc-crossnav-active">Executive Portal</span><a href="/html/healthcare/hc-om-portal.html">OM Portal</a><a href="/html/healthcare/hc-strategist/index.html">Neural Intake Strategist</a></div>
+
 <section
   id="tsm-guided-how-to-root"
   data-tsm-guided-how-to="true"
@@ -931,6 +940,7 @@ border-radius: 2px; flex-shrink: 0; white-space: nowrap;
     <div id="tsmk-benchmark-auto" style="margin:10px 0 24px;"></div>
     <div style="margin:10px 0 24px;">
       <button onclick="exportClientPackage()" id="tsmk-delivery-btn" style="background:rgba(94,255,193,0.08);border:1px solid rgba(94,255,193,0.35);color:#5effc1;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:1px;padding:8px 16px;cursor:pointer;border-radius:4px;">⬇ EXPORT CLIENT PACKAGE</button>
+      <button onclick="prepareAndRelayRecovery()" id="tsmk-recovery-relay-btn" style="margin-left:8px;background:rgba(255,184,77,0.08);border:1px solid rgba(255,184,77,0.35);color:#ffb84d;font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:1px;padding:8px 16px;cursor:pointer;border-radius:4px;">⇢ PREPARE &amp; RELAY RECOVERY</button>
     </div>
   </div>
   <!-- ▲ TSM EXEC KIT ▲ -->
@@ -2119,6 +2129,7 @@ async function exportExecutiveReport() {
       taxPrepGrants: 'TAX PREP / GRANTS'
     };
     const engineOutputs = d.stratReports || d.engineOutputs || {};
+    const engineEntries = Object.entries(engineOutputs).filter(([, v]) => v && v.length > 10);
 
     // Pull whatever denial pack text actually rendered, if any — this is
     // real generated content sitting in the DOM, not re-fetched.
@@ -2126,6 +2137,25 @@ async function exportExecutiveReport() {
     const denialPackText = dpEl && !dpEl.querySelector('span[style*="blink"]')
       ? dpEl.innerText.trim()
       : '';
+
+    // TSM FIX: an empty/near-empty relay (nothing has escalated yet, or a
+    // stale sessionId-only payload) used to fall through silently to a
+    // near-blank downloaded file that looks like a real export. Bail out
+    // with a clear alert instead — a sessionId alone is not "real data".
+    const execNotesForGuard = [...document.querySelectorAll('.decision-item[data-note-key]')]
+      .map(item => (sessionStorage.getItem(NOTE_NS + item.dataset.noteKey) ||
+        localStorage.getItem(NOTE_NS + item.dataset.noteKey) || '').trim())
+      .filter(Boolean);
+    const hasRealData = Boolean(
+      d.warRoomBrief || d.aiSummary || stratAnalysis || denialIntel || strategistSummary ||
+      decisions.length || urgent.length || engineEntries.length || denialPackText ||
+      execNotesForGuard.length
+    );
+    if (!hasRealData) {
+      alert('Nothing to export yet — no war room brief, engine findings, decisions, alerts, or notes are on file for this session.');
+      if (btn) { btn.innerHTML = origLabel; btn.style.pointerEvents = 'auto'; }
+      return;
+    }
 
     const lines = [
       'TSM HC EXECUTIVE REPORT — SESSION EXPORT',
@@ -2171,10 +2201,11 @@ async function exportExecutiveReport() {
       lines.push('EXECUTIVE NOTES', '---------------');
       execNotes.forEach(n => lines.push(`${n.action}:`, n.text, ''));
     }
-    const engineEntries = Object.entries(engineOutputs).filter(([, v]) => v && v.length > 10);
     if (engineEntries.length) {
       lines.push('ENGINE FINDINGS', '---------------');
-      engineEntries.forEach(([label, text]) => lines.push(`${ENGINE_LABELS[label] || label.toUpperCase()}:`, text.slice(0, 500), ''));
+      // TSM FIX: was text.slice(0, 500) — silently clipping real engine
+      // findings out of the actual report HonorHealth receives. Full text now.
+      engineEntries.forEach(([label, text]) => lines.push(`${ENGINE_LABELS[label] || label.toUpperCase()}:`, text, ''));
     }
     if (denialPackText) {
       lines.push('DENIAL PACK OUTPUT', '-------------------', denialPackText, '');
@@ -3583,9 +3614,165 @@ setInterval(buildStratBriefTab, 30000);
   
   function fromRelay(relayObj) {
     relayObj = relayObj || {};
+
+    /*
+     * HC relay normalization boundary.
+     *
+     * The HC Main Strategist writes the canonical escalation payload:
+     *   structuredCase / warRoomBrief / stratReports / alerts / bnca
+     *
+     * Older TSM Exec Kit producers may also provide:
+     *   wip / explain
+     *
+     * Preserve both contracts. This adapter does not classify, score, or
+     * re-derive healthcare revenue data; it only maps already-produced
+     * relay facts into the Executive Portal rendering contract.
+     */
+
+    var wip = Array.isArray(relayObj.wip) ? relayObj.wip.slice() : [];
+    var explain = Array.isArray(relayObj.explain) ? relayObj.explain.slice() : [];
+
+    var sc = relayObj.structuredCase || null;
+    var reports = relayObj.stratReports || {};
+    var bnca = relayObj.bnca || {};
+    var alerts = relayObj.alerts || {};
+
+    /*
+     * If the current HC Strategist relay has no legacy WIP array, expose
+     * the actual relay state instead of displaying "Awaiting relay data".
+     */
+    if (!wip.length && (relayObj.enriched || sc || relayObj.warRoomBrief || relayObj.aiSummary)) {
+      var claimId = sc && sc.claimId
+        ? sc.claimId
+        : (relayObj.claimId || null);
+
+      wip.push({
+        id: 'hc-strategist',
+        label: 'HC Main Strategist',
+        status: 'complete',
+        detail: claimId
+          ? 'Live strategist relay · Claim ' + claimId
+          : 'Live strategist relay received'
+      });
+
+      if (sc && sc.appealDeadline) {
+        wip.push({
+          id: 'recovery-deadline',
+          label: 'Recovery / Appeal Deadline',
+          status: 'active',
+          detail: String(sc.appealDeadline)
+        });
+      }
+
+      if (sc && sc.recoveryLikelihood) {
+        wip.push({
+          id: 'recovery-likelihood',
+          label: 'Recovery Likelihood',
+          status: 'active',
+          detail: String(sc.recoveryLikelihood) +
+            (typeof sc.confidence === 'number'
+              ? ' · confidence ' + sc.confidence + '%'
+              : '')
+        });
+      }
+    }
+
+    /*
+     * Current HC Strategist relay does not necessarily carry legacy
+     * explain[] items. Build presentation-only explain records from fields
+     * already produced by the Strategist. No new classification occurs here.
+     */
+    if (!explain.length && (sc || relayObj.warRoomBrief || relayObj.aiSummary || reports.executiveBrief)) {
+      var claimLabel = sc && sc.claimId
+        ? 'Claim ' + sc.claimId
+        : 'HC Main Strategist';
+
+      var rationale =
+        (sc && sc.rootCauseHypothesis) ||
+        relayObj.warRoomBrief ||
+        relayObj.aiSummary ||
+        reports.executiveBrief ||
+        bnca.revenuePosition ||
+        'See the full HC Strategist relay for source details.';
+
+      if (typeof rationale === 'object') {
+        try {
+          rationale = JSON.stringify(rationale);
+        } catch (_) {
+          rationale = String(rationale);
+        }
+      }
+
+      explain.push({
+        id: 'hc-relay-' + (relayObj.sessionId || 'current'),
+        claim: claimLabel + ' — Revenue Recovery Signal',
+        confidence: sc && typeof sc.confidence === 'number'
+          ? sc.confidence
+          : null,
+        /*
+         * Do not invent a browser-side exposure threshold. If upstream
+         * classification supplied a confidence tier, preserve that label;
+         * otherwise leave severity unset rather than creating a second
+         * healthcare classifier in the Executive Portal.
+         */
+        severity: sc && sc.confidenceTier
+          ? String(sc.confidenceTier).toLowerCase()
+          : null,
+        rationale: String(rationale),
+        sources: ['HC Main Strategist'],
+        dataPoints: [
+          sc && sc.denialReasonCode
+            ? 'Denial code: ' + sc.denialReasonCode
+            : null,
+          sc && sc.denialCategory
+            ? 'Category: ' + sc.denialCategory
+            : null,
+          sc && sc.payer
+            ? 'Payer: ' + sc.payer
+            : null,
+          sc && typeof sc.financialExposure === 'number'
+            ? 'Exposure: $' + sc.financialExposure.toLocaleString()
+            : null
+        ].filter(Boolean)
+      });
+    }
+
+    /*
+     * Preserve the exact strategist decisions if they exist. These remain
+     * the source for the existing decision panel and are not duplicated
+     * into explain[] when already supplied.
+     */
+    if (!explain.length && Array.isArray(alerts.decisions)) {
+      alerts.decisions.forEach(function (dec, i) {
+        if (!dec) return;
+
+        explain.push({
+          id: 'hc-decision-' + i,
+          claim: dec.action || dec.title || 'HC Strategist decision',
+          confidence: sc && typeof sc.confidence === 'number'
+            ? sc.confidence
+            : null,
+          severity: dec.urgency || 'REVIEW',
+          rationale: dec.reason || dec.context || dec.action || '',
+          sources: ['HC Main Strategist']
+        });
+      });
+    }
+
     return {
-      wip: Array.isArray(relayObj.wip) ? relayObj.wip : [],
-      explain: Array.isArray(relayObj.explain) ? relayObj.explain : []
+      wip: wip,
+      explain: explain,
+
+      // Normalized timestamp/session fields for the Exec Kit consumers.
+      ts: relayObj.ts || relayObj.timestamp || relayObj.generatedAt || null,
+      sessionId: relayObj.sessionId || null,
+
+      // Preserve canonical HC relay facts for downstream package/recovery use.
+      structuredCase: sc,
+      warRoomBrief: relayObj.warRoomBrief || relayObj.aiSummary || '',
+      stratReports: reports,
+      alerts: alerts,
+      bnca: bnca
     };
   }
 
@@ -3617,7 +3804,7 @@ setInterval(buildStratBriefTab, 30000);
       '<div class="tsmk-explain">' +
         '<div class="tsmk-exp-why-label">WHAT HAPPENED</div>' +
         '<div class="tsmk-exp-rationale">' + esc(wh.domain || '') + ' &mdash; ' +
-          esc(wh.documentsProcessed != null ? wh.documentsProcessed : '\u2014') + ' record(s), accuracy ' +
+          esc(wh.recordsProcessed != null ? wh.recordsProcessed : '\u2014') + ' record(s), accuracy ' +
           esc(wh.accuracy || '\u2014') + ' (' + esc(wh.band || '\u2014') + '), ' +
           esc(wh.openFindings) + ' open finding(s).</div>' +
         '<div class="tsmk-exp-why-label" style="margin-top:14px;">WHY IT MATTERS</div>' +
@@ -3670,7 +3857,8 @@ setInterval(buildStratBriefTab, 30000);
 <script src="/html/shared/tsm-quality-score-engine.js"></script>
 <script src="/html/shared/tsm-executive-outcome.js"></script>
 <script src="/html/shared/tsm-benchmark-intelligence.js"></script>
-<script src="/html/shared/tsm-delivery-package.js"></script>
+<script src="/html/shared/tsm-delivery-package-deps.js"></script>
+<script src="/html/shared/tsm-bpo-relay.js"></script>
 
 <script>
 /* TSM EXEC KIT — AUTO-INJECTED 2026-06-29 23:19 UTC */
@@ -3695,18 +3883,65 @@ setInterval(buildStratBriefTab, 30000);
   var lastBenchmark = null;
   var lastStratReportKPI = null;
 
+  // HC recovery package state — reuse the exact structured denial contract
+  // already produced by the War Room and threaded through the Strategist.
+  // No browser-side revenue-leakage classification is performed here.
+  var lastRelay = null;
+  var lastStructuredCase = null;
+
   function readRelay() {
-    for (var i = 0; i < RELAY_KEYS.length; i++) {
-      var raw = localStorage.getItem(RELAY_KEYS[i]);
-      if (raw) {
-        try { return JSON.parse(raw); } catch(e) { return null; }
-      }
+    /*
+     * TSM FIX: TSM_EXEC_RELAY is the authoritative Executive Portal
+     * escalation payload. Do not fall through to Sentinel, War Room, or
+     * memory relays here because those are upstream/legacy compatibility
+     * stores and may contain an older case.
+     *
+     * Session storage is preferred so a newly generated same-session
+     * escalation wins. localStorage is retained only as persistence for
+     * the same authoritative relay key.
+     */
+    var raw = null;
+
+    try {
+      raw = sessionStorage.getItem('TSM_EXEC_RELAY');
+    } catch (e) {}
+
+    if (!raw) {
+      try {
+        raw = localStorage.getItem('TSM_EXEC_RELAY');
+      } catch (e) {}
     }
-    return null;
+
+    if (!raw) return null;
+
+    try {
+      var payload = JSON.parse(raw);
+
+      if (!payload || typeof payload !== 'object') return null;
+
+      // A real Executive escalation payload should identify its source.
+      // Reject unrelated/legacy JSON that happens to be stored under the
+      // same key rather than silently rendering it as executive state.
+      if (payload.source && payload.source !== 'HC Main Strategist') {
+        console.warn('[HC Executive Portal] unexpected relay source:', payload.source);
+      }
+
+      return payload;
+    } catch (e) {
+      console.warn('[HC Executive Portal] invalid TSM_EXEC_RELAY JSON:', e);
+      return null;
+    }
   }
 
   function mount() {
     var relay  = readRelay();
+
+    // Preserve the exact relay and structured denial contract for the
+    // delivery-package assembly layer. These are source facts, not a
+    // second revenue-leakage classifier.
+    lastRelay = relay;
+    lastStructuredCase = (relay && relay.structuredCase) || null;
+
     var data   = TSMExecKit.fromRelay(relay);
 
     /* If relay has no wip/explain yet, show a waiting state for WIP
@@ -3719,8 +3954,9 @@ setInterval(buildStratBriefTab, 30000);
     var items  = data.explain;
 
     TSMExecKit.renderWIP(WIP_ID, stages, { title: WIP_TITLE,
-      eta: relay ? ('Relay: ' + (relay.timestamp
-        ? new Date(relay.timestamp).toLocaleTimeString() : 'loaded')) : '' });
+      eta: data.ts
+        ? ('Relay: ' + new Date(data.ts).toLocaleTimeString())
+        : (relay ? 'Relay: loaded' : '') });
 
     TSMExecKit.renderExplainability(EXP_ID, items, { openFirst: true });
 
@@ -3792,25 +4028,227 @@ setInterval(buildStratBriefTab, 30000);
   // documentCount is left undefined (honest null in the package) since this
   // page has no canonical "documents processed" counter, matching the
   // engine's own documented fallback.
-  window.exportClientPackage = function () {
+  function buildHealthcareClientPackage(recoveryWorkItem) {
     if (!window.TSMDeliveryPackage) {
-      alert('Delivery package engine not loaded.');
-      return;
+      throw new Error('Delivery package engine not loaded.');
     }
+
     var sections = {};
     if (lastBenchmark) sections.benchmark = lastBenchmark;
     if (lastStratReportKPI) sections.revenueKPI = lastStratReportKPI;
-    var pkg = TSMDeliveryPackage.build({
+
+    // Healthcare Revenue Recovery handoff:
+    // preserve the canonical War Room structuredCase as operational source
+    // evidence. Server-side classification remains authoritative.
+    if (lastStructuredCase) {
+      sections.healthcareRevenueRecovery = {
+        contractVersion: '1.0.0',
+        source: 'hc-denial-war-room',
+        sessionId: lastRelay && lastRelay.sessionId
+          ? lastRelay.sessionId
+          : null,
+        structuredCase: lastStructuredCase,
+        recoveryInput: {
+          claimId: lastStructuredCase.claimId || null,
+          payer: lastStructuredCase.payer || null,
+          denialReasonCode: lastStructuredCase.denialReasonCode || null,
+          denialCategory: lastStructuredCase.denialCategory || null,
+          rootCauseHypothesis: lastStructuredCase.rootCauseHypothesis || null,
+          appealable: lastStructuredCase.appealable,
+          appealDeadline: lastStructuredCase.appealDeadline || null,
+          recoveryLikelihood: lastStructuredCase.recoveryLikelihood || null,
+          confidence: typeof lastStructuredCase.confidence === 'number'
+            ? lastStructuredCase.confidence
+            : null,
+          financialExposure:
+            typeof lastStructuredCase.financialExposure === 'number'
+              ? lastStructuredCase.financialExposure
+              : null,
+          evidenceProvenance:
+            lastStructuredCase.evidenceProvenance || null
+        },
+        recoveryWorkItem: recoveryWorkItem || null
+      };
+    }
+
+    return TSMDeliveryPackage.build({
       domain: 'Healthcare',
       explainItems: lastExplainItems,
       qualityScore: lastQualityScore,
       sections: sections
     });
+  }
+
+  window.exportClientPackage = function () {
+    if (!window.TSMDeliveryPackage) {
+      alert('Delivery package engine not loaded.');
+      return;
+    }
+
+    var pkg = buildHealthcareClientPackage(null);
     var blob = new Blob([JSON.stringify(pkg, null, 2)], { type: 'application/json' });
     var a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = 'tsm-client-package-' + Date.now() + '.json';
     a.click();
+  };
+
+  window.prepareAndRelayRecovery = async function () {
+    var btn = document.getElementById('tsmk-recovery-relay-btn');
+
+    if (!lastStructuredCase) {
+      alert('No Healthcare structured case is available. Run the HC Denial War Room analysis first.');
+      return;
+    }
+
+    // TSM RECOVERY GATE:
+    // Do not create or relay a recovery work item from a partial, stale,
+    // or structurally incomplete Healthcare case. The BPO handoff is an
+    // execution boundary, so the canonical case must contain the fields
+    // required to identify the claim, classify the denial, quantify the
+    // exposure, and preserve evidence provenance.
+    var recoveryGateErrors = [];
+
+    if (!lastStructuredCase.claimId) {
+      recoveryGateErrors.push('claim ID');
+    }
+
+    if (!lastStructuredCase.payer) {
+      recoveryGateErrors.push('payer');
+    }
+
+    if (!lastStructuredCase.denialReasonCode) {
+      recoveryGateErrors.push('denial reason code');
+    }
+
+    if (!lastStructuredCase.denialCategory) {
+      recoveryGateErrors.push('denial category');
+    }
+
+    if (typeof lastStructuredCase.financialExposure !== 'number' ||
+        !Number.isFinite(lastStructuredCase.financialExposure) ||
+        lastStructuredCase.financialExposure < 0) {
+      recoveryGateErrors.push('financial exposure');
+    }
+
+    if (!Array.isArray(lastStructuredCase.evidenceProvenance) ||
+        lastStructuredCase.evidenceProvenance.length === 0) {
+      recoveryGateErrors.push('evidence provenance');
+    }
+
+    if (!lastStructuredCase.recoveryLikelihood) {
+      recoveryGateErrors.push('recovery likelihood');
+    }
+
+    if (typeof lastStructuredCase.confidence !== 'number' ||
+        !Number.isFinite(lastStructuredCase.confidence)) {
+      recoveryGateErrors.push('confidence');
+    }
+
+    if (lastStructuredCase.appealable !== true &&
+        lastStructuredCase.appealable !== false) {
+      recoveryGateErrors.push('appealable determination');
+    }
+
+    if (recoveryGateErrors.length) {
+      console.warn('[HC Recovery Gate] blocked incomplete structured case:', {
+        fields: recoveryGateErrors,
+        structuredCase: lastStructuredCase
+      });
+      alert(
+        'Recovery preparation blocked. The current Healthcare case is incomplete: ' +
+        recoveryGateErrors.join(', ') +
+        '. Run the HC Denial War Room analysis again and verify the completed case before relaying to BPO.'
+      );
+      return;
+    }
+
+    if (!window.TSMBpoRelay || typeof TSMBpoRelay.openBpoRelayPicker !== 'function') {
+      alert('BPO relay engine not loaded.');
+      return;
+    }
+
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = '⟳ PREPARING RECOVERY...';
+      btn.style.opacity = '0.65';
+    }
+
+    try {
+      var response = await fetch('/api/hc/recovery-work-item', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          opportunity: {
+            contractVersion: '1.0.0',
+            opportunityId:
+              'denials:' + (lastStructuredCase.claimId || 'HC-' + Date.now()),
+            source: 'hc-denial-war-room',
+            runtimeSource: 'denial-war-room',
+            claimId: lastStructuredCase.claimId || null,
+            payer: lastStructuredCase.payer || null,
+            denialReasonCode: lastStructuredCase.denialReasonCode || null,
+            denialCategory: lastStructuredCase.denialCategory || null,
+            rootCause: lastStructuredCase.rootCauseHypothesis || null,
+            appealable:
+              typeof lastStructuredCase.appealable === 'boolean'
+                ? lastStructuredCase.appealable
+                : null,
+            appealDeadline: lastStructuredCase.appealDeadline || null,
+            recoveryLikelihood: lastStructuredCase.recoveryLikelihood || null,
+            confidence:
+              typeof lastStructuredCase.confidence === 'number'
+                ? lastStructuredCase.confidence
+                : null,
+            financialExposure:
+              typeof lastStructuredCase.financialExposure === 'number'
+                ? lastStructuredCase.financialExposure
+                : null,
+            exposure:
+              typeof lastStructuredCase.financialExposure === 'number'
+                ? lastStructuredCase.financialExposure
+                : null,
+            evidenceProvenance:
+              lastStructuredCase.evidenceProvenance || null
+          }
+        })
+      });
+
+      var result = await response.json();
+
+      if (!response.ok || !result.ok || !result.recoveryWorkItem) {
+        throw new Error(
+          result.message ||
+          result.error ||
+          ('Recovery work item request failed (' + response.status + ')')
+        );
+      }
+
+      var recoveryWorkItem = result.recoveryWorkItem;
+      var pkg = buildHealthcareClientPackage(recoveryWorkItem);
+
+      await TSMBpoRelay.openBpoRelayPicker(pkg, {
+        vertical: 'Healthcare',
+        sourceSystem: 'tsm-hc-executive-portal',
+        caseId:
+          recoveryWorkItem.caseId ||
+          recoveryWorkItem.workItemId ||
+          recoveryWorkItem.opportunityId ||
+          null
+      });
+    } catch (err) {
+      console.error('[HC Recovery Relay]', err);
+      alert('Recovery relay failed: ' + (err.message || 'Unknown error'));
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = '⇢ PREPARE & RELAY RECOVERY';
+        btn.style.opacity = '1';
+      }
+    }
   };
 
   if (document.readyState === 'loading') {
@@ -3927,7 +4365,14 @@ function tsmWriteScopedExec(vertical, missionId){
         severity: it.severity || 'med',
         confidence: it.confidence != null ? it.confidence : null,
         sector: 'healthcare',
-        agentLabel: 'HC Strategist'
+        agentLabel: 'HC Strategist',
+        // TSM FIX: _fedIds only dedupes within a single pageload (resets on
+        // reload/storage-event re-render), so every fresh mount re-added a
+        // duplicate exception for the same underlying claim. sourceKey makes
+        // the dedup reload-safe by checking the persisted store itself (see
+        // TSMExceptions.findOpenBySourceKey) instead of relying on in-memory
+        // state alone.
+        sourceKey: itemId
       });
 
       // Every HC exception also becomes a real Case (Roadmap #10) with its

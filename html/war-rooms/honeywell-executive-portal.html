@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>TSM · Honeywell Executive</title>
+<title>TSM · Meridian Industrial Executive</title>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -82,7 +82,7 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 <div class="topbar">
   <div style="display:flex;align-items:center;gap:16px">
     <span class="tb-brand">⚡ TSM ENTERPRISE</span>
-    <span class="tb-stat">VERTICAL <span>HONEYWELL EXECUTIVE</span></span>
+    <span class="tb-stat">VERTICAL <span>MERIDIAN INDUSTRIAL EXECUTIVE</span></span>
   </div>
   <span class="tb-time" id="clock">--:--:--</span>
 </div>
@@ -90,12 +90,19 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
   <div class="nav-tab" onclick="window.location='/html/plant-incident.html'">⚡ PLANT</div>
   <div class="nav-tab" onclick="window.location='/html/supplier-shutdown.html'">📦 SUPPLIER</div>
   <div class="nav-tab" onclick="window.location='/html/cyber-incident.html'">🛡 CYBER</div>
+  <div class="nav-tab" onclick="window.location='/html/war-rooms/bess-gigafactory-incident.html'">🔋 BESS</div>
+  <div class="nav-tab" onclick="window.location='/html/war-rooms/advanced-detection-incident.html'">📡 DETECTION</div>
+  <div class="nav-tab" onclick="window.location='/html/war-rooms/healthcare-thermal-continuity.html'">🏥 HEALTHCARE</div>
+  <div class="nav-tab" onclick="window.location='/html/war-rooms/aerospace-maintenance-readiness.html'">✈ AEROSPACE</div>
+  <div class="nav-tab" onclick="window.location='/html/war-rooms/life-sciences-production-continuity.html'">🧪 LIFE SCIENCES</div>
+  <div class="nav-tab" onclick="window.location='/html/war-rooms/industrial-capital-project-recovery.html'">🏗 CAPITAL PROJECT</div>
+  <div class="nav-tab" onclick="window.location='/html/war-rooms/honeywell-cross-domain-cascade.html'">🔗 CROSS-DOMAIN</div>
   <div class="nav-tab" onclick="window.location='/html/war-rooms/honeywell-strategist.html'">→ STRATEGIST</div>
   <div class="nav-tab active">↑ EXECUTIVE</div>
 </div>
 <div class="hdr">
   <div>
-    <div class="hdr-title" id="hdrTitle">↑ HONEYWELL EXECUTIVE</div>
+    <div class="hdr-title" id="hdrTitle">↑ MERIDIAN INDUSTRIAL EXECUTIVE</div>
     <div class="hdr-sub" id="hdrSub">Awaiting escalation from the strategist…</div>
   </div>
   <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
@@ -145,9 +152,15 @@ setInterval(tick,1000);tick();
 const RELAY_KEY = 'TSM_HONEYWELL_EXEC_RELAY';
 
 const SOURCE_META = {
-  plant:   { label: 'PLANT — OPERATIONS INCIDENT',     icon: '⚡', color: 'var(--orange)' },
-  cyber:   { label: 'CYBER — SECURITY INCIDENT',        icon: '🛡', color: 'var(--red)' },
-  supplier:{ label: 'SUPPLIER SHUTDOWN — SUPPLY CHAIN', icon: '📦', color: 'var(--amber)' }
+  plant:    { label: 'PLANT — OPERATIONS INCIDENT',     icon: '⚡', color: 'var(--orange)' },
+  cyber:    { label: 'CYBER — SECURITY INCIDENT',        icon: '🛡', color: 'var(--red)' },
+  supplier: { label: 'SUPPLIER SHUTDOWN — SUPPLY CHAIN', icon: '📦', color: 'var(--amber)' },
+  bess:     { label: 'BESS/GIGAFACTORY — THERMAL EVENT', icon: '🔋', color: 'var(--red)' },
+  detection:{ label: 'ADVANCED DETECTION — PRE-ALARM',   icon: '📡', color: 'var(--amber)' },
+  healthcare:{ label: 'HEALTHCARE — THERMAL CONTINUITY', icon: '🏥', color: 'var(--green)' },
+  aerospace:{ label: 'AEROSPACE — MAINTENANCE READINESS', icon: '✈', color: 'var(--blue)' },
+  lifesciences:{ label: 'LIFE SCIENCES — PRODUCTION CONTINUITY', icon: '🧪', color: 'var(--green)' },
+  capitalproject:{ label: 'CAPITAL PROJECT — RECOVERY', icon: '🏗', color: 'var(--amber)' }
 };
 
 function showToast(msg, isErr){
@@ -189,7 +202,7 @@ function recordExecutiveAction(action, note){
   fetch('/api/exec-portal/honeywell/decide', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ index: Date.now(), verdict, text: `[${incidentType}] ${note}`, actor: 'Executive' })
+    body: JSON.stringify({ index: Date.now(), verdict, text: `[${incidentType}] ${note}`, actor: 'Executive', tenantId: (typeof TSMActiveMember !== 'undefined' && TSMActiveMember) ? TSMActiveMember.getId() : null })
   }).catch(() => { /* offline/unreachable -- action still logged to audit trail above */ });
 }
 
@@ -254,11 +267,21 @@ function renderEngineOutput(text) {
   return html;
 }
 
+// Safety net: normalizes exposure figures that were saved to localStorage
+// before this fix (e.g. from an earlier demo run) as well as any future
+// model slip -- covers this tile's display.
+function tsmNormalizeExposurePair(lo, hi){
+  const bothPresent = lo != null && hi != null;
+  if(bothPresent && lo > 0 && hi > 0 && lo < 1000 && hi < 1000){
+    return [lo * 1e6, hi * 1e6];
+  }
+  return [lo, hi];
+}
 function kpiExposure(k){
   if(!k) return '—';
   if(k.totalExposureLow || k.totalExposureHigh){
+    const [lo,hi]=tsmNormalizeExposurePair(k.totalExposureLow, k.totalExposureHigh);
     const fmt=n=>'$'+Number(n).toLocaleString();
-    const lo=k.totalExposureLow, hi=k.totalExposureHigh;
     return (lo && hi && lo!==hi) ? `${fmt(lo)}–${fmt(hi)}` : fmt(hi||lo);
   }
   if(k.raw) return k.raw;
@@ -269,6 +292,8 @@ function kpiSecondary(k){
   if(!k) return '—';
   if(typeof k.bufferDays === 'number') return k.bufferDays + ' days';
   if(k.containmentEta) return k.containmentEta;
+  if(k.downtimeEstimate) return k.downtimeEstimate;
+  if(k.leadTimeEstimate) return k.leadTimeEstimate;
   if(k.raw) return k.raw;
   return '—';
 }
@@ -276,6 +301,7 @@ function kpiSecondary(k){
 function kpiTertiary(k){
   if(!k) return '—';
   if(typeof k.ordersAtRisk === 'number') return k.ordersAtRisk + ' orders';
+  if(typeof k.riskScore === 'number') return k.riskScore + '/100';
   if(k.raw) return k.raw;
   return '—';
 }
@@ -295,6 +321,28 @@ function tertiaryLabel(source){
 // via payload.bnca_exposure — this page never recomputes it, only displays
 // what was relayed. Mirrors honeywell-strategist.html's renderHoneywellBNCA().
 function hwMoney(n){ return '$' + Math.round(Number(n) || 0).toLocaleString(); }
+
+// Mirrors honeywell-strategist.html's panel of the same name — the
+// strategist now forwards every domain that was active at escalation time
+// (data.allDomains) instead of just the one it happened to have open, so
+// this page can show the executive the same full picture rather than only
+// the single most-recent incident.
+function renderActiveDomainsPanel(allEntries){
+  if(!allEntries || !allEntries.length) return '';
+  const rows = allEntries.map(d => {
+    const meta = SOURCE_META[d.source] || { label: (d.source||'UNKNOWN').toUpperCase(), icon:'◆', color:'var(--gold)' };
+    const exp = kpiExposure((d.kpis||{}).exposure);
+    const when = d.timestamp ? new Date(d.timestamp).toLocaleString() : 'unknown time';
+    return `<tr>
+      <td style="color:${meta.color}">${meta.icon} ${escapeHtml(meta.label)}</td>
+      <td>${escapeHtml(exp)}</td>
+      <td class="no-items" style="padding:0">${escapeHtml(when)}</td>
+    </tr>`;
+  }).join('');
+  return `<div class="sec"><div class="sec-hdr">DOMAINS AT ESCALATION TIME (${allEntries.length})</div>
+    <table class="md-table"><thead><tr><th>DOMAIN</th><th>EXPOSURE</th><th>RELAYED</th></tr></thead>
+    <tbody>${rows}</tbody></table></div>`;
+}
 function renderHoneywellBNCA(bnca){
   if(!bnca) return '';
   if(bnca.unavailable){
@@ -347,7 +395,7 @@ function getExplainItems(data){
   const secKpi = k.buffer || k.containment;
   const secVal = kpiSecondary(secKpi);
   if (secVal !== '—') {
-    const secField = k.buffer ? 'buffer.bufferDays' : 'containment.containmentEta';
+    const secField = k.buffer ? 'buffer.bufferDays' : 'containment';
     const explain = `Read directly from kpis.${secField} as written by the ${srcLabel} war room.`;
     items.push({
       label: secondaryLabel(src),
@@ -365,7 +413,7 @@ function getExplainItems(data){
   const terKpi = k.orders || k.risk;
   const terVal = kpiTertiary(terKpi);
   if (terVal !== '—') {
-    const terField = k.orders ? 'orders.ordersAtRisk' : 'risk';
+    const terField = k.orders ? 'orders.ordersAtRisk' : 'risk.riskScore';
     const explain = `Read directly from kpis.${terField} as written by the ${srcLabel} war room.`;
     items.push({
       label: tertiaryLabel(src),
@@ -446,7 +494,7 @@ function registerHoneywellAnomalies(data){
 
   const exposureStr = kpiExposure(k.exposure);
   if(exposureStr !== '—'){
-    const severity = src === 'cyber' ? 'CRITICAL' : (src === 'plant' ? 'HIGH' : 'MEDIUM');
+    const severity = (src === 'cyber' || src === 'bess' || src === 'healthcare' || src === 'lifesciences') ? 'CRITICAL' : (src === 'plant' || src === 'aerospace' || src === 'capitalproject' ? 'HIGH' : 'MEDIUM');
     fire({
       entityType: 'honeywell-incident', entityId: src,
       anomalyCode: 'HW_' + codeSrc + '_EXPOSURE', severity,
@@ -461,7 +509,7 @@ function registerHoneywellAnomalies(data){
   if(secVal !== '—'){
     fire({
       entityType: 'honeywell-incident', entityId: src,
-      anomalyCode: 'HW_' + codeSrc + '_' + (k.buffer ? 'BUFFER' : 'CONTAINMENT'), severity: src === 'cyber' ? 'HIGH' : 'MEDIUM',
+      anomalyCode: 'HW_' + codeSrc + '_' + (k.buffer ? 'BUFFER' : 'CONTAINMENT'), severity: (src === 'cyber' || src === 'bess' || src === 'healthcare' || src === 'lifesciences') ? 'HIGH' : 'MEDIUM',
       title: `${meta.label} — ${secondaryLabel(src)} at ${secVal}`,
       source: 'honeywell-executive-portal',
       meta: { value: secKpi, incidentSource: src }
@@ -495,7 +543,7 @@ function renderEmpty(){
 }
 
 // ===== EXCEPTION / CASE QUEUE FEED — Roadmap #10 Case Engine =====
-// Different shape than the other verticals: Honeywell escalates ONE
+// Different shape than the other verticals: Meridian Industrial escalates ONE
 // incident at a time (Plant / Cyber / Supplier), not a batch list of
 // many SLA-breaching items. So this feeds a single exception per
 // escalation rather than looping a fin.*_exposure_items array. Dedupe
@@ -520,24 +568,24 @@ function hwFeedException(data){
   _hwFedIds[fedKey] = true;
 
   const secVal = kpiSecondary(k.buffer || k.containment);
-  const severity = src === 'cyber' ? 'high' : (src === 'plant' ? 'high' : 'med');
+  const severity = (src === 'cyber' || src === 'bess' || src === 'healthcare' || src === 'lifesciences') ? 'high' : (src === 'plant' || src === 'aerospace' || src === 'capitalproject' ? 'high' : 'med');
   const exposureNum = (k.exposure && (k.exposure.totalExposureHigh || k.exposure.totalExposureLow)) || null;
 
   const exceptionRecord = TSMExceptions.add({
     title: `${meta.label} \u2014 ${exposureStr} exposure escalated to executive`,
     detail: secVal !== '\u2014' ? `${secondaryLabel(src)}: ${secVal}.` : null,
-    recommendedAction: 'See Honeywell Executive Portal for the escalated dispatch and full 6-engine analysis.',
-    severity, confidence: null, sector: 'honeywell', agentLabel: 'Honeywell Strategist'
+    recommendedAction: 'See Meridian Industrial Executive Portal for the escalated dispatch and full 6-engine analysis.',
+    severity, confidence: null, sector: 'honeywell', agentLabel: 'Meridian Industrial Strategist'
   });
 
   if (typeof TSMCaseManager !== 'undefined' && exceptionRecord) {
     const newCase = TSMCaseManager.createFromException(exceptionRecord, {
       process: 'honeywell_' + src + '_incident_resolution',
-      source: 'Honeywell Strategist',
+      source: 'Meridian Industrial Strategist',
       exposure: exposureNum
     });
     if (newCase) {
-      TSMCaseManager.requestApproval(newCase.caseId, { note: 'Auto-requested on case creation from Honeywell exception feed.' });
+      TSMCaseManager.requestApproval(newCase.caseId, { note: 'Auto-requested on case creation from Meridian Industrial exception feed.' });
     }
   }
 
@@ -555,6 +603,7 @@ function hwFeedException(data){
 // counter wired, so qualityScore/documentCount stay undefined -- honest
 // nulls in the built package, same convention as insurance-executive-portal.html.
 let lastExplainItems = [];
+let lastKpis = null;
 
 function render(){
   const data = loadRelay();
@@ -571,8 +620,22 @@ function render(){
     ? `Escalated by strategist ${new Date(data.strategistReviewedAt).toLocaleString()}`
     : (data.timestamp ? `Relayed ${new Date(data.timestamp).toLocaleString()}` : 'Escalation received');
 
+  // If the strategist escalated with multiple active domains, show the full
+  // picture (and its combined exposure) before drilling into the single
+  // most-recent incident below — otherwise this falls back to exactly the
+  // old single-domain-only behavior for any older escalation still sitting
+  // in storage from before this field existed.
+  let html = '';
+  if(data.allDomains && data.allDomains.length){
+    html += renderActiveDomainsPanel(data.allDomains);
+    html += `<div class="sec"><div class="sec-hdr">AGGREGATE BNCA — ALL ACTIVE DOMAINS</div></div>`;
+    html += renderHoneywellBNCA(data.aggregate_bnca);
+    html += `<div class="sec"><div class="sec-hdr">MOST RECENT DOMAIN: ${escapeHtml(meta.label)}</div></div>`;
+  }
+
   const k = data.kpis || {};
-  let html = `<div class="kpi-row">
+  lastKpis = k;
+  html += `<div class="kpi-row">
     <div class="kpi"><div class="kpi-val red">${kpiExposure(k.exposure)}</div><div class="kpi-lbl">FINANCIAL EXPOSURE</div></div>
     <div class="kpi"><div class="kpi-val amber">${kpiSecondary(k.buffer || k.containment)}</div><div class="kpi-lbl">${secondaryLabel(data.source)}</div></div>
     <div class="kpi"><div class="kpi-val cyan">${kpiTertiary(k.orders || k.risk)}</div><div class="kpi-lbl">${tertiaryLabel(data.source)}</div></div>
@@ -627,9 +690,61 @@ window.exportClientPackage = function () {
     showToast('Delivery package engine not loaded.', true);
     return;
   }
+  // Real quality score computed from the same explain items the page
+  // already rendered — no new data invented, matches the existing
+  // fromExplainItems(items, opts) contract (tsm-quality-score-engine.js).
+  let qs = (window.TSMQualityScoreEngine && typeof TSMQualityScoreEngine.fromExplainItems === 'function')
+    ? TSMQualityScoreEngine.fromExplainItems(lastExplainItems, {})
+    : null;
+  // Meridian Industrial-only honesty fix: none of the 6 Meridian Industrial engine prompts
+  // (supplier-shutdown.html / plant-incident.html / cyber-incident.html)
+  // ever ask the model for a per-item confidence figure, so every item
+  // getExplainItems() builds has no .confidence field. The shared engine's
+  // fromExplainItems() falls back to a flat 60 in that case (see its own
+  // "conservative default when nothing self-reports confidence" comment) --
+  // that's a real, intentional feature for verticals that DO have a
+  // confidence signal, so the shared engine itself is left untouched here.
+  // For Meridian Industrial specifically, a flat 60 isn't a measurement, it's a
+  // placeholder that looks like data -- so report confidence honestly as
+  // unavailable and recompute overall from only the three metrics that
+  // are real for this vertical (accuracy/completeness/compliance,
+  // reweighted proportionally so they still sum to 100%).
+  if (qs && qs.confidence === 60 && !lastExplainItems.some(it => typeof it.confidence === 'number')) {
+    const w = { accuracy: 0.30, completeness: 0.25, compliance: 0.25 }; // same weights as the shared engine, confidence weight (0.20) dropped
+    const wSum = w.accuracy + w.completeness + w.compliance; // 0.80
+    const overall = Math.round(
+      (qs.accuracy * w.accuracy + qs.completeness * w.completeness + qs.compliance * w.compliance) / wSum
+    );
+    qs = Object.assign({}, qs, {
+      overall: overall,
+      confidence: null,
+      confidenceUnavailable: true // no per-item confidence signal exists for this vertical
+    });
+  }
+  // Same exposure object hwFeedException() already parses via exposureNum
+  // (line ~544) -- reused here so financialExposure stops coming back null.
+  // BUGFIX: this previously read exposure.totalExposureHigh directly, which
+  // is the raw stored value (e.g. 7.85) -- the same raw shape kpiExposure()
+  // runs through tsmNormalizeExposurePair() before display. Without that
+  // same normalization here, the exported executiveSummary.whyItMatters
+  // .financialExposure came back as the bare 7.85 instead of 7850000, even
+  // after the KPI row and structuredData item both displayed correctly.
+  const exposure = lastKpis && lastKpis.exposure;
+  const [normLo, normHi] = exposure
+    ? tsmNormalizeExposurePair(exposure.totalExposureLow, exposure.totalExposureHigh)
+    : [null, null];
+  const estimatedImpactTotal = typeof normHi === 'number'
+    ? normHi
+    : (typeof normLo === 'number' ? normLo : null);
+  const missionQueueSummary = estimatedImpactTotal != null
+    ? { estimatedImpactTotal: estimatedImpactTotal, unestimatedCount: 0 }
+    : null; // honest null if no exposure figure was ever relayed
   const pkg = TSMDeliveryPackage.build({
-    domain: 'Honeywell',
-    explainItems: lastExplainItems
+    domain: 'Meridian Industrial',
+    explainItems: lastExplainItems,
+    documentCount: Array.isArray(lastExplainItems) ? lastExplainItems.length : null,
+    qualityScore: qs,
+    missionQueueSummary: missionQueueSummary
   });
   const blob = new Blob([JSON.stringify(pkg, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
@@ -641,8 +756,10 @@ window.exportClientPackage = function () {
 render();
 window.addEventListener('storage', e => { if(e.key === RELAY_KEY) render(); });
 </script>
-  <script src="/html/shared/tsm-delivery-package.js"></script>
+  <script src="/html/shared/tsm-quality-score-engine.js"></script>
+  <script src="/html/shared/tsm-delivery-package-deps.js"></script>
   <script src="/html/shared/tsm-memory-engine.js"></script>
+  <script src="/html/shared/tsm-active-member.js"></script>
   <script src="../../js/tsm-guide-engine.js" defer></script>
   <script src="/shared/tsm-guided-how-to.js" defer></script>
 </body>

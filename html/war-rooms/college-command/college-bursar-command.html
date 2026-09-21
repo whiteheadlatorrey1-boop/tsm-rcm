@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>College Bursar / Tuition — War Room</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #0b0f14; --panel: #121821; --border: #223042; --text: #e6edf3;
+    --muted: #8ea0b5; --accent: #4da3ff; --high: #ff5d5d; --med: #ffb547; --low: #4caf6f;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: -apple-system, Segoe UI, Roboto, sans-serif; }
+  header { padding: 20px 28px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+  header h1 { font-size: 18px; margin: 0; }
+  header .sub { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  main { padding: 24px 28px; max-width: 1200px; margin: 0 auto; }
+  .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-bottom: 24px; }
+  .kpi { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .kpi .val { font-size: 24px; font-weight: 700; }
+  .kpi .lbl { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  section { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 20px; overflow: hidden; }
+  section h2 { font-size: 14px; margin: 0; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 10px 16px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; }
+  .sev-HIGH { color: var(--high); font-weight: 600; }
+  .sev-MEDIUM { color: var(--med); font-weight: 600; }
+  .sev-LOW { color: var(--low); font-weight: 600; }
+  .exposure-box { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 20px; }
+  .exposure-total { font-size: 28px; font-weight: 700; color: var(--high); }
+  .exposure-note { color: var(--muted); font-size: 12px; margin-top: 6px; line-height: 1.5; }
+  .actions { display: flex; gap: 10px; margin-top: 20px; }
+  button { background: var(--accent); border: none; color: #fff; padding: 10px 18px; border-radius: 8px; font-size: 13px; cursor: pointer; font-weight: 600; }
+  button.secondary { background: transparent; border: 1px solid var(--border); color: var(--text); }
+  #toast { position: fixed; bottom: 20px; right: 20px; background: var(--panel); border: 1px solid var(--border); padding: 12px 18px; border-radius: 8px; opacity: 0; transition: opacity .2s; font-size: 13px; }
+  #toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>College Bursar / Tuition — War Room</h1>
+    <div class="sub">Payment plans · Delinquency · Registration holds — server-computed AR exposure, own relay key</div>
+  </div>
+  <div class="sub" id="clock"></div>
+</header>
+<main>
+  <div class="kpi-row" id="kpiRow"></div>
+
+  <div class="exposure-box" id="exposureBox">Loading AR exposure…</div>
+
+  <section>
+    <h2>Delinquent Payment Plans</h2>
+    <table id="planTable"><thead><tr><th>Plan</th><th>Student</th><th>Term</th><th>Severity</th><th>Days Past Due</th><th>Balance</th></tr></thead><tbody></tbody></table>
+  </section>
+
+  <section>
+    <h2>Registration Holds</h2>
+    <table id="holdTable"><thead><tr><th>Hold</th><th>Student</th><th>Reason</th><th>Severity</th><th>Days Active</th></tr></thead><tbody></tbody></table>
+  </section>
+
+  <section id="aiSection">
+    <h2>AI Collections Intelligence</h2>
+    <div style="padding:16px;">
+      <div class="actions" style="margin-top:0;">
+        <button id="runAiBtn">Run AI Analysis</button>
+      </div>
+      <div id="aiEngineGrid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;margin-top:16px;">
+        <div>
+          <div style="color:var(--muted);font-size:11px;text-transform:uppercase;font-weight:600;margin-bottom:6px;">Risk &amp; Prioritization</div>
+          <div id="aiRiskOut" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:12.5px;line-height:1.6;white-space:pre-wrap;min-height:60px;">Not run yet — click "Run AI Analysis".</div>
+        </div>
+        <div>
+          <div style="color:var(--muted);font-size:11px;text-transform:uppercase;font-weight:600;margin-bottom:6px;">Recommended Actions</div>
+          <div id="aiActionOut" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:12.5px;line-height:1.6;white-space:pre-wrap;min-height:60px;">Not run yet — click "Run AI Analysis".</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="actions">
+    <button id="relayBtn">Relay to College Strategist</button>
+    <button class="secondary" id="refreshBtn">Refresh Exposure</button>
+  </div>
+</main>
+<div id="toast"></div>
+
+<script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
+<script src="/html/war-rooms/college-command/shared/college-relay-loader.js"></script>
+<script src="/html/war-rooms/college-command/services/college-bursar-engine.js"></script>
+<script>
+(function () {
+  // Now backed by a real server endpoint (routes/college-bursar-financial.js)
+  // instead of client-computed sample totals — see college-bursar-engine.js.
+  // Still writes only to its own registered relay key
+  // (TSM_COLLEGE_BURSAR_RELAY via relay.core.js).
+  const DOMAIN = 'COLLEGE_BURSAR';
+  const RELAY_KEY_FALLBACK = 'TSM_' + DOMAIN + '_RELAY';
+
+  let engine = null;
+  let lastAi = { risk: null, actions: null };
+
+  function tick() { document.getElementById('clock').textContent = new Date().toLocaleTimeString(); }
+  setInterval(tick, 1000); tick();
+
+  function showToast(msg, isErr) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.style.color = isErr ? 'var(--high)' : 'var(--text)';
+    t.classList.add('show');
+    clearTimeout(showToast._h);
+    showToast._h = setTimeout(() => t.classList.remove('show'), 2500);
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  function renderKpis(kpis) {
+    const defs = [
+      ['open_payment_plans', 'Open Payment Plans'],
+      ['plans_past_due', 'Plans Past 30-Day Due'],
+      ['total_ar_balance', 'Total AR Balance'],
+      ['registration_holds_active', 'Registration Holds Active']
+    ];
+    const row = document.getElementById('kpiRow');
+    row.innerHTML = defs.map(([key, label]) => {
+      const val = kpis[key];
+      const display = key === 'total_ar_balance' ? '$' + Number(val || 0).toLocaleString() : val;
+      return `<div class="kpi"><div class="val">${display}</div><div class="lbl">${label}</div></div>`;
+    }).join('');
+  }
+
+  function renderPlans() {
+    const tbody = document.querySelector('#planTable tbody');
+    tbody.innerHTML = engine.data.payment_plans.map(p => `
+      <tr>
+        <td>${escapeHtml(p.plan_id)}</td>
+        <td>${escapeHtml(p.student_ref)}</td>
+        <td>${escapeHtml(p.term)}</td>
+        <td class="sev-${escapeHtml(p.severity)}">${escapeHtml(p.severity)}</td>
+        <td>${p.days_past_due}</td>
+        <td>$${Number(p.balance).toLocaleString()}</td>
+      </tr>
+    `).join('');
+  }
+
+  function renderHolds() {
+    const tbody = document.querySelector('#holdTable tbody');
+    tbody.innerHTML = engine.data.registration_holds.map(h => `
+      <tr>
+        <td>${escapeHtml(h.hold_id)}</td>
+        <td>${escapeHtml(h.student_ref)}</td>
+        <td>${escapeHtml(h.reason)}</td>
+        <td class="sev-${escapeHtml(h.severity)}">${escapeHtml(h.severity)}</td>
+        <td>${h.days_active}</td>
+      </tr>
+    `).join('');
+  }
+
+  // Real breakdown from the server: late-fee accrual (deterministic),
+  // write-off risk (probabilistic, by aging band), and hold revenue at
+  // risk — see routes/college-bursar-financial.js. Replaces the old
+  // "sum of raw balances" placeholder number.
+  async function renderExposure() {
+    const box = document.getElementById('exposureBox');
+    box.textContent = 'Loading AR exposure…';
+    try {
+      const summary = await engine.getFinancialSummary();
+      box.innerHTML = `
+        <div class="exposure-total">$${Number(summary.total_exposure || 0).toLocaleString()} total exposure</div>
+        <div class="exposure-note">
+          Raw AR balance: $${Number(summary.total_ar_balance || 0).toLocaleString()} ·
+          Late-fee accrual: $${Number(summary.late_fee_exposure_total || 0).toLocaleString()} ·
+          Write-off risk: $${Number(summary.writeoff_risk_exposure_total || 0).toLocaleString()} ·
+          Hold revenue at risk: $${Number(summary.hold_revenue_at_risk_total || 0).toLocaleString()}
+          ${summary.note ? '<br>' + escapeHtml(summary.note) : ''}
+        </div>
+      `;
+    } catch (e) {
+      box.textContent = 'Exposure computation failed — see console.';
+      console.warn('renderExposure failed', e);
+    }
+  }
+
+  async function runAiAnalysis() {
+    if (!engine) return;
+    const btn = document.getElementById('runAiBtn');
+    const riskOut = document.getElementById('aiRiskOut');
+    const actionOut = document.getElementById('aiActionOut');
+    btn.disabled = true;
+    btn.textContent = 'Running…';
+    riskOut.textContent = 'Generating…';
+    actionOut.textContent = 'Generating…';
+
+    try {
+      const { answer, degraded } = await engine.getAiAnalysis(
+        'Focus this response entirely on risk prioritization by dollar exposure and any compliance concerns (e.g. a hold blocking re-enrollment over a small balance). Do not include an action plan section.'
+      );
+      lastAi.risk = degraded ? null : answer;
+      riskOut.textContent = answer;
+    } catch (e) {
+      riskOut.textContent = 'Error: ' + e.message;
+      lastAi.risk = null;
+    }
+
+    try {
+      const { answer, degraded } = await engine.getAiAnalysis(
+        'Focus this response entirely on a concise action plan: recommended next contact/action per account (payment plan restructure, hold release conditions, escalation to collections), owner, and target timeframe. Do not include a risk analysis section.'
+      );
+      lastAi.actions = degraded ? null : answer;
+      actionOut.textContent = answer;
+    } catch (e) {
+      actionOut.textContent = 'Error: ' + e.message;
+      lastAi.actions = null;
+    }
+
+    btn.disabled = false;
+    btn.textContent = 'Run AI Analysis';
+  }
+
+  async function relayToStrategist() {
+    try {
+      const aiText = (lastAi.risk || lastAi.actions)
+        ? `RISK & PRIORITIZATION\n${lastAi.risk || 'n/a'}\n\nRECOMMENDED ACTIONS\n${lastAi.actions || 'n/a'}`
+        : null;
+      const payload = await engine.buildRelayPayload(aiText);
+      const json = JSON.stringify(payload);
+      try { sessionStorage.setItem(RELAY_KEY_FALLBACK, json); } catch (e) { /* noop */ }
+      try { localStorage.setItem(RELAY_KEY_FALLBACK, json); } catch (e) { /* noop */ }
+      if (window.TSM && window.TSM.relay && window.TSM.relay.write) {
+        try { window.TSM.relay.write('COLLEGE_BURSAR', payload); } catch (e) { /* noop */ }
+      }
+      window.dispatchEvent(new CustomEvent('TSM_RELAY_EVENT', { detail: { domain: DOMAIN, data: payload } }));
+      showToast('Relayed to College Strategist.');
+    } catch (e) {
+      console.warn('relayToStrategist failed', e);
+      showToast('Relay failed — see console.', true);
+    }
+  }
+
+  async function init() {
+    engine = new window.TSMCollegeBursarEngine();
+    engine.loadSampleData();
+    renderKpis(engine.computeKpis());
+    renderPlans();
+    renderHolds();
+    await renderExposure();
+  }
+
+  document.getElementById('relayBtn').addEventListener('click', relayToStrategist);
+  document.getElementById('refreshBtn').addEventListener('click', renderExposure);
+  document.getElementById('runAiBtn').addEventListener('click', runAiAnalysis);
+
+  init();
+})();
+</script>
+</body>
+</html>

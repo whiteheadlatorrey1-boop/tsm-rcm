@@ -204,13 +204,53 @@ async function searchAssetsByUser(userIdentifier, config) {
  * PATCHes the incident's work_notes field (ServiceNow appends journal-field
  * updates rather than overwriting — this is a real append, not a replace).
  */
+/**
+ * writeWorkNote(incidentId, note, config?) -> { success: true }
+ *
+ * IMPORTANT: ServiceNow's Table API can return 200 OK on a PATCH while an
+ * ACL silently drops the field being written — no error, no warning,
+ * nothing in the response body to indicate the write didn't take effect.
+ * This was confirmed directly: a service account missing the
+ * sn_incident_write role got a clean success response here, but the note
+ * never appeared on the ticket. A caller trusting the PATCH response alone
+ * would tell the agent "resolution posted" when nothing was actually
+ * written — a silent failure with real consequences (drafted resolutions
+ * quietly lost, closed tickets with no documented fix).
+ *
+ * To close that gap, this function reads the ticket back immediately after
+ * the PATCH and confirms the note text is actually present in the raw
+ * work_notes field before returning success. If it's not there, this
+ * throws a specific, actionable error instead of a silent lie.
+ */
 async function writeWorkNote(incidentId, note, config) {
   const cfg = config || loadConfigFromEnv();
   const ticket = await getTicket(incidentId, cfg);
   if (!ticket) throw new Error(`No incident found for "${incidentId}" — cannot write work note.`);
+
   await snRequest(cfg, 'PATCH', `/api/now/table/incident/${ticket.sysId}`, {
     body: { work_notes: note }
   });
+
+  // Read-after-write verification — see the block comment above for why
+  // this is necessary rather than trusting the PATCH response alone.
+  const verifyTicket = await getTicket(incidentId, cfg);
+  const rawNotes = verifyTicket && verifyTicket.raw && verifyTicket.raw.work_notes;
+  const notesText = rawNotes == null
+    ? ''
+    : (typeof rawNotes === 'object' ? (rawNotes.display_value ?? rawNotes.value ?? '') : rawNotes);
+
+  if (!String(notesText).includes(note)) {
+    const err = new Error(
+      `writeWorkNote on "${incidentId}" returned success but the note is not present when read back. ` +
+      `This is a known ServiceNow behavior when an ACL silently blocks the write — most commonly a missing ` +
+      `sn_incident_write role (or equivalent) on the account, or the incident being in a closed/canceled state ` +
+      `(state 7 or 8 by default), which the incident.work_notes write ACL explicitly excludes. ` +
+      `Verify the service account's roles and the ticket's current state before retrying.`
+    );
+    err.code = 'WORK_NOTE_WRITE_UNVERIFIED';
+    throw err;
+  }
+
   return { success: true };
 }
 
@@ -230,8 +270,199 @@ async function updateTicketStatus(incidentId, state, config) {
   return { success: true };
 }
 
+/**
+ * createTicket(fields, config?) -> { success, number, sysId, raw }
+ * POSTs a single new record to the incident table. `fields` is a raw
+ * ServiceNow field map (short_description, caller_id, assignment_group,
+ * priority, cmdb_ci, etc.) — intentionally NOT run through DEFAULT_FIELD_MAP,
+ * since that map is for reading/normalizing records we get back, not for
+ * translating what a caller writes (per-customer field names on write are
+ * the caller's responsibility, same as the rest of this adapter's stance
+ * that field mapping is config, not code).
+ */
+async function createTicket(fields, config) {
+  const cfg = config || loadConfigFromEnv();
+  const data = await snRequest(cfg, 'POST', '/api/now/table/incident', { body: fields });
+  const record = data.result || {};
+  return {
+    success: true,
+    number: readField(record, 'number'),
+    sysId: record.sys_id && (record.sys_id.value || record.sys_id),
+    raw: record
+  };
+}
+
+/**
+ * deleteTicket(incidentId, config?) -> { success }
+ * Not part of the L1 Copilot production contract — exists so PDI/dev-instance
+ * testing (see scripts/test-servicenow-batch-pdi.js) can clean up the test
+ * records a batch run creates without leaving junk behind on a shared instance.
+ */
+async function deleteTicket(incidentId, config) {
+  const cfg = config || loadConfigFromEnv();
+  const ticket = await getTicket(incidentId, cfg);
+  if (!ticket) throw new Error(`No incident found for "${incidentId}" — cannot delete.`);
+  await snRequest(cfg, 'DELETE', `/api/now/table/incident/${ticket.sysId}`);
+  return { success: true };
+}
+
+const DEFAULT_BATCH_OPTIONS = {
+  // How many createTicket calls are in flight at once. ServiceNow Table API
+  // has no documented hard concurrency cap, but most instances (especially
+  // sub-prod/dev-tier ones like a PDI) rate-limit aggressively — keep this
+  // conservative rather than maximizing throughput.
+  chunkSize: 5,
+  // Pause between chunks, on top of per-request retry/backoff below. This is
+  // what actually protects a shared instance's rate limit budget across a
+  // large batch, not just an individual 429.
+  delayBetweenChunksMs: 500,
+  // Per-record retry count on 429/5xx before that record is reported failed.
+  maxRetries: 3,
+  initialBackoffMs: 1000
+};
+
+// Hard ceiling independent of whatever a caller passes as `options` —
+// batch-tickets is a write endpoint; an unbounded array in a single request
+// is real blast radius (duplicate incidents, notification storms) regardless
+// of how the request got there.
+const MAX_BATCH_SIZE = 500;
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function createTicketWithRetry(fields, cfg, opts) {
+  let attempt = 0;
+  let lastErr;
+  while (attempt <= opts.maxRetries) {
+    try {
+      return await createTicket(fields, cfg);
+    } catch (e) {
+      lastErr = e;
+      const retryable = e.status === 429 || (e.status >= 500 && e.status < 600);
+      if (!retryable || attempt === opts.maxRetries) throw e;
+      await sleep(opts.initialBackoffMs * Math.pow(2, attempt));
+      attempt += 1;
+    }
+  }
+  throw lastErr;
+}
+
+async function getTicketWithRetry(incidentId, cfg, opts) {
+  let attempt = 0;
+  let lastErr;
+  while (attempt <= opts.maxRetries) {
+    try {
+      return await getTicket(incidentId, cfg);
+    } catch (e) {
+      lastErr = e;
+      const retryable = e.status === 429 || (e.status >= 500 && e.status < 600);
+      if (!retryable || attempt === opts.maxRetries) throw e;
+      await sleep(opts.initialBackoffMs * Math.pow(2, attempt));
+      attempt += 1;
+    }
+  }
+  throw lastErr;
+}
+
+/**
+ * createTicketsBatch(records, options?, config?)
+ *   -> { total, succeeded, failed, results: [{ index, success, number?,
+ *        sysId?, error?, status?, fields? }] }
+ *
+ * Chunked batch create with per-record retry/backoff on 429/5xx. A single
+ * record failing (bad payload, permissions, whatever) does NOT abort the
+ * rest of the batch — every record gets an independent result so the caller
+ * can see exactly which ones need attention, rather than an all-or-nothing
+ * failure on record #340 of 500 discarding 339 successful creates.
+ */
+async function createTicketsBatch(records, options, config) {
+  const cfg = config || loadConfigFromEnv();
+  if (!isConfigured(cfg)) throw new ServiceNowNotConfiguredError();
+  if (!Array.isArray(records) || records.length === 0) {
+    throw new Error('createTicketsBatch requires a non-empty array of ticket field objects.');
+  }
+  if (records.length > MAX_BATCH_SIZE) {
+    throw new Error(`Batch of ${records.length} exceeds the ${MAX_BATCH_SIZE}-record limit per call — split into multiple calls.`);
+  }
+
+  const opts = Object.assign({}, DEFAULT_BATCH_OPTIONS, options || {});
+  const results = new Array(records.length);
+
+  for (let i = 0; i < records.length; i += opts.chunkSize) {
+    const chunk = records.slice(i, i + opts.chunkSize);
+    const chunkResults = await Promise.all(chunk.map((fields, offset) => {
+      const index = i + offset;
+      return createTicketWithRetry(fields, cfg, opts).then(
+        r => ({ index, success: true, number: r.number, sysId: r.sysId }),
+        e => ({ index, success: false, error: e.message, status: e.status, fields })
+      );
+    }));
+    chunkResults.forEach(r => { results[r.index] = r; });
+
+    const isLastChunk = i + opts.chunkSize >= records.length;
+    if (!isLastChunk && opts.delayBetweenChunksMs) {
+      await sleep(opts.delayBetweenChunksMs);
+    }
+  }
+
+  const succeeded = results.filter(r => r.success).length;
+  return { total: records.length, succeeded, failed: records.length - succeeded, results };
+}
+
+/**
+ * getTicketsBatch(incidentIds, options?, config?)
+ *   -> { total, succeeded, failed, results: [{ index, success, ticket?,
+ *        incidentId, error?, status? }] }
+ *
+ * Chunked batch read, same chunking/retry/backoff shape as
+ * createTicketsBatch — a large "audit/analyze all my open tickets" pull is
+ * a real load pattern on a shared instance too, not just batch writes, and
+ * getTicket() itself has no protection against 429s without this wrapper.
+ * A missing incident (getTicket resolves null) is reported as success:false
+ * with a "not found" error, same as any other per-record failure — it does
+ * NOT abort the rest of the batch.
+ */
+async function getTicketsBatch(incidentIds, options, config) {
+  const cfg = config || loadConfigFromEnv();
+  if (!isConfigured(cfg)) throw new ServiceNowNotConfiguredError();
+  if (!Array.isArray(incidentIds) || incidentIds.length === 0) {
+    throw new Error('getTicketsBatch requires a non-empty array of incident numbers or sys_ids.');
+  }
+  if (incidentIds.length > MAX_BATCH_SIZE) {
+    throw new Error(`Batch of ${incidentIds.length} exceeds the ${MAX_BATCH_SIZE}-record limit per call — split into multiple calls.`);
+  }
+
+  const opts = Object.assign({}, DEFAULT_BATCH_OPTIONS, options || {});
+  const results = new Array(incidentIds.length);
+
+  for (let i = 0; i < incidentIds.length; i += opts.chunkSize) {
+    const chunk = incidentIds.slice(i, i + opts.chunkSize);
+    const chunkResults = await Promise.all(chunk.map((incidentId, offset) => {
+      const index = i + offset;
+      return getTicketWithRetry(incidentId, cfg, opts).then(
+        ticket => ticket
+          ? { index, success: true, incidentId, ticket }
+          : { index, success: false, incidentId, error: `No incident found for "${incidentId}".` },
+        e => ({ index, success: false, incidentId, error: e.message, status: e.status })
+      );
+    }));
+    chunkResults.forEach(r => { results[r.index] = r; });
+
+    const isLastChunk = i + opts.chunkSize >= incidentIds.length;
+    if (!isLastChunk && opts.delayBetweenChunksMs) {
+      await sleep(opts.delayBetweenChunksMs);
+    }
+  }
+
+  const succeeded = results.filter(r => r.success).length;
+  return { total: incidentIds.length, succeeded, failed: incidentIds.length - succeeded, results };
+}
+
 module.exports = {
   DEFAULT_FIELD_MAP,
+  DEFAULT_BATCH_OPTIONS,
+  MAX_BATCH_SIZE,
   ServiceNowNotConfiguredError,
   loadConfigFromEnv,
   isConfigured,
@@ -240,6 +471,10 @@ module.exports = {
   searchAssetsByUser,
   writeWorkNote,
   updateTicketStatus,
+  createTicket,
+  deleteTicket,
+  createTicketsBatch,
+  getTicketsBatch,
   // exported for tests only
-  _internal: { readField, snRequest, authHeader }
+  _internal: { readField, snRequest, authHeader, createTicketWithRetry, getTicketWithRetry }
 };

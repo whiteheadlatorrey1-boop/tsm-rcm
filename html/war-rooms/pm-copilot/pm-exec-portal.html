@@ -554,7 +554,7 @@ function recordExecAction(actionType, note){
   fetch('/api/exec-portal/pm/decide', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ index: Date.now(), verdict, text: note, actor: 'Executive' })
+    body: JSON.stringify({ index: Date.now(), verdict, text: note, actor: 'Executive', tenantId: (typeof TSMActiveMember !== 'undefined' && TSMActiveMember) ? TSMActiveMember.getId() : null })
   }).then(r => r.json()).then(res => {
     if (res && res.ok && res.recorded) loadApprovalRate();
   }).catch(() => { /* offline/unreachable -- exec action still logged to relay above */ });
@@ -858,9 +858,14 @@ window.exportClientPackage = function () {
     showToast('Delivery package engine not loaded.');
     return;
   }
+  const _pkgQs = (window.TSMQualityScoreEngine && typeof TSMQualityScoreEngine.fromExplainItems === 'function')
+    ? TSMQualityScoreEngine.fromExplainItems(lastExplainItems, {})
+    : null;
   const pkg = TSMDeliveryPackage.build({
     domain: 'PM Copilot',
     explainItems: lastExplainItems,
+    documentCount: Array.isArray(lastExplainItems) ? lastExplainItems.length : null,
+    qualityScore: _pkgQs,
     sections: { kpis: lastKpis, financials: lastFinancials }
   });
   const blob = new Blob([JSON.stringify(pkg, null, 2)], { type: 'application/json' });
@@ -870,7 +875,8 @@ window.exportClientPackage = function () {
   a.click();
 };
 </script>
-  <script src="/html/shared/tsm-delivery-package.js"></script>
+  <script src="/html/shared/tsm-quality-score-engine.js"></script>
+  <script src="/html/shared/tsm-delivery-package-deps.js"></script>
   <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
   <script src="/html/core/tsm-runtime.js"></script>
   <script src="/js/tsm-guide-engine.js" defer></script>
@@ -1170,6 +1176,7 @@ window.exportClientPackage = function () {
 
 })();
 </script>
+<script src="/html/shared/tsm-active-member.js"></script>
 
 </body>
 </html>

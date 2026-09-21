@@ -573,6 +573,25 @@ const VERTICALS = [
   { id:'hotelops',    name:'HotelOps',     color:'#22d3ee' },
   { id:'pm',          name:'PM Copilot',   color:'#a3e635' },
   { id:'concierge',   name:'Concierge',    color:'#a855f7' },
+  // 2026-09-05: added as the priority domain of the new Financial-Aid-
+  // centered college vertical (mirrors how Schools was added first among
+  // its own peers). Bursar/Endowment/Research-F&A/Accreditation don't have
+  // real pages or Sentinel pushes yet — only Financial Aid is registered
+  // here. id is 'college_finaid' (not just 'college') since Sentinel keys
+  // 1:1 off a single TSM_<ID>_STRATEGIST_RELAY; the other four domains will
+  // get their own ids here once built, rather than overloading this one.
+  { id:'college_finaid', name:'College — Financial Aid', color:'#fb923c' },
+  { id:'noc',         name:'NOC',          color:'#f59e0b' },
+  // 2026-09-06: Insurance Command suite — 4 domains with real backend
+  // wiring (routes/insurance-*-financial.js), each pushing its own
+  // anomalies independently via TSMSentinelPush.push() rather than
+  // sharing one id (avoids the overwrite-on-push problem a shared key
+  // would have across 4 independent war rooms). Distinct from the
+  // pre-existing 'insurance' vertical above (ins-war-room pipeline).
+  { id:'insurance_claims',     name:'Insurance — Claims & Appeals',  color:'#38bdf8' },
+  { id:'insurance_pc',         name:'Insurance — Property & Casualty', color:'#0ea5e9' },
+  { id:'insurance_compliance', name:'Insurance — Compliance & Legal', color:'#818cf8' },
+  { id:'insurance_licensing',  name:'Insurance — Licensing & CE',    color:'#60a5fa' },
 ];
 
 // ── EXECUTIVE PORTAL LINKS ───────────────────────────────────────────────
@@ -635,6 +654,17 @@ const VERTICALS = [
 // invented. Also registered PM in relay.core.js's RELAY_REGISTRY, which was
 // previously missing it (window.TSM.relay.write('PM', ...) was silently
 // throwing "Unknown relay domain: PM", caught and swallowed).
+//
+// Added NOC as a vertical: it was previously absent from this whole file
+// (VERTICALS list and EXEC_PORTAL_PATHS both), so noc-strategist.html's data
+// never surfaced here even after a war-room relay. Added nocPushToSentinel()
+// to noc-war-room.html (called from relayToStrategist(), same placement as
+// pmPushToSentinel()/schPushToSentinel()), writing real SEV-2+ incident
+// counts, SLA penalty exposure, and devices-down/uptime-gap numbers straight
+// off noc-engine.js's computeKpis()/getSlaExposure()/getFinancialSummary()
+// -- via the shared TSMSentinelPush.push() utility, so no hand-rolled
+// localStorage/event-dispatch tail was needed. Exec portal path below
+// confirmed to resolve to a real file on disk.
 const EXEC_PORTAL_PATHS = {
   schools:      '/html/war-rooms/schools-command/schools-executive-portal.html',
   mortgage:     '/html/war-rooms/mortgage/mortgage-executive-portal.html',
@@ -646,7 +676,29 @@ const EXEC_PORTAL_PATHS = {
   healthcare:   '/html/healthcare/executive-portal.html',
   finops:       '/html/finops-suite/finops-war/finops-executive-portal.html',
   hotelops:     '/html/hotelops/hotelops-executive-portal.html',
+  // 2026-09-06: 'concierge' has been in VERTICALS since at least the
+  // hotelops/concierge rename (see note above) and already gets sample
+  // anomaly data (see the `concierge:` entry further down), but had no
+  // portal path here at all -- execPortalUrl() silently returned null for
+  // it, same class of bug the hotelops note above describes. Points at its
+  // real Concierge Transport portal (quote/book/track rides), distinct
+  // from HotelOps' own executive portal above.
+  concierge:    '/html/concierge/concierge-executive-portal.html',
   pm:           '/html/war-rooms/pm-copilot/pm-exec-portal.html',
+  // 2026-09-05: points at college-executive-portal.html, which currently
+  // renders the COMBINED multi-domain relay (TSM_COLLEGE_EXEC_RELAY) built
+  // by college-strategist.html, not a Sentinel-specific view — same
+  // read-only convention as the other portals here, just multi-domain.
+  college_finaid: '/html/war-rooms/college-command/college-executive-portal.html',
+  noc:          '/html/l1-copilot/noc/noc-executive-portal.html',
+  // 2026-09-06: all 4 Insurance Command domains point at the same shared
+  // combined-relay portal (same convention as college_finaid above) —
+  // insurance-command-executive-portal.html renders whichever domains
+  // currently have live data via TSM_INSURANCE_COMMAND_EXEC_RELAY.
+  insurance_claims:     '/html/war-rooms/insurance-command/insurance-command-executive-portal.html',
+  insurance_pc:         '/html/war-rooms/insurance-command/insurance-command-executive-portal.html',
+  insurance_compliance: '/html/war-rooms/insurance-command/insurance-command-executive-portal.html',
+  insurance_licensing:  '/html/war-rooms/insurance-command/insurance-command-executive-portal.html',
 };
 
 /**

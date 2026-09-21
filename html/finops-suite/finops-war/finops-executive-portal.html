@@ -538,8 +538,8 @@ body::before{content:'';position:fixed;top:0;right:0;width:600px;height:400px;ba
   <div class="sec-lbl" style="margin-top:18px">CASE QUEUE</div>
   <div id="tsm-case-queue"></div>
 </div>
-<div class="port-sub">financial liability</div></div>
-  <div class="port-cell"><div class="port-lbl">RISK SCORE</div><div class="port-val amber" id="kpiRisk">—</div><div class="port-sub">war room analysis</div></div>
+<div class="port-sub" id="kpiExposureSub">financial liability</div></div>
+  <div class="port-cell"><div class="port-lbl">RISK SCORE</div><div class="port-val amber" id="kpiRisk">—</div><div class="port-sub" id="kpiRiskSub">war room analysis</div></div>
   <div class="port-cell"><div class="port-lbl">EXCEPTIONS</div><div class="port-val gold" id="kpiExceptions">—</div><div class="port-sub">items flagged</div></div>
   <div class="port-cell"><div class="port-lbl">COMPLIANCE</div><div class="port-val purple" id="kpiCompliance">—</div><div class="port-sub">regulatory posture</div></div>
   <div class="port-cell"><div class="port-lbl">RECOVERY POTENTIAL</div><div class="port-val green" id="kpiRecovery">—</div><div class="port-sub">recoverable amount</div></div>
@@ -710,6 +710,26 @@ const summary = d.summary || engines.e6 || '';
     const _cfo  = (_vendR && _vendR[1]) || d.unapprovedVendors || (cfoM && cfoM[1]) || '—';
   document.getElementById('kpiRisk').textContent = _risk;
   document.getElementById('kpiExposure').textContent = _exp.length > 12 ? _exp.slice(0,22) : _exp;
+
+  // TSM FIX: surface the strategist's own honesty flags (exposureDefaulted/
+  // riskScoreDefaulted) instead of silently displaying demo-scenario
+  // numbers as if they were extracted from this document. Only shown when
+  // the value actually on screen is the fallback the strategist flagged —
+  // if this portal's own regex independently recovered a real number
+  // (_expR/_riskR matched) even though the strategist's extraction missed,
+  // that's a real value, not a defaulted one, so no warning is shown.
+  const expIsDefaulted = !!d.exposureDefaulted && !_expR && _exp === (d.exposure || '');
+  const riskIsDefaulted = !!d.riskScoreDefaulted && !_riskR && _risk === (d.riskScore || '');
+  const expSub = document.getElementById('kpiExposureSub');
+  if (expSub) {
+    expSub.textContent = expIsDefaulted ? '⚠ estimated — not extracted from this document' : 'financial liability';
+    expSub.style.color = expIsDefaulted ? 'var(--amber)' : '';
+  }
+  const riskSub = document.getElementById('kpiRiskSub');
+  if (riskSub) {
+    riskSub.textContent = riskIsDefaulted ? '⚠ estimated — not extracted from this document' : 'war room analysis';
+    riskSub.style.color = riskIsDefaulted ? 'var(--amber)' : '';
+  }
   document.getElementById('kpiExceptions').textContent = _exc.slice(0,8);
   document.getElementById('kpiCompliance').textContent = _comp.slice(0,10);
   document.getElementById('kpiRecovery').textContent = _rec.slice(0,12);
@@ -1059,9 +1079,14 @@ setInterval(loadRelay, 15000);
       alert('Delivery package engine not loaded.');
       return;
     }
+    var _pkgQs = (window.TSMQualityScoreEngine && typeof TSMQualityScoreEngine.fromExplainItems === 'function')
+      ? TSMQualityScoreEngine.fromExplainItems(lastExplainItems, {})
+      : null;
     var pkg = TSMDeliveryPackage.build({
       domain: 'FinOps',
-      explainItems: lastExplainItems
+      explainItems: lastExplainItems,
+      documentCount: Array.isArray(lastExplainItems) ? lastExplainItems.length : null,
+      qualityScore: _pkgQs
     });
     var blob = new Blob([JSON.stringify(pkg, null, 2)], { type: 'application/json' });
     var a = document.createElement('a');
@@ -1076,7 +1101,8 @@ setInterval(loadRelay, 15000);
   });
 })();
 </script>
-  <script src="/html/shared/tsm-delivery-package.js"></script>
+  <script src="/html/shared/tsm-quality-score-engine.js"></script>
+  <script src="/html/shared/tsm-delivery-package-deps.js"></script>
   <script src="/html/core/tsm-runtime.js"></script>
   <script>
   // ===== TSM EXEC CONFIRMATION (FINOPS) =====
@@ -1176,6 +1202,11 @@ setInterval(loadRelay, 15000);
       fedAny = true;
 
       var exceptionRecord = TSMExceptions.add({
+        // sourceKey lets TSMExceptions dedup across reloads -- _fedIds
+        // above only guards this pageload's render loop, so without this
+        // a refresh created a brand-new exception (and downstream case)
+        // from the same underlying item every time.
+        sourceKey: itemId,
         title: it.claim,
         detail: it.rationale || null,
         recommendedAction: 'See FinOps Executive Portal resolution brief.',
@@ -1223,6 +1254,7 @@ setInterval(loadRelay, 15000);
   global.finopsFeedExceptions = finopsFeedExceptions;
 })(window);
 </script>
+  <script src="/html/shared/tsm-active-member.js"></script>
   <script src="/js/tsm-guide-engine.js" defer></script>
   <script src="/shared/tsm-guided-how-to.js" defer></script>
 </body>

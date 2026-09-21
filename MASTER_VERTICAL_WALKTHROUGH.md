@@ -1,8 +1,21 @@
 # TSM Consultz — Master Vertical Walkthrough
 ## War Room → Strategist → Executive Portal (13 Chained Verticals + 1 Standalone)
 
-**Verticals covered:** Healthcare, Construction, FinOps, Insurance, Legal, Real Estate, Mortgage, Schools, PM Copilot, BPO, HotelOps, Concierge, Honeywell (Plant/Supplier/Cyber-OT). RCM-OS is documented separately at the end — it's a standalone reconciliation tool, not a War Room → Strategist → Executive Portal chain.
+**Verticals covered:** Healthcare, Construction, FinOps, Insurance, Legal, Real Estate, Mortgage, Schools, PM Copilot, BPO, HotelOps, Concierge, Honeywell (Plant/Supplier/ Cyber-OT). RCM-OS is documented separately at the end — it's a standalone reconciliation tool, not a War Room → Strategist → Executive Portal chain.
 **Pattern:** every vertical runs the same three-layer chain — operator desk (War Room) → analytical handoff (Strategist) → leadership decision surface (Executive Portal). All onClick chains below are verified against the live HTML/JS, not assumed.
+
+---
+
+## ✅ PRE-DEMO CHECK — resolved 2026-08-29 (was flagged earlier same day)
+
+An earlier pass today flagged `401 (Unauthorized)` responses firing on page load across 11 of 13 Executive Portal pages, based on a crawl run without confirming the login step actually succeeded. Re-run properly — logging in via the real `/api/auth/login` endpoint (matching what `login.html`'s own script does: `POST` JSON `{password}`, which sets the signed `tsm_session` cookie with `role`/`clientId`/etc.) and verifying the login response before crawling — the 401s do not reproduce. **Root cause was the test methodology, not the app:** the original crawl's login click never confirmed the `/api/auth/login` response succeeded, so the "logged-in" session was in fact unauthenticated for every subsequent page.
+
+**Verified 2026-08-29, live Codespace deployment, real credentials (`MONGODB_URI` + `GROQ_API_KEY` both set):**
+- Logged in with the real admin password → confirmed `200 OK` with `{ok:true, role:"admin", ...}` and a valid `tsm_session` cookie before crawling anything.
+- All 40 links on `suite-hub.html` crawled (all 13 chained verticals + BPO Internal, Client Portal, Login, Smoke Test) — **39/40 pages returned HTTP 200 with zero unexpected failed sub-requests.**
+- The one remaining failure (Concierge Command → `intake.tsmatter.com/api/intake/records`, HTTP 525) is a Cloudflare SSL-handshake failure on a **third-party service outside this repo** — confirmed via direct `curl -v` that Cloudflare's edge can't complete a TLS handshake to that origin. Not a `tsm-apps` bug; nothing to fix here without access to that other service's Cloudflare/origin config.
+
+**Test artifact:** `tests/e2e/puppeteer-suite-hub-crawl.js` — does a real login (aborts loudly if the login response isn't 200, instead of silently crawling unauthenticated), crawls every `suite-hub.html` link, and filters the expected `/cdn-cgi/` Cloudflare RUM beacon noise. Kept in the repo for future regression checks.
 
 ---
 
@@ -142,9 +155,12 @@
 - Nav / decision-card **STRATEGIST** — `nav('insurance-strategist.html')`.
 - **⬇ EXPORT CLIENT PACKAGE** — `exportClientPackage()`.
 - **OPEN STRATEGIST** — `nav('insurance-strategist.html')`.
+- **Decision Center (Approve/Hold/Reject)** — loads the shared `tsm-exec-portal-upgrade.js`, same as Healthcare/Legal/Construction/RE/FinOps/BPO. An **Approve** here auto-relays into the BPO Case Engine and shows up in that client's Client Portal rollup — see §14.5 below.
 
 **Talk points:**
 - "RUN STRATEGIST CHAIN is the phrase to watch — it's not one call, it's a chained sequence: claims triage → coverage analysis → reserve recommendation, in order, each step feeding the next."
+
+**Engagement-model note (client-facing, not a demo talk point):** Insurance is queue-only, not full exception+correction like Healthcare/FinOps/Construction/Mortgage — pitch it as a bounded pilot (claims/document indexing, compliance research, licensing/CE admin), not a full-workload BPO commitment, until the correction layer's proven on real client volume. The upside to lead with: even at pilot scope, an Approved case here reaches the client's own portal automatically, same as it would for a mature vertical — that's real evidence to show a prospect, not a promise.
 
 ---
 
@@ -391,33 +407,68 @@ This is a separate hop from the internal War Room → Strategist → Executive P
 
 ---
 
-## 13. Honeywell (Plant / Supplier / Cyber-OT)
+## 13. Honeywell (Plant / Supplier / Cyber-OT / BESS / Advanced Detection)
 
-**Path:** three parallel scenario-specific entry points — `html/plant-incident.html`, `html/supplier-shutdown.html`, `html/cyber-incident.html` — each escalating into one shared `html/war-rooms/honeywell-strategist.html` → `html/war-rooms/honeywell-executive-portal.html`.
-**Structural note:** unlike every other vertical in this manual, Honeywell has **no single "war room" file** — it has three, one per incident type, all funneling into the same strategist/exec-portal pair.
+**Path:** five parallel scenario-specific entry points — `html/plant-incident.html`, `html/supplier-shutdown.html`, `html/cyber-incident.html`, `html/war-rooms/bess-gigafactory-incident.html`, and `html/war-rooms/advanced-detection-incident.html` — each converging into one shared `html/war-rooms/honeywell-strategist.html` → `html/war-rooms/honeywell-executive-portal.html` chain.
 
-### War Room (one of three, by scenario)
+**Structural note:** Honeywell uses multiple scenario-specific war rooms rather than one universal incident screen. Plant, supplier, cyber-OT, BESS/Gigafactory, and Advanced Detection have different first-response data and workflows, but leadership converges on the same Strategist and Executive Portal.
+
+### War Room — Plant / Supplier / Cyber-OT
+
 - **plant-incident.html** — `⚡ ESCALATE TO OPERATIONS STRATEGIST →` (`#escalateBtn`, disabled until conditions are met) — `escalateToStrategist()`.
 - **supplier-shutdown.html** — `⚡ ESCALATE TO SUPPLY CHAIN STRATEGIST →` — `escalateToStrategist()`.
 - **cyber-incident.html** — `🛡 ESCALATE TO OPERATIONS STRATEGIST →` — `escalateToStrategist()`.
 - All three target the same `STRATEGIST_URL = '/html/war-rooms/honeywell-strategist.html'`.
 
+### BESS / Gigafactory War Room — `bess-gigafactory-incident.html`
+
+- Six-engine incident pipeline covering detection/context, facility impact, failure progression, financial exposure, response planning, and executive dispatch.
+- Documented operating facts: **20 MW nameplate power**, **80 MWh installed energy capacity**, LFP chemistry, and output curtailed to **65% of contracted capacity**.
+- Re-energization decision window: **12–24 hours**.
+- Conditional module-replacement lead time: **3–5 weeks if thermal runaway is confirmed and replacement is required**.
+- Financial exposure: **$400,000–$600,000 TSM planning estimate / assumption**, not a source-provided confirmed cost.
+- Root cause must remain explicitly unconfirmed unless supported by incident evidence.
+- Decision costs remain `NOT QUANTIFIED` unless the source provides an actual cost.
+- Routes into the shared Honeywell Strategist → Executive Portal chain.
+
+### Advanced Detection War Room — `advanced-detection-incident.html`
+
+- Early-warning detection command scenario using BESS off-gas alerts, Gigafactory off-gas alerts, VESDA particulate alerts, and facility shutdown logs.
+- Six engines:
+  1. Detection Intelligence
+  2. Facility Impact
+  3. Failure Progression
+  4. Exposure Calculation
+  5. Response Plan
+  6. Executive Dispatch
+- Uses the canonical `/api/war-room/stream` surface.
+- Detection-to-decision workflow is explicitly a **training / decision-support simulation**, not a live sensor feed or facility control system.
+- It does not command, arm, or trigger real suppression, isolation, or shutdown equipment; actual site fire/life-safety systems and AHJ-approved procedures remain authoritative.
+- Routes into the same shared Honeywell Strategist → Executive Portal chain.
+
 ### Strategist — `honeywell-strategist.html`
+
 - **→ Escalate** — `escalateExec()`.
-- Scenario shortcuts back to any of the three war rooms (`window.location='/html/plant-incident.html'` etc.) and forward to the exec portal.
-- `manualRefresh()`, **Export** — `window.print()`.
+- Receives scenario-specific decision packages from all five Honeywell entry points.
+- Scenario shortcuts can return to the applicable Honeywell war room.
+- Executive escalation continues to `honeywell-executive-portal.html`.
+- `manualRefresh()` and **Export** — `window.print()`.
 
 ### Executive Portal — `honeywell-executive-portal.html`
+
 - **⬇ EXPORT CLIENT PACKAGE** — `exportClientPackage()`.
 - **AUTHORIZE** — `recordExecutiveAction('AUTHORIZED', ...)`.
-- **BOARD NOTIFIED** — `recordExecutiveAction('BOARD_NOTIFIED', ...)` — a named action distinct from the generic ESCALATE seen elsewhere.
-- Same scenario shortcuts back to all three war rooms.
+- **BOARD NOTIFIED** — `recordExecutiveAction('BOARD_NOTIFIED', ...)`.
+- `AUTHORIZED` and `BOARD_NOTIFIED` are separate named executive actions and should remain separately represented in the audit trail.
+- Scenario navigation can return to the applicable Honeywell war room.
 
 **Talk points:**
-- "Honeywell is the only vertical with three front doors instead of one — plant incident, supplier shutdown, cyber-OT breach — because those are genuinely different first-responders with different data, but they converge on one strategist and one executive view. That's deliberate: leadership sees one unified risk picture regardless of which team is closest to the fire."
-- "BOARD NOTIFIED is a named, distinct action from AUTHORIZE — worth calling out to a compliance-minded buyer the same way Legal's 'Discovery Expansion' is."
+- "Honeywell now has five scenario front doors — plant incident, supplier shutdown, cyber-OT, BESS/Gigafactory, and Advanced Detection. Each represents a genuinely different first-response context, but all converge on one strategist and one executive view."
+- "BESS handles the incident-command side of battery/gigafactory events, while Advanced Detection handles the early-warning sensor side. They are complementary, not duplicate war rooms."
+- "BOARD NOTIFIED is a named, distinct executive action from AUTHORIZE, which is important for auditability and governance."
 
----
+**Client-facing status:** Honeywell remains an internal build/backlog vertical and should **not** be represented as pilot-ready solely because these additional scenario rooms are documented.
+
 
 ## 14. L1 Ticket Copilot (IT Ops)
 
@@ -451,11 +502,105 @@ This is a separate hop from the internal War Room → Strategist → Executive P
 
 ---
 
+## 14.5 The Closing Loop — Executive Decision → BPO Case Engine → Client Portal
+
+Every section above stops at the Executive Portal — the internal employee-facing screen. This is the step after that: what actually reaches the client. Verified against `server.js` (`POST /api/exec-portal/:vertical/decide`), not assumed from naming conventions.
+
+**The mechanism:** every Executive Portal with a Decision Center (Approve / Hold / Reject) posts to `/api/exec-portal/:vertical/decide`. On **Approve**, the server auto-creates/updates a real BPO work item (`bpoUpsertWorkItem`) tagged to the case's resolved client — no analyst re-keys anything from an exported Client Package by hand. BPO itself is excluded from the relay only because it already writes work items directly through its own endpoint.
+
+**Where it lands:** `bpo_cases` → `bpoBuildClientRollup()` → `GET /api/bpo/reports/client-rollup` (live) and `GET /api/bpo/reports/client-monthly` (snapshot) → `client-portal.html`, the one page a real client logs into (via `login.html`, role-routed).
+
+**Coverage — confirmed wired vs. not:**
+
+| Vertical | Decision Center? | Reaches Client Portal on Approve? |
+|---|---|---|
+| Healthcare | Yes (shared script) **+** a second, independent sync at the War Room stage (`syncStructuredCaseToEngine()`, fires every pipeline run) | Yes — twice over |
+| Legal, Construction, Real Estate, Insurance, FinOps | Yes (shared `tsm-exec-portal-upgrade.js`) | Yes |
+| Mortgage, PM Copilot, Schools, HotelOps, Honeywell | Yes (direct inline call to the same endpoint) | Yes |
+| BPO | Yes — own dedicated endpoint, not this relay | Yes — direct |
+| **Concierge** | **No — not a registered exec-portal vertical at all** | **No** |
+| **College Command** | **No — registered server-side, but no page calls the endpoint** | **No** |
+| L1 Ticket Copilot | No — internal IT tooling, not client-facing | N/A |
+
+**Talk point / training note:** For every "Yes" row, **Approve is the action that makes a case visible to the client** — not the export button. Concierge and College Command are the two real gaps: an approved case there does not reach the client automatically today; it has to be entered into BPO manually via `bpo-clients-admin.html` if a client needs to see it. That's a platform gap, not an employee-training gap — don't tell someone they did it wrong if a Concierge or College case doesn't show up in a client's portal.
+
+**Recovery note:** A case sitting on Hold, or never opened, never reaches the client — regardless of vertical. An idle Executive Portal queue is client-invisible revenue-recovery work, not just an internal backlog.
+
+---
+
+## 14.6 SAP Suite (Commerce → CRM → CPQ → SD)
+
+**Path:** four sequential war rooms — `html/war-rooms/catalog/catalog-war-room.html`, `html/war-rooms/crm/crm-war-room.html`, `html/war-rooms/cpq/cpq-war-room.html`, `html/war-rooms/o2c/o2c-war-room.html` — plus four supporting engines (`mdm/mdm-war-room.html`, `approval/approval-war-room.html`, `governance/governance-war-room.html`, `integration-hub/integration-hub.html`) all converging into one shared `html/war-rooms/sap/sap-strategist.html`, which points up into the enterprise-wide `html/war-rooms/digital-twin/digital-twin.html` rather than a separate SAP-only executive portal.
+
+**Structural note:** unlike a typical three-tier vertical, the SAP suite's four core war rooms are a **sequential business flow** (Commerce → CRM → CPQ → SD), not independent domains — a problem at one stage can propagate into a live quote or order downstream. Approval, Governance, and Integration Hub sit around the chain rather than on it: Approval is the real backend behind CPQ's "Needs Approval" and O2C's credit-check stages; Governance maps to SAP GRC; Integration Hub is where a broken system-to-system handoff actually shows up.
+
+### War Room — Catalog / CRM / CPQ / O2C
+
+- All four use the identical pattern: **RELAY TO STRATEGIST →** (`#btnRelay`) → `relayToStrategist()` → `TSM.relay.write("<DOMAIN>", payload, {caseId, stage:'war-room'})`, landing on a shared storage key from `relay.core.js`'s `RELAY_REGISTRY` (`TSM_CATALOG_RELAY`, `TSM_CRM_RELAY`, `TSM_CPQ_RELAY`, `TSM_O2C_RELAY`).
+- Each payload carries `explain[]` (severity-tagged risk items: `high`/`med`/`low`) and a `timestamp` — the same shape Digital Twin already expects from every other vertical.
+- **CPQ-specific:** the compatibility/discount checker tags a quote `NEEDS APPROVAL` when a discount requires sign-off; that tag now links directly to the Approval Center instead of being a dead-end label.
+- **O2C-specific:** the SLA-breach table now links each stalled order to whichever war room owns fixing it — Approval Center for a credit-check stall, Integration Hub for anything else (carrier/interface-shaped issues).
+
+### Supporting engines — MDM / Approval / Governance / Integration Hub
+
+- **MDM** (`mdm-war-room.html`) relays the same way (`TSM.relay.write("MDM", ...)`), and its sample data holds the suite's flagship scenario (see below).
+- Approval, Governance, and Integration Hub each have their own War Room → Strategist → Executive Portal chain (see the platform hub's SAP-Centric Core group); the SAP Strategist and Digital Twin both read their relay output rather than duplicating it.
+
+### SAP Strategist — `html/war-rooms/sap/sap-strategist.html`
+
+- Renders Catalog → CRM → CPQ → O2C as a left-to-right chain (not a grid), reflecting SAP process order.
+- **Flagship scenario:** MDM's duplicate customer record ("Phoenix Convention Center" / "Phoenix Conv. Ctr.", quality 91) and incomplete product record ("BMS-CORE-002", quality 72) both trace to CPQ's live sample quote `Q-2026-0041` — a $142K quote flagged `needs_approval: true`. This wasn't invented — it was already sitting in the existing MDM/CPQ sample data, just never connected across systems until now.
+- Links up to Digital Twin rather than a standalone SAP executive portal — the Strategist is the detail screen a reviewer drills into from the enterprise view, the same relationship BPO already has to Digital Twin.
+- **How-to guide:** `html/war-rooms/sap/sap-howto.html`.
+
+### Digital Twin — `html/war-rooms/digital-twin/digital-twin.html`
+
+- Enterprise-wide health aggregator; already watched BPO, O2C, CPQ, CRM, Approval, Governance, Integration Hub. Now also watches **Catalog** and **MDM** (`VERTICAL_SIGNAL_CONFIG` / `RELAY_STORAGE_KEYS`), closing the gap at both ends of the SAP chain — the front-end commerce layer and the data-quality layer underneath everything.
+
+**Talk points:**
+- "The SAP suite isn't four independent demos plus a dashboard — it's a connected operational intelligence layer. War rooms produce signals; the Strategist and Digital Twin consume the same signals from different vantage points."
+- "Bad master data quietly threatening a live six-figure quote is one of the most common real-world SAP pain points — Available-to-Promise and credit checks breaking because MDM upstream is dirty. That's the flagship scenario here, and it cost nothing to build because the data already existed in the repo."
+- "A stalled quote or order doesn't dead-end anymore — it points you at whoever actually owns the fix."
+
+**Client-facing status:** internal build/demo vertical — verify current build status before representing it as pilot-ready.
+
+---
+
 ## RCM-OS (standalone — not part of the War Room chain)
 
 **Path:** `html/finops-suite/tsm-rcm-os.html` (single self-contained page), with `tsm-rcm-os-howto.html` and `rcm-os-presentation.html` as companion docs/demo.
 
 RCM-OS ("Reconciliation Command Center") does not follow the War Room → Strategist → Executive Portal pattern at all — there's no escalation chain, no relay, and no `exportClientPackage()`. It's a standalone GL-reconciliation simulation tool that lives under the FinOps suite. Don't describe it in three-tier-chain language in a demo; it's a different kind of artifact.
+
+---
+
+## Candidate Intelligence — Career Training Platform (Staff Readiness &amp; Candidate Registry)
+
+**Path:** `html/tsm-career-training-platform.html` (single page, panel-switched via `switchTo()`), fed by the Candidate Registry API (`POST /api/candidates`, `POST /api/candidates/:id/training-events`) rather than a War Room/Strategist/Executive Portal chain.
+
+**Structural note:** like RCM-OS, this is a cross-suite capability, not a 14th chained vertical — there's no escalation relay here. It provides one canonical candidate record (Candidate Registry) that Career Training and Staffing Readiness both read from, so a candidate's readiness evidence only has to be recorded once.
+
+### Candidate Registry — `panel-registry` (nav `02 · Candidate Registry`)
+
+- Manager-facing roster (`registryTbody`) showing every active candidate across sectors: assigned course, progress, readiness score, status, and approval state.
+- Candidates only see their own assigned curriculum; the roster view is manager-only.
+- Footer nav chains to `panel-profile` (Candidate Profile, `03`) and back to `overview`.
+
+### Candidate Readiness Tracker — `panel-readiness` (nav `05 · Readiness Tracker`, under "Assessment & Approval")
+
+- Live explainability panel (`overall-score`, `readiness-bar`) computing an overall readiness percentage from a documented, non-fabricated formula: sector-tool completions (40%) + cert-prep status (35%) + governance-checkpoint adherence (25%).
+- Per-sector checklists (`readiness-check` checkboxes, `updateReadiness()`) across all 7 sectors (Healthcare, FinOps, Insurance, Real Estate, BPO, and others further down the panel) plus 6 cert tracks.
+- Feeds a placement-status readout (`placement-status`) and an exportable audit trail — the same explainability-contract pattern used elsewhere in the platform, described here as compliance-ready structured JSON/PDF.
+- Footer nav chains to `panel-governance`.
+
+**Talk points:**
+- "Candidate Registry is the canonical record — Career Training and Staffing Readiness both read the same readiness evidence instead of keeping their own copies."
+- "The Readiness Tracker's score isn't a black box — it's a documented weighted formula against real checklist completions, the same honesty pattern the rest of the platform holds to."
+- "This is included in the client/interview-facing demo walkthrough alongside the Meridian Industrial incident-command set — it demonstrates the same canonical-record pattern in a staffing context, without needing a live backend."
+
+**Client-facing status:** unlike Honeywell, this one is demo-ready — Candidate Registry and Readiness Tracker are explicitly called out for inclusion in client/interview-facing demos (see `html/document-processing-revenue-recovery-manual.html`, §CI).
+
+**Supporting materials:** the Candidate Intelligence flow (Assessment → Candidate Record → Readiness Event → Evidence Promotion → Career/Staffing Consumption) is documented in full in the Revenue Recovery Manual's §CI, including lifecycle-status values (`in_training`, `needs_review`, `ready_for_placement`) and the ownership boundaries between Candidate Readiness V2, Candidate Registry, Career Training, and Staffing Readiness.
 
 ---
 
@@ -467,6 +612,7 @@ RCM-OS ("Reconciliation Command Center") does not follow the War Room → Strate
 4. **ACKNOWLEDGE / ESCALATE with logged messages** (Mortgage, Schools, PM Copilot, HotelOps, Honeywell's AUTHORIZE/BOARD_NOTIFIED) is the most audit-trail-forward pattern — worth showing to a compliance-sensitive buyer.
 5. **Legal is the only three-tier vertical chain** (case strategist → chief strategist → executive) — call this out explicitly since every other chained vertical is a flat three-screen chain. **Honeywell is structurally unique in the other direction** — one strategist/exec-portal pair fed by three separate scenario-specific war rooms (plant / supplier / cyber-OT), rather than one war room per chain.
 6. **RCM-OS sits outside this pattern entirely** — a standalone reconciliation tool with no War Room / Strategist / Executive Portal chain. Don't describe it in three-tier-chain language in a demo.
+7. **The Decision Center's Approve action, not the export button, is what reaches the client** — see §14.5. Confirmed wired for 12 of 14 exec-portal verticals; Concierge and College Command are real gaps, not training gaps.
 
 ---
 
@@ -475,3 +621,7 @@ RCM-OS ("Reconciliation Command Center") does not follow the War Room → Strate
 *Re-audited 2026-08-26 against `origin/main` @ `e45cd205`: every file path, escalation function, export function, and button ID across all 13 chained verticals plus RCM-OS re-confirmed present and wired exactly as documented — including the RE and BPO `exportClientPackage()` exceptions, HotelOps' `sections: {financials, riskRegister, portfolio}` passthrough, and Concierge's `lastKpis` passthrough. The healthcare hub nav fix (`ec82fc37`) was independently re-verified: all 13 rewritten links resolve to real files. No drift found; no corrections required.*
 
 *Re-audited 2026-08-28: the Slack Notifications section (BPO, added after the 2026-08-26 pass) checked against live source — `server/integrations/slack-notifier.js` require and call site confirmed in `server/tsm-ledger-service.js`, default-off gating (`SLACK_BPO_NOTIFY_ENABLED` + `SLACK_BPO_WEBHOOK_URL`) confirmed, non-fatal try/catch confirmed, `resolved`-only default confirmed, and the "19-assertion regression test" claim confirmed by running `scripts/test-bpo-slack-notify.js` (19/19 pass). No `SLACK_BPO_*` env var is set anywhere in CI/config, so the feature stays genuinely off by default. No drift found. This file also absorbs the duplicate `MASTER_VERTICAL_WALKTHROUGH (2).md`, which diverged only in missing this Slack section — that copy has been deleted; this is the single canonical version going forward.*
+
+*2026-08-29 (morning): a Playwright crawl of all 40 `suite-hub.html` links against a live logged-in session found the Executive Portal 401 pattern documented in the "PRE-DEMO CHECK" section near the top of this file — added as a flag for Monday's presentation, not yet root-caused or fixed. That entry was written from static source review only (`middleware/require-auth.js`, the `NODE_REPORTS_API` pattern) — no live browser/network access was available to confirm the exact failing request(s). Unrelated to this: `suite-hub.html` also picked up three small nav-only additions today (Client-Selector Smoke Test, Sentinel Client Portal, Login) — internal QA/routing links, not part of any documented demo chain, so no vertical section above needed updating for them.*
+
+*2026-08-29 (later same day): the 401 pattern above was root-caused and resolved — re-run with a puppeteer crawl (`tests/e2e/puppeteer-suite-hub-crawl.js`) that confirms the `/api/auth/login` response is actually `200` before crawling (the original pass never checked this), against the live Codespace deployment with real `MONGODB_URI`/`GROQ_API_KEY` credentials: 39/40 links pass clean. The 401s were a test-methodology gap, not an app defect. The lone remaining failure is a Cloudflare 525 SSL-handshake error on the third-party `intake.tsmatter.com` origin (Concierge Command's intake-records call) — confirmed via direct `curl -v`, outside this repo's control. "PRE-DEMO CHECK" section above has been updated in place to reflect this; the "before Monday" verification step is no longer outstanding.*

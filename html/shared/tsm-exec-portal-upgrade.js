@@ -22,6 +22,8 @@
     legal:        { relay: ['TSM_LEGAL_WAR_RELAY','tsm_legal_war_relay'],    label: 'Legal Command' },
     realestate:   { relay: ['TSM_RE_WAR_RELAY','tsm_re_war_relay'],          label: 'Real Estate Command' },
     bpo:          { relay: ['TSM_BPO_WAR_RELAY','tsm_bpo_war_relay'],        label: 'BPO Command' },
+    concierge:    { relay: ['TSM_CONCIERGE_RELAY'],                          label: 'Concierge Transport Command' },
+    collegecommand: { relay: ['TSM_COLLEGE_EXEC_RELAY'],                     label: 'College Command' },
   };
 
   const CSS_VARS = `
@@ -47,7 +49,25 @@
     if (p.includes('legal'))                                                           return 'legal';
     if (p.includes('reo') || p.includes('re-exec'))                                   return 'realestate';
     if (p.includes('bpo'))                                                             return 'bpo';
+    if (p.includes('concierge'))                                                       return 'concierge';
+    if (p.includes('college'))                                                         return 'collegecommand';
     return 'healthcare'; // fallback
+  }
+
+  const VERTICAL_DOMAIN_MAP = {
+    healthcare: 'Healthcare',
+    finops: 'FinOps',
+    insurance: 'Insurance',
+    construction: 'Construction',
+    legal: 'Legal',
+    concierge: 'Concierge',
+    realestate: 'Real Estate',
+    bpo: 'BPO',
+    collegecommand: 'College Command'
+  };
+
+  function domainLabelFor(vertical) {
+    return VERTICAL_DOMAIN_MAP[vertical] || vertical;
   }
 
   // ── Read relay ────────────────────────────────────────────────────────────
@@ -135,6 +155,25 @@
         { label: 'Resolution Rate', value: relay?.resolution     || '78%',  trend: [65,70,73,76,78], color: 'var(--tsm-green)', unit: '' },
         { label: 'Confidence',      value: relay?.confidence     || '76%',  trend: [64,68,71,74,76], color: 'var(--tsm-cyan)', unit: '' },
       ],
+      concierge: [
+        { label: 'Open Missions',   value: relay?.open          ?? '3',    trend: [6,5,4,4,3],      color: 'var(--tsm-amber)', unit: '' },
+        { label: 'Completed',       value: relay?.completed     ?? '18',   trend: [10,13,15,17,18], color: 'var(--tsm-green)', unit: '' },
+        { label: 'Exceptions',      value: relay?.exceptions    ?? '1',    trend: [3,2,2,1,1],      color: 'var(--tsm-red)',   unit: '' },
+        { label: 'Total Spend',     value: relay?.totalSpend != null ? ('$' + Number(relay.totalSpend).toFixed(2)) : '$4,120.00', trend: [2200,2900,3400,3800,4120], color: 'var(--tsm-cyan)', unit: '' },
+      ],
+      collegecommand: (() => {
+        const domains = relay?.domains || [];
+        const activeDomains = domains.length || 5;
+        const exposure = domains.length
+          ? domains.reduce((sum, d) => sum + ((d.payload && d.payload.financials && d.payload.financials.total_exposure) || 0), 0)
+          : 480000;
+        return [
+          { label: 'Active Domains',  value: String(activeDomains), trend: [2,3,4,4,5],       color: 'var(--tsm-cyan)',  unit: '' },
+          { label: 'Combined Exposure', value: '$' + Number(exposure).toLocaleString(), trend: [610,560,520,500,Math.round(exposure/1000)], color: 'var(--tsm-red)', unit: '' },
+          { label: 'Domains Relayed', value: domains.length ? `${domains.length}/5` : '0/5', trend: [1,2,3,4,domains.length || 0], color: 'var(--tsm-amber)', unit: '' },
+          { label: 'Confidence',      value: relay?.confidence || '—',  trend: [70,74,77,80,82], color: 'var(--tsm-green)', unit: '' },
+        ];
+      })(),
     };
     return kpis[vertical] || kpis.healthcare;
   }
@@ -357,6 +396,14 @@
         { urgency: 'critical', text: 'Authorize SLA Breach Recovery Plan', meta: 'Client escalation received · 24hr window', value: '$22K' },
         { urgency: 'high',     text: 'Approve Staffing Surge Authorization', meta: 'Volume spike projected — next 7 days', value: '$14K' },
       ],
+      concierge:    [
+        { urgency: 'high',     text: 'Approve Driver Reassignment — Cancelled Mission', meta: 'Cancelled-by-driver exception open · client awaiting new ETA', value: '$1.2K' },
+        { urgency: 'medium',   text: 'Ratify Vendor Rate Adjustment — Peak Window', meta: 'Recurring surcharge flagged across 3 missions', value: '$650' },
+      ],
+      collegecommand: [
+        { urgency: 'critical', text: 'Authorize Financial Aid Disbursement Hold Review', meta: 'Bursar/FinAid domains report exposure above threshold', value: '$210K' },
+        { urgency: 'high',     text: 'Approve Endowment Compliance Response', meta: 'Accreditation domain flagged pending documentation', value: '$75K' },
+      ],
     };
 
     // Merge relay data if available
@@ -567,13 +614,22 @@
     // this just makes sure the audit trail is real, not just DOM state.
     const vertical = detectVertical();
     const text = itemEl?.querySelector('.tsm-decision-text')?.firstChild?.textContent?.trim() || null;
+    // TSMActiveMember is read-mostly and never guesses (see
+    // tsm-active-member.js): getId() returns the tenantId only when a
+    // Member was explicitly selected (URL param or command-center pick),
+    // else null. Passed through so the server can resolve a real,
+    // non-guessed clientId for the BPO relay below -- omitted entirely on
+    // pages that haven't loaded tsm-active-member.js, same as before.
+    const tenantId = (typeof global.TSMActiveMember !== 'undefined' && global.TSMActiveMember)
+      ? global.TSMActiveMember.getId()
+      : null;
 
     _logExec(`Persisting ${verdict} decision to server…`, 'tsm-log-muted');
 
     fetch(`/api/exec-portal/${vertical}/decide`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ index, verdict, text, actor: 'Executive' })
+      body: JSON.stringify({ index, verdict, text, actor: 'Executive', tenantId })
     }).then(async r => {
       const data = await r.json().catch(() => null);
       if (!r.ok || !data || data.ok === false) {
@@ -583,6 +639,14 @@
       if (data.recorded) {
         _logExec(`Server confirmed — decision recorded (id: ${data.decision?.id || 'n/a'})`, 'tsm-log-ok');
         loadImprovementRate(vertical);
+        if (typeof global.TSM !== 'undefined' && global.TSM.evidenceLedger) {
+          global.TSM.evidenceLedger.record({
+            domain: domainLabelFor(vertical),
+            decisionId: String(data.decision?.id || `${vertical}-${index}-${Date.now()}`),
+            summary: text ? `${verdict} — ${text}` : verdict,
+            actor: 'Executive'
+          });
+        }
       } else {
         _logExec(`Server acknowledged the ${verdict} verdict but did not log it (not a terminal decision)`, 'tsm-log-warn');
       }

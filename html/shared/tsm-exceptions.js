@@ -73,7 +73,127 @@
     }
   }
 
-  var _records = loadAll();
+  // TSM FIX: before the LLM-refusal-leak fix (buildHCStructuredCase /
+  // TSMExecKitProducer.buildExplain), a strategist page whose engine ran
+  // without enough source detail could feed an LLM clarification response
+  // ("I'm afraid I can't generate... without the specific claim and denial
+  // details...") into this store as if it were a real exception, via
+  // add()/fromExplainItems(). That fix stops any *new* record like that
+  // from being added — but this store is persisted to localStorage, so it
+  // does nothing for records already saved before the fix shipped. Every
+  // browser that hit an affected page even once has those bad records
+  // stuck permanently; no code push can reach into a user's localStorage
+  // to clean them up. Self-heal on load instead: purge any persisted
+  // record whose title/detail looks like a refusal, once, the first time
+  // this file loads after the fix. Reuses TSMExecKitProducer's detector
+  // when that engine is loaded on the page (kept in sync with the actual
+  // fix rather than duplicating the pattern a second place), falling back
+  // to an inline copy of the same check otherwise so this self-heal still
+  // works on pages that don't load tsm-exec-kit-producer.js.
+  function _isRefusalText(text) {
+    if (!text) return false;
+    if (global.TSMExecKitProducer && typeof global.TSMExecKitProducer.isRefusalText === 'function') {
+      return global.TSMExecKitProducer.isRefusalText(text);
+    }
+    return /^\s*(i'?m\s+(afraid|sorry|unable)|i\s+can'?t|i\s+cannot|i'?m\s+not\s+able)\b/i.test(text)
+      || /\b(please\s+(provide|paste|share|include)|without\s+(the|specific|more)|not\s+enough\s+(information|detail|context)|need\s+(more|additional)\s+(information|detail|context))\b/i.test(text);
+  }
+
+  function _purgeStaleRefusalRecords(records) {
+    var kept = records.filter(function (r) {
+      return !(_isRefusalText(r && r.title) || _isRefusalText(r && r.detail));
+    });
+    if (kept.length !== records.length) persist(kept);
+    return kept;
+  }
+
+  // TSM FIX: before hc-denial-war-room.html / tsm-hc-analyzer.js stripped
+  // markdown from raw LLM engine output prior to field extraction, a bold
+  // heading like "**Claim ID:** HC-DEN-..." broke the "label[:\s]+value"
+  // regex the extractors use, so claimId extraction fell back to
+  // capturing nothing useful and the record was saved with the raw label
+  // text standing in for the real value -- title "Claim ID" (the label,
+  // not an actual ID) paired with detail "**Denial Reason**" (the raw
+  // unstripped heading, not the explanation that followed it). That
+  // extraction bug is fixed now, but the same way as the refusal-leak
+  // records above, any browser that hit an affected page while the bug
+  // was live has these garbage records stuck in localStorage permanently
+  // -- no code push reaches into an existing store to clean them up.
+  // Self-heal the same way: purge on load. Deliberately narrow/exact-match
+  // (not a fuzzy heuristic) so this can never catch a real claim whose
+  // title or rationale legitimately mentions "Claim ID" or "Denial
+  // Reason" as part of real content.
+  var _GENERIC_LABEL_PLACEHOLDERS = ['claim id', 'denial reason', 'claim', 'id'];
+  function _stripMdLocal(text) {
+    if (!text) return text;
+    return text
+      .replace(/\*\*(.*?)\*\*/g, '$1')
+      .replace(/\*(.*?)\*/g, '$1')
+      .replace(/__(.*?)__/g, '$1')
+      .replace(/_(.*?)_/g, '$1')
+      .replace(/`(.*?)`/g, '$1')
+      .replace(/^#{1,6}\s+/gm, '');
+  }
+  function _isGenericPlaceholderRecord(title, detail) {
+    var t = title ? _stripMdLocal(title).trim().toLowerCase() : '';
+    if (_GENERIC_LABEL_PLACEHOLDERS.indexOf(t) === -1) return false;
+    var d = detail ? _stripMdLocal(detail).trim().toLowerCase() : '';
+    var firstLine = d.split('\n')[0].trim();
+    return firstLine === '' || _GENERIC_LABEL_PLACEHOLDERS.indexOf(firstLine) !== -1;
+  }
+
+  function _purgeGenericPlaceholderRecords(records) {
+    var kept = records.filter(function (r) {
+      return !_isGenericPlaceholderRecord(r && r.title, r && r.detail);
+    });
+    if (kept.length !== records.length) persist(kept);
+    return kept;
+  }
+
+  // TSM FIX: before hc-denial-war-room.html / hc-main-strategist.html's
+  // stripMd() stripped markdown table pipes, an LLM answer formatted as a
+  // table row ("| CO-50 ("Unable to determine the medical necessity...")
+  // |") rode straight through rootCauseHypothesis extraction and into a
+  // record's `detail` field verbatim — visible in the exception queue and
+  // in exported tsm-client-package-*.json files' rationale text. That's
+  // fixed for any *new* record now, but same as the two migrations above,
+  // this store is persisted to localStorage, so records saved while the
+  // bug was live are stuck with the raw "| ... |" wrapper permanently
+  // unless something rewrites them. Unlike the refusal/placeholder cases
+  // above, this data is real and worth keeping — clean it in place on
+  // load instead of discarding the record. Reuses the same table-pipe
+  // regexes as the fixed stripMd() so a record ends up looking exactly
+  // like it would if it had been generated after the fix.
+  function _stripTablePipesLocal(text) {
+    if (!text) return text;
+    return text
+      .replace(/^\s*\|?[\s:-]*\|[\s:|-]*\|?\s*$/gm, '') // table separator rows (---|---)
+      .replace(/^\s*\|\s*(.*?)\s*\|\s*$/gm, function (_, inner) {
+        return inner.split('|').map(function (c) { return c.trim(); }).filter(Boolean).join(' — ');
+      });
+  }
+  function _looksLikeTableArtifact(text) {
+    if (!text) return false;
+    return /^\s*\|/m.test(text) || /\|\s*$/m.test(text);
+  }
+  function _cleanTableArtifactRecords(records) {
+    var changed = false;
+    records.forEach(function (r) {
+      if (!r) return;
+      if (_looksLikeTableArtifact(r.detail)) {
+        r.detail = _stripTablePipesLocal(r.detail);
+        changed = true;
+      }
+      if (_looksLikeTableArtifact(r.title)) {
+        r.title = _stripTablePipesLocal(r.title);
+        changed = true;
+      }
+    });
+    if (changed) persist(records);
+    return records;
+  }
+
+  var _records = _cleanTableArtifactRecords(_purgeGenericPlaceholderRecords(_purgeStaleRefusalRecords(loadAll())));
 
   function makeId() {
     return 'exc_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
@@ -158,16 +278,38 @@
     })[0] || null;
   }
 
+  /**
+   * findBySourceKey(sourceKey, sector) — same lookup as
+   * findOpenBySourceKey() but matches a record regardless of status.
+   * add()'s dedup needs this: a sourceKey that was already resolved
+   * (either by a user clicking Resolve, or by TSMCaseManager.markExecuted
+   * resolving the linked case's exceptions) still represents "this finding
+   * has already been recorded" — the underlying claim didn't get less
+   * duplicated just because it was closed out. findOpenBySourceKey alone
+   * only protected against duplicating a *still-open* record, so once a
+   * sourceKey's exception resolved, the next reload's re-feed (the exact
+   * scenario findOpenBySourceKey was written to survive) found no open
+   * match and pushed a brand-new exception + case for the same claim —
+   * repeating on every subsequent reload.
+   */
+  function findBySourceKey(sourceKey, sector) {
+    if (!sourceKey) return null;
+    return _records.filter(function (r) {
+      return r.sourceKey === sourceKey && (!sector || r.sector === sector);
+    })[0] || null;
+  }
+
   function add(exception) {
     exception = exception || {};
-    // Reload-safe dedup: if the caller passes a sourceKey and an open
+    // Reload-safe dedup: if the caller passes a sourceKey and an
     // exception with that same sourceKey (in the same sector) already
-    // exists, return it unchanged instead of pushing a duplicate. This is
-    // opt-in — callers that don't pass sourceKey keep today's behavior
-    // exactly (always creates a new record), so nothing already relying
-    // on add() always returning a fresh record is affected.
+    // exists — open OR resolved — return it unchanged instead of pushing
+    // a duplicate. This is opt-in — callers that don't pass sourceKey
+    // keep today's behavior exactly (always creates a new record), so
+    // nothing already relying on add() always returning a fresh record
+    // is affected.
     if (exception.sourceKey) {
-      var existing = findOpenBySourceKey(exception.sourceKey, exception.sector);
+      var existing = findBySourceKey(exception.sourceKey, exception.sector);
       if (existing) return existing;
     }
     var priority = exception.priority || priorityFor(exception.severity, exception.confidence);
@@ -273,7 +415,8 @@
     clear: clear,
     summarize: summarize,
     priorityFor: priorityFor,
-    findOpenBySourceKey: findOpenBySourceKey
+    findOpenBySourceKey: findOpenBySourceKey,
+    findBySourceKey: findBySourceKey
   };
 
   global.TSMExceptions = TSMExceptions;

@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HC OM PORTAL · Office Manager Operations</title>
+<style>
+html, body { height:100%; overflow-y:auto; }
+main { padding-bottom:80px !important; min-height:calc(100vh - 60px); }
+:root{
+  --bg:#0a0f0a;--g:#00ff88;--a:#ffaa00;--r:#ff4444;--b:#00aaff;--p:#b695ff;
+  --dim:#0d150d;--dim2:#0b120b;--border:#1e3a1e;--text:#e0ffe0;--muted:#556655;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;font-size:13px;padding-bottom:70px}
+a{text-decoration:none}
+.hdr{display:flex;justify-content:space-between;align-items:center;padding:10px 20px;border-bottom:1px solid var(--border);background:var(--dim2);position:sticky;top:0;z-index:30}
+.hdr-left{display:flex;align-items:center;gap:12px}
+.hdr-title{font-size:16px;font-weight:700;letter-spacing:2px;color:var(--g)}
+.hdr-sub{font-size:10px;color:var(--muted);letter-spacing:1px}
+.node-pill{padding:4px 12px;border-radius:12px;font-size:10px;font-weight:700;border:1px solid var(--g);color:var(--g)}
+.nav{display:flex;border-bottom:1px solid var(--border);background:var(--dim2);padding:0 20px;overflow-x:auto}
+.nav-btn{padding:10px 18px;font-family:inherit;font-size:11px;font-weight:700;letter-spacing:1px;border:none;background:none;color:#558855;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap}
+.nav-btn:hover{color:var(--g)} .nav-btn.active{color:var(--g);border-bottom-color:var(--g)}
+.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;padding:16px 20px}
+.kpi{background:var(--dim);border:1px solid var(--border);border-radius:6px;padding:16px}
+.kpi-val{font-size:26px;font-weight:700;margin-bottom:4px}
+.kpi-lbl{font-size:10px;color:#558855;letter-spacing:1px;text-transform:uppercase}
+.kpi-sub{font-size:10px;margin-top:4px}
+.green{color:var(--g)} .amber{color:var(--a)} .red{color:var(--r)} .blue{color:var(--b)}
+.sec{margin:0 20px 16px;background:var(--dim);border:1px solid var(--border);border-radius:6px;padding:16px}
+.sec-hdr{font-size:11px;font-weight:700;letter-spacing:2px;color:var(--g);margin-bottom:12px;display:flex;justify-content:space-between;align-items:center}
+.sec-hdr::before{content:'◆ ';font-size:8px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;padding:6px 10px;font-size:10px;letter-spacing:1px;color:#558855;border-bottom:1px solid var(--border)}
+td{padding:8px 10px;border-bottom:1px solid #0f1f0f;vertical-align:top}
+tr:hover td{background:#0f1f0f}
+.badge{padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700}
+.bg{background:#003322;color:var(--g);border:1px solid var(--g)}
+.ba{background:#332200;color:var(--a);border:1px solid var(--a)}
+.br{background:#330000;color:var(--r);border:1px solid var(--r)}
+.b-suggested{background:#332200;color:var(--a);border:1px solid var(--a)}
+.b-routed{background:#003322;color:var(--g);border:1px solid var(--g)}
+.b-dismissed{background:#221111;color:var(--muted);border:1px solid var(--border)}
+.alert-row{display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid #0f1f0f}
+.pri{padding:2px 8px;border-radius:10px;font-size:9px;font-weight:700;min-width:58px;text-align:center}
+.purgent{background:#330000;color:var(--r);border:1px solid var(--r)}
+.pok{background:#003322;color:var(--g);border:1px solid var(--g)}
+.alert-txt{font-size:12px;flex:1}
+.alert-imp{font-size:11px;color:var(--a);min-width:90px;text-align:right}
+.empty{color:#558855;font-size:11px;padding:10px 0}
+.btn{padding:8px 16px;font-family:inherit;font-size:11px;font-weight:700;border-radius:4px;cursor:pointer;letter-spacing:1px;border:1px solid var(--g);background:#003322;color:var(--g)}
+.btn.secondary{border-color:var(--muted);background:none;color:var(--muted)}
+.smallbtn{padding:4px 10px;font-size:9px;margin-right:4px}
+.esc-note{font-size:10px;color:var(--muted);margin-bottom:10px;line-height:1.5}
+.esc-confirm{display:none;margin-top:10px;padding:10px;background:var(--dim2);border:1px solid var(--g);border-radius:4px;font-size:11px;color:var(--g)}
+.esc-confirm.show{display:block}
+[id^="tab-"]{display:none!important}
+@media(max-width:1100px){ .kpi-row{grid-template-columns:1fr 1fr} }
+@media(max-width:760px){ .kpi-row{grid-template-columns:1fr} }
+.footer{position:fixed;bottom:0;left:0;right:0;background:var(--dim2);border-top:1px solid var(--border);padding:8px 20px;display:flex;justify-content:space-between;align-items:center;z-index:100}
+.fn{font-size:10px;color:#558855;letter-spacing:1px}
+</style>
+</head>
+<body data-vertical="healthcare" data-page-role="office-manager-portal">
+<style>
+.tsm-hc-crossnav{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:6px 14px;background:#0a0f0a;border-bottom:1px solid #1e3a1e;font-family:'Courier New',monospace;font-size:10px;letter-spacing:.5px;position:sticky;top:0;z-index:200}
+.tsm-hc-crossnav-lbl{color:#556655;margin-right:4px;text-transform:uppercase}
+.tsm-hc-crossnav a{color:#00ff88;text-decoration:none;padding:3px 9px;border:1px solid #1e3a1e;border-radius:10px;white-space:nowrap}
+.tsm-hc-crossnav a:hover{border-color:#00ff88;background:#003322}
+.tsm-hc-crossnav span.tsm-hc-crossnav-active{color:#0a0f0a;background:#00ff88;padding:3px 9px;border-radius:10px;font-weight:700;white-space:nowrap}
+</style>
+<div class="tsm-hc-crossnav"><span class="tsm-hc-crossnav-lbl">HC suite:</span><a href="/html/healthcare/hc-denial-war-room.html">Denial War Room</a><a href="/html/healthcare/hc-main-strategist.html">Strategist</a><a href="/html/healthcare/hc-office-manager-doc-intake.html">Doc Intake</a><a href="/html/healthcare/executive-portal.html">Executive Portal</a><span class="tsm-hc-crossnav-active">OM Portal</span><a href="/html/healthcare/hc-strategist/index.html">Neural Intake Strategist</a></div>
+
+
+<div class="hdr">
+  <div class="hdr-left">
+    <span style="font-size:22px">🗂</span>
+    <div>
+      <div class="hdr-title">HC OM PORTAL</div>
+      <div class="hdr-sub">Office Manager Operations · live node status + intake routing, sourced directly — no relay hop</div>
+    </div>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+    <a class="node-pill" href="/html/healthcare/hc-office-manager-doc-intake.html">📥 DOC INTAKE</a>
+    <a class="node-pill" href="/html/healthcare/hc-strategist/index.html" style="color:var(--b);border-color:var(--b)">HC STRATEGIST →</a>
+  </div>
+</div>
+
+<nav class="nav">
+  <button class="nav-btn active" data-tab="dash" onclick="switchOmTab('dash', this)">⊞ DASHBOARD</button>
+  <button class="nav-btn" data-tab="intake" onclick="switchOmTab('intake', this)">📥 INTAKE QUEUE</button>
+  <button class="nav-btn" data-tab="nodes" onclick="switchOmTab('nodes', this)">📊 NODE STATUS</button>
+  <button class="nav-btn" data-tab="escalate" onclick="switchOmTab('escalate', this)">📨 ESCALATE TO EXEC</button>
+</nav>
+
+<div id="tab-dash" style="display:block">
+  <div class="kpi-row">
+    <div class="kpi"><div class="kpi-val green" id="kpi-nodes">—</div><div class="kpi-lbl">Nodes Online</div><div class="kpi-sub green" id="kpi-nodes-sub">awaiting node reports</div></div>
+    <div class="kpi"><div class="kpi-val red" id="kpi-risk">—</div><div class="kpi-lbl">Revenue At Risk</div><div class="kpi-sub red" id="kpi-risk-sub">—</div></div>
+    <div class="kpi"><div class="kpi-val amber" id="kpi-actions">—</div><div class="kpi-lbl">Priority Actions</div><div class="kpi-sub amber" id="kpi-actions-sub">—</div></div>
+    <div class="kpi"><div class="kpi-val blue" id="kpi-intake">—</div><div class="kpi-lbl">Open Intake (unrouted)</div><div class="kpi-sub blue" id="kpi-intake-sub">awaiting intake events</div></div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-hdr">LIVE PRIORITY QUEUE — FROM NODE FINDINGS</div>
+    <div id="priority-wrap"><div class="empty">Loading…</div></div>
+  </div>
+
+  <div class="sec">
+    <div class="sec-hdr">RECENT INTAKE SUGGESTIONS <a href="#" onclick="switchOmTab('intake', document.querySelector('[data-tab=intake]'));return false;" style="font-size:10px;color:var(--b)">VIEW ALL →</a></div>
+    <div id="intake-preview"><div class="empty">Loading…</div></div>
+  </div>
+</div>
+
+<div id="tab-intake">
+  <div class="sec">
+    <div class="sec-hdr">INTAKE QUEUE — ROUTING SUGGESTIONS FROM NEURAL INTAKE</div>
+    <table>
+      <thead><tr><th>WHEN</th><th>DESCRIPTION</th><th>SUGGESTED NODE</th><th>CONFIDENCE</th><th>STATUS</th><th></th></tr></thead>
+      <tbody id="intake-body"><tr><td colspan="6" class="empty">Loading intake queue…</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<div id="tab-nodes">
+  <div class="sec">
+    <div class="sec-hdr">LIVE NODE STATUS — /api/hc/nodes</div>
+    <table>
+      <thead><tr><th>NODE</th><th>STATUS</th><th>FINDINGS</th><th>REPORTED</th></tr></thead>
+      <tbody id="node-body"><tr><td colspan="4" class="empty">Loading…</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<div id="tab-escalate">
+  <div class="sec">
+    <div class="sec-hdr">ESCALATE TO EXECUTIVE PORTAL</div>
+    <div class="esc-note">
+      Builds a snapshot from the current live node state and priority queue above, and hands it to the Executive Portal.
+      This does not touch any node's findings — it's a one-way summary write, same as HC Strategist's own escalation.
+    </div>
+    <button class="btn" onclick="escalateToExec()">📨 BUILD &amp; SEND EXECUTIVE SNAPSHOT</button>
+    <div class="esc-confirm" id="esc-confirm"></div>
+  </div>
+</div>
+
+<div class="footer">
+  <div class="fn">◈ HC OM PORTAL · Office Manager Operations · reads /api/hc/nodes + /api/hc/intake directly</div>
+</div>
+
+<script>
+const NODE_KEYS = ['operations','medical','pharmacy','insurance','financial','legal','vendors','compliance','billing','taxprep','grants'];
+const NODE_LABELS = { operations:'Operations', medical:'Medical', pharmacy:'Pharmacy', insurance:'Insurance', financial:'Financial',
+  legal:'Legal', vendors:'Vendors', compliance:'Compliance', billing:'Billing', taxprep:'TaxPrep', grants:'Grants' };
+
+let lastState = {};
+let lastReportedKeys = [];
+let lastQueue = [];
+
+function switchOmTab(id, el){
+  document.querySelectorAll('[id^="tab-"]').forEach(t => t.style.display = 'none');
+  document.getElementById('tab-' + id).style.display = 'block';
+  document.querySelectorAll('.nav-btn').forEach(n => n.classList.remove('active'));
+  if (el) el.classList.add('active');
+}
+
+function escapeHtmlOM(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function excerptOM(text, maxLen){
+  const clean = String(text || '').replace(/\s+/g,' ').trim();
+  return clean.length <= maxLen ? clean : clean.slice(0, maxLen).replace(/\s+\S*$/, '') + '…';
+}
+function parseDollarOM(val){
+  if (val == null) return null;
+  const s = String(val);
+  const m = s.match(/[\d,]+(?:\.\d+)?/);
+  if (!m) return null;
+  const mult = /m\b/i.test(s) ? 1000000 : (/k\b/i.test(s) ? 1000 : 1);
+  return Math.round(parseFloat(m[0].replace(/,/g,'')) * mult);
+}
+
+async function loadNodes(){
+  try {
+    const res = await fetch('/api/hc/nodes');
+    const data = await res.json();
+    lastState = data.state || {};
+    lastReportedKeys = NODE_KEYS.filter(k => lastState[k]);
+    renderKpis();
+    renderPriorityQueue();
+    renderNodeTable();
+  } catch(e) {
+    document.getElementById('node-body').innerHTML = `<tr><td colspan="4" class="empty" style="color:var(--r)">Failed to load node state: ${escapeHtmlOM(e.message)}</td></tr>`;
+  }
+}
+
+function renderKpis(){
+  const state = lastState, reportedKeys = lastReportedKeys;
+  if (!reportedKeys.length) {
+    document.getElementById('kpi-nodes').textContent = '—';
+    document.getElementById('kpi-nodes-sub').textContent = 'awaiting node reports';
+    document.getElementById('kpi-risk').textContent = '—';
+    document.getElementById('kpi-risk-sub').textContent = 'no nodes reported yet';
+    document.getElementById('kpi-actions').textContent = '—';
+    document.getElementById('kpi-actions-sub').textContent = 'no nodes reported yet';
+    return;
+  }
+  const online = reportedKeys.filter(k => state[k].status === 'ONLINE').length;
+  document.getElementById('kpi-nodes').textContent = `${online}/${NODE_KEYS.length}`;
+  document.getElementById('kpi-nodes-sub').textContent = `${reportedKeys.length}/${NODE_KEYS.length} nodes have reported`;
+
+  // Same aggregation HC Strategist uses — kept identical so the two views
+  // never show different numbers for the same underlying telemetry.
+  let riskTotal = 0, riskFields = 0;
+  ['arOver30','pendingClaimsValue','auditExposure'].forEach(f => reportedKeys.forEach(k => {
+    const v = state[k][f]; if (v != null && !Number.isNaN(Number(v))) { riskTotal += Number(v); riskFields++; }
+  }));
+  document.getElementById('kpi-risk').textContent = riskFields ? '$' + riskTotal.toLocaleString('en-US') : '—';
+  document.getElementById('kpi-risk-sub').textContent = riskFields ? `arOver30 + pendingClaimsValue + auditExposure (${riskFields} field(s))` : 'no dollar telemetry reported yet';
+
+  const notOnline = reportedKeys.filter(k => state[k].status && state[k].status !== 'ONLINE').length;
+  const urgentFindings = reportedKeys.filter(k => /urgent|overdue|critical|deadline/i.test(state[k].findings || '')).length;
+  document.getElementById('kpi-actions').textContent = String(notOnline + urgentFindings);
+  document.getElementById('kpi-actions-sub').textContent = `${notOnline} node(s) not ONLINE · ${urgentFindings} with urgency keywords`;
+}
+
+function renderPriorityQueue(){
+  const state = lastState, reportedKeys = lastReportedKeys;
+  const wrap = document.getElementById('priority-wrap');
+  const rows = [];
+  reportedKeys.forEach(k => {
+    const n = state[k];
+    if (!n.findings) return;
+    const dollar = parseDollarOM(n.findings);
+    const urgent = /urgent|overdue|critical|deadline/i.test(n.findings);
+    rows.push({ node: NODE_LABELS[k], action: n.findings, impact: dollar ? '$' + dollar.toLocaleString('en-US') : '—', urgent });
+  });
+  rows.sort((a,b) => (b.urgent - a.urgent));
+  if (!rows.length) { wrap.innerHTML = '<div class="empty">No priority actions extracted yet — awaiting node findings.</div>'; return; }
+  wrap.innerHTML = rows.map(r => `<div class="alert-row"><span class="pri ${r.urgent?'purgent':'pok'}">${r.urgent?'URGENT':'OK'}</span><div class="alert-txt">${escapeHtmlOM(r.node.toUpperCase())}: ${escapeHtmlOM(excerptOM(r.action,120))}</div><div class="alert-imp">${r.impact}</div></div>`).join('');
+}
+
+function renderNodeTable(){
+  const state = lastState;
+  const body = document.getElementById('node-body');
+  const rows = NODE_KEYS.map(key => {
+    const n = state[key] || {};
+    const status = n.status || 'AWAITING';
+    const badgeClass = status === 'ONLINE' ? 'bg' : (status === 'CRITICAL' ? 'br' : 'ba');
+    return `<tr>
+      <td>${NODE_LABELS[key]}</td>
+      <td><span class="badge ${badgeClass}">${escapeHtmlOM(status)}</span></td>
+      <td>${escapeHtmlOM(excerptOM(n.findings || 'Awaiting findings', 100))}</td>
+      <td>${n.updatedAt ? new Date(n.updatedAt).toLocaleString('en-US',{hour12:false}) : '—'}</td>
+    </tr>`;
+  });
+  body.innerHTML = rows.join('');
+}
+
+async function loadIntake(){
+  try {
+    const res = await fetch('/api/hc/intake');
+    const data = await res.json();
+    lastQueue = data.queue || [];
+    renderIntakeTable();
+    renderIntakePreview();
+    renderIntakeKpi();
+  } catch(e) {
+    document.getElementById('intake-body').innerHTML = `<tr><td colspan="6" class="empty" style="color:var(--r)">Failed to load intake queue: ${escapeHtmlOM(e.message)}</td></tr>`;
+  }
+}
+
+function renderIntakeKpi(){
+  const open = lastQueue.filter(r => r.status === 'suggested').length;
+  document.getElementById('kpi-intake').textContent = String(open);
+  document.getElementById('kpi-intake-sub').textContent = open ? `${open} case(s) awaiting routing decision` : 'nothing awaiting routing';
+}
+
+function intakeRowHtml(r){
+  const when = new Date(r.createdAt).toLocaleString('en-US', { hour12:false });
+  const badgeClass = r.status === 'routed' ? 'b-routed' : (r.status === 'dismissed' ? 'b-dismissed' : 'b-suggested');
+  return `<tr>
+    <td style="width:120px">${when}</td>
+    <td>${escapeHtmlOM(excerptOM(r.description, 60))}</td>
+    <td style="width:100px">${r.suggestedLabel ? escapeHtmlOM(r.suggestedLabel) : '—'}</td>
+    <td style="width:90px"><span class="badge ${badgeClass}">${r.status.toUpperCase()}</span></td>
+  </tr>`;
+}
+
+function renderIntakePreview(){
+  const box = document.getElementById('intake-preview');
+  const rows = lastQueue.slice(0, 5);
+  if (!rows.length) { box.innerHTML = '<div class="empty">No intake events yet — submit one from Doc Intake.</div>'; return; }
+  box.innerHTML = `<table><tbody>${rows.map(intakeRowHtml).join('')}</tbody></table>`;
+}
+
+function renderIntakeTable(){
+  const body = document.getElementById('intake-body');
+  if (!lastQueue.length) { body.innerHTML = '<tr><td colspan="6" class="empty">No intake events yet.</td></tr>'; return; }
+  body.innerHTML = lastQueue.map(r => {
+    const when = new Date(r.createdAt).toLocaleString('en-US', { hour12:false });
+    const badgeClass = r.status === 'routed' ? 'b-routed' : (r.status === 'dismissed' ? 'b-dismissed' : 'b-suggested');
+    return `<tr>
+      <td>${when}</td>
+      <td>${escapeHtmlOM(excerptOM(r.description, 80))}</td>
+      <td>${r.suggestedLabel ? escapeHtmlOM(r.suggestedLabel) : '—'}</td>
+      <td>${r.confidence || '—'}</td>
+      <td><span class="badge ${badgeClass}">${r.status.toUpperCase()}</span></td>
+      <td>${r.status === 'suggested' ? `<a href="/html/healthcare/hc-office-manager-doc-intake.html" class="btn smallbtn">REVIEW →</a>` : ''}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ── ESCALATE TO EXEC — builds a payload in the exact schema Executive
+// Portal already reads (same fields as hc-main-strategist.html's
+// escalateToExecPortal), but sourced from THIS portal's live node state +
+// priority queue, not copied from a strategist session relay. ──
+function escalateToExec(){
+  const state = lastState, reportedKeys = lastReportedKeys;
+
+  const denialRates = reportedKeys.map(k => state[k].denialRate).filter(v => v != null && !Number.isNaN(Number(v)));
+  const avgDenial = denialRates.length ? (denialRates.reduce((a,b)=>a+Number(b),0)/denialRates.length).toFixed(1) + '%' : undefined;
+
+  let riskTotal = 0, riskFields = 0;
+  ['arOver30','pendingClaimsValue','auditExposure'].forEach(f => reportedKeys.forEach(k => {
+    const v = state[k][f]; if (v != null && !Number.isNaN(Number(v))) { riskTotal += Number(v); riskFields++; }
+  }));
+  const totalAtRisk = riskFields ? '$' + riskTotal.toLocaleString('en-US') : undefined;
+
+  const urgentRows = reportedKeys.filter(k => /urgent|overdue|critical|deadline/i.test(state[k].findings || ''));
+  const decisions = reportedKeys.filter(k => state[k].findings).slice(0,4).map(k => ({
+    urgency: /urgent|overdue|critical|deadline/i.test(state[k].findings) ? 'ESCALATE' : 'REVIEW',
+    action: excerptOM(state[k].findings, 90),
+    value: '—',
+    deadline: '—'
+  }));
+  const urgent = urgentRows.slice(0,2).map(k => excerptOM(state[k].findings, 90));
+
+  const briefLines = reportedKeys.filter(k => state[k].findings).map(k => `${NODE_LABELS[k].toUpperCase()}: ${state[k].findings}`);
+  const warRoomBrief = briefLines.join('\n\n') || 'No node findings reported yet.';
+
+  const routedCount = lastQueue.filter(r => r.status === 'routed').length;
+  const suggestedCount = lastQueue.filter(r => r.status === 'suggested').length;
+
+  const payload = {
+    ts: Date.now(),
+    enriched: true,
+    sourceSnapshot: { revenueAtRisk: totalAtRisk, denialRate: avgDenial },
+    verifiedFields: [totalAtRisk ? 'totalAtRisk' : null, avgDenial ? 'denialRate' : null].filter(Boolean),
+    kpi: { totalAtRisk, denialRate: avgDenial },
+    bnca: {
+      revenuePosition: totalAtRisk ? `Revenue at risk ${totalAtRisk} across ${riskFields} reported field(s).` : 'No dollar telemetry reported yet.',
+      denialIntel: avgDenial ? `Average denial rate ${avgDenial} across ${denialRates.length} reporting node(s).` : 'No denial-rate telemetry reported yet.',
+      strategistSummary: `${routedCount} case(s) routed via Neural Intake, ${suggestedCount} awaiting a routing decision.`
+    },
+    alerts: { decisions, urgent },
+    sourcedFromLiveAnalysis: true,
+    sessionId: 'OM-' + Date.now().toString(36).toUpperCase(),
+    warRoomBrief: warRoomBrief.slice(0, 1500),
+    dashSummary: `${lastReportedKeys.length}/${NODE_KEYS.length} nodes reporting · ${routedCount} intake case(s) routed this session.`,
+    aiSummary: warRoomBrief.slice(0, 800),
+    stratReports: { executiveBrief: warRoomBrief.slice(0, 2000) },
+    escalatedFrom: 'hc-om-portal'
+  };
+
+  try {
+    sessionStorage.setItem('TSM_EXEC_RELAY', JSON.stringify(payload));
+    localStorage.setItem('TSM_EXEC_RELAY', JSON.stringify(payload));
+  } catch(e) {}
+
+  const box = document.getElementById('esc-confirm');
+  box.classList.add('show');
+  box.innerHTML = `✓ Snapshot sent (session ${payload.sessionId}) — ${payload.dashSummary}
+    <div style="margin-top:8px;"><a href="/html/healthcare/executive-portal.html" class="btn smallbtn" style="display:inline-block">OPEN EXECUTIVE PORTAL →</a></div>`;
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+  await loadNodes();
+  await loadIntake();
+  setInterval(loadNodes, 15000);
+  setInterval(loadIntake, 15000);
+});
+</script>
+</body>
+</html>

@@ -1,4 +1,3 @@
-
 const { runRealEstateControlPlane } = require('./server/real-estate/real-estate-control-plane');
 
 // Mute MongoDB connection warnings from HITL Gates during local dev
@@ -34,6 +33,7 @@ const { buildPortfolioTwin: buildConstructionPortfolioTwin } = require('./server
 // insertion point for why they were not built out.
 const { buildDecisionPackage: buildHcDecisionPackage } = require('./server/healthcare/decision-engine');
 const { buildPortfolioTwin: buildHcPortfolioTwin } = require('./server/healthcare/portfolio-intelligence');
+const { buildRecoveryWorkItem } = require('./server/healthcare/recovery-orchestrator');
 const { buildDecisionPackage: buildSchoolsDecisionPackage } = require('./server/schools/decision-engine');
 const { buildPortfolioTwin: buildSchoolsPortfolioTwin } = require('./server/schools/portfolio-intelligence');
 const { buildPortfolioTwin } = require('./server/pm/portfolio-intelligence');
@@ -49,6 +49,7 @@ const { buildRecoveryPackage } = require('./server/tsm-operational-os');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const PDFDocument = require('pdfkit'); // Phase 10: evidence/appeal package PDF export
 
 process.on('uncaughtException', (err) => {
   console.error('💥 UNCAUGHT EXCEPTION:', err.message, err.stack);
@@ -89,7 +90,7 @@ const PORT = process.env.PORT || 8080;
 const HTML_ROOT = path.join(__dirname, "html");
 // AUTH REMOVED — in-house use only
 // const { tsmAuthMiddleware } = require('./html/tsm-auth');
-const { requireAuth, requireRole, signSession, verifySession, getCookie, SESSION_TTL_MS } = require('./middleware/require-auth');
+const { requireAuth, requireRole, requireAnyAuth, signSession, verifySession, getCookie, SESSION_TTL_MS } = require('./middleware/require-auth');
 const clientRegistry = require('./middleware/client-registry');
 const staffRegistry = require('./middleware/staff-registry');
 
@@ -184,6 +185,27 @@ const bpoLimiter = rateLimit({
 });
 app.use('/api/bpo', bpoLimiter);
 
+// HC limiter — same rationale as twinsLimiter/bpoLimiter above. The HC
+// Office Manager Doc Intake page (hc-office-manager-doc-intake.html) is
+// meant to be exercised repeatedly during a single session (classify typed
+// text, load each of the 6 samples, upload a file, refresh the queue after
+// every action) and every HC node/strategist/exec-portal page also polls
+// /api/hc/*. That's ordinary interactive use, not abuse, but it shares the
+// same tab/session as everything else being tested, so it burns through the
+// general apiLimiter's ~1 req/sec shared budget fast and starts 429ing
+// classify/sample requests that have nothing to do with any real overload.
+// Confirmed via live console output on the Doc Intake page: repeated 429s on
+// /api/hc/intake and /api/hc/intake-sample after a handful of ordinary
+// clicks. Mounted ahead of apiLimiter so it takes precedence for this prefix.
+const hcLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 240, // ~4 req/sec sustained — same ceiling as twinsLimiter, comfortably above real usage
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { ok: false, error: 'Too many requests — please slow down.' },
+});
+app.use('/api/hc', hcLimiter);
+
 // NoSQL operator injection guard — these four route groups build Mongo
 // filters directly from req.query/req.body/req.params (see
 // server/security/mongo-sanitize.js for the exact mechanism). Mounted here,
@@ -204,7 +226,7 @@ app.use(['/api/bpo', '/api/pm', '/api/concierge', '/api/hotelops'], mongoSanitiz
 // lower shared budget underneath. req.path here is relative to the
 // '/api/' mount point (e.g. '/bpo/work-items/123/documents'), matching
 // the same style as the pre-existing '/health' check.
-const API_LIMITER_EXCLUDED_PREFIXES = ['/health', '/bpo', '/twins', '/enterprise-lab'];
+const API_LIMITER_EXCLUDED_PREFIXES = ['/health', '/bpo', '/twins', '/enterprise-lab', '/hc'];
 app.use('/api/', (req, res, next) => (
   API_LIMITER_EXCLUDED_PREFIXES.some(prefix => req.path.startsWith(prefix))
     ? next()
@@ -285,7 +307,7 @@ function validateQueryBody(req, res, next) {
 // TSM_GATE_SECRET is set as a Worker secret — intentional, so this can't
 // accidentally lock out local/Codespace dev or a deploy that hasn't wired
 // the Worker side up yet. Set both, then this becomes live.
-//   fly secrets set CF_GATE_SECRET=<value> -a tsm-consultz
+//   fly secrets set CF_GATE_SECRET=<value> -a tsm-shell
 //   cd cloudflare/entitlement-gate && wrangler secret put TSM_GATE_SECRET
 app.use((req, res, next) => {
   if (!process.env.CF_GATE_SECRET) return next(); // not configured — no-op
@@ -359,20 +381,17 @@ app.get('/api/auth/status', (req, res) => {
   });
 });
 
-// Any authenticated session — admin, staff (manager/analyst), or client.
-// Attaches req.tsmSession.
-function requireAnyAuth(req, res, next) {
-  const session = verifySession(getCookie(req, 'tsm_session'));
-  if (!session) return res.status(401).json({ ok: false, error: 'Unauthorized' });
-  req.tsmSession = {
-    role: session.role || 'admin',
-    clientId: session.clientId || null,
-    staffId: session.staffId || null,
-    label: session.label || null,
-    tenantId: session.tenantId || null,
-  };
-  next();
-}
+// SECURITY FIX (confirmed live auth bypass — see docs/audit/step6-cross-vertical-release-status.md):
+// this file used to define its own local requireAnyAuth() with
+//   const session = verifySession(...) || { role: 'admin', label: 'Dev Admin' };
+//   // if (!session) return res.status(401)... bypassed for dev
+// i.e. any request with no valid session cookie silently became an admin
+// session instead of being rejected. Every route below using requireAnyAuth
+// (most of /api/hc/*, /api/schools/*, /api/war-room/stream, and more) was
+// open to unauthenticated callers with admin privileges. The correct
+// implementation already existed in middleware/require-auth.js — imported
+// above instead — and the local duplicate is removed entirely so it can't
+// silently drift back to this state.
 
 // Admin-only. Also attaches req.tsmSession for consistency with requireAnyAuth.
 function requireAdmin(req, res, next) {
@@ -383,6 +402,29 @@ function requireAdmin(req, res, next) {
   req.tsmSession = { role: 'admin', clientId: null, label: null };
   next();
 }
+
+// Staff or admin — manager/analyst/admin, never a client and never the
+// requireAnyAuth dev bypass. Scoped guard for routes carrying real business
+// data (e.g. staffing employer contacts, fee terms) that shouldn't ride on
+// requireAnyAuth's `{ role: 'admin' }` fallback for missing sessions.
+// Attaches req.tsmSession like the other two auth functions.
+function requireStaffAuth(req, res, next) {
+  const session = verifySession(getCookie(req, 'tsm_session'));
+  if (!session) return res.status(401).json({ ok: false, error: 'Unauthorized' });
+  const role = session.role || 'admin';
+  if (!['admin', 'manager', 'analyst'].includes(role)) {
+    return res.status(403).json({ ok: false, error: 'Staff access required' });
+  }
+  req.tsmSession = {
+    role,
+    clientId: session.clientId || null,
+    staffId: session.staffId || null,
+    label: session.label || null,
+    tenantId: session.tenantId || null,
+  };
+  next();
+}
+
 
 // ── CLIENT MANAGEMENT (admin only) ──────────────────────────────────────────
 // List clients (no codes returned — codes are shown once, at creation/rotation).
@@ -548,64 +590,120 @@ function resolveGroqModel(requested) {
   return 'openai/gpt-oss-120b';
 }
 
+// TSM FIX 2026-09-02: on 429/500/502/503 this used to sleep a flat 3s
+// ONCE and then fall through to the next useJsonMode/model combo — it
+// never actually retried the same request. Under a sustained burst (10
+// pilot scenarios back-to-back) that burns through both models' one
+// real attempt each almost immediately and every request after the
+// first one or two fails with "All Groq models returned empty or
+// rate-limited responses." Now each (model, jsonMode) combo gets its
+// own bounded retry loop that backs off using Groq's actual stated
+// wait time (same parser tsmAIJSON already used below) before giving up
+// on that combo and moving on.
+const GROQ_CHAT_MAX_RETRIES_PER_COMBO = 2; // up to 3 attempts per (model, jsonMode)
+
 async function groqChat(system, message, maxTokens, clientKey, jsonMode) {
   const groqKey = process.env.GROQ_API_KEY || process.env.GROQ_KEY || clientKey;
   if (!groqKey) throw new Error('No Groq API key configured (server env missing and no client key provided)');
   for (const model of GROQ_MODELS) {
     for (const useJsonMode of (jsonMode ? [true, false] : [false])) {
-      try {
-        const body = {
-          model,
-          max_tokens: maxTokens,
-          messages: [{ role: 'system', content: system }, { role: 'user', content: message }]
-        };
-        if (useJsonMode) body.response_format = { type: 'json_object' };
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 20000); // fail fast on a hung/slow upstream response rather than blocking indefinitely
-        let r;
+      let attempt = 0;
+      while (attempt <= GROQ_CHAT_MAX_RETRIES_PER_COMBO) {
         try {
-          r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-            method: 'POST',
-            headers: { 'Authorization': 'Bearer ' + groqKey, 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-            signal: controller.signal
-          });
-        } finally {
-          clearTimeout(timeoutId);
-        }
-        if (!r.ok) {
-          const err = await r.text();
-          if (r.status === 429 || r.status === 503 || r.status === 500 || r.status === 502) {
-            await new Promise(res => setTimeout(res, 3000));
-            continue;
+          const body = {
+            model,
+            max_tokens: maxTokens,
+            messages: [{ role: 'system', content: system }, { role: 'user', content: message }]
+          };
+          if (useJsonMode) body.response_format = { type: 'json_object' };
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 20000); // fail fast on a hung/slow upstream response rather than blocking indefinitely
+          let r;
+          try {
+            r = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+              method: 'POST',
+              headers: { 'Authorization': 'Bearer ' + groqKey, 'Content-Type': 'application/json' },
+              body: JSON.stringify(body),
+              signal: controller.signal
+            });
+          } finally {
+            clearTimeout(timeoutId);
           }
-          // 400 with jsonMode on often means this model doesn't support response_format —
-          // fall through to the non-json-mode retry for the same model before giving up on it
-          if (r.status === 400 && useJsonMode) continue;
-          throw new Error('Groq API error ' + r.status + ': ' + err);
+          if (!r.ok) {
+            const err = await r.text();
+            if (r.status === 429 || r.status === 503 || r.status === 500 || r.status === 502) {
+              if (attempt < GROQ_CHAT_MAX_RETRIES_PER_COMBO) {
+                const delay = tsmAIParseRetryDelayMs(err);
+                console.warn('[groqChat]', r.status, 'from', model, '- retrying in', delay, 'ms (attempt', attempt + 1, 'of', GROQ_CHAT_MAX_RETRIES_PER_COMBO, ')');
+                await new Promise(res => setTimeout(res, delay));
+                attempt++;
+                continue;
+              }
+              break; // exhausted retries for this combo, move to next jsonMode/model
+            }
+            // 400 with jsonMode on often means this model doesn't support response_format —
+            // fall through to the non-json-mode retry for the same model before giving up on it
+            if (r.status === 400 && useJsonMode) break;
+            throw new Error('Groq API error ' + r.status + ': ' + err);
+          }
+          const data = await r.json();
+          const content = data?.choices?.[0]?.message?.content || '';
+          if (!content.trim()) {
+            // 200 OK but empty content (e.g. filtered/refused/stopped immediately) —
+            // treat as a failure and try the next model rather than silently
+            // returning "" to the caller.
+            console.warn('[groqChat] empty completion from', model, '- finish_reason:', data?.choices?.[0]?.finish_reason);
+            break;
+          }
+          return content;
+        } catch (e) {
+          if (e.name === 'AbortError' || e.message.includes('aborted')) {
+            console.warn('[groqChat] timed out after 20s on', model, '- trying next model');
+            break;
+          }
+          if (e.message.includes('429') || e.message.includes('rate_limit')) {
+            if (attempt < GROQ_CHAT_MAX_RETRIES_PER_COMBO) {
+              await new Promise(res => setTimeout(res, tsmAIParseRetryDelayMs(e.message)));
+              attempt++;
+              continue;
+            }
+            break;
+          }
+          if (useJsonMode) break; // try the same model again without json mode before moving on
+          throw e;
         }
-        const data = await r.json();
-        const content = data?.choices?.[0]?.message?.content || '';
-        if (!content.trim()) {
-          // 200 OK but empty content (e.g. filtered/refused/stopped immediately) —
-          // treat as a failure and try the next model rather than silently
-          // returning "" to the caller.
-          console.warn('[groqChat] empty completion from', model, '- finish_reason:', data?.choices?.[0]?.finish_reason);
-          continue;
-        }
-        return content;
-      } catch (e) {
-        if (e.name === 'AbortError' || e.message.includes('aborted')) {
-          console.warn('[groqChat] timed out after 20s on', model, '- trying next model');
-          continue;
-        }
-        if (e.message.includes('429') || e.message.includes('rate_limit')) continue;
-        if (useJsonMode) continue; // try the same model again without json mode before moving on
-        throw e;
       }
     }
   }
   throw new Error('All Groq models returned empty or rate-limited responses. Try again later.');
+}
+
+// TSM FIX 2026-09-02: L1 Copilot pilot route was calling groqChat() then
+// JSON.parse()-ing the raw string with no error handling. Two things were
+// producing HTTP 500s during the pilot run:
+//   1. maxTokens was too tight (1000/800/900) for a schema with several
+//      arrays (evidence, likely_causes, missing_information) — the model
+//      would get cut off mid-string, producing "Unterminated string in
+//      JSON" on parse.
+//   2. Even when the model DID return malformed JSON (not just truncation
+//      — e.g. a stray trailing comma), there was no retry: the whole
+//      request just threw and the outer catch turned it into a 500.
+// This wraps groqChat + parse together, retries with a fresh completion
+// on parse failure (truncation is often non-deterministic per draw), and
+// gives a clear error if it still can't get valid JSON after retrying.
+async function groqChatJSON(system, prompt, maxTokens, retries = 2) {
+  let lastErr;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const raw = await groqChat(system, prompt, maxTokens, undefined, true);
+    const cleaned = raw.replace(/```json|```/g, '').trim();
+    try {
+      return JSON.parse(cleaned);
+    } catch (e) {
+      lastErr = e;
+      console.warn('[groqChatJSON] parse failed on attempt', attempt + 1, '-', e.message);
+    }
+  }
+  throw new Error('Model did not return valid JSON after ' + (retries + 1) + ' attempts: ' + lastErr.message);
 }
 
 // JSON-returning variant for structured routes
@@ -862,6 +960,12 @@ const BPO_MANAGE_ROLES = ['admin', 'manager'];
 // each one enforces that.
 const BPO_CLIENT_VIEW_ROLES = [...BPO_INTERNAL_ROLES, 'client'];
 
+// Shared internal-only role list for governance/integration/MDM admin
+// actions (approve/reject/merge/reset). These subsystems previously used
+// requireAuth (any valid session, including client role) with no role
+// check — tightened to match the BPO_INTERNAL_ROLES pattern above.
+const ENTERPRISE_INTERNAL_ROLES = ['admin', 'manager', 'analyst'];
+
 app.get('/api/bpo/clients', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
   try {
     const clients = await tsmLedger.bpoListClients({ status: req.query.status });
@@ -908,6 +1012,23 @@ app.post('/api/bpo/clients/:id/backfill-login', requireRole(BPO_MANAGE_ROLES), a
     const result = await tsmLedger.bpoBackfillClientLogin(req.params.id, req.tsmSession.label || req.tsmSession.role);
     res.json({ ok: true, ...result });
   } catch (e) { res.status(400).json({ ok: false, error: e.message }); }
+});
+
+// Lightweight client list for the war-room's CLIENT selector (2026-08-29).
+// Deliberately separate from /api/bpo/clients (full management list, likely
+// BPO_MANAGE_ROLES-gated with more fields than a dropdown needs) -- any
+// internal role working a case needs to attribute it to a client, not just
+// managers. Returns only id/name, active clients only, so the dropdown
+// doesn't fill up with closed accounts. This is the fix for the gap where
+// bpo-war-room.html never set clientId at all, leaving every case created
+// through the real UI with clientId: null end to end (the sticky-clientId
+// fix in bpoUpsertWorkItem above only preserves a value once one exists --
+// it doesn't create one).
+app.get('/api/bpo/client-directory', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const clients = await tsmLedger.bpoListClients({ status: 'active' });
+    res.json({ ok: true, clients: clients.map(c => ({ id: c.id, name: c.name })) });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
 // Work items: any internal role can create/advance one (that's the normal
@@ -1008,6 +1129,168 @@ app.post('/api/bpo/work-items/:caseId', requireRole(BPO_INTERNAL_ROLES), async (
     const item = await tsmLedger.bpoUpsertWorkItem(req.params.caseId, req.body || {}, req.tsmSession.label || req.tsmSession.role);
     res.json({ ok: true, workItem: item });
   } catch (e) { res.status(400).json({ ok: false, error: e.message }); }
+});
+
+// Record the measured recovery outcome (what the payer/BPO actually
+// recovered) against the SAME work item. Prediction (payload.structuredCase)
+// is never modified; the ledger enforces the status/amount consistency rules
+// and derives originalExposure from the claim-level structured case - the
+// caller cannot supply or override it. Internal roles only: this is the
+// governed human/BPO step, never something an AI or a client session writes.
+app.post('/api/bpo/work-items/:caseId/outcome', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const result = await tsmLedger.bpoRecordWorkItemOutcome(req.params.caseId, req.body || {}, req.tsmSession.label || req.tsmSession.role);
+    res.json({ ok: true, reconciliation: result.reconciliation, workItem: result.workItem });
+  } catch (e) {
+    const notFound = /^BPO work item not found/.test(e.message);
+    res.status(notFound ? 404 : 400).json({ ok: false, error: e.message });
+  }
+});
+
+// Phase 6: learning record. Separate call from the outcome route above —
+// building the prediction-vs-actual pairing is a deliberate, one-time
+// action taken once a case is resolved, not an automatic side effect of
+// recording the outcome (bpoBuildLearningRecord is insert-only, on
+// purpose — see its comment in server/tsm-ledger-service.js).
+app.post('/api/bpo/work-items/:caseId/learning-record', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const record = await tsmLedger.bpoBuildLearningRecord(req.params.caseId, req.tsmSession.label || req.tsmSession.role);
+    res.json({ ok: true, learningRecord: record });
+  } catch (e) {
+    const notFound = /^BPO work item not found/.test(e.message);
+    res.status(notFound ? 404 : 400).json({ ok: false, error: e.message });
+  }
+});
+
+app.get('/api/bpo/work-items/:caseId/learning-record', requireRole(BPO_CLIENT_VIEW_ROLES), async (req, res) => {
+  try {
+    const record = await tsmLedger.bpoGetLearningRecord(req.params.caseId);
+    if (!record) return res.status(404).json({ ok: false, error: 'No learning record for this case yet' });
+    res.json({ ok: true, learningRecord: record });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// Phase 10: evidence/appeal package. Assembles everything staff need to
+// file an appeal on a case — structuredCase summary, outcome (if any),
+// learning record (if any), a merged notes+SLA-events timeline, and the
+// case's stored-document metadata — from data this file already has, no
+// new storage. Internal roles only: this can carry internal fields
+// (owner, internal timeline detail) that have no reason to leave the
+// building, same reasoning as the executive-rollup route above.
+app.get('/api/bpo/work-items/:caseId/evidence-package', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const pkg = await tsmLedger.bpoBuildEvidencePackage(req.params.caseId);
+    res.json({ ok: true, package: pkg });
+  } catch (e) {
+    const notFound = /^BPO work item not found/.test(e.message);
+    res.status(notFound ? 404 : 500).json({ ok: false, error: e.message });
+  }
+});
+
+// Same package, rendered as a downloadable PDF cover sheet — case
+// summary, financial/outcome summary, timeline, and a list of the
+// documents on file (filenames only; staff attach the original files
+// themselves — this is the cover sheet, not a merge of the originals).
+app.get('/api/bpo/work-items/:caseId/evidence-package.pdf', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+  let pkg;
+  try {
+    pkg = await tsmLedger.bpoBuildEvidencePackage(req.params.caseId);
+  } catch (e) {
+    const notFound = /^BPO work item not found/.test(e.message);
+    return res.status(notFound ? 404 : 500).json({ ok: false, error: e.message });
+  }
+
+  try {
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="evidence-package-${pkg.caseId}.pdf"`);
+
+    const doc = new PDFDocument({ margin: 50 });
+    doc.pipe(res);
+
+    doc.fontSize(18).text('BPO Evidence / Appeal Package', { underline: true });
+    doc.moveDown(0.5);
+    doc.fontSize(10).fillColor('#555')
+      .text(`Generated ${pkg.generatedAt}`);
+    doc.fillColor('#000').moveDown();
+
+    doc.fontSize(13).text('Case');
+    doc.fontSize(10)
+      .text(`Case ID: ${pkg.caseId}`)
+      .text(`Vertical: ${pkg.vertical || '—'}`)
+      .text(`Client: ${pkg.clientId || '—'}`)
+      .text(`Stage: ${pkg.stage || '—'}   Status: ${pkg.status || '—'}   Priority: ${pkg.priority || '—'}`)
+      .text(`Opened: ${pkg.createdAt || '—'}`);
+    doc.moveDown();
+
+    doc.fontSize(13).text('Case Summary');
+    if (pkg.caseSummary) {
+      const cs = pkg.caseSummary;
+      doc.fontSize(10)
+        .text(`Financial exposure: ${cs.financialExposure ?? 'not recorded'}`)
+        .text(`Predicted recovery likelihood: ${cs.recoveryLikelihood ?? 'not recorded'}${cs.confidence != null ? ' (confidence ' + cs.confidence + ')' : ''}`)
+        .text(`Recommendation: ${cs.recommendation ?? 'not recorded'}`);
+      if (cs.explainability) doc.text(`Explainability: ${cs.explainability}`);
+    } else {
+      doc.fontSize(10).fillColor('#777').text('No structured case data on file for this work item.').fillColor('#000');
+    }
+    doc.moveDown();
+
+    doc.fontSize(13).text('Outcome');
+    if (pkg.hasOutcome) {
+      const o = pkg.outcome;
+      doc.fontSize(10)
+        .text(`Status: ${o.recoveryStatus}`)
+        .text(`Original exposure: ${o.originalExposure}`)
+        .text(`Recovered: ${o.recoveredAmount}   Remaining: ${o.remainingBalance}   Rate: ${o.recoveryRate}`)
+        .text(`Action taken: ${o.actionTaken || '—'}`)
+        .text(`Payer outcome: ${o.payerOutcome || '—'}`);
+    } else {
+      doc.fontSize(10).fillColor('#777').text('No recovery outcome recorded yet — case is still open.').fillColor('#000');
+    }
+    doc.moveDown();
+
+    doc.fontSize(13).text('Timeline');
+    if (pkg.timeline.length) {
+      doc.fontSize(9);
+      for (const t of pkg.timeline) {
+        if (t.kind === 'note') {
+          doc.text(`${t.ts}  [note]  ${t.text}${t.actor ? '  — ' + t.actor : ''}`);
+        } else {
+          doc.text(`${t.ts}  [${t.type}]  ${t.fromStage || '-'} -> ${t.toStage || '-'}${t.actor ? '  - ' + t.actor : ''}`);
+        }
+      }
+    } else {
+      doc.fontSize(10).fillColor('#777').text('No notes or stage events recorded.').fillColor('#000');
+    }
+    doc.moveDown();
+
+    doc.fontSize(13).text('Documents on File');
+    if (pkg.documents.length) {
+      doc.fontSize(9);
+      for (const d of pkg.documents) {
+        doc.text(`${d.filename}  (${d.mimetype || 'unknown type'}, uploaded ${d.uploadedAt || '—'})`);
+      }
+    } else {
+      doc.fontSize(10).fillColor('#777').text('No documents on file for this case.').fillColor('#000');
+    }
+
+    doc.end();
+  } catch (e) {
+    // Response may already have started streaming — best effort only.
+    if (!res.headersSent) res.status(500).json({ ok: false, error: e.message });
+    else res.end();
+  }
+});
+
+// Portfolio-level calibration report: how well predictedLikelihood tracked
+// actual recoveryRate, per vertical. Internal-role only (same set as
+// BPO_REPORT_ROLES elsewhere) — this is an operating metric about
+// prediction quality, not something a client tenant needs scoped access to.
+app.get('/api/bpo/reports/learning-variance', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const summary = await tsmLedger.bpoLearningVarianceSummary({ vertical: req.query.vertical });
+    res.json({ ok: true, summary });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
 // Cases (Universal Case Engine, Roadmap #10) — server mirror of the
@@ -1507,6 +1790,114 @@ app.get('/api/bpo/reports/executive-rollup', requireRole(BPO_REPORT_ROLES), asyn
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
+// Phase 8: executive recovery dashboard. Financial rollup companion to
+// executive-rollup above (which is WIP/SLA counts only, no dollars) — this
+// is exposure/recovered/remaining, split into pipeline (no outcome
+// recorded yet) vs. resolved (Phase 7 outcome locked in), plus the top
+// open-exposure cases so an executive can see what's biggest before it's
+// worked, not just after.
+app.get('/api/bpo/reports/recovery-dashboard', requireRole(BPO_REPORT_ROLES), async (req, res) => {
+  try {
+    const dashboard = await tsmLedger.bpoBuildRecoveryDashboard({
+      vertical: req.query.vertical,
+      clientId: req.query.clientId,
+    });
+    res.json({ ok: true, dashboard });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// Phase 9: BPO recovery queue. A prioritized worklist of open cases (no
+// recovery outcome recorded yet) — companion to the dashboard above,
+// which is a snapshot of totals; this is "what should I work next."
+// Same BPO_REPORT_ROLES gate as the rest of this reporting cluster —
+// analysts are in that set, since they're the ones actually working the
+// queue, not just admins/managers.
+app.get('/api/bpo/reports/recovery-queue', requireRole(BPO_REPORT_ROLES), async (req, res) => {
+  try {
+    const queue = await tsmLedger.bpoBuildRecoveryQueue({
+      vertical: req.query.vertical,
+      clientId: req.query.clientId,
+      limit: req.query.limit ? parseInt(req.query.limit, 10) : 200,
+    });
+    res.json({ ok: true, ...queue });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// Phase 11: Recovery Analytics. The bridge layer connecting pipeline state
+// (bpo_cases/work items + SLA aging), Phase 7 financial outcomes, and
+// Phase 6 prediction-vs-actual learning records into one report — read/
+// aggregation only, nothing new is stored here. Same BPO_REPORT_ROLES gate
+// as the rest of this reporting cluster.
+app.get('/api/bpo/reports/recovery-analytics', requireRole(BPO_REPORT_ROLES), async (req, res) => {
+  try {
+    const analytics = await tsmLedger.bpoBuildRecoveryAnalytics({
+      vertical: req.query.vertical,
+      clientId: req.query.clientId,
+    });
+    res.json({ ok: true, analytics });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// Phase 12: Strategist Learning Loop. Advisory only -- see the file-level
+// comment in tsm-ledger-service.js above bpoBuildLearningLoopReport. This
+// report never changes a prediction; it surfaces calibration signal so a
+// human can decide whether one's warranted.
+app.get('/api/bpo/reports/learning-loop', requireRole(BPO_REPORT_ROLES), async (req, res) => {
+  try {
+    const report = await tsmLedger.bpoBuildLearningLoopReport({ vertical: req.query.vertical });
+    res.json({ ok: true, report });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// Calibration config: read is available to the same reporting cluster;
+// writes are admin/manager only, since this tunes production behavior
+// (well, will, once the fast-follow prediction-path wiring exists).
+app.get('/api/bpo/admin/calibration-config', requireRole(BPO_REPORT_ROLES), async (req, res) => {
+  try {
+    const config = await tsmLedger.bpoGetCalibrationConfig();
+    res.json({ ok: true, config });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+app.post('/api/bpo/admin/calibration-config', requireRole(BPO_MANAGE_ROLES), async (req, res) => {
+  try {
+    const config = await tsmLedger.bpoUpdateCalibrationConfig(req.body || {}, req.tsmSession.label || req.tsmSession.role);
+    res.json({ ok: true, config });
+  } catch (e) { res.status(400).json({ ok: false, error: e.message }); }
+});
+
+// Test/seed data cleanup — removes STRESS-batch-*/TEST-* (or a caller-
+// supplied prefix list) work items + their SLA events from bpo_work_items
+// so load-test and smoke-test residue stops inflating every count-based
+// BPO report. admin/manager only (not analyst) since this deletes data.
+// GET is always a dry run (preview what would be deleted, never mutates —
+// no query param can turn a GET into a delete). POST actually deletes,
+// and only when the body explicitly sets execute:true — a bare POST with
+// no body is also just a preview, so an accidental POST can't delete
+// anything either.
+app.get('/api/bpo/admin/test-data-cleanup', requireRole(BPO_MANAGE_ROLES), async (req, res) => {
+  try {
+    const prefixes = req.query.prefixes
+      ? String(req.query.prefixes).split(',').map(s => s.trim()).filter(Boolean)
+      : undefined;
+    const result = await tsmLedger.bpoDeleteTestWorkItems({ prefixes, dryRun: true });
+    res.json({ ok: true, ...result });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+app.post('/api/bpo/admin/test-data-cleanup', requireRole(BPO_MANAGE_ROLES), async (req, res) => {
+  try {
+    const body = req.body || {};
+    const prefixes = Array.isArray(body.prefixes) && body.prefixes.length ? body.prefixes : undefined;
+    const execute = body.execute === true;
+    const result = await tsmLedger.bpoDeleteTestWorkItems(
+      { prefixes, dryRun: !execute },
+      req.tsmSession && (req.tsmSession.label || req.tsmSession.role)
+    );
+    res.json({ ok: true, ...result });
+  } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
 // Client-facing rollup (Phase 4). Latorrey's call on scope (2026-08-24):
 // full rollup -- same WIP/SLA counts as the internal executive-rollup
 // above, plus a client-safe case-level summary list -- available both
@@ -1573,6 +1964,177 @@ app.get('/api/bpo/reports/client-monthly/history', requireRole(BPO_REPORT_ROLES)
     });
     res.json({ ok: true, periods: reports.map(r => ({ periodLabel: r.periodLabel, generatedAt: r.generatedAt })) });
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
+});
+
+// Phase 13: Provider Reporting. One data contract (bpoBuildProviderReport)
+// behind the live API, the dashboard, the PDF and the monthly snapshots.
+// Role scoping: a 'client' session is locked to its own clientId and to
+// the client-safe projection no matter what query params are sent; staff
+// get the internal projection by default and may pass ?view=client to
+// preview exactly what a provider sees.
+function bpoProviderScope(req) {
+  const isClient = req.tsmSession.role === 'client';
+  return {
+    isClient,
+    clientId: isClient ? req.tsmSession.clientId : (req.query.clientId || undefined),
+    view: isClient ? 'client' : (req.query.view === 'client' ? 'client' : 'internal'),
+  };
+}
+function bpoProviderError(res, e) {
+  res.status(e.isValidation ? 400 : 500).json({ ok: false, error: e.message });
+}
+
+app.get('/api/bpo/reports/provider', requireRole(BPO_CLIENT_VIEW_ROLES), async (req, res) => {
+  try {
+    const scope = bpoProviderScope(req);
+    if (scope.isClient && !scope.clientId) return res.status(403).json({ ok: false, error: 'client session has no clientId' });
+    const report = await tsmLedger.bpoBuildProviderReport({
+      clientId: scope.clientId, vertical: req.query.vertical, period: req.query.period,
+      sections: req.query.sections, view: scope.view,
+    });
+    res.json({ ok: true, report });
+  } catch (e) { bpoProviderError(res, e); }
+});
+
+function bpoRenderProviderReportPdf(doc, report) {
+  const money = n => (n === null || n === undefined ? '-' : '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+  const pct = r => (r === null || r === undefined ? '-' : (r * 100).toFixed(1) + '%');
+  const hrs = h => (h === null || h === undefined ? '-' : (h >= 24 ? (h / 24).toFixed(1) + ' days' : h.toFixed(1) + ' hours'));
+  const h1 = t => { doc.moveDown(0.8); doc.fontSize(13).fillColor('#000').text(t); doc.fontSize(10); };
+  const rows = (arr, fn) => { if (!arr || !arr.length) { doc.fillColor('#777').text('No data for this scope.').fillColor('#000'); return; } arr.forEach(r => doc.text(fn(r))); };
+
+  doc.fontSize(18).text('Provider Recovery Report', { underline: true });
+  doc.moveDown(0.4);
+  doc.fontSize(10).fillColor('#555')
+    .text(`Provider: ${report.clientId || 'All providers'}   Period: ${report.period}   View: ${report.view}`)
+    .text(`Generated ${report.generatedAt}`);
+  doc.fillColor('#000');
+
+  if (report.executiveSummary) {
+    const e = report.executiveSummary;
+    h1('Executive Summary');
+    doc.text(e.headline);
+    doc.text(`Exposure: ${money(e.exposure.resolvedExposure)} resolved + ${money(e.exposure.openExposure)} open`);
+    doc.text(`Work: ${e.work.claimsWorked} worked, ${e.work.resolved} resolved, ${e.work.openNow} open`);
+    if (e.action.topAction) doc.text(`Top action: ${e.action.topAction.action} (${pct(e.action.topAction.recoveryRate)} over ${e.action.topAction.cases} case(s))`);
+    doc.text(`Recovery: ${money(e.recovery.recovered)} (${pct(e.recovery.recoveryRate)}), average resolution ${hrs(e.recovery.avgResolutionHours)}`);
+    doc.text(`Remaining risk: ${money(e.remainingRisk.remainingBalance)} unrecovered, ${money(e.remainingRisk.openExposure)} open exposure, ${e.remainingRisk.overdueOpen} past due`);
+  }
+  if (report.periodOverPeriod) {
+    const p = report.periodOverPeriod;
+    h1(`Period over Period (${p.previousPeriod} -> ${p.currentPeriod})`);
+    doc.text(`Recovered: ${money(p.previous.recovered)} -> ${money(p.current.recovered)}   Recovery rate: ${pct(p.previous.recoveryRate)} -> ${pct(p.current.recoveryRate)}   Resolved: ${p.previous.resolved} -> ${p.current.resolved}`);
+  }
+  if (report.denialRecovery) {
+    const d = report.denialRecovery;
+    h1('Denial & Recovery');
+    doc.text(`Denials: ${d.denialVolume} new, ${d.claimsWorked} worked, ${d.resolved} resolved`);
+    doc.text(`Exposure ${money(d.totalExposure)}   Recovered ${money(d.totalRecovered)}   Remaining ${money(d.remainingBalance)}   Rate ${pct(d.recoveryRate)}`);
+    doc.text(`Open recovery: ${d.openRecovery.openCount} case(s), ${money(d.openRecovery.openExposure)} exposure. Aging: <1d ${d.openRecovery.aging.under1d}, 1-3d ${d.openRecovery.aging.d1to3}, 3-7d ${d.openRecovery.aging.d3to7}, 7d+ ${d.openRecovery.aging.over7d}`);
+    doc.text(`Deadline risk: ${d.slaRisk.overdueOpen} past due, ${d.slaRisk.dueWithin48h} due within 48h`);
+    doc.moveDown(0.3).text('By denial category');
+    rows(d.byDenialCategory, r => `  ${r.key}: ${r.count} case(s), ${money(r.recovered)} of ${money(r.exposure)} (${pct(r.recoveryRate)})`);
+  }
+  if (report.payerPerformance) {
+    h1('Payer Performance');
+    rows(report.payerPerformance.byPayer, r => `${r.key}: ${r.count} case(s), ${money(r.recovered)} of ${money(r.exposure)} (${pct(r.recoveryRate)}), turnaround ${hrs(r.turnaroundHours)}` +
+      (r.recurringDenialReasons.length ? `\n  Recurring reasons: ${r.recurringDenialReasons.map(x => x.reason + ' x' + x.count).join(', ')}` : ''));
+  }
+  if (report.appealEffectiveness) {
+    h1('Appeal & Evidence Effectiveness');
+    rows(report.appealEffectiveness.byAction, r => `${r.key}: ${r.count} case(s), ${money(r.recovered)} of ${money(r.exposure)} (${pct(r.recoveryRate)}), ${hrs(r.avgResolutionHours)}`);
+    doc.fillColor('#777').fontSize(8).text(report.appealEffectiveness.note).fillColor('#000').fontSize(10);
+  }
+  if (report.internal) {
+    const n = report.internal;
+    doc.addPage();
+    doc.fontSize(14).text('Internal - TSM staff only', { underline: true }).fontSize(10);
+    h1('Pipeline');
+    doc.text(`Likely bottleneck stage: ${n.pipeline.likelyBottleneckStage || 'none identified'}`);
+    rows(n.pipeline.byStage, s => `  ${s.stage}: ${s.count} open, avg age ${hrs(s.avgAgeHours)}`);
+    h1('Queue performance');
+    rows(n.queuePerformance, q => `${q.owner}: ${q.count} resolved, ${pct(q.recoveryRate)}, ${hrs(q.avgResolutionHours)}, ${q.openNow} open`);
+    h1('SLA failures');
+    doc.text(`Overdue open: ${n.slaFailures.overdueOpen}   Resolved late: ${n.slaFailures.resolvedLate}`);
+    h1('Prediction -> actual');
+    const tiers = Object.entries(n.predictionVsActual.byPredictedLikelihood);
+    if (!tiers.length) doc.fillColor('#777').text('No learning records in scope.').fillColor('#000');
+    tiers.forEach(([t, v]) => doc.text(`${t}: ${v.predicted} predicted, calibration rate ${pct(v.calibrationRate)}, avg variance ${v.avgVariance ?? '-'}`));
+    if (n.calibrationSignals) doc.text(`Calibration signals (${n.calibrationSignals.scope}): ${n.calibrationSignals.flagged.length} flagged, ${n.calibrationSignals.eligibleForReview} eligible for review`);
+    h1('Governance');
+    doc.text(`Automatic production application: ${n.governance.calibrationConfig.automaticProductionApplication ? 'ENABLED' : 'DISABLED'}   Human approval required: ${n.governance.calibrationConfig.humanApprovalRequired ? 'TRUE' : 'FALSE'}`);
+    doc.fontSize(8);
+    n.governance.recentAudit.forEach(a => doc.text(`${a.ts}  ${a.actor || '-'}  ${a.action}  ${a.entityId}`));
+  }
+}
+
+app.get('/api/bpo/reports/provider.pdf', requireRole(BPO_CLIENT_VIEW_ROLES), async (req, res) => {
+  let report;
+  try {
+    const scope = bpoProviderScope(req);
+    if (scope.isClient && !scope.clientId) return res.status(403).json({ ok: false, error: 'client session has no clientId' });
+    report = await tsmLedger.bpoBuildProviderReport({
+      clientId: scope.clientId, vertical: req.query.vertical, period: req.query.period,
+      sections: req.query.sections, view: scope.view,
+    });
+  } catch (e) { return bpoProviderError(res, e); }
+
+  try {
+    const safe = s => String(s || 'all').replace(/[^a-zA-Z0-9_-]/g, '');
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="provider-report-${safe(report.clientId)}-${safe(report.period)}.pdf"`);
+    const doc = new PDFDocument({ margin: 50 });
+    doc.pipe(res);
+    bpoRenderProviderReportPdf(doc, report);
+    doc.end();
+  } catch (e) {
+    if (!res.headersSent) res.status(500).json({ ok: false, error: e.message });
+    else res.end();
+  }
+});
+
+// Saved monthly snapshots (generated by the admin route below or
+// scripts/generate-bpo-provider-monthly-reports.js). Clients only ever
+// receive the client projection.
+app.get('/api/bpo/reports/provider-monthly', requireRole(BPO_CLIENT_VIEW_ROLES), async (req, res) => {
+  try {
+    const scope = bpoProviderScope(req);
+    if (!scope.clientId) return res.status(400).json({ ok: false, error: 'clientId is required' });
+    let snap;
+    if (req.query.period) {
+      snap = await tsmLedger.bpoGetProviderSnapshot(scope.clientId, req.query.period);
+    } else {
+      const list = await tsmLedger.bpoListProviderSnapshots({ clientId: scope.clientId, limit: 1 });
+      snap = list[0];
+    }
+    if (!snap) return res.status(404).json({ ok: false, error: 'No provider report snapshot found' });
+    res.json({ ok: true, periodLabel: snap.periodLabel, generatedAt: snap.generatedAt, report: snap.views[scope.view] });
+  } catch (e) { bpoProviderError(res, e); }
+});
+
+app.get('/api/bpo/reports/provider-monthly/history', requireRole(BPO_REPORT_ROLES), async (req, res) => {
+  try {
+    if (!req.query.clientId) return res.status(400).json({ ok: false, error: 'clientId is required' });
+    const snaps = await tsmLedger.bpoListProviderSnapshots({ clientId: req.query.clientId, limit: req.query.limit ? parseInt(req.query.limit, 10) : 24 });
+    res.json({ ok: true, periods: snaps.map(s => ({ periodLabel: s.periodLabel, generatedAt: s.generatedAt })) });
+  } catch (e) { bpoProviderError(res, e); }
+});
+
+// Generate snapshots on demand (single client, or every active client).
+app.post('/api/bpo/admin/provider-reports/generate', requireRole(BPO_MANAGE_ROLES), async (req, res) => {
+  try {
+    const { clientId, period } = req.body || {};
+    const clients = clientId ? [{ id: clientId }] : await tsmLedger.bpoListClients({ status: 'active' });
+    const results = [];
+    for (const c of clients) {
+      const id = c.id || c.clientId;
+      try {
+        const snap = await tsmLedger.bpoSaveProviderSnapshot(id, period || undefined, req.tsmSession.label || req.tsmSession.role);
+        results.push({ clientId: id, ok: true, periodLabel: snap.periodLabel });
+      } catch (e) { results.push({ clientId: id, ok: false, error: e.message }); }
+    }
+    res.json({ ok: true, results });
+  } catch (e) { bpoProviderError(res, e); }
 });
 
 // Case Engine (Roadmap #10) summary — same shape family as the work-item
@@ -1963,7 +2525,21 @@ app.post('/api/pm/analysis', requireRole(PM_INTERNAL_ROLES), async (req, res) =>
     return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
   } catch (e) {
     console.error('PM ANALYSIS GROQ ERROR:', e.message);
-    return res.status(500).json({ ok: false, error: e.message });
+    // TSM FIX: previously surfaced this as a raw 500 with no graceful
+    // degradation, same bug class already found and fixed in
+    // Construction's, NOC's, and HotelOps's /query routes. Distinguishes
+    // "no key configured" from a genuine upstream failure so the
+    // client/UI can tell them apart, rather than treating both as the
+    // same opaque 500.
+    const noKeyConfigured = /No Groq API key configured/i.test(e.message || '');
+    return res.status(200).json({
+      ok: true,
+      fallback: true,
+      degraded: true,
+      reason: noKeyConfigured ? 'ai_not_configured' : 'ai_call_failed',
+      answer: 'AI portfolio analysis is temporarily unavailable. Please try again shortly or escalate manually per standard PM Copilot procedure.',
+      createdAt: new Date().toISOString()
+    });
   }
 });
 
@@ -2047,6 +2623,14 @@ app.use('/bpo', express.static(path.join(__dirname, 'html/bpo')));
 app.use('/shared', express.static(path.join(__dirname, 'html/shared')));
 app.use('/insurance', express.static(path.join(__dirname, 'html/tsm-insurance')));
 app.use('/construction-suite', express.static(path.join(__dirname, 'html/construction-suite')));
+// TSM FIX 2026-09-03: 'suites' config below declares route:'/music' but its
+// forEach loop only ever registered exact-match app.get('/music')/('/music/')
+// handlers for the index page — every other page under the music vertical
+// (song-builder.html, cadence-builder.html, producer/*, release/*, etc.,
+// all linked live via tsm-music-guidance.js's progress-bar nav on 10 pages)
+// had no route at all and 404'd. Mounted the same way construction-suite/
+// insurance are, so the whole subtree is actually served.
+app.use('/music', express.static(path.join(__dirname, 'html/war-rooms/music-war')));
 // NOTE: /runtime and /architecture mounts now live earlier in this file
 // (right after the '/html/runtime' mount, before the '/' catch-all) so they
 // can't be shadowed by stale files inside html/. See fix note there.
@@ -2274,6 +2858,13 @@ app.post('/api/hc/stream', requireAnyAuth, async (req, res) => {
           model: resolveGroqModel(model),
           stream: true,
           max_tokens: maxTok || 500,
+          // TSM FIX: gpt-oss models are reasoning models and their hidden
+          // reasoning tokens count against max_tokens. With the default effort
+          // the HC War Room engines were cut off mid-answer (finish_reason=length),
+          // dropping the tail of Engines 1, 2, 5 and, before the prompt was
+          // reordered, Engine 04's RECOVERY LIKELIHOOD line. Same setting the
+          // other streaming route in this file already uses.
+          reasoning_effort: 'low',
           messages: [{ role: 'system', content: sys }, { role: 'user', content: user }]
         }),
         signal: controller.signal
@@ -2420,7 +3011,14 @@ async function fetchGroqWithRetry(groqKey, body, maxRetries = 3) {
     });
     if (groqRes.ok) return groqRes;
     const err = await groqRes.json().catch(() => ({}));
-    console.error('Groq error response:', JSON.stringify(err)); debugLog('Groq error: ' + JSON.stringify(err));
+    // TSM FIX: Groq's own error bodies can echo back a snippet of the
+    // offending request content (e.g. "invalid character near: '...'").
+    // This endpoint carries denial-letter/claims text, so logging the full
+    // raw error object to an unbounded, unencrypted debug.log file risked
+    // persisting fragments of that content indefinitely. Log only the
+    // structured code/status — never the raw body.
+    const errSummary = `status=${groqRes.status} code=${err.error?.code || 'unknown'}`;
+    console.error('Groq error response:', errSummary); debugLog('Groq error: ' + errSummary);
     const isRateLimit = err.error?.code === 'rate_limit_exceeded';
     if (isRateLimit && attempt < maxRetries) {
       const match = /try again in ([\d.]+)(ms|s)/.exec(err.error.message || '');
@@ -2647,29 +3245,15 @@ app.post('/api/hc/node/:node', requireAnyAuth, async (req, res) => {
 // writes HC_NODE_STATE_FILE instead) — was ungrounded in practice either way.
 // routes/hc.js now handles this route for real, reading HC_NODE_STATE_FILE.
 
-app.post('/api/hc-strategist/bnca', async (req, res) => {
-  const payload = req.body || {};
-  const result = await tsmAIJSON(`HC Strategist synthesis. Memory: ${JSON.stringify(TSM_MEMORY.healthcare).slice(0, 8000)}. Payload: ${JSON.stringify(payload).slice(0, 4000)}. Return JSON: {"suite":"hc-strategist","strategic_summary":"...","priority_actions":[],"bnca":"...","relay_to_main_strategist":true,"confidence":0}`,
-    { suite: 'hc-strategist', strategic_summary: 'HC Strategist review needed.', priority_actions: [], bnca: 'Relay to Main Strategist.', relay_to_main_strategist: true, confidence: 82 });
-  TSM_MEMORY.healthcare.hcStrategist = result;
-  res.json({ ok: true, result, ts: new Date().toISOString() });
-});
-
-app.post('/api/main-strategist/healthcare', async (req, res) => {
-  const payload = req.body || {};
-  const result = await tsmAIJSON(`Main Strategist executive package. Memory: ${JSON.stringify(TSM_MEMORY.healthcare).slice(0, 9000)}. Return JSON: {"suite":"main-strategist","executive_issue":"...","financial_or_operational_impact":"...","recommendation":"...","decision_options":[],"hitl_relay":"...","send_to_executive_portal":true,"confidence":0}`,
-    { suite: 'main-strategist', executive_issue: 'Healthcare readiness needs review.', financial_or_operational_impact: 'Billing pressure may affect throughput.', recommendation: 'Start office manager workflow pilot.', decision_options: ['30-day pilot'], hitl_relay: 'Review BNCA and confirm owner lanes.', send_to_executive_portal: true, confidence: 84 });
-  TSM_MEMORY.healthcare.mainStrategist = result;
-  res.json({ ok: true, result, ts: new Date().toISOString() });
-});
-
-app.post('/api/executive/portal', async (req, res) => {
-  const payload = req.body || {};
-  const result = await tsmAIJSON(`Executive Portal. Memory: ${JSON.stringify(TSM_MEMORY.healthcare).slice(0, 10000)}. Return JSON: {"portal":"executive","audience":"CFO / Decision Maker","decision_summary":"...","bnca_recommendation":"...","hitl_script":"...","approval_path":[],"next_step":"...","confidence":0}`,
-    { portal: 'executive', audience: 'CFO / Decision Maker', decision_summary: 'Healthcare BNCA ready.', bnca_recommendation: 'Approve pilot workflow.', hitl_script: 'Action-ready recommendation and owner lanes for approval.', approval_path: ['Office Manager', 'CFO'], next_step: 'Book walkthrough or approve 30-day pilot.', confidence: 85 });
-  TSM_MEMORY.healthcare.executive = result;
-  res.json({ ok: true, result, ts: new Date().toISOString() });
-});
+// TSM FIX: removed /api/hc-strategist/bnca, /api/main-strategist/healthcare,
+// and /api/executive/portal — dead scaffolding with zero callers anywhere in
+// the codebase (verified via repo-wide grep), no auth middleware (every real
+// /api/hc/* route has requireAnyAuth; these three didn't), and a shared
+// global TSM_MEMORY.healthcare object with no per-user/session/tenant
+// isolation — a second caller's payload would silently clobber and leak into
+// whatever any other caller read back. Nothing wires to these; removing
+// beats "fixing" auth on code nothing uses. The real, in-use strategist flow
+// is /api/hc/strategist (already requireAnyAuth) via hc-main-strategist.html.
 
 // ── TSM Candidate Sync Routes ──
 const candidateStore = []; // swap for DB later
@@ -2730,15 +3314,13 @@ app.post('/api/music/structure', async (req, res) => {
   } catch (e) { return res.status(500).json({ ok: false, error: e.message }); }
 });
 
-app.post('/api/music/hooks/generate10', async (req, res) => {
-  try {
-    var body = req.body || {};
-    var sys = 'You are ZAY, a world-class songwriter. Generate exactly 10 distinct, catchy, numbered hook options. Make them memorable and genre-appropriate.';
-    var msg = body.query || `Generate 10 hook options. Genre: ${body.genre || 'Hip-Hop'}, Mood: ${body.mood || 'Motivational'}, Theme: ${body.theme || 'hustle'}, Artist style: ${body.artist || 'versatile'}`;
-    var a = await groqChat(sys, msg, 1024);
-    return res.json({ ok: true, output: a, hooks: a });
-  } catch (e) { return res.status(500).json({ ok: false, error: e.message }); }
-});
+// NOTE: a legacy /api/music/hooks/generate10 used to live here. It was
+// removed because it was registered before app.use(require('./routes/music'))
+// below, which silently shadowed routes/music.js's version (structured
+// 10-item array) with this one (a single AI-generated string) -- nothing
+// in the live UI called either, but any script/tool hitting this path
+// expecting the router's shape would get the wrong response with no error.
+// See routes/music.js's '/api/music/hooks/generate10' for the real handler.
 
 app.post('/api/music/hooks', async (req, res) => {
   try {
@@ -2760,15 +3342,13 @@ app.post('/api/music/song', async (req, res) => {
   } catch (e) { return res.status(500).json({ ok: false, error: e.message }); }
 });
 
-app.post('/api/music/revision/run', async (req, res) => {
-  try {
-    var body = req.body || {};
-    var sys = 'You are ZAY, a world-class songwriter. Revise the provided lyrics based on the notes given. Return only the revised lyrics.';
-    var msg = `Original lyrics:\n${body.lyrics || ''}\n\nRevision notes: ${body.notes || ''}\n\nHook to preserve: ${body.hook || ''}\nGenre: ${body.genre || 'Hip-Hop'}`;
-    var a = await groqChat(sys, msg, 2048);
-    return res.json({ ok: true, output: a, content: a });
-  } catch (e) { return res.status(500).json({ ok: false, error: e.message }); }
-});
+// NOTE: a legacy /api/music/revision/run used to live here, shadowing
+// routes/music.js's version the same way as hooks/generate10 above.
+// html/war-rooms/music-war/presentation-live.html calls a revision/run
+// endpoint, but on a different (stale) Fly hostname (tsm-consultz.fly.dev,
+// pre-dating the rename to tsm-shell) -- worth fixing separately, since
+// that call is currently hitting neither of these handlers at all.
+// See routes/music.js's '/api/music/revision/run' for the real handler.
 
 app.post('/api/music/strategy', async (req, res) => {
   try {
@@ -2829,33 +3409,14 @@ app.post('/api/music/chain', async (req, res) => {
   } catch (e) { return res.status(500).json({ ok: false, error: e.message }); }
 });
 
-app.post('/api/music/revision/generate', async (req, res) => {
-  try {
-    var body = req.body || {};
-    var draft = body.draft || '';
-    var request = body.request || 'Give me 3 revision options';
-    var results = await Promise.all([
-      groqChat(SP.music, 'Flow-first revision.\nRequest: ' + request + '\nDraft: ' + draft + '\nOption A:', 700),
-      groqChat(SP.music, 'Emotion-first revision.\nRequest: ' + request + '\nDraft: ' + draft + '\nOption B:', 700),
-      groqChat(SP.music, 'Hook-first revision.\nRequest: ' + request + '\nDraft: ' + draft + '\nOption C:', 700)
-    ]);
-    var scoreA = musicHeuristicScore(results[0]);
-    var scoreB = musicHeuristicScore(results[1]);
-    var scoreC = musicHeuristicScore(results[2]);
-    var options = [
-      { id: 'A', title: 'Option A - Flow First', strategy: 'Cadence and bounce', output: results[0], score: scoreA },
-      { id: 'B', title: 'Option B - Emotion First', strategy: 'Imagery and vulnerability', output: results[1], score: scoreB },
-      { id: 'C', title: 'Option C - Hook First', strategy: 'Structure and repeatability', output: results[2], score: scoreC }
-    ];
-    var bestOverall = Math.max(scoreA.overall, scoreB.overall, scoreC.overall);
-    var recommended = options.find(o => o.score.overall === bestOverall).id;
-    var session = { id: Date.now(), request, input: draft, options, recommended, createdAt: new Date().toISOString() };
-    if (!global.MUSIC_REVISIONS) global.MUSIC_REVISIONS = { sessions: [], selected: null };
-    global.MUSIC_REVISIONS.sessions.unshift(session);
-    global.MUSIC_REVISIONS.sessions = global.MUSIC_REVISIONS.sessions.slice(0, 20);
-    return res.json({ ok: true, session });
-  } catch (e) { return res.status(500).json({ ok: false, error: e.message }); }
-});
+// NOTE: a legacy /api/music/revision/generate used to live here. Besides
+// shadowing routes/music.js's version, it wrote sessions into the old
+// shared global.MUSIC_REVISIONS (one object for every visitor) instead of
+// the per-session req.musicState.revisions store that routes/music.js's
+// '/api/music/revision/pick-rerun' and '/select' actually read from -- so
+// even if this handler had "won", any session it created would 404 as
+// "not found" the moment something tried to pick/rerun it.
+// See routes/music.js's '/api/music/revision/generate' for the real handler.
 
 app.post('/api/music/dna/save', async (req, res) => {
   var body = req.body || {};
@@ -2889,6 +3450,34 @@ app.post('/api/music/song/learn', async (req, res) => {
 // mounted. Mounted AFTER the routes above so those (already real, Groq-backed)
 // inline handlers keep precedence for any overlapping paths.
 app.use(require('./routes/music'));
+// TSM Training Intelligence — certification blueprints, roadmaps, teaching, quizzes, and hands-on labs
+app.use(require('./routes/training-intelligence'));
+
+// Candidate Registry — single source of truth shared by the Career Training
+// Platform and the Staffing Readiness Assessment. Mongo-backed via
+// server/candidate-registry-service.js (same MONGODB_URI as tsm-ledger-service.js).
+app.use(require('./routes/candidate-registry'));
+
+// Interview Engine — sectors, plans, interview sessions. Internal-only
+// tool, unguarded like routes/candidate-registry.js (not gated like
+// routes/staffing-engine.js, which carries real employer/fee data).
+app.use(require('./routes/interview-engine'));
+
+// Staffing Engine — employers, job orders, and the submit -> place pipeline
+// that turns a ready candidate from the registry above into an actual paid
+// placement with a server-computed fee. Gated behind requireAnyAuth (unlike
+// the candidate registry) since employer contact info and fee terms are
+// real business data, not training/demo content.
+// Staffing Engine — employers, job orders, placements. Real employer
+// contact info and fee terms, so gated behind requireStaffAuth
+// (admin/manager/analyst, real session required) instead of requireAnyAuth,
+// which currently falls back to an admin session when there's no cookie.
+// Scoped to /api/staffing only — requireAnyAuth itself is untouched.
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api/staffing')) return requireStaffAuth(req, res, next);
+  next();
+}, require('./routes/staffing-engine'));
+
 
 // ── ENTERPRISE CAPABILITY BRIDGE ───────────────────────────────────────────────
 // Session-persisted stores for O2C/CRM/CPQ/Catalog/Approval (previously
@@ -2981,6 +3570,21 @@ app.use('/api/rcm', require('./routes/rcm-requirements'));
 // kpis/breaches/exceptions in the body each time), so requireAnyAuth alone
 // closes the gap here — there's no per-client bucket to scope.
 app.use('/api/schools', requireAnyAuth, require('./routes/schools-financial'));
+// College Financial Aid (Title IV) war room — same private-rate-card-server-side
+// pattern as Schools above. See routes/college-finaid-financial.js header.
+app.use('/api/college/finaid', requireAnyAuth, require('./routes/college-finaid-financial'));
+app.use('/api/college/bursar', requireAnyAuth, require('./routes/college-bursar-financial'));
+app.use('/api/college/endowment', requireAnyAuth, require('./routes/college-endowment-financial'));
+app.use('/api/college/research-fa', requireAnyAuth, require('./routes/college-research-fa-financial'));
+app.use('/api/college/accred', requireAnyAuth, require('./routes/college-accred-financial'));
+
+// Insurance war room — same private-rate-card-server-side pattern as College
+// above. See routes/insurance-claims-financial.js header for the full
+// endpoint contract; the other three insurance domains follow the same shape.
+app.use('/api/insurance/claims', requireAnyAuth, require('./routes/insurance-claims-financial'));
+app.use('/api/insurance/pc', requireAnyAuth, require('./routes/insurance-pc-financial'));
+app.use('/api/insurance/compliance', requireAnyAuth, require('./routes/insurance-compliance-financial'));
+app.use('/api/insurance/licensing', requireAnyAuth, require('./routes/insurance-licensing-financial'));
 
 // ── INPHUSIONSYS (multi-vertical demo data: employees, anomalies, IT tickets) ──
 // See server/routes/inphusionsys.js header for the full endpoint contract.
@@ -3262,7 +3866,13 @@ app.post('/api/crm/query', async (req, res) => {
 });
 
 
-app.post('/api/noc/query', async (req, res) => {
+// TSM FIX: this route had no auth guard at all, unlike /api/hc/* and
+// /api/finops/report — and unlike FinOps's orphaned report route, this
+// one is genuinely live (html/l1-copilot/noc/noc-war-room.html calls it
+// directly). Adding requireAnyAuth here doesn't require any front-end
+// change: same-origin fetch() already carries the tsm_session cookie
+// automatically for logged-in users.
+app.post('/api/noc/query', requireAnyAuth, async (req, res) => {
   const { kpis, incident_breaches, alerts, devices_down, context, maxTokens } = req.body || {};
   const summary = JSON.stringify({
     kpis,
@@ -3283,12 +3893,31 @@ app.post('/api/noc/query', async (req, res) => {
     return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
   } catch (e) {
     console.error('NOC GROQ ERROR:', e.message);
-    return res.status(500).json({ ok: false, error: e.message });
+    // TSM FIX: previously surfaced this as a raw 500 with no graceful
+    // degradation, same bug class already found and fixed in
+    // Construction's /query route. Distinguishes "no key configured"
+    // from a genuine upstream failure so the client/UI can tell them
+    // apart, rather than treating both as the same opaque 500.
+    const noKeyConfigured = /No Groq API key configured/i.test(e.message || '');
+    return res.status(200).json({
+      ok: true,
+      fallback: true,
+      degraded: true,
+      reason: noKeyConfigured ? 'ai_not_configured' : 'ai_call_failed',
+      answer: 'AI incident analysis is temporarily unavailable. Please try again shortly or escalate manually per standard NOC runbook procedure.',
+      createdAt: new Date().toISOString()
+    });
   }
 });
 
 
-app.post('/api/mortgage/query', async (req, res) => {
+// TSM FIX: this route had no auth guard at all, unlike /api/hc/*, /api/noc/query,
+// /api/hotelops/query, and /api/legal/query — and unlike FinOps's orphaned report
+// route, this one is genuinely live (html/war-rooms/re-war/re-war-room.html calls
+// it directly as its only AI endpoint). Adding requireAnyAuth here doesn't require
+// any front-end change: same-origin fetch() already carries the tsm_session cookie
+// automatically for logged-in users.
+app.post('/api/mortgage/query', requireAnyAuth, async (req, res) => {
   const { kpis, loan_breaches, conditions, exceptions, context, question, query, maxTokens } = req.body || {};
   const userQuestion = question || query;
   const system = context || SP.mortgage;
@@ -3318,7 +3947,22 @@ app.post('/api/mortgage/query', async (req, res) => {
     return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
   } catch (e) {
     console.error('MORTGAGE GROQ ERROR:', e.message);
-    return res.status(500).json({ ok: false, error: e.message });
+    // TSM FIX: previously surfaced this as a raw 500 with no graceful
+    // degradation, same bug class already found and fixed in Construction's,
+    // NOC's, and HotelOps's /query routes. Distinguishes "no key configured"
+    // from a genuine upstream failure so the client/UI can tell them apart,
+    // rather than treating both as the same opaque 500 — and so re-war-room.html's
+    // rescue-pack score parser sees plain text with no fabricated HEALTH_SCORE
+    // in it, instead of failing the fetch entirely.
+    const noKeyConfigured = /No Groq API key configured/i.test(e.message || '');
+    return res.status(200).json({
+      ok: true,
+      fallback: true,
+      degraded: true,
+      reason: noKeyConfigured ? 'ai_not_configured' : 'ai_call_failed',
+      answer: 'AI mortgage/transaction analysis is temporarily unavailable. Please try again shortly or escalate manually per standard pipeline procedure.',
+      createdAt: new Date().toISOString()
+    });
   }
 });
 
@@ -3431,7 +4075,12 @@ app.post('/api/mortgage/bnca', async (req, res) => {
 // server-side node state (its relay payload lives client-side in TSM_PM_RELAY), so the real
 // portfolio data pm-strategist.html already loaded is passed straight through in req.body
 // instead of read back off TSM_MEMORY.pm; only the running strategist output is persisted here.
-app.post('/api/pm-strategist/bnca', async (req, res) => {
+// TSM FIX: this route had no auth guard at all, unlike /api/pm/analysis (which already uses
+// requireRole(PM_INTERNAL_ROLES)) — and it is genuinely live
+// (html/war-rooms/pm-copilot/pm-strategist.html calls it directly). Adding requireAnyAuth here
+// doesn't require any front-end change: same-origin fetch() already carries the tsm_session
+// cookie automatically for logged-in users.
+app.post('/api/pm-strategist/bnca', requireAnyAuth, async (req, res) => {
   const payload = req.body || {};
   const result = await tsmAIJSON(
     `PM Copilot Strategist synthesis. Portfolio relay payload: ${JSON.stringify(payload).slice(0, 8000)}. Return JSON: {"suite":"pm-strategist","strategic_summary":"...","priority_actions":[],"bnca":"...","relay_to_executive":true,"confidence":0}`,
@@ -3469,7 +4118,13 @@ app.post('/api/mortgage/executive-portal', async (req, res) => {
 
 // ── HOTELOPS: structured maintenance/OTA/compliance analysis ─────────────────
 // Mirrors /api/mortgage/query's shape.
-app.post('/api/hotelops/query', async (req, res) => {
+// TSM FIX: this route had no auth guard at all, unlike /api/hc/* and
+// /api/finops/report — and like NOC's /api/noc/query, this one is
+// genuinely live (html/hotelops/services/hotelops-engine.js calls it
+// directly). Adding requireAnyAuth here doesn't require any front-end
+// change: same-origin fetch() already carries the tsm_session cookie
+// automatically for logged-in users.
+app.post('/api/hotelops/query', requireAnyAuth, async (req, res) => {
   const { kpis, maintenance_breaches, ota_exposure, compliance_risk, context, maxTokens } = req.body || {};
   const summary = JSON.stringify({
     kpis,
@@ -3490,7 +4145,20 @@ app.post('/api/hotelops/query', async (req, res) => {
     return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
   } catch (e) {
     console.error('HOTELOPS GROQ ERROR:', e.message);
-    return res.status(500).json({ ok: false, error: e.message });
+    // TSM FIX: previously surfaced this as a raw 500 with no graceful
+    // degradation, same bug class already found and fixed in
+    // Construction's and NOC's /query routes. Distinguishes "no key
+    // configured" from a genuine upstream failure so the client/UI can
+    // tell them apart, rather than treating both as the same opaque 500.
+    const noKeyConfigured = /No Groq API key configured/i.test(e.message || '');
+    return res.status(200).json({
+      ok: true,
+      fallback: true,
+      degraded: true,
+      reason: noKeyConfigured ? 'ai_not_configured' : 'ai_call_failed',
+      answer: 'AI property analysis is temporarily unavailable. Please try again shortly or escalate manually per standard HotelOps procedure.',
+      createdAt: new Date().toISOString()
+    });
   }
 });
 // ── HOTELOPS: online booking ingestion ────────────────────────────────────────
@@ -3815,8 +4483,22 @@ app.post('/api/insurance/query', async (req, res) => {
   const { system, message, maxTokens, question, query } = req.body || {};
   const msg = message || question || query || '';
   if (!msg) return res.status(400).json({ ok: false, error: 'message required' });
-  try { const answer = await groqChat(system || SP.insurance, msg, maxTokens || 600); recordVerticalMemory('insurance', msg, answer); res.json({ ok: true, answer }); }
-  catch (e) { console.error('GROQ ERROR:', e.message); res.status(500).json({ ok: false, error: e.message, detail: e.stack }); }
+  try {
+    const answer = await groqChat(system || SP.insurance, msg, maxTokens || 600);
+    recordVerticalMemory('insurance', msg, answer);
+    res.json({ ok: true, answer });
+  } catch (e) {
+    console.error('GROQ ERROR:', e.message);
+    const isCapacityIssue = /rate.?limit|429|All Groq models returned empty/i.test(e.message);
+    if (isCapacityIssue) {
+      return res.json({
+        ok: true,
+        degraded: true,
+        answer: `[Live AI temporarily unavailable — Groq capacity limit reached. This is a transient issue, not a data or account problem; please retry shortly.]\n\nRequest: "${msg.slice(0, 200)}"`,
+      });
+    }
+    res.status(500).json({ ok: false, error: e.message, detail: e.stack });
+  }
 });
 
 app.post('/api/insurance/quiz', async (req, res) => {
@@ -3858,7 +4540,21 @@ app.post('/api/l1-copilot/assistant', async (req, res) => {
   try {
     var scenario = (req.body.scenario || req.body.question || req.body.query || '').trim();
     if (!scenario) return res.status(400).json({ ok: false, error: 'scenario is required' });
-    var a = await groqChat(SP.l1Assistant, scenario, req.body.maxTokens || 700);
+    // TSM FIX: req.body.ticket was accepted by nothing -- the assistant's
+    // own system prompt (SP.l1Assistant) tells the model to factor in
+    // warranty/model info, but no caller ever sent it, so that instruction
+    // was always a no-op. Fold whatever ticket fields the caller does send
+    // into the user message; older/standalone callers that omit `ticket`
+    // (e.g. the generic embeddable widget) are unaffected.
+    var t = req.body.ticket || null;
+    var ticketLines = t ? Object.entries(t)
+      .filter(([, v]) => v)
+      .map(([k, v]) => `${k}: ${v}`)
+      .join('\n') : '';
+    var userMessage = ticketLines
+      ? `CURRENT TICKET CONTEXT:\n${ticketLines}\n\nTECHNICIAN QUESTION:\n${scenario}`
+      : scenario;
+    var a = await groqChat(SP.l1Assistant, userMessage, req.body.maxTokens || 700);
     return res.json({ ok: true, answer: a, createdAt: new Date().toISOString() });
   } catch (e) {
     return res.status(500).json({ ok: false, error: e.message });
@@ -3924,6 +4620,44 @@ app.post('/api/l1-copilot/servicenow/status-update', async (req, res) => {
     res.json({ ok: true, ...result });
   } catch (e) {
     const status = e.code === 'SERVICENOW_NOT_CONFIGURED' ? 503 : 502;
+    res.status(status).json({ ok: false, error: e.message });
+  }
+});
+
+// Batch ticket creation. Deliberately no demo-mode fallback here (unlike the
+// read endpoints above) — faking a successful bulk-create response when
+// ServiceNow isn't actually configured would be actively misleading for a
+// write operation, not just a degraded read. 503 + ok:false, honestly, same
+// as the rest of this integration when unconfigured.
+app.post('/api/l1-copilot/servicenow/batch-tickets', async (req, res) => {
+  const { tickets, options } = req.body || {};
+  if (!Array.isArray(tickets) || tickets.length === 0) {
+    return res.status(400).json({ ok: false, error: 'tickets must be a non-empty array of ticket field objects' });
+  }
+  try {
+    const result = await snAdapter.createTicketsBatch(tickets, options);
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    const status = e.code === 'SERVICENOW_NOT_CONFIGURED' ? 503 : (e.status && e.status < 500 ? 400 : 502);
+    res.status(status).json({ ok: false, error: e.message });
+  }
+});
+
+// Batch ticket read — the counterpart to batch-tickets above, for pulling a
+// list of existing incidents (by number or sys_id) in one chunked/retried
+// call instead of the caller looping single-ticket GETs with no rate-limit
+// protection. A missing individual incident is reported per-record, same
+// as any other per-record failure; it does not abort the batch.
+app.post('/api/l1-copilot/servicenow/batch-tickets-read', async (req, res) => {
+  const { incidents, options } = req.body || {};
+  if (!Array.isArray(incidents) || incidents.length === 0) {
+    return res.status(400).json({ ok: false, error: 'incidents must be a non-empty array of incident numbers or sys_ids' });
+  }
+  try {
+    const result = await snAdapter.getTicketsBatch(incidents, options);
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    const status = e.code === 'SERVICENOW_NOT_CONFIGURED' ? 503 : (e.status && e.status < 500 ? 400 : 502);
     res.status(status).json({ ok: false, error: e.message });
   }
 });
@@ -4132,14 +4866,10 @@ The "missing_information" array should identify important information that would
 
 Do not claim an action has already been performed unless the context explicitly says so.`;
 
-    const rawDecision = await groqChat(
+    const decision = await groqChatJSON(
       SP.l1support,
       prompt,
-      maxTokens || 1000
-    );
-
-    const decision = JSON.parse(
-      rawDecision.replace(/\`\`\`json|\`\`\`/g, '').trim()
+      maxTokens || 1800
     );
 
     // ---------------------------------------------------------------
@@ -4168,14 +4898,10 @@ Return ONLY valid JSON:
 
 Do not claim that any action was already performed.`;
 
-      const rawResolution = await groqChat(
+      resolution = await groqChatJSON(
         SP.l1support,
         resolutionPrompt,
-        maxTokens || 800
-      );
-
-      resolution = JSON.parse(
-        rawResolution.replace(/\`\`\`json|\`\`\`/g, '').trim()
+        maxTokens || 1200
       );
     } else {
       const escalationPrompt = `Prepare a concise L2/vendor escalation package.
@@ -4200,14 +4926,10 @@ Return ONLY valid JSON:
 
 Do not invent completed troubleshooting.`;
 
-      const rawEscalation = await groqChat(
+      escalation = await groqChatJSON(
         SP.l1support,
         escalationPrompt,
-        maxTokens || 900
-      );
-
-      escalation = JSON.parse(
-        rawEscalation.replace(/\`\`\`json|\`\`\`/g, '').trim()
+        maxTokens || 1200
       );
     }
 
@@ -4236,9 +4958,61 @@ Do not invent completed troubleshooting.`;
   }
 });
 
-app.post('/api/l1-copilot/analyze', async (req, res) => {
-  const { ticket, maxTokens } = req.body || {};
-  if (!ticket || !ticket.description) return res.status(400).json({ ok: false, error: 'ticket.description required' });
+// Core single-ticket analysis. Factored out of the /analyze route so the
+// batch route below can reuse the exact same CMDB-lookup + LLM + guardrail
+// logic per ticket, instead of duplicating it. Throws on failure (missing
+// description, LLM/JSON error) — callers decide how to surface that
+// (500 for the single route, a per-record failure entry for the batch route).
+// The model is instructed to emit "confidence" as a plain integer, but
+// occasionally spells it out as a word instead (e.g. "confidence": seventy,)
+// which breaks JSON.parse with a syntax error at that exact token. This is
+// a narrow, targeted repair for that one known failure mode — it does not
+// attempt to fix arbitrary malformed JSON.
+const NUMBER_WORDS_ONES = {
+  zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7,
+  eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13,
+  fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18,
+  nineteen: 19
+};
+const NUMBER_WORDS_TENS = {
+  twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70,
+  eighty: 80, ninety: 90
+};
+
+function wordsToNumber(phrase) {
+  const words = String(phrase).toLowerCase().trim().split(/[\s-]+/).filter(Boolean);
+  if (!words.length) return null;
+  if (words.length === 1 && words[0] === 'hundred') return 100;
+  if (words.length === 2 && words[0] === 'one' && words[1] === 'hundred') return 100;
+  if (words.length === 1 && words[0] in NUMBER_WORDS_ONES) return NUMBER_WORDS_ONES[words[0]];
+  if (words.length === 1 && words[0] in NUMBER_WORDS_TENS) return NUMBER_WORDS_TENS[words[0]];
+  if (
+    words.length === 2 &&
+    words[0] in NUMBER_WORDS_TENS &&
+    words[1] in NUMBER_WORDS_ONES &&
+    NUMBER_WORDS_ONES[words[1]] < 10
+  ) {
+    return NUMBER_WORDS_TENS[words[0]] + NUMBER_WORDS_ONES[words[1]];
+  }
+  return null;
+}
+
+function repairSpelledOutConfidence(text) {
+  return text.replace(
+    /("confidence"\s*:\s*)"?([a-zA-Z][a-zA-Z\s-]*[a-zA-Z])"?/,
+    (match, prefix, wordPhrase) => {
+      const n = wordsToNumber(wordPhrase);
+      return n === null ? match : `${prefix}${n}`;
+    }
+  );
+}
+
+async function analyzeSingleTicket(ticket, maxTokens) {
+  if (!ticket || !ticket.description) {
+    const err = new Error('ticket.description required');
+    err.status = 400;
+    throw err;
+  }
 
   // If ServiceNow is configured and the agent gave us an asset tag or
   // incident number, pull real CMDB/incident history so "likely cause"
@@ -4268,7 +5042,7 @@ app.post('/api/l1-copilot/analyze', async (req, res) => {
     `Ticket description (raw, as pasted by the agent):\n${ticket.description}\n\n` +
     `Do two things and return ONLY valid JSON, no markdown, no backticks, in exactly this shape:\n\n` +
     `1) Analyze the ticket:\n` +
-    `{"issue_summary":"one sentence","likely_causes":["cause 1","cause 2"],"confidence":0-100,` +
+    `{"issue_summary":"one sentence","likely_causes":["cause 1","cause 2"],"confidence":0-100 (a plain integer digit like 85 — never spell the number out as a word),` +
     `"affected_system":"short label","business_impact":"short label","severity":"Low|Medium|High|Critical",` +
     `"recommended_path":"the single next diagnostic or remediation step, and why",` +
     `\n\n2) Extract structured fields mentioned ANYWHERE in the ticket description or metadata above ` +
@@ -4278,136 +5052,211 @@ app.post('/api/l1-copilot/analyze', async (req, res) => {
     `"extracted_fields":{"incident":null,"priority":null,"requester":null,"department":null,` +
     `"assignmentGroup":null,"asset":null,"manufacturer":null,"model":null,"warranty":null}}\n\n` +
     `Return one JSON object with both the analysis keys and the "extracted_fields" key at the same top level.`;
+
+  const raw = await groqChat(SP.l1support, prompt, maxTokens || 1000);
+  const cleanedRaw = raw.replace(/```json|```/g, '').trim();
+  let analysis;
   try {
-    const raw = await groqChat(SP.l1support, prompt, maxTokens || 1000);
-    const analysis = JSON.parse(raw.replace(/```json|```/g, '').trim());
-
-    // ── Deterministic severity guardrail ──────────────────────────────────
-    // The LLM provides the initial severity assessment, but obvious hard
-    // outage indicators must not be downgraded to Medium/Low solely because
-    // the model under-estimated impact.
-    //
-    // This is intentionally narrow: it only raises severity for strong,
-    // explicit outage/access-blocking language. It never lowers severity.
-    const descriptionText = String(ticket.description || '').toLowerCase();
-    const combinedTicketText = [
-      descriptionText,
-      String(ticket.department || '').toLowerCase(),
-      String(ticket.assignmentGroup || '').toLowerCase()
-    ].join(' ');
-
-    const hardOutageSignals = [
-      /\bwill not boot\b/,
-      /\bwon['’]?t boot\b/,
-      /\bdoes not boot\b/,
-      /\bcannot boot\b/,
-      /\bcan't boot\b/,
-      /\bcannot access windows\b/,
-      /\bcan't access windows\b/,
-      /\bunable to access windows\b/,
-      /\bsystem unavailable\b/,
-      /\bcompletely unavailable\b/,
-      /\bproduction (?:system|server|workstation|application) (?:is )?down\b/,
-      /\boperations? (?:are )?blocked\b/,
-      /\bbusiness (?:operations|work) (?:are )?blocked\b/
-    ];
-
-    const hardOutageDetected = hardOutageSignals.some((rx) => rx.test(combinedTicketText));
-
-    const originalAiSeverity = analysis.severity || null;
-
-    if (
-      hardOutageDetected &&
-      ['low', 'medium'].includes(String(analysis.severity || '').toLowerCase())
-    ) {
-      analysis.severity = 'High';
-      analysis.severity_guardrail = {
-        applied: true,
-        original_ai_severity: originalAiSeverity,
-        final_severity: 'High',
-        reason: 'Deterministic hard-outage signal detected in the ticket; severity was raised to High for human review.'
-      };
-    } else {
-      analysis.severity_guardrail = {
-        applied: false,
-        original_ai_severity: originalAiSeverity,
-        final_severity: analysis.severity || null
-      };
+    analysis = JSON.parse(cleanedRaw);
+  } catch (parseErr) {
+    try {
+      analysis = JSON.parse(repairSpelledOutConfidence(cleanedRaw));
+    } catch (repairErr) {
+      const err = new Error(`Model returned malformed JSON (${parseErr.message}); auto-repair for spelled-out confidence did not fix it.`);
+      throw err;
     }
+  }
 
-    // ── Priority / severity alignment ────────────────────────────────────
-    // The AI may identify a higher operational severity than the ticket's
-    // original priority. Do not silently change the ticket priority; surface
-    // the discrepancy for human review.
-    const priorityText = String(ticket.priority || '').toLowerCase();
-    const severityText = String(analysis.severity || '').toLowerCase();
+  // ── Deterministic severity guardrail ──────────────────────────────────
+  // The LLM provides the initial severity assessment, but obvious hard
+  // outage indicators must not be downgraded to Medium/Low solely because
+  // the model under-estimated impact.
+  //
+  // This is intentionally narrow: it only raises severity for strong,
+  // explicit outage/access-blocking language. It never lowers severity.
+  const descriptionText = String(ticket.description || '').toLowerCase();
+  const combinedTicketText = [
+    descriptionText,
+    String(ticket.department || '').toLowerCase(),
+    String(ticket.assignmentGroup || '').toLowerCase()
+  ].join(' ');
 
-    const priorityRank =
-      priorityText.includes('1') || priorityText.includes('critical') ? 1 :
-      priorityText.includes('2') || priorityText.includes('high') ? 2 :
-      priorityText.includes('3') || priorityText.includes('medium') ? 3 :
-      priorityText.includes('4') || priorityText.includes('low') ? 4 :
-      null;
+  const hardOutageSignals = [
+    /\bwill not boot\b/,
+    /\bwon['’]?t boot\b/,
+    /\bdoes not boot\b/,
+    /\bcannot boot\b/,
+    /\bcan't boot\b/,
+    /\bcannot access windows\b/,
+    /\bcan't access windows\b/,
+    /\bunable to access windows\b/,
+    /\bsystem unavailable\b/,
+    /\bcompletely unavailable\b/,
+    /\bproduction (?:system|server|workstation|application) (?:is )?down\b/,
+    /\boperations? (?:are )?blocked\b/,
+    /\bbusiness (?:operations|work) (?:are )?blocked\b/
+  ];
 
-    const severityRank =
-      severityText.includes('critical') ? 1 :
-      severityText.includes('high') ? 2 :
-      severityText.includes('medium') ? 3 :
-      severityText.includes('low') ? 4 :
-      null;
+  const hardOutageDetected = hardOutageSignals.some((rx) => rx.test(combinedTicketText));
 
-    if (priorityRank && severityRank) {
-      const mismatch = severityRank < priorityRank;
+  const originalAiSeverity = analysis.severity || null;
 
-      analysis.priority_alignment = {
-        ticket_priority: ticket.priority,
-        ai_severity: analysis.severity,
-        status: mismatch ? 'MISMATCH' : 'ALIGNED',
-        recommended_priority: mismatch
-          ? `${severityRank} - ${analysis.severity.charAt(0).toUpperCase()}${analysis.severity.slice(1)}`
-          : ticket.priority,
-        requires_human_review: mismatch,
-        reason: mismatch
-          ? `AI assessed the incident as ${analysis.severity} while the ticket is currently ${ticket.priority}.`
-          : 'Ticket priority is consistent with the AI-assessed severity.'
-      };
-    } else {
-      analysis.priority_alignment = {
-        ticket_priority: ticket.priority || null,
-        ai_severity: analysis.severity || null,
-        status: 'UNABLE_TO_COMPARE',
-        requires_human_review: false
-      };
-    }
-
-    // Preserve explicitly supplied structured ticket fields.
-    // AI interprets the ticket; it should not be allowed to lose
-    // fields that were already provided by the caller.
-    const aiFields = analysis.extracted_fields || {};
-
-    analysis.extracted_fields = {
-      incident: ticket.incident ?? aiFields.incident ?? null,
-      priority: ticket.priority ?? aiFields.priority ?? null,
-      requester: ticket.requester ?? aiFields.requester ?? null,
-      department: ticket.department ?? aiFields.department ?? null,
-      assignmentGroup:
-        ticket.assignmentGroup ??
-        aiFields.assignmentGroup ??
-        null,
-      asset: ticket.asset ?? aiFields.asset ?? null,
-      manufacturer: ticket.manufacturer ?? aiFields.manufacturer ?? null,
-      model: ticket.model ?? aiFields.model ?? null,
-      warranty: ticket.warranty ?? aiFields.warranty ?? null
+  if (
+    hardOutageDetected &&
+    ['low', 'medium'].includes(String(analysis.severity || '').toLowerCase())
+  ) {
+    analysis.severity = 'High';
+    analysis.severity_guardrail = {
+      applied: true,
+      original_ai_severity: originalAiSeverity,
+      final_severity: 'High',
+      reason: 'Deterministic hard-outage signal detected in the ticket; severity was raised to High for human review.'
     };
+  } else {
+    analysis.severity_guardrail = {
+      applied: false,
+      original_ai_severity: originalAiSeverity,
+      final_severity: analysis.severity || null
+    };
+  }
 
+  // ── Priority / severity alignment ────────────────────────────────────
+  // The AI may identify a higher operational severity than the ticket's
+  // original priority. Do not silently change the ticket priority; surface
+  // the discrepancy for human review.
+  const priorityText = String(ticket.priority || '').toLowerCase();
+  const severityText = String(analysis.severity || '').toLowerCase();
+
+  const priorityRank =
+    priorityText.includes('1') || priorityText.includes('critical') ? 1 :
+    priorityText.includes('2') || priorityText.includes('high') ? 2 :
+    priorityText.includes('3') || priorityText.includes('medium') ? 3 :
+    priorityText.includes('4') || priorityText.includes('low') ? 4 :
+    null;
+
+  const severityRank =
+    severityText.includes('critical') ? 1 :
+    severityText.includes('high') ? 2 :
+    severityText.includes('medium') ? 3 :
+    severityText.includes('low') ? 4 :
+    null;
+
+  if (priorityRank && severityRank) {
+    const mismatch = severityRank < priorityRank;
+
+    analysis.priority_alignment = {
+      ticket_priority: ticket.priority,
+      ai_severity: analysis.severity,
+      status: mismatch ? 'MISMATCH' : 'ALIGNED',
+      recommended_priority: mismatch
+        ? `${severityRank} - ${analysis.severity.charAt(0).toUpperCase()}${analysis.severity.slice(1)}`
+        : ticket.priority,
+      requires_human_review: mismatch,
+      reason: mismatch
+        ? `AI assessed the incident as ${analysis.severity} while the ticket is currently ${ticket.priority}.`
+        : 'Ticket priority is consistent with the AI-assessed severity.'
+    };
+  } else {
+    analysis.priority_alignment = {
+      ticket_priority: ticket.priority || null,
+      ai_severity: analysis.severity || null,
+      status: 'UNABLE_TO_COMPARE',
+      requires_human_review: false
+    };
+  }
+
+  // Preserve explicitly supplied structured ticket fields.
+  // AI interprets the ticket; it should not be allowed to lose
+  // fields that were already provided by the caller.
+  const aiFields = analysis.extracted_fields || {};
+
+  analysis.extracted_fields = {
+    incident: ticket.incident ?? aiFields.incident ?? null,
+    priority: ticket.priority ?? aiFields.priority ?? null,
+    requester: ticket.requester ?? aiFields.requester ?? null,
+    department: ticket.department ?? aiFields.department ?? null,
+    assignmentGroup:
+      ticket.assignmentGroup ??
+      aiFields.assignmentGroup ??
+      null,
+    asset: ticket.asset ?? aiFields.asset ?? null,
+    manufacturer: ticket.manufacturer ?? aiFields.manufacturer ?? null,
+    model: ticket.model ?? aiFields.model ?? null,
+    warranty: ticket.warranty ?? aiFields.warranty ?? null
+  };
+
+  return { analysis, cmdbSourced: !!cmdbContext };
+}
+
+app.post('/api/l1-copilot/analyze', async (req, res) => {
+  const { ticket, maxTokens } = req.body || {};
+  try {
+    const { analysis, cmdbSourced } = await analyzeSingleTicket(ticket, maxTokens);
     return res.json({
       ok: true,
       analysis,
-      cmdbSourced: !!cmdbContext,
+      cmdbSourced,
       createdAt: new Date().toISOString()
     });
   } catch (e) {
+    if (e.status === 400) return res.status(400).json({ ok: false, error: e.message });
     console.error('L1 COPILOT ANALYZE ERROR:', e.message);
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Batch analysis. Chunked with a delay between chunks, same shape as
+// snAdapter's createTicketsBatch/getTicketsBatch — each ticket's LLM call is
+// independent, so one failure (bad JSON back from the model, a missing
+// description) is reported per-record and does not abort the rest of the
+// batch. Chunk size is smaller than the ServiceNow batch helpers' default:
+// each record here is an LLM call, not a lightweight REST call, so keeping
+// concurrency modest also controls cost/rate against the LLM provider, not
+// just ServiceNow.
+const ANALYZE_BATCH_DEFAULTS = { chunkSize: 3, delayBetweenChunksMs: 300 };
+const ANALYZE_MAX_BATCH_SIZE = 100;
+
+app.post('/api/l1-copilot/analyze/batch', async (req, res) => {
+  const { tickets, maxTokens, options } = req.body || {};
+  if (!Array.isArray(tickets) || tickets.length === 0) {
+    return res.status(400).json({ ok: false, error: 'tickets must be a non-empty array of ticket objects' });
+  }
+  if (tickets.length > ANALYZE_MAX_BATCH_SIZE) {
+    return res.status(400).json({ ok: false, error: `Batch of ${tickets.length} exceeds the ${ANALYZE_MAX_BATCH_SIZE}-ticket limit per call — split into multiple calls.` });
+  }
+
+  const opts = Object.assign({}, ANALYZE_BATCH_DEFAULTS, options || {});
+  const results = new Array(tickets.length);
+
+  try {
+    for (let i = 0; i < tickets.length; i += opts.chunkSize) {
+      const chunk = tickets.slice(i, i + opts.chunkSize);
+      const chunkResults = await Promise.all(chunk.map((ticket, offset) => {
+        const index = i + offset;
+        return analyzeSingleTicket(ticket, maxTokens).then(
+          ({ analysis, cmdbSourced }) => ({ index, success: true, incident: ticket && ticket.incident, analysis, cmdbSourced }),
+          e => ({ index, success: false, incident: ticket && ticket.incident, error: e.message })
+        );
+      }));
+      chunkResults.forEach(r => { results[r.index] = r; });
+
+      const isLastChunk = i + opts.chunkSize >= tickets.length;
+      if (!isLastChunk && opts.delayBetweenChunksMs) {
+        await new Promise(resolve => setTimeout(resolve, opts.delayBetweenChunksMs));
+      }
+    }
+
+    const succeeded = results.filter(r => r.success).length;
+    return res.json({
+      ok: true,
+      total: tickets.length,
+      succeeded,
+      failed: tickets.length - succeeded,
+      results,
+      createdAt: new Date().toISOString()
+    });
+  } catch (e) {
+    console.error('L1 COPILOT ANALYZE BATCH ERROR:', e.message);
     return res.status(500).json({ ok: false, error: e.message });
   }
 });
@@ -4665,6 +5514,163 @@ app.get('/api/l1-copilot/gcp/instance/:identifier', async (req, res) => {
     const status = e.code === 'GCP_NOT_CONFIGURED' ? 503 : 502;
     res.status(status).json({ ok: false, error: e.message });
   }
+});
+
+// --- Onboarding: imaging + account provisioning ---------------------------
+// TSM FIX (2026-08-30): these two routes didn't exist at all -- the New
+// Hire Onboarding tab's "Start Imaging"/"Provision Account" buttons always
+// 404'd. No real imaging-platform (MDT/SCCM/Intune/JAMF) or identity-write
+// (Entra ID/Okta/Workspace) adapter exists yet, and account provisioning in
+// particular is a real write against a live directory -- not something to
+// wire to whatever read-only credentials happen to be configured for the
+// AD/Intune device-lookup routes above. So these honestly no-op (503) same
+// as the other unconfigured connectors, with a demo-mode fallback so the
+// tab is fully clickable/demoable. Real wiring needs a dedicated,
+// explicitly-configured adapter — see backend spec §3/§5.
+const ONBOARDING_IMAGING_CONFIGURED = () => !!process.env.L1_COPILOT_IMAGING_WEBHOOK_URL;
+const ONBOARDING_IDENTITY_CONFIGURED = () => !!process.env.L1_COPILOT_PROVISIONING_WEBHOOK_URL;
+const onboardingPreflight = require('./server/l1-copilot/onboarding-preflight');
+
+// Ticket lookup used by resolveProvisioningRequester below -- reuses the
+// same real-instance-first, demo-fallback pattern as the
+// /api/l1-copilot/servicenow/ticket/:incident route rather than a second
+// hand-rolled version of it.
+async function resolveTicketForRequester(incident) {
+  try {
+    return await snAdapter.getTicket(incident);
+  } catch (e) {
+    if (e.code === 'SERVICENOW_NOT_CONFIGURED' && demoData.isDemoModeEnabled()) {
+      return demoData.demoTicket(incident);
+    }
+    throw e;
+  }
+}
+
+app.post('/api/l1-copilot/onboarding/image', async (req, res) => {
+  const { assetTag, profileId } = req.body || {};
+  if (!assetTag) return res.status(400).json({ ok: false, error: 'assetTag required' });
+  const imgBlockers = await onboardingPreflight.imagingPreflightBlockers(assetTag, { getDeviceSecurityStatus });
+  if (imgBlockers.length) return res.status(409).json({ ok: false, blocked: true, blockers: imgBlockers, error: imgBlockers.join(' ') });
+  if (!ONBOARDING_IMAGING_CONFIGURED()) {
+    if (demoData.isDemoModeEnabled()) {
+      return res.json({ ok: true, ...demoData.demoImagingJob(assetTag, profileId), demoMode: true });
+    }
+    return res.status(503).json({ ok: false, error: 'No imaging platform is configured (set L1_COPILOT_IMAGING_WEBHOOK_URL to your MDT/SCCM/Intune/JAMF trigger).' });
+  }
+  try {
+    const hookRes = await fetch(process.env.L1_COPILOT_IMAGING_WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ assetTag, profileId })
+    });
+    if (!hookRes.ok) throw new Error('Imaging platform returned ' + hookRes.status);
+    const data = await hookRes.json();
+    return res.json({ ok: true, jobId: data.jobId, status: data.status || 'Running', percent: data.percent || 10 });
+  } catch (e) {
+    return res.status(502).json({ ok: false, error: e.message });
+  }
+});
+
+app.post('/api/l1-copilot/onboarding/provision', async (req, res) => {
+  const { name, email, department, role, requester, incident } = req.body || {};
+  if (!name || !email) return res.status(400).json({ ok: false, error: 'name and email required' });
+  // requester resolution: prefer the ITSM ticket's own requester field
+  // (pulled server-side via resolveTicketForRequester, not trusted from the
+  // client) when an incident number is given; fall back to the client-
+  // supplied requester string only when there's no incident to look up, or
+  // the lookup itself can't produce one. Either way, this only tightens the
+  // check -- never loosens the 503-when-unconfigured behavior below.
+  const resolvedRequester = await onboardingPreflight.resolveProvisioningRequester(
+    incident, requester, { getTicket: resolveTicketForRequester }
+  );
+  const provBlockers = await onboardingPreflight.provisioningPreflightBlockers(resolvedRequester, { getUserSecurityStatus });
+  if (provBlockers.length) return res.status(409).json({ ok: false, blocked: true, blockers: provBlockers, error: provBlockers.join(' ') });
+  if (!ONBOARDING_IDENTITY_CONFIGURED()) {
+    if (demoData.isDemoModeEnabled()) {
+      return res.json({ ok: true, ...demoData.demoProvisionedAccount(name, email), demoMode: true });
+    }
+    return res.status(503).json({ ok: false, error: 'No identity provider write-integration is configured (set L1_COPILOT_PROVISIONING_WEBHOOK_URL to your Entra ID/Okta/Workspace provisioning flow).' });
+  }
+  try {
+    const hookRes = await fetch(process.env.L1_COPILOT_PROVISIONING_WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, department, role })
+    });
+    if (!hookRes.ok) throw new Error('Identity provider returned ' + hookRes.status);
+    const data = await hookRes.json();
+    return res.json({ ok: true, userId: data.userId, mfaEnrollmentLink: data.mfaEnrollmentLink || null });
+  } catch (e) {
+    return res.status(502).json({ ok: false, error: e.message });
+  }
+});
+
+// --- Security Context: zero-trust / IAM lookup -----------------------------
+// device-status is genuinely real when Graph/Intune is configured (reuses
+// the same tested graph-intune-adapter.js getDevice() call the AD/Intune
+// routes above already use) -- complianceState just gets mapped into the
+// Title-Case shape this panel expects. user-status has no live-risk-signal
+// adapter yet (that needs IdentityRiskyUser.Read.All / auth-methods Graph
+// scopes on top of the device-read scope already granted) -- honestly
+// no-ops to demo data rather than fabricating a risk score from nothing.
+function mapComplianceState(state) {
+  if (state === 'compliant') return 'Compliant';
+  if (state === 'noncompliant') return 'Non-Compliant';
+  return 'Unknown';
+}
+
+// Shared helpers so the onboarding preflight checks below (image/provision)
+// reason over the SAME live-or-demo data the /security/* panel already
+// shows the tech, instead of the routes drifting out of sync or the
+// preflight check trusting client-supplied status fields it can't verify.
+async function getUserSecurityStatus(query) {
+  if (!query) return null;
+  if (demoData.isDemoModeEnabled()) {
+    return { ...demoData.demoUserSecurityStatus(query), demoMode: !graphAdapter.isConfigured() };
+  }
+  return null; // no live identity-risk adapter yet -- caller decides how to handle "unknown"
+}
+
+async function getDeviceSecurityStatus(asset) {
+  if (!asset) return null;
+  if (graphAdapter.isConfigured()) {
+    try {
+      const device = await graphAdapter.getDevice(asset);
+      if (!device) return null;
+      return { asset, complianceStatus: mapComplianceState(device.complianceState) };
+    } catch (e) {
+      if (demoData.isDemoModeEnabled()) return { ...demoData.demoDeviceSecurityStatus(asset), demoMode: true };
+      throw e;
+    }
+  }
+  if (demoData.isDemoModeEnabled()) return { ...demoData.demoDeviceSecurityStatus(asset), demoMode: true };
+  return null;
+}
+
+app.get('/api/l1-copilot/security/user-status', async (req, res) => {
+  const query = (req.query.query || '').trim();
+  if (!query) return res.status(400).json({ ok: false, error: 'query required' });
+  const status = await getUserSecurityStatus(query);
+  if (status) return res.json({ ok: true, ...status });
+  return res.status(503).json({ ok: false, error: 'No identity-risk adapter is configured for live user-status lookups yet.' });
+});
+
+app.get('/api/l1-copilot/security/device-status', async (req, res) => {
+  const asset = (req.query.asset || '').trim();
+  if (!asset) return res.status(400).json({ ok: false, error: 'asset required' });
+  if (graphAdapter.isConfigured()) {
+    try {
+      const status = await getDeviceSecurityStatus(asset);
+      if (!status) return res.status(404).json({ ok: false, error: `No managed device found for "${asset}".` });
+      return res.json({ ok: true, ...status });
+    } catch (e) {
+      return res.status(502).json({ ok: false, error: e.message });
+    }
+  }
+  if (demoData.isDemoModeEnabled()) {
+    return res.json({ ok: true, ...demoData.demoDeviceSecurityStatus(asset), demoMode: true });
+  }
+  return res.status(503).json({ ok: false, error: 'Graph/Intune is not configured for live device-status lookups.' });
 });
 
 // GCU PILOT FIX 2026-08-26: core Schools endpoint, no auth check.
@@ -5197,6 +6203,49 @@ app.post('/api/hc/portfolio-intelligence', requireRole(PM_INTERNAL_ROLES), async
 });
 // ── END HEALTHCARE PORTFOLIO INTELLIGENCE ───────────────────────────────────
 
+// ── HEALTHCARE RECOVERY WORK ITEM (2026-09-18) ─────────────────────────────
+// Converts an already-classified canonical HC revenue-leakage opportunity
+// into a governed Phase 1 recovery execution contract.
+// Classification remains owned by revenue-leakage-contract.js.
+// This route does not submit to payers or clearinghouses.
+app.post('/api/hc/recovery-work-item', requireRole(PM_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const payload = req.body || {};
+
+    const opportunity =
+      payload.opportunity &&
+      typeof payload.opportunity === 'object'
+        ? payload.opportunity
+        : payload;
+
+    const recoveryWorkItem = buildRecoveryWorkItem(opportunity);
+
+    res.json({
+      ok: true,
+      engine: 'hc-recovery-orchestrator-v1',
+      generatedAt: new Date().toISOString(),
+      recoveryWorkItem,
+      governance: {
+        mode: 'DETERMINISTIC',
+        llmRequired: false,
+        humanApprovalRequired: true,
+        targetSystem: 'MANUAL_BPO',
+        submissionMode: 'HUMAN_REVIEW',
+        writeBackToSourceSystems: false
+      }
+    });
+  } catch (err) {
+    console.error('[Healthcare Recovery Work Item]', err);
+    res.status(400).json({
+      ok: false,
+      error: 'Healthcare recovery work item generation failed',
+      message: err.message
+    });
+  }
+});
+// ── END HEALTHCARE RECOVERY WORK ITEM ───────────────────────────────────────
+
+
 // ── SCHOOLS INTELLIGENCE V3 (2026-08-29) ────────────────────────────────────
 // Same pattern as Healthcare above, using Schools' own domain config
 // (server/schools/schools-domain-config.js). Action ids prefixed
@@ -5450,6 +6499,25 @@ const DOC_ROUTER_NODES = {
   // "not strategist unless nothing else fits" rule below).
   pm: ['pm-war-room', 'strategist'],
   noc: ['noc-war-room', 'strategist'],
+  // Mortgage: same single-intake-node shape as hc/pm/noc above. The
+  // client-side plumbing for this (VERTICALS.mortgage + WAR_ROOM_ROUTES
+  // 'mortgage-war-room' entry in tsm-doc-search-multi.html, both with a
+  // real tsm_mortgage_docsearch_relay key) already existed before this was
+  // added here — this vertical id was simply missing from the classifier's
+  // own valid-vertical list, so the AI classifier could never actually
+  // return "mortgage", even though every other wire was already in place.
+  mortgage: ['mortgage-war-room', 'strategist'],
+  // College vertical: five sub-domain nodes (Financial Aid, Bursar,
+  // Endowment, Research/F&A, Accreditation) mirroring 're''s multi-node
+  // shape above. findWarRoomsForClassification() (tsm-war-room-registry.js)
+  // only ever opens one button per vertical regardless of sourceNode
+  // granularity — same as it does for 're' — so all five nodes resolve to
+  // a single 'college-war-room' launch target (college-strategist.html,
+  // the cross-domain aggregator), while sourceNode/nodes stay
+  // domain-specific here for routing/audit accuracy.
+  college: ['college-finaid', 'college-bursar', 'college-endowment', 'college-research-fa', 'college-accred', 'strategist'],
+  // Schools: same single-intake-node shape as hc/pm/noc/mortgage above.
+  schools: ['schools-war-room', 'strategist'],
 };
 
 const DOC_ROUTER_DOC_TYPES = [
@@ -5463,7 +6531,7 @@ const DOC_ROUTER_PROMPT = `You are TSM's document routing classifier. Analyze th
 Return JSON matching exactly this schema:
 {
   "documentType": one of ${JSON.stringify(DOC_ROUTER_DOC_TYPES)},
-  "verticals": array, subset of ["fo","ins","con","bpo","re","leg","hc","pm","noc"] — "pm" is property management (leases, work orders, vendor certificates, unit turnovers, occupancy); "noc" is network operations (incident reports, outages, asset/ticket data, uptime SLAs). Include MULTIPLE verticals if the content is genuinely relevant to more than one (e.g. a vendor invoice tied to a construction project may be relevant to both "con" and "fo"; a property sale with a legal dispute may be relevant to both "re" and "leg"; a claim denial with financial exposure may be relevant to both "hc" and "fo"; a PM vendor invoice may be relevant to both "pm" and "fo"),
+  "verticals": array, subset of ["fo","ins","con","bpo","re","leg","hc","pm","noc","college","mortgage","schools"] — "pm" is property management (leases, work orders, vendor certificates, unit turnovers, occupancy); "noc" is network operations (incident reports, outages, asset/ticket data, uptime SLAs); "college" is higher-education back-office operations — financial aid (FAFSA, Pell, R2T4 return-of-funds, verification, cohort default rate), bursar/tuition billing (payment plans, registration holds), endowment fund compliance (FASB ASU 2016-14 underwater funds, donor restrictions), research administration (grant awards, indirect cost/F&A recovery, effort reporting), and accreditation (findings, standards, site visits); "mortgage" is residential mortgage loan operations — loan file/underwriting status, outstanding conditions blocking closing, and compliance exceptions (TRID tolerance, RESPA/AfBA, HMDA/LAR data, fraud review); "schools" is K-12 school district back-office operations — grant files (Title I, IDEA, ESSER), monitoring items, and compliance exceptions/findings. Include MULTIPLE verticals if the content is genuinely relevant to more than one (e.g. a vendor invoice tied to a construction project may be relevant to both "con" and "fo"; a property sale with a legal dispute may be relevant to both "re" and "leg"; a claim denial with financial exposure may be relevant to both "hc" and "fo"; a PM vendor invoice may be relevant to both "pm" and "fo"; a college research grant invoice may be relevant to both "college" and "fo"; a mortgage compliance exception with reportable financial exposure may be relevant to both "mortgage" and "fo"; a schools grant finding with financial exposure may be relevant to both "schools" and "fo"),
   "primaryVertical": one value from "verticals",
   "routing": {
     "<vertical>": { "sourceNode": "<one valid node id for that vertical>", "nodes": ["<valid node ids...>"] }
@@ -5499,6 +6567,9 @@ leg: ${DOC_ROUTER_NODES.leg.join(', ')}
 hc:  ${DOC_ROUTER_NODES.hc.join(', ')}
 pm:  ${DOC_ROUTER_NODES.pm.join(', ')}
 noc: ${DOC_ROUTER_NODES.noc.join(', ')}
+college: ${DOC_ROUTER_NODES.college.join(', ')}  — FAFSA/Pell/R2T4/verification/cohort-default->college-finaid, tuition/payment-plan/registration-hold->college-bursar, endowment/donor-fund/FASB->college-endowment, grant/award/indirect-cost/F&A/effort-report->college-research-fa, accreditation-finding/standard/site-visit->college-accred
+mortgage: ${DOC_ROUTER_NODES.mortgage.join(', ')}  — single intake node, same shape as hc/pm/noc: sourceNode is always mortgage-war-room unless the doc is itself an escalation report
+schools: ${DOC_ROUTER_NODES.schools.join(', ')}  — single intake node, same shape as hc/pm/noc/mortgage: sourceNode is always schools-war-room unless the doc is itself an escalation report
 
 Rules:
 - Always include "strategist" in routing.<vertical>.nodes for every vertical listed.
@@ -6578,7 +7649,7 @@ app.patch('/api/wip/decision/:id', requireAuth, (req, res) => {
 });
 
 // ── TREND INTELLIGENCE ─────────────────────────────────────────────────────────
-app.post('/api/wip/trend', (req, res) => {
+app.post('/api/wip/trend', requireRole(ENTERPRISE_INTERNAL_ROLES), (req, res) => {
   const { vertical, event, date, resolutionHours, notes } = req.body || {};
   if (!ensureWipVertical(vertical)) return res.status(400).json({ ok: false, error: 'valid vertical required' });
   if (!event) return res.status(400).json({ ok: false, error: 'event required' });
@@ -6690,15 +7761,16 @@ function governanceId(prefix) {
   return prefix + '-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7);
 }
 
-app.post('/api/governance/audit', (req, res) => {
-  const { actor, action, resource, vertical } = req.body || {};
-  if (!actor || !action) return res.status(400).json({ ok: false, error: "actor and action required" });
+app.post('/api/governance/audit', requireRole(ENTERPRISE_INTERNAL_ROLES), (req, res) => {
+  const { action, resource, vertical } = req.body || {};
+  if (!action) return res.status(400).json({ ok: false, error: "action required" });
+  const actor = req.tsmSession.label || req.tsmSession.role;
   const entry = { id: governanceId('audit'), actor, action, resource: resource || null, vertical: vertical || null, ts: Date.now() };
   GOVERNANCE_AUDIT_LOG.push(entry);
   res.json({ ok: true, entry });
 });
 
-app.get('/api/governance/audit', (req, res) => {
+app.get('/api/governance/audit', requireRole(ENTERPRISE_INTERNAL_ROLES), (req, res) => {
   const { vertical, limit } = req.query;
   let entries = GOVERNANCE_AUDIT_LOG;
   if (vertical) entries = entries.filter(e => e.vertical === vertical);
@@ -6723,8 +7795,8 @@ app.get('/api/governance/risk', (req, res) => {
 // replaces the old single /resolve route (no frontend called it, so this is
 // a safe swap, not a breaking change) with the same pattern MDM already uses
 // for recommendation approvals.
-app.post('/api/governance/risk/:id/approve', requireAuth, (req, res) => {
-  const { actor } = req.body || {};
+app.post('/api/governance/risk/:id/approve', requireRole(ENTERPRISE_INTERNAL_ROLES), (req, res) => {
+  const actor = req.tsmSession.label || req.tsmSession.role;
   const risk = GOVERNANCE_RISK_REGISTER.find(r => r.id === req.params.id);
   if (!risk) return res.status(404).json({ ok: false, error: "Risk not found" });
   if (risk.status !== 'OPEN') return res.status(409).json({ ok: false, error: `Risk already ${risk.status}` });
@@ -6738,8 +7810,8 @@ app.post('/api/governance/risk/:id/approve', requireAuth, (req, res) => {
   res.json({ ok: true, risk, decision });
 });
 
-app.post('/api/governance/risk/:id/reject', requireAuth, (req, res) => {
-  const { actor } = req.body || {};
+app.post('/api/governance/risk/:id/reject', requireRole(ENTERPRISE_INTERNAL_ROLES), (req, res) => {
+  const actor = req.tsmSession.label || req.tsmSession.role;
   const risk = GOVERNANCE_RISK_REGISTER.find(r => r.id === req.params.id);
   if (!risk) return res.status(404).json({ ok: false, error: "Risk not found" });
   if (risk.status !== 'OPEN') return res.status(409).json({ ok: false, error: `Risk already ${risk.status}` });
@@ -6897,7 +7969,7 @@ app.post('/api/integration/:id/sync', requireAuth, (req, res) => {
   res.json({ ok: true, integration: item });
 });
 
-app.post('/api/integration/:id/error', (req, res) => {
+app.post('/api/integration/:id/error', requireRole(ENTERPRISE_INTERNAL_ROLES), (req, res) => {
   const { records, live } = getActiveIntegrationCatalog();
   const item = records.find(i => i.id === req.params.id);
   if (!item) return res.status(404).json({ ok: false, error: "Integration not found" });
@@ -6921,8 +7993,8 @@ app.get('/api/integration/health', (req, res) => {
 // silent auto-heal). Only applies to integrations currently 'degraded';
 // 'healthy' or 'warning' items aren't gated since they don't need a
 // go/no-go decision yet.
-app.post('/api/integration/:id/remediate/approve', requireAuth, (req, res) => {
-  const { actor } = req.body || {};
+app.post('/api/integration/:id/remediate/approve', requireRole(ENTERPRISE_INTERNAL_ROLES), (req, res) => {
+  const actor = req.tsmSession.label || req.tsmSession.role;
   const { records, live } = getActiveIntegrationCatalog();
   const item = records.find(i => i.id === req.params.id);
   if (!item) return res.status(404).json({ ok: false, error: "Integration not found" });
@@ -6939,8 +8011,8 @@ app.post('/api/integration/:id/remediate/approve', requireAuth, (req, res) => {
   res.json({ ok: true, integration: item, decision });
 });
 
-app.post('/api/integration/:id/remediate/reject', requireAuth, (req, res) => {
-  const { actor } = req.body || {};
+app.post('/api/integration/:id/remediate/reject', requireRole(ENTERPRISE_INTERNAL_ROLES), (req, res) => {
+  const actor = req.tsmSession.label || req.tsmSession.role;
   const { records, live } = getActiveIntegrationCatalog();
   const item = records.find(i => i.id === req.params.id);
   if (!item) return res.status(404).json({ ok: false, error: "Integration not found" });
@@ -6990,8 +8062,8 @@ app.get('/api/integration/decisions', (req, res) => {
 // tsm-exec-portal-upgrade.js Decision Center" pattern as Mortgage/PM -- the
 // L1 Ticket Copilot's Human Decision step wires ACCEPT / KEEP CURRENT
 // PRIORITY / SEND FOR REVIEW directly into this gate.
-const EXEC_PORTAL_VERTICALS = ['healthcare', 'finops', 'insurance', 'construction', 'legal', 'realestate', 'bpo', 'mortgage', 'pm', 'l1-copilot', 'schools', 'hotelops', 'honeywell'];
-const EXEC_PORTAL_GATE_PREFIX = { healthcare: 'HC', finops: 'FIN', insurance: 'INS', construction: 'CON', legal: 'LEG', realestate: 'RE', bpo: 'BPO', mortgage: 'MTG', pm: 'PM', 'l1-copilot': 'L1', schools: 'SCH', hotelops: 'HTL', honeywell: 'HW' };
+const EXEC_PORTAL_VERTICALS = ['healthcare', 'finops', 'insurance', 'construction', 'legal', 'realestate', 'bpo', 'mortgage', 'pm', 'l1-copilot', 'schools', 'hotelops', 'honeywell', 'college'];
+const EXEC_PORTAL_GATE_PREFIX = { healthcare: 'HC', finops: 'FIN', insurance: 'INS', construction: 'CON', legal: 'LEG', realestate: 'RE', bpo: 'BPO', mortgage: 'MTG', pm: 'PM', 'l1-copilot': 'L1', schools: 'SCH', hotelops: 'HTL', honeywell: 'HW', college: 'COL' };
 const EXEC_PORTAL_HITL_GATES = {};
 EXEC_PORTAL_VERTICALS.forEach(v => {
   const gatePrefix = EXEC_PORTAL_GATE_PREFIX[v] || 'EXEC';
@@ -7005,16 +8077,28 @@ EXEC_PORTAL_VERTICALS.forEach(v => {
 // vertical it forms a stable entityId so re-deciding the same item (e.g. a
 // hold later upgraded to approve) is traceable to one entity across calls.
 // GCU PILOT FIX 2026-08-26: exec decisions across all verticals, no auth check.
-app.post('/api/exec-portal/:vertical/decide', requireAnyAuth, (req, res) => {
+app.post('/api/exec-portal/:vertical/decide', requireAnyAuth, async (req, res) => {
   const vertical = req.params.vertical;
   const gate = EXEC_PORTAL_HITL_GATES[vertical];
   if (!gate) return res.status(404).json({ ok: false, error: `Unknown vertical: ${vertical}` });
 
-  const { index, verdict, text, actor, meta } = req.body || {};
+  const { index, verdict, text, meta, tenantId } = req.body || {};
   if (index === undefined || index === null) return res.status(400).json({ ok: false, error: 'index required' });
   if (!['approved', 'rejected', 'hold'].includes(verdict)) {
     return res.status(400).json({ ok: false, error: "verdict must be 'approved', 'rejected', or 'hold'" });
   }
+
+  // Identity comes from the verified session (req.tsmSession, set by
+  // requireAnyAuth), never from the request body. The endpoint previously
+  // trusted a client-supplied `actor` field with a fallback to the literal
+  // string 'Executive' — any authenticated session (including a client-role
+  // one) could attribute a decision to any name, and approved decisions
+  // auto-relay into the BPO ledger below, so a spoofed actor propagated
+  // into real downstream work items.
+  const actor = req.tsmSession.label
+    || req.tsmSession.staffId
+    || (req.tsmSession.role === 'admin' ? 'Admin' : null)
+    || 'Unknown';
 
   const entityId = `exec-${vertical}-${index}`;
 
@@ -7031,7 +8115,7 @@ app.post('/api/exec-portal/:vertical/decide', requireAnyAuth, (req, res) => {
     entityId,
     entityType: 'exec-decision',
     decision: verdict === 'approved' ? 'APPROVED' : 'REJECTED',
-    actor: actor || 'Executive',
+    actor,
     meta: Object.assign({ text: text || null, vertical, index }, meta || {})
   });
 
@@ -7043,21 +8127,36 @@ app.post('/api/exec-portal/:vertical/decide', requireAnyAuth, (req, res) => {
   // endpoint (bpo-executive-portal.html's markExecuted()), so relaying here
   // too would double-write the same case.
   //
-  // clientId is deliberately left null here -- see commit message for why
-  // -- and is safe to leave null on repeat calls too, since PR #119 made
-  // clientId sticky in bpoUpsertWorkItem: a later upsert that omits it
-  // will no longer overwrite a clientId a BPO analyst has since set.
+  // clientId resolution: an optional client-supplied `tenantId` (sourced
+  // from TSMActiveMember.getId() -- never guessed, see tsm-active-member.js)
+  // is looked up against bpo_clients here, server-side, so a spoofed/invalid
+  // tenantId just resolves to no match rather than an attacker-chosen
+  // clientId. No tenantId, or no client linked to it, leaves clientId null
+  // exactly as before -- the "never guess" contract this relay started with
+  // is unchanged, this only adds a real (non-guessed) resolution path on
+  // top of it. Safe to leave null on repeat calls too: PR #119 made
+  // clientId sticky in bpoUpsertWorkItem, so a later omit no longer
+  // overwrites a clientId an analyst (or this resolution) has since set.
   if (verdict === 'approved' && vertical !== 'bpo') {
+    let resolvedClientId = null;
+    if (tenantId) {
+      try {
+        const client = await tsmLedger.bpoGetClientByTenantId(tenantId);
+        if (client) resolvedClientId = client.id;
+      } catch (e) {
+        console.warn(`[bpo-relay] tenantId lookup failed for ${vertical} decision ${index}:`, e.message);
+      }
+    }
     tsmLedger.bpoUpsertWorkItem(
       `${vertical.toUpperCase()}-${index}`,
       {
-        clientId: null,
+        clientId: resolvedClientId,
         vertical,
         stage: 'exec-approved',
         status: 'open',
         payload: { text: text || null, sourceVertical: vertical, sourceIndex: index, meta: meta || {} },
       },
-      actor || 'Executive'
+      actor
     ).catch(err => console.warn(`[bpo-relay] failed to relay ${vertical} decision ${index} into BPO ledger:`, err.message));
   }
 
@@ -7265,8 +8364,9 @@ const MDM_LAST_VALIDATED = {};
 // the rest of the platform's in-memory-state pattern; swap for the Fly volume if needed).
 const MDM_MERGE_LOG = [];
 
-app.post('/api/mdm/merge', requireAuth, (req, res) => {
-  const { domain, survivorId, mergedId, actor, decision } = req.body || {};
+app.post('/api/mdm/merge', requireRole(ENTERPRISE_INTERNAL_ROLES), (req, res) => {
+  const { domain, survivorId, mergedId, decision } = req.body || {};
+  const actor = req.tsmSession.label || req.tsmSession.role;
   if (!domain || !survivorId || !mergedId) {
     return res.status(400).json({ ok: false, error: 'domain, survivorId, mergedId required' });
   }
@@ -7281,7 +8381,7 @@ app.post('/api/mdm/merge', requireAuth, (req, res) => {
     domain, survivorId, mergedId,
     survivorName: survivor.name, mergedName: merged.name,
     decision: decision === 'REJECTED' ? 'REJECTED' : 'APPROVED',
-    actor: actor || 'Unassigned',
+    actor,
     ts: new Date().toISOString()
   };
   MDM_MERGE_LOG.push(entry);
@@ -7318,8 +8418,8 @@ app.get('/api/mdm/recommendations', (req, res) => {
   res.json({ ok: true, count: recs.length, recommendations: recs });
 });
 
-app.post('/api/mdm/recommendations/:id/approve', requireAuth, (req, res) => {
-  const { actor } = req.body || {};
+app.post('/api/mdm/recommendations/:id/approve', requireRole(ENTERPRISE_INTERNAL_ROLES), (req, res) => {
+  const actor = req.tsmSession.label || req.tsmSession.role;
   const recs = generateRecommendations(MDM_SEED_DATA, MDM_RESOLVED_RECS);
   const rec = recs.find(r => r.id === req.params.id);
   if (!rec) return res.status(404).json({ ok: false, error: 'Recommendation not found or already resolved' });
@@ -7333,7 +8433,7 @@ app.post('/api/mdm/recommendations/:id/approve', requireAuth, (req, res) => {
       id: `MRG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       domain: rec.domain, survivorId: rec.survivorId, mergedId: rec.mergedId,
       survivorName: survivor.name, mergedName: merged.name,
-      decision: 'APPROVED', actor: actor || 'Unassigned', ts: new Date().toISOString(),
+      decision: 'APPROVED', actor, ts: new Date().toISOString(),
       recommendationId: rec.id
     };
     MDM_MERGE_LOG.push(entry);
@@ -7345,13 +8445,13 @@ app.post('/api/mdm/recommendations/:id/approve', requireAuth, (req, res) => {
   MDM_RECOMMENDATION_DECISIONS.push({
     id: `DEC-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
     recommendationId: rec.id, domain: rec.domain, type: rec.type,
-    decision: 'APPROVED', actor: actor || 'Unassigned', ts: new Date().toISOString()
+    decision: 'APPROVED', actor, ts: new Date().toISOString()
   });
   res.json({ ok: true, resolved: rec });
 });
 
-app.post('/api/mdm/recommendations/:id/reject', requireAuth, (req, res) => {
-  const { actor } = req.body || {};
+app.post('/api/mdm/recommendations/:id/reject', requireRole(ENTERPRISE_INTERNAL_ROLES), (req, res) => {
+  const actor = req.tsmSession.label || req.tsmSession.role;
   const recs = generateRecommendations(MDM_SEED_DATA, MDM_RESOLVED_RECS);
   const rec = recs.find(r => r.id === req.params.id);
   if (!rec) return res.status(404).json({ ok: false, error: 'Recommendation not found or already resolved' });
@@ -7361,7 +8461,7 @@ app.post('/api/mdm/recommendations/:id/reject', requireAuth, (req, res) => {
       id: `MRG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       domain: rec.domain, survivorId: rec.survivorId, mergedId: rec.mergedId,
       survivorName: rec.survivorName, mergedName: rec.mergedName,
-      decision: 'REJECTED', actor: actor || 'Unassigned', ts: new Date().toISOString(),
+      decision: 'REJECTED', actor, ts: new Date().toISOString(),
       recommendationId: rec.id
     });
   }
@@ -7371,7 +8471,7 @@ app.post('/api/mdm/recommendations/:id/reject', requireAuth, (req, res) => {
   MDM_RECOMMENDATION_DECISIONS.push({
     id: `DEC-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
     recommendationId: rec.id, domain: rec.domain, type: rec.type,
-    decision: 'REJECTED', actor: actor || 'Unassigned', ts: new Date().toISOString()
+    decision: 'REJECTED', actor, ts: new Date().toISOString()
   });
   res.json({ ok: true, resolved: rec });
 });
@@ -7523,9 +8623,8 @@ app.get('/api/mdm/mission-queue', (req, res) => {
   res.json({ ok: true, summary: mdmSummarizeQueue(queue), queue });
 });
 
-app.post('/api/mdm/mission-queue/:id/claim', requireAuth, (req, res) => {
-  const { actor } = req.body || {};
-  if (!actor) return res.status(400).json({ ok: false, error: 'actor required' });
+app.post('/api/mdm/mission-queue/:id/claim', requireRole(ENTERPRISE_INTERNAL_ROLES), (req, res) => {
+  const actor = req.tsmSession.label || req.tsmSession.role;
   const queue = mdmBuildQueue(MDM_SEED_DATA, MDM_RESOLVED_RECS, MDM_MISSION_CLAIMS);
   const mission = queue.find(m => m.id === req.params.id);
   if (!mission) return res.status(404).json({ ok: false, error: 'Mission not found or already resolved' });
@@ -7545,7 +8644,7 @@ app.post('/api/mdm/mission-queue/:id/release', requireAuth, (req, res) => {
 // Real reset: restores every domain to its original seeded state (undoes any
 // approved merges) and clears the decision log. Previously "RESET DATA" just
 // re-fetched current state with no way to actually undo anything.
-app.post('/api/mdm/reset', requireAuth, (req, res) => {
+app.post('/api/mdm/reset', requireRole(ENTERPRISE_INTERNAL_ROLES), (req, res) => {
   Object.keys(MDM_SEED_DATA_ORIGINAL).forEach(domain => {
     MDM_SEED_DATA[domain] = JSON.parse(JSON.stringify(MDM_SEED_DATA_ORIGINAL[domain]));
   });

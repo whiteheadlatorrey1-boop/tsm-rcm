@@ -47,6 +47,44 @@
     return 'medium';
   }
 
+  // TSM FIX: same class of bug already fixed in hc-denial-war-room.html's
+  // buildHCStructuredCase() and hc-main-strategist.html's
+  // wrGeneratePhysicianEMTemplate — engine outputs are raw LLM text that's
+  // frequently markdown-formatted ("**Claim ID:** HC-...", or a bold
+  // section heading on its own line with the real content on the next
+  // line) even when the system prompt asks for plain "Label: value"
+  // bullets. extract()'s regex expects "label[:\s]+value" immediately
+  // after the label with no markdown in between, so a bold marker breaks
+  // the match — e.g. claimId ended up capturing just the trailing "ID"
+  // (rendered downstream as the duplicated, meaningless "Claim ID"), and
+  // parseE2's denial-reason line ended up as the raw "**Denial Reason**"
+  // heading instead of the real explanation. This third copy of the
+  // extraction logic never got the fix that landed on the other two.
+  // Strip markdown once, before any field regex runs.
+  // TSM FIX: kept in sync with the identical fix in hc-denial-war-room.html
+  // (buildHCStructuredCase) and hc-main-strategist.html
+  // (wrGeneratePhysicianEMTemplate) — the LLM sometimes answers a field
+  // with a markdown table row ("| CO-50 (...) |") instead of a plain
+  // sentence, and none of the replacements above touch pipe characters,
+  // so it rode through verbatim into extracted fields. Strip separator
+  // rows and unwrap "| cell | cell |" rows the same way here for
+  // consistency across all three copies of this helper.
+  function stripMd(text) {
+    if (!text) return text;
+    return text
+      .replace(/\*\*(.*?)\*\*/g, '$1')   // **bold**
+      .replace(/\*(.*?)\*/g, '$1')       // *italic*
+      .replace(/__(.*?)__/g, '$1')       // __bold__
+      .replace(/_(.*?)_/g, '$1')         // _italic_
+      .replace(/`(.*?)`/g, '$1')         // `code`
+      .replace(/^#{1,6}\s+/gm, '')       // # headings
+      .replace(/^\s*[-*+]\s+/gm, '')     // - / * / + bullet markers
+      .replace(/^\s*\|?[\s:-]*\|[\s:|-]*\|?\s*$/gm, '') // table separator rows (---|---)
+      .replace(/^\s*\|\s*(.*?)\s*\|\s*$/gm, function (_, inner) {
+        return inner.split('|').map(function (c) { return c.trim(); }).filter(Boolean).join(' — ');
+      });
+  }
+
   // ── Engine parsers ────────────────────────────────────────────────────────
 
   // Engine 1 — Document Intel
@@ -153,11 +191,11 @@
 
   function packageMission(docText, outputs) {
     // outputs is array [e1, e2, e3, e4, e5] (0-indexed)
-    const e1Text = outputs[0] || '';
-    const e2Text = outputs[1] || '';
-    const e3Text = outputs[2] || '';
-    const e4Text = outputs[3] || '';
-    const e5Text = outputs[4] || '';
+    const e1Text = stripMd(outputs[0] || '');
+    const e2Text = stripMd(outputs[1] || '');
+    const e3Text = stripMd(outputs[2] || '');
+    const e4Text = stripMd(outputs[3] || '');
+    const e5Text = stripMd(outputs[4] || '');
 
     const doc  = parseE1(e1Text);
     const rc   = parseE2(e2Text);

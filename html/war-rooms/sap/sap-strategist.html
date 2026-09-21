@@ -1,0 +1,1921 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SAP Strategist — Commerce → CRM → CPQ → SD</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #0b0f14; --panel: #121821; --border: #223042; --text: #e6edf3;
+    --muted: #8ea0b5; --accent: #4da3ff; --high: #ff5d5d; --med: #ffb547; --low: #4caf6f;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: -apple-system, Segoe UI, Roboto, sans-serif; }
+  header { padding: 20px 28px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+  header h1 { font-size: 18px; margin: 0; }
+  header .sub { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  main { padding: 24px 28px; max-width: 1200px; margin: 0 auto; }
+  .domain-nav { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+  .domain-nav a { color: var(--muted); text-decoration: none; font-size: 12px; padding: 6px 12px; border: 1px solid var(--border); border-radius: 6px; }
+  .domain-nav a:hover { color: var(--accent); border-color: var(--accent); }
+
+  /* Cross-system flow banner — SAP chain is sequential, unlike Honeywell's
+     independent-incident domains, so this renders as a left-to-right chain
+     with arrows rather than an unordered card grid. */
+  .flow-banner { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 18px 20px; margin-bottom: 20px; }
+  .flow-banner .flow-title { font-size: 12px; letter-spacing: .06em; color: var(--muted); margin-bottom: 12px; }
+  .flow-chain { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .flow-node { border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; font-size: 12px; font-weight: 700; opacity: .45; }
+  .flow-node.live { opacity: 1; }
+  .flow-arrow { color: var(--muted); font-size: 16px; }
+
+  .coverage-panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; margin-bottom: 20px; font-size: 12.5px; }
+  .coverage-panel .cov-title { font-size: 12px; letter-spacing: .06em; color: var(--muted); margin-bottom: 10px; }
+  .coverage-row { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
+  .coverage-row .mark.ok { color: var(--low); }
+  .coverage-row .mark.pending { color: var(--muted); }
+
+  .cross-check-banner { background: rgba(255,93,93,.08); border: 1px solid var(--high); border-radius: 10px; padding: 16px 18px; margin-bottom: 20px; }
+  .cross-check-banner .cc-title { font-weight: 700; font-size: 12.5px; color: var(--high); margin-bottom: 8px; letter-spacing: .02em; }
+  .cross-check-banner .cc-item { font-size: 12.5px; margin-bottom: 8px; line-height: 1.5; }
+  .cross-check-banner .cc-item:last-child { margin-bottom: 0; }
+
+  .support-panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; margin: 20px 0; font-size: 12.5px; }
+  .support-row { display: flex; justify-content: space-between; align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--border); }
+  .support-row:last-child { border-bottom: none; }
+  .support-row .sr-label { font-weight: 700; }
+  .support-row .sr-detail { color: var(--muted); font-size: 11.5px; text-align: right; }
+
+  .alert-card { background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--muted); border-radius: 8px; padding: 16px 18px; margin-bottom: 14px; }
+  .alert-card.stale { opacity: 0.55; }
+  .alert-card.empty-domain { opacity: .5; border-left-style: dashed; }
+  .alert-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+  .alert-domain { font-weight: 700; font-size: 13px; letter-spacing: 0.04em; }
+  .alert-module { color: var(--muted); font-size: 11px; margin-bottom: 8px; }
+  .alert-ts { color: var(--muted); font-size: 11px; }
+  .alert-body { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; font-size: 13px; }
+  .alert-body .metric-val { font-weight: 700; }
+  .alert-body .metric-lbl { color: var(--muted); font-size: 11px; }
+  .actions { display: flex; gap: 10px; margin-top: 20px; }
+  button { background: var(--accent); border: none; color: #fff; padding: 10px 18px; border-radius: 8px; font-size: 13px; cursor: pointer; font-weight: 600; }
+  button.secondary { background: transparent; border: 1px solid var(--border); color: var(--text); }
+
+  .demo-panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px;
+    margin-bottom: 20px;
+  }
+
+  .demo-title {
+    font-size: 12px;
+    letter-spacing: .08em;
+    color: var(--accent);
+    font-weight: 800;
+    margin-bottom: 6px;
+  }
+
+  .demo-subtitle {
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.5;
+    margin-bottom: 16px;
+  }
+
+  .demo-section {
+    margin-top: 16px;
+  }
+
+  .demo-section-title {
+    color: var(--muted);
+    font-size: 10px;
+    letter-spacing: .08em;
+    margin-bottom: 8px;
+  }
+
+  .demo-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .demo-buttons button {
+    font-size: 11px;
+    padding: 8px 11px;
+  }
+
+  .demo-buttons button.active {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+
+  .demo-progress {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(80px, 1fr));
+    gap: 6px;
+    margin: 16px 0;
+  }
+
+  .demo-step {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 7px 5px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 10px;
+    font-weight: 700;
+  }
+
+  .demo-step.active {
+    color: var(--text);
+    border-color: var(--accent);
+  }
+
+  .demo-step.complete {
+    color: var(--low);
+    border-color: var(--low);
+  }
+
+  .demo-state {
+    border-left: 3px solid var(--accent);
+    background: rgba(77,163,255,.06);
+    border-radius: 6px;
+    padding: 14px 16px;
+    margin-top: 12px;
+    font-size: 12.5px;
+    line-height: 1.55;
+  }
+
+  .demo-state strong {
+    color: var(--text);
+  }
+
+  .demo-state .muted {
+    color: var(--muted);
+  }
+
+  .demo-panel-inner {
+    display: none;
+    margin-top: 12px;
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: rgba(255,255,255,.015);
+  }
+
+  .demo-panel-inner.show {
+    display: block;
+  }
+
+  .decision-grid,
+  .challenge-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px;
+  }
+
+  .decision-item,
+  .challenge-item {
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 10px;
+    font-size: 11px;
+  }
+
+  .decision-item .label,
+  .challenge-item .label {
+    color: var(--muted);
+    font-size: 10px;
+    margin-bottom: 4px;
+  }
+
+  .architecture-flow {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 2;
+    white-space: pre-wrap;
+  }
+
+  .architecture-flow strong {
+    color: var(--accent);
+  }
+
+  @media (max-width: 700px) {
+    .demo-progress {
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+
+  #toast { position: fixed; bottom: 20px; right: 20px; background: var(--panel); border: 1px solid var(--border); padding: 12px 18px; border-radius: 8px; opacity: 0; transition: opacity .2s; font-size: 13px; }
+  #toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>SAP Strategist</h1>
+    <div class="sub">Reads the Commerce Cloud, CRM/C4C, CPQ, and SD (O2C) relay payloads — every stage shown at once, in SAP process order, not just the latest</div>
+  </div>
+  <div class="sub" id="clock"></div>
+</header>
+<main>
+  <div class="domain-nav">
+    <a href="/html/war-rooms/catalog/catalog-war-room.html">SAP Commerce Cloud / Web Channel</a>
+    <a href="/html/war-rooms/crm/crm-war-room.html">SAP CRM / C4C</a>
+    <a href="/html/war-rooms/cpq/cpq-war-room.html">SAP CPQ</a>
+    <a href="/html/war-rooms/o2c/o2c-war-room.html">SAP SD — O2C</a>
+    <a href="/html/war-rooms/mdm/mdm-war-room.html">MDM</a>
+    <a href="/html/war-rooms/approval/approval-war-room.html">Approval Center</a>
+    <a href="/html/war-rooms/integration-hub/integration-hub-strategist.html">Integration Hub</a>
+    <a href="/html/war-rooms/sap/sap-howto.html">How-To Guide</a>
+    <a href="/html/war-rooms/digital-twin/digital-twin.html">↑ Digital Twin (Enterprise View)</a>
+  </div>
+
+
+  <div class="demo-panel" id="architectDemo">
+    <div class="demo-title">SAP ARCHITECT INTERVIEW MODE</div>
+    <div class="demo-subtitle">
+      Demonstrate enterprise process reasoning across Commerce Cloud / Hybris,
+      Web Channel, CRM/C4C, MDM, CPQ, Approval, Integration, and SD/O2C.
+      The controls below drive a simulated interview narrative without altering
+      the underlying SAP relay payloads.
+    </div>
+
+    <div class="demo-progress" id="demoProgress">
+      <div class="demo-step" data-step="detect">DETECT</div>
+      <div class="demo-step" data-step="scope">SCOPE</div>
+      <div class="demo-step" data-step="trace">TRACE</div>
+      <div class="demo-step" data-step="isolate">ISOLATE</div>
+      <div class="demo-step" data-step="resolve">RESOLVE</div>
+      <div class="demo-step" data-step="learn">LEARN</div>
+    </div>
+
+    <div class="demo-section">
+      <div class="demo-section-title">1 · START / TRACE</div>
+      <div class="demo-buttons">
+        <button id="startJourneyBtn">START JOURNEY</button>
+        <button class="secondary" id="openCommerceBtn">OPEN COMMERCE</button>
+        <button class="secondary" id="traceWebChannelBtn">TRACE WEB CHANNEL</button>
+        <button class="secondary" id="traceCustomerBtn">TRACE CUSTOMER</button>
+        <button class="secondary" id="inspectCustomerBtn">INSPECT CUSTOMER DATA</button>
+        <button class="secondary" id="traceMdmBtn">TRACE TO MDM</button>
+        <button class="secondary" id="downstreamBtn">TRACE DOWNSTREAM IMPACT</button>
+      </div>
+    </div>
+
+    <div class="demo-section">
+      <div class="demo-section-title">2 · CPQ / APPROVAL / INTEGRATION</div>
+      <div class="demo-buttons">
+        <button class="secondary" id="openCpqBtn">OPEN CPQ QUOTE</button>
+        <button class="secondary" id="dependenciesBtn">VIEW DEPENDENCIES</button>
+        <button class="secondary" id="approvalBtn">OPEN APPROVAL</button>
+        <button class="secondary" id="failureBtn">SIMULATE INTEGRATION FAILURE</button>
+        <button class="secondary" id="resolutionBtn">TRACE RESOLUTION PATH</button>
+        <button class="secondary" id="o2cBtn">OPEN O2C</button>
+      </div>
+    </div>
+
+    <div class="demo-section">
+      <div class="demo-section-title">3 · ENTERPRISE INTELLIGENCE</div>
+      <div class="demo-buttons">
+        <button class="secondary" id="impactBtn">VIEW ENTERPRISE IMPACT</button>
+        <button class="secondary" id="digitalTwinBtn">OPEN DIGITAL TWIN</button>
+        <button class="secondary" id="strategistBtn">OPEN STRATEGIST</button>
+        <button class="secondary" id="analysisBtn">STRATEGIST ANALYSIS</button>
+        <button class="secondary" id="decisionBtn">CREATE EXECUTIVE DECISION</button>
+      </div>
+    </div>
+
+    <div class="demo-section">
+      <div class="demo-section-title">4 · ARCHITECTURE / PORTFOLIO / INTERVIEW</div>
+      <div class="demo-buttons">
+        <button class="secondary" id="architectureBtn">ARCHITECTURE VIEW</button>
+        <button class="secondary" id="otherAppsBtn">SHOW OTHER TSM APPLICATIONS</button>
+        <button class="secondary" id="challengeBtn">START ARCHITECT INTERVIEW CHALLENGE</button>
+        <button class="secondary" id="s4FicoChallengeBtn">START S/4HANA + FICO CHALLENGE</button>
+        <button class="secondary" id="analyticsHxmChallengeBtn">START ANALYTICS + HXM CHALLENGE</button>
+      </div>
+    </div>
+
+    <div class="demo-state" id="demoState">
+      <strong>READY</strong><br>
+      Select <strong>START JOURNEY</strong> to begin the enterprise-process walkthrough.
+    </div>
+
+    <div class="demo-panel-inner" id="decisionPanel"></div>
+    <div class="demo-panel-inner" id="architecturePanel"></div>
+    <div class="demo-panel-inner" id="appsPanel"></div>
+    <div class="demo-panel-inner" id="interviewPanel"></div>
+    <div class="demo-panel-inner" id="challengePanel"></div>
+  </div>
+
+  <div class="flow-banner">
+    <div class="flow-title">SAP CROSS-SYSTEM FLOW</div>
+    <div class="flow-chain" id="flowChain"></div>
+  </div>
+
+  <div class="coverage-panel">
+    <div class="cov-title">SAP COMPETENCY COVERAGE</div>
+    <div id="coverageList"></div>
+  </div>
+
+  <div id="mdmCrossCheck"></div>
+
+  <div id="alertList"></div>
+
+  <div class="support-panel">
+    <div class="cov-title">SUPPORTING SIGNALS — MDM · APPROVAL · INTEGRATION HUB</div>
+    <div id="supportList"></div>
+  </div>
+
+  <div class="actions">
+    <button id="relayExecBtn">Relay to Executive Portal</button>
+    <button class="secondary" id="refreshBtn">Refresh</button>
+  </div>
+</main>
+<div id="toast"></div>
+
+<script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
+<script>
+(function () {
+  // Fixed SAP process order — this strategist renders the chain in the
+  // order the business flow actually happens (Commerce -> CRM/C4C -> CPQ ->
+  // SD), unlike college-strategist.html's "most recently relayed first"
+  // sort, because a SAP reviewer needs to see WHERE in the chain a deal
+  // currently sits, not which system happened to post last.
+  const DOMAINS = [
+    { key: 'CATALOG', label: 'SAP COMMERCE CLOUD', module: 'Web Channel / Product Master (MM01/MM02)', color: 'var(--low)', moneyKeys: [] },
+    { key: 'CRM',     label: 'SAP CRM / C4C',       module: 'Lead, Opportunity, Account, Service Ticket', color: 'var(--med)', moneyKeys: ['pipeline_value'] },
+    { key: 'CPQ',     label: 'SAP CPQ',             module: 'Configure, Price, Quote', color: 'var(--accent)', moneyKeys: ['quote_value'] },
+    { key: 'O2C',     label: 'SAP SD — ORDER-TO-CASH', module: 'Sales Order → Delivery → Billing', color: 'var(--high)', moneyKeys: ['order_value'] }
+  ];
+
+  // Supporting engines — not part of the sequential order flow itself, but
+  // the systems that make it trustworthy: MDM (master data quality behind
+  // the customer/product records CRM & CPQ read), Approval (the actual
+  // release-strategy engine behind CPQ's "Approval Workflow" and O2C's
+  // "Discount Approval" stages), and Integration Hub (the interface
+  // monitoring layer — SAP PI/PO/CPI analog — that would show WHERE a
+  // Commerce->CRM or CPQ->SD handoff broke).
+  const SUPPORT_DOMAINS = [
+    { key: 'MDM',         label: 'MDM — Master Data', module: 'Golden Record / Duplicate Management' },
+    { key: 'APPROVAL',    label: 'Approval Center',   module: 'Release Strategy behind CPQ & O2C approval stages' },
+    { key: 'INTEGRATION', label: 'Integration Hub',   module: 'Interface monitoring (SAP PI/PO/CPI analog)' }
+  ];
+
+  const STALE_MS = 1000 * 60 * 60 * 12; // 12h — flags a payload as stale rather than hiding it
+
+  function tick() { document.getElementById('clock').textContent = new Date().toLocaleTimeString(); }
+  setInterval(tick, 1000); tick();
+
+  function showToast(msg, isErr) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.style.color = isErr ? 'var(--high)' : 'var(--text)';
+    t.classList.add('show');
+    clearTimeout(showToast._h);
+    showToast._h = setTimeout(() => t.classList.remove('show'), 2500);
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  function tsMs(payload) {
+    // Domains here write ISO strings (new Date().toISOString()) rather
+    // than college's epoch-number Date.now() — normalize both.
+    if (!payload || payload.timestamp == null) return 0;
+    const t = payload.timestamp;
+    return typeof t === 'number' ? t : new Date(t).getTime() || 0;
+  }
+
+  function readDomain(domainKey) {
+    if (window.TSM && window.TSM.relay && window.TSM.relay.read) {
+      try {
+        const v = window.TSM.relay.read(domainKey);
+        if (v) return v;
+      } catch (e) { /* fall through to raw read */ }
+    }
+    const fallbackKey = 'TSM_' + domainKey + '_RELAY';
+    try {
+      const raw = localStorage.getItem(fallbackKey) || sessionStorage.getItem(fallbackKey);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function collectAll() {
+    return DOMAINS.map(d => ({ meta: d, payload: readDomain(d.key) }));
+  }
+
+  function collectSupport() {
+    return SUPPORT_DOMAINS.map(d => ({ meta: d, payload: readDomain(d.key) }));
+  }
+
+  // Same explain[].severity convention confirmed across O2C/CPQ/CRM/
+  // APPROVAL/GOVERNANCE/INTEGRATION/MDM in digital-twin.html — reused here
+  // rather than re-deriving a different tiering rule.
+  function countBySeverity(explain) {
+    const c = { high: 0, med: 0, low: 0 };
+    (explain || []).forEach(item => {
+      if (item && c.hasOwnProperty(item.severity)) c[item.severity]++;
+    });
+    return c;
+  }
+
+  function renderSupportSignals(support) {
+    const list = document.getElementById('supportList');
+    if (!list) return;
+    list.innerHTML = support.map(s => {
+      if (!s.payload) {
+        return `
+          <div class="support-row">
+            <span class="sr-label">${escapeHtml(s.meta.label)}</span>
+            <span class="sr-detail">no relay yet — ${escapeHtml(s.meta.module)}</span>
+          </div>`;
+      }
+      const { high, med, low } = countBySeverity(s.payload.explain);
+      let status;
+      if (high > 0) status = `${high} high-severity item${high === 1 ? '' : 's'} flagged`;
+      else if (med + low > 0) status = `${med + low} item${(med + low) === 1 ? '' : 's'} need attention`;
+      else status = 'clean — no open items';
+      return `
+        <div class="support-row">
+          <span class="sr-label">${escapeHtml(s.meta.label)}</span>
+          <span class="sr-detail">${escapeHtml(status)}</span>
+        </div>`;
+    }).join('');
+  }
+
+  // Cross-checks MDM's own records/duplicates against what CPQ (and
+  // Catalog) are actively quoting. This surfaces a real, already-present
+  // link in the sample data rather than inventing one: MDM's sample
+  // customer duplicate ("Phoenix Convention Center" / "Phoenix Conv.
+  // Ctr.") and its INCOMPLETE product record ("BMS-CORE-002") both match
+  // CPQ's sample quote Q-2026-0041, which uses that exact SKU for that
+  // exact customer. Matching stays deliberately simple (exact SKU match,
+  // first-two-token name match) since this is demo/sample data, not a
+  // production fuzzy-matching pipeline.
+  function firstTwoTokens(name) {
+    return String(name || '').toLowerCase().split(/\s+/).slice(0, 2).join(' ').trim();
+  }
+
+  function renderMdmCrossCheck(all) {
+    const el = document.getElementById('mdmCrossCheck');
+    if (!el) return;
+    const mdmPayload = readDomain('MDM');
+    const cpq = all.find(a => a.meta.key === 'CPQ');
+    const cpqPayload = cpq && cpq.payload;
+    if (!mdmPayload || !cpqPayload || !Array.isArray(cpqPayload.quotes)) {
+      el.innerHTML = '';
+      return;
+    }
+
+    const records = Array.isArray(mdmPayload.records) ? mdmPayload.records : [];
+    const findings = [];
+
+    cpqPayload.quotes.forEach(q => {
+      const qNameKey = firstTwoTokens(q.name);
+      records.forEach(r => {
+        const isRisky = (r.quality != null && r.quality < 85) || (r.duplicates > 0) ||
+          ['DUPLICATE', 'INCOMPLETE', 'STALE'].includes(String(r.status || '').toUpperCase());
+        if (!isRisky) return;
+
+        // Product-domain match: MDM record name equals a SKU on the quote.
+        const skuMatch = r.domain === 'Product' && Array.isArray(q.skus) && q.skus.includes(r.name);
+
+        // Customer-domain match: first two tokens of the MDM record name
+        // appear in the quote name (e.g. "phoenix convention" in
+        // "Phoenix Convention Center — Full BMS").
+        const nameMatch = r.domain === 'Customer' && qNameKey && String(q.name || '').toLowerCase().includes(qNameKey);
+
+        if (skuMatch || nameMatch) {
+          findings.push({
+            quote: q, record: r,
+            reason: skuMatch
+              ? `SKU ${r.name} on this quote is flagged ${r.status} in MDM (quality ${r.quality})`
+              : `Customer record for this quote is flagged ${r.status} in MDM (quality ${r.quality})`
+          });
+        }
+      });
+    });
+
+    if (!findings.length) {
+      el.innerHTML = '';
+      return;
+    }
+
+    el.innerHTML = `
+      <div class="cross-check-banner">
+        <div class="cc-title">⚠ MDM DATA QUALITY RISK — LIVE QUOTE EXPOSURE</div>
+        ${findings.map(f => `
+          <div class="cc-item">
+            Quote <b>${escapeHtml(f.quote.quote_id)}</b> — "${escapeHtml(f.quote.name)}" ($${Number(f.quote.net_value || 0).toLocaleString()}):
+            ${escapeHtml(f.reason)}. Resolve in the
+            <a href="/html/war-rooms/mdm/mdm-war-room.html" style="color:var(--high)">MDM war room</a> before this quote converts to a Sales Order.
+          </div>
+        `).join('')}
+      </div>`;
+  }
+
+  function metricsFor(meta, payload) {
+    const out = [];
+    if (payload && payload.kpis) {
+      Object.entries(payload.kpis).forEach(([k, v]) => {
+        const label = k.replace(/_/g, ' ');
+        const isMoney = /value|amount|disbursed/.test(k);
+        out.push({ label, value: isMoney ? '$' + Number(v || 0).toLocaleString() : v });
+      });
+    }
+    return out;
+  }
+
+  // Catalog's model has no dollar KPI directly — compute revenue-at-risk
+  // from the actual products array (low-stock / compliance-flagged / EOL
+  // items) rather than inventing a figure, so this stays grounded in the
+  // same data the war room itself reads.
+  function catalogExposure(payload) {
+    if (!payload || !Array.isArray(payload.products)) return 0;
+    const flags = payload.attention_flags || {};
+    const flaggedSkus = new Set([
+      ...(flags.low_stock || []).map(p => p.sku),
+      ...(flags.compliance || []).map(p => p.sku)
+    ]);
+    return payload.products.reduce((sum, p) => {
+      const atRisk = flaggedSkus.has(p.sku) || ['EOL Announced', 'End of Life'].includes(p.stage);
+      return sum + (atRisk ? Number(p.list_price || 0) * Number(p.stock_qty || 0) : 0);
+    }, 0);
+  }
+
+  function exposureFor(meta, payload) {
+    if (!payload) return 0;
+    if (meta.key === 'CATALOG') return catalogExposure(payload);
+    const kpis = payload.kpis || {};
+    return meta.moneyKeys.reduce((sum, k) => sum + Number(kpis[k] || 0), 0);
+  }
+
+  function renderFlow(all) {
+    const chain = document.getElementById('flowChain');
+    chain.innerHTML = all.map((a, i) => {
+      const node = `<div class="flow-node${a.payload ? ' live' : ''}" style="border-color:${a.meta.color}">${escapeHtml(a.meta.label)}</div>`;
+      return i < all.length - 1 ? node + '<span class="flow-arrow">&rarr;</span>' : node;
+    }).join('');
+  }
+
+  function renderCoverage(all) {
+    const list = document.getElementById('coverageList');
+    list.innerHTML = all.map(a => `
+      <div class="coverage-row">
+        <span class="mark ${a.payload ? 'ok' : 'pending'}">${a.payload ? '✓' : '○'}</span>
+        <span>${escapeHtml(a.meta.label)} <span style="color:var(--muted)">— ${escapeHtml(a.meta.module)}</span></span>
+      </div>
+    `).join('') + `
+      <div class="coverage-row" style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);">
+        <span>CROSS-SYSTEM FLOW: Commerce &rarr; CRM/C4C &rarr; CPQ &rarr; SD</span>
+      </div>`;
+  }
+
+  function render() {
+    const all = collectAll();
+    renderFlow(all);
+    renderCoverage(all);
+    renderMdmCrossCheck(all);
+    renderSupportSignals(collectSupport());
+
+    const list = document.getElementById('alertList');
+    list.innerHTML = all.map(a => {
+      if (!a.payload) {
+        return `
+          <div class="alert-card empty-domain" style="border-left-color:${a.meta.color}">
+            <div class="alert-head">
+              <span class="alert-domain">${escapeHtml(a.meta.label)}</span>
+              <span class="alert-ts">no relay yet</span>
+            </div>
+            <div class="alert-module">${escapeHtml(a.meta.module)}</div>
+          </div>`;
+      }
+      const ageMs = Date.now() - tsMs(a.payload);
+      const isStale = ageMs > STALE_MS;
+      const metrics = metricsFor(a.meta, a.payload);
+      const exposure = exposureFor(a.meta, a.payload);
+      return `
+        <div class="alert-card${isStale ? ' stale' : ''}" style="border-left-color:${a.meta.color}">
+          <div class="alert-head">
+            <span class="alert-domain">${escapeHtml(a.meta.label)}</span>
+            <span class="alert-ts">${a.payload.timestamp ? new Date(a.payload.timestamp).toLocaleString() : 'no timestamp'}${isStale ? ' — STALE' : ''}</span>
+          </div>
+          <div class="alert-module">${escapeHtml(a.meta.module)}${exposure ? ' · exposure $' + Number(exposure).toLocaleString() : ''}</div>
+          <div class="alert-body">
+            ${metrics.map(m => `<div><div class="metric-val">${escapeHtml(m.value)}</div><div class="metric-lbl">${escapeHtml(m.label)}</div></div>`).join('')}
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function severityFor(all, totalExposure) {
+    const o2c = all.find(a => a.meta.key === 'O2C');
+    const cpq = all.find(a => a.meta.key === 'CPQ');
+    const creditHolds = o2c && o2c.payload && o2c.payload.kpis ? Number(o2c.payload.kpis.credit_holds || 0) : 0;
+    const slaBreaches = cpq && cpq.payload && cpq.payload.kpis ? Number(cpq.payload.kpis.sla_breach_count || 0) : 0;
+    if (totalExposure >= 1000000 || creditHolds > 0) return 'CRITICAL';
+    if (totalExposure >= 250000 || slaBreaches > 0) return 'HIGH';
+    if (totalExposure > 0) return 'MODERATE';
+    return 'UNKNOWN';
+  }
+
+  function relayToExec() {
+    const all = collectAll();
+    const support = collectSupport();
+    const activeCount = all.filter(a => !!a.payload).length;
+    const totalExposure = all.reduce((sum, a) => sum + exposureFor(a.meta, a.payload), 0);
+    const combined = {
+      vertical: 'sap',
+      timestamp: Date.now(),
+      domain_count: activeCount,
+      total_exposure: totalExposure,
+      severity: severityFor(all, totalExposure),
+      domains: all.map(a => ({
+        domain: a.meta.key,
+        label: a.meta.label,
+        module: a.meta.module,
+        exposure: exposureFor(a.meta, a.payload),
+        payload: a.payload
+      })),
+      support: support.map(s => ({
+        domain: s.meta.key,
+        label: s.meta.label,
+        module: s.meta.module,
+        payload: s.payload
+      }))
+    };
+    const json = JSON.stringify(combined);
+    const EXEC_KEY = 'TSM_SAP_EXEC_RELAY';
+    try { sessionStorage.setItem(EXEC_KEY, json); } catch (e) { /* noop */ }
+    try { localStorage.setItem(EXEC_KEY, json); } catch (e) { /* noop */ }
+    showToast('Relayed ' + activeCount + ' of ' + all.length + ' SAP stage(s) to Executive Portal.');
+  }
+
+
+  /* ==========================================================
+     ARCHITECT INTERVIEW DEMO CONTROL LAYER
+     Keeps demo state local. Existing relay aggregation remains
+     unchanged.
+     ========================================================== */
+
+  const DEMO_LINKS = {
+    commerce: '/html/war-rooms/catalog/catalog-war-room.html',
+    crm: '/html/war-rooms/crm/crm-war-room.html',
+    mdm: '/html/war-rooms/mdm/mdm-war-room.html',
+    cpq: '/html/war-rooms/cpq/cpq-war-room.html',
+    approval: '/html/war-rooms/approval/approval-war-room.html',
+    integration: '/html/war-rooms/integration-hub/integration-hub-strategist.html',
+    o2c: '/html/war-rooms/o2c/o2c-war-room.html',
+    digitalTwin: '/html/war-rooms/digital-twin/digital-twin.html'
+  };
+
+  const DEMO = {
+    step: 'detect',
+    integrationFailure: false
+  };
+
+  function openDemoTab(url, name) {
+    const w = window.open(url, name);
+    if (!w) showToast('Browser blocked the new tab. Allow pop-ups for this site.', true);
+  }
+
+  function setDemoState(title, body, step) {
+    DEMO.step = step || DEMO.step;
+
+    const state = document.getElementById('demoState');
+    state.innerHTML = '<strong>' + title + '</strong><br>' + body;
+
+    const order = ['detect', 'scope', 'trace', 'isolate', 'resolve', 'learn'];
+    const current = order.indexOf(DEMO.step);
+
+    document.querySelectorAll('.demo-step').forEach(el => {
+      const idx = order.indexOf(el.dataset.step);
+      el.classList.toggle('active', idx === current);
+      el.classList.toggle('complete', idx >= 0 && idx < current);
+    });
+  }
+
+  function showDemoPanel(id, html) {
+    document.querySelectorAll('.demo-panel-inner').forEach(el => {
+      if (el.id !== id) el.classList.remove('show');
+    });
+
+    const panel = document.getElementById(id);
+    panel.innerHTML = html;
+    panel.classList.add('show');
+    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  document.getElementById('startJourneyBtn').addEventListener('click', () => {
+    DEMO.integrationFailure = false;
+    setDemoState(
+      'CUSTOMER JOURNEY STARTED',
+      'Commerce → CRM/C4C → MDM → CPQ → Approval → SD/O2C. ' +
+      '<span class="muted">The objective is to follow the business process, not troubleshoot an isolated screen.</span>',
+      'detect'
+    );
+  });
+
+  document.getElementById('openCommerceBtn').addEventListener('click', () => {
+    setDemoState(
+      'COMMERCE',
+      'Starting point: SAP Commerce Cloud / Web Channel. ' +
+      'The customer and product context enters the enterprise process here.',
+      'detect'
+    );
+    openDemoTab(DEMO_LINKS.commerce, 'tsm-sap-commerce');
+  });
+
+  document.getElementById('traceWebChannelBtn').addEventListener('click', () => {
+    const traceStageIndex = 1;
+
+    setDemoState(
+      'BUSINESS OBJECT TRACE',
+      'Tracing Phoenix Convention Center through SAP Web Channel ...',
+      'trace'
+    );
+
+    // Reuse the existing TRACE CUSTOMER implementation and activate
+    // the SAP WEB CHANNEL stage directly.
+    const traceButton = document.getElementById('traceCustomerBtn');
+
+    if (traceButton) {
+      traceButton.dataset.traceStartIndex = String(traceStageIndex);
+      traceButton.click();
+    }
+  });
+
+  document.getElementById('traceCustomerBtn').addEventListener('click', () => {
+    const trace = [
+      {
+        key: 'commerce',
+        label: 'SAP COMMERCE CLOUD / HYBRIS',
+        object: 'Customer interaction / commerce context',
+        question: 'Is the customer and product context entering the process correctly?',
+        evidence: 'Phoenix Convention Center identified as the business customer.',
+        dependency: 'Web Channel → CRM / C4C',
+        stage: 'DETECT'
+      },
+      {
+        key: 'web',
+        label: 'SAP WEB CHANNEL',
+        object: 'Commerce-facing transaction channel',
+        question: 'Is the transaction carrying the correct customer and product context downstream?',
+        evidence: 'Commerce context is available for downstream customer processing.',
+        dependency: 'CRM / C4C',
+        stage: 'SCOPE'
+      },
+      {
+        key: 'crm',
+        label: 'SAP CRM / C4C',
+        object: 'Account / opportunity / service context',
+        question: 'Does the customer record resolve to a trustworthy account?',
+        evidence: 'Duplicate customer context detected for Phoenix Convention Center.',
+        dependency: 'CRM / C4C → MDM',
+        stage: 'TRACE'
+      },
+      {
+        key: 'mdm',
+        label: 'MDM — CUSTOMER + PRODUCT MASTER DATA',
+        object: 'Golden customer / product record',
+        question: 'Is master data complete, unique and current?',
+        evidence: 'Customer duplicate signal and incomplete BMS-CORE-002 product signal.',
+        dependency: 'MDM → CPQ',
+        stage: 'TRACE'
+      },
+      {
+        key: 'cpq',
+        label: 'SAP CPQ',
+        object: 'Quote Q-2026-0041',
+        question: 'Can configuration, pricing and quote context be trusted?',
+        evidence: '$142,000 quote requires approval.',
+        dependency: 'CPQ → Approval',
+        stage: 'ISOLATE'
+      },
+      {
+        key: 'approval',
+        label: 'APPROVAL / GOVERNANCE',
+        object: 'Commercial release decision',
+        question: 'Can the transaction proceed through its required approval gate?',
+        evidence: 'Q-2026-0041 is currently marked NEEDS APPROVAL.',
+        dependency: 'Approval → Integration',
+        stage: 'RESOLVE'
+      },
+      {
+        key: 'integration',
+        label: 'INTEGRATION — CROSS-SYSTEM HANDOFF',
+        object: 'CPQ → SD / O2C handoff',
+        question: 'Did the source, interface or receiving system create the failure?',
+        evidence: 'Integration boundary is the control point for downstream handoff validation.',
+        dependency: 'Integration → SAP SD / O2C',
+        stage: 'ISOLATE'
+      },
+      {
+        key: 'o2c',
+        label: 'SAP SD / O2C',
+        object: 'Sales Order → Delivery → Billing → Cash',
+        question: 'Where does the upstream condition become measurable business impact?',
+        evidence: 'A blocked or invalid handoff can delay order execution and financial realization.',
+        dependency: 'Operational + financial impact',
+        stage: 'LEARN'
+      }
+    ];
+
+    let activeIndex = Number(
+      document.getElementById('traceCustomerBtn')?.dataset.traceStartIndex || 0
+    );
+
+    DEMO.traceIndex = activeIndex;
+
+    setDemoState(
+      'BUSINESS OBJECT TRACE',
+      'Tracing <strong>Phoenix Convention Center</strong> across the SAP process. Select a stage to inspect the business object, evidence, dependency and architect question.',
+      'trace'
+    );
+
+    const renderTrace = () => {
+      const node = trace[activeIndex];
+      DEMO.traceIndex = activeIndex;
+
+      showDemoPanel('decisionPanel', `
+        <div class="demo-title">SAP BUSINESS OBJECT TRACE</div>
+        <div class="demo-subtitle">
+          CUSTOMER: <strong>Phoenix Convention Center</strong>
+          · OBJECT: <strong>Customer / Commercial Transaction</strong>
+        </div>
+
+        <div class="demo-buttons" style="margin-top:16px;">
+          ${trace.map((item, index) => `
+            <button
+              class="${index === activeIndex ? '' : 'secondary'}"
+              data-sap-trace-index="${index}"
+              style="flex:1 1 210px;min-width:210px;text-align:left;"
+            >
+              ${String(index + 1).padStart(2, '0')} · ${item.label}
+            </button>
+          `).join('')}
+        </div>
+
+        <div class="demo-state" style="margin-top:16px;">
+          <strong>${String(activeIndex + 1).padStart(2, '0')} · ${node.label}</strong><br>
+          <span style="opacity:.7;">ARCHITECT STAGE:</span> ${node.stage}
+        </div>
+
+        <div class="decision-grid" style="margin-top:12px;">
+          <div class="decision-item">
+            <div class="label">BUSINESS OBJECT</div>
+            ${node.object}
+          </div>
+
+          <div class="decision-item">
+            <div class="label">ARCHITECT QUESTION</div>
+            ${node.question}
+          </div>
+
+          <div class="decision-item">
+            <div class="label">EVIDENCE</div>
+            ${node.evidence}
+          </div>
+
+          <div class="decision-item">
+            <div class="label">NEXT DEPENDENCY</div>
+            ${node.dependency}
+          </div>
+        </div>
+
+        <div class="demo-state" style="margin-top:12px;">
+          <strong>TRACE POSITION</strong><br>
+          ${trace.slice(0, activeIndex + 1).map(item => item.label).join(' → ')}
+        </div>
+
+        <div class="demo-buttons" style="margin-top:12px;">
+          <button class="secondary" id="tracePrevBtn" ${activeIndex === 0 ? 'disabled' : ''}>
+            ← PREVIOUS STAGE
+          </button>
+          <button id="traceNextBtn" ${activeIndex === trace.length - 1 ? 'disabled' : ''}>
+            NEXT STAGE →
+          </button>
+        </div>
+
+        <div class="demo-state" style="margin-top:16px;">
+          <strong>ARCHITECT INTERVIEW QUESTION</strong><br>
+          Where did the signal originate, what business object is affected,
+          which dependency carries it downstream, and where does the business
+          impact become measurable?
+        </div>
+
+        <div class="demo-state" style="margin-top:12px;">
+          <strong>INTERVIEW ANSWER</strong><br>
+          “I would trace the business object rather than investigate each
+          application in isolation. I start with the signal, identify the
+          affected object, validate the master-data source, follow the
+          dependency into CPQ and approval, then inspect the integration
+          boundary before concluding where the SD / O2C impact occurs.”
+        </div>
+
+        <div class="demo-buttons" style="margin-top:12px;">
+          <button id="challengeTraceStageBtn">
+            CHALLENGE ME ON THIS STAGE
+          </button>
+        </div>
+      `);
+
+      document.querySelectorAll('[data-sap-trace-index]').forEach(button => {
+        button.addEventListener('click', () => {
+          activeIndex = Number(button.dataset.sapTraceIndex);
+          renderTrace();
+        });
+      });
+
+      const stageChallenge = document.getElementById('challengeTraceStageBtn');
+
+      if (stageChallenge) {
+        stageChallenge.addEventListener('click', () => {
+          renderInterviewChallenge(activeIndex);
+        });
+      }
+
+      const prev = document.getElementById('tracePrevBtn');
+      const next = document.getElementById('traceNextBtn');
+
+      if (prev) {
+        prev.addEventListener('click', () => {
+          if (activeIndex > 0) {
+            activeIndex -= 1;
+            DEMO.traceIndex = activeIndex;
+            renderTrace();
+          }
+        });
+      }
+
+      if (next) {
+        next.addEventListener('click', () => {
+          if (activeIndex < trace.length - 1) {
+            activeIndex += 1;
+            DEMO.traceIndex = activeIndex;
+            renderTrace();
+          }
+        });
+      }
+    };
+
+
+    const S4_FICO_CHALLENGES = [
+      {
+        title: 'S/4HANA — END-TO-END PROCESS',
+        stage: 'S/4HANA',
+        scenario:
+          'A customer order is accepted in S/4HANA, but the expected downstream financial result is missing. Explain how you would trace the business object from the order through fulfillment and financial posting.',
+        expected: ['sales order', 'delivery', 'billing', 'financial document']
+      },
+      {
+        title: 'S/4HANA — SALES ORDER',
+        stage: 'Sales Order',
+        scenario:
+          'A sales order exists, but fulfillment is not progressing. Explain which business objects and master-data relationships you would validate before assuming the problem is purely technical.',
+        expected: ['sales order', 'customer', 'material', 'delivery']
+      },
+      {
+        title: 'S/4HANA — BILLING → FI',
+        stage: 'Billing → FI',
+        scenario:
+          'The delivery is completed, but the expected financial posting is missing. Trace the transition from logistics execution into billing and financial accounting.',
+        expected: ['delivery', 'billing', 'FI', 'accounting document']
+      },
+      {
+        title: 'SAP FICO — AR / GENERAL LEDGER',
+        stage: 'AR / General Ledger',
+        scenario:
+          'A customer has been billed, but Accounts Receivable does not show the expected open item. Explain how you would trace the accounting document, AR posting and General Ledger relationship.',
+        expected: ['accounting document', 'AR', 'open item', 'general ledger']
+      },
+      {
+        title: 'SAP FICO — CO / COST CENTER',
+        stage: 'CO / Cost Center',
+        scenario:
+          'Finance can see revenue, but management cannot explain the operational cost associated with the transaction. Explain how you would trace the cost assignment and its relationship to the financial result.',
+        expected: ['cost center', 'CO', 'cost posting', 'financial result']
+      },
+      {
+        title: 'S/4HANA + FICO — BUSINESS IMPACT',
+        stage: 'Business Impact',
+        scenario:
+          'A relatively small order-processing issue has now delayed billing and changed the financial picture. Explain how you would connect the operational condition to AR, GL and measurable business impact.',
+        expected: ['sales order', 'billing', 'AR', 'GL', 'business impact']
+      }
+    ];
+
+const ANALYTICS_HXM_CHALLENGES = [
+  {
+    title: 'BW/4HANA — DATA WAREHOUSE',
+    stage: 'BW/4HANA',
+    scenario: 'An executive report is missing current operational data. Explain how you would determine whether the issue originates in the BW/4HANA data warehouse layer or upstream source data.',
+    expected: ['BW/4HANA', 'data warehouse', 'source data', 'data flow']
+  },
+  {
+    title: 'BW/4HANA — DATA MODEL / PROVIDER',
+    stage: 'Data Model / Provider',
+    scenario: 'A report contains the correct business object but incorrect or incomplete analytical values. Explain how you would trace the analytical model, provider and underlying data structure.',
+    expected: ['data model', 'provider', 'business object', 'analytical data']
+  },
+  {
+    title: 'BW/4HANA — EXTRACTION → TRANSFORMATION',
+    stage: 'Extraction → Transformation',
+    scenario: 'Source-system records exist, but transformed analytical data is incomplete. Explain how you would trace extraction, transformation and loading before assuming the reporting layer is defective.',
+    expected: ['extraction', 'transformation', 'loading', 'source system']
+  },
+  {
+    title: 'BW/4HANA — REPORTING / ANALYTICS',
+    stage: 'Reporting / Analytics',
+    scenario: 'Two dashboards show different results for the same business metric. Explain how you would trace the analytical definition, modeled data and reporting layer to isolate the discrepancy.',
+    expected: ['reporting', 'analytics', 'business metric', 'data model']
+  },
+  {
+    title: 'SUCCESSFACTORS — EMPLOYEE DATA',
+    stage: 'Employee Data',
+    scenario: 'An employee record is correct in SuccessFactors but downstream analytics show stale information. Explain which employee data objects and synchronization boundaries you would validate.',
+    expected: ['SuccessFactors', 'employee data', 'employee record', 'synchronization']
+  },
+  {
+    title: 'SUCCESSFACTORS — HR PROCESS / WORKFLOW',
+    stage: 'HR Process / Workflow',
+    scenario: 'An HR transaction is submitted but the expected workflow action does not occur. Explain how you would trace the process, employee data dependency and workflow state.',
+    expected: ['HR process', 'workflow', 'employee data', 'workflow state']
+  },
+  {
+    title: 'SUCCESSFACTORS — INTEGRATION',
+    stage: 'Integration',
+    scenario: 'SuccessFactors contains current employee information, but BW/4HANA has not received the corresponding update. Explain how you would trace the integration boundary and identify where the data stopped progressing.',
+    expected: ['SuccessFactors', 'BW/4HANA', 'integration', 'employee data']
+  },
+  {
+    title: 'SUCCESSFACTORS + BW/4HANA — BUSINESS IMPACT',
+    stage: 'Business Impact',
+    scenario: 'A small employee-data synchronization issue has caused management reporting to use stale workforce information. Explain how you would connect the technical condition to the analytical and business consequence.',
+    expected: ['employee data', 'BW/4HANA', 'reporting', 'business impact']
+  }
+];
+
+    const INTERVIEW_CHALLENGES = [
+      {
+        stage: 'SAP COMMERCE CLOUD / HYBRIS',
+        question: 'A product is visible in the storefront, but the downstream commercial process cannot resolve the product context. What would you investigate first?',
+        hint: 'Separate storefront presentation from the canonical product/catalog source and verify the product identifier crossing the boundary.',
+        reasoning: 'Start with the product master/catalog object, verify SKU or product ID consistency, pricing and lifecycle state, then follow the object into the Web Channel and downstream systems.',
+        followUp: 'Assume the product exists in Commerce Cloud but the downstream system receives an unknown SKU. What boundary would you inspect next?',
+        expected: ['product identifier', 'catalog source', 'lifecycle', 'web channel']
+      },
+      {
+        stage: 'SAP WEB CHANNEL',
+        question: 'A customer can complete the Web Channel transaction, but CRM receives the transaction without the correct customer or product context. Where would you investigate?',
+        hint: 'Treat Web Channel as the transaction boundary and verify what context is actually being propagated downstream.',
+        reasoning: 'Validate the customer and product identifiers entering the channel, inspect the outbound transaction payload, then compare it with what CRM/C4C receives. The key is determining whether the loss occurs before, at, or after the channel boundary.',
+        followUp: 'Assume the Web Channel payload is correct, but CRM still has missing context. What would you inspect next?',
+        expected: ['transaction boundary', 'customer context', 'product context', 'downstream payload']
+      },
+      {
+        stage: 'SAP CRM / C4C',
+        question: 'The Web Channel identifies the customer, but CRM/C4C resolves the transaction to the wrong account. How would you isolate the problem?',
+        hint: 'Think account identity, duplicate records and the master-data relationship rather than the storefront.',
+        reasoning: 'Compare the customer identifier from the channel with the CRM/C4C account, check duplicate or conflicting records, then trace the master-data relationship into MDM before allowing downstream commercial processing to continue.',
+        followUp: 'If CRM contains two valid-looking accounts for the same customer, which system should become the source of truth?',
+        expected: ['account identity', 'duplicate', 'customer master', 'MDM']
+      },
+      {
+        stage: 'MDM — CUSTOMER + PRODUCT MASTER DATA',
+        question: 'The customer is duplicated and the product master is incomplete. How could that affect CPQ?',
+        hint: 'CPQ depends on trustworthy customer and product context before configuration and pricing can be trusted.',
+        reasoning: 'Determine which customer and product records are authoritative, resolve duplicate or incomplete master data, then verify that the corrected identifiers flow into CPQ before treating the quote as reliable.',
+        followUp: 'If CPQ already generated a quote using the bad master data, would you simply correct MDM and continue?',
+        expected: ['golden record', 'duplicate', 'product master', 'CPQ']
+      },
+      {
+        stage: 'SAP CPQ',
+        question: 'A $142,000 quote contains the expected product and customer, but the configuration or pricing cannot be trusted. What would you validate?',
+        hint: 'Break the quote into configuration, pricing and commercial authority.',
+        reasoning: 'Validate product configuration rules, pricing inputs, customer-specific conditions and quote version, then determine whether the quote can proceed to the required approval gate.',
+        followUp: 'Assume the quote is technically valid but exceeds an approval threshold. What changes in your investigation?',
+        expected: ['configuration', 'pricing', 'quote', 'approval']
+      },
+      {
+        stage: 'APPROVAL / GOVERNANCE',
+        question: 'The CPQ quote is valid but is marked NEEDS APPROVAL. What would you verify before releasing it?',
+        hint: 'Approval is a governance boundary, not merely another application screen.',
+        reasoning: 'Identify the applicable approval rule, threshold, approver and quote state, then verify that the required decision has been recorded before allowing the commercial transaction to cross into downstream execution.',
+        followUp: 'What would you investigate if the approval is complete but the order remains blocked?',
+        expected: ['approval rule', 'threshold', 'approver', 'release']
+      },
+      {
+        stage: 'INTEGRATION — CROSS-SYSTEM HANDOFF',
+        question: 'CPQ shows a completed commercial transaction, but SD/O2C never receives a usable order. How do you isolate source, interface and target responsibility?',
+        hint: 'Treat the integration boundary as three testable points: source, transport/mapping and receiving system.',
+        reasoning: 'Confirm the CPQ source payload, inspect interface delivery and mapping, then verify whether SD/O2C accepted, rejected or transformed the message. Avoid assuming the source or target is at fault without boundary evidence.',
+        followUp: 'If the message left CPQ successfully but failed schema validation downstream, where does the remediation belong?',
+        expected: ['source payload', 'interface', 'mapping', 'receiving system']
+      },
+      {
+        stage: 'SAP SD / O2C',
+        question: 'An upstream commercial issue has now delayed order execution. Where does the technical condition become measurable business impact?',
+        hint: 'Follow the order lifecycle from sales order through delivery and billing.',
+        reasoning: 'Identify where the transaction is blocked in the O2C lifecycle, quantify the operational consequence, then connect that condition to delivery timing, billing and financial realization.',
+        followUp: 'What evidence would you use to explain the impact to an executive rather than a technical team?',
+        expected: ['sales order', 'delivery', 'billing', 'financial impact']
+      }
+    ];
+
+    function normalizeInterviewText(value) {
+      return String(value || '')
+        .toLowerCase()
+        .replace(/[^a-z0-9\s/.-]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
+
+    function renderS4FicoChallenge(index) {
+      const challenge = S4_FICO_CHALLENGES[index];
+      if (!challenge) return;
+
+      const panel = document.getElementById('challengePanel');
+
+      panel.innerHTML = `
+        <div class="panel-kicker">SPECIALIZED SAP ARCHITECT TRACK</div>
+        <h2>S/4HANA + FICO ARCHITECT CHALLENGE</h2>
+
+        <div class="challenge-stage">
+          Stage ${index + 1} of ${S4_FICO_CHALLENGES.length}
+          · ${challenge.stage}
+        </div>
+
+        <div class="trace-chain">
+          S/4HANA → Sales Order → Delivery → Billing → FI → AR / GL → CO → Business Impact
+        </div>
+
+        <div class="challenge-card">
+          <div class="challenge-title">${challenge.title}</div>
+          <p>${challenge.scenario}</p>
+        </div>
+
+        <textarea
+          id="s4FicoAnswer"
+          class="challenge-answer"
+          placeholder="Explain your reasoning. Trace the business object, document relationship, dependency, and business consequence."
+        ></textarea>
+
+        <div class="demo-buttons">
+          <button id="s4FicoSubmitBtn">SUBMIT REASONING</button>
+          <button class="secondary" id="s4FicoHintBtn">SHOW HINT</button>
+          <button class="secondary" id="s4FicoReasoningBtn">SHOW REASONING FRAME</button>
+        </div>
+
+        <div class="feedback-panel" id="s4FicoFeedbackPanel"></div>
+
+        <div class="demo-buttons">
+          ${index > 0
+            ? '<button class="secondary" id="s4FicoPrevBtn">PREVIOUS</button>'
+            : ''}
+          ${index < S4_FICO_CHALLENGES.length - 1
+            ? '<button class="secondary" id="s4FicoNextBtn">NEXT STAGE</button>'
+            : ''}
+          <button class="secondary" id="s4FicoReturnBtn">RETURN TO SAP JOURNEY</button>
+        </div>
+
+        <div class="challenge-principle">
+          <strong>READINESS PRINCIPLE</strong><br>
+          Do not answer from application names alone. Trace the data object,
+          integration boundary, analytical dependency and measurable business consequence.
+        </div>
+      `;
+
+      const answer = document.getElementById('s4FicoAnswer');
+      const feedback = document.getElementById('s4FicoFeedbackPanel');
+
+      document.getElementById('s4FicoSubmitBtn').addEventListener('click', () => {
+        const response = normalizeInterviewText(answer.value);
+
+        if (!response) {
+          feedback.innerHTML = '<strong>ENTER YOUR REASONING</strong><br>Provide a short architecture explanation before submitting.';
+          return;
+        }
+
+        const matched = challenge.expected.filter(term =>
+          response.includes(normalizeInterviewText(term))
+        );
+
+        const coverage = Math.round(
+          (matched.length / challenge.expected.length) * 100
+        );
+
+        feedback.innerHTML = `
+          <strong>TRACE COVERAGE: ${coverage}%</strong><br>
+          Evidence terms identified: ${matched.length} / ${challenge.expected.length}
+          <br><br>
+          ${matched.length
+            ? `Matched: ${matched.join(', ')}`
+            : 'No expected trace terms identified yet.'}
+          <br><br>
+          This is a deterministic practice aid, not an assessment of real-world SAP experience.
+        `;
+      });
+
+      document.getElementById('s4FicoHintBtn').addEventListener('click', () => {
+        feedback.innerHTML = `
+          <strong>HINT</strong><br>
+          Start with the business object. Then identify the document created or
+          consumed at each boundary, the dependency that could break the chain,
+          and the measurable business consequence.
+        `;
+      });
+
+      document.getElementById('s4FicoReasoningBtn').addEventListener('click', () => {
+        feedback.innerHTML = `
+          <strong>REASONING FRAME</strong><br>
+          1. Identify the originating business object.<br>
+          2. Trace the next operational document.<br>
+          3. Validate master-data and process dependencies.<br>
+          4. Identify the FI/CO document relationship.<br>
+          5. Connect the technical condition to financial or management impact.
+        `;
+      });
+
+      const prevBtn = document.getElementById('s4FicoPrevBtn');
+      if (prevBtn) {
+        prevBtn.addEventListener('click', () => {
+          renderS4FicoChallenge(Math.max(index - 1, 0));
+        });
+      }
+
+      const nextBtn = document.getElementById('s4FicoNextBtn');
+      if (nextBtn) {
+        nextBtn.addEventListener('click', () => {
+          renderS4FicoChallenge(
+            Math.min(index + 1, S4_FICO_CHALLENGES.length - 1)
+          );
+        });
+      }
+
+      document.getElementById('s4FicoReturnBtn').addEventListener('click', () => {
+        document.getElementById('challengeBtn').click();
+      });
+    }
+
+    function renderAnalyticsHxmChallenge(index) {
+      const challenge = ANALYTICS_HXM_CHALLENGES[index];
+      if (!challenge) return;
+
+      const panel = document.getElementById('challengePanel');
+
+      panel.innerHTML = `
+        <div class="panel-kicker">SPECIALIZED SAP ARCHITECT TRACK — ANALYTICS + HXM</div>
+        <h2>ANALYTICS + HXM ARCHITECT CHALLENGE</h2>
+
+        <div class="challenge-stage">
+          Stage ${index + 1} of ${ANALYTICS_HXM_CHALLENGES.length}
+          · ${challenge.stage}
+        </div>
+
+        <div class="trace-chain">
+          SuccessFactors → Employee Data → Integration → BW/4HANA → Transformation / Modeling → Analytics → Business Impact
+        </div>
+
+        <div class="challenge-card">
+          <div class="challenge-title">${challenge.title}</div>
+          <p>${challenge.scenario}</p>
+        </div>
+
+        <textarea
+          id="analyticsHxmAnswer"
+          class="challenge-answer"
+          placeholder="Explain your reasoning. Trace the data object, integration boundary, analytical dependency, and business consequence."
+        ></textarea>
+
+        <div class="demo-buttons">
+          <button id="analyticsHxmSubmitBtn">SUBMIT REASONING</button>
+          <button class="secondary" id="analyticsHxmHintBtn">SHOW HINT</button>
+          <button class="secondary" id="analyticsHxmReasoningBtn">SHOW REASONING FRAME</button>
+        </div>
+
+        <div class="feedback-panel" id="analyticsHxmFeedbackPanel"></div>
+
+        <div class="demo-buttons">
+          ${index > 0
+            ? '<button class="secondary" id="analyticsHxmPrevBtn">PREVIOUS</button>'
+            : ''}
+          ${index < ANALYTICS_HXM_CHALLENGES.length - 1
+            ? '<button class="secondary" id="analyticsHxmNextBtn">NEXT STAGE</button>'
+            : ''}
+          <button class="secondary" id="analyticsHxmReturnBtn">RETURN TO SAP JOURNEY</button>
+        </div>
+
+        <div class="challenge-principle">
+          <strong>READINESS PRINCIPLE</strong><br>
+          Do not answer from application names alone. Trace the data object,
+          integration boundary, analytical dependency and measurable business consequence.
+        </div>
+      `;
+
+      const answer = document.getElementById('analyticsHxmAnswer');
+      const feedback = document.getElementById('analyticsHxmFeedbackPanel');
+
+      document.getElementById('analyticsHxmSubmitBtn').addEventListener('click', () => {
+        const response = normalizeInterviewText(answer.value);
+
+        if (!response) {
+          feedback.innerHTML = '<strong>ENTER YOUR REASONING</strong><br>Provide a short architecture explanation before submitting.';
+          return;
+        }
+
+        const matched = challenge.expected.filter(term =>
+          response.includes(normalizeInterviewText(term))
+        );
+
+        const coverage = Math.round(
+          (matched.length / challenge.expected.length) * 100
+        );
+
+        feedback.innerHTML = `
+          <strong>TRACE COVERAGE: ${coverage}%</strong><br>
+          Evidence terms identified: ${matched.length} / ${challenge.expected.length}
+          <br><br>
+          ${matched.length
+            ? `Matched: ${matched.join(', ')}`
+            : 'No expected trace terms identified yet.'}
+          <br><br>
+          This is a deterministic practice aid, not an assessment of real-world SAP experience.
+        `;
+      });
+
+      document.getElementById('analyticsHxmHintBtn').addEventListener('click', () => {
+        feedback.innerHTML = `
+          <strong>HINT</strong><br>
+          Start with the business object. Then identify the document created or
+          consumed at each boundary, the dependency that could break the chain,
+          and the measurable business consequence.
+        `;
+      });
+
+      document.getElementById('analyticsHxmReasoningBtn').addEventListener('click', () => {
+        feedback.innerHTML = `
+          <strong>REASONING FRAME</strong><br>
+          1. Identify the originating data object.<br>
+          2. Trace the next data or integration boundary.<br>
+          3. Validate employee-data, integration and analytical dependencies.<br>
+          4. Identify the BW/4HANA analytical relationship.<br>
+          5. Connect the technical condition to reporting or management impact.
+        `;
+      });
+
+      const prevBtn = document.getElementById('analyticsHxmPrevBtn');
+      if (prevBtn) {
+        prevBtn.addEventListener('click', () => {
+          renderAnalyticsHxmChallenge(Math.max(index - 1, 0));
+        });
+      }
+
+      const nextBtn = document.getElementById('analyticsHxmNextBtn');
+      if (nextBtn) {
+        nextBtn.addEventListener('click', () => {
+          renderAnalyticsHxmChallenge(
+            Math.min(index + 1, ANALYTICS_HXM_CHALLENGES.length - 1)
+          );
+        });
+      }
+
+      document.getElementById('analyticsHxmReturnBtn').addEventListener('click', () => {
+        document.getElementById('challengeBtn').click();
+      });
+    }
+
+    function renderInterviewChallenge(index) {
+      const challenge = INTERVIEW_CHALLENGES[index];
+      if (!challenge) return;
+
+      const traceLabel = [
+        'SAP COMMERCE CLOUD / HYBRIS',
+        'SAP WEB CHANNEL',
+        'SAP CRM / C4C',
+        'MDM — CUSTOMER + PRODUCT MASTER DATA',
+        'SAP CPQ',
+        'APPROVAL / GOVERNANCE',
+        'INTEGRATION — CROSS-SYSTEM HANDOFF',
+        'SAP SD / O2C'
+      ][index];
+
+      showDemoPanel('interviewPanel', `
+        <div class="demo-title">ARCHITECT INTERVIEW CHALLENGE</div>
+        <div class="demo-subtitle">
+          CURRENT STAGE:
+          <strong>${traceLabel}</strong>
+        </div>
+
+        <div class="demo-state">
+          <strong>SCENARIO</strong><br>
+          ${challenge.question}
+        </div>
+
+        <div class="demo-section">
+          <div class="demo-section-title">YOUR ARCHITECT RESPONSE</div>
+          <textarea
+            id="interviewAnswer"
+            rows="5"
+            style="width:100%;resize:vertical;background:rgba(255,255,255,.02);color:var(--text);border:1px solid var(--border);border-radius:7px;padding:10px;font:inherit;"
+            placeholder="Explain what you would investigate, what evidence you need, and how you would follow the business object downstream."
+          ></textarea>
+        </div>
+
+        <div class="demo-buttons" style="margin-top:12px;">
+          <button id="submitInterviewBtn">SUBMIT RESPONSE</button>
+          <button class="secondary" id="hintInterviewBtn">SHOW HINT</button>
+          <button class="secondary" id="reasoningInterviewBtn">EXPECTED REASONING</button>
+        </div>
+
+        <div class="demo-panel-inner" id="interviewFeedbackPanel"></div>
+
+        <div class="demo-state" style="margin-top:12px;">
+          <strong>FOLLOW-UP CHALLENGE</strong><br>
+          ${challenge.followUp}
+        </div>
+
+        <div class="demo-buttons" style="margin-top:12px;">
+          <button class="secondary" id="returnToTraceBtn">← RETURN TO TRACE</button>
+          ${index < INTERVIEW_CHALLENGES.length - 1
+            ? '<button id="nextInterviewStageBtn">NEXT SAP STAGE →</button>'
+            : ''}
+        </div>
+      `);
+
+      const answer = document.getElementById('interviewAnswer');
+      const feedback = document.getElementById('interviewFeedbackPanel');
+
+      document.getElementById('submitInterviewBtn').addEventListener('click', () => {
+        const response = normalizeInterviewText(answer.value);
+
+        if (!response) {
+          feedback.innerHTML = '<div class="demo-state"><strong>RESPONSE NEEDED</strong><br>Give your investigation path before submitting.</div>';
+          feedback.classList.add('show');
+          return;
+        }
+
+        const matched = challenge.expected.filter(term => response.includes(term)).length;
+        const coverage = Math.round((matched / challenge.expected.length) * 100);
+
+        feedback.innerHTML = `
+          <div class="demo-state">
+            <strong>ARCHITECT RESPONSE REVIEW</strong><br>
+            Your response identified <strong>${matched} of ${challenge.expected.length}</strong>
+            key reasoning signals (${coverage}% keyword coverage).
+            <br><br>
+            <span class="muted">
+              This is a deterministic practice aid, not an assessment of real-world SAP experience.
+            </span>
+          </div>
+        `;
+        feedback.classList.add('show');
+      });
+
+      document.getElementById('hintInterviewBtn').addEventListener('click', () => {
+        feedback.innerHTML = `
+          <div class="demo-state">
+            <strong>ARCHITECT HINT</strong><br>
+            ${challenge.hint}
+          </div>
+        `;
+        feedback.classList.add('show');
+      });
+
+      document.getElementById('reasoningInterviewBtn').addEventListener('click', () => {
+        feedback.innerHTML = `
+          <div class="demo-state">
+            <strong>EXPECTED REASONING</strong><br>
+            ${challenge.reasoning}
+          </div>
+        `;
+        feedback.classList.add('show');
+      });
+
+      document.getElementById('returnToTraceBtn').addEventListener('click', () => {
+        document.getElementById('traceCustomerBtn').dataset.traceStartIndex = String(index);
+        document.getElementById('traceCustomerBtn').click();
+      });
+
+      const nextStage = document.getElementById('nextInterviewStageBtn');
+
+      if (nextStage) {
+        nextStage.addEventListener('click', () => {
+          const nextIndex = Math.min(index + 1, INTERVIEW_CHALLENGES.length - 1);
+          document.getElementById('traceCustomerBtn').dataset.traceStartIndex = String(nextIndex);
+          document.getElementById('traceCustomerBtn').click();
+        });
+      }
+    }
+
+    renderTrace();
+  });
+
+  document.getElementById('inspectCustomerBtn').addEventListener('click', () => {
+    setDemoState(
+      'CUSTOMER DATA INTEGRITY',
+      'Detected duplicate customer context associated with the Phoenix Convention Center. ' +
+      'This becomes an upstream master-data signal rather than merely a CRM symptom.',
+      'trace'
+    );
+
+    showDemoPanel('decisionPanel', `
+      <div class="decision-grid">
+        <div class="decision-item">
+          <div class="label">CUSTOMER</div>
+          Phoenix Convention Center
+        </div>
+        <div class="decision-item">
+          <div class="label">DATA SIGNAL</div>
+          Duplicate customer record
+        </div>
+        <div class="decision-item">
+          <div class="label">PRODUCT SIGNAL</div>
+          BMS-CORE-002 incomplete
+        </div>
+        <div class="decision-item">
+          <div class="label">BUSINESS EFFECT</div>
+          Quote / approval / order flow may be affected
+        </div>
+      </div>
+    `);
+  });
+
+  document.getElementById('traceMdmBtn').addEventListener('click', () => {
+    setDemoState(
+      'TRACE TO MDM',
+      'The investigation moves upstream from CRM/CPQ to Master Data Management. ' +
+      'The question is now: what source condition is creating downstream symptoms?',
+      'trace'
+    );
+    openDemoTab(DEMO_LINKS.mdm, 'tsm-sap-mdm');
+  });
+
+  document.getElementById('downstreamBtn').addEventListener('click', () => {
+    setDemoState(
+      'DOWNSTREAM IMPACT',
+      'MDM → CRM/C4C → CPQ → Approval → SD/O2C. ' +
+      'The same data condition can propagate across multiple application boundaries.',
+      'scope'
+    );
+  });
+
+  document.getElementById('openCpqBtn').addEventListener('click', () => {
+    setDemoState(
+      'CPQ QUOTE',
+      'Quote <strong>Q-2026-0041</strong> · <strong>$142,000</strong> · ' +
+      '<strong>NEEDS APPROVAL</strong>.',
+      'scope'
+    );
+    openDemoTab(DEMO_LINKS.cpq, 'tsm-sap-cpq');
+  });
+
+  document.getElementById('dependenciesBtn').addEventListener('click', () => {
+    setDemoState(
+      'DEPENDENCY CHECK',
+      'Customer → MDM warning. Product BMS-CORE-002 → MDM warning. ' +
+      'Approval remains a required downstream handoff.',
+      'scope'
+    );
+  });
+
+  document.getElementById('approvalBtn').addEventListener('click', () => {
+    setDemoState(
+      'APPROVAL HANDOFF',
+      'The CPQ quote cannot be treated independently of its approval dependency. ' +
+      'Open the Approval Center to inspect that handoff.',
+      'scope'
+    );
+    openDemoTab(DEMO_LINKS.approval, 'tsm-sap-approval');
+  });
+
+  document.getElementById('failureBtn').addEventListener('click', () => {
+    DEMO.integrationFailure = true;
+
+    setDemoState(
+      'SIMULATED INTEGRATION FAILURE',
+      'Simulation only: CPQ → <strong>Integration Hub X</strong> → SD/O2C. ' +
+      '<span class="muted">This does not modify the underlying SAP relay payload.</span>',
+      'isolate'
+    );
+  });
+
+  document.getElementById('resolutionBtn').addEventListener('click', () => {
+    setDemoState(
+      'RESOLUTION PATH',
+      DEMO.integrationFailure
+        ? 'Evidence points to the Integration Hub handoff before SD/O2C. ' +
+          'Inspect interface health, then verify whether the order-to-cash SLA recovers.'
+        : 'Resolution path follows the evidence chain: verify MDM integrity → validate CPQ dependencies → verify approval → confirm SD/O2C processing.',
+      'resolve'
+    );
+
+    openDemoTab(DEMO_LINKS.integration, 'tsm-sap-integration');
+  });
+
+  document.getElementById('o2cBtn').addEventListener('click', () => {
+    setDemoState(
+      'SD / O2C',
+      'Inspect Order-to-Cash processing. ' +
+      (DEMO.integrationFailure
+        ? 'The simulated integration failure is the upstream dependency to investigate.'
+        : 'Validate whether downstream processing is receiving the expected upstream state.'),
+      'resolve'
+    );
+    openDemoTab(DEMO_LINKS.o2c, 'tsm-sap-o2c');
+  });
+
+  document.getElementById('impactBtn').addEventListener('click', () => {
+    setDemoState(
+      'ENTERPRISE IMPACT',
+      'Commerce → CRM/C4C → MDM → CPQ → Approval → SD/O2C, with Integration Hub as the cross-system dependency. ' +
+      'The purpose of the view is to show propagation, not just individual application health.',
+      'scope'
+    );
+  });
+
+  document.getElementById('digitalTwinBtn').addEventListener('click', () => {
+    setDemoState(
+      'DIGITAL TWIN',
+      'Open the enterprise view to see how application and dependency health are represented together.',
+      'scope'
+    );
+    openDemoTab(DEMO_LINKS.digitalTwin, 'tsm-sap-digital-twin');
+  });
+
+  document.getElementById('strategistBtn').addEventListener('click', () => {
+    setDemoState(
+      'STRATEGIST',
+      'You are already inside the SAP Strategist. ' +
+      'This is the reasoning layer that consumes the domain signals and turns them into an investigation path.',
+      'resolve'
+    );
+  });
+
+  document.getElementById('analysisBtn').addEventListener('click', () => {
+    setDemoState(
+      'STRATEGIST ANALYSIS',
+      '<strong>SIGNAL:</strong> customer/product master-data anomalies. ' +
+      '<strong>SEVERITY:</strong> high business-process exposure. ' +
+      '<strong>DEPENDENCY:</strong> MDM → CRM/CPQ → Approval → SD/O2C. ' +
+      '<strong>IMPACT:</strong> $142K quote and downstream order flow. ' +
+      '<strong>ACTION:</strong> investigate source data and validate downstream handoffs.',
+      'resolve'
+    );
+  });
+
+  document.getElementById('decisionBtn').addEventListener('click', () => {
+    try {
+      relayToExec();
+    } catch (e) {
+      console.warn('Executive relay unavailable:', e);
+    }
+
+    setDemoState(
+      'EXECUTIVE DECISION PACKAGE',
+      'The strategist has assembled the evidence needed for an executive decision. ' +
+      'The decision itself remains a business action: investigate, remediate, or escalate.',
+      'learn'
+    );
+
+    showDemoPanel('decisionPanel', `
+      <div class="decision-grid">
+        <div class="decision-item">
+          <div class="label">BUSINESS OBJECT</div>
+          Q-2026-0041
+        </div>
+        <div class="decision-item">
+          <div class="label">VALUE</div>
+          $142,000
+        </div>
+        <div class="decision-item">
+          <div class="label">ROOT SIGNAL</div>
+          MDM / integration dependency
+        </div>
+        <div class="decision-item">
+          <div class="label">DOWNSTREAM</div>
+          CPQ → Approval → SD/O2C
+        </div>
+        <div class="decision-item">
+          <div class="label">SEVERITY</div>
+          HIGH
+        </div>
+        <div class="decision-item">
+          <div class="label">AVAILABLE ACTIONS</div>
+          INVESTIGATE · REMEDIATE · ESCALATE
+        </div>
+      </div>
+    `);
+  });
+
+  document.getElementById('architectureBtn').addEventListener('click', () => {
+    setDemoState(
+      'ARCHITECTURE VIEW',
+      'This is the reusable TSM pattern underneath the SAP example.',
+      'learn'
+    );
+
+    showDemoPanel('architecturePanel', `
+      <div class="architecture-flow">
+<strong>SAP COMMERCE CLOUD / HYBRIS</strong>
+        ↓
+<strong>SAP WEB CHANNEL</strong>
+        ↓
+<strong>SAP CRM / C4C</strong>
+        ↓
+<strong>MDM — CUSTOMER + PRODUCT MASTER DATA</strong>
+        ↓
+<strong>SAP CPQ — CONFIGURE → PRICE → QUOTE</strong>
+        ↓
+<strong>APPROVAL / GOVERNANCE</strong>
+        ↓
+<strong>INTEGRATION — CROSS-SYSTEM HANDOFFS</strong>
+        ↓
+<strong>SAP SD / O2C — ORDER → DELIVERY → BILLING → CASH</strong>
+        ↓
+<strong>TSM DOMAIN RELAYS</strong>
+        ↓
+<strong>TSM STRATEGIST</strong>
+        ↓
+<strong>DIGITAL TWIN / EXECUTIVE DECISION</strong>
+        ↓
+<strong>ACTION / FEEDBACK</strong>
+      </div>
+
+      <div class="decision-grid" style="margin-top:16px;">
+        <div class="decision-item">
+          <div class="label">COMMERCE CLOUD / WEB CHANNEL</div>
+          Digital commerce entry point. Customer interaction,
+          product discovery, catalog and web-channel transaction context.
+        </div>
+
+        <div class="decision-item">
+          <div class="label">CRM / C4C</div>
+          Customer, account, opportunity and service context.
+          C4C represents the cloud customer-experience layer.
+        </div>
+
+        <div class="decision-item">
+          <div class="label">MDM</div>
+          Customer and product master-data integrity.
+          Duplicate, incomplete or stale records can become upstream causes
+          of downstream process failures.
+        </div>
+
+        <div class="decision-item">
+          <div class="label">SAP CPQ</div>
+          Configuration, pricing and quoting.
+          Quote validity depends on trustworthy customer, product and pricing
+          context.
+        </div>
+
+        <div class="decision-item">
+          <div class="label">APPROVAL</div>
+          Governance and release workflow.
+          A quote or commercial transaction may require approval before
+          downstream execution.
+        </div>
+
+        <div class="decision-item">
+          <div class="label">INTEGRATION</div>
+          Cross-system handoffs.
+          The architect asks whether the source system, interface or receiving
+          system owns the failure.
+        </div>
+
+        <div class="decision-item">
+          <div class="label">SAP SD / O2C</div>
+          Order-to-Cash execution:
+          sales order → delivery → billing → cash.
+          This is where upstream failures can become operational and financial
+          exposure.
+        </div>
+
+        <div class="decision-item">
+          <div class="label">TSM INTELLIGENCE LAYER</div>
+          Domain relays collect evidence → Strategist correlates context and
+          dependencies → Digital Twin / Executive layer supports the decision.
+        </div>
+      </div>
+
+      <div class="demo-state" style="margin-top:16px;">
+        <strong>INTERVIEW EXPLANATION</strong><br>
+        “I would not treat Commerce, CRM, CPQ and SD as isolated applications.
+        I would trace the business object across the process. A customer or
+        product-data problem can begin upstream in MDM, surface in CRM or CPQ,
+        block approval, fail at an integration boundary, and ultimately affect
+        SD / Order-to-Cash. My architecture approach is to identify the signal,
+        establish scope, trace dependencies, isolate the source from the
+        symptom, resolve the handoff, and capture the lesson for future
+        decisions.”
+      </div>
+
+      <div class="architecture-flow" style="margin-top:16px;">
+<strong>REQUIREMENT → ARCHITECTURE CONCEPT</strong>
+
+SAP Commerce Cloud / Hybris → Digital Commerce
+SAP Web Channel            → Commerce-facing channel/process
+SAP CRM                     → Customer / Account / Opportunity context
+SAP C4C                     → Cloud customer experience / CRM context
+SAP CPQ                     → Configuration / Pricing / Quoting
+SAP SD                      → Sales + Order-to-Cash execution
+MDM                         → Customer / Product master-data integrity
+Integration                 → Enterprise handoff + interface dependency
+
+<strong>TSM REASONING PATTERN</strong>
+
+Signal → Context → Dependency → Business Impact → Risk → Recommendation → Decision
+
+Detect → Scope → Trace → Isolate → Resolve → Learn
+      </div>
+    `);
+  });
+
+  document.getElementById('otherAppsBtn').addEventListener('click', () => {
+    setDemoState(
+      'TSM APPLICATION PORTFOLIO',
+      'The SAP implementation is one application of the same enterprise intelligence pattern.',
+      'learn'
+    );
+
+    showDemoPanel('appsPanel', `
+      <div class="decision-grid">
+        <div class="decision-item">
+          <div class="label">SAP</div>
+          Commerce · CRM/C4C · CPQ · MDM · SD/O2C
+        </div>
+        <div class="decision-item">
+          <div class="label">HONEYWELL</div>
+          Plant · Advanced Detection · BESS · Supplier Shutdown
+        </div>
+        <div class="decision-item">
+          <div class="label">HEALTHCARE</div>
+          Denial Recovery · Revenue Cycle · A/R
+        </div>
+        <div class="decision-item">
+          <div class="label">CONSTRUCTION</div>
+          Project exposure · PM exceptions · document intelligence
+        </div>
+        <div class="decision-item">
+          <div class="label">BPO</div>
+          Quality · compliance · exceptions · executive visibility
+        </div>
+      </div>
+    `);
+  });
+
+  document.getElementById('s4FicoChallengeBtn').addEventListener('click', () => {
+    setDemoState(
+      'S/4HANA + FICO ARCHITECT JOURNEY',
+      'Trace the business object from S/4HANA order processing through delivery, billing, FI, AR/GL and CO to measurable business impact.',
+      'trace'
+    );
+
+    renderS4FicoChallenge(0);
+  });
+
+  document.getElementById('analyticsHxmChallengeBtn').addEventListener('click', () => {
+    setDemoState(
+      'ANALYTICS + HXM ARCHITECT JOURNEY',
+      'Trace employee data from SuccessFactors through integration and BW/4HANA analytics to measurable business impact.',
+      'trace'
+    );
+
+    renderAnalyticsHxmChallenge(0);
+  });
+
+  document.getElementById('challengeBtn').addEventListener('click', () => {
+    const currentStageIndex = Number.isInteger(DEMO.traceIndex)
+      ? DEMO.traceIndex
+      : 0;
+
+    setDemoState(
+      'ARCHITECT INTERVIEW CHALLENGE',
+      'Reason through the current SAP stage, then follow the business object downstream.',
+      'trace'
+    );
+
+    renderInterviewChallenge(currentStageIndex);
+  });
+
+
+  document.getElementById('relayExecBtn').addEventListener('click', relayToExec);
+  document.getElementById('refreshBtn').addEventListener('click', render);
+  window.addEventListener('storage', e => {
+    if (DOMAINS.some(d => e.key === ('TSM_' + d.key + '_RELAY'))) render();
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>

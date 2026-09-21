@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>College Endowment (FASB) — War Room</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #0b0f14; --panel: #121821; --border: #223042; --text: #e6edf3;
+    --muted: #8ea0b5; --accent: #4da3ff; --high: #ff5d5d; --med: #ffb547; --low: #4caf6f;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: -apple-system, Segoe UI, Roboto, sans-serif; }
+  header { padding: 20px 28px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+  header h1 { font-size: 18px; margin: 0; }
+  header .sub { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  main { padding: 24px 28px; max-width: 1200px; margin: 0 auto; }
+  .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-bottom: 24px; }
+  .kpi { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .kpi .val { font-size: 24px; font-weight: 700; }
+  .kpi .lbl { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  section { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 20px; overflow: hidden; }
+  section h2 { font-size: 14px; margin: 0; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 10px 16px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; }
+  .sev-HIGH { color: var(--high); font-weight: 600; }
+  .sev-MEDIUM { color: var(--med); font-weight: 600; }
+  .sev-LOW { color: var(--low); font-weight: 600; }
+  .exposure-box { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-bottom: 20px; }
+  .exposure-total { font-size: 28px; font-weight: 700; color: var(--high); }
+  .exposure-note { color: var(--muted); font-size: 12px; margin-top: 6px; line-height: 1.5; }
+  .actions { display: flex; gap: 10px; margin-top: 20px; }
+  button { background: var(--accent); border: none; color: #fff; padding: 10px 18px; border-radius: 8px; font-size: 13px; cursor: pointer; font-weight: 600; }
+  button.secondary { background: transparent; border: 1px solid var(--border); color: var(--text); }
+  #toast { position: fixed; bottom: 20px; right: 20px; background: var(--panel); border: 1px solid var(--border); padding: 12px 18px; border-radius: 8px; opacity: 0; transition: opacity .2s; font-size: 13px; }
+  #toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>College Endowment (FASB) — War Room</h1>
+    <div class="sub">Underwater funds · Spending policy variance · Donor restriction flags — server-computed fund exposure, own relay key</div>
+  </div>
+  <div class="sub" id="clock"></div>
+</header>
+<main>
+  <div class="kpi-row" id="kpiRow"></div>
+
+  <div class="exposure-box" id="exposureBox">Loading fund exposure…</div>
+
+  <section>
+    <h2>Underwater Funds (FASB ASU 2016-14)</h2>
+    <table id="underwaterTable"><thead><tr><th>Fund</th><th>Purpose</th><th>Severity</th><th>Corpus Deficit</th><th>Trend</th></tr></thead><tbody></tbody></table>
+  </section>
+
+  <section>
+    <h2>Donor Restriction Flags</h2>
+    <table id="restrictionTable"><thead><tr><th>Flag</th><th>Fund</th><th>Issue</th><th>Severity</th></tr></thead><tbody></tbody></table>
+  </section>
+
+  <section id="aiSection">
+    <h2>AI Fund Compliance Intelligence</h2>
+    <div style="padding:16px;">
+      <div class="actions" style="margin-top:0;">
+        <button id="runAiBtn">Run AI Analysis</button>
+      </div>
+      <div id="aiEngineGrid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;margin-top:16px;">
+        <div>
+          <div style="color:var(--muted);font-size:11px;text-transform:uppercase;font-weight:600;margin-bottom:6px;">Fund Risk &amp; Compliance</div>
+          <div id="aiRiskOut" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:12.5px;line-height:1.6;white-space:pre-wrap;min-height:60px;">Not run yet — click "Run AI Analysis".</div>
+        </div>
+        <div>
+          <div style="color:var(--muted);font-size:11px;text-transform:uppercase;font-weight:600;margin-bottom:6px;">Recommended Actions</div>
+          <div id="aiActionOut" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px;font-size:12.5px;line-height:1.6;white-space:pre-wrap;min-height:60px;">Not run yet — click "Run AI Analysis".</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="actions">
+    <button id="relayBtn">Relay to College Strategist</button>
+    <button class="secondary" id="refreshBtn">Refresh Exposure</button>
+  </div>
+</main>
+<div id="toast"></div>
+
+<script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
+<script src="/html/war-rooms/college-command/shared/college-relay-loader.js"></script>
+<script src="/html/war-rooms/college-command/services/college-endowment-engine.js"></script>
+<script>
+(function () {
+  // Now backed by a real server endpoint (routes/college-endowment-financial.js)
+  // instead of client-computed sample totals — see college-endowment-engine.js.
+  // Still writes only to its own registered relay key
+  // (TSM_COLLEGE_ENDOWMENT_RELAY via relay.core.js).
+  const DOMAIN = 'COLLEGE_ENDOWMENT';
+  const RELAY_KEY_FALLBACK = 'TSM_' + DOMAIN + '_RELAY';
+
+  let engine = null;
+  let lastAi = { risk: null, actions: null };
+
+  function tick() { document.getElementById('clock').textContent = new Date().toLocaleTimeString(); }
+  setInterval(tick, 1000); tick();
+
+  function showToast(msg, isErr) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.style.color = isErr ? 'var(--high)' : 'var(--text)';
+    t.classList.add('show');
+    clearTimeout(showToast._h);
+    showToast._h = setTimeout(() => t.classList.remove('show'), 2500);
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  function renderKpis(kpis) {
+    const defs = [
+      ['total_funds_tracked', 'Total Funds Tracked'],
+      ['underwater_funds', 'Underwater Funds (ASU 2016-14)'],
+      ['total_corpus_deficit', 'Total Corpus Deficit'],
+      ['donor_restriction_flags_open', 'Donor Restriction Flags Open']
+    ];
+    const row = document.getElementById('kpiRow');
+    row.innerHTML = defs.map(([key, label]) => {
+      const val = kpis[key];
+      const display = key === 'total_corpus_deficit' ? '$' + Number(val || 0).toLocaleString() : val;
+      return `<div class="kpi"><div class="val">${display}</div><div class="lbl">${label}</div></div>`;
+    }).join('');
+  }
+
+  function renderUnderwater() {
+    const tbody = document.querySelector('#underwaterTable tbody');
+    tbody.innerHTML = engine.data.underwater_funds.map(f => `
+      <tr>
+        <td>${escapeHtml(f.fund_id)}</td>
+        <td>${escapeHtml(f.purpose)}</td>
+        <td class="sev-${escapeHtml(f.severity)}">${escapeHtml(f.severity)}</td>
+        <td>$${Number(f.corpus_deficit).toLocaleString()}</td>
+        <td>${escapeHtml(f.trend)}</td>
+      </tr>
+    `).join('');
+  }
+
+  function renderRestrictions() {
+    const tbody = document.querySelector('#restrictionTable tbody');
+    tbody.innerHTML = engine.data.restriction_flags.map(r => `
+      <tr>
+        <td>${escapeHtml(r.flag_id)}</td>
+        <td>${escapeHtml(r.fund)}</td>
+        <td>${escapeHtml(r.issue)}</td>
+        <td class="sev-${escapeHtml(r.severity)}">${escapeHtml(r.severity)}</td>
+      </tr>
+    `).join('');
+  }
+
+  // Real breakdown from the server: annual income foregone on underwater
+  // funds (spending-policy rate × corpus deficit) and donor-restriction
+  // exposure banded by severity — see routes/college-endowment-financial.js.
+  // Replaces the old "corpus deficit alone" placeholder number.
+  async function renderExposure() {
+    const box = document.getElementById('exposureBox');
+    box.textContent = 'Loading fund exposure…';
+    try {
+      const summary = await engine.getFinancialSummary();
+      box.innerHTML = `
+        <div class="exposure-total">$${Number(summary.total_exposure || 0).toLocaleString()} total annual exposure</div>
+        <div class="exposure-note">
+          Total corpus deficit: $${Number(summary.total_corpus_deficit || 0).toLocaleString()} ·
+          Income foregone (spending policy rate): $${Number(summary.income_foregone_exposure_total || 0).toLocaleString()} ·
+          Donor restriction exposure: $${Number(summary.donor_restriction_exposure_total || 0).toLocaleString()}
+          ${summary.note ? '<br>' + escapeHtml(summary.note) : ''}
+        </div>
+      `;
+    } catch (e) {
+      box.textContent = 'Exposure computation failed — see console.';
+      console.warn('renderExposure failed', e);
+    }
+  }
+
+  async function runAiAnalysis() {
+    if (!engine) return;
+    const btn = document.getElementById('runAiBtn');
+    const riskOut = document.getElementById('aiRiskOut');
+    const actionOut = document.getElementById('aiActionOut');
+    btn.disabled = true;
+    btn.textContent = 'Running…';
+    riskOut.textContent = 'Generating…';
+    actionOut.textContent = 'Generating…';
+
+    try {
+      const { answer, degraded } = await engine.getAiAnalysis(
+        'Focus this response entirely on fund compliance risk: quantify risk, flag funds most at risk of breaching donor-restricted purpose or reporting obligations, and note which underwater funds require board or investment-committee attention first. Do not include an action plan section.'
+      );
+      lastAi.risk = degraded ? null : answer;
+      riskOut.textContent = answer;
+    } catch (e) {
+      riskOut.textContent = 'Error: ' + e.message;
+      lastAi.risk = null;
+    }
+
+    try {
+      const { answer, degraded } = await engine.getAiAnalysis(
+        'Focus this response entirely on a concise action plan: recommended next step per underwater fund and restriction flag (spending policy adjustment, donor communication/reporting, investment committee review, legal review), owner, and target timeframe. Do not include a risk analysis section.'
+      );
+      lastAi.actions = degraded ? null : answer;
+      actionOut.textContent = answer;
+    } catch (e) {
+      actionOut.textContent = 'Error: ' + e.message;
+      lastAi.actions = null;
+    }
+
+    btn.disabled = false;
+    btn.textContent = 'Run AI Analysis';
+  }
+
+  async function relayToStrategist() {
+    try {
+      const aiText = (lastAi.risk || lastAi.actions)
+        ? `FUND RISK & COMPLIANCE\n${lastAi.risk || 'n/a'}\n\nRECOMMENDED ACTIONS\n${lastAi.actions || 'n/a'}`
+        : null;
+      const payload = await engine.buildRelayPayload(aiText);
+      const json = JSON.stringify(payload);
+      try { sessionStorage.setItem(RELAY_KEY_FALLBACK, json); } catch (e) { /* noop */ }
+      try { localStorage.setItem(RELAY_KEY_FALLBACK, json); } catch (e) { /* noop */ }
+      if (window.TSM && window.TSM.relay && window.TSM.relay.write) {
+        try { window.TSM.relay.write('COLLEGE_ENDOWMENT', payload); } catch (e) { /* noop */ }
+      }
+      window.dispatchEvent(new CustomEvent('TSM_RELAY_EVENT', { detail: { domain: DOMAIN, data: payload } }));
+      showToast('Relayed to College Strategist.');
+    } catch (e) {
+      console.warn('relayToStrategist failed', e);
+      showToast('Relay failed — see console.', true);
+    }
+  }
+
+  async function init() {
+    engine = new window.TSMCollegeEndowmentEngine();
+    engine.loadSampleData();
+    renderKpis(engine.computeKpis());
+    renderUnderwater();
+    renderRestrictions();
+    await renderExposure();
+  }
+
+  document.getElementById('relayBtn').addEventListener('click', relayToStrategist);
+  document.getElementById('refreshBtn').addEventListener('click', renderExposure);
+  document.getElementById('runAiBtn').addEventListener('click', runAiAnalysis);
+
+  init();
+})();
+</script>
+</body>
+</html>

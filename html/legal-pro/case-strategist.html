@@ -149,6 +149,8 @@ header{
 .node-card:hover::after{opacity:1}
 .node-card.active{border-color:var(--node-color,var(--a));background:rgba(0,255,198,.05)}
 .node-card.active::after{opacity:1}
+.node-card.live-relay{border-color:#00ffc6}
+.node-card.live-relay .node-status{color:#00ffc6}
 .node-name{font-size:11px;font-weight:700;color:var(--t);letter-spacing:.1em;margin-bottom:4px}
 .node-status{font-size:10px;color:var(--m);margin-bottom:8px}
 .node-score{
@@ -436,6 +438,7 @@ select option{background:#071220}
       <span class="badge purple">BNCA ENGINE</span>
       <span class="badge amber" id="risk-badge">RISK: ASSESSING</span>
       <span class="badge red" id="sla-badge">SLA: MONITORING</span>
+      <span class="badge red" id="sim-badge" style="display:none;">⚠ SIMULATED — GROQ UNAVAILABLE</span>
     </div>
   </div>
   <div class="cmd-stats">
@@ -818,7 +821,13 @@ The relay will include:
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
 // Uses Railway env var GROQ_API_KEY via your backend proxy at /api/groq
 // For direct use, replace with your key or proxy endpoint
-const API_ENDPOINT = '/api/groq'; // your Railway proxy
+const API_ENDPOINT = '/api/legal/query'; // TSM FIX: was '/api/groq', which was never
+// mounted anywhere (groq-route.js defined it but nothing require()'d that
+// file) — every real call 404'd and silently fell through to the mock BNCA
+// generator below, presented identically to a real analysis. /api/legal/query
+// already exists, is mounted, is requireAnyAuth-gated (unlike groq-route.js,
+// which had no auth at all), and uses the same centralized groqChat() retry/
+// model-fallback logic the rest of the app relies on.
 
 const SCENARIOS = {
   billing: {
@@ -867,6 +876,7 @@ const SCENARIOS = {
 
 let currentScenario = 'billing';
 let lastBNCA = '';
+let lastBNCADegraded = false;
 let lastMatterMeta = null;
 
 function escapeHtml(s) {
@@ -1028,34 +1038,32 @@ ${context}
 Generate the full BNCA report with cross-node synthesis, prioritized actions, owner assignment, and executive relay status.`;
 
   try {
-    // Try Groq via Railway proxy
+    // Try Groq via the real, authenticated /api/legal/query route.
     const response = await fetch(API_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'openai/gpt-oss-120b',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
-        ],
-        max_tokens: 800,
-        temperature: 0.4,
-        stream: false
+        message: userPrompt,
+        system: systemPrompt,
+        maxTokens: 800
       })
     });
 
     if (!response.ok) throw new Error('proxy_failed');
 
     const data = await response.json();
-    const text = data.choices?.[0]?.message?.content || '';
+    if (!data.ok || !data.answer) throw new Error('proxy_bad_response');
+    const text = data.answer;
     await streamText(text, outputEl);
-    finalizeBNCA(text);
+    finalizeBNCA(text, false);
 
   } catch (err) {
-    // Fallback: rich mock BNCA
+    // Fallback: rich mock BNCA — NOT a real Groq analysis. finalizeBNCA
+    // is told this is degraded so it can visibly mark the output as
+    // simulated rather than presenting a fabricated report as real.
     const mockBNCA = generateMockBNCA(matterName, matterType, partner, sla, scenario, hoursRisk);
     await streamText(mockBNCA, outputEl);
-    finalizeBNCA(mockBNCA);
+    finalizeBNCA(mockBNCA, true);
   }
 }
 
@@ -1114,8 +1122,12 @@ async function streamText(text, el) {
   el.classList.remove('typing');
 }
 
-function finalizeBNCA(text) {
+function finalizeBNCA(text, degraded) {
   lastBNCA = text;
+  lastBNCADegraded = !!degraded;
+
+  const simBadge = document.getElementById('sim-badge');
+  if (simBadge) simBadge.style.display = degraded ? 'inline-block' : 'none';
 
   // Extract confidence, risk level, and SLA pressure from the AI's own
   // structured output — this is the actual assessment it produced, not a
@@ -1284,12 +1296,52 @@ function setTimeline(step) {
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // ============================================================
+// LIVE COMPLIANCE RELAY (real data from legal-compliance.html)
+// ------------------------------------------------------------
+// Every other node card (billing/matter/contracts/trust/discovery)
+// is still demo-scored via the SCENARIOS picker above — those nodes
+// were never built, so they stay honestly labeled as scenario data.
+// Compliance is the one node with a real upstream page and a
+// working relay button, so it gets a live override here.
+// ============================================================
+const COMPLIANCE_RELAY_KEY = 'TSM_LEGAL_COMPLIANCE_RELAY';
+
+function loadComplianceRelay() {
+  let raw = null;
+  try {
+    raw = localStorage.getItem(COMPLIANCE_RELAY_KEY) || sessionStorage.getItem(COMPLIANCE_RELAY_KEY);
+  } catch(e) { return; }
+  if (!raw) return;
+  let data;
+  try { data = JSON.parse(raw); } catch(e) { return; }
+  if (!data) return;
+
+  const scoreNum = parseInt(data.complianceScore, 10);
+  const el = document.getElementById('ns-compliance');
+  if (el && !isNaN(scoreNum)) {
+    el.textContent = scoreNum;
+    el.style.color = scoreNum >= 80 ? '#ff4d6a' : scoreNum >= 60 ? '#f5a623' : '#00ffc6';
+  }
+  const card = document.querySelector(`[onclick="pingNode('compliance')"]`);
+  if (card) {
+    card.classList.add('live-relay');
+    const statusEl = card.querySelector('.node-status');
+    if (statusEl) statusEl.textContent = 'LIVE — relay received';
+  }
+}
+
+// ============================================================
 // INIT
 // ============================================================
 document.addEventListener('DOMContentLoaded', () => {
   updateNodeScores();
+  loadComplianceRelay();
   setTimeline(2);
   document.getElementById('thinking-indicator').textContent = 'READY · AWAITING INTAKE';
+});
+// Re-check when legal-compliance.html (open in another tab) writes a fresh relay
+window.addEventListener('storage', (e) => {
+  if (e.key === COMPLIANCE_RELAY_KEY) loadComplianceRelay();
 });
 </script>
   <script src="/js/core/tsm-kernel-upgrade.js"></script>

@@ -288,6 +288,15 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
   <link rel="stylesheet" href="/shared/tsm-guided-how-to.css">
 </head>
 <body data-vertical="healthcare" data-page-role="strategist">
+<style>
+.tsm-hc-crossnav{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:6px 14px;background:#0a0f0a;border-bottom:1px solid #1e3a1e;font-family:'Courier New',monospace;font-size:10px;letter-spacing:.5px;position:sticky;top:0;z-index:200}
+.tsm-hc-crossnav-lbl{color:#556655;margin-right:4px;text-transform:uppercase}
+.tsm-hc-crossnav a{color:#00ff88;text-decoration:none;padding:3px 9px;border:1px solid #1e3a1e;border-radius:10px;white-space:nowrap}
+.tsm-hc-crossnav a:hover{border-color:#00ff88;background:#003322}
+.tsm-hc-crossnav span.tsm-hc-crossnav-active{color:#0a0f0a;background:#00ff88;padding:3px 9px;border-radius:10px;font-weight:700;white-space:nowrap}
+</style>
+<div class="tsm-hc-crossnav"><span class="tsm-hc-crossnav-lbl">HC suite:</span><a href="/html/healthcare/hc-denial-war-room.html">Denial War Room</a><span class="tsm-hc-crossnav-active">Strategist</span><a href="/html/healthcare/hc-office-manager-doc-intake.html">Doc Intake</a><a href="/html/healthcare/executive-portal.html">Executive Portal</a><a href="/html/healthcare/hc-om-portal.html">OM Portal</a><a href="/html/healthcare/hc-strategist/index.html">Neural Intake Strategist</a></div>
+
 <section
   id="tsm-guided-how-to-root"
   data-tsm-guided-how-to="true"
@@ -784,11 +793,15 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
 function readWarRoomBrief() {
   const key = 'TSM_WAR_ROOM_BRIEF';
   try {
-    const stored = sessionStorage.getItem(key) || localStorage.getItem(key);
+    // TSM FIX: TSM_WAR_ROOM_BRIEF is an authoritative same-session
+    // handoff from the current War Room run. Do not resurrect an older
+    // localStorage copy from a previous session; that can make a failed
+    // historical run appear to be the current case.
+    const stored = sessionStorage.getItem(key);
     if (stored) {
       const payload = JSON.parse(stored);
       const age = Date.now() - new Date(payload.timestamp).getTime();
-      if (age < 7200000) return payload;
+      if (Number.isFinite(age) && age >= 0 && age < 7200000) return payload;
     }
   } catch (e) {}
   try {
@@ -852,6 +865,26 @@ function buildHCContext() {
   let ctx = HC_CONTEXT_BASE;
   try {
     const brief = readWarRoomBrief();
+    // TSM FIX: the War Room's structured case holds the deterministic,
+    // provenance-tracked values (explicit appeal date, claim-level exposure,
+    // parsed likelihood). Hand them to the model verbatim so it cannot
+    // re-derive a deadline (e.g. "+60 days") or swap in a portfolio figure.
+    // Only fields that are actually present are emitted; nothing is invented.
+    const sc = brief && brief.structuredCase;
+    if (sc && typeof sc === 'object') {
+      const lines = [];
+      if (sc.claimId) lines.push('Claim ID: ' + sc.claimId);
+      if (sc.payer) lines.push('Payer: ' + sc.payer);
+      if (sc.denialReasonCode) lines.push('Denial code: ' + sc.denialReasonCode);
+      if (sc.denialCategory) lines.push('Denial category: ' + sc.denialCategory);
+      if (sc.appealDeadline) lines.push('Appeal deadline (calendar date): ' + sc.appealDeadline);
+      if (sc.financialExposure != null) lines.push('Financial exposure (USD): ' + sc.financialExposure);
+      if (sc.recoveryLikelihood) lines.push('Recovery likelihood: ' + sc.recoveryLikelihood);
+      if (sc.confidence != null) lines.push('Confidence: ' + sc.confidence);
+      if (lines.length) {
+        ctx += '\n\nVERIFIED STRUCTURED CASE (extracted and validated by the War Room — use these exact values; do not recompute, restate as a relative period, or substitute other figures):\n' + lines.join('\n');
+      }
+    }
     if (brief && brief.engineOutputs) {
       const findings = Object.entries(brief.engineOutputs)
         .filter(([,v]) => v && v.trim())
@@ -1560,6 +1593,11 @@ async function escalateToExecPortal(){
 
     const payload = {
       ts: Date.now(),
+      // TSM FIX: the Executive Portal (readRelay) validates payload.source
+      // === 'HC Main Strategist', but this producer never set it (the string
+      // only appeared inside the Mission Core classification), so the relay
+      // could not be told apart from unrelated JSON under the same key.
+      source: 'HC Main Strategist',
       enriched: true,
       sourceSnapshot: live,
       verifiedFields,
@@ -2085,6 +2123,13 @@ PATTERN MATCH: [does this match active HonorHealth denial patterns CO-4/CO-11/CO
   // placeholders — which is what was showing up as "No claim ID / No CPT
   // codes..." downstream. Strip markdown emphasis/heading/bullet chars once,
   // here, before any field regex runs, instead of patching each pattern.
+  //
+  // TSM FIX: kept in sync with the identical fix in
+  // hc-denial-war-room.html's buildHCStructuredCase — the LLM sometimes
+  // answers with a markdown table row ("| CO-50 (...) |") instead of a
+  // plain sentence, and none of the replacements above touch pipe
+  // characters, so it rode through verbatim. Strip separator rows and
+  // unwrap "| cell | cell |" rows the same way here for consistency.
   function stripMd(text) {
     if (!text) return text;
     return text
@@ -2094,7 +2139,11 @@ PATTERN MATCH: [does this match active HonorHealth denial patterns CO-4/CO-11/CO
       .replace(/_(.*?)_/g, '$1')         // _italic_
       .replace(/`(.*?)`/g, '$1')         // `code`
       .replace(/^#{1,6}\s+/gm, '')       // # headings
-      .replace(/^\s*[-*+]\s+/gm, '');    // - / * / + bullet markers
+      .replace(/^\s*[-*+]\s+/gm, '')     // - / * / + bullet markers
+      .replace(/^\s*\|?[\s:-]*\|[\s:|-]*\|?\s*$/gm, '') // table separator rows (---|---)
+      .replace(/^\s*\|\s*(.*?)\s*\|\s*$/gm, function (_, inner) {
+        return inner.split('|').map(function (c) { return c.trim(); }).filter(Boolean).join(' — ');
+      });
   }
 
   function wrExtractField(text, patterns) {
@@ -2300,7 +2349,6 @@ on the same day. Complete each section with the real clinical facts.
 </script>
 
 
-<script src="/shared/tsm-cure-cheatsheet.js"></script>
 <script src="/shared/tsm-active-member.js"></script>
 <script src="/html/healthcare/js/tsm-workflow-stage.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>

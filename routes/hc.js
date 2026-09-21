@@ -2,13 +2,34 @@
 const express = require('express');
 const router  = express.Router();
 const fs = require('fs');
+const path = require('path');
+const multer = require('multer');
 const {
   readJson, writeJson,
-  hcNodeStateFile, hcReportsFile, hcProfilesFile, resolveHcClientId,
+  hcNodeStateFile, hcReportsFile, hcProfilesFile, hcIntakeQueueFile, resolveHcClientId,
   aggregateLayer2, buildSystemRollup,
   groqChat, callGroq, SP
 } = require('./_shared');
 const { requireAnyAuth } = require('../middleware/require-auth');
+const { isSupported: isSupportedDoc, extractDocText } = require('./doc-router');
+
+const hcUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8 * 1024 * 1024 }
+});
+
+// The 6 known sample docs live on disk under html/healthcare/ and are safe
+// to read by filename only from this fixed allowlist (never from raw
+// user-supplied paths) so classify-from-sample can't be used for path
+// traversal.
+const HC_SAMPLE_FILES = [
+  'File1_PriorAuth_Denial.pdf',
+  'File2_Remittance_EOB.pdf',
+  'File3_PriorAuth_Denial_CO197.pdf',
+  'File4_Remittance_EOB_2.pdf',
+  'File5_PriorAuth_Denial_ANOMALY.pdf',
+  'File6_Remittance_EOB_ANOMALY.pdf',
+];
 
 // GCU PILOT FIX 2026-08-26: every /api/hc/* route below handled PHI with no
 // auth check at all. Gate the whole router behind a valid tsm_session cookie
@@ -150,6 +171,131 @@ CONFIDENCE
   state[req.params.nodeKey] = merged;
   writeJson(hcNodeStateFile(resolveHcClientId(req)), state);
   res.json({ ok: true, node: state[req.params.nodeKey] });
+});
+
+// ── HC OFFICE MANAGER NEURAL INTAKE ─────────────────────────────────────────
+// Replaces the advisory-routing layer removed in c234599d, which was pure
+// browser-bridge + standalone module with zero server wiring (confirmed via
+// grep at the time, hence the clean removal). This version is wired into the
+// same requireAnyAuth-gated router and the same hcIntakeQueueFile per-client
+// storage pattern as node state/reports/profiles above — no standalone file.
+//
+// An intake event is a ROUTING SUGGESTION only. It never writes into a
+// node's findings/bnca (that stays each node page's own relayToStrategist()
+// job) and its status never implies the target node accepted or processed
+// anything — 'suggested' -> 'routed' just means an office manager opened
+// that node from here, 'dismissed' means they rejected the suggestion.
+const { classifyIntake } = require('../server/healthcare/hc-neural-intake');
+const { validateIntakeEvent } = require('../server/healthcare/hc-node-contract');
+
+router.get('/api/hc/intake', (req, res) => {
+  const queue = readJson(hcIntakeQueueFile(resolveHcClientId(req)), []);
+  res.json({ ok: true, count: queue.length, queue });
+});
+
+router.post('/api/hc/intake', (req, res) => {
+  const { ok, errors, description } = validateIntakeEvent(req.body);
+  if (!ok) return res.status(400).json({ ok: false, errors });
+
+  const classification = classifyIntake(description);
+  const event = {
+    id: `intk_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+    description,
+    ...classification,
+    status: 'suggested',
+    createdAt: new Date().toISOString(),
+    routedAt: null,
+  };
+
+  const queue = readJson(hcIntakeQueueFile(resolveHcClientId(req)), []);
+  queue.unshift(event);
+  writeJson(hcIntakeQueueFile(resolveHcClientId(req)), queue.slice(0, 500));
+
+  res.json({ ok: true, event });
+});
+
+// Shared by both classify-from-sample and classify-from-upload below: takes
+// already-extracted text plus the originating filename, classifies it
+// through the same classifyIntake() the typed-text path uses, and writes
+// the same intake-event shape (with sourceFileName added) onto the queue.
+function classifyExtractedText(req, res, text, sourceFileName) {
+  const description = String(text || '').trim().slice(0, 4000);
+  const { ok, errors } = validateIntakeEvent({ description });
+  if (!ok) return res.status(400).json({ ok: false, errors });
+
+  const classification = classifyIntake(description);
+  const event = {
+    id: `intk_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+    description,
+    sourceFileName: sourceFileName || null,
+    ...classification,
+    status: 'suggested',
+    createdAt: new Date().toISOString(),
+    routedAt: null,
+  };
+
+  const queue = readJson(hcIntakeQueueFile(resolveHcClientId(req)), []);
+  queue.unshift(event);
+  writeJson(hcIntakeQueueFile(resolveHcClientId(req)), queue.slice(0, 500));
+
+  res.json({ ok: true, event });
+}
+
+// Classify one of the 6 known sample docs (dropdown on the intake page).
+// filename is checked against the fixed allowlist, never read from a raw
+// user-supplied path, so this can't be used to read arbitrary files.
+router.post('/api/hc/intake-sample', async (req, res) => {
+  try {
+    const { filename } = req.body || {};
+    if (!HC_SAMPLE_FILES.includes(filename)) {
+      return res.status(400).json({ ok: false, error: 'unknown sample file' });
+    }
+    const filePath = path.join(__dirname, '..', 'html', 'healthcare', filename);
+    const buffer = fs.readFileSync(filePath);
+    const text = await extractDocText({ originalname: filename, buffer });
+    classifyExtractedText(req, res, text, filename);
+  } catch (err) {
+    console.error('[hc intake-sample] failed:', err.message);
+    res.status(500).json({ ok: false, error: err.message || 'extraction_failed' });
+  }
+});
+
+// Classify an office manager's own uploaded file (PDF/DOCX/XLSX/XLS/CSV/TXT/MD).
+router.post('/api/hc/intake-file', hcUpload.single('file'), async (req, res) => {
+  try {
+    const file = req.file;
+    if (!file) return res.status(400).json({ ok: false, error: 'No file uploaded' });
+    if (!isSupportedDoc(file.originalname)) {
+      return res.status(415).json({ ok: false, error: 'unsupported_file_type' });
+    }
+    const text = await extractDocText(file);
+    classifyExtractedText(req, res, text, file.originalname);
+  } catch (err) {
+    console.error(`[hc intake-file] failed for ${req.file && req.file.originalname}:`, err.message);
+    res.status(500).json({ ok: false, error: err.message || 'extraction_failed' });
+  }
+});
+
+// Office manager confirms routing (opens the suggested node) or dismisses
+// the suggestion. This is the only mutation allowed post-creation — the
+// classification itself is never edited after the fact, so the record of
+// what was actually suggested stays intact even if the office manager
+// disagreed with it.
+router.post('/api/hc/intake/:id/status', (req, res) => {
+  const { status } = req.body || {};
+  if (!['routed', 'dismissed'].includes(status)) {
+    return res.status(400).json({ ok: false, error: "status must be 'routed' or 'dismissed'" });
+  }
+  const clientId = resolveHcClientId(req);
+  const queue = readJson(hcIntakeQueueFile(clientId), []);
+  const event = queue.find(e => e.id === req.params.id);
+  if (!event) return res.status(404).json({ ok: false, error: 'intake event not found' });
+
+  event.status = status;
+  if (status === 'routed') event.routedAt = new Date().toISOString();
+  writeJson(hcIntakeQueueFile(clientId), queue);
+
+  res.json({ ok: true, event });
 });
 
 // Real open-vs-resolved anomaly counts across all 11 nodes, sourced from
@@ -440,7 +586,21 @@ router.post('/api/hc/query', async (req,res)=>{
     // check always failed and threw "AI returned an empty response. Try
     // again." even on a healthy server. Route it to a real Groq call instead.
     if (message) {
-      const systemPrompt = system ? SP.strategist + '\n\n' + system : SP.strategist;
+      // TSM FIX: every caller that reaches this branch (billing/insurance/
+      // financial/compliance/legal via guide-panel-engine.js's callAPI, plus
+      // hc-strategist/hc-main-strategist's own buildHCContext()-based calls)
+      // already sends a complete, purpose-built persona in `system` — up to
+      // and including strict output-format instructions ("Return ONLY a
+      // JSON object matching this EXACT shape..."). Unconditionally
+      // prepending SP.strategist's generic "cross-office... Base every
+      // statement strictly on the metrics provided" persona in front of
+      // that caused two competing personas to layer: the model would prime
+      // on "metrics" language and then invoke its own "say so instead of
+      // guessing" instruction even when the specific claim fields (patient,
+      // CPT, payer, amount) were plainly present in `message`. SP.strategist
+      // is now only a fallback for callers that don't supply their own
+      // system prompt at all.
+      const systemPrompt = system || SP.strategist;
       const answer = await callGroq(systemPrompt, message, maxTokens || 1024);
       return res.json({ ok: true, output: answer, content: answer, answer, reply: answer });
     }

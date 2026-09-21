@@ -1087,7 +1087,7 @@ function confirmAuthorization() {
   fetch('/api/exec-portal/legal/decide', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ index: Date.now(), verdict: 'approved', text: `${currentActionName} — ${note}`, actor: exec })
+    body: JSON.stringify({ index: Date.now(), verdict: 'approved', text: `${currentActionName} — ${note}`, actor: exec, tenantId: (typeof TSMActiveMember !== 'undefined' && TSMActiveMember) ? TSMActiveMember.getId() : null })
   }).catch(() => { /* offline/unreachable -- action still logged to sessionStorage above */ });
 
   closeModal();
@@ -1455,9 +1455,14 @@ setInterval(loadStrategistRelay, 15000);
       alert('Delivery package engine not loaded.');
       return;
     }
+    var _pkgQs = (window.TSMQualityScoreEngine && typeof TSMQualityScoreEngine.fromExplainItems === 'function')
+      ? TSMQualityScoreEngine.fromExplainItems(lastExplainItems, {})
+      : null;
     var pkg = TSMDeliveryPackage.build({
       domain: 'Legal',
       explainItems: lastExplainItems,
+      documentCount: Array.isArray(lastExplainItems) ? lastExplainItems.length : null,
+      qualityScore: _pkgQs,
       sections: { strategistRelay: window.tsmLastLegalRelay }
     });
     var blob = new Blob([JSON.stringify(pkg, null, 2)], { type: 'application/json' });
@@ -1479,7 +1484,8 @@ setInterval(loadStrategistRelay, 15000);
   });
 })();
 </script>
-  <script src="/html/shared/tsm-delivery-package.js"></script>
+  <script src="/html/shared/tsm-quality-score-engine.js"></script>
+  <script src="/html/shared/tsm-delivery-package-deps.js"></script>
   <script src="/html/core/tsm-runtime.js"></script>
 <script>
 
@@ -1619,6 +1625,7 @@ function tsmWriteScopedExec(vertical, missionId){
   global.legalFeedExceptions = legalFeedExceptions;
 })(window);
 </script>
+  <script src="/html/shared/tsm-active-member.js"></script>
   <script src="/js/tsm-guide-engine.js" defer></script>
   <script src="/shared/tsm-guided-how-to.js" defer></script>
 </body>

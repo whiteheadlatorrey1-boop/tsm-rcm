@@ -63,6 +63,21 @@
   var STORAGE_KEY = 'tsm_cases_v1';
   var listeners = [];
 
+  /*
+   * Set once a syncToServer/hydrateFromServer call comes back 401/403.
+   * /api/bpo/cases is deliberately requireRole()-gated server-side
+   * (server.js) — a session with no BPO-internal role (e.g. Guest)
+   * will never succeed against it, so once we've seen that denial
+   * there's no point firing (and no point letting the browser log)
+   * further requests for the rest of this page load. localStorage
+   * stays the source of truth for the page's own UI either way, per
+   * the "additive, silent no-op if unavailable" contract below — this
+   * only stops repeat network calls that are guaranteed to fail the
+   * same way. A real reload (e.g. after logging in with a role) resets
+   * this back to false.
+   */
+  var serverSyncDenied = false;
+
   /**
    * TSMCase — same field set as the original stub, extended (additively,
    * nothing renamed/removed) with the fields the Case->Exception->Action->
@@ -452,14 +467,45 @@
    * cross-device/cross-session visibility and the exec-portal's own
    * server-side reporting.
    */
+  var syncFailureLog = [];
+  var syncFailureSeen = {};
+  function recordSyncFailure(caseId, status, message) {
+    var key = caseId + '|' + status + '|' + message;
+    if (syncFailureSeen[key]) return;
+    syncFailureSeen[key] = true;
+    syncFailureLog.push({ caseId: caseId, status: status, error: message, at: new Date().toISOString() });
+    if (syncFailureLog.length > 20) syncFailureLog.shift();
+    // Deliberately no console output: the mirror sync stays silent (see
+    // "keep mirror sync silent"). Read the log on demand with
+    // TSMCaseManager.getSyncFailures().
+  }
+
   function syncToServer(rec) {
-    if (!rec || typeof global.fetch !== 'function') return;
+    if (!rec || serverSyncDenied || typeof global.fetch !== 'function') return;
     try {
       global.fetch('/api/bpo/cases/' + encodeURIComponent(rec.caseId), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(rec),
         credentials: 'same-origin'
+      }).then(function (res) {
+        if (res && (res.status === 401 || res.status === 403)) {
+          serverSyncDenied = true;
+          return;
+        }
+        // Any other non-2xx used to vanish silently, which made a real
+        // server-side rejection (e.g. a 400 carrying the ledger's error
+        // text) invisible outside the Network tab. Record (silently) once per
+        // distinct caseId/status/message; still never throws into callers.
+        if (res && res.ok === false) {
+          var status = res.status;
+          var read = (typeof res.text === 'function') ? res.text() : Promise.resolve('');
+          return read.then(function (txt) {
+            var msg = txt;
+            try { var j = JSON.parse(txt); msg = (j && (j.error || j.message)) || txt; } catch (e) {}
+            recordSyncFailure(rec.caseId, status, String(msg || '').slice(0, 500));
+          });
+        }
       }).catch(function () {});
     } catch (e) {}
   }
@@ -483,7 +529,7 @@
    * always safely fire this without their own try/catch.
    */
   function hydrateFromServer(vertical, opts) {
-    if (typeof global.fetch !== 'function') return Promise.resolve(0);
+    if (serverSyncDenied || typeof global.fetch !== 'function') return Promise.resolve(0);
     opts = opts || {};
     // GET /api/bpo/cases (server.js) already accepts ?tenantId= and already
     // enforces it server-side for client-role sessions -- this was simply
@@ -496,7 +542,12 @@
     if (opts.tenantId) params.push('tenantId=' + encodeURIComponent(opts.tenantId));
     var qs = params.length ? ('?' + params.join('&')) : '';
     return global.fetch('/api/bpo/cases' + qs, { credentials: 'same-origin' })
-      .then(function (res) { return res.ok ? res.json() : null; })
+      .then(function (res) {
+        if (res && (res.status === 401 || res.status === 403)) {
+          serverSyncDenied = true;
+        }
+        return res.ok ? res.json() : null;
+      })
       .then(function (body) {
         var serverCases = (body && body.ok && Array.isArray(body.cases)) ? body.cases : [];
         var merged = 0;
@@ -579,6 +630,9 @@
     // local closure directly, unaffected).
     priorityFor: priorityFor,
     syncToServer: syncToServer,
+    // Recent non-401/403 server rejections from syncToServer (max 20, newest
+    // last) -- e.g. TSMCaseManager.getSyncFailures() in the console.
+    getSyncFailures: function () { return syncFailureLog.slice(); },
     hydrateFromServer: hydrateFromServer,
     findByExceptionId: findByExceptionId
   };

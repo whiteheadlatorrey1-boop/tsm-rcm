@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>HC OFFICE MANAGER · Document Intake</title>
+<style>
+html, body { height:100%; overflow-y:auto; }
+main { padding-bottom:80px !important; min-height:calc(100vh - 60px); }
+:root{
+  --bg:#0a0f0a;--g:#00ff88;--a:#ffaa00;--r:#ff4444;--b:#00aaff;--p:#b695ff;
+  --dim:#0d150d;--dim2:#0b120b;--border:#1e3a1e;--text:#e0ffe0;--muted:#556655;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Courier New',monospace;font-size:13px;padding-bottom:70px}
+a{text-decoration:none}
+.hdr{display:flex;justify-content:space-between;align-items:center;padding:10px 20px;border-bottom:1px solid var(--border);background:var(--dim2);position:sticky;top:0;z-index:30}
+.hdr-left{display:flex;align-items:center;gap:12px}
+.hdr-title{font-size:16px;font-weight:700;letter-spacing:2px;color:var(--g)}
+.hdr-sub{font-size:10px;color:var(--muted);letter-spacing:1px}
+.node-pill{padding:4px 12px;border-radius:12px;font-size:10px;font-weight:700;border:1px solid var(--g);color:var(--g)}
+.sec{margin:16px 20px;background:var(--dim);border:1px solid var(--border);border-radius:6px;padding:16px}
+.sec-hdr{font-size:11px;font-weight:700;letter-spacing:2px;color:var(--g);margin-bottom:12px}
+.sec-hdr::before{content:'◆ ';font-size:8px}
+.sec-note{font-size:10px;color:var(--muted);margin-bottom:12px;line-height:1.5}
+textarea.ai-inp{width:100%;min-height:90px;resize:vertical;background:var(--dim2);border:1px solid var(--border);color:var(--g);font-family:inherit;font-size:12px;padding:10px 12px;border-radius:4px;outline:none}
+textarea.ai-inp:focus{border-color:var(--g)}
+.row{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;align-items:center}
+.btn{padding:8px 16px;font-family:inherit;font-size:11px;font-weight:700;border-radius:4px;cursor:pointer;letter-spacing:1px;border:1px solid var(--g);background:#003322;color:var(--g)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn.secondary{border-color:var(--muted);background:none;color:var(--muted)}
+.btn.danger{border-color:var(--r);background:#330000;color:var(--r)}
+.charcount{font-size:10px;color:var(--muted);margin-left:auto}
+.suggestion{margin-top:14px;padding:14px;background:var(--dim2);border:1px solid var(--border);border-radius:6px;display:none}
+.suggestion.show{display:block}
+.sugg-node{font-size:18px;font-weight:700;color:var(--g);margin-bottom:4px}
+.sugg-conf{display:inline-block;padding:2px 8px;border-radius:10px;font-size:9px;font-weight:700;margin-left:8px;vertical-align:middle}
+.conf-high{background:#003322;color:var(--g);border:1px solid var(--g)}
+.conf-low{background:#332200;color:var(--a);border:1px solid var(--a)}
+.conf-none{background:#330000;color:var(--r);border:1px solid var(--r)}
+.sugg-reason{font-size:11px;color:#99cc99;margin:6px 0}
+.sugg-alts{font-size:10px;color:var(--muted)}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;padding:6px 10px;font-size:10px;letter-spacing:1px;color:#558855;border-bottom:1px solid var(--border)}
+td{padding:8px 10px;border-bottom:1px solid #0f1f0f;vertical-align:top}
+tr:hover td{background:#0f1f0f}
+.badge{padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700}
+.b-suggested{background:#332200;color:var(--a);border:1px solid var(--a)}
+.b-routed{background:#003322;color:var(--g);border:1px solid var(--g)}
+.b-dismissed{background:#221111;color:var(--muted);border:1px solid var(--border)}
+.qtabs{display:flex;gap:6px;margin-bottom:10px}
+.qtab{padding:5px 12px;font-family:inherit;font-size:10px;font-weight:700;border:1px solid var(--border);background:none;color:var(--muted);border-radius:4px;cursor:pointer}
+.qtab.active{color:var(--g);border-color:var(--g)}
+.empty{color:#558855;font-size:11px;padding:10px 0}
+.smallbtn{padding:4px 10px;font-family:inherit;font-size:9px;font-weight:700;border-radius:4px;cursor:pointer;letter-spacing:.5px;margin-right:4px}
+.footer{position:fixed;bottom:0;left:0;right:0;background:var(--dim2);border-top:1px solid var(--border);padding:8px 20px;display:flex;justify-content:space-between;align-items:center;z-index:100}
+.fn{font-size:10px;color:#558855;letter-spacing:1px}
+@media(max-width:760px){ .row{flex-direction:column;align-items:stretch} .charcount{margin-left:0} }
+</style>
+<link rel="stylesheet" href="/shared/tsm-guided-how-to.css">
+</head>
+<body data-vertical="healthcare" data-page-role="office-manager-intake">
+<style>
+.tsm-hc-crossnav{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:6px 14px;background:#0a0f0a;border-bottom:1px solid #1e3a1e;font-family:'Courier New',monospace;font-size:10px;letter-spacing:.5px;position:sticky;top:0;z-index:200}
+.tsm-hc-crossnav-lbl{color:#556655;margin-right:4px;text-transform:uppercase}
+.tsm-hc-crossnav a{color:#00ff88;text-decoration:none;padding:3px 9px;border:1px solid #1e3a1e;border-radius:10px;white-space:nowrap}
+.tsm-hc-crossnav a:hover{border-color:#00ff88;background:#003322}
+.tsm-hc-crossnav span.tsm-hc-crossnav-active{color:#0a0f0a;background:#00ff88;padding:3px 9px;border-radius:10px;font-weight:700;white-space:nowrap}
+</style>
+<div class="tsm-hc-crossnav"><span class="tsm-hc-crossnav-lbl">HC suite:</span><a href="/html/healthcare/hc-denial-war-room.html">Denial War Room</a><a href="/html/healthcare/hc-main-strategist.html">Strategist</a><span class="tsm-hc-crossnav-active">Doc Intake</span><a href="/html/healthcare/executive-portal.html">Executive Portal</a><a href="/html/healthcare/hc-om-portal.html">OM Portal</a><a href="/html/healthcare/hc-strategist/index.html">Neural Intake Strategist</a></div>
+
+
+<div class="hdr">
+  <div class="hdr-left">
+    <span style="font-size:22px">📥</span>
+    <div>
+      <div class="hdr-title">HC OFFICE MANAGER · DOCUMENT INTAKE</div>
+      <div class="hdr-sub">Routing suggestions only — nothing here is auto-processed by a node</div>
+    </div>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+    <button type="button" class="btn secondary" onclick="TSMGuidedHowTo.inject('healthcare-intake')" style="font-size:10px">❓ HOW TO</button>
+    <a class="node-pill" href="/html/healthcare/hc-strategist/index.html" style="color:var(--g)">HC STRATEGIST →</a>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="sec-hdr">CLASSIFY A CASE</div>
+  <div class="sec-note">
+    Paste or describe the document/case. This runs a deterministic keyword match against the 11 HC nodes —
+    it names exactly which words it matched, and if nothing matches clearly it says so instead of guessing.
+    Nothing is sent to a node until you click "Route to Node" below.
+  </div>
+  <textarea id="intake-desc" class="ai-inp" placeholder="e.g. Denial received for CPT 99214, timely filing appeal needed, payer cited CO-29..." maxlength="4000"></textarea>
+  <div class="row">
+    <button class="btn" id="classify-btn" onclick="submitIntake()">⬡ CLASSIFY</button>
+    <button class="btn secondary" onclick="document.getElementById('intake-desc').value='';document.getElementById('suggestion').classList.remove('show')">CLEAR</button>
+    <span class="charcount" id="charcount">0 / 4000</span>
+  </div>
+
+  <div class="suggestion" id="suggestion">
+    <div id="sugg-body"></div>
+    <div class="row" id="sugg-actions"></div>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="sec-hdr">CLASSIFY FROM FILE</div>
+  <div class="sec-note">
+    Pick one of the 6 healthcare sample documents, or upload your own (PDF, DOCX, XLSX, XLS, CSV, TXT, or MD — 8MB max).
+    Text is extracted server-side, then run through the same keyword classifier as above.
+  </div>
+  <div class="row">
+    <select id="sample-select" class="ai-inp" style="max-width:380px;min-height:auto;padding:8px 10px;">
+      <option value="">— choose a sample —</option>
+      <option value="File1_PriorAuth_Denial.pdf">File1 — Prior Auth + Denial (Meridian)</option>
+      <option value="File2_Remittance_EOB.pdf">File2 — Remittance + EOB (Meridian)</option>
+      <option value="File3_PriorAuth_Denial_CO197.pdf">File3 — Prior Auth + Denial (Arizona Health Network)</option>
+      <option value="File4_Remittance_EOB_2.pdf">File4 — Remittance + EOB (Arizona Health Network)</option>
+      <option value="File5_PriorAuth_Denial_ANOMALY.pdf">File5 — Prior Auth + Denial, seeded anomaly (TriCore)</option>
+      <option value="File6_Remittance_EOB_ANOMALY.pdf">File6 — Remittance + EOB, seeded anomaly (TriCore)</option>
+    </select>
+    <button class="btn" id="sample-btn" onclick="classifySample()">⬡ LOAD &amp; CLASSIFY SAMPLE</button>
+  </div>
+  <div class="row">
+    <input type="file" id="file-upload" accept=".pdf,.docx,.xlsx,.xls,.csv,.txt,.md" style="color:var(--text);font-size:11px;flex:1;min-width:200px;">
+    <button class="btn" id="upload-btn" onclick="classifyUpload()">⬡ CLASSIFY UPLOADED FILE</button>
+  </div>
+</div>
+
+<div class="sec">
+  <div class="sec-hdr">INTAKE QUEUE</div>
+  <div class="qtabs">
+    <button class="qtab active" data-status="all" onclick="setQueueFilter('all',this)">ALL</button>
+    <button class="qtab" data-status="suggested" onclick="setQueueFilter('suggested',this)">SUGGESTED</button>
+    <button class="qtab" data-status="routed" onclick="setQueueFilter('routed',this)">ROUTED</button>
+    <button class="qtab" data-status="dismissed" onclick="setQueueFilter('dismissed',this)">DISMISSED</button>
+  </div>
+  <table>
+    <thead><tr><th>WHEN</th><th>DESCRIPTION</th><th>SUGGESTED NODE</th><th>CONFIDENCE</th><th>STATUS</th><th></th></tr></thead>
+    <tbody id="queue-body"><tr><td colspan="6" class="empty">Loading intake queue…</td></tr></tbody>
+  </table>
+</div>
+
+<div class="footer">
+  <div class="fn">◈ HC OFFICE MANAGER · Neural Intake · real routing suggestions, not automatic node processing</div>
+</div>
+
+<script>
+const NODE_PATH = {
+  operations:'hc-operations', medical:'hc-medical', pharmacy:'hc-pharmacy', insurance:'hc-insurance',
+  billing:'hc-billing', financial:'hc-financial', compliance:'hc-compliance', legal:'hc-legal',
+  grants:'hc-grants', taxprep:'hc-taxprep', vendors:'hc-vendors'
+};
+
+let lastSuggestionEvent = null;
+let queueFilter = 'all';
+
+document.getElementById('intake-desc').addEventListener('input', (e) => {
+  document.getElementById('charcount').textContent = `${e.target.value.length} / 4000`;
+});
+
+async function submitIntake(){
+  const desc = document.getElementById('intake-desc').value.trim();
+  const btn = document.getElementById('classify-btn');
+  if (!desc) { alert('Enter a description first.'); return; }
+  btn.disabled = true; btn.textContent = '⏳ CLASSIFYING...';
+  try {
+    const res = await fetch('/api/hc/intake', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ description: desc })
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      alert('Could not classify: ' + (data.errors || [data.error]).join('; '));
+      return;
+    }
+    lastSuggestionEvent = data.event;
+    renderSuggestion(data.event);
+    await refreshQueue();
+  } catch (e) {
+    alert('Request failed: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '⬡ CLASSIFY';
+  }
+}
+
+async function classifySample(){
+  const select = document.getElementById('sample-select');
+  const filename = select.value;
+  const btn = document.getElementById('sample-btn');
+  if (!filename) { alert('Choose a sample document first.'); return; }
+  btn.disabled = true; btn.textContent = '⏳ EXTRACTING...';
+  try {
+    const res = await fetch('/api/hc/intake-sample', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename })
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      alert('Could not classify: ' + (data.errors || [data.error]).join('; '));
+      return;
+    }
+    lastSuggestionEvent = data.event;
+    renderSuggestion(data.event);
+    await refreshQueue();
+  } catch (e) {
+    alert('Request failed: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '⬡ LOAD & CLASSIFY SAMPLE';
+  }
+}
+
+async function classifyUpload(){
+  const input = document.getElementById('file-upload');
+  const file = input.files && input.files[0];
+  const btn = document.getElementById('upload-btn');
+  if (!file) { alert('Choose a file to upload first.'); return; }
+  btn.disabled = true; btn.textContent = '⏳ EXTRACTING...';
+  try {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch('/api/hc/intake-file', { method: 'POST', body: form });
+    const data = await res.json();
+    if (!data.ok) {
+      alert('Could not classify: ' + (data.errors || [data.error]).join('; '));
+      return;
+    }
+    lastSuggestionEvent = data.event;
+    renderSuggestion(data.event);
+    await refreshQueue();
+    input.value = '';
+  } catch (e) {
+    alert('Request failed: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '⬡ CLASSIFY UPLOADED FILE';
+  }
+}
+
+function renderSuggestion(ev){
+  const box = document.getElementById('suggestion');
+  const body = document.getElementById('sugg-body');
+  const actions = document.getElementById('sugg-actions');
+  box.classList.add('show');
+
+  const confClass = ev.confidence === 'high' ? 'conf-high' : (ev.confidence === 'low' ? 'conf-low' : 'conf-none');
+
+  if (!ev.suggestedNode) {
+    body.innerHTML = `<div class="sugg-node" style="color:var(--r)">No confident match</div>
+      <div class="sugg-reason">${escapeHtml(ev.reason)}</div>`;
+    actions.innerHTML = `<span style="font-size:10px;color:var(--muted)">Route this manually from HC Strategist → Node Status.</span>`;
+    return;
+  }
+
+  body.innerHTML = `
+    <div class="sugg-node">→ ${escapeHtml(ev.suggestedLabel)} <span class="sugg-conf ${confClass}">${ev.confidence.toUpperCase()} CONFIDENCE</span></div>
+    <div class="sugg-reason">${escapeHtml(ev.reason)}</div>
+    ${ev.alternates && ev.alternates.length ? `<div class="sugg-alts">Also considered: ${ev.alternates.map(a=>escapeHtml(a.label)).join(', ')}</div>` : ''}
+  `;
+  actions.innerHTML = `
+    <button class="btn" onclick="routeIntake('${ev.id}','${ev.suggestedNode}')">✓ ROUTE TO ${escapeHtml(ev.suggestedLabel).toUpperCase()}</button>
+    <button class="btn secondary" onclick="dismissIntake('${ev.id}')">✕ DISMISS SUGGESTION</button>
+  `;
+}
+
+async function routeIntake(id, nodeKey){
+  try {
+    await fetch(`/api/hc/intake/${id}/status`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ status: 'routed' })
+    });
+  } catch(e) { /* still navigate — office manager's intent is to open the node */ }
+
+  // Relay the classified case into the SAME localStorage bridge every HC
+  // node page already reads (tsm-doc-anomaly-bridge.js) — before this,
+  // routing here handed the destination node nothing at all, so it opened
+  // showing its own hardcoded demo data with zero connection to what was
+  // just classified. This reuses the existing, already-wired bridge rather
+  // than inventing a parallel one, so every node gets it for free.
+  const ev = (lastSuggestionEvent && lastSuggestionEvent.id === id)
+    ? lastSuggestionEvent
+    : await findQueueEvent(id);
+  if (ev) await relayToAnomalyBridge(ev, nodeKey);
+
+  await refreshQueue();
+  const path = NODE_PATH[nodeKey];
+  if (path) window.location.href = `/html/healthcare/${path}/index.html`;
+}
+
+// routeIntake() can be called either right after classifying (lastSuggestionEvent
+// is fresh) or from a row in the Intake Queue table below (an older event) —
+// this covers the second case by re-fetching the queue.
+async function findQueueEvent(id){
+  try {
+    const res = await fetch('/api/hc/intake');
+    const data = await res.json();
+    return (data.queue || []).find(e => e.id === id) || null;
+  } catch (e) { return null; }
+}
+
+// Deterministic, regex-only extraction of the structured client/claim
+// fields a billing/insurance/compliance node's "SET CLIENT MISSION" intake
+// form asks for — pulled straight out of the routed document text (same
+// text already shown to the office manager and the destination node's
+// Executive Narrative panel). No LLM call and nothing invented: every
+// field is either a direct labeled match in the source text or left out
+// entirely so the destination node's own defaults show through instead of
+// a guessed value. This exists so the destination node doesn't make an
+// operator manually retype data that was already sitting in the document
+// they just classified — see routeIntake() below.
+//
+// Deliberately NOT extracted: the appeal/response deadline date. Getting
+// that wrong silently (e.g. off-by-one on a "within N days of notice"
+// clause) risks a missed deadline, which is a worse outcome than asking a
+// human to set it. Instead, if an explicit appeal window is found, it's
+// surfaced as text in the issue field so the operator sees it without
+// having to reread the whole document, but still sets the actual date.
+function extractClientData(text){
+  const t = String(text || '');
+  const grab = (re) => { const m = t.match(re); return m ? m[1].trim() : ''; };
+
+  const patient = grab(/Patient Name:?\s*([A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+){1,3})(?=\s+(?:Date of Birth|Patient ID|Member ID))/);
+  const claim = grab(/Claim\s*#:?\s*([A-Za-z0-9-]{4,20})/i);
+  let payer = grab(/\*\*\*\s*([A-Z][A-Za-z0-9&.,'-][A-Za-z0-9&.,'\- ]{1,58}?)\s*Prior Authorization Request Form/);
+  if (!payer) payer = grab(/Medical Director,\s*([A-Z][A-Za-z0-9&.,'\- ]{2,60})/);
+
+  const denialMatch = t.match(/Denial Reason Code:?\s*([A-Z]{1,3}-?\d{1,4})\s*(?:—|-|–)\s*([A-Za-z0-9/,'\s]{3,80}?)(?=\s+(?:[A-Z][A-Za-z]*(?:\s[A-Z][A-Za-z]*){0,3}:|Explanation|Dear|Sincerely)|$)/);
+  const denial = denialMatch ? denialMatch[1].trim() : '';
+  const denialReason = denialMatch ? denialMatch[2].trim() : '';
+
+  const cpt = grab(/CPT Code:?\s*(\d{5})/) || grab(/CPT\s+(\d{5})/);
+  const amount = grab(/Amount Billed:?\s*(\$[\d,]+(?:\.\d{2})?)/) || grab(/Est\.?\s*Charge Amount:?\s*(\$[\d,]+(?:\.\d{2})?)/);
+  const appealWindow = grab(/within\s+(\d{1,3}\s+days)\s+of\s+this\s+notice/i);
+
+  const issueParts = [];
+  if (denial && denialReason) issueParts.push(denial + ' \u2014 ' + denialReason + '.');
+  else if (denialReason) issueParts.push(denialReason + '.');
+  if (appealWindow) issueParts.push('Appeal window found in source doc: ' + appealWindow + ' of notice date \u2014 verify exact deadline before filing.');
+
+  const data = {};
+  if (patient) data.patient = patient;
+  if (claim) data.claim = claim;
+  if (payer) data.payer = payer;
+  if (denial) data.denial = denial;
+  if (cpt) data.cpt = cpt;
+  if (amount) data.amount = amount;
+  if (issueParts.length) data.issue = issueParts.join(' ');
+
+  return Object.keys(data).length ? data : null;
+}
+
+// Same fixed 4-line template as before parseAdvisorSteps() existed — used
+// whenever the claim-specific AI call below fails, times out, or comes back
+// empty. Never leave the operator with zero steps.
+function genericSteps(clientData){
+  return clientData ? [
+    'Review the case above against this node\u2019s Mission Objectives panel',
+    'Client/claim data was auto-filled from the routed document \u2014 verify the amount and set the appeal deadline (not auto-filled)',
+    'Work Step 1 \u2192 Submit Step Response, then Step 2 \u2192 Submit Step Response',
+    'Relay to Strategist only if this reveals a cross-domain issue'
+  ] : [
+    'Review the case above against this node\u2019s Mission Objectives panel',
+    'Update this node\u2019s own client/claim intake fields to match, if they don\u2019t already',
+    'Work Step 1 \u2192 Submit Step Response, then Step 2 \u2192 Submit Step Response',
+    'Relay to Strategist only if this reveals a cross-domain issue'
+  ];
+}
+
+// Parses the same "⚠ [FIELD] — what's wrong — fix" numbered-list format the
+// Anomaly Advisor (hc-denial-war-room.html) prompts for — kept identical so
+// tsm-doc-anomaly-bridge.js's parseStep() renders both sources the same way.
+function parseAdvisorSteps(text){
+  if (!text) return [];
+  return text
+    .split(/\n(?=\s*\d+\.\s)/)
+    .map(s => s.replace(/^\s*\d+\.\s*/, '').replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .slice(0, 8);
+}
+
+// Best-effort claim-specific checklist via the same Groq-backed endpoint the
+// Anomaly Advisor uses (/api/hc/query with `message` set → callGroq()), so
+// office-manager-routed cases get field-specific steps instead of the fixed
+// 4-line template. Bounded to 8s so a slow/unreachable model never blocks
+// the routing click — falls back to genericSteps() on any failure, timeout,
+// or empty/unparseable response, exactly matching prior behavior.
+async function fetchClaimSpecificSteps(ev, clientData){
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+  try {
+    const sys = `You are TSM Anomaly Advisor, a field-level defect detection engine for healthcare RCM documents. Analyze the routed document and identify specific actionable document defects. Output ONLY a numbered list. Each item must follow this exact format:
+⚠ [FIELD NAME] — what is wrong — exact fix instruction (which tab, which field, what to enter or change).
+Maximum 6 items. No preamble. No headers. No summary. Start immediately with item 1.`;
+    const contextParts = [`CLASSIFICATION: ${ev.suggestedLabel || ev.suggestedNode || ''}`, ev.reason ? `REASON: ${ev.reason}` : '', 'DOCUMENT:', String(ev.description || '').slice(0, 1800)];
+    if (clientData) contextParts.push('EXTRACTED FIELDS:', JSON.stringify(clientData));
+    const res = await fetch('/api/hc/query', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ system: sys, message: contextParts.filter(Boolean).join('\n'), maxTokens: 500 }),
+      signal: controller.signal
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const parsed = parseAdvisorSteps(data && data.output);
+    return parsed.length ? parsed : null;
+  } catch (e) {
+    return null; // network error, abort/timeout, or bad JSON — caller falls back
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function relayToAnomalyBridge(ev, nodeKey){
+  const findings = [`Confidence: ${(ev.confidence || '—').toUpperCase()}`, ev.reason].filter(Boolean);
+  if (ev.alternates && ev.alternates.length) {
+    findings.push(`Also considered: ${ev.alternates.map(a => a.label).join(', ')}`);
+  }
+  const clientData = extractClientData(ev.description);
+  if (clientData) {
+    findings.push(`Client data auto-filled: ${Object.keys(clientData).filter(k => k !== 'issue').join(', ')}`);
+  }
+  const aiSteps = await fetchClaimSpecificSteps(ev, clientData);
+  const payload = {
+    checkStatus: 'OFFICE_MANAGER_ROUTED',
+    bannerLabel: 'CASE ROUTED FROM OFFICE MANAGER',
+    sourceBadge: '📥 FROM OFFICE MANAGER',
+    narrative: ev.description,
+    findings,
+    steps: aiSteps || genericSteps(clientData),
+    clientData: clientData || undefined,
+    fileName: ev.sourceFileName || undefined,
+    ref: ev.id,
+    targetNodeIds: [nodeKey],
+    ts: Date.now(),
+    source: 'office-manager-intake'
+  };
+  try { localStorage.setItem('tsm-doc-anomaly', JSON.stringify(payload)); } catch (e) {}
+}
+
+async function dismissIntake(id){
+  try {
+    await fetch(`/api/hc/intake/${id}/status`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ status: 'dismissed' })
+    });
+  } catch(e) {}
+  document.getElementById('suggestion').classList.remove('show');
+  document.getElementById('intake-desc').value = '';
+  document.getElementById('charcount').textContent = '0 / 4000';
+  await refreshQueue();
+}
+
+function setQueueFilter(status, el){
+  queueFilter = status;
+  document.querySelectorAll('.qtab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  refreshQueue();
+}
+
+async function refreshQueue(){
+  const body = document.getElementById('queue-body');
+  try {
+    const res = await fetch('/api/hc/intake');
+    const data = await res.json();
+    let rows = data.queue || [];
+    if (queueFilter !== 'all') rows = rows.filter(r => r.status === queueFilter);
+    if (!rows.length) {
+      body.innerHTML = `<tr><td colspan="6" class="empty">No ${queueFilter === 'all' ? '' : queueFilter + ' '}intake events yet.</td></tr>`;
+      return;
+    }
+    body.innerHTML = rows.map(r => {
+      const when = new Date(r.createdAt).toLocaleString('en-US', { hour12:false });
+      const badgeClass = r.status === 'routed' ? 'b-routed' : (r.status === 'dismissed' ? 'b-dismissed' : 'b-suggested');
+      const actionsCell = r.status === 'suggested' && r.suggestedNode
+        ? `<button class="btn smallbtn" onclick="routeIntake('${r.id}','${r.suggestedNode}')">ROUTE</button><button class="btn secondary smallbtn" onclick="dismissIntake('${r.id}')">DISMISS</button>`
+        : '';
+      const descCell = r.sourceFileName
+        ? `📄 ${escapeHtml(r.sourceFileName)}<br><span style="opacity:.6">${escapeHtml(excerpt(r.description, 60))}</span>`
+        : escapeHtml(excerpt(r.description, 70));
+      return `<tr>
+        <td>${when}</td>
+        <td>${descCell}</td>
+        <td>${r.suggestedLabel ? escapeHtml(r.suggestedLabel) : '—'}</td>
+        <td>${r.confidence || '—'}</td>
+        <td><span class="badge ${badgeClass}">${r.status.toUpperCase()}</span></td>
+        <td>${actionsCell}</td>
+      </tr>`;
+    }).join('');
+  } catch(e) {
+    body.innerHTML = `<tr><td colspan="6" class="empty" style="color:var(--r)">Failed to load queue: ${escapeHtml(e.message)}</td></tr>`;
+  }
+}
+
+function excerpt(text, maxLen){
+  const clean = String(text || '').replace(/\s+/g,' ').trim();
+  return clean.length <= maxLen ? clean : clean.slice(0, maxLen).replace(/\s+\S*$/, '') + '…';
+}
+function escapeHtml(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+document.addEventListener('DOMContentLoaded', refreshQueue);
+</script>
+<script src="/shared/tsm-guided-how-to.js" defer></script>
+</body>
+</html>

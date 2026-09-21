@@ -17,6 +17,26 @@
   HONEYWELL_CYBER:    "TSM_HONEYWELL_CYBER_RELAY",
   HONEYWELL_SUPPLIER: "TSM_HONEYWELL_SUPPLIER_RELAY",
   HONEYWELL_PLANT:    "TSM_HONEYWELL_PLANT_RELAY",
+  // College vertical (Financial-Aid-centered) — same split-key pattern as the
+  // three HONEYWELL_* domains above: each domain writes only its own key,
+  // college-strategist.html reads all five and aggregates rather than
+  // picking a single "latest" (Financial Aid ops needs simultaneous
+  // visibility across domains, unlike Honeywell's one-incident-at-a-time use).
+  COLLEGE_FINAID:      "TSM_COLLEGE_FINAID_RELAY",
+  COLLEGE_BURSAR:      "TSM_COLLEGE_BURSAR_RELAY",
+  COLLEGE_ENDOWMENT:   "TSM_COLLEGE_ENDOWMENT_RELAY",
+  COLLEGE_RESEARCH_FA: "TSM_COLLEGE_RESEARCH_FA_RELAY",
+  COLLEGE_ACCRED:      "TSM_COLLEGE_ACCRED_RELAY",
+  // Insurance Command suite (2026-09-06) — 4 domains with real backend
+  // wiring (routes/insurance-*-financial.js), same split-key pattern as
+  // the COLLEGE_* domains above: each domain writes only its own key,
+  // insurance-command-executive-portal.html reads all four and aggregates
+  // rather than picking a single "latest". Distinct from the pre-existing
+  // INSURANCE key below (ins-war-room -> insurance-strategist.html pipeline).
+  INSURANCE_CLAIMS:     "TSM_INSURANCE_CLAIMS_RELAY",
+  INSURANCE_PC:         "TSM_INSURANCE_PC_RELAY",
+  INSURANCE_COMPLIANCE: "TSM_INSURANCE_COMPLIANCE_RELAY",
+  INSURANCE_LICENSING:  "TSM_INSURANCE_LICENSING_RELAY",
   INTEGRATION: "TSM_INTEGRATION_HUB_RELAY",
   NOC: "TSM_NOC_RELAY",
   MORTGAGE: "TSM_MORTGAGE_RELAY",
@@ -36,7 +56,16 @@
   VENDOR:       "TSM_VENDOR_WAR_RELAY",
   HOTELOPS:     "TSM_HOTELOPS_STRATEGIST_RELAY",
   PM:           "TSM_PM_RELAY",
-  CONCIERGE:    "TSM_CONCIERGE_RELAY"
+  CONCIERGE:    "TSM_CONCIERGE_RELAY",
+  // TSM FIX: evidence-ledger.js (html/shared/runtime/trust-evidence/) calls
+  // TSM.relay.write('TRUST_EVIDENCE', ...) on every record() so other tabs
+  // can pick up new decision-evidence entries via the same storage-event
+  // pattern used elsewhere -- but this domain was never registered, so
+  // every single call threw "Unknown relay domain: TRUST_EVIDENCE" and got
+  // swallowed by the caller's try/catch. The record itself always
+  // persisted fine (it has its own dedicated localStorage store); this was
+  // only breaking the cross-tab broadcast.
+  TRUST_EVIDENCE: "TSM_TRUST_EVIDENCE_RELAY"
 };
   const EVENT_LOG_KEY = "TSM_EVENT_LOG";
   const EVENT_LOG_MAX = 500;

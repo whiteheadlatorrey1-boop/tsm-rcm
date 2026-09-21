@@ -42,15 +42,37 @@ async function connect() {
   }
 
   connecting = (async () => {
-    client = new MongoClient(uri, {
-      // Firestore's Mongo-compat layer wants these explicit; harmless
-      // no-ops against real MongoDB if this code ever points elsewhere.
-      serverSelectionTimeoutMS: 10000,
-    });
-    await client.connect();
-    db = client.db(DEFAULT_DB_NAME);
-    connecting = null;
-    return db;
+    try {
+      client = new MongoClient(uri, {
+        // Firestore's Mongo-compat layer wants these explicit; harmless
+        // no-ops against real MongoDB if this code ever points elsewhere.
+        serverSelectionTimeoutMS: 10000,
+        // Bounds the initial TCP/TLS handshake — without this, a stalled
+        // network path to the endpoint hangs client.connect() indefinitely
+        // (serverSelectionTimeoutMS only bounds topology *selection*, not
+        // the handshake itself), and every concurrent caller sharing this
+        // same in-flight `connecting` promise hangs with it.
+        connectTimeoutMS: 10000,
+        // Bounds any individual socket read/write after connection — the
+        // driver default is 0 (no timeout), so a connection that goes
+        // stale mid-operation (half-open TCP, LB drop) would otherwise
+        // hang that operation forever instead of surfacing an error.
+        socketTimeoutMS: 15000,
+      });
+      await client.connect();
+      db = client.db(DEFAULT_DB_NAME);
+      connecting = null;
+      return db;
+    } catch (err) {
+      // Without this reset, a single failed/timed-out connection attempt
+      // would permanently wedge every ledger-touching route for the rest
+      // of the process's life — every future call would keep re-awaiting
+      // this same rejected promise instead of retrying. Clearing both lets
+      // the next request attempt a fresh connect() if the network recovers.
+      client = null;
+      connecting = null;
+      throw err;
+    }
   })();
 
   return connecting;
@@ -321,6 +343,16 @@ const BPO_DOC_CHUNKS_COLLECTION = 'bpo_document_chunks';
 // is needed here).
 const BPO_CASES_COLLECTION = 'bpo_cases';
 
+// Phase 6: learning records. Append-only — one doc per caseId, written once
+// a work item reaches a terminal recovery outcome (anything but PENDING).
+// Captures the AI's original prediction (recoveryLikelihood/confidence from
+// structuredCase) against the realized outcome (originalExposure/
+// recoveredAmount/recoveryRate as locked in by Phase 7's
+// bpoRecordWorkItemOutcome) so the gap between the two is measurable
+// instead of anecdotal. Not upserted/overwritten on repeat calls for the
+// same caseId — see bpoBuildLearningRecord below for why.
+const BPO_LEARNING_RECORDS_COLLECTION = 'bpo_learning_records';
+
 // SMB Member layer — a Member is a cross-vertical demo tenant (e.g. one
 // SMB using Construction + Healthcare + Mortgage under one roof), keyed
 // by the same tenantId that bpo_cases already carries. Deliberately a
@@ -381,6 +413,11 @@ async function bpoCasesCollection() {
   return database.collection(BPO_CASES_COLLECTION);
 }
 
+async function bpoLearningRecordsCollection() {
+  const database = await getDb();
+  return database.collection(BPO_LEARNING_RECORDS_COLLECTION);
+}
+
 async function tsmMembersCollection() {
   const database = await getDb();
   return database.collection(TSM_MEMBERS_COLLECTION);
@@ -435,6 +472,21 @@ async function bpoGetClient(id) {
   const doc = await col.findOne({ id });
   if (!doc) return doc;
   return { ...doc, hasLogin: clientRegistry.idExists(id) };
+}
+
+// Reverse lookup of bpoGetClient — resolves a Member's tenantId to the BPO
+// client it's linked to (set via saveTenantLink() / PATCH /api/bpo/clients/:id
+// in bpo-clients-admin.html), so a caller holding only a tenantId (e.g. the
+// client-side-resolved TSMActiveMember.getId(), never guessed server-side)
+// can attribute a record to a real clientId instead of leaving it null.
+// Returns null on no tenantId, no match, or an unlinked/ambiguous tenantId —
+// callers must treat null the same as "no client known", never as an error.
+async function bpoGetClientByTenantId(tenantId) {
+  if (!tenantId) return null;
+  const col = await bpoClientsCollection();
+  const doc = await col.findOne({ tenantId });
+  if (!doc) return null;
+  return { ...doc, hasLogin: clientRegistry.idExists(doc.id) };
 }
 
 /**
@@ -804,6 +856,434 @@ async function bpoUpsertWorkItem(caseId, fields, actor) {
   }
 
   return doc;
+}
+
+
+// ── Recovery Outcome / Reconciliation (Phase 5) ─────────────────────────
+// Records the measured BPO/payer outcome against the SAME work item created
+// by the HC recovery flow. AI may recommend recovery, but only this governed
+// human/BPO outcome establishes what was actually recovered.
+//
+// Controlled statuses:
+//   PENDING
+//   RECOVERED
+//   PARTIALLY_RECOVERED
+//   DENIED_AFTER_APPEAL
+//   WITHDRAWN
+//   NO_RECOVERY
+const BPO_RECOVERY_STATUSES = [
+  'PENDING',
+  'RECOVERED',
+  'PARTIALLY_RECOVERED',
+  'DENIED_AFTER_APPEAL',
+  'WITHDRAWN',
+  'NO_RECOVERY',
+];
+
+// Strict money parsing. Number() is far too forgiving for a financial record:
+// Number(null) === 0, Number('') === 0, Number(true) === 1, Number([]) === 0,
+// Number('0x10') === 16 -- each of which would silently turn "no value" into a
+// real dollar figure. Accept only a finite number, or a plain numeric string
+// ("2000", "$2,000.50"), >= 0, with at most 2 decimal places. Returned rounded
+// to whole cents so later comparisons are exact.
+function bpoNumber(value, fieldName) {
+  let n;
+  if (typeof value === 'number') {
+    n = value;
+  } else if (typeof value === 'string' && /^\s*\$?\s*\d[\d,]*(\.\d+)?\s*$/.test(value)) {
+    n = Number(value.replace(/[$,\s]/g, ''));
+  } else {
+    throw new Error(fieldName + ' must be a finite number >= 0');
+  }
+  if (!Number.isFinite(n) || n < 0) {
+    throw new Error(fieldName + ' must be a finite number >= 0');
+  }
+  const cents = Math.round(n * 100);
+  if (Math.abs(n * 100 - cents) > 1e-6) {
+    throw new Error(fieldName + ' must have at most 2 decimal places');
+  }
+  return cents / 100;
+}
+
+// Statuses whose recovered amount is, by definition, zero.
+const BPO_ZERO_RECOVERY_STATUSES = [
+  'PENDING',
+  'NO_RECOVERY',
+  'DENIED_AFTER_APPEAL',
+  'WITHDRAWN',
+];
+
+// Pure consistency rules for a recovery outcome (Phase 7). Throws on any
+// impossible or contradictory combination; returns cents-exact derived values
+// otherwise. Kept separate from the DB path so it can be reused (learning
+// records, dashboards) and tested exhaustively without a database.
+//
+//   recoveredAmount <= originalExposure
+//   PENDING / NO_RECOVERY / DENIED_AFTER_APPEAL / WITHDRAWN  -> recovered = 0
+//   RECOVERED             -> recovered = originalExposure (exactly)
+//   PARTIALLY_RECOVERED   -> 0 < recovered < originalExposure
+//   remainingBalance = originalExposure - recovered  (never negative)
+//   recoveryRate     = recovered / originalExposure
+function bpoValidateRecoveryOutcome(o) {
+  const status = String((o && o.status) || '').trim().toUpperCase();
+  if (!BPO_RECOVERY_STATUSES.includes(status)) {
+    throw new Error('recoveryStatus must be one of: ' + BPO_RECOVERY_STATUSES.join(', '));
+  }
+
+  const originalExposure = bpoNumber(o.originalExposure, 'originalExposure');
+  const recoveredAmount = bpoNumber(o.recoveredAmount, 'recoveredAmount');
+
+  if (originalExposure <= 0) {
+    throw new Error('originalExposure must be greater than 0');
+  }
+
+  const expC = Math.round(originalExposure * 100);
+  const recC = Math.round(recoveredAmount * 100);
+
+  if (recC > expC) {
+    throw new Error('recoveredAmount cannot exceed originalExposure (' + originalExposure + ')');
+  }
+
+  if (BPO_ZERO_RECOVERY_STATUSES.includes(status) && recC !== 0) {
+    throw new Error(status + ' outcome must have recoveredAmount = 0');
+  }
+
+  if (status === 'RECOVERED' && recC !== expC) {
+    throw new Error(
+      'RECOVERED outcome must have recoveredAmount equal to originalExposure (' + originalExposure + ')'
+    );
+  }
+
+  if (status === 'PARTIALLY_RECOVERED' && !(recC > 0 && recC < expC)) {
+    throw new Error(
+      'PARTIALLY_RECOVERED outcome must have recoveredAmount greater than 0 and less than originalExposure (' +
+      originalExposure + ')'
+    );
+  }
+
+  return {
+    status,
+    originalExposure,
+    recoveredAmount,
+    remainingBalance: (expC - recC) / 100,
+    recoveryRate: recC / expC,
+  };
+}
+
+function bpoExtractStructuredCase(workItem) {
+  const payload = workItem && workItem.payload;
+
+  // HC Executive Portal / BPO relay preserves the canonical structuredCase
+  // inside the work-item payload. Support the known nested shapes without
+  // guessing from free-form text or the quarterly exposure.
+  const candidates = [
+    payload && payload.structuredCase,
+    payload && payload.opportunity && payload.opportunity.structuredCase,
+    payload && payload.recovery && payload.recovery.structuredCase,
+    payload && payload.extraction && payload.extraction.structuredCase,
+    // Healthcare Executive Portal handoff: executive-portal.html stores the
+    // canonical War Room case at sections.healthcareRevenueRecovery.structuredCase.
+    payload && payload.sections && payload.sections.healthcareRevenueRecovery
+      && payload.sections.healthcareRevenueRecovery.structuredCase,
+  ];
+
+  for (const candidate of candidates) {
+    if (candidate && typeof candidate === 'object') return candidate;
+  }
+
+  return null;
+}
+
+async function bpoRecordWorkItemOutcome(caseId, fields, actor) {
+  if (!caseId) throw new Error('caseId required');
+
+  const input = fields || {};
+  const status = (input.recoveryStatus || input.status || '').toString().trim().toUpperCase();
+
+  if (!BPO_RECOVERY_STATUSES.includes(status)) {
+    throw new Error(
+      'recoveryStatus must be one of: ' + BPO_RECOVERY_STATUSES.join(', ')
+    );
+  }
+
+  const col = await bpoWorkItemsCollection();
+  const existing = await col.findOne({ caseId });
+
+  if (!existing) {
+    throw new Error('BPO work item not found: ' + caseId);
+  }
+
+  const structuredCase = bpoExtractStructuredCase(existing);
+  if (!structuredCase) {
+    throw new Error('structuredCase missing from BPO work item: ' + caseId);
+  }
+
+  // Authoritative claim-level exposure comes from the canonical structured
+  // case. Do NOT use quarterly/program exposure such as $187,000, and never
+  // treat a missing exposure as $0.
+  if (structuredCase.financialExposure === undefined || structuredCase.financialExposure === null || structuredCase.financialExposure === '') {
+    throw new Error('structuredCase.financialExposure missing from BPO work item: ' + caseId);
+  }
+
+  // recoveredAmount may be omitted only where the status itself implies $0.
+  // For RECOVERED / PARTIALLY_RECOVERED an omitted amount is an error, never a
+  // silent zero (that would record a "recovery" that recovered nothing).
+  let recoveredInput = input.recoveredAmount;
+  if (recoveredInput === undefined || recoveredInput === null || recoveredInput === '') {
+    if (BPO_ZERO_RECOVERY_STATUSES.includes(status)) {
+      recoveredInput = 0;
+    } else {
+      throw new Error('recoveredAmount is required for ' + status + ' outcomes');
+    }
+  }
+
+  const checked = bpoValidateRecoveryOutcome({
+    status,
+    originalExposure: structuredCase.financialExposure,
+    recoveredAmount: recoveredInput,
+  });
+  const originalExposure = checked.originalExposure;
+  const recoveredAmount = checked.recoveredAmount;
+  const remainingBalance = checked.remainingBalance;
+  const recoveryRate = checked.recoveryRate;
+
+  const now = new Date().toISOString();
+
+  const outcome = {
+    originalExposure,
+    actionTaken: input.actionTaken !== undefined
+      ? String(input.actionTaken).trim()
+      : '',
+    payerOutcome: input.payerOutcome !== undefined
+      ? String(input.payerOutcome).trim()
+      : '',
+    recoveredAmount,
+    remainingBalance,
+    recoveryStatus: status,
+    recoveryRate,
+    outcomeRecordedAt: now,
+    outcomeRecordedBy: actor || 'unknown',
+  };
+
+  await col.updateOne(
+    { caseId },
+    {
+      $set: {
+        originalExposure: outcome.originalExposure,
+        actionTaken: outcome.actionTaken,
+        payerOutcome: outcome.payerOutcome,
+        recoveredAmount: outcome.recoveredAmount,
+        remainingBalance: outcome.remainingBalance,
+        recoveryStatus: outcome.recoveryStatus,
+        recoveryRate: outcome.recoveryRate,
+        outcomeRecordedAt: outcome.outcomeRecordedAt,
+        outcomeRecordedBy: outcome.outcomeRecordedBy,
+        updatedAt: now,
+      },
+    }
+  );
+
+  const updated = await col.findOne({ caseId });
+
+  await bpoWriteAudit({
+    actor,
+    action: 'work_item.recovery_outcome',
+    entityType: 'work_item',
+    entityId: caseId,
+    detail: {
+      recoveryStatus: status,
+      originalExposure,
+      recoveredAmount,
+      remainingBalance,
+      recoveryRate,
+      payerOutcome: outcome.payerOutcome,
+    },
+  });
+
+  return {
+    caseId,
+    reconciliation: outcome,
+    workItem: updated,
+  };
+}
+
+// ── Phase 6: Learning Record (prediction vs. actual outcome) ───────────────
+// The AI's prediction (structuredCase.recoveryLikelihood / confidence) is
+// made at handoff time, before any human works the case. The outcome
+// (Phase 7, bpoRecordWorkItemOutcome above) is recorded afterward,
+// independently, by BPO staff. A learning record is the permanent pairing
+// of the two — it exists so prediction quality can be measured against
+// reality instead of assumed, giving a future calibration pass (Roadmap
+// #12, Strategist learning loop) real data to train against.
+
+// Expected recovery-rate band per predicted likelihood tier. A prediction
+// is "calibrated" if the realized recoveryRate lands inside its own band;
+// variance is the distance (in recoveryRate units, 0-1) from the nearest
+// band edge when it doesn't. Bands are deliberately coarse — this is a
+// three-bucket confidence label, not a regression target, so scoring it to
+// more precision than that would manufacture false rigor.
+const BPO_LIKELIHOOD_BANDS = {
+  LIKELY: [0.6, 1.0],
+  MODERATE: [0.3, 0.6],
+  UNLIKELY: [0, 0.3],
+};
+
+function bpoLikelihoodVariance(likelihood, actualRate) {
+  const band = BPO_LIKELIHOOD_BANDS[String(likelihood || '').toUpperCase()];
+  if (!band) return null; // unrecognized/missing prediction — can't score it
+  const [lo, hi] = band;
+  if (actualRate >= lo && actualRate <= hi) return 0;
+  return actualRate < lo ? lo - actualRate : actualRate - hi;
+}
+
+/**
+ * Builds and permanently stores the learning record for a resolved case.
+ *
+ * Deliberately NOT an upsert: once a caseId has a learning record, calling
+ * this again throws rather than overwriting it. Silently overwriting would
+ * let a later re-recorded outcome quietly erase the original prediction-
+ * vs-actual pairing this exists to preserve — if a case's outcome is ever
+ * corrected, that's a new fact worth its own record, not a reason to lose
+ * the first one.
+ */
+async function bpoBuildLearningRecord(caseId, actor) {
+  if (!caseId) throw new Error('caseId required');
+
+  const workItems = await bpoWorkItemsCollection();
+  const workItem = await workItems.findOne({ caseId });
+  if (!workItem) throw new Error('BPO work item not found: ' + caseId);
+
+  if (!workItem.recoveryStatus) {
+    throw new Error(
+      'No recovery outcome recorded yet for ' + caseId +
+      ' — call bpoRecordWorkItemOutcome first'
+    );
+  }
+  if (workItem.recoveryStatus === 'PENDING') {
+    throw new Error(
+      'Cannot build a learning record while recoveryStatus is PENDING — outcome is not yet resolved'
+    );
+  }
+
+  const records = await bpoLearningRecordsCollection();
+  const existing = await records.findOne({ caseId });
+  if (existing) {
+    throw new Error(
+      'Learning record already exists for ' + caseId +
+      ' (recorded ' + existing.recordedAt + ')'
+    );
+  }
+
+  const structuredCase = bpoExtractStructuredCase(workItem);
+  const predictedLikelihood = structuredCase && structuredCase.recoveryLikelihood
+    ? String(structuredCase.recoveryLikelihood).toUpperCase()
+    : null;
+  const predictedConfidence = structuredCase && Number.isFinite(Number(structuredCase.confidence))
+    ? Number(structuredCase.confidence)
+    : null;
+
+  // Fixed exposure baseline: read from the work item's own persisted
+  // fields, which Phase 7 locked in at outcome-recording time from the
+  // claim-level structuredCase.financialExposure — NOT re-derived from
+  // whatever the structuredCase says right now, so a later edit to the
+  // case can't retroactively rewrite what was actually predicted/recovered.
+  const originalExposure = bpoNumber(workItem.originalExposure, 'workItem.originalExposure');
+  const recoveredAmount = bpoNumber(workItem.recoveredAmount, 'workItem.recoveredAmount');
+  const actualRecoveryRate = typeof workItem.recoveryRate === 'number'
+    ? workItem.recoveryRate
+    : (originalExposure > 0 ? recoveredAmount / originalExposure : 0);
+
+  const variance = bpoLikelihoodVariance(predictedLikelihood, actualRecoveryRate);
+
+  const record = {
+    caseId,
+    vertical: workItem.vertical || null,
+    clientId: workItem.clientId || null,
+
+    predictedLikelihood,
+    predictedConfidence,
+
+    recoveryStatus: workItem.recoveryStatus,
+    originalExposure,
+    recoveredAmount,
+    actualRecoveryRate,
+
+    predictionBand: predictedLikelihood ? (BPO_LIKELIHOOD_BANDS[predictedLikelihood] || null) : null,
+    variance,
+    calibrated: variance === null ? null : variance === 0,
+
+    outcomeRecordedAt: workItem.outcomeRecordedAt || null,
+    recordedAt: new Date().toISOString(),
+    recordedBy: actor || 'unknown',
+  };
+
+  await records.insertOne(record);
+
+  await bpoWriteAudit({
+    actor,
+    action: 'work_item.learning_record',
+    entityType: 'work_item',
+    entityId: caseId,
+    detail: {
+      predictedLikelihood,
+      actualRecoveryRate,
+      variance,
+      calibrated: record.calibrated,
+    },
+  });
+
+  return record;
+}
+
+async function bpoGetLearningRecord(caseId) {
+  const records = await bpoLearningRecordsCollection();
+  return records.findOne({ caseId });
+}
+
+async function bpoListLearningRecords({ vertical, limit = 200 } = {}) {
+  const records = await bpoLearningRecordsCollection();
+  const query = {};
+  if (vertical) query.vertical = vertical;
+  return records.find(query).sort({ recordedAt: -1 }).limit(limit).toArray();
+}
+
+/**
+ * Aggregate calibration accuracy: for each predicted likelihood tier, what
+ * fraction of resolved cases actually landed inside that tier's expected
+ * recovery-rate band. This is the number Roadmap #12 (Strategist learning
+ * loop) would eventually train against — Phase 6 only measures it.
+ */
+async function bpoLearningVarianceSummary({ vertical } = {}) {
+  const all = await bpoListLearningRecords({ vertical, limit: 10000 });
+
+  const byTier = {};
+  for (const tier of Object.keys(BPO_LIKELIHOOD_BANDS)) {
+    byTier[tier] = { predicted: 0, calibrated: 0, avgVariance: 0, totalVariance: 0 };
+  }
+
+  let scored = 0;
+  for (const rec of all) {
+    const tier = rec.predictedLikelihood;
+    if (!tier || !byTier[tier] || rec.variance === null || rec.variance === undefined) continue;
+    byTier[tier].predicted += 1;
+    byTier[tier].totalVariance += rec.variance;
+    if (rec.calibrated) byTier[tier].calibrated += 1;
+    scored += 1;
+  }
+
+  for (const tier of Object.keys(byTier)) {
+    const t = byTier[tier];
+    t.avgVariance = t.predicted > 0 ? t.totalVariance / t.predicted : 0;
+    t.calibrationRate = t.predicted > 0 ? t.calibrated / t.predicted : null;
+    delete t.totalVariance;
+  }
+
+  return {
+    vertical: vertical || 'all',
+    totalRecords: all.length,
+    scoredRecords: scored,
+    byPredictedLikelihood: byTier,
+  };
 }
 
 // ── Case Engine (Roadmap #10) ───────────────────────────────────────────
@@ -1213,6 +1693,1212 @@ async function bpoListBncaReports({ caseId, limit = 50 } = {}) {
   const query = {};
   if (caseId) query.caseId = caseId;
   return col.find(query).sort({ ts: -1 }).limit(limit).toArray();
+}
+
+// ── Phase 8: Executive Recovery Dashboard ───────────────────────────────
+// Financial companion to executive-rollup (which is WIP/SLA counts only,
+// no dollars). Splits work items into two honest buckets instead of one
+// blended number:
+//   pipeline — a structuredCase exposure exists but no recovery outcome
+//              has been recorded yet (Phase 5/7 hasn't run for it)
+//   resolved — Phase 7 has locked in originalExposure/recoveredAmount/
+//              remainingBalance/recoveryRate on the work item itself
+// Pipeline exposure is read from the live structuredCase (it can still
+// change until an outcome is recorded); resolved figures are read from
+// the work item's own persisted outcome fields, same source Phase 6's
+// learning record uses, so this dashboard and that report never disagree
+// about what a resolved case's numbers were. Items with no parseable
+// exposure are skipped rather than counted as $0 — an unknown exposure
+// is not the same fact as a zero exposure.
+async function bpoBuildRecoveryDashboard({ vertical, clientId } = {}) {
+  const col = await bpoWorkItemsCollection();
+  const query = {};
+  if (vertical) query.vertical = vertical;
+  if (clientId) query.clientId = clientId;
+  const items = await col.find(query).limit(5000).toArray();
+
+  let pipelineCount = 0;
+  let pipelineExposure = 0;
+  const topOpenExposure = [];
+
+  let resolvedCount = 0;
+  let resolvedExposure = 0;
+  let resolvedRecovered = 0;
+  let resolvedRemaining = 0;
+  const byStatus = {};
+
+  for (const item of items) {
+    if (item.recoveryStatus) {
+      // Resolved: use the figures Phase 7 already validated and locked in.
+      resolvedCount += 1;
+      const exposure = bpoNumber(item.originalExposure, 'originalExposure');
+      const recovered = bpoNumber(item.recoveredAmount, 'recoveredAmount');
+      const remaining = typeof item.remainingBalance === 'number'
+        ? item.remainingBalance
+        : exposure - recovered;
+      resolvedExposure += exposure;
+      resolvedRecovered += recovered;
+      resolvedRemaining += remaining;
+      byStatus[item.recoveryStatus] = (byStatus[item.recoveryStatus] || 0) + 1;
+      continue;
+    }
+
+    // Pipeline: no outcome recorded yet — read exposure from the live
+    // structuredCase, skip silently if it's missing or not a real number
+    // (never fabricate a placeholder exposure for a case that has none).
+    const structuredCase = bpoExtractStructuredCase(item);
+    const raw = structuredCase && structuredCase.financialExposure;
+    if (raw === undefined || raw === null || raw === '') continue;
+    let exposure;
+    try {
+      exposure = bpoNumber(raw, 'financialExposure');
+    } catch (e) {
+      continue; // unparseable exposure — excluded, not zeroed
+    }
+
+    pipelineCount += 1;
+    pipelineExposure += exposure;
+    topOpenExposure.push({
+      caseId: item.caseId,
+      clientId: item.clientId || null,
+      vertical: item.vertical || null,
+      stage: item.stage || null,
+      priority: item.priority || null,
+      slaAgeHours: typeof item.slaAgeHours === 'number' ? item.slaAgeHours : null,
+      exposure,
+      predictedLikelihood: structuredCase.recoveryLikelihood
+        ? String(structuredCase.recoveryLikelihood).toUpperCase()
+        : null,
+    });
+  }
+
+  topOpenExposure.sort((a, b) => b.exposure - a.exposure);
+
+  return {
+    vertical: vertical || 'all',
+    clientId: clientId || null,
+    pipeline: {
+      count: pipelineCount,
+      totalExposure: Math.round(pipelineExposure * 100) / 100,
+    },
+    resolved: {
+      count: resolvedCount,
+      totalOriginalExposure: Math.round(resolvedExposure * 100) / 100,
+      totalRecovered: Math.round(resolvedRecovered * 100) / 100,
+      totalRemaining: Math.round(resolvedRemaining * 100) / 100,
+      recoveryRate: resolvedExposure > 0
+        ? Math.round((resolvedRecovered / resolvedExposure) * 10000) / 10000
+        : null,
+      byStatus,
+    },
+    topOpenExposure: topOpenExposure.slice(0, 10),
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+// ── Phase 9: BPO Recovery Queue ─────────────────────────────────────────
+// A prioritized worklist of every open case (no recovery outcome recorded
+// yet) so BPO staff can see what to work next, not just what's already
+// been resolved (that's Phase 8's job). Sort order is a composite, same
+// triage logic a supervisor would apply by hand:
+//   1. priority tier, critical first (this is a human/extraction judgment
+//      call about urgency — it outranks the numbers below)
+//   2. SLA age, oldest first, as the tiebreaker within a tier (two
+//      critical cases: the one that's been sitting longer goes first)
+// Exposure is included for context wherever it's known, but does NOT
+// drive sort order — a supervisor triaging a single day doesn't reorder
+// the queue because one case is worth more money; that's what the
+// dashboard's topOpenExposure view (Phase 8) is for. Cases with no
+// parseable exposure still appear in the queue (unlike the dashboard's
+// pipeline bucket) — an unknown dollar figure is not a reason to hide a
+// case that genuinely needs to be worked.
+const BPO_PRIORITY_RANK = { critical: 4, high: 3, medium: 2, low: 1 };
+
+async function bpoBuildRecoveryQueue({ vertical, clientId, limit = 200 } = {}) {
+  const col = await bpoWorkItemsCollection();
+  const query = { recoveryStatus: { $in: [null, undefined] }, status: { $ne: 'resolved' } };
+  if (vertical) query.vertical = vertical;
+  if (clientId) query.clientId = clientId;
+  const items = await col.find(query).limit(5000).toArray();
+
+  const queue = items.map(item => {
+    const structuredCase = bpoExtractStructuredCase(item);
+    const raw = structuredCase && structuredCase.financialExposure;
+    let exposure = null;
+    if (raw !== undefined && raw !== null && raw !== '') {
+      try { exposure = bpoNumber(raw, 'financialExposure'); } catch (e) { exposure = null; }
+    }
+    return {
+      caseId: item.caseId,
+      clientId: item.clientId || null,
+      vertical: item.vertical || null,
+      stage: item.stage || null,
+      status: item.status || null,
+      priority: item.priority || 'medium',
+      owner: item.owner || null,
+      dueDate: item.dueDate || null,
+      slaAgeHours: typeof item.slaAgeHours === 'number' ? item.slaAgeHours : null,
+      exposure,
+      predictedLikelihood: structuredCase && structuredCase.recoveryLikelihood
+        ? String(structuredCase.recoveryLikelihood).toUpperCase()
+        : null,
+    };
+  });
+
+  queue.sort((a, b) => {
+    const rankDiff = (BPO_PRIORITY_RANK[b.priority] || 0) - (BPO_PRIORITY_RANK[a.priority] || 0);
+    if (rankDiff !== 0) return rankDiff;
+    return (b.slaAgeHours || 0) - (a.slaAgeHours || 0);
+  });
+
+  return {
+    vertical: vertical || 'all',
+    clientId: clientId || null,
+    count: queue.length,
+    queue: queue.slice(0, limit),
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+// ── Phase 10: Evidence / Appeal Package ─────────────────────────────────
+// Everything BPO staff need on hand to actually file an appeal on a case,
+// assembled from data this file already has -- no new storage. Pulls:
+//   - the case's own structuredCase summary (exposure, extraction,
+//     recovery likelihood -- whatever the war-room captured)
+//   - the outcome, if Phase 7 has recorded one (RECOVERED/DENIED/etc,
+//     recovered amount, remaining balance)
+//   - the learning record, if Phase 6 has built one (predicted vs actual)
+//   - notes and SLA events merged into a single chronological timeline,
+//     so a reviewer sees what happened and when in one pass instead of
+//     two separate lists
+//   - stored document METADATA (filename/type/upload date) -- not the
+//     bytes. This assembles the cover package a human attaches the real
+//     files to; pulling and embedding original PDFs/scans is a separate,
+//     heavier concern (pdf-lib page-merging) deliberately left out of v1.
+// Same honesty rule as the rest of this file: a field that isn't there
+// (no outcome yet, no learning record yet, no notes) is reported as
+// absent, never defaulted to something that looks like real data.
+async function bpoBuildEvidencePackage(caseId) {
+  if (!caseId) throw new Error('caseId required');
+
+  const workItem = await bpoGetWorkItem(caseId);
+  if (!workItem) throw new Error('BPO work item not found: ' + caseId);
+
+  const [notes, slaEvents, documents, learningRecord] = await Promise.all([
+    bpoListNotes({ caseId, limit: 500 }),
+    bpoListSlaEvents({ caseId, limit: 500 }),
+    bpoListDocuments({ caseId, limit: 200 }),
+    bpoGetLearningRecord(caseId),
+  ]);
+
+  const structuredCase = bpoExtractStructuredCase(workItem);
+
+  const hasOutcome = !!workItem.recoveryStatus;
+  const outcome = hasOutcome ? {
+    recoveryStatus: workItem.recoveryStatus,
+    originalExposure: workItem.originalExposure,
+    recoveredAmount: workItem.recoveredAmount,
+    remainingBalance: workItem.remainingBalance,
+    recoveryRate: workItem.recoveryRate,
+    actionTaken: workItem.actionTaken || null,
+    payerOutcome: workItem.payerOutcome || null,
+    outcomeRecordedAt: workItem.outcomeRecordedAt || null,
+  } : null;
+
+  // Timeline: notes + SLA events interleaved by timestamp. Each entry
+  // tagged by kind so a renderer (PDF or otherwise) can style/label them
+  // differently without re-deriving which list an entry came from.
+  const timeline = [
+    ...notes.map(n => ({ kind: 'note', ts: n.ts, text: n.text, actor: n.actor || null })),
+    ...slaEvents.map(e => ({
+      kind: 'sla_event', ts: e.ts, type: e.type,
+      fromStage: e.fromStage || null, toStage: e.toStage || null,
+      status: e.status || null, actor: e.actor || null,
+    })),
+  ].sort((a, b) => new Date(a.ts) - new Date(b.ts));
+
+  return {
+    caseId,
+    vertical: workItem.vertical || null,
+    clientId: workItem.clientId || null,
+    stage: workItem.stage || null,
+    status: workItem.status || null,
+    priority: workItem.priority || null,
+    createdAt: workItem.createdAt || null,
+
+    caseSummary: structuredCase ? {
+      financialExposure: structuredCase.financialExposure ?? null,
+      recoveryLikelihood: structuredCase.recoveryLikelihood ?? null,
+      confidence: structuredCase.confidence ?? null,
+      recommendation: structuredCase.recommendation ?? null,
+      explainability: structuredCase.explainability ?? null,
+    } : null,
+
+    hasOutcome,
+    outcome,
+
+    hasLearningRecord: !!learningRecord,
+    learningRecord: learningRecord ? {
+      predictedLikelihood: learningRecord.predictedLikelihood,
+      actualRecoveryRate: learningRecord.actualRecoveryRate,
+      variance: learningRecord.variance,
+      calibrated: learningRecord.calibrated,
+    } : null,
+
+    timeline,
+
+    documents: documents.map(d => ({
+      docId: d.docId,
+      filename: d.filename,
+      mimetype: d.mimetype || null,
+      uploadedAt: d.uploadedAt || null,
+      hasExtractedText: !!d.hasExtractedText,
+    })),
+
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+// ── Phase 11: Recovery Analytics ─────────────────────────────────────────
+// Connects what's happening now (pipeline) to what actually produced
+// financial results (performance), with the prediction↔actual comparison
+// (Phase 6 learning records) as the bridge between the two, per Latorrey's
+// architecture call (2026-09-19):
+//
+//     bpo_cases pipeline ─┐
+//     BPO outcomes (P7)  ─┼─→ Recovery Analytics ─→ Executive Dashboard
+//     Learning records(P6)┘
+//
+// This is a read/aggregation layer only — it stores nothing. The work
+// item remains the source of truth for a case's actual recovery outcome,
+// and the learning record remains the source of truth for prediction-vs-
+// actual; this function just reads both and rolls them up. Same honesty
+// rule as the rest of this file applies throughout: a group with no
+// parseable exposure, no dueDate, or no learning record is reported as
+// absent/excluded, never defaulted to something that looks like real data.
+// No SLA-breach threshold is invented here (same reasoning as the
+// client-rollup comment below — that's a contract decision, not
+// something to fabricate); "overdue" below means a work item's own
+// explicitly-set dueDate has passed, nothing more.
+const BPO_ZERO_OR_NONE_STATUSES = ['DENIED_AFTER_APPEAL', 'WITHDRAWN', 'NO_RECOVERY'];
+
+function bpoOutcomeBucket(status) {
+  if (status === 'RECOVERED') return 'recovered';
+  if (status === 'PARTIALLY_RECOVERED') return 'partial';
+  if (BPO_ZERO_OR_NONE_STATUSES.includes(status)) return 'none';
+  if (status === 'PENDING') return 'pending';
+  return 'unknown';
+}
+
+// Groups an array of resolved work items by a key-extractor, returning
+// exposure/recovered/rate per group. `label` defaults every falsy key to
+// 'unspecified' — an explicit, visible bucket, never a silently-dropped
+// row — so the drill-down still accounts for every resolved case.
+function bpoGroupOutcomes(items, keyFn) {
+  const groups = {};
+  for (const item of items) {
+    const key = keyFn(item) || 'unspecified';
+    if (!groups[key]) groups[key] = { key, count: 0, exposure: 0, recovered: 0 };
+    const g = groups[key];
+    g.count += 1;
+    g.exposure += bpoNumber(item.originalExposure, 'originalExposure');
+    g.recovered += bpoNumber(item.recoveredAmount, 'recoveredAmount');
+  }
+  return Object.values(groups)
+    .map(g => ({
+      ...g,
+      exposure: Math.round(g.exposure * 100) / 100,
+      recovered: Math.round(g.recovered * 100) / 100,
+      recoveryRate: g.exposure > 0 ? Math.round((g.recovered / g.exposure) * 10000) / 10000 : null,
+    }))
+    .sort((a, b) => b.exposure - a.exposure);
+}
+
+async function bpoBuildRecoveryAnalytics({ vertical, clientId } = {}) {
+  const col = await bpoWorkItemsCollection();
+  const query = {};
+  if (vertical) query.vertical = vertical;
+  if (clientId) query.clientId = clientId;
+  const items = await col.find(query).limit(5000).toArray();
+
+  const resolved = items.filter(i => !!i.recoveryStatus);
+  const open = items.filter(i => !i.recoveryStatus);
+
+  // ── Performance (Phase 7 outcomes) ────────────────────────────────────
+  let totalExposure = 0, totalRecovered = 0;
+  const byOutcome = { recovered: 0, partial: 0, none: 0, pending: 0, unknown: 0 };
+  let resolutionHoursTotal = 0, resolutionHoursCount = 0;
+  const byVerticalResolutionHours = {};
+
+  // Scored resolutions only (RECOVERED/PARTIALLY_RECOVERED/NO_RECOVERY/
+  // DENIED_AFTER_APPEAL/WITHDRAWN) — a PENDING outcome hasn't actually
+  // resolved anything yet, so it's excluded from exposure/rate/resolution-
+  // time math even though it's counted in byOutcome above.
+  const scored = [];
+  for (const item of resolved) {
+    const bucket = bpoOutcomeBucket(item.recoveryStatus);
+    byOutcome[bucket] = (byOutcome[bucket] || 0) + 1;
+    if (bucket === 'pending') continue;
+    scored.push(item);
+    totalExposure += bpoNumber(item.originalExposure, 'originalExposure');
+    totalRecovered += bpoNumber(item.recoveredAmount, 'recoveredAmount');
+
+    if (item.createdAt && item.outcomeRecordedAt) {
+      const hrs = bpoHoursBetween(item.createdAt, item.outcomeRecordedAt);
+      if (hrs !== null) {
+        resolutionHoursTotal += hrs;
+        resolutionHoursCount += 1;
+        const v = item.vertical || 'unspecified';
+        if (!byVerticalResolutionHours[v]) byVerticalResolutionHours[v] = { total: 0, count: 0 };
+        byVerticalResolutionHours[v].total += hrs;
+        byVerticalResolutionHours[v].count += 1;
+      }
+    }
+  }
+
+  const avgResolutionHoursByVertical = {};
+  for (const [v, agg] of Object.entries(byVerticalResolutionHours)) {
+    avgResolutionHoursByVertical[v] = Math.round((agg.total / agg.count) * 100) / 100;
+  }
+
+  const performance = {
+    totalExposure: Math.round(totalExposure * 100) / 100,
+    totalRecovered: Math.round(totalRecovered * 100) / 100,
+    totalRemaining: Math.round((totalExposure - totalRecovered) * 100) / 100,
+    recoveryRate: totalExposure > 0 ? Math.round((totalRecovered / totalExposure) * 10000) / 10000 : null,
+    casesByOutcome: byOutcome,
+    avgResolutionHours: resolutionHoursCount > 0
+      ? Math.round((resolutionHoursTotal / resolutionHoursCount) * 100) / 100
+      : null,
+    avgResolutionHoursByVertical,
+    byPayer: bpoGroupOutcomes(scored, i => {
+      const sc = bpoExtractStructuredCase(i);
+      return sc && sc.payer ? String(sc.payer).trim() : null;
+    }),
+    byDenialCategory: bpoGroupOutcomes(scored, i => {
+      const sc = bpoExtractStructuredCase(i);
+      return sc && sc.denialCategory ? String(sc.denialCategory).trim() : null;
+    }),
+    byAction: bpoGroupOutcomes(scored, i => i.actionTaken ? String(i.actionTaken).trim() : null),
+    byVertical: bpoGroupOutcomes(scored, i => i.vertical || null),
+  };
+
+  // ── Pipeline (open cases — no outcome recorded yet) ───────────────────
+  const stageAgg = {};
+  const now = Date.now();
+  const overdue = [];
+  const openWithExposure = [];
+
+  for (const item of open) {
+    const stageKey = item.stage || 'unspecified';
+    if (!stageAgg[stageKey]) stageAgg[stageKey] = { stage: stageKey, count: 0, exposure: 0, totalAgeHours: 0, ageSamples: 0 };
+    const s = stageAgg[stageKey];
+    s.count += 1;
+
+    const structuredCase = bpoExtractStructuredCase(item);
+    const raw = structuredCase && structuredCase.financialExposure;
+    let exposure = null;
+    if (raw !== undefined && raw !== null && raw !== '') {
+      try { exposure = bpoNumber(raw, 'financialExposure'); } catch (e) { exposure = null; }
+    }
+    if (exposure !== null) s.exposure += exposure;
+
+    const ageHours = typeof item.slaAgeHours === 'number' ? item.slaAgeHours : bpoHoursBetween(item.createdAt);
+    if (ageHours !== null) {
+      s.totalAgeHours += ageHours;
+      s.ageSamples += 1;
+    }
+
+    if (item.dueDate) {
+      const due = new Date(item.dueDate).getTime();
+      if (Number.isFinite(due) && due < now) {
+        overdue.push({
+          caseId: item.caseId, vertical: item.vertical || null, stage: item.stage || null,
+          priority: item.priority || null, dueDate: item.dueDate,
+          daysOverdue: Math.round(((now - due) / 86400000) * 10) / 10,
+        });
+      }
+    }
+
+    openWithExposure.push({
+      caseId: item.caseId, vertical: item.vertical || null, stage: item.stage || null,
+      priority: item.priority || null, ageHours, exposure,
+    });
+  }
+
+  const byStage = Object.values(stageAgg).map(s => ({
+    stage: s.stage,
+    count: s.count,
+    exposure: Math.round(s.exposure * 100) / 100,
+    avgAgeHours: s.ageSamples > 0 ? Math.round((s.totalAgeHours / s.ageSamples) * 100) / 100 : null,
+  })).sort((a, b) => b.count - a.count);
+
+  // Candidate bottleneck: among stages with at least 2 aged samples (a
+  // single old case isn't a "stage" problem), the one with the highest
+  // average age. null when nothing qualifies — never guessed.
+  const bottleneckCandidates = byStage.filter(s => s.avgAgeHours !== null && s.count >= 2);
+  const likelyBottleneckStage = bottleneckCandidates.length
+    ? bottleneckCandidates.reduce((a, b) => (b.avgAgeHours > a.avgAgeHours ? b : a)).stage
+    : null;
+
+  overdue.sort((a, b) => b.daysOverdue - a.daysOverdue);
+  const oldestOpen = openWithExposure
+    .filter(i => i.ageHours !== null)
+    .sort((a, b) => b.ageHours - a.ageHours)
+    .slice(0, 10);
+
+  const pipeline = {
+    openCount: open.length,
+    openExposure: Math.round(openWithExposure.reduce((sum, i) => sum + (i.exposure || 0), 0) * 100) / 100,
+    byStage,
+    likelyBottleneckStage,
+    overdue: overdue.slice(0, 25),
+    oldestOpen,
+  };
+
+  // ── Prediction → Actual (Phase 6 learning records) ────────────────────
+  const [varianceSummary, learningRecords] = await Promise.all([
+    bpoLearningVarianceSummary({ vertical }),
+    bpoListLearningRecords({ vertical, limit: 50 }),
+  ]);
+  const recent = learningRecords
+    .filter(r => !clientId || r.clientId === clientId)
+    .map(r => ({
+      caseId: r.caseId, vertical: r.vertical || null,
+      predictedLikelihood: r.predictedLikelihood, predictedConfidence: r.predictedConfidence,
+      recoveryStatus: r.recoveryStatus, originalExposure: r.originalExposure, recoveredAmount: r.recoveredAmount,
+      actualRecoveryRate: r.actualRecoveryRate, variance: r.variance, calibrated: r.calibrated,
+    }));
+
+  return {
+    vertical: vertical || 'all',
+    clientId: clientId || null,
+    performance,
+    pipeline,
+    predictionVsActual: {
+      summary: varianceSummary,
+      recent,
+    },
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+// ── Phase 12: Strategist Learning Loop ───────────────────────────────────
+// Three deliberately separate layers, per the architecture call
+// (2026-09-19):
+//
+//   PHASE 6  Learning Records      "What happened vs. what we predicted?"
+//        ↓
+//   PHASE 12 Calibration Engine    "What does the accumulated evidence
+//        ↓                          suggest changing?"
+//   PREDICTION PATH                "What should a NEW case be predicted
+//                                    as?" -- NOT built here. Phase 12 only
+//                                    surfaces insights + a proposed
+//                                    adjustment for a human to review.
+//
+// A historical learning record is never rewritten by this file -- the
+// original prediction (e.g. today's real MODERATE/65/$4,850 case) stays
+// exactly what it was. Calibration output here is advisory only: a report
+// plus a config a human can tune, with automaticProductionApplication
+// hard-locked to false (see bpoUpdateCalibrationConfig below) until the
+// fast-follow that actually wires an approved calibration into new
+// predictions is built. Nothing in this section can change how a new
+// case gets scored.
+const BPO_CALIBRATION_CONFIG_COLLECTION = 'bpo_calibration_config';
+const BPO_CALIBRATION_CONFIG_ID = 'default';
+
+const BPO_CALIBRATION_CONFIG_DEFAULTS = {
+  minSampleSize: 50,
+  recalibrationWindowDays: 90,
+  confidenceAdjustmentCeiling: 10, // points, 0-100 scale (same scale as structuredCase.confidence)
+  likelihoodRecalibrationEnabled: true, // computes proposed adjustments; does NOT apply them
+  automaticProductionApplication: false, // hard safety rail -- see bpoUpdateCalibrationConfig
+  humanApprovalRequired: true,
+};
+
+async function bpoCalibrationConfigCollection() {
+  const database = await getDb();
+  return database.collection(BPO_CALIBRATION_CONFIG_COLLECTION);
+}
+
+async function bpoGetCalibrationConfig() {
+  const col = await bpoCalibrationConfigCollection();
+  const existing = await col.findOne({ _id: BPO_CALIBRATION_CONFIG_ID });
+  // Merge over defaults rather than requiring an explicit seed doc, so a
+  // fresh environment reads sane values on day one without a migration
+  // step -- same "read gets a default, write persists an override"
+  // pattern used nowhere else in this file only because nothing else
+  // here has needed a tunable global config before.
+  const merged = Object.assign({}, BPO_CALIBRATION_CONFIG_DEFAULTS, existing || {});
+  delete merged._id; // never leak the storage key into callers (it would clobber _id on the next $set)
+  return merged;
+}
+
+/**
+ * Updates the calibration config. admin/manager only (route-level gate).
+ * automaticProductionApplication cannot be set to true here -- that flag
+ * only becomes meaningful once a fast-follow phase actually wires an
+ * approved calibration into the prediction path; until that exists,
+ * flipping it on would silently do nothing except create a false sense
+ * that recalibration is live. Reject the attempt loudly instead.
+ */
+async function bpoUpdateCalibrationConfig(fields, actor) {
+  const input = fields || {};
+  if (input.automaticProductionApplication === true) {
+    throw new Error(
+      'automaticProductionApplication cannot be enabled yet -- Phase 12 ' +
+      'only builds the calibration report and config; the prediction-path ' +
+      'integration that would make this flag do anything is a separate, ' +
+      'not-yet-built fast-follow.'
+    );
+  }
+
+  const current = await bpoGetCalibrationConfig();
+  const next = Object.assign({}, current);
+
+  if (input.minSampleSize !== undefined) {
+    const n = Number(input.minSampleSize);
+    if (!Number.isInteger(n) || n < 1) throw new Error('minSampleSize must be a positive integer');
+    next.minSampleSize = n;
+  }
+  if (input.recalibrationWindowDays !== undefined) {
+    const n = Number(input.recalibrationWindowDays);
+    if (!Number.isInteger(n) || n < 1) throw new Error('recalibrationWindowDays must be a positive integer');
+    next.recalibrationWindowDays = n;
+  }
+  if (input.confidenceAdjustmentCeiling !== undefined) {
+    const n = Number(input.confidenceAdjustmentCeiling);
+    if (!Number.isFinite(n) || n < 0 || n > 100) throw new Error('confidenceAdjustmentCeiling must be between 0 and 100');
+    next.confidenceAdjustmentCeiling = n;
+  }
+  if (input.likelihoodRecalibrationEnabled !== undefined) {
+    next.likelihoodRecalibrationEnabled = !!input.likelihoodRecalibrationEnabled;
+  }
+  if (input.humanApprovalRequired !== undefined) {
+    next.humanApprovalRequired = !!input.humanApprovalRequired;
+  }
+  next.automaticProductionApplication = false; // always, regardless of input -- see guard above
+
+  const col = await bpoCalibrationConfigCollection();
+  await col.updateOne(
+    { _id: BPO_CALIBRATION_CONFIG_ID },
+    // _id restated explicitly in $set (not left to upsert-from-filter)
+    // same convention bpoUpsertWorkItem uses for caseId -- keeps this
+    // correct even against a query-execution stub that doesn't merge
+    // filter fields into an upserted doc the way real MongoDB does.
+    { $set: Object.assign({ _id: BPO_CALIBRATION_CONFIG_ID }, next, { updatedAt: new Date().toISOString(), updatedBy: actor || 'unknown' }) },
+    { upsert: true }
+  );
+
+  await bpoWriteAudit({
+    actor, action: 'calibration_config.update', entityType: 'calibration_config', entityId: BPO_CALIBRATION_CONFIG_ID,
+    detail: next,
+  });
+
+  return bpoGetCalibrationConfig();
+}
+
+// Best-effort join from a Phase 6 learning record back to the payer/
+// denial-category/action fields Phase 12 groups by -- these live on the
+// work item (structuredCase / actionTaken), not on the learning record
+// itself, and are deliberately NOT copied onto the immutable record.
+async function bpoEnrichLearningRecordForCalibration(record) {
+  const workItem = await bpoGetWorkItem(record.caseId);
+  const structuredCase = workItem ? bpoExtractStructuredCase(workItem) : null;
+  return {
+    payer: (structuredCase && structuredCase.payer) ? String(structuredCase.payer).trim() : 'unspecified',
+    denialCategory: (structuredCase && structuredCase.denialCategory) ? String(structuredCase.denialCategory).trim() : 'unspecified',
+    actionTaken: (workItem && workItem.actionTaken) ? String(workItem.actionTaken).trim() : 'unspecified',
+  };
+}
+
+function bpoCalibrationSignal(observedRate, band) {
+  if (!band) return 'INSUFFICIENT_DATA'; // unrecognized/missing predicted tier
+  const [lo, hi] = band;
+  if (observedRate < lo) return 'DOWNWARD'; // predictions in this tier are overestimating recovery
+  if (observedRate > hi) return 'UPWARD';   // predictions in this tier are underestimating recovery
+  return 'STABLE';
+}
+
+/**
+ * Builds the Phase 12 learning-loop report: overall calibration by
+ * predicted tier (case counts, exposure, recovery rate, outcome mix),
+ * plus a vertical -> payer -> denial category -> action -> predicted-
+ * tier calibration breakdown with an advisory (never applied) proposed
+ * adjustment where the evidence clears the config's own safeguards
+ * (minimum sample size + recalibration window). Read/aggregation only --
+ * see the file-level comment above this section.
+ */
+async function bpoBuildLearningLoopReport({ vertical } = {}) {
+  const config = await bpoGetCalibrationConfig();
+  const allRecords = await bpoListLearningRecords({ vertical, limit: 10000 });
+
+  // ── Overall, all-time, per predicted tier ─────────────────────────────
+  const overallByTier = {};
+  for (const tier of Object.keys(BPO_LIKELIHOOD_BANDS)) {
+    overallByTier[tier] = {
+      cases: 0, predictedExposure: 0, actualRecovered: 0,
+      outcomeCounts: { full: 0, partial: 0, none: 0 },
+    };
+  }
+  for (const r of allRecords) {
+    const tier = r.predictedLikelihood;
+    if (!tier || !overallByTier[tier]) continue;
+    const t = overallByTier[tier];
+    t.cases += 1;
+    t.predictedExposure += r.originalExposure || 0;
+    t.actualRecovered += r.recoveredAmount || 0;
+    const bucket = bpoOutcomeBucket(r.recoveryStatus);
+    if (bucket === 'recovered') t.outcomeCounts.full += 1;
+    else if (bucket === 'partial') t.outcomeCounts.partial += 1;
+    else if (bucket === 'none') t.outcomeCounts.none += 1;
+  }
+  for (const tier of Object.keys(overallByTier)) {
+    const t = overallByTier[tier];
+    t.predictedExposure = Math.round(t.predictedExposure * 100) / 100;
+    t.actualRecovered = Math.round(t.actualRecovered * 100) / 100;
+    t.actualRecoveryRate = t.predictedExposure > 0 ? Math.round((t.actualRecovered / t.predictedExposure) * 10000) / 10000 : null;
+    t.outcomeDistribution = t.cases > 0 ? {
+      full: Math.round((t.outcomeCounts.full / t.cases) * 10000) / 10000,
+      partial: Math.round((t.outcomeCounts.partial / t.cases) * 10000) / 10000,
+      none: Math.round((t.outcomeCounts.none / t.cases) * 10000) / 10000,
+    } : null;
+  }
+
+  // ── Calibration breakdown, windowed by config.recalibrationWindowDays ──
+  const windowCutoff = Date.now() - config.recalibrationWindowDays * 86400000;
+  const windowed = allRecords.filter(r => {
+    const t = new Date(r.recordedAt).getTime();
+    return Number.isFinite(t) && t >= windowCutoff;
+  });
+
+  const enrichments = await Promise.all(windowed.map(r => bpoEnrichLearningRecordForCalibration(r)));
+
+  const groups = {};
+  windowed.forEach((r, i) => {
+    if (!r.predictedLikelihood) return; // unscoreable, same as Phase 6's own variance summary
+    const { payer, denialCategory, actionTaken } = enrichments[i];
+    const key = [r.vertical || 'unspecified', payer, denialCategory, actionTaken, r.predictedLikelihood].join('|');
+    if (!groups[key]) {
+      groups[key] = {
+        vertical: r.vertical || 'unspecified', payer, denialCategory, actionTaken,
+        predictedLikelihood: r.predictedLikelihood,
+        sampleSize: 0, exposure: 0, recovered: 0,
+      };
+    }
+    const g = groups[key];
+    g.sampleSize += 1;
+    g.exposure += r.originalExposure || 0;
+    g.recovered += r.recoveredAmount || 0;
+  });
+
+  const evaluateGroup = (g) => {
+    const band = BPO_LIKELIHOOD_BANDS[g.predictedLikelihood] || null;
+    const observedRecoveryRate = g.exposure > 0 ? g.recovered / g.exposure : null;
+    const signal = observedRecoveryRate === null ? 'INSUFFICIENT_DATA' : bpoCalibrationSignal(observedRecoveryRate, band);
+
+    const reasons = [];
+    if (g.sampleSize < config.minSampleSize) reasons.push(`sample size ${g.sampleSize} below configured minimum ${config.minSampleSize}`);
+    if (!config.likelihoodRecalibrationEnabled) reasons.push('likelihood recalibration is disabled in config');
+    const eligibleForReview = reasons.length === 0 && signal !== 'STABLE' && signal !== 'INSUFFICIENT_DATA';
+
+    let proposedAdjustment = null;
+    if (eligibleForReview && band) {
+      const [lo, hi] = band;
+      const distanceFromBand = signal === 'DOWNWARD' ? (lo - observedRecoveryRate) : (observedRecoveryRate - hi);
+      const magnitude = Math.min(Math.round(distanceFromBand * 100 * 10) / 10, config.confidenceAdjustmentCeiling);
+      proposedAdjustment = {
+        direction: signal,
+        suggestedConfidencePointsDelta: signal === 'DOWNWARD' ? -magnitude : magnitude,
+        cappedAtCeiling: (distanceFromBand * 100) > config.confidenceAdjustmentCeiling,
+        // Never applied by this function -- requires bpoUpdateCalibrationConfig's
+        // approval workflow (not yet built) before it could reach production.
+        status: 'PROPOSED_PENDING_HUMAN_REVIEW',
+      };
+    }
+
+    return {
+      predictedLikelihood: g.predictedLikelihood,
+      sampleSize: g.sampleSize,
+      exposure: Math.round(g.exposure * 100) / 100,
+      recovered: Math.round(g.recovered * 100) / 100,
+      observedRecoveryRate: observedRecoveryRate === null ? null : Math.round(observedRecoveryRate * 10000) / 10000,
+      predictedBand: band,
+      signal,
+      eligibleForReview,
+      ineligibleReasons: reasons,
+      proposedAdjustment,
+    };
+  };
+
+  const calibrationBreakdown = Object.values(groups).map(g => {
+    const out = evaluateGroup(g);
+    return Object.assign({
+      vertical: g.vertical, payer: g.payer, denialCategory: g.denialCategory, action: g.actionTaken,
+    }, out);
+  }).sort((a, b) => b.sampleSize - a.sampleSize);
+
+  // Single-dimension rollups (by vertical / payer / denial category /
+  // action). The full four-way breakdown above fragments samples fast, so
+  // these are where minSampleSize is realistically reached first.
+  const dimensionGroups = { vertical: {}, payer: {}, denialCategory: {}, action: {} };
+  windowed.forEach((r, i) => {
+    if (!r.predictedLikelihood) return;
+    const e = enrichments[i];
+    const vals = {
+      vertical: r.vertical || 'unspecified',
+      payer: e.payer,
+      denialCategory: e.denialCategory,
+      action: e.actionTaken,
+    };
+    for (const dim of Object.keys(vals)) {
+      const key = vals[dim] + '|' + r.predictedLikelihood;
+      const bucket = dimensionGroups[dim];
+      if (!bucket[key]) bucket[key] = { value: vals[dim], predictedLikelihood: r.predictedLikelihood, sampleSize: 0, exposure: 0, recovered: 0 };
+      bucket[key].sampleSize += 1;
+      bucket[key].exposure += r.originalExposure || 0;
+      bucket[key].recovered += r.recoveredAmount || 0;
+    }
+  });
+  const calibrationByDimension = {};
+  for (const dim of Object.keys(dimensionGroups)) {
+    calibrationByDimension[dim] = Object.values(dimensionGroups[dim]).map(g => {
+      const out = evaluateGroup(g);
+      return Object.assign({ value: g.value }, out);
+    }).sort((a, b) => b.sampleSize - a.sampleSize);
+  }
+
+  return {
+    vertical: vertical || 'all',
+    config,
+    overall: {
+      totalRecords: allRecords.length,
+      byPredictedLikelihood: overallByTier,
+    },
+    recalibrationWindow: {
+      days: config.recalibrationWindowDays,
+      recordsInWindow: windowed.length,
+    },
+    calibrationByDimension,
+    calibrationBreakdown,
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+// ── Phase 13: Provider Reporting ────────────────────────────────────────
+// One reporting function, one data contract. The live API, the dashboard,
+// the PDF export and the monthly snapshots all call bpoBuildProviderReport
+// -- there is no second calculation engine (locked architecture call,
+// 2026-09-19).
+//
+// Two role-scoped projections of the same measured data:
+//   view 'client'   -- business outcomes only, built from a whitelist of
+//                      aggregate fields. Never includes case-level rows,
+//                      owners, payloads, learning records or calibration.
+//   view 'internal' -- everything in the client view PLUS an `internal`
+//                      block (queue/analyst performance, bottlenecks, SLA
+//                      failures, prediction-vs-actual, calibration signals,
+//                      governance/audit).
+//
+// Period semantics (YYYY-MM, UTC, or 'all'):
+//   claimsWorked = created in period OR outcome recorded in period
+//   resolved     = outcome recorded in period (drives exposure/recovered/
+//                  rate/time-to-resolution/payer/action/category figures)
+//   open*        = current state of unresolved items (not period-bound)
+// No SLA-breach threshold is invented: "overdue" means past the item's own
+// dueDate, same as Phase 11.
+const BPO_PROVIDER_SECTION_KEYS = {
+  'executive-summary': 'executiveSummary',
+  'denial-recovery': 'denialRecovery',
+  'payer-performance': 'payerPerformance',
+  'appeal-evidence': 'appealEffectiveness',
+};
+const BPO_PROVIDER_SNAPSHOTS_COLLECTION = 'bpo_provider_report_snapshots';
+
+function bpoProviderValidationError(message) {
+  const e = new Error(message);
+  e.isValidation = true;
+  return e;
+}
+
+function bpoProviderPeriodBounds(period) {
+  if (!period || period === 'all') return null;
+  const m = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(String(period));
+  if (!m) throw bpoProviderValidationError('period must be YYYY-MM or "all"');
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  return { label: String(period), start: Date.UTC(y, mo - 1, 1), end: Date.UTC(y, mo, 1) };
+}
+
+function bpoProviderPreviousPeriodLabel(label) {
+  const [y, m] = label.split('-').map(Number);
+  return bpoCurrentPeriodLabel(new Date(Date.UTC(y, m - 2, 1)));
+}
+
+function bpoProviderInWindow(iso, bounds) {
+  if (!bounds) return true;
+  const t = new Date(iso).getTime();
+  return Number.isFinite(t) && t >= bounds.start && t < bounds.end;
+}
+
+function bpoProviderNum(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function bpoProviderRound2(n) { return Math.round(n * 100) / 100; }
+function bpoProviderRate(recovered, exposure) {
+  return exposure > 0 ? Math.round((recovered / exposure) * 10000) / 10000 : null;
+}
+
+function bpoProviderResolvedInWindow(items, bounds) {
+  return items.filter(i => i.recoveryStatus && bpoProviderInWindow(i.outcomeRecordedAt, bounds));
+}
+
+function bpoProviderScored(resolved) {
+  return resolved.filter(i => bpoOutcomeBucket(i.recoveryStatus) !== 'pending');
+}
+
+function bpoProviderResolutionHours(item) {
+  if (!item.createdAt || !item.outcomeRecordedAt) return null;
+  return bpoHoursBetween(item.createdAt, item.outcomeRecordedAt);
+}
+
+function bpoProviderAggregate(scored, keyFn) {
+  const groups = {};
+  for (const item of scored) {
+    const key = keyFn(item) || 'unspecified';
+    if (!groups[key]) groups[key] = { key, count: 0, exposure: 0, recovered: 0, hours: 0, hoursN: 0, outcomes: { recovered: 0, partial: 0, none: 0, unknown: 0 } };
+    const g = groups[key];
+    g.count += 1;
+    g.exposure += bpoProviderNum(item.originalExposure);
+    g.recovered += bpoProviderNum(item.recoveredAmount);
+    const h = bpoProviderResolutionHours(item);
+    if (h !== null) { g.hours += h; g.hoursN += 1; }
+    const b = bpoOutcomeBucket(item.recoveryStatus);
+    g.outcomes[b === 'recovered' || b === 'partial' || b === 'none' ? b : 'unknown'] += 1;
+  }
+  return Object.values(groups).map(g => ({
+    key: g.key,
+    count: g.count,
+    exposure: bpoProviderRound2(g.exposure),
+    recovered: bpoProviderRound2(g.recovered),
+    remaining: bpoProviderRound2(g.exposure - g.recovered),
+    recoveryRate: bpoProviderRate(g.recovered, g.exposure),
+    avgResolutionHours: g.hoursN > 0 ? bpoProviderRound2(g.hours / g.hoursN) : null,
+    outcomes: g.outcomes,
+  })).sort((a, b) => b.exposure - a.exposure);
+}
+
+function bpoProviderMetrics(items, bounds) {
+  const worked = items.filter(i => bpoProviderInWindow(i.createdAt, bounds) || (i.recoveryStatus && bpoProviderInWindow(i.outcomeRecordedAt, bounds)));
+  const created = items.filter(i => bpoProviderInWindow(i.createdAt, bounds));
+  const resolved = bpoProviderResolvedInWindow(items, bounds);
+  const scored = bpoProviderScored(resolved);
+  const exposure = scored.reduce((s, i) => s + bpoProviderNum(i.originalExposure), 0);
+  const recovered = scored.reduce((s, i) => s + bpoProviderNum(i.recoveredAmount), 0);
+  const hrs = scored.map(bpoProviderResolutionHours).filter(h => h !== null);
+  const casesByOutcome = { recovered: 0, partial: 0, none: 0, pending: 0, unknown: 0 };
+  for (const i of resolved) casesByOutcome[bpoOutcomeBucket(i.recoveryStatus)] += 1;
+  return {
+    claimsWorked: worked.length,
+    newClaims: created.length,
+    resolved: resolved.length,
+    exposure: bpoProviderRound2(exposure),
+    recovered: bpoProviderRound2(recovered),
+    remaining: bpoProviderRound2(exposure - recovered),
+    recoveryRate: bpoProviderRate(recovered, exposure),
+    avgResolutionHours: hrs.length ? bpoProviderRound2(hrs.reduce((a, b) => a + b, 0) / hrs.length) : null,
+    casesByOutcome,
+    _scored: scored,
+  };
+}
+
+function bpoProviderDelta(cur, prev) {
+  if (cur === null || cur === undefined || prev === null || prev === undefined) return null;
+  return Math.round((cur - prev) * 10000) / 10000;
+}
+
+async function bpoBuildProviderReport({ clientId, vertical, period, sections, view = 'client' } = {}) {
+  if (view !== 'client' && view !== 'internal') throw bpoProviderValidationError('view must be "client" or "internal"');
+  if (view === 'client' && !clientId) throw bpoProviderValidationError('clientId is required for the client view');
+
+  const bounds = bpoProviderPeriodBounds(period);
+
+  let wanted = Object.keys(BPO_PROVIDER_SECTION_KEYS);
+  if (sections !== undefined && sections !== null && sections !== '') {
+    const list = Array.isArray(sections) ? sections : String(sections).split(',');
+    wanted = list.map(s => String(s).trim()).filter(Boolean);
+    const unknown = wanted.filter(s => !BPO_PROVIDER_SECTION_KEYS[s]);
+    if (unknown.length) throw bpoProviderValidationError('unknown section(s): ' + unknown.join(', ') + ' (valid: ' + Object.keys(BPO_PROVIDER_SECTION_KEYS).join(', ') + ')');
+    if (!wanted.length) wanted = Object.keys(BPO_PROVIDER_SECTION_KEYS);
+  }
+
+  const col = await bpoWorkItemsCollection();
+  const query = {};
+  if (clientId) query.clientId = clientId;
+  if (vertical) query.vertical = vertical;
+  const items = await col.find(query).limit(5000).toArray();
+
+  const cur = bpoProviderMetrics(items, bounds);
+  const scored = cur._scored;
+  delete cur._scored;
+
+  // ── Open recovery opportunities + deadline risk (current state) ──────
+  const open = items.filter(i => !i.recoveryStatus);
+  const now = Date.now();
+  let openExposure = 0;
+  let overdueOpen = 0;
+  let dueWithin48h = 0;
+  const overdueByPriority = {};
+  const aging = { under1d: 0, d1to3: 0, d3to7: 0, over7d: 0 };
+  for (const item of open) {
+    const sc = bpoExtractStructuredCase(item);
+    const exp = sc && sc.financialExposure;
+    if (exp !== undefined && exp !== null && exp !== '') {
+      try { openExposure += bpoNumber(exp, 'financialExposure'); } catch (e) { /* unknown exposure stays out of the sum */ }
+    }
+    const ageH = typeof item.slaAgeHours === 'number' ? item.slaAgeHours : bpoHoursBetween(item.createdAt);
+    if (ageH !== null) {
+      if (ageH < 24) aging.under1d += 1;
+      else if (ageH < 72) aging.d1to3 += 1;
+      else if (ageH < 168) aging.d3to7 += 1;
+      else aging.over7d += 1;
+    }
+    if (item.dueDate) {
+      const due = new Date(item.dueDate).getTime();
+      if (Number.isFinite(due)) {
+        if (due < now) {
+          overdueOpen += 1;
+          const p = item.priority || 'unspecified';
+          overdueByPriority[p] = (overdueByPriority[p] || 0) + 1;
+        } else if (due - now <= 48 * 3600000) dueWithin48h += 1;
+      }
+    }
+  }
+  openExposure = bpoProviderRound2(openExposure);
+
+  // ── Section 1: Denial & Recovery ─────────────────────────────────────
+  const denialRecovery = {
+    denialVolume: cur.newClaims,
+    claimsWorked: cur.claimsWorked,
+    resolved: cur.resolved,
+    totalExposure: cur.exposure,
+    totalRecovered: cur.recovered,
+    remainingBalance: cur.remaining,
+    recoveryRate: cur.recoveryRate,
+    avgResolutionHours: cur.avgResolutionHours,
+    casesByOutcome: cur.casesByOutcome,
+    byDenialCategory: bpoProviderAggregate(scored, i => {
+      const sc = bpoExtractStructuredCase(i);
+      return sc && sc.denialCategory ? String(sc.denialCategory).trim() : null;
+    }),
+    openRecovery: { openCount: open.length, openExposure, aging },
+    slaRisk: { overdueOpen, dueWithin48h, overdueByPriority },
+  };
+
+  // ── Section 2: Payer Performance ─────────────────────────────────────
+  const payerOf = i => {
+    const sc = bpoExtractStructuredCase(i);
+    return sc && sc.payer ? String(sc.payer).trim() : null;
+  };
+  const byPayer = bpoProviderAggregate(scored, payerOf).map(row => {
+    const reasons = {};
+    for (const i of scored) {
+      if ((payerOf(i) || 'unspecified') !== row.key) continue;
+      const sc = bpoExtractStructuredCase(i);
+      const code = sc && sc.denialReasonCode ? String(sc.denialReasonCode).trim() : 'unspecified';
+      reasons[code] = (reasons[code] || 0) + 1;
+    }
+    const recurringDenialReasons = Object.entries(reasons)
+      .map(([reason, count]) => ({ reason, count }))
+      .sort((a, b) => b.count - a.count).slice(0, 5);
+    return Object.assign({}, row, { turnaroundHours: row.avgResolutionHours, recurringDenialReasons });
+  });
+  const payerPerformance = { byPayer };
+
+  // ── Section 3: Appeal & Evidence Effectiveness ───────────────────────
+  const actionOf = i => (i.actionTaken ? String(i.actionTaken).trim() : null);
+  const categoryOf = i => {
+    const sc = bpoExtractStructuredCase(i);
+    return sc && sc.denialCategory ? String(sc.denialCategory).trim() : null;
+  };
+  const appealEffectiveness = {
+    byAction: bpoProviderAggregate(scored, actionOf),
+    byActionAndDenialCategory: bpoProviderAggregate(scored, i => (actionOf(i) || 'unspecified') + ' | ' + (categoryOf(i) || 'unspecified')),
+    evidencePackageTypeRecorded: false,
+    note: 'Evidence/package type is not captured on recovery outcomes yet, so effectiveness is reported by action taken.',
+  };
+
+  // ── Period over period ───────────────────────────────────────────────
+  let periodOverPeriod = null;
+  if (bounds) {
+    const prevLabel = bpoProviderPreviousPeriodLabel(bounds.label);
+    const prev = bpoProviderMetrics(items, bpoProviderPeriodBounds(prevLabel));
+    delete prev._scored;
+    const pick = m => ({ claimsWorked: m.claimsWorked, resolved: m.resolved, exposure: m.exposure, recovered: m.recovered, recoveryRate: m.recoveryRate, avgResolutionHours: m.avgResolutionHours });
+    const c = pick(cur);
+    const p = pick(prev);
+    periodOverPeriod = {
+      currentPeriod: bounds.label,
+      previousPeriod: prevLabel,
+      current: c,
+      previous: p,
+      delta: {
+        claimsWorked: c.claimsWorked - p.claimsWorked,
+        resolved: c.resolved - p.resolved,
+        exposure: bpoProviderRound2(c.exposure - p.exposure),
+        recovered: bpoProviderRound2(c.recovered - p.recovered),
+        recoveryRate: bpoProviderDelta(c.recoveryRate, p.recoveryRate),
+        avgResolutionHours: bpoProviderDelta(c.avgResolutionHours, p.avgResolutionHours),
+      },
+    };
+  }
+
+  // ── Executive Summary: Exposure → Work → Action → Recovery → Risk ────
+  const topAction = appealEffectiveness.byAction.length
+    ? appealEffectiveness.byAction.reduce((a, b) => ((b.recoveryRate || 0) > (a.recoveryRate || 0) ? b : a))
+    : null;
+  const money = n => '$' + bpoProviderRound2(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const pct = r => (r === null ? 'n/a' : (r * 100).toFixed(1) + '%');
+  const executiveSummary = {
+    exposure: { resolvedExposure: cur.exposure, openExposure, totalTracked: bpoProviderRound2(cur.exposure + openExposure) },
+    work: { claimsWorked: cur.claimsWorked, newClaims: cur.newClaims, resolved: cur.resolved, openNow: open.length },
+    action: { topAction: topAction ? { action: topAction.key, cases: topAction.count, recoveryRate: topAction.recoveryRate } : null },
+    recovery: { recovered: cur.recovered, recoveryRate: cur.recoveryRate, avgResolutionHours: cur.avgResolutionHours },
+    remainingRisk: { remainingBalance: cur.remaining, openExposure, overdueOpen },
+    headline: `${cur.resolved} claim(s) resolved: ${money(cur.recovered)} recovered of ${money(cur.exposure)} exposure (${pct(cur.recoveryRate)}); ` +
+      `${money(cur.remaining)} unrecovered on resolved claims; ${open.length} open (${money(openExposure)} exposure), ${overdueOpen} past due.`,
+  };
+
+  const full = { executiveSummary, denialRecovery, payerPerformance, appealEffectiveness };
+  const report = {
+    view,
+    clientId: clientId || null,
+    vertical: vertical || 'all',
+    period: bounds ? bounds.label : 'all',
+    sections: wanted,
+    periodOverPeriod,
+  };
+  for (const s of wanted) report[BPO_PROVIDER_SECTION_KEYS[s]] = full[BPO_PROVIDER_SECTION_KEYS[s]];
+
+  // ── Internal-only block ──────────────────────────────────────────────
+  if (view === 'internal') {
+    const byStage = {};
+    const stageOldest = [];
+    for (const item of open) {
+      const k = item.stage || 'unspecified';
+      if (!byStage[k]) byStage[k] = { stage: k, count: 0, ageTotal: 0, ageN: 0 };
+      byStage[k].count += 1;
+      const ageH = typeof item.slaAgeHours === 'number' ? item.slaAgeHours : bpoHoursBetween(item.createdAt);
+      if (ageH !== null) { byStage[k].ageTotal += ageH; byStage[k].ageN += 1; stageOldest.push({ caseId: item.caseId, stage: item.stage || null, priority: item.priority || null, ageHours: ageH }); }
+    }
+    const stages = Object.values(byStage).map(s => ({ stage: s.stage, count: s.count, avgAgeHours: s.ageN ? bpoProviderRound2(s.ageTotal / s.ageN) : null }))
+      .sort((a, b) => b.count - a.count);
+    const cands = stages.filter(s => s.avgAgeHours !== null && s.count >= 2);
+
+    const openByOwner = {};
+    for (const item of open) { const o = item.owner || 'unassigned'; openByOwner[o] = (openByOwner[o] || 0) + 1; }
+    const queuePerformance = bpoProviderAggregate(scored, i => i.owner || 'unassigned').map(r => Object.assign({}, r, { owner: r.key, openNow: openByOwner[r.key] || 0 }));
+
+    const resolvedLate = scored.filter(i => {
+      if (!i.dueDate || !i.outcomeRecordedAt) return false;
+      const d = new Date(i.dueDate).getTime();
+      const o = new Date(i.outcomeRecordedAt).getTime();
+      return Number.isFinite(d) && Number.isFinite(o) && o > d;
+    }).length;
+
+    const records = (await bpoListLearningRecords({ vertical, limit: 10000 }))
+      .filter(r => (!clientId || r.clientId === clientId) && bpoProviderInWindow(r.recordedAt, bounds));
+    const tiers = {};
+    for (const r of records) {
+      const t = r.predictedLikelihood;
+      if (!t) continue;
+      if (!tiers[t]) tiers[t] = { predicted: 0, calibrated: 0, varianceTotal: 0, varianceN: 0 };
+      tiers[t].predicted += 1;
+      if (r.calibrated) tiers[t].calibrated += 1;
+      if (typeof r.variance === 'number') { tiers[t].varianceTotal += r.variance; tiers[t].varianceN += 1; }
+    }
+    const predictionVsActual = {
+      records: records.length,
+      byPredictedLikelihood: Object.fromEntries(Object.entries(tiers).map(([t, v]) => [t, {
+        predicted: v.predicted,
+        calibrated: v.calibrated,
+        calibrationRate: v.predicted ? Math.round((v.calibrated / v.predicted) * 10000) / 10000 : null,
+        avgVariance: v.varianceN ? Math.round((v.varianceTotal / v.varianceN) * 10000) / 10000 : null,
+      }])),
+    };
+
+    let calibrationSignals = null;
+    try {
+      const loop = await bpoBuildLearningLoopReport({ vertical });
+      calibrationSignals = {
+        scope: 'all-clients', // the Phase 12 calibration engine is not client-scoped
+        flagged: loop.calibrationBreakdown.filter(r => r.signal === 'DOWNWARD' || r.signal === 'UPWARD').slice(0, 10),
+        eligibleForReview: loop.calibrationBreakdown.filter(r => r.eligibleForReview).length,
+      };
+    } catch (e) { calibrationSignals = null; }
+
+    const caseIds = new Set(items.map(i => i.caseId));
+    const auditAll = await bpoListAuditLogs({ limit: 500 });
+    const recentAudit = auditAll
+      .filter(a => !clientId || caseIds.has(a.entityId))
+      .slice(0, 25)
+      .map(a => ({ ts: a.ts, actor: a.actor || null, action: a.action, entityType: a.entityType, entityId: a.entityId }));
+    const cfg = await bpoGetCalibrationConfig();
+
+    report.internal = {
+      pipeline: {
+        byStage: stages,
+        likelyBottleneckStage: cands.length ? cands.reduce((a, b) => (b.avgAgeHours > a.avgAgeHours ? b : a)).stage : null,
+        oldestOpen: stageOldest.sort((a, b) => b.ageHours - a.ageHours).slice(0, 10),
+      },
+      queuePerformance,
+      slaFailures: { overdueOpen, resolvedLate },
+      predictionVsActual,
+      calibrationSignals,
+      governance: {
+        calibrationConfig: { automaticProductionApplication: cfg.automaticProductionApplication, humanApprovalRequired: cfg.humanApprovalRequired },
+        recentAudit,
+      },
+    };
+  }
+
+  report.generatedAt = new Date().toISOString();
+  return report;
+}
+
+// Monthly snapshots: generated by calling bpoBuildProviderReport itself
+// (both projections), so a snapshot can never disagree with the live API
+// about how a number is computed -- only about when it was taken.
+async function bpoProviderSnapshotsCollection() {
+  const database = await getDb();
+  return database.collection(BPO_PROVIDER_SNAPSHOTS_COLLECTION);
+}
+
+async function bpoSaveProviderSnapshot(clientId, period = bpoCurrentPeriodLabel(), actor) {
+  if (!clientId) throw bpoProviderValidationError('clientId is required');
+  if (!bpoProviderPeriodBounds(period)) throw bpoProviderValidationError('period must be YYYY-MM');
+  const [client, internal] = await Promise.all([
+    bpoBuildProviderReport({ clientId, period, view: 'client' }),
+    bpoBuildProviderReport({ clientId, period, view: 'internal' }),
+  ]);
+  const doc = { clientId, periodLabel: period, views: { client, internal }, generatedAt: new Date().toISOString(), generatedBy: actor || 'system' };
+  const col = await bpoProviderSnapshotsCollection();
+  await col.updateOne({ clientId, periodLabel: period }, { $set: doc }, { upsert: true });
+  return doc;
+}
+
+async function bpoGetProviderSnapshot(clientId, periodLabel) {
+  const col = await bpoProviderSnapshotsCollection();
+  return col.findOne({ clientId, periodLabel });
+}
+
+async function bpoListProviderSnapshots({ clientId, limit = 24 } = {}) {
+  const col = await bpoProviderSnapshotsCollection();
+  const query = {};
+  if (clientId) query.clientId = clientId;
+  return col.find(query).sort({ periodLabel: -1 }).limit(limit).toArray();
 }
 
 // ── Client-facing rollup + monthly snapshots (Phase 4) ──────────────────
@@ -1731,6 +3417,69 @@ async function bpoDeleteDocument(docId, actor) {
     });
   }
   return updated;
+}
+
+// ── Test/seed data cleanup ───────────────────────────────────────────────
+// Load-testing and manual smoke-testing (e.g. scripts/*stress*, ad-hoc
+// TEST-* upserts) leave real documents behind in bpo_work_items and
+// bpo_sla_events -- there's no separate "test mode" collection, so these
+// are indistinguishable from real cases except by caseId naming
+// convention. This exists to remove them explicitly, by prefix, rather
+// than leaving them to silently inflate every count-based report (Phase
+// 8/9's queue and dashboard, the executive-rollup) forever.
+//
+// Dry-run by default (dryRun !== false) -- returns exactly what WOULD be
+// deleted without touching anything, so the caller can review the list
+// before committing to it. Deliberately prefix-matched and explicit
+// (default ['STRESS-batch-', 'TEST-']) rather than a blanket "delete
+// anything without a client" rule, which would also catch legitimate
+// non-client-linked internal cases.
+const BPO_TEST_CASE_PREFIXES_DEFAULT = ['STRESS-batch-', 'TEST-'];
+
+async function bpoFindTestWorkItems({ prefixes } = {}) {
+  const pfx = (prefixes && prefixes.length ? prefixes : BPO_TEST_CASE_PREFIXES_DEFAULT);
+  const col = await bpoWorkItemsCollection();
+  const regex = new RegExp('^(' + pfx.map(p => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')');
+  const matches = await col.find({ caseId: regex }).toArray();
+  return { prefixes: pfx, matches };
+}
+
+async function bpoDeleteTestWorkItems({ prefixes, dryRun = true } = {}, actor) {
+  const { prefixes: pfx, matches } = await bpoFindTestWorkItems({ prefixes });
+  const caseIds = matches.map(m => m.caseId);
+
+  if (dryRun || caseIds.length === 0) {
+    return { dryRun: true, prefixes: pfx, matchedCount: caseIds.length, caseIds, deleted: false };
+  }
+
+  const workItems = await bpoWorkItemsCollection();
+  const slaEvents = await bpoSlaEventsCollection();
+  const workItemsResult = await workItems.deleteMany({ caseId: { $in: caseIds } });
+  const slaEventsResult = await slaEvents.deleteMany({ caseId: { $in: caseIds } });
+
+  await bpoWriteAudit({
+    actor,
+    action: 'work_items.test_data_cleanup',
+    entityType: 'work_item',
+    entityId: 'bulk',
+    detail: {
+      prefixes: pfx,
+      matchedCount: caseIds.length,
+      workItemsDeleted: workItemsResult.deletedCount,
+      slaEventsDeleted: slaEventsResult.deletedCount,
+      caseIds,
+    },
+  });
+
+  return {
+    dryRun: false,
+    prefixes: pfx,
+    matchedCount: caseIds.length,
+    caseIds,
+    deleted: true,
+    workItemsDeleted: workItemsResult.deletedCount,
+    slaEventsDeleted: slaEventsResult.deletedCount,
+  };
 }
 
 // =====================================================
@@ -2266,6 +4015,7 @@ module.exports = {
   // BPO operational persistence
   bpoListClients,
   bpoGetClient,
+  bpoGetClientByTenantId,
   bpoCreateClient,
   bpoUpdateClient,
   BPO_PRICING_TIERS,
@@ -2274,6 +4024,24 @@ module.exports = {
   bpoListWorkItems,
   bpoGetWorkItem,
   bpoUpsertWorkItem,
+  bpoRecordWorkItemOutcome,
+  bpoBuildLearningRecord,
+  bpoGetLearningRecord,
+  bpoListLearningRecords,
+  bpoLearningVarianceSummary,
+  bpoValidateRecoveryOutcome, // pure rules; exported for reuse + testing
+  BPO_RECOVERY_STATUSES,
+  bpoBuildRecoveryDashboard,
+  bpoBuildRecoveryQueue,
+  bpoBuildEvidencePackage,
+  bpoBuildRecoveryAnalytics,
+  bpoGetCalibrationConfig,
+  bpoUpdateCalibrationConfig,
+  bpoBuildLearningLoopReport,
+  bpoBuildProviderReport,
+  bpoSaveProviderSnapshot,
+  bpoGetProviderSnapshot,
+  bpoListProviderSnapshots,
   bpoListAuditLogs,
   bpoWriteAudit,
   // Case Engine (Roadmap #10)
@@ -2310,6 +4078,8 @@ module.exports = {
   bpoGetDocumentText,
   truncateUtf8Safe, // exported for testing only — internal helper, not part of the public ledger API
   bpoDeleteDocument,
+  bpoFindTestWorkItems,
+  bpoDeleteTestWorkItems,
   // Concierge transport persistence
   conciergeListMissions,
   conciergeGetMission,

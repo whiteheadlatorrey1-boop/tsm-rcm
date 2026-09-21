@@ -63,7 +63,8 @@ function caseVertical(c) {
 }
 
 function caseExposure(c) {
-  return num(
+  // Direct case-level exposure fields remain the first source.
+  const direct = num(
     c.revenueExposure,
     c.revenue_exposure,
     c.recoveryExposure,
@@ -74,6 +75,23 @@ function caseExposure(c) {
     c.amount_at_risk,
     c.exposure,
     c.amount
+  );
+
+  if (direct !== null) return direct;
+
+  // Healthcare recovery work items preserve the canonical structuredCase
+  // inside payload. This is the authoritative claim-level exposure emitted
+  // by the HC Denial War Room and carried through the Strategist/Executive
+  // Portal -> BPO relay. Do not use unrelated portfolio/quarterly exposure.
+  const structuredCase =
+    c.payload &&
+    c.payload.structuredCase &&
+    typeof c.payload.structuredCase === 'object'
+      ? c.payload.structuredCase
+      : null;
+
+  return num(
+    structuredCase && structuredCase.financialExposure
   );
 }
 
@@ -114,6 +132,21 @@ function bncaExposureForCase(bncaReports, caseId) {
       ? exposure.ifActed.exposure
       : exposure.ifActed
   );
+}
+
+// Same lookup as bncaExposureForCase, but returns the whole latest report
+// object instead of collapsing it to one number — needed to surface
+// confidence/urgencyWindow/ifIgnored/ifActed as separate fields instead
+// of folding them into a single fallback-chain scalar.
+function latestBncaReportForCase(bncaReports, caseId) {
+  if (!caseId || !Array.isArray(bncaReports) || !bncaReports.length) return null;
+
+  const reports = bncaReports.filter(r => r && r.caseId === caseId);
+  if (!reports.length) return null;
+
+  return reports.slice().sort(
+    (a, b) => new Date(b.ts || 0) - new Date(a.ts || 0)
+  )[0];
 }
 
 // The value actually used everywhere in the package: the case's own
@@ -206,6 +239,44 @@ function buildRecoveryPackage(input = {}) {
   const exposureFromBnca = cases.some(
     c => caseExposure(c) === null && bncaExposureForCase(bnca, first(c.caseId, c.id)) !== null
   );
+
+  // No-action / with-action exposure split, confidence, and urgency
+  // window — all real, previously-computed fields already written by
+  // TSMBNCAExposureEngine (see bpoSaveBncaReport), just not previously
+  // surfaced by this engine. Falls back to the flat per-case exposure
+  // figure when no BNCA report exists, so totals stay consistent with
+  // financials.exposure above for cases with no BNCA data.
+  let noActionExposure = 0;
+  let actionExposure = 0;
+  let latestConfidence = null;
+  let anyConfidenceDefaulted = false;
+  let latestUrgencyWindow = null;
+  let latestUrgencyTs = null;
+
+  for (const c of cases) {
+    const caseId = first(c.caseId, c.id);
+    const latestReport = latestBncaReportForCase(bnca, caseId);
+    const fallback = resolvedExposure(c, bnca) || 0;
+
+    const exp = latestReport && latestReport.exposure;
+    const ifIgnored = exp && typeof exp.ifIgnored === 'object' ? num(exp.ifIgnored.exposure) : num(exp && exp.ifIgnored);
+    const ifActed = exp && typeof exp.ifActed === 'object' ? num(exp.ifActed.exposure) : num(exp && exp.ifActed);
+
+    noActionExposure += ifIgnored !== null ? ifIgnored : fallback;
+    actionExposure += ifActed !== null ? ifActed : fallback;
+
+    if (latestReport && Number.isFinite(latestReport.confidence)) {
+      if (!latestUrgencyTs || new Date(latestReport.ts || 0) > new Date(latestUrgencyTs)) {
+        latestConfidence = latestReport.confidence;
+      }
+      if (latestReport.confidenceDefaulted) anyConfidenceDefaulted = true;
+    }
+
+    if (exp && exp.urgencyWindow && (!latestUrgencyTs || new Date(latestReport.ts || 0) > new Date(latestUrgencyTs))) {
+      latestUrgencyWindow = exp.urgencyWindow;
+      latestUrgencyTs = latestReport.ts;
+    }
+  }
 
   const recovered = cases.reduce((sum, c) => sum + caseRecovered(c), 0);
   const prevented = cases.reduce((sum, c) => sum + casePrevented(c), 0);
@@ -305,8 +376,14 @@ function buildRecoveryPackage(input = {}) {
       recovered,
       prevented,
       containmentValue,
-      recoveryRate
+      recoveryRate,
+      noActionExposure,
+      actionExposure
     },
+
+    confidence: latestConfidence,
+    confidenceDefaulted: anyConfidenceDefaulted,
+    urgencyWindow: latestUrgencyWindow,
 
     portfolio: {
       totalCases: cases.length,

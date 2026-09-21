@@ -107,6 +107,14 @@
   padding: 6px 10px; cursor: pointer; font-family: inherit; border-radius: 2px; text-transform: uppercase;
 }
 .cs-clear-btn:hover { color: #ff3d57; border-color: rgba(255,61,87,0.3); }
+.cs-relay-btn {
+  flex: 1; font-size: 7.5px; letter-spacing: 1px; color: #00e676;
+  border: 1px solid rgba(0,230,118,0.3); background: rgba(0,230,118,0.06);
+  padding: 6px; cursor: pointer; font-family: inherit; border-radius: 2px; text-transform: uppercase;
+}
+.cs-relay-btn:hover { background: rgba(0,230,118,0.14); }
+.cs-relay-btn:disabled { opacity: .4; cursor: default; }
+.cs-relay-btn.sent { color: #00e5ff; border-color: rgba(0,229,255,0.3); background: rgba(0,229,255,0.06); }
     `;
     document.head.appendChild(s);
   }
@@ -144,7 +152,13 @@
   }
 
   // ── Detect the right API endpoint for this app ───────────────────────────────
+  // A page can set window.TSM_CURE_ENDPOINT before loading this script to
+  // override auto-detection — needed for pages whose own AI endpoint is
+  // stored in a variable (e.g. const AI='/api/financial/query') rather than
+  // a literal fetch('/api/...') call, which the regex below can't see, or
+  // whose folder path doesn't match any vertical pattern below.
   function detectEndpoint() {
+    if (window.TSM_CURE_ENDPOINT) return window.TSM_CURE_ENDPOINT;
     const url = window.location.pathname;
     const scripts = Array.from(document.querySelectorAll('script:not([src])'))
       .map(s => s.textContent).join(' ');
@@ -158,6 +172,51 @@
     if (/\/insurance|\/ins-/.test(url))       return '/api/insurance/query';
     if (/\/re-|\/real-estate/.test(url))      return '/api/re/query';
     return '/api/hc/query';
+  }
+
+  // ── Detect which vertical's strategist relay key to write cure results to ───
+  // A page can set window.TSM_CURE_STRATEGIST_KEY before loading this script
+  // to override auto-detection — needed for pages whose folder path doesn't
+  // map cleanly to one vertical (e.g. auditops-pro.html lives at html/ root
+  // but should relay to Construction's strategist). Only verticals that have
+  // been confirmed against a real strategist-relay reader are listed below;
+  // an unrecognized page returns null and simply won't show a relay button
+  // rather than guessing a key nothing reads.
+  function detectStrategistRelay() {
+    if (window.TSM_CURE_STRATEGIST_KEY) return window.TSM_CURE_STRATEGIST_KEY;
+    const url = window.location.pathname;
+    if (/\/construction/.test(url))        return 'TSM_CONSTRUCTION_STRATEGIST_RELAY';
+    if (/\/finops-/.test(url))             return 'TSM_FINOPS_STRATEGIST_RELAY';
+    if (/\/healthcare\/|\/hc-/.test(url))  return 'TSM_HEALTHCARE_STRATEGIST_RELAY';
+    return null;
+  }
+
+  // ── Write cure results back to the strategist page, additively ──────────────
+  // Merges into whatever's already at this key rather than overwriting it —
+  // the real war-room→strategist relay object at this same key carries its
+  // own analysis payload, and clobbering it would silently break that
+  // existing flow (the exact "key/storage mismatch" bug class this project
+  // has hit before). Writes to both localStorage and sessionStorage since
+  // different verticals' strategist pages read from different ones.
+  function relayToStrategist(relay, filledFields) {
+    const key = detectStrategistRelay();
+    if (!key || !filledFields.length) return false;
+    const addendum = {
+      cureApplied: true,
+      curedAt: new Date().toISOString(),
+      curedFrom: relay.appName || document.title || location.pathname,
+      curedFields: filledFields.map(f => ({ id: f.id, label: f.label, value: f.value }))
+    };
+    [window.localStorage, window.sessionStorage].forEach(store => {
+      let existing = null;
+      try { existing = JSON.parse(store.getItem(key) || 'null'); } catch (e) { existing = null; }
+      const merged = (existing && typeof existing === 'object' && !Array.isArray(existing))
+        ? Object.assign({}, existing, addendum)
+        : addendum;
+      try { store.setItem(key, JSON.stringify(merged)); } catch (e) { /* storage unavailable/full — skip */ }
+    });
+    try { window.dispatchEvent(new CustomEvent('TSM_CURE_STRATEGIST_UPDATE', { detail: { key } })); } catch (e) {}
+    return true;
   }
 
   // ── Build request body matching each endpoint's expected shape ───────────────
@@ -208,9 +267,11 @@ Only include fields with a concrete value from the document. Return ONLY a valid
   }
 
   // ── Fill a single field ──────────────────────────────────────────────────────
+  // Returns true if the field was actually filled (used to track which fields
+  // have been cured, for the relay-to-strategist write-back).
   function fillField(fieldId, value, btn) {
     const el = document.getElementById(fieldId);
-    if (!el) return;
+    if (!el) return false;
     el.value = value;
     el.dispatchEvent(new Event('input', { bubbles: true }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
@@ -219,6 +280,63 @@ Only include fields with a concrete value from the document. Return ONLY a valid
     setTimeout(() => { el.style.background = ''; }, 1200);
     if (btn) { btn.textContent = '✓ FILLED'; btn.classList.add('filled'); }
     el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return true;
+  }
+
+  // ── Avoid colliding with the universal guide widget ─────────────────────────
+  // tsm-guide-engine.js renders #tsm-universal-guide in the same bottom-right
+  // corner (bottom:20px; right:20px; z-index:999999) as this panel
+  // (bottom:24px; right:24px; z-index:99999). Its higher z-index means it
+  // sits on top of and blocks clicks on the cheat sheet underneath. Rather
+  // than hard-coding an offset (the guide widget's height changes when its
+  // body/footer are toggled open), measure the guide widget's actual
+  // position at runtime and stack the cheat sheet above it.
+  const GUIDE_WIDGET_ID = 'tsm-universal-guide';
+  const EDGE_OFFSET = 24; // matches the panel's default CSS bottom/right
+  const STACK_GAP   = 12; // gap between the two panels when stacked
+
+  function avoidGuideCollision(panel) {
+    if (panel.dataset.userPositioned === 'true') return; // user dragged it — respect that
+    const guide = document.getElementById(GUIDE_WIDGET_ID);
+    if (guide && guide.offsetParent !== null) {
+      const guideRect = guide.getBoundingClientRect();
+      const guideBottomOffset = Math.max(0, window.innerHeight - guideRect.top);
+      panel.style.bottom = (guideBottomOffset + STACK_GAP) + 'px';
+    } else {
+      panel.style.bottom = EDGE_OFFSET + 'px';
+    }
+    panel.style.right = EDGE_OFFSET + 'px';
+  }
+
+  // Keeps the cheat sheet correctly stacked even as the guide widget
+  // appears/disappears or expands/collapses after this panel is built.
+  function watchGuideWidget(panel) {
+    avoidGuideCollision(panel);
+
+    const reposition = () => avoidGuideCollision(panel);
+
+    if (window.ResizeObserver) {
+      let observedGuide = null;
+      const ro = new ResizeObserver(reposition);
+      const trySync = () => {
+        const guide = document.getElementById(GUIDE_WIDGET_ID);
+        if (guide && guide !== observedGuide) {
+          if (observedGuide) ro.unobserve(observedGuide);
+          ro.observe(guide);
+          observedGuide = guide;
+        }
+        reposition();
+      };
+      trySync();
+      if (window.MutationObserver) {
+        new MutationObserver(trySync).observe(document.body, { childList: true, subtree: false });
+      }
+    } else {
+      // Fallback for browsers without ResizeObserver: light polling.
+      setInterval(reposition, 400);
+    }
+
+    window.addEventListener('resize', reposition);
   }
 
   // ── Build the panel ──────────────────────────────────────────────────────────
@@ -243,6 +361,16 @@ Only include fields with a concrete value from the document. Return ONLY a valid
         <button class="cs-clear-btn" id="tsm-cure-clear">CLEAR</button>
       </div>
     `;
+    // Relay-to-strategist row is added separately (only when this vertical
+    // has a known strategist relay key) so pages with no mapping don't get
+    // a button that can never do anything.
+    if (detectStrategistRelay()) {
+      const relayRow = document.createElement('div');
+      relayRow.id = 'tsm-cure-relay-row';
+      relayRow.style.cssText = 'padding:0 12px 8px;flex-shrink:0;display:none';
+      relayRow.innerHTML = '<button class="cs-relay-btn" id="tsm-cure-relay" disabled>⚡ RELAY TO STRATEGIST</button>';
+      panel.appendChild(relayRow);
+    }
     document.body.appendChild(panel);
 
     panel.querySelector('#tsm-cure-dismiss').onclick = () => {
@@ -251,12 +379,16 @@ Only include fields with a concrete value from the document. Return ONLY a valid
     };
 
     makeDraggable(panel, panel.querySelector('#tsm-cure-header'));
+    watchGuideWidget(panel);
     return panel;
   }
 
   function renderMappings(panel, relay, mappings) {
     const body   = panel.querySelector('#tsm-cure-body');
     const footer = panel.querySelector('#tsm-cure-footer');
+    const relayRow = panel.querySelector('#tsm-cure-relay-row');
+    const relayBtn = panel.querySelector('#tsm-cure-relay');
+    const curedFields = []; // tracks fields actually filled, for relay-to-strategist
 
     if (!mappings.length) {
       body.innerHTML = '<div class="cs-error">No field matches found in this document for the current page.</div>';
@@ -267,6 +399,12 @@ Only include fields with a concrete value from the document. Return ONLY a valid
     body.innerHTML = preview
       ? '<div class="cs-context-row">' + preview.replace(/</g, '&lt;') + (preview.length >= 140 ? '…' : '') + '</div>'
       : '';
+
+    function updateRelayButtonState() {
+      if (!relayBtn) return;
+      relayRow.style.display = curedFields.length ? 'block' : 'none';
+      relayBtn.disabled = !curedFields.length;
+    }
 
     mappings.forEach(m => {
       const row = document.createElement('div');
@@ -279,7 +417,12 @@ Only include fields with a concrete value from the document. Return ONLY a valid
         '<div class="cs-field-value">' + String(m.value || '').replace(/</g, '&lt;') + '</div>' +
         (m.reason ? '<div class="cs-field-reason">' + m.reason.replace(/</g, '&lt;') + '</div>' : '');
       const btn = row.querySelector('.cs-fill-btn');
-      btn.onclick = () => fillField(m.id, m.value, btn);
+      btn.onclick = () => {
+        if (fillField(m.id, m.value, btn)) {
+          curedFields.push(m);
+          updateRelayButtonState();
+        }
+      };
       body.appendChild(row);
     });
 
@@ -291,6 +434,19 @@ Only include fields with a concrete value from the document. Return ONLY a valid
       panel.remove();
       localStorage.removeItem(RELAY_KEY);
     };
+
+    if (relayBtn) {
+      relayBtn.onclick = () => {
+        if (relayToStrategist(relay, curedFields)) {
+          relayBtn.textContent = '✓ RELAYED';
+          relayBtn.classList.add('sent');
+          setTimeout(() => {
+            relayBtn.textContent = '⚡ RELAY TO STRATEGIST';
+            relayBtn.classList.remove('sent');
+          }, 2200);
+        }
+      };
+    }
   }
 
   // ── Make a panel draggable by its header ─────────────────────────────────────
@@ -304,6 +460,9 @@ Only include fields with a concrete value from the document. Return ONLY a valid
       offsetY = e.clientY - rect.top;
       panel.style.right = 'auto';
       panel.style.bottom = 'auto';
+      // Once the user has manually placed the panel, stop auto-repositioning
+      // it around the guide widget — the user's placement wins.
+      panel.dataset.userPositioned = 'true';
       e.preventDefault();
     });
     document.addEventListener('mousemove', (e) => {
