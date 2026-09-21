@@ -2927,6 +2927,125 @@ async function bpoListProviderSnapshots({ clientId, limit = 24 } = {}) {
   return col.find(query).sort({ periodLabel: -1 }).limit(limit).toArray();
 }
 
+// ── Phase 14: Operational OS (shared case engine) ───────────────────────
+// The ledger side of server/tsm-case-engine.js. The engine is pure (adapters,
+// normalisation, action rules); this block loads work items, persists the
+// three safe actions, and writes their audit trail.
+//
+// Safe actions (reassign / escalate / de-escalate / priority) deliberately do
+// NOT go through bpoUpsertWorkItem: that function always writes a stage
+// (default 'war-room'), an SLA "advanced" event and a Slack notification --
+// wrong side effects for changing an owner or a priority. These update only
+// the fields the action names.
+//
+// Audit is REQUIRED here, unlike bpoWriteAudit (best-effort). If the audit row
+// cannot be written, the change is rolled back and the caller gets an error.
+const caseEngine = require('./tsm-case-engine');
+const BPO_OS_READ_LIMIT = 5000; // work items read per view; hitting it sets `truncated`
+
+function bpoOsCtx(role) {
+  return { extract: bpoExtractStructuredCase, role: role || null, now: new Date().toISOString() };
+}
+
+async function bpoOsLoadItems({ clientId } = {}) {
+  const col = await bpoWorkItemsCollection();
+  const query = {};
+  if (clientId) query.clientId = clientId;
+  const items = await col.find(query).limit(BPO_OS_READ_LIMIT).toArray();
+  return { items, truncated: items.length >= BPO_OS_READ_LIMIT };
+}
+
+function bpoOsAdapters() {
+  return {
+    adapters: caseEngine.describeAdapters(),
+    actions: caseEngine.ACTIONS,
+    actionPolicy: caseEngine.ACTION_POLICY,
+    priorities: caseEngine.PRIORITIES,
+  };
+}
+
+async function bpoBuildOperationalQueue(filters = {}, role) {
+  const { items, truncated } = await bpoOsLoadItems({ clientId: filters.clientId });
+  const queue = caseEngine.buildQueue(items, bpoOsCtx(role), filters);
+  return Object.assign(queue, { truncated, generatedAt: new Date().toISOString() });
+}
+
+async function bpoBuildOperationalSummary(filters = {}, role) {
+  const { items, truncated } = await bpoOsLoadItems({ clientId: filters.clientId });
+  const scoped = filters.vertical
+    ? items.filter(i => String(i.vertical || '').toLowerCase() === String(filters.vertical).toLowerCase())
+    : items;
+  const summary = caseEngine.buildSummary(scoped, bpoOsCtx(role));
+  return Object.assign(summary, { truncated, generatedAt: new Date().toISOString() });
+}
+
+async function bpoGetOperationalCase(caseId, role) {
+  const item = await bpoGetWorkItem(caseId);
+  if (!item) throw caseEngine.engineError('notfound', 'BPO work item not found: ' + caseId);
+  const rows = await bpoListAuditLogs({ entityType: 'work_item', entityId: caseId, limit: 50 });
+  // Newest first; rows written in the same millisecond keep later-written first.
+  const audit = rows
+    .map((a, i) => ({ a, i }))
+    .sort((x, y) => String(y.a.ts || '').localeCompare(String(x.a.ts || '')) || y.i - x.i)
+    .map(({ a }) => ({ ts: a.ts, actor: a.actor || null, action: a.action, detail: a.detail || null }));
+  return { case: caseEngine.normalizeCase(item, bpoOsCtx(role)), audit };
+}
+
+// Server-side ingest gate for the Healthcare recovery handoff (mirrors the
+// Executive Portal's client-side gate). Applies only to a payload carrying
+// sections.healthcareRevenueRecovery; the route enforces it on CREATE only,
+// so already-stored legacy items can still advance through their stages.
+function bpoCheckIngestGate(body) {
+  return caseEngine.checkIngestGate(body);
+}
+
+async function bpoOsAct(action, caseId, params, actor, { role, staffId } = {}) {
+  if (!caseId) throw caseEngine.engineError('validation', 'caseId required');
+  const col = await bpoWorkItemsCollection();
+  const existing = await col.findOne({ caseId });
+  if (!existing) throw caseEngine.engineError('notfound', 'BPO work item not found: ' + caseId);
+
+  const now = new Date().toISOString();
+  const plan = caseEngine.planAction(action, existing, params, { role, actor, now });
+
+  // Optimistic concurrency: only apply if nobody changed the item since we read it.
+  const filter = { caseId };
+  if (existing.updatedAt) filter.updatedAt = existing.updatedAt;
+  const res = await col.updateOne(filter, { $set: Object.assign({}, plan.set, { updatedAt: now }) });
+  const matched = res && (res.matchedCount !== undefined ? res.matchedCount : res.modifiedCount);
+  if (matched === 0) throw caseEngine.engineError('conflict', 'case was changed by someone else; reload and try again');
+
+  // Verify what was actually stored (works whatever the driver reports).
+  const after = await col.findOne({ caseId });
+  const applied = !!after && Object.keys(plan.set).every(k => JSON.stringify(after[k]) === JSON.stringify(plan.set[k]));
+  if (!applied) throw caseEngine.engineError('conflict', 'case was changed by someone else; reload and try again');
+
+  const entry = {
+    ts: now,
+    actor: actor || null,
+    action: plan.auditAction,
+    entityType: 'work_item',
+    entityId: caseId,
+    detail: Object.assign({
+      role: role || null, staffId: staffId || null,
+      clientId: existing.clientId || null, vertical: existing.vertical || null,
+    }, plan.detail),
+  };
+  try {
+    const auditCol = await bpoAuditLogsCollection();
+    await auditCol.insertOne(entry);
+  } catch (e) {
+    try {
+      await col.updateOne({ caseId, updatedAt: now }, { $set: Object.assign({}, plan.undo, { updatedAt: existing.updatedAt || now }) });
+    } catch (e2) {
+      console.error('[bpoOsAct] audit failed AND rollback failed for ' + caseId + ':', e2.message);
+    }
+    throw new Error('audit write failed; the change was rolled back');
+  }
+
+  return { workItem: after, case: caseEngine.normalizeCase(after, bpoOsCtx(role)), audit: entry };
+}
+
 // ── Client-facing rollup + monthly snapshots (Phase 4) ──────────────────
 // Latorrey's call on scope (2026-08-24): full rollup (WIP + SLA +
 // case-level summaries, same shape family as the internal
@@ -4068,6 +4187,13 @@ module.exports = {
   bpoSaveProviderSnapshot,
   bpoGetProviderSnapshot,
   bpoListProviderSnapshots,
+  // Phase 14: Operational OS
+  bpoOsAdapters,
+  bpoBuildOperationalQueue,
+  bpoBuildOperationalSummary,
+  bpoGetOperationalCase,
+  bpoOsAct,
+  bpoCheckIngestGate,
   bpoListAuditLogs,
   bpoWriteAudit,
   // Case Engine (Roadmap #10)

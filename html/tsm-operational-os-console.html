@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TSM · Operational OS Console</title>
+<style>
+  :root{
+    --bg:#0a0e14; --panel:#111826; --panel2:#0e1420; --border:#1f2937; --border-soft:#1a2332;
+    --text:#e6f1ff; --text-dim:#7c8a9e; --accent:#00e5c7; --warn:#ffb454; --danger:#ff5c6c; --crit:#ff3b5c;
+    --mono:'Share Tech Mono', 'SF Mono', Consolas, monospace;
+  }
+  *{box-sizing:border-box}
+  body{background:var(--bg); color:var(--text); font-family:var(--mono); margin:0; min-height:100vh;}
+  header{
+    border-bottom:1px solid var(--border); padding:1.1rem 1.5rem;
+    display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:.5rem;
+  }
+  header h1{font-size:.95rem; color:var(--accent); margin:0; letter-spacing:.06em; text-transform:uppercase}
+  header .who{font-size:.75rem; color:var(--text-dim)}
+  header .who b{color:var(--text)}
+  #logout-btn{
+    background:transparent; border:1px solid var(--border); color:var(--text-dim);
+    font-family:inherit; font-size:.7rem; padding:.4rem .8rem; cursor:pointer; border-radius:4px;
+  }
+  #logout-btn:hover{border-color:var(--danger); color:var(--danger)}
+  main{max-width:1300px; margin:0 auto; padding:1.5rem}
+  .toolbar{display:flex; align-items:center; gap:.75rem; margin-bottom:1.25rem; flex-wrap:wrap}
+  .toolbar input{
+    background:var(--panel); border:1px solid var(--border); color:var(--text);
+    font-family:inherit; font-size:.75rem; padding:.45rem .6rem; border-radius:4px;
+  }
+  .toolbar label{font-size:.65rem; color:var(--text-dim); text-transform:uppercase; letter-spacing:.04em}
+  .toolbar .field{display:flex; flex-direction:column; gap:.25rem}
+  #refresh-btn{
+    background:var(--panel); border:1px solid var(--accent); color:var(--accent);
+    font-family:inherit; font-size:.72rem; padding:.45rem .9rem; cursor:pointer; border-radius:4px; align-self:flex-end;
+  }
+  #refresh-btn:hover{background:rgba(0,229,199,.08)}
+  .generated{font-size:.65rem; color:var(--text-dim); align-self:flex-end; margin-left:auto}
+
+  .tabs{display:flex; gap:.25rem; border-bottom:1px solid var(--border); margin-bottom:1.25rem}
+  .tab{
+    background:none; border:none; color:var(--text-dim); font-family:inherit; font-size:.75rem;
+    text-transform:uppercase; letter-spacing:.05em; padding:.6rem 1rem; cursor:pointer;
+    border-bottom:2px solid transparent;
+  }
+  .tab.active{color:var(--accent); border-bottom-color:var(--accent)}
+  .panel{display:none}
+  .panel.active{display:block}
+
+  .kpi-row{display:grid; grid-template-columns:repeat(auto-fit, minmax(180px,1fr)); gap:.75rem; margin-bottom:1.25rem}
+  .kpi{background:var(--panel); border:1px solid var(--border); border-radius:6px; padding:.9rem 1rem}
+  .kpi .label{font-size:.62rem; color:var(--text-dim); text-transform:uppercase; letter-spacing:.05em; margin-bottom:.35rem}
+  .kpi .value{font-size:1.15rem; color:var(--text)}
+  .kpi .value.accent{color:var(--accent)}
+  .kpi .value.warn{color:var(--warn)}
+  .kpi .value.danger{color:var(--danger)}
+  .kpi .sub{font-size:.62rem; color:var(--text-dim); margin-top:.3rem}
+
+  .section-title{font-size:.72rem; color:var(--text-dim); text-transform:uppercase; letter-spacing:.05em; margin:1.5rem 0 .6rem}
+  .grid2{display:grid; grid-template-columns:1fr 1fr; gap:1.25rem}
+  @media (max-width:900px){.grid2{grid-template-columns:1fr}}
+
+  table{width:100%; border-collapse:collapse; font-size:.76rem; margin-bottom:1rem}
+  th{
+    text-align:left; color:var(--text-dim); font-weight:normal; text-transform:uppercase;
+    font-size:.6rem; letter-spacing:.04em; padding:.5rem .6rem; border-bottom:1px solid var(--border);
+  }
+  td{padding:.5rem .6rem; border-bottom:1px solid var(--border-soft); vertical-align:top}
+  tbody tr:hover{background:#0f1622}
+  .pill{
+    display:inline-block; padding:.15rem .55rem; border-radius:3px; font-size:.6rem;
+    text-transform:uppercase; letter-spacing:.03em; border:1px solid;
+  }
+  .pill.recovered{color:var(--accent); border-color:var(--accent)}
+  .pill.partial{color:var(--warn); border-color:var(--warn)}
+  .pill.none{color:var(--danger); border-color:var(--danger)}
+  .pill.pending{color:var(--text-dim); border-color:var(--border)}
+  .pill.critical{color:var(--crit); border-color:var(--crit)}
+  .pill.high{color:var(--danger); border-color:var(--danger)}
+  .pill.medium{color:var(--warn); border-color:var(--warn)}
+  .pill.low{color:var(--text-dim); border-color:var(--border)}
+  .num{color:var(--accent)}
+  .num.unknown{color:var(--text-dim); font-style:italic}
+  .bottleneck-flag{color:var(--warn); font-size:.65rem}
+  .empty{color:var(--text-dim); font-size:.8rem; padding:1.25rem 0; text-align:center}
+  .loading{color:var(--text-dim); font-size:.8rem; padding:1rem 0}
+  .err{color:var(--danger); font-size:.8rem; padding:1rem 0}
+  #gate{
+    display:flex; align-items:center; justify-content:center; height:100vh; text-align:center;
+    flex-direction:column; gap:.5rem;
+  }
+  #gate a{color:var(--accent)}
+
+  .pill.down{color:var(--danger); border-color:var(--danger)}
+  .pill.up{color:var(--warn); border-color:var(--warn)}
+  .pill.stable{color:var(--accent); border-color:var(--accent)}
+  .pill.na{color:var(--text-dim); border-color:var(--border)}
+  .banner{background:var(--panel2); border:1px solid var(--border); border-left:3px solid var(--warn); border-radius:4px; padding:.7rem 1rem; font-size:.72rem; color:var(--text-dim); margin-bottom:1.25rem}
+  .banner b{color:var(--text)}
+  .reason{color:var(--text-dim); font-size:.62rem}
+
+  .toolbar select{background:var(--panel); border:1px solid var(--border); color:var(--text); font-family:inherit; font-size:.75rem; padding:.45rem .6rem; border-radius:4px}
+  tr.row{cursor:pointer}
+  tr.row:hover td, tr.row.sel td{background:var(--panel2)}
+  .sub2{font-size:.62rem; color:var(--text-dim); margin-top:.15rem}
+  .pager{display:flex; align-items:center; gap:1rem; margin:.75rem 0 1.5rem; font-size:.72rem; color:var(--text-dim)}
+  .pager button{background:var(--panel); border:1px solid var(--border); color:var(--text-dim); font-family:inherit; font-size:.72rem; padding:.4rem .8rem; border-radius:4px; cursor:pointer}
+  .pager button:disabled{opacity:.4; cursor:default}
+  form.act{background:var(--panel); border:1px solid var(--border); border-radius:6px; padding:.7rem .8rem; margin-bottom:.6rem; display:flex; flex-direction:column; gap:.45rem}
+  form.act .act-title{font-size:.62rem; color:var(--accent); text-transform:uppercase; letter-spacing:.06em}
+  form.act input, form.act select{background:var(--panel2); border:1px solid var(--border); color:var(--text); font-family:inherit; font-size:.75rem; padding:.45rem .6rem; border-radius:4px}
+  form.act button{align-self:flex-start; background:transparent; border:1px solid var(--accent); color:var(--accent); font-family:inherit; font-size:.72rem; padding:.4rem .9rem; border-radius:4px; cursor:pointer}
+  form.act button:disabled{opacity:.5; cursor:default}
+</style>
+
+</head>
+<body>
+
+<div id="gate" style="display:none">
+  <div style="color:var(--text-dim); font-size:.85rem">Sign in with a staff or admin account to use the Operational OS.</div>
+  <a href="/login.html">Go to login →</a>
+</div>
+
+<div id="app" style="display:none">
+  <header>
+    <h1>Operational OS · Case Console</h1>
+    <div style="display:flex; align-items:center; gap:1rem">
+      <span class="who">Signed in as <b id="user-label">—</b> (<span id="user-role">—</span>)</span>
+      <button id="logout-btn">Sign out</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="toolbar">
+      <div class="field"><label for="f-vertical">Vertical</label>
+        <input id="f-vertical" list="vertical-list" placeholder="all">
+        <datalist id="vertical-list"><option value="healthcare"><option value="insurance"><option value="bpo"></datalist></div>
+      <div class="field"><label for="f-client">Client ID</label><input id="f-client" placeholder="all clients"></div>
+      <div class="field"><label for="f-state">State</label>
+        <select id="f-state"><option value="open">Open</option><option value="closed">Closed</option><option value="all">All</option></select></div>
+      <div class="field"><label for="f-owner">Owner</label><input id="f-owner" placeholder="name or 'unassigned'"></div>
+      <div class="field"><label for="f-priority">Priority</label>
+        <select id="f-priority"><option value="">Any</option><option>critical</option><option>high</option><option>medium</option><option>low</option></select></div>
+      <div class="field"><label for="f-escalated">Escalated</label>
+        <select id="f-escalated"><option value="">Any</option><option value="true">Yes</option><option value="false">No</option></select></div>
+      <div class="field"><label for="f-overdue">Overdue</label>
+        <select id="f-overdue"><option value="">Any</option><option value="true">Yes</option><option value="false">No</option></select></div>
+      <button id="refresh-btn">Refresh</button>
+      <span class="generated" id="generated-at"></span>
+    </div>
+
+    <div id="warn"></div>
+    <div id="summary"><div class="loading">Loading…</div></div>
+
+    <div class="section-title">Work queue <span id="queue-count" style="color:var(--text-dim)"></span></div>
+    <div id="queue"><div class="loading">Loading…</div></div>
+    <div class="pager">
+      <button id="prev-btn">← Prev</button>
+      <span id="page-info"></span>
+      <button id="next-btn">Next →</button>
+    </div>
+
+    <div id="detail"></div>
+  </main>
+</div>
+
+<script>
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money = n => (n === null || n === undefined)
+  ? '<span class="num unknown">unknown</span>'
+  : '<span class="num">$' + Number(n).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}) + '</span>';
+const hrs = h => (h === null || h === undefined) ? '—' : (h >= 24 ? (h / 24).toFixed(1) + 'd' : h.toFixed(1) + 'h');
+const when = iso => iso ? new Date(iso).toLocaleString() : '—';
+const day = iso => iso ? new Date(iso).toLocaleDateString() : '—';
+const LIMIT = 25;
+let SESSION = null, OFFSET = 0, TOTAL = 0, SELECTED = null;
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  let j;
+  try { j = await r.json(); } catch (e) { throw new Error('HTTP ' + r.status); }
+  if (!j.ok) throw new Error(j.error || ('HTTP ' + r.status));
+  return j;
+}
+
+function filters() {
+  const q = new URLSearchParams();
+  const v = id => document.getElementById(id).value.trim();
+  if (v('f-vertical')) q.set('vertical', v('f-vertical'));
+  if (v('f-client')) q.set('clientId', v('f-client'));
+  if (v('f-owner')) q.set('owner', v('f-owner'));
+  if (v('f-priority')) q.set('priority', v('f-priority'));
+  if (v('f-escalated')) q.set('escalated', v('f-escalated'));
+  if (v('f-overdue')) q.set('overdue', v('f-overdue'));
+  q.set('state', v('f-state') || 'open');
+  return q;
+}
+
+function kpi(label, value, sub, cls) {
+  return '<div class="kpi"><div class="label">' + label + '</div><div class="value ' + (cls || '') + '">' + value + '</div>' + (sub ? '<div class="sub">' + sub + '</div>' : '') + '</div>';
+}
+function table(head, rows) {
+  if (!rows.length) return '<div class="empty">Nothing matches these filters.</div>';
+  return '<table><thead><tr>' + head.map(h => '<th>' + h + '</th>').join('') + '</tr></thead><tbody>' + rows.join('') + '</tbody></table>';
+}
+function pri(p) { return '<span class="pill ' + esc(p) + '">' + esc(p) + '</span>'; }
+
+function renderSummary(s) {
+  const out = '<div class="kpi-row">' +
+    kpi('Open cases', s.openCount) +
+    kpi('Open exposure', money(s.openExposure), s.exposureUnknownCount ? s.exposureUnknownCount + ' case(s) with unknown exposure' : 'all known') +
+    kpi('Overdue', s.overdue, 'past their own deadline', s.overdue ? 'danger' : '') +
+    kpi('Due within 48h', s.dueSoon, '', s.dueSoon ? 'warn' : '') +
+    kpi('Unassigned', s.unassigned, '', s.unassigned ? 'warn' : '') +
+    kpi('Escalated', s.escalated) +
+    kpi('Incomplete cases', s.readiness.nonCompliant, 'missing contract fields', s.readiness.nonCompliant ? 'warn' : '') +
+    '</div>';
+  const vrows = s.byVertical.map(v => '<tr><td>' + esc(v.vertical) + (v.adapted ? '' : ' <span class="pill na">no adapter</span>') + '</td><td>' + v.open + '</td><td>' + money(v.exposure) +
+    (v.unknownExposure ? ' <span class="num unknown">+' + v.unknownExposure + ' unknown</span>' : '') + '</td><td>' + v.overdue + '</td><td>' + v.escalated + '</td><td>' + v.unassigned + '</td></tr>');
+  const bn = s.likelyBottleneckStage ? '<div class="reason">Likely bottleneck stage: <b>' + esc(s.likelyBottleneckStage) + '</b></div>' : '';
+  document.getElementById('summary').innerHTML = out +
+    '<div class="section-title">By vertical</div>' +
+    table(['Vertical', 'Open', 'Open exposure', 'Overdue', 'Escalated', 'Unassigned'], vrows) + bn;
+}
+
+function renderQueue(q) {
+  TOTAL = q.total;
+  document.getElementById('queue-count').textContent = '(' + q.total + ')';
+  document.getElementById('warn').innerHTML = q.truncated ? '<div class="banner">Showing the first 5,000 work items only — results may be incomplete.</div>' : '';
+  const rows = q.cases.map(c => {
+    const dl = c.sla.overdue
+      ? '<span style="color:var(--danger)">overdue ' + esc(c.sla.daysOverdue) + 'd</span>'
+      : (c.deadline ? (c.sla.dueSoon ? '<span style="color:var(--warn)">' + esc(day(c.deadline)) + '</span>' : esc(day(c.deadline))) : '—');
+    const flags = (c.escalated ? '<span class="pill high">escalated</span> ' : '') +
+      (c.readiness.compliant ? '' : '<span class="pill na" title="' + esc('missing: ' + c.readiness.missing.join(', ')) + '">incomplete</span> ') +
+      (c.state === 'pending-outcome' ? '<span class="pill pending">outcome pending</span> ' : '') +
+      (c.state === 'closed' ? '<span class="pill none">closed</span>' : '');
+    return '<tr class="row' + (SELECTED === c.caseId ? ' sel' : '') + '" data-case="' + esc(c.caseId) + '">' +
+      '<td>' + pri(c.priority) + '</td>' +
+      '<td>' + esc(c.title) + '<div class="sub2">' + esc(c.caseId) + ' · ' + esc(c.vertical || '—') + '</div></td>' +
+      '<td>' + esc(c.stage || '—') + '</td>' +
+      '<td>' + (c.owner ? esc(c.owner) : '<span class="num unknown">unassigned</span>') + '</td>' +
+      '<td>' + money(c.exposure) + '</td>' +
+      '<td>' + dl + '</td>' +
+      '<td>' + flags + '</td></tr>';
+  });
+  document.getElementById('queue').innerHTML = table(['Priority', 'Case', 'Stage', 'Owner', 'Exposure', 'Deadline', 'Flags'], rows);
+  document.querySelectorAll('#queue tr.row').forEach(tr => tr.addEventListener('click', () => { SELECTED = tr.dataset.case; loadCase(SELECTED); paintSelection(); }));
+  const from = q.total ? q.offset + 1 : 0;
+  document.getElementById('page-info').textContent = from + '–' + (q.offset + q.cases.length) + ' of ' + q.total;
+  document.getElementById('prev-btn').disabled = q.offset <= 0;
+  document.getElementById('next-btn').disabled = q.offset + q.cases.length >= q.total;
+}
+function paintSelection() {
+  document.querySelectorAll('#queue tr.row').forEach(tr => tr.classList.toggle('sel', tr.dataset.case === SELECTED));
+}
+
+const ACTION_LABEL = { 'reassign': 'Reassign', 'priority': 'Change priority', 'escalate': 'Escalate', 'de-escalate': 'De-escalate' };
+function actionForm(a) {
+  let fields = '';
+  if (a === 'reassign') fields = '<input name="owner" placeholder="New owner" maxlength="100" required>';
+  if (a === 'priority') fields = '<select name="priority"><option>critical</option><option>high</option><option selected>medium</option><option>low</option></select>';
+  if (a === 'escalate') fields = '<input name="escalatedTo" placeholder="Escalate to (optional)" maxlength="100">';
+  return '<form class="act" data-action="' + esc(a) + '"><div class="act-title">' + esc(ACTION_LABEL[a] || a) + '</div>' + fields +
+    '<input name="reason" placeholder="Reason (required, recorded in the audit trail)" maxlength="500" required minlength="3">' +
+    '<button type="submit">' + esc(ACTION_LABEL[a] || a) + '</button></form>';
+}
+function auditDetail(a) {
+  const d = a.detail || {};
+  const parts = [];
+  if (d.from !== undefined || d.to !== undefined) parts.push(esc((d.from ?? '—') + ' → ' + (d.to ?? '—')));
+  if (d.escalatedTo) parts.push('to ' + esc(d.escalatedTo));
+  if (d.reason) parts.push('“' + esc(d.reason) + '”');
+  return parts.join(' · ') || '—';
+}
+
+function renderCase(r) {
+  const c = r.case;
+  const fact = (k, v) => '<tr><td style="color:var(--text-dim)">' + k + '</td><td>' + v + '</td></tr>';
+  let out = '<div class="section-title">' + esc(c.title) + ' <span style="color:var(--text-dim)">· ' + esc(c.caseId) + '</span></div>';
+  out += '<div class="grid2"><div>' +
+    '<table><tbody>' +
+    fact('Vertical', esc(c.vertical || '—') + (c.adapted ? '' : ' <span class="pill na">no adapter</span>')) +
+    fact('Client', esc(c.clientId || '—')) +
+    fact('Stage / state', esc(c.stage || '—') + ' / ' + esc(c.state)) +
+    fact('Priority', pri(c.priority)) +
+    fact('Owner', c.owner ? esc(c.owner) : '<span class="num unknown">unassigned</span>') +
+    fact('Exposure', money(c.exposure)) +
+    fact('Counterparty', esc(c.counterparty || '—')) +
+    fact('Category', esc(c.category || '—')) +
+    fact('Deadline', c.deadline ? esc(when(c.deadline)) + (c.sla.overdue ? ' <b style="color:var(--danger)">(overdue ' + esc(c.sla.daysOverdue) + 'd)</b>' : '') : '—') +
+    fact('Age', esc(hrs(c.sla.ageHours))) +
+    (c.escalation ? fact('Escalation', 'by ' + esc(c.escalation.by || '—') + ' at ' + esc(when(c.escalation.at)) + (c.escalation.to ? ' → ' + esc(c.escalation.to) : '') + '<div class="sub2">“' + esc(c.escalation.reason || '') + '”</div>') : '') +
+    (c.outcome ? fact('Outcome', esc(c.outcome.status) + ' · recovered ' + money(c.outcome.recoveredAmount)) : '') +
+    (c.learning ? fact('Prediction', esc(c.learning.predictedLikelihood || '—') + (c.learning.predictedConfidence !== null ? ' · confidence ' + esc(c.learning.predictedConfidence) : '')) : '') +
+    fact('Contract', c.readiness.compliant ? '<span class="pill recovered">complete</span>' : '<span class="pill na">incomplete</span> ' + esc(c.readiness.contract) + ' — missing: ' + esc(c.readiness.missing.join(', '))) +
+    '</tbody></table></div><div id="actions">';
+  if (!c.actions.length) {
+    out += '<div class="empty">' + (c.state === 'closed' ? 'This case is closed; no actions are available.' : 'No actions are available to your role on this case.') + '</div>';
+  } else {
+    out += c.actions.map(actionForm).join('');
+  }
+  out += '<div id="act-msg" class="reason"></div></div></div>';
+  out += '<div class="section-title">Audit trail</div>' +
+    table(['Time', 'Actor', 'Action', 'Detail'], r.audit.map(a => '<tr><td>' + esc(when(a.ts)) + '</td><td>' + esc(a.actor || '—') + '</td><td>' + esc(a.action) + '</td><td>' + auditDetail(a) + '</td></tr>'));
+  document.getElementById('detail').innerHTML = out;
+}
+
+async function loadCase(caseId) {
+  try {
+    renderCase(await api('/api/bpo/os/cases/' + encodeURIComponent(caseId)));
+  } catch (e) {
+    document.getElementById('detail').innerHTML = '<div class="err">Could not load case: ' + esc(e.message) + '</div>';
+  }
+}
+async function loadAll() {
+  const q = filters();
+  const qs = q.toString();
+  const sq = new URLSearchParams(q); sq.delete('state');
+  try {
+    const [s, w] = await Promise.all([
+      api('/api/bpo/os/summary?' + sq.toString()),
+      api('/api/bpo/os/queue?' + qs + '&limit=' + LIMIT + '&offset=' + OFFSET),
+    ]);
+    renderSummary(s.summary);
+    renderQueue(w.queue);
+    document.getElementById('generated-at').textContent = 'Generated ' + when(w.queue.generatedAt);
+  } catch (e) {
+    document.getElementById('summary').innerHTML = '<div class="err">Could not load: ' + esc(e.message) + '</div>';
+    document.getElementById('queue').innerHTML = '';
+  }
+}
+
+document.addEventListener('submit', async ev => {
+  const form = ev.target.closest('form.act');
+  if (!form || !SELECTED) return;
+  ev.preventDefault();
+  const body = {};
+  new FormData(form).forEach((v, k) => { if (String(v).trim() !== '') body[k] = String(v).trim(); });
+  const msg = document.getElementById('act-msg');
+  const btn = form.querySelector('button');
+  btn.disabled = true;
+  try {
+    await api('/api/bpo/os/cases/' + encodeURIComponent(SELECTED) + '/' + form.dataset.action, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    await loadAll();
+    await loadCase(SELECTED);
+    document.getElementById('act-msg').textContent = 'Done — recorded in the audit trail.';
+  } catch (e) {
+    msg.style.color = 'var(--danger)';
+    msg.textContent = e.message;
+    btn.disabled = false;
+  }
+});
+
+async function boot() {
+  try { SESSION = await (await fetch('/api/auth/status')).json(); }
+  catch (e) { document.getElementById('gate').style.display = 'flex'; return; }
+  if (!SESSION.authenticated || !['admin', 'manager', 'analyst'].includes(SESSION.role)) {
+    document.getElementById('gate').style.display = 'flex';
+    return;
+  }
+  document.getElementById('app').style.display = 'block';
+  document.getElementById('user-label').textContent = SESSION.label || SESSION.role;
+  document.getElementById('user-role').textContent = SESSION.role;
+  document.getElementById('logout-btn').addEventListener('click', async () => {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    location.href = '/login.html';
+  });
+  document.getElementById('refresh-btn').addEventListener('click', () => { OFFSET = 0; loadAll(); });
+  ['f-state', 'f-priority', 'f-escalated', 'f-overdue'].forEach(id => document.getElementById(id).addEventListener('change', () => { OFFSET = 0; loadAll(); }));
+  document.getElementById('prev-btn').addEventListener('click', () => { OFFSET = Math.max(0, OFFSET - LIMIT); loadAll(); });
+  document.getElementById('next-btn').addEventListener('click', () => { OFFSET += LIMIT; loadAll(); });
+  loadAll();
+}
+boot();
+</script>
+</body>
+</html>

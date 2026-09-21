@@ -1126,6 +1126,16 @@ app.get('/api/bpo/work-items/:caseId', requireRole(BPO_CLIENT_VIEW_ROLES), async
 // exec), same as it already does for TSM_BPO_WAR_RELAY in localStorage.
 app.post('/api/bpo/work-items/:caseId', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
   try {
+    // Phase 14 ingest gate: server-side mirror of the Executive Portal's recovery
+    // gate, so the browser is not the only line of defence. Applies only to a
+    // payload carrying the Healthcare recovery handoff, and only on CREATE --
+    // items already stored can still advance. Disable with TSM_STRICT_INGEST=0.
+    if (process.env.TSM_STRICT_INGEST !== '0') {
+      const gate = tsmLedger.bpoCheckIngestGate(req.body || {});
+      if (gate.applies && gate.missing.length && !(await tsmLedger.bpoGetWorkItem(req.params.caseId))) {
+        return res.status(422).json({ ok: false, error: 'Healthcare recovery handoff rejected: structured case is missing ' + gate.missing.join(', '), missing: gate.missing });
+      }
+    }
     const item = await tsmLedger.bpoUpsertWorkItem(req.params.caseId, req.body || {}, req.tsmSession.label || req.tsmSession.role);
     res.json({ ok: true, workItem: item });
   } catch (e) { res.status(400).json({ ok: false, error: e.message }); }
@@ -2137,6 +2147,77 @@ app.post('/api/bpo/admin/provider-reports/generate', requireRole(BPO_MANAGE_ROLE
     res.json({ ok: true, results });
   } catch (e) { bpoProviderError(res, e); }
 });
+
+// Phase 14: Operational OS. Unified queue + cross-vertical summary (read) and
+// three audited safe actions (reassign / escalate+de-escalate / priority).
+// Internal roles only -- a client session never reaches these routes. Action
+// routes need application/json, re-check that a staff account is still
+// active (sessions are stateless, so this is where a deactivated account
+// stops being able to WRITE), and require a reason that lands in the audit
+// trail. Nothing here routes or escalates automatically.
+function bpoOsError(res, e) {
+  const status = e.isValidation ? 400 : e.isForbidden ? 403 : e.isNotFound ? 404 : e.isConflict ? 409 : 500;
+  res.status(status).json({ ok: false, error: e.message });
+}
+function bpoOsBool(v) {
+  return v === undefined || v === '' ? undefined : /^(1|true|yes)$/i.test(String(v));
+}
+function bpoOsFilters(q) {
+  const f = {};
+  for (const k of ['vertical', 'clientId', 'owner', 'priority', 'state']) {
+    if (typeof q[k] === 'string' && q[k].trim()) f[k] = q[k].trim();
+  }
+  if (f.state && !['open', 'closed', 'all'].includes(f.state)) throw Object.assign(new Error('state must be open, closed or all'), { isValidation: true });
+  if (f.priority && !['low', 'medium', 'high', 'critical'].includes(f.priority.toLowerCase())) throw Object.assign(new Error('priority must be low, medium, high or critical'), { isValidation: true });
+  const esc = bpoOsBool(q.escalated); if (esc !== undefined) f.escalated = esc;
+  const od = bpoOsBool(q.overdue); if (od !== undefined) f.overdue = od;
+  if (q.limit !== undefined) f.limit = q.limit;
+  if (q.offset !== undefined) f.offset = q.offset;
+  return f;
+}
+
+app.get('/api/bpo/os/adapters', requireRole(BPO_INTERNAL_ROLES), (req, res) => {
+  res.json(Object.assign({ ok: true }, tsmLedger.bpoOsAdapters()));
+});
+
+app.get('/api/bpo/os/summary', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const summary = await tsmLedger.bpoBuildOperationalSummary(bpoOsFilters(req.query), req.tsmSession.role);
+    res.json({ ok: true, summary });
+  } catch (e) { bpoOsError(res, e); }
+});
+
+app.get('/api/bpo/os/queue', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const queue = await tsmLedger.bpoBuildOperationalQueue(bpoOsFilters(req.query), req.tsmSession.role);
+    res.json({ ok: true, queue });
+  } catch (e) { bpoOsError(res, e); }
+});
+
+app.get('/api/bpo/os/cases/:caseId', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const result = await tsmLedger.bpoGetOperationalCase(req.params.caseId, req.tsmSession.role);
+    res.json(Object.assign({ ok: true }, result));
+  } catch (e) { bpoOsError(res, e); }
+});
+
+function bpoOsActionHandler(action) {
+  return async (req, res) => {
+    try {
+      if (!req.is('application/json')) return res.status(415).json({ ok: false, error: 'Content-Type must be application/json' });
+      const s = req.tsmSession;
+      if (s.staffId && !staffRegistry.isStaffActive(s.staffId)) {
+        return res.status(403).json({ ok: false, error: 'This staff account is inactive.' });
+      }
+      const result = await tsmLedger.bpoOsAct(action, req.params.caseId, req.body || {}, s.label || s.role, { role: s.role, staffId: s.staffId });
+      res.json(Object.assign({ ok: true }, result));
+    } catch (e) { bpoOsError(res, e); }
+  };
+}
+app.post('/api/bpo/os/cases/:caseId/reassign', requireRole(BPO_INTERNAL_ROLES), bpoOsActionHandler('reassign'));
+app.post('/api/bpo/os/cases/:caseId/escalate', requireRole(BPO_INTERNAL_ROLES), bpoOsActionHandler('escalate'));
+app.post('/api/bpo/os/cases/:caseId/de-escalate', requireRole(BPO_INTERNAL_ROLES), bpoOsActionHandler('de-escalate'));
+app.post('/api/bpo/os/cases/:caseId/priority', requireRole(BPO_INTERNAL_ROLES), bpoOsActionHandler('priority'));
 
 // Case Engine (Roadmap #10) summary — same shape family as the work-item
 // executive-rollup above, but scoped to bpo_cases so an exec portal can

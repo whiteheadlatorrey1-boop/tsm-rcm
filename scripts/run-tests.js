@@ -22,6 +22,20 @@ const env = Object.assign({ TSM_SESSION_SECRET: 'test-session-secret' }, process
 let failed = 0;
 const started = Date.now();
 
+// Some suites write to tracked registry files under data/ (the SLA admin test
+// creates a client and never removes it). Snapshot them and restore afterwards
+// so running the tests never leaves a test account behind.
+const GUARDED = ['data/clients.json', 'data/staff.json'].map(f => path.join(__dirname, '..', f));
+const snapshots = new Map(GUARDED.map(f => [f, fs.existsSync(f) ? fs.readFileSync(f) : null]));
+function restoreGuarded() {
+  for (const [f, buf] of snapshots) {
+    try {
+      if (buf === null) { if (fs.existsSync(f)) fs.unlinkSync(f); }
+      else if (!fs.existsSync(f) || !fs.readFileSync(f).equals(buf)) fs.writeFileSync(f, buf);
+    } catch (e) { console.error('could not restore ' + f + ': ' + e.message); }
+  }
+}
+
 for (const f of files) {
   const r = spawnSync(process.execPath, [path.join(dir, f)], { env, encoding: 'utf8', timeout: 120000 });
   const out = ((r.stdout || '') + (r.stderr || '')).trim().split('\n');
@@ -35,4 +49,5 @@ for (const f of files) {
 }
 
 console.log('\n' + (files.length - failed) + '/' + files.length + ' suites passed in ' + ((Date.now() - started) / 1000).toFixed(1) + 's');
+restoreGuarded();
 process.exit(failed ? 1 : 0);

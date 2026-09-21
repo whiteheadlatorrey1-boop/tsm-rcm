@@ -146,6 +146,14 @@ function findStaffByCode(code) {
   return null;
 }
 
+// True only if this staff account still exists AND is active. Sessions are
+// stateless (12h), so write routes call this to stop a deactivated account
+// from acting for the rest of its session.
+function isStaffActive(staffId) {
+  if (!staffId) return false;
+  return loadStaff().some(s => s.id === staffId && !!s.active);
+}
+
 module.exports = {
   STAFF_ROLES,
   slugify,
@@ -154,4 +162,5 @@ module.exports = {
   rotateCode,
   setActive,
   findStaffByCode,
+  isStaffActive,
 };
