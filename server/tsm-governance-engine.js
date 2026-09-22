@@ -57,6 +57,20 @@ const HIGH_EXPOSURE_THRESHOLD = 10000;
 const VALIDATION_ROLE = 'admin';
 const VALIDATION_ACTOR = 'governance-engine';
 
+// Human roles allowed to approve a governed recommendation.
+// Client/analyst viewers may see recommendations but cannot approve them.
+const APPROVAL_ROLES = Object.freeze([
+  'admin',
+  'manager',
+]);
+
+const APPROVAL_STATES = Object.freeze({
+  PENDING: 'PENDING',
+  APPROVED: 'APPROVED',
+  REJECTED: 'REJECTED',
+  EXPIRED: 'EXPIRED',
+});
+
 // ── Policies ─────────────────────────────────────────────────────────────
 // Order matters: for a given case, the first policy that matches wins and
 // later ones are skipped for that pass -- a case gets at most one
@@ -138,6 +152,223 @@ function evaluateCase(item, ctx) {
   return null;
 }
 
+
+/**
+ * Create a human-approval record for a governance recommendation.
+ *
+ * This function does NOT execute the action.
+ * It creates a deterministic approval boundary between
+ * recommendation and execution.
+ */
+function createApprovalRequest(recommendation, {
+  caseId,
+  requestedBy,
+  requestedRole,
+  now,
+  expiresAt,
+} = {}) {
+  if (!recommendation || typeof recommendation !== 'object') {
+    throw engine.engineError(
+      'validation',
+      'createApprovalRequest requires a recommendation'
+    );
+  }
+
+  if (!recommendation.action) {
+    throw engine.engineError(
+      'validation',
+      'approval requires a recommendation action'
+    );
+  }
+
+  if (!caseId) {
+    throw engine.engineError(
+      'validation',
+      'approval requires caseId'
+    );
+  }
+
+  if (!requestedBy) {
+    throw engine.engineError(
+      'validation',
+      'approval requires requestedBy'
+    );
+  }
+
+  const requestedAt = now || new Date().toISOString();
+
+  return Object.freeze({
+    approvalId:
+      'APR-' +
+      caseId +
+      '-' +
+      recommendation.action +
+      '-' +
+      requestedAt.replace(/[^0-9A-Z]/gi, ''),
+    caseId,
+    policyId: recommendation.policyId,
+    action: recommendation.action,
+    params: recommendation.params,
+    mode: MODE,
+    requestedBy,
+    requestedRole: requestedRole || null,
+    requestedAt,
+    expiresAt: expiresAt || null,
+    approvalStatus: APPROVAL_STATES.PENDING,
+    approvedBy: null,
+    approvedRole: null,
+    approvedAt: null,
+    rejectionReason: null,
+  });
+}
+
+/**
+ * Resolve a pending approval.
+ *
+ * Approval is intentionally separate from execution.
+ * This function changes only the approval record.
+ */
+function resolveApprovalRequest(approval, {
+  approved,
+  actor,
+  role,
+  reason,
+  now,
+} = {}) {
+  if (!approval || typeof approval !== 'object') {
+    throw engine.engineError(
+      'validation',
+      'resolveApprovalRequest requires approval'
+    );
+  }
+
+  if (!actor) {
+    throw engine.engineError(
+      'authorization',
+      'approval actor is required'
+    );
+  }
+
+  if (!APPROVAL_ROLES.includes(role)) {
+    throw engine.engineError(
+      'authorization',
+      'role is not authorized to approve governed actions'
+    );
+  }
+
+  if (approval.approvalStatus !== APPROVAL_STATES.PENDING) {
+    throw engine.engineError(
+      'state',
+      'approval is no longer pending'
+    );
+  }
+
+  const resolvedAt = now || new Date().toISOString();
+
+  if (
+    approval.expiresAt &&
+    resolvedAt > approval.expiresAt
+  ) {
+    return Object.freeze({
+      ...approval,
+      approvalStatus: APPROVAL_STATES.EXPIRED,
+      approvedBy: null,
+      approvedRole: null,
+      approvedAt: null,
+      rejectionReason: 'Approval request expired.',
+      resolvedAt,
+      resolvedBy: actor,
+      resolvedRole: role,
+    });
+  }
+
+  if (approved === true) {
+    return Object.freeze({
+      ...approval,
+      approvalStatus: APPROVAL_STATES.APPROVED,
+      approvedBy: actor,
+      approvedRole: role,
+      approvedAt: resolvedAt,
+      resolvedAt,
+      resolvedBy: actor,
+      resolvedRole: role,
+      rejectionReason: null,
+    });
+  }
+
+  return Object.freeze({
+    ...approval,
+    approvalStatus: APPROVAL_STATES.REJECTED,
+    approvedBy: null,
+    approvedRole: null,
+    approvedAt: null,
+    rejectionReason:
+      reason || 'Approval rejected by authorized reviewer.',
+    resolvedAt,
+    resolvedBy: actor,
+    resolvedRole: role,
+  });
+}
+
+/**
+ * Final safety gate before an executor is ever allowed to run.
+ *
+ * Phase 15.2 does not execute anything. It only determines whether
+ * an approved recommendation has crossed the human-approval boundary.
+ */
+function canExecuteApprovedAction({
+  approval,
+  caseId,
+  action,
+  now,
+} = {}) {
+  if (!approval) {
+    return {
+      allowed: false,
+      reason: 'APPROVAL_REQUIRED',
+    };
+  }
+
+  if (approval.caseId !== caseId) {
+    return {
+      allowed: false,
+      reason: 'CASE_MISMATCH',
+    };
+  }
+
+  if (approval.action !== action) {
+    return {
+      allowed: false,
+      reason: 'ACTION_MISMATCH',
+    };
+  }
+
+  if (approval.approvalStatus !== APPROVAL_STATES.APPROVED) {
+    return {
+      allowed: false,
+      reason: 'APPROVAL_' + approval.approvalStatus,
+    };
+  }
+
+  const checkTime = now || new Date().toISOString();
+
+  if (
+    approval.expiresAt &&
+    checkTime > approval.expiresAt
+  ) {
+    return {
+      allowed: false,
+      reason: 'APPROVAL_EXPIRED',
+    };
+  }
+
+  return {
+    allowed: true,
+    reason: 'APPROVAL_VALID',
+  };
+}
+
+
 function describePolicies() {
   return POLICIES.map(p => ({ id: p.id, action: p.action }));
 }
@@ -148,4 +379,9 @@ module.exports = {
   HIGH_EXPOSURE_THRESHOLD,
   describePolicies,
   evaluateCase,
+  APPROVAL_ROLES,
+  APPROVAL_STATES,
+  createApprovalRequest,
+  resolveApprovalRequest,
+  canExecuteApprovedAction,
 };

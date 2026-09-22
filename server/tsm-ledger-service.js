@@ -304,6 +304,136 @@ function hitlAdapter(gatePrefix) {
   };
 }
 
+
+/**
+ * Phase 15.2 BPO governance approval persistence.
+ *
+ * This intentionally uses the existing hitl_decisions collection but a
+ * dedicated gatePrefix so BPO governance approvals cannot collide with
+ * GOV/PM/IHUB/other HITL decisions.
+ *
+ * Unlike the generic HITL gate, these records retain the complete
+ * PENDING -> APPROVED/REJECTED/EXPIRED lifecycle required by the BPO
+ * governance engine.
+ */
+const BPO_GOVERNANCE_HITL_PREFIX = 'BPO-GOV';
+
+async function bpoGovernanceApprovalWrite(approval) {
+  if (!approval || !approval.approvalId) {
+    throw new Error('approvalId required');
+  }
+
+  const col = await hitlCollection();
+
+  const doc = Object.assign(
+    {
+      gatePrefix: BPO_GOVERNANCE_HITL_PREFIX,
+      entityType: 'bpo_governance_approval',
+    },
+    approval,
+    {
+      id: approval.approvalId,
+    }
+  );
+
+  await col.updateOne(
+    {
+      id: approval.approvalId,
+      gatePrefix: BPO_GOVERNANCE_HITL_PREFIX,
+    },
+    {
+      $set: doc,
+    },
+    {
+      upsert: true,
+    }
+  );
+
+  return doc;
+}
+
+async function bpoGovernanceApprovalRead(approvalId) {
+  if (!approvalId) throw new Error('approvalId required');
+
+  const col = await hitlCollection();
+
+  return col.findOne({
+    id: approvalId,
+    gatePrefix: BPO_GOVERNANCE_HITL_PREFIX,
+    entityType: 'bpo_governance_approval',
+  });
+}
+
+async function bpoGovernanceApprovalsReadByCase(caseId) {
+  if (!caseId) throw new Error('caseId required');
+
+  const col = await hitlCollection();
+
+  return col.find({
+    gatePrefix: BPO_GOVERNANCE_HITL_PREFIX,
+    entityType: 'bpo_governance_approval',
+    caseId,
+  }).sort({ requestedAt: 1 }).toArray();
+}
+
+
+/**
+ * Phase 15.3 — governed BPO execution.
+ *
+ * Governance approval is verified from persisted server-side state before
+ * the existing Phase 14 executor is allowed to run.
+ */
+async function bpoGovernanceExecuteApprovedAction(
+  approvalId,
+  caseId,
+  action,
+  params,
+  actor,
+  { role, staffId } = {}
+) {
+  if (!approvalId) throw caseEngine.engineError('validation', 'approvalId required');
+  if (!caseId) throw caseEngine.engineError('validation', 'caseId required');
+  if (!action) throw caseEngine.engineError('validation', 'action required');
+
+  const approval = await bpoGovernanceApprovalRead(approvalId);
+
+  if (!approval) {
+    throw caseEngine.engineError(
+      'forbidden',
+      'approved governance record not found'
+    );
+  }
+
+  const governance = require('./tsm-governance-engine');
+
+  const gate = governance.canExecuteApprovedAction(approval, {
+    caseId,
+    action,
+    now: new Date().toISOString(),
+  });
+
+  if (!gate.allowed) {
+    throw caseEngine.engineError('forbidden', gate.reason);
+  }
+
+  // Phase 14 remains the canonical mutation/audit engine.
+  return bpoOsAct(
+    action,
+    caseId,
+    params || {},
+    actor,
+    { role, staffId }
+  );
+}
+
+async function bpoGovernanceApprovalAdapter() {
+  return {
+    write: bpoGovernanceApprovalWrite,
+    read: bpoGovernanceApprovalRead,
+    readByCase: bpoGovernanceApprovalsReadByCase,
+  };
+}
+
 // =====================================================
 // BPO OPERATIONAL PERSISTENCE
 // Three collections backing the BPO war room / strategist / executive
@@ -2941,6 +3071,7 @@ async function bpoListProviderSnapshots({ clientId, limit = 24 } = {}) {
 // Audit is REQUIRED here, unlike bpoWriteAudit (best-effort). If the audit row
 // cannot be written, the change is rolled back and the caller gets an error.
 const caseEngine = require('./tsm-case-engine');
+const governanceEngine = require('./tsm-governance-engine');
 const BPO_OS_READ_LIMIT = 5000; // work items read per view; hitting it sets `truncated`
 
 function bpoOsCtx(role) {
@@ -3044,6 +3175,75 @@ async function bpoOsAct(action, caseId, params, actor, { role, staffId } = {}) {
   }
 
   return { workItem: after, case: caseEngine.normalizeCase(after, bpoOsCtx(role)), audit: entry };
+}
+
+// ── Governance (Phase 15, milestone 1 -- OBSERVE mode) ───────────────────
+// evaluateCase() itself is pure (server/tsm-governance-engine.js); this is
+// the I/O shell around it, matching the bpoOsAct() pattern above: load the
+// item, call the pure engine, persist the result as an audit entry. OBSERVE
+// mode never calls bpoOsAct/planAction to mutate -- it only ever logs what
+// it would have recommended.
+async function bpoGovernanceObserveCase(caseId, actor) {
+  if (!caseId) throw caseEngine.engineError('validation', 'caseId required');
+  const item = await bpoGetWorkItem(caseId);
+  if (!item) throw caseEngine.engineError('notfound', 'BPO work item not found: ' + caseId);
+
+  const now = new Date().toISOString();
+  const recommendation = governanceEngine.evaluateCase(item, { extract: bpoExtractStructuredCase, now });
+
+  const entry = {
+    ts: now,
+    actor: actor || 'governance-engine',
+    action: 'governance.observe',
+    entityType: 'work_item',
+    entityId: caseId,
+    detail: {
+      mode: governanceEngine.MODE,
+      recommendation, // null when no policy applies
+      vertical: item.vertical || null,
+      clientId: item.clientId || null,
+    },
+  };
+  await bpoWriteAudit(entry);
+  return entry;
+}
+
+// Sweeps every currently-loaded operational item and logs one observation
+// each. Best-effort per item -- one item's evaluation failing (e.g. an
+// adapter/extractor error) is recorded as its own failed observation rather
+// than aborting the sweep, mirroring bpoWriteAudit's own never-throw stance.
+async function bpoGovernanceObserveSweep(filters = {}, actor) {
+  const { items } = await bpoOsLoadItems({ clientId: filters.clientId });
+  const scoped = filters.vertical
+    ? items.filter(i => String(i.vertical || '').toLowerCase() === String(filters.vertical).toLowerCase())
+    : items;
+
+  const results = [];
+  for (const item of scoped) {
+    try {
+      const entry = await bpoGovernanceObserveCase(item.caseId, actor);
+      results.push({ caseId: item.caseId, ok: true, recommendation: entry.detail.recommendation });
+    } catch (e) {
+      results.push({ caseId: item.caseId, ok: false, error: e.message });
+    }
+  }
+  const withRecommendation = results.filter(r => r.ok && r.recommendation).length;
+  return {
+    mode: governanceEngine.MODE,
+    evaluated: results.length,
+    withRecommendation,
+    failed: results.filter(r => !r.ok).length,
+    results,
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+async function bpoListGovernanceObservations(caseId, limit = 50) {
+  const col = await bpoAuditLogsCollection();
+  const query = { action: 'governance.observe' };
+  if (caseId) query.entityId = caseId;
+  const rows = await col.find(query).sort({ ts: -1 }).limit(limit).toArray();
+  return rows.map(r => ({ ts: r.ts, caseId: r.entityId, actor: r.actor || null, detail: r.detail || null }));
 }
 
 // ── Client-facing rollup + monthly snapshots (Phase 4) ──────────────────
@@ -4157,6 +4357,11 @@ module.exports = {
   hitlWriteDecision,
   hitlReadDecisions,
   hitlAdapter,
+  bpoGovernanceApprovalWrite,
+  bpoGovernanceApprovalRead,
+  bpoGovernanceApprovalsReadByCase,
+  bpoGovernanceApprovalAdapter,
+  bpoGovernanceExecuteApprovedAction,
   // BPO operational persistence
   bpoListClients,
   bpoGetClient,
@@ -4168,6 +4373,7 @@ module.exports = {
   bpoBackfillClientLogin,
   bpoListWorkItems,
   bpoGetWorkItem,
+  bpoExtractStructuredCase,
   bpoUpsertWorkItem,
   bpoRecordWorkItemOutcome,
   bpoBuildLearningRecord,
@@ -4193,6 +4399,7 @@ module.exports = {
   bpoBuildOperationalSummary,
   bpoGetOperationalCase,
   bpoOsAct,
+  bpoGovernanceObserveCase, bpoGovernanceObserveSweep, bpoListGovernanceObservations,
   bpoCheckIngestGate,
   bpoListAuditLogs,
   bpoWriteAudit,

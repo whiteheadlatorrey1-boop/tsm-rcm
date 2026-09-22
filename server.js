@@ -2219,6 +2219,241 @@ app.post('/api/bpo/os/cases/:caseId/escalate', requireRole(BPO_INTERNAL_ROLES), 
 app.post('/api/bpo/os/cases/:caseId/de-escalate', requireRole(BPO_INTERNAL_ROLES), bpoOsActionHandler('de-escalate'));
 app.post('/api/bpo/os/cases/:caseId/priority', requireRole(BPO_INTERNAL_ROLES), bpoOsActionHandler('priority'));
 
+// Phase 15, milestone 1 (OBSERVE mode). These never mutate a case -- they
+// evaluate the governance policy set and log what it would recommend.
+// Turning a recommendation into a real change is still one of the four
+// action routes above, done by a human.
+app.post('/api/bpo/os/cases/:caseId/observe', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const s = req.tsmSession;
+    const entry = await tsmLedger.bpoGovernanceObserveCase(req.params.caseId, s.label || s.role);
+    res.json({ ok: true, observation: entry });
+  } catch (e) { bpoOsError(res, e); }
+});
+app.post('/api/bpo/os/governance/observe-sweep', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const s = req.tsmSession;
+    const result = await tsmLedger.bpoGovernanceObserveSweep(bpoOsFilters(req.query), s.label || s.role);
+    res.json(Object.assign({ ok: true }, result));
+  } catch (e) { bpoOsError(res, e); }
+});
+
+// Phase 15.2 — Governance approval lifecycle.
+// These routes create and resolve persisted approvals only. They do NOT
+// execute a BPO action. Execution remains behind the explicit approval gate.
+
+app.post('/api/bpo/os/cases/:caseId/governance/approval',
+  requireRole(BPO_INTERNAL_ROLES),
+  async (req, res) => {
+    try {
+      const s = req.tsmSession;
+
+      if (s.staffId && !staffRegistry.isStaffActive(s.staffId)) {
+        return res.status(403).json({
+          ok: false,
+          error: 'This staff account is inactive.',
+        });
+      }
+
+      const caseId = req.params.caseId;
+      const item = await tsmLedger.bpoGetWorkItem(caseId);
+
+      if (!item) {
+        return res.status(404).json({
+          ok: false,
+          error: 'BPO work item not found: ' + caseId,
+        });
+      }
+
+      const now = new Date().toISOString();
+
+      const recommendation =
+        require('./server/tsm-governance-engine').evaluateCase(
+          item,
+          { extract: tsmLedger.bpoExtractStructuredCase, now }
+        );
+
+      if (!recommendation) {
+        return res.status(409).json({
+          ok: false,
+          error: 'No active governance recommendation exists for this case.',
+        });
+      }
+
+      const approval = require('./server/tsm-governance-engine').createApprovalRequest(
+        recommendation,
+        {
+          caseId,
+          requestedBy: s.label || s.role,
+          requestedRole: s.role,
+          now,
+        }
+      );
+
+      const persisted =
+        await tsmLedger.bpoGovernanceApprovalWrite(approval);
+
+      res.status(201).json({
+        ok: true,
+        approval: persisted,
+        recommendation,
+      });
+    } catch (e) {
+      bpoOsError(res, e);
+    }
+  }
+);
+
+app.post('/api/bpo/os/governance/approvals/:approvalId/resolve',
+  requireRole(BPO_INTERNAL_ROLES),
+  async (req, res) => {
+    try {
+      const s = req.tsmSession;
+
+      if (s.staffId && !staffRegistry.isStaffActive(s.staffId)) {
+        return res.status(403).json({
+          ok: false,
+          error: 'This staff account is inactive.',
+        });
+      }
+
+      const approvalId = req.params.approvalId;
+      const approval =
+        await tsmLedger.bpoGovernanceApprovalRead(approvalId);
+
+      if (!approval) {
+        return res.status(404).json({
+          ok: false,
+          error: 'Governance approval not found: ' + approvalId,
+        });
+      }
+
+      const governance =
+        require('./server/tsm-governance-engine');
+
+      const resolved = governance.resolveApprovalRequest(
+        approval,
+        {
+          approved: req.body && req.body.approved === true,
+          actor: s.label || s.role,
+          role: s.role,
+          reason: req.body && req.body.reason,
+          now: new Date().toISOString(),
+        }
+      );
+
+      const persisted =
+        await tsmLedger.bpoGovernanceApprovalWrite(resolved);
+
+      res.json({
+        ok: true,
+        approval: persisted,
+      });
+    } catch (e) {
+      bpoOsError(res, e);
+    }
+  }
+);
+
+app.get('/api/bpo/os/governance/approvals/:approvalId',
+  requireRole(BPO_INTERNAL_ROLES),
+  async (req, res) => {
+    try {
+      const approval =
+        await tsmLedger.bpoGovernanceApprovalRead(
+          req.params.approvalId
+        );
+
+      if (!approval) {
+        return res.status(404).json({
+          ok: false,
+          error: 'Governance approval not found: ' + req.params.approvalId,
+        });
+      }
+
+      res.json({
+        ok: true,
+        approval,
+      });
+    } catch (e) {
+      bpoOsError(res, e);
+    }
+  }
+);
+
+app.post('/api/bpo/os/governance/approvals/:approvalId/execute',
+  requireRole(BPO_INTERNAL_ROLES),
+  async (req, res) => {
+    try {
+      const s = req.tsmSession;
+
+      if (s.staffId && !staffRegistry.isStaffActive(s.staffId)) {
+        return res.status(403).json({
+          ok: false,
+          error: 'This staff account is inactive.',
+        });
+      }
+
+      const body = req.body || {};
+
+      if (!body.caseId || !body.action) {
+        return res.status(400).json({
+          ok: false,
+          error: 'caseId and action are required.',
+        });
+      }
+
+      const result = await tsmLedger.bpoGovernanceExecuteApprovedAction(
+        req.params.approvalId,
+        body.caseId,
+        body.action,
+        body.params || {},
+        s.label || s.role,
+        {
+          role: s.role,
+          staffId: s.staffId,
+        }
+      );
+
+      res.json({
+        ok: true,
+        executed: true,
+        approvalId: req.params.approvalId,
+        result,
+      });
+    } catch (e) {
+      bpoOsError(res, e);
+    }
+  }
+);
+
+app.get('/api/bpo/os/cases/:caseId/governance/approvals',
+  requireRole(BPO_INTERNAL_ROLES),
+  async (req, res) => {
+    try {
+      const approvals =
+        await tsmLedger.bpoGovernanceApprovalsReadByCase(
+          req.params.caseId
+        );
+
+      res.json({
+        ok: true,
+        caseId: req.params.caseId,
+        approvals,
+      });
+    } catch (e) {
+      bpoOsError(res, e);
+    }
+  }
+);
+
+app.get('/api/bpo/os/cases/:caseId/observations', requireRole(BPO_INTERNAL_ROLES), async (req, res) => {
+  try {
+    const observations = await tsmLedger.bpoListGovernanceObservations(req.params.caseId, 50);
+    res.json({ ok: true, observations });
+  } catch (e) { bpoOsError(res, e); }
+});
+
 // Case Engine (Roadmap #10) summary — same shape family as the work-item
 // executive-rollup above, but scoped to bpo_cases so an exec portal can
 // show real case-queue numbers server-side instead of only whatever one
