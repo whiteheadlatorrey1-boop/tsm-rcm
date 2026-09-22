@@ -406,7 +406,8 @@ async function bpoGovernanceExecuteApprovedAction(
 
   const governance = require('./tsm-governance-engine');
 
-  const gate = governance.canExecuteApprovedAction(approval, {
+  const gate = governance.canExecuteApprovedAction({
+    approval,
     caseId,
     action,
     now: new Date().toISOString(),

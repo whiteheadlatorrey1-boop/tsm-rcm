@@ -1,3 +1,4 @@
+;(function(){
 /**
  * evidence-ledger.js
  *
@@ -153,3 +154,4 @@ if (typeof window !== 'undefined') {
   window.TSM = window.TSM || {};
   window.TSM.evidenceLedger = evidenceLedger;
 }
+})();
