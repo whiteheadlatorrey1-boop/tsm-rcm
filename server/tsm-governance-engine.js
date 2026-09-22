@@ -251,7 +251,7 @@ function resolveApprovalRequest(approval, {
 
   if (!APPROVAL_ROLES.includes(role)) {
     throw engine.engineError(
-      'authorization',
+      'forbidden',
       'role is not authorized to approve governed actions'
     );
   }
