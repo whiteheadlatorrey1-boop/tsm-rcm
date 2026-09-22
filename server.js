@@ -2156,7 +2156,7 @@ app.post('/api/bpo/admin/provider-reports/generate', requireRole(BPO_MANAGE_ROLE
 // stops being able to WRITE), and require a reason that lands in the audit
 // trail. Nothing here routes or escalates automatically.
 function bpoOsError(res, e) {
-  const status = e.isValidation ? 400 : e.isForbidden ? 403 : e.isNotFound ? 404 : e.isConflict ? 409 : 500;
+  const status = e.isValidation ? 400 : e.isForbidden || e.isAuthorization ? 403 : e.isNotFound ? 404 : e.isConflict ? 409 : 500;
   res.status(status).json({ ok: false, error: e.message });
 }
 function bpoOsBool(v) {

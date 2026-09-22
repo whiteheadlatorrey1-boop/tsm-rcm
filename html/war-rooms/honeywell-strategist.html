@@ -120,8 +120,9 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 <div class="toast" id="toast"></div>
 <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
 <script src="/html/js/tsm-bnca-exposure-engine.js"></script>
-<script src="/html/shared/runtime/mission/mission-model.js"></script>
-<script src="/html/shared/runtime/mission/mission-store.js"></script>
+<script src="/shared/tsm-active-member.js"></script>
+<script src="/shared/tsm-bpo-relay.js"></script>
+<script src="/shared/tsm-governed-exception-relay.js"></script>
 <script>
 function tick(){document.getElementById('clock').textContent=new Date().toLocaleTimeString();}
 setInterval(tick,1000);tick();
@@ -655,6 +656,31 @@ function render(){
   document.getElementById('wrap').innerHTML = html;
 }
 
+// Governed relay for the strategist's "Escalate to Executive" action.
+//
+// This used to call the legacy Mission Core creator with a hardcoded
+// tenant guess -- identical defect shape to the one fixed in
+// html/finops-suite/tsm-rcm-os.html's renderExecExceptions(); see that
+// file's relayCriticalExceptionsToBPO() and
+// scripts/test-rcm-os-exception-relay.js. Replaced with the shared
+// html/shared/tsm-governed-exception-relay.js helper so both callers
+// share one gating implementation instead of two that can drift apart:
+//
+//   no active member -> exec relay write below already happened (this
+//                        page's own EXEC_RELAY key, unaffected either
+//                        way), no BPO write, no invented tenant
+//   active member     -> relayGovernedException() creates/updates a real
+//                        BPO work item for that member, which then goes
+//                        through Phase 15 governance (PENDING approval)
+//                        exactly like every other governed work item --
+//                        this never executes anything itself
+//
+// caseId is derived from the domain (data.source), not a per-incident id
+// -- unlike RCM-OS's per-anomaly caseId, this file's own relay keys
+// (RELAY_KEYS above) are one-active-incident-per-domain, with no stable
+// per-incident id anywhere in sessionData. So one domain re-escalating
+// upserts the same work item, same idempotent-by-caseId behavior
+// relayToBPO already provides, rather than minting a new case per click.
 function escalateExec(){
   const allRelays = loadAllRelays();
   const data = allRelays.length ? allRelays[0] : null;
@@ -676,33 +702,27 @@ function escalateExec(){
     sessionStorage.setItem('TSM_HONEYWELL_EXEC_RELAY', payload);
   }catch(e){}
 
-  // Phase 2: Mission Core creation
-  try {
-    if (window.TSMMissionModel && window.TSMMissionStore) {
-      const hwSourceMeta = SOURCE_META[data.source] || null;
-      const mission = window.TSMMissionModel.createMission({
-        vertical: 'honeywell',
-        tenantId: 'default',
-        client: hwSourceMeta ? hwSourceMeta.label : (data.source || 'Meridian Industrial Incident'),
-        classification: {
-          summary: data.summary || data.narrative || '',
-          incidentSource: data.source || null,
-          source: 'Meridian Industrial Strategist'
-        },
-        workflow: {
-          assignedTo: null,
-          queue: null,
-          priority: 'normal', // no exposure/risk/confidence signal identified in this payload yet
-          sla: null
-        },
-        actor: 'honeywell-strategist'
-      });
-      window.TSMMissionStore.saveMission(mission);
-    } else {
-      console.warn('Mission Core not loaded — skipping mission creation, Meridian Industrial relay write already succeeded.');
-    }
-  } catch (missionErr) {
-    console.warn('Mission Core creation failed (non-fatal, Meridian Industrial relay already written):', missionErr);
+  if (window.TSMGovernedExceptionRelay) {
+    const hwSourceMeta = SOURCE_META[data.source] || null;
+    const pkg = {
+      domain: 'honeywell',
+      packageId: data.source || 'unknown',
+      title: hwSourceMeta ? hwSourceMeta.label : (data.source || 'Meridian Industrial Incident'),
+      source: 'Meridian Industrial Strategist',
+      incidentSource: data.source || null,
+      summary: data.summary || data.narrative || '',
+      docType: data.docType || null,
+      kpis: data.kpis || {},
+      bnca_exposure: computeHoneywellBNCA(data)
+    };
+    window.TSMGovernedExceptionRelay.relayGovernedException(pkg, {
+      vertical: 'honeywell',
+      caseId: 'TSM-HW-' + String(data.source || 'unknown').toUpperCase() + '-ESC',
+      sourceSystem: 'honeywell-strategist-escalate',
+      cacheKey: 'tsm_honeywell_strategist_relayed_v1'
+    });
+  } else {
+    console.warn('Governed exception relay not loaded — skipping BPO relay, Meridian Industrial exec relay write already succeeded.');
   }
 
   showToast('Escalated to Executive — opening…');
