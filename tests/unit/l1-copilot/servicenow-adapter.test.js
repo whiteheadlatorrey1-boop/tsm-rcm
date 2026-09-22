@@ -23,6 +23,7 @@ const INCIDENTS = [
 
 let lastRequest = null;
 let patchBody = null;
+let patchUrl = null;
 
 const server = http.createServer((req, res) => {
   let body = '';
@@ -47,8 +48,24 @@ const server = http.createServer((req, res) => {
     }
     if (req.method === 'PATCH' && u.pathname.startsWith('/api/now/table/incident/')) {
       patchBody = JSON.parse(body || '{}');
+      patchUrl = u.pathname;
+      const sysId = u.pathname.split('/').pop();
+      const incident = INCIDENTS.find(i => i.sys_id === sysId);
+
+      // Simulate ServiceNow's journal-field append so the adapter's
+      // read-after-write verification has real state to inspect.
+      if (incident && patchBody.work_notes) {
+        incident.work_notes = incident.work_notes
+          ? `${incident.work_notes}\n${patchBody.work_notes}`
+          : patchBody.work_notes;
+      }
+
+      if (incident && patchBody.state !== undefined) {
+        incident.state = patchBody.state;
+      }
+
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ result: { sys_id: u.pathname.split('/').pop(), ...patchBody } }));
+      res.end(JSON.stringify({ result: { sys_id: sysId, ...patchBody } }));
       return;
     }
     if (req.method === 'GET' && u.pathname === '/api/now/table/broken') {
@@ -96,7 +113,7 @@ async function main() {
   const wn = await adapter.writeWorkNote('INC0012345', 'Replaced battery, verified boot.', config);
   check('writeWorkNote reports success', wn.success === true);
   check('writeWorkNote PATCHed the work_notes field with the given text', patchBody.work_notes === 'Replaced battery, verified boot.');
-  check('writeWorkNote PATCHed the correct sys_id path', lastRequest.url.includes('ffffffffffffffffffffffffffffffff'));
+  check('writeWorkNote PATCHed the correct sys_id path', patchUrl === '/api/now/table/incident/ffffffffffffffffffffffffffffffff');
 
   // updateTicketStatus
   const st = await adapter.updateTicketStatus('INC0012345', '6', config);

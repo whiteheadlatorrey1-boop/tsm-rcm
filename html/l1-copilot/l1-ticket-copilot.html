@@ -1275,11 +1275,19 @@ TICKET DESCRIPTION</div>
         <div class="card-head">RESOLUTION BUILDER</div>
         <div class="card-body">
           <div class="btn-row" style="margin-top:0;margin-bottom:10px">
-            <button class="btn btn-cyan" id="btnBuildResolution">GENERATE RESOLUTION</button>
+            <button class="btn btn-cyan" id="btnBuildResolution">GENERATE RESOLUTION DRAFT</button>
             <button class="btn btn-gold" id="btnCopyResolution">COPY TO CLIPBOARD</button>
-            <button class="btn btn-outline" id="btnSyncResolution">SYNC TO SERVICENOW</button>
+            <button class="btn btn-outline" id="btnSyncResolution" disabled>TECHNICIAN CONFIRM &amp; WRITE</button>
           </div>
-          <div class="ai-output" id="resolutionOutput">Problem / Cause / Actions Taken / Resolution / Validation / Next Steps will be generated here from the ticket, checklist, and AI analysis.</div>
+          <div class="ai-output" id="resolutionOutput">Resolution draft will appear here for technician review. Generation does not write to ServiceNow or close the ticket.</div>
+          <div id="resolutionGovernance" style="font-size:12px; margin-top:8px; line-height:1.6">
+            <div><b>GOVERNANCE:</b> AI output is a draft only.</div>
+            <div>Review the draft against the actual work performed before confirming.</div>
+            <label style="display:block;margin-top:8px">
+              <input type="checkbox" id="resolutionTechnicianConfirm">
+              I reviewed this exact draft and confirm it accurately reflects the work performed.
+            </label>
+          </div>
           <div id="resolutionSyncOut" style="font-size:12px; margin-top:6px"></div>
         </div>
       </div>
@@ -3510,8 +3518,17 @@ TICKET DESCRIPTION</div>
   async function buildResolution(){
     const out = document.getElementById('resolutionOutput');
     out.className = 'ai-output loading';
-    out.textContent = 'Generating resolution write-up...';
+    out.textContent = 'Generating resolution draft...';
     goToSection('resolution');
+
+    const confirmBox = document.getElementById('resolutionTechnicianConfirm');
+    const syncBtn = document.getElementById('btnSyncResolution');
+    const syncOut = document.getElementById('resolutionSyncOut');
+
+    if (confirmBox) confirmBox.checked = false;
+    if (syncBtn) syncBtn.disabled = true;
+    if (syncOut) syncOut.textContent = '';
+
     try {
       const res = await fetch('/api/l1-copilot/resolution', {
         method: 'POST', headers: { 'Content-Type':'application/json' },
@@ -3521,22 +3538,29 @@ TICKET DESCRIPTION</div>
           notes: document.getElementById('notesArea').value
         })
       });
+
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || 'resolution build failed');
+
       out.className = 'ai-output';
-      out.textContent = data.answer || 'No resolution returned.';
-      recordHistoryEntry();
-      syncL1ResultToRegistry('l1_resolution', {
-        incident: document.getElementById('tkIncident').value || null,
-        severity: (currentAnalysis && currentAnalysis.severity) || null,
-        requiresHumanReview: !!(currentAnalysis && currentAnalysis.priority_alignment && currentAnalysis.priority_alignment.requires_human_review)
-      });
+      out.textContent = data.answer || 'No resolution draft returned.';
+
+      // Generation creates a reviewable draft only.
+      // Do not commit history, mission state, or training evidence here.
+      if (confirmBox) confirmBox.checked = false;
+      // The write button stays disabled until the technician explicitly
+      // confirms the exact draft shown above.
+      if (syncBtn) syncBtn.disabled = true;
+
+      saveCurrentTicket();
     } catch (e) {
       out.className = 'ai-output';
       out.innerHTML = `<span class="err">Build failed: ${e.message}. Confirm /api/l1-copilot/resolution is wired server-side.</span>`;
     }
   }
+
   document.getElementById('btnBuildResolution').addEventListener('click', buildResolution);
+
   document.getElementById('btnCopyResolution').addEventListener('click', () => {
     const text = document.getElementById('resolutionOutput').textContent;
     navigator.clipboard.writeText(text).then(() => {
@@ -3545,31 +3569,89 @@ TICKET DESCRIPTION</div>
     });
   });
 
-  document.getElementById('btnSyncResolution').addEventListener('click', async () => {
+  const resolutionConfirmBox = document.getElementById('resolutionTechnicianConfirm');
+  const resolutionSyncButton = document.getElementById('btnSyncResolution');
+
+  resolutionConfirmBox.addEventListener('change', () => {
+    const text = document.getElementById('resolutionOutput').textContent.trim();
+    resolutionSyncButton.disabled =
+      !resolutionConfirmBox.checked ||
+      !text ||
+      text.startsWith('Resolution draft will appear here');
+  });
+
+  resolutionSyncButton.addEventListener('click', async () => {
     const syncOut = document.getElementById('resolutionSyncOut');
     const incident = document.getElementById('tkIncident').value.trim();
     const text = document.getElementById('resolutionOutput').textContent.trim();
-    if (!incident) { alert('Enter an incident number first — the work note needs somewhere to attach.'); return; }
-    if (!text || text.startsWith('Problem / Cause')) { alert('Generate a resolution first.'); return; }
-    syncOut.textContent = 'Writing work note to ServiceNow...';
+
+    if (!incident) {
+      alert('Enter an incident number first — the work note needs somewhere to attach.');
+      return;
+    }
+
+    if (!text || text.startsWith('Resolution draft will appear here')) {
+      alert('Generate and review a resolution draft first.');
+      return;
+    }
+
+    if (!resolutionConfirmBox.checked) {
+      alert('Technician confirmation is required before writing to ServiceNow.');
+      return;
+    }
+
+    resolutionSyncButton.disabled = true;
+    syncOut.textContent = 'Submitting the technician-confirmed draft to ServiceNow...';
+
     try {
       const res = await fetch('/api/l1-copilot/resolution', {
-        method: 'POST', headers: { 'Content-Type':'application/json' },
+        method: 'POST',
+        headers: { 'Content-Type':'application/json' },
         body: JSON.stringify({
-          ticket: document.getElementById('tkDescription').value,
-          analysis: currentAnalysis,
-          notes: document.getElementById('notesArea').value,
-          incident, writeToServicenow: true
+          incident,
+          draft: text,
+          writeToServicenow: true,
+          technicianConfirmed: true
         })
       });
+
       const data = await res.json();
-      if (!data.ok) throw new Error(data.error || 'sync failed');
+
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || 'ServiceNow write failed');
+      }
+
       if (data.servicenow && data.servicenow.success) {
-        syncOut.innerHTML = `<span style="color:var(--cyan)">Work note written to ${incident} in ServiceNow.</span>`;
+        syncOut.innerHTML =
+          `<span style="color:var(--cyan)">` +
+          `Technician-confirmed work note written to ${incident} in ServiceNow. ` +
+          `The exact reviewed draft was submitted.` +
+          `</span>`;
+
+        // Record L1 resolution evidence only after the governed
+        // ServiceNow write succeeds.
+        syncL1ResultToRegistry('l1_resolution', {
+          incident,
+          severity: (currentAnalysis && currentAnalysis.severity) || null,
+          requiresHumanReview: !!(
+            currentAnalysis &&
+            currentAnalysis.priority_alignment &&
+            currentAnalysis.priority_alignment.requires_human_review
+          ),
+          technicianConfirmed: true,
+          servicenowWritten: true
+        });
+
+        resolutionConfirmBox.checked = false;
+        resolutionSyncButton.disabled = true;
       } else {
-        syncOut.innerHTML = `<span class="err">${(data.servicenow && data.servicenow.error) || 'ServiceNow write did not confirm success.'}</span>`;
+        throw new Error(
+          (data.servicenow && data.servicenow.error) ||
+          'ServiceNow write did not confirm success.'
+        );
       }
     } catch (e) {
+      resolutionSyncButton.disabled = false;
       syncOut.innerHTML = `<span class="err">${e.message}</span>`;
     }
   });

@@ -4918,11 +4918,32 @@ app.get('/api/l1-copilot/servicenow/ticket/:incident', async (req, res) => {
 });
 
 app.post('/api/l1-copilot/servicenow/work-note', async (req, res) => {
-  const { incident, note } = req.body || {};
-  if (!incident || !note) return res.status(400).json({ ok: false, error: 'incident and note are required' });
+  const { incident, note, technicianConfirmed } = req.body || {};
+
+  if (!incident || !note) {
+    return res.status(400).json({
+      ok: false,
+      error: 'incident and note are required'
+    });
+  }
+
+  if (technicianConfirmed !== true) {
+    return res.status(403).json({
+      ok: false,
+      error: 'Technician confirmation is required before writing a ServiceNow work note.'
+    });
+  }
+
   try {
     const result = await snAdapter.writeWorkNote(incident, note);
-    res.json({ ok: true, ...result });
+    res.json({
+      ok: true,
+      ...result,
+      governed: {
+        technicianConfirmed: true,
+        appendOnlyWorkNote: true
+      }
+    });
   } catch (e) {
     const status = e.code === 'SERVICENOW_NOT_CONFIGURED' ? 503 : 502;
     res.status(status).json({ ok: false, error: e.message });
@@ -5596,35 +5617,93 @@ app.post('/api/l1-copilot/vendor', async (req, res) => {
 });
 
 app.post('/api/l1-copilot/resolution', async (req, res) => {
-  const { ticket, analysis, notes, incident, writeToServicenow, maxTokens } = req.body || {};
-  if (!ticket) return res.status(400).json({ ok: false, error: 'ticket required' });
+  const {
+    ticket,
+    analysis,
+    notes,
+    incident,
+    writeToServicenow,
+    draft,
+    technicianConfirmed,
+    maxTokens
+  } = req.body || {};
+
+  if (!ticket && !draft) {
+    return res.status(400).json({ ok: false, error: 'ticket or reviewed draft required' });
+  }
+
+  // Governed write path:
+  // - the client must explicitly request a ServiceNow write
+  // - an incident number must be present
+  // - the technician must explicitly confirm
+  // - the exact reviewed draft must be supplied
+  // No AI regeneration is performed on the write path.
+  if (writeToServicenow) {
+    if (!incident) {
+      return res.status(400).json({ ok: false, error: 'incident required for ServiceNow write' });
+    }
+    if (technicianConfirmed !== true) {
+      return res.status(403).json({
+        ok: false,
+        error: 'Technician confirmation is required before writing a ServiceNow work note.'
+      });
+    }
+    if (typeof draft !== 'string' || !draft.trim()) {
+      return res.status(400).json({
+        ok: false,
+        error: 'Reviewed resolution draft is required for ServiceNow write.'
+      });
+    }
+
+    if (!snAdapter.isConfigured()) {
+      return res.status(503).json({
+        ok: false,
+        error: 'ServiceNow is not configured for this environment.'
+      });
+    }
+
+    try {
+      const result = await snAdapter.writeWorkNote(incident, draft.trim());
+      return res.json({
+        ok: true,
+        answer: draft.trim(),
+        servicenow: { attempted: true, ...result },
+        governed: {
+          technicianConfirmed: true,
+          exactDraftWritten: true
+        },
+        createdAt: new Date().toISOString()
+      });
+    } catch (e) {
+      return res.status(e.code === 'SERVICENOW_NOT_CONFIGURED' ? 503 : 502).json({
+        ok: false,
+        error: e.message,
+        servicenow: { attempted: true, success: false }
+      });
+    }
+  }
+
   const prompt = `Ticket description:\n${ticket}\n\n` +
     (analysis ? `AI analysis on file:\n${JSON.stringify(analysis, null, 2)}\n\n` : '') +
     (notes ? `Technician notes / troubleshooting steps performed:\n${notes}\n\n` : '') +
-    `Write a resolution record ready to paste into ServiceNow, with these exact section headers on their own lines: ` +
+    `Write a resolution record as a DRAFT for technician review, with these exact section headers on their own lines: ` +
     `Problem / Cause / Actions Taken / Resolution / Validation / Next Steps. Be factual — only state actions that are ` +
-    `reflected in the notes above; do not invent steps that weren't performed.`;
+    `reflected in the notes above; do not invent steps that weren't performed. ` +
+    `This is a draft only and must not be treated as confirmation that the ticket is resolved.`;
+
   try {
     const answer = await groqChat(SP.l1support, prompt, maxTokens || 900);
 
-    // Optional real writeback: only attempted if the caller explicitly asks
-    // for it AND passes an incident number AND ServiceNow is configured —
-    // never silent, never assumed.
-    let servicenow = null;
-    if (writeToServicenow && incident) {
-      if (!snAdapter.isConfigured()) {
-        servicenow = { attempted: true, success: false, error: 'ServiceNow is not configured for this environment.' };
-      } else {
-        try {
-          await snAdapter.writeWorkNote(incident, answer);
-          servicenow = { attempted: true, success: true };
-        } catch (e) {
-          servicenow = { attempted: true, success: false, error: e.message };
-        }
-      }
-    }
-
-    return res.json({ ok: true, answer, servicenow, createdAt: new Date().toISOString() });
+    return res.json({
+      ok: true,
+      answer,
+      governed: {
+        draftOnly: true,
+        technicianConfirmed: false,
+        writtenToServicenow: false
+      },
+      createdAt: new Date().toISOString()
+    });
   } catch (e) {
     console.error('L1 COPILOT RESOLUTION ERROR:', e.message);
     return res.status(500).json({ ok: false, error: e.message });
