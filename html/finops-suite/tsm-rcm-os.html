@@ -644,6 +644,8 @@ body{
 <script src="/shared/tsm-memory-engine.js?v=phase3"></script>
 <script src="/html/shared/runtime/mission/mission-model.js"></script>
 <script src="/html/shared/runtime/mission/mission-store.js"></script>
+<script src="/shared/tsm-active-member.js"></script>
+<script src="/shared/tsm-bpo-relay.js"></script>
 <script>
 // ─────────────────────────────────────────────────────────────────────────
 // MODULES
@@ -1290,29 +1292,79 @@ function renderExecExceptions(){
       </div>
     </div>`).join('')}</div>`;
 
-  if(!(window.TSMMissionModel && window.TSMMissionStore)){
-    console.warn('Mission Core not loaded — skipping mission creation for critical exceptions.');
+  relayCriticalExceptionsToBPO(open.filter(a => a.severity === 'CRITICAL'));
+}
+
+// Governed relay for CRITICAL cross-module exceptions.
+//
+// This used to call TSMMissionModel.createMission() with a hardcoded
+// tenantId: 'default' and client: a.entityId||null — guessing a tenant for
+// every CRITICAL exception across every vertical, and landing in the
+// legacy TSMMissionStore -> mission-case-bridge.js -> TSMCaseManager path,
+// never the Phase 14/15 governed BPO work-item pipeline. Replaced with a
+// real relay to that governed pipeline, gated the same way every other
+// vertical portal is: never guess who the case belongs to.
+//
+//   no active member -> exception stays visible above (render already
+//                        happened), no BPO write, no invented tenant
+//   active member     -> relayToBPO() creates/updates a real BPO work item
+//                        for that member, which then goes through Phase 15
+//                        governance (PENDING approval) exactly like every
+//                        other governed work item -- this function never
+//                        executes anything itself
+//
+// caseId is derived from the anomaly's own stable id, so a re-render (this
+// runs on every renderExecExceptions() call) upserts the same work item
+// instead of creating a new one -- relayToBPO's own POST is already
+// idempotent by caseId, and the RELAYED_EXC_KEY cache below just avoids
+// firing the network request again once a given anomaly has been relayed
+// to the currently active member.
+const RELAYED_EXC_KEY = 'tsm_rcmos_relayed_exceptions_v1';
+
+function relayCriticalExceptionsToBPO(criticalAnomalies){
+  if(!criticalAnomalies.length) return;
+
+  if(!(window.TSMActiveMember && window.TSMBpoRelay)){
+    console.warn('Active Member layer or BPO relay not loaded — skipping CRITICAL exception relay.');
     return;
   }
 
-  open.filter(a => a.severity === 'CRITICAL').forEach(a => {
-    try {
-      const mission = window.TSMMissionModel.createMission({
-        id: 'RCM-EXC-' + a.id,
-        vertical: a.sector || 'finops',
-        tenantId: 'default',
-        client: a.entityId || null,
-        classification: {
-          summary: a.title || a.anomalyCode,
-          source: a.source || 'RCM-OS Cross-Module Exceptions'
-        },
-        workflow: { assignedTo: null, queue: null, priority: 'Critical', sla: null },
-        actor: 'rcm-os-executive-tab'
-      });
-      window.TSMMissionStore.saveMission(mission);
-    } catch(missionErr){
-      console.warn('Mission creation failed for exception', a.id, missionErr);
-    }
+  const memberId = window.TSMActiveMember.getId();
+  if(!memberId) return; // no active member selected -- never guess the tenant
+
+  let relayed = {};
+  try { relayed = JSON.parse(localStorage.getItem(RELAYED_EXC_KEY) || '{}'); } catch(e) { relayed = {}; }
+
+  criticalAnomalies.forEach(a => {
+    const caseId = 'TSM-' + String(a.sector || 'RCM').toUpperCase() + '-EXC-' + a.id;
+    if(relayed[caseId] === memberId) return; // already relayed to this member
+
+    const pkg = {
+      domain: a.sector || 'unknown',
+      packageId: a.id,
+      anomalyCode: a.anomalyCode,
+      title: a.title,
+      severity: a.severity,
+      source: a.source || 'RCM-OS Cross-Module Exceptions',
+      entityType: a.entityType || null,
+      entityId: a.entityId || null,
+      missingFields: a.missingFields || [],
+      detectedFrom: a.detectedFrom || null,
+      meta: a.meta || {}
+    };
+
+    window.TSMBpoRelay.relayToBPO(pkg, memberId, {
+      vertical: a.sector || 'unknown',
+      caseId,
+      sourceSystem: 'rcm-os-executive-tab',
+      stage: 'ready-for-review',
+      status: 'open'
+    }).then(() => {
+      relayed[caseId] = memberId;
+      try { localStorage.setItem(RELAYED_EXC_KEY, JSON.stringify(relayed)); } catch(e) {}
+    }).catch(relayErr => {
+      console.warn('BPO relay failed for exception', a.id, relayErr);
+    });
   });
 }
 
