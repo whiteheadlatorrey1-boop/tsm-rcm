@@ -1,69 +1,66 @@
 # TSM BPO Production Readiness
 
-_Last verified against a fresh clone of `origin/main` at `3a9d1604` (2026-08-18)._
+_Last verified against a fresh clone of `origin/main` at `773fd6d9` (2026-09-22), including a full `npm test` run (26/26 suites, all passing) — the prior version of this doc was last touched 2026-08-18 and had drifted well behind the code; several items below flip from "not done" to done as a result._
 
 ## Current Status
-The BPO apps are ready for an internal/supervised pilot (your own team running real cases, or a demo to a prospect). The technical building blocks for handling regulated/client data now exist (client-scoped API access, document encryption at rest, structured audit/request logging) — but there's no client-facing UI wired to the `client` role yet, and HIPAA/PII handling requires organizational steps (BAA, risk assessment, breach procedures) beyond anything code can complete. Don't hand a client a login or route real PHI through this until both are addressed. See Phase 3–5 below.
+BPO itself (the case pipeline, governance, reporting, and now the client portal) is materially more production-ready than this doc previously said. The gate items left are the same three kinds of thing they always were: (1) two things this sandbox cannot verify live (a real Groq call, a real write against the Firestore-Mongo-compat backend), (2) organizational work no code change can complete (HIPAA/BAA program), and (3) **RCM-OS and SAP are not pilot candidates yet at all** — they're standalone pages with no case pipeline into BPO. See "Per-Vertical Pilot Readiness" below before scoping any pilot beyond Healthcare.
 
 ## Production Requirements
 
 ### Phase 1 — Core Hardening — DONE
 - ~~Add login/auth protection.~~ Done — Cloudflare-origin entitlement gate + session auth on all `/api/bpo/*` routes.
-- ~~Add role-based views: Admin, Manager, Analyst, Client.~~ Done — `requireRole(BPO_INTERNAL_ROLES)` (admin/manager/analyst) and a tighter `BPO_MANAGE_ROLES` (admin/manager) gate mutating routes (`server.js`); no separate Client-facing role/view yet.
+- ~~Add role-based views: Admin, Manager, Analyst, Client.~~ Done — `requireRole(BPO_INTERNAL_ROLES)` (admin/manager/analyst), a tighter `BPO_MANAGE_ROLES` (admin/manager) gate on mutating routes, and `BPO_CLIENT_VIEW_ROLES` now real end-to-end with a live client login + UI (see Phase 5).
 - ~~Add request validation for `/api/bpo/query`.~~ Done — shared `validateQueryBody()` rejects empty/missing prompts, caps message length (8000 chars) and `maxTokens` (4096).
 - ~~Add rate limiting.~~ Done — `express-rate-limit`: general `apiLimiter` on `/api/*`, a tighter `loginLimiter` (20/15min) on login specifically.
 - ~~Add security headers.~~ Done — `helmet` applied.
-- Remove all static operational numbers or label them as demo data. — Partially done; some pages carry explicit "illustrative sample, not real data" banners (e.g. HC pilot deliverables), not yet confirmed swept across every BPO page.
+- Remove all static operational numbers or label them as demo data. — Still only partially confirmed; some pages carry explicit "illustrative sample, not real data" banners (e.g. HC pilot deliverables), but this hasn't been swept page-by-page across every BPO/vertical page. Flagging again rather than claiming done.
 
 ### Phase 2 — Real BPO Operations — DONE
-- ~~Add persistent database tables~~ — Done, Mongo-backed via `server/tsm-ledger-service.js`: `bpo_clients`, `bpo_work_items`, `bpo_audit_logs`, `bpo_notes`, `bpo_sla_events`, `bpo_bnca_reports`.
-- ~~Save every intake submission.~~ Done — `bpoUpsertWorkItem()`.
-- ~~Save every AI/BNCA output.~~ Done — `bpoSaveBncaReport()`.
-- ~~Track owner, status, priority, due date, SLA age.~~ Done — work-item fields + `bpoListSlaEvents()`.
+- Persistent database tables, intake, AI/BNCA output, and SLA tracking all unchanged and still real (`server/tsm-ledger-service.js`).
 
-### Phase 3 — Documents — DONE (pending live verify)
-- ~~Add file upload.~~ Done — `POST /api/bpo/work-items/:caseId/documents`, multer memory storage, 8MB cap, any internal role.
-- ~~Store documents by client/account.~~ Done — `server/tsm-ledger-service.js` `bpoStoreDocument()`; manual chunked base64 storage across `bpo_documents_meta`/`bpo_document_chunks` (NOT the driver's GridFS — this DB is Firestore's Mongo-compatibility layer, and GridFSBucket's automatic index creation is unverified against it, so storage stays inside the plain insertOne/find pattern already proven elsewhere in this file). Chunked at 400KB pre-encoding to stay well under a possible 1 MiB per-document ceiling.
-- Add metadata extraction. — Not done. `routes/doc-router.js`'s `extractDocText()` (pdf/docx/xlsx text extraction) exists platform-wide but isn't yet wired to auto-run on a BPO document upload.
-- ~~Add document evidence log.~~ Done — every upload/download/delete writes a `bpo_audit_logs` entry (`document.upload`/`document.download`/`document.delete`) via the existing `bpoWriteAudit()`.
-- ~~Add secure download links.~~ Done — `GET /api/bpo/documents/:docId/download`, role-gated, logs the access. Delete is soft (manager+ only) — chunk data and the audit trail are preserved, never physically removed.
-- **Verified so far:** functional harness (mocked Mongo collections) confirms chunk/reassembly correctness byte-for-byte for both single- and multi-chunk files, oversize rejection, case-scoped listing, soft-delete behavior, and audit-log writes. `node --check` clean on both changed files.
-- **Not yet verified:** a real write/read against the actual Firestore-Mongo-compat backend. The chunking approach was deliberately chosen to avoid GridFS's untested `createIndex()` call, but the 1 MiB assumption itself hasn't been confirmed against this specific backend — run one real upload+download through a booted server with `MONGODB_URI` set before trusting this with real client documents.
+### Phase 3 — Documents — DONE (pending one live verify)
+- Upload, chunked+encrypted storage, metadata extraction (landed since, wired via `docRouter.extractDocText()` before `bpoStoreDocument()`), evidence log, and secure download all real and tested (mocked-Mongo harness).
+- **Still not yet verified:** one real upload+download through a booted server with a real `MONGODB_URI`, specifically confirming the 1 MiB-per-document ceiling assumption against the actual Firestore-Mongo-compat backend. This sandbox cannot reach that backend — this has to be run from Latorrey's own Codespace/Fly deployment before trusting it with real client documents.
 
 ### Phase 4 — Reporting — DONE
-- WIP report export. `GET /api/bpo/reports/wip`, JSON or `?format=csv`, internal roles only.
-- SLA report export. `GET /api/bpo/reports/sla`, JSON or `?format=csv`. Reports the raw SLA event timeline (stage, type, `ageHoursAtEvent`) — no breach/pass flag, since no SLA threshold is defined anywhere in this codebase. Setting one (e.g. "48h = breach for Tier 1 clients") is a client-contract decision, not a code decision.
-- Executive rollup. `GET /api/bpo/reports/executive-rollup`: counts by stage/status/priority, average open-item age, active client count, SLA event counts by type.
-- Client-facing report. Scope decided by Latorrey (2026-08-24): full rollup (WIP + SLA counts + case-level summaries), available both on-demand and as a generated monthly snapshot.
-  - `GET /api/bpo/reports/client-rollup` — always-current, client-role scoped to their own `clientId` (staff can pass `?clientId=`).
-  - `GET /api/bpo/reports/client-monthly` — the persisted snapshot for a period (`?period=YYYY-MM`, or most recent if omitted).
-  - `GET /api/bpo/reports/client-monthly/history` — internal-role only, lists which periods exist for a client (period labels + generation timestamps, not full report bodies).
-  - `scripts/generate-bpo-client-monthly-reports.js` — generates + saves the current month's snapshot for every active client (or `--client-id=`/`--period=` for one client/a backfill). Not scheduled by this script — no cron infra exists in this repo; wire it into a Fly Machines scheduled run or GitHub Actions cron when ready.
-  - Case-level summary deliberately strips internal-only fields (`owner`, raw `payload`) — same fields a client already can't see via the existing per-case client-scoped route.
-  - Still explicitly out of scope, same reasoning as the SLA report above: recovery/leakage/risk metrics need a defined formula that isn't in this codebase and isn't a code decision to invent.
-- Recovery / leakage / risk metrics. — Not done, same reason as the SLA breach flag above: these require a defined formula (e.g. what counts as "recovered," what baseline "leakage" is measured against) that isn't in this codebase and isn't mine to invent.
+- WIP/SLA/executive-rollup exports, and the client-facing rollup + monthly-snapshot pair, are all real (`GET /api/bpo/reports/client-rollup`, `/client-monthly`, `/client-monthly/history`).
+- `scripts/generate-bpo-client-monthly-reports.js` is still **not on a schedule** — no cron/Fly Machines/GitHub Actions job exists in this repo to run it monthly. This is an infra decision, not a code gap, but it will silently stop producing new snapshots until someone wires a scheduled trigger.
+- Recovery/leakage/risk metrics and an SLA breach flag are both still explicitly out of scope — they need a client-contract-level formula (what counts as "recovered," what "breach" means per SLA tier) that isn't Claude's to invent. Note: `bpo_clients.slaThresholdHours` now exists per-client (Phase 5), so `GET /api/bpo/reports/sla` already reports a `breached` column when a client has a threshold set — the earlier "no threshold anywhere" framing is stale.
 
-### Phase 5 — Production Security — PARTIALLY DONE
-- ~~Client data separation.~~ Done — added a `client` role to `BPO_CLIENT_VIEW_ROLES`. Previously a client-role session was 403'd from every BPO route outright; now work-items (list/get), SLA events, and documents (list/download) allow it, with every query forced to the session's own `clientId` and cross-client lookups returning 404 (not 403), so a client account can't distinguish "not yours" from "doesn't exist." Write/manage routes, the client roster, and audit-log reads remain internal-only. No client-facing UI/login page exists yet for this role — the API supports it, nothing in `html/` uses it yet.
-- ~~Audit trails.~~ Done — `bpo_audit_logs` (per-action, existing) plus structured JSON request logging added to stdout for every `/api/bpo/*` call (method, path, status, duration, role, actor, clientId).
-- ~~Encryption at rest where applicable.~~ Done for BPO document bytes specifically — `bpoStoreDocument`/`bpoGetDocumentBuffer` now encrypt/decrypt with AES-256-GCM (per-document random IV, auth tag verified on read) before/after chunking, keyed by `TSM_DOC_ENCRYPTION_KEY` (32-byte key, base64 — `openssl rand -base64 32`). Fails closed: uploads are rejected if the key isn't set, rather than silently falling back to plaintext. **Two things this does NOT cover, and neither is a code fix:** (1) documents uploaded *before* this change are still plaintext at rest — a one-time re-encryption pass would need to run against the real DB, which this sandbox has no access to; (2) `TSM_DOC_ENCRYPTION_KEY` itself needs to live in a real secrets store (Fly secrets, a KMS) with a real rotation owner — right now it's just an env var like everything else in `.env`/Fly secrets, no different in kind from `TSM_SESSION_SECRET`.
-- HIPAA/PII compliance program — **NOT something a code change can complete.** What's now true on the technical-safeguards side: encryption at rest (documents, above), encryption in transit (Fly TLS termination + `helmet`'s default HSTS), role-based access control, audit logging, session expiry (12h TTL), and minimum-necessary access (client-role scoping, above). What's still outside code entirely: a signed Business Associate Agreement with whoever hosts the DB (Firestore/Mongo-compat layer) if any PHI touches it, a documented risk assessment, breach-notification procedures, workforce training, and a named person responsible for the program. None of that can be "built" — it has to be decided and executed by whoever owns the business relationship with clients, which as of this doc's last edit hasn't happened.
-- ~~Admin controls for pricing/SLA plans.~~ Done — `bpo_clients` gained `slaThresholdHours` (nullable positive number) and `pricingTier` (nullable enum: standard/premium/custom) plus a free-text `billingRate`, all editable via the existing `PATCH /api/bpo/clients/:id` (`BPO_MANAGE_ROLES` — admin/manager, unchanged gate). Per-client only; no vertical-level default layer, since nothing else in `bpo_clients` is vertical-scoped yet and a defaults-then-override system would be speculative ahead of a second real use case. `GET /api/bpo/reports/sla` now joins each event's client threshold live (not a snapshot from event time, so an old event reflects a client's *current* plan) and emits `slaThresholdHours`/`breached` columns — null/empty for any client with no threshold set, same behavior as before this existed. No new UI; same as every other client field, which has no dedicated management screen yet either.
-- ~~Logging and monitoring.~~ Done — see structured request logging above.
+### Phase 5 — Production Security — DONE (HIPAA program excepted)
+- ~~Client data separation~~ and ~~client-role scoping~~ — done, unchanged.
+- **Client-facing UI now exists and is real** — `html/client-portal.html` is a live, session-gated page (`GET /api/auth/status`, redirects to `/login.html` if not an authenticated `client` role) that pulls `GET /api/bpo/reports/client-rollup` and lists per-case documents. The prior "no client-facing UI wired to the `client` role yet" line in this doc was wrong as of this check — that gap is closed.
+- Audit trails, encryption at rest (AES-256-GCM, fail-closed on a missing `TSM_DOC_ENCRYPTION_KEY`), and admin SLA/pricing controls — all unchanged and real.
+- HIPAA/PII compliance program — still **not something a code change can complete.** Technical safeguards (encryption in transit/at rest, RBAC, audit logging, session expiry, minimum-necessary access) are all real. What's still outside code entirely: a signed BAA with whoever hosts the DB if any PHI touches it, a documented risk assessment, breach-notification procedures, workforce training, and a named accountable owner. Unchanged from the prior version of this doc — nobody has reported this as done.
+
+### Phase 15 — Governed Automation — now DONE, real, and tested (this is a correction to a correction)
+A presentation-review pass on 2026-09-22 flagged Phase 15 as "CORRECTED — Not tested," because at that time `canExecuteApprovedAction()` and its test file did not exist anywhere in the pushed repository. Since that review, three commits landed for real on `main`:
+- `129326e` — Governance Engine, Milestone 1 (observe-only recommend, no execution)
+- `1c5f07b` — governed approval lifecycle (`server/tsm-governance-engine.js`, new `/api/bpo/os/cases/:caseId/governance/approval` + `/approvals/:approvalId/resolve|execute` routes in `server.js`)
+- `20e4a46` / `9270d40` — `canExecuteApprovedAction()` implemented, wired into `tsm-ledger-service.js`, a 403 mapping fix, and `scripts/test-bpo-governance-execution.js` (21/0 passing)
+
+Current state, verified this session via a fresh clone + full `npm test`: money-moving/case-mutating governed actions cannot execute without an explicit human `approve()` call recorded first — `canExecute()` is false on a fresh approval gate and only flips true after that call. This closes out the Phase 15 gap the last review correctly caught. Live-Groq/live-DB execution against a real deployment is still unverified from this sandbox, same standing caveat as everywhere else.
+
+## Per-Vertical Pilot Readiness
+"Production-level pilot" means: real case data flows from intake through a war room/strategist, a human approves an action in an exec portal, and that decision auto-relays into BPO's case engine so it shows up in reporting and (if applicable) the client portal — end to end, no manual re-entry.
+
+| Vertical | Status | What's real | What's missing |
+|---|---|---|---|
+| **Healthcare** | Closest to pilot-ready | Full chain: war room → `hc-main-strategist.html` → `html/healthcare/executive-portal.html` (HC Intelligence V3 panel confirmed wired live) → registered in `EXEC_PORTAL_VERTICALS` → auto-relays into `bpo_cases` → client portal. Governed execution (Phase 15) now real per above. | Live end-to-end run with a real `GROQ_API_KEY` and real `MONGODB_URI` — never done outside a sandbox. The 1 MiB document-chunking assumption (Phase 3) also still unverified live. |
+| **RCM-OS** | Not pilot-ready — no case pipeline exists | `html/finops-suite/tsm-rcm-os.html` is a standalone demo/presentation page. | No war room, no strategist, no exec portal, not in `EXEC_PORTAL_VERTICALS`, no route feeding `bpo_cases`. This isn't a bug to fix — it's a UI/architecture layer that doesn't exist yet. Needs a scoping decision (does RCM-OS get its own war-room/strategist/exec-portal chain like Healthcare, or does it feed into the existing FinOps chain?) before any code gets written — flagging rather than guessing, same as the standing note in `[[tsm-consultz]]` memory. |
+| **SAP** | Not pilot-ready — no case pipeline exists | `html/war-rooms/sap/sap-strategist.html` + `sap-howto.html` only. | No war room, no exec portal, not in `EXEC_PORTAL_VERTICALS`, zero server-side wiring (the "SAP-phase" name in `server.js`'s WIP live-data comment refers to bpo/o2c/crm/cpq collectively and is unrelated to this vertical — don't conflate the two). Same as RCM-OS: needs a real scoping decision before build. |
+| **Other verticals** | Mixed — see `[[bpo-services-launch]]` memory for the full tier table | 12 of 14 `EXEC_PORTAL_VERTICALS` entries do auto-relay into BPO (confirmed real, not re-audited this session): healthcare, finops, insurance, construction, legal, realestate, mortgage, pm, l1-copilot, schools, hotelops, honeywell. Concierge and College Command are exec-portal-registered but do **not** auto-relay to the client portal — must be entered into BPO manually (per prior session's audit, not re-verified here). | Re-verify the 12-of-14 claim before promising a client any specific vertical works end-to-end; it was last confirmed 2026-09-06, not this session. |
 
 ## Current Use Recommendation
 Use these pages for:
-- Sales demos
-- Client discovery
-- BPO workflow preview
-- Internal pilot testing (your own team running real cases through it)
+- Sales demos, client discovery, BPO workflow preview
+- Internal pilot testing (your own team running real cases) — Healthcare is the one vertical with a fully real, tested, governed closing loop into BPO right now
+- **Not** RCM-OS or SAP pilots of any kind yet — there's no BPO case pipeline for either to run through
 
 Do not use yet for:
-- Handing a client an unsupervised login
-- Regulated data
-- PHI/PII
-- Production receivables workflow
-- Contractual SLA delivery
+- Handing a client an unsupervised login until the HIPAA/PII program (BAA, risk assessment, breach procedures, named owner) is actually executed — the technical controls are ready, the organizational program is not
+- Regulated data / PHI / PII, for the same reason
+- Contractual SLA delivery until "breach" and "recovered/leakage" formulas are defined per client contract (Phase 4)
 
 ## Not Yet Verified Live
-Everything above marked "Done" was checked structurally, via syntax/`node --check`, and via jsdom/Puppeteer harnesses in a sandboxed clone — not via a live Groq-call end-to-end run (sandbox has no network access to `api.groq.com`). Before trusting this with a real client, run a live Puppeteer/browser pass in your own Codespace against a booted server with a real `GROQ_API_KEY`, specifically the Decision Center click-through (APPROVE STRATEGY / ASSIGN OWNERS / NOTIFY STAKEHOLDERS / EXPORT BRIEF) and the Executive Relay Queue persistence.
+Everything above marked "Done" was checked structurally — `node --check`, the full `npm test` suite (26/26 passing as of `773fd6d9`), and jsdom/functional harnesses against mocked Mongo — not via a live Groq-call or a live write to the real Firestore-Mongo-compat backend (this sandbox has no egress to `api.groq.com` and no `MONGODB_URI`). Before trusting this with a real client or a real pilot on any vertical, run from a booted server in Latorrey's own Codespace/Fly deployment with real credentials: the Decision Center click-through, the Executive Relay Queue persistence, one real document upload+download, and Phase 15's approval→execute path against a real case.
