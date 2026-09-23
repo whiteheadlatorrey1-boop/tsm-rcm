@@ -838,6 +838,51 @@ window.loadInphusionAnomaly = function() {
         <span id="snStatusBadge" style="font-size:11px; padding:4px 10px; border-radius:12px; border:1px solid var(--border); color:var(--muted)">CHECKING SERVICENOW…</span>
       </div>
       <div id="snPullOut" style="font-size:12px; margin-top:4px"></div>
+      <div class="card" id="l1ServiceNowReconciliation" style="margin-top:12px;">
+        <div class="card-head">
+          SERVICENOW RECONCILIATION
+          <span id="snReconciliationBadge"
+                style="float:right;font-size:10px;padding:3px 8px;border:1px solid var(--border);border-radius:10px;color:var(--muted)">
+            NOT EVALUATED
+          </span>
+        </div>
+
+        <div class="card-body">
+          <div style="font-size:11px;line-height:1.6;color:var(--muted);margin-bottom:10px;">
+            Reconcile explicitly supplied Incident, RITM, SC Task, and CMDB context.
+            TSM does not infer an Incident → RITM relationship.
+          </div>
+
+          <div class="ticket-head-grid" style="margin-bottom:10px;">
+            <div class="field">
+              <div class="field-label">RITM</div>
+              <input id="snReconcileRitm" placeholder="RITM0012345">
+            </div>
+
+            <div class="field">
+              <div class="field-label">SC Task</div>
+              <input id="snReconcileScTask" placeholder="SCTASK0012345">
+            </div>
+          </div>
+
+          <div class="btn-row">
+            <button class="btn btn-cyan" id="btnReconcileServiceNow" type="button">
+              RECONCILE SERVICENOW CONTEXT
+            </button>
+
+            <span style="font-size:10px;color:var(--muted);">
+              READ-ONLY · NO STATE WRITE · NO AUTONOMOUS CLOSE
+            </span>
+          </div>
+
+          <div id="snReconciliationOutput"
+               class="ai-output"
+               style="margin-top:10px;min-height:70px;">
+            Enter RITM / SC Task when available, then reconcile the ServiceNow context.
+          </div>
+        </div>
+      </div>
+
 
       <div class="card">
 <button id="inphusion-load-btn" type="button" onclick="window.loadInphusionAnomaly()" style="background:#00ffcc; color:#000; border:none; padding:6px 14px; font-weight:bold; font-size:11px; border-radius:3px; cursor:pointer; font-family:monospace;">LOAD ANOMALY INTO TICKET</button></div>
@@ -2513,6 +2558,236 @@ TICKET DESCRIPTION</div>
       out.innerHTML = `<span class="err">${e.message}</span>`;
     }
   });
+
+  // ── L1 ServiceNow reconciliation -------------------------------------------
+  // READ-ONLY context reconciliation. This does not write ServiceNow state,
+  // RITMs, SC Tasks, CMDB records, or technician evidence.
+  (function initServiceNowReconciliation() {
+    const button = document.getElementById('btnReconcileServiceNow');
+    const output = document.getElementById('snReconciliationOutput');
+    const badge = document.getElementById('snReconciliationBadge');
+
+    if (!button || !output || !badge) return;
+
+    function escape(value) {
+      const text = String(value == null ? '' : value);
+      return text.replace(/[&<>"']/g, ch => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+      }[ch]));
+    }
+
+    function setBadge(text, state) {
+      badge.textContent = text;
+
+      if (state === 'ok') {
+        badge.style.color = 'var(--cyan)';
+        badge.style.borderColor = 'var(--cyan)';
+      } else if (state === 'warn') {
+        badge.style.color = 'var(--amber)';
+        badge.style.borderColor = 'var(--amber)';
+      } else {
+        badge.style.color = 'var(--muted)';
+        badge.style.borderColor = 'var(--border)';
+      }
+    }
+
+    function value(id) {
+      const el = document.getElementById(id);
+      return el ? String(el.value || '').trim() : '';
+    }
+
+    function renderRecord(label, record, fields) {
+      if (!record) {
+        return `
+          <div style="margin-bottom:8px;">
+            <div style="color:var(--muted);font-size:10px;letter-spacing:1px;">${escape(label)}</div>
+            <div style="font-size:11px;color:var(--muted);">Not supplied / not found</div>
+          </div>`;
+      }
+
+      const rows = fields
+        .filter(([key]) => record[key] !== null && record[key] !== undefined && record[key] !== '')
+        .map(([key, title]) =>
+          `<div style="font-size:11px;line-height:1.6;">
+             <span style="color:var(--muted);">${escape(title)}:</span>
+             ${escape(record[key])}
+           </div>`
+        )
+        .join('');
+
+      return `
+        <div style="margin-bottom:10px;">
+          <div style="color:var(--cyan);font-size:10px;letter-spacing:1px;margin-bottom:3px;">
+            ${escape(label)}
+          </div>
+          ${rows || '<div style="font-size:11px;color:var(--muted);">Record found.</div>'}
+        </div>`;
+    }
+
+    function renderReconciliation(data) {
+      const r = data.reconciliation || {};
+      const relationships = r.relationships || {};
+      const mismatches = Array.isArray(r.mismatches) ? r.mismatches : [];
+      const missing = Array.isArray(r.missingContext) ? r.missingContext : [];
+      const tasks = Array.isArray(r.scTasks) ? r.scTasks : [];
+
+      const relationshipHtml = `
+        <div style="margin-top:8px;padding:8px;border:1px solid var(--border);">
+          <div style="color:var(--cyan);font-size:10px;letter-spacing:1px;margin-bottom:5px;">
+            RELATIONSHIPS
+          </div>
+          <div style="font-size:11px;line-height:1.7;">
+            Incident → RITM:
+            <b>${escape(relationships.incidentToRitm || 'NOT_PROVIDED')}</b>
+          </div>
+          <div style="font-size:11px;line-height:1.7;">
+            RITM → SC Tasks:
+            <b>${escape(relationships.ritmToScTasks || 'NOT_EVALUATED')}</b>
+          </div>
+        </div>`;
+
+      const mismatchHtml = `
+        <div style="margin-top:8px;padding:8px;border:1px solid var(--border);">
+          <div style="color:${mismatches.length ? 'var(--amber)' : 'var(--cyan)'};
+                      font-size:10px;letter-spacing:1px;margin-bottom:5px;">
+            MISMATCHES
+          </div>
+          ${
+            mismatches.length
+              ? mismatches.map(m => `
+                  <div style="font-size:11px;line-height:1.7;">
+                    <b>${escape(m.code)}</b> · ${escape(m.field)}
+                    — expected ${escape(m.expected)} / actual ${escape(m.actual)}
+                  </div>`).join('')
+              : '<div style="font-size:11px;">None detected.</div>'
+          }
+        </div>`;
+
+      const missingHtml = missing.length
+        ? `
+          <div style="margin-top:8px;padding:8px;border:1px solid var(--border);">
+            <div style="color:var(--amber);font-size:10px;letter-spacing:1px;margin-bottom:5px;">
+              MISSING CONTEXT
+            </div>
+            ${missing.map(item => `
+              <div style="font-size:11px;line-height:1.7;">
+                ${escape(item.source)} · ${escape(item.identifier)} —
+                ${escape(item.reason)}
+              </div>`).join('')}
+          </div>`
+        : '';
+
+      output.innerHTML = `
+        ${renderRecord('INCIDENT', r.incident, [
+          ['number', 'Number'],
+          ['state', 'State'],
+          ['requester', 'Requester'],
+          ['assignmentGroup', 'Assignment Group'],
+          ['asset', 'Asset']
+        ])}
+
+        ${renderRecord('RITM', r.ritm, [
+          ['number', 'Number'],
+          ['requestedFor', 'Requested For'],
+          ['shortDescription', 'Short Description'],
+          ['assignmentGroup', 'Assignment Group'],
+          ['state', 'State']
+        ])}
+
+        ${renderRecord('SELECTED SC TASK', r.selectedScTask, [
+          ['number', 'Number'],
+          ['shortDescription', 'Short Description'],
+          ['assignmentGroup', 'Assignment Group'],
+          ['assignedTo', 'Assigned To'],
+          ['state', 'State']
+        ])}
+
+        ${renderRecord('CMDB ASSET', r.asset, [
+          ['assetTag', 'Asset Tag'],
+          ['manufacturer', 'Manufacturer'],
+          ['model', 'Model'],
+          ['warrantyStatus', 'Warranty'],
+          ['owner', 'Owner'],
+          ['department', 'Department']
+        ])}
+
+        <div style="margin-top:8px;padding:8px;border:1px solid var(--border);">
+          <div style="color:var(--cyan);font-size:10px;letter-spacing:1px;margin-bottom:5px;">
+            SC TASK COLLECTION
+          </div>
+          <div style="font-size:11px;">
+            ${tasks.length
+              ? `${tasks.length} task${tasks.length === 1 ? '' : 's'} resolved from the supplied RITM.`
+              : 'No SC Tasks resolved from the supplied RITM.'}
+          </div>
+        </div>
+
+        ${relationshipHtml}
+        ${mismatchHtml}
+        ${missingHtml}
+
+        <div style="margin-top:8px;font-size:10px;color:var(--muted);">
+          GOVERNED · READ ONLY · TECHNICIAN EVIDENCE UNTOUCHED
+        </div>`;
+    }
+
+    button.addEventListener('click', async () => {
+      const incident = value('tkIncident');
+      const asset = value('tkAsset');
+      const ritm = value('snReconcileRitm');
+      const sctask = value('snReconcileScTask');
+
+      if (!incident && !asset && !ritm && !sctask) {
+        output.textContent = 'Enter an Incident, Asset, RITM, or SC Task first.';
+        setBadge('INPUT REQUIRED', 'warn');
+        return;
+      }
+
+      button.disabled = true;
+      output.textContent = 'Reconciling ServiceNow context...';
+      setBadge('RECONCILING', 'neutral');
+
+      try {
+        const res = await fetch('/api/l1-copilot/servicenow/reconcile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            incident: incident || null,
+            ritm: ritm || null,
+            sctask: sctask || null,
+            asset: asset || null
+          })
+        });
+
+        const data = await res.json();
+
+        if (!res.ok || !data.ok) {
+          throw new Error(data.error || 'ServiceNow reconciliation failed.');
+        }
+
+        renderReconciliation(data);
+
+        const r = data.reconciliation || {};
+        const mismatches = Array.isArray(r.mismatches) ? r.mismatches : [];
+
+        if (mismatches.length) {
+          setBadge('REVIEW MISMATCH', 'warn');
+        } else {
+          setBadge('RECONCILED', 'ok');
+        }
+      } catch (error) {
+        output.innerHTML =
+          `<span class="err">${escape(error.message)}</span>`;
+        setBadge('RECONCILIATION FAILED', 'warn');
+      } finally {
+        button.disabled = false;
+      }
+    });
+  })();
 
   // ── AD/Intune: real live device lookup via Microsoft Graph ─────────────────
   (async function checkGraphStatus(){

@@ -110,6 +110,7 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const { enforceBNCASchema } = require('./server/tsm-bnca-schema');
 const snAdapter = require('./server/l1-copilot/servicenow-adapter');
+const snReconciliation = require('./server/l1-copilot/servicenow-reconciliation');
 const { evaluateWorkflow } = require('./server/l1-copilot/workflow-engine');
 const { evaluateClosure, buildClosureChecklist } = require('./server/l1-copilot/closure-gate');
 const cloudOpsAdapter = require('./server/l1-copilot/cloud-ops-adapter');
@@ -4935,6 +4936,70 @@ app.post('/api/l1-copilot/closure/evaluate', (req, res) => {
     return res.status(400).json({
       ok: false,
       error: e.message
+    });
+  }
+});
+
+
+// --- L1 ServiceNow reconciliation -----------------------------------------
+// READ-ONLY.
+// Reconciles explicitly supplied Incident / RITM / SC Task / asset context.
+// No ServiceNow state, RITM, SC Task, CMDB, user, or group writes occur here.
+// Incident -> RITM is NEVER inferred because the current Incident adapter
+// contract does not expose a guaranteed RITM relationship.
+app.post('/api/l1-copilot/servicenow/reconcile', async (req, res) => {
+  const {
+    incident,
+    ritm,
+    sctask,
+    asset
+  } = req.body || {};
+
+  if (!incident && !ritm && !sctask && !asset) {
+    return res.status(400).json({
+      ok: false,
+      error: 'At least one of incident, ritm, sctask, or asset is required.'
+    });
+  }
+
+  try {
+    const reconciliation = await snReconciliation.reconcile({
+      incident,
+      ritm,
+      sctask,
+      asset
+    });
+
+    return res.json({
+      ok: true,
+      reconciliation,
+      governed: {
+        readOnly: true,
+        canChangeState: false,
+        autonomousCloseAllowed: false,
+        technicianEvidenceUntouched: true
+      },
+      createdAt: new Date().toISOString()
+    });
+  } catch (e) {
+    const status =
+      e.code === 'SERVICENOW_NOT_CONFIGURED'
+        ? 503
+        : 502;
+
+    console.error(
+      'L1 COPILOT SERVICENOW RECONCILIATION ERROR:',
+      e.message
+    );
+
+    return res.status(status).json({
+      ok: false,
+      error: e.message,
+      governed: {
+        readOnly: true,
+        canChangeState: false,
+        autonomousCloseAllowed: false
+      }
     });
   }
 });
