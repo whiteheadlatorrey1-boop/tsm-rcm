@@ -1500,12 +1500,15 @@ border-radius: 2px; flex-shrink: 0; white-space: nowrap;
     .twin-card .tc-l { font-size: 7px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
     .twin-card .tc-v { font-size: 16px; font-weight: 700; }
     .twin-card .tc-s { font-size: 7.5px; color: var(--muted); margin-top: 3px; }
+    .twin-live { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 10px; display: flex; flex-wrap: wrap; gap: 18px; align-items: baseline; font-size: 8px; color: var(--muted); }
+    .twin-live b { color: var(--text); font-size: 11px; font-weight: 700; margin-right: 4px; }
+    .twin-live .tl-h { letter-spacing: 1.5px; text-transform: uppercase; }
     @media (max-width: 900px) { .twin-grid { grid-template-columns: 1fr; } }
   </style>
   <div class="panel" id="hc-twin">
     <div class="panel-hdr">
       <div class="panel-title">Hospital Operations Twin — Denial &amp; Cash Scenario</div>
-      <div class="panel-tag tag-ready">PLANNING ESTIMATE</div>
+      <div class="panel-tag tag-ready" id="twin-tag">PLANNING ESTIMATE · DEMO BASELINE</div>
     </div>
     <div class="panel-body">
       <div class="twin-grid">
@@ -1539,6 +1542,10 @@ border-radius: 2px; flex-shrink: 0; white-space: nowrap;
             <div class="tc-s">Scenario collections (avoided + recovered) minus baseline appeal recovery</div>
           </div>
         </div>
+      </div>
+      <div class="twin-live" id="twin-live">
+        <span class="tl-h">Live cases</span>
+        <span id="twin-live-msg">Checking for live case data&hellip;</span>
       </div>
     </div>
   </div>
@@ -1581,6 +1588,78 @@ border-radius: 2px; flex-shrink: 0; white-space: nowrap;
       $(id).addEventListener('input', run);
     });
     run();
+
+    // Live cases: sends the War Room case (if one was relayed) to the deterministic HC portfolio
+    // twin. The sliders keep running on the demo baseline above; this strip only reports what is live.
+    var RELAY_KEYS = ['TSM_HEALTHCARE_RELAY', 'TSM_HC_WAR_RELAY', 'TSM_HEALTHCARE_STRATEGIST_RELAY', 'TSM_EXEC_RELAY'];
+    function readRelay() {
+      try {
+        if (window.TSM && window.TSM.relay && window.TSM.relay.read) {
+          var d = window.TSM.relay.read('HEALTHCARE');
+          if (d) return d;
+        }
+      } catch (e) {}
+      for (var i = 0; i < RELAY_KEYS.length; i++) {
+        try {
+          var raw = sessionStorage.getItem(RELAY_KEYS[i]) || localStorage.getItem(RELAY_KEYS[i]);
+          if (raw) return JSON.parse(raw);
+        } catch (e) {}
+      }
+      return null;
+    }
+    function buildPayload() {
+      var relay = readRelay();
+      var sc = relay && relay.structuredCase;
+      if (!sc || !sc.claimId) return {};
+      var denial = { id: sc.claimId, claimId: sc.claimId, status: 'DENIED', source: 'war-room-relay' };
+      ['payer', 'denialReasonCode', 'denialCategory', 'rootCauseHypothesis', 'appealable', 'appealDeadline'].forEach(function (k) {
+        if (sc[k] !== undefined && sc[k] !== null) denial[k] = sc[k];
+      });
+      // Only send an exposure the case actually carries; an absent figure must stay unknown, not become $0.
+      if (typeof sc.financialExposure === 'number') denial.financialExposure = sc.financialExposure;
+      return { sections: { denials: [denial] } };
+    }
+    function setLive(tagText, tagClass, msg) {
+      var tag = $('twin-tag');
+      tag.textContent = tagText;
+      tag.className = 'panel-tag ' + tagClass;
+      $('twin-live-msg').textContent = msg;
+    }
+    function loadLive() {
+      fetch('/api/hc/portfolio-intelligence', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildPayload())
+      }).then(function (resp) {
+        if (resp.status === 401 || resp.status === 403) {
+          setLive('PLANNING ESTIMATE · DEMO BASELINE', 'tag-ready', 'Not shown: sign in with an admin, manager or analyst role to include live cases.');
+          return null;
+        }
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        return resp.json();
+      }).then(function (data) {
+        if (!data) return;
+        var twin = data.twin || {};
+        var sum = twin.leakageSummary || {};
+        var counts = twin.counts || {};
+        var opps = sum.opportunityCount || 0;
+        var findings = counts.findings || 0;
+        var known = sum.exposureKnownCount || 0;
+        var unknown = sum.exposureUnknownCount || 0;
+        var exposure = sum.totalExplicitExposure || 0;
+        if (!opps && !findings && !(counts.denials || 0)) {
+          setLive('PLANNING ESTIMATE · DEMO BASELINE', 'tag-ready', 'No live cases yet. Run a denial through the War Room to include it here.');
+          return;
+        }
+        setLive('PLANNING ESTIMATE · LIVE CASES INCLUDED', 'tag-watch',
+          opps + ' recovery opportunit' + (opps === 1 ? 'y' : 'ies') + ' · ' +
+          (known ? usd(exposure) + ' known exposure (' + known + ' with a figure, ' + unknown + ' unknown)' : 'exposure not yet known for ' + unknown) +
+          ' · ' + findings + ' node finding' + (findings === 1 ? '' : 's'));
+      }).catch(function () {
+        setLive('PLANNING ESTIMATE · DEMO BASELINE', 'tag-ready', 'Live case data unavailable right now. Showing the demo baseline only.');
+      });
+    }
+    loadLive();
   })();
   </script>
 
