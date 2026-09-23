@@ -144,9 +144,9 @@ const VERTICALS = [
     '/html/healthcare/executive-portal.html',
   ]},
   { column: 'Finance', key: 'FinOps', pages: [
-    '/html/finops-suite/finops-war-room.html',
-    '/html/finops-suite/finops-main-strategist.html',
-    '/html/finops-suite/finops-executive-portal.html',
+    '/html/finops-suite/finops-war/finops-war-room.html',
+    '/html/finops-suite/finops-war/finops-main-strategist.html',
+    '/html/finops-suite/finops-war/finops-executive-portal.html',
   ]},
   { column: 'Insurance', key: 'Insurance', pages: [
     '/html/war-rooms/insure-war/insurance-war-room.html',

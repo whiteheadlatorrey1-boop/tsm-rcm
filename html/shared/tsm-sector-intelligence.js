@@ -73,25 +73,25 @@
       "AP Review": {
         id: "finops-ap-review",
         label: "AP Review",
-        url: "/html/finops-suite/finops-war-room.html?mode=ap",
+        url: "/html/finops-suite/finops-war/finops-war-room.html?mode=ap",
         type: "ap"
       },
       "AR Recovery": {
         id: "finops-ar-recovery",
         label: "AR Recovery",
-        url: "/html/finops-suite/finops-war-room.html?mode=ar",
+        url: "/html/finops-suite/finops-war/finops-war-room.html?mode=ar",
         type: "ar"
       },
       "FinOps Strategist": {
         id: "finops-strategist",
         label: "FinOps Strategist",
-        url: "/html/finops-suite/finops-war-room.html?mode=strategist",
+        url: "/html/finops-suite/finops-war/finops-war-room.html?mode=strategist",
         type: "strategist"
       },
       "Close Readiness": {
         id: "finops-close",
         label: "Close Readiness",
-        url: "/html/finops-suite/finops-war-room.html?mode=close",
+        url: "/html/finops-suite/finops-war/finops-war-room.html?mode=close",
         type: "close"
       }
     },
@@ -424,7 +424,7 @@
     finops: {
       __meta: {
         label: "FinOps",
-        warRoom: "/html/finops-suite/finops-war-room.html",
+        warRoom: "/html/finops-suite/finops-war/finops-war-room.html",
         defaultOwner: "Finance Controller",
         executiveAudience: ["strategist", "controller", "cfo"],
         continuityNarrative:
