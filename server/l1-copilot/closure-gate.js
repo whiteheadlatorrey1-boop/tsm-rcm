@@ -19,12 +19,15 @@
 const {
   normalizeState,
   normalizeTaskType,
+  classifyTask,
   getRequiredEvidence
 } = require('./workflow-engine');
 
 function evaluateClosure(input = {}) {
   const state = normalizeState(input.state);
-  const taskType = normalizeTaskType(input.taskType);
+  const taskType = input.taskType
+    ? normalizeTaskType(input.taskType)
+    : classifyTask(input).taskType;
   const evidence = input.evidence || {};
 
   const requiredEvidence = getRequiredEvidence(taskType);
@@ -75,7 +78,9 @@ function evaluateClosure(input = {}) {
 }
 
 function buildClosureChecklist(input = {}) {
-  const taskType = normalizeTaskType(input.taskType);
+  const taskType = input.taskType
+    ? normalizeTaskType(input.taskType)
+    : classifyTask(input).taskType;
   const evidence = input.evidence || {};
 
   return getRequiredEvidence(taskType).map(requirement => ({

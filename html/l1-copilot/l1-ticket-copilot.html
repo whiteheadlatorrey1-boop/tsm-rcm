@@ -1269,6 +1269,84 @@ TICKET DESCRIPTION</div>
       </div>
     </section>
 
+
+<!-- TSM L1 WORKFLOW / CLOSURE GATE -->
+<section class="card" id="l1WorkflowGate" style="margin-top:12px;">
+  <div class="card-head">
+    WORKFLOW / CLOSURE GATE
+    <span id="l1WorkflowGateBadge"
+          style="float:right;font-size:10px;padding:3px 8px;border:1px solid var(--border);border-radius:10px;color:var(--muted)">
+      NOT EVALUATED
+    </span>
+  </div>
+
+  <div style="font-size:11px;line-height:1.6;color:var(--muted);margin-bottom:10px;">
+    READ → RECONCILE → GUIDE → TECHNICIAN CONFIRMS.
+    TSM evaluates workflow evidence but does not change ServiceNow state or close tickets.
+  </div>
+
+  <div id="l1WorkflowGateResult"
+       class="ai-output"
+       style="min-height:44px;">
+    Evaluate the current ticket to see the recommended next action and closure readiness.
+  </div>
+
+  <div id="l1WorkflowChecklist"
+       style="margin-top:10px;">
+  </div>
+
+  <div style="margin-top:12px;padding:10px;border:1px solid var(--border);background:var(--bg3);">
+    <div style="font-size:10px;letter-spacing:1px;color:var(--cyan);margin-bottom:8px;">
+      TECHNICIAN EVIDENCE
+    </div>
+
+    <label style="display:block;font-size:11px;line-height:1.9;">
+      <input type="checkbox" id="l1EvidenceUserVerified">
+      User identity / requester verified
+    </label>
+
+    <label style="display:block;font-size:11px;line-height:1.9;">
+      <input type="checkbox" id="l1EvidenceAssetVerified">
+      Asset / device verified against the ticket and available records
+    </label>
+
+    <label style="display:block;font-size:11px;line-height:1.9;">
+      <input type="checkbox" id="l1EvidenceWorkConfirmed">
+      Required work was actually performed
+    </label>
+
+    <label style="display:block;font-size:11px;line-height:1.9;">
+      <input type="checkbox" id="l1EvidenceTested">
+      Functionality was tested after the work
+    </label>
+
+    <label style="display:block;font-size:11px;line-height:1.9;">
+      <input type="checkbox" id="l1EvidenceLocationVerified">
+      Location was verified where required
+    </label>
+
+    <label style="display:block;font-size:11px;line-height:1.9;">
+      <input type="checkbox" id="l1EvidenceFinalWorkNoteConfirmed">
+      Final work note / resolution draft was reviewed and confirmed
+    </label>
+
+    <div style="font-size:10px;color:var(--muted);margin-top:7px;">
+      These confirmations are technician-entered evidence. TSM never checks them automatically.
+    </div>
+  </div>
+
+  <div style="display:flex;gap:8px;align-items:center;margin-top:12px;">
+    <button class="btn btn-cyan" id="btnEvaluateWorkflow" type="button">
+      EVALUATE WORKFLOW
+    </button>
+
+    <span id="l1WorkflowGovernance"
+          style="font-size:10px;color:var(--muted);">
+      READ-ONLY · NO STATE WRITE · NO AUTONOMOUS CLOSE
+    </span>
+  </div>
+</section>
+
     <!-- RESOLUTION -->
     <section class="section" id="sec-resolution">
       <div class="card">
@@ -5669,5 +5747,265 @@ window.selectQ15Scenario = function(id) {
 })();
 </script>
 <!-- L1QR-PANEL-END -->
+
+<script id="TSM_L1_WORKFLOW_UI">
+(function () {
+  'use strict';
+
+  function value(id) {
+    const el = document.getElementById(id);
+    return el ? String(el.value || '').trim() : '';
+  }
+
+  function setBadge(text, state) {
+    const badge = document.getElementById('l1WorkflowGateBadge');
+    if (!badge) return;
+
+    badge.textContent = text;
+
+    if (state === 'ready') {
+      badge.style.color = 'var(--cyan)';
+      badge.style.borderColor = 'var(--cyan)';
+    } else if (state === 'blocked') {
+      badge.style.color = 'var(--amber)';
+      badge.style.borderColor = 'var(--amber)';
+    } else {
+      badge.style.color = 'var(--muted)';
+      badge.style.borderColor = 'var(--border)';
+    }
+  }
+
+  function renderChecklist(items) {
+    const host = document.getElementById('l1WorkflowChecklist');
+    if (!host) return;
+
+    host.innerHTML = (items || []).map(item => {
+      const mark = item.confirmed ? '✓' : '○';
+      const cls = item.confirmed ? 'color:var(--cyan)' : 'color:var(--muted)';
+      return `
+        <div style="font-size:11px;line-height:1.8;">
+          <span style="${cls};font-weight:bold;">${mark}</span>
+          ${item.label}
+        </div>
+      `;
+    }).join('');
+  }
+
+  function checked(id) {
+    const el = document.getElementById(id);
+    return !!(el && el.checked);
+  }
+
+  function buildWorkflowEvidence() {
+    return {
+      userVerified: checked('l1EvidenceUserVerified'),
+      assetVerified: checked('l1EvidenceAssetVerified'),
+      workConfirmed: checked('l1EvidenceWorkConfirmed'),
+      tested: checked('l1EvidenceTested'),
+      locationVerified: checked('l1EvidenceLocationVerified'),
+      finalWorkNoteConfirmed: checked('l1EvidenceFinalWorkNoteConfirmed')
+    };
+  }
+
+  function persistWorkflowEvidence() {
+    try {
+      const key = 'TSM_L1_WORKFLOW_EVIDENCE';
+      const incident = value('tkIncident');
+
+      if (!incident) return;
+
+      const all = JSON.parse(localStorage.getItem(key) || '{}');
+
+      all[incident] = buildWorkflowEvidence();
+
+      localStorage.setItem(key, JSON.stringify(all));
+    } catch (error) {
+      console.warn('Workflow evidence autosave failed', error);
+    }
+  }
+
+  function restoreWorkflowEvidence() {
+    try {
+      const incident = value('tkIncident');
+      if (!incident) return;
+
+      const all = JSON.parse(
+        localStorage.getItem('TSM_L1_WORKFLOW_EVIDENCE') || '{}'
+      );
+
+      const evidence = all[incident] || {};
+
+      [
+        'UserVerified',
+        'AssetVerified',
+        'WorkConfirmed',
+        'Tested',
+        'LocationVerified',
+        'FinalWorkNoteConfirmed'
+      ].forEach(name => {
+        const el = document.getElementById('l1Evidence' + name);
+        if (el) el.checked = evidence[name.charAt(0).toLowerCase() + name.slice(1)] === true;
+      });
+    } catch (error) {
+      console.warn('Workflow evidence restore failed', error);
+    }
+  }
+
+  async function evaluateCurrentTicket() {
+    const result = document.getElementById('l1WorkflowGateResult');
+    const button = document.getElementById('btnEvaluateWorkflow');
+
+    if (!result || !button || !window.TSML1Workflow) return;
+
+    persistWorkflowEvidence();
+
+    const input = {
+      incident: value('tkIncident'),
+      state: value('tkStatus'),
+      shortDescription: value('tkDescription'),
+      description: value('tkDescription'),
+      evidence: buildWorkflowEvidence()
+    };
+
+    result.textContent = 'Evaluating workflow and closure evidence...';
+    button.disabled = true;
+    setBadge('EVALUATING', 'neutral');
+
+    try {
+      const data = await window.TSML1Workflow.evaluate(input);
+      const workflow = data.workflow.workflow;
+      const closure = data.closure.closure;
+
+      result.innerHTML =
+        '<strong>NEXT ACTION:</strong> ' +
+        escapeHtml(workflow.nextAction || 'REVIEW') +
+        '<br>' +
+        '<strong>TASK TYPE:</strong> ' +
+        escapeHtml(workflow.taskType || 'OTHER') +
+        '<br>' +
+        '<strong>CLOSURE:</strong> ' +
+        escapeHtml(closure.closureStatus || 'BLOCKED') +
+        '<br>' +
+        escapeHtml(closure.reason || '');
+
+      renderChecklist(data.closure.checklist);
+
+      setBadge(
+        closure.readyForClosure ? 'READY FOR CLOSURE' : 'BLOCKED',
+        closure.readyForClosure ? 'ready' : 'blocked'
+      );
+    } catch (error) {
+      result.textContent = 'Workflow evaluation failed: ' + error.message;
+      setBadge('ERROR', 'blocked');
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  function escapeHtml(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    const button = document.getElementById('btnEvaluateWorkflow');
+
+    restoreWorkflowEvidence();
+
+    [
+      'l1EvidenceUserVerified',
+      'l1EvidenceAssetVerified',
+      'l1EvidenceWorkConfirmed',
+      'l1EvidenceTested',
+      'l1EvidenceLocationVerified',
+      'l1EvidenceFinalWorkNoteConfirmed'
+    ].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.addEventListener('change', persistWorkflowEvidence);
+      }
+    });
+
+    if (button) {
+      button.addEventListener('click', evaluateCurrentTicket);
+    }
+  });
+})();
+</script>
+
+<script id="TSM_L1_WORKFLOW_INTELLIGENCE">
+/*
+ * TSM L1 COPILOT — WORKFLOW / CLOSURE INTELLIGENCE
+ *
+ * READ-ONLY:
+ *   - Evaluates technician-provided context
+ *   - Does not change ServiceNow state
+ *   - Does not write work notes
+ *   - Does not close tickets
+ *
+ * Existing governed ServiceNow write flow remains separate.
+ */
+
+window.TSML1Workflow = Object.freeze({
+
+  async evaluateWorkflow(input = {}) {
+    const response = await fetch('/api/l1-copilot/workflow/evaluate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(input)
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data.ok) {
+      throw new Error(
+        data.error || 'Workflow evaluation failed.'
+      );
+    }
+
+    return data;
+  },
+
+  async evaluateClosure(input = {}) {
+    const response = await fetch('/api/l1-copilot/closure/evaluate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(input)
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data.ok) {
+      throw new Error(
+        data.error || 'Closure evaluation failed.'
+      );
+    }
+
+    return data;
+  },
+
+  async evaluate(input = {}) {
+    const [workflow, closure] = await Promise.all([
+      this.evaluateWorkflow(input),
+      this.evaluateClosure(input)
+    ]);
+
+    return {
+      workflow,
+      closure
+    };
+  }
+
+});
+</script>
+
 </body>
 </html>
