@@ -76,13 +76,8 @@ curl -s "${CF_GATE_HEADER[@]}" -X POST "$TSM_URL/api/l1-copilot/servicenow/work-
   -d "{\"incident\":\"$INC_NUMBER\",\"note\":\"L1 Copilot live integration test - $(date -u +%FT%TZ)\"}"; echo
 
 echo
-echo "7) POST /status-update (set to In Progress = 2)"
-curl -s "${CF_GATE_HEADER[@]}" -X POST "$TSM_URL/api/l1-copilot/servicenow/status-update" \
-  -H "Content-Type: application/json" \
-  -d "{\"incident\":\"$INC_NUMBER\",\"state\":\"2\"}"; echo
-
-echo
 echo "== Done. Verify in ServiceNow UI: =="
 echo "   Incident: $SN_URL/nav_to.do?uri=incident.do?sys_id=$INC_SYS_ID"
-echo "   -> work_notes should show the L1 Copilot note, state should read In Progress."
+echo "   -> work_notes should show the L1 Copilot note."
+echo "   -> State is technician-controlled; this integration does not write incident.state."
 echo "   CI: $SN_URL/nav_to.do?uri=cmdb_ci_hardware.do?sys_id=$CI_SYS_ID"

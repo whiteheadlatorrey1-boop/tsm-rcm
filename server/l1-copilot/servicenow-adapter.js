@@ -255,6 +255,17 @@ async function writeWorkNote(incidentId, note, config) {
 }
 
 /**
+ * NON-PRODUCTION / PDI / TEST ONLY.
+ *
+ * This capability is intentionally retained for isolated development and
+ * PDI workflows. It is NOT part of the L1 production ServiceNow contract
+ * and must not be exposed through a production L1 route or granted to the
+ * L1 integration account.
+ *
+ * Production L1 state handling is recommendation-only: TSM may read the
+ * current state and recommend the next state, but the technician changes
+ * state in ServiceNow.
+ *
  * updateTicketStatus(incidentId, state, config?) -> { success }
  * `state` should be the ServiceNow incident state label or numeric code the
  * customer's instance uses (e.g. "Resolved"/6, "In Progress"/2) — this is
@@ -271,6 +282,10 @@ async function updateTicketStatus(incidentId, state, config) {
 }
 
 /**
+ * NON-PRODUCTION / PDI / TEST ONLY.
+ *
+ * Incident creation is explicitly outside the L1 production contract.
+ *
  * createTicket(fields, config?) -> { success, number, sysId, raw }
  * POSTs a single new record to the incident table. `fields` is a raw
  * ServiceNow field map (short_description, caller_id, assignment_group,
@@ -305,6 +320,10 @@ async function deleteTicket(incidentId, config) {
   await snRequest(cfg, 'DELETE', `/api/now/table/incident/${ticket.sysId}`);
   return { success: true };
 }
+
+// NON-PRODUCTION / PDI / TEST SUPPORT:
+// The create-batch helpers below are retained for isolated test/PDI workflows.
+// They are intentionally not exposed through the L1 production HTTP API.
 
 const DEFAULT_BATCH_OPTIONS = {
   // How many createTicket calls are in flight at once. ServiceNow Table API

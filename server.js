@@ -4950,37 +4950,6 @@ app.post('/api/l1-copilot/servicenow/work-note', async (req, res) => {
   }
 });
 
-app.post('/api/l1-copilot/servicenow/status-update', async (req, res) => {
-  const { incident, state } = req.body || {};
-  if (!incident || !state) return res.status(400).json({ ok: false, error: 'incident and state are required' });
-  try {
-    const result = await snAdapter.updateTicketStatus(incident, state);
-    res.json({ ok: true, ...result });
-  } catch (e) {
-    const status = e.code === 'SERVICENOW_NOT_CONFIGURED' ? 503 : 502;
-    res.status(status).json({ ok: false, error: e.message });
-  }
-});
-
-// Batch ticket creation. Deliberately no demo-mode fallback here (unlike the
-// read endpoints above) — faking a successful bulk-create response when
-// ServiceNow isn't actually configured would be actively misleading for a
-// write operation, not just a degraded read. 503 + ok:false, honestly, same
-// as the rest of this integration when unconfigured.
-app.post('/api/l1-copilot/servicenow/batch-tickets', async (req, res) => {
-  const { tickets, options } = req.body || {};
-  if (!Array.isArray(tickets) || tickets.length === 0) {
-    return res.status(400).json({ ok: false, error: 'tickets must be a non-empty array of ticket field objects' });
-  }
-  try {
-    const result = await snAdapter.createTicketsBatch(tickets, options);
-    res.json({ ok: true, ...result });
-  } catch (e) {
-    const status = e.code === 'SERVICENOW_NOT_CONFIGURED' ? 503 : (e.status && e.status < 500 ? 400 : 502);
-    res.status(status).json({ ok: false, error: e.message });
-  }
-});
-
 // Batch ticket read — the counterpart to batch-tickets above, for pulling a
 // list of existing incidents (by number or sys_id) in one chunked/retried
 // call instead of the caller looping single-ticket GETs with no rate-limit
