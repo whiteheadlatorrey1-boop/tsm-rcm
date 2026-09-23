@@ -383,7 +383,7 @@ async function main() {
   let response = await post(
     '/api/l1-copilot/resolution',
     {
-      incident: 'INC-L1-GOV-001',
+      incident: 'INC0012345',
       draft: 'Unauthorized write attempt',
       writeToServicenow: true
     }
@@ -421,7 +421,7 @@ async function main() {
   /* -------------------------------------------------------------- */
 
   const ticket = [
-    'INC-L1-GOV-001',
+    'INC0012345',
     'User reports workstation display failure.'
   ].join('\n');
 
@@ -497,7 +497,7 @@ async function main() {
   response = await post(
     '/api/l1-copilot/resolution',
     {
-      incident: 'INC-L1-GOV-001',
+      incident: 'INC0012345',
       draft: reviewedDraft,
       writeToServicenow: true,
       technicianConfirmed: false
@@ -525,7 +525,7 @@ async function main() {
   response = await post(
     '/api/l1-copilot/resolution',
     {
-      incident: 'INC-L1-GOV-001',
+      incident: 'INC0012345',
       writeToServicenow: true,
       technicianConfirmed: true
     },
@@ -545,6 +545,22 @@ async function main() {
     'missing-draft rejection did not call ServiceNow'
   );
 
+  /* 3b. Authenticated, but malformed input */
+  response = await post(
+    '/api/l1-copilot/resolution',
+    { incident: 'INC1^ORnumberSTARTSWITHINC', writeToServicenow: true, technicianConfirmed: true, draft: 'x' },
+    cookie
+  );
+  ok(response.status === 400, 'malformed incident id is refused with a session - got ' + response.status);
+
+  response = await post(
+    '/api/l1-copilot/resolution',
+    { incident: 'INC0012345', writeToServicenow: true, technicianConfirmed: true, draft: 'x'.repeat(20001) },
+    cookie
+  );
+  ok(response.status === 413, 'oversized draft is refused with a session - got ' + response.status);
+  ok(writeCalls.length === 0, 'refused input did not call ServiceNow');
+
   /* -------------------------------------------------------------- */
   /* 4. Exact reviewed draft is written                             */
   /* -------------------------------------------------------------- */
@@ -552,7 +568,7 @@ async function main() {
   response = await post(
     '/api/l1-copilot/resolution',
     {
-      incident: 'INC-L1-GOV-001',
+      incident: 'INC0012345',
       draft: reviewedDraft,
       writeToServicenow: true,
       technicianConfirmed: true
@@ -576,7 +592,7 @@ async function main() {
 
   ok(
     writeCalls[0] &&
-      writeCalls[0].incident === 'INC-L1-GOV-001',
+      writeCalls[0].incident === 'INC0012345',
     'ServiceNow write targeted the supplied incident'
   );
 

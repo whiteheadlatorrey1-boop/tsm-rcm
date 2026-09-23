@@ -161,6 +161,20 @@ async function getAsset(assetTag, config) {
 }
 
 /**
+ * assertSafeQueryValue(value, label): sysparm_query is built by string
+ * concatenation and "^" is ServiceNow's encoded-query operator, so a value
+ * containing "^" (or a newline) could append extra conditions. Reject it
+ * with HTTP 400 before any request is made.
+ */
+function assertSafeQueryValue(value, label) {
+  if (/[\^\r\n]/.test(String(value))) {
+    const err = new Error('Invalid ' + label + '.');
+    err.status = 400;
+    throw err;
+  }
+}
+
+/**
  * normalizeIncidentState(state) -> canonical workflow state label
  *
  * ServiceNow's incident table returns numeric state codes (default OOTB
@@ -188,6 +202,7 @@ function normalizeIncidentState(state) {
  * getTicket(incidentNumberOrSysId, config?) -> normalized incident record or null
  */
 async function getTicket(incidentId, config) {
+  assertSafeQueryValue(incidentId, 'incident identifier');
   const cfg = config || loadConfigFromEnv();
   const fm = (cfg && cfg.fieldMap && cfg.fieldMap.incident) || DEFAULT_FIELD_MAP.incident;
   const looksLikeSysId = /^[0-9a-f]{32}$/i.test(incidentId);
@@ -215,6 +230,7 @@ async function getTicket(incidentId, config) {
  * searchAssetsByUser(userIdOrName, config?) -> array of asset tags assigned to that user
  */
 async function searchAssetsByUser(userIdentifier, config) {
+  assertSafeQueryValue(userIdentifier, 'user identifier');
   const cfg = config || loadConfigFromEnv();
   const fm = (cfg && cfg.fieldMap && cfg.fieldMap.asset) || DEFAULT_FIELD_MAP.asset;
   const data = await snRequest(cfg, 'GET', '/api/now/table/cmdb_ci_hardware', {
