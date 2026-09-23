@@ -2,7 +2,7 @@
 
 Generated from `/workspaces/tsm-rcm`
 
-**HTML pages scanned:** 429
+**HTML pages scanned:** 469
 
 This audit is intended to identify where TSM users need clearer navigation, workflow guidance, business-value explanation, and report-generation instructions.
 
@@ -54,7 +54,7 @@ Every major TSM workflow should eventually answer these questions:
   - Vertical: construction, legal, logistics, finance, itops, vendor
 - **CRITICAL (100/100)** `html/construction-suite/construction-suite-expansion.html` — TSM Construction Suite — Field & Document Ops
   - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
-  - Vertical: construction, finops, noc, supplier, vendor, approval
+  - Vertical: construction, finance, finops, noc, supplier, vendor, approval
 - **CRITICAL (100/100)** `html/construction-suite/contruction-pro.html` — AuditOps // Sovereign Core · TSM
   - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, INTAKE / DATA ENTRY
   - Vertical: construction, legal, logistics, finance, itops, vendor
@@ -67,6 +67,9 @@ Every major TSM workflow should eventually answer these questions:
 - **CRITICAL (100/100)** `html/construction-suite/zero-trust.html` — TSM Zero-Trust | Enterprise Access Command
   - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
   - Vertical: construction, mortgage, legal, hotel, hotelops, finance, finops, tax
+- **CRITICAL (100/100)** `html/document-processing-revenue-recovery-manual.html` — Document Processing &amp; Revenue Recovery Manual — TSM Consultz
+  - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
+  - Vertical: healthcare, construction, bpo, mortgage, real estate, insurance, legal, schools
 - **CRITICAL (100/100)** `html/finops-command-suite-v2.html` — TSM FinOps Command Suite — Autonomous Financial Intelligence
   - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
   - Vertical: construction, mortgage, legal, hotel, hotelops, finops, tax, itops
@@ -90,7 +93,7 @@ Every major TSM workflow should eventually answer these questions:
   - Vertical: logistics, finops, tax, vendor, approval
 - **CRITICAL (100/100)** `html/finops-suite/finops-operations.html` — TSM FinOps · Operations Suite
   - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
-  - Vertical: construction, insurance, hotel, finance, finops, tax, itops, property
+  - Vertical: construction, insurance, hotel, finops, tax, itops, property, vendor
 - **CRITICAL (100/100)** `html/finops-suite/finops-war/finops-main-strategist.html` — TSM · FinOps Main Strategist · Controller Action Plan
   - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
   - Vertical: healthcare, bpo, insurance, legal, logistics, finance, finops, tax
@@ -119,8 +122,8 @@ Every major TSM workflow should eventually answer these questions:
   - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
   - Vertical: construction, mortgage, legal, hotel, hotelops, finance, finops, tax
 - **CRITICAL (100/100)** `html/healthcare/executive-portal.html` — TSM · RCM Executive Command
-  - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, INTAKE / DATA ENTRY
-  - Vertical: healthcare, construction, bpo, mortgage, real estate, insurance, legal, finops
+  - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
+  - Vertical: healthcare, construction, bpo, mortgage, real estate, insurance, legal, schools
 - **CRITICAL (100/100)** `html/healthcare/hc-compliance/index.html` — HC COMPLIANCE COMMAND · TSM Healthcare
   - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
   - Vertical: healthcare, insurance, legal, approval
@@ -145,6 +148,9 @@ Every major TSM workflow should eventually answer these questions:
 - **CRITICAL (100/100)** `html/healthcare/hc-taxprep/index.html` — HC TAX PREP COMMAND · TSM Healthcare
   - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
   - Vertical: healthcare, legal, tax
+- **CRITICAL (100/100)** `html/healthcare/hc-vendors/index.html` — HC VENDORS COMMAND · TSM Healthcare
+  - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
+  - Vertical: healthcare, insurance, legal, logistics, supplier, vendor
 - **CRITICAL (100/100)** `html/l1-copilot/l1-ticket-copilot.html` — TSM L1 Ticket Copilot
   - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
   - Vertical: healthcare, construction, real estate, insurance, legal, finance, finops, itops
@@ -192,7 +198,10 @@ Every major TSM workflow should eventually answer these questions:
   - Vertical: construction, insurance, itops
 - **CRITICAL (100/100)** `html/tsm-insurance/insurance-claims-pro.html` — TSM Insurance Operations Academy · Claims Lab
   - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
-  - Vertical: healthcare, construction, insurance, legal, tax, supplier, vendor, approval
+  - Vertical: healthcare, construction, insurance, legal, finance, tax, supplier, vendor
+- **CRITICAL (100/100)** `html/tsm-insurance/pc-command.html` — TSM | P&C Enterprise Command
+  - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
+  - Vertical: healthcare, construction, mortgage, real estate, insurance, legal, finance, itops
 - **CRITICAL (100/100)** `html/tsm-job-prep.html` — TSM Career OS — Healthcare Ops Simulator
   - Workflow role: EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
   - Vertical: healthcare, finops, tax, approval
@@ -207,10 +216,10 @@ Every major TSM workflow should eventually answer these questions:
   - Vertical: healthcare, real estate, insurance, legal, finops, approval
 - **CRITICAL (100/100)** `html/war-rooms/insure-war/insurance-war-room.html` — Insurance War Room · TSM
   - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, INTAKE / DATA ENTRY
-  - Vertical: healthcare, insurance, legal, supplier, approval
+  - Vertical: healthcare, insurance, legal, finops, supplier, approval
 - **CRITICAL (100/100)** `html/war-rooms/legal-war/legal-war-room.html` — Legal War Room · TSM Legal-Pro
   - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, INTAKE / DATA ENTRY
-  - Vertical: healthcare, bpo, insurance, legal, logistics, finance, vendor
+  - Vertical: healthcare, bpo, insurance, legal, logistics, finance, finops, vendor
 - **CRITICAL (100/100)** `html/war-rooms/re-war/re-exec-portal.html` — TSM · RE EXEC PORTAL
   - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
   - Vertical: healthcare, construction, bpo, mortgage, real estate, insurance, legal, finops
@@ -219,7 +228,7 @@ Every major TSM workflow should eventually answer these questions:
   - Vertical: mortgage, real estate, property
 - **CRITICAL (100/100)** `html/war-rooms/re-war/re-war-room.html` — TSM // RE WAR ROOM
   - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
-  - Vertical: construction, bpo, mortgage, real estate, insurance, legal, finance, finops
+  - Vertical: construction, bpo, mortgage, real estate, insurance, finance, finops, tax
 - **CRITICAL (100/100)** `html/war-rooms/schools-command/schools-command.html` — TSM School Command Center
   - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
   - Vertical: healthcare, construction, mortgage, legal, schools, finance, tax, itops
@@ -241,15 +250,6 @@ Every major TSM workflow should eventually answer these questions:
 - **CRITICAL (99/100)** `html/healthcare/hc-billing/index.html` — HC BILLING COMMAND · TSM Healthcare
   - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
   - Vertical: healthcare, insurance, legal
-- **CRITICAL (99/100)** `html/healthcare/hc-financial/index.html` — HC FINANCIAL COMMAND · TSM Healthcare
-  - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
-  - Vertical: healthcare, insurance, legal
-- **CRITICAL (99/100)** `html/legal-pro/legal-tax.html` — AuditOps Pro · TSM AI Tax Intelligence Platform
-  - Workflow role: DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
-  - Vertical: construction, bpo, mortgage, real estate, legal, finops, tax, itops
-- **CRITICAL (99/100)** `html/tax-prep.html` — AuditOps Pro · TSM AI Tax Intelligence Platform
-  - Workflow role: DECISION / STRATEGY, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
-  - Vertical: construction, bpo, mortgage, real estate, legal, tax, itops
 
 ## 3. Pages With Actions But No Obvious How-To
 
@@ -259,8 +259,11 @@ Every major TSM workflow should eventually answer these questions:
 - **CRITICAL (83/100)** `html/construction-suite/legal.html`
   - Actions detected: upload, import, analyze, analysis, run, submit, review, assign, generate, export, download, report, send, create, open
   - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, INTAKE / DATA ENTRY
-- **CRITICAL (81/100)** `html/sentinel-center.html`
-  - Actions detected: upload, import, analysis, run, approve, escalate, resolve, generate, export, download, report, send, save, create, open
+- **CRITICAL (81/100)** `html/war-rooms/pm-copilot/pm-exec-portal.html`
+  - Actions detected: analysis, run, execute, review, approve, reject, assign, escalate, resolve, export, download, create, open, continue, start
+  - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
+- **CRITICAL (81/100)** `html/war-rooms/schools-command/schools-executive-portal.html`
+  - Actions detected: analysis, run, execute, review, approve, reject, escalate, resolve, export, download, report, create, open, continue, start
   - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
 - **CRITICAL (80/100)** `html/legal-main-strategist.html`
   - Actions detected: import, analyze, analysis, run, review, assign, escalate, generate, export, download, report, create, open, start
@@ -274,12 +277,18 @@ Every major TSM workflow should eventually answer these questions:
 - **CRITICAL (79/100)** `html/tsm-insurance/legal.html`
   - Actions detected: upload, import, analyze, analysis, run, review, assign, generate, export, download, report, send, create, open, launch
   - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, INTAKE / DATA ENTRY
-- **CRITICAL (79/100)** `html/war-rooms/pm-copilot/pm-exec-portal.html`
-  - Actions detected: analysis, run, review, approve, reject, assign, escalate, resolve, export, download, create, open, continue, start
-  - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
-- **CRITICAL (70/100)** `html/war-rooms/schools-command/schools-executive-portal.html`
-  - Actions detected: analysis, run, review, approve, escalate, resolve, export, download, create, open, continue, start
+- **CRITICAL (77/100)** `html/war-rooms/honeywell-cross-domain-cascade.html`
+  - Actions detected: import, analyze, analysis, run, review, assign, escalate, resolve, generate, export, download, report, save, create, open
   - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, INTAKE / DATA ENTRY
+- **CRITICAL (74/100)** `html/healthcare/provider-reporting.html`
+  - Actions detected: run, review, resolve, generate, download, report, save, open, start
+  - Workflow role: EXECUTIVE / OUTCOME, REPORT / DELIVERY, INTAKE / DATA ENTRY
+- **CRITICAL (70/100)** `html/war-rooms/ar-recovery/index.html`
+  - Actions detected: import, analyze, analysis, run, submit, review, reject, escalate, resolve, report, create, open, continue, start
+  - Workflow role: INTAKE / ANALYSIS, EXECUTIVE / OUTCOME, REPORT / DELIVERY, INTAKE / DATA ENTRY
+- **CRITICAL (70/100)** `html/war-rooms/honeywell-executive-portal.html`
+  - Actions detected: analysis, run, review, approve, reject, assign, escalate, export, download, report, save, create, open, continue
+  - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
 - **CRITICAL (69/100)** `html/construction-suite/doc-showcase2.html`
   - Actions detected: upload, analyze, analysis, run, execute, review, approve, report, send, open, launch, continue, start
   - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
@@ -289,6 +298,15 @@ Every major TSM workflow should eventually answer these questions:
 - **CRITICAL (66/100)** `html/l1-copilot/noc/noc-executive-portal.html`
   - Actions detected: analysis, run, review, approve, escalate, resolve, export, download, create, open, continue, start
   - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
+- **CRITICAL (64/100)** `html/l1-copilot/noc/noc-war-room.html`
+  - Actions detected: import, analysis, run, review, assign, escalate, resolve, generate, report, save, create, open
+  - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
+- **CRITICAL (63/100)** `html/war-rooms/honeywell-strategist.html`
+  - Actions detected: analysis, run, execute, review, approve, assign, escalate, export, report, save, create, open, continue
+  - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, INTAKE / DATA ENTRY
+- **CRITICAL (62/100)** `html/healthcare/hc-om-portal.html`
+  - Actions detected: import, analysis, submit, review, escalate, report, send, create, open, start
+  - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, INTAKE / DATA ENTRY
 - **CRITICAL (62/100)** `html/pricing1.html`
   - Actions detected: import, analysis, run, review, report, send, save, create, launch, start
   - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, INTAKE / DATA ENTRY
@@ -319,9 +337,6 @@ Every major TSM workflow should eventually answer these questions:
 - **HIGH (53/100)** `html/war-rooms/crm/crm-strategist.html`
   - Actions detected: analysis, run, review, approve, escalate, export, report, open, continue, start
   - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
-- **HIGH (53/100)** `html/war-rooms/honeywell-executive-portal.html`
-  - Actions detected: analysis, review, approve, escalate, export, download, create, open, continue
-  - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, INTAKE / DATA ENTRY
 - **HIGH (53/100)** `html/war-rooms/tsm-wip-command-center.html`
   - Actions detected: upload, analyze, execute, approve, reject, resolve, save, create, open, start
   - Workflow role: INTAKE / ANALYSIS, EXECUTIVE / OUTCOME, INTAKE / DATA ENTRY
@@ -331,9 +346,6 @@ Every major TSM workflow should eventually answer these questions:
 - **HIGH (52/100)** `html/inty-finops-offer/index.html`
   - Actions detected: import, analysis, run, review, generate, report, save, open, launch, start
   - Workflow role: DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, INTAKE / DATA ENTRY
-- **HIGH (52/100)** `html/l1-copilot/noc/noc-war-room.html`
-  - Actions detected: import, analysis, run, review, assign, escalate, resolve, generate, save, create, open
-  - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, AI / COPILOT, INTAKE / DATA ENTRY
 - **HIGH (52/100)** `html/tsm-insurance/ins-tax.html`
   - Actions detected: analyze, analysis, run, review, generate, report, launch
   - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, REPORT / DELIVERY, INTAKE / DATA ENTRY
@@ -358,6 +370,9 @@ Every major TSM workflow should eventually answer these questions:
 - **HIGH (50/100)** `html/war-rooms/governance/governance-strategist.html`
   - Actions detected: analysis, run, review, approve, escalate, export, report, open, continue, start
   - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
+- **HIGH (49/100)** `html/tsm-operational-os-console.html`
+  - Actions detected: run, submit, assign, escalate, generate, open, start
+  - Workflow role: INTAKE / DATA ENTRY
 - **HIGH (48/100)** `html/desert-pitch.html`
   - Actions detected: import, analysis, run, save, open, launch, start
   - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, INTAKE / DATA ENTRY
@@ -379,15 +394,15 @@ Every major TSM workflow should eventually answer these questions:
 - **HIGH (47/100)** `html/war-rooms/music-war/release/release-center.html`
   - Actions detected: upload, submit, assign, generate, export, report, save, start
   - Workflow role: EXECUTIVE / OUTCOME, REPORT / DELIVERY, INTAKE / DATA ENTRY
+- **HIGH (46/100)** `html/healthcare/recovery-analytics.html`
+  - Actions detected: resolve, generate, report, open
+  - Workflow role: REPORT / DELIVERY, INTAKE / DATA ENTRY
 - **HIGH (46/100)** `html/war-rooms/approval/approval-strategist.html`
   - Actions detected: analysis, run, review, approve, escalate, export, report, continue, start
   - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
 - **HIGH (46/100)** `html/war-rooms/digital-twin/digital-twin-strategist.html`
   - Actions detected: analysis, run, review, approve, escalate, export, report, continue, start
   - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
-- **HIGH (45/100)** `html/l1-copilot/servicenow-exam-sim.html`
-  - Actions detected: analysis, run, submit, review, approve, assign, escalate, resolve, report, save, create, open, start
-  - Workflow role: REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
 - **HIGH (45/100)** `html/war-rooms/digital-twin/digital-twin-executive-portal.html`
   - Actions detected: analysis, run, review, approve, escalate, export, continue, start
   - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
@@ -400,6 +415,9 @@ Every major TSM workflow should eventually answer these questions:
 - **HIGH (44/100)** `html/war-rooms/mdm/mdm-executive-portal.html`
   - Actions detected: analysis, run, review, approve, escalate, export, open, start
   - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
+- **HIGH (43/100)** `html/concierge/concierge-executive-portal.html`
+  - Actions detected: review, approve, assign, export, download, create, open
+  - Workflow role: DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, INTAKE / DATA ENTRY
 - **HIGH (43/100)** `html/construction-suite/tax-prep.html`
   - Actions detected: analyze, analysis, run, review, assign, escalate, create, launch
   - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, REPORT / DELIVERY
@@ -418,30 +436,36 @@ Every major TSM workflow should eventually answer these questions:
 - **HIGH (42/100)** `html/war-rooms/approval/approval-war-room.html`
   - Actions detected: upload, analysis, run, approve, reject, escalate, generate, save, create, continue
   - Workflow role: DECISION / STRATEGY, AI / COPILOT, INTAKE / DATA ENTRY
+- **HIGH (42/100)** `html/war-rooms/cpq/cpq-war-room.html`
+  - Actions detected: upload, analysis, run, approve, resolve, generate, save, create, open
+  - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, AI / COPILOT, INTAKE / DATA ENTRY
 - **HIGH (41/100)** `html/war-rooms/o2c/o2c-war-room.html`
   - Actions detected: analysis, run, review, generate, save, create, open
   - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, AI / COPILOT, INTAKE / DATA ENTRY
 - **HIGH (40/100)** `html/finops-suite/working-capital-calculator.html`
   - Actions detected: resolve, presentation, open
   - Workflow role: EXECUTIVE / OUTCOME, REPORT / DELIVERY, INTAKE / DATA ENTRY
-- **HIGH (40/100)** `html/war-rooms/cpq/cpq-war-room.html`
-  - Actions detected: upload, analysis, run, approve, generate, save, create, open
-  - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, AI / COPILOT, INTAKE / DATA ENTRY
-- **MEDIUM (39/100)** `html/l1-copilot/servicenow-scenarios.html`
-  - Actions detected: run, submit, review, approve, assign, resolve, report, save, create, open, start
-  - Workflow role: REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
 - **MEDIUM (39/100)** `html/tsm-operational-os-executive.html`
   - Actions detected: generate, report
   - Workflow role: INTAKE / ANALYSIS, EXECUTIVE / OUTCOME, REPORT / DELIVERY, INTAKE / DATA ENTRY
+- **MEDIUM (38/100)** `html/tsm-member-command-center.html`
+  - Actions detected: create, open
+  - Workflow role: INTAKE / ANALYSIS, EXECUTIVE / OUTCOME, INTAKE / DATA ENTRY
 - **MEDIUM (37/100)** `html/bpo-files/bpo-supervisor.html`
   - Actions detected: review, assign, create, open, start
   - Workflow role: EXECUTIVE / OUTCOME, INTAKE / DATA ENTRY
+- **MEDIUM (37/100)** `html/enterprise/enterprise-executive-portal.html`
+  - Actions detected: run, escalate, report, open, start
+  - Workflow role: INTAKE / ANALYSIS, EXECUTIVE / OUTCOME, REPORT / DELIVERY, INTAKE / DATA ENTRY
+- **MEDIUM (37/100)** `html/healthcare/learning-loop.html`
+  - Actions detected: review, generate, report
+  - Workflow role: DECISION / STRATEGY, REPORT / DELIVERY, INTAKE / DATA ENTRY
 - **MEDIUM (37/100)** `html/shared/tsm-mission-queue.html`
   - Actions detected: import, assign, resolve, report, save, create, open, start
   - Workflow role: REPORT / DELIVERY, INTAKE / DATA ENTRY
-- **MEDIUM (37/100)** `html/war-rooms/music-war/creation/beat-workbench.html`
-  - Actions detected: upload, analyze, run, generate, report, open
-  - Workflow role: EXECUTIVE / OUTCOME, REPORT / DELIVERY, INTAKE / DATA ENTRY
+- **MEDIUM (37/100)** `html/war-rooms/music-war/cadence-builder.html`
+  - Actions detected: analyze, run, submit, assign, create, start
+  - Workflow role: EXECUTIVE / OUTCOME, INTAKE / DATA ENTRY
 - **MEDIUM (36/100)** `html/approval-war-room.html`
   - Actions detected: analysis, run, approve, reject, escalate, generate, save, create
   - Workflow role: DECISION / STRATEGY, AI / COPILOT, INTAKE / DATA ENTRY
@@ -451,33 +475,33 @@ Every major TSM workflow should eventually answer these questions:
 - **MEDIUM (36/100)** `html/war-rooms/catalog/catalog-war-room.html`
   - Actions detected: upload, analysis, run, generate, save, create, continue
   - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, AI / COPILOT, INTAKE / DATA ENTRY
-- **MEDIUM (35/100)** `html/enterprise/enterprise-executive-portal.html`
-  - Actions detected: run, escalate, report, start
-  - Workflow role: INTAKE / ANALYSIS, EXECUTIVE / OUTCOME, REPORT / DELIVERY, INTAKE / DATA ENTRY
+- **MEDIUM (35/100)** `html/l1-copilot/l1-exec-portal.html`
+  - Actions detected: analysis, review, approve, reject, resolve, send, open
+  - Workflow role: EXECUTIVE / OUTCOME, AI / COPILOT, INTAKE / DATA ENTRY
+- **MEDIUM (34/100)** `html/client-portal.html`
+  - Actions detected: download, report, open
+  - Workflow role: EXECUTIVE / OUTCOME, REPORT / DELIVERY, INTAKE / DATA ENTRY
 - **MEDIUM (34/100)** `html/hub_index_v2.html`
   - Actions detected: analysis, run, resolve, open, launch, start
   - Workflow role: DECISION / STRATEGY, EXECUTIVE / OUTCOME, INTAKE / DATA ENTRY
+- **MEDIUM (34/100)** `html/l1-quick-reference-panel.html`
+  - Actions detected: submit, assign, resolve, create, open, start
+  - Workflow role: AI / COPILOT, INTAKE / DATA ENTRY
 - **MEDIUM (34/100)** `html/legal-pro/legal-scenarios.html`
   - Actions detected: import, review, resolve, presentation, create, open
   - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, INTAKE / DATA ENTRY
 - **MEDIUM (34/100)** `html/war-rooms/mdm/mdm-strategist.html`
   - Actions detected: analysis, run, execute, review, approve, reject, resolve
   - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, INTAKE / DATA ENTRY
-- **MEDIUM (33/100)** `html/tsm-member-command-center.html`
-  - Actions detected: create, open
-  - Workflow role: INTAKE / ANALYSIS, EXECUTIVE / OUTCOME, INTAKE / DATA ENTRY
+- **MEDIUM (33/100)** `html/bpo-files/bpo-recovery-queue.html`
+  - Actions detected: report, open
+  - Workflow role: REPORT / DELIVERY, INTAKE / DATA ENTRY
 - **MEDIUM (33/100)** `html/war-rooms/crm/crm-war-room.html`
   - Actions detected: upload, analysis, run, generate, save, create, open
   - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, AI / COPILOT, INTAKE / DATA ENTRY
-- **MEDIUM (33/100)** `html/war-rooms/music-war/cadence-builder.html`
-  - Actions detected: analyze, run, create, start
-  - Workflow role: EXECUTIVE / OUTCOME, INTAKE / DATA ENTRY
 - **MEDIUM (32/100)** `html/catalog-war-room.html`
   - Actions detected: analysis, run, generate, save, create, continue
   - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, AI / COPILOT, INTAKE / DATA ENTRY
-- **MEDIUM (32/100)** `html/client-portal.html`
-  - Actions detected: download, report, open
-  - Workflow role: EXECUTIVE / OUTCOME, REPORT / DELIVERY, INTAKE / DATA ENTRY
 - **MEDIUM (32/100)** `html/hub-index-v4.html`
   - Actions detected: analysis, run, open, launch, start
   - Workflow role: DECISION / STRATEGY, EXECUTIVE / OUTCOME, INTAKE / DATA ENTRY
@@ -493,12 +517,15 @@ Every major TSM workflow should eventually answer these questions:
 - **MEDIUM (31/100)** `html/sap_phases_talktrack_section_v2.html`
   - Actions detected: run, approve, escalate, generate, open
   - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, INTAKE / DATA ENTRY
+- **MEDIUM (31/100)** `html/war-rooms/college-command/college-research-fa-command.html`
+  - Actions detected: analysis, run, report, open
+  - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
+- **MEDIUM (30/100)** `html/war-rooms/music-war/creation/beat-workbench.html`
+  - Actions detected: upload, analyze, save, open
+  - Workflow role: EXECUTIVE / OUTCOME, INTAKE / DATA ENTRY
 - **MEDIUM (29/100)** `html/demo/inphusionsys-hub.html`
   - Actions detected: import, assign, open, start
   - Workflow role: INTAKE / ANALYSIS, AI / COPILOT, INTAKE / DATA ENTRY
-- **MEDIUM (28/100)** `html/concierge/concierge-executive-portal.html`
-  - Actions detected: review, approve, assign, open
-  - Workflow role: DECISION / STRATEGY, EXECUTIVE / OUTCOME, INTAKE / DATA ENTRY
 - **MEDIUM (28/100)** `html/reo-pro/pack-engine.html`
   - Actions detected: analysis, run, resolve, create, open, launch
   - Workflow role: INTAKE / ANALYSIS, INTAKE / DATA ENTRY
@@ -511,48 +538,21 @@ Every major TSM workflow should eventually answer these questions:
 - **MEDIUM (27/100)** `html/legal-pro/legal-compliance.html`
   - Actions detected: import, analysis, review, open
   - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, INTAKE / DATA ENTRY
+- **MEDIUM (26/100)** `html/bpo-clients-admin.html`
+  - Actions detected: save, create, start
+  - Workflow role: INTAKE / ANALYSIS, INTAKE / DATA ENTRY
+- **MEDIUM (25/100)** `html/bpo-files/smoke-test.html`
+  - Actions detected: run, execute, create, open, start
+  - Workflow role: INTAKE / ANALYSIS
+- **MEDIUM (25/100)** `html/concierge/concierge-strategist.html`
+  - Actions detected: assign, generate, open
+  - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, INTAKE / DATA ENTRY
 - **MEDIUM (25/100)** `html/concierge/concierge-war-room.html`
   - Actions detected: submit, assign, create, open, start
   - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, INTAKE / DATA ENTRY
 - **MEDIUM (24/100)** `html/construction-suite/showcase/index.html`
   - Actions detected: run, review, report, launch
   - Workflow role: INTAKE / ANALYSIS, EXECUTIVE / OUTCOME, REPORT / DELIVERY
-- **MEDIUM (23/100)** `html/executive-portal-v2.html`
-  - Actions detected: approve, escalate, report, save
-  - Workflow role: EXECUTIVE / OUTCOME, REPORT / DELIVERY
-- **MEDIUM (23/100)** `html/l1-copilot/aplus/aplus-interview.html`
-  - Actions detected: submit, review, report, start
-  - Workflow role: EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
-- **MEDIUM (23/100)** `html/l1-copilot/aplus/aplus-lab.html`
-  - Actions detected: submit, review, resolve, report, open, start
-  - Workflow role: EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
-- **MEDIUM (22/100)** `html/l1-copilot/aplus/aplus-practice.html`
-  - Actions detected: review, report, start
-  - Workflow role: EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
-- **MEDIUM (22/100)** `html/war-rooms/music-war/producer/producer-ai.html`
-  - Actions detected: save, start
-  - Workflow role: EXECUTIVE / OUTCOME, INTAKE / DATA ENTRY
-- **MEDIUM (21/100)** `html/concierge/concierge-strategist.html`
-  - Actions detected: assign, open
-  - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, INTAKE / DATA ENTRY
-- **LOW (17/100)** `html/bpo-files/suite-hub.html`
-  - Actions detected: import
-  - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, INTAKE / DATA ENTRY
-- **LOW (17/100)** `html/l1-copilot/aplus/aplus-readiness.html`
-  - Actions detected: report, start
-  - Workflow role: EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
-- **LOW (16/100)** `html/l1-copilot/aplus/aplus-assessment.html`
-  - Actions detected: run, submit, review, start
-  - Workflow role: EXECUTIVE / OUTCOME, AI / COPILOT, INTAKE / DATA ENTRY
-- **LOW (16/100)** `html/tsm-platform-hub.html`
-  - Actions detected: execute, start
-  - Workflow role: INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, AI / COPILOT, INTAKE / DATA ENTRY
-- **LOW (15/100)** `html/mission-executive-dashboard.html`
-  - Actions detected: import, run, review, open
-  - Workflow role: EXECUTIVE / OUTCOME, INTAKE / DATA ENTRY
-- **LOW (15/100)** `html/pc-command/public/index.html`
-  - Actions detected: import, analysis, run, launch
-  - Workflow role: DECISION / STRATEGY, INTAKE / DATA ENTRY
 
 ## 4. Report / Output Opportunities
 
@@ -570,6 +570,7 @@ Every major TSM workflow should eventually answer these questions:
 - `html/construction-suite/how-to.html` — report, export, pdf, csv, xlsx, summary, executive, brief, letter, package
 - `html/construction-suite/tsm-construction-command.html` — report, export, pdf, deck, summary, executive, brief, letter, package
 - `html/construction-suite/zero-trust.html` — report, export, csv, letter, package
+- `html/document-processing-revenue-recovery-manual.html` — report, export, pdf, summary, executive, snapshot, brief, letter, package
 - `html/finops-command-suite-v2.html` — report, pdf, csv, excel, summary, executive, brief, letter
 - `html/finops-main-strategist.html` — report, export, download, pdf, csv, xlsx, summary, executive, snapshot, brief, letter, package
 - `html/finops-suite/compliance.html` — report, export, pdf, csv, xlsx, summary, executive, letter
@@ -577,7 +578,7 @@ Every major TSM workflow should eventually answer these questions:
 - `html/finops-suite/financial-ui.html` — report, export, pdf, csv, excel, presentation, summary, executive, snapshot, brief, letter, package
 - `html/finops-suite/finops-accounting.html` — report, export, download, csv, summary, executive, letter
 - `html/finops-suite/finops-main-strategist/index.html` — report, export, download, pdf, csv, xlsx, summary, executive, snapshot, brief, letter
-- `html/finops-suite/finops-operations.html` — report, export, pdf, csv, xlsx, excel, deck, summary, executive, proposal, letter
+- `html/finops-suite/finops-operations.html` — report, export, download, pdf, csv, xlsx, excel, deck, summary, executive, proposal, letter
 - `html/finops-suite/finops-war/finops-main-strategist.html` — report, export, download, pdf, csv, xlsx, summary, executive, snapshot, brief, letter, package
 - `html/finops-suite/finops-war/finops-war-room.html` — report, export, download, pdf, summary, executive, snapshot, brief, letter, package
 - `html/finops-suite/how-to-finops.html` — report, export, download, pdf, csv, xlsx, presentation, deck, summary, executive, snapshot, brief, letter, package
@@ -587,16 +588,17 @@ Every major TSM workflow should eventually answer these questions:
 - `html/finops-suite/tsm-rcm-os-howto.html` — report, export, download, pdf, summary, executive, snapshot, brief, letter, package
 - `html/finops-suite/tsm-rcm-os.html` — report, export, download, presentation, summary, executive, snapshot, brief, letter, package
 - `html/finops-suite/zero-trust.html` — report, export, csv, letter, package
-- `html/healthcare/executive-portal.html` — report, export, download, summary, executive, snapshot, brief, proposal, letter, package
+- `html/healthcare/executive-portal.html` — report, export, download, presentation, summary, executive, snapshot, brief, proposal, letter, package
 - `html/healthcare/hc-compliance/index.html` — report, export, summary, executive, snapshot, brief, letter
-- `html/healthcare/hc-denial-war-room.html` — report, export, download, pdf, csv, xlsx, excel, presentation, summary, executive, brief, letter
+- `html/healthcare/hc-denial-war-room.html` — report, export, download, pdf, csv, xlsx, excel, presentation, summary, executive, brief, letter, package
 - `html/healthcare/hc-grants/index.html` — report, presentation, summary, executive, snapshot, brief, letter, package
 - `html/healthcare/hc-insurance/index.html` — report, export, summary, executive, snapshot, brief, letter
 - `html/healthcare/hc-legal/index.html` — report, export, summary, executive, snapshot, brief, letter
 - `html/healthcare/hc-medical/index.html` — report, export, presentation, summary, snapshot, brief, letter
 - `html/healthcare/hc-strategist/index.html` — report, export, download, presentation, summary, executive, snapshot, brief, letter
 - `html/healthcare/hc-taxprep/index.html` — report, export, summary, snapshot, brief, letter
-- `html/l1-copilot/l1-ticket-copilot.html` — report, pdf, presentation, summary, snapshot, brief, letter, package
+- `html/healthcare/hc-vendors/index.html` — report, export, presentation, summary, snapshot, brief, letter
+- `html/l1-copilot/l1-ticket-copilot.html` — report, pdf, csv, xlsx, presentation, summary, snapshot, brief, letter, package
 - `html/legal-pro/legal-trust.html` — report, export, csv, letter, package
 - `html/reo-pro/index.html` — report, pdf, csv, presentation, summary, executive, snapshot, brief, proposal, letter, package
 - `html/reo-pro/re-guide.html` — report, export, pdf, csv, xlsx, summary, executive, snapshot, brief, letter, package
@@ -604,7 +606,7 @@ Every major TSM workflow should eventually answer these questions:
 - `html/tsm-bpo-daily-workflow-gtm.html` — report, pdf, presentation, summary, executive, snapshot, brief, letter, package
 - `html/tsm-candidate-readiness-v2.html` — report, export, download, pdf, csv, presentation, deck, summary, executive, brief, letter, package
 - `html/tsm-career-os-guide.html` — report, export, excel, summary, executive, brief, proposal, letter
-- `html/tsm-career-training-platform.html` — report, export, download, pdf, excel, presentation, deck, summary, executive, snapshot, brief, letter, package
+- `html/tsm-career-training-platform.html` — report, export, download, pdf, excel, presentation, deck, summary, executive, snapshot, brief, proposal, letter, package
 - `html/tsm-consultz-portfolio.html` — report, export, download, pdf, csv, xlsx, summary, executive, snapshot, brief, letter
 - `html/tsm-doc-search-multi.html` — report, export, download, pdf, csv, xlsx, summary, executive, snapshot, brief, proposal, letter, package
 - `html/tsm-how-to-guide.html` — report, export, download, summary, executive, brief, letter
@@ -612,11 +614,12 @@ Every major TSM workflow should eventually answer these questions:
 - `html/tsm-insurance/ins-hub1.html` — excel, presentation, summary, executive, brief, letter, package
 - `html/tsm-insurance/ins-intel.html` — report, export, presentation, deck, summary, executive, snapshot, letter, package
 - `html/tsm-insurance/insurance-claims-pro.html` — report, export, download, pdf, csv, xlsx, excel, summary, executive, brief, letter, package
+- `html/tsm-insurance/pc-command.html` — report, excel, presentation, summary, brief, letter, package
 - `html/tsm-job-prep.html` — report, export, excel, presentation, deck, summary, executive, brief, letter
 - `html/tsm-job-prep1.html` — report, export, excel, presentation, deck, summary, executive, brief, letter
 - `html/war-rooms/construct-war/construction-war-room.html` — report, export, download, presentation, summary, executive, snapshot, brief, proposal, letter, package
 - `html/war-rooms/insure-war/insurance-strategist.html` — report, export, download, summary, executive, snapshot, brief, letter, package
-- `html/war-rooms/insure-war/insurance-war-room.html` — report, export, download, pdf, presentation, summary, executive, snapshot, brief, letter, package
+- `html/war-rooms/insure-war/insurance-war-room.html` — report, export, download, presentation, summary, executive, snapshot, brief, letter, package
 - `html/war-rooms/legal-war/legal-war-room.html` — report, export, download, pdf, csv, summary, executive, snapshot, brief, letter, package
 - `html/war-rooms/re-war/re-exec-portal.html` — report, export, download, csv, summary, executive, snapshot, brief, letter, package
 - `html/war-rooms/re-war/re-strategist.html` — report, export, download, summary, executive, brief, letter
@@ -632,18 +635,15 @@ Every major TSM workflow should eventually answer these questions:
 - `html/legal-pro/legal-tax.html` — report, export, download, pdf, csv, xlsx, brief, letter
 - `html/tax-prep.html` — report, export, download, pdf, csv, xlsx, brief, letter
 - `html/tax-prep/index.html` — report, export, download, pdf, csv, xlsx, brief, letter
-- `html/healthcare/hc-vendors/index.html` — report, export, summary, snapshot, brief, letter
-- `html/tsm-insurance/pc-command.html` — report, excel, presentation, brief, letter, package
 - `html/tsm-mortgage-demo.html` — report, export, download, pdf, csv, xlsx, deck, summary, executive, snapshot, letter
 - `html/auditops-pro.html` — report, export, download, pdf, csv, xlsx, brief, letter
 - `html/construction-suite/auditops-tax.html` — report, export, download, pdf, csv, xlsx, brief, letter
 - `html/tsm-insurance/tax-prep.html` — report, export, download, pdf, csv, xlsx, brief, letter
 - `html/tsm-marketing-platform.html` — presentation, deck, executive, brief, letter
 - `html/construction-suite/construction-hub.html` — report, export, pdf, summary, executive, brief, letter
+- `html/demo/presentation-hub.html` — report, download, presentation, deck, summary, executive, brief, proposal, letter
 - `html/finops-suite/finops-presentation.html` — report, export, excel, summary, executive, brief, letter
 - `html/finops-suite/finops-presentation/index.html` — report, export, excel, summary, executive, brief, letter
-- `html/healthcare/hc-operations/index.html` — report, export, summary, snapshot, brief, letter
-- `html/healthcare/hc-pharmacy/index.html` — report, export, summary, snapshot, brief, letter
 - `html/war-rooms/bpo-war/bpo-executive-portal.html` — report, export, download, summary, executive, brief, letter
 - `html/finops-suite/finance-index.html` — report, summary, executive, brief, letter
 - `html/finops-suite/finops-scenarios.html` — report, export, csv, excel, presentation, summary, executive, brief, letter, package
@@ -655,7 +655,7 @@ Every major TSM workflow should eventually answer these questions:
 - `html/healthcare/hc-academy/crc-hc-exam.html` — report, summary, letter
 - `html/healthcare/hc-academy/crc-hc-practice.html` — report, summary, letter
 - `html/healthcare/hc-main-strategist.html` — report, export, summary, executive, snapshot, brief, letter, package
-- `html/ins-presentation/index.html` — report, presentation, deck, summary, executive, letter, package
+- `html/healthcare/hc-operations/index.html` — report, export, summary, snapshot, brief, letter
 
 ## 5. Workflow Pages
 
@@ -673,6 +673,7 @@ Every major TSM workflow should eventually answer these questions:
 - `html/construction-suite/how-to.html` — INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, INTAKE / DATA ENTRY
 - `html/construction-suite/tsm-construction-command.html` — INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
 - `html/construction-suite/zero-trust.html` — INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
+- `html/document-processing-revenue-recovery-manual.html` — INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
 - `html/finops-command-suite-v2.html` — INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
 - `html/finops-main-strategist.html` — INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
 - `html/finops-suite/compliance.html` — INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
@@ -690,7 +691,7 @@ Every major TSM workflow should eventually answer these questions:
 - `html/finops-suite/tsm-rcm-os-howto.html` — INTAKE / ANALYSIS, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
 - `html/finops-suite/tsm-rcm-os.html` — INTAKE / ANALYSIS, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
 - `html/finops-suite/zero-trust.html` — INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
-- `html/healthcare/executive-portal.html` — INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, INTAKE / DATA ENTRY
+- `html/healthcare/executive-portal.html` — INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
 - `html/healthcare/hc-compliance/index.html` — INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
 - `html/healthcare/hc-denial-war-room.html` — INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, INTAKE / DATA ENTRY
 - `html/healthcare/hc-grants/index.html` — INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
@@ -699,6 +700,7 @@ Every major TSM workflow should eventually answer these questions:
 - `html/healthcare/hc-medical/index.html` — INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
 - `html/healthcare/hc-strategist/index.html` — INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
 - `html/healthcare/hc-taxprep/index.html` — INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
+- `html/healthcare/hc-vendors/index.html` — INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
 - `html/l1-copilot/l1-ticket-copilot.html` — INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
 - `html/legal-pro/legal-trust.html` — INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
 - `html/reo-pro/index.html` — INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
@@ -715,6 +717,7 @@ Every major TSM workflow should eventually answer these questions:
 - `html/tsm-insurance/ins-hub1.html` — INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, INTAKE / DATA ENTRY
 - `html/tsm-insurance/ins-intel.html` — INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
 - `html/tsm-insurance/insurance-claims-pro.html` — INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
+- `html/tsm-insurance/pc-command.html` — INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
 - `html/tsm-job-prep.html` — EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
 - `html/tsm-job-prep1.html` — EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
 - `html/war-rooms/construct-war/construction-war-room.html` — INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, INTAKE / DATA ENTRY
@@ -735,18 +738,15 @@ Every major TSM workflow should eventually answer these questions:
 - `html/legal-pro/legal-tax.html` — DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
 - `html/tax-prep.html` — DECISION / STRATEGY, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
 - `html/tax-prep/index.html` — DECISION / STRATEGY, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
-- `html/healthcare/hc-vendors/index.html` — INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
-- `html/tsm-insurance/pc-command.html` — INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
 - `html/tsm-mortgage-demo.html` — INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
 - `html/auditops-pro.html` — DECISION / STRATEGY, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
 - `html/construction-suite/auditops-tax.html` — INTAKE / ANALYSIS, DECISION / STRATEGY, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
 - `html/tsm-insurance/tax-prep.html` — INTAKE / ANALYSIS, DECISION / STRATEGY, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
 - `html/tsm-marketing-platform.html` — INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, INTAKE / DATA ENTRY
 - `html/construction-suite/construction-hub.html` — INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, INTAKE / DATA ENTRY
+- `html/demo/presentation-hub.html` — INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
 - `html/finops-suite/finops-presentation.html` — INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
 - `html/finops-suite/finops-presentation/index.html` — INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
-- `html/healthcare/hc-operations/index.html` — INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
-- `html/healthcare/hc-pharmacy/index.html` — INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
 - `html/war-rooms/bpo-war/bpo-executive-portal.html` — INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, INTAKE / DATA ENTRY
 - `html/finops-suite/finance-index.html` — DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
 - `html/finops-suite/finops-scenarios.html` — INTAKE / ANALYSIS, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
@@ -758,33 +758,33 @@ Every major TSM workflow should eventually answer these questions:
 - `html/healthcare/hc-academy/crc-hc-exam.html` — INTAKE / ANALYSIS, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
 - `html/healthcare/hc-academy/crc-hc-practice.html` — INTAKE / ANALYSIS, EXECUTIVE / OUTCOME, REPORT / DELIVERY, INTAKE / DATA ENTRY
 - `html/healthcare/hc-main-strategist.html` — INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
-- `html/ins-presentation/index.html` — INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, INTAKE / DATA ENTRY
+- `html/healthcare/hc-operations/index.html` — INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
 
 ## 6. Vertical Coverage
 
-- **construction** — 240 page(s)
-- **insurance** — 209 page(s)
-- **healthcare** — 184 page(s)
-- **legal** — 182 page(s)
-- **tax** — 144 page(s)
-- **finops** — 136 page(s)
-- **vendor** — 120 page(s)
-- **bpo** — 118 page(s)
-- **approval** — 112 page(s)
-- **itops** — 112 page(s)
-- **finance** — 106 page(s)
-- **mortgage** — 91 page(s)
-- **real estate** — 70 page(s)
-- **logistics** — 61 page(s)
-- **supplier** — 53 page(s)
-- **property** — 44 page(s)
-- **schools** — 35 page(s)
-- **hotel** — 27 page(s)
-- **hotelops** — 20 page(s)
-- **crm** — 17 page(s)
-- **catalog** — 13 page(s)
-- **noc** — 9 page(s)
-- **cpq** — 8 page(s)
+- **construction** — 250 page(s)
+- **insurance** — 220 page(s)
+- **healthcare** — 204 page(s)
+- **legal** — 190 page(s)
+- **tax** — 147 page(s)
+- **finops** — 139 page(s)
+- **bpo** — 134 page(s)
+- **vendor** — 131 page(s)
+- **approval** — 120 page(s)
+- **finance** — 111 page(s)
+- **itops** — 111 page(s)
+- **mortgage** — 99 page(s)
+- **real estate** — 76 page(s)
+- **logistics** — 63 page(s)
+- **supplier** — 60 page(s)
+- **property** — 50 page(s)
+- **schools** — 44 page(s)
+- **hotel** — 26 page(s)
+- **crm** — 18 page(s)
+- **hotelops** — 18 page(s)
+- **catalog** — 16 page(s)
+- **noc** — 10 page(s)
+- **cpq** — 9 page(s)
 
 ## 7. Suggested How-To Architecture
 
