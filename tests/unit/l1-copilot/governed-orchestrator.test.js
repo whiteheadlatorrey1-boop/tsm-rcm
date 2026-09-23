@@ -63,6 +63,59 @@ check(
   incomplete.evidence.derivedFromServiceNow === false
 );
 
+const preservedReconciliation = orchestrate({
+  state: 'IN PROGRESS',
+  taskType: 'INCIDENT',
+  context: {
+    reconciliation: {
+      incident: {
+        number: 'INC0012345'
+      },
+      ritm: {
+        number: 'RITM0012345'
+      },
+      selectedScTask: {
+        number: 'SCTASK0012345'
+      },
+      mismatches: []
+    }
+  },
+  evidence: {}
+});
+
+check(
+  'reconciled ServiceNow context is preserved explicitly',
+  preservedReconciliation.context.source === 'servicenow-reconciliation'
+);
+
+check(
+  'reconciled Incident remains context only',
+  preservedReconciliation.context.serviceNowReconciliation.incident.number === 'INC0012345'
+);
+
+check(
+  'reconciled RITM remains context only',
+  preservedReconciliation.context.serviceNowReconciliation.ritm.number === 'RITM0012345'
+);
+
+check(
+  'reconciled SC Task remains context only',
+  preservedReconciliation.context.serviceNowReconciliation.selectedScTask.number === 'SCTASK0012345'
+);
+
+check(
+  'preserved reconciliation does not become technician evidence',
+  preservedReconciliation.evidence.derivedFromServiceNow === false &&
+    preservedReconciliation.evidence.source === 'technician-confirmed-input' &&
+    Object.values(preservedReconciliation.evidence.values)
+      .every(value => value === false)
+);
+
+check(
+  'preserved reconciliation cannot authorize closure',
+  preservedReconciliation.closure.readyForClosure === false
+);
+
 const complete = orchestrate({
   state: 'IN PROGRESS',
   taskType: 'HARDWARE',

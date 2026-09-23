@@ -103,10 +103,32 @@ function orchestrate(input = {}) {
     evidence
   });
 
+  /*
+   * Preserve ServiceNow reconciliation as explicit context.
+   *
+   * IMPORTANT:
+   * - This is informational context only.
+   * - It is never converted into technician evidence.
+   * - It cannot authorize closure.
+   * - It cannot change ServiceNow state.
+   */
+  const serviceNowReconciliation =
+    context.reconciliation &&
+    typeof context.reconciliation === 'object'
+      ? context.reconciliation
+      : null;
+
   return {
     workflow,
     closure,
     checklist,
+
+    context: {
+      serviceNowReconciliation,
+      source: serviceNowReconciliation
+        ? 'servicenow-reconciliation'
+        : null
+    },
 
     evidence: {
       source: 'technician-confirmed-input',
