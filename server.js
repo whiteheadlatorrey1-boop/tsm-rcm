@@ -110,6 +110,8 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const { enforceBNCASchema } = require('./server/tsm-bnca-schema');
 const snAdapter = require('./server/l1-copilot/servicenow-adapter');
+const { evaluateWorkflow } = require('./server/l1-copilot/workflow-engine');
+const { evaluateClosure, buildClosureChecklist } = require('./server/l1-copilot/closure-gate');
 const cloudOpsAdapter = require('./server/l1-copilot/cloud-ops-adapter');
 const graphAdapter = require('./server/l1-copilot/graph-intune-adapter');
 const gcpAdapter = require('./server/l1-copilot/gcp-adapter');
@@ -4883,6 +4885,59 @@ app.post('/api/l1-copilot/assistant', async (req, res) => {
 // honestly (503 + ok:false) rather than pretending to work when a customer
 // hasn't configured SERVICENOW_INSTANCE_URL yet. See the backend spec for
 // the full contract this satisfies.
+
+
+// --- L1 workflow / closure intelligence -------------------------------
+// READ-ONLY evaluation layer.
+// These routes evaluate technician-provided ticket context and evidence.
+// They do not call ServiceNow and never change ServiceNow state.
+app.post('/api/l1-copilot/workflow/evaluate', (req, res) => {
+  try {
+    const result = evaluateWorkflow(req.body || {});
+    return res.json({
+      ok: true,
+      workflow: result,
+      governed: {
+        readOnly: true,
+        canChangeState: false,
+        autonomousCloseAllowed: false
+      },
+      createdAt: new Date().toISOString()
+    });
+  } catch (e) {
+    console.error('L1 COPILOT WORKFLOW EVALUATION ERROR:', e.message);
+    return res.status(400).json({
+      ok: false,
+      error: e.message
+    });
+  }
+});
+
+app.post('/api/l1-copilot/closure/evaluate', (req, res) => {
+  try {
+    const input = req.body || {};
+    const closure = evaluateClosure(input);
+    const checklist = buildClosureChecklist(input);
+
+    return res.json({
+      ok: true,
+      closure,
+      checklist,
+      governed: {
+        readOnly: true,
+        technicianAuthority: true,
+        autonomousCloseAllowed: false
+      },
+      createdAt: new Date().toISOString()
+    });
+  } catch (e) {
+    console.error('L1 COPILOT CLOSURE EVALUATION ERROR:', e.message);
+    return res.status(400).json({
+      ok: false,
+      error: e.message
+    });
+  }
+});
 
 app.get('/api/l1-copilot/servicenow/status', (req, res) => {
   const configured = snAdapter.isConfigured();
