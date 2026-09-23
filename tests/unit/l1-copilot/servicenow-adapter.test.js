@@ -166,6 +166,8 @@ async function main() {
   check('getTicket resolves requester', ticket.requester === 'Jane Doe');
   check('getTicket resolves assignment group', ticket.assignmentGroup === 'Desktop Support');
   check('getTicket captures sys_id for later writes', ticket.sysId === 'ffffffffffffffffffffffffffffffff');
+  check('getTicket normalizes numeric state 2 to IN PROGRESS', ticket.state === 'IN PROGRESS');
+  check('getTicket preserves raw numeric state on ticket.raw', ticket.raw && ticket.raw.state === '2');
 
   // writeWorkNote — looks up sys_id first, then PATCHes
   const wn = await adapter.writeWorkNote('INC0012345', 'Replaced battery, verified boot.', config);
