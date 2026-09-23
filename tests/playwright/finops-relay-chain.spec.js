@@ -11,8 +11,8 @@
 // Payload shapes traced from:
 //   docSearchPayload     <- html/tsm-doc-search-multi.html DOCSEARCH_ROUTES ~line 2585
 //   warRoomKernelRelay   <- TSM_KERNEL.setRelay() {ts, v, p} wrapper, `p` matching
-//                           html/finops-suite/finops-war-room.html's own relay payload
-//   strategistRelay      <- html/finops-suite/finops-main-strategist.html
+//                           html/finops-suite/finops-war/finops-war-room.html's own relay payload
+//   strategistRelay      <- html/finops-suite/finops-war/finops-main-strategist.html
 //                           relayToExecutive() ~line 1194 (writes tsm_strategist_relay)
 //
 // Run: npx playwright test tests/playwright/finops-relay-chain.spec.js
@@ -35,7 +35,7 @@ test.describe('FinOps relay chain (Phase 1)', () => {
       localStorage.setItem('tsm_fo_docsearch_relay', JSON.stringify(payload));
     }, docSearchPayload);
 
-    await page.goto(`${BASE_URL}/html/finops-suite/finops-war-room.html`);
+    await page.goto(`${BASE_URL}/html/finops-suite/finops-war/finops-war-room.html`);
 
     const pasteArea = page.locator('#docPaste');
     await expect(pasteArea).toHaveValue(/q3-invoice\.pdf/, { timeout: 5000 });
@@ -63,7 +63,7 @@ test.describe('FinOps relay chain (Phase 1)', () => {
       localStorage.setItem('tsm_war_relay_finops-suite', JSON.stringify(payload));
     }, kernelPayload);
 
-    await page.goto(`${BASE_URL}/html/finops-suite/finops-main-strategist.html`);
+    await page.goto(`${BASE_URL}/html/finops-suite/finops-war/finops-main-strategist.html`);
 
     const output = page.locator('#stratOutput');
     await expect(output).toContainText(/EXPOSURE|Invoice/i, { timeout: 5000 });
@@ -82,7 +82,7 @@ test.describe('FinOps relay chain (Phase 1)', () => {
       localStorage.setItem('tsm_strategist_relay', JSON.stringify(payload));
     }, strategistRelay);
 
-    await page.goto(`${BASE_URL}/html/finops-suite/finops-executive-portal.html`);
+    await page.goto(`${BASE_URL}/html/finops-suite/finops-war/finops-executive-portal.html`);
 
     // loadRelay()/populateFromRelay() should have run; assert the page
     // actually shows the seeded exposure figure somewhere, not just a
@@ -94,7 +94,7 @@ test.describe('FinOps relay chain (Phase 1)', () => {
     // TSM_FINOPS_STRATEGIST_RELAY IS written correctly by html/finops-main-strategist.html
     // (root-level file) -- but nothing in the app actually navigates there.
     // Every real link (finops-war-room.html, finops-executive-portal.html, the
-    // autorun pipeline) points at html/finops-suite/finops-main-strategist.html,
+    // autorun pipeline) points at html/finops-suite/finops-war/finops-main-strategist.html,
     // which has zero references to STRATEGIST_RELAY anywhere in the file.
     // Practical effect: FinOps's row in Sentinel Center can never go LIVE from
     // real use -- only from someone finding and using the orphaned root file,
