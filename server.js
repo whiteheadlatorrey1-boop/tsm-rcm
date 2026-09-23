@@ -5750,7 +5750,11 @@ app.post('/api/l1-copilot/vendor', async (req, res) => {
   }
 });
 
-app.post('/api/l1-copilot/resolution', async (req, res) => {
+app.post('/api/l1-copilot/resolution',
+  (req, res, next) => (req.body && req.body.writeToServicenow)
+    ? requireRole(BPO_INTERNAL_ROLES)(req, res, next)
+    : next(),
+  async (req, res) => {
   const {
     ticket,
     analysis,
@@ -5789,6 +5793,14 @@ app.post('/api/l1-copilot/resolution', async (req, res) => {
       });
     }
 
+    const incidentId = String(incident).trim();
+    if (!/^[0-9a-f]{32}$/i.test(incidentId) && !/^INC\d{5,12}$/i.test(incidentId)) {
+      return res.status(400).json({ ok: false, error: 'incident must be an INC number or 32-character sys_id.' });
+    }
+    if (draft.length > 20000) {
+      return res.status(413).json({ ok: false, error: 'Reviewed draft exceeds the 20000-character limit.' });
+    }
+
     if (!snAdapter.isConfigured()) {
       return res.status(503).json({
         ok: false,
@@ -5797,7 +5809,7 @@ app.post('/api/l1-copilot/resolution', async (req, res) => {
     }
 
     try {
-      const result = await snAdapter.writeWorkNote(incident, draft.trim());
+      const result = await snAdapter.writeWorkNote(incidentId, draft.trim());
       return res.json({
         ok: true,
         answer: draft.trim(),
