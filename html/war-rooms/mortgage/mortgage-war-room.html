@@ -245,6 +245,13 @@ tr:hover td{background:rgba(212,175,55,.03)}
     </div>
 
     <div class="section">
+      <div class="section-head"><span>PORTFOLIO FORECAST</span><span id="forecastMeta"></span></div>
+      <div class="section-body" id="forecastBody">
+        <div class="empty-state">Load data to project closing-delay cost if today&rsquo;s past-SLA loan files stay open another 7, 14 and 30 days.</div>
+      </div>
+    </div>
+
+    <div class="section">
       <div class="section-head"><span>AI PIPELINE &amp; RISK ANALYSIS</span></div>
       <div class="section-body">
         <div class="ai-output" id="aiOutput">Run analysis to get AI-generated pipeline risk, SLA-breach root cause, rate lock exposure, and closing-readiness guidance across the loan program mix.</div>
@@ -475,12 +482,31 @@ tr:hover td{background:rgba(212,175,55,.03)}
     `;
   }
 
+  function renderForecast() {
+    const f = engine.getPortfolioForecast();
+    const body = document.getElementById('forecastBody');
+    const meta = document.getElementById('forecastMeta');
+    if (!f.stalled_files) {
+      meta.textContent = '';
+      body.innerHTML = '<div class="empty-state">No loan files are past SLA &mdash; no additional closing-delay cost projected.</div>';
+      return;
+    }
+    meta.textContent = `${f.stalled_files} FILES PAST SLA \u00b7 ${fmtMoney(f.daily_burn)}/DAY`;
+    body.innerHTML = `
+      <div class="snap-grid">
+        <div class="snap-item"><div class="snap-label">TODAY</div><div class="snap-val">${fmtMoney(f.current_total)}</div></div>
+        ${f.horizons.map(h => `<div class="snap-item"><div class="snap-label">+${h.days} DAYS</div><div class="snap-val warn">${fmtMoney(h.projected_total)}</div></div>`).join('')}
+      </div>
+      <div class="empty-state" style="margin-top:8px">${f.note}</div>`;
+  }
+
   function renderAll() {
     renderOwnerChips();
     renderKpis();
     renderTracker();
     renderTable();
     renderSnapshot();
+    renderForecast();
   }
 
   async function runAnalysis() {
