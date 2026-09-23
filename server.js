@@ -4857,6 +4857,29 @@ app.post('/api/insurance/ahip-quiz', async (req, res) => {
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
+// ── L1 LIVE-INTEGRATION GATES ──────────────────────────────────────────────
+// Routes that can reach a real system (ServiceNow, identity/imaging webhooks,
+// cloud and Intune connectors) require a staff session once that integration
+// is configured. While it is not configured they behave as before (demo data
+// or 503), so anonymous demos keep working and no real system is reachable.
+// Fails closed: if the configured-check throws, the gate requires a session.
+function l1LiveGate(isLive) {
+  return (req, res, next) => {
+    let live = true;
+    try { live = Boolean(isLive()); } catch (e) { live = true; }
+    return live ? requireRole(BPO_INTERNAL_ROLES)(req, res, next) : next();
+  };
+}
+const l1StatusOpen = (isLive) => (req, res, next) => (req.path === '/status' ? next() : l1LiveGate(isLive)(req, res, next));
+app.use('/api/l1-copilot/servicenow', l1StatusOpen(() => snAdapter.isConfigured()));
+app.use('/api/l1-copilot/onboarding/image', l1LiveGate(() => ONBOARDING_IMAGING_CONFIGURED()));
+app.use('/api/l1-copilot/onboarding/provision', l1LiveGate(() => ONBOARDING_IDENTITY_CONFIGURED()));
+app.use('/api/l1-copilot/security', l1LiveGate(() => graphAdapter.isConfigured()));
+app.use('/api/l1-copilot/graph-intune', l1StatusOpen(() => graphAdapter.isConfigured()));
+app.use('/api/l1-copilot/cloud-ops', l1StatusOpen(() => cloudOpsAdapter.isConfigured()));
+app.use('/api/l1-copilot/gcp', l1StatusOpen(() => gcpAdapter.isConfigured()));
+app.use('/api/l1-copilot/pilot', l1LiveGate(() => snAdapter.isConfigured() || graphAdapter.isConfigured()));
+
 app.post('/api/l1-copilot/assistant', async (req, res) => {
   try {
     var scenario = (req.body.scenario || req.body.question || req.body.query || '').trim();
@@ -5100,7 +5123,15 @@ app.post('/api/l1-copilot/servicenow/work-note', async (req, res) => {
   }
 
   try {
-    const result = await snAdapter.writeWorkNote(incident, note);
+    const incidentId = String(incident).trim();
+      const idOk = /^[0-9a-f]{32}$/i.test(incidentId) || /^[A-Za-z]{2,10}\d{5,12}$/.test(incidentId);
+      if (idOk === false) {
+        return res.status(400).json({ ok: false, error: 'incident must be a ticket number or 32-character sys_id.' });
+      }
+      if (typeof note !== 'string' || note.length > 20000) {
+        return res.status(413).json({ ok: false, error: 'note must be text of at most 20000 characters.' });
+      }
+      const result = await snAdapter.writeWorkNote(incidentId, note.trim());
     res.json({
       ok: true,
       ...result,
@@ -5794,8 +5825,8 @@ app.post('/api/l1-copilot/resolution',
     }
 
     const incidentId = String(incident).trim();
-    if (!/^[0-9a-f]{32}$/i.test(incidentId) && !/^INC\d{5,12}$/i.test(incidentId)) {
-      return res.status(400).json({ ok: false, error: 'incident must be an INC number or 32-character sys_id.' });
+    if (!/^[0-9a-f]{32}$/i.test(incidentId) && !/^[A-Za-z]{2,10}\d{5,12}$/.test(incidentId)) {
+      return res.status(400).json({ ok: false, error: 'incident must be a ticket number or 32-character sys_id.' });
     }
     if (draft.length > 20000) {
       return res.status(413).json({ ok: false, error: 'Reviewed draft exceeds the 20000-character limit.' });
