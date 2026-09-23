@@ -122,7 +122,7 @@ test.describe('FinOps relay chain (Phase 1)', () => {
     // itself is fine) -- the bug is that the live strategist never writes it.
     const foRow = page.locator('.vrow[data-vid="finops"]');
     await expect(foRow).toBeVisible({ timeout: 5000 });
-    await expect(foRow.locator('.exposure')).toContainText('42,500');
+    await expect(foRow.locator('.exposure')).toContainText('$43K');
   });
 
 });
