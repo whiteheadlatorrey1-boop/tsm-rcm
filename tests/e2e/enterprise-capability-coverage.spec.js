@@ -204,7 +204,8 @@ test.describe('Enterprise Capability Matrix — current coverage report', () => 
 
       for (const [capability, byVertical] of Object.entries(MATRIX)) {
         const terms = byVertical[vertical.column] || [];
-        const matched = terms.filter((t) => text.includes(t));
+        // Leading word-boundary match (plurals still hit) so short terms like 'aus' don't match inside 'because'/'cause'.
+        const matched = terms.filter((t) => new RegExp('(^|[^a-z0-9])' + t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '').test(text));
         const covered = matched.length > 0;
         if (covered) hits++;
         row[capability] = { covered, matchedTerms: matched, expectedTerms: terms };
