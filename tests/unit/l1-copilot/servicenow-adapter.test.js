@@ -21,6 +21,34 @@ const INCIDENTS = [
   { sys_id: 'ffffffffffffffffffffffffffffffff', number: 'INC0012345', priority: '2', caller_id: { display_value: 'Jane Doe' }, short_description: 'Laptop will not boot', assignment_group: { display_value: 'Desktop Support' }, state: '2', cmdb_ci: { display_value: 'FIN-LT-0042' } }
 ];
 
+const RITMS = [
+  {
+    sys_id: '11111111111111111111111111111111',
+    number: 'RITM0010001',
+    request: { value: '22222222222222222222222222222222', display_value: 'REQ0010001' },
+    requested_for: { value: '33333333333333333333333333333333', display_value: 'Jane Doe' },
+    short_description: 'New hire laptop',
+    description: 'Prepare laptop for new employee',
+    state: { value: '1', display_value: 'Open' },
+    assignment_group: { value: '44444444444444444444444444444444', display_value: 'Desktop Support' },
+    assigned_to: { value: '55555555555555555555555555555555', display_value: 'Tech One' },
+    cat_item: { value: '66666666666666666666666666666666', display_value: 'New Hire Laptop' }
+  }
+];
+
+const SC_TASKS = [
+  {
+    sys_id: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    number: 'SCTASK0010001',
+    request_item: { value: '11111111111111111111111111111111', display_value: 'RITM0010001' },
+    short_description: 'Prepare laptop',
+    description: 'Configure and test laptop',
+    state: { value: '1', display_value: 'Open' },
+    assignment_group: { value: '44444444444444444444444444444444', display_value: 'Desktop Support' },
+    assigned_to: { value: '55555555555555555555555555555555', display_value: 'Tech One' }
+  }
+];
+
 let lastRequest = null;
 let patchBody = null;
 let patchUrl = null;
@@ -68,6 +96,36 @@ const server = http.createServer((req, res) => {
       res.end(JSON.stringify({ result: { sys_id: sysId, ...patchBody } }));
       return;
     }
+    if (req.method === 'GET' && u.pathname === '/api/now/table/sc_req_item') {
+      const number = u.searchParams.get('number');
+      const sysId = u.searchParams.get('sys_id');
+
+      const match = RITMS.filter(r =>
+        (number && r.number === number) ||
+        (sysId && r.sys_id === sysId)
+      );
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ result: match }));
+      return;
+    }
+
+    if (req.method === 'GET' && u.pathname === '/api/now/table/sc_task') {
+      const number = u.searchParams.get('number');
+      const sysId = u.searchParams.get('sys_id');
+      const requestItem = u.searchParams.get('request_item');
+
+      const match = SC_TASKS.filter(t =>
+        (number && t.number === number) ||
+        (sysId && t.sys_id === sysId) ||
+        (requestItem && t.request_item.value === requestItem)
+      );
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ result: match }));
+      return;
+    }
+
     if (req.method === 'GET' && u.pathname === '/api/now/table/broken') {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: { message: 'Internal instance error' } }));
@@ -124,6 +182,46 @@ async function main() {
   let noTicketErr = null;
   try { await adapter.writeWorkNote('INC-NOPE-0000', 'x', config); } catch (e) { noTicketErr = e; }
   check('writeWorkNote errors when incident not found', !!noTicketErr && /No incident found/.test(noTicketErr.message));
+
+  // getRequestItem — RITM read-only lookup
+  const ritm = await adapter.getRequestItem('RITM0010001', config);
+  check('getRequestItem returns matching RITM', ritm && ritm.number === 'RITM0010001');
+  check('getRequestItem captures sys_id', ritm && ritm.sysId === '11111111111111111111111111111111');
+  check('getRequestItem resolves requested_for', ritm && ritm.requestedFor === '33333333333333333333333333333333');
+  check('getRequestItem resolves assignment group', ritm && ritm.assignmentGroup === '44444444444444444444444444444444');
+  check('getRequestItem resolves catalog item', ritm && ritm.catalogItem === '66666666666666666666666666666666');
+  check('getRequestItem sends GET only', lastRequest.method === 'GET');
+  check('getRequestItem sends sysparm_limit=1', lastRequest.url.includes('sysparm_limit=1'));
+  check('getRequestItem sends sysparm_display_value=all', lastRequest.url.includes('sysparm_display_value=all'));
+
+  // getRequestItem — sys_id lookup
+  const ritmBySysId = await adapter.getRequestItem(
+    '11111111111111111111111111111111',
+    config
+  );
+  check('getRequestItem accepts sys_id', ritmBySysId && ritmBySysId.number === 'RITM0010001');
+
+  // getCatalogTask — SC Task read-only lookup
+  const scTask = await adapter.getCatalogTask('SCTASK0010001', config);
+  check('getCatalogTask returns matching SC Task', scTask && scTask.number === 'SCTASK0010001');
+  check('getCatalogTask captures sys_id', scTask && scTask.sysId === 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+  check('getCatalogTask resolves request item', scTask && scTask.requestItem === '11111111111111111111111111111111');
+  check('getCatalogTask resolves assignment group', scTask && scTask.assignmentGroup === '44444444444444444444444444444444');
+  check('getCatalogTask sends GET only', lastRequest.method === 'GET');
+
+  // RITM -> SC Task reconciliation
+  const tasks = await adapter.getCatalogTasksByRequestItem(
+    'RITM0010001',
+    config
+  );
+  check('getCatalogTasksByRequestItem returns matching task', tasks.length === 1);
+  check('getCatalogTasksByRequestItem returns SCTASK number', tasks[0] && tasks[0].number === 'SCTASK0010001');
+  const taskUrl = new URL(lastRequest.url, config.instanceUrl);
+  check(
+    'getCatalogTasksByRequestItem uses RITM sys_id reference',
+    taskUrl.searchParams.get('request_item') === '11111111111111111111111111111111'
+  );
+  check('RITM/SC Task lookup leaves PATCH state untouched', patchBody && patchBody.state === '6');
 
   // searchAssetsByUser
   const owned = await adapter.searchAssetsByUser('Jane Doe', config);
