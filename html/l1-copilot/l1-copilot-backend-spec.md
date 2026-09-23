@@ -2,7 +2,7 @@
 
 This covers what needs to exist behind the current front-end so a company can point it at their real CMDB and roll it out to a team. The front-end (`l1-ticket-copilot.html`) is already built and expects these contracts — nothing here requires changing its UI logic.
 
-**Status (2026-08-20): the ServiceNow adapter in §3 is now real, not just designed.** `server/l1-copilot/servicenow-adapter.js` implements `getAsset`/`getTicket`/`searchAssetsByUser`/`writeWorkNote`/`updateTicketStatus` against the actual ServiceNow Table API, wired into `/api/l1-copilot/servicenow/*` routes and into `analyze`/`resolution` for CMDB-enriched analysis and work-note writeback. It's config-driven (`SERVICENOW_INSTANCE_URL`, `SERVICENOW_USERNAME`/`SERVICENOW_PASSWORD` or `SERVICENOW_OAUTH_TOKEN`) — no per-customer code changes needed, per-customer field-name overrides supported via a `fieldMap`. 22/22 unit tests pass against a mock Table API server (`tests/unit/l1-copilot/servicenow-adapter.test.js`); **not yet smoke-tested against a real ServiceNow instance** — do that before rollout to a live customer. Everything else below (auth/multi-tenancy, other CMDB platforms, the assistant endpoint's own writeback) is unchanged from the original design.
+**Status (2026-09-23): the ServiceNow integration is now governed for the L1 production boundary.** `server/l1-copilot/servicenow-adapter.js` implements `getAsset`/`getTicket`/`searchAssetsByUser`/`writeWorkNote` against the ServiceNow Table API, with L1 production routes limited to read operations plus technician-confirmed, append-only `incident.work_notes` writeback. ServiceNow state changes and incident creation are not exposed through the L1 production API; state transitions remain recommendations for the technician to perform in ServiceNow. The adapter retains additional create/status/batch capabilities for isolated PDI/dev/test workflows and they are not part of the production L1 permission contract. It's config-driven (`SERVICENOW_INSTANCE_URL`, `SERVICENOW_USERNAME`/`SERVICENOW_PASSWORD` or `SERVICENOW_OAUTH_TOKEN`) — no per-customer code changes needed, per-customer field-name overrides supported via a `fieldMap`. 22/22 unit tests pass against a mock Table API server (`tests/unit/l1-copilot/servicenow-adapter.test.js`); **not yet smoke-tested against a real ServiceNow instance** — do that before rollout to a live customer. Everything else below (auth/multi-tenancy, other CMDB platforms, the assistant endpoint's own writeback) is unchanged from the original design.
 
 **Status (2026-08-30): onboarding + security-context routes now exist (previously 404'd).** `/api/l1-copilot/onboarding/image`, `/api/l1-copilot/onboarding/provision`, `/api/l1-copilot/security/user-status`, `/api/l1-copilot/security/device-status` are wired server-side. `device-status` is genuinely real when Graph/Intune is configured (reuses `graph-intune-adapter.js`'s `getDevice()`). The other three honestly no-op to demo data (`L1_COPILOT_DEMO_MODE`, defaults on) until real write/risk adapters exist:
 - `onboarding/image` needs an imaging-platform webhook at `L1_COPILOT_IMAGING_WEBHOOK_URL` (MDT/SCCM/Intune/JAMF trigger).
@@ -118,7 +118,6 @@ getAsset(assetTag) -> { manufacturer, model, warrantyStatus, owner, department, 
 getTicket(incidentId) -> { priority, status, requester, description, assignmentGroup, ... }
 searchAssetsByUser(userId) -> [assetTag, ...]
 writeWorkNote(incidentId, note) -> { success }
-updateTicketStatus(incidentId, status) -> { success }
 ```
 
 **Per-platform notes:**
@@ -129,7 +128,7 @@ updateTicketStatus(incidentId, status) -> { success }
 **Where this plugs into the app:**
 - When a tech types an asset tag or incident number, the backend calls `getAsset`/`getTicket` and returns matched fields — this is what would replace manual entry of manufacturer/model/warranty.
 - `analyze` (§2.1) can call the adapter first to pull real warranty/asset history into the prompt context before generating analysis.
-- `resolutions` (§2.3) calls `writeWorkNote`/`updateTicketStatus` so resolution data flows back into the source of truth instead of living only in this app.
+- `resolutions` (§2.3) calls governed `writeWorkNote` so technician-confirmed resolution data can flow back into the ServiceNow source of truth. ServiceNow state changes are recommendation-only and are not written by the L1 production integration.
 
 **Config, not code, per customer**: each company's adapter instance needs its own credentials, base URL, and field-mapping config (their custom fields won't match a generic schema 1:1) — this should be an admin-configurable mapping layer, not a hardcoded integration per client.
 

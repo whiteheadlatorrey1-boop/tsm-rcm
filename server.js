@@ -110,6 +110,8 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const { enforceBNCASchema } = require('./server/tsm-bnca-schema');
 const snAdapter = require('./server/l1-copilot/servicenow-adapter');
+const { evaluateWorkflow } = require('./server/l1-copilot/workflow-engine');
+const { evaluateClosure, buildClosureChecklist } = require('./server/l1-copilot/closure-gate');
 const cloudOpsAdapter = require('./server/l1-copilot/cloud-ops-adapter');
 const graphAdapter = require('./server/l1-copilot/graph-intune-adapter');
 const gcpAdapter = require('./server/l1-copilot/gcp-adapter');
@@ -4884,6 +4886,59 @@ app.post('/api/l1-copilot/assistant', async (req, res) => {
 // hasn't configured SERVICENOW_INSTANCE_URL yet. See the backend spec for
 // the full contract this satisfies.
 
+
+// --- L1 workflow / closure intelligence -------------------------------
+// READ-ONLY evaluation layer.
+// These routes evaluate technician-provided ticket context and evidence.
+// They do not call ServiceNow and never change ServiceNow state.
+app.post('/api/l1-copilot/workflow/evaluate', (req, res) => {
+  try {
+    const result = evaluateWorkflow(req.body || {});
+    return res.json({
+      ok: true,
+      workflow: result,
+      governed: {
+        readOnly: true,
+        canChangeState: false,
+        autonomousCloseAllowed: false
+      },
+      createdAt: new Date().toISOString()
+    });
+  } catch (e) {
+    console.error('L1 COPILOT WORKFLOW EVALUATION ERROR:', e.message);
+    return res.status(400).json({
+      ok: false,
+      error: e.message
+    });
+  }
+});
+
+app.post('/api/l1-copilot/closure/evaluate', (req, res) => {
+  try {
+    const input = req.body || {};
+    const closure = evaluateClosure(input);
+    const checklist = buildClosureChecklist(input);
+
+    return res.json({
+      ok: true,
+      closure,
+      checklist,
+      governed: {
+        readOnly: true,
+        technicianAuthority: true,
+        autonomousCloseAllowed: false
+      },
+      createdAt: new Date().toISOString()
+    });
+  } catch (e) {
+    console.error('L1 COPILOT CLOSURE EVALUATION ERROR:', e.message);
+    return res.status(400).json({
+      ok: false,
+      error: e.message
+    });
+  }
+});
+
 app.get('/api/l1-copilot/servicenow/status', (req, res) => {
   const configured = snAdapter.isConfigured();
   res.json({ ok: true, configured, demoMode: (!configured) && demoData.isDemoModeEnabled() });
@@ -4918,44 +4973,34 @@ app.get('/api/l1-copilot/servicenow/ticket/:incident', async (req, res) => {
 });
 
 app.post('/api/l1-copilot/servicenow/work-note', async (req, res) => {
-  const { incident, note } = req.body || {};
-  if (!incident || !note) return res.status(400).json({ ok: false, error: 'incident and note are required' });
+  const { incident, note, technicianConfirmed } = req.body || {};
+
+  if (!incident || !note) {
+    return res.status(400).json({
+      ok: false,
+      error: 'incident and note are required'
+    });
+  }
+
+  if (technicianConfirmed !== true) {
+    return res.status(403).json({
+      ok: false,
+      error: 'Technician confirmation is required before writing a ServiceNow work note.'
+    });
+  }
+
   try {
     const result = await snAdapter.writeWorkNote(incident, note);
-    res.json({ ok: true, ...result });
+    res.json({
+      ok: true,
+      ...result,
+      governed: {
+        technicianConfirmed: true,
+        appendOnlyWorkNote: true
+      }
+    });
   } catch (e) {
     const status = e.code === 'SERVICENOW_NOT_CONFIGURED' ? 503 : 502;
-    res.status(status).json({ ok: false, error: e.message });
-  }
-});
-
-app.post('/api/l1-copilot/servicenow/status-update', async (req, res) => {
-  const { incident, state } = req.body || {};
-  if (!incident || !state) return res.status(400).json({ ok: false, error: 'incident and state are required' });
-  try {
-    const result = await snAdapter.updateTicketStatus(incident, state);
-    res.json({ ok: true, ...result });
-  } catch (e) {
-    const status = e.code === 'SERVICENOW_NOT_CONFIGURED' ? 503 : 502;
-    res.status(status).json({ ok: false, error: e.message });
-  }
-});
-
-// Batch ticket creation. Deliberately no demo-mode fallback here (unlike the
-// read endpoints above) — faking a successful bulk-create response when
-// ServiceNow isn't actually configured would be actively misleading for a
-// write operation, not just a degraded read. 503 + ok:false, honestly, same
-// as the rest of this integration when unconfigured.
-app.post('/api/l1-copilot/servicenow/batch-tickets', async (req, res) => {
-  const { tickets, options } = req.body || {};
-  if (!Array.isArray(tickets) || tickets.length === 0) {
-    return res.status(400).json({ ok: false, error: 'tickets must be a non-empty array of ticket field objects' });
-  }
-  try {
-    const result = await snAdapter.createTicketsBatch(tickets, options);
-    res.json({ ok: true, ...result });
-  } catch (e) {
-    const status = e.code === 'SERVICENOW_NOT_CONFIGURED' ? 503 : (e.status && e.status < 500 ? 400 : 502);
     res.status(status).json({ ok: false, error: e.message });
   }
 });
@@ -5596,35 +5641,93 @@ app.post('/api/l1-copilot/vendor', async (req, res) => {
 });
 
 app.post('/api/l1-copilot/resolution', async (req, res) => {
-  const { ticket, analysis, notes, incident, writeToServicenow, maxTokens } = req.body || {};
-  if (!ticket) return res.status(400).json({ ok: false, error: 'ticket required' });
+  const {
+    ticket,
+    analysis,
+    notes,
+    incident,
+    writeToServicenow,
+    draft,
+    technicianConfirmed,
+    maxTokens
+  } = req.body || {};
+
+  if (!ticket && !draft) {
+    return res.status(400).json({ ok: false, error: 'ticket or reviewed draft required' });
+  }
+
+  // Governed write path:
+  // - the client must explicitly request a ServiceNow write
+  // - an incident number must be present
+  // - the technician must explicitly confirm
+  // - the exact reviewed draft must be supplied
+  // No AI regeneration is performed on the write path.
+  if (writeToServicenow) {
+    if (!incident) {
+      return res.status(400).json({ ok: false, error: 'incident required for ServiceNow write' });
+    }
+    if (technicianConfirmed !== true) {
+      return res.status(403).json({
+        ok: false,
+        error: 'Technician confirmation is required before writing a ServiceNow work note.'
+      });
+    }
+    if (typeof draft !== 'string' || !draft.trim()) {
+      return res.status(400).json({
+        ok: false,
+        error: 'Reviewed resolution draft is required for ServiceNow write.'
+      });
+    }
+
+    if (!snAdapter.isConfigured()) {
+      return res.status(503).json({
+        ok: false,
+        error: 'ServiceNow is not configured for this environment.'
+      });
+    }
+
+    try {
+      const result = await snAdapter.writeWorkNote(incident, draft.trim());
+      return res.json({
+        ok: true,
+        answer: draft.trim(),
+        servicenow: { attempted: true, ...result },
+        governed: {
+          technicianConfirmed: true,
+          exactDraftWritten: true
+        },
+        createdAt: new Date().toISOString()
+      });
+    } catch (e) {
+      return res.status(e.code === 'SERVICENOW_NOT_CONFIGURED' ? 503 : 502).json({
+        ok: false,
+        error: e.message,
+        servicenow: { attempted: true, success: false }
+      });
+    }
+  }
+
   const prompt = `Ticket description:\n${ticket}\n\n` +
     (analysis ? `AI analysis on file:\n${JSON.stringify(analysis, null, 2)}\n\n` : '') +
     (notes ? `Technician notes / troubleshooting steps performed:\n${notes}\n\n` : '') +
-    `Write a resolution record ready to paste into ServiceNow, with these exact section headers on their own lines: ` +
+    `Write a resolution record as a DRAFT for technician review, with these exact section headers on their own lines: ` +
     `Problem / Cause / Actions Taken / Resolution / Validation / Next Steps. Be factual — only state actions that are ` +
-    `reflected in the notes above; do not invent steps that weren't performed.`;
+    `reflected in the notes above; do not invent steps that weren't performed. ` +
+    `This is a draft only and must not be treated as confirmation that the ticket is resolved.`;
+
   try {
     const answer = await groqChat(SP.l1support, prompt, maxTokens || 900);
 
-    // Optional real writeback: only attempted if the caller explicitly asks
-    // for it AND passes an incident number AND ServiceNow is configured —
-    // never silent, never assumed.
-    let servicenow = null;
-    if (writeToServicenow && incident) {
-      if (!snAdapter.isConfigured()) {
-        servicenow = { attempted: true, success: false, error: 'ServiceNow is not configured for this environment.' };
-      } else {
-        try {
-          await snAdapter.writeWorkNote(incident, answer);
-          servicenow = { attempted: true, success: true };
-        } catch (e) {
-          servicenow = { attempted: true, success: false, error: e.message };
-        }
-      }
-    }
-
-    return res.json({ ok: true, answer, servicenow, createdAt: new Date().toISOString() });
+    return res.json({
+      ok: true,
+      answer,
+      governed: {
+        draftOnly: true,
+        technicianConfirmed: false,
+        writtenToServicenow: false
+      },
+      createdAt: new Date().toISOString()
+    });
   } catch (e) {
     console.error('L1 COPILOT RESOLUTION ERROR:', e.message);
     return res.status(500).json({ ok: false, error: e.message });

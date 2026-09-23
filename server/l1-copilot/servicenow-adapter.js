@@ -255,6 +255,189 @@ async function writeWorkNote(incidentId, note, config) {
 }
 
 /**
+ * READ-ONLY SERVICE CATALOG / TASK LOOKUPS
+ *
+ * Production L1 contract:
+ *   - sc_req_item: READ ONLY
+ *   - sc_task: READ ONLY
+ *
+ * These functions intentionally expose only fields required for
+ * reconciliation and workflow guidance. They do not create, update,
+ * close, or delete RITMs or SC Tasks.
+ */
+
+const RITM_FIELDS = [
+  'sys_id',
+  'number',
+  'request',
+  'requested_for',
+  'short_description',
+  'description',
+  'state',
+  'assignment_group',
+  'assigned_to',
+  'cat_item'
+].join(',');
+
+const SC_TASK_FIELDS = [
+  'sys_id',
+  'number',
+  'request_item',
+  'short_description',
+  'description',
+  'state',
+  'assignment_group',
+  'assigned_to'
+].join(',');
+
+function normalizeReference(value) {
+  if (!value) return null;
+
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (typeof value === 'object') {
+    return (
+      value.value ||
+      value.sys_id ||
+      value.display_value ||
+      value.name ||
+      null
+    );
+  }
+
+  return String(value);
+}
+
+function normalizeRequestItem(record = {}) {
+  return {
+    sysId: normalizeReference(record.sys_id),
+    number: readField(record, 'number'),
+    request: normalizeReference(record.request),
+    requestedFor: normalizeReference(record.requested_for),
+    shortDescription: readField(record, 'short_description'),
+    description: readField(record, 'description'),
+    state: readField(record, 'state'),
+    assignmentGroup: normalizeReference(record.assignment_group),
+    assignedTo: normalizeReference(record.assigned_to),
+    catalogItem: normalizeReference(record.cat_item),
+    raw: record
+  };
+}
+
+function normalizeCatalogTask(record = {}) {
+  return {
+    sysId: normalizeReference(record.sys_id),
+    number: readField(record, 'number'),
+    requestItem: normalizeReference(record.request_item),
+    shortDescription: readField(record, 'short_description'),
+    description: readField(record, 'description'),
+    state: readField(record, 'state'),
+    assignmentGroup: normalizeReference(record.assignment_group),
+    assignedTo: normalizeReference(record.assigned_to),
+    raw: record
+  };
+}
+
+async function getRequestItem(identifier, config) {
+  const cfg = config || loadConfigFromEnv();
+  if (!isConfigured(cfg)) throw new ServiceNowNotConfiguredError();
+
+  const value = String(identifier || '').trim();
+  if (!value) throw new Error('getRequestItem requires a RITM number or sys_id.');
+
+  const isSysId = /^[0-9a-f]{32}$/i.test(value);
+  const query = isSysId
+    ? { sys_id: value }
+    : { number: value };
+
+  const data = await snRequest(cfg, 'GET', '/api/now/table/sc_req_item', {
+    query: {
+      ...query,
+      sysparm_fields: RITM_FIELDS,
+      sysparm_limit: 1,
+      sysparm_display_value: 'all'
+    }
+  });
+
+  const record = Array.isArray(data.result) ? data.result[0] : null;
+  return record ? normalizeRequestItem(record) : null;
+}
+
+async function getCatalogTask(identifier, config) {
+  const cfg = config || loadConfigFromEnv();
+  if (!isConfigured(cfg)) throw new ServiceNowNotConfiguredError();
+
+  const value = String(identifier || '').trim();
+  if (!value) throw new Error('getCatalogTask requires an SCTASK number or sys_id.');
+
+  const isSysId = /^[0-9a-f]{32}$/i.test(value);
+  const query = isSysId
+    ? { sys_id: value }
+    : { number: value };
+
+  const data = await snRequest(cfg, 'GET', '/api/now/table/sc_task', {
+    query: {
+      ...query,
+      sysparm_fields: SC_TASK_FIELDS,
+      sysparm_limit: 1,
+      sysparm_display_value: 'all'
+    }
+  });
+
+  const record = Array.isArray(data.result) ? data.result[0] : null;
+  return record ? normalizeCatalogTask(record) : null;
+}
+
+async function getCatalogTasksByRequestItem(requestItemIdentifier, config) {
+  const cfg = config || loadConfigFromEnv();
+  if (!isConfigured(cfg)) throw new ServiceNowNotConfiguredError();
+
+  const value = String(requestItemIdentifier || '').trim();
+  if (!value) {
+    throw new Error(
+      'getCatalogTasksByRequestItem requires a RITM number or sys_id.'
+    );
+  }
+
+  const ritm = await getRequestItem(value, cfg);
+  if (!ritm) return [];
+
+  if (!ritm.sysId) {
+    throw new Error(
+      `RITM ${ritm.number || value} did not return a sys_id; refusing SC Task reconciliation.`
+    );
+  }
+
+  const reference = ritm.sysId;
+
+  const data = await snRequest(cfg, 'GET', '/api/now/table/sc_task', {
+    query: {
+      request_item: reference,
+      sysparm_fields: SC_TASK_FIELDS,
+      sysparm_limit: 100,
+      sysparm_display_value: 'all'
+    }
+  });
+
+  const records = Array.isArray(data.result) ? data.result : [];
+  return records.map(normalizeCatalogTask);
+}
+
+
+/**
+ * NON-PRODUCTION / PDI / TEST ONLY.
+ *
+ * This capability is intentionally retained for isolated development and
+ * PDI workflows. It is NOT part of the L1 production ServiceNow contract
+ * and must not be exposed through a production L1 route or granted to the
+ * L1 integration account.
+ *
+ * Production L1 state handling is recommendation-only: TSM may read the
+ * current state and recommend the next state, but the technician changes
+ * state in ServiceNow.
+ *
  * updateTicketStatus(incidentId, state, config?) -> { success }
  * `state` should be the ServiceNow incident state label or numeric code the
  * customer's instance uses (e.g. "Resolved"/6, "In Progress"/2) — this is
@@ -271,6 +454,10 @@ async function updateTicketStatus(incidentId, state, config) {
 }
 
 /**
+ * NON-PRODUCTION / PDI / TEST ONLY.
+ *
+ * Incident creation is explicitly outside the L1 production contract.
+ *
  * createTicket(fields, config?) -> { success, number, sysId, raw }
  * POSTs a single new record to the incident table. `fields` is a raw
  * ServiceNow field map (short_description, caller_id, assignment_group,
@@ -305,6 +492,10 @@ async function deleteTicket(incidentId, config) {
   await snRequest(cfg, 'DELETE', `/api/now/table/incident/${ticket.sysId}`);
   return { success: true };
 }
+
+// NON-PRODUCTION / PDI / TEST SUPPORT:
+// The create-batch helpers below are retained for isolated test/PDI workflows.
+// They are intentionally not exposed through the L1 production HTTP API.
 
 const DEFAULT_BATCH_OPTIONS = {
   // How many createTicket calls are in flight at once. ServiceNow Table API
@@ -469,6 +660,9 @@ module.exports = {
   getAsset,
   getTicket,
   searchAssetsByUser,
+  getRequestItem,
+  getCatalogTask,
+  getCatalogTasksByRequestItem,
   writeWorkNote,
   updateTicketStatus,
   createTicket,
