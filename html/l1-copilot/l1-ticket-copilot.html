@@ -2562,6 +2562,12 @@ TICKET DESCRIPTION</div>
   // ── L1 ServiceNow reconciliation -------------------------------------------
   // READ-ONLY context reconciliation. This does not write ServiceNow state,
   // RITMs, SC Tasks, CMDB records, or technician evidence.
+  //
+  // Ephemeral page state only. Reconciliation facts remain context and are
+  // never converted into technician-confirmed evidence.
+  let currentServiceNowReconciliation = null;
+  let currentServiceNowReconciliationIncident = '';
+
   (function initServiceNowReconciliation() {
     const button = document.getElementById('btnReconcileServiceNow');
     const output = document.getElementById('snReconciliationOutput');
@@ -2770,6 +2776,11 @@ TICKET DESCRIPTION</div>
         }
 
         renderReconciliation(data);
+
+        // Keep ServiceNow facts as ephemeral context only.
+        // The governed orchestrator never treats this as technician evidence.
+        currentServiceNowReconciliation = data.reconciliation || null;
+        currentServiceNowReconciliationIncident = incident;
 
         const r = data.reconciliation || {};
         const mismatches = Array.isArray(r.mismatches) ? r.mismatches : [];
@@ -6147,9 +6158,37 @@ window.selectQ15Scenario = function(id) {
     setBadge('EVALUATING', 'neutral');
 
     try {
-      const data = await window.TSML1Workflow.evaluate(input);
-      const workflow = data.workflow.workflow;
-      const closure = data.closure.closure;
+      const reconciliationContext =
+        currentServiceNowReconciliationIncident === input.incident
+          ? currentServiceNowReconciliation
+          : null;
+
+      const data = await window.TSML1Workflow.orchestrate({
+        state: input.state,
+        taskType: input.taskType,
+        shortDescription: input.shortDescription,
+        description: input.description,
+        category: input.category,
+        subcategory: input.subcategory,
+        dependencies: input.dependencies,
+        evidence: input.evidence,
+
+        /*
+         * ServiceNow/reconciliation context is optional context only.
+         * The governed orchestrator explicitly prevents fetched context
+         * from becoming technician-confirmed evidence.
+         *
+         * Context is only valid for the Incident that was reconciled.
+         */
+        context: {
+          incident: input.incident,
+          reconciliation: reconciliationContext
+        }
+      });
+
+      const orchestration = data.orchestration || {};
+      const workflow = orchestration.workflow || {};
+      const closure = orchestration.closure || {};
 
       result.innerHTML =
         '<strong>NEXT ACTION:</strong> ' +
@@ -6163,7 +6202,11 @@ window.selectQ15Scenario = function(id) {
         '<br>' +
         escapeHtml(closure.reason || '');
 
-      renderChecklist(data.closure.checklist);
+      renderChecklist(
+        orchestration.checklist ||
+        data.checklist ||
+        []
+      );
 
       setBadge(
         closure.readyForClosure ? 'READY FOR CLOSURE' : 'BLOCKED',
@@ -6227,8 +6270,8 @@ window.selectQ15Scenario = function(id) {
 
 window.TSML1Workflow = Object.freeze({
 
-  async evaluateWorkflow(input = {}) {
-    const response = await fetch('/api/l1-copilot/workflow/evaluate', {
+  async orchestrate(input = {}) {
+    const response = await fetch('/api/l1-copilot/workflow/orchestrate', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -6240,44 +6283,13 @@ window.TSML1Workflow = Object.freeze({
 
     if (!response.ok || !data.ok) {
       throw new Error(
-        data.error || 'Workflow evaluation failed.'
+        data.error || 'Governed workflow orchestration failed.'
       );
     }
 
     return data;
   },
 
-  async evaluateClosure(input = {}) {
-    const response = await fetch('/api/l1-copilot/closure/evaluate', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(input)
-    });
-
-    const data = await response.json();
-
-    if (!response.ok || !data.ok) {
-      throw new Error(
-        data.error || 'Closure evaluation failed.'
-      );
-    }
-
-    return data;
-  },
-
-  async evaluate(input = {}) {
-    const [workflow, closure] = await Promise.all([
-      this.evaluateWorkflow(input),
-      this.evaluateClosure(input)
-    ]);
-
-    return {
-      workflow,
-      closure
-    };
-  }
 
 });
 </script>
