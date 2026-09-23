@@ -1484,6 +1484,106 @@ border-radius: 2px; flex-shrink: 0; white-space: nowrap;
 
   </div>
 
+  <!-- ── HOSPITAL OPERATIONS DIGITAL TWIN ────────────────────────────────── -->
+  <div class="sec amber-sec">
+    <div class="sec-label">Hospital Operations Digital Twin · What-If Simulation</div>
+  </div>
+  <style>
+    .twin-grid { display: grid; grid-template-columns: 2fr 3fr; gap: 20px; }
+    .twin-ctl { margin-bottom: 14px; }
+    .twin-ctl label { display: flex; justify-content: space-between; font-size: 8px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted); margin-bottom: 5px; }
+    .twin-ctl label b { color: var(--cyan); font-weight: 600; letter-spacing: 0; }
+    .twin-ctl input[type=range] { width: 100%; accent-color: var(--cyan); }
+    .twin-base { font-size: 8px; line-height: 1.7; color: var(--muted); border-top: 1px solid var(--border); padding-top: 10px; }
+    .twin-out { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    .twin-card { background: var(--bg3); border: 1px solid var(--border); padding: 10px 12px; }
+    .twin-card .tc-l { font-size: 7px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+    .twin-card .tc-v { font-size: 16px; font-weight: 700; }
+    .twin-card .tc-s { font-size: 7.5px; color: var(--muted); margin-top: 3px; }
+    @media (max-width: 900px) { .twin-grid { grid-template-columns: 1fr; } }
+  </style>
+  <div class="panel" id="hc-twin">
+    <div class="panel-hdr">
+      <div class="panel-title">Hospital Operations Twin — Denial &amp; Cash Scenario</div>
+      <div class="panel-tag tag-ready">PLANNING ESTIMATE</div>
+    </div>
+    <div class="panel-body">
+      <div class="twin-grid">
+        <div>
+          <div class="twin-ctl">
+            <label for="twin-prevent">Denials prevented upstream <b id="twin-prevent-v">10%</b></label>
+            <input type="range" id="twin-prevent" min="0" max="50" step="1" value="10">
+          </div>
+          <div class="twin-ctl">
+            <label for="twin-win">Appeal win-rate uplift <b id="twin-win-v">+5 pts</b></label>
+            <input type="range" id="twin-win" min="0" max="20" step="1" value="5">
+          </div>
+          <div class="twin-ctl">
+            <label for="twin-dso">Target days sales outstanding <b id="twin-dso-v">48d</b></label>
+            <input type="range" id="twin-dso" min="35" max="52" step="1" value="48">
+          </div>
+          <div class="twin-base">
+            Baseline taken from the panels above: $187K denied across 47 claims, 68% appeal win rate, $687K A/R at 52 days DSO. Prevented denials are treated as collected in full; the rest are appealed at the scenario win rate. Cash release is a one-time timing gain (A/R &divide; DSO approximates daily billings), not new revenue.
+          </div>
+        </div>
+        <div>
+          <div class="twin-out">
+            <div class="twin-card"><div class="tc-l">Denials avoided upstream</div><div class="tc-v" id="twin-o-prevented" style="color:var(--green)">—</div><div class="tc-s" id="twin-o-prevented-s"></div></div>
+            <div class="twin-card"><div class="tc-l">Expected appeal recovery</div><div class="tc-v" id="twin-o-recovery" style="color:var(--cyan)">—</div><div class="tc-s" id="twin-o-recovery-s"></div></div>
+            <div class="twin-card"><div class="tc-l">Revenue still lost to denials</div><div class="tc-v" id="twin-o-lost" style="color:var(--amber)">—</div><div class="tc-s" id="twin-o-lost-s"></div></div>
+            <div class="twin-card"><div class="tc-l">One-time cash released from A/R</div><div class="tc-v" id="twin-o-cash" style="color:var(--green)">—</div><div class="tc-s" id="twin-o-cash-s"></div></div>
+          </div>
+          <div class="twin-card" style="margin-top:10px">
+            <div class="tc-l">Net revenue impact per denial cycle</div>
+            <div class="tc-v" id="twin-o-net" style="color:var(--green)">—</div>
+            <div class="tc-s">Scenario collections (avoided + recovered) minus baseline appeal recovery</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+  (function () {
+    // Baseline mirrors the figures shown in the A/R Aging, Denial Root Cause and KPI panels above.
+    var BASE = { denied: 187000, claims: 47, win: 0.68, ar: 687000, dso: 52 };
+    function $(id) { return document.getElementById(id); }
+    function usd(n) { return (n < 0 ? '-$' : '$') + Math.round(Math.abs(n)).toLocaleString('en-US'); }
+    function run() {
+      var prevent = Number($('twin-prevent').value) / 100;
+      var uplift = Number($('twin-win').value) / 100;
+      var dso = Number($('twin-dso').value);
+      $('twin-prevent-v').textContent = Math.round(prevent * 100) + '%';
+      $('twin-win-v').textContent = '+' + Math.round(uplift * 100) + ' pts';
+      $('twin-dso-v').textContent = dso + 'd';
+
+      var prevented = BASE.denied * prevent;
+      var remaining = BASE.denied - prevented;
+      var scenWin = Math.min(1, BASE.win + uplift);
+      var recovery = remaining * scenWin;
+      var lost = remaining * (1 - scenWin);
+      var baseRecovery = BASE.denied * BASE.win;
+      var baseLost = BASE.denied - baseRecovery;
+      var daily = BASE.ar / BASE.dso;
+      var cash = Math.max(0, BASE.dso - dso) * daily;
+      var net = prevented + recovery - baseRecovery;
+
+      $('twin-o-prevented').textContent = usd(prevented);
+      $('twin-o-prevented-s').textContent = 'about ' + Math.round(BASE.claims * prevent) + ' of ' + BASE.claims + ' claims never denied';
+      $('twin-o-recovery').textContent = usd(recovery);
+      $('twin-o-recovery-s').textContent = 'at ' + Math.round(scenWin * 100) + '% win rate (baseline ' + usd(baseRecovery) + ')';
+      $('twin-o-lost').textContent = usd(lost);
+      $('twin-o-lost-s').textContent = 'baseline ' + usd(baseLost);
+      $('twin-o-cash').textContent = usd(cash);
+      $('twin-o-cash-s').textContent = (BASE.dso - dso) + ' days at about ' + usd(daily) + '/day';
+      $('twin-o-net').textContent = (net >= 0 ? '+' : '') + usd(net);
+    }
+    ['twin-prevent', 'twin-win', 'twin-dso'].forEach(function (id) {
+      $(id).addEventListener('input', run);
+    });
+    run();
+  })();
+  </script>
+
   <!-- ── BNCA INTELLIGENCE STRIP ─────────────────────────────────────────── -->
   <div class="sec green-sec">
     <div class="sec-label">BNCA Intelligence Assessment · <span style="font-weight:400;color:var(--muted)">Auto-generated · Last run <span id="last-run">just now</span></span></div>
