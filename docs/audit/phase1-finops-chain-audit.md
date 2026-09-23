@@ -65,3 +65,12 @@ or the write gets moved, this test should keep passing (it's testing the read
 side, which already works); the fix that actually matters is wiring the write
 into the live file, which isn't a Playwright-testable claim without also
 driving a full document analysis + AI call.
+
+## Update (2026-09-23)
+The "fix landed in the wrong file" finding above is out of date. The live strategist
+(`html/finops-suite/finops-war/finops-main-strategist.html`) now writes
+`TSM_FINOPS_STRATEGIST_RELAY` in its "SENTINEL PUSH" block inside `relayToExecutive()`.
+Remaining gap: the write happens when the user clicks "Relay to Executive Portal", not
+when a report is generated, so Sentinel Center's FinOps row only goes LIVE after that click.
+The stale `finops-suite/...` paths cited above were fixed repo-wide; the correct location
+is `html/finops-suite/finops-war/`.
