@@ -651,6 +651,8 @@ async function getTicketsBatch(incidentIds, options, config) {
 }
 
 module.exports = {
+  // PRODUCTION L1 SURFACE
+  // READ operations plus the single governed write: incident.work_notes.
   DEFAULT_FIELD_MAP,
   DEFAULT_BATCH_OPTIONS,
   MAX_BATCH_SIZE,
@@ -663,12 +665,23 @@ module.exports = {
   getRequestItem,
   getCatalogTask,
   getCatalogTasksByRequestItem,
-  writeWorkNote,
-  updateTicketStatus,
-  createTicket,
-  deleteTicket,
-  createTicketsBatch,
   getTicketsBatch,
-  // exported for tests only
-  _internal: { readField, snRequest, authHeader, createTicketWithRetry, getTicketWithRetry }
+  writeWorkNote,
+
+  // PDI / TEST ONLY.
+  // These are intentionally isolated from the production L1 surface.
+  _pdi: {
+    updateTicketStatus,
+    createTicket,
+    deleteTicket,
+    createTicketsBatch
+  },
+
+  _internal: {
+    readField,
+    snRequest,
+    authHeader,
+    createTicketWithRetry,
+    getTicketWithRetry
+  }
 };

@@ -174,7 +174,7 @@ async function main() {
   check('writeWorkNote PATCHed the correct sys_id path', patchUrl === '/api/now/table/incident/ffffffffffffffffffffffffffffffff');
 
   // updateTicketStatus
-  const st = await adapter.updateTicketStatus('INC0012345', '6', config);
+  const st = await adapter._pdi.updateTicketStatus('INC0012345', '6', config);
   check('updateTicketStatus reports success', st.success === true);
   check('updateTicketStatus PATCHed the state field', patchBody.state === '6');
 
