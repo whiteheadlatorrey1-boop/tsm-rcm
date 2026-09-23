@@ -161,6 +161,30 @@ async function getAsset(assetTag, config) {
 }
 
 /**
+ * normalizeIncidentState(state) -> canonical workflow state label
+ *
+ * ServiceNow's incident table returns numeric state codes (default OOTB
+ * mapping). Map them to the labels workflow-engine.js expects. Unknown
+ * codes and already-textual values pass through unchanged so nothing is
+ * silently rewritten; the untouched source value stays on ticket.raw.
+ */
+const INCIDENT_STATE_CODES = Object.freeze({
+  '1': 'OPEN',
+  '2': 'IN PROGRESS',
+  '3': 'ON HOLD',
+  '6': 'RESOLVED',
+  '7': 'CLOSED'
+});
+
+function normalizeIncidentState(state) {
+  if (state === null || state === undefined) return state;
+  const key = String(state).trim();
+  return Object.prototype.hasOwnProperty.call(INCIDENT_STATE_CODES, key)
+    ? INCIDENT_STATE_CODES[key]
+    : state;
+}
+
+/**
  * getTicket(incidentNumberOrSysId, config?) -> normalized incident record or null
  */
 async function getTicket(incidentId, config) {
@@ -180,7 +204,7 @@ async function getTicket(incidentId, config) {
     requester: readField(record, fm.requester),
     description: readField(record, fm.description),
     assignmentGroup: readField(record, fm.assignmentGroup),
-    state: readField(record, fm.state),
+    state: normalizeIncidentState(readField(record, fm.state)),
     asset: readField(record, fm.asset),
     sysId: record.sys_id && (record.sys_id.value || record.sys_id),
     raw: record
@@ -661,6 +685,7 @@ module.exports = {
   isConfigured,
   getAsset,
   getTicket,
+  normalizeIncidentState,
   searchAssetsByUser,
   getRequestItem,
   getCatalogTask,
