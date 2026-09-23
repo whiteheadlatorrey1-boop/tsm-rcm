@@ -110,8 +110,10 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const { enforceBNCASchema } = require('./server/tsm-bnca-schema');
 const snAdapter = require('./server/l1-copilot/servicenow-adapter');
+const snReconciliation = require('./server/l1-copilot/servicenow-reconciliation');
 const { evaluateWorkflow } = require('./server/l1-copilot/workflow-engine');
 const { evaluateClosure, buildClosureChecklist } = require('./server/l1-copilot/closure-gate');
+const { orchestrate } = require('./server/l1-copilot/governed-orchestrator');
 const cloudOpsAdapter = require('./server/l1-copilot/cloud-ops-adapter');
 const graphAdapter = require('./server/l1-copilot/graph-intune-adapter');
 const gcpAdapter = require('./server/l1-copilot/gcp-adapter');
@@ -4891,6 +4893,50 @@ app.post('/api/l1-copilot/assistant', async (req, res) => {
 // READ-ONLY evaluation layer.
 // These routes evaluate technician-provided ticket context and evidence.
 // They do not call ServiceNow and never change ServiceNow state.
+
+// --- L1 governed workflow orchestration -------------------------------
+// READ-ONLY orchestration layer.
+// Accepts ticket/context data plus technician-confirmed evidence.
+// Does not call ServiceNow.
+// Does not change ServiceNow state.
+// Does not close tickets.
+// Does not write work notes.
+// ServiceNow reconciliation remains a separate explicit operation.
+app.post('/api/l1-copilot/workflow/orchestrate', (req, res) => {
+  try {
+    const result = orchestrate(req.body || {});
+
+    return res.json({
+      ok: true,
+      orchestration: result,
+      governed: {
+        readOnly: true,
+        canChangeState: false,
+        autonomousCloseAllowed: false,
+        autonomousWorkNoteWriteAllowed: false,
+        technicianEvidenceUntouched: true
+      },
+      createdAt: new Date().toISOString()
+    });
+  } catch (e) {
+    console.error(
+      'L1 COPILOT GOVERNED ORCHESTRATION ERROR:',
+      e.message
+    );
+
+    return res.status(400).json({
+      ok: false,
+      error: e.message,
+      governed: {
+        readOnly: true,
+        canChangeState: false,
+        autonomousCloseAllowed: false,
+        autonomousWorkNoteWriteAllowed: false
+      }
+    });
+  }
+});
+
 app.post('/api/l1-copilot/workflow/evaluate', (req, res) => {
   try {
     const result = evaluateWorkflow(req.body || {});
@@ -4935,6 +4981,70 @@ app.post('/api/l1-copilot/closure/evaluate', (req, res) => {
     return res.status(400).json({
       ok: false,
       error: e.message
+    });
+  }
+});
+
+
+// --- L1 ServiceNow reconciliation -----------------------------------------
+// READ-ONLY.
+// Reconciles explicitly supplied Incident / RITM / SC Task / asset context.
+// No ServiceNow state, RITM, SC Task, CMDB, user, or group writes occur here.
+// Incident -> RITM is NEVER inferred because the current Incident adapter
+// contract does not expose a guaranteed RITM relationship.
+app.post('/api/l1-copilot/servicenow/reconcile', async (req, res) => {
+  const {
+    incident,
+    ritm,
+    sctask,
+    asset
+  } = req.body || {};
+
+  if (!incident && !ritm && !sctask && !asset) {
+    return res.status(400).json({
+      ok: false,
+      error: 'At least one of incident, ritm, sctask, or asset is required.'
+    });
+  }
+
+  try {
+    const reconciliation = await snReconciliation.reconcile({
+      incident,
+      ritm,
+      sctask,
+      asset
+    });
+
+    return res.json({
+      ok: true,
+      reconciliation,
+      governed: {
+        readOnly: true,
+        canChangeState: false,
+        autonomousCloseAllowed: false,
+        technicianEvidenceUntouched: true
+      },
+      createdAt: new Date().toISOString()
+    });
+  } catch (e) {
+    const status =
+      e.code === 'SERVICENOW_NOT_CONFIGURED'
+        ? 503
+        : 502;
+
+    console.error(
+      'L1 COPILOT SERVICENOW RECONCILIATION ERROR:',
+      e.message
+    );
+
+    return res.status(status).json({
+      ok: false,
+      error: e.message,
+      governed: {
+        readOnly: true,
+        canChangeState: false,
+        autonomousCloseAllowed: false
+      }
     });
   }
 });
@@ -5640,7 +5750,11 @@ app.post('/api/l1-copilot/vendor', async (req, res) => {
   }
 });
 
-app.post('/api/l1-copilot/resolution', async (req, res) => {
+app.post('/api/l1-copilot/resolution',
+  (req, res, next) => (req.body && req.body.writeToServicenow)
+    ? requireRole(BPO_INTERNAL_ROLES)(req, res, next)
+    : next(),
+  async (req, res) => {
   const {
     ticket,
     analysis,
@@ -5679,6 +5793,14 @@ app.post('/api/l1-copilot/resolution', async (req, res) => {
       });
     }
 
+    const incidentId = String(incident).trim();
+    if (!/^[0-9a-f]{32}$/i.test(incidentId) && !/^INC\d{5,12}$/i.test(incidentId)) {
+      return res.status(400).json({ ok: false, error: 'incident must be an INC number or 32-character sys_id.' });
+    }
+    if (draft.length > 20000) {
+      return res.status(413).json({ ok: false, error: 'Reviewed draft exceeds the 20000-character limit.' });
+    }
+
     if (!snAdapter.isConfigured()) {
       return res.status(503).json({
         ok: false,
@@ -5687,7 +5809,7 @@ app.post('/api/l1-copilot/resolution', async (req, res) => {
     }
 
     try {
-      const result = await snAdapter.writeWorkNote(incident, draft.trim());
+      const result = await snAdapter.writeWorkNote(incidentId, draft.trim());
       return res.json({
         ok: true,
         answer: draft.trim(),

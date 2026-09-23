@@ -161,6 +161,30 @@ async function getAsset(assetTag, config) {
 }
 
 /**
+ * normalizeIncidentState(state) -> canonical workflow state label
+ *
+ * ServiceNow's incident table returns numeric state codes (default OOTB
+ * mapping). Map them to the labels workflow-engine.js expects. Unknown
+ * codes and already-textual values pass through unchanged so nothing is
+ * silently rewritten; the untouched source value stays on ticket.raw.
+ */
+const INCIDENT_STATE_CODES = Object.freeze({
+  '1': 'OPEN',
+  '2': 'IN PROGRESS',
+  '3': 'ON HOLD',
+  '6': 'RESOLVED',
+  '7': 'CLOSED'
+});
+
+function normalizeIncidentState(state) {
+  if (state === null || state === undefined) return state;
+  const key = String(state).trim();
+  return Object.prototype.hasOwnProperty.call(INCIDENT_STATE_CODES, key)
+    ? INCIDENT_STATE_CODES[key]
+    : state;
+}
+
+/**
  * getTicket(incidentNumberOrSysId, config?) -> normalized incident record or null
  */
 async function getTicket(incidentId, config) {
@@ -180,7 +204,7 @@ async function getTicket(incidentId, config) {
     requester: readField(record, fm.requester),
     description: readField(record, fm.description),
     assignmentGroup: readField(record, fm.assignmentGroup),
-    state: readField(record, fm.state),
+    state: normalizeIncidentState(readField(record, fm.state)),
     asset: readField(record, fm.asset),
     sysId: record.sys_id && (record.sys_id.value || record.sys_id),
     raw: record
@@ -651,6 +675,8 @@ async function getTicketsBatch(incidentIds, options, config) {
 }
 
 module.exports = {
+  // PRODUCTION L1 SURFACE
+  // READ operations plus the single governed write: incident.work_notes.
   DEFAULT_FIELD_MAP,
   DEFAULT_BATCH_OPTIONS,
   MAX_BATCH_SIZE,
@@ -659,16 +685,28 @@ module.exports = {
   isConfigured,
   getAsset,
   getTicket,
+  normalizeIncidentState,
   searchAssetsByUser,
   getRequestItem,
   getCatalogTask,
   getCatalogTasksByRequestItem,
-  writeWorkNote,
-  updateTicketStatus,
-  createTicket,
-  deleteTicket,
-  createTicketsBatch,
   getTicketsBatch,
-  // exported for tests only
-  _internal: { readField, snRequest, authHeader, createTicketWithRetry, getTicketWithRetry }
+  writeWorkNote,
+
+  // PDI / TEST ONLY.
+  // These are intentionally isolated from the production L1 surface.
+  _pdi: {
+    updateTicketStatus,
+    createTicket,
+    deleteTicket,
+    createTicketsBatch
+  },
+
+  _internal: {
+    readField,
+    snRequest,
+    authHeader,
+    createTicketWithRetry,
+    getTicketWithRetry
+  }
 };
