@@ -632,6 +632,7 @@ Every major TSM workflow should eventually answer these questions:
 - `html/finops-suite/tax.html` — report, export, download, pdf, csv, xlsx, brief, letter
 - `html/healthcare/hc-billing/index.html` — report, export, summary, executive, brief, letter
 - `html/healthcare/hc-financial/index.html` — report, export, summary, executive, snapshot, brief, letter
+- `html/healthcare/hc-main-strategist.html` — report, export, summary, executive, snapshot, brief, letter, package
 - `html/legal-pro/legal-tax.html` — report, export, download, pdf, csv, xlsx, brief, letter
 - `html/tax-prep.html` — report, export, download, pdf, csv, xlsx, brief, letter
 - `html/tax-prep/index.html` — report, export, download, pdf, csv, xlsx, brief, letter
@@ -654,7 +655,6 @@ Every major TSM workflow should eventually answer these questions:
 - `html/demo/tsm-demo-console.html` — report, export, presentation, deck, summary, executive, brief, letter
 - `html/healthcare/hc-academy/crc-hc-exam.html` — report, summary, letter
 - `html/healthcare/hc-academy/crc-hc-practice.html` — report, summary, letter
-- `html/healthcare/hc-main-strategist.html` — report, export, summary, executive, snapshot, brief, letter, package
 - `html/healthcare/hc-operations/index.html` — report, export, summary, snapshot, brief, letter
 
 ## 5. Workflow Pages
@@ -735,6 +735,7 @@ Every major TSM workflow should eventually answer these questions:
 - `html/finops-suite/tax.html` — DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
 - `html/healthcare/hc-billing/index.html` — INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
 - `html/healthcare/hc-financial/index.html` — INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
+- `html/healthcare/hc-main-strategist.html` — INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
 - `html/legal-pro/legal-tax.html` — DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
 - `html/tax-prep.html` — DECISION / STRATEGY, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
 - `html/tax-prep/index.html` — DECISION / STRATEGY, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
@@ -757,7 +758,6 @@ Every major TSM workflow should eventually answer these questions:
 - `html/demo/tsm-demo-console.html` — INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
 - `html/healthcare/hc-academy/crc-hc-exam.html` — INTAKE / ANALYSIS, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
 - `html/healthcare/hc-academy/crc-hc-practice.html` — INTAKE / ANALYSIS, EXECUTIVE / OUTCOME, REPORT / DELIVERY, INTAKE / DATA ENTRY
-- `html/healthcare/hc-main-strategist.html` — INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
 - `html/healthcare/hc-operations/index.html` — INTAKE / ANALYSIS, DECISION / STRATEGY, EXECUTIVE / OUTCOME, REPORT / DELIVERY, AI / COPILOT, INTAKE / DATA ENTRY
 
 ## 6. Vertical Coverage
