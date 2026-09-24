@@ -366,6 +366,7 @@
 
   // ── Build Decision Items from relay ───────────────────────────────────────
   function buildDecisionItems(relay, vertical) {
+    if (relay?.serviceNow?.source === 'servicenow') return [];
     const defaults = {
       healthcare:   [
         { urgency: 'critical', text: 'Authorize CMS Penalty Response', meta: 'Compliance package ready · Missing exec signature', value: '$24K' },
