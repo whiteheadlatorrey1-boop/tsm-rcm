@@ -758,6 +758,7 @@ function buildScenariosFromExtraction(ext) {
   // language for an incident that may have nothing to do with either.
   if (warData?.serviceNow?.source === 'servicenow') {
     renderServiceNowScenarioNotice();
+    tsmSnHideImpactTemplate();
     return;
   }
   // Override scenario names/desc from AI extraction BNCA if available
@@ -1477,6 +1478,25 @@ function storeStratRelay(){
       }
     } catch (e) { console.error('Mission write-back failed (non-fatal):', e); }
   } catch(e){}
+}
+
+// ServiceNow live demo: the "no action vs. recommended plan" impact panel is a
+// generic template ($ exposure, hours, % recovered). ServiceNow states none of
+// those, so hide it and say why instead of showing invented numbers.
+function tsmSnHideImpactTemplate() {
+  try {
+    const act = document.getElementById('actRev');
+    const half = act && act.closest('.impact-half');
+    if (!half || half.dataset.snHidden) return;
+    const halves = [half];
+    const prev = half.previousElementSibling;
+    if (prev && prev.classList.contains('impact-half')) halves.unshift(prev);
+    const note = document.createElement('div');
+    note.style.cssText = 'padding:14px;font-family:monospace;font-size:.75rem;color:var(--muted);';
+    note.textContent = 'IMPACT COMPARISON NOT AVAILABLE — ServiceNow states no revenue exposure, recovery time, or outcome projection for this incident.';
+    half.parentNode.insertBefore(note, halves[0]);
+    halves.forEach(h => { h.style.display = 'none'; h.dataset.snHidden = '1'; });
+  } catch (e) { console.warn('[sn-impact-hide]', e); }
 }
 
 function escalateToExec(){
