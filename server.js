@@ -111,6 +111,7 @@ const rateLimit = require('express-rate-limit');
 const { enforceBNCASchema } = require('./server/tsm-bnca-schema');
 const snAdapter = require('./server/l1-copilot/servicenow-adapter');
 const snReconciliation = require('./server/l1-copilot/servicenow-reconciliation');
+const { getBpoIntelligence } = require('./server/l1-copilot/servicenow-bpo-intelligence');
 const { evaluateWorkflow } = require('./server/l1-copilot/workflow-engine');
 const { evaluateClosure, buildClosureChecklist } = require('./server/l1-copilot/closure-gate');
 const { orchestrate } = require('./server/l1-copilot/governed-orchestrator');
@@ -5067,6 +5068,66 @@ app.post('/api/l1-copilot/servicenow/reconcile', async (req, res) => {
         readOnly: true,
         canChangeState: false,
         autonomousCloseAllowed: false
+      }
+    });
+  }
+});
+
+// --- ServiceNow BPO intelligence -------------------------------------------
+// READ-ONLY.
+// Builds Incident -> Problem -> Related Incidents -> CMDB relationship
+// intelligence for the BPO decision workflow.
+// No ServiceNow writes, state changes, work-note writes, or autonomous
+// remediation occur here.
+app.get('/api/l1-copilot/servicenow/bpo-intelligence', async (req, res) => {
+  const incident = String(req.query.incident || '').trim();
+
+  if (!incident) {
+    return res.status(400).json({
+      ok: false,
+      error: 'incident query parameter is required.',
+      governed: {
+        readOnly: true,
+        canChangeState: false,
+        autonomousCloseAllowed: false,
+        autonomousWorkNoteWriteAllowed: false
+      }
+    });
+  }
+
+  try {
+    const intelligence = await getBpoIntelligence(incident);
+
+    return res.json({
+      ok: true,
+      intelligence,
+      governed: {
+        readOnly: true,
+        canChangeState: false,
+        autonomousCloseAllowed: false,
+        autonomousWorkNoteWriteAllowed: false
+      },
+      createdAt: new Date().toISOString()
+    });
+  } catch (e) {
+    const status =
+      e.code === 'SERVICENOW_NOT_CONFIGURED'
+        ? 503
+        : 502;
+
+    console.error(
+      'L1 COPILOT SERVICENOW BPO INTELLIGENCE ERROR:',
+      e.message
+    );
+
+    return res.status(status).json({
+      ok: false,
+      error: e.message,
+      governed: {
+        readOnly: true,
+        canChangeState: false,
+        autonomousCloseAllowed: false,
+        autonomousWorkNoteWriteAllowed: false
       }
     });
   }
