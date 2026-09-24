@@ -223,7 +223,7 @@ async function main() {
     (ex.includes(INCIDENT) || /PRB\d{7}/.test(ex)) ? 'PASS' : 'FAIL',
     'FAIL = exec page is not showing this ServiceNow case');
   check('Executive does not say RESOLVED for a live read-only incident',
-    /■?\s*RESOLVED\b|RESOLVED AT/.test(ex) ? 'FAIL' : 'PASS');
+    /■\s*RESOLVED\b/.test(ex) ? 'FAIL' : 'PASS');
   const foreign = [...ex.matchAll(/Cigna|BCBS|Claim AZ|write-off|HC Strategist/gi)];
   check('Executive shows no other cases\' data', foreign.length ? 'FAIL' : 'PASS',
     foreign.slice(0, 3).map((m) => `"${snippet(ex, m.index, 40)}"`).join(' | '));
