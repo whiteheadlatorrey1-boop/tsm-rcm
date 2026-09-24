@@ -1069,6 +1069,14 @@ function loadDemoMode() {
 // ── HYDRATE EVERYTHING FROM REAL RELAY DATA ──
 function hydratePage(d) {
   const rec = d.recommendation || {};
+  const isServiceNow = d?.serviceNow?.source === 'servicenow';
+  document.getElementById('incSevBadge').textContent = isServiceNow ? '■ IN PROGRESS' : '■ RESOLVED';
+  if (isServiceNow) {
+    const memTab = document.getElementById('tsm-memory-tab');
+    if (memTab) memTab.style.display = 'none';
+    const memLayer = document.getElementById('tsmMemoryLayer');
+    if (memLayer) memLayer.style.display = 'none';
+  }
 
   document.getElementById('tbSector').textContent = d.sector || 'BPO';
   document.getElementById('tbDocType').textContent = d.docType || '—';
@@ -1900,6 +1908,13 @@ window.TSM_AUTONOMY_STANDARDIZED = true;
 <script src="/html/js/widgets/tsm-case-widget.js"></script>
 <script>
 (function(){
+  const tsmSnLiveCase = stratData?.serviceNow?.source === 'servicenow';
+  if (tsmSnLiveCase) {
+    const eqEl = document.getElementById('tsm-exception-queue');
+    if (eqEl) eqEl.innerHTML = '<div style="color:var(--muted);font-family:\'JetBrains Mono\',monospace;font-size:.68rem">Hidden for live ServiceNow read-only case.</div>';
+    const cqEl = document.getElementById('tsm-case-queue');
+    if (cqEl) cqEl.innerHTML = '<div style="color:var(--muted);font-family:\'JetBrains Mono\',monospace;font-size:.68rem">Hidden for live ServiceNow read-only case.</div>';
+  } else {
   if (typeof TSMExceptionWidget !== 'undefined') {
     TSMExceptionWidget.mount('tsm-exception-queue', { sector: 'bpo' });
   }
@@ -1914,6 +1929,7 @@ window.TSM_AUTONOMY_STANDARDIZED = true;
     // made it to the server — this is the single read point meant to
     // aggregate all of them for BPO ops.
     TSMCaseWidget.mount('tsm-case-queue', {});
+  }
   }
 
   // Wire Exception Queue "Resolve" clicks into the same exec-action relay
@@ -1995,6 +2011,7 @@ function bpoFeedExceptions(d) {
       }
     }
   });
+  if (!(stratData?.serviceNow?.source === 'servicenow')) {
   if (typeof TSMExceptionWidget !== 'undefined') {
     TSMExceptionWidget.mount('tsm-exception-queue', { sector: 'bpo' });
   }
@@ -2003,6 +2020,7 @@ function bpoFeedExceptions(d) {
     // fired BPO case re-renders alongside the other verticals' cases
     // instead of narrowing the view back down to sector:'bpo'.
     TSMCaseWidget.mount('tsm-case-queue', {});
+  }
   }
   return touchedCases;
 }
