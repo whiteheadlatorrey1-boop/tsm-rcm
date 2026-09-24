@@ -246,32 +246,283 @@
     return { pct: 60, checks };
   }
 
+  // ServiceNow is a governed read-only evidence source. Its absence of
+  // business fields such as revenue/runway/root cause is not itself a
+  // completeness failure. Score the evidence that ServiceNow actually
+  // establishes and separately preserve governance/certainty warnings.
+  function scoreServiceNowCompleteness(extraction, recommendation) {
+    const ext = extraction || {};
+    const sn = ext.serviceNow || {};
+
+    const inc = sn.incident || {};
+    const problem = sn.problem || {};
+    const related = Array.isArray(sn.relatedIncidents) ? sn.relatedIncidents : [];
+    const cmdb = sn.cmdb || {};
+    const evidence = sn.evidence || {};
+
+    const checks = [];
+
+    checks.push([
+      'ServiceNow Incident facts preserved',
+      !!(inc.number || inc.short_description)
+    ]);
+
+    checks.push([
+      'Linked Problem relationship extracted',
+      !!(problem.number || problem.short_description)
+    ]);
+
+    checks.push([
+      'Related Incident set extracted',
+      Array.isArray(sn.relatedIncidents) && related.length > 0
+    ]);
+
+    checks.push([
+      'CMDB scope/relationships extracted',
+      Array.isArray(cmdb.relationships) && cmdb.relationships.length > 0
+    ]);
+
+    checks.push([
+      'ServiceNow evidence boundary preserved',
+      Array.isArray(evidence.known) || Array.isArray(evidence.unknown)
+    ]);
+
+    checks.push([
+      'Severity classified',
+      !!ext.severity
+    ]);
+
+    checks.push([
+      'Situation summary generated',
+      !!ext.situationSummary
+    ]);
+
+    checks.push([
+      'BNCA next-actions populated',
+      Array.isArray(ext.bnca) && ext.bnca.length > 0
+    ]);
+
+    // These are deliberately informational rather than failed requirements:
+    // the read-only ServiceNow source does not establish them.
+    checks.push({
+      label: 'Root cause not required — source does not establish it',
+      passed: true,
+      status: 'not_required'
+    });
+
+    checks.push({
+      label: 'Revenue/exposure not required — source does not provide it',
+      passed: true,
+      status: 'not_required'
+    });
+
+    checks.push({
+      label: 'Runway / time-to-critical not required — source does not provide it',
+      passed: true,
+      status: 'not_required'
+    });
+
+    if (recommendation) {
+      const rec = recommendation;
+      checks.push([
+        'Recommended actions generated',
+        Array.isArray(rec.recommendedActions) && rec.recommendedActions.length > 0
+      ]);
+      checks.push([
+        'Escalation triggers defined',
+        Array.isArray(rec.escalationTriggers) && rec.escalationTriggers.length > 0
+      ]);
+    }
+
+    const passed = checks.filter(c => c[1]).length;
+    const pct = checks.length ? Math.round((passed / checks.length) * 100) : 0;
+
+    return { pct, checks };
+  }
+
+  function scoreServiceNowAccuracy(extraction) {
+    const ext = extraction || {};
+    const sn = ext.serviceNow || {};
+    const inc = sn.incident || {};
+    const problem = sn.problem || {};
+    const related = Array.isArray(sn.relatedIncidents) ? sn.relatedIncidents : [];
+    const cmdb = sn.cmdb || {};
+
+    const checks = [];
+
+    checks.push([
+      'ServiceNow Incident evidence cited',
+      !!(inc.number || inc.short_description)
+    ]);
+
+    checks.push([
+      'Incident → Problem relationship documented',
+      !!(problem.number || problem.short_description)
+    ]);
+
+    checks.push([
+      'Related incidents preserved from source',
+      related.length > 0
+    ]);
+
+    checks.push([
+      'CMDB relationships preserved from source',
+      Array.isArray(cmdb.relationships) && cmdb.relationships.length > 0
+    ]);
+
+    checks.push([
+      'Root cause not overstated beyond ServiceNow evidence',
+      String(ext.rootCause || '').toUpperCase().includes('NOT ESTABLISHED') ||
+        String(ext.rootCause || '').toUpperCase().includes('UNKNOWN')
+    ]);
+
+    checks.push([
+      'CMDB dependency not presented as causal proof',
+      String(ext.rootCauseSub || '').toLowerCase().includes('causality') ||
+        String(ext.rootCauseSub || '').toLowerCase().includes('not established')
+    ]);
+
+    const passed = checks.filter(c => c[1]).length;
+    const pct = checks.length ? Math.round((passed / checks.length) * 100) : 0;
+
+    return { pct, checks };
+  }
+
+  function scoreServiceNowCompliance(extraction, recommendation) {
+    const ext = extraction || {};
+    const sn = ext.serviceNow || {};
+    const governed = sn.governed || {};
+
+    const checks = [];
+
+    checks.push([
+      'ServiceNow integration remains read-only',
+      governed.readOnly === true
+    ]);
+
+    checks.push([
+      'State changes are prohibited',
+      governed.canChangeState === false
+    ]);
+
+    checks.push([
+      'Autonomous close is prohibited',
+      governed.autonomousCloseAllowed === false
+    ]);
+
+    checks.push([
+      'Autonomous work-note writes are prohibited',
+      governed.autonomousWorkNoteWriteAllowed === false
+    ]);
+
+    checks.push([
+      'Severity classification present for triage routing',
+      !!ext.severity
+    ]);
+
+    const actions = recommendation && recommendation.recommendedActions;
+    const hasHITL = Array.isArray(actions) && actions.length > 0;
+
+    checks.push([
+      'Recommendation routed to human approval before execution (HITL gate)',
+      hasHITL
+    ]);
+
+    const passed = checks.filter(c => c[1]).length;
+    const pct = checks.length ? Math.round((passed / checks.length) * 100) : 0;
+
+    return { pct, checks };
+  }
+
+  function scoreServiceNowConfidence(extraction, recommendation) {
+    const checks = [];
+
+    checks.push([
+      'AI-reported confidence score present',
+      !!(recommendation && typeof recommendation.confidence === 'number')
+    ]);
+
+    checks.push([
+      'Unsupported certainty avoided',
+      String((extraction && extraction.rootCause) || '').toUpperCase()
+        .includes('NOT ESTABLISHED')
+    ]);
+
+    // Do not invent a numeric confidence score for a read-only source
+    // that does not establish one.
+    return {
+      pct: 60,
+      checks
+    };
+  }
+
   function compute(input) {
     input = input || {};
     const extraction = input.extraction || null;
     const recommendation = input.recommendation || null;
     const opts = { crossUploadHit: !!input.crossUploadHit };
 
-    const completeness = scoreCompleteness(extraction, recommendation);
-    const accuracy = scoreAccuracy(extraction, recommendation, opts);
-    const compliance = scoreCompliance(extraction, recommendation);
-    const confidence = scoreConfidence(recommendation);
+    const isServiceNow =
+      !!(extraction &&
+         extraction.serviceNow &&
+         extraction.serviceNow.source === 'servicenow');
 
-    const overall = composite(accuracy.pct, completeness.pct, compliance.pct, confidence.pct);
+    const completeness = isServiceNow
+      ? scoreServiceNowCompleteness(extraction, recommendation)
+      : scoreCompleteness(extraction, recommendation);
+
+    const accuracy = isServiceNow
+      ? scoreServiceNowAccuracy(extraction)
+      : scoreAccuracy(extraction, recommendation, opts);
+
+    const compliance = isServiceNow
+      ? scoreServiceNowCompliance(extraction, recommendation)
+      : scoreCompliance(extraction, recommendation);
+
+    const confidence = isServiceNow
+      ? scoreServiceNowConfidence(extraction, recommendation)
+      : scoreConfidence(recommendation);
+
+    const overall = composite(
+      accuracy.pct,
+      completeness.pct,
+      compliance.pct,
+      confidence.pct
+    );
+
     const grade = bandFor(overall);
 
     const breakdown = [
-      ...completeness.checks.map(c => ({ group: 'Completeness', label: c[0], passed: c[1] })),
-      ...accuracy.checks.map(c => ({ group: 'Accuracy', label: c[0], passed: c[1] })),
-      ...compliance.checks.map(c => ({ group: 'Compliance', label: c[0], passed: c[1] })),
-      ...confidence.checks.map(c => ({ group: 'Confidence', label: c[0], passed: c[1] })),
+      ...completeness.checks.map(c => Array.isArray(c)
+        ? { group: 'Completeness', label: c[0], passed: c[1] }
+        : { group: 'Completeness', label: c.label, passed: c.passed, status: c.status }
+      ),
+      ...accuracy.checks.map(c => ({
+        group: 'Accuracy',
+        label: c[0],
+        passed: c[1]
+      })),
+      ...compliance.checks.map(c => ({
+        group: 'Compliance',
+        label: c[0],
+        passed: c[1]
+      })),
+      ...confidence.checks.map(c => ({
+        group: 'Confidence',
+        label: c[0],
+        passed: c[1]
+      })),
     ];
 
     return {
-      overall, grade,
-      accuracy: accuracy.pct, completeness: completeness.pct,
-      compliance: compliance.pct, confidence: confidence.pct,
-      breakdown, computedAt: new Date().toISOString()
+      overall,
+      grade,
+      accuracy: accuracy.pct,
+      completeness: completeness.pct,
+      compliance: compliance.pct,
+      confidence: confidence.pct,
+      breakdown,
+      computedAt: new Date().toISOString()
     };
   }
 
@@ -296,11 +547,19 @@
         </div>
       </div>`;
 
-    const breakdownHtml = (result.breakdown || []).map(b => `
-      <div style="display:flex;align-items:flex-start;gap:8px;padding:4px 0;font-family:'JetBrains Mono',monospace;font-size:.68rem;color:${b.passed ? 'var(--text)' : 'var(--muted)'};">
-        <span style="color:${b.passed ? 'var(--green)' : 'var(--amber)'};flex-shrink:0;">${b.passed ? '✓' : '⚠'}</span>
+    const breakdownHtml = (result.breakdown || []).map(b => {
+      const notRequired = b.status === 'not_required';
+      const passed = b.passed === true && !notRequired;
+      const icon = notRequired ? '—' : (passed ? '✓' : '⚠');
+      const color = notRequired
+        ? 'var(--muted)'
+        : (passed ? 'var(--green)' : 'var(--amber)');
+      return `
+      <div style="display:flex;align-items:flex-start;gap:8px;padding:4px 0;font-family:'JetBrains Mono',monospace;font-size:.68rem;color:${passed ? 'var(--text)' : 'var(--muted)'};">
+        <span style="color:${color};flex-shrink:0;">${icon}</span>
         <span><span style="color:var(--muted);">[${b.group}]</span> ${b.label}</span>
-      </div>`).join('');
+      </div>`;
+    }).join('');
 
     el.innerHTML = `
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
