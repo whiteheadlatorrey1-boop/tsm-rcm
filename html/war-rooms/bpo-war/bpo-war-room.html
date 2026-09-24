@@ -645,8 +645,222 @@ document.addEventListener('DOMContentLoaded', async function tsmBpoAutoPipeline(
   }
 });
 
+// ── SERVICENOW LIVE DEMO INTAKE ───────────────────────────────────────────
+// 7-minute demo entry:
+// bpo-war-room.html?servicenowIncident=INC0000055
+//
+// READ-ONLY. Uses the governed ServiceNow BPO intelligence endpoint.
+// Does not invoke the generic BPO extraction model.
+
+(function tsmServiceNowDemoIntake() {
+  async function run() {
+    const params = new URLSearchParams(window.location.search);
+    const incident = String(params.get('servicenowIncident') || '').trim();
+
+    if (!incident) return;
+
+    // ServiceNow live demo is its own context: do not inherit a client
+    // restored from an earlier session (TSM_BPO_SELECTED_CLIENT_ID).
+    selectedClientId = null;
+    try { sessionStorage.removeItem('TSM_BPO_SELECTED_CLIENT_ID'); } catch (e) {}
+    const _clientSel = document.getElementById('tbClientSelect');
+    if (_clientSel) _clientSel.value = '';
+
+    try {
+      setStatus('Loading ServiceNow evidence — READ ONLY...');
+
+      const resp = await fetch(
+        '/api/l1-copilot/servicenow/bpo-intelligence?incident=' +
+        encodeURIComponent(incident),
+        {
+          method: 'GET',
+          credentials: 'same-origin',
+          headers: { 'Accept': 'application/json' }
+        }
+      );
+
+      const body = await resp.json();
+
+      if (!resp.ok || !body.ok || !body.intelligence) {
+        throw new Error(body.error || ('ServiceNow API returned ' + resp.status));
+      }
+
+      const sn = body.intelligence;
+      const inc = sn.incident || {};
+      const problem = sn.problem || {};
+      const related = Array.isArray(sn.relatedIncidents)
+        ? sn.relatedIncidents
+        : [];
+      const cmdb = sn.cmdb || {};
+      const known = Array.isArray(sn.evidence?.known)
+        ? sn.evidence.known
+        : [];
+      const unknown = Array.isArray(sn.evidence?.unknown)
+        ? sn.evidence.unknown
+        : [];
+
+      const docText = [
+        'SERVICENOW LIVE READ-ONLY INCIDENT EVIDENCE',
+        '',
+        'Incident: ' + (inc.number || incident),
+        'Short description: ' + (inc.short_description || 'NOT STATED IN SOURCE DATA'),
+        'State: ' + (inc.state || 'NOT STATED IN SOURCE DATA'),
+        'Priority: ' + (inc.priority || 'NOT STATED IN SOURCE DATA'),
+        'Impact: ' + (inc.impact || 'NOT STATED IN SOURCE DATA'),
+        'Urgency: ' + (inc.urgency || 'NOT STATED IN SOURCE DATA'),
+        'Caller: ' + (inc.caller || 'NOT STATED IN SOURCE DATA'),
+        'Company: ' + (inc.company || 'NOT STATED IN SOURCE DATA'),
+        'Assignment group: ' + (inc.assignment_group || 'NOT STATED IN SOURCE DATA'),
+        'Assigned to: ' + (inc.assigned_to || 'NOT STATED IN SOURCE DATA'),
+        'Incident CI: ' + (cmdb.incidentCi?.name || 'NOT STATED IN SOURCE DATA'),
+        '',
+        'Problem: ' + (problem.number || 'NOT STATED IN SOURCE DATA'),
+        'Problem summary: ' + (problem.short_description || 'NOT STATED IN SOURCE DATA'),
+        'Problem state: ' + (problem.state || 'NOT STATED IN SOURCE DATA'),
+        'Problem CI: ' + (cmdb.problemCi?.name || 'NOT STATED IN SOURCE DATA'),
+        '',
+        'Related incidents: ' + related.length,
+        ...related.map(function(r, i) {
+          return 'Related ' + (i + 1) + ': ' +
+            (r.number || '—') + ' · ' +
+            (r.short_description || '—') + ' · ' +
+            (r.priority || '—') + ' · CI: ' +
+            (r.cmdb_ci || '—');
+        }),
+        '',
+        'CMDB RELATIONSHIPS:',
+        ...(Array.isArray(cmdb.relationships) && cmdb.relationships.length
+          ? cmdb.relationships.map(function(r) {
+              return (r.parent || '—') +
+                ' [' + (r.type || '—') + '] → ' +
+                (r.child || '—');
+            })
+          : ['NONE RETURNED IN SOURCE DATA']),
+        '',
+        'KNOWN FROM SERVICENOW:',
+        ...(known.length ? known.map(x => '• ' + x) : ['• NONE']),
+        '',
+        'UNKNOWN / NOT ESTABLISHED:',
+        ...(unknown.length ? unknown.map(x => '• ' + x) : ['• NONE'])
+      ].join('\n');
+
+      const extraction = {
+        anomalyCode: 'SERVICENOW_SAP_OUTAGE',
+        anomalyEntity: inc.number || incident,
+        rootCause: 'UNKNOWN — NOT ESTABLISHED IN SERVICENOW SOURCE DATA',
+        rootCauseSub:
+          'Multiple linked SAP incidents and CMDB relationships are documented; causality is not established by those relationships alone.',
+        situationSummary:
+          (inc.short_description || 'ServiceNow incident') +
+          ' · ' + related.length +
+          ' related incident(s) linked through the ServiceNow Problem record.',
+        revenueAtRisk: 'NOT STATED IN SOURCE DATA',
+        linesImpacted: 'NOT STATED IN SOURCE DATA',
+        clientsImpacted: 'NOT STATED IN SOURCE DATA',
+        runway: 'NOT STATED IN SOURCE DATA',
+        incidentLabel:
+          (inc.number || incident) + ' · ' +
+          (inc.priority || 'Priority not stated'),
+        severity: inc.priority || 'NOT SCORED',
+        risks: [],
+        bnca: [
+          'Coordinate investigation of the documented SAP incident scope.',
+          'Validate the linked Problem and CMDB relationships.',
+          'Do not treat CMDB dependency as proof of root cause.'
+        ]
+      };
+
+      relayData = {
+        selectedSector: 'ServiceNow BPO/MSP',
+        selectedDocType: 'ServiceNow Incident',
+        docText,
+        timestamp: new Date().toISOString(),
+        // source: 'servicenow' is the flag bpo-strategist.html's
+        // resolution/confidence/exposure guards key off of --
+        // getBpoIntelligence()'s response has no such field, so it
+        // must be stamped on here, not assumed from the API shape.
+        serviceNow: { ...sn, source: 'servicenow' },
+        extraction
+      };
+
+      document.getElementById('tbSector').textContent =
+        'ServiceNow BPO/MSP';
+      document.getElementById('tbDocType').textContent =
+        'LIVE · READ ONLY';
+      document.getElementById('incLabel').textContent =
+        (inc.number || incident) + ' · SERVICE NOW LIVE';
+      document.getElementById('incDetected').textContent =
+        inc.opened_at
+          ? new Date(inc.opened_at).toLocaleTimeString('en-US', {
+              hour: '2-digit',
+              minute: '2-digit'
+            })
+          : 'LIVE';
+
+      // TSMQualityScore.compute() reads extraction.serviceNow.source to pick
+      // the source-aware scorer. The marker was only on relayData, so the
+      // live page fell through to the generic scorer (40%).
+      extraction.serviceNow = relayData.serviceNow;
+
+      renderExtraction(extraction);
+      buildEvidencePanel('ServiceNow Incident', docText);
+
+      storeWarRoomRelay(extraction);
+
+      engineFired = true;
+
+      const btn = document.getElementById('fireEngineBtn');
+      if (btn) {
+        btn.textContent = '✓ SERVICENOW EVIDENCE LOADED';
+        btn.disabled = true;
+      }
+
+      const count = document.getElementById('engineCount');
+      if (count) {
+        count.textContent =
+          'ServiceNow evidence complete · READ ONLY';
+      }
+
+      const pulse = document.getElementById('enginePulse');
+      if (pulse) pulse.style.background = 'var(--green)';
+
+      setStatus(
+        'ServiceNow evidence loaded — Incident → Problem → CMDB scope ready'
+      );
+
+      // Keep the demo URL clean after successful intake.
+      try {
+        const clean = new URL(window.location.href);
+        clean.searchParams.delete('servicenowIncident');
+        window.history.replaceState({}, '', clean.toString());
+      } catch (e) {}
+
+    } catch (e) {
+      console.error('[TSM ServiceNow Demo Intake]', e);
+      setStatus('ServiceNow live intake failed — ' + e.message);
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', run, { once: true });
+  } else {
+    run();
+  }
+})();
+
 (function loadRelay() {
   try {
+    // ServiceNow live-demo URLs are hydrated by tsmServiceNowDemoIntake().
+    // Do not let the legacy relay loader fall into BPO demo mode while that
+    // governed read-only fetch is still pending.
+    const serviceNowIncident = new URLSearchParams(window.location.search)
+      .get('servicenowIncident');
+
+    if (serviceNowIncident && serviceNowIncident.trim()) {
+      setStatus('ServiceNow live demo intake pending — READ ONLY');
+      return;
+    }
+
     let raw = sessionStorage.getItem('TSM_BPO_DOC') || sessionStorage.getItem('TSM_BPO_UPLOADER_RELAY');
     if (!raw) {
       // GAP 1 fix: also check the raw doc-search-multi.html relay key so the
@@ -1212,6 +1426,11 @@ function storeWarRoomRelay(extracted) {
     caseId,
     documentId: pendingDocId,
     clientId: selectedClientId || null,
+
+    // ServiceNow BPO/MSP demo evidence.
+    // READ-ONLY: this is carried through the existing relay only.
+    serviceNow: relayData?.serviceNow || null,
+
     engines: {
       engine1: extracted.situationSummary || '',
       engine2: (extracted.risks || []).map(r => r.text).join(' | '),
