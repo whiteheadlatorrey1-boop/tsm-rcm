@@ -345,7 +345,7 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
   <div class="inc-divider"></div>
   <div>
     <div class="inc-label" id="incLabel">INCIDENT DETECTED — ANALYZING</div>
-    <div class="inc-meta">Detected: <span id="incDetected">—</span> &nbsp;|&nbsp; Stage: <span id="incStage">SITUATION AWARENESS</span> &nbsp;|&nbsp; Chain: <span>UPLOADER → SITUATION ROOM ● → STRATEGIST → EXECUTIVE</span></div>
+    <div class="inc-meta">Detected: <span id="incDetected">—</span> &nbsp;|&nbsp; Stage: <span id="incStage">SITUATION AWARENESS</span> &nbsp;|&nbsp; Chain: <span id="incChain">UPLOADER → SITUATION ROOM ● → STRATEGIST → EXECUTIVE</span></div>
   </div>
   <div class="inc-window">
     <div>
@@ -762,7 +762,31 @@ document.addEventListener('DOMContentLoaded', async function tsmBpoAutoPipeline(
           (inc.number || incident) + ' · ' +
           (inc.priority || 'Priority not stated'),
         severity: inc.priority || 'NOT SCORED',
-        risks: [],
+        // Source-backed only: facts ServiceNow states, not inferred risks.
+        // Level is SOURCE-LINKED (not HIGH/CRITICAL) because ServiceNow
+        // does not state a risk severity for these.
+        risks: (function () {
+          const esc = v => String(v == null ? '' : v)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          const out = [];
+          if (problem && problem.number) {
+            out.push({
+              icon: '●',
+              level: 'SOURCE-LINKED',
+              text: 'Linked Problem ' + esc(problem.number) +
+                (problem.short_description ? ' — ' + esc(problem.short_description) : '') +
+                ' (ServiceNow record; not a stated root cause)'
+            });
+          }
+          if (related.length) {
+            out.push({
+              icon: '●',
+              level: 'SOURCE-LINKED',
+              text: esc(related.length) + ' related incident(s) linked through the Problem record in ServiceNow'
+            });
+          }
+          return out;
+        })(),
         bnca: [
           'Coordinate investigation of the documented SAP incident scope.',
           'Validate the linked Problem and CMDB relationships.',
@@ -804,6 +828,27 @@ document.addEventListener('DOMContentLoaded', async function tsmBpoAutoPipeline(
 
       renderExtraction(extraction);
       buildEvidencePanel('ServiceNow Incident', docText);
+
+      // ServiceNow states no exposure / lines / clients / runway. Remove the
+      // generic-template trend text that implies otherwise.
+      (function tsmSnCleanTemplate() {
+        const stale = ['↑ CRITICAL', '↑ HIGH', '● ACTIVE', '↓ DEPLETING'];
+        document.querySelectorAll('.impact-trend').forEach(el => {
+          if (stale.includes(el.textContent.trim())) {
+            el.textContent = 'NO SOURCE DATA';
+            el.style.color = 'var(--muted)';
+          }
+        });
+        const rs = document.getElementById('impRevenueSub');
+        if (rs) rs.textContent = 'Not provided by ServiceNow';
+        document.querySelectorAll('.mem-msg').forEach(el => {
+          if (/awaiting relay/.test(el.textContent)) {
+            el.textContent = 'Situation Room initialized — ServiceNow evidence loaded';
+          }
+        });
+        const ch = document.getElementById('incChain');
+        if (ch) ch.innerHTML = ch.innerHTML.replace('UPLOADER', 'SERVICENOW · READ ONLY');
+      })();
 
       storeWarRoomRelay(extraction);
 

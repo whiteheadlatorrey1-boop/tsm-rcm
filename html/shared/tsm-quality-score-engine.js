@@ -334,8 +334,11 @@
       ]);
     }
 
-    const passed = checks.filter(c => c[1]).length;
-    const pct = checks.length ? Math.round((passed / checks.length) * 100) : 0;
+    // not_required entries are informational: the source does not supply
+    // them, so they are excluded from the denominator, not scored as failures.
+    const scored = checks.filter(c => !(c && !Array.isArray(c) && c.status === 'not_required'));
+    const passed = scored.filter(c => Array.isArray(c) && c[1]).length;
+    const pct = scored.length ? Math.round((passed / scored.length) * 100) : 0;
 
     return { pct, checks };
   }
@@ -435,25 +438,39 @@
   }
 
   function scoreServiceNowConfidence(extraction, recommendation) {
+    const ext = extraction || {};
     const checks = [];
 
-    checks.push([
-      'AI-reported confidence score present',
-      !!(recommendation && typeof recommendation.confidence === 'number')
-    ]);
+    // ServiceNow supplies no confidence figure. Score one only if the
+    // Strategist actually reports it; otherwise it is not required.
+    if (recommendation && typeof recommendation.confidence === 'number') {
+      checks.push(['AI-reported confidence score present', true]);
+    } else {
+      checks.push({
+        label: 'AI-reported confidence not required — source supplies none; none invented',
+        passed: true,
+        status: 'not_required'
+      });
+    }
 
     checks.push([
       'Unsupported certainty avoided',
-      String((extraction && extraction.rootCause) || '').toUpperCase()
-        .includes('NOT ESTABLISHED')
+      String(ext.rootCause || '').toUpperCase().includes('NOT ESTABLISHED')
+    ]);
+    checks.push([
+      'Exposure not asserted beyond source',
+      String(ext.revenueAtRisk || '').toUpperCase().includes('NOT STATED')
+    ]);
+    checks.push([
+      'Runway not asserted beyond source',
+      String(ext.runway || '').toUpperCase().includes('NOT STATED')
     ]);
 
-    // Do not invent a numeric confidence score for a read-only source
-    // that does not establish one.
-    return {
-      pct: 60,
-      checks
-    };
+    const scored = checks.filter(c => Array.isArray(c));
+    const passed = scored.filter(c => c[1]).length;
+    const pct = scored.length ? Math.round((passed / scored.length) * 100) : 0;
+
+    return { pct, checks };
   }
 
   function compute(input) {
@@ -507,11 +524,10 @@
         label: c[0],
         passed: c[1]
       })),
-      ...confidence.checks.map(c => ({
-        group: 'Confidence',
-        label: c[0],
-        passed: c[1]
-      })),
+      ...confidence.checks.map(c => Array.isArray(c)
+        ? { group: 'Confidence', label: c[0], passed: c[1] }
+        : { group: 'Confidence', label: c.label, passed: c.passed, status: c.status }
+      ),
     ];
 
     return {
