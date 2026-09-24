@@ -1439,10 +1439,55 @@ nav {
     </div>
   </div>
 
-  <!-- Live panel for the mortgage Interview Prep pilot — populated from
-       GET /api/interview/sectors/mortgage/plan, not hardcoded. Hidden
-       until the checkbox above is checked. -->
-  <div id="mortgageInterviewIntel" style="display:none;background:var(--surface);border:1px solid var(--border);padding:1rem;margin-bottom:1.5rem;"></div>
+  <!--
+    LIVE SECTOR INTERVIEW INTELLIGENCE
+    Each panel is populated from:
+      GET /api/interview/sectors/:sectorId/plan?roleId=:roleId
+
+    The interview engine is sector-aware. These panels are intentionally
+    separate so one sector cannot overwrite another sector's intelligence.
+  -->
+  <div
+    id="interviewIntel-mortgage"
+    class="sector-interview-intel"
+    data-sector="mortgage"
+    style="display:none;background:var(--surface);border:1px solid var(--border);padding:1rem;margin-bottom:1rem;">
+  </div>
+
+  <div
+    id="interviewIntel-healthcare-rcm"
+    class="sector-interview-intel"
+    data-sector="healthcare-rcm"
+    style="display:none;background:var(--surface);border:1px solid var(--border);padding:1rem;margin-bottom:1rem;">
+  </div>
+
+  <div
+    id="interviewIntel-insurance"
+    class="sector-interview-intel"
+    data-sector="insurance"
+    style="display:none;background:var(--surface);border:1px solid var(--border);padding:1rem;margin-bottom:1rem;">
+  </div>
+
+  <div
+    id="interviewIntel-automation-it"
+    class="sector-interview-intel"
+    data-sector="automation-it"
+    style="display:none;background:var(--surface);border:1px solid var(--border);padding:1rem;margin-bottom:1rem;">
+  </div>
+
+  <div
+    id="interviewIntel-finops-ai"
+    class="sector-interview-intel"
+    data-sector="finops-ai"
+    style="display:none;background:var(--surface);border:1px solid var(--border);padding:1rem;margin-bottom:1rem;">
+  </div>
+
+  <div
+    id="interviewIntel-sap"
+    class="sector-interview-intel"
+    data-sector="sap"
+    style="display:none;background:var(--surface);border:1px solid var(--border);padding:1rem;margin-bottom:1rem;">
+  </div>
 
   <div class="section-head cyan">AUTO-GENERATED LEARNING PATH</div>
   <div class="deploy-pipeline">
@@ -7099,31 +7144,101 @@ function selectCareerCandidate(candidateId) {
   }
 }
 
-// ── MORTGAGE INTERVIEW PREP (live data from /api/interview/*, see
-//    routes/interview-engine.js) — pilot sector only. The checkbox above
-//    loads the real plan for the mortgage sector; other sectors don't
-//    have this wired up yet.
+// ── SECTOR INTERVIEW PREP ─────────────────────────────────────
 //
+// All sectors use the same Interview Engine.
+// UI responsibilities:
+//   1. Resolve sector.
+//   2. Resolve mapped role.
+//   3. Load the sector-specific plan.
+//   4. Render into that sector's own panel.
+//   5. Start a persisted practice session for the selected candidate.
+//
+// The engine itself remains generic and authoritative. No readiness score
+// is fabricated before answers are actually graded.
+
+const INTERVIEW_SECTOR_CONFIG = {
+  mortgage: {
+    roleId: 'ops-analyst',
+    label: 'REAL ESTATE · MORTGAGE'
+  },
+  'healthcare-rcm': {
+    roleId: 'rcm-analyst',
+    label: 'HEALTHCARE RCM'
+  },
+  insurance: {
+    roleId: 'claims-analyst',
+    label: 'INSURANCE'
+  },
+  'finops-ai': {
+    roleId: 'operations-analyst',
+    label: 'FINOPS · AI · CAREER'
+  },
+  'automation-it': {
+    roleId: 'l1-support',
+    label: 'AUTOMATION · IT'
+  },
+  sap: {
+    roleId: 'sap-analyst',
+    label: 'SAP · ENTERPRISE APPLICATIONS'
+  }
+};
+
+function getInterviewRoleId(sectorId) {
+  const config = INTERVIEW_SECTOR_CONFIG[sectorId];
+  return config ? config.roleId : null;
+}
+
+function getInterviewSectorLabel(sectorId) {
+  const config = INTERVIEW_SECTOR_CONFIG[sectorId];
+  return config ? config.label : sectorId;
+}
+
+function getInterviewPanel(sectorId) {
+  return document.getElementById('interviewIntel-' + sectorId);
+}
+
+function hideInterviewPanels(exceptSectorId = null) {
+  document.querySelectorAll('.sector-interview-intel').forEach(panel => {
+    if (!exceptSectorId || panel.dataset.sector !== exceptSectorId) {
+      panel.style.display = 'none';
+    }
+  });
+}
+
 async function handleInterviewPrepToggle(sectorId, checkbox) {
-  const panel = document.getElementById('mortgageInterviewIntel');
-  if (!panel) return;
+  const panel = getInterviewPanel(sectorId);
+
+  if (!panel) {
+    console.warn('Interview panel missing for sector:', sectorId);
+    return;
+  }
 
   if (!checkbox.checked) {
     panel.style.display = 'none';
     return;
   }
 
+  hideInterviewPanels(sectorId);
+
   panel.style.display = 'block';
   panel.innerHTML =
-    '<div style="color:var(--text3);font-size:11px;">Loading interview plan…</div>';
+    '<div style="color:var(--text3);font-size:11px;">' +
+    'Loading ' + escapeHtml(getInterviewSectorLabel(sectorId)) +
+    ' interview intelligence…' +
+    '</div>';
+
+  const roleId = getInterviewRoleId(sectorId);
+
+  if (!roleId) {
+    panel.innerHTML =
+      '<div style="color:var(--red);font-size:11px;">' +
+      'No interview role mapped for this sector.' +
+      '</div>';
+    return;
+  }
 
   try {
-    const roleId = getInterviewRoleId(sectorId);
-
-    if (!roleId) {
-      throw new Error('No interview role mapped for ' + sectorId);
-    }
-
     const res = await fetch(
       '/api/interview/sectors/' +
       encodeURIComponent(sectorId) +
@@ -7131,55 +7246,33 @@ async function handleInterviewPrepToggle(sectorId, checkbox) {
       encodeURIComponent(roleId)
     );
 
+    const data = await res.json().catch(() => ({}));
+
     if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
       throw new Error(
-        data.error || `Interview plan request failed (${res.status})`
+        data.error || 'Interview plan request failed (' + res.status + ')'
       );
     }
 
-    const data = await res.json();
+    if (!data.plan) {
+      throw new Error('Interview plan response did not contain a plan.');
+    }
 
     renderInterviewIntel(data.plan, sectorId);
 
-  } catch (e) {
-    console.warn('Interview plan load failed:', e);
+  } catch (err) {
+    console.warn('Interview plan load failed:', err);
 
     panel.innerHTML =
       '<div style="color:var(--red);font-size:11px;">' +
-      'Unable to load interview plan — check server connection.' +
+      'Unable to load interview intelligence — ' +
+      escapeHtml(err.message || 'server connection error') +
       '</div>';
   }
 }
 
-function getInterviewRoleId(sectorId) {
-  const roleMap = {
-    'mortgage': 'ops-analyst',
-    'healthcare-rcm': 'rcm-analyst',
-    'insurance': 'claims-analyst',
-    'finops-ai': 'operations-analyst',
-    'automation-it': 'l1-support',
-    'sap': 'sap-analyst'
-  };
-
-  return roleMap[sectorId] || null;
-}
-
-function getInterviewSectorLabel(sectorId) {
-  const labels = {
-    'mortgage': 'REAL ESTATE · MORTGAGE',
-    'healthcare-rcm': 'HEALTHCARE RCM',
-    'insurance': 'INSURANCE',
-    'finops-ai': 'FINOPS · AI · CAREER',
-    'automation-it': 'AUTOMATION · IT',
-    'sap': 'SAP · ENTERPRISE APPLICATIONS'
-  };
-
-  return labels[sectorId] || sectorId;
-}
-
 function renderInterviewIntel(plan, sectorId) {
-  const panel = document.getElementById('mortgageInterviewIntel');
+  const panel = getInterviewPanel(sectorId);
   if (!panel || !plan) return;
 
   const levelLabel = {
@@ -7191,94 +7284,155 @@ function renderInterviewIntel(plan, sectorId) {
   const grouped = {};
 
   (plan.questions || []).forEach(q => {
-    (grouped[q.type] = grouped[q.type] || []).push(q);
+    const type = q.type || 'knowledge';
+    (grouped[type] = grouped[type] || []).push(q);
   });
 
   const questionsHtml = Object.keys(levelLabel).map(level => {
     const qs = grouped[level] || [];
 
-    if (!qs.length) return '';
+    if (!qs.length) {
+      return `
+        <div style="margin-top:.6rem;">
+          <div style="font-size:9px;color:var(--text3);letter-spacing:.05em;">
+            ${levelLabel[level]}
+          </div>
+          <div style="font-size:10px;color:var(--text3);padding:.3rem 0;">
+            No questions currently registered for this level.
+          </div>
+        </div>
+      `;
+    }
 
     return `
       <div style="margin-top:.6rem;">
         <div style="font-size:9px;color:var(--text3);letter-spacing:.05em;">
-          ${levelLabel[level]}
+          ${levelLabel[level]} · ${qs.length}
         </div>
 
-        ${qs.map(q => `
-          <div style="font-size:11px;color:var(--text);padding:.3rem 0;border-bottom:1px solid var(--border);">
-            ${escapeHtml(q.question)}
+        ${qs.map((q, index) => `
+          <div style="
+            font-size:11px;
+            color:var(--text);
+            padding:.45rem 0;
+            border-bottom:1px solid var(--border);
+          ">
+            <span style="color:var(--text3);margin-right:.4rem;">
+              ${index + 1}.
+            </span>
+            ${escapeHtml(q.question || '')}
           </div>
         `).join('')}
       </div>
     `;
   }).join('');
 
-  const selectedCandidateId = window._selectedCandidateId;
-  const selectedCandidateName = window._selectedCandidateName;
+  const candidateId = window._selectedCandidateId;
+  const candidateName = window._selectedCandidateName || '';
 
   panel.innerHTML = `
-    <div style="font-size:9px;color:var(--text3);letter-spacing:.05em;margin-bottom:.3rem;">
-      INTERVIEW READY
-    </div>
-
-    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:.5rem;">
+    <div style="
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-start;
+      gap:1rem;
+      margin-bottom:.8rem;
+    ">
       <div>
-        <span style="font-size:9px;color:var(--text3);">CANDIDATE</span><br>
-        <span style="font-size:12px;color:var(--text);font-weight:700;">
-          ${selectedCandidateId
-            ? escapeHtml(selectedCandidateName)
-            : 'No candidate selected'}
-        </span>
+        <div style="
+          font-size:9px;
+          color:var(--text3);
+          letter-spacing:.08em;
+          margin-bottom:.25rem;
+        ">
+          LIVE INTERVIEW INTELLIGENCE
+        </div>
+
+        <div style="
+          font-size:15px;
+          color:var(--text);
+          font-weight:700;
+        ">
+          ${escapeHtml(plan.sectorName || getInterviewSectorLabel(sectorId))}
+        </div>
+
+        <div style="
+          font-size:10px;
+          color:var(--cyan);
+          margin-top:.2rem;
+        ">
+          ${escapeHtml(
+            plan.role && plan.role.name
+              ? plan.role.name
+              : getInterviewRoleId(sectorId)
+          )}
+        </div>
       </div>
 
       <div style="text-align:right;">
-        <span style="font-size:9px;color:var(--text3);">SECTOR</span><br>
-        <span style="font-size:12px;color:var(--text);font-weight:700;">
-          ${escapeHtml(getInterviewSectorLabel(sectorId))}
-        </span>
+        <div style="font-size:9px;color:var(--text3);">
+          READINESS
+        </div>
+        <div style="font-size:12px;color:var(--amber);">
+          Not yet assessed
+        </div>
       </div>
     </div>
 
-    <div style="font-size:9px;color:var(--text3);margin-bottom:.5rem;">
-      ${selectedCandidateId
-        ? `Candidate ID: ${escapeHtml(selectedCandidateId)}`
-        : 'Select a candidate from Candidate Registry before starting practice.'}
-    </div>
-
-    <div style="text-align:right;margin-bottom:.5rem;">
-      <span style="font-size:9px;color:var(--text3);">TARGET ROLE</span><br>
-      <span style="font-size:12px;color:var(--text);font-weight:700;">
-        ${escapeHtml(plan.role ? plan.role.name : 'Interview Role')}
-      </span>
-    </div>
-
-    <div style="text-align:right;margin-bottom:.5rem;">
-      <span style="font-size:9px;color:var(--text3);">READINESS</span><br>
-      <span style="font-size:12px;color:var(--amber);">
-        Not yet assessed
-      </span>
+    <div style="
+      display:flex;
+      flex-wrap:wrap;
+      gap:.35rem;
+      margin-bottom:.8rem;
+    ">
+      ${(plan.competencies || []).map(c => `
+        <span style="
+          font-size:9px;
+          color:var(--text2);
+          border:1px solid var(--border);
+          padding:.2rem .4rem;
+        ">
+          ${escapeHtml(c)}
+        </span>
+      `).join('')}
     </div>
 
     ${questionsHtml}
 
-    <button
-      class="footer-btn"
-      style="margin-top:.8rem;"
-      onclick="startInterviewSession('${sectorId}')">
-      ▶ Start Practice Session
-    </button>
+    <div style="
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:1rem;
+      margin-top:1rem;
+      padding-top:.7rem;
+      border-top:1px solid var(--border);
+    ">
+      <div style="font-size:10px;color:var(--text3);">
+        ${candidateId
+          ? 'Candidate: ' + escapeHtml(candidateName)
+          : 'Select a candidate from Candidate Registry first.'}
+      </div>
+
+      <button
+        class="footer-btn"
+        ${candidateId ? '' : 'disabled'}
+        onclick="startInterviewSession('${sectorId}')">
+        ▶ START PRACTICE SESSION
+      </button>
+    </div>
 
     <div
-      id="mortgageInterviewSessionStatus"
-      style="font-size:10px;color:var(--text3);margin-top:.4rem;">
+      id="interviewSessionStatus-${sectorId}"
+      style="font-size:10px;color:var(--text3);margin-top:.5rem;">
     </div>
   `;
 }
 
 async function startInterviewSession(sectorId) {
-  const status =
-    document.getElementById('mortgageInterviewSessionStatus');
+  const status = document.getElementById(
+    'interviewSessionStatus-' + sectorId
+  );
 
   const candidateId = window._selectedCandidateId;
   const roleId = getInterviewRoleId(sectorId);
@@ -7308,7 +7462,9 @@ async function startInterviewSession(sectorId) {
   try {
     const res = await fetch('/api/interview/sessions', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json'
+      },
       body: JSON.stringify({
         candidateId,
         sectorId,
@@ -7316,27 +7472,43 @@ async function startInterviewSession(sectorId) {
       })
     });
 
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
 
     if (!res.ok) {
       throw new Error(
-        data.error || `Session create failed (${res.status})`
+        data.error || 'Unable to start interview session (' + res.status + ')'
       );
     }
 
     if (status) {
       status.innerHTML =
-        `Session <span style="color:var(--green);">${escapeHtml(data.session.sessionId)}</span>` +
-        ` started — guided Q&amp;A flow is the next piece to build.`;
+        '<span style="color:var(--green);">' +
+        'Practice session created: ' +
+        escapeHtml(
+          data.session && data.session.sessionId
+            ? data.session.sessionId
+            : 'ready'
+        ) +
+        '</span>';
     }
 
-  } catch (e) {
-    console.warn('Interview session create failed:', e);
+    /*
+     * Do not fabricate readiness here.
+     * The server returns no readiness score until responses are actually
+     * graded by the interview grader.
+     */
+
+    if (typeof window.openInterviewSession === 'function') {
+      window.openInterviewSession(data.session || data);
+    }
+
+  } catch (err) {
+    console.warn('Interview session start failed:', err);
 
     if (status) {
       status.innerHTML =
-        '<span style="color:var(--red);font-size:11px;">' +
-        'Unable to start session — check server connection.' +
+        '<span style="color:var(--red);">' +
+        escapeHtml(err.message || 'Unable to start interview session.') +
         '</span>';
     }
   }
@@ -7355,60 +7527,11 @@ function renderMortgageInterviewIntel(plan) {
 async function startMortgageInterviewSession() {
   return startInterviewSession('mortgage');
 }
-function renderMortgageInterviewIntel(plan) {
-  const panel = document.getElementById('mortgageInterviewIntel');
-  if (!panel || !plan) return;
 
-  const levelLabel = { knowledge: 'KNOWLEDGE', scenario: 'SCENARIO', business: 'BUSINESS / EXECUTIVE' };
-  const grouped = {};
-  (plan.questions || []).forEach(q => {
-    (grouped[q.type] = grouped[q.type] || []).push(q);
-  });
 
-  const questionsHtml = Object.keys(levelLabel).map(level => {
-    const qs = grouped[level] || [];
-    if (!qs.length) return '';
-    return `
-      <div style="margin-top:.6rem;">
-        <div style="font-size:9px;color:var(--text3);letter-spacing:.05em;">${levelLabel[level]}</div>
-        ${qs.map(q => `<div style="font-size:11px;color:var(--text);padding:.3rem 0;border-bottom:1px solid var(--border);">${escapeHtml(q.question)}</div>`).join('')}
-      </div>`;
-  }).join('');
-
-  // READINESS intentionally reads "Not yet assessed" rather than a
-  // number — the engine only reports a readiness score once answers
-  // have actually been scored (see computeReadiness() in
-  // server/interview-engine-service.js), and scoring isn't wired in yet.
-  const selectedCandidateId = window._selectedCandidateId;
-  const selectedCandidateName = window._selectedCandidateName;
-
-  panel.innerHTML = `
-    <div style="font-size:9px;color:var(--text3);letter-spacing:.05em;margin-bottom:.3rem;">INTERVIEW READY</div>
-    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:.5rem;">
-      <div>
-        <span style="font-size:9px;color:var(--text3);">CANDIDATE</span><br>
-        <span style="font-size:12px;color:var(--text);font-weight:700;">
-          ${selectedCandidateId ? escapeHtml(selectedCandidateName) : 'No candidate selected'}
-        </span>
-      </div>
-      <div style="text-align:right;">
-        <span style="font-size:9px;color:var(--text3);">TARGET</span><br>
-        <span style="font-size:12px;color:var(--text);font-weight:700;">${escapeHtml(plan.role ? plan.role.name : plan.sectorName)}</span>
-      </div>
-    </div>
-    <div style="font-size:9px;color:var(--text3);margin-bottom:.5rem;">
-      ${selectedCandidateId ? `Candidate ID: ${escapeHtml(selectedCandidateId)}` : 'Select a candidate from Candidate Registry before starting practice.'}
-    </div>
-    <div style="text-align:right;margin-bottom:.5rem;">
-      <span style="font-size:9px;color:var(--text3);">READINESS</span><br>
-      <span style="font-size:12px;color:var(--amber);">Not yet assessed</span>
-    </div>
-    ${questionsHtml}
-    <button class="footer-btn" style="margin-top:.8rem;" onclick="startMortgageInterviewSession()">▶ Start Practice Session</button>
-    <div id="mortgageInterviewSessionStatus" style="font-size:10px;color:var(--text3);margin-top:.4rem;"></div>
-  `;
+async function startMortgageInterviewSession() {
+  return startInterviewSession('mortgage');
 }
-
 async function startMortgageInterviewSession() {
   const status = document.getElementById('mortgageInterviewSessionStatus');
   const candidateId = window._selectedCandidateId;
