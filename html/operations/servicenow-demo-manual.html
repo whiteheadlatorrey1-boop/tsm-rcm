@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ServiceNow Demo Manual — TSM L1 Copilot & BPO Intelligence</title>
+<style>
+  :root {
+    --bg: #0b0e12; --panel: #12161c; --text: #e6e9ee; --muted: #8b95a3;
+    --cyan: #4fd1e8; --amber: #e0a634; --green: #46c76b; --err: #f87171; --border: #232a34;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family: -apple-system, "Segoe UI", Roboto, sans-serif; line-height:1.55; }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 40px 24px 100px; }
+  h1 { font-size: 1.7rem; margin-bottom:4px; }
+  .sub { color: var(--muted); margin-bottom: 28px; font-size: .95rem; }
+  .warn { background: rgba(224,166,52,.1); border:1px solid var(--amber); border-radius:8px; padding:14px 16px; margin: 20px 0 32px; color:#f0d090; }
+  .warn b { color: var(--amber); }
+  nav.toc { background: var(--panel); border:1px solid var(--border); border-radius:10px; padding:16px 20px; margin-bottom: 36px; }
+  nav.toc a { color: var(--cyan); text-decoration:none; }
+  nav.toc a:hover { text-decoration:underline; }
+  nav.toc ul { margin:8px 0 0; padding-left:20px; }
+  h2 { border-top: 1px solid var(--border); padding-top: 32px; margin-top: 40px; font-size:1.3rem; }
+  h2 .tag { display:inline-block; font-size:.7rem; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); border:1px solid var(--border); border-radius:5px; padding:2px 8px; margin-left:10px; vertical-align:middle; }
+  .story { color: var(--muted); font-style: italic; margin: 6px 0 20px; }
+  ol.steps { padding-left: 22px; }
+  ol.steps > li { margin-bottom: 18px; }
+  .say { background: var(--panel); border-left:3px solid var(--cyan); padding:10px 14px; margin-top:6px; border-radius: 0 6px 6px 0; }
+  .say b { color: var(--cyan); }
+  code, .id { font-family: "SF Mono", Menlo, Consolas, monospace; background: #1a2029; padding:1px 6px; border-radius:4px; font-size:.88em; color:#c9d4e2; }
+  .note { color: var(--muted); font-size:.92em; margin-top:6px; }
+  .value { margin-top:22px; background: rgba(70,199,107,.08); border:1px solid var(--green); border-radius:8px; padding:12px 16px; }
+  .value b { color: var(--green); }
+  .fix { background: rgba(248,113,113,.08); border:1px solid var(--err); border-radius:8px; padding:12px 16px; margin-top: 16px; }
+  .fix b { color: var(--err); }
+  table { width:100%; border-collapse: collapse; margin-top: 16px; font-size:.92em; }
+  th, td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight:600; font-size:.8rem; text-transform:uppercase; letter-spacing:.04em; }
+  footer { margin-top: 60px; padding-top: 20px; border-top:1px solid var(--border); color: var(--muted); font-size:.85rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>ServiceNow Demo Manual</h1>
+  <div class="sub">L1 Support Copilot write-gate &amp; BPO/MSP live intake — verified against the running app, 2026-09-24</div>
+
+  <div class="warn">
+    <b>Live-write warning:</b> Demo 1's final step performs a real <code>PATCH</code> to ServiceNow's
+    <code>incident.work_notes</code> field, on whichever instance the <code>SERVICENOW_*</code> environment
+    variables currently point to. Confirm that's a sandbox/PDI, not a shared or production tenant, before
+    rehearsing against a real incident number.
+  </div>
+
+  <nav class="toc">
+    <b>Contents</b>
+    <ul>
+      <li><a href="#demo1">Demo 1 — L1 Support Copilot: Resolve the ticket</a></li>
+      <li><a href="#demo2">Demo 2 — BPO/MSP Intelligence: Understand the situation</a></li>
+      <li><a href="#demo3">Demo 3 — Escalation / Tier 2 Handoff</a></li>
+      <li><a href="#verify">What's verified vs. what to confirm live</a></li>
+    </ul>
+  </nav>
+
+  <h2 id="demo1">Demo 1 — L1 Support Copilot <span class="tag">Resolve</span></h2>
+  <div class="story">"Reduce the time from ticket arrival to technician action — without removing the technician from the decision."</div>
+  <div class="note">Start: <code>l1-ticket-copilot.html</code>, Ticket tab (default).</div>
+
+  <ol class="steps">
+    <li>Type an incident number into <code>#tkIncident</code>, click <b>LOAD</b> (<code>#btnSnPullByIncident</code>).
+      <div class="say"><b>Say:</b> "This is a live call to ServiceNow. Requester, assignment group, and asset come back automatically — no retyping."</div>
+      <div class="note">If an amber <code>[DEMO DATA]</code> tag appears, ServiceNow isn't configured for this environment — check before the room sees it.</div>
+    </li>
+    <li>Click the <b>Resolution</b> sidebar tab. The generate button only lives here, not on Ticket.</li>
+    <li>Click <b>GENERATE RESOLUTION DRAFT</b> (<code>#btnBuildResolution</code>).
+      <div class="say"><b>Say:</b> "This produces a draft only. Nothing is written to ServiceNow yet." Read a line or two aloud.</div>
+    </li>
+    <li>Point at the disabled <b>TECHNICIAN CONFIRM &amp; WRITE</b> button. Click it — nothing happens.
+      <div class="say"><b>Say:</b> "The AI cannot unlock this. Only the technician can, after reading the draft."</div>
+    </li>
+    <li>Check the confirmation box (<code>#resolutionTechnicianConfirm</code>). Button enables.
+      <div class="note">Optional proof: click generate again — box unchecks, button re-locks automatically. Say: "Every new draft needs a fresh sign-off."</div>
+    </li>
+    <li>Check the box again, click <b>TECHNICIAN CONFIRM &amp; WRITE</b>.
+      <div class="note">Status: "Submitting the technician-confirmed draft to ServiceNow..." then "Technician-confirmed work note written to [incident] in ServiceNow."</div>
+    </li>
+    <li>Switch to ServiceNow, open the incident, show the note on the <b>Activity / Work Notes</b> list.</li>
+  </ol>
+
+  <div class="say"><b>Accurate talk point:</b> "The draft panel isn't editable, so what I read is what gets sent. Regenerating resets the confirmation automatically. The write also requires an authenticated internal-role session — the checkbox is the human step, the login is the access control." <i>(Don't say the checkbox is "tied to the exact text at the moment I checked it" — that's not what the code does.)</i></div>
+
+  <div class="value"><b>Value:</b> handling-time reduction + a controlled, auditable execution step.</div>
+
+  <h2 id="demo2">Demo 2 — BPO/MSP Intelligence <span class="tag">Understand</span></h2>
+  <div class="story">"Stop treating an enterprise incident as an isolated ticket."</div>
+  <div class="note">Start: load <code>bpo-war-room.html?servicenowIncident=&lt;INC#&gt;</code> directly — a URL load, not a click sequence. Intake fires automatically on page load.</div>
+
+  <ol class="steps">
+    <li>Load the URL.
+      <div class="say"><b>Say while it loads:</b> "I'm not demonstrating ticket resolution here — this is operational intelligence. Watch the status line: it's pulling this incident from ServiceNow as read-only evidence."</div>
+    </li>
+    <li>Walk the room through what's on screen: incident → linked Problem → related incidents → CMDB relationships.
+      <div class="note"><b>Read the incident's actual short description live — don't pre-script what the incident is about.</b></div>
+    </li>
+    <li><b>Credibility moment — point at it directly:</b> wherever ServiceNow doesn't supply a number (revenue at risk, exposure, runway), the page literally shows <code>"NOT STATED IN SOURCE DATA"</code> instead of inventing one. CMDB links are labeled <code>SOURCE-LINKED</code>, not treated as proven root cause. This is real code behavior, not a talking point layered on top.</li>
+    <li>The page auto-routes to <code>bpo-strategist.html</code>, then on to <code>bpo-executive-portal.html</code>.
+      <div class="say"><b>Say:</b> "The War Room is the evidence layer. The Strategist organizes it into an operational response for a human decision-maker — not an autonomous ServiceNow change. The Executive view is what a leader sees instead of five raw ServiceNow records."</div>
+    </li>
+  </ol>
+
+  <div class="value"><b>Value:</b> situation awareness + cross-record intelligence, with a demonstrated refusal to fabricate numbers ServiceNow doesn't provide.</div>
+
+  <h2 id="demo3">Demo 3 — Escalation / Tier 2 Handoff <span class="tag">Escalate</span></h2>
+  <div class="fix"><b>Correction:</b> this is not a separate page. It's the <b>Escalation</b> sidebar tab on the same <code>l1-ticket-copilot.html</code> page used in Demo 1.</div>
+  <div class="note">Start: the same loaded ticket from Demo 1, step 1 — skip the Resolution tab entirely.</div>
+
+  <ol class="steps">
+    <li>Click the <b>Escalation</b> sidebar tab (<code>data-section="escalation"</code>).</li>
+    <li>Optionally select a team chip (<code>#escTeamGrid</code>) and fill in reason/evidence fields.</li>
+    <li>Click <b>GENERATE ESCALATION PACKAGE</b> (<code>#btnBuildEscalation</code>).
+      <div class="say"><b>Say:</b> "This changes the handoff from 'I couldn't fix it' to 'here's the evidence, here's what's already been checked, here's what remains.'"</div>
+    </li>
+  </ol>
+
+  <div class="value"><b>Value:</b> reduced Tier-2 rework and continuity — Tier 2 starts from what L1 already established instead of rediscovering it.</div>
+
+  <h2 id="verify">What's verified vs. what to confirm live</h2>
+  <table>
+    <tr><th>Claim</th><th>Status</th></tr>
+    <tr><td>L1 gate sequence (disable/enable/reset on regenerate/reset on success)</td><td>Headless-browser tested, 21/21 checks, against real page code</td></tr>
+    <tr><td>Server requires internal role for the write</td><td>Confirmed in <code>server.js</code> (<code>requireRole(BPO_INTERNAL_ROLES)</code> gates <code>writeToServicenow</code>)</td></tr>
+    <tr><td>Work note write is verified by read-after-write</td><td>Confirmed in <code>servicenow-adapter.js</code> (<code>writeWorkNote</code>)</td></tr>
+    <tr><td>BPO intake refuses to invent revenue/exposure/runway numbers</td><td>Confirmed in <code>bpo-war-room.html</code>'s intake function</td></tr>
+    <tr><td>Exact incident short description / "SAP Sales and Distribution" wording</td><td><b>Not verified — read live from your actual instance, don't pre-script it</b></td></tr>
+    <tr><td>Live write against your production ServiceNow instance</td><td><b>Not yet run end-to-end — do a real rehearsal before presenting</b></td></tr>
+  </table>
+
+  <footer>
+    Source: <code>html/operations/walkthrough.md</code> §15 (troubleshooting format) and
+    <code>html/operations/MASTER_VERTICAL_WALKTHROUGH.md</code> §15 (talk-track format) carry the same content
+    in their respective styles. This page is the standalone rehearsal version.
+  </footer>
+</div>
+</body>
+</html>
