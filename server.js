@@ -956,6 +956,7 @@ app.get('/login', (req, res) => {
 // every /api/bpo/*, /api/concierge/*, and /api/members/* route below, which
 // has nothing to do with the removed page gate. Restoring only the constant.
 const BPO_INTERNAL_ROLES = ['admin', 'manager', 'analyst'];
+const L1_COPILOT_ROLES = ['admin', 'manager', 'analyst']; // L1 Copilot — internal staff only, no client-role access
 const BPO_MANAGE_ROLES = ['admin', 'manager'];
 // Client-role sessions get read-only visibility into their own data only —
 // never the client roster, audit logs, internal notes, or other clients'
@@ -4881,7 +4882,7 @@ app.use('/api/l1-copilot/cloud-ops', l1StatusOpen(() => cloudOpsAdapter.isConfig
 app.use('/api/l1-copilot/gcp', l1StatusOpen(() => gcpAdapter.isConfigured()));
 app.use('/api/l1-copilot/pilot', l1LiveGate(() => snAdapter.isConfigured() || graphAdapter.isConfigured()));
 
-app.post('/api/l1-copilot/assistant', async (req, res) => {
+app.post('/api/l1-copilot/assistant', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   try {
     var scenario = (req.body.scenario || req.body.question || req.body.query || '').trim();
     if (!scenario) return res.status(400).json({ ok: false, error: 'scenario is required' });
@@ -4926,7 +4927,7 @@ app.post('/api/l1-copilot/assistant', async (req, res) => {
 // Does not close tickets.
 // Does not write work notes.
 // ServiceNow reconciliation remains a separate explicit operation.
-app.post('/api/l1-copilot/workflow/orchestrate', (req, res) => {
+app.post('/api/l1-copilot/workflow/orchestrate', requireRole(L1_COPILOT_ROLES), (req, res) => {
   try {
     const result = orchestrate(req.body || {});
 
@@ -4961,7 +4962,7 @@ app.post('/api/l1-copilot/workflow/orchestrate', (req, res) => {
   }
 });
 
-app.post('/api/l1-copilot/workflow/evaluate', (req, res) => {
+app.post('/api/l1-copilot/workflow/evaluate', requireRole(L1_COPILOT_ROLES), (req, res) => {
   try {
     const result = evaluateWorkflow(req.body || {});
     return res.json({
@@ -4983,7 +4984,7 @@ app.post('/api/l1-copilot/workflow/evaluate', (req, res) => {
   }
 });
 
-app.post('/api/l1-copilot/closure/evaluate', (req, res) => {
+app.post('/api/l1-copilot/closure/evaluate', requireRole(L1_COPILOT_ROLES), (req, res) => {
   try {
     const input = req.body || {};
     const closure = evaluateClosure(input);
@@ -5016,7 +5017,7 @@ app.post('/api/l1-copilot/closure/evaluate', (req, res) => {
 // No ServiceNow state, RITM, SC Task, CMDB, user, or group writes occur here.
 // Incident -> RITM is NEVER inferred because the current Incident adapter
 // contract does not expose a guaranteed RITM relationship.
-app.post('/api/l1-copilot/servicenow/reconcile', async (req, res) => {
+app.post('/api/l1-copilot/servicenow/reconcile', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   const {
     incident,
     ritm,
@@ -5079,7 +5080,7 @@ app.post('/api/l1-copilot/servicenow/reconcile', async (req, res) => {
 // intelligence for the BPO decision workflow.
 // No ServiceNow writes, state changes, work-note writes, or autonomous
 // remediation occur here.
-app.get('/api/l1-copilot/servicenow/bpo-intelligence', async (req, res) => {
+app.get('/api/l1-copilot/servicenow/bpo-intelligence', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   const incident = String(req.query.incident || '').trim();
 
   if (!incident) {
@@ -5133,12 +5134,12 @@ app.get('/api/l1-copilot/servicenow/bpo-intelligence', async (req, res) => {
   }
 });
 
-app.get('/api/l1-copilot/servicenow/status', (req, res) => {
+app.get('/api/l1-copilot/servicenow/status', requireRole(L1_COPILOT_ROLES), (req, res) => {
   const configured = snAdapter.isConfigured();
   res.json({ ok: true, configured, demoMode: (!configured) && demoData.isDemoModeEnabled() });
 });
 
-app.get('/api/l1-copilot/servicenow/asset/:tag', async (req, res) => {
+app.get('/api/l1-copilot/servicenow/asset/:tag', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   try {
     const asset = await snAdapter.getAsset(req.params.tag);
     if (!asset) return res.status(404).json({ ok: false, error: `No asset found for tag "${req.params.tag}".` });
@@ -5152,7 +5153,7 @@ app.get('/api/l1-copilot/servicenow/asset/:tag', async (req, res) => {
   }
 });
 
-app.get('/api/l1-copilot/servicenow/ticket/:incident', async (req, res) => {
+app.get('/api/l1-copilot/servicenow/ticket/:incident', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   try {
     const ticket = await snAdapter.getTicket(req.params.incident);
     if (!ticket) return res.status(404).json({ ok: false, error: `No incident found for "${req.params.incident}".` });
@@ -5166,7 +5167,7 @@ app.get('/api/l1-copilot/servicenow/ticket/:incident', async (req, res) => {
   }
 });
 
-app.post('/api/l1-copilot/servicenow/work-note', async (req, res) => {
+app.post('/api/l1-copilot/servicenow/work-note', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   const { incident, note, technicianConfirmed } = req.body || {};
 
   if (!incident || !note) {
@@ -5212,7 +5213,7 @@ app.post('/api/l1-copilot/servicenow/work-note', async (req, res) => {
 // call instead of the caller looping single-ticket GETs with no rate-limit
 // protection. A missing individual incident is reported per-record, same
 // as any other per-record failure; it does not abort the batch.
-app.post('/api/l1-copilot/servicenow/batch-tickets-read', async (req, res) => {
+app.post('/api/l1-copilot/servicenow/batch-tickets-read', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   const { incidents, options } = req.body || {};
   if (!Array.isArray(incidents) || incidents.length === 0) {
     return res.status(400).json({ ok: false, error: 'incidents must be a non-empty array of incident numbers or sys_ids' });
@@ -5233,7 +5234,7 @@ app.post('/api/l1-copilot/servicenow/batch-tickets-read', async (req, res) => {
 // Read operations may use configured connectors or explicitly labeled demo
 // fallback data. Any ServiceNow writeback remains human-approved.
 
-app.post('/api/l1-copilot/pilot/resolve', async (req, res) => {
+app.post('/api/l1-copilot/pilot/resolve', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   const {
     incident,
     asset,
@@ -5752,7 +5753,7 @@ async function analyzeSingleTicket(ticket, maxTokens) {
   return { analysis, cmdbSourced: !!cmdbContext };
 }
 
-app.post('/api/l1-copilot/analyze', async (req, res) => {
+app.post('/api/l1-copilot/analyze', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   const { ticket, maxTokens } = req.body || {};
   try {
     const { analysis, cmdbSourced } = await analyzeSingleTicket(ticket, maxTokens);
@@ -5780,7 +5781,7 @@ app.post('/api/l1-copilot/analyze', async (req, res) => {
 const ANALYZE_BATCH_DEFAULTS = { chunkSize: 3, delayBetweenChunksMs: 300 };
 const ANALYZE_MAX_BATCH_SIZE = 100;
 
-app.post('/api/l1-copilot/analyze/batch', async (req, res) => {
+app.post('/api/l1-copilot/analyze/batch', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   const { tickets, maxTokens, options } = req.body || {};
   if (!Array.isArray(tickets) || tickets.length === 0) {
     return res.status(400).json({ ok: false, error: 'tickets must be a non-empty array of ticket objects' });
@@ -5825,7 +5826,7 @@ app.post('/api/l1-copilot/analyze/batch', async (req, res) => {
   }
 });
 
-app.post('/api/l1-copilot/vendor', async (req, res) => {
+app.post('/api/l1-copilot/vendor', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   const { manufacturer, serviceTag, warranty, issueSummary, maxTokens } = req.body || {};
   if (!manufacturer) return res.status(400).json({ ok: false, error: 'manufacturer required' });
   const prompt = `Manufacturer: ${manufacturer}\nService tag / express service code: ${serviceTag || 'not provided'}\n` +
@@ -5948,7 +5949,7 @@ app.post('/api/l1-copilot/resolution',
   }
 });
 
-app.post('/api/l1-copilot/escalation', async (req, res) => {
+app.post('/api/l1-copilot/escalation', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   const { ticket, analysis, reason, evidence, recommendedTeam, maxTokens } = req.body || {};
   if (!ticket) return res.status(400).json({ ok: false, error: 'ticket required' });
   const prompt = `Ticket description:\n${ticket}\n\n` +
@@ -5968,7 +5969,7 @@ app.post('/api/l1-copilot/escalation', async (req, res) => {
   }
 });
 
-app.post('/api/l1-copilot/imaging', async (req, res) => {
+app.post('/api/l1-copilot/imaging', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   const { taskSequence, bootMethod, status, asset, model, maxTokens } = req.body || {};
   if (!status) return res.status(400).json({ ok: false, error: 'status required' });
   const prompt = `Task sequence / target image: ${taskSequence || 'not specified'}\nBoot method: ${bootMethod || 'not specified'}\n` +
@@ -5986,7 +5987,7 @@ app.post('/api/l1-copilot/imaging', async (req, res) => {
   }
 });
 
-app.post('/api/l1-copilot/ad-intune', async (req, res) => {
+app.post('/api/l1-copilot/ad-intune', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   const { deviceName, joinType, compliance, bitlocker, issueSummary, maxTokens } = req.body || {};
   if (!joinType) return res.status(400).json({ ok: false, error: 'joinType required' });
   const prompt = `Device: ${deviceName || 'not provided'}\nJoin type: ${joinType}\nCompliance state: ${compliance || 'unknown'}\n` +
@@ -6004,7 +6005,7 @@ app.post('/api/l1-copilot/ad-intune', async (req, res) => {
   }
 });
 
-app.post('/api/l1-copilot/sccm', async (req, res) => {
+app.post('/api/l1-copilot/sccm', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   const { collection, packageName, status, maxTokens } = req.body || {};
   if (!packageName) return res.status(400).json({ ok: false, error: 'packageName required' });
   const prompt = `Collection: ${collection || 'not provided'}\nPackage/Application: ${packageName}\nLast deployment status: ${status || 'unknown'}\n\n` +
@@ -6021,7 +6022,7 @@ app.post('/api/l1-copilot/sccm', async (req, res) => {
   }
 });
 
-app.post('/api/l1-copilot/vmware', async (req, res) => {
+app.post('/api/l1-copilot/vmware', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   const { component, category, environment, input, issueSummary, maxTokens } = req.body || {};
   if (!input) return res.status(400).json({ ok: false, error: 'input required' });
   const prompt = `Component: ${component || 'not specified'}\nIssue category: ${category || 'not specified'}\n` +
@@ -6038,7 +6039,7 @@ app.post('/api/l1-copilot/vmware', async (req, res) => {
   }
 });
 
-app.post('/api/l1-copilot/vmware-script', async (req, res) => {
+app.post('/api/l1-copilot/vmware-script', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   const { scriptType, request, maxTokens } = req.body || {};
   if (!request) return res.status(400).json({ ok: false, error: 'request required' });
   const prompt = `Generate a ${scriptType || 'PowerCLI'} script for the following requirement:\n\n${request}\n\n` +
@@ -6053,7 +6054,7 @@ app.post('/api/l1-copilot/vmware-script', async (req, res) => {
   }
 });
 
-app.post('/api/l1-copilot/cloud-ops', async (req, res) => {
+app.post('/api/l1-copilot/cloud-ops', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   const { provider, service, environment, input, issueSummary, maxTokens } = req.body || {};
   if (!input) return res.status(400).json({ ok: false, error: 'input required' });
   const prompt = `Cloud provider: ${provider || 'not specified'}\nService/resource: ${service || 'not specified'}\n` +
@@ -6078,12 +6079,12 @@ app.post('/api/l1-copilot/cloud-ops', async (req, res) => {
 // /api/l1-copilot/cloud-ops route above, which reasons over pasted context
 // rather than querying a live account.
 
-app.get('/api/l1-copilot/cloud-ops/status', (req, res) => {
+app.get('/api/l1-copilot/cloud-ops/status', requireRole(L1_COPILOT_ROLES), (req, res) => {
   const configured = cloudOpsAdapter.isConfigured();
   res.json({ ok: true, configured, demoMode: (!configured) && demoData.isDemoModeEnabled() });
 });
 
-app.get('/api/l1-copilot/cloud-ops/instance/:identifier', async (req, res) => {
+app.get('/api/l1-copilot/cloud-ops/instance/:identifier', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   try {
     const instance = await cloudOpsAdapter.getInstance(req.params.identifier);
     if (!instance) return res.status(404).json({ ok: false, error: `No EC2 instance found for "${req.params.identifier}".` });
@@ -6106,12 +6107,12 @@ app.get('/api/l1-copilot/cloud-ops/instance/:identifier', async (req, res) => {
 // and encryption status only in this pass — BitLocker recovery-key
 // retrieval is intentionally not wired up (see adapter file header).
 
-app.get('/api/l1-copilot/graph-intune/status', (req, res) => {
+app.get('/api/l1-copilot/graph-intune/status', requireRole(L1_COPILOT_ROLES), (req, res) => {
   const configured = graphAdapter.isConfigured();
   res.json({ ok: true, configured, demoMode: (!configured) && demoData.isDemoModeEnabled() });
 });
 
-app.get('/api/l1-copilot/graph-intune/device/:identifier', async (req, res) => {
+app.get('/api/l1-copilot/graph-intune/device/:identifier', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   try {
     const device = await graphAdapter.getDevice(req.params.identifier);
     if (!device) return res.status(404).json({ ok: false, error: `No managed device found for "${req.params.identifier}".` });
@@ -6131,12 +6132,12 @@ app.get('/api/l1-copilot/graph-intune/device/:identifier', async (req, res) => {
 // rather than pretending to work when GCP_PROJECT_ID / service-account
 // credentials aren't configured. Diagnostic read access only.
 
-app.get('/api/l1-copilot/gcp/status', (req, res) => {
+app.get('/api/l1-copilot/gcp/status', requireRole(L1_COPILOT_ROLES), (req, res) => {
   const configured = gcpAdapter.isConfigured();
   res.json({ ok: true, configured, demoMode: (!configured) && demoData.isDemoModeEnabled() });
 });
 
-app.get('/api/l1-copilot/gcp/instance/:identifier', async (req, res) => {
+app.get('/api/l1-copilot/gcp/instance/:identifier', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   try {
     const instance = await gcpAdapter.getInstance(req.params.identifier);
     if (!instance) return res.status(404).json({ ok: false, error: `No Compute Engine instance found for "${req.params.identifier}".` });
@@ -6180,7 +6181,7 @@ async function resolveTicketForRequester(incident) {
   }
 }
 
-app.post('/api/l1-copilot/onboarding/image', async (req, res) => {
+app.post('/api/l1-copilot/onboarding/image', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   const { assetTag, profileId } = req.body || {};
   if (!assetTag) return res.status(400).json({ ok: false, error: 'assetTag required' });
   const imgBlockers = await onboardingPreflight.imagingPreflightBlockers(assetTag, { getDeviceSecurityStatus });
@@ -6205,7 +6206,7 @@ app.post('/api/l1-copilot/onboarding/image', async (req, res) => {
   }
 });
 
-app.post('/api/l1-copilot/onboarding/provision', async (req, res) => {
+app.post('/api/l1-copilot/onboarding/provision', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   const { name, email, department, role, requester, incident } = req.body || {};
   if (!name || !email) return res.status(400).json({ ok: false, error: 'name and email required' });
   // requester resolution: prefer the ITSM ticket's own requester field
@@ -6281,7 +6282,7 @@ async function getDeviceSecurityStatus(asset) {
   return null;
 }
 
-app.get('/api/l1-copilot/security/user-status', async (req, res) => {
+app.get('/api/l1-copilot/security/user-status', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   const query = (req.query.query || '').trim();
   if (!query) return res.status(400).json({ ok: false, error: 'query required' });
   const status = await getUserSecurityStatus(query);
@@ -6289,7 +6290,7 @@ app.get('/api/l1-copilot/security/user-status', async (req, res) => {
   return res.status(503).json({ ok: false, error: 'No identity-risk adapter is configured for live user-status lookups yet.' });
 });
 
-app.get('/api/l1-copilot/security/device-status', async (req, res) => {
+app.get('/api/l1-copilot/security/device-status', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   const asset = (req.query.asset || '').trim();
   if (!asset) return res.status(400).json({ ok: false, error: 'asset required' });
   if (graphAdapter.isConfigured()) {
