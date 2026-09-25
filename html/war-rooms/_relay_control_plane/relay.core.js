@@ -27,6 +27,7 @@
   COLLEGE_ENDOWMENT:   "TSM_COLLEGE_ENDOWMENT_RELAY",
   COLLEGE_RESEARCH_FA: "TSM_COLLEGE_RESEARCH_FA_RELAY",
   COLLEGE_ACCRED:      "TSM_COLLEGE_ACCRED_RELAY",
+  COLLEGE_ENROLLMENT:  "TSM_COLLEGE_ENROLLMENT_RELAY",
   // Insurance Command suite (2026-09-06) — 4 domains with real backend
   // wiring (routes/insurance-*-financial.js), same split-key pattern as
   // the COLLEGE_* domains above: each domain writes only its own key,
