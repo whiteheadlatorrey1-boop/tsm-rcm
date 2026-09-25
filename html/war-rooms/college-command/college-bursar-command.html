@@ -230,6 +230,72 @@
     btn.textContent = 'Run AI Analysis';
   }
 
+  async function pushToSentinel() {
+    if (!engine) return;
+
+    try {
+      const fin = await engine.getFinancialSummary();
+      const kpis = engine.computeKpis();
+
+      const activeHolds = Number(kpis.registration_holds_active || 0);
+      const reviewPending = Number(kpis.registration_holds_review_pending || 0);
+      const releasePending = Number(kpis.registration_holds_release_pending || 0);
+      const exposure = Number(fin.hold_revenue_at_risk_total || 0);
+
+      const anomalies = [];
+
+      if (activeHolds > 0 || exposure > 0) {
+        const confidence =
+          fin.hold_revenue_confidence &&
+          typeof fin.hold_revenue_confidence.confidence === 'number'
+            ? fin.hold_revenue_confidence.confidence
+            : 0;
+
+        const note =
+          fin.hold_revenue_confidence &&
+          fin.hold_revenue_confidence.note
+            ? fin.hold_revenue_confidence.note
+            : '';
+
+        const highSeverityHold = engine.data.registration_holds.some(
+          h =>
+            (h.workflow_status || 'active') !== 'released' &&
+            String(h.severity || '').toUpperCase() === 'HIGH'
+        );
+
+        anomalies.push({
+          id: 'college-bursar-registration-holds',
+          title: 'Registration Hold / Re-enrollment Revenue Exposure',
+          severity: highSeverityHold ? 'HIGH' : 'MEDIUM',
+          exposure,
+          confidence,
+          rootCause:
+            `${activeHolds} registration hold(s) remain open; ` +
+            `${reviewPending} review-pending and ` +
+            `${releasePending} release-pending.${note}`,
+          recommendedAction:
+            'Review active registration holds, resolve documented release conditions, and prevent inappropriate re-enrollment blocking before the next registration decision.',
+          impacts: {}
+        });
+      }
+
+      if (window.TSMSentinelPush && window.TSMSentinelPush.push) {
+        window.TSMSentinelPush.push('COLLEGE_BURSAR', anomalies);
+      } else {
+        localStorage.setItem(
+          'TSM_COLLEGE_BURSAR_STRATEGIST_RELAY',
+          JSON.stringify({
+            generatedAt: new Date().toISOString(),
+            anomalies
+          })
+        );
+        window.dispatchEvent(new CustomEvent('TSM_SENTINEL_REFRESH'));
+      }
+    } catch (e) {
+      console.warn('College Bursar: sentinel push failed', e);
+    }
+  }
+
   async function relayToStrategist() {
     try {
       const aiText = (lastAi.risk || lastAi.actions)
@@ -243,6 +309,7 @@
         try { window.TSM.relay.write('COLLEGE_BURSAR', payload); } catch (e) { /* noop */ }
       }
       window.dispatchEvent(new CustomEvent('TSM_RELAY_EVENT', { detail: { domain: DOMAIN, data: payload } }));
+      await pushToSentinel();
       showToast('Relayed to College Strategist.');
     } catch (e) {
       console.warn('relayToStrategist failed', e);
