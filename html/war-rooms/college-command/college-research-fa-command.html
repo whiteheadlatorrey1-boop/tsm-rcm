@@ -196,6 +196,74 @@
     btn.textContent = 'Run AI Analysis';
   }
 
+  async function pushToSentinel() {
+    if (!engine) return;
+
+    try {
+      const fin = await engine.getFinancialSummary();
+      const kpis = engine.computeKpis();
+
+      const exposure = Number(fin.total_exposure || 0);
+      const overBurn = Number(kpis.awards_over_burn_rate || 0);
+      const overdueReports = Number(kpis.effort_reports_overdue || 0);
+      const shortfall = Number(kpis.fa_recovery_shortfall || 0);
+
+      const anomalies = [];
+
+      if (exposure > 0 || overBurn > 0 || overdueReports > 0 || shortfall > 0) {
+        const confidenceValues = [
+          fin.overburn_confidence,
+          fin.effort_confidence
+        ]
+          .map(v => v && typeof v.confidence === 'number' ? v.confidence : null)
+          .filter(v => v !== null);
+
+        const confidence = confidenceValues.length
+          ? Math.round(
+              confidenceValues.reduce((sum, value) => sum + value, 0) /
+              confidenceValues.length
+            )
+          : 0;
+
+        const notes = [
+          fin.overburn_confidence && fin.overburn_confidence.note,
+          fin.effort_confidence && fin.effort_confidence.note
+        ].filter(Boolean).join(' ');
+
+        anomalies.push({
+          id: 'college-research-fa-compliance',
+          title: 'Research F&A Compliance / Recovery Exposure',
+          severity: overBurn > 0 || overdueReports > 0 ? 'HIGH' : 'MEDIUM',
+          exposure,
+          confidence,
+          rootCause:
+            `${overBurn} award(s) are over budget; ` +
+            `${overdueReports} effort report(s) are overdue; ` +
+            `$${shortfall.toLocaleString()} F&A recovery shortfall is reported.` +
+            (notes ? ` ${notes}` : ''),
+          recommendedAction:
+            'Review over-budget awards and overdue effort reports, validate allowability and effort documentation, and route material recovery or compliance exceptions through the appropriate sponsored-research governance process.',
+          impacts: {}
+        });
+      }
+
+      if (window.TSMSentinelPush && window.TSMSentinelPush.push) {
+        window.TSMSentinelPush.push('COLLEGE_RESEARCH_FA', anomalies);
+      } else {
+        localStorage.setItem(
+          'TSM_COLLEGE_RESEARCH_FA_STRATEGIST_RELAY',
+          JSON.stringify({
+            generatedAt: new Date().toISOString(),
+            anomalies
+          })
+        );
+        window.dispatchEvent(new CustomEvent('TSM_SENTINEL_REFRESH'));
+      }
+    } catch (e) {
+      console.warn('College Research-F&A: sentinel push failed', e);
+    }
+  }
+
   async function relayToStrategist() {
     try {
       const riskEl = document.getElementById('aiRiskOut');
@@ -208,6 +276,7 @@
         try { window.TSM.relay.write('COLLEGE_RESEARCH_FA', payload); } catch (e) { /* noop */ }
       }
       window.dispatchEvent(new CustomEvent('TSM_RELAY_EVENT', { detail: { domain: DOMAIN, data: payload } }));
+      await pushToSentinel();
       showToast('Relayed to College Strategist.');
     } catch (e) {
       console.warn('relayToStrategist failed', e);
