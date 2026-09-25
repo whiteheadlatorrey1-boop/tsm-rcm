@@ -19,9 +19,16 @@
     { plan_id: 'PP-4560', student_ref: 'S-89344', term: 'Fall 2026', severity: 'LOW', days_past_due: 6, balance: 610 }
   ];
   const SAMPLE_REGISTRATION_HOLDS = [
-    { hold_id: 'H-2201', student_ref: 'S-88213', reason: 'Unpaid balance', severity: 'HIGH', days_active: 30 },
-    { hold_id: 'H-2214', student_ref: 'S-89112', reason: 'Unpaid balance', severity: 'HIGH', days_active: 25 },
-    { hold_id: 'H-2233', student_ref: 'S-90021', reason: 'Missing enrollment agreement', severity: 'MEDIUM', days_active: 9 }
+    { hold_id: 'H-2201', student_ref: 'S-88213', reason: 'Unpaid balance', severity: 'HIGH', days_active: 30, workflow_status: 'review_pending', owner: 'Bursar — Registration Holds' },
+    { hold_id: 'H-2214', student_ref: 'S-89112', reason: 'Unpaid balance', severity: 'HIGH', days_active: 25, workflow_status: 'active', owner: 'Bursar — Registration Holds' },
+    { hold_id: 'H-2233', student_ref: 'S-90021', reason: 'Missing enrollment agreement', severity: 'MEDIUM', days_active: 9, workflow_status: 'release_pending', owner: 'Bursar — Registration Holds' }
+  ];
+
+  const REGISTRATION_WORKFLOW_STATUSES = [
+    'active',
+    'review_pending',
+    'release_pending',
+    'released'
   ];
 
   class TSMCollegeBursarEngine {
@@ -73,11 +80,66 @@
     computeKpis() {
       const pastDuePlans = this.data.payment_plans.filter(p => (p.days_past_due || 0) > 30);
       const totalArBalance = this.data.payment_plans.reduce((sum, p) => sum + (p.balance || 0), 0);
+      const openRegistrationHolds = this.data.registration_holds.filter(
+        h => (h.workflow_status || 'active') !== 'released'
+      );
+      const registrationReviewPending = this.data.registration_holds.filter(
+        h => h.workflow_status === 'review_pending'
+      );
+      const registrationReleasePending = this.data.registration_holds.filter(
+        h => h.workflow_status === 'release_pending'
+      );
+
       return {
         open_payment_plans: this.data.payment_plans.length,
         plans_past_due: pastDuePlans.length,
         total_ar_balance: totalArBalance,
-        registration_holds_active: this.data.registration_holds.length
+        registration_holds_active: openRegistrationHolds.length,
+        registration_holds_review_pending: registrationReviewPending.length,
+        registration_holds_release_pending: registrationReleasePending.length
+      };
+    }
+
+    getRegistrationWorkflowStatuses() {
+      return [...REGISTRATION_WORKFLOW_STATUSES];
+    }
+
+    getCanonicalRecords() {
+      const now = new Date().toISOString();
+      const holds = this.data.registration_holds.map(h => {
+        const workflowStatus = REGISTRATION_WORKFLOW_STATUSES.includes(h.workflow_status)
+          ? h.workflow_status
+          : 'active';
+
+        const riskLevel = String(h.severity || 'LOW').toLowerCase();
+
+        return {
+          id: h.hold_id,
+          type: 'col_registration_hold',
+          vertical: 'college_bursar',
+          owner: h.owner || 'Bursar — Registration Holds',
+          status: workflowStatus,
+          current_stage: workflowStatus,
+          risk_level: ['low', 'medium', 'high', 'critical'].includes(riskLevel)
+            ? riskLevel
+            : 'low',
+          sla_state: 'n/a',
+          linked_war_room: '/html/war-rooms/college-command/college-bursar-command.html',
+          created_at: h.created_at || now,
+          updated_at: h.updated_at || now,
+
+          hold_id: h.hold_id,
+          student_ref: h.student_ref,
+          reason: h.reason,
+          severity: h.severity,
+          days_active: Number(h.days_active || 0),
+          workflow_status: workflowStatus
+        };
+      });
+
+      return {
+        payment_plans: this.data.payment_plans,
+        registration_holds: holds
       };
     }
 
@@ -162,6 +224,8 @@
           payment_plans: this.data.payment_plans,
           registration_holds: this.data.registration_holds
         },
+        canonical_records: this.getCanonicalRecords(),
+        registration_workflow_statuses: this.getRegistrationWorkflowStatuses(),
         ai_summary: aiText || null
       };
     }

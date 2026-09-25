@@ -57,7 +57,7 @@
 
   <section>
     <h2>Registration Holds</h2>
-    <table id="holdTable"><thead><tr><th>Hold</th><th>Student</th><th>Reason</th><th>Severity</th><th>Days Active</th></tr></thead><tbody></tbody></table>
+    <table id="holdTable"><thead><tr><th>Hold</th><th>Student</th><th>Reason</th><th>Severity</th><th>Workflow</th><th>Owner</th><th>Days Active</th></tr></thead><tbody></tbody></table>
   </section>
 
   <section id="aiSection">
@@ -122,7 +122,9 @@
       ['open_payment_plans', 'Open Payment Plans'],
       ['plans_past_due', 'Plans Past 30-Day Due'],
       ['total_ar_balance', 'Total AR Balance'],
-      ['registration_holds_active', 'Registration Holds Active']
+      ['registration_holds_active', 'Registration Holds Active'],
+      ['registration_holds_review_pending', 'Registration Holds Review Pending'],
+      ['registration_holds_release_pending', 'Registration Holds Release Pending']
     ];
     const row = document.getElementById('kpiRow');
     row.innerHTML = defs.map(([key, label]) => {
@@ -148,15 +150,23 @@
 
   function renderHolds() {
     const tbody = document.querySelector('#holdTable tbody');
-    tbody.innerHTML = engine.data.registration_holds.map(h => `
-      <tr>
-        <td>${escapeHtml(h.hold_id)}</td>
-        <td>${escapeHtml(h.student_ref)}</td>
-        <td>${escapeHtml(h.reason)}</td>
-        <td class="sev-${escapeHtml(h.severity)}">${escapeHtml(h.severity)}</td>
-        <td>${h.days_active}</td>
-      </tr>
-    `).join('');
+    tbody.innerHTML = engine.data.registration_holds.map(h => {
+      const workflowStatus = engine.getRegistrationWorkflowStatuses().includes(h.workflow_status)
+        ? h.workflow_status
+        : 'active';
+
+      return `
+        <tr>
+          <td>${escapeHtml(h.hold_id)}</td>
+          <td>${escapeHtml(h.student_ref)}</td>
+          <td>${escapeHtml(h.reason)}</td>
+          <td class="sev-${escapeHtml(h.severity)}">${escapeHtml(h.severity)}</td>
+          <td>${escapeHtml(workflowStatus.replace(/_/g, ' '))}</td>
+          <td>${escapeHtml(h.owner || 'Bursar — Registration Holds')}</td>
+          <td>${h.days_active}</td>
+        </tr>
+      `;
+    }).join('');
   }
 
   // Real breakdown from the server: late-fee accrual (deterministic),
