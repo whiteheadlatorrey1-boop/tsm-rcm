@@ -73,6 +73,7 @@ const sentinelUpload = multer({
 const app = express();
 
 const { verifySession: __verifySessionForUser, getCookie: __getCookieForUser } = require('./middleware/require-auth');
+const actionGate = require('./server/l1-copilot/action-gate');
 app.use((req, res, next) => {
   const __session = __verifySessionForUser(__getCookieForUser(req, 'tsm_session'));
   req.session = req.session || {};
@@ -5901,20 +5902,44 @@ app.post('/api/l1-copilot/resolution',
       });
     }
 
+    // All governed-write preconditions above are unchanged. From here,
+    // the confirm -> execute transition is handled by the shared
+    // Technician Action Gate instead of a one-off ad hoc write, so this
+    // route now shares its confirmation/execution semantics with future
+    // L1 Copilot actions (return-to-inventory, replacement, escalation, etc).
+    const trimmedDraft = draft.trim();
+    const technician = {
+      id: (req.tsmSession && (req.tsmSession.staffId || req.tsmSession.clientId || req.tsmSession.role)) || 'unknown',
+      label: (req.tsmSession && req.tsmSession.label) || null
+    };
+
     try {
-      const result = await snAdapter.writeWorkNote(incidentId, draft.trim());
+      let action = actionGate.generateAction({
+        actionType: 'RESOLUTION_WRITE',
+        payload: { draft: trimmedDraft },
+        technician,
+        sourceIncident: incidentId,
+        asset: null
+      });
+      action = actionGate.previewAction(action);
+      action = actionGate.confirmAction(action);
+      action = await actionGate.executeAction(action, async () =>
+        snAdapter.writeWorkNote(incidentId, trimmedDraft)
+      );
+
       return res.json({
         ok: true,
-        answer: draft.trim(),
-        servicenow: { attempted: true, ...result },
+        answer: trimmedDraft,
+        servicenow: { attempted: true, ...action.executionResult },
         governed: {
           technicianConfirmed: true,
           exactDraftWritten: true
         },
-        createdAt: new Date().toISOString()
+        createdAt: action.executedAt
       });
     } catch (e) {
-      return res.status(e.code === 'SERVICENOW_NOT_CONFIGURED' ? 503 : 502).json({
+      const status = e.code === 'SERVICENOW_NOT_CONFIGURED' ? 503 : 502;
+      return res.status(status).json({
         ok: false,
         error: e.message,
         servicenow: { attempted: true, success: false }
