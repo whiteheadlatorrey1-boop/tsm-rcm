@@ -75,6 +75,98 @@ const app = express();
 const { verifySession: __verifySessionForUser, getCookie: __getCookieForUser } = require('./middleware/require-auth');
 const actionGate = require('./server/l1-copilot/action-gate');
 const templateRegistry = require('./server/l1-copilot/template-registry');
+const handoffStore = require('./server/l1-copilot/handoff-store');
+const auditStore = require('./server/l1-copilot/audit-store');
+const metricsStore = require('./server/l1-copilot/metrics-store');
+
+
+
+// PHASE 11.4 — READ-ONLY OPERATIONAL METRICS
+app.get('/api/l1-copilot/metrics', (req, res) => {
+  try {
+    const metrics = metricsStore.getMetrics();
+
+    return res.json({
+      ok: true,
+      readOnly: true,
+      serviceNowWrite: false,
+      ticketStateChanged: false,
+      autonomousExecutionAllowed: false,
+      metrics
+    });
+  } catch (err) {
+    console.error(
+      'L1 COPILOT METRICS READ ERROR:',
+      err.message
+    );
+
+    return res.status(500).json({
+      ok: false,
+      error: 'METRICS_READ_FAILED'
+    });
+  }
+});
+
+function recordL1MetricEvent({
+  eventType,
+  action,
+  metadata
+}) {
+  try {
+    return metricsStore.recordMetric({
+      eventType,
+      actionType: action.actionType,
+      sourceIncident: action.sourceIncident,
+      technician: action.technician,
+      metadata: metadata || null
+    });
+  } catch (err) {
+    console.error(
+      'L1 COPILOT METRIC RECORD ERROR:',
+      err.message
+    );
+    return null;
+  }
+}
+
+function recordL1AuditEvent({
+  eventType,
+  action,
+  executionResult,
+  metadata
+}) {
+  try {
+    return auditStore.recordAudit({
+      eventType,
+      actionType: action.actionType,
+      sourceIncident: action.sourceIncident,
+      technician: action.technician,
+      state: action.state,
+      confirmed: action.confirmed === true,
+      executed: action.state === actionGate.STATES.EXECUTED,
+      references: action.references || null,
+      executionResult: executionResult || action.executionResult || null,
+      governed: {
+        serviceNowStateWrite:
+          executionResult?.serviceNowStateWrite === true,
+        ticketStateChanged:
+          executionResult?.ticketStateChanged === true,
+        ticketClosureRequested:
+          executionResult?.ticketClosureRequested === true,
+        autonomousExecutionAllowed: false
+      },
+      metadata: metadata || null
+    });
+  } catch (err) {
+    console.error(
+      'L1 COPILOT AUDIT RECORD ERROR:',
+      err.message
+    );
+    return null;
+  }
+}
+
+const templateAssistant = require('./server/l1-copilot/template-assistant');
 app.use((req, res, next) => {
   const __session = __verifySessionForUser(__getCookieForUser(req, 'tsm_session'));
   req.session = req.session || {};
@@ -6013,6 +6105,17 @@ app.post('/api/l1-copilot/asset-action/execute', requireRole(L1_COPILOT_ROLES), 
       snAdapter.writeWorkNote(incidentId, taggedNote)
     );
 
+    recordL1AuditEvent({
+      eventType: 'ACTION_EXECUTED',
+      action,
+      executionResult: action.executionResult,
+      metadata: {
+        surface: 'asset-action',
+        templateId,
+        technicianConfirmed: true
+      }
+    });
+
     return res.json({
       ok: true,
       preview,
@@ -6123,6 +6226,17 @@ app.post('/api/l1-copilot/resolution',
         snAdapter.writeWorkNote(incidentId, trimmedDraft)
       );
 
+      recordL1AuditEvent({
+        eventType: 'ACTION_EXECUTED',
+        action,
+        executionResult: action.executionResult,
+        metadata: {
+          surface: 'resolution',
+          technicianConfirmed: true,
+          exactDraftWritten: true
+        }
+      });
+
       return res.json({
         ok: true,
         answer: trimmedDraft,
@@ -6187,6 +6301,260 @@ app.post('/api/l1-copilot/escalation', requireRole(L1_COPILOT_ROLES), async (req
   } catch (e) {
     console.error('L1 COPILOT ESCALATION ERROR:', e.message);
     return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+
+/**
+ * Governed L1 -> Tier 2 / Cloud Ops handoff execution.
+ *
+ * Escalation generation remains AI draft-only.
+ * This route is the explicit technician-confirmed commitment point.
+ *
+ * No ServiceNow state change or ticket closure occurs here.
+ */
+
+/**
+ * Read-only AI Template Assistance.
+ *
+ * Suggests a controlled operational template from technician-supplied
+ * context. This route never executes an action, writes to ServiceNow,
+ * confirms technician intent, or changes ticket state.
+ */
+app.post('/api/l1-copilot/template-assist', requireRole(L1_COPILOT_ROLES), async (req, res) => {
+  const {
+    shortDescription,
+    description,
+    taskType,
+    reason,
+    notes,
+    fields
+  } = req.body || {};
+
+  const combined = [
+    shortDescription,
+    description,
+    taskType,
+    reason,
+    notes
+  ].filter(value => typeof value === 'string').join(' ');
+
+  if (combined.length > 20000) {
+    return res.status(413).json({
+      ok: false,
+      error: 'Template assistance context exceeds the 20000-character limit.'
+    });
+  }
+
+  try {
+    const suggestion = templateAssistant.prepareSuggestion({
+      shortDescription,
+      description,
+      taskType,
+      reason,
+      notes,
+      fields
+    });
+
+    return res.json({
+      ok: true,
+      suggestion,
+      governed: {
+        readOnly: true,
+        technicianConfirmed: false,
+        executable: false,
+        serviceNowWrite: false,
+        ticketStateChanged: false,
+        autonomousExecutionAllowed: false
+      }
+    });
+  } catch (e) {
+    console.error(
+      'L1 COPILOT TEMPLATE ASSIST ERROR:',
+      e.message
+    );
+
+    return res.status(500).json({
+      ok: false,
+      error: e.message,
+      governed: {
+        readOnly: true,
+        technicianConfirmed: false,
+        executable: false,
+        serviceNowWrite: false,
+        ticketStateChanged: false,
+        autonomousExecutionAllowed: false
+      }
+    });
+  }
+});
+
+app.post('/api/l1-copilot/escalation/execute', requireRole(L1_COPILOT_ROLES), async (req, res) => {
+  const {
+    ticket,
+    package: handoffPackage,
+    destinationTeam,
+    technicianConfirmed,
+    references,
+    workPerformed,
+    validation,
+    blocker,
+    requestedTier2Action
+  } = req.body || {};
+
+  if (!ticket || typeof ticket !== 'string' || !ticket.trim()) {
+    return res.status(400).json({
+      ok: false,
+      error: 'ticket required'
+    });
+  }
+
+  if (
+    !handoffPackage ||
+    typeof handoffPackage !== 'string' ||
+    !handoffPackage.trim()
+  ) {
+    return res.status(400).json({
+      ok: false,
+      error: 'package required'
+    });
+  }
+
+  if (handoffPackage.trim().length > 20000) {
+    return res.status(413).json({
+      ok: false,
+      error: 'Escalation package exceeds the 20000-character limit.'
+    });
+  }
+
+  if (
+    !destinationTeam ||
+    typeof destinationTeam !== 'string' ||
+    !destinationTeam.trim()
+  ) {
+    return res.status(400).json({
+      ok: false,
+      error: 'destinationTeam required'
+    });
+  }
+
+  if (technicianConfirmed !== true) {
+    return res.status(403).json({
+      ok: false,
+      error: 'Technician confirmation is required before committing the handoff.'
+    });
+  }
+
+  const technician = {
+    id:
+      (req.tsmSession &&
+        (
+          req.tsmSession.staffId ||
+          req.tsmSession.clientId ||
+          req.tsmSession.role
+        )) ||
+      'unknown',
+    label:
+      (req.tsmSession && req.tsmSession.label) ||
+      null
+  };
+
+  try {
+    let action = actionGate.generateAction({
+      actionType: 'CLOUD_OPS_HANDOFF',
+      payload: {
+        package: handoffPackage.trim(),
+        destinationTeam: destinationTeam.trim(),
+        workPerformed: workPerformed || null,
+        validation: validation || null,
+        blocker: blocker || null,
+        requestedTier2Action: requestedTier2Action || null
+      },
+      technician,
+      sourceIncident: ticket.trim(),
+      references: references || null
+    });
+
+    action = actionGate.previewAction(action);
+    action = actionGate.confirmAction(action);
+
+    // Action Gate owns authorization/transition.
+    // Durable persistence happens only after the action reaches EXECUTED.
+    action = await actionGate.executeAction(
+      action,
+      async () => ({
+        authorized: true,
+        serviceNowStateWrite: false,
+        ticketClosureRequested: false
+      })
+    );
+
+    recordL1AuditEvent({
+      eventType: 'ACTION_EXECUTED',
+      action,
+      executionResult: action.executionResult,
+      metadata: {
+        surface: 'escalation-execute',
+        destinationTeam: destinationTeam.trim(),
+        technicianConfirmed: true,
+        ticketClosureRequested: false,
+        ticketStateChanged: false
+      }
+    });
+
+    const handoff = handoffStore.createHandoff({
+      action,
+      sourceIncident: ticket.trim(),
+      destinationTeam: destinationTeam.trim(),
+      references: references || null,
+      workPerformed: workPerformed || handoffPackage.trim(),
+      validation: validation || null,
+      blocker: blocker || null,
+      requestedTier2Action: requestedTier2Action || null,
+      technician
+    });
+
+    action = {
+      ...action,
+      executionResult: handoff
+    };
+
+    return res.json({
+      ok: true,
+      handoff: action.executionResult,
+      action: {
+        actionType: action.actionType,
+        state: action.state,
+        sourceIncident: action.sourceIncident,
+        technician: action.technician,
+        confirmedAt: action.confirmedAt,
+        executedAt: action.executedAt
+      },
+      governed: {
+        technicianConfirmed: true,
+        handoffCommitted: true,
+        ticketClosureRequested: false,
+        ticketStateChanged: false,
+        serviceNowStateWrite: false
+      },
+      createdAt: action.executedAt
+    });
+  } catch (e) {
+    console.error(
+      'L1 COPILOT ESCALATION EXECUTE ERROR:',
+      e.message
+    );
+
+    return res.status(500).json({
+      ok: false,
+      error: e.message,
+      governed: {
+        handoffCommitted: false,
+        ticketClosureRequested: false,
+        ticketStateChanged: false,
+        serviceNowStateWrite: false
+      }
+    });
   }
 });
 

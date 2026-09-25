@@ -40,12 +40,19 @@ function assertActionType(actionType) {
 /**
  * generateAction(input) -> a new action record in GENERATED state.
  *
- * input: { actionType, payload, technician, sourceIncident, asset }
+ * input: { actionType, payload, technician, sourceIncident, asset, references }
  * payload is the candidate data for this action (template-substituted
  * fields, etc.) — this module does not interpret its contents.
  */
 function generateAction(input = {}) {
-  const { actionType, payload, technician, sourceIncident, asset } = input;
+  const {
+    actionType,
+    payload,
+    technician,
+    sourceIncident,
+    asset,
+    references
+  } = input;
   assertActionType(actionType);
   if (!technician || typeof technician !== 'object' || !technician.id) {
     const err = new Error('generateAction requires technician: { id, label? }');
@@ -59,6 +66,16 @@ function generateAction(input = {}) {
     technician: { id: technician.id, label: technician.label || null },
     sourceIncident: sourceIncident || null,
     asset: asset || null,
+
+    /*
+     * Preserve upstream ServiceNow reconciliation references as context.
+     *
+     * IMPORTANT:
+     * These references are informational provenance only. They are never
+     * treated as technician-confirmed evidence and never authorize execution.
+     */
+    references: references || null,
+
     state: STATES.GENERATED,
     confirmed: false,
     generatedAt: new Date().toISOString(),

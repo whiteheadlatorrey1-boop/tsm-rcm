@@ -284,6 +284,20 @@ fakeSnAdapter.exports = {
     throw new Error(
       'updateTicketStatus must not be called by this test'
     );
+  },
+
+  // server.js eagerly loads servicenow-bpo-intelligence.js.
+  // That module destructures snRequest/readField from the adapter's
+  // internal test contract even though this regression does not exercise
+  // BPO intelligence. Stub only those dependencies so server startup
+  // reaches the resolution route under test.
+  _internal: {
+    readField() {
+      return null;
+    },
+    async snRequest() {
+      throw new Error('snRequest must not be called by this test');
+    }
   }
 };
 
@@ -621,7 +635,7 @@ async function main() {
   response = await post(
     '/api/l1-copilot/servicenow/work-note',
     {
-      incident: 'INC-L1-GOV-002',
+      incident: 'INC0010002',
       note: 'Direct route test note.'
     },
     cookie
@@ -650,7 +664,7 @@ async function main() {
   response = await post(
     '/api/l1-copilot/servicenow/work-note',
     {
-      incident: 'INC-L1-GOV-002',
+      incident: 'INC0010002',
       note: directNote,
       technicianConfirmed: true
     },
@@ -673,7 +687,7 @@ async function main() {
 
   ok(
     writeCalls[1] &&
-      writeCalls[1].incident === 'INC-L1-GOV-002' &&
+      writeCalls[1].incident === 'INC0010002' &&
       writeCalls[1].note === directNote,
     'direct confirmed work-note receives the exact supplied note'
   );
@@ -694,7 +708,7 @@ async function main() {
   response = await post(
     '/api/l1-copilot/resolution',
     {
-      incident: 'INC-L1-GOV-003',
+      incident: 'INC0010003',
       draft: 'Failure-path reviewed draft.',
       writeToServicenow: true,
       technicianConfirmed: true

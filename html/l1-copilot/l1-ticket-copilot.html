@@ -1424,6 +1424,13 @@ TICKET DESCRIPTION</div>
         <div class="card-body">
           <div class="field"><div class="field-label">Action</div>
             <select id="aoTemplate"></select>
+          <button class="btn secondary" id="btnAoAssist" type="button"
+                  style="margin-top:8px;">
+            AI TEMPLATE ASSIST
+          </button>
+          <div id="aoAssistOut"
+               class="ai-output"
+               style="margin-top:8px; display:none;"></div>
           </div>
           <div id="aoFields" style="margin-top:10px"></div>
           <div class="btn-row" style="margin-top:10px">
@@ -4043,6 +4050,111 @@ TICKET DESCRIPTION</div>
     } catch (e) {
       out.className = 'ai-output';
       out.innerHTML = `<span class="err">${e.message}</span>`;
+    }
+  });
+
+  // ── AI Template Assistance (Phase 9.4) ───────────────────────────────
+  document.getElementById('btnAoAssist').addEventListener('click', async () => {
+    const out = document.getElementById('aoAssistOut');
+    const templateSelect = document.getElementById('aoTemplate');
+
+    const shortDescription =
+      (document.getElementById('tkShortDesc') || {}).value || '';
+
+    const description =
+      (document.getElementById('tkDescription') || {}).value || '';
+
+    const taskType =
+      (document.getElementById('tkTaskType') || {}).value || '';
+
+    const reason =
+      (document.getElementById('aoReturnReason') || {}).value || '';
+
+    const notes =
+      (document.getElementById('notesArea') || {}).value || '';
+
+    const fields = collectAoContext();
+
+    out.style.display = 'block';
+    out.className = 'ai-output loading';
+    out.textContent = 'Analyzing technician-supplied context...';
+
+    try {
+      const res = await fetch('/api/l1-copilot/template-assist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          shortDescription,
+          description,
+          taskType,
+          reason,
+          notes,
+          fields
+        })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || 'Template assistance failed');
+      }
+
+      const suggestion = data.suggestion || {};
+
+      if (!suggestion.suggested || !suggestion.templateId) {
+        out.className = 'ai-output';
+        out.innerHTML =
+          '<span class="err">No controlled template suggestion found. ' +
+          'Choose a template manually.</span>';
+        resetAoConfirmState();
+        return;
+      }
+
+      const optionExists = Array.from(templateSelect.options)
+        .some(option => option.value === suggestion.templateId);
+
+      if (!optionExists) {
+        throw new Error(
+          'Suggested template is not available in the deterministic template registry.'
+        );
+      }
+
+      templateSelect.value = suggestion.templateId;
+      renderAoFields();
+
+      // Preserve the technician's existing values where the regenerated
+      // field controls expose the same values.
+      Object.entries(fields).forEach(([name, value]) => {
+        const input = document.querySelector(
+          `[data-ao-field="${name}"]`
+        );
+        if (input && value !== undefined && value !== null) {
+          input.value = value;
+        }
+      });
+
+      resetAoConfirmState();
+
+      out.className = 'ai-output';
+      out.innerHTML =
+        '<strong>' + suggestion.label + '</strong>' +
+        ' — ' + suggestion.confidence + ' confidence<br>' +
+        '<span style="color:var(--text-dim)">' +
+        suggestion.reason +
+        '</span><br>' +
+        '<span style="color:var(--cyan)">' +
+        'Draft assistance only. Technician confirmation is still required.' +
+        '</span>';
+
+      // Run the existing deterministic renderer so the displayed preview
+      // remains governed by template-registry.js / asset-action/preview.
+      document.getElementById('btnAoPreview').click();
+
+    } catch (e) {
+      out.className = 'ai-output';
+      out.innerHTML =
+        '<span class="err">' + e.message + '</span>';
+      resetAoConfirmState();
     }
   });
 

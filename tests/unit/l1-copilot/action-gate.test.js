@@ -15,6 +15,55 @@ async function checkThrows(name, code, fn) {
   check('generateAction sets state GENERATED', a1.state === 'GENERATED');
   check('generateAction sets confirmed=false', a1.confirmed === false);
 
+  const reconciliationReferences = {
+    incident: { number: 'INC0010001', sysId: 'incident-sys-1' },
+    ritm: { number: 'RITM0010001', sysId: 'ritm-sys-1' },
+    sctask: { number: 'SCTASK0010001', sysId: 'sctask-sys-1' },
+    asset: { assetTag: 'HW0001', sysId: 'asset-sys-1' }
+  };
+
+  const referencedAction = gate.generateAction({
+    actionType: 'RESOLUTION_WRITE',
+    payload: { note: 'validated resolution' },
+    technician,
+    sourceIncident: 'INC0010001',
+    references: reconciliationReferences
+  });
+
+  check(
+    'references preserve Incident context',
+    referencedAction.references &&
+      referencedAction.references.incident &&
+      referencedAction.references.incident.number === 'INC0010001'
+  );
+
+  check(
+    'references preserve RITM context',
+    referencedAction.references &&
+      referencedAction.references.ritm &&
+      referencedAction.references.ritm.number === 'RITM0010001'
+  );
+
+  check(
+    'references preserve SC Task context',
+    referencedAction.references &&
+      referencedAction.references.sctask &&
+      referencedAction.references.sctask.number === 'SCTASK0010001'
+  );
+
+  check(
+    'references preserve asset context',
+    referencedAction.references &&
+      referencedAction.references.asset &&
+      referencedAction.references.asset.assetTag === 'HW0001'
+  );
+
+  check(
+    'reference preservation does not confirm action',
+    referencedAction.confirmed === false &&
+      referencedAction.state === 'GENERATED'
+  );
+
   await checkThrows('unknown actionType rejected', 'UNKNOWN_ACTION_TYPE', () =>
     gate.generateAction({ actionType: 'NUKE_EVERYTHING', technician }));
 
