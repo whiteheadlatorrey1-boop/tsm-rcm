@@ -74,6 +74,7 @@ const app = express();
 
 const { verifySession: __verifySessionForUser, getCookie: __getCookieForUser } = require('./middleware/require-auth');
 const actionGate = require('./server/l1-copilot/action-gate');
+const templateRegistry = require('./server/l1-copilot/template-registry');
 app.use((req, res, next) => {
   const __session = __verifySessionForUser(__getCookieForUser(req, 'tsm_session'));
   req.session = req.session || {};
@@ -5840,6 +5841,90 @@ app.post('/api/l1-copilot/vendor', requireRole(L1_COPILOT_ROLES), async (req, re
     return res.json({ ok: true, answer, createdAt: new Date().toISOString() });
   } catch (e) {
     console.error('L1 COPILOT VENDOR ERROR:', e.message);
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+const TEMPLATE_TO_ACTION_TYPE = {
+  RETURN_TO_INVENTORY: 'RETURN_TO_INVENTORY',
+  DEVICE_REPLACEMENT: 'CREATE_REPLACEMENT',
+  HARDWARE_SWAP: 'HARDWARE_SWAP',
+  LOANER_RETURN: 'LOANER_RETURN',
+  WARRANTY_DEPOT_RETURN: 'WARRANTY_DEPOT_RETURN',
+  DEVICE_REASSIGNMENT: 'DEVICE_REASSIGNMENT'
+};
+
+app.get('/api/l1-copilot/asset-action/templates', requireRole(L1_COPILOT_ROLES), (req, res) => {
+  res.json({ ok: true, templates: templateRegistry.listTemplates() });
+});
+
+app.post('/api/l1-copilot/asset-action/preview', requireRole(L1_COPILOT_ROLES), (req, res) => {
+  const { templateId, context } = req.body || {};
+  if (!templateId) return res.status(400).json({ ok: false, error: 'templateId required' });
+  try {
+    const preview = templateRegistry.renderTemplate(templateId, context);
+    return res.json({ ok: true, preview });
+  } catch (e) {
+    const status = e.code === 'MISSING_REQUIRED_FIELDS' ? 422
+      : e.code === 'UNKNOWN_TEMPLATE' ? 404 : 400;
+    return res.status(status).json({ ok: false, error: e.message, missing: e.missing || null });
+  }
+});
+
+// Phase 3: preview + confirm only. Execution (actual ServiceNow write for
+// asset actions) is deliberately NOT wired here — that is Phase 4. This
+// route proves the template engine and the shared Technician Action Gate
+// integrate correctly and records exactly what the technician confirmed.
+app.post('/api/l1-copilot/asset-action/confirm', requireRole(L1_COPILOT_ROLES), (req, res) => {
+  const { templateId, context } = req.body || {};
+  if (!templateId) return res.status(400).json({ ok: false, error: 'templateId required' });
+
+  const actionType = TEMPLATE_TO_ACTION_TYPE[templateId];
+  if (!actionType) {
+    return res.status(400).json({ ok: false, error: `No action type mapped for template "${templateId}".` });
+  }
+
+  let preview;
+  try {
+    preview = templateRegistry.renderTemplate(templateId, context);
+  } catch (e) {
+    const status = e.code === 'MISSING_REQUIRED_FIELDS' ? 422
+      : e.code === 'UNKNOWN_TEMPLATE' ? 404 : 400;
+    return res.status(status).json({ ok: false, error: e.message, missing: e.missing || null });
+  }
+
+  // Server derives the technician identity from the authenticated session —
+  // never trusts a client-supplied technician object. Same pattern as the
+  // governed resolution-write path.
+  const technician = {
+    id: (req.tsmSession && (req.tsmSession.staffId || req.tsmSession.clientId || req.tsmSession.role)) || 'unknown',
+    label: (req.tsmSession && req.tsmSession.label) || null
+  };
+
+  try {
+    let action = actionGate.generateAction({
+      actionType,
+      payload: { draft: preview.body, context: context || {} },
+      technician,
+      sourceIncident: (context && context.INCIDENT_NUMBER) || null,
+      asset: (context && context.ASSET_TAG) || null
+    });
+    action = actionGate.previewAction(action);
+    action = actionGate.confirmAction(action);
+
+    return res.json({
+      ok: true,
+      preview,
+      action: {
+        actionType: action.actionType,
+        sourceIncident: action.sourceIncident,
+        asset: action.asset,
+        technician: action.technician,
+        confirmedAt: action.confirmedAt
+      },
+      note: 'Confirmed via the Technician Action Gate. ServiceNow write for asset actions is not yet wired (Phase 4).'
+    });
+  } catch (e) {
     return res.status(500).json({ ok: false, error: e.message });
   }
 });

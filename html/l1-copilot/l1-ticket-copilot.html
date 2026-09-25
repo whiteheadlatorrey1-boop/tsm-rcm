@@ -721,6 +721,7 @@ window.loadInphusionAnomaly = function() {
     <div class="sb-item" data-section="vendor"><span class="sb-dot"></span>Vendor Support</div>
     <div class="sb-item" data-section="sla"><span class="sb-dot"></span>SLA</div>
     <div class="sb-item" data-section="resolution"><span class="sb-dot"></span>Resolution</div>
+    <div class="sb-item" data-section="assetops"><span class="sb-dot"></span>Asset Lifecycle</div>
     <div class="sb-item" data-section="notes"><span class="sb-dot"></span>Notes</div>
     <div class="sb-item" data-section="escalation"><span class="sb-dot"></span>Escalation</div>
     <div class="sb-item" data-section="history"><span class="sb-dot"></span>History</div>
@@ -1412,6 +1413,33 @@ TICKET DESCRIPTION</div>
             </label>
           </div>
           <div id="resolutionSyncOut" style="font-size:12px; margin-top:6px"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ASSET LIFECYCLE (Phase 3 — preview/confirm only, no ServiceNow write yet) -->
+    <section class="section" id="sec-assetops">
+      <div class="card">
+        <div class="card-head">ASSET LIFECYCLE</div>
+        <div class="card-body">
+          <div class="field"><div class="field-label">Action</div>
+            <select id="aoTemplate"></select>
+          </div>
+          <div id="aoFields" style="margin-top:10px"></div>
+          <div class="btn-row" style="margin-top:10px">
+            <button class="btn btn-cyan" id="btnAoPreview">PREVIEW ACTION</button>
+            <button class="btn btn-outline" id="btnAoConfirm" disabled>TECHNICIAN CONFIRM ACTION</button>
+          </div>
+          <div class="ai-output" id="aoOutput">Select an action and preview to see the generated work note.</div>
+          <div id="aoGovernance" style="font-size:12px; margin-top:8px; line-height:1.6">
+            <div><b>GOVERNANCE:</b> This confirms the action with the Technician Action Gate only.</div>
+            <div>ServiceNow ticket creation is not yet wired for asset actions (Phase 4).</div>
+            <label style="display:block;margin-top:8px">
+              <input type="checkbox" id="aoTechnicianConfirm">
+              I reviewed this exact generated action and confirm it is correct.
+            </label>
+          </div>
+          <div id="aoConfirmOut" style="font-size:12px; margin-top:6px"></div>
         </div>
       </div>
     </section>
@@ -3924,6 +3952,133 @@ TICKET DESCRIPTION</div>
   }
 
   document.getElementById('btnBuildResolution').addEventListener('click', buildResolution);
+
+  // ── Asset Lifecycle (Phase 3) ───────────────────────────────────────────
+  let aoTemplates = [];
+  let aoLastPreview = null;
+
+  async function loadAoTemplates(){
+    const sel = document.getElementById('aoTemplate');
+    try {
+      const res = await fetch('/api/l1-copilot/asset-action/templates');
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'failed to load templates');
+      aoTemplates = data.templates;
+      sel.innerHTML = aoTemplates.map(t => `<option value="${t.id}">${t.label}</option>`).join('');
+      renderAoFields();
+    } catch (e) {
+      sel.innerHTML = '<option value="">(failed to load templates)</option>';
+    }
+  }
+
+  function resetAoConfirmState(){
+    aoLastPreview = null;
+    const box = document.getElementById('aoTechnicianConfirm');
+    if (box) box.checked = false;
+    document.getElementById('btnAoConfirm').disabled = true;
+    document.getElementById('aoConfirmOut').textContent = '';
+  }
+
+  function renderAoFields(){
+    const sel = document.getElementById('aoTemplate');
+    const container = document.getElementById('aoFields');
+    const tpl = aoTemplates.find(t => t.id === sel.value);
+    if (!tpl) { container.innerHTML = ''; return; }
+
+    const prefill = {
+      INCIDENT_NUMBER: (document.getElementById('tkIncident') || {}).value || '',
+      ASSET_TAG: (document.getElementById('tkAsset') || {}).value || '',
+      MANUFACTURER: (document.getElementById('tkMfr') || {}).value || '',
+      MODEL: (document.getElementById('tkModel') || {}).value || ''
+    };
+
+    const allFields = [
+      ...tpl.required.map(f => ({ name: f, req: true })),
+      ...tpl.optional.map(f => ({ name: f, req: false }))
+    ];
+
+    container.innerHTML = allFields.map(f => `
+      <div class="field">
+        <div class="field-label">${f.name.replace(/_/g,' ')}${f.req ? ' *' : ''}</div>
+        <input data-ao-field="${f.name}" value="${(prefill[f.name] || '').replace(/"/g,'&quot;')}" placeholder="${f.name}">
+      </div>
+    `).join('');
+
+    resetAoConfirmState();
+    document.getElementById('aoOutput').className = 'ai-output';
+    document.getElementById('aoOutput').textContent = 'Select an action and preview to see the generated work note.';
+  }
+
+  document.getElementById('aoTemplate').addEventListener('change', renderAoFields);
+
+  function collectAoContext(){
+    const ctx = {};
+    document.querySelectorAll('[data-ao-field]').forEach(inp => {
+      ctx[inp.dataset.aoField] = inp.value;
+    });
+    return ctx;
+  }
+
+  document.getElementById('btnAoPreview').addEventListener('click', async () => {
+    const out = document.getElementById('aoOutput');
+    const templateId = document.getElementById('aoTemplate').value;
+    const context = collectAoContext();
+    out.className = 'ai-output loading';
+    out.textContent = 'Generating preview...';
+    resetAoConfirmState();
+
+    try {
+      const res = await fetch('/api/l1-copilot/asset-action/preview', {
+        method: 'POST', headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({ templateId, context })
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        const missingMsg = data.missing ? ` Missing: ${data.missing.join(', ')}` : '';
+        throw new Error((data.error || 'preview failed') + missingMsg);
+      }
+      out.className = 'ai-output';
+      out.textContent = data.preview.body;
+      aoLastPreview = { templateId, context };
+    } catch (e) {
+      out.className = 'ai-output';
+      out.innerHTML = `<span class="err">${e.message}</span>`;
+    }
+  });
+
+  document.getElementById('aoTechnicianConfirm').addEventListener('change', () => {
+    const box = document.getElementById('aoTechnicianConfirm');
+    document.getElementById('btnAoConfirm').disabled = !box.checked || !aoLastPreview;
+  });
+
+  document.getElementById('btnAoConfirm').addEventListener('click', async () => {
+    const confirmOut = document.getElementById('aoConfirmOut');
+    if (!aoLastPreview) { alert('Preview the action first.'); return; }
+    if (!document.getElementById('aoTechnicianConfirm').checked) {
+      alert('Technician confirmation is required.');
+      return;
+    }
+
+    document.getElementById('btnAoConfirm').disabled = true;
+    confirmOut.textContent = 'Confirming action with the Technician Action Gate...';
+
+    try {
+      const res = await fetch('/api/l1-copilot/asset-action/confirm', {
+        method: 'POST', headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify(aoLastPreview)
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || 'confirm failed');
+
+      confirmOut.innerHTML = `<span style="color:var(--cyan)">Action confirmed (${data.action.actionType}). ${data.note}</span>`;
+      document.getElementById('aoTechnicianConfirm').checked = false;
+    } catch (e) {
+      confirmOut.innerHTML = `<span class="err">${e.message}</span>`;
+      document.getElementById('btnAoConfirm').disabled = false;
+    }
+  });
+
+  loadAoTemplates();
 
   document.getElementById('btnCopyResolution').addEventListener('click', () => {
     const text = document.getElementById('resolutionOutput').textContent;
