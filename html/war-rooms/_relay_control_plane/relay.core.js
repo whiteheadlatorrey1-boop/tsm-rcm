@@ -19,7 +19,7 @@
   HONEYWELL_PLANT:    "TSM_HONEYWELL_PLANT_RELAY",
   // College vertical (Financial-Aid-centered) — same split-key pattern as the
   // three HONEYWELL_* domains above: each domain writes only its own key,
-  // college-strategist.html reads all five and aggregates rather than
+  // college-strategist.html reads all six and aggregates rather than
   // picking a single "latest" (Financial Aid ops needs simultaneous
   // visibility across domains, unlike Honeywell's one-incident-at-a-time use).
   COLLEGE_FINAID:      "TSM_COLLEGE_FINAID_RELAY",
