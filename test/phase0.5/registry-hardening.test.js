@@ -177,3 +177,109 @@ describe('Phase 0.5 — Staffing eligibility contract', function () {
   });
 
 });
+
+describe('Phase 0.5 — Training event contract', function () {
+
+  it('exports a training-event normalizer', function () {
+    assert.strictEqual(
+      typeof registry.normalizeTrainingEvent,
+      'function'
+    );
+  });
+
+  it('requires an event type', function () {
+    assert.throws(
+      () => registry.normalizeTrainingEvent({
+        score: 90
+      }),
+      /training event type is required/
+    );
+  });
+
+  it('preserves an omitted score as unscored', function () {
+    const event = registry.normalizeTrainingEvent({
+      type: 'attendance'
+    });
+
+    assert.strictEqual(event.score, null);
+    assert.strictEqual(event.scored, false);
+  });
+
+  it('accepts numeric scores', function () {
+    const event = registry.normalizeTrainingEvent({
+      type: 'quiz',
+      score: 85
+    });
+
+    assert.strictEqual(event.score, 85);
+    assert.strictEqual(event.scored, true);
+  });
+
+  it('rejects non-numeric scores', function () {
+    assert.throws(
+      () => registry.normalizeTrainingEvent({
+        type: 'quiz',
+        score: '85'
+      }),
+      /training event score must be numeric/
+    );
+  });
+
+  it('defaults weight to one', function () {
+    const event = registry.normalizeTrainingEvent({
+      type: 'module_complete',
+      score: 90
+    });
+
+    assert.strictEqual(event.weight, 1);
+  });
+
+  it('rejects zero or negative weights', function () {
+    assert.throws(
+      () => registry.normalizeTrainingEvent({
+        type: 'quiz',
+        score: 90,
+        weight: 0
+      }),
+      /training event weight must be greater than zero/
+    );
+  });
+
+
+
+  it('rejects malformed training events before persistence', async function () {
+    await assert.rejects(
+      () => registry.recordTrainingEvent('cand_test', {
+        score: 90
+      }),
+      /training event type is required/
+    );
+  });
+
+  it('rejects non-numeric training scores before persistence', async function () {
+    await assert.rejects(
+      () => registry.recordTrainingEvent('cand_test', {
+        type: 'quiz',
+        score: '90'
+      }),
+      /training event score must be numeric/
+    );
+  });
+
+  it('preserves metadata', function () {
+    const event = registry.normalizeTrainingEvent({
+      type: 'simulation_complete',
+      score: 92,
+      meta: {
+        module: 'rcm',
+        scenario: 'denial_recovery'
+      }
+    });
+
+    assert.deepStrictEqual(event.meta, {
+      module: 'rcm',
+      scenario: 'denial_recovery'
+    });
+  });
+
+});
