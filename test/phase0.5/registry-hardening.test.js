@@ -1,6 +1,12 @@
 'use strict';
 
 const assert = require('assert');
+const {
+  describe,
+  it,
+  beforeEach,
+  afterEach
+} = require('node:test');
 
 /*
  * Phase 0.5 — Registry Hardening
