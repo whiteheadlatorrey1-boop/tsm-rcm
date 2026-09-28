@@ -128,4 +128,52 @@ describe('Phase 0.5 — Staffing eligibility contract', function () {
     assert.strictEqual(result.minimumReadiness, 80);
   });
 
+  it('rejects an ineligible candidate before placement creation', async function () {
+    const registryModule = require('../../server/candidate-registry-service');
+    const originalGetCandidate = registryModule.getCandidate;
+
+    registryModule.getCandidate = async () => ({
+      candidateId: 'cand_sample',
+      isSampleData: true,
+      status: 'ready_for_placement',
+      readinessScore: 95
+    });
+
+    try {
+      await assert.rejects(
+        () => staffing.submitCandidate({
+          candidateId: 'cand_sample',
+          jobOrderId: 'job_test'
+        }),
+        /Candidate is not eligible for placement: sample-candidate/
+      );
+    } finally {
+      registryModule.getCandidate = originalGetCandidate;
+    }
+  });
+
+  it('rejects below-threshold candidates before placement creation', async function () {
+    const registryModule = require('../../server/candidate-registry-service');
+    const originalGetCandidate = registryModule.getCandidate;
+
+    registryModule.getCandidate = async () => ({
+      candidateId: 'cand_real',
+      isSampleData: false,
+      status: 'ready_for_placement',
+      readinessScore: 69
+    });
+
+    try {
+      await assert.rejects(
+        () => staffing.submitCandidate({
+          candidateId: 'cand_real',
+          jobOrderId: 'job_test'
+        }),
+        /Candidate is not eligible for placement: readiness-below-threshold/
+      );
+    } finally {
+      registryModule.getCandidate = originalGetCandidate;
+    }
+  });
+
 });
