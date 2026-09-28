@@ -1,3 +1,15 @@
+
+
+/* TSM_PHASE5_ENV_LOAD */
+try {
+  if (typeof process.loadEnvFile === 'function') {
+    process.loadEnvFile('.env');
+  }
+} catch (err) {
+  // Do not crash the application if .env is unavailable.
+  // Production environments may provide variables directly.
+}
+/* TSM_PHASE5_ENV_LOAD */
 // ServiceNow Table API adapter for L1 Ticket Copilot.
 //
 // Implements the adapter interface documented in

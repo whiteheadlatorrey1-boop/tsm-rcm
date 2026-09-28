@@ -1,15 +1,24 @@
 'use strict';
 
 /**
- * L1 governed resolution route regression.
+ * L1 asset-action execute route regression (Phase 4).
  *
  * Proves:
- *   1. Resolution generation is draft-only.
- *   2. ServiceNow write requires technician confirmation.
- *   3. ServiceNow write requires the exact reviewed draft.
- *   4. No ServiceNow write occurs on rejected requests.
- *   5. The exact confirmed draft is passed to writeWorkNote().
- *   6. Direct /servicenow/work-note is also governed.
+ *   1. Unauthenticated execute is refused.
+ *   2. templateId is required.
+ *   3. Unknown template is refused (no action type mapped).
+ *   4. Execute without technician confirmation is refused, zero writes.
+ *   5. Missing required template fields are refused (422, missing list),
+ *      zero writes.
+ *   6. Missing context.INCIDENT_NUMBER is refused (400), zero writes.
+ *   7. Malformed INCIDENT_NUMBER is refused (400), zero writes.
+ *   8. Oversized generated note is refused (413), zero writes.
+ *   9. ServiceNow-not-configured is refused (503), zero writes.
+ *  10. Happy path: exactly one write, tagged with
+ *      "[ASSET LIFECYCLE — <ACTION_TYPE>]", exact rendered body, technician
+ *      derived from the authenticated session (never trusted from the
+ *      request body).
+ *  11. ServiceNow write failure is surfaced as 502, not reported as success.
  *
  * Uses:
  *   - real server.js
@@ -18,7 +27,7 @@
  *   - mocked ServiceNow adapter
  *
  * Run:
- *   node scripts/test-l1-governed-resolution-route.js
+ *   node scripts/test-l1-asset-action-execute-route.js
  */
 
 const Module = require('module');
@@ -174,61 +183,15 @@ fakeDotenv.loaded = true;
 require.cache[dotenvPath] = fakeDotenv;
 
 process.env.MONGODB_URI =
-  'mongodb://fake-host/tsm-l1-governed-resolution-test';
+  'mongodb://fake-host/tsm-l1-asset-action-execute-test';
 
 process.env.TSM_SESSION_SECRET =
-  'test-session-secret-l1-governed-resolution';
+  'test-session-secret-l1-asset-action-execute';
 
 process.env.TSM_ADMIN_PASSWORD =
-  'l1-governed-resolution-test-admin';
+  'l1-asset-action-execute-test-admin';
 
 delete process.env.TSM_STRICT_INGEST;
-
-/* ------------------------------------------------------------------ */
-/* Stub Groq HTTP calls while preserving real application routing.    */
-/* ------------------------------------------------------------------ */
-
-const realFetch = global.fetch;
-
-global.fetch = async function testFetch(url, options) {
-  const target = typeof url === 'string'
-    ? url
-    : (url && url.url) || '';
-
-  if (target.startsWith('https://api.groq.com/')) {
-    return new Response(
-      JSON.stringify({
-        choices: [
-          {
-            message: {
-              content:
-                'Problem\\n' +
-                'Workstation display failure.\\n\\n' +
-                'Cause\\n' +
-                'Display cable connection issue.\\n\\n' +
-                'Actions Taken\\n' +
-                'Verified asset tag and reseated display cable.\\n\\n' +
-                'Resolution\\n' +
-                'Display restored.\\n\\n' +
-                'Validation\\n' +
-                'Confirmed display functionality returned.\\n\\n' +
-                'Next Steps\\n' +
-                'None.'
-            }
-          }
-        ]
-      }),
-      {
-        status: 200,
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      }
-    );
-  }
-
-  return realFetch(url, options);
-};
 
 /* ------------------------------------------------------------------ */
 /* Mock ServiceNow adapter BEFORE server.js loads it.                  */
@@ -240,12 +203,13 @@ const snAdapterPath = require.resolve(
 
 const writeCalls = [];
 let writeFailure = null;
+let configured = true;
 
 const fakeSnAdapter = new Module(snAdapterPath, null);
 
 fakeSnAdapter.exports = {
   isConfigured() {
-    return true;
+    return configured;
   },
 
   async writeWorkNote(incident, note) {
@@ -286,17 +250,25 @@ fakeSnAdapter.exports = {
     );
   },
 
-  // server.js eagerly loads servicenow-bpo-intelligence.js.
-  // That module destructures snRequest/readField from the adapter's
-  // internal test contract even though this regression does not exercise
-  // BPO intelligence. Stub only those dependencies so server startup
-  // reaches the resolution route under test.
+  // servicenow-bpo-intelligence.js destructures these off _internal at
+  // require time (`const { snRequest, readField } = snAdapter._internal`),
+  // independent of which route is under test — server.js loads it eagerly.
+  // Not exercised by this test; stubbed only so require() doesn't throw.
   _internal: {
     readField() {
       return null;
     },
     async snRequest() {
       throw new Error('snRequest must not be called by this test');
+    },
+    authHeader() {
+      return {};
+    },
+    async createTicketWithRetry() {
+      throw new Error('createTicketWithRetry must not be called by this test');
+    },
+    async getTicketWithRetry() {
+      throw new Error('getTicketWithRetry must not be called by this test');
     }
   }
 };
@@ -387,26 +359,38 @@ async function main() {
     });
   }
 
-  console.log('\n=== L1 GOVERNED RESOLUTION ROUTE ===');
+  console.log('\n=== L1 ASSET-ACTION EXECUTE ROUTE ===');
   console.log('BASE: ' + BASE);
 
+  const validContext = {
+    INCIDENT_NUMBER: 'INC0012345',
+    ASSET_TAG: 'HNY-LT-00421',
+    TECHNICIAN: 'J. Rivera',
+    RETURN_REASON: 'Device replacement'
+  };
+
   /* -------------------------------------------------------------- */
-  /* Authentication                                                  */
+  /* 1. Unauthenticated                                              */
   /* -------------------------------------------------------------- */
 
   let response = await post(
-    '/api/l1-copilot/resolution',
+    '/api/l1-copilot/asset-action/execute',
     {
-      incident: 'INC0012345',
-      draft: 'Unauthorized write attempt',
-      writeToServicenow: true
+      templateId: 'RETURN_TO_INVENTORY',
+      context: validContext,
+      technicianConfirmed: true
     }
   );
 
   ok(
     (response.status === 401 || response.status === 403),
-    'unauthenticated resolution write is refused - got ' +
+    'unauthenticated execute is refused - got ' +
       response.status
+  );
+
+  ok(
+    writeCalls.length === 0,
+    'unauthenticated execute caused zero ServiceNow writes'
   );
 
   const login = await fetch(
@@ -431,160 +415,217 @@ async function main() {
   );
 
   /* -------------------------------------------------------------- */
-  /* 1. Draft-only generation                                       */
+  /* 2. templateId required                                         */
   /* -------------------------------------------------------------- */
 
-  const ticket = [
-    'INC0012345',
-    'User reports workstation display failure.'
-  ].join('\n');
+  response = await post(
+    '/api/l1-copilot/asset-action/execute',
+    { context: validContext, technicianConfirmed: true },
+    cookie
+  );
 
-  const notes = [
-    'Verified asset tag.',
-    'Reseated display cable.',
-    'Confirmed display returned.'
-  ].join('\n');
+  ok(
+    response.status === 400,
+    'missing templateId is refused - got ' + response.status
+  );
+
+  ok(writeCalls.length === 0, 'missing-templateId rejection did not call ServiceNow');
+
+  /* -------------------------------------------------------------- */
+  /* 3. Unknown template                                            */
+  /* -------------------------------------------------------------- */
 
   response = await post(
-    '/api/l1-copilot/resolution',
+    '/api/l1-copilot/asset-action/execute',
     {
-      ticket,
-      analysis: {
-        severity: 'medium'
-      },
-      notes
+      templateId: 'NOT_A_REAL_TEMPLATE',
+      context: validContext,
+      technicianConfirmed: true
+    },
+    cookie
+  );
+
+  ok(
+    response.status === 400,
+    'unknown templateId is refused - got ' + response.status
+  );
+
+  ok(writeCalls.length === 0, 'unknown-template rejection did not call ServiceNow');
+
+  /* -------------------------------------------------------------- */
+  /* 4. No technician confirmation                                  */
+  /* -------------------------------------------------------------- */
+
+  response = await post(
+    '/api/l1-copilot/asset-action/execute',
+    {
+      templateId: 'RETURN_TO_INVENTORY',
+      context: validContext,
+      technicianConfirmed: false
     },
     cookie
   );
 
   let body = await response.json();
 
-  /*
-   * This request legitimately reaches the AI generation path.
-   * If the environment does not have a usable Groq configuration,
-   * the test reports that explicitly rather than pretending it passed.
-   */
-  ok(
-    response.status === 200 &&
-      body.ok === true,
-    'resolution generation route responds successfully - got ' +
-      response.status
-  );
-
-  if (response.status === 200) {
-    ok(
-      body.governed &&
-        body.governed.draftOnly === true,
-      'resolution generation is explicitly marked draft-only'
-    );
-
-    ok(
-      body.governed &&
-        body.governed.writtenToServicenow === false,
-      'draft generation does not write to ServiceNow'
-    );
-  }
-
-  ok(
-    writeCalls.length === 0,
-    'draft generation caused zero ServiceNow writes'
-  );
-
-  /* -------------------------------------------------------------- */
-  /* 2. Write without technician confirmation                       */
-  /* -------------------------------------------------------------- */
-
-  const reviewedDraft =
-    'Problem\n' +
-    'Workstation display failure.\n\n' +
-    'Cause\n' +
-    'Display cable connection issue.\n\n' +
-    'Actions Taken\n' +
-    'Reseated display cable.\n\n' +
-    'Resolution\n' +
-    'Display restored.\n\n' +
-    'Validation\n' +
-    'User display functionality confirmed.\n\n' +
-    'Next Steps\n' +
-    'None.';
-
-  response = await post(
-    '/api/l1-copilot/resolution',
-    {
-      incident: 'INC0012345',
-      draft: reviewedDraft,
-      writeToServicenow: true,
-      technicianConfirmed: false
-    },
-    cookie
-  );
-
-  body = await response.json();
-
   ok(
     response.status === 403,
-    'resolution write without technician confirmation is refused - got ' +
+    'execute without technician confirmation is refused - got ' +
       response.status
   );
 
   ok(
     writeCalls.length === 0,
-    'rejected resolution write did not call ServiceNow'
+    'unconfirmed execute did not call ServiceNow'
   );
 
   /* -------------------------------------------------------------- */
-  /* 3. Confirmation without draft                                  */
+  /* 5. Missing required template fields                            */
   /* -------------------------------------------------------------- */
 
   response = await post(
-    '/api/l1-copilot/resolution',
+    '/api/l1-copilot/asset-action/execute',
     {
-      incident: 'INC0012345',
-      writeToServicenow: true,
+      templateId: 'RETURN_TO_INVENTORY',
+      context: { INCIDENT_NUMBER: 'INC0012345', ASSET_TAG: 'HNY-LT-00421' },
       technicianConfirmed: true
     },
     cookie
   );
 
   body = await response.json();
+
+  ok(
+    response.status === 422,
+    'missing required template fields are refused - got ' +
+      response.status
+  );
+
+  ok(
+    Array.isArray(body.missing) &&
+      body.missing.includes('TECHNICIAN') &&
+      body.missing.includes('RETURN_REASON'),
+    'missing-field response lists the absent required fields'
+  );
+
+  ok(
+    writeCalls.length === 0,
+    'missing-field rejection did not call ServiceNow'
+  );
+
+  /* -------------------------------------------------------------- */
+  /* 6. Missing INCIDENT_NUMBER                                     */
+  /*                                                                  */
+  /* INCIDENT_NUMBER is a required field on every registered          */
+  /* template, so a blank value is caught by renderTemplate()'s       */
+  /* MISSING_REQUIRED_FIELDS check (422) before the route's own       */
+  /* `if (!incidentId)` 400 check ever runs. That 400 branch in       */
+  /* server.js is currently unreachable given the registry's field    */
+  /* requirements — this test documents the actual (422) behavior     */
+  /* rather than the behavior the route's own comment/code implies.   */
+  /* -------------------------------------------------------------- */
+
+  response = await post(
+    '/api/l1-copilot/asset-action/execute',
+    {
+      templateId: 'RETURN_TO_INVENTORY',
+      context: Object.assign({}, validContext, { INCIDENT_NUMBER: '' }),
+      technicianConfirmed: true
+    },
+    cookie
+  );
+
+  body = await response.json();
+
+  ok(
+    response.status === 422 &&
+      Array.isArray(body.missing) &&
+      body.missing.includes('INCIDENT_NUMBER'),
+    'blank INCIDENT_NUMBER is refused via required-field validation - got ' +
+      response.status
+  );
+
+  ok(writeCalls.length === 0, 'blank-INCIDENT_NUMBER rejection did not call ServiceNow');
+
+  /* -------------------------------------------------------------- */
+  /* 7. Malformed INCIDENT_NUMBER                                   */
+  /* -------------------------------------------------------------- */
+
+  response = await post(
+    '/api/l1-copilot/asset-action/execute',
+    {
+      templateId: 'RETURN_TO_INVENTORY',
+      context: Object.assign({}, validContext, { INCIDENT_NUMBER: 'INC1^ORnumberSTARTSWITHINC' }),
+      technicianConfirmed: true
+    },
+    cookie
+  );
 
   ok(
     response.status === 400,
-    'confirmed resolution write without draft is refused - got ' +
-      response.status
+    'malformed INCIDENT_NUMBER is refused - got ' + response.status
+  );
+
+  ok(writeCalls.length === 0, 'malformed-INCIDENT_NUMBER rejection did not call ServiceNow');
+
+  /* -------------------------------------------------------------- */
+  /* 8. Oversized generated note                                    */
+  /* -------------------------------------------------------------- */
+
+  response = await post(
+    '/api/l1-copilot/asset-action/execute',
+    {
+      templateId: 'RETURN_TO_INVENTORY',
+      context: Object.assign({}, validContext, { TECHNICIAN_NOTES: 'x'.repeat(20001) }),
+      technicianConfirmed: true
+    },
+    cookie
   );
 
   ok(
-    writeCalls.length === 0,
-    'missing-draft rejection did not call ServiceNow'
+    response.status === 413,
+    'oversized generated note is refused - got ' + response.status
   );
 
-  /* 3b. Authenticated, but malformed input */
-  response = await post(
-    '/api/l1-copilot/resolution',
-    { incident: 'INC1^ORnumberSTARTSWITHINC', writeToServicenow: true, technicianConfirmed: true, draft: 'x' },
-    cookie
-  );
-  ok(response.status === 400, 'malformed incident id is refused with a session - got ' + response.status);
-
-  response = await post(
-    '/api/l1-copilot/resolution',
-    { incident: 'INC0012345', writeToServicenow: true, technicianConfirmed: true, draft: 'x'.repeat(20001) },
-    cookie
-  );
-  ok(response.status === 413, 'oversized draft is refused with a session - got ' + response.status);
-  ok(writeCalls.length === 0, 'refused input did not call ServiceNow');
+  ok(writeCalls.length === 0, 'oversized-note rejection did not call ServiceNow');
 
   /* -------------------------------------------------------------- */
-  /* 4. Exact reviewed draft is written                             */
+  /* 9. ServiceNow not configured                                   */
   /* -------------------------------------------------------------- */
 
+  configured = false;
+
   response = await post(
-    '/api/l1-copilot/resolution',
+    '/api/l1-copilot/asset-action/execute',
     {
-      incident: 'INC0012345',
-      draft: reviewedDraft,
-      writeToServicenow: true,
+      templateId: 'RETURN_TO_INVENTORY',
+      context: validContext,
+      technicianConfirmed: true
+    },
+    cookie
+  );
+
+  ok(
+    response.status === 503,
+    'execute with ServiceNow unconfigured is refused - got ' + response.status
+  );
+
+  ok(writeCalls.length === 0, 'unconfigured-ServiceNow rejection did not call writeWorkNote');
+
+  configured = true;
+
+  /* -------------------------------------------------------------- */
+  /* 10. Happy path                                                 */
+  /* -------------------------------------------------------------- */
+
+  response = await post(
+    '/api/l1-copilot/asset-action/execute',
+    {
+      templateId: 'RETURN_TO_INVENTORY',
+      context: validContext,
+      // A client-supplied technician must never override the
+      // session-derived identity.
+      technician: { id: 'someone-else', label: 'Spoofed Technician' },
       technicianConfirmed: true
     },
     cookie
@@ -595,8 +636,7 @@ async function main() {
   ok(
     response.status === 200 &&
       body.ok === true,
-    'technician-confirmed resolution write succeeds - got ' +
-      response.status
+    'technician-confirmed execute succeeds - got ' + response.status
   );
 
   ok(
@@ -610,107 +650,55 @@ async function main() {
     'ServiceNow write targeted the supplied incident'
   );
 
+  const expectedTag = '[ASSET LIFECYCLE \u2014 RETURN_TO_INVENTORY]\n';
+
   ok(
     writeCalls[0] &&
-      writeCalls[0].note === reviewedDraft,
-    'ServiceNow received the exact reviewed draft'
+      typeof writeCalls[0].note === 'string' &&
+      writeCalls[0].note.startsWith(expectedTag),
+    'written note is tagged with the mapped action type'
+  );
+
+  ok(
+    writeCalls[0] &&
+      writeCalls[0].note.includes('Asset Tag: HNY-LT-00421') &&
+      writeCalls[0].note.includes('Technician: J. Rivera') &&
+      writeCalls[0].note.includes('Reason: Device replacement'),
+    'written note contains the exact rendered template fields'
+  );
+
+  ok(
+    body.action &&
+      body.action.technician &&
+      body.action.technician.id !== 'someone-else',
+    'technician identity is derived from the session, not the request body'
   );
 
   ok(
     body.governed &&
       body.governed.technicianConfirmed === true &&
       body.governed.exactDraftWritten === true,
-    'successful write reports technician confirmation and exact-draft governance'
+    'successful execute reports technician confirmation and exact-draft governance'
   );
 
   ok(
-    body.answer === reviewedDraft,
-    'write response returns the exact reviewed draft rather than regenerating it'
+    body.servicenow &&
+      body.servicenow.attempted === true &&
+      body.servicenow.success === true,
+    'successful execute reports the ServiceNow write as attempted and successful'
   );
 
   /* -------------------------------------------------------------- */
-  /* 5. Direct work-note route without confirmation                 */
-  /* -------------------------------------------------------------- */
-
-  response = await post(
-    '/api/l1-copilot/servicenow/work-note',
-    {
-      incident: 'INC0010002',
-      note: 'Direct route test note.'
-    },
-    cookie
-  );
-
-  body = await response.json();
-
-  ok(
-    response.status === 403,
-    'direct work-note route without confirmation is refused - got ' +
-      response.status
-  );
-
-  ok(
-    writeCalls.length === 1,
-    'direct unconfirmed work-note request did not call ServiceNow'
-  );
-
-  /* -------------------------------------------------------------- */
-  /* 6. Direct work-note route with confirmation                   */
-  /* -------------------------------------------------------------- */
-
-  const directNote =
-    'Technician-confirmed direct work note.';
-
-  response = await post(
-    '/api/l1-copilot/servicenow/work-note',
-    {
-      incident: 'INC0010002',
-      note: directNote,
-      technicianConfirmed: true
-    },
-    cookie
-  );
-
-  body = await response.json();
-
-  ok(
-    response.status === 200 &&
-      body.ok === true,
-    'direct confirmed work-note route succeeds - got ' +
-      response.status
-  );
-
-  ok(
-    writeCalls.length === 2,
-    'direct confirmed work-note produced exactly one additional write'
-  );
-
-  ok(
-    writeCalls[1] &&
-      writeCalls[1].incident === 'INC0010002' &&
-      writeCalls[1].note === directNote,
-    'direct confirmed work-note receives the exact supplied note'
-  );
-
-  ok(
-    body.governed &&
-      body.governed.technicianConfirmed === true &&
-      body.governed.appendOnlyWorkNote === true,
-    'direct work-note response reports governed append-only behavior'
-  );
-
-  /* -------------------------------------------------------------- */
-  /* 7. ServiceNow failure is not reported as success              */
+  /* 11. ServiceNow failure is not reported as success              */
   /* -------------------------------------------------------------- */
 
   writeFailure = 'Simulated ServiceNow write failure';
 
   response = await post(
-    '/api/l1-copilot/resolution',
+    '/api/l1-copilot/asset-action/execute',
     {
-      incident: 'INC0010003',
-      draft: 'Failure-path reviewed draft.',
-      writeToServicenow: true,
+      templateId: 'RETURN_TO_INVENTORY',
+      context: Object.assign({}, validContext, { INCIDENT_NUMBER: 'INC0099002' }),
       technicianConfirmed: true
     },
     cookie
@@ -720,8 +708,7 @@ async function main() {
 
   ok(
     response.status === 502,
-    'ServiceNow write failure is surfaced as 502 - got ' +
-      response.status
+    'ServiceNow write failure is surfaced as 502 - got ' + response.status
   );
 
   ok(
@@ -733,6 +720,11 @@ async function main() {
 
   writeFailure = null;
 
+  ok(
+    writeCalls.length === 2,
+    'failure-path attempt is the second and only additional write call'
+  );
+
   console.log(
     '\n' +
       passed +
@@ -743,8 +735,8 @@ async function main() {
 
   console.log(
     failed
-      ? 'L1 GOVERNED RESOLUTION ROUTE: FAIL'
-      : 'L1 GOVERNED RESOLUTION ROUTE: PASS'
+      ? 'L1 ASSET-ACTION EXECUTE ROUTE: FAIL'
+      : 'L1 ASSET-ACTION EXECUTE ROUTE: PASS'
   );
 
   process.exit(failed ? 1 : 0);

@@ -73,6 +73,100 @@ const sentinelUpload = multer({
 const app = express();
 
 const { verifySession: __verifySessionForUser, getCookie: __getCookieForUser } = require('./middleware/require-auth');
+const actionGate = require('./server/l1-copilot/action-gate');
+const templateRegistry = require('./server/l1-copilot/template-registry');
+const handoffStore = require('./server/l1-copilot/handoff-store');
+const auditStore = require('./server/l1-copilot/audit-store');
+const metricsStore = require('./server/l1-copilot/metrics-store');
+
+
+
+// PHASE 11.4 — READ-ONLY OPERATIONAL METRICS
+app.get('/api/l1-copilot/metrics', (req, res) => {
+  try {
+    const metrics = metricsStore.getMetrics();
+
+    return res.json({
+      ok: true,
+      readOnly: true,
+      serviceNowWrite: false,
+      ticketStateChanged: false,
+      autonomousExecutionAllowed: false,
+      metrics
+    });
+  } catch (err) {
+    console.error(
+      'L1 COPILOT METRICS READ ERROR:',
+      err.message
+    );
+
+    return res.status(500).json({
+      ok: false,
+      error: 'METRICS_READ_FAILED'
+    });
+  }
+});
+
+function recordL1MetricEvent({
+  eventType,
+  action,
+  metadata
+}) {
+  try {
+    return metricsStore.recordMetric({
+      eventType,
+      actionType: action.actionType,
+      sourceIncident: action.sourceIncident,
+      technician: action.technician,
+      metadata: metadata || null
+    });
+  } catch (err) {
+    console.error(
+      'L1 COPILOT METRIC RECORD ERROR:',
+      err.message
+    );
+    return null;
+  }
+}
+
+function recordL1AuditEvent({
+  eventType,
+  action,
+  executionResult,
+  metadata
+}) {
+  try {
+    return auditStore.recordAudit({
+      eventType,
+      actionType: action.actionType,
+      sourceIncident: action.sourceIncident,
+      technician: action.technician,
+      state: action.state,
+      confirmed: action.confirmed === true,
+      executed: action.state === actionGate.STATES.EXECUTED,
+      references: action.references || null,
+      executionResult: executionResult || action.executionResult || null,
+      governed: {
+        serviceNowStateWrite:
+          executionResult?.serviceNowStateWrite === true,
+        ticketStateChanged:
+          executionResult?.ticketStateChanged === true,
+        ticketClosureRequested:
+          executionResult?.ticketClosureRequested === true,
+        autonomousExecutionAllowed: false
+      },
+      metadata: metadata || null
+    });
+  } catch (err) {
+    console.error(
+      'L1 COPILOT AUDIT RECORD ERROR:',
+      err.message
+    );
+    return null;
+  }
+}
+
+const templateAssistant = require('./server/l1-copilot/template-assistant');
 app.use((req, res, next) => {
   const __session = __verifySessionForUser(__getCookieForUser(req, 'tsm_session'));
   req.session = req.session || {};
@@ -5844,6 +5938,212 @@ app.post('/api/l1-copilot/vendor', requireRole(L1_COPILOT_ROLES), async (req, re
   }
 });
 
+const TEMPLATE_TO_ACTION_TYPE = {
+  RETURN_TO_INVENTORY: 'RETURN_TO_INVENTORY',
+  DEVICE_REPLACEMENT: 'CREATE_REPLACEMENT',
+  HARDWARE_SWAP: 'HARDWARE_SWAP',
+  LOANER_RETURN: 'LOANER_RETURN',
+  WARRANTY_DEPOT_RETURN: 'WARRANTY_DEPOT_RETURN',
+  DEVICE_REASSIGNMENT: 'DEVICE_REASSIGNMENT'
+};
+
+app.get('/api/l1-copilot/asset-action/templates', requireRole(L1_COPILOT_ROLES), (req, res) => {
+  res.json({ ok: true, templates: templateRegistry.listTemplates() });
+});
+
+app.post('/api/l1-copilot/asset-action/preview', requireRole(L1_COPILOT_ROLES), (req, res) => {
+  const { templateId, context } = req.body || {};
+  if (!templateId) return res.status(400).json({ ok: false, error: 'templateId required' });
+  try {
+    const preview = templateRegistry.renderTemplate(templateId, context);
+    return res.json({ ok: true, preview });
+  } catch (e) {
+    const status = e.code === 'MISSING_REQUIRED_FIELDS' ? 422
+      : e.code === 'UNKNOWN_TEMPLATE' ? 404 : 400;
+    return res.status(status).json({ ok: false, error: e.message, missing: e.missing || null });
+  }
+});
+
+// Phase 3: preview + confirm only, no ServiceNow write. Lets the UI show
+// the technician exactly what will be written and get an explicit confirm
+// before the client ever calls /asset-action/execute (Phase 4), which
+// re-derives and re-confirms the action server-side rather than trusting
+// this route's confirmation as a session to execute against later.
+app.post('/api/l1-copilot/asset-action/confirm', requireRole(L1_COPILOT_ROLES), (req, res) => {
+  const { templateId, context } = req.body || {};
+  if (!templateId) return res.status(400).json({ ok: false, error: 'templateId required' });
+
+  const actionType = TEMPLATE_TO_ACTION_TYPE[templateId];
+  if (!actionType) {
+    return res.status(400).json({ ok: false, error: `No action type mapped for template "${templateId}".` });
+  }
+
+  let preview;
+  try {
+    preview = templateRegistry.renderTemplate(templateId, context);
+  } catch (e) {
+    const status = e.code === 'MISSING_REQUIRED_FIELDS' ? 422
+      : e.code === 'UNKNOWN_TEMPLATE' ? 404 : 400;
+    return res.status(status).json({ ok: false, error: e.message, missing: e.missing || null });
+  }
+
+  // Server derives the technician identity from the authenticated session —
+  // never trusts a client-supplied technician object. Same pattern as the
+  // governed resolution-write path.
+  const technician = {
+    id: (req.tsmSession && (req.tsmSession.staffId || req.tsmSession.clientId || req.tsmSession.role)) || 'unknown',
+    label: (req.tsmSession && req.tsmSession.label) || null
+  };
+
+  try {
+    let action = actionGate.generateAction({
+      actionType,
+      payload: { draft: preview.body, context: context || {} },
+      technician,
+      sourceIncident: (context && context.INCIDENT_NUMBER) || null,
+      asset: (context && context.ASSET_TAG) || null
+    });
+    action = actionGate.previewAction(action);
+    action = actionGate.confirmAction(action);
+
+    return res.json({
+      ok: true,
+      preview,
+      action: {
+        actionType: action.actionType,
+        sourceIncident: action.sourceIncident,
+        asset: action.asset,
+        technician: action.technician,
+        confirmedAt: action.confirmedAt
+      },
+      note: 'Confirmed via the Technician Action Gate. Call POST /api/l1-copilot/asset-action/execute with the same templateId, context, and technicianConfirmed: true to write this to ServiceNow.'
+    });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// Phase 4: ServiceNow write for asset-lifecycle actions.
+//
+// Scope decision (see roadmap discussion): the ServiceNow adapter's
+// production contract has no create function for sc_req_item/sc_task/a new
+// ticket — createTicket etc. are explicitly _pdi (non-production, must not
+// be exposed through a production L1 route or granted to the L1 integration
+// account). Rather than route around that, Phase 4 stays inside the proven
+// production contract: the asset-lifecycle action is written as a
+// structured, tagged entry into the existing incident's work_notes via the
+// same governed writeWorkNote path Phase 1 already uses for resolutions,
+// with the same read-after-write verification. This costs the separate
+// ticket number / native relationship Phase 6 describes, but needs zero new
+// ServiceNow scope. If create rights are later granted on a target table,
+// this route's executor is the only thing that needs to change — the
+// template engine, Action Gate, and UI panel are already record-type-agnostic.
+app.post('/api/l1-copilot/asset-action/execute', requireRole(L1_COPILOT_ROLES), async (req, res) => {
+  const { templateId, context, technicianConfirmed } = req.body || {};
+
+  if (!templateId) return res.status(400).json({ ok: false, error: 'templateId required' });
+
+  const actionType = TEMPLATE_TO_ACTION_TYPE[templateId];
+  if (!actionType) {
+    return res.status(400).json({ ok: false, error: `No action type mapped for template "${templateId}".` });
+  }
+
+  if (technicianConfirmed !== true) {
+    return res.status(403).json({
+      ok: false,
+      error: 'Technician confirmation is required before writing to ServiceNow.'
+    });
+  }
+
+  let preview;
+  try {
+    preview = templateRegistry.renderTemplate(templateId, context);
+  } catch (e) {
+    const status = e.code === 'MISSING_REQUIRED_FIELDS' ? 422
+      : e.code === 'UNKNOWN_TEMPLATE' ? 404 : 400;
+    return res.status(status).json({ ok: false, error: e.message, missing: e.missing || null });
+  }
+
+  const incidentId = String((context && context.INCIDENT_NUMBER) || '').trim();
+  if (!incidentId) {
+    return res.status(400).json({ ok: false, error: 'context.INCIDENT_NUMBER required to execute an asset-lifecycle action.' });
+  }
+  if (!/^[0-9a-f]{32}$/i.test(incidentId) && !/^[A-Za-z]{2,10}\d{5,12}$/.test(incidentId)) {
+    return res.status(400).json({ ok: false, error: 'INCIDENT_NUMBER must be a ticket number or 32-character sys_id.' });
+  }
+
+  const taggedNote = `[ASSET LIFECYCLE \u2014 ${actionType}]\n${preview.body}`;
+  if (taggedNote.length > 20000) {
+    return res.status(413).json({ ok: false, error: 'Generated work note exceeds the 20000-character limit.' });
+  }
+
+  if (!snAdapter.isConfigured()) {
+    return res.status(503).json({
+      ok: false,
+      error: 'ServiceNow is not configured for this environment.'
+    });
+  }
+
+  // Server derives the technician identity from the authenticated session —
+  // never trusts a client-supplied technician object. Same pattern as the
+  // governed resolution-write path and /asset-action/confirm.
+  const technician = {
+    id: (req.tsmSession && (req.tsmSession.staffId || req.tsmSession.clientId || req.tsmSession.role)) || 'unknown',
+    label: (req.tsmSession && req.tsmSession.label) || null
+  };
+
+  try {
+    let action = actionGate.generateAction({
+      actionType,
+      payload: { draft: taggedNote, context: context || {} },
+      technician,
+      sourceIncident: incidentId,
+      asset: (context && context.ASSET_TAG) || null
+    });
+    action = actionGate.previewAction(action);
+    action = actionGate.confirmAction(action);
+    action = await actionGate.executeAction(action, async () =>
+      snAdapter.writeWorkNote(incidentId, taggedNote)
+    );
+
+    recordL1AuditEvent({
+      eventType: 'ACTION_EXECUTED',
+      action,
+      executionResult: action.executionResult,
+      metadata: {
+        surface: 'asset-action',
+        templateId,
+        technicianConfirmed: true
+      }
+    });
+
+    return res.json({
+      ok: true,
+      preview,
+      servicenow: { attempted: true, ...action.executionResult },
+      action: {
+        actionType: action.actionType,
+        sourceIncident: action.sourceIncident,
+        asset: action.asset,
+        technician: action.technician,
+        confirmedAt: action.confirmedAt
+      },
+      governed: {
+        technicianConfirmed: true,
+        exactDraftWritten: true
+      },
+      createdAt: action.executedAt
+    });
+  } catch (e) {
+    const status = e.code === 'SERVICENOW_NOT_CONFIGURED' ? 503 : 502;
+    return res.status(status).json({
+      ok: false,
+      error: e.message,
+      servicenow: { attempted: true, success: false }
+    });
+  }
+});
+
 app.post('/api/l1-copilot/resolution',
   (req, res, next) => (req.body && req.body.writeToServicenow)
     ? requireRole(BPO_INTERNAL_ROLES)(req, res, next)
@@ -5902,20 +6202,55 @@ app.post('/api/l1-copilot/resolution',
       });
     }
 
+    // All governed-write preconditions above are unchanged. From here,
+    // the confirm -> execute transition is handled by the shared
+    // Technician Action Gate instead of a one-off ad hoc write, so this
+    // route now shares its confirmation/execution semantics with future
+    // L1 Copilot actions (return-to-inventory, replacement, escalation, etc).
+    const trimmedDraft = draft.trim();
+    const technician = {
+      id: (req.tsmSession && (req.tsmSession.staffId || req.tsmSession.clientId || req.tsmSession.role)) || 'unknown',
+      label: (req.tsmSession && req.tsmSession.label) || null
+    };
+
     try {
-      const result = await snAdapter.writeWorkNote(incidentId, draft.trim());
+      let action = actionGate.generateAction({
+        actionType: 'RESOLUTION_WRITE',
+        payload: { draft: trimmedDraft },
+        technician,
+        sourceIncident: incidentId,
+        asset: null
+      });
+      action = actionGate.previewAction(action);
+      action = actionGate.confirmAction(action);
+      action = await actionGate.executeAction(action, async () =>
+        snAdapter.writeWorkNote(incidentId, trimmedDraft)
+      );
+
+      recordL1AuditEvent({
+        eventType: 'ACTION_EXECUTED',
+        action,
+        executionResult: action.executionResult,
+        metadata: {
+          surface: 'resolution',
+          technicianConfirmed: true,
+          exactDraftWritten: true
+        }
+      });
+
       return res.json({
         ok: true,
-        answer: draft.trim(),
-        servicenow: { attempted: true, ...result },
+        answer: trimmedDraft,
+        servicenow: { attempted: true, ...action.executionResult },
         governed: {
           technicianConfirmed: true,
           exactDraftWritten: true
         },
-        createdAt: new Date().toISOString()
+        createdAt: action.executedAt
       });
     } catch (e) {
-      return res.status(e.code === 'SERVICENOW_NOT_CONFIGURED' ? 503 : 502).json({
+      const status = e.code === 'SERVICENOW_NOT_CONFIGURED' ? 503 : 502;
+      return res.status(status).json({
         ok: false,
         error: e.message,
         servicenow: { attempted: true, success: false }
@@ -5967,6 +6302,260 @@ app.post('/api/l1-copilot/escalation', requireRole(L1_COPILOT_ROLES), async (req
   } catch (e) {
     console.error('L1 COPILOT ESCALATION ERROR:', e.message);
     return res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+
+/**
+ * Governed L1 -> Tier 2 / Cloud Ops handoff execution.
+ *
+ * Escalation generation remains AI draft-only.
+ * This route is the explicit technician-confirmed commitment point.
+ *
+ * No ServiceNow state change or ticket closure occurs here.
+ */
+
+/**
+ * Read-only AI Template Assistance.
+ *
+ * Suggests a controlled operational template from technician-supplied
+ * context. This route never executes an action, writes to ServiceNow,
+ * confirms technician intent, or changes ticket state.
+ */
+app.post('/api/l1-copilot/template-assist', requireRole(L1_COPILOT_ROLES), async (req, res) => {
+  const {
+    shortDescription,
+    description,
+    taskType,
+    reason,
+    notes,
+    fields
+  } = req.body || {};
+
+  const combined = [
+    shortDescription,
+    description,
+    taskType,
+    reason,
+    notes
+  ].filter(value => typeof value === 'string').join(' ');
+
+  if (combined.length > 20000) {
+    return res.status(413).json({
+      ok: false,
+      error: 'Template assistance context exceeds the 20000-character limit.'
+    });
+  }
+
+  try {
+    const suggestion = templateAssistant.prepareSuggestion({
+      shortDescription,
+      description,
+      taskType,
+      reason,
+      notes,
+      fields
+    });
+
+    return res.json({
+      ok: true,
+      suggestion,
+      governed: {
+        readOnly: true,
+        technicianConfirmed: false,
+        executable: false,
+        serviceNowWrite: false,
+        ticketStateChanged: false,
+        autonomousExecutionAllowed: false
+      }
+    });
+  } catch (e) {
+    console.error(
+      'L1 COPILOT TEMPLATE ASSIST ERROR:',
+      e.message
+    );
+
+    return res.status(500).json({
+      ok: false,
+      error: e.message,
+      governed: {
+        readOnly: true,
+        technicianConfirmed: false,
+        executable: false,
+        serviceNowWrite: false,
+        ticketStateChanged: false,
+        autonomousExecutionAllowed: false
+      }
+    });
+  }
+});
+
+app.post('/api/l1-copilot/escalation/execute', requireRole(L1_COPILOT_ROLES), async (req, res) => {
+  const {
+    ticket,
+    package: handoffPackage,
+    destinationTeam,
+    technicianConfirmed,
+    references,
+    workPerformed,
+    validation,
+    blocker,
+    requestedTier2Action
+  } = req.body || {};
+
+  if (!ticket || typeof ticket !== 'string' || !ticket.trim()) {
+    return res.status(400).json({
+      ok: false,
+      error: 'ticket required'
+    });
+  }
+
+  if (
+    !handoffPackage ||
+    typeof handoffPackage !== 'string' ||
+    !handoffPackage.trim()
+  ) {
+    return res.status(400).json({
+      ok: false,
+      error: 'package required'
+    });
+  }
+
+  if (handoffPackage.trim().length > 20000) {
+    return res.status(413).json({
+      ok: false,
+      error: 'Escalation package exceeds the 20000-character limit.'
+    });
+  }
+
+  if (
+    !destinationTeam ||
+    typeof destinationTeam !== 'string' ||
+    !destinationTeam.trim()
+  ) {
+    return res.status(400).json({
+      ok: false,
+      error: 'destinationTeam required'
+    });
+  }
+
+  if (technicianConfirmed !== true) {
+    return res.status(403).json({
+      ok: false,
+      error: 'Technician confirmation is required before committing the handoff.'
+    });
+  }
+
+  const technician = {
+    id:
+      (req.tsmSession &&
+        (
+          req.tsmSession.staffId ||
+          req.tsmSession.clientId ||
+          req.tsmSession.role
+        )) ||
+      'unknown',
+    label:
+      (req.tsmSession && req.tsmSession.label) ||
+      null
+  };
+
+  try {
+    let action = actionGate.generateAction({
+      actionType: 'CLOUD_OPS_HANDOFF',
+      payload: {
+        package: handoffPackage.trim(),
+        destinationTeam: destinationTeam.trim(),
+        workPerformed: workPerformed || null,
+        validation: validation || null,
+        blocker: blocker || null,
+        requestedTier2Action: requestedTier2Action || null
+      },
+      technician,
+      sourceIncident: ticket.trim(),
+      references: references || null
+    });
+
+    action = actionGate.previewAction(action);
+    action = actionGate.confirmAction(action);
+
+    // Action Gate owns authorization/transition.
+    // Durable persistence happens only after the action reaches EXECUTED.
+    action = await actionGate.executeAction(
+      action,
+      async () => ({
+        authorized: true,
+        serviceNowStateWrite: false,
+        ticketClosureRequested: false
+      })
+    );
+
+    recordL1AuditEvent({
+      eventType: 'ACTION_EXECUTED',
+      action,
+      executionResult: action.executionResult,
+      metadata: {
+        surface: 'escalation-execute',
+        destinationTeam: destinationTeam.trim(),
+        technicianConfirmed: true,
+        ticketClosureRequested: false,
+        ticketStateChanged: false
+      }
+    });
+
+    const handoff = handoffStore.createHandoff({
+      action,
+      sourceIncident: ticket.trim(),
+      destinationTeam: destinationTeam.trim(),
+      references: references || null,
+      workPerformed: workPerformed || handoffPackage.trim(),
+      validation: validation || null,
+      blocker: blocker || null,
+      requestedTier2Action: requestedTier2Action || null,
+      technician
+    });
+
+    action = {
+      ...action,
+      executionResult: handoff
+    };
+
+    return res.json({
+      ok: true,
+      handoff: action.executionResult,
+      action: {
+        actionType: action.actionType,
+        state: action.state,
+        sourceIncident: action.sourceIncident,
+        technician: action.technician,
+        confirmedAt: action.confirmedAt,
+        executedAt: action.executedAt
+      },
+      governed: {
+        technicianConfirmed: true,
+        handoffCommitted: true,
+        ticketClosureRequested: false,
+        ticketStateChanged: false,
+        serviceNowStateWrite: false
+      },
+      createdAt: action.executedAt
+    });
+  } catch (e) {
+    console.error(
+      'L1 COPILOT ESCALATION EXECUTE ERROR:',
+      e.message
+    );
+
+    return res.status(500).json({
+      ok: false,
+      error: e.message,
+      governed: {
+        handoffCommitted: false,
+        ticketClosureRequested: false,
+        ticketStateChanged: false,
+        serviceNowStateWrite: false
+      }
+    });
   }
 });
 
