@@ -88,10 +88,19 @@ function computeReadinessScore(events = []) {
 
   for (const ev of events) {
     const weight = typeof ev.weight === 'number' ? ev.weight : 1;
-    const score = typeof ev.score === 'number' ? ev.score : 0;
+    const hasScore = typeof ev.score === 'number';
+
+    breakdown.push({
+      type: ev.type,
+      score: hasScore ? ev.score : null,
+      weight,
+      scored: hasScore,
+    });
+
+    if (!hasScore) continue;
+
     totalWeight += weight;
-    weightedSum += score * weight;
-    breakdown.push({ type: ev.type, score, weight });
+    weightedSum += ev.score * weight;
   }
 
   const raw = totalWeight > 0 ? weightedSum / totalWeight : 0;
