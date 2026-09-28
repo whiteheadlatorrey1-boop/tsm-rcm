@@ -103,7 +103,11 @@ function computeReadinessScore(events = []) {
     weightedSum += ev.score * weight;
   }
 
-  const raw = totalWeight > 0 ? weightedSum / totalWeight : 0;
+  if (totalWeight === 0) {
+    return { score: 0, breakdown, basis: 'no-scored-events' };
+  }
+
+  const raw = weightedSum / totalWeight;
   return {
     score: Math.round(raw * 10) / 10,
     breakdown,

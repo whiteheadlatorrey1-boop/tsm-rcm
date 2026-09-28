@@ -12,6 +12,7 @@ const assert = require('assert');
  */
 
 const registry = require('../../server/candidate-registry-service');
+const staffing = require('../../server/staffing-engine-service');
 
 describe('Phase 0.5 — Candidate Registry', function () {
 
@@ -65,68 +66,66 @@ describe('Phase 0.5 — Candidate Registry', function () {
 describe('Phase 0.5 — Staffing eligibility contract', function () {
 
   it('requires a candidate identifier', function () {
-    assert.throws(
-      () => {
-        if (!null) {
-          throw new Error('candidateId is required');
-        }
-      },
-      /candidateId is required/
-    );
+    const result = staffing.evaluatePlacementEligibility({
+      status: 'ready_for_placement',
+      readinessScore: 85,
+      isSampleData: false
+    });
+
+    assert.strictEqual(result.eligible, false);
+    assert.strictEqual(result.reason, 'candidate-id-missing');
   });
 
   it('does not allow sample candidates to pass placement eligibility', function () {
-    const candidate = {
+    const result = staffing.evaluatePlacementEligibility({
       candidateId: 'cand_sample',
       isSampleData: true,
       status: 'ready_for_placement',
       readinessScore: 95
-    };
+    });
 
-    const eligible =
-      candidate &&
-      candidate.isSampleData !== true &&
-      candidate.status === 'ready_for_placement';
-
-    assert.strictEqual(eligible, false);
+    assert.strictEqual(result.eligible, false);
+    assert.strictEqual(result.reason, 'sample-candidate');
   });
 
   it('does not allow below-threshold candidates to pass placement eligibility', function () {
-    const candidate = {
+    const result = staffing.evaluatePlacementEligibility({
       candidateId: 'cand_real',
       isSampleData: false,
       status: 'ready_for_placement',
       readinessScore: 59
-    };
+    });
 
-    const minimumReadiness = 70;
-
-    const eligible =
-      candidate &&
-      candidate.isSampleData !== true &&
-      candidate.status === 'ready_for_placement' &&
-      Number(candidate.readinessScore) >= minimumReadiness;
-
-    assert.strictEqual(eligible, false);
+    assert.strictEqual(result.eligible, false);
+    assert.strictEqual(result.reason, 'readiness-below-threshold');
   });
 
   it('allows an eligible real candidate to pass the contract', function () {
-    const candidate = {
+    const result = staffing.evaluatePlacementEligibility({
       candidateId: 'cand_real',
       isSampleData: false,
       status: 'ready_for_placement',
       readinessScore: 85
-    };
+    });
 
-    const minimumReadiness = 70;
+    assert.strictEqual(result.eligible, true);
+    assert.strictEqual(result.reason, 'eligible');
+  });
 
-    const eligible =
-      candidate &&
-      candidate.isSampleData !== true &&
-      candidate.status === 'ready_for_placement' &&
-      Number(candidate.readinessScore) >= minimumReadiness;
+  it('supports an explicit readiness threshold', function () {
+    const result = staffing.evaluatePlacementEligibility(
+      {
+        candidateId: 'cand_real',
+        isSampleData: false,
+        status: 'ready_for_placement',
+        readinessScore: 75
+      },
+      { minimumReadiness: 80 }
+    );
 
-    assert.strictEqual(eligible, true);
+    assert.strictEqual(result.eligible, false);
+    assert.strictEqual(result.reason, 'readiness-below-threshold');
+    assert.strictEqual(result.minimumReadiness, 80);
   });
 
 });
