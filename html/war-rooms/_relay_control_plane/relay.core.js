@@ -19,7 +19,7 @@
   HONEYWELL_PLANT:    "TSM_HONEYWELL_PLANT_RELAY",
   // College vertical (Financial-Aid-centered) — same split-key pattern as the
   // three HONEYWELL_* domains above: each domain writes only its own key,
-  // college-strategist.html reads all five and aggregates rather than
+  // college-strategist.html reads all six and aggregates rather than
   // picking a single "latest" (Financial Aid ops needs simultaneous
   // visibility across domains, unlike Honeywell's one-incident-at-a-time use).
   COLLEGE_FINAID:      "TSM_COLLEGE_FINAID_RELAY",
@@ -27,6 +27,7 @@
   COLLEGE_ENDOWMENT:   "TSM_COLLEGE_ENDOWMENT_RELAY",
   COLLEGE_RESEARCH_FA: "TSM_COLLEGE_RESEARCH_FA_RELAY",
   COLLEGE_ACCRED:      "TSM_COLLEGE_ACCRED_RELAY",
+  COLLEGE_ENROLLMENT:  "TSM_COLLEGE_ENROLLMENT_RELAY",
   // Insurance Command suite (2026-09-06) — 4 domains with real backend
   // wiring (routes/insurance-*-financial.js), same split-key pattern as
   // the COLLEGE_* domains above: each domain writes only its own key,

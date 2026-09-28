@@ -14,14 +14,25 @@
 (function (global) {
   'use strict';
 
-  const ENTITY_KEYS = ['r2t4_cases', 'verification_cases', 'cohort_default_flags'];
+  const ENTITY_KEYS = [
+    'r2t4_cases',
+    'verification_cases',
+    'cohort_default_flags',
+    'sap_cases'
+  ];
   const CLOSED_R2T4_STAGES = ['closed'];
   const CLEARED_VERIFICATION_STAGES = ['cleared'];
+  const CLOSED_SAP_STAGES = ['cleared'];
 
   class TSMCollegeFinaidEngine {
     constructor(model) {
       this.model = model || { entities: {}, kpis: [] };
-      this.data = { r2t4_cases: [], verification_cases: [], cohort_default_flags: [] };
+      this.data = {
+        r2t4_cases: [],
+        verification_cases: [],
+        cohort_default_flags: [],
+        sap_cases: []
+      };
       this._canonicalCore = null;
     }
 
@@ -66,7 +77,12 @@
     }
 
     _idField(entityKey) {
-      return { r2t4_cases: 'case_id', verification_cases: 'case_id', cohort_default_flags: 'flag_id' }[entityKey];
+      return {
+        r2t4_cases: 'case_id',
+        verification_cases: 'case_id',
+        cohort_default_flags: 'flag_id',
+        sap_cases: 'case_id'
+      }[entityKey];
     }
 
     _entityDef(entityKey) {
@@ -102,6 +118,31 @@
           .filter(Boolean)
           .sort((a, b) => b.days_open - a.days_open);
       }
+
+      if (entityKey === 'sap_cases') {
+        const def = this._entityDef(entityKey);
+        const stageMap = {};
+        (def.stages || []).forEach(s => { stageMap[s.id] = s; });
+
+        return (this.data.sap_cases || [])
+          .map(r => {
+            const stage = stageMap[r.stage];
+            if (!stage || stage.sla_hours == null) return null;
+
+            const hoursOpen = (r.days_open || 0) * 24;
+            if (hoursOpen <= stage.sla_hours) return null;
+
+            return {
+              id: r[idField],
+              stage: stage.label,
+              days_open: r.days_open,
+              record: r
+            };
+          })
+          .filter(Boolean)
+          .sort((a, b) => b.days_open - a.days_open);
+      }
+
       return [];
     }
 
@@ -115,13 +156,32 @@
         .reduce((sum, v) => sum + (v.pell_amount_held || 0), 0);
       const cohortDefaultFlagsOpen = this.data.cohort_default_flags.filter(f => f.band !== 'monitoring').length;
 
+      const openSapCases = this.data.sap_cases
+        .filter(s => !CLOSED_SAP_STAGES.includes(s.stage))
+        .length;
+
+      const sapAtRisk = this.data.sap_cases
+        .filter(s => !CLOSED_SAP_STAGES.includes(s.stage))
+        .filter(s => ['warning', 'probation', 'ineligible', 'appeal_pending'].includes(s.stage))
+        .length;
+
+      const sapAidAtRisk = this.data.sap_cases
+        .filter(s => !CLOSED_SAP_STAGES.includes(s.stage))
+        .reduce((sum, s) => sum + (Number(s.aid_at_risk) || 0), 0);
+
+      const sapOverReviewSla = this.getSlaBreaches('sap_cases').length;
+
       return {
         open_r2t4_cases: openR2t4,
         r2t4_over_sla: r2t4OverSla,
         open_verification_cases: openVerification,
         verification_over_sla: verificationOverSla,
         active_pell_disbursed: activePellDisbursed,
-        cohort_default_flags_open: cohortDefaultFlagsOpen
+        cohort_default_flags_open: cohortDefaultFlagsOpen,
+        open_sap_cases: openSapCases,
+        sap_at_risk: sapAtRisk,
+        sap_aid_at_risk: sapAidAtRisk,
+        sap_over_review_sla: sapOverReviewSla
       };
     }
 
@@ -137,7 +197,8 @@
             kpis: this.computeKpis(),
             r2t4_breaches: this.getSlaBreaches('r2t4_cases'),
             verification_backlog: this.getSlaBreaches('verification_cases'),
-            cohort_default_flags: this.data.cohort_default_flags.filter(f => f.band !== 'monitoring')
+            cohort_default_flags: this.data.cohort_default_flags.filter(f => f.band !== 'monitoring'),
+            sap_cases: this.data.sap_cases
           })
         });
         if (!res.ok) throw new Error('financial-summary endpoint returned ' + res.status);
@@ -152,7 +213,10 @@
           verification_exposure_items: [],
           cohort_default_exposure_total: 0,
           cohort_default_exposure_items: [],
+          sap_exposure_total: 0,
+          sap_exposure_items: [],
           active_pell_disbursed: this.computeKpis().active_pell_disbursed,
+          sap_aid_at_risk: this.computeKpis().sap_aid_at_risk,
           total_exposure: 0,
           note: 'Financial summary unavailable.',
           r2t4_confidence: { confidence: 0, note: ' Financial summary endpoint unreachable.' },
@@ -178,6 +242,7 @@
             r2t4_breaches: this.getSlaBreaches('r2t4_cases'),
             verification_backlog: this.getSlaBreaches('verification_cases'),
             cohort_default_flags: this.data.cohort_default_flags.filter(f => f.band !== 'monitoring'),
+            sap_cases: this.data.sap_cases,
             context: context || undefined
           })
         });
@@ -203,11 +268,13 @@
         kpis: this.computeKpis(),
         r2t4_breaches: this.getSlaBreaches('r2t4_cases'),
         verification_breaches: this.getSlaBreaches('verification_cases'),
+        sap_breaches: this.getSlaBreaches('sap_cases'),
         financials: await this.getFinancialSummary(),
         records: {
           r2t4_cases: this.data.r2t4_cases,
           verification_cases: this.data.verification_cases,
-          cohort_default_flags: this.data.cohort_default_flags
+          cohort_default_flags: this.data.cohort_default_flags,
+          sap_cases: this.data.sap_cases
         },
         ai_summary: aiText || null
       };
@@ -248,7 +315,8 @@
       const kindConfig = [
         { key: 'r2t4_cases',          type: 'col_r2t4_case',           idField: 'case_id', ownerField: 'owner', statusField: 'stage', warRoom: '/html/war-rooms/college-command/college-finaid-command.html' },
         { key: 'verification_cases',  type: 'col_verification_case',   idField: 'case_id', ownerField: 'owner', statusField: 'stage', warRoom: '/html/war-rooms/college-command/college-finaid-command.html' },
-        { key: 'cohort_default_flags',type: 'col_cohort_default_flag', idField: 'flag_id', ownerField: 'owner', statusField: 'band',  warRoom: '/html/war-rooms/college-command/college-finaid-command.html' }
+        { key: 'cohort_default_flags',type: 'col_cohort_default_flag', idField: 'flag_id', ownerField: 'owner', statusField: 'band',  warRoom: '/html/war-rooms/college-command/college-finaid-command.html' },
+        { key: 'sap_cases',          type: 'col_sap_case',           idField: 'case_id', ownerField: 'owner', statusField: 'stage', warRoom: '/html/war-rooms/college-command/college-finaid-command.html' }
       ];
 
       const out = {};

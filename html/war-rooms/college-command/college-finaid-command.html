@@ -65,6 +65,11 @@
     <table id="cdrTable"><thead><tr><th>Flag</th><th>Program</th><th>Band</th><th>Trend</th></tr></thead><tbody></tbody></table>
   </section>
 
+  <section>
+    <h2>Satisfactory Academic Progress (SAP)</h2>
+    <table id="sapTable"><thead><tr><th>Case</th><th>Student</th><th>Program</th><th>Stage</th><th>Severity</th><th>Pace</th><th>GPA</th><th>Aid at Risk</th><th>Days Open</th></tr></thead><tbody></tbody></table>
+  </section>
+
   <section id="aiSection">
     <h2>AI Compliance Analysis</h2>
     <div style="padding:16px;">
@@ -119,12 +124,18 @@
       ['open_verification_cases', 'Open Verification Cases'],
       ['verification_over_sla', 'Verification Backlog Over SLA'],
       ['active_pell_disbursed', 'Active Pell Disbursed'],
-      ['cohort_default_flags_open', 'Cohort Default Flags Open']
+      ['cohort_default_flags_open', 'Cohort Default Flags Open'],
+      ['open_sap_cases', 'Open SAP Cases'],
+      ['sap_at_risk', 'SAP Cases At Risk'],
+      ['sap_aid_at_risk', 'SAP Aid At Risk'],
+      ['sap_over_review_sla', 'SAP Review Over SLA']
     ];
     const row = document.getElementById('kpiRow');
     row.innerHTML = defs.map(([key, label]) => {
       const val = kpis[key];
-      const display = key === 'active_pell_disbursed' ? '$' + Number(val || 0).toLocaleString() : val;
+      const display = ['active_pell_disbursed', 'sap_aid_at_risk'].includes(key)
+        ? '$' + Number(val || 0).toLocaleString()
+        : val;
       return `<div class="kpi"><div class="val">${display}</div><div class="lbl">${label}</div></div>`;
     }).join('');
   }
@@ -169,6 +180,33 @@
     `).join('');
   }
 
+  function renderSap() {
+    const tbody = document.querySelector('#sapTable tbody');
+
+    tbody.innerHTML = engine.data.sap_cases.map(s => {
+      const severityClass =
+        s.severity === 'HIGH' ? 'HIGH' :
+        s.severity === 'MEDIUM' ? 'MEDIUM' :
+        'LOW';
+
+      const stage = String(s.stage || '').replace(/_/g, ' ');
+
+      return `
+        <tr>
+          <td>${escapeHtml(s.case_id)}</td>
+          <td>${escapeHtml(s.student_ref)}</td>
+          <td>${escapeHtml(s.program)}</td>
+          <td>${escapeHtml(stage)}</td>
+          <td class="sev-${severityClass}">${escapeHtml(s.severity || '—')}</td>
+          <td>${Number(s.pace_percent || 0).toLocaleString()}%</td>
+          <td>${Number(s.gpa || 0).toFixed(2)}</td>
+          <td>$${Number(s.aid_at_risk || 0).toLocaleString()}</td>
+          <td>${Number(s.days_open || 0).toLocaleString()}</td>
+        </tr>
+      `;
+    }).join('');
+  }
+
   async function renderExposure() {
     const box = document.getElementById('exposureBox');
     box.textContent = 'Computing exposure…';
@@ -179,7 +217,8 @@
         <div class="exposure-note">
           R2T4: $${Number(summary.r2t4_exposure_total || 0).toLocaleString()} ·
           Verification backlog: $${Number(summary.verification_exposure_total || 0).toLocaleString()} ·
-          Cohort default: $${Number(summary.cohort_default_exposure_total || 0).toLocaleString()}
+          Cohort default: $${Number(summary.cohort_default_exposure_total || 0).toLocaleString()} ·
+          SAP aid at risk: $${Number(summary.sap_exposure_total || 0).toLocaleString()}
           ${summary.note ? '<br>' + escapeHtml(summary.note) : ''}
         </div>
       `;
@@ -232,6 +271,7 @@
       const kpis = engine.computeKpis();
       const r2t4Breaches = engine.getSlaBreaches('r2t4_cases') || [];
       const verificationBreaches = engine.getSlaBreaches('verification_cases') || [];
+      const sapBreaches = engine.getSlaBreaches('sap_cases') || [];
       const anomalies = [];
 
       if ((fin.r2t4_exposure_total || 0) > 0 || r2t4Breaches.length > 0) {
@@ -270,6 +310,30 @@
           confidence,
           rootCause: `${kpis.cohort_default_flags_open || 0} cohort default rate flag(s) open.${note}`,
           recommendedAction: 'Review default-prevention outreach and counseling coverage for the affected program(s).',
+          impacts: {}
+        });
+      }
+
+      if ((fin.sap_exposure_total || 0) > 0 || sapBreaches.length > 0) {
+        const { confidence, note } =
+          fin.sap_confidence || { confidence: 0, note: '' };
+
+        anomalies.push({
+          id: 'college-finaid-sap',
+          title: 'SAP Review / Aid-at-Risk Exposure',
+          severity: finaidBreachSeverity(
+            sapBreaches.length,
+            kpis.open_sap_cases || 1
+          ),
+          exposure: fin.sap_exposure_total || 0,
+          confidence,
+          rootCause:
+            `${kpis.sap_over_review_sla || sapBreaches.length} SAP case(s) are over review SLA; ` +
+            `${kpis.sap_at_risk || 0} case(s) remain at risk with ` +
+            `$${Number(kpis.sap_aid_at_risk || 0).toLocaleString()} in aid at risk.` +
+            note,
+          recommendedAction:
+            'Route SAP review and appeal-pending cases through the institutional review process before the next aid eligibility decision.',
           impacts: {}
         });
       }
@@ -318,6 +382,7 @@
     renderR2t4();
     renderVerification();
     renderCohortDefault();
+    renderSap();
     await renderExposure();
 
     // Exercise the CanonicalCore wiring so it's not dead code — logs a

@@ -190,6 +190,81 @@
     btn.textContent = 'Run AI Analysis';
   }
 
+  async function pushToSentinel() {
+    if (!engine) return;
+
+    try {
+      const summary = await engine.getReadinessSummary();
+      const kpis = engine.computeKpis();
+
+      const riskScore = Number(summary.total_readiness_risk_score || 0);
+      const openFindings = Number(kpis.open_findings || 0);
+      const findingsPastDue = Number(kpis.findings_past_due || 0);
+      const standardsAtRisk = Number(kpis.standards_at_risk || 0);
+      const daysToSiteVisit = kpis.days_to_next_site_visit;
+
+      const confidenceValues = [
+        summary.findings_confidence,
+        summary.standards_confidence
+      ]
+        .map(v => v && typeof v.confidence === 'number' ? v.confidence : null)
+        .filter(v => v !== null);
+
+      const confidence = confidenceValues.length
+        ? Math.round(
+            confidenceValues.reduce((sum, value) => sum + value, 0) /
+            confidenceValues.length
+          )
+        : 0;
+
+      const notes = [
+        summary.findings_confidence && summary.findings_confidence.note,
+        summary.standards_confidence && summary.standards_confidence.note
+      ].filter(Boolean).join(' ');
+
+      const anomalies = [];
+
+      if (
+        riskScore > 0 ||
+        openFindings > 0 ||
+        standardsAtRisk > 0
+      ) {
+        anomalies.push({
+          id: 'college-accred-readiness-risk',
+          title: 'Accreditation Readiness / Compliance Risk',
+          severity: findingsPastDue > 0 || standardsAtRisk > 0 ? 'HIGH' : 'MEDIUM',
+          exposure: 0,
+          confidence,
+          readiness_risk_score: riskScore,
+          rootCause:
+            `${openFindings} finding(s) are open; ` +
+            `${findingsPastDue} finding(s) are beyond 45 days; ` +
+            `${standardsAtRisk} standard(s) are at risk; ` +
+            `${daysToSiteVisit == null ? 'site-visit timing is not entered' : `${daysToSiteVisit} day(s) remain before the next site visit`}.` +
+            (notes ? ` ${notes}` : ''),
+          recommendedAction:
+            'Review past-due findings and at-risk standards, assign documented owners and remediation dates, and escalate material readiness gaps through the institution’s accreditation governance process.',
+          impacts: {}
+        });
+      }
+
+      if (window.TSMSentinelPush && window.TSMSentinelPush.push) {
+        window.TSMSentinelPush.push('COLLEGE_ACCRED', anomalies);
+      } else {
+        localStorage.setItem(
+          'TSM_COLLEGE_ACCRED_STRATEGIST_RELAY',
+          JSON.stringify({
+            generatedAt: new Date().toISOString(),
+            anomalies
+          })
+        );
+        window.dispatchEvent(new CustomEvent('TSM_SENTINEL_REFRESH'));
+      }
+    } catch (e) {
+      console.warn('College Accreditation: sentinel push failed', e);
+    }
+  }
+
   async function relayToStrategist() {
     try {
       const riskEl = document.getElementById('aiRiskOut');
@@ -202,6 +277,7 @@
         try { window.TSM.relay.write('COLLEGE_ACCRED', payload); } catch (e) { /* noop */ }
       }
       window.dispatchEvent(new CustomEvent('TSM_RELAY_EVENT', { detail: { domain: DOMAIN, data: payload } }));
+      await pushToSentinel();
       showToast('Relayed to College Strategist.');
     } catch (e) {
       console.warn('relayToStrategist failed', e);
