@@ -3,7 +3,7 @@ const { test, expect } = require('@playwright/test');
 test.describe('TSM Career Training Platform - Dual Track Verification', () => {
   test('verify CRCR and ServiceNow Admin career tracks load correctly', async ({ page }) => {
     // Navigate to the career training platform
-    await page.goto('http://localhost:3000/html/tsm-career-training-platform.html');
+    await page.goto('/html/tsm-career-training-platform.html');
 
     // Verify global governance pipeline elements are present
     const governancePipeline = page.locator('.chain-badge').first();

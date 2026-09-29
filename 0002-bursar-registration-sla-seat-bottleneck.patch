@@ -17,7 +17,56 @@ index 936207f4..d8e69e04 100644
        ['total_ar_balance', 'Total AR Balance'],
        ['registration_holds_active', 'Registration Holds Active'],
        ['registration_holds_review_pending', 'Registration Holds Review Pending'],
--      ['registration_holds_release_pending', 'Registration Holds Release Pending']
+-      ['registration_holdscd /workspaces/tsm-rcm
+
+printf '\n=== PHASE 6I FAILURE SUMMARY ===\n'
+
+if [ -f test-results/playwright-results.json ]; then
+  node - <<'NODE'
+const fs = require('fs');
+
+const p = 'test-results/playwright-results.json';
+const data = JSON.parse(fs.readFileSync(p, 'utf8'));
+
+function walk(suite, parents = []) {
+  for (const spec of suite.specs || []) {
+    for (const t of spec.tests || []) {
+      if (t.status === 'failed' || t.status === 'unexpected') {
+        console.log('\n--- FAILURE ---');
+        console.log([...parents, spec.title].join(' > '));
+        console.log('status:', t.status);
+
+        for (const r of t.results || []) {
+          if (r.error) {
+            console.log(
+              String(r.error.message || r.error)
+                .replace(/\n+/g, '\n')
+                .slice(0, 2500)
+            );
+          }
+        }
+      }
+    }
+  }
+
+  for (const child of suite.suites || []) {
+    walk(child, [...parents, suite.title].filter(Boolean));
+  }
+}
+
+for (const suite of data.suites || []) {
+  walk(suite);
+}
+NODE
+else
+  echo "Playwright JSON report not found at test-results/playwright-results.json"
+  echo
+  echo "Available result files:"
+  find . -maxdepth 4 -type f \
+    \( -name 'playwright-results.json' -o -name 'results.json' \) \
+    -print
+fi
+_release_pending', 'Registration Holds Release Pending']
 +      ['registration_holds_release_pending', 'Registration Holds Release Pending'],
 +      ['registration_holds_over_sla', 'Registration Holds Over SLA'],
 +      ['seat_bottleneck_sections', 'Seat Bottleneck Sections']

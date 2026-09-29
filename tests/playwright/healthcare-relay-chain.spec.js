@@ -29,8 +29,35 @@
 // (needs `npm install` + `npx playwright install chromium` first.)
 
 const { test, expect } = require('@playwright/test');
+const path = require('path');
+require('dotenv').config({
+  path: path.resolve(__dirname, '..', '..', '.env')
+});
 
-const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
+const BASE_URL = process.env.BASE_URL || 'http://localhost:4173';
+
+async function authenticate(page) {
+  const password =
+    process.env.TSM_AUTH_PASSWORD ||
+    process.env.TSM_ADMIN_PASSWORD ||
+    '';
+
+  if (!password) {
+    throw new Error(
+      'TSM_AUTH_PASSWORD is required for the authenticated HC relay contract'
+    );
+  }
+
+  const response = await page.request.post('/api/auth/login', {
+    data: { password }
+  });
+
+  if (!response.ok()) {
+    throw new Error(
+      `HC test authentication failed with HTTP ${response.status()}`
+    );
+  }
+}
 
 test.describe('Healthcare relay chain (Phase 1)', () => {
 
@@ -51,6 +78,8 @@ test.describe('Healthcare relay chain (Phase 1)', () => {
     await page.addInitScript((payload) => {
       localStorage.setItem('tsm_hc_docsearch_relay', JSON.stringify(payload));
     }, docSearchPayload);
+
+    await authenticate(page);
 
     await page.goto(`${BASE_URL}/html/healthcare/hc-denial-war-room.html`);
 

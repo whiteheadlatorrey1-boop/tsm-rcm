@@ -838,20 +838,39 @@ let currentMode = 'denial';
   try {
     const raw = localStorage.getItem('tsm_hc_docsearch_relay');
     if (!raw) return;
+
     const relay = JSON.parse(raw);
-    if (!relay.summary) return;
+
+    // Canonical Doc Search payload uses docText.
+    // summary remains supported for older relay producers.
+    const incomingText = relay.docText || relay.summary;
+    if (!incomingText) return;
+
     localStorage.removeItem('tsm_legal_docsearch_relay');
     localStorage.removeItem('tsm_hc_docsearch_relay');
-    // TSM AUTO-FIRE
-    if (localStorage.getItem('tsm_auto_mode') !== 'off') { setTimeout(() => { if (typeof fireAll === 'function') fireAll(); }, 900); }
-    docText = relay.summary;
+
+    docText = incomingText;
+
     setTimeout(() => {
       const ta = document.getElementById('doc-text');
-      if (ta) { ta.value = relay.summary; ta.dispatchEvent(new Event('input')); }
+      if (ta) {
+        ta.value = incomingText;
+        ta.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+
       const btn = document.getElementById('fire-btn');
       if (btn) btn.disabled = false;
+
+      // TSM AUTO-FIRE
+      if (localStorage.getItem('tsm_auto_mode') !== 'off') {
+        setTimeout(() => {
+          if (typeof fireAll === 'function') fireAll();
+        }, 400);
+      }
     }, 500);
-  } catch(e) { console.warn('Doc search relay error:', e); }
+  } catch(e) {
+    console.warn('Doc search relay error:', e);
+  }
 })();
 let completedCount = 0;
 let navRawText = '';
