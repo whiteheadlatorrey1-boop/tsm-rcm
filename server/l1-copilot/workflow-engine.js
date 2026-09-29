@@ -28,6 +28,7 @@ const TASK_TYPES = Object.freeze([
   'HARDWARE',
   'HARDWARE SWAP',
   'INCIDENT',
+  'DISPOSITION',
   'OTHER'
 ]);
 
@@ -141,7 +142,16 @@ const EVIDENCE_META = Object.freeze({
   workConfirmed: { label: 'Required work' },
   tested: { label: 'Functionality testing' },
   locationVerified: { label: 'Location verification', nextAction: 'VERIFY LOCATION' },
-  finalWorkNoteConfirmed: { label: 'Final work note confirmation' }
+  finalWorkNoteConfirmed: { label: 'Final work note confirmation' },
+  warrantyVerified: { label: 'Warranty verification' },
+  conditionDocumented: { label: 'Condition documentation' },
+  repairHistoryReviewed: { label: 'Repair history review' },
+  replacementAddressed: { label: 'Replacement addressed' },
+  dataSecurityReviewed: { label: 'Data security review' },
+  approvalObtained: { label: 'Disposition approval' },
+  sanitizationVerified: { label: 'Data sanitization verification' },
+  dispositionCompleted: { label: 'Physical disposition completed' },
+  assetReconciled: { label: 'CMDB asset reconciliation' }
 });
 
 const DEFAULT_EVIDENCE_KEYS = Object.freeze([

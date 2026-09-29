@@ -208,6 +208,8 @@ const snReconciliation = require('./server/l1-copilot/servicenow-reconciliation'
 const { getBpoIntelligence } = require('./server/l1-copilot/servicenow-bpo-intelligence');
 const { evaluateWorkflow } = require('./server/l1-copilot/workflow-engine');
 const { evaluateClosure, buildClosureChecklist } = require('./server/l1-copilot/closure-gate');
+const dispositionSequence = require('./server/l1-copilot/disposition-sequence');
+const { normalizeTaskType: l1NormalizeTaskType } = require('./server/l1-copilot/workflow-engine');
 const { orchestrate } = require('./server/l1-copilot/governed-orchestrator');
 const cloudOpsAdapter = require('./server/l1-copilot/cloud-ops-adapter');
 const graphAdapter = require('./server/l1-copilot/graph-intune-adapter');
@@ -5082,9 +5084,35 @@ app.post('/api/l1-copilot/workflow/evaluate', requireRole(L1_COPILOT_ROLES), (re
   }
 });
 
-app.post('/api/l1-copilot/closure/evaluate', requireRole(L1_COPILOT_ROLES), (req, res) => {
+app.post('/api/l1-copilot/closure/evaluate', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   try {
-    const input = req.body || {};
+    const input = Object.assign({}, req.body || {});
+
+    // DISPOSITION: approval / sanitization / completion evidence is derived
+    // from the incident's recorded work notes, never trusted from the client.
+    // Unreadable notes => all three stay false (fail-closed).
+    let dispositionEvidence = null;
+    if (input.taskType && l1NormalizeTaskType(input.taskType) === 'DISPOSITION') {
+      let notesText = null;
+      const incidentId = String(input.incidentNumber || '').trim();
+      try {
+        if (incidentId && snAdapter.isConfigured()) {
+          const ticket = await snAdapter.getTicket(incidentId);
+          notesText = ticket ? dispositionSequence.extractNotesText(ticket) : null;
+        }
+      } catch (e) {
+        notesText = null;
+      }
+      const derived = notesText === null
+        ? { approvalObtained: false, sanitizationVerified: false, dispositionCompleted: false }
+        : dispositionSequence.deriveDispositionEvidence(input.assetTag, notesText);
+      input.evidence = Object.assign({}, input.evidence || {}, derived);
+      dispositionEvidence = {
+        source: notesText === null ? 'UNVERIFIED' : 'SERVICENOW_WORK_NOTES',
+        derived
+      };
+    }
+
     const closure = evaluateClosure(input);
     const checklist = buildClosureChecklist(input);
 
@@ -5092,6 +5120,7 @@ app.post('/api/l1-copilot/closure/evaluate', requireRole(L1_COPILOT_ROLES), (req
       ok: true,
       closure,
       checklist,
+      dispositionEvidence,
       governed: {
         readOnly: true,
         technicianAuthority: true,
@@ -6079,6 +6108,12 @@ app.post('/api/l1-copilot/asset-action/execute', requireRole(L1_COPILOT_ROLES), 
     return res.status(400).json({ ok: false, error: 'INCIDENT_NUMBER must be a ticket number or 32-character sys_id.' });
   }
 
+  // A field value must not be able to forge a lifecycle stage tag inside the
+  // note body (the disposition sequence check reads these tags back).
+  if (/\[ASSET LIFECYCLE/i.test(preview.body)) {
+    return res.status(400).json({ ok: false, error: 'Field values must not contain lifecycle stage tags.' });
+  }
+
   const taggedNote = `[ASSET LIFECYCLE \u2014 ${actionType}]\n${preview.body}`;
   if (taggedNote.length > 20000) {
     return res.status(413).json({ ok: false, error: 'Generated work note exceeds the 20000-character limit.' });
@@ -6098,6 +6133,36 @@ app.post('/api/l1-copilot/asset-action/execute', requireRole(L1_COPILOT_ROLES), 
     id: (req.tsmSession && (req.tsmSession.staffId || req.tsmSession.clientId || req.tsmSession.role)) || 'unknown',
     label: (req.tsmSession && req.tsmSession.label) || null
   };
+
+  // Disposition stages must follow RECOMMENDATION -> APPROVAL -> SANITIZATION ->
+  // COMPLETION. Prior stages are proven from the incident's own work notes
+  // (never from the request). If the notes cannot be read, the write is
+  // refused (fail-closed) rather than assumed.
+  if (dispositionSequence.requiredPriorStages(actionType).length) {
+    let notesText = null;
+    try {
+      const ticket = await snAdapter.getTicket(incidentId);
+      notesText = ticket ? dispositionSequence.extractNotesText(ticket) : null;
+    } catch (e) {
+      notesText = null;
+    }
+    if (notesText === null) {
+      return res.status(502).json({
+        ok: false,
+        code: 'DISPOSITION_SEQUENCE_UNVERIFIABLE',
+        error: 'Could not read the incident work notes to verify earlier disposition stages. Nothing was written.'
+      });
+    }
+    const seq = dispositionSequence.checkPrerequisites(actionType, context && context.ASSET_TAG, notesText);
+    if (!seq.allowed) {
+      return res.status(409).json({
+        ok: false,
+        code: 'DISPOSITION_SEQUENCE_VIOLATION',
+        error: `Cannot record ${actionType}: earlier stage(s) not found in the incident work notes for this asset.`,
+        missingStages: seq.missing
+      });
+    }
+  }
 
   try {
     let action = actionGate.generateAction({
