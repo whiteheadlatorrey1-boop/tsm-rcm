@@ -7127,6 +7127,31 @@ function selectCareerCandidate(candidateId) {
   window._selectedCandidateId = candidate.candidateId;
   window._selectedCandidateName = candidate.name || 'Unnamed candidate';
 
+  /*
+   * RCM candidate context follows the canonical Candidate Registry
+   * selection. The Registry remains the source of candidate identity;
+   * the RCM engine only receives the selected candidateId.
+   */
+  if (
+    window.TSMRCMEngine &&
+    typeof window.TSMRCMEngine.setCandidateContext === 'function'
+  ) {
+    try {
+      window.TSMRCMEngine.setCandidateContext(
+        window._selectedCandidateId
+      );
+    } catch (error) {
+      /*
+       * Candidate selection remains authoritative. RCM context is a
+       * secondary integration concern and must not break navigation.
+       */
+      console.warn(
+        'RCM candidate context could not be established:',
+        error
+      );
+    }
+  }
+
   console.log('Career Command Center candidate selected:', {
     candidateId: window._selectedCandidateId,
     name: window._selectedCandidateName
@@ -8268,6 +8293,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
   <!-- TSM_RCM_CAREER_STACK -->
+<script src="/html/js/career/tsm-candidate-registry-bridge.js"></script>
 <script src="/html/js/career/tsm-rcm-career-engine.js"></script>
 <script src="/html/js/career/tsm-denial-recovery-career-adapter.js"></script>
 <script src="/html/js/career/tsm-revenue-leakage-career-adapter.js"></script>

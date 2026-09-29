@@ -7706,10 +7706,8 @@ const GROQ_TEXT_MODEL = 'openai/gpt-oss-120b';
 // html/tsm-doc-search-multi.html — so every image classification has been
 // failing since mid-July, not just hypothetically. openai/gpt-oss-120b is
 // NOT a vision model on Groq (text-only) — per Groq's current vision docs
-// (console.groq.com/docs/vision), the supported vision models are
-// qwen/qwen3.6-27b and qwen/qwen3.8-27b. Using qwen3.6-27b, Groq's
-// documented replacement recommendation for Llama 4 Scout.
-const GROQ_VISION_MODEL = 'qwen/qwen3.6-27b';
+// Groq vision classification uses the currently supported Qwen 3.8 27B model.
+const GROQ_VISION_MODEL = 'qwen/qwen3.8-27b';
 
 // Valid node IDs per vertical — keep in sync with VERTICALS in
 // tsm-document-search.html if you add/rename nodes.
@@ -7783,6 +7781,26 @@ Return JSON matching exactly this schema:
   }
 }
 
+OUTPUT COMPLETENESS CONTRACT:
+- EVERY key shown in the schema above is REQUIRED in every response. Never omit a schema key.
+- Do NOT return a minimal routing-only object.
+- Even when a value is unavailable, the key MUST still be present using these defaults:
+  - string fields: ""
+  - amount: 0
+  - defectFlags: []
+  - bnca: false
+  - entities.parties: []
+  - entities.dates: []
+  - entities.amounts: []
+  - entities.identifiers: []
+- Populate every field for which the document provides evidence.
+- "fileName" must always be present and end in ".record".
+- "summary" must always be present; use a concise sentence based on the document, even when the document is otherwise sparse.
+- "entities" must always be present and must always contain all four arrays: parties, dates, amounts, identifiers.
+- When a permit, claim, policy, case, filing, invoice, or other reference number appears, copy it into both the appropriate top-level field when applicable and entities.identifiers.
+- Do not omit extraction fields merely because routing can already be determined.
+- Return the COMPLETE schema object, not a subset of it.
+
 Note: do NOT include a "confidence" or "validation" field - those are computed by the server, not the model.
 
 Valid node IDs per vertical:
@@ -7804,7 +7822,172 @@ Rules:
 - If "bnca" is true, also append "bnca-engine" to routing.<vertical>.nodes for every vertical listed.
 - "sourceNode" must be the node most directly responsible for this document type (not "strategist" unless nothing else fits).
 - If the document doesn't clearly belong anywhere, return "verticals": [] and leave "routing" as {}.
-- Be conservative with "bnca" — only flag genuine anomalies, denials, disputes, code violations, SLA breaches, or financial exposure outliers.`;
+- Be conservative with "bnca" — only flag genuine anomalies, denials, disputes, code violations, SLA breaches, or financial exposure outliers.
+- CLASSIFICATION DOMAIN RULE: Choose verticals based on the document's primary operational subject, not merely on a dollar amount, financial exposure, or the presence of a monetary value. A document belongs to "fo" only when its operational subject is financial/accounting operations such as accounts payable, accounting, ledger, remittance, reconciliation, payment processing, financial reporting, or a vendor invoice. A construction permit, inspection, code-compliance filing, stop-work matter, contractor filing, site issue, RFI, change order, or other construction-regulatory document remains "con" even when it contains a dollar exposure or financial consequence.
+- CONSTRUCTION PRIORITY RULE: For documents explicitly centered on construction permitting, code compliance, inspections, contractors, stop-work orders, site work, plans, or construction regulatory filings, prefer "con" as the sole vertical unless the document contains a separate, genuine operational workflow belonging to another vertical. Do not add "fo" solely because the document states an exposure, potential loss, cost, fine, or dollar amount.
+- EXTRACTION RULE: Populate every schema field that is directly supported by the document. Do not omit available evidence merely because it is not needed to determine the vertical. Extract named organizations into entities.parties, dates into entities.dates, dollar values into entities.amounts and amount when applicable, and permit/policy/claim/case/reference numbers into entities.identifiers and ref when applicable. Populate vendor, client, invoiceNo, summary, and defectFlags whenever the document supports them; use "" or [] only when the information is genuinely absent.`;
+
+
+// -- Deterministic extraction completion -------------------------------
+// Groq owns semantic classification/routing. This helper only fills
+// missing extraction fields from the original document text. It does not
+// override non-empty model output or change routing decisions.
+function normalizeDocRouterClassification(parsed, rawText, originalFileName) {
+  parsed = (
+    parsed &&
+    typeof parsed === 'object' &&
+    !Array.isArray(parsed)
+  ) ? parsed : {};
+
+  const text = String(rawText || '');
+
+  const entities = (
+    parsed.entities &&
+    typeof parsed.entities === 'object' &&
+    !Array.isArray(parsed.entities)
+  ) ? parsed.entities : {};
+
+  entities.parties = Array.isArray(entities.parties)
+    ? entities.parties : [];
+  entities.dates = Array.isArray(entities.dates)
+    ? entities.dates : [];
+  entities.amounts = Array.isArray(entities.amounts)
+    ? entities.amounts : [];
+  entities.identifiers = Array.isArray(entities.identifiers)
+    ? entities.identifiers : [];
+
+  parsed.entities = entities;
+
+  if (!parsed.fileName) {
+    const base = String(originalFileName || 'document')
+      .replace(/\.[^.]+$/, '')
+      .replace(/[^A-Za-z0-9._-]+/g, '_')
+      .replace(/^_+|_+$/g, '') || 'document';
+
+    parsed.fileName = base.endsWith('.record')
+      ? base
+      : base + '.record';
+  }
+
+  if (typeof parsed.vendor !== 'string') parsed.vendor = '';
+  if (typeof parsed.invoiceNo !== 'string') parsed.invoiceNo = '';
+  if (typeof parsed.exclusionCode !== 'string') parsed.exclusionCode = '';
+  if (typeof parsed.client !== 'string') parsed.client = '';
+  if (typeof parsed.ref !== 'string') parsed.ref = '';
+  if (typeof parsed.summary !== 'string') parsed.summary = '';
+  if (!Array.isArray(parsed.defectFlags)) parsed.defectFlags = [];
+  if (typeof parsed.bnca !== 'boolean') parsed.bnca = false;
+
+  if (
+    typeof parsed.amount !== 'number' ||
+    !Number.isFinite(parsed.amount)
+  ) {
+    parsed.amount = 0;
+  }
+
+  // Identifiers: preserve model extraction; otherwise recover common
+  // permit/claim/policy/case/invoice/reference identifiers.
+  if (!entities.identifiers.length) {
+    const matches = [
+      ...(text.match(
+        /\b(?:PMT|CLM|POL|INV|CASE|REF|RITM|INC)[-_][A-Z0-9-]+\b/gi
+      ) || []),
+      ...(text.match(
+        /(?:Permit|Claim|Policy|Case|Invoice|Filing|Reference|Ref(?:erence)?)\s*#?\s*:\s*[A-Z0-9._/-]+/gi
+      ) || [])
+    ];
+
+    entities.identifiers = [...new Set(matches.map(v => v.trim()))];
+  }
+
+  if (!parsed.ref && entities.identifiers.length) {
+    parsed.ref = entities.identifiers[0];
+  }
+
+  // Dollar values.
+  if (!entities.amounts.length) {
+    entities.amounts = [
+      ...new Set(
+        (text.match(/\$\s?\d[\d,]*(?:\.\d{2})?/g) || [])
+          .map(v => v.trim())
+      )
+    ];
+  }
+
+  if (!(parsed.amount > 0) && entities.amounts.length) {
+    const numbers = entities.amounts
+      .map(v => Number(v.replace(/[$,\s]/g, '')))
+      .filter(v => Number.isFinite(v) && v >= 0);
+
+    if (numbers.length) {
+      parsed.amount = Math.max(...numbers);
+    }
+  }
+
+  // Dates.
+  if (!entities.dates.length) {
+    entities.dates = [
+      ...new Set([
+        ...(text.match(/\b\d{4}-\d{2}-\d{2}\b/g) || []),
+        ...(text.match(/\b\d{1,2}\/\d{1,2}\/\d{4}\b/g) || [])
+      ])
+    ];
+  }
+
+  // Explicit party labels.
+  if (!entities.parties.length) {
+    const parties = [];
+
+    for (const match of text.matchAll(
+      /(?:Contractor|Vendor|Client|Customer|Employer|Provider|Company|Organization|Filed by|Submitted by)\s*:\s*([^\n\r]+)/gi
+    )) {
+      const value = match[1].trim();
+      if (value && !parties.includes(value)) {
+        parties.push(value);
+      }
+    }
+
+    entities.parties = parties;
+  }
+
+  if (!parsed.vendor && entities.parties.length) {
+    parsed.vendor = entities.parties[0];
+  }
+
+  // Conservative issue extraction.
+  if (!parsed.defectFlags.length) {
+    const flags = [
+      [/code violation/i, 'Code Violation'],
+      [/inspection overdue/i, 'Late Inspection'],
+      [/stop-work order/i, 'Stop-Work Risk'],
+      [/denial/i, 'Denial'],
+      [/dispute/i, 'Dispute'],
+      [/sla breach|sla violation/i, 'SLA Breach'],
+      [/late filing|filing overdue/i, 'Late Filing']
+    ];
+
+    parsed.defectFlags = flags
+      .filter(([pattern]) => pattern.test(text))
+      .map(([, label]) => label);
+  }
+
+  if (!parsed.summary) {
+    const lines = text
+      .split(/\r?\n/)
+      .map(line => line.trim())
+      .filter(Boolean);
+
+    const issueLine = lines.find(line =>
+      /^(Issue|Description|Summary|Problem)\s*:/i.test(line)
+    );
+
+    parsed.summary = issueLine
+      ? issueLine.replace(/^[^:]+:\s*/i, '').trim()
+      : (lines[0] || 'Document classification');
+  }
+
+  return parsed;
+}
 
 // -- Deterministic validation + confidence (Phase 4, Mission Preview) --
 // Deliberately NOT model-generated: LLM self-reported confidence scores are
@@ -7956,6 +8139,7 @@ app.post('/api/doc-router/classify', async (req, res) => {
           { role: 'user', content: userContent },
         ],
         temperature: 0.2,
+        max_tokens: 1200,
         response_format: { type: 'json_object' },
       }),
     });
@@ -7992,6 +8176,14 @@ app.post('/api/doc-router/classify', async (req, res) => {
       console.error('[doc-router] Bad JSON from model:', data.choices?.[0]?.message?.content);
       return res.status(502).json({ error: 'Invalid classification response.' });
     }
+
+    // Complete missing extraction fields from the original document.
+    // This does not override model routing or non-empty model fields.
+    parsed = normalizeDocRouterClassification(
+      parsed,
+      textContent || '',
+      fileName || ''
+    );
 
     // Deterministic pass - never trust the model's own read of its schema
     // compliance. Attached to the response, not thrown, so a malformed doc
