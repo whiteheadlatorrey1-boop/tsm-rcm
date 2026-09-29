@@ -103,11 +103,11 @@ function assessDisposition(input = {}, policy = {}) {
     return finish('WARRANTY_RETURN', 'WARRANTY_DEPOT_RETURN', 'Device is in warranty and impaired; vendor coverage applies.');
   }
   if (warranty === 'OUT_OF_WARRANTY' && condition === 'NON_FUNCTIONAL') {
-    return finish('DISPOSITION_CANDIDATE', null, 'Out of warranty and non-functional.');
+    return finish('DISPOSITION_CANDIDATE', 'DISPOSITION_RECOMMENDATION', 'Out of warranty and non-functional.');
   }
   if (warranty === 'OUT_OF_WARRANTY' && condition === 'POOR') {
     if ((repairCount || 0) >= cfg.dispositionRepairThreshold) {
-      return finish('DISPOSITION_CANDIDATE', null,
+      return finish('DISPOSITION_CANDIDATE', 'DISPOSITION_RECOMMENDATION',
         `Out of warranty, poor condition, and ${repairCount} prior repairs (threshold ${cfg.dispositionRepairThreshold}).`);
     }
     return finish('REPAIR', null, 'Out of warranty, poor condition, repair history below disposition threshold.');

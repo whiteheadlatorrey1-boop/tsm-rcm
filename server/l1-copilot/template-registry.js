@@ -23,7 +23,16 @@ const FIELD_LABELS = Object.freeze({
   ASSIGNED_USER: 'Assigned User',
   TECHNICIAN: 'Technician',
   RETURN_REASON: 'Reason',
-  TECHNICIAN_NOTES: 'Notes'
+  TECHNICIAN_NOTES: 'Notes',
+  WARRANTY_STATUS: 'Warranty Status',
+  CONDITION: 'Condition',
+  RECOMMENDATION_REASONS: 'L1 Recommendation Basis',
+  APPROVER: 'Approver',
+  APPROVAL_REFERENCE: 'Approval Reference',
+  SANITIZATION_METHOD: 'Sanitization Method',
+  SANITIZATION_VERIFIED_BY: 'Sanitization Verified By',
+  DISPOSITION_METHOD: 'Disposition Method',
+  DISPOSITION_REFERENCE: 'Disposition Reference'
 });
 
 function field(name) {
@@ -65,6 +74,37 @@ const TEMPLATES = Object.freeze({
     heading: 'WARRANTY DEPOT RETURN',
     required: ['INCIDENT_NUMBER', 'ASSET_TAG', 'MANUFACTURER', 'MODEL', 'TECHNICIAN', 'RETURN_REASON'],
     optional: ['ASSIGNED_USER', 'TECHNICIAN_NOTES']
+  },
+  // Out-of-warranty disposition: four RECORD templates, one per governed stage.
+  // Each records what a named human did or decided; required fields force the
+  // approver / verifier / reference to be supplied, never inferred.
+  DISPOSITION_RECOMMENDATION: {
+    id: 'DISPOSITION_RECOMMENDATION',
+    label: 'Disposition Recommendation (pending approval)',
+    heading: 'DISPOSITION RECOMMENDATION - PENDING APPROVAL',
+    required: ['INCIDENT_NUMBER', 'ASSET_TAG', 'TECHNICIAN', 'WARRANTY_STATUS', 'CONDITION', 'RECOMMENDATION_REASONS'],
+    optional: ['MANUFACTURER', 'MODEL', 'ASSIGNED_USER', 'TECHNICIAN_NOTES']
+  },
+  DISPOSITION_APPROVAL: {
+    id: 'DISPOSITION_APPROVAL',
+    label: 'Disposition Approval Record',
+    heading: 'DISPOSITION APPROVAL RECORD',
+    required: ['INCIDENT_NUMBER', 'ASSET_TAG', 'TECHNICIAN', 'APPROVER', 'APPROVAL_REFERENCE'],
+    optional: ['TECHNICIAN_NOTES']
+  },
+  DISPOSITION_SANITIZATION: {
+    id: 'DISPOSITION_SANITIZATION',
+    label: 'Disposition Sanitization Record',
+    heading: 'DISPOSITION SANITIZATION RECORD',
+    required: ['INCIDENT_NUMBER', 'ASSET_TAG', 'TECHNICIAN', 'SANITIZATION_METHOD', 'SANITIZATION_VERIFIED_BY'],
+    optional: ['TECHNICIAN_NOTES']
+  },
+  DISPOSITION_COMPLETION: {
+    id: 'DISPOSITION_COMPLETION',
+    label: 'Disposition Completion Record',
+    heading: 'DISPOSITION COMPLETION RECORD',
+    required: ['INCIDENT_NUMBER', 'ASSET_TAG', 'TECHNICIAN', 'DISPOSITION_METHOD', 'DISPOSITION_REFERENCE'],
+    optional: ['TECHNICIAN_NOTES']
   },
   DEVICE_REASSIGNMENT: {
     id: 'DEVICE_REASSIGNMENT',

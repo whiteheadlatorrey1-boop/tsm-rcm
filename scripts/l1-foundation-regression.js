@@ -12,7 +12,7 @@ const path = require('path');
 const dir = path.join(__dirname, '..', 'tests', 'unit', 'l1-copilot');
 const GROUPS = [
   ['Workflow engine + contract', ['workflow-contract', 'workflow-engine-evidence-golden']],
-  ['Asset lifecycle + disposition', ['asset-lifecycle']],
+  ['Asset lifecycle + disposition', ['asset-lifecycle', 'disposition-templates']],
   ['Closure gate / gate tracker', ['gate-tracker']],
   ['Action gate', ['action-gate', 'orchestrate-route-strips-action']],
   ['Governed orchestrator', ['governed-orchestrator', 'governed-orchestrator-gates']],
