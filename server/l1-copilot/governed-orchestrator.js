@@ -31,6 +31,8 @@ const {
   buildClosureChecklist
 } = require('./closure-gate');
 
+const { evaluateGates } = require('./gate-tracker');
+
 function normalizeObject(value) {
   return value && typeof value === 'object'
     ? value
@@ -104,6 +106,19 @@ function orchestrate(input = {}) {
   });
 
   /*
+   * Gate tracker: reports which gate blocks closure and execution.
+   * input.action, when supplied, is an action-gate record. Confirmation is
+   * read from that record only; it is never derived from evidence or from
+   * ServiceNow reconciliation context.
+   */
+  const gates = evaluateGates({
+    state: input.state,
+    taskType: workflow.taskType,
+    evidence,
+    action: input.action
+  });
+
+  /*
    * Preserve ServiceNow reconciliation as explicit context.
    *
    * IMPORTANT:
@@ -122,6 +137,7 @@ function orchestrate(input = {}) {
     workflow,
     closure,
     checklist,
+    gates,
 
     context: {
       serviceNowReconciliation,
