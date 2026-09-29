@@ -5024,7 +5024,10 @@ app.post('/api/l1-copilot/assistant', requireRole(L1_COPILOT_ROLES), async (req,
 // ServiceNow reconciliation remains a separate explicit operation.
 app.post('/api/l1-copilot/workflow/orchestrate', requireRole(L1_COPILOT_ROLES), (req, res) => {
   try {
-    const result = orchestrate(req.body || {});
+    // The client never supplies action-gate records: gates.execution would
+    // otherwise report authorization for a forged { state: 'CONFIRMED' } object.
+    const { action: _clientAction, ...orchestrateInput } = req.body || {};
+    const result = orchestrate(orchestrateInput);
 
     return res.json({
       ok: true,
