@@ -19,6 +19,8 @@
  *   - modify CMDB records
  */
 
+const { WORKFLOWS: WORKFLOW_CONTRACTS } = require('./workflow-contract');
+
 const TASK_TYPES = Object.freeze([
   'ONBOARDING',
   'OFFBOARDING',
@@ -133,44 +135,40 @@ function classifyTask(input = {}) {
   };
 }
 
+const EVIDENCE_META = Object.freeze({
+  userVerified: { label: 'User validation' },
+  assetVerified: { label: 'Asset validation' },
+  workConfirmed: { label: 'Required work' },
+  tested: { label: 'Functionality testing' },
+  locationVerified: { label: 'Location verification', nextAction: 'VERIFY LOCATION' },
+  finalWorkNoteConfirmed: { label: 'Final work note confirmation' }
+});
+
+const DEFAULT_EVIDENCE_KEYS = Object.freeze([
+  'userVerified',
+  'assetVerified',
+  'workConfirmed',
+  'tested',
+  'finalWorkNoteConfirmed'
+]);
+
 function getRequiredEvidence(taskType) {
   const normalizedTask = normalizeTaskType(taskType);
+  const contractId = normalizedTask.replace(/ /g, '_');
 
-  const required = [
-    {
-      key: 'userVerified',
-      label: 'User validation'
-    },
-    {
-      key: 'assetVerified',
-      label: 'Asset validation'
-    },
-    {
-      key: 'workConfirmed',
-      label: 'Required work'
-    },
-    {
-      key: 'tested',
-      label: 'Functionality testing'
+  // Evidence keys come from the workflow contract (single source of truth).
+  // OTHER has no contract entry and keeps the default profile.
+  const keys = WORKFLOW_CONTRACTS[contractId]
+    ? WORKFLOW_CONTRACTS[contractId].evidence
+    : DEFAULT_EVIDENCE_KEYS;
+
+  return keys.map(key => {
+    const meta = EVIDENCE_META[key];
+    if (!meta) {
+      throw new Error(`No label registered for evidence key "${key}"`);
     }
-  ];
-
-  if (
-    ['FOOT MOVE', 'ONBOARDING', 'OFFBOARDING'].includes(normalizedTask)
-  ) {
-    required.push({
-      key: 'locationVerified',
-      label: 'Location verification',
-      nextAction: 'VERIFY LOCATION'
-    });
-  }
-
-  required.push({
-    key: 'finalWorkNoteConfirmed',
-    label: 'Final work note confirmation'
+    return Object.assign({ key }, meta);
   });
-
-  return required;
 }
 
 function evaluateWorkflow(input = {}) {
