@@ -79,6 +79,60 @@ function genCandidateId() {
  *
  * events: array of { type: 'module_complete'|'quiz'|'mock_shift', score?: number, weight?: number }
  */
+/**
+ * Normalizes and validates a training event before persistence.
+ *
+ * Contract:
+ * - type is required
+ * - score is optional; omitted score is explicitly unscored
+ * - weight defaults to 1 and must be greater than zero
+ * - meta defaults to an object
+ */
+function normalizeTrainingEvent(event = {}) {
+  if (!event || typeof event !== 'object' || Array.isArray(event)) {
+    throw new Error('training event must be an object');
+  }
+
+  if (typeof event.type !== 'string' || !event.type.trim()) {
+    throw new Error('training event type is required');
+  }
+
+  let score = null;
+
+  if (event.score !== undefined && event.score !== null) {
+    if (typeof event.score !== 'number' || !Number.isFinite(event.score)) {
+      throw new Error('training event score must be numeric');
+    }
+
+    score = event.score;
+  }
+
+  const weight = event.weight === undefined || event.weight === null
+    ? 1
+    : event.weight;
+
+  if (
+    typeof weight !== 'number' ||
+    !Number.isFinite(weight) ||
+    weight <= 0
+  ) {
+    throw new Error('training event weight must be greater than zero');
+  }
+
+  const meta =
+    event.meta === undefined || event.meta === null
+      ? {}
+      : event.meta;
+
+  return {
+    type: event.type.trim(),
+    score,
+    scored: score !== null,
+    weight,
+    meta,
+  };
+}
+
 function computeReadinessScore(events = []) {
   if (!events.length) return { score: 0, breakdown: [], basis: 'no-training-data' };
 
@@ -88,13 +142,26 @@ function computeReadinessScore(events = []) {
 
   for (const ev of events) {
     const weight = typeof ev.weight === 'number' ? ev.weight : 1;
-    const score = typeof ev.score === 'number' ? ev.score : 0;
+    const hasScore = typeof ev.score === 'number';
+
+    breakdown.push({
+      type: ev.type,
+      score: hasScore ? ev.score : null,
+      weight,
+      scored: hasScore,
+    });
+
+    if (!hasScore) continue;
+
     totalWeight += weight;
-    weightedSum += score * weight;
-    breakdown.push({ type: ev.type, score, weight });
+    weightedSum += ev.score * weight;
   }
 
-  const raw = totalWeight > 0 ? weightedSum / totalWeight : 0;
+  if (totalWeight === 0) {
+    return { score: 0, breakdown, basis: 'no-scored-events' };
+  }
+
+  const raw = weightedSum / totalWeight;
   return {
     score: Math.round(raw * 10) / 10,
     breakdown,
@@ -193,14 +260,16 @@ function buildOperationalEvidence(event, existingEvidence) {
 }
 
 async function recordTrainingEvent(candidateId, event) {
+  const normalizedEvent = normalizeTrainingEvent(event);
+
   const database = await connect();
   const doc = {
     candidateId,
-    type: event.type,
-    score: event.score,
-    weight: event.weight || 1,
+    type: normalizedEvent.type,
+    score: normalizedEvent.score,
+    weight: normalizedEvent.weight,
     recordedAt: new Date().toISOString(),
-    meta: event.meta || {},
+    meta: normalizedEvent.meta,
   };
   await database.collection(TRAINING_EVENTS_COLLECTION).insertOne(doc);
 
@@ -217,11 +286,14 @@ async function recordTrainingEvent(candidateId, event) {
     candidate && candidate.readinessEvidence && candidate.readinessEvidence.operational;
 
   const latestEvidence =
-    event.type === 'readiness_assessment'
-      ? (event.meta || priorOperational
-          ? { ...(event.meta || {}), ...(priorOperational ? { operational: priorOperational } : {}) }
+    normalizedEvent.type === 'readiness_assessment'
+      ? (Object.keys(normalizedEvent.meta).length > 0 || priorOperational
+          ? {
+              ...(normalizedEvent.meta || {}),
+              ...(priorOperational ? { operational: priorOperational } : {})
+            }
           : null)
-      : buildOperationalEvidence(event, candidate && candidate.readinessEvidence);
+      : buildOperationalEvidence(normalizedEvent, candidate && candidate.readinessEvidence);
 
   const update = {
     readinessScore: readiness.score,
@@ -325,4 +397,5 @@ module.exports = {
   deleteCandidate,
   seedSampleData,
   computeReadinessScore,
+  normalizeTrainingEvent,
 };

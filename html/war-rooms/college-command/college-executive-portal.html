@@ -24,6 +24,67 @@
   .domain-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
   .domain-metrics .metric-val { font-weight: 700; }
   .domain-metrics .metric-lbl { color: var(--muted); font-size: 11px; }
+
+  .domain-signals {
+    margin-top: 14px;
+    border-top: 1px solid var(--border);
+    padding-top: 12px;
+  }
+
+  .domain-signals-title {
+    color: var(--muted);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    margin-bottom: 8px;
+  }
+
+  .signal-card {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-top: 8px;
+    background: rgba(255,255,255,.02);
+  }
+
+  .signal-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: center;
+  }
+
+  .signal-title {
+    font-weight: 700;
+    font-size: 12px;
+  }
+
+  .signal-severity {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .06em;
+  }
+
+  .signal-root {
+    color: var(--muted);
+    font-size: 11px;
+    margin-top: 6px;
+    line-height: 1.45;
+  }
+
+  .signal-action {
+    font-size: 11px;
+    margin-top: 7px;
+    line-height: 1.45;
+  }
+
+  .signal-exposure {
+    color: var(--text);
+    font-weight: 700;
+    margin-top: 7px;
+    font-size: 11px;
+  }
+
   .empty-state { text-align: center; padding: 60px 20px; color: var(--muted); }
 </style>
 </head>
@@ -98,12 +159,59 @@
           value: Number(p.readiness.total_readiness_risk_score).toLocaleString()
         });
       }
+
+      const anomalies = Array.isArray(p.anomalies) ? p.anomalies : [];
+
       return `
         <div class="domain-section">
           <h3>${escapeHtml(d.label)}</h3>
+
           <div class="domain-metrics">
             ${metrics.map(m => `<div><div class="metric-val">${escapeHtml(m.value)}</div><div class="metric-lbl">${escapeHtml(m.label)}</div></div>`).join('')}
           </div>
+
+          ${anomalies.length ? `
+            <div class="domain-signals">
+              <div class="domain-signals-title">Executive Signals</div>
+
+              ${anomalies.map(a => {
+                const severity = String(a.severity || 'MED').toUpperCase();
+                const severityColor =
+                  severity === 'CRIT' ? 'var(--high)' :
+                  severity === 'HIGH' ? 'var(--high)' :
+                  severity === 'MED' ? 'var(--med)' :
+                  'var(--low)';
+
+                const signalExposure =
+                  a.exposure != null && Number(a.exposure) > 0
+                    ? '$' + Number(a.exposure).toLocaleString()
+                    : '';
+
+                return `
+                  <div class="signal-card">
+                    <div class="signal-head">
+                      <div class="signal-title">${escapeHtml(a.title || a.id || 'Operational Signal')}</div>
+                      <div class="signal-severity" style="color:${severityColor}">
+                        ${escapeHtml(severity)}
+                      </div>
+                    </div>
+
+                    ${a.rootCause
+                      ? `<div class="signal-root">${escapeHtml(a.rootCause)}</div>`
+                      : ''}
+
+                    ${a.recommendedAction
+                      ? `<div class="signal-action"><strong>Action:</strong> ${escapeHtml(a.recommendedAction)}</div>`
+                      : ''}
+
+                    ${signalExposure
+                      ? `<div class="signal-exposure">Exposure: ${escapeHtml(signalExposure)}</div>`
+                      : ''}
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          ` : ''}
         </div>
       `;
     }).join('');

@@ -16,6 +16,7 @@
 
 const { MongoClient } = require('mongodb');
 const crypto = require('crypto');
+const candidateRegistry = require('./candidate-registry-service');
 
 const DEFAULT_DB_NAME = 'tsm-consultz';
 const EMPLOYERS_COLLECTION = 'staffing_employers';
@@ -254,7 +255,68 @@ async function getPlacement(placementId) {
  * record that both the readiness dashboard and an employer-facing view
  * can track through status.
  */
+function evaluatePlacementEligibility(candidate, { minimumReadiness = 70 } = {}) {
+  if (!candidate) {
+    return {
+      eligible: false,
+      reason: 'candidate-not-found',
+    };
+  }
+
+  if (!candidate.candidateId) {
+    return {
+      eligible: false,
+      reason: 'candidate-id-missing',
+    };
+  }
+
+  if (candidate.isSampleData === true) {
+    return {
+      eligible: false,
+      reason: 'sample-candidate',
+    };
+  }
+
+  if (candidate.status !== 'ready_for_placement') {
+    return {
+      eligible: false,
+      reason: 'candidate-not-ready',
+      status: candidate.status,
+    };
+  }
+
+  const readinessScore = Number(candidate.readinessScore);
+
+  if (!Number.isFinite(readinessScore) || readinessScore < minimumReadiness) {
+    return {
+      eligible: false,
+      reason: 'readiness-below-threshold',
+      readinessScore: Number.isFinite(readinessScore) ? readinessScore : null,
+      minimumReadiness,
+    };
+  }
+
+  return {
+    eligible: true,
+    reason: 'eligible',
+    readinessScore,
+  };
+}
+
 async function submitCandidate({ candidateId, jobOrderId, payRate, annualHours, meta }) {
+  if (!candidateId) {
+    throw new Error('candidateId is required');
+  }
+
+  const candidate = await candidateRegistry.getCandidate(candidateId);
+  const eligibility = evaluatePlacementEligibility(candidate);
+
+  if (!eligibility.eligible) {
+    throw new Error(
+      `Candidate is not eligible for placement: ${eligibility.reason}`
+    );
+  }
+
   const database = await connect();
   const jobOrder = await getJobOrder(jobOrderId);
   if (!jobOrder) throw new Error(`No job order found for jobOrderId ${jobOrderId}`);
@@ -353,6 +415,7 @@ module.exports = {
   listPlacements,
   getPlacement,
   submitCandidate,
+  evaluatePlacementEligibility,
   updatePlacementStatus,
   deletePlacement,
   computeFee,

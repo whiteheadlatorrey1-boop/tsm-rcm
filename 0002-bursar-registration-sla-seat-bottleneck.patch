@@ -1,0 +1,185 @@
+From 6c7221c79b671a000a31fca00b4ec0eb714c35b6 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Mon, 28 Sep 2026 14:54:30 +0000
+Subject: [PATCH] feat(college-bursar): registration hold SLA breaches +
+ seat-bottleneck detection
+
+---
+ .../college-bursar-command.html               |  4 +-
+ .../services/college-bursar-engine.js         | 80 +++++++++++++++++--
+ 2 files changed, 77 insertions(+), 7 deletions(-)
+
+diff --git a/html/war-rooms/college-command/college-bursar-command.html b/html/war-rooms/college-command/college-bursar-command.html
+index 936207f4..d8e69e04 100644
+--- a/html/war-rooms/college-command/college-bursar-command.html
++++ b/html/war-rooms/college-command/college-bursar-command.html
+@@ -124,7 +124,9 @@
+       ['total_ar_balance', 'Total AR Balance'],
+       ['registration_holds_active', 'Registration Holds Active'],
+       ['registration_holds_review_pending', 'Registration Holds Review Pending'],
+-      ['registration_holds_release_pending', 'Registration Holds Release Pending']
++      ['registration_holds_release_pending', 'Registration Holds Release Pending'],
++      ['registration_holds_over_sla', 'Registration Holds Over SLA'],
++      ['seat_bottleneck_sections', 'Seat Bottleneck Sections']
+     ];
+     const row = document.getElementById('kpiRow');
+     row.innerHTML = defs.map(([key, label]) => {
+diff --git a/html/war-rooms/college-command/services/college-bursar-engine.js b/html/war-rooms/college-command/services/college-bursar-engine.js
+index 02367996..be338a87 100644
+--- a/html/war-rooms/college-command/services/college-bursar-engine.js
++++ b/html/war-rooms/college-command/services/college-bursar-engine.js
+@@ -24,6 +24,22 @@
+     { hold_id: 'H-2233', student_ref: 'S-90021', reason: 'Missing enrollment agreement', severity: 'MEDIUM', days_active: 9, workflow_status: 'release_pending', owner: 'Bursar — Registration Holds' }
+   ];
+ 
++  // Seat inventory per section. held_students = students with an open
++  // registration hold who are targeting that section (demand that cannot
++  // convert until the hold clears).
++  const SAMPLE_SEAT_SECTIONS = [
++    { section_id: 'BIO-201-01', course: 'BIO 201', capacity: 30, enrolled: 30, waitlist: 9, held_students: 2 },
++    { section_id: 'MTH-140-02', course: 'MTH 140', capacity: 40, enrolled: 38, waitlist: 4, held_students: 1 },
++    { section_id: 'ENG-101-05', course: 'ENG 101', capacity: 25, enrolled: 16, waitlist: 0, held_students: 0 }
++  ];
++
++  // Operational defaults, not regulatory values: max days a hold may sit in
++  // each workflow status before it counts as an SLA breach, and the seat
++  // utilization at which a waitlisted section counts as a bottleneck.
++  // Configure to match the institution's registrar/bursar service levels.
++  const REGISTRATION_SLA_DAYS = { active: 21, review_pending: 5, release_pending: 2 };
++  const SEAT_BOTTLENECK_UTILIZATION = 0.95;
++
+   const REGISTRATION_WORKFLOW_STATUSES = [
+     'active',
+     'review_pending',
+@@ -33,16 +49,17 @@
+ 
+   class TSMCollegeBursarEngine {
+     constructor() {
+-      this.data = { payment_plans: [], registration_holds: [] };
++      this.data = { payment_plans: [], registration_holds: [], seat_sections: [] };
+     }
+ 
+     loadSampleData() {
+       this.data.payment_plans = [...SAMPLE_PAYMENT_PLANS];
+       this.data.registration_holds = [...SAMPLE_REGISTRATION_HOLDS];
++      this.data.seat_sections = [...SAMPLE_SEAT_SECTIONS];
+     }
+ 
+     loadRecords(entityKey, records) {
+-      if (!['payment_plans', 'registration_holds'].includes(entityKey)) {
++      if (!['payment_plans', 'registration_holds', 'seat_sections'].includes(entityKey)) {
+         console.warn('TSMCollegeBursarEngine: unknown entity key', entityKey);
+         return;
+       }
+@@ -66,6 +83,7 @@
+         const parsed = JSON.parse(raw);
+         this.data.payment_plans = Array.isArray(parsed.payment_plans) ? parsed.payment_plans : [];
+         this.data.registration_holds = Array.isArray(parsed.registration_holds) ? parsed.registration_holds : [];
++        this.data.seat_sections = Array.isArray(parsed.seat_sections) ? parsed.seat_sections : [];
+         return true;
+       } catch (e) {
+         console.warn('TSMCollegeBursarEngine: loadFromStorage failed', e);
+@@ -77,6 +95,49 @@
+       try { localStorage.removeItem('TSM_COLLEGE_BURSAR_DATA'); } catch (e) { /* noop */ }
+     }
+ 
++    // A hold breaches SLA when days_active exceeds the allowance for its
++    // current workflow status. Released holds are closed and never breach.
++    getSlaBreaches(entityKey) {
++      if (entityKey !== 'registration_holds') return [];
++      return (this.data.registration_holds || [])
++        .map(h => {
++          const status = REGISTRATION_WORKFLOW_STATUSES.includes(h.workflow_status) ? h.workflow_status : 'active';
++          const allowed = REGISTRATION_SLA_DAYS[status];
++          if (allowed == null) return null;
++          const days = Number(h.days_active || 0);
++          if (days <= allowed) return null;
++          return { id: h.hold_id, stage: status, days_active: days, sla_days: allowed, days_over: days - allowed, record: h };
++        })
++        .filter(Boolean)
++        .sort((a, b) => b.days_over - a.days_over);
++    }
++
++    // A section is a bottleneck when it is at/above the utilization
++    // threshold and has a waitlist. demand_blocked_by_holds counts waitlisted
++    // + held students who cannot take an open seat until their hold clears.
++    getSeatBottlenecks() {
++      return (this.data.seat_sections || [])
++        .map(sec => {
++          const capacity = Number(sec.capacity || 0);
++          if (capacity <= 0) return null;
++          const enrolled = Number(sec.enrolled || 0);
++          const waitlist = Number(sec.waitlist || 0);
++          const utilization = enrolled / capacity;
++          if (utilization < SEAT_BOTTLENECK_UTILIZATION || waitlist <= 0) return null;
++          return {
++            id: sec.section_id,
++            course: sec.course,
++            utilization: Math.round(utilization * 1000) / 1000,
++            seats_open: Math.max(0, capacity - enrolled),
++            waitlist,
++            held_students: Number(sec.held_students || 0),
++            record: sec
++          };
++        })
++        .filter(Boolean)
++        .sort((a, b) => b.waitlist - a.waitlist);
++    }
++
+     computeKpis() {
+       const pastDuePlans = this.data.payment_plans.filter(p => (p.days_past_due || 0) > 30);
+       const totalArBalance = this.data.payment_plans.reduce((sum, p) => sum + (p.balance || 0), 0);
+@@ -96,7 +157,9 @@
+         total_ar_balance: totalArBalance,
+         registration_holds_active: openRegistrationHolds.length,
+         registration_holds_review_pending: registrationReviewPending.length,
+-        registration_holds_release_pending: registrationReleasePending.length
++        registration_holds_release_pending: registrationReleasePending.length,
++        registration_holds_over_sla: this.getSlaBreaches('registration_holds').length,
++        seat_bottleneck_sections: this.getSeatBottlenecks().length
+       };
+     }
+ 
+@@ -106,6 +169,7 @@
+ 
+     getCanonicalRecords() {
+       const now = new Date().toISOString();
++      const breachedIds = new Set(this.getSlaBreaches('registration_holds').map(b => b.id));
+       const holds = this.data.registration_holds.map(h => {
+         const workflowStatus = REGISTRATION_WORKFLOW_STATUSES.includes(h.workflow_status)
+           ? h.workflow_status
+@@ -123,7 +187,7 @@
+           risk_level: ['low', 'medium', 'high', 'critical'].includes(riskLevel)
+             ? riskLevel
+             : 'low',
+-          sla_state: 'n/a',
++          sla_state: breachedIds.has(h.hold_id) ? 'breached' : 'ok',
+           linked_war_room: '/html/war-rooms/college-command/college-bursar-command.html',
+           created_at: h.created_at || now,
+           updated_at: h.updated_at || now,
+@@ -154,7 +218,8 @@
+           body: JSON.stringify({
+             kpis: this.computeKpis(),
+             payment_plans: this.data.payment_plans,
+-            registration_holds: this.data.registration_holds
++            registration_holds: this.data.registration_holds,
++            seat_sections: this.data.seat_sections
+           })
+         });
+         if (!res.ok) throw new Error('financial-summary endpoint returned ' + res.status);
+@@ -222,8 +287,11 @@
+         financials: await this.getFinancialSummary(),
+         records: {
+           payment_plans: this.data.payment_plans,
+-          registration_holds: this.data.registration_holds
++          registration_holds: this.data.registration_holds,
++          seat_sections: this.data.seat_sections
+         },
++        registration_sla_breaches: this.getSlaBreaches('registration_holds'),
++        seat_bottlenecks: this.getSeatBottlenecks(),
+         canonical_records: this.getCanonicalRecords(),
+         registration_workflow_statuses: this.getRegistrationWorkflowStatuses(),
+         ai_summary: aiText || null
+-- 
+2.43.0
+

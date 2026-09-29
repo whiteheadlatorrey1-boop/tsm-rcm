@@ -238,6 +238,10 @@
     try {
       const fin = await engine.getFinancialSummary();
       const kpis = engine.computeKpis();
+      const registrationSlaBreaches =
+        engine.getSlaBreaches('registration_holds') || [];
+      const seatBottlenecks =
+        engine.getSeatBottlenecks() || [];
 
       const activeHolds = Number(kpis.registration_holds_active || 0);
       const reviewPending = Number(kpis.registration_holds_review_pending || 0);
@@ -246,6 +250,9 @@
 
       const anomalies = [];
 
+      // Financial signal: preserve the existing re-enrollment exposure
+      // anomaly. SLA and capacity signals below are operational indicators
+      // and intentionally carry zero fabricated dollar exposure.
       if (activeHolds > 0 || exposure > 0) {
         const confidence =
           fin.hold_revenue_confidence &&
@@ -277,6 +284,61 @@
             `${releasePending} release-pending.${note}`,
           recommendedAction:
             'Review active registration holds, resolve documented release conditions, and prevent inappropriate re-enrollment blocking before the next registration decision.',
+          impacts: {}
+        });
+      }
+
+      // Operational signal: registration holds exceeding their workflow SLA.
+      if (registrationSlaBreaches.length > 0) {
+        const highSeverityBreach = registrationSlaBreaches.some(
+          b => String(b.severity || '').toUpperCase() === 'HIGH'
+        );
+
+        const longestBreach = registrationSlaBreaches.reduce(
+          (max, b) => Math.max(max, Number(b.days_over || 0)),
+          0
+        );
+
+        anomalies.push({
+          id: 'college-bursar-registration-sla',
+          title: 'Registration Hold SLA Breach',
+          severity: highSeverityBreach ? 'HIGH' : 'MEDIUM',
+          exposure: 0,
+          confidence: 100,
+          rootCause:
+            `${registrationSlaBreaches.length} registration hold(s) exceeded their workflow SLA; ` +
+            `the longest breach is ${longestBreach} day(s).`,
+          recommendedAction:
+            'Prioritize overdue registration holds, document the release condition or blocker, and route unresolved exceptions to the appropriate registration owner.',
+          impacts: {}
+        });
+      }
+
+      // Operational signal: sections at/above the configured utilization
+      // threshold with students waiting. No financial exposure is fabricated.
+      if (seatBottlenecks.length > 0) {
+        const waitlistedStudents = seatBottlenecks.reduce(
+          (sum, section) => sum + Number(section.waitlist || 0),
+          0
+        );
+
+        const heldStudents = seatBottlenecks.reduce(
+          (sum, section) => sum + Number(section.held_students || 0),
+          0
+        );
+
+        anomalies.push({
+          id: 'college-bursar-seat-bottlenecks',
+          title: 'Registration Seat Bottleneck',
+          severity: 'MEDIUM',
+          exposure: 0,
+          confidence: 100,
+          rootCause:
+            `${seatBottlenecks.length} section(s) are at or above the configured ` +
+            `seat-utilization threshold with ${waitlistedStudents} student(s) waitlisted` +
+            `${heldStudents ? ` and ${heldStudents} student(s) affected by holds` : ''}.`,
+          recommendedAction:
+            'Review constrained sections with Registration and Academic Affairs, reconcile waitlisted and held students, and determine documented capacity or scheduling actions.',
           impacts: {}
         });
       }
