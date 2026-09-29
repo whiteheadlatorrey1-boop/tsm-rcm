@@ -1,3 +1,4 @@
+const { describe, it, beforeEach, afterEach } = require('node:test');
 const assert = require('assert');
 const engine = require('../../html/js/career/tsm-rcm-career-engine.js');
 
