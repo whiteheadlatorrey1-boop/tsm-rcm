@@ -21,7 +21,7 @@
 
 const { test, expect } = require('@playwright/test');
 
-const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
+const BASE_URL = process.env.BASE_URL || 'http://localhost:4173';
 
 test.describe('FinOps relay chain (Phase 1)', () => {
 

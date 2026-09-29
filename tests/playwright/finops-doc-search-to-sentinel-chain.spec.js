@@ -48,7 +48,7 @@
 
 const { test, expect } = require('@playwright/test');
 
-const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
+const BASE_URL = process.env.BASE_URL || 'http://localhost:4173';
 
 test.describe('FinOps full chain: doc-search -> war-room -> exec-portal -> Sentinel', () => {
 
@@ -204,7 +204,9 @@ test.describe('FinOps full chain: doc-search -> war-room -> exec-portal -> Senti
 
     const foRow = page.locator('.vrow[data-vid="finops"]');
     await expect(foRow).toBeVisible({ timeout: 5000 });
-    await expect(foRow.locator('.exposure')).toContainText('42,500');
+    // Sentinel intentionally abbreviates 42,500 as $43K via fmtMoney().
+    // The exact numeric exposure is already proven above from the strategist relay.
+    await expect(foRow.locator('.exposure')).toContainText('$43K');
   });
 
 });

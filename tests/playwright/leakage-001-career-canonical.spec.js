@@ -14,7 +14,7 @@ test('LEAKAGE-001 canonical career integration', async ({ page }) => {
   });
 
   await page.goto(
-    'http://localhost:3000/html/tsm-career-training-platform.html',
+    'http://localhost:4173/html/tsm-career-training-platform.html',
     { waitUntil: 'domcontentloaded' }
   );
 

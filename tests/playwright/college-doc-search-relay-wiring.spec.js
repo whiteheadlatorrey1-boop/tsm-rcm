@@ -25,7 +25,7 @@
 
 const { test, expect } = require('@playwright/test');
 
-const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
+const BASE_URL = process.env.BASE_URL || 'http://localhost:4173';
 const RELAY_KEY = 'TSM_COLLEGE_WAR_RELAY';
 
 const RELAY_PAYLOAD = {
@@ -78,21 +78,37 @@ for (const p of PAGES) {
 
     test('dismiss button clears the banner and the relay key', async ({ page }) => {
       const banner = page.locator('#tsm-college-relay-banner');
+      const dismiss = page.locator('#tsm-college-relay-dismiss');
+
       await expect(banner).toBeVisible();
-      await page.locator('#tsm-college-relay-dismiss').click();
-      await expect(banner).toHaveCount(0);
+      await expect(dismiss).toBeVisible();
+
+      await dismiss.click({ timeout: 5000 });
+
+      await expect(banner).toHaveCount(0, { timeout: 5000 });
+
       const cleared = await page.evaluate(
         (key) => !sessionStorage.getItem(key) && !localStorage.getItem(key),
         RELAY_KEY
       );
+
       expect(cleared).toBe(true);
     });
 
     test('no page renders the banner when no relay is present', async ({ page, context }) => {
-      await context.clearCookies();
+      await page.evaluate((key) => {
+        localStorage.removeItem(key);
+        sessionStorage.removeItem(key);
+      }, RELAY_KEY);
+
       const freshPage = await context.newPage();
+
       await freshPage.goto(`${BASE_URL}${p.url}`);
-      await expect(freshPage.locator('#tsm-college-relay-banner')).toHaveCount(0);
+
+      await expect(
+        freshPage.locator('#tsm-college-relay-banner')
+      ).toHaveCount(0);
+
       await freshPage.close();
     });
   });
