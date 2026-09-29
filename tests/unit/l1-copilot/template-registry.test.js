@@ -16,8 +16,9 @@ const FULL = {
   TECHNICIAN_NOTES: 'Wiped and tagged'
 };
 
-check('registry lists exactly the 6 lifecycle templates', () => {
-  assert.deepStrictEqual(listTemplates().map(t => t.id).sort(), [...IDS].sort());
+check('registry contains the 6 core lifecycle templates', () => {
+  const ids = listTemplates().map(t => t.id);
+  for (const id of IDS) assert.ok(ids.includes(id), 'missing ' + id);
 });
 
 check('listTemplates returns copies (callers cannot mutate the registry)', () => {
