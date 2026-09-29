@@ -146,7 +146,83 @@
     return total / values.length;
   }
 
+  let candidateContext = null;
+
+  function setCandidateContext(candidateId) {
+    if (
+      typeof candidateId !== 'string' ||
+      !candidateId.trim()
+    ) {
+      throw new Error('candidateId is required');
+    }
+
+    candidateContext = {
+      candidateId: candidateId.trim()
+    };
+
+    return getCandidateContext();
+  }
+
+  function getCandidateContext() {
+    return candidateContext
+      ? {
+          candidateId: candidateContext.candidateId
+        }
+      : null;
+  }
+
+  function clearCandidateContext() {
+    candidateContext = null;
+    return null;
+  }
+
+  /*
+   * Registry write-through (Phase 0.5).
+   * Local recording is authoritative and never blocked by the registry.
+   * Registry scores are 0-100; the engine stores 0-1.
+   */
+  const writeThroughStatus = { sent: 0, failed: 0, lastError: null };
+
+  function toRegistryScore(score) {
+    return Math.round(score * 1000) / 10;
+  }
+
+  function writeThrough(attempt) {
+    const ctx = getCandidateContext();
+    if (!ctx) return;
+
+    const bridge = global.TSMCandidateRegistryBridge;
+    if (!bridge || typeof bridge.recordRcmAttempt !== 'function') return;
+
+    try {
+      const payload = Object.assign({}, attempt, {
+        score: toRegistryScore(attempt.score),
+        metadata: Object.assign({}, attempt.metadata, { attemptId: attempt.id })
+      });
+
+      Promise.resolve(bridge.recordRcmAttempt(ctx.candidateId, payload))
+        .then(function () { writeThroughStatus.sent += 1; })
+        .catch(function (err) {
+          writeThroughStatus.failed += 1;
+          writeThroughStatus.lastError = String((err && err.message) || err);
+        });
+    } catch (err) {
+      writeThroughStatus.failed += 1;
+      writeThroughStatus.lastError = String((err && err.message) || err);
+    }
+  }
+
+  function getWriteThroughStatus() {
+    return Object.assign({}, writeThroughStatus);
+  }
+
   function recordAttempt(input) {
+    const attempt = recordAttemptLocal(input);
+    writeThrough(attempt);
+    return attempt;
+  }
+
+  function recordAttemptLocal(input) {
     input = input || {};
 
     const state = loadState();
@@ -434,6 +510,10 @@
     getReadiness: getReadiness,
 
     recordAttempt: recordAttempt,
+    getWriteThroughStatus: getWriteThroughStatus,
+    setCandidateContext: setCandidateContext,
+    getCandidateContext: getCandidateContext,
+    clearCandidateContext: clearCandidateContext,
 
     recordDecision: recordDecision,
 
