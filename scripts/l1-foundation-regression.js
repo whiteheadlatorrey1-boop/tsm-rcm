@@ -12,7 +12,7 @@ const path = require('path');
 const dir = path.join(__dirname, '..', 'tests', 'unit', 'l1-copilot');
 const GROUPS = [
   ['Workflow engine + contract', ['workflow-contract', 'workflow-engine-evidence-golden']],
-  ['Asset lifecycle + disposition', ['asset-lifecycle', 'disposition-templates']],
+  ['Asset lifecycle + disposition', ['asset-lifecycle', 'disposition-templates', 'disposition-sequence']],
   ['Closure gate / gate tracker', ['gate-tracker']],
   ['Action gate', ['action-gate', 'orchestrate-route-strips-action']],
   ['Governed orchestrator', ['governed-orchestrator', 'governed-orchestrator-gates']],
@@ -23,13 +23,23 @@ const GROUPS = [
   ['Cloud / device adapters', ['cloud-ops-adapter', 'gcp-adapter', 'graph-intune-adapter']]
 ];
 
+const ROUTE_TESTS = [
+  'test-l1-asset-action-execute-route',
+  'test-l1-disposition-sequence-route',
+  'test-l1-audit-coverage'
+];
+
+GROUPS.push(['Asset-action / disposition routes', ROUTE_TESTS]);
+
 const files = fs.readdirSync(dir).filter(f => f.endsWith('.test.js')).map(f => f.replace(/\.test\.js$/, ''));
 const mapped = new Set(GROUPS.flatMap(g => g[1]));
 const other = files.filter(f => !mapped.has(f));
 if (other.length) GROUPS.push(['Other', other]);
 
 function run(name) {
-  const file = path.join(dir, `${name}.test.js`);
+  const file = name.startsWith('test-l1-')
+    ? path.join(__dirname, `${name}.js`)
+    : path.join(dir, `${name}.test.js`);
   if (!fs.existsSync(file)) return { status: 'MISSING' };
   const r = spawnSync(process.execPath, [file], {
     env: Object.assign({ TSM_SESSION_SECRET: 'test-session-secret' }, process.env),
