@@ -18,7 +18,8 @@ const SUGGESTION_TYPES = Object.freeze([
   'HARDWARE_SWAP',
   'LOANER_RETURN',
   'WARRANTY_DEPOT_RETURN',
-  'DEVICE_REASSIGNMENT'
+  'DEVICE_REASSIGNMENT',
+  'LOST_STOLEN_REPORT'
 ]);
 
 const KEYWORDS = Object.freeze({
@@ -56,6 +57,14 @@ const KEYWORDS = Object.freeze({
     'reassignment',
     'new user',
     'assigned to another'
+  ],
+  LOST_STOLEN_REPORT: [
+    'lost laptop',
+    'lost device',
+    'stolen',
+    'theft',
+    'lost or stolen',
+    'lost/stolen'
   ]
 });
 

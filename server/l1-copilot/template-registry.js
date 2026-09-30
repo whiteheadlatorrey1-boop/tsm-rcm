@@ -32,7 +32,39 @@ const FIELD_LABELS = Object.freeze({
   SANITIZATION_METHOD: 'Sanitization Method',
   SANITIZATION_VERIFIED_BY: 'Sanitization Verified By',
   DISPOSITION_METHOD: 'Disposition Method',
-  DISPOSITION_REFERENCE: 'Disposition Reference'
+  DISPOSITION_REFERENCE: 'Disposition Reference',
+  LOSS_CLASSIFICATION: 'Loss Classification',
+  LOSS_DATE: 'Date Lost/Stolen',
+  LAST_KNOWN_LOCATION: 'Last Known Location',
+  LOSS_CIRCUMSTANCES: 'Circumstances',
+  POLICE_REPORT_REFERENCE: 'Police Report Reference',
+  ESCALATED_TO: 'Escalated To',
+  SECURITY_REFERENCE: 'Security Reference',
+  SECURITY_ACTION: 'Security Action',
+  SECURITY_ACTOR: 'Security Action Performed By',
+  SECURITY_VERIFIED_BY: 'Security Action Verified By',
+  RECONCILED_STATUS: 'CMDB Status Recorded',
+  RECONCILIATION_REFERENCE: 'Reconciliation Reference'
+});
+
+// Value gates: presence alone is not enough for these fields. Evaluated in
+// renderTemplate, so preview, confirm and execute all enforce them.
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const GATES = Object.freeze({
+  LOSS_CLASSIFICATION: {
+    message: 'Loss classification must be LOST or STOLEN.',
+    test: v => ['LOST', 'STOLEN'].includes(String(v).trim().toUpperCase())
+  },
+  LOSS_DATE: {
+    message: 'Date lost/stolen must be a real date in YYYY-MM-DD format, not in the future.',
+    test: (v, now) => {
+      const d = String(v).trim();
+      if (!ISO_DATE.test(d)) return false;
+      const t = Date.parse(d + 'T00:00:00Z');
+      if (Number.isNaN(t) || new Date(t).toISOString().slice(0, 10) !== d) return false;
+      return t <= Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+    }
+  }
 });
 
 function field(name) {
@@ -106,6 +138,38 @@ const TEMPLATES = Object.freeze({
     required: ['INCIDENT_NUMBER', 'ASSET_TAG', 'TECHNICIAN', 'DISPOSITION_METHOD', 'DISPOSITION_REFERENCE'],
     optional: ['TECHNICIAN_NOTES']
   },
+  // Lost/stolen asset: four RECORD templates, one per governed stage. L1 records
+  // what named humans (reporting user, security team) did; it never performs the
+  // remote lock/wipe/account-disable itself.
+  LOST_STOLEN_REPORT: {
+    id: 'LOST_STOLEN_REPORT',
+    label: 'Lost/Stolen Report',
+    heading: 'LOST/STOLEN REPORT',
+    required: ['INCIDENT_NUMBER', 'ASSET_TAG', 'TECHNICIAN', 'ASSIGNED_USER', 'LOSS_CLASSIFICATION', 'LOSS_DATE', 'LAST_KNOWN_LOCATION'],
+    optional: ['MANUFACTURER', 'MODEL', 'LOSS_CIRCUMSTANCES', 'POLICE_REPORT_REFERENCE', 'TECHNICIAN_NOTES'],
+    gates: ['LOSS_CLASSIFICATION', 'LOSS_DATE']
+  },
+  LOST_STOLEN_ESCALATION: {
+    id: 'LOST_STOLEN_ESCALATION',
+    label: 'Lost/Stolen Security Escalation Record',
+    heading: 'LOST/STOLEN SECURITY ESCALATION RECORD',
+    required: ['INCIDENT_NUMBER', 'ASSET_TAG', 'TECHNICIAN', 'ESCALATED_TO', 'SECURITY_REFERENCE'],
+    optional: ['TECHNICIAN_NOTES']
+  },
+  LOST_STOLEN_SECURITY_ACTION: {
+    id: 'LOST_STOLEN_SECURITY_ACTION',
+    label: 'Lost/Stolen Security Action Record',
+    heading: 'LOST/STOLEN SECURITY ACTION RECORD',
+    required: ['INCIDENT_NUMBER', 'ASSET_TAG', 'TECHNICIAN', 'SECURITY_ACTION', 'SECURITY_ACTOR', 'SECURITY_VERIFIED_BY'],
+    optional: ['SECURITY_REFERENCE', 'TECHNICIAN_NOTES']
+  },
+  LOST_STOLEN_RECONCILED: {
+    id: 'LOST_STOLEN_RECONCILED',
+    label: 'Lost/Stolen CMDB Reconciliation Record',
+    heading: 'LOST/STOLEN CMDB RECONCILIATION RECORD',
+    required: ['INCIDENT_NUMBER', 'ASSET_TAG', 'TECHNICIAN', 'RECONCILED_STATUS', 'RECONCILIATION_REFERENCE'],
+    optional: ['TECHNICIAN_NOTES']
+  },
   DEVICE_REASSIGNMENT: {
     id: 'DEVICE_REASSIGNMENT',
     label: 'Device Reassignment',
@@ -154,7 +218,7 @@ function clean(value) {
  *   UNKNOWN_TEMPLATE            — templateId not in the registry
  *   MISSING_REQUIRED_FIELDS     — err.missing is the list of absent/blank required fields
  */
-function renderTemplate(templateId, context = {}) {
+function renderTemplate(templateId, context = {}, opts = {}) {
   const tpl = getTemplate(templateId);
   const ctx = context || {};
 
@@ -169,6 +233,17 @@ function renderTemplate(templateId, context = {}) {
     );
     err.code = 'MISSING_REQUIRED_FIELDS';
     err.missing = missing;
+    throw err;
+  }
+
+  const now = opts && opts.now instanceof Date ? opts.now : new Date();
+  const failedGates = (tpl.gates || []).filter(name => !GATES[name].test(clean(ctx[name]), now));
+  if (failedGates.length > 0) {
+    const err = new Error(
+      `Cannot generate ${tpl.label}: ${failedGates.map(n => GATES[n].message).join(' ')}`
+    );
+    err.code = 'GATE_NOT_SATISFIED';
+    err.failedGates = failedGates;
     throw err;
   }
 

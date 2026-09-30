@@ -209,6 +209,7 @@ const { getBpoIntelligence } = require('./server/l1-copilot/servicenow-bpo-intel
 const { evaluateWorkflow } = require('./server/l1-copilot/workflow-engine');
 const { evaluateClosure, buildClosureChecklist } = require('./server/l1-copilot/closure-gate');
 const dispositionSequence = require('./server/l1-copilot/disposition-sequence');
+const lostStolenSequence = require('./server/l1-copilot/lost-stolen-sequence');
 const { normalizeTaskType: l1NormalizeTaskType } = require('./server/l1-copilot/workflow-engine');
 const { orchestrate } = require('./server/l1-copilot/governed-orchestrator');
 const cloudOpsAdapter = require('./server/l1-copilot/cloud-ops-adapter');
@@ -5113,6 +5114,28 @@ app.post('/api/l1-copilot/closure/evaluate', requireRole(L1_COPILOT_ROLES), asyn
       };
     }
 
+    let lostStolenEvidence = null;
+    if (input.taskType && l1NormalizeTaskType(input.taskType) === 'LOST STOLEN') {
+      let notesText = null;
+      const incidentId = String(input.incidentNumber || '').trim();
+      try {
+        if (incidentId && snAdapter.isConfigured()) {
+          const ticket = await snAdapter.getTicket(incidentId);
+          notesText = ticket ? lostStolenSequence.extractNotesText(ticket) : null;
+        }
+      } catch (e) {
+        notesText = null;
+      }
+      const derived = notesText === null
+        ? { securityEscalation: false, securityActionVerified: false, assetReconciled: false }
+        : lostStolenSequence.deriveLostStolenEvidence(input.assetTag, notesText);
+      input.evidence = Object.assign({}, input.evidence || {}, derived);
+      lostStolenEvidence = {
+        source: notesText === null ? 'UNVERIFIED' : 'SERVICENOW_WORK_NOTES',
+        derived
+      };
+    }
+
     const closure = evaluateClosure(input);
     const checklist = buildClosureChecklist(input);
 
@@ -5121,6 +5144,7 @@ app.post('/api/l1-copilot/closure/evaluate', requireRole(L1_COPILOT_ROLES), asyn
       closure,
       checklist,
       dispositionEvidence,
+      lostStolenEvidence,
       governed: {
         readOnly: true,
         technicianAuthority: true,
@@ -5980,7 +6004,11 @@ const TEMPLATE_TO_ACTION_TYPE = {
   DISPOSITION_RECOMMENDATION: 'DISPOSITION_RECOMMENDATION',
   DISPOSITION_APPROVAL: 'DISPOSITION_APPROVAL',
   DISPOSITION_SANITIZATION: 'DISPOSITION_SANITIZATION',
-  DISPOSITION_COMPLETION: 'DISPOSITION_COMPLETION'
+  DISPOSITION_COMPLETION: 'DISPOSITION_COMPLETION',
+  LOST_STOLEN_REPORT: 'LOST_STOLEN_REPORT',
+  LOST_STOLEN_ESCALATION: 'LOST_STOLEN_ESCALATION',
+  LOST_STOLEN_SECURITY_ACTION: 'LOST_STOLEN_SECURITY_ACTION',
+  LOST_STOLEN_RECONCILED: 'LOST_STOLEN_RECONCILED'
 };
 
 app.get('/api/l1-copilot/asset-action/templates', requireRole(L1_COPILOT_ROLES), (req, res) => {
@@ -5994,9 +6022,9 @@ app.post('/api/l1-copilot/asset-action/preview', requireRole(L1_COPILOT_ROLES), 
     const preview = templateRegistry.renderTemplate(templateId, context);
     return res.json({ ok: true, preview });
   } catch (e) {
-    const status = e.code === 'MISSING_REQUIRED_FIELDS' ? 422
+    const status = (e.code === 'MISSING_REQUIRED_FIELDS' || e.code === 'GATE_NOT_SATISFIED') ? 422
       : e.code === 'UNKNOWN_TEMPLATE' ? 404 : 400;
-    return res.status(status).json({ ok: false, error: e.message, missing: e.missing || null });
+    return res.status(status).json({ ok: false, error: e.message, missing: e.missing || null, failedGates: e.failedGates || null });
   }
 });
 
@@ -6018,9 +6046,9 @@ app.post('/api/l1-copilot/asset-action/confirm', requireRole(L1_COPILOT_ROLES), 
   try {
     preview = templateRegistry.renderTemplate(templateId, context);
   } catch (e) {
-    const status = e.code === 'MISSING_REQUIRED_FIELDS' ? 422
+    const status = (e.code === 'MISSING_REQUIRED_FIELDS' || e.code === 'GATE_NOT_SATISFIED') ? 422
       : e.code === 'UNKNOWN_TEMPLATE' ? 404 : 400;
-    return res.status(status).json({ ok: false, error: e.message, missing: e.missing || null });
+    return res.status(status).json({ ok: false, error: e.message, missing: e.missing || null, failedGates: e.failedGates || null });
   }
 
   // Server derives the technician identity from the authenticated session —
@@ -6095,9 +6123,9 @@ app.post('/api/l1-copilot/asset-action/execute', requireRole(L1_COPILOT_ROLES), 
   try {
     preview = templateRegistry.renderTemplate(templateId, context);
   } catch (e) {
-    const status = e.code === 'MISSING_REQUIRED_FIELDS' ? 422
+    const status = (e.code === 'MISSING_REQUIRED_FIELDS' || e.code === 'GATE_NOT_SATISFIED') ? 422
       : e.code === 'UNKNOWN_TEMPLATE' ? 404 : 400;
-    return res.status(status).json({ ok: false, error: e.message, missing: e.missing || null });
+    return res.status(status).json({ ok: false, error: e.message, missing: e.missing || null, failedGates: e.failedGates || null });
   }
 
   const incidentId = String((context && context.INCIDENT_NUMBER) || '').trim();
@@ -6138,26 +6166,29 @@ app.post('/api/l1-copilot/asset-action/execute', requireRole(L1_COPILOT_ROLES), 
   // COMPLETION. Prior stages are proven from the incident's own work notes
   // (never from the request). If the notes cannot be read, the write is
   // refused (fail-closed) rather than assumed.
-  if (dispositionSequence.requiredPriorStages(actionType).length) {
+  const stageSeq = dispositionSequence.isDispositionAction(actionType) ? dispositionSequence
+    : lostStolenSequence.isLostStolenAction(actionType) ? lostStolenSequence : null;
+  const seqCode = stageSeq === lostStolenSequence ? 'LOST_STOLEN' : 'DISPOSITION';
+  if (stageSeq && stageSeq.requiredPriorStages(actionType).length) {
     let notesText = null;
     try {
       const ticket = await snAdapter.getTicket(incidentId);
-      notesText = ticket ? dispositionSequence.extractNotesText(ticket) : null;
+      notesText = ticket ? stageSeq.extractNotesText(ticket) : null;
     } catch (e) {
       notesText = null;
     }
     if (notesText === null) {
       return res.status(502).json({
         ok: false,
-        code: 'DISPOSITION_SEQUENCE_UNVERIFIABLE',
+        code: seqCode + '_SEQUENCE_UNVERIFIABLE',
         error: 'Could not read the incident work notes to verify earlier disposition stages. Nothing was written.'
       });
     }
-    const seq = dispositionSequence.checkPrerequisites(actionType, context && context.ASSET_TAG, notesText);
+    const seq = stageSeq.checkPrerequisites(actionType, context && context.ASSET_TAG, notesText);
     if (!seq.allowed) {
       return res.status(409).json({
         ok: false,
-        code: 'DISPOSITION_SEQUENCE_VIOLATION',
+        code: seqCode + '_SEQUENCE_VIOLATION',
         error: `Cannot record ${actionType}: earlier stage(s) not found in the incident work notes for this asset.`,
         missingStages: seq.missing
       });

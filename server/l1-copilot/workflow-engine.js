@@ -29,6 +29,7 @@ const TASK_TYPES = Object.freeze([
   'HARDWARE SWAP',
   'INCIDENT',
   'DISPOSITION',
+  'LOST STOLEN',
   'OTHER'
 ]);
 
@@ -64,6 +65,7 @@ function normalizeTaskType(taskType) {
 
   if (value === 'FOOTMOVE') return 'FOOT MOVE';
   if (value === 'HARDWARESWAP') return 'HARDWARE SWAP';
+  if (['LOST_STOLEN', 'LOST/STOLEN', 'LOSTSTOLEN'].includes(value)) return 'LOST STOLEN';
 
   return TASK_TYPES.includes(value) ? value : 'OTHER';
 }
@@ -105,6 +107,13 @@ function classifyTask(input = {}) {
   if (/foot move|move user|relocat|desk move|seat move/.test(text)) {
     return {
       taskType: 'FOOT MOVE',
+      source: 'description'
+    };
+  }
+
+  if (/stolen|theft|(lost|missing) (laptop|device|asset|phone|tablet|badge)/.test(text)) {
+    return {
+      taskType: 'LOST STOLEN',
       source: 'description'
     };
   }
@@ -151,7 +160,9 @@ const EVIDENCE_META = Object.freeze({
   approvalObtained: { label: 'Disposition approval' },
   sanitizationVerified: { label: 'Data sanitization verification' },
   dispositionCompleted: { label: 'Physical disposition completed' },
-  assetReconciled: { label: 'CMDB asset reconciliation' }
+  assetReconciled: { label: 'CMDB asset reconciliation' },
+  securityEscalation: { label: 'Security team escalation' },
+  securityActionVerified: { label: 'Security action verification' }
 });
 
 const DEFAULT_EVIDENCE_KEYS = Object.freeze([
