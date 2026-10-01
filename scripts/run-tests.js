@@ -11,12 +11,21 @@ const { spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
-const SKIP = new Set(['test-bpo-client-wiring-smoke.js']); // needs TSM_CREDENTIAL + a live server
+const SKIP = new Set([
+  'test-bpo-client-wiring-smoke.js',        // needs TSM_CREDENTIAL + a live server
+  'test-l1-governed-resolution-route.js'    // needs a Groq API key (or a stub) -- TODO stub the AI call
+]);
 
 const dir = __dirname;
 const files = fs.readdirSync(dir)
-  .filter(f => /^test-(bpo|auth)-.*\.js$/.test(f) && !SKIP.has(f))
+  .filter(f => /^test-(bpo|auth|l1)-.*\.js$/.test(f) && !SKIP.has(f))
   .sort();
+
+const L1_UNIT_DIR = path.join(dir, '..', 'tests', 'unit', 'l1-copilot');
+const l1Unit = fs.existsSync(L1_UNIT_DIR)
+  ? fs.readdirSync(L1_UNIT_DIR).filter(f => /\.test\.js$/.test(f)).sort().map(f => path.join(L1_UNIT_DIR, f))
+  : [];
+const suites = files.map(f => path.join(dir, f)).concat(l1Unit);
 
 const env = Object.assign({ TSM_SESSION_SECRET: 'test-session-secret' }, process.env);
 let failed = 0;
@@ -36,8 +45,9 @@ function restoreGuarded() {
   }
 }
 
-for (const f of files) {
-  const r = spawnSync(process.execPath, [path.join(dir, f)], { env, encoding: 'utf8', timeout: 120000 });
+for (const full of suites) {
+  const f = path.relative(path.join(dir, '..'), full);
+  const r = spawnSync(process.execPath, [full], { env, encoding: 'utf8', timeout: 120000 });
   const out = ((r.stdout || '') + (r.stderr || '')).trim().split('\n');
   if (r.status === 0) {
     console.log('PASS  ' + f + '  ' + (out[out.length - 1] || '').slice(0, 70));
@@ -48,6 +58,6 @@ for (const f of files) {
   }
 }
 
-console.log('\n' + (files.length - failed) + '/' + files.length + ' suites passed in ' + ((Date.now() - started) / 1000).toFixed(1) + 's');
+console.log('\n' + (suites.length - failed) + '/' + suites.length + ' suites passed in ' + ((Date.now() - started) / 1000).toFixed(1) + 's');
 restoreGuarded();
 process.exit(failed ? 1 : 0);

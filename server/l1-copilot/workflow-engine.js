@@ -19,6 +19,8 @@
  *   - modify CMDB records
  */
 
+const { WORKFLOWS: WORKFLOW_CONTRACTS } = require('./workflow-contract');
+
 const TASK_TYPES = Object.freeze([
   'ONBOARDING',
   'OFFBOARDING',
@@ -26,6 +28,8 @@ const TASK_TYPES = Object.freeze([
   'HARDWARE',
   'HARDWARE SWAP',
   'INCIDENT',
+  'DISPOSITION',
+  'LOST STOLEN',
   'OTHER'
 ]);
 
@@ -61,6 +65,7 @@ function normalizeTaskType(taskType) {
 
   if (value === 'FOOTMOVE') return 'FOOT MOVE';
   if (value === 'HARDWARESWAP') return 'HARDWARE SWAP';
+  if (['LOST_STOLEN', 'LOST/STOLEN', 'LOSTSTOLEN'].includes(value)) return 'LOST STOLEN';
 
   return TASK_TYPES.includes(value) ? value : 'OTHER';
 }
@@ -106,6 +111,13 @@ function classifyTask(input = {}) {
     };
   }
 
+  if (/stolen|theft|(lost|missing) (laptop|device|asset|phone|tablet|badge)/.test(text)) {
+    return {
+      taskType: 'LOST STOLEN',
+      source: 'description'
+    };
+  }
+
   if (/hardware swap|device swap|replacement device/.test(text)) {
     return {
       taskType: 'HARDWARE SWAP',
@@ -133,44 +145,51 @@ function classifyTask(input = {}) {
   };
 }
 
+const EVIDENCE_META = Object.freeze({
+  userVerified: { label: 'User validation' },
+  assetVerified: { label: 'Asset validation' },
+  workConfirmed: { label: 'Required work' },
+  tested: { label: 'Functionality testing' },
+  locationVerified: { label: 'Location verification', nextAction: 'VERIFY LOCATION' },
+  finalWorkNoteConfirmed: { label: 'Final work note confirmation' },
+  warrantyVerified: { label: 'Warranty verification' },
+  conditionDocumented: { label: 'Condition documentation' },
+  repairHistoryReviewed: { label: 'Repair history review' },
+  replacementAddressed: { label: 'Replacement addressed' },
+  dataSecurityReviewed: { label: 'Data security review' },
+  approvalObtained: { label: 'Disposition approval' },
+  sanitizationVerified: { label: 'Data sanitization verification' },
+  dispositionCompleted: { label: 'Physical disposition completed' },
+  assetReconciled: { label: 'CMDB asset reconciliation' },
+  securityEscalation: { label: 'Security team escalation' },
+  securityActionVerified: { label: 'Security action verification' }
+});
+
+const DEFAULT_EVIDENCE_KEYS = Object.freeze([
+  'userVerified',
+  'assetVerified',
+  'workConfirmed',
+  'tested',
+  'finalWorkNoteConfirmed'
+]);
+
 function getRequiredEvidence(taskType) {
   const normalizedTask = normalizeTaskType(taskType);
+  const contractId = normalizedTask.replace(/ /g, '_');
 
-  const required = [
-    {
-      key: 'userVerified',
-      label: 'User validation'
-    },
-    {
-      key: 'assetVerified',
-      label: 'Asset validation'
-    },
-    {
-      key: 'workConfirmed',
-      label: 'Required work'
-    },
-    {
-      key: 'tested',
-      label: 'Functionality testing'
+  // Evidence keys come from the workflow contract (single source of truth).
+  // OTHER has no contract entry and keeps the default profile.
+  const keys = WORKFLOW_CONTRACTS[contractId]
+    ? WORKFLOW_CONTRACTS[contractId].evidence
+    : DEFAULT_EVIDENCE_KEYS;
+
+  return keys.map(key => {
+    const meta = EVIDENCE_META[key];
+    if (!meta) {
+      throw new Error(`No label registered for evidence key "${key}"`);
     }
-  ];
-
-  if (
-    ['FOOT MOVE', 'ONBOARDING', 'OFFBOARDING'].includes(normalizedTask)
-  ) {
-    required.push({
-      key: 'locationVerified',
-      label: 'Location verification',
-      nextAction: 'VERIFY LOCATION'
-    });
-  }
-
-  required.push({
-    key: 'finalWorkNoteConfirmed',
-    label: 'Final work note confirmation'
+    return Object.assign({ key }, meta);
   });
-
-  return required;
 }
 
 function evaluateWorkflow(input = {}) {
