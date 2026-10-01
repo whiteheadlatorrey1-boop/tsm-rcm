@@ -137,11 +137,11 @@ router.get('/api/staffing/placements/:id', async (req, res) => {
 // Submit a candidate against a job order — creates the placement record.
 router.post('/api/staffing/placements', async (req, res) => {
   try {
-    const { candidateId, jobOrderId, payRate, annualHours, meta } = req.body || {};
+    const { candidateId, jobOrderId, payRate, annualHours, meta, matchResult, review } = req.body || {};
     if (!candidateId || !jobOrderId) {
       return res.status(400).json({ error: 'candidateId and jobOrderId are required' });
     }
-    const placement = await engine.submitCandidate({ candidateId, jobOrderId, payRate, annualHours, meta });
+    const placement = await engine.submitCandidate({ candidateId, jobOrderId, payRate, annualHours, meta, matchResult, review });
     res.status(201).json({ placement });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -156,7 +156,9 @@ router.put('/api/staffing/placements/:id/status', async (req, res) => {
   try {
     const { status } = req.body || {};
     if (!status) return res.status(400).json({ error: 'status is required' });
-    const placement = await engine.updatePlacementStatus(req.params.id, status);
+    const placement = await engine.updatePlacementStatus(req.params.id, status, {
+      actorId: (req.user && req.user.actor) || (req.session && req.session.user && req.session.user.id) || undefined,
+    });
     res.json({ placement });
   } catch (err) {
     res.status(400).json({ error: err.message });
