@@ -17,11 +17,20 @@
 const { MongoClient } = require('mongodb');
 const crypto = require('crypto');
 const candidateRegistry = require('./candidate-registry-service');
+const Pipeline = require('../html/js/career/tsm-staffing-pipeline-model.js');
 
 const DEFAULT_DB_NAME = 'tsm-consultz';
 const EMPLOYERS_COLLECTION = 'staffing_employers';
 const JOB_ORDERS_COLLECTION = 'staffing_job_orders';
 const PLACEMENTS_COLLECTION = 'staffing_placements';
+
+// Phase 8E wiring. When STAFFING_PIPELINE_ENFORCE=1 the human-review submission
+// gate and the stage-transition rules from tsm-staffing-pipeline-model.js are
+// enforced. Default (unset) leaves behavior exactly as before, so the Staffing
+// Admin UI (which has no review step yet) keeps working until the UI ships one.
+function pipelineEnforced() {
+  return process.env.STAFFING_PIPELINE_ENFORCE === '1';
+}
 
 let client = null;
 let db = null;
@@ -303,7 +312,7 @@ function evaluatePlacementEligibility(candidate, { minimumReadiness = 70 } = {})
   };
 }
 
-async function submitCandidate({ candidateId, jobOrderId, payRate, annualHours, meta }) {
+async function submitCandidate({ candidateId, jobOrderId, payRate, annualHours, meta, matchResult, review }) {
   if (!candidateId) {
     throw new Error('candidateId is required');
   }
@@ -321,6 +330,29 @@ async function submitCandidate({ candidateId, jobOrderId, payRate, annualHours, 
   const jobOrder = await getJobOrder(jobOrderId);
   if (!jobOrder) throw new Error(`No job order found for jobOrderId ${jobOrderId}`);
 
+  // Phase 8E: human-review gate. The review must be an approved human decision
+  // bound to the exact match inputs (fingerprint) for THIS candidate.
+  let humanReview = null;
+  const gateProvided = matchResult != null || review != null;
+  if (pipelineEnforced() || gateProvided) {
+    const gate = Pipeline.evaluateSubmissionGate(matchResult, review);
+    const reasons = gate.reasons.slice();
+    if (matchResult && matchResult.candidateId && matchResult.candidateId !== candidateId) {
+      reasons.push('match-candidate-mismatch');
+    }
+    if (reasons.length === 0) {
+      humanReview = {
+        decision: review.decision,
+        reviewerId: review.reviewerId,
+        reviewedAt: review.reviewedAt,
+        reviewedFingerprint: review.reviewedFingerprint,
+        matcherVersion: (matchResult.audit && matchResult.audit.matcherVersion) || null,
+      };
+    } else if (pipelineEnforced()) {
+      throw new Error(`Submission blocked: human review required (${reasons.join(', ')})`);
+    }
+  }
+
   const now = new Date().toISOString();
   const placementId = genId('plc');
 
@@ -333,6 +365,7 @@ async function submitCandidate({ candidateId, jobOrderId, payRate, annualHours, 
     payRate: payRate != null ? Number(payRate) : jobOrder.payRate,
     annualHours: annualHours != null ? Number(annualHours) : null,
     statusHistory: [{ status: 'submitted', at: now }],
+    humanReview,
     computedFee: null,
     meta: meta || {},
     createdAt: now,
@@ -343,7 +376,7 @@ async function submitCandidate({ candidateId, jobOrderId, payRate, annualHours, 
   return getPlacement(placementId);
 }
 
-async function updatePlacementStatus(placementId, status) {
+async function updatePlacementStatus(placementId, status, { actorId } = {}) {
   if (!VALID_STATUSES.includes(status)) {
     throw new Error(`Invalid status "${status}". Must be one of: ${VALID_STATUSES.join(', ')}`);
   }
@@ -352,11 +385,17 @@ async function updatePlacementStatus(placementId, status) {
   const placement = await getPlacement(placementId);
   if (!placement) throw new Error(`No placement found for placementId ${placementId}`);
 
+  // Phase 8E: only legal stage transitions when enforcement is on.
+  if (pipelineEnforced() && !Pipeline.canTransition(placement.status, status)) {
+    throw new Error(`Illegal transition "${placement.status}" -> "${status}"`);
+  }
+
   const now = new Date().toISOString();
+  const historyEntry = actorId ? { status, at: now, actorId } : { status, at: now };
   const update = {
     status,
     updatedAt: now,
-    statusHistory: [...(placement.statusHistory || []), { status, at: now }],
+    statusHistory: [...(placement.statusHistory || []), historyEntry],
   };
 
   if (status === 'placed') {
