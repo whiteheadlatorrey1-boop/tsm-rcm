@@ -588,6 +588,19 @@
                     </div>
                 </div>
 
+                <!-- 15B: candidate readiness intelligence (read-only; independent of scenario toggle) -->
+                <div class="dashboard-card" id="candidate-intel-card" style="margin-top:16px;">
+                    <div class="card-header-group">
+                        <h4>Candidate Readiness Intelligence</h4>
+                        <span style="font-size:0.7rem; color:var(--accent-cyan); font-family:monospace; font-weight:700;">Read-only &bull; Human review required</span>
+                    </div>
+                    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
+                        <input id="candidate-intel-id" type="text" placeholder="Candidate ID" aria-label="Candidate ID" autocomplete="off" style="flex:1; min-width:200px; padding:8px 10px; border-radius:6px; border:1px solid var(--border-color); background:rgba(255,255,255,0.03); color:inherit; font-size:0.8rem;">
+                        <button id="candidate-intel-load" class="action-button-trigger" type="button">Load</button>
+                    </div>
+                    <div id="candidate-intel-output" aria-live="polite" style="font-size:0.8rem; color:var(--text-muted); line-height:1.5;">Enter a candidate ID to view readiness intelligence. The scenario metrics above are not affected.</div>
+                </div>
+
                 <div class="cta-group-container">
                     <div class="cta-text">
                         <h4>Review Staffing Deployment Use Cases</h4>
@@ -885,6 +898,63 @@
                 defaultStartingAppNodeReference.classList.add('active');
             }
         });
+    </script>
+  <script>
+    // 15B candidate readiness intelligence — isolated; does not touch the scenario toggle.
+    (function () {
+        var input = document.getElementById('candidate-intel-id');
+        var btn = document.getElementById('candidate-intel-load');
+        var out = document.getElementById('candidate-intel-output');
+        if (!input || !btn || !out) return;
+
+        function show(text, color) {
+            out.textContent = text;
+            out.style.color = color || 'var(--text-muted)';
+        }
+        function line(label, value) {
+            var d = document.createElement('div');
+            var l = document.createElement('span');
+            l.style.cssText = 'color:var(--text-muted); text-transform:uppercase; font-size:0.65rem; letter-spacing:0.5px; margin-right:8px;';
+            l.textContent = label;
+            var v = document.createElement('span');
+            v.style.color = 'inherit';
+            v.textContent = value;
+            d.appendChild(l);
+            d.appendChild(v);
+            out.appendChild(d);
+        }
+        function render(v) {
+            out.textContent = '';
+            out.style.color = 'inherit';
+            line('Candidate', v.name ? v.name + ' (' + v.candidateId + ')' : v.candidateId);
+            if (v.isSampleData) line('Data', 'Sample data');
+            line('Professional readiness', v.readinessScore + '%');
+            if (v.state === 'no_evidence') { line('Status', v.note); return; }
+            line('Readiness signal', v.signal ? v.signal.type + ' = ' + v.signal.value : 'none');
+            if (!v.insights.length) { line('Insight', v.note); return; }
+            v.insights.forEach(function (i) { line('Insight', i.title + ' - ' + i.description); });
+            v.actions.forEach(function (a) { line('Recommended action', a.title + ' - ' + a.reason); });
+            line('Human review required', v.humanReviewRequired ? 'Yes' : 'No');
+        }
+        function load() {
+            var id = input.value.trim();
+            if (!id) { show('Enter a candidate ID.'); return; }
+            show('Loading...');
+            fetch('/api/staffing/candidates/' + encodeURIComponent(id) + '/readiness-intelligence', { credentials: 'same-origin' })
+                .then(function (r) {
+                    return r.json().catch(function () { return {}; }).then(function (b) { return { status: r.status, body: b }; });
+                })
+                .then(function (res) {
+                    if (res.status === 200) return render(res.body);
+                    if (res.status === 401 || res.status === 403) return show('Staff sign-in required to view candidate readiness.', 'var(--accent-amber)');
+                    if (res.status === 404) return show('Candidate not found.', 'var(--accent-amber)');
+                    show((res.body && res.body.error) || 'Unable to load readiness intelligence.', 'var(--accent-amber)');
+                })
+                .catch(function () { show('Unable to reach the server.', 'var(--accent-red)'); });
+        }
+        btn.addEventListener('click', load);
+        input.addEventListener('keydown', function (e) { if (e.key === 'Enter') load(); });
+    })();
     </script>
   <script src="/shared/tsm-guided-how-to.js" defer></script>
 </body>
