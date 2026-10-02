@@ -229,6 +229,26 @@ async function main() {
   check('job order flipped to "filled"', jobOrderAfter.jobOrder.status === 'filled');
 
   // -------------------------------------------------------------
+  // EVIDENCE CHECK (STAFFING_PLACEMENT_EVIDENCE) — added step 6b
+  // Set EXPECT_EVIDENCE=1 to make a missing record a failure.
+  // -------------------------------------------------------------
+  step('6b', 'Placement evidence record (needs STAFFING_PLACEMENT_EVIDENCE=1 on the target)');
+  {
+    let ev = null, evErr = null;
+    try { ev = await api('GET', `/api/staffing/placements/${placementId}/evidence`); }
+    catch (e) { evErr = e.message; }
+    const found = ev && JSON.stringify(ev).includes(placementId);
+    if (found) {
+      console.log('  evidence: ' + JSON.stringify(ev).slice(0, 600));
+      check('evidence record references this placement', true);
+    } else if (process.env.EXPECT_EVIDENCE === '1') {
+      check('evidence record exists for this placement' + (evErr ? ` (${evErr})` : ''), false);
+    } else {
+      console.log('  flag off or no record: evidence not persisted (not counted as a failure; set EXPECT_EVIDENCE=1 to enforce)' + (evErr ? ` [${evErr}]` : ''));
+    }
+  }
+
+  // -------------------------------------------------------------
   // CLEANUP — leaves production exactly as it was found, unless --keep
   // -------------------------------------------------------------
   if (KEEP) {
@@ -236,6 +256,12 @@ async function main() {
   } else {
     step(7, 'Cleaning up everything this script created');
     await api('DELETE', `/api/staffing/placements/${placementId}`);
+    try {
+      const left = await api('GET', `/api/staffing/placements/${placementId}/evidence`);
+      if (left && JSON.stringify(left).includes(placementId)) {
+        console.log(`  \x1b[33mWARNING: evidence for ${placementId} survived the placement delete. Remove it manually (run tag ${RUN_TAG}).\x1b[0m`);
+      }
+    } catch (e) { /* no leftover evidence */ }
     await api('DELETE', `/api/staffing/job-orders/${jobOrderId}`);
     await api('DELETE', `/api/staffing/employers/${employerId}`);
     await api('DELETE', `/api/candidates/${candidateId}`);
