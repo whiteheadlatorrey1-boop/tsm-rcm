@@ -11,6 +11,8 @@ const express = require('express');
 const router = express.Router();
 
 const engine = require('../server/staffing-engine-service');
+const candidateRegistry = require('../server/candidate-registry-service');
+const readinessView = require('../server/workforce-readiness-view');
 
 // ---- Employers ----------------------------------------------------
 
@@ -180,6 +182,20 @@ router.delete('/api/staffing/placements/:id', async (req, res) => {
     const deleted = await engine.deletePlacement(req.params.id);
     if (!deleted) return res.status(404).json({ error: 'not found' });
     res.status(204).end();
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Phase 15B — read-only readiness intelligence for one candidate (Command
+// Center card). Reads the registry, runs the 15A bridge, writes nothing.
+router.get('/api/staffing/candidates/:candidateId/readiness-intelligence', async (req, res) => {
+  try {
+    const { status, body } = await readinessView.resolveReadinessIntelligence(
+      req.params.candidateId,
+      candidateRegistry.getCandidate
+    );
+    res.status(status).json(body);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
