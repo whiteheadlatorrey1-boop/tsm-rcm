@@ -42,6 +42,30 @@ function placementEvidenceEnabled() {
   return process.env.STAFFING_PLACEMENT_EVIDENCE === '1';
 }
 
+// Placement audit trail. When STAFFING_PLACEMENT_AUDIT=1, every status change is
+// also written as an immutable event to its own collection. Default off.
+// Best-effort: a failure is logged and NEVER blocks or rolls back the status change.
+const PlacementAudit = require('../html/js/career/tsm-staffing-audit.js');
+const PLACEMENT_AUDIT_COLLECTION = 'staffing_placement_audit';
+function placementAuditEnabled() {
+  return process.env.STAFFING_PLACEMENT_AUDIT === '1';
+}
+async function recordPlacementAudit(args) {
+  if (!placementAuditEnabled() || !args || !args.placement) return { recorded: 0 };
+  try {
+    const event = PlacementAudit.buildStatusChangeEvent(args);
+    const database = await connect();
+    const collection = database.collection(PLACEMENT_AUDIT_COLLECTION);
+    const existing = await collection.findOne({ auditEventId: event.auditEventId });
+    if (existing) return { recorded: 0 };
+    await collection.insertOne(event);
+    return { recorded: 1 };
+  } catch (err) {
+    console.error('[staffing] placement audit write failed (non-blocking):', err && err.message);
+    return { recorded: 0, error: true };
+  }
+}
+
 let client = null;
 let db = null;
 let connecting = null;
@@ -459,6 +483,7 @@ async function updatePlacementStatus(placementId, status, { actorId } = {}) {
   await database
     .collection(PLACEMENTS_COLLECTION)
     .updateOne({ placementId }, { $set: update });
+  await recordPlacementAudit({ placement, to: status, actorId, at: now, historyIndex: update.statusHistory.length - 1 });
 
   // If the job order is now fully staffed, mark it filled. Simple count
   // against openings — doesn't try to guess partial-fill semantics.
