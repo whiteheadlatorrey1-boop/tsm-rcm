@@ -15,7 +15,7 @@ const SKIP = new Set(['test-bpo-client-wiring-smoke.js']); // needs TSM_CREDENTI
 
 const dir = __dirname;
 const files = fs.readdirSync(dir)
-  .filter(f => /^test-(bpo|auth)-.*\.js$/.test(f) && !SKIP.has(f))
+  .filter(f => /^test-(bpo|auth|staffing)-.*\.js$/.test(f) && !SKIP.has(f))
   .sort();
 
 const env = Object.assign({ TSM_SESSION_SECRET: 'test-session-secret' }, process.env);
