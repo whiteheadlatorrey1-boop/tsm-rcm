@@ -124,6 +124,16 @@ router.get('/api/staffing/placements', async (req, res) => {
   }
 });
 
+// Read-only: the outcome-stream records for one placement (Phase 8F).
+router.get('/api/staffing/placements/:id/evidence', async (req, res) => {
+  try {
+    const evidence = await engine.listPlacementEvidence({ placementId: req.params.id });
+    res.json({ evidence });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/api/staffing/placements/:id', async (req, res) => {
   try {
     const placement = await engine.getPlacement(req.params.id);

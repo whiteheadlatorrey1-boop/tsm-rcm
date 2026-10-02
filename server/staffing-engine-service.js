@@ -18,11 +18,13 @@ const { MongoClient } = require('mongodb');
 const crypto = require('crypto');
 const candidateRegistry = require('./candidate-registry-service');
 const Pipeline = require('../html/js/career/tsm-staffing-pipeline-model.js');
+const PlacementEvidence = require('../html/js/career/tsm-placement-evidence.js');
 
 const DEFAULT_DB_NAME = 'tsm-consultz';
 const EMPLOYERS_COLLECTION = 'staffing_employers';
 const JOB_ORDERS_COLLECTION = 'staffing_job_orders';
 const PLACEMENTS_COLLECTION = 'staffing_placements';
+const PLACEMENT_EVIDENCE_COLLECTION = 'staffing_placement_evidence';
 
 // Phase 8E wiring. When STAFFING_PIPELINE_ENFORCE=1 the human-review submission
 // gate and the stage-transition rules from tsm-staffing-pipeline-model.js are
@@ -30,6 +32,14 @@ const PLACEMENTS_COLLECTION = 'staffing_placements';
 // Admin UI (which has no review step yet) keeps working until the UI ships one.
 function pipelineEnforced() {
   return process.env.STAFFING_PIPELINE_ENFORCE === '1';
+}
+
+// Phase 8F wiring. When STAFFING_PLACEMENT_EVIDENCE=1, every placement stage is
+// recorded as an append-only outcome record in its OWN collection
+// (staffing_placement_evidence) -- never the Candidate Registry, never training
+// evidence. Default (unset) records nothing.
+function placementEvidenceEnabled() {
+  return process.env.STAFFING_PLACEMENT_EVIDENCE === '1';
 }
 
 let client = null;
@@ -264,6 +274,46 @@ async function getPlacement(placementId) {
  * record that both the readiness dashboard and an employer-facing view
  * can track through status.
  */
+/**
+ * Records the outcome-stream records for a placement. Idempotent (a record id
+ * already stored is skipped) and best-effort: a failure here is logged and
+ * NEVER blocks or rolls back the placement itself.
+ */
+async function recordPlacementEvidence(placement) {
+  if (!placementEvidenceEnabled() || !placement) return { recorded: 0, rejected: 0 };
+  try {
+    const out = PlacementEvidence.buildPlacementEvidence(placement);
+    const database = await connect();
+    const collection = database.collection(PLACEMENT_EVIDENCE_COLLECTION);
+    let recorded = 0;
+    for (const rec of out.records) {
+      const existing = await collection.findOne({ placementEvidenceId: rec.placementEvidenceId });
+      if (!existing) {
+        await collection.insertOne({ ...rec, recordedAt: new Date().toISOString() });
+        recorded += 1;
+      }
+    }
+    return { recorded, rejected: out.rejected.length };
+  } catch (err) {
+    console.error('[staffing] placement evidence not recorded:', err.message);
+    return { recorded: 0, rejected: 0, error: err.message };
+  }
+}
+
+async function listPlacementEvidence({ candidateId, placementId, stage } = {}) {
+  const database = await connect();
+  const query = {};
+  if (candidateId) query.candidateId = candidateId;
+  if (placementId) query.placementId = placementId;
+  if (stage) query.stage = stage;
+  const records = await database
+    .collection(PLACEMENT_EVIDENCE_COLLECTION)
+    .find(query)
+    .sort({ occurredAt: 1 })
+    .toArray();
+  return records;
+}
+
 function evaluatePlacementEligibility(candidate, { minimumReadiness = 70 } = {}) {
   if (!candidate) {
     return {
@@ -373,7 +423,9 @@ async function submitCandidate({ candidateId, jobOrderId, payRate, annualHours, 
   };
 
   await database.collection(PLACEMENTS_COLLECTION).insertOne(doc);
-  return getPlacement(placementId);
+  const created = await getPlacement(placementId);
+  await recordPlacementEvidence(created);
+  return created;
 }
 
 async function updatePlacementStatus(placementId, status, { actorId } = {}) {
@@ -427,7 +479,9 @@ async function updatePlacementStatus(placementId, status, { actorId } = {}) {
     }
   }
 
-  return getPlacement(placementId);
+  const updated = await getPlacement(placementId);
+  await recordPlacementEvidence(updated);
+  return updated;
 }
 
 async function deletePlacement(placementId) {
@@ -456,6 +510,8 @@ module.exports = {
   submitCandidate,
   evaluatePlacementEligibility,
   updatePlacementStatus,
+  recordPlacementEvidence,
+  listPlacementEvidence,
   deletePlacement,
   computeFee,
   VALID_STATUSES,
