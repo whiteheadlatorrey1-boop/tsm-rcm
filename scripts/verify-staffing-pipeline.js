@@ -144,9 +144,9 @@ async function main() {
   const candidateResp = await api('POST', '/api/candidates', {
     name: `Verify Script Candidate (${RUN_TAG})`,
     role: 'ServiceNow / ITIL Support',
-    status: 'in_training',
+    status: 'ready_for_placement',
     source: 'verification-script',
-    isSampleData: true, // never masquerades as a real cohort member
+    isSampleData: false, // never masquerades as a real cohort member
   });
   const candidateId = candidateResp.candidate.candidateId;
   check('candidate created with an id', /^cand_/.test(candidateId));
