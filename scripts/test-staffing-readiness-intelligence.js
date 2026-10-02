@@ -50,6 +50,12 @@ check('missing / null / blank / non-numeric / boolean score is rejected, never t
     assert.throws(() => view.buildCandidateReadinessView({ candidateId: 'c1', readinessScore: s }), (e) => e.code === 'NO_READINESS_SCORE');
   });
 });
+check('15A normalizer rejects null / blank / boolean instead of returning 0', () => {
+  const bridge = require(path.join(root, 'html', 'js', 'career', 'tsm-workforce-readiness-integration.js'));
+  [null, undefined, '', true, false, 'abc'].forEach((s) => assert.throws(() => bridge.normalizeReadinessScore(s), /readinessScore must be numeric/));
+  assert.strictEqual(bridge.normalizeReadinessScore(0), 0);
+  assert.strictEqual(bridge.normalizeReadinessScore('78'), 78);
+});
 check('view exposes only identity, score, signal, insights, actions (no raw record)', () => {
   const v = view.buildCandidateReadinessView(cand(85, { email: 'x@y.z', _id: 'abc', role: 'r' }));
   assert.ok(!('email' in v) && !('_id' in v) && !('role' in v));
