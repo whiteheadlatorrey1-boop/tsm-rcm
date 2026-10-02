@@ -5321,6 +5321,11 @@ app.post('/api/l1-copilot/servicenow/work-note', requireRole(L1_COPILOT_ROLES), 
         return res.status(413).json({ ok: false, error: 'note must be text of at most 20000 characters.' });
       }
       const result = await snAdapter.writeWorkNote(incidentId, note.trim());
+      try {
+        recordL1AuditEvent(require('./server/l1-copilot/work-note-audit').buildWorkNoteAuditEvent({
+          incidentId, noteLength: note.trim().length, session: req.tsmSession, user: req.user, result
+        }));
+      } catch (auditErr) { console.error('L1 WORK NOTE AUDIT ERROR:', auditErr.message); }
     res.json({
       ok: true,
       ...result,
