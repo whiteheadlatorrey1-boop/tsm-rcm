@@ -37,6 +37,12 @@ function assertCandidateId(candidateId) {
 }
 
 function normalizeReadinessScore(value) {
+  // Number(null), Number('') and Number(false) are 0; a missing score must not
+  // silently become a zero-readiness score.
+  if (value === null || value === undefined || value === '' || typeof value === 'boolean') {
+    throw new Error('readinessScore must be numeric');
+  }
+
   const score = Number(value);
 
   if (!Number.isFinite(score)) {
