@@ -100,6 +100,15 @@ process.env.MONGODB_URI = 'mongodb://fake-for-test/tsm-consultz';
 
 const engine = require(path.join(__dirname, '..', 'server', 'staffing-engine-service.js'));
 
+// submitCandidate enforces placement eligibility (since 802bcd7b), so the
+// made-up candidate ids used below need to resolve to an eligible candidate.
+const candidateRegistry = require(path.join(__dirname, '..', 'server', 'candidate-registry-service.js'));
+const realGetCandidate = candidateRegistry.getCandidate;
+const ELIGIBLE_TEST_IDS = new Set(['cand_deadbeef0001', 'cand_deadbeef0002', 'x']);
+candidateRegistry.getCandidate = async (id) => (ELIGIBLE_TEST_IDS.has(id)
+  ? { candidateId: id, name: 'Test Candidate', status: 'ready_for_placement', readinessScore: 100 }
+  : realGetCandidate(id));
+
 let passed = 0;
 let failed = 0;
 function check(label, cond) {
