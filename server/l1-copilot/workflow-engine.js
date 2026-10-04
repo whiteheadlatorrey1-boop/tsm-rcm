@@ -151,6 +151,20 @@ function classifyTask(input = {}) {
     };
   }
 
+  if (/incident|outage|not working|failure|error|broken/.test(text)) {
+    return {
+      taskType: 'INCIDENT',
+      source: 'description'
+    };
+  }
+
+  if (/hardware swap|device swap|replacement device/.test(text)) {
+    return {
+      taskType: 'HARDWARE SWAP',
+      source: 'description'
+    };
+  }
+
   // "Install a laptop/dock/monitor" is hardware work; "install X on the
   // laptop" is software. Only the install's object decides.
   const hardwareInstall =
@@ -171,20 +185,6 @@ function classifyTask(input = {}) {
   ) {
     return {
       taskType: 'REQUEST FULFILLMENT',
-      source: 'description'
-    };
-  }
-
-  if (/hardware|laptop|desktop|monitor|dock|keyboard|mouse/.test(text)) {
-    return {
-      taskType: 'INCIDENT',
-      source: 'description'
-    };
-  }
-
-  if (/hardware swap|device swap|replacement device/.test(text)) {
-    return {
-      taskType: 'HARDWARE SWAP',
       source: 'description'
     };
   }
@@ -230,30 +230,27 @@ const DEFAULT_EVIDENCE_KEYS = Object.freeze([
   'finalWorkNoteConfirmed'
 ]);
 
+const { WORKFLOWS: WORKFLOW_CONTRACTS } = require('./workflow-contract');
 function getRequiredEvidence(taskType) {
   const normalizedTask = normalizeTaskType(taskType);
+  const contractId = normalizedTask.replace(/ /g, '_');
 
-  const required = [
-    {
-      key: 'userVerified',
-      label: 'User validation'
-    },
-    FULFILLMENT_TASK_TYPES.includes(normalizedTask)
-      ? {
-          key: 'fulfillmentVerified',
-          label: 'Request fulfillment validation'
-        }
-      : {
-          key: 'assetVerified',
-          label: 'Asset validation'
-        },
-    {
-      key: 'workConfirmed',
-      label: 'Required work'
-    },
-    {
-      key: 'tested',
-      label: 'Functionality testing'
+  // Evidence keys come from the workflow contract (single source of truth).
+  // OTHER has no contract entry and keeps the default profile.
+  let keys = WORKFLOW_CONTRACTS[contractId]
+    ? WORKFLOW_CONTRACTS[contractId].evidence
+    : DEFAULT_EVIDENCE_KEYS;
+
+  // Fulfillment tasks validate the request, not a physical asset.
+  if (FULFILLMENT_TASK_TYPES.includes(normalizedTask)) {
+    keys = keys.map(k => (k === 'assetVerified' ? 'fulfillmentVerified' : k));
+  }
+
+  return keys.map(key => {
+    const meta = EVIDENCE_META[key]
+      || (key === 'fulfillmentVerified' ? { label: 'Request fulfillment validation' } : null);
+    if (!meta) {
+      throw new Error(`No label registered for evidence key "${key}"`);
     }
     return Object.assign({ key }, meta);
   });
