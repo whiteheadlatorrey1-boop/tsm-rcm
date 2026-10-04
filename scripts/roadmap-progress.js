@@ -9,6 +9,8 @@
  *   node scripts/roadmap-progress.js               fast: files only
  *   node scripts/roadmap-progress.js --run-tests   also run each matched test file
  *   node scripts/roadmap-progress.js --json        machine-readable output
+ *   node scripts/roadmap-progress.js --todo        ONLY what is left, with a next action per row + git state
+ *                                                  (implies --run-tests, so the status is proof-based)
  *
  * Run it from the repo root. Statuses (strict; matches docs/ROADMAP_STATUS.md):
  *   VERIFIED   all required files present AND every matched test passed (needs --run-tests)
@@ -34,7 +36,8 @@ const cp = require('child_process');
 
 const ROOT = process.cwd();
 const ARGS = new Set(process.argv.slice(2));
-const RUN = ARGS.has('--run-tests');
+const TODO = ARGS.has('--todo');
+const RUN = ARGS.has('--run-tests') || TODO; // --todo needs proof, so it runs the offline suites
 const AS_JSON = ARGS.has('--json');
 
 function listFiles() {
@@ -87,9 +90,15 @@ function runTest(rel) {
  * `tests`: RegExps matched against test-file paths.
  * ------------------------------------------------------------------ */
 const ITEMS = [
-  { id: 'mlo-audit', group: 'Certification content', name: 'MLO content (audit pending)',
+  { id: 'mlo-audit', group: 'Certification content', name: 'MLO prep content (existing seed page)',
     files: ['html/reo-pro/mlo-exam-prep.html', 'html/reo-pro/exam-content.js', 'html/reo-pro/mlo-regulatory-context.js'],
-    tests: [/mlo/i] },
+    tests: [/mlo(?!-blueprint)/i] },
+  { id: 'mlo-blueprint', group: 'Certification content', name: 'MLO weighted blueprint (NMLS, official facts)',
+    files: ['server/certification/weighted-blueprints.js'],
+    contains: [{ file: 'server/certification/weighted-blueprints.js', text: "'nmls-safe-mlo-2026'" }],
+    tests: [/mlo-blueprint/] },
+  { id: 'mlo-bank', group: 'Certification content', name: 'MLO original question bank (planned)',
+    files: [/^server\/certification\/question-banks\/.*(mlo|nmls)/i], tests: [/mlo.*(bank|question)/i] },
   { id: '15a', group: 'Integration spine', name: '15A Readiness -> Workforce Intelligence bridge',
     files: [/tsm-workforce-readiness-integration\.js$/], tests: [/workforce-readiness-integration-phase15a/] },
   { id: '15b', group: 'Integration spine', name: '15B Command Center integration',
@@ -150,7 +159,7 @@ const ITEMS = [
     tests: [/readiness/i] },
 ];
 
-const NEXT_ORDER = ['mlo-audit', '15h', 'cert-wire', 'cert-dash', 'crcr', 'aplus', 'netplus', 'cert-evidence', 'prod-evidence'];
+const NEXT_ORDER = ['mlo-blueprint', 'mlo-bank', '15h', 'cert-wire', 'cert-dash', 'crcr', 'aplus', 'netplus', 'mlo-audit', 'cert-evidence', 'prod-evidence'];
 
 function evaluate(item) {
   const missing = [];
@@ -191,6 +200,44 @@ function evaluate(item) {
   return { id: item.id, group: item.group, name: item.name, status: status, tests: tests.length, testsPassed: passed, note: note };
 }
 
+const NEXT_ACTION = {
+  'mlo-audit': 'Seed content only (20 flashcards, 4 scenarios, 10-question quiz; posts mlo_safe_quiz to the registry; no tests). Low priority to test; the real work is the original question bank (mlo-bank row).',
+  'mlo-blueprint': 'Run the MLO installer (paste-into-sprite-mlo.txt). All numbers come from NMLS pages: 120 items, 190 min, 75% pass, weights 24/11/20/27/18.',
+  'mlo-bank': 'Write an ORIGINAL bank against the five NMLS domains using the existing question-bank engine. Enough depth for 10 samples per domain and two 120-question simulations; every question human-reviewed. NMLS publishes only 10 official samples, so never copy third-party questions.',
+  '15h': 'Write one test that walks a candidate: intake -> training event -> readiness -> registry -> Workforce Intelligence -> staffing -> evidence. It will show which links are missing. Smallest step that proves the whole system.',
+  'cert-wire': 'Record certification/simulation results as Candidate Registry evidence (reuse sim-record.js) and expose a read-only route, same pattern as 15B. Add tests.',
+  'cert-dash': 'Read-only Command Center view of certification readiness per candidate: score, weak domains, sample sizes, human-review flag.',
+  'crcr': 'Verify HFMA content domains and weights from an HFMA document first (weighted-blueprints.js needs published weights). Then add the blueprint and an original bank. Exam format is already in the sources doc.',
+  'aplus': 'Content exists but no tests or blueprint. Get CompTIA official exam objectives, record them in the sources doc, then add a weighted blueprint and an original bank.',
+  'netplus': 'Not started. Same steps as A+: official objectives -> sources doc -> weighted blueprint -> original bank + labs.',
+  'sap': 'Its tests need credentials/env, so this script does not run them. Decide whether SAP is revenue-linked before building an adapter.',
+  '15b': 'Audit against the 15B spec: score -> signal -> insight -> action, role gating, no writes to the Registry.',
+};
+function nextAction(r) {
+  if (NEXT_ACTION[r.id]) return NEXT_ACTION[r.id];
+  if (r.status === 'EXISTS') {
+    if (!r.tests) return 'Files exist but no tests were found. Add an offline test named scripts/test-phase-*.js.';
+    if (!/offline test file/.test(r.note || '')) return 'Tests exist but need env/credentials, so they are not run here. Run them by hand with the right env, or add an offline test.';
+    return 'Tests found but not run. Re-run with --run-tests.';
+  }
+  if (r.status === 'PARTIAL') return 'Some required files are missing (see note). Finish them or fix the manifest path.';
+  if (r.status === 'FAILING') return 'A test fails. Fix it before building anything on top.';
+  return 'Not started.';
+}
+function git(args) {
+  try { return cp.execFileSync('git', args, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); }
+  catch (e) { return null; }
+}
+function gitState() {
+  const branch = git(['rev-parse', '--abbrev-ref', 'HEAD']);
+  if (branch === null) return null;
+  const dirty = git(['status', '--porcelain']);
+  const upstream = git(['rev-parse', '--abbrev-ref', '@{u}']);
+  const ahead = upstream ? git(['rev-list', '--count', upstream + '..HEAD']) : null;
+  const unmergedRaw = git(['branch', '--no-merged', 'main']);
+  const unmerged = unmergedRaw ? unmergedRaw.split('\n').map(function (b) { return b.replace(/^[*\s]+/, ''); }).filter(function (b) { return b && b !== branch; }) : [];
+  return { branch: branch, uncommittedFiles: dirty ? dirty.split('\n').length : 0, upstream: upstream, unpushedCommits: ahead === null ? null : Number(ahead), otherUnmergedBranches: unmerged };
+}
 const before = new Set(FILES);
 const rows = ITEMS.map(evaluate);
 const created = RUN ? listFiles().filter(function (f) { return !before.has(f); }) : [];
@@ -207,8 +254,35 @@ const manual = [
 const next = NEXT_ORDER.map(function (id) { return rows.find(function (r) { return r.id === id; }); })
   .find(function (r) { return r && r.status !== 'VERIFIED'; });
 
+const todoRows = rows.filter(function (r) { return r.status !== 'VERIFIED'; }).sort(function (a, b) {
+  const ia = NEXT_ORDER.indexOf(a.id), ib = NEXT_ORDER.indexOf(b.id);
+  return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+});
+const GIT = gitState();
+
+if (TODO && !AS_JSON) {
+  console.log('\nWHAT IS LEFT  (' + todoRows.length + ' of ' + rows.length + ' rows not VERIFIED; ' + (RUN ? 'tests RUN' : 'files only: add --run-tests for proof') + ')');
+  if (GIT) {
+    console.log('\nGIT  branch: ' + GIT.branch + '   uncommitted files: ' + GIT.uncommittedFiles +
+      (GIT.unpushedCommits === null ? '   (no upstream set)' : '   unpushed commits: ' + GIT.unpushedCommits));
+    if (GIT.otherUnmergedBranches.length) console.log('     local branches not merged into main: ' + GIT.otherUnmergedBranches.slice(0, 12).join(', ') + (GIT.otherUnmergedBranches.length > 12 ? ' ...' : ''));
+    if (GIT.uncommittedFiles) console.log('     NOTE: uncommitted work exists. Commit or stash before starting something new.');
+  }
+  console.log('\nDO IN THIS ORDER');
+  todoRows.forEach(function (r, i) {
+    console.log('\n ' + (i + 1) + '. [' + r.status + '] ' + r.name + (r.note ? '   (' + r.note + ')' : ''));
+    console.log('    -> ' + nextAction(r));
+  });
+  const open = manual.filter(function (m) { return !m.done; });
+  console.log('\nYOURS TO DECIDE / CHECK (not engineering)');
+  open.forEach(function (m) { console.log('  [ ] ' + m.item); });
+  if (created.length) console.log('\nWARNING: running tests created new files (delete if unwanted): ' + created.join(', '));
+  console.log('\nOne item at a time: checkpoint, test first, run npm test, commit. Re-run this script after each.\n');
+  process.exit(rows.some(function (r) { return r.status === 'FAILING'; }) ? 1 : 0);
+}
+
 if (AS_JSON) {
-  console.log(JSON.stringify({ ranTests: RUN, createdFiles: created, rows: rows, manual: manual, nextSuggested: next ? next.id : null }, null, 2));
+  console.log(JSON.stringify({ ranTests: RUN, createdFiles: created, git: GIT, todo: todoRows.map(function (r) { return { id: r.id, status: r.status, next: nextAction(r) }; }), rows: rows, manual: manual, nextSuggested: next ? next.id : null }, null, 2));
 } else {
   const w = Math.max.apply(null, rows.map(function (r) { return r.name.length; }));
   console.log('\nTSM roadmap progress  (' + (RUN ? 'tests RUN' : 'files only; add --run-tests for proof') + ')');
