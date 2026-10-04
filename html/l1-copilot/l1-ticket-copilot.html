@@ -1403,64 +1403,6 @@ TICKET DESCRIPTION</div>
       </div>
     </div>
 
-    <label id="l1FulfillmentVerifiedLabel" style="display:none;font-size:11px;line-height:1.9;">
-      <input type="checkbox" id="l1EvidenceFulfillmentVerified" disabled>
-      Request fulfillment verified against the RITM / SC Task
-    </label>
-
-    <div id="l1RequestFulfillmentPanel" style="display:none;margin:6px 0 10px 20px;padding:10px;border:1px solid var(--border);background:var(--bg2);">
-      <div style="font-size:10px;letter-spacing:1px;color:var(--gold);margin-bottom:6px;">
-        REQUEST FULFILLMENT REQUIRED — <span id="l1RequestFulfillmentTaskType">SOFTWARE</span>
-      </div>
-      <div style="font-size:10px;color:var(--muted);margin-bottom:8px;">
-        This task type requires a looked-up RITM or SC Task and a stated outcome before
-        request fulfillment can be marked confirmed. The checkbox above is locked and is
-        set by this panel, not by hand. A RITM cannot be verified while any of its
-        SC Tasks are still open.
-      </div>
-
-      <div style="display:flex;gap:6px;margin-bottom:8px;">
-        <input type="text" id="l1RequestFulfillmentNumber" placeholder="RITM0010001 or SCTASK0010001"
-               style="flex:1;font-size:11px;padding:6px;background:var(--bg3);border:1px solid var(--border);color:var(--fg);">
-        <button class="btn btn-outline" id="btnLookupRequestFulfillment" type="button" style="font-size:10px;">LOOK UP REQUEST</button>
-      </div>
-
-      <div id="l1RequestFulfillmentLookup" style="font-size:11px;color:var(--muted);margin-bottom:8px;">
-        No request lookup yet.
-      </div>
-
-      <label style="display:block;font-size:11px;margin-bottom:4px;">Fulfillment outcome</label>
-      <select id="l1RequestFulfillmentOutcome" style="width:100%;font-size:11px;padding:6px;background:var(--bg3);border:1px solid var(--border);color:var(--fg);margin-bottom:8px;">
-        <option value="">— Select —</option>
-        <option value="FULFILLED">Fulfilled</option>
-        <option value="ALREADY_PROVISIONED">Already provisioned</option>
-        <option value="CANCELED_BY_REQUESTER">Canceled by requester</option>
-        <option value="EXCEPTION_NOT_FULFILLED">Exception — not fulfilled</option>
-      </select>
-
-      <div id="l1RequestFulfillmentReasonWrap" style="display:none;margin-bottom:8px;">
-        <label style="display:block;font-size:11px;margin-bottom:4px;">Reason (required)</label>
-        <textarea id="l1RequestFulfillmentReason" rows="2"
-                  style="width:100%;font-size:11px;padding:6px;background:var(--bg3);border:1px solid var(--border);color:var(--fg);"
-                  placeholder="e.g. Requester canceled in chat; manager approval withdrawn."></textarea>
-      </div>
-
-      <label id="l1RequestFulfillmentSoftwareWrap" style="display:none;font-size:11px;line-height:1.6;margin-bottom:8px;">
-        <input type="checkbox" id="l1RequestFulfillmentSoftwareConfirmed">
-        Software is installed / license is assigned and visible to the requester
-      </label>
-
-      <label style="display:block;font-size:11px;line-height:1.6;margin-bottom:8px;">
-        <input type="checkbox" id="l1RequestFulfillmentConfirmed">
-        I confirm this fulfillment evidence is accurate
-      </label>
-
-      <div style="display:flex;gap:8px;align-items:center;">
-        <button class="btn btn-cyan" id="btnVerifyRequestFulfillment" type="button" style="font-size:10px;">VERIFY REQUEST FULFILLMENT</button>
-        <span id="l1RequestFulfillmentStatus" style="font-size:10px;color:var(--muted);"></span>
-      </div>
-    </div>
-
     <label style="display:block;font-size:11px;line-height:1.9;">
       <input type="checkbox" id="l1EvidenceWorkConfirmed">
       Required work was actually performed
@@ -6700,166 +6642,6 @@ window.selectQ15Scenario = function(id) {
     }
   }
 
-  /* ---------------------------------------------------------------- */
-  /* Request fulfillment panel (SOFTWARE / REQUEST FULFILLMENT)         */
-  /*                                                                    */
-  /* These task types are closed against `fulfillmentVerified`, not the */
-  /* device-oriented asset checkbox. This panel is the only thing       */
-  /* allowed to set it: it requires a real RITM / SC Task lookup via    */
-  /* GET /api/l1-copilot/servicenow/request/:number, a stated outcome,  */
-  /* technician confirmation, and (for a RITM) no open SC Tasks, then   */
-  /* calls the read-only /api/l1-copilot/request-fulfillment/evaluate   */
-  /* evaluator. See server/l1-copilot/request-fulfillment.js.           */
-  /* ---------------------------------------------------------------- */
-
-  let requestFulfillmentRecord = null;
-  let requestFulfillmentTasks = null;
-
-  function setRequestFulfillmentPanelActive(taskType) {
-    const panel = document.getElementById('l1RequestFulfillmentPanel');
-    const checkboxLabel = document.getElementById('l1FulfillmentVerifiedLabel');
-    const checkbox = document.getElementById('l1EvidenceFulfillmentVerified');
-    const label = document.getElementById('l1RequestFulfillmentTaskType');
-    const softwareWrap = document.getElementById('l1RequestFulfillmentSoftwareWrap');
-    if (!panel || !checkbox) return;
-
-    const inScope = taskType === 'SOFTWARE' || taskType === 'REQUEST FULFILLMENT';
-
-    panel.style.display = inScope ? 'block' : 'none';
-    if (checkboxLabel) checkboxLabel.style.display = inScope ? 'block' : 'none';
-    if (softwareWrap) softwareWrap.style.display = taskType === 'SOFTWARE' ? 'block' : 'none';
-
-    if (inScope) {
-      if (label) label.textContent = taskType;
-      // Scope just changed (or first evaluate on this ticket): never carry
-      // over a checked box from a different classification.
-      if (checkbox.dataset.requestFulfillmentManaged !== taskType) {
-        checkbox.checked = false;
-        checkbox.dataset.requestFulfillmentManaged = taskType;
-      }
-      const numberInput = document.getElementById('l1RequestFulfillmentNumber');
-      const ticket = (value('tkIncident') || '').trim();
-      if (numberInput && !numberInput.value && /^(RITM|SCTASK)\d+$/i.test(ticket)) {
-        numberInput.value = ticket.toUpperCase();
-      }
-    } else {
-      checkbox.checked = false;
-      delete checkbox.dataset.requestFulfillmentManaged;
-    }
-  }
-
-  async function lookupRequestFulfillment() {
-    const numberInput = document.getElementById('l1RequestFulfillmentNumber');
-    const resultEl = document.getElementById('l1RequestFulfillmentLookup');
-    const button = document.getElementById('btnLookupRequestFulfillment');
-    const checkbox = document.getElementById('l1EvidenceFulfillmentVerified');
-    const number = (numberInput && numberInput.value || '').trim();
-
-    if (!resultEl) return;
-    if (!number) {
-      resultEl.textContent = 'Enter a RITM or SCTASK number first.';
-      return;
-    }
-
-    // A fresh lookup invalidates any earlier verification.
-    requestFulfillmentRecord = null;
-    requestFulfillmentTasks = null;
-    if (checkbox && checkbox.checked) {
-      checkbox.checked = false;
-      persistWorkflowEvidence();
-    }
-    resultEl.textContent = 'Looking up request...';
-    if (button) button.disabled = true;
-
-    try {
-      const res = await fetch('/api/l1-copilot/servicenow/request/' + encodeURIComponent(number));
-      const data = await res.json();
-
-      if (!res.ok || !data.ok) {
-        resultEl.innerHTML = '<span class="err">' + escapeHtml(data.error || 'Request not found.') + '</span>';
-        return;
-      }
-
-      requestFulfillmentRecord = data.record;
-      requestFulfillmentTasks = Array.isArray(data.catalogTasks) ? data.catalogTasks : [];
-
-      let html =
-        '<span style="color:var(--cyan)">Found:</span> ' +
-        escapeHtml(data.record.number || number) + ' — ' +
-        escapeHtml(data.record.shortDescription || 'no description') +
-        ' (state: ' + escapeHtml(data.record.state || 'unknown') + ')' +
-        (data.demoMode ? ' <span style="color:var(--muted)">[demo data]</span>' : '');
-
-      if (data.kind === 'RITM') {
-        html += '<br>SC Tasks: ' + (requestFulfillmentTasks.length
-          ? requestFulfillmentTasks.map(function (t) {
-              return escapeHtml(t.number || '?') + ' (' + escapeHtml(t.state || 'unknown') + ')';
-            }).join(', ')
-          : 'none returned');
-      }
-
-      resultEl.innerHTML = html;
-    } catch (error) {
-      resultEl.innerHTML = '<span class="err">' + escapeHtml(error.message) + '</span>';
-    } finally {
-      if (button) button.disabled = false;
-    }
-  }
-
-  async function verifyRequestFulfillment() {
-    const statusEl = document.getElementById('l1RequestFulfillmentStatus');
-    const checkbox = document.getElementById('l1EvidenceFulfillmentVerified');
-    const button = document.getElementById('btnVerifyRequestFulfillment');
-    const taskType = checkbox && checkbox.dataset.requestFulfillmentManaged;
-
-    if (!statusEl || !checkbox || !taskType) return;
-
-    statusEl.textContent = 'Verifying...';
-    if (button) button.disabled = true;
-
-    try {
-      const res = await fetch('/api/l1-copilot/request-fulfillment/evaluate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          taskType,
-          requestNumber: (document.getElementById('l1RequestFulfillmentNumber').value || '').trim(),
-          catalogRecord: requestFulfillmentRecord,
-          catalogTasks: requestFulfillmentTasks,
-          fulfillmentOutcome: document.getElementById('l1RequestFulfillmentOutcome').value,
-          outcomeReason: document.getElementById('l1RequestFulfillmentReason').value,
-          softwareConfirmed: checked('l1RequestFulfillmentSoftwareConfirmed'),
-          technicianConfirmed: checked('l1RequestFulfillmentConfirmed')
-        })
-      });
-      const data = await res.json();
-
-      if (!res.ok || !data.ok) {
-        statusEl.innerHTML = '<span class="err">' + escapeHtml(data.error || 'Evaluation failed.') + '</span>';
-        return;
-      }
-
-      const outcome = data.requestFulfillment;
-
-      if (outcome.fulfillmentVerified === true) {
-        checkbox.checked = true;
-        statusEl.innerHTML = '<span style="color:var(--cyan)">Verified.</span> ' + escapeHtml(outcome.reason);
-      } else {
-        checkbox.checked = false;
-        statusEl.innerHTML =
-          '<span class="err">Not verified' +
-          (outcome.missing && outcome.missing.length ? ': ' + escapeHtml(outcome.missing.join(', ')) : '') +
-          '</span> — ' + escapeHtml(outcome.reason);
-      }
-
-      persistWorkflowEvidence();
-    } catch (error) {
-      statusEl.innerHTML = '<span class="err">' + escapeHtml(error.message) + '</span>';
-    } finally {
-      if (button) button.disabled = false;
-    }
-  }
-
   function buildWorkflowEvidence() {
     return {
       userVerified: checked('l1EvidenceUserVerified'),
@@ -6974,6 +6756,8 @@ window.selectQ15Scenario = function(id) {
       setRequestFulfillmentPanelActive(workflow.taskType);
       if (window.setLocationPanelActive) window.setLocationPanelActive(workflow.taskType);
 
+      setAssetRecoveryPanelActive(workflow.taskType);
+
       result.innerHTML =
         '<strong>NEXT ACTION:</strong> ' +
         escapeHtml(workflow.nextAction || 'REVIEW') +
@@ -7047,56 +6831,6 @@ window.selectQ15Scenario = function(id) {
 
     const verifyBtn = document.getElementById('btnVerifyAssetRecovery');
     if (verifyBtn) verifyBtn.addEventListener('click', verifyAssetRecovery);
-    // Any edit after a successful verify invalidates it.
-    function invalidateAssetRecovery(e) {
-      if (e && e.target && e.target.id === 'l1AssetRecoveryTag') assetRecoveryCmdbAsset = null;
-      const cb = document.getElementById('l1EvidenceAssetVerified');
-      if (cb && cb.dataset.assetRecoveryManaged && cb.checked) {
-        cb.checked = false;
-        const st = document.getElementById('l1AssetRecoveryStatus');
-        if (st) st.textContent = 'Inputs changed - re-verify.';
-        persistWorkflowEvidence();
-      }
-    }
-    ['l1AssetRecoveryTag','l1AssetRecoveryOutcome','l1AssetRecoveryExceptionReason','l1AssetRecoveryConfirmed'].forEach(function (id) {
-      const el = document.getElementById(id);
-      if (el) { el.addEventListener('input', invalidateAssetRecovery); el.addEventListener('change', invalidateAssetRecovery); }
-    });
-
-    const rfLookupBtn = document.getElementById('btnLookupRequestFulfillment');
-    if (rfLookupBtn) rfLookupBtn.addEventListener('click', lookupRequestFulfillment);
-
-    const rfVerifyBtn = document.getElementById('btnVerifyRequestFulfillment');
-    if (rfVerifyBtn) rfVerifyBtn.addEventListener('click', verifyRequestFulfillment);
-
-    // Any edit after a successful verify invalidates it.
-    function invalidateRequestFulfillment(e) {
-      if (e && e.target && e.target.id === 'l1RequestFulfillmentNumber') {
-        requestFulfillmentRecord = null;
-        requestFulfillmentTasks = null;
-      }
-      const cb = document.getElementById('l1EvidenceFulfillmentVerified');
-      if (cb && cb.dataset.requestFulfillmentManaged && cb.checked) {
-        cb.checked = false;
-        const st = document.getElementById('l1RequestFulfillmentStatus');
-        if (st) st.textContent = 'Inputs changed - re-verify.';
-        persistWorkflowEvidence();
-      }
-    }
-    ['l1RequestFulfillmentNumber','l1RequestFulfillmentOutcome','l1RequestFulfillmentReason','l1RequestFulfillmentSoftwareConfirmed','l1RequestFulfillmentConfirmed'].forEach(function (id) {
-      const el = document.getElementById(id);
-      if (el) { el.addEventListener('input', invalidateRequestFulfillment); el.addEventListener('change', invalidateRequestFulfillment); }
-    });
-
-    const rfOutcomeSelect = document.getElementById('l1RequestFulfillmentOutcome');
-    if (rfOutcomeSelect) {
-      rfOutcomeSelect.addEventListener('change', function () {
-        const wrap = document.getElementById('l1RequestFulfillmentReasonWrap');
-        if (wrap) {
-          wrap.style.display = (rfOutcomeSelect.value === 'CANCELED_BY_REQUESTER' || rfOutcomeSelect.value === 'EXCEPTION_NOT_FULFILLED') ? 'block' : 'none';
-        }
-      });
-    }
 
     const outcomeSelect = document.getElementById('l1AssetRecoveryOutcome');
     if (outcomeSelect) {
