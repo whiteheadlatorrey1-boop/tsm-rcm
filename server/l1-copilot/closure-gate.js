@@ -24,7 +24,7 @@ const {
 } = require('./workflow-engine');
 
 function evaluateClosure(input = {}) {
-  const state = normalizeState(input.state);
+  const state = normalizeState(input.state, { table: input.stateTable });
   const taskType = input.taskType
     ? normalizeTaskType(input.taskType)
     : classifyTask(input).taskType;

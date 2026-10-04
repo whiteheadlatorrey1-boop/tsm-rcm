@@ -182,6 +182,12 @@ process.env.TSM_SESSION_SECRET =
 process.env.TSM_ADMIN_PASSWORD =
   'l1-governed-resolution-test-admin';
 
+// The resolution route's non-write path calls Groq directly; the fetch
+// stub below intercepts that call, but the route still checks for a key
+// before attempting it, so the suite needs one present even though it's
+// never actually sent anywhere.
+if (!process.env.GROQ_API_KEY) process.env.GROQ_API_KEY = 'test-groq-key-l1-governed-resolution';
+
 delete process.env.TSM_STRICT_INGEST;
 
 /* ------------------------------------------------------------------ */

@@ -19,6 +19,8 @@
  *   - modify CMDB records
  */
 
+const { normalizeState: mapState } = require('./state-map');
+
 const TASK_TYPES = Object.freeze([
   'ONBOARDING',
   'OFFBOARDING',
@@ -36,21 +38,16 @@ const STATES = Object.freeze([
   'PENDING',
   'ON HOLD',
   'RESOLVED',
-  'CLOSED'
+  'CLOSED',
+  'CANCELED'
 ]);
 
-function normalizeState(state) {
-  const value = String(state || '').trim().toUpperCase();
-
-  if (value === 'IN_PROGRESS' || value === 'IN-PROGRESS') {
-    return 'IN PROGRESS';
-  }
-
-  if (value === 'ON_HOLD' || value === 'ON-HOLD') {
-    return 'ON HOLD';
-  }
-
-  return value;
+function normalizeState(state, options) {
+  // Delegates to the shared ServiceNow state map so raw codes ("2") and
+  // display labels ("Work in Progress") reach the same canonical vocabulary
+  // as hand-typed UI values. Unrecognized input passes through as cleaned
+  // text and is handled as "Unknown state requires review" below.
+  return mapState(state, options);
 }
 
 function normalizeTaskType(taskType) {
@@ -174,7 +171,7 @@ function getRequiredEvidence(taskType) {
 }
 
 function evaluateWorkflow(input = {}) {
-  const state = normalizeState(input.state);
+  const state = normalizeState(input.state, { table: input.stateTable });
   const classification = classifyTask(input);
   const taskType = classification.taskType;
   const evidence = input.evidence || {};
@@ -209,7 +206,7 @@ function evaluateWorkflow(input = {}) {
     };
   }
 
-  if (state === 'RESOLVED' || state === 'CLOSED') {
+  if (state === 'RESOLVED' || state === 'CLOSED' || state === 'CANCELED') {
     return {
       state,
       taskType,

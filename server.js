@@ -4880,6 +4880,57 @@ app.post('/api/l1-copilot/assistant', async (req, res) => {
   }
 });
 
+// --- L1 governed-write authentication ----------------------------------
+// `technicianConfirmed` in a request body is a client-supplied boolean: it
+// records that the UI's confirm box was ticked, NOT who ticked it. Any write
+// to a customer's ServiceNow therefore also requires a verified TSM staff
+// session (admin/manager/analyst -- never an external `client` session).
+// Draft generation and read-only lookups intentionally stay open so the
+// demo/training flows keep working without signing in.
+const L1_WRITE_ROLES = ['admin', 'manager', 'analyst'];
+
+function requireL1Technician(req, res, next) {
+  const session = verifySession(getCookie(req, 'tsm_session'));
+  if (!session) {
+    return res.status(401).json({
+      ok: false,
+      code: 'L1_AUTH_REQUIRED',
+      error: 'Sign in as TSM staff to write to ServiceNow. Analysis and drafts remain available without signing in.'
+    });
+  }
+  if (!L1_WRITE_ROLES.includes(session.role)) {
+    return res.status(403).json({
+      ok: false,
+      code: 'L1_ROLE_FORBIDDEN',
+      error: 'Your account role is not permitted to write to ServiceNow. Staff access is required.'
+    });
+  }
+  req.l1Technician = {
+    role: session.role,
+    staffId: session.staffId || null,
+    label: session.label || null
+  };
+  next();
+}
+
+// One structured line per attempted ServiceNow write: who, what, outcome.
+// The note text itself is deliberately NOT logged or altered -- the exact
+// reviewed draft is what gets written, and its content may contain
+// customer data.
+function auditL1Write(req, kind, incident, outcome) {
+  const t = req.l1Technician || {};
+  console.log(JSON.stringify({
+    event: 'l1_servicenow_write',
+    kind,
+    incident: incident || null,
+    outcome,
+    role: t.role || null,
+    staffId: t.staffId || null,
+    label: t.label || null,
+    at: new Date().toISOString()
+  }));
+}
+
 // --- ServiceNow CMDB/ITSM integration ---------------------------------
 // Real Table API connector (server/l1-copilot/servicenow-adapter.js) — no-ops
 // honestly (503 + ok:false) rather than pretending to work when a customer
@@ -4972,7 +5023,7 @@ app.get('/api/l1-copilot/servicenow/ticket/:incident', async (req, res) => {
   }
 });
 
-app.post('/api/l1-copilot/servicenow/work-note', async (req, res) => {
+app.post('/api/l1-copilot/servicenow/work-note', requireL1Technician, async (req, res) => {
   const { incident, note, technicianConfirmed } = req.body || {};
 
   if (!incident || !note) {
@@ -4991,15 +5042,18 @@ app.post('/api/l1-copilot/servicenow/work-note', async (req, res) => {
 
   try {
     const result = await snAdapter.writeWorkNote(incident, note);
+    auditL1Write(req, 'work-note', incident, 'success');
     res.json({
       ok: true,
       ...result,
       governed: {
         technicianConfirmed: true,
-        appendOnlyWorkNote: true
+        appendOnlyWorkNote: true,
+        confirmedBy: req.l1Technician
       }
     });
   } catch (e) {
+    auditL1Write(req, 'work-note', incident, 'failed:' + (e.code || 'ERROR'));
     const status = e.code === 'SERVICENOW_NOT_CONFIGURED' ? 503 : 502;
     res.status(status).json({ ok: false, error: e.message });
   }
@@ -5640,7 +5694,13 @@ app.post('/api/l1-copilot/vendor', async (req, res) => {
   }
 });
 
-app.post('/api/l1-copilot/resolution', async (req, res) => {
+app.post('/api/l1-copilot/resolution', (req, res, next) => (
+  // Same truthiness the handler uses to enter its write branch, so a
+  // truthy-but-not-`true` value can never slip past the guard.
+  req.body && req.body.writeToServicenow
+    ? requireL1Technician(req, res, next)
+    : next()
+), async (req, res) => {
   const {
     ticket,
     analysis,
@@ -5688,17 +5748,20 @@ app.post('/api/l1-copilot/resolution', async (req, res) => {
 
     try {
       const result = await snAdapter.writeWorkNote(incident, draft.trim());
+      auditL1Write(req, 'resolution', incident, 'success');
       return res.json({
         ok: true,
         answer: draft.trim(),
         servicenow: { attempted: true, ...result },
         governed: {
           technicianConfirmed: true,
-          exactDraftWritten: true
+          exactDraftWritten: true,
+          confirmedBy: req.l1Technician
         },
         createdAt: new Date().toISOString()
       });
     } catch (e) {
+      auditL1Write(req, 'resolution', incident, 'failed:' + (e.code || 'ERROR'));
       return res.status(e.code === 'SERVICENOW_NOT_CONFIGURED' ? 503 : 502).json({
         ok: false,
         error: e.message,
