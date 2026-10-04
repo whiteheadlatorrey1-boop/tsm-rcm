@@ -10,6 +10,7 @@
 
 const express = require('express');
 const { requireRole } = require('../middleware/require-auth');
+const { requireCandidateWrite, signCandidateToken } = require('../middleware/candidate-token');
 const router = express.Router();
 
 const registry = require('../server/candidate-registry-service');
@@ -34,16 +35,16 @@ router.get('/api/candidates/:id', async (req, res) => {
   }
 });
 
-router.post('/api/candidates', async (req, res) => {
+router.post('/api/candidates', requireCandidateWrite, async (req, res) => {
   try {
     const candidate = await registry.upsertCandidate(req.body || {});
-    res.status(201).json({ candidate });
+    res.status(201).json({ candidate, candidateToken: signCandidateToken(candidate.candidateId) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-router.put('/api/candidates/:id', async (req, res) => {
+router.put('/api/candidates/:id', requireCandidateWrite, async (req, res) => {
   try {
     const candidate = await registry.upsertCandidate({
       ...req.body,
@@ -55,7 +56,7 @@ router.put('/api/candidates/:id', async (req, res) => {
   }
 });
 
-router.post('/api/candidates/:id/training-events', async (req, res) => {
+router.post('/api/candidates/:id/training-events', requireCandidateWrite, async (req, res) => {
   try {
     const candidate = await registry.recordTrainingEvent(req.params.id, req.body || {});
     res.status(201).json({ candidate });
