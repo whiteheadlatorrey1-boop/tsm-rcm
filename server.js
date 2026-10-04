@@ -208,9 +208,9 @@ const snReconciliation = require('./server/l1-copilot/servicenow-reconciliation'
 const { getBpoIntelligence } = require('./server/l1-copilot/servicenow-bpo-intelligence');
 const { evaluateWorkflow } = require('./server/l1-copilot/workflow-engine');
 const { evaluateClosure, buildClosureChecklist } = require('./server/l1-copilot/closure-gate');
-const dispositionSequence = require('./server/l1-copilot/disposition-sequence');
-const { normalizeTaskType: l1NormalizeTaskType } = require('./server/l1-copilot/workflow-engine');
-const { orchestrate } = require('./server/l1-copilot/governed-orchestrator');
+const { evaluateAssetRecovery } = require('./server/l1-copilot/asset-recovery');
+const { evaluateRequestFulfillment } = require('./server/l1-copilot/request-fulfillment');
+const { evaluateLocationVerification } = require('./server/l1-copilot/location-verification');
 const cloudOpsAdapter = require('./server/l1-copilot/cloud-ops-adapter');
 const graphAdapter = require('./server/l1-copilot/graph-intune-adapter');
 const gcpAdapter = require('./server/l1-copilot/gcp-adapter');
@@ -5005,6 +5005,57 @@ app.post('/api/l1-copilot/assistant', requireRole(L1_COPILOT_ROLES), async (req,
   }
 });
 
+// --- L1 governed-write authentication ----------------------------------
+// `technicianConfirmed` in a request body is a client-supplied boolean: it
+// records that the UI's confirm box was ticked, NOT who ticked it. Any write
+// to a customer's ServiceNow therefore also requires a verified TSM staff
+// session (admin/manager/analyst -- never an external `client` session).
+// Draft generation and read-only lookups intentionally stay open so the
+// demo/training flows keep working without signing in.
+const L1_WRITE_ROLES = ['admin', 'manager', 'analyst'];
+
+function requireL1Technician(req, res, next) {
+  const session = verifySession(getCookie(req, 'tsm_session'));
+  if (!session) {
+    return res.status(401).json({
+      ok: false,
+      code: 'L1_AUTH_REQUIRED',
+      error: 'Sign in as TSM staff to write to ServiceNow. Analysis and drafts remain available without signing in.'
+    });
+  }
+  if (!L1_WRITE_ROLES.includes(session.role)) {
+    return res.status(403).json({
+      ok: false,
+      code: 'L1_ROLE_FORBIDDEN',
+      error: 'Your account role is not permitted to write to ServiceNow. Staff access is required.'
+    });
+  }
+  req.l1Technician = {
+    role: session.role,
+    staffId: session.staffId || null,
+    label: session.label || null
+  };
+  next();
+}
+
+// One structured line per attempted ServiceNow write: who, what, outcome.
+// The note text itself is deliberately NOT logged or altered -- the exact
+// reviewed draft is what gets written, and its content may contain
+// customer data.
+function auditL1Write(req, kind, incident, outcome) {
+  const t = req.l1Technician || {};
+  console.log(JSON.stringify({
+    event: 'l1_servicenow_write',
+    kind,
+    incident: incident || null,
+    outcome,
+    role: t.role || null,
+    staffId: t.staffId || null,
+    label: t.label || null,
+    at: new Date().toISOString()
+  }));
+}
+
 // --- ServiceNow CMDB/ITSM integration ---------------------------------
 // Real Table API connector (server/l1-copilot/servicenow-adapter.js) — no-ops
 // honestly (503 + ok:false) rather than pretending to work when a customer
@@ -5085,7 +5136,67 @@ app.post('/api/l1-copilot/workflow/evaluate', requireRole(L1_COPILOT_ROLES), (re
   }
 });
 
-app.post('/api/l1-copilot/closure/evaluate', requireRole(L1_COPILOT_ROLES), async (req, res) => {
+// Scope note: this is IT hardware asset recovery (offboarding/hardware-swap
+// laptops, monitors, etc.), unrelated to the healthcare revenue-recovery
+// orchestrator under server/healthcare/ (denials/claims/payer appeals).
+// Pure evaluation only -- the CMDB lookup itself happens via the existing
+// GET /api/l1-copilot/servicenow/asset/:tag route; the client passes that
+// result here as `cmdbAsset`.
+app.post('/api/l1-copilot/asset-recovery/evaluate', (req, res) => {
+  try {
+    const result = evaluateAssetRecovery(req.body || {});
+    return res.json({
+      ok: true,
+      assetRecovery: result,
+      governed: {
+        readOnly: true,
+        technicianAuthority: true
+      },
+      createdAt: new Date().toISOString()
+    });
+  } catch (e) {
+    console.error('L1 COPILOT ASSET RECOVERY EVALUATION ERROR:', e.message);
+    return res.status(400).json({
+      ok: false,
+      error: e.message
+    });
+  }
+});
+
+// Scope note: SOFTWARE / REQUEST FULFILLMENT tickets worked through the
+// service catalog (RITM / SC Task). Pure evaluation only -- the catalog
+// lookup itself happens via GET /api/l1-copilot/servicenow/request/:number;
+// the client passes that result here as `catalogRecord` / `catalogTasks`.
+app.post('/api/l1-copilot/location-verification/evaluate', (req, res) => {
+  try {
+    res.json({ ok: true, locationVerification: evaluateLocationVerification(req.body || {}) });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: 'location verification failed' });
+  }
+});
+
+app.post('/api/l1-copilot/request-fulfillment/evaluate', (req, res) => {
+  try {
+    const result = evaluateRequestFulfillment(req.body || {});
+    return res.json({
+      ok: true,
+      requestFulfillment: result,
+      governed: {
+        readOnly: true,
+        technicianAuthority: true
+      },
+      createdAt: new Date().toISOString()
+    });
+  } catch (e) {
+    console.error('L1 COPILOT REQUEST FULFILLMENT EVALUATION ERROR:', e.message);
+    return res.status(400).json({
+      ok: false,
+      error: e.message
+    });
+  }
+});
+
+app.post('/api/l1-copilot/closure/evaluate', (req, res) => {
   try {
     const input = Object.assign({}, req.body || {});
 
@@ -5281,7 +5392,37 @@ app.get('/api/l1-copilot/servicenow/asset/:tag', requireRole(L1_COPILOT_ROLES), 
   }
 });
 
-app.get('/api/l1-copilot/servicenow/ticket/:incident', requireRole(L1_COPILOT_ROLES), async (req, res) => {
+// READ-ONLY catalog lookup (sc_req_item / sc_task). Accepts a RITM or SCTASK
+// number. For a RITM it also returns the request's SC Tasks so closure can
+// be blocked while any are open.
+app.get('/api/l1-copilot/servicenow/request/:number', async (req, res) => {
+  const number = String(req.params.number || '').trim().toUpperCase();
+  const isRitm = /^RITM\d+$/.test(number);
+  const isTask = /^SCTASK\d+$/.test(number);
+  if (!isRitm && !isTask) {
+    return res.status(400).json({ ok: false, error: 'Enter a RITM or SCTASK number (for example RITM0010001).' });
+  }
+  const strip = (r) => { if (!r) return r; const { raw, ...rest } = r; return rest; };
+  try {
+    if (isRitm) {
+      const record = await snAdapter.getRequestItem(number);
+      if (!record) return res.status(404).json({ ok: false, error: `No request item found for "${number}".` });
+      const tasks = await snAdapter.getCatalogTasksByRequestItem(number);
+      return res.json({ ok: true, kind: 'RITM', record: strip(record), catalogTasks: tasks.map(strip) });
+    }
+    const record = await snAdapter.getCatalogTask(number);
+    if (!record) return res.status(404).json({ ok: false, error: `No catalog task found for "${number}".` });
+    return res.json({ ok: true, kind: 'SCTASK', record: strip(record), catalogTasks: [] });
+  } catch (e) {
+    if (e.code === 'SERVICENOW_NOT_CONFIGURED' && demoData.isDemoModeEnabled()) {
+      return res.json(Object.assign({ ok: true, demoMode: true }, demoData.demoRequestRecord(number)));
+    }
+    const status = e.code === 'SERVICENOW_NOT_CONFIGURED' ? 503 : 502;
+    res.status(status).json({ ok: false, error: e.message });
+  }
+});
+
+app.get('/api/l1-copilot/servicenow/ticket/:incident', async (req, res) => {
   try {
     const ticket = await snAdapter.getTicket(req.params.incident);
     if (!ticket) return res.status(404).json({ ok: false, error: `No incident found for "${req.params.incident}".` });
@@ -5295,7 +5436,7 @@ app.get('/api/l1-copilot/servicenow/ticket/:incident', requireRole(L1_COPILOT_RO
   }
 });
 
-app.post('/api/l1-copilot/servicenow/work-note', requireRole(L1_COPILOT_ROLES), async (req, res) => {
+app.post('/api/l1-copilot/servicenow/work-note', requireL1Technician, async (req, res) => {
   const { incident, note, technicianConfirmed } = req.body || {};
 
   if (!incident || !note) {
@@ -5313,29 +5454,19 @@ app.post('/api/l1-copilot/servicenow/work-note', requireRole(L1_COPILOT_ROLES), 
   }
 
   try {
-    const incidentId = String(incident).trim();
-      const idOk = /^[0-9a-f]{32}$/i.test(incidentId) || /^[A-Za-z]{2,10}\d{5,12}$/.test(incidentId);
-      if (idOk === false) {
-        return res.status(400).json({ ok: false, error: 'incident must be a ticket number or 32-character sys_id.' });
-      }
-      if (typeof note !== 'string' || note.length > 20000) {
-        return res.status(413).json({ ok: false, error: 'note must be text of at most 20000 characters.' });
-      }
-      const result = await snAdapter.writeWorkNote(incidentId, note.trim());
-      try {
-        recordL1AuditEvent(require('./server/l1-copilot/work-note-audit').buildWorkNoteAuditEvent({
-          incidentId, noteLength: note.trim().length, session: req.tsmSession, user: req.user, result
-        }));
-      } catch (auditErr) { console.error('L1 WORK NOTE AUDIT ERROR:', auditErr.message); }
+    const result = await snAdapter.writeWorkNote(incident, note);
+    auditL1Write(req, 'work-note', incident, 'success');
     res.json({
       ok: true,
       ...result,
       governed: {
         technicianConfirmed: true,
-        appendOnlyWorkNote: true
+        appendOnlyWorkNote: true,
+        confirmedBy: req.l1Technician
       }
     });
   } catch (e) {
+    auditL1Write(req, 'work-note', incident, 'failed:' + (e.code || 'ERROR'));
     const status = e.code === 'SERVICENOW_NOT_CONFIGURED' ? 503 : 502;
     res.status(status).json({ ok: false, error: e.message });
   }
@@ -5976,257 +6107,13 @@ app.post('/api/l1-copilot/vendor', requireRole(L1_COPILOT_ROLES), async (req, re
   }
 });
 
-const TEMPLATE_TO_ACTION_TYPE = {
-  RETURN_TO_INVENTORY: 'RETURN_TO_INVENTORY',
-  DEVICE_REPLACEMENT: 'CREATE_REPLACEMENT',
-  HARDWARE_SWAP: 'HARDWARE_SWAP',
-  LOANER_RETURN: 'LOANER_RETURN',
-  WARRANTY_DEPOT_RETURN: 'WARRANTY_DEPOT_RETURN',
-  DEVICE_REASSIGNMENT: 'DEVICE_REASSIGNMENT',
-  DISPOSITION_RECOMMENDATION: 'DISPOSITION_RECOMMENDATION',
-  DISPOSITION_APPROVAL: 'DISPOSITION_APPROVAL',
-  DISPOSITION_SANITIZATION: 'DISPOSITION_SANITIZATION',
-  DISPOSITION_COMPLETION: 'DISPOSITION_COMPLETION'
-};
-
-app.get('/api/l1-copilot/asset-action/templates', requireRole(L1_COPILOT_ROLES), (req, res) => {
-  res.json({ ok: true, templates: templateRegistry.listTemplates() });
-});
-
-app.post('/api/l1-copilot/asset-action/preview', requireRole(L1_COPILOT_ROLES), (req, res) => {
-  const { templateId, context } = req.body || {};
-  if (!templateId) return res.status(400).json({ ok: false, error: 'templateId required' });
-  try {
-    const preview = templateRegistry.renderTemplate(templateId, context);
-    return res.json({ ok: true, preview });
-  } catch (e) {
-    const status = e.code === 'MISSING_REQUIRED_FIELDS' ? 422
-      : e.code === 'UNKNOWN_TEMPLATE' ? 404 : 400;
-    return res.status(status).json({ ok: false, error: e.message, missing: e.missing || null });
-  }
-});
-
-// Phase 3: preview + confirm only, no ServiceNow write. Lets the UI show
-// the technician exactly what will be written and get an explicit confirm
-// before the client ever calls /asset-action/execute (Phase 4), which
-// re-derives and re-confirms the action server-side rather than trusting
-// this route's confirmation as a session to execute against later.
-app.post('/api/l1-copilot/asset-action/confirm', requireRole(L1_COPILOT_ROLES), (req, res) => {
-  const { templateId, context } = req.body || {};
-  if (!templateId) return res.status(400).json({ ok: false, error: 'templateId required' });
-
-  const actionType = TEMPLATE_TO_ACTION_TYPE[templateId];
-  if (!actionType) {
-    return res.status(400).json({ ok: false, error: `No action type mapped for template "${templateId}".` });
-  }
-
-  let preview;
-  try {
-    preview = templateRegistry.renderTemplate(templateId, context);
-  } catch (e) {
-    const status = e.code === 'MISSING_REQUIRED_FIELDS' ? 422
-      : e.code === 'UNKNOWN_TEMPLATE' ? 404 : 400;
-    return res.status(status).json({ ok: false, error: e.message, missing: e.missing || null });
-  }
-
-  // Server derives the technician identity from the authenticated session —
-  // never trusts a client-supplied technician object. Same pattern as the
-  // governed resolution-write path.
-  const technician = {
-    id: (req.tsmSession && (req.tsmSession.staffId || req.tsmSession.clientId || req.tsmSession.role)) || 'unknown',
-    label: (req.tsmSession && req.tsmSession.label) || null
-  };
-
-  try {
-    let action = actionGate.generateAction({
-      actionType,
-      payload: { draft: preview.body, context: context || {} },
-      technician,
-      sourceIncident: (context && context.INCIDENT_NUMBER) || null,
-      asset: (context && context.ASSET_TAG) || null
-    });
-    action = actionGate.previewAction(action);
-    action = actionGate.confirmAction(action);
-
-    return res.json({
-      ok: true,
-      preview,
-      action: {
-        actionType: action.actionType,
-        sourceIncident: action.sourceIncident,
-        asset: action.asset,
-        technician: action.technician,
-        confirmedAt: action.confirmedAt
-      },
-      note: 'Confirmed via the Technician Action Gate. Call POST /api/l1-copilot/asset-action/execute with the same templateId, context, and technicianConfirmed: true to write this to ServiceNow.'
-    });
-  } catch (e) {
-    return res.status(500).json({ ok: false, error: e.message });
-  }
-});
-
-// Phase 4: ServiceNow write for asset-lifecycle actions.
-//
-// Scope decision (see roadmap discussion): the ServiceNow adapter's
-// production contract has no create function for sc_req_item/sc_task/a new
-// ticket — createTicket etc. are explicitly _pdi (non-production, must not
-// be exposed through a production L1 route or granted to the L1 integration
-// account). Rather than route around that, Phase 4 stays inside the proven
-// production contract: the asset-lifecycle action is written as a
-// structured, tagged entry into the existing incident's work_notes via the
-// same governed writeWorkNote path Phase 1 already uses for resolutions,
-// with the same read-after-write verification. This costs the separate
-// ticket number / native relationship Phase 6 describes, but needs zero new
-// ServiceNow scope. If create rights are later granted on a target table,
-// this route's executor is the only thing that needs to change — the
-// template engine, Action Gate, and UI panel are already record-type-agnostic.
-app.post('/api/l1-copilot/asset-action/execute', requireRole(L1_COPILOT_ROLES), async (req, res) => {
-  const { templateId, context, technicianConfirmed } = req.body || {};
-
-  if (!templateId) return res.status(400).json({ ok: false, error: 'templateId required' });
-
-  const actionType = TEMPLATE_TO_ACTION_TYPE[templateId];
-  if (!actionType) {
-    return res.status(400).json({ ok: false, error: `No action type mapped for template "${templateId}".` });
-  }
-
-  if (technicianConfirmed !== true) {
-    return res.status(403).json({
-      ok: false,
-      error: 'Technician confirmation is required before writing to ServiceNow.'
-    });
-  }
-
-  let preview;
-  try {
-    preview = templateRegistry.renderTemplate(templateId, context);
-  } catch (e) {
-    const status = e.code === 'MISSING_REQUIRED_FIELDS' ? 422
-      : e.code === 'UNKNOWN_TEMPLATE' ? 404 : 400;
-    return res.status(status).json({ ok: false, error: e.message, missing: e.missing || null });
-  }
-
-  const incidentId = String((context && context.INCIDENT_NUMBER) || '').trim();
-  if (!incidentId) {
-    return res.status(400).json({ ok: false, error: 'context.INCIDENT_NUMBER required to execute an asset-lifecycle action.' });
-  }
-  if (!/^[0-9a-f]{32}$/i.test(incidentId) && !/^[A-Za-z]{2,10}\d{5,12}$/.test(incidentId)) {
-    return res.status(400).json({ ok: false, error: 'INCIDENT_NUMBER must be a ticket number or 32-character sys_id.' });
-  }
-
-  // A field value must not be able to forge a lifecycle stage tag inside the
-  // note body (the disposition sequence check reads these tags back).
-  if (/\[ASSET LIFECYCLE/i.test(preview.body)) {
-    return res.status(400).json({ ok: false, error: 'Field values must not contain lifecycle stage tags.' });
-  }
-
-  const taggedNote = `[ASSET LIFECYCLE \u2014 ${actionType}]\n${preview.body}`;
-  if (taggedNote.length > 20000) {
-    return res.status(413).json({ ok: false, error: 'Generated work note exceeds the 20000-character limit.' });
-  }
-
-  if (!snAdapter.isConfigured()) {
-    return res.status(503).json({
-      ok: false,
-      error: 'ServiceNow is not configured for this environment.'
-    });
-  }
-
-  // Server derives the technician identity from the authenticated session —
-  // never trusts a client-supplied technician object. Same pattern as the
-  // governed resolution-write path and /asset-action/confirm.
-  const technician = {
-    id: (req.tsmSession && (req.tsmSession.staffId || req.tsmSession.clientId || req.tsmSession.role)) || 'unknown',
-    label: (req.tsmSession && req.tsmSession.label) || null
-  };
-
-  // Disposition stages must follow RECOMMENDATION -> APPROVAL -> SANITIZATION ->
-  // COMPLETION. Prior stages are proven from the incident's own work notes
-  // (never from the request). If the notes cannot be read, the write is
-  // refused (fail-closed) rather than assumed.
-  if (dispositionSequence.requiredPriorStages(actionType).length) {
-    let notesText = null;
-    try {
-      const ticket = await snAdapter.getTicket(incidentId);
-      notesText = ticket ? dispositionSequence.extractNotesText(ticket) : null;
-    } catch (e) {
-      notesText = null;
-    }
-    if (notesText === null) {
-      return res.status(502).json({
-        ok: false,
-        code: 'DISPOSITION_SEQUENCE_UNVERIFIABLE',
-        error: 'Could not read the incident work notes to verify earlier disposition stages. Nothing was written.'
-      });
-    }
-    const seq = dispositionSequence.checkPrerequisites(actionType, context && context.ASSET_TAG, notesText);
-    if (!seq.allowed) {
-      return res.status(409).json({
-        ok: false,
-        code: 'DISPOSITION_SEQUENCE_VIOLATION',
-        error: `Cannot record ${actionType}: earlier stage(s) not found in the incident work notes for this asset.`,
-        missingStages: seq.missing
-      });
-    }
-  }
-
-  try {
-    let action = actionGate.generateAction({
-      actionType,
-      payload: { draft: taggedNote, context: context || {} },
-      technician,
-      sourceIncident: incidentId,
-      asset: (context && context.ASSET_TAG) || null
-    });
-    action = actionGate.previewAction(action);
-    action = actionGate.confirmAction(action);
-    action = await actionGate.executeAction(action, async () =>
-      snAdapter.writeWorkNote(incidentId, taggedNote)
-    );
-
-    recordL1AuditEvent({
-      eventType: 'ACTION_EXECUTED',
-      action,
-      executionResult: action.executionResult,
-      metadata: {
-        surface: 'asset-action',
-        templateId,
-        technicianConfirmed: true
-      }
-    });
-
-    return res.json({
-      ok: true,
-      preview,
-      servicenow: { attempted: true, ...action.executionResult },
-      action: {
-        actionType: action.actionType,
-        sourceIncident: action.sourceIncident,
-        asset: action.asset,
-        technician: action.technician,
-        confirmedAt: action.confirmedAt
-      },
-      governed: {
-        technicianConfirmed: true,
-        exactDraftWritten: true
-      },
-      createdAt: action.executedAt
-    });
-  } catch (e) {
-    const status = e.code === 'SERVICENOW_NOT_CONFIGURED' ? 503 : 502;
-    return res.status(status).json({
-      ok: false,
-      error: e.message,
-      servicenow: { attempted: true, success: false }
-    });
-  }
-});
-
-app.post('/api/l1-copilot/resolution',
-  (req, res, next) => (req.body && req.body.writeToServicenow)
-    ? requireRole(BPO_INTERNAL_ROLES)(req, res, next)
-    : next(),
-  async (req, res) => {
+app.post('/api/l1-copilot/resolution', (req, res, next) => (
+  // Same truthiness the handler uses to enter its write branch, so a
+  // truthy-but-not-`true` value can never slip past the guard.
+  req.body && req.body.writeToServicenow
+    ? requireL1Technician(req, res, next)
+    : next()
+), async (req, res) => {
   const {
     ticket,
     analysis,
@@ -6292,43 +6179,22 @@ app.post('/api/l1-copilot/resolution',
     };
 
     try {
-      let action = actionGate.generateAction({
-        actionType: 'RESOLUTION_WRITE',
-        payload: { draft: trimmedDraft },
-        technician,
-        sourceIncident: incidentId,
-        asset: null
-      });
-      action = actionGate.previewAction(action);
-      action = actionGate.confirmAction(action);
-      action = await actionGate.executeAction(action, async () =>
-        snAdapter.writeWorkNote(incidentId, trimmedDraft)
-      );
-
-      recordL1AuditEvent({
-        eventType: 'ACTION_EXECUTED',
-        action,
-        executionResult: action.executionResult,
-        metadata: {
-          surface: 'resolution',
-          technicianConfirmed: true,
-          exactDraftWritten: true
-        }
-      });
-
+      const result = await snAdapter.writeWorkNote(incident, draft.trim());
+      auditL1Write(req, 'resolution', incident, 'success');
       return res.json({
         ok: true,
         answer: trimmedDraft,
         servicenow: { attempted: true, ...action.executionResult },
         governed: {
           technicianConfirmed: true,
-          exactDraftWritten: true
+          exactDraftWritten: true,
+          confirmedBy: req.l1Technician
         },
         createdAt: action.executedAt
       });
     } catch (e) {
-      const status = e.code === 'SERVICENOW_NOT_CONFIGURED' ? 503 : 502;
-      return res.status(status).json({
+      auditL1Write(req, 'resolution', incident, 'failed:' + (e.code || 'ERROR'));
+      return res.status(e.code === 'SERVICENOW_NOT_CONFIGURED' ? 503 : 502).json({
         ok: false,
         error: e.message,
         servicenow: { attempted: true, success: false }

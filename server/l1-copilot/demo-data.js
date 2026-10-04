@@ -110,6 +110,54 @@ function demoTicket(incidentId) {
   };
 }
 
+// Catalog (service request) fixtures for the request-fulfillment panel.
+// A RITM comes back with its SC Tasks already Closed Complete so the demo
+// path can reach "verified"; an SCTASK comes back on its own.
+function demoRequestRecord(number) {
+  const key = String(number || '').trim().toUpperCase() || 'RITM0010001';
+  if (/^SCTASK/.test(key)) {
+    return {
+      kind: 'SCTASK',
+      record: {
+        sysId: 'c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6',
+        number: key,
+        requestItem: 'RITM0010001',
+        shortDescription: 'Install Adobe Acrobat Pro',
+        state: 'Work in Progress',
+        assignmentGroup: 'Desktop Support L1',
+        assignedTo: 'Tech Demo'
+      },
+      catalogTasks: [],
+      demo: true
+    };
+  }
+  return {
+    kind: 'RITM',
+    record: {
+      sysId: 'b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5',
+      number: key,
+      request: 'REQ0010001',
+      requestedFor: 'Jane Doe',
+      shortDescription: 'Software request: Adobe Acrobat Pro',
+      state: 'Work in Progress',
+      assignmentGroup: 'Desktop Support L1',
+      assignedTo: 'Tech Demo',
+      catalogItem: 'Software Install'
+    },
+    catalogTasks: [
+      {
+        sysId: 'c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6',
+        number: key.replace('RITM', 'SCTASK'),
+        requestItem: key,
+        shortDescription: 'Install Adobe Acrobat Pro',
+        state: 'Closed Complete',
+        assignmentGroup: 'Desktop Support L1'
+      }
+    ],
+    demo: true
+  };
+}
+
 function demoAwsInstance(identifier) {
   const looksLikeId = /^i-/i.test(identifier || '');
   return {
@@ -204,6 +252,7 @@ module.exports = {
   isDemoModeEnabled,
   demoAsset,
   demoTicket,
+  demoRequestRecord,
   demoAwsInstance,
   demoDevice,
   demoGcpInstance,

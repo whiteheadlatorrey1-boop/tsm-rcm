@@ -19,7 +19,7 @@
  *   - modify CMDB records
  */
 
-const { WORKFLOWS: WORKFLOW_CONTRACTS } = require('./workflow-contract');
+const { normalizeState: mapState } = require('./state-map');
 
 const TASK_TYPES = Object.freeze([
   'ONBOARDING',
@@ -27,6 +27,8 @@ const TASK_TYPES = Object.freeze([
   'FOOT MOVE',
   'HARDWARE',
   'HARDWARE SWAP',
+  'SOFTWARE',
+  'REQUEST FULFILLMENT',
   'INCIDENT',
   'LOST_STOLEN',
   'DISPOSITION',
@@ -40,21 +42,40 @@ const STATES = Object.freeze([
   'PENDING',
   'ON HOLD',
   'RESOLVED',
-  'CLOSED'
+  'CLOSED',
+  'CANCELED'
 ]);
 
-function normalizeState(state) {
-  const value = String(state || '').trim().toUpperCase();
+function normalizeState(state, options) {
+  // Delegates to the shared ServiceNow state map so raw codes ("2") and
+  // display labels ("Work in Progress") reach the same canonical vocabulary
+  // as hand-typed UI values. Unrecognized input passes through as cleaned
+  // text and is handled as "Unknown state requires review" below.
+  return mapState(state, options);
+}
 
-  if (value === 'IN_PROGRESS' || value === 'IN-PROGRESS') {
-    return 'IN PROGRESS';
-  }
+// Task types fulfilled through the ServiceNow service catalog (RITM / SC Task).
+// These have no physical asset to verify, so closure requires
+// `fulfillmentVerified` (set only by the request-fulfillment evaluator,
+// server/l1-copilot/request-fulfillment.js) instead of `assetVerified`.
+const FULFILLMENT_TASK_TYPES = Object.freeze([
+  'SOFTWARE',
+  'REQUEST FULFILLMENT'
+]);
 
-  if (value === 'ON_HOLD' || value === 'ON-HOLD') {
-    return 'ON HOLD';
-  }
+// ServiceNow catalog numbers imply their table; incident numbers do not need
+// one (state-map defaults to incident). Lets a RITM/SCTASK read its own state
+// codes correctly ("3" = Closed Complete, not On Hold) without the client
+// having to know about state tables.
+function inferStateTable(number) {
+  const value = String(number || '').trim().toUpperCase();
+  if (/^RITM\d+$/.test(value)) return 'sc_req_item';
+  if (/^SCTASK\d+$/.test(value)) return 'sc_task';
+  return undefined;
+}
 
-  return value;
+function resolveStateTable(input = {}) {
+  return input.stateTable || inferStateTable(input.incident || input.number);
 }
 
 function normalizeTaskType(taskType) {
@@ -65,6 +86,7 @@ function normalizeTaskType(taskType) {
 
   if (value === 'FOOTMOVE') return 'FOOT MOVE';
   if (value === 'HARDWARESWAP') return 'HARDWARE SWAP';
+  if (value === 'REQUESTFULFILLMENT') return 'REQUEST FULFILLMENT';
 
   return TASK_TYPES.includes(value) ? value : 'OTHER';
 }
@@ -117,7 +139,43 @@ function classifyTask(input = {}) {
     };
   }
 
-  if (/incident|outage|not working|failure|error|broken/.test(text)) {
+  // A failed install/deploy is an incident even when the text also names the
+  // machine ("Office install error on desktop"), so this runs before the
+  // hardware-noun and software checks below.
+  if (
+    /(install|deploy|upgrade|update)\w*\s+(failed|failure|error)|(failed|failure|error)\b[^.]*\b(install|deploy)/.test(text)
+  ) {
+    return {
+      taskType: 'INCIDENT',
+      source: 'description'
+    };
+  }
+
+  // "Install a laptop/dock/monitor" is hardware work; "install X on the
+  // laptop" is software. Only the install's object decides.
+  const hardwareInstall =
+    /\binstall\w*\s+(?:of\s+)?(?:(?:an?|the|new)\s+)*(?:laptop|desktop|monitor|dock\w*|keyboard|mouse|headset)\b/.test(text);
+
+  if (
+    /software|licen[sc]e|subscription|\bapps?\b|application|\bclient\b|\bsaas\b/.test(text) ||
+    (/\b(?:re)?install(?:ation|ed|ing)?\b/.test(text) && !hardwareInstall)
+  ) {
+    return {
+      taskType: 'SOFTWARE',
+      source: 'description'
+    };
+  }
+
+  if (
+    /request fulfil|service request|catalog item|\britm\b|\bsctask\b|grant access|access request|add (?:the )?user to|distribution list|shared (?:drive|mailbox)|permissions?\b/.test(text)
+  ) {
+    return {
+      taskType: 'REQUEST FULFILLMENT',
+      source: 'description'
+    };
+  }
+
+  if (/hardware|laptop|desktop|monitor|dock|keyboard|mouse/.test(text)) {
     return {
       taskType: 'INCIDENT',
       source: 'description'
@@ -174,25 +232,35 @@ const DEFAULT_EVIDENCE_KEYS = Object.freeze([
 
 function getRequiredEvidence(taskType) {
   const normalizedTask = normalizeTaskType(taskType);
-  const contractId = normalizedTask.replace(/ /g, '_');
 
-  // Evidence keys come from the workflow contract (single source of truth).
-  // OTHER has no contract entry and keeps the default profile.
-  const keys = WORKFLOW_CONTRACTS[contractId]
-    ? WORKFLOW_CONTRACTS[contractId].evidence
-    : DEFAULT_EVIDENCE_KEYS;
-
-  return keys.map(key => {
-    const meta = EVIDENCE_META[key];
-    if (!meta) {
-      throw new Error(`No label registered for evidence key "${key}"`);
+  const required = [
+    {
+      key: 'userVerified',
+      label: 'User validation'
+    },
+    FULFILLMENT_TASK_TYPES.includes(normalizedTask)
+      ? {
+          key: 'fulfillmentVerified',
+          label: 'Request fulfillment validation'
+        }
+      : {
+          key: 'assetVerified',
+          label: 'Asset validation'
+        },
+    {
+      key: 'workConfirmed',
+      label: 'Required work'
+    },
+    {
+      key: 'tested',
+      label: 'Functionality testing'
     }
     return Object.assign({ key }, meta);
   });
 }
 
 function evaluateWorkflow(input = {}) {
-  const state = normalizeState(input.state);
+  const state = normalizeState(input.state, { table: resolveStateTable(input) });
   const classification = classifyTask(input);
   const taskType = classification.taskType;
   const evidence = input.evidence || {};
@@ -227,7 +295,7 @@ function evaluateWorkflow(input = {}) {
     };
   }
 
-  if (state === 'RESOLVED' || state === 'CLOSED') {
+  if (state === 'RESOLVED' || state === 'CLOSED' || state === 'CANCELED') {
     return {
       state,
       taskType,
@@ -282,7 +350,10 @@ function evaluateWorkflow(input = {}) {
 
 module.exports = {
   TASK_TYPES,
+  FULFILLMENT_TASK_TYPES,
   STATES,
+  inferStateTable,
+  resolveStateTable,
   normalizeState,
   normalizeTaskType,
   classifyTask,
