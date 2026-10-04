@@ -1425,10 +1425,117 @@ TICKET DESCRIPTION</div>
       Functionality was tested after the work
     </label>
 
-    <label style="display:block;font-size:11px;line-height:1.9;">
-      <input type="checkbox" id="l1EvidenceLocationVerified">
-      Location was verified where required
+    <label id="l1LocationVerifiedLabel" style="display:none;font-size:11px;line-height:1.9;">
+      <input type="checkbox" id="l1EvidenceLocationVerified" disabled>
+      Location verified against the CMDB asset record
     </label>
+    <div id="l1LocationPanel" style="display:none;margin:6px 0 10px 20px;padding:10px;border:1px solid var(--border);border-radius:6px;">
+      <div style="font-size:11px;font-weight:600;margin-bottom:6px;">
+        LOCATION VERIFICATION REQUIRED &mdash; <span id="l1LocationTaskType"></span>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:8px;">
+        The checkbox above is locked. It is set only when the asset's CMDB location matches the expected location below.
+      </div>
+      <div id="l1LocationFromWrap" style="margin-bottom:6px;">
+        <label style="display:block;font-size:11px;margin-bottom:2px;">From location</label>
+        <input type="text" id="l1LocationFrom" placeholder="Bldg 1 Fl 2" style="width:100%;font-size:11px;padding:6px;">
+      </div>
+      <div style="margin-bottom:6px;">
+        <label style="display:block;font-size:11px;margin-bottom:2px;">Expected (to) location</label>
+        <input type="text" id="l1LocationTo" placeholder="Bldg 2 Fl 3" style="width:100%;font-size:11px;padding:6px;">
+      </div>
+      <div style="margin-bottom:8px;">
+        <button class="btn btn-outline" id="btnLocationLookup" type="button" style="font-size:10px;">LOOK UP CMDB LOCATION</button>
+        <button class="btn btn-outline" id="btnLocationVerify" type="button" style="font-size:10px;">VERIFY LOCATION</button>
+      </div>
+      <div id="l1LocationStatus" style="font-size:11px;color:var(--muted);">Look up the asset's CMDB location, then verify.</div>
+    </div>
+    <script>
+    (function () {
+      var cmdbLocation = '';
+      var cmdbTag = '';
+      function $(id) { return document.getElementById(id); }
+      function esc(t) { return String(t == null ? '' : t).replace(/[&<>"]/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+      function tag() { var el = $('tkAsset'); return el ? el.value.trim() : ''; }
+      function invalidate(clearCmdb) {
+        var cb = $('l1EvidenceLocationVerified');
+        if (cb) cb.checked = false;
+        if (clearCmdb) { cmdbLocation = ''; cmdbTag = ''; }
+      }
+      window.setLocationPanelActive = function (taskType) {
+        var t = String(taskType || '').toUpperCase();
+        var inScope = t === 'FOOT MOVE' || t === 'ONBOARDING' || t === 'OFFBOARDING';
+        var panel = $('l1LocationPanel'), label = $('l1LocationVerifiedLabel'), cb = $('l1EvidenceLocationVerified');
+        if (!panel || !label || !cb) return;
+        panel.style.display = inScope ? 'block' : 'none';
+        label.style.display = inScope ? 'block' : 'none';
+        $('l1LocationFromWrap').style.display = t === 'FOOT MOVE' ? 'block' : 'none';
+        if (inScope) $('l1LocationTaskType').textContent = t;
+        if (cb.dataset.locationManaged !== t) {
+          cb.checked = false;
+          cb.dataset.locationManaged = t;
+        }
+        if (!inScope) cb.checked = false;
+      };
+      async function lookup() {
+        var st = $('l1LocationStatus'), t = tag();
+        invalidate(true);
+        if (!t) { st.textContent = 'Enter the asset tag in the ticket form first.'; return; }
+        st.textContent = 'Looking up...';
+        try {
+          var res = await fetch('/api/l1-copilot/servicenow/asset/' + encodeURIComponent(t));
+          var d = await res.json();
+          var a = (d && (d.asset || d.result)) || d || {};
+          if (!res.ok || d.ok === false) { st.innerHTML = '<span class="err">' + esc(d.error || 'Lookup failed.') + '</span>'; return; }
+          cmdbLocation = String(a.location || '');
+          cmdbTag = t;
+          st.innerHTML = cmdbLocation
+            ? 'CMDB location for ' + esc(t) + ': <b>' + esc(cmdbLocation) + '</b>'
+            : '<span class="err">The asset record has no location.</span>';
+        } catch (e) {
+          st.innerHTML = '<span class="err">Lookup failed.</span>';
+        }
+      }
+      async function verify() {
+        var st = $('l1LocationStatus'), cb = $('l1EvidenceLocationVerified');
+        var t = String(cb.dataset.locationManaged || '');
+        if (!t) { st.textContent = 'Evaluate the ticket first.'; return; }
+        st.textContent = 'Verifying...';
+        try {
+          var res = await fetch('/api/l1-copilot/location-verification/evaluate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              taskType: t,
+              assetTag: tag(),
+              fromLocation: $('l1LocationFrom').value,
+              toLocation: $('l1LocationTo').value,
+              cmdbLocation: cmdbTag === tag() ? cmdbLocation : ''
+            })
+          });
+          var d = await res.json();
+          if (!res.ok || !d.ok) { cb.checked = false; st.innerHTML = '<span class="err">' + esc(d.error || 'Evaluation failed.') + '</span>'; return; }
+          var o = d.locationVerification;
+          if (o.locationVerified === true) {
+            cb.checked = true;
+            st.innerHTML = '<span style="color:var(--cyan)">Verified.</span> CMDB location matches.';
+          } else {
+            cb.checked = false;
+            var msg = (o.reasons || []).concat((o.missing || []).map(function (m) { return 'Missing: ' + m; }));
+            st.innerHTML = '<span class="err">Not verified.</span> ' + esc(msg.join(' '));
+          }
+        } catch (e) {
+          cb.checked = false;
+          st.innerHTML = '<span class="err">Evaluation failed.</span>';
+        }
+      }
+      $('btnLocationLookup').addEventListener('click', lookup);
+      $('btnLocationVerify').addEventListener('click', verify);
+      ['l1LocationFrom', 'l1LocationTo'].forEach(function (id) { $(id).addEventListener('input', function () { invalidate(false); }); });
+      var tk = $('tkAsset');
+      if (tk) tk.addEventListener('input', function () { invalidate(true); });
+    })();
+    </script>
 
     <label style="display:block;font-size:11px;line-height:1.9;">
       <input type="checkbox" id="l1EvidenceFinalWorkNoteConfirmed">
@@ -6280,6 +6387,7 @@ window.selectQ15Scenario = function(id) {
 
       setAssetRecoveryPanelActive(workflow.taskType);
       setRequestFulfillmentPanelActive(workflow.taskType);
+      if (window.setLocationPanelActive) window.setLocationPanelActive(workflow.taskType);
 
       result.innerHTML =
         '<strong>NEXT ACTION:</strong> ' +

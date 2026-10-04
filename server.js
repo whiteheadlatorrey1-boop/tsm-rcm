@@ -114,6 +114,7 @@ const { evaluateWorkflow } = require('./server/l1-copilot/workflow-engine');
 const { evaluateClosure, buildClosureChecklist } = require('./server/l1-copilot/closure-gate');
 const { evaluateAssetRecovery } = require('./server/l1-copilot/asset-recovery');
 const { evaluateRequestFulfillment } = require('./server/l1-copilot/request-fulfillment');
+const { evaluateLocationVerification } = require('./server/l1-copilot/location-verification');
 const cloudOpsAdapter = require('./server/l1-copilot/cloud-ops-adapter');
 const graphAdapter = require('./server/l1-copilot/graph-intune-adapter');
 const gcpAdapter = require('./server/l1-copilot/gcp-adapter');
@@ -4997,6 +4998,14 @@ app.post('/api/l1-copilot/asset-recovery/evaluate', (req, res) => {
 // service catalog (RITM / SC Task). Pure evaluation only -- the catalog
 // lookup itself happens via GET /api/l1-copilot/servicenow/request/:number;
 // the client passes that result here as `catalogRecord` / `catalogTasks`.
+app.post('/api/l1-copilot/location-verification/evaluate', (req, res) => {
+  try {
+    res.json({ ok: true, locationVerification: evaluateLocationVerification(req.body || {}) });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: 'location verification failed' });
+  }
+});
+
 app.post('/api/l1-copilot/request-fulfillment/evaluate', (req, res) => {
   try {
     const result = evaluateRequestFulfillment(req.body || {});
