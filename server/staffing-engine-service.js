@@ -517,6 +517,18 @@ async function deletePlacement(placementId) {
   return result.deletedCount > 0;
 }
 
+// Phase 8G wiring. When STAFFING_PLACEMENT_SIGNALS=1, the placement_outcome
+// stream can be read as aggregate workforce signals. Read-only: no writes,
+// no scoring, and nothing feeds readiness.
+const PlacementSignals = require('../html/js/career/tsm-placement-signals.js');
+function placementSignalsEnabled() {
+  return process.env.STAFFING_PLACEMENT_SIGNALS === '1';
+}
+async function getPlacementSignals() {
+  const records = await listPlacementEvidence({});
+  return PlacementSignals.buildPlacementSignals(records);
+}
+
 module.exports = {
   connect,
   // employers
@@ -537,6 +549,8 @@ module.exports = {
   updatePlacementStatus,
   recordPlacementEvidence,
   listPlacementEvidence,
+  placementSignalsEnabled,
+  getPlacementSignals,
   deletePlacement,
   computeFee,
   VALID_STATUSES,
