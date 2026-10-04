@@ -9,6 +9,7 @@
 // recorded training events (see server/candidate-registry-service.js).
 
 const express = require('express');
+const { requireRole } = require('../middleware/require-auth');
 const router = express.Router();
 
 const registry = require('../server/candidate-registry-service');
@@ -63,7 +64,7 @@ router.post('/api/candidates/:id/training-events', async (req, res) => {
   }
 });
 
-router.delete('/api/candidates/:id', async (req, res) => {
+router.delete('/api/candidates/:id', requireRole(['admin']), async (req, res) => {
   try {
     const deleted = await registry.deleteCandidate(req.params.id);
     if (!deleted) return res.status(404).json({ error: 'not found' });
@@ -74,9 +75,8 @@ router.delete('/api/candidates/:id', async (req, res) => {
 });
 
 // Dev/demo convenience — seeds clearly-labeled placeholder candidates.
-// Not mounted behind auth here because it only ever upserts sample rows;
-// gate this in production if that matters for your deployment.
-router.post('/api/candidates/_seed-sample-data', async (req, res) => {
+// Admin-only: requires an admin session (delete and seed are not used by learner pages).
+router.post('/api/candidates/_seed-sample-data', requireRole(['admin']), async (req, res) => {
   try {
     const candidates = await registry.seedSampleData();
     res.json({ seeded: candidates.length, candidates });
