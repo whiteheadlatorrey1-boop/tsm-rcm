@@ -658,6 +658,18 @@ router.post('/api/training-intelligence/quiz/:providerId/submit', async (req, re
   const answers = Array.isArray(req.body && req.body.answers) ? req.body.answers : null;
   if (!answers || !answers.length) return res.status(400).json({ ok: false, error: 'answers array is required' });
 
+  // One answer per question. Score is correct / answers submitted, so repeating
+  // a right answer would otherwise inflate it (and anything recorded from it).
+  const seenQuestionIds = new Set();
+  for (const a of answers) {
+    const qid = a && typeof a.questionId === 'string' ? a.questionId : null;
+    if (qid === null) continue;
+    if (seenQuestionIds.has(qid)) {
+      return res.status(400).json({ ok: false, error: 'duplicate questionId in answers: ' + qid });
+    }
+    seenQuestionIds.add(qid);
+  }
+
   const byId = {};
   (bank.questions || []).forEach(q => { byId[q.id] = q; });
 
