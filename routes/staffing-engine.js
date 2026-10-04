@@ -127,6 +127,17 @@ router.get('/api/staffing/placements', async (req, res) => {
 });
 
 // Read-only: the outcome-stream records for one placement (Phase 8F).
+// Phase 8G: aggregate signals from the placement_outcome stream (flagged, read-only).
+router.get('/api/staffing/placement-signals', async (req, res) => {
+  try {
+    if (!engine.placementSignalsEnabled()) return res.status(404).json({ error: 'placement signals disabled' });
+    const out = await engine.getPlacementSignals();
+    res.json({ signals: out.signals, rejectedCount: out.rejected.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/api/staffing/placements/:id/evidence', async (req, res) => {
   try {
     const evidence = await engine.listPlacementEvidence({ placementId: req.params.id });

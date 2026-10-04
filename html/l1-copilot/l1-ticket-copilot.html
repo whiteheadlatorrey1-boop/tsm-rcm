@@ -2270,6 +2270,7 @@ TICKET DESCRIPTION</div>
   let registryCandidateId = null;
   let registryCandidateKey = null;
   let registryCandidatePromise = null;
+  let registryCandidateToken = null;
 
   function candidateKey(){
     return candidateInfo.fname + '|' + candidateInfo.lname + '|' + candidateInfo.email;
@@ -2304,12 +2305,14 @@ TICKET DESCRIPTION</div>
         const candidateId = data && data.candidate && data.candidate.candidateId;
         if (!candidateId) throw new Error('Candidate Registry response missing candidateId');
         registryCandidateId = candidateId;
+        registryCandidateToken = (data && data.candidateToken) || null;
         return candidateId;
       })
       .catch((e) => {
         // Don't leave a failed lookup cached — let the next sync retry.
         registryCandidatePromise = null;
         registryCandidateId = null;
+        registryCandidateToken = null;
         throw e;
       });
     return registryCandidatePromise;
@@ -2352,7 +2355,7 @@ TICKET DESCRIPTION</div>
       .then((candidateId) => {
         return fetch('/api/candidates/' + encodeURIComponent(candidateId) + '/training-events', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'x-candidate-token': registryCandidateToken || '' },
           body: JSON.stringify({
             type,
             score: 100,

@@ -19,6 +19,7 @@ const crypto = require('crypto');
 const candidateRegistry = require('./candidate-registry-service');
 const Pipeline = require('../html/js/career/tsm-staffing-pipeline-model.js');
 const PlacementEvidence = require('../html/js/career/tsm-placement-evidence.js');
+const ReadinessModel = require('./readiness/professional-readiness-model.js');
 
 const DEFAULT_DB_NAME = 'tsm-consultz';
 const EMPLOYERS_COLLECTION = 'staffing_employers';
@@ -386,6 +387,22 @@ function evaluatePlacementEligibility(candidate, { minimumReadiness = 70 } = {})
   };
 }
 
+// Phase 8H gate. When STAFFING_REQUIRE_COVERAGE=1, a candidate must also have
+// evidence in at least N readiness dimensions (default 2, set by
+// STAFFING_MIN_ASSESSED_DIMENSIONS), so one quiz cannot qualify anyone.
+function coverageRequired() {
+  return process.env.STAFFING_REQUIRE_COVERAGE === '1';
+}
+function requiredDimensions() {
+  const n = parseInt(process.env.STAFFING_MIN_ASSESSED_DIMENSIONS, 10);
+  return Number.isFinite(n) && n >= 1 && n <= 5 ? n : 2;
+}
+async function assessCoverage(candidateId) {
+  const events = await candidateRegistry.listTrainingEvents(candidateId);
+  const r = ReadinessModel.assessProfessionalReadiness(events);
+  return { assessed: r.overall.assessedDimensions.length, required: requiredDimensions() };
+}
+
 async function submitCandidate({ candidateId, jobOrderId, payRate, annualHours, meta, matchResult, review }) {
   if (!candidateId) {
     throw new Error('candidateId is required');
@@ -393,6 +410,13 @@ async function submitCandidate({ candidateId, jobOrderId, payRate, annualHours, 
 
   const candidate = await candidateRegistry.getCandidate(candidateId);
   const eligibility = evaluatePlacementEligibility(candidate);
+  if (eligibility.eligible && coverageRequired()) {
+    const cov = await assessCoverage(candidateId);
+    if (cov.assessed < cov.required) {
+      eligibility.eligible = false;
+      eligibility.reason = 'insufficient-coverage';
+    }
+  }
 
   if (!eligibility.eligible) {
     throw new Error(
@@ -517,6 +541,18 @@ async function deletePlacement(placementId) {
   return result.deletedCount > 0;
 }
 
+// Phase 8G wiring. When STAFFING_PLACEMENT_SIGNALS=1, the placement_outcome
+// stream can be read as aggregate workforce signals. Read-only: no writes,
+// no scoring, and nothing feeds readiness.
+const PlacementSignals = require('../html/js/career/tsm-placement-signals.js');
+function placementSignalsEnabled() {
+  return process.env.STAFFING_PLACEMENT_SIGNALS === '1';
+}
+async function getPlacementSignals() {
+  const records = await listPlacementEvidence({});
+  return PlacementSignals.buildPlacementSignals(records);
+}
+
 module.exports = {
   connect,
   // employers
@@ -537,6 +573,8 @@ module.exports = {
   updatePlacementStatus,
   recordPlacementEvidence,
   listPlacementEvidence,
+  placementSignalsEnabled,
+  getPlacementSignals,
   deletePlacement,
   computeFee,
   VALID_STATUSES,

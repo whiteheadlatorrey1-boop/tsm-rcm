@@ -249,6 +249,28 @@ async function main() {
   }
 
   // -------------------------------------------------------------
+  // SIGNALS CHECK (STAFFING_PLACEMENT_SIGNALS) - added step 6c
+  // Set EXPECT_SIGNALS=1 to make a missing signal a failure.
+  // -------------------------------------------------------------
+  step('6c', 'Placement signals (needs STAFFING_PLACEMENT_SIGNALS=1 on the target)');
+  {
+    let sg = null, sgErr = null;
+    try { sg = await api('GET', '/api/staffing/placement-signals'); }
+    catch (e) { sgErr = e.message; }
+    const mine = sg && sg.signals && Array.isArray(sg.signals.placements)
+      ? sg.signals.placements.find(p => p.placementId === placementId) : null;
+    if (mine) {
+      console.log('  signal: ' + JSON.stringify(mine).slice(0, 400));
+      check('signals include this placement as placed', mine.terminal === 'placed');
+      check('signals leak no candidateId', !JSON.stringify(sg).includes(candidateId));
+    } else if (process.env.EXPECT_SIGNALS === '1') {
+      check('signals include this placement' + (sgErr ? ' (' + sgErr + ')' : ''), false);
+    } else {
+      console.log('  flag off or not found (not counted as a failure; set EXPECT_SIGNALS=1 to enforce)' + (sgErr ? ' [' + sgErr + ']' : ''));
+    }
+  }
+
+  // -------------------------------------------------------------
   // CLEANUP — leaves production exactly as it was found, unless --keep
   // -------------------------------------------------------------
   if (KEEP) {

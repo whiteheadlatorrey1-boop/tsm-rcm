@@ -184,6 +184,11 @@ async function getCandidate(candidateId) {
   return database.collection(CANDIDATES_COLLECTION).findOne({ candidateId });
 }
 
+function cleanText(v, max) {
+  if (v == null) return v;
+  return String(v).replace(/[<>]/g, '').trim().slice(0, max);
+}
+
 async function upsertCandidate(payload) {
   const database = await connect();
   const now = new Date().toISOString();
@@ -197,9 +202,9 @@ async function upsertCandidate(payload) {
 
   const doc = {
     candidateId,
-    name: payload.name,
-    role: payload.role || null,
-    email: payload.email || null,
+    name: cleanText(payload.name, 120),
+    role: cleanText(payload.role, 120) || null,
+    email: cleanText(payload.email, 254) || null,
     status: payload.status || 'in_training',
     source: payload.source || 'career_training_platform',
     isSampleData: payload.isSampleData !== undefined ? payload.isSampleData : true,
@@ -388,12 +393,19 @@ async function seedSampleData() {
   return results;
 }
 
+// Read-only: a candidate's raw training events, oldest first.
+async function listTrainingEvents(candidateId) {
+  const database = await connect();
+  return database.collection(TRAINING_EVENTS_COLLECTION).find({ candidateId }).sort({ recordedAt: 1 }).toArray();
+}
+
 module.exports = {
   connect,
   listCandidates,
   getCandidate,
   upsertCandidate,
   recordTrainingEvent,
+  listTrainingEvents,
   deleteCandidate,
   seedSampleData,
   computeReadinessScore,
