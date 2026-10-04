@@ -110,14 +110,17 @@
     });
   }
 
-  function recordTrainingEvent(candidateId, event) {
+  function recordTrainingEvent(candidateId, event, options) {
     var id = requireCandidateId(candidateId);
+    var headers = { 'Content-Type': 'application/json' };
+    if (options && options.token) headers['x-candidate-token'] = options.token;
     var normalizedEvent = normalizeEvent(event);
 
     return request(
       API_BASE + '/' + encodeURIComponent(id) + '/training-events',
       {
         method: 'POST',
+        headers: headers,
         body: JSON.stringify(normalizedEvent)
       }
     ).then(function (body) {
@@ -152,10 +155,10 @@
     };
   }
 
-  function recordRcmAttempt(candidateId, attempt) {
+  function recordRcmAttempt(candidateId, attempt, options) {
     var event = mapRcmAttempt(attempt);
 
-    return recordTrainingEvent(candidateId, event);
+    return recordTrainingEvent(candidateId, event, options);
   }
 
   var API = {

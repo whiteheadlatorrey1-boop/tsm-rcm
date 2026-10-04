@@ -42,10 +42,12 @@
     }).then(function (data) {
       var id = data && data.candidate && data.candidate.candidateId;
       if (!id) throw new Error('create response missing candidateId');
-      return id;
+      return { id: id, token: (data && data.candidateToken) || null };
     });
   }
 
+  // Get this browser's candidate (create once), then post one event.
+  // Never throws to the caller: resolves { ok, ... } so the UI is unaffected.
   function recordEvent(event, source) {
     var s = load();
     if (!s.identity || !s.identity.name) {
@@ -54,15 +56,18 @@
     var bridge = global.TSMCandidateRegistryBridge;
     if (!bridge) return Promise.resolve({ ok: false, reason: 'no-bridge' });
 
-    var getId = s.candidateId
-      ? Promise.resolve(s.candidateId)
-      : createCandidate(s.identity, source).then(function (id) {
-          var cur = load(); cur.candidateId = id; save(cur);
-          return id;
+    var getCred = s.candidateId
+      ? Promise.resolve({ id: s.candidateId, token: s.candidateToken || null })
+      : createCandidate(s.identity, source).then(function (c) {
+          var cur = load();
+          cur.candidateId = c.id;
+          cur.candidateToken = c.token;
+          save(cur);
+          return c;
         });
 
-    return getId
-      .then(function (id) { return bridge.recordTrainingEvent(id, event); })
+    return getCred
+      .then(function (c) { return bridge.recordTrainingEvent(c.id, event, { token: c.token }); })
       .then(function (candidate) { return { ok: true, candidate: candidate }; })
       .catch(function (err) {
         console.error('TSM candidate session sync failed:', err);
