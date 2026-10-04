@@ -112,6 +112,7 @@ const { enforceBNCASchema } = require('./server/tsm-bnca-schema');
 const snAdapter = require('./server/l1-copilot/servicenow-adapter');
 const { evaluateWorkflow } = require('./server/l1-copilot/workflow-engine');
 const { evaluateClosure, buildClosureChecklist } = require('./server/l1-copilot/closure-gate');
+const { evaluateAssetRecovery } = require('./server/l1-copilot/asset-recovery');
 const cloudOpsAdapter = require('./server/l1-copilot/cloud-ops-adapter');
 const graphAdapter = require('./server/l1-copilot/graph-intune-adapter');
 const gcpAdapter = require('./server/l1-copilot/gcp-adapter');
@@ -4957,6 +4958,33 @@ app.post('/api/l1-copilot/workflow/evaluate', (req, res) => {
     });
   } catch (e) {
     console.error('L1 COPILOT WORKFLOW EVALUATION ERROR:', e.message);
+    return res.status(400).json({
+      ok: false,
+      error: e.message
+    });
+  }
+});
+
+// Scope note: this is IT hardware asset recovery (offboarding/hardware-swap
+// laptops, monitors, etc.), unrelated to the healthcare revenue-recovery
+// orchestrator under server/healthcare/ (denials/claims/payer appeals).
+// Pure evaluation only -- the CMDB lookup itself happens via the existing
+// GET /api/l1-copilot/servicenow/asset/:tag route; the client passes that
+// result here as `cmdbAsset`.
+app.post('/api/l1-copilot/asset-recovery/evaluate', (req, res) => {
+  try {
+    const result = evaluateAssetRecovery(req.body || {});
+    return res.json({
+      ok: true,
+      assetRecovery: result,
+      governed: {
+        readOnly: true,
+        technicianAuthority: true
+      },
+      createdAt: new Date().toISOString()
+    });
+  } catch (e) {
+    console.error('L1 COPILOT ASSET RECOVERY EVALUATION ERROR:', e.message);
     return res.status(400).json({
       ok: false,
       error: e.message
