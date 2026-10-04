@@ -91,3 +91,69 @@ test('contract evidence matches live workflow-engine for existing task types', (
 });
 
 console.log('\nL1 workflow contract tests complete.');
+
+test('asset recovery workflow contract is complete', () => {
+  const workflow = getWorkflow('ASSET_RECOVERY');
+
+  assert.deepStrictEqual(
+    workflow.requiredReads,
+    ['USER', 'ASSET', 'TASK']
+  );
+
+  assert.deepStrictEqual(
+    getGates('ASSET_RECOVERY'),
+    [
+      GATES.READ,
+      GATES.RECONCILE,
+      GATES.ASSESS,
+      GATES.EXECUTION,
+      GATES.VERIFICATION,
+      GATES.CLOSURE
+    ]
+  );
+
+  assert.deepStrictEqual(
+    getRequiredEvidence('ASSET_RECOVERY'),
+    [
+      'userVerified',
+      'assetVerified',
+      'workConfirmed',
+      'tested',
+      'finalWorkNoteConfirmed'
+    ]
+  );
+});
+
+test('software fulfillment workflow contract is complete', () => {
+  const workflow = getWorkflow('SOFTWARE_FULFILLMENT');
+
+  assert.deepStrictEqual(
+    workflow.requiredReads,
+    ['RITM', 'SC_TASK', 'USER']
+  );
+
+  assert.deepStrictEqual(
+    getGates('SOFTWARE_FULFILLMENT'),
+    [
+      GATES.READ,
+      GATES.RECONCILE,
+      GATES.ASSESS,
+      GATES.EXECUTION,
+      GATES.VERIFICATION,
+      GATES.CLOSURE
+    ]
+  );
+
+  assert.deepStrictEqual(
+    getRequiredEvidence('SOFTWARE_FULFILLMENT'),
+    [
+      'userVerified',
+      'workConfirmed',
+      'tested',
+      'finalWorkNoteConfirmed'
+    ]
+  );
+});
+
+console.log('PASS Asset Recovery + Software Fulfillment contracts');
+
