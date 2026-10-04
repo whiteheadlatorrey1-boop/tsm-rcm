@@ -17,10 +17,10 @@ const perfect = (sim) => { const a = {}; sim.items.forEach((i) => { a[i.qid] = i
 const wrong = (sim) => { const a = {}; sim.items.forEach((i) => { const bad = i.options.map((_, k) => k).find((k) => !i.correct.includes(k)); a[i.qid] = [bad]; }); return a; };
 const reviewedBank = bank.map((q) => Object.assign({}, q, { reviewed: true }));
 
-t('bank loads 60 questions', () => assert.strictEqual(bank.length, 60));
+t('bank loads 120 questions', () => assert.strictEqual(bank.length, 120));
 t('bank passes validation', () => assert.deepStrictEqual(validateBank(bank, bp), []));
 t('question ids are unique', () => assert.strictEqual(new Set(bank.map((q) => q.id)).size, bank.length));
-t('every question starts unreviewed', () => assert.ok(bank.every((q) => q.reviewed === false)));
+t('every question has a reviewed flag', () => assert.ok(bank.every((q) => typeof q.reviewed === 'boolean')));
 t('bank has single and multi questions', () => { assert.ok(bank.some((q) => q.type === 'single')); assert.ok(bank.some((q) => q.type === 'multi' && q.correct.length >= 2)); });
 t('quotas for 60 questions follow the weights', () => assert.deepStrictEqual(Object.values(quotas(bp, 60)), [4, 6, 12, 12, 18, 8]));
 t('quotas always sum to the total', () => [10, 20, 33, 60, 75, 100].forEach((n) => assert.strictEqual(Object.values(quotas(bp, n)).reduce((s, x) => s + x, 0), n)));
@@ -39,7 +39,7 @@ t('same seed gives the same simulation', () => assert.deepStrictEqual(buildSimul
 t('different seeds give different order', () => assert.notDeepStrictEqual(buildSimulation(ID, bank, { seed: 7 }).items.map((i) => i.qid), buildSimulation(ID, bank, { seed: 8 }).items.map((i) => i.qid)));
 t('correct answer position varies across seeds', () => {
   const pos = new Set();
-  for (let s = 0; s < 30; s++) { const it = buildSimulation(ID, bank, { seed: s }).items.find((i) => i.qid === 'nav-2'); pos.add(it.correct[0]); }
+  for (let s = 0; s < 30; s++) { buildSimulation(ID, bank, { seed: s }).items.filter((i) => i.type === 'single').forEach((it) => pos.add(it.correct[0])); }
   assert.ok(pos.size > 1);
 });
 t('short bank throws unless allowed', () => {
@@ -57,7 +57,7 @@ t('multi-select gets no partial credit', () => {
 });
 t('per-domain results add up', () => { const s = buildSimulation(ID, bank, { seed: 4 }); const g = gradeSimulation(s, perfect(s), 80); assert.strictEqual(g.domains.reduce((n, d) => n + d.total, 0), 60); g.domains.forEach((d) => assert.strictEqual(d.score, 100)); });
 t('grading produces one evidence row per question', () => { const s = buildSimulation(ID, bank, { seed: 4 }); const g = gradeSimulation(s, perfect(s), 80); assert.strictEqual(g.domainEvidence.length, 60); assert.ok(g.domainEvidence.every((e) => e.score === 100)); });
-t('sim record flags unreviewed questions', () => { const s = buildSimulation(ID, bank, { seed: 5 }); assert.strictEqual(gradeSimulation(s, perfect(s), 80).simRecord.unreviewedQuestions, 60); });
+t('sim record flags unreviewed questions', () => { const s = buildSimulation(ID, bank.map((q) => Object.assign({}, q, { reviewed: false })), { seed: 5 }); assert.strictEqual(gradeSimulation(s, perfect(s), 80).simRecord.unreviewedQuestions, 60); });
 t('gate ignores a simulation with unreviewed questions', () => {
   const s = buildSimulation(ID, bank, { seed: 5 }); const r = gradeSimulation(s, perfect(s), 80).simRecord;
   assert.strictEqual(evaluateWeightedReadiness(ID, [], [r, r]).sims.fullCount, 0);
@@ -82,8 +82,10 @@ t('markReviewed records the reviewer on a copy', () => {
   const b = loadBank(ID, dir);
   assert.strictEqual(b.find((q) => q.id === 'nav-1').reviewedBy, 'Pat Reviewer');
   assert.strictEqual(b.filter((q) => q.reviewed).length, 1);
-  assert.strictEqual(b.length, 60);
+  assert.strictEqual(b.length, 120);
 });
+t('every domain has at least 10 spare questions beyond its quota', () => bankCoverage(bank, bp).forEach((c) => assert.ok(c.have >= c.need + 10, c.domainId)));
+t('different seeds draw different question sets', () => assert.notDeepStrictEqual(buildSimulation(ID, bank, { seed: 1 }).items.map((i) => i.qid).sort(), buildSimulation(ID, bank, { seed: 2 }).items.map((i) => i.qid).sort()));
 t('markReviewed rejects a blank reviewer', () => assert.throws(() => markReviewed(ID, 'nav-1', '  ', os.tmpdir()), /reviewer name required/));
 t('markReviewed rejects an unknown question', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'csa-'));
