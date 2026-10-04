@@ -15,11 +15,19 @@ const router = express.Router();
 
 const registry = require('../server/candidate-registry-service');
 
+const { verifySession, getCookie } = require('../middleware/require-auth');
+const isAdmin = req => {
+  const sess = verifySession(getCookie(req, 'tsm_session'));
+  return !!(sess && sess.role === 'admin');
+};
+// Non-admins never receive email or Mongo _id.
+const publicView = ({ email, _id, ...rest } = {}) => rest;
+
 router.get('/api/candidates', async (req, res) => {
   try {
     const { status } = req.query;
     const candidates = await registry.listCandidates({ status });
-    res.json({ candidates });
+    res.json({ candidates: isAdmin(req) ? candidates : candidates.map(publicView) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -29,7 +37,7 @@ router.get('/api/candidates/:id', async (req, res) => {
   try {
     const candidate = await registry.getCandidate(req.params.id);
     if (!candidate) return res.status(404).json({ error: 'not found' });
-    res.json({ candidate });
+    res.json({ candidate: isAdmin(req) ? candidate : publicView(candidate) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
