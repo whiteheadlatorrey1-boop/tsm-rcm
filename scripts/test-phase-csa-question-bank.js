@@ -59,7 +59,7 @@ t('per-domain results add up', () => { const s = buildSimulation(ID, bank, { see
 t('grading produces one evidence row per question', () => { const s = buildSimulation(ID, bank, { seed: 4 }); const g = gradeSimulation(s, perfect(s), 80); assert.strictEqual(g.domainEvidence.length, 60); assert.ok(g.domainEvidence.every((e) => e.score === 100)); });
 t('sim record flags unreviewed questions', () => { const s = buildSimulation(ID, bank.map((q) => Object.assign({}, q, { reviewed: false })), { seed: 5 }); assert.strictEqual(gradeSimulation(s, perfect(s), 80).simRecord.unreviewedQuestions, 60); });
 t('gate ignores a simulation with unreviewed questions', () => {
-  const s = buildSimulation(ID, bank, { seed: 5 }); const r = gradeSimulation(s, perfect(s), 80).simRecord;
+  const s = buildSimulation(ID, bank.map((q) => Object.assign({}, q, { reviewed: false, reviewedBy: null })), { seed: 5 }); const r = gradeSimulation(s, perfect(s), 80).simRecord;
   assert.strictEqual(evaluateWeightedReadiness(ID, [], [r, r]).sims.fullCount, 0);
 });
 t('gate counts a fully reviewed full simulation', () => {
