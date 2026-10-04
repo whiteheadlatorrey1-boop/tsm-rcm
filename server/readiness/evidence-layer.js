@@ -44,6 +44,7 @@ const TYPE_CATEGORY = {
   sap_exam:           'training',
   m365_exam:           'training',
   aplus_exam:           'training',
+  aplus_practice_session: 'training',
   mock_shift:              'practice',
   career_training_attempt: 'rcm',
   servicenow_itil_exam:    'it_l1',

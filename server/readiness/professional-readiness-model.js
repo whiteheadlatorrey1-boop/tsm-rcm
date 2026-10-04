@@ -36,6 +36,7 @@ const EVENT_MAP = {
   sap_exam:            { kind: 'knowledge',   dims: { technical: 1 } },
   m365_exam:            { kind: 'knowledge',   dims: { technical: 1 } },
   aplus_exam:            { kind: 'knowledge',   dims: { technical: 1 } },
+  aplus_practice_session: { kind: 'knowledge',   dims: { technical: 1 } },
   mock_shift:               { kind: 'practice',    dims: { professional: 1, reliability: 1 } },
   career_training_attempt:  { kind: 'practice',    dims: { technical: 1 } },
   l1_resolution:            { kind: 'operational', dims: { technical: 1, documentation: 1, reliability: 1 } },
