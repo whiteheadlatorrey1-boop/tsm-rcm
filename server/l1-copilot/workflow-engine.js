@@ -230,49 +230,30 @@ const DEFAULT_EVIDENCE_KEYS = Object.freeze([
   'finalWorkNoteConfirmed'
 ]);
 
+const { WORKFLOWS: WORKFLOW_CONTRACTS } = require('./workflow-contract');
 function getRequiredEvidence(taskType) {
   const normalizedTask = normalizeTaskType(taskType);
+  const contractId = normalizedTask.replace(/ /g, '_');
 
-  const required = [
-    {
-      key: 'userVerified',
-      label: 'User validation'
-    },
-    FULFILLMENT_TASK_TYPES.includes(normalizedTask)
-      ? {
-          key: 'fulfillmentVerified',
-          label: 'Request fulfillment validation'
-        }
-      : {
-          key: 'assetVerified',
-          label: 'Asset validation'
-        },
-    {
-      key: 'workConfirmed',
-      label: 'Required work'
-    },
-    {
-      key: 'tested',
-      label: 'Functionality testing'
-    }
-  ];
+  // Evidence keys come from the workflow contract (single source of truth).
+  // OTHER has no contract entry and keeps the default profile.
+  let keys = WORKFLOW_CONTRACTS[contractId]
+    ? WORKFLOW_CONTRACTS[contractId].evidence
+    : DEFAULT_EVIDENCE_KEYS;
 
-  if (
-    ['FOOT MOVE', 'ONBOARDING', 'OFFBOARDING'].includes(normalizedTask)
-  ) {
-    required.push({
-      key: 'locationVerified',
-      label: 'Location verification',
-      nextAction: 'VERIFY LOCATION'
-    });
+  // Fulfillment tasks validate the request, not a physical asset.
+  if (FULFILLMENT_TASK_TYPES.includes(normalizedTask)) {
+    keys = keys.map(k => (k === 'assetVerified' ? 'fulfillmentVerified' : k));
   }
 
-  required.push({
-    key: 'finalWorkNoteConfirmed',
-    label: 'Final work note confirmation'
+  return keys.map(key => {
+    const meta = EVIDENCE_META[key]
+      || (key === 'fulfillmentVerified' ? { label: 'Request fulfillment validation' } : null);
+    if (!meta) {
+      throw new Error(`No label registered for evidence key "${key}"`);
+    }
+    return Object.assign({ key }, meta);
   });
-
-  return required;
 }
 
 function evaluateWorkflow(input = {}) {

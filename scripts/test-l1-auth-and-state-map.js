@@ -149,6 +149,10 @@ fakeSnAdapter.exports = {
   async searchAssetsByUser() { return []; },
   async updateTicketStatus() {
     throw new Error('updateTicketStatus must not be called by this test');
+  },
+  _internal: {
+    snRequest: async () => { throw new Error('snRequest must not be called by this test'); },
+    readField: (record, field) => (record ? record[field] : undefined)
   }
 };
 fakeSnAdapter.loaded = true;
@@ -222,7 +226,7 @@ async function main() {
   writeCalls.length = 0;
 
   let res = await post('/api/l1-copilot/servicenow/work-note', {
-    incident: 'INC-AUTH-001',
+    incident: 'INC0090001',
     note: 'Forged confirmation, no session',
     technicianConfirmed: true
   });
@@ -231,7 +235,7 @@ async function main() {
   ok(writeCalls.length === 0, 'no ServiceNow write occurred for the unauthenticated request');
 
   res = await post('/api/l1-copilot/resolution', {
-    incident: 'INC-AUTH-002',
+    incident: 'INC0090002',
     draft: 'Forged confirmation via resolution route, no session',
     writeToServicenow: true,
     technicianConfirmed: true
@@ -265,7 +269,7 @@ async function main() {
   writeCalls.length = 0;
 
   res = await post('/api/l1-copilot/servicenow/work-note', {
-    incident: 'INC-AUTH-003',
+    incident: 'INC0090003',
     note: 'Authenticated technician write',
     technicianConfirmed: true
   }, adminCookie);
@@ -273,7 +277,7 @@ async function main() {
   const body = await res.json();
 
   ok(res.status === 200 && body.ok === true, 'authenticated admin work-note write succeeds - got ' + res.status);
-  ok(writeCalls.length === 1 && writeCalls[0].incident === 'INC-AUTH-003', 'the authenticated write reached ServiceNow exactly once, for the right incident');
+  ok(writeCalls.length === 1 && writeCalls[0].incident === 'INC0090003', 'the authenticated write reached ServiceNow exactly once, for the right incident');
   ok(
     body.governed && body.governed.confirmedBy && body.governed.confirmedBy.role === 'admin',
     'response reports which technician role confirmed the write'
