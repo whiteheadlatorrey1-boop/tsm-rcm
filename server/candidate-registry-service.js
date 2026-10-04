@@ -388,12 +388,19 @@ async function seedSampleData() {
   return results;
 }
 
+// Read-only: a candidate's raw training events, oldest first.
+async function listTrainingEvents(candidateId) {
+  const database = await connect();
+  return database.collection(TRAINING_EVENTS_COLLECTION).find({ candidateId }).sort({ recordedAt: 1 }).toArray();
+}
+
 module.exports = {
   connect,
   listCandidates,
   getCandidate,
   upsertCandidate,
   recordTrainingEvent,
+  listTrainingEvents,
   deleteCandidate,
   seedSampleData,
   computeReadinessScore,
