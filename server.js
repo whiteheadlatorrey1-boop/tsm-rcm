@@ -215,6 +215,7 @@ const cloudOpsAdapter = require('./server/l1-copilot/cloud-ops-adapter');
 const graphAdapter = require('./server/l1-copilot/graph-intune-adapter');
 const gcpAdapter = require('./server/l1-copilot/gcp-adapter');
 const demoData = require('./server/l1-copilot/demo-data');
+const lostStolen = require('./server/l1-copilot/lost-stolen');
 
 // contentSecurityPolicy/crossOriginEmbedderPolicy/crossOriginResourcePolicy
 // are OFF on purpose: this app is ~100+ largely-independent HTML pages that
@@ -6948,6 +6949,60 @@ async function getDeviceSecurityStatus(asset) {
   if (demoData.isDemoModeEnabled()) return { ...demoData.demoDeviceSecurityStatus(asset), demoMode: true };
   return null;
 }
+
+app.post('/api/l1-copilot/lost-stolen/assess', requireRole(L1_COPILOT_ROLES), async (req, res) => {
+  const body = req.body || {};
+  const asset = typeof body.asset === 'string' ? body.asset.trim() : '';
+
+  if (!asset) {
+    return res.status(400).json({
+      ok: false,
+      error: 'asset required'
+    });
+  }
+
+  if (body.userVerified !== true) {
+    return res.status(400).json({
+      ok: false,
+      error: 'userVerified must be true'
+    });
+  }
+
+  if (body.assetVerified !== true) {
+    return res.status(400).json({
+      ok: false,
+      error: 'assetVerified must be true'
+    });
+  }
+
+  try {
+    const securityStatus = await getDeviceSecurityStatus(asset);
+
+    const facts = {
+      userVerified: true,
+      assetVerified: true
+    };
+
+    if (securityStatus) {
+      facts.complianceStatus = securityStatus.complianceStatus;
+      facts.securityStatusKnown = true;
+    }
+
+    const assessment = lostStolen.assessLostStolen(facts);
+
+    return res.json({
+      ok: true,
+      asset,
+      securityStatus: securityStatus || null,
+      assessment
+    });
+  } catch (e) {
+    return res.status(502).json({
+      ok: false,
+      error: e.message
+    });
+  }
+});
 
 app.get('/api/l1-copilot/security/user-status', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   const query = (req.query.query || '').trim();
