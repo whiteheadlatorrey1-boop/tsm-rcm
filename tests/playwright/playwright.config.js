@@ -1,5 +1,13 @@
 // tests/playwright/playwright.config.js
 const path = require('path');
+require('dotenv').config({ path: path.resolve(__dirname, '..', '..', '.env') });
+
+// Reuse the established E2E authentication contract.
+// run-clickthrough.sh maps TSM_ADMIN_PASSWORD -> TSM_AUTH_PASSWORD;
+// Playwright needs the same mapping for authenticated vertical contracts.
+if (!process.env.TSM_AUTH_PASSWORD && process.env.TSM_ADMIN_PASSWORD) {
+  process.env.TSM_AUTH_PASSWORD = process.env.TSM_ADMIN_PASSWORD;
+}
 
 // Single source of truth for the test port. check-playwright.sh exports
 // BASE_URL (derived from DEMO_TEST_PORT, default 4173) before invoking
@@ -40,9 +48,9 @@ module.exports = {
   // Playwright detects it via the url check below and won't spawn a
   // second one.
   webServer: {
-    command: `PORT=${TEST_PORT} node ` + path.join(__dirname, '..', '..', 'server.js'),
+    command: `PORT=${TEST_PORT} node -r dotenv/config ` + path.join(__dirname, '..', '..', 'server.js'),
     url: `${BASE_URL}/html/healthcare/hc-main-strategist.html`,
-    reuseExistingServer: true,
+    reuseExistingServer: false,
     timeout: 30000,
   },
 };

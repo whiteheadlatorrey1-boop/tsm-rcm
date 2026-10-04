@@ -57,7 +57,7 @@
 
   <section>
     <h2>Registration Holds</h2>
-    <table id="holdTable"><thead><tr><th>Hold</th><th>Student</th><th>Reason</th><th>Severity</th><th>Days Active</th></tr></thead><tbody></tbody></table>
+    <table id="holdTable"><thead><tr><th>Hold</th><th>Student</th><th>Reason</th><th>Severity</th><th>Workflow</th><th>Owner</th><th>Days Active</th></tr></thead><tbody></tbody></table>
   </section>
 
   <section id="aiSection">
@@ -122,7 +122,11 @@
       ['open_payment_plans', 'Open Payment Plans'],
       ['plans_past_due', 'Plans Past 30-Day Due'],
       ['total_ar_balance', 'Total AR Balance'],
-      ['registration_holds_active', 'Registration Holds Active']
+      ['registration_holds_active', 'Registration Holds Active'],
+      ['registration_holds_review_pending', 'Registration Holds Review Pending'],
+      ['registration_holds_release_pending', 'Registration Holds Release Pending'],
+      ['registration_holds_over_sla', 'Registration Holds Over SLA'],
+      ['seat_bottleneck_sections', 'Seat Bottleneck Sections']
     ];
     const row = document.getElementById('kpiRow');
     row.innerHTML = defs.map(([key, label]) => {
@@ -148,15 +152,23 @@
 
   function renderHolds() {
     const tbody = document.querySelector('#holdTable tbody');
-    tbody.innerHTML = engine.data.registration_holds.map(h => `
-      <tr>
-        <td>${escapeHtml(h.hold_id)}</td>
-        <td>${escapeHtml(h.student_ref)}</td>
-        <td>${escapeHtml(h.reason)}</td>
-        <td class="sev-${escapeHtml(h.severity)}">${escapeHtml(h.severity)}</td>
-        <td>${h.days_active}</td>
-      </tr>
-    `).join('');
+    tbody.innerHTML = engine.data.registration_holds.map(h => {
+      const workflowStatus = engine.getRegistrationWorkflowStatuses().includes(h.workflow_status)
+        ? h.workflow_status
+        : 'active';
+
+      return `
+        <tr>
+          <td>${escapeHtml(h.hold_id)}</td>
+          <td>${escapeHtml(h.student_ref)}</td>
+          <td>${escapeHtml(h.reason)}</td>
+          <td class="sev-${escapeHtml(h.severity)}">${escapeHtml(h.severity)}</td>
+          <td>${escapeHtml(workflowStatus.replace(/_/g, ' '))}</td>
+          <td>${escapeHtml(h.owner || 'Bursar — Registration Holds')}</td>
+          <td>${h.days_active}</td>
+        </tr>
+      `;
+    }).join('');
   }
 
   // Real breakdown from the server: late-fee accrual (deterministic),
@@ -220,6 +232,134 @@
     btn.textContent = 'Run AI Analysis';
   }
 
+  async function pushToSentinel() {
+    if (!engine) return;
+
+    try {
+      const fin = await engine.getFinancialSummary();
+      const kpis = engine.computeKpis();
+      const registrationSlaBreaches =
+        engine.getSlaBreaches('registration_holds') || [];
+      const seatBottlenecks =
+        engine.getSeatBottlenecks() || [];
+
+      const activeHolds = Number(kpis.registration_holds_active || 0);
+      const reviewPending = Number(kpis.registration_holds_review_pending || 0);
+      const releasePending = Number(kpis.registration_holds_release_pending || 0);
+      const exposure = Number(fin.hold_revenue_at_risk_total || 0);
+
+      const anomalies = [];
+
+      // Financial signal: preserve the existing re-enrollment exposure
+      // anomaly. SLA and capacity signals below are operational indicators
+      // and intentionally carry zero fabricated dollar exposure.
+      if (activeHolds > 0 || exposure > 0) {
+        const confidence =
+          fin.hold_revenue_confidence &&
+          typeof fin.hold_revenue_confidence.confidence === 'number'
+            ? fin.hold_revenue_confidence.confidence
+            : 0;
+
+        const note =
+          fin.hold_revenue_confidence &&
+          fin.hold_revenue_confidence.note
+            ? fin.hold_revenue_confidence.note
+            : '';
+
+        const highSeverityHold = engine.data.registration_holds.some(
+          h =>
+            (h.workflow_status || 'active') !== 'released' &&
+            String(h.severity || '').toUpperCase() === 'HIGH'
+        );
+
+        anomalies.push({
+          id: 'college-bursar-registration-holds',
+          title: 'Registration Hold / Re-enrollment Revenue Exposure',
+          severity: highSeverityHold ? 'HIGH' : 'MEDIUM',
+          exposure,
+          confidence,
+          rootCause:
+            `${activeHolds} registration hold(s) remain open; ` +
+            `${reviewPending} review-pending and ` +
+            `${releasePending} release-pending.${note}`,
+          recommendedAction:
+            'Review active registration holds, resolve documented release conditions, and prevent inappropriate re-enrollment blocking before the next registration decision.',
+          impacts: {}
+        });
+      }
+
+      // Operational signal: registration holds exceeding their workflow SLA.
+      if (registrationSlaBreaches.length > 0) {
+        const highSeverityBreach = registrationSlaBreaches.some(
+          b => String(b.severity || '').toUpperCase() === 'HIGH'
+        );
+
+        const longestBreach = registrationSlaBreaches.reduce(
+          (max, b) => Math.max(max, Number(b.days_over || 0)),
+          0
+        );
+
+        anomalies.push({
+          id: 'college-bursar-registration-sla',
+          title: 'Registration Hold SLA Breach',
+          severity: highSeverityBreach ? 'HIGH' : 'MEDIUM',
+          exposure: 0,
+          confidence: 100,
+          rootCause:
+            `${registrationSlaBreaches.length} registration hold(s) exceeded their workflow SLA; ` +
+            `the longest breach is ${longestBreach} day(s).`,
+          recommendedAction:
+            'Prioritize overdue registration holds, document the release condition or blocker, and route unresolved exceptions to the appropriate registration owner.',
+          impacts: {}
+        });
+      }
+
+      // Operational signal: sections at/above the configured utilization
+      // threshold with students waiting. No financial exposure is fabricated.
+      if (seatBottlenecks.length > 0) {
+        const waitlistedStudents = seatBottlenecks.reduce(
+          (sum, section) => sum + Number(section.waitlist || 0),
+          0
+        );
+
+        const heldStudents = seatBottlenecks.reduce(
+          (sum, section) => sum + Number(section.held_students || 0),
+          0
+        );
+
+        anomalies.push({
+          id: 'college-bursar-seat-bottlenecks',
+          title: 'Registration Seat Bottleneck',
+          severity: 'MEDIUM',
+          exposure: 0,
+          confidence: 100,
+          rootCause:
+            `${seatBottlenecks.length} section(s) are at or above the configured ` +
+            `seat-utilization threshold with ${waitlistedStudents} student(s) waitlisted` +
+            `${heldStudents ? ` and ${heldStudents} student(s) affected by holds` : ''}.`,
+          recommendedAction:
+            'Review constrained sections with Registration and Academic Affairs, reconcile waitlisted and held students, and determine documented capacity or scheduling actions.',
+          impacts: {}
+        });
+      }
+
+      if (window.TSMSentinelPush && window.TSMSentinelPush.push) {
+        window.TSMSentinelPush.push('COLLEGE_BURSAR', anomalies);
+      } else {
+        localStorage.setItem(
+          'TSM_COLLEGE_BURSAR_STRATEGIST_RELAY',
+          JSON.stringify({
+            generatedAt: new Date().toISOString(),
+            anomalies
+          })
+        );
+        window.dispatchEvent(new CustomEvent('TSM_SENTINEL_REFRESH'));
+      }
+    } catch (e) {
+      console.warn('College Bursar: sentinel push failed', e);
+    }
+  }
+
   async function relayToStrategist() {
     try {
       const aiText = (lastAi.risk || lastAi.actions)
@@ -233,6 +373,7 @@
         try { window.TSM.relay.write('COLLEGE_BURSAR', payload); } catch (e) { /* noop */ }
       }
       window.dispatchEvent(new CustomEvent('TSM_RELAY_EVENT', { detail: { domain: DOMAIN, data: payload } }));
+      await pushToSentinel();
       showToast('Relayed to College Strategist.');
     } catch (e) {
       console.warn('relayToStrategist failed', e);

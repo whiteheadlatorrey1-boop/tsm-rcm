@@ -113,8 +113,8 @@ async function main() {
   global.fetch = (url, opts) => realFetch(base + url, opts);
 
   const elements = {
-    mortgageInterviewIntel: makeElement(),
-    mortgageInterviewSessionStatus: makeElement(),
+    'interviewIntel-mortgage': makeElement(),
+    'interviewSessionStatus-mortgage': makeElement(),
     crossTrackCandidate: makeElement(),
     crossTrackSap: makeElement(),
     crossTrackHealthcare: makeElement(),
@@ -223,8 +223,8 @@ async function main() {
     // 1. Checking the box loads the real plan
     const checkbox = { checked: true };
     await context.handleMortgageInterviewPrepToggle(checkbox);
-    const panelHtml = elements.mortgageInterviewIntel.innerHTML;
-    check('panel shows INTERVIEW READY after checking the box', panelHtml.includes('INTERVIEW READY'));
+    const panelHtml = elements['interviewIntel-mortgage'].innerHTML;
+    check('panel shows LIVE INTERVIEW INTELLIGENCE after checking the box', panelHtml.includes('LIVE INTERVIEW INTELLIGENCE'));
     check('panel shows the resolved role name', panelHtml.includes('Mortgage Operations Analyst'));
     check('panel is honest about readiness (not a fake %)', panelHtml.includes('Not yet assessed'));
     check('panel lists all 3 levels', ['KNOWLEDGE', 'SCENARIO', 'BUSINESS'].every((l) => panelHtml.includes(l)));
@@ -233,14 +233,14 @@ async function main() {
 
     // 2. Unchecking hides it
     await context.handleMortgageInterviewPrepToggle({ checked: false });
-    check('panel hides when unchecked', elements.mortgageInterviewIntel.style.display === 'none');
+    check('panel hides when unchecked', elements['interviewIntel-mortgage'].style.display === 'none');
 
     // 3. Re-check, then start a real session via the button handler
     await context.handleMortgageInterviewPrepToggle({ checked: true });
     await context.startMortgageInterviewSession();
-    const statusHtml = elements.mortgageInterviewSessionStatus.innerHTML;
+    const statusHtml = elements['interviewSessionStatus-mortgage'].innerHTML;
     check('session start reports a real sessionId', /ivw_[0-9a-f]+/.test(statusHtml));
-    check('session start is honest about no guided UI yet', statusHtml.includes('next piece to build'));
+    check('session start reports a created practice session', statusHtml.includes('Practice session created'));
 
     // 4. Confirm that session really exists server-side (not just a UI claim)
     const sessionId = statusHtml.match(/ivw_[0-9a-f]+/)[0];

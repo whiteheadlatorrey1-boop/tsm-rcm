@@ -34,7 +34,14 @@ function loadQuestionBank(providerId) {
   const qPath = p.replace(/\.json$/, '-questions.json');
   if (!fs.existsSync(qPath)) return null;
   try {
-    return JSON.parse(fs.readFileSync(qPath, 'utf8'));
+    const bank = JSON.parse(fs.readFileSync(qPath, 'utf8'));
+    // Merge reviewed questions from the certification bank, if one exists.
+    // The bank's own verified flag is left exactly as the file says.
+    const have = new Set((bank.questions || []).map(q => q.id));
+    const extra = require('../server/training-intelligence-bank-adapter')
+      .extraQuestions(providerId).filter(q => !have.has(q.id));
+    if (extra.length) bank.questions = (bank.questions || []).concat(extra);
+    return bank;
   } catch {
     return null;
   }
@@ -644,12 +651,24 @@ router.get('/api/training-intelligence/quiz/:providerId/:domainId', (req, res) =
 // copy of the bank and returns per-question correctness + explanation, plus
 // a domain score. Stateless — no attempt is persisted server-side; the
 // client rolls attempts into its own local readiness/mastery report.
-router.post('/api/training-intelligence/quiz/:providerId/submit', (req, res) => {
+router.post('/api/training-intelligence/quiz/:providerId/submit', async (req, res) => {
   const bank = loadQuestionBank(req.params.providerId);
   if (!bank) return res.status(404).json({ ok: false, error: 'No question bank for this provider yet' });
 
   const answers = Array.isArray(req.body && req.body.answers) ? req.body.answers : null;
   if (!answers || !answers.length) return res.status(400).json({ ok: false, error: 'answers array is required' });
+
+  // One answer per question. Score is correct / answers submitted, so repeating
+  // a right answer would otherwise inflate it (and anything recorded from it).
+  const seenQuestionIds = new Set();
+  for (const a of answers) {
+    const qid = a && typeof a.questionId === 'string' ? a.questionId : null;
+    if (qid === null) continue;
+    if (seenQuestionIds.has(qid)) {
+      return res.status(400).json({ ok: false, error: 'duplicate questionId in answers: ' + qid });
+    }
+    seenQuestionIds.add(qid);
+  }
 
   const byId = {};
   (bank.questions || []).forEach(q => { byId[q.id] = q; });
@@ -712,15 +731,54 @@ router.post('/api/training-intelligence/quiz/:providerId/submit', (req, res) => 
   });
 
   const knowledgeExposure = Object.values(exposureByDomain);
+  const score = results.length ? Math.round((correctCount / results.length) * 100) : 0;
+
+  // Optional evidence write to the Candidate Registry. Grading never depends
+  // on it: failures are reported in `registry`, not thrown. Requires an admin
+  // session or a valid token for that candidateId, and either a verified bank
+  // or a quiz made up ONLY of reviewed certification-bank questions (every
+  // submitted id known, every question sourced from the certification bank).
+  const registry = { recorded: false, reason: 'no candidateId supplied' };
+  const allReviewed = results.length > 0 && results.every(r => {
+    const q = r && !r.error ? byId[r.questionId] : null;
+    return !!q && q.source === 'certification-bank';
+  });
+  const candidateId = req.body && typeof req.body.candidateId === 'string' ? req.body.candidateId : '';
+  if (candidateId) {
+    try {
+      const { verifySession, getCookie } = require('../middleware/require-auth');
+      const { verifyCandidateToken } = require('../middleware/candidate-token');
+      const session = verifySession(getCookie(req, 'tsm_session'));
+      const authorized = (session && session.role === 'admin') ||
+        verifyCandidateToken(candidateId, req.get('x-candidate-token'));
+      if (!authorized) {
+        registry.reason = 'not authorized to write for this candidate';
+      } else if (!bank.verified && !allReviewed) {
+        registry.reason = 'question bank is not verified and the quiz includes questions without a review record; score not recorded';
+      } else {
+        await require('../server/candidate-registry-service').recordTrainingEvent(candidateId, {
+          type: 'quiz',
+          score,
+          weight: 1,
+          meta: { source: 'training-intelligence', providerId: req.params.providerId, correctCount, total: results.length, basis: bank.verified ? 'verified-bank' : 'reviewed-questions' }
+        });
+        registry.recorded = true;
+        delete registry.reason;
+      }
+    } catch (err) {
+      registry.reason = 'registry write failed: ' + err.message;
+    }
+  }
 
   res.json({
     ok: true,
     providerId: req.params.providerId,
     verified: !!bank.verified,
-    score: results.length ? Math.round((correctCount / results.length) * 100) : 0,
+    score,
     correctCount,
     total: results.length,
     knowledgeExposure,
+    registry,
     results
   });
 });

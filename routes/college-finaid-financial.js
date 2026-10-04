@@ -188,6 +188,52 @@ function cohortDefaultExposure(flags) {
   return { total: items.reduce((s, it) => s + it.exposure, 0), currency: RATE_CARD.currency || 'USD', items };
 }
 
+// SAP aid-at-risk is an institutional planning estimate, not a federal
+// penalty schedule. The browser supplies the modeled aid_at_risk amount;
+// the private rate card controls how much of that amount is recognized as
+// planning exposure.
+function sapExposure(sapCases) {
+  if (!RATE_CARD || RATE_CARD.sap_aid_at_risk_exposure_rate == null) {
+    return {
+      total: 0,
+      currency: RATE_CARD ? RATE_CARD.currency : 'USD',
+      items: []
+    };
+  }
+
+  const rate = Number(RATE_CARD.sap_aid_at_risk_exposure_rate);
+  if (!Number.isFinite(rate) || rate < 0) {
+    return {
+      total: 0,
+      currency: RATE_CARD.currency || 'USD',
+      items: []
+    };
+  }
+
+  const items = (sapCases || [])
+    .filter(s => s && s.stage !== 'cleared')
+    .map(s => {
+      const aidAtRisk = Math.max(0, Number(s.aid_at_risk) || 0);
+      const exposure = Math.round(aidAtRisk * rate);
+
+      return {
+        id: s.case_id,
+        student_ref: s.student_ref,
+        stage: s.stage,
+        aid_at_risk: aidAtRisk,
+        exposure
+      };
+    })
+    .filter(item => item.aid_at_risk > 0)
+    .sort((a, b) => b.exposure - a.exposure);
+
+  return {
+    total: items.reduce((sum, item) => sum + item.exposure, 0),
+    currency: RATE_CARD.currency || 'USD',
+    items
+  };
+}
+
 function confidenceFor(rateCardKeyPresent, missingLabelsNote) {
   if (!rateCardKeyPresent) {
     return { confidence: 30, note: ' Rate card is missing this key, so exposure defaulted to $0 — treat as unverified.' };
@@ -203,11 +249,20 @@ router.post('/financial-summary', (req, res) => {
   if (!RATE_CARD) {
     return res.status(500).json({ error: 'financial model unavailable' });
   }
-  const { kpis, r2t4_breaches, verification_backlog, cohort_default_flags } = req.body || {};
+  const {
+    kpis,
+    r2t4_breaches,
+    verification_backlog,
+    cohort_default_flags,
+    sap_cases
+  } = req.body || {};
+
   const flags = asArray(cohort_default_flags);
+  const sapCases = asArray(sap_cases);
 
   const r2t4 = r2t4Exposure(asArray(r2t4_breaches));
   const verification = verificationExposure(asArray(verification_backlog));
+  const sap = sapExposure(sapCases);
 
   const bands = RATE_CARD.cohort_default_exposure_by_band || {};
   const seenBands = [...new Set(flags.map(f => f.band).filter(Boolean))];
@@ -222,14 +277,20 @@ router.post('/financial-summary', (req, res) => {
     verification_exposure_items: verification.items,
     cohort_default_exposure_total: cohortDefault.total,
     cohort_default_exposure_items: cohortDefault.items,
+    sap_exposure_total: sap.total,
+    sap_exposure_items: sap.items,
+    sap_aid_at_risk: (kpis && kpis.sap_aid_at_risk) || 0,
     active_pell_disbursed: (kpis && kpis.active_pell_disbursed) || 0,
-    total_exposure: r2t4.total + verification.total + cohortDefault.total,
+    total_exposure: r2t4.total + verification.total + cohortDefault.total + sap.total,
     note: RATE_CARD.note || null,
     r2t4_confidence: confidenceFor(RATE_CARD.r2t4_late_return_penalty_per_day != null),
     verification_confidence: confidenceFor(RATE_CARD.verification_backlog_cost_per_day != null),
     cohort_default_confidence: confidenceFor(
       !!RATE_CARD.cohort_default_exposure_by_band,
       missingBands.length ? ` Rate card has no entry for band(s) ${missingBands.join(', ')} — those items priced at $0.` : null
+    ),
+    sap_confidence: confidenceFor(
+      RATE_CARD.sap_aid_at_risk_exposure_rate != null
     )
   });
 });
@@ -242,21 +303,32 @@ router.post('/financial-summary', (req, res) => {
 // than a 500, since the case data above it on screen is still valid even
 // when the AI call itself fails.
 router.post('/analysis', async (req, res) => {
-  const { kpis, r2t4_breaches, verification_backlog, cohort_default_flags, context, maxTokens } = req.body || {};
+  const {
+    kpis,
+    r2t4_breaches,
+    verification_backlog,
+    cohort_default_flags,
+    sap_cases,
+    context,
+    maxTokens
+  } = req.body || {};
+
   const summary = JSON.stringify({
     kpis,
     r2t4_breaches,
     verification_backlog,
     cohort_default_flags,
+    sap_cases,
     counts: {
       r2t4_breaches: Array.isArray(r2t4_breaches) ? r2t4_breaches.length : undefined,
       verification_backlog: Array.isArray(verification_backlog) ? verification_backlog.length : undefined,
-      cohort_default_flags: Array.isArray(cohort_default_flags) ? cohort_default_flags.length : undefined
+      cohort_default_flags: Array.isArray(cohort_default_flags) ? cohort_default_flags.length : undefined,
+      sap_cases: Array.isArray(sap_cases) ? sap_cases.length : undefined
     }
   }, null, 2);
   const prompt = `Current Financial Aid (Title IV) compliance snapshot:\n${summary}\n\n` +
     (context ? `Additional context: ${context}\n\n` : '') +
-    `Identify the highest-risk R2T4 and verification cases, the cohort default flags requiring escalation, and the single most important next action for each at-risk case. Reference case/flag IDs.`;
+    `Identify the highest-risk R2T4, verification, and SAP cases; identify cohort default flags requiring escalation; identify SAP review-SLA breaches and aid-at-risk exposure; and provide the single most important next action for each at-risk case. Do not invent federal or institutional SAP thresholds. Reference case/flag IDs.`;
 
   const { text, degraded, reason } = await callGroq(FINAID_SYSTEM_PROMPT, prompt, maxTokens || 900);
   if (degraded) {

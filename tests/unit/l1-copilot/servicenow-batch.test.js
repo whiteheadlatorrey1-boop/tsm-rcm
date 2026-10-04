@@ -82,17 +82,17 @@ async function main() {
   const config = { instanceUrl: `http://localhost:${port}`, username: 'admin', password: 'secret', fieldMap: adapter.DEFAULT_FIELD_MAP };
 
   // --- createTicket happy path ---
-  const t1 = await adapter.createTicket({ short_description: 'Printer offline', priority: '3' }, config);
+  const t1 = await adapter._pdi.createTicket({ short_description: 'Printer offline', priority: '3' }, config);
   check('createTicket reports success', t1.success === true);
   check('createTicket returns a number', /^INC00/.test(t1.number));
   check('createTicket returns a sysId', typeof t1.sysId === 'string' && t1.sysId.length === 32);
 
   // --- deleteTicket happy path (cleanup helper) ---
-  const del = await adapter.deleteTicket(t1.number, config);
+  const del = await adapter._pdi.deleteTicket(t1.number, config);
   check('deleteTicket reports success', del.success === true);
 
   // --- createTicketsBatch: all succeed ---
-  const batch1 = await adapter.createTicketsBatch(
+  const batch1 = await adapter._pdi.createTicketsBatch(
     [{ short_description: 'A' }, { short_description: 'B' }, { short_description: 'C' }],
     { chunkSize: 2, delayBetweenChunksMs: 0 },
     config
@@ -102,7 +102,7 @@ async function main() {
   check('batch1 results preserve input order', batch1.results.every((r, i) => r.index === i));
 
   // --- createTicketsBatch: one record fails, rest still succeed ---
-  const batch2 = await adapter.createTicketsBatch(
+  const batch2 = await adapter._pdi.createTicketsBatch(
     [{ short_description: 'ok-1' }, { short_description: 'REJECT_ME' }, { short_description: 'ok-2' }],
     { chunkSize: 3, delayBetweenChunksMs: 0 },
     config
@@ -114,7 +114,7 @@ async function main() {
 
   // --- createTicketsBatch: transient 429s are retried and eventually succeed ---
   rateLimitRemaining = 2;
-  const batch3 = await adapter.createTicketsBatch(
+  const batch3 = await adapter._pdi.createTicketsBatch(
     [{ short_description: 'retry-me' }],
     { chunkSize: 1, delayBetweenChunksMs: 0, initialBackoffMs: 5, maxRetries: 3 },
     config
@@ -123,7 +123,7 @@ async function main() {
 
   // --- createTicketsBatch: retries exhausted on persistent 5xx -> reported failed, not thrown ---
   serverErrorRemaining = 10;
-  const batch4 = await adapter.createTicketsBatch(
+  const batch4 = await adapter._pdi.createTicketsBatch(
     [{ short_description: 'always-500' }],
     { chunkSize: 1, delayBetweenChunksMs: 0, initialBackoffMs: 1, maxRetries: 2 },
     config
@@ -134,18 +134,18 @@ async function main() {
 
   // --- guardrails ---
   let threwEmpty = false;
-  try { await adapter.createTicketsBatch([], {}, config); } catch (e) { threwEmpty = true; }
+  try { await adapter._pdi.createTicketsBatch([], {}, config); } catch (e) { threwEmpty = true; }
   check('createTicketsBatch rejects an empty array', threwEmpty);
 
   let threwTooLarge = false;
   try {
     const tooMany = new Array(adapter.MAX_BATCH_SIZE + 1).fill({ short_description: 'x' });
-    await adapter.createTicketsBatch(tooMany, {}, config);
+    await adapter._pdi.createTicketsBatch(tooMany, {}, config);
   } catch (e) { threwTooLarge = true; }
   check(`createTicketsBatch rejects more than ${adapter.MAX_BATCH_SIZE} records`, threwTooLarge);
 
   let threwNotConfigured = false;
-  try { await adapter.createTicketsBatch([{ short_description: 'x' }], {}, {}); } catch (e) { threwNotConfigured = e instanceof adapter.ServiceNowNotConfiguredError; }
+  try { await adapter._pdi.createTicketsBatch([{ short_description: 'x' }], {}, {}); } catch (e) { threwNotConfigured = e instanceof adapter.ServiceNowNotConfiguredError; }
   check('createTicketsBatch throws ServiceNowNotConfiguredError when unconfigured', threwNotConfigured);
 
   server.close();

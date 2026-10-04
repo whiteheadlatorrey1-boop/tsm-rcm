@@ -290,6 +290,20 @@ fakeSnAdapter.exports = {
     throw new Error(
       'updateTicketStatus must not be called by this test'
     );
+  },
+
+  // server.js eagerly loads servicenow-bpo-intelligence.js.
+  // That module destructures snRequest/readField from the adapter's
+  // internal test contract even though this regression does not exercise
+  // BPO intelligence. Stub only those dependencies so server startup
+  // reaches the resolution route under test.
+  _internal: {
+    readField() {
+      return null;
+    },
+    async snRequest() {
+      throw new Error('snRequest must not be called by this test');
+    }
   }
 };
 
@@ -389,7 +403,7 @@ async function main() {
   let response = await post(
     '/api/l1-copilot/resolution',
     {
-      incident: 'INC-L1-GOV-001',
+      incident: 'INC0012345',
       draft: 'Unauthorized write attempt',
       writeToServicenow: true
     }
@@ -427,7 +441,7 @@ async function main() {
   /* -------------------------------------------------------------- */
 
   const ticket = [
-    'INC-L1-GOV-001',
+    'INC0012345',
     'User reports workstation display failure.'
   ].join('\n');
 
@@ -503,7 +517,7 @@ async function main() {
   response = await post(
     '/api/l1-copilot/resolution',
     {
-      incident: 'INC-L1-GOV-001',
+      incident: 'INC0012345',
       draft: reviewedDraft,
       writeToServicenow: true,
       technicianConfirmed: false
@@ -531,7 +545,7 @@ async function main() {
   response = await post(
     '/api/l1-copilot/resolution',
     {
-      incident: 'INC-L1-GOV-001',
+      incident: 'INC0012345',
       writeToServicenow: true,
       technicianConfirmed: true
     },
@@ -551,6 +565,22 @@ async function main() {
     'missing-draft rejection did not call ServiceNow'
   );
 
+  /* 3b. Authenticated, but malformed input */
+  response = await post(
+    '/api/l1-copilot/resolution',
+    { incident: 'INC1^ORnumberSTARTSWITHINC', writeToServicenow: true, technicianConfirmed: true, draft: 'x' },
+    cookie
+  );
+  ok(response.status === 400, 'malformed incident id is refused with a session - got ' + response.status);
+
+  response = await post(
+    '/api/l1-copilot/resolution',
+    { incident: 'INC0012345', writeToServicenow: true, technicianConfirmed: true, draft: 'x'.repeat(20001) },
+    cookie
+  );
+  ok(response.status === 413, 'oversized draft is refused with a session - got ' + response.status);
+  ok(writeCalls.length === 0, 'refused input did not call ServiceNow');
+
   /* -------------------------------------------------------------- */
   /* 4. Exact reviewed draft is written                             */
   /* -------------------------------------------------------------- */
@@ -558,7 +588,7 @@ async function main() {
   response = await post(
     '/api/l1-copilot/resolution',
     {
-      incident: 'INC-L1-GOV-001',
+      incident: 'INC0012345',
       draft: reviewedDraft,
       writeToServicenow: true,
       technicianConfirmed: true
@@ -582,7 +612,7 @@ async function main() {
 
   ok(
     writeCalls[0] &&
-      writeCalls[0].incident === 'INC-L1-GOV-001',
+      writeCalls[0].incident === 'INC0012345',
     'ServiceNow write targeted the supplied incident'
   );
 
@@ -611,7 +641,7 @@ async function main() {
   response = await post(
     '/api/l1-copilot/servicenow/work-note',
     {
-      incident: 'INC-L1-GOV-002',
+      incident: 'INC0010002',
       note: 'Direct route test note.'
     },
     cookie
@@ -640,7 +670,7 @@ async function main() {
   response = await post(
     '/api/l1-copilot/servicenow/work-note',
     {
-      incident: 'INC-L1-GOV-002',
+      incident: 'INC0010002',
       note: directNote,
       technicianConfirmed: true
     },
@@ -663,7 +693,7 @@ async function main() {
 
   ok(
     writeCalls[1] &&
-      writeCalls[1].incident === 'INC-L1-GOV-002' &&
+      writeCalls[1].incident === 'INC0010002' &&
       writeCalls[1].note === directNote,
     'direct confirmed work-note receives the exact supplied note'
   );
@@ -684,7 +714,7 @@ async function main() {
   response = await post(
     '/api/l1-copilot/resolution',
     {
-      incident: 'INC-L1-GOV-003',
+      incident: 'INC0010003',
       draft: 'Failure-path reviewed draft.',
       writeToServicenow: true,
       technicianConfirmed: true

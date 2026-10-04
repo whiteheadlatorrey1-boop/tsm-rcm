@@ -30,6 +30,8 @@ const TASK_TYPES = Object.freeze([
   'SOFTWARE',
   'REQUEST FULFILLMENT',
   'INCIDENT',
+  'LOST_STOLEN',
+  'DISPOSITION',
   'OTHER'
 ]);
 
@@ -130,9 +132,9 @@ function classifyTask(input = {}) {
     };
   }
 
-  if (/hardware swap|device swap|replacement device/.test(text)) {
+  if (/lost|stolen|missing|device missing|asset missing/.test(text)) {
     return {
-      taskType: 'HARDWARE SWAP',
+      taskType: 'LOST_STOLEN',
       source: 'description'
     };
   }
@@ -175,14 +177,21 @@ function classifyTask(input = {}) {
 
   if (/hardware|laptop|desktop|monitor|dock|keyboard|mouse/.test(text)) {
     return {
-      taskType: 'HARDWARE',
+      taskType: 'INCIDENT',
       source: 'description'
     };
   }
 
-  if (/incident|outage|not working|failure|error|broken/.test(text)) {
+  if (/hardware swap|device swap|replacement device/.test(text)) {
     return {
-      taskType: 'INCIDENT',
+      taskType: 'HARDWARE SWAP',
+      source: 'description'
+    };
+  }
+
+  if (/hardware|laptop|desktop|monitor|dock|keyboard|mouse/.test(text)) {
+    return {
+      taskType: 'HARDWARE',
       source: 'description'
     };
   }
@@ -192,6 +201,34 @@ function classifyTask(input = {}) {
     source: 'default'
   };
 }
+
+const EVIDENCE_META = Object.freeze({
+  userVerified: { label: 'User validation' },
+  assetVerified: { label: 'Asset validation' },
+  workConfirmed: { label: 'Required work' },
+  tested: { label: 'Functionality testing' },
+  locationVerified: { label: 'Location verification', nextAction: 'VERIFY LOCATION' },
+  finalWorkNoteConfirmed: { label: 'Final work note confirmation' },
+  warrantyVerified: { label: 'Warranty verification' },
+  conditionDocumented: { label: 'Condition documentation' },
+  repairHistoryReviewed: { label: 'Repair history review' },
+  replacementAddressed: { label: 'Replacement addressed' },
+  dataSecurityReviewed: { label: 'Data security review' },
+  approvalObtained: { label: 'Disposition approval' },
+  sanitizationVerified: { label: 'Data sanitization verification' },
+  dispositionCompleted: { label: 'Physical disposition completed' },
+  assetReconciled: { label: 'CMDB asset reconciliation' },
+  securityEscalation: { label: 'Security escalation' },
+  securityActionVerified: { label: 'Security action verification' }
+});
+
+const DEFAULT_EVIDENCE_KEYS = Object.freeze([
+  'userVerified',
+  'assetVerified',
+  'workConfirmed',
+  'tested',
+  'finalWorkNoteConfirmed'
+]);
 
 function getRequiredEvidence(taskType) {
   const normalizedTask = normalizeTaskType(taskType);
@@ -218,24 +255,8 @@ function getRequiredEvidence(taskType) {
       key: 'tested',
       label: 'Functionality testing'
     }
-  ];
-
-  if (
-    ['FOOT MOVE', 'ONBOARDING', 'OFFBOARDING'].includes(normalizedTask)
-  ) {
-    required.push({
-      key: 'locationVerified',
-      label: 'Location verification',
-      nextAction: 'VERIFY LOCATION'
-    });
-  }
-
-  required.push({
-    key: 'finalWorkNoteConfirmed',
-    label: 'Final work note confirmation'
+    return Object.assign({ key }, meta);
   });
-
-  return required;
 }
 
 function evaluateWorkflow(input = {}) {

@@ -27,8 +27,12 @@
 const path = require('path');
 const { test, expect } = require('@playwright/test');
 
-const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
+const BASE_URL = process.env.BASE_URL || 'http://localhost:4173';
 const FIXTURES = path.join(__dirname, '..', 'fixtures', 'doc-router');
+
+// Live Groq integration tests can legitimately encounter provider-directed
+// retry windows longer than Playwright's 20s default test timeout.
+test.setTimeout(60000);
 
 // One fixture per DOC_ROUTER_NODES vertical (server.js) / VERTICALS entry
 // (tsm-doc-search-multi.html). Each fixture's content is written to

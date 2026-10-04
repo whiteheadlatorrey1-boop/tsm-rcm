@@ -40,11 +40,11 @@ env_file, cred_id, host, database = sys.argv[1:5]
 response = json.loads(sys.stdin.read()) if not sys.stdin.isatty() else None
 PYEOF
 
-echo "$RESPONSE" | python3 - "$ENV_FILE" "$NEW_CRED_ID" "$HOST" "$DATABASE" << 'PYEOF'
+python3 - "$ENV_FILE" "$NEW_CRED_ID" "$HOST" "$DATABASE" "$RESPONSE" << 'PYEOF'
 import json, sys, urllib.parse
 
-env_file, cred_id, host, database = sys.argv[1:5]
-data = json.loads(sys.stdin.read())
+env_file, cred_id, host, database, raw_response = sys.argv[1:6]
+data = json.loads(raw_response)
 
 if data.get("state") != "ENABLED":
     print("ERROR: credential was not created successfully. Full response state:", data.get("state"))

@@ -16,11 +16,56 @@
 
 const { MongoClient } = require('mongodb');
 const crypto = require('crypto');
+const candidateRegistry = require('./candidate-registry-service');
+const Pipeline = require('../html/js/career/tsm-staffing-pipeline-model.js');
+const PlacementEvidence = require('../html/js/career/tsm-placement-evidence.js');
+const ReadinessModel = require('./readiness/professional-readiness-model.js');
 
 const DEFAULT_DB_NAME = 'tsm-consultz';
 const EMPLOYERS_COLLECTION = 'staffing_employers';
 const JOB_ORDERS_COLLECTION = 'staffing_job_orders';
 const PLACEMENTS_COLLECTION = 'staffing_placements';
+const PLACEMENT_EVIDENCE_COLLECTION = 'staffing_placement_evidence';
+
+// Phase 8E wiring. When STAFFING_PIPELINE_ENFORCE=1 the human-review submission
+// gate and the stage-transition rules from tsm-staffing-pipeline-model.js are
+// enforced. Default (unset) leaves behavior exactly as before, so the Staffing
+// Admin UI (which has no review step yet) keeps working until the UI ships one.
+function pipelineEnforced() {
+  return process.env.STAFFING_PIPELINE_ENFORCE === '1';
+}
+
+// Phase 8F wiring. When STAFFING_PLACEMENT_EVIDENCE=1, every placement stage is
+// recorded as an append-only outcome record in its OWN collection
+// (staffing_placement_evidence) -- never the Candidate Registry, never training
+// evidence. Default (unset) records nothing.
+function placementEvidenceEnabled() {
+  return process.env.STAFFING_PLACEMENT_EVIDENCE === '1';
+}
+
+// Placement audit trail. When STAFFING_PLACEMENT_AUDIT=1, every status change is
+// also written as an immutable event to its own collection. Default off.
+// Best-effort: a failure is logged and NEVER blocks or rolls back the status change.
+const PlacementAudit = require('../html/js/career/tsm-staffing-audit.js');
+const PLACEMENT_AUDIT_COLLECTION = 'staffing_placement_audit';
+function placementAuditEnabled() {
+  return process.env.STAFFING_PLACEMENT_AUDIT === '1';
+}
+async function recordPlacementAudit(args) {
+  if (!placementAuditEnabled() || !args || !args.placement) return { recorded: 0 };
+  try {
+    const event = PlacementAudit.buildStatusChangeEvent(args);
+    const database = await connect();
+    const collection = database.collection(PLACEMENT_AUDIT_COLLECTION);
+    const existing = await collection.findOne({ auditEventId: event.auditEventId });
+    if (existing) return { recorded: 0 };
+    await collection.insertOne(event);
+    return { recorded: 1 };
+  } catch (err) {
+    console.error('[staffing] placement audit write failed (non-blocking):', err && err.message);
+    return { recorded: 0, error: true };
+  }
+}
 
 let client = null;
 let db = null;
@@ -254,10 +299,157 @@ async function getPlacement(placementId) {
  * record that both the readiness dashboard and an employer-facing view
  * can track through status.
  */
-async function submitCandidate({ candidateId, jobOrderId, payRate, annualHours, meta }) {
+/**
+ * Records the outcome-stream records for a placement. Idempotent (a record id
+ * already stored is skipped) and best-effort: a failure here is logged and
+ * NEVER blocks or rolls back the placement itself.
+ */
+async function recordPlacementEvidence(placement) {
+  if (!placementEvidenceEnabled() || !placement) return { recorded: 0, rejected: 0 };
+  try {
+    const out = PlacementEvidence.buildPlacementEvidence(placement);
+    const database = await connect();
+    const collection = database.collection(PLACEMENT_EVIDENCE_COLLECTION);
+    let recorded = 0;
+    for (const rec of out.records) {
+      const existing = await collection.findOne({ placementEvidenceId: rec.placementEvidenceId });
+      if (!existing) {
+        await collection.insertOne({ ...rec, recordedAt: new Date().toISOString() });
+        recorded += 1;
+      }
+    }
+    return { recorded, rejected: out.rejected.length };
+  } catch (err) {
+    console.error('[staffing] placement evidence not recorded:', err.message);
+    return { recorded: 0, rejected: 0, error: err.message };
+  }
+}
+
+async function listPlacementEvidence({ candidateId, placementId, stage } = {}) {
+  const database = await connect();
+  const query = {};
+  if (candidateId) query.candidateId = candidateId;
+  if (placementId) query.placementId = placementId;
+  if (stage) query.stage = stage;
+  const records = await database
+    .collection(PLACEMENT_EVIDENCE_COLLECTION)
+    .find(query)
+    .sort({ occurredAt: 1 })
+    .toArray();
+  return records;
+}
+
+function evaluatePlacementEligibility(candidate, { minimumReadiness = 70 } = {}) {
+  if (!candidate) {
+    return {
+      eligible: false,
+      reason: 'candidate-not-found',
+    };
+  }
+
+  if (!candidate.candidateId) {
+    return {
+      eligible: false,
+      reason: 'candidate-id-missing',
+    };
+  }
+
+  if (candidate.isSampleData === true) {
+    return {
+      eligible: false,
+      reason: 'sample-candidate',
+    };
+  }
+
+  if (candidate.status !== 'ready_for_placement') {
+    return {
+      eligible: false,
+      reason: 'candidate-not-ready',
+      status: candidate.status,
+    };
+  }
+
+  const readinessScore = Number(candidate.readinessScore);
+
+  if (!Number.isFinite(readinessScore) || readinessScore < minimumReadiness) {
+    return {
+      eligible: false,
+      reason: 'readiness-below-threshold',
+      readinessScore: Number.isFinite(readinessScore) ? readinessScore : null,
+      minimumReadiness,
+    };
+  }
+
+  return {
+    eligible: true,
+    reason: 'eligible',
+    readinessScore,
+  };
+}
+
+// Phase 8H gate. When STAFFING_REQUIRE_COVERAGE=1, a candidate must also have
+// evidence in at least N readiness dimensions (default 2, set by
+// STAFFING_MIN_ASSESSED_DIMENSIONS), so one quiz cannot qualify anyone.
+function coverageRequired() {
+  return process.env.STAFFING_REQUIRE_COVERAGE === '1';
+}
+function requiredDimensions() {
+  const n = parseInt(process.env.STAFFING_MIN_ASSESSED_DIMENSIONS, 10);
+  return Number.isFinite(n) && n >= 1 && n <= 5 ? n : 2;
+}
+async function assessCoverage(candidateId) {
+  const events = await candidateRegistry.listTrainingEvents(candidateId);
+  const r = ReadinessModel.assessProfessionalReadiness(events);
+  return { assessed: r.overall.assessedDimensions.length, required: requiredDimensions() };
+}
+
+async function submitCandidate({ candidateId, jobOrderId, payRate, annualHours, meta, matchResult, review }) {
+  if (!candidateId) {
+    throw new Error('candidateId is required');
+  }
+
+  const candidate = await candidateRegistry.getCandidate(candidateId);
+  const eligibility = evaluatePlacementEligibility(candidate);
+  if (eligibility.eligible && coverageRequired()) {
+    const cov = await assessCoverage(candidateId);
+    if (cov.assessed < cov.required) {
+      eligibility.eligible = false;
+      eligibility.reason = 'insufficient-coverage';
+    }
+  }
+
+  if (!eligibility.eligible) {
+    throw new Error(
+      `Candidate is not eligible for placement: ${eligibility.reason}`
+    );
+  }
+
   const database = await connect();
   const jobOrder = await getJobOrder(jobOrderId);
   if (!jobOrder) throw new Error(`No job order found for jobOrderId ${jobOrderId}`);
+
+  // Phase 8E: human-review gate. The review must be an approved human decision
+  // bound to the exact match inputs (fingerprint) for THIS candidate.
+  let humanReview = null;
+  const gateProvided = matchResult != null || review != null;
+  if (pipelineEnforced() || gateProvided) {
+    const gate = Pipeline.evaluateSubmissionGate(matchResult, review);
+    const reasons = gate.reasons.slice();
+    if (matchResult && matchResult.candidateId && matchResult.candidateId !== candidateId) {
+      reasons.push('match-candidate-mismatch');
+    }
+    if (reasons.length === 0) {
+      humanReview = {
+        decision: review.decision,
+        reviewerId: review.reviewerId,
+        reviewedAt: review.reviewedAt,
+        reviewedFingerprint: review.reviewedFingerprint,
+        matcherVersion: (matchResult.audit && matchResult.audit.matcherVersion) || null,
+      };
+    } else if (pipelineEnforced()) {
+      throw new Error(`Submission blocked: human review required (${reasons.join(', ')})`);
+    }
+  }
 
   const now = new Date().toISOString();
   const placementId = genId('plc');
@@ -271,6 +463,7 @@ async function submitCandidate({ candidateId, jobOrderId, payRate, annualHours, 
     payRate: payRate != null ? Number(payRate) : jobOrder.payRate,
     annualHours: annualHours != null ? Number(annualHours) : null,
     statusHistory: [{ status: 'submitted', at: now }],
+    humanReview,
     computedFee: null,
     meta: meta || {},
     createdAt: now,
@@ -278,10 +471,12 @@ async function submitCandidate({ candidateId, jobOrderId, payRate, annualHours, 
   };
 
   await database.collection(PLACEMENTS_COLLECTION).insertOne(doc);
-  return getPlacement(placementId);
+  const created = await getPlacement(placementId);
+  await recordPlacementEvidence(created);
+  return created;
 }
 
-async function updatePlacementStatus(placementId, status) {
+async function updatePlacementStatus(placementId, status, { actorId } = {}) {
   if (!VALID_STATUSES.includes(status)) {
     throw new Error(`Invalid status "${status}". Must be one of: ${VALID_STATUSES.join(', ')}`);
   }
@@ -290,11 +485,17 @@ async function updatePlacementStatus(placementId, status) {
   const placement = await getPlacement(placementId);
   if (!placement) throw new Error(`No placement found for placementId ${placementId}`);
 
+  // Phase 8E: only legal stage transitions when enforcement is on.
+  if (pipelineEnforced() && !Pipeline.canTransition(placement.status, status)) {
+    throw new Error(`Illegal transition "${placement.status}" -> "${status}"`);
+  }
+
   const now = new Date().toISOString();
+  const historyEntry = actorId ? { status, at: now, actorId } : { status, at: now };
   const update = {
     status,
     updatedAt: now,
-    statusHistory: [...(placement.statusHistory || []), { status, at: now }],
+    statusHistory: [...(placement.statusHistory || []), historyEntry],
   };
 
   if (status === 'placed') {
@@ -306,6 +507,7 @@ async function updatePlacementStatus(placementId, status) {
   await database
     .collection(PLACEMENTS_COLLECTION)
     .updateOne({ placementId }, { $set: update });
+  await recordPlacementAudit({ placement, to: status, actorId, at: now, historyIndex: update.statusHistory.length - 1 });
 
   // If the job order is now fully staffed, mark it filled. Simple count
   // against openings — doesn't try to guess partial-fill semantics.
@@ -326,7 +528,9 @@ async function updatePlacementStatus(placementId, status) {
     }
   }
 
-  return getPlacement(placementId);
+  const updated = await getPlacement(placementId);
+  await recordPlacementEvidence(updated);
+  return updated;
 }
 
 async function deletePlacement(placementId) {
@@ -335,6 +539,18 @@ async function deletePlacement(placementId) {
     .collection(PLACEMENTS_COLLECTION)
     .deleteOne({ placementId });
   return result.deletedCount > 0;
+}
+
+// Phase 8G wiring. When STAFFING_PLACEMENT_SIGNALS=1, the placement_outcome
+// stream can be read as aggregate workforce signals. Read-only: no writes,
+// no scoring, and nothing feeds readiness.
+const PlacementSignals = require('../html/js/career/tsm-placement-signals.js');
+function placementSignalsEnabled() {
+  return process.env.STAFFING_PLACEMENT_SIGNALS === '1';
+}
+async function getPlacementSignals() {
+  const records = await listPlacementEvidence({});
+  return PlacementSignals.buildPlacementSignals(records);
 }
 
 module.exports = {
@@ -353,7 +569,12 @@ module.exports = {
   listPlacements,
   getPlacement,
   submitCandidate,
+  evaluatePlacementEligibility,
   updatePlacementStatus,
+  recordPlacementEvidence,
+  listPlacementEvidence,
+  placementSignalsEnabled,
+  getPlacementSignals,
   deletePlacement,
   computeFee,
   VALID_STATUSES,

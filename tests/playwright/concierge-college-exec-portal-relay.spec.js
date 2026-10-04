@@ -27,7 +27,7 @@
 const { test, expect } = require('@playwright/test');
 const path = require('path');
 
-const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
+const BASE_URL = process.env.BASE_URL || 'http://localhost:4173';
 const SCREENSHOT_DIR = path.join(__dirname, '__screenshots__');
 
 const CASES = [

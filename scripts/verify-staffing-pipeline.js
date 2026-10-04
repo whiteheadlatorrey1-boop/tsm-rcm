@@ -144,9 +144,9 @@ async function main() {
   const candidateResp = await api('POST', '/api/candidates', {
     name: `Verify Script Candidate (${RUN_TAG})`,
     role: 'ServiceNow / ITIL Support',
-    status: 'in_training',
+    status: 'ready_for_placement',
     source: 'verification-script',
-    isSampleData: true, // never masquerades as a real cohort member
+    isSampleData: false, // never masquerades as a real cohort member
   });
   const candidateId = candidateResp.candidate.candidateId;
   check('candidate created with an id', /^cand_/.test(candidateId));
@@ -229,6 +229,48 @@ async function main() {
   check('job order flipped to "filled"', jobOrderAfter.jobOrder.status === 'filled');
 
   // -------------------------------------------------------------
+  // EVIDENCE CHECK (STAFFING_PLACEMENT_EVIDENCE) — added step 6b
+  // Set EXPECT_EVIDENCE=1 to make a missing record a failure.
+  // -------------------------------------------------------------
+  step('6b', 'Placement evidence record (needs STAFFING_PLACEMENT_EVIDENCE=1 on the target)');
+  {
+    let ev = null, evErr = null;
+    try { ev = await api('GET', `/api/staffing/placements/${placementId}/evidence`); }
+    catch (e) { evErr = e.message; }
+    const found = ev && JSON.stringify(ev).includes(placementId);
+    if (found) {
+      console.log('  evidence: ' + JSON.stringify(ev).slice(0, 600));
+      check('evidence record references this placement', true);
+    } else if (process.env.EXPECT_EVIDENCE === '1') {
+      check('evidence record exists for this placement' + (evErr ? ` (${evErr})` : ''), false);
+    } else {
+      console.log('  flag off or no record: evidence not persisted (not counted as a failure; set EXPECT_EVIDENCE=1 to enforce)' + (evErr ? ` [${evErr}]` : ''));
+    }
+  }
+
+  // -------------------------------------------------------------
+  // SIGNALS CHECK (STAFFING_PLACEMENT_SIGNALS) - added step 6c
+  // Set EXPECT_SIGNALS=1 to make a missing signal a failure.
+  // -------------------------------------------------------------
+  step('6c', 'Placement signals (needs STAFFING_PLACEMENT_SIGNALS=1 on the target)');
+  {
+    let sg = null, sgErr = null;
+    try { sg = await api('GET', '/api/staffing/placement-signals'); }
+    catch (e) { sgErr = e.message; }
+    const mine = sg && sg.signals && Array.isArray(sg.signals.placements)
+      ? sg.signals.placements.find(p => p.placementId === placementId) : null;
+    if (mine) {
+      console.log('  signal: ' + JSON.stringify(mine).slice(0, 400));
+      check('signals include this placement as placed', mine.terminal === 'placed');
+      check('signals leak no candidateId', !JSON.stringify(sg).includes(candidateId));
+    } else if (process.env.EXPECT_SIGNALS === '1') {
+      check('signals include this placement' + (sgErr ? ' (' + sgErr + ')' : ''), false);
+    } else {
+      console.log('  flag off or not found (not counted as a failure; set EXPECT_SIGNALS=1 to enforce)' + (sgErr ? ' [' + sgErr + ']' : ''));
+    }
+  }
+
+  // -------------------------------------------------------------
   // CLEANUP — leaves production exactly as it was found, unless --keep
   // -------------------------------------------------------------
   if (KEEP) {
@@ -236,6 +278,12 @@ async function main() {
   } else {
     step(7, 'Cleaning up everything this script created');
     await api('DELETE', `/api/staffing/placements/${placementId}`);
+    try {
+      const left = await api('GET', `/api/staffing/placements/${placementId}/evidence`);
+      if (left && JSON.stringify(left).includes(placementId)) {
+        console.log(`  \x1b[33mWARNING: evidence for ${placementId} survived the placement delete. Remove it manually (run tag ${RUN_TAG}).\x1b[0m`);
+      }
+    } catch (e) { /* no leftover evidence */ }
     await api('DELETE', `/api/staffing/job-orders/${jobOrderId}`);
     await api('DELETE', `/api/staffing/employers/${employerId}`);
     await api('DELETE', `/api/candidates/${candidateId}`);

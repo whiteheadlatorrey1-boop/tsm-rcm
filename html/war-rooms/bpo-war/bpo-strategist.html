@@ -228,6 +228,16 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
        defensively throughout (always a silent no-op until now). Also feeds
        TSMExceptions' RCM OS bridge below. -->
   <script src="/html/shared/tsm-memory-engine.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      if (typeof warData !== 'undefined' && warData?.serviceNow?.source === 'servicenow') {
+        const memTab = document.getElementById('tsm-memory-tab');
+        if (memTab) memTab.remove();
+        const memLayer = document.getElementById('tsmMemoryLayer');
+        if (memLayer) memLayer.remove();
+      }
+    });
+  </script>
   <script src="/shared/tsm-exceptions.js"></script>
   <script src="/js/core/tsm-event-bus.js"></script>
   <script src="/js/core/tsm-state.js"></script>
@@ -750,6 +760,17 @@ function hydrateImpactModel(ext) {
 }
 
 function buildScenariosFromExtraction(ext) {
+  // ServiceNow live intake has no basis for modeled outcome scenarios --
+  // TSM only has read-only incident/problem/CMDB evidence, not the kind of
+  // situation data (revenue exposure, production impact, contingency
+  // options) the scenario simulator's probability/outcome fields need.
+  // Rendering SCENARIO_DEFAULTS here would fabricate supplier/production
+  // language for an incident that may have nothing to do with either.
+  if (warData?.serviceNow?.source === 'servicenow') {
+    renderServiceNowScenarioNotice();
+    tsmSnHideImpactTemplate();
+    return;
+  }
   // Override scenario names/desc from AI extraction BNCA if available
   const bnca = ext.bnca || [];
   if (bnca.length >= 3) {
@@ -758,7 +779,25 @@ function buildScenariosFromExtraction(ext) {
   buildScenarios(SCENARIO_DEFAULTS);
 }
 
+// ── SERVICENOW: NEUTRALIZE SCENARIO SIMULATOR ──
+// Replaces the scenario-card grid with a plain notice instead of leaving
+// generic supplier/production-line scenario cards on screen for a
+// ServiceNow-sourced incident they don't describe.
+function renderServiceNowScenarioNotice() {
+  const grid = document.getElementById('scenarioGrid');
+  if (grid) {
+    grid.innerHTML = '<div style="grid-column:1/-1;padding:18px;font-family:\'JetBrains Mono\',monospace;font-size:.68rem;color:var(--muted);line-height:1.6">Scenario simulator is not available for ServiceNow-sourced incidents — outcome modeling requires situation data (exposure, impact) this read-only integration does not provide. Proceed directly to the strategy brief below.</div>';
+  }
+  const status = document.getElementById('simStatus');
+  if (status) status.textContent = 'Not applicable — ServiceNow live incident';
+}
+
 function autoSelectRecommended() {
+  // No scenario cards exist on a ServiceNow-sourced run (see
+  // buildScenariosFromExtraction / renderServiceNowScenarioNotice above),
+  // so there is nothing to auto-select and selectScenario('A') would throw
+  // on the missing #sc-A element.
+  if (warData?.serviceNow?.source === 'servicenow') return;
   setTimeout(() => selectScenario('A'), 400);
 }
 
@@ -770,7 +809,7 @@ function autoSelectRecommended() {
 // hints for the model, not real windows, but paired with no explicit
 // "don't invent one" instruction they were exactly what let deadlines get
 // fabricated wholesale when no real timeframe was in the source data.
-const BPO_STRAT_SYSTEM_GUARD = 'You are the TSM Shell BPO Decision Intelligence Engine. Follow the requested output format exactly. For any deadline, SLA window, or time-remaining figure (including in RECOMMENDED STRATEGY and escalationTriggers): use only a duration or date explicitly present in the engine analysis or document context provided -- the "24/48/72hr" and "2 hours" style figures in the requested format are illustrative of the SHAPE of an answer only, never the actual value to use. If no real timeframe is present in the context, write "NOT STATED IN SOURCE DATA" for that field instead of picking one of the example numbers. Only state that a document has been obtained, a step completed, or a gap closed if the context confirms it -- anything not confirmed as done must be phrased as a still-needed action, not treated as resolved.';
+const BPO_STRAT_SYSTEM_GUARD = 'You are the TSM Shell BPO Decision Intelligence Engine. Follow the requested output format exactly. For any deadline, SLA window, or time-remaining figure (including in RECOMMENDED STRATEGY and escalationTriggers): use only a duration or date explicitly present in the engine analysis or document context provided -- the "24/48/72hr" and "2 hours" style figures in the requested format are illustrative of the SHAPE of an answer only, never the actual value to use. If no real timeframe is present in the context, write "NOT STATED IN SOURCE DATA" for that field instead of picking one of the example numbers. Only state that a document has been obtained, a step completed, or a gap closed if the context confirms it -- anything not confirmed as done must be phrased as a still-needed action, not treated as resolved. Do not assert revenue loss, SLA breach, client/customer impact, or any other business-impact claim as an established fact unless the engine analysis or document context explicitly states it -- if the source data does not establish it, phrase it as a possible risk to assess (e.g. "potential impact not yet established from available data") rather than a stated outcome.';
 
 // ── FIRE STRATEGY ──
 async function fireStrategy() {
@@ -992,9 +1031,17 @@ function parseAndRenderStrategy(raw) {
       // reads generatedRec.confidence, so patch it here once instead of
       // silently defaulting to 91 in four separate places.
       if (obj.confidence === undefined || obj.confidence === null) {
-        console.warn('[bpo-strategist] Live response omitted "confidence" field — defaulting to 91. Raw JSON:', obj);
-        obj.confidence = 91;
-        obj.confidenceDefaulted = true;
+        if (warData?.serviceNow?.source === 'servicenow') {
+          // ServiceNow mode never fabricates a confidence score.
+          // Missing confidence means the recommendation is unscored.
+          console.warn('[bpo-strategist] ServiceNow response omitted confidence — leaving unscored.');
+          obj.confidence = null;
+          obj.confidenceDefaulted = true;
+        } else {
+          console.warn('[bpo-strategist] Live response omitted "confidence" field — defaulting to 91. Raw JSON:', obj);
+          obj.confidence = 91;
+          obj.confidenceDefaulted = true;
+        }
       }
       generatedRec = obj;
       renderRecommendation(obj);
@@ -1007,7 +1054,10 @@ function parseAndRenderStrategy(raw) {
       // overwrote the real value here.
       let bpoXPImpactForSave = null;
       try {
-        if (window.TSMBNCAExposureEngine) {
+        if (
+          warData?.serviceNow?.source !== 'servicenow' &&
+          window.TSMBNCAExposureEngine
+        ) {
           function bpoXPParseExposureLow(str){
             if (!str) return 0;
             const nums = String(str).match(/[\d,]+(?:\.\d+)?/g);
@@ -1077,10 +1127,15 @@ function renderRecommendation(obj) {
   }
 
   const confDefaulted = !!obj.confidenceDefaulted;
-  const conf = obj.confidence || 91;
-  document.getElementById('confScore').textContent = confDefaulted ? '— (not scored)' : conf + '%';
-  document.getElementById('confFill').style.width = confDefaulted ? '0%' : conf + '%';
-  document.getElementById('confFill').style.background = confDefaulted ? 'var(--muted)' : (conf >= 85 ? 'var(--green)' : conf >= 70 ? 'var(--amber)' : 'var(--red)');
+  const conf = Number.isFinite(obj.confidence) ? obj.confidence : null;
+  document.getElementById('confScore').textContent =
+    confDefaulted || conf === null ? '— (not scored)' : conf + '%';
+  document.getElementById('confFill').style.width =
+    confDefaulted || conf === null ? '0%' : conf + '%';
+  document.getElementById('confFill').style.background =
+    confDefaulted || conf === null
+      ? 'var(--muted)'
+      : (conf >= 85 ? 'var(--green)' : conf >= 70 ? 'var(--amber)' : 'var(--red)');
 
   const actions = obj.recommendedActions || [];
   document.getElementById('recActions').innerHTML = actions.map((a,i) => `
@@ -1374,7 +1429,8 @@ function storeStratRelay(){
     chainStep: 'strategist',
     recommendation: generatedRec,
     selectedScenario,
-    caseId: warData?.caseId
+    caseId: warData?.caseId,
+    serviceNow: warData?.serviceNow
   };
   try {
     sessionStorage.setItem('TSM_BPO_STRAT_RELAY', JSON.stringify(payload));
@@ -1435,6 +1491,25 @@ function storeStratRelay(){
   } catch(e){}
 }
 
+// ServiceNow live demo: the "no action vs. recommended plan" impact panel is a
+// generic template ($ exposure, hours, % recovered). ServiceNow states none of
+// those, so hide it and say why instead of showing invented numbers.
+function tsmSnHideImpactTemplate() {
+  try {
+    const act = document.getElementById('actRev');
+    const half = act && act.closest('.impact-half');
+    if (!half || half.dataset.snHidden) return;
+    const halves = [half];
+    const prev = half.previousElementSibling;
+    if (prev && prev.classList.contains('impact-half')) halves.unshift(prev);
+    const note = document.createElement('div');
+    note.style.cssText = 'padding:14px;font-family:monospace;font-size:.75rem;color:var(--muted);';
+    note.textContent = 'IMPACT COMPARISON NOT AVAILABLE — ServiceNow states no revenue exposure, recovery time, or outcome projection for this incident.';
+    half.parentNode.insertBefore(note, halves[0]);
+    halves.forEach(h => { h.style.display = 'none'; h.dataset.snHidden = '1'; });
+  } catch (e) { console.warn('[sn-impact-hide]', e); }
+}
+
 function escalateToExec(){
   storeStratRelay();
   if (window.TSMMemory) TSMMemory.timeline('Escalating to Executive Portal');
@@ -1490,6 +1565,13 @@ function escalateToExec(){
 
 // ── MEMORY: RESOLVE ANOMALY + QUEUE EXECUTIVE RELAY ──
 function resolveIncidentInMemory() {
+  // ServiceNow live demo is READ-ONLY. Escalation to the Executive Portal
+  // is not resolution, so never mark the live ServiceNow incident resolved
+  // in TSM memory from this strategist stage.
+  if (warData?.serviceNow?.source === 'servicenow') {
+    return;
+  }
+
   if (!window.TSMMemory) return;
 
   const anomalyCode = warData?.extraction?.anomalyCode;
