@@ -113,6 +113,7 @@ const snAdapter = require('./server/l1-copilot/servicenow-adapter');
 const { evaluateWorkflow } = require('./server/l1-copilot/workflow-engine');
 const { evaluateClosure, buildClosureChecklist } = require('./server/l1-copilot/closure-gate');
 const { evaluateAssetRecovery } = require('./server/l1-copilot/asset-recovery');
+const { evaluateRequestFulfillment } = require('./server/l1-copilot/request-fulfillment');
 const cloudOpsAdapter = require('./server/l1-copilot/cloud-ops-adapter');
 const graphAdapter = require('./server/l1-copilot/graph-intune-adapter');
 const gcpAdapter = require('./server/l1-copilot/gcp-adapter');
@@ -4992,6 +4993,31 @@ app.post('/api/l1-copilot/asset-recovery/evaluate', (req, res) => {
   }
 });
 
+// Scope note: SOFTWARE / REQUEST FULFILLMENT tickets worked through the
+// service catalog (RITM / SC Task). Pure evaluation only -- the catalog
+// lookup itself happens via GET /api/l1-copilot/servicenow/request/:number;
+// the client passes that result here as `catalogRecord` / `catalogTasks`.
+app.post('/api/l1-copilot/request-fulfillment/evaluate', (req, res) => {
+  try {
+    const result = evaluateRequestFulfillment(req.body || {});
+    return res.json({
+      ok: true,
+      requestFulfillment: result,
+      governed: {
+        readOnly: true,
+        technicianAuthority: true
+      },
+      createdAt: new Date().toISOString()
+    });
+  } catch (e) {
+    console.error('L1 COPILOT REQUEST FULFILLMENT EVALUATION ERROR:', e.message);
+    return res.status(400).json({
+      ok: false,
+      error: e.message
+    });
+  }
+});
+
 app.post('/api/l1-copilot/closure/evaluate', (req, res) => {
   try {
     const input = req.body || {};
@@ -5031,6 +5057,36 @@ app.get('/api/l1-copilot/servicenow/asset/:tag', async (req, res) => {
   } catch (e) {
     if (e.code === 'SERVICENOW_NOT_CONFIGURED' && demoData.isDemoModeEnabled()) {
       return res.json({ ok: true, asset: demoData.demoAsset(req.params.tag), demoMode: true });
+    }
+    const status = e.code === 'SERVICENOW_NOT_CONFIGURED' ? 503 : 502;
+    res.status(status).json({ ok: false, error: e.message });
+  }
+});
+
+// READ-ONLY catalog lookup (sc_req_item / sc_task). Accepts a RITM or SCTASK
+// number. For a RITM it also returns the request's SC Tasks so closure can
+// be blocked while any are open.
+app.get('/api/l1-copilot/servicenow/request/:number', async (req, res) => {
+  const number = String(req.params.number || '').trim().toUpperCase();
+  const isRitm = /^RITM\d+$/.test(number);
+  const isTask = /^SCTASK\d+$/.test(number);
+  if (!isRitm && !isTask) {
+    return res.status(400).json({ ok: false, error: 'Enter a RITM or SCTASK number (for example RITM0010001).' });
+  }
+  const strip = (r) => { if (!r) return r; const { raw, ...rest } = r; return rest; };
+  try {
+    if (isRitm) {
+      const record = await snAdapter.getRequestItem(number);
+      if (!record) return res.status(404).json({ ok: false, error: `No request item found for "${number}".` });
+      const tasks = await snAdapter.getCatalogTasksByRequestItem(number);
+      return res.json({ ok: true, kind: 'RITM', record: strip(record), catalogTasks: tasks.map(strip) });
+    }
+    const record = await snAdapter.getCatalogTask(number);
+    if (!record) return res.status(404).json({ ok: false, error: `No catalog task found for "${number}".` });
+    return res.json({ ok: true, kind: 'SCTASK', record: strip(record), catalogTasks: [] });
+  } catch (e) {
+    if (e.code === 'SERVICENOW_NOT_CONFIGURED' && demoData.isDemoModeEnabled()) {
+      return res.json(Object.assign({ ok: true, demoMode: true }, demoData.demoRequestRecord(number)));
     }
     const status = e.code === 'SERVICENOW_NOT_CONFIGURED' ? 503 : 502;
     res.status(status).json({ ok: false, error: e.message });
