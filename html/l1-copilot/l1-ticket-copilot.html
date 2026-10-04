@@ -1310,6 +1310,53 @@ TICKET DESCRIPTION</div>
       Asset / device verified against the ticket and available records
     </label>
 
+    <div id="l1AssetRecoveryPanel" style="display:none;margin:6px 0 10px 20px;padding:10px;border:1px solid var(--border);background:var(--bg2);">
+      <div style="font-size:10px;letter-spacing:1px;color:var(--gold);margin-bottom:6px;">
+        ASSET RECOVERY REQUIRED — <span id="l1AssetRecoveryTaskType">OFFBOARDING</span>
+      </div>
+      <div style="font-size:10px;color:var(--muted);margin-bottom:8px;">
+        This task type requires a looked-up CMDB record and a stated outcome before
+        asset validation can be marked confirmed. The checkbox above is locked and is
+        set by this panel, not by hand.
+      </div>
+
+      <div style="display:flex;gap:6px;margin-bottom:8px;">
+        <input type="text" id="l1AssetRecoveryTag" placeholder="Asset tag (e.g. LT-00123)"
+               style="flex:1;font-size:11px;padding:6px;background:var(--bg3);border:1px solid var(--border);color:var(--fg);">
+        <button class="btn btn-outline" id="btnLookupAssetRecovery" type="button" style="font-size:10px;">LOOK UP CMDB</button>
+      </div>
+
+      <div id="l1AssetRecoveryCmdbResult" style="font-size:11px;color:var(--muted);margin-bottom:8px;">
+        No CMDB lookup yet.
+      </div>
+
+      <label style="display:block;font-size:11px;margin-bottom:4px;">Recovery outcome</label>
+      <select id="l1AssetRecoveryOutcome" style="width:100%;font-size:11px;padding:6px;background:var(--bg3);border:1px solid var(--border);color:var(--fg);margin-bottom:8px;">
+        <option value="">— Select —</option>
+        <option value="RETURNED_TO_STOCK">Returned to stock</option>
+        <option value="REASSIGNED">Reassigned to another user</option>
+        <option value="WIPED_AND_RETURNED">Wiped and returned</option>
+        <option value="EXCEPTION_NOT_RECOVERED">Exception — not recovered</option>
+      </select>
+
+      <div id="l1AssetRecoveryExceptionWrap" style="display:none;margin-bottom:8px;">
+        <label style="display:block;font-size:11px;margin-bottom:4px;">Exception reason (required)</label>
+        <textarea id="l1AssetRecoveryExceptionReason" rows="2"
+                  style="width:100%;font-size:11px;padding:6px;background:var(--bg3);border:1px solid var(--border);color:var(--fg);"
+                  placeholder="e.g. Employee departed same-day; asset shipped back by mail, tracking attached to ticket."></textarea>
+      </div>
+
+      <label style="display:block;font-size:11px;line-height:1.6;margin-bottom:8px;">
+        <input type="checkbox" id="l1AssetRecoveryConfirmed">
+        I confirm this asset recovery evidence is accurate
+      </label>
+
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button class="btn btn-cyan" id="btnVerifyAssetRecovery" type="button" style="font-size:10px;">VERIFY ASSET RECOVERY</button>
+        <span id="l1AssetRecoveryStatus" style="font-size:10px;color:var(--muted);"></span>
+      </div>
+    </div>
+
     <label style="display:block;font-size:11px;line-height:1.9;">
       <input type="checkbox" id="l1EvidenceWorkConfirmed">
       Required work was actually performed
@@ -5796,6 +5843,142 @@ window.selectQ15Scenario = function(id) {
     return !!(el && el.checked);
   }
 
+  /* ---------------------------------------------------------------- */
+  /* Asset recovery panel (OFFBOARDING / HARDWARE SWAP)                */
+  /*                                                                    */
+  /* The plain "Asset / device verified" checkbox is identical across  */
+  /* every task type and can be hand-ticked without ever looking up    */
+  /* the device. For asset-recovery task types, this panel is the only */
+  /* thing allowed to set that checkbox: it locks it, requires a real  */
+  /* CMDB lookup via the existing asset route, a stated outcome, and   */
+  /* technician confirmation, then calls the read-only                */
+  /* /api/l1-copilot/asset-recovery/evaluate evaluator before unlocking*/
+  /* the checkbox as checked. See server/l1-copilot/asset-recovery.js. */
+  /* ---------------------------------------------------------------- */
+
+  let assetRecoveryCmdbAsset = null;
+
+  function setAssetRecoveryPanelActive(taskType) {
+    const panel = document.getElementById('l1AssetRecoveryPanel');
+    const checkbox = document.getElementById('l1EvidenceAssetVerified');
+    const label = document.getElementById('l1AssetRecoveryTaskType');
+    if (!panel || !checkbox) return;
+
+    const inScope = taskType === 'OFFBOARDING' || taskType === 'HARDWARE SWAP';
+
+    panel.style.display = inScope ? 'block' : 'none';
+    checkbox.disabled = inScope;
+
+    if (inScope) {
+      if (label) label.textContent = taskType;
+      // Scope just changed (or this is the first evaluate on this ticket) --
+      // don't carry over a checked state from a previous, unrelated task
+      // classification. The panel below re-verifies and re-checks it.
+      if (checkbox.dataset.assetRecoveryManaged !== taskType) {
+        checkbox.checked = false;
+        checkbox.dataset.assetRecoveryManaged = taskType;
+      }
+    } else {
+      delete checkbox.dataset.assetRecoveryManaged;
+    }
+  }
+
+  async function lookupAssetRecoveryCmdb() {
+    const tagInput = document.getElementById('l1AssetRecoveryTag');
+    const resultEl = document.getElementById('l1AssetRecoveryCmdbResult');
+    const button = document.getElementById('btnLookupAssetRecovery');
+    const tag = (tagInput && tagInput.value || '').trim();
+
+    if (!resultEl) return;
+    if (!tag) {
+      resultEl.textContent = 'Enter an asset tag first.';
+      return;
+    }
+
+    assetRecoveryCmdbAsset = null;
+    resultEl.textContent = 'Looking up CMDB record...';
+    if (button) button.disabled = true;
+
+    try {
+      const res = await fetch('/api/l1-copilot/servicenow/asset/' + encodeURIComponent(tag));
+      const data = await res.json();
+
+      if (!res.ok || !data.ok) {
+        resultEl.innerHTML = '<span class="err">' + escapeHtml(data.error || 'Asset not found.') + '</span>';
+        return;
+      }
+
+      assetRecoveryCmdbAsset = data.asset;
+      resultEl.innerHTML =
+        '<span style="color:var(--cyan)">Found:</span> ' +
+        escapeHtml(data.asset.assetTag || tag) + ' — ' +
+        escapeHtml([data.asset.manufacturer, data.asset.model].filter(Boolean).join(' ') || 'unknown model') +
+        ' (status: ' + escapeHtml(data.asset.status || 'unknown') + ')' +
+        (data.demoMode ? ' <span style="color:var(--muted)">[demo data]</span>' : '');
+    } catch (error) {
+      resultEl.innerHTML = '<span class="err">' + escapeHtml(error.message) + '</span>';
+    } finally {
+      if (button) button.disabled = false;
+    }
+  }
+
+  async function verifyAssetRecovery() {
+    const statusEl = document.getElementById('l1AssetRecoveryStatus');
+    const checkbox = document.getElementById('l1EvidenceAssetVerified');
+    const button = document.getElementById('btnVerifyAssetRecovery');
+    const taskType = checkbox && checkbox.dataset.assetRecoveryManaged;
+
+    if (!statusEl || !checkbox || !taskType) return;
+
+    const assetTag = (document.getElementById('l1AssetRecoveryTag').value || '').trim();
+    const recoveryOutcome = document.getElementById('l1AssetRecoveryOutcome').value;
+    const exceptionReason = document.getElementById('l1AssetRecoveryExceptionReason').value;
+    const technicianConfirmed = checked('l1AssetRecoveryConfirmed');
+
+    statusEl.textContent = 'Verifying...';
+    if (button) button.disabled = true;
+
+    try {
+      const res = await fetch('/api/l1-copilot/asset-recovery/evaluate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          taskType,
+          assetTag,
+          cmdbAsset: assetRecoveryCmdbAsset,
+          recoveryOutcome,
+          exceptionReason,
+          technicianConfirmed
+        })
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.ok) {
+        statusEl.innerHTML = '<span class="err">' + escapeHtml(data.error || 'Evaluation failed.') + '</span>';
+        return;
+      }
+
+      const outcome = data.assetRecovery;
+
+      if (outcome.assetVerified === true) {
+        checkbox.checked = true;
+        statusEl.innerHTML = '<span style="color:var(--cyan)">Verified.</span> ' + escapeHtml(outcome.reason);
+      } else {
+        checkbox.checked = false;
+        statusEl.innerHTML =
+          '<span class="err">Not verified' +
+          (outcome.missing && outcome.missing.length ? ': ' + escapeHtml(outcome.missing.join(', ')) : '') +
+          '</span> — ' + escapeHtml(outcome.reason);
+      }
+
+      persistWorkflowEvidence();
+    } catch (error) {
+      statusEl.innerHTML = '<span class="err">' + escapeHtml(error.message) + '</span>';
+    } finally {
+      if (button) button.disabled = false;
+    }
+  }
+
   function buildWorkflowEvidence() {
     return {
       userVerified: checked('l1EvidenceUserVerified'),
@@ -5876,6 +6059,8 @@ window.selectQ15Scenario = function(id) {
       const workflow = data.workflow.workflow;
       const closure = data.closure.closure;
 
+      setAssetRecoveryPanelActive(workflow.taskType);
+
       result.innerHTML =
         '<strong>NEXT ACTION:</strong> ' +
         escapeHtml(workflow.nextAction || 'REVIEW') +
@@ -5932,6 +6117,22 @@ window.selectQ15Scenario = function(id) {
 
     if (button) {
       button.addEventListener('click', evaluateCurrentTicket);
+    }
+
+    const lookupBtn = document.getElementById('btnLookupAssetRecovery');
+    if (lookupBtn) lookupBtn.addEventListener('click', lookupAssetRecoveryCmdb);
+
+    const verifyBtn = document.getElementById('btnVerifyAssetRecovery');
+    if (verifyBtn) verifyBtn.addEventListener('click', verifyAssetRecovery);
+
+    const outcomeSelect = document.getElementById('l1AssetRecoveryOutcome');
+    if (outcomeSelect) {
+      outcomeSelect.addEventListener('change', function () {
+        const wrap = document.getElementById('l1AssetRecoveryExceptionWrap');
+        if (wrap) {
+          wrap.style.display = outcomeSelect.value === 'EXCEPTION_NOT_RECOVERED' ? 'block' : 'none';
+        }
+      });
     }
   });
 })();
