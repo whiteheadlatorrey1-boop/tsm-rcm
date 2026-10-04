@@ -11,3 +11,10 @@
 - Domain names match the official page. Under Data Migration and Integration the page lists UI Policies, Business Rules, update sets and scripting, which looks odd but is what it says.
 
 The existing `servicenow-csa` entry in `blueprint-registry.js` is an earlier placeholder with invented skills. It is separate from this one and can be removed later.
+
+## CRCR (HFMA) - facts only, not yet a blueprint
+- Official source: HFMA, Certified Revenue Cycle Representative program pages (hfma.org).
+- Looked up 2026-10-03.
+- Exam: 75 multiple-choice questions, 90 minutes, 70 percent to pass, 30 days to wait before a retake.
+- Domains and weights: NOT verified. The four content areas in our planning notes did not come from an HFMA document, and no official weights were found. Do not encode weights until HFMA's key concepts guide is checked.
+- Not encoded as a weighted blueprint yet, because weighted-blueprints.js expects weights that sum to 100.
