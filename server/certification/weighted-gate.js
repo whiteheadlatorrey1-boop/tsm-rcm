@@ -30,7 +30,7 @@ function evaluateWeightedReadiness(blueprintId, evidence, sims) {
   if (coveredWeight < 100) reasons.push(`only ${coveredWeight}% of the blueprint weight has any evidence`);
   else if (weightedScore < rules.readyTarget) reasons.push(`weighted score ${weightedScore.toFixed(1)} is below the ${rules.readyTarget} target`);
 
-  const full = simRows.filter((s) => s && validScore(s.score) && s.questions >= bp.exam.questions && s.minutes <= bp.exam.minutes);
+  const full = simRows.filter((s) => s && validScore(s.score) && s.questions >= bp.exam.questions && s.minutes <= bp.exam.minutes && !(s.unreviewedQuestions > 0));
   const lastScores = full.slice(-rules.minFullSims).map((s) => s.score);
   if (full.length < rules.minFullSims) reasons.push(`${full.length}/${rules.minFullSims} full timed simulations`);
   else if (!lastScores.every((s) => s >= rules.readyTarget)) reasons.push(`latest full simulations (${lastScores.join(', ')}) are not all at ${rules.readyTarget}+`);
