@@ -13,7 +13,7 @@ const sim = (score, questions = 60, minutes = 85) => ({ score, questions, minute
 const goodSims = [sim(80), sim(82)];
 const ev = (e, s) => evaluateWeightedReadiness(ID, e, s);
 
-t('registry lists the csa blueprint', () => assert.strictEqual(listWeightedBlueprints().length, 1));
+t('registry lists the csa blueprint', () => assert.ok(listWeightedBlueprints().some((b) => b.id === ID)));
 t('domain weights sum to 100', () => listWeightedBlueprints().forEach((b) => assert.strictEqual(b.domains.reduce((s, d) => s + d.weight, 0), 100)));
 t('csa has the six official weights', () => assert.deepStrictEqual(getWeightedBlueprint(ID).domains.map((d) => d.weight), [7, 10, 20, 20, 30, 13]));
 t('csa exam is 60 questions in 90 minutes', () => { const e = getWeightedBlueprint(ID).exam; assert.strictEqual(e.questions, 60); assert.strictEqual(e.minutes, 90); });
