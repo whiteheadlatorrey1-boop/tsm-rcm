@@ -644,7 +644,7 @@ router.get('/api/training-intelligence/quiz/:providerId/:domainId', (req, res) =
 // copy of the bank and returns per-question correctness + explanation, plus
 // a domain score. Stateless — no attempt is persisted server-side; the
 // client rolls attempts into its own local readiness/mastery report.
-router.post('/api/training-intelligence/quiz/:providerId/submit', (req, res) => {
+router.post('/api/training-intelligence/quiz/:providerId/submit', async (req, res) => {
   const bank = loadQuestionBank(req.params.providerId);
   if (!bank) return res.status(404).json({ ok: false, error: 'No question bank for this provider yet' });
 
@@ -712,15 +712,48 @@ router.post('/api/training-intelligence/quiz/:providerId/submit', (req, res) => 
   });
 
   const knowledgeExposure = Object.values(exposureByDomain);
+  const score = results.length ? Math.round((correctCount / results.length) * 100) : 0;
+
+  // Optional evidence write to the Candidate Registry. Grading never depends
+  // on it: failures are reported in `registry`, not thrown. Requires an admin
+  // session or a valid token for that candidateId, and a verified bank.
+  const registry = { recorded: false, reason: 'no candidateId supplied' };
+  const candidateId = req.body && typeof req.body.candidateId === 'string' ? req.body.candidateId : '';
+  if (candidateId) {
+    try {
+      const { verifySession, getCookie } = require('../middleware/require-auth');
+      const { verifyCandidateToken } = require('../middleware/candidate-token');
+      const session = verifySession(getCookie(req, 'tsm_session'));
+      const authorized = (session && session.role === 'admin') ||
+        verifyCandidateToken(candidateId, req.get('x-candidate-token'));
+      if (!authorized) {
+        registry.reason = 'not authorized to write for this candidate';
+      } else if (!bank.verified) {
+        registry.reason = 'question bank is not verified; score not recorded';
+      } else {
+        await require('../server/candidate-registry-service').recordTrainingEvent(candidateId, {
+          type: 'quiz',
+          score,
+          weight: 1,
+          meta: { source: 'training-intelligence', providerId: req.params.providerId, correctCount, total: results.length }
+        });
+        registry.recorded = true;
+        delete registry.reason;
+      }
+    } catch (err) {
+      registry.reason = 'registry write failed: ' + err.message;
+    }
+  }
 
   res.json({
     ok: true,
     providerId: req.params.providerId,
     verified: !!bank.verified,
-    score: results.length ? Math.round((correctCount / results.length) * 100) : 0,
+    score,
     correctCount,
     total: results.length,
     knowledgeExposure,
+    registry,
     results
   });
 });
