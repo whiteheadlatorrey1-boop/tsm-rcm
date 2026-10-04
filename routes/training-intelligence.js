@@ -34,7 +34,14 @@ function loadQuestionBank(providerId) {
   const qPath = p.replace(/\.json$/, '-questions.json');
   if (!fs.existsSync(qPath)) return null;
   try {
-    return JSON.parse(fs.readFileSync(qPath, 'utf8'));
+    const bank = JSON.parse(fs.readFileSync(qPath, 'utf8'));
+    // Merge reviewed questions from the certification bank, if one exists.
+    // The bank's own verified flag is left exactly as the file says.
+    const have = new Set((bank.questions || []).map(q => q.id));
+    const extra = require('../server/training-intelligence-bank-adapter')
+      .extraQuestions(providerId).filter(q => !have.has(q.id));
+    if (extra.length) bank.questions = (bank.questions || []).concat(extra);
+    return bank;
   } catch {
     return null;
   }
