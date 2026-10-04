@@ -26,12 +26,43 @@ const { test, expect } = require('@playwright/test');
 const fs = require('fs');
 const path = require('path');
 
+require('dotenv').config({
+  path: path.resolve(__dirname, '..', '..', '.env')
+});
+
+if (!process.env.TSM_AUTH_PASSWORD && process.env.TSM_ADMIN_PASSWORD) {
+  process.env.TSM_AUTH_PASSWORD = process.env.TSM_ADMIN_PASSWORD;
+}
+
+async function authenticatePm(page) {
+  const password =
+    process.env.TSM_AUTH_PASSWORD ||
+    process.env.TSM_ADMIN_PASSWORD ||
+    '';
+
+  if (!password) {
+    throw new Error(
+      'TSM_AUTH_PASSWORD is required for the authenticated PM Executive Portal contract'
+    );
+  }
+
+  const response = await page.request.post('/api/auth/login', {
+    data: { password }
+  });
+
+  if (!response.ok()) {
+    throw new Error(
+      `PM test authentication failed with HTTP ${response.status()}`
+    );
+  }
+}
+
 const REPO_ROOT = path.join(__dirname, '..', '..');
 const CONF_PATH = path.join(REPO_ROOT, 'scripts', 'demo', 'demo-pages.conf');
 const REPORTS_DIR = path.join(REPO_ROOT, 'reports');
 const LOG_DIR = path.join(REPORTS_DIR, 'logs');
 const SHOT_DIR = path.join(REPORTS_DIR, 'screenshots');
-const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
+const BASE_URL = process.env.BASE_URL || 'http://localhost:4173';
 
 fs.mkdirSync(LOG_DIR, { recursive: true });
 fs.mkdirSync(SHOT_DIR, { recursive: true });
@@ -69,6 +100,14 @@ for (const { label, relpath } of loadPages()) {
     page.on('pageerror', (err) => pageErrors.push(String(err)));
 
     const url = `${BASE_URL}/${relpath}`;
+
+    // PM Executive Portal calls protected /api/pm/* endpoints and therefore
+    // requires the same authenticated session contract used by the HC relay
+    // suite. Keep authentication scoped to this protected demo page only.
+    if (label === 'pm-executive-portal') {
+      await authenticatePm(page);
+    }
+
     let response;
     try {
       response = await page.goto(url, { waitUntil: 'load', timeout: 15000 });

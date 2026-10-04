@@ -528,6 +528,68 @@ Every section above stops at the Executive Portal — the internal employee-faci
 
 ---
 
+## 15. ServiceNow-Backed Demos (L1 Copilot write-gate + BPO live intake)
+
+**Added 2026-09-24.** Section 14 above covers the L1 platform's four-peer-app hub. This section is the ServiceNow-specific portion of that same platform: the technician-confirmation write gate on `l1-ticket-copilot.html`, and the live read-only incident intake on `bpo-war-room.html`. Both were verified directly against the current repo code, plus an end-to-end headless-browser run of Demo 1's gate logic (21/21 checks, mocked API — see `l1_gate_test.py`, not in this repo).
+
+**Live-write warning:** Demo 1's final step performs a real `PATCH` to ServiceNow's `incident.work_notes` field on whichever instance the `SERVICENOW_*` env vars currently point to. Verify that's a sandbox/PDI, not a shared tenant, before rehearsing against a real incident.
+
+### Demo 1 — L1 Support Copilot: "Resolve the ticket"
+
+**Story:** *"Reduce the time from ticket arrival to technician action — without removing the technician from the decision."*
+
+**Start:** `l1-ticket-copilot.html` (Ticket tab, active by default)
+
+1. **Type** an incident number into `#tkIncident`, **click LOAD** (`#btnSnPullByIncident`).
+   *Say:* "This is a live call to ServiceNow. Requester, assignment group, and asset come back automatically — no retyping." (If `[DEMO DATA]` appears, ServiceNow isn't configured for this environment — check env vars before the room sees it.)
+2. **Click** the **Resolution** tab in the left sidebar. The generate button only lives here, not on Ticket.
+3. **Click GENERATE RESOLUTION DRAFT** (`#btnBuildResolution`).
+   *Say:* "This produces a draft only. Nothing is written to ServiceNow yet." Read a line or two aloud.
+4. **Point at** the disabled **TECHNICIAN CONFIRM & WRITE** button. Click it — nothing happens.
+   *Say:* "The AI cannot unlock this. Only the technician can, after reading the draft."
+5. **Check** the confirmation box (`#resolutionTechnicianConfirm`). Button enables.
+   *(Optional proof):* click generate again — box unchecks, button re-locks automatically. *Say:* "Every new draft needs a fresh sign-off."
+6. **Check the box again, click TECHNICIAN CONFIRM & WRITE.**
+   Status reads "Submitting..." then "Technician-confirmed work note written to [incident] in ServiceNow."
+7. **Switch to ServiceNow**, open the incident, show the note on the Activity/Work Notes list.
+
+**Talk point (accurate version — don't overclaim):** "The draft panel isn't editable on screen, so what I read is what gets sent. Regenerating resets the confirmation automatically. On the server side, the write also requires an authenticated internal-role session — the checkbox is the human step, the login is the access control."
+
+**Value:** handling-time reduction + a controlled, auditable execution step.
+
+### Demo 2 — BPO/MSP ServiceNow Intelligence: "Understand the operational situation"
+
+**Story:** *"Stop treating an enterprise incident as an isolated ticket."*
+
+**Start:** load `bpo-war-room.html?servicenowIncident=<INC#>` directly — this is a URL load, not a click sequence. The page's own intake code fires the evidence pipeline automatically on load.
+
+*Say while it loads:* "I'm not demonstrating ticket resolution here — this is operational intelligence. Watch the status line: it's pulling this incident from ServiceNow as read-only evidence."
+
+Once loaded, walk the room through what's on screen — incident → linked Problem → related incidents → CMDB relationships — narrating from whatever the page actually shows. **Read the incident's actual `short_description` live; don't pre-script what the incident is about.**
+
+**Critical credibility moment — point at it directly:** wherever ServiceNow doesn't provide a number (revenue at risk, exposure, runway), the page literally renders `"NOT STATED IN SOURCE DATA"` instead of inventing one, and CMDB dependency links are labeled `SOURCE-LINKED`, explicitly not treated as proven root cause. This is real code behavior (`tsmServiceNowDemoIntake()`), not a talking point layered on top.
+
+The page auto-routes to `bpo-strategist.html` (evidence organized into a response) and from there to `bpo-executive-portal.html` (packaged for a decision-maker).
+
+*Say:* "The War Room is the evidence layer. The Strategist organizes it into an operational response, without making autonomous ServiceNow changes — it's a decision package for a human. The Executive view is what a leader sees instead of five raw ServiceNow records."
+
+**Value:** situation awareness + cross-record intelligence, with a demonstrated refusal to fabricate numbers ServiceNow doesn't provide.
+
+### Demo 3 — Escalation / Tier 2 Handoff: "Move it forward with context"
+
+**Correction to earlier drafts of this section: this is not a separate page.** It's the **Escalation** sidebar tab on the same `l1-ticket-copilot.html` page used in Demo 1.
+
+**Start:** the same loaded ticket from Demo 1, step 1 — but skip the Resolution tab entirely.
+
+1. **Click** the **Escalation** sidebar tab (`data-section="escalation"`).
+2. Optionally select a team chip (`#escTeamGrid`) and fill in reason/evidence fields.
+3. **Click GENERATE ESCALATION PACKAGE** (`#btnBuildEscalation`).
+   *Say:* "This changes the handoff from 'I couldn't fix it' to 'here's the evidence, here's what's already been checked, here's what remains.'"
+
+**Value:** reduced Tier-2 rework and continuity — Tier 2 starts from what L1 already established instead of rediscovering it.
+
+---
+
 ## RCM-OS (standalone — not part of the War Room chain)
 
 **Path:** `html/finops-suite/tsm-rcm-os.html` (single self-contained page), with `tsm-rcm-os-howto.html` and `rcm-os-presentation.html` as companion docs/demo.

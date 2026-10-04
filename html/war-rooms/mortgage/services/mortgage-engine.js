@@ -214,6 +214,32 @@
       };
     }
 
+    /* Forward-looking planning estimate (portfolio forecast): what closing-delay
+       cost accrues if the loan files currently past SLA stay unresolved for
+       N more days, using the model's closing_delay_cost_per_day. Compliance
+       exposure is held at today's level -- no growth is assumed. */
+    getPortfolioForecast(horizonDays) {
+      const horizons = horizonDays || [7, 14, 30];
+      const fm = this.getFinancialModel();
+      const delay = this.getClosingDelayExposure();
+      const compliance = this.getComplianceExposure();
+      const rate = fm && fm.closing_delay_cost_per_day != null ? fm.closing_delay_cost_per_day : 0;
+      const stalled = delay.items.length;
+      const current = delay.total + compliance.total;
+      return {
+        currency: delay.currency || 'USD',
+        stalled_files: stalled,
+        daily_burn: stalled * rate,
+        current_total: current,
+        horizons: horizons.map(d => ({
+          days: d,
+          additional_delay_cost: stalled * rate * d,
+          projected_total: current + stalled * rate * d
+        })),
+        note: 'Planning estimate: assumes files now past SLA stay unresolved; compliance exposure held at today\'s level.'
+      };
+    }
+
     /* ---------- Canonical core wiring ---------- */
 
     async _canonical() {

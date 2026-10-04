@@ -617,6 +617,133 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
           </div>
           <div class="ai-out" id="variance-out" style="margin-top:8px"></div>
         </div>
+
+        <!-- PROCEDURE & CARE-PACKAGE QUOTE (CPQ) -->
+        <div class="panel" id="hc-cpq" style="margin-top:10px">
+          <div class="sh"><span class="st">Procedure &amp; Care-Package Quote</span><button class="btn btn-strat" style="padding:2px 8px;font-size:8px" id="cpq-add">+ ADD PROCEDURE</button></div>
+          <style>
+            #hc-cpq .cpq-row { display:grid; grid-template-columns:78px 1fr 52px 96px 60px 24px; gap:6px; align-items:center; margin-bottom:5px; }
+            #hc-cpq .cpq-head { font-size:7px; letter-spacing:.12em; text-transform:uppercase; color:var(--text2); }
+            #hc-cpq input, #hc-cpq select { width:100%; background:var(--bg3); border:1px solid var(--border2); border-radius:3px; color:var(--text); font-family:'JetBrains Mono',monospace; font-size:10px; padding:4px 6px; }
+            #hc-cpq input:focus, #hc-cpq select:focus { outline:none; border-color:var(--g3); }
+            #hc-cpq .cpq-meta { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin:8px 0; }
+            #hc-cpq .cpq-meta label { display:block; font-size:7px; letter-spacing:.12em; text-transform:uppercase; color:var(--text2); margin-bottom:3px; }
+            #hc-cpq .cpq-tot { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-top:10px; }
+            #hc-cpq .cpq-tot > div { background:var(--bg3); border:1px solid var(--border); border-radius:3px; padding:7px 9px; }
+            #hc-cpq .cpq-tot .l { font-size:7px; letter-spacing:.12em; text-transform:uppercase; color:var(--text2); }
+            #hc-cpq .cpq-tot .v { font-size:13px; font-weight:700; margin-top:3px; color:var(--g); }
+            #hc-cpq .cpq-x { background:none; border:none; color:var(--text2); cursor:pointer; font-size:12px; }
+            #hc-cpq .cpq-x:hover { color:var(--red); }
+          </style>
+          <div class="cpq-meta">
+            <div><label for="cpq-name">Care package</label><input id="cpq-name" type="text" value="Outpatient diagnostic package"></div>
+            <div><label for="cpq-payer">Payer</label>
+              <select id="cpq-payer">
+                <option value="UnitedHealth">UnitedHealth</option>
+                <option value="BCBS Arizona">BCBS Arizona</option>
+                <option value="Aetna">Aetna</option>
+                <option value="Medicare">Medicare</option>
+                <option value="Medicaid AZ">Medicaid AZ</option>
+                <option value="Self-pay">Self-pay</option>
+              </select></div>
+            <div><label for="cpq-coins">Patient responsibility %</label><input id="cpq-coins" type="number" min="0" max="100" step="1" value="0"></div>
+          </div>
+          <div class="cpq-row cpq-head"><span>CPT / HCPCS</span><span>Procedure</span><span>Units</span><span>Allowed $ / unit</span><span>Prior auth</span><span></span></div>
+          <div id="cpq-lines"></div>
+          <div class="cpq-tot">
+            <div><div class="l">Package allowed</div><div class="v" id="cpq-t-allowed">$0</div></div>
+            <div><div class="l">Payer share</div><div class="v" id="cpq-t-payer">$0</div></div>
+            <div><div class="l">Patient share</div><div class="v" id="cpq-t-patient">$0</div></div>
+            <div><div class="l">Denial-adjusted payer $</div><div class="v" id="cpq-t-adj" style="color:var(--amber)">$0</div></div>
+          </div>
+          <div id="cpq-note" style="font-size:9px;color:var(--text2);margin-top:8px;line-height:1.6"></div>
+          <div style="margin-top:8px"><button class="btn btn-o" id="cpq-copy" style="padding:3px 10px;font-size:8px">COPY QUOTE</button> <span id="cpq-copy-s" style="font-size:8px;color:var(--g2)"></span></div>
+        </div>
+        <script>
+        (function () {
+          // Denial rates as shown in the Executive Portal payer scorecard; appeal win rate is the portfolio 68%.
+          var DENIAL = { 'UnitedHealth': 0.28, 'BCBS Arizona': 0.20, 'Aetna': 0.19, 'Medicare': 0.042, 'Medicaid AZ': 0.061, 'Self-pay': 0 };
+          var APPEAL_WIN = 0.68;
+          // Allowed amounts are entered from the practice's own contracted fee schedule; none are assumed here.
+          var lines = [
+            { code: '99213', desc: 'Office visit, established patient, moderate complexity', units: 1, rate: '', auth: false },
+            { code: '74177', desc: 'CT abdomen and pelvis with contrast', units: 1, rate: '', auth: true }
+          ];
+          function $(id) { return document.getElementById(id); }
+          function usd(n) { return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+          function esc(s) { return String(s).split('&').join('&amp;').split('<').join('&lt;').split('"').join('&quot;'); }
+          function render() {
+            var box = $('cpq-lines');
+            box.innerHTML = lines.map(function (l, i) {
+              return '<div class="cpq-row">' +
+                '<input data-i="' + i + '" data-f="code" value="' + esc(l.code) + '" aria-label="CPT or HCPCS code">' +
+                '<input data-i="' + i + '" data-f="desc" value="' + esc(l.desc) + '" aria-label="Procedure description">' +
+                '<input data-i="' + i + '" data-f="units" type="number" min="1" step="1" value="' + esc(l.units) + '" aria-label="Units">' +
+                '<input data-i="' + i + '" data-f="rate" type="number" min="0" step="0.01" placeholder="0.00" value="' + esc(l.rate) + '" aria-label="Allowed amount per unit">' +
+                '<input data-i="' + i + '" data-f="auth" type="checkbox"' + (l.auth ? ' checked' : '') + ' aria-label="Prior authorization required">' +
+                '<button class="cpq-x" data-x="' + i + '" aria-label="Remove procedure">&times;</button></div>';
+            }).join('');
+            totals();
+          }
+          function totals() {
+            var payer = $('cpq-payer').value;
+            var coins = Math.min(100, Math.max(0, parseFloat($('cpq-coins').value) || 0)) / 100;
+            var allowed = 0, authCount = 0;
+            lines.forEach(function (l) {
+              allowed += (parseFloat(l.units) || 0) * (parseFloat(l.rate) || 0);
+              if (l.auth) authCount++;
+            });
+            var payerShare = allowed * (1 - coins);
+            var patientShare = allowed * coins;
+            var denial = DENIAL[payer] || 0;
+            var adj = payerShare * (1 - denial * (1 - APPEAL_WIN));
+            $('cpq-t-allowed').textContent = usd(allowed);
+            $('cpq-t-payer').textContent = usd(payerShare);
+            $('cpq-t-patient').textContent = usd(patientShare);
+            $('cpq-t-adj').textContent = usd(adj);
+            var note = 'Denial adjustment uses ' + payer + "'s " + (denial * 100).toFixed(1) + '% denial rate and a ' + Math.round(APPEAL_WIN * 100) + '% appeal win rate.';
+            if (authCount) note += ' ' + authCount + ' procedure' + (authCount > 1 ? 's' : '') + ' flagged for prior authorization: confirm auth is on file before scheduling.';
+            if (allowed === 0) note += ' Enter allowed amounts from your contracted fee schedule to price the package.';
+            $('cpq-note').textContent = note;
+            return { payer: payer, coins: coins, allowed: allowed, payerShare: payerShare, patientShare: patientShare, adj: adj, authCount: authCount };
+          }
+          function quoteText() {
+            var t = totals();
+            var out = ['Care package quote: ' + $('cpq-name').value, 'Payer: ' + t.payer, ''];
+            lines.forEach(function (l) {
+              var amt = (parseFloat(l.units) || 0) * (parseFloat(l.rate) || 0);
+              out.push(l.code + ' ' + l.desc + ' x' + l.units + ' = ' + usd(amt) + (l.auth ? ' (prior auth required)' : ''));
+            });
+            out.push('', 'Package allowed: ' + usd(t.allowed), 'Payer share: ' + usd(t.payerShare), 'Patient share: ' + usd(t.patientShare), 'Denial-adjusted payer amount: ' + usd(t.adj));
+            return out.join('\n');
+          }
+          $('cpq-lines').addEventListener('input', function (e) {
+            var f = e.target.getAttribute('data-f'), i = e.target.getAttribute('data-i');
+            if (f === null || i === null) return;
+            lines[i][f] = f === 'auth' ? e.target.checked : e.target.value;
+            totals();
+          });
+          $('cpq-lines').addEventListener('click', function (e) {
+            var x = e.target.getAttribute('data-x');
+            if (x === null) return;
+            lines.splice(Number(x), 1);
+            render();
+          });
+          $('cpq-add').addEventListener('click', function () {
+            lines.push({ code: '', desc: '', units: 1, rate: '', auth: false });
+            render();
+          });
+          $('cpq-payer').addEventListener('change', totals);
+          $('cpq-coins').addEventListener('input', totals);
+          $('cpq-copy').addEventListener('click', function () {
+            var s = $('cpq-copy-s'), text = quoteText();
+            var done = function () { s.textContent = 'Copied'; setTimeout(function () { s.textContent = ''; }, 1800); };
+            if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(text).then(done, function () { s.textContent = 'Copy blocked by browser'; }); }
+            else { s.textContent = 'Copy not supported here'; }
+          });
+          render();
+        })();
+        </script>
       </div>
 
       <!-- ══ DENIAL SWEEP TAB ══ -->

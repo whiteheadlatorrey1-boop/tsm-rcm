@@ -27,7 +27,11 @@ const TASK_TYPES = Object.freeze([
   'FOOT MOVE',
   'HARDWARE',
   'HARDWARE SWAP',
+  'SOFTWARE',
+  'REQUEST FULFILLMENT',
   'INCIDENT',
+  'LOST_STOLEN',
+  'DISPOSITION',
   'OTHER'
 ]);
 
@@ -58,6 +62,7 @@ function normalizeTaskType(taskType) {
 
   if (value === 'FOOTMOVE') return 'FOOT MOVE';
   if (value === 'HARDWARESWAP') return 'HARDWARE SWAP';
+  if (value === 'REQUESTFULFILLMENT') return 'REQUEST FULFILLMENT';
 
   return TASK_TYPES.includes(value) ? value : 'OTHER';
 }
@@ -103,16 +108,21 @@ function classifyTask(input = {}) {
     };
   }
 
-  if (/hardware swap|device swap|replacement device/.test(text)) {
+  if (/lost|stolen|missing|device missing|asset missing/.test(text)) {
     return {
-      taskType: 'HARDWARE SWAP',
+      taskType: 'LOST_STOLEN',
       source: 'description'
     };
   }
 
-  if (/hardware|laptop|desktop|monitor|dock|keyboard|mouse/.test(text)) {
+  // A failed install/deploy is an incident even when the text also names the
+  // machine ("Office install error on desktop"), so this runs before the
+  // hardware-noun and software checks below.
+  if (
+    /(install|deploy|upgrade|update)\w*\s+(failed|failure|error)|(failed|failure|error)\b[^.]*\b(install|deploy)/.test(text)
+  ) {
     return {
-      taskType: 'HARDWARE',
+      taskType: 'INCIDENT',
       source: 'description'
     };
   }
@@ -124,50 +134,102 @@ function classifyTask(input = {}) {
     };
   }
 
+  if (/hardware swap|device swap|replacement device/.test(text)) {
+    return {
+      taskType: 'HARDWARE SWAP',
+      source: 'description'
+    };
+  }
+
+  // "Install a laptop/dock/monitor" is hardware work; "install X on the
+  // laptop" is software. Only the install's object decides.
+  const hardwareInstall =
+    /\binstall\w*\s+(?:of\s+)?(?:(?:an?|the|new)\s+)*(?:laptop|desktop|monitor|dock\w*|keyboard|mouse|headset)\b/.test(text);
+
+  if (
+    /software|licen[sc]e|subscription|\bapps?\b|application|\bclient\b|\bsaas\b/.test(text) ||
+    (/\b(?:re)?install(?:ation|ed|ing)?\b/.test(text) && !hardwareInstall)
+  ) {
+    return {
+      taskType: 'SOFTWARE',
+      source: 'description'
+    };
+  }
+
+  if (
+    /request fulfil|service request|catalog item|\britm\b|\bsctask\b|grant access|access request|add (?:the )?user to|distribution list|shared (?:drive|mailbox)|permissions?\b/.test(text)
+  ) {
+    return {
+      taskType: 'REQUEST FULFILLMENT',
+      source: 'description'
+    };
+  }
+
+  if (/hardware|laptop|desktop|monitor|dock|keyboard|mouse/.test(text)) {
+    return {
+      taskType: 'HARDWARE',
+      source: 'description'
+    };
+  }
+
   return {
     taskType: 'OTHER',
     source: 'default'
   };
 }
 
+const EVIDENCE_META = Object.freeze({
+  userVerified: { label: 'User validation' },
+  assetVerified: { label: 'Asset validation' },
+  workConfirmed: { label: 'Required work' },
+  tested: { label: 'Functionality testing' },
+  locationVerified: { label: 'Location verification', nextAction: 'VERIFY LOCATION' },
+  finalWorkNoteConfirmed: { label: 'Final work note confirmation' },
+  warrantyVerified: { label: 'Warranty verification' },
+  conditionDocumented: { label: 'Condition documentation' },
+  repairHistoryReviewed: { label: 'Repair history review' },
+  replacementAddressed: { label: 'Replacement addressed' },
+  dataSecurityReviewed: { label: 'Data security review' },
+  approvalObtained: { label: 'Disposition approval' },
+  sanitizationVerified: { label: 'Data sanitization verification' },
+  dispositionCompleted: { label: 'Physical disposition completed' },
+  assetReconciled: { label: 'CMDB asset reconciliation' },
+  securityEscalation: { label: 'Security escalation' },
+  securityActionVerified: { label: 'Security action verification' }
+});
+
+const DEFAULT_EVIDENCE_KEYS = Object.freeze([
+  'userVerified',
+  'assetVerified',
+  'workConfirmed',
+  'tested',
+  'finalWorkNoteConfirmed'
+]);
+
+const { WORKFLOWS: WORKFLOW_CONTRACTS } = require('./workflow-contract');
 function getRequiredEvidence(taskType) {
   const normalizedTask = normalizeTaskType(taskType);
+  const contractId = normalizedTask.replace(/ /g, '_');
 
-  const required = [
-    {
-      key: 'userVerified',
-      label: 'User validation'
-    },
-    {
-      key: 'assetVerified',
-      label: 'Asset validation'
-    },
-    {
-      key: 'workConfirmed',
-      label: 'Required work'
-    },
-    {
-      key: 'tested',
-      label: 'Functionality testing'
-    }
-  ];
+  // Evidence keys come from the workflow contract (single source of truth).
+  // OTHER has no contract entry and keeps the default profile.
+  let keys = WORKFLOW_CONTRACTS[contractId]
+    ? WORKFLOW_CONTRACTS[contractId].evidence
+    : DEFAULT_EVIDENCE_KEYS;
 
-  if (
-    ['FOOT MOVE', 'ONBOARDING', 'OFFBOARDING'].includes(normalizedTask)
-  ) {
-    required.push({
-      key: 'locationVerified',
-      label: 'Location verification',
-      nextAction: 'VERIFY LOCATION'
-    });
+  // Fulfillment tasks validate the request, not a physical asset.
+  if (FULFILLMENT_TASK_TYPES.includes(normalizedTask)) {
+    keys = keys.map(k => (k === 'assetVerified' ? 'fulfillmentVerified' : k));
   }
 
-  required.push({
-    key: 'finalWorkNoteConfirmed',
-    label: 'Final work note confirmation'
+  return keys.map(key => {
+    const meta = EVIDENCE_META[key]
+      || (key === 'fulfillmentVerified' ? { label: 'Request fulfillment validation' } : null);
+    if (!meta) {
+      throw new Error(`No label registered for evidence key "${key}"`);
+    }
+    return Object.assign({ key }, meta);
   });
-
-  return required;
 }
 
 function evaluateWorkflow(input = {}) {
@@ -261,7 +323,10 @@ function evaluateWorkflow(input = {}) {
 
 module.exports = {
   TASK_TYPES,
+  FULFILLMENT_TASK_TYPES,
   STATES,
+  inferStateTable,
+  resolveStateTable,
   normalizeState,
   normalizeTaskType,
   classifyTask,

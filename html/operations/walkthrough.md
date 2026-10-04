@@ -305,6 +305,53 @@ Each domain writes only its own relay key (`TSM_COLLEGE_FINAID_RELAY`, `TSM_COLL
 
 ---
 
+## 15. ServiceNow-Backed Demos (L1 Copilot write-gate + BPO live intake)
+
+**Added 2026-09-24.** These are newer capabilities layered onto pages `## 10. BPO` and `## 14. L1 Ticket Copilot` above already cover — this section documents the ServiceNow-specific flows those sections don't mention. Both flows were verified directly against `l1-ticket-copilot.html`, `server.js`, `server/l1-copilot/servicenow-adapter.js`, and `html/war-rooms/bpo-war/bpo-war-room.html`, plus a headless-browser run of Demo 1's full gate sequence (21/21 checks passed against a mocked API — see `l1_gate_test.py`, not checked into this repo).
+
+**Live-write warning:** Demo 1's write step performs a real `PATCH` to the `incident` table's `work_notes` field on whatever ServiceNow instance `SERVICENOW_*` env vars point to. Confirm that's the intended instance (a PDI/sandbox, not a shared or production tenant) before rehearsing this against a real incident number.
+
+### Demo 1 — L1 Support Copilot: resolve the ticket
+
+**Chain:** `l1-ticket-copilot.html` only, no page navigation — sidebar tabs within one page (`Ticket` → `Resolution`).
+
+| Step | Action | Expected result | If it doesn't work |
+|---|---|---|---|
+| 1 | Type incident # into `#tkIncident`, click `#btnSnPullByIncident` (LOAD) | Status line: "Loading incident from ServiceNow..." then "Loaded INC… from ServiceNow — [assignment group]." Requester/group/asset auto-fill; existing description is NOT overwritten. | If `[DEMO DATA]` appears, `snAdapter.isConfigured()` is false for this env — check ServiceNow env vars |
+| 2 | Click sidebar **Resolution** tab (`.sb-item[data-section="resolution"]`) — button is not visible from the Ticket tab | View switches to the Resolution section | — |
+| 3 | Click `#btnBuildResolution` (GENERATE RESOLUTION DRAFT) | Draft renders in `#resolutionOutput` (six section headers: Problem/Cause/Actions Taken/Resolution/Validation/Next Steps). Confirm checkbox and write button both stay disabled/unchecked. | — |
+| 4 | Click `#btnSyncResolution` (TECHNICIAN CONFIRM & WRITE) while still disabled | Nothing happens — confirmed by direct click test | — |
+| 5 | Check `#resolutionTechnicianConfirm` | Write button enables (only if a real draft is present and box is checked — `resolutionOutput` text is re-checked, not just the box state) | — |
+| 6 | Click `#btnBuildResolution` again | Box unchecks, button re-disables — confirmed by test | Every regenerate resets confirmation; there's no stale-confirmation path |
+| 7 | Check the box again, click `#btnSyncResolution` | Status: "Submitting the technician-confirmed draft to ServiceNow..." then "Technician-confirmed work note written to [incident] in ServiceNow." Box unchecks, button re-disables. | Server requires an internal role (`requireRole(BPO_INTERNAL_ROLES)`), a non-empty draft, `technicianConfirmed:true`, and a valid incident format — a 403/400/503 means one of those failed |
+| 8 | Switch to ServiceNow, open the incident, check the **Activity/Work Notes** related list | The note appears, attributed to the service account | `writeWorkNote()` reads the ticket back after the PATCH and throws `WORK_NOTE_WRITE_UNVERIFIED` if the note isn't actually present — commonly a missing `sn_incident_write` role or a closed/cancelled incident state |
+
+**What NOT to overclaim:** the draft panel isn't editable (no `contenteditable`), so what's on screen is what gets sent — but the checkbox itself doesn't snapshot the draft text at check-time. Don't say "tied to the exact text at the moment I checked it." Do say "the panel can't be edited, and any regenerate resets confirmation."
+
+### Demo 2 — BPO/MSP Intelligence: understand the operational situation
+
+**Chain:** one URL load, not a click sequence — `bpo-war-room.html?servicenowIncident=<INC#>` auto-fires on page load.
+
+| Step | Action | Expected result | If it doesn't work |
+|---|---|---|---|
+| 1 | Navigate to `bpo-war-room.html?servicenowIncident=INC0000055` (swap in a real incident) | Status: "Loading ServiceNow evidence — READ ONLY..." then auto-populates and auto-routes toward the Strategist — no manual clicks needed for this stage | If it errors, the failure message is `ServiceNow live intake failed — [reason]`, surfaced directly, not silently swallowed |
+| 2 | Read `#incLabel` / extraction panel | Incident number, priority, and whatever `short_description` ServiceNow actually returns — **do not pre-script this description; read it live**, it's real data | — |
+| 3 | Point out the evidence-boundary language | Fields ServiceNow doesn't provide (revenue/exposure/runway) render literally as `"NOT STATED IN SOURCE DATA"`; CMDB links are labeled `SOURCE-LINKED`, not treated as proven root cause | Confirmed in `tsmServiceNowDemoIntake()` — this refusal to invent numbers is real code behavior, worth calling out directly to the room |
+| 4 | It auto-navigates to `bpo-strategist.html` | Strategist view opens with the same evidence carried over via `relayData` | — |
+| 5 | Navigate/escalate to `bpo-executive-portal.html` | Executive view packages the evidence, dependencies, and unknowns for a decision-maker | — |
+
+### Demo 3 — Escalation / Tier 2 handoff
+
+**Not a separate page.** This is the `Escalation` sidebar tab on the same `l1-ticket-copilot.html` page as Demo 1 — don't imply a different navigation target.
+
+| Step | Action | Expected result | If it doesn't work |
+|---|---|---|---|
+| 1 | From the same loaded ticket (Demo 1, step 1), click sidebar **Escalation** tab (`data-section="escalation"`) — skip the Resolution steps | View switches to the Escalation section | — |
+| 2 | Optionally click a team chip in `#escTeamGrid` and fill `#escReason` / `#escEvidence` | Selection highlights; feeds the escalation payload alongside ticket description and AI analysis | — |
+| 3 | Click `#btnBuildEscalation` (GENERATE ESCALATION PACKAGE) | `#escalationOutput` renders a structured handoff package from `POST /api/l1-copilot/escalation` | — |
+
+---
+
 ## RCM-OS (standalone — not a chain)
 
 **Path:** `html/finops-suite/tsm-rcm-os.html` (single self-contained page)

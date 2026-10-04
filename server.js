@@ -73,6 +73,103 @@ const sentinelUpload = multer({
 const app = express();
 
 const { verifySession: __verifySessionForUser, getCookie: __getCookieForUser } = require('./middleware/require-auth');
+const actionGate = require('./server/l1-copilot/action-gate');
+const templateRegistry = require('./server/l1-copilot/template-registry');
+const dispositionSequence = require('./server/l1-copilot/disposition-sequence');
+const { normalizeTaskType: l1NormalizeTaskType } = require('./server/l1-copilot/workflow-engine');
+const { orchestrate } = require('./server/l1-copilot/governed-orchestrator');
+const handoffStore = require('./server/l1-copilot/handoff-store');
+const auditStore = require('./server/l1-copilot/audit-store');
+const metricsStore = require('./server/l1-copilot/metrics-store');
+
+
+
+// PHASE 11.4 — READ-ONLY OPERATIONAL METRICS
+app.get('/api/l1-copilot/metrics', (req, res) => {
+  try {
+    const metrics = metricsStore.getMetrics();
+
+    return res.json({
+      ok: true,
+      readOnly: true,
+      serviceNowWrite: false,
+      ticketStateChanged: false,
+      autonomousExecutionAllowed: false,
+      metrics
+    });
+  } catch (err) {
+    console.error(
+      'L1 COPILOT METRICS READ ERROR:',
+      err.message
+    );
+
+    return res.status(500).json({
+      ok: false,
+      error: 'METRICS_READ_FAILED'
+    });
+  }
+});
+
+function recordL1MetricEvent({
+  eventType,
+  action,
+  metadata
+}) {
+  try {
+    return metricsStore.recordMetric({
+      eventType,
+      actionType: action.actionType,
+      sourceIncident: action.sourceIncident,
+      technician: action.technician,
+      metadata: metadata || null
+    });
+  } catch (err) {
+    console.error(
+      'L1 COPILOT METRIC RECORD ERROR:',
+      err.message
+    );
+    return null;
+  }
+}
+
+function recordL1AuditEvent({
+  eventType,
+  action,
+  executionResult,
+  metadata
+}) {
+  try {
+    return auditStore.recordAudit({
+      eventType,
+      actionType: action.actionType,
+      sourceIncident: action.sourceIncident,
+      technician: action.technician,
+      state: action.state,
+      confirmed: action.confirmed === true,
+      executed: action.state === actionGate.STATES.EXECUTED,
+      references: action.references || null,
+      executionResult: executionResult || action.executionResult || null,
+      governed: {
+        serviceNowStateWrite:
+          executionResult?.serviceNowStateWrite === true,
+        ticketStateChanged:
+          executionResult?.ticketStateChanged === true,
+        ticketClosureRequested:
+          executionResult?.ticketClosureRequested === true,
+        autonomousExecutionAllowed: false
+      },
+      metadata: metadata || null
+    });
+  } catch (err) {
+    console.error(
+      'L1 COPILOT AUDIT RECORD ERROR:',
+      err.message
+    );
+    return null;
+  }
+}
+
+const templateAssistant = require('./server/l1-copilot/template-assistant');
 app.use((req, res, next) => {
   const __session = __verifySessionForUser(__getCookieForUser(req, 'tsm_session'));
   req.session = req.session || {};
@@ -110,6 +207,8 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const { enforceBNCASchema } = require('./server/tsm-bnca-schema');
 const snAdapter = require('./server/l1-copilot/servicenow-adapter');
+const snReconciliation = require('./server/l1-copilot/servicenow-reconciliation');
+const { getBpoIntelligence } = require('./server/l1-copilot/servicenow-bpo-intelligence');
 const { evaluateWorkflow } = require('./server/l1-copilot/workflow-engine');
 const { evaluateClosure, buildClosureChecklist } = require('./server/l1-copilot/closure-gate');
 const { evaluateAssetRecovery } = require('./server/l1-copilot/asset-recovery');
@@ -117,6 +216,7 @@ const cloudOpsAdapter = require('./server/l1-copilot/cloud-ops-adapter');
 const graphAdapter = require('./server/l1-copilot/graph-intune-adapter');
 const gcpAdapter = require('./server/l1-copilot/gcp-adapter');
 const demoData = require('./server/l1-copilot/demo-data');
+const lostStolen = require('./server/l1-copilot/lost-stolen');
 
 // contentSecurityPolicy/crossOriginEmbedderPolicy/crossOriginResourcePolicy
 // are OFF on purpose: this app is ~100+ largely-independent HTML pages that
@@ -954,6 +1054,7 @@ app.get('/login', (req, res) => {
 // every /api/bpo/*, /api/concierge/*, and /api/members/* route below, which
 // has nothing to do with the removed page gate. Restoring only the constant.
 const BPO_INTERNAL_ROLES = ['admin', 'manager', 'analyst'];
+const L1_COPILOT_ROLES = ['admin', 'manager', 'analyst']; // L1 Copilot — internal staff only, no client-role access
 const BPO_MANAGE_ROLES = ['admin', 'manager'];
 // Client-role sessions get read-only visibility into their own data only —
 // never the client roster, audit logs, internal notes, or other clients'
@@ -3897,6 +3998,7 @@ app.use('/api/college/bursar', requireAnyAuth, require('./routes/college-bursar-
 app.use('/api/college/endowment', requireAnyAuth, require('./routes/college-endowment-financial'));
 app.use('/api/college/research-fa', requireAnyAuth, require('./routes/college-research-fa-financial'));
 app.use('/api/college/accred', requireAnyAuth, require('./routes/college-accred-financial'));
+app.use('/api/college/enrollment', requireAnyAuth, require('./routes/college-enrollment-financial'));
 
 // Insurance war room — same private-rate-card-server-side pattern as College
 // above. See routes/insurance-claims-financial.js header for the full
@@ -4856,7 +4958,30 @@ app.post('/api/insurance/ahip-quiz', async (req, res) => {
   } catch (e) { res.status(500).json({ ok: false, error: e.message }); }
 });
 
-app.post('/api/l1-copilot/assistant', async (req, res) => {
+// ── L1 LIVE-INTEGRATION GATES ──────────────────────────────────────────────
+// Routes that can reach a real system (ServiceNow, identity/imaging webhooks,
+// cloud and Intune connectors) require a staff session once that integration
+// is configured. While it is not configured they behave as before (demo data
+// or 503), so anonymous demos keep working and no real system is reachable.
+// Fails closed: if the configured-check throws, the gate requires a session.
+function l1LiveGate(isLive) {
+  return (req, res, next) => {
+    let live = true;
+    try { live = Boolean(isLive()); } catch (e) { live = true; }
+    return live ? requireRole(BPO_INTERNAL_ROLES)(req, res, next) : next();
+  };
+}
+const l1StatusOpen = (isLive) => (req, res, next) => (req.path === '/status' ? next() : l1LiveGate(isLive)(req, res, next));
+app.use('/api/l1-copilot/servicenow', l1StatusOpen(() => snAdapter.isConfigured()));
+app.use('/api/l1-copilot/onboarding/image', l1LiveGate(() => ONBOARDING_IMAGING_CONFIGURED()));
+app.use('/api/l1-copilot/onboarding/provision', l1LiveGate(() => ONBOARDING_IDENTITY_CONFIGURED()));
+app.use('/api/l1-copilot/security', l1LiveGate(() => graphAdapter.isConfigured()));
+app.use('/api/l1-copilot/graph-intune', l1StatusOpen(() => graphAdapter.isConfigured()));
+app.use('/api/l1-copilot/cloud-ops', l1StatusOpen(() => cloudOpsAdapter.isConfigured()));
+app.use('/api/l1-copilot/gcp', l1StatusOpen(() => gcpAdapter.isConfigured()));
+app.use('/api/l1-copilot/pilot', l1LiveGate(() => snAdapter.isConfigured() || graphAdapter.isConfigured()));
+
+app.post('/api/l1-copilot/assistant', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   try {
     var scenario = (req.body.scenario || req.body.question || req.body.query || '').trim();
     if (!scenario) return res.status(400).json({ ok: false, error: 'scenario is required' });
@@ -4943,7 +5068,54 @@ function auditL1Write(req, kind, incident, outcome) {
 // READ-ONLY evaluation layer.
 // These routes evaluate technician-provided ticket context and evidence.
 // They do not call ServiceNow and never change ServiceNow state.
-app.post('/api/l1-copilot/workflow/evaluate', (req, res) => {
+
+// --- L1 governed workflow orchestration -------------------------------
+// READ-ONLY orchestration layer.
+// Accepts ticket/context data plus technician-confirmed evidence.
+// Does not call ServiceNow.
+// Does not change ServiceNow state.
+// Does not close tickets.
+// Does not write work notes.
+// ServiceNow reconciliation remains a separate explicit operation.
+app.post('/api/l1-copilot/workflow/orchestrate', requireRole(L1_COPILOT_ROLES), (req, res) => {
+  try {
+    // The client never supplies action-gate records: gates.execution would
+    // otherwise report authorization for a forged { state: 'CONFIRMED' } object.
+    const { action: _clientAction, ...orchestrateInput } = req.body || {};
+    const result = orchestrate(orchestrateInput);
+
+    return res.json({
+      ok: true,
+      orchestration: result,
+      governed: {
+        readOnly: true,
+        canChangeState: false,
+        autonomousCloseAllowed: false,
+        autonomousWorkNoteWriteAllowed: false,
+        technicianEvidenceUntouched: true
+      },
+      createdAt: new Date().toISOString()
+    });
+  } catch (e) {
+    console.error(
+      'L1 COPILOT GOVERNED ORCHESTRATION ERROR:',
+      e.message
+    );
+
+    return res.status(400).json({
+      ok: false,
+      error: e.message,
+      governed: {
+        readOnly: true,
+        canChangeState: false,
+        autonomousCloseAllowed: false,
+        autonomousWorkNoteWriteAllowed: false
+      }
+    });
+  }
+});
+
+app.post('/api/l1-copilot/workflow/evaluate', requireRole(L1_COPILOT_ROLES), (req, res) => {
   try {
     const result = evaluateWorkflow(req.body || {});
     return res.json({
@@ -4994,7 +5166,87 @@ app.post('/api/l1-copilot/asset-recovery/evaluate', (req, res) => {
 
 app.post('/api/l1-copilot/closure/evaluate', (req, res) => {
   try {
-    const input = req.body || {};
+    const result = evaluateAssetRecovery(req.body || {});
+    return res.json({
+      ok: true,
+      assetRecovery: result,
+      governed: {
+        readOnly: true,
+        technicianAuthority: true
+      },
+      createdAt: new Date().toISOString()
+    });
+  } catch (e) {
+    console.error('L1 COPILOT ASSET RECOVERY EVALUATION ERROR:', e.message);
+    return res.status(400).json({
+      ok: false,
+      error: e.message
+    });
+  }
+});
+
+// Scope note: SOFTWARE / REQUEST FULFILLMENT tickets worked through the
+// service catalog (RITM / SC Task). Pure evaluation only -- the catalog
+// lookup itself happens via GET /api/l1-copilot/servicenow/request/:number;
+// the client passes that result here as `catalogRecord` / `catalogTasks`.
+app.post('/api/l1-copilot/location-verification/evaluate', (req, res) => {
+  try {
+    res.json({ ok: true, locationVerification: evaluateLocationVerification(req.body || {}) });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: 'location verification failed' });
+  }
+});
+
+app.post('/api/l1-copilot/request-fulfillment/evaluate', (req, res) => {
+  try {
+    const result = evaluateRequestFulfillment(req.body || {});
+    return res.json({
+      ok: true,
+      requestFulfillment: result,
+      governed: {
+        readOnly: true,
+        technicianAuthority: true
+      },
+      createdAt: new Date().toISOString()
+    });
+  } catch (e) {
+    console.error('L1 COPILOT REQUEST FULFILLMENT EVALUATION ERROR:', e.message);
+    return res.status(400).json({
+      ok: false,
+      error: e.message
+    });
+  }
+});
+
+app.post('/api/l1-copilot/closure/evaluate', requireRole(L1_COPILOT_ROLES), async (req, res) => {
+  try {
+    const input = Object.assign({}, req.body || {});
+
+    // DISPOSITION: approval / sanitization / completion evidence is derived
+    // from the incident's recorded work notes, never trusted from the client.
+    // Unreadable notes => all three stay false (fail-closed).
+    let dispositionEvidence = null;
+    if (input.taskType && l1NormalizeTaskType(input.taskType) === 'DISPOSITION') {
+      let notesText = null;
+      const incidentId = String(input.incidentNumber || '').trim();
+      try {
+        if (incidentId && snAdapter.isConfigured()) {
+          const ticket = await snAdapter.getTicket(incidentId);
+          notesText = ticket ? dispositionSequence.extractNotesText(ticket) : null;
+        }
+      } catch (e) {
+        notesText = null;
+      }
+      const derived = notesText === null
+        ? { approvalObtained: false, sanitizationVerified: false, dispositionCompleted: false }
+        : dispositionSequence.deriveDispositionEvidence(input.assetTag, notesText);
+      input.evidence = Object.assign({}, input.evidence || {}, derived);
+      dispositionEvidence = {
+        source: notesText === null ? 'UNVERIFIED' : 'SERVICENOW_WORK_NOTES',
+        derived
+      };
+    }
+
     const closure = evaluateClosure(input);
     const checklist = buildClosureChecklist(input);
 
@@ -5002,6 +5254,7 @@ app.post('/api/l1-copilot/closure/evaluate', (req, res) => {
       ok: true,
       closure,
       checklist,
+      dispositionEvidence,
       governed: {
         readOnly: true,
         technicianAuthority: true,
@@ -5018,12 +5271,136 @@ app.post('/api/l1-copilot/closure/evaluate', (req, res) => {
   }
 });
 
-app.get('/api/l1-copilot/servicenow/status', (req, res) => {
+
+// --- L1 ServiceNow reconciliation -----------------------------------------
+// READ-ONLY.
+// Reconciles explicitly supplied Incident / RITM / SC Task / asset context.
+// No ServiceNow state, RITM, SC Task, CMDB, user, or group writes occur here.
+// Incident -> RITM is NEVER inferred because the current Incident adapter
+// contract does not expose a guaranteed RITM relationship.
+app.post('/api/l1-copilot/servicenow/reconcile', requireRole(L1_COPILOT_ROLES), async (req, res) => {
+  const {
+    incident,
+    ritm,
+    sctask,
+    asset
+  } = req.body || {};
+
+  if (!incident && !ritm && !sctask && !asset) {
+    return res.status(400).json({
+      ok: false,
+      error: 'At least one of incident, ritm, sctask, or asset is required.'
+    });
+  }
+
+  try {
+    const reconciliation = await snReconciliation.reconcile({
+      incident,
+      ritm,
+      sctask,
+      asset
+    });
+
+    return res.json({
+      ok: true,
+      reconciliation,
+      governed: {
+        readOnly: true,
+        canChangeState: false,
+        autonomousCloseAllowed: false,
+        technicianEvidenceUntouched: true
+      },
+      createdAt: new Date().toISOString()
+    });
+  } catch (e) {
+    const status =
+      e.code === 'SERVICENOW_NOT_CONFIGURED'
+        ? 503
+        : 502;
+
+    console.error(
+      'L1 COPILOT SERVICENOW RECONCILIATION ERROR:',
+      e.message
+    );
+
+    return res.status(status).json({
+      ok: false,
+      error: e.message,
+      governed: {
+        readOnly: true,
+        canChangeState: false,
+        autonomousCloseAllowed: false
+      }
+    });
+  }
+});
+
+// --- ServiceNow BPO intelligence -------------------------------------------
+// READ-ONLY.
+// Builds Incident -> Problem -> Related Incidents -> CMDB relationship
+// intelligence for the BPO decision workflow.
+// No ServiceNow writes, state changes, work-note writes, or autonomous
+// remediation occur here.
+app.get('/api/l1-copilot/servicenow/bpo-intelligence', requireRole(L1_COPILOT_ROLES), async (req, res) => {
+  const incident = String(req.query.incident || '').trim();
+
+  if (!incident) {
+    return res.status(400).json({
+      ok: false,
+      error: 'incident query parameter is required.',
+      governed: {
+        readOnly: true,
+        canChangeState: false,
+        autonomousCloseAllowed: false,
+        autonomousWorkNoteWriteAllowed: false
+      }
+    });
+  }
+
+  try {
+    const intelligence = await getBpoIntelligence(incident);
+
+    return res.json({
+      ok: true,
+      intelligence,
+      governed: {
+        readOnly: true,
+        canChangeState: false,
+        autonomousCloseAllowed: false,
+        autonomousWorkNoteWriteAllowed: false
+      },
+      createdAt: new Date().toISOString()
+    });
+  } catch (e) {
+    const status =
+      e.code === 'SERVICENOW_NOT_CONFIGURED'
+        ? 503
+        : 502;
+
+    console.error(
+      'L1 COPILOT SERVICENOW BPO INTELLIGENCE ERROR:',
+      e.message
+    );
+
+    return res.status(status).json({
+      ok: false,
+      error: e.message,
+      governed: {
+        readOnly: true,
+        canChangeState: false,
+        autonomousCloseAllowed: false,
+        autonomousWorkNoteWriteAllowed: false
+      }
+    });
+  }
+});
+
+app.get('/api/l1-copilot/servicenow/status', requireRole(L1_COPILOT_ROLES), (req, res) => {
   const configured = snAdapter.isConfigured();
   res.json({ ok: true, configured, demoMode: (!configured) && demoData.isDemoModeEnabled() });
 });
 
-app.get('/api/l1-copilot/servicenow/asset/:tag', async (req, res) => {
+app.get('/api/l1-copilot/servicenow/asset/:tag', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   try {
     const asset = await snAdapter.getAsset(req.params.tag);
     if (!asset) return res.status(404).json({ ok: false, error: `No asset found for tag "${req.params.tag}".` });
@@ -5037,7 +5414,37 @@ app.get('/api/l1-copilot/servicenow/asset/:tag', async (req, res) => {
   }
 });
 
-app.get('/api/l1-copilot/servicenow/ticket/:incident', async (req, res) => {
+// READ-ONLY catalog lookup (sc_req_item / sc_task). Accepts a RITM or SCTASK
+// number. For a RITM it also returns the request's SC Tasks so closure can
+// be blocked while any are open.
+app.get('/api/l1-copilot/servicenow/request/:number', requireRole(L1_COPILOT_ROLES), async (req, res) => {
+  const number = String(req.params.number || '').trim().toUpperCase();
+  const isRitm = /^RITM\d+$/.test(number);
+  const isTask = /^SCTASK\d+$/.test(number);
+  if (!isRitm && !isTask) {
+    return res.status(400).json({ ok: false, error: 'Enter a RITM or SCTASK number (for example RITM0010001).' });
+  }
+  const strip = (r) => { if (!r) return r; const { raw, ...rest } = r; return rest; };
+  try {
+    if (isRitm) {
+      const record = await snAdapter.getRequestItem(number);
+      if (!record) return res.status(404).json({ ok: false, error: `No request item found for "${number}".` });
+      const tasks = await snAdapter.getCatalogTasksByRequestItem(number);
+      return res.json({ ok: true, kind: 'RITM', record: strip(record), catalogTasks: tasks.map(strip) });
+    }
+    const record = await snAdapter.getCatalogTask(number);
+    if (!record) return res.status(404).json({ ok: false, error: `No catalog task found for "${number}".` });
+    return res.json({ ok: true, kind: 'SCTASK', record: strip(record), catalogTasks: [] });
+  } catch (e) {
+    if (e.code === 'SERVICENOW_NOT_CONFIGURED' && demoData.isDemoModeEnabled()) {
+      return res.json(Object.assign({ ok: true, demoMode: true }, demoData.demoRequestRecord(number)));
+    }
+    const status = e.code === 'SERVICENOW_NOT_CONFIGURED' ? 503 : 502;
+    res.status(status).json({ ok: false, error: e.message });
+  }
+});
+
+app.get('/api/l1-copilot/servicenow/ticket/:incident', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   try {
     const ticket = await snAdapter.getTicket(req.params.incident);
     if (!ticket) return res.status(404).json({ ok: false, error: `No incident found for "${req.params.incident}".` });
@@ -5068,6 +5475,15 @@ app.post('/api/l1-copilot/servicenow/work-note', requireL1Technician, async (req
     });
   }
 
+  const incidentId = String(incident).trim();
+  const idOk = /^[0-9a-f]{32}$/i.test(incidentId) || /^[A-Za-z]{2,10}\d{5,12}$/.test(incidentId);
+  if (idOk === false) {
+    return res.status(400).json({ ok: false, error: 'incident must be a ticket number or 32-character sys_id.' });
+  }
+  if (typeof note !== 'string' || note.length > 20000) {
+    return res.status(413).json({ ok: false, error: 'note must be text of at most 20000 characters.' });
+  }
+
   try {
     const result = await snAdapter.writeWorkNote(incident, note);
     auditL1Write(req, 'work-note', incident, 'success');
@@ -5092,7 +5508,7 @@ app.post('/api/l1-copilot/servicenow/work-note', requireL1Technician, async (req
 // call instead of the caller looping single-ticket GETs with no rate-limit
 // protection. A missing individual incident is reported per-record, same
 // as any other per-record failure; it does not abort the batch.
-app.post('/api/l1-copilot/servicenow/batch-tickets-read', async (req, res) => {
+app.post('/api/l1-copilot/servicenow/batch-tickets-read', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   const { incidents, options } = req.body || {};
   if (!Array.isArray(incidents) || incidents.length === 0) {
     return res.status(400).json({ ok: false, error: 'incidents must be a non-empty array of incident numbers or sys_ids' });
@@ -5113,7 +5529,7 @@ app.post('/api/l1-copilot/servicenow/batch-tickets-read', async (req, res) => {
 // Read operations may use configured connectors or explicitly labeled demo
 // fallback data. Any ServiceNow writeback remains human-approved.
 
-app.post('/api/l1-copilot/pilot/resolve', async (req, res) => {
+app.post('/api/l1-copilot/pilot/resolve', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   const {
     incident,
     asset,
@@ -5632,7 +6048,7 @@ async function analyzeSingleTicket(ticket, maxTokens) {
   return { analysis, cmdbSourced: !!cmdbContext };
 }
 
-app.post('/api/l1-copilot/analyze', async (req, res) => {
+app.post('/api/l1-copilot/analyze', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   const { ticket, maxTokens } = req.body || {};
   try {
     const { analysis, cmdbSourced } = await analyzeSingleTicket(ticket, maxTokens);
@@ -5660,7 +6076,7 @@ app.post('/api/l1-copilot/analyze', async (req, res) => {
 const ANALYZE_BATCH_DEFAULTS = { chunkSize: 3, delayBetweenChunksMs: 300 };
 const ANALYZE_MAX_BATCH_SIZE = 100;
 
-app.post('/api/l1-copilot/analyze/batch', async (req, res) => {
+app.post('/api/l1-copilot/analyze/batch', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   const { tickets, maxTokens, options } = req.body || {};
   if (!Array.isArray(tickets) || tickets.length === 0) {
     return res.status(400).json({ ok: false, error: 'tickets must be a non-empty array of ticket objects' });
@@ -5705,7 +6121,7 @@ app.post('/api/l1-copilot/analyze/batch', async (req, res) => {
   }
 });
 
-app.post('/api/l1-copilot/vendor', async (req, res) => {
+app.post('/api/l1-copilot/vendor', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   const { manufacturer, serviceTag, warranty, issueSummary, maxTokens } = req.body || {};
   if (!manufacturer) return res.status(400).json({ ok: false, error: 'manufacturer required' });
   const prompt = `Manufacturer: ${manufacturer}\nService tag / express service code: ${serviceTag || 'not provided'}\n` +
@@ -5767,6 +6183,14 @@ app.post('/api/l1-copilot/resolution', (req, res, next) => (
       });
     }
 
+    const incidentId = String(incident).trim();
+    if (!/^[0-9a-f]{32}$/i.test(incidentId) && !/^[A-Za-z]{2,10}\d{5,12}$/.test(incidentId)) {
+      return res.status(400).json({ ok: false, error: 'incident must be a ticket number or 32-character sys_id.' });
+    }
+    if (draft.length > 20000) {
+      return res.status(413).json({ ok: false, error: 'Reviewed draft exceeds the 20000-character limit.' });
+    }
+
     if (!snAdapter.isConfigured()) {
       return res.status(503).json({
         ok: false,
@@ -5774,19 +6198,30 @@ app.post('/api/l1-copilot/resolution', (req, res, next) => (
       });
     }
 
+    // All governed-write preconditions above are unchanged. From here,
+    // the confirm -> execute transition is handled by the shared
+    // Technician Action Gate instead of a one-off ad hoc write, so this
+    // route now shares its confirmation/execution semantics with future
+    // L1 Copilot actions (return-to-inventory, replacement, escalation, etc).
+    const trimmedDraft = draft.trim();
+    const technician = {
+      id: (req.tsmSession && (req.tsmSession.staffId || req.tsmSession.clientId || req.tsmSession.role)) || 'unknown',
+      label: (req.tsmSession && req.tsmSession.label) || null
+    };
+
     try {
       const result = await snAdapter.writeWorkNote(incident, draft.trim());
       auditL1Write(req, 'resolution', incident, 'success');
       return res.json({
         ok: true,
-        answer: draft.trim(),
-        servicenow: { attempted: true, ...result },
+        answer: trimmedDraft,
+        servicenow: { attempted: true, ...action.executionResult },
         governed: {
           technicianConfirmed: true,
           exactDraftWritten: true,
           confirmedBy: req.l1Technician
         },
-        createdAt: new Date().toISOString()
+        createdAt: action.executedAt
       });
     } catch (e) {
       auditL1Write(req, 'resolution', incident, 'failed:' + (e.code || 'ERROR'));
@@ -5825,7 +6260,7 @@ app.post('/api/l1-copilot/resolution', (req, res, next) => (
   }
 });
 
-app.post('/api/l1-copilot/escalation', async (req, res) => {
+app.post('/api/l1-copilot/escalation', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   const { ticket, analysis, reason, evidence, recommendedTeam, maxTokens } = req.body || {};
   if (!ticket) return res.status(400).json({ ok: false, error: 'ticket required' });
   const prompt = `Ticket description:\n${ticket}\n\n` +
@@ -5845,7 +6280,261 @@ app.post('/api/l1-copilot/escalation', async (req, res) => {
   }
 });
 
-app.post('/api/l1-copilot/imaging', async (req, res) => {
+
+/**
+ * Governed L1 -> Tier 2 / Cloud Ops handoff execution.
+ *
+ * Escalation generation remains AI draft-only.
+ * This route is the explicit technician-confirmed commitment point.
+ *
+ * No ServiceNow state change or ticket closure occurs here.
+ */
+
+/**
+ * Read-only AI Template Assistance.
+ *
+ * Suggests a controlled operational template from technician-supplied
+ * context. This route never executes an action, writes to ServiceNow,
+ * confirms technician intent, or changes ticket state.
+ */
+app.post('/api/l1-copilot/template-assist', requireRole(L1_COPILOT_ROLES), async (req, res) => {
+  const {
+    shortDescription,
+    description,
+    taskType,
+    reason,
+    notes,
+    fields
+  } = req.body || {};
+
+  const combined = [
+    shortDescription,
+    description,
+    taskType,
+    reason,
+    notes
+  ].filter(value => typeof value === 'string').join(' ');
+
+  if (combined.length > 20000) {
+    return res.status(413).json({
+      ok: false,
+      error: 'Template assistance context exceeds the 20000-character limit.'
+    });
+  }
+
+  try {
+    const suggestion = templateAssistant.prepareSuggestion({
+      shortDescription,
+      description,
+      taskType,
+      reason,
+      notes,
+      fields
+    });
+
+    return res.json({
+      ok: true,
+      suggestion,
+      governed: {
+        readOnly: true,
+        technicianConfirmed: false,
+        executable: false,
+        serviceNowWrite: false,
+        ticketStateChanged: false,
+        autonomousExecutionAllowed: false
+      }
+    });
+  } catch (e) {
+    console.error(
+      'L1 COPILOT TEMPLATE ASSIST ERROR:',
+      e.message
+    );
+
+    return res.status(500).json({
+      ok: false,
+      error: e.message,
+      governed: {
+        readOnly: true,
+        technicianConfirmed: false,
+        executable: false,
+        serviceNowWrite: false,
+        ticketStateChanged: false,
+        autonomousExecutionAllowed: false
+      }
+    });
+  }
+});
+
+app.post('/api/l1-copilot/escalation/execute', requireRole(L1_COPILOT_ROLES), async (req, res) => {
+  const {
+    ticket,
+    package: handoffPackage,
+    destinationTeam,
+    technicianConfirmed,
+    references,
+    workPerformed,
+    validation,
+    blocker,
+    requestedTier2Action
+  } = req.body || {};
+
+  if (!ticket || typeof ticket !== 'string' || !ticket.trim()) {
+    return res.status(400).json({
+      ok: false,
+      error: 'ticket required'
+    });
+  }
+
+  if (
+    !handoffPackage ||
+    typeof handoffPackage !== 'string' ||
+    !handoffPackage.trim()
+  ) {
+    return res.status(400).json({
+      ok: false,
+      error: 'package required'
+    });
+  }
+
+  if (handoffPackage.trim().length > 20000) {
+    return res.status(413).json({
+      ok: false,
+      error: 'Escalation package exceeds the 20000-character limit.'
+    });
+  }
+
+  if (
+    !destinationTeam ||
+    typeof destinationTeam !== 'string' ||
+    !destinationTeam.trim()
+  ) {
+    return res.status(400).json({
+      ok: false,
+      error: 'destinationTeam required'
+    });
+  }
+
+  if (technicianConfirmed !== true) {
+    return res.status(403).json({
+      ok: false,
+      error: 'Technician confirmation is required before committing the handoff.'
+    });
+  }
+
+  const technician = {
+    id:
+      (req.tsmSession &&
+        (
+          req.tsmSession.staffId ||
+          req.tsmSession.clientId ||
+          req.tsmSession.role
+        )) ||
+      'unknown',
+    label:
+      (req.tsmSession && req.tsmSession.label) ||
+      null
+  };
+
+  try {
+    let action = actionGate.generateAction({
+      actionType: 'CLOUD_OPS_HANDOFF',
+      payload: {
+        package: handoffPackage.trim(),
+        destinationTeam: destinationTeam.trim(),
+        workPerformed: workPerformed || null,
+        validation: validation || null,
+        blocker: blocker || null,
+        requestedTier2Action: requestedTier2Action || null
+      },
+      technician,
+      sourceIncident: ticket.trim(),
+      references: references || null
+    });
+
+    action = actionGate.previewAction(action);
+    action = actionGate.confirmAction(action);
+
+    // Action Gate owns authorization/transition.
+    // Durable persistence happens only after the action reaches EXECUTED.
+    action = await actionGate.executeAction(
+      action,
+      async () => ({
+        authorized: true,
+        serviceNowStateWrite: false,
+        ticketClosureRequested: false
+      })
+    );
+
+    recordL1AuditEvent({
+      eventType: 'ACTION_EXECUTED',
+      action,
+      executionResult: action.executionResult,
+      metadata: {
+        surface: 'escalation-execute',
+        destinationTeam: destinationTeam.trim(),
+        technicianConfirmed: true,
+        ticketClosureRequested: false,
+        ticketStateChanged: false
+      }
+    });
+
+    const handoff = handoffStore.createHandoff({
+      action,
+      sourceIncident: ticket.trim(),
+      destinationTeam: destinationTeam.trim(),
+      references: references || null,
+      workPerformed: workPerformed || handoffPackage.trim(),
+      validation: validation || null,
+      blocker: blocker || null,
+      requestedTier2Action: requestedTier2Action || null,
+      technician
+    });
+
+    action = {
+      ...action,
+      executionResult: handoff
+    };
+
+    return res.json({
+      ok: true,
+      handoff: action.executionResult,
+      action: {
+        actionType: action.actionType,
+        state: action.state,
+        sourceIncident: action.sourceIncident,
+        technician: action.technician,
+        confirmedAt: action.confirmedAt,
+        executedAt: action.executedAt
+      },
+      governed: {
+        technicianConfirmed: true,
+        handoffCommitted: true,
+        ticketClosureRequested: false,
+        ticketStateChanged: false,
+        serviceNowStateWrite: false
+      },
+      createdAt: action.executedAt
+    });
+  } catch (e) {
+    console.error(
+      'L1 COPILOT ESCALATION EXECUTE ERROR:',
+      e.message
+    );
+
+    return res.status(500).json({
+      ok: false,
+      error: e.message,
+      governed: {
+        handoffCommitted: false,
+        ticketClosureRequested: false,
+        ticketStateChanged: false,
+        serviceNowStateWrite: false
+      }
+    });
+  }
+});
+
+app.post('/api/l1-copilot/imaging', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   const { taskSequence, bootMethod, status, asset, model, maxTokens } = req.body || {};
   if (!status) return res.status(400).json({ ok: false, error: 'status required' });
   const prompt = `Task sequence / target image: ${taskSequence || 'not specified'}\nBoot method: ${bootMethod || 'not specified'}\n` +
@@ -5863,7 +6552,7 @@ app.post('/api/l1-copilot/imaging', async (req, res) => {
   }
 });
 
-app.post('/api/l1-copilot/ad-intune', async (req, res) => {
+app.post('/api/l1-copilot/ad-intune', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   const { deviceName, joinType, compliance, bitlocker, issueSummary, maxTokens } = req.body || {};
   if (!joinType) return res.status(400).json({ ok: false, error: 'joinType required' });
   const prompt = `Device: ${deviceName || 'not provided'}\nJoin type: ${joinType}\nCompliance state: ${compliance || 'unknown'}\n` +
@@ -5881,7 +6570,7 @@ app.post('/api/l1-copilot/ad-intune', async (req, res) => {
   }
 });
 
-app.post('/api/l1-copilot/sccm', async (req, res) => {
+app.post('/api/l1-copilot/sccm', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   const { collection, packageName, status, maxTokens } = req.body || {};
   if (!packageName) return res.status(400).json({ ok: false, error: 'packageName required' });
   const prompt = `Collection: ${collection || 'not provided'}\nPackage/Application: ${packageName}\nLast deployment status: ${status || 'unknown'}\n\n` +
@@ -5898,7 +6587,7 @@ app.post('/api/l1-copilot/sccm', async (req, res) => {
   }
 });
 
-app.post('/api/l1-copilot/vmware', async (req, res) => {
+app.post('/api/l1-copilot/vmware', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   const { component, category, environment, input, issueSummary, maxTokens } = req.body || {};
   if (!input) return res.status(400).json({ ok: false, error: 'input required' });
   const prompt = `Component: ${component || 'not specified'}\nIssue category: ${category || 'not specified'}\n` +
@@ -5915,7 +6604,7 @@ app.post('/api/l1-copilot/vmware', async (req, res) => {
   }
 });
 
-app.post('/api/l1-copilot/vmware-script', async (req, res) => {
+app.post('/api/l1-copilot/vmware-script', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   const { scriptType, request, maxTokens } = req.body || {};
   if (!request) return res.status(400).json({ ok: false, error: 'request required' });
   const prompt = `Generate a ${scriptType || 'PowerCLI'} script for the following requirement:\n\n${request}\n\n` +
@@ -5930,7 +6619,7 @@ app.post('/api/l1-copilot/vmware-script', async (req, res) => {
   }
 });
 
-app.post('/api/l1-copilot/cloud-ops', async (req, res) => {
+app.post('/api/l1-copilot/cloud-ops', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   const { provider, service, environment, input, issueSummary, maxTokens } = req.body || {};
   if (!input) return res.status(400).json({ ok: false, error: 'input required' });
   const prompt = `Cloud provider: ${provider || 'not specified'}\nService/resource: ${service || 'not specified'}\n` +
@@ -5955,12 +6644,12 @@ app.post('/api/l1-copilot/cloud-ops', async (req, res) => {
 // /api/l1-copilot/cloud-ops route above, which reasons over pasted context
 // rather than querying a live account.
 
-app.get('/api/l1-copilot/cloud-ops/status', (req, res) => {
+app.get('/api/l1-copilot/cloud-ops/status', requireRole(L1_COPILOT_ROLES), (req, res) => {
   const configured = cloudOpsAdapter.isConfigured();
   res.json({ ok: true, configured, demoMode: (!configured) && demoData.isDemoModeEnabled() });
 });
 
-app.get('/api/l1-copilot/cloud-ops/instance/:identifier', async (req, res) => {
+app.get('/api/l1-copilot/cloud-ops/instance/:identifier', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   try {
     const instance = await cloudOpsAdapter.getInstance(req.params.identifier);
     if (!instance) return res.status(404).json({ ok: false, error: `No EC2 instance found for "${req.params.identifier}".` });
@@ -5983,12 +6672,12 @@ app.get('/api/l1-copilot/cloud-ops/instance/:identifier', async (req, res) => {
 // and encryption status only in this pass — BitLocker recovery-key
 // retrieval is intentionally not wired up (see adapter file header).
 
-app.get('/api/l1-copilot/graph-intune/status', (req, res) => {
+app.get('/api/l1-copilot/graph-intune/status', requireRole(L1_COPILOT_ROLES), (req, res) => {
   const configured = graphAdapter.isConfigured();
   res.json({ ok: true, configured, demoMode: (!configured) && demoData.isDemoModeEnabled() });
 });
 
-app.get('/api/l1-copilot/graph-intune/device/:identifier', async (req, res) => {
+app.get('/api/l1-copilot/graph-intune/device/:identifier', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   try {
     const device = await graphAdapter.getDevice(req.params.identifier);
     if (!device) return res.status(404).json({ ok: false, error: `No managed device found for "${req.params.identifier}".` });
@@ -6008,12 +6697,12 @@ app.get('/api/l1-copilot/graph-intune/device/:identifier', async (req, res) => {
 // rather than pretending to work when GCP_PROJECT_ID / service-account
 // credentials aren't configured. Diagnostic read access only.
 
-app.get('/api/l1-copilot/gcp/status', (req, res) => {
+app.get('/api/l1-copilot/gcp/status', requireRole(L1_COPILOT_ROLES), (req, res) => {
   const configured = gcpAdapter.isConfigured();
   res.json({ ok: true, configured, demoMode: (!configured) && demoData.isDemoModeEnabled() });
 });
 
-app.get('/api/l1-copilot/gcp/instance/:identifier', async (req, res) => {
+app.get('/api/l1-copilot/gcp/instance/:identifier', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   try {
     const instance = await gcpAdapter.getInstance(req.params.identifier);
     if (!instance) return res.status(404).json({ ok: false, error: `No Compute Engine instance found for "${req.params.identifier}".` });
@@ -6057,7 +6746,7 @@ async function resolveTicketForRequester(incident) {
   }
 }
 
-app.post('/api/l1-copilot/onboarding/image', async (req, res) => {
+app.post('/api/l1-copilot/onboarding/image', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   const { assetTag, profileId } = req.body || {};
   if (!assetTag) return res.status(400).json({ ok: false, error: 'assetTag required' });
   const imgBlockers = await onboardingPreflight.imagingPreflightBlockers(assetTag, { getDeviceSecurityStatus });
@@ -6082,7 +6771,7 @@ app.post('/api/l1-copilot/onboarding/image', async (req, res) => {
   }
 });
 
-app.post('/api/l1-copilot/onboarding/provision', async (req, res) => {
+app.post('/api/l1-copilot/onboarding/provision', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   const { name, email, department, role, requester, incident } = req.body || {};
   if (!name || !email) return res.status(400).json({ ok: false, error: 'name and email required' });
   // requester resolution: prefer the ITSM ticket's own requester field
@@ -6158,7 +6847,61 @@ async function getDeviceSecurityStatus(asset) {
   return null;
 }
 
-app.get('/api/l1-copilot/security/user-status', async (req, res) => {
+app.post('/api/l1-copilot/lost-stolen/assess', requireRole(L1_COPILOT_ROLES), async (req, res) => {
+  const body = req.body || {};
+  const asset = typeof body.asset === 'string' ? body.asset.trim() : '';
+
+  if (!asset) {
+    return res.status(400).json({
+      ok: false,
+      error: 'asset required'
+    });
+  }
+
+  if (body.userVerified !== true) {
+    return res.status(400).json({
+      ok: false,
+      error: 'userVerified must be true'
+    });
+  }
+
+  if (body.assetVerified !== true) {
+    return res.status(400).json({
+      ok: false,
+      error: 'assetVerified must be true'
+    });
+  }
+
+  try {
+    const securityStatus = await getDeviceSecurityStatus(asset);
+
+    const facts = {
+      userVerified: true,
+      assetVerified: true
+    };
+
+    if (securityStatus) {
+      facts.complianceStatus = securityStatus.complianceStatus;
+      facts.securityStatusKnown = true;
+    }
+
+    const assessment = lostStolen.assessLostStolen(facts);
+
+    return res.json({
+      ok: true,
+      asset,
+      securityStatus: securityStatus || null,
+      assessment
+    });
+  } catch (e) {
+    return res.status(502).json({
+      ok: false,
+      error: e.message
+    });
+  }
+});
+
+app.get('/api/l1-copilot/security/user-status', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   const query = (req.query.query || '').trim();
   if (!query) return res.status(400).json({ ok: false, error: 'query required' });
   const status = await getUserSecurityStatus(query);
@@ -6166,7 +6909,7 @@ app.get('/api/l1-copilot/security/user-status', async (req, res) => {
   return res.status(503).json({ ok: false, error: 'No identity-risk adapter is configured for live user-status lookups yet.' });
 });
 
-app.get('/api/l1-copilot/security/device-status', async (req, res) => {
+app.get('/api/l1-copilot/security/device-status', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   const asset = (req.query.asset || '').trim();
   if (!asset) return res.status(400).json({ ok: false, error: 'asset required' });
   if (graphAdapter.isConfigured()) {
@@ -6989,10 +7732,8 @@ const GROQ_TEXT_MODEL = 'openai/gpt-oss-120b';
 // html/tsm-doc-search-multi.html — so every image classification has been
 // failing since mid-July, not just hypothetically. openai/gpt-oss-120b is
 // NOT a vision model on Groq (text-only) — per Groq's current vision docs
-// (console.groq.com/docs/vision), the supported vision models are
-// qwen/qwen3.6-27b and qwen/qwen3.8-27b. Using qwen3.6-27b, Groq's
-// documented replacement recommendation for Llama 4 Scout.
-const GROQ_VISION_MODEL = 'qwen/qwen3.6-27b';
+// Groq vision classification uses the currently supported Qwen 3.8 27B model.
+const GROQ_VISION_MODEL = 'qwen/qwen3.8-27b';
 
 // Valid node IDs per vertical — keep in sync with VERTICALS in
 // tsm-document-search.html if you add/rename nodes.
@@ -7026,7 +7767,7 @@ const DOC_ROUTER_NODES = {
   // a single 'college-war-room' launch target (college-strategist.html,
   // the cross-domain aggregator), while sourceNode/nodes stay
   // domain-specific here for routing/audit accuracy.
-  college: ['college-finaid', 'college-bursar', 'college-endowment', 'college-research-fa', 'college-accred', 'strategist'],
+  college: ['college-finaid', 'college-bursar', 'college-endowment', 'college-research-fa', 'college-accred', 'college-enrollment', 'strategist'],
   // Schools: same single-intake-node shape as hc/pm/noc/mortgage above.
   schools: ['schools-war-room', 'strategist'],
 };
@@ -7042,7 +7783,7 @@ const DOC_ROUTER_PROMPT = `You are TSM's document routing classifier. Analyze th
 Return JSON matching exactly this schema:
 {
   "documentType": one of ${JSON.stringify(DOC_ROUTER_DOC_TYPES)},
-  "verticals": array, subset of ["fo","ins","con","bpo","re","leg","hc","pm","noc","college","mortgage","schools"] — "pm" is property management (leases, work orders, vendor certificates, unit turnovers, occupancy); "noc" is network operations (incident reports, outages, asset/ticket data, uptime SLAs); "college" is higher-education back-office operations — financial aid (FAFSA, Pell, R2T4 return-of-funds, verification, cohort default rate), bursar/tuition billing (payment plans, registration holds), endowment fund compliance (FASB ASU 2016-14 underwater funds, donor restrictions), research administration (grant awards, indirect cost/F&A recovery, effort reporting), and accreditation (findings, standards, site visits); "mortgage" is residential mortgage loan operations — loan file/underwriting status, outstanding conditions blocking closing, and compliance exceptions (TRID tolerance, RESPA/AfBA, HMDA/LAR data, fraud review); "schools" is K-12 school district back-office operations — grant files (Title I, IDEA, ESSER), monitoring items, and compliance exceptions/findings. Include MULTIPLE verticals if the content is genuinely relevant to more than one (e.g. a vendor invoice tied to a construction project may be relevant to both "con" and "fo"; a property sale with a legal dispute may be relevant to both "re" and "leg"; a claim denial with financial exposure may be relevant to both "hc" and "fo"; a PM vendor invoice may be relevant to both "pm" and "fo"; a college research grant invoice may be relevant to both "college" and "fo"; a mortgage compliance exception with reportable financial exposure may be relevant to both "mortgage" and "fo"; a schools grant finding with financial exposure may be relevant to both "schools" and "fo"),
+  "verticals": array, subset of ["fo","ins","con","bpo","re","leg","hc","pm","noc","college","mortgage","schools"] — "pm" is property management (leases, work orders, vendor certificates, unit turnovers, occupancy); "noc" is network operations (incident reports, outages, asset/ticket data, uptime SLAs); "college" is higher-education back-office operations — financial aid (FAFSA, Pell, R2T4 return-of-funds, verification, cohort default rate), bursar/tuition billing (payment plans, registration holds), endowment fund compliance (FASB ASU 2016-14 underwater funds, donor restrictions), research administration (grant awards, indirect cost/F&A recovery, effort reporting), accreditation (findings, standards, site visits), and enrollment/admissions (summer melt on deposited students, application completeness backlog, yield-funnel performance by recruiting segment); "mortgage" is residential mortgage loan operations — loan file/underwriting status, outstanding conditions blocking closing, and compliance exceptions (TRID tolerance, RESPA/AfBA, HMDA/LAR data, fraud review); "schools" is K-12 school district back-office operations — grant files (Title I, IDEA, ESSER), monitoring items, and compliance exceptions/findings. Include MULTIPLE verticals if the content is genuinely relevant to more than one (e.g. a vendor invoice tied to a construction project may be relevant to both "con" and "fo"; a property sale with a legal dispute may be relevant to both "re" and "leg"; a claim denial with financial exposure may be relevant to both "hc" and "fo"; a PM vendor invoice may be relevant to both "pm" and "fo"; a college research grant invoice may be relevant to both "college" and "fo"; a mortgage compliance exception with reportable financial exposure may be relevant to both "mortgage" and "fo"; a schools grant finding with financial exposure may be relevant to both "schools" and "fo"),
   "primaryVertical": one value from "verticals",
   "routing": {
     "<vertical>": { "sourceNode": "<one valid node id for that vertical>", "nodes": ["<valid node ids...>"] }
@@ -7066,6 +7807,26 @@ Return JSON matching exactly this schema:
   }
 }
 
+OUTPUT COMPLETENESS CONTRACT:
+- EVERY key shown in the schema above is REQUIRED in every response. Never omit a schema key.
+- Do NOT return a minimal routing-only object.
+- Even when a value is unavailable, the key MUST still be present using these defaults:
+  - string fields: ""
+  - amount: 0
+  - defectFlags: []
+  - bnca: false
+  - entities.parties: []
+  - entities.dates: []
+  - entities.amounts: []
+  - entities.identifiers: []
+- Populate every field for which the document provides evidence.
+- "fileName" must always be present and end in ".record".
+- "summary" must always be present; use a concise sentence based on the document, even when the document is otherwise sparse.
+- "entities" must always be present and must always contain all four arrays: parties, dates, amounts, identifiers.
+- When a permit, claim, policy, case, filing, invoice, or other reference number appears, copy it into both the appropriate top-level field when applicable and entities.identifiers.
+- Do not omit extraction fields merely because routing can already be determined.
+- Return the COMPLETE schema object, not a subset of it.
+
 Note: do NOT include a "confidence" or "validation" field - those are computed by the server, not the model.
 
 Valid node IDs per vertical:
@@ -7078,7 +7839,7 @@ leg: ${DOC_ROUTER_NODES.leg.join(', ')}
 hc:  ${DOC_ROUTER_NODES.hc.join(', ')}
 pm:  ${DOC_ROUTER_NODES.pm.join(', ')}
 noc: ${DOC_ROUTER_NODES.noc.join(', ')}
-college: ${DOC_ROUTER_NODES.college.join(', ')}  — FAFSA/Pell/R2T4/verification/cohort-default->college-finaid, tuition/payment-plan/registration-hold->college-bursar, endowment/donor-fund/FASB->college-endowment, grant/award/indirect-cost/F&A/effort-report->college-research-fa, accreditation-finding/standard/site-visit->college-accred
+college: ${DOC_ROUTER_NODES.college.join(', ')}  — FAFSA/Pell/R2T4/verification/cohort-default->college-finaid, tuition/payment-plan/registration-hold->college-bursar, endowment/donor-fund/FASB->college-endowment, grant/award/indirect-cost/F&A/effort-report->college-research-fa, accreditation-finding/standard/site-visit->college-accred, melt/deposit/orientation/application-completeness/yield-segment->college-enrollment
 mortgage: ${DOC_ROUTER_NODES.mortgage.join(', ')}  — single intake node, same shape as hc/pm/noc: sourceNode is always mortgage-war-room unless the doc is itself an escalation report
 schools: ${DOC_ROUTER_NODES.schools.join(', ')}  — single intake node, same shape as hc/pm/noc/mortgage: sourceNode is always schools-war-room unless the doc is itself an escalation report
 
@@ -7087,7 +7848,172 @@ Rules:
 - If "bnca" is true, also append "bnca-engine" to routing.<vertical>.nodes for every vertical listed.
 - "sourceNode" must be the node most directly responsible for this document type (not "strategist" unless nothing else fits).
 - If the document doesn't clearly belong anywhere, return "verticals": [] and leave "routing" as {}.
-- Be conservative with "bnca" — only flag genuine anomalies, denials, disputes, code violations, SLA breaches, or financial exposure outliers.`;
+- Be conservative with "bnca" — only flag genuine anomalies, denials, disputes, code violations, SLA breaches, or financial exposure outliers.
+- CLASSIFICATION DOMAIN RULE: Choose verticals based on the document's primary operational subject, not merely on a dollar amount, financial exposure, or the presence of a monetary value. A document belongs to "fo" only when its operational subject is financial/accounting operations such as accounts payable, accounting, ledger, remittance, reconciliation, payment processing, financial reporting, or a vendor invoice. A construction permit, inspection, code-compliance filing, stop-work matter, contractor filing, site issue, RFI, change order, or other construction-regulatory document remains "con" even when it contains a dollar exposure or financial consequence.
+- CONSTRUCTION PRIORITY RULE: For documents explicitly centered on construction permitting, code compliance, inspections, contractors, stop-work orders, site work, plans, or construction regulatory filings, prefer "con" as the sole vertical unless the document contains a separate, genuine operational workflow belonging to another vertical. Do not add "fo" solely because the document states an exposure, potential loss, cost, fine, or dollar amount.
+- EXTRACTION RULE: Populate every schema field that is directly supported by the document. Do not omit available evidence merely because it is not needed to determine the vertical. Extract named organizations into entities.parties, dates into entities.dates, dollar values into entities.amounts and amount when applicable, and permit/policy/claim/case/reference numbers into entities.identifiers and ref when applicable. Populate vendor, client, invoiceNo, summary, and defectFlags whenever the document supports them; use "" or [] only when the information is genuinely absent.`;
+
+
+// -- Deterministic extraction completion -------------------------------
+// Groq owns semantic classification/routing. This helper only fills
+// missing extraction fields from the original document text. It does not
+// override non-empty model output or change routing decisions.
+function normalizeDocRouterClassification(parsed, rawText, originalFileName) {
+  parsed = (
+    parsed &&
+    typeof parsed === 'object' &&
+    !Array.isArray(parsed)
+  ) ? parsed : {};
+
+  const text = String(rawText || '');
+
+  const entities = (
+    parsed.entities &&
+    typeof parsed.entities === 'object' &&
+    !Array.isArray(parsed.entities)
+  ) ? parsed.entities : {};
+
+  entities.parties = Array.isArray(entities.parties)
+    ? entities.parties : [];
+  entities.dates = Array.isArray(entities.dates)
+    ? entities.dates : [];
+  entities.amounts = Array.isArray(entities.amounts)
+    ? entities.amounts : [];
+  entities.identifiers = Array.isArray(entities.identifiers)
+    ? entities.identifiers : [];
+
+  parsed.entities = entities;
+
+  if (!parsed.fileName) {
+    const base = String(originalFileName || 'document')
+      .replace(/\.[^.]+$/, '')
+      .replace(/[^A-Za-z0-9._-]+/g, '_')
+      .replace(/^_+|_+$/g, '') || 'document';
+
+    parsed.fileName = base.endsWith('.record')
+      ? base
+      : base + '.record';
+  }
+
+  if (typeof parsed.vendor !== 'string') parsed.vendor = '';
+  if (typeof parsed.invoiceNo !== 'string') parsed.invoiceNo = '';
+  if (typeof parsed.exclusionCode !== 'string') parsed.exclusionCode = '';
+  if (typeof parsed.client !== 'string') parsed.client = '';
+  if (typeof parsed.ref !== 'string') parsed.ref = '';
+  if (typeof parsed.summary !== 'string') parsed.summary = '';
+  if (!Array.isArray(parsed.defectFlags)) parsed.defectFlags = [];
+  if (typeof parsed.bnca !== 'boolean') parsed.bnca = false;
+
+  if (
+    typeof parsed.amount !== 'number' ||
+    !Number.isFinite(parsed.amount)
+  ) {
+    parsed.amount = 0;
+  }
+
+  // Identifiers: preserve model extraction; otherwise recover common
+  // permit/claim/policy/case/invoice/reference identifiers.
+  if (!entities.identifiers.length) {
+    const matches = [
+      ...(text.match(
+        /\b(?:PMT|CLM|POL|INV|CASE|REF|RITM|INC)[-_][A-Z0-9-]+\b/gi
+      ) || []),
+      ...(text.match(
+        /(?:Permit|Claim|Policy|Case|Invoice|Filing|Reference|Ref(?:erence)?)\s*#?\s*:\s*[A-Z0-9._/-]+/gi
+      ) || [])
+    ];
+
+    entities.identifiers = [...new Set(matches.map(v => v.trim()))];
+  }
+
+  if (!parsed.ref && entities.identifiers.length) {
+    parsed.ref = entities.identifiers[0];
+  }
+
+  // Dollar values.
+  if (!entities.amounts.length) {
+    entities.amounts = [
+      ...new Set(
+        (text.match(/\$\s?\d[\d,]*(?:\.\d{2})?/g) || [])
+          .map(v => v.trim())
+      )
+    ];
+  }
+
+  if (!(parsed.amount > 0) && entities.amounts.length) {
+    const numbers = entities.amounts
+      .map(v => Number(v.replace(/[$,\s]/g, '')))
+      .filter(v => Number.isFinite(v) && v >= 0);
+
+    if (numbers.length) {
+      parsed.amount = Math.max(...numbers);
+    }
+  }
+
+  // Dates.
+  if (!entities.dates.length) {
+    entities.dates = [
+      ...new Set([
+        ...(text.match(/\b\d{4}-\d{2}-\d{2}\b/g) || []),
+        ...(text.match(/\b\d{1,2}\/\d{1,2}\/\d{4}\b/g) || [])
+      ])
+    ];
+  }
+
+  // Explicit party labels.
+  if (!entities.parties.length) {
+    const parties = [];
+
+    for (const match of text.matchAll(
+      /(?:Contractor|Vendor|Client|Customer|Employer|Provider|Company|Organization|Filed by|Submitted by)\s*:\s*([^\n\r]+)/gi
+    )) {
+      const value = match[1].trim();
+      if (value && !parties.includes(value)) {
+        parties.push(value);
+      }
+    }
+
+    entities.parties = parties;
+  }
+
+  if (!parsed.vendor && entities.parties.length) {
+    parsed.vendor = entities.parties[0];
+  }
+
+  // Conservative issue extraction.
+  if (!parsed.defectFlags.length) {
+    const flags = [
+      [/code violation/i, 'Code Violation'],
+      [/inspection overdue/i, 'Late Inspection'],
+      [/stop-work order/i, 'Stop-Work Risk'],
+      [/denial/i, 'Denial'],
+      [/dispute/i, 'Dispute'],
+      [/sla breach|sla violation/i, 'SLA Breach'],
+      [/late filing|filing overdue/i, 'Late Filing']
+    ];
+
+    parsed.defectFlags = flags
+      .filter(([pattern]) => pattern.test(text))
+      .map(([, label]) => label);
+  }
+
+  if (!parsed.summary) {
+    const lines = text
+      .split(/\r?\n/)
+      .map(line => line.trim())
+      .filter(Boolean);
+
+    const issueLine = lines.find(line =>
+      /^(Issue|Description|Summary|Problem)\s*:/i.test(line)
+    );
+
+    parsed.summary = issueLine
+      ? issueLine.replace(/^[^:]+:\s*/i, '').trim()
+      : (lines[0] || 'Document classification');
+  }
+
+  return parsed;
+}
 
 // -- Deterministic validation + confidence (Phase 4, Mission Preview) --
 // Deliberately NOT model-generated: LLM self-reported confidence scores are
@@ -7239,6 +8165,7 @@ app.post('/api/doc-router/classify', async (req, res) => {
           { role: 'user', content: userContent },
         ],
         temperature: 0.2,
+        max_tokens: 1200,
         response_format: { type: 'json_object' },
       }),
     });
@@ -7275,6 +8202,14 @@ app.post('/api/doc-router/classify', async (req, res) => {
       console.error('[doc-router] Bad JSON from model:', data.choices?.[0]?.message?.content);
       return res.status(502).json({ error: 'Invalid classification response.' });
     }
+
+    // Complete missing extraction fields from the original document.
+    // This does not override model routing or non-empty model fields.
+    parsed = normalizeDocRouterClassification(
+      parsed,
+      textContent || '',
+      fileName || ''
+    );
 
     // Deterministic pass - never trust the model's own read of its schema
     // compliance. Attached to the response, not thrown, so a malformed doc

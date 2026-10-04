@@ -112,6 +112,12 @@
 
   // ── Build KPI data from relay ─────────────────────────────────────────────
   function buildKPIs(relay, vertical) {
+    if (relay?.serviceNow?.source === 'servicenow') {
+      return [
+        { label: 'SLA Breach Risk', value: 'NOT STATED IN SOURCE DATA', trend: [], color: 'var(--tsm-muted)', unit: '' },
+        { label: 'Volume Backlog',  value: 'NOT STATED IN SOURCE DATA', trend: [], color: 'var(--tsm-muted)', unit: '' },
+      ];
+    }
     const kpis = {
       healthcare: [
         { label: 'Denial Rate',     value: relay?.denialRate    || '18%',  trend: [22,20,19,18,18], color: 'var(--tsm-amber)', unit: '' },
@@ -366,6 +372,7 @@
 
   // ── Build Decision Items from relay ───────────────────────────────────────
   function buildDecisionItems(relay, vertical) {
+    if (relay?.serviceNow?.source === 'servicenow') return [];
     const defaults = {
       healthcare:   [
         { urgency: 'critical', text: 'Authorize CMS Penalty Response', meta: 'Compliance package ready · Missing exec signature', value: '$24K' },

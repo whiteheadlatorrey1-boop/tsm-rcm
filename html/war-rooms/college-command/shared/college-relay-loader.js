@@ -65,7 +65,7 @@
     if (document.getElementById('tsm-college-relay-banner')) return;
     const banner = document.createElement('div');
     banner.id = 'tsm-college-relay-banner';
-    banner.style.cssText = 'position:sticky;top:0;left:0;right:0;z-index:9999;background:rgba(77,163,255,.12);border-bottom:1px solid rgba(77,163,255,.35);padding:10px 20px;font-family:-apple-system,Segoe UI,Roboto,sans-serif;font-size:12.5px;color:#4da3ff;display:flex;justify-content:space-between;align-items:flex-start;gap:16px;';
+    banner.style.cssText = 'position:sticky;top:0;left:0;right:0;z-index:2147483648;background:rgba(77,163,255,.12);border-bottom:1px solid rgba(77,163,255,.35);padding:10px 20px;font-family:-apple-system,Segoe UI,Roboto,sans-serif;font-size:12.5px;color:#4da3ff;display:flex;justify-content:space-between;align-items:flex-start;gap:16px;';
     banner.innerHTML =
       '<div>' +
         '<div style="font-weight:700;letter-spacing:.3px;margin-bottom:3px;">⚡ INCOMING DOCUMENT — ' + escapeHtml(relay.docType || 'DOCUMENT') + '</div>' +

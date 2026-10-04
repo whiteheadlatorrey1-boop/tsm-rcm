@@ -9,15 +9,25 @@
 // recorded training events (see server/candidate-registry-service.js).
 
 const express = require('express');
+const { requireRole } = require('../middleware/require-auth');
+const { requireCandidateWrite, signCandidateToken } = require('../middleware/candidate-token');
 const router = express.Router();
 
 const registry = require('../server/candidate-registry-service');
+
+const { verifySession, getCookie } = require('../middleware/require-auth');
+const isAdmin = req => {
+  const sess = verifySession(getCookie(req, 'tsm_session'));
+  return !!(sess && sess.role === 'admin');
+};
+// Non-admins never receive email or Mongo _id.
+const publicView = ({ email, _id, ...rest } = {}) => rest;
 
 router.get('/api/candidates', async (req, res) => {
   try {
     const { status } = req.query;
     const candidates = await registry.listCandidates({ status });
-    res.json({ candidates });
+    res.json({ candidates: isAdmin(req) ? candidates : candidates.map(publicView) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -27,22 +37,22 @@ router.get('/api/candidates/:id', async (req, res) => {
   try {
     const candidate = await registry.getCandidate(req.params.id);
     if (!candidate) return res.status(404).json({ error: 'not found' });
-    res.json({ candidate });
+    res.json({ candidate: isAdmin(req) ? candidate : publicView(candidate) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-router.post('/api/candidates', async (req, res) => {
+router.post('/api/candidates', requireCandidateWrite, async (req, res) => {
   try {
     const candidate = await registry.upsertCandidate(req.body || {});
-    res.status(201).json({ candidate });
+    res.status(201).json({ candidate, candidateToken: signCandidateToken(candidate.candidateId) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-router.put('/api/candidates/:id', async (req, res) => {
+router.put('/api/candidates/:id', requireCandidateWrite, async (req, res) => {
   try {
     const candidate = await registry.upsertCandidate({
       ...req.body,
@@ -54,7 +64,7 @@ router.put('/api/candidates/:id', async (req, res) => {
   }
 });
 
-router.post('/api/candidates/:id/training-events', async (req, res) => {
+router.post('/api/candidates/:id/training-events', requireCandidateWrite, async (req, res) => {
   try {
     const candidate = await registry.recordTrainingEvent(req.params.id, req.body || {});
     res.status(201).json({ candidate });
@@ -63,7 +73,7 @@ router.post('/api/candidates/:id/training-events', async (req, res) => {
   }
 });
 
-router.delete('/api/candidates/:id', async (req, res) => {
+router.delete('/api/candidates/:id', requireRole(['admin']), async (req, res) => {
   try {
     const deleted = await registry.deleteCandidate(req.params.id);
     if (!deleted) return res.status(404).json({ error: 'not found' });
@@ -74,9 +84,8 @@ router.delete('/api/candidates/:id', async (req, res) => {
 });
 
 // Dev/demo convenience — seeds clearly-labeled placeholder candidates.
-// Not mounted behind auth here because it only ever upserts sample rows;
-// gate this in production if that matters for your deployment.
-router.post('/api/candidates/_seed-sample-data', async (req, res) => {
+// Admin-only: requires an admin session (delete and seed are not used by learner pages).
+router.post('/api/candidates/_seed-sample-data', requireRole(['admin']), async (req, res) => {
   try {
     const candidates = await registry.seedSampleData();
     res.json({ seeded: candidates.length, candidates });

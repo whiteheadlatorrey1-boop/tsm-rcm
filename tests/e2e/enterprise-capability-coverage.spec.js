@@ -144,9 +144,9 @@ const VERTICALS = [
     '/html/healthcare/executive-portal.html',
   ]},
   { column: 'Finance', key: 'FinOps', pages: [
-    '/html/finops-suite/finops-war-room.html',
-    '/html/finops-suite/finops-main-strategist.html',
-    '/html/finops-suite/finops-executive-portal.html',
+    '/html/finops-suite/finops-war/finops-war-room.html',
+    '/html/finops-suite/finops-war/finops-main-strategist.html',
+    '/html/finops-suite/finops-war/finops-executive-portal.html',
   ]},
   { column: 'Insurance', key: 'Insurance', pages: [
     '/html/war-rooms/insure-war/insurance-war-room.html',
@@ -204,7 +204,8 @@ test.describe('Enterprise Capability Matrix — current coverage report', () => 
 
       for (const [capability, byVertical] of Object.entries(MATRIX)) {
         const terms = byVertical[vertical.column] || [];
-        const matched = terms.filter((t) => text.includes(t));
+        // Leading word-boundary match (plurals still hit) so short terms like 'aus' don't match inside 'because'/'cause'.
+        const matched = terms.filter((t) => new RegExp('(^|[^a-z0-9])' + t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '').test(text));
         const covered = matched.length > 0;
         if (covered) hits++;
         row[capability] = { covered, matchedTerms: matched, expectedTerms: terms };
