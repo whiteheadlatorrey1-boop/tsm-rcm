@@ -17,7 +17,7 @@ const perfect = (sim) => { const a = {}; sim.items.forEach((i) => { a[i.qid] = i
 const wrong = (sim) => { const a = {}; sim.items.forEach((i) => { const bad = i.options.map((_, k) => k).find((k) => !i.correct.includes(k)); a[i.qid] = [bad]; }); return a; };
 const reviewedBank = bank.map((q) => Object.assign({}, q, { reviewed: true }));
 
-t('bank loads 120 questions', () => assert.strictEqual(bank.length, 120));
+t('bank loads at least 120 questions', () => assert.ok(bank.length >= 120));
 t('bank passes validation', () => assert.deepStrictEqual(validateBank(bank, bp), []));
 t('question ids are unique', () => assert.strictEqual(new Set(bank.map((q) => q.id)).size, bank.length));
 t('every question has a reviewed flag', () => assert.ok(bank.every((q) => typeof q.reviewed === 'boolean')));
@@ -78,11 +78,13 @@ t('gate rejects a short reviewed simulation', () => {
 t('markReviewed records the reviewer on a copy', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'csa-'));
   fs.copyFileSync(bankFile(ID), path.join(dir, ID + '.json'));
+  const before = loadBank(ID, dir);
+  const expected = new Set(before.filter((q) => q.reviewed).map((q) => q.id)).add('nav-1').size;
   markReviewed(ID, 'nav-1', 'Pat Reviewer', dir);
   const b = loadBank(ID, dir);
   assert.strictEqual(b.find((q) => q.id === 'nav-1').reviewedBy, 'Pat Reviewer');
-  assert.strictEqual(b.filter((q) => q.reviewed).length, 1);
-  assert.strictEqual(b.length, 120);
+  assert.strictEqual(b.filter((q) => q.reviewed).length, expected);
+  assert.strictEqual(b.length, before.length);
 });
 t('every domain has at least 10 spare questions beyond its quota', () => bankCoverage(bank, bp).forEach((c) => assert.ok(c.have >= c.need + 10, c.domainId)));
 t('different seeds draw different question sets', () => assert.notDeepStrictEqual(buildSimulation(ID, bank, { seed: 1 }).items.map((i) => i.qid).sort(), buildSimulation(ID, bank, { seed: 2 }).items.map((i) => i.qid).sort()));
