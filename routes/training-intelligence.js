@@ -723,8 +723,14 @@ router.post('/api/training-intelligence/quiz/:providerId/submit', async (req, re
 
   // Optional evidence write to the Candidate Registry. Grading never depends
   // on it: failures are reported in `registry`, not thrown. Requires an admin
-  // session or a valid token for that candidateId, and a verified bank.
+  // session or a valid token for that candidateId, and either a verified bank
+  // or a quiz made up ONLY of reviewed certification-bank questions (every
+  // submitted id known, every question sourced from the certification bank).
   const registry = { recorded: false, reason: 'no candidateId supplied' };
+  const allReviewed = results.length > 0 && results.every(r => {
+    const q = r && !r.error ? byId[r.questionId] : null;
+    return !!q && q.source === 'certification-bank';
+  });
   const candidateId = req.body && typeof req.body.candidateId === 'string' ? req.body.candidateId : '';
   if (candidateId) {
     try {
@@ -735,14 +741,14 @@ router.post('/api/training-intelligence/quiz/:providerId/submit', async (req, re
         verifyCandidateToken(candidateId, req.get('x-candidate-token'));
       if (!authorized) {
         registry.reason = 'not authorized to write for this candidate';
-      } else if (!bank.verified) {
-        registry.reason = 'question bank is not verified; score not recorded';
+      } else if (!bank.verified && !allReviewed) {
+        registry.reason = 'question bank is not verified and the quiz includes questions without a review record; score not recorded';
       } else {
         await require('../server/candidate-registry-service').recordTrainingEvent(candidateId, {
           type: 'quiz',
           score,
           weight: 1,
-          meta: { source: 'training-intelligence', providerId: req.params.providerId, correctCount, total: results.length }
+          meta: { source: 'training-intelligence', providerId: req.params.providerId, correctCount, total: results.length, basis: bank.verified ? 'verified-bank' : 'reviewed-questions' }
         });
         registry.recorded = true;
         delete registry.reason;
