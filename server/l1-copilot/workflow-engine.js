@@ -28,6 +28,7 @@ const TASK_TYPES = Object.freeze([
   'HARDWARE',
   'HARDWARE SWAP',
   'INCIDENT',
+  'LOST_STOLEN',
   'DISPOSITION',
   'OTHER'
 ]);
@@ -109,6 +110,20 @@ function classifyTask(input = {}) {
     };
   }
 
+  if (/lost|stolen|missing|device missing|asset missing/.test(text)) {
+    return {
+      taskType: 'LOST_STOLEN',
+      source: 'description'
+    };
+  }
+
+  if (/incident|outage|not working|failure|error|broken/.test(text)) {
+    return {
+      taskType: 'INCIDENT',
+      source: 'description'
+    };
+  }
+
   if (/hardware swap|device swap|replacement device/.test(text)) {
     return {
       taskType: 'HARDWARE SWAP',
@@ -119,13 +134,6 @@ function classifyTask(input = {}) {
   if (/hardware|laptop|desktop|monitor|dock|keyboard|mouse/.test(text)) {
     return {
       taskType: 'HARDWARE',
-      source: 'description'
-    };
-  }
-
-  if (/incident|outage|not working|failure|error|broken/.test(text)) {
-    return {
-      taskType: 'INCIDENT',
       source: 'description'
     };
   }
@@ -151,7 +159,9 @@ const EVIDENCE_META = Object.freeze({
   approvalObtained: { label: 'Disposition approval' },
   sanitizationVerified: { label: 'Data sanitization verification' },
   dispositionCompleted: { label: 'Physical disposition completed' },
-  assetReconciled: { label: 'CMDB asset reconciliation' }
+  assetReconciled: { label: 'CMDB asset reconciliation' },
+  securityEscalation: { label: 'Security escalation' },
+  securityActionVerified: { label: 'Security action verification' }
 });
 
 const DEFAULT_EVIDENCE_KEYS = Object.freeze([
