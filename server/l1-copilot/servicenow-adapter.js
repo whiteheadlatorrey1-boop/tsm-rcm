@@ -31,7 +31,8 @@ const DEFAULT_FIELD_MAP = {
     owner: 'assigned_to.name',
     department: 'department.name',
     purchaseDate: 'purchase_date',
-    status: 'install_status'
+    status: 'install_status',
+    location: 'location.name'
   },
   incident: {
     number: 'number',
@@ -156,6 +157,7 @@ async function getAsset(assetTag, config) {
     department: readField(record, fm.department),
     purchaseDate: readField(record, fm.purchaseDate),
     status: readField(record, fm.status),
+    location: readField(record, fm.location),
     raw: record
   };
 }
