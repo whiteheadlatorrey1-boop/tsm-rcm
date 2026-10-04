@@ -5196,7 +5196,7 @@ app.post('/api/l1-copilot/request-fulfillment/evaluate', (req, res) => {
   }
 });
 
-app.post('/api/l1-copilot/closure/evaluate', (req, res) => {
+app.post('/api/l1-copilot/closure/evaluate', async (req, res) => {
   try {
     const input = Object.assign({}, req.body || {});
 

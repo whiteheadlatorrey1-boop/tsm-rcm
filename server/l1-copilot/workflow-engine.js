@@ -151,6 +151,20 @@ function classifyTask(input = {}) {
     };
   }
 
+  if (/incident|outage|not working|failure|error|broken/.test(text)) {
+    return {
+      taskType: 'INCIDENT',
+      source: 'description'
+    };
+  }
+
+  if (/hardware swap|device swap|replacement device/.test(text)) {
+    return {
+      taskType: 'HARDWARE SWAP',
+      source: 'description'
+    };
+  }
+
   // "Install a laptop/dock/monitor" is hardware work; "install X on the
   // laptop" is software. Only the install's object decides.
   const hardwareInstall =
@@ -171,20 +185,6 @@ function classifyTask(input = {}) {
   ) {
     return {
       taskType: 'REQUEST FULFILLMENT',
-      source: 'description'
-    };
-  }
-
-  if (/hardware|laptop|desktop|monitor|dock|keyboard|mouse/.test(text)) {
-    return {
-      taskType: 'INCIDENT',
-      source: 'description'
-    };
-  }
-
-  if (/hardware swap|device swap|replacement device/.test(text)) {
-    return {
-      taskType: 'HARDWARE SWAP',
       source: 'description'
     };
   }
@@ -255,8 +255,24 @@ function getRequiredEvidence(taskType) {
       key: 'tested',
       label: 'Functionality testing'
     }
-    return Object.assign({ key }, meta);
+  ];
+
+  if (
+    ['FOOT MOVE', 'ONBOARDING', 'OFFBOARDING'].includes(normalizedTask)
+  ) {
+    required.push({
+      key: 'locationVerified',
+      label: 'Location verification',
+      nextAction: 'VERIFY LOCATION'
+    });
+  }
+
+  required.push({
+    key: 'finalWorkNoteConfirmed',
+    label: 'Final work note confirmation'
   });
+
+  return required;
 }
 
 function evaluateWorkflow(input = {}) {
