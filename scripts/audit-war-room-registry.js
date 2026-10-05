@@ -22,4 +22,12 @@ const unclassified = reg.entries.filter(e => e.status === 'UNCLASSIFIED').length
 console.log(`detected: ${onDisk.size} | registered: ${registered.size} | unclassified entries: ${unclassified}/${reg.entries.length}`);
 unregistered.forEach(f => console.log('UNREGISTERED:', f));
 missing.forEach(f => console.log('MISSING FILE:', f));
-process.exit(unregistered.length || missing.length ? 1 : 0);
+const ignoreFolders = new Set(reg.ignoreFolders || []);
+function hasHtml(d) { return fs.readdirSync(d, { withFileTypes: true }).some(f => f.isDirectory() ? hasHtml(path.join(d, f.name)) : f.name.endsWith('.html')); }
+const htmlDir = path.join(ROOT, 'html');
+const emptyFolders = fs.readdirSync(htmlDir, { withFileTypes: true })
+  .filter(d => d.isDirectory() && !ignoreFolders.has(d.name) && hasHtml(path.join(htmlDir, d.name)))
+  .map(d => d.name)
+  .filter(n => ![...registered].some(f => f.startsWith('html/' + n + '/')));
+emptyFolders.forEach(n => console.log('FOLDER WITH NO REGISTERED PAGE:', n));
+process.exit(unregistered.length || missing.length || emptyFolders.length ? 1 : 0);
