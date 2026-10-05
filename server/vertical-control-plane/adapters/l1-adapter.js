@@ -60,6 +60,16 @@ function fromOrchestration(input = {}, result = {}) {
       autonomousCloseAllowed: findKey(result, 'autonomousCloseAllowed') ?? null,
       closureReason: closure.reason ?? null
     },
+    decisions: closure.gate
+      ? [{
+          type: 'CLOSURE_READINESS',
+          gate: closure.gate,
+          readyForClosure: closure.readyForClosure === true,
+          nextEvidence: closure.nextEvidence ?? null,
+          requiresApproval: true,
+          source: 'l1-closure-gate'
+        }]
+      : [],
     actions: execution.gate
       ? [{ type: 'EXECUTION_GATE', gate: execution.gate, allowed: execution.allowed === true, action: execution.action ?? null }]
       : [],

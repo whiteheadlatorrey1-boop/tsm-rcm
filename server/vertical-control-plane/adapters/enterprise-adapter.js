@@ -60,8 +60,9 @@ function fromOrchestration(input = {}, result = {}) {
     })),
     exposures: [],
     relationships: [],
-    // Used only if the contract defines a decision field; createEnvelope ignores unknown keys.
-    decision: Object.assign({}, rec, { source: 'bnca-engine', executed: false }),
+    decisions: rec.action
+      ? [Object.assign({ type: 'BNCA_RECOMMENDATION' }, rec, { requiresApproval: rec.action !== 'NO_ACTION', executed: false, source: 'bnca-engine' })]
+      : [],
     governance: { approvalRequired: true, approved: false },
     actions: rec.action && rec.action !== 'NO_ACTION'
       ? [Object.assign({ type: 'BNCA_RECOMMENDATION' }, rec, { allowed: false, executed: false })]

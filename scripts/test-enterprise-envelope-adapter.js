@@ -96,7 +96,9 @@ function valid(env) { try { validateEnvelope(env); return true; } catch (e) { co
   check('no-arg call still yields a valid envelope', noArgOk);
 
   console.log('NOTE: exposures is empty. The Enterprise pipeline emits no exposure concept (same as L1).');
-  console.log(`NOTE: envelope ${'decision' in env ? 'kept' : 'has no'} decision field; recommendation is also carried in actions.`);
+  check('populated: decisions carries the recommendation', env.decisions.length === 1 && env.decisions[0].action === res.decision.action && env.decisions[0].executed === false);
+  check('populated: decision requires approval', env.decisions[0].requiresApproval === true);
+  check('empty case: decision is NO_ACTION and needs no approval', emptyEnv.decisions.length === 1 && emptyEnv.decisions[0].action === 'NO_ACTION' && emptyEnv.decisions[0].requiresApproval === false);
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);
 })().catch((e) => { console.error('ERROR:', e.message); process.exit(1); });

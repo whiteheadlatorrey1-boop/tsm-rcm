@@ -64,6 +64,9 @@ function check(label, cond) {
   try { validateEnvelope(fromOrchestration()); } catch (e) { emptyOk = false; }
   check('no-arg call still yields a valid envelope', emptyOk);
 
+  check('decisions carries closure readiness', env.decisions.length === 1 && env.decisions[0].type === 'CLOSURE_READINESS' && env.decisions[0].readyForClosure === false);
+  check('closure decision requires approval', env.decisions[0].requiresApproval === true);
+  check('synthetic ready result: closure decision still requires approval', ready.decisions.length === 1 && ready.decisions[0].requiresApproval === true);
   console.log('NOTE: exposures is empty. The L1 orchestrator emits no exposure concept.');
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);
