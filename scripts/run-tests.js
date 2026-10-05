@@ -3,7 +3,7 @@
 // scripts/run-tests.js -- runs every offline regression suite and exits
 // non-zero if any fail. Wired to `npm test` and .github/workflows/test.yml.
 //
-// Runs scripts/test-bpo-*.js, scripts/test-auth-*.js, scripts/test-l1-*.js, and scripts/test-enterprise-*.js,
+// Runs scripts/test-bpo-*.js, scripts/test-auth-*.js, scripts/test-l1-*.js, scripts/test-enterprise-*.js, and scripts/test-production-*.js,
 // each in its own process. Live-server smoke tests are skipped: they need a
 // running app and real credentials.
 
@@ -15,7 +15,7 @@ const SKIP = new Set(['test-bpo-client-wiring-smoke.js']); // needs TSM_CREDENTI
 
 const dir = __dirname;
 const files = fs.readdirSync(dir)
-  .filter(f => /^test-(bpo|auth|l1|enterprise)-.*\.js$/.test(f) && !SKIP.has(f))
+  .filter(f => /^test-(bpo|auth|l1|enterprise|production)-.*\.js$/.test(f) && !SKIP.has(f))
   .sort();
 
 const env = Object.assign({ TSM_SESSION_SECRET: 'test-session-secret' }, process.env);
