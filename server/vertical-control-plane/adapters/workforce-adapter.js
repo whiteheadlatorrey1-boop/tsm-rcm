@@ -13,7 +13,26 @@
 
 const { createEnvelope } = require('../contract');
 
-function fromReadiness(input = {}, view = {}, eligibility = {}) {
+// Maps already-loaded placement-evidence records (e.g. the result of
+// listPlacementEvidence) to outcomes. Pure: never reads storage.
+function evidenceToOutcomes(records) {
+  if (!Array.isArray(records)) return [];
+  return records
+    .filter((r) => r && typeof r === 'object')
+    .map((r) => ({
+      type: 'PLACEMENT_STAGE',
+      placementEvidenceId: r.placementEvidenceId ?? null,
+      eventType: r.eventType ?? null,
+      stage: r.stage ?? null,
+      occurredAt: r.occurredAt ?? null,
+      candidateId: r.candidateId ?? null,
+      placementId: r.placementId ?? null,
+      jobOrderId: r.jobOrderId ?? null,
+      source: 'staffing-placement-evidence'
+    }));
+}
+
+function fromReadiness(input = {}, view = {}, eligibility = {}, extras = {}) {
   const v = view || {};
   const el = eligibility || {};
   const candidateId = v.candidateId ?? input.candidateId ?? null;
@@ -67,6 +86,7 @@ function fromReadiness(input = {}, view = {}, eligibility = {}) {
       executed: false
     })),
     verification: { evidence: [], explained: false, source: 'workforce-adapter' },
+    outcomes: evidenceToOutcomes(extras && extras.evidence),
     metadata: {
       source: 'workforce-readiness-view+staffing-engine',
       adapter: 'workforce-adapter',
