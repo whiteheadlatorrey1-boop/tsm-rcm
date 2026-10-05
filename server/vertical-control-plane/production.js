@@ -94,6 +94,12 @@ function runProductionControlPlane(input = {}) {
     id: input.decisionId
   });
 
+  // A vertical's native decision can require a human even when the generic
+  // risk model says "monitor". Honor it, never relax it.
+  if ((envelope.decisions || []).some(d => d && d.requiresApproval === true)) {
+    decision.requiresApproval = true;
+  }
+
   const explanation = explainDecision(
     decision,
     envelope.findings.flatMap(
