@@ -1,8 +1,8 @@
 'use strict';
 
-const { orchestrate } = require('../../../server/l1-copilot/governed-orchestrator');
-const { validateEnvelope, CONTROL_PLANE_VERSION } = require('../../../server/vertical-control-plane/contract');
-const { fromOrchestration } = require('../../../server/vertical-control-plane/adapters/l1-adapter');
+const { orchestrate } = require('../server/l1-copilot/governed-orchestrator');
+const { validateEnvelope, CONTROL_PLANE_VERSION } = require('../server/vertical-control-plane/contract');
+const { fromOrchestration } = require('../server/vertical-control-plane/adapters/l1-adapter');
 
 let passed = 0;
 let failed = 0;
