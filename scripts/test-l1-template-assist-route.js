@@ -139,4 +139,4 @@ function request(path, body, useAuth = true) {
 
   console.log('');
   console.log('PHASE 9.3 — ALL TESTS PASSED');
-})();
+})().then(() => process.exit());
