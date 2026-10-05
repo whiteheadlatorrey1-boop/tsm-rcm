@@ -85,6 +85,8 @@ function createEnvelope(input = {}) {
 
     telemetry: input.telemetry || {},
 
+    outcomes: input.outcomes || [],
+
     metadata: input.metadata || {}
   };
 

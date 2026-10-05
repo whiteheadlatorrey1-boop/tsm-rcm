@@ -22,7 +22,30 @@ function findKey(obj, key, depth = 0) {
   return undefined;
 }
 
-function fromOrchestration(input = {}, result = {}) {
+// Maps an already-loaded handoff record (from handoff-store) to an outcome.
+// Pure: the adapter never reads the store. A handoff is not a ticket closure.
+function handoffToOutcome(h) {
+  if (!h || typeof h !== 'object') return [];
+  const a = h.action || {};
+  return [{
+    type: 'L1_HANDOFF',
+    handoffId: h.id ?? h.handoffId ?? null,
+    status: h.status ?? null,
+    technicianId: h.technician?.id ?? null,
+    actionType: a.actionType ?? null,
+    actionState: a.state ?? null,
+    confirmedAt: a.confirmedAt ?? null,
+    executedAt: a.executedAt ?? null,
+    workPerformed: h.workPerformed ?? null,
+    validation: h.validation ?? null,
+    blocker: h.blocker ?? null,
+    ticketClosureRequested: h.ticketClosureRequested === true,
+    recordedAt: h.createdAt ?? null,
+    source: 'l1-handoff-store'
+  }];
+}
+
+function fromOrchestration(input = {}, result = {}, extras = {}) {
   const ctx = (input && input.context) || {};
   const gates = findKey(result, 'gates') || {};
   const closure = gates.closure || {};
@@ -83,6 +106,7 @@ function fromOrchestration(input = {}, result = {}) {
         : []
     },
     writeback: { allowed: false, executed: false },
+    outcomes: handoffToOutcome(extras && extras.handoff),
     metadata: { source: 'l1-copilot/governed-orchestrator', adapter: 'l1-adapter', taskType: input.taskType ?? null }
   });
 }
