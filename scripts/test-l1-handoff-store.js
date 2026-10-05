@@ -3,10 +3,15 @@
 const fs = require('fs');
 const path = require('path');
 
-const store = require('../server/l1-copilot/handoff-store');
-
-const handoffFile = store.HANDOFF_FILE;
+const handoffFile = path.join(
+  __dirname,
+  '..',
+  'data',
+  'l1-copilot-handoffs.json'
+);
 const backupFile = `${handoffFile}.phase8-test-backup`;
+
+let store;
 
 function assert(condition, message) {
   if (!condition) {
@@ -40,6 +45,11 @@ function restoreTestFile() {
   console.log('==========================================');
 
   cleanTestFile();
+
+  delete require.cache[
+    require.resolve('../server/l1-copilot/handoff-store')
+  ];
+  store = require('../server/l1-copilot/handoff-store');
 
   try {
     console.log('\n=== 1. REJECT UNEXECUTED ACTION ===');
