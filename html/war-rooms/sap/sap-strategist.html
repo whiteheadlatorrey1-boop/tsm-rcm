@@ -338,6 +338,7 @@
 <div id="toast"></div>
 
 <script src="/html/war-rooms/_relay_control_plane/relay.core.js"></script>
+<script src="/html/shared/tsm-sap-intelligence.js"></script>
 <script>
 (function () {
   // Fixed SAP process order — this strategist renders the chain in the
@@ -632,12 +633,23 @@
     const support = collectSupport();
     const activeCount = all.filter(a => !!a.payload).length;
     const totalExposure = all.reduce((sum, a) => sum + exposureFor(a.meta, a.payload), 0);
+    const intelligencePayloads = Object.fromEntries(
+      all
+        .filter(a => a.payload)
+        .map(a => [a.meta.key, a.payload])
+    );
+
+    const intelligence = window.TSMSAPIntelligence
+      ? TSMSAPIntelligence.fromRelay(intelligencePayloads)
+      : null;
+
     const combined = {
       vertical: 'sap',
       timestamp: Date.now(),
       domain_count: activeCount,
       total_exposure: totalExposure,
       severity: severityFor(all, totalExposure),
+      intelligence,
       domains: all.map(a => ({
         domain: a.meta.key,
         label: a.meta.label,
