@@ -625,3 +625,19 @@ RCM-OS ("Reconciliation Command Center") does not follow the War Room → Strate
 *2026-08-29 (morning): a Playwright crawl of all 40 `suite-hub.html` links against a live logged-in session found the Executive Portal 401 pattern documented in the "PRE-DEMO CHECK" section near the top of this file — added as a flag for Monday's presentation, not yet root-caused or fixed. That entry was written from static source review only (`middleware/require-auth.js`, the `NODE_REPORTS_API` pattern) — no live browser/network access was available to confirm the exact failing request(s). Unrelated to this: `suite-hub.html` also picked up three small nav-only additions today (Client-Selector Smoke Test, Sentinel Client Portal, Login) — internal QA/routing links, not part of any documented demo chain, so no vertical section above needed updating for them.*
 
 *2026-08-29 (later same day): the 401 pattern above was root-caused and resolved — re-run with a puppeteer crawl (`tests/e2e/puppeteer-suite-hub-crawl.js`) that confirms the `/api/auth/login` response is actually `200` before crawling (the original pass never checked this), against the live Codespace deployment with real `MONGODB_URI`/`GROQ_API_KEY` credentials: 39/40 links pass clean. The 401s were a test-methodology gap, not an app defect. The lone remaining failure is a Cloudflare 525 SSL-handshake error on the third-party `intake.tsmatter.com` origin (Concierge Command's intake-records call) — confirmed via direct `curl -v`, outside this repo's control. "PRE-DEMO CHECK" section above has been updated in place to reflect this; the "before Monday" verification step is no longer outstanding.*
+
+## Flagship Demo Experiences
+
+Seven scripted flagship experiences are registered in `tests/e2e/demo/demo-readiness.json`. Engine output is canned through the war-room stub, not live model output. Regeneration commands are in `tests/e2e/demo/README.md`.
+
+| Experience | Engine output | Visual review |
+|---|---|---|
+| Aerospace | scripted | pending |
+| Detection | scripted | pending |
+| BESS | scripted | pending |
+| Capital | scripted | pending |
+| Cascade | scripted | pending |
+| Healthcare Thermal | scripted | pending |
+| Life Sciences | scripted | pending |
+
+None are presentation-ready until a human has reviewed the frames and flipped `visualReview` in the registry.
