@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ServiceNow Draft Review</title>
+<style>
+  body{font:15px/1.5 system-ui,sans-serif;max-width:760px;margin:24px auto;padding:0 16px;color:#1a1a1a}
+  .row{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+  textarea{width:100%;min-height:200px;font:inherit;padding:10px;box-sizing:border-box}
+  input{padding:8px;flex:1;min-width:260px}
+  button{padding:8px 14px;cursor:pointer}
+  .pill{display:inline-block;padding:2px 10px;border-radius:12px;background:#eee;font-size:13px}
+  .warn{background:#fff4e5;border:1px solid #f0b66b;padding:8px 12px;border-radius:6px}
+  .err{background:#fdecea;border:1px solid #e57373;padding:8px 12px;border-radius:6px}
+  .ok{background:#e8f5e9;border:1px solid #81c784;padding:8px 12px;border-radius:6px}
+  .meta{color:#555;font-size:13px}
+</style></head><body>
+<h2>ServiceNow Draft Review</h2>
+<div class="row">
+  <input id="draftId" placeholder="Draft ID" autocomplete="off">
+  <button id="load">Load</button>
+</div>
+<div id="msg"></div>
+<div id="panel" hidden>
+  <p><span class="pill" id="status"></span>
+     <span class="pill" id="target"></span>
+     <span class="meta" id="inc"></span></p>
+  <div id="unres" class="warn" hidden></div>
+  <label for="body"><b>Message</b></label>
+  <textarea id="body"></textarea>
+  <p class="meta" id="audit"></p>
+  <div class="row">
+    <button id="save">Save edit</button>
+    <button id="approve">Approve</button>
+    <button id="reject">Reject</button>
+    <button id="send">Send to ServiceNow</button>
+  </div>
+</div>
+<script>
+(function(){
+  var API='/api/l1/servicenow', cur=null;
+  var $=function(id){return document.getElementById(id)};
+  function say(kind,text){var m=$('msg');m.className=kind;m.textContent=text;m.hidden=!text}
+  async function call(method,path,body){
+    var o={method:method,credentials:'same-origin',headers:{}};
+    if(body){o.headers['Content-Type']='application/json';o.body=JSON.stringify(body)}
+    var r=await fetch(API+path,o), j={};
+    try{j=await r.json()}catch(e){}
+    if(!r.ok) throw new Error((j.message||j.error||('HTTP '+r.status)));
+    return j;
+  }
+  function show(d){
+    cur=d; $('panel').hidden=false;
+    $('status').textContent=d.status;
+    $('target').textContent=d.field==='comments'?'Customer-visible (comments)':'Internal (work notes)';
+    $('inc').textContent=d.incident.number;
+    $('body').value=d.body;
+    var editable=d.status==='draft';
+    $('body').readOnly=!editable;
+    $('save').disabled=!editable; $('reject').disabled=!editable;
+    $('approve').disabled=!editable||d.unresolved.length>0;
+    $('send').disabled=!(d.status==='approved'||d.status==='send_failed');
+    var u=$('unres');
+    if(d.unresolved.length){u.hidden=false;u.textContent='Fill these before approving: '+d.unresolved.join(', ')}else u.hidden=true;
+    var bits=['Created by '+d.created_by];
+    if(d.approval) bits.push('approved by '+d.approval.by);
+    if(d.send&&d.send.error) bits.push('last send error: '+d.send.error);
+    $('audit').textContent=bits.join(' · ');
+  }
+  async function act(fn,okText){
+    try{ var r=await fn(); show(r.draft||r); say('ok',okText); }
+    catch(e){ say('err',e.message); }
+  }
+  $('load').onclick=function(){
+    var id=$('draftId').value.trim();
+    act(function(){return call('GET','/drafts/'+encodeURIComponent(id))},'Loaded.');
+  };
+  $('save').onclick=function(){act(function(){return call('PATCH','/drafts/'+cur.id,{body:$('body').value})},'Saved.')};
+  $('approve').onclick=function(){act(function(){return call('POST','/drafts/'+cur.id+'/approve')},'Approved. Text is now frozen.')};
+  $('reject').onclick=function(){
+    var reason=prompt('Reason for rejecting?'); if(reason===null) return;
+    act(function(){return call('POST','/drafts/'+cur.id+'/reject',{reason:reason})},'Rejected.');
+  };
+  $('send').onclick=function(){
+    var where=cur.field==='comments'?'the CUSTOMER-VISIBLE comments':'internal work notes';
+    if(!confirm('Post this to '+cur.incident.number+' '+where+'?')) return;
+    act(function(){return call('POST','/drafts/'+cur.id+'/send')},'Sent.');
+  };
+  var q=new URLSearchParams(location.search).get('id');
+  if(q){$('draftId').value=q;$('load').click()}
+})();
+</script></body></html>

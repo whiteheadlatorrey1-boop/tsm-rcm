@@ -3981,6 +3981,7 @@ app.use(require('./routes/integrations-fhir'));
 // See routes/rcm-relay.js header for the full endpoint contract.
 app.use('/api/rcm', require('./routes/rcm-relay'));
 app.use('/api/rcm', require('./routes/rcm-requirements'));
+app.use('/api/l1/servicenow', require('./routes/l1-servicenow-drafts'));
 
 // ── SCHOOLS FINANCIAL EXPOSURE ──────────────────────────────────────────────
 // Server-side rate-card math for the Schools war room. The rate card
