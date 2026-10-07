@@ -1,6 +1,6 @@
 'use strict';
 const express = require('express');
-const { requireAnyAuth, requireRole } = require('../middleware/require-auth');
+const { requireRole } = require('../middleware/require-auth');
 const svc = require('../l1-servicenow/service');
 
 const router = express.Router();
@@ -19,10 +19,11 @@ const wrap = fn => async (req, res) => {
   }
 };
 const reviewer = requireRole(['admin', 'manager']);
+const staff = requireRole(['admin', 'manager', 'analyst']);
 
-router.get('/templates', requireAnyAuth, wrap(() => svc.listTemplates()));
-router.post('/drafts', requireAnyAuth, wrap(req => svc.createDraft(req.body || {}, who(req))));
-router.get('/drafts/:id', requireAnyAuth, wrap(req => svc.getDraft(req.params.id)));
+router.get('/templates', staff, wrap(() => svc.listTemplates()));
+router.post('/drafts', staff, wrap(req => svc.createDraft(req.body || {}, who(req))));
+router.get('/drafts/:id', staff, wrap(req => svc.getDraft(req.params.id)));
 router.patch('/drafts/:id', reviewer, wrap(req => svc.editDraft(req.params.id, (req.body || {}).body, who(req))));
 router.post('/drafts/:id/approve', reviewer, wrap(req => svc.approveDraft(req.params.id, who(req))));
 router.post('/drafts/:id/reject', reviewer, wrap(req => svc.rejectDraft(req.params.id, (req.body || {}).reason, who(req))));

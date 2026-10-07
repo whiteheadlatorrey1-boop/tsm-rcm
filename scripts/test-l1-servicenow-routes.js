@@ -75,6 +75,11 @@ async function call(base, method, p, token, body) {
   ok(audit.some(e => e.event === 'approved' && e.actor === 's2'), 'audit log records approval by s2');
   ok(!audit.some(e => e.event === 'sent'), 'nothing was ever sent');
 
+  r = await call(base, 'POST', '/drafts', cl, draftBody);
+  ok(r.status === 401 || r.status === 403, 'client cannot create drafts (got ' + r.status + ')');
+  r = await call(base, 'GET', '/drafts/' + id, cl);
+  ok(r.status === 401 || r.status === 403, 'client cannot read drafts (got ' + r.status + ')');
+
   server.close();
   console.log(pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
