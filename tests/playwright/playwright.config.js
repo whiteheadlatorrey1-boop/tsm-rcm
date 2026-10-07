@@ -50,7 +50,7 @@ module.exports = {
   webServer: {
     command: `PORT=${TEST_PORT} node -r dotenv/config ` + path.join(__dirname, '..', '..', 'server.js'),
     url: `${BASE_URL}/html/healthcare/hc-main-strategist.html`,
-    reuseExistingServer: false,
+    reuseExistingServer: true,
     timeout: 30000,
   },
 };

@@ -14,7 +14,7 @@ test('HC Portfolio → Career bridge preserves canonical leakage contract', asyn
   });
 
   await page.goto(
-    'http://localhost:4173/html/tsm-career-training-platform.html',
+    `${process.env.BASE_URL || 'http://localhost:4173'}/html/tsm-career-training-platform.html`,
     { waitUntil: 'domcontentloaded' }
   );
 

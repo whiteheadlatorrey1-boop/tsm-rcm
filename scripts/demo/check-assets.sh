@@ -28,11 +28,14 @@ resolve_asset() {
       [ -f "$candidate" ] && { echo "$candidate"; return; }
       candidate="$REPO_ROOT/html/js/${p#/js/}"
       [ -f "$candidate" ] && { echo "$candidate"; return; }
+      candidate="$REPO_ROOT/js/${p#/js/}"
+      [ -f "$candidate" ] && { echo "$candidate"; return; }
       ;;
     /bpo/*) candidate="$REPO_ROOT/html/bpo/${p#/bpo/}"; [ -f "$candidate" ] && { echo "$candidate"; return; } ;;
     /shared/*) candidate="$REPO_ROOT/html/bpo/shared/${p#/shared/}"; [ -f "$candidate" ] && { echo "$candidate"; return; } ;;
     /insurance/*) candidate="$REPO_ROOT/html/tsm-insurance/${p#/insurance/}"; [ -f "$candidate" ] && { echo "$candidate"; return; } ;;
     /construction/*) candidate="$REPO_ROOT/html/construction-suite/${p#/construction/}"; [ -f "$candidate" ] && { echo "$candidate"; return; } ;;
+    /music/*) candidate="$REPO_ROOT/html/war-rooms/music-war/${p#/music/}"; [ -f "$candidate" ] && { echo "$candidate"; return; } ;;
     /runtime/*) candidate="$REPO_ROOT/runtime/${p#/runtime/}"; [ -f "$candidate" ] && { echo "$candidate"; return; } ;;
     /architecture/*) candidate="$REPO_ROOT/architecture/${p#/architecture/}"; [ -f "$candidate" ] && { echo "$candidate"; return; } ;;
     /html/*) candidate="$REPO_ROOT/html/${p#/html/}"; [ -f "$candidate" ] && { echo "$candidate"; return; } ;;

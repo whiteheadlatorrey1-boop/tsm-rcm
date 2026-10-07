@@ -26,8 +26,11 @@ while IFS='|' read -r vertical war strat exec domain; do
     continue
   fi
 
-  if grep -qE "TSM\.relay\.write\(\s*['\"]${domain}['\"]" "$war_f"; then
+  if grep -qE "TSM\.relay\.write\([[:space:]]*['\"]${domain}['\"]" "$war_f"; then
     pass "$vertical: war-room writes domain '$domain'"
+  elif grep -qE "const[[:space:]]+[A-Za-z_][A-Za-z0-9_]*[[:space:]]*=[[:space:]]*['\"]${domain}['\"]" "$war_f" &&
+       grep -qE "TSM\.relay\.write\([[:space:]]*[A-Za-z_][A-Za-z0-9_]*[[:space:]]*," "$war_f"; then
+    pass "$vertical: war-room writes domain '$domain' via named constant"
   else
     fail "$vertical: war-room does NOT call TSM.relay.write('$domain', ...) — check for a stale/renamed domain key"
   fi
