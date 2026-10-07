@@ -1,7 +1,5 @@
 const { test, expect } = require('@playwright/test');
 
-const BASE_URL = process.env.TSM_BASE_URL || 'http://localhost:8080';
-
 test('SAP Strategist relays canonical intelligence envelope', async ({ page }) => {
   test.setTimeout(60_000);
 
@@ -37,7 +35,7 @@ test('SAP Strategist relays canonical intelligence envelope', async ({ page }) =
     localStorage.setItem('TSM_O2C_RELAY', JSON.stringify(o2c));
   }, { catalog, crm, cpq, o2c });
 
-  await page.goto(`${BASE_URL}/html/war-rooms/sap/sap-strategist.html`);
+  await page.goto('/html/war-rooms/sap/sap-strategist.html');
 
   await page.getByRole('button', { name: /Relay to Executive Portal/i }).click();
 
