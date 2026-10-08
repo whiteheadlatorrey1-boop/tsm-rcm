@@ -62,6 +62,63 @@ router.get('/vmware/state', (req, res) => {
   res.json(vmwareTwin.getState());
 });
 
+// Read-only compatibility health summary for L1 / VMware Copilot consumers.
+router.get('/vmware/health', (req, res) => {
+  const state = vmwareTwin.getState();
+  const hosts = state.clusters.flatMap((cluster) => cluster.hosts);
+  const vms = Object.values(state.vms);
+  const datastores = state.datastores || [];
+
+  const connectedHosts = hosts.filter((host) => host.status === 'up').length;
+  const runningVms = vms.filter((vm) => vm.status === 'running').length;
+  const storageUsedPct = datastores.length
+    ? Math.round(
+        (datastores.reduce((sum, ds) => sum + ds.usedGB, 0) /
+          datastores.reduce((sum, ds) => sum + ds.capacityGB, 0)) *
+          100
+      )
+    : 0;
+
+  const activeHosts = hosts.filter((host) => host.status === 'up');
+  const avg = (field) =>
+    activeHosts.length
+      ? Math.round(
+          activeHosts.reduce((sum, host) => sum + Number(host[field] || 0), 0) /
+            activeHosts.length
+        )
+      : 0;
+
+  const healthy =
+    connectedHosts === hosts.length &&
+    runningVms === vms.length &&
+    datastores.every((ds) => ds.status === 'healthy');
+
+  res.json({
+    ok: true,
+    source: 'digital-twin',
+    fetchedAt: state.updatedAt,
+    vcenter: {
+      status: healthy ? 'Healthy' : 'Degraded',
+      hosts: {
+        connected: connectedHosts,
+        total: hosts.length,
+      },
+      vms: {
+        total: vms.length,
+        running: runningVms,
+      },
+      storage: {
+        usedPct: storageUsedPct,
+      },
+      cpuPct: avg('cpuPct'),
+      memPct: avg('memPct'),
+    },
+    vra: {
+      status: 'Not modeled',
+    },
+  });
+});
+
 router.get('/vmware/fault-types', (req, res) => {
   res.json({ faultTypes: VMWARE_FAULTS });
 });
