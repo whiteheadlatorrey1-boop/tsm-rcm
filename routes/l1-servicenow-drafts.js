@@ -20,13 +20,19 @@ const wrap = fn => async (req, res) => {
 };
 const reviewer = requireRole(['admin', 'manager']);
 const staff = requireRole(['admin', 'manager', 'analyst']);
+// Approve/send must be attributable to a person; the shared admin login has no staffId.
+const named = (req, res, next) => {
+  const s = req.tsmSession || {};
+  if (!s.staffId) return res.status(403).json({ error: 'named_reviewer_required', message: 'Approve and send require a personal staff login, not the shared admin login.' });
+  next();
+};
 
 router.get('/templates', staff, wrap(() => svc.listTemplates()));
 router.post('/drafts', staff, wrap(req => svc.createDraft(req.body || {}, who(req))));
 router.get('/drafts/:id', staff, wrap(req => svc.getDraft(req.params.id)));
 router.patch('/drafts/:id', reviewer, wrap(req => svc.editDraft(req.params.id, (req.body || {}).body, who(req))));
-router.post('/drafts/:id/approve', reviewer, wrap(req => svc.approveDraft(req.params.id, who(req))));
+router.post('/drafts/:id/approve', reviewer, named, wrap(req => svc.approveDraft(req.params.id, who(req))));
 router.post('/drafts/:id/reject', reviewer, wrap(req => svc.rejectDraft(req.params.id, (req.body || {}).reason, who(req))));
-router.post('/drafts/:id/send', reviewer, wrap(req => svc.sendDraft(req.params.id, who(req))));
+router.post('/drafts/:id/send', reviewer, named, wrap(req => svc.sendDraft(req.params.id, who(req))));
 
 module.exports = router;

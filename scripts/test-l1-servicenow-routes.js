@@ -80,6 +80,19 @@ async function call(base, method, p, token, body) {
   r = await call(base, 'GET', '/drafts/' + id, cl);
   ok(r.status === 401 || r.status === 403, 'client cannot read drafts (got ' + r.status + ')');
 
+  // --- named approvers ---
+  const an = sess('analyst', 's3'), ad = sess('admin');
+  r = await call(base, 'POST', '/drafts', m1, draftBody);
+  const id2 = r.j.id;
+  r = await call(base, 'POST', '/drafts/' + id2 + '/approve', ad);
+  ok(r.status === 403 && r.j.error === 'named_reviewer_required', 'shared admin login cannot approve (got ' + r.status + ' ' + r.j.error + ')');
+  r = await call(base, 'POST', '/drafts/' + id2 + '/approve', an);
+  ok(r.status === 401 || r.status === 403, 'analyst cannot approve (got ' + r.status + ')');
+  r = await call(base, 'POST', '/drafts/' + id2 + '/approve', m2);
+  ok(r.status === 200 && r.j.status === 'approved', 'named manager approves');
+  r = await call(base, 'POST', '/drafts/' + id2 + '/send', ad);
+  ok(r.status === 403 && r.j.error === 'named_reviewer_required', 'shared admin login cannot send (got ' + r.status + ' ' + r.j.error + ')');
+
   server.close();
   console.log(pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
