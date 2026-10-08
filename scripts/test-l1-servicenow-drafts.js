@@ -37,29 +37,51 @@ const SYS = 'a'.repeat(32);
   await rejects(svc.sendDraft(d.id, 'tech'), 'writeback_disabled', 'send blocked by default');
 
   process.env.SN_WRITEBACK_ENABLED = 'true';
-  process.env.SN_INSTANCE_URL = 'https://example.service-now.com';
-  process.env.SN_USER = 'u'; process.env.SN_PASSWORD = 'p';
   let calls = [];
-  const stub = async (url, o) => { calls.push({ url, o }); return { ok: true, status: 200, json: async () => ({ result: { sys_id: SYS, number: 'INC0012345' } }) }; };
+  const mkAdapter = (fail) => ({ isConfigured: () => true,
+    writeComment: async (t, b) => { calls.push({ fn: 'comments', t, b }); if (fail) throw fail; return { success: true }; },
+    writeWorkNote: async (t, b) => { calls.push({ fn: 'work_notes', t, b }); if (fail) throw fail; return { success: true }; } });
+  const stub = mkAdapter();
 
-  let r = await svc.sendDraft(d.id, 'tech', { fetchImpl: stub });
+  let r = await svc.sendDraft(d.id, 'tech', { adapter: stub });
   ok(r.draft.status === 'sent' && calls.length === 1, 'sent once');
-  ok(calls[0].o.method === 'PATCH' && calls[0].url.endsWith('/api/now/table/incident/' + SYS), 'PATCH to incident');
-  ok(JSON.parse(calls[0].o.body).comments === d.body, 'payload uses comments field');
-  r = await svc.sendDraft(d.id, 'tech', { fetchImpl: stub });
+  ok(calls[0].fn === 'comments' && calls[0].t === SYS && calls[0].b === d.body, 'comments written via adapter to the incident sys_id');
+  r = await svc.sendDraft(d.id, 'tech', { adapter: stub });
   ok(r.already_sent === true && calls.length === 1, 'second send is a no-op');
 
   let w = svc.createDraft({ template_id: 'resolved', incident: inc, caller, vars: { resolution: 'x', reopen_days: 3 } }, 'l1');
   svc.approveDraft(w.id, 'tech');
-  const bad = async () => ({ ok: false, status: 500, json: async () => ({}) });
-  await rejects(svc.sendDraft(w.id, 'tech', { fetchImpl: bad }), 'servicenow_rejected', 'non-2xx surfaces');
+  const bad = mkAdapter(Object.assign(new Error('boom'), { status: 500 }));
+  await rejects(svc.sendDraft(w.id, 'tech', { adapter: bad }), 'servicenow_rejected', 'non-2xx surfaces');
   ok(svc.getDraft(w.id).status === 'send_failed', 'marked send_failed (retryable)');
 
   let t = svc.createDraft({ template_id: 'ack', incident: inc, caller, vars: { update_by: 'EOD' } }, 'l1');
   svc.approveDraft(t.id, 'tech');
   const f = path.join(process.env.L1_DRAFT_DIR, t.id + '.json');
   const raw = JSON.parse(fs.readFileSync(f, 'utf8')); raw.body = 'tampered'; fs.writeFileSync(f, JSON.stringify(raw));
-  await rejects(svc.sendDraft(t.id, 'tech', { fetchImpl: stub }), 'body_changed_after_approval', 'tamper detected');
+  await rejects(svc.sendDraft(t.id, 'tech', { adapter: stub }), 'body_changed_after_approval', 'tamper detected');
+
+  // --- adapter delegation ---
+  const approved = (tpl, incident, vars) => { const x = svc.createDraft({ template_id: tpl, incident, caller, vars: vars || {} }, 'l1'); svc.approveDraft(x.id, 'tech'); return x; };
+  const ackVars = { update_by: 'EOD' };
+  let n2 = approved('internal-l1', inc, { reported: 'r', troubleshooting: 't', findings: 'f', next_step: 'n', escalated_to: 'none' });
+  calls.length = 0;
+  await svc.sendDraft(n2.id, 'tech', { adapter: stub });
+  ok(calls.length === 1 && calls[0].fn === 'work_notes', 'internal draft goes through writeWorkNote');
+  let p = approved('ack', { number: 'INC0099999' }, ackVars);
+  calls.length = 0;
+  await svc.sendDraft(p.id, 'tech', { adapter: stub });
+  ok(calls.length === 1 && calls[0].t === 'INC0099999', 'draft without sys_id sends by incident number');
+  let u = approved('ack', inc, ackVars);
+  await rejects(svc.sendDraft(u.id, 'tech', { adapter: mkAdapter(Object.assign(new Error('not present'), { code: 'COMMENT_WRITE_UNVERIFIED' })) }), 'servicenow_unverified', 'unverified write surfaces');
+  ok(svc.getDraft(u.id).status === 'send_failed', 'unverified marked send_failed');
+  let nf = approved('ack', inc, ackVars);
+  await rejects(svc.sendDraft(nf.id, 'tech', { adapter: mkAdapter(new Error('No incident found for "INC1" — cannot write comment.')) }), 'incident_not_found', 'missing incident surfaces');
+  let nc = approved('ack', inc, ackVars);
+  await rejects(svc.sendDraft(nc.id, 'tech', { adapter: Object.assign(mkAdapter(), { isConfigured: () => false }) }), 'servicenow_not_configured', 'unconfigured adapter refused');
+  ok(svc.getDraft(nc.id).status === 'approved', 'unconfigured send leaves draft approved');
+  let net = approved('ack', inc, ackVars);
+  await rejects(svc.sendDraft(net.id, 'tech', { adapter: mkAdapter(new Error('ECONNRESET')) }), 'servicenow_unreachable', 'network failure surfaces');
 
   console.log(pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
