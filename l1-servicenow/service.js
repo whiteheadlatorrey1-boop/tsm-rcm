@@ -119,49 +119,45 @@ function rejectDraft(id, reason, actor) {
 }
 
 async function sendDraft(id, actor, opts) {
-  const fetchImpl = (opts && opts.fetchImpl) || globalThis.fetch;
+  const adapter = (opts && opts.adapter) || require('../server/l1-copilot/servicenow-adapter');
   const d = getDraft(id);
   if (d.status === 'sent') return { draft: d, already_sent: true };
   if (d.status === 'sending') throw new DraftError(409, 'send_in_doubt', 'A previous send did not finish. Check the incident in ServiceNow before retrying.');
   if (d.status !== 'approved' && d.status !== 'send_failed') throw new DraftError(409, 'not_approved');
   if (!d.approval || d.approval.body_sha256 !== hash(d.body)) throw new DraftError(409, 'body_changed_after_approval');
   if (process.env.SN_WRITEBACK_ENABLED !== 'true') throw new DraftError(403, 'writeback_disabled');
-  const base = process.env.SN_INSTANCE_URL, user = process.env.SN_USER, pass = process.env.SN_PASSWORD;
-  if (!base || !/^https:\/\//.test(base) || !user || !pass) throw new DraftError(500, 'servicenow_not_configured');
-  if (!d.incident.sys_id) throw new DraftError(422, 'incident_sys_id_required');
+  if (!adapter.isConfigured()) throw new DraftError(500, 'servicenow_not_configured', 'ServiceNow integration is not configured (SERVICENOW_INTEGRATION_ENABLED, SERVICENOW_INSTANCE_URL and credentials).');
+
+  const target = d.incident.sys_id || d.incident.number;
+  const write = d.field === 'comments' ? adapter.writeComment : adapter.writeWorkNote;
+  if (typeof write !== 'function') throw new DraftError(500, 'servicenow_not_configured', 'ServiceNow adapter has no writer for ' + d.field + '.');
 
   d.status = 'sending'; d.send = { started_by: actor, started_at: new Date().toISOString() };
   save(d); audit('send_started', id, actor, { field: d.field });
 
-  const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), 15000);
   try {
-    const res = await fetchImpl(base.replace(/\/$/, '') + '/api/now/table/incident/' + d.incident.sys_id, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json', Accept: 'application/json',
-        Authorization: 'Basic ' + Buffer.from(user + ':' + pass).toString('base64')
-      },
-      body: JSON.stringify({ [d.field]: d.body }),
-      signal: ctl.signal
-    });
-    if (!res.ok) {
-      d.status = 'send_failed'; d.send.error = 'HTTP ' + res.status; d.send.at = new Date().toISOString();
-      save(d); audit('send_failed', id, actor, { http: res.status });
-      throw new DraftError(502, 'servicenow_rejected', 'ServiceNow returned HTTP ' + res.status);
-    }
-    const j = await res.json().catch(() => ({}));
+    await write(target, d.body);
     d.status = 'sent';
-    d.send = { by: actor, at: new Date().toISOString(), sys_id: (j.result && j.result.sys_id) || d.incident.sys_id,
-               number: (j.result && j.result.number) || d.incident.number };
-    save(d); audit('sent', id, actor, { field: d.field, sys_id: d.send.sys_id });
+    d.send = { by: actor, at: new Date().toISOString(), number: d.incident.number, sys_id: d.incident.sys_id, verified: true };
+    save(d); audit('sent', id, actor, { field: d.field, number: d.incident.number });
     return { draft: d, already_sent: false };
   } catch (e) {
-    if (e instanceof DraftError) throw e;
-    d.status = 'send_failed'; d.send.error = String(e.name || 'error'); d.send.at = new Date().toISOString();
-    save(d); audit('send_failed', id, actor, { error: d.send.error });
+    d.status = 'send_failed';
+    d.send.error = String((e && (e.code || e.name)) || 'error');
+    if (e && typeof e.status === 'number') d.send.http = e.status;
+    d.send.at = new Date().toISOString();
+    save(d); audit('send_failed', id, actor, { error: d.send.error, http: d.send.http });
+    if (e && /_WRITE_UNVERIFIED$/.test(String(e.code || ''))) {
+      throw new DraftError(502, 'servicenow_unverified', 'ServiceNow accepted the write but it was not found on read-back (often a blocked ACL or a closed incident). Check the incident before retrying.');
+    }
+    if (e && /No incident found/.test(String(e.message || ''))) {
+      throw new DraftError(404, 'incident_not_found', 'No such incident in ServiceNow.');
+    }
+    if (e && typeof e.status === 'number') {
+      throw new DraftError(502, 'servicenow_rejected', 'ServiceNow returned HTTP ' + e.status);
+    }
     throw new DraftError(502, 'servicenow_unreachable', 'Send failed; it may or may not have posted. Check the incident before retrying.');
-  } finally { clearTimeout(timer); }
+  }
 }
 
 module.exports = { DraftError, displayName, listTemplates, createDraft, getDraft, editDraft,

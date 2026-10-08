@@ -309,6 +309,40 @@ async function writeWorkNote(incidentId, note, config) {
 }
 
 /**
+ * writeComment(incidentId, comment, config?) -> { success: true }
+ * Customer-visible additional comment (incident.comments). Only the approved-draft
+ * flow in l1-servicenow/ calls this. Same read-after-write verification as
+ * writeWorkNote: a silently ACL-blocked write is reported, not trusted.
+ */
+async function writeComment(incidentId, comment, config) {
+  const cfg = config || loadConfigFromEnv();
+  const ticket = await getTicket(incidentId, cfg);
+  if (!ticket) throw new Error(`No incident found for "${incidentId}" — cannot write comment.`);
+
+  await snRequest(cfg, 'PATCH', `/api/now/table/incident/${ticket.sysId}`, {
+    body: { comments: comment }
+  });
+
+  const verifyTicket = await getTicket(incidentId, cfg);
+  const rawComments = verifyTicket && verifyTicket.raw && verifyTicket.raw.comments;
+  const commentsText = rawComments == null
+    ? ''
+    : (typeof rawComments === 'object' ? (rawComments.display_value ?? rawComments.value ?? '') : rawComments);
+
+  if (!String(commentsText).includes(comment)) {
+    const err = new Error(
+      `writeComment on "${incidentId}" returned success but the comment is not present when read back. ` +
+      `Most commonly an ACL silently blocked the write or the incident is closed/canceled. ` +
+      `Verify the service account's roles and the ticket's state before retrying.`
+    );
+    err.code = 'COMMENT_WRITE_UNVERIFIED';
+    throw err;
+  }
+
+  return { success: true };
+}
+
+/**
  * READ-ONLY SERVICE CATALOG / TASK LOOKUPS
  *
  * Production L1 contract:
@@ -706,7 +740,8 @@ async function getTicketsBatch(incidentIds, options, config) {
 
 module.exports = {
   // PRODUCTION L1 SURFACE
-  // READ operations plus the single governed write: incident.work_notes.
+  // READ operations plus governed writes: incident.work_notes (append-only) and
+  // incident.comments (customer-visible; approved-draft flow only).
   DEFAULT_FIELD_MAP,
   DEFAULT_BATCH_OPTIONS,
   MAX_BATCH_SIZE,
@@ -722,6 +757,7 @@ module.exports = {
   getCatalogTasksByRequestItem,
   getTicketsBatch,
   writeWorkNote,
+  writeComment,
 
   // PDI / TEST ONLY.
   // These are intentionally isolated from the production L1 surface.

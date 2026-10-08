@@ -82,6 +82,10 @@ const server = http.createServer((req, res) => {
 
       // Simulate ServiceNow's journal-field append so the adapter's
       // read-after-write verification has real state to inspect.
+      if (incident && patchBody.comments && patchBody.comments !== 'ACL-DROP') {
+        incident.comments = incident.comments ? `${incident.comments}\n${patchBody.comments}` : patchBody.comments;
+      }
+
       if (incident && patchBody.work_notes) {
         incident.work_notes = incident.work_notes
           ? `${incident.work_notes}\n${patchBody.work_notes}`
@@ -174,6 +178,18 @@ async function main() {
   check('writeWorkNote reports success', wn.success === true);
   check('writeWorkNote PATCHed the work_notes field with the given text', patchBody.work_notes === 'Replaced battery, verified boot.');
   check('writeWorkNote PATCHed the correct sys_id path', patchUrl === '/api/now/table/incident/ffffffffffffffffffffffffffffffff');
+
+  // writeComment — customer-visible journal field, verified by read-back
+  const wc = await adapter.writeComment('INC0012345', 'We have replaced your battery.', config);
+  check('writeComment reports success', wc.success === true);
+  check('writeComment PATCHed the comments field', patchBody.comments === 'We have replaced your battery.');
+  check('writeComment did not touch work_notes', patchBody.work_notes === undefined);
+  let aclErr = null;
+  try { await adapter.writeComment('INC0012345', 'ACL-DROP', config); } catch (e) { aclErr = e; }
+  check('writeComment flags a silently dropped write', !!aclErr && aclErr.code === 'COMMENT_WRITE_UNVERIFIED');
+  let noCommentErr = null;
+  try { await adapter.writeComment('INC-NOPE-0000', 'x', config); } catch (e) { noCommentErr = e; }
+  check('writeComment errors when incident not found', !!noCommentErr && /No incident found/.test(noCommentErr.message));
 
   // updateTicketStatus
   const st = await adapter._pdi.updateTicketStatus('INC0012345', '6', config);
