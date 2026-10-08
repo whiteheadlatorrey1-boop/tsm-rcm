@@ -8,6 +8,8 @@
 //   POST /api/finops/workpaper-push       finops-operations.html
 //   GET  /api/finops/workpapers           read side for the pushes above
 //   POST /api/wip/finops/accrual-recon    financial-ui.html (logic lives in wip-handlers.js)
+//   GET  /api/auth/me                     re-exec-portal.html (approve buttons need {id, name, role})
+//   GET  /api/auth/me                     re-exec-portal.html (approve buttons need {id, name, role})
 const express = require('express');
 const { requireAnyAuth } = require('../middleware/require-auth');
 const { finopsAccrualRecon } = require('../wip-handlers');
@@ -78,6 +80,20 @@ router.get('/api/finops/workpapers', requireAnyAuth, (req, res) => res.json({ ok
 
 router.post('/api/wip/finops/accrual-recon', requireAnyAuth, json, async (req, res) => {
   try { res.json(await finopsAccrualRecon(req.body || {})); } catch (e) { fail(res, e); }
+});
+
+// The caller's own session claims, so an approval can be attributed. Read-only; 401 without a session.
+router.get('/api/auth/me', requireAnyAuth, (req, res) => {
+  const t = req.tsmSession || {};
+  const id = t.staffId || t.clientId || t.label || t.role;
+  res.json({ ok: true, id, name: t.label || t.staffId || t.clientId || t.role, role: t.role, staffId: t.staffId || null, clientId: t.clientId || null, tenantId: t.tenantId || null });
+});
+
+// The caller's own session claims, so an approval can be attributed. Read-only; 401 without a session.
+router.get('/api/auth/me', requireAnyAuth, (req, res) => {
+  const t = req.tsmSession || {};
+  const id = t.staffId || t.clientId || t.label || t.role;
+  res.json({ ok: true, id, name: t.label || t.staffId || t.clientId || t.role, role: t.role, staffId: t.staffId || null, clientId: t.clientId || null, tenantId: t.tenantId || null });
 });
 
 module.exports = router;

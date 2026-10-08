@@ -27,7 +27,7 @@ const srv = app.listen(0, async () => {
     }); r.on('error', reject); if (data) r.write(data); r.end();
   });
   try {
-    for (const [m, p] of [['POST', '/api/groq'], ['POST', '/api/finance/query'], ['POST', '/api/finops/workpaper-push'], ['GET', '/api/finops/workpapers'], ['POST', '/api/wip/finops/accrual-recon']])
+    for (const [m, p] of [['POST', '/api/groq'], ['POST', '/api/finance/query'], ['POST', '/api/finops/workpaper-push'], ['GET', '/api/finops/workpapers'], ['POST', '/api/wip/finops/accrual-recon'], ['GET', '/api/auth/me']])
       ok((await call(m, p, {}, false)).status === 401, `${m} ${p} requires a session`);
 
     let r = await call('POST', '/api/groq', { query: 'hello' });
@@ -50,6 +50,12 @@ const srv = app.listen(0, async () => {
 
     r = await call('POST', '/api/wip/finops/accrual-recon', { accrued: 200, invoiced: 150, flush_threshold: 100 });
     ok(r.status === 200 && r.json.metrics && r.json.metrics.variance === 50, 'accrual-recon returns metrics');
+
+    r = await call('GET', '/api/auth/me');
+    ok(r.status === 200 && r.json.role === 'admin' && r.json.name && r.json.id, 'auth/me returns { id, name, role } for the session');
+
+    r = await call('GET', '/api/auth/me');
+    ok(r.status === 200 && r.json.role === 'admin' && r.json.name && r.json.id, 'auth/me returns { id, name, role } for the session');
 
     const root = path.join(__dirname, '..');
     ok(/require\('\.\/routes\/hub-api-compat'\)/.test(fs.readFileSync(path.join(root, 'server.js'), 'utf8')), 'server.js mounts hub-api-compat');
