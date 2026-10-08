@@ -4027,6 +4027,8 @@ const { chatRouter: financeChatRouter, auditRouter: financeAuditRouter } = requi
 // GCU PILOT FIX 2026-08-26: fetched by Legal and Healthcare with no auth check.
 app.use('/api/chat', requireAnyAuth, financeChatRouter);
 app.use('/api/audit', requireAnyAuth, financeAuditRouter);
+// Hub pages call these but they had no handler (see routes/hub-api-compat.js).
+app.use(require('./routes/hub-api-compat'));
 
 // ── AI QUERY ROUTES ───────────────────────────────────────────────────────────
 app.post('/api/ai/query', async (req, res) => {
