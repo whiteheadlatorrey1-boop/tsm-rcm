@@ -1672,6 +1672,108 @@ TICKET DESCRIPTION</div>
           <div class="btn-row"><button class="btn btn-ghost" id="btnClearNotes">CLEAR NOTES</button></div>
         </div>
       </div>
+      <!-- SERVICENOW UPDATE DRAFT: creates a draft only. A named manager approves and sends it on the review page. -->
+      <div class="card" id="snDraftCard" style="margin-top:12px">
+        <div class="card-head">SERVICENOW UPDATE DRAFT — REVIEW REQUIRED</div>
+        <div class="card-body">
+          <div class="field"><div class="field-label">Template</div><select id="snDraftTpl"><option value="">Loading templates…</option></select></div>
+          <div class="field"><div class="field-label">Caller EID (optional, internal notes only)</div><input id="snDraftEid" placeholder="E123456"></div>
+          <div id="snDraftVars"></div>
+          <div class="btn-row"><button class="btn btn-outline" id="btnSnDraftCreate">CREATE DRAFT FOR REVIEW</button></div>
+          <div id="snDraftOut" style="font-size:12px; margin-top:8px">Nothing is sent to ServiceNow from here. A manager reviews and approves each draft first.</div>
+        </div>
+      </div>
+      <script>
+      (function () {
+        var API = '/api/l1/servicenow', templates = [], loaded = false;
+        var AUTO = { inc_number: 1, user_display: 1, user_eid: 1 };
+        function $(id) { return document.getElementById(id); }
+        function say(text, isErr) { var o = $('snDraftOut'); o.textContent = text; o.style.color = isErr ? '#e57373' : ''; }
+        function varsOf(body) {
+          var out = [], m, re = /\{\{\s*([\w.]+)\s*\}\}/g;
+          while ((m = re.exec(body))) { if (!AUTO[m[1]] && out.indexOf(m[1]) < 0) out.push(m[1]); }
+          return out;
+        }
+        function splitName(full) {
+          full = String(full || '').trim();
+          if (!full) return { first_name: '', last_name: '' };
+          if (full.indexOf(',') > -1) { var p = full.split(','); return { first_name: p.slice(1).join(',').trim(), last_name: p[0].trim() }; }
+          var t = full.split(/\s+/);
+          return { first_name: t.slice(0, -1).join(' '), last_name: t[t.length - 1] };
+        }
+        function current() {
+          var id = $('snDraftTpl').value;
+          for (var i = 0; i < templates.length; i++) if (templates[i].id === id) return templates[i];
+          return null;
+        }
+        async function api(method, path, body) {
+          var o = { method: method, credentials: 'same-origin', headers: {} };
+          if (body) { o.headers['Content-Type'] = 'application/json'; o.body = JSON.stringify(body); }
+          var r = await fetch(API + path, o), j = {};
+          try { j = await r.json(); } catch (e) {}
+          if (!r.ok) throw new Error(j.message || j.error || ('HTTP ' + r.status));
+          return j;
+        }
+        function renderVars() {
+          var t = current(), box = $('snDraftVars');
+          box.innerHTML = '';
+          if (!t) return;
+          varsOf(t.body).forEach(function (v) {
+            var wrap = document.createElement('div'); wrap.className = 'field';
+            var lab = document.createElement('div'); lab.className = 'field-label'; lab.textContent = v.replace(/_/g, ' ');
+            var inp = document.createElement('textarea'); inp.rows = 2; inp.setAttribute('data-var', v);
+            if (v === 'troubleshooting' && $('notesArea')) inp.value = $('notesArea').value;
+            if (v === 'reported' && $('tkDescription')) inp.value = $('tkDescription').value;
+            wrap.appendChild(lab); wrap.appendChild(inp); box.appendChild(wrap);
+          });
+        }
+        async function loadTemplates() {
+          if (loaded) return;
+          try {
+            templates = await api('GET', '/templates');
+            var sel = $('snDraftTpl');
+            sel.innerHTML = '';
+            sel.add(new Option('Choose a template…', ''));
+            templates.forEach(function (t) {
+              sel.add(new Option(t.label + (t.visibility === 'comments' ? ' — customer-visible' : ' — internal'), t.id));
+            });
+            loaded = true;
+          } catch (e) {
+            $('snDraftTpl').innerHTML = '<option value="">Templates unavailable</option>';
+            say('Could not load templates: ' + e.message, true);
+          }
+        }
+        $('snDraftTpl').addEventListener('change', renderVars);
+        $('snDraftTpl').addEventListener('focus', loadTemplates);
+        $('btnSnDraftCreate').addEventListener('click', async function () {
+          var t = current();
+          if (!t) { say('Choose a template first.', true); return; }
+          var inc = ($('tkIncident').value || '').trim();
+          if (!inc) { say('Enter an incident number on the Ticket tab first.', true); return; }
+          var vars = {};
+          Array.prototype.forEach.call($('snDraftVars').querySelectorAll('[data-var]'), function (el) { vars[el.getAttribute('data-var')] = el.value.trim(); });
+          var incident = { number: inc };
+          var sys = String(window.__l1SnSysId || '').toLowerCase();
+          if (/^[0-9a-f]{32}$/.test(sys) && String(window.__l1SnSysIncident || '').toUpperCase() === inc.toUpperCase()) incident.sys_id = sys;
+          var caller = splitName($('tkRequester').value);
+          caller.eid = ($('snDraftEid').value || '').trim();
+          var btn = $('btnSnDraftCreate');
+          btn.disabled = true; say('Creating draft…');
+          try {
+            var d = await api('POST', '/drafts', { template_id: t.id, incident: incident, caller: caller, vars: vars });
+            var out = $('snDraftOut'); out.textContent = ''; out.style.color = '';
+            out.appendChild(document.createTextNode('Draft created (not sent). '));
+            var a = document.createElement('a');
+            a.href = '/l1-copilot/l1-sn-review.html?id=' + encodeURIComponent(d.id);
+            a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'Open review page';
+            out.appendChild(a);
+            if (d.unresolved && d.unresolved.length) out.appendChild(document.createTextNode(' — still to fill before approval: ' + d.unresolved.join(', ')));
+          } catch (e) { say('Could not create draft: ' + e.message, true); }
+          btn.disabled = false;
+        });
+        loadTemplates();
+      })();
+      </script>
     </section>
 
     <!-- ESCALATION -->
@@ -2797,6 +2899,7 @@ TICKET DESCRIPTION</div>
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || 'lookup failed');
       const t = data.ticket;
+      window.__l1SnSysId = t.sysId || null; window.__l1SnSysIncident = t.number || null;
       if (t.requester) document.getElementById('tkRequester').value = t.requester;
       if (t.assignmentGroup) document.getElementById('tkGroup').value = t.assignmentGroup;
       if (t.asset) document.getElementById('tkAsset').value = t.asset;
