@@ -132,6 +132,25 @@ async function sendDraft(id, actor, opts) {
   const write = d.field === 'comments' ? adapter.writeComment : adapter.writeWorkNote;
   if (typeof write !== 'function') throw new DraftError(500, 'servicenow_not_configured', 'ServiceNow adapter has no writer for ' + d.field + '.');
 
+  // A prior attempt that failed unclearly may still have posted. Read the incident back
+  // before writing again so a retry can never double-post (customer-visible comments especially).
+  if (d.status === 'send_failed') {
+    if (typeof adapter.getTicket !== 'function') throw new DraftError(409, 'retry_unverifiable', 'Cannot confirm whether the earlier send posted. Check the incident in ServiceNow before retrying.');
+    let seen;
+    try { seen = await adapter.getTicket(target); }
+    catch (e) { throw new DraftError(409, 'retry_unverifiable', 'Could not read the incident to confirm the earlier send did not post. Check the incident in ServiceNow, then retry.'); }
+    if (!seen) throw new DraftError(404, 'incident_not_found', 'No such incident in ServiceNow.');
+    const cur = seen.raw && seen.raw[d.field];
+    const curText = cur == null ? '' : (typeof cur === 'object' ? (cur.display_value != null ? cur.display_value : (cur.value != null ? cur.value : '')) : cur);
+    if (String(curText).includes(d.body)) {
+      d.status = 'sent';
+      d.send = { by: actor, at: new Date().toISOString(), number: d.incident.number, sys_id: d.incident.sys_id, verified: true, recovered: true };
+      save(d); audit('sent_recovered', id, actor, { field: d.field, number: d.incident.number });
+      return { draft: d, already_sent: true, recovered: true };
+    }
+    // Another request may have started a send while we were reading; stay single-flight.
+    if (getDraft(id).status !== 'send_failed') throw new DraftError(409, 'send_in_doubt', 'Another send is in progress for this draft. Check the incident in ServiceNow before retrying.');
+  }
   d.status = 'sending'; d.send = { started_by: actor, started_at: new Date().toISOString() };
   save(d); audit('send_started', id, actor, { field: d.field });
 

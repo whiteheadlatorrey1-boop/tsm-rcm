@@ -83,6 +83,50 @@ const SYS = 'a'.repeat(32);
   let net = approved('ack', inc, ackVars);
   await rejects(svc.sendDraft(net.id, 'tech', { adapter: mkAdapter(new Error('ECONNRESET')) }), 'servicenow_unreachable', 'network failure surfaces');
 
+  // --- retry guard: a retry after an unclear failure must not double-post ---
+  const mkRetry = (o) => { const st = { reads: 0, writes: [] };
+    st.adapter = { isConfigured: () => true,
+      writeComment: async (t, b) => { st.writes.push(b); if (o.failWrite) throw o.failWrite; return { success: true }; },
+      writeWorkNote: async (t, b) => { st.writes.push(b); if (o.failWrite) throw o.failWrite; return { success: true }; } };
+    if (!o.noGetTicket) st.adapter.getTicket = async () => { st.reads++; if (o.readErr) throw o.readErr; return o.ticket === undefined ? { raw: {} } : o.ticket; };
+    return st; };
+  const failOnce = async (tpl, vars) => { const x = approved(tpl, inc, vars); await rejects(svc.sendDraft(x.id, 'tech', { adapter: mkRetry({ failWrite: new Error('ECONNRESET') }).adapter }), 'servicenow_unreachable', 'setup: first send fails unclearly'); return x; };
+
+  let fresh = mkRetry({});
+  let g0 = approved('ack', inc, ackVars);
+  await svc.sendDraft(g0.id, 'tech', { adapter: fresh.adapter });
+  ok(fresh.reads === 0 && fresh.writes.length === 1, 'first send does not need a read-back');
+
+  let g1 = await failOnce('ack', ackVars);
+  const posted = mkRetry({ ticket: { raw: { comments: { display_value: '2026-10-07 10:00:00 - tech (Additional comments)\n' + g1.body } } } });
+  let rr = await svc.sendDraft(g1.id, 'tech', { adapter: posted.adapter });
+  ok(posted.writes.length === 0 && posted.reads === 1, 'retry finds the comment already posted and does not write again');
+  ok(rr.already_sent === true && rr.recovered === true && rr.draft.status === 'sent' && rr.draft.send.recovered === true, 'draft recovered as sent');
+
+  let g2 = await failOnce('ack', ackVars);
+  const absent = mkRetry({ ticket: { raw: { comments: 'something else' } } });
+  rr = await svc.sendDraft(g2.id, 'tech', { adapter: absent.adapter });
+  ok(absent.reads === 1 && absent.writes.length === 1 && rr.draft.status === 'sent' && !rr.already_sent, 'retry writes once when the comment is confirmed absent');
+
+  let g3 = await failOnce('ack', ackVars);
+  const noRead = mkRetry({ readErr: new Error('ETIMEDOUT') });
+  await rejects(svc.sendDraft(g3.id, 'tech', { adapter: noRead.adapter }), 'retry_unverifiable', 'retry blocked when read-back fails');
+  ok(noRead.writes.length === 0 && svc.getDraft(g3.id).status === 'send_failed', 'blocked retry writes nothing and stays retryable');
+
+  let g4 = await failOnce('ack', ackVars);
+  const noFn = mkRetry({ noGetTicket: true });
+  await rejects(svc.sendDraft(g4.id, 'tech', { adapter: noFn.adapter }), 'retry_unverifiable', 'retry blocked when adapter cannot read');
+
+  let g5 = await failOnce('ack', ackVars);
+  const gone = mkRetry({ ticket: null });
+  await rejects(svc.sendDraft(g5.id, 'tech', { adapter: gone.adapter }), 'incident_not_found', 'retry reports a missing incident');
+  ok(gone.writes.length === 0, 'missing incident writes nothing');
+
+  let g6 = await failOnce('internal-l1', { reported: 'r', troubleshooting: 't', findings: 'f', next_step: 'n', escalated_to: 'none' });
+  const wnPosted = mkRetry({ ticket: { raw: { work_notes: g6.body } } });
+  rr = await svc.sendDraft(g6.id, 'tech', { adapter: wnPosted.adapter });
+  ok(wnPosted.writes.length === 0 && rr.recovered === true, 'work notes get the same guard');
+
   console.log(pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 })();
