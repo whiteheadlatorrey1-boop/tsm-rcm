@@ -25,10 +25,24 @@ function save(d) {
   fs.writeFileSync(tmp, JSON.stringify(d, null, 2));
   fs.renameSync(tmp, f);
 }
+// Local append-only log for the draft store, plus an optional sink (server.js wires it to the
+// platform's L1 governance audit). The sink gets the incident and body LENGTH, never the text,
+// and can never break a draft operation.
+let auditSink = null;
+function setAuditSink(fn) { auditSink = typeof fn === 'function' ? fn : null; }
 function audit(event, id, actor, extra) {
   ensureDir();
+  const ts = new Date().toISOString();
   fs.appendFileSync(path.join(dir(), 'audit.jsonl'),
-    JSON.stringify({ ts: new Date().toISOString(), event, id, actor, ...(extra || {}) }) + '\n');
+    JSON.stringify({ ts, event, id, actor, ...(extra || {}) }) + '\n');
+  if (!auditSink) return;
+  try {
+    let d = null;
+    try { d = JSON.parse(fs.readFileSync(file(id), 'utf8')); } catch (e) { d = null; }
+    const r = auditSink({ ts, event, id, actor, ...(extra || {}),
+      draft: d ? { incident: d.incident || null, field: d.field || null, visibility: d.visibility || null, body_length: typeof d.body === 'string' ? d.body.length : 0 } : null });
+    if (r && typeof r.catch === 'function') r.catch(() => {});
+  } catch (e) { /* platform audit must never break a draft operation */ }
 }
 const hash = s => crypto.createHash('sha256').update(s).digest('hex');
 
@@ -180,4 +194,4 @@ async function sendDraft(id, actor, opts) {
 }
 
 module.exports = { DraftError, displayName, listTemplates, createDraft, getDraft, editDraft,
-                   approveDraft, rejectDraft, sendDraft };
+                   approveDraft, rejectDraft, sendDraft, setAuditSink };
