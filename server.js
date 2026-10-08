@@ -3981,6 +3981,8 @@ app.use(require('./routes/integrations-fhir'));
 // See routes/rcm-relay.js header for the full endpoint contract.
 app.use('/api/rcm', require('./routes/rcm-relay'));
 app.use('/api/rcm', require('./routes/rcm-requirements'));
+// Draft lifecycle events (created/approved/sent/...) join the L1 governance audit; text is never recorded.
+require('./l1-servicenow/service').setAuditSink(evt => recordL1AuditEvent(require('./server/l1-copilot/draft-audit').buildDraftAuditEvent(evt)));
 app.use('/api/l1/servicenow', require('./routes/l1-servicenow-drafts'));
 
 // ── SCHOOLS FINANCIAL EXPOSURE ──────────────────────────────────────────────
