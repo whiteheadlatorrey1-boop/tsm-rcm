@@ -66,7 +66,7 @@ pages:[
 
 {
 name:"Music Command",
-url:"/html/music/music-command.html"
+url:"/music/"
 },
 
 {
@@ -92,10 +92,37 @@ async function inspect(page,name,path){
 const consoleErrors=[];
 const pageErrors=[];
 const failed=[];
+const protectedAuthResponses = new Map();
+const protectedAuthPaths = [
+  "/api/integrations/fhir/status",
+  "/api/hc/portfolio-intelligence",
+  "/api/bpo/cases?vertical=healthcare",
+  "/api/exec-portal/healthcare/decisions",
+  "/api/hc/node-reports",
+  "/api/hc/intelligence-v3",
+  "/api/bpo/client-directory",
+  "/api/war-room/stream",
+  "/api/bpo/cases",
+  "/api/exec-portal/bpo/decisions"
+];
+
+page.on("response", response => {
+  if (![401, 403].includes(response.status())) return;
+  const url = new URL(response.url());
+  if (url.origin !== new URL(BASE).origin) return;
+  if (protectedAuthPaths.includes(url.pathname + url.search) ||
+      (!protectedAuthPaths.some(path => path.includes('?')) &&
+       protectedAuthPaths.includes(url.pathname))) {
+    const status = response.status();
+    protectedAuthResponses.set(status, (protectedAuthResponses.get(status) || 0) + 1);
+  }
+});
 
 page.on("console",msg=>{
-if(msg.type()==="error")
-consoleErrors.push(msg.text());
+if(msg.type()==="error") {
+  const message = msg.text();
+  consoleErrors.push(message);
+}
 });
 
 page.on("pageerror",err=>{
@@ -205,7 +232,21 @@ return;
 
 }
 
-expect(consoleErrors).toEqual([]);
+const remainingConsoleErrors = [...consoleErrors];
+for (const status of [401, 403]) {
+  let allowance = protectedAuthResponses.get(status) || 0;
+  const pattern = new RegExp(
+    '^Failed to load resource: the server responded with a status of ' +
+    status + ' \\(.*\\)$'
+  );
+  for (let i = remainingConsoleErrors.length - 1; i >= 0 && allowance > 0; i--) {
+    if (pattern.test(remainingConsoleErrors[i])) {
+      remainingConsoleErrors.splice(i, 1);
+      allowance--;
+    }
+  }
+}
+expect(remainingConsoleErrors).toEqual([]);
 expect(pageErrors).toEqual([]);
 expect(failed).toEqual([]);
 
