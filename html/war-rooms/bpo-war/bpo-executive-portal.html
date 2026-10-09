@@ -591,6 +591,7 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
     <div class="tb-brand"><div class="tb-brand-dot"></div>◈ BPO EXECUTIVE PORTAL</div>
     <div class="tb-stat">SECTOR: <span id="tbSector">—</span></div>
     <div class="tb-stat">DOC TYPE: <span id="tbDocType">—</span></div>
+    <div class="tb-stat">CASE: <span id="tbCaseId">—</span></div>
     <div class="tb-stat warn">CONFIDENCE: <span id="tbConf">—</span></div>
     <div class="tb-stat crit">EXPOSURE CONTAINED: <span id="tbExposure">—</span></div>
   </div>
@@ -610,7 +611,7 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
 <!-- ── RESOLUTION BANNER ── -->
 <div class="incident-banner">
   <div class="inc-sev">
-    <div class="inc-sev-badge" id="incSevBadge">■ RESOLVED</div>
+    <div class="inc-sev-badge" id="incSevBadge">■ STRATEGY RECEIVED</div>
   </div>
   <div class="inc-divider"></div>
   <div>
@@ -619,7 +620,7 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
   </div>
   <div class="inc-window">
     <div>
-      <div class="inc-window-label">RESOLVED AT</div>
+      <div class="inc-window-label">STRATEGY RECEIVED AT</div>
       <div class="inc-window-val" id="resolvedTime">—:—:—</div>
       <div class="inc-window-sub">Time of escalation</div>
     </div>
@@ -796,7 +797,7 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
     </div>
     <div class="gov-item">
       <div class="gov-item-label">EVIDENCE RETAINED</div>
-      <div class="gov-item-val ok">YES — 4 SOURCES</div>
+      <div class="gov-item-val warn" id="govEvidence">CHECKING…</div>
     </div>
     <div class="gov-item">
       <div class="gov-item-label">AUDIT TRAIL</div>
@@ -916,7 +917,11 @@ function recordExecAction(actionType, note){
 // ── LOAD RELAY ──
 (function loadRelay(){
   try {
-    const raw = sessionStorage.getItem('TSM_BPO_STRAT_RELAY') || localStorage.getItem('TSM_BPO_STRAT_RELAY');
+    let raw = null;
+    for (const k of BPO_RELAY_KEYS) {
+      raw = sessionStorage.getItem(k) || localStorage.getItem(k);
+      if (raw) break;
+    }
     if (!raw) { loadDemoMode(); return; }
     stratData = JSON.parse(raw);
 
@@ -935,11 +940,19 @@ function recordExecAction(actionType, note){
     buildExecDocList(stratData?.caseId);
 
   } catch(e) {
+    console.error('[BPO Executive Portal] Relay hydration failed; falling back to demo mode:', e);
     loadDemoMode();
   }
 })();
 
 renderSupervisorRollup();
+
+function setExecEvidenceStatus(label, state) {
+  const status = document.getElementById('govEvidence');
+  if (!status) return;
+  status.textContent = label;
+  status.className = 'gov-item-val ' + state;
+}
 
 // ── SOURCE DOCUMENTS ──
 // Best-effort fetch of the documents actually stored for this case
@@ -951,21 +964,26 @@ function buildExecDocList(caseId) {
   const el = document.getElementById('execDocList');
   if (!el) return;
   if (!caseId) {
+    setExecEvidenceStatus('NO CASE', 'warn');
     el.innerHTML = '<div style="color:var(--muted);font-family:\'JetBrains Mono\',monospace;font-size:.68rem">No case loaded yet.</div>';
     return;
   }
+  setExecEvidenceStatus('LOADING…', 'warn');
   el.innerHTML = '<div style="color:var(--muted);font-family:\'JetBrains Mono\',monospace;font-size:.68rem">Loading documents…</div>';
   fetch(`/api/bpo/work-items/${encodeURIComponent(caseId)}/documents`, { credentials: 'same-origin' })
     .then(r => r.ok ? r.json() : null)
     .then(data => {
       if (!data || !data.ok || !Array.isArray(data.documents)) {
+        setExecEvidenceStatus('UNAVAILABLE', 'warn');
         el.innerHTML = '<div style="color:var(--muted);font-family:\'JetBrains Mono\',monospace;font-size:.68rem">Documents unavailable.</div>';
         return;
       }
       if (!data.documents.length) {
+        setExecEvidenceStatus('NO DOCUMENTS', 'risk');
         el.innerHTML = '<div style="color:var(--muted);font-family:\'JetBrains Mono\',monospace;font-size:.68rem">No documents on this case.</div>';
         return;
       }
+      setExecEvidenceStatus('YES — ' + data.documents.length + (data.documents.length === 1 ? ' DOCUMENT' : ' DOCUMENTS'), 'ok');
       el.innerHTML = data.documents.map(doc => {
         const sizeKb = doc.sizeBytes ? Math.max(1, Math.round(doc.sizeBytes / 1024)) + ' KB' : '';
         const status = doc.hasExtractedText ? (doc.textTruncated ? 'TEXT (TRUNC.)' : 'TEXT OK') : 'NO TEXT';
@@ -978,6 +996,7 @@ function buildExecDocList(caseId) {
       }).join('');
     })
     .catch(e => {
+      setExecEvidenceStatus('UNAVAILABLE', 'warn');
       console.warn('[BPO exec doc list] fetch failed (non-fatal):', e.message);
       el.innerHTML = '<div style="color:var(--muted);font-family:\'JetBrains Mono\',monospace;font-size:.68rem">Documents unavailable.</div>';
     });
@@ -1070,7 +1089,7 @@ function loadDemoMode() {
 function hydratePage(d) {
   const rec = d.recommendation || {};
   const isServiceNow = d?.serviceNow?.source === 'servicenow';
-  document.getElementById('incSevBadge').textContent = isServiceNow ? '■ IN PROGRESS' : '■ RESOLVED';
+  document.getElementById('incSevBadge').textContent = isServiceNow ? '■ IN PROGRESS' : '■ STRATEGY RECEIVED';
   if (isServiceNow) {
     window.tsmSnHideMemoryPanel = true;
     document.addEventListener('DOMContentLoaded', function() {
@@ -1082,6 +1101,7 @@ function hydratePage(d) {
   }
 
   document.getElementById('tbSector').textContent = d.sector || 'BPO';
+  { const cidEl = document.getElementById('tbCaseId'); if (cidEl) cidEl.textContent = d.caseId || '—'; }
   document.getElementById('tbDocType').textContent = d.docType || '—';
   document.getElementById('tbConf').textContent = rec.confidence ? rec.confidence + '%' : '—';
   document.getElementById('tbExposure').textContent = rec.actionRevLoss || '—';
@@ -1091,7 +1111,7 @@ function hydratePage(d) {
   document.getElementById('resolvedTime').textContent = d.timestamp ? new Date(d.timestamp).toLocaleTimeString() : '—';
 
   document.getElementById('kpiStrategy').textContent = d.selectedScenarioName || (d.selectedScenario ? 'Option ' + d.selectedScenario : '—');
-  document.getElementById('kpiStrategySub').textContent = d.selectedScenario ? 'Scenario ' + d.selectedScenario + ' executed' : 'Awaiting escalation';
+  document.getElementById('kpiStrategySub').textContent = d.selectedScenario ? 'Option ' + d.selectedScenario + ' selected · execution pending' : 'Awaiting escalation';
   document.getElementById('kpiConfidence').textContent = rec.confidence ? rec.confidence + '%' : '—';
   document.getElementById('kpiRecoveryTime').textContent = rec.recoveryTime || '—';
 

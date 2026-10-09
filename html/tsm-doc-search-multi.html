@@ -4653,13 +4653,31 @@ async function openGenNodeWithDoc(docId, vertical) {
         sector: 'BPO',
         docType: doc.documentType || 'ESCALATION',
         stratBrief: narr || findings.join(' '),
-        engines: { engine1: narr || '', engine2: '', engine3: '', engine4: findings.join('\n') },
-        docText: (doc._ext && doc._ext.rawText) || narr || findings.join('\n'),
+        engines: { engine1: narr || '', engine2: '', engine3: '', engine4: findings.join('\\n') },
+        docText: (doc._ext && doc._ext.rawText) || narr || findings.join('\\n'),
         timestamp: new Date().toISOString(),
         chainStep: 'strategist',
-        recommendation: { confidence: Number.isFinite(risk) ? String(risk) : '91' },
+        recommendation: {
+          confidence: Number.isFinite(risk) ? String(risk) : '55',
+          recommendedActions: (Array.isArray(steps) ? steps : []).map((step, i) => ({
+            text: String(step),
+            owner: 'Technician review',
+            status: 'PENDING',
+            source: 'Document Search'
+          })),
+          noActionRevLoss: amount > 0 ? '$' + amount.toLocaleString() + ' document amount at review' : null,
+          actionRevLoss: null,
+          recoveryTime: null,
+          financialImpact: amount || null,
+          checkStatus: cs,
+          exclusionCode: excCode || null
+        },
         selectedScenario: 'A',
-        caseId: bncaCaseId,
+        selectedScenarioName: 'Review proposed actions — execution pending',
+        anomalyEntity: doc.vendor || doc.fileName || doc.invoiceNo || 'Document anomaly',
+        source: 'doc-search',
+        executionStatus: 'PENDING_TECHNICIAN_CONFIRMATION',
+        caseId: bncaCaseId
       };
       localStorage.setItem('TSM_BPO_STRATEGIST_RELAY', JSON.stringify(bncaRelay));
       localStorage.setItem('TSM_BPO_STRAT_RELAY', JSON.stringify(bncaRelay));

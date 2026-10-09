@@ -2920,6 +2920,11 @@ TICKET DESCRIPTION</div>
   // never converted into technician-confirmed evidence.
   let currentServiceNowReconciliation = null;
   let currentServiceNowReconciliationIncident = '';
+  // Read access for the separate TSM_L1_WORKFLOW_UI script block: these `let`s are
+  // scoped to this IIFE, so that block could not see them (ReferenceError on Evaluate).
+  window.TSML1Reconciliation = {
+    get: function () { return { incident: currentServiceNowReconciliationIncident, reconciliation: currentServiceNowReconciliation }; }
+  };
 
   (function initServiceNowReconciliation() {
     const button = document.getElementById('btnReconcileServiceNow');
@@ -7042,8 +7047,8 @@ window.selectQ15Scenario = function(id) {
 
     try {
       const reconciliationContext =
-        currentServiceNowReconciliationIncident === input.incident
-          ? currentServiceNowReconciliation
+        (window.TSML1Reconciliation && window.TSML1Reconciliation.get().incident === input.incident)
+          ? window.TSML1Reconciliation.get().reconciliation
           : null;
 
       const data = await window.TSML1Workflow.orchestrate({
