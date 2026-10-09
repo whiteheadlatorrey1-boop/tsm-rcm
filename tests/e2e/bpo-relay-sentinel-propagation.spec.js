@@ -249,6 +249,15 @@ test.describe('BPO relay propagation — doc-search -> war-room -> strategist ->
   });
 
   test('4b. doc-search-multi.html BNCA-escalation shortcut writes real relay data before navigating (GAP 2 -- fixed)', async ({ page }) => {
+    page.addInitScript(() => {
+      window.__bpoDiagnosticErrors = [];
+      window.addEventListener('error', e => window.__bpoDiagnosticErrors.push(e.message || 'window error'));
+      window.addEventListener('unhandledrejection', e => window.__bpoDiagnosticErrors.push(String(e.reason)));
+    });
+    page.on('pageerror', err => console.error('[PW 4b browser pageerror]', err.stack || err.message));
+    page.on('console', msg => {
+      if (msg.type() === 'error') console.error('[PW 4b browser console]', msg.text());
+    });
     // Previously: this shortcut skipped War Room + Strategist entirely and
     // never wrote TSM_BPO_STRATEGIST_RELAY / TSM_BPO_STRAT_RELAY, so it
     // always landed on the executive portal in demo mode even with a real
@@ -304,12 +313,65 @@ test.describe('BPO relay propagation — doc-search -> war-room -> strategist ->
     // Now confirm the executive portal actually renders this real data
     // instead of falling into demo mode.
     await page.goto(`${BASE_URL}${EXEC_PORTAL}`, { waitUntil: 'load', timeout: 20000 });
+    const portalDiagnostic = await page.evaluate(() => ({
+      url: location.href,
+      title: document.title,
+      relayKeys: ['TSM_BPO_STRATEGIST_RELAY', 'TSM_BPO_STRAT_RELAY'].map(key => {
+        const raw = localStorage.getItem(key) || sessionStorage.getItem(key);
+        try {
+          const value = raw ? JSON.parse(raw) : null;
+          return { key, present: !!raw, caseId: value?.caseId || null, sector: value?.sector || null };
+        } catch (_) {
+          return { key, present: !!raw, invalidJson: true };
+        }
+      }),
+      bodyText: document.body.innerText.slice(0, 1800)
+    }));
+    console.error('[PW 4b portal diagnostic]', JSON.stringify(portalDiagnostic));
     const html = await page.content();
     expect(
       html.includes(relay.caseId),
-      `Executive portal never rendered the real caseId (${relay.caseId}) written by the BNCA shortcut -- ` +
-      'it may still be falling into demo mode despite the relay data being present.'
+      `Executive portal did not render relay caseId. Expected=${relay.caseId}; ` +
+      `portalDiagnostic=${JSON.stringify(portalDiagnostic)}; ` +
+      `browserErrors=${JSON.stringify(await page.evaluate(() => window.__bpoDiagnosticErrors || []))}`
     ).toBe(true);
+  });
+
+  test('4c. exec portal renders relay recommendedActions, and shows the empty state only when there are none', async ({ page }) => {
+    const caseId = 'BPO-PW-4C-' + Date.now();
+    const relay = {
+      sector: 'BPO',
+      docType: 'ESCALATION',
+      stratBrief: 'PW 4c seeded brief',
+      engines: { engine1: 'PW 4c seeded', engine2: '', engine3: '', engine4: '' },
+      timestamp: new Date().toISOString(),
+      chainStep: 'strategist',
+      recommendation: {
+        confidence: '72',
+        recommendedActions: [
+          { text: 'PW4C action alpha', owner: 'PW Owner A' },
+          { text: 'PW4C action beta', owner: 'PW Owner B' },
+        ],
+      },
+      selectedScenario: 'A',
+      caseId: caseId,
+    };
+    await page.addInitScript((r) => {
+      const raw = JSON.stringify(r);
+      localStorage.setItem('TSM_BPO_STRATEGIST_RELAY', raw);
+      localStorage.setItem('TSM_BPO_STRAT_RELAY', raw);
+    }, relay);
+    await page.goto(BASE_URL + EXEC_PORTAL, { waitUntil: 'load', timeout: 20000 });
+    await page.waitForSelector('#execPlanList', { timeout: 10000 });
+
+    const html = await page.content();
+    const bodyText = await page.evaluate(() => document.body.innerText);
+    expect(html.includes(caseId), 'Portal did not render the seeded caseId (tbCaseId).').toBe(true);
+    expect(bodyText, 'Seeded confidence 72% did not render -- portal may be in demo mode.').toContain('72%');
+    expect(bodyText, 'Seeded recommendedActions[0] did not reach the portal.').toContain('PW4C action alpha');
+    expect(bodyText, 'Seeded recommendedActions[1] did not reach the portal.').toContain('PW4C action beta');
+    expect(bodyText, 'Empty-state text shown even though recommendedActions were seeded.').not.toContain('No recommended actions reported by the strategist for this case yet');
+    expect(bodyText, 'Empty exec-plan text shown even though recommendedActions were seeded.').not.toContain('No recommended actions in this strategy brief');
   });
 
 test('5. bpo-strategist.html -> sentinel-center.html: case surfaces as LIVE with the seeded exposure', async ({ page }) => {
