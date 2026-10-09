@@ -56,7 +56,7 @@
     var bridge = global.TSMCandidateRegistryBridge;
     if (!bridge) return Promise.resolve({ ok: false, reason: 'no-bridge' });
 
-    var getCred = s.candidateId
+    var getCred = (s.candidateId && s.candidateToken)
       ? Promise.resolve({ id: s.candidateId, token: s.candidateToken || null })
       : createCandidate(s.identity, source).then(function (c) {
           var cur = load();
