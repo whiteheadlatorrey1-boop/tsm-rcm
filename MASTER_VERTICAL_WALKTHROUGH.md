@@ -665,6 +665,9 @@ None are presentation-ready until a human has reviewed the frames and flipped `v
 
 **Not yet verified**
 - `CANDIDATE_WRITE_TOKEN_REQUIRED` is unset everywhere; the page-level click-through in staging with the flag on has not been done.
+- 2026-10-10: PR #218 makes RCM write-through send the candidate session token (`getCredentials()` -> `recordRcmAttempt(..., { token })` -> `x-candidate-token`) and fail closed on missing or mismatched credentials. Verified by reading the full chain (engine, bridge, `requireCandidateWrite`) and by Node tests with a stubbed MongoDB driver: credentials 5/5, write-token 12/12, session-token 5/5, and a mutation check where all 5 new cases fail without the guard.
+- NOT verified: persistence against a real database (the existing tests stub `require('mongodb')`, so they are not a real in-memory MongoDB), that rejected writes persist nothing, and the browser click-through with the flag on. No staging environment is documented; `tsm-shell.fly.dev` is production and must not be used for smoke tests. `~/staging-smoke-rcm-token.sh` exists for a non-production URL once one is available.
+- Before enabling the flag in production: confirm `TSM_SESSION_SECRET` is set there, do not rotate it afterward (tokens are derived from it), and keep rollback ready (unset the variable; it is read per request).
 - `tsm-staffing-admin.html` and `tsm-staffing-readiness-demo.html` need a load check against a real database (they return 500 where `MONGODB_URI` is unset).
 - The seven flagship experiences remain scripted with visual review pending (see Flagship Demo Experiences). The L1 intelligence-platform flagship assets are on main (PR #216) but have not been visually reviewed.
 - Live ServiceNow writeback (see section 14).
