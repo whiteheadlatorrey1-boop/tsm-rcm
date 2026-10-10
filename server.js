@@ -8363,7 +8363,7 @@ function scoreConfidence(parsed, validation) {
 // subscribes to that vertical specifically. Update TEAM_BY_VERTICAL entries
 // as ownership gets assigned out — this map is meant to grow, not stay flat.
 const TEAM_BY_VERTICAL = {}; // empty = fall through to default owner below
-const DEFAULT_OWNER = 'Latorrey';
+const DEFAULT_OWNER = 'TSM Operations';
 
 function suggestTeam(parsed) {
   if (!parsed.primaryVertical) return DEFAULT_OWNER;
