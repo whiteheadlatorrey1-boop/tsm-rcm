@@ -200,7 +200,7 @@ async function upsertCandidate(payload, opts = {}) {
     payload = Object.assign({}, payload, {
       status: existing ? existing.status : undefined,
       source: existing ? existing.source : undefined,
-      isSampleData: existing ? existing.isSampleData : undefined,
+      isSampleData: existing ? existing.isSampleData : payload.isSampleData,
       readinessEvidence: existing ? existing.readinessEvidence : undefined,
       createdAt: existing ? existing.createdAt : undefined,
     });
