@@ -8,6 +8,14 @@ test.describe('Candidate Registry persistence contract', () => {
      * Discover an existing canonical candidate.
      * No browser-side candidate creation or seed data.
      */
+    // Candidate writes are token/admin-gated in prod (CANDIDATE_WRITE_TOKEN_REQUIRED=1).
+    // Log in as admin so the training-event POST carries a session cookie.
+    const adminPw = process.env.TSM_AUTH_PASSWORD || process.env.TSM_ADMIN_PASSWORD;
+    if (adminPw) {
+      const loginRes = await page.request.post('/api/auth/login', { data: { password: adminPw } });
+      expect(loginRes.ok(), `admin login failed with ${loginRes.status()}`).toBeTruthy();
+    }
+
     const candidatesResponse = await page.request.get('/api/candidates');
 
     expect(
