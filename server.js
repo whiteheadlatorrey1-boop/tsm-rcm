@@ -3698,12 +3698,12 @@ app.post('/api/candidate/submit', (req, res) => {
 });
 
 // GET /api/candidate/list  — polled by wia2.html recruiter dashboard
-app.get('/api/candidate/list', (req, res) => {
+app.get('/api/candidate/list', requireRole(BPO_INTERNAL_ROLES), (req, res) => {
   res.json(candidateStore);
 });
 
 // POST /api/candidate/clear-new  — marks all as seen
-app.post('/api/candidate/clear-new', (req, res) => {
+app.post('/api/candidate/clear-new', requireRole(BPO_INTERNAL_ROLES), (req, res) => {
   candidateStore.forEach(c => c.new = false);
   res.json({ ok: true });
 });
@@ -9291,7 +9291,7 @@ app.delete('/api/wip/task/:id', (req, res) => {
 });
 
 // ── READINESS SCORE ────────────────────────────────────────────────────────────
-app.post('/api/wip/readiness', (req, res) => {
+app.post('/api/wip/readiness', requireRole(BPO_INTERNAL_ROLES), (req, res) => {
   const { vertical, dataCompleteness, stakeholderCoverage, mitigationPlans, resourceAvailability, openRisks } = req.body || {};
   if (!ensureWipVertical(vertical)) return res.status(400).json({ ok: false, error: 'valid vertical required' });
   const liveSignal = getWipLiveSignal(vertical);
