@@ -650,6 +650,11 @@ Seven scripted flagship experiences are registered in `tests/e2e/demo/demo-readi
 
 None are presentation-ready until a human has reviewed the frames and flipped `visualReview` in the registry.
 
+### L1 intelligence-platform flagship (added to main in PR #216)
+- **Assets** in `tests/e2e/demo/`: `l1-platform-flagship.spec.js` and `l1-platform-flagship-v2.spec.js`, the capture script `capture-l1-flagship-v3.js` with `l1-flagship-v3-capture.json`, `flagship-final-preview.png`, and the narration audio `tsm-intelligence-platform-narration.mp3` (transcripts are the `intelligence-platform-narration*.txt` files alongside).
+- **Status:** not visually reviewed, and not confirmed to run on live engine output. To verify: this flagship is not one of the seven experiences registered in `demo-readiness.json`.
+- **To run:** `TSM_SESSION_SECRET`, `TEST_PORT` and `BASE_URL` must be set in the shell. The capture script also reads `TSM_LOGIN_PASSWORD` and falls back to a development default if it is unset.
+
 ---
 
 ## Status as of 2026-10-09 (main at `7b9effb9`)
@@ -661,6 +666,6 @@ None are presentation-ready until a human has reviewed the frames and flipped `v
 **Not yet verified**
 - `CANDIDATE_WRITE_TOKEN_REQUIRED` is unset everywhere; the page-level click-through in staging with the flag on has not been done.
 - `tsm-staffing-admin.html` and `tsm-staffing-readiness-demo.html` need a load check against a real database (they return 500 where `MONGODB_URI` is unset).
-- The seven flagship experiences remain scripted with visual review pending (see Flagship Demo Experiences). The L1 intelligence-platform flagship assets are not yet committed to main.
+- The seven flagship experiences remain scripted with visual review pending (see Flagship Demo Experiences). The L1 intelligence-platform flagship assets are on main (PR #216) but have not been visually reviewed.
 - Live ServiceNow writeback (see section 14).
 - Known gaps: Concierge and College Command (see 14.5); Concierge Command depends on a third-party origin.
