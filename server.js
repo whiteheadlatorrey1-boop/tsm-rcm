@@ -3685,7 +3685,7 @@ app.post('/api/hc/node/:node', requireAnyAuth, async (req, res) => {
 const candidateStore = []; // swap for DB later
 
 // POST /api/candidate/submit  — called by candidate-intake.html
-app.post('/api/candidate/submit', (req, res) => {
+app.post('/api/candidate/submit', requireRole(BPO_INTERNAL_ROLES), (req, res) => {
   const entry = {
     id: 'cand_' + Date.now(),
     timestamp: new Date().toISOString(),
