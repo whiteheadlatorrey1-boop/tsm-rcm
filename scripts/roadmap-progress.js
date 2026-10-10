@@ -19,7 +19,7 @@
  *   PARTIAL    some required files missing
  *   NOT FOUND  nothing located
  * --run-tests runs ONLY the offline suites that `npm test` itself trusts
- * (scripts/test-(bpo|auth|staffing|phase)-*.js and test/phase0.5/*.test.js, the
+ * (scripts/test-(bpo|auth|staffing|phase|production)-*.js and test/phase0.5/*.test.js, the
  * latter with the same describe/it shim). Other matched tests (live ServiceNow,
  * route tests needing API keys, etc.) are listed as found but NOT run, so
  * missing credentials never show up as a false FAILING.
@@ -71,7 +71,7 @@ function matchFiles(spec) {
 }
 
 function isOfflineSuite(rel) {
-  return /^scripts\/test-(bpo|auth|staffing|phase)-[^/]*\.js$/.test(rel) || /^test\/phase0\.5\/[^/]*\.test\.js$/.test(rel);
+  return /^scripts\/test-(bpo|auth|staffing|phase|production)-[^/]*\.js$/.test(rel) || /^test\/phase0\.5\/[^/]*\.test\.js$/.test(rel);
 }
 const SHIM = 'scripts/phase-test-shim.js';
 const testCache = {};
