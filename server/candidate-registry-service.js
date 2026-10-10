@@ -189,10 +189,22 @@ function cleanText(v, max) {
   return String(v).replace(/[<>]/g, '').trim().slice(0, max);
 }
 
-async function upsertCandidate(payload) {
+async function upsertCandidate(payload, opts = {}) {
   const database = await connect();
   const now = new Date().toISOString();
   const candidateId = payload.candidateId || genCandidateId();
+  // Untrusted callers (public routes) cannot set server-controlled fields:
+  // updates keep stored values, creates get safe defaults.
+  if (opts && opts.trusted === false) {
+    const existing = await database.collection(CANDIDATES_COLLECTION).findOne({ candidateId });
+    payload = Object.assign({}, payload, {
+      status: existing ? existing.status : undefined,
+      source: existing ? existing.source : undefined,
+      isSampleData: existing ? existing.isSampleData : payload.isSampleData,
+      readinessEvidence: existing ? existing.readinessEvidence : undefined,
+      createdAt: existing ? existing.createdAt : undefined,
+    });
+  }
 
   const events = await database
     .collection(TRAINING_EVENTS_COLLECTION)

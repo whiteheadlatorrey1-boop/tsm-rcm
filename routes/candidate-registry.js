@@ -45,7 +45,7 @@ router.get('/api/candidates/:id', async (req, res) => {
 
 router.post('/api/candidates', requireCandidateWrite, async (req, res) => {
   try {
-    const candidate = await registry.upsertCandidate(req.body || {});
+    const candidate = await registry.upsertCandidate(req.body || {}, { trusted: isAdmin(req) });
     res.status(201).json({ candidate, candidateToken: signCandidateToken(candidate.candidateId) });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -57,7 +57,7 @@ router.put('/api/candidates/:id', requireCandidateWrite, async (req, res) => {
     const candidate = await registry.upsertCandidate({
       ...req.body,
       candidateId: req.params.id,
-    });
+    }, { trusted: isAdmin(req) });
     res.json({ candidate });
   } catch (err) {
     res.status(500).json({ error: err.message });
