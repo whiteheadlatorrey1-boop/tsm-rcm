@@ -12,6 +12,7 @@ function loadJson(p) {
 }
 
 function loadDivision(sector) {
+  if (typeof sector !== 'string' || !/^[A-Za-z0-9_-]+$/.test(sector)) return null; // TSM FIX: no path chars in sector
   const file = path.join(DIVISIONS_DIR, `${sector}.json`);
   if (!fs.existsSync(file)) return null;
   return loadJson(file);
@@ -110,9 +111,11 @@ router.post('/route', (req, res) => {
 // POST /api/inphusionsys/run-live (legacy alias, kept for existing front-end injections)
 router.post('/run-live', (req, res) => {
   const { relativePath, vertical } = req.body || {};
-  const filePath = path.join(TEST_PACK_DIR, relativePath || '');
+  // TSM FIX (path traversal): resolve inside the test pack only; reject anything that escapes it.
+  const filePath = path.resolve(TEST_PACK_DIR, typeof relativePath === 'string' ? relativePath : '');
+  const __packRoot = path.resolve(TEST_PACK_DIR) + path.sep;
 
-  if (!relativePath || !fs.existsSync(filePath)) {
+  if (!relativePath || !filePath.startsWith(__packRoot) || !fs.existsSync(filePath)) {
     return res.status(404).json({ success: false, error: 'Test file not found' });
   }
 

@@ -1007,6 +1007,9 @@ const TSM_MESH = {
   FINANCE: { owner: 'Financial Strategist', controller: 'Financial Command', risks: ['Margin compression', 'Payer variance', 'Cash flow slowdown', 'Revenue forecasting deviation'] }
 };
 
+// TSM FIX: server-side code and scratch files live under html/ (the public web root). Never serve them.
+const __HIDDEN_STATIC = /(^|\/)(server(\d+|\.1bk)?\.js|tsm-auth\.js|groq-proxy\.js|brain\.cjs|hc-execution\.js)$|\.(py|cjs|sh|bak|1bk)$/i;
+app.use((req, res, next) => (__HIDDEN_STATIC.test(req.path) ? res.status(404).send('Not found') : next()));
 app.use('/html/runtime', express.static(path.join(__dirname, 'html', 'runtime')));
 // FIX (shadow-duplication routing bug): these two MUST be registered before
 // the '/' catch-all below. html/runtime/kernel/canonical-core.js is a stale
@@ -7274,7 +7277,7 @@ app.get(['/html/healthcare/poc-html', '/html/healthcare/poc-html/'], (req, res) 
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
   res.sendFile(path.join(dirPath, 'healthcare', 'hc-academy', 'poc-html', 'index.html'));
 });
-app.get('/_debug', (_req, res) => res.json({ dirname: __dirname, dirPath, suitesConfigured: suites.length, cacheBust: 'v2-20260607' }));
+app.get('/_debug', (_req, res) => res.json({ suitesConfigured: suites.length, cacheBust: 'v2-20260607' })); // TSM FIX: no filesystem paths in public debug output
 
 
 // ── BUSINESS DEVELOPMENT WAR ROOM ─────────────────────────────
