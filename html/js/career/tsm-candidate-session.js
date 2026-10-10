@@ -75,7 +75,20 @@
       });
   }
 
-  var API = { setIdentity: setIdentity, recordEvent: recordEvent };
+  function getCredentials() {
+    var s = load();
+    if (!s.candidateId || !s.candidateToken) return null;
+    return {
+      id: s.candidateId,
+      token: s.candidateToken
+    };
+  }
+
+  var API = {
+    setIdentity: setIdentity,
+    recordEvent: recordEvent,
+    getCredentials: getCredentials
+  };
   global.TSMCandidateSession = API;
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
 })(typeof window !== 'undefined' ? window : globalThis);
