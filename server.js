@@ -9291,7 +9291,7 @@ app.delete('/api/wip/task/:id', (req, res) => {
 });
 
 // ── READINESS SCORE ────────────────────────────────────────────────────────────
-app.post('/api/wip/readiness', (req, res) => {
+app.post('/api/wip/readiness', requireRole(BPO_INTERNAL_ROLES), (req, res) => {
   const { vertical, dataCompleteness, stakeholderCoverage, mitigationPlans, resourceAvailability, openRisks } = req.body || {};
   if (!ensureWipVertical(vertical)) return res.status(400).json({ ok: false, error: 'valid vertical required' });
   const liveSignal = getWipLiveSignal(vertical);
