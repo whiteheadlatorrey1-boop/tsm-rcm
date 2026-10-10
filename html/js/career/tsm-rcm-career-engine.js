@@ -200,7 +200,24 @@
         metadata: Object.assign({}, attempt.metadata, { attemptId: attempt.id })
       });
 
-      Promise.resolve(bridge.recordRcmAttempt(ctx.candidateId, payload))
+      const session = global.TSMCandidateSession;
+      const credentials =
+        session && typeof session.getCredentials === 'function'
+          ? session.getCredentials()
+          : null;
+
+      if (!credentials || credentials.id !== ctx.candidateId || !credentials.token) {
+        writeThroughStatus.failed += 1;
+        writeThroughStatus.lastError =
+          'Candidate session credentials missing or do not match RCM context';
+        return;
+      }
+
+      Promise.resolve(
+        bridge.recordRcmAttempt(ctx.candidateId, payload, {
+          token: credentials.token
+        })
+      )
         .then(function () { writeThroughStatus.sent += 1; })
         .catch(function (err) {
           writeThroughStatus.failed += 1;

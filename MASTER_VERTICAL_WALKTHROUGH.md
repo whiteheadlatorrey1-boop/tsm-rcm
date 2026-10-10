@@ -502,6 +502,14 @@ This is a separate hop from the internal War Room → Strategist → Executive P
 
 ---
 
+### L1 ServiceNow draft & approval — `l1-ticket-copilot.html` → `l1-sn-review.html`
+- **Draft:** the "Draft ServiceNow update" button in L1 Ticket Copilot creates a draft from a template and links to the reviewer page (`html/l1-copilot/l1-sn-review.html`). API mounted at `/api/l1/servicenow`.
+- **Approval gate:** a named reviewer approves; the shared admin login cannot approve or send, and self-approval is blocked.
+- **Send:** goes through the ServiceNow adapter with verified writes, and a failed send reads back before any retry. Draft lifecycle events are recorded in the platform audit.
+- **Writeback is guarded** by `SN_WRITEBACK_ENABLED`. To verify: as of 2026-10-09 it has not been enabled in any environment, so live writes to ServiceNow have not been exercised.
+- **Talk point:** recommendations stay subject to human authorization. The Copilot drafts, a named human approves, and only then does anything leave the platform.
+- **Supporting materials:** PRs #202-#207; unit and route tests in `scripts/test-l1-servicenow-drafts.js`.
+
 ## 14.5 The Closing Loop — Executive Decision → BPO Case Engine → Client Portal
 
 Every section above stops at the Executive Portal — the internal employee-facing screen. This is the step after that: what actually reaches the client. Verified against `server.js` (`POST /api/exec-portal/:vertical/decide`), not assumed from naming conventions.
@@ -641,3 +649,23 @@ Seven scripted flagship experiences are registered in `tests/e2e/demo/demo-readi
 | Life Sciences | scripted | pending |
 
 None are presentation-ready until a human has reviewed the frames and flipped `visualReview` in the registry.
+
+### L1 intelligence-platform flagship (added to main in PR #216)
+- **Assets** in `tests/e2e/demo/`: `l1-platform-flagship.spec.js` and `l1-platform-flagship-v2.spec.js`, the capture script `capture-l1-flagship-v3.js` with `l1-flagship-v3-capture.json`, `flagship-final-preview.png`, and the narration audio `tsm-intelligence-platform-narration.mp3` (transcripts are the `intelligence-platform-narration*.txt` files alongside).
+- **Status:** not visually reviewed, and not confirmed to run on live engine output. To verify: this flagship is not one of the seven experiences registered in `demo-readiness.json`.
+- **To run:** `TSM_SESSION_SECRET`, `TEST_PORT` and `BASE_URL` must be set in the shell. The capture script also reads `TSM_LOGIN_PASSWORD` and falls back to a development default if it is unset.
+
+---
+
+## Status as of 2026-10-09 (main at `7b9effb9`)
+
+**Verified**
+- The committed `tests/e2e/tsm-platform.spec.js` passes 17/17 when these are set in the shell: `TSM_SESSION_SECRET` (any value), `TEST_PORT=8080`, `BASE_URL=http://localhost:8080`. An earlier 16-failure run came from a missing session secret and then a port mismatch, not from platform code.
+- Candidate Registry write tokens: with `CANDIDATE_WRITE_TOKEN_REQUIRED=1`, updates and training events without a valid token return 401 and valid tokens pass; flag off behaves as before. Checked against a throwaway in-memory MongoDB, not the live database. PR #214 makes a browser session that has a candidate ID but no token create a fresh candidate.
+
+**Not yet verified**
+- `CANDIDATE_WRITE_TOKEN_REQUIRED` is unset everywhere; the page-level click-through in staging with the flag on has not been done.
+- `tsm-staffing-admin.html` and `tsm-staffing-readiness-demo.html` need a load check against a real database (they return 500 where `MONGODB_URI` is unset).
+- The seven flagship experiences remain scripted with visual review pending (see Flagship Demo Experiences). The L1 intelligence-platform flagship assets are on main (PR #216) but have not been visually reviewed.
+- Live ServiceNow writeback (see section 14).
+- Known gaps: Concierge and College Command (see 14.5); Concierge Command depends on a third-party origin.
