@@ -3925,7 +3925,9 @@ app.use('/api/enterprise', require('./server/enterprise/api/enterprise-router'))
 // html/l1-copilot/enterprise-command-center.html 404'd and every widget on
 // that page sat on "Twin backend not reachable yet — retrying...". This is
 // the missing mount.
-app.use('/api/twins', require('./server/enterprise-lab/twins-router'));
+// TSM FIX: lab/twin routers were unauthenticated and rate-limit exempt. Reads stay open; writes require a session.
+const __labWriteAuth = (req, res, next) => ['GET','HEAD','OPTIONS'].includes(req.method) ? next() : requireAnyAuth(req, res, next);
+app.use('/api/twins', __labWriteAuth, require('./server/enterprise-lab/twins-router'));
 
 // ── ENTERPRISE LAB CORE (missions / benchmark / incidents) ──────────────────
 // server/enterprise-lab/api.js (mission queue, chaos incident generator,
@@ -3933,7 +3935,7 @@ app.use('/api/twins', require('./server/enterprise-lab/twins-router'));
 // mounted, so every /api/enterprise-lab/* call from
 // html/l1-copilot/enterprise-command-center.html 404'd (Service Desk Wall,
 // Live Mission Queue, AI Chaos Engine). This is the missing mount.
-app.use('/api/enterprise-lab', require('./server/enterprise-lab/api'));
+app.use('/api/enterprise-lab', __labWriteAuth, require('./server/enterprise-lab/api'));
 
 
 // ── FINOPS ────────────────────────────────────────────────────────────────────
