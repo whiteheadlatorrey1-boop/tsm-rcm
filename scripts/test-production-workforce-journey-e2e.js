@@ -70,6 +70,7 @@ Module._load = function (request) {
   return origLoad.apply(this, arguments);
 };
 const registry = require('../server/candidate-registry-service');
+const staffing = require('../server/staffing-engine-service');
 Module._load = origLoad;
 
 // ---- harness --------------------------------------------------------------
@@ -244,6 +245,54 @@ function viewFrom(c) {
     assert.strictEqual(validateEnvelope(env), true);
     assert.strictEqual(env.decisions[0].eligible, false);
     assert.strictEqual(env.governance.approved, false);
+  });
+
+  await check('real eligibility engine accepts a ready_for_placement candidate', async () => {
+    await registry.upsertCandidate({
+      candidateId: 'CAND-15H-READY',
+      name: 'Journey Test Candidate',
+      role: 'IT Support Technician',
+      status: 'ready_for_placement',
+      source: '15h-journey-test',
+      isSampleData: false
+    });
+    const c = await registry.getCandidate('CAND-15H-READY');
+    const elig = staffing.evaluatePlacementEligibility(c);
+    assert.strictEqual(elig.eligible, true, 'got ' + JSON.stringify(elig));
+    assert.strictEqual(elig.reason, 'eligible');
+    const env = fromReadiness({ candidateId: c.candidateId }, viewFrom(c), elig);
+    assert.strictEqual(validateEnvelope(env), true);
+    assert.strictEqual(env.decisions[0].eligible, true);
+    assert.strictEqual(env.decisions[0].executed, false);
+    assert.strictEqual(env.governance.approved, false);
+  });
+
+  await check('real engine blocks a ready-status candidate below the readiness threshold', async () => {
+    await registry.upsertCandidate({
+      candidateId: 'CAND-15H-NOT-READY',
+      name: 'Not Ready Candidate',
+      status: 'ready_for_placement',
+      isSampleData: false
+    });
+    const c = await registry.getCandidate('CAND-15H-NOT-READY');
+    const elig = staffing.evaluatePlacementEligibility(c);
+    assert.strictEqual(elig.eligible, false, 'got ' + JSON.stringify(elig));
+    assert.strictEqual(elig.reason, 'readiness-below-threshold');
+    const env = fromReadiness({ candidateId: c.candidateId }, viewFrom(c), elig);
+    assert.strictEqual(validateEnvelope(env), true);
+    assert.strictEqual(env.decisions[0].eligible, false);
+    assert.strictEqual(env.governance.approved, false);
+    assert.ok(env.findings.some((f) => f.type === 'PLACEMENT_INELIGIBLE' && f.reason === 'readiness-below-threshold'));
+  });
+
+  await check('real engine rejects in-training, sample and unknown candidates', async () => {
+    await registry.upsertCandidate({ candidateId: 'CAND-15H-TRAINING', name: 'In Training', isSampleData: false });
+    const training = staffing.evaluatePlacementEligibility(await registry.getCandidate('CAND-15H-TRAINING'));
+    assert.strictEqual(training.reason, 'candidate-not-ready');
+    const sample = staffing.evaluatePlacementEligibility(await registry.getCandidate('CAND-15H-DEFAULT'));
+    assert.strictEqual(sample.reason, 'sample-candidate');
+    const unknown = staffing.evaluatePlacementEligibility(await registry.getCandidate('CAND-15H-UNKNOWN'));
+    assert.strictEqual(unknown.reason, 'candidate-not-found');
   });
 
   console.log(`\n15H workforce journey: ${passed} passed, ${failed} failed`);
