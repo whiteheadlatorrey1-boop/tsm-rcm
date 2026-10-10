@@ -13,6 +13,7 @@ const requisition = require('../html/js/career/tsm-ats-requisition');
 const application = require('../html/js/career/tsm-ats-application');
 const { fromReadiness } = require('../server/vertical-control-plane/adapters/workforce-adapter');
 const { validateEnvelope } = require('../server/vertical-control-plane/contract');
+const readinessView = require('../server/workforce-readiness-view');
 
 // ---- fake mongodb driver (in-memory, never connects) ----------------------
 const candidates = new Map();
@@ -293,6 +294,45 @@ function viewFrom(c) {
     assert.strictEqual(sample.reason, 'sample-candidate');
     const unknown = staffing.evaluatePlacementEligibility(await registry.getCandidate('CAND-15H-UNKNOWN'));
     assert.strictEqual(unknown.reason, 'candidate-not-found');
+  });
+
+  await check('real 15B view for a registry candidate feeds the real engine and adapter', async () => {
+    const r = await readinessView.resolveReadinessIntelligence('CAND-15H-READY', registry.getCandidate);
+    assert.strictEqual(r.status, 200, 'got ' + JSON.stringify(r));
+    assert.strictEqual(r.body.readOnly, true);
+    assert.strictEqual(r.body.candidateId, 'CAND-15H-READY');
+    assert.strictEqual(r.body.isSampleData, false);
+    const c = await registry.getCandidate('CAND-15H-READY');
+    const elig = staffing.evaluatePlacementEligibility(c);
+    assert.strictEqual(elig.eligible, true, 'got ' + JSON.stringify(elig));
+    const env = fromReadiness({ candidateId: c.candidateId }, r.body, elig);
+    assert.strictEqual(validateEnvelope(env), true);
+    assert.strictEqual(env.decisions[0].eligible, true);
+    assert.strictEqual(env.decisions[0].executed, false);
+    assert.strictEqual(env.governance.approved, false);
+  });
+
+  await check('15B resolver returns 404 for an unknown candidate and 400 for a missing id', async () => {
+    const unknown = await readinessView.resolveReadinessIntelligence('CAND-15H-UNKNOWN', registry.getCandidate);
+    assert.strictEqual(unknown.status, 404);
+    const missing = await readinessView.resolveReadinessIntelligence('', registry.getCandidate);
+    assert.strictEqual(missing.status, 400);
+  });
+
+  await check('15B view reports no_evidence for a candidate with no events and the adapter fails closed', async () => {
+    const r = await readinessView.resolveReadinessIntelligence('CAND-15H-TRAINING', registry.getCandidate);
+    assert.strictEqual(r.status, 200, 'got ' + JSON.stringify(r));
+    assert.strictEqual(r.body.state, 'no_evidence');
+    assert.strictEqual(r.body.insights.length, 0);
+    assert.strictEqual(r.body.actions.length, 0);
+    assert.strictEqual(r.body.humanReviewRequired, false);
+    const c = await registry.getCandidate('CAND-15H-TRAINING');
+    const elig = staffing.evaluatePlacementEligibility(c);
+    assert.strictEqual(elig.eligible, false);
+    const env = fromReadiness({ candidateId: c.candidateId }, r.body, elig);
+    assert.strictEqual(validateEnvelope(env), true);
+    assert.strictEqual(env.decisions[0].eligible, false);
+    assert.strictEqual(env.governance.approved, false);
   });
 
   console.log(`\n15H workforce journey: ${passed} passed, ${failed} failed`);
