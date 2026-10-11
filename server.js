@@ -191,6 +191,10 @@ const { requireAuth, requireRole, requireAnyAuth, signSession, verifySession, ge
 const clientRegistry = require('./middleware/client-registry');
 const staffRegistry = require('./middleware/staff-registry');
 
+// Relay sync carries whole relay payloads (document text included), which
+// outgrow express.json()'s default 100kb. Parsed here, ahead of the global
+// parser below, which then skips a body that is already parsed.
+app.use('/api/relay-sync', express.json({ limit: '2mb' }));
 app.use(express.json());
 app.use(require('express').urlencoded({ extended: false }));
 // tsmAuthMiddleware(app); // removed — war rooms are in-house
@@ -311,6 +315,19 @@ const hcLimiter = rateLimit({
 });
 app.use('/api/hc', hcLimiter);
 
+// Relay sync limiter — every chain page pulls once on load and pushes when a
+// relay changes, so a team clicking through war rooms behind one office IP
+// would eat the general apiLimiter's shared budget. Same ceiling and
+// rationale as hcLimiter above.
+const relaySyncLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 240,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { ok: false, error: 'Too many requests — please slow down.' },
+});
+app.use('/api/relay-sync', relaySyncLimiter);
+
 // NoSQL operator injection guard — these four route groups build Mongo
 // filters directly from req.query/req.body/req.params (see
 // server/security/mongo-sanitize.js for the exact mechanism). Mounted here,
@@ -331,7 +348,7 @@ app.use(['/api/bpo', '/api/pm', '/api/concierge', '/api/hotelops'], mongoSanitiz
 // lower shared budget underneath. req.path here is relative to the
 // '/api/' mount point (e.g. '/bpo/work-items/123/documents'), matching
 // the same style as the pre-existing '/health' check.
-const API_LIMITER_EXCLUDED_PREFIXES = ['/health', '/bpo', '/twins', '/enterprise-lab', '/hc'];
+const API_LIMITER_EXCLUDED_PREFIXES = ['/health', '/bpo', '/twins', '/enterprise-lab', '/hc', '/relay-sync'];
 app.use('/api/', (req, res, next) => (
   API_LIMITER_EXCLUDED_PREFIXES.some(prefix => req.path.startsWith(prefix))
     ? next()
@@ -3984,6 +4001,30 @@ app.use(require('./routes/integrations-fhir'));
 // ── RCM RELAY ─────────────────────────────────────────────────────────────────
 // Server-side staging for the FinOps Doc Showcase -> TSM RCM OS handoff.
 // See routes/rcm-relay.js header for the full endpoint contract.
+// Relay sync — mirrors the browser relay keys (War Room -> Strategist ->
+// Executive Portal hand-offs) per team so a case escalated on one device is
+// there on another. Signed-in sessions only; scope comes from the session;
+// values encrypted at rest. See server/tsm-relay-sync.js.
+const tsmRelaySync = require('./server/tsm-relay-sync');
+// The browser script asks this on every page load. A signed-out visitor or
+// an un-flagged deploy gets a quiet 200 "not enabled" here instead of a
+// 401/503, so the pages that load the script don't each log a failed
+// request in the browser console. It reveals nothing and stores nothing.
+app.get('/api/relay-sync', (req, res, next) => {
+  if (!tsmRelaySync.isConfigured() || !verifySession(getCookie(req, 'tsm_session'))) {
+    res.set('Cache-Control', 'no-store');
+    return res.json({ ok: true, enabled: false, entries: [] });
+  }
+  next();
+});
+// tsmLedger is required further down this file, so it is reached through
+// closures here (called per request) rather than read at mount time.
+app.use('/api/relay-sync', requireAnyAuth, tsmRelaySync.router(tsmRelaySync.createRelaySync({
+  getDb: () => tsmLedger.getDb(),
+  encrypt: (buffer) => tsmLedger.bpoEncryptBuffer(buffer),
+  decrypt: (ciphertext, iv, authTag) => tsmLedger.bpoDecryptBuffer(ciphertext, iv, authTag),
+})));
+
 app.use('/api/rcm', require('./routes/rcm-relay'));
 app.use('/api/rcm', require('./routes/rcm-requirements'));
 // Draft lifecycle events (created/approved/sent/...) join the L1 governance audit; text is never recorded.
