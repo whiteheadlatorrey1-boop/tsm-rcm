@@ -1,8 +1,18 @@
 #!/usr/bin/env node
-// render-from-manifest.js <vertical> <tier> [--burn]
+// render-from-manifest.js <vertical> <tier> [--burn] [--narrate]
 // Renders a video tier from manifests/<vertical>.json using per-state PNGs.
 // Outputs to videos/: <vertical>-<tier>.mp4, .vtt, .png (poster).
 // Fails on: missing frame, empty caption, consecutive byte-identical frames, duration drift.
+//
+// --narrate adds a spoken track. Each state needs a "narration" string in the
+// manifest (written to be said aloud; the caption stays the short on-screen
+// label). Each line is turned into speech, the frame is held for as long as
+// the line takes to say, and the output is <vertical>-<tier>-narrated.mp4 with
+// the narration as its .vtt transcript. Text-to-speech is whatever command you
+// point it at:
+//   TSM_TTS_VOICE=/path/to/en_US-ryan-high.onnx        (uses Piper: pip install piper-tts)
+//   TSM_TTS_CMD='<any command using {text} and {out}>' ({text} = file holding the line, {out} = WAV to write)
+// Fails on: a state with no narration, no TTS configured, or a TTS run that writes no audio.
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -22,6 +32,8 @@ const frameDir = path.join(DEMO_DIR, manifest.frameDir);
 if (!fs.existsSync(frameDir)) fail(`missing frame dir ${frameDir}`);
 
 const pad = n => String(n).padStart(3, '0');
+const narrate = flags.has('--narrate');
+const LEAD_IN = 0.5, TAIL = 0.9; // seconds of quiet before and after each spoken line
 const selected = manifest.states
   .filter(s => (s.tiers || []).includes(tier))
   .map(s => ({ ...s,
@@ -38,6 +50,7 @@ for (const s of selected) {
   s.file = path.join(frameDir, f);
   if (!s.text || !s.text.trim()) errors.push(`state ${pad(s.n)}: empty caption for tier "${tier}"`);
   if (!(s.dur > 0)) errors.push(`state ${pad(s.n)}: bad duration`);
+  if (narrate && !(s.narration && s.narration.trim())) errors.push(`state ${pad(s.n)}: no "narration" in the manifest (required by --narrate)`);
   const hash = crypto.createHash('sha1').update(fs.readFileSync(s.file)).digest('hex');
   if (hash === prevHash) errors.push(`states ${pad(prevN)} and ${pad(s.n)} are byte-identical (a capture click was probably skipped)`);
   prevHash = hash; prevN = s.n;
@@ -46,8 +59,35 @@ if (errors.length) fail('validation failed:\n  - ' + errors.join('\n  - '));
 
 const outDir = path.join(DEMO_DIR, 'videos');
 fs.mkdirSync(outDir, { recursive: true });
-const base = path.join(outDir, `${vertical}-${tier}`);
+const base = path.join(outDir, `${vertical}-${tier}${narrate ? '-narrated' : ''}`);
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tsm-render-'));
+
+function audioSeconds(file) {
+  const out = spawnSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', file]).stdout.toString().trim();
+  return parseFloat(out);
+}
+
+if (narrate) {
+  const template = process.env.TSM_TTS_CMD
+    || (process.env.TSM_TTS_VOICE ? `python3 -m piper -m "${process.env.TSM_TTS_VOICE}" -i {text} -f {out}` : null);
+  if (!template) fail('--narrate needs a text-to-speech command: set TSM_TTS_VOICE to a Piper voice (.onnx), or TSM_TTS_CMD to any command using {text} and {out}');
+  if (!template.includes('{text}') || !template.includes('{out}')) fail('TSM_TTS_CMD must contain {text} and {out}');
+  console.log(`Narrating ${selected.length} states`);
+  for (const s of selected) {
+    const textFile = path.join(tmp, `line-${pad(s.n)}.txt`);
+    const wav = path.join(tmp, `line-${pad(s.n)}.wav`);
+    fs.writeFileSync(textFile, s.narration.trim() + '\n');
+    const cmd = template.split('{text}').join(`"${textFile}"`).split('{out}').join(`"${wav}"`);
+    const run = spawnSync('sh', ['-c', cmd], { stdio: ['ignore', 'ignore', 'pipe'] });
+    const spoken = fs.existsSync(wav) ? audioSeconds(wav) : NaN;
+    if (run.status !== 0 || !(spoken > 0.2)) {
+      fail(`text-to-speech produced no audio for state ${pad(s.n)}\n  command: ${cmd}\n  ${(run.stderr || '').toString().trim().split('\n').slice(-3).join('\n  ')}`);
+    }
+    s.audio = wav;
+    // Hold the frame for the whole line. Never shorter than the manifest says.
+    s.dur = Math.max(s.dur, Math.ceil((LEAD_IN + spoken + TAIL) * 10) / 10);
+  }
+}
 
 function ffmpeg(a) { return spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', ...a], { stdio: 'inherit' }).status === 0; }
 
@@ -64,8 +104,15 @@ for (const s of selected) {
     vf += `,drawbox=x=0:y=ih-110:w=iw:h=110:color=black@0.6:t=fill,drawtext=text='${t}':fontcolor=white:fontsize=44:x=(w-text_w)/2:y=h-75`;
   }
   vf += ',format=yuv420p';
-  if (!ffmpeg(['-loop', '1', '-framerate', '30', '-i', s.file, '-t', String(s.dur), '-vf', vf, '-r', '30',
-    '-c:v', 'libx264', '-preset', 'medium', '-crf', '20', clip])) fail(`ffmpeg failed on state ${pad(s.n)}`);
+  const made = narrate
+    // Same picture, plus the spoken line: a short lead-in, levelled, padded with silence to the clip length.
+    ? ffmpeg(['-loop', '1', '-framerate', '30', '-i', s.file, '-i', s.audio,
+        '-filter_complex', `[0:v]${vf}[v];[1:a]loudnorm=I=-16:TP=-1.5:LRA=11,adelay=${Math.round(LEAD_IN * 1000)}:all=1,apad,aresample=48000[a]`,
+        '-map', '[v]', '-map', '[a]', '-t', String(s.dur), '-r', '30',
+        '-c:v', 'libx264', '-preset', 'medium', '-crf', '20', '-c:a', 'aac', '-b:a', '160k', '-ac', '2', clip])
+    : ffmpeg(['-loop', '1', '-framerate', '30', '-i', s.file, '-t', String(s.dur), '-vf', vf, '-r', '30',
+        '-c:v', 'libx264', '-preset', 'medium', '-crf', '20', clip]);
+  if (!made) fail(`ffmpeg failed on state ${pad(s.n)}`);
   clips.push(clip);
   console.log(`  ${pad(s.n)} - ${s.dur}s  ${s.text}`);
 }
@@ -77,7 +124,7 @@ ffmpeg(['-i', selected[0].file, '-vf', 'scale=1280:-2', `${base}.png`]);
 const ts = sec => { const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${s.toFixed(3).padStart(6, '0')}`; };
 let t = 0, vtt = 'WEBVTT\n\n';
-selected.forEach((s, i) => { vtt += `${i + 1}\n${ts(t)} --> ${ts(t + s.dur)}\n${s.text}\n\n`; t += s.dur; });
+selected.forEach((s, i) => { vtt += `${i + 1}\n${ts(t)} --> ${ts(t + s.dur)}\n${narrate ? s.narration.trim() : s.text}\n\n`; t += s.dur; });
 fs.writeFileSync(`${base}.vtt`, vtt);
 fs.rmSync(tmp, { recursive: true, force: true });
 

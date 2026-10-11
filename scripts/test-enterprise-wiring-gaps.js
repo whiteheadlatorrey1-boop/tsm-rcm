@@ -20,6 +20,9 @@
  *       without double counting supplier + plant exposure (was: never read).
  *   A6  The Demo Console (20 demo videos) and the Presentation Hub are linked
  *       from the Suite Hub (were: reachable from two side pages / none).
+ *   A7  The flagship story videos are published into the Demo Console (were:
+ *       rendered into a git-ignored folder nobody could reach), and their
+ *       captures show a real Executive Portal (was: an empty one).
  *
  * Run: node scripts/test-enterprise-wiring-gaps.js
  */
@@ -322,6 +325,32 @@ async function main() {
   for (const v of consoleVideos) { r = await fetch(BASE + v, { method: 'HEAD' }); if (r.status !== 200) missingVideos.push(v + ' -> ' + r.status); }
   ok(consoleVideos.length === 20 && missingVideos.length === 0, 'A6: all ' + consoleVideos.length + ' demo videos listed by the console are served' + (missingVideos.length ? ' — missing: ' + missingVideos.join(', ') : ''));
 
+  // ── A7. flagship story videos are published into the Demo Console ─────
+  const consoleSrc = read('demo/tsm-demo-console.html');
+  ok(/<script src="\/demo\/flagship\/flagship-data\.js"><\/script>/.test(consoleSrc) && /DATA\.unshift\(\.\.\.FLAGSHIPS\)/.test(consoleSrc), 'A7: the Demo Console loads the published flagship list and shows it first');
+  const flagCtx = { window: {} };
+  vm.runInNewContext(read('demo/flagship/flagship-data.js'), flagCtx);
+  const flagships = flagCtx.window.TSM_FLAGSHIP_DATA || [];
+  const registry = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'tests', 'e2e', 'demo', 'demo-readiness.json'), 'utf8')).experiences;
+  ok(flagships.length === registry.length && registry.every(e => flagships.some(f => f.id === 'flagship-' + e.id)), 'A7: every experience in demo-readiness.json is published (' + flagships.length + ')');
+  const flagProblems = [];
+  for (const f of flagships) {
+    for (const url of [f.video, f.poster, f.captions]) {
+      r = await fetch(BASE + url, { method: 'HEAD' });
+      if (r.status !== 200) flagProblems.push(url + ' -> ' + r.status);
+    }
+    const ts = f.steps.map(s => s.t);
+    if (ts[0] !== 0 || ts.some((x, i) => i > 0 && x <= ts[i - 1])) flagProblems.push(f.id + ': step times not increasing from 0');
+    if (f.steps.some(s => ![0, 1, 2].includes(s.chain) || !s.text)) flagProblems.push(f.id + ': step without a stage or text');
+    if (f.steps[f.steps.length - 1].chain !== 2 || f.steps[0].chain !== 0) flagProblems.push(f.id + ': story does not run war room -> executive');
+  }
+  ok(flagships.length > 0 && flagProblems.length === 0, 'A7: each published flagship has its video, poster and captions served, and steps that run war room to executive' + (flagProblems.length ? ' — ' + flagProblems.slice(0, 4).join('; ') : ''));
+  const flagshipSpecs = fs.readdirSync(path.join(__dirname, '..', 'tests', 'e2e')).filter(f => /-flagship\.spec\.js$/.test(f));
+  ok(flagshipSpecs.length === 7 && flagshipSpecs.every(f => {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'tests', 'e2e', f), 'utf8');
+    return /ESCALATE TO EXECUTIVE/.test(src) && /NO ESCALATION RECEIVED/.test(src) && !/page\.goto\('\/html\/war-rooms\/honeywell-executive-portal\.html'/.test(src);
+  }), 'A7: all 7 flagship captures escalate through the strategist and check the Executive Portal is not empty');
+
   // ── A5. cascade room -> Honeywell Strategist ──────────────────────────
   const relay = (source, lo) => ({ source, outputs: [], docText: '', timestamp: new Date().toISOString(), kpis: { exposure: { totalExposureLow: lo, totalExposureHigh: lo } } });
   const seeded = { TSM_HONEYWELL_PLANT_RELAY: relay('plant', 400000), TSM_HONEYWELL_SUPPLIER_RELAY: relay('supplier', 250000), TSM_HONEYWELL_CASCADE_RELAY: relay('cascade', 650000) };
@@ -346,6 +375,7 @@ async function main() {
   const supplierOnly = hs.window.computeHoneywellBNCA(seeded.TSM_HONEYWELL_SUPPLIER_RELAY).currentExposure;
   ok(agg.domainCount === 2 && agg.currentExposure === plantOnly + supplierOnly, 'A5: the aggregate still sums plant + supplier only, so the combined cascade figure is not counted twice');
   ok(/CROSS-DOMAIN CASCADE/.test(hs.window.document.body.textContent), 'A5: the cascade room appears on the strategist page');
+  ok(/cascade:\s*\{ label: 'CROSS-DOMAIN CASCADE/.test(read('war-rooms/honeywell-executive-portal.html')), 'A5: the Executive Portal names the cascade room too, instead of a generic label');
   hs.window.close();
   hs = await loadStrategist({ TSM_HONEYWELL_CASCADE_RELAY: seeded.TSM_HONEYWELL_CASCADE_RELAY });
   agg = hs.window.computeAggregateBNCA(hs.window.loadAllRelays());

@@ -74,9 +74,15 @@ test('Cascade: supplier + plant relays to strategist to executive portal', async
   await page.waitForTimeout(1000);
   await shot('strategist-received-relay');
 
-  await page.goto('/html/war-rooms/honeywell-executive-portal.html', { waitUntil: 'domcontentloaded' });
+  // Escalate from the strategist the way a user does. Opening the portal
+  // directly skips the strategist's escalation: the portal then shows "NO
+  // ESCALATION RECEIVED" under a caption that says the relay arrived.
+  await page.getByRole('button', { name: /ESCALATE TO EXECUTIVE/i }).click();
+  await page.waitForURL('**/honeywell-executive-portal.html', { timeout: 15000 });
   expect(await readRelay(page), `relay ${RELAY_KEY} missing at executive portal`).not.toBeNull();
   await expect(page.locator('#tsmk-delivery-btn')).toBeVisible();
+  await expect(page.getByText('NO ESCALATION RECEIVED')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /AUTHORIZE RESPONSE/i })).toBeVisible();
   await page.waitForTimeout(1200);
   await shot('executive-portal');
 });
