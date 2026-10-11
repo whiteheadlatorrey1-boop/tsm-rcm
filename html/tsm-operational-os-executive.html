@@ -61,7 +61,7 @@ button{
   padding:10px 14px;
   cursor:pointer;
 }
-input{
+input,select{
   background:var(--panel2);
   border:1px solid var(--line);
   color:white;
@@ -94,6 +94,9 @@ pre{
 
 <main>
   <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px">
+    <select id="casePicker">
+      <option value="">Select a case…</option>
+    </select>
     <input id="caseId"
       placeholder="BPO case ID, e.g. BPO-2026-08-18-ueqqtb">
     <button onclick="loadRecovery()">Load Recovery Package</button>
@@ -183,6 +186,17 @@ const money = v =>
         maximumFractionDigits:0
       }).format(v);
 
+function loginNextUrl(){
+  return '/login?next=' + encodeURIComponent(location.pathname + location.search);
+}
+
+function showSignInPrompt(){
+  document.getElementById('dashboard').style.display = 'none';
+  document.getElementById('status').innerHTML =
+    'Sign in to load a recovery package. ' +
+    '<a href="' + escapeHtml(loginNextUrl()) + '">Sign in</a>';
+}
+
 async function loadRecovery(){
   const id = document.getElementById('caseId').value.trim();
 
@@ -202,6 +216,11 @@ async function loadRecovery(){
       '/executive-recovery'
     );
 
+    if(r.status === 401){
+      showSignInPrompt();
+      return;
+    }
+
     const data = await r.json();
 
     if(!r.ok || !data.ok){
@@ -214,10 +233,72 @@ async function loadRecovery(){
       'EXECUTIVE PACKAGE READY · ' +
       new Date(data.report.generatedAt).toLocaleString();
   }catch(e){
+    document.getElementById('dashboard').style.display = 'none';
     document.getElementById('status').textContent =
       'ERROR · ' + e.message;
   }
 }
+
+async function loadCasePicker(){
+  const picker = document.getElementById('casePicker');
+
+  try{
+    const r = await fetch('/api/bpo/work-items');
+
+    if(r.status === 401){
+      showSignInPrompt();
+      return;
+    }
+
+    const data = await r.json();
+
+    if(!r.ok || !data.ok){
+      throw new Error(data.error || 'Request failed');
+    }
+
+    const items = Array.isArray(data.workItems) ? data.workItems : [];
+
+    if(!items.length){
+      document.getElementById('status').textContent =
+        'No BPO cases stored yet. Send a document through the BPO War Room to create one, then reload this page.';
+    }
+
+    picker.innerHTML =
+      '<option value="">Select a case…</option>' +
+      items.map(it => {
+        const id = it.caseId || it.id || '';
+        const label = [id, it.vertical, it.stage, it.priority]
+          .filter(Boolean).join(' · ');
+        return '<option value="' + escapeHtml(id) + '">' +
+          escapeHtml(label) + '</option>';
+      }).join('');
+  }catch(e){
+    // List failed for a reason other than 401 — leave the picker as-is
+    // so typing a case ID by hand still works.
+  }
+}
+
+document.getElementById('casePicker').addEventListener('change', () => {
+  const id = document.getElementById('casePicker').value;
+  if(id){
+    document.getElementById('caseId').value = id;
+    loadRecovery();
+  }
+});
+
+document.getElementById('caseId').addEventListener('keydown', (e) => {
+  if(e.key === 'Enter') loadRecovery();
+});
+
+(async function init(){
+  await loadCasePicker();
+
+  const urlId = new URLSearchParams(location.search).get('caseId');
+  if(urlId){
+    document.getElementById('caseId').value = urlId;
+    loadRecovery();
+  }
+})();
 
 function render(r){
   document.getElementById('dashboard').style.display='block';
