@@ -1253,7 +1253,7 @@ const ECOSYSTEM_NAV = [
       {name:'Suite Builder',url:'/html/suite-builder.html'},
       {name:'Client Access Portal',url:'/html/client-access.html'},
       {name:'WIA Workforce Intelligence',url:'/html/wia.html'},
-      {name:'Enterprise WIP Dashboard',url:'/html/wip-dashboard.html'},
+      {name:'Enterprise WIP Dashboard',url:'/html/war-rooms/tsm-wip-command-center.html'},
       {name:'DOC1 Enterprise Search',url:'/html/doc1-search.html'},
     ],
     locked: [],
@@ -1274,7 +1274,6 @@ const ECOSYSTEM_NAV = [
     id: 'eco-03', num: '03', label: 'Healthcare Ops', color: '#22c55e',
     summary: 'Revenue Cycle Management, Denials, Prior Authorization, Compliance, Patient Financial Services & BPO.',
     apps: [
-      {name:'Healthcare Workbench',url:'/html/healthcare/healthcare-wip.html'},
       {name:'Healthcare Academy',url:'/html/healthcare/hc-academy/hc-academy.html'},
       {name:'Healthcare Academy Pro',url:'/html/healthcare/hc-academy/tsm_healthcare_academy.html'},
       {name:'CRC Practice Lab',url:'/html/healthcare/hc-academy/crc-hc-practice.html'},
@@ -1317,7 +1316,6 @@ const ECOSYSTEM_NAV = [
     id: 'eco-06', num: '06', label: 'Legal Ops', color: '#a855f7',
     summary: 'Legal BPO, Document Review, Contract Analysis, Case Preparation & Compliance.',
     apps: [
-      {name:'Healthcare Workbench',url:'/html/healthcare/healthcare-wip.html'},
       {name:'DOC1 Enterprise Search',url:'/html/doc1-search.html'},
     ],
     locked: [],
@@ -1336,10 +1334,10 @@ const ECOSYSTEM_NAV = [
     id: 'eco-08', num: '08', label: 'BPO Delivery Network', color: '#6366f1',
     summary: 'Client Delivery, Workflow Routing, Escalations, Service Monitoring & Quality Assurance.',
     apps: [
-      {name:'BPO Suite Hub',url:'/html/bpo/suite-hub.html'},
-      {name:'BPO Command Center',url:'/html/bpo/bpo-command-center.html'},
-      {name:'Internal Operations',url:'/html/bpo/bpo-internal1.html'},
-      {name:'Healthcare Suite',url:'/html/bpo/tsm-bpo-personal-manual.html'},
+      {name:'BPO Suite Hub',url:'/html/bpo-files/suite-hub.html'},
+      {name:'BPO Command Center',url:'/html/war-rooms/bpo-war/bpo-war-room.html'},
+      {name:'Internal Operations',url:'/html/bpo-files/bpo-internal1.html'},
+      {name:'Healthcare Suite',url:'/html/healthcare/suite-index.html'},
       {name:'Workforce Intelligence Ops',url:'/html/bpo/tsm-bpo-competitive-playbook'},
       {name:'BPO Scenarios',url:'/html/bpo/html/bpo-scenarios-demo'},
     ],
@@ -2001,6 +1999,7 @@ async function runPipeline() {
     console.log('[HC Structured Case DEBUG] AFTER BUILD', lastStructuredCase);
 
     syncStructuredCaseToEngine(lastStructuredCase);
+    reportHCDenialNode(lastStructuredCase);
 
     console.log('[HC Structured Case DEBUG] AFTER SYNC', lastStructuredCase);
   } catch (e) {
@@ -2237,6 +2236,46 @@ let syncedCaseId = null;
  * tenantId is left null (case-manager's documented default — same as
  * omitting tenantId anywhere else in this codebase: unscoped, not broken).
  */
+// ── NODE REPORT -> server-side Healthcare chain ──────────────────────────
+// executive-portal.html's Intelligence V3 Action Center builds its queue
+// from GET /api/hc/node-reports, but until now no page ever POSTed one, so
+// that queue was always empty. This posts the structured case the war room
+// just built -- same fire-and-forget pattern as schReportNodes() in
+// schools-command.html. Nothing invented: every field comes from the
+// structured case; a case with no claim ID and no exposure is not posted;
+// severity reuses syncStructuredCaseToEngine()'s own rule below.
+function reportHCDenialNode(sc) {
+  try {
+    if (!sc) return;
+    const exposure = typeof sc.financialExposure === 'number' ? sc.financialExposure : null;
+    if (!sc.claimId && exposure === null) return;
+    const severity = (!sc.appealable || sc.recoveryLikelihood === 'WEAK') ? 'HIGH'
+      : (sc.recoveryLikelihood === 'MODERATE' ? 'MEDIUM' : 'LOW');
+    const denialCodes = sc.denialReasonCode
+      ? String(sc.denialReasonCode).split(/[\/,]/).map(c => c.trim()).filter(Boolean)
+      : [];
+    fetch('/api/hc/node-report', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        nodeId: sc.claimId ? 'hc-denial:' + sc.claimId : 'hc-denial-war-room',
+        nodeLabel: (sc.claimId ? sc.claimId + ' — ' : '') + (sc.denialReasonCode || 'Denial') + (sc.payer ? ' · ' + sc.payer : ''),
+        report: sc.rootCauseHypothesis || '',
+        analysisText: sc.recoveryLikelihood ? 'Recovery likelihood: ' + sc.recoveryLikelihood : '',
+        denialCodes,
+        claimIds: sc.claimId ? [sc.claimId] : [],
+        severity,
+        kpi: {
+          exposure,
+          confidence: typeof sc.confidence === 'number' ? sc.confidence : null,
+          appealDeadline: sc.appealDeadline || null
+        },
+        ts: Date.now()
+      })
+    }).catch(() => { /* fire-and-forget, non-blocking */ });
+  } catch (err) { console.warn('reportHCDenialNode error:', err); }
+}
+
 function syncStructuredCaseToEngine(sc) {
   if (!sc || typeof TSMCaseManager === 'undefined') return null;
   const severity = (!sc.appealable || sc.recoveryLikelihood === 'WEAK') ? 'high'
