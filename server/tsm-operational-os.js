@@ -32,6 +32,16 @@ const VERTICALS = [
   'concierge'
 ];
 
+const usdFormatter = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+  maximumFractionDigits: 0
+});
+
+function usd(value) {
+  return usdFormatter.format(Number.isFinite(value) ? value : 0);
+}
+
 function num(...values) {
   for (const value of values) {
     if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -210,7 +220,7 @@ function deriveFinding(c) {
   const priority = String(c.priority || '').toLowerCase();
 
   if (exposure !== null && exposure > 0) {
-    return `${priorityWeight(priority) >= 3 ? 'High-priority ' : ''}financial exposure of ${exposure}`;
+    return `${priorityWeight(priority) >= 3 ? 'High-priority ' : ''}financial exposure of ${usd(exposure)}`;
   }
 
   if (status.includes('overdue') || status.includes('escalat')) {
@@ -368,7 +378,7 @@ function buildRecoveryPackage(input = {}) {
 
     executiveSummary:
       exposure > 0
-        ? `The portfolio currently carries ${exposure} of identified financial exposure across ${cases.length} operational case(s). The recovery engine has identified ${recovered} recovered value and ${prevented} prevented-loss value from structured case data.`
+        ? `The portfolio currently carries ${usd(exposure)} of identified financial exposure across ${cases.length} operational case(s). The recovery engine has identified ${usd(recovered)} recovered value and ${usd(prevented)} prevented-loss value from structured case data.`
         : `The portfolio contains ${cases.length} operational case(s), but no structured financial exposure has been recorded yet.`,
 
     financials: {

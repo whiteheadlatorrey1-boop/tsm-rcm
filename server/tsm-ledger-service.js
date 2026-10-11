@@ -463,6 +463,7 @@ const BPO_AUDIT_LOGS_COLLECTION = 'bpo_audit_logs';
 const BPO_NOTES_COLLECTION = 'bpo_notes';
 const BPO_SLA_EVENTS_COLLECTION = 'bpo_sla_events';
 const BPO_BNCA_REPORTS_COLLECTION = 'bpo_bnca_reports';
+const BPO_EXECUTIVE_RECOVERY_COLLECTION = 'bpo_executive_recovery_packages';
 const BPO_DOC_META_COLLECTION = 'bpo_documents_meta';
 const BPO_DOC_CHUNKS_COLLECTION = 'bpo_document_chunks';
 // Universal Case Engine (Roadmap #10) server-side mirror of the browser's
@@ -537,6 +538,11 @@ async function bpoSlaEventsCollection() {
 async function bpoBncaReportsCollection() {
   const database = await getDb();
   return database.collection(BPO_BNCA_REPORTS_COLLECTION);
+}
+
+async function bpoExecutiveRecoveryCollection() {
+  const database = await getDb();
+  return database.collection(BPO_EXECUTIVE_RECOVERY_COLLECTION);
 }
 
 async function bpoCasesCollection() {
@@ -1824,6 +1830,44 @@ async function bpoListBncaReports({ caseId, limit = 50 } = {}) {
   const query = {};
   if (caseId) query.caseId = caseId;
   return col.find(query).sort({ ts: -1 }).limit(limit).toArray();
+}
+
+// ── Executive Recovery — saved war-room snapshots ───────────────────────
+// Append-only, same shape as bpoSaveBncaReport above — every save is its
+// own doc rather than overwriting the last one. This is the war room's
+// assembled package (situation/strategy/tabs/recovery), distinct from the
+// computed `report` the GET route in server.js builds live from
+// buildRecoveryPackage(); a saved snapshot must never feed that computed
+// report.
+const BPO_EXECUTIVE_RECOVERY_MAX_BYTES = 256 * 1024;
+
+async function bpoSaveExecutiveRecovery(caseId, pkg, actor) {
+  if (!caseId) throw new Error('caseId required');
+  const isPlainObject = pkg && typeof pkg === 'object' && !Array.isArray(pkg)
+    && Object.keys(pkg).length > 0;
+  if (!isPlainObject) throw new Error('recovery package object required');
+  if (Buffer.byteLength(JSON.stringify(pkg), 'utf8') > BPO_EXECUTIVE_RECOVERY_MAX_BYTES) {
+    throw new Error('recovery package too large');
+  }
+
+  const workItem = await bpoGetWorkItem(caseId);
+  if (!workItem) throw new Error('Work item not found');
+
+  const col = await bpoExecutiveRecoveryCollection();
+  const savedAt = new Date().toISOString();
+  const doc = {
+    caseId,
+    clientId: workItem.clientId || null,
+    vertical: workItem.vertical || 'bpo',
+    package: pkg,
+    actor,
+    ts: savedAt,
+  };
+  await col.insertOne(doc);
+  await bpoWriteAudit({
+    actor, action: 'work_item.executive_recovery_saved', entityType: 'work_item', entityId: caseId,
+  });
+  return { ...pkg, caseId, savedAt, savedBy: actor };
 }
 
 // ── Phase 8: Executive Recovery Dashboard ───────────────────────────────
@@ -4425,6 +4469,7 @@ module.exports = {
   bpoListSlaEvents,
   bpoSaveBncaReport,
   bpoListBncaReports,
+  bpoSaveExecutiveRecovery,
   bpoBuildClientRollup,
   bpoBuildMemberClientRollup,
   bpoSaveClientMonthlyReport,
