@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script src="/shared/tsm-relay-sync.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>TSM · Meridian Industrial Strategist</title>
@@ -138,7 +139,8 @@ const RELAY_KEYS = {
   healthcare:'TSM_HONEYWELL_HEALTHCARE_RELAY',
   aerospace:'TSM_HONEYWELL_AEROSPACE_RELAY',
   lifesciences:'TSM_HONEYWELL_LIFESCIENCES_RELAY',
-  capitalproject:'TSM_HONEYWELL_CAPITALPROJECT_RELAY'
+  capitalproject:'TSM_HONEYWELL_CAPITALPROJECT_RELAY',
+  cascade:   'TSM_HONEYWELL_CASCADE_RELAY'
 };
 // Legacy key, kept as a fallback read only — nothing writes to it anymore
 // post-split, but any old in-flight session data still sitting in a
@@ -154,7 +156,8 @@ const SOURCE_META = {
   healthcare:{ label: 'HEALTHCARE — THERMAL CONTINUITY',   icon: '🏥', war: '/html/war-rooms/healthcare-thermal-continuity.html', color: 'var(--green)' },
   aerospace:{ label: 'AEROSPACE — MAINTENANCE READINESS',  icon: '✈', war: '/html/war-rooms/aerospace-maintenance-readiness.html', color: 'var(--blue)' },
   lifesciences:{ label: 'LIFE SCIENCES — PRODUCTION CONTINUITY', icon: '🧪', war: '/html/war-rooms/life-sciences-production-continuity.html', color: 'var(--green)' },
-  capitalproject:{ label: 'CAPITAL PROJECT — RECOVERY',    icon: '🏗', war: '/html/war-rooms/industrial-capital-project-recovery.html', color: 'var(--amber)' }
+  capitalproject:{ label: 'CAPITAL PROJECT — RECOVERY',    icon: '🏗', war: '/html/war-rooms/industrial-capital-project-recovery.html', color: 'var(--amber)' },
+  cascade:  { label: 'CROSS-DOMAIN CASCADE — SUPPLIER × PLANT', icon: '🔗', war: '/html/war-rooms/honeywell-cross-domain-cascade.html', color: 'var(--red)' }
 };
 
 function showToast(msg, isErr){
@@ -329,6 +332,7 @@ function hwBncaSeverity(src){
   if(src === 'lifesciences') return 'CRIT'; // patient-safety-adjacent batch/cold-chain continuity — same top tier as cyber/bess/healthcare
   if(src === 'aerospace') return 'HIGH'; // costly but not patient-safety-or-security top tier — same as plant
   if(src === 'capitalproject') return 'HIGH'; // costly but not patient-safety-or-security top tier — same as plant
+  if(src === 'cascade') return 'CRIT'; // the cascade room registers its own combined-exposure anomaly as CRITICAL
   return 'MED'; // includes supplier and detection (pre-alarm, not yet a confirmed event)
 }
 function computeHoneywellBNCA(data){
@@ -371,7 +375,14 @@ function computeHoneywellBNCA(data){
 // just whichever one posted last.
 function computeAggregateBNCA(allEntries){
   if(!window.TSMBNCAExposureEngine || !allEntries || !allEntries.length) return null;
-  const perDomain = allEntries.map(d => {
+  // The cascade room's exposure is the supplier and plant figures combined.
+  // When either of those is also present, counting cascade again in the sums
+  // below would double count them, so it is shown as its own domain card but
+  // left out of the aggregate. If it is the only one of the three present,
+  // it is the only source for that exposure and is counted.
+  const hasCascadeParts = allEntries.some(d => d && (d.source === 'supplier' || d.source === 'plant'));
+  const summable = allEntries.filter(d => !(d && d.source === 'cascade' && hasCascadeParts));
+  const perDomain = summable.map(d => {
     const bnca = computeHoneywellBNCA(d);
     return (bnca && !bnca.unavailable) ? { source: d.source, meta: SOURCE_META[d.source] || null, bnca } : null;
   }).filter(Boolean);

@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script src="/shared/tsm-relay-sync.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>TSM Mortgage Command Center</title>
@@ -665,11 +666,55 @@ tr:hover td{background:rgba(212,175,55,.03)}
     } catch (err) { console.warn('[Mortgage Node Chain]', err.message); }
   }
 
+  // ── NODE REPORTS -> server-side Mortgage chain ───────────────────────────
+  // mortgage-executive-portal.html's Intelligence V3 Action Center builds its
+  // queue from GET /api/mortgage/node-reports, but no page ever POSTed one,
+  // so that queue was always empty. Mirrors schReportNodes() in
+  // schools-command.html: reuses the exact anomaly objects
+  // mtgBuildSentinelAnomalies() already built plus the breach id lists the
+  // engine already computes. Fire-and-forget: never blocks the relay.
+  const MTG_SEV_TO_NODE = { CRIT: 'CRITICAL', HIGH: 'HIGH', MED: 'MEDIUM', LOW: 'LOW' };
+  function mtgReportNodes(anomalies) {
+    try {
+      const loanBreaches = engine.getSlaBreaches('loan_files') || [];
+      const openExceptions = (engine.data.exceptions || []).filter(e => e.stage !== 'remediated');
+      const idsFor = (anomalyId) => {
+        if (anomalyId === 'mtg-closing-delay') return loanBreaches.map(b => b.id).filter(Boolean);
+        if (anomalyId === 'mtg-compliance') return Array.from(new Set(openExceptions.map(e => e.loan_id).filter(Boolean)));
+        return [];
+      };
+      const countFor = (anomalyId) => {
+        if (anomalyId === 'mtg-closing-delay') return loanBreaches.length;
+        if (anomalyId === 'mtg-compliance') return openExceptions.length;
+        return 0;
+      };
+      (anomalies || []).forEach(a => {
+        fetch('/api/mortgage/node-report', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            nodeId: a.id,
+            nodeLabel: a.title,
+            report: a.rootCause,
+            analysisText: a.recommendedAction || '',
+            exposure: a.exposure || 0,
+            breachCount: countFor(a.id),
+            loanIds: idsFor(a.id),
+            severity: MTG_SEV_TO_NODE[a.severity] || 'INFO',
+            kpi: { confidence: a.confidence || 0 },
+            ts: Date.now()
+          })
+        }).catch(() => { /* fire-and-forget, non-blocking */ });
+      });
+    } catch (err) { console.warn('mtgReportNodes error:', err); }
+  }
+
   async function relayToStrategist() {
     const aiText = document.getElementById('aiOutput').textContent;
     const payload = engine.buildRelayPayload(aiText.startsWith('Run analysis') ? null : aiText);
     payload.generatedAt = payload.generatedAt || new Date().toISOString();
     payload.anomalies = mtgBuildSentinelAnomalies();
+    mtgReportNodes(payload.anomalies);
     engine.saveToStorage();
     fireCapabilitySweep_MTG(payload);
     await fireMortgageNodeChain_MTG(payload);

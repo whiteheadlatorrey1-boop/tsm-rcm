@@ -39,7 +39,25 @@ Run from the repo root.
 
    Writes `videos/<id>-flagship.mp4`, `.vtt` and a poster `.png`. Fails on a missing frame, an empty caption, consecutive byte-identical frames, or duration drift.
 
-3. Check the registry:
+   Add `--narrate` for a spoken track. Each state in the manifest needs a `narration` line (spoken text, numbers written as words). Point it at a text-to-speech command first:
+
+```bash
+   pip install piper-tts && python3 -m piper.download_voices en_US-ryan-high
+   export TSM_TTS_VOICE="$PWD/en_US-ryan-high.onnx"     # or TSM_TTS_CMD='<command using {text} and {out}>'
+   node tests/e2e/demo/render-from-manifest.js <id> flagship --burn --narrate
+```
+
+   Writes `videos/<id>-flagship-narrated.mp4` and `.vtt`. Each frame is held for as long as its line takes to say.
+
+3. Publish into the Demo Console:
+
+```bash
+   node tests/e2e/demo/publish-flagship.js
+```
+
+   Copies each experience's video (the narrated one when it exists), captions and poster into `html/demo/flagship/` and writes `flagship-data.js`, which `html/demo/tsm-demo-console.html` lists first. Commit that folder. `videos/` itself stays git-ignored.
+
+4. Check the registry:
 
 ```bash
    node tests/e2e/demo/verify-demo-readiness.js

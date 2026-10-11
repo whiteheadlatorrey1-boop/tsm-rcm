@@ -308,6 +308,9 @@
   </div>
 </div>
 
+<!-- Flagship story videos, published by tests/e2e/demo/publish-flagship.js.
+     The file sets window.TSM_FLAGSHIP_DATA; the console lists those first. -->
+<script src="/demo/flagship/flagship-data.js"></script>
 <script>
 const BASE = '/demo';
 
@@ -665,6 +668,20 @@ const DATA = [
   },
 ];
 
+// Flagship story videos go first: longer, captioned and (when rendered with
+// --narrate) spoken, where the per-vertical demos below are silent stills.
+const FLAGSHIPS = Array.isArray(window.TSM_FLAGSHIP_DATA) ? window.TSM_FLAGSHIP_DATA : [];
+DATA.unshift(...FLAGSHIPS);
+if (FLAGSHIPS.length) {
+  const meta = document.querySelector('.hero-meta');
+  if (meta) {
+    const span = document.createElement('span');
+    const narrated = FLAGSHIPS.filter(f => f.narrated).length;
+    span.innerHTML = '<strong>Flagship stories:</strong> ' + FLAGSHIPS.length + (narrated ? ' (' + narrated + ' narrated)' : '');
+    meta.insertBefore(span, meta.firstChild);
+  }
+}
+
 let activeVertical = 0;
 let activeStep = 0;
 const video = document.getElementById('video');
@@ -731,7 +748,14 @@ function selectVertical(i){
   renderChapterHead(v);
   renderRelayChain(v);
   renderSteps(v);
+  video.querySelectorAll('track').forEach(t => t.remove());
+  if (v.poster) video.poster = v.poster; else video.removeAttribute('poster');
   video.src = v.video;
+  if (v.captions) {
+    const track = document.createElement('track');
+    track.kind = 'captions'; track.srclang = 'en'; track.label = 'English'; track.src = v.captions;
+    video.appendChild(track);
+  }
   video.load();
   selectStep(0, true);
 }

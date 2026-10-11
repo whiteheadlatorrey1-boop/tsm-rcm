@@ -66,6 +66,15 @@
     collegecommand: 'College Command'
   };
 
+  // Name of this portal's HITL gate on the server (/api/exec-portal/:name).
+  // The College portal is 'collegecommand' in this file's own maps, but the
+  // server registers its gate as 'college' -- posting 'collegecommand' got a
+  // 404 "Unknown vertical", so no College decision was ever recorded.
+  const SERVER_GATE_NAME = { collegecommand: 'college' };
+  function gateNameFor(vertical) {
+    return SERVER_GATE_NAME[vertical] || vertical;
+  }
+
   function domainLabelFor(vertical) {
     return VERTICAL_DOMAIN_MAP[vertical] || vertical;
   }
@@ -534,7 +543,7 @@
     const panel = document.getElementById('tsm-rate-panel');
     if (!panel) return;
     try {
-      const r = await fetch(`/api/exec-portal/${vertical}/decisions`);
+      const r = await fetch(`/api/exec-portal/${gateNameFor(vertical)}/decisions`);
       const data = await r.json();
       if (!data || !data.ok) throw new Error('bad response');
       renderRateStats(data.stats, panel);
@@ -633,7 +642,7 @@
 
     _logExec(`Persisting ${verdict} decision to server…`, 'tsm-log-muted');
 
-    fetch(`/api/exec-portal/${vertical}/decide`, {
+    fetch(`/api/exec-portal/${gateNameFor(vertical)}/decide`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ index, verdict, text, actor: 'Executive', tenantId })

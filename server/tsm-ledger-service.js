@@ -4470,6 +4470,10 @@ module.exports = {
   bpoSaveBncaReport,
   bpoListBncaReports,
   bpoSaveExecutiveRecovery,
+  // AES-256-GCM helpers, exported for server/tsm-relay-sync.js so relay
+  // payloads use the same at-rest encryption as BPO documents.
+  bpoEncryptBuffer,
+  bpoDecryptBuffer,
   bpoBuildClientRollup,
   bpoBuildMemberClientRollup,
   bpoSaveClientMonthlyReport,

@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script src="/shared/tsm-relay-sync.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>TSM Legal Main Strategist</title>
@@ -1329,17 +1330,84 @@ function loadComplianceRelay() {
 }
 
 // ============================================================
+// WAR ROOM RELAY -- the case the Legal War Room escalated
+// ------------------------------------------------------------
+// legal-war-room.html's storeSession() has always written the escalated
+// case to TSM_LEGAL_WAR_RELAY, but nothing on this page read it: the Chief
+// Strategist only ever ran on the SCENARIOS picker, so the war room's case
+// never reached it. This loads that case into the intake form so the BNCA
+// below analyzes the real matter. Nothing is invented: only fields the war
+// room actually wrote are used, the user's own typing is never overwritten,
+// and the banner says where the data came from and when.
+// ============================================================
+const WAR_ROOM_RELAY_KEY = 'TSM_LEGAL_WAR_RELAY';
+const WAR_ROOM_CONTEXT_MAX = 6000;
+let warRoomCase = null;
+
+function buildWarRoomContext(data) {
+  const snap = data.snapshot || {};
+  const lines = ['FROM LEGAL WAR ROOM'];
+  const facts = [
+    ['Case type', snap.caseType], ['Risk score', snap.riskScore], ['Damages', snap.damages],
+    ['Deadline', snap.deadline], ['Stage', snap.stage]
+  ].filter(f => f[1] && String(f[1]).trim() && String(f[1]).trim() !== '—');
+  facts.forEach(f => lines.push(f[0] + ': ' + String(f[1]).trim()));
+  const outputs = Array.isArray(data.engOut) ? data.engOut : [];
+  outputs.forEach((out, i) => {
+    const text = String(out || '').trim();
+    if (text) lines.push('', 'ENGINE ' + (i + 1) + ':', text);
+  });
+  return lines.join('\n').slice(0, WAR_ROOM_CONTEXT_MAX);
+}
+
+function loadWarRoomRelay() {
+  let raw = null;
+  try {
+    raw = localStorage.getItem(WAR_ROOM_RELAY_KEY) || sessionStorage.getItem(WAR_ROOM_RELAY_KEY);
+  } catch (e) { return; }
+  if (!raw) return;
+  let data;
+  try { data = JSON.parse(raw); } catch (e) { return; }
+  if (!data || typeof data !== 'object') return;
+  warRoomCase = data;
+
+  const matterEl = document.getElementById('matter-name');
+  const matter = data.matter || data.docType || '';
+  if (matterEl && !matterEl.value && matter) matterEl.value = matter;
+
+  const contextEl = document.getElementById('context-input');
+  if (contextEl && !contextEl.value) contextEl.value = buildWarRoomContext(data);
+
+  let banner = document.getElementById('war-room-relay-banner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'war-room-relay-banner';
+    banner.style.cssText = 'margin:0 0 12px;padding:8px 12px;border:1px solid #00ffc6;color:#00ffc6;font-size:11px;letter-spacing:1px';
+    const form = document.querySelector('.intake-form .form-grid');
+    if (form && form.parentNode) form.parentNode.insertBefore(banner, form);
+  }
+  const snap = data.snapshot || {};
+  const when = data.timestamp ? new Date(data.timestamp) : null;
+  banner.textContent = 'WAR ROOM CASE RECEIVED' +
+    (matter ? ' · ' + matter : '') +
+    (snap.riskScore && String(snap.riskScore).trim() !== '—' ? ' · RISK ' + String(snap.riskScore).trim() : '') +
+    (when && !isNaN(when) ? ' · ' + when.toLocaleString() : '');
+}
+
+// ============================================================
 // INIT
 // ============================================================
 document.addEventListener('DOMContentLoaded', () => {
   updateNodeScores();
   loadComplianceRelay();
+  loadWarRoomRelay();
   setTimeline(2);
   document.getElementById('thinking-indicator').textContent = 'READY · AWAITING INTAKE';
 });
 // Re-check when legal-compliance.html (open in another tab) writes a fresh relay
 window.addEventListener('storage', (e) => {
   if (e.key === COMPLIANCE_RELAY_KEY) loadComplianceRelay();
+  if (e.key === WAR_ROOM_RELAY_KEY) loadWarRoomRelay();
 });
 </script>
   <script src="/js/core/tsm-kernel-upgrade.js"></script>
