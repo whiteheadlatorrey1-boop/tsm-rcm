@@ -481,5 +481,84 @@ window.TSM_FLAGSHIP_DATA = [
         "text": "The same loop, every ticket: understand the ticket, prepare the action, verify it, a technician confirms, the result is recorded, and the work hands off cleanly. The aim is consistency: less avoidable re-investigation, and evidence you can audit."
       }
     ]
+  },
+  {
+    "id": "flagship-intelligence-platform",
+    "name": "Intelligence Platform",
+    "tag": "FLAGSHIP · NARRATED",
+    "title": "Workforce, L1, SAP and Executive, in one loop",
+    "desc": "Captured fail-loud across four real TSM apps: Workforce Intelligence, the L1 Ticket Copilot, the SAP Strategist and the Operational OS executive view. The workforce scenario toggle and the SAP trace are preset/demo configurations, not live computation; the Operational OS executive package needs a connected case, which this environment does not have, so it is shown in its real empty state.",
+    "video": "/demo/flagship/intelligence-platform-flagship.mp4",
+    "poster": "/demo/flagship/intelligence-platform-flagship.png",
+    "captions": "/demo/flagship/intelligence-platform-flagship.vtt",
+    "narrated": true,
+    "reviewed": false,
+    "chain": [
+      "Understand",
+      "Connect & Analyze",
+      "Decide"
+    ],
+    "steps": [
+      {
+        "t": 0,
+        "chain": 0,
+        "text": "TSM Intelligence Platform connects workforce intelligence, frontline operations, enterprise systems and executive decision-making through one architecture, in the real application. We start with Workforce Intelligence."
+      },
+      {
+        "t": 13.9,
+        "chain": 0,
+        "text": "This view switches between two preset workforce scenarios, each with its own readiness and compliance configuration. That is a demo configuration, not a live candidate lookup."
+      },
+      {
+        "t": 24.9,
+        "chain": 0,
+        "text": "That intelligence has to reach the point where work actually happens: the L one Ticket Copilot, running in the real application."
+      },
+      {
+        "t": 33.4,
+        "chain": 0,
+        "text": "An offboarding ticket is entered. TSM classifies the task type and shows closure as blocked, because the required evidence is not in yet. The technician decides what happens next."
+      },
+      {
+        "t": 45,
+        "chain": 1,
+        "text": "The same intelligence pattern extends into the enterprise, in the SAP Strategist."
+      },
+      {
+        "t": 51,
+        "chain": 1,
+        "text": "Starting the journey traces a business object across commerce, CRM, master data, CPQ, approval and downstream operations."
+      },
+      {
+        "t": 61.1,
+        "chain": 1,
+        "text": "Instead of viewing each system on its own, TSM shows the relationships between them: the business object trace, stage by stage."
+      },
+      {
+        "t": 70.4,
+        "chain": 1,
+        "text": "The same data condition can propagate across multiple application boundaries downstream."
+      },
+      {
+        "t": 76.7,
+        "chain": 1,
+        "text": "The enterprise impact view shows that propagation across systems, not just the health of one application on its own."
+      },
+      {
+        "t": 84.7,
+        "chain": 2,
+        "text": "The strategist assembles the evidence needed for an executive decision. The decision itself stays a business action: investigate, remediate, or escalate."
+      },
+      {
+        "t": 95.1,
+        "chain": 2,
+        "text": "The Operational OS brings recovery data into one executive package once a case is selected. This environment has no case connected yet, so the package view is shown empty, honestly."
+      },
+      {
+        "t": 107.4,
+        "chain": 2,
+        "text": "Human decision, action, evidence, outcome: that is the loop at the center of TSM, from workforce intelligence through frontline execution to the executive view, and back again."
+      }
+    ]
   }
 ];
