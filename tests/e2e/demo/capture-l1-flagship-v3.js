@@ -17,90 +17,34 @@
 // ServiceNow steps are omitted: ServiceNow is not configured in this local environment.
 
 const { chromium } = require('playwright');
-const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
+const { createCapture } = require('../helpers/demo-step.js');
 
 const BASE = process.env.BASE_URL || 'http://localhost:3000';
 const PASS = process.env.TSM_LOGIN_PASSWORD || 'dev';
 const OUT = path.join(__dirname, 'screenshots', 'l1-platform-flagship-v3');
 const SIDECAR = path.join(__dirname, 'l1-flagship-v3-capture.json');
-const ERR_RE = /(evaluation failed|unauthori[sz]ed|not defined|lookup failed|request failed|failed to|is not a function)/i;
-const md5 = (b) => crypto.createHash('md5').update(b).digest('hex');
-const pad = (n) => String(n).padStart(3, '0');
 
 const OFF = { inc: 'INC0099887', asset: 'FIN-LT-0042',
   text: 'Employee offboarding: departing employee last day Friday. Laptop FIN-LT-0042 must be returned to inventory and the device record updated.' };
 const SOFT = { inc: 'INC0099888', asset: 'FIN-LT-0042',
   text: 'User requests installation of Adobe Acrobat software on their laptop. Software request, license available.' };
 
-fs.mkdirSync(OUT, { recursive: true });
-for (const f of fs.readdirSync(OUT)) if (f.endsWith('.png')) fs.unlinkSync(path.join(OUT, f));
-
 (async () => {
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
-  const pageErrors = [];
-  page.on('pageerror', (e) => pageErrors.push(e.message.slice(0, 120)));
+  const { step: step0, writeSidecar, pageErrors } = createCapture({ page, browser, outDir: OUT, base: BASE });
+  // Every L1 step logs the workflow-gate text under `gate` (not the generic `status`)
+  // and, when present, the AI-assist recommendation under `aoAssist` — matching the
+  // field names this sidecar has always used.
+  const step = (label, action, o = {}) => step0(label, action, {
+    ...o,
+    statusSelector: o.statusSelector || '#l1WorkflowGateResult',
+    statusKey: 'gate',
+    record: { aoAssist: '#aoAssistOut', ...(o.record || {}) },
+  });
 
-  let n = 0, prevShot = null, prevSig = null;
-  const log = [];
   const w = (ms) => page.waitForTimeout(ms);
-
-  async function diagnose() {
-    return page.evaluate(() => {
-      const vis = (e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
-      return location.pathname + ' | visible buttons: ' +
-        [...document.querySelectorAll('button[id]')].filter(vis).map((e) => e.id + (e.disabled ? '(dis)' : '')).slice(0, 30).join(' ');
-    });
-  }
-  async function fail(id, why) {
-    console.error('\n✗ STEP ' + id + ' FAILED: ' + why);
-    console.error('  ' + (await diagnose().catch(() => '?')));
-    if (pageErrors.length) console.error('  page errors: ' + [...new Set(pageErrors)].join(' | '));
-    await browser.close();
-    process.exit(1);
-  }
-  const usable = (sel) => page.locator(sel).first().evaluate((e) => {
-    const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0 && !e.disabled;
-  }).catch(() => false);
-
-  // step(label, action, { need, see, text, focus, same })
-  async function step(label, action, o = {}) {
-    n++;
-    const id = pad(n) + '-' + label;
-    for (const sel of o.need || []) if (!(await usable(sel))) return fail(id, 'control not visible/enabled before action: ' + sel);
-    try { await action(); } catch (e) { return fail(id, 'action threw: ' + e.message.split('\n')[0]); }
-    await w(o.wait || 1100);
-    for (const sel of o.see || []) {
-      try { await page.locator(sel).first().waitFor({ state: 'visible', timeout: 6000 }); }
-      catch (e) { return fail(id, 'expected element did not appear: ' + sel); }
-    }
-    if (o.text) {
-      try { await page.waitForFunction(([s, re]) => { const e = document.querySelector(s); return !!e && new RegExp(re, 'i').test(e.innerText); },
-              [o.text[0], o.text[1].source], { timeout: 15000 }); }
-      catch (e) { return fail(id, o.text[0] + ' never matched ' + o.text[1] + '; shows: ' +
-        ((await page.locator(o.text[0]).first().innerText().catch(() => '(missing)')).replace(/\s+/g, ' ').slice(0, 160))); }
-    }
-    const errs = await page.evaluate(() => [...document.querySelectorAll('.err')]
-      .filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0 && e.innerText.trim(); })
-      .map((e) => e.innerText.trim().slice(0, 80)));
-    if (errs.length) return fail(id, 'visible error on screen: ' + errs.join(' | '));
-    const gate = (await page.locator('#l1WorkflowGateResult').first().innerText().catch(() => '')).replace(/\s+/g, ' ').trim();
-    if (ERR_RE.test(gate)) return fail(id, 'gate shows an error: ' + gate.slice(0, 140));
-    const sig = md5(await page.evaluate(() => document.body.innerText));
-    if (!o.same && sig === prevSig) return fail(id, 'the page text did not change after this action (nothing happened)');
-    if (o.focus) await page.locator(o.focus).first().scrollIntoViewIfNeeded().catch(() => {});
-    await w(250);
-    const png = await page.screenshot();
-    if (md5(png) === prevShot) return fail(id, 'frame is byte-identical to the previous frame');
-    prevShot = md5(png); prevSig = sig;
-    fs.writeFileSync(path.join(OUT, id + '.png'), png);
-    const ao = (await page.locator('#aoAssistOut').first().innerText().catch(() => '')).replace(/\s+/g, ' ').trim().slice(0, 200);
-    log.push({ n, id, url: page.url().replace(BASE, ''), gate: gate.slice(0, 200), aoAssist: ao || undefined, shot: md5(png).slice(0, 8) });
-    console.log('  ✓ ' + id + (gate ? '   [' + gate.slice(0, 70) + ']' : ''));
-  }
-
   const nav = (sec) => () => page.locator('.sb-item[data-section="' + sec + '"]').first().click({ timeout: 4000 });
   const click = (sel) => () => page.locator(sel).first().click({ timeout: 4000 });
   const check = (sel) => () => page.locator(sel).first().check({ timeout: 4000 });
@@ -180,7 +124,7 @@ for (const f of fs.readdirSync(OUT)) if (f.endsWith('.png')) fs.unlinkSync(path.
   await step('executive-view', async () => { await page.goto(BASE + '/html/l1-copilot/l1-exec-portal.html', { waitUntil: 'domcontentloaded' }); }, { wait: 2500 });
   await step('final-command-center', async () => { await page.goto(BASE + '/html/l1-copilot/enterprise-command-center.html', { waitUntil: 'domcontentloaded' }); }, { see: ['#l1a-fab'], wait: 1500 });
 
-  fs.writeFileSync(SIDECAR, JSON.stringify({ capturedAt: new Date().toISOString(), base: BASE, frames: log, pageErrors: [...new Set(pageErrors)] }, null, 2));
+  const { n } = writeSidecar(SIDECAR);
   console.log('\n✓ ' + n + ' unique frames captured -> ' + OUT);
   console.log('  sidecar: ' + SIDECAR);
   if (pageErrors.length) console.log('  note: page errors seen: ' + [...new Set(pageErrors)].join(' | '));

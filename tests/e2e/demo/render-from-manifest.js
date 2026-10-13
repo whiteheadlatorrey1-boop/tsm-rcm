@@ -38,7 +38,8 @@ const selected = manifest.states
   .filter(s => (s.tiers || []).includes(tier))
   .map(s => ({ ...s,
     dur: tier === 'flagship' ? s.seconds : (s.promoSeconds ?? s.seconds),
-    text: tier === 'flagship' ? s.caption : (s.promoCaption || s.caption) }));
+    text: tier === 'flagship' ? s.caption : (s.promoCaption || s.caption),
+    say: tier === 'flagship' ? s.narration : (s.promoNarration || s.narration) }));
 if (!selected.length) fail(`no states tagged "${tier}" in ${manifestPath}`);
 
 const files = fs.readdirSync(frameDir).filter(f => f.endsWith('.png')).sort();
@@ -50,7 +51,7 @@ for (const s of selected) {
   s.file = path.join(frameDir, f);
   if (!s.text || !s.text.trim()) errors.push(`state ${pad(s.n)}: empty caption for tier "${tier}"`);
   if (!(s.dur > 0)) errors.push(`state ${pad(s.n)}: bad duration`);
-  if (narrate && !(s.narration && s.narration.trim())) errors.push(`state ${pad(s.n)}: no "narration" in the manifest (required by --narrate)`);
+  if (narrate && !(s.say && s.say.trim())) errors.push(`state ${pad(s.n)}: no "narration" in the manifest (required by --narrate)`);
   const hash = crypto.createHash('sha1').update(fs.readFileSync(s.file)).digest('hex');
   if (hash === prevHash) errors.push(`states ${pad(prevN)} and ${pad(s.n)} are byte-identical (a capture click was probably skipped)`);
   prevHash = hash; prevN = s.n;
@@ -76,7 +77,7 @@ if (narrate) {
   for (const s of selected) {
     const textFile = path.join(tmp, `line-${pad(s.n)}.txt`);
     const wav = path.join(tmp, `line-${pad(s.n)}.wav`);
-    fs.writeFileSync(textFile, s.narration.trim() + '\n');
+    fs.writeFileSync(textFile, s.say.trim() + '\n');
     const cmd = template.split('{text}').join(`"${textFile}"`).split('{out}').join(`"${wav}"`);
     const run = spawnSync('sh', ['-c', cmd], { stdio: ['ignore', 'ignore', 'pipe'] });
     const spoken = fs.existsSync(wav) ? audioSeconds(wav) : NaN;
@@ -124,7 +125,7 @@ ffmpeg(['-i', selected[0].file, '-vf', 'scale=1280:-2', `${base}.png`]);
 const ts = sec => { const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${s.toFixed(3).padStart(6, '0')}`; };
 let t = 0, vtt = 'WEBVTT\n\n';
-selected.forEach((s, i) => { vtt += `${i + 1}\n${ts(t)} --> ${ts(t + s.dur)}\n${narrate ? s.narration.trim() : s.text}\n\n`; t += s.dur; });
+selected.forEach((s, i) => { vtt += `${i + 1}\n${ts(t)} --> ${ts(t + s.dur)}\n${narrate ? s.say.trim() : s.text}\n\n`; t += s.dur; });
 fs.writeFileSync(`${base}.vtt`, vtt);
 fs.rmSync(tmp, { recursive: true, force: true });
 

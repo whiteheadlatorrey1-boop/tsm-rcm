@@ -302,5 +302,263 @@ window.TSM_FLAGSHIP_DATA = [
         "text": "The Executive Portal shows the decision: hold the batch and open a formal deviation investigation within four hours, for twenty-five thousand dollars. The system recommends. The head of quality decides."
       }
     ]
+  },
+  {
+    "id": "flagship-l1",
+    "name": "L1",
+    "tag": "FLAGSHIP · NARRATED",
+    "title": "Governed Technician Intelligence",
+    "desc": "Captured fail-loud from the real L1 Ticket Copilot: every step must change the screen or the capture stops. Lookups use demo records; ServiceNow is not connected. No engine output is stubbed.",
+    "video": "/demo/flagship/l1-flagship.mp4",
+    "poster": "/demo/flagship/l1-flagship.png",
+    "captions": "/demo/flagship/l1-flagship.vtt",
+    "narrated": true,
+    "reviewed": false,
+    "chain": [
+      "Understand & Prepare",
+      "Verify & Confirm",
+      "Record & Handoff"
+    ],
+    "steps": [
+      {
+        "t": 0,
+        "chain": 0,
+        "text": "This is the TSM Enterprise Command Center, where IT operations work starts. Everything you will see runs in the real application, against demo records."
+      },
+      {
+        "t": 10.2,
+        "chain": 0,
+        "text": "The copilot assistant is one click away from the command center."
+      },
+      {
+        "t": 15,
+        "chain": 0,
+        "text": "A technician opens the L one Ticket Copilot. The problem it targets: ticket context is scattered across incidents, asset records and procedures, and every technician pieces it together differently."
+      },
+      {
+        "t": 27.8,
+        "chain": 0,
+        "text": "An offboarding ticket arrives. A departing employee's laptop has to come back to inventory, and its device record has to be updated."
+      },
+      {
+        "t": 36.6,
+        "chain": 0,
+        "text": "TSM reads the ticket text and classifies it as offboarding. It sets the next action, and it shows closure as blocked, because the required evidence isn't there yet. The technician knows what is missing before doing anything."
+      },
+      {
+        "t": 50.3,
+        "chain": 1,
+        "text": "To verify the return, the technician enters the laptop's asset tag."
+      },
+      {
+        "t": 55.7,
+        "chain": 1,
+        "text": "TSM looks up the asset record. This environment uses demo records, and the screen says so."
+      },
+      {
+        "t": 61.9,
+        "chain": 1,
+        "text": "The technician records the outcome: returned to stock."
+      },
+      {
+        "t": 66,
+        "chain": 1,
+        "text": "And confirms it personally. A person attests to the physical return. The system does not assume it."
+      },
+      {
+        "t": 72.5,
+        "chain": 1,
+        "text": "Asset recovery is verified."
+      },
+      {
+        "t": 77.5,
+        "chain": 1,
+        "text": "Next, the asset record itself has to change. The technician moves to Asset Lifecycle."
+      },
+      {
+        "t": 83.6,
+        "chain": 1,
+        "text": "The incident, the asset, the technician, and the reason for the return are filled in."
+      },
+      {
+        "t": 89.6,
+        "chain": 1,
+        "text": "The assistant recommends Return to Inventory, at medium confidence, and labels it as draft assistance only. It recommends. It does not act."
+      },
+      {
+        "t": 98.4,
+        "chain": 1,
+        "text": "Nothing changes until the technician authorizes it. That boundary is the point: the AI prepares, a person decides."
+      },
+      {
+        "t": 106.5,
+        "chain": 2,
+        "text": "The action is confirmed, and the confirmation is recorded."
+      },
+      {
+        "t": 111.5,
+        "chain": 2,
+        "text": "From here the technician can draft the resolution note from the evidence gathered so far."
+      },
+      {
+        "t": 117,
+        "chain": 2,
+        "text": "Or, if the work needs Tier two, build an escalation package, so the next team doesn't start from scratch."
+      },
+      {
+        "t": 124.2,
+        "chain": 1,
+        "text": "Back on the ticket, closure requires explicit evidence."
+      },
+      {
+        "t": 128.8,
+        "chain": 1,
+        "text": "The user is verified,"
+      },
+      {
+        "t": 131.8,
+        "chain": 1,
+        "text": "the work is confirmed,"
+      },
+      {
+        "t": 134.8,
+        "chain": 1,
+        "text": "the fix is tested,"
+      },
+      {
+        "t": 137.8,
+        "chain": 1,
+        "text": "and the final work note is confirmed."
+      },
+      {
+        "t": 141.1,
+        "chain": 1,
+        "text": "TSM re-evaluates, and closure is still blocked. The location hasn't been verified, so the ticket cannot close on incomplete evidence. The gate holds even when everything else looks done."
+      },
+      {
+        "t": 152.8,
+        "chain": 0,
+        "text": "A different ticket: a software install request. TSM classifies it as a software task, and the required steps change with it."
+      },
+      {
+        "t": 161.5,
+        "chain": 1,
+        "text": "The technician enters the request number."
+      },
+      {
+        "t": 165,
+        "chain": 1,
+        "text": "TSM finds the request, again from demo records."
+      },
+      {
+        "t": 169.3,
+        "chain": 1,
+        "text": "Outcome: fulfilled."
+      },
+      {
+        "t": 172.3,
+        "chain": 1,
+        "text": "The technician confirms the software is installed,"
+      },
+      {
+        "t": 176.9,
+        "chain": 1,
+        "text": "and attests to the fulfillment."
+      },
+      {
+        "t": 180,
+        "chain": 2,
+        "text": "Fulfillment is verified."
+      },
+      {
+        "t": 184,
+        "chain": 2,
+        "text": "Leadership sees the same work from the L one executive view."
+      },
+      {
+        "t": 189,
+        "chain": 2,
+        "text": "The same loop, every ticket: understand the ticket, prepare the action, verify it, a technician confirms, the result is recorded, and the work hands off cleanly. The aim is consistency: less avoidable re-investigation, and evidence you can audit."
+      }
+    ]
+  },
+  {
+    "id": "flagship-intelligence-platform",
+    "name": "Intelligence Platform",
+    "tag": "FLAGSHIP · NARRATED",
+    "title": "Workforce, L1, SAP and Executive, in one loop",
+    "desc": "Captured fail-loud across four real TSM apps: Workforce Intelligence, the L1 Ticket Copilot, the SAP Strategist and the Operational OS executive view. The workforce scenario toggle and the SAP trace are preset/demo configurations, not live computation; the Operational OS executive package needs a connected case, which this environment does not have, so it is shown in its real empty state.",
+    "video": "/demo/flagship/intelligence-platform-flagship.mp4",
+    "poster": "/demo/flagship/intelligence-platform-flagship.png",
+    "captions": "/demo/flagship/intelligence-platform-flagship.vtt",
+    "narrated": true,
+    "reviewed": false,
+    "chain": [
+      "Understand",
+      "Connect & Analyze",
+      "Decide"
+    ],
+    "steps": [
+      {
+        "t": 0,
+        "chain": 0,
+        "text": "TSM Intelligence Platform connects workforce intelligence, frontline operations, enterprise systems and executive decision-making through one architecture, in the real application. We start with Workforce Intelligence."
+      },
+      {
+        "t": 13.9,
+        "chain": 0,
+        "text": "This view switches between two preset workforce scenarios, each with its own readiness and compliance configuration. That is a demo configuration, not a live candidate lookup."
+      },
+      {
+        "t": 24.9,
+        "chain": 0,
+        "text": "That intelligence has to reach the point where work actually happens: the L one Ticket Copilot, running in the real application."
+      },
+      {
+        "t": 33.4,
+        "chain": 0,
+        "text": "An offboarding ticket is entered. TSM classifies the task type and shows closure as blocked, because the required evidence is not in yet. The technician decides what happens next."
+      },
+      {
+        "t": 45,
+        "chain": 1,
+        "text": "The same intelligence pattern extends into the enterprise, in the SAP Strategist."
+      },
+      {
+        "t": 51,
+        "chain": 1,
+        "text": "Starting the journey traces a business object across commerce, CRM, master data, CPQ, approval and downstream operations."
+      },
+      {
+        "t": 61.1,
+        "chain": 1,
+        "text": "Instead of viewing each system on its own, TSM shows the relationships between them: the business object trace, stage by stage."
+      },
+      {
+        "t": 70.4,
+        "chain": 1,
+        "text": "The same data condition can propagate across multiple application boundaries downstream."
+      },
+      {
+        "t": 76.7,
+        "chain": 1,
+        "text": "The enterprise impact view shows that propagation across systems, not just the health of one application on its own."
+      },
+      {
+        "t": 84.7,
+        "chain": 2,
+        "text": "The strategist assembles the evidence needed for an executive decision. The decision itself stays a business action: investigate, remediate, or escalate."
+      },
+      {
+        "t": 95.1,
+        "chain": 2,
+        "text": "The Operational OS brings recovery data into one executive package once a case is selected. This environment has no case connected yet, so the package view is shown empty, honestly."
+      },
+      {
+        "t": 107.4,
+        "chain": 2,
+        "text": "Human decision, action, evidence, outcome: that is the loop at the center of TSM, from workforce intelligence through frontline execution to the executive view, and back again."
+      }
+    ]
   }
 ];
