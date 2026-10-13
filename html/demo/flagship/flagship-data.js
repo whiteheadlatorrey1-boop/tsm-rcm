@@ -302,5 +302,184 @@ window.TSM_FLAGSHIP_DATA = [
         "text": "The Executive Portal shows the decision: hold the batch and open a formal deviation investigation within four hours, for twenty-five thousand dollars. The system recommends. The head of quality decides."
       }
     ]
+  },
+  {
+    "id": "flagship-l1",
+    "name": "L1",
+    "tag": "FLAGSHIP · NARRATED",
+    "title": "Governed Technician Intelligence",
+    "desc": "Captured fail-loud from the real L1 Ticket Copilot: every step must change the screen or the capture stops. Lookups use demo records; ServiceNow is not connected. No engine output is stubbed.",
+    "video": "/demo/flagship/l1-flagship.mp4",
+    "poster": "/demo/flagship/l1-flagship.png",
+    "captions": "/demo/flagship/l1-flagship.vtt",
+    "narrated": true,
+    "reviewed": false,
+    "chain": [
+      "Understand & Prepare",
+      "Verify & Confirm",
+      "Record & Handoff"
+    ],
+    "steps": [
+      {
+        "t": 0,
+        "chain": 0,
+        "text": "This is the TSM Enterprise Command Center, where IT operations work starts. Everything you will see runs in the real application, against demo records."
+      },
+      {
+        "t": 10.2,
+        "chain": 0,
+        "text": "The copilot assistant is one click away from the command center."
+      },
+      {
+        "t": 15,
+        "chain": 0,
+        "text": "A technician opens the L one Ticket Copilot. The problem it targets: ticket context is scattered across incidents, asset records and procedures, and every technician pieces it together differently."
+      },
+      {
+        "t": 27.8,
+        "chain": 0,
+        "text": "An offboarding ticket arrives. A departing employee's laptop has to come back to inventory, and its device record has to be updated."
+      },
+      {
+        "t": 36.6,
+        "chain": 0,
+        "text": "TSM reads the ticket text and classifies it as offboarding. It sets the next action, and it shows closure as blocked, because the required evidence isn't there yet. The technician knows what is missing before doing anything."
+      },
+      {
+        "t": 50.3,
+        "chain": 1,
+        "text": "To verify the return, the technician enters the laptop's asset tag."
+      },
+      {
+        "t": 55.7,
+        "chain": 1,
+        "text": "TSM looks up the asset record. This environment uses demo records, and the screen says so."
+      },
+      {
+        "t": 61.9,
+        "chain": 1,
+        "text": "The technician records the outcome: returned to stock."
+      },
+      {
+        "t": 66,
+        "chain": 1,
+        "text": "And confirms it personally. A person attests to the physical return. The system does not assume it."
+      },
+      {
+        "t": 72.5,
+        "chain": 1,
+        "text": "Asset recovery is verified."
+      },
+      {
+        "t": 77.5,
+        "chain": 1,
+        "text": "Next, the asset record itself has to change. The technician moves to Asset Lifecycle."
+      },
+      {
+        "t": 83.6,
+        "chain": 1,
+        "text": "The incident, the asset, the technician, and the reason for the return are filled in."
+      },
+      {
+        "t": 89.6,
+        "chain": 1,
+        "text": "The assistant recommends Return to Inventory, at medium confidence, and labels it as draft assistance only. It recommends. It does not act."
+      },
+      {
+        "t": 98.4,
+        "chain": 1,
+        "text": "Nothing changes until the technician authorizes it. That boundary is the point: the AI prepares, a person decides."
+      },
+      {
+        "t": 106.5,
+        "chain": 2,
+        "text": "The action is confirmed, and the confirmation is recorded."
+      },
+      {
+        "t": 111.5,
+        "chain": 2,
+        "text": "From here the technician can draft the resolution note from the evidence gathered so far."
+      },
+      {
+        "t": 117,
+        "chain": 2,
+        "text": "Or, if the work needs Tier two, build an escalation package, so the next team doesn't start from scratch."
+      },
+      {
+        "t": 124.2,
+        "chain": 1,
+        "text": "Back on the ticket, closure requires explicit evidence."
+      },
+      {
+        "t": 128.8,
+        "chain": 1,
+        "text": "The user is verified,"
+      },
+      {
+        "t": 131.8,
+        "chain": 1,
+        "text": "the work is confirmed,"
+      },
+      {
+        "t": 134.8,
+        "chain": 1,
+        "text": "the fix is tested,"
+      },
+      {
+        "t": 137.8,
+        "chain": 1,
+        "text": "and the final work note is confirmed."
+      },
+      {
+        "t": 141.1,
+        "chain": 1,
+        "text": "TSM re-evaluates, and closure is still blocked. The location hasn't been verified, so the ticket cannot close on incomplete evidence. The gate holds even when everything else looks done."
+      },
+      {
+        "t": 152.8,
+        "chain": 0,
+        "text": "A different ticket: a software install request. TSM classifies it as a software task, and the required steps change with it."
+      },
+      {
+        "t": 161.5,
+        "chain": 1,
+        "text": "The technician enters the request number."
+      },
+      {
+        "t": 165,
+        "chain": 1,
+        "text": "TSM finds the request, again from demo records."
+      },
+      {
+        "t": 169.3,
+        "chain": 1,
+        "text": "Outcome: fulfilled."
+      },
+      {
+        "t": 172.3,
+        "chain": 1,
+        "text": "The technician confirms the software is installed,"
+      },
+      {
+        "t": 176.9,
+        "chain": 1,
+        "text": "and attests to the fulfillment."
+      },
+      {
+        "t": 180,
+        "chain": 2,
+        "text": "Fulfillment is verified."
+      },
+      {
+        "t": 184,
+        "chain": 2,
+        "text": "Leadership sees the same work from the L one executive view."
+      },
+      {
+        "t": 189,
+        "chain": 2,
+        "text": "The same loop, every ticket: understand the ticket, prepare the action, verify it, a technician confirms, the result is recorded, and the work hands off cleanly. The aim is consistency: less avoidable re-investigation, and evidence you can audit."
+      }
+    ]
   }
 ];
