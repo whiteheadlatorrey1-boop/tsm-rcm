@@ -155,32 +155,11 @@ function crawl() {
   return { broken, pagesVisited: visitedPages.size };
 }
 
-// Known, flagged-but-not-fixed finding: html/healthcare/hc-strategist/index.html
-// links to /document-showcase/index.html, which doesn't exist; the only file
-// with that name anywhere in the repo is html/construction-suite/
-// document-showcase.html — a healthcare strategist page linking to a
-// construction-suite resource doesn't look like an obvious typo of a
-// nearby path (could be a copy-paste leftover, or a healthcare-specific
-// page that was simply never built), so this isn't fixed by guessing — it's
-// WARNed, not failed, same pattern relay-verticals.conf uses for its
-// documented College/Honeywell exceptions. Remove this entry once a human
-// decides which it is.
-const KNOWN_AMBIGUOUS = new Set([
-  'html/healthcare/hc-strategist/index.html|/document-showcase/index.html',
-]);
-
 const { broken, pagesVisited } = crawl();
-const real = broken.filter((b) => !KNOWN_AMBIGUOUS.has(`${b.fromFile}|${b.link}`));
-const flagged = broken.filter((b) => KNOWN_AMBIGUOUS.has(`${b.fromFile}|${b.link}`));
 
-if (flagged.length) {
-  console.log(`WARN: ${flagged.length} known-ambiguous link(s), not failing (see KNOWN_AMBIGUOUS):`);
-  for (const b of flagged) console.log(`  ${b.fromFile} -> "${b.link}" (resolved: ${b.resolved}, missing)`);
-}
-
-if (real.length) {
-  console.log(`FAIL: ${real.length} broken link(s) across ${pagesVisited} pages crawled:`);
-  for (const b of real) {
+if (broken.length) {
+  console.log(`FAIL: ${broken.length} broken link(s) across ${pagesVisited} pages crawled:`);
+  for (const b of broken) {
     console.log(`  ${b.fromFile} -> "${b.link}" (resolved: ${b.resolved}, missing)`);
   }
   process.exit(1);
