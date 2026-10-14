@@ -14,6 +14,7 @@ const { requireCandidateWrite, signCandidateToken } = require('../middleware/can
 const router = express.Router();
 
 const registry = require('../server/candidate-registry-service');
+const { listCsaCandidateEvidence } = require('../server/certification/candidate-evidence-adapter');
 
 const { verifySession, getCookie } = require('../middleware/require-auth');
 const isAdmin = req => {
@@ -30,6 +31,51 @@ router.get('/api/candidates', async (req, res) => {
     res.json({ candidates: isAdmin(req) ? candidates : candidates.map(publicView) });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// Read-only certification evidence overview — html/workforce/certification-dashboard.html.
+// Cross-references each candidate's server-computed readinessScore (training
+// events, any track) against the ServiceNow-CSA evidence ledger (filesystem,
+// see server/certification/candidate-evidence-ledger.js — the only
+// certification track with an independent evidence ledger today). A nonzero
+// score with zero ledger entries is flagged: it has no evidence backing it
+// in that ledger, which is exactly the "reconcile readiness scoring with
+// evidence" gap this endpoint exists to surface, not paper over.
+// Registered before /api/candidates/:id so "evidence-overview" is never
+// swallowed as a candidateId by that route.
+router.get('/api/candidates/evidence-overview', async (req, res) => {
+  try {
+    const candidates = await registry.listCandidates({});
+    const overview = candidates.map((c) => {
+      let csaEvidence = [];
+      let evidenceError = null;
+      try {
+        csaEvidence = listCsaCandidateEvidence(c.candidateId);
+      } catch (e) {
+        evidenceError = e.message;
+      }
+      const scoreUnbacked = c.readinessScore > 0 && csaEvidence.length === 0;
+      return {
+        candidateId: c.candidateId,
+        name: c.name,
+        role: c.role,
+        status: c.status,
+        isSampleData: c.isSampleData,
+        readinessScore: c.readinessScore,
+        readinessBasis: c.readinessBasis,
+        csaEvidenceCount: csaEvidence.length,
+        csaEvidence,
+        evidenceError,
+        scoreUnbacked,
+      };
+    });
+    res.json({ ok: true, candidates: overview });
+  } catch (err) {
+    // Most commonly: MONGODB_URI not configured (registry.listCandidates
+    // throws with that exact message) — surfaced verbatim so the dashboard
+    // can label it, not swallowed into a generic failure.
+    res.status(503).json({ ok: false, error: err.message, candidates: [] });
   }
 });
 

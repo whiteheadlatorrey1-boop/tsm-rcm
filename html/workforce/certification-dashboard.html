@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Certification Evidence Dashboard</title>
+<style>
+  :root { --bg:#0b1220; --panel:#121b2e; --border:#223150; --text:#e7edf7; --text2:#93a3c0; --accent:#00d4b8; --amber:#e9b949; --red:#ff6b6b; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:-apple-system,Segoe UI,Roboto,sans-serif; padding:28px; }
+  h1 { font-size:19px; margin:0 0 4px; }
+  .sub { color:var(--text2); font-size:13px; margin:0 0 20px; max-width:760px; line-height:1.5; }
+  .note { font-size:11px; color:var(--text2); background:var(--panel); border:1px solid var(--border); border-radius:6px; padding:10px 12px; margin-bottom:20px; max-width:760px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--text2); padding:8px 10px; border-bottom:1px solid var(--border); }
+  td { padding:9px 10px; border-bottom:1px solid var(--border); }
+  tr:hover td { background:rgba(255,255,255,.02); }
+  .badge { font-size:10px; padding:2px 8px; border-radius:10px; border:1px solid var(--border); color:var(--text2); white-space:nowrap; }
+  .badge.sample { color:var(--amber); border-color:var(--amber); }
+  .badge.unbacked { color:var(--red); border-color:var(--red); }
+  .badge.backed { color:var(--accent); border-color:var(--accent); }
+  .empty-state { border:1px solid var(--border); border-radius:8px; padding:32px; text-align:center; color:var(--text2); max-width:640px; }
+  .empty-state .title { color:var(--text); font-size:15px; font-weight:600; margin-bottom:8px; }
+  .empty-state .detail { font-family:ui-monospace,monospace; font-size:11px; margin-top:14px; color:var(--text2); word-break:break-word; }
+  .count { color:var(--text2); font-size:12px; margin-bottom:14px; }
+</style>
+</head>
+<body>
+<h1>Certification Evidence Dashboard</h1>
+<p class="sub">Read-only. Readiness scores are computed server-side from each candidate's recorded training events (any track); the ServiceNow CSA certification track is the only one with an independent, append-only evidence ledger today. A score is flagged when it's nonzero but has zero corroborating CSA ledger entries.</p>
+<div class="note" id="trackNote">"Role / Track" below is the candidate's recorded <code>role</code> field, not a structured certification taxonomy — the registry doesn't enforce one yet.</div>
+<div id="root">Loading…</div>
+<script>
+async function load() {
+  const root = document.getElementById('root');
+  let res, body;
+  try {
+    res = await fetch('/api/candidates/evidence-overview');
+    body = await res.json();
+  } catch (e) {
+    root.innerHTML = emptyState('Request failed', e.message);
+    return;
+  }
+  if (!res.ok || body.ok === false) {
+    root.innerHTML = emptyState('Candidate registry unavailable', body.error || ('HTTP ' + res.status));
+    return;
+  }
+  const candidates = body.candidates || [];
+  if (!candidates.length) {
+    root.innerHTML = emptyState('No candidates recorded', 'The registry is reachable but has no candidate records yet.');
+    return;
+  }
+  root.innerHTML = `
+    <div class="count">${candidates.length} candidate${candidates.length === 1 ? '' : 's'}</div>
+    <table>
+      <thead><tr>
+        <th>Candidate</th><th>Role / Track</th><th>Status</th><th>Readiness Score</th>
+        <th>Score Basis</th><th>CSA Ledger Entries</th><th>Evidence Check</th>
+      </tr></thead>
+      <tbody>${candidates.map(rowHtml).join('')}</tbody>
+    </table>
+  `;
+}
+
+function rowHtml(c) {
+  const sampleBadge = c.isSampleData ? '<span class="badge sample">sample data</span>' : '';
+  const evidenceBadge = c.scoreUnbacked
+    ? '<span class="badge unbacked">unbacked — no ledger entry</span>'
+    : (c.csaEvidenceCount > 0 ? '<span class="badge backed">backed by ledger</span>' : '<span class="badge">n/a — score is 0</span>');
+  return `
+    <tr>
+      <td>${escapeHtml(c.name || c.candidateId)} ${sampleBadge}</td>
+      <td>${escapeHtml(c.role || '—')}</td>
+      <td>${escapeHtml(c.status || '—')}</td>
+      <td>${c.readinessScore != null ? c.readinessScore : '—'}</td>
+      <td>${escapeHtml(c.readinessBasis || '—')}</td>
+      <td>${c.csaEvidenceCount}</td>
+      <td>${evidenceBadge}</td>
+    </tr>
+  `;
+}
+
+function emptyState(title, detail) {
+  return `<div class="empty-state"><div class="title">${escapeHtml(title)}</div><div>This is the real, current state — nothing here is simulated.</div><div class="detail">${escapeHtml(detail)}</div></div>`;
+}
+
+function escapeHtml(s) { return String(s).replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+load();
+</script>
+</body>
+</html>
