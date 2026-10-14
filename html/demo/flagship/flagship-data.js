@@ -560,5 +560,69 @@ window.TSM_FLAGSHIP_DATA = [
         "text": "Human decision, action, evidence, outcome: that is the loop at the center of TSM, from workforce intelligence through frontline execution to the executive view, and back again."
       }
     ]
+  },
+  {
+    "id": "flagship-career-training",
+    "name": "Career Training Platform",
+    "tag": "FLAGSHIP · NARRATED",
+    "title": "Career Training Platform",
+    "desc": "A candidate moves through sector training, a live readiness score, a human HITL approval gate, and into the Earning Path it unlocks.",
+    "video": "/demo/flagship/career-training-flagship.mp4",
+    "poster": "/demo/flagship/career-training-flagship.png",
+    "captions": "/demo/flagship/career-training-flagship.vtt",
+    "narrated": true,
+    "reviewed": false,
+    "chain": [
+      "Train & Assess",
+      "Govern & Approve",
+      "Deploy & Earn"
+    ],
+    "steps": [
+      {
+        "t": 0,
+        "chain": 0,
+        "text": "Most staffing firms send a candidate with a resume. This platform sends a candidate with a scored readiness profile, sector tools they already know how to use, and a governance trail proving it."
+      },
+      {
+        "t": 14,
+        "chain": 0,
+        "text": "The Candidate Registry is meant to show every candidate in training, live, to a manager. This sandbox has no database connected, so it shows that plainly instead of faking rows of candidates."
+      },
+      {
+        "t": 26,
+        "chain": 0,
+        "text": "Every assigned course, every progress checkpoint, and manager feedback live on one candidate record. Employment and deployment stay locked until the HITL approval gate clears."
+      },
+      {
+        "t": 38,
+        "chain": 0,
+        "text": "A manager checks the boxes for the courses a candidate is enrolled in. Uncheck a course and that candidate loses access to it — they never see curriculum they weren't assigned."
+      },
+      {
+        "t": 50,
+        "chain": 0,
+        "text": "This is one of seven sector suites. Four tools cover CRCR exam prep, denial scenario practice, HC node navigation, and the live denial war room — mapped to an actual HFMA certification, not an in-house badge."
+      },
+      {
+        "t": 66,
+        "chain": 1,
+        "text": "This score isn't decorative. Checking off real training evidence moves the readiness bar and the overall percentage live, right here, with the explainability panel showing exactly what evidence it's reasoning over."
+      },
+      {
+        "t": 82,
+        "chain": 1,
+        "text": "Nothing deploys on a passing score alone. A named manager reviews the evidence and explicitly approves it, right here. That approval becomes an auditable record."
+      },
+      {
+        "t": 98,
+        "chain": 2,
+        "text": "That approval wasn't cosmetic. It just unlocked this candidate's Earning Path in real time — resume package, interview package, staffing submission, client deployment, all gated behind the one governance decision we made a moment ago."
+      },
+      {
+        "t": 112.3,
+        "chain": 2,
+        "text": "Everything downstream — the resume package, the interview package, the staffing submission — is assembled from the same approved record. One governance decision feeds every package a staffing firm hands to its client."
+      }
+    ]
   }
 ];
