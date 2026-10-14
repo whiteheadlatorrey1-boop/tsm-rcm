@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TSM Demo Studio</title>
+<style>
+  :root { --bg:#0b1220; --panel:#121b2e; --border:#223150; --text:#e7edf7; --text2:#93a3c0; --accent:#00d4b8; --amber:#e9b949; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:-apple-system,Segoe UI,Roboto,sans-serif; }
+  header { padding:20px 28px; border-bottom:1px solid var(--border); display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; }
+  header h1 { font-size:18px; margin:0; letter-spacing:.02em; }
+  header .sub { color:var(--text2); font-size:13px; }
+  header nav { margin-left:auto; display:flex; gap:14px; font-size:13px; }
+  header nav a { color:var(--accent); text-decoration:none; }
+  .wrap { display:grid; grid-template-columns:280px 1fr; gap:0; min-height:calc(100vh - 68px); }
+  .picker { border-right:1px solid var(--border); padding:20px; }
+  .picker label { display:block; font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--text2); margin:18px 0 8px; }
+  .picker label:first-child { margin-top:0; }
+  .picker select { width:100%; background:var(--panel); border:1px solid var(--border); color:var(--text); padding:9px 10px; border-radius:6px; font-size:13px; }
+  .picker .meta { margin-top:22px; font-size:12px; color:var(--text2); line-height:1.6; }
+  .picker .meta b { color:var(--text); }
+  .main { padding:24px 28px; max-width:980px; }
+  .titlebar { display:flex; align-items:center; gap:10px; margin-bottom:4px; flex-wrap:wrap; }
+  .titlebar h2 { margin:0; font-size:20px; }
+  .badge { font-size:11px; padding:3px 9px; border-radius:20px; border:1px solid var(--border); color:var(--text2); }
+  .badge.pass { color:var(--accent); border-color:var(--accent); }
+  .badge.fail { color:#ff6b6b; border-color:#ff6b6b; }
+  .desc { color:var(--text2); font-size:13px; margin:6px 0 20px; max-width:720px; }
+  video { width:100%; border-radius:8px; border:1px solid var(--border); background:#000; margin-bottom:8px; }
+  .gatebox { font-family:ui-monospace,monospace; font-size:11px; color:var(--text2); background:var(--panel); border:1px solid var(--border); border-radius:6px; padding:10px 12px; white-space:pre-wrap; margin-bottom:24px; }
+  .storyboard { display:flex; flex-direction:column; gap:10px; }
+  .beat-pill { display:inline-block; font-size:10px; letter-spacing:.06em; text-transform:uppercase; padding:2px 8px; border-radius:10px; margin-right:8px; }
+  .beat-pain { background:#3a1f22; color:#ff8080; }
+  .beat-intelligence { background:#1c2b45; color:#6fb3ff; }
+  .beat-wow { background:#3a2f12; color:var(--amber); }
+  .beat-proof { background:#13332f; color:var(--accent); }
+  .beat-value { background:#241a3a; color:#b79bff; }
+  .sb-card { background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:12px 14px; }
+  .sb-card .cap { font-size:13px; font-weight:600; margin:6px 0 4px; }
+  .sb-card .narr { font-size:12px; color:var(--text2); line-height:1.5; }
+  .value-card { margin-top:18px; padding:14px 16px; border:1px solid var(--accent); border-radius:8px; background:rgba(0,212,184,.06); font-size:13px; }
+  .value-card .lbl { font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--accent); margin-bottom:6px; }
+  .empty { color:var(--text2); padding:40px 0; font-size:13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>TSM Demo Studio</h1>
+  <span class="sub">Read-only storyboard viewer — pick a vertical and audience to see the beats, captions, narration, and quality-gate result behind each render.</span>
+  <nav>
+    <a href="/html/presentation-hub.html">&larr; Presentation Hub</a>
+    <a href="/html/demo/tsm-demo-console.html">Demo Console</a>
+  </nav>
+</header>
+<div class="wrap">
+  <div class="picker">
+    <label for="vertical">Vertical</label>
+    <select id="vertical"></select>
+    <label for="audience">Audience</label>
+    <select id="audience"></select>
+    <div class="meta" id="meta"></div>
+  </div>
+  <div class="main" id="main">
+    <div class="empty">Loading…</div>
+  </div>
+</div>
+<script src="/demo/studio/studio-data.js"></script>
+<script>
+const DATA = Array.isArray(window.TSM_STUDIO_DATA) ? window.TSM_STUDIO_DATA : [];
+const vSel = document.getElementById('vertical');
+const aSel = document.getElementById('audience');
+const main = document.getElementById('main');
+const meta = document.getElementById('meta');
+
+function fmtSeconds(n) { return n == null ? '—' : n.toFixed(1) + 's'; }
+
+function renderMeta(vertical) {
+  meta.innerHTML = vertical.desc ? `<b>About</b><br>${vertical.desc}` : '';
+}
+
+function renderAudience(vertical, audience) {
+  if (!audience) { main.innerHTML = '<div class="empty">No rendered audience cut for this vertical yet — run render-from-manifest.js with --audience to produce one.</div>'; return; }
+  const gate = audience.qualityGate || {};
+  const gateBadge = !gate.ran
+    ? '<span class="badge">quality gate: not run</span>'
+    : gate.passed ? '<span class="badge pass">quality gate: passed</span>' : '<span class="badge fail">quality gate: failed</span>';
+
+  const storyboardHtml = (audience.storyboard || []).map((s) => `
+    <div class="sb-card">
+      <span class="beat-pill beat-${s.beat || 'none'}">${s.beat || 'unlabeled'}</span>
+      <span style="font-size:11px;color:var(--text2)">state ${String(s.n).padStart(2,'0')} · ${s.slug}</span>
+      <div class="cap">${escapeHtml(s.caption || '')}</div>
+      ${s.narration ? `<div class="narr">${escapeHtml(s.narration)}</div>` : ''}
+    </div>
+  `).join('');
+
+  main.innerHTML = `
+    <div class="titlebar">
+      <h2>${escapeHtml(vertical.title)} — ${escapeHtml(audience.label)}</h2>
+      ${gateBadge}
+      ${audience.narrated ? '<span class="badge">narrated</span>' : ''}
+    </div>
+    <div class="desc">
+      Tier: ${escapeHtml(audience.tier)} ·
+      Duration: ${fmtSeconds(audience.durationSeconds)}
+      ${audience.targetSeconds ? ` (target ${audience.targetSeconds[0]}–${audience.targetSeconds[1]}s)` : ''}
+    </div>
+    ${audience.video ? `<video controls poster="${audience.poster || ''}" ${audience.captions ? `><track kind="captions" src="${audience.captions}" default` : ''}><source src="${audience.video}" type="video/mp4"></video>` : ''}
+    <div class="gatebox">${escapeHtml(gate.output || 'no quality-gate output recorded')}</div>
+    <div class="storyboard">${storyboardHtml || '<div class="empty">No storyboard states recorded for this audience cut.</div>'}</div>
+    ${vertical.valueProposition ? `<div class="value-card"><div class="lbl">Value proposition</div>${escapeHtml(vertical.valueProposition)}</div>` : ''}
+  `;
+}
+
+function escapeHtml(s) { return String(s).replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+function selectVertical(idx) {
+  const vertical = DATA[idx];
+  renderMeta(vertical);
+  aSel.innerHTML = vertical.audiences.map((a, i) => `<option value="${i}">${escapeHtml(a.label)}</option>`).join('');
+  renderAudience(vertical, vertical.audiences[0]);
+}
+
+if (DATA.length) {
+  vSel.innerHTML = DATA.map((v, i) => `<option value="${i}">${escapeHtml(v.title)}</option>`).join('');
+  vSel.addEventListener('change', () => selectVertical(parseInt(vSel.value)));
+  aSel.addEventListener('change', () => renderAudience(DATA[parseInt(vSel.value)], DATA[parseInt(vSel.value)].audiences[parseInt(aSel.value)]));
+  selectVertical(0);
+} else {
+  main.innerHTML = '<div class="empty">No Demo Studio data published yet — run scripts/demo/publish-studio.js.</div>';
+}
+</script>
+</body>
+</html>

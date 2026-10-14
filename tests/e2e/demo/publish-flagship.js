@@ -85,6 +85,12 @@ for (const exp of registry.experiences.filter(e => !only || e.id === only)) {
   const states = manifest.states.filter(s => (s.tiers || []).includes('flagship'));
   const cues = parseVtt(base + '.vtt');
   if (cues.length !== states.length) fail(`${exp.id}: ${cues.length} caption cues for ${states.length} states — re-render`);
+  // render-from-manifest.js's cards (title card, chapter cards) are not plain
+  // states, so a card-bearing render's first state cue starts after a lead-in
+  // (the title card), not at the top of the file. Shift every cue so the
+  // first state's step is at t=0 — the true start of the published video —
+  // and later states keep their real relative spacing.
+  if (cues.length) { const offset = cues[0].from; for (const c of cues) { c.from -= offset; c.to -= offset; } }
 
   const [head, tail] = manifest.title.replace(/^TSM\s+/, '').split(/:\s*/);
   entries.push({
