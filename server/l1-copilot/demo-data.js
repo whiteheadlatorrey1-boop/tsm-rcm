@@ -115,7 +115,9 @@ function demoTicket(incidentId) {
 // path can reach "verified"; an SCTASK comes back on its own.
 function demoRequestRecord(number) {
   const key = String(number || '').trim().toUpperCase() || 'RITM0010001';
-  if (/^SCTASK/.test(key)) {
+  // Matches the route's isTask regex (server.js /api/l1-copilot/servicenow/request/:number):
+  // some real instances prefix SC Task numbers "TASK" instead of "SCTASK".
+  if (/^(SC)?TASK/.test(key)) {
     return {
       kind: 'SCTASK',
       record: {
