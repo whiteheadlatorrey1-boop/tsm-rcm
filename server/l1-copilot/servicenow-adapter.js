@@ -119,6 +119,31 @@ function readField(record, dottedPath) {
   return val;
 }
 
+/**
+ * readRawValue(record, dottedPath): same dotted-path resolution as
+ * readField(), but prefers the raw `.value` over `.display_value` for a
+ * reference/choice field. Confirmed live against a real PDI: snRequest()
+ * unconditionally sets sysparm_display_value=all, so EVERY field — including
+ * incident.state — comes back as { value: "7", display_value: "Closed" }.
+ * readField()'s display-value preference is correct for human-readable
+ * fields (manufacturer, model, owner, ...), but it silently defeated
+ * normalizeIncidentState()'s numeric-code lookup table below: that table can
+ * never match "Closed"/"In Progress" against its '1'..'7' keys, so it was
+ * effectively dead code, and getTicket().state came back in inconsistent
+ * title-case text instead of the adapter's documented uppercase contract
+ * (workflow-engine.js and the disposition-sequence checks compare against
+ * exact uppercase labels). Used only for the one field with a real
+ * normalization table to apply to its raw value.
+ */
+function readRawValue(record, dottedPath) {
+  if (!record || !dottedPath) return null;
+  const base = dottedPath.split('.')[0];
+  const val = record[dottedPath] !== undefined ? record[dottedPath] : record[base];
+  if (val === undefined || val === null) return null;
+  if (typeof val === 'object') return val.value !== undefined ? val.value : (val.display_value ?? null);
+  return val;
+}
+
 async function snRequest(cfg, method, path, { query, body } = {}) {
   if (!isConfigured(cfg)) throw new ServiceNowNotConfiguredError();
   const url = new URL(cfg.instanceUrl + path);
@@ -233,7 +258,7 @@ async function getTicket(incidentId, config) {
     requester: readField(record, fm.requester),
     description: readField(record, fm.description),
     assignmentGroup: readField(record, fm.assignmentGroup),
-    state: normalizeIncidentState(readField(record, fm.state)),
+    state: normalizeIncidentState(readRawValue(record, fm.state)),
     asset: readField(record, fm.asset),
     sysId: record.sys_id && (record.sys_id.value || record.sys_id),
     raw: record
@@ -770,6 +795,7 @@ module.exports = {
 
   _internal: {
     readField,
+    readRawValue,
     snRequest,
     authHeader,
     createTicketWithRetry,

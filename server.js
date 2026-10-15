@@ -5446,15 +5446,21 @@ app.get('/api/l1-copilot/servicenow/asset/:tag', requireRole(L1_COPILOT_ROLES), 
   }
 });
 
-// READ-ONLY catalog lookup (sc_req_item / sc_task). Accepts a RITM or SCTASK
+// READ-ONLY catalog lookup (sc_req_item / sc_task). Accepts a RITM or SC Task
 // number. For a RITM it also returns the request's SC Tasks so closure can
 // be blocked while any are open.
+//
+// SC Task number prefix is a per-instance choice, not a Table API constant:
+// most production ServiceNow instances use the OOB "SCTASK" prefix, but at
+// least one real PDI observed during live acceptance testing (dev316534,
+// Australia release patch 7) seeds its demo sc_task records as "TASK0000001"
+// instead. Accept both rather than assuming one is universal.
 app.get('/api/l1-copilot/servicenow/request/:number', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   const number = String(req.params.number || '').trim().toUpperCase();
   const isRitm = /^RITM\d+$/.test(number);
-  const isTask = /^SCTASK\d+$/.test(number);
+  const isTask = /^(SC)?TASK\d+$/.test(number);
   if (!isRitm && !isTask) {
-    return res.status(400).json({ ok: false, error: 'Enter a RITM or SCTASK number (for example RITM0010001).' });
+    return res.status(400).json({ ok: false, error: 'Enter a RITM or SC Task number (for example RITM0010001 or SCTASK0010001).' });
   }
   const strip = (r) => { if (!r) return r; const { raw, ...rest } = r; return rest; };
   try {
