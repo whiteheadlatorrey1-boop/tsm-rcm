@@ -74,7 +74,7 @@ async function main() {
 
   let createResult;
   try {
-    createResult = await adapter.createTicketsBatch(createRecords, { chunkSize: 3, delayBetweenChunksMs: 400 }, config);
+    createResult = await adapter._pdi.createTicketsBatch(createRecords, { chunkSize: 3, delayBetweenChunksMs: 400 }, config);
   } catch (e) {
     console.error('Setup batch-create call threw — cannot proceed to the read test:');
     console.error(e.message);
@@ -144,7 +144,7 @@ async function main() {
   let cleanupFailures = 0;
   for (const number of createdNumbers) {
     try {
-      await adapter.deleteTicket(number, config);
+      await adapter._pdi.deleteTicket(number, config);
       console.log(`  deleted ${number}`);
     } catch (e) {
       cleanupFailures += 1;

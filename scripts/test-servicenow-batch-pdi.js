@@ -80,7 +80,7 @@ async function main() {
 
   let result;
   try {
-    result = await adapter.createTicketsBatch(records, { chunkSize: 3, delayBetweenChunksMs: 400 }, config);
+    result = await adapter._pdi.createTicketsBatch(records, { chunkSize: 3, delayBetweenChunksMs: 400 }, config);
   } catch (e) {
     console.error('Batch call threw (should only happen for config problems, not per-record failures):');
     console.error(e.message);
@@ -116,7 +116,7 @@ async function main() {
   let cleanupFailures = 0;
   for (const number of createdNumbers) {
     try {
-      await adapter.deleteTicket(number, config);
+      await adapter._pdi.deleteTicket(number, config);
       console.log(`  deleted ${number}`);
     } catch (e) {
       cleanupFailures += 1;

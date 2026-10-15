@@ -15,8 +15,12 @@
 // also pull real CMDB context — but this script works fine against demo/no
 // ServiceNow config too, since analysis is best-effort on that lookup.
 //
+// /api/l1-copilot/analyze/batch is requireRole(L1_COPILOT_ROLES)-gated (added
+// after this script was first written) -- logs in with TSM_ADMIN_PASSWORD
+// first and carries the session cookie on the batch request.
+//
 // USAGE:
-//   BASE_URL=http://localhost:8080 node scripts/test-analyze-batch-pdi.js
+//   BASE_URL=http://localhost:8080 TSM_ADMIN_PASSWORD=<admin password> node scripts/test-analyze-batch-pdi.js
 //
 // Optional:
 //   BATCH_COUNT=5   (how many synthetic tickets to send; default 5, capped at 100 server-side)
@@ -25,6 +29,7 @@
 
 const BASE_URL = (process.env.BASE_URL || 'http://localhost:8080').replace(/\/+$/, '');
 const BATCH_COUNT = parseInt(process.env.BATCH_COUNT || '5', 10);
+const ADMIN_PASSWORD = process.env.TSM_ADMIN_PASSWORD || '';
 
 // A mix of ordinary and hard-outage-signal descriptions, so the response
 // exercises the severity guardrail too, not just plain success/failure.
@@ -55,8 +60,32 @@ function buildTickets(count) {
   return tickets;
 }
 
+async function login() {
+  if (!ADMIN_PASSWORD) {
+    console.error('TSM_ADMIN_PASSWORD not set -- /api/l1-copilot/analyze/batch requires a staff session. See the usage comment at the top of this file.');
+    process.exit(1);
+  }
+  const res = await fetch(`${BASE_URL}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password: ADMIN_PASSWORD })
+  });
+  if (!res.ok) {
+    console.error(`Login failed (HTTP ${res.status}) -- check TSM_ADMIN_PASSWORD matches the running server's.`);
+    process.exit(1);
+  }
+  const setCookie = res.headers.get('set-cookie') || '';
+  const cookie = setCookie.split(';')[0]; // just the "tsm_session=..." pair, drop Path/HttpOnly/etc attributes
+  if (!cookie) {
+    console.error('Login succeeded but no session cookie was returned.');
+    process.exit(1);
+  }
+  return cookie;
+}
+
 async function main() {
   console.log(`Target server: ${BASE_URL}`);
+  const cookie = await login();
   console.log(`Sending ${BATCH_COUNT} tickets (+1 deliberately broken) to /api/l1-copilot/analyze/batch...`);
 
   const tickets = buildTickets(BATCH_COUNT);
@@ -65,7 +94,7 @@ async function main() {
   try {
     res = await fetch(`${BASE_URL}/api/l1-copilot/analyze/batch`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
       body: JSON.stringify({ tickets })
     });
     const text = await res.text();

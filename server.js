@@ -5110,6 +5110,9 @@ function auditL1Write(req, kind, incident, outcome) {
   }));
 }
 
+// See server/l1-copilot/batch-options.js for why this clamp exists.
+const { clampBatchOptions } = require('./server/l1-copilot/batch-options');
+
 // --- ServiceNow CMDB/ITSM integration ---------------------------------
 // Real Table API connector (server/l1-copilot/servicenow-adapter.js) — no-ops
 // honestly (503 + ok:false) rather than pretending to work when a customer
@@ -5557,7 +5560,10 @@ app.post('/api/l1-copilot/servicenow/batch-tickets-read', requireRole(L1_COPILOT
     return res.status(400).json({ ok: false, error: 'incidents must be a non-empty array of incident numbers or sys_ids' });
   }
   try {
-    const result = await snAdapter.getTicketsBatch(incidents, options);
+    // chunkSize capped at 5, delayBetweenChunksMs floored at 250ms --
+    // regardless of what the caller asks for, see clampBatchOptions above.
+    const clampedOptions = clampBatchOptions(options, snAdapter.DEFAULT_BATCH_OPTIONS, 5, 250);
+    const result = await snAdapter.getTicketsBatch(incidents, clampedOptions);
     res.json({ ok: true, ...result });
   } catch (e) {
     const status = e.code === 'SERVICENOW_NOT_CONFIGURED' ? 503 : (e.status && e.status < 500 ? 400 : 502);
@@ -6128,7 +6134,11 @@ app.post('/api/l1-copilot/analyze/batch', requireRole(L1_COPILOT_ROLES), async (
     return res.status(400).json({ ok: false, error: `Batch of ${tickets.length} exceeds the ${ANALYZE_MAX_BATCH_SIZE}-ticket limit per call — split into multiple calls.` });
   }
 
-  const opts = Object.assign({}, ANALYZE_BATCH_DEFAULTS, options || {});
+  // chunkSize capped at 3, delayBetweenChunksMs floored at 250ms -- regardless
+  // of what the caller asks for, see clampBatchOptions above. Lower ceiling
+  // than the ServiceNow batch route since each chunk item here is an LLM call
+  // (groqChat), a slower and more rate-limit-sensitive backend per request.
+  const opts = clampBatchOptions(options, ANALYZE_BATCH_DEFAULTS, 3, 250);
   const results = new Array(tickets.length);
 
   try {
