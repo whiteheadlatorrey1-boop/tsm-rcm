@@ -755,7 +755,11 @@ async function groqChat(system, message, maxTokens, clientKey, jsonMode) {
             const err = await r.text();
             if (r.status === 429 || r.status === 503 || r.status === 500 || r.status === 502) {
               if (attempt < GROQ_CHAT_MAX_RETRIES_PER_COMBO) {
-                const delay = tsmAIParseRetryDelayMs(err);
+                // On a 429 specifically, Groq's own Retry-After header (when present)
+                // is a more authoritative wait time than guessing from the error text.
+                const delay = r.status === 429
+                  ? groqRetryDelayMs({ retryAfterHeader: r.headers.get('retry-after'), errMsg: err })
+                  : tsmAIParseRetryDelayMs(err);
                 console.warn('[groqChat]', r.status, 'from', model, '- retrying in', delay, 'ms (attempt', attempt + 1, 'of', GROQ_CHAT_MAX_RETRIES_PER_COMBO, ')');
                 await new Promise(res => setTimeout(res, delay));
                 attempt++;
@@ -5112,6 +5116,9 @@ function auditL1Write(req, kind, incident, outcome) {
 
 // See server/l1-copilot/batch-options.js for why this clamp exists.
 const { clampBatchOptions } = require('./server/l1-copilot/batch-options');
+const { retryDelayMs: groqRetryDelayMs } = require('./server/l1-copilot/retry-delay');
+const { parseWithRetry: parseAnalysisJsonWithRetry } = require('./server/l1-copilot/analyze-json-retry');
+const analyzeJobStore = require('./server/l1-copilot/analyze-job-store');
 
 // --- ServiceNow CMDB/ITSM integration ---------------------------------
 // Real Table API connector (server/l1-copilot/servicenow-adapter.js) — no-ops
@@ -5906,6 +5913,12 @@ function wordsToNumber(phrase) {
   return null;
 }
 
+// How much extra budget to give analyzeSingleTicket's one retry when the
+// model's completion came back truncated/malformed, and the hard ceiling on
+// that retry so a pathological ticket can't balloon token spend unbounded.
+const ANALYZE_RETRY_TOKEN_BUMP = 800;
+const ANALYZE_RETRY_TOKEN_CEILING = 4000;
+
 function repairSpelledOutConfidence(text) {
   return text.replace(
     /("confidence"\s*:\s*)"?([a-zA-Z][a-zA-Z\s-]*[a-zA-Z])"?/,
@@ -5962,19 +5975,17 @@ async function analyzeSingleTicket(ticket, maxTokens) {
     `"assignmentGroup":null,"asset":null,"manufacturer":null,"model":null,"warranty":null}}\n\n` +
     `Return one JSON object with both the analysis keys and the "extracted_fields" key at the same top level.`;
 
-  const raw = await groqChat(SP.l1support, prompt, maxTokens || 1000);
-  const cleanedRaw = raw.replace(/```json|```/g, '').trim();
-  let analysis;
-  try {
-    analysis = JSON.parse(cleanedRaw);
-  } catch (parseErr) {
-    try {
-      analysis = JSON.parse(repairSpelledOutConfidence(cleanedRaw));
-    } catch (repairErr) {
-      const err = new Error(`Model returned malformed JSON (${parseErr.message}); auto-repair for spelled-out confidence did not fix it.`);
-      throw err;
-    }
-  }
+  // A truncated/malformed completion is often just an exhausted max_tokens
+  // budget on this one draw, not a reasoning failure -- retry once with a
+  // larger token budget before giving up (see analyze-json-retry.js).
+  const baseMaxTokens = maxTokens || 1000;
+  const { value: analysis } = await parseAnalysisJsonWithRetry(
+    (tokens) => groqChat(SP.l1support, prompt, tokens),
+    baseMaxTokens,
+    repairSpelledOutConfidence,
+    ANALYZE_RETRY_TOKEN_BUMP,
+    ANALYZE_RETRY_TOKEN_CEILING
+  );
 
   // ── Deterministic severity guardrail ──────────────────────────────────
   // The LLM provides the initial severity assessment, but obvious hard
@@ -6124,6 +6135,59 @@ app.post('/api/l1-copilot/analyze', requireRole(L1_COPILOT_ROLES), async (req, r
 // just ServiceNow.
 const ANALYZE_BATCH_DEFAULTS = { chunkSize: 3, delayBetweenChunksMs: 300 };
 const ANALYZE_MAX_BATCH_SIZE = 100;
+// Batches at or below this size run synchronously (same response shape as
+// before this change). Above it, a real Groq key under rate pressure can
+// take minutes (observed: ~14 min for 67 tickets against a throttled key) —
+// too long to hold an HTTP connection open — so those run as a background
+// job instead; see analyze-job-store.js and the GET/:jobId/retry routes below.
+const ANALYZE_SYNC_MAX_BATCH_SIZE = 10;
+
+// Shared chunk runner for the sync, background-job, and retry-failed paths:
+// `entries` is an array of { index, ticket } (index = position in the
+// original request's tickets array, not necessarily 0..entries.length-1 —
+// the retry path reprocesses a sparse subset). `onChunk(chunkResults)` is
+// called after each chunk so each caller can persist/collect results its
+// own way.
+async function analyzeChunked(entries, maxTokens, opts, onChunk) {
+  for (let i = 0; i < entries.length; i += opts.chunkSize) {
+    const chunk = entries.slice(i, i + opts.chunkSize);
+    const chunkResults = await Promise.all(chunk.map(({ index, ticket }) =>
+      analyzeSingleTicket(ticket, maxTokens).then(
+        ({ analysis, cmdbSourced }) => ({ index, success: true, incident: ticket && ticket.incident, analysis, cmdbSourced }),
+        e => ({ index, success: false, incident: ticket && ticket.incident, error: e.message })
+      )
+    ));
+    await onChunk(chunkResults);
+
+    const isLastChunk = i + opts.chunkSize >= entries.length;
+    if (!isLastChunk && opts.delayBetweenChunksMs) {
+      await new Promise(resolve => setTimeout(resolve, opts.delayBetweenChunksMs));
+    }
+  }
+}
+
+async function runAnalyzeJob(jobId, tickets, maxTokens, opts) {
+  const entries = tickets.map((ticket, index) => ({ index, ticket }));
+  await analyzeChunked(entries, maxTokens, opts, (chunkResults) => {
+    analyzeJobStore.applyResults(jobId, chunkResults);
+  });
+  analyzeJobStore.completeJob(jobId);
+}
+
+async function retryAnalyzeJobFailures(job) {
+  const entries = job.results
+    .map((r, index) => ({ r, index }))
+    .filter(x => x.r && x.r.success === false)
+    .map(x => ({ index: x.index, ticket: job.tickets[x.index] }));
+
+  if (entries.length === 0) return;
+
+  const opts = clampBatchOptions(job.options, ANALYZE_BATCH_DEFAULTS, 3, 250);
+  await analyzeChunked(entries, job.maxTokens, opts, (chunkResults) => {
+    analyzeJobStore.applyResults(job.id, chunkResults);
+  });
+  analyzeJobStore.completeJob(job.id);
+}
 
 app.post('/api/l1-copilot/analyze/batch', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   const { tickets, maxTokens, options } = req.body || {};
@@ -6139,39 +6203,89 @@ app.post('/api/l1-copilot/analyze/batch', requireRole(L1_COPILOT_ROLES), async (
   // than the ServiceNow batch route since each chunk item here is an LLM call
   // (groqChat), a slower and more rate-limit-sensitive backend per request.
   const opts = clampBatchOptions(options, ANALYZE_BATCH_DEFAULTS, 3, 250);
-  const results = new Array(tickets.length);
 
-  try {
-    for (let i = 0; i < tickets.length; i += opts.chunkSize) {
-      const chunk = tickets.slice(i, i + opts.chunkSize);
-      const chunkResults = await Promise.all(chunk.map((ticket, offset) => {
-        const index = i + offset;
-        return analyzeSingleTicket(ticket, maxTokens).then(
-          ({ analysis, cmdbSourced }) => ({ index, success: true, incident: ticket && ticket.incident, analysis, cmdbSourced }),
-          e => ({ index, success: false, incident: ticket && ticket.incident, error: e.message })
-        );
-      }));
-      chunkResults.forEach(r => { results[r.index] = r; });
+  if (tickets.length <= ANALYZE_SYNC_MAX_BATCH_SIZE) {
+    const results = new Array(tickets.length);
+    try {
+      await analyzeChunked(tickets.map((ticket, index) => ({ index, ticket })), maxTokens, opts, (chunkResults) => {
+        chunkResults.forEach(r => { results[r.index] = r; });
+      });
 
-      const isLastChunk = i + opts.chunkSize >= tickets.length;
-      if (!isLastChunk && opts.delayBetweenChunksMs) {
-        await new Promise(resolve => setTimeout(resolve, opts.delayBetweenChunksMs));
-      }
+      const succeeded = results.filter(r => r.success).length;
+      return res.json({
+        ok: true,
+        total: tickets.length,
+        succeeded,
+        failed: tickets.length - succeeded,
+        results,
+        createdAt: new Date().toISOString()
+      });
+    } catch (e) {
+      console.error('L1 COPILOT ANALYZE BATCH ERROR:', e.message);
+      return res.status(500).json({ ok: false, error: e.message });
     }
+  }
 
-    const succeeded = results.filter(r => r.success).length;
+  // Background job mode -- return the jobId immediately rather than holding
+  // the connection open; poll GET .../batch/:jobId for progress.
+  const job = analyzeJobStore.createJob({ tickets, maxTokens: maxTokens || null, options: opts });
+  runAnalyzeJob(job.id, tickets, maxTokens, opts).catch(e => {
+    console.error('L1 COPILOT ANALYZE JOB ERROR:', job.id, e.message);
+    analyzeJobStore.updateJob(job.id, { status: 'error', error: e.message });
+  });
+
+  return res.status(202).json({
+    ok: true,
+    jobId: job.id,
+    status: job.status,
+    total: job.total,
+    createdAt: job.createdAt
+  });
+});
+
+app.get('/api/l1-copilot/analyze/batch/:jobId', requireRole(L1_COPILOT_ROLES), (req, res) => {
+  const job = analyzeJobStore.getJob(req.params.jobId);
+  if (!job) return res.status(404).json({ ok: false, error: 'job not found' });
+
+  return res.json({
+    ok: true,
+    jobId: job.id,
+    status: job.status,
+    total: job.total,
+    succeeded: job.succeeded,
+    failed: job.failed,
+    results: job.results,
+    createdAt: job.createdAt,
+    updatedAt: job.updatedAt,
+    completedAt: job.completedAt || null,
+    error: job.error || null
+  });
+});
+
+app.post('/api/l1-copilot/analyze/batch/:jobId/retry', requireRole(L1_COPILOT_ROLES), async (req, res) => {
+  const job = analyzeJobStore.getJob(req.params.jobId);
+  if (!job) return res.status(404).json({ ok: false, error: 'job not found' });
+
+  const failedCount = (job.results || []).filter(r => r && r.success === false).length;
+  if (failedCount === 0) {
     return res.json({
       ok: true,
-      total: tickets.length,
-      succeeded,
-      failed: tickets.length - succeeded,
-      results,
-      createdAt: new Date().toISOString()
+      jobId: job.id,
+      status: job.status,
+      message: 'no failed records to retry',
+      total: job.total,
+      succeeded: job.succeeded,
+      failed: job.failed
     });
-  } catch (e) {
-    console.error('L1 COPILOT ANALYZE BATCH ERROR:', e.message);
-    return res.status(500).json({ ok: false, error: e.message });
   }
+
+  analyzeJobStore.updateJob(job.id, { status: 'retrying' });
+  retryAnalyzeJobFailures(job).catch(e => {
+    console.error('L1 COPILOT ANALYZE JOB RETRY ERROR:', job.id, e.message);
+    analyzeJobStore.updateJob(job.id, { status: 'error', error: e.message });
+  });
+
+  return res.status(202).json({ ok: true, jobId: job.id, status: 'retrying', retryCount: failedCount });
 });
 
 app.post('/api/l1-copilot/vendor', requireRole(L1_COPILOT_ROLES), async (req, res) => {
