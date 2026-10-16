@@ -5120,6 +5120,7 @@ const { retryDelayMs: groqRetryDelayMs } = require('./server/l1-copilot/retry-de
 const { parseWithRetry: parseAnalysisJsonWithRetry } = require('./server/l1-copilot/analyze-json-retry');
 const analyzeJobStore = require('./server/l1-copilot/analyze-job-store');
 const { selectRetryEntries } = require('./server/l1-copilot/analyze-retry-selection');
+const { allowlistCmdbContext } = require('./server/l1-copilot/analyze-cmdb-allowlist');
 
 // A job can only be "running" while a process is actively driving it -- if
 // this process just (re)started, any job still marked "running" from a
@@ -5969,8 +5970,14 @@ async function analyzeSingleTicket(ticket, maxTokens) {
     department: ticket.department, asset: ticket.asset, manufacturer: ticket.manufacturer,
     model: ticket.model, warranty: ticket.warranty
   }, null, 2);
-  const cmdbBlock = cmdbContext
-    ? `\nReal CMDB/ServiceNow data for this asset/incident (trust this over the agent-typed fields above if they conflict):\n${JSON.stringify(cmdbContext, null, 2)}\n`
+  // Embed only the fields the prompt/output actually use (see
+  // analyze-cmdb-allowlist.js) -- not cmdbContext's full .raw ServiceNow
+  // record, which used to put thousands of unrelated-column tokens into
+  // every single ticket's prompt. cmdbSourced below is still driven by the
+  // original cmdbContext, independent of what's allowlisted into the prompt.
+  const allowlistedCmdb = allowlistCmdbContext(cmdbContext);
+  const cmdbBlock = allowlistedCmdb
+    ? `\nReal CMDB/ServiceNow data for this asset/incident (trust this over the agent-typed fields above if they conflict):\n${JSON.stringify(allowlistedCmdb, null, 2)}\n`
     : '';
   const prompt = `Ticket metadata (may be incomplete — fields left blank were not provided):\n${summary}\n${cmdbBlock}\n` +
     `Ticket description (raw, as pasted by the agent):\n${ticket.description}\n\n` +
