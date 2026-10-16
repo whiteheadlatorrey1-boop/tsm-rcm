@@ -18,7 +18,7 @@ const HARDWARE = [
   { sys_id: 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4', asset_tag: 'FIN-LT-0042', manufacturer: { display_value: 'Dell', value: 'dellsysid' }, model_id: { display_value: 'Latitude 7440' }, warranty_expiration: '2027-03-01', assigned_to: { display_value: 'Jane Doe' }, department: { display_value: 'Finance' }, purchase_date: '2024-03-01', install_status: '1' }
 ];
 const INCIDENTS = [
-  { sys_id: 'ffffffffffffffffffffffffffffffff', number: 'INC0012345', priority: '2', caller_id: { display_value: 'Jane Doe' }, short_description: 'Laptop will not boot', assignment_group: { display_value: 'Desktop Support' }, state: '2', cmdb_ci: { display_value: 'FIN-LT-0042' } }
+  { sys_id: 'ffffffffffffffffffffffffffffffff', number: 'INC0012345', priority: '2', caller_id: { display_value: 'Jane Doe' }, short_description: 'Laptop will not boot', assignment_group: { display_value: 'Desktop Support' }, state: '2', cmdb_ci: { display_value: 'FIN-LT-0042' }, impact: { value: '2', display_value: '2 - Medium' }, urgency: { value: '2', display_value: '2 - Medium' }, category: { display_value: 'Hardware' }, subcategory: { display_value: 'Laptop' } }
 ];
 
 const RITMS = [
@@ -172,6 +172,10 @@ async function main() {
   check('getTicket captures sys_id for later writes', ticket.sysId === 'ffffffffffffffffffffffffffffffff');
   check('getTicket normalizes numeric state 2 to IN PROGRESS', ticket.state === 'IN PROGRESS');
   check('getTicket preserves raw numeric state on ticket.raw', ticket.raw && ticket.raw.state === '2');
+  check('getTicket resolves impact display_value', ticket.impact === '2 - Medium');
+  check('getTicket resolves urgency display_value', ticket.urgency === '2 - Medium');
+  check('getTicket resolves category display_value', ticket.category === 'Hardware');
+  check('getTicket resolves subcategory display_value', ticket.subcategory === 'Laptop');
 
   // writeWorkNote — looks up sys_id first, then PATCHes
   const wn = await adapter.writeWorkNote('INC0012345', 'Replaced battery, verified boot.', config);

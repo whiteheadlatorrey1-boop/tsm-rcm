@@ -12,14 +12,20 @@
 //     for (incident, priority, requester, department, assignmentGroup,
 //     asset, manufacturer, model, warranty)
 //   - the incident's real ServiceNow short_description (getTicket()'s
-//     `description` field) -- NOT the same thing as the agent-typed
-//     ticket.description already in the prompt. The two can legitimately
-//     differ (a pre-existing incident may carry its own logged
-//     short_description independent of whatever the agent typed this
-//     session), and dropping it was tried and reverted: it measurably
+//     `description` field, re-keyed to `short_description` in the
+//     allowlisted output -- see below) -- NOT the same thing as the
+//     agent-typed ticket.description already in the prompt. The two can
+//     legitimately differ (a pre-existing incident may carry its own
+//     logged short_description independent of whatever the agent typed
+//     this session), and dropping it was tried and reverted: it measurably
 //     degraded analysis quality in a live comparison against 5 real PDI
 //     incidents -- the model fell back to "no description provided"
 //     instead of reasoning about the incident's actual logged issue.
+//   - impact, urgency, category, subcategory -- what ServiceNow actually
+//     derives priority FROM (priority = impact x urgency lookup matrix),
+//     plus the two triage classification fields a human agent would also
+//     have in front of them. Lets the model reason about priority/severity
+//     instead of only being handed the already-computed priority value.
 //   - two small scalar status signals (incident state, asset install
 //     status) that genuinely inform severity/business-impact reasoning
 //     and cost almost nothing since they're short strings, not objects
@@ -28,7 +34,7 @@
 // output shape.
 
 const ASSET_FIELDS = ['assetTag', 'manufacturer', 'model', 'warrantyStatus', 'department', 'status'];
-const INCIDENT_FIELDS = ['number', 'priority', 'requester', 'assignmentGroup', 'state', 'asset', 'description'];
+const INCIDENT_FIELDS = ['number', 'priority', 'requester', 'assignmentGroup', 'state', 'asset', 'description', 'impact', 'urgency', 'category', 'subcategory'];
 
 function pick(record, fields) {
   if (!record || typeof record !== 'object') return null;
@@ -53,6 +59,17 @@ function allowlistCmdbContext(cmdbContext) {
 
   const asset = pick(cmdbContext.asset, ASSET_FIELDS);
   const ticket = pick(cmdbContext.ticket, INCIDENT_FIELDS);
+
+  // Re-key ticket.description -> short_description in the OUTPUT only --
+  // getTicket()'s own contract keeps calling it `description`. The prompt
+  // already has the agent-typed ticket.description sitting right above
+  // this block; two fields both named "description" is exactly the
+  // ambiguity that caused the regression noted above, so the allowlisted
+  // copy is named for what it actually is: ServiceNow's short_description.
+  if (ticket && Object.prototype.hasOwnProperty.call(ticket, 'description')) {
+    ticket.short_description = ticket.description;
+    delete ticket.description;
+  }
 
   if (!asset && !ticket) return null;
 

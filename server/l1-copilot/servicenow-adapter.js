@@ -53,7 +53,11 @@ const DEFAULT_FIELD_MAP = {
     description: 'short_description',
     assignmentGroup: 'assignment_group.name',
     state: 'state',
-    asset: 'cmdb_ci.asset_tag'
+    asset: 'cmdb_ci.asset_tag',
+    impact: 'impact',
+    urgency: 'urgency',
+    category: 'category',
+    subcategory: 'subcategory'
   }
 };
 
@@ -260,6 +264,14 @@ async function getTicket(incidentId, config) {
     assignmentGroup: readField(record, fm.assignmentGroup),
     state: normalizeIncidentState(readRawValue(record, fm.state)),
     asset: readField(record, fm.asset),
+    // impact/urgency are what ServiceNow actually derives priority from
+    // (priority = impact x urgency lookup matrix); category/subcategory are
+    // the other signals a human triager uses alongside them. Surfaced so
+    // analysis prompts can reason about priority instead of just quoting it.
+    impact: readField(record, fm.impact),
+    urgency: readField(record, fm.urgency),
+    category: readField(record, fm.category),
+    subcategory: readField(record, fm.subcategory),
     sysId: record.sys_id && (record.sys_id.value || record.sys_id),
     raw: record
   };

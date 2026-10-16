@@ -35,6 +35,10 @@ const sampleTicketRec = {
   assignmentGroup: 'Network',
   state: 'In Progress',
   asset: 'LAPTOP-001',
+  impact: '2 - Medium',
+  urgency: '2 - Medium',
+  category: 'Network',
+  subcategory: 'VPN',
   sysId: 'def456',
   raw: { sys_id: { value: 'def456' }, u_custom_field_17: { value: 'x', display_value: 'X' } }
 };
@@ -52,7 +56,9 @@ result = allowlistCmdbContext({ asset: null, ticket: sampleTicketRec });
 ok(result !== null, 'allowlistCmdbContext returns a non-null result when only a ticket record is present');
 ok(result.asset === null, 'asset stays null when no asset record was passed');
 ok(result.ticket.number === 'INC0000123' && result.ticket.priority === '3 - Medium' && result.ticket.requester === 'Jane Caller' && result.ticket.assignmentGroup === 'Network' && result.ticket.state === 'In Progress' && result.ticket.asset === 'LAPTOP-001', 'all allowlisted incident fields are kept');
-ok(result.ticket.description === 'VPN keeps dropping', 'the ticket\'s real ServiceNow short_description (getTicket()\'s "description" field) is kept -- it is NOT the same thing as the agent-typed ticket.description already elsewhere in the prompt, and dropping it was found to degrade analysis quality in a live comparison');
+ok(result.ticket.impact === '2 - Medium' && result.ticket.urgency === '2 - Medium' && result.ticket.category === 'Network' && result.ticket.subcategory === 'VPN', 'impact/urgency/category/subcategory are kept -- what ServiceNow actually derives priority from');
+ok(result.ticket.short_description === 'VPN keeps dropping', 'the ticket\'s real ServiceNow short_description is kept, re-keyed to "short_description"');
+ok(!('description' in result.ticket), 'the output never uses the bare key "description" -- that ambiguity (vs. the agent-typed ticket.description already elsewhere in the prompt) is exactly what caused the quality regression this allowlist once had');
 ok(result.ticket.raw === undefined, 'the ticket record\'s .raw (full ServiceNow row) is stripped');
 ok(result.ticket.sysId === undefined, 'non-allowlisted ticket fields (sysId) are stripped');
 
@@ -76,12 +82,21 @@ result = allowlistCmdbContext({ asset: assetWithGaps, ticket: null });
 ok(result.asset.assetTag === 'TAG-1' && result.asset.warrantyStatus === '2026-01-01', 'present allowlisted fields are kept even when siblings are missing');
 ok(!('manufacturer' in result.asset) && !('model' in result.asset), 'null/undefined values for allowlisted fields are omitted rather than passed through as null');
 
+// --- a ticket record with no description at all is not force-fed a
+//     short_description key, and nothing crashes ---
+const ticketNoDescription = { number: 'INC0000999', priority: '1 - Critical', impact: '1 - High', urgency: '1 - High' };
+result = allowlistCmdbContext({ asset: null, ticket: ticketNoDescription });
+ok(result.ticket.impact === '1 - High' && result.ticket.urgency === '1 - High', 'impact/urgency are kept even with no description present');
+ok(!('short_description' in result.ticket) && !('description' in result.ticket), 'no description/short_description key is invented when the source record has none');
+
 // --- the allowlists themselves match what the prompt template and its
 //     extracted_fields output actually reference (incident/priority/
 //     requester/department/assignmentGroup/asset/manufacturer/model/
-//     warranty), plus the two small status signals ---
+//     warranty), plus impact/urgency/category/subcategory (what ServiceNow
+//     derives priority from) and the two small status signals ---
 ok(ASSET_FIELDS.includes('manufacturer') && ASSET_FIELDS.includes('model') && ASSET_FIELDS.includes('warrantyStatus'), 'asset allowlist covers manufacturer/model/warranty (extracted_fields keys)');
 ok(INCIDENT_FIELDS.includes('priority') && INCIDENT_FIELDS.includes('requester') && INCIDENT_FIELDS.includes('assignmentGroup') && INCIDENT_FIELDS.includes('asset'), 'incident allowlist covers priority/requester/assignmentGroup/asset (extracted_fields keys)');
+ok(INCIDENT_FIELDS.includes('impact') && INCIDENT_FIELDS.includes('urgency') && INCIDENT_FIELDS.includes('category') && INCIDENT_FIELDS.includes('subcategory'), 'incident allowlist covers impact/urgency/category/subcategory');
 ok(!ASSET_FIELDS.includes('raw') && !INCIDENT_FIELDS.includes('raw'), 'neither allowlist can ever include "raw"');
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
