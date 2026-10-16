@@ -118,11 +118,39 @@ function completeJob(jobId) {
   return updateJob(jobId, { status: 'completed', completedAt: new Date().toISOString() });
 }
 
+// Call once at server startup, before any request can reach the analyze
+// routes. A job can only be "running" while a server process is actively
+// driving its chunk loop -- if the process restarts (deploy, crash) with a
+// job still marked "running", that loop is gone and the job will sit stuck
+// forever, its unprocessed records permanently null. This reclassifies any
+// such orphaned job as "interrupted" so callers can see it's dead (not
+// quietly still in progress) and retry it -- the retry route treats
+// never-processed (null) records the same as explicit failures, so an
+// interrupted job's remaining work is exactly what gets re-run.
+function markRunningJobsInterrupted() {
+  const jobs = loadJobs();
+  const now = new Date().toISOString();
+  const markedIds = [];
+
+  jobs.forEach(job => {
+    if (job.status === 'running') {
+      job.status = 'interrupted';
+      job.updatedAt = now;
+      markedIds.push(job.id);
+    }
+  });
+
+  if (markedIds.length > 0) saveJobs(jobs);
+
+  return markedIds;
+}
+
 module.exports = {
   FILE_PATH,
   createJob,
   getJob,
   updateJob,
   applyResults,
-  completeJob
+  completeJob,
+  markRunningJobsInterrupted
 };
