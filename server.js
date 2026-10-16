@@ -6275,6 +6275,17 @@ app.post('/api/l1-copilot/analyze/batch/:jobId/retry', requireRole(L1_COPILOT_RO
   const job = analyzeJobStore.getJob(req.params.jobId);
   if (!job) return res.status(404).json({ ok: false, error: 'job not found' });
 
+  // A job actively being driven by this (or, briefly during a restart, a
+  // just-replaced) process has its own in-flight chunk loop writing to the
+  // same null slots that selectRetryEntries would otherwise pick up --
+  // starting a second retry pass over those same indices concurrently would
+  // double-process them (two analyzeSingleTicket calls racing to write the
+  // same result). Only a job that's actually stopped moving -- completed,
+  // already interrupted, or errored out -- is safe to retry.
+  if (job.status === 'running' || job.status === 'retrying') {
+    return res.status(409).json({ ok: false, error: 'job is still in progress', jobId: job.id, status: job.status });
+  }
+
   // Retryable means explicitly failed OR never processed at all (still
   // null -- the shape a server restart leaves behind mid-job, see
   // markRunningJobsInterrupted() above). A plain "failed" count would miss

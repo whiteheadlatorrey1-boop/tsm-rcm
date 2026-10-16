@@ -10,7 +10,10 @@
 //     background job (immediate 202 + jobId) above that
 //   - GET /api/l1-copilot/analyze/batch/:jobId (progress/results)
 //   - POST /api/l1-copilot/analyze/batch/:jobId/retry (re-runs failed AND
-//     never-processed/null records -- see analyze-retry-selection.js)
+//     never-processed/null records -- see analyze-retry-selection.js --
+//     but refuses with 409 while the job is still actively running/retrying,
+//     since a second pass over those same in-flight null slots would
+//     double-process them)
 //   - startup recovery: a job still "running" when the process (re)starts
 //     is orphaned, not actually in progress -- analyzeJobStore.markRunningJobsInterrupted()
 //     reclassifies it as "interrupted" so it's visibly dead and its
@@ -305,6 +308,23 @@ async function testRoutes() {
   // --- GET on an unknown job id is a 404 ---
   r = await request(port, 'GET', '/api/l1-copilot/analyze/batch/no-such-job', cookie);
   ok(r.status === 404, 'GET on an unknown jobId returns 404 (got ' + r.status + ')');
+
+  // --- retry is refused with 409 while the job is still actively running --
+  //     calling retry on an in-progress job would start a second chunk loop
+  //     racing the first over the same still-null (in-flight) indices. ---
+  const stillRunning = await request(port, 'GET', '/api/l1-copilot/analyze/batch/' + jobId, cookie);
+  ok(stillRunning.body && stillRunning.body.status === 'running', 'sanity check: the job is still status=running immediately after creation (got ' + (stillRunning.body && stillRunning.body.status) + ')');
+  r = await request(port, 'POST', '/api/l1-copilot/analyze/batch/' + jobId + '/retry', cookie);
+  ok(r.status === 409, 'retry on a job that is still status=running is refused with 409 (got ' + r.status + ')');
+  ok(r.body && r.body.error === 'job is still in progress', 'the 409 body explains why (got: ' + (r.body && r.body.error) + ')');
+
+  // --- retry is also refused with 409 while status=retrying (a retry pass
+  //     already in flight) -- built directly against the store so it's
+  //     deterministic rather than racing the background runner. ---
+  const midRetryJob = jobStore.createJob({ tickets: [{ incident: 'INCMIDRETRY1' }], maxTokens: null, options: null });
+  jobStore.updateJob(midRetryJob.id, { status: 'retrying' });
+  r = await request(port, 'POST', '/api/l1-copilot/analyze/batch/' + midRetryJob.id + '/retry', cookie);
+  ok(r.status === 409 && r.body.error === 'job is still in progress', 'retry on a job already mid-retry (status=retrying) is also refused with 409 (got ' + r.status + '/' + (r.body && r.body.error) + ')');
 
   // --- poll the real job until it completes (fast: no GROQ key means every
   //     record fails immediately, no network calls) ---
