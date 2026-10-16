@@ -1,6 +1,7 @@
 'use strict';
-// GET /api/candidates and GET /api/candidates/:id (routes/candidate-registry.js)
-// now require an authenticated internal-staff session (admin/manager/analyst)
+// GET /api/candidates, GET /api/candidates/:id, and GET
+// /api/candidates/evidence-overview (routes/candidate-registry.js) now
+// require an authenticated internal-staff session (admin/manager/analyst)
 // -- previously these were open to anyone. Regression-guards:
 //   - unauthenticated GET is 401, an authenticated 'client' session is 403
 //     (clients are an external portal role, not staff)
@@ -8,9 +9,8 @@
 //   - non-admin staff still get the redacted publicView (no email/_id) --
 //     the auth gate is additive, it doesn't change the existing
 //     admin-vs-non-admin field redaction
-//   - the write routes (create/training-events) and the evidence-overview
-//     read route are untouched by this change -- still reachable without a
-//     staff session, exactly as before
+//   - the write routes (create/training-events) are untouched by this
+//     change -- still reachable without a staff session, exactly as before
 process.env.TSM_SESSION_SECRET = process.env.TSM_SESSION_SECRET || 'test-session-secret';
 
 const assert = require('assert');
@@ -104,8 +104,16 @@ const server = app.listen(0, '127.0.0.1', async () => {
     assert.strictEqual((await call('GET', '/api/candidates/no-such-id', cookieFor('admin'))).status, 404);
   });
 
-  await check('evidence-overview stays reachable without a session (untouched by this change)', async () => {
-    assert.strictEqual((await call('GET', '/api/candidates/evidence-overview')).status, 200);
+  await check('GET /api/candidates/evidence-overview without a session -> 401', async () => {
+    assert.strictEqual((await call('GET', '/api/candidates/evidence-overview')).status, 401);
+  });
+  await check('GET /api/candidates/evidence-overview with a client session -> 403 (not staff)', async () => {
+    assert.strictEqual((await call('GET', '/api/candidates/evidence-overview', cookieFor('client'))).status, 403);
+  });
+  await check('GET /api/candidates/evidence-overview with a staff session -> 200', async () => {
+    const r = await call('GET', '/api/candidates/evidence-overview', cookieFor('manager'));
+    assert.strictEqual(r.status, 200);
+    assert.strictEqual(r.body.candidates[0].candidateId, 'c1');
   });
   await check('learner create (no session) still works (untouched by this change)', async () => {
     assert.strictEqual((await call('POST', '/api/candidates', null, { name: 'T', role: 'x' })).status < 400, true);

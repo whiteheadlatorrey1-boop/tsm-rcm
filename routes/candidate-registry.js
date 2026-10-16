@@ -49,7 +49,7 @@ router.get('/api/candidates', requireStaff, async (req, res) => {
 // evidence" gap this endpoint exists to surface, not paper over.
 // Registered before /api/candidates/:id so "evidence-overview" is never
 // swallowed as a candidateId by that route.
-router.get('/api/candidates/evidence-overview', async (req, res) => {
+router.get('/api/candidates/evidence-overview', requireStaff, async (req, res) => {
   try {
     const candidates = await registry.listCandidates({});
     const overview = candidates.map((c) => {
