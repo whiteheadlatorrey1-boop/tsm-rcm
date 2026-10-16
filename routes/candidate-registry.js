@@ -13,6 +13,11 @@ const { requireRole } = require('../middleware/require-auth');
 const { requireCandidateWrite, signCandidateToken } = require('../middleware/candidate-token');
 const router = express.Router();
 
+// Any internal TSM staff session (not an external 'client' portal session,
+// and not a candidate's own write token) -- same role set as
+// routes/l1-servicenow-drafts.js's `staff` gate.
+const requireStaff = requireRole(['admin', 'manager', 'analyst']);
+
 const registry = require('../server/candidate-registry-service');
 const { listCsaCandidateEvidence } = require('../server/certification/candidate-evidence-adapter');
 
@@ -24,7 +29,7 @@ const isAdmin = req => {
 // Non-admins never receive email or Mongo _id.
 const publicView = ({ email, _id, ...rest } = {}) => rest;
 
-router.get('/api/candidates', async (req, res) => {
+router.get('/api/candidates', requireStaff, async (req, res) => {
   try {
     const { status } = req.query;
     const candidates = await registry.listCandidates({ status });
@@ -79,7 +84,7 @@ router.get('/api/candidates/evidence-overview', async (req, res) => {
   }
 });
 
-router.get('/api/candidates/:id', async (req, res) => {
+router.get('/api/candidates/:id', requireStaff, async (req, res) => {
   try {
     const candidate = await registry.getCandidate(req.params.id);
     if (!candidate) return res.status(404).json({ error: 'not found' });

@@ -7074,7 +7074,9 @@ async function loadCandidateRegistry() {
     const res = await fetch('/api/candidates');
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      throw new Error(data.error || `Candidate registry request failed (${res.status})`);
+      const err = new Error(data.error || `Candidate registry request failed (${res.status})`);
+      err.status = res.status;
+      throw err;
     }
     const data = await res.json();
     const candidates = data.candidates || [];
@@ -7104,7 +7106,10 @@ async function loadCandidateRegistry() {
     renderManagerKPIs(candidates);
   } catch (e) {
     console.warn('Candidate registry load failed:', e);
-    const failMsg = (cols) => `<tr><td colspan="${cols}" style="text-align:center;padding:20px;color:var(--text3);font-size:10px;">Unable to load candidate registry — check server connection.</td></tr>`;
+    const message = e.status === 401
+      ? 'Sign in to view candidate data.'
+      : 'Unable to load candidate registry — check server connection.';
+    const failMsg = (cols) => `<tr><td colspan="${cols}" style="text-align:center;padding:20px;color:var(--text3);font-size:10px;">${message}</td></tr>`;
     const reg = document.getElementById('registryTbody');
     if (reg) reg.innerHTML = failMsg(7);
     const mgr = document.getElementById('managerCandidateTbody');

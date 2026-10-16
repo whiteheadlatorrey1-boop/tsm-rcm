@@ -2,17 +2,15 @@
 
 const assert = require('assert');
 const fs = require('fs');
-const path = require('path');
 
 const auditStore = require('../server/l1-copilot/audit-store');
 const actionGate = require('../server/l1-copilot/action-gate');
 
-const auditFile = path.join(
-  __dirname,
-  '..',
-  'data',
-  'l1-copilot-audit.json'
-);
+// audit-store.js now rotates to a dated file (l1-copilot-audit-YYYY-MM-DD.json)
+// instead of one fixed l1-copilot-audit.json -- use its own exported
+// FILE_PATH (today's file) rather than independently reconstructing a path
+// that's no longer what recordAudit() actually writes to.
+const auditFile = auditStore.FILE_PATH;
 
 function cleanup() {
   try {

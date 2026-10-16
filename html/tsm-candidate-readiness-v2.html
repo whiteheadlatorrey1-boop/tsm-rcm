@@ -1819,10 +1819,14 @@ async function renderCandidateTable(){
   // Candidate Registry is the canonical source of truth.
   // Do not read or write a competing localStorage candidate store.
   let candidates=[];
+  let signInRequired=false;
 
   try{
     const res=await fetch('/api/candidates');
-    if(!res.ok) throw new Error(`Candidate Registry request failed (${res.status})`);
+    if(!res.ok){
+      if(res.status===401) signInRequired=true;
+      throw new Error(`Candidate Registry request failed (${res.status})`);
+    }
     const data=await res.json();
     candidates=(data.candidates||[]).map(candidate=>{
       const e=candidate.readinessEvidence||{};
@@ -1886,7 +1890,9 @@ async function renderCandidateTable(){
   const tbody=document.getElementById('candidate-tbody');
 
   if(!filtered.length){
-    tbody.innerHTML=`<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--dim);font-size:11px;">No candidates found</td></tr>`;
+    tbody.innerHTML=signInRequired
+      ? `<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--dim);font-size:11px;">Sign in to view candidate data</td></tr>`
+      : `<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--dim);font-size:11px;">No candidates found</td></tr>`;
     return;
   }
 
@@ -1940,7 +1946,10 @@ async function exportCSV(){
   let candidates=[];
   try{
     const res=await fetch('/api/candidates');
-    if(!res.ok) throw new Error(`Candidate Registry request failed (${res.status})`);
+    if(!res.ok){
+      if(res.status===401){ alert('Sign in to view candidate data to export.'); return; }
+      throw new Error(`Candidate Registry request failed (${res.status})`);
+    }
     const data=await res.json();
     candidates=(data.candidates||[]).map(candidate=>{
       const e=candidate.readinessEvidence||{};
