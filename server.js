@@ -5119,6 +5119,18 @@ const { clampBatchOptions } = require('./server/l1-copilot/batch-options');
 const { retryDelayMs: groqRetryDelayMs } = require('./server/l1-copilot/retry-delay');
 const { parseWithRetry: parseAnalysisJsonWithRetry } = require('./server/l1-copilot/analyze-json-retry');
 const analyzeJobStore = require('./server/l1-copilot/analyze-job-store');
+const { selectRetryEntries } = require('./server/l1-copilot/analyze-retry-selection');
+
+// A job can only be "running" while a process is actively driving it -- if
+// this process just (re)started, any job still marked "running" from a
+// previous process is orphaned, not actually in progress. Reclassify those
+// before any request can reach the analyze routes.
+(() => {
+  const interruptedIds = analyzeJobStore.markRunningJobsInterrupted();
+  if (interruptedIds.length > 0) {
+    console.warn('[L1 ANALYZE JOBS] marked', interruptedIds.length, 'job(s) "interrupted" on startup (were still "running" from a previous process):', interruptedIds.join(', '));
+  }
+})();
 
 // --- ServiceNow CMDB/ITSM integration ---------------------------------
 // Real Table API connector (server/l1-copilot/servicenow-adapter.js) — no-ops
@@ -6175,10 +6187,7 @@ async function runAnalyzeJob(jobId, tickets, maxTokens, opts) {
 }
 
 async function retryAnalyzeJobFailures(job) {
-  const entries = job.results
-    .map((r, index) => ({ r, index }))
-    .filter(x => x.r && x.r.success === false)
-    .map(x => ({ index: x.index, ticket: job.tickets[x.index] }));
+  const entries = selectRetryEntries(job.results, job.tickets);
 
   if (entries.length === 0) return;
 
@@ -6266,13 +6275,28 @@ app.post('/api/l1-copilot/analyze/batch/:jobId/retry', requireRole(L1_COPILOT_RO
   const job = analyzeJobStore.getJob(req.params.jobId);
   if (!job) return res.status(404).json({ ok: false, error: 'job not found' });
 
-  const failedCount = (job.results || []).filter(r => r && r.success === false).length;
-  if (failedCount === 0) {
+  // A job actively being driven by this (or, briefly during a restart, a
+  // just-replaced) process has its own in-flight chunk loop writing to the
+  // same null slots that selectRetryEntries would otherwise pick up --
+  // starting a second retry pass over those same indices concurrently would
+  // double-process them (two analyzeSingleTicket calls racing to write the
+  // same result). Only a job that's actually stopped moving -- completed,
+  // already interrupted, or errored out -- is safe to retry.
+  if (job.status === 'running' || job.status === 'retrying') {
+    return res.status(409).json({ ok: false, error: 'job is still in progress', jobId: job.id, status: job.status });
+  }
+
+  // Retryable means explicitly failed OR never processed at all (still
+  // null -- the shape a server restart leaves behind mid-job, see
+  // markRunningJobsInterrupted() above). A plain "failed" count would miss
+  // an interrupted job's un-run tail entirely.
+  const retryEntries = selectRetryEntries(job.results, job.tickets);
+  if (retryEntries.length === 0) {
     return res.json({
       ok: true,
       jobId: job.id,
       status: job.status,
-      message: 'no failed records to retry',
+      message: 'no failed or unprocessed records to retry',
       total: job.total,
       succeeded: job.succeeded,
       failed: job.failed
@@ -6285,7 +6309,7 @@ app.post('/api/l1-copilot/analyze/batch/:jobId/retry', requireRole(L1_COPILOT_RO
     analyzeJobStore.updateJob(job.id, { status: 'error', error: e.message });
   });
 
-  return res.status(202).json({ ok: true, jobId: job.id, status: 'retrying', retryCount: failedCount });
+  return res.status(202).json({ ok: true, jobId: job.id, status: 'retrying', retryCount: retryEntries.length });
 });
 
 app.post('/api/l1-copilot/vendor', requireRole(L1_COPILOT_ROLES), async (req, res) => {

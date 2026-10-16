@@ -9,8 +9,15 @@
 //   - POST /api/l1-copilot/analyze/batch: synchronous for <=10 tickets,
 //     background job (immediate 202 + jobId) above that
 //   - GET /api/l1-copilot/analyze/batch/:jobId (progress/results)
-//   - POST /api/l1-copilot/analyze/batch/:jobId/retry (re-run only the
-//     failed records)
+//   - POST /api/l1-copilot/analyze/batch/:jobId/retry (re-runs failed AND
+//     never-processed/null records -- see analyze-retry-selection.js --
+//     but refuses with 409 while the job is still actively running/retrying,
+//     since a second pass over those same in-flight null slots would
+//     double-process them)
+//   - startup recovery: a job still "running" when the process (re)starts
+//     is orphaned, not actually in progress -- analyzeJobStore.markRunningJobsInterrupted()
+//     reclassifies it as "interrupted" so it's visibly dead and its
+//     unprocessed tail is retryable rather than stuck forever
 //
 // Runs fully offline: no SERVICENOW_* or GROQ_API_KEY needed. The route
 // tests boot the real server in-process and sign a session cookie directly
@@ -166,10 +173,61 @@ function testJobStore() {
     ok(jobStore.updateJob('no-such-job', { status: 'x' }) === null, 'updateJob returns null for an unknown id');
 
     ok(fs.existsSync(file), 'job store persists to durable JSON at FILE_PATH');
+
+    // --- markRunningJobsInterrupted: only jobs actually left "running" (a
+    //     process died mid-job) get reclassified; everything else -- already
+    //     completed, mid-retry, errored, or already interrupted -- is untouched. ---
+    const runningJob1 = jobStore.createJob({ tickets: [{ incident: 'INCRUN1' }], maxTokens: null, options: null });
+    const runningJob2 = jobStore.createJob({ tickets: [{ incident: 'INCRUN2' }], maxTokens: null, options: null });
+    const completedJob = jobStore.createJob({ tickets: [{ incident: 'INCDONE' }], maxTokens: null, options: null });
+    jobStore.completeJob(completedJob.id);
+    const retryingJob = jobStore.createJob({ tickets: [{ incident: 'INCRETRYING' }], maxTokens: null, options: null });
+    jobStore.updateJob(retryingJob.id, { status: 'retrying' });
+
+    const markedIds = jobStore.markRunningJobsInterrupted();
+    ok(markedIds.includes(runningJob1.id) && markedIds.includes(runningJob2.id), 'markRunningJobsInterrupted marks every job left in status=running');
+    ok(!markedIds.includes(completedJob.id) && !markedIds.includes(retryingJob.id), 'markRunningJobsInterrupted leaves completed/retrying jobs alone');
+    ok(jobStore.getJob(runningJob1.id).status === 'interrupted' && jobStore.getJob(runningJob2.id).status === 'interrupted', 'the marked jobs now read back as status=interrupted');
+    ok(jobStore.getJob(completedJob.id).status === 'completed' && jobStore.getJob(retryingJob.id).status === 'retrying', 'untouched jobs keep their original status');
+
+    const secondCall = jobStore.markRunningJobsInterrupted();
+    ok(secondCall.length === 0, 'calling markRunningJobsInterrupted again is a no-op once nothing is left running (idempotent)');
   } finally {
     if (fs.existsSync(file)) fs.unlinkSync(file);
     if (hadExisting) fs.renameSync(backup, file);
   }
+}
+
+// ───────────────────────── analyze-retry-selection.js ─────────────────────
+
+function testRetrySelection() {
+  const { selectRetryEntries } = require('../server/l1-copilot/analyze-retry-selection');
+
+  const tickets = [{ id: 't0' }, { id: 't1' }, { id: 't2' }, { id: 't3' }, { id: 't4' }];
+  const results = [
+    { success: true },   // 0: succeeded -- never retried
+    null,                // 1: never processed (e.g. job interrupted mid-run)
+    { success: false },  // 2: explicitly failed
+    null,                // 3: never processed
+    { success: true }    // 4: succeeded -- never retried
+  ];
+
+  const entries = selectRetryEntries(results, tickets);
+  ok(entries.length === 3, 'selectRetryEntries picks exactly the failed + never-processed records (got ' + entries.length + ')');
+  ok(entries.map(e => e.index).join(',') === '1,2,3', 'selectRetryEntries preserves original index order (got ' + entries.map(e => e.index).join(',') + ')');
+  ok(entries.find(e => e.index === 1).ticket === tickets[1], 'a null (never-processed) record resolves to its original ticket');
+  ok(entries.find(e => e.index === 3).ticket === tickets[3], 'the other null record also resolves to its original ticket');
+  ok(entries.every(e => e.index !== 0 && e.index !== 4), 'succeeded records (0 and 4) are excluded');
+
+  const allSucceeded = [{ success: true }, { success: true }];
+  ok(selectRetryEntries(allSucceeded, tickets).length === 0, 'an all-succeeded results array yields no retry entries');
+
+  ok(selectRetryEntries([], tickets).length === 0, 'an empty results array yields no retry entries');
+  ok(selectRetryEntries(null, tickets).length === 0, 'a null/missing results array does not throw and yields no retry entries');
+
+  const allNull = [null, null, null];
+  const allNullEntries = selectRetryEntries(allNull, tickets);
+  ok(allNullEntries.length === 3, 'an entirely-null results array (job never started processing) retries every record');
 }
 
 // ───────────────────────── route-level (real server) ──────────────────────
@@ -209,9 +267,21 @@ function ticketsOf(count, prefix) {
 
 async function testRoutes() {
   const auth = require('../middleware/require-auth');
+  const jobStore = require('../server/l1-copilot/analyze-job-store');
+
+  // Seed a job left in status "running" BEFORE the server boots -- this
+  // proves the startup recovery hook (analyzeJobStore.markRunningJobsInterrupted(),
+  // called at module-load time in server.js) actually runs as a side effect
+  // of requiring server.js, not just that the function works in isolation
+  // (testJobStore() above already covers that in isolation).
+  const preExistingRunningJob = jobStore.createJob({ tickets: [{ incident: 'INCPRESEED1' }], maxTokens: null, options: null });
+  ok(preExistingRunningJob.status === 'running', 'sanity check: a freshly created job starts as status=running');
+
   require('../server');
   const port = Number(process.env.PORT);
-  const jobStore = require('../server/l1-copilot/analyze-job-store');
+
+  const seededAfterBoot = jobStore.getJob(preExistingRunningJob.id);
+  ok(seededAfterBoot && seededAfterBoot.status === 'interrupted', 'a job left "running" before server startup is marked "interrupted" by the startup recovery hook (got ' + (seededAfterBoot && seededAfterBoot.status) + ')');
 
   const cookie = 'tsm_session=' + encodeURIComponent(auth.signSession({
     role: 'admin', staffId: 'TECH-ANALYZE-JOBS-TEST', label: 'Analyze Jobs Test', exp: Date.now() + 3600000
@@ -238,6 +308,23 @@ async function testRoutes() {
   // --- GET on an unknown job id is a 404 ---
   r = await request(port, 'GET', '/api/l1-copilot/analyze/batch/no-such-job', cookie);
   ok(r.status === 404, 'GET on an unknown jobId returns 404 (got ' + r.status + ')');
+
+  // --- retry is refused with 409 while the job is still actively running --
+  //     calling retry on an in-progress job would start a second chunk loop
+  //     racing the first over the same still-null (in-flight) indices. ---
+  const stillRunning = await request(port, 'GET', '/api/l1-copilot/analyze/batch/' + jobId, cookie);
+  ok(stillRunning.body && stillRunning.body.status === 'running', 'sanity check: the job is still status=running immediately after creation (got ' + (stillRunning.body && stillRunning.body.status) + ')');
+  r = await request(port, 'POST', '/api/l1-copilot/analyze/batch/' + jobId + '/retry', cookie);
+  ok(r.status === 409, 'retry on a job that is still status=running is refused with 409 (got ' + r.status + ')');
+  ok(r.body && r.body.error === 'job is still in progress', 'the 409 body explains why (got: ' + (r.body && r.body.error) + ')');
+
+  // --- retry is also refused with 409 while status=retrying (a retry pass
+  //     already in flight) -- built directly against the store so it's
+  //     deterministic rather than racing the background runner. ---
+  const midRetryJob = jobStore.createJob({ tickets: [{ incident: 'INCMIDRETRY1' }], maxTokens: null, options: null });
+  jobStore.updateJob(midRetryJob.id, { status: 'retrying' });
+  r = await request(port, 'POST', '/api/l1-copilot/analyze/batch/' + midRetryJob.id + '/retry', cookie);
+  ok(r.status === 409 && r.body.error === 'job is still in progress', 'retry on a job already mid-retry (status=retrying) is also refused with 409 (got ' + r.status + '/' + (r.body && r.body.error) + ')');
 
   // --- poll the real job until it completes (fast: no GROQ key means every
   //     record fails immediately, no network calls) ---
@@ -277,13 +364,52 @@ async function testRoutes() {
   jobStore.completeJob(cleanJob.id);
 
   r = await request(port, 'POST', '/api/l1-copilot/analyze/batch/' + cleanJob.id + '/retry', cookie);
-  ok(r.status === 200 && r.body.message === 'no failed records to retry', 'retry on an all-succeeded job short-circuits with a 200 + explanatory message (got ' + r.status + '/' + (r.body && r.body.message) + ')');
+  ok(r.status === 200 && r.body.message === 'no failed or unprocessed records to retry', 'retry on an all-succeeded job short-circuits with a 200 + explanatory message (got ' + r.status + '/' + (r.body && r.body.message) + ')');
+
+  // --- retry also re-runs records that were never processed (null), not
+  //     just ones that explicitly failed -- exactly what a server restart
+  //     leaves behind mid-job. Build that scenario directly against the
+  //     job store (bypassing the live background runner) so it's
+  //     deterministic: 1 success, 1 explicit failure, 3 untouched nulls,
+  //     and the job's status still "running" -- precisely what's on disk
+  //     the instant a process dies mid-batch. ---
+  const interruptedTickets = [
+    { incident: 'INCINTR1001' }, { incident: 'INCINTR1002' }, { incident: 'INCINTR1003' },
+    { incident: 'INCINTR1004' }, { incident: 'INCINTR1005' }
+  ];
+  const interruptedJob = jobStore.createJob({ tickets: interruptedTickets, maxTokens: null, options: { chunkSize: 3, delayBetweenChunksMs: 250 } });
+  jobStore.applyResults(interruptedJob.id, [
+    { index: 0, success: true, incident: 'INCINTR1001', analysis: {}, cmdbSourced: false },
+    { index: 1, success: false, incident: 'INCINTR1002', error: 'boom' }
+  ]);
+  const midRun = jobStore.getJob(interruptedJob.id);
+  ok(midRun.status === 'running' && midRun.results.filter(x => x === null).length === 3, 'simulated interrupted job has 1 success, 1 failure, and 3 never-processed (null) records, status still running');
+
+  const markedNow = jobStore.markRunningJobsInterrupted();
+  ok(markedNow.includes(interruptedJob.id), 'markRunningJobsInterrupted (called directly, as the next server startup would) flips the simulated job');
+  ok(jobStore.getJob(interruptedJob.id).status === 'interrupted', 'simulated job now reads back as status=interrupted');
+
+  r = await request(port, 'POST', '/api/l1-copilot/analyze/batch/' + interruptedJob.id + '/retry', cookie);
+  ok(r.status === 202, 'retry on an interrupted job with null records is accepted (got ' + r.status + ')');
+  ok(r.body.retryCount === 4, 'retryCount covers the 1 explicit failure PLUS the 3 never-processed (null) records = 4, not just the 1 failure (got ' + r.body.retryCount + ')');
+
+  let recovered = null;
+  for (let i = 0; i < 40; i++) {
+    r = await request(port, 'GET', '/api/l1-copilot/analyze/batch/' + interruptedJob.id, cookie);
+    recovered = r.body;
+    if (recovered && recovered.status === 'completed') break;
+    await sleep(150);
+  }
+  ok(recovered && recovered.status === 'completed', 'interrupted job returns to status=completed after retrying its failed + null records (got ' + (recovered && recovered.status) + ')');
+  ok(recovered.results.every(x => x !== null), 'every previously-null record was actually reprocessed -- no nulls remain');
+  ok(recovered.succeeded + recovered.failed === 5, 'all 5 original tickets are accounted for after recovery (got succeeded=' + (recovered && recovered.succeeded) + ' failed=' + (recovered && recovered.failed) + ')');
 }
 
 (async () => {
   testRetryDelay();
   await testAnalyzeJsonRetry();
   testJobStore();
+  testRetrySelection();
   await testRoutes();
 
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
