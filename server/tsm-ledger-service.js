@@ -3799,7 +3799,21 @@ async function bpoDeleteDocument(docId, actor) {
     { $set: { deleted: true, deletedAt: new Date().toISOString(), deletedBy: actor || 'unknown' } },
     { returnDocument: 'after' }
   );
-  const updated = result && result.value ? result.value : null;
+  // mongodb driver v6 (installed: see package.json) returns the updated
+  // document directly (or null) -- it no longer wraps it in { value }.
+  // This call site used to fall back to `null` whenever `result.value`
+  // was falsy, which on v6 is EVERY successful update (result.value is
+  // always undefined on the unwrapped shape), so this always reported
+  // "document not found" even when the delete succeeded. The sibling
+  // functions (bpoUpdateClient, bpoSetClientStatus, paSetApInvoiceStatus)
+  // already fall back to `result` itself instead of `null`, which is
+  // correct on both the old wrapped shape (when there's no match,
+  // `result.value` is null/falsy but `result` is still a truthy {value:
+  // null} object -- a pre-existing latent edge case those three share,
+  // not something this fix needs to solve) and the current unwrapped
+  // shape (match -> result IS the doc; no match -> result IS null).
+  // Matched here for the same correctness and consistency.
+  const updated = result && result.value ? result.value : result;
   if (updated) {
     await bpoWriteAudit({
       actor, action: 'document.delete', entityType: 'work_item', entityId: updated.caseId,
