@@ -13,6 +13,19 @@
  *   - records technician/governance evidence supplied by callers
  *
  * The Action Gate remains the authorization boundary.
+ *
+ * Retention: every record is kept forever. Records rotate into one file per
+ * calendar day (l1-copilot-audit-YYYY-MM-DD.json) instead of accumulating in
+ * a single ever-growing file -- today's writes go to today's file, and the
+ * next calendar day's writes start a new one. Nothing is ever dropped the
+ * way the old single-file MAX_RECORDS=5000 cap used to drop the oldest
+ * records once the file passed that size; this is pure audit evidence, so
+ * silently discarding old entries was never actually acceptable.
+ *
+ * A pre-existing single-file l1-copilot-audit.json (this module's shape
+ * before rotation) is still read -- it holds whatever records accumulated
+ * under the old scheme and is never written to again, only included when
+ * aggregating across all dated files.
  */
 
 const fs = require('fs');
@@ -22,27 +35,62 @@ const DATA_DIR = process.env.NODE_ENV === 'production'
   ? '/app/data'
   : path.join(__dirname, '..', '..', 'data');
 
-const FILE_PATH = path.join(DATA_DIR, 'l1-copilot-audit.json');
-const MAX_RECORDS = 5000;
+const LEGACY_FILE_PATH = path.join(DATA_DIR, 'l1-copilot-audit.json');
+const DATED_FILE_PREFIX = 'l1-copilot-audit-';
+const DATED_FILE_SUFFIX = '.json';
 
-function loadRecords() {
+function datedFilePath(date) {
+  const iso = (date || new Date()).toISOString().slice(0, 10); // YYYY-MM-DD
+  return path.join(DATA_DIR, `${DATED_FILE_PREFIX}${iso}${DATED_FILE_SUFFIX}`);
+}
+
+// Exported for test/introspection convenience -- today's dated file, the
+// one new records are currently being written into. Computed once here
+// (not re-evaluated per call) the same way the old single FILE_PATH
+// constant was; recordAudit() itself always computes the current day
+// fresh so a long-running process correctly rotates at midnight even if
+// this module was required the day before.
+const FILE_PATH = datedFilePath();
+
+function allAuditFilePaths() {
+  let datedFiles = [];
   try {
-    if (!fs.existsSync(FILE_PATH)) return [];
+    datedFiles = fs.readdirSync(DATA_DIR)
+      .filter(f => f.startsWith(DATED_FILE_PREFIX) && f.endsWith(DATED_FILE_SUFFIX))
+      .sort() // YYYY-MM-DD sorts lexicographically == chronologically
+      .map(f => path.join(DATA_DIR, f));
+  } catch (err) {
+    // DATA_DIR doesn't exist yet -- no files to read, not an error.
+  }
 
-    const raw = fs.readFileSync(FILE_PATH, 'utf8');
+  // Legacy single file holds the oldest records (pre-rotation); read it
+  // first so aggregated listings stay oldest-to-newest before listAudit()
+  // reverses them for display.
+  return fs.existsSync(LEGACY_FILE_PATH) ? [LEGACY_FILE_PATH, ...datedFiles] : datedFiles;
+}
+
+function loadRecordsFromFile(filePath) {
+  try {
+    if (!fs.existsSync(filePath)) return [];
+
+    const raw = fs.readFileSync(filePath, 'utf8');
     if (!raw.trim()) return [];
 
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
   } catch (err) {
-    throw new Error(`Unable to load L1 audit records: ${err.message}`);
+    throw new Error(`Unable to load L1 audit records from ${filePath}: ${err.message}`);
   }
 }
 
-function saveRecords(records) {
+function loadAllRecords() {
+  return allAuditFilePaths().flatMap(loadRecordsFromFile);
+}
+
+function saveRecordsToFile(filePath, records) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 
-  const tempPath = `${FILE_PATH}.tmp`;
+  const tempPath = `${filePath}.tmp`;
 
   fs.writeFileSync(
     tempPath,
@@ -50,7 +98,7 @@ function saveRecords(records) {
     'utf8'
   );
 
-  fs.renameSync(tempPath, FILE_PATH);
+  fs.renameSync(tempPath, filePath);
 }
 
 function requireString(value, field) {
@@ -69,7 +117,7 @@ function requireString(value, field) {
 /**
  * recordAudit(input)
  *
- * Creates one immutable audit event.
+ * Creates one immutable audit event, appended to today's dated file.
  *
  * Required:
  *   eventType
@@ -104,7 +152,8 @@ function recordAudit(input = {}) {
     throw err;
   }
 
-  const records = loadRecords();
+  const filePath = datedFilePath();
+  const records = loadRecordsFromFile(filePath);
 
   const record = Object.freeze({
     id: `L1-AUDIT-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -137,11 +186,9 @@ function recordAudit(input = {}) {
 
   records.push(record);
 
-  const retained = records.length > MAX_RECORDS
-    ? records.slice(-MAX_RECORDS)
-    : records;
-
-  saveRecords(retained);
+  // No cap, no drop -- the only thing bounding an individual file's size is
+  // the daily rotation above.
+  saveRecordsToFile(filePath, records);
 
   return record;
 }
@@ -149,13 +196,13 @@ function recordAudit(input = {}) {
 function getAudit(id) {
   if (!id) return null;
 
-  return loadRecords().find(
+  return loadAllRecords().find(
     record => record.id === id
   ) || null;
 }
 
 function listAudit(filters = {}) {
-  let records = loadRecords();
+  let records = loadAllRecords();
 
   if (filters.sourceIncident) {
     records = records.filter(
@@ -185,11 +232,14 @@ function listAudit(filters = {}) {
 }
 
 function countAudit() {
-  return loadRecords().length;
+  return loadAllRecords().length;
 }
 
 module.exports = {
   FILE_PATH,
+  LEGACY_FILE_PATH,
+  datedFilePath,
+  allAuditFilePaths,
   recordAudit,
   getAudit,
   listAudit,
