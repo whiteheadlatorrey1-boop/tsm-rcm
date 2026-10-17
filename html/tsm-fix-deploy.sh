@@ -46,12 +46,12 @@ DOMAINS=(
   "bpo-legal.tsmatter.com"
   "bpo-realty.tsmatter.com"
   "bpo-tax.tsmatter.com"
-  "desert-financial.tsmatter.com"
+  "sample-credit-union.tsmatter.com"
   "reo-pro.tsmatter.com"
   "pc-command.tsmatter.com"
   "rrd-command.tsmatter.com"
   "strategist.tsmatter.com"
-  "honorhealth.tsmatter.com"
+  "samplehealthsystem.tsmatter.com"
   "healthcare.tsmatter.com"
   "health.tsmatter.com"
 )
@@ -109,12 +109,12 @@ http {
   server { listen 8080; server_name bpo-legal.tsmatter.com;           root /usr/share/nginx/html/bpo-legal;           index index.html; location / { try_files $uri /index.html; } }
   server { listen 8080; server_name bpo-realty.tsmatter.com;          root /usr/share/nginx/html/bpo-realty;          index index.html; location / { try_files $uri /index.html; } }
   server { listen 8080; server_name bpo-tax.tsmatter.com;             root /usr/share/nginx/html/bpo-tax;             index index.html; location / { try_files $uri /index.html; } }
-  server { listen 8080; server_name desert-financial.tsmatter.com;    root /usr/share/nginx/html/desert-financial;    index index.html; location / { try_files $uri /index.html; } }
+  server { listen 8080; server_name sample-credit-union.tsmatter.com;    root /usr/share/nginx/html/sample-credit-union;    index index.html; location / { try_files $uri /index.html; } }
   server { listen 8080; server_name reo-pro.tsmatter.com;             root /usr/share/nginx/html/reo-pro;             index index.html; location / { try_files $uri /index.html; } }
   server { listen 8080; server_name pc-command.tsmatter.com;          root /usr/share/nginx/html/pc-command;          index index.html; location / { try_files $uri /index.html; } }
   server { listen 8080; server_name rrd-command.tsmatter.com;         root /usr/share/nginx/html/rrd-command;         index index.html; location / { try_files $uri /index.html; } }
   server { listen 8080; server_name strategist.tsmatter.com;          root /usr/share/nginx/html/strategist;          index index.html; location / { try_files $uri /index.html; } }
-  server { listen 8080; server_name honorhealth.tsmatter.com;         root /usr/share/nginx/html/honorhealth;         index index.html; location / { try_files $uri /index.html; } }
+  server { listen 8080; server_name samplehealthsystem.tsmatter.com;         root /usr/share/nginx/html/samplehealthsystem;         index index.html; location / { try_files $uri /index.html; } }
   server { listen 8080; server_name healthcare.tsmatter.com health.tsmatter.com; root /usr/share/nginx/html/healthcare; index index.html; location / { try_files $uri /index.html; } }
 }
 NGINXEOF
@@ -136,9 +136,9 @@ for f in *.tsmatter.html *.tsmatter.com.html 2>/dev/null; do
   COPY_LINES+="RUN mkdir -p /usr/share/nginx/html/${slug}\nCOPY ${f} /usr/share/nginx/html/${slug}/index.html\n"
 done
 
-# Also handle tsm-honorhealth-dee.html → honorhealth
-[[ -f "honorhealth-dee.html" ]] && COPY_LINES+="RUN mkdir -p /usr/share/nginx/html/honorhealth\nCOPY honorhealth-dee.html /usr/share/nginx/html/honorhealth/index.html\n"
-[[ -f "tsm-honorhealth-dee.tsmatter.html" ]] && COPY_LINES+="RUN mkdir -p /usr/share/nginx/html/honorhealth\nCOPY tsm-honorhealth-dee.tsmatter.html /usr/share/nginx/html/honorhealth/index.html\n"
+# Also handle tsm-samplehealthsystem-dee.html → samplehealthsystem
+[[ -f "samplehealthsystem-dee.html" ]] && COPY_LINES+="RUN mkdir -p /usr/share/nginx/html/samplehealthsystem\nCOPY samplehealthsystem-dee.html /usr/share/nginx/html/samplehealthsystem/index.html\n"
+[[ -f "tsm-samplehealthsystem-dee.tsmatter.html" ]] && COPY_LINES+="RUN mkdir -p /usr/share/nginx/html/samplehealthsystem\nCOPY tsm-samplehealthsystem-dee.tsmatter.html /usr/share/nginx/html/samplehealthsystem/index.html\n"
 
 cat > Dockerfile << DOCKEREOF
 FROM nginx:alpine

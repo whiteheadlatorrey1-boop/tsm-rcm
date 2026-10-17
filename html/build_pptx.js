@@ -29,12 +29,12 @@ s.addShape(pres.shapes.RECTANGLE,{x:9.5,y:0,w:3.8,h:3.2,fill:{color:C.teal,trans
 s.addShape(pres.shapes.RECTANGLE,{x:0.55,y:0.55,w:1.6,h:0.55,fill:{color:C.teal},line:{color:C.teal}});
 s.addText("GHS",{x:0.55,y:0.55,w:1.6,h:0.55,fontSize:20,bold:true,color:C.white,align:"center",valign:"middle",fontFace:FONT_HEAD,margin:0});
 s.addShape(pres.shapes.RECTANGLE,{x:2.35,y:0.67,w:2.2,h:0.3,fill:{color:C.banner},line:{color:C.banner}});
-s.addText("x Banner Health",{x:2.35,y:0.67,w:2.2,h:0.3,fontSize:10,bold:true,color:C.white,align:"center",valign:"middle",fontFace:FONT_BODY,margin:0});
+s.addText("x Sample Health System B",{x:2.35,y:0.67,w:2.2,h:0.3,fontSize:10,bold:true,color:C.white,align:"center",valign:"middle",fontFace:FONT_BODY,margin:0});
 s.addText("GHS Healthcare",{x:0.55,y:1.55,w:9.5,h:0.85,fontSize:56,bold:true,color:C.white,fontFace:FONT_HEAD,align:"left"});
 s.addText("Command Center",{x:0.55,y:2.3,w:9.5,h:0.85,fontSize:56,bold:true,color:C.teal,fontFace:FONT_HEAD,align:"left"});
 s.addText("AI-Powered Clinical & Revenue Cycle Intelligence\nFrom Document Intake to HITL-Approved Action",{x:0.55,y:3.28,w:9.0,h:0.7,fontSize:15,color:"AAC4E0",fontFace:FONT_BODY,align:"left",lineSpacingMultiple:1.35});
 [{v:"< 90s",l:"Doc-to-BNCA"},{v:"6-8x",l:"Faster Review"},{v:"Zero",l:"Manual Routing"}].forEach((st,i)=>{const bx=0.55+i*3.0;s.addShape(pres.shapes.RECTANGLE,{x:bx,y:4.3,w:2.7,h:1.1,fill:{color:"FFFFFF",transparency:92},line:{color:C.teal,width:0.75}});s.addText(st.v,{x:bx,y:4.38,w:2.7,h:0.55,fontSize:32,bold:true,color:C.teal,align:"center",valign:"middle",fontFace:FONT_HEAD});s.addText(st.l,{x:bx,y:4.9,w:2.7,h:0.4,fontSize:11,color:"AAC4E0",align:"center",fontFace:FONT_BODY});});
-s.addText("Prepared for Banner Health · Strategic Partnership Review · 2025",{x:0.55,y:6.9,w:12.2,h:0.3,fontSize:10,color:C.muted,fontFace:FONT_BODY,align:"left"});
+s.addText("Prepared for Sample Health System B · Strategic Partnership Review · 2025",{x:0.55,y:6.9,w:12.2,h:0.3,fontSize:10,color:C.muted,fontFace:FONT_BODY,align:"left"});
 addSlideNum(s,1,TOTAL,true);}
 
 // SLIDE 2 - PROBLEM
@@ -252,7 +252,7 @@ addSlideNum(s,14,TOTAL,false);}
 
 // SLIDE 15 - ROI
 {const s=pres.addSlide();bgNavy(s);addSideBar(s,C.teal);
-sectionHeader(s,"The Banner Health Impact","Conservative projections based on industry benchmarks and Banner document volumes");
+sectionHeader(s,"The Sample Health System B Impact","Conservative projections based on industry benchmarks and Banner document volumes");
 [{category:"Prior Authorizations",before:"72-hr avg review",after:"< 2 hrs with GHS",impact:"Faster approvals, fewer missed treatment windows"},
 {category:"Claim Denials",before:"15-25% first-pass denial",after:"< 5% with GHS pre-check",impact:"$2-8M annually recovered from denied claims"},
 {category:"Discharge Summaries",before:"Manual LACE scoring, missed follow-ups",after:"Auto-scored, TCM auto-triggered",impact:"30-day readmission rate reduction 18-25%"},
@@ -306,6 +306,6 @@ s.addText("GHS Healthcare Command. Every document enters. Every action is accoun
 addSlideNum(s,18,TOTAL,true);}
 
 // SAVE
-pres.writeFile({fileName:"/workspaces/tsm-shell/GHS_BannerHealth_Presentation.pptx"})
-  .then(()=>console.log("✅ Saved: GHS_BannerHealth_Presentation.pptx"))
+pres.writeFile({fileName:"/workspaces/tsm-shell/GHS_SampleHealthSystemB_Presentation.pptx"})
+  .then(()=>console.log("✅ Saved: GHS_SampleHealthSystemB_Presentation.pptx"))
   .catch(e=>{console.error("❌",e);process.exit(1);});

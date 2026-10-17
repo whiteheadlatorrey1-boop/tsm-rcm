@@ -40,7 +40,7 @@ EOF
 if [ -f "fly.toml" ]; then
     sed -i 's/internal_port = .*/internal_port = 8080/' fly.toml
 else
-    echo "Warning: fly.toml not found. Run 'fly config save -a case-tech-portal' first."
+    echo "Warning: fly.toml not found. Run 'fly config save -a sample-fulfillment-portal' first."
 fi
 
 # 4. Final health check of files
@@ -49,4 +49,4 @@ ls -lh index.html server.js vendors.html || echo "⚠️ Warning: Some UI files 
 
 # 5. Execute Deploy
 echo "══ DEPLOYING TO FLY.IO ══"
-fly deploy --app case-tech-portal --now
+fly deploy --app sample-fulfillment-portal --now

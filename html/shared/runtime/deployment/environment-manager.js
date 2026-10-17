@@ -2,7 +2,7 @@
  * environment-manager.js
  *
  * Manages named environment tiers per tenant (e.g. sandbox / staging /
- * production) so a prospect like Honeywell can be handed a sandbox with
+ * production) so a prospect like Sample Aerospace Co. can be handed a sandbox with
  * demo data while a paying customer runs production with real data --
  * without those two contexts ever mixing state.
  */

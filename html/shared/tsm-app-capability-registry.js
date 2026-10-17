@@ -49,11 +49,11 @@
     ]
   },
   {
-    id: 'advanced-detection.honeywell-simulation',
-    label: 'Apply Detection Competency to Honeywell Simulation',
-    description: 'Apply demonstrated Advanced Detection learning to a simulated Honeywell account scenario without representing the exercise as professional field or sales experience.',
-    action: 'apply-honeywell-simulation',
-    route: 'honeywell',
+    id: 'advanced-detection.sampleaerospace-simulation',
+    label: 'Apply Detection Competency to Sample Aerospace Co. Simulation',
+    description: 'Apply demonstrated Advanced Detection learning to a simulated Sample Aerospace Co. account scenario without representing the exercise as professional field or sales experience.',
+    action: 'apply-sampleaerospace-simulation',
+    route: 'sampleaerospace',
     findingTypes: [
       'life-safety-opportunity',
       'detection-opportunity',

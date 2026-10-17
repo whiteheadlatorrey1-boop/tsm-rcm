@@ -348,14 +348,14 @@ async function main() {
   const flagshipSpecs = fs.readdirSync(path.join(__dirname, '..', 'tests', 'e2e')).filter(f => /-flagship\.spec\.js$/.test(f));
   ok(flagshipSpecs.length === 7 && flagshipSpecs.every(f => {
     const src = fs.readFileSync(path.join(__dirname, '..', 'tests', 'e2e', f), 'utf8');
-    return /ESCALATE TO EXECUTIVE/.test(src) && /NO ESCALATION RECEIVED/.test(src) && !/page\.goto\('\/html\/war-rooms\/honeywell-executive-portal\.html'/.test(src);
+    return /ESCALATE TO EXECUTIVE/.test(src) && /NO ESCALATION RECEIVED/.test(src) && !/page\.goto\('\/html\/war-rooms\/sampleaerospace-executive-portal\.html'/.test(src);
   }), 'A7: all 7 flagship captures escalate through the strategist and check the Executive Portal is not empty');
 
   // ── A5. cascade room -> Honeywell Strategist ──────────────────────────
   const relay = (source, lo) => ({ source, outputs: [], docText: '', timestamp: new Date().toISOString(), kpis: { exposure: { totalExposureLow: lo, totalExposureHigh: lo } } });
-  const seeded = { TSM_HONEYWELL_PLANT_RELAY: relay('plant', 400000), TSM_HONEYWELL_SUPPLIER_RELAY: relay('supplier', 250000), TSM_HONEYWELL_CASCADE_RELAY: relay('cascade', 650000) };
+  const seeded = { TSM_SAMPLE_AEROSPACE_PLANT_RELAY: relay('plant', 400000), TSM_SAMPLE_AEROSPACE_SUPPLIER_RELAY: relay('supplier', 250000), TSM_SAMPLE_AEROSPACE_CASCADE_RELAY: relay('cascade', 650000) };
   const loadStrategist = async storage => {
-    const dom = await JSDOM.fromURL(BASE + '/html/war-rooms/honeywell-strategist.html', {
+    const dom = await JSDOM.fromURL(BASE + '/html/war-rooms/sampleaerospace-strategist.html', {
       runScripts: 'dangerously', resources: 'usable', pretendToBeVisual: true,
       virtualConsole: new VirtualConsole(), // page fonts are not reachable offline; keep the run quiet
       beforeParse(window) {
@@ -371,17 +371,17 @@ async function main() {
   let entries = hs.window.loadAllRelays();
   ok(entries.length === 3 && entries.some(x => x.source === 'cascade'), "A5: the strategist now reads the cascade room's record alongside plant and supplier");
   let agg = hs.window.computeAggregateBNCA(entries);
-  const plantOnly = hs.window.computeHoneywellBNCA(seeded.TSM_HONEYWELL_PLANT_RELAY).currentExposure;
-  const supplierOnly = hs.window.computeHoneywellBNCA(seeded.TSM_HONEYWELL_SUPPLIER_RELAY).currentExposure;
+  const plantOnly = hs.window.computeSampleAerospaceBNCA(seeded.TSM_SAMPLE_AEROSPACE_PLANT_RELAY).currentExposure;
+  const supplierOnly = hs.window.computeSampleAerospaceBNCA(seeded.TSM_SAMPLE_AEROSPACE_SUPPLIER_RELAY).currentExposure;
   ok(agg.domainCount === 2 && agg.currentExposure === plantOnly + supplierOnly, 'A5: the aggregate still sums plant + supplier only, so the combined cascade figure is not counted twice');
   ok(/CROSS-DOMAIN CASCADE/.test(hs.window.document.body.textContent), 'A5: the cascade room appears on the strategist page');
-  ok(/cascade:\s*\{ label: 'CROSS-DOMAIN CASCADE/.test(read('war-rooms/honeywell-executive-portal.html')), 'A5: the Executive Portal names the cascade room too, instead of a generic label');
+  ok(/cascade:\s*\{ label: 'CROSS-DOMAIN CASCADE/.test(read('war-rooms/sampleaerospace-executive-portal.html')), 'A5: the Executive Portal names the cascade room too, instead of a generic label');
   hs.window.close();
-  hs = await loadStrategist({ TSM_HONEYWELL_CASCADE_RELAY: seeded.TSM_HONEYWELL_CASCADE_RELAY });
+  hs = await loadStrategist({ TSM_SAMPLE_AEROSPACE_CASCADE_RELAY: seeded.TSM_SAMPLE_AEROSPACE_CASCADE_RELAY });
   agg = hs.window.computeAggregateBNCA(hs.window.loadAllRelays());
   ok(agg.domainCount === 1 && agg.currentExposure > 0, 'A5: when the cascade record is the only one present it is counted');
   hs.window.close();
-  hs = await loadStrategist({ TSM_HONEYWELL_PLANT_RELAY: seeded.TSM_HONEYWELL_PLANT_RELAY });
+  hs = await loadStrategist({ TSM_SAMPLE_AEROSPACE_PLANT_RELAY: seeded.TSM_SAMPLE_AEROSPACE_PLANT_RELAY });
   agg = hs.window.computeAggregateBNCA(hs.window.loadAllRelays());
   ok(agg.domainCount === 1 && agg.currentExposure === plantOnly, 'A5: a plant-only strategist view is unchanged');
   hs.window.close();

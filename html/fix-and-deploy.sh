@@ -69,15 +69,15 @@ node fix-tsm-apps.js \
   ./bpo-legal.tsmatter.html \
   ./bpo-realty.tsmatter.html \
   ./bpo-tax.tsmatter.html \
-  ./desert-financial.tsmatter.html \
+  ./sample-credit-union.tsmatter.html \
   ./reo-pro.tsmatter.html \
   ./rrd-command.tsmatter.html \
   ./strategist.tsmatter.html \
   ./strategist-index.html \
   ./construction.html \
   ./reo-command.html \
-  ./case-tech-portal.html \
-  ./case-tech.tsmatter.html \
+  ./sample-fulfillment-portal.html \
+  ./sample-fulfillment.tsmatter.html \
   ./financial.html \
   ./zero-trust.html \
   2>/dev/null || true

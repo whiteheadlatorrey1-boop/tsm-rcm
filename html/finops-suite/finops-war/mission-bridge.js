@@ -11,7 +11,7 @@ const MissionBridge = {
   // same localStorage origin is shared across all open tabs, so an
   // unqualified 'tsm_mission_state' key would let a FinOps tab and a
   // Healthcare tab silently overwrite each other's mission state. Same
-  // class of bug as the earlier Honeywell single-key collision fix.
+  // class of bug as the earlier Sample Aerospace Co. single-key collision fix.
   STORAGE_KEY: 'tsm_mission_state_finops',
 
   // Write state

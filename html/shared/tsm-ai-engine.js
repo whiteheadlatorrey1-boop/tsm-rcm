@@ -2,7 +2,7 @@
  * TSMatter AI Engine · tsm-ai-engine.js
  * Drop into: /html/shared/tsm-ai-engine.js
  * Reference from any app: <script src="/html/shared/tsm-ai-engine.js"></script>
- * Then call: TSMai.init('honorhealth', 'hc-billing')
+ * Then call: TSMai.init('samplehealthsystem', 'hc-billing')
  *
  * Version: 1.0.0 · 2026-04
  */
@@ -17,9 +17,9 @@
   ───────────────────────────────────────────────────────────── */
   const PROFILES = {
 
-    honorhealth: {
-      id: 'honorhealth',
-      company: 'HonorHealth',
+    samplehealthsystem: {
+      id: 'samplehealthsystem',
+      company: 'Sample Health System',
       sector: 'healthcare',
       persona: 'Revenue Cycle Manager',
       allowedNodes: [
@@ -52,14 +52,14 @@
       },
       systemPrompt() {
         const d = this.currentData;
-        return `You are HC-Strategist for HonorHealth.
+        return `You are HC-Strategist for Sample Health System.
 Persona: ${this.persona} (Dee Montee).
 Approved source nodes: ${this.allowedNodes.join(', ')}.
 Approved satellite offices: ${this.offices.join(', ')}.
 STRICTLY DO NOT reference non-healthcare sectors: ${this.disallowedDomains.join(', ')}.
 Prioritize: revenue cycle, denial prevention, payer authorization friction, coding documentation gaps, cross-office variance.
 
-LIVE HONORHEALTH DATA (as of today):
+LIVE SAMPLE HEALTH SYSTEM DATA (as of today):
 - Denial rate: ${d.denialRate}% (CMS threshold: ${d.denialThreshold}%) → $${(d.revenueAtRisk/1000).toFixed(0)}K at risk, ${d.deniedClaims} denied claims
 - Clean claim rate: ${d.cleanClaimRate}% vs ${d.cleanClaimTarget}% target
 - Auth pending: ${d.authPending} across all offices
@@ -83,7 +83,7 @@ RESPONSE FORMAT — always return:
 
     banner: {
       id: 'banner',
-      company: 'Banner Health',
+      company: 'Sample Health System B',
       sector: 'healthcare',
       persona: 'Revenue Cycle Director',
       allowedNodes: ['hc-billing','hc-compliance','hc-insurance','hc-medical','hc-strategist'],
@@ -92,7 +92,7 @@ RESPONSE FORMAT — always return:
       priorities: ['denial_rate','prior_auth','coding_quality','compliance_risk'],
       currentData: {},
       systemPrompt() {
-        return `You are HC-Strategist for Banner Health.
+        return `You are HC-Strategist for Sample Health System B.
 Persona: ${this.persona}.
 Approved nodes: ${this.allowedNodes.join(', ')}.
 DO NOT reference: ${this.disallowedDomains.join(', ')}.
@@ -101,9 +101,9 @@ Return: top issue, dollar impact, 3 immediate actions, who acts first.`;
       }
     },
 
-    desertfinancial: {
-      id: 'desertfinancial',
-      company: 'Desert Financial',
+    samplecreditunion: {
+      id: 'samplecreditunion',
+      company: 'Sample Credit Union',
       sector: 'financial',
       persona: 'Operations Manager',
       allowedNodes: ['financial','compliance','tax','vendors','strategist'],
@@ -112,7 +112,7 @@ Return: top issue, dollar impact, 3 immediate actions, who acts first.`;
       priorities: ['portfolio_performance','compliance_risk','member_services','loan_quality'],
       currentData: {},
       systemPrompt() {
-        return `You are Strategist for Desert Financial Credit Union.
+        return `You are Strategist for Sample Credit Union Credit Union.
 Persona: ${this.persona}.
 Approved nodes: ${this.allowedNodes.join(', ')}.
 DO NOT reference: ${this.disallowedDomains.join(', ')}.

@@ -116,7 +116,7 @@ V("construction-finance", "construction-finance",
 )
 
 # ─────────────────────────────────────────────────────────────────────────
-# Honeywell-style incident verticals (cyber, plant, supplier) share a shape
+# Sample Aerospace Co.-style incident verticals (cyber, plant, supplier) share a shape
 # ─────────────────────────────────────────────────────────────────────────
 def incident_steps(domain_word, engines_desc, approve_context):
     return [

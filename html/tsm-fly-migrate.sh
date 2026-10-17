@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 # ══════════════════════════════════════════════════════════════════
 #  tsm-fly-migrate.sh
-#  Migrates TSM / CASE-TECH portal files to fly.dev Codespaces
+#  Migrates TSM / Sample Fulfillment Co. portal files to fly.dev Codespaces
 #  Usage: bash tsm-fly-migrate.sh [--dry-run] [--push]
 #  Author: TSM Platform · Director Whitehead
 # ══════════════════════════════════════════════════════════════════
 set -euo pipefail
 
 # ── CONFIG — edit these ──────────────────────────────────────────
-FLY_APP="case-tech-portal"            # fly.toml [app] name
+FLY_APP="sample-fulfillment-portal"            # fly.toml [app] name
 FLY_REGION="dfw"                      # Dallas — closest to PHX
 SOURCE_DIR="${SOURCE_DIR:-/var/www}"  # where your files live now
-PORTAL_HTML="case-tech-portal.html"
+PORTAL_HTML="sample-fulfillment-portal.html"
 AI_BRIDGE_DIR="/var/www/tsm-ai"       # ai.tsmatter.com bridge dir
 EXPORT_DIR="${EXPORT_DIR:-/workspaces/tsm-fly-export}"
 
@@ -83,7 +83,7 @@ if [[ -f "$FLY_TOML" ]]; then
 else
   if ! $DRY; then
 cat > "$FLY_TOML" << 'TOML'
-app = "case-tech-portal"
+app = "sample-fulfillment-portal"
 primary_region = "dfw"
 
 [build]
