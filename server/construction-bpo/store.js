@@ -122,6 +122,19 @@ async function publishWeeklyReport(id, { publishedBy }, opts = {}) {
 }
 
 /**
+ * revertToDraft(id, opts?) -> void. Used only when publishing's own audit
+ * write fails (routes/construction-bpo.js) -- publishing must fail closed,
+ * never leave a report marked published with no audit record proving it.
+ * Clears publishedBy/publishedAt back to null rather than $unset so every
+ * Mongo-compatible backend this app targets (including the Firestore
+ * Mongo-compat layer) behaves the same way.
+ */
+async function revertToDraft(id, opts = {}) {
+  const col = await reportsCollection(opts.getDb);
+  await col.updateOne({ _id: id }, { $set: { status: 'draft', publishedBy: null, publishedAt: null } });
+}
+
+/**
  * updateFlagStatus(reportId, flagId, { status, note, reviewedBy }, opts?) ->
  * the updated report document.
  * Throws .code = 'NOT_FOUND' (no such report), .code = 'ALREADY_PUBLISHED'
@@ -264,7 +277,7 @@ async function listControllerTime(clientId, opts = {}) {
 
 module.exports = {
   REPORTS_COLLECTION, AUDIT_COLLECTION, ENGAGEMENTS_COLLECTION, CONTROLLER_TIME_COLLECTION, reportId,
-  upsertDraftReport, getReport, getReportById, listReports, publishWeeklyReport, updateFlagStatus,
+  upsertDraftReport, getReport, getReportById, listReports, publishWeeklyReport, revertToDraft, updateFlagStatus,
   recordAudit, listAudit,
   createEngagement, getEngagement, listEngagements, updateEngagement, deleteEngagement,
   upsertControllerTime, listControllerTime,

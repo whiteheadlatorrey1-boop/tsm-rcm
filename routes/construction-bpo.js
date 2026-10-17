@@ -53,7 +53,10 @@
  *     already-published report is 409, not a silent no-op. Refused (409
  *     flags_pending) while any flag on the report is still 'pending'
  *     review -- a client must never see a report an analyst hasn't
- *     finished going through flag by flag.
+ *     finished going through flag by flag. Fails CLOSED on its own audit
+ *     write: if recordAudit() throws, the report is rolled back to
+ *     'draft' and this returns 503 -- a published report with no audit
+ *     record proving it must never happen.
  *   GET  /api/construction-bpo/audit
  *     Staff-only.
  *
@@ -62,10 +65,11 @@
  * strips both, applied to every report a non-staff session can reach
  * (the list and get-by-id routes above).
  *
- * Audit is written after the state change succeeds (draft stored /
- * report published) and is best-effort -- see server/construction-bpo/
- * store.js header for why reports and audit share the same Mongo-backed
- * store rather than this being a file-based log like construction-recovery's.
+ * Audit is written after the state change succeeds and is best-effort for
+ * every route EXCEPT publish (see PUBLISH FAIL-CLOSED above) -- see
+ * server/construction-bpo/store.js header for why reports and audit share
+ * the same Mongo-backed store rather than this being a file-based log
+ * like construction-recovery's.
  */
 
 const express = require('express');
@@ -254,8 +258,20 @@ router.post('/api/construction-bpo/weekly-reports/:id/publish', requireAnyAuth, 
     if (e.code === 'FLAGS_PENDING') return res.status(409).json({ ok: false, error: 'flags_pending', pendingCount: e.pendingCount });
     return res.status(503).json({ ok: false, error: 'store_unavailable', detail: e.message });
   }
-  try { await store.recordAudit({ eventType: 'WEEKLY_REPORT_PUBLISHED', actor: actorOf(req), entityId: req.params.id, metadata: { clientId: published.clientId, weekEnding: published.weekEnding } }); }
-  catch (e) { /* best-effort */ }
+  // PUBLISH FAIL-CLOSED: a published report with no audit record proving
+  // it happened must never exist. If the audit write fails, roll the
+  // report back to 'draft' and return 503 -- never 200 either way. This
+  // is the one audit write in this file that is NOT best-effort.
+  try {
+    await store.recordAudit({
+      eventType: 'WEEKLY_REPORT_PUBLISHED', actor: actorOf(req), entityId: req.params.id,
+      metadata: { clientId: published.clientId, weekEnding: published.weekEnding },
+    });
+  } catch (auditErr) {
+    try { await store.revertToDraft(req.params.id); }
+    catch (rollbackErr) { /* the rollback is best-effort cleanup -- either way, this request must still fail below */ }
+    return res.status(503).json({ ok: false, error: 'audit_write_failed', detail: auditErr.message });
+  }
 
   res.json({ ok: true, report: published });
 });
