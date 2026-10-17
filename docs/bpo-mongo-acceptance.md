@@ -22,6 +22,57 @@ backend — not a mock, not a recorded fixture.
   `tsm-consultz` explicitly, not the db implied by the URI path.
 - Driver: `mongodb` npm package v6.21.0.
 
+## "Run1's cleanup used the wrong database" — exact mechanics (host + db name only, no credentials)
+
+Both the data and the mistaken cleanup attempt lived on the **same single
+host**, `tsmtest.4pbxrxg.mongodb.net` — this was never a cross-host or
+cross-environment issue, only a same-cluster database-NAME mismatch:
+
+- **Where run1's data actually landed:** database `tsm-consultz`. The
+  server's own write path (`tsm-ledger-service.js`'s `getDb()`) hardcodes
+  this database name regardless of what the connection string's path
+  segment says (see "Ambiguous / not fixed" below) — so every BPO
+  client/case/document run1 created via the real HTTP API landed there.
+- **Where run1's cleanup step looked:** database `tsm_test` — the test
+  script's own separate Mongo connection called `.db()` with no argument,
+  which defaults to whatever database the connection string's own path
+  segment names (`/tsm_test`). Since `tsm_test` ≠ `tsm-consultz`, every
+  delete/count query in that first cleanup attempt matched zero
+  documents — not because the data wasn't there, but because the cleanup
+  connection was looking in an empty sibling database on the same host.
+- **Fix:** the test script's Mongo helper now explicitly opens
+  `tsm-consultz` (matching the server's hardcoded name) instead of
+  trusting the URI's own db-path segment. Confirmed by re-running and
+  verifying `tsm-acceptance-`-tagged records actually disappeared.
+- Run1's resulting orphaned records (still sitting in `tsm-consultz`
+  until that fix) were located and deleted in a follow-up pass, confirmed
+  at zero afterward.
+
+**Host-safety sweep performed for this report:** searched every `.env*`
+file in this repo (none exist — no `.env` is committed or present
+locally) and every `.env*` file under the home directory, plus a
+filesystem-wide sweep (depth 4, excluding `/proc` and `/sys`) for any
+file containing a `MONGODB_URI=` assignment. Exactly one such file was
+found anywhere: `~/.tsm-mongo.env`. Its host (never the full URI,
+never credentials): **`tsmtest.4pbxrxg.mongodb.net`** — the same
+confirmed test host used throughout this entire acceptance pass. No
+other `MONGODB_URI` source exists on this machine, so nothing was ever
+written to, or even capable of being written to, a non-test host.
+
+## Local-file side effect: `data/clients.json`
+
+`bpoCreateClient()` also creates a portal login via
+`middleware/client-registry.js`, which persists to the git-tracked
+`data/clients.json` — a side effect outside Mongo entirely. Early runs of
+this acceptance script left `tsm-acceptance-`-tagged entries in that file
+(caught and manually reverted with `git checkout` each time during this
+work, not left committed). Fixed properly now: the script snapshots every
+git-tracked file under `data/` before doing anything else, and restores
+any that changed back to their pre-run bytes in the same unconditional
+`finally` block that runs the Mongo cleanup — including on a mid-run
+failure, not just the happy path. Confirmed via a live run: `git status`
+shows `data/` completely clean both before and after.
+
 ## What was proven live
 
 All of the below ran against the real database via `scripts/test-bpo-mongo-live.js`

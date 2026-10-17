@@ -30,6 +30,52 @@ if (!process.env.MONGODB_URI) {
 
 const crypto = require('crypto');
 const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
+const { execSync } = require('child_process');
+
+// Some routes exercised below have side effects on tracked local files, not
+// just Mongo -- e.g. bpoCreateClient() also creates a portal login via
+// middleware/client-registry.js, which persists to the git-tracked
+// data/clients.json. Snapshot every tracked file under data/ before doing
+// anything else, and restore any that changed, in the `finally` block
+// below -- unconditionally, including on a mid-run failure -- so this
+// script never leaves test pollution in a file `git status` would show.
+const REPO_ROOT = path.join(__dirname, '..');
+function snapshotTrackedDataFiles() {
+  try {
+    const files = execSync('git ls-files data/', { cwd: REPO_ROOT, encoding: 'utf8' })
+      .split('\n').map((f) => f.trim()).filter(Boolean);
+    const snapshots = {};
+    for (const relPath of files) {
+      const abs = path.join(REPO_ROOT, relPath);
+      try { snapshots[abs] = fs.readFileSync(abs); } catch (e) { /* tracked but missing on disk -- nothing to snapshot */ }
+    }
+    return snapshots;
+  } catch (e) {
+    console.warn('Could not snapshot tracked data/ files (git unavailable?):', e.message);
+    return {};
+  }
+}
+function restoreTrackedDataFiles(snapshots) {
+  let restored = 0;
+  for (const [abs, originalBuf] of Object.entries(snapshots)) {
+    try {
+      const current = fs.existsSync(abs) ? fs.readFileSync(abs) : null;
+      if (!current || !current.equals(originalBuf)) {
+        fs.writeFileSync(abs, originalBuf);
+        restored++;
+      }
+    } catch (e) {
+      console.warn('  could not restore', abs, ':', e.message);
+    }
+  }
+  if (restored > 0) {
+    console.log('  restored', restored, 'tracked data/ file(s) this run touched');
+  }
+  return restored;
+}
+const trackedDataFileSnapshots = snapshotTrackedDataFiles();
 
 const TAG = 'tsm-acceptance-' + Date.now();
 const PORT = Number(process.env.PORT || 8199);
@@ -441,6 +487,7 @@ main()
     if (beforeCleanup && afterCleanup) {
       console.log('Counts: before this run\'s cleanup', JSON.stringify(beforeCleanup), '-> after', JSON.stringify(afterCleanup));
     }
+    restoreTrackedDataFiles(trackedDataFileSnapshots);
     if (mongoClient) await mongoClient.close().catch(() => {});
     console.log(`\n${pass} passed, ${fail} failed`);
     process.exit(fail > 0 ? 1 : 0);
