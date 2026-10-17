@@ -22,6 +22,7 @@ const tsmLedger = require('../tsm-ledger-service');
 
 const REPORTS_COLLECTION = 'construction_bpo_weekly_reports';
 const AUDIT_COLLECTION = 'construction_bpo_audit_logs';
+const ENGAGEMENTS_COLLECTION = 'construction_bpo_engagements';
 
 function reportId(clientId, weekEnding) {
   return clientId + '__' + weekEnding;
@@ -35,6 +36,11 @@ async function reportsCollection(getDb) {
 async function auditCollection(getDb) {
   const db = await (getDb ? getDb() : tsmLedger.getDb());
   return db.collection(AUDIT_COLLECTION);
+}
+
+async function engagementsCollection(getDb) {
+  const db = await (getDb ? getDb() : tsmLedger.getDb());
+  return db.collection(ENGAGEMENTS_COLLECTION);
 }
 
 /**
@@ -174,8 +180,63 @@ async function listAudit(filter = {}, opts = {}) {
   return col.find(query).sort({ timestamp: -1 }).limit(filter.limit || 200).toArray();
 }
 
+// ─────────────────────────── engagements ──────────────────────────────────
+// Per-client standing configuration (thresholds, change-order SLA hours,
+// and import defaults) so an analyst doesn't have to re-type a client's
+// deal terms into every weekly-report/import request. One engagement per
+// clientId -- keyed by clientId itself, same convention as a report being
+// keyed by clientId+weekEnding.
+
+/**
+ * createEngagement(engagement, opts?) -> the stored document.
+ * Throws .code = 'ALREADY_EXISTS' if an engagement for this clientId is
+ * already on file -- use updateEngagement to change it.
+ */
+async function createEngagement(engagement, opts = {}) {
+  const col = await engagementsCollection(opts.getDb);
+  const existing = await col.findOne({ _id: engagement.clientId });
+  if (existing) { const err = new Error('an engagement for ' + engagement.clientId + ' already exists'); err.code = 'ALREADY_EXISTS'; throw err; }
+  const now = new Date().toISOString();
+  const doc = Object.assign({ _id: engagement.clientId, createdAt: now, updatedAt: now }, engagement);
+  await col.updateOne({ _id: doc._id }, { $set: doc }, { upsert: true });
+  return doc;
+}
+
+async function getEngagement(clientId, opts = {}) {
+  const col = await engagementsCollection(opts.getDb);
+  return col.findOne({ _id: clientId });
+}
+
+async function listEngagements(opts = {}) {
+  const col = await engagementsCollection(opts.getDb);
+  return col.find({}).sort({ clientId: 1 }).toArray();
+}
+
+/**
+ * updateEngagement(clientId, patch, opts?) -> the updated document.
+ * Merges patch fields into the existing engagement; throws .code =
+ * 'NOT_FOUND' if none exists yet (use createEngagement first).
+ */
+async function updateEngagement(clientId, patch, opts = {}) {
+  const col = await engagementsCollection(opts.getDb);
+  const existing = await col.findOne({ _id: clientId });
+  if (!existing) { const err = new Error('no engagement for ' + clientId); err.code = 'NOT_FOUND'; throw err; }
+  const doc = Object.assign({}, existing, patch, { _id: clientId, clientId, updatedAt: new Date().toISOString() });
+  await col.updateOne({ _id: clientId }, { $set: doc });
+  return doc;
+}
+
+async function deleteEngagement(clientId, opts = {}) {
+  const col = await engagementsCollection(opts.getDb);
+  const existing = await col.findOne({ _id: clientId });
+  if (!existing) { const err = new Error('no engagement for ' + clientId); err.code = 'NOT_FOUND'; throw err; }
+  await col.deleteOne({ _id: clientId });
+  return existing;
+}
+
 module.exports = {
-  REPORTS_COLLECTION, AUDIT_COLLECTION, reportId,
+  REPORTS_COLLECTION, AUDIT_COLLECTION, ENGAGEMENTS_COLLECTION, reportId,
   upsertDraftReport, getReport, getReportById, listReports, publishWeeklyReport, updateFlagStatus,
   recordAudit, listAudit,
+  createEngagement, getEngagement, listEngagements, updateEngagement, deleteEngagement,
 };

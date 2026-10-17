@@ -5,17 +5,25 @@
  *
  * Endpoints:
  *   POST /api/construction-bpo/import
- *     Staff-only. Multipart 'file' (CSV/XLSX), optional 'source' field
- *     (sage|foundation|procore|quickbooks) and 'columnMap' field (JSON
- *     string, client-specific header overrides). Stateless: returns
- *     parsed jobs + a validation report, does not persist anything --
- *     the analyst reviews/corrects in the workbench before a weekly
- *     report is generated from them.
+ *     Staff-only. Multipart 'file' (CSV/XLSX), optional 'clientId' (looks
+ *     up that client's saved engagement for default source/columnMap --
+ *     see ENGAGEMENTS below), optional 'source'/'columnMap' fields that
+ *     override the engagement's defaults for this one request (audited
+ *     as IMPORT, only when clientId is given). Stateless otherwise:
+ *     returns parsed jobs + a validation report, does not persist
+ *     anything -- the analyst reviews/corrects in the workbench before a
+ *     weekly report is generated from them.
  *   POST /api/construction-bpo/weekly-reports
  *     Staff-only. Builds a draft report (weekly-report.js) from the
- *     supplied jobs/changeOrders/retainage/lienWaivers and stores it.
- *     Refuses (409) to overwrite a report already published for that
- *     clientId+weekEnding.
+ *     supplied jobs/changeOrders/retainage/lienWaivers, using the
+ *     client's saved engagement thresholds/SLA hours unless the request
+ *     body supplies its own `thresholds` (an override, audited in the
+ *     WEEKLY_REPORT_DRAFTED entry's metadata). Refuses (409) to
+ *     overwrite a report already published for that clientId+weekEnding.
+ *   POST/GET/PATCH/DELETE /api/construction-bpo/engagements[/:clientId]
+ *     Staff-only CRUD for a client's standing config: { clientId, name,
+ *     thresholds, coSlaHours, columnMap, source }. One engagement per
+ *     clientId.
  *   PATCH /api/construction-bpo/weekly-reports/:id/flags/:flagId
  *     Staff-only. Per-flag review gate: { status: 'approved'|'dismissed',
  *     note? }. Refused (409) once the report is published -- flags are
@@ -89,7 +97,7 @@ function sanitizeReportForClient(report) {
   return clone;
 }
 
-router.post('/api/construction-bpo/import', requireAnyAuth, upload.single('file'), (req, res) => {
+router.post('/api/construction-bpo/import', requireAnyAuth, upload.single('file'), async (req, res) => {
   if (staffOnly(req, res)) return;
   if (!req.file) return res.status(400).json({ ok: false, error: 'no file uploaded (expected multipart field "file")' });
 
@@ -98,10 +106,33 @@ router.post('/api/construction-bpo/import', requireAnyAuth, upload.single('file'
     try { columnMap = JSON.parse(req.body.columnMap); }
     catch (e) { return res.status(400).json({ ok: false, error: 'columnMap must be valid JSON' }); }
   }
+  let source = req.body.source;
+  const sourceOverride = source !== undefined && source !== '';
+  const columnMapOverride = columnMap !== undefined;
+  const clientId = typeof req.body.clientId === 'string' && req.body.clientId.trim() ? req.body.clientId.trim() : null;
+
+  let engagement = null;
+  if (clientId) {
+    try { engagement = await store.getEngagement(clientId); }
+    catch (e) { /* store hiccup -- import still works from the request body alone */ }
+  }
+  if (engagement) {
+    if (!sourceOverride && engagement.source) source = engagement.source;
+    if (!columnMapOverride && engagement.columnMap) columnMap = engagement.columnMap;
+  }
 
   let result;
-  try { result = importer.parseWorkbookBuffer(req.file.buffer, { source: req.body.source, columnMap }); }
+  try { result = importer.parseWorkbookBuffer(req.file.buffer, { source, columnMap }); }
   catch (e) { return res.status(400).json({ ok: false, error: e.message }); }
+
+  if (clientId) {
+    try {
+      await store.recordAudit({
+        eventType: 'IMPORT', actor: actorOf(req), entityId: clientId,
+        metadata: { source: source || null, sourceOverride, columnMapOverride, importedRows: result.report.importedRows },
+      });
+    } catch (e) { /* best-effort */ }
+  }
 
   res.json({ ok: true, jobs: result.jobs, report: result.report });
 });
@@ -112,8 +143,20 @@ router.post('/api/construction-bpo/weekly-reports', requireAnyAuth, async (req, 
   if (typeof clientId !== 'string' || !clientId.trim()) return res.status(400).json({ ok: false, error: 'clientId is required' });
   if (typeof weekEnding !== 'string' || !weekEnding.trim()) return res.status(400).json({ ok: false, error: 'weekEnding is required' });
 
+  let engagement = null;
+  try { engagement = await store.getEngagement(clientId); }
+  catch (e) { /* no engagement on file / store hiccup -- fall through to request-body thresholds alone */ }
+
+  const thresholdOverride = thresholds !== undefined && thresholds !== null;
+  let effectiveThresholds = {};
+  if (engagement) {
+    effectiveThresholds = Object.assign({}, engagement.thresholds || {});
+    if (engagement.coSlaHours !== undefined) effectiveThresholds.slaHours = engagement.coSlaHours;
+  }
+  if (thresholdOverride) effectiveThresholds = Object.assign({}, effectiveThresholds, thresholds);
+
   let draft;
-  try { draft = buildWeeklyReportDraft({ clientId, weekEnding, asOf, jobs, changeOrders, retainage, lienWaivers }, thresholds || {}); }
+  try { draft = buildWeeklyReportDraft({ clientId, weekEnding, asOf, jobs, changeOrders, retainage, lienWaivers }, effectiveThresholds); }
   catch (e) { return res.status(400).json({ ok: false, error: e.message }); }
 
   let stored;
@@ -122,8 +165,12 @@ router.post('/api/construction-bpo/weekly-reports', requireAnyAuth, async (req, 
     if (e.code === 'ALREADY_PUBLISHED') return res.status(409).json({ ok: false, error: 'already_published' });
     return res.status(503).json({ ok: false, error: 'store_unavailable', detail: e.message });
   }
-  try { await store.recordAudit({ eventType: 'WEEKLY_REPORT_DRAFTED', actor: actorOf(req), entityId: stored._id, metadata: { clientId, weekEnding, flagCount: draft.flags.length } }); }
-  catch (e) { /* best-effort */ }
+  try {
+    await store.recordAudit({
+      eventType: 'WEEKLY_REPORT_DRAFTED', actor: actorOf(req), entityId: stored._id,
+      metadata: { clientId, weekEnding, flagCount: draft.flags.length, engagementApplied: !!engagement, thresholdOverride },
+    });
+  } catch (e) { /* best-effort */ }
 
   res.json({ ok: true, report: stored });
 });
@@ -207,6 +254,65 @@ router.get('/api/construction-bpo/audit', requireAnyAuth, async (req, res) => {
   if (staffOnly(req, res)) return;
   try { res.json({ ok: true, entries: await store.listAudit({ entityId: req.query.entityId, limit: req.query.limit ? Number(req.query.limit) : undefined }) }); }
   catch (e) { res.status(503).json({ ok: false, error: 'store_unavailable', detail: e.message }); }
+});
+
+// ────────────────────────────── engagements ───────────────────────────────
+
+router.post('/api/construction-bpo/engagements', requireAnyAuth, async (req, res) => {
+  if (staffOnly(req, res)) return;
+  const { clientId, name, thresholds, coSlaHours, columnMap, source } = req.body || {};
+  if (typeof clientId !== 'string' || !clientId.trim()) return res.status(400).json({ ok: false, error: 'clientId is required' });
+
+  let stored;
+  try { stored = await store.createEngagement({ clientId, name, thresholds, coSlaHours, columnMap, source }); }
+  catch (e) {
+    if (e.code === 'ALREADY_EXISTS') return res.status(409).json({ ok: false, error: 'already_exists' });
+    return res.status(503).json({ ok: false, error: 'store_unavailable', detail: e.message });
+  }
+  try { await store.recordAudit({ eventType: 'ENGAGEMENT_CREATED', actor: actorOf(req), entityId: clientId, metadata: {} }); } catch (e) { /* best-effort */ }
+  res.json({ ok: true, engagement: stored });
+});
+
+router.get('/api/construction-bpo/engagements', requireAnyAuth, async (req, res) => {
+  if (staffOnly(req, res)) return;
+  try { res.json({ ok: true, engagements: await store.listEngagements() }); }
+  catch (e) { res.status(503).json({ ok: false, error: 'store_unavailable', detail: e.message }); }
+});
+
+router.get('/api/construction-bpo/engagements/:clientId', requireAnyAuth, async (req, res) => {
+  if (staffOnly(req, res)) return;
+  try {
+    const engagement = await store.getEngagement(req.params.clientId);
+    if (!engagement) return res.status(404).json({ ok: false, error: 'not_found' });
+    res.json({ ok: true, engagement });
+  } catch (e) { res.status(503).json({ ok: false, error: 'store_unavailable', detail: e.message }); }
+});
+
+router.patch('/api/construction-bpo/engagements/:clientId', requireAnyAuth, async (req, res) => {
+  if (staffOnly(req, res)) return;
+  const patch = {};
+  for (const field of ['name', 'thresholds', 'coSlaHours', 'columnMap', 'source']) {
+    if (req.body && req.body[field] !== undefined) patch[field] = req.body[field];
+  }
+  let updated;
+  try { updated = await store.updateEngagement(req.params.clientId, patch); }
+  catch (e) {
+    if (e.code === 'NOT_FOUND') return res.status(404).json({ ok: false, error: 'not_found' });
+    return res.status(503).json({ ok: false, error: 'store_unavailable', detail: e.message });
+  }
+  try { await store.recordAudit({ eventType: 'ENGAGEMENT_UPDATED', actor: actorOf(req), entityId: req.params.clientId, metadata: { fields: Object.keys(patch) } }); } catch (e) { /* best-effort */ }
+  res.json({ ok: true, engagement: updated });
+});
+
+router.delete('/api/construction-bpo/engagements/:clientId', requireAnyAuth, async (req, res) => {
+  if (staffOnly(req, res)) return;
+  try { await store.deleteEngagement(req.params.clientId); }
+  catch (e) {
+    if (e.code === 'NOT_FOUND') return res.status(404).json({ ok: false, error: 'not_found' });
+    return res.status(503).json({ ok: false, error: 'store_unavailable', detail: e.message });
+  }
+  try { await store.recordAudit({ eventType: 'ENGAGEMENT_DELETED', actor: actorOf(req), entityId: req.params.clientId, metadata: {} }); } catch (e) { /* best-effort */ }
+  res.json({ ok: true });
 });
 
 module.exports = router;
