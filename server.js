@@ -5579,8 +5579,10 @@ app.post('/api/l1-copilot/servicenow/batch-tickets-read', requireRole(L1_COPILOT
     return res.status(400).json({ ok: false, error: 'incidents must be a non-empty array of incident numbers or sys_ids' });
   }
   try {
-    // chunkSize capped at 5, delayBetweenChunksMs floored at 250ms --
-    // regardless of what the caller asks for, see clampBatchOptions above.
+    // chunkSize capped at 5, delayBetweenChunksMs floored at 250ms, and
+    // (since DEFAULT_BATCH_OPTIONS defines them) maxRetries/initialBackoffMs
+    // clamped to batch-options.js's universal bounds -- regardless of what
+    // the caller asks for, see clampBatchOptions above.
     const clampedOptions = clampBatchOptions(options, snAdapter.DEFAULT_BATCH_OPTIONS, 5, 250);
     const result = await snAdapter.getTicketsBatch(incidents, clampedOptions);
     res.json({ ok: true, ...result });
@@ -6237,7 +6239,8 @@ app.post('/api/l1-copilot/analyze/batch', requireRole(L1_COPILOT_ROLES), async (
 
   // Background job mode -- return the jobId immediately rather than holding
   // the connection open; poll GET .../batch/:jobId for progress.
-  const job = analyzeJobStore.createJob({ tickets, maxTokens: maxTokens || null, options: opts });
+  const createdBy = req.tsmSession.staffId || req.tsmSession.role;
+  const job = analyzeJobStore.createJob({ tickets, maxTokens: maxTokens || null, options: opts, createdBy });
   runAnalyzeJob(job.id, tickets, maxTokens, opts).catch(e => {
     console.error('L1 COPILOT ANALYZE JOB ERROR:', job.id, e.message);
     analyzeJobStore.updateJob(job.id, { status: 'error', error: e.message });
@@ -6252,9 +6255,24 @@ app.post('/api/l1-copilot/analyze/batch', requireRole(L1_COPILOT_ROLES), async (
   });
 });
 
+// A job is only visible to the session that created it, or to an admin --
+// any OTHER staff session gets the same 404 a nonexistent jobId would, so
+// guessing or being handed another technician's jobId can't confirm it
+// exists (same "404 not 403" reasoning used for cross-tenant BPO lookups
+// elsewhere in this file). jobId itself is an unguessable random token,
+// but this closes the gap where one staff member's job output (which can
+// include customer ticket text) was otherwise readable by any other
+// L1_COPILOT_ROLES session that obtained the id some other way (shared
+// logs, a support request, etc).
+function canAccessAnalyzeJob(req, job) {
+  if (req.tsmSession.role === 'admin') return true;
+  const requesterIdentity = req.tsmSession.staffId || req.tsmSession.role;
+  return !!job.createdBy && requesterIdentity === job.createdBy;
+}
+
 app.get('/api/l1-copilot/analyze/batch/:jobId', requireRole(L1_COPILOT_ROLES), (req, res) => {
   const job = analyzeJobStore.getJob(req.params.jobId);
-  if (!job) return res.status(404).json({ ok: false, error: 'job not found' });
+  if (!job || !canAccessAnalyzeJob(req, job)) return res.status(404).json({ ok: false, error: 'job not found' });
 
   return res.json({
     ok: true,
@@ -6273,7 +6291,7 @@ app.get('/api/l1-copilot/analyze/batch/:jobId', requireRole(L1_COPILOT_ROLES), (
 
 app.post('/api/l1-copilot/analyze/batch/:jobId/retry', requireRole(L1_COPILOT_ROLES), async (req, res) => {
   const job = analyzeJobStore.getJob(req.params.jobId);
-  if (!job) return res.status(404).json({ ok: false, error: 'job not found' });
+  if (!job || !canAccessAnalyzeJob(req, job)) return res.status(404).json({ ok: false, error: 'job not found' });
 
   // A job actively being driven by this (or, briefly during a restart, a
   // just-replaced) process has its own in-flight chunk loop writing to the

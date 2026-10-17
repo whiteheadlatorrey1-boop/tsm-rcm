@@ -403,6 +403,51 @@ async function testRoutes() {
   ok(recovered && recovered.status === 'completed', 'interrupted job returns to status=completed after retrying its failed + null records (got ' + (recovered && recovered.status) + ')');
   ok(recovered.results.every(x => x !== null), 'every previously-null record was actually reprocessed -- no nulls remain');
   ok(recovered.succeeded + recovered.failed === 5, 'all 5 original tickets are accounted for after recovery (got succeeded=' + (recovered && recovered.succeeded) + ' failed=' + (recovered && recovered.failed) + ')');
+
+  // --- job ownership: only the creating session (identified by staffId,
+  //     falling back to role) or an admin can GET/retry a job -- any OTHER
+  //     non-admin session gets the same 404 a nonexistent jobId would ---
+  const techACookie = 'tsm_session=' + encodeURIComponent(auth.signSession({
+    role: 'manager', staffId: 'TECH-A', label: 'Tech A', exp: Date.now() + 3600000
+  }));
+  const techBCookie = 'tsm_session=' + encodeURIComponent(auth.signSession({
+    role: 'manager', staffId: 'TECH-B', label: 'Tech B', exp: Date.now() + 3600000
+  }));
+  const analystNoStaffIdCookie = 'tsm_session=' + encodeURIComponent(auth.signSession({
+    role: 'analyst', exp: Date.now() + 3600000 // no staffId -- falls back to role 'analyst'
+  }));
+
+  r = await request(port, 'POST', '/api/l1-copilot/analyze/batch', techACookie, { tickets: ticketsOf(15, 'INCOWNER') });
+  ok(r.status === 202, 'Tech A creates a background job (got ' + r.status + ')');
+  const ownedJobId = r.body.jobId;
+
+  r = await request(port, 'GET', '/api/l1-copilot/analyze/batch/' + ownedJobId, techBCookie);
+  ok(r.status === 404, 'a DIFFERENT staff session (Tech B) gets 404 on Tech A\'s job, not 200 or 403 (got ' + r.status + ')');
+
+  r = await request(port, 'POST', '/api/l1-copilot/analyze/batch/' + ownedJobId + '/retry', techBCookie);
+  ok(r.status === 404, 'Tech B also gets 404 on POST .../retry for Tech A\'s job (got ' + r.status + ')');
+
+  r = await request(port, 'GET', '/api/l1-copilot/analyze/batch/' + ownedJobId, techACookie);
+  ok(r.status === 200 && r.body.jobId === ownedJobId, 'Tech A (the creator) can still read their own job (got ' + r.status + ')');
+
+  r = await request(port, 'GET', '/api/l1-copilot/analyze/batch/' + ownedJobId, cookie);
+  ok(r.status === 200 && r.body.jobId === ownedJobId, 'admin can read ANY job regardless of who created it (got ' + r.status + ')');
+
+  // A session with no staffId at all falls back to using its role as the
+  // identity -- two different staffId-less sessions sharing the same role
+  // are treated as the same identity (a known, accepted tradeoff: role
+  // alone can't distinguish two different analysts who never got a
+  // staffId-bearing login), but a DIFFERENT role is still a different
+  // identity and still gets 404.
+  r = await request(port, 'POST', '/api/l1-copilot/analyze/batch', analystNoStaffIdCookie, { tickets: ticketsOf(15, 'INCNOSTAFFID') });
+  ok(r.status === 202, 'a staffId-less analyst session creates a background job (got ' + r.status + ')');
+  const noStaffIdJobId = r.body.jobId;
+
+  r = await request(port, 'GET', '/api/l1-copilot/analyze/batch/' + noStaffIdJobId, techACookie);
+  ok(r.status === 404, 'a manager session (different role, no staffId match) gets 404 on the staffId-less analyst\'s job (got ' + r.status + ')');
+
+  r = await request(port, 'GET', '/api/l1-copilot/analyze/batch/' + noStaffIdJobId, analystNoStaffIdCookie);
+  ok(r.status === 200, 'the same staffId-less role can still read the job it created, identified by role (got ' + r.status + ')');
 }
 
 (async () => {
