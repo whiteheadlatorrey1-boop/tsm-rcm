@@ -54,30 +54,6 @@ function normalizeState(state, options) {
   return mapState(state, options);
 }
 
-// Task types fulfilled through the ServiceNow service catalog (RITM / SC Task).
-// These have no physical asset to verify, so closure requires
-// `fulfillmentVerified` (set only by the request-fulfillment evaluator,
-// server/l1-copilot/request-fulfillment.js) instead of `assetVerified`.
-const FULFILLMENT_TASK_TYPES = Object.freeze([
-  'SOFTWARE',
-  'REQUEST FULFILLMENT'
-]);
-
-// ServiceNow catalog numbers imply their table; incident numbers do not need
-// one (state-map defaults to incident). Lets a RITM/SCTASK read its own state
-// codes correctly ("3" = Closed Complete, not On Hold) without the client
-// having to know about state tables.
-function inferStateTable(number) {
-  const value = String(number || '').trim().toUpperCase();
-  if (/^RITM\d+$/.test(value)) return 'sc_req_item';
-  if (/^SCTASK\d+$/.test(value)) return 'sc_task';
-  return undefined;
-}
-
-function resolveStateTable(input = {}) {
-  return input.stateTable || inferStateTable(input.incident || input.number);
-}
-
 function normalizeTaskType(taskType) {
   const value = String(taskType || 'OTHER')
     .trim()
@@ -257,7 +233,7 @@ function getRequiredEvidence(taskType) {
 }
 
 function evaluateWorkflow(input = {}) {
-  const state = normalizeState(input.state, { table: resolveStateTable(input) });
+  const state = normalizeState(input.state, { table: input.stateTable });
   const classification = classifyTask(input);
   const taskType = classification.taskType;
   const evidence = input.evidence || {};
