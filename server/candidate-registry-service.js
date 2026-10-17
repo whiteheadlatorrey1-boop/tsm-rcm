@@ -16,6 +16,14 @@
 
 const { MongoClient, ObjectId } = require('mongodb');
 const crypto = require('crypto');
+const { recordCsaTrainingCompletion } = require('./certification/candidate-evidence-adapter');
+
+// Explicit, deliberately narrow event type that triggers an automatic CSA
+// ledger entry -- never inferred from generic event types like
+// 'module_complete'/'quiz', which could false-positive on an in-progress
+// track. Callers (the Career Training Platform) must opt in to this exact
+// type string once a candidate actually completes the ServiceNow CSA track.
+const CSA_COMPLETION_EVENT_TYPE = 'csa_certification_complete';
 
 const DEFAULT_DB_NAME = 'tsm-consultz';
 const CANDIDATES_COLLECTION = 'candidates';
@@ -288,7 +296,7 @@ async function recordTrainingEvent(candidateId, event) {
     recordedAt: new Date().toISOString(),
     meta: normalizedEvent.meta,
   };
-  await database.collection(TRAINING_EVENTS_COLLECTION).insertOne(doc);
+  const inserted = await database.collection(TRAINING_EVENTS_COLLECTION).insertOne(doc);
 
   // Recompute and persist the candidate's readiness score off real data.
   const events = await database
@@ -326,6 +334,23 @@ async function recordTrainingEvent(candidateId, event) {
     { candidateId },
     { $set: update }
   );
+
+  // Best-effort: a ServiceNow CSA completion event writes an append-only
+  // ledger entry so the evidence-overview dashboard can show "backed"
+  // without a separate staff attestation step. Never blocks the core
+  // training-event write -- the event and the readiness-score update above
+  // have already succeeded regardless of what happens here.
+  if (normalizedEvent.type === CSA_COMPLETION_EVENT_TYPE && candidate && /ServiceNow CSA/i.test(candidate.role || '')) {
+    try {
+      recordCsaTrainingCompletion({
+        candidateId,
+        submissionId: 'training-' + inserted.insertedId.toString(),
+        trainingEventType: normalizedEvent.type,
+      });
+    } catch (e) {
+      // Swallowed deliberately -- see comment above.
+    }
+  }
 
   return getCandidate(candidateId);
 }

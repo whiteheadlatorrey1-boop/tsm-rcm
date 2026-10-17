@@ -23,11 +23,21 @@
   .empty-state .title { color:var(--text); font-size:15px; font-weight:600; margin-bottom:8px; }
   .empty-state .detail { font-family:ui-monospace,monospace; font-size:11px; margin-top:14px; color:var(--text2); word-break:break-word; }
   .count { color:var(--text2); font-size:12px; margin-bottom:14px; }
+  .btn { font-size:11px; padding:4px 10px; border-radius:6px; border:1px solid var(--border); background:transparent; color:var(--text); cursor:pointer; }
+  .btn:hover { background:rgba(255,255,255,.05); }
+  .evidence-form-row td { background:rgba(255,255,255,.015); }
+  .evidence-form { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; padding:6px 0; }
+  .evidence-form label { display:flex; flex-direction:column; gap:4px; font-size:11px; color:var(--text2); }
+  .evidence-form input { background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:5px; padding:6px 8px; font-size:12px; }
+  .evidence-form .url-field { flex:1 1 220px; min-width:180px; }
+  .evidence-msg { font-size:11px; margin-top:6px; }
+  .evidence-msg.ok { color:var(--accent); }
+  .evidence-msg.err { color:var(--red); }
 </style>
 </head>
 <body>
 <h1>Certification Evidence Dashboard</h1>
-<p class="sub">Read-only. Readiness scores are computed server-side from each candidate's recorded training events (any track); the ServiceNow CSA certification track is the only one with an independent, append-only evidence ledger today. A score is flagged when it's nonzero but has zero corroborating CSA ledger entries.</p>
+<p class="sub">Readiness scores are computed server-side from each candidate's recorded training events (any track); the ServiceNow CSA certification track is the only one with an independent, append-only evidence ledger today. A score is flagged when it's nonzero but has zero corroborating CSA ledger entries. Staff can record a verified CSA exam/certification directly against a candidate below — every entry is append-only and attributed to the staff session that recorded it.</p>
 <div class="note" id="trackNote">"Role / Track" below is the candidate's recorded <code>role</code> field, not a structured certification taxonomy — the registry doesn't enforce one yet.</div>
 <div id="root">Loading…</div>
 <script>
@@ -59,11 +69,22 @@ async function load() {
     <table>
       <thead><tr>
         <th>Candidate</th><th>Role / Track</th><th>Status</th><th>Readiness Score</th>
-        <th>Score Basis</th><th>CSA Ledger Entries</th><th>Evidence Check</th>
+        <th>Score Basis</th><th>CSA Ledger Entries</th><th>Evidence Check</th><th></th>
       </tr></thead>
       <tbody>${candidates.map(rowHtml).join('')}</tbody>
     </table>
   `;
+  root.querySelectorAll('.record-evidence-btn, .cancel-evidence-btn').forEach((btn) => {
+    btn.addEventListener('click', () => toggleForm(btn.dataset.candidateId));
+  });
+  root.querySelectorAll('.evidence-form').forEach((form) => {
+    form.addEventListener('submit', onSubmitEvidence);
+  });
+}
+
+function toggleForm(candidateId) {
+  const row = document.getElementById('form-row-' + escapeHtml(candidateId));
+  if (row) row.hidden = !row.hidden;
 }
 
 function rowHtml(c) {
@@ -71,6 +92,7 @@ function rowHtml(c) {
   const evidenceBadge = c.scoreUnbacked
     ? '<span class="badge unbacked">unbacked — no ledger entry</span>'
     : (c.csaEvidenceCount > 0 ? '<span class="badge backed">backed by ledger</span>' : '<span class="badge">n/a — score is 0</span>');
+  const idAttr = escapeHtml(c.candidateId);
   return `
     <tr>
       <td>${escapeHtml(c.name || c.candidateId)} ${sampleBadge}</td>
@@ -80,8 +102,65 @@ function rowHtml(c) {
       <td>${escapeHtml(c.readinessBasis || '—')}</td>
       <td>${c.csaEvidenceCount}</td>
       <td>${evidenceBadge}</td>
+      <td><button type="button" class="btn record-evidence-btn" data-candidate-id="${idAttr}">Record CSA evidence</button></td>
+    </tr>
+    <tr class="evidence-form-row" id="form-row-${idAttr}" hidden>
+      <td colspan="8">
+        <form class="evidence-form" data-candidate-id="${idAttr}">
+          <label>Exam / Cert ID
+            <input type="text" name="examId" required maxlength="128" pattern="[A-Za-z0-9][A-Za-z0-9._:-]*" placeholder="CSA-2026-00123">
+          </label>
+          <label>Exam Date
+            <input type="date" name="examDate" required>
+          </label>
+          <label>Verifier
+            <input type="text" name="verifier" required maxlength="200" placeholder="Name or staff ID">
+          </label>
+          <label class="url-field">Evidence URL (optional)
+            <input type="url" name="evidenceUrl" maxlength="2000" placeholder="https://...">
+          </label>
+          <button type="submit" class="btn">Save</button>
+          <button type="button" class="btn cancel-evidence-btn" data-candidate-id="${idAttr}">Cancel</button>
+        </form>
+        <div class="evidence-msg" id="msg-${idAttr}"></div>
+      </td>
     </tr>
   `;
+}
+
+async function onSubmitEvidence(ev) {
+  ev.preventDefault();
+  const form = ev.currentTarget;
+  const candidateId = form.dataset.candidateId;
+  const msg = document.getElementById('msg-' + escapeHtml(candidateId));
+  const fd = new FormData(form);
+  const payload = {
+    examId: fd.get('examId'),
+    examDate: fd.get('examDate'),
+    verifier: fd.get('verifier'),
+    evidenceUrl: fd.get('evidenceUrl') || undefined,
+  };
+  msg.textContent = 'Saving…';
+  msg.className = 'evidence-msg';
+  try {
+    const res = await fetch('/api/candidates/' + encodeURIComponent(candidateId) + '/csa-evidence', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const body = await res.json();
+    if (!res.ok) {
+      msg.textContent = body.error || ('HTTP ' + res.status);
+      msg.className = 'evidence-msg err';
+      return;
+    }
+    msg.textContent = 'Recorded.';
+    msg.className = 'evidence-msg ok';
+    load();
+  } catch (e) {
+    msg.textContent = e.message;
+    msg.className = 'evidence-msg err';
+  }
 }
 
 function emptyState(title, detail) {

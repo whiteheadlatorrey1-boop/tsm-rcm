@@ -19,7 +19,10 @@ const router = express.Router();
 const requireStaff = requireRole(['admin', 'manager', 'analyst']);
 
 const registry = require('../server/candidate-registry-service');
-const { listCsaCandidateEvidence } = require('../server/certification/candidate-evidence-adapter');
+const {
+  listCsaCandidateEvidence,
+  recordCsaManualAttestation,
+} = require('../server/certification/candidate-evidence-adapter');
 
 const { verifySession, getCookie } = require('../middleware/require-auth');
 const isAdmin = req => {
@@ -81,6 +84,33 @@ router.get('/api/candidates/evidence-overview', requireStaff, async (req, res) =
     // throws with that exact message) — surfaced verbatim so the dashboard
     // can label it, not swallowed into a generic failure.
     res.status(503).json({ ok: false, error: err.message, candidates: [] });
+  }
+});
+
+// Staff-attested CSA evidence entry (exam/cert id, date, verifier, evidence
+// URL) -- append-only (the ledger refuses a duplicate examId for the same
+// candidate), audited: recordedBy is always the authenticated staff
+// session's own identity, never a caller-supplied value. Registered before
+// /api/candidates/:id for the same reason evidence-overview is -- so
+// "csa-evidence" is never swallowed as a candidateId by that route.
+router.post('/api/candidates/:id/csa-evidence', requireStaff, async (req, res) => {
+  try {
+    const candidate = await registry.getCandidate(req.params.id);
+    if (!candidate) return res.status(404).json({ error: 'not found' });
+
+    const body = req.body || {};
+    const result = recordCsaManualAttestation({
+      candidateId: req.params.id,
+      examId: body.examId,
+      examDate: body.examDate,
+      verifier: body.verifier,
+      evidenceUrl: body.evidenceUrl,
+      recordedBy: req.tsmSession.staffId || req.tsmSession.role,
+    });
+    res.status(201).json({ record: result.record });
+  } catch (err) {
+    const status = /already recorded/.test(err.message) ? 409 : 400;
+    res.status(status).json({ error: err.message });
   }
 });
 
