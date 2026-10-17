@@ -12,7 +12,17 @@ module.exports = function mountConstructionRecovery({ router, requireAnyAuth, gr
   const recommended = new Map(eng.decideChangeOrders(data.changeOrders).map(d => [d.id, d]));
   const decisions = new Map();
   const VALID = ['approve', 'reject', 'escalate', 'defer'];
-  const actorOf = req => (getActor && getActor(req)) || (req.session && req.session.role) || 'session';
+  // requireAnyAuth puts the signed session on req.tsmSession (not req.session).
+  const sess = req => req.tsmSession || {};
+  const actorOf = req => (getActor && getActor(req)) || sess(req).label || sess(req).staffId || sess(req).role || 'unknown';
+  // Recording decisions and reading who made them is staff-only: a BPO client
+  // access code is also a valid session and must not be able to approve change orders.
+  const STAFF_ROLES = ['admin', 'manager', 'analyst'];
+  const staffOnly = (req, res) => {
+    if (STAFF_ROLES.includes(sess(req).role)) return false;
+    res.status(403).json({ ok: false, error: 'staff_only' });
+    return true;
+  };
   const money = n => '$' + Number(n).toLocaleString('en-US');
 
   router.get('/api/construction/recovery', requireAnyAuth, (req, res) => {
@@ -38,6 +48,7 @@ module.exports = function mountConstructionRecovery({ router, requireAnyAuth, gr
   // Gated write-back: needs confirm:true, an override needs a written reason,
   // and the audit entry must be written before the decision is recorded.
   router.post('/api/construction/decisions', requireAnyAuth, (req, res) => {
+    if (staffOnly(req, res)) return;
     const { coId, decision, confirm, note } = req.body || {};
     const rec = recommended.get(coId);
     if (!rec) return res.status(404).json({ ok: false, error: 'unknown_change_order' });
@@ -74,6 +85,7 @@ module.exports = function mountConstructionRecovery({ router, requireAnyAuth, gr
   });
 
   router.get('/api/construction/audit', requireAnyAuth, (req, res) => {
+    if (staffOnly(req, res)) return;
     try {
       res.json({ ok: true, count: audit.countAudit(), entries: audit.listAudit({ limit: 200 }) });
     } catch (e) {

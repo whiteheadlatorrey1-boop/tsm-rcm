@@ -33,7 +33,7 @@ async function boot(auditStore) {
   const app = express();
   app.use(express.json());
   const router = express.Router();
-  mount({ router, requireAnyAuth: (q, s, n) => n(), groqChat: async () => 'x', getActor: () => 'audit-tester', auditStore });
+  mount({ router, requireAnyAuth: (q, s, n) => { q.tsmSession = { role: 'admin' }; n(); }, groqChat: async () => 'x', getActor: () => 'audit-tester', auditStore });
   app.use(router);
   const server = await new Promise(r => { const s = app.listen(0, () => r(s)); });
   return { server, port: server.address().port };

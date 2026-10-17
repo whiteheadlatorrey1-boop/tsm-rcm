@@ -14,7 +14,7 @@ const memStore = {
   countAudit: () => memRecords.length
 };
 const requireAnyAuth = (req, res, next) =>
-  req.headers['x-test-auth'] === '1' ? next() : res.status(401).json({ ok: false, error: 'unauthorized' });
+  req.headers['x-test-auth'] === '1' ? (req.tsmSession = { role: 'admin' }, next()) : res.status(401).json({ ok: false, error: 'unauthorized' });
 
 function call(port, method, path, body, authed = true) {
   return new Promise((resolve, reject) => {
