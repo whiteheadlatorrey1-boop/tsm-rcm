@@ -28,7 +28,7 @@ def get_api(fpath):
         return '/api/mortgage/query'
     if any(x in p for x in ['financial','desert-financial','bpo-tax','auditops','tax-prep']):
         return '/api/financial/query'
-    if any(x in p for x in ['construction','ameris']):
+    if any(x in p for x in ['construction','samplegc']):
         return '/api/construction/query'
     if any(x in p for x in ['legal','bpo-legal']):
         return '/api/legal/query'

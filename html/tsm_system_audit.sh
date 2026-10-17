@@ -26,7 +26,7 @@ check_file () {
 }
 
 echo "== 1. CORE PORTAL FILES =="
-check_file "Ameris Portal" "$PORTALS/tsm-ameris-portal.html"
+check_file "Sample GC Portal" "$PORTALS/tsm-samplegc-portal.html"
 check_file "Honor Portal" "$PORTALS/tsm-honor-portal.html"
 check_file "Case Tech Portal" "$PORTALS/case-tech-portal.html"
 
@@ -65,8 +65,8 @@ for f in "$SHELL"/*.html "$SHELL"/*.tsmatter.html; do
     echo "❌ CONTAMINATION: $(basename "$f") contains HONOR"
   fi
 
-  if grep -q "AMERIS" "$f" && [[ "$f" != *ameris* ]]; then
-    echo "❌ CONTAMINATION: $(basename "$f") contains AMERIS"
+  if grep -q "SAMPLEGC" "$f" && [[ "$f" != *samplegc* ]]; then
+    echo "❌ CONTAMINATION: $(basename "$f") contains SAMPLEGC"
   fi
 done
 
