@@ -3961,6 +3961,13 @@ app.use('/api/twins', __labWriteAuth, require('./server/enterprise-lab/twins-rou
 // Live Mission Queue, AI Chaos Engine). This is the missing mount.
 app.use('/api/enterprise-lab', __labWriteAuth, require('./server/enterprise-lab/api'));
 
+// ── SAP BUSINESS ACCELERATOR HUB SANDBOX (read-only) ────────────────────────
+// routes/sap-sandbox.js -- Business Partner + Sales Order reads against the
+// public SAP sandbox gateway, gated behind SAP_INTEGRATION_ENABLED. Inert
+// (every route 503s with SAP_NOT_CONFIGURED) until that flag and a sandbox
+// API key are both set. See docs/sap-sandbox-acceptance.md.
+app.use(require('./routes/sap-sandbox'));
+
 
 // ── FINOPS ────────────────────────────────────────────────────────────────────
 app.post('/api/finops/bnca/report', (req, res) => res.json({ ok: true }));
