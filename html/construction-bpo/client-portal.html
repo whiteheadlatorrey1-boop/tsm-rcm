@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Weekly Financial Review</title>
+<style>
+  :root { --bg:#0b1220; --panel:#121b2e; --border:#223150; --text:#e7edf7; --text2:#93a3c0; --accent:#00d4b8; --amber:#e9b949; --red:#ff6b6b; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:-apple-system,Segoe UI,Roboto,sans-serif; padding:28px; max-width:1000px; }
+  h1 { font-size:19px; margin:0 0 4px; }
+  h2 { font-size:14px; margin:24px 0 10px; border-bottom:1px solid var(--border); padding-bottom:6px; }
+  .sub { color:var(--text2); font-size:13px; margin:0 0 16px; max-width:760px; line-height:1.5; }
+  .panel { background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:16px; margin-bottom:16px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--text2); padding:8px 10px; border-bottom:1px solid var(--border); }
+  td { padding:9px 10px; border-bottom:1px solid var(--border); }
+  tr.clickable:hover td { background:rgba(255,255,255,.03); cursor:pointer; }
+  .badge { font-size:10px; padding:2px 8px; border-radius:10px; border:1px solid var(--border); color:var(--text2); white-space:nowrap; }
+  .badge.published { color:var(--accent); border-color:var(--accent); }
+  .cards { display:flex; flex-wrap:wrap; gap:10px; margin-bottom:14px; }
+  .card { background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:10px 14px; min-width:140px; }
+  .card .label { font-size:10px; color:var(--text2); text-transform:uppercase; letter-spacing:.04em; }
+  .card .value { font-size:18px; margin-top:2px; }
+  .flag-row td { font-size:12px; }
+  .flag-type { color:var(--red); font-weight:600; }
+  .btn { font-size:11px; padding:6px 12px; border-radius:6px; border:1px solid var(--border); background:transparent; color:var(--text); cursor:pointer; }
+  .btn:hover { background:rgba(255,255,255,.05); }
+  .empty-state { border:1px solid var(--border); border-radius:8px; padding:32px; text-align:center; color:var(--text2); max-width:640px; }
+  .empty-state .title { color:var(--text); font-size:15px; font-weight:600; margin-bottom:8px; }
+  .login-form { display:flex; gap:10px; align-items:flex-end; }
+  .login-form label { display:flex; flex-direction:column; gap:4px; font-size:11px; color:var(--text2); }
+  .login-form input { background:var(--bg); border:1px solid var(--border); color:var(--text); border-radius:5px; padding:6px 8px; font-size:12px; }
+  .login-msg { font-size:12px; margin-top:8px; color:var(--red); }
+</style>
+</head>
+<body>
+<h1>Weekly Financial Review</h1>
+<p class="sub">Your published weekly WIP, change-order, retainage, and lien-waiver review. Draft reports are never shown here — a report only appears once your analyst has reviewed and published it.</p>
+
+<div id="loginPanel" class="panel" style="display:none">
+  <form class="login-form" id="loginForm">
+    <label>Access code<input type="text" id="accessCode" required autocomplete="off"></label>
+    <button class="btn" type="submit">Sign in</button>
+  </form>
+  <div class="login-msg" id="loginMsg"></div>
+</div>
+
+<div id="listPanel" class="panel" style="display:none">
+  <h2 style="margin-top:0">Your reports</h2>
+  <table id="reportsTable">
+    <thead><tr><th>Week Ending</th><th>Status</th><th>Jobs w/ Flags</th><th>Published</th></tr></thead>
+    <tbody></tbody>
+  </table>
+</div>
+
+<div id="detailPanel" style="display:none">
+  <button class="btn" id="backBtn">← Back to list</button>
+  <h2>Week ending <span id="detailWeek"></span></h2>
+  <div class="panel" id="detailBody"></div>
+</div>
+
+<div id="emptyPanel"></div>
+
+<script>
+let reports = [];
+
+function escapeHtml(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function show(id, visible) { document.getElementById(id).style.display = visible ? '' : 'none'; }
+
+async function init() {
+  const res = await fetch('/api/construction-bpo/weekly-reports');
+  if (res.status === 401) {
+    show('loginPanel', true);
+    return;
+  }
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data || !data.ok) {
+    renderEmpty('Unable to load reports', (data && data.error) || ('HTTP ' + res.status));
+    return;
+  }
+  reports = data.reports || [];
+  if (!reports.length) {
+    renderEmpty('No published reports yet', 'Your analyst publishes a weekly review once it has been checked — nothing to show until then.');
+    return;
+  }
+  show('listPanel', true);
+  renderList();
+}
+
+function renderEmpty(title, detail) {
+  document.getElementById('emptyPanel').innerHTML = `<div class="empty-state"><div class="title">${escapeHtml(title)}</div><div>${escapeHtml(detail)}</div></div>`;
+}
+
+function renderList() {
+  const tbody = document.querySelector('#reportsTable tbody');
+  tbody.innerHTML = reports.map((r) => `
+    <tr class="clickable" data-id="${escapeHtml(r._id)}">
+      <td>${escapeHtml(r.weekEnding)}</td>
+      <td><span class="badge published">published</span></td>
+      <td>${r.summary ? r.summary.jobsWithFlags : '—'}</td>
+      <td>${escapeHtml(r.publishedAt || '')}</td>
+    </tr>
+  `).join('');
+  tbody.querySelectorAll('tr').forEach((tr) => tr.addEventListener('click', () => openReport(tr.dataset.id)));
+}
+
+function flagLabel(f) {
+  const parts = [];
+  if (f.jobId) parts.push('Job ' + f.jobId);
+  if (f.id) parts.push(f.id);
+  if (f.subcontractor) parts.push(f.subcontractor);
+  return parts.join(' · ');
+}
+
+async function openReport(id) {
+  const res = await fetch('/api/construction-bpo/weekly-reports/' + encodeURIComponent(id));
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data || !data.ok) { renderEmpty('Unable to load report', (data && data.error) || ('HTTP ' + res.status)); return; }
+  const report = data.report;
+  document.getElementById('detailWeek').textContent = report.weekEnding;
+  const s = report.summary || {};
+  document.getElementById('detailBody').innerHTML = `
+    <div class="cards">
+      <div class="card"><div class="label">Jobs</div><div class="value">${s.jobCount ?? '—'}</div></div>
+      <div class="card"><div class="label">Jobs Needing Attention</div><div class="value">${s.jobsWithFlags ?? '—'}</div></div>
+      <div class="card"><div class="label">Earned Revenue</div><div class="value">${s.totalEarnedRevenue != null ? s.totalEarnedRevenue.toLocaleString() : '—'}</div></div>
+      <div class="card"><div class="label">Over/Under Billing</div><div class="value">${s.totalOverUnderBilling != null ? s.totalOverUnderBilling.toLocaleString() : '—'}</div></div>
+      <div class="card"><div class="label">Stalled Change Orders</div><div class="value">${s.stalledChangeOrders ?? '—'}</div></div>
+      <div class="card"><div class="label">Retainage Variances</div><div class="value">${s.retainageVariances ?? '—'}</div></div>
+      <div class="card"><div class="label">Lien Waiver Issues</div><div class="value">${s.lienWaiverIssues ?? '—'}</div></div>
+    </div>
+    <h2 style="margin-top:0">Flagged items</h2>
+    <table>
+      <thead><tr><th>Type</th><th>Detail</th></tr></thead>
+      <tbody>${(report.flags || []).length ? report.flags.map((f) => `<tr class="flag-row"><td><span class="flag-type">${escapeHtml(f.type)}</span></td><td>${escapeHtml(flagLabel(f))}</td></tr>`).join('') : '<tr><td colspan="2">No flagged items this week.</td></tr>'}</tbody>
+    </table>
+  `;
+  show('listPanel', false);
+  show('detailPanel', true);
+}
+document.getElementById('backBtn').addEventListener('click', () => { show('detailPanel', false); show('listPanel', true); });
+
+document.getElementById('loginForm').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const accessCode = document.getElementById('accessCode').value.trim();
+  const msg = document.getElementById('loginMsg');
+  msg.textContent = '';
+  try {
+    const res = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ accessCode }) });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || !data || !data.ok) { msg.textContent = (data && data.error) || ('HTTP ' + res.status); return; }
+    show('loginPanel', false);
+    init();
+  } catch (e) { msg.textContent = e.message; }
+});
+
+init();
+</script>
+</body>
+</html>
