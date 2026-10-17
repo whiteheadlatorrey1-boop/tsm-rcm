@@ -17,6 +17,9 @@
  *   stringFields?: [...],             // subset parsed as trimmed strings (null if blank)
  *   requiredField: 'jobId',           // the one field a row must have to be imported at all
  *   sourceAliases?: { [source]: { [canonicalField]: [headerAlias,...] } },
+ *   allowDuplicateIds?: boolean,      // default false (construction-bpo's one row per jobId); set true for a
+ *                                     // file type where requiredField legitimately repeats across rows, e.g. a
+ *                                     // mortgage-title doc checklist export with one row per (fileId, docType)
  * }
  *
  * construction-bpo's own import.js is untouched and keeps serving
@@ -103,7 +106,7 @@ function parseRows(headers, rows, opts, spec) {
       errors.push({ row: rowNum, field: requiredField, message: 'missing ' + requiredField + ', row skipped' });
       return;
     }
-    if (seenIds.has(id)) {
+    if (!spec.allowDuplicateIds && seenIds.has(id)) {
       errors.push({ row: rowNum, field: requiredField, message: 'duplicate ' + requiredField + ' "' + id + '" (first occurrence kept), row skipped' });
       return;
     }

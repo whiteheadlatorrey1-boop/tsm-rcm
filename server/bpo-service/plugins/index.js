@@ -8,5 +8,6 @@
 const { registerPlugin } = require('../plugin-registry');
 
 registerPlugin(require('./construction-bpo'));
+registerPlugin(require('./mortgage-title'));
 
 module.exports = {};
