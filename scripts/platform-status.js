@@ -74,12 +74,14 @@ for (const m of Object.values(modules)) {
   G[m.slug] = { src: files.filter((f) => f.startsWith(`server/${m.slug}/`) && JS.test(f)), tests: [], pages: [], assets: [], loc: 0 };
   for (const f of G[m.slug].src) { try { G[m.slug].loc += fs.readFileSync(path.join(ROOT, f), 'utf8').split('\n').length; } catch {} }
 }
+const addLoc = (o, f) => { try { G[o].loc += fs.readFileSync(path.join(ROOT, f), 'utf8').split('\n').length; } catch {} };
 for (const f of files) {
   if (f.startsWith('server/')) continue;
   const o = owner(f);
   if (!o) continue;
   if (isTest(f)) G[o].tests.push(f);
-  else if (/\.(html|jsx|tsx|vue)$/.test(f)) G[o].pages.push(f);
+  else if (/\.(html|jsx|tsx|vue)$/.test(f)) { G[o].pages.push(f); addLoc(o, f); }
+  else if (/\.(js|mjs|css)$/.test(f) && f.startsWith("html/")) addLoc(o, f);
   else if (/\.(mp4|webm|mov|pptx|pdf)$/i.test(f)) G[o].assets.push(f);
 }
 
