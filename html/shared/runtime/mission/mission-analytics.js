@@ -15,7 +15,7 @@
  * IMPORTANT — two real mission stores exist right now, not one:
  *   1. window.TSMMissionStore (this runtime scaffold, TSM_MISSION_STORE_V1)
  *      — used by BPO, Healthcare, Legal, Insurance, RE, Schools, Mortgage,
- *      Honeywell, FinOps, doc-search-multi.
+ *      Sample Aerospace Co., FinOps, doc-search-multi.
  *   2. Construction's own store (html/js/tsm-mission-store.js,
  *      TSM_MISSION_STORE key, different shape — status not stage, no
  *      workflow.dueDate/reviewOutcome fields).

@@ -54,7 +54,7 @@ DOMAINS=(
   "bpo-legal.tsmatter.com|tsm-bpo-legal|bpo-legal"
   "bpo-realty.tsmatter.com|tsm-bpo-realty|bpo-realty"
   "bpo-tax.tsmatter.com|tsm-bpo-tax|bpo-tax"
-  "desert-financial.tsmatter.com|tsm-desert-financial|desert-financial"
+  "sample-credit-union.tsmatter.com|tsm-sample-credit-union|sample-credit-union"
   "reo-pro.tsmatter.com|tsm-reo-pro|reo-pro"
   "pc-command.tsmatter.com|tsm-pc-command|pc-command"
   "rrd-command.tsmatter.com|tsm-rrd-command|rrd-command"

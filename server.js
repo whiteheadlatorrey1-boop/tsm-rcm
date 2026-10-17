@@ -3002,6 +3002,27 @@ app.get(['/healthcare/hc-academy/poc-html/index.html', '/healthcare/hc-academy/p
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
   res.sendFile(path.join(dirPath, 'healthcare', 'hc-academy', 'poc-html', 'index.html'));
 });
+
+// Legacy real-company-named pages renamed to generic "Sample ..." names
+// (no real client/prospect may appear on any served page). Old URLs 301
+// so anything bookmarked or linked externally still resolves.
+[
+  ['/desert-financial.tsmatter.html', '/sample-credit-union.tsmatter.html'],
+  ['/case-tech.tsmatter.html', '/sample-fulfillment.tsmatter.html'],
+  ['/banner-health-demo.html', '/sample-health-system-b-demo.html'],
+  ['/TSM_Shell_Honeywell_TalkTrack_30min.html', '/TSM_Shell_SampleAerospace_TalkTrack_30min.html'],
+  ['/war-rooms/honeywell-cross-domain-cascade.html', '/war-rooms/sample-aerospace-cross-domain-cascade.html'],
+  ['/war-rooms/honeywell-howto.html', '/war-rooms/sample-aerospace-howto.html'],
+  ['/war-rooms/honeywell-executive-portal.html', '/war-rooms/sample-aerospace-executive-portal.html'],
+  ['/war-rooms/honeywell-strategist.html', '/war-rooms/sample-aerospace-strategist.html'],
+].forEach(([oldPath, newPath]) => app.get(oldPath, (req, res) => res.redirect(301, newPath)));
+
+// html/private-demos/ is reserved for real-prospect pitch material that must
+// never be publicly reachable, even though it lives inside the otherwise
+// fully-served html/ tree. Block it here, above the static mount, so no file
+// placed there is ever served regardless of what's inside the directory.
+app.use('/private-demos', (req, res) => res.status(404).end());
+
 app.use('/', express.static(path.join(__dirname, 'html')));
 const suites = [
   { route: '/construction-suite', dir: 'html/construction-suite', index: 'construction-hub.html' },

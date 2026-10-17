@@ -14,14 +14,14 @@
   CATALOG: "TSM_CATALOG_RELAY",
   GOVERNANCE: "TSM_GOVERNANCE_RELAY",
   DIGITAL_TWIN: "TSM_DIGITAL_TWIN_RELAY",
-  HONEYWELL_CYBER:    "TSM_HONEYWELL_CYBER_RELAY",
-  HONEYWELL_SUPPLIER: "TSM_HONEYWELL_SUPPLIER_RELAY",
-  HONEYWELL_PLANT:    "TSM_HONEYWELL_PLANT_RELAY",
+  SAMPLE_AEROSPACE_CYBER:    "TSM_SAMPLE_AEROSPACE_CYBER_RELAY",
+  SAMPLE_AEROSPACE_SUPPLIER: "TSM_SAMPLE_AEROSPACE_SUPPLIER_RELAY",
+  SAMPLE_AEROSPACE_PLANT:    "TSM_SAMPLE_AEROSPACE_PLANT_RELAY",
   // College vertical (Financial-Aid-centered) — same split-key pattern as the
-  // three HONEYWELL_* domains above: each domain writes only its own key,
+  // three SAMPLE_AEROSPACE_* domains above: each domain writes only its own key,
   // college-strategist.html reads all six and aggregates rather than
   // picking a single "latest" (Financial Aid ops needs simultaneous
-  // visibility across domains, unlike Honeywell's one-incident-at-a-time use).
+  // visibility across domains, unlike Sample Aerospace Co.'s one-incident-at-a-time use).
   COLLEGE_FINAID:      "TSM_COLLEGE_FINAID_RELAY",
   COLLEGE_BURSAR:      "TSM_COLLEGE_BURSAR_RELAY",
   COLLEGE_ENDOWMENT:   "TSM_COLLEGE_ENDOWMENT_RELAY",

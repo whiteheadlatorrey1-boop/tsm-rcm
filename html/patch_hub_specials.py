@@ -8,7 +8,7 @@ HUB = "/workspaces/tsm-shell/hub_index_v3.html"
 
 # key → correct title (only the ones sed failed on)
 PATCHES = {
-    "honorhealth":         "TSM · Honor Health — Executive Briefing for Dee",
+    "samplehealthsystem":         "TSM · Sample Health System — Executive Briefing for Dee",
     "agents-ins":          "TSM Insurance Intelligence — AI for Insurance Professionals",
     "financial-command":   "TSM | Financial Command",
     "construction-command":"TSM | Construction Command",

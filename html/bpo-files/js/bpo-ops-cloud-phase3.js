@@ -12,7 +12,7 @@
 
   function client(){
     const sel=document.getElementById("bpo-client-select");
-    return sel ? sel.options[sel.selectedIndex].text : "Desert Financial";
+    return sel ? sel.options[sel.selectedIndex].text : "Sample Credit Union";
   }
 
   async function refreshPanel(){

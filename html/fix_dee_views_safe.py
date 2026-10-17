@@ -5,7 +5,7 @@ html = r"""<!doctype html>
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>HonorHealth · Dee Command Center</title>
+<title>Sample Health System · Dee Command Center</title>
 <style>
   :root{
     --bg:#050b14;
@@ -101,7 +101,7 @@ html = r"""<!doctype html>
   <div class="wrap">
     <div class="topbar">
       <div>
-        <div class="brand">HonorHealth · Dee Command Center</div>
+        <div class="brand">Sample Health System · Dee Command Center</div>
         <div class="persona">Dee Montee · Revenue Cycle Manager · Scottsdale - Shea</div>
       </div>
       <div class="status" id="war-status">LIVE</div>
@@ -150,7 +150,7 @@ async function fetchAction(mode){
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body: JSON.stringify({
-      system:'HonorHealth',
+      system:'Sample Health System',
       selectedOffice: window.DEE_SELECTED_OFFICE,
       prompt: modePrompt(mode)
     })

@@ -21,8 +21,8 @@ WIRE_MAP = {
     'strategist-index.html':        {'api': '/api/strategist/query', 'app': 'strategist'},
     'suite-builder.html':           {'api': '/api/strategist/query', 'app': 'enterprise'},
     # Partially wired — upgrade callAI to real endpoint
-    'honorhealth-dee.html':         {'api': '/api/hc/query', 'app': 'healthcare'},
-    'tsm-honorhealth-dee.tsmatter.html': {'api': '/api/hc/query', 'app': 'healthcare'},
+    'samplehealthsystem-dee.html':         {'api': '/api/hc/query', 'app': 'healthcare'},
+    'tsm-samplehealthsystem-dee.tsmatter.html': {'api': '/api/hc/query', 'app': 'healthcare'},
     'reo-command.html':             {'api': '/api/mortgage/query', 'app': 'mortgage'},
     'zero-trust.html':              {'api': '/api/ai/query', 'app': 'enterprise'},
 }

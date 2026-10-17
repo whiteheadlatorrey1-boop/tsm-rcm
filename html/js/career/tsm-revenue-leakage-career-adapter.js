@@ -422,7 +422,7 @@
    *     leakageOpportunities: [...]
    *   }
    *
-   * This deliberately does NOT accept the HonorHealth demo snapshot
+   * This deliberately does NOT accept the Sample Health System demo snapshot
    * or Strategist KPI values.
    */
   function setPortfolioTwin(twin) {

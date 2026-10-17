@@ -58,7 +58,7 @@ for (const link of links) {
 ok(pages > 60, 'audited ' + pages + ' hub pages');
 
 // Specific defects fixed here
-for (const f of ['healthcare-thermal-continuity', 'aerospace-maintenance-readiness', 'life-sciences-production-continuity', 'industrial-capital-project-recovery', 'honeywell-cross-domain-cascade']) {
+for (const f of ['healthcare-thermal-continuity', 'aerospace-maintenance-readiness', 'life-sciences-production-continuity', 'industrial-capital-project-recovery', 'sampleaerospace-cross-domain-cascade']) {
   const h = fs.readFileSync(path.join(ROOT, 'html/war-rooms', f + '.html'), 'utf8');
   ok(h.includes('src="../../js/tsm-guide-engine.js"') && !/src="js\/tsm-guide-engine\.js"/.test(h), f + ' loads the guide engine from /js');
 }

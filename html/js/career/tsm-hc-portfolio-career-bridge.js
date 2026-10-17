@@ -26,7 +26,7 @@
  *     - fetch /api/hc/portfolio-intelligence
  *     - bypass authentication
  *     - scrape DOM/KPIs
- *     - read the HonorHealth demo snapshot
+ *     - read the Sample Health System demo snapshot
  *     - infer exposure
  *     - manufacture leakage opportunities
  *

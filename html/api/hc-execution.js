@@ -69,7 +69,7 @@ module.exports = function(app){
           'Align intake, billing, and scheduling handoffs for the next shift'
         ],
         ownerLanes: ['Operations','Billing','Insurance'],
-        summary: 'HonorHealth risk is concentrated in Scottsdale - Shea. Highest-yield lane is Insurance. Immediate focus: clear the highest-value backlog first.',
+        summary: 'Sample Health System risk is concentrated in Scottsdale - Shea. Highest-yield lane is Insurance. Immediate focus: clear the highest-value backlog first.',
         confidence: 91
       },
       'Mesa Family Practice': {

@@ -85,7 +85,7 @@ function enforceOutputContract(vertical, payload = {}) {
 //
 // confidenceTier is deliberately NOT in this baseline: checked against
 // real production code (2026-08-19), Mortgage, Schools, NOC, PM,
-// Honeywell, and Concierge all hardcode confidence:null in their
+// Sample Aerospace Co., and Concierge all hardcode confidence:null in their
 // exception-feed functions -- their detection is deterministic
 // (SLA breach, compliance flag) rather than an ML confidence score, so
 // confidenceTier:null is correct/expected there, not a gap. Requiring

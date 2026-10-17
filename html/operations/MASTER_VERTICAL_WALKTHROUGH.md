@@ -1,7 +1,7 @@
 # TSM Consultz — Master Vertical Walkthrough
 ## War Room → Strategist → Executive Portal (13 Chained Verticals + 1 Standalone)
 
-**Verticals covered:** Healthcare, Construction, FinOps, Insurance, Legal, Real Estate, Mortgage, Schools, PM Copilot, BPO, HotelOps, Concierge, Honeywell (Plant/Supplier/ Cyber-OT). RCM-OS is documented separately at the end — it's a standalone reconciliation tool, not a War Room → Strategist → Executive Portal chain.
+**Verticals covered:** Healthcare, Construction, FinOps, Insurance, Legal, Real Estate, Mortgage, Schools, PM Copilot, BPO, HotelOps, Concierge, Sample Aerospace Co. (Plant/Supplier/ Cyber-OT). RCM-OS is documented separately at the end — it's a standalone reconciliation tool, not a War Room → Strategist → Executive Portal chain.
 **Pattern:** every vertical runs the same three-layer chain — operator desk (War Room) → analytical handoff (Strategist) → leadership decision surface (Executive Portal). All onClick chains below are verified against the live HTML/JS, not assumed.
 
 ---
@@ -407,18 +407,18 @@ This is a separate hop from the internal War Room → Strategist → Executive P
 
 ---
 
-## 13. Honeywell (Plant / Supplier / Cyber-OT / BESS / Advanced Detection)
+## 13. Sample Aerospace Co. (Plant / Supplier / Cyber-OT / BESS / Advanced Detection)
 
-**Path:** five parallel scenario-specific entry points — `html/plant-incident.html`, `html/supplier-shutdown.html`, `html/cyber-incident.html`, `html/war-rooms/bess-gigafactory-incident.html`, and `html/war-rooms/advanced-detection-incident.html` — each converging into one shared `html/war-rooms/honeywell-strategist.html` → `html/war-rooms/honeywell-executive-portal.html` chain.
+**Path:** five parallel scenario-specific entry points — `html/plant-incident.html`, `html/supplier-shutdown.html`, `html/cyber-incident.html`, `html/war-rooms/bess-gigafactory-incident.html`, and `html/war-rooms/advanced-detection-incident.html` — each converging into one shared `html/war-rooms/sampleaerospace-strategist.html` → `html/war-rooms/sampleaerospace-executive-portal.html` chain.
 
-**Structural note:** Honeywell uses multiple scenario-specific war rooms rather than one universal incident screen. Plant, supplier, cyber-OT, BESS/Gigafactory, and Advanced Detection have different first-response data and workflows, but leadership converges on the same Strategist and Executive Portal.
+**Structural note:** Sample Aerospace Co. uses multiple scenario-specific war rooms rather than one universal incident screen. Plant, supplier, cyber-OT, BESS/Gigafactory, and Advanced Detection have different first-response data and workflows, but leadership converges on the same Strategist and Executive Portal.
 
 ### War Room — Plant / Supplier / Cyber-OT
 
 - **plant-incident.html** — `⚡ ESCALATE TO OPERATIONS STRATEGIST →` (`#escalateBtn`, disabled until conditions are met) — `escalateToStrategist()`.
 - **supplier-shutdown.html** — `⚡ ESCALATE TO SUPPLY CHAIN STRATEGIST →` — `escalateToStrategist()`.
 - **cyber-incident.html** — `🛡 ESCALATE TO OPERATIONS STRATEGIST →` — `escalateToStrategist()`.
-- All three target the same `STRATEGIST_URL = '/html/war-rooms/honeywell-strategist.html'`.
+- All three target the same `STRATEGIST_URL = '/html/war-rooms/sampleaerospace-strategist.html'`.
 
 ### BESS / Gigafactory War Room — `bess-gigafactory-incident.html`
 
@@ -429,7 +429,7 @@ This is a separate hop from the internal War Room → Strategist → Executive P
 - Financial exposure: **$400,000–$600,000 TSM planning estimate / assumption**, not a source-provided confirmed cost.
 - Root cause must remain explicitly unconfirmed unless supported by incident evidence.
 - Decision costs remain `NOT QUANTIFIED` unless the source provides an actual cost.
-- Routes into the shared Honeywell Strategist → Executive Portal chain.
+- Routes into the shared Sample Aerospace Co. Strategist → Executive Portal chain.
 
 ### Advanced Detection War Room — `advanced-detection-incident.html`
 
@@ -444,30 +444,30 @@ This is a separate hop from the internal War Room → Strategist → Executive P
 - Uses the canonical `/api/war-room/stream` surface.
 - Detection-to-decision workflow is explicitly a **training / decision-support simulation**, not a live sensor feed or facility control system.
 - It does not command, arm, or trigger real suppression, isolation, or shutdown equipment; actual site fire/life-safety systems and AHJ-approved procedures remain authoritative.
-- Routes into the same shared Honeywell Strategist → Executive Portal chain.
+- Routes into the same shared Sample Aerospace Co. Strategist → Executive Portal chain.
 
-### Strategist — `honeywell-strategist.html`
+### Strategist — `sampleaerospace-strategist.html`
 
 - **→ Escalate** — `escalateExec()`.
-- Receives scenario-specific decision packages from all five Honeywell entry points.
-- Scenario shortcuts can return to the applicable Honeywell war room.
-- Executive escalation continues to `honeywell-executive-portal.html`.
+- Receives scenario-specific decision packages from all five Sample Aerospace Co. entry points.
+- Scenario shortcuts can return to the applicable Sample Aerospace Co. war room.
+- Executive escalation continues to `sampleaerospace-executive-portal.html`.
 - `manualRefresh()` and **Export** — `window.print()`.
 
-### Executive Portal — `honeywell-executive-portal.html`
+### Executive Portal — `sampleaerospace-executive-portal.html`
 
 - **⬇ EXPORT CLIENT PACKAGE** — `exportClientPackage()`.
 - **AUTHORIZE** — `recordExecutiveAction('AUTHORIZED', ...)`.
 - **BOARD NOTIFIED** — `recordExecutiveAction('BOARD_NOTIFIED', ...)`.
 - `AUTHORIZED` and `BOARD_NOTIFIED` are separate named executive actions and should remain separately represented in the audit trail.
-- Scenario navigation can return to the applicable Honeywell war room.
+- Scenario navigation can return to the applicable Sample Aerospace Co. war room.
 
 **Talk points:**
-- "Honeywell now has five scenario front doors — plant incident, supplier shutdown, cyber-OT, BESS/Gigafactory, and Advanced Detection. Each represents a genuinely different first-response context, but all converge on one strategist and one executive view."
+- "Sample Aerospace Co. now has five scenario front doors — plant incident, supplier shutdown, cyber-OT, BESS/Gigafactory, and Advanced Detection. Each represents a genuinely different first-response context, but all converge on one strategist and one executive view."
 - "BESS handles the incident-command side of battery/gigafactory events, while Advanced Detection handles the early-warning sensor side. They are complementary, not duplicate war rooms."
 - "BOARD NOTIFIED is a named, distinct executive action from AUTHORIZE, which is important for auditability and governance."
 
-**Client-facing status:** Honeywell remains an internal build/backlog vertical and should **not** be represented as pilot-ready solely because these additional scenario rooms are documented.
+**Client-facing status:** Sample Aerospace Co. remains an internal build/backlog vertical and should **not** be represented as pilot-ready solely because these additional scenario rooms are documented.
 
 
 ## 14. L1 Ticket Copilot (IT Ops)
@@ -516,7 +516,7 @@ Every section above stops at the Executive Portal — the internal employee-faci
 |---|---|---|
 | Healthcare | Yes (shared script) **+** a second, independent sync at the War Room stage (`syncStructuredCaseToEngine()`, fires every pipeline run) | Yes — twice over |
 | Legal, Construction, Real Estate, Insurance, FinOps | Yes (shared `tsm-exec-portal-upgrade.js`) | Yes |
-| Mortgage, PM Copilot, Schools, HotelOps, Honeywell | Yes (direct inline call to the same endpoint) | Yes |
+| Mortgage, PM Copilot, Schools, HotelOps, Sample Aerospace Co. | Yes (direct inline call to the same endpoint) | Yes |
 | BPO | Yes — own dedicated endpoint, not this relay | Yes — direct |
 | **Concierge** | **No — not a registered exec-portal vertical at all** | **No** |
 | **College Command** | **No — registered server-side, but no page calls the endpoint** | **No** |
@@ -622,7 +622,7 @@ RCM-OS ("Reconciliation Command Center") does not follow the War Room → Strate
 - "The Readiness Tracker's score isn't a black box — it's a documented weighted formula against real checklist completions, the same honesty pattern the rest of the platform holds to."
 - "This is included in the client/interview-facing demo walkthrough alongside the Meridian Industrial incident-command set — it demonstrates the same canonical-record pattern in a staffing context, without needing a live backend."
 
-**Client-facing status:** unlike Honeywell, this one is demo-ready — Candidate Registry and Readiness Tracker are explicitly called out for inclusion in client/interview-facing demos (see `html/document-processing-revenue-recovery-manual.html`, §CI).
+**Client-facing status:** unlike Sample Aerospace Co., this one is demo-ready — Candidate Registry and Readiness Tracker are explicitly called out for inclusion in client/interview-facing demos (see `html/document-processing-revenue-recovery-manual.html`, §CI).
 
 **Supporting materials:** the Candidate Intelligence flow (Assessment → Candidate Record → Readiness Event → Evidence Promotion → Career/Staffing Consumption) is documented in full in the Revenue Recovery Manual's §CI, including lifecycle-status values (`in_training`, `needs_review`, `ready_for_placement`) and the ownership boundaries between Candidate Readiness V2, Candidate Registry, Career Training, and Staffing Readiness.
 
@@ -631,10 +631,10 @@ RCM-OS ("Reconciliation Command Center") does not follow the War Room → Strate
 ## Cross-Vertical Patterns Worth Naming in a Demo
 
 1. **Escalation is state, not just navigation.** Most "Escalate" buttons (`escalateToStrategist`, `escalateToExec`, `writeExecRelay`, `schWriteRelay`, `escalateExec`) write a payload to storage *before* moving screens — the receiving screen reads real data, it isn't just a link.
-2. **Two relay mechanisms coexist.** Legacy verticals (Legal, Construction, FinOps, Insurance, Concierge, BPO, Honeywell) use dedicated JS functions per action, mostly inline `onclick`. Newer ones (Mortgage, Schools, PM Copilot, HotelOps) standardized on a shared relay pattern: event-listener-bound buttons, `sessionStorage` + `localStorage`, and a custom `TSM_RELAY_EVENT` for same-tab updates.
-3. **`exportClientPackage()` is the common exec-portal export**, present on HC, Construction, FinOps, Insurance, Legal, Mortgage, Schools, PM Copilot, HotelOps, Concierge, and Honeywell — 11 of the 13 chained verticals. **Two exceptions:** Real Estate uses `exportSession()` / `exportBoard()`, and BPO uses `exportBrief()` (a plain-text session report, not the JSON package). Don't promise "Export Client Package" language on either of those two exec portals.
-4. **ACKNOWLEDGE / ESCALATE with logged messages** (Mortgage, Schools, PM Copilot, HotelOps, Honeywell's AUTHORIZE/BOARD_NOTIFIED) is the most audit-trail-forward pattern — worth showing to a compliance-sensitive buyer.
-5. **Legal is the only three-tier vertical chain** (case strategist → chief strategist → executive) — call this out explicitly since every other chained vertical is a flat three-screen chain. **Honeywell is structurally unique in the other direction** — one strategist/exec-portal pair fed by three separate scenario-specific war rooms (plant / supplier / cyber-OT), rather than one war room per chain.
+2. **Two relay mechanisms coexist.** Legacy verticals (Legal, Construction, FinOps, Insurance, Concierge, BPO, Sample Aerospace Co.) use dedicated JS functions per action, mostly inline `onclick`. Newer ones (Mortgage, Schools, PM Copilot, HotelOps) standardized on a shared relay pattern: event-listener-bound buttons, `sessionStorage` + `localStorage`, and a custom `TSM_RELAY_EVENT` for same-tab updates.
+3. **`exportClientPackage()` is the common exec-portal export**, present on HC, Construction, FinOps, Insurance, Legal, Mortgage, Schools, PM Copilot, HotelOps, Concierge, and Sample Aerospace Co. — 11 of the 13 chained verticals. **Two exceptions:** Real Estate uses `exportSession()` / `exportBoard()`, and BPO uses `exportBrief()` (a plain-text session report, not the JSON package). Don't promise "Export Client Package" language on either of those two exec portals.
+4. **ACKNOWLEDGE / ESCALATE with logged messages** (Mortgage, Schools, PM Copilot, HotelOps, Sample Aerospace Co.'s AUTHORIZE/BOARD_NOTIFIED) is the most audit-trail-forward pattern — worth showing to a compliance-sensitive buyer.
+5. **Legal is the only three-tier vertical chain** (case strategist → chief strategist → executive) — call this out explicitly since every other chained vertical is a flat three-screen chain. **Sample Aerospace Co. is structurally unique in the other direction** — one strategist/exec-portal pair fed by three separate scenario-specific war rooms (plant / supplier / cyber-OT), rather than one war room per chain.
 6. **RCM-OS sits outside this pattern entirely** — a standalone reconciliation tool with no War Room / Strategist / Executive Portal chain. Don't describe it in three-tier-chain language in a demo.
 7. **The Decision Center's Approve action, not the export button, is what reaches the client** — see §14.5. Confirmed wired for 12 of 14 exec-portal verticals; Concierge and College Command are real gaps, not training gaps.
 

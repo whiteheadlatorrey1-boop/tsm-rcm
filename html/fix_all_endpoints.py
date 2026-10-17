@@ -20,13 +20,13 @@ def get_api(fpath):
     if any(x in p for x in ['hc-billing','hc-compliance','hc-financial','hc-grants',
         'hc-insurance','hc-legal','hc-medical','hc-pharmacy','hc-strategist',
         'hc-taxprep','hc-vendors','hc-command','hc-presentation',
-        'healthcare','honor','honorhealth','bpo-healthcare','dme']):
+        'healthcare','honor','samplehealthsystem','bpo-healthcare','dme']):
         return '/api/hc/query'
     if any(x in p for x in ['music']):
         return '/api/music/chain'
     if any(x in p for x in ['mortgage','reo','realty','bpo-realt']):
         return '/api/mortgage/query'
-    if any(x in p for x in ['financial','desert-financial','bpo-tax','auditops','tax-prep']):
+    if any(x in p for x in ['financial','sample-credit-union','bpo-tax','auditops','tax-prep']):
         return '/api/financial/query'
     if any(x in p for x in ['construction','samplegc']):
         return '/api/construction/query'
@@ -36,7 +36,7 @@ def get_api(fpath):
         return '/api/insurance/query'
     if any(x in p for x in ['schools']):
         return '/api/schools/query'
-    if any(x in p for x in ['strategist','case-tech','rrd','suite']):
+    if any(x in p for x in ['strategist','sample-fulfillment','rrd','suite']):
         return '/api/strategist/query'
     return '/api/ai/query'
 

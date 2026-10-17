@@ -3,7 +3,7 @@
 TSM — TWO-TASK PATCHER
 ======================
 Task 1: Wire OPEN APP buttons in html/ghs/index.html to actual HC node index.html pages
-Task 2: Copy slides from html/honorhealth (or similar) into html/ghs-presentation/index.html
+Task 2: Copy slides from html/samplehealthsystem (or similar) into html/ghs-presentation/index.html
 
 Run from repo root:
     python3 patch_nodes_and_slides.py
@@ -188,16 +188,16 @@ def _bs4_patch_links():
         print('  to print the OPEN APP button HTML so we can target it precisely.')
 
 
-# ── TASK 2: COPY HONORHEALTH SLIDES INTO GHS-PRESENTATION ───────────────────
+# ── TASK 2: COPY SAMPLE HEALTH SYSTEM SLIDES INTO GHS-PRESENTATION ───────────────────
 
 PRESENTATION_FILE = REPO / 'html/ghs-presentation/index.html'
 
-# Candidate source files for HonorHealth slides (in priority order)
-HONORHEALTH_CANDIDATES = [
-    REPO / 'html/honorhealth/index.html',
-    REPO / 'html/honorhealth/healthcare-command-center.html',
-    REPO / 'honorhealth-dee.html',
-    REPO / 'html/banner/healthcare-command-center.html',  # fallback — similar structure
+# Candidate source files for Sample Health System slides (in priority order)
+SAMPLE_HEALTH_SYSTEM_CANDIDATES = [
+    REPO / 'html/samplehealthsystem/index.html',
+    REPO / 'html/samplehealthsystem/healthcare-command-center.html',
+    REPO / 'samplehealthsystem-dee.html',
+    REPO / 'html/sample-health-system-b/healthcare-command-center.html',  # fallback — similar structure
 ]
 
 # Slide container selectors (tries each until one finds slides)
@@ -213,8 +213,8 @@ SLIDE_INSERT_MARKER = re.compile(
 )
 
 
-def find_honorhealth_source():
-    for candidate in HONORHEALTH_CANDIDATES:
+def find_samplehealthsystem_source():
+    for candidate in SAMPLE_HEALTH_SYSTEM_CANDIDATES:
         if candidate.exists():
             print(f'  [SOURCE] {candidate.relative_to(REPO)}')
             return candidate
@@ -226,10 +226,10 @@ def copy_slides():
         print(f'[SKIP] {PRESENTATION_FILE} not found')
         return
 
-    src = find_honorhealth_source()
+    src = find_samplehealthsystem_source()
     if not src:
-        print('[SKIP] No HonorHealth source file found. Checked:')
-        for c in HONORHEALTH_CANDIDATES:
+        print('[SKIP] No Sample Health System source file found. Checked:')
+        for c in SAMPLE_HEALTH_SYSTEM_CANDIDATES:
             print(f'  {c}')
         print('\nTip: run with --list-html to see all HTML files in the repo.')
         return
@@ -259,7 +259,7 @@ def copy_slides():
     # Insert slides into presentation
     dest_text = PRESENTATION_FILE.read_text(encoding='utf-8', errors='replace')
     slides_html = '\n\n'.join(str(s) for s in slides)
-    slides_block = f'\n\n<!-- ═══ HONORHEALTH SLIDES (auto-imported) ═══ -->\n{slides_html}\n<!-- ═══ END HONORHEALTH SLIDES ═══ -->\n\n'
+    slides_block = f'\n\n<!-- ═══ SAMPLE HEALTH SYSTEM SLIDES (auto-imported) ═══ -->\n{slides_html}\n<!-- ═══ END SAMPLE HEALTH SYSTEM SLIDES ═══ -->\n\n'
 
     # Try to insert before closing body or after last slide
     if '</body>' in dest_text:
@@ -305,9 +305,9 @@ if __name__ == '__main__':
         print('\n══ TASK 1: Wire HC node OPEN APP links ══')
         patch_node_links()
 
-        print('\n══ TASK 2: Copy HonorHealth slides → GHS Presentation ══')
+        print('\n══ TASK 2: Copy Sample Health System slides → GHS Presentation ══')
         copy_slides()
 
         print('\n══ DONE ══')
-        print('git add -A && git commit -m "feat: wire node links + merge honorhealth slides"')
+        print('git add -A && git commit -m "feat: wire node links + merge samplehealthsystem slides"')
         print('fly deploy')

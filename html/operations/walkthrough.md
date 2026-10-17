@@ -17,7 +17,7 @@ Most "the platform is broken" reports trace back to one of these four things. Ru
 
 ### 0.2 Which relay mechanism the vertical uses
 Two coexist on the platform — know which one you're looking at before you go hunting for a bug:
-- **Legacy (inline onclick):** Legal, Construction, FinOps, Insurance, Concierge, BPO, Honeywell. Each action is its own named JS function called directly from the button's `onclick`.
+- **Legacy (inline onclick):** Legal, Construction, FinOps, Insurance, Concierge, BPO, Sample Aerospace Co.. Each action is its own named JS function called directly from the button's `onclick`.
 - **Newer (event-listener + dual storage):** Mortgage, Schools, PM Copilot, HotelOps. Buttons are bound via `addEventListener`, not inline `onclick`; the relay write hits **both** `sessionStorage` and `localStorage`, plus fires a `TSM_RELAY_EVENT` custom event (needed because the native `storage` event only fires cross-tab, not same-tab).
 
 If data isn't showing up on the next screen in a newer-pattern vertical, check `sessionStorage`/`localStorage` directly for the relay key before assuming the backend is at fault — it's very often a pure client-side write/read mismatch.
@@ -26,7 +26,7 @@ If data isn't showing up on the next screen in a newer-pattern vertical, check `
 Almost every "Escalate" button (`escalateToStrategist`, `escalateToExec`, `writeExecRelay`, `schWriteRelay`, `escalateExec`, etc.) writes a payload to storage **before** changing pages. If the receiving screen shows sample/placeholder data instead of real data, the write didn't happen (or happened to the wrong key) — the navigation itself is not the failure point.
 
 ### 0.4 `exportClientPackage()` — the two named exceptions
-`exportClientPackage()` (bound to `#tsmk-delivery-btn`, "⬇ EXPORT CLIENT PACKAGE") is the standard export on 11 of the 13 chained verticals: Healthcare, Construction, FinOps, Insurance, Legal, Mortgage, Schools, PM Copilot, HotelOps, Concierge, Honeywell. Two verticals do **not** have this button — don't spend time looking for it there:
+`exportClientPackage()` (bound to `#tsmk-delivery-btn`, "⬇ EXPORT CLIENT PACKAGE") is the standard export on 11 of the 13 chained verticals: Healthcare, Construction, FinOps, Insurance, Legal, Mortgage, Schools, PM Copilot, HotelOps, Concierge, Sample Aerospace Co.. Two verticals do **not** have this button — don't spend time looking for it there:
 - **Real Estate** — uses `exportSession()` ("Export Full Session") and `exportBoard()` ("Export Board Report") instead.
 - **BPO** — uses `exportBrief()` ("⬇ EXPORT EXEC BRIEF" / "EXPORT BRIEF" / "⬇ EXPORT"), which builds a plain-text session report, not the JSON delivery package.
 
@@ -272,15 +272,15 @@ Each domain writes only its own relay key (`TSM_COLLEGE_FINAID_RELAY`, `TSM_COLL
 
 ---
 
-## 13. Honeywell (Plant / Supplier / Cyber-OT / BESS / Advanced Detection)
+## 13. Sample Aerospace Co. (Plant / Supplier / Cyber-OT / BESS / Advanced Detection)
 
-**Structural note:** Honeywell uses multiple scenario-specific war rooms that converge on one shared `html/war-rooms/honeywell-strategist.html` → `html/war-rooms/honeywell-executive-portal.html` chain. The current documented scenario set is five entry points: `html/plant-incident.html`, `html/supplier-shutdown.html`, `html/cyber-incident.html`, `html/war-rooms/bess-gigafactory-incident.html`, and `html/war-rooms/advanced-detection-incident.html`.
+**Structural note:** Sample Aerospace Co. uses multiple scenario-specific war rooms that converge on one shared `html/war-rooms/sampleaerospace-strategist.html` → `html/war-rooms/sampleaerospace-executive-portal.html` chain. The current documented scenario set is five entry points: `html/plant-incident.html`, `html/supplier-shutdown.html`, `html/cyber-incident.html`, `html/war-rooms/bess-gigafactory-incident.html`, and `html/war-rooms/advanced-detection-incident.html`.
 
-**BESS / Gigafactory:** `html/war-rooms/bess-gigafactory-incident.html` is the battery-energy-storage / gigafactory incident command scenario. It uses the six-engine War Room pipeline and routes its decision package into the shared Honeywell Strategist → Executive Portal chain. Key documented operating facts include 20 MW nameplate power, 80 MWh installed energy capacity, output curtailed to 65% of contracted capacity, a 12–24 hour re-energization decision window, and a conditional 3–5 week module-replacement lead time if thermal runaway is confirmed. Financial exposure is represented as a `$400,000–$600,000` TSM planning assumption, not a source-provided confirmed cost. Root cause remains unconfirmed unless supported by the incident evidence.
+**BESS / Gigafactory:** `html/war-rooms/bess-gigafactory-incident.html` is the battery-energy-storage / gigafactory incident command scenario. It uses the six-engine War Room pipeline and routes its decision package into the shared Sample Aerospace Co. Strategist → Executive Portal chain. Key documented operating facts include 20 MW nameplate power, 80 MWh installed energy capacity, output curtailed to 65% of contracted capacity, a 12–24 hour re-energization decision window, and a conditional 3–5 week module-replacement lead time if thermal runaway is confirmed. Financial exposure is represented as a `$400,000–$600,000` TSM planning assumption, not a source-provided confirmed cost. Root cause remains unconfirmed unless supported by the incident evidence.
 
 **Advanced Detection:** `html/war-rooms/advanced-detection-incident.html` is the early-warning detection command scenario. It accepts BESS off-gas alerts, Gigafactory off-gas alerts, VESDA particulate alerts, and facility shutdown logs. Its six engines are Detection Intelligence, Facility Impact, Failure Progression, Exposure Calculation, Response Plan, and Executive Dispatch. It explicitly operates as a training / decision-support simulation rather than a live sensor feed or facility control system. The documented API surface is `/api/war-room/stream` and the scenario is intended to provide detection-to-decision lead-time analysis before escalation to the shared Strategist and Executive layers.
 
-**Shared Honeywell relay pattern:** both new scenarios converge into the same Strategist → Executive decision chain rather than creating separate strategist or executive portals.
+**Shared Sample Aerospace Co. relay pattern:** both new scenarios converge into the same Strategist → Executive decision chain rather than creating separate strategist or executive portals.
 
 | Step | Screen | Action | Expected result | If it doesn't work |
 |---|---|---|---|---|
@@ -289,7 +289,7 @@ Each domain writes only its own relay key (`TSM_COLLEGE_FINAID_RELAY`, `TSM_COLL
 | 3 | Exec Portal | **AUTHORIZE** vs **BOARD NOTIFIED** | Two distinct, separately-logged actions (`recordExecutiveAction('AUTHORIZED', ...)` vs `('BOARD_NOTIFIED', ...)`) | If the audit trail only shows one action type when both should have fired, check they weren't collapsed into a single generic ESCALATE somewhere upstream |
 | 4 | Exec Portal | **⬇ EXPORT CLIENT PACKAGE** | Standard export | — |
 
-**No client-facing sales pitch yet for this vertical overall:** Honeywell currently has five documented scenario entry points with shared Strategist/Executive convergence — off every client-facing pitch entirely, tracked as internal build backlog until it reaches Tier 2. Don't represent it as pilot-ready if a support/sales question comes in about it.
+**No client-facing sales pitch yet for this vertical overall:** Sample Aerospace Co. currently has five documented scenario entry points with shared Strategist/Executive convergence — off every client-facing pitch entirely, tracked as internal build backlog until it reaches Tier 2. Don't represent it as pilot-ready if a support/sales question comes in about it.
 
 ---
 

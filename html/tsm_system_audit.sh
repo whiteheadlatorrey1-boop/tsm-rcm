@@ -28,7 +28,7 @@ check_file () {
 echo "== 1. CORE PORTAL FILES =="
 check_file "Sample GC Portal" "$PORTALS/tsm-samplegc-portal.html"
 check_file "Honor Portal" "$PORTALS/tsm-honor-portal.html"
-check_file "Case Tech Portal" "$PORTALS/case-tech-portal.html"
+check_file "Sample Fulfillment Portal" "$PORTALS/sample-fulfillment-portal.html"
 
 echo
 echo "== 2. SHELL HTML FILES (DEPLOY SOURCES) =="
@@ -57,11 +57,11 @@ echo "== 5. CROSS-PORTAL CONTAMINATION CHECK =="
 for f in "$SHELL"/*.html "$SHELL"/*.tsmatter.html; do
   [ -f "$f" ] || continue
 
-  if grep -q "CASE-TECH" "$f" && [[ "$f" != *case-tech* ]]; then
-    echo "❌ CONTAMINATION: $(basename "$f") contains CASE-TECH"
+  if grep -q "Sample Fulfillment Co." "$f" && [[ "$f" != *sample-fulfillment* ]]; then
+    echo "❌ CONTAMINATION: $(basename "$f") contains Sample Fulfillment Co."
   fi
 
-  if grep -q "HONORHEALTH" "$f" && [[ "$f" != *honor* ]]; then
+  if grep -q "SAMPLE HEALTH SYSTEM" "$f" && [[ "$f" != *honor* ]]; then
     echo "❌ CONTAMINATION: $(basename "$f") contains HONOR"
   fi
 

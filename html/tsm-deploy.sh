@@ -47,18 +47,18 @@ declare -A APPS=(
   ["bpo-legal"]="tsm-bpo-legal"
   ["bpo-realty"]="tsm-bpo-realty"
   ["bpo-tax"]="tsm-bpo-tax"
-  ["desert-financial"]="tsm-desert-financial"
+  ["sample-credit-union"]="tsm-sample-credit-union"
   ["reo-pro"]="tsm-reo-pro"
   ["pc-command"]="tsm-pc-command"
   ["rrd-command"]="tsm-rrd-command"
   ["strategist"]="tsm-strategist"
-  ["honorhealth"]="tsm-honorhealth"
+  ["samplehealthsystem"]="tsm-samplehealthsystem"
 )
 
 # ── HTML FILES TO DEPLOY ─────────────────────────────────────────
 # Maps fly-app-name → local html file
 declare -A HTML_FILES=(
-  ["tsm-honorhealth"]="${OUTPUT_DIR}/tsm-honorhealth-dee.html"
+  ["tsm-samplehealthsystem"]="${OUTPUT_DIR}/tsm-samplehealthsystem-dee.html"
   # Add more as they're created:
   # ["tsm-hc-strategist"]="${OUTPUT_DIR}/tsm-hc-strategist.html"
   # ["tsm-construction-command"]="${OUTPUT_DIR}/tsm-samplegc-construction.html"
@@ -243,7 +243,7 @@ https://construction-command.tsmatter.com
 https://bpo-legal.tsmatter.com
 https://bpo-realty.tsmatter.com
 https://bpo-tax.tsmatter.com
-https://desert-financial.tsmatter.com
+https://sample-credit-union.tsmatter.com
 https://reo-pro.tsmatter.com
 https://pc-command.tsmatter.com
 https://rrd-command.tsmatter.com

@@ -36,7 +36,7 @@
  * RCM OS interop (added): add()/resolve() also mirror into TSMMemory
  * (html/shared/tsm-memory-engine.js) via registerAnomaly()/resolveAnomaly()
  * when that engine is loaded on the page — same principle as the
- * healthcare/REO/mortgage/schools/honeywell reconciliations documented in
+ * healthcare/REO/mortgage/schools/sampleaerospace reconciliations documented in
  * config/rcm/cross-module-adoption.json: one shared TSM_OPERATIONAL_MEMORY_V3
  * store instead of a second, page-local exception list. This is additive
  * and best-effort — if TSMMemory isn't loaded (most pages that already use

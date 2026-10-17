@@ -17,7 +17,7 @@
   // matching if absent or not a recognized sector key.
   function detectSector(){
     const qp = new URLSearchParams(location.search).get("vertical");
-    const KNOWN_SECTORS = ["construction","healthcare","insurance","finops","legal","tax","bpo","reo","rrd","music","mortgage","schools","honeywell","executive"];
+    const KNOWN_SECTORS = ["construction","healthcare","insurance","finops","legal","tax","bpo","reo","rrd","music","mortgage","schools","sampleaerospace","executive"];
     if(qp && KNOWN_SECTORS.includes(qp)) return qp;
     if(path.includes("construction")) return "construction";
     if(path.includes("healthcare") || path.includes("hc-")) return "healthcare";
@@ -31,7 +31,7 @@
     if(path.includes("music")) return "music";
     if(path.includes("mortgage")) return "mortgage";
     if(path.includes("schools")) return "schools";
-    if(path.includes("honeywell") || path.includes("plant-incident") || path.includes("supplier-shutdown") || path.includes("cyber-incident")) return "honeywell";
+    if(path.includes("sampleaerospace") || path.includes("plant-incident") || path.includes("supplier-shutdown") || path.includes("cyber-incident")) return "sampleaerospace";
     return "executive";
   }
 
@@ -107,7 +107,7 @@
       strategist:"MEDIUM",
       narrative:"Grant funding-delay and compliance exception exposure across the award portfolio are being monitored for deobligation risk."
     },
-    honeywell:{
+    sampleaerospace:{
       exposure:"$260K",
       strategist:"HIGH",
       narrative:"Plant incident, supplier shutdown, and cyber containment exposure across the operations mesh are driving escalation risk."

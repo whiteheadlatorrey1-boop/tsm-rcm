@@ -21,13 +21,13 @@ clones = [
 ]
 
 replacements = [
-    ('HonorHealth Scottsdale-Shea', FACILITY),
+    ('Sample Health System Scottsdale-Shea', FACILITY),
     ('Scottsdale-Shea',             FACILITY),
     ('Scottsdale - Shea',           FACILITY),
     ('Scottsdale\u2013Shea',        FACILITY),
-    ('HonorHealth',                 FACILITY),
+    ('Sample Health System',                 FACILITY),
     ('General Health System',       FACILITY),
-    ('honorhealth-dee',             SLUG),
+    ('samplehealthsystem-dee',             SLUG),
     ('hc-presentation',             f'{SLUG}-presentation'),
     ('hc-strategist',               f'{SLUG}-strategist'),
     ('ghs-presentation',            f'{SLUG}-presentation'),

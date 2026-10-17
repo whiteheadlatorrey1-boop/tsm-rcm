@@ -33,7 +33,7 @@ async function run(mode){
     const res = await fetch('/api/strategist/hc/dee-action',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({system:'HonorHealth',prompt})
+      body: JSON.stringify({system:'Sample Health System',prompt})
     });
 
     const data = await res.json();

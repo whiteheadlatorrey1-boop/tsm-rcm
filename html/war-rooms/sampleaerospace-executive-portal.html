@@ -73,7 +73,7 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 </style>
   <link rel="stylesheet" href="/shared/tsm-guided-how-to.css">
 </head>
-<body data-vertical="honeywell" data-page-role="exec">
+<body data-vertical="sampleaerospace" data-page-role="exec"><div style="position:sticky;top:0;z-index:9999;background:#ffcc00;color:#111;font-weight:700;font-family:sans-serif;font-size:13px;padding:6px 12px;text-align:center;">&#9888; Demo data &mdash; illustrative only. This is not a real client.</div>
 <section
   id="tsm-guided-how-to-root"
   data-tsm-guided-how-to="true"
@@ -97,8 +97,8 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
   <div class="nav-tab" onclick="window.location='/html/war-rooms/aerospace-maintenance-readiness.html'">✈ AEROSPACE</div>
   <div class="nav-tab" onclick="window.location='/html/war-rooms/life-sciences-production-continuity.html'">🧪 LIFE SCIENCES</div>
   <div class="nav-tab" onclick="window.location='/html/war-rooms/industrial-capital-project-recovery.html'">🏗 CAPITAL PROJECT</div>
-  <div class="nav-tab" onclick="window.location='/html/war-rooms/honeywell-cross-domain-cascade.html'">🔗 CROSS-DOMAIN</div>
-  <div class="nav-tab" onclick="window.location='/html/war-rooms/honeywell-strategist.html'">→ STRATEGIST</div>
+  <div class="nav-tab" onclick="window.location='/html/war-rooms/sampleaerospace-cross-domain-cascade.html'">🔗 CROSS-DOMAIN</div>
+  <div class="nav-tab" onclick="window.location='/html/war-rooms/sampleaerospace-strategist.html'">→ STRATEGIST</div>
   <div class="nav-tab active">↑ EXECUTIVE</div>
 </div>
 <div class="hdr">
@@ -140,17 +140,17 @@ body{background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;mi
 <script src="/html/js/tsm-bnca-exposure-engine.js"></script>
 <script>
   if (typeof TSMExceptionWidget !== 'undefined') {
-    TSMExceptionWidget.mount('tsm-exception-queue', { sector: 'honeywell' });
+    TSMExceptionWidget.mount('tsm-exception-queue', { sector: 'sampleaerospace' });
   }
   if (typeof TSMCaseWidget !== 'undefined') {
-    TSMCaseWidget.mount('tsm-case-queue', { sector: 'honeywell' });
+    TSMCaseWidget.mount('tsm-case-queue', { sector: 'sampleaerospace' });
   }
 </script>
 <script>
 function tick(){document.getElementById('clock').textContent=new Date().toLocaleTimeString();}
 setInterval(tick,1000);tick();
 
-const RELAY_KEY = 'TSM_HONEYWELL_EXEC_RELAY';
+const RELAY_KEY = 'TSM_SAMPLE_AEROSPACE_EXEC_RELAY';
 
 const SOURCE_META = {
   plant:    { label: 'PLANT — OPERATIONS INCIDENT',     icon: '⚡', color: 'var(--orange)' },
@@ -180,16 +180,16 @@ function showToast(msg, isErr){
 function recordExecutiveAction(action, note){
   if(window.TSMAuditEngine){
     TSMAuditEngine.record({
-      actor: 'honeywell-executive-portal',
+      actor: 'sampleaerospace-executive-portal',
       action: action,
-      resource: 'HONEYWELL',
-      vertical: 'honeywell'
+      resource: 'SAMPLE AEROSPACE',
+      vertical: 'sampleaerospace'
     });
   }
   showToast(note);
 
   // Also record to the real server-side HITL decision log (server.js:
-  // /api/exec-portal/honeywell/decide), same pattern as Mortgage/PM
+  // /api/exec-portal/sampleaerospace/decide), same pattern as Mortgage/PM
   // Copilot/Legal/Construction. Plant/Supplier/Cyber-OT share this one
   // portal, so the incident type (data.source, set by the war room that
   // relayed here) is folded into the decision text rather than the
@@ -201,7 +201,7 @@ function recordExecutiveAction(action, note){
   const relay = loadRelay();
   const incidentType = (relay && relay.source) ? relay.source : 'UNKNOWN';
   const verdict = action === 'AUTHORIZED' ? 'approved' : 'rejected';
-  fetch('/api/exec-portal/honeywell/decide', {
+  fetch('/api/exec-portal/sampleaerospace/decide', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ index: Date.now(), verdict, text: `[${incidentType}] ${note}`, actor: 'Executive', tenantId: (typeof TSMActiveMember !== 'undefined' && TSMActiveMember) ? TSMActiveMember.getId() : null })
@@ -321,10 +321,10 @@ function tertiaryLabel(source){
 
 // Renders the BNCA exposure projection the strategist computed and forwarded
 // via payload.bnca_exposure — this page never recomputes it, only displays
-// what was relayed. Mirrors honeywell-strategist.html's renderHoneywellBNCA().
+// what was relayed. Mirrors sampleaerospace-strategist.html's renderSampleAerospaceBNCA().
 function hwMoney(n){ return '$' + Math.round(Number(n) || 0).toLocaleString(); }
 
-// Mirrors honeywell-strategist.html's panel of the same name — the
+// Mirrors sampleaerospace-strategist.html's panel of the same name — the
 // strategist now forwards every domain that was active at escalation time
 // (data.allDomains) instead of just the one it happened to have open, so
 // this page can show the executive the same full picture rather than only
@@ -345,7 +345,7 @@ function renderActiveDomainsPanel(allEntries){
     <table class="md-table"><thead><tr><th>DOMAIN</th><th>EXPOSURE</th><th>RELAYED</th></tr></thead>
     <tbody>${rows}</tbody></table></div>`;
 }
-function renderHoneywellBNCA(bnca){
+function renderSampleAerospaceBNCA(bnca){
   if(!bnca) return '';
   if(bnca.unavailable){
     return `<div class="sec"><div class="sec-hdr">BNCA EXPOSURE PROJECTION</div><div class="no-items">${escapeHtml(bnca.reason || 'Exposure projection unavailable.')}</div></div>`;
@@ -361,7 +361,7 @@ function renderHoneywellBNCA(bnca){
 // Grounded in the actual relay payload shape (data.kpis.*, data.outputs) — this
 // payload carries no confidence/ML score field, so this cites which structured
 // field each KPI came from and which war room wrote it, rather than fabricating
-// a confidence number. Mirrors honeywell-strategist.html's version.
+// a confidence number. Mirrors sampleaerospace-strategist.html's version.
 //
 // Roadmap #9 (Delivery Package) — extended additively: each item now also
 // carries the shared {claim, severity, rationale, dataPoints, sources, id}
@@ -385,7 +385,7 @@ function getExplainItems(data){
       label: 'FINANCIAL EXPOSURE',
       value: exposureVal,
       explain: explain,
-      id: 'honeywell-' + src + '-exposure',
+      id: 'sampleaerospace-' + src + '-exposure',
       claim: 'FINANCIAL EXPOSURE: ' + exposureVal,
       severity: 'high',
       rationale: explain,
@@ -403,7 +403,7 @@ function getExplainItems(data){
       label: secondaryLabel(src),
       value: secVal,
       explain: explain,
-      id: 'honeywell-' + src + '-secondary',
+      id: 'sampleaerospace-' + src + '-secondary',
       claim: secondaryLabel(src) + ': ' + secVal,
       severity: 'high',
       rationale: explain,
@@ -421,7 +421,7 @@ function getExplainItems(data){
       label: tertiaryLabel(src),
       value: terVal,
       explain: explain,
-      id: 'honeywell-' + src + '-tertiary',
+      id: 'sampleaerospace-' + src + '-tertiary',
       claim: tertiaryLabel(src) + ': ' + terVal,
       severity: 'high',
       rationale: explain,
@@ -436,7 +436,7 @@ function getExplainItems(data){
       label: '6-ENGINE ANALYSIS',
       value: data.outputs.length + ' engine output' + (data.outputs.length === 1 ? '' : 's'),
       explain: explain,
-      id: 'honeywell-' + src + '-engine-analysis',
+      id: 'sampleaerospace-' + src + '-engine-analysis',
       claim: '6-ENGINE ANALYSIS: ' + data.outputs.length + ' engine output' + (data.outputs.length === 1 ? '' : 's'),
       severity: 'high',
       rationale: explain,
@@ -463,7 +463,7 @@ function renderExplainItems(items){
 // ===== TSM MEMORY: REGISTER CROSS-MODULE ANOMALIES =====
 // This page did NOT load tsm-memory-engine.js at all before this change (no
 // TSMMemory usage anywhere in the file) -- added the script include below,
-// plus a new 'honeywell' sector branch to tsm-memory-engine.js's
+// plus a new 'sampleaerospace' sector branch to tsm-memory-engine.js's
 // detectSector()/DEFAULTS (previously unrecognized, would have fallen
 // through to 'executive'). registerAnomaly() fires from render(), the real
 // relay-parsing function, off the same data.kpis figures the KPI row just
@@ -473,13 +473,13 @@ function renderExplainItems(items){
 // buffer/containment/risk KPI signals urgency. Self-dedupes by anomalyCode
 // (keyed to source) against the shared TSM_OPERATIONAL_MEMORY_V3 store so
 // repeat renders (storage events) don't pile up duplicates.
-function registerHoneywellAnomalies(data){
+function registerSampleAerospaceAnomalies(data){
   if(!window.TSMMemory || typeof window.TSMMemory.registerAnomaly !== 'function' || !data) return;
 
   function alreadyOpen(code){
     try{
       const all = JSON.parse(localStorage.getItem('TSM_OPERATIONAL_MEMORY_V3') || '{}');
-      const bucket = all.honeywell;
+      const bucket = all.sampleaerospace;
       return !!(bucket && Array.isArray(bucket.anomalies) &&
         bucket.anomalies.some(a => a.anomalyCode === code && a.status === 'open'));
     }catch(e){ return false; }
@@ -498,10 +498,10 @@ function registerHoneywellAnomalies(data){
   if(exposureStr !== '—'){
     const severity = (src === 'cyber' || src === 'bess' || src === 'healthcare' || src === 'lifesciences' || src === 'cascade') ? 'CRITICAL' : (src === 'plant' || src === 'aerospace' || src === 'capitalproject' ? 'HIGH' : 'MEDIUM');
     fire({
-      entityType: 'honeywell-incident', entityId: src,
+      entityType: 'sampleaerospace-incident', entityId: src,
       anomalyCode: 'HW_' + codeSrc + '_EXPOSURE', severity,
       title: `${meta.label} — ${exposureStr} exposure escalated to executive`,
-      source: 'honeywell-executive-portal',
+      source: 'sampleaerospace-executive-portal',
       meta: { exposure: k.exposure, incidentSource: src }
     });
   }
@@ -510,10 +510,10 @@ function registerHoneywellAnomalies(data){
   const secVal = kpiSecondary(secKpi);
   if(secVal !== '—'){
     fire({
-      entityType: 'honeywell-incident', entityId: src,
+      entityType: 'sampleaerospace-incident', entityId: src,
       anomalyCode: 'HW_' + codeSrc + '_' + (k.buffer ? 'BUFFER' : 'CONTAINMENT'), severity: (src === 'cyber' || src === 'bess' || src === 'healthcare' || src === 'lifesciences') ? 'HIGH' : 'MEDIUM',
       title: `${meta.label} — ${secondaryLabel(src)} at ${secVal}`,
-      source: 'honeywell-executive-portal',
+      source: 'sampleaerospace-executive-portal',
       meta: { value: secKpi, incidentSource: src }
     });
   }
@@ -522,10 +522,10 @@ function registerHoneywellAnomalies(data){
   const terVal = kpiTertiary(terKpi);
   if(terVal !== '—' && src === 'supplier'){
     fire({
-      entityType: 'honeywell-incident', entityId: src,
+      entityType: 'sampleaerospace-incident', entityId: src,
       anomalyCode: 'HW_' + codeSrc + '_ORDERS_AT_RISK', severity: 'MEDIUM',
       title: `${meta.label} — ${terVal} at risk`,
-      source: 'honeywell-executive-portal',
+      source: 'sampleaerospace-executive-portal',
       meta: { value: terKpi, incidentSource: src }
     });
   }
@@ -539,7 +539,7 @@ function renderEmpty(){
       <h2>NO ESCALATION RECEIVED</h2>
       <p>Once a strategist escalates an incident, its executive dispatch will appear here automatically.</p>
       <div class="hdr-btns" style="justify-content:center;">
-        <a class="hbtn primary" href="/html/war-rooms/honeywell-strategist.html">→ Go to Strategist</a>
+        <a class="hbtn primary" href="/html/war-rooms/sampleaerospace-strategist.html">→ Go to Strategist</a>
       </div>
     </div>`;
 }
@@ -551,7 +551,7 @@ function renderEmpty(){
 // escalation rather than looping a fin.*_exposure_items array. Dedupe
 // key is source + escalation timestamp (a re-escalation of the same
 // incident type at a new time is a genuinely new exception). Severity
-// and fields mirror registerHoneywellAnomalies() above exactly -- no
+// and fields mirror registerSampleAerospaceAnomalies() above exactly -- no
 // new data invented, same k.exposure/buffer/containment/orders/risk
 // figures already rendered in the KPI row and Explain panel.
 const _hwFedIds = {};
@@ -577,12 +577,12 @@ function hwFeedException(data){
     title: `${meta.label} \u2014 ${exposureStr} exposure escalated to executive`,
     detail: secVal !== '\u2014' ? `${secondaryLabel(src)}: ${secVal}.` : null,
     recommendedAction: 'See Meridian Industrial Executive Portal for the escalated dispatch and full 6-engine analysis.',
-    severity, confidence: null, sector: 'honeywell', agentLabel: 'Meridian Industrial Strategist'
+    severity, confidence: null, sector: 'sampleaerospace', agentLabel: 'Meridian Industrial Strategist'
   });
 
   if (typeof TSMCaseManager !== 'undefined' && exceptionRecord) {
     const newCase = TSMCaseManager.createFromException(exceptionRecord, {
-      process: 'honeywell_' + src + '_incident_resolution',
+      process: 'sampleaerospace_' + src + '_incident_resolution',
       source: 'Meridian Industrial Strategist',
       exposure: exposureNum
     });
@@ -592,10 +592,10 @@ function hwFeedException(data){
   }
 
   if (typeof TSMExceptionWidget !== 'undefined') {
-    TSMExceptionWidget.mount('tsm-exception-queue', { sector: 'honeywell' });
+    TSMExceptionWidget.mount('tsm-exception-queue', { sector: 'sampleaerospace' });
   }
   if (typeof TSMCaseWidget !== 'undefined') {
-    TSMCaseWidget.mount('tsm-case-queue', { sector: 'honeywell' });
+    TSMCaseWidget.mount('tsm-case-queue', { sector: 'sampleaerospace' });
   }
 }
 
@@ -631,7 +631,7 @@ function render(){
   if(data.allDomains && data.allDomains.length){
     html += renderActiveDomainsPanel(data.allDomains);
     html += `<div class="sec"><div class="sec-hdr">AGGREGATE BNCA — ALL ACTIVE DOMAINS</div></div>`;
-    html += renderHoneywellBNCA(data.aggregate_bnca);
+    html += renderSampleAerospaceBNCA(data.aggregate_bnca);
     html += `<div class="sec"><div class="sec-hdr">MOST RECENT DOMAIN: ${escapeHtml(meta.label)}</div></div>`;
   }
 
@@ -646,9 +646,9 @@ function render(){
   const explainItems = getExplainItems(data);
   lastExplainItems = explainItems;
   html += renderExplainItems(explainItems);
-  html += renderHoneywellBNCA(data.bnca_exposure);
+  html += renderSampleAerospaceBNCA(data.bnca_exposure);
 
-  registerHoneywellAnomalies(data);
+  registerSampleAerospaceAnomalies(data);
   hwFeedException(data);
 
   // The last of the 6 engines is always the "Executive Dispatch" summary —
@@ -677,7 +677,7 @@ function render(){
     <div class="action-bar">
       <button class="abtn approve" onclick="recordExecutiveAction('AUTHORIZED', 'Authorized \u2014 logged to audit trail.')">✓ AUTHORIZE RESPONSE</button>
       <button class="abtn escalate" onclick="recordExecutiveAction('BOARD_NOTIFIED', 'Board notification flagged \u2014 logged to audit trail.')">↑ NOTIFY BOARD</button>
-      <button class="abtn" onclick="window.location='/html/war-rooms/honeywell-strategist.html'">← BACK TO STRATEGIST</button>
+      <button class="abtn" onclick="window.location='/html/war-rooms/sampleaerospace-strategist.html'">← BACK TO STRATEGIST</button>
     </div>
   </div>`;
 

@@ -1,7 +1,7 @@
 /**
  * TSM Universal Guide Engine
  * Automatically detects Vertical (RE, Concierge, Legal, Construction, Healthcare, 
- * Mortgage, Schools, FinOps, Insurance, NOC, Honeywell, Plant Incident, Cyber Incident, 
+ * Mortgage, Schools, FinOps, Insurance, NOC, Sample Aerospace Co., Plant Incident, Cyber Incident, 
  * Supplier Shutdown) and Page Role (War Room, Strategist, Exec Portal) to render dynamic step trackers.
  */
 (function () {
@@ -33,7 +33,7 @@
       else if (path.includes("finops") || path.includes("finance")) vertical = "finops";
       else if (path.includes("insurance") || path.includes("claims")) vertical = "insurance";
       else if (path.includes("noc") || path.includes("network")) vertical = "noc";
-      else if (path.includes("honeywell") || path.includes("hw-")) vertical = "honeywell";
+      else if (path.includes("sampleaerospace") || path.includes("hw-")) vertical = "sampleaerospace";
       else if (path.includes("plant-incident")) vertical = "plant-incident";
       else if (path.includes("cyber-incident")) vertical = "cyber-incident";
       else if (path.includes("supplier-shutdown")) vertical = "supplier-shutdown";
@@ -578,18 +578,18 @@
         ]
       }
     },
-    honeywell: {
+    sampleaerospace: {
       strategist: {
-        title: "GUIDE · HONEYWELL BGS STRATEGIST WORKFLOW",
+        title: "GUIDE · SAMPLE AEROSPACE BGS STRATEGIST WORKFLOW",
         steps: [
           { id: "s1", label: "Audit BMS Telemetry & HVAC Performance", triggerText: ["BMS", "HVAC", "TELEMETRY", "AUDIT"] },
           { id: "s2", label: "Review Energy Efficiency & SLA Deltas", triggerText: ["ENERGY", "EFFICIENCY", "SLA DELTA"] },
           { id: "s3", label: "Generate Facility Automation Packets", triggerText: ["AUTOMATION", "PACKET", "GENERATE", "SAVE"] },
-          { id: "s4", label: "Escalate to Honeywell Exec Portal", triggerText: ["EXEC PORTAL", "ESCALATE"] }
+          { id: "s4", label: "Escalate to Sample Aerospace Co. Exec Portal", triggerText: ["EXEC PORTAL", "ESCALATE"] }
         ]
       },
       exec: {
-        title: "GUIDE · HONEYWELL BGS EXECUTIVE PORTAL",
+        title: "GUIDE · SAMPLE AEROSPACE BGS EXECUTIVE PORTAL",
         steps: [
           { id: "s1", label: "Review Global Facility Portfolio Performance", triggerText: ["GLOBAL PORTFOLIO", "FACILITIES"] },
           { id: "s2", label: "Audit Total Building Operational Risk", triggerText: ["BUILDING RISK", "OPERATIONAL DELTA"] },
@@ -1172,8 +1172,8 @@
     "/l1-copilot/noc/noc-strategist.html",
     "/l1-copilot/noc/noc-executive-portal.html",
 
-    "/war-rooms/honeywell-strategist.html",
-    "/war-rooms/honeywell-executive-portal.html",
+    "/war-rooms/sampleaerospace-strategist.html",
+    "/war-rooms/sampleaerospace-executive-portal.html",
     "/war-rooms/bess-gigafactory-incident.html",
 
     "/plant-incident.html",

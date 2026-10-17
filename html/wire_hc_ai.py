@@ -20,8 +20,8 @@ HC_FILES = [
     'hc-strategist.tsmatter.html',
     'hc-taxprep.tsmatter.html',
     'hc-vendors.tsmatter.html',
-    'honorhealth-dee.html',
-    'tsm-honorhealth-dee.tsmatter.html',
+    'samplehealthsystem-dee.html',
+    'tsm-samplehealthsystem-dee.tsmatter.html',
 ]
 
 # The new callAI that hits our real Groq endpoint

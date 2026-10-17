@@ -29,7 +29,7 @@
  *
  * Each caller supplies its own idempotency cache key (localStorage-backed)
  * since callers differ in what "already relayed" means for them (RCM-OS:
- * per-anomaly id; Honeywell strategist: per-domain, one active incident).
+ * per-anomaly id; Sample Aerospace Co. strategist: per-domain, one active incident).
  *
  * Exposes:
  *   TSMGovernedExceptionRelay.relayGovernedException(pkg, options) -> void

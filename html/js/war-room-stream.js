@@ -1,7 +1,7 @@
 // Shared client helper for TSM War Room engine calls.
 //
 // Fixes two bugs that were duplicated across plant-incident.html,
-// supplier-shutdown.html, cyber-incident.html, and honeywell-strategist.html:
+// supplier-shutdown.html, cyber-incident.html, and sampleaerospace-strategist.html:
 //
 // 1. SSE chunks were decoded and split on '\n' in isolation, with no buffer
 //    for a `data: ...` line that straddles two chunk boundaries. That drops
