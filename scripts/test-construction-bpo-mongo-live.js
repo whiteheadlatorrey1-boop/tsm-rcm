@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 'use strict';
 // LIVE connected acceptance test: Construction BPO weekly-report
-// drafting/publishing against a REAL MongoDB-compatible backend, plus a
-// Playwright e2e pass over the real workbench.html and client-portal.html
-// pages -- not mocks, same convention as scripts/test-bpo-mongo-live.js.
+// drafting/publishing, the per-flag review gate, engagements, pilot
+// metrics, and PDF export, against a REAL MongoDB-compatible backend,
+// plus a Playwright e2e pass over the real workbench.html and
+// client-portal.html pages -- not mocks, same convention as
+// scripts/test-bpo-mongo-live.js.
 //
 // Opt-in, not just "has credentials": requires BOTH MONGODB_URI AND
 // BPO_MONGO_LIVE=1 (the same opt-in variable test-bpo-mongo-live.js uses --
@@ -139,6 +141,8 @@ async function mongoDb() {
 
 const createdClientIds = [];
 const createdReportIds = [];
+const createdEngagementClientIds = [];
+const createdControllerTimeIds = [];
 
 async function cleanup() {
   console.log('\n=== CLEANUP ===');
@@ -152,23 +156,40 @@ async function cleanup() {
       try { await db.collection('bpo_clients').deleteMany({ id: clientId }); }
       catch (e) { console.warn('  cleanup warning (client ' + clientId + '):', e.message); }
     }
+    for (const clientId of createdEngagementClientIds) {
+      try { await db.collection('construction_bpo_engagements').deleteOne({ _id: clientId }); }
+      catch (e) { console.warn('  cleanup warning (engagement ' + clientId + '):', e.message); }
+    }
+    for (const controllerTimeId of createdControllerTimeIds) {
+      try { await db.collection('construction_bpo_controller_time').deleteOne({ _id: controllerTimeId }); }
+      catch (e) { console.warn('  cleanup warning (controller-time ' + controllerTimeId + '):', e.message); }
+    }
     try {
       const res = await db.collection('construction_bpo_audit_logs').deleteMany({ entityId: { $regex: '^' + createdReportIds.map((r) => r.split('__')[0])[0] || TAG } });
       console.log('  removed', res.deletedCount, 'construction_bpo_audit_logs entries tagged with this run');
     } catch (e) { console.warn('  cleanup warning (audit logs):', e.message); }
   }
-  if (mongoClient) await mongoClient.close().catch(() => {});
+  // Deliberately does NOT close mongoClient here -- main()'s finally block
+  // still needs it for the afterCleanup verification read. Closing it
+  // early made that read silently fail (mongoDb() happily returns a
+  // closed client's db(), so the read throws and the catch(() => null)
+  // swallowed it) and the "before -> after" confirmation line never
+  // printed, even though the actual deletions above had already
+  // succeeded -- confirmed separately against the real database. Closed
+  // once, at the very end, by main()'s finally block.
   console.log('Cleanup complete.');
 }
 
 async function countBefore() {
   const db = await mongoDb();
-  const [reports, audit, clients] = await Promise.all([
+  const [reports, audit, clients, engagements, controllerTime] = await Promise.all([
     db.collection('construction_bpo_weekly_reports').countDocuments({}),
     db.collection('construction_bpo_audit_logs').countDocuments({}),
     db.collection('bpo_clients').countDocuments({}),
+    db.collection('construction_bpo_engagements').countDocuments({}),
+    db.collection('construction_bpo_controller_time').countDocuments({}),
   ]);
-  return { reports, audit, clients };
+  return { reports, audit, clients, engagements, controllerTime };
 }
 
 async function main() {
@@ -209,11 +230,25 @@ async function main() {
   const auditAfterDraft = await db.collection('construction_bpo_audit_logs').findOne({ entityId: reportId1, eventType: 'WEEKLY_REPORT_DRAFTED' });
   ok(!!auditAfterDraft, '2.5 drafting wrote a real audit-log document in Mongo');
 
+  // Per-flag review gate (PR #256 review item 1): publish must be refused
+  // against the REAL store while any flag is still pending, same as the
+  // offline route test -- then each flag is approved for real via the
+  // PATCH route before publish is retried.
   r = await api('POST', '/api/construction-bpo/weekly-reports/' + encodeURIComponent(reportId1) + '/publish', adminCookie);
-  ok(r.status === 200 && r.data.report.status === 'published', '2.6 publish week 1');
+  ok(r.status === 409 && r.data.error === 'flags_pending', '2.6 publish is refused (409 flags_pending) against the real store while week 1\'s flags are still pending');
+
+  for (const f of storedDraft.flags) {
+    const patchRes = await api('PATCH', '/api/construction-bpo/weekly-reports/' + encodeURIComponent(reportId1) + '/flags/' + encodeURIComponent(f.flagId), adminCookie, { status: 'approved' });
+    if (patchRes.status !== 200) { ok(false, '2.7 approving flag ' + f.flagId + ' failed: ' + patchRes.status + ' ' + JSON.stringify(patchRes.data)); }
+  }
+  const afterReview = await db.collection('construction_bpo_weekly_reports').findOne({ _id: reportId1 });
+  ok(afterReview.flags.every((f) => f.status === 'approved' && f.reviewedBy === 'admin'), '2.7 every flag is approved in real Mongo, with reviewedBy recorded');
 
   r = await api('POST', '/api/construction-bpo/weekly-reports/' + encodeURIComponent(reportId1) + '/publish', adminCookie);
-  ok(r.status === 409, '2.7 republishing an already-published report is 409 against the real store, not a silent no-op');
+  ok(r.status === 200 && r.data.report.status === 'published', '2.8 publish week 1 now that every flag has been reviewed');
+
+  r = await api('POST', '/api/construction-bpo/weekly-reports/' + encodeURIComponent(reportId1) + '/publish', adminCookie);
+  ok(r.status === 409 && r.data.error === 'already_published', '2.9 republishing an already-published report is 409 against the real store, not a silent no-op');
 
   // ── 3) week 2: draft stays a draft, so client scoping can be proven below ──
   const week2 = Object.assign({}, buildWeekInput(1), { clientId });
@@ -232,6 +267,31 @@ async function main() {
 
   r = await api('GET', '/api/construction-bpo/weekly-reports/' + encodeURIComponent(reportId2), clientCookie);
   ok(r.status === 404, '4.2 client cannot see its own still-draft week 2 (404, not 403)');
+
+  // ── 4b) engagements (review item 2) + pilot metrics (review item 3), against real Mongo ──
+  r = await api('POST', '/api/construction-bpo/engagements', adminCookie, { clientId, name: TAG + '-engagement', coSlaHours: 48, thresholds: { wip: { lowMarginPct: 0.5 } } });
+  ok(r.status === 200 && r.data.ok, '4b.1 create a real engagement for this client');
+  const storedEngagement = await db.collection('construction_bpo_engagements').findOne({ _id: clientId });
+  ok(!!storedEngagement && storedEngagement.coSlaHours === 48, '4b.2 engagement actually persisted in real Mongo');
+
+  r = await api('GET', '/api/construction-bpo/engagements/' + encodeURIComponent(clientId) + '/metrics', adminCookie);
+  ok(r.status === 200 && r.data.metrics.weeksDelivered === 1, '4b.3 pilot metrics reflect the one real published week (week 2 is still a draft)');
+  ok(r.data.metrics.flags.approved >= storedDraft.flags.length, '4b.4 metrics flag counts reflect the real approved flags from week 1');
+
+  r = await api('POST', '/api/construction-bpo/engagements/' + encodeURIComponent(clientId) + '/controller-time', adminCookie, { week: week1.weekEnding, minutes: 50 });
+  ok(r.status === 200 && r.data.entry.minutes === 50, '4b.5 log real controller time against this engagement');
+  const storedControllerTime = await db.collection('construction_bpo_controller_time').findOne({ _id: clientId + '__' + week1.weekEnding });
+  ok(!!storedControllerTime, '4b.6 controller-time entry actually persisted in real Mongo');
+
+  // ── 4c) PDF export (review item 6), against real Mongo ──
+  const pdfRes = await fetch(BASE_URL + '/api/construction-bpo/weekly-reports/' + encodeURIComponent(reportId1) + '/export.pdf', { headers: { Cookie: adminCookie } });
+  ok(pdfRes.status === 200 && pdfRes.headers.get('content-type') === 'application/pdf', '4c.1 PDF export of the real published report succeeds');
+  const pdfBuf = Buffer.from(await pdfRes.arrayBuffer());
+  ok(pdfBuf.slice(0, 5).toString('latin1') === '%PDF-', '4c.2 real PDF export is a genuine PDF (magic bytes)');
+
+  // ── cleanup for the two extra collections this run touched ──
+  createdEngagementClientIds.push(clientId);
+  createdControllerTimeIds.push(clientId + '__' + week1.weekEnding);
 
   // ── 5) Playwright e2e: the real pages, against this same live server ──
   console.log('\n  Driving html/construction-bpo/workbench.html and client-portal.html with Playwright...');
