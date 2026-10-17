@@ -403,7 +403,7 @@ async function main() {
   const chainPages = fs.readFileSync(path.join(__dirname, 'demo', 'relay-verticals.conf'), 'utf8').split('\n')
     .filter(l => l && !l.startsWith('#')).flatMap(l => { const [dir, w, s, e] = l.split('|'); return [w, s, e].map(f => path.join('war-rooms', dir, f)); })
     .concat(['healthcare/hc-denial-war-room.html', 'healthcare/hc-main-strategist.html', 'healthcare/executive-portal.html', 'tsm-doc-search-multi.html', 'war-rooms/sampleaerospace-strategist.html', 'plant-incident.html']);
-  ok(chainPages.length === 39 && chainPages.every(p => fs.readFileSync(path.join(__dirname, '..', 'html', p), 'utf8').includes(tagger.TAG)), 'pages: all ' + chainPages.length + ' registered chain pages checked carry the tag');
+  ok(chainPages.length === 42 && chainPages.every(p => fs.readFileSync(path.join(__dirname, '..', 'html', p), 'utf8').includes(tagger.TAG)), 'pages: all ' + chainPages.length + ' registered chain pages checked carry the tag');
   r = await fetch(BASE + '/shared/tsm-relay-sync.js');
   ok(r.status === 200 && /TSMRelaySync/.test(await r.text()), 'pages: the server serves /shared/tsm-relay-sync.js');
   ok(tagger.usesRelay("localStorage.getItem('TSM_PM_RELAY')") && tagger.usesRelay('TSM.relay.write(DOMAIN, x)') && !tagger.usesRelay("addEventListener('TSM_RELAY_EVENT', f)") && !tagger.usesRelay('<p>hello</p>'), 'pages: the tagging rule matches relay use and ignores the relay event name');
