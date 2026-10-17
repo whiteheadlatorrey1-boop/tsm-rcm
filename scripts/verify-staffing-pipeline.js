@@ -34,13 +34,43 @@
 // Requires Node 18+ (built-in fetch). No packages to install.
 //
 // Cleanup: everything created here is deleted again at the end (see
-// the CLEANUP section), so it's safe to run against production. Pass
-// --keep on the command line if you want to leave the test records in
-// place to click through in the Staffing Admin UI yourself.
+// the CLEANUP section) -- but only on the happy path. Any check or
+// api() call throwing partway through skips cleanup entirely (see
+// main().catch()), leaving an orphaned "Verify Script Candidate (...)"
+// record behind. Because of that, this script now REFUSES to run
+// against what looks like production (BASE_URL containing
+// tsm-shell.fly.dev, or NODE_ENV=production) unless you pass
+// --allow-prod -- point BASE_URL at a non-production target instead
+// where possible.
+//
+// Pass --keep on the command line if you want to leave the test records
+// in place to click through in the Staffing Admin UI yourself.
 // =====================================================================
 
 const BASE_URL = process.env.BASE_URL || 'https://tsm-shell.fly.dev';
 const KEEP = process.argv.includes('--keep');
+const ALLOW_PROD = process.argv.includes('--allow-prod');
+
+// Refuse to run against production unless explicitly told to. This script
+// creates and deletes real records, and only cleans them up in the happy
+// path -- any check or api() call throwing partway through (step 1 through
+// 6c, any network blip) skips the CLEANUP section entirely (see
+// main().catch() at the bottom, which just logs and exits) and leaves an
+// orphaned "Verify Script Candidate (...)" record behind. That's exactly
+// how these ended up in production before this guard existed.
+const TARGETS_PRODUCTION = /tsm-shell\.fly\.dev/i.test(BASE_URL);
+const NODE_ENV_IS_PRODUCTION = process.env.NODE_ENV === 'production';
+if ((TARGETS_PRODUCTION || NODE_ENV_IS_PRODUCTION) && !ALLOW_PROD) {
+  console.error(
+    `Refusing to run: this looks like production ` +
+    `(BASE_URL=${BASE_URL}${NODE_ENV_IS_PRODUCTION ? ', NODE_ENV=production' : ''}).\n` +
+    `A crash partway through this script skips cleanup and leaves orphaned test records ` +
+    `behind -- that's how the current "Verify Script Candidate" records got there.\n` +
+    `Point BASE_URL at a non-production target, or pass --allow-prod if you really mean to ` +
+    `run this against production (you're still responsible for checking cleanup actually ran).`
+  );
+  process.exit(1);
+}
 
 const RUN_TAG = 'verify_' + Date.now();
 
