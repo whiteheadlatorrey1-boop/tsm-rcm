@@ -25,8 +25,17 @@ const started = Date.now();
 // Some suites write to tracked registry files under data/ (the SLA admin test
 // creates a client and never removes it). Snapshot them and restore afterwards
 // so running the tests never leaves a test account behind.
-const GUARDED = ['data/clients.json', 'data/staff.json'].map(f => path.join(__dirname, '..', f));
+// The L1 audit suites persist state under data/l1-copilot-*.json (audit trail, handoffs, jobs).
+// Run twice, or after an interrupted run, they see the earlier records and fail on counts.
+// Snapshot whatever is there now, restore it afterwards, and delete files a run created.
+const DATA_DIR = path.join(__dirname, '..', 'data');
+const GLOBBED = /^l1-copilot-.*\.json$/;
+const listGlobbed = () => { try { return fs.readdirSync(DATA_DIR).filter(n => GLOBBED.test(n)).map(n => path.join(DATA_DIR, n)); } catch (e) { return []; } };
+const GUARDED = ['data/clients.json', 'data/staff.json'].map(f => path.join(__dirname, '..', f)).concat(listGlobbed());
 const snapshots = new Map(GUARDED.map(f => [f, fs.existsSync(f) ? fs.readFileSync(f) : null]));
+// Keep the parent alive on Ctrl-C so the loop below can restore before exiting
+// (spawnSync blocks the event loop, so this handler never runs code itself).
+process.on('SIGINT', () => {});
 function restoreGuarded() {
   for (const [f, buf] of snapshots) {
     try {
@@ -34,10 +43,14 @@ function restoreGuarded() {
       else if (!fs.existsSync(f) || !fs.readFileSync(f).equals(buf)) fs.writeFileSync(f, buf);
     } catch (e) { console.error('could not restore ' + f + ': ' + e.message); }
   }
+  for (const f of listGlobbed()) {
+    if (!snapshots.has(f)) { try { fs.unlinkSync(f); } catch (e) { console.error('could not remove ' + f + ': ' + e.message); } }
+  }
 }
 
 for (const f of files) {
   const r = spawnSync(process.execPath, [path.join(dir, f)], { env, encoding: 'utf8', timeout: 120000 });
+  if (r.signal === 'SIGINT') { console.log('\ninterrupted -- restoring files the suites touched'); restoreGuarded(); process.exit(130); }
   const out = ((r.stdout || '') + (r.stderr || '')).trim().split('\n');
   if (r.status === 0) {
     console.log('PASS  ' + f + '  ' + (out[out.length - 1] || '').slice(0, 70));
