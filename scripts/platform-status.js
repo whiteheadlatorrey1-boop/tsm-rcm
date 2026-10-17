@@ -106,6 +106,7 @@ function runSuite(file) {
       const sum = out.match(/(\d+)\s+passed,\s+(\d+)\s+failed/i);
       let passed = 0, failed = 0;
       if (sum) { passed = +sum[1]; failed = +sum[2]; }
+      else if (/^\s*PASS:\s*\d+\s*$/im.test(out) && /^\s*FAIL:\s*\d+\s*$/im.test(out)) { passed = +out.match(/^\s*PASS:\s*(\d+)\s*$/im)[1]; failed = +out.match(/^\s*FAIL:\s*(\d+)\s*$/im)[1]; }
       else { passed = (out.match(/^\s*(PASS|ok)\b/gim) || []).length; failed = (out.match(/^\s*(FAIL|not ok)\b/gim) || []).length; }
       const timedOut = !!(err && err.killed);
       let status = 'pass';
@@ -184,7 +185,7 @@ function score(g, runs, last, att) {
   const rows = list.map((m) => {
     const g = G[m.slug];
     const runs = flag('--no-run') ? null : g.tests.map((t) => results.get(t)).filter(Boolean);
-    const last = lastCommit([`server/${m.slug}`, ...g.tests]);
+    const last = lastCommit([`server/${m.slug}`, ...g.tests, ...g.pages.slice(0, 40)]);
     const s = score(g, runs, last, attest[m.slug]);
     const blocked = runs ? runs.filter((r) => r.status.startsWith('blocked') || r.status === 'needs-runner').length : null;
     return { slug: m.slug, ...s, loc: g.loc, pages: g.pages.length, suites: g.tests.length, blocked,
