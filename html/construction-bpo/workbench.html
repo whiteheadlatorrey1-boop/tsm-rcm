@@ -37,6 +37,9 @@
   .badge { font-size:10px; padding:2px 8px; border-radius:10px; border:1px solid var(--border); color:var(--text2); white-space:nowrap; }
   .badge.draft { color:var(--amber); border-color:var(--amber); }
   .badge.published { color:var(--accent); border-color:var(--accent); }
+  .badge.pending { color:var(--amber); border-color:var(--amber); }
+  .badge.approved { color:var(--accent); border-color:var(--accent); }
+  .badge.dismissed { color:var(--text2); border-color:var(--text2); }
   .flag-row td { font-family:ui-monospace,monospace; font-size:11px; }
   .flag-type { color:var(--red); font-weight:600; }
   .tabs { display:flex; gap:6px; margin-bottom:10px; }
@@ -371,16 +374,39 @@ function flagLabel(f) {
   return parts.join(' · ');
 }
 
+function flagRowHtml(f, editable) {
+  const noteCell = editable
+    ? `<input type="text" class="flag-note-input" data-flagid="${escapeHtml(f.flagId)}" placeholder="note (optional)" value="${escapeHtml(f.note || '')}">`
+    : escapeHtml(f.note || '—');
+  const actions = editable
+    ? `<button class="btn small" data-approve="${escapeHtml(f.flagId)}">Approve</button> <button class="btn small danger" data-dismiss="${escapeHtml(f.flagId)}">Dismiss</button>`
+    : (f.reviewedBy ? 'by ' + escapeHtml(f.reviewedBy) : '');
+  return `
+    <tr class="flag-row" data-flagid="${escapeHtml(f.flagId)}">
+      <td><span class="flag-type">${escapeHtml(f.type)}</span> ${escapeHtml(flagLabel(f))}</td>
+      <td><span class="badge ${escapeHtml(f.status)}">${escapeHtml(f.status)}</span></td>
+      <td>${noteCell}</td>
+      <td>${actions}</td>
+    </tr>
+  `;
+}
+
 function renderReport(report) {
   const s = report.summary || {};
   const panel = document.getElementById('reportPanel');
+  const flags = report.flags || [];
+  const pendingCount = flags.filter((f) => f.status === 'pending').length;
+  const editable = report.status === 'draft';
+  const publishDisabled = pendingCount > 0;
   panel.innerHTML = `
     <div class="row" style="justify-content:space-between;align-items:center">
       <div><strong>${escapeHtml(report.clientId)}</strong> — week ending ${escapeHtml(report.weekEnding)}
         <span class="badge ${report.status === 'published' ? 'published' : 'draft'}">${escapeHtml(report.status)}</span>
       </div>
       <div>
-        ${report.status === 'draft' ? '<button class="btn primary" id="publishBtn">Publish report</button>' : '<span class="sub" style="margin:0">Published by ' + escapeHtml(report.publishedBy || '') + ' at ' + escapeHtml(report.publishedAt || '') + '</span>'}
+        ${report.status === 'draft'
+          ? `<button class="btn primary" id="publishBtn" ${publishDisabled ? 'disabled title="' + pendingCount + ' flag(s) still pending review"' : ''}>Publish report</button>`
+          : '<span class="sub" style="margin:0">Published by ' + escapeHtml(report.publishedBy || '') + ' at ' + escapeHtml(report.publishedAt || '') + '</span>'}
       </div>
     </div>
     <div class="cards">
@@ -391,14 +417,34 @@ function renderReport(report) {
       <div class="card"><div class="label">Stalled COs</div><div class="value">${s.stalledChangeOrders ?? '—'}</div></div>
       <div class="card"><div class="label">Retainage Variances</div><div class="value">${s.retainageVariances ?? '—'}</div></div>
       <div class="card"><div class="label">Lien Waiver Issues</div><div class="value">${s.lienWaiverIssues ?? '—'}</div></div>
+      <div class="card"><div class="label">Flags Pending Review</div><div class="value">${pendingCount}</div></div>
     </div>
     <table>
-      <thead><tr><th>Flag</th></tr></thead>
-      <tbody>${(report.flags || []).length ? report.flags.map((f) => `<tr class="flag-row"><td><span class="flag-type">${escapeHtml(f.type)}</span> ${escapeHtml(flagLabel(f))}</td></tr>`).join('') : '<tr><td>No flags — clean week.</td></tr>'}</tbody>
+      <thead><tr><th>Flag</th><th>Status</th><th>Note</th><th>${editable ? 'Review' : 'Reviewed'}</th></tr></thead>
+      <tbody>${flags.length ? flags.map((f) => flagRowHtml(f, editable)).join('') : '<tr><td colspan="4">No flags — clean week.</td></tr>'}</tbody>
     </table>
   `;
   const publishBtn = document.getElementById('publishBtn');
-  if (publishBtn) publishBtn.addEventListener('click', () => publishReport(report._id));
+  if (publishBtn && !publishDisabled) publishBtn.addEventListener('click', () => publishReport(report._id));
+  if (editable) {
+    panel.querySelectorAll('[data-approve]').forEach((btn) => btn.addEventListener('click', () => reviewFlag(report._id, btn.dataset.approve, 'approved')));
+    panel.querySelectorAll('[data-dismiss]').forEach((btn) => btn.addEventListener('click', () => reviewFlag(report._id, btn.dataset.dismiss, 'dismissed')));
+  }
+}
+
+async function reviewFlag(reportId, flagId, status) {
+  const noteInput = document.querySelector('.flag-note-input[data-flagid="' + flagId + '"]');
+  const note = noteInput ? noteInput.value : undefined;
+  setMsg('generateMsg', status === 'approved' ? 'Approving flag…' : 'Dismissing flag…', '');
+  try {
+    const res = await fetch('/api/construction-bpo/weekly-reports/' + encodeURIComponent(reportId) + '/flags/' + encodeURIComponent(flagId), {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status, note: note || undefined }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) { setMsg('generateMsg', data.error || ('HTTP ' + res.status), 'err'); return; }
+    renderReport(data.report);
+    setMsg('generateMsg', 'Flag ' + status + '.', 'ok');
+  } catch (e) { setMsg('generateMsg', e.message, 'err'); }
 }
 
 async function publishReport(id) {

@@ -84,16 +84,73 @@ async function listReports(filter = {}, opts = {}) {
 /**
  * publishWeeklyReport(id, { publishedBy }, opts?) -> the published document.
  * Throws .code = 'NOT_FOUND' if no such report, .code = 'ALREADY_PUBLISHED'
- * if it's already published (publishing is a one-way, one-time transition).
+ * if it's already published (publishing is a one-way, one-time transition),
+ * .code = 'FLAGS_PENDING' (with .pendingCount) if any flag on the report
+ * hasn't been explicitly approved or dismissed yet -- a client must never
+ * see a report an analyst hasn't finished reviewing flag-by-flag.
  */
 async function publishWeeklyReport(id, { publishedBy }, opts = {}) {
   const col = await reportsCollection(opts.getDb);
   const existing = await col.findOne({ _id: id });
   if (!existing) { const err = new Error('no report ' + id); err.code = 'NOT_FOUND'; throw err; }
   if (existing.status === 'published') { const err = new Error('report ' + id + ' is already published'); err.code = 'ALREADY_PUBLISHED'; throw err; }
+  const pendingCount = (existing.flags || []).filter((f) => f.status === 'pending').length;
+  if (pendingCount > 0) {
+    const err = new Error(pendingCount + ' flag(s) on report ' + id + ' are still pending review');
+    err.code = 'FLAGS_PENDING';
+    err.pendingCount = pendingCount;
+    throw err;
+  }
   const publishedAt = new Date().toISOString();
   await col.updateOne({ _id: id }, { $set: { status: 'published', publishedBy, publishedAt } });
   return Object.assign({}, existing, { status: 'published', publishedBy, publishedAt });
+}
+
+/**
+ * updateFlagStatus(reportId, flagId, { status, note, reviewedBy }, opts?) ->
+ * the updated report document.
+ * Throws .code = 'NOT_FOUND' (no such report), .code = 'ALREADY_PUBLISHED'
+ * (flags on a published report are frozen -- review happens before
+ * publish, which is the whole point of the gate), or .code =
+ * 'FLAG_NOT_FOUND' (no flag with that id on this report).
+ *
+ * A flag's data is duplicated across the top-level `flags` array AND the
+ * per-entity array it came from (jobs[].flags / changeOrders[].flags /
+ * retainage[].flags / lienWaivers[].flags) -- they were the SAME object
+ * references when weekly-report.js built the draft, but a Mongo
+ * read/write round-trip deep-clones everything, so both copies have to be
+ * found and updated by flagId explicitly; relying on object identity
+ * after storage would silently update only one of them.
+ */
+async function updateFlagStatus(reportId, flagId, patch, opts = {}) {
+  const col = await reportsCollection(opts.getDb);
+  const report = await col.findOne({ _id: reportId });
+  if (!report) { const err = new Error('no report ' + reportId); err.code = 'NOT_FOUND'; throw err; }
+  if (report.status === 'published') { const err = new Error('report ' + reportId + ' is already published -- flags are frozen'); err.code = 'ALREADY_PUBLISHED'; throw err; }
+
+  const reviewedAt = new Date().toISOString();
+  let found = false;
+  const applyToFlag = (flag) => {
+    if (flag && flag.flagId === flagId) {
+      found = true;
+      flag.status = patch.status;
+      flag.note = patch.note !== undefined ? patch.note : null;
+      flag.reviewedBy = patch.reviewedBy;
+      flag.reviewedAt = reviewedAt;
+    }
+  };
+  (report.flags || []).forEach(applyToFlag);
+  (report.jobs || []).forEach((j) => (j.flags || []).forEach(applyToFlag));
+  (report.changeOrders || []).forEach((c) => (c.flags || []).forEach(applyToFlag));
+  (report.retainage || []).forEach((r) => (r.flags || []).forEach(applyToFlag));
+  (report.lienWaivers || []).forEach((w) => (w.flags || []).forEach(applyToFlag));
+
+  if (!found) { const err = new Error('no flag ' + flagId + ' on report ' + reportId); err.code = 'FLAG_NOT_FOUND'; throw err; }
+
+  await col.updateOne({ _id: reportId }, { $set: {
+    flags: report.flags, jobs: report.jobs, changeOrders: report.changeOrders, retainage: report.retainage, lienWaivers: report.lienWaivers,
+  } });
+  return report;
 }
 
 async function recordAudit(entry, opts = {}) {
@@ -119,6 +176,6 @@ async function listAudit(filter = {}, opts = {}) {
 
 module.exports = {
   REPORTS_COLLECTION, AUDIT_COLLECTION, reportId,
-  upsertDraftReport, getReport, getReportById, listReports, publishWeeklyReport,
+  upsertDraftReport, getReport, getReportById, listReports, publishWeeklyReport, updateFlagStatus,
   recordAudit, listAudit,
 };

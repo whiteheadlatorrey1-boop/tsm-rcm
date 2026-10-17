@@ -11,7 +11,9 @@
  * report built here always starts life as status 'draft': the review
  * gate (an analyst/manager/admin explicitly publishing it) lives in the
  * route layer, not here, so this module can be unit-tested without any
- * session/role machinery.
+ * session/role machinery. Every flag also starts 'pending' its own
+ * per-flag review (see the flags.forEach() below) -- publishing is
+ * refused while any flag is still pending (store.js).
  */
 
 const { computeWipSchedule } = require('./wip');
@@ -56,6 +58,22 @@ function buildWeeklyReportDraft(input, thresholds = {}) {
     ...retainage.flatMap((r) => r.flags),
     ...lienWaivers.flatMap((w) => w.flags),
   ];
+  // Per-flag review gate (routes/construction-bpo.js's PATCH .../flags/:flagId):
+  // every flag starts 'pending' and must be explicitly approved or dismissed
+  // by an analyst before the report can be published. flagId is assigned
+  // here, once, as a stable per-draft index -- these flag objects are still
+  // the SAME references embedded in jobs[].flags/changeOrders[].flags/etc at
+  // this point (pre-storage), so mutating them here also stamps the nested
+  // copies; after a Mongo round-trip that shared identity is gone, which is
+  // why store.js's updateFlagStatus() has to walk all five locations by
+  // flagId rather than relying on object identity.
+  flags.forEach((f, i) => {
+    f.flagId = 'F' + (i + 1);
+    f.status = 'pending';
+    f.note = null;
+    f.reviewedBy = null;
+    f.reviewedAt = null;
+  });
   const flagCounts = {};
   for (const f of flags) flagCounts[f.type] = (flagCounts[f.type] || 0) + 1;
 

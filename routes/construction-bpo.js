@@ -16,10 +16,16 @@
  *     supplied jobs/changeOrders/retainage/lienWaivers and stores it.
  *     Refuses (409) to overwrite a report already published for that
  *     clientId+weekEnding.
+ *   PATCH /api/construction-bpo/weekly-reports/:id/flags/:flagId
+ *     Staff-only. Per-flag review gate: { status: 'approved'|'dismissed',
+ *     note? }. Refused (409) once the report is published -- flags are
+ *     frozen at that point, review happens before publish.
  *   GET  /api/construction-bpo/weekly-reports[?clientId=]
  *     Any signed-in session. Staff sees every report (optionally
  *     filtered by ?clientId); a client session is forced to its own
- *     clientId and to status=published only.
+ *     clientId and to status=published only, and every flag array in the
+ *     response is stripped to approved-only with notes removed (see
+ *     SANITIZING below).
  *   GET  /api/construction-bpo/weekly-reports/:id
  *     Any signed-in session. A client requesting another client's
  *     report, or a draft (not yet published) report, gets 404 -- never
@@ -27,9 +33,17 @@
  *     for someone else.
  *   POST /api/construction-bpo/weekly-reports/:id/publish
  *     Staff-only (analyst/manager/admin). One-way: publishing an
- *     already-published report is 409, not a silent no-op.
+ *     already-published report is 409, not a silent no-op. Refused (409
+ *     flags_pending) while any flag on the report is still 'pending'
+ *     review -- a client must never see a report an analyst hasn't
+ *     finished going through flag by flag.
  *   GET  /api/construction-bpo/audit
  *     Staff-only.
+ *
+ * SANITIZING: a client must never see a flag an analyst hasn't approved,
+ * or any analyst note (approved or not) -- sanitizeReportForClient()
+ * strips both, applied to every report a non-staff session can reach
+ * (the list and get-by-id routes above).
  *
  * Audit is written after the state change succeeds (draft stored /
  * report published) and is best-effort -- see server/construction-bpo/
@@ -58,6 +72,22 @@ const staffOnly = (req, res) => {
   res.status(403).json({ ok: false, error: 'staff_only' });
   return true;
 };
+
+function sanitizeFlagsForClient(flags) {
+  return (flags || [])
+    .filter((f) => f.status === 'approved')
+    .map((f) => { const { note, ...rest } = f; return rest; });
+}
+/** Deep-clones a report and strips every flag array to approved-only, notes removed. */
+function sanitizeReportForClient(report) {
+  const clone = JSON.parse(JSON.stringify(report));
+  clone.flags = sanitizeFlagsForClient(clone.flags);
+  for (const j of clone.jobs || []) j.flags = sanitizeFlagsForClient(j.flags);
+  for (const c of clone.changeOrders || []) c.flags = sanitizeFlagsForClient(c.flags);
+  for (const r of clone.retainage || []) r.flags = sanitizeFlagsForClient(r.flags);
+  for (const w of clone.lienWaivers || []) w.flags = sanitizeFlagsForClient(w.flags);
+  return clone;
+}
 
 router.post('/api/construction-bpo/import', requireAnyAuth, upload.single('file'), (req, res) => {
   if (staffOnly(req, res)) return;
@@ -98,6 +128,34 @@ router.post('/api/construction-bpo/weekly-reports', requireAnyAuth, async (req, 
   res.json({ ok: true, report: stored });
 });
 
+router.patch('/api/construction-bpo/weekly-reports/:id/flags/:flagId', requireAnyAuth, async (req, res) => {
+  if (staffOnly(req, res)) return;
+  const { status, note } = req.body || {};
+  if (status !== 'approved' && status !== 'dismissed') {
+    return res.status(400).json({ ok: false, error: 'status must be "approved" or "dismissed"' });
+  }
+  if (note !== undefined && note !== null && typeof note !== 'string') {
+    return res.status(400).json({ ok: false, error: 'note must be a string' });
+  }
+
+  let updated;
+  try { updated = await store.updateFlagStatus(req.params.id, req.params.flagId, { status, note: note ?? null, reviewedBy: actorOf(req) }); }
+  catch (e) {
+    if (e.code === 'NOT_FOUND') return res.status(404).json({ ok: false, error: 'not_found' });
+    if (e.code === 'FLAG_NOT_FOUND') return res.status(404).json({ ok: false, error: 'flag_not_found' });
+    if (e.code === 'ALREADY_PUBLISHED') return res.status(409).json({ ok: false, error: 'already_published' });
+    return res.status(503).json({ ok: false, error: 'store_unavailable', detail: e.message });
+  }
+  try {
+    await store.recordAudit({
+      eventType: 'FLAG_REVIEWED', actor: actorOf(req), entityId: req.params.id,
+      metadata: { flagId: req.params.flagId, status, hasNote: !!note },
+    });
+  } catch (e) { /* best-effort */ }
+
+  res.json({ ok: true, report: updated });
+});
+
 router.get('/api/construction-bpo/weekly-reports', requireAnyAuth, async (req, res) => {
   const s = sess(req);
   const isStaff = STAFF_ROLES.includes(s.role);
@@ -109,8 +167,10 @@ router.get('/api/construction-bpo/weekly-reports', requireAnyAuth, async (req, r
     filter.clientId = s.clientId;
     filter.status = 'published';
   }
-  try { res.json({ ok: true, reports: await store.listReports(filter) }); }
-  catch (e) { res.status(503).json({ ok: false, error: 'store_unavailable', detail: e.message }); }
+  try {
+    const reports = await store.listReports(filter);
+    res.json({ ok: true, reports: isStaff ? reports : reports.map(sanitizeReportForClient) });
+  } catch (e) { res.status(503).json({ ok: false, error: 'store_unavailable', detail: e.message }); }
 });
 
 router.get('/api/construction-bpo/weekly-reports/:id', requireAnyAuth, async (req, res) => {
@@ -124,7 +184,7 @@ router.get('/api/construction-bpo/weekly-reports/:id', requireAnyAuth, async (re
   if (!isStaff && (report.clientId !== s.clientId || report.status !== 'published')) {
     return res.status(404).json({ ok: false, error: 'not_found' });
   }
-  res.json({ ok: true, report });
+  res.json({ ok: true, report: isStaff ? report : sanitizeReportForClient(report) });
 });
 
 router.post('/api/construction-bpo/weekly-reports/:id/publish', requireAnyAuth, async (req, res) => {
@@ -134,6 +194,7 @@ router.post('/api/construction-bpo/weekly-reports/:id/publish', requireAnyAuth, 
   catch (e) {
     if (e.code === 'NOT_FOUND') return res.status(404).json({ ok: false, error: 'not_found' });
     if (e.code === 'ALREADY_PUBLISHED') return res.status(409).json({ ok: false, error: 'already_published' });
+    if (e.code === 'FLAGS_PENDING') return res.status(409).json({ ok: false, error: 'flags_pending', pendingCount: e.pendingCount });
     return res.status(503).json({ ok: false, error: 'store_unavailable', detail: e.message });
   }
   try { await store.recordAudit({ eventType: 'WEEKLY_REPORT_PUBLISHED', actor: actorOf(req), entityId: req.params.id, metadata: { clientId: published.clientId, weekEnding: published.weekEnding } }); }
