@@ -262,4 +262,5 @@ router.post('/api/construction/upload-doc', requireAnyAuth, upload.single('file'
   }
 });
 
+require("./construction-recovery")({ router, requireAnyAuth, groqChat });
 module.exports = router;
