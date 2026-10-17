@@ -45,7 +45,7 @@ function saveJobs(jobs) {
   fs.renameSync(tempPath, FILE_PATH);
 }
 
-function createJob({ tickets, maxTokens, options }) {
+function createJob({ tickets, maxTokens, options, createdBy }) {
   if (!Array.isArray(tickets) || tickets.length === 0) {
     throw new Error('createJob requires a non-empty tickets array');
   }
@@ -63,6 +63,13 @@ function createJob({ tickets, maxTokens, options }) {
     maxTokens: maxTokens || null,
     options: options || null,
     results: new Array(tickets.length).fill(null),
+    // The creating session's identity -- staffId when the session has one
+    // (multiple staff can share a role, so staffId is the more precise
+    // identity when available), falling back to role otherwise (e.g. an
+    // admin session, which doesn't carry a staffId). Used to scope
+    // GET/retry access to the creator (or an admin), not any staff member
+    // who happens to guess or be handed a jobId.
+    createdBy: createdBy || null,
     createdAt: now,
     updatedAt: now,
     completedAt: null,

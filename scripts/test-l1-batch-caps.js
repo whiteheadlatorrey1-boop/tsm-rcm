@@ -16,7 +16,7 @@ const { clampBatchOptions } = require('../server/l1-copilot/batch-options');
 let pass = 0, fail = 0;
 const ok = (cond, msg) => { if (cond) { pass++; console.log('PASS:', msg); } else { fail++; console.log('FAIL:', msg); } };
 
-const SN_DEFAULTS = { chunkSize: 5, delayBetweenChunksMs: 500 };
+const SN_DEFAULTS = { chunkSize: 5, delayBetweenChunksMs: 500, maxRetries: 3, initialBackoffMs: 1000 };
 const ANALYZE_DEFAULTS = { chunkSize: 3, delayBetweenChunksMs: 300 };
 
 // --- ServiceNow batch route: chunkSize capped at 5, delay floored at 250ms ---
@@ -37,6 +37,51 @@ ok(r.chunkSize === 5 && r.delayBetweenChunksMs === 500, 'ServiceNow: non-numeric
 
 r = clampBatchOptions({ chunkSize: -3 }, SN_DEFAULTS, 5, 250);
 ok(r.chunkSize === 5, 'ServiceNow: a non-positive chunkSize falls back to the default rather than clamping to a useless <=0 value (got ' + r.chunkSize + ')');
+
+// --- maxRetries: capped at 3, a caller asking for fewer is left alone ---
+
+r = clampBatchOptions({ maxRetries: 50 }, SN_DEFAULTS, 5, 250);
+ok(r.maxRetries === 3, 'maxRetries: caller value 50 is clamped down to the ceiling of 3 (got ' + r.maxRetries + ')');
+
+r = clampBatchOptions({ maxRetries: 1 }, SN_DEFAULTS, 5, 250);
+ok(r.maxRetries === 1, 'maxRetries: a caller value BELOW the ceiling is left alone (got ' + r.maxRetries + ')');
+
+r = clampBatchOptions({ maxRetries: 0 }, SN_DEFAULTS, 5, 250);
+ok(r.maxRetries === 0, 'maxRetries: 0 (no retries at all) is a valid value, left alone (got ' + r.maxRetries + ')');
+
+r = clampBatchOptions({ maxRetries: -1 }, SN_DEFAULTS, 5, 250);
+ok(r.maxRetries === 3, 'maxRetries: a negative value falls back to the default rather than a nonsensical negative retry count (got ' + r.maxRetries + ')');
+
+r = clampBatchOptions({ maxRetries: 'nope' }, SN_DEFAULTS, 5, 250);
+ok(r.maxRetries === 3, 'maxRetries: a non-numeric value falls back to the default, not NaN (got ' + r.maxRetries + ')');
+
+r = clampBatchOptions(undefined, SN_DEFAULTS, 5, 250);
+ok(r.maxRetries === 3, 'maxRetries: no caller options at all falls back to the module default (got ' + r.maxRetries + ')');
+
+// --- initialBackoffMs: clamped between 250ms and 10000ms ---
+
+r = clampBatchOptions({ initialBackoffMs: 1 }, SN_DEFAULTS, 5, 250);
+ok(r.initialBackoffMs === 250, 'initialBackoffMs: caller value 1ms is floored up to 250ms (got ' + r.initialBackoffMs + ')');
+
+r = clampBatchOptions({ initialBackoffMs: 999999 }, SN_DEFAULTS, 5, 250);
+ok(r.initialBackoffMs === 10000, 'initialBackoffMs: caller value 999999ms is capped down to 10000ms (got ' + r.initialBackoffMs + ')');
+
+r = clampBatchOptions({ initialBackoffMs: 2000 }, SN_DEFAULTS, 5, 250);
+ok(r.initialBackoffMs === 2000, 'initialBackoffMs: a value within [250, 10000] is left alone (got ' + r.initialBackoffMs + ')');
+
+r = clampBatchOptions({ initialBackoffMs: 'nope' }, SN_DEFAULTS, 5, 250);
+ok(r.initialBackoffMs === 1000, 'initialBackoffMs: a non-numeric value falls back to the default, not NaN (got ' + r.initialBackoffMs + ')');
+
+// --- maxRetries/initialBackoffMs are only touched when actually present
+//     on defaults or caller options -- analyze/batch's own defaults don't
+//     define either (its retry behavior lives in groqChat(), not here),
+//     so nothing gets invented on its merged result ---
+
+r = clampBatchOptions(undefined, ANALYZE_DEFAULTS, 3, 250);
+ok(r.maxRetries === undefined && r.initialBackoffMs === undefined, 'analyze/batch: maxRetries/initialBackoffMs are not invented when absent from both defaults and caller options (got ' + JSON.stringify(r) + ')');
+
+r = clampBatchOptions({ maxRetries: 99 }, ANALYZE_DEFAULTS, 3, 250);
+ok(r.maxRetries === 3, 'analyze/batch: a caller-supplied maxRetries is still clamped even though the route\'s own defaults don\'t define one (got ' + r.maxRetries + ')');
 
 // --- analyze/batch route: chunkSize capped at 3 (lower -- each item is an LLM call), delay floored at 250ms ---
 
