@@ -76,7 +76,11 @@ shows `data/` completely clean both before and after.
 ## What was proven live
 
 All of the below ran against the real database via `scripts/test-bpo-mongo-live.js`
-(skips cleanly when `MONGODB_URI` is unset). Every record created was
+(skips cleanly unless BOTH `MONGODB_URI` and `BPO_MONGO_LIVE=1` are set --
+a `MONGODB_URI` merely present in the environment is never enough on its
+own to make `npm test` go live; it also refuses outright, exit 1, if
+`NODE_ENV=production` or `FLY_APP_NAME` is set, overriding even an
+explicit opt-in -- see "Test coverage" below). Every record created was
 tagged `tsm-acceptance-<timestamp>-...`; nothing pre-existing was read,
 modified, or deleted. Full run: **50/50 assertions passed** after the fix
 below.
@@ -209,9 +213,22 @@ driver rather than exercising the real wrapped/unwrapped return shape.
 
 ## Test coverage
 
-`scripts/test-bpo-mongo-live.js` — skips cleanly (exit 0) when
-`MONGODB_URI` is unset, so `npm test` stays green everywhere. Picked up
-automatically by `scripts/run-tests.js` (matches the existing `test-bpo-*`
-discovery pattern) — when `MONGODB_URI` *is* set (as it was for this
-acceptance pass), it runs for real as part of `npm test` too, and cleans
-up after itself the same way a standalone run does.
+`scripts/test-bpo-mongo-live.js` — skips cleanly (exit 0) unless BOTH
+`MONGODB_URI` and `BPO_MONGO_LIVE=1` are set, so `npm test` stays green
+everywhere by default, including anywhere `MONGODB_URI` happens to be
+present in the environment for an unrelated reason -- going live has to
+be asked for explicitly. It also refuses outright (exit 1, not a quiet
+skip) if `NODE_ENV=production` or `FLY_APP_NAME` is set -- Fly sets
+`FLY_APP_NAME` automatically inside any running Fly machine, including
+the real `tsm-shell` deployment -- and that refusal overrides even an
+explicit opt-in, since this script creates and deletes real records and
+must never run anywhere near production regardless of what else is set.
+See `scripts/test-bpo-mongo-live-guard.js` for the guard's own test
+coverage.
+
+Picked up automatically by `scripts/run-tests.js` (matches the existing
+`test-bpo-*` discovery pattern) — when both opt-in variables are set (as
+they were for this acceptance pass, run with
+`MONGODB_URI=... BPO_MONGO_LIVE=1`), it runs for real as part of
+`npm test` too, and cleans up after itself the same way a standalone run
+does.

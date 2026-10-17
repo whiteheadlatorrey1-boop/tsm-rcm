@@ -5,8 +5,23 @@
 // against a REAL MongoDB-compatible backend (Firestore's Mongo-compat
 // layer in this project's case), not a mock.
 //
-// Skips cleanly (exit 0) when MONGODB_URI is unset, so `npm test` stays
-// green in every environment that doesn't have a real database wired up.
+// Opt-in, not just "has credentials": requires BOTH MONGODB_URI AND
+// BPO_MONGO_LIVE=1. Skips cleanly (exit 0) unless both are set, so a
+// MONGODB_URI merely present in the environment (e.g. inherited by a
+// shell that also runs other things) is never enough on its own to make
+// `npm test` go live against a real database -- that has to be asked for
+// explicitly, every time.
+//
+// Refuses outright (exit 1, not a quiet skip) if this looks like it's
+// running on a real deployment: NODE_ENV=production, or FLY_APP_NAME set
+// (Fly sets this automatically inside any running Fly machine -- the
+// production tsm-shell app included). This check runs BEFORE the
+// MONGODB_URI/BPO_MONGO_LIVE check and overrides it: even if both opt-in
+// variables happen to be set, a production-looking environment is a
+// harder stop, not a reason to proceed. This script creates and deletes
+// real records; it must never run anywhere near the actual production
+// deployment, whose MONGODB_URI points at the real database, not a test
+// one.
 //
 // SECURITY: never prints, logs, or writes MONGODB_URI or any substring of
 // it. Boots the real server in-process, inheriting whatever MONGODB_URI
@@ -21,10 +36,22 @@
 // happened rather than just being attempted.
 //
 // USAGE:
-//   MONGODB_URI=... node scripts/test-bpo-mongo-live.js
+//   MONGODB_URI=... BPO_MONGO_LIVE=1 node scripts/test-bpo-mongo-live.js
 
-if (!process.env.MONGODB_URI) {
-  console.log('MONGODB_URI not set -- skipping BPO/Workforce Mongo live acceptance test.');
+if (process.env.NODE_ENV === 'production' || process.env.FLY_APP_NAME) {
+  const reasons = [];
+  if (process.env.NODE_ENV === 'production') reasons.push('NODE_ENV=production');
+  if (process.env.FLY_APP_NAME) reasons.push('FLY_APP_NAME=' + process.env.FLY_APP_NAME);
+  console.error(
+    'Refusing to run: this looks like a real deployment (' + reasons.join(', ') + ').\n' +
+    'This script creates and deletes real records against whatever MONGODB_URI points at -- ' +
+    'it must never run against production.'
+  );
+  process.exit(1);
+}
+
+if (!process.env.MONGODB_URI || process.env.BPO_MONGO_LIVE !== '1') {
+  console.log('MONGODB_URI and BPO_MONGO_LIVE=1 must both be set -- skipping BPO/Workforce Mongo live acceptance test.');
   process.exit(0);
 }
 
