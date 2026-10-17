@@ -7,7 +7,7 @@
   // financial.html and compliance.html are likewise generic, not construction-specific).
   var TABS = [
     { slug: 'pipeline', label: 'ENGINE PIPELINE',    kind: 'native' },
-    { slug: 'recovery', label: 'RECOVERY (AMERIS)', kind: 'iframe', src: '../../construction-suite/construction-recovery.html' },
+    { slug: 'recovery', label: 'RECOVERY (DEMO)', kind: 'iframe', src: '../../construction-suite/construction-recovery.html' },
     { slug: 'command',  label: 'COMMAND HUB',        kind: 'iframe', src: '../../construction-suite/index.html' },
     { slug: 'fieldops', label: 'FIELD & DOC OPS',    kind: 'iframe', src: '../../construction-suite/construction-suite-expansion.html' },
     { slug: 'permits',  label: 'PERMITS & PROPOSALS', kind: 'iframe', src: '../../construction-suite/permits-proposals.html' },

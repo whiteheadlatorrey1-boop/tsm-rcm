@@ -2,13 +2,13 @@
 const eng = require('../lib/construction-recovery.js');
 const defaultAuditStore = require('../server/construction-recovery/audit-store.js');
 
-// Mounts the Ameris recovery routes onto the existing construction router.
+// Mounts the Sample GC demo recovery routes onto the existing construction router.
 // Audit is durable and fail-closed: a change-order decision is only recorded
 // after its audit entry has been written. Decision state itself is still
 // in memory (resets on restart); the audit trail is what persists.
 module.exports = function mountConstructionRecovery({ router, requireAnyAuth, groqChat, getActor, auditStore }) {
   const audit = auditStore || defaultAuditStore;
-  const data = eng.buildAmerisSeed();
+  const data = eng.buildSampleGCSeed();
   const recommended = new Map(eng.decideChangeOrders(data.changeOrders).map(d => [d.id, d]));
   const decisions = new Map();
   const VALID = ['approve', 'reject', 'escalate', 'defer'];
