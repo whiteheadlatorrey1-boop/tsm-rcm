@@ -250,32 +250,61 @@ async function gateSection() {
         ok(false, 'GATE: cleanup deleteTicket(' + number + ') failed: ' + e.message + ' -- MANUAL CLEANUP NEEDED ON THE PDI');
       }
     }
-    process.exit(fail ? 1 : 0); // the booted server keeps the process alive otherwise
+    // No process.exit here -- the booted server keeps the event loop alive,
+    // but the caller (the standalone IIFE below, or scripts/l1-pilot-check.js
+    // when this module is required as a library) decides when to exit, so
+    // it gets a chance to do its own reporting/cleanup first.
   }
 }
 
-(async () => {
-  try {
-    await readSection();
-    await writeSection();
-    await gateSection(); // calls process.exit itself once done, since it boots a live-forever server
-  } catch (e) {
-    console.error('\nUNEXPECTED ERROR:', e.message);
-    fail++;
-    failures.push('unexpected error: ' + e.message);
-  } finally {
-    // Safety net in case gateSection threw before reaching its own exit, or
-    // was never reached -- make sure nothing created above is left behind.
+// Only auto-run the full READ+WRITE+GATE sequence (and exit the process)
+// when this file is executed directly -- `node scripts/test-l1-servicenow-live.js`,
+// which is how scripts/run-tests.js invokes it. When required as a library
+// (scripts/l1-pilot-check.js), the caller drives which section(s) to run
+// and reads results via getResults() instead.
+if (require.main === module) {
+  (async () => {
+    try {
+      await readSection();
+      await writeSection();
+      await gateSection();
+    } catch (e) {
+      console.error('\nUNEXPECTED ERROR:', e.message);
+      fail++;
+      failures.push('unexpected error: ' + e.message);
+    } finally {
+      // Safety net in case a section threw before its own cleanup ran, or
+      // was never reached -- make sure nothing created above is left behind.
+      for (const number of createdIncidents.slice()) {
+        try {
+          await adapter._pdi.deleteTicket(number, cfg);
+          console.log('(safety-net cleanup) deleted', number);
+        } catch (e) {
+          console.error('(safety-net cleanup) COULD NOT DELETE', number, '-- remove it manually from the PDI:', e.message);
+        }
+      }
+      console.log('\n' + pass + ' passed, ' + fail + ' failed');
+      if (fail) { console.log('Failures:'); failures.forEach((m) => console.log('  -', m)); }
+      process.exit(fail ? 1 : 0);
+    }
+  })();
+}
+
+module.exports = {
+  cfg,
+  readSection,
+  writeSection,
+  gateSection,
+  getResults: () => ({ pass, fail, failures: failures.slice() }),
+  cleanupCreatedIncidents: async () => {
     for (const number of createdIncidents.slice()) {
       try {
         await adapter._pdi.deleteTicket(number, cfg);
-        console.log('(safety-net cleanup) deleted', number);
+        const idx = createdIncidents.indexOf(number);
+        if (idx > -1) createdIncidents.splice(idx, 1);
       } catch (e) {
-        console.error('(safety-net cleanup) COULD NOT DELETE', number, '-- remove it manually from the PDI:', e.message);
+        console.error('COULD NOT DELETE', number, '-- remove it manually from the PDI:', e.message);
       }
     }
-    console.log('\n' + pass + ' passed, ' + fail + ' failed');
-    if (fail) { console.log('Failures:'); failures.forEach((m) => console.log('  -', m)); }
-    process.exit(fail ? 1 : 0);
-  }
-})();
+  },
+};
