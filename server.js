@@ -4006,6 +4006,7 @@ app.use((req, res, next) => {
 }, require('./routes/hc'));
 app.use(require('./routes/strategist'));
 app.use(require('./routes/construction'));
+app.use(require('./routes/construction-bpo'));
 app.use(require('./routes/property-accounting'));
 app.use(require('./routes/finops'));
 app.use(require('./routes/live-data'));
