@@ -1,18 +1,19 @@
 'use strict';
 const eng = require('../lib/construction-recovery.js');
+const defaultAuditStore = require('../server/construction-recovery/audit-store.js');
 
 // Mounts the Ameris recovery routes onto the existing construction router.
-// Decisions and audit entries are in memory for now; swap the two stores
-// below for your real DB / audit module when ready.
-module.exports = function mountConstructionRecovery({ router, requireAnyAuth, groqChat, getActor }) {
+// Audit is durable and fail-closed: a change-order decision is only recorded
+// after its audit entry has been written. Decision state itself is still
+// in memory (resets on restart); the audit trail is what persists.
+module.exports = function mountConstructionRecovery({ router, requireAnyAuth, groqChat, getActor, auditStore }) {
+  const audit = auditStore || defaultAuditStore;
   const data = eng.buildAmerisSeed();
   const recommended = new Map(eng.decideChangeOrders(data.changeOrders).map(d => [d.id, d]));
   const decisions = new Map();
-  const audit = [];
   const VALID = ['approve', 'reject', 'escalate', 'defer'];
   const actorOf = req => (getActor && getActor(req)) || (req.session && req.session.role) || 'session';
   const money = n => '$' + Number(n).toLocaleString('en-US');
-  const log = entry => audit.push(Object.assign({ ts: new Date().toISOString() }, entry));
 
   router.get('/api/construction/recovery', requireAnyAuth, (req, res) => {
     const ranked = eng.rankExposures(data);
@@ -34,8 +35,8 @@ module.exports = function mountConstructionRecovery({ router, requireAnyAuth, gr
     });
   });
 
-  // Gated write-back: nothing is recorded without confirm:true, and
-  // overriding the engine's recommendation also needs a written reason.
+  // Gated write-back: needs confirm:true, an override needs a written reason,
+  // and the audit entry must be written before the decision is recorded.
   router.post('/api/construction/decisions', requireAnyAuth, (req, res) => {
     const { coId, decision, confirm, note } = req.body || {};
     const rec = recommended.get(coId);
@@ -53,14 +54,31 @@ module.exports = function mountConstructionRecovery({ router, requireAnyAuth, gr
         needs: override ? 'confirm:true and a note of 10+ characters explaining the override' : 'confirm:true'
       });
     }
-    const record = { coId, decision, recommended: rec.decision, override, note: hasNote ? note.trim() : null, actor: actorOf(req), ts: new Date().toISOString() };
+    const actor = actorOf(req);
+    try {
+      audit.recordAudit({
+        eventType: 'CHANGE_ORDER_DECISION',
+        actor,
+        entityId: coId,
+        decisionId: coId + ':' + decision,
+        before: { status: 'pending', recommended: rec.decision },
+        after: { status: decision, override },
+        metadata: { project: data.project.id, note: hasNote ? note.trim() : null, reason: rec.reason }
+      });
+    } catch (e) {
+      return res.status(503).json({ ok: false, error: 'audit_unavailable', detail: e.code || 'AUDIT_WRITE_FAILED' });
+    }
+    const record = { coId, decision, recommended: rec.decision, override, note: hasNote ? note.trim() : null, actor, ts: new Date().toISOString() };
     decisions.set(coId, record);
-    log({ action: 'change_order_decision', coId, decision, recommended: rec.decision, override, actor: record.actor, note: record.note });
     res.json({ ok: true, decision: record });
   });
 
   router.get('/api/construction/audit', requireAnyAuth, (req, res) => {
-    res.json({ ok: true, count: audit.length, entries: audit });
+    try {
+      res.json({ ok: true, count: audit.countAudit(), entries: audit.listAudit({ limit: 200 }) });
+    } catch (e) {
+      res.status(503).json({ ok: false, error: 'audit_unavailable', detail: e.code || 'AUDIT_READ_FAILED' });
+    }
   });
 
   function fallbackDraft(type, item) {
@@ -76,8 +94,8 @@ module.exports = function mountConstructionRecovery({ router, requireAnyAuth, gr
       'Estimated cost impact ' + money(item.costImpact) + '. Design team to confirm and respond.';
   }
 
-  // Draft only: never sends or approves anything. Without a Groq key, or if
-  // Groq fails, returns a template built from the seed data (grounded:false).
+  // Draft only: never sends or approves anything. Logging is best-effort here
+  // because a draft changes no state; decisions above are the gated action.
   router.post('/api/construction/draft', requireAnyAuth, async (req, res) => {
     const { type, id } = req.body || {};
     const item = type === 'change_order' ? data.changeOrders.find(c => c.id === id)
@@ -95,7 +113,9 @@ module.exports = function mountConstructionRecovery({ router, requireAnyAuth, gr
       } catch (e) { /* fall through to template */ }
     }
     const grounded = text !== null;
-    log({ action: 'draft_generated', type, id, grounded, actor: actorOf(req) });
+    try {
+      audit.recordAudit({ eventType: 'DRAFT_GENERATED', actor: actorOf(req), entityId: id, metadata: { type, grounded } });
+    } catch (e) { /* best-effort */ }
     res.json({ ok: true, draft: { type, id, text: grounded ? text : fallbackDraft(type, item), grounded } });
   });
 };

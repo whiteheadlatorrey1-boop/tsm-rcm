@@ -7,6 +7,12 @@ let failed = 0;
 function check(name, ok) { console.log((ok ? 'PASS ' : 'FAIL ') + name); if (!ok) failed++; }
 
 let groqImpl = async () => 'unused';
+const memRecords = [];
+const memStore = {
+  recordAudit: i => { const r = Object.assign({ id: 'M' + memRecords.length, timestamp: new Date().toISOString() }, i); memRecords.push(r); return r; },
+  listAudit: () => memRecords.slice().reverse(),
+  countAudit: () => memRecords.length
+};
 const requireAnyAuth = (req, res, next) =>
   req.headers['x-test-auth'] === '1' ? next() : res.status(401).json({ ok: false, error: 'unauthorized' });
 
@@ -32,7 +38,7 @@ function call(port, method, path, body, authed = true) {
   const app = express();
   app.use(express.json());
   const router = express.Router();
-  mount({ router, requireAnyAuth, groqChat: (...a) => groqImpl(...a), getActor: () => 'test-admin' });
+  mount({ router, requireAnyAuth, groqChat: (...a) => groqImpl(...a), getActor: () => 'test-admin', auditStore: memStore });
   app.use(router);
   const server = await new Promise(r => { const s = app.listen(0, () => r(s)); });
   const port = server.address().port;
@@ -68,7 +74,7 @@ function call(port, method, path, body, authed = true) {
     check('override with a note is recorded and flagged', withNote.status === 200 && withNote.json.decision.override === true);
 
     const audit = await call(port, 'GET', '/api/construction/audit');
-    check('audit holds exactly the 2 recorded decisions', audit.json.count === 2 && audit.json.entries.every(e => e.action === 'change_order_decision'));
+    check('audit holds exactly the 2 recorded decisions', audit.json.count === 2 && audit.json.entries.every(e => e.eventType === 'CHANGE_ORDER_DECISION'));
 
     // drafts
     delete process.env.GROQ_API_KEY;
