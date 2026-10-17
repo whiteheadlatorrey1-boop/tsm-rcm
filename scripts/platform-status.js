@@ -67,7 +67,18 @@ const owner = (f) => { const n = norm(f); const h = toks.find((x) => n.includes(
 
 const JS = /\.(js|mjs|cjs|ts)$/;
 const isTest = (f) => JS.test(f) && /(^|\/)[^/]*test[^/]*\.(js|mjs|cjs|ts)$/i.test(f) && !f.startsWith('server/') && !/\.spec\./.test(f) && !f.startsWith('tests/e2e/');
-const OFFICIAL = (f) => /^scripts\/test-(bpo|auth|l1|enterprise|production)-.*\.js$/.test(f) && f !== 'scripts/test-bpo-client-wiring-smoke.js';
+const OFFICIAL = (() => {
+  // read the live pattern from scripts/run-tests.js so this can never drift from npm test
+  let re = /^test-(bpo|auth|l1|enterprise|production)-.*\.js$/, skip = new Set(['test-bpo-client-wiring-smoke.js']);
+  try {
+    const rt = fs.readFileSync(path.join(ROOT, 'scripts/run-tests.js'), 'utf8');
+    const m = rt.match(/\.filter\(f => (\/\^test-[^\n]*?\/)\.test\(f\)/);
+    if (m) re = new RegExp(m[1].slice(1, m[1].lastIndexOf('/')), m[1].slice(m[1].lastIndexOf('/') + 1));
+    const sk = rt.match(/new Set\(\[([^\]]*)\]\)/);
+    if (sk) skip = new Set((sk[1].match(/'([^']+)'/g) || []).map(x => x.slice(1, -1)));
+  } catch {}
+  return (f) => f.startsWith('scripts/') && !f.slice(8).includes('/') && re.test(f.slice(8)) && !skip.has(f.slice(8));
+})();
 
 const G = {};
 for (const m of Object.values(modules)) {
