@@ -87,7 +87,7 @@
           <div class="sub">${cfg.sector.toUpperCase()} · ${cfg.sub}</div>
         </div>
         <div class="top-actions">
-          <select><option>Ameris Construction</option><option>Desert Financial</option><option>HonorHealth</option></select>
+          <select><option>Desert Financial</option><option>HonorHealth</option></select>
           <a class="pill" href="/bpo/bpo-website.html">BPO Website</a>
           <a class="pill" href="/client-access.html">Client Access</a>
         </div>

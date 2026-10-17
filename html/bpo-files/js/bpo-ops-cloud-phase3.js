@@ -12,7 +12,7 @@
 
   function client(){
     const sel=document.getElementById("bpo-client-select");
-    return sel ? sel.options[sel.selectedIndex].text : "Ameris Construction";
+    return sel ? sel.options[sel.selectedIndex].text : "Desert Financial";
   }
 
   async function refreshPanel(){
