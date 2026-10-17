@@ -24,6 +24,15 @@
  *     Staff-only CRUD for a client's standing config: { clientId, name,
  *     thresholds, coSlaHours, columnMap, source }. One engagement per
  *     clientId.
+ *   GET  /api/construction-bpo/engagements/:clientId/metrics
+ *     Staff-only. Weeks delivered/on-time/late (on time = published by
+ *     Wed 23:59 America/Phoenix of the week after weekEnding -- see
+ *     server/construction-bpo/metrics.js), flag approve/dismiss/pending
+ *     counts across every report on file for the client, and
+ *     controller-time totals.
+ *   POST /api/construction-bpo/engagements/:clientId/controller-time
+ *     Staff-only, audited. { week, minutes } -- upserted per
+ *     clientId+week (re-logging the same week corrects it).
  *   PATCH /api/construction-bpo/weekly-reports/:id/flags/:flagId
  *     Staff-only. Per-flag review gate: { status: 'approved'|'dismissed',
  *     note? }. Refused (409) once the report is published -- flags are
@@ -65,6 +74,7 @@ const multer = require('multer');
 const { requireAnyAuth } = require('../middleware/require-auth');
 const importer = require('../server/construction-bpo/import');
 const { buildWeeklyReportDraft } = require('../server/construction-bpo/weekly-report');
+const { buildPilotMetrics } = require('../server/construction-bpo/metrics');
 const store = require('../server/construction-bpo/store');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 8 * 1024 * 1024 } });
@@ -313,6 +323,35 @@ router.delete('/api/construction-bpo/engagements/:clientId', requireAnyAuth, asy
   }
   try { await store.recordAudit({ eventType: 'ENGAGEMENT_DELETED', actor: actorOf(req), entityId: req.params.clientId, metadata: {} }); } catch (e) { /* best-effort */ }
   res.json({ ok: true });
+});
+
+// ──────────────────────── pilot metrics / controller time ─────────────────
+
+router.get('/api/construction-bpo/engagements/:clientId/metrics', requireAnyAuth, async (req, res) => {
+  if (staffOnly(req, res)) return;
+  try {
+    const clientId = req.params.clientId;
+    const [reports, controllerTimeEntries] = await Promise.all([
+      store.listReports({ clientId }),
+      store.listControllerTime(clientId),
+    ]);
+    res.json({ ok: true, metrics: buildPilotMetrics({ clientId, reports, controllerTimeEntries }) });
+  } catch (e) { res.status(503).json({ ok: false, error: 'store_unavailable', detail: e.message }); }
+});
+
+router.post('/api/construction-bpo/engagements/:clientId/controller-time', requireAnyAuth, async (req, res) => {
+  if (staffOnly(req, res)) return;
+  const { week, minutes } = req.body || {};
+  if (typeof week !== 'string' || !week.trim()) return res.status(400).json({ ok: false, error: 'week is required' });
+  if (typeof minutes !== 'number' || !Number.isFinite(minutes) || minutes < 0) {
+    return res.status(400).json({ ok: false, error: 'minutes must be a non-negative number' });
+  }
+
+  let stored;
+  try { stored = await store.upsertControllerTime(req.params.clientId, week, minutes, actorOf(req)); }
+  catch (e) { return res.status(503).json({ ok: false, error: 'store_unavailable', detail: e.message }); }
+  try { await store.recordAudit({ eventType: 'CONTROLLER_TIME_LOGGED', actor: actorOf(req), entityId: req.params.clientId, metadata: { week, minutes } }); } catch (e) { /* best-effort */ }
+  res.json({ ok: true, entry: stored });
 });
 
 module.exports = router;

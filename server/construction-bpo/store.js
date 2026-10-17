@@ -23,9 +23,13 @@ const tsmLedger = require('../tsm-ledger-service');
 const REPORTS_COLLECTION = 'construction_bpo_weekly_reports';
 const AUDIT_COLLECTION = 'construction_bpo_audit_logs';
 const ENGAGEMENTS_COLLECTION = 'construction_bpo_engagements';
+const CONTROLLER_TIME_COLLECTION = 'construction_bpo_controller_time';
 
 function reportId(clientId, weekEnding) {
   return clientId + '__' + weekEnding;
+}
+function controllerTimeId(clientId, week) {
+  return clientId + '__' + week;
 }
 
 async function reportsCollection(getDb) {
@@ -41,6 +45,11 @@ async function auditCollection(getDb) {
 async function engagementsCollection(getDb) {
   const db = await (getDb ? getDb() : tsmLedger.getDb());
   return db.collection(ENGAGEMENTS_COLLECTION);
+}
+
+async function controllerTimeCollection(getDb) {
+  const db = await (getDb ? getDb() : tsmLedger.getDb());
+  return db.collection(CONTROLLER_TIME_COLLECTION);
 }
 
 /**
@@ -234,9 +243,29 @@ async function deleteEngagement(clientId, opts = {}) {
   return existing;
 }
 
+// ───────────────────────── controller time ────────────────────────────────
+// One entry per clientId+week, upserted (re-logging the same week corrects
+// it rather than double-counting) -- same upsert convention as a weekly
+// report draft.
+
+/** upsertControllerTime(clientId, week, minutes, recordedBy, opts?) -> the stored document. */
+async function upsertControllerTime(clientId, week, minutes, recordedBy, opts = {}) {
+  const col = await controllerTimeCollection(opts.getDb);
+  const _id = controllerTimeId(clientId, week);
+  const doc = { _id, clientId, week, minutes, recordedBy, recordedAt: new Date().toISOString() };
+  await col.updateOne({ _id }, { $set: doc }, { upsert: true });
+  return doc;
+}
+
+async function listControllerTime(clientId, opts = {}) {
+  const col = await controllerTimeCollection(opts.getDb);
+  return col.find({ clientId }).sort({ week: 1 }).toArray();
+}
+
 module.exports = {
-  REPORTS_COLLECTION, AUDIT_COLLECTION, ENGAGEMENTS_COLLECTION, reportId,
+  REPORTS_COLLECTION, AUDIT_COLLECTION, ENGAGEMENTS_COLLECTION, CONTROLLER_TIME_COLLECTION, reportId,
   upsertDraftReport, getReport, getReportById, listReports, publishWeeklyReport, updateFlagStatus,
   recordAudit, listAudit,
   createEngagement, getEngagement, listEngagements, updateEngagement, deleteEngagement,
+  upsertControllerTime, listControllerTime,
 };
