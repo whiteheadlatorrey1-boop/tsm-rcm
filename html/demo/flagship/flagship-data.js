@@ -624,5 +624,49 @@ window.TSM_FLAGSHIP_DATA = [
         "text": "Everything downstream — the resume package, the interview package, the staffing submission — is assembled from the same approved record. One governance decision feeds every package a staffing firm hands to its client."
       }
     ]
+  },
+  {
+    "id": "flagship-bpo",
+    "name": "BPO Client Onboarding",
+    "tag": "FLAGSHIP · NARRATED",
+    "title": "From Access Code to Visible Case",
+    "desc": "ADMIN CONSOLE → CLIENT PORTAL → CASE VISIBLE. A scripted scenario: the incident and the engine outputs are simulated.",
+    "video": "/demo/flagship/bpo-flagship.mp4",
+    "poster": "/demo/flagship/bpo-flagship.png",
+    "captions": "/demo/flagship/bpo-flagship.vtt",
+    "narrated": true,
+    "reviewed": false,
+    "chain": [
+      "Admin Console",
+      "Client Portal",
+      "Case Visible"
+    ],
+    "steps": [
+      {
+        "t": 0,
+        "chain": 0,
+        "text": "This is the BPO client console. It is where a new client engagement begins."
+      },
+      {
+        "t": 10,
+        "chain": 0,
+        "text": "The admin opens the new client form. No separate system, no spreadsheet."
+      },
+      {
+        "t": 19,
+        "chain": 0,
+        "text": "One click creates the client and generates a secure access code, ready to hand to them."
+      },
+      {
+        "t": 33,
+        "chain": 1,
+        "text": "The client signs in with the access code they were given. No separate onboarding call, no shared login."
+      },
+      {
+        "t": 45,
+        "chain": 2,
+        "text": "Their case is already there, with its document attached, created and recorded before they ever logged in."
+      }
+    ]
   }
 ];
