@@ -98,10 +98,10 @@ function suiteEnv() {
 }
 const ENVV = suiteEnv();
 
-function runSuite(file) {
+function runSuiteOnce(file, pre) {
   return new Promise((resolve) => {
     const t0 = Date.now();
-    cp.execFile('node', [file], { cwd: ROOT, timeout: TIMEOUT_MS, maxBuffer: 20 * 1024 * 1024, env: ENVV }, (err, stdout, stderr) => {
+    cp.execFile('node', pre ? ['-r', pre, file] : [file], { cwd: ROOT, timeout: TIMEOUT_MS, maxBuffer: 20 * 1024 * 1024, env: ENVV }, (err, stdout, stderr) => {
       const out = `${stdout}\n${stderr}`;
       const sum = out.match(/(\d+)\s+passed,\s+(\d+)\s+failed/i);
       let passed = 0, failed = 0;
@@ -124,6 +124,17 @@ function runSuite(file) {
     });
   });
 }
+async function runSuite(file) {
+  const first = await runSuiteOnce(file);
+  const shim = path.join(path.dirname(self), 'mini-describe.js');
+  if (first.status === 'needs-runner' && /(describe|\bit|test) is not defined/.test(first.reason) && fs.existsSync(shim)) {
+    const second = await runSuiteOnce(file, shim);
+    second.shim = true;
+    return second;
+  }
+  return first;
+}
+
 async function runAll(list) {
   const results = new Map();
   const queue = [...list];
