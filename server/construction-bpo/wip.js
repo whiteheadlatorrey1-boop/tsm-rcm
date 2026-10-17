@@ -14,6 +14,18 @@
  *               estimated earnings in excess of billings")
  * This matches standard percentage-of-completion accounting terminology.
  *
+ * COST_OVERRUN cannot be checked against cost-to-cost % complete
+ * (costsToDate / totalEstimatedCost) -- that ratio is the SAME number the
+ * cost-overrun trigger's own "costs > 90% of estimate" side already uses,
+ * so "percentComplete < 85%" would just restate "costPct > 90%" and could
+ * never both be true (fixed after an earlier version of this file shipped
+ * with exactly that dead condition). The progress side of this flag needs
+ * an independent signal: physicalPercentComplete, a PM-reported field
+ * carried on the job input (set by the import pipeline from a dedicated
+ * column, never computed from cost). If it's missing, this trigger simply
+ * cannot fire -- physicalProgressStatus on the result says 'not_provided'
+ * rather than this module inferring a stand-in value.
+ *
  * Never guesses a missing number: a job missing costsToDate, contractValue,
  * or (critically) totalEstimatedCost gets INCOMPLETE_DATA and every derived
  * field that would depend on the missing input stays null, not a fabricated
@@ -21,11 +33,13 @@
  */
 
 const DEFAULT_THRESHOLDS = {
-  // COST_OVERRUN: costs have eaten most of the estimate while physical
-  // completion lags badly behind -- the two conditions together (not
-  // either alone) are what signal "this job is going to blow its budget",
-  // not just "this job has spent a lot" (large jobs spend a lot early on
-  // mobilization/materials without that implying trouble).
+  // COST_OVERRUN trigger A ("progress-based"): costs have eaten most of the
+  // estimate while PM-reported PHYSICAL completion lags badly behind -- the
+  // two conditions together (not either alone) are what signal "this job
+  // is going to blow its budget", not just "this job has spent a lot"
+  // (large jobs spend a lot early on mobilization/materials without that
+  // implying trouble). Requires physicalPercentComplete on the job input;
+  // never evaluated off a cost-derived percentage.
   costOverrunCostPct: 0.90,
   costOverrunCompletePct: 0.85,
   // OVERBILLED / UNDERBILLED: the billing/earned-revenue gap as a fraction
@@ -47,13 +61,22 @@ function isPositiveFiniteNumber(v) {
 /**
  * computeJobWip(job, thresholds?) -> {
  *   jobId, percentComplete, earnedRevenue, billedToDate, costToComplete,
- *   overUnderBilling, projectedProfit, projectedMarginPct, flags: [...]
+ *   overUnderBilling, projectedProfit, projectedMarginPct,
+ *   physicalPercentComplete, physicalProgressStatus, flags: [...]
  * }
  *
- * job: { jobId, costsToDate, totalEstimatedCost, contractValue, billedToDate }
- * All four numeric fields are optional -- missing ones simply leave the
- * fields that depend on them null and add INCOMPLETE_DATA, rather than
- * throwing or guessing.
+ * job: {
+ *   jobId, costsToDate, totalEstimatedCost, contractValue, billedToDate,
+ *   originalBudget?, physicalPercentComplete?
+ * }
+ * costsToDate/totalEstimatedCost/contractValue/billedToDate missing simply
+ * leave the fields that depend on them null and add INCOMPLETE_DATA, rather
+ * than throwing or guessing.
+ *
+ * originalBudget and physicalPercentComplete are optional PM-reported
+ * fields used only by COST_OVERRUN's two triggers (see module header) --
+ * their absence never produces INCOMPLETE_DATA on its own, since every
+ * other calculation here works without them.
  */
 function computeJobWip(job, thresholds) {
   if (!job || typeof job !== 'object') throw new Error('job must be an object');
@@ -66,6 +89,12 @@ function computeJobWip(job, thresholds) {
   const totalEstimatedCost = isPositiveFiniteNumber(job.totalEstimatedCost) && job.totalEstimatedCost > 0 ? job.totalEstimatedCost : null;
   const contractValue = isPositiveFiniteNumber(job.contractValue) && job.contractValue > 0 ? job.contractValue : null;
   const billedToDate = isPositiveFiniteNumber(job.billedToDate) ? job.billedToDate : null;
+  const originalBudget = isPositiveFiniteNumber(job.originalBudget) && job.originalBudget > 0 ? job.originalBudget : null;
+  const physicalPercentComplete = (typeof job.physicalPercentComplete === 'number' && Number.isFinite(job.physicalPercentComplete) &&
+    job.physicalPercentComplete >= 0 && job.physicalPercentComplete <= 100) ? job.physicalPercentComplete : null;
+  // Reported, never inferred: distinguishes "PM said 0%" (a real, if
+  // alarming, data point) from "nobody gave us a number for this job."
+  const physicalProgressStatus = physicalPercentComplete !== null ? 'provided' : 'not_provided';
 
   const missing = [];
   if (job.costsToDate === undefined || job.costsToDate === null || costsToDate === null) missing.push('costsToDate');
@@ -103,15 +132,33 @@ function computeJobWip(job, thresholds) {
     flags.push({ type: 'INCOMPLETE_DATA', jobId: job.jobId, missingFields: missing });
   }
 
+  // COST_OVERRUN trigger A ("progress-based"): costs > 90% of estimate
+  // while PM-reported PHYSICAL completion is < 85%. Independent of
+  // percentComplete (cost-to-cost) on purpose -- see module header.
+  // Requires physicalPercentComplete; if it's missing, this trigger simply
+  // does not fire (physicalProgressStatus on the result says so).
   if (
-    costsToDate !== null && totalEstimatedCost !== null && percentComplete !== null &&
+    costsToDate !== null && totalEstimatedCost !== null && physicalPercentComplete !== null &&
     costsToDate / totalEstimatedCost > t.costOverrunCostPct &&
-    percentComplete / 100 < t.costOverrunCompletePct
+    physicalPercentComplete / 100 < t.costOverrunCompletePct
   ) {
     flags.push({
-      type: 'COST_OVERRUN', jobId: job.jobId,
-      costsToDate, totalEstimatedCost, costPct: round2((costsToDate / totalEstimatedCost) * 100), percentComplete,
+      type: 'COST_OVERRUN', jobId: job.jobId, reason: 'cost_vs_physical_progress',
+      costsToDate, totalEstimatedCost, costPct: round2((costsToDate / totalEstimatedCost) * 100), physicalPercentComplete,
       threshold: { costOverrunCostPct: t.costOverrunCostPct, costOverrunCompletePct: t.costOverrunCompletePct },
+    });
+  }
+
+  // COST_OVERRUN trigger B ("revised EAC exceeds original budget"):
+  // independent of physical progress entirely -- a revised cost estimate
+  // that has already grown past the original budget is its own signal,
+  // whatever percent-complete says.
+  if (originalBudget !== null && totalEstimatedCost !== null && totalEstimatedCost > originalBudget) {
+    flags.push({
+      type: 'COST_OVERRUN', jobId: job.jobId, reason: 'eac_exceeds_original_budget',
+      estimateAtCompletion: totalEstimatedCost, originalBudget,
+      overageAmount: round2(totalEstimatedCost - originalBudget),
+      overagePct: round2(((totalEstimatedCost - originalBudget) / originalBudget) * 100),
     });
   }
 
@@ -143,6 +190,8 @@ function computeJobWip(job, thresholds) {
     overUnderBilling,
     projectedProfit,
     projectedMarginPct,
+    physicalPercentComplete,
+    physicalProgressStatus,
     flags,
   };
 }
