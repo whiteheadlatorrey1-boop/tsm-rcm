@@ -3045,7 +3045,7 @@ app.post('/api/enterprise/query', validateQueryBody, async (req, res) => {
   try { const a = await groqChat(SP.enterprise, req.body.message||req.body.question||req.body.query||'', req.body.maxTokens||1024); return res.json({ ok:true, answer:a, output:a, reply:a }); }
   catch(e){ return res.status(500).json({ ok:false, error:e.message }); }
 });
-app.get('/health', (req, res) => res.json({ status: 'ok', v: 3 }));
+app.get('/health', (req, res) => res.json({ status: 'ok', v: 3, gitSha: process.env.GIT_SHA || 'unknown' }));
 app.post('/api/bpo/query', validateQueryBody, async (req, res) => {
   try {
     const sys = 'You are a BPO operations intelligence AI for TSM Command. Expert in BPO, workforce management, SLA performance, staffing ops. Be direct.';
