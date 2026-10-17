@@ -145,6 +145,18 @@ function runNpmTest() {
   return { results, summary: summaryMatch ? `${summaryMatch[1]}/${summaryMatch[2]} suites passed` : 'unknown', exitCode: r.status };
 }
 
+// A chain's directory name can differ from its test file names (construct-war
+// vs test-construction-*.js). Aliases add matching tests; they never change a verdict.
+const CHAIN_TEST_ALIASES = {
+  'construct-war': ['construction-recovery', 'construction-vertical', 'construction-control-plane']
+};
+function testsForChain(name, testResults) {
+  const seen = new Map();
+  for (const kw of [name, ...(CHAIN_TEST_ALIASES[name] || [])]) {
+    for (const t of testsForKeyword(kw, testResults)) seen.set(t.file, t);
+  }
+  return [...seen.values()];
+}
 function testsForKeyword(keyword, testResults) {
   const kw = keyword.toLowerCase().replace(/[^a-z0-9]/g, '');
   const matches = Object.keys(testResults).filter((f) => f.toLowerCase().replace(/[^a-z0-9]/g, '').includes(kw));
@@ -253,7 +265,7 @@ async function ensureServerRunning() {
     const pageChecks = await Promise.all(chain.pages.map((p) => checkPage(browser, '/html/' + p.relpath)));
     const allReachable = pageChecks.every((p) => p.reachable);
     const anyPageErrors = pageChecks.some((p) => p.pageErrors.length);
-    const tests = testsForKeyword(chain.name, testResults);
+    const tests = testsForChain(chain.name, testResults);
     const depsFound = new Set();
     for (const p of chain.pages) for (const d of scanPageTextForDeps(path.join(REPO, 'html', p.relpath))) depsFound.add(d);
     const depsConfigured = [...depsFound].map((d) => ({ name: d, configured: !!process.env[d] }));
