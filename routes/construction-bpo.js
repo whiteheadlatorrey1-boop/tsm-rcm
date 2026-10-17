@@ -38,13 +38,14 @@
  *     note? }. Refused (409) once the report is published -- flags are
  *     frozen at that point, review happens before publish.
  *   GET  /api/construction-bpo/weekly-reports[?clientId=]
- *     Any signed-in session. Staff sees every report (optionally
+ *     Staff or a client session with its own clientId (anything else is
+ *     403 -- see FORBIDDEN below). Staff sees every report (optionally
  *     filtered by ?clientId); a client session is forced to its own
  *     clientId and to status=published only, and every flag array in the
  *     response is stripped to approved-only with notes removed (see
  *     SANITIZING below).
  *   GET  /api/construction-bpo/weekly-reports/:id
- *     Any signed-in session. A client requesting another client's
+ *     Same auth as the list route. A client requesting another client's
  *     report, or a draft (not yet published) report, gets 404 -- never
  *     403, so the response doesn't confirm a report with that id exists
  *     for someone else.
@@ -59,6 +60,13 @@
  *     record proving it must never happen.
  *   GET  /api/construction-bpo/audit
  *     Staff-only.
+ *
+ * FORBIDDEN: every route in this file either requires staff (staffOnly)
+ * or, for the few open to a client session too, requires that session to
+ * actually carry a clientId (clientScopeOrForbidden) -- a non-staff
+ * session with no clientId (malformed, or a role this service doesn't
+ * recognize) gets a flat 403 rather than falling through to an
+ * undefined-clientId filter that would return every client's data.
  *
  * SANITIZING: a client must never see a flag an analyst hasn't approved,
  * or any analyst note (approved or not) -- sanitizeReportForClient()
@@ -92,6 +100,18 @@ const STAFF_ROLES = ['admin', 'manager', 'analyst'];
 const staffOnly = (req, res) => {
   if (STAFF_ROLES.includes(sess(req).role)) return false;
   res.status(403).json({ ok: false, error: 'staff_only' });
+  return true;
+};
+// For routes open to staff OR a client session: a non-staff session MUST
+// carry a real clientId. Without this, a malformed/unrecognized-role
+// session would fall through list/get routes' "else" branch with
+// s.clientId === undefined, and store.listReports() treats an undefined
+// filter.clientId as "no filter" -- returning every client's reports.
+const clientScopeOrForbidden = (req, res) => {
+  const s = sess(req);
+  if (STAFF_ROLES.includes(s.role)) return false;
+  if (typeof s.clientId === 'string' && s.clientId.trim()) return false;
+  res.status(403).json({ ok: false, error: 'forbidden' });
   return true;
 };
 
@@ -218,6 +238,7 @@ router.patch('/api/construction-bpo/weekly-reports/:id/flags/:flagId', requireAn
 });
 
 router.get('/api/construction-bpo/weekly-reports', requireAnyAuth, async (req, res) => {
+  if (clientScopeOrForbidden(req, res)) return;
   const s = sess(req);
   const isStaff = STAFF_ROLES.includes(s.role);
   const filter = {};
@@ -235,6 +256,7 @@ router.get('/api/construction-bpo/weekly-reports', requireAnyAuth, async (req, r
 });
 
 router.get('/api/construction-bpo/weekly-reports/:id', requireAnyAuth, async (req, res) => {
+  if (clientScopeOrForbidden(req, res)) return;
   const s = sess(req);
   let report;
   try { report = await store.getReportById(req.params.id); }
