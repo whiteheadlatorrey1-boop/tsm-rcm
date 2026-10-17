@@ -74,12 +74,14 @@ for (const m of Object.values(modules)) {
   G[m.slug] = { src: files.filter((f) => f.startsWith(`server/${m.slug}/`) && JS.test(f)), tests: [], pages: [], assets: [], loc: 0 };
   for (const f of G[m.slug].src) { try { G[m.slug].loc += fs.readFileSync(path.join(ROOT, f), 'utf8').split('\n').length; } catch {} }
 }
+const addLoc = (o, f) => { try { G[o].loc += fs.readFileSync(path.join(ROOT, f), 'utf8').split('\n').length; } catch {} };
 for (const f of files) {
   if (f.startsWith('server/')) continue;
   const o = owner(f);
   if (!o) continue;
   if (isTest(f)) G[o].tests.push(f);
-  else if (/\.(html|jsx|tsx|vue)$/.test(f)) G[o].pages.push(f);
+  else if (/\.(html|jsx|tsx|vue)$/.test(f)) { G[o].pages.push(f); addLoc(o, f); }
+  else if (/\.(js|mjs|css)$/.test(f) && f.startsWith("html/")) addLoc(o, f);
   else if (/\.(mp4|webm|mov|pptx|pdf)$/i.test(f)) G[o].assets.push(f);
 }
 
@@ -104,6 +106,7 @@ function runSuite(file) {
       const sum = out.match(/(\d+)\s+passed,\s+(\d+)\s+failed/i);
       let passed = 0, failed = 0;
       if (sum) { passed = +sum[1]; failed = +sum[2]; }
+      else if (/^\s*PASS:\s*\d+\s*$/im.test(out) && /^\s*FAIL:\s*\d+\s*$/im.test(out)) { passed = +out.match(/^\s*PASS:\s*(\d+)\s*$/im)[1]; failed = +out.match(/^\s*FAIL:\s*(\d+)\s*$/im)[1]; }
       else { passed = (out.match(/^\s*(PASS|ok)\b/gim) || []).length; failed = (out.match(/^\s*(FAIL|not ok)\b/gim) || []).length; }
       const timedOut = !!(err && err.killed);
       let status = 'pass';
@@ -182,7 +185,7 @@ function score(g, runs, last, att) {
   const rows = list.map((m) => {
     const g = G[m.slug];
     const runs = flag('--no-run') ? null : g.tests.map((t) => results.get(t)).filter(Boolean);
-    const last = lastCommit([`server/${m.slug}`, ...g.tests]);
+    const last = lastCommit([`server/${m.slug}`, ...g.tests, ...g.pages.slice(0, 40)]);
     const s = score(g, runs, last, attest[m.slug]);
     const blocked = runs ? runs.filter((r) => r.status.startsWith('blocked') || r.status === 'needs-runner').length : null;
     return { slug: m.slug, ...s, loc: g.loc, pages: g.pages.length, suites: g.tests.length, blocked,
