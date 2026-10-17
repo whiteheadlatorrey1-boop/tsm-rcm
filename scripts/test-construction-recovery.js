@@ -7,8 +7,8 @@ function check(name, ok) {
   if (!ok) failed++;
 }
 
-const data = eng.buildAmerisSeed();
-const again = eng.buildAmerisSeed();
+const data = eng.buildSampleGCSeed();
+const again = eng.buildSampleGCSeed();
 
 check('seed is deterministic', JSON.stringify(data) === JSON.stringify(again));
 check('23 open RFIs, 6 critical-path', data.rfis.length === 23 && data.rfis.filter(r => r.criticalPath).length === 6);
