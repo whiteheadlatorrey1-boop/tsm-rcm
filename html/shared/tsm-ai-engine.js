@@ -121,26 +121,6 @@ Return: top issue, dollar impact, 3 immediate actions, who acts first.`;
       }
     },
 
-    ameris: {
-      id: 'ameris',
-      company: 'Ameris Bank',
-      sector: 'financial',
-      persona: 'Regional Operations Lead',
-      allowedNodes: ['financial','compliance','mortgage','vendors','strategist'],
-      disallowedDomains: ['healthcare','construction','schools','hotelops'],
-      offices: [],
-      priorities: ['loan_pipeline','compliance','deposit_growth','mortgage_volume'],
-      currentData: {},
-      systemPrompt() {
-        return `You are Strategist for Ameris Bank.
-Persona: ${this.persona}.
-Approved nodes: ${this.allowedNodes.join(', ')}.
-DO NOT reference: ${this.disallowedDomains.join(', ')}.
-Prioritize: loan pipeline, compliance risk, deposit growth, mortgage volume.
-Return: top issue, dollar impact, 3 immediate actions, who acts first.`;
-      }
-    },
-
     federation: {
       id: 'federation',
       company: 'TSMatter Federation',

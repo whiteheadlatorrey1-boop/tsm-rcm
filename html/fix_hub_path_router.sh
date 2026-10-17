@@ -33,14 +33,14 @@ for dir in tsm-*/; do
 done
 
 # also copy clean portals as named apps
-mkdir -p "$HTML/honor-portal" "$HTML/ameris-portal" "$HTML/case-tech" "$HTML/esd-portal"
+mkdir -p "$HTML/honor-portal" "$HTML/samplegc-portal" "$HTML/case-tech" "$HTML/esd-portal"
 cp "$EXPORT/portals/tsm-honor-portal.html" "$HTML/honor-portal/index.html" 2>/dev/null || true
-cp "$EXPORT/portals/tsm-ameris-portal.html" "$HTML/ameris-portal/index.html" 2>/dev/null || true
+cp "$EXPORT/portals/tsm-samplegc-portal.html" "$HTML/samplegc-portal/index.html" 2>/dev/null || true
 cp "$EXPORT/portals/case-tech-portal.html" "$HTML/case-tech/index.html" 2>/dev/null || true
 cp "$EXPORT/portals/esd-portal.html" "$HTML/esd-portal/index.html" 2>/dev/null || true
 
 # copy client bundles if useful
-for c in healthcare honorhealth ameris-construction; do
+for c in healthcare honorhealth samplegc-construction; do
   if [ -d "$EXPORT/clients/$c" ]; then
     mkdir -p "$HTML/$c"
     cp -R "$EXPORT/clients/$c/." "$HTML/$c/" 2>/dev/null || true

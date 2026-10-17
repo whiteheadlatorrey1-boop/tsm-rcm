@@ -61,7 +61,7 @@ declare -A HTML_FILES=(
   ["tsm-honorhealth"]="${OUTPUT_DIR}/tsm-honorhealth-dee.html"
   # Add more as they're created:
   # ["tsm-hc-strategist"]="${OUTPUT_DIR}/tsm-hc-strategist.html"
-  # ["tsm-construction-command"]="${OUTPUT_DIR}/tsm-ameris-construction.html"
+  # ["tsm-construction-command"]="${OUTPUT_DIR}/tsm-samplegc-construction.html"
 )
 
 # ════════════════════════════════════════════════════════════════

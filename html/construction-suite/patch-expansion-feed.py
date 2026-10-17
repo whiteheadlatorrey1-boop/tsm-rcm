@@ -15,9 +15,9 @@ if not FILE.exists():
 html = FILE.read_text()
 
 # ── 1. Topbar button: inject after back-link ──────────────────────────
-OLD_BACK = '<a class="back-link" href="https://tsm-shell.fly.dev/construction-suite/construction-hub.html?v=ameris">← Hub</a>'
+OLD_BACK = '<a class="back-link" href="https://tsm-shell.fly.dev/construction-suite/construction-hub.html?v=samplegc">← Hub</a>'
 NEW_BACK = (
-    '<a class="back-link" href="https://tsm-shell.fly.dev/construction-suite/construction-hub.html?v=ameris">← Hub</a>\n'
+    '<a class="back-link" href="https://tsm-shell.fly.dev/construction-suite/construction-hub.html?v=samplegc">← Hub</a>\n'
     '    <button id="strategist-sync-btn" onclick="tsmSyncNow()" '
     'style="background:var(--green);border:none;color:var(--bg);font-family:var(--mono);'
     'font-size:10px;font-weight:700;letter-spacing:1.5px;padding:6px 14px;cursor:pointer;'
