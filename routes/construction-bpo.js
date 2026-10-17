@@ -49,6 +49,12 @@
  *     report, or a draft (not yet published) report, gets 404 -- never
  *     403, so the response doesn't confirm a report with that id exists
  *     for someone else.
+ *   GET  /api/construction-bpo/weekly-reports/:id/export.pdf
+ *     Same auth/scoping as GET :id, plus: only a PUBLISHED report can be
+ *     exported (409 not_published for staff hitting a draft; a client
+ *     gets the same 404 as everywhere else). Rendered server-side
+ *     (pdfkit, same library/style as server.js's existing BPO evidence-
+ *     package PDF export) -- never the raw JSON reinterpreted client-side.
  *   POST /api/construction-bpo/weekly-reports/:id/publish
  *     Staff-only (analyst/manager/admin). One-way: publishing an
  *     already-published report is 409, not a silent no-op. Refused (409
@@ -83,6 +89,7 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
+const PDFDocument = require('pdfkit');
 const { requireAnyAuth } = require('../middleware/require-auth');
 const importer = require('../server/construction-bpo/import');
 const { buildWeeklyReportDraft } = require('../server/construction-bpo/weekly-report');
@@ -129,6 +136,49 @@ function sanitizeReportForClient(report) {
   for (const r of clone.retainage || []) r.flags = sanitizeFlagsForClient(r.flags);
   for (const w of clone.lienWaivers || []) w.flags = sanitizeFlagsForClient(w.flags);
   return clone;
+}
+
+function fmtNum(n) { return n == null ? '—' : n.toLocaleString(); }
+function flagLine(f) {
+  const parts = [f.type];
+  if (f.reason) parts.push(f.reason);
+  if (f.jobId) parts.push('job ' + f.jobId);
+  if (f.id) parts.push(f.id);
+  if (f.subcontractor) parts.push(f.subcontractor);
+  if (f.status) parts.push('[' + f.status + ']');
+  return parts.join(' - ');
+}
+/** Renders a (already-sanitized-if-needed) published report as a PDF cover sheet, piped directly to res. */
+function renderWeeklyReportPdf(res, report) {
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="construction-bpo-${report.clientId}-${report.weekEnding}.pdf"`);
+  const doc = new PDFDocument({ margin: 50 });
+  doc.pipe(res);
+
+  doc.fontSize(18).text('Weekly Financial Review', { underline: true });
+  doc.moveDown(0.3);
+  doc.fontSize(10).fillColor('#555')
+    .text(`Client: ${report.clientId}    Week ending: ${report.weekEnding}`)
+    .text(`Published ${report.publishedAt || '—'} by ${report.publishedBy || '—'}`);
+  doc.fillColor('#000').moveDown();
+
+  const s = report.summary || {};
+  doc.fontSize(13).text('Summary');
+  doc.fontSize(10)
+    .text(`Jobs: ${s.jobCount ?? '—'}    Jobs with flags: ${s.jobsWithFlags ?? '—'}`)
+    .text(`Earned revenue: ${fmtNum(s.totalEarnedRevenue)}    Over/under billing: ${fmtNum(s.totalOverUnderBilling)}`)
+    .text(`Stalled change orders: ${s.stalledChangeOrders ?? '—'}    Retainage variances: ${s.retainageVariances ?? '—'}    Lien waiver issues: ${s.lienWaiverIssues ?? '—'}`);
+  doc.moveDown();
+
+  doc.fontSize(13).text('Flags');
+  const flags = report.flags || [];
+  if (!flags.length) {
+    doc.fontSize(10).fillColor('#777').text('No flags on this report.').fillColor('#000');
+  } else {
+    doc.fontSize(9);
+    for (const f of flags) doc.text(flagLine(f));
+  }
+  doc.end();
 }
 
 router.post('/api/construction-bpo/import', requireAnyAuth, upload.single('file'), async (req, res) => {
@@ -268,6 +318,23 @@ router.get('/api/construction-bpo/weekly-reports/:id', requireAnyAuth, async (re
     return res.status(404).json({ ok: false, error: 'not_found' });
   }
   res.json({ ok: true, report: isStaff ? report : sanitizeReportForClient(report) });
+});
+
+router.get('/api/construction-bpo/weekly-reports/:id/export.pdf', requireAnyAuth, async (req, res) => {
+  if (clientScopeOrForbidden(req, res)) return;
+  const s = sess(req);
+  const isStaff = STAFF_ROLES.includes(s.role);
+  let report;
+  try { report = await store.getReportById(req.params.id); }
+  catch (e) { return res.status(503).json({ ok: false, error: 'store_unavailable', detail: e.message }); }
+  if (!report) return res.status(404).json({ ok: false, error: 'not_found' });
+  if (!isStaff && (report.clientId !== s.clientId || report.status !== 'published')) {
+    return res.status(404).json({ ok: false, error: 'not_found' });
+  }
+  if (report.status !== 'published') {
+    return res.status(409).json({ ok: false, error: 'not_published' });
+  }
+  renderWeeklyReportPdf(res, isStaff ? report : sanitizeReportForClient(report));
 });
 
 router.post('/api/construction-bpo/weekly-reports/:id/publish', requireAnyAuth, async (req, res) => {
