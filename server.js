@@ -4007,6 +4007,11 @@ app.use((req, res, next) => {
 app.use(require('./routes/strategist'));
 app.use(require('./routes/construction'));
 app.use(require('./routes/construction-bpo'));
+// Generic multi-vertical framework (server/bpo-service/) -- additive,
+// mounted alongside the construction-bpo route above, which it does not
+// touch or depend on. Exposes /api/bpo-service/:vertical/... for every
+// registered plug-in (server/bpo-service/plugins/index.js).
+app.use(require('./server/bpo-service/routes'));
 app.use(require('./routes/property-accounting'));
 app.use(require('./routes/finops'));
 app.use(require('./routes/live-data'));
