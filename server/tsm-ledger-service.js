@@ -60,7 +60,7 @@ async function connect() {
         socketTimeoutMS: 15000,
       });
       await client.connect();
-      db = client.db(DEFAULT_DB_NAME);
+      db = client.db(process.env.MONGODB_DB_NAME || DEFAULT_DB_NAME);
       connecting = null;
       return db;
     } catch (err) {

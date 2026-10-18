@@ -130,7 +130,12 @@ async function api(method, p, cookie, body) {
 
 // ───────────────────────── direct-DB, read-only/cleanup helpers ──────────
 let mongoClient = null;
-const LEDGER_DB_NAME = 'tsm-consultz'; // tsm-ledger-service.js hardcodes this -- see store.js header
+// Safety guard: live acceptance may only run against a database named like a test DB.
+if (process.env.MONGODB_URI && process.env.BPO_MONGO_LIVE === '1' && !/test/i.test(process.env.MONGODB_DB_NAME || '')) {
+  console.error('REFUSING TO RUN: set MONGODB_DB_NAME to a test database (name must contain test), e.g. tsm_test. Got: ' + (process.env.MONGODB_DB_NAME || '(unset)'));
+  process.exit(1);
+}
+const LEDGER_DB_NAME = process.env.MONGODB_DB_NAME || 'tsm-consultz'; // tsm-ledger-service.js honors MONGODB_DB_NAME
 async function mongoDb() {
   if (mongoClient) return mongoClient.db(LEDGER_DB_NAME);
   const { MongoClient } = require('mongodb');
